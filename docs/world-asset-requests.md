@@ -9,6 +9,9 @@ geometry, generated tree artwork, billboards and invented LODs are prohibited.
 The renderer currently limits detailed trees to the eight nearest visible trees
 because the supplied meshes are expensive. More tree art is not needed to fill
 the town; lower-poly versions of these exact assets are the first priority.
+Young trees use scaled instances of the same supplied model; the nursery packet
+inventory icon contains no generated tree illustration. Any seasonal tree models
+or model-derived inventory thumbnails must also be supplied by you.
 
 ## First delivery
 

@@ -337,7 +337,7 @@ internal sealed class TownGame
             {
                 var g=state.Town.Ground[i];if(g.Kind==4||!ScenePolicy.Visible(g.X,g.Z,g.X+1,g.Z+1,state.X,state.Z,20))continue;
                 float y=0;
-                if(g.Kind!=3)Box(g.X+.25f,y+.02f,g.Z+.25f,.5f,g.Kind==1?.03f:.25f,.5f,g.Kind==1?new Color32(105,81,54):g.Kind==2?new Color32(242,174,170):new Color32(229,190,82));
+                if(!IsTree(g))Box(g.X+.25f,y+.02f,g.Z+.25f,.5f,g.Kind==1?.03f:.25f,.5f,g.Kind==1?new Color32(105,81,54):g.Kind==2?new Color32(242,174,170):new Color32(229,190,82));
             }
             DrawBuilding(32,26,4);DrawBuilding(50,26,4);for(int i=0;i<6;i++)DrawBuilding(state.Town.Residents[i].X+1,11,2.3f);
             if(state.HousePlaced)
@@ -354,6 +354,7 @@ internal sealed class TownGame
         { int x=(int)state.X-3,z=(int)state.Z-3;bool valid=state.Town.ValidPlot(x,z);for(int i=0;i<15;i++){Box(x+i,.02f,z,.9f,.03f,.9f,valid?new Color32(74,230,113):new Color32(229,82,72));Box(x+i,.02f,z+12,.9f,.03f,.9f,valid?new Color32(74,230,113):new Color32(229,82,72));} }
         renderer.End3D();ui.Begin();DrawHud();ui.End();device.EndFrame();
     }
+    private bool IsTree(GroundItem g)=>g.Kind==3||(g.Kind==2&&g.Item!=2);
     private void DrawTrees()
     {
         // All foliage is supplied GLB geometry. Bound expensive detailed assets
@@ -361,13 +362,13 @@ internal sealed class TownGame
         for(int n=0;n<visibleTrees.Length;n++){visibleTrees[n]=-1;treeDistances[n]=float.MaxValue;}
         for(int i=0;i<state.Town.GroundCount;i++)
         {
-            var g=state.Town.Ground[i];if(g.Kind!=3||!ScenePolicy.Visible(g.X,g.Z,g.X+1,g.Z+1,state.X,state.Z,20))continue;
+            var g=state.Town.Ground[i];if(!IsTree(g)||!ScenePolicy.Visible(g.X,g.Z,g.X+1,g.Z+1,state.X,state.Z,20))continue;
             float dx=g.X-state.X,dz=g.Z-state.Z,d=dx*dx+dz*dz;
             for(int n=0;n<visibleTrees.Length;n++)if(d<treeDistances[n])
             {for(int j=visibleTrees.Length-1;j>n;j--){visibleTrees[j]=visibleTrees[j-1];treeDistances[j]=treeDistances[j-1];}visibleTrees[n]=i;treeDistances[n]=d;break;}
         }
         for(int n=0;n<visibleTrees.Length;n++)if(visibleTrees[n]>=0)
-        {var g=state.Town.Ground[visibleTrees[n]];ModelAt(props[1+(g.Item%3)],g.X,g.Z,3);}
+        {var g=state.Town.Ground[visibleTrees[n]];ModelAt(props[g.Item==3?3:g.Item==2?2:1],g.X,g.Z,g.Kind==2?.75f:3);}
     }
     private void DrawBuilding(float x,float z,float scale)
     { if(ScenePolicy.Visible(x,z,x+4,z+4,state.X,state.Z,22))ModelAt(props[0],x,z,scale); }
