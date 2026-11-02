@@ -61,6 +61,19 @@ Run dotnet @('build',"$sdkRoot/tools/DolphinDotNet.Compiler",'-c','Release','-v'
 Run dotnet @('build','game/AnimalTown.GameCube','-c','Release',"-p:DolphinDotNetRoot=$sdkRoot",'-v','quiet')
 Run dotnet @("$sdkRoot/tools/DolphinDotNet.Compiler/bin/Release/net8.0/DolphinDotNet.Compiler.dll",'--bundle','game/AnimalTown.GameCube/bin/Release/net8.0/AnimalTown.GameCube.dll','out/native')
 & (Join-Path $PSScriptRoot 'patch-native.ps1') -Root $projectRoot
+$nativeOutput=[IO.Path]::GetFullPath((Join-Path $projectRoot 'out/native'))
+$workspacePrefix=$projectRoot.TrimEnd([IO.Path]::DirectorySeparatorChar)+[IO.Path]::DirectorySeparatorChar
+if(!$nativeOutput.StartsWith($workspacePrefix,[StringComparison]::OrdinalIgnoreCase)){throw 'Native output must stay inside the workspace'}
+$nativeWorkingRoot=if($NativeInProcess){$nativeOutput}else{'/project/out/native'}
+$nativeKey="$nativeWorkingRoot|$nativeImage|$env:ANIMALTOWN_BUILD_IMAGE"
+$nativeKeyFile=Join-Path $nativeOutput '.build-root'
+# Make dependency files contain absolute mount paths. Never reuse objects from
+# the host-native /project mount inside the combined /workspace image (or vice versa).
+if((Test-Path -LiteralPath (Join-Path $nativeOutput 'build')) -and
+   (!(Test-Path -LiteralPath $nativeKeyFile) -or [IO.File]::ReadAllText($nativeKeyFile) -ne $nativeKey)){
+    RunNative 'out/native' 'make' @('clean')
+}
+[IO.File]::WriteAllText($nativeKeyFile,$nativeKey)
 RunNative 'out/native' 'make' @('-j2')
 $loaderBuild = 'set -eu
 export PATH=/opt/devkitpro/devkitPPC/bin:$PATH
