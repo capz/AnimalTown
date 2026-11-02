@@ -1,0 +1,84 @@
+# Implementation status
+
+This is an early playable implementation, **not the completed game** described in
+the GDD. The technical baseline was committed/pushed first as `0064efd`.
+
+## Implemented foundation
+
+* Pinned hypercube-engine and DolphinDotNet submodules, separate console and
+  ASP.NET Core/PostgreSQL server builds; shared AOT-compatible gameplay assembly.
+* Full-size bootable GameCube ISO, original homebrew apploader, FST, game title,
+  commit in disc header/BNR/title/save comment, disc banner and save banner/icon.
+* Ten supplied GLBs converted into textured native models, retained walking and
+  running clips, six species selection. True cylindrical terrain with an
+  east-west axis and radius 400/(2*pi), square 20×20 screen-tile world, conservative
+  Hypercube visibility, capped detailed trees and procedural distant trees.
+  Objects inherit the world root and use the cylinder's radial surface normal;
+  terrain extends beyond the viewport. Speech balloons and all UI panels use
+  large rounded corners, with pill selections and rounded keyboard keys.
+  Gorditas Bold titles/headings use offline-baked IA8; all other UI reads the
+  console's native IPL font through SDK PR #145. No firmware font bytes ship.
+* Controller navigation, character/name/catchphrase creation, house reservation,
+  backpack icon grid (10/20/30 slots), selected-item popovers, shop capacity
+  upgrades and context actions, map, store buying/selling, banking, loans and tier
+  rules, catalog deliveries, simple tutorial objectives and villager fetch jobs.
+* Indoor/outdoor footprint validation, placement ownership, rotating footprints,
+  garden reservations and relocation, tier-dependent room size.
+* Native RTC bridge, 06:00 day rollover, stock and monthly interest rules,
+  dropped-item sweep and Lost & Found owner/retention checks.
+* Versioned binary saves with run-length terrain compression and legacy schema
+  migration, CRC and bounded decoding, alternating card files with
+  readback verification. Both damaged saves are preserved rather than replaced.
+* Server registration/password hashing/opaque sessions, owner authorization,
+  friends/blocks, gate leases and visit reservations, serialized inventory
+  operations with idempotency keys, escrow listings, atomic purchase and grants.
+
+## Validation performed
+
+* 475 host checks: backpack tiers/capacity persistence, cylindrical radius and radial normals, viewport/tile sizing,
+  square world bounds, wallet/capacity atomicity, bank overflow, money bags, stock,
+  expansion/rollover, interest replay, CRC rejection, lost-item protection and
+  connectivity of all mandatory areas for 20 seeds.
+* Independent server publish on .NET 10; real PostgreSQL integration checks for
+  authentication, save ownership, operation retries/body mismatch, rejected
+  operation rollback, mutual friends, blocking, escrow/purchase retry and grant
+  claim retry. These are not yet simultaneous-buyer race tests.
+* Native card-reader regression verifies sector-aligned reads, prefixes, sector boundaries, length clamping and cleanup after failures. The project overlay fixes the pinned SDK reader. SDK IPL-font PR #145 passes its framework CI checks.
+* Native PowerPC AOT/link succeeds. Disc validator checks full image size, boot
+  header/apploader, DOL entry/sections/BSS, FST ranges/alignment and required BNR.
+* Direct ISO boot in Dolphin reaches the rendered title, character creation,
+  house placement, walking world, map and backpack with injected controller input
+  using the actual supplied models. A card save passed readback, a second ISO boot loaded the same town/backpack and wrote the alternate save. The raw card directory advertises the RGB5A3 banner and its stored pixels match the build asset. No separately booted DOL is involved.
+
+Physical GCLoader, Swiss and burned-disc testing has not been performed. BBA,
+memory-card removal/full/corruption tests and PAL timing need target validation.
+The pipeline's structural checks do not replace those tests. Native SDK metrics
+do not include all heap/framebuffer residency; hardware memory budgets remain
+unverified. Model normalization uses bind bounds; animated extremities need QA.
+
+## Remaining work (release blockers)
+
+* Online console transport, companion/gateway, signed tickets, heartbeat, four
+  players, reliable intent/delta replay, movement interpolation and reconnect.
+  Current visit endpoint only reserves a session; it does not start multiplayer.
+* Server cloud PUT/reconciliation deliberately returns an explicit unsupported
+  error. Preventing edited offline assets from entering server economy requires
+  a complete journal/import policy. House/garden/profile writes, gifts/rewards,
+  tents and moderation restrictions still need endpoints and integration.
+* Full resident schedules/pathfinding, personality dialogue, all six request
+  types, lost-object quests and proper tutorial objective verification.
+* Fishing/net timing games, fruit-regrowth limits, watering/growth state, weeds,
+  slingshot, seasonal palettes, weather, soundscape and accessibility.
+* Distinct indoor rooms/stairways for upper floor/basement/annex, full furniture
+  visuals/editor, delayed paid exterior customization, mailbox/stall interactions
+  and clay-chime rhythms. Current exterior menus are immediate palette values;
+  several visuals are placeholders and five authored house models do not exist.
+* Player chat, phrase wheel/emotes, chat history/filter/mute/block/report UI,
+  voice customization and species-specific clothes/tool sockets.
+* LOD asset reduction and bounded streaming across full town, animated-instance
+  culling, frame-time telemetry and on-hardware memory/performance profiling.
+* Full playthrough, extended controller/save recovery verification, concurrency and
+  save recovery tests, clean-release reproducibility and hardware smoke matrix.
+
+Do not interpret a menu entry, domain rule, or server route as a completed
+end-to-end gameplay feature. This list must shrink against tested behavior.

@@ -1,0 +1,78 @@
+"""Direct ISO boot: no separately selected DOL. Run inside animaltown-dolphin."""
+import os
+from pathlib import Path
+import subprocess
+import sys
+import time
+
+disc=Path(sys.argv[1]).resolve()
+root=Path(sys.argv[2]).resolve();root.mkdir(parents=True,exist_ok=True)
+user=root/'user';(user/'Config').mkdir(parents=True,exist_ok=True)
+sys.path.insert(0,str(Path('/work/vendor/sdk/scripts')))
+from dolphin_controller_test import pad_config
+(user/'Config'/'GCPadNew.ini').write_text(pad_config())
+(user/'Pipes').mkdir(exist_ok=True)
+for i in range(4):
+    pipe=user/'Pipes'/f'dnd{i}'
+    if pipe.exists():pipe.unlink()
+    os.mkfifo(pipe)
+controller=os.open(user/'Pipes'/'dnd0',os.O_RDWR|os.O_NONBLOCK)
+def press(button):
+    os.write(controller,f'PRESS {button}\n'.encode());time.sleep(1)
+    os.write(controller,f'RELEASE {button}\n'.encode());time.sleep(1)
+def screenshot(name):
+    subprocess.run(['ffmpeg','-v','error','-f','x11grab','-video_size','800x600','-i',':93','-frames:v','1','-y',str(root/name)],env=env,check=True)
+(user/'Config'/'Dolphin.ini').write_text('''[Core]
+CPUCore = 1
+CPUThread = False
+DSPHLE = False
+SkipIPL = True
+SlotA = 1
+SlotB = 255
+MemcardAPath = '''+str(root/'MemoryCardA.USA.raw')+'''
+[Display]
+RenderToMain = False
+RenderWindowWidth = 640
+RenderWindowHeight = 480
+[DSP]
+EnableJIT = True
+[Interface]
+ConfirmStop = False
+UsePanicHandlers = False
+''')
+(user/'Config'/'GFX.ini').write_text('''[Settings]
+InternalResolution = 1
+MSAA = 1
+EFBScale = 1
+DumpFrames = True
+DumpFormat = avi
+DumpCodec = ffv1
+[Hacks]
+EFBToTextureEnable = False
+''')
+(user/'Config'/'Logger.ini').write_text('[Options]\nWriteToFile = True\nVerbosity = 4\n[Logs]\nBOOT = True\nOSREPORT = True\nDVDINTERFACE = True\n')
+env=dict(os.environ,DISPLAY=':93',QT_QPA_PLATFORM='xcb')
+x=subprocess.Popen(['Xvfb',':93','-screen','0','800x600x24'],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
+time.sleep(1)
+with (root/'emulator.log').open('w') as log:
+    p=subprocess.Popen(['/usr/games/dolphin-emu-nogui','-u',str(user),'-e',str(disc),'-v','OGL'],env=env,stdout=log,stderr=subprocess.STDOUT)
+    try:
+        time.sleep(25)
+        screenshot('screen.png')
+        if '--play' in sys.argv:
+            press('A');press('D_UP');press('A');press('A');time.sleep(2);screenshot('bubble.png');press('A');press('A')
+            time.sleep(2);screenshot('world.png')
+            press('Y');time.sleep(1);screenshot('map.png');press('Y')
+            press('X');time.sleep(1);screenshot('pockets.png');press('B')
+            press('START');time.sleep(12);screenshot('save.png')
+        elif '--resume' in sys.argv:
+            press('A');time.sleep(2);screenshot('resume.png')
+            press('X');time.sleep(1);screenshot('resume-backpack.png')
+            press('START');time.sleep(12);screenshot('resume-save.png')
+    finally:
+        p.terminate()
+        try:p.wait(timeout=5)
+        except subprocess.TimeoutExpired:p.kill();p.wait()
+x.terminate();x.wait()
+os.close(controller)
+print(root/'screen.png')

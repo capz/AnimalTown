@@ -22,7 +22,10 @@ build does not cross-compile a game; a game build never starts a server.
 Pinned starting revisions:
 
 * hypercube-engine: d0a49c3d0b437250a3eefa2aff3f882621db698e.
-* DolphinDotNet: 0416b5707bf405319dd5ec1acf01a07efe4b230b (engine SDK pin).
+* DolphinDotNet: 4327c9fc4e0b6aa3a307802ba5928107f7bd1684
+  (native IPL font addition, https://github.com/capz/DolphinDotNet/pull/145).
+  The engine's original SDK baseline was 0416b5707bf405319dd5ec1acf01a07efe4b230b;
+  AnimalTown explicitly overrides it with its own pinned SDK submodule.
 * Native toolchain: ghcr.io/extremscorner/libogc2 at
   sha256:13bb658d3f18903816617223f5d7c6f776d3db3ea806aae67f8d35a7a69d4c85.
 
@@ -113,7 +116,12 @@ reservation outlines and online players. Refresh only dirty regions.
 Stable numeric catalog IDs map to original string names in the server/content
 manifest; a catalog version is part of every save and join. Item flags,
 footprints, prices and all authority rules live in the shared domain assembly.
-15 non-stacking pockets; separate tool/clothing/accessory; wallet 0..99,999;
+Backpack inventory is a five-column icon grid: 10 slots initially, upgraded to
+20 and then 30. A compact anchored popover shows the selected item's name and
+actions; item names do not clutter the grid. Capacity is enforced in shared
+receive/buy/sell/place/transfer rules and on the server, not just visually.
+Two shop upgrades cost 6,000 and 18,000 acorns as initial tuning values. Items
+remain non-stacking; tool/clothing/accessory are separate; wallet 0..99,999;
 checked 64-bit savings and debt. Transfers check capacity and funds before any
 mutation. Money bags open atomically only when the complete value fits.
 
@@ -154,10 +162,22 @@ but server UTC enforces economy reward caps and ticket expiry.
 Stick moves, B runs/cancels, A interacts/confirms, X pockets, Y map, Z tools,
 Start save/settings; D-pad changes tabs/selection. All screens navigable without
 a mouse. Character creation selects all six species, palette, name, catchphrase
-and pitch. Speech balloons use large 30-pixel rounded corners, rounded name
+and pitch. All UI surfaces use the same rounded visual language: 30-pixel panel
+corners, gently bulging convex menu sides, pill-shaped HUD cards and selection highlights, rounded keyboard keys,
+and rounded map/plot/menu containers. Speech balloons use large 30-pixel rounded corners, rounded name
 tabs and an attached tail, drawn through the batched GX 2D API. A reusable
-balloon supports name tab, typewriter text, choices,
-world chat anchoring and 50-line history. Generate short original PCM syllables
+balloon supports name tab, typewriter text, choices, world chat anchoring and
+50-line history.
+Gorditas Bold for titles/major headings, and the native IPL firmware font for
+all remaining text. SDK `IplFont.Load` and the `Draw2D.DrawText` overload read
+the console firmware through libogc; no firmware font bytes enter the ISO.
+Gorditas is baked offline; no TTF rasterizer enters the console. See `docs/visual-identity.md`
+for the original doorway/seed mark and shared colour/shape tokens.
+Panel headings rock gently up to 1.8 degrees about their centred pivots.
+48-pixel source glyphs are shelf-packed into 512×512 IA8 atlases and filtered
+down to the desired physical size. A separate 1024×256 Gorditas wordmark avoids
+enlarging small title glyphs. The backpack uses an original RGB5A3 icon atlas.
+Generate short original PCM syllables
 and pool voice channels; reserve channels for UI, ambience and chimes. On-screen
 keyboard caps chat at 80 chars; quick phrases, mute, chat-off and block remain
 available without text entry. Animations use each species' actual clip mapping.
@@ -170,9 +190,12 @@ Memory-card identity is `AMTE` / `01`. Use SDK MemoryCard.WriteSave with origina
 Two alternating save files carry magic, schema/catalog versions, monotonic
 sequence, payload length and CRC32. Validate both completely, load newest valid
 one and leave the previous slot untouched until the new write is verified.
-Schema 2 run-length-encodes fine terrain and supports the full 400×400 world;
-schema 1 migration preserves the former 80×72 region. The native managed heap
-is explicitly 2 MiB to accommodate bounded terrain and save staging.
+Schema 3 stores the backpack tier and 30 backing slots, while enforcing unlocked
+capacity. Legacy 15-slot saves migrate to 20 slots if needed to preserve items.
+Schema 2 introduced run-length fine terrain for the full 400×400 world;
+schema 1 migration preserves the former 80×72 region. Save staging allocates
+from actual encoded size rather than the 1-MiB format ceiling. The managed heap
+is explicitly 4 MiB to accommodate bounded terrain, native-font loading and save staging.
 Never format a card, overwrite another game's file, or silently discard errors.
 Autosave every five minutes, on rollover, travel and explicit save. Report card
 missing/full/write failures; gameplay continues and player can retry. Unknown
@@ -181,9 +204,11 @@ newer versions are read-only errors; migrations must preserve a backup.
 ## Online transport and trust boundary
 
 Broadband Adapter is optional. No BBA means full offline game with gate UI
-explaining the requirement. SDK supplies IPv4 TCP/UDP and asynchronous pumping,
-not WebRTC, TLS, SignalR or NAT traversal. Do not emulate those through a browser
-or pretend HTTPS exists in the console runtime.
+explaining the requirement. The original SDK baseline supplied IPv4 TCP/UDP and
+asynchronous pumping. The updated SDK pin also exposes native TLS/HTTPS, which
+can serve authenticated backend control calls. WebRTC, SignalR and NAT traversal
+are not the console transport. The initial companion design below remains an
+unimplemented transport option; it is no longer required just to obtain HTTPS.
 
 Use a separately built local companion gateway for internet play. Console to
 gateway uses length-prefixed binary TCP for control/reliable events and optional

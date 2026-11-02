@@ -1,0 +1,13 @@
+<Project>
+  <Import Project="../../Directory.Build.props" />
+  <PropertyGroup><ImportDirectoryBuildProps>false</ImportDirectoryBuildProps></PropertyGroup>
+  <Import Project="$(DolphinDotNetRoot)/sdk/DolphinDotNet.Sdk/Sdk/Sdk.props" />
+  <PropertyGroup><OutputType>Exe</OutputType></PropertyGroup>
+  <ItemGroup>
+    <Compile Remove="BuildInfo.cs" Condition="Exists('../../out/BuildInfo.cs')" />
+    <Compile Include="../../out/BuildInfo.cs" Condition="Exists('../../out/BuildInfo.cs')" />
+    <ProjectReference Include="../../shared/AnimalTown.Domain/AnimalTown.Domain.csproj" />
+    <ProjectReference Include="../../vendor/hypercube-engine/src/Hypercube.GameCube/Hypercube.GameCube.csproj" />
+  </ItemGroup>
+  <Import Project="$(DolphinDotNetRoot)/sdk/DolphinDotNet.Sdk/Sdk/Sdk.targets" />
+</Project>
