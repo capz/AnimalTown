@@ -58,7 +58,7 @@ build/check/publish sequence. CI passes the token only to the final publishing
 container, after checks pass. It does not expose the token to compilation/tests.
 
 To reuse a published toolchain, set `ANIMALTOWN_BUILD_IMAGE` to its full
-`ghcr.io/capz/animaltown-build@sha256:...` digest and run Compose with `--no-build`.
+`ghcr.io/capz/animaltown-build@sha256:...` digest and run Compose with `--pull always`.
 The regular host PowerShell build commands remain supported; their native stages
 use the original libogc2 container. `-NativeInProcess` is for the combined Linux
 image and runs those stages directly, with no nested Docker daemon.

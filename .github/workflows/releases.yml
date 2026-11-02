@@ -48,12 +48,12 @@ jobs:
       - name: Build ISO, check terrain/gameplay/native code, check server and package
         env:
           ANIMALTOWN_BUILD_IMAGE: ghcr.io/capz/animaltown-build@${{ steps.image.outputs.digest }}
-        run: docker compose -f build/compose.yml run --rm --no-build builder
+        run: docker compose -f build/compose.yml run --rm --pull always builder
       - name: Package and publish GitHub prerelease
         env:
           GH_TOKEN: ${{ github.token }}
           ANIMALTOWN_BUILD_IMAGE: ghcr.io/capz/animaltown-build@${{ steps.image.outputs.digest }}
-        run: docker compose -f build/compose.yml run --rm --no-build --no-deps -e GH_TOKEN builder pwsh -NoLogo -NoProfile -File tools/build-linux.ps1 -Target publish
+        run: docker compose -f build/compose.yml run --rm --pull always --no-deps -e GH_TOKEN builder pwsh -NoLogo -NoProfile -File tools/build-linux.ps1 -Target publish
       - name: Stop disposable test database
         if: always()
         run: docker compose -f build/compose.yml down --volumes --remove-orphans
