@@ -56,6 +56,6 @@ export PATH=/opt/devkitpro/devkitPPC/bin:$PATH
 powerpc-eabi-gcc -mcpu=750 -m32 -mbig-endian -msdata=none -Os -fno-builtin -fno-pic -fno-asynchronous-unwind-tables -ffunction-sections -nostdlib -Wl,-T,tools/apploader/link.ld tools/apploader/apploader.c -lgcc -o out/apploader.elf
 powerpc-eabi-objcopy -O binary out/apploader.elf out/apploader.bin
 '
-Run docker @('run','--rm','--mount',"type=bind,src=$projectRoot,dst=/project",'-w','/project',$nativeImage,'sh','-c',$loaderBuild)
+Run docker @('run','--rm','--mount',"type=bind,src=$projectRoot,dst=/project",'-w','/project',$nativeImage,'sh','-c',$loaderBuild.Replace("`r`n","`n"))
 Run dotnet @('run','--project','tools/AnimalTown.Tools','-c','Release','--no-build','--','iso',$projectRoot,'out/native/Game.dol',$gameCommit)
 Write-Host "Bootable ISO: $projectRoot/out/AnimalTown-$gameCommit.iso"
