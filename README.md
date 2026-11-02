@@ -24,6 +24,10 @@ The workflow can also be rerun from GitHub Actions using **Build and release**.
 
 ## Build the GameCube ISO
 
+For a complete containerized Linux build of the game **and** backend, use the
+[Linux build image instructions](docs/linux-build.md). GitHub builds and releases
+both products using that same image; local .NET/devkit installations are optional.
+
 Developer terrain configuration lives in [assets/terrain/terrain.json](assets/terrain/terrain.json).
 It supports seamless repeating variants and seasonal nine-slice patches; see
 [terrain authoring](docs/terrain-authoring.md). Trees use only supplied GLBs.

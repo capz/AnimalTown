@@ -1,9 +1,11 @@
+param([string]$DatabaseConnection='')
 $ErrorActionPreference='Stop'
 Set-Location (Split-Path $PSScriptRoot -Parent)
 $serverRoot=(Get-Location).Path
 $container='animaltown-integration-'+[Guid]::NewGuid().ToString('N').Substring(0,8)
 $api='http://127.0.0.1:5189'
 $process=$null
+$ownsDatabase=!$DatabaseConnection
 function Request([string]$Method,[string]$Path,$Body,$Token) {
     $headers=@{}; if($Token){$headers.Authorization="Bearer $Token"}
     $parameters=@{Method=$Method;Uri="$api$Path";Headers=$headers;SkipHttpErrorCheck=$true}
@@ -13,14 +15,17 @@ function Request([string]$Method,[string]$Path,$Body,$Token) {
 }
 function Assert($Condition,[string]$Message){if(!$Condition){throw $Message}}
 try {
+    if($ownsDatabase){
     docker run --rm -d --name $container -e POSTGRES_PASSWORD=animaltown-test-only -p 127.0.0.1:55439:5432 postgres:16-alpine | Out-Null
     if($LASTEXITCODE){throw 'Test database failed'}
     $databaseReady=$false
     for($i=0;$i -lt 30;$i++){docker exec $container pg_isready -U postgres 2>&1 | Out-Null;if(!$LASTEXITCODE){$databaseReady=$true;break};Start-Sleep -Milliseconds 300}
     Assert $databaseReady 'Database did not become ready'
+    $DatabaseConnection='Host=127.0.0.1;Port=55439;Database=postgres;Username=postgres;Password=animaltown-test-only'
+    }
     & ./tools/build-server.ps1
     $oldConnection=$env:ConnectionStrings__Game
-    $env:ConnectionStrings__Game='Host=127.0.0.1;Port=55439;Database=postgres;Username=postgres;Password=animaltown-test-only'
+    $env:ConnectionStrings__Game=$DatabaseConnection
     $launch=@{FilePath='dotnet';ArgumentList=@('out/server/AnimalTown.Server.dll','--urls',$api);WorkingDirectory=$serverRoot;PassThru=$true;RedirectStandardOutput="$serverRoot/out/server-test.log";RedirectStandardError="$serverRoot/out/server-test-error.log"}
     if($IsWindows){$launch.WindowStyle='Hidden'}
     $process=Start-Process @launch
@@ -69,5 +74,5 @@ try {
 }
 finally {
     if($process -and !$process.HasExited){Stop-Process -Id $process.Id}
-    docker stop $container 2>&1 | Out-Null
+    if($ownsDatabase){docker stop $container 2>&1 | Out-Null}
 }
