@@ -5,6 +5,23 @@ No Unity or WebRTC. Current state: early implementation; see the explicit
 [implementation status](docs/implementation-status.md) and [technical design](docs/technical-design.md).
 The product brief is [design-doc.md](design-doc.md).
 
+## Downloads and releases
+
+Build artifacts are delivered through [GitHub Releases](https://github.com/capz/AnimalTown/releases).
+Each successful push to `main` builds and checks the console and backend, then
+publishes a commit-tagged development prerelease. The release contains a compressed
+full-size GameCube ISO, a separate .NET 10 server ZIP, `BUILD.txt` with the engine
+and SDK revisions, and `SHA256SUMS.txt`. Extract the ISO before loading it through
+GCLoader/Swiss or writing it to suitable media. Development status and physical
+hardware validation are recorded in the release notes.
+
+To publish a locally verified build, use a clean checkout, run both build commands
+below, then run `./tools/publish-release.ps1` with an authenticated GitHub CLI.
+`-PackageOnly` prepares archives without publishing. The publisher rejects dirty
+or mismatched console/backend revisions, verifies the ISO structure, uploads into
+a draft, checks uploaded asset hashes, and only then publishes the prerelease.
+The workflow can also be rerun from GitHub Actions using **Build and release**.
+
 ## Build the GameCube ISO
 
 Windows requirements: Git, .NET 8 and 10 SDKs, PowerShell 7 and Docker Desktop

@@ -1,0 +1,41 @@
+name: Build and release
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.sha }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 0
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: |
+            8.0.x
+            10.0.x
+      - name: Install host graphics libraries
+        run: sudo apt-get update && sudo apt-get install -y libfontconfig1 libfreetype6 libharfbuzz0b
+      - name: Build full GameCube ISO and check gameplay/native card reader
+        run: ./tools/build-game.ps1
+      - name: Check server with PostgreSQL and publish separate backend
+        run: ./tests/server-integration.ps1
+      - name: Package and publish GitHub prerelease
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: ./tools/publish-release.ps1

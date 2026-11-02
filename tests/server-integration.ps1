@@ -21,7 +21,9 @@ try {
     & ./tools/build-server.ps1
     $oldConnection=$env:ConnectionStrings__Game
     $env:ConnectionStrings__Game='Host=127.0.0.1;Port=55439;Database=postgres;Username=postgres;Password=animaltown-test-only'
-    $process=Start-Process dotnet -ArgumentList @('out/server/AnimalTown.Server.dll','--urls',$api) -WorkingDirectory $serverRoot -WindowStyle Hidden -PassThru -RedirectStandardOutput "$serverRoot/out/server-test.log" -RedirectStandardError "$serverRoot/out/server-test-error.log"
+    $launch=@{FilePath='dotnet';ArgumentList=@('out/server/AnimalTown.Server.dll','--urls',$api);WorkingDirectory=$serverRoot;PassThru=$true;RedirectStandardOutput="$serverRoot/out/server-test.log";RedirectStandardError="$serverRoot/out/server-test-error.log"}
+    if($IsWindows){$launch.WindowStyle='Hidden'}
+    $process=Start-Process @launch
     $env:ConnectionStrings__Game=$oldConnection
     $ready=$false
     for($i=0;$i -lt 40;$i++){try{if((Request GET '/health' $null $null).Status -eq 200){$ready=$true;break}}catch{};Start-Sleep -Milliseconds 250}
