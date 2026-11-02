@@ -1,6 +1,7 @@
 # AnimalTown / Project Meadowroll — GameCube technical design
 
 Status: implementation baseline, 2026-11-02. Product requirements: `design-doc.md`.
+Revision: cylinder/world/bubble requirements updated from the user's instruction.
 This document supersedes that document's Unity, PC, shader, WebRTC and SignalR
 implementation assumptions. None of those technologies run in the game.
 
@@ -74,21 +75,31 @@ the resident budget instead of silently dropping limbs or animation channels.
 
 ## World and rolling presentation
 
-The authoritative town is 80×64 land cells plus a southern beach strip, split
-into 16×16 acres. A seeded integer generator lays down terrain, river, bridges,
+The authoritative world is a square **20×20 grid of screen-sized square tiles**.
+Each screen tile is 20×20 logical metres, giving a 400×400-metre square world.
+The fixed 4:3 camera is calibrated to a 20-metre horizontal span at the player's
+tangent plane. One-metre fine cells within these tiles support item footprints
+and collision; they are not additional screen-sized world tiles. Terrain uses
+160,000 bytes rather than an array of managed objects. A seeded integer generator lays down terrain, river, bridges,
 cliff tier, plaza, store, hall, gate, campsite and six houses, then flood-fills
 walkability and checks that mandatory entrances connect. Logical collision and
 ownership always use flat tiles. Paths never cross water except bridges, and
 cliff transitions need a valid ramp. House reservation validates the entire
 15×13 maximum garden against terrain and all other reservations.
 
-Fixed north-facing camera. GX cannot execute the design's HLSL bend. Subdivide
-ground into tile patches and evaluate y' = y - k(z-cameraZ)^2 on CPU; for rigid
-objects use a bent translation and local tangent orientation, with subdivision
-or CPU-deformed static meshes when close enough to expose the approximation.
-Animated actors receive the same bent root; shadow blobs use the identical
-surface function. Avoid real-time shadow maps. Cull conservatively in flat XZ
-with bend-expanded height bounds. Use Hypercube.ScenePolicy LOD hysteresis and
+Fixed north-facing camera, true **cylindrical** geometry with east-west axis;
+never curve X into a sphere. For surface arc distance d=z-focusZ, radius
+R=400/(2*pi), angle a=d/R: render y=(R+h)*cos(a)-R and
+z'=focusZ+(R+h)*sin(a), retaining X. CPU tessellation subdivides each screen
+tile for fixed-function GX. All object transforms are children of the world
+root and rotate around X by a before their local facing. Local down is the
+inward surface normal (0,-cos(a),-sin(a)); feet remain attached to the ground
+as the cylinder rolls. Terrain, props, villagers, player, fence, furniture and
+placement markers use this same transform. Cylinder terrain extends 64 metres
+left and right of the focus, beyond the visible frustum even at the horizon;
+its sides must never appear as exposed edges. Map remains a square 20×20 grid.
+Avoid real-time shadow maps. Cull conservatively in flat XZ
+with cylinder-expanded height bounds. Use Hypercube.ScenePolicy LOD hysteresis and
 coarse fallback residency; never allow collision to depend on high-detail visual
 availability. Controller selection uses facing plus tile adjacency. Any future
 screen pointer must intersect the quadratic surface, not a flat raycast.
@@ -143,7 +154,9 @@ but server UTC enforces economy reward caps and ticket expiry.
 Stick moves, B runs/cancels, A interacts/confirms, X pockets, Y map, Z tools,
 Start save/settings; D-pad changes tabs/selection. All screens navigable without
 a mouse. Character creation selects all six species, palette, name, catchphrase
-and pitch. A reusable balloon supports name tab, typewriter text, choices,
+and pitch. Speech balloons use large 30-pixel rounded corners, rounded name
+tabs and an attached tail, drawn through the batched GX 2D API. A reusable
+balloon supports name tab, typewriter text, choices,
 world chat anchoring and 50-line history. Generate short original PCM syllables
 and pool voice channels; reserve channels for UI, ambience and chimes. On-screen
 keyboard caps chat at 80 chars; quick phrases, mute, chat-off and block remain
@@ -157,6 +170,9 @@ Memory-card identity is `AMTE` / `01`. Use SDK MemoryCard.WriteSave with origina
 Two alternating save files carry magic, schema/catalog versions, monotonic
 sequence, payload length and CRC32. Validate both completely, load newest valid
 one and leave the previous slot untouched until the new write is verified.
+Schema 2 run-length-encodes fine terrain and supports the full 400×400 world;
+schema 1 migration preserves the former 80×72 region. The native managed heap
+is explicitly 2 MiB to accommodate bounded terrain and save staging.
 Never format a card, overwrite another game's file, or silently discard errors.
 Autosave every five minutes, on rollover, travel and explicit save. Report card
 missing/full/write failures; gameplay continues and player can retry. Unknown
