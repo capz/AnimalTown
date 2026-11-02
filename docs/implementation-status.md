@@ -36,7 +36,7 @@ the GDD. The technical baseline was committed/pushed first as `0064efd`.
 
 ## Validation performed
 
-* 2444 host checks: backpack tiers/capacity persistence, cylindrical radius and radial normals, viewport/tile sizing,
+* 2448 host checks: safe house arrival and trapped-save repair, backpack tiers/capacity persistence, cylindrical radius and radial normals, viewport/tile sizing,
   square world bounds, seasonal material selection and stable repeat variants, nine-slice coordinates, wallet/capacity atomicity, bank overflow, money bags, stock,
   expansion/rollover, interest replay, CRC rejection, lost-item protection and
   connectivity of all mandatory areas for 20 seeds.

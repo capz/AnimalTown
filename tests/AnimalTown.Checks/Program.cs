@@ -63,5 +63,10 @@ for(int row=0;row<TerrainTiles.GroundRows;row++)for(int offset=0;offset<=4;offse
     Check(TerrainTiles.RowHalfWidth(row)>projectedHalfWidth+2,"textured cylinder rows extend beyond the viewport including sub-cell camera motion");
 }
 Check(TerrainTiles.GroundVertexCount<25000,"terrain submission budget");
+var arrival=new GameState(7319);arrival.Town.AddGround(3,18,39,3,0);
+Check(arrival.PlaceHouse(15,35,false),"house placement with a blocked doorway finds a clear arrival");
+Check(arrival.CanWalk(arrival.X,arrival.Z,0)&&arrival.Z>=40.5f,"new house arrival is outside its collision footprint and avoids trees");
+arrival.X=18;arrival.Z=38;Check(!arrival.CanWalk(arrival.X,arrival.Z,0),"old saved arrival reproduces house collision trap");
+Check(arrival.MoveToHouseEntrance()&&arrival.CanWalk(arrival.X,arrival.Z,0),"old trapped save gets a clear arrival without deleting objects");
 Console.WriteLine(checks+" gameplay checks passed");
 Console.WriteLine("Textured cylinder: "+TerrainTiles.GroundVertexCount/3+" triangles");

@@ -68,7 +68,7 @@ with (root/'emulator.log').open('w') as log:
         time.sleep(25)
         screenshot('screen.png')
         if '--play' in sys.argv:
-            press('A');press('D_UP');press('A');press('A');time.sleep(2);screenshot('bubble.png');press('A');press('A')
+            press('A');press('D_UP');press('A');press('A');time.sleep(2);screenshot('bubble.png');press('B');press('B')
             time.sleep(2);screenshot('world.png')
             press('Y');time.sleep(1);screenshot('map.png');press('Y')
             press('X');time.sleep(1);screenshot('pockets.png');press('B')

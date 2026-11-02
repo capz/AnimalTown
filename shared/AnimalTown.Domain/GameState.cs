@@ -52,10 +52,20 @@ public sealed class GameState
     public bool PlaceHouse(int x,int z,bool relocate)
     {
         if(!Town.ValidPlot(x,z)||(relocate&&Wallet<50000))return false;
+        if(!HouseEntrance(x,z,out float arrivalX,out float arrivalZ))return false;
         int dx=x-Town.HouseX,dz=z-Town.HouseZ;
         for(int i=0;i<Town.PlacedCount;i++)if(Town.Placed[i].Room==0){Town.Placed[i].X+=dx;Town.Placed[i].Z+=dz;}
-        Town.HouseX=x;Town.HouseZ=z;HousePlaced=true;if(relocate)Wallet-=50000;return true;
+        Town.HouseX=x;Town.HouseZ=z;HousePlaced=true;X=arrivalX;Z=arrivalZ;if(relocate)Wallet-=50000;return true;
     }
+    private bool HouseEntrance(int x,int z,out float arrivalX,out float arrivalZ)
+    {
+        arrivalX=x+3.5f;arrivalZ=z+4.5f;
+        for(int row=4;row<13;row++)if(Town.Walkable(x+3,z+row)&&Town.FindGround(x+3,z+row,3)<0)
+        {arrivalZ=z+row+.5f;return true;}
+        return false;
+    }
+    public bool MoveToHouseEntrance()
+    {if(!HousePlaced||!HouseEntrance(Town.HouseX,Town.HouseZ,out float x,out float z))return false;X=x;Z=z;return true;}
     public bool InGarden(int x,int z)=>HousePlaced&&x>=Town.HouseX&&x<Town.HouseX+GardenWidths[GardenTier]&&z>=Town.HouseZ&&z<Town.HouseZ+GardenHeights[GardenTier];
     public bool CanPlace(int id,int x,int z,int rotation,int room,int actor)
     {

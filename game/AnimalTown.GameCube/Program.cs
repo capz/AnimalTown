@@ -73,6 +73,7 @@ internal sealed class TownGame
         ReadCalendar();
         LoadSave();
         state.Rollover(day,month);
+        if(state.HousePlaced&&!state.CanWalk(state.X,state.Z,0))state.MoveToHouseEntrance();
         // Resource creation occurs outside render passes and instances share models.
         for(int i=0;i<10;i++)
         {
