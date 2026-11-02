@@ -1,0 +1,59 @@
+{
+  "atlasSize": [
+    768,
+    768
+  ],
+  "sliceSize": [
+    256,
+    256
+  ],
+  "mode": "stretch",
+  "coordinates": "top-left",
+  "sliceOrder": [
+    [
+      "top_left",
+      "top",
+      "top_right"
+    ],
+    [
+      "left",
+      "center",
+      "right"
+    ],
+    [
+      "bottom_left",
+      "bottom",
+      "bottom_right"
+    ]
+  ],
+  "atlases": [
+    {
+      "center": "stone_pavement",
+      "border": "spring",
+      "path": "atlases/spring_stone_pavement_9slice.png",
+      "sha256": "3e487d7db79205af88f5f631fdf5e7b0d3d81d11aef2cbc404f90256f200f17e",
+      "sliceReconstructionByteExact": true
+    },
+    {
+      "center": "stone_pavement",
+      "border": "fall",
+      "path": "atlases/fall_stone_pavement_9slice.png",
+      "sha256": "1feba73166491793290fb46123b33bb4867dc047b8f6e9dee159e599d16c0fb1",
+      "sliceReconstructionByteExact": true
+    },
+    {
+      "center": "stone_pavement",
+      "border": "winter",
+      "path": "atlases/winter_stone_pavement_9slice.png",
+      "sha256": "8b661b4aa9b0edd39f5359223534541c109bd1f5bdaba878cc1bc8f657450f89",
+      "sliceReconstructionByteExact": true
+    },
+    {
+      "center": "stone_pavement",
+      "border": "sand",
+      "path": "atlases/sand_stone_pavement_9slice.png",
+      "sha256": "36ad708b691bab2ec57e15464c9c7f55d441c8525c392033487c869e8a67d9f7",
+      "sliceReconstructionByteExact": true
+    }
+  ]
+}

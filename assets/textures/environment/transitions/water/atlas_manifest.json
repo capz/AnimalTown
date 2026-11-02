@@ -1,0 +1,59 @@
+{
+  "atlasSize": [
+    768,
+    768
+  ],
+  "sliceSize": [
+    256,
+    256
+  ],
+  "mode": "stretch",
+  "coordinates": "top-left",
+  "sliceOrder": [
+    [
+      "top_left",
+      "top",
+      "top_right"
+    ],
+    [
+      "left",
+      "center",
+      "right"
+    ],
+    [
+      "bottom_left",
+      "bottom",
+      "bottom_right"
+    ]
+  ],
+  "atlases": [
+    {
+      "center": "water",
+      "border": "spring",
+      "path": "atlases/spring_water_9slice.png",
+      "sha256": "f27f675473348f1c19164246af5f7bea93b3394872f0297a99e09be4ea3bec9d",
+      "sliceReconstructionByteExact": true
+    },
+    {
+      "center": "water",
+      "border": "fall",
+      "path": "atlases/fall_water_9slice.png",
+      "sha256": "73fa9fed39a9e17b679e52d51c5ce774c93de39cfe16112ba1e7e771ddf5f11b",
+      "sliceReconstructionByteExact": true
+    },
+    {
+      "center": "water",
+      "border": "winter",
+      "path": "atlases/winter_water_9slice.png",
+      "sha256": "7efe8dde53f8efffcb8bccd9db86bb1b45459f8c763b2d568a6886b7eb0737db",
+      "sliceReconstructionByteExact": true
+    },
+    {
+      "center": "water",
+      "border": "sand",
+      "path": "atlases/sand_water_9slice.png",
+      "sha256": "7f44896759cce77d988938b4e774832c2401f8a2218f2bc42e8ff6db2efe4f78",
+      "sliceReconstructionByteExact": true
+    }
+  ]
+}

@@ -1,0 +1,59 @@
+{
+  "atlasSize": [
+    768,
+    768
+  ],
+  "sliceSize": [
+    256,
+    256
+  ],
+  "mode": "stretch",
+  "coordinates": "top-left",
+  "sliceOrder": [
+    [
+      "top_left",
+      "top",
+      "top_right"
+    ],
+    [
+      "left",
+      "center",
+      "right"
+    ],
+    [
+      "bottom_left",
+      "bottom",
+      "bottom_right"
+    ]
+  ],
+  "atlases": [
+    {
+      "center": "sand",
+      "border": "spring",
+      "path": "atlases/spring_sand_9slice.png",
+      "sha256": "4336fc434cf9f2cb75686cbe66e516d96eae33c1c5dbb158aab7740a67399b58",
+      "sliceReconstructionByteExact": true
+    },
+    {
+      "center": "sand",
+      "border": "fall",
+      "path": "atlases/fall_sand_9slice.png",
+      "sha256": "4c55d69633a15b5426cff1f914841afa5465061a22a23adb1373a9bb6a8aee46",
+      "sliceReconstructionByteExact": true
+    },
+    {
+      "center": "sand",
+      "border": "winter",
+      "path": "atlases/winter_sand_9slice.png",
+      "sha256": "15580972c19959f8dc7683131a2f6e3fb97119066ed543d5f32ed1a8457842da",
+      "sliceReconstructionByteExact": true
+    },
+    {
+      "center": "sand",
+      "border": "sand",
+      "path": "atlases/sand_sand_9slice.png",
+      "sha256": "b8bbd25d5fcd91fedc928ec283b11d2b12513f4e65b44de9d29b28995b60d0e8",
+      "sliceReconstructionByteExact": true
+    }
+  ]
+}

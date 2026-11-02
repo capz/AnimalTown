@@ -1,0 +1,59 @@
+{
+  "atlasSize": [
+    768,
+    768
+  ],
+  "sliceSize": [
+    256,
+    256
+  ],
+  "mode": "stretch",
+  "coordinates": "top-left",
+  "sliceOrder": [
+    [
+      "top_left",
+      "top",
+      "top_right"
+    ],
+    [
+      "left",
+      "center",
+      "right"
+    ],
+    [
+      "bottom_left",
+      "bottom",
+      "bottom_right"
+    ]
+  ],
+  "atlases": [
+    {
+      "center": "terracotta",
+      "border": "spring",
+      "path": "atlases/spring_terracotta_9slice.png",
+      "sha256": "c574f52087884a051e860134b86707ec320d186be201578530834894b8cff8d4",
+      "sliceReconstructionByteExact": true
+    },
+    {
+      "center": "terracotta",
+      "border": "fall",
+      "path": "atlases/fall_terracotta_9slice.png",
+      "sha256": "1ea70eecae658e108af96c88262a083dfe299fcc3a0b40411de46af445c671c2",
+      "sliceReconstructionByteExact": true
+    },
+    {
+      "center": "terracotta",
+      "border": "winter",
+      "path": "atlases/winter_terracotta_9slice.png",
+      "sha256": "fc364c30d1c8d9293610c897d92ba5ebc81f7df66dc57627c96709e247a20919",
+      "sliceReconstructionByteExact": true
+    },
+    {
+      "center": "terracotta",
+      "border": "sand",
+      "path": "atlases/sand_terracotta_9slice.png",
+      "sha256": "98961bac9a2db42b9a10191cd57f34f4bbc39c9eddf2050700c63c940c94d67b",
+      "sliceReconstructionByteExact": true
+    }
+  ]
+}

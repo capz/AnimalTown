@@ -1,0 +1,57 @@
+{
+  "tool": "built-in image_gen",
+  "edits": [
+    {
+      "border": "spring",
+      "prompt": "Use case: precise-object-edit. Asset type: AnimalTown top-down game terrain transition, ONE square unmarked 3x3 nine-slice atlas. Image 1 is the EDIT TARGET. Keep its exact composition, outer terrain, organic boundary location, rounded island corners, painterly texture style and small exterior details. Replace ONLY the orange terracotta island surface, all the way up to its organic fringe, with the requested center material. Preserve the clearly visible physical fringe around all four sides and corners. Keep the central third square entirely center material; cuts at 1/3 and 2/3 cross continuous artwork with no gaps. Full-bleed opaque square PNG, flat orthographic view, diffuse lighting. NO perspective, labels, text, grid lines, gutters, frame, or paving remnants where the new center should be.\nCENTER MATERIAL: pale warm cream-golden SAND, softly mottled fine granular texture with sparse delicate tiny curved wind ripples. Smooth continuous sandy surface with no stones, paving joints, grass, leaves, plants, or large objects within the center. Keep the outer organic boundary visibly raised and shadowed. For the sand-border version distinguish the paler smooth sand center from the more golden triangular-pattern exterior with a crisp softly wavy raised sand lip and ochre contact shadow.\nBORDER VARIANT: SPRING. Preserve vivid green triangular-pattern grass and pointed green grass/clover fringe with contact shadow.",
+      "referenceRoles": [
+        {
+          "role": "edit target",
+          "filename": "spring_terracotta_9slice.png"
+        }
+      ]
+    },
+    {
+      "border": "fall",
+      "prompt": "Use case: precise-object-edit. Asset type: AnimalTown top-down game terrain transition, ONE square unmarked 3x3 nine-slice atlas. Image 1 is the EDIT TARGET. Keep its exact composition, outer terrain, organic boundary location, rounded island corners, painterly texture style and small exterior details. Replace ONLY the orange terracotta island surface, all the way up to its organic fringe, with the requested center material. Preserve the clearly visible physical fringe around all four sides and corners. Keep the central third square entirely center material; cuts at 1/3 and 2/3 cross continuous artwork with no gaps. Full-bleed opaque square PNG, flat orthographic view, diffuse lighting. NO perspective, labels, text, grid lines, gutters, frame, or paving remnants where the new center should be.\nCENTER MATERIAL: pale warm cream-golden SAND, softly mottled fine granular texture with sparse delicate tiny curved wind ripples. Smooth continuous sandy surface with no stones, paving joints, grass, leaves, plants, or large objects within the center. Keep the outer organic boundary visibly raised and shadowed. For the sand-border version distinguish the paler smooth sand center from the more golden triangular-pattern exterior with a crisp softly wavy raised sand lip and ochre contact shadow.\nImage 2 is CENTER MATERIAL REFERENCE ONLY; use its sand color and grain style, but keep Image 1's FALL golden triangular grass and dense orange/red/yellow maple/ginkgo leaf fringe. No spring greenery or flowers.",
+      "referenceRoles": [
+        {
+          "role": "edit target",
+          "filename": "fall_terracotta_9slice.png"
+        },
+        {
+          "role": "center material reference",
+          "filename": "exec-cfb36348-4232-4947-9997-512a16351052.png"
+        }
+      ]
+    },
+    {
+      "border": "winter",
+      "prompt": "Use case: precise-object-edit. Asset type: AnimalTown top-down game terrain transition, ONE square unmarked 3x3 nine-slice atlas. Image 1 is the EDIT TARGET. Keep its exact composition, outer terrain, organic boundary location, rounded island corners, painterly texture style and small exterior details. Replace ONLY the orange terracotta island surface, all the way up to its organic fringe, with the requested center material. Preserve the clearly visible physical fringe around all four sides and corners. Keep the central third square entirely center material; cuts at 1/3 and 2/3 cross continuous artwork with no gaps. Full-bleed opaque square PNG, flat orthographic view, diffuse lighting. NO perspective, labels, text, grid lines, gutters, frame, or paving remnants where the new center should be.\nCENTER MATERIAL: pale warm cream-golden SAND, softly mottled fine granular texture with sparse delicate tiny curved wind ripples. Smooth continuous sandy surface with no stones, paving joints, grass, leaves, plants, or large objects within the center. Keep the outer organic boundary visibly raised and shadowed. For the sand-border version distinguish the paler smooth sand center from the more golden triangular-pattern exterior with a crisp softly wavy raised sand lip and ochre contact shadow.\nImage 2 is CENTER MATERIAL REFERENCE ONLY; use its sand color and grain style, but keep Image 1's WINTER pale blue triangular snowy ground and raised scalloped white snowbank with blue contact shadow on the sand. No greenery or flowers. Center is clear golden sand, not snow or ice.",
+      "referenceRoles": [
+        {
+          "role": "edit target",
+          "filename": "winter_terracotta_9slice.png"
+        },
+        {
+          "role": "center material reference",
+          "filename": "exec-cfb36348-4232-4947-9997-512a16351052.png"
+        }
+      ]
+    },
+    {
+      "border": "sand",
+      "prompt": "Use case: precise-object-edit. Asset type: AnimalTown top-down game terrain transition, ONE square unmarked 3x3 nine-slice atlas. Image 1 is the EDIT TARGET. Keep its exact composition, outer terrain, organic boundary location, rounded island corners, painterly texture style and small exterior details. Replace ONLY the orange terracotta island surface, all the way up to its organic fringe, with the requested center material. Preserve the clearly visible physical fringe around all four sides and corners. Keep the central third square entirely center material; cuts at 1/3 and 2/3 cross continuous artwork with no gaps. Full-bleed opaque square PNG, flat orthographic view, diffuse lighting. NO perspective, labels, text, grid lines, gutters, frame, or paving remnants where the new center should be.\nCENTER MATERIAL: pale warm cream-golden SAND, softly mottled fine granular texture with sparse delicate tiny curved wind ripples. Smooth continuous sandy surface with no stones, paving joints, grass, leaves, plants, or large objects within the center. Keep the outer organic boundary visibly raised and shadowed. For the sand-border version distinguish the paler smooth sand center from the more golden triangular-pattern exterior with a crisp softly wavy raised sand lip and ochre contact shadow.\nImage 2 is CENTER MATERIAL REFERENCE ONLY; use its pale smooth sand color and fine grain style, but keep Image 1's SAND golden triangular-pattern exterior, dry tufts, pebbles and raised scalloped granular sand lip with strong enough ochre contact shadow to distinguish the two sandy zones. Keep the organic lip clearly visible all the way around. No greenery or flowers.",
+      "referenceRoles": [
+        {
+          "role": "edit target",
+          "filename": "sand_terracotta_9slice.png"
+        },
+        {
+          "role": "center material reference",
+          "filename": "exec-cfb36348-4232-4947-9997-512a16351052.png"
+        }
+      ]
+    }
+  ]
+}
