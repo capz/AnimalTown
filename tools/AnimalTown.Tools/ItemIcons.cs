@@ -16,7 +16,9 @@ internal static class ItemIcons
             c.Save();c.Translate(id%8*64,id/8*64);
             if(id==1){Oval(12,20,27,32,clay);Oval(29,20,23,32,clay);Oval(33,9,19,11,leaf);c.DrawLine(32,22,33,12,line);}
             else if(id==2){c.DrawLine(32,33,32,55,line);Oval(12,40,20,10,leaf);for(int n=0;n<5;n++){float a=n*1.256637f;Oval(23+(float)Math.Cos(a)*12,18+(float)Math.Sin(a)*12,18,18,clay);}Oval(25,20,15,15,honey);}
-            else if(id==3){Rect(28,38,8,19,3,clay);Triangle(32,6,8,46,56,46,leaf);Triangle(32,4,13,30,51,30,leaf);}
+            // Generic nursery packet, with no generated tree illustration.
+            // Tree imagery must come from the supplied model assets.
+            else if(id==3){Rect(13,12,38,45,6,paper);Rect(13,12,38,9,3,clay);Oval(24,31,7,11,honey);Oval(34,33,7,11,honey);}
             else if(id==4){Rect(20,20,24,34,5,mist);Triangle(20,18,7,29,19,37,mist);Triangle(44,18,57,29,45,37,mist);Oval(25,13,14,12,paper);}
             else if(id>=5&&id<=9)
             {

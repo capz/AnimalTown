@@ -4,6 +4,7 @@ from pathlib import Path
 import subprocess
 import sys
 import time
+from datetime import datetime, timezone
 
 disc=Path(sys.argv[1]).resolve()
 root=Path(sys.argv[2]).resolve();root.mkdir(parents=True,exist_ok=True)
@@ -18,8 +19,9 @@ for i in range(4):
     os.mkfifo(pipe)
 controller=os.open(user/'Pipes'/'dnd0',os.O_RDWR|os.O_NONBLOCK)
 def press(button):
-    os.write(controller,f'PRESS {button}\n'.encode());time.sleep(1)
-    os.write(controller,f'RELEASE {button}\n'.encode());time.sleep(1)
+    hold=2 if '--slow-input' in sys.argv else 1
+    os.write(controller,f'PRESS {button}\n'.encode());time.sleep(hold)
+    os.write(controller,f'RELEASE {button}\n'.encode());time.sleep(hold)
 def screenshot(name):
     subprocess.run(['ffmpeg','-v','error','-f','x11grab','-video_size','800x600','-i',':93','-frames:v','1','-y',str(root/name)],env=env,check=True)
 (user/'Config'/'Dolphin.ini').write_text('''[Core]
@@ -40,6 +42,12 @@ EnableJIT = True
 ConfirmStop = False
 UsePanicHandlers = False
 ''')
+if '--season' in sys.argv:
+    season=sys.argv[sys.argv.index('--season')+1]
+    month={'spring':4,'summer':7,'fall':10,'winter':1}[season]
+    rtc=int(datetime(2027,month,15,12,tzinfo=timezone.utc).timestamp())
+    config=user/'Config'/'Dolphin.ini'
+    config.write_text(config.read_text().replace('SkipIPL = True\n',f'SkipIPL = True\nEnableCustomRTC = True\nCustomRTCValue = {rtc}\n'))
 (user/'Config'/'GFX.ini').write_text('''[Settings]
 InternalResolution = 1
 MSAA = 1

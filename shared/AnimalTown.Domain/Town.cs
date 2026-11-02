@@ -47,6 +47,7 @@ public sealed class Town
             if(z>=Height-8)t=(int)Terrain.Beach;
             if(z>=Height-2||x==0||x==Width-1||z==0)t=(int)Terrain.Water;
             if(x>=41&&x<=43)t=(int)Terrain.Water;
+            if(x>=82&&x<90&&z>=26&&z<33)t=(int)Terrain.Water;
             if(x>=41&&x<=43&&(z==18||z==38||z==58))t=(int)Terrain.Bridge;
             if(z==5&&x>51&&x<75)t=(int)Terrain.Cliff;
             if(x>=30&&x<=37&&z>=29&&z<=35)t=(int)Terrain.Plaza;

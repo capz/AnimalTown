@@ -20,6 +20,8 @@ static class Program
             if(args[0]=="audit")Audit();
             else if(args[0]=="prepare")Prepare(args[2],args[3]);
             else if(args[0]=="art")Art();
+            else if(args[0]=="terrain")TerrainAssets.Build(Root);
+            else if(args[0]=="terrain-check")TerrainChecks.Run(Root);
             else if(args[0]=="iso")Disc(args[2],args[3]);
             else if(args[0]=="verify")Verify(args[2]);
             else throw new ArgumentException("audit|art|iso|verify ROOT [PATH] [COMMIT]");
@@ -86,7 +88,7 @@ static class Program
     static void Art()
     {
         string dir=Path.Combine(Root,"out/disc");Directory.CreateDirectory(dir);
-        BrandAssets.Build(Root);
+        BrandAssets.Build(Root);TerrainAssets.Build(Root);
         byte[] image=Banner(96);File.WriteAllBytes(Path.Combine(dir,"savebanner.rgb5a3"),image);File.WriteAllBytes(Path.Combine(dir,"saveicon.rgb5a3"),Banner(32));
     }
     static void Disc(string dolPath,string commit)
@@ -149,6 +151,8 @@ static class Program
             if(n=="opening.bnr"){byte[] b=new byte[size];f.Position=offset;f.ReadExactly(b);if(b.Length!=6496||Encoding.ASCII.GetString(b,0,4)!="BNR1")throw new InvalidDataException("Banner invalid");}
         }
         foreach(string n in new[]{"opening.bnr","BUILD.txt","savebanner.rgb5a3","saveicon.rgb5a3","gorditas-bold.dndtex","gorditas-bold.metrics","wordmark.dndtex","item-icons.dndtex","cat.dndmodel","fox.dndmodel","gecko.dndmodel","giraffe.dndmodel","prairie.dndmodel","spaniel.dndmodel","building.dndmodel","deciduous.dndmodel","palm.dndmodel","pine.dndmodel"})if(!seen.Contains(n))throw new InvalidDataException("Missing "+n);
+        foreach(string season in new[]{"spring","summer","fall","winter"})foreach(string extension in new[]{"bin","dndtex"})if(!seen.Contains("terrain-"+season+"."+extension))throw new InvalidDataException("Missing seasonal terrain asset");
+        if(!seen.Contains("terrain.cfg"))throw new InvalidDataException("Missing terrain configuration");
         Console.WriteLine("Verified full-size bootable disc structure, "+(count-1)+" files");
     }
 }

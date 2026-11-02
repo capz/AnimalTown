@@ -60,7 +60,7 @@ Inventory of the checkout: six rigged GLBs (fox, gecko, giraffe, Maine coon,
 prairie dog, spaniel), one konbini-like building and deciduous/palm/pine trees.
 No bush or additional house is currently present. Reuse these sources; missing
 tools, stalls, tents, house attachments, fences and furniture use small original
-procedural meshes until authored assets exist. Five selectable house styles may
+procedural meshes until authored assets exist, except trees: those must use only the user-provided GLBs, with no generated artwork or procedural stand-ins. Five selectable house styles may
 share the supplied building with distinct roof/wall palettes; do not claim five
 different supplied meshes.
 
@@ -313,3 +313,7 @@ types, asset converter and SaveImage tool are in the pinned SDK checkout. Inspec
 these concrete APIs before adding calls; desktop compilation is not proof of AOT
 support. External references: https://github.com/capz/hypercube-engine and
 https://github.com/capz/DolphinDotNet at the revisions above.
+
+## Terrain authoring implementation
+
+See [terrain-authoring.md](terrain-authoring.md) for the JSON source contract, seasonal/repeating variants and non-repeating nine-slice patches. The active RGB565 atlas is bounded to 128 KiB by default (512 KiB optional), with no runtime image/JSON dependencies. Reusable textured terrain meshes replace solid-color primitives; the outdoor band has 8,036 triangles. These costs and up to eight detailed supplied tree meshes require hardware profiling. Further tree geometry/LODs must come from the user; requested world assets and reference scope are in [world-asset-requests.md](world-asset-requests.md).

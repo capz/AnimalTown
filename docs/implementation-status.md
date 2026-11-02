@@ -12,12 +12,13 @@ the GDD. The technical baseline was committed/pushed first as `0064efd`.
 * Ten supplied GLBs converted into textured native models, retained walking and
   running clips, six species selection. True cylindrical terrain with an
   east-west axis and radius 400/(2*pi), square 20×20 screen-tile world, conservative
-  Hypercube visibility, capped detailed trees and procedural distant trees.
+  Hypercube visibility and up to eight nearest visible trees using only the supplied tree GLBs. Procedural tree stand-ins have been removed.
   Objects inherit the world root and use the cylinder's radial surface normal;
   terrain extends beyond the viewport. Speech balloons and all UI panels use
   large rounded corners, with pill selections and rounded keyboard keys.
   Gorditas Bold titles/headings use offline-baked IA8; all other UI reads the
   console's native IPL font through SDK PR #145. No firmware font bytes ship.
+* Developer-authored seasonal terrain manifest, repeat variants and stretched nine-slice patches using all four supplied transition materials; 128 KiB active RGB565 atlas, guttered/inset sampling, bounded textured meshes. Missing seamless textures use explicit flat-color placeholders. See terrain-authoring.md and world-asset-requests.md.
 * Controller navigation, character/name/catchphrase creation, house reservation,
   backpack icon grid (10/20/30 slots), selected-item popovers, shop capacity
   upgrades and context actions, map, store buying/selling, banking, loans and tier
@@ -35,8 +36,8 @@ the GDD. The technical baseline was committed/pushed first as `0064efd`.
 
 ## Validation performed
 
-* 475 host checks: backpack tiers/capacity persistence, cylindrical radius and radial normals, viewport/tile sizing,
-  square world bounds, wallet/capacity atomicity, bank overflow, money bags, stock,
+* 2444 host checks: backpack tiers/capacity persistence, cylindrical radius and radial normals, viewport/tile sizing,
+  square world bounds, seasonal material selection and stable repeat variants, nine-slice coordinates, wallet/capacity atomicity, bank overflow, money bags, stock,
   expansion/rollover, interest replay, CRC rejection, lost-item protection and
   connectivity of all mandatory areas for 20 seeds.
 * Independent server publish on .NET 10; real PostgreSQL integration checks for
@@ -44,6 +45,10 @@ the GDD. The technical baseline was committed/pushed first as `0064efd`.
   operation rollback, mutual friends, blocking, escrow/purchase retry and grant
   claim retry. These are not yet simultaneous-buyer race tests.
 * Native card-reader regression verifies sector-aligned reads, prefixes, sector boundaries, length clamping and cleanup after failures. The project overlay fixes the pinned SDK reader. SDK IPL-font PR #145 passes its framework CI checks.
+* Terrain importer checks verify variant crops, GX RGB565 pixel order, duplicated
+  gutters, nine-slice order, source confinement/opacity, patch bounds and atlas
+  capacity. Dolphin custom-RTC runs render spring and winter ground; the bounded
+  fall terrain passes backpack/controller navigation and card readback saving.
 * Native PowerPC AOT/link succeeds. Disc validator checks full image size, boot
   header/apploader, DOL entry/sections/BSS, FST ranges/alignment and required BNR.
 * Direct ISO boot in Dolphin reaches the rendered title, character creation,

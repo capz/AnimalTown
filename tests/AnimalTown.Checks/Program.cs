@@ -46,4 +46,22 @@ Check(game.Capacity==10,"starter backpack has ten slots");game.Wallet=5999;Check
 game.Wallet=6000;Check(game.UpgradeBackpack()&&game.Capacity==20&&game.Wallet==0,"first backpack upgrade");
 game.Wallet=18000;Check(game.UpgradeBackpack()&&game.Capacity==30&&game.Wallet==0,"second backpack upgrade");Check(!game.UpgradeBackpack(),"backpack never exceeds thirty slots");
 game.Pockets[29]=10;var backpackSave=SaveCodec.Decode(SaveCodec.Encode(game));Check(backpackSave.Capacity==30&&backpackSave.Pockets[29]==10,"backpack tier and last slot persist");
+int[] expectedSeasons={3,3,0,0,0,1,1,1,2,2,2,3};
+for(int m=0;m<12;m++){Check(TerrainTiles.Season(2026*12+m)==expectedSeasons[m],"RTC terrain season");Check(TerrainTiles.Season(m,2)==2,"forced developer terrain season");}
+int variantsSeen=0;
+for(int x=-20;x<20;x++)for(int z=-20;z<20;z++)
+{int variant=TerrainTiles.Variant(x,z,TerrainTiles.Grass,4);variantsSeen|=1<<variant;Check(variant>=0&&variant<4&&variant==TerrainTiles.Variant(x,z,TerrainTiles.Grass,4),"stable bounded floor variation including negative viewport coordinates");}
+Check(variantsSeen==15,"every authored repeat variant is reachable");
+Check(TerrainTiles.Surface((int)Terrain.Water)==TerrainTiles.Water&&TerrainTiles.Surface((int)Terrain.Beach)==TerrainTiles.Sand,"terrain material independent of collision IDs");
+Check(TerrainTiles.PatchCoordinate(0,8,1)==0&&TerrainTiles.PatchCoordinate(1,8,1)==1&&TerrainTiles.PatchCoordinate(7,8,1)==2&&TerrainTiles.PatchCoordinate(8,8,1)==3,"nine-slice fixed corners");
+Check(Math.Abs(TerrainTiles.PatchCoordinate(4,8,1)-1.5f)<.00001f,"nine-slice center stretches without repeating");
+for(int row=0;row<TerrainTiles.GroundRows;row++)for(int offset=0;offset<=4;offset++)
+{
+    float focus=offset*.5f;var pose=CylinderWorld.Surface(-48+row,focus);
+    double depth=((focus+12-pose.Z)*16+(9-pose.Y)*9)/Math.Sqrt(337);
+    double projectedHalfWidth=Math.Max(0,depth)*Math.Tan(CylinderWorld.CameraFieldOfView*Math.PI/360)*4/3;
+    Check(TerrainTiles.RowHalfWidth(row)>projectedHalfWidth+2,"textured cylinder rows extend beyond the viewport including sub-cell camera motion");
+}
+Check(TerrainTiles.GroundVertexCount<25000,"terrain submission budget");
 Console.WriteLine(checks+" gameplay checks passed");
+Console.WriteLine("Textured cylinder: "+TerrainTiles.GroundVertexCount/3+" triangles");

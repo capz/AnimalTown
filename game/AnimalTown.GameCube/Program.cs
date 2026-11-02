@@ -40,7 +40,9 @@ internal sealed class TownGame
     private readonly UiFont font,headingFont,strongFont;
     private readonly Texture2D wordmark,itemIcons;
     private readonly Transform worldRoot=new Transform(),transform=new Transform(),identity=new Transform();
-    private readonly VertexPositionColor[] row=new VertexPositionColor[64*6];
+    private readonly TerrainRenderer terrain;
+    private readonly int[] visibleTrees=new int[8];
+    private readonly float[] treeDistances=new float[8];
     private readonly Material plain=new Material{Cull=CullMode.None,Lighting=LightingMode.Unlit};
     private readonly Model[] models=new Model[10];
     private readonly ModelInstance[] actors=new ModelInstance[7],props=new ModelInstance[4];
@@ -78,7 +80,7 @@ internal sealed class TownGame
             if(i<6){actors[i+1]=models[i].CreateInstance(512*1024);if(models[i].TryGetAnimation("Walking",out var clip)){actors[i+1].Animator.Play("Walking",true);actors[i+1].Animator.SetSpeed(.45f);}}
             else props[i-6]=models[i].CreateInstance(512*1024);
         }
-        SelectSpecies();lastSave=Clock.Timestamp;
+        terrain=new TerrainRenderer();SelectSpecies();lastSave=Clock.Timestamp;
         DebugOverlay.WriteLine("ANIMALTOWN READY "+BuildInfo.Commit+" native bytes "+device.NativeBytes);
     }
     private void SelectSpecies()
@@ -323,54 +325,19 @@ internal sealed class TownGame
     { transform.LocalPosition=SurfacePoint(x,z,y);transform.LocalScale=new Vector3(w,h,d);transform.LocalRotation=SurfaceRotation(z);plain.Color=color;renderer.DrawMesh(cube,plain,transform); }
     private void ModelAt(ModelInstance m,float x,float z,float scale,float facing=0)
     { transform.LocalPosition=SurfacePoint(x,z);transform.LocalScale=new Vector3(scale,scale,scale);transform.LocalRotation=SurfaceRotation(z,facing);renderer.DrawModel(m,transform); }
-    private Color32 TileColor(int x,int z)
-    {
-        int t=room==0?state.Town.At(x,z):0;
-        if(room!=0)return (x+z)%2==0?new Color32(191,151,105):new Color32(182,140,95);
-        if(t==1)return new Color32(75,154,187);if(t==2)return new Color32(167,119,73);if(t==3)return new Color32(229,209,150);
-        if(t==4)return new Color32(130,127,92);if(t==5)return new Color32(191,179,147);if(t==7)return new Color32(118,158,92);
-        return ((x/Town.ScreenTileSize)+(z/Town.ScreenTileSize))%2==0?new Color32(119,168,88):new Color32(126,176,95);
-    }
-    private void Ground()
-    {
-        // A 128-unit cylinder band extends beyond the full frustum, including
-        // the horizon. Twenty-unit square world tiles are tessellated for GX.
-        int minX=(int)state.X/2*2-CylinderWorld.ViewHalfWidth,maxX=minX+CylinderWorld.ViewHalfWidth*2,minZ=(int)state.Z/2*2-48,maxZ=(int)state.Z/2*2+20,step=2;
-        if(room!=0){minX=0;minZ=0;maxX=state.HouseTier==0?4:state.HouseTier==1?6:8;maxZ=maxX;step=1;}
-        for(int z=minZ;z<maxZ;z+=step)
-        {
-            int at=0;
-            // A cylinder is invariant in X. Evaluate each row's two surface
-            // samples once instead of repeating trigonometry for every vertex.
-            var lower=SurfacePoint(0,z);var upper=SurfacePoint(0,z+step);
-            for(int x=minX;x<maxX;x+=step)
-            {
-                var c=TileColor(x,z);
-                row[at++]=new VertexPositionColor(new Vector3(x,lower.Y,lower.Z),c);row[at++]=new VertexPositionColor(new Vector3(x+step,upper.Y,upper.Z),c);row[at++]=new VertexPositionColor(new Vector3(x+step,lower.Y,lower.Z),c);
-                row[at++]=new VertexPositionColor(new Vector3(x,lower.Y,lower.Z),c);row[at++]=new VertexPositionColor(new Vector3(x,upper.Y,upper.Z),c);row[at++]=new VertexPositionColor(new Vector3(x+step,upper.Y,upper.Z),c);
-            }
-            renderer.DrawPrimitives(row,0,at,PrimitiveType.Triangles,identity);
-            // GX front-face winding differs from authored GLB materials. Keep
-            // this small CPU ground patch double-sided until terrain batching.
-            for(int i=0;i<at;i+=3){var swap=row[i+1];row[i+1]=row[i+2];row[i+2]=swap;}
-            renderer.DrawPrimitives(row,0,at,PrimitiveType.Triangles,identity);
-        }
-    }
     internal void Draw()
     {
-        device.BeginFrame(new Color32(149,198,186));
-        camera.LookAt(new Vector3(state.X,9,state.Z+12),new Vector3(state.X,0,state.Z-4),new Vector3(0,1,0));renderer.Begin3D(camera);Ground();
+        terrain.Prepare(state,room,month);device.BeginFrame(new Color32(149,198,186));
+        camera.LookAt(new Vector3(state.X,9,state.Z+12),new Vector3(state.X,0,state.Z-4),new Vector3(0,1,0));renderer.Begin3D(camera);terrain.Draw(renderer,identity,room);
         if(room==0)
         {
             for(int i=0;i<6;i++){var v=state.Town.Residents[i];if(ScenePolicy.Visible(v.X,v.Z,v.X+1,v.Z+1,state.X,state.Z,22))ModelAt(actors[i+1],v.X,v.Z,1.8f);}
-            int detailed=0;
+            DrawTrees();
             for(int i=0;i<state.Town.GroundCount;i++)
             {
                 var g=state.Town.Ground[i];if(g.Kind==4||!ScenePolicy.Visible(g.X,g.Z,g.X+1,g.Z+1,state.X,state.Z,20))continue;
                 float y=0;
-                if(g.Kind==3)
-                { float distance=Math.Abs(g.X-state.X)+Math.Abs(g.Z-state.Z);if(distance<7&&detailed++<2)ModelAt(props[1+(g.Item%3)],g.X,g.Z,3);else{Box(g.X-.1f,y,g.Z-.1f,.22f,1,.22f,new Color32(125,85,56));Box(g.X-.65f,y+1,g.Z-.65f,1.4f,1.5f,1.4f,new Color32(46,113,67));} }
-                else Box(g.X+.25f,y+.02f,g.Z+.25f,.5f,g.Kind==1?.03f:.25f,.5f,g.Kind==1?new Color32(105,81,54):g.Kind==2?new Color32(242,174,170):new Color32(229,190,82));
+                if(g.Kind!=3)Box(g.X+.25f,y+.02f,g.Z+.25f,.5f,g.Kind==1?.03f:.25f,.5f,g.Kind==1?new Color32(105,81,54):g.Kind==2?new Color32(242,174,170):new Color32(229,190,82));
             }
             DrawBuilding(32,26,4);DrawBuilding(50,26,4);for(int i=0;i<6;i++)DrawBuilding(state.Town.Residents[i].X+1,11,2.3f);
             if(state.HousePlaced)
@@ -386,6 +353,21 @@ internal sealed class TownGame
         if(screen=="plot")
         { int x=(int)state.X-3,z=(int)state.Z-3;bool valid=state.Town.ValidPlot(x,z);for(int i=0;i<15;i++){Box(x+i,.02f,z,.9f,.03f,.9f,valid?new Color32(74,230,113):new Color32(229,82,72));Box(x+i,.02f,z+12,.9f,.03f,.9f,valid?new Color32(74,230,113):new Color32(229,82,72));} }
         renderer.End3D();ui.Begin();DrawHud();ui.End();device.EndFrame();
+    }
+    private void DrawTrees()
+    {
+        // All foliage is supplied GLB geometry. Bound expensive detailed assets
+        // until the artist supplies lower-poly versions; never invent tree LODs.
+        for(int n=0;n<visibleTrees.Length;n++){visibleTrees[n]=-1;treeDistances[n]=float.MaxValue;}
+        for(int i=0;i<state.Town.GroundCount;i++)
+        {
+            var g=state.Town.Ground[i];if(g.Kind!=3||!ScenePolicy.Visible(g.X,g.Z,g.X+1,g.Z+1,state.X,state.Z,20))continue;
+            float dx=g.X-state.X,dz=g.Z-state.Z,d=dx*dx+dz*dz;
+            for(int n=0;n<visibleTrees.Length;n++)if(d<treeDistances[n])
+            {for(int j=visibleTrees.Length-1;j>n;j--){visibleTrees[j]=visibleTrees[j-1];treeDistances[j]=treeDistances[j-1];}visibleTrees[n]=i;treeDistances[n]=d;break;}
+        }
+        for(int n=0;n<visibleTrees.Length;n++)if(visibleTrees[n]>=0)
+        {var g=state.Town.Ground[visibleTrees[n]];ModelAt(props[1+(g.Item%3)],g.X,g.Z,3);}
     }
     private void DrawBuilding(float x,float z,float scale)
     { if(ScenePolicy.Visible(x,z,x+4,z+4,state.X,state.Z,22))ModelAt(props[0],x,z,scale); }
@@ -518,12 +500,14 @@ internal sealed class TownGame
         Text("D-pad choose   A actions   L/R tabs",90,77+height-26,ink,.95f);
         if(state.BackpackTier<2){Text("Next pack: "+(state.Capacity+10)+" slots",436,325,ink,1);Text("Hearth's store",436,349,ink,1);}
     }
+    private Color32 MapTileColor(int x,int z)
+    { int t=state.Town.At(x,z);return t==1?new Color32(75,154,187):t==2?new Color32(167,119,73):t==3?new Color32(229,209,150):t==4?new Color32(130,127,92):t==5?new Color32(191,179,147):new Color32(119,168,88); }
     private void DrawMap()
     {
         Panel(65,65,510,365);Heading("Town map",85,79,new Color32(49,72,62));Text("20 x 20 screen tiles",310,83,new Color32(49,72,62),1.2f);
         const float left=160,top=115,scale=.7f;
         for(int z=0;z<Town.Height;z+=5)for(int x=0;x<Town.Width;x+=5)
-            ui.FillRectangle(new RectF(left+x*scale,top+z*scale,5*scale,5*scale),TileColor(x+2,z+2));
+            ui.FillRectangle(new RectF(left+x*scale,top+z*scale,5*scale,5*scale),MapTileColor(x+2,z+2));
         for(int i=0;i<=Town.ScreenTiles;i++)
         {
             float offset=i*Town.ScreenTileSize*scale;

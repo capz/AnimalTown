@@ -1,0 +1,252 @@
+{
+  "version": 1,
+  "season": "auto",
+  "tilePixels": 32,
+  "surfaces": {
+    "grass": {
+      "color": "#7EB058",
+      "sources": []
+    },
+    "water": {
+      "color": "#4B9ABB",
+      "sources": []
+    },
+    "wood": {
+      "color": "#A77749",
+      "sources": []
+    },
+    "sand": {
+      "color": "#E5D196",
+      "sources": []
+    },
+    "rock": {
+      "color": "#827F5C",
+      "sources": []
+    },
+    "pavement": {
+      "color": "#BFB393",
+      "sources": []
+    },
+    "dirt": {
+      "color": "#769E5C",
+      "sources": []
+    },
+    "floor": {
+      "color": "#BF9769",
+      "sources": []
+    },
+    "building": {
+      "color": "#769E5C",
+      "sources": []
+    },
+    "stone_pavement": {
+      "sources": [],
+      "color": "#BFB393"
+    },
+    "sand_patch": {
+      "sources": [],
+      "color": "#BFB393"
+    },
+    "pond": {
+      "sources": [],
+      "color": "#BFB393"
+    },
+    "terracotta": {
+      "sources": [],
+      "color": "#BFB393"
+    }
+  },
+  "seasons": {
+    "spring": {
+      "grass": {
+        "color": "#85B86B",
+        "sources": []
+      },
+      "stone_pavement": {
+        "mode": "nineSliceStretch",
+        "sources": [
+          {
+            "file": "assets/textures/environment/transitions/stone_pavement/atlases/spring_stone_pavement_9slice.png"
+          }
+        ]
+      },
+      "sand_patch": {
+        "mode": "nineSliceStretch",
+        "sources": [
+          {
+            "file": "assets/textures/environment/transitions/sand/atlases/spring_sand_9slice.png"
+          }
+        ]
+      },
+      "pond": {
+        "mode": "nineSliceStretch",
+        "sources": [
+          {
+            "file": "assets/textures/environment/transitions/water/atlases/spring_water_9slice.png"
+          }
+        ]
+      },
+      "terracotta": {
+        "mode": "nineSliceStretch",
+        "sources": [
+          {
+            "file": "assets/textures/environment/transitions/terracotta/atlases/spring_terracotta_9slice.png"
+          }
+        ]
+      }
+    },
+    "summer": {
+      "grass": {
+        "color": "#68A450",
+        "sources": []
+      },
+      "stone_pavement": {
+        "mode": "nineSliceStretch",
+        "sources": [
+          {
+            "file": "assets/textures/environment/transitions/stone_pavement/atlases/spring_stone_pavement_9slice.png"
+          }
+        ]
+      },
+      "sand_patch": {
+        "mode": "nineSliceStretch",
+        "sources": [
+          {
+            "file": "assets/textures/environment/transitions/sand/atlases/spring_sand_9slice.png"
+          }
+        ]
+      },
+      "pond": {
+        "mode": "nineSliceStretch",
+        "sources": [
+          {
+            "file": "assets/textures/environment/transitions/water/atlases/spring_water_9slice.png"
+          }
+        ]
+      },
+      "terracotta": {
+        "mode": "nineSliceStretch",
+        "sources": [
+          {
+            "file": "assets/textures/environment/transitions/terracotta/atlases/spring_terracotta_9slice.png"
+          }
+        ]
+      }
+    },
+    "fall": {
+      "grass": {
+        "color": "#B49C57",
+        "sources": []
+      },
+      "stone_pavement": {
+        "mode": "nineSliceStretch",
+        "sources": [
+          {
+            "file": "assets/textures/environment/transitions/stone_pavement/atlases/fall_stone_pavement_9slice.png"
+          }
+        ]
+      },
+      "sand_patch": {
+        "mode": "nineSliceStretch",
+        "sources": [
+          {
+            "file": "assets/textures/environment/transitions/sand/atlases/fall_sand_9slice.png"
+          }
+        ]
+      },
+      "pond": {
+        "mode": "nineSliceStretch",
+        "sources": [
+          {
+            "file": "assets/textures/environment/transitions/water/atlases/fall_water_9slice.png"
+          }
+        ]
+      },
+      "terracotta": {
+        "mode": "nineSliceStretch",
+        "sources": [
+          {
+            "file": "assets/textures/environment/transitions/terracotta/atlases/fall_terracotta_9slice.png"
+          }
+        ]
+      }
+    },
+    "winter": {
+      "grass": {
+        "color": "#DCE6E0",
+        "sources": []
+      },
+      "stone_pavement": {
+        "mode": "nineSliceStretch",
+        "sources": [
+          {
+            "file": "assets/textures/environment/transitions/stone_pavement/atlases/winter_stone_pavement_9slice.png"
+          }
+        ]
+      },
+      "sand_patch": {
+        "mode": "nineSliceStretch",
+        "sources": [
+          {
+            "file": "assets/textures/environment/transitions/sand/atlases/winter_sand_9slice.png"
+          }
+        ]
+      },
+      "pond": {
+        "mode": "nineSliceStretch",
+        "sources": [
+          {
+            "file": "assets/textures/environment/transitions/water/atlases/winter_water_9slice.png"
+          }
+        ]
+      },
+      "terracotta": {
+        "mode": "nineSliceStretch",
+        "sources": [
+          {
+            "file": "assets/textures/environment/transitions/terracotta/atlases/winter_terracotta_9slice.png"
+          }
+        ]
+      }
+    }
+  },
+  "patches": [
+    {
+      "surface": "terracotta",
+      "width": 8,
+      "terrain": "pavement",
+      "z": 29,
+      "border": 1,
+      "height": 7,
+      "x": 30
+    },
+    {
+      "surface": "stone_pavement",
+      "width": 7,
+      "terrain": "grass",
+      "z": 32,
+      "border": 1,
+      "height": 6,
+      "x": 46
+    },
+    {
+      "surface": "sand_patch",
+      "width": 6,
+      "terrain": "grass",
+      "z": 39,
+      "border": 1,
+      "height": 5,
+      "x": 56
+    },
+    {
+      "surface": "pond",
+      "width": 8,
+      "terrain": "water",
+      "z": 26,
+      "border": 1,
+      "height": 7,
+      "x": 82
+    }
+  ],
+  "atlasSize": 256
+}

@@ -24,6 +24,12 @@ The workflow can also be rerun from GitHub Actions using **Build and release**.
 
 ## Build the GameCube ISO
 
+Developer terrain configuration lives in [assets/terrain/terrain.json](assets/terrain/terrain.json).
+It supports seamless repeating variants and seasonal nine-slice patches; see
+[terrain authoring](docs/terrain-authoring.md). Trees use only supplied GLBs.
+The [world asset request brief](docs/world-asset-requests.md) lists exact missing
+models, dimensions, pivots and GameCube budgets within the GameCube/3DS scope.
+
 Windows requirements: Git, .NET 8 and 10 SDKs, PowerShell 7 and Docker Desktop
 with Linux containers running. Native tools are pinned by image digest.
 

@@ -1,4 +1,4 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup><OutputType>Exe</OutputType></PropertyGroup>
-  <ItemGroup><ProjectReference Include="../../vendor/sdk/tools/DolphinDotNet.Imaging/DolphinDotNet.Imaging.csproj" /></ItemGroup>
+  <ItemGroup><ProjectReference Include="../../vendor/sdk/tools/DolphinDotNet.Imaging/DolphinDotNet.Imaging.csproj" /><ProjectReference Include="../../shared/AnimalTown.Domain/AnimalTown.Domain.csproj" /></ItemGroup>
 </Project>
