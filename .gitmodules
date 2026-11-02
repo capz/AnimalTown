@@ -1,0 +1,3 @@
+[submodule "vendor/hypercube-engine"]
+	path = vendor/hypercube-engine
+	url = https://github.com/capz/hypercube-engine.git
