@@ -339,18 +339,20 @@ internal sealed class TownGame
     {
         long phase=FrameProfile.Start();terrain.Prepare(state,room,month);FrameProfile.End(2,phase);
         phase=FrameProfile.Start();device.BeginFrame(new Color32(149,198,186));
-        camera.LookAt(new Vector3(state.X,CylinderWorld.CameraHeight,state.Z+CylinderWorld.CameraBack),new Vector3(state.X,0,state.Z-CylinderWorld.CameraAimAhead),new Vector3(0,1,0));renderer.Begin3D(camera);FrameProfile.End(3,phase);
+        camera.LookAt(new Vector3(state.X,CylinderWorld.CameraHeight,state.Z+CylinderWorld.CameraBack),new Vector3(state.X,0,state.Z-CylinderWorld.CameraAimAhead),new Vector3(0,1,0));renderer.Begin3D(camera);FrameProfile.End(4,phase);
         phase=FrameProfile.Start();terrain.Draw(renderer,identity,room);FrameProfile.End(4,phase);phase=FrameProfile.Start();
         if(room==0)
         {
             for(int i=0;i<6;i++){var v=state.Town.Residents[i];if(ScenePolicy.Visible(v.X,v.Z,v.X+1,v.Z+1,state.X,state.Z,22))ModelAt(actors[i+1],v.X,v.Z,1.8f);}
             FrameProfile.End(5,phase);phase=FrameProfile.Start();DrawTrees();FrameProfile.End(6,phase);phase=FrameProfile.Start();
+            long groundAt=FrameProfile.Start();
             for(int i=0;i<state.Town.GroundCount;i++)
             {
                 var g=state.Town.Ground[i];if(g.Kind==4||!ScenePolicy.Visible(g.X,g.Z,g.X+1,g.Z+1,state.X,state.Z,20))continue;
                 float y=0;
                 if(!IsTree(g))Box(g.X+.25f,y+.02f,g.Z+.25f,.5f,g.Kind==1?.03f:.25f,.5f,g.Kind==1?new Color32(105,81,54):g.Kind==2?new Color32(242,174,170):new Color32(229,190,82));
             }
+            FrameProfile.End(3,groundAt);
             DrawBuilding(32,26,4);DrawBuilding(50,26,4);for(int i=0;i<6;i++)DrawBuilding(state.Town.Residents[i].X+1,11,2.3f);
             if(state.HousePlaced)
             {
@@ -367,7 +369,7 @@ internal sealed class TownGame
         if(screen=="plot")
         { int x=(int)state.X-3,z=(int)state.Z-3;bool valid=state.Town.ValidPlot(x,z);for(int i=0;i<15;i++){Box(x+i,.02f,z,.9f,.03f,.9f,valid?new Color32(74,230,113):new Color32(229,82,72));Box(x+i,.02f,z+12,.9f,.03f,.9f,valid?new Color32(74,230,113):new Color32(229,82,72));} }
         renderer.End3D();ui.Begin();DrawHud();FrameProfile.End(8,phase);FrameProfile.Draw(ui);
-        phase=FrameProfile.Start();ui.End();FrameProfile.End(15,phase);
+        phase=FrameProfile.Start();ui.End();FrameProfile.End(8,phase);
         phase=FrameProfile.Start();device.EndFrame();FrameProfile.End(9,phase);
     }
     internal void RecordFrame(){if(FrameProfile.Enabled)FrameProfile.Complete(GpuProfiler.Snapshot().Triangles,terrain.VisibleTriangles,terrain.RejectedQuads,screen=="menu"&&menuTab==0?1:room!=0?2:screen=="world"?0:3);}
@@ -376,6 +378,7 @@ internal sealed class TownGame
     {
         // All foliage is supplied GLB geometry. Bound expensive detailed assets
         // until the artist supplies lower-poly versions; never invent tree LODs.
+        long selectionAt=FrameProfile.Start();
         for(int n=0;n<visibleTrees.Length;n++){visibleTrees[n]=-1;treeDistances[n]=float.MaxValue;}
         for(int i=0;i<state.Town.GroundCount;i++)
         {
@@ -384,6 +387,7 @@ internal sealed class TownGame
             for(int n=0;n<visibleTrees.Length;n++)if(d<treeDistances[n])
             {for(int j=visibleTrees.Length-1;j>n;j--){visibleTrees[j]=visibleTrees[j-1];treeDistances[j]=treeDistances[j-1];}visibleTrees[n]=i;treeDistances[n]=d;break;}
         }
+        FrameProfile.End(15,selectionAt);
         for(int n=0;n<visibleTrees.Length;n++)if(visibleTrees[n]>=0)
         {var g=state.Town.Ground[visibleTrees[n]];ModelAt(props[g.Item==3?3:g.Item==2?2:1],g.X,g.Z,g.Kind==2?.75f:3);}
     }

@@ -22,9 +22,11 @@ internal static class FrameProfile
         if(!Enabled)return;long now=Clock.Timestamp;current[12]=previous==0?0:now-previous;previous=now;
         current[10]=GpuProfiler.GpuWaitMicroseconds;current[11]=GpuProfiler.RetraceWaitMicroseconds;
         // 0.1 ms units support 6.55-second frames without hiding slow paths.
-        data[0]=0x4154;data[1]=2;data[2]=++frames&65535;data[3]=0;
+        current[0]=Math.Max(0,current[0]-current[1]);
+        current[6]=Math.Max(0,current[6]-current[15]);
+        current[7]=Math.Max(0,current[7]-current[3]);
+        data[0]=0x4154;data[1]=3;data[2]=++frames&65535;data[3]=0;
         for(int i=0;i<16;i++){if(current[i]/100>65535)data[3]|=1<<i;data[4+i]=(int)Math.Min(65535,current[i]/100);}
-        data[4]=(int)Math.Max(0,data[4]-data[5]);
         data[30]=scenario;data[31]=0;
         data[20]=triangles&65535;data[21]=(int)((uint)triangles>>16);data[22]=terrainTriangles;data[23]=rejected;data[24]=CulledObjects;
         data[25]=TextureCache.ResidentBytes/1024;data[26]=TextureCache.Hits;data[27]=TextureCache.Misses;data[28]=GpuProfiler.Snapshot().DrawSubmissions;data[29]=GpuProfiler.Snapshot().TextureBindings;

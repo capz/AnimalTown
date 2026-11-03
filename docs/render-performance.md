@@ -77,14 +77,22 @@ The script discards the first five samples per scenario. Protocol v2 encodes
 0.1 ms units up to 6.55 seconds per phase, with individual overflow flags.
 Older v1 captures are accepted at 0.01 ms precision; clipped values are reported
 as lower bounds, never treated as complete measurements or silently discarded.
+Protocol v3 retains those units but separates tree selection from tree mesh
+submission, and ground-item scanning/drawing from structures/fences/placed props.
+Frame setup is included with terrain submission, and the final UI flush is
+included with UI construction/submission. The decoder rejects mixed v3/older
+phase definitions, reports means and draw/binding/culling counters, and separates
+cached-terrain world frames from frames that actually rebuild terrain.
+Use `--profile-seconds 60` (5–300 allowed) for longer stationary-world and
+backpack captures without changing the game or its simulation.
 
 `present_total` includes `gpu_blocking_wait` and `retrace_wait`; do not add them
 together. Blocking GX completion is outstanding-work wait, not total GPU time.
 `frame_interval` includes presentation and deliberate delay. Simulation excludes
 the separately recorded skinning work. World samples include movement and idle;
 terrain preparation is cached while the camera is stationary.
-UI construction and the final batch flush are separate timings; the final flush
-also includes the telemetry rectangles.
+In older v1/v2 captures UI construction and the final batch flush were separate
+timings. The final flush also includes the telemetry rectangles.
 
 Dolphin guest-clock results are useful for finding expensive code paths but do
 not establish GameCube hardware frame times. The same pixel protocol can be

@@ -8,6 +8,8 @@ from datetime import datetime, timezone
 
 disc=Path(sys.argv[1]).resolve()
 root=Path(sys.argv[2]).resolve();root.mkdir(parents=True,exist_ok=True)
+profile_seconds=int(sys.argv[sys.argv.index('--profile-seconds')+1]) if '--profile-seconds' in sys.argv else 25
+if not 5<=profile_seconds<=300:raise ValueError('Profile duration must be 5..300 seconds per stationary scenario')
 user=root/'user';(user/'Config').mkdir(parents=True,exist_ok=True)
 sys.path.insert(0,str(Path('/work/vendor/sdk/scripts')))
 from dolphin_controller_test import pad_config
@@ -87,11 +89,11 @@ with (root/'emulator.log').open('w') as log:
         if '--profile' in sys.argv:
             press('B')
             os.write(controller,b'PRESS L\nPRESS R\n');time.sleep(2);press('Z')
-            os.write(controller,b'RELEASE L\nRELEASE R\n');time.sleep(25);screenshot('profile-world.png')
+            os.write(controller,b'RELEASE L\nRELEASE R\n');time.sleep(profile_seconds);screenshot('profile-world.png')
             os.write(controller,b'SET MAIN 0.8 0.5\n');time.sleep(12)
             os.write(controller,b'SET MAIN 0.2 0.5\n');time.sleep(12)
             os.write(controller,b'SET MAIN 0.5 0.5\n');time.sleep(3)
-            press('X');time.sleep(25);screenshot('profile-backpack.png')
+            press('X');time.sleep(profile_seconds);screenshot('profile-backpack.png')
     finally:
         p.terminate()
         try:p.wait(timeout=5)
