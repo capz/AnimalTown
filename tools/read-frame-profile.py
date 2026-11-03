@@ -29,11 +29,10 @@ for path in sys.argv[1:]:
             if frame[at]>128:values[bit//16]|=1<<(bit%16)
         checksum=0
         for value in values[:31]:checksum^=value
-        if values[0]!=0x4154 or values[1]!=1 or values[31]!=checksum:continue
+        if values[0]!=0x4154 or values[1] not in (1,2) or values[31]!=checksum:continue
         identity=tuple(values)
         if identity in seen:continue
         seen.add(identity)
-        if values[3]:continue  # Saturated samples cannot support a percentile.
         groups[values[30]].append(values)
     if process.wait()!=0:raise RuntimeError('ffmpeg failed')
 
@@ -47,7 +46,17 @@ for scene,rows in groups.items():
     # Drop first five valid frames per scenario to reduce menu-transition effects.
     rows=rows[5:]
     if not rows:continue
-    timings={name:stats([r[4+i]/100 for r in rows]) for i,name in enumerate(names) if name!='unused'}
+    timings={}
+    for i,name in enumerate(names):
+        values=[r[4+i]/(100 if r[1]==1 else 10) for r in rows]
+        result=stats(values)
+        clipped=[r[4+i]==65535 and (r[3]!=0 if r[1]==1 else bool(r[3]&(1<<i))) for r in rows]
+        result['censored_samples']=sum(clipped)
+        # If clipping affected a percentile, its reported value is a lower bound.
+        for key,q in [('p50',.5),('p95',.95),('max',1)]:
+            selected=sorted(zip(values,clipped))[min(len(rows)-1,math.ceil(q*len(rows))-1)]
+            result[key+'_is_lower_bound']=selected[1]
+        timings[name]=result
     report['scenarios'][{0:'world',1:'backpack',2:'indoor',3:'other'}.get(scene,str(scene))]={
         'frames':len(rows),'timings':timings,
         'triangles':stats([r[20]+(r[21]<<16) for r in rows]),

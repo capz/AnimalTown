@@ -66,7 +66,10 @@ Run the Linux Dolphin image with `tools/iso-smoke.py ISO CAPTURE_DIR --resume
 backpack. Decode the resulting `user/Dump/Frames/*.avi` with
 `python3 tools/read-frame-profile.py FILE.avi` to obtain p50/p95/max milliseconds
 from unique valid frames. Keep the ISO build identity with the JSON results.
-The script discards saturated samples and the first five samples per scenario.
+The script discards the first five samples per scenario. Protocol v2 encodes
+0.1 ms units up to 6.55 seconds per phase, with individual overflow flags.
+Older v1 captures are accepted at 0.01 ms precision; clipped values are reported
+as lower bounds, never treated as complete measurements or silently discarded.
 
 `present_total` includes `gpu_blocking_wait` and `retrace_wait`; do not add them
 together. Blocking GX completion is outstanding-work wait, not total GPU time.
