@@ -174,7 +174,7 @@ day/month. Forward jumps process bounded aggregate growth and expire old state;
 backward jumps never pay interest/rewards twice. Online session uses host time,
 but server UTC enforces economy reward caps and ticket expiry.
 
-Stick moves, B runs/cancels, A interacts/confirms, X pockets, Y map, Z tools,
+Stick or D-pad moves in eight directions, B runs/cancels, A interacts/confirms, X pockets, Y map, Z tools,
 Start save/settings; stick or D-pad changes tabs/selection, and L/R switches tabs.
 Menu stick input has a dead zone, one dominant direction and timed hold repeat
 (350 ms initially, then 120 ms). Recenter after opening a menu or switching tabs
@@ -196,8 +196,17 @@ Panel headings rock gently up to 1.8 degrees about their centred pivots.
 48-pixel source glyphs are shelf-packed into 512×512 IA8 atlases and filtered
 down to the desired physical size. A separate 1024×256 Gorditas wordmark avoids
 enlarging small title glyphs. The backpack uses an original RGB5A3 icon atlas.
+Walk/run use 0.08925/0.168 logical metres per 30 Hz step, five percent above
+the former 0.085/0.16. Radial dead zones and vector normalization preserve light
+analog movement without faster diagonals. Model yaw follows the full travel
+vector, collision sliding follows actual travel, and blocked input can still
+turn toward an interaction target. Eight-way interactions use the nearest
+neighbour in that heading.
+
 Generate short original PCM syllables
-and pool voice channels; reserve channels for UI, ambience and chimes. On-screen
+and bound speech to one explicitly owned channel. Stop it before another
+syllable and on completion, skip, close or replacement; optional playback
+failure cannot terminate dialogue. Reserve channels for UI, ambience and chimes. On-screen
 keyboard caps chat at 80 chars; quick phrases, mute, chat-off and block remain
 available without text entry. Animations use each species' actual clip mapping.
 

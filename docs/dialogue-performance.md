@@ -54,3 +54,28 @@ Run --resume --item-navigation to test item action D-pad movement, wraparound,
 held stick progress, and simultaneous stick/D-pad input as used by shared
 Dolphin bindings. These inputs responded on the previous ISO in the isolated
 pipe-controller test; slow frame polling can still miss short physical presses.
+
+## Typewriter voice lifetime
+
+The old typewriter discarded every SoundChannel returned by syllable.Play.
+This relied on automatic DSP completion callbacks to reclaim native slots.
+With Dolphin's high-level DSP mode, a skipped message could close successfully
+while a subsequent naturally revealed message stalled. The native allocator
+has 32 voice slots and returns failure when all remain occupied; Sound.Play
+turns that failure into an exception, which previously escaped the game loop.
+The native regression reproduces this exhaustion when completion callbacks do
+not arrive, then verifies 1,024 explicitly retired syllables with one active
+voice. The linked production DialogueVoice policy also exercises resource and
+playback-failure handling against a backend that never automatically finishes.
+
+Dialogue now owns one channel and stops it before another syllable, on normal
+completion, skip, dismissal and message replacement. Per-message syllable timing
+resets on opening. Optional playback failure silences the current conversation
+and logs a diagnostic while text continues; the next conversation can retry.
+This uses the existing SDK channel lifetime APIs without increasing voice or
+texture budgets.
+
+Run `iso-smoke.py ISO CAPTURE_DIR --dialogue-cycles --dsp-hle` with a copied card
+to compare skip-to-end with three natural completions and verify that each
+returns to settings. Omit --dsp-hle to exercise low-level DSP emulation. The
+script records complete-text and return screenshots and completion results.

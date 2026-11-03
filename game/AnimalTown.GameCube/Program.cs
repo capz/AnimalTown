@@ -63,6 +63,7 @@ internal sealed class TownGame
     private readonly Mesh cube;
     private readonly byte[] banner,icon;
     private readonly Sound syllable;
+    private readonly DialogueVoice dialogueVoice;
     private MemoryCard? card;
     private string screen="title",message="",speaker="AnimalTown",saveStatus="Not saved",action="",entry="";
     private bool returnToSettings;
@@ -71,6 +72,7 @@ internal sealed class TownGame
     private int jobProgress,moveClip=-1;
     private long lastSave,sessionStart;
     private float exteriorX,exteriorZ;
+    private float facingYaw=3.1415927f;
     private bool loaded,relocate,damagedSave;
     private bool indexedModels=true,batchedDrawing=true;
     private static readonly string[] tabs={"Backpack","Jobs","Catalog","Home","Post office","Settings"};
@@ -85,7 +87,7 @@ internal sealed class TownGame
         transform.Parent=worldRoot;identity.Parent=worldRoot;
         banner=File.ReadAllBytes("dvd:/savebanner.rgb5a3");icon=File.ReadAllBytes("dvd:/saveicon.rgb5a3");
         var pcm=new byte[512];for(int i=0;i<pcm.Length;i++)pcm[i]=(byte)(128+(i%24<12?25:-25)*(pcm.Length-i)/pcm.Length);
-        syllable=Sound.FromPcm8(pcm,16000);syllable.Volume=.12f;
+        syllable=Sound.FromPcm8(pcm,16000);syllable.Volume=.12f;dialogueVoice=new DialogueVoice(syllable);
         sessionStart=Clock.Timestamp;
         ReadCalendar();
         LoadSave();
@@ -142,7 +144,7 @@ internal sealed class TownGame
         }
         catch(Exception error){saveStatus="Save failed ("+phase+", code "+NativeCalendar.CardError()+"). Check Slot A and retry.";DebugOverlay.WriteLine("SAVE ERROR: "+phase+" "+error.Message);card=null;}
     }
-    private void Say(string name,string text){returnToSettings=screen=="menu"&&menuTab==5;if(returnToSettings)settingsSelection=selected;speaker=name;message=text;wrappedDialogue=dialogueText.Get(text);typeAt=0;screen="dialogue";}
+    private void Say(string name,string text){dialogueVoice.Begin();voiceTick=0;returnToSettings=screen=="menu"&&menuTab==5;if(returnToSettings)settingsSelection=selected;speaker=name;message=text;wrappedDialogue=dialogueText.Get(text);typeAt=0;screen="dialogue";}
     private bool Press(ControllerState p)=>p.A.WasPressed;
     internal void Input(ControllerState p)
     {
@@ -158,7 +160,7 @@ internal sealed class TownGame
         if(screen=="title")
         { if(Press(p)){if(loaded)screen="world";else{screen="create";selected=0;}}return; }
         if(screen=="dialogue")
-        { if(Press(p)||p.B.WasPressed){if(typeAt<message.Length)typeAt=message.Length;else{screen=returnToSettings?"menu":"world";if(returnToSettings){menuTab=5;selected=settingsSelection;}}}return; }
+        { if(Press(p)||p.B.WasPressed){dialogueVoice.Stop();if(typeAt<message.Length)typeAt=message.Length;else{screen=returnToSettings?"menu":"world";if(returnToSettings){menuTab=5;selected=settingsSelection;}}}return; }
         if(screen=="keyboard")
         {
             if(left)keyboard=(keyboard+39)%40;if(right)keyboard=(keyboard+1)%40;
@@ -283,7 +285,7 @@ internal sealed class TownGame
             if(selected==6){Say("Home",state.Expand(true,day)?"Garden construction ordered.":"Loan or house tier prevents this expansion.");}return;
         }
         if(menuTab==4){PostAction();return;}
-        if(selected==0){Save();Say("Save",saveStatus);}else if(selected==1){Say("Controls","Stick: walk / menus. D-pad: menus. L/R: tabs. B: run / back. A: interact / select. X: backpack. Y: map. Z: tool. START: save / settings.");}
+        if(selected==0){Save();Say("Save",saveStatus);}else if(selected==1){Say("Controls","Stick / D-pad: walk / menus. L/R: tabs. B: run / back. A: interact / select. X: backpack. Y: map. Z: tool. START: save / settings.");}
         else if(selected==2)Say("About","AnimalTown / "+BuildInfo.Commit+" / hypercube-engine. Original homebrew for Nintendo GameCube.");
         else if(selected==3){FrameProfile.Enabled=!FrameProfile.Enabled;}
         else if(selected==4){Say("Calendar","Console RTC / day "+day+". New days begin at 06:00.");}
@@ -320,17 +322,17 @@ internal sealed class TownGame
     {
         tick++;
         if(tick%900==0){int previousDay=state.Town.Day;ReadCalendar();state.Rollover(day,month);if(state.Town.Day!=previousDay)Save();}
-        if(screen=="dialogue"&&typeAt<message.Length){typeAt=Math.Min(message.Length,typeAt+1);if(++voiceTick%3==0)syllable.Play();}
+        if(screen=="dialogue"&&typeAt<message.Length){
+            typeAt++;
+            if(typeAt==message.Length)dialogueVoice.Stop();
+            else if(++voiceTick%3==0&&dialogueVoice.Available&&!dialogueVoice.Pulse())DebugOverlay.WriteLine("Dialogue audio unavailable; continuing text");
+        }
         if(screen=="world"||screen=="plot")
         {
-            float dx=pad.Stick.X,dz=-pad.Stick.Y;if(Math.Abs(dx)<.18f)dx=0;if(Math.Abs(dz)<.18f)dz=0;
-            float speed=pad.B.IsHeld?.16f:.085f;
-            if(dx!=0||dz!=0)
+            if(PlayerMovement.Move(state,room,pad.Stick.X,pad.Stick.Y,(int)pad.HeldButtons,pad.B.IsHeld,out float dx,out float dz))
             {
-                if(Math.Abs(dx)>Math.Abs(dz)){faceX=dx>0?1:-1;faceZ=0;}else{faceX=0;faceZ=dz>0?1:-1;}
-                float nx=state.X+dx*speed,nz=state.Z+dz*speed;
-                if(state.CanWalk(nx,state.Z,room))state.X=nx;if(state.CanWalk(state.X,nz,room))state.Z=nz;
-                int clip=pad.B.IsHeld?1:0;if(clip!=moveClip){string name=clip==1?"Running":"Walking";if(models[state.Species].TryGetAnimation(name,out var _))actors[0].Animator.Play(name,true);moveClip=clip;}
+                facingYaw=PlayerMovement.Yaw(dx,dz);PlayerMovement.Target(dx,dz,out faceX,out faceZ);
+                int clip=pad.B.IsHeld?1:0;if(clip!=moveClip){string name=clip==1?"Running":"Walking";if(models[state.Species].TryGetAnimation(name,out var _)){actors[0].Animator.Play(name,true);actors[0].Animator.SetSpeed(1.05f);}moveClip=clip;}
             }
             else if(moveClip>=0){actors[0].Animator.Stop();moveClip=-1;}
         }
@@ -408,7 +410,7 @@ internal sealed class TownGame
         for(int i=0;i<state.Town.PlacedCount;i++){var q=state.Town.Placed[i];if(q.Room==room)Box(q.X,0,q.Z,.7f,.7f,.7f,new Color32(176,119,81));}
         if(batchedDrawing)boxes.Flush();
         FrameProfile.End(7,phase);phase=FrameProfile.Start();
-        ModelAt(actors[0],state.X,state.Z,1.8f,faceX!=0?faceX*1.57f:faceZ<0?3.14159f:0);
+        ModelAt(actors[0],state.X,state.Z,1.8f,facingYaw);
         if(batchedDrawing)actorQueue.Execute(renderer);
         FrameProfile.End(5,phase);phase=FrameProfile.Start();
         if(screen=="plot")

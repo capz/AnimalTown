@@ -27,6 +27,36 @@ def press(button):
 def screenshot(name):
     subprocess.run(['ffmpeg','-v','error','-f','x11grab','-video_size','800x600','-i',':93','-frames:v','1','-y',str(root/name)],env=env,check=True)
 
+def dialogue_cycles():
+    import json
+    def pixels(name):
+        screenshot(name+'.png')
+        return subprocess.check_output(['ffmpeg','-v','error','-i',str(root/(name+'.png')),'-frames:v','1','-f','rawvideo','-pix_fmt','rgb24','-'])
+    def body(frame):return b''.join(frame[(row*800+78)*3:(row*800+540)*3] for row in range(344,414))
+    def returned(frame):
+        return sum(all(abs(frame[(row*800+col)*3+c]-target)<=3 for c,target in enumerate((221,231,188))) for row in range(160,181) for col in range(100,540,4))>100
+    results=[]
+    press('A');press('X');press('L');press('D_DOWN')
+    press('A');press('A');reference=body(pixels('dialogue-skipped-reference'));time.sleep(3)
+    press('B')
+    if not returned(pixels('dialogue-skipped-return')):raise AssertionError('Dialogue could not return after skip-to-end')
+    for cycle in range(3):
+        press('A');complete=False
+        for sample in range(40):
+            time.sleep(1)
+            if p.poll() is not None:raise RuntimeError('Game exited during dialogue')
+            if body(pixels(f'dialogue-natural-{cycle}'))==reference:complete=True;break
+        results.append({'cycle':cycle,'completed':complete})
+        (root/'dialogue-cycles.json').write_text(json.dumps(results,indent=2)+'\n')
+        print(f'Dialogue {cycle} naturally completed: {complete}',flush=True)
+        if not complete:raise AssertionError('Dialogue stopped before matching the complete text')
+        time.sleep(2);press('B');responsive=returned(pixels(f'dialogue-return-{cycle}'))
+        results[-1]['returnedToSettings']=responsive
+        (root/'dialogue-cycles.json').write_text(json.dumps(results,indent=2)+'\n')
+        if not responsive:raise AssertionError('Game stopped responding after dialogue completion')
+    (root/'dialogue-cycles.json').write_text(json.dumps(results,indent=2)+'\n')
+    press('START');time.sleep(12);screenshot('dialogue-cycles-save.png')
+
 def item_navigation():
     results=[]
     def read(name):
@@ -128,6 +158,9 @@ if '--season' in sys.argv:
     rtc=int(datetime(2027,month,15,12,tzinfo=timezone.utc).timestamp())
     config=user/'Config'/'Dolphin.ini'
     config.write_text(config.read_text().replace('SkipIPL = True\n',f'SkipIPL = True\nEnableCustomRTC = True\nCustomRTCValue = {rtc}\n'))
+if '--dsp-hle' in sys.argv:
+    config=user/'Config'/'Dolphin.ini'
+    config.write_text(config.read_text().replace('DSPHLE = False','DSPHLE = True'))
 (user/'Config'/'GFX.ini').write_text('''[Settings]
 InternalResolution = 1
 MSAA = 1
@@ -154,7 +187,25 @@ with (root/'emulator.log').open('w') as log:
         if p.poll() is not None:
             raise RuntimeError(f'Dolphin exited during boot ({p.returncode}); see {root / "emulator.log"}')
         screenshot('screen.png')
-        if '--terrain-edges' in sys.argv:
+        if '--dialogue-cycles' in sys.argv:
+            dialogue_cycles()
+        elif '--movement-directions' in sys.argv:
+            press('A');time.sleep(2);screenshot('movement-start.png')
+            os.write(controller,b'SET MAIN 0.5 0.0\nPRESS B\n');time.sleep(3)
+            os.write(controller,b'SET MAIN 0.5 0.5\nRELEASE B\n');time.sleep(1)
+            axes=[(.9,.1),(.1,.1),(.1,.9),(.9,.9)]
+            pads=[('D_RIGHT','D_DOWN'),('D_LEFT','D_DOWN'),('D_LEFT','D_UP'),('D_RIGHT','D_UP')]
+            for mode in ('stick','dpad'):
+                for n in range(4):
+                    if mode=='stick':os.write(controller,f'SET MAIN {axes[n][0]} {axes[n][1]}\n'.encode())
+                    else:os.write(controller,(''.join(f'PRESS {button}\n' for button in pads[n])).encode())
+                    if n%2:os.write(controller,b'PRESS B\n')
+                    time.sleep(2)
+                    os.write(controller,b'SET MAIN 0.5 0.5\nRELEASE B\n')
+                    if mode=='dpad':os.write(controller,(''.join(f'RELEASE {button}\n' for button in pads[n])).encode())
+                    time.sleep(.5);screenshot(f'movement-{mode}-{n}.png')
+            press('START');time.sleep(12);screenshot('movement-save.png')
+        elif '--terrain-edges' in sys.argv:
             press('A');time.sleep(2);screenshot('terrain-edge-start.png')
             directions=[(.5,0,3),(0,.5,2),(1,.5,4),(.5,0,2),(0,.5,2),(.5,1,2),(1,0,2),(0,1,2)]
             for n,(axis_x,axis_y,duration) in enumerate(directions):
