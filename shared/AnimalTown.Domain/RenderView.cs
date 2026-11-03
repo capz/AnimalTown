@@ -1,9 +1,10 @@
 namespace AnimalTown;
 
-// Same fixed pitch as the original camera, with its eye/target offsets scaled 2/3.
+// Derive the view direction from the same eye/aim offsets used by the renderer.
 public static class RenderView
 {
-    public const float ForwardY=-.49026124f,ForwardZ=-.87157554f;
+    private static readonly float DirectionLength=(float)Math.Sqrt(CylinderWorld.CameraHeight*CylinderWorld.CameraHeight+(CylinderWorld.CameraBack+CylinderWorld.CameraAimAhead)*(CylinderWorld.CameraBack+CylinderWorld.CameraAimAhead));
+    public static readonly float ForwardY=-CylinderWorld.CameraHeight/DirectionLength,ForwardZ=-(CylinderWorld.CameraBack+CylinderWorld.CameraAimAhead)/DirectionLength;
     public static readonly float TanY=(float)Math.Tan(CylinderWorld.CameraFieldOfView*Math.PI/360);
     public static readonly float TanX=TanY*4/3;
     private static readonly float SideNorm=(float)Math.Sqrt(1+TanX*TanX),TopNorm=(float)Math.Sqrt(1+TanY*TanY);

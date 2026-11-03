@@ -30,9 +30,10 @@ for(int seed=0;seed<20;seed++)
     for(int i=0;i<6;i++)Check(seen[town.Residents[i].Z*Town.Width+town.Residents[i].X],"resident reachable");
 }
 Check(Town.ScreenTiles==20&&Town.Width==Town.Height&&Town.Width==20*Town.ScreenTileSize,"20 x 20 square screen tiles");
-double focusDepth=273/Math.Sqrt(337);
-double focusWidth=2*focusDepth*Math.Tan(CylinderWorld.CameraFieldOfView*Math.PI/360)*4/3;
-Check(Math.Abs(focusWidth-Town.ScreenTileSize)<.05,"each square world tile spans one viewport at the player");
+double previousFocusDepth=-6*RenderView.ForwardY-8*RenderView.ForwardZ;
+double focusDepth=-CylinderWorld.CameraHeight*RenderView.ForwardY-CylinderWorld.CameraBack*RenderView.ForwardZ;
+Check(Math.Abs(focusDepth/previousFocusDepth-.9)<.00001,"closer camera shows ninety percent of the previous horizontal span at the player");
+Check(Math.Abs(RenderView.ForwardY/RenderView.ForwardZ-9f/16)<.00001,"closer camera retains its previous pitch");
 Check(CylinderWorld.ViewHalfWidth>70*Math.Tan(CylinderWorld.CameraFieldOfView*Math.PI/360)*4/3,"cylinder extends past far-plane viewport sides");
 for(int i=-50;i<=50;i++)
 {
@@ -58,7 +59,7 @@ Check(Math.Abs(TerrainTiles.PatchCoordinate(4,8,1)-1.5f)<.00001f,"nine-slice cen
 for(int row=0;row<TerrainTiles.GroundRows;row++)for(int offset=0;offset<=4;offset++)
 {
     float focus=offset*.5f;var pose=CylinderWorld.Surface(-48+row,focus);
-    double depth=((focus+12-pose.Z)*16+(9-pose.Y)*9)/Math.Sqrt(337);
+    double depth=(pose.Y-CylinderWorld.CameraHeight)*RenderView.ForwardY+(pose.Z-focus-CylinderWorld.CameraBack)*RenderView.ForwardZ;
     double projectedHalfWidth=Math.Max(0,depth)*Math.Tan(CylinderWorld.CameraFieldOfView*Math.PI/360)*4/3;
     Check(TerrainTiles.RowHalfWidth(row)>projectedHalfWidth+2,"textured cylinder rows extend beyond the viewport including sub-cell camera motion");
 }
@@ -68,7 +69,7 @@ Check(arrival.PlaceHouse(15,35,false),"house placement with a blocked doorway fi
 Check(arrival.CanWalk(arrival.X,arrival.Z,0)&&arrival.Z>=40.5f,"new house arrival is outside its collision footprint and avoids trees");
 arrival.X=18;arrival.Z=38;Check(!arrival.CanWalk(arrival.X,arrival.Z,0),"old saved arrival reproduces house collision trap");
 Check(arrival.MoveToHouseEntrance()&&arrival.CanWalk(arrival.X,arrival.Z,0),"old trapped save gets a clear arrival without deleting objects");
-Check(Math.Abs(Math.Sqrt(CylinderWorld.CameraHeight*CylinderWorld.CameraHeight+CylinderWorld.CameraBack*CylinderWorld.CameraBack)-10)<.001,"camera eye distance reduced from fifteen to ten metres");
+Check(Math.Abs(Math.Sqrt(CylinderWorld.CameraHeight*CylinderWorld.CameraHeight+CylinderWorld.CameraBack*CylinderWorld.CameraBack)-9)<.001,"camera eye distance reduced ten percent from ten to nine metres");
 Check(RenderView.Sphere(0,1,0,1,0,0)&&!RenderView.Sphere(100,1,0,1,0,0)&&!RenderView.Sphere(0,1,100,1,0,0),"view keeps player and rejects side/behind camera");
 for(int edge=0;edge<4;edge++)for(int depth=2;depth<65;depth+=3)
 {

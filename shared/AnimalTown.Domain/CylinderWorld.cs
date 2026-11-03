@@ -12,9 +12,9 @@ public static class CylinderWorld
 {
     public const float Radius=Town.Height/6.28318530718f;
     public const int ViewHalfWidth=64;
-    // Matches a 20-unit horizontal span on the player's tangent plane in 4:3.
+    // Preserve the lens; scale eye and aim offsets together to keep the pitch.
     public const float CameraFieldOfView=53.54f;
-    public const float CameraHeight=6,CameraBack=8,CameraAimAhead=8f/3;
+    public const float CameraHeight=5.4f,CameraBack=7.2f,CameraAimAhead=2.4f;
     public const float Near=.1f,Far=70;
     public static CylinderPose Surface(float logicalZ,float focusZ,float height=0)
     {

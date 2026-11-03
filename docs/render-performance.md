@@ -6,9 +6,11 @@ retired-asset audit and released-ISO comparison: tree submission averages
 guest-clock measurements; individual polygon/lighting/texture costs are not
 isolated, and physical GameCube performance remains unmeasured.
 
-The camera eye is now `(player.x, 6, player.z + 8)`, ten metres from the
-player rather than fifteen. Eye and aim offsets both scale by 2/3, preserving
-the pitch and 53.54-degree vertical field of view. World coordinates, saves and
+The camera eye is now `(player.x, 5.4, player.z + 7.2)`, nine metres from the
+player: another ten percent closer than the previous ten-metre view. The aim
+offset is 2.4 metres ahead. Eye and aim offsets scale together, preserving
+the pitch and 53.54-degree vertical field of view. Culling derives its direction
+from these same offsets and retains partially visible bounds. World coordinates, saves and
 the 20-by-20 layout of square 20-metre tiles remain stable; the closer camera
 shows less of each tile. The terrain cylinder still extends beyond the view.
 
