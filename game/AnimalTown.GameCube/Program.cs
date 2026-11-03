@@ -143,7 +143,7 @@ internal sealed class TownGame
     {
         if(p.L.IsHeld&&p.R.IsHeld&&p.Z.WasPressed){FrameProfile.Enabled=!FrameProfile.Enabled;return;}
         if(p.L.IsHeld&&p.R.IsHeld&&p.Y.WasPressed){ToggleModelPath();return;}
-        if(p.L.IsHeld&&p.R.IsHeld&&p.DPadDown.WasPressed){UiFont.Batched=!UiFont.Batched;return;}
+        if(p.L.IsHeld&&p.R.IsHeld&&p.DPadDown.WasPressed){if(batchedDrawing)UiFont.Batched=!UiFont.Batched;return;}
         if(p.L.IsHeld&&p.R.IsHeld&&p.X.WasPressed){batchedDrawing=!batchedDrawing;UiFont.Batched=batchedDrawing;if(NativeRenderProbe.Batch(batchedDrawing?1:0)!=(batchedDrawing?1:0))throw new InvalidOperationException("Batch switch failed");return;}
         if(p.L.IsHeld&&p.R.IsHeld)return;
         if(screen=="title")

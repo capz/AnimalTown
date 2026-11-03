@@ -18,7 +18,8 @@ retained. Preparation cost is charged to the UI telemetry phase.
 across the existing 128-pixel pages. Sixty-four flat, direct-mapped slots cache positions for
 text up to 128 characters; longer dialogue streams without entering that cache.
 The flat arrays avoid per-glyph/per-layout object graphs. Ordered chunks of at
-most 128 sprites use DrawSprites. Color, scale and shared
+most 128 quads use DrawTexturedQuads with primitive arrays, avoiding repeated
+SpriteDraw packing/validation. Rotation is evaluated once per text draw. Color, scale and shared
 heading pivots are applied while drawing. Texture-page switches still flush GX,
 but each glyph no longer crosses to native code separately. Atlases stay unmipped.
 
