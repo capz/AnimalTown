@@ -144,6 +144,7 @@ internal sealed class TownGame
         if(p.L.IsHeld&&p.R.IsHeld&&p.Z.WasPressed){FrameProfile.Enabled=!FrameProfile.Enabled;return;}
         if(p.L.IsHeld&&p.R.IsHeld&&p.Y.WasPressed){ToggleModelPath();return;}
         if(p.L.IsHeld&&p.R.IsHeld&&p.X.WasPressed){batchedDrawing=!batchedDrawing;UiFont.Batched=batchedDrawing;if(NativeRenderProbe.Batch(batchedDrawing?1:0)!=(batchedDrawing?1:0))throw new InvalidOperationException("Batch switch failed");return;}
+        if(p.L.IsHeld&&p.R.IsHeld)return;
         if(screen=="title")
         { if(Press(p)){if(loaded)screen="world";else{screen="create";selected=0;}}return; }
         if(screen=="dialogue")

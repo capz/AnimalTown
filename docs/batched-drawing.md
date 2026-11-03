@@ -15,9 +15,10 @@ for the next. The original triangle layout and nondegenerate rectangles are
 retained. Preparation cost is charged to the UI telemetry phase.
 
 `UiFont` precomputes proportional IPL/Gorditas glyph regions, including slices
-across the existing 128-pixel pages. Forty-eight layouts cache positions for
+across the existing 128-pixel pages. Sixty-four flat, direct-mapped slots cache positions for
 text up to 128 characters; longer dialogue streams without entering that cache.
-Ordered chunks of at most 128 sprites use DrawSprites. Color, scale and shared
+The flat arrays avoid per-glyph/per-layout object graphs. Ordered chunks of at
+most 128 sprites use DrawSprites. Color, scale and shared
 heading pivots are applied while drawing. Texture-page switches still flush GX,
 but each glyph no longer crosses to native code separately. Atlases stay unmipped.
 

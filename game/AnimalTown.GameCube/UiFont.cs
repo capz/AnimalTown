@@ -9,55 +9,44 @@ internal sealed class UiFont
     private readonly byte[] metrics;
     private readonly int[]? firmware;
     internal static bool Batched=true;
-    private sealed class Glyph
-    {
-        internal TextureRegion[] Regions=new TextureRegion[0];
-        internal float[] X=new float[0],Y=new float[0];
-        internal float Width,Height,Advance;
-    }
-    private sealed class Layout
-    {
-        internal string Text="";
-        internal readonly float[] X=new float[128],Y=new float[128];
-        internal float Width;
-        internal int LastUse;
-    }
-    private readonly Glyph[] glyphs=new Glyph[96];
-    private readonly Layout[] layouts=new Layout[48];
+    // Flat storage avoids hundreds of per-glyph/layout objects in the console
+    // managed heap. Direct-mapped layout slots have bounded lookup and memory.
+    private readonly TextureRegion[] regions=new TextureRegion[96*8];
+    private readonly float[] regionX=new float[96*8],regionY=new float[96*8],advances=new float[96];
+    private readonly int[] regionCounts=new int[96];
+    private readonly string?[] layoutTexts=new string?[64];
+    private readonly float[] layoutX=new float[64*128],layoutY=new float[64*128],layoutWidths=new float[64];
     private readonly SpriteDraw[] sprites=new SpriteDraw[128];
-    private int clock;
     private UiFont(CachedTexture texture,byte[] metrics){this.texture=texture;this.metrics=metrics;PrepareGlyphs();}
     private UiFont(CachedTexture font){firmware=font.FontMetrics;texture=font;metrics=new byte[0];PrepareGlyphs();}
     private void PrepareGlyphs()
     {
-        for(int i=0;i<layouts.Length;i++)layouts[i]=new Layout();
-        for(int i=0;i<glyphs.Length;i++){
-            var g=new Glyph();glyphs[i]=g;
-            if(firmware!=null){int n=i<95?i:'?'-32;g.Width=firmware[0];g.Height=firmware[1];g.Advance=firmware[8+n*5+4];g.Regions=new[]{new TextureRegion(texture.Pages[n/16],new RectF(n%4*32,n%16/4*32,g.Width,g.Height))};g.X=new float[1];g.Y=new float[1];continue;}
-            int at=16+i*8,x=Get(at),y=Get(at+2),w=Get(at+4);g.Width=w;g.Height=64;g.Advance=Get(at+6);
+        for(int i=0;i<96;i++){
+            int first=i*8;
+            if(firmware!=null){int n=i<95?i:'?'-32;advances[i]=firmware[8+n*5+4];regionCounts[i]=1;regions[first]=new TextureRegion(texture.Pages[n/16],new RectF(n%4*32,n%16/4*32,firmware[0],firmware[1]));continue;}
+            int at=16+i*8,x=Get(at),y=Get(at+2),w=Get(at+4);advances[i]=Get(at+6);
             int firstX=x/128,firstY=y/128,lastX=(x+w+127)/128,lastY=(y+64+127)/128,used=0;
-            g.Regions=new TextureRegion[(lastX-firstX)*(lastY-firstY)];g.X=new float[g.Regions.Length];g.Y=new float[g.Regions.Length];
+            if((lastX-firstX)*(lastY-firstY)>8)throw new IOException("Glyph exceeds bounded page layout");
             for(int py=firstY;py<lastY;py++)for(int px=firstX;px<lastX;px++){
                 float left=Math.Max(x,px*128),top=Math.Max(y,py*128),right=Math.Min(x+w,(px+1)*128),bottom=Math.Min(y+64,(py+1)*128);
-                g.Regions[used]=new TextureRegion(texture.Pages[py*((texture.SourceWidth+127)/128)+px],new RectF(left-px*128,top-py*128,right-left,bottom-top));g.X[used]=left-x;g.Y[used++]=top-y;
+                int p=first+used++;regions[p]=new TextureRegion(texture.Pages[py*((texture.SourceWidth+127)/128)+px],new RectF(left-px*128,top-py*128,right-left,bottom-top));regionX[p]=left-x;regionY[p]=top-y;
             }
+            regionCounts[i]=used;
         }
     }
-    private Layout? FindLayout(string text)
+    private int FindLayout(string text)
     {
-        if(text.Length>128)return null;
-        int oldest=0;
-        for(int i=0;i<layouts.Length;i++){
-            var entry=layouts[i];if(entry.Text==text){entry.LastUse=++clock;return entry;}
-            if(entry.LastUse<layouts[oldest].LastUse)oldest=i;
-        }
-        var result=layouts[oldest];result.Text=text;result.LastUse=++clock;float x=0,y=0,max=0;
+        if(text.Length>128)return -1;
+        uint hash=2166136261;for(int i=0;i<text.Length;i++)hash=(hash^text[i])*16777619;
+        int slot=(int)(hash&63),start=slot*128;
+        if(layoutTexts[slot]==text)return slot;
+        layoutTexts[slot]=text;float x=0,y=0,max=0;
         for(int i=0;i<text.Length;i++){
-            result.X[i]=x;result.Y[i]=y;char c=text[i];
+            layoutX[start+i]=x;layoutY[start+i]=y;char c=text[i];
             if(c=='\r')continue;if(c=='\n'){max=Math.Max(max,x);x=0;y+=firmware!=null?firmware[4]:64;continue;}
-            x+=firmware!=null&&c=='\t'?glyphs[0].Advance*4:glyphs[Index(c)].Advance;
+            x+=firmware!=null&&c=='\t'?advances[0]*4:advances[Index(c)];
         }
-        result.Width=Math.Max(max,x);return result;
+        layoutWidths[slot]=Math.Max(max,x);return slot;
     }
     internal static UiFont LoadSystem()
     {
@@ -89,18 +78,18 @@ internal sealed class UiFont
     {
         if(!Batched){DrawLegacy(ui,text,x,y,color,scale,rotation);return;}
         float f=firmware!=null?scale*22/firmware[1]:scale*Factor;
-        var layout=FindLayout(text);float pen=0,line=0,pivotX=x+(layout!=null?layout.Width*f:Measure(text,scale))*.5f,pivotY=y+16*scale;
+        int layout=FindLayout(text);float pen=0,line=0,pivotX=x+(layout>=0?layoutWidths[layout]*f:Measure(text,scale))*.5f,pivotY=y+16*scale;
         int used=0;
         for(int i=0;i<text.Length;i++){
             char c=text[i];if(c=='\r')continue;if(c=='\n'){pen=0;line+=firmware!=null?firmware[4]:64;continue;}
-            var g=glyphs[Index(c)];float gx=x+(layout!=null?layout.X[i]:pen)*f,gy=y+(layout!=null?layout.Y[i]:line)*f;
-            if(c!=' '&&(firmware==null||c!='\t'))for(int p=0;p<g.Regions.Length;p++){
+            int glyph=Index(c);float gx=x+(layout>=0?layoutX[layout*128+i]:pen)*f,gy=y+(layout>=0?layoutY[layout*128+i]:line)*f;
+            if(c!=' '&&(firmware==null||c!='\t'))for(int p=glyph*8;p<glyph*8+regionCounts[glyph];p++){
                 if(used==sprites.Length){ui.DrawSprites(sprites,0,used);used=0;}
-                var region=g.Regions[p];float dx=gx+g.X[p]*f,dy=gy+g.Y[p]*f;
+                var region=regions[p];float dx=gx+regionX[p]*f,dy=gy+regionY[p]*f;
                 var sprite=new SpriteDraw(region,new RectF(dx,dy,region.Source.Width*f,region.Source.Height*f),color);
                 sprite.RotationDegrees=firmware==null?rotation:0;sprite.Origin=rotation==0?Vector2.Zero:new Vector2(pivotX-dx,pivotY-dy);sprites[used++]=sprite;
             }
-            pen+=firmware!=null&&c=='\t'?glyphs[0].Advance*4:g.Advance;
+            pen+=firmware!=null&&c=='\t'?advances[0]*4:advances[glyph];
         }
         if(used>0)ui.DrawSprites(sprites,0,used);
     }
