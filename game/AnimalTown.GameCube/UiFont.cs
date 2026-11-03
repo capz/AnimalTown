@@ -83,14 +83,16 @@ internal sealed class UiFont
     private float Factor=>metrics[8]/(float)metrics[4];
     internal float Measure(string text,float scale=1)
     { float x=0,max=0;for(int i=0;i<text.Length;i++){if(text[i]=='\n'){max=Math.Max(max,x);x=0;}else if(text[i]!='\r')x+=firmware!=null?firmware[8+((text[i]=='\t'?0:text[i]>=32&&text[i]<=126?text[i]-32:'?'-32))*5+4]*(text[i]=='\t'?4:1)*scale*22/firmware[1]:Get(16+Index(text[i])*8+6)*scale*Factor;}return Math.Max(max,x); }
-    internal void Draw(Draw2D ui,string text,float x,float y,Color32 color,float scale=1,float rotation=0)
+    internal void Draw(Draw2D ui,string text,float x,float y,Color32 color,float scale=1,float rotation=0,int visibleCharacters=-1)
     {
-        if(!Batched){DrawLegacy(ui,text,x,y,color,scale,rotation);return;}
+        int end=visibleCharacters<0?text.Length:Math.Min(visibleCharacters,text.Length);
+        if(end==0)return;
+        if(!Batched){DrawLegacy(ui,text,x,y,color,scale,rotation,end);return;}
         float f=firmware!=null?scale*22/firmware[1]:scale*Factor;
-        int layout=FindLayout(text);float pen=0,line=0,pivotX=x+(layout>=0?layoutWidths[layout]*f:Measure(text,scale))*.5f,pivotY=y+16*scale;
+        int layout=FindLayout(text);float pen=0,line=0,pivotX=x,pivotY=y+16*scale;
         int used=0;float cosine=1,sine=0;
-        if(firmware==null&&rotation!=0){float a=rotation*.01745329252f;cosine=(float)Math.Cos(a);sine=(float)Math.Sin(a);}
-        for(int i=0;i<text.Length;i++){
+        if(firmware==null&&rotation!=0){pivotX+=(layout>=0?layoutWidths[layout]*f:Measure(text,scale))*.5f;float a=rotation*.01745329252f;cosine=(float)Math.Cos(a);sine=(float)Math.Sin(a);}
+        for(int i=0;i<end;i++){
             char c=text[i];if(c=='\r')continue;if(c=='\n'){pen=0;line+=firmware!=null?firmware[4]:64;continue;}
             int glyph=Index(c);float gx=x+(layout>=0?layoutX[layout*128+i]:pen)*f,gy=y+(layout>=0?layoutY[layout*128+i]:line)*f;
             if(c!=' '&&(firmware==null||c!='\t'))for(int p=glyph*8;p<glyph*8+regionCounts[glyph];p++){
@@ -105,17 +107,17 @@ internal sealed class UiFont
         }
         if(used>0)ui.DrawTexturedQuads(quadTextures,quadVertices,used,color);
     }
-    private void DrawLegacy(Draw2D ui,string text,float x,float y,Color32 color,float scale,float rotation)
+    private void DrawLegacy(Draw2D ui,string text,float x,float y,Color32 color,float scale,float rotation,int end)
     {
         if(firmware!=null){
             float f=scale*22/firmware[1],pen=x;
-            for(int i=0;i<text.Length;i++){char ch=text[i];if(ch=='\r')continue;if(ch=='\n'){pen=x;y+=firmware[4]*f;continue;}int index=ch>=32&&ch<=126?ch-32:'?'-32;
+            for(int i=0;i<end;i++){char ch=text[i];if(ch=='\r')continue;if(ch=='\n'){pen=x;y+=firmware[4]*f;continue;}int index=ch>=32&&ch<=126?ch-32:'?'-32;
                 if(ch!=' '&&ch!='\t')ui.DrawTexture(texture.Pages[index/16],new RectF(index%4*32,index%16/4*32,firmware[0],firmware[1]),new RectF(pen,y,firmware[0]*f,firmware[1]*f),color);
                 pen+=firmware[8+(ch=='\t'?0:index)*5+4]*(ch=='\t'?4:1)*f;
             }return;
         }
         float cursor=x,pivotX=x+Measure(text,scale)*.5f,pivotY=y+16*scale;scale*=Factor;
-        for(int i=0;i<text.Length;i++)
+        for(int i=0;i<end;i++)
         {
             char c=text[i];if(c=='\r')continue;if(c=='\n'){cursor=x;y+=64*scale;continue;}
             int at=16+Index(c)*8;int width=Get(at+4);

@@ -49,6 +49,8 @@ internal sealed class TownGame
     private readonly UiShapes uiShapes=new UiShapes();
     private readonly MapBackground mapBackground=new MapBackground();
     private readonly MenuNavigation menuNavigation=new MenuNavigation();
+    private readonly WrappedText dialogueText=new WrappedText(41),itemTitleText=new WrappedText(14),saveStatusText=new WrappedText(48);
+    private string wrappedDialogue="";
     private readonly RenderQueue actorQueue=new RenderQueue(7,7),structureQueue=new RenderQueue(9,9);
     private readonly Transform[] modelPoses=new Transform[16];
     private readonly BoxBatch boxes;
@@ -140,7 +142,7 @@ internal sealed class TownGame
         }
         catch(Exception error){saveStatus="Save failed ("+phase+", code "+NativeCalendar.CardError()+"). Check Slot A and retry.";DebugOverlay.WriteLine("SAVE ERROR: "+phase+" "+error.Message);card=null;}
     }
-    private void Say(string name,string text){returnToSettings=screen=="menu"&&menuTab==5;if(returnToSettings)settingsSelection=selected;speaker=name;message=text;typeAt=0;screen="dialogue";}
+    private void Say(string name,string text){returnToSettings=screen=="menu"&&menuTab==5;if(returnToSettings)settingsSelection=selected;speaker=name;message=text;wrappedDialogue=dialogueText.Get(text);typeAt=0;screen="dialogue";}
     private bool Press(ControllerState p)=>p.A.WasPressed;
     internal void Input(ControllerState p)
     {
@@ -436,7 +438,7 @@ internal sealed class TownGame
     { ModelAt(props[0],x,z,scale); }
     private void FenceAt(int x,int z)
     { Box(x,0,z,.12f,.55f,.12f,new Color32(211,191,147)); }
-    private void Text(string text,float x,float y,Color32 c,float scale=1.5f)=>font.Draw(ui,text,x,y,c,scale/1.5f);
+    private void Text(string text,float x,float y,Color32 c,float scale=1.5f,int visibleCharacters=-1)=>font.Draw(ui,text,x,y,c,scale/1.5f,0,visibleCharacters);
     private void Strong(string text,float x,float y,Color32 c,float scale=1.5f)=>strongFont.Draw(ui,text,x,y,c,scale/1.5f);
     private void Heading(string text,float x,float y,Color32 c,float scale=1)=>headingFont.Draw(ui,text,x,y,c,scale,(float)Math.Sin(tick*.018f+x*.01f)*1.8f);
     private void Panel(float x,float y,float w,float h)
@@ -473,7 +475,7 @@ internal sealed class TownGame
         Rounded(32,324,576,108,30,new Color32(255,245,221));
         ui.FillTriangle(new Vector2(112,428),new Vector2(142,428),new Vector2(118,446),new Color32(255,245,221));
         Rounded(48,299,180,38,19,new Color32(53,105,84));
-        Strong(speaker,62,306,new Color32(255,245,221),1.35f);Text(Wrap(message.Substring(0,typeAt),41),57,344,new Color32(49,72,62),1.4f);
+        Strong(speaker,62,306,new Color32(255,245,221),1.35f);Text(wrappedDialogue,57,344,new Color32(49,72,62),1.4f,typeAt);
     }
     private void BrandMark(float x,float y)
     {
@@ -482,8 +484,6 @@ internal sealed class TownGame
         Rounded(x-22,y-21,17,10,5,new Color32(232,183,86));Rounded(x+5,y-21,17,10,5,new Color32(232,183,86));
         Rounded(x-30,y+29,60,4,2,new Color32(195,109,84));
     }
-    private string Wrap(string text,int columns)
-    { string result="";int col=0;for(int i=0;i<text.Length;i++){char c=text[i];if(col>=columns&&c==' '){result+="\n";col=0;}else{result+=Letter(c);col++;}}return result; }
     private static string Letter(char c)=>new string(new[]{c});
     private void DrawHud()
     {
@@ -518,7 +518,7 @@ internal sealed class TownGame
         int first=selected/8*8;
         for(int i=first;i<Math.Min(total,first+8);i++){if(i==selected){Rounded(57,131+(i-first)*29,520,27,13.5f,new Color32(221,231,188));Strong("> "+RowLabel(i),68,131+(i-first)*29,ink,1.4f);}else Text("  "+RowLabel(i),68,131+(i-first)*29,ink,1.4f);}
         Text("Stick / D-pad choose   L/R tabs   A select   B close",65,392,ink,1);
-        if(screen=="menu"&&menuTab==5)Text(Wrap(saveStatus,48),65,357,ink,1);
+        if(screen=="menu"&&menuTab==5)Text(saveStatusText.Get(saveStatus),65,357,ink,1);
     }
     private string RowLabel(int i)
     {
@@ -562,7 +562,7 @@ internal sealed class TownGame
         Panel(popX,popY,popWidth,popHeight);
         ui.FillTriangle(new Vector2(popX+2,pointerY-12),new Vector2(popX+2,pointerY+12),new Vector2(slotX+52,slotY+20),new Color32(255,245,221));
         int item=state.Pockets[focus];float textX=popX+16;
-        Strong(Wrap(item==0?"Empty pocket":Catalog.Items[item].Name,14),textX,popY+12,ink,1.3f);
+        Strong(itemTitleText.Get(item==0?"Empty pocket":Catalog.Items[item].Name),textX,popY+12,ink,1.3f);
         if(actions)
         {
             for(int i=0;i<itemActions.Length;i++){

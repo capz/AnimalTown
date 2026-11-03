@@ -30,17 +30,25 @@ most 128 quads use DrawTexturedQuads with primitive arrays, avoiding repeated
 SpriteDraw packing/validation. Rotation is evaluated once per text draw. Color, scale and shared
 heading pivots are applied while drawing. Texture-page switches still flush GX,
 but each glyph no longer crosses to native code separately. Atlases stay unmipped.
+Dialogue now wraps its complete message once on opening and draws a visible
+character count from that immutable string. This eliminates per-frame substring,
+single-character arrays/strings and quadratic concatenation. A one-value cache
+also wraps the current item title and save status only when their text changes.
+The legacy comparison renderer respects the same visible character count.
+Unrotated text no longer measures an unused heading pivot for uncached long text.
+See [dialogue-performance.md](dialogue-performance.md).
 
 ## Map and world
 
-The map samples the original terrain centers into a lazy 128-square RGBA8 image.
+The map samples the original terrain centers into a lazy 32-square RGBA8 image
+for the current 8×8 town.
 Upload occurs only when sampled terrain or Town identity changes. Nearest
 filtering preserves flat colors; grid and live markers remain above the image.
-Native pixels use 64 KiB and reusable CPU upload pixels another 64 KiB. A terrain
-revision check avoids re-reading 6400 cells on unchanged frames. Use SetTerrain
+Native pixels use 4 KiB and reusable CPU upload pixels another 4 KiB. A terrain
+revision check avoids re-reading 1024 cells on unchanged frames. Use SetTerrain
 for individual edits, or NotifyTerrainChanged after a bulk write to Tiles.
 Generation/save loading invalidate automatically; terrain strip caching observes
-the same revision. No save format change is required.
+the same revision. Town-size migration is described in town-size.md.
 
 Visible boxes/fences keep culling before submission. `BoxBatch` snapshots up to
 128 transforms and flushes contiguous compatible colors through DrawMeshes;

@@ -27,6 +27,36 @@ def press(button):
 def screenshot(name):
     subprocess.run(['ffmpeg','-v','error','-f','x11grab','-video_size','800x600','-i',':93','-frames:v','1','-y',str(root/name)],env=env,check=True)
 
+def item_navigation():
+    results=[]
+    def read(name):
+        screenshot(name+'.png')
+        pixels=subprocess.check_output(['ffmpeg','-v','error','-i',str(root/(name+'.png')),'-frames:v','1','-f','rawvideo','-pix_fmt','rgb24','-'])
+        scores=[sum(all(abs(pixels[(y*800+x)*3+c]-target)<=3 for c,target in enumerate((221,231,188))) for y in range(187+i*18,204+i*18) for x in range(200,330,2)) for i in range(10)]
+        return scores.index(max(scores)) if max(scores)>30 else -1
+    def focus(name,expected):
+        actual=read(name);results.append((name,actual==expected));print(f'{name}: expected {expected}, actual {actual}',flush=True)
+    press('A');focus('actions-initial',0)
+    press('D_DOWN');focus('actions-dpad-down',1)
+    press('D_UP');focus('actions-dpad-up',0)
+    # Dolphin allows one physical key to drive both mappings. Send both in the
+    # same update, then release both, and require a visible navigation response.
+    os.write(controller,b'PRESS D_DOWN\nSET MAIN 0.5 0.1\n');time.sleep(.5)
+    os.write(controller,b'RELEASE D_DOWN\nSET MAIN 0.5 0.5\n');time.sleep(2)
+    paired=read('actions-paired-input');results.append(('paired-input',paired in range(1,9)));print(f'paired input row: {paired}',flush=True)
+    press('B');press('A');focus('actions-reopened',0)
+    os.write(controller,b'SET MAIN 0.5 0.1\n');samples=[]
+    try:
+        for n in range(6):time.sleep(.3);samples.append(read(f'actions-stick-{n}'))
+    finally:os.write(controller,b'SET MAIN 0.5 0.5\n');time.sleep(2)
+    results.append(('stick-progress',all(row>=0 for row in samples) and len(set(samples))>1));print(f'action stick rows: {samples}',flush=True)
+    press('B');press('A');focus('actions-reset',0)
+    press('D_UP');focus('actions-wrap-up',9)
+    press('D_DOWN');focus('actions-wrap-down',0)
+    press('B');screenshot('actions-back.png')
+    (root/'item-navigation.txt').write_text('\n'.join(f'{name}: {passed}' for name,passed in results)+f'\nPaired row: {paired}\nStick rows: {samples}\n')
+    if not all(passed for _,passed in results):raise AssertionError('Item action navigation failed; see item-navigation.txt')
+
 def settings_navigation():
     results=[]
     held_samples=[]
@@ -108,7 +138,7 @@ DumpCodec = ffv1
 [Hacks]
 EFBToTextureEnable = False
 ''')
-if '--profile' in sys.argv:
+if '--profile' in sys.argv or '--interaction-profile' in sys.argv:
     config=user/'Config'/'Dolphin.ini'
     config.write_text(config.read_text()+'\n[Movie]\nDumpFrames = True\nDumpFramesSilent = True\n')
     config=user/'Config'/'GFX.ini'
@@ -124,7 +154,16 @@ with (root/'emulator.log').open('w') as log:
         if p.poll() is not None:
             raise RuntimeError(f'Dolphin exited during boot ({p.returncode}); see {root / "emulator.log"}')
         screenshot('screen.png')
-        if '--play' in sys.argv:
+        if '--interaction-profile' in sys.argv:
+            press('A');time.sleep(2)
+            os.write(controller,b'PRESS L\nPRESS R\n');time.sleep(1);press('Z')
+            os.write(controller,b'RELEASE L\nRELEASE R\n');time.sleep(profile_seconds);screenshot('interaction-world.png')
+            press('A');screenshot('interaction-typing.png');time.sleep(profile_seconds);screenshot('interaction-dialogue.png')
+            press('B');press('X');time.sleep(profile_seconds);screenshot('interaction-backpack.png')
+            press('A');time.sleep(profile_seconds);screenshot('interaction-actions.png')
+            press('B');press('L');press('D_DOWN');press('A');screenshot('interaction-long-typing.png')
+            time.sleep(profile_seconds);screenshot('interaction-long-dialogue.png')
+        elif '--play' in sys.argv:
             press('A');press('D_UP');press('A');press('A');time.sleep(2);screenshot('bubble.png');press('B');press('B')
             time.sleep(2);screenshot('world.png')
             press('Y');time.sleep(1);screenshot('map.png');press('Y')
@@ -153,6 +192,7 @@ with (root/'emulator.log').open('w') as log:
                 press('A');screenshot('backpack-selected-actions.png')
                 for _ in range(9):press('D_DOWN')
                 press('A');screenshot('backpack-quit.png')
+            if '--item-navigation' in sys.argv:item_navigation()
             press('START');time.sleep(12);screenshot('resume-save.png')
             if '--settings-navigation' in sys.argv:settings_navigation()
         if '--profile' in sys.argv:

@@ -16,7 +16,8 @@ names=['simulation','animation_skinning','terrain_prepare','frame_setup','terrai
 groups=defaultdict(list)
 seen=set()
 versions=set()
-for path in sys.argv[1:]:
+paths=[path for path in sys.argv[1:] if path!='--interaction-panels']
+for path in paths:
     command=['ffmpeg','-v','error','-i',path,'-vf','scale=640:480:flags=neighbor',
              '-pix_fmt','rgb24','-f','rawvideo','-']
     process=subprocess.Popen(command,stdout=subprocess.PIPE)
@@ -31,6 +32,20 @@ for path in sys.argv[1:]:
         checksum=0
         for value in values[:31]:checksum^=value
         if values[0]!=0x4154 or values[1] not in (1,2,3,4) or values[31]!=checksum:continue
+        if '--interaction-panels' in sys.argv and values[30] in (2,3):
+            # Old releases used "other" for all these panels. Classify their
+            # distinct opaque panel coverage without modifying that ISO.
+            def cream(x,y):
+                at=(y*640+x)*3
+                return all(abs(frame[at+c]-target)<=3 for c,target in enumerate((255,245,221)))
+            if cream(60,200) and cream(560,200):values[30]=13
+            elif cream(40,375) and cream(600,375):
+                # A third body line distinguishes the longer Controls text
+                # from the short world interaction in the profiling script.
+                ink=sum(all(abs(frame[(y*640+x)*3+c]-target)<=3 for c,target in enumerate((49,72,62))) for y in range(389,404) for x in range(57,550))
+                values[30]=14 if ink>20 else 11
+            elif cream(300,120) and cream(330,360):values[30]=12
+            elif values[30]==3:continue
         identity=tuple(values)
         if identity in seen:continue
         seen.add(identity)
@@ -56,10 +71,10 @@ groups[9]=[r for r in groups.get(6,[])[5:] if r[6]!=0]
 groups[20]=[r for r in groups.get(16,[])[5:] if r[6]==0]
 groups[21]=[r for r in groups.get(16,[])[5:] if r[6]!=0]
 report={'units':'milliseconds; guest clock, not physical hardware or GPU duration',
-        'capture_files':sys.argv[1:],'protocol_versions':sorted(versions),'scenarios':{}}
+        'capture_files':paths,'protocol_versions':sorted(versions),'scenarios':{}}
 for scene,rows in groups.items():
     # Drop first five valid frames per scenario to reduce menu-transition effects.
-    if scene in (0,1,2,3,6,7,10,16,17,18,19,22,23,26,32,33,42):rows=rows[5:]
+    if scene in (0,1,2,3,6,7,10,11,12,13,14,16,17,18,19,22,23,26,32,33,42):rows=rows[5:]
     if not rows:continue
     timings={}
     for i,name in enumerate(names):
@@ -72,7 +87,7 @@ for scene,rows in groups.items():
             selected=sorted(zip(values,clipped))[min(len(rows)-1,math.ceil(q*len(rows))-1)]
             result[key+'_is_lower_bound']=selected[1]
         timings[name]=result
-    report['scenarios'][{0:'world',1:'backpack',2:'indoor',3:'other',4:'world_cached_terrain',5:'world_rebuilt_terrain',6:'world_direct',7:'backpack_direct',8:'world_direct_cached_terrain',9:'world_direct_rebuilt_terrain',10:'map',16:'world_baseline',17:'backpack_baseline',20:'world_baseline_cached_terrain',21:'world_baseline_rebuilt_terrain',26:'map_baseline',32:'world_legacy_font',33:'backpack_legacy_font',42:'map_legacy_font'}.get(scene,str(scene))]={
+    report['scenarios'][{0:'world',1:'backpack',2:'indoor',3:'other',4:'world_cached_terrain',5:'world_rebuilt_terrain',6:'world_direct',7:'backpack_direct',8:'world_direct_cached_terrain',9:'world_direct_rebuilt_terrain',10:'map',11:'dialogue',12:'item_actions',13:'interaction_list',14:'dialogue_long',16:'world_baseline',17:'backpack_baseline',20:'world_baseline_cached_terrain',21:'world_baseline_rebuilt_terrain',26:'map_baseline',32:'world_legacy_font',33:'backpack_legacy_font',42:'map_legacy_font'}.get(scene,str(scene))]={
         'frames':len(rows),'timings':timings,
         'triangles':stats([r[20]+(r[21]<<16) for r in rows]),
         'terrain_triangles':stats([r[22] for r in rows]),

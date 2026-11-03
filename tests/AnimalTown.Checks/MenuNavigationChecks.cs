@@ -29,5 +29,10 @@ internal static class MenuNavigationChecks
             Read(view:view);
             check(Read(view:view,y:-.8f)==MenuNavigation.Down,"stick navigates "+view);
         }
+        Read(view:"menu",tab:0);
+        check(Read(view:"menu",tab:0,y:-1,pressed:MenuNavigation.Down)==MenuNavigation.Down,"one shared Dolphin binding produces one backpack movement");
+        check(Read(view:"item",tab:-1,y:-1)==0,"holding the selection direction while opening actions waits for neutral");
+        check(Read(view:"item",tab:-1)==0&&Read(view:"item",tab:-1,y:-1,pressed:MenuNavigation.Down,now:100)==MenuNavigation.Down,"released shared binding responds again inside item actions");
+        check(Read(view:"item",tab:-1,y:-1,now:200)==0&&Read(view:"item",tab:-1,y:-1,now:350100)==MenuNavigation.Down,"shared mapping has one repeat timer inside item actions");
     }
 }
