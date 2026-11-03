@@ -9,8 +9,10 @@ the GDD. The technical baseline was committed/pushed first as `0064efd`.
   ASP.NET Core/PostgreSQL server builds; shared AOT-compatible gameplay assembly.
 * Full-size bootable GameCube ISO, original homebrew apploader, FST, game title,
   commit in disc header/BNR/title/save comment, disc banner and save banner/icon.
-* Ten supplied GLBs converted into textured native models, retained walking and
-  running clips, six species selection. True cylindrical terrain with an
+* Ten supplied GLBs converted into textured native models, six species selection.
+  The five non-fox villagers use the supplied ~1,600-triangle replacements;
+  only the fox currently has walking/running clips. See villager-assets.md for
+  source mappings and missing rigs/clips. True cylindrical terrain with an
   east-west axis and radius 400/(2*pi), square 20×20 screen-tile world, conservative
   Hypercube visibility and up to eight nearest visible trees using only the supplied tree GLBs. Procedural tree stand-ins have been removed.
   Objects inherit the world root and use the cylinder's radial surface normal;
@@ -18,7 +20,8 @@ the GDD. The technical baseline was committed/pushed first as `0064efd`.
   large rounded corners, with pill selections and rounded keyboard keys.
   Gorditas Bold titles/headings use offline-baked IA8; all other UI reads the
   console's native IPL font through SDK PR #145. No firmware font bytes ship.
-* Developer-authored seasonal terrain manifest, repeat variants and stretched nine-slice patches using all four supplied transition materials; 128 KiB active RGB565 atlas, guttered/inset sampling, bounded textured meshes. Missing seamless textures use explicit flat-color placeholders. See terrain-authoring.md and world-asset-requests.md.
+* Developer-authored seasonal terrain manifest, repeat variants and stretched nine-slice patches using all four supplied transition materials; guttered/inset sampling and bounded textured meshes. Runtime textures are capped at 128 pixels, with paged UI/IPL glyphs, source-keyed caching and a 32 KiB active RGB565 terrain texture. The camera is one third closer, with frustum rejection and GX backface culling. Opt-in checksummed frame telemetry separates CPU phases and presentation waits. See render-performance.md.
+  Missing seamless textures use explicit flat-color placeholders. See terrain-authoring.md and world-asset-requests.md.
 * Controller navigation, character/name/catchphrase creation, house reservation,
   backpack icon grid (10/20/30 slots), selected-item popovers, shop capacity
   upgrades and context actions, map, store buying/selling, banking, loans and tier

@@ -27,19 +27,30 @@ Run dotnet @('run','--project','tools/AnimalTown.Tools','-c','Release','--no-bui
 if (!$SkipAssets) {
     $assetMap = [ordered]@{
         fox='villagers/Meshy_AI_Rigged_Fox_All_Animations.glb'
-        gecko='villagers/Meshy_AI_Rigged_Gecko_All_Animations.glb'
-        giraffe='villagers/Meshy_AI_Rigged_Giraffe_All_Animations.glb'
-        cat='villagers/Meshy_AI_Rigged_Maine_Coon_All_Animations.glb'
-        prairie='villagers/Meshy_AI_Rigged_Prairie_Dog_All_Animations.glb'
-        spaniel='villagers/Meshy_AI_Rigged_Spaniel_All_Animations.glb'
+        bunny='villagers/villager_bunny.glb'
+        giraffe='villagers/villager_giraffe.glb'
+        cat='villagers/villager_mainecoon.glb'
+        hamster='villagers/villager_hamster.glb'
+        spaniel='villagers/villager_cockerspaniel.glb'
         building='world-stuctures/Meshy_AI_animal_crossing_konbi_1102122741_texture.glb'
         deciduous='world-stuctures/Meshy_AI_ac_deciduous_tree_3d_1102122647_texture.glb'
         palm='world-stuctures/Meshy_AI_ac_palm_tree_3d_1102122704_texture.glb'
         pine='world-stuctures/Meshy_AI_ac_pine_tree_3d_1102122723_texture.glb'
     }
+    # Retire stale generated outputs from the previous species list without
+    # touching artist sources. Never package both old and replacement villagers.
+    foreach($retired in @('gecko','prairie')){
+        $old=Join-Path $projectRoot "out/disc/$retired.dndmodel"
+        if(Test-Path -LiteralPath $old){
+            $archive=Join-Path $projectRoot 'out/retired-models';New-Item -ItemType Directory -Force -Path $archive | Out-Null
+            Move-Item -LiteralPath $old -Destination (Join-Path $archive "$retired.dndmodel") -Force
+        }
+    }
     foreach ($name in $assetMap.Keys) {
         Run dotnet @('run','--project','tools/AnimalTown.Tools','-c','Release','--no-build','--','prepare',$projectRoot,"assets/models/$($assetMap[$name])","out/prepared/$name.glb")
-        Run dotnet @($assetTools,'model',"out/prepared/$name.glb","out/disc/$name.dndmodel",'--texture-limit','128','--compile-gx-materials')
+        $importArguments=@($assetTools,'model',"out/prepared/$name.glb","out/disc/$name.dndmodel",'--texture-limit','128','--compile-gx-materials')
+        if($assetMap[$name].StartsWith('villagers/villager_')){$importArguments+='--allow-material-approximation'}
+        Run dotnet $importArguments
     }
 }
 $gameCommit = (& git rev-parse --short=12 HEAD).Trim()
@@ -57,6 +68,7 @@ $sourceDigest=[Convert]::ToHexString([Security.Cryptography.SHA256]::HashData([T
 [IO.File]::WriteAllText((Join-Path $projectRoot 'out/build-revisions.txt'), "Game source: $gameFullCommit`nEngine: $engineCommit`nSDK: $sdkCommit`nDirty: $([bool]$workingChanges)`nSource digest: $sourceDigest`nBuild image: $env:ANIMALTOWN_BUILD_IMAGE`n")
 Run dotnet @('run','--project','tests/AnimalTown.Checks','-c','Release')
 RunNative '.' 'sh' @('-c','cc -std=c11 -Wall -Wextra -Werror tests/native-card-read.c -o /tmp/animaltown-card-read && /tmp/animaltown-card-read')
+RunNative '.' 'sh' @('-c','cc -std=c11 -Wall -Wextra -Werror -Ivendor/sdk/include tests/native-texture-pages.c -o /tmp/animaltown-texture-pages && /tmp/animaltown-texture-pages')
 Run dotnet @('build',"$sdkRoot/tools/DolphinDotNet.Compiler",'-c','Release','-v','quiet')
 Run dotnet @('build','game/AnimalTown.GameCube','-c','Release',"-p:DolphinDotNetRoot=$sdkRoot",'-v','quiet')
 Run dotnet @("$sdkRoot/tools/DolphinDotNet.Compiler/bin/Release/net8.0/DolphinDotNet.Compiler.dll",'--bundle','game/AnimalTown.GameCube/bin/Release/net8.0/AnimalTown.GameCube.dll','out/native')

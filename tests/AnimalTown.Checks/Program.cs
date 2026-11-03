@@ -68,5 +68,49 @@ Check(arrival.PlaceHouse(15,35,false),"house placement with a blocked doorway fi
 Check(arrival.CanWalk(arrival.X,arrival.Z,0)&&arrival.Z>=40.5f,"new house arrival is outside its collision footprint and avoids trees");
 arrival.X=18;arrival.Z=38;Check(!arrival.CanWalk(arrival.X,arrival.Z,0),"old saved arrival reproduces house collision trap");
 Check(arrival.MoveToHouseEntrance()&&arrival.CanWalk(arrival.X,arrival.Z,0),"old trapped save gets a clear arrival without deleting objects");
-Console.WriteLine(checks+" gameplay checks passed");
+Check(Math.Abs(Math.Sqrt(CylinderWorld.CameraHeight*CylinderWorld.CameraHeight+CylinderWorld.CameraBack*CylinderWorld.CameraBack)-10)<.001,"camera eye distance reduced from fifteen to ten metres");
+Check(RenderView.Sphere(0,1,0,1,0,0)&&!RenderView.Sphere(100,1,0,1,0,0)&&!RenderView.Sphere(0,1,100,1,0,0),"view keeps player and rejects side/behind camera");
+for(int offset=0;offset<16;offset++)
+{
+    float fx=100+offset*.137f,fz=100+offset*.113f;int visible=0;
+    int minX=(int)fx/2*2-CylinderWorld.ViewHalfWidth,minZ=(int)fz/2*2-48;
+    for(int row=0;row<TerrainTiles.GroundRows;row++)
+    {
+        int z=minZ+row,half=TerrainTiles.RowHalfWidth(row);
+        var a=CylinderWorld.Surface(z,fz);var b=CylinderWorld.Surface(z+1,fz);
+        if(!RenderView.SurfaceFront(z,fz)&&!RenderView.SurfaceFront(z+1,fz))continue;
+        for(int x=minX+CylinderWorld.ViewHalfWidth-half;x<minX+CylinderWorld.ViewHalfWidth+half;x++)
+            if(RenderView.Sphere(x+.5f,(a.Y+b.Y)*.5f,(a.Z+b.Z)*.5f,.8f,fx,fz))visible+=6;
+    }
+    Check(visible>0&&visible<=8190,"closer curved terrain fits bounded mesh across sub-cell camera motion");
+}
+byte[] Package(int format,int width,int height,byte[] payload)
+{
+    var package=new byte[32+payload.Length];int[] header={0x58544e44,1,format,width,height,payload.Length,0,0};
+    for(int i=0;i<8;i++)for(int b=0;b<4;b++)package[i*4+b]=(byte)(header[i]>>(8*b));
+    payload.CopyTo(package,32);TexturePixels.Validate(package);return package;
+}
+var colors=new byte[8*8*4];for(int i=0;i<64;i++){colors[i*4]=(byte)(i*3);colors[i*4+1]=(byte)(255-i*2);colors[i*4+2]=(byte)i;colors[i*4+3]=(byte)(i%2==0?255:128);}
+foreach(int format in new[]{3,4,5,6})
+{
+    var package=Package(format,8,8,TexturePixels.Encode(colors,8,8,format));var decoded=new byte[256];TexturePixels.Resample(package,0,0,8,8,decoded,8,8);
+    for(int i=0;i<64;i++)
+    {
+        Check(Math.Abs(decoded[i*4]-colors[i*4])<=17,"native format red/swizzle roundtrip");
+        if(format!=3)Check(Math.Abs(decoded[i*4+1]-colors[i*4+1])<=17&&Math.Abs(decoded[i*4+2]-colors[i*4+2])<=17,"native format green/blue roundtrip");
+        Check(format==4||Math.Abs(decoded[i*4+3]-colors[i*4+3])<=24,"native format alpha roundtrip");
+    }
+}
+foreach(int format in new[]{0,1,2,14})
+{
+    var payload=new byte[32];Array.Fill(payload,(byte)255);var package=Package(format,8,format==1||format==2?4:8,payload);
+    Check(TexturePixels.Pixel(package,0,0)==(format==14?0:0xffffffff),"packed intensity/CMPR transparent selector fixture");
+}
+var transparent=new byte[4*4*4];for(int i=0;i<16;i++){transparent[i*4+2]=255;if(i%2==0){transparent[i*4]=255;transparent[i*4+2]=0;transparent[i*4+3]=255;}}
+var alphaPackage=Package(6,4,4,TexturePixels.Encode(transparent,4,4,6));var filtered=new byte[4];TexturePixels.Resample(alphaPackage,0,0,4,4,filtered,1,1);
+Check(filtered[0]==255&&filtered[2]==0&&filtered[3]==127,"resampling avoids transparent colour fringes");
+Check(TexturePixels.FitWidth(1024,256)==128&&TexturePixels.FitHeight(1024,256)==32,"resampling preserves aspect ratio");
+uint identity=TexturePixels.Hash(alphaPackage);alphaPackage[32]^=1;Check(identity!=TexturePixels.Hash(alphaPackage),"source fingerprint notices changed original bytes");
+bool badTexture=false;try{TexturePixels.Validate(new byte[32]);}catch(InvalidOperationException){badTexture=true;}Check(badTexture,"invalid texture rejected before decoding");
+Console.WriteLine(checks+" gameplay/render/texture checks passed");
 Console.WriteLine("Textured cylinder: "+TerrainTiles.GroundVertexCount/3+" triangles");

@@ -81,17 +81,22 @@ for grass-bordered sheets without a matching layout. No artwork is regenerated.
 ## Hardware budget and verification
 
 Default `tilePixels: 32`, `atlasSize: 256` gives 49 padded slots and **128 KiB**
-resident RGB565 texture storage. The default four nine-slice materials plus nine
+on-disc RGB565 texture storage. The default four nine-slice materials plus nine
 base surfaces occupy 45 slots. Each repeat variant uses one slot; a nine-slice
 source uses nine. To add many variants, author `atlasSize: 512` for 196 slots at
-32 pixels, costing **512 KiB**. `tilePixels: 64` needs the 512 atlas for the default
+32 pixels, costing **512 KiB** on disc. `tilePixels: 64` needs the 512 atlas for the default
 material set. Larger sizes are rejected. Disable unused transition overrides to
-recover slots. Only the active season's texture is retained; season changes load
-outside a render pass. Generated assets are under `out/terrain` and `out/disc`.
+recover slots. Runtime loading resamples either atlas size to 128×128 RGB565,
+costing **32 KiB** per cached season. Normalized UVs remain valid, but effective
+detail per source tile falls accordingly. The active season holds a cache lease;
+unleased seasons remain reusable until the bounded cache needs to evict them.
+Season changes load outside a render pass. Generated assets are under
+`out/terrain` and `out/disc`.
 
 Ground uses reusable textured dynamic meshes, no frame allocations, one material
 submission, and no redundant rebuild while the camera/room is stationary. The
-68-row outdoor band has 8,036 triangles, with row widths bounded around the camera frustum; its edges remain outside the
+68-row candidate band has 8,036 triangles before runtime frustum/backside rejection;
+the closer camera uses 4095/8190-vertex submission buckets. Cylinder edges remain outside the
 viewport. This and up to eight detailed source trees still require physical
 frame-time/memory profiling; emulator boot is not hardware performance evidence.
 

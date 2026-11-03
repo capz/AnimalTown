@@ -93,7 +93,7 @@ static class Program
     }
     static void Disc(string dolPath,string commit)
     {
-        string disc=Path.Combine(Root,"out/disc");Art();
+        string disc=Path.Combine(Root,"out/disc");Art();TextureAudit.Run(Root);
         var bnr=new byte[6496];Encoding.ASCII.GetBytes("BNR1").CopyTo(bnr,0);Banner(96).CopyTo(bnr,32);
         Text(bnr,0x1820,32,"AnimalTown");Text(bnr,0x1840,32,"AnimalTown contributors");Text(bnr,0x1860,64,"AnimalTown / "+commit);Text(bnr,0x18a0,64,"AnimalTown contributors");Text(bnr,0x18e0,128,"A rolling village life game. Commit "+commit);
         File.WriteAllBytes(Path.Combine(disc,"opening.bnr"),bnr);
@@ -150,7 +150,7 @@ static class Program
             if(!seen.Add(n)||offset%32768!=0||offset<previous||(long)offset+size>f.Length)throw new InvalidDataException("FST range invalid");previous=offset+size;
             if(n=="opening.bnr"){byte[] b=new byte[size];f.Position=offset;f.ReadExactly(b);if(b.Length!=6496||Encoding.ASCII.GetString(b,0,4)!="BNR1")throw new InvalidDataException("Banner invalid");}
         }
-        foreach(string n in new[]{"opening.bnr","BUILD.txt","savebanner.rgb5a3","saveicon.rgb5a3","gorditas-bold.dndtex","gorditas-bold.metrics","wordmark.dndtex","item-icons.dndtex","cat.dndmodel","fox.dndmodel","gecko.dndmodel","giraffe.dndmodel","prairie.dndmodel","spaniel.dndmodel","building.dndmodel","deciduous.dndmodel","palm.dndmodel","pine.dndmodel"})if(!seen.Contains(n))throw new InvalidDataException("Missing "+n);
+        foreach(string n in new[]{"opening.bnr","BUILD.txt","savebanner.rgb5a3","saveicon.rgb5a3","gorditas-bold.dndtex","gorditas-bold.metrics","wordmark.dndtex","item-icons.dndtex","cat.dndmodel","fox.dndmodel","bunny.dndmodel","giraffe.dndmodel","hamster.dndmodel","spaniel.dndmodel","building.dndmodel","deciduous.dndmodel","palm.dndmodel","pine.dndmodel"})if(!seen.Contains(n))throw new InvalidDataException("Missing "+n);
         foreach(string season in new[]{"spring","summer","fall","winter"})foreach(string extension in new[]{"bin","dndtex"})if(!seen.Contains("terrain-"+season+"."+extension))throw new InvalidDataException("Missing seasonal terrain asset");
         if(!seen.Contains("terrain.cfg"))throw new InvalidDataException("Missing terrain configuration");
         Console.WriteLine("Verified full-size bootable disc structure, "+(count-1)+" files");

@@ -22,10 +22,12 @@ internal static class Program
         var game=new TownGame();long previous=Clock.Timestamp;double accumulator=0;
         while(true)
         {
+            FrameProfile.Begin();long simulation=FrameProfile.Start();
             long now=Clock.Timestamp;accumulator+=(now-previous)/1000000.0;previous=now;if(accumulator>.1334)accumulator=.1334;
             Controller.Update();var pad=Controller.GetState(0);game.Input(pad);
             while(accumulator>=1.0/30){game.Step(pad);accumulator-=1.0/30;}
-            game.Draw();Task.Delay(1).GetAwaiter().GetResult();
+            FrameProfile.End(0,simulation);game.Draw();
+            long delay=FrameProfile.Start();Task.Delay(1).GetAwaiter().GetResult();FrameProfile.End(13,delay);game.RecordFrame();
         }
     }
 }
@@ -35,19 +37,19 @@ internal sealed class TownGame
     private GameState state=new GameState(7319);
     private readonly GraphicsDevice device=GraphicsDevice.Default;
     private readonly Renderer renderer=new Renderer();
-    private readonly Camera camera=new Camera(CylinderWorld.CameraFieldOfView,4f/3,.1f,70);
+    private readonly Camera camera=new Camera(CylinderWorld.CameraFieldOfView,4f/3,CylinderWorld.Near,CylinderWorld.Far);
     private readonly Draw2D ui;
     private readonly UiFont font,headingFont,strongFont;
-    private readonly Texture2D wordmark,itemIcons;
+    private readonly CachedTexture wordmark,itemIcons;
     private readonly Transform worldRoot=new Transform(),transform=new Transform(),identity=new Transform();
     private readonly TerrainRenderer terrain;
     private readonly int[] visibleTrees=new int[8];
     private readonly float[] treeDistances=new float[8];
-    private readonly Material plain=new Material{Cull=CullMode.None,Lighting=LightingMode.Unlit};
+    private readonly Material plain=new Material{Cull=CullMode.Back,Lighting=LightingMode.Unlit};
     private readonly Model[] models=new Model[10];
     private readonly ModelInstance[] actors=new ModelInstance[7],props=new ModelInstance[4];
-    private readonly string[] modelNames={"fox","gecko","giraffe","cat","prairie","spaniel","building","deciduous","palm","pine"};
-    private readonly string[] species={"Fox","Gecko","Giraffe","Maine coon","Prairie dog","Spaniel"};
+    private readonly string[] modelNames={"fox","bunny","giraffe","cat","hamster","spaniel","building","deciduous","palm","pine"};
+    private readonly string[] species={"Fox","Bunny","Giraffe","Maine coon","Hamster","Cocker spaniel"};
     private readonly Mesh cube;
     private readonly byte[] banner,icon;
     private readonly Sound syllable;
@@ -63,8 +65,8 @@ internal sealed class TownGame
     {
         ui=new Draw2D(device,new Draw2DOptions{Width=640,Height=480,VertexCapacity=8192});
         font=UiFont.LoadSystem();strongFont=font;headingFont=UiFont.Load("gorditas-bold");cube=Cube();
-        wordmark=Texture2D.LoadAsync("dvd:/wordmark.dndtex",default,true).GetAwaiter().GetResult();
-        itemIcons=Texture2D.LoadAsync("dvd:/item-icons.dndtex",default,true).GetAwaiter().GetResult();
+        wordmark=TextureCache.Load("dvd:/wordmark.dndtex",true);
+        itemIcons=TextureCache.Load("dvd:/item-icons.dndtex",true);
         transform.Parent=worldRoot;identity.Parent=worldRoot;
         banner=File.ReadAllBytes("dvd:/savebanner.rgb5a3");icon=File.ReadAllBytes("dvd:/saveicon.rgb5a3");
         var pcm=new byte[512];for(int i=0;i<pcm.Length;i++)pcm[i]=(byte)(128+(i%24<12?25:-25)*(pcm.Length-i)/pcm.Length);
@@ -129,6 +131,7 @@ internal sealed class TownGame
     private bool Press(ControllerState p)=>p.A.WasPressed;
     internal void Input(ControllerState p)
     {
+        if(p.L.IsHeld&&p.R.IsHeld&&p.Z.WasPressed){FrameProfile.Enabled=!FrameProfile.Enabled;return;}
         if(screen=="title")
         { if(Press(p)){if(loaded)screen="world";else{screen="create";selected=0;}}return; }
         if(screen=="dialogue")
@@ -256,7 +259,7 @@ internal sealed class TownGame
         if(menuTab==4){PostAction();return;}
         if(selected==0){Save();Say("Save",saveStatus);}else if(selected==1){Say("Controls","Stick: walk. B: run. A: interact. X: backpack. Y: map. Z: tool. START: save. D-pad: menus.");}
         else if(selected==2)Say("About","AnimalTown / "+BuildInfo.Commit+" / hypercube-engine. Original homebrew for Nintendo GameCube.");
-        else if(selected==3){DebugOverlay.PerformanceVisible=!DebugOverlay.PerformanceVisible;}
+        else if(selected==3){FrameProfile.Enabled=!FrameProfile.Enabled;}
         else if(selected==4){Say("Calendar","Console RTC / day "+day+". New days begin at 06:00.");}
         else Say("Chat","Quick phrases and online chat are pending the companion transport.");
     }
@@ -304,7 +307,10 @@ internal sealed class TownGame
             }
             else if(moveClip>=0){actors[0].Animator.Stop();moveClip=-1;}
         }
-        actors[0].Update(1f/30);for(int i=1;i<7;i++)actors[i].Update(1f/30);
+        long skinAt=FrameProfile.Start();
+        if(models[state.Species].Animations.Count>0)actors[0].Update(1f/30);
+        for(int i=1;i<7;i++){var v=state.Town.Residents[i-1];if(models[i-1].Animations.Count>0&&room==0&&Visible(v.X,v.Z,1.8f))actors[i].Update(1f/30);}
+        FrameProfile.End(1,skinAt);
         if(Clock.Timestamp-lastSave>300000000){Save();}
     }
     private void ReadCalendar(){int date=NativeCalendar.Read();day=date&0x1ffff;month=(int)((uint)date>>17);}
@@ -320,20 +326,25 @@ internal sealed class TownGame
     {
         float[] p={0,0,0,1,0,0,1,1,0,0,1,0,0,0,1,1,0,1,1,1,1,0,1,1};
         int[] ids={0,2,1,0,3,2,4,5,6,4,6,7,0,4,7,0,7,3,1,2,6,1,6,5,3,7,6,3,6,2,0,1,5,0,5,4};
-        var v=new VertexPositionColor[36];for(int i=0;i<36;i++){int a=ids[i]*3;v[i]=new VertexPositionColor(new Vector3(p[a],p[a+1],p[a+2]),Color32.White);}return Mesh.Create(v);
+        // GX front faces use the same winding as the terrain triangles.
+        var v=new VertexPositionColor[36];for(int i=0;i<36;i++){int a=ids[i%3==0?i:i%3==1?i+1:i-1]*3;v[i]=new VertexPositionColor(new Vector3(p[a],p[a+1],p[a+2]),Color32.White);}return Mesh.Create(v);
     }
     private void Box(float x,float y,float z,float w,float h,float d,Color32 color)
-    { transform.LocalPosition=SurfacePoint(x,z,y);transform.LocalScale=new Vector3(w,h,d);transform.LocalRotation=SurfaceRotation(z);plain.Color=color;renderer.DrawMesh(cube,plain,transform); }
+    { var center=SurfacePoint(x+w*.5f,z+d*.5f,y+h*.5f);float radius=(float)Math.Sqrt(w*w+h*h+d*d)*.5f+.05f;if(!RenderView.Sphere(center.X,center.Y,center.Z,radius,state.X,state.Z)){FrameProfile.CulledObjects++;return;}transform.LocalPosition=SurfacePoint(x,z,y);transform.LocalScale=new Vector3(w,h,d);transform.LocalRotation=SurfaceRotation(z);plain.Color=color;renderer.DrawMesh(cube,plain,transform); }
+    private bool Visible(float x,float z,float scale)
+    {var center=SurfacePoint(x,z,scale*.5f);return RenderView.Sphere(center.X,center.Y,center.Z,scale*1.5f,state.X,state.Z);}
     private void ModelAt(ModelInstance m,float x,float z,float scale,float facing=0)
-    { transform.LocalPosition=SurfacePoint(x,z);transform.LocalScale=new Vector3(scale,scale,scale);transform.LocalRotation=SurfaceRotation(z,facing);renderer.DrawModel(m,transform); }
+    { if(!Visible(x,z,scale)){FrameProfile.CulledObjects++;return;}transform.LocalPosition=SurfacePoint(x,z);transform.LocalScale=new Vector3(scale,scale,scale);transform.LocalRotation=SurfaceRotation(z,facing);renderer.DrawModel(m,transform); }
     internal void Draw()
     {
-        terrain.Prepare(state,room,month);device.BeginFrame(new Color32(149,198,186));
-        camera.LookAt(new Vector3(state.X,9,state.Z+12),new Vector3(state.X,0,state.Z-4),new Vector3(0,1,0));renderer.Begin3D(camera);terrain.Draw(renderer,identity,room);
+        long phase=FrameProfile.Start();terrain.Prepare(state,room,month);FrameProfile.End(2,phase);
+        phase=FrameProfile.Start();device.BeginFrame(new Color32(149,198,186));
+        camera.LookAt(new Vector3(state.X,CylinderWorld.CameraHeight,state.Z+CylinderWorld.CameraBack),new Vector3(state.X,0,state.Z-CylinderWorld.CameraAimAhead),new Vector3(0,1,0));renderer.Begin3D(camera);FrameProfile.End(3,phase);
+        phase=FrameProfile.Start();terrain.Draw(renderer,identity,room);FrameProfile.End(4,phase);phase=FrameProfile.Start();
         if(room==0)
         {
             for(int i=0;i<6;i++){var v=state.Town.Residents[i];if(ScenePolicy.Visible(v.X,v.Z,v.X+1,v.Z+1,state.X,state.Z,22))ModelAt(actors[i+1],v.X,v.Z,1.8f);}
-            DrawTrees();
+            FrameProfile.End(5,phase);phase=FrameProfile.Start();DrawTrees();FrameProfile.End(6,phase);phase=FrameProfile.Start();
             for(int i=0;i<state.Town.GroundCount;i++)
             {
                 var g=state.Town.Ground[i];if(g.Kind==4||!ScenePolicy.Visible(g.X,g.Z,g.X+1,g.Z+1,state.X,state.Z,20))continue;
@@ -350,11 +361,16 @@ internal sealed class TownGame
             }
         }
         for(int i=0;i<state.Town.PlacedCount;i++){var q=state.Town.Placed[i];if(q.Room==room)Box(q.X,0,q.Z,.7f,.7f,.7f,new Color32(176,119,81));}
+        FrameProfile.End(7,phase);phase=FrameProfile.Start();
         ModelAt(actors[0],state.X,state.Z,1.8f,faceX!=0?faceX*1.57f:faceZ<0?3.14159f:0);
+        FrameProfile.End(5,phase);phase=FrameProfile.Start();
         if(screen=="plot")
         { int x=(int)state.X-3,z=(int)state.Z-3;bool valid=state.Town.ValidPlot(x,z);for(int i=0;i<15;i++){Box(x+i,.02f,z,.9f,.03f,.9f,valid?new Color32(74,230,113):new Color32(229,82,72));Box(x+i,.02f,z+12,.9f,.03f,.9f,valid?new Color32(74,230,113):new Color32(229,82,72));} }
-        renderer.End3D();ui.Begin();DrawHud();ui.End();device.EndFrame();
+        renderer.End3D();ui.Begin();DrawHud();FrameProfile.End(8,phase);FrameProfile.Draw(ui);
+        phase=FrameProfile.Start();ui.End();FrameProfile.End(15,phase);
+        phase=FrameProfile.Start();device.EndFrame();FrameProfile.End(9,phase);
     }
+    internal void RecordFrame(){if(FrameProfile.Enabled)FrameProfile.Complete(GpuProfiler.Snapshot().Triangles,terrain.VisibleTriangles,terrain.RejectedQuads,screen=="menu"&&menuTab==0?1:room!=0?2:screen=="world"?0:3);}
     private bool IsTree(GroundItem g)=>g.Kind==3||(g.Kind==2&&g.Item!=2);
     private void DrawTrees()
     {
@@ -363,7 +379,7 @@ internal sealed class TownGame
         for(int n=0;n<visibleTrees.Length;n++){visibleTrees[n]=-1;treeDistances[n]=float.MaxValue;}
         for(int i=0;i<state.Town.GroundCount;i++)
         {
-            var g=state.Town.Ground[i];if(!IsTree(g)||!ScenePolicy.Visible(g.X,g.Z,g.X+1,g.Z+1,state.X,state.Z,20))continue;
+            var g=state.Town.Ground[i];if(!IsTree(g)||!Visible(g.X,g.Z,g.Kind==2?.75f:3))continue;
             float dx=g.X-state.X,dz=g.Z-state.Z,d=dx*dx+dz*dz;
             for(int n=0;n<visibleTrees.Length;n++)if(d<treeDistances[n])
             {for(int j=visibleTrees.Length-1;j>n;j--){visibleTrees[j]=visibleTrees[j-1];treeDistances[j]=treeDistances[j-1];}visibleTrees[n]=i;treeDistances[n]=d;break;}
@@ -430,7 +446,7 @@ internal sealed class TownGame
         if(screen=="title")
         {
             Panel(70,96,500,300);BrandMark(320,137);
-            ui.DrawTexture(wordmark,new RectF(90,161,460,115),ink);
+            wordmark.Draw(ui,new RectF(0,0,wordmark.SourceWidth,wordmark.SourceHeight),new RectF(90,161,460,115),ink);
             const string tagline="A little life, well rooted.";Text(tagline,(640-font.Measure(tagline))/2,255,ink);
             Rounded(167,302,306,49,24.5f,new Color32(53,105,84));string prompt=loaded?"A  Continue your town":"A  Begin a new life";
             Strong(prompt,(640-strongFont.Measure(prompt))/2,312,new Color32(255,245,221));
@@ -485,7 +501,7 @@ internal sealed class TownGame
             if(i==selected)Rounded(x-3,y-3,54,46,16,new Color32(232,183,86));
             Rounded(x,y,48,40,13,i==selected?new Color32(255,251,238):new Color32(231,228,202));
             int id=state.Pockets[i];
-            if(id!=0)ui.DrawTexture(itemIcons,new RectF(id%8*64,id/8*64,64,64),new RectF(x+5,y+1,38,38),Color32.White);
+            if(id!=0)itemIcons.Draw(ui,new RectF(id%8*64,id/8*64,64,64),new RectF(x+5,y+1,38,38),Color32.White);
             else Rounded(x+21,y+17,6,6,3,new Color32(188,195,166));
         }
         // Compact, anchored selection popover; item titles never clutter the grid.

@@ -19,7 +19,7 @@ for i in range(4):
     os.mkfifo(pipe)
 controller=os.open(user/'Pipes'/'dnd0',os.O_RDWR|os.O_NONBLOCK)
 def press(button):
-    hold=2 if '--slow-input' in sys.argv else 1
+    hold=2 if '--slow-input' in sys.argv or '--profile' in sys.argv else 1
     os.write(controller,f'PRESS {button}\n'.encode());time.sleep(hold)
     os.write(controller,f'RELEASE {button}\n'.encode());time.sleep(hold)
 def screenshot(name):
@@ -58,6 +58,11 @@ DumpCodec = ffv1
 [Hacks]
 EFBToTextureEnable = False
 ''')
+if '--profile' in sys.argv:
+    config=user/'Config'/'Dolphin.ini'
+    config.write_text(config.read_text()+'\n[Movie]\nDumpFrames = True\nDumpFramesSilent = True\n')
+    config=user/'Config'/'GFX.ini'
+    config.write_text(config.read_text().replace('DumpCodec = ffv1','DumpCodec = ffv1\nDumpEncoder = ffv1\nDumpPixelFormat = bgr0'))
 (user/'Config'/'Logger.ini').write_text('[Options]\nWriteToFile = True\nVerbosity = 4\n[Logs]\nBOOT = True\nOSREPORT = True\nDVDINTERFACE = True\n')
 env=dict(os.environ,DISPLAY=':93',QT_QPA_PLATFORM='xcb')
 x=subprocess.Popen(['Xvfb',':93','-screen','0','800x600x24'],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
@@ -65,7 +70,9 @@ time.sleep(1)
 with (root/'emulator.log').open('w') as log:
     p=subprocess.Popen(['/usr/games/dolphin-emu-nogui','-u',str(user),'-e',str(disc),'-v','OGL'],env=env,stdout=log,stderr=subprocess.STDOUT)
     try:
-        time.sleep(25)
+        time.sleep(45)
+        if p.poll() is not None:
+            raise RuntimeError(f'Dolphin exited during boot ({p.returncode}); see {root / "emulator.log"}')
         screenshot('screen.png')
         if '--play' in sys.argv:
             press('A');press('D_UP');press('A');press('A');time.sleep(2);screenshot('bubble.png');press('B');press('B')
@@ -77,6 +84,14 @@ with (root/'emulator.log').open('w') as log:
             press('A');time.sleep(2);screenshot('resume.png')
             press('X');time.sleep(1);screenshot('resume-backpack.png')
             press('START');time.sleep(12);screenshot('resume-save.png')
+        if '--profile' in sys.argv:
+            press('B')
+            os.write(controller,b'PRESS L\nPRESS R\n');time.sleep(2);press('Z')
+            os.write(controller,b'RELEASE L\nRELEASE R\n');time.sleep(25);screenshot('profile-world.png')
+            os.write(controller,b'SET MAIN 0.8 0.5\n');time.sleep(12)
+            os.write(controller,b'SET MAIN 0.2 0.5\n');time.sleep(12)
+            os.write(controller,b'SET MAIN 0.5 0.5\n');time.sleep(3)
+            press('X');time.sleep(25);screenshot('profile-backpack.png')
     finally:
         p.terminate()
         try:p.wait(timeout=5)
