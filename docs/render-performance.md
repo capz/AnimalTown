@@ -13,7 +13,20 @@ the pitch and 53.54-degree vertical field of view. Culling derives its direction
 from these same offsets and retains partially visible bounds. The current town
 is 8 by 8 square 20-metre tiles; old saves preserve retained coordinates during
 cropping (see town-size.md). Earlier measurements below used the former larger
-town. The terrain cylinder retains its curvature and extends beyond the view.
+town. The terrain cylinder extends beyond the view. Its radius is now
+360/(2*pi), ten percent smaller, for about eleven percent stronger curvature.
+The forward ground horizon moves from approximately 19.53 to 18.23 metres.
+Far clipping decreases from 70 to 60 metres, and the terrain candidate window
+from 48 rows ahead / 20 behind to 32 ahead / 20 behind. Camera lens and offsets
+are unchanged. At the same fractional camera positions, host geometry audits
+compare retained floor cells and strips; these are work counts, not FPS claims.
+
+For a uniform floor at sixteen identical fractional camera positions, the
+candidate envelope decreases from 4,290 to 2,658 cells per rebuild (38%). Mean
+retained cells decrease from 650.625 to 595.9375 (8.4%), and merged strips from
+25.6875 to 24.3125. The alternating-material stress sweep remains within the
+unchanged 1,365-strip budget, reaching 617 strips. Coverage auditing spans 64
+metres ahead and 40 behind, beyond the generated window, to catch missing rows.
 
 Terrain culling adds one full logical cell around the viewport: its enclosing
 sphere grows from 0.8 to 1.8 metres, and each row envelope gains two columns on

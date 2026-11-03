@@ -6,7 +6,8 @@ public static class TerrainTiles
     public const int SurfaceCount=13;
     public const int Grass=0,Water=1,Wood=2,Sand=3,Rock=4,Pavement=5,Dirt=6,Floor=7,Building=8;
     public const int Terracotta=9,StonePavement=10,SandPatch=11,Pond=12;
-    public const int GroundRows=68;
+    public const int GroundRowsAhead=32,GroundRowsBehind=20;
+    public const int GroundRows=GroundRowsAhead+GroundRowsBehind;
     // Enclose the one-metre cell, then keep another full cell beyond each
     // viewport plane. GX clips the retained triangles at the actual viewport.
     public const float GroundCellRadius=.8f,ViewportPadding=1f;

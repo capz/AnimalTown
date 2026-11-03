@@ -4,7 +4,7 @@ internal static class TerrainEdgeChecks
 {
     internal static void Run(Action<bool,string> check)
     {
-        for(int edge=0;edge<4;edge++)for(int depth=2;depth<65;depth+=3){
+        for(int edge=0;edge<4;edge++)for(int depth=2;depth<CylinderWorld.Far-2;depth+=3){
             float x=0,up=0;
             float tangent=edge<2?RenderView.TanX:RenderView.TanY;
             float normal=(float)Math.Sqrt(1+tangent*tangent);
@@ -30,9 +30,11 @@ internal static class TerrainEdgeChecks
             state.X=99.01f+offset*.137f;state.Z=99.01f+offset*.113f;
             strips.Prepare(state,0,data);maximum=Math.Max(maximum,strips.Count);
             check(strips.Count<=FloorStrips.Capacity&&strips.Count*6<=8190,"padded checkerboard floor fits the existing geometry budget");
-            int minZ=(int)state.Z/2*2-48,centerX=(int)state.X/2*2;
-            for(int row=0;row<TerrainTiles.GroundRows;row++){
-                int z=minZ+row;var a=CylinderWorld.Surface(z,state.Z);var b=CylinderWorld.Surface(z+1,state.Z);
+            int snapZ=(int)state.Z/2*2,centerX=(int)state.X/2*2;
+            // Audit well outside the generated window too: reducing lookahead
+            // must never hide a visible or padded cell by omitting its row.
+            for(int z=snapZ-64;z<=snapZ+40;z++){
+                var a=CylinderWorld.Surface(z,state.Z);var b=CylinderWorld.Surface(z+1,state.Z);
                 if(!RenderView.SurfaceFront(z,state.Z)&&!RenderView.SurfaceFront(z+1,state.Z))continue;
                 for(int x=centerX-64;x<centerX+64;x++){
                     bool old=RenderView.Sphere(x+.5f,(a.Y+b.Y)*.5f,(a.Z+b.Z)*.5f,.8f,state.X,state.Z);

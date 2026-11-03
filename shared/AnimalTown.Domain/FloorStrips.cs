@@ -25,7 +25,7 @@ public sealed class FloorStrips
     {
         Count=0;RejectedQuads=0;
         if(room!=0){int size=state.HouseTier==0?4:state.HouseTier==1?6:8;Add(0,size,0,size,At(state,data,0,0,room));return;}
-        int minX=(int)state.X/2*2-CylinderWorld.ViewHalfWidth,minZ=(int)state.Z/2*2-48;
+        int minX=(int)state.X/2*2-CylinderWorld.ViewHalfWidth,minZ=(int)state.Z/2*2-TerrainTiles.GroundRowsAhead;
         for(int row=0;row<TerrainTiles.GroundRows;row++){
             int z=minZ+row,half=TerrainTiles.RowHalfWidth(row),left=minX+CylinderWorld.ViewHalfWidth-half,right=minX+CylinderWorld.ViewHalfWidth+half;
             if(!RenderView.SurfaceFront(z,state.Z)&&!RenderView.SurfaceFront(z+1,state.Z)){RejectedQuads+=right-left;continue;}

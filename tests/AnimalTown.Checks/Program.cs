@@ -46,7 +46,14 @@ double previousFocusDepth=-6*RenderView.ForwardY-8*RenderView.ForwardZ;
 double focusDepth=-CylinderWorld.CameraHeight*RenderView.ForwardY-CylinderWorld.CameraBack*RenderView.ForwardZ;
 Check(Math.Abs(focusDepth/previousFocusDepth-.9)<.00001,"closer camera shows ninety percent of the previous horizontal span at the player");
 Check(Math.Abs(RenderView.ForwardY/RenderView.ForwardZ-9f/16)<.00001,"closer camera retains its previous pitch");
-Check(CylinderWorld.ViewHalfWidth>70*Math.Tan(CylinderWorld.CameraFieldOfView*Math.PI/360)*4/3,"cylinder extends past far-plane viewport sides");
+Check(CylinderWorld.ViewHalfWidth>CylinderWorld.Far*Math.Tan(CylinderWorld.CameraFieldOfView*Math.PI/360)*4/3,"cylinder extends past far-plane viewport sides");
+double oldRadius=400/(2*Math.PI),oldEye=Math.Sqrt((oldRadius+CylinderWorld.CameraHeight)*(oldRadius+CylinderWorld.CameraHeight)+CylinderWorld.CameraBack*CylinderWorld.CameraBack);
+double eye=Math.Sqrt((CylinderWorld.Radius+CylinderWorld.CameraHeight)*(CylinderWorld.Radius+CylinderWorld.CameraHeight)+CylinderWorld.CameraBack*CylinderWorld.CameraBack);
+double oldHorizon=oldRadius*(Math.Acos(oldRadius/oldEye)-Math.Atan2(CylinderWorld.CameraBack,oldRadius+CylinderWorld.CameraHeight));
+double horizon=CylinderWorld.Radius*(Math.Acos(CylinderWorld.Radius/eye)-Math.Atan2(CylinderWorld.CameraBack,CylinderWorld.Radius+CylinderWorld.CameraHeight));
+Check(CylinderWorld.Radius<oldRadius&&horizon<oldHorizon-1,"stronger cylinder brings the forward ground horizon over a metre closer");
+Check(TerrainTiles.GroundRowsAhead>=Math.Ceiling(horizon)+4&&TerrainTiles.GroundRowsAhead<48&&CylinderWorld.Far<70,"reduced draw windows retain a generous margin beyond the curved horizon");
+var curved=CylinderWorld.Surface(-12,0);Check(curved.Y<oldRadius*Math.Cos(12/oldRadius)-oldRadius,"nearby ground bends more strongly at the same logical coordinate");
 for(int i=-50;i<=50;i++)
 {
     var pose=CylinderWorld.Surface(i,0);double radiusSquared=(pose.Y+CylinderWorld.Radius)*(pose.Y+CylinderWorld.Radius)+pose.Z*pose.Z;
@@ -70,12 +77,12 @@ Check(TerrainTiles.PatchCoordinate(0,8,1)==0&&TerrainTiles.PatchCoordinate(1,8,1
 Check(Math.Abs(TerrainTiles.PatchCoordinate(4,8,1)-1.5f)<.00001f,"nine-slice center stretches without repeating");
 for(int row=0;row<TerrainTiles.GroundRows;row++)for(int offset=0;offset<=4;offset++)
 {
-    float focus=offset*.5f;var pose=CylinderWorld.Surface(-48+row,focus);
+    float focus=offset*.5f;var pose=CylinderWorld.Surface(-TerrainTiles.GroundRowsAhead+row,focus);
     double depth=(pose.Y-CylinderWorld.CameraHeight)*RenderView.ForwardY+(pose.Z-focus-CylinderWorld.CameraBack)*RenderView.ForwardZ;
     double projectedHalfWidth=Math.Max(0,depth)*Math.Tan(CylinderWorld.CameraFieldOfView*Math.PI/360)*4/3;
     Check(TerrainTiles.RowHalfWidth(row)>projectedHalfWidth+4,"textured cylinder rows extend beyond the padded viewport including sub-cell camera motion");
 }
-Check(TerrainTiles.GroundVertexCount<26000,"padded coarse terrain envelope stays bounded before culling and merging");
+Check(TerrainTiles.GroundVertexCount<18000,"shorter padded terrain envelope reduces candidate work before culling and merging");
 var arrival=new GameState(7319);arrival.Town.AddGround(3,18,39,3,0);
 Check(arrival.PlaceHouse(15,35,false),"house placement with a blocked doorway finds a clear arrival");
 Check(arrival.CanWalk(arrival.X,arrival.Z,0)&&arrival.Z>=40.5f,"new house arrival is outside its collision footprint and avoids trees");
@@ -83,7 +90,7 @@ arrival.X=18;arrival.Z=38;Check(!arrival.CanWalk(arrival.X,arrival.Z,0),"old sav
 Check(arrival.MoveToHouseEntrance()&&arrival.CanWalk(arrival.X,arrival.Z,0),"old trapped save gets a clear arrival without deleting objects");
 Check(Math.Abs(Math.Sqrt(CylinderWorld.CameraHeight*CylinderWorld.CameraHeight+CylinderWorld.CameraBack*CylinderWorld.CameraBack)-9)<.001,"camera eye distance reduced ten percent from ten to nine metres");
 Check(RenderView.Sphere(0,1,0,1,0,0)&&!RenderView.Sphere(100,1,0,1,0,0)&&!RenderView.Sphere(0,1,100,1,0,0),"view keeps player and rejects side/behind camera");
-for(int edge=0;edge<4;edge++)for(int depth=2;depth<65;depth+=3)
+for(int edge=0;edge<4;edge++)for(int depth=2;depth<CylinderWorld.Far-2;depth+=3)
 {
     float x=0,up=0;
     if(edge<2)x=(edge==0?-1:1)*(depth*RenderView.TanX+.5f);
@@ -125,7 +132,7 @@ Check(occludedSpheres>500&&visibleSpheres>500,"horizon sweep exercises rejection
 for(int offset=0;offset<16;offset++)
 {
     float fx=100+offset*.137f,fz=100+offset*.113f;int visible=0;
-    int minX=(int)fx/2*2-CylinderWorld.ViewHalfWidth,minZ=(int)fz/2*2-48;
+    int minX=(int)fx/2*2-CylinderWorld.ViewHalfWidth,minZ=(int)fz/2*2-TerrainTiles.GroundRowsAhead;
     for(int row=0;row<TerrainTiles.GroundRows;row++)
     {
         int z=minZ+row,half=TerrainTiles.RowHalfWidth(row);
@@ -198,7 +205,7 @@ var floorGame=new GameState(3);Array.Fill(floorGame.Town.Tiles,(byte)0);floorGam
 Check(strips.Count>0&&strips.Count<100,"uniform repeating ground merges cells into bounded strips");
 for(int n=0;n<strips.Count;n++){Check(strips.X1[n]>strips.X0[n]&&strips.Z1[n]==strips.Z0[n]+1&&strips.Material[n]==0,"merged strips retain curved rows and material");}
 int fineCells=0,coveredCells=0;for(int n=0;n<strips.Count;n++)coveredCells+=strips.X1[n]-strips.X0[n];
-int floorMinZ=(int)floorGame.Z/2*2-48,floorCenterX=(int)floorGame.X/2*2;
+int floorMinZ=(int)floorGame.Z/2*2-TerrainTiles.GroundRowsAhead,floorCenterX=(int)floorGame.X/2*2;
 for(int row=0;row<TerrainTiles.GroundRows;row++){
     int z=floorMinZ+row,half=TerrainTiles.RowHalfWidth(row);var a=CylinderWorld.Surface(z,floorGame.Z);var b=CylinderWorld.Surface(z+1,floorGame.Z);
     if(!RenderView.SurfaceFront(z,floorGame.Z)&&!RenderView.SurfaceFront(z+1,floorGame.Z))continue;

@@ -101,7 +101,7 @@ cliff transitions need a valid ramp. House reservation validates the entire
 
 Fixed north-facing camera, true **cylindrical** geometry with east-west axis;
 never curve X into a sphere. For surface arc distance d=z-focusZ, radius
-R=400/(2*pi), independent of the cropped playable bounds, angle a=d/R: render y=(R+h)*cos(a)-R and
+R=360/(2*pi), independent of the cropped playable bounds, angle a=d/R: render y=(R+h)*cos(a)-R and
 z'=focusZ+(R+h)*sin(a), retaining X. CPU tessellation subdivides each screen
 tile for fixed-function GX. All object transforms are children of the world
 root and rotate around X by a before their local facing. Local down is the
@@ -110,6 +110,12 @@ as the cylinder rolls. Terrain, props, villagers, player, fence, furniture and
 placement markers use this same transform. Cylinder terrain extends 64 metres
 left and right of the focus, beyond the visible frustum even at the horizon;
 its sides must never appear as exposed edges. Map remains a square 8×8 grid.
+The radius is ten percent smaller than the original 400/(2*pi) presentation,
+bringing the forward ground horizon from roughly 19.53 to 18.23 logical metres.
+The far plane is 60 metres and terrain considers 32 one-metre rows ahead plus
+20 behind; the one-metre viewport guard band is preserved. Camera distance,
+pitch and field of view are unchanged. Coverage tests audit beyond this row
+window so a shorter lookahead cannot silently remove on-screen ground.
 Avoid real-time shadow maps. Cull conservatively in flat XZ
 with cylinder-expanded height bounds. Use Hypercube.ScenePolicy LOD hysteresis and
 coarse fallback residency; never allow collision to depend on high-detail visual

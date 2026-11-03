@@ -2,9 +2,10 @@
 
 The playable town is 8×8 screen-sized square tiles. Each screen tile is
 20×20 logical metres, so collision and terrain use 160×160 one-metre fine cells.
-The existing camera and cylinder radius are unchanged: reducing playable bounds
-does not tighten the rolling view, and rendered ground still extends beyond the
-viewport. Shops, hall, gate, campsite, six resident homes and the default player
+Playable bounds and presentation curvature are independent. The camera remains
+fixed; a separately tuned radius of 360/(2*pi) gives a slightly stronger rolling
+view and closer horizon. Rendered ground still extends beyond the viewport.
+Shops, hall, gate, campsite, six resident homes and the default player
 plot all remain within the retained region.
 
 The terrain buffer falls from 160,000 to 25,600 bytes (84% less). The map fills

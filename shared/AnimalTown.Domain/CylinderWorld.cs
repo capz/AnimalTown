@@ -10,13 +10,14 @@ public readonly struct CylinderPose
 }
 public static class CylinderWorld
 {
-    // Cropping playable bounds must not tighten the existing rolling view.
-    public const float Radius=400f/6.28318530718f;
+    // Curvature is independent of playable bounds. A ten-percent smaller
+    // radius brings the horizon closer without changing the camera lens.
+    public const float Radius=360f/6.28318530718f;
     public const int ViewHalfWidth=64;
     // Preserve the lens; scale eye and aim offsets together to keep the pitch.
     public const float CameraFieldOfView=53.54f;
     public const float CameraHeight=5.4f,CameraBack=7.2f,CameraAimAhead=2.4f;
-    public const float Near=.1f,Far=70;
+    public const float Near=.1f,Far=60;
     public static CylinderPose Surface(float logicalZ,float focusZ,float height=0)
     {
         float angle=(logicalZ-focusZ)/Radius;
