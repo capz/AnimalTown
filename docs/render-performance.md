@@ -41,14 +41,21 @@ cache. The SDK's separate model texture cache is outside that 2 MiB budget.
 ## Visibility
 
 Objects use conservative sphere tests against all six camera frustum planes.
+Outdoors, a second test rejects spheres completely hidden by the cylindrical
+ground. In the cylinder's YZ cross-section, the complete projected sphere must
+lie behind the camera's tangent chord and inside both tangent shadow planes.
+Height and radius are included: roofs, heads and foliage that still peek over
+the horizon stay visible. The test uses precomputed camera constants and dot
+products, with no per-object trigonometry or allocations. It also runs before
+tree selection and villager animation updates. Indoor rooms bypass this test.
 Invisible villagers also skip animation/skinning. Terrain rejects backside rows
 and off-screen cells before writing vertices; fixed 4095/8190-vertex mesh buckets
 bound uploads and GX submissions. Unused vertices are degenerate triangles.
 Ground and solid placeholder meshes enable GX backface culling. Model materials
 retain the SDK's determinant-aware backface handling and authored two-sided
 foliage. GX clips triangles crossing the viewport and rejects backfaces;
-partially visible meshes still pay CPU vertex/submission costs. There is no
-claimed hidden-surface/occlusion culler.
+partially visible meshes still pay CPU vertex/submission costs. This is cylinder
+occlusion only; buildings and trees do not act as additional CPU occluders.
 
 ## Reproducible measurements
 

@@ -22,7 +22,7 @@ the GDD. The technical baseline was committed/pushed first as `0064efd`.
   large rounded corners, with pill selections and rounded keyboard keys.
   Gorditas Bold titles/headings use offline-baked IA8; all other UI reads the
   console's native IPL font through SDK PR #145. No firmware font bytes ship.
-* Developer-authored seasonal terrain manifest, repeat variants and stretched nine-slice patches using all four supplied transition materials; guttered/inset sampling and bounded textured meshes. Runtime textures are capped at 128 pixels, with paged UI/IPL glyphs, source-keyed caching and a 32 KiB active RGB565 terrain texture. The camera is one third closer, with frustum rejection and GX backface culling. Opt-in checksummed frame telemetry separates CPU phases and presentation waits. See render-performance.md.
+* Developer-authored seasonal terrain manifest, repeat variants and stretched nine-slice patches using all four supplied transition materials; guttered/inset sampling and bounded textured meshes. Runtime textures are capped at 128 pixels, with paged UI/IPL glyphs, source-keyed caching and a 32 KiB active RGB565 terrain texture. The camera is one third closer, with frustum/cylinder-horizon rejection and GX backface culling. Opt-in checksummed frame telemetry separates CPU phases and presentation waits. See render-performance.md.
   Missing seamless textures use explicit flat-color placeholders. See terrain-authoring.md and world-asset-requests.md.
 * Controller navigation, character/name/catchphrase creation, house reservation,
   backpack icon grid (10/20/30 slots), selected-item popovers, shop capacity

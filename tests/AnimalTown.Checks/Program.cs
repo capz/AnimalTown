@@ -70,6 +70,34 @@ arrival.X=18;arrival.Z=38;Check(!arrival.CanWalk(arrival.X,arrival.Z,0),"old sav
 Check(arrival.MoveToHouseEntrance()&&arrival.CanWalk(arrival.X,arrival.Z,0),"old trapped save gets a clear arrival without deleting objects");
 Check(Math.Abs(Math.Sqrt(CylinderWorld.CameraHeight*CylinderWorld.CameraHeight+CylinderWorld.CameraBack*CylinderWorld.CameraBack)-10)<.001,"camera eye distance reduced from fifteen to ten metres");
 Check(RenderView.Sphere(0,1,0,1,0,0)&&!RenderView.Sphere(100,1,0,1,0,0)&&!RenderView.Sphere(0,1,100,1,0,0),"view keeps player and rejects side/behind camera");
+var nearHorizon=CylinderWorld.Surface(0,0,1);
+Check(RenderView.AboveHorizon(nearHorizon.Y,nearHorizon.Z,1,0),"nearby player stays above horizon");
+var behindHorizon=CylinderWorld.Surface(-50,0,1);
+Check(RenderView.Sphere(0,behindHorizon.Y,behindHorizon.Z,1,0,0)&&!RenderView.AboveHorizon(behindHorizon.Y,behindHorizon.Z,1,0),"horizon rejects objects still inside camera frustum");
+var tallHorizon=CylinderWorld.Surface(-30,0,8);
+Check(RenderView.AboveHorizon(tallHorizon.Y,tallHorizon.Z,1,0),"tall silhouette peeking over horizon remains visible");
+var shiftedHorizon=CylinderWorld.Surface(50,100,1);
+Check(!RenderView.AboveHorizon(shiftedHorizon.Y,shiftedHorizon.Z,1,100),"horizon follows player world position");
+bool RayBlocked(double y,double z)
+{
+    double ey=CylinderWorld.Radius+CylinderWorld.CameraHeight,ez=CylinderWorld.CameraBack;
+    double dy=y+CylinderWorld.Radius-ey,dz=z-ez,a=dy*dy+dz*dz,b=2*(ey*dy+ez*dz),c=ey*ey+ez*ez-CylinderWorld.Radius*CylinderWorld.Radius;
+    double discriminant=b*b-4*a*c;if(a==0||discriminant<=0)return false;
+    double entry=(-b-Math.Sqrt(discriminant))/(2*a);return entry>=0&&entry<1-.000001;
+}
+int occludedSpheres=0,visibleSpheres=0;
+for(int arc=-100;arc<=100;arc+=2)for(int height=0;height<=12;height+=2)foreach(float radius in new[]{0f,.5f,1.5f,4f})
+{
+    var center=CylinderWorld.Surface(arc,0,height);
+    if(RenderView.AboveHorizon(center.Y,center.Z,radius,0)){visibleSpheres++;continue;}
+    occludedSpheres++;
+    for(int sample=0;sample<32;sample++)
+    {
+        double angle=sample*Math.PI/16;
+        Check(RayBlocked(center.Y+Math.Cos(angle)*radius,center.Z+Math.Sin(angle)*radius),"culled sphere has no visible silhouette sample through cylinder");
+    }
+}
+Check(occludedSpheres>500&&visibleSpheres>500,"horizon sweep exercises rejection and conservative retention");
 for(int offset=0;offset<16;offset++)
 {
     float fx=100+offset*.137f,fz=100+offset*.113f;int visible=0;

@@ -330,9 +330,9 @@ internal sealed class TownGame
         var v=new VertexPositionColor[36];for(int i=0;i<36;i++){int a=ids[i%3==0?i:i%3==1?i+1:i-1]*3;v[i]=new VertexPositionColor(new Vector3(p[a],p[a+1],p[a+2]),Color32.White);}return Mesh.Create(v);
     }
     private void Box(float x,float y,float z,float w,float h,float d,Color32 color)
-    { var center=SurfacePoint(x+w*.5f,z+d*.5f,y+h*.5f);float radius=(float)Math.Sqrt(w*w+h*h+d*d)*.5f+.05f;if(!RenderView.Sphere(center.X,center.Y,center.Z,radius,state.X,state.Z)){FrameProfile.CulledObjects++;return;}transform.LocalPosition=SurfacePoint(x,z,y);transform.LocalScale=new Vector3(w,h,d);transform.LocalRotation=SurfaceRotation(z);plain.Color=color;renderer.DrawMesh(cube,plain,transform); }
+    { var center=SurfacePoint(x+w*.5f,z+d*.5f,y+h*.5f);float radius=(float)Math.Sqrt(w*w+h*h+d*d)*.5f+.05f;if(!RenderView.Sphere(center.X,center.Y,center.Z,radius,state.X,state.Z)||(room==0&&!RenderView.AboveHorizon(center.Y,center.Z,radius,state.Z))){FrameProfile.CulledObjects++;return;}transform.LocalPosition=SurfacePoint(x,z,y);transform.LocalScale=new Vector3(w,h,d);transform.LocalRotation=SurfaceRotation(z);plain.Color=color;renderer.DrawMesh(cube,plain,transform); }
     private bool Visible(float x,float z,float scale)
-    {var center=SurfacePoint(x,z,scale*.5f);return RenderView.Sphere(center.X,center.Y,center.Z,scale*1.5f,state.X,state.Z);}
+    {var center=SurfacePoint(x,z,scale*.5f);float radius=scale*1.5f;return RenderView.Sphere(center.X,center.Y,center.Z,radius,state.X,state.Z)&&(room!=0||RenderView.AboveHorizon(center.Y,center.Z,radius,state.Z));}
     private void ModelAt(ModelInstance m,float x,float z,float scale,float facing=0)
     { if(!Visible(x,z,scale)){FrameProfile.CulledObjects++;return;}transform.LocalPosition=SurfacePoint(x,z);transform.LocalScale=new Vector3(scale,scale,scale);transform.LocalRotation=SurfaceRotation(z,facing);renderer.DrawModel(m,transform); }
     internal void Draw()
