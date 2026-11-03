@@ -78,7 +78,15 @@ The default manifest uses all four provided center materials. Files prefixed
 sandy environments. They are available for authoring, not automatically substituted
 for grass-bordered sheets without a matching layout. No artwork is regenerated.
 
-## Hardware budget and verification
+## Current repeating renderer
+
+The active renderer now uses load-time 64-pixel repeating textures and merged
+curved strips. See [generated-trees-repeat-floor.md](generated-trees-repeat-floor.md)
+for `repeatSources`, source-sheet crops, CMPR/RGB565 selection, mipmaps and memory
+budgets. The atlas workflow below is retained as the earlier authoring baseline;
+legacy nine-slice styles supply center crops to the active repeating renderer.
+
+## Earlier atlas budget and verification
 
 Default `tilePixels: 32`, `atlasSize: 256` gives 49 padded slots and **128 KiB**
 on-disc RGB565 texture storage. The default four nine-slice materials plus nine

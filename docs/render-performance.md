@@ -30,12 +30,15 @@ rotated headings retain a shared pivot. The IPL font is extracted into six
 libogc decoded font storage are freed after extraction; no oversized font
 texture is uploaded and no firmware font is distributed.
 
-The application cache holds at most 32 source entries and 2 MiB of native pixels.
+The application cache holds at most 256 source entries and 2 MiB of native pixels.
 Its immutable-disc key is the build identity plus original disc URI, processing
 version and atlas layout. A source FNV fingerprint and original dimensions remain
 available without retaining original pixels. A hit avoids disc I/O and decoding.
 Leases prevent eviction of active textures; zero-lease entries are evicted by
-least recent use. This is a read-only disc cache, not a hot-reloading SD asset
+least recent use. Repeating floors have their own <=64-pixel policy with CMPR or
+RGB565 mipmaps and mirrored-repeat samplers; the current season uses 13.5 KiB.
+See [generated-trees-repeat-floor.md](generated-trees-repeat-floor.md).
+This is a read-only disc cache, not a hot-reloading SD asset
 cache. The SDK's separate model texture cache is outside that 2 MiB budget.
 
 ## Visibility
@@ -49,8 +52,9 @@ the horizon stay visible. The test uses precomputed camera constants and dot
 products, with no per-object trigonometry or allocations. It also runs before
 tree selection and villager animation updates. Indoor rooms bypass this test.
 Invisible villagers also skip animation/skinning. Terrain rejects backside rows
-and off-screen cells before writing vertices; fixed 4095/8190-vertex mesh buckets
-bound uploads and GX submissions. Unused vertices are degenerate triangles.
+and off-screen cells before writing vertices. Adjacent equal-material cells
+merge into repeating strips with reusable per-material dynamic buffers.
+Unused capacity is degenerate white geometry, preserving indexed GX submission.
 Ground and solid placeholder meshes enable GX backface culling. Model materials
 retain the SDK's determinant-aware backface handling and authored two-sided
 foliage. GX clips triangles crossing the viewport and rejects backfaces;

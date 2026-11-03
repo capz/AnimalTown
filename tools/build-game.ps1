@@ -34,13 +34,10 @@ if (!$SkipAssets) {
         spaniel='villagers/villager_cockerspaniel.glb'
         building='world-stuctures/Meshy_AI_animal_crossing_konbi_1102122741_texture.glb'
         tent='world-stuctures/structure_tent.glb'
-        deciduous='world-stuctures/Meshy_AI_ac_deciduous_tree_3d_1102122647_texture.glb'
-        palm='world-stuctures/Meshy_AI_ac_palm_tree_3d_1102122704_texture.glb'
-        pine='world-stuctures/Meshy_AI_ac_pine_tree_3d_1102122723_texture.glb'
     }
     # Retire stale generated outputs from the previous species list without
     # touching artist sources. Never package both old and replacement villagers.
-    foreach($retired in @('gecko','prairie')){
+    foreach($retired in @('gecko','prairie','deciduous','palm','pine')){
         $old=Join-Path $projectRoot "out/disc/$retired.dndmodel"
         if(Test-Path -LiteralPath $old){
             $archive=Join-Path $projectRoot 'out/retired-models';New-Item -ItemType Directory -Force -Path $archive | Out-Null

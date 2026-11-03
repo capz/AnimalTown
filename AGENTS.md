@@ -12,11 +12,11 @@ builds marked as prereleases and report hardware validation honestly.
 
 # World art
 
-Trees must use only the user-provided tree model assets. Never generate tree
-artwork or procedural tree stand-ins, impostors, replacement canopies or trunks.
-Ask the user for any additional tree species, seasonal assets or lower-poly LODs,
-with explicit dimensions, triangle/texture budgets and pivots. Do not silently
-invent them. Seasonal floor textures do not authorize changing tree artwork.
+The user has now explicitly authorized generated low-poly trees for performance,
+superseding the previous supplied-model-only restriction. Use shared generated
+deciduous/palm/pine meshes; keep original tree GLBs as reference but do not load
+or package them in the active game. Preserve tree collision, planting and radial
+world parenting. Keep geometry bounded and reuse native indexed buffers.
 
 World asset requests must stay within GameCube/3DS-era Animal Crossing types:
 natural ramps, river/pond/shore banks, cliffs, waterfalls and bridges, with original

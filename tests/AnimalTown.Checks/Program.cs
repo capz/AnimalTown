@@ -140,5 +140,41 @@ Check(filtered[0]==255&&filtered[2]==0&&filtered[3]==127,"resampling avoids tran
 Check(TexturePixels.FitWidth(1024,256)==128&&TexturePixels.FitHeight(1024,256)==32,"resampling preserves aspect ratio");
 uint identity=TexturePixels.Hash(alphaPackage);alphaPackage[32]^=1;Check(identity!=TexturePixels.Hash(alphaPackage),"source fingerprint notices changed original bytes");
 bool badTexture=false;try{TexturePixels.Validate(new byte[32]);}catch(InvalidOperationException){badTexture=true;}Check(badTexture,"invalid texture rejected before decoding");
+for(int kind=0;kind<3;kind++){
+    var tree=LowPolyTree.Build(kind);Check(tree.Triangles>24&&tree.Triangles<=LowPolyTree.TriangleBudget,"generated tree triangle budget");float minY=10,maxY=-10;var parts=new int[4];
+    for(int t=0;t<tree.Triangles;t++){
+        Check(tree.Parts[t]<4,"tree material range");parts[tree.Parts[t]]++;int at=t*9;
+        float ax=tree.Positions[at+3]-tree.Positions[at],ay=tree.Positions[at+4]-tree.Positions[at+1],az=tree.Positions[at+5]-tree.Positions[at+2],bx=tree.Positions[at+6]-tree.Positions[at],by=tree.Positions[at+7]-tree.Positions[at+1],bz=tree.Positions[at+8]-tree.Positions[at+2];
+        float nx=ay*bz-az*by,ny=az*bx-ax*bz,nz=ax*by-ay*bx;Check(nx*nx+ny*ny+nz*nz>1e-10f,"generated faces are nondegenerate");
+        for(int v=0;v<3;v++){float y=tree.Positions[at+v*3+1];minY=Math.Min(minY,y);maxY=Math.Max(maxY,y);}
+    }
+    Check(minY==0&&maxY>.9f&&maxY<=1.01f,"tree ground pivot and normalized height");for(int part=0;part<4;part++)Check(parts[part]>0,"every generated material has geometry");
+    Console.WriteLine("Generated tree "+kind+": "+tree.Triangles+" triangles");
+}
+var floorPixels=new byte[128*128*4];
+for(int y=0;y<128;y++)for(int x=0;x<128;x++){int at=(y*128+x)*4;floorPixels[at]=(byte)(x<64?255:0);floorPixels[at+2]=(byte)(x>=64?255:0);floorPixels[at+3]=255;}
+var floorSource=Package(4,128,128,TexturePixels.Encode(floorPixels,128,128,4));uint floorHash=TexturePixels.Hash(floorSource);var optimized=FloorTexture.Prepare(floorSource);
+Check(TexturePixels.Width(optimized)==64&&TexturePixels.Height(optimized)==64&&TexturePixels.Int(optimized,8)==14&&TexturePixels.Int(optimized,24)==5&&optimized.Length==32+2752,"floor downsamples, compresses and builds native mip chain");
+Check(TexturePixels.Pixel(optimized,0,0)==0xff0000ff&&TexturePixels.Pixel(optimized,63,0)==0x0000ffff&&TexturePixels.Pixel(optimized,63,63)==0x0000ffff,"floor CMPR tile/subblock addressing and opaque alpha");
+Check(TexturePixels.Hash(floorSource)==floorHash,"load-time optimization preserves original fingerprint");
+int[] palette={0xff0000,0x00ff00,0x0000ff,0xffff00,0x00ffff,0xff00ff,0xffffff,0};
+for(int y=0;y<128;y++)for(int x=0;x<128;x++){int at=(y*128+x)*4,c=palette[(x/2+y/2*4)%8];floorPixels[at]=(byte)(c>>16);floorPixels[at+1]=(byte)(c>>8);floorPixels[at+2]=(byte)c;}
+optimized=FloorTexture.Prepare(Package(4,128,128,TexturePixels.Encode(floorPixels,128,128,4)));
+Check(TexturePixels.Int(optimized,8)==4&&optimized.Length==32+10912,"high-error CMPR falls back to compact RGB565 mipmaps");
+var floorMeta=new byte[FloorStrips.Records];int[] floorHeader={0x32525441,1,13,13,64};
+void SetFloor(int at,int value){for(int b=0;b<4;b++)floorMeta[at+b]=(byte)(value>>(b*8));}
+for(int i=0;i<floorHeader.Length;i++)SetFloor(i*4,floorHeader[i]);
+for(int s=0;s<13;s++){SetFloor(20+s*20,1);SetFloor(24+s*20,s);for(int i=1;i<4;i++)SetFloor(24+s*20+i*4,-1);}FloorStrips.Validate(floorMeta);
+var floorGame=new GameState(3);Array.Fill(floorGame.Town.Tiles,(byte)0);floorGame.X=100.25f;floorGame.Z=100.5f;var strips=new FloorStrips();strips.Prepare(floorGame,0,floorMeta);
+Check(strips.Count>0&&strips.Count<100,"uniform repeating ground merges cells into bounded strips");
+for(int n=0;n<strips.Count;n++){Check(strips.X1[n]>strips.X0[n]&&strips.Z1[n]==strips.Z0[n]+1&&strips.Material[n]==0,"merged strips retain curved rows and material");}
+int fineCells=0,coveredCells=0;for(int n=0;n<strips.Count;n++)coveredCells+=strips.X1[n]-strips.X0[n];
+int floorMinZ=(int)floorGame.Z/2*2-48,floorCenterX=(int)floorGame.X/2*2;
+for(int row=0;row<TerrainTiles.GroundRows;row++){
+    int z=floorMinZ+row,half=TerrainTiles.RowHalfWidth(row);var a=CylinderWorld.Surface(z,floorGame.Z);var b=CylinderWorld.Surface(z+1,floorGame.Z);
+    if(!RenderView.SurfaceFront(z,floorGame.Z)&&!RenderView.SurfaceFront(z+1,floorGame.Z))continue;
+    for(int x=floorCenterX-half;x<floorCenterX+half;x++)if(RenderView.Sphere(x+.5f,(a.Y+b.Y)*.5f,(a.Z+b.Z)*.5f,.8f,floorGame.X,floorGame.Z)){fineCells++;int hits=0;for(int n=0;n<strips.Count;n++)if(strips.Z0[n]==z&&x>=strips.X0[n]&&x<strips.X1[n])hits++;Check(hits==1,"merged floor coverage has no holes or overlapping cells");}
+}
+Check(fineCells==coveredCells,"merged floor exactly covers the visible fine-cell set");strips.Prepare(floorGame,1,floorMeta);Check(strips.Count==1&&strips.Material[0]==7&&strips.X1[0]==4&&strips.Z1[0]==4,"indoor repeating floor is one flat quad");
 Console.WriteLine(checks+" gameplay/render/texture checks passed");
 Console.WriteLine("Textured cylinder: "+TerrainTiles.GroundVertexCount/3+" triangles");

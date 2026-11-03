@@ -20,7 +20,7 @@ static class Program
             if(args[0]=="audit")Audit();
             else if(args[0]=="prepare")Prepare(args[2],args[3]);
             else if(args[0]=="art")Art();
-            else if(args[0]=="terrain")TerrainAssets.Build(Root);
+            else if(args[0]=="terrain")RepeatFloorAssets.Build(Root);
             else if(args[0]=="terrain-check")TerrainChecks.Run(Root);
             else if(args[0]=="iso")Disc(args[2],args[3]);
             else if(args[0]=="verify")Verify(args[2]);
@@ -88,7 +88,7 @@ static class Program
     static void Art()
     {
         string dir=Path.Combine(Root,"out/disc");Directory.CreateDirectory(dir);
-        BrandAssets.Build(Root);TerrainAssets.Build(Root);
+        BrandAssets.Build(Root);RepeatFloorAssets.Build(Root);
         byte[] image=Banner(96);File.WriteAllBytes(Path.Combine(dir,"savebanner.rgb5a3"),image);File.WriteAllBytes(Path.Combine(dir,"saveicon.rgb5a3"),Banner(32));
     }
     static void Disc(string dolPath,string commit)
@@ -150,9 +150,10 @@ static class Program
             if(!seen.Add(n)||offset%32768!=0||offset<previous||(long)offset+size>f.Length)throw new InvalidDataException("FST range invalid");previous=offset+size;
             if(n=="opening.bnr"){byte[] b=new byte[size];f.Position=offset;f.ReadExactly(b);if(b.Length!=6496||Encoding.ASCII.GetString(b,0,4)!="BNR1")throw new InvalidDataException("Banner invalid");}
         }
-        foreach(string n in new[]{"opening.bnr","BUILD.txt","savebanner.rgb5a3","saveicon.rgb5a3","gorditas-bold.dndtex","gorditas-bold.metrics","wordmark.dndtex","item-icons.dndtex","cat.dndmodel","fox.dndmodel","bunny.dndmodel","giraffe.dndmodel","hamster.dndmodel","spaniel.dndmodel","building.dndmodel","deciduous.dndmodel","palm.dndmodel","pine.dndmodel"})if(!seen.Contains(n))throw new InvalidDataException("Missing "+n);
+        foreach(string n in new[]{"opening.bnr","BUILD.txt","savebanner.rgb5a3","saveicon.rgb5a3","gorditas-bold.dndtex","gorditas-bold.metrics","wordmark.dndtex","item-icons.dndtex","cat.dndmodel","fox.dndmodel","bunny.dndmodel","giraffe.dndmodel","hamster.dndmodel","spaniel.dndmodel","building.dndmodel"})if(!seen.Contains(n))throw new InvalidDataException("Missing "+n);
+        if(seen.Contains("deciduous.dndmodel")||seen.Contains("palm.dndmodel")||seen.Contains("pine.dndmodel"))throw new InvalidDataException("Retired high-poly trees must not ship");
         if(!seen.Contains("tent.dndmodel"))throw new InvalidDataException("Missing supplied tent model");
-        foreach(string season in new[]{"spring","summer","fall","winter"})foreach(string extension in new[]{"bin","dndtex"})if(!seen.Contains("terrain-"+season+"."+extension))throw new InvalidDataException("Missing seasonal terrain asset");
+        foreach(string season in new[]{"spring","summer","fall","winter"})foreach(string extension in new[]{"bin","dndtex"})if(!seen.Contains(extension=="bin"?"floor-"+season+".bin":"floor-"+season+"-0.dndtex"))throw new InvalidDataException("Missing seasonal terrain asset");
         if(!seen.Contains("terrain.cfg"))throw new InvalidDataException("Missing terrain configuration");
         Console.WriteLine("Verified full-size bootable disc structure, "+(count-1)+" files");
     }

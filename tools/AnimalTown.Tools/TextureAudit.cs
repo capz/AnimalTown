@@ -25,13 +25,17 @@ internal static class TextureAudit
         foreach(string path in Directory.GetFiles(Path.Combine(root,"out/disc"),"*.dndtex").Order())
         {
             byte[] bytes=File.ReadAllBytes(path);TexturePixels.Validate(bytes);int width=TexturePixels.Width(bytes),height=TexturePixels.Height(bytes);
+            if(Path.GetFileName(path).StartsWith("floor-",StringComparison.Ordinal)){
+                byte[] native=FloorTexture.Prepare(bytes);records.Add(new{source="dvd:/"+Path.GetFileName(path),sourceSha=Convert.ToHexString(SHA256.HashData(bytes)),width,height,runtimeWidth=TexturePixels.Width(native),runtimeHeight=TexturePixels.Height(native),format=TexturePixels.Int(native,8),levels=TexturePixels.Int(native,24),residentBytes=native.Length-32,policy="floor64-mips-mirror-auto-v1"});continue;
+            }
             bool atlas=Path.GetFileName(path) is "gorditas-bold.dndtex" or "wordmark.dndtex" or "item-icons.dndtex";
             records.Add(new{source="dvd:/"+Path.GetFileName(path),sourceSha=Convert.ToHexString(SHA256.HashData(bytes)),width,height,
                 pageWidth=atlas?Math.Min(128,width):TexturePixels.FitWidth(width,height),pageHeight=atlas?Math.Min(128,height):TexturePixels.FitHeight(width,height),
                 pages=atlas?((width+127)/128)*((height+127)/128):1});
         }
-        if(models!=11)throw new InvalidDataException("Expected all eleven console models in texture audit");
+        if(models!=8)throw new InvalidDataException("Expected eight imported console models; trees are generated native meshes");
+        string originals=Path.Combine(root,"out/floor-sources.json");if(File.Exists(originals))records.Add(new{floorSourceProvenance=JsonSerializer.Deserialize<JsonElement>(File.ReadAllText(originals))});
         File.WriteAllText(Path.Combine(root,"out/texture-audit.json"),JsonSerializer.Serialize(records,new JsonSerializerOptions{WriteIndented=true}));
-        Console.WriteLine("Texture audit: eleven supplied models <=128px; source/package fingerprints recorded");
+        Console.WriteLine("Texture audit: eight imported models <=128px; generated trees use no textures");
     }
 }

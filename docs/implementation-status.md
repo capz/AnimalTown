@@ -9,21 +9,21 @@ the GDD. The technical baseline was committed/pushed first as `0064efd`.
   ASP.NET Core/PostgreSQL server builds; shared AOT-compatible gameplay assembly.
 * Full-size bootable GameCube ISO, original homebrew apploader, FST, game title,
   commit in disc header/BNR/title/save comment, disc banner and save banner/icon.
-* Ten supplied GLBs converted into textured native models, six species selection.
+* Eight supplied GLBs converted into textured native models, six species selection.
   The supplied guest tent is also converted and packaged without eagerly loading
   it; the shop interior is in source under assets/models/interiors. See structure-assets.md.
   The five non-fox villagers use the supplied ~1,600-triangle replacements;
   only the fox currently has walking/running clips. See villager-assets.md for
   source mappings and missing rigs/clips. True cylindrical terrain with an
   east-west axis and radius 400/(2*pi), square 20×20 screen-tile world, conservative
-  Hypercube visibility and up to eight nearest visible trees using only the supplied tree GLBs. Procedural tree stand-ins have been removed.
+  frustum/horizon visibility and up to 32 shared generated low-poly trees (60–84 triangles each), now explicitly authorized by the user. Original tree GLBs remain reference sources and are excluded from the ISO.
   Objects inherit the world root and use the cylinder's radial surface normal;
   terrain extends beyond the viewport. Speech balloons and all UI panels use
   large rounded corners, with pill selections and rounded keyboard keys.
   Gorditas Bold titles/headings use offline-baked IA8; all other UI reads the
   console's native IPL font through SDK PR #145. No firmware font bytes ship.
-* Developer-authored seasonal terrain manifest, repeat variants and stretched nine-slice patches using all four supplied transition materials; guttered/inset sampling and bounded textured meshes. Runtime textures are capped at 128 pixels, with paged UI/IPL glyphs, source-keyed caching and a 32 KiB active RGB565 terrain texture. The camera is one third closer, with frustum/cylinder-horizon rejection and GX backface culling. Opt-in checksummed frame telemetry separates CPU phases and presentation waits. See render-performance.md.
-  Missing seamless textures use explicit flat-color placeholders. See terrain-authoring.md and world-asset-requests.md.
+* Developer-authored seasonal repeating floors use crops from the supplied transition sheets, with mirrored repeat, load-time downsizing to at most 64 pixels, CMPR/RGB565 mipmaps and merged curved strips. Current floor textures occupy 13.5 KiB per season. UI/IPL remain paged at 128 pixels, with source-keyed caching. The camera is one third closer, with frustum/cylinder-horizon rejection and GX backface culling. Opt-in checksummed frame telemetry separates CPU phases and presentation waits. See render-performance.md.
+  See generated-trees-repeat-floor.md for current sources, budgets and authoring; wood/indoor-floor materials use color fallbacks where no artwork is supplied.
 * Controller navigation, character/name/catchphrase creation, house reservation,
   backpack icon grid (10/20/30 slots), selected-item popovers, shop capacity
   upgrades and context actions, map, store buying/selling, banking, loans and tier

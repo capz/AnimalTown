@@ -26,7 +26,7 @@ internal sealed class CachedTexture
 }
 internal static class TextureCache
 {
-    private static readonly CachedTexture?[] entries=new CachedTexture?[32];
+    private static readonly CachedTexture?[] entries=new CachedTexture?[256];
     private const int Budget=2*1024*1024;
     private static int clock;
     internal static int Hits,Misses,Evictions;
@@ -52,6 +52,20 @@ internal static class TextureCache
         var loaded=LoadAndDecode(key,path,atlas);AnimalTown.GameCube.NativeTexturePages.Collect();return loaded;
     }
     private static CachedTexture LoadAndDecode(string key,string path,bool atlas)=>Decode(key,File.ReadAllBytes(path),atlas);
+    internal static CachedTexture LoadFloor(string path)
+    {
+        string key=BuildInfo.Commit+":"+path+":floor64-mips-mirror-auto-v1";
+        var cached=Find(key,false);if(cached!=null)return cached;
+        var loaded=DecodeFloor(key,path);AnimalTown.GameCube.NativeTexturePages.Collect();return loaded;
+    }
+    private static CachedTexture DecodeFloor(string key,string path)
+    {
+        var source=File.ReadAllBytes(path);var package=FloorTexture.Prepare(source);
+        var entry=new CachedTexture{Source=key,SourceHash=TexturePixels.Hash(source),SourceWidth=TexturePixels.Width(source),SourceHeight=TexturePixels.Height(source),Pages=new Texture2D[1]};
+        try{var texture=Texture2D.FromPackage(package,true);entry.Pages[0]=texture;texture.ConfigureSampler(TextureWrapMode.Mirror,TextureWrapMode.Mirror,texture.MipLevels>1?TextureMinFilter.LinearMipmapLinear:TextureMinFilter.Linear,TextureMagFilter.Linear);}
+        catch{Dispose(entry);throw;}
+        return Store(entry);
+    }
     private static CachedTexture Decode(string key,byte[] source,bool atlas)
     {
         TexturePixels.Validate(source);int w=TexturePixels.Width(source),h=TexturePixels.Height(source),format=TexturePixels.Int(source,8);

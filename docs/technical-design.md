@@ -10,6 +10,9 @@ specifies the closer camera, 128-pixel texture residency/cache and culling;
 [villager-assets.md](villager-assets.md) records the replacement species, their
 lower-poly sources and current animation limitations. These supersede the
 original asset inventory, camera calibration and terrain submission budgets below.
+The later [generated-trees-repeat-floor.md](generated-trees-repeat-floor.md)
+update supersedes supplied-tree rendering and the ground-atlas renderer with
+authorized generated low-poly trees and repeating, load-time optimized textures.
 
 ## Targets and separate builds
 

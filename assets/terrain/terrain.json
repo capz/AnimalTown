@@ -60,7 +60,18 @@
     "spring": {
       "grass": {
         "color": "#85B86B",
-        "sources": []
+        "sources": [],
+        "repeatSources": [
+          {
+            "file": "assets/textures/environment/transitions/stone_pavement/atlases/spring_stone_pavement_9slice.png",
+            "rect": [
+              0,
+              0,
+              64,
+              64
+            ]
+          }
+        ]
       },
       "stone_pavement": {
         "mode": "nineSliceStretch",
@@ -98,7 +109,18 @@
     "summer": {
       "grass": {
         "color": "#68A450",
-        "sources": []
+        "sources": [],
+        "repeatSources": [
+          {
+            "file": "assets/textures/environment/transitions/stone_pavement/atlases/spring_stone_pavement_9slice.png",
+            "rect": [
+              0,
+              0,
+              64,
+              64
+            ]
+          }
+        ]
       },
       "stone_pavement": {
         "mode": "nineSliceStretch",
@@ -136,7 +158,18 @@
     "fall": {
       "grass": {
         "color": "#B49C57",
-        "sources": []
+        "sources": [],
+        "repeatSources": [
+          {
+            "file": "assets/textures/environment/transitions/stone_pavement/atlases/fall_stone_pavement_9slice.png",
+            "rect": [
+              0,
+              0,
+              64,
+              64
+            ]
+          }
+        ]
       },
       "stone_pavement": {
         "mode": "nineSliceStretch",
@@ -174,7 +207,18 @@
     "winter": {
       "grass": {
         "color": "#DCE6E0",
-        "sources": []
+        "sources": [],
+        "repeatSources": [
+          {
+            "file": "assets/textures/environment/transitions/stone_pavement/atlases/winter_stone_pavement_9slice.png",
+            "rect": [
+              0,
+              0,
+              64,
+              64
+            ]
+          }
+        ]
       },
       "stone_pavement": {
         "mode": "nineSliceStretch",

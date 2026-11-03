@@ -36,19 +36,20 @@ internal sealed class TownGame
 {
     private GameState state=new GameState(7319);
     private readonly GraphicsDevice device=GraphicsDevice.Default;
-    private readonly Renderer renderer=new Renderer();
+    private readonly Renderer renderer=new Renderer(GraphicsDevice.Default,LowPolyTrees.Capacity);
     private readonly Camera camera=new Camera(CylinderWorld.CameraFieldOfView,4f/3,CylinderWorld.Near,CylinderWorld.Far);
     private readonly Draw2D ui;
     private readonly UiFont font,headingFont,strongFont;
     private readonly CachedTexture wordmark,itemIcons;
     private readonly Transform worldRoot=new Transform(),transform=new Transform(),identity=new Transform();
     private readonly TerrainRenderer terrain;
-    private readonly int[] visibleTrees=new int[8];
-    private readonly float[] treeDistances=new float[8];
+    private readonly int[] visibleTrees=new int[LowPolyTrees.Capacity];
+    private readonly float[] treeDistances=new float[LowPolyTrees.Capacity];
+    private readonly LowPolyTrees trees;
     private readonly Material plain=new Material{Cull=CullMode.Back,Lighting=LightingMode.Unlit};
-    private readonly Model[] models=new Model[10];
-    private readonly ModelInstance[] actors=new ModelInstance[7],props=new ModelInstance[4];
-    private readonly string[] modelNames={"fox","bunny","giraffe","cat","hamster","spaniel","building","deciduous","palm","pine"};
+    private readonly Model[] models=new Model[7];
+    private readonly ModelInstance[] actors=new ModelInstance[7],props=new ModelInstance[1];
+    private readonly string[] modelNames={"fox","bunny","giraffe","cat","hamster","spaniel","building"};
     private readonly string[] species={"Fox","Bunny","Giraffe","Maine coon","Hamster","Cocker spaniel"};
     private readonly Mesh cube;
     private readonly byte[] banner,icon;
@@ -77,13 +78,13 @@ internal sealed class TownGame
         state.Rollover(day,month);
         if(state.HousePlaced&&!state.CanWalk(state.X,state.Z,0))state.MoveToHouseEntrance();
         // Resource creation occurs outside render passes and instances share models.
-        for(int i=0;i<10;i++)
+        for(int i=0;i<models.Length;i++)
         {
             models[i]=Model.LoadAsync("dvd:/"+modelNames[i]+".dndmodel",default,3*1024*1024).GetAwaiter().GetResult();
             if(i<6){actors[i+1]=models[i].CreateInstance(512*1024);if(models[i].TryGetAnimation("Walking",out var clip)){actors[i+1].Animator.Play("Walking",true);actors[i+1].Animator.SetSpeed(.45f);}}
             else props[i-6]=models[i].CreateInstance(512*1024);
         }
-        terrain=new TerrainRenderer();SelectSpecies();lastSave=Clock.Timestamp;
+        trees=new LowPolyTrees(worldRoot);terrain=new TerrainRenderer();SelectSpecies();lastSave=Clock.Timestamp;
         DebugOverlay.WriteLine("ANIMALTOWN READY "+BuildInfo.Commit+" native bytes "+device.NativeBytes);
     }
     private void SelectSpecies()
@@ -376,8 +377,7 @@ internal sealed class TownGame
     private bool IsTree(GroundItem g)=>g.Kind==3||(g.Kind==2&&g.Item!=2);
     private void DrawTrees()
     {
-        // All foliage is supplied GLB geometry. Bound expensive detailed assets
-        // until the artist supplies lower-poly versions; never invent tree LODs.
+        // Generated low-poly meshes share native geometry and indexed GX draws.
         long selectionAt=FrameProfile.Start();
         for(int n=0;n<visibleTrees.Length;n++){visibleTrees[n]=-1;treeDistances[n]=float.MaxValue;}
         for(int i=0;i<state.Town.GroundCount;i++)
@@ -388,8 +388,7 @@ internal sealed class TownGame
             {for(int j=visibleTrees.Length-1;j>n;j--){visibleTrees[j]=visibleTrees[j-1];treeDistances[j]=treeDistances[j-1];}visibleTrees[n]=i;treeDistances[n]=d;break;}
         }
         FrameProfile.End(15,selectionAt);
-        for(int n=0;n<visibleTrees.Length;n++)if(visibleTrees[n]>=0)
-        {var g=state.Town.Ground[visibleTrees[n]];ModelAt(props[g.Item==3?3:g.Item==2?2:1],g.X,g.Z,g.Kind==2?.75f:3);}
+        trees.Draw(renderer,state.Town,visibleTrees,state.Z,month);
     }
     private void DrawBuilding(float x,float z,float scale)
     { if(ScenePolicy.Visible(x,z,x+4,z+4,state.X,state.Z,22))ModelAt(props[0],x,z,scale); }
