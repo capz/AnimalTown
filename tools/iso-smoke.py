@@ -102,6 +102,11 @@ with (root/'emulator.log').open('w') as log:
             press('B')
             os.write(controller,b'PRESS L\nPRESS R\n');time.sleep(2);press('Z')
             os.write(controller,b'RELEASE L\nRELEASE R\n');time.sleep(profile_seconds);screenshot('profile-world.png')
+            if '--compare-batches' in sys.argv:
+                os.write(controller,b'PRESS L\nPRESS R\n');time.sleep(2);press('X')
+                os.write(controller,b'RELEASE L\nRELEASE R\n');time.sleep(profile_seconds);screenshot('profile-world-baseline.png')
+                os.write(controller,b'PRESS L\nPRESS R\n');time.sleep(2);press('X')
+                os.write(controller,b'RELEASE L\nRELEASE R\n');time.sleep(profile_seconds);screenshot('profile-world-batched.png')
             if '--compare-renderers' in sys.argv:
                 os.write(controller,b'PRESS L\nPRESS R\n');time.sleep(2);press('Y')
                 os.write(controller,b'RELEASE L\nRELEASE R\n');time.sleep(profile_seconds);screenshot('profile-world-direct.png')
@@ -111,6 +116,16 @@ with (root/'emulator.log').open('w') as log:
             os.write(controller,b'SET MAIN 0.2 0.5\n');time.sleep(12)
             os.write(controller,b'SET MAIN 0.5 0.5\n');time.sleep(3)
             press('X');time.sleep(profile_seconds);screenshot('profile-backpack.png')
+            if '--compare-batches' in sys.argv:
+                os.write(controller,b'PRESS L\nPRESS R\n');time.sleep(2);press('X')
+                os.write(controller,b'RELEASE L\nRELEASE R\n');time.sleep(profile_seconds);screenshot('profile-backpack-baseline.png')
+                os.write(controller,b'PRESS L\nPRESS R\n');time.sleep(2);press('X')
+                os.write(controller,b'RELEASE L\nRELEASE R\n');time.sleep(profile_seconds);screenshot('profile-backpack-batched.png')
+                press('B');press('Y');time.sleep(max(10,profile_seconds));screenshot('profile-map-batched.png')
+                os.write(controller,b'PRESS L\nPRESS R\n');time.sleep(2);press('X')
+                os.write(controller,b'RELEASE L\nRELEASE R\n');time.sleep(max(10,profile_seconds));screenshot('profile-map-baseline.png')
+                os.write(controller,b'PRESS L\nPRESS R\n');time.sleep(2);press('X')
+                os.write(controller,b'RELEASE L\nRELEASE R\n');time.sleep(max(10,profile_seconds));screenshot('profile-map-return.png')
     finally:
         p.terminate()
         try:p.wait(timeout=5)

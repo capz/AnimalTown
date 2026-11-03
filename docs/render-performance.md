@@ -105,6 +105,10 @@ cached-terrain world frames from frames that actually rebuild terrain.
 Use `--profile-seconds 60` (5–300 allowed) for longer stationary-world and
 backpack captures without changing the game or its simulation.
 
+Protocol v4 adds complete imported-model primitive/texture counts and replaces
+cache hit/miss fields with drawing API entries/material setups. It also labels
+in-ISO batch comparisons. See [batched-drawing.md](batched-drawing.md).
+
 `present_total` includes `gpu_blocking_wait` and `retrace_wait`; do not add them
 together. Blocking GX completion is outstanding-work wait, not total GPU time.
 `frame_interval` includes presentation and deliberate delay. Simulation excludes

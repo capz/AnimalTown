@@ -36,7 +36,7 @@ internal sealed class TownGame
 {
     private GameState state=new GameState(7319);
     private readonly GraphicsDevice device=GraphicsDevice.Default;
-    private readonly Renderer renderer=new Renderer(GraphicsDevice.Default,LowPolyTrees.Capacity);
+    private readonly Renderer renderer=new Renderer(GraphicsDevice.Default,128);
     private readonly Camera camera=new Camera(CylinderWorld.CameraFieldOfView,4f/3,CylinderWorld.Near,CylinderWorld.Far);
     private readonly Draw2D ui;
     private readonly UiFont font,headingFont,strongFont;
@@ -46,6 +46,12 @@ internal sealed class TownGame
     private readonly int[] visibleTrees=new int[LowPolyTrees.Capacity];
     private readonly float[] treeDistances=new float[LowPolyTrees.Capacity];
     private readonly LowPolyTrees trees;
+    private readonly UiShapes uiShapes=new UiShapes();
+    private readonly MapBackground mapBackground=new MapBackground();
+    private readonly RenderQueue actorQueue=new RenderQueue(7,7),structureQueue=new RenderQueue(9,9);
+    private readonly Transform[] modelPoses=new Transform[16];
+    private readonly BoxBatch boxes;
+    private int modelUsed;
     private readonly Material plain=new Material{Cull=CullMode.Back,Lighting=LightingMode.Unlit};
     private readonly Model[] models=new Model[7];
     private readonly ModelInstance[] actors=new ModelInstance[7],props=new ModelInstance[1];
@@ -61,13 +67,14 @@ internal sealed class TownGame
     private long lastSave,sessionStart;
     private float exteriorX,exteriorZ;
     private bool loaded,relocate,damagedSave;
-    private bool indexedModels=true;
+    private bool indexedModels=true,batchedDrawing=true;
     private static readonly string[] tabs={"Backpack","Jobs","Catalog","Home","Post office","Settings"};
     private static readonly string[] itemActions={"Drop","Place (R rotates)","Plant","Eat","Wear","Equip","Bury","Open money bag","Read","Quit"};
     internal TownGame()
     {
-        ui=new Draw2D(device,new Draw2DOptions{Width=640,Height=480,VertexCapacity=8192});
+        ui=new Draw2D(device,new Draw2DOptions{Width=640,Height=480,VertexCapacity=8192,SpriteCapacity=128});
         font=UiFont.LoadSystem();strongFont=font;headingFont=UiFont.Load("gorditas-bold");cube=Cube();
+        boxes=new BoxBatch(renderer,cube,worldRoot);for(int i=0;i<modelPoses.Length;i++)modelPoses[i]=new Transform{Parent=worldRoot};
         wordmark=TextureCache.Load("dvd:/wordmark.dndtex",true);
         itemIcons=TextureCache.Load("dvd:/item-icons.dndtex",true);
         transform.Parent=worldRoot;identity.Parent=worldRoot;
@@ -136,6 +143,7 @@ internal sealed class TownGame
     {
         if(p.L.IsHeld&&p.R.IsHeld&&p.Z.WasPressed){FrameProfile.Enabled=!FrameProfile.Enabled;return;}
         if(p.L.IsHeld&&p.R.IsHeld&&p.Y.WasPressed){ToggleModelPath();return;}
+        if(p.L.IsHeld&&p.R.IsHeld&&p.X.WasPressed){batchedDrawing=!batchedDrawing;UiFont.Batched=batchedDrawing;if(NativeRenderProbe.Batch(batchedDrawing?1:0)!=(batchedDrawing?1:0))throw new InvalidOperationException("Batch switch failed");return;}
         if(screen=="title")
         { if(Press(p)){if(loaded)screen="world";else{screen="create";selected=0;}}return; }
         if(screen=="dialogue")
@@ -345,21 +353,28 @@ internal sealed class TownGame
         var center=new Vector3(x+w*.5f,origin.Y+h*.5f*pose.UpY-d*.5f*pose.UpZ,origin.Z+h*.5f*pose.UpZ+d*.5f*pose.UpY);
         float radius=(float)Math.Sqrt(w*w+h*h+d*d)*.5f+.05f;
         if(!RenderView.Sphere(center.X,center.Y,center.Z,radius,state.X,state.Z)||(room==0&&!RenderView.AboveHorizon(center.Y,center.Z,radius,state.Z))){FrameProfile.CulledObjects++;return;}
-        transform.LocalPosition=origin;transform.LocalScale=new Vector3(w,h,d);transform.LocalRotation=SurfaceRotation(z);plain.Color=color;renderer.DrawMesh(cube,plain,transform);
+        if(batchedDrawing)boxes.Add(origin,new Vector3(w,h,d),SurfaceRotation(z),color);
+        else{transform.LocalPosition=origin;transform.LocalScale=new Vector3(w,h,d);transform.LocalRotation=SurfaceRotation(z);plain.Color=color;renderer.DrawMesh(cube,plain,transform);}
     }
     private bool Visible(float x,float z,float scale)
     {var center=SurfacePoint(x,z,scale*.5f);float radius=scale*1.5f;return RenderView.Sphere(center.X,center.Y,center.Z,radius,state.X,state.Z)&&(room!=0||RenderView.AboveHorizon(center.Y,center.Z,radius,state.Z));}
     private void ModelAt(ModelInstance m,float x,float z,float scale,float facing=0)
-    { if(!Visible(x,z,scale)){FrameProfile.CulledObjects++;return;}transform.LocalPosition=SurfacePoint(x,z);transform.LocalScale=new Vector3(scale,scale,scale);transform.LocalRotation=SurfaceRotation(z,facing);renderer.DrawModel(m,transform); }
+    {
+        if(!Visible(x,z,scale)){FrameProfile.CulledObjects++;return;}
+        var pose=batchedDrawing?modelPoses[modelUsed++]:transform;pose.LocalPosition=SurfacePoint(x,z);pose.LocalScale=new Vector3(scale,scale,scale);pose.LocalRotation=SurfaceRotation(z,facing);
+        if(batchedDrawing){if(m==props[0])structureQueue.Submit(m,pose);else actorQueue.Submit(m,pose);}else renderer.DrawModel(m,pose);
+    }
     internal void Draw()
     {
         long phase=FrameProfile.Start();terrain.Prepare(state,room,month);FrameProfile.End(2,phase);
+        phase=FrameProfile.Start();if(batchedDrawing){uiShapes.Prepare();if(screen=="map")mapBackground.Prepare(state.Town);}modelUsed=0;FrameProfile.End(8,phase);
         phase=FrameProfile.Start();device.BeginFrame(new Color32(149,198,186));
         camera.LookAt(new Vector3(state.X,CylinderWorld.CameraHeight,state.Z+CylinderWorld.CameraBack),new Vector3(state.X,0,state.Z-CylinderWorld.CameraAimAhead),new Vector3(0,1,0));renderer.Begin3D(camera);FrameProfile.End(4,phase);
         phase=FrameProfile.Start();terrain.Draw(renderer,identity,room);FrameProfile.End(4,phase);phase=FrameProfile.Start();
         if(room==0)
         {
             for(int i=0;i<6;i++){var v=state.Town.Residents[i];ModelAt(actors[i+1],v.X,v.Z,1.8f);}
+            if(batchedDrawing)actorQueue.Execute(renderer);
             FrameProfile.End(5,phase);phase=FrameProfile.Start();DrawTrees();FrameProfile.End(6,phase);phase=FrameProfile.Start();
             long groundAt=FrameProfile.Start();
             for(int i=0;i<state.Town.GroundCount;i++)
@@ -368,27 +383,30 @@ internal sealed class TownGame
                 float y=0;
                 if(!IsTree(g))Box(g.X+.25f,y+.02f,g.Z+.25f,.5f,g.Kind==1?.03f:.25f,.5f,g.Kind==1?new Color32(105,81,54):g.Kind==2?new Color32(242,174,170):new Color32(229,190,82));
             }
-            FrameProfile.End(3,groundAt);
+            if(batchedDrawing)boxes.Flush();FrameProfile.End(3,groundAt);
             DrawBuilding(32,26,4);DrawBuilding(50,26,4);for(int i=0;i<6;i++)DrawBuilding(state.Town.Residents[i].X+1,11,2.3f);
+            if(state.HousePlaced)DrawBuilding(state.Town.HouseX+3,state.Town.HouseZ+2,2.5f);
+            if(batchedDrawing)structureQueue.Execute(renderer);
             if(state.HousePlaced)
             {
-                DrawBuilding(state.Town.HouseX+3,state.Town.HouseZ+2,2.5f);
                 int w=GameState.GardenWidths[state.GardenTier],h=GameState.GardenHeights[state.GardenTier];
                 for(int i=0;i<w;i++){FenceAt(state.Town.HouseX+i,state.Town.HouseZ);if(i!=3)FenceAt(state.Town.HouseX+i,state.Town.HouseZ+h-1);}
                 for(int j=1;j<h;j++){FenceAt(state.Town.HouseX,state.Town.HouseZ+j);FenceAt(state.Town.HouseX+w-1,state.Town.HouseZ+j);}
             }
         }
         for(int i=0;i<state.Town.PlacedCount;i++){var q=state.Town.Placed[i];if(q.Room==room)Box(q.X,0,q.Z,.7f,.7f,.7f,new Color32(176,119,81));}
+        if(batchedDrawing)boxes.Flush();
         FrameProfile.End(7,phase);phase=FrameProfile.Start();
         ModelAt(actors[0],state.X,state.Z,1.8f,faceX!=0?faceX*1.57f:faceZ<0?3.14159f:0);
+        if(batchedDrawing)actorQueue.Execute(renderer);
         FrameProfile.End(5,phase);phase=FrameProfile.Start();
         if(screen=="plot")
         { int x=(int)state.X-3,z=(int)state.Z-3;bool valid=state.Town.ValidPlot(x,z);for(int i=0;i<15;i++){Box(x+i,.02f,z,.9f,.03f,.9f,valid?new Color32(74,230,113):new Color32(229,82,72));Box(x+i,.02f,z+12,.9f,.03f,.9f,valid?new Color32(74,230,113):new Color32(229,82,72));} }
-        renderer.End3D();ui.Begin();DrawHud();FrameProfile.End(8,phase);FrameProfile.Draw(ui);
+        if(batchedDrawing)boxes.Flush();renderer.End3D();ui.Begin();DrawHud();FrameProfile.End(8,phase);FrameProfile.Draw(ui);
         phase=FrameProfile.Start();ui.End();FrameProfile.End(8,phase);
         phase=FrameProfile.Start();device.EndFrame();FrameProfile.End(9,phase);
     }
-    internal void RecordFrame(){if(FrameProfile.Enabled)FrameProfile.Complete(GpuProfiler.Snapshot().Triangles,terrain.VisibleTriangles,terrain.RejectedQuads,screen=="menu"&&menuTab==0?(indexedModels?1:7):room!=0?2:screen=="world"?(indexedModels?0:6):3);}
+    internal void RecordFrame(){if(FrameProfile.Enabled){int scene=screen=="map"?10:screen=="menu"&&menuTab==0?(indexedModels?1:7):room!=0?2:screen=="world"?(indexedModels?0:6):3;FrameProfile.Complete(GpuProfiler.Snapshot().Triangles,terrain.VisibleTriangles,terrain.RejectedQuads,batchedDrawing?scene:scene+16);}}
     private bool IsTree(GroundItem g)=>g.Kind==3||(g.Kind==2&&g.Item!=2);
     private void DrawTrees()
     {
@@ -416,6 +434,7 @@ internal sealed class TownGame
     { float radius=Math.Min(30,h*.5f);Bulged(x+4,y+5,w,h,radius,new Color32(49,72,62,130));Bulged(x,y,w,h,radius,new Color32(255,245,221)); }
     private void Bulged(float x,float y,float w,float h,float radius,Color32 color)
     {
+        if(batchedDrawing&&uiShapes.Draw(ui,x,y,w,h,radius,true,color))return;
         Rounded(x,y,w,h,radius,color);if(h<=radius*2+1)return;
         float start=y+radius,span=h-2*radius;
         for(int side=0;side<2;side++)
@@ -427,6 +446,7 @@ internal sealed class TownGame
     }
     private void Rounded(float x,float y,float w,float h,float radius,Color32 color)
     {
+        if(batchedDrawing&&uiShapes.Draw(ui,x,y,w,h,radius,false,color))return;
         ui.FillRectangle(new RectF(x+radius,y,w-2*radius,h),color);
         ui.FillRectangle(new RectF(x,y+radius,radius,h-2*radius),color);
         ui.FillRectangle(new RectF(x+w-radius,y+radius,radius,h-2*radius),color);
@@ -459,7 +479,7 @@ internal sealed class TownGame
     private void DrawHud()
     {
         var ink=new Color32(49,72,62);Panel(20,18,282,36);Text("AnimalTown / "+BuildInfo.Commit,32,24,ink,.9f);
-        if(FrameProfile.Enabled)Text(indexedModels?"GX indexed":"Direct comparison",451,418,ink,.9f);
+        if(FrameProfile.Enabled)Text((indexedModels?"GX indexed":"Direct")+(batchedDrawing?" / batched":" / baseline"),420,418,ink,.8f);
         Panel(410,18,210,56);Strong(state.Wallet+" acorns",427,22,ink,1.35f);Text("Loan "+state.Debt,427,47,ink,.95f);
         Rounded(20,440,420,29,14.5f,new Color32(48,76,57,210));Text("A interact   X backpack   Y map",32,451,Color32.White,1.3f);
         if(screen=="title")
@@ -551,12 +571,13 @@ internal sealed class TownGame
         }
     }
     private Color32 MapTileColor(int x,int z)
-    { int t=state.Town.At(x,z);return t==1?new Color32(75,154,187):t==2?new Color32(167,119,73):t==3?new Color32(229,209,150):t==4?new Color32(130,127,92):t==5?new Color32(191,179,147):new Color32(119,168,88); }
+    { return MapBackground.TileColor(state.Town.At(x,z)); }
     private void DrawMap()
     {
         Panel(65,65,510,365);Heading("Town map",85,79,new Color32(49,72,62));Text("20 x 20 screen tiles",310,83,new Color32(49,72,62),1.2f);
         const float left=160,top=115,scale=.7f;
-        for(int z=0;z<Town.Height;z+=5)for(int x=0;x<Town.Width;x+=5)
+        if(batchedDrawing)mapBackground.Draw(ui);
+        else for(int z=0;z<Town.Height;z+=5)for(int x=0;x<Town.Width;x+=5)
             ui.FillRectangle(new RectF(left+x*scale,top+z*scale,5*scale,5*scale),MapTileColor(x+2,z+2));
         for(int i=0;i<=Town.ScreenTiles;i++)
         {

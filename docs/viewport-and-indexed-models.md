@@ -42,7 +42,7 @@ not physical GameCube measurements. Publish the exact measured ISO identity,
 raw capture, JSON and checksums with the GitHub release.
 
 The managed rounded-curve cache experiment did not improve measured UI costs
-and was reverted. The existing rounding and bulges remain. UI still creates
-and submits individual triangles through Draw2D; bulk/cached panel geometry is
-the next candidate to measure. Removing trigonometry alone must not be presented
-as a proven improvement.
+and was reverted. The existing rounding and bulges remain. The subsequent native
+shape cache, ordered glyph batches and model-state grouping are described in
+[batched-drawing.md](batched-drawing.md). Their in-ISO A/B control compares
+submission paths; removing trigonometry alone is not a proven improvement.

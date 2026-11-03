@@ -30,7 +30,7 @@ for path in sys.argv[1:]:
             if frame[at]>128:values[bit//16]|=1<<(bit%16)
         checksum=0
         for value in values[:31]:checksum^=value
-        if values[0]!=0x4154 or values[1] not in (1,2,3) or values[31]!=checksum:continue
+        if values[0]!=0x4154 or values[1] not in (1,2,3,4) or values[31]!=checksum:continue
         identity=tuple(values)
         if identity in seen:continue
         seen.add(identity)
@@ -44,8 +44,8 @@ def stats(values):
             for name,q in [('p50',.5),('p95',.95),('max',1)]}
     result['mean']=round(sum(values)/len(values),3)
     return result
-if 3 in versions:
-    if len(versions)!=1:raise RuntimeError('Cannot mix v3 phase definitions with older captures')
+if versions.intersection((3,4)):
+    if len(versions)!=1:raise RuntimeError('Cannot mix phase/counter protocol versions')
     names[3]='ground_items';names[4]='frame_setup_terrain_submit';names[7]='structures_props';names[15]='tree_selection'
 # Distinguish actual camera/terrain rebuilds from cached world frames, using
 # measured work rather than assuming injected stick input always moves a player.
@@ -53,11 +53,13 @@ groups[4]=[r for r in groups.get(0,[])[5:] if r[6]==0]
 groups[5]=[r for r in groups.get(0,[])[5:] if r[6]!=0]
 groups[8]=[r for r in groups.get(6,[])[5:] if r[6]==0]
 groups[9]=[r for r in groups.get(6,[])[5:] if r[6]!=0]
+groups[20]=[r for r in groups.get(16,[])[5:] if r[6]==0]
+groups[21]=[r for r in groups.get(16,[])[5:] if r[6]!=0]
 report={'units':'milliseconds; guest clock, not physical hardware or GPU duration',
         'capture_files':sys.argv[1:],'protocol_versions':sorted(versions),'scenarios':{}}
 for scene,rows in groups.items():
     # Drop first five valid frames per scenario to reduce menu-transition effects.
-    if scene in (0,1,2,3,6,7):rows=rows[5:]
+    if scene in (0,1,2,3,6,7,10,16,17,18,19,22,23,26):rows=rows[5:]
     if not rows:continue
     timings={}
     for i,name in enumerate(names):
@@ -70,7 +72,7 @@ for scene,rows in groups.items():
             selected=sorted(zip(values,clipped))[min(len(rows)-1,math.ceil(q*len(rows))-1)]
             result[key+'_is_lower_bound']=selected[1]
         timings[name]=result
-    report['scenarios'][{0:'world',1:'backpack',2:'indoor',3:'other',4:'world_cached_terrain',5:'world_rebuilt_terrain',6:'world_direct',7:'backpack_direct',8:'world_direct_cached_terrain',9:'world_direct_rebuilt_terrain'}.get(scene,str(scene))]={
+    report['scenarios'][{0:'world',1:'backpack',2:'indoor',3:'other',4:'world_cached_terrain',5:'world_rebuilt_terrain',6:'world_direct',7:'backpack_direct',8:'world_direct_cached_terrain',9:'world_direct_rebuilt_terrain',10:'map',16:'world_baseline',17:'backpack_baseline',20:'world_baseline_cached_terrain',21:'world_baseline_rebuilt_terrain',26:'map_baseline'}.get(scene,str(scene))]={
         'frames':len(rows),'timings':timings,
         'triangles':stats([r[20]+(r[21]<<16) for r in rows]),
         'terrain_triangles':stats([r[22] for r in rows]),
@@ -79,6 +81,7 @@ for scene,rows in groups.items():
         'culled_objects':stats([r[24] for r in rows]),
         'draw_submissions':stats([r[28] for r in rows]),
         'texture_bindings':stats([r[29] for r in rows]),
-        'texture_cache_hits_max':max(r[26] for r in rows),'texture_cache_misses_max':max(r[27] for r in rows)}
+        **({'drawing_api_calls':stats([r[26] for r in rows]),'material_changes':stats([r[27] for r in rows])} if versions=={4} else
+           {'texture_cache_hits_max':max(r[26] for r in rows),'texture_cache_misses_max':max(r[27] for r in rows)})}
 if not report['scenarios']:raise RuntimeError('No valid AnimalTown telemetry found')
 print(json.dumps(report,indent=2))
