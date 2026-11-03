@@ -2,4 +2,5 @@
   <PropertyGroup><OutputType>Exe</OutputType></PropertyGroup>
   <ItemGroup><ProjectReference Include="../../shared/AnimalTown.Domain/AnimalTown.Domain.csproj" /></ItemGroup>
   <ItemGroup><Compile Include="../../game/AnimalTown.GameCube/UiShapePlan.cs" Link="UiShapePlan.cs" /></ItemGroup>
+  <ItemGroup><Compile Include="../../game/AnimalTown.GameCube/MenuNavigation.cs" Link="MenuNavigation.cs" /></ItemGroup>
 </Project>

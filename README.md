@@ -50,7 +50,9 @@ Dirty source is marked in all build identities. Generated assets/ISOs stay out
 of Git. Original asset sources are retained in `assets/models`.
 
 Controls: stick walk, B run/cancel, A interact/confirm, X backpack, Y map, Z equip
-tool, Start save/settings; D-pad selects and L/R changes menu tabs. Memory-card
+tool, Start save/settings; stick or D-pad selects and L/R changes menu tabs. Hold
+the stick to repeat a selection; recenter after opening a menu or changing tabs.
+Closing a settings explanation returns to the same selected settings row. Memory-card
 saves use Slot A, `AMTE/01`, two alternating files, banner and icon. Missing-card
 play works; save errors are shown for retry.
 

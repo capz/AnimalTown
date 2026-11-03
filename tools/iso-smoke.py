@@ -26,6 +26,38 @@ def press(button):
     os.write(controller,f'RELEASE {button}\n'.encode());time.sleep(hold)
 def screenshot(name):
     subprocess.run(['ffmpeg','-v','error','-f','x11grab','-video_size','800x600','-i',':93','-frames:v','1','-y',str(root/name)],env=env,check=True)
+
+def settings_navigation():
+    results=[]
+    def focus(name,expected):
+        screenshot(name+'.png')
+        pixels=subprocess.check_output(['ffmpeg','-v','error','-i',str(root/(name+'.png')),'-frames:v','1','-f','rawvideo','-pix_fmt','rgb24','-'])
+        scores=[sum(all(abs(pixels[(y*800+x)*3+c]-target)<=3 for c,target in enumerate((221,231,188)))
+                    for y in range(131+i*29,155+i*29) for x in range(100,540,4)) for i in range(7)]
+        actual=scores.index(max(scores)) if max(scores)>100 else -1
+        results.append((name,expected,actual));print(f'{name}: expected row {expected}, actual {actual}',flush=True)
+    def stick(y,duration=.18):
+        os.write(controller,f'SET MAIN 0.5 {y}\n'.encode());time.sleep(duration)
+        os.write(controller,b'SET MAIN 0.5 0.5\n');time.sleep(1)
+    focus('settings-initial',0)
+    stick(.1);focus('settings-stick-down',1)
+    press('D_DOWN');focus('settings-dpad-down',2)
+    press('A');screenshot('settings-about.png');press('B');press('B');focus('settings-about-return',2)
+    press('D_UP');focus('settings-dpad-up',1)
+    press('A');screenshot('settings-controls.png');press('B');press('B');focus('settings-controls-return',1)
+    press('D_DOWN');press('D_DOWN');press('A');focus('settings-performance-on',3)
+    press('A');focus('settings-performance-off',3)
+    for _ in range(3):press('D_UP')
+    press('D_UP');focus('settings-wrap',6)
+    press('A');focus('settings-model-direct',6)
+    press('A');focus('settings-model-indexed',6)
+    press('R');screenshot('settings-next-tab.png');press('L');focus('settings-tab-return',0)
+    press('B');screenshot('settings-close.png')
+    press('X');press('L');focus('settings-backpack-entry',0)
+    stick(.1,.65);focus('settings-stick-repeat',(2,3,4,5))
+    stick(.9);screenshot('settings-stick-up.png')
+    (root/'settings-navigation.txt').write_text('\n'.join(f'{name}: expected={expected}, actual={actual}' for name,expected,actual in results)+'\n')
+    if any(actual not in (expected if isinstance(expected,tuple) else (expected,)) for _,expected,actual in results):raise AssertionError('Settings navigation failed; see settings-navigation.txt and screenshots')
 (user/'Config'/'Dolphin.ini').write_text('''[Core]
 CPUCore = 1
 CPUThread = False
@@ -103,6 +135,7 @@ with (root/'emulator.log').open('w') as log:
                 for _ in range(9):press('D_DOWN')
                 press('A');screenshot('backpack-quit.png')
             press('START');time.sleep(12);screenshot('resume-save.png')
+            if '--settings-navigation' in sys.argv:settings_navigation()
         if '--profile' in sys.argv:
             press('B')
             os.write(controller,b'PRESS L\nPRESS R\n');time.sleep(2);press('Z')

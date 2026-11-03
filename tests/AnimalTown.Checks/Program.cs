@@ -3,6 +3,7 @@ using AnimalTown;
 int checks=0;
 void Check(bool value,string message){checks++;if(!value)throw new Exception(message);}
 UiShapePlanChecks.Run(Check);
+MenuNavigationChecks.Run(Check);
 var terrainEdit=new GameState(74);int terrainVersion=terrainEdit.Town.TerrainVersion;
 Check(terrainEdit.Town.SetTerrain(20,20,Terrain.Water)&&terrainEdit.Town.TerrainVersion==terrainVersion+1,"terrain edit invalidates render caches");
 Check(!terrainEdit.Town.SetTerrain(20,20,Terrain.Water)&&!terrainEdit.Town.SetTerrain(-1,20,Terrain.Grass)&&terrainEdit.Town.TerrainVersion==terrainVersion+1,"unchanged/invalid terrain edits preserve cache revision");

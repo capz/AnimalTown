@@ -169,7 +169,11 @@ backward jumps never pay interest/rewards twice. Online session uses host time,
 but server UTC enforces economy reward caps and ticket expiry.
 
 Stick moves, B runs/cancels, A interacts/confirms, X pockets, Y map, Z tools,
-Start save/settings; D-pad changes tabs/selection. All screens navigable without
+Start save/settings; stick or D-pad changes tabs/selection, and L/R switches tabs.
+Menu stick input has a dead zone, one dominant direction and timed hold repeat
+(350 ms initially, then 120 ms). Recenter after opening a menu or switching tabs
+so held walking input cannot change a selection. Settings explanations return
+to their selected settings row when dismissed. All screens navigable without
 a mouse. Character creation selects all six species, palette, name, catchphrase
 and pitch. All UI surfaces use the same rounded visual language: 30-pixel panel
 corners, gently bulging convex menu sides, pill-shaped HUD cards and selection highlights, rounded keyboard keys,

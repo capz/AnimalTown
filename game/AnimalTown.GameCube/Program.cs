@@ -48,6 +48,7 @@ internal sealed class TownGame
     private readonly LowPolyTrees trees;
     private readonly UiShapes uiShapes=new UiShapes();
     private readonly MapBackground mapBackground=new MapBackground();
+    private readonly MenuNavigation menuNavigation=new MenuNavigation();
     private readonly RenderQueue actorQueue=new RenderQueue(7,7),structureQueue=new RenderQueue(9,9);
     private readonly Transform[] modelPoses=new Transform[16];
     private readonly BoxBatch boxes;
@@ -62,6 +63,8 @@ internal sealed class TownGame
     private readonly Sound syllable;
     private MemoryCard? card;
     private string screen="title",message="",speaker="AnimalTown",saveStatus="Not saved",action="",entry="";
+    private bool returnToSettings;
+    private int settingsSelection;
     private int selected,slot,rotation,room,tick,day,month,menuTab,faceX,faceZ=-1,typeAt,voiceTick,keyboard;
     private int jobProgress,moveClip=-1;
     private long lastSave,sessionStart;
@@ -137,10 +140,14 @@ internal sealed class TownGame
         }
         catch(Exception error){saveStatus="Save failed ("+phase+", code "+NativeCalendar.CardError()+"). Check Slot A and retry.";DebugOverlay.WriteLine("SAVE ERROR: "+phase+" "+error.Message);card=null;}
     }
-    private void Say(string name,string text){speaker=name;message=text;typeAt=0;screen="dialogue";}
+    private void Say(string name,string text){returnToSettings=screen=="menu"&&menuTab==5;if(returnToSettings)settingsSelection=selected;speaker=name;message=text;typeAt=0;screen="dialogue";}
     private bool Press(ControllerState p)=>p.A.WasPressed;
     internal void Input(ControllerState p)
     {
+        bool chord=p.L.IsHeld&&p.R.IsHeld;
+        bool navigating=screen=="menu"||screen=="keyboard"||screen=="create"||screen=="item"||screen=="sell"||screen=="shop"||screen=="store"||screen=="post"||screen=="mail"||screen=="lost";
+        int direction=menuNavigation.Read(screen,screen=="menu"?menuTab:-1,p.Stick.X,p.Stick.Y,(int)p.PressedButtons,Clock.Timestamp,navigating&&!chord);
+        bool up=direction==MenuNavigation.Up,down=direction==MenuNavigation.Down,left=direction==MenuNavigation.Left,right=direction==MenuNavigation.Right;
         if(p.L.IsHeld&&p.R.IsHeld&&p.Z.WasPressed){FrameProfile.Enabled=!FrameProfile.Enabled;return;}
         if(p.L.IsHeld&&p.R.IsHeld&&p.Y.WasPressed){ToggleModelPath();return;}
         if(p.L.IsHeld&&p.R.IsHeld&&p.DPadDown.WasPressed){if(batchedDrawing)UiFont.Batched=!UiFont.Batched;return;}
@@ -149,11 +156,11 @@ internal sealed class TownGame
         if(screen=="title")
         { if(Press(p)){if(loaded)screen="world";else{screen="create";selected=0;}}return; }
         if(screen=="dialogue")
-        { if(Press(p)||p.B.WasPressed){if(typeAt<message.Length)typeAt=message.Length;else screen="world";}return; }
+        { if(Press(p)||p.B.WasPressed){if(typeAt<message.Length)typeAt=message.Length;else{screen=returnToSettings?"menu":"world";if(returnToSettings){menuTab=5;selected=settingsSelection;}}}return; }
         if(screen=="keyboard")
         {
-            if(p.DPadLeft.WasPressed)keyboard=(keyboard+39)%40;if(p.DPadRight.WasPressed)keyboard=(keyboard+1)%40;
-            if(p.DPadUp.WasPressed)keyboard=(keyboard+30)%40;if(p.DPadDown.WasPressed)keyboard=(keyboard+10)%40;
+            if(left)keyboard=(keyboard+39)%40;if(right)keyboard=(keyboard+1)%40;
+            if(up)keyboard=(keyboard+30)%40;if(down)keyboard=(keyboard+10)%40;
             if(Press(p)&&entry.Length<(action=="name"?16:32))entry+=Letter("ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789 .!?"[keyboard]);
             if(p.X.WasPressed&&entry.Length>0)entry=entry.Substring(0,entry.Length-1);
             if(p.Start.WasPressed){if(action=="name")state.Name=entry.Length>0?entry:"Newcomer";else state.Catchphrase=entry;screen="create";}
@@ -161,8 +168,8 @@ internal sealed class TownGame
         }
         if(screen=="create")
         {
-            if(p.DPadUp.WasPressed)selected=(selected+5)%6;if(p.DPadDown.WasPressed)selected=(selected+1)%6;
-            if(p.DPadRight.WasPressed){if(selected==0){state.Species=(state.Species+1)%6;SelectSpecies();}else state.Palette=(state.Palette+1)%8;}
+            if(up)selected=(selected+5)%6;if(down)selected=(selected+1)%6;
+            if(right){if(selected==0){state.Species=(state.Species+1)%6;SelectSpecies();}else state.Palette=(state.Palette+1)%8;}
             if(Press(p))
             {
                 if(selected==1||selected==2){action=selected==1?"name":"phrase";entry="";screen="keyboard";}
@@ -188,7 +195,7 @@ internal sealed class TownGame
         }
         if(screen=="item")
         {
-            if(p.DPadDown.WasPressed)selected=(selected+1)%10;if(p.DPadUp.WasPressed)selected=(selected+9)%10;
+            if(down)selected=(selected+1)%10;if(up)selected=(selected+9)%10;
             if(p.R.WasPressed)rotation=(rotation+1)%4;
             if(Press(p))
             {
@@ -208,15 +215,15 @@ internal sealed class TownGame
         bool backpack=screen=="sell"||(screen=="menu"&&menuTab==0);
         if(backpack)
         {
-            if(p.DPadDown.WasPressed)selected=(selected+5)%state.Capacity;if(p.DPadUp.WasPressed)selected=(selected+state.Capacity-5)%state.Capacity;
-            if(p.DPadRight.WasPressed)selected=(selected+1)%state.Capacity;if(p.DPadLeft.WasPressed)selected=(selected+state.Capacity-1)%state.Capacity;
+            if(down)selected=(selected+5)%state.Capacity;if(up)selected=(selected+state.Capacity-5)%state.Capacity;
+            if(right)selected=(selected+1)%state.Capacity;if(left)selected=(selected+state.Capacity-1)%state.Capacity;
             if(screen=="menu"&&p.R.WasPressed){menuTab=1;selected=0;return;}if(screen=="menu"&&p.L.WasPressed){menuTab=5;selected=0;return;}
             if(Press(p)&&state.Pockets[selected]!=0){if(screen=="sell")Say("Hearth",state.Sell(selected)?"Thank you! Acorns added to your wallet.":"I cannot buy that, or your wallet is full.");else{slot=selected;screen="item";selected=0;}}return;
         }
         int count=screen=="shop"?state.Town.StockCount:screen=="post"?7:screen=="store"?8:screen=="mail"?Math.Max(1,state.MailCount):screen=="lost"?Math.Max(1,LostCount()):TabCount();
-        if(p.DPadDown.WasPressed)selected=(selected+1)%count;if(p.DPadUp.WasPressed)selected=(selected+count-1)%count;
-        if(screen=="menu"&&(p.R.WasPressed||p.DPadRight.WasPressed)){menuTab=(menuTab+1)%6;selected=0;}
-        if(screen=="menu"&&(p.L.WasPressed||p.DPadLeft.WasPressed)){menuTab=(menuTab+5)%6;selected=0;}
+        if(down)selected=(selected+1)%count;if(up)selected=(selected+count-1)%count;
+        if(screen=="menu"&&(p.R.WasPressed||right)){menuTab=(menuTab+1)%6;selected=0;}
+        if(screen=="menu"&&(p.L.WasPressed||left)){menuTab=(menuTab+5)%6;selected=0;}
         if(!Press(p))return;
         if(screen=="sell"){Say("Hearth",state.Sell(selected)?"Thank you! Acorns added to your wallet.":"I cannot buy that, or your wallet is full.");return;}
         if(screen=="shop"){Say("Hearth",state.Buy(selected)?"Thank you for shopping!":"You need enough acorns and a free pocket.");return;}
@@ -274,7 +281,7 @@ internal sealed class TownGame
             if(selected==6){Say("Home",state.Expand(true,day)?"Garden construction ordered.":"Loan or house tier prevents this expansion.");}return;
         }
         if(menuTab==4){PostAction();return;}
-        if(selected==0){Save();Say("Save",saveStatus);}else if(selected==1){Say("Controls","Stick: walk. B: run. A: interact. X: backpack. Y: map. Z: tool. START: save. D-pad: menus.");}
+        if(selected==0){Save();Say("Save",saveStatus);}else if(selected==1){Say("Controls","Stick: walk / menus. D-pad: menus. L/R: tabs. B: run / back. A: interact / select. X: backpack. Y: map. Z: tool. START: save / settings.");}
         else if(selected==2)Say("About","AnimalTown / "+BuildInfo.Commit+" / hypercube-engine. Original homebrew for Nintendo GameCube.");
         else if(selected==3){FrameProfile.Enabled=!FrameProfile.Enabled;}
         else if(selected==4){Say("Calendar","Console RTC / day "+day+". New days begin at 06:00.");}
@@ -510,7 +517,7 @@ internal sealed class TownGame
         int total=screen=="menu"?TabCount():screen=="shop"?state.Town.StockCount:screen=="mail"?Math.Max(1,state.MailCount):screen=="lost"?Math.Max(1,LostCount()):screen=="store"?8:7;
         int first=selected/8*8;
         for(int i=first;i<Math.Min(total,first+8);i++){if(i==selected){Rounded(57,131+(i-first)*29,520,27,13.5f,new Color32(221,231,188));Strong("> "+RowLabel(i),68,131+(i-first)*29,ink,1.4f);}else Text("  "+RowLabel(i),68,131+(i-first)*29,ink,1.4f);}
-        Text("B close   L/R tabs   A select",65,392,ink,1.2f);
+        Text("Stick / D-pad choose   L/R tabs   A select   B close",65,392,ink,1);
         if(screen=="menu"&&menuTab==5)Text(Wrap(saveStatus,48),65,357,ink,1);
     }
     private string RowLabel(int i)
@@ -544,7 +551,7 @@ internal sealed class TownGame
             if(id!=0)itemIcons.Draw(ui,new RectF(id%8*64,id/8*64,64,64),new RectF(x+5,y+1,38,38),Color32.White);
             else Rounded(x+21,y+17,6,6,3,new Color32(188,195,166));
         }
-        Text("D-pad choose   A actions   L/R tabs",90,77+height-26,ink,.95f);
+        Text("Stick / D-pad choose   A actions   L/R tabs",90,77+height-26,ink,.85f);
         if(state.BackpackTier<2){Text("Next pack: "+(state.Capacity+10)+" slots",436,325,ink,1);Text("Hearth's store",436,349,ink,1);}
         // Follow the actual slot for both the title and action menu. Clamp the
         // panel (including bulges/shadow) above the HUD for all backpack sizes.
