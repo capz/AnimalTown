@@ -12,11 +12,12 @@ public sealed class Placement
 }
 public sealed class GroundItem
 {
+    public const int PendingRecoveryDay=int.MinValue;
     public int Item,X,Z,Owner,Day,Kind; // 0 drop, 1 buried, 2 planted, 3 tree, 4 lost/found
 }
 public sealed class Town
 {
-    public const int ScreenTiles=20,ScreenTileSize=20;
+    public const int ScreenTiles=8,ScreenTileSize=20;
     public const int Width=ScreenTiles*ScreenTileSize,Height=Width,Cells=Width*Height;
     // Fine cells support furniture/plant footprints within each screen tile.
     public readonly byte[] Tiles=new byte[Cells];

@@ -25,7 +25,7 @@ the transition sheets supplied so far are not seamless texture tiles.
 
 Use opaque, seamless PNGs, preferably 32×32 or 64×64. Their opposite edges must
 meet. Each rendered floor cell is one logical metre; each screen tile remains a
-20×20-metre square, in the unchanged 20×20 screen-tile world. Up to four repeat
+20×20-metre square, in the 8×8 screen-tile world. Up to four repeat
 variants per material are chosen by a stable coordinate hash, without per-frame
 randomness or per-cell save overhead. Multiple variants should share compatible
 edges so neighbouring variants also join cleanly.

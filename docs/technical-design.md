@@ -87,12 +87,12 @@ the resident budget instead of silently dropping limbs or animation channels.
 
 ## World and rolling presentation
 
-The authoritative world is a square **20×20 grid of screen-sized square tiles**.
-Each screen tile is 20×20 logical metres, giving a 400×400-metre square world.
+The authoritative world is a square **8×8 grid of screen-sized square tiles**.
+Each screen tile is 20×20 logical metres, giving a 160×160-metre square world.
 The fixed 4:3 camera is calibrated to a 20-metre horizontal span at the player's
 tangent plane. One-metre fine cells within these tiles support item footprints
 and collision; they are not additional screen-sized world tiles. Terrain uses
-160,000 bytes rather than an array of managed objects. A seeded integer generator lays down terrain, river, bridges,
+25,600 bytes rather than an array of managed objects. A seeded integer generator lays down terrain, river, bridges,
 cliff tier, plaza, store, hall, gate, campsite and six houses, then flood-fills
 walkability and checks that mandatory entrances connect. Logical collision and
 ownership always use flat tiles. Paths never cross water except bridges, and
@@ -101,7 +101,7 @@ cliff transitions need a valid ramp. House reservation validates the entire
 
 Fixed north-facing camera, true **cylindrical** geometry with east-west axis;
 never curve X into a sphere. For surface arc distance d=z-focusZ, radius
-R=400/(2*pi), angle a=d/R: render y=(R+h)*cos(a)-R and
+R=400/(2*pi), independent of the cropped playable bounds, angle a=d/R: render y=(R+h)*cos(a)-R and
 z'=focusZ+(R+h)*sin(a), retaining X. CPU tessellation subdivides each screen
 tile for fixed-function GX. All object transforms are children of the world
 root and rotate around X by a before their local facing. Local down is the
@@ -109,7 +109,7 @@ inward surface normal (0,-cos(a),-sin(a)); feet remain attached to the ground
 as the cylinder rolls. Terrain, props, villagers, player, fence, furniture and
 placement markers use this same transform. Cylinder terrain extends 64 metres
 left and right of the focus, beyond the visible frustum even at the horizon;
-its sides must never appear as exposed edges. Map remains a square 20×20 grid.
+its sides must never appear as exposed edges. Map remains a square 8×8 grid.
 Avoid real-time shadow maps. Cull conservatively in flat XZ
 with cylinder-expanded height bounds. Use Hypercube.ScenePolicy LOD hysteresis and
 coarse fallback residency; never allow collision to depend on high-detail visual
@@ -203,6 +203,11 @@ Memory-card identity is `AMTE` / `01`. Use SDK MemoryCard.WriteSave with origina
 Two alternating save files carry magic, schema/catalog versions, monotonic
 sequence, payload length and CRC32. Validate both completely, load newest valid
 one and leave the previous slot untouched until the new write is verified.
+Schema 4 records the current 160×160 fine-cell dimensions. Older 400×400
+schema 2/3 terrain is cropped by original row stride, preserving the northwest
+160×160 region. Outlying trees are removed, other ground items move to Lost &
+Found with owner protection, and outlying homes relocate with their furniture.
+Player/resident arrivals stay inside the retained town. See [town-size.md](town-size.md).
 Schema 3 stores the backpack tier and 30 backing slots, while enforcing unlocked
 capacity. Legacy 15-slot saves migrate to 20 slots if needed to preserve items.
 Schema 2 introduced run-length fine terrain for the full 400×400 world;

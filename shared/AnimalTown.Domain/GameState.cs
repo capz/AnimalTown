@@ -146,6 +146,9 @@ public sealed class GameState
     }
     public void Rollover(int day,int month)
     {
+        // A cropped save may be months old. Start recovered possessions' full
+        // retention window on the first calendar update, before catch-up expiry.
+        for(int i=0;i<Town.GroundCount;i++)if(Town.Ground[i].Kind==4&&Town.Ground[i].Day==GroundItem.PendingRecoveryDay)Town.Ground[i].Day=Math.Max(day,Town.Day);
         if(day<=Town.Day)return;
         if(Town.Month>=0&&month>Town.Month&&Savings<=long.MaxValue-Savings/200)Savings+=Savings/200;
         Town.Month=month;Town.Day=day;Jobs=0;JobDay=day;
@@ -166,6 +169,6 @@ public sealed class GameState
     public bool ClaimLost(int index,int actor)
     {
         if(index<0||index>=Town.GroundCount)return false;var g=Town.Ground[index];
-        if(g.Kind!=4||(actor!=g.Owner&&Town.Day-g.Day<3)||!Receive(g.Item))return false;Town.RemoveGround(index);return true;
+        if(g.Kind!=4||(actor!=g.Owner&&(g.Day==GroundItem.PendingRecoveryDay||Town.Day-g.Day<3))||!Receive(g.Item))return false;Town.RemoveGround(index);return true;
     }
 }

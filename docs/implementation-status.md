@@ -15,7 +15,7 @@ the GDD. The technical baseline was committed/pushed first as `0064efd`.
   The five non-fox villagers use the supplied ~1,600-triangle replacements;
   only the fox currently has walking/running clips. See villager-assets.md for
   source mappings and missing rigs/clips. True cylindrical terrain with an
-  east-west axis and radius 400/(2*pi), square 20×20 screen-tile world, conservative
+  east-west axis and radius 400/(2*pi), square 8×8 screen-tile world, conservative
   frustum/horizon visibility and up to 32 shared generated low-poly trees (60–84 triangles each), now explicitly authorized by the user. Original tree GLBs remain reference sources and are excluded from the ISO.
   Objects inherit the world root and use the cylinder's radial surface normal;
   terrain extends beyond the viewport. Speech balloons and all UI panels use
@@ -32,7 +32,9 @@ the GDD. The technical baseline was committed/pushed first as `0064efd`.
   garden reservations and relocation, tier-dependent room size.
 * Native RTC bridge, 06:00 day rollover, stock and monthly interest rules,
   dropped-item sweep and Lost & Found owner/retention checks.
-* Versioned binary saves with run-length terrain compression and legacy schema
+* Schema 4 binary saves record the 8×8 world dimensions; old towns crop to the
+  northwest retained region, with home/furniture relocation and Lost & Found
+  recovery for outlying possessions. See town-size.md. Versioned saves have run-length terrain compression and legacy schema
   migration, CRC and bounded decoding, alternating card files with
   readback verification. Both damaged saves are preserved rather than replaced.
 * Server registration/password hashing/opaque sessions, owner authorization,

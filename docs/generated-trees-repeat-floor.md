@@ -47,7 +47,8 @@ To use a dedicated tile pack, add `repeatSources` to a base or seasonal style:
 One to four opaque variants are supported. Variant choice is stable in 8-metre
 blocks, allowing long strips to merge. Existing patch rectangles still select
 surface styles; legacy nine-slice declarations provide their center image to
-the repeating renderer. The saved world remains 20×20 square screen tiles.
+the repeating renderer. The saved world is 8×8 square screen tiles; existing
+larger towns crop on import as described in [town-size.md](town-size.md).
 
 ## Load-time texture policy
 

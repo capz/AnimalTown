@@ -10,9 +10,10 @@ The camera eye is now `(player.x, 5.4, player.z + 7.2)`, nine metres from the
 player: another ten percent closer than the previous ten-metre view. The aim
 offset is 2.4 metres ahead. Eye and aim offsets scale together, preserving
 the pitch and 53.54-degree vertical field of view. Culling derives its direction
-from these same offsets and retains partially visible bounds. World coordinates, saves and
-the 20-by-20 layout of square 20-metre tiles remain stable; the closer camera
-shows less of each tile. The terrain cylinder still extends beyond the view.
+from these same offsets and retains partially visible bounds. The current town
+is 8 by 8 square 20-metre tiles; old saves preserve retained coordinates during
+cropping (see town-size.md). Earlier measurements below used the former larger
+town. The terrain cylinder retains its curvature and extends beyond the view.
 
 ## Texture policy
 

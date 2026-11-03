@@ -4,6 +4,7 @@ int checks=0;
 void Check(bool value,string message){checks++;if(!value)throw new Exception(message);}
 UiShapePlanChecks.Run(Check);
 MenuNavigationChecks.Run(Check);
+TownTrimChecks.Run(Check);
 var terrainEdit=new GameState(74);int terrainVersion=terrainEdit.Town.TerrainVersion;
 Check(terrainEdit.Town.SetTerrain(20,20,Terrain.Water)&&terrainEdit.Town.TerrainVersion==terrainVersion+1,"terrain edit invalidates render caches");
 Check(!terrainEdit.Town.SetTerrain(20,20,Terrain.Water)&&!terrainEdit.Town.SetTerrain(-1,20,Terrain.Grass)&&terrainEdit.Town.TerrainVersion==terrainVersion+1,"unchanged/invalid terrain edits preserve cache revision");
@@ -38,7 +39,7 @@ for(int seed=0;seed<20;seed++)
     Check(seen[28*Town.Width+32]&&seen[28*Town.Width+50]&&seen[10*Town.Width+36]&&seen[50*Town.Width+65],"mandatory areas connected");
     for(int i=0;i<6;i++)Check(seen[town.Residents[i].Z*Town.Width+town.Residents[i].X],"resident reachable");
 }
-Check(Town.ScreenTiles==20&&Town.Width==Town.Height&&Town.Width==20*Town.ScreenTileSize,"20 x 20 square screen tiles");
+Check(Town.ScreenTiles==8&&Town.Width==Town.Height&&Town.Width==8*Town.ScreenTileSize&&Town.Cells==25600,"8 x 8 square screen tiles");
 double previousFocusDepth=-6*RenderView.ForwardY-8*RenderView.ForwardZ;
 double focusDepth=-CylinderWorld.CameraHeight*RenderView.ForwardY-CylinderWorld.CameraBack*RenderView.ForwardZ;
 Check(Math.Abs(focusDepth/previousFocusDepth-.9)<.00001,"closer camera shows ninety percent of the previous horizontal span at the player");

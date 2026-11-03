@@ -49,6 +49,11 @@ Physical hardware validation remains outstanding. Rebuilds can use
 Dirty source is marked in all build identities. Generated assets/ISOs stay out
 of Git. Original asset sources are retained in `assets/models`.
 
+The town is 8×8 screen-sized tiles (160×160 fine cells). Existing larger towns
+crop automatically on load while keeping retained coordinates and progress.
+Outlying homes relocate with furniture, and loose possessions go to Lost & Found.
+See [town size and save migration](docs/town-size.md).
+
 Controls: stick walk, B run/cancel, A interact/confirm, X backpack, Y map, Z equip
 tool, Start save/settings; stick or D-pad selects and L/R changes menu tabs. Hold
 the stick to repeat a selection; recenter after opening a menu or changing tabs.

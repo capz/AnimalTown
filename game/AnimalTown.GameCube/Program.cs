@@ -583,8 +583,8 @@ internal sealed class TownGame
     { return MapBackground.TileColor(state.Town.At(x,z)); }
     private void DrawMap()
     {
-        Panel(65,65,510,365);Heading("Town map",85,79,new Color32(49,72,62));Text("20 x 20 screen tiles",310,83,new Color32(49,72,62),1.2f);
-        const float left=160,top=115,scale=.7f;
+        Panel(65,65,510,365);Heading("Town map",85,79,new Color32(49,72,62));Text(Town.ScreenTiles+" x "+Town.ScreenTiles+" screen tiles",310,83,new Color32(49,72,62),1.2f);
+        const float left=160,top=115,scale=MapBackground.Scale;
         if(batchedDrawing)mapBackground.Draw(ui);
         else for(int z=0;z<Town.Height;z+=5)for(int x=0;x<Town.Width;x+=5)
             ui.FillRectangle(new RectF(left+x*scale,top+z*scale,5*scale,5*scale),MapTileColor(x+2,z+2));
@@ -593,7 +593,7 @@ internal sealed class TownGame
             float offset=i*Town.ScreenTileSize*scale;
             ui.FillRectangle(new RectF(left+offset,top,1,280),new Color32(235,235,206,140));
             ui.FillRectangle(new RectF(left,top+offset,280,1),new Color32(235,235,206,140));
-            if(i<20){Text(Letter((char)('A'+i)),left+offset+3,402,Color32.Black,.75f);if(i%5==0)Text((i+1).ToString(),445,top+offset+3,Color32.Black,.8f);}
+            if(i<Town.ScreenTiles){Text(Letter((char)('A'+i)),left+offset+3,402,Color32.Black,.75f);Text((i+1).ToString(),445,top+offset+3,Color32.Black,.8f);}
         }
         for(int i=0;i<state.Town.GroundCount;i++){var g=state.Town.Ground[i];if(g.Kind==3)ui.FillRectangle(new RectF(left+g.X*scale,top+g.Z*scale,2,2),new Color32(45,106,60));}
         ui.FillRectangle(new RectF(left+32*scale,top+26*scale,4,4),new Color32(187,107,71));

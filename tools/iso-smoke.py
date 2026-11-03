@@ -133,6 +133,9 @@ with (root/'emulator.log').open('w') as log:
         elif '--resume' in sys.argv:
             press('A');time.sleep(2);screenshot('resume.png')
             press('X');time.sleep(1);screenshot('resume-backpack.png')
+            if '--town-map' in sys.argv:
+                press('B');press('Y');time.sleep(2);screenshot('town-map.png')
+                press('B');press('X')
             if '--cache-transitions' in sys.argv:
                 for n in range(3):
                     press('B');time.sleep(1);screenshot(f'cache-world-{n}.png')

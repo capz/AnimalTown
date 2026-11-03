@@ -10,7 +10,8 @@ public readonly struct CylinderPose
 }
 public static class CylinderWorld
 {
-    public const float Radius=Town.Height/6.28318530718f;
+    // Cropping playable bounds must not tighten the existing rolling view.
+    public const float Radius=400f/6.28318530718f;
     public const int ViewHalfWidth=64;
     // Preserve the lens; scale eye and aim offsets together to keep the pitch.
     public const float CameraFieldOfView=53.54f;
