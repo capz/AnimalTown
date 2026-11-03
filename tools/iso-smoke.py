@@ -85,6 +85,18 @@ with (root/'emulator.log').open('w') as log:
         elif '--resume' in sys.argv:
             press('A');time.sleep(2);screenshot('resume.png')
             press('X');time.sleep(1);screenshot('resume-backpack.png')
+            if '--backpack-layout' in sys.argv:
+                press('A');screenshot('backpack-actions.png')
+                press('B');screenshot('backpack-return.png')
+                press('D_LEFT');screenshot('backpack-last-slot.png')
+                for _ in range(4):press('D_LEFT')
+                screenshot('backpack-lower-left.png')
+                press('D_UP')
+                for _ in range(2):press('D_RIGHT')
+                screenshot('backpack-selected-item.png')
+                press('A');screenshot('backpack-selected-actions.png')
+                for _ in range(9):press('D_DOWN')
+                press('A');screenshot('backpack-quit.png')
             press('START');time.sleep(12);screenshot('resume-save.png')
         if '--profile' in sys.argv:
             press('B')

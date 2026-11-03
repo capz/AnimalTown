@@ -63,6 +63,7 @@ internal sealed class TownGame
     private bool loaded,relocate,damagedSave;
     private bool indexedModels=true;
     private static readonly string[] tabs={"Backpack","Jobs","Catalog","Home","Post office","Settings"};
+    private static readonly string[] itemActions={"Drop","Place (R rotates)","Plant","Eat","Wear","Equip","Bury","Open money bag","Read","Quit"};
     internal TownGame()
     {
         ui=new Draw2D(device,new Draw2DOptions{Width=640,Height=480,VertexCapacity=8192});
@@ -166,6 +167,7 @@ internal sealed class TownGame
         }
         if(p.Start.WasPressed){Save();screen="menu";menuTab=5;selected=0;return;}
         if(p.Y.WasPressed){screen=screen=="map"?"world":"map";return;}
+        if(p.B.WasPressed&&screen=="item"){screen="menu";menuTab=0;selected=slot;return;}
         if(p.B.WasPressed&&screen!="world"){screen="world";return;}
         if(p.X.WasPressed){screen=screen=="menu"?"world":"menu";selected=0;menuTab=0;return;}
         if(screen=="map")return;
@@ -480,10 +482,10 @@ internal sealed class TownGame
         if(screen=="create")
         { Panel(55,90,530,295);Heading("Make yourself at home",78,102,ink);string[] options={"Species: "+species[state.Species],"Name: "+state.Name,"Catchphrase: "+state.Catchphrase,"Palette: "+state.Palette,"Right: change / A: edit","Choose your house plot"};for(int i=0;i<options.Length;i++){if(selected==i)Rounded(69,148+i*31,495,28,14,new Color32(221,231,188));Text((selected==i?"> ":"  ")+options[i],75,149+i*31,ink);}return; }
         if(screen=="world")return;
-        if((screen=="menu"&&menuTab==0)||screen=="sell"){DrawBackpack();return;}
-        Panel(45,75,550,350);string title=screen=="menu"?tabs[menuTab]:screen=="sell"?"Sell an item":screen=="shop"?"Store stock":screen=="store"?"Hearth's store":screen=="post"?"Town hall":screen=="mail"?"Mailbox":screen=="item"?Catalog.Items[state.Pockets[slot]].Name:"Lost and Found";
+        if((screen=="menu"&&menuTab==0)||screen=="sell"||screen=="item"){DrawBackpack();return;}
+        Panel(45,75,550,350);string title=screen=="menu"?tabs[menuTab]:screen=="shop"?"Store stock":screen=="store"?"Hearth's store":screen=="post"?"Town hall":screen=="mail"?"Mailbox":"Lost and Found";
         Heading(title,68,91,ink);
-        int total=screen=="menu"?TabCount():screen=="shop"?state.Town.StockCount:screen=="item"?10:screen=="mail"?Math.Max(1,state.MailCount):screen=="lost"?Math.Max(1,LostCount()):screen=="store"?8:7;
+        int total=screen=="menu"?TabCount():screen=="shop"?state.Town.StockCount:screen=="mail"?Math.Max(1,state.MailCount):screen=="lost"?Math.Max(1,LostCount()):screen=="store"?8:7;
         int first=selected/8*8;
         for(int i=first;i<Math.Min(total,first+8);i++){if(i==selected){Rounded(57,131+(i-first)*29,520,27,13.5f,new Color32(221,231,188));Strong("> "+RowLabel(i),68,131+(i-first)*29,ink,1.4f);}else Text("  "+RowLabel(i),68,131+(i-first)*29,ink,1.4f);}
         Text("B close   L/R tabs   A select",65,392,ink,1.2f);
@@ -491,8 +493,6 @@ internal sealed class TownGame
     }
     private string RowLabel(int i)
     {
-        if(screen=="sell"){int id=state.Pockets[i];return Catalog.Items[id].Name+" / "+Catalog.Items[id].Sell;}
-        if(screen=="item"){string[] a={"Drop","Place (R rotates)","Plant","Eat","Wear","Equip","Bury","Open money bag","Read","Quit"};return a[i];}
         if(screen=="shop"){int id=state.Town.Stock[i];return id==0?"Sold out":Catalog.Items[id].Name+" / "+Catalog.Items[id].Buy;}
         if(screen=="store"){string[] a={"Buy stock","Sell / return parcel","Part-time job","House expansion","Garden expansion","Repay loan","Daily job","Expand backpack"};return a[i];}
         if(screen=="post"||(screen=="menu"&&menuTab==4)){string[] a={"Deposit up to 1000","Withdraw up to 1000","Repay from wallet","Lost and Found","Mailbox","Write a letter","Visit / gate"};return a[i];}
@@ -507,6 +507,7 @@ internal sealed class TownGame
     private void DrawBackpack()
     {
         var ink=new Color32(49,72,62);int rows=state.Capacity/5;float height=94+rows*44;
+        bool actions=screen=="item";int focus=actions?slot:selected;
         Rounded(198,57,82,50,24,new Color32(195,109,84));Rounded(210,66,58,28,14,new Color32(255,245,221));
         Bulged(70,73,350,height+7,32,new Color32(53,105,84));Panel(76,77,338,height);
         Heading(screen=="sell"?"Sell from backpack":"Backpack",96,92,ink);
@@ -515,25 +516,39 @@ internal sealed class TownGame
         for(int i=0;i<state.Capacity;i++)
         {
             float x=99+i%5*58,y=144+i/5*44;
-            if(i==selected)Rounded(x-3,y-3,54,46,16,new Color32(232,183,86));
-            Rounded(x,y,48,40,13,i==selected?new Color32(255,251,238):new Color32(231,228,202));
+            if(i==focus)Rounded(x-3,y-3,54,46,16,new Color32(232,183,86));
+            Rounded(x,y,48,40,13,i==focus?new Color32(255,251,238):new Color32(231,228,202));
             int id=state.Pockets[i];
             if(id!=0)itemIcons.Draw(ui,new RectF(id%8*64,id/8*64,64,64),new RectF(x+5,y+1,38,38),Color32.White);
             else Rounded(x+21,y+17,6,6,3,new Color32(188,195,166));
         }
-        // Compact, anchored selection popover; item titles never clutter the grid.
-        float popY=150+(float)Math.Sin(tick*.035f)*2;
-        Panel(435,popY,168,141);ui.FillTriangle(new Vector2(437,popY+40),new Vector2(437,popY+64),new Vector2(422,popY+53),new Color32(255,245,221));
-        int item=state.Pockets[selected];
-        Strong(Wrap(item==0?"Empty pocket":Catalog.Items[item].Name,14),451,popY+12,ink,1.3f);
-        if(item==0)Text("Room for\nsomething new.",451,popY+67,ink,1.1f);
-        else
-        {
-            Text(screen=="sell"?"Sell: "+Catalog.Items[item].Sell+" acorns":"One item",451,popY+69,ink,1.05f);
-            Strong(screen=="sell"?"A  Sell item":"A  Item actions",451,popY+101,ink,1.05f);
-        }
         Text("D-pad choose   A actions   L/R tabs",90,77+height-26,ink,.95f);
         if(state.BackpackTier<2){Text("Next pack: "+(state.Capacity+10)+" slots",436,325,ink,1);Text("Hearth's store",436,349,ink,1);}
+        // Follow the actual slot for both the title and action menu. Clamp the
+        // panel (including bulges/shadow) above the HUD for all backpack sizes.
+        float slotX=99+focus%5*58,slotY=144+focus/5*44;
+        float popWidth=actions?186:168,popHeight=actions?272:141;
+        float popX=Math.Min(slotX+66,607-popWidth),popY=Math.Max(80,Math.Min(slotY-12,428-popHeight));
+        float pointerY=Math.Max(popY+36,Math.Min(slotY+20,popY+popHeight-36));
+        Panel(popX,popY,popWidth,popHeight);
+        ui.FillTriangle(new Vector2(popX+2,pointerY-12),new Vector2(popX+2,pointerY+12),new Vector2(slotX+52,slotY+20),new Color32(255,245,221));
+        int item=state.Pockets[focus];float textX=popX+16;
+        Strong(Wrap(item==0?"Empty pocket":Catalog.Items[item].Name,14),textX,popY+12,ink,1.3f);
+        if(actions)
+        {
+            for(int i=0;i<itemActions.Length;i++){
+                float y=popY+56+i*18;
+                if(i==selected)Rounded(popX+10,y-1,popWidth-20,18,9,new Color32(221,231,188));
+                Text((i==selected?"> ":"  ")+itemActions[i],textX,y,ink,1.05f);
+            }
+            Text("A select   B back",textX,popY+246,ink,1);
+        }
+        else if(item==0)Text("Room for\nsomething new.",textX,popY+67,ink,1.1f);
+        else
+        {
+            Text(screen=="sell"?"Sell: "+Catalog.Items[item].Sell+" acorns":"One item",textX,popY+69,ink,1.05f);
+            Strong(screen=="sell"?"A  Sell item":"A  Item actions",textX,popY+101,ink,1.05f);
+        }
     }
     private Color32 MapTileColor(int x,int z)
     { int t=state.Town.At(x,z);return t==1?new Color32(75,154,187):t==2?new Color32(167,119,73):t==3?new Color32(229,209,150):t==4?new Color32(130,127,92):t==5?new Color32(191,179,147):new Color32(119,168,88); }
