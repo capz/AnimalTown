@@ -61,6 +61,7 @@ internal sealed class TownGame
     private long lastSave,sessionStart;
     private float exteriorX,exteriorZ;
     private bool loaded,relocate,damagedSave;
+    private bool indexedModels=true;
     private static readonly string[] tabs={"Backpack","Jobs","Catalog","Home","Post office","Settings"};
     internal TownGame()
     {
@@ -133,6 +134,7 @@ internal sealed class TownGame
     internal void Input(ControllerState p)
     {
         if(p.L.IsHeld&&p.R.IsHeld&&p.Z.WasPressed){FrameProfile.Enabled=!FrameProfile.Enabled;return;}
+        if(p.L.IsHeld&&p.R.IsHeld&&p.Y.WasPressed){ToggleModelPath();return;}
         if(screen=="title")
         { if(Press(p)){if(loaded)screen="world";else{screen="create";selected=0;}}return; }
         if(screen=="dialogue")
@@ -214,7 +216,9 @@ internal sealed class TownGame
         { int index=LostIndex(selected);Say("Town hall",state.ClaimLost(index,0)?"Recovered!":"Your pockets are full, or the item is reserved.");return; }
         if(screen=="menu")MenuAction();
     }
-    private int TabCount()=>menuTab==0?state.Capacity:menuTab==1?7:menuTab==2?Catalog.Items.Length-1:menuTab==3?7:menuTab==4?7:6;
+    private int TabCount()=>menuTab==0?state.Capacity:menuTab==1?7:menuTab==2?Catalog.Items.Length-1:menuTab==3?7:menuTab==4?7:7;
+    private void ToggleModelPath()
+    {int next=indexedModels?0:1;if(NativeRenderProbe.Indexed(next)!=next)throw new InvalidOperationException("Model renderer switch failed");indexedModels=!indexedModels;}
     private int LostCount(){int c=0;for(int i=0;i<state.Town.GroundCount;i++)if(state.Town.Ground[i].Kind==4)c++;return c;}
     private int LostIndex(int n){for(int i=0;i<state.Town.GroundCount;i++)if(state.Town.Ground[i].Kind==4&&n--==0)return i;return -1;}
     private void StoreAction()
@@ -262,7 +266,8 @@ internal sealed class TownGame
         else if(selected==2)Say("About","AnimalTown / "+BuildInfo.Commit+" / hypercube-engine. Original homebrew for Nintendo GameCube.");
         else if(selected==3){FrameProfile.Enabled=!FrameProfile.Enabled;}
         else if(selected==4){Say("Calendar","Console RTC / day "+day+". New days begin at 06:00.");}
-        else Say("Chat","Quick phrases and online chat are pending the companion transport.");
+        else if(selected==5)Say("Chat","Quick phrases and online chat are pending the companion transport.");
+        else ToggleModelPath();
     }
     private void Interact()
     {
@@ -331,7 +336,15 @@ internal sealed class TownGame
         var v=new VertexPositionColor[36];for(int i=0;i<36;i++){int a=ids[i%3==0?i:i%3==1?i+1:i-1]*3;v[i]=new VertexPositionColor(new Vector3(p[a],p[a+1],p[a+2]),Color32.White);}return Mesh.Create(v);
     }
     private void Box(float x,float y,float z,float w,float h,float d,Color32 color)
-    { var center=SurfacePoint(x+w*.5f,z+d*.5f,y+h*.5f);float radius=(float)Math.Sqrt(w*w+h*h+d*d)*.5f+.05f;if(!RenderView.Sphere(center.X,center.Y,center.Z,radius,state.X,state.Z)||(room==0&&!RenderView.AboveHorizon(center.Y,center.Z,radius,state.Z))){FrameProfile.CulledObjects++;return;}transform.LocalPosition=SurfacePoint(x,z,y);transform.LocalScale=new Vector3(w,h,d);transform.LocalRotation=SurfaceRotation(z);plain.Color=color;renderer.DrawMesh(cube,plain,transform); }
+    {
+        var origin=SurfacePoint(x,z,y);var pose=room==0?CylinderWorld.Surface(z,state.Z):new CylinderPose(0,z,1,0,0);
+        // Bound the actual rigidly rotated box, rather than a different point
+        // on the curved ground half a box-depth farther along the cylinder.
+        var center=new Vector3(x+w*.5f,origin.Y+h*.5f*pose.UpY-d*.5f*pose.UpZ,origin.Z+h*.5f*pose.UpZ+d*.5f*pose.UpY);
+        float radius=(float)Math.Sqrt(w*w+h*h+d*d)*.5f+.05f;
+        if(!RenderView.Sphere(center.X,center.Y,center.Z,radius,state.X,state.Z)||(room==0&&!RenderView.AboveHorizon(center.Y,center.Z,radius,state.Z))){FrameProfile.CulledObjects++;return;}
+        transform.LocalPosition=origin;transform.LocalScale=new Vector3(w,h,d);transform.LocalRotation=SurfaceRotation(z);plain.Color=color;renderer.DrawMesh(cube,plain,transform);
+    }
     private bool Visible(float x,float z,float scale)
     {var center=SurfacePoint(x,z,scale*.5f);float radius=scale*1.5f;return RenderView.Sphere(center.X,center.Y,center.Z,radius,state.X,state.Z)&&(room!=0||RenderView.AboveHorizon(center.Y,center.Z,radius,state.Z));}
     private void ModelAt(ModelInstance m,float x,float z,float scale,float facing=0)
@@ -344,12 +357,12 @@ internal sealed class TownGame
         phase=FrameProfile.Start();terrain.Draw(renderer,identity,room);FrameProfile.End(4,phase);phase=FrameProfile.Start();
         if(room==0)
         {
-            for(int i=0;i<6;i++){var v=state.Town.Residents[i];if(ScenePolicy.Visible(v.X,v.Z,v.X+1,v.Z+1,state.X,state.Z,22))ModelAt(actors[i+1],v.X,v.Z,1.8f);}
+            for(int i=0;i<6;i++){var v=state.Town.Residents[i];ModelAt(actors[i+1],v.X,v.Z,1.8f);}
             FrameProfile.End(5,phase);phase=FrameProfile.Start();DrawTrees();FrameProfile.End(6,phase);phase=FrameProfile.Start();
             long groundAt=FrameProfile.Start();
             for(int i=0;i<state.Town.GroundCount;i++)
             {
-                var g=state.Town.Ground[i];if(g.Kind==4||!ScenePolicy.Visible(g.X,g.Z,g.X+1,g.Z+1,state.X,state.Z,20))continue;
+                var g=state.Town.Ground[i];if(g.Kind==4)continue;
                 float y=0;
                 if(!IsTree(g))Box(g.X+.25f,y+.02f,g.Z+.25f,.5f,g.Kind==1?.03f:.25f,.5f,g.Kind==1?new Color32(105,81,54):g.Kind==2?new Color32(242,174,170):new Color32(229,190,82));
             }
@@ -373,7 +386,7 @@ internal sealed class TownGame
         phase=FrameProfile.Start();ui.End();FrameProfile.End(8,phase);
         phase=FrameProfile.Start();device.EndFrame();FrameProfile.End(9,phase);
     }
-    internal void RecordFrame(){if(FrameProfile.Enabled)FrameProfile.Complete(GpuProfiler.Snapshot().Triangles,terrain.VisibleTriangles,terrain.RejectedQuads,screen=="menu"&&menuTab==0?1:room!=0?2:screen=="world"?0:3);}
+    internal void RecordFrame(){if(FrameProfile.Enabled)FrameProfile.Complete(GpuProfiler.Snapshot().Triangles,terrain.VisibleTriangles,terrain.RejectedQuads,screen=="menu"&&menuTab==0?(indexedModels?1:7):room!=0?2:screen=="world"?(indexedModels?0:6):3);}
     private bool IsTree(GroundItem g)=>g.Kind==3||(g.Kind==2&&g.Item!=2);
     private void DrawTrees()
     {
@@ -391,9 +404,9 @@ internal sealed class TownGame
         trees.Draw(renderer,state.Town,visibleTrees,state.Z,month);
     }
     private void DrawBuilding(float x,float z,float scale)
-    { if(ScenePolicy.Visible(x,z,x+4,z+4,state.X,state.Z,22))ModelAt(props[0],x,z,scale); }
+    { ModelAt(props[0],x,z,scale); }
     private void FenceAt(int x,int z)
-    { if(Math.Abs(x-state.X)<18&&Math.Abs(z-state.Z)<22)Box(x,0,z,.12f,.55f,.12f,new Color32(211,191,147)); }
+    { Box(x,0,z,.12f,.55f,.12f,new Color32(211,191,147)); }
     private void Text(string text,float x,float y,Color32 c,float scale=1.5f)=>font.Draw(ui,text,x,y,c,scale/1.5f);
     private void Strong(string text,float x,float y,Color32 c,float scale=1.5f)=>strongFont.Draw(ui,text,x,y,c,scale/1.5f);
     private void Heading(string text,float x,float y,Color32 c,float scale=1)=>headingFont.Draw(ui,text,x,y,c,scale,(float)Math.Sin(tick*.018f+x*.01f)*1.8f);
@@ -444,6 +457,7 @@ internal sealed class TownGame
     private void DrawHud()
     {
         var ink=new Color32(49,72,62);Panel(20,18,282,36);Text("AnimalTown / "+BuildInfo.Commit,32,24,ink,.9f);
+        if(FrameProfile.Enabled)Text(indexedModels?"GX indexed":"Direct comparison",451,418,ink,.9f);
         Panel(410,18,210,56);Strong(state.Wallet+" acorns",427,22,ink,1.35f);Text("Loan "+state.Debt,427,47,ink,.95f);
         Rounded(20,440,420,29,14.5f,new Color32(48,76,57,210));Text("A interact   X backpack   Y map",32,451,Color32.White,1.3f);
         if(screen=="title")
@@ -488,7 +502,7 @@ internal sealed class TownGame
         if(menuTab==1)return i==0?"Tutorial / daily jobs":state.Town.Residents[i-1].Name+" / friendship "+state.Town.Residents[i-1].Friendship;
         if(menuTab==2)return Catalog.Items[i+1].Name+(state.Owned[i+1]==0?" (not owned)":" / "+Catalog.Items[i+1].Buy);
         if(menuTab==3){string[] a={"Roof palette","Exterior palette","Fence style","Mailbox","Relocate (50000)","Expand house","Expand garden"};return a[i];}
-        string[] settings={"Save now","Controls","About / build identity","Performance display","Calendar","Chat settings"};return settings[i];
+        string[] settings={"Save now","Controls","About / build identity","Performance display: "+(FrameProfile.Enabled?"On":"Off"),"Calendar","Chat settings","Model drawing: "+(indexedModels?"GX indexed":"Direct comparison")};return settings[i];
     }
     private void DrawBackpack()
     {

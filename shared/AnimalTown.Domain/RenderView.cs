@@ -13,6 +13,9 @@ public static class RenderView
     private static readonly float HorizonCos=(float)Math.Sqrt(1-HorizonSin*HorizonSin);
     public static bool Sphere(float x,float y,float z,float radius,float focusX,float focusZ)
     {
+        // Retain a small guard band at plane boundaries; GX clips crossing
+        // triangles. CPU visibility must reject only an entirely outside bound.
+        radius+=.025f;
         float dx=x-focusX,dy=y-CylinderWorld.CameraHeight,dz=z-focusZ-CylinderWorld.CameraBack;
         float depth=dy*ForwardY+dz*ForwardZ,up=-dy*ForwardZ+dz*ForwardY;
         return depth+radius>=CylinderWorld.Near&&depth-radius<=CylinderWorld.Far&&

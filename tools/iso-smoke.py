@@ -90,6 +90,11 @@ with (root/'emulator.log').open('w') as log:
             press('B')
             os.write(controller,b'PRESS L\nPRESS R\n');time.sleep(2);press('Z')
             os.write(controller,b'RELEASE L\nRELEASE R\n');time.sleep(profile_seconds);screenshot('profile-world.png')
+            if '--compare-renderers' in sys.argv:
+                os.write(controller,b'PRESS L\nPRESS R\n');time.sleep(2);press('Y')
+                os.write(controller,b'RELEASE L\nRELEASE R\n');time.sleep(profile_seconds);screenshot('profile-world-direct.png')
+                os.write(controller,b'PRESS L\nPRESS R\n');time.sleep(2);press('Y')
+                os.write(controller,b'RELEASE L\nRELEASE R\n');time.sleep(3);screenshot('profile-world-indexed.png')
             os.write(controller,b'SET MAIN 0.8 0.5\n');time.sleep(12)
             os.write(controller,b'SET MAIN 0.2 0.5\n');time.sleep(12)
             os.write(controller,b'SET MAIN 0.5 0.5\n');time.sleep(3)

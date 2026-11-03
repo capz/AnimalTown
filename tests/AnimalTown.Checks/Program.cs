@@ -70,6 +70,17 @@ arrival.X=18;arrival.Z=38;Check(!arrival.CanWalk(arrival.X,arrival.Z,0),"old sav
 Check(arrival.MoveToHouseEntrance()&&arrival.CanWalk(arrival.X,arrival.Z,0),"old trapped save gets a clear arrival without deleting objects");
 Check(Math.Abs(Math.Sqrt(CylinderWorld.CameraHeight*CylinderWorld.CameraHeight+CylinderWorld.CameraBack*CylinderWorld.CameraBack)-10)<.001,"camera eye distance reduced from fifteen to ten metres");
 Check(RenderView.Sphere(0,1,0,1,0,0)&&!RenderView.Sphere(100,1,0,1,0,0)&&!RenderView.Sphere(0,1,100,1,0,0),"view keeps player and rejects side/behind camera");
+for(int edge=0;edge<4;edge++)for(int depth=2;depth<65;depth+=3)
+{
+    float x=0,up=0;
+    if(edge<2)x=(edge==0?-1:1)*(depth*RenderView.TanX+.5f);
+    else up=(edge==2?-1:1)*(depth*RenderView.TanY+.5f);
+    float y=CylinderWorld.CameraHeight+depth*RenderView.ForwardY-up*RenderView.ForwardZ;
+    float z=CylinderWorld.CameraBack+depth*RenderView.ForwardZ+up*RenderView.ForwardY;
+    Check(RenderView.Sphere(x,y,z,1,0,0),"sphere whose center is outside a viewport edge retains its visible portion");
+}
+var edgeBuilding=CylinderWorld.Surface(-25,0,2);
+Check(RenderView.Sphere(0,edgeBuilding.Y,edgeBuilding.Z,6,0,0)&&RenderView.AboveHorizon(edgeBuilding.Y,edgeBuilding.Z,6,0),"building outside old 22-unit square can remain partly visible");
 var nearHorizon=CylinderWorld.Surface(0,0,1);
 Check(RenderView.AboveHorizon(nearHorizon.Y,nearHorizon.Z,1,0),"nearby player stays above horizon");
 var behindHorizon=CylinderWorld.Surface(-50,0,1);

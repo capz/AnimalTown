@@ -51,11 +51,13 @@ if 3 in versions:
 # measured work rather than assuming injected stick input always moves a player.
 groups[4]=[r for r in groups.get(0,[])[5:] if r[6]==0]
 groups[5]=[r for r in groups.get(0,[])[5:] if r[6]!=0]
+groups[8]=[r for r in groups.get(6,[])[5:] if r[6]==0]
+groups[9]=[r for r in groups.get(6,[])[5:] if r[6]!=0]
 report={'units':'milliseconds; guest clock, not physical hardware or GPU duration',
         'capture_files':sys.argv[1:],'protocol_versions':sorted(versions),'scenarios':{}}
 for scene,rows in groups.items():
     # Drop first five valid frames per scenario to reduce menu-transition effects.
-    if scene<4:rows=rows[5:]
+    if scene in (0,1,2,3,6,7):rows=rows[5:]
     if not rows:continue
     timings={}
     for i,name in enumerate(names):
@@ -68,7 +70,7 @@ for scene,rows in groups.items():
             selected=sorted(zip(values,clipped))[min(len(rows)-1,math.ceil(q*len(rows))-1)]
             result[key+'_is_lower_bound']=selected[1]
         timings[name]=result
-    report['scenarios'][{0:'world',1:'backpack',2:'indoor',3:'other',4:'world_cached_terrain',5:'world_rebuilt_terrain'}.get(scene,str(scene))]={
+    report['scenarios'][{0:'world',1:'backpack',2:'indoor',3:'other',4:'world_cached_terrain',5:'world_rebuilt_terrain',6:'world_direct',7:'backpack_direct',8:'world_direct_cached_terrain',9:'world_direct_rebuilt_terrain'}.get(scene,str(scene))]={
         'frames':len(rows),'timings':timings,
         'triangles':stats([r[20]+(r[21]<<16) for r in rows]),
         'terrain_triangles':stats([r[22] for r in rows]),
