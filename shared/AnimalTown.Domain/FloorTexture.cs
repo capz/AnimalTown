@@ -4,7 +4,7 @@ namespace AnimalTown;
 // measured RGB error is small; RGB565 fallback for high-contrast artwork.
 public static class FloorTexture
 {
-    public const int Maximum=64;
+    public const int Maximum=64,MaximumMipLevels=2;
     public static byte[] Prepare(byte[] source)
     {
         TexturePixels.Validate(source);int sw=TexturePixels.Width(source),sh=TexturePixels.Height(source),w=sw,h=sh;
@@ -16,10 +16,10 @@ public static class FloorTexture
         for(int y=0;y<h;y++)for(int x=0;x<w;x++){uint p=TexturePixels.Pixel(test,x,y);int at=(y*w+x)*4;long r=(int)(p>>24)-rgba[at],g=(int)((p>>16)&255)-rgba[at+1],b=(int)((p>>8)&255)-rgba[at+2];error+=r*r+g*g+b*b;}
         int format=cmpr.Length<w*h*2&&error<=w*h*3*256L?14:4;
         int bytes=0,levels=0;
-        for(int mw=w,mh=h;mw>=4&&mh>=4;mw/=2,mh/=2){bytes+=Size(mw,mh,format);levels++;}
+        for(int mw=w,mh=h;mw>=4&&mh>=4&&levels<MaximumMipLevels;mw/=2,mh/=2){bytes+=Size(mw,mh,format);levels++;}
         var payload=new byte[bytes];int write=0;
         for(int level=0,mw=w,mh=h;level<levels;level++,mw/=2,mh/=2){
-            var encoded=format==14?Compress(rgba,mw,mh):TexturePixels.Encode(rgba,mw,mh,4);Array.Copy(encoded,0,payload,write,encoded.Length);write+=encoded.Length;
+            var encoded=format==14?(level==0?cmpr:Compress(rgba,mw,mh)):TexturePixels.Encode(rgba,mw,mh,4);Array.Copy(encoded,0,payload,write,encoded.Length);write+=encoded.Length;
             if(level+1<levels){var next=new byte[mw/2*(mh/2)*4];for(int y=0;y<mh/2;y++)for(int x=0;x<mw/2;x++)for(int c=0;c<4;c++){int a=(y*2*mw+x*2)*4+c;next[(y*(mw/2)+x)*4+c]=(byte)((rgba[a]+rgba[a+4]+rgba[a+mw*4]+rgba[a+mw*4+4])/4);}rgba=next;}
         }
         return Package(payload,w,h,format,levels);

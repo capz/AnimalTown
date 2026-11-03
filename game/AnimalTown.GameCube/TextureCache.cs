@@ -54,7 +54,7 @@ internal static class TextureCache
     private static CachedTexture LoadAndDecode(string key,string path,bool atlas)=>Decode(key,File.ReadAllBytes(path),atlas);
     internal static CachedTexture LoadFloor(string path)
     {
-        string key=BuildInfo.Commit+":"+path+":floor64-mips-mirror-auto-v1";
+        string key=BuildInfo.Commit+":"+path+":floor64-mip2-mirror-auto-v2";
         var cached=Find(key,false);if(cached!=null)return cached;
         var loaded=DecodeFloor(key,path);AnimalTown.GameCube.NativeTexturePages.Collect();return loaded;
     }

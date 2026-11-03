@@ -54,11 +54,12 @@ the repeating renderer. The saved world remains 20×20 square screen tiles.
 Host import crops and converts source images to RGB565 DNTX, retaining source
 resolution up to 1024 pixels and using power-of-two dimensions required by GX.
 The final reduction happens on the console: box-filter to at most 64×64, build
-mipmaps down to 4×4, and select CMPR when decoded mean squared RGB error is at
+two levels total (base plus half-size, stopping at 4×4), and select CMPR when decoded mean squared RGB error is at
 most 256 per channel. Higher-error images use RGB565 mipmaps. A 64-square tile
-uses 2,752 bytes with CMPR mipmaps or 10,912 bytes with RGB565 mipmaps. Solid
+uses 2,560 bytes with CMPR mipmaps or 10,240 bytes with RGB565 mipmaps. Solid
 4-square fallbacks use 32 bytes. The current seven unique sources per season
-use 13,824 bytes in total, versus the previous 32 KiB active atlas.
+use 12,864 bytes in total, versus 13,824 with the previous full mip chains
+and the older 32 KiB active atlas.
 
 Sampler state uses mirrored repeat and trilinear minification when mipmaps are
 present. Cache keys include the source disc URI, build identity and processing/

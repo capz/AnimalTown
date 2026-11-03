@@ -46,7 +46,7 @@ if (!$SkipAssets) {
     }
     foreach ($name in $assetMap.Keys) {
         Run dotnet @('run','--project','tools/AnimalTown.Tools','-c','Release','--no-build','--','prepare',$projectRoot,"assets/models/$($assetMap[$name])","out/prepared/$name.glb")
-        $importArguments=@($assetTools,'model',"out/prepared/$name.glb","out/disc/$name.dndmodel",'--texture-limit','128','--compile-gx-materials')
+        $importArguments=@($assetTools,'model',"out/prepared/$name.glb","out/disc/$name.dndmodel",'--texture-limit','128','--mip-levels','2','--compile-gx-materials')
         if($assetMap[$name].StartsWith('villagers/villager_')){$importArguments+='--allow-material-approximation'}
         Run dotnet $importArguments
     }

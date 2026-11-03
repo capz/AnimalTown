@@ -18,7 +18,7 @@ internal static class TerrainChecks
         Check(BinaryPrimitives.ReadInt32LittleEndian(texture.AsSpan(8))==4&&texture.Length==32+256*256*2,"bounded RGB565 texture");
         Check(Pixel(0,0)==0xF800&&Pixel(35,35)==0xF800&&Pixel(36,0)==0x001F&&Pixel(71,35)==0x001F,"source crop, native swizzle and duplicated gutters");
         RepeatFloorAssets.Build(root);var repeat=File.ReadAllBytes(Path.Combine(root,"out/disc/floor-spring.bin"));AnimalTown.FloorStrips.Validate(repeat);Check(AnimalTown.FloorStrips.Read(repeat,20)==2,"repeating floor preserves authored variants");
-        var floor=AnimalTown.FloorTexture.Prepare(File.ReadAllBytes(Path.Combine(root,"out/disc/floor-spring-0.dndtex")));Check(AnimalTown.TexturePixels.Width(floor)<=64&&AnimalTown.TexturePixels.Int(floor,24)>1,"floor source becomes bounded native mipmaps at load");
+        var floor=AnimalTown.FloorTexture.Prepare(File.ReadAllBytes(Path.Combine(root,"out/disc/floor-spring-0.dndtex")));Check(AnimalTown.TexturePixels.Width(floor)<=64&&AnimalTown.TexturePixels.Int(floor,24)==2,"floor source becomes base plus one half-size native mip at load");
         config["atlasSize"]=1024;Reject("resident atlas budget");config.AsObject().Remove("atlasSize");
         config["season"]="sprint";Reject("unknown season");config["season"]="auto";
         config["tilePixels"]=128;Reject("texture budget");config["tilePixels"]=32;

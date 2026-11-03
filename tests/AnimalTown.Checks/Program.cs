@@ -166,13 +166,18 @@ for(int kind=0;kind<3;kind++){
 var floorPixels=new byte[128*128*4];
 for(int y=0;y<128;y++)for(int x=0;x<128;x++){int at=(y*128+x)*4;floorPixels[at]=(byte)(x<64?255:0);floorPixels[at+2]=(byte)(x>=64?255:0);floorPixels[at+3]=255;}
 var floorSource=Package(4,128,128,TexturePixels.Encode(floorPixels,128,128,4));uint floorHash=TexturePixels.Hash(floorSource);var optimized=FloorTexture.Prepare(floorSource);
-Check(TexturePixels.Width(optimized)==64&&TexturePixels.Height(optimized)==64&&TexturePixels.Int(optimized,8)==14&&TexturePixels.Int(optimized,24)==5&&optimized.Length==32+2752,"floor downsamples, compresses and builds native mip chain");
+Check(TexturePixels.Width(optimized)==64&&TexturePixels.Height(optimized)==64&&TexturePixels.Int(optimized,8)==14&&TexturePixels.Int(optimized,24)==2&&optimized.Length==32+2560,"floor downsamples, compresses and builds base plus one native mip");
 Check(TexturePixels.Pixel(optimized,0,0)==0xff0000ff&&TexturePixels.Pixel(optimized,63,0)==0x0000ffff&&TexturePixels.Pixel(optimized,63,63)==0x0000ffff,"floor CMPR tile/subblock addressing and opaque alpha");
 Check(TexturePixels.Hash(floorSource)==floorHash,"load-time optimization preserves original fingerprint");
+var halfFloor=new byte[optimized.Length-32-2048];Array.Copy(optimized,32+2048,halfFloor,0,halfFloor.Length);
+var halfFloorPackage=Package(14,32,32,halfFloor);
+Check(TexturePixels.Pixel(halfFloorPackage,0,0)==0xff0000ff&&TexturePixels.Pixel(halfFloorPackage,31,0)==0x0000ffff,"second floor level has valid half-size GX texels");
 int[] palette={0xff0000,0x00ff00,0x0000ff,0xffff00,0x00ffff,0xff00ff,0xffffff,0};
 for(int y=0;y<128;y++)for(int x=0;x<128;x++){int at=(y*128+x)*4,c=palette[(x/2+y/2*4)%8];floorPixels[at]=(byte)(c>>16);floorPixels[at+1]=(byte)(c>>8);floorPixels[at+2]=(byte)c;}
 optimized=FloorTexture.Prepare(Package(4,128,128,TexturePixels.Encode(floorPixels,128,128,4)));
-Check(TexturePixels.Int(optimized,8)==4&&optimized.Length==32+10912,"high-error CMPR falls back to compact RGB565 mipmaps");
+Check(TexturePixels.Int(optimized,8)==4&&TexturePixels.Int(optimized,24)==2&&optimized.Length==32+10240,"high-error CMPR falls back to two RGB565 levels");
+var solidFloor=FloorTexture.Prepare(Package(4,4,4,TexturePixels.Encode(new byte[4*4*4],4,4,4)));
+Check(TexturePixels.Int(solidFloor,24)==1&&solidFloor.Length==32+32,"minimum-size solid floor keeps its one valid hardware level");
 var floorMeta=new byte[FloorStrips.Records];int[] floorHeader={0x32525441,1,13,13,64};
 void SetFloor(int at,int value){for(int b=0;b<4;b++)floorMeta[at+b]=(byte)(value>>(b*8));}
 for(int i=0;i<floorHeader.Length;i++)SetFloor(i*4,floorHeader[i]);

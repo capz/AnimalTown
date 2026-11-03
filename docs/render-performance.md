@@ -17,7 +17,7 @@ shows less of each tile. The terrain cylinder still extends beyond the view.
 ## Texture policy
 
 Every native texture allocated by the game is at most 128 by 128 pixels.
-Model import already applies `--texture-limit 128`; the ISO builder now rejects
+Model import applies `--texture-limit 128 --mip-levels 2`; the ISO builder rejects
 oversized embedded model textures and writes `out/texture-audit.json` with
 package and texture fingerprints. High-resolution GLB images stay on the build
 machine. The SDK shares identical converted model texture payloads using a
@@ -31,7 +31,10 @@ IA8, RGB565, RGB5A3, RGBA8 and CMPR base levels. Temporary source bytes, decoded
 pixels and upload buffers leave scope before an explicit native managed-heap
 collection. Only native resident pixels, dimensions and identity survive.
 
-UI atlases are split into 128-pixel pages so glyph/icon resolution is preserved.
+World/model textures use two mip levels total: base plus half-size, provided
+the shorter dimension can remain at least four pixels. Native samplers clamp
+to the available chain and use trilinear minification for linear materials.
+UI atlases remain base-only and are split into 128-pixel pages so glyph/icon resolution is preserved.
 Gorditas glyphs that cross page boundaries draw as adjoining source slices;
 rotated headings retain a shared pivot. The IPL font is extracted into six
 128-square IA8 glyph pages. Its temporary 512-square-wide extraction atlas and
@@ -44,10 +47,14 @@ version and atlas layout. A source FNV fingerprint and original dimensions remai
 available without retaining original pixels. A hit avoids disc I/O and decoding.
 Leases prevent eviction of active textures; zero-lease entries are evicted by
 least recent use. Repeating floors have their own <=64-pixel policy with CMPR or
-RGB565 mipmaps and mirrored-repeat samplers; the current season uses 13.5 KiB.
+RGB565 two-level mipmaps and mirrored-repeat samplers; the current season uses
+12,864 bytes (about 12.6 KiB). The floor processing key is
+`floor64-mip2-mirror-auto-v2`, invalidating entries from the previous policy.
 See [generated-trees-repeat-floor.md](generated-trees-repeat-floor.md).
 This is a read-only disc cache, not a hot-reloading SD asset
 cache. The SDK's separate model texture cache is outside that 2 MiB budget.
+See [mipmaps-streaming-async.md](mipmaps-streaming-async.md) for mip tradeoffs,
+streaming applicability and the distinction between completion checks and waits.
 
 ## Visibility
 
