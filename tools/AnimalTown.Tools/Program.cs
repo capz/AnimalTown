@@ -22,9 +22,10 @@ static class Program
             else if(args[0]=="art")Art();
             else if(args[0]=="terrain")RepeatFloorAssets.Build(Root);
             else if(args[0]=="terrain-check")TerrainChecks.Run(Root);
+            else if(args[0]=="tree-audit")TreeRenderAudit.Run(Root,args[2]);
             else if(args[0]=="iso")Disc(args[2],args[3]);
             else if(args[0]=="verify")Verify(args[2]);
-            else throw new ArgumentException("audit|art|iso|verify ROOT [PATH] [COMMIT]");
+            else throw new ArgumentException("audit|art|iso|verify|tree-audit ROOT [PATH] [COMMIT]");
             return 0;
         }
         catch(Exception e){Console.Error.WriteLine(e.Message);return 1;}

@@ -1,5 +1,11 @@
 # Texture residency, visibility and profiling
 
+See [tree-render-investigation.md](tree-render-investigation.md) for the exact
+retired-asset audit and released-ISO comparison: tree submission averages
+510.409 ms before and 0.385 ms after generated indexed trees. These are Dolphin
+guest-clock measurements; individual polygon/lighting/texture costs are not
+isolated, and physical GameCube performance remains unmeasured.
+
 The camera eye is now `(player.x, 6, player.z + 8)`, ten metres from the
 player rather than fifteen. Eye and aim offsets both scale by 2/3, preserving
 the pitch and 53.54-degree vertical field of view. World coordinates, saves and
