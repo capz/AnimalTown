@@ -145,7 +145,7 @@ if '--profile' in sys.argv or '--interaction-profile' in sys.argv:
     config.write_text(config.read_text().replace('DumpCodec = ffv1','DumpCodec = ffv1\nDumpEncoder = ffv1\nDumpPixelFormat = bgr0'))
 (user/'Config'/'Logger.ini').write_text('[Options]\nWriteToFile = True\nVerbosity = 4\n[Logs]\nBOOT = True\nOSREPORT = True\nDVDINTERFACE = True\n')
 env=dict(os.environ,DISPLAY=':93',QT_QPA_PLATFORM='xcb')
-x=subprocess.Popen(['Xvfb',':93','-screen','0','800x600x24'],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
+xvfb=subprocess.Popen(['Xvfb',':93','-screen','0','800x600x24'],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
 time.sleep(1)
 with (root/'emulator.log').open('w') as log:
     p=subprocess.Popen(['/usr/games/dolphin-emu-nogui','-u',str(user),'-e',str(disc),'-v','OGL'],env=env,stdout=log,stderr=subprocess.STDOUT)
@@ -157,8 +157,8 @@ with (root/'emulator.log').open('w') as log:
         if '--terrain-edges' in sys.argv:
             press('A');time.sleep(2);screenshot('terrain-edge-start.png')
             directions=[(.5,0,3),(0,.5,2),(1,.5,4),(.5,0,2),(0,.5,2),(.5,1,2),(1,0,2),(0,1,2)]
-            for n,(x,y,duration) in enumerate(directions):
-                os.write(controller,f'SET MAIN {x} {y}\nPRESS B\n'.encode());time.sleep(duration)
+            for n,(axis_x,axis_y,duration) in enumerate(directions):
+                os.write(controller,f'SET MAIN {axis_x} {axis_y}\nPRESS B\n'.encode());time.sleep(duration)
                 os.write(controller,b'SET MAIN 0.5 0.5\nRELEASE B\n');time.sleep(.5);screenshot(f'terrain-edge-{n}.png')
             press('START');time.sleep(12);screenshot('terrain-edge-save.png')
         elif '--interaction-profile' in sys.argv:
@@ -238,6 +238,6 @@ with (root/'emulator.log').open('w') as log:
         p.terminate()
         try:p.wait(timeout=5)
         except subprocess.TimeoutExpired:p.kill();p.wait()
-x.terminate();x.wait()
+xvfb.terminate();xvfb.wait()
 os.close(controller)
 print(root/'screen.png')
