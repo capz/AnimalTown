@@ -32,7 +32,7 @@ public sealed class FloorStrips
             var a=CylinderWorld.Surface(z,state.Z);var b=CylinderWorld.Surface(z+1,state.Z);int start=left,key=-1;
             for(int x=left;x<=right;x++){
                 int next=-1;
-                if(x<right){if(RenderView.Sphere(x+.5f,(a.Y+b.Y)*.5f,(a.Z+b.Z)*.5f,.8f,state.X,state.Z))next=At(state,data,x,z,room);else RejectedQuads++;}
+                if(x<right){if(RenderView.Sphere(x+.5f,(a.Y+b.Y)*.5f,(a.Z+b.Z)*.5f,TerrainTiles.GroundVisibilityRadius,state.X,state.Z))next=At(state,data,x,z,room);else RejectedQuads++;}
                 if(next!=key){if(key>=0)Add(start,x,z,z+1,key);start=x;key=next;}
             }
         }

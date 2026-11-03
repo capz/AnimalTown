@@ -6,6 +6,7 @@ UiShapePlanChecks.Run(Check);
 MenuNavigationChecks.Run(Check);
 TownTrimChecks.Run(Check);
 WrappedTextChecks.Run(Check);
+TerrainEdgeChecks.Run(Check);
 var terrainEdit=new GameState(74);int terrainVersion=terrainEdit.Town.TerrainVersion;
 Check(terrainEdit.Town.SetTerrain(20,20,Terrain.Water)&&terrainEdit.Town.TerrainVersion==terrainVersion+1,"terrain edit invalidates render caches");
 Check(!terrainEdit.Town.SetTerrain(20,20,Terrain.Water)&&!terrainEdit.Town.SetTerrain(-1,20,Terrain.Grass)&&terrainEdit.Town.TerrainVersion==terrainVersion+1,"unchanged/invalid terrain edits preserve cache revision");
@@ -72,9 +73,9 @@ for(int row=0;row<TerrainTiles.GroundRows;row++)for(int offset=0;offset<=4;offse
     float focus=offset*.5f;var pose=CylinderWorld.Surface(-48+row,focus);
     double depth=(pose.Y-CylinderWorld.CameraHeight)*RenderView.ForwardY+(pose.Z-focus-CylinderWorld.CameraBack)*RenderView.ForwardZ;
     double projectedHalfWidth=Math.Max(0,depth)*Math.Tan(CylinderWorld.CameraFieldOfView*Math.PI/360)*4/3;
-    Check(TerrainTiles.RowHalfWidth(row)>projectedHalfWidth+2,"textured cylinder rows extend beyond the viewport including sub-cell camera motion");
+    Check(TerrainTiles.RowHalfWidth(row)>projectedHalfWidth+4,"textured cylinder rows extend beyond the padded viewport including sub-cell camera motion");
 }
-Check(TerrainTiles.GroundVertexCount<25000,"terrain submission budget");
+Check(TerrainTiles.GroundVertexCount<26000,"padded coarse terrain envelope stays bounded before culling and merging");
 var arrival=new GameState(7319);arrival.Town.AddGround(3,18,39,3,0);
 Check(arrival.PlaceHouse(15,35,false),"house placement with a blocked doorway finds a clear arrival");
 Check(arrival.CanWalk(arrival.X,arrival.Z,0)&&arrival.Z>=40.5f,"new house arrival is outside its collision footprint and avoids trees");
@@ -131,7 +132,7 @@ for(int offset=0;offset<16;offset++)
         var a=CylinderWorld.Surface(z,fz);var b=CylinderWorld.Surface(z+1,fz);
         if(!RenderView.SurfaceFront(z,fz)&&!RenderView.SurfaceFront(z+1,fz))continue;
         for(int x=minX+CylinderWorld.ViewHalfWidth-half;x<minX+CylinderWorld.ViewHalfWidth+half;x++)
-            if(RenderView.Sphere(x+.5f,(a.Y+b.Y)*.5f,(a.Z+b.Z)*.5f,.8f,fx,fz))visible+=6;
+            if(RenderView.Sphere(x+.5f,(a.Y+b.Y)*.5f,(a.Z+b.Z)*.5f,TerrainTiles.GroundVisibilityRadius,fx,fz))visible+=6;
     }
     Check(visible>0&&visible<=8190,"closer curved terrain fits bounded mesh across sub-cell camera motion");
 }
@@ -201,7 +202,7 @@ int floorMinZ=(int)floorGame.Z/2*2-48,floorCenterX=(int)floorGame.X/2*2;
 for(int row=0;row<TerrainTiles.GroundRows;row++){
     int z=floorMinZ+row,half=TerrainTiles.RowHalfWidth(row);var a=CylinderWorld.Surface(z,floorGame.Z);var b=CylinderWorld.Surface(z+1,floorGame.Z);
     if(!RenderView.SurfaceFront(z,floorGame.Z)&&!RenderView.SurfaceFront(z+1,floorGame.Z))continue;
-    for(int x=floorCenterX-half;x<floorCenterX+half;x++)if(RenderView.Sphere(x+.5f,(a.Y+b.Y)*.5f,(a.Z+b.Z)*.5f,.8f,floorGame.X,floorGame.Z)){fineCells++;int hits=0;for(int n=0;n<strips.Count;n++)if(strips.Z0[n]==z&&x>=strips.X0[n]&&x<strips.X1[n])hits++;Check(hits==1,"merged floor coverage has no holes or overlapping cells");}
+    for(int x=floorCenterX-half;x<floorCenterX+half;x++)if(RenderView.Sphere(x+.5f,(a.Y+b.Y)*.5f,(a.Z+b.Z)*.5f,TerrainTiles.GroundVisibilityRadius,floorGame.X,floorGame.Z)){fineCells++;int hits=0;for(int n=0;n<strips.Count;n++)if(strips.Z0[n]==z&&x>=strips.X0[n]&&x<strips.X1[n])hits++;Check(hits==1,"merged floor coverage has no holes or overlapping cells");}
 }
 Check(fineCells==coveredCells,"merged floor exactly covers the visible fine-cell set");strips.Prepare(floorGame,1,floorMeta);Check(strips.Count==1&&strips.Material[0]==7&&strips.X1[0]==4&&strips.Z1[0]==4,"indoor repeating floor is one flat quad");
 Console.WriteLine(checks+" gameplay/render/texture checks passed");

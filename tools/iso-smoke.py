@@ -154,7 +154,14 @@ with (root/'emulator.log').open('w') as log:
         if p.poll() is not None:
             raise RuntimeError(f'Dolphin exited during boot ({p.returncode}); see {root / "emulator.log"}')
         screenshot('screen.png')
-        if '--interaction-profile' in sys.argv:
+        if '--terrain-edges' in sys.argv:
+            press('A');time.sleep(2);screenshot('terrain-edge-start.png')
+            directions=[(.5,0,3),(0,.5,2),(1,.5,4),(.5,0,2),(0,.5,2),(.5,1,2),(1,0,2),(0,1,2)]
+            for n,(x,y,duration) in enumerate(directions):
+                os.write(controller,f'SET MAIN {x} {y}\nPRESS B\n'.encode());time.sleep(duration)
+                os.write(controller,b'SET MAIN 0.5 0.5\nRELEASE B\n');time.sleep(.5);screenshot(f'terrain-edge-{n}.png')
+            press('START');time.sleep(12);screenshot('terrain-edge-save.png')
+        elif '--interaction-profile' in sys.argv:
             press('A');time.sleep(2)
             os.write(controller,b'PRESS L\nPRESS R\n');time.sleep(1);press('Z')
             os.write(controller,b'RELEASE L\nRELEASE R\n');time.sleep(profile_seconds);screenshot('interaction-world.png')

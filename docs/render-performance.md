@@ -15,6 +15,17 @@ is 8 by 8 square 20-metre tiles; old saves preserve retained coordinates during
 cropping (see town-size.md). Earlier measurements below used the former larger
 town. The terrain cylinder retains its curvature and extends beyond the view.
 
+Terrain culling adds one full logical cell around the viewport: its enclosing
+sphere grows from 0.8 to 1.8 metres, and each row envelope gains two columns on
+each side to support the wider band during fractional camera motion. GPU
+clipping handles retained edge-crossing triangles. Offscreen rejection beyond
+this band, horizon/backface culling and existing strip budgets remain active.
+The padding applies to terrain; actor/object visibility tests keep their own
+bounds. Regression sweeps cover all four planes, sub-cell camera positions,
+partially visible tile samples and alternating-material strip capacity.
+Use `iso-smoke.py ISO CAPTURE_DIR --terrain-edges` with a copied test card to
+capture horizontal, vertical and diagonal camera movement in the released ISO.
+
 ## Texture policy
 
 Every native texture allocated by the game is at most 128 by 128 pixels.
