@@ -29,12 +29,15 @@ def screenshot(name):
 
 def settings_navigation():
     results=[]
-    def focus(name,expected):
+    held_samples=[]
+    def read_focus(name):
         screenshot(name+'.png')
         pixels=subprocess.check_output(['ffmpeg','-v','error','-i',str(root/(name+'.png')),'-frames:v','1','-f','rawvideo','-pix_fmt','rgb24','-'])
         scores=[sum(all(abs(pixels[(y*800+x)*3+c]-target)<=3 for c,target in enumerate((221,231,188)))
                     for y in range(131+i*29,155+i*29) for x in range(100,540,4)) for i in range(7)]
-        actual=scores.index(max(scores)) if max(scores)>100 else -1
+        return scores.index(max(scores)) if max(scores)>100 else -1
+    def focus(name,expected):
+        actual=read_focus(name)
         results.append((name,expected,actual));print(f'{name}: expected row {expected}, actual {actual}',flush=True)
     def stick(y,duration=.18):
         os.write(controller,f'SET MAIN 0.5 {y}\n'.encode());time.sleep(duration)
@@ -54,10 +57,23 @@ def settings_navigation():
     press('R');screenshot('settings-next-tab.png');press('L');focus('settings-tab-return',0)
     press('B');screenshot('settings-close.png')
     press('X');press('L');focus('settings-backpack-entry',0)
-    stick(.1,.65);focus('settings-stick-repeat',(2,3,4,5))
-    stick(.9);screenshot('settings-stick-up.png')
-    (root/'settings-navigation.txt').write_text('\n'.join(f'{name}: expected={expected}, actual={actual}' for name,expected,actual in results)+'\n')
-    if any(actual not in (expected if isinstance(expected,tuple) else (expected,)) for _,expected,actual in results):raise AssertionError('Settings navigation failed; see settings-navigation.txt and screenshots')
+    # Guest time need not advance at wall-clock speed in Dolphin. Observe
+    # progress under a continuously held stick instead of assuming how many
+    # 120 ms guest-clock repeats fit into a short wall-clock pulse.
+    for name,y in [('down',.1),('up',.9)]:
+        os.write(controller,f'SET MAIN 0.5 {y}\n'.encode())
+        samples=[]
+        try:
+            for n in range(8):
+                time.sleep(.3);samples.append(read_focus(f'settings-held-{name}-{n}'))
+        finally:
+            os.write(controller,b'SET MAIN 0.5 0.5\n');time.sleep(2)
+        passed=all(row>=0 for row in samples) and len(set(samples))>1
+        results.append((f'settings-held-{name}-progress',1,int(passed)))
+        held_samples.append(f'Held {name} rows: {samples}')
+        print(held_samples[-1],flush=True)
+    (root/'settings-navigation.txt').write_text('\n'.join(f'{name}: expected={expected}, actual={actual}' for name,expected,actual in results)+'\n'+'\n'.join(held_samples)+'\n')
+    if any(expected!=actual for _,expected,actual in results):raise AssertionError('Settings navigation failed; see settings-navigation.txt and screenshots')
 (user/'Config'/'Dolphin.ini').write_text('''[Core]
 CPUCore = 1
 CPUThread = False
