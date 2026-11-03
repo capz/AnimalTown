@@ -33,6 +33,7 @@ if (!$SkipAssets) {
         hamster='villagers/villager_hamster.glb'
         spaniel='villagers/villager_cockerspaniel.glb'
         building='world-stuctures/Meshy_AI_animal_crossing_konbi_1102122741_texture.glb'
+        tent='world-stuctures/structure_tent.glb'
         deciduous='world-stuctures/Meshy_AI_ac_deciduous_tree_3d_1102122647_texture.glb'
         palm='world-stuctures/Meshy_AI_ac_palm_tree_3d_1102122704_texture.glb'
         pine='world-stuctures/Meshy_AI_ac_pine_tree_3d_1102122723_texture.glb'

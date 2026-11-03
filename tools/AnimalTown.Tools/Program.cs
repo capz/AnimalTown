@@ -151,6 +151,7 @@ static class Program
             if(n=="opening.bnr"){byte[] b=new byte[size];f.Position=offset;f.ReadExactly(b);if(b.Length!=6496||Encoding.ASCII.GetString(b,0,4)!="BNR1")throw new InvalidDataException("Banner invalid");}
         }
         foreach(string n in new[]{"opening.bnr","BUILD.txt","savebanner.rgb5a3","saveicon.rgb5a3","gorditas-bold.dndtex","gorditas-bold.metrics","wordmark.dndtex","item-icons.dndtex","cat.dndmodel","fox.dndmodel","bunny.dndmodel","giraffe.dndmodel","hamster.dndmodel","spaniel.dndmodel","building.dndmodel","deciduous.dndmodel","palm.dndmodel","pine.dndmodel"})if(!seen.Contains(n))throw new InvalidDataException("Missing "+n);
+        if(!seen.Contains("tent.dndmodel"))throw new InvalidDataException("Missing supplied tent model");
         foreach(string season in new[]{"spring","summer","fall","winter"})foreach(string extension in new[]{"bin","dndtex"})if(!seen.Contains("terrain-"+season+"."+extension))throw new InvalidDataException("Missing seasonal terrain asset");
         if(!seen.Contains("terrain.cfg"))throw new InvalidDataException("Missing terrain configuration");
         Console.WriteLine("Verified full-size bootable disc structure, "+(count-1)+" files");

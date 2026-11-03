@@ -30,8 +30,8 @@ internal static class TextureAudit
                 pageWidth=atlas?Math.Min(128,width):TexturePixels.FitWidth(width,height),pageHeight=atlas?Math.Min(128,height):TexturePixels.FitHeight(width,height),
                 pages=atlas?((width+127)/128)*((height+127)/128):1});
         }
-        if(models!=10)throw new InvalidDataException("Expected all ten supplied models in texture audit");
+        if(models!=11)throw new InvalidDataException("Expected all eleven console models in texture audit");
         File.WriteAllText(Path.Combine(root,"out/texture-audit.json"),JsonSerializer.Serialize(records,new JsonSerializerOptions{WriteIndented=true}));
-        Console.WriteLine("Texture audit: ten supplied models <=128px; source/package fingerprints recorded");
+        Console.WriteLine("Texture audit: eleven supplied models <=128px; source/package fingerprints recorded");
     }
 }

@@ -10,6 +10,8 @@ the GDD. The technical baseline was committed/pushed first as `0064efd`.
 * Full-size bootable GameCube ISO, original homebrew apploader, FST, game title,
   commit in disc header/BNR/title/save comment, disc banner and save banner/icon.
 * Ten supplied GLBs converted into textured native models, six species selection.
+  The supplied guest tent is also converted and packaged without eagerly loading
+  it; the shop interior is in source under assets/models/interiors. See structure-assets.md.
   The five non-fox villagers use the supplied ~1,600-triangle replacements;
   only the fox currently has walking/running clips. See villager-assets.md for
   source mappings and missing rigs/clips. True cylindrical terrain with an
