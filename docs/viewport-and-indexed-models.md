@@ -41,7 +41,8 @@ each primary scenario. Timings remain guest-clock CPU/submission/wait values,
 not physical GameCube measurements. Publish the exact measured ISO identity,
 raw capture, JSON and checksums with the GitHub release.
 
-Rounded UI corners and side bulges now reuse precomputed curve coordinates.
-The same segments, rounding and panel bulges remain; the backpack no longer
-re-evaluates thousands of sine/cosine calls for unchanged curve geometry each
-frame. Only animated heading/popover motion still evaluates its changing angle.
+The managed rounded-curve cache experiment did not improve measured UI costs
+and was reverted. The existing rounding and bulges remain. UI still creates
+and submits individual triangles through Draw2D; bulk/cached panel geometry is
+the next candidate to measure. Removing trigonometry alone must not be presented
+as a proven improvement.

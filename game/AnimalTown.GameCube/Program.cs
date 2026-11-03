@@ -39,7 +39,6 @@ internal sealed class TownGame
     private readonly Renderer renderer=new Renderer(GraphicsDevice.Default,LowPolyTrees.Capacity);
     private readonly Camera camera=new Camera(CylinderWorld.CameraFieldOfView,4f/3,CylinderWorld.Near,CylinderWorld.Far);
     private readonly Draw2D ui;
-    private readonly UiCurves curves=new UiCurves();
     private readonly UiFont font,headingFont,strongFont;
     private readonly CachedTexture wordmark,itemIcons;
     private readonly Transform worldRoot=new Transform(),transform=new Transform(),identity=new Transform();
@@ -421,7 +420,7 @@ internal sealed class TownGame
         {
             float edge=side==0?x:x+w,direction=side==0?-1:1;
             for(int i=0;i<20;i++)
-            {float a=i/20f,b=(i+1)/20f;ui.FillTriangle(new Vector2(edge-direction*2,y+h*.5f),new Vector2(edge+direction*9*curves.Bulge[i],start+a*span),new Vector2(edge+direction*9*curves.Bulge[i+1],start+b*span),color);}
+            {float a=i/20f,b=(i+1)/20f;ui.FillTriangle(new Vector2(edge-direction*2,y+h*.5f),new Vector2(edge+direction*9*(float)Math.Sin(a*3.1415927f),start+a*span),new Vector2(edge+direction*9*(float)Math.Sin(b*3.1415927f),start+b*span),color);}
         }
     }
     private void Rounded(float x,float y,float w,float h,float radius,Color32 color)
@@ -433,7 +432,8 @@ internal sealed class TownGame
         for(int corner=0;corner<4;corner++)
         {
             float cx=x+(corner==0||corner==3?radius:w-radius),cy=y+(corner<2?radius:h-radius);
-            for(int i=0;i<10;i++){int at=(corner*10+i)*4;ui.FillTriangle(new Vector2(cx,cy),new Vector2(cx+radius*curves.Corners[at],cy+radius*curves.Corners[at+1]),new Vector2(cx+radius*curves.Corners[at+2],cy+radius*curves.Corners[at+3]),color);}
+            float start=corner==0?3.1415927f:corner==1?4.712389f:corner==2?0:1.5707964f;
+            for(int i=0;i<10;i++){float a=start+i*.15707964f,b=a+.15707964f;ui.FillTriangle(new Vector2(cx,cy),new Vector2(cx+radius*(float)Math.Cos(a),cy+radius*(float)Math.Sin(a)),new Vector2(cx+radius*(float)Math.Cos(b),cy+radius*(float)Math.Sin(b)),color);}
         }
     }
     private void SpeechBubble()
