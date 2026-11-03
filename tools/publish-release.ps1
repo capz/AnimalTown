@@ -27,17 +27,25 @@ $package=Join-Path $out "releases/$tag"
 New-Item -ItemType Directory -Force -Path $package | Out-Null
 $isoZip=Join-Path $package "AnimalTown-$short.iso.zip"
 $serverZip=Join-Path $package "AnimalTown-server-$short.zip"
+$toolsDirectory=Join-Path $out 'tools-published'
+& dotnet publish (Join-Path $Root 'tools/AnimalTown.Tools') -c Release --no-restore --no-self-contained -o $toolsDirectory -v quiet
+if($LASTEXITCODE -ne 0){throw 'Offline tool publication failed'}
+Copy-Item -LiteralPath (Join-Path $Root 'docs/texture-repacker.md') -Destination (Join-Path $toolsDirectory 'texture-repacker.md') -Force
+$toolsZip=Join-Path $package "AnimalTown-tools-$short.zip"
 # These two exact paths are generated archives; rebuilding a draft can replace them.
-foreach($archive in @($isoZip,$serverZip)){if(Test-Path -LiteralPath $archive){Remove-Item -LiteralPath $archive}}
+foreach($archive in @($isoZip,$serverZip,$toolsZip)){if(Test-Path -LiteralPath $archive){Remove-Item -LiteralPath $archive}}
 $zip=[IO.Compression.ZipFile]::Open($isoZip,[IO.Compression.ZipArchiveMode]::Create)
 try{[IO.Compression.ZipFileExtensions]::CreateEntryFromFile($zip,$iso,[IO.Path]::GetFileName($iso),[IO.Compression.CompressionLevel]::Optimal) | Out-Null}finally{$zip.Dispose()}
 [IO.Compression.ZipFile]::CreateFromDirectory($server,$serverZip,[IO.Compression.CompressionLevel]::Optimal,$false)
+[IO.Compression.ZipFile]::CreateFromDirectory($toolsDirectory,$toolsZip,[IO.Compression.CompressionLevel]::Optimal,$false)
 Copy-Item -LiteralPath (Join-Path $out 'build-revisions.txt') -Destination (Join-Path $package 'BUILD.txt') -Force
 Copy-Item -LiteralPath (Join-Path $out 'texture-audit.json') -Destination (Join-Path $package 'texture-audit.json') -Force
-$checksums=foreach($file in @($iso,$isoZip,$serverZip,(Join-Path $package 'BUILD.txt'),(Join-Path $package 'texture-audit.json'))){"$((Get-FileHash -LiteralPath $file -Algorithm SHA256).Hash.ToLowerInvariant())  $([IO.Path]::GetFileName($file))"}
+$checksums=foreach($file in @($iso,$isoZip,$serverZip,$toolsZip,(Join-Path $package 'BUILD.txt'),(Join-Path $package 'texture-audit.json'))){"$((Get-FileHash -LiteralPath $file -Algorithm SHA256).Hash.ToLowerInvariant())  $([IO.Path]::GetFileName($file))"}
 [IO.File]::WriteAllText((Join-Path $package 'SHA256SUMS.txt'),($checksums -join "`n")+"`n")
 $notes=@"
 AnimalTown development build from commit $commit.
+
+**AnimalTown-tools-$short.zip** contains the offline texture/UV repacker and its guide. Requires .NET 8; run `dotnet AnimalTown.Tools.dll repack-textures . INPUT.glb OUTPUT.glb --size256` (or --size128/512/1024/Original). Exact flat colours share UV space; appearance checks reject excessive loss. Original game assets are not automatically repacked.
 
 Download **AnimalTown-$short.iso.zip** and extract the full 1,459,978,240-byte ISO. The disc includes the game title, commit identity, disc banner and memory-card banner/icon. The server is a separate **AnimalTown-server-$short.zip** archive and requires .NET 10 and PostgreSQL. It does not run on the console.
 
@@ -53,7 +61,7 @@ function InvokeGh([string[]]$Arguments){
     if($LASTEXITCODE -ne 0){throw "GitHub CLI failed: $($Arguments[0]) $($Arguments[1])"}
     return $result
 }
-$assets=@($isoZip,$serverZip,(Join-Path $package 'BUILD.txt'),(Join-Path $package 'texture-audit.json'),(Join-Path $package 'SHA256SUMS.txt'))
+$assets=@($isoZip,$serverZip,$toolsZip,(Join-Path $package 'BUILD.txt'),(Join-Path $package 'texture-audit.json'),(Join-Path $package 'SHA256SUMS.txt'))
 $existing=& $Gh release view $tag --repo $Repository --json isDraft,targetCommitish,assets 2>$null
 if($LASTEXITCODE -eq 0){
     $release=$existing | ConvertFrom-Json

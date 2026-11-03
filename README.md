@@ -102,6 +102,10 @@ it fails if the expected AOT signature changes.
 The native IPL font API is supplied by [DolphinDotNet PR #145](https://github.com/capz/DolphinDotNet/pull/145), pinned by the SDK submodule. Its CI checks pass. Firmware font data is read on the console and is never bundled on disc.
 # Texture resolution
 
+The offline [texture/UV repacker](docs/texture-repacker.md) stacks exact flat
+colours, packs textured charts, and checks appearance before writing a new GLB.
+Use `repack-textures . INPUT OUTPUT --size256` or `--sizeOriginal`.
+
 The default maximum texture edge is 256 pixels. `TextureResolution.Size128`,
 `Size256`, `Size512` and `Size1024` select a maximum edge at load time; rectangular
 sources retain aspect ratio and smaller sources are never enlarged.

@@ -16,8 +16,11 @@ static class Program
     {
         try
         {
+            if(args.Length<2)throw new ArgumentException("repack-textures ROOT INPUT.glb OUTPUT.glb --size128|--size256|--size512|--size1024|--sizeOriginal [--max-rmse N]; or repack-check ROOT");
             Root=Path.GetFullPath(args[1]);
-            if(args[0]=="audit")Audit();
+            if(args[0]=="repack-textures")TextureRepacker.Command(args);
+            else if(args[0]=="repack-check")TextureRepackerChecks.Run(Root);
+            else if(args[0]=="audit")Audit();
             else if(args[0]=="prepare")Prepare(args[2],args[3]);
             else if(args[0]=="art")Art();
             else if(args[0]=="terrain")RepeatFloorAssets.Build(Root);
@@ -25,7 +28,7 @@ static class Program
             else if(args[0]=="tree-audit")TreeRenderAudit.Run(Root,args[2]);
             else if(args[0]=="iso")Disc(args[2],args[3]);
             else if(args[0]=="verify")Verify(args[2]);
-            else throw new ArgumentException("audit|art|iso|verify|tree-audit ROOT [PATH] [COMMIT]");
+            else throw new ArgumentException("repack-textures|repack-check|audit|art|iso|verify|tree-audit ROOT [PATH] [COMMIT]");
             return 0;
         }
         catch(Exception e){Console.Error.WriteLine(e.Message);return 1;}
