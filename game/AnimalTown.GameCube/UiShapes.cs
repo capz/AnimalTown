@@ -5,43 +5,28 @@ using Dolphin.Graphics;
 // immediate path for one frame; dimensions, colors and painter order are exact.
 internal sealed class UiShapes
 {
-    private sealed class Entry
-    {
-        internal float Width,Height,Radius;
-        internal bool Bulge;
-        internal int LastUse;
-        internal Geometry2D? Geometry;
-    }
-    private readonly Entry[] entries=new Entry[64];
-    private int frame,bytes;
-    private bool overflow;
+    private readonly UiShapePlan plan=new UiShapePlan();
+    private readonly Geometry2D?[] geometry=new Geometry2D?[UiShapePlan.Capacity];
+    private int bytes;
     internal int ResidentBytes=>bytes;
-    internal UiShapes(){for(int i=0;i<entries.Length;i++)entries[i]=new Entry();}
-    internal void Prepare()
+    internal void Prepare(string view,int tab,bool enabled)
     {
-        frame++;
-        if(overflow){for(int n=0;n<8;n++){int oldest=-1;for(int i=0;i<entries.Length;i++)if(entries[i].LastUse>0&&entries[i].LastUse<frame&&(oldest<0||entries[i].LastUse<entries[oldest].LastUse))oldest=i;if(oldest<0)break;Release(entries[oldest]);entries[oldest].LastUse=0;}overflow=false;}
-        for(int i=0;i<entries.Length;i++){
-            var e=entries[i];if(e.LastUse==0||e.Geometry!=null)continue;
-            while(bytes+10000>384*1024){int oldest=-1;for(int j=0;j<entries.Length;j++)if(entries[j].Geometry!=null&&(oldest<0||entries[j].LastUse<entries[oldest].LastUse))oldest=j;
-                if(oldest<0)break;Release(entries[oldest]);entries[oldest].LastUse=0;}
-            e.Geometry=Build(e.Width,e.Height,e.Radius,e.Bulge);bytes+=e.Geometry.NativeBytes;
+        plan.BeginFrame(view,tab,enabled);
+        if(!enabled||!plan.HasWork)return;
+        if(plan.TakeOverflow())for(int n=0;n<8;n++){int oldest=plan.Oldest(true);if(oldest<0)break;Release(oldest);}
+        for(int slot=plan.TakePending();slot>=0;slot=plan.TakePending()){
+            while(bytes+10000>384*1024){int oldest=plan.Oldest();if(oldest<0)break;Release(oldest);}
+            var built=Build(plan.Widths[slot],plan.Heights[slot],plan.Radii[slot],plan.Bulges[slot]);
+            geometry[slot]=built;bytes+=built.NativeBytes;plan.Complete(slot);
         }
     }
-    private void Release(Entry e){if(e.Geometry!=null){bytes-=e.Geometry.NativeBytes;e.Geometry.Dispose();e.Geometry=null;}}
+    private void Release(int slot){var cached=geometry[slot]!;bytes-=cached.NativeBytes;cached.Dispose();geometry[slot]=null;plan.Remove(slot);}
     internal bool Draw(Draw2D ui,float x,float y,float w,float h,float radius,bool bulge,Color32 color)
     {
         bulge=bulge&&h>radius*2+1;
-        int empty=-1;
-        for(int i=0;i<entries.Length;i++){
-            var e=entries[i];if(e.LastUse==0){if(empty<0)empty=i;continue;}
-            if(e.Width!=w||e.Height!=h||e.Radius!=radius||e.Bulge!=bulge)continue;
-            e.LastUse=frame+1;if(e.Geometry==null)return false;
-            ui.DrawGeometry(e.Geometry,new Vector2(x,y),color);return true;
-        }
-        // Never release a native resource from inside a render pass.
-        if(empty>=0){var e=entries[empty];e.Width=w;e.Height=h;e.Radius=radius;e.Bulge=bulge;e.LastUse=frame+1;}else overflow=true;
-        return false;
+        int slot=plan.Request(w,h,radius,bulge);
+        if(slot<0||geometry[slot]==null)return false;
+        ui.DrawGeometry(geometry[slot]!,new Vector2(x,y),color);return true;
     }
     private static Geometry2D Build(float w,float h,float radius,bool bulge)
     {

@@ -85,6 +85,11 @@ with (root/'emulator.log').open('w') as log:
         elif '--resume' in sys.argv:
             press('A');time.sleep(2);screenshot('resume.png')
             press('X');time.sleep(1);screenshot('resume-backpack.png')
+            if '--cache-transitions' in sys.argv:
+                for n in range(3):
+                    press('B');time.sleep(1);screenshot(f'cache-world-{n}.png')
+                    press('Y');time.sleep(1);screenshot(f'cache-map-{n}.png')
+                    press('B');press('X');time.sleep(1);screenshot(f'cache-backpack-{n}.png')
             if '--backpack-layout' in sys.argv:
                 press('A');screenshot('backpack-actions.png')
                 press('B');screenshot('backpack-return.png')

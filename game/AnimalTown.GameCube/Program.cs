@@ -369,7 +369,7 @@ internal sealed class TownGame
     internal void Draw()
     {
         long phase=FrameProfile.Start();terrain.Prepare(state,room,month);FrameProfile.End(2,phase);
-        phase=FrameProfile.Start();if(batchedDrawing){uiShapes.Prepare();if(screen=="map")mapBackground.Prepare(state.Town);}modelUsed=0;FrameProfile.End(8,phase);
+        phase=FrameProfile.Start();uiShapes.Prepare(screen,screen=="menu"?menuTab:-1,batchedDrawing);if(batchedDrawing&&screen=="map")mapBackground.Prepare(state.Town);modelUsed=0;FrameProfile.End(8,phase);
         phase=FrameProfile.Start();device.BeginFrame(new Color32(149,198,186));
         camera.LookAt(new Vector3(state.X,CylinderWorld.CameraHeight,state.Z+CylinderWorld.CameraBack),new Vector3(state.X,0,state.Z-CylinderWorld.CameraAimAhead),new Vector3(0,1,0));renderer.Begin3D(camera);FrameProfile.End(4,phase);
         phase=FrameProfile.Start();terrain.Draw(renderer,identity,room);FrameProfile.End(4,phase);phase=FrameProfile.Start();
@@ -437,7 +437,7 @@ internal sealed class TownGame
     private void Bulged(float x,float y,float w,float h,float radius,Color32 color)
     {
         if(batchedDrawing&&uiShapes.Draw(ui,x,y,w,h,radius,true,color))return;
-        Rounded(x,y,w,h,radius,color);if(h<=radius*2+1)return;
+        Rounded(x,y,w,h,radius,color,false);if(h<=radius*2+1)return;
         float start=y+radius,span=h-2*radius;
         for(int side=0;side<2;side++)
         {
@@ -446,9 +446,9 @@ internal sealed class TownGame
             {float a=i/20f,b=(i+1)/20f;ui.FillTriangle(new Vector2(edge-direction*2,y+h*.5f),new Vector2(edge+direction*9*(float)Math.Sin(a*3.1415927f),start+a*span),new Vector2(edge+direction*9*(float)Math.Sin(b*3.1415927f),start+b*span),color);}
         }
     }
-    private void Rounded(float x,float y,float w,float h,float radius,Color32 color)
+    private void Rounded(float x,float y,float w,float h,float radius,Color32 color,bool cache=true)
     {
-        if(batchedDrawing&&uiShapes.Draw(ui,x,y,w,h,radius,false,color))return;
+        if(cache&&batchedDrawing&&uiShapes.Draw(ui,x,y,w,h,radius,false,color))return;
         ui.FillRectangle(new RectF(x+radius,y,w-2*radius,h),color);
         ui.FillRectangle(new RectF(x,y+radius,radius,h-2*radius),color);
         ui.FillRectangle(new RectF(x+w-radius,y+radius,radius,h-2*radius),color);

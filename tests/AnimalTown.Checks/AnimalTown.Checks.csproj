@@ -1,4 +1,5 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup><OutputType>Exe</OutputType></PropertyGroup>
   <ItemGroup><ProjectReference Include="../../shared/AnimalTown.Domain/AnimalTown.Domain.csproj" /></ItemGroup>
+  <ItemGroup><Compile Include="../../game/AnimalTown.GameCube/UiShapePlan.cs" Link="UiShapePlan.cs" /></ItemGroup>
 </Project>

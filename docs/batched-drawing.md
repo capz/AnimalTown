@@ -11,8 +11,16 @@ rotating headings, slot-anchored popovers, source textures and visibility remain
 face with their original tint/offset. Keys include dimensions, radius and bulge.
 Sixty-four entries and 384 KiB bound residency. Creation and eviction happen
 before BeginFrame; misses draw immediately for one frame and request geometry
-for the next. The original triangle layout and nondegenerate rectangles are
-retained. Preparation cost is charged to the UI telemetry phase.
+for the next. A bounded pending queue makes steady preparation an O(1) early
+return; screen/tab changes or disabling batches cancel unbuilt requests from
+the previous view. Only actual visible misses trigger builds or reclamation.
+Hash lookups replace scanning resident entries while drawing the HUD,
+so cached shapes from closed menus do not add a linear lookup cost. Resident
+geometry stays available for reuse within the same memory bound. The original
+triangle layout and nondegenerate rectangles are retained. Preparation cost is
+charged to the UI telemetry phase.
+Bulged-shape fallback draws its rounded component directly without queuing a
+second, redundant cache build for that component.
 
 `UiFont` precomputes proportional IPL/Gorditas glyph regions, including slices
 across the existing 128-pixel pages. Sixty-four flat, direct-mapped slots cache positions for
