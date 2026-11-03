@@ -18,10 +18,11 @@ not disable culling: wholly outside/hidden bounds are still rejected.
 
 The remaining performance target is the SDK imported-model path, previously
 118.170 ms mean for structures in the recorded c861ec4 world capture. The new
-SDK revision binds eligible rigid model geometry as GX indexed arrays and moves
+SDK revision binds eligible model geometry as GX indexed arrays and moves
 the default diffuse headlight to GX. Source textures, geometry, material alpha,
-culling and UVs stay authored. There is no expanded geometry allocation. Skins,
-animated channels, nonuniform vertex colors and unsupported lighting/transforms
+culling and UVs stay authored. There is no expanded geometry allocation. Skins
+reuse their existing evaluated position/normal buffers. Animated material
+channels, nonuniform vertex colors and unsupported lighting/transforms
 retain the direct path. See the pinned SDK's `docs/indexed-rigid-models.md`.
 
 Settings displays the performance toggle's On/Off state and a developer model
@@ -39,3 +40,8 @@ including cached/rebuilt terrain subsets. Discard five transition frames in
 each primary scenario. Timings remain guest-clock CPU/submission/wait values,
 not physical GameCube measurements. Publish the exact measured ISO identity,
 raw capture, JSON and checksums with the GitHub release.
+
+Rounded UI corners and side bulges now reuse precomputed curve coordinates.
+The same segments, rounding and panel bulges remain; the backpack no longer
+re-evaluates thousands of sine/cosine calls for unchanged curve geometry each
+frame. Only animated heading/popover motion still evaluates its changing angle.
