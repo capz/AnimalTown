@@ -1,7 +1,6 @@
 # AnimalTown
 
-GameCube village life game built on [hypercube-engine](https://github.com/capz/hypercube-engine).
-No Unity or WebRTC. Current state: early implementation; see the explicit
+GameCube village life game built on [hypercube-engine](https://github.com/capz/hypercube-engine), a custom engine built in C# for the gamecube as an experiment what is possible with the hardware limitations being what they are. Current state: early implementation; see the explicit
 [implementation status](docs/implementation-status.md) and [technical design](docs/technical-design.md).
 The product brief is [design-doc.md](design-doc.md).
 
