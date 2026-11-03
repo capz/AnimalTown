@@ -96,7 +96,7 @@ internal sealed class TownGame
         // Resource creation occurs outside render passes and instances share models.
         for(int i=0;i<models.Length;i++)
         {
-            models[i]=Model.LoadAsync("dvd:/"+modelNames[i]+".dndmodel",default,3*1024*1024).GetAwaiter().GetResult();
+            models[i]=ModelResources.Load(modelNames[i]);
             if(i<6){actors[i+1]=models[i].CreateInstance(512*1024);if(models[i].TryGetAnimation("Walking",out var clip)){actors[i+1].Animator.Play("Walking",true);actors[i+1].Animator.SetSpeed(.45f);}}
             else props[i-6]=models[i].CreateInstance(512*1024);
         }

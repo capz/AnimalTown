@@ -1,14 +1,15 @@
 namespace AnimalTown;
 
-// Load-time opaque floor policy: <=64px, GX-native mipmaps, CMPR when its
+// Load-time opaque floor policy: default <=256px, GX-native mipmaps, CMPR when its
 // measured RGB error is small; RGB565 fallback for high-contrast artwork.
 public static class FloorTexture
 {
-    public const int Maximum=64,MaximumMipLevels=2;
-    public static byte[] Prepare(byte[] source)
+    public const int Maximum=256,MaximumMipLevels=2;
+    public static byte[] Prepare(byte[] source,TextureResolution resolution=TexturePolicy.Default)
     {
         TexturePixels.Validate(source);int sw=TexturePixels.Width(source),sh=TexturePixels.Height(source),w=sw,h=sh;
-        while(w>Maximum||h>Maximum){w=Math.Max(1,w/2);h=Math.Max(1,h/2);}
+        int limit=TexturePolicy.Edge(resolution);
+        while(w>limit||h>limit){w=Math.Max(1,w/2);h=Math.Max(1,h/2);}
         if(w<4||h<4)throw new InvalidOperationException("Floor textures need at least four pixels on each axis");
         var rgba=new byte[w*h*4];TexturePixels.Resample(source,0,0,sw,sh,rgba,w,h);
         for(int i=3;i<rgba.Length;i+=4)if(rgba[i]!=255)throw new InvalidOperationException("Repeating floors must be opaque");

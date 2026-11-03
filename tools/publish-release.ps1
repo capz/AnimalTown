@@ -41,7 +41,7 @@ AnimalTown development build from commit $commit.
 
 Download **AnimalTown-$short.iso.zip** and extract the full 1,459,978,240-byte ISO. The disc includes the game title, commit identity, disc banner and memory-card banner/icon. The server is a separate **AnimalTown-server-$short.zip** archive and requires .NET 10 and PostgreSQL. It does not run on the console.
 
-BUILD.txt records the game, engine and SDK revisions. texture-audit.json records texture source identities, fingerprints and 128-pixel residency. SHA256SUMS.txt covers the archives, manifests and the extracted ISO.
+BUILD.txt records the game, engine and SDK revisions. texture-audit.json records texture source identities, fingerprints and 256-pixel default residency and 128/256/512/1024 model variants. SHA256SUMS.txt covers the archives, manifests and the extracted ISO.
 
 This is an early playable build, not the completed game. Physical GameCube testing is outstanding. See [implementation status](https://github.com/$Repository/blob/$commit/docs/implementation-status.md) and [build instructions](https://github.com/$Repository/blob/$commit/README.md).
 "@

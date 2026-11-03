@@ -1,11 +1,11 @@
 namespace AnimalTown;
 
-// Bounded, allocation-free GX decoder. Destination allocation is at most 128² RGBA.
+// Bounded, allocation-free GX decoder. Destination allocation is bounded by the selected resolution.
 // Package v1/v2 base levels; callers release the source after upload. Source atlas
-// crops use the same decoder, so no >128 native GPU texture is ever allocated.
+// crops use the same decoder; hardware textures never exceed 1024 per edge.
 public static class TexturePixels
 {
-    public const int Maximum=128,PolicyVersion=1;
+    public const int Maximum=1024,PolicyVersion=2;
     public static int Int(byte[] b,int at)=>b[at]|b[at+1]<<8|b[at+2]<<16|b[at+3]<<24;
     public static int Width(byte[] b)=>Int(b,12);
     public static int Height(byte[] b)=>Int(b,16);
@@ -22,9 +22,9 @@ public static class TexturePixels
     }
     public static uint Hash(byte[] b)
     {uint h=2166136261;for(int i=0;i<b.Length;i++)h=(h^b[i])*16777619;return h;}
-    public static int FitWidth(int w,int h)=>Math.Max(1,w/Scale(w,h));
-    public static int FitHeight(int w,int h)=>Math.Max(1,h/Scale(w,h));
-    private static int Scale(int w,int h){int s=1;while(w/s>Maximum||h/s>Maximum)s*=2;return s;}
+    public static int FitWidth(int w,int h,TextureResolution resolution=TexturePolicy.Default)=>Math.Max(1,w/Scale(w,h,resolution));
+    public static int FitHeight(int w,int h,TextureResolution resolution=TexturePolicy.Default)=>Math.Max(1,h/Scale(w,h,resolution));
+    private static int Scale(int w,int h,TextureResolution resolution){int limit=TexturePolicy.Edge(resolution),s=1;while(w/s>limit||h/s>limit)s*=2;return s;}
     public static void Resample(byte[] source,int x,int y,int width,int height,byte[] rgba,int outWidth,int outHeight)
     {
         if(x<0||y<0||width<1||height<1||x+width>Width(source)||y+height>Height(source)||outWidth<1||outHeight<1||outWidth>Maximum||outHeight>Maximum||rgba.Length<outWidth*outHeight*4)

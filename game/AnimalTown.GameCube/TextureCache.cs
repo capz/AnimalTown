@@ -27,7 +27,7 @@ internal sealed class CachedTexture
 internal static class TextureCache
 {
     private static readonly CachedTexture?[] entries=new CachedTexture?[256];
-    private const int Budget=2*1024*1024;
+    private const int Budget=4*1024*1024;
     private static int clock;
     internal static int Hits,Misses,Evictions;
     internal static int ResidentBytes {get{int n=0;for(int i=0;i<entries.Length;i++)if(entries[i]!=null)n+=entries[i]!.Bytes;return n;}}
@@ -43,39 +43,39 @@ internal static class TextureCache
         Dispose(entry);throw new InvalidOperationException("Texture cache entry limit reached");
     }
     private static void Dispose(CachedTexture e){for(int i=0;i<e.Pages.Length;i++)e.Pages[i]?.Dispose();}
-    internal static CachedTexture Load(string path,bool atlas=false)
+    internal static CachedTexture Load(string path,bool atlas=false,TextureResolution resolution=TexturePolicy.Default)
     {
         // Disc URI + build commit identifies immutable original bytes before I/O.
         // Hash records the exact source package; policy/layout are separate keys.
-        string key=BuildInfo.Commit+":"+path+":texture-v1";
+        string key=BuildInfo.Commit+":"+path+":texture-v2:"+TexturePolicy.Edge(resolution);
         var cached=Find(key,atlas);if(cached!=null)return cached;
-        var loaded=LoadAndDecode(key,path,atlas);AnimalTown.GameCube.NativeTexturePages.Collect();return loaded;
+        var loaded=LoadAndDecode(key,path,atlas,resolution);AnimalTown.GameCube.NativeTexturePages.Collect();return loaded;
     }
-    private static CachedTexture LoadAndDecode(string key,string path,bool atlas)=>Decode(key,File.ReadAllBytes(path),atlas);
-    internal static CachedTexture LoadFloor(string path)
+    private static CachedTexture LoadAndDecode(string key,string path,bool atlas,TextureResolution resolution)=>Decode(key,File.ReadAllBytes(path),atlas,resolution);
+    internal static CachedTexture LoadFloor(string path,TextureResolution resolution=TexturePolicy.Default)
     {
-        string key=BuildInfo.Commit+":"+path+":floor64-mip2-mirror-auto-v2";
+        string key=BuildInfo.Commit+":"+path+":floor-mip2-mirror-auto-v3:"+TexturePolicy.Edge(resolution);
         var cached=Find(key,false);if(cached!=null)return cached;
-        var loaded=DecodeFloor(key,path);AnimalTown.GameCube.NativeTexturePages.Collect();return loaded;
+        var loaded=DecodeFloor(key,path,resolution);AnimalTown.GameCube.NativeTexturePages.Collect();return loaded;
     }
-    private static CachedTexture DecodeFloor(string key,string path)
+    private static CachedTexture DecodeFloor(string key,string path,TextureResolution resolution)
     {
-        var source=File.ReadAllBytes(path);var package=FloorTexture.Prepare(source);
+        var source=File.ReadAllBytes(path);var package=FloorTexture.Prepare(source,resolution);
         var entry=new CachedTexture{Source=key,SourceHash=TexturePixels.Hash(source),SourceWidth=TexturePixels.Width(source),SourceHeight=TexturePixels.Height(source),Pages=new Texture2D[1]};
         try{var texture=Texture2D.FromPackage(package,true);entry.Pages[0]=texture;texture.ConfigureSampler(TextureWrapMode.Mirror,TextureWrapMode.Mirror,texture.MipLevels>1?TextureMinFilter.LinearMipmapLinear:TextureMinFilter.Linear,TextureMagFilter.Linear);}
         catch{Dispose(entry);throw;}
         return Store(entry);
     }
-    private static CachedTexture Decode(string key,byte[] source,bool atlas)
+    private static CachedTexture Decode(string key,byte[] source,bool atlas,TextureResolution resolution)
     {
         TexturePixels.Validate(source);int w=TexturePixels.Width(source),h=TexturePixels.Height(source),format=TexturePixels.Int(source,8);
         int columns=atlas?(w+127)/128:1,rows=atlas?(h+127)/128:1;
         var entry=new CachedTexture{Source=key,SourceHash=TexturePixels.Hash(source),SourceWidth=w,SourceHeight=h,Atlas=atlas,Pages=new Texture2D[columns*rows]};
-        var rgba=new byte[128*128*4];if(format!=3&&format!=4&&format!=5)format=6;
+        int edge=atlas?128:TexturePolicy.Edge(resolution);var rgba=new byte[edge*edge*4];if(format!=3&&format!=4&&format!=5)format=6;
         try{
             for(int py=0;py<rows;py++)for(int px=0;px<columns;px++){
                 int sx=atlas?px*128:0,sy=atlas?py*128:0,sw=atlas?Math.Min(128,w-sx):w,sh=atlas?Math.Min(128,h-sy):h;
-                int rw=atlas?sw:TexturePixels.FitWidth(w,h),rh=atlas?sh:TexturePixels.FitHeight(w,h);
+                int rw=atlas?sw:TexturePixels.FitWidth(w,h,resolution),rh=atlas?sh:TexturePixels.FitHeight(w,h,resolution);
                 TexturePixels.Resample(source,sx,sy,sw,sh,rgba,rw,rh);
                 var native=TexturePixels.Encode(rgba,rw,rh,format);
                 var texture=Texture2D.CreateNative(rw,rh,(NativeTextureFormat)format,true);entry.Pages[py*columns+px]=texture;texture.ReplaceNative(native);

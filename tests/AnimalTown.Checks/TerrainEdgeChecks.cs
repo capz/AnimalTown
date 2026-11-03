@@ -16,7 +16,7 @@ internal static class TerrainEdgeChecks
             check(RenderView.Sphere(x,y,z,TerrainTiles.GroundVisibilityRadius,0,0),"terrain keeps a half-cell of extra leeway at each viewport plane");
         }
         check(!RenderView.Sphere(100,0,0,TerrainTiles.GroundVisibilityRadius,0,0),"terrain far outside the viewport is still rejected");
-        var data=new byte[FloorStrips.Records];int[] header={0x32525441,1,13,13,64};
+        var data=new byte[FloorStrips.Records];int[] header={0x32525441,1,13,13,FloorTexture.Maximum};
         void Put(int at,int value){for(int i=0;i<4;i++)data[at+i]=(byte)(value>>(i*8));}
         for(int i=0;i<header.Length;i++)Put(i*4,header[i]);
         for(int s=0;s<13;s++){Put(20+s*20,1);Put(24+s*20,s);for(int v=1;v<4;v++)Put(24+s*20+v*4,-1);}

@@ -100,3 +100,22 @@ RTC bridge, sector-aligned card reader fix and card diagnostics to the pinned na
 it fails if the expected AOT signature changes.
 
 The native IPL font API is supplied by [DolphinDotNet PR #145](https://github.com/capz/DolphinDotNet/pull/145), pinned by the SDK submodule. Its CI checks pass. Firmware font data is read on the console and is never bundled on disc.
+# Texture resolution
+
+The default maximum texture edge is 256 pixels. `TextureResolution.Size128`,
+`Size256`, `Size512` and `Size1024` select a maximum edge at load time; rectangular
+sources retain aspect ratio and smaller sources are never enlarged.
+
+`ModelResources.Load("fox", TextureResolution.Size512)` selects a console-ready
+variant compiled from the original GLB. All four variants ship on disc, with base
+plus one half-size mip; only the selected variant is loaded. This avoids retaining
+or resizing full-resolution model atlases on the console. Default variants retain
+the original filenames; others use `-tex128`, `-tex512` or `-tex1024` suffixes.
+
+`TextureCache.Load(path, false, TextureResolution.Size256)` and
+`TextureCache.LoadFloor(path, TextureResolution.Size256)` apply the same policy
+to standalone and repeating-floor textures. Cache identity includes resolution,
+source URI and commit. UI atlases remain lossless 128-pixel pages to preserve
+font/icon coordinates. The texture cache is bounded to 4 MiB, and active default
+floor textures to 2 MiB. Larger options are per asset; native model budgets still
+apply and selecting 1024 for every model is not a supported whole-scene budget.

@@ -6,7 +6,7 @@ This document supersedes that document's Unity, PC, shader, WebRTC and SignalR
 implementation assumptions. None of those technologies run in the game.
 
 2026-11-03 implementation updates: [render-performance.md](render-performance.md)
-specifies the closer camera, 128-pixel texture residency/cache and culling;
+specifies the closer camera, configurable texture residency/cache and culling;
 [villager-assets.md](villager-assets.md) records the replacement species, their
 lower-poly sources and current animation limitations. These supersede the
 original asset inventory, camera calibration and terrain submission budgets below.
