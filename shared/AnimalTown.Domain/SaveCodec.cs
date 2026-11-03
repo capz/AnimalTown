@@ -71,6 +71,6 @@ public static class SaveCodec
         s.Town.GroundCount=Range(b,ref p,0,512);for(int i=0;i<s.Town.GroundCount;i++){var g=s.Town.Ground[i];g.Item=Range(b,ref p,1,25);g.X=Range(b,ref p,0,Town.Width-1);g.Z=Range(b,ref p,0,Town.Height-1);g.Owner=Range(b,ref p,0,3);g.Day=Get(b,ref p);g.Kind=Range(b,ref p,0,4);}
         int count=Range(b,ref p,0,256);s.Town.PlacedCount=0;
         for(int i=0;i<count;i++){var q=s.Town.Placed[i];q.Item=Range(b,ref p,1,25);q.X=Get(b,ref p);q.Z=Get(b,ref p);q.Rotation=Range(b,ref p,0,3);q.Room=Range(b,ref p,0,4);q.Owner=Range(b,ref p,0,0);if(!s.CanPlace(q.Item,q.X,q.Z,q.Rotation,q.Room,0))throw new InvalidOperationException("Invalid placement");s.Town.PlacedCount++;}
-        if(p!=b.Length)throw new InvalidOperationException("Trailing save bytes");return s;
+        if(p!=b.Length)throw new InvalidOperationException("Trailing save bytes");s.Town.NotifyTerrainChanged();return s;
     }
 }

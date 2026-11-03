@@ -59,7 +59,7 @@ report={'units':'milliseconds; guest clock, not physical hardware or GPU duratio
         'capture_files':sys.argv[1:],'protocol_versions':sorted(versions),'scenarios':{}}
 for scene,rows in groups.items():
     # Drop first five valid frames per scenario to reduce menu-transition effects.
-    if scene in (0,1,2,3,6,7,10,16,17,18,19,22,23,26):rows=rows[5:]
+    if scene in (0,1,2,3,6,7,10,16,17,18,19,22,23,26,32,33,42):rows=rows[5:]
     if not rows:continue
     timings={}
     for i,name in enumerate(names):
@@ -72,7 +72,7 @@ for scene,rows in groups.items():
             selected=sorted(zip(values,clipped))[min(len(rows)-1,math.ceil(q*len(rows))-1)]
             result[key+'_is_lower_bound']=selected[1]
         timings[name]=result
-    report['scenarios'][{0:'world',1:'backpack',2:'indoor',3:'other',4:'world_cached_terrain',5:'world_rebuilt_terrain',6:'world_direct',7:'backpack_direct',8:'world_direct_cached_terrain',9:'world_direct_rebuilt_terrain',10:'map',16:'world_baseline',17:'backpack_baseline',20:'world_baseline_cached_terrain',21:'world_baseline_rebuilt_terrain',26:'map_baseline'}.get(scene,str(scene))]={
+    report['scenarios'][{0:'world',1:'backpack',2:'indoor',3:'other',4:'world_cached_terrain',5:'world_rebuilt_terrain',6:'world_direct',7:'backpack_direct',8:'world_direct_cached_terrain',9:'world_direct_rebuilt_terrain',10:'map',16:'world_baseline',17:'backpack_baseline',20:'world_baseline_cached_terrain',21:'world_baseline_rebuilt_terrain',26:'map_baseline',32:'world_legacy_font',33:'backpack_legacy_font',42:'map_legacy_font'}.get(scene,str(scene))]={
         'frames':len(rows),'timings':timings,
         'triangles':stats([r[20]+(r[21]<<16) for r in rows]),
         'terrain_triangles':stats([r[22] for r in rows]),

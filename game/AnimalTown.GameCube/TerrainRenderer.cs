@@ -13,7 +13,7 @@ internal sealed class TerrainRenderer
     private readonly CachedTexture?[] textures=new CachedTexture?[FloorStrips.MaximumMaterials];
     private readonly int[] used=new int[FloorStrips.MaximumMaterials],capacities=new int[FloorStrips.MaximumMaterials];
     private byte[] data=new byte[0];
-    private int season=-1,forced,slots,cachedRoom=-1,cachedTier=-1;
+    private int season=-1,forced,slots,cachedRoom=-1,cachedTier=-1,cachedTerrainVersion=-1;
     private float cachedX,cachedZ;
     private Town? cachedTown;
     internal int VisibleTriangles,RejectedQuads;
@@ -32,8 +32,9 @@ internal sealed class TerrainRenderer
             for(int i=0;i<slots;i++){var texture=TextureCache.LoadFloor("dvd:/"+name+"-"+i+".dndtex");textures[i]=texture;materials[i].Texture=texture.Pages[0];}
             season=next;
         }
-        if(!changed&&cachedX==state.X&&cachedZ==state.Z&&cachedRoom==room&&cachedTier==state.HouseTier&&cachedTown==state.Town)return;
+        if(!changed&&cachedX==state.X&&cachedZ==state.Z&&cachedRoom==room&&cachedTier==state.HouseTier&&cachedTown==state.Town&&cachedTerrainVersion==state.Town.TerrainVersion)return;
         cachedX=state.X;cachedZ=state.Z;cachedRoom=room;cachedTier=state.HouseTier;cachedTown=state.Town;
+        cachedTerrainVersion=state.Town.TerrainVersion;
         strips.Prepare(state,room,data);VisibleTriangles=strips.Count*2;RejectedQuads=strips.RejectedQuads;
         for(int i=0;i<used.Length;i++)used[i]=0;
         int previousZ=int.MinValue;var a=new CylinderPose(0,0,1,0,0);var b=a;

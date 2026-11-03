@@ -143,6 +143,7 @@ internal sealed class TownGame
     {
         if(p.L.IsHeld&&p.R.IsHeld&&p.Z.WasPressed){FrameProfile.Enabled=!FrameProfile.Enabled;return;}
         if(p.L.IsHeld&&p.R.IsHeld&&p.Y.WasPressed){ToggleModelPath();return;}
+        if(p.L.IsHeld&&p.R.IsHeld&&p.DPadDown.WasPressed){UiFont.Batched=!UiFont.Batched;return;}
         if(p.L.IsHeld&&p.R.IsHeld&&p.X.WasPressed){batchedDrawing=!batchedDrawing;UiFont.Batched=batchedDrawing;if(NativeRenderProbe.Batch(batchedDrawing?1:0)!=(batchedDrawing?1:0))throw new InvalidOperationException("Batch switch failed");return;}
         if(p.L.IsHeld&&p.R.IsHeld)return;
         if(screen=="title")
@@ -407,7 +408,7 @@ internal sealed class TownGame
         phase=FrameProfile.Start();ui.End();FrameProfile.End(8,phase);
         phase=FrameProfile.Start();device.EndFrame();FrameProfile.End(9,phase);
     }
-    internal void RecordFrame(){if(FrameProfile.Enabled){int scene=screen=="map"?10:screen=="menu"&&menuTab==0?(indexedModels?1:7):room!=0?2:screen=="world"?(indexedModels?0:6):3;FrameProfile.Complete(GpuProfiler.Snapshot().Triangles,terrain.VisibleTriangles,terrain.RejectedQuads,batchedDrawing?scene:scene+16);}}
+    internal void RecordFrame(){if(FrameProfile.Enabled){int scene=screen=="map"?10:screen=="menu"&&menuTab==0?(indexedModels?1:7):room!=0?2:screen=="world"?(indexedModels?0:6):3;FrameProfile.Complete(GpuProfiler.Snapshot().Triangles,terrain.VisibleTriangles,terrain.RejectedQuads,batchedDrawing?(UiFont.Batched?scene:scene+32):scene+16);}}
     private bool IsTree(GroundItem g)=>g.Kind==3||(g.Kind==2&&g.Item!=2);
     private void DrawTrees()
     {

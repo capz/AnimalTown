@@ -20,6 +20,11 @@ public sealed class Town
     public const int Width=ScreenTiles*ScreenTileSize,Height=Width,Cells=Width*Height;
     // Fine cells support furniture/plant footprints within each screen tile.
     public readonly byte[] Tiles=new byte[Cells];
+    public int TerrainVersion {get;private set;}
+    // Bulk importers that write Tiles directly call this once after committing.
+    public void NotifyTerrainChanged(){TerrainVersion++;}
+    public bool SetTerrain(int x,int z,Terrain terrain)
+    {if(!Inside(x,z)||(uint)terrain>7||Tiles[z*Width+x]==(byte)terrain)return false;Tiles[z*Width+x]=(byte)terrain;NotifyTerrainChanged();return true;}
     public readonly Villager[] Residents=new Villager[6];
     public readonly GroundItem[] Ground=new GroundItem[512];
     public readonly Placement[] Placed=new Placement[256];
@@ -64,6 +69,7 @@ public sealed class Town
             if(At(x,z)==0&&!InReserve(x,z)&&!(x>=28&&x<=55&&z<=37))AddGround(i%3+1,x,z,3,0);
         }
         AddGround(17,15,Height-5,0,0);AddGround(17,27,Height-6,0,0);
+        NotifyTerrainChanged();
     }
     private void Building(int x,int z,int w,int h)
     { for(int j=0;j<h;j++)for(int i=0;i<w;i++)Tiles[(z+j)*Width+x+i]=(byte)Terrain.Building; }

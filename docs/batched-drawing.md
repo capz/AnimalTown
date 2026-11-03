@@ -27,9 +27,11 @@ but each glyph no longer crosses to native code separately. Atlases stay unmippe
 The map samples the original terrain centers into a lazy 128-square RGBA8 image.
 Upload occurs only when sampled terrain or Town identity changes. Nearest
 filtering preserves flat colors; grid and live markers remain above the image.
-Native pixels use 64 KiB, reusable CPU upload pixels another 64 KiB, and sampled
-cell comparisons about 6.3 KiB. Data is checked while open so direct terrain
-edits cannot leave a stale background.
+Native pixels use 64 KiB and reusable CPU upload pixels another 64 KiB. A terrain
+revision check avoids re-reading 6400 cells on unchanged frames. Use SetTerrain
+for individual edits, or NotifyTerrainChanged after a bulk write to Tiles.
+Generation/save loading invalidate automatically; terrain strip caching observes
+the same revision. No save format change is required.
 
 Visible boxes/fences keep culling before submission. `BoxBatch` snapshots up to
 128 transforms and flushes contiguous compatible colors through DrawMeshes;
@@ -48,7 +50,8 @@ to the application's existing source-texture cache.
 Run `iso-smoke.py ISO CAPTURE_DIR --resume --profile --profile-seconds 10
 --compare-batches` with a copied regression card and 512 MiB Docker shared memory.
 It records world modes, movement, backpack modes and map modes.
-`--backpack-layout` also checks slot/action navigation.
+`--backpack-layout` also checks slot/action navigation. L+R+D-pad Down isolates
+legacy font submission while retaining other batches (scenario offset 32).
 
 Telemetry v4 retains v3 phase timings and completes imported primitive/texture
 counts. Fields 26/27 contain drawing API entries/material setups instead of

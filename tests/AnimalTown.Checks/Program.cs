@@ -2,6 +2,13 @@ using AnimalTown;
 
 int checks=0;
 void Check(bool value,string message){checks++;if(!value)throw new Exception(message);}
+var terrainEdit=new GameState(74);int terrainVersion=terrainEdit.Town.TerrainVersion;
+Check(terrainEdit.Town.SetTerrain(20,20,Terrain.Water)&&terrainEdit.Town.TerrainVersion==terrainVersion+1,"terrain edit invalidates render caches");
+Check(!terrainEdit.Town.SetTerrain(20,20,Terrain.Water)&&!terrainEdit.Town.SetTerrain(-1,20,Terrain.Grass)&&terrainEdit.Town.TerrainVersion==terrainVersion+1,"unchanged/invalid terrain edits preserve cache revision");
+var terrainRestored=SaveCodec.Decode(SaveCodec.Encode(terrainEdit));
+Check(terrainRestored.Town.At(20,20)==(int)Terrain.Water&&terrainRestored.Town.TerrainVersion>0,"edited terrain survives save restore with render revision initialized");
+terrainVersion=terrainEdit.Town.TerrainVersion;terrainEdit.Town.Tiles[20*Town.Width+20]=(byte)Terrain.Grass;terrainEdit.Town.NotifyTerrainChanged();
+Check(terrainEdit.Town.TerrainVersion==terrainVersion+1&&terrainEdit.Town.At(20,20)==(int)Terrain.Grass,"bulk terrain importer can invalidate retained rendering once");
 var game=new GameState(73);game.Rollover(100,100);
 Check(game.PlaceHouse(12,22,false),"starter plot");
 Check(!game.CanPlace(10,13,26,0,0,1),"guest placement rejected");
