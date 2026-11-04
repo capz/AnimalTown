@@ -15,6 +15,17 @@ if(([regex]::Matches($generated,$errorPattern,[Text.RegularExpressions.RegexOpti
 $generated=[regex]::Replace($generated,$errorPattern,'intptr_t $1(void) { return (intptr_t)animaltown_card_debug; }',[Text.RegularExpressions.RegexOptions]::Singleline)
 $generated="extern int animaltown_calendar(void);`nextern int animaltown_card_debug;`n"+$generated
 [IO.File]::WriteAllText($generatedPath,$generated)
+# Memory probe has one integer argument and must remain linked by generated AOT.
+$memoryPattern='intptr_t (dnd_value_AnimalTown_GameCube_FrameProfile_Memory_[a-z0-9]+)\(intptr_t (\w+)\) \{.*?\r?\n\}'
+if(([regex]::Matches($generated,$memoryPattern,[Text.RegularExpressions.RegexOptions]::Singleline)).Count -ne 1){throw 'Performance memory bridge signature changed'}
+$generated=[regex]::Replace($generated,$memoryPattern,'intptr_t $1(intptr_t $2) { return animaltown_performance_memory((int)$2); }',[Text.RegularExpressions.RegexOptions]::Singleline)
+$generated="extern int animaltown_performance_memory(int);`n"+$generated
+$resourcePath=Join-Path $Root 'out/native/source/draw_resources.c'
+$resourceSource=[IO.File]::ReadAllText($resourcePath)
+if(-not $resourceSource.Contains('static Resource slots[SLOTS];')){throw 'Pinned performance resource table changed'}
+$resourceSource+="`n#include `"dnd_model_internal.h`"`n#include `"animaltown_performance.inc`"`n"
+[IO.File]::WriteAllText($resourcePath,$resourceSource)
+Copy-Item -LiteralPath (Join-Path $Root 'tools/native-performance.inc') -Destination (Join-Path $Root 'out/native/source/animaltown_performance.inc') -Force
 $uvPattern='intptr_t (dnd_value_AnimalTown_GameCube_NativeRenderProbe_Uv_[a-z0-9]+)\(intptr_t (\w+)\) \{.*?\r?\n\}'
 if(([regex]::Matches($generated,$uvPattern,[Text.RegularExpressions.RegexOptions]::Singleline)).Count -ne 1){throw 'Native UV diagnostic bridge signature changed'}
 $generated=[regex]::Replace($generated,$uvPattern,'intptr_t $1(intptr_t $2) { return animaltown_uv_mode((int)$2); }',[Text.RegularExpressions.RegexOptions]::Singleline)

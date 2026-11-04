@@ -152,6 +152,7 @@ internal sealed class TownGame
     internal void Input(ControllerState p)
     {
         bool chord=p.L.IsHeld&&p.R.IsHeld;
+        if(chord&&p.Z.WasPressed){FrameProfile.Enabled=!FrameProfile.Enabled;return;}
         if(chord&&p.DPadUp.WasPressed&&room==0){cliffPreview=!cliffPreview;return;}
         if(chord&&p.DPadLeft.WasPressed&&room==0&&screen=="world"){waterInspection=(waterInspection+1)%6;return;}
         if(waterInspection!=0)return;
@@ -159,7 +160,6 @@ internal sealed class TownGame
         bool navigating=screen=="menu"||screen=="keyboard"||screen=="create"||screen=="item"||screen=="sell"||screen=="shop"||screen=="store"||screen=="post"||screen=="mail"||screen=="lost";
         int direction=menuNavigation.Read(screen,screen=="menu"?menuTab:-1,p.Stick.X,p.Stick.Y,(int)p.PressedButtons,Clock.Timestamp,navigating&&!chord);
         bool up=direction==MenuNavigation.Up,down=direction==MenuNavigation.Down,left=direction==MenuNavigation.Left,right=direction==MenuNavigation.Right;
-        if(p.L.IsHeld&&p.R.IsHeld&&p.Z.WasPressed){FrameProfile.Enabled=!FrameProfile.Enabled;return;}
         if(p.L.IsHeld&&p.R.IsHeld&&p.Y.WasPressed){ToggleModelPath();return;}
         if(p.L.IsHeld&&p.R.IsHeld&&p.DPadDown.WasPressed){if(batchedDrawing)UiFont.Batched=!UiFont.Batched;return;}
         if(p.L.IsHeld&&p.R.IsHeld&&p.X.WasPressed){batchedDrawing=!batchedDrawing;UiFont.Batched=batchedDrawing;if(NativeRenderProbe.Batch(batchedDrawing?1:0)!=(batchedDrawing?1:0))throw new InvalidOperationException("Batch switch failed");return;}
@@ -436,7 +436,7 @@ internal sealed class TownGame
         FrameProfile.End(5,phase);phase=FrameProfile.Start();
         if(screen=="plot")
         { int x=(int)state.X-3,z=(int)state.Z-3;bool valid=state.Town.ValidPlot(x,z);for(int i=0;i<15;i++){Box(x+i,.02f,z,.9f,.03f,.9f,valid?new Color32(74,230,113):new Color32(229,82,72));Box(x+i,.02f,z+12,.9f,.03f,.9f,valid?new Color32(74,230,113):new Color32(229,82,72));} }
-        if(batchedDrawing)boxes.Flush();renderer.End3D();ui.Begin();DrawHud();FrameProfile.End(8,phase);FrameProfile.Draw(ui);
+        if(batchedDrawing)boxes.Flush();renderer.End3D();ui.Begin();DrawHud();FrameProfile.End(8,phase);FrameProfile.Draw(ui,font);
         phase=FrameProfile.Start();ui.End();FrameProfile.End(8,phase);
         phase=FrameProfile.Start();device.EndFrame();FrameProfile.End(9,phase);
     }

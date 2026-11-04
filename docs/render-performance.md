@@ -66,7 +66,7 @@ rotated headings retain a shared pivot. The IPL font is extracted into six
 libogc decoded font storage are freed after extraction; no oversized font
 texture is uploaded and no firmware font is distributed.
 
-The application cache holds at most 256 source entries and 2 MiB of native pixels.
+The application cache holds at most 256 source entries and 4 MiB of native pixels.
 Its immutable-disc key is the build identity plus original disc URI, processing
 version and atlas layout. A source FNV fingerprint and original dimensions remain
 available without retaining original pixels. A hit avoids disc I/O and decoding.
@@ -77,7 +77,7 @@ RGB565 two-level mipmaps and mirrored-repeat samplers; the current season uses
 `floor64-mip2-mirror-auto-v2`, invalidating entries from the previous policy.
 See [generated-trees-repeat-floor.md](generated-trees-repeat-floor.md).
 This is a read-only disc cache, not a hot-reloading SD asset
-cache. The SDK's separate model texture cache is outside that 2 MiB budget.
+cache. The SDK's separate model texture cache is outside that 4 MiB budget.
 See [mipmaps-streaming-async.md](mipmaps-streaming-async.md) for mip tradeoffs,
 streaming applicability and the distinction between completion checks and waits.
 
@@ -103,11 +103,14 @@ occlusion only; buildings and trees do not act as additional CPU occluders.
 
 ## Reproducible measurements
 
-Settings → Performance display enables checksummed pixel telemetry in the last
+Settings → Performance display enables a readable panel with frame history,
+FPS, triangle/draw counts and memory residency, plus checksummed pixel telemetry in the last
 32 display rows. It uses the native guest clock, reports CPU/submission phases,
 and includes terrain, triangle and cache counters. Rendering the telemetry has
 its own measured cost. Results are displayed one frame after collection.
 The developer shortcut L + R + Z toggles the same display from any screen.
+See [performance-panel.md](performance-panel.md) for counter definitions,
+limitations, validation status and prioritized performance investigations.
 Use at least 512 MiB of Docker shared memory for the Linux Dolphin container;
 the default 64 MiB can make Mesa/Dolphin exit with SIGBUS before boot.
 
