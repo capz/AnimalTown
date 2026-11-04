@@ -1,6 +1,6 @@
 # Release versions: xx.yy.zz.bb
 
-AnimalTown uses four parts, for example `1.3.2.a1b2c3d4e5f6`:
+AnimalTown uses four parts, for example `0.3.2.a1b2c3d4e5f6`:
 
 | Part | Meaning | Changes when |
 | --- | --- | --- |
@@ -9,7 +9,7 @@ AnimalTown uses four parts, for example `1.3.2.a1b2c3d4e5f6`:
 | `zz` | Bugfix counter | A `fix:` change lands |
 | `bb` | Source identity | First 12 lowercase hexadecimal characters of the full Git commit |
 
-The user-selected initial baseline is `1.0.0`. Counters are independent: features do not reset
+The initial baseline is `0.0.0`; no major bump has been requested. Counters are independent: features do not reset
 bugfixes, and changing `xx` does not reset `yy` or `zz`. Numbers are not padded
 or limited to two digits. This is the project's requested scheme, not SemVer.
 Breaking-change markers (`!`) never change `xx` automatically.
@@ -74,12 +74,12 @@ The game display, disc title/banner and ISO filename use the four-part version.
 the full source revisions. Archive names include it, for example:
 
 ```text
-AnimalTown-1.3.2.a1b2c3d4e5f6.iso.zip
-AnimalTown-server-1.3.2.a1b2c3d4e5f6.zip
-AnimalTown-tools-1.3.2.a1b2c3d4e5f6.zip
+AnimalTown-0.3.2.a1b2c3d4e5f6.iso.zip
+AnimalTown-server-0.3.2.a1b2c3d4e5f6.zip
+AnimalTown-tools-0.3.2.a1b2c3d4e5f6.zip
 ```
 
-GitHub release tags use `v1.3.2.a1b2c3d4e5f6`. Releases include `version.json` and
+GitHub release tags use `v0.3.2.a1b2c3d4e5f6`. Releases include `version.json` and
 its checksum. Packaging rejects console/backend outputs whose source commit,
 version or clean state differs from the checkout. Existing draft/upload hash
 checks and idempotent publishing remain in force.
