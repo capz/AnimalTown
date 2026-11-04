@@ -183,7 +183,7 @@ internal sealed class TextureRepacker
         double rmse=Math.Sqrt(error/(samples*4));if(maxTriangleRmse>maximumRmse)throw new InvalidDataException($"Appearance check failed for image {index}: worst triangle RGBA RMSE {maxTriangleRmse:F3}, overall {rmse:F3}, limit {maximumRmse}. No output model written");
         foreach(var t in list)for(int k=0;k<3;k++)t.Uv[k]=Map(t,t.Uv[k]);
         using var png=new MemoryStream();output.SaveAsPng(png);image["bufferView"]=AppendView(png.ToArray());image["mimeType"]="image/png";image.AsObject().Remove("uri");
-        reports.Add(new{image=index,sourceWidth=source.Width,sourceHeight=source.Height,width,height,charts=patches.Count,sharedCharts,rotatedStacks,solidTriangles,sharedSolidColors=solids.Count,scale,preserveLayout,rgbaRmse=rmse,maxTriangleRmse,maxChannelError=max,samples,gutter=preserveLayout?0:Gutter,atlasPixels=width*height,chartBoundingBoxPixels=packedPatches.Sum(p=>(p.OutW+Gutter*2)*(p.OutH+Gutter*2))});
+        reports.Add(new{image=index,sourceWidth=source.Width,sourceHeight=source.Height,width,height,charts=patches.Count,sharedCharts,rotatedStacks,packedRotations=packedPatches.Count(p=>p.Rotated),solidTriangles,sharedSolidColors=solids.Count,scale,preserveLayout,rgbaRmse=rmse,maxTriangleRmse,maxChannelError=max,samples,gutter=preserveLayout?0:Gutter,atlasPixels=width*height,chartBoundingBoxPixels=packedPatches.Sum(p=>(p.OutW+Gutter*2)*(p.OutH+Gutter*2))});
     }
     static int Address(int value,int size,int wrap)
     {if(wrap==33071)return Math.Clamp(value,0,size-1);int period=wrap==33648?size*2:size,n=(value%period+period)%period;return n>=size?period-1-n:n;}
