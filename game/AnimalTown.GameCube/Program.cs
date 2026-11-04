@@ -34,7 +34,7 @@ internal static class Program
 
 internal sealed class TownGame
 {
-    private GameState state=new GameState(7319);
+    private GameState state;
     private readonly GraphicsDevice device=GraphicsDevice.Default;
     private readonly Renderer renderer=new Renderer(GraphicsDevice.Default,128);
     private readonly Camera camera=new Camera(CylinderWorld.CameraFieldOfView,4f/3,CylinderWorld.Near,CylinderWorld.Far);
@@ -90,6 +90,7 @@ internal sealed class TownGame
         syllable=Sound.FromPcm8(pcm,16000);syllable.Volume=.12f;dialogueVoice=new DialogueVoice(syllable);
         sessionStart=Clock.Timestamp;
         ReadCalendar();
+        long seedClock=Clock.Timestamp;state=new GameState(unchecked((int)(seedClock^(seedClock>>32)^day*7919L^month*104729L)));
         LoadSave();
         state.Rollover(day,month);
         if(state.HousePlaced&&!state.CanWalk(state.X,state.Z,0))state.MoveToHouseEntrance();

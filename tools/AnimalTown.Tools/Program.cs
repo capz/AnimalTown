@@ -19,6 +19,7 @@ static class Program
             if(args.Length<2)throw new ArgumentException("repack-textures ROOT INPUT.glb OUTPUT.glb --size128|--size256|--size512|--size1024|--sizeOriginal [--max-rmse N]; or repack-check ROOT");
             Root=Path.GetFullPath(args[1]);
             if(args[0]=="repack-textures")TextureRepacker.Command(args);
+            else if(args[0]=="town-preview")TownGenerationPreview.Run(args[2],int.Parse(args[3]),args.Length>4?int.Parse(args[4]):1);
             else if(args[0]=="repack-check")TextureRepackerChecks.Run(Root);
             else if(args[0]=="audit")Audit();
             else if(args[0]=="prepare")Prepare(args[2],args[3]);

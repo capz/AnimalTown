@@ -47,29 +47,15 @@ public sealed class Town
     { int t=At(x,z);return Inside(x,z)&&t!=(int)Terrain.Water&&t!=(int)Terrain.Building&&t!=(int)Terrain.Cliff; }
     public void Generate()
     {
-        for(int z=0;z<Height;z++)for(int x=0;x<Width;x++)
-        {
-            int t=(int)Terrain.Grass;
-            if(z>=Height-8)t=(int)Terrain.Beach;
-            if(z>=Height-2||x==0||x==Width-1||z==0)t=(int)Terrain.Water;
-            if(x>=41&&x<=43)t=(int)Terrain.Water;
-            if(x>=82&&x<90&&z>=26&&z<33)t=(int)Terrain.Water;
-            if(x>=41&&x<=43&&(z==18||z==38||z==58))t=(int)Terrain.Bridge;
-            if(z==5&&x>51&&x<75)t=(int)Terrain.Cliff;
-            if(x>=30&&x<=37&&z>=29&&z<=35)t=(int)Terrain.Plaza;
-            if(x>=62&&x<71&&z>=47&&z<56)t=(int)Terrain.Camp;
-            Tiles[z*Width+x]=(byte)t;
-        }
+        if(Day>=0||PlacedCount!=0)throw new InvalidOperationException("Generate is only for an unplayed town; saved terrain must be loaded intact");
+        GroundCount=0;TownGenerator.Landscape(this);
+        // Required service acres retain their existing entrances and starter
+        // reserve. Their placement constraints are part of this template set.
+        for(int z=29;z<=35;z++)for(int x=30;x<=37;x++)Tiles[z*Width+x]=(byte)Terrain.Plaza;
+        for(int z=47;z<56;z++)for(int x=62;x<71;x++)Tiles[z*Width+x]=(byte)Terrain.Camp;
         Building(30,25,5,3);Building(48,25,5,3);Building(34,7,4,3);
         for(int i=0;i<6;i++)Building(Residents[i].X,10,3,3);
-        uint r=(uint)Seed;
-        for(int i=0;i<360;i++)
-        {
-            r=r*1664525u+1013904223u;int x=2+(int)(r%(uint)(i<120?76:Width-4));
-            r=r*1664525u+1013904223u;int z=17+(int)(r%(uint)(i<120?46:Height-27));
-            if(At(x,z)==0&&!InReserve(x,z)&&!(x>=28&&x<=55&&z<=37))AddGround(i%3+1,x,z,3,0);
-        }
-        AddGround(17,15,Height-5,0,0);AddGround(17,27,Height-6,0,0);
+        TownGenerator.Populate(this);
         NotifyTerrainChanged();
     }
     private void Building(int x,int z,int w,int h)

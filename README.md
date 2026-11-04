@@ -102,6 +102,10 @@ it fails if the expected AOT signature changes.
 The native IPL font API is supplied by [DolphinDotNet PR #145](https://github.com/capz/DolphinDotNet/pull/145), pinned by the SDK submodule. Its CI checks pass. Firmware font data is read on the console and is never bundled on disc.
 # Texture resolution
 
+New towns use a [seeded acre-template generator](docs/town-generation.md), with
+connected rivers, two crossings, ponds and shoreline variants. Existing saves
+retain their terrain. Developer previews: `town-preview . OUTPUT_DIR SEED COUNT`.
+
 The offline [texture/UV repacker](docs/texture-repacker.md) stacks exact flat
 colours, packs textured charts, and checks appearance before writing a new GLB.
 Use `repack-textures . INPUT OUTPUT --size256` or `--sizeOriginal`.

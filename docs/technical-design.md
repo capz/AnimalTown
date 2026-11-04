@@ -1,5 +1,9 @@
 # AnimalTown / Project Meadowroll — GameCube technical design
 
+The [town generation implementation](town-generation.md) documents the researched
+GameCube acre approach, our flat 8x8 adaptation, seed/save behavior and terrain-kit
+requirements for future two-/three-tier towns.
+
 Status: implementation baseline, 2026-11-02. Product requirements: `design-doc.md`.
 Revision: cylinder/world/bubble requirements updated from the user's instruction.
 This document supersedes that document's Unity, PC, shader, WebRTC and SignalR
