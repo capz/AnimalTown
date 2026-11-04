@@ -72,7 +72,19 @@ sealed class GameError(int status,string message):Exception(message){public int 
 sealed class GameDatabase(NpgsqlDataSource source)
 {
     public async Task Initialize()
-    {await using var c=await source.OpenConnectionAsync();await using var command=new NpgsqlCommand(File.ReadAllText(Path.Combine(AppContext.BaseDirectory,"Schema.sql")),c);await command.ExecuteNonQueryAsync();}
+    {
+        await using var c=await source.OpenConnectionAsync();
+        await using(var command=new NpgsqlCommand(File.ReadAllText(Path.Combine(AppContext.BaseDirectory,"Schema.sql")),c))await command.ExecuteNonQueryAsync();
+        // One locked row/transaction at a time: restartable migration, bounded
+        // memory, and no window where only some records exist.
+        while(true){
+            await using var t=await c.BeginTransactionAsync();Guid id;byte[] legacy;
+            await using(var cmd=Cmd(c,t,"SELECT id,state FROM players WHERE state IS NOT NULL LIMIT 1 FOR UPDATE"))await using(var r=await cmd.ExecuteReaderAsync()){
+                if(!await r.ReadAsync()){await r.DisposeAsync();await t.CommitAsync();break;}id=r.GetGuid(0);legacy=r.GetFieldValue<byte[]>(1);
+            }
+            await WriteParts(c,t,id,SaveCodec.Decode(legacy),false);await t.CommitAsync();
+        }
+    }
     static NpgsqlCommand Cmd(NpgsqlConnection c,NpgsqlTransaction? t,string sql,params object[] values)
     {var cmd=new NpgsqlCommand(sql,c,t);foreach(object v in values)cmd.Parameters.Add(new NpgsqlParameter{Value=v});return cmd;}
     static string Hash(string text)=>Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(text)));
@@ -83,7 +95,8 @@ sealed class GameDatabase(NpgsqlDataSource source)
         if(string.IsNullOrWhiteSpace(request.Name)||request.Name.Length>16||request.Password==null||request.Password.Length<12||request.Password.Length>128)throw new GameError(400,"name-or-password-invalid");
         Guid id=Guid.NewGuid();var state=new GameState(RandomNumberGenerator.GetInt32(1,int.MaxValue)){Name=request.Name};state.Rollover(Day,DateTime.UtcNow.Year*12+DateTime.UtcNow.Month);
         byte[] salt=RandomNumberGenerator.GetBytes(16);await using var c=await source.OpenConnectionAsync();
-        await using(var cmd=Cmd(c,null,"INSERT INTO players(id,name,salt,password,state) VALUES($1,$2,$3,$4,$5)",id,request.Name,salt,Password(request.Password,salt),SaveCodec.Encode(state)))await cmd.ExecuteNonQueryAsync();
+        var parts=SplitSaveCodec.Encode(state);
+        await using(var cmd=Cmd(c,null,"INSERT INTO players(id,name,salt,password,town_data,house_positions,shop_states,player_villager) VALUES($1,$2,$3,$4,$5,$6,$7,$8)",id,request.Name,salt,Password(request.Password,salt),parts[0],parts[1],parts[2],parts[3]))await cmd.ExecuteNonQueryAsync();
         return new{id,token=await Token(c,id)};
     }
     async Task<string> Token(NpgsqlConnection c,Guid id)
@@ -98,9 +111,11 @@ sealed class GameDatabase(NpgsqlDataSource source)
     public async Task<Guid?> Authenticate(string token)
     {await using var c=await source.OpenConnectionAsync();await using var cmd=Cmd(c,null,"SELECT player FROM sessions WHERE token_hash=$1 AND expires>now()",Hash(token));return await cmd.ExecuteScalarAsync() is Guid id?id:null;}
     async Task<(GameState State,long Revision)> Load(NpgsqlConnection c,NpgsqlTransaction? t,Guid id,bool locked)
-    {await using var cmd=Cmd(c,t,"SELECT state,revision FROM players WHERE id=$1"+(locked?" FOR UPDATE":""),id);await using var r=await cmd.ExecuteReaderAsync();if(!await r.ReadAsync())throw new GameError(404,"player-not-found");return(SaveCodec.Decode(r.GetFieldValue<byte[]>(0)),r.GetInt64(1));}
+    {await using var cmd=Cmd(c,t,"SELECT town_data,house_positions,shop_states,player_villager,revision FROM players WHERE id=$1"+(locked?" FOR UPDATE":""),id);await using var r=await cmd.ExecuteReaderAsync();if(!await r.ReadAsync())throw new GameError(404,"player-not-found");return(SplitSaveCodec.Decode(new[]{r.GetFieldValue<byte[]>(0),r.GetFieldValue<byte[]>(1),r.GetFieldValue<byte[]>(2),r.GetFieldValue<byte[]>(3)}),r.GetInt64(4));}
+    static async Task WriteParts(NpgsqlConnection c,NpgsqlTransaction t,Guid id,GameState state,bool bump)
+    {var p=SplitSaveCodec.Encode(state);await using var cmd=Cmd(c,t,"UPDATE players SET state=NULL,town_data=$2,house_positions=$3,shop_states=$4,player_villager=$5"+(bump?",revision=revision+1":"")+" WHERE id=$1",id,p[0],p[1],p[2],p[3]);await cmd.ExecuteNonQueryAsync();}
     async Task Save(NpgsqlConnection c,NpgsqlTransaction t,Guid id,GameState state)
-    {await using var cmd=Cmd(c,t,"UPDATE players SET state=$2,revision=revision+1 WHERE id=$1",id,SaveCodec.Encode(state));await cmd.ExecuteNonQueryAsync();}
+    {state.Sequence=checked(state.Sequence+1);await WriteParts(c,t,id,state,true);}
     public async Task<(GameState State,long Revision)> State(Guid id)
     {await using var c=await source.OpenConnectionAsync();return await Load(c,null,id,false);}
     public async Task<object> Profile(Guid id)

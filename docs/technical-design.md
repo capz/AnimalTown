@@ -219,9 +219,12 @@ available without text entry. Animations use each species' actual clip mapping.
 Disc identity `AMTE01` is a project-local homebrew ID, not an allocated retail ID.
 Memory-card identity is `AMTE` / `01`. Use SDK MemoryCard.WriteSave with original
 96×32 RGB5A3 banner, 32×32 icon, title AnimalTown and commit in the comment.
-Two alternating save files carry magic, schema/catalog versions, monotonic
-sequence, payload length and CRC32. Validate both completely, load newest valid
-one and leave the previous slot untouched until the new write is verified.
+Four separate records store town data, house positions, shop states and player
+villager data, in two alternating banks. A commit record binds each bank and is
+written last after readback. All headers/checksums must match one generation;
+load the newest complete bank. Backend storage uses matching separate columns
+and transactional migration. See [split-saves.md](split-saves.md) for ownership,
+recovery rules, card-space overhead and legacy import behavior.
 Schema 4 records the current 160×160 fine-cell dimensions. Older 400×400
 schema 2/3 terrain is cropped by original row stride, preserving the northwest
 160×160 region. Outlying trees are removed, other ground items move to Lost &

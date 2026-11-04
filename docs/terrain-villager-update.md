@@ -57,7 +57,8 @@ The outdoor HUD displays console-local date, weekday and 24-hour time using the
 GameCube RTC through the existing native bridge. It samples once a second and
 reuses text until the minute/date changes. Menus/dialogue hide the clock.
 
-Save v5 appends RLE elevation, saved model-tied names, fixed homes and fractional
+The [split storage format](split-saves.md) now persists town, house positions,
+shops and player separately. Its legacy import/export format, v5, appends RLE elevation, saved model-tied names, fixed homes and fractional
 NPC coordinates. v1-v4 remain readable and retain terrain/progress. Older maps
 remain flat rather than being rerolled. New water ratios/raised sections apply
 to new towns; navigation and the clock work with existing towns as well.

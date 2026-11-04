@@ -261,6 +261,8 @@ with (root/'emulator.log').open('w') as log:
                 press('A');screenshot('backpack-quit.png')
             if '--item-navigation' in sys.argv:item_navigation()
             press('START');time.sleep(12);screenshot('resume-save.png')
+            if '--split-save' in sys.argv:
+                press('B');time.sleep(5);press('START');time.sleep(12);screenshot('split-save-second.png')
             if '--settings-navigation' in sys.argv:settings_navigation()
         if '--profile' in sys.argv:
             press('B')

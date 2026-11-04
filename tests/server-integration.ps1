@@ -5,6 +5,7 @@ $serverRoot=(Get-Location).Path
 $container='animaltown-integration-'+[Guid]::NewGuid().ToString('N').Substring(0,8)
 $api='http://127.0.0.1:5189'
 $process=$null
+$oldTestConnection=$env:ANIMALTOWN_TEST_CONNECTION
 $ownsDatabase=!$DatabaseConnection
 function Request([string]$Method,[string]$Path,$Body,$Token) {
     $headers=@{}; if($Token){$headers.Authorization="Bearer $Token"}
@@ -24,6 +25,11 @@ try {
     $DatabaseConnection='Host=127.0.0.1;Port=55439;Database=postgres;Username=postgres;Password=animaltown-test-only'
     }
     & ./tools/build-server.ps1
+    $env:ANIMALTOWN_TEST_CONNECTION=$DatabaseConnection
+    dotnet build tests/AnimalTown.ServerChecks -c Release -v quiet
+    if($LASTEXITCODE){throw 'Server storage checks build failed'}
+    dotnet tests/AnimalTown.ServerChecks/bin/Release/net10.0/AnimalTown.ServerChecks.dll seed-legacy
+    if($LASTEXITCODE){throw 'Legacy server fixture failed'}
     $oldConnection=$env:ConnectionStrings__Game
     $env:ConnectionStrings__Game=$DatabaseConnection
     $launch=@{FilePath='dotnet';ArgumentList=@('out/server/AnimalTown.Server.dll','--urls',$api);WorkingDirectory=$serverRoot;PassThru=$true;RedirectStandardOutput="$serverRoot/out/server-test.log";RedirectStandardError="$serverRoot/out/server-test-error.log"}
@@ -70,9 +76,13 @@ try {
     Assert ((Request GET '/v1/grants' $null $b.token).Body.Count -eq 0) 'Grant retry duplicated item'
     Request POST "/v1/blocks/$($b.id)" @{} $a.token | Out-Null
     Assert ((Request POST '/v1/visits' @{host=$a.id} $b.token).Status -eq 403) 'Blocked visitor accepted'
+    Assert ((Request POST '/v1/auth/token' @{name='LegacySplit';password='test-password-long'} $null).Status -eq 200) 'Migrated login failed'
+    dotnet tests/AnimalTown.ServerChecks/bin/Release/net10.0/AnimalTown.ServerChecks.dll verify
+    if($LASTEXITCODE){throw 'Backend split storage or migration failed'}
     Write-Host 'Server integration checks passed: authentication, ownership, idempotency, rollback, friendship, blocking, escrow, purchase and grants.'
 }
 finally {
+    $env:ANIMALTOWN_TEST_CONNECTION=$oldTestConnection
     if($process -and !$process.HasExited){Stop-Process -Id $process.Id}
     if($ownsDatabase){docker stop $container 2>&1 | Out-Null}
 }

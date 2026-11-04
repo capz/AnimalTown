@@ -58,7 +58,7 @@ Controls: stick or D-pad moves in eight directions, B run/cancel, A interact/con
 tool, Start save/settings; stick or D-pad selects and L/R changes menu tabs. Hold
 the stick to repeat a selection; recenter after opening a menu or changing tabs.
 Closing a settings explanation returns to the same selected settings row. Memory-card
-saves use Slot A, `AMTE/01`, two alternating files, banner and icon. Missing-card
+saves use Slot A, `AMTE/01`, [four split records in two banks](docs/split-saves.md), banner and icon. Missing-card
 play works; save errors are shown for retry.
 Walk and run are 5% faster, with normalized diagonals and facing that follows
 travel direction. Dialogue syllables use one explicitly retired audio channel;

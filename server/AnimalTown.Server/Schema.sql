@@ -3,6 +3,19 @@ CREATE TABLE IF NOT EXISTS players (
  salt bytea NOT NULL, password bytea NOT NULL, state bytea NOT NULL,
  revision bigint NOT NULL DEFAULT 0, chat_restricted boolean NOT NULL DEFAULT false
 );
+-- The old combined payload is retained only until that row is migrated.
+ALTER TABLE players ALTER COLUMN state DROP NOT NULL;
+ALTER TABLE players ADD COLUMN IF NOT EXISTS town_data bytea;
+ALTER TABLE players ADD COLUMN IF NOT EXISTS house_positions bytea;
+ALTER TABLE players ADD COLUMN IF NOT EXISTS shop_states bytea;
+ALTER TABLE players ADD COLUMN IF NOT EXISTS player_villager bytea;
+DO $$ BEGIN
+ IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='players_complete_save_set' AND conrelid='players'::regclass) THEN
+  ALTER TABLE players ADD CONSTRAINT players_complete_save_set CHECK (
+   (state IS NOT NULL AND town_data IS NULL AND house_positions IS NULL AND shop_states IS NULL AND player_villager IS NULL)
+   OR (state IS NULL AND town_data IS NOT NULL AND house_positions IS NOT NULL AND shop_states IS NOT NULL AND player_villager IS NOT NULL));
+ END IF;
+END $$;
 CREATE TABLE IF NOT EXISTS sessions (
  token_hash text PRIMARY KEY, player uuid NOT NULL REFERENCES players(id), expires timestamptz NOT NULL
 );

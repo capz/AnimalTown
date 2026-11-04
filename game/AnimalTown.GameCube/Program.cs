@@ -115,11 +115,10 @@ internal sealed class TownGame
         try
         {
             card=MemoryCard.Mount(StorageDevice.MemoryCardSlotA,new MemoryCardIdentity("AMTE","01"));
-            int existing=0;var entries=card.GetEntries();for(int i=0;i<entries.Length;i++)if(entries[i].Name=="AnimalTown0"||entries[i].Name=="AnimalTown1")existing++;
-            GameState? best=null;
-            for(int i=0;i<2;i++)try{var candidate=SaveCodec.Decode(card.ReadAllBytes("AnimalTown"+i));if(best==null||candidate.Sequence>best.Sequence)best=candidate;}catch(Exception){ }
+            int existing=0;var entries=card.GetEntries();for(int i=0;i<entries.Length;i++)if(SplitSaveCodec.IsFile(entries[i].Name))existing++;
+            GameState? best=new SaveRepository(new CardSaveStorage(card,banner,icon)).Load();
             if(best!=null){state=best;day=Math.Max(day,state.Town.Day);month=Math.Max(month,state.Town.Month);loaded=true;saveStatus="Save loaded";}
-            else if(existing>0){damagedSave=true;saveStatus="Both saves are damaged. Backup card before recovery.";}
+            else if(existing>0){damagedSave=true;saveStatus="No complete save set. Backup card before recovery.";}
             else saveStatus="New town - no valid save";
         }
         catch(Exception){saveStatus="Insert memory card in Slot A to save";}
@@ -133,18 +132,14 @@ internal sealed class TownGame
         {
             if(card==null)card=MemoryCard.Mount(StorageDevice.MemoryCardSlotA,new MemoryCardIdentity("AMTE","01"));
             phase="encode";
-            int previous=state.Sequence;state.Sequence++;float px=state.X,pz=state.Z;
+            float px=state.X,pz=state.Z;
             if(room!=0){state.X=exteriorX;state.Z=exteriorZ;}
-            byte[] bytes=SaveCodec.Encode(state);state.X=px;state.Z=pz;
             try
             {
-                string name="AnimalTown"+(state.Sequence%2);
-                phase="write";
-                card.WriteSave(name,bytes,new MemoryCardSaveOptions{Title="AnimalTown",Comment=BuildInfo.Commit,Banner=banner,Icon=icon});
-                phase="readback";var readback=card.ReadAllBytes(name);phase="verify";
-                var verified=SaveCodec.Decode(readback);if(verified.Sequence!=state.Sequence)throw new IOException("Readback mismatch");
+                phase="save set";
+                new SaveRepository(new CardSaveStorage(card,banner,icon)).Save(state);
             }
-            catch{state.Sequence=previous;throw;}
+            finally{state.X=px;state.Z=pz;}
             saveStatus="Saved / "+BuildInfo.Commit;lastSave=Clock.Timestamp;
         }
         catch(Exception error){saveStatus="Save failed ("+phase+", code "+NativeCalendar.CardError()+"). Check Slot A and retry.";DebugOverlay.WriteLine("SAVE ERROR: "+phase+" "+error.Message);card=null;}
