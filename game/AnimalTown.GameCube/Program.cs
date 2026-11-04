@@ -154,6 +154,7 @@ internal sealed class TownGame
     internal void Input(ControllerState p)
     {
         bool chord=p.L.IsHeld&&p.R.IsHeld;
+        if(chord&&p.Start.WasPressed){InspectTerrain();return;}
         bool navigating=screen=="menu"||screen=="keyboard"||screen=="create"||screen=="item"||screen=="sell"||screen=="shop"||screen=="store"||screen=="post"||screen=="mail"||screen=="lost";
         int direction=menuNavigation.Read(screen,screen=="menu"?menuTab:-1,p.Stick.X,p.Stick.Y,(int)p.PressedButtons,Clock.Timestamp,navigating&&!chord);
         bool up=direction==MenuNavigation.Up,down=direction==MenuNavigation.Down,left=direction==MenuNavigation.Left,right=direction==MenuNavigation.Right;
@@ -433,6 +434,13 @@ internal sealed class TownGame
     }
     internal void RecordFrame(){if(FrameProfile.Enabled){int scene=screen=="map"?10:screen=="menu"&&menuTab==0?(indexedModels?1:7):room!=0?2:screen=="world"?(indexedModels?0:6):3;FrameProfile.Complete(GpuProfiler.Snapshot().Triangles,terrain.VisibleTriangles,terrain.RejectedQuads,batchedDrawing?(UiFont.Batched?scene:scene+32):scene+16);}}
     private bool IsTree(GroundItem g)=>g.Kind==3||(g.Kind==2&&g.Item!=2);
+    private void InspectTerrain()
+    {
+        if(room!=0)return;
+        for(int z=2;z<Town.Height-2;z+=2)for(int x=2;x<Town.Width-2;x+=2)if(TerrainElevation.Mode(state.Town,x,z)==TerrainElevation.RampNorth){
+            state.X=x+.5f;state.Z=z+2.5f;screen="world";facingYaw=(float)Math.PI;moveClip=-1;actors[0].Animator.Stop();return;
+        }
+    }
     private void DrawTrees()
     {
         // Generated low-poly meshes share native geometry and indexed GX draws.

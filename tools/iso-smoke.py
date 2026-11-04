@@ -221,6 +221,15 @@ with (root/'emulator.log').open('w') as log:
             press('A');time.sleep(profile_seconds);screenshot('interaction-actions.png')
             press('B');press('L');press('D_DOWN');press('A');screenshot('interaction-long-typing.png')
             time.sleep(profile_seconds);screenshot('interaction-long-dialogue.png')
+        elif '--terrain-life' in sys.argv:
+            press('A');press('D_UP');press('A');press('A');time.sleep(2);press('B');press('B')
+            screenshot('life-world-before.png');time.sleep(20);screenshot('life-world-after.png')
+            os.write(controller,b'PRESS L\nPRESS R\n');time.sleep(.2);press('START');os.write(controller,b'RELEASE L\nRELEASE R\n');time.sleep(2)
+            screenshot('terrain-ramp-low.png')
+            os.write(controller,b'SET MAIN 0.5 0.9\n');time.sleep(1.7);os.write(controller,b'SET MAIN 0.5 0.5\n');time.sleep(2);screenshot('terrain-ramp-high.png')
+            press('START');time.sleep(12);screenshot('terrain-high-save.png');press('B')
+            os.write(controller,b'SET MAIN 0.5 0.1\n');time.sleep(1.7);os.write(controller,b'SET MAIN 0.5 0.5\n');time.sleep(2);screenshot('terrain-ramp-return.png')
+            press('Y');time.sleep(2);screenshot('life-map.png');press('B');press('START');time.sleep(12);screenshot('terrain-life-save.png')
         elif '--play' in sys.argv:
             press('A');press('D_UP');press('A');press('A');time.sleep(2);screenshot('bubble.png');press('B');press('B')
             time.sleep(2);screenshot('world.png')

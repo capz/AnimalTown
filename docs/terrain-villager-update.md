@@ -47,6 +47,12 @@ no route arrays or strings per tick and is timed as simulation, not skinning.
 
 ## Clock and saves
 
+Developer inspection: hold L+R and press START outdoors to move to the foot of
+the first generated ramp. This changes only the test player's position; it does
+not regenerate terrain. Old flat saves have no inspection target. The ISO smoke
+test's `--terrain-life` mode uses this chord to capture low/high ramp views and
+saved positions, alongside clock and wandering-villager screenshots.
+
 The outdoor HUD displays console-local date, weekday and 24-hour time using the
 GameCube RTC through the existing native bridge. It samples once a second and
 reuses text until the minute/date changes. Menus/dialogue hide the clock.
