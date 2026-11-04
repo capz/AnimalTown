@@ -19,7 +19,8 @@ internal static class TownGenerationPreview
             for(int z=town.HouseZ;z<town.HouseZ+13;z++)for(int x=town.HouseX;x<town.HouseX+15;x++)if(x==town.HouseX||x==town.HouseX+14||z==town.HouseZ||z==town.HouseZ+12)image[x*4,z*4]=new Rgba32(255,245,221,255);
             for(int dy=0;dy<4;dy++)for(int dx=0;dx<4;dx++)image[(int)state.X*4+dx,(int)state.Z*4+dy]=new Rgba32(255,255,255,255);
             string path=Path.Combine(output,"town-"+current+".png");using(var file=File.Create(path))image.SaveAsPng(file);
-            records.Add(new{seed=current,generatorVersion=TownGenerator.Version,screenTiles=Town.ScreenTiles,acreCells=Town.ScreenTileSize,terrainSha256=Convert.ToHexString(SHA256.HashData(town.Tiles)),groundRecords=town.GroundCount,preview=Path.GetFileName(path)});
+            int water=0,raised=0;for(int i=0;i<Town.Cells;i++){if(town.Tiles[i]==(byte)Terrain.Water)water++;if(town.Elevation[i]!=0)raised++;}
+            records.Add(new{seed=current,generatorVersion=TownGenerator.Version,screenTiles=Town.ScreenTiles,acreCells=Town.ScreenTileSize,terrainSha256=Convert.ToHexString(SHA256.HashData(town.Tiles)),elevationSha256=Convert.ToHexString(SHA256.HashData(town.Elevation)),waterCells=water,waterPercent=water*100.0/Town.Cells,raisedCells=raised,residentNames=town.Residents.Select(v=>v.Name).ToArray(),groundRecords=town.GroundCount,preview=Path.GetFileName(path)});
         }
         File.WriteAllText(Path.Combine(output,"generation-audit.json"),JsonSerializer.Serialize(records,new JsonSerializerOptions{WriteIndented=true}));Console.WriteLine("Generated "+count+" seeded town previews: "+output);
     }

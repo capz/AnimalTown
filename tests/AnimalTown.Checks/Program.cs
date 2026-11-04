@@ -10,6 +10,7 @@ TerrainEdgeChecks.Run(Check);
 PlayerMovementChecks.Run(Check);
 DialogueVoiceChecks.Run(Check);
 TownGenerationChecks.Run(Check);
+TerrainLifeChecks.Run(Check);
 var terrainEdit=new GameState(74);int terrainVersion=terrainEdit.Town.TerrainVersion;
 Check(terrainEdit.Town.SetTerrain(20,20,Terrain.Water)&&terrainEdit.Town.TerrainVersion==terrainVersion+1,"terrain edit invalidates render caches");
 Check(!terrainEdit.Town.SetTerrain(20,20,Terrain.Water)&&!terrainEdit.Town.SetTerrain(-1,20,Terrain.Grass)&&terrainEdit.Town.TerrainVersion==terrainVersion+1,"unchanged/invalid terrain edits preserve cache revision");
@@ -85,7 +86,7 @@ for(int row=0;row<TerrainTiles.GroundRows;row++)for(int offset=0;offset<=4;offse
     double projectedHalfWidth=Math.Max(0,depth)*Math.Tan(CylinderWorld.CameraFieldOfView*Math.PI/360)*4/3;
     Check(TerrainTiles.RowHalfWidth(row)>projectedHalfWidth+4,"textured cylinder rows extend beyond the padded viewport including sub-cell camera motion");
 }
-Check(TerrainTiles.GroundVertexCount<18000,"shorter padded terrain envelope reduces candidate work before culling and merging");
+Check(TerrainTiles.GroundVertexCount<40000,"raised-camera padded terrain envelope remains bounded");
 var arrival=new GameState(7319);arrival.Town.AddGround(3,18,39,3,0);
 Check(arrival.PlaceHouse(15,35,false),"house placement with a blocked doorway finds a clear arrival");
 Check(arrival.CanWalk(arrival.X,arrival.Z,0)&&arrival.Z>=40.5f,"new house arrival is outside its collision footprint and avoids trees");

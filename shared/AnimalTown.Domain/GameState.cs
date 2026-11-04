@@ -130,7 +130,7 @@ public sealed class GameState
     {
         if(index<0||index>=6)return "Hello!";var v=Town.Residents[index];
         MetMask|=1<<index;v.Met=1;
-        if(Tutorial==2&&Find(18)>=0){Pockets[Find(18)]=0;CreditTutorial(2);return "My order! Please collect Pip's parcel.";}
+        if(Tutorial==2&&Find(18)>=0){Pockets[Find(18)]=0;CreditTutorial(2);return "My order! Please collect "+Town.Residents[4].Name+"'s parcel.";}
         if(Tutorial==3&&index==4&&Receive(18))return "Please take this parcel to the store.";
         if(Tutorial==5&&MetMask==63){CreditTutorial(5);return "You have met everyone. Welcome home!";}
         if(v.Request!=0&&Find(v.Request)>=0)

@@ -3,8 +3,9 @@ namespace AnimalTown;
 // Curved rows merge horizontally by material; UV repeat replaces per-cell quads.
 public sealed class FloorStrips
 {
-    public const int Capacity=1365,MaximumMaterials=52,Records=284;
+    public const int Capacity=2048,MaximumMaterials=52,Records=284;
     public readonly int[] X0=new int[Capacity],X1=new int[Capacity],Z0=new int[Capacity],Z1=new int[Capacity],Material=new int[Capacity];
+    public readonly byte[] Elevation=new byte[Capacity];
     public int Count,RejectedQuads;
     public static int Read(byte[] data,int at)=>data[at]|data[at+1]<<8|data[at+2]<<16|data[at+3]<<24;
     public static void Validate(byte[] data)
@@ -26,17 +27,25 @@ public sealed class FloorStrips
         Count=0;RejectedQuads=0;
         if(room!=0){int size=state.HouseTier==0?4:state.HouseTier==1?6:8;Add(0,size,0,size,At(state,data,0,0,room));return;}
         int minX=(int)state.X/2*2-CylinderWorld.ViewHalfWidth,minZ=(int)state.Z/2*2-TerrainTiles.GroundRowsAhead;
+        float focusHeight=TerrainElevation.At(state.Town,state.X,state.Z);
         for(int row=0;row<TerrainTiles.GroundRows;row++){
             int z=minZ+row,half=TerrainTiles.RowHalfWidth(row),left=minX+CylinderWorld.ViewHalfWidth-half,right=minX+CylinderWorld.ViewHalfWidth+half;
-            if(!RenderView.SurfaceFront(z,state.Z)&&!RenderView.SurfaceFront(z+1,state.Z)){RejectedQuads+=right-left;continue;}
+            if(!RenderView.SurfaceFront(z,state.Z,focusHeight)&&!RenderView.SurfaceFront(z+1,state.Z,focusHeight)){RejectedQuads+=right-left;continue;}
             var a=CylinderWorld.Surface(z,state.Z);var b=CylinderWorld.Surface(z+1,state.Z);int start=left,key=-1;
             for(int x=left;x<=right;x++){
                 int next=-1;
-                if(x<right){if(RenderView.Sphere(x+.5f,(a.Y+b.Y)*.5f,(a.Z+b.Z)*.5f,TerrainTiles.GroundVisibilityRadius,state.X,state.Z))next=At(state,data,x,z,room);else RejectedQuads++;}
+                if(x<right){
+                    int mode=(uint)x<Town.Width&&(uint)z<Town.Height?state.Town.Elevation[z*Town.Width+x]:0;
+                    float minH=mode==1?2:0,maxH=minH;
+                    if(mode>=2){float h0=TerrainElevation.AtCell(state.Town,x,z,x,z),h1=TerrainElevation.AtCell(state.Town,x,z,x+1,z),h2=TerrainElevation.AtCell(state.Town,x,z,x,z+1),h3=TerrainElevation.AtCell(state.Town,x,z,x+1,z+1);minH=Math.Min(Math.Min(h0,h1),Math.Min(h2,h3));maxH=Math.Max(Math.Max(h0,h1),Math.Max(h2,h3));}
+                    float h=(minH+maxH)*.5f;
+                    if(RenderView.Sphere(x+.5f,(a.Y+b.Y+h*(a.UpY+b.UpY))*.5f,(a.Z+b.Z+h*(a.UpZ+b.UpZ))*.5f,TerrainTiles.GroundVisibilityRadius+(maxH-minH)*.5f,state.X,state.Z,focusHeight))next=At(state,data,x,z,room)+mode*MaximumMaterials;else RejectedQuads++;
+                }
+                if(next==key&&key>=MaximumMaterials*2&&x%2==0){Add(start,x,z,z+1,key);start=x;}
                 if(next!=key){if(key>=0)Add(start,x,z,z+1,key);start=x;key=next;}
             }
         }
     }
     private void Add(int x0,int x1,int z0,int z1,int material)
-    {if(Count>=Capacity)throw new InvalidOperationException("Repeating terrain exceeds geometry budget");X0[Count]=x0;X1[Count]=x1;Z0[Count]=z0;Z1[Count]=z1;Material[Count++]=material;}
+    {if(Count>=Capacity)throw new InvalidOperationException("Repeating terrain exceeds geometry budget");X0[Count]=x0;X1[Count]=x1;Z0[Count]=z0;Z1[Count]=z1;Material[Count]=material%MaximumMaterials;Elevation[Count++]=(byte)(material/MaximumMaterials);}
 }

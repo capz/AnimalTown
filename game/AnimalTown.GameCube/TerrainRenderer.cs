@@ -44,8 +44,9 @@ internal sealed class TerrainRenderer
             int at=used[slot],required=at+6;var buffer=buffers[slot];
             if(buffer==null||buffer.Length<required){int size=buffer==null?6:buffer.Length;while(size<required)size*=2;if(size>FloorStrips.Capacity*12)throw new IOException("Floor material mesh exceeds budget");var replacement=new VertexPositionColorTexture[size];if(buffer!=null)for(int i=0;i<at;i++)replacement[i]=buffer[i];buffers[slot]=buffer=replacement;}
             float x0=strips.X0[n],x1=strips.X1[n],u0=x0*.5f,u1=x1*.5f,v0=z*.5f,v1=strips.Z1[n]*.5f;
-            buffer[at++]=Vertex(x0,a,u0,v0);buffer[at++]=Vertex(x1,a,u1,v0);buffer[at++]=Vertex(x1,b,u1,v1);
-            buffer[at++]=Vertex(x0,a,u0,v0);buffer[at++]=Vertex(x1,b,u1,v1);buffer[at++]=Vertex(x0,b,u0,v1);used[slot]=at;
+            var p0=Elevated(state,room,(int)x0,z,x0,z,a);var p1=Elevated(state,room,(int)x0,z,x1,z,a);var p2=Elevated(state,room,(int)x0,z,x1,z+1,b);var p3=Elevated(state,room,(int)x0,z,x0,z+1,b);
+            buffer[at++]=Vertex(x0,p0,u0,v0);buffer[at++]=Vertex(x1,p1,u1,v0);buffer[at++]=Vertex(x1,p2,u1,v1);
+            buffer[at++]=Vertex(x0,p0,u0,v0);buffer[at++]=Vertex(x1,p2,u1,v1);buffer[at++]=Vertex(x0,p3,u0,v1);used[slot]=at;
         }
         for(int slot=0;slot<meshes.Length;slot++){
             if(used[slot]==0){meshes[slot]?.Dispose();meshes[slot]=null;buffers[slot]=null;capacities[slot]=0;continue;}
@@ -54,5 +55,7 @@ internal sealed class TerrainRenderer
         }
     }
     private static VertexPositionColorTexture Vertex(float x,CylinderPose p,float u,float v)=>new VertexPositionColorTexture(new Vector3(x,p.Y,p.Z),Color32.White,new Vector2(u,v));
+    private static CylinderPose Elevated(GameState state,int room,int cx,int cz,float x,float z,CylinderPose p)
+    {float h=room==0?TerrainElevation.AtCell(state.Town,cx,cz,x,z):0;return new CylinderPose(p.Y+h*p.UpY,p.Z+h*p.UpZ,p.UpY,p.UpZ,p.Pitch);}
     internal void Draw(Renderer renderer,Transform parent,int room){for(int i=0;i<slots;i++)if(used[i]>0)renderer.DrawMesh(meshes[i]!,materials[i],parent);}
 }

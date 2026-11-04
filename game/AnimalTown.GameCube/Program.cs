@@ -35,6 +35,10 @@ internal static class Program
 internal sealed class TownGame
 {
     private GameState state;
+    private readonly TownClock townClock=new TownClock();
+    private readonly TerrainWalls terrainWalls=new TerrainWalls();
+    private readonly VillagerNavigation villagers=new VillagerNavigation();
+    private readonly bool[] villagersMoving=new bool[6];
     private readonly GraphicsDevice device=GraphicsDevice.Default;
     private readonly Renderer renderer=new Renderer(GraphicsDevice.Default,128);
     private readonly Camera camera=new Camera(CylinderWorld.CameraFieldOfView,4f/3,CylinderWorld.Near,CylinderWorld.Far);
@@ -259,7 +263,7 @@ internal sealed class TownGame
         int fruit=state.Find(1);if(fruit>=0&&state.Wallet<=99199){state.Pockets[fruit]=0;state.Wallet+=800;state.Jobs++;Say("Hearth","A peach for our customer! Here are 800 acorns.");}else Say("Hearth","Today's job: bring a peach for a customer. Reward: 800. Make space in your wallet.");
     }
     private string TutorialText()
-    { string[] text={"Welcome! Wear the work shirt in your pockets.","Plant your flower seed near the store.","Deliver the parcel to a villager.","Collect Pip's parcel and return it to this counter.","Write a letter at town hall.","Introduce yourself to all six neighbours.","Your part-time job is complete. Your debt is 18,000 acorns."};return text[state.Tutorial]; }
+    { string[] text={"Welcome! Wear the work shirt in your pockets.","Plant your flower seed near the store.","Deliver the parcel to a villager.","Collect "+state.Town.Residents[4].Name+"'s parcel and return it to this counter.","Write a letter at town hall.","Introduce yourself to all six neighbours.","Your part-time job is complete. Your debt is 18,000 acorns."};return text[state.Tutorial]; }
     private void PostAction()
     {
         if(selected==0){Say("Fern",state.Deposit(Math.Min(1000,state.Wallet))?"Deposit complete.":"No acorns to deposit.");return;}
@@ -322,6 +326,7 @@ internal sealed class TownGame
     internal void Step(ControllerState pad)
     {
         tick++;
+        if(tick%30==0)townClock.Update(NativeCalendar.ReadClock());
         if(tick%900==0){int previousDay=state.Town.Day;ReadCalendar();state.Rollover(day,month);if(state.Town.Day!=previousDay)Save();}
         if(screen=="dialogue"&&typeAt<message.Length){
             typeAt++;
@@ -337,15 +342,21 @@ internal sealed class TownGame
             }
             else if(moveClip>=0){actors[0].Animator.Stop();moveClip=-1;}
         }
+        if(room==0&&screen=="world")villagers.Tick(state);
         long skinAt=FrameProfile.Start();
         if(models[state.Species].Animations.Count>0)actors[0].Update(1f/30);
-        for(int i=1;i<7;i++){var v=state.Town.Residents[i-1];if(models[i-1].Animations.Count>0&&room==0&&Visible(v.X,v.Z,1.8f))actors[i].Update(1f/30);}
+        for(int i=1;i<7;i++){
+            var v=state.Town.Residents[i-1];bool moving=room==0&&screen=="world"&&villagers.Routes[i-1].Moving;
+            if(moving!=villagersMoving[i-1]){villagersMoving[i-1]=moving;if(moving&&models[i-1].TryGetAnimation("Walking",out var _)){actors[i].Animator.Play("Walking",true);actors[i].Animator.SetSpeed(1);}else actors[i].Animator.Stop();}
+            if(moving&&Visible(v.PosX,v.PosZ,1.8f))actors[i].Update(1f/30);
+        }
         FrameProfile.End(1,skinAt);
         if(Clock.Timestamp-lastSave>300000000){Save();}
     }
-    private void ReadCalendar(){int date=NativeCalendar.Read();day=date&0x1ffff;month=(int)((uint)date>>17);}
+    private void ReadCalendar(){int date=NativeCalendar.Read();day=date&0x1ffff;month=(int)((uint)date>>17);townClock.Update(NativeCalendar.ReadClock());}
     private Vector3 SurfacePoint(float x,float z,float height=0)
-    { if(room!=0)return new Vector3(x,height,z);var p=CylinderWorld.Surface(z,state.Z,height);return new Vector3(x,p.Y,p.Z); }
+    { if(room!=0)return new Vector3(x,height,z);var p=CylinderWorld.Surface(z,state.Z,height+TerrainElevation.At(state.Town,x,z));return new Vector3(x,p.Y,p.Z); }
+    private float PlayerHeight()=>room==0?TerrainElevation.At(state.Town,state.X,state.Z):0;
     private Quaternion SurfaceRotation(float z,float yaw=0)
     {
         float halfPitch=room==0?(z-state.Z)/CylinderWorld.Radius*.5f:0;
@@ -366,12 +377,12 @@ internal sealed class TownGame
         // on the curved ground half a box-depth farther along the cylinder.
         var center=new Vector3(x+w*.5f,origin.Y+h*.5f*pose.UpY-d*.5f*pose.UpZ,origin.Z+h*.5f*pose.UpZ+d*.5f*pose.UpY);
         float radius=(float)Math.Sqrt(w*w+h*h+d*d)*.5f+.05f;
-        if(!RenderView.Sphere(center.X,center.Y,center.Z,radius,state.X,state.Z)||(room==0&&!RenderView.AboveHorizon(center.Y,center.Z,radius,state.Z))){FrameProfile.CulledObjects++;return;}
+        if(!RenderView.Sphere(center.X,center.Y,center.Z,radius,state.X,state.Z,PlayerHeight())||(room==0&&!RenderView.AboveHorizon(center.Y,center.Z,radius,state.Z,PlayerHeight()))){FrameProfile.CulledObjects++;return;}
         if(batchedDrawing)boxes.Add(origin,new Vector3(w,h,d),SurfaceRotation(z),color);
         else{transform.LocalPosition=origin;transform.LocalScale=new Vector3(w,h,d);transform.LocalRotation=SurfaceRotation(z);plain.Color=color;renderer.DrawMesh(cube,plain,transform);}
     }
     private bool Visible(float x,float z,float scale)
-    {var center=SurfacePoint(x,z,scale*.5f);float radius=scale*1.5f;return RenderView.Sphere(center.X,center.Y,center.Z,radius,state.X,state.Z)&&(room!=0||RenderView.AboveHorizon(center.Y,center.Z,radius,state.Z));}
+    {var center=SurfacePoint(x,z,scale*.5f);float radius=scale*1.5f;return RenderView.Sphere(center.X,center.Y,center.Z,radius,state.X,state.Z,PlayerHeight())&&(room!=0||RenderView.AboveHorizon(center.Y,center.Z,radius,state.Z,PlayerHeight()));}
     private void ModelAt(ModelInstance m,float x,float z,float scale,float facing=0)
     {
         if(!Visible(x,z,scale)){FrameProfile.CulledObjects++;return;}
@@ -380,14 +391,14 @@ internal sealed class TownGame
     }
     internal void Draw()
     {
-        long phase=FrameProfile.Start();terrain.Prepare(state,room,month);FrameProfile.End(2,phase);
+        long phase=FrameProfile.Start();terrain.Prepare(state,room,month);terrainWalls.Prepare(state,room);FrameProfile.End(2,phase);
         phase=FrameProfile.Start();uiShapes.Prepare(screen,screen=="menu"?menuTab:-1,batchedDrawing);if(batchedDrawing&&screen=="map")mapBackground.Prepare(state.Town);modelUsed=0;FrameProfile.End(8,phase);
         phase=FrameProfile.Start();device.BeginFrame(new Color32(149,198,186));
-        camera.LookAt(new Vector3(state.X,CylinderWorld.CameraHeight,state.Z+CylinderWorld.CameraBack),new Vector3(state.X,0,state.Z-CylinderWorld.CameraAimAhead),new Vector3(0,1,0));renderer.Begin3D(camera);FrameProfile.End(4,phase);
-        phase=FrameProfile.Start();terrain.Draw(renderer,identity,room);FrameProfile.End(4,phase);phase=FrameProfile.Start();
+        float eyeHeight=PlayerHeight();camera.LookAt(new Vector3(state.X,CylinderWorld.CameraHeight+eyeHeight,state.Z+CylinderWorld.CameraBack),new Vector3(state.X,eyeHeight,state.Z-CylinderWorld.CameraAimAhead),new Vector3(0,1,0));renderer.Begin3D(camera);FrameProfile.End(4,phase);
+        phase=FrameProfile.Start();terrain.Draw(renderer,identity,room);terrainWalls.Draw(renderer,identity);FrameProfile.End(4,phase);phase=FrameProfile.Start();
         if(room==0)
         {
-            for(int i=0;i<6;i++){var v=state.Town.Residents[i];ModelAt(actors[i+1],v.X,v.Z,1.8f);}
+            for(int i=0;i<6;i++){var v=state.Town.Residents[i];ModelAt(actors[i+1],v.PosX,v.PosZ,1.8f,v.Yaw);}
             if(batchedDrawing)actorQueue.Execute(renderer);
             FrameProfile.End(5,phase);phase=FrameProfile.Start();DrawTrees();FrameProfile.End(6,phase);phase=FrameProfile.Start();
             long groundAt=FrameProfile.Start();
@@ -398,7 +409,7 @@ internal sealed class TownGame
                 if(!IsTree(g))Box(g.X+.25f,y+.02f,g.Z+.25f,.5f,g.Kind==1?.03f:.25f,.5f,g.Kind==1?new Color32(105,81,54):g.Kind==2?new Color32(242,174,170):new Color32(229,190,82));
             }
             if(batchedDrawing)boxes.Flush();FrameProfile.End(3,groundAt);
-            DrawBuilding(32,26,4);DrawBuilding(50,26,4);for(int i=0;i<6;i++)DrawBuilding(state.Town.Residents[i].X+1,11,2.3f);
+            DrawBuilding(32,26,4);DrawBuilding(50,26,4);for(int i=0;i<6;i++)DrawBuilding(state.Town.Residents[i].HomeX+1,state.Town.Residents[i].HomeZ+1,2.3f);
             if(state.HousePlaced)DrawBuilding(state.Town.HouseX+3,state.Town.HouseZ+2,2.5f);
             if(batchedDrawing)structureQueue.Execute(renderer);
             if(state.HousePlaced)
@@ -494,6 +505,7 @@ internal sealed class TownGame
         if(FrameProfile.Enabled)Text((indexedModels?"GX indexed":"Direct")+(batchedDrawing?" / batched":" / baseline"),420,418,ink,.8f);
         Panel(410,18,210,56);Strong(state.Wallet+" acorns",427,22,ink,1.35f);Text("Loan "+state.Debt,427,47,ink,.95f);
         Rounded(20,440,420,29,14.5f,new Color32(48,76,57,210));Text("A interact   X backpack   Y map",32,451,Color32.White,1.3f);
+        if(screen=="world"||screen=="plot"){Panel(20,371,170,61);Text(townClock.Date,32,380,ink,1.1f);Strong(townClock.Time,32,400,ink,1.6f);}
         if(screen=="title")
         {
             Panel(70,96,500,300);BrandMark(320,137);

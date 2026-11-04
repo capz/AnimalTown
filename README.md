@@ -100,6 +100,10 @@ RTC bridge, sector-aligned card reader fix and card diagnostics to the pinned na
 it fails if the expected AOT signature changes.
 
 The native IPL font API is supplied by [DolphinDotNet PR #145](https://github.com/capz/DolphinDotNet/pull/145), pinned by the SDK submodule. Its CI checks pass. Firmware font data is read on the console and is never bundled on disc.
+# Terrain and village life
+
+See the [terrain/villager update](docs/terrain-villager-update.md) for 2m cube/ramp sections, new-town water coverage, villager journeys, persistent names, the RTC clock, clipping and save v5 compatibility.
+
 # Texture resolution
 
 New towns use a [seeded acre-template generator](docs/town-generation.md), with

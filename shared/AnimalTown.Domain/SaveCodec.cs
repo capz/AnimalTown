@@ -16,10 +16,11 @@ public static class SaveCodec
     public static byte[] Encode(GameState s)
     {
         int terrainRuns=1;for(int i=1;i<Town.Cells;i++)if(s.Town.Tiles[i]!=s.Town.Tiles[i-1])terrainRuns++;
-        int capacity=2048+(s.Name.Length+s.Catchphrase.Length)*4+s.MailCount*4+s.Town.GroundCount*24+s.Town.PlacedCount*24+terrainRuns*4;
+        int elevationRuns=1;for(int i=1;i<Town.Cells;i++)if(s.Town.Elevation[i]!=s.Town.Elevation[i-1])elevationRuns++;
+        int capacity=4096+elevationRuns*4+(s.Name.Length+s.Catchphrase.Length)*4+s.MailCount*4+s.Town.GroundCount*24+s.Town.PlacedCount*24+terrainRuns*4;
         if(capacity>MaximumBytes)throw new InvalidOperationException("Save exceeds format budget");
         // Allocate from actual encoded content, not the 1-MiB format ceiling.
-        var b=new byte[capacity];int p=0;Put(b,ref p,0x41544f57);Put(b,ref p,4);Put(b,ref p,Catalog.Version);Put(b,ref p,s.Sequence);
+        var b=new byte[capacity];int p=0;Put(b,ref p,0x41544f57);Put(b,ref p,5);Put(b,ref p,Catalog.Version);Put(b,ref p,s.Sequence);
         Put(b,ref p,0);Put(b,ref p,0);
         Put(b,ref p,Town.Width);Put(b,ref p,Town.Height);
         int[] f={s.Town.Seed,s.Town.Day,s.Town.Month,s.Wallet,(int)s.Savings,(int)(s.Savings>>32),(int)s.Debt,(int)(s.Debt>>32),s.Species,s.Palette,s.Tool,s.Shirt,s.HouseTier,s.GardenTier,s.PendingKind,s.PendingTier,s.PendingDay,s.Tutorial,s.MetMask,s.Jobs,s.JobDay,s.MailCount,s.Roof,s.Wall,s.Fence,s.Mailbox,s.Exterior,s.HousePlaced?1:0,(int)(s.X*1024),(int)(s.Z*1024),s.Town.HouseX,s.Town.HouseZ,s.Town.Spending,s.Town.StockCount};
@@ -33,6 +34,9 @@ public static class SaveCodec
         for(int i=0;i<6;i++){var v=s.Town.Residents[i];Put(b,ref p,v.X);Put(b,ref p,v.Z);Put(b,ref p,v.Friendship);Put(b,ref p,v.Request);Put(b,ref p,v.RequestDay);Put(b,ref p,v.Met);}
         Put(b,ref p,s.Town.GroundCount);for(int i=0;i<s.Town.GroundCount;i++){var g=s.Town.Ground[i];Put(b,ref p,g.Item);Put(b,ref p,g.X);Put(b,ref p,g.Z);Put(b,ref p,g.Owner);Put(b,ref p,g.Day);Put(b,ref p,g.Kind);}
         Put(b,ref p,s.Town.PlacedCount);for(int i=0;i<s.Town.PlacedCount;i++){var q=s.Town.Placed[i];Put(b,ref p,q.Item);Put(b,ref p,q.X);Put(b,ref p,q.Z);Put(b,ref p,q.Rotation);Put(b,ref p,q.Room);Put(b,ref p,q.Owner);}
+        Put(b,ref p,TownGenerator.Version);Put(b,ref p,elevationRuns);
+        for(int i=0;i<Town.Cells;){byte mode=s.Town.Elevation[i];int length=1;while(i+length<Town.Cells&&s.Town.Elevation[i+length]==mode)length++;Put(b,ref p,(mode<<24)|length);i+=length;}
+        for(int i=0;i<6;i++){var v=s.Town.Residents[i];Text(b,ref p,v.Name);Put(b,ref p,v.HomeX);Put(b,ref p,v.HomeZ);Put(b,ref p,(int)(v.PosX*1024));Put(b,ref p,(int)(v.PosZ*1024));}
         int h=16;Put(b,ref h,p);Put(b,ref h,(int)Crc(b,24,p-24));var result=new byte[p];Array.Copy(b,result,p);return result;
     }
     private static int Range(byte[] b,ref int p,int min,int max)
@@ -41,12 +45,12 @@ public static class SaveCodec
     {
         if(b.Length<160||b.Length>MaximumBytes)throw new InvalidOperationException("Invalid save size");int p=0;
         if(Get(b,ref p)!=0x41544f57)throw new InvalidOperationException("Invalid save magic");int version=Get(b,ref p);
-        if((version<1||version>4)||Get(b,ref p)!=Catalog.Version)throw new InvalidOperationException("Unsupported save version");
+        if((version<1||version>5)||Get(b,ref p)!=Catalog.Version)throw new InvalidOperationException("Unsupported save version");
         int seq=Range(b,ref p,0,int.MaxValue);if(Get(b,ref p)!=b.Length||(uint)Get(b,ref p)!=Crc(b,24,b.Length-24))throw new InvalidOperationException("Save checksum failed");
         int sourceWidth=version==1?80:400,sourceHeight=version==1?72:400;
         if(version>=4){sourceWidth=Range(b,ref p,Town.Width,Town.Width);sourceHeight=Range(b,ref p,Town.Height,Town.Height);}
         bool trimmed=sourceWidth>Town.Width||sourceHeight>Town.Height;
-        var s=new GameState(Get(b,ref p));s.Sequence=seq;s.Town.Day=Get(b,ref p);s.Town.Month=Get(b,ref p);s.Wallet=Range(b,ref p,0,99999);
+        var s=new GameState(Get(b,ref p));Array.Clear(s.Town.Elevation);s.Sequence=seq;s.Town.Day=Get(b,ref p);s.Town.Month=Get(b,ref p);s.Wallet=Range(b,ref p,0,99999);
         uint low=(uint)Get(b,ref p);int high=Range(b,ref p,0,int.MaxValue);s.Savings=((long)high<<32)|low;
         low=(uint)Get(b,ref p);high=Range(b,ref p,0,0);s.Debt=((long)high<<32)|low;if(s.Debt>1600000)throw new InvalidOperationException("Debt invalid");
         s.Species=Range(b,ref p,0,5);s.Palette=Range(b,ref p,0,7);s.Tool=Range(b,ref p,0,25);s.Shirt=Range(b,ref p,0,25);s.HouseTier=Range(b,ref p,0,5);s.GardenTier=Range(b,ref p,0,4);s.PendingKind=Range(b,ref p,0,2);s.PendingTier=Range(b,ref p,0,5);s.PendingDay=Get(b,ref p);
@@ -96,11 +100,18 @@ public static class SaveCodec
         int houseDx=s.Town.HouseX-oldHouseX,houseDz=s.Town.HouseZ-oldHouseZ;
         int count=Range(b,ref p,0,256);s.Town.PlacedCount=0;
         for(int i=0;i<count;i++){var q=s.Town.Placed[i];q.Item=Range(b,ref p,1,25);q.X=Get(b,ref p);q.Z=Get(b,ref p);q.Rotation=Range(b,ref p,0,3);q.Room=Range(b,ref p,0,4);q.Owner=Range(b,ref p,0,0);if(q.Room==0){q.X+=houseDx;q.Z+=houseDz;}if(!s.CanPlace(q.Item,q.X,q.Z,q.Rotation,q.Room,0))throw new InvalidOperationException("Invalid placement");s.Town.PlacedCount++;}
+        if(version>=5){
+            Range(b,ref p,1,TownGenerator.Version);int elevationRuns=Range(b,ref p,1,Town.Cells),cell=0;
+            for(int i=0;i<elevationRuns;i++){int packed=Get(b,ref p),mode=(int)((uint)packed>>24),length=packed&0xffffff;if(mode>5||length==0||length>Town.Cells-cell)throw new InvalidOperationException("Invalid saved elevation");for(int j=0;j<length;j++)s.Town.Elevation[cell++]=(byte)mode;}
+            if(cell!=Town.Cells)throw new InvalidOperationException("Incomplete saved elevation");
+            for(int i=0;i<6;i++){var v=s.Town.Residents[i];v.Name=Text(b,ref p,24);v.HomeX=Range(b,ref p,1,Town.Width-4);v.HomeZ=Range(b,ref p,1,Town.Height-4);v.PosX=Range(b,ref p,0,Town.Width*1024-1)/1024f;v.PosZ=Range(b,ref p,0,Town.Height*1024-1)/1024f;}
+        }else for(int i=0;i<6;i++){var v=s.Town.Residents[i];v.PosX=v.X+.5f;v.PosZ=v.Z+.5f;}
         if(p!=b.Length)throw new InvalidOperationException("Trailing save bytes");
         if(trimmed){
             for(int i=0;i<6;i++){var v=s.Town.Residents[i];if(!s.Town.Inside(v.X,v.Z)){int cell=SafeImportedCell(s,10+i*11+(i==3?3:0),14);v.X=cell%Town.Width;v.Z=cell/Town.Width;}}
             if(!s.CanWalk(s.X,s.Z,0)&&!s.MoveToHouseEntrance()){int cell=SafeImportedCell(s,18,38);s.X=cell%Town.Width+.5f;s.Z=cell/Town.Width+.5f;}
         }
+        if(version<5)for(int i=0;i<6;i++){s.Town.Residents[i].PosX=s.Town.Residents[i].X+.5f;s.Town.Residents[i].PosZ=s.Town.Residents[i].Z+.5f;}
         s.Town.NotifyTerrainChanged();return s;
     }
     private static int SafeImportedCell(GameState s,int x,int z)

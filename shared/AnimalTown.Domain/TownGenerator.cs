@@ -5,7 +5,7 @@ namespace AnimalTown;
 // Nintendo's acre data, 5x6 dimensions and elevation layouts are not imported.
 public static class TownGenerator
 {
-    public const int Version=1;
+    public const int Version=2;
     private const int N=1,E=2,S=4,W=8,Size=Town.ScreenTileSize;
     private static int Next(ref uint random,int limit)
     {random=unchecked(random*1664525u+1013904223u);return (int)((random>>8)%(uint)limit);}
@@ -49,8 +49,8 @@ public static class TownGenerator
         for(int column=0;column<Town.ScreenTiles;column++){
             int bay=Next(ref random,3)-1;
             for(int local=0;local<Size;local++){
-                int x=column*Size+local,shore=Town.Height-8+bay*(local>=5&&local<15?2:0);
-                for(int z=shore;z<Town.Height;z++)Paint(town,x,z,z>=Town.Height-2?Terrain.Water:Terrain.Beach);
+                int x=column*Size+local,shore=Town.Height-40+bay*(local>=5&&local<15?2:0);
+                for(int z=shore;z<Town.Height;z++)Paint(town,x,z,z>=Town.Height-32?Terrain.Water:Terrain.Beach);
             }
         }
         var gates=new byte[Town.ScreenTiles*Town.ScreenTiles];
@@ -59,7 +59,7 @@ public static class TownGenerator
             int minimum=row<3?4:1,target=col;
             // Straight upper/lower bridge acres are mandatory. Other rows may
             // trace east or west before descending, with no northward cycles.
-            if(row!=0&&row!=3&&row!=6&&row!=7)target=Math.Max(minimum,Math.Min(6,col+Next(ref random,5)-2));
+            if(row!=0&&row!=3&&row!=5&&row!=6&&row!=7)target=Math.Max(minimum,Math.Min(6,col+Next(ref random,5)-2));
             int direction=target>col?1:target<col?-1:0;
             if(direction==0)gates[row*8+col]=(byte)(N|S);
             else{
@@ -74,12 +74,12 @@ public static class TownGenerator
         }
         // Bridge features are assigned after river topology, as in the original
         // staged generator. Wood floor tiles are temporary art, with real collision.
-        for(int row=3;row<=6;row+=3)for(int column=0;column<8;column++)if(gates[row*8+column]==(N|S))
+        for(int row=3;row<=5;row+=2)for(int column=0;column<8;column++)if(gates[row*8+column]==(N|S))
             for(int z=row*Size+9;z<=row*Size+11;z++)for(int x=column*Size+2;x<column*Size+18;x++)if(town.At(x,z)==(int)Terrain.Water)Paint(town,x,z,Terrain.Bridge);
         // Pond templates only occupy otherwise-flat, non-service inland acres.
-        int ponds=2+Next(ref random,2),placed=0,pondStart=Next(ref random,32);
-        for(int attempt=0;attempt<32&&placed<ponds;attempt++){
-            int candidate=(pondStart+attempt*13)%32,column=candidate%8,row=3+candidate/8,cell=row*8+column;
+        int ponds=2+Next(ref random,2),placed=0,pondStart=Next(ref random,24);
+        for(int attempt=0;attempt<24&&placed<ponds;attempt++){
+            int candidate=(pondStart+attempt*5)%24,column=candidate%8,row=3+candidate/8,cell=row*8+column;
             if(gates[cell]!=0||town.At(column*Size+10,row*Size+10)!=(int)Terrain.Grass)continue;
             int rx=3+Next(ref random,3),rz=3+Next(ref random,2);
             for(int dz=-rz;dz<=rz;dz++)for(int dx=-rx;dx<=rx;dx++)if(dx*dx*rz*rz+dz*dz*rx*rx<=rx*rx*rz*rz)Paint(town,column*Size+10+dx,row*Size+10+dz,Terrain.Water);
@@ -93,8 +93,8 @@ public static class TownGenerator
     {
         uint random=unchecked((uint)town.Seed^0xa341316cu);
         for(int attempt=0;attempt<4000&&town.GroundCount<320;attempt++){
-            int x=2+Next(ref random,Town.Width-4),z=17+Next(ref random,Town.Height-27);
-            if(town.At(x,z)!=(int)Terrain.Grass||town.InReserve(x,z)||x<80&&z<42)continue;
+            int x=2+Next(ref random,Town.Width-4),z=17+Next(ref random,Town.Height-59);
+            if(TerrainElevation.Mode(town,x,z)>1||town.At(x,z)!=(int)Terrain.Grass||town.InReserve(x,z)||x<80&&z<42)continue;
             // Leave acre travel sockets and bridge approaches clear. Trees also
             // keep a one-cell clearance from water, structures and other trees.
             if(x%Size>=8&&x%Size<=12||z%Size>=8&&z%Size<=12)continue;
@@ -103,7 +103,7 @@ public static class TownGenerator
         }
         int shells=0,start=Next(ref random,Town.Width-4);
         for(int i=0;i<Town.Width-4&&shells<2;i++){
-            int x=2+(start+i)%(Town.Width-4),z=Town.Height-5-i%2;
+            int x=2+(start+i)%(Town.Width-4),z=Town.Height-35-i%2;
             if(town.At(x,z)==(int)Terrain.Beach&&town.AddGround(17,x,z,0,0))shells++;
         }
     }

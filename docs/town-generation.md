@@ -1,5 +1,7 @@
 # Seeded acre-based town generation
 
+Current update: [raised sections, water coverage, villagers, clipping and clock](terrain-villager-update.md). The description below records the initial flat generator; the update documents v2/v5 changes.
+
 The GameCube generator is a constrained, staged acre assembler. Research reference:
 ACreTeam/ac-decomp commit `e4926f73b0c8097b91a149c1b9c068901985bedb`:
 

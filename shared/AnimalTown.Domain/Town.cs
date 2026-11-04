@@ -4,6 +4,8 @@ public enum Terrain { Grass, Water, Bridge, Beach, Cliff, Plaza, Building, Camp 
 public sealed class Villager
 {
     public int X,Z,Friendship,Request,RequestDay,Met;
+    public int HomeX,HomeZ;
+    public float PosX,PosZ,Yaw;
     public string Name="",Phrase="";
 }
 public sealed class Placement
@@ -21,6 +23,7 @@ public sealed class Town
     public const int Width=ScreenTiles*ScreenTileSize,Height=Width,Cells=Width*Height;
     // Fine cells support furniture/plant footprints within each screen tile.
     public readonly byte[] Tiles=new byte[Cells];
+    public readonly byte[] Elevation=new byte[Cells];
     public int TerrainVersion {get;private set;}
     // Bulk importers that write Tiles directly call this once after committing.
     public void NotifyTerrainChanged(){TerrainVersion++;}
@@ -34,9 +37,13 @@ public sealed class Town
     public int HouseX=12,HouseZ=22;
     public Town(int seed)
     {
-        Seed=seed;string[] names={"Rowan","Moss","Sunny","Mica","Pip","Rook"};
+        Seed=seed;
         string[] phrases={"tails up","little leaf","sky high","soft paws","dig deep","good cheer"};
-        for(int i=0;i<6;i++)Residents[i]=new Villager{Name=names[i],Phrase=phrases[i],X=10+i*11+(i==3?3:0),Z=14};
+        for(int i=0;i<6;i++){
+            int x=10+i*11+(i==3?3:0);string name=VillagerNames.Generate(seed,i);
+            bool duplicate;do{duplicate=false;for(int j=0;j<i;j++)if(Residents[j].Name==name){name+="y";duplicate=true;break;}}while(duplicate);
+            Residents[i]=new Villager{Name=name,Phrase=phrases[i],X=x,Z=14,HomeX=x,HomeZ=10,PosX=x+.5f,PosZ=14.5f};
+        }
         for(int i=0;i<Ground.Length;i++)Ground[i]=new GroundItem();
         for(int i=0;i<Placed.Length;i++)Placed[i]=new Placement();
         Generate();
@@ -54,7 +61,8 @@ public sealed class Town
         for(int z=29;z<=35;z++)for(int x=30;x<=37;x++)Tiles[z*Width+x]=(byte)Terrain.Plaza;
         for(int z=47;z<56;z++)for(int x=62;x<71;x++)Tiles[z*Width+x]=(byte)Terrain.Camp;
         Building(30,25,5,3);Building(48,25,5,3);Building(34,7,4,3);
-        for(int i=0;i<6;i++)Building(Residents[i].X,10,3,3);
+        for(int i=0;i<6;i++)Building(Residents[i].HomeX,Residents[i].HomeZ,3,3);
+        TerrainElevation.Generate(this);
         TownGenerator.Populate(this);
         NotifyTerrainChanged();
     }
@@ -63,7 +71,7 @@ public sealed class Town
     public bool InReserve(int x,int z)=>x>=HouseX&&x<HouseX+15&&z>=HouseZ&&z<HouseZ+13;
     public bool ValidPlot(int x,int z)
     {
-        for(int j=0;j<13;j++)for(int i=0;i<15;i++)if(At(x+i,z+j)!=0)return false;
+        for(int j=0;j<13;j++)for(int i=0;i<15;i++)if(At(x+i,z+j)!=0||TerrainElevation.Mode(this,x+i,z+j)!=0)return false;
         return true;
     }
     public int FindGround(int x,int z,int kind=-1)

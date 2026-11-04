@@ -16,8 +16,8 @@ internal static class TownGenerationChecks
             while(front<back){int cell=queue[front++],x=cell%Town.Width,z=cell/Town.Width;
                 for(int d=0;d<4;d++){int nx=x+(d==0?-1:d==1?1:0),nz=z+(d==2?-1:d==3?1:0);if(!town.Inside(nx,nz))continue;int next=nz*Town.Width+nx;if(!visited[next]&&!blocked[next]&&town.Walkable(nx,nz)){visited[next]=true;queue[back++]=next;}}
             }
-            bool connected=true;int bridgeCells=0;for(int i=0;i<Town.Cells;i++){if(town.Walkable(i%Town.Width,i/Town.Width)&&!blocked[i]&&!visited[i])connected=false;if(town.Tiles[i]==(byte)Terrain.Bridge)bridgeCells++;}
-            check(connected,"every playable cell reachable with tree collision enabled");check(bridgeCells>=18&&bridgeCells<=60,"two river crossings have bounded width and clear approaches");
+            bool connected=true;int bridgeCells=0,waterCells=0;for(int i=0;i<Town.Cells;i++){if(town.Walkable(i%Town.Width,i/Town.Width)&&!blocked[i]&&!visited[i])connected=false;if(town.Tiles[i]==(byte)Terrain.Bridge)bridgeCells++;if(town.Tiles[i]==(byte)Terrain.Water)waterCells++;}
+            check(waterCells>=Town.Cells/5&&waterCells<=Town.Cells*3/10,"water covers twenty to thirty percent");check(connected,"every playable cell reachable with tree collision enabled");check(bridgeCells>=18&&bridgeCells<=60,"two river crossings have bounded width and clear approaches");
             check(town.ValidPlot(12,22)&&visited[28*Town.Width+32]&&visited[28*Town.Width+50]&&visited[50*Town.Width+65],"mandatory plots and service entrances retained");
             for(int i=0;i<6;i++)check(visited[town.Residents[i].Z*Town.Width+town.Residents[i].X],"generated resident reachable");
             Array.Clear(visited);int bodies=0;
