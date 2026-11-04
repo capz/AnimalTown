@@ -6,6 +6,7 @@ public sealed class FloorStrips
     public const int Capacity=2048,MaximumMaterials=52,Records=284;
     public readonly int[] X0=new int[Capacity],X1=new int[Capacity],Z0=new int[Capacity],Z1=new int[Capacity],Material=new int[Capacity];
     public readonly byte[] Elevation=new byte[Capacity];
+    public readonly bool[] Water=new bool[Capacity];
     public int Count,RejectedQuads;
     public static int Read(byte[] data,int at)=>data[at]|data[at+1]<<8|data[at+2]<<16|data[at+3]<<24;
     private static int MaterialOffset(byte[] data,int slot)=>Records+Read(data,280)*28+slot*8;
@@ -40,20 +41,21 @@ public sealed class FloorStrips
                 int next=-1;
                 if(x<right){
                     int mode=(uint)x<Town.Width&&(uint)z<Town.Height?state.Town.Elevation[z*Town.Width+x]:0;
+                    if(WaterTerrain.IsCoast(state.Town.At(x,z))&&!WaterSurface.IsWater(state.Town,x,z))mode=1;
                     float minH=mode==1?2:0,maxH=minH;
                     if(mode>=2){float h0=TerrainElevation.AtCell(state.Town,x,z,x,z),h1=TerrainElevation.AtCell(state.Town,x,z,x+1,z),h2=TerrainElevation.AtCell(state.Town,x,z,x,z+1),h3=TerrainElevation.AtCell(state.Town,x,z,x+1,z+1);minH=Math.Min(Math.Min(h0,h1),Math.Min(h2,h3));maxH=Math.Max(Math.Max(h0,h1),Math.Max(h2,h3));}
                     float h=(minH+maxH)*.5f;
-                    if(mode>=TerrainElevation.CornerUpLeft){} // Caps are the two level halves of the cliff template, never a sloping quad.
+                    if(mode>=TerrainElevation.CornerUpLeft&&!WaterSurface.IsWater(state.Town,x,z)){} // Caps are the two level halves of the cliff template, never a sloping quad.
                     else if(RenderView.Sphere(x+.5f,(a.Y+b.Y+h*(a.UpY+b.UpY))*.5f,(a.Z+b.Z+h*(a.UpZ+b.UpZ))*.5f,TerrainTiles.GroundVisibilityRadius+(maxH-minH)*.5f,state.X,state.Z,focusHeight)){
                         int neighbor=cliffPreview?TerrainCliffBinding.PreviewLowNeighbor(state.Town,(int)state.X,(int)state.Z,x,z):-1;
-                        next=(neighbor<0?At(state,data,x,z,room):At(state,data,neighbor%Town.Width,neighbor/Town.Width,room))+mode*MaximumMaterials;
+                        next=(neighbor<0?At(state,data,x,z,room):At(state,data,neighbor%Town.Width,neighbor/Town.Width,room))+(mode+(WaterSurface.IsWater(state.Town,x,z)?8:0))*MaximumMaterials;
                     }else RejectedQuads++;
                 }
-                if(next==key&&key>=MaximumMaterials*2&&x%2==0){Add(start,x,z,z+1,key);start=x;}
+                if(next==key&&key>=0&&((key/MaximumMaterials)%8>=2&&x%2==0||state.Town.At(x-1,z)==(int)Terrain.Beach||state.Town.At(x,z)==(int)Terrain.Beach)){Add(start,x,z,z+1,key);start=x;}
                 if(next!=key){if(key>=0)Add(start,x,z,z+1,key);start=x;key=next;}
             }
         }
     }
     private void Add(int x0,int x1,int z0,int z1,int material)
-    {if(Count>=Capacity)throw new InvalidOperationException("Repeating terrain exceeds geometry budget");X0[Count]=x0;X1[Count]=x1;Z0[Count]=z0;Z1[Count]=z1;Material[Count]=material%MaximumMaterials;Elevation[Count++]=(byte)(material/MaximumMaterials);}
+    {if(Count>=Capacity)throw new InvalidOperationException("Repeating terrain exceeds geometry budget");X0[Count]=x0;X1[Count]=x1;Z0[Count]=z0;Z1[Count]=z1;Material[Count]=material%MaximumMaterials;Water[Count]=material/MaximumMaterials>=8;Elevation[Count++]=(byte)(material/MaximumMaterials%8);}
 }

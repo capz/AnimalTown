@@ -57,7 +57,7 @@ public sealed class VillagerNavigation
         }
     }
     private bool Ground(int x,int z)
-    {var town=state!.Town;int t=town.At(x,z);return town.Inside(x,z)&&t!=(int)Terrain.Water&&t!=(int)Terrain.Cliff;}
+    {var town=state!.Town;int t=town.At(x,z);return town.Inside(x,z)&&!WaterSurface.IsWater(town,x,z)&&!WaterTerrain.IsCoast(t)&&t!=(int)Terrain.Cliff;}
     private bool Step(int ax,int az,int bx,int bz,bool structures,int agent)
     {
         if(!Ground(bx,bz)||structures&&Blocked(bx,bz,agent,true))return false;var town=state!.Town;

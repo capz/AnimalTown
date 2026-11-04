@@ -15,4 +15,6 @@ $p=Get-ValidationPlan -ChangedPaths @('new-production/file.xyz');Assert ($p.full
 $p=Get-ValidationPlan -ChangedPaths @('.github/workflows/build-release.yml');Assert ($p.full -and $p.policy) 'Workflow changes must exercise gates'
 $p=Get-ValidationPlan -Full;Assert ($p.full -and $p.release -and $p.managed.Count -eq 11 -and $p.tooling.Count -eq 2) 'Manual full validation incomplete'
 $p=Get-ValidationPlan -ChangedPaths @('game/AnimalTown.GameCube/MenuNavigation.cs','game/AnimalTown.GameCube/MenuNavigation.cs','game/AnimalTown.GameCube/WrappedText.cs');Assert (($p.managed -join ',') -eq 'menu,text') 'Union/deduplication incorrect'
-Write-Host 'Validation routing checks passed (14 cases).'
+$p=Get-ValidationPlan -ChangedPaths @('shared/AnimalTown.Domain/WaterSurface.cs','tests/AnimalTown.Checks/WaterSurfaceChecks.cs');Assert (($p.managed -join ',') -eq 'terrain' -and !$p.backend) 'Water rules use terrain checks'
+$p=Get-ValidationPlan -ChangedPaths @('game/AnimalTown.GameCube/WaterMaterial.cs','game/AnimalTown.GameCube/WaterRenderer.cs');Assert (($p.managed -join ',') -eq 'terrain,core' -and !$p.backend) 'Water rendering needs terrain and core checks'
+Write-Host 'Validation routing checks passed (16 cases).'

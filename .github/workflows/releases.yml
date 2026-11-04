@@ -1,8 +1,10 @@
 name: Build and release
 
 on:
+  pull_request:
+    types: [opened, edited, synchronize, reopened, ready_for_review]
   push:
-    branches: [main]
+    branches: [main, feat/river-coast-terrain]
   workflow_dispatch:
 
 permissions:
@@ -14,7 +16,20 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  change-title:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - name: Classify the change for versioning
+        shell: pwsh
+        env:
+          CHANGE_TITLE: ${{ github.event.pull_request.title }}
+        run: ./tools/check-change-title.ps1 -Title $env:CHANGE_TITLE
   release:
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     defaults:
@@ -26,6 +41,10 @@ jobs:
           submodules: recursive
           fetch-depth: 0
           persist-credentials: false
+      - name: Resolve xx.yy.zz.bb version from integration history
+        id: version
+        shell: pwsh
+        run: ./tools/write-version.ps1 -GitHubOutput $env:GITHUB_OUTPUT
       - name: Select checks affected since the previous release
         id: validation
         shell: pwsh

@@ -13,7 +13,7 @@ public static class SplitSaveCodec
     {
         private readonly byte[] bytes;private int at;
         internal Writer(GameState s,int kind,int capacity)
-        {bytes=new byte[capacity];Int(0x50535441);Int(1);Int(Catalog.Version);Int(kind);Int(s.Sequence);Int(s.Town.Seed);Int(0);}
+        {bytes=new byte[capacity];Int(0x50535441);Int(2);Int(Catalog.Version);Int(kind);Int(s.Sequence);Int(s.Town.Seed);Int(0);}
         internal void Int(int n){if(at>bytes.Length-4)throw new InvalidOperationException("Save record exceeds budget");for(int i=0;i<4;i++)bytes[at++]=(byte)((uint)n>>(i*8));}
         internal void Text(string s){Int(s.Length);for(int i=0;i<s.Length;i++)Int(s[i]);}
         internal void Rle(byte[] source){Int(Runs(source));for(int i=0;i<source.Length;){int n=1;while(i+n<source.Length&&source[i+n]==source[i])n++;Int((source[i]<<24)|n);i+=n;}}
@@ -22,11 +22,12 @@ public static class SplitSaveCodec
     private sealed class Reader
     {
         private readonly byte[] bytes;private int at;
-        internal readonly int Sequence,Seed;
+        internal readonly int Sequence,Seed,Version;
         internal Reader(byte[] source,int kind)
         {
             bytes=source;if(bytes.Length<32||bytes.Length>SaveCodec.MaximumBytes)throw new InvalidOperationException("Invalid save record size");
-            if(Int()!=0x50535441||Int()!=1||Int()!=Catalog.Version||Int()!=kind)throw new InvalidOperationException("Wrong save record type or version");
+            if(Int()!=0x50535441)throw new InvalidOperationException("Wrong save record magic");Version=Int();
+            if((Version<1||Version>2)||Int()!=Catalog.Version||Int()!=kind)throw new InvalidOperationException("Wrong save record type or version");
             Sequence=Range(0,int.MaxValue);Seed=Int();if(Int()!=bytes.Length)throw new InvalidOperationException("Save record length mismatch");
             int crc=0;for(int i=0;i<4;i++)crc|=bytes[bytes.Length-4+i]<<(i*8);
             if((uint)crc!=SaveCodec.Crc(bytes,0,bytes.Length-4))throw new InvalidOperationException("Save record checksum failed");
@@ -36,7 +37,7 @@ public static class SplitSaveCodec
         internal string Text(int limit){int n=Range(0,limit);var c=new char[n];for(int i=0;i<n;i++)c[i]=(char)Range(0,65535);return new string(c);}
         internal void Rle(byte[] target,int max)
         {int runs=Range(1,target.Length),cell=0;for(int i=0;i<runs;i++){int packed=Int(),mode=(int)((uint)packed>>24),n=packed&0xffffff;if(mode>max||n==0||n>target.Length-cell)throw new InvalidOperationException("Invalid save terrain run");for(int j=0;j<n;j++)target[cell++]=(byte)mode;}if(cell!=target.Length)throw new InvalidOperationException("Incomplete save terrain");}
-        internal void Match(Reader other){if(Seed!=other.Seed||Sequence!=other.Sequence)throw new InvalidOperationException("Mixed save generations");}
+        internal void Match(Reader other){if(Version!=other.Version||Seed!=other.Seed||Sequence!=other.Sequence)throw new InvalidOperationException("Mixed save generations");}
         internal void End(){if(at!=bytes.Length-4)throw new InvalidOperationException("Trailing save record data");}
     }
     private static int Runs(byte[] a){int n=1;for(int i=1;i<a.Length;i++)if(a[i]!=a[i-1])n++;return n;}
@@ -59,7 +60,7 @@ public static class SplitSaveCodec
     public static GameState Decode(byte[][] records)
     {
         if(records.Length!=4)throw new InvalidOperationException("Incomplete save set");var r=new Reader(records[0],TownData);var root=r;var s=new GameState(r.Seed);s.Sequence=r.Sequence;var t=s.Town;
-        r.Range(Town.Width,Town.Width);r.Range(Town.Height,Town.Height);r.Range(1,TownGenerator.Version);t.Day=r.Int();t.Month=r.Int();r.Rle(t.Tiles,7);r.Rle(t.Elevation,TerrainElevation.MaximumMode);
+        r.Range(Town.Width,Town.Width);r.Range(Town.Height,Town.Height);r.Range(1,TownGenerator.Version);t.Day=r.Int();t.Month=r.Int();r.Rle(t.Tiles,r.Version>=2?(int)Terrain.CoastWest:7);r.Rle(t.Elevation,TerrainElevation.MaximumMode);
         for(int i=0;i<6;i++){var v=t.Residents[i];v.X=r.Int();v.Z=r.Int();v.Name=r.Text(24);v.PosX=r.Int()/1024f;v.PosZ=r.Int()/1024f;}
         t.GroundCount=r.Range(0,512);for(int i=0;i<t.GroundCount;i++){var g=t.Ground[i];g.Item=r.Int();g.X=r.Int();g.Z=r.Int();g.Owner=r.Int();g.Day=r.Int();g.Kind=r.Int();}r.End();
         r=new Reader(records[1],HousePositions);r.Match(root);s.HousePlaced=r.Range(0,1)==1;t.HouseX=r.Int();t.HouseZ=r.Int();for(int i=0;i<6;i++){t.Residents[i].HomeX=r.Int();t.Residents[i].HomeZ=r.Int();}r.End();
@@ -70,6 +71,7 @@ public static class SplitSaveCodec
         for(int i=0;i<6;i++){var v=t.Residents[i];v.Friendship=r.Int();v.Request=r.Int();v.RequestDay=r.Int();v.Met=r.Int();}
         t.PlacedCount=r.Range(0,256);for(int i=0;i<t.PlacedCount;i++){var p=t.Placed[i];p.Item=r.Int();p.X=r.Int();p.Z=r.Int();p.Rotation=r.Int();p.Room=r.Int();p.Owner=r.Int();}r.End();
         // Reuse all legacy range, placement and catalog validation before use.
+        if(root.Version<2)WaterTerrain.Migrate(t);
         return SaveCodec.Decode(SaveCodec.Encode(s));
     }
     public static byte[] EncodeCommit(GameState s,byte[][] records)

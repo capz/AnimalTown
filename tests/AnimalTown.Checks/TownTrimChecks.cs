@@ -9,7 +9,7 @@ internal static class TownTrimChecks
         byte[] outskirts=File.ReadAllBytes(Path.Combine(AppContext.BaseDirectory,"Fixtures/town-20x20-outskirts-v3.bin"));
         foreach(byte[] fixture in new[]{normal,outskirts}){
             var state=SaveCodec.Decode(fixture);byte[] oldTerrain=Terrain(fixture);
-            bool same=true;for(int z=0;z<Town.Height;z++)for(int x=0;x<Town.Width;x++)same&=state.Town.Tiles[z*Town.Width+x]==oldTerrain[z*400+x];
+            bool same=true;for(int z=0;z<Town.Height;z++)for(int x=0;x<Town.Width;x++)same&=state.Town.Tiles[z*Town.Width+x]==(oldTerrain[z*400+x]==1&&z>=WaterTerrain.SeaStart?8:oldTerrain[z*400+x]);
             check(same&&state.Town.Tiles.Length==25600,"legacy terrain is cropped with its original 400-cell stride, without regenerating retained cells");
             check(state.Town.At(140,140)==(int)AnimalTown.Terrain.Camp&&state.Town.At(159,158)==(int)AnimalTown.Terrain.Bridge,"retained terrain edits survive near the new boundary");
             check(state.Sequence==42&&state.Name=="Old neighbour"&&state.Catchphrase=="same town"&&state.Wallet==12345&&state.Savings==67890&&state.Species==4&&state.Palette==7,"trimming preserves identity, progress and money");
@@ -21,8 +21,8 @@ internal static class TownTrimChecks
             check(trees==128&&bounded,"only trees inside the cropped town remain and every ground record stays in bounds");
             for(int i=0;i<6;i++)check(state.Town.Inside(state.Town.Residents[i].X,state.Town.Residents[i].Z),"every imported resident stays in bounds");
             byte[] encoded=SaveCodec.Encode(state);
-            check(Int(encoded,4)==5&&Int(encoded,24)==160&&Int(encoded,28)==160,"v5 save records the 160 x 160 fine-cell dimensions");
-            check(encoded.SequenceEqual(SaveCodec.Encode(SaveCodec.Decode(encoded))),"trimmed v5 save is stable on repeated loading and saving");
+            check(Int(encoded,4)==6&&Int(encoded,24)==160&&Int(encoded,28)==160,"v6 save records the 160 x 160 fine-cell dimensions");
+            check(encoded.SequenceEqual(SaveCodec.Encode(SaveCodec.Decode(encoded))),"trimmed v6 save is stable on repeated loading and saving");
             check(encoded.Length<fixture.Length,"cropped terrain reduces the serialized save size");
         }
         var retained=SaveCodec.Decode(normal);

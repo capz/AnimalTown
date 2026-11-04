@@ -16,7 +16,7 @@ public static class TerrainTiles
     // a full 128-wide strip to GX for the narrow rows nearest the camera.
     public static int RowHalfWidth(int row)=>Math.Min(CylinderWorld.ViewHalfWidth,Math.Max(12,(GroundRows-row)*3/4+10));
     public static int GroundVertexCount {get{int count=0;for(int row=0;row<GroundRows;row++)count+=RowHalfWidth(row)*12;return count;}}
-    public static int Surface(int terrain)=>terrain==0?Grass:terrain==1?Water:terrain==2?Wood:terrain==3?Sand:terrain==4?Rock:terrain==5?Pavement:terrain==7?Dirt:Building;
+    public static int Surface(int terrain)=>WaterTerrain.IsCoast(terrain)?Grass:terrain==0?Grass:terrain==1||terrain==(int)Terrain.Sea?Water:terrain==2?Wood:terrain==3?Sand:terrain==4?Rock:terrain==5?Pavement:terrain==7?Dirt:Building;
     // Month is the existing monotonic year*12 + zero-based month save/RTC value.
     public static int Season(int month,int forced=-1)
     { if(forced>=0&&forced<4)return forced;int m=((month%12)+12)%12;return m==11||m<2?3:m<5?0:m<8?1:2; }

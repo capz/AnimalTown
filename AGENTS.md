@@ -1,5 +1,11 @@
 # Build delivery
 
+Use `xx.yy.zz.bb` release versions; see `docs/versioning.md`. Classify feature
+PRs/commits with `feat:` and bugfixes with `fix:`. Other changes use an accepted
+non-feature prefix. Keep the classified PR title in merge messages. Only change
+`xx` in `version.json` when the user explicitly asks; never infer a major bump.
+Feature and bugfix counters are independent and do not reset each other.
+
 Publish build artifacts in GitHub Releases, not only as local output paths or
 temporary Actions artifacts. Use `tools/publish-release.ps1` after clean game and
 backend builds of the same commit. The main-branch release workflow does this
