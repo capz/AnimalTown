@@ -4,7 +4,9 @@ using Dolphin.Graphics;
 // Sampled terrain only; live markers/grid stay in their original overlay order.
 internal sealed class MapBackground
 {
-    private const int Samples=(Town.Width+4)/5;
+    // Rivers are three fine cells wide. A five-cell stride can miss entire
+    // segments; sample every two cells while retaining a single cached quad.
+    private const int Samples=(Town.Width+1)/2;
     private const int TextureSize=Samples<=32?32:Samples<=64?64:128;
     internal const float Size=280,Scale=Size/Town.Width;
     private readonly byte[] rgba=new byte[TextureSize*TextureSize*4];
@@ -15,7 +17,7 @@ internal sealed class MapBackground
     {
         if(town==current&&version==current.TerrainVersion)return;
         for(int z=0;z<Samples;z++)for(int x=0;x<Samples;x++){
-            var c=TileColor(current.At(x*5+2,z*5+2));int p=(z*TextureSize+x)*4;rgba[p]=c.R;rgba[p+1]=c.G;rgba[p+2]=c.B;rgba[p+3]=255;
+            var c=TileColor(current.At(x*2+1,z*2+1));int p=(z*TextureSize+x)*4;rgba[p]=c.R;rgba[p+1]=c.G;rgba[p+2]=c.B;rgba[p+3]=255;
         }
         if(texture==null)texture=Texture2D.CreateNative(TextureSize,TextureSize,NativeTextureFormat.Rgba8,false);
         texture.ReplaceRgba(rgba);
