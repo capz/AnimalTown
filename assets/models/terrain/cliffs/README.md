@@ -59,8 +59,19 @@ Developer inspection: **L+R+D-pad Up** toggles an eight-piece gallery near the
 player. It is a rendering preview, has no collision and does not change/save town
 terrain. It draws the regular floor as the low half, avoiding coplanar duplicate
 triangles. All positions follow the cylindrical world. Existing maps and their
-raised-section layouts are retained; this change does not add diagonal placements
-to town generation or change movement/save formats.
+raised-section layouts in existing saves are retained. New towns use the four
+diagonal templates to cut the terrace corners while retaining natural ramp access.
+The production renderer emits both level caps and only exposed wall/lip segments,
+batched with existing ground materials. Caps and walls subdivide at one-metre
+boundaries before bending, so their edges meet the ordinary floor exactly.
+
+Elevation modes 6..9 persist the four corner shapes in the existing elevation
+RLE. Generator version 3 gates new saves; old terrain records remain loadable
+without regeneration. Upper/lower material bindings resolve from same-height
+neighbors in the saved terrain tile array, so source surfaces survive save/load
+without separate texture allocations. Shared traversal clips the segment against
+diagonal half-planes before sampling slopes; both NPC planning/movement and player
+movement use that rule. A diagonal is a vertical step, never a traversable ramp.
 
 Regenerate geometry and select authoring texture size:
 

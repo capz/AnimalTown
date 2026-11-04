@@ -42,7 +42,7 @@ water; a historical water edit inside the southern sea band adopts sea semantics
 This explicit template boundary is deterministic and migration is stable after
 its first write. Existing arbitrary dry shoreline edits are retained and receive
 normal cliff edge geometry rather than being repainted as beach or headland.
-New-town generator version 3 authors the sea boundary and half-section headlands.
+New-town generator version 4 authors the sea boundary and half-section headlands.
 
 ## Material and patterns
 

@@ -5,10 +5,11 @@ terrain, generation, save and core suites passed (133,106 checks); the first
 native attempt exposed missing proxy routing in nested cloud containers. The
 session supplies the inherited proxy and trusted CA to those containers, and
 installs the .NET 10 SDK required by the backend. No SDK/engine source changes
-were needed.
+were needed. Main's diagonal-cliff commit bd6488c is integrated, retaining its
+collision, saved elevation modes and ground-cap bindings alongside water.
 
 `tools/test-changes.ps1 -NativeInProcess` passes the selected full dependency set:
-580,287 managed checks, validation-routing/versioning checks, terrain importer and
+582,272 managed checks, validation-routing/versioning checks, terrain importer and
 texture repacker checks, native memory-card/texture/UV/dialogue checks, Python
 scenario syntax and PostgreSQL/backend integration. The regressions include:
 
