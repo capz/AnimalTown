@@ -66,6 +66,10 @@ play works; save errors are shown for retry.
 
 Outdoor ground shares the supplied neutral repeating texture with configurable
 terrain/season tints: see [neutral ground](docs/neutral-ground.md).
+
+The [cliff kit](assets/models/terrain/cliffs/README.md) supplies eight low-poly
+GLBs, shared 128/256px soil textures and ground-material bindings. Hold L+R and
+press D-pad Up for its developer rendering preview; it does not alter the town.
 Walk and run are 5% faster, with normalized diagonals and facing that follows
 travel direction. Dialogue syllables use one explicitly retired audio channel;
 an unavailable sound voice leaves text and controls responsive.

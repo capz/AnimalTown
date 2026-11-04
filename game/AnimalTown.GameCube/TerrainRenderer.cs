@@ -17,6 +17,9 @@ internal sealed class TerrainRenderer
     private float cachedX,cachedZ;
     private Town? cachedTown;
     internal int VisibleTriangles,RejectedQuads;
+    internal int MaterialRevision {get;private set;}
+    internal int GroundSlot(GameState state,int x,int z)=>FloorStrips.At(state,data,x,z,0);
+    internal Material GroundMaterial(int slot)=>materials[slot];
     internal TerrainRenderer()
     {
         var cfg=File.ReadAllBytes("dvd:/terrain.cfg");if(cfg.Length!=4)throw new IOException("Invalid floor season config");forced=FloorStrips.Read(cfg,0);if(forced< -1||forced>3)throw new IOException("Invalid floor season");
@@ -35,6 +38,7 @@ internal sealed class TerrainRenderer
                 materials[i].Texture=textures[source]!.Pages[0];uint tint=FloorStrips.Tint(data,i);materials[i].Color=new Color32((byte)(tint>>24),(byte)(tint>>16),(byte)(tint>>8));
             }
             season=next;
+            MaterialRevision++;
         }
         if(!changed&&cachedX==state.X&&cachedZ==state.Z&&cachedRoom==room&&cachedTier==state.HouseTier&&cachedTown==state.Town&&cachedTerrainVersion==state.Town.TerrainVersion)return;
         cachedX=state.X;cachedZ=state.Z;cachedRoom=room;cachedTier=state.HouseTier;cachedTown=state.Town;

@@ -7,6 +7,7 @@ internal static class TerrainChecks
     public static void Run(string project)
     {
         NeutralFloorChecks.Run(project);
+        TerrainCliffChecks.Run(project);
         string root=Path.Combine(project,"out/terrain-import-check");Directory.CreateDirectory(Path.Combine(root,"assets/terrain"));
         string imagePath=Path.Combine(root,"assets/tiles.png"),manifest=Path.Combine(root,"assets/terrain/terrain.json");
         using(var bitmap=new SKBitmap(64,32)){bitmap.Erase(SKColors.Red);for(int y=0;y<32;y++)for(int x=32;x<64;x++)bitmap.SetPixel(x,y,SKColors.Blue);using var encoded=SKImage.FromBitmap(bitmap).Encode(SKEncodedImageFormat.Png,100);File.WriteAllBytes(imagePath,encoded.ToArray());}
