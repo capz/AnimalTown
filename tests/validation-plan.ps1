@@ -1,0 +1,18 @@
+$ErrorActionPreference='Stop'
+. (Join-Path $PSScriptRoot '../tools/validation-plan.ps1')
+function Assert($value,[string]$message){if(!$value){throw $message}}
+$p=Get-ValidationPlan -ChangedPaths @('docs/concepts/cliff-kit.png','README.md');Assert (!$p.release -and !$p.backend -and !$p.managed.Count) 'Art/docs should not trigger builds/tests'
+$p=Get-ValidationPlan -ChangedPaths @('game/AnimalTown.GameCube/MenuNavigation.cs');Assert (($p.managed -join ',') -eq 'menu' -and !$p.backend -and !$p.tooling.Count) 'Menu routing too broad'
+$p=Get-ValidationPlan -ChangedPaths @('tools/native-uv-debug.inc','tools/native-uv-topology.h');Assert (($p.native -join ',') -eq 'uv' -and !$p.managed.Count -and !$p.backend) 'UV native routing too broad'
+$p=Get-ValidationPlan -ChangedPaths @('server/AnimalTown.Server/Program.cs');Assert ($p.backend -and !$p.managed.Count -and !$p.native.Count) 'Backend should not run console unit suites'
+$p=Get-ValidationPlan -ChangedPaths @('assets/models/villagers/fox.glb');Assert ($p.release -and !$p.managed.Count -and !$p.backend) 'Model imports should use import/build audits'
+$p=Get-ValidationPlan -ChangedPaths @('assets/textures/environment/ground/test.png');Assert (($p.tooling -join ',') -eq 'terrain' -and ($p.managed -join ',') -eq 'core' -and !$p.backend) 'Ground routing incorrect'
+$p=Get-ValidationPlan -ChangedPaths @('shared/AnimalTown.Domain/GameState.cs');Assert ($p.backend -and $p.managed.Count -eq 11 -and !$p.tooling.Count) 'Shared gameplay must cover backend and all managed dependencies'
+$p=Get-ValidationPlan -ChangedPaths @('game/AnimalTown.GameCube/Program.cs');Assert ($p.managed.Count -eq 11 -and !$p.backend) 'Mixed game entry point needs managed coverage, not unrelated DB tests'
+$p=Get-ValidationPlan -ChangedPaths @('tools/AnimalTown.Tools/TextureRepackerChecks.cs');Assert (($p.tooling -join ',') -eq 'repack' -and !$p.backend) 'Repacker routing incorrect'
+$p=Get-ValidationPlan -ChangedPaths @('shared/AnimalTown.Domain/NewDependency.cs');Assert ($p.managed.Count -eq 11 -and $p.backend) 'Unknown domain must be conservative'
+$p=Get-ValidationPlan -ChangedPaths @('new-production/file.xyz');Assert ($p.full -and $p.backend -and $p.native.Count -eq 5) 'Unknown production paths must fall back to all checks'
+$p=Get-ValidationPlan -ChangedPaths @('.github/workflows/build-release.yml');Assert ($p.full -and $p.policy) 'Workflow changes must exercise gates'
+$p=Get-ValidationPlan -Full;Assert ($p.full -and $p.release -and $p.managed.Count -eq 11 -and $p.tooling.Count -eq 2) 'Manual full validation incomplete'
+$p=Get-ValidationPlan -ChangedPaths @('game/AnimalTown.GameCube/MenuNavigation.cs','game/AnimalTown.GameCube/MenuNavigation.cs','game/AnimalTown.GameCube/WrappedText.cs');Assert (($p.managed -join ',') -eq 'menu,text') 'Union/deduplication incorrect'
+Write-Host 'Validation routing checks passed (14 cases).'

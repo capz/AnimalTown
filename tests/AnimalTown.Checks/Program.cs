@@ -2,16 +2,22 @@ using AnimalTown;
 
 int checks=0;
 void Check(bool value,string message){checks++;if(!value)throw new Exception(message);}
-UiShapePlanChecks.Run(Check);
-MenuNavigationChecks.Run(Check);
-TownTrimChecks.Run(Check);
-WrappedTextChecks.Run(Check);
-TerrainEdgeChecks.Run(Check);
-PlayerMovementChecks.Run(Check);
-DialogueVoiceChecks.Run(Check);
-TownGenerationChecks.Run(Check);
-TerrainLifeChecks.Run(Check);
-SplitSaveChecks.Run(Check);
+string[] available={"ui","menu","text","trim","terrain","movement","dialogue","generation","life","saves","core"};
+if(args.Length!=0&&(args.Length!=2||args[0]!="--suites"))throw new ArgumentException("Use --suites name,name or omit for all checks");
+var selected=args.Length==0?available:args[1].Split(',');
+foreach(string name in selected)if(!available.Contains(name))throw new ArgumentException("Unknown check suite: "+name);
+bool Wants(string name)=>selected.Contains(name);
+if(Wants("ui"))UiShapePlanChecks.Run(Check);
+if(Wants("menu"))MenuNavigationChecks.Run(Check);
+if(Wants("trim"))TownTrimChecks.Run(Check);
+if(Wants("text"))WrappedTextChecks.Run(Check);
+if(Wants("terrain"))TerrainEdgeChecks.Run(Check);
+if(Wants("movement"))PlayerMovementChecks.Run(Check);
+if(Wants("dialogue"))DialogueVoiceChecks.Run(Check);
+if(Wants("generation"))TownGenerationChecks.Run(Check);
+if(Wants("life"))TerrainLifeChecks.Run(Check);
+if(Wants("saves"))SplitSaveChecks.Run(Check);
+if(!Wants("core")){Console.WriteLine(checks+" checks passed; suites: "+string.Join(",",selected));return;}
 var terrainEdit=new GameState(74);int terrainVersion=terrainEdit.Town.TerrainVersion;
 Check(terrainEdit.Town.SetTerrain(20,20,Terrain.Water)&&terrainEdit.Town.TerrainVersion==terrainVersion+1,"terrain edit invalidates render caches");
 Check(!terrainEdit.Town.SetTerrain(20,20,Terrain.Water)&&!terrainEdit.Town.SetTerrain(-1,20,Terrain.Grass)&&terrainEdit.Town.TerrainVersion==terrainVersion+1,"unchanged/invalid terrain edits preserve cache revision");

@@ -10,6 +10,8 @@ $commit=(& git -C $Root rev-parse HEAD).Trim()
 if($LASTEXITCODE -ne 0 -or $commit -notmatch '^[0-9a-f]{40}$'){throw 'Cannot determine source commit'}
 if(& git -C $Root status --porcelain --untracked-files=normal){throw 'Release packaging requires a clean source checkout'}
 $short=$commit.Substring(0,12)
+$validation=Get-Content (Join-Path $Root 'out/validation-plan.json') -Raw|ConvertFrom-Json
+if($validation.schema -ne 1 -or $validation.commit -ne $commit){throw 'Release validation plan must match source commit'}
 $tag="build-$short"
 $out=Join-Path $Root 'out'
 $revisions=[IO.File]::ReadAllText((Join-Path $out 'build-revisions.txt'))
@@ -41,7 +43,8 @@ try{[IO.Compression.ZipFileExtensions]::CreateEntryFromFile($zip,$iso,[IO.Path]:
 [IO.Compression.ZipFile]::CreateFromDirectory($toolsDirectory,$toolsZip,[IO.Compression.CompressionLevel]::Optimal,$false)
 Copy-Item -LiteralPath (Join-Path $out 'build-revisions.txt') -Destination (Join-Path $package 'BUILD.txt') -Force
 Copy-Item -LiteralPath (Join-Path $out 'texture-audit.json') -Destination (Join-Path $package 'texture-audit.json') -Force
-$checksums=foreach($file in @($iso,$isoZip,$serverZip,$toolsZip,(Join-Path $package 'BUILD.txt'),(Join-Path $package 'texture-audit.json'))){"$((Get-FileHash -LiteralPath $file -Algorithm SHA256).Hash.ToLowerInvariant())  $([IO.Path]::GetFileName($file))"}
+Copy-Item -LiteralPath (Join-Path $out 'validation-plan.json') -Destination (Join-Path $package 'validation-plan.json') -Force
+$checksums=foreach($file in @($iso,$isoZip,$serverZip,$toolsZip,(Join-Path $package 'BUILD.txt'),(Join-Path $package 'texture-audit.json'),(Join-Path $package 'validation-plan.json'))){"$((Get-FileHash -LiteralPath $file -Algorithm SHA256).Hash.ToLowerInvariant())  $([IO.Path]::GetFileName($file))"}
 [IO.File]::WriteAllText((Join-Path $package 'SHA256SUMS.txt'),($checksums -join "`n")+"`n")
 $notes=@"
 AnimalTown development build from commit $commit.
@@ -50,7 +53,7 @@ AnimalTown development build from commit $commit.
 
 Download **AnimalTown-$short.iso.zip** and extract the full 1,459,978,240-byte ISO. The disc includes the game title, commit identity, disc banner and memory-card banner/icon. The server is a separate **AnimalTown-server-$short.zip** archive and requires .NET 10 and PostgreSQL. It does not run on the console.
 
-BUILD.txt records the game, engine and SDK revisions. texture-audit.json records texture source identities, fingerprints and 256-pixel default residency and 128/256/512/1024 model variants. SHA256SUMS.txt covers the archives, manifests and the extracted ISO.
+BUILD.txt records the game, engine and SDK revisions. validation-plan.json records the comparison base and selected checks. texture-audit.json records texture source identities, fingerprints and 256-pixel default residency and 128/256/512/1024 model variants. SHA256SUMS.txt covers the archives, manifests and the extracted ISO.
 
 This is an early playable build, not the completed game. Physical GameCube testing is outstanding. See [implementation status](https://github.com/$Repository/blob/$commit/docs/implementation-status.md) and [build instructions](https://github.com/$Repository/blob/$commit/README.md).
 "@
@@ -62,7 +65,7 @@ function InvokeGh([string[]]$Arguments){
     if($LASTEXITCODE -ne 0){throw "GitHub CLI failed: $($Arguments[0]) $($Arguments[1])"}
     return $result
 }
-$assets=@($isoZip,$serverZip,$toolsZip,(Join-Path $package 'BUILD.txt'),(Join-Path $package 'texture-audit.json'),(Join-Path $package 'SHA256SUMS.txt'))
+$assets=@($isoZip,$serverZip,$toolsZip,(Join-Path $package 'BUILD.txt'),(Join-Path $package 'texture-audit.json'),(Join-Path $package 'validation-plan.json'),(Join-Path $package 'SHA256SUMS.txt'))
 $existing=& $Gh release view $tag --repo $Repository --json isDraft,targetCommitish,assets 2>$null
 if($LASTEXITCODE -eq 0){
     $release=$existing | ConvertFrom-Json

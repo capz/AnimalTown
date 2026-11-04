@@ -83,11 +83,13 @@ a finished online game. Build a server image with
 ## Checks
 
 ```powershell
-dotnet run --project tests/AnimalTown.Checks -c Release
-./tests/server-integration.ps1
+./tools/test-changes.ps1
 ```
 
-The integration command starts and removes its own local PostgreSQL test
+See [change validation](docs/change-validation.md) for targeted checks, plan-only
+inspection and explicit full runs. Releases record their selected checks.
+
+For an explicit backend-only run, `./tests/server-integration.ps1` starts and removes its own local PostgreSQL test
 container. It uses ports 55439 and 5189. To inspect a direct ISO boot in a Linux
 container:
 
