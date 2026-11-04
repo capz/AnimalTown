@@ -8,11 +8,15 @@ public sealed class FloorStrips
     public readonly byte[] Elevation=new byte[Capacity];
     public int Count,RejectedQuads;
     public static int Read(byte[] data,int at)=>data[at]|data[at+1]<<8|data[at+2]<<16|data[at+3]<<24;
+    private static int MaterialOffset(byte[] data,int slot)=>Records+Read(data,280)*28+slot*8;
+    public static int TextureSlot(byte[] data,int slot)=>Read(data,4)==1?slot:Read(data,MaterialOffset(data,slot));
+    public static uint Tint(byte[] data,int slot)=>Read(data,4)==1?0xffffffffu:(uint)Read(data,MaterialOffset(data,slot)+4);
     public static void Validate(byte[] data)
     {
-        if(data.Length<Records||Read(data,0)!=0x32525441||Read(data,4)!=1||Read(data,8)!=TerrainTiles.SurfaceCount||Read(data,12)<1||Read(data,12)>MaximumMaterials||Read(data,16)!=FloorTexture.Maximum)throw new InvalidOperationException("Invalid repeating floor metadata");
+        if(data.Length<Records||Read(data,0)!=0x32525441||(Read(data,4)!=1&&Read(data,4)!=2)||Read(data,8)!=TerrainTiles.SurfaceCount||Read(data,12)<1||Read(data,12)>MaximumMaterials||Read(data,16)!=FloorTexture.Maximum)throw new InvalidOperationException("Invalid repeating floor metadata");
         int slots=Read(data,12),patches=Read(data,280);
-        if(patches<0||patches>32||data.Length!=Records+patches*28)throw new InvalidOperationException("Invalid repeating floor patches");
+        if(patches<0||patches>32||data.Length!=Records+patches*28+(Read(data,4)==2?slots*8:0))throw new InvalidOperationException("Invalid repeating floor patches");
+        if(Read(data,4)==2)for(int i=0;i<slots;i++)if(TextureSlot(data,i)<0||TextureSlot(data,i)>1||(Tint(data,i)&255)!=255)throw new InvalidOperationException("Invalid shared floor material");
         for(int s=0;s<TerrainTiles.SurfaceCount;s++){int at=20+s*20,count=Read(data,at);if(count<1||count>4)throw new InvalidOperationException("Invalid floor variant count");for(int v=0;v<4;v++){int slot=Read(data,at+4+v*4);if(v<count?(slot<0||slot>=slots):slot!= -1)throw new InvalidOperationException("Invalid floor texture slot");}}
         for(int i=0;i<patches;i++){int p=Records+i*28,s=Read(data,p),required=Read(data,p+4),x=Read(data,p+8),z=Read(data,p+12),w=Read(data,p+16),h=Read(data,p+20),border=Read(data,p+24);if(s<0||s>=TerrainTiles.SurfaceCount||required<0||required>8||x<0||z<0||border<1||w<=border*2||h<=border*2||x>Town.Width-w||z>Town.Height-h)throw new InvalidOperationException("Floor patch exceeds world");}
     }

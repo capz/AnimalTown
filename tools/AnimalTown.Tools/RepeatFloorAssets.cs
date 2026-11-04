@@ -16,6 +16,7 @@ internal static class RepeatFloorAssets
         File.WriteAllBytes(Path.Combine(output,"terrain.cfg"),BitConverter.GetBytes(force));
         string retired=Path.Combine(root,"out/retired-terrain");Directory.CreateDirectory(retired);
         foreach(string pattern in new[]{"terrain-*.bin","terrain-*.dndtex","floor-*.bin","floor-*.dndtex"})foreach(string old in Directory.GetFiles(output,pattern))File.Move(old,Path.Combine(retired,Path.GetFileName(old)),true);
+        if(config["neutralFloor"]!=null){NeutralFloorAssets.Build(root,config,output);return;}
         var provenance=new List<object>();
         foreach(string season in new[]{"spring","summer","fall","winter"}){
             var packages=new List<byte[]>();var identifiers=new Dictionary<string,int>();var styles=new List<int[]>();
@@ -63,7 +64,7 @@ internal static class RepeatFloorAssets
         }
         File.WriteAllText(Path.Combine(root,"out/floor-sources.json"),JsonSerializer.Serialize(provenance,new JsonSerializerOptions{WriteIndented=true}));
     }
-    private static byte[] Encode(SKBitmap image,SKRectI source)
+    internal static byte[] Encode(SKBitmap image,SKRectI source)
     {
         int w=4,h=4;while(w*2<=source.Width&&w<1024)w*=2;while(h*2<=source.Height&&h<1024)h*=2;
         for(int y=source.Top;y<source.Bottom;y++)for(int x=source.Left;x<source.Right;x++)if(image.GetPixel(x,y).Alpha!=255)throw new InvalidDataException("Floor source must be opaque");

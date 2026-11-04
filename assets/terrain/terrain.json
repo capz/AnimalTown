@@ -2,6 +2,30 @@
   "version": 1,
   "season": "auto",
   "tilePixels": 32,
+  "neutralFloor": {
+    "source": "assets/textures/environment/ground/outdoor-floor-neutral.png",
+    "brightnessFloor": 0.86,
+    "tints": {
+      "grass": "#72B955",
+      "water": "#4B9ABB",
+      "wood": "#A77749",
+      "sand": "#E5D196",
+      "rock": "#827F78",
+      "pavement": "#BFB9AB",
+      "dirt": "#9A805D",
+      "building": "#72B955",
+      "terracotta": "#C98769",
+      "stone_pavement": "#AAA9A1",
+      "sand_patch": "#E5D196",
+      "pond": "#4B9ABB"
+    },
+    "seasons": {
+      "spring": { "grass": "#72B955", "building": "#72B955" },
+      "summer": { "grass": "#5BA347", "building": "#5BA347" },
+      "fall": { "grass": "#AD9694", "building": "#AD9694" },
+      "winter": { "grass": "#FFFFFF", "building": "#FFFFFF" }
+    }
+  },
   "surfaces": {
     "grass": {
       "color": "#7EB058",

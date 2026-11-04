@@ -52,17 +52,17 @@ internal static class TextureCache
         var loaded=LoadAndDecode(key,path,atlas,resolution);AnimalTown.GameCube.NativeTexturePages.Collect();return loaded;
     }
     private static CachedTexture LoadAndDecode(string key,string path,bool atlas,TextureResolution resolution)=>Decode(key,File.ReadAllBytes(path),atlas,resolution);
-    internal static CachedTexture LoadFloor(string path,TextureResolution resolution=TexturePolicy.Default)
+    internal static CachedTexture LoadFloor(string path,TextureResolution resolution=TexturePolicy.Default,bool repeat=false)
     {
-        string key=BuildInfo.Commit+":"+path+":floor-mip2-mirror-auto-v3:"+TexturePolicy.Edge(resolution);
+        string key=BuildInfo.Commit+":"+path+":floor-mip2-auto-v4:"+(repeat?"repeat:":"mirror:")+TexturePolicy.Edge(resolution);
         var cached=Find(key,false);if(cached!=null)return cached;
-        var loaded=DecodeFloor(key,path,resolution);AnimalTown.GameCube.NativeTexturePages.Collect();return loaded;
+        var loaded=DecodeFloor(key,path,resolution,repeat);AnimalTown.GameCube.NativeTexturePages.Collect();return loaded;
     }
-    private static CachedTexture DecodeFloor(string key,string path,TextureResolution resolution)
+    private static CachedTexture DecodeFloor(string key,string path,TextureResolution resolution,bool repeat)
     {
         var source=File.ReadAllBytes(path);var package=FloorTexture.Prepare(source,resolution);
         var entry=new CachedTexture{Source=key,SourceHash=TexturePixels.Hash(source),SourceWidth=TexturePixels.Width(source),SourceHeight=TexturePixels.Height(source),Pages=new Texture2D[1]};
-        try{var texture=Texture2D.FromPackage(package,true);entry.Pages[0]=texture;texture.ConfigureSampler(TextureWrapMode.Mirror,TextureWrapMode.Mirror,texture.MipLevels>1?TextureMinFilter.LinearMipmapLinear:TextureMinFilter.Linear,TextureMagFilter.Linear);}
+        try{var texture=Texture2D.FromPackage(package,true);entry.Pages[0]=texture;var wrap=repeat?TextureWrapMode.Repeat:TextureWrapMode.Mirror;texture.ConfigureSampler(wrap,wrap,texture.MipLevels>1?TextureMinFilter.LinearMipmapLinear:TextureMinFilter.Linear,TextureMagFilter.Linear);}
         catch{Dispose(entry);throw;}
         return Store(entry);
     }

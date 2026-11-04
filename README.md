@@ -60,6 +60,9 @@ the stick to repeat a selection; recenter after opening a menu or changing tabs.
 Closing a settings explanation returns to the same selected settings row. Memory-card
 saves use Slot A, `AMTE/01`, [four split records in two banks](docs/split-saves.md), banner and icon. Missing-card
 play works; save errors are shown for retry.
+
+Outdoor ground shares the supplied neutral repeating texture with configurable
+terrain/season tints: see [neutral ground](docs/neutral-ground.md).
 Walk and run are 5% faster, with normalized diagonals and facing that follows
 travel direction. Dialogue syllables use one explicitly retired audio channel;
 an unavailable sound voice leaves text and controls responsive.

@@ -29,7 +29,11 @@ internal sealed class TerrainRenderer
             string name="floor-"+TerrainTiles.SeasonName(next);data=File.ReadAllBytes("dvd:/"+name+".bin");FloorStrips.Validate(data);
             for(int i=0;i<textures.Length;i++)if(textures[i]!=null){TextureCache.Release(textures[i]!);textures[i]=null;materials[i].Texture=null;}
             slots=FloorStrips.Read(data,12);
-            for(int i=0;i<slots;i++){var texture=TextureCache.LoadFloor("dvd:/"+name+"-"+i+".dndtex");textures[i]=texture;materials[i].Texture=texture.Pages[0];}
+            for(int i=0;i<slots;i++){
+                int source=FloorStrips.TextureSlot(data,i);bool neutral=FloorStrips.Read(data,4)==2&&source==0;
+                if(textures[source]==null)textures[source]=TextureCache.LoadFloor(neutral?"dvd:/floor-outdoor-neutral.dndtex":"dvd:/"+name+"-"+source+".dndtex",repeat:neutral);
+                materials[i].Texture=textures[source]!.Pages[0];uint tint=FloorStrips.Tint(data,i);materials[i].Color=new Color32((byte)(tint>>24),(byte)(tint>>16),(byte)(tint>>8));
+            }
             season=next;
         }
         if(!changed&&cachedX==state.X&&cachedZ==state.Z&&cachedRoom==room&&cachedTier==state.HouseTier&&cachedTown==state.Town&&cachedTerrainVersion==state.Town.TerrainVersion)return;
