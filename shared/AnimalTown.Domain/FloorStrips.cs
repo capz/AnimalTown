@@ -43,7 +43,8 @@ public sealed class FloorStrips
                     float minH=mode==1?2:0,maxH=minH;
                     if(mode>=2){float h0=TerrainElevation.AtCell(state.Town,x,z,x,z),h1=TerrainElevation.AtCell(state.Town,x,z,x+1,z),h2=TerrainElevation.AtCell(state.Town,x,z,x,z+1),h3=TerrainElevation.AtCell(state.Town,x,z,x+1,z+1);minH=Math.Min(Math.Min(h0,h1),Math.Min(h2,h3));maxH=Math.Max(Math.Max(h0,h1),Math.Max(h2,h3));}
                     float h=(minH+maxH)*.5f;
-                    if(RenderView.Sphere(x+.5f,(a.Y+b.Y+h*(a.UpY+b.UpY))*.5f,(a.Z+b.Z+h*(a.UpZ+b.UpZ))*.5f,TerrainTiles.GroundVisibilityRadius+(maxH-minH)*.5f,state.X,state.Z,focusHeight)){
+                    if(mode>=TerrainElevation.CornerUpLeft){} // Caps are the two level halves of the cliff template, never a sloping quad.
+                    else if(RenderView.Sphere(x+.5f,(a.Y+b.Y+h*(a.UpY+b.UpY))*.5f,(a.Z+b.Z+h*(a.UpZ+b.UpZ))*.5f,TerrainTiles.GroundVisibilityRadius+(maxH-minH)*.5f,state.X,state.Z,focusHeight)){
                         int neighbor=cliffPreview?TerrainCliffBinding.PreviewLowNeighbor(state.Town,(int)state.X,(int)state.Z,x,z):-1;
                         next=(neighbor<0?At(state,data,x,z,room):At(state,data,neighbor%Town.Width,neighbor/Town.Width,room))+mode*MaximumMaterials;
                     }else RejectedQuads++;

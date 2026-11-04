@@ -21,9 +21,10 @@ internal sealed class TerrainWalls
         if(town==state.Town&&version==state.Town.TerrainVersion&&x==state.X&&z==state.Z&&materials==floor.MaterialRevision&&gallery==preview)return;
         town=state.Town;version=town.TerrainVersion;x=state.X;z=state.Z;materials=floor.MaterialRevision;gallery=preview;soilUsed=total=0;for(int i=0;i<used.Length;i++)used[i]=0;
         float eye=TerrainElevation.At(town,x,z);int minZ=(int)z-TerrainTiles.GroundRowsAhead;
-        for(int row=0;row<TerrainTiles.GroundRows;row++)for(int cx=(int)x-TerrainTiles.RowHalfWidth(row);cx<=(int)x+TerrainTiles.RowHalfWidth(row);cx++){
-            int cz=minZ+row;if(TerrainElevation.Mode(town,cx,cz)==0)continue;var p=CylinderWorld.Surface(cz+.5f,z,1);
+        for(int row=-2;row<TerrainTiles.GroundRows+2;row++)for(int cx=(int)x-TerrainTiles.RowHalfWidth(Math.Max(0,Math.Min(TerrainTiles.GroundRows-1,row)))-2;cx<=(int)x+TerrainTiles.RowHalfWidth(Math.Max(0,Math.Min(TerrainTiles.GroundRows-1,row)))+2;cx++){
+            int cz=minZ+row,mode=TerrainElevation.Mode(town,cx,cz);if(mode==0)continue;var p=CylinderWorld.Surface(cz+.5f,z,1);
             if(!RenderView.Sphere(cx+.5f,p.Y,p.Z,3.5f,x,z,eye))continue;
+            if(mode>=TerrainElevation.CornerUpLeft){if(cx%2==0&&cz%2==0)PlacedSection(state,floor,mode-2,cx,cz);continue;}
             int slot=floor.GroundSlot(state,cx,cz);
             Edge(cx,cz,cx,cz,cx+1,cz,cx,cz-1,slot);Edge(cx,cz,cx+1,cz,cx+1,cz+1,cx+1,cz,slot);
             Edge(cx,cz,cx+1,cz+1,cx,cz+1,cx,cz+1,slot);Edge(cx,cz,cx,cz+1,cx,cz,cx-1,cz,slot);
@@ -33,6 +34,35 @@ internal sealed class TerrainWalls
         for(int i=0;i<used.Length;i++)if(used[i]>0){var buffer=ground[i]!;Pad(buffer,used[i]);if(sizes[i]!=buffer.Length){groundMesh[i]?.Dispose();groundMesh[i]=DynamicMesh.Create(buffer);sizes[i]=buffer.Length;}else groundMesh[i]!.SetVertices(buffer);}
     }
     private static void Pad(VertexPositionColorTexture[] buffer,int start){for(int i=start;i<buffer.Length;i++)buffer[i]=new VertexPositionColorTexture(Vector3.Zero,Color32.White,Vector2.Zero);}
+    private void PlacedSection(GameState state,TerrainRenderer floor,int orientation,int ox,int oz)
+    {
+        var g=TerrainCliffGeometry.For(orientation);
+        int upper=TerrainCliffBinding.Neighbor(state.Town,orientation,ox,oz,true),lower=TerrainCliffBinding.Neighbor(state.Town,orientation,ox,oz,false);
+        int highSlot=floor.GroundSlot(state,upper%Town.Width,upper/Town.Width),lowSlot=floor.GroundSlot(state,lower%Town.Width,lower/Town.Width);
+        for(int t=0;t<g.Triangles;t++){
+            int part=g.Parts[t];
+            if(part==TerrainCliffGeometry.Top||part==TerrainCliffGeometry.Low){
+                var a=Local(g,g.Indices[t*3],ox,oz);var b=Local(g,g.Indices[t*3+2],ox,oz);var c=Local(g,g.Indices[t*3+1],ox,oz);
+                var ab=Mid(a,b);var bc=Mid(b,c);var ca=Mid(c,a);int slot=part==TerrainCliffGeometry.Top?highSlot:lowSlot;
+                Cap(slot,a,ab,ca);Cap(slot,ab,b,bc);Cap(slot,ca,bc,c);Cap(slot,ab,bc,ca);
+            }
+            if(part!=TerrainCliffGeometry.Soil||t>0&&g.Parts[t-1]==TerrainCliffGeometry.Soil)continue;
+            int ia=g.Indices[t*3],ib=g.Indices[t*3+1];var start=Local(g,ia,ox,oz);var end=Local(g,ib,ox,oz);
+            // Split at the fine-cell row boundary before cylinder bending.
+            // Hidden sides join adjacent terrace caps without internal walls.
+            for(int half=0;half<2;half++){
+                float ax=start.X+(end.X-start.X)*half*.5f,az=start.Z+(end.Z-start.Z)*half*.5f;
+                float bx=start.X+(end.X-start.X)*(half+1)*.5f,bz=start.Z+(end.Z-start.Z)*(half+1)*.5f;
+                if(TerrainElevation.At(town!,(ax+bx)*.5f+g.Normals[ia*3]*.01f,(az+bz)*.5f+g.Normals[ia*3+2]*.01f)>=2)continue;
+                Wall(ax,az,bx,bz,2-TerrainCliffGeometry.LipDepth,2-TerrainCliffGeometry.LipDepth,0,0,-1);
+                Wall(ax,az,bx,bz,2,2,2-TerrainCliffGeometry.LipDepth,2-TerrainCliffGeometry.LipDepth,highSlot);
+            }
+        }
+    }
+    private static Vector3 Local(TerrainCliffGeometry g,int i,int ox,int oz)=>new Vector3(ox+g.Positions[i*3],g.Positions[i*3+1],oz+g.Positions[i*3+2]);
+    private static Vector3 Mid(Vector3 a,Vector3 b)=>new Vector3((a.X+b.X)*.5f,(a.Y+b.Y)*.5f,(a.Z+b.Z)*.5f);
+    private VertexPositionColorTexture GroundVertex(Vector3 p)=>Vertex(p.X,p.Z,p.Y,p.X*.5f,p.Z*.5f);
+    private void Cap(int slot,Vector3 a,Vector3 b,Vector3 c)=>Add(slot,GroundVertex(a),GroundVertex(b),GroundVertex(c));
     private Vector3 Point(float px,float pz,float h){var p=CylinderWorld.Surface(pz,z,h);return new Vector3(px,p.Y,p.Z);}
     private VertexPositionColorTexture Vertex(float px,float pz,float h,float u,float v)=>new VertexPositionColorTexture(Point(px,pz,h),Color32.White,new Vector2(u,v));
     private void Add(int slot,VertexPositionColorTexture a,VertexPositionColorTexture b,VertexPositionColorTexture c)

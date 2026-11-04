@@ -5,7 +5,7 @@ namespace AnimalTown;
 // Nintendo's acre data, 5x6 dimensions and elevation layouts are not imported.
 public static class TownGenerator
 {
-    public const int Version=2;
+    public const int Version=3;
     private const int N=1,E=2,S=4,W=8,Size=Town.ScreenTileSize;
     private static int Next(ref uint random,int limit)
     {random=unchecked(random*1664525u+1013904223u);return (int)((random>>8)%(uint)limit);}

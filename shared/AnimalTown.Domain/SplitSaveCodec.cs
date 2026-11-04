@@ -59,7 +59,7 @@ public static class SplitSaveCodec
     public static GameState Decode(byte[][] records)
     {
         if(records.Length!=4)throw new InvalidOperationException("Incomplete save set");var r=new Reader(records[0],TownData);var root=r;var s=new GameState(r.Seed);s.Sequence=r.Sequence;var t=s.Town;
-        r.Range(Town.Width,Town.Width);r.Range(Town.Height,Town.Height);r.Range(1,TownGenerator.Version);t.Day=r.Int();t.Month=r.Int();r.Rle(t.Tiles,7);r.Rle(t.Elevation,5);
+        r.Range(Town.Width,Town.Width);r.Range(Town.Height,Town.Height);r.Range(1,TownGenerator.Version);t.Day=r.Int();t.Month=r.Int();r.Rle(t.Tiles,7);r.Rle(t.Elevation,TerrainElevation.MaximumMode);
         for(int i=0;i<6;i++){var v=t.Residents[i];v.X=r.Int();v.Z=r.Int();v.Name=r.Text(24);v.PosX=r.Int()/1024f;v.PosZ=r.Int()/1024f;}
         t.GroundCount=r.Range(0,512);for(int i=0;i<t.GroundCount;i++){var g=t.Ground[i];g.Item=r.Int();g.X=r.Int();g.Z=r.Int();g.Owner=r.Int();g.Day=r.Int();g.Kind=r.Int();}r.End();
         r=new Reader(records[1],HousePositions);r.Match(root);s.HousePlaced=r.Range(0,1)==1;t.HouseX=r.Int();t.HouseZ=r.Int();for(int i=0;i<6;i++){t.Residents[i].HomeX=r.Int();t.Residents[i].HomeZ=r.Int();}r.End();

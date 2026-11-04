@@ -102,7 +102,7 @@ public static class SaveCodec
         for(int i=0;i<count;i++){var q=s.Town.Placed[i];q.Item=Range(b,ref p,1,25);q.X=Get(b,ref p);q.Z=Get(b,ref p);q.Rotation=Range(b,ref p,0,3);q.Room=Range(b,ref p,0,4);q.Owner=Range(b,ref p,0,0);if(q.Room==0){q.X+=houseDx;q.Z+=houseDz;}if(!s.CanPlace(q.Item,q.X,q.Z,q.Rotation,q.Room,0))throw new InvalidOperationException("Invalid placement");s.Town.PlacedCount++;}
         if(version>=5){
             Range(b,ref p,1,TownGenerator.Version);int elevationRuns=Range(b,ref p,1,Town.Cells),cell=0;
-            for(int i=0;i<elevationRuns;i++){int packed=Get(b,ref p),mode=(int)((uint)packed>>24),length=packed&0xffffff;if(mode>5||length==0||length>Town.Cells-cell)throw new InvalidOperationException("Invalid saved elevation");for(int j=0;j<length;j++)s.Town.Elevation[cell++]=(byte)mode;}
+            for(int i=0;i<elevationRuns;i++){int packed=Get(b,ref p),mode=(int)((uint)packed>>24),length=packed&0xffffff;if(mode>TerrainElevation.MaximumMode||length==0||length>Town.Cells-cell)throw new InvalidOperationException("Invalid saved elevation");for(int j=0;j<length;j++)s.Town.Elevation[cell++]=(byte)mode;}
             if(cell!=Town.Cells)throw new InvalidOperationException("Incomplete saved elevation");
             for(int i=0;i<6;i++){var v=s.Town.Residents[i];v.Name=Text(b,ref p,24);v.HomeX=Range(b,ref p,1,Town.Width-4);v.HomeZ=Range(b,ref p,1,Town.Height-4);v.PosX=Range(b,ref p,0,Town.Width*1024-1)/1024f;v.PosZ=Range(b,ref p,0,Town.Height*1024-1)/1024f;}
         }else for(int i=0;i<6;i++){var v=s.Town.Residents[i];v.PosX=v.X+.5f;v.PosZ=v.Z+.5f;}
