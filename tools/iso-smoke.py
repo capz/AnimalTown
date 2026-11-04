@@ -226,6 +226,22 @@ with (root/'emulator.log').open('w') as log:
                     if mode=='dpad':os.write(controller,(''.join(f'RELEASE {button}\n' for button in pads[n])).encode())
                     time.sleep(.5);screenshot(f'movement-{mode}-{n}.png')
             press('START');time.sleep(12);screenshot('movement-save.png')
+        elif '--river-coast' in sys.argv:
+            press('A');press('D_UP');press('A');press('A');time.sleep(2);press('B');press('B')
+            for scene in ['river', 'river-corner', 'bridge', 'coast-beach', 'estuary', 'restored']:
+                os.write(controller,b'PRESS L\nPRESS R\n');time.sleep(.2);press('D_LEFT');os.write(controller,b'RELEASE L\nRELEASE R\n')
+                time.sleep(3);screenshot(scene+'.png')
+                if scene=='river':
+                    time.sleep(8);screenshot('river-animated.png')
+                    def rgb(name):return subprocess.check_output(['ffmpeg','-v','error','-i',str(root/name),'-frames:v','1','-f','rawvideo','-pix_fmt','rgb24','-'])
+                    first=rgb('river.png');second=rgb('river-animated.png');wet=changed=0
+                    for at in range(0,len(first),3):
+                        r,g,b=first[at:at+3]
+                        if r<120 and g>100 and b>g+4:
+                            wet+=1;changed+=first[at:at+3]!=second[at:at+3]
+                    (root/'river-animation.txt').write_text(f'Water pixels: {wet}\nAnimated water pixels: {changed}\n')
+                    if wet<1000 or changed<50:raise AssertionError('Expected visible animated lowered river')
+            press('X');screenshot('river-coast-menu.png');press('B')
         elif '--water' in sys.argv:
             # Fresh card: create a player, then use the clear starter reserve
             # to reach the western ocean boundary in any generated town.

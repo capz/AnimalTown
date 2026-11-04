@@ -9,6 +9,10 @@ public static class TerrainElevation
     public static byte Mode(Town town,int x,int z)=>town.Inside(x,z)?town.Elevation[z*Town.Width+x]:(byte)0;
     public static float AtCell(Town town,int cellX,int cellZ,float x,float z)
     {
+        int terrain=town.At(cellX,cellZ);if(terrain==(int)Terrain.Water)return BaseAtCell(town,cellX,cellZ,x,z)+WaterTerrain.RiverHeight;if(WaterTerrain.IsSea(town,cellX,cellZ))return BaseAtCell(town,cellX,cellZ,x,z)+WaterSurface.Height;if(WaterTerrain.IsCoast(terrain))return Height;return BaseAtCell(town,cellX,cellZ,x,z);
+    }
+    private static float BaseAtCell(Town town,int cellX,int cellZ,float x,float z)
+    {
         int mode=Mode(town,cellX,cellZ);if(mode==0)return 0;if(mode==Block)return 2;
         float lx=Math.Max(0,Math.Min(2,x-cellX/2*2)),lz=Math.Max(0,Math.Min(2,z-cellZ/2*2));
         return mode==RampNorth?2-lz:mode==RampEast?lx:mode==RampSouth?lz:mode==RampWest?2-lx:0;

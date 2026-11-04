@@ -1,17 +1,48 @@
 # Opaque GameCube water
 
-Outdoor `Terrain.Water` cells now use `WaterRenderer` and a shared `WaterMaterial`
-instead of the neutral grass/floor texture. This includes rivers, ponds, the sea,
-and ocean outside town bounds. Floor metadata patches cannot turn dry ground into
-water; collision, saves, generation and bridge footprints keep their existing rules.
-Interior floors continue to use the terrain importer.
+Outdoor water uses one shared `WaterRenderer` / `WaterMaterial`, with distinct
+persisted inland and sea semantics. `Terrain.Water` (ID 1) means rivers and ponds;
+`Terrain.Sea` (ID 8) means sea and the external ocean. Inland water ground and
+visible opaque surface are exactly 0.50 m below their local elevation. Sea keeps
+the existing -0.06 m offset. Bridges retain the land plane and collision.
+
+`TerrainWalls` emits shared soil/lip batches along dry-to-river boundaries,
+including corners. Water cells never emit retaining walls against one another.
+Bridge decks cover a continuous lowered water plane without becoming foam edges or retaining walls.
+All wall endpoints use the same cylindrical row chords as ground and water.
+
+CoastNorth/East/South/West (IDs 9..12) describe aligned 2 x 2 m sections. Their
+landward metre is grass-topped 2 m land/cliff; the seaward metre is sea, not the
+lower half of a vertical face. They reuse world-aligned ground material bindings
+and the existing soil texture. New southern headlands use CoastSouth; all four
+orientations are covered by regression checks. Coastal cliffs block traversal.
+Beach cells touching sea slope to the sea plane and receive a wet-sand tint;
+restrained surface foam supplies the surf edge. New generation permits sea to
+border only water, beach or a facing coastal cliff.
+
+At a mouth, river -0.50 m and sea -0.06 m remain distinct. An opaque, two-sided
+water curtain joins their shared edge over the exact 0.44 m step. Its endpoints
+meet both surface chords and the bank endpoints, closing the estuary without
+flattening the river or adding a soil wall between water cells. This is a stylized
+static tidal step, not a physical flowing-water simulation.
 
 The surface has two triangles per visible cell, with world-coordinate UVs (one
-base repeat per four metres). It sits 6 cm below the ground/bridge surface and
-follows the existing cylindrical world and terrain elevation. No vertices move
-for waves. Geometry updates only when the terrain, camera focus, room or season
-invalidates the terrain cache. Water authored on raised sections inherits their
-height; use level cells for rivers/ponds, not terrain ramps.
+base repeat per four metres). No vertices move for waves. Geometry updates only
+when terrain, camera focus, room or season invalidates the terrain cache.
+
+## Saves and generation
+
+Combined saves now write v6 and read v1..v6; split records write v2 and read
+v1..v2. Historical formats still reject IDs above 7. Current formats validate IDs
+through 12. Loading historical records relabels only existing water in the
+southern sea band (z >= 128) as sea. It never flood-fills the connected river or
+regenerates a town. Dry terrain edits, elevations, structures, possessions,
+resident data and progress remain intact. A historical inland pond stays inland
+water; a historical water edit inside the southern sea band adopts sea semantics.
+This explicit template boundary is deterministic and migration is stable after
+its first write. Existing arbitrary dry shoreline edits are retained and receive
+normal cliff edge geometry rather than being repainted as beach or headland.
+New-town generator version 3 authors the sea boundary and half-section headlands.
 
 ## Material and patterns
 
@@ -63,7 +94,7 @@ bridges or the external ocean. Foam interpolates on the water's row chord with
 an 8 mm radial lift, so it does not float above the curved surface.
 
 The floor visibility window bounds selection. Water is limited to 2,048 visible
-cells (4,096 surface triangles); each cell can add at most four foam quads.
+cells (4,096 horizontal surface triangles); each cell can add at most four foam quads and four two-sided mouth curtains.
 Retained mesh buffers grow geometrically and are reused; animation only updates
 material transforms/color. Empty geometry is not submitted. The normal scene
 requires one opaque water draw plus one optional foam draw, sharing textures and
@@ -90,3 +121,22 @@ and return to the world. Inspect `water-a.png`, `water-b.png`, `water-camera.png
 unchanged geometry and subsequent material state. Pixel animation alone does not
 prove visual quality or distinguish the individual scrolling layers. Physical
 GameCube appearance/performance remains unverified.
+
+## River/coast inspection
+
+L+R+D-pad Left cycles a read-only camera tour: river, bank corner, bridge,
+coastal headland/beach, mouth, then normal play. It uses the actual loaded town,
+restores player coordinates after every draw, and blocks normal input during
+inspection. It never modifies terrain or saves. L+R+D-pad Up still opens the
+existing eight-piece cliff gallery.
+
+```sh
+docker run --rm --init --shm-size=512m --mount "type=bind,src=$PWD,dst=/work" -w /work animaltown-dolphin python3 tools/iso-smoke.py out/AnimalTown-VERSION.iso out/river-coast-smoke --river-coast
+```
+
+Inspect river.png, river-corner.png, bridge.png, coast-beach.png, estuary.png,
+restored.png and river-coast-menu.png. Automated height, footprint, shore-adjacency,
+68-seed generation, combined/split round-trip and historical migration checks run
+through `tools/test-changes.ps1`. Physical console testing remains outstanding.
+The handoff branch is explicitly enabled in the existing release workflow so its
+clean ISO/backend/tools/cliff-kit manifests and checksums publish as a prerelease.

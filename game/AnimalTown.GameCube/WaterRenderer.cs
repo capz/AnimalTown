@@ -14,13 +14,18 @@ internal sealed class WaterRenderer
     internal int Triangles=>(surfaceCount+foamCount)/3;
     internal void Prepare(GameState next,FloorStrips strips,int room)
     {
-        state=next;surfaceCount=foamCount=0;
-        if(room==0)for(int n=0;n<strips.Count;n++)if(strips.Water[n]){
+        state=next;surfaceCount=foamCount=0;int cells=0;
+        if(room==0)for(int n=0;n<strips.Count;n++){
             int z=strips.Z0[n];
             for(int x=strips.X0[n];x<strips.X1[n];x++){
-                if(surfaceCount/6>=WaterSurface.MaximumCells)throw new InvalidOperationException("Visible water exceeds geometry budget");
+                bool bridge=state.Town.At(x,z)==(int)Terrain.Bridge;if(!strips.Water[n]&&!bridge)continue;
+                if(cells++>=WaterSurface.MaximumCells)throw new InvalidOperationException("Visible water exceeds geometry budget");
                 Quad(ref surface,ref surfaceCount,x,z,x,z,x+1,z,x+1,z+1,x,z+1,false);
-                if(!material.FoamEnabled)continue;
+                if(WaterTerrain.IsSea(state.Town,x,z)){
+                    Mouth(x,z,x,z,x+1,z,x,z-1);Mouth(x,z,x+1,z,x+1,z+1,x+1,z);
+                    Mouth(x,z,x+1,z+1,x,z+1,x,z+1);Mouth(x,z,x,z+1,x,z,x-1,z);
+                }
+                if(bridge||!material.FoamEnabled)continue;
                 float w=WaterSurface.FoamWidth;
                 if(WaterSurface.IsBank(state.Town,x,z-1))Quad(ref foam,ref foamCount,x,z,x,z,x+1,z,x+1,z+w,x,z+w,true);
                 if(WaterSurface.IsBank(state.Town,x,z+1))Quad(ref foam,ref foamCount,x,z,x,z+1-w,x+1,z+1-w,x+1,z+1,x,z+1,true);
@@ -32,6 +37,18 @@ internal sealed class WaterRenderer
         }
         Upload(ref surfaceMesh,surface,surfaceCount,ref surfaceCapacity);
         Upload(ref foamMesh,foam,foamCount,ref foamCapacity);
+    }
+    private void Mouth(int cx,int cz,float ax,float az,float bx,float bz,int nx,int nz)
+    {
+        if(state.Town.At(nx,nz)!=(int)Terrain.Water)return;
+        float topA=TerrainElevation.AtCell(state.Town,cx,cz,ax,az),topB=TerrainElevation.AtCell(state.Town,cx,cz,bx,bz);
+        float lowA=TerrainElevation.AtCell(state.Town,nx,nz,ax,az),lowB=TerrainElevation.AtCell(state.Town,nx,nz,bx,bz);
+        if(topA<=lowA&&topB<=lowB)return;
+        var a=AtHeight(cx,cz,ax,az,topA,false);var b=AtHeight(cx,cz,bx,bz,topB,false);
+        var c=AtHeight(cx,cz,bx,bz,lowB,false);var d=AtHeight(cx,cz,ax,az,lowA,false);
+        Reserve(ref surface,surfaceCount);Reserve(ref surface,surfaceCount+6);
+        surface[surfaceCount++]=a;surface[surfaceCount++]=b;surface[surfaceCount++]=c;surface[surfaceCount++]=a;surface[surfaceCount++]=c;surface[surfaceCount++]=d;
+        surface[surfaceCount++]=a;surface[surfaceCount++]=c;surface[surfaceCount++]=b;surface[surfaceCount++]=a;surface[surfaceCount++]=d;surface[surfaceCount++]=c;
     }
     internal void Animate(double seconds)=>material.Animate(seconds);
     internal void SetTerrainTint(uint rgba)=>material.SetTerrainTint(rgba);
@@ -48,7 +65,11 @@ internal sealed class WaterRenderer
     }
     private VertexPositionColorTexture Vertex(int cx,int cz,float x,float z,bool isFoam)
     {
-        float height=TerrainElevation.AtCell(state.Town,cx,cz,x,z)+WaterSurface.Height+(isFoam?.008f:0);
+        float height=WaterSurface.HeightAt(state.Town,cx,cz,x,z)+(isFoam?.008f:0);
+        return AtHeight(cx,cz,x,z,height,isFoam);
+    }
+    private VertexPositionColorTexture AtHeight(int cx,int cz,float x,float z,float height,bool isFoam)
+    {
         // Interpolate on the SAME row chord as the surface, not a new cylinder
         // sample inside a cell (which would float above the water chord).
         var a=CylinderWorld.Surface(cz,state.Z,height);var b=CylinderWorld.Surface(cz+1,state.Z,height);float t=z-cz;

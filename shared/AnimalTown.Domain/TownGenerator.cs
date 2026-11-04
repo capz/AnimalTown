@@ -5,7 +5,7 @@ namespace AnimalTown;
 // Nintendo's acre data, 5x6 dimensions and elevation layouts are not imported.
 public static class TownGenerator
 {
-    public const int Version=2;
+    public const int Version=3;
     private const int N=1,E=2,S=4,W=8,Size=Town.ScreenTileSize;
     private static int Next(ref uint random,int limit)
     {random=unchecked(random*1664525u+1013904223u);return (int)((random>>8)%(uint)limit);}
@@ -85,9 +85,10 @@ public static class TownGenerator
             for(int dz=-rz;dz<=rz;dz++)for(int dx=-rx;dx<=rx;dx++)if(dx*dx*rz*rz+dz*dz*rx*rx<=rx*rx*rz*rz)Paint(town,column*Size+10+dx,row*Size+10+dz,Terrain.Water);
             placed++;
         }
+        WaterTerrain.Migrate(town);WaterTerrain.GenerateCoast(town);
         // World boundaries are barriers; the river mouth still joins the sea.
-        for(int x=0;x<Town.Width;x++){Paint(town,x,0,Terrain.Water);Paint(town,x,Town.Height-1,Terrain.Water);}
-        for(int z=0;z<Town.Height;z++){Paint(town,0,z,Terrain.Water);Paint(town,Town.Width-1,z,Terrain.Water);}
+        for(int x=0;x<Town.Width;x++){Paint(town,x,0,Terrain.Water);Paint(town,x,Town.Height-1,Terrain.Sea);}
+        for(int z=0;z<Town.Height;z++){Paint(town,0,z,z>=WaterTerrain.SeaStart?Terrain.Sea:Terrain.Water);Paint(town,Town.Width-1,z,z>=WaterTerrain.SeaStart?Terrain.Sea:Terrain.Water);}
     }
     internal static void Populate(Town town)
     {

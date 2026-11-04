@@ -17,12 +17,12 @@ internal sealed class MapBackground
     {
         if(town==current&&version==current.TerrainVersion)return;
         for(int z=0;z<Samples;z++)for(int x=0;x<Samples;x++){
-            var c=TileColor(current.At(x*2+1,z*2+1));int p=(z*TextureSize+x)*4;rgba[p]=c.R;rgba[p+1]=c.G;rgba[p+2]=c.B;rgba[p+3]=255;
+            var c=TileColor(WaterSurface.IsWater(current,x*2+1,z*2+1)?(int)Terrain.Sea:current.At(x*2+1,z*2+1));int p=(z*TextureSize+x)*4;rgba[p]=c.R;rgba[p+1]=c.G;rgba[p+2]=c.B;rgba[p+3]=255;
         }
         if(texture==null)texture=Texture2D.CreateNative(TextureSize,TextureSize,NativeTextureFormat.Rgba8,false);
         texture.ReplaceRgba(rgba);
         town=current;version=current.TerrainVersion;
     }
-    internal static Color32 TileColor(int t)=>t==1?new Color32(75,154,187):t==2?new Color32(167,119,73):t==3?new Color32(229,209,150):t==4?new Color32(130,127,92):t==5?new Color32(191,179,147):new Color32(119,168,88);
+    internal static Color32 TileColor(int t)=>t==1||t==(int)Terrain.Sea?new Color32(75,154,187):t==2?new Color32(167,119,73):t==3?new Color32(229,209,150):t==4||WaterTerrain.IsCoast(t)?new Color32(130,127,92):t==5?new Color32(191,179,147):new Color32(119,168,88);
     internal void Draw(Draw2D ui)=>ui.DrawTexture(texture!,new RectF(0,0,Samples,Samples),new RectF(160,115,Size,Size),Color32.White);
 }

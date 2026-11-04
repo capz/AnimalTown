@@ -22,7 +22,7 @@ internal sealed class TerrainWalls
         town=state.Town;version=town.TerrainVersion;x=state.X;z=state.Z;materials=floor.MaterialRevision;gallery=preview;soilUsed=total=0;for(int i=0;i<used.Length;i++)used[i]=0;
         float eye=TerrainElevation.At(town,x,z);int minZ=(int)z-TerrainTiles.GroundRowsAhead;
         for(int row=0;row<TerrainTiles.GroundRows;row++)for(int cx=(int)x-TerrainTiles.RowHalfWidth(row);cx<=(int)x+TerrainTiles.RowHalfWidth(row);cx++){
-            int cz=minZ+row;if(TerrainElevation.Mode(town,cx,cz)==0)continue;var p=CylinderWorld.Surface(cz+.5f,z,1);
+            int cz=minZ+row;if(WaterSurface.IsWater(town,cx,cz))continue;var p=CylinderWorld.Surface(cz+.5f,z,1);
             if(!RenderView.Sphere(cx+.5f,p.Y,p.Z,3.5f,x,z,eye))continue;
             int slot=floor.GroundSlot(state,cx,cz);
             Edge(cx,cz,cx,cz,cx+1,cz,cx,cz-1,slot);Edge(cx,cz,cx+1,cz,cx+1,cz+1,cx+1,cz,slot);
@@ -33,7 +33,7 @@ internal sealed class TerrainWalls
         for(int i=0;i<used.Length;i++)if(used[i]>0){var buffer=ground[i]!;Pad(buffer,used[i]);if(sizes[i]!=buffer.Length){groundMesh[i]?.Dispose();groundMesh[i]=DynamicMesh.Create(buffer);sizes[i]=buffer.Length;}else groundMesh[i]!.SetVertices(buffer);}
     }
     private static void Pad(VertexPositionColorTexture[] buffer,int start){for(int i=start;i<buffer.Length;i++)buffer[i]=new VertexPositionColorTexture(Vector3.Zero,Color32.White,Vector2.Zero);}
-    private Vector3 Point(float px,float pz,float h){var p=CylinderWorld.Surface(pz,z,h);return new Vector3(px,p.Y,p.Z);}
+    private Vector3 Point(float px,float pz,float h){int row=(int)Math.Floor(pz);var a=CylinderWorld.Surface(row,z,h);var b=CylinderWorld.Surface(row+1,z,h);float t=pz-row;return new Vector3(px,a.Y+(b.Y-a.Y)*t,a.Z+(b.Z-a.Z)*t);}
     private VertexPositionColorTexture Vertex(float px,float pz,float h,float u,float v)=>new VertexPositionColorTexture(Point(px,pz,h),Color32.White,new Vector2(u,v));
     private void Add(int slot,VertexPositionColorTexture a,VertexPositionColorTexture b,VertexPositionColorTexture c)
     {
@@ -44,6 +44,8 @@ internal sealed class TerrainWalls
     }
     private void Edge(int cx,int cz,int ax,int az,int bx,int bz,int nx,int nz,int slot)
     {
+        if(town!.At(cx,cz)==(int)Terrain.Bridge)return;
+        if(town.At(cx,cz)==(int)Terrain.Beach&&WaterTerrain.IsSea(town,nx,nz))return;
         float a=TerrainElevation.AtCell(town!,cx,cz,ax,az),b=TerrainElevation.AtCell(town!,cx,cz,bx,bz),la=TerrainElevation.AtCell(town!,nx,nz,ax,az),lb=TerrainElevation.AtCell(town!,nx,nz,bx,bz);
         if(a<=la+.001f&&b<=lb+.001f)return;la=Math.Min(a,la);lb=Math.Min(b,lb);
         float sa=Math.Max(la,a-TerrainCliffGeometry.LipDepth),sb=Math.Max(lb,b-TerrainCliffGeometry.LipDepth);
@@ -51,11 +53,11 @@ internal sealed class TerrainWalls
     }
     private void Wall(float ax,float az,float bx,float bz,float a,float b,float la,float lb,int slot)
     {
-        float u0=ax==bx?az*.5f:ax*.5f,u1=ax==bx?bz*.5f:bx*.5f;
-        var p0=slot<0?Vertex(ax,az,a,u0,(1.94f-a)/1.94f):Vertex(ax,az,a,ax*.5f,az*.5f);
-        var p1=slot<0?Vertex(bx,bz,b,u1,(1.94f-b)/1.94f):Vertex(bx,bz,b,bx*.5f,bz*.5f);
-        var p2=slot<0?Vertex(bx,bz,lb,u1,(1.94f-lb)/1.94f):Vertex(bx,bz,lb,bx*.5f,bz*.5f);
-        var p3=slot<0?Vertex(ax,az,la,u0,(1.94f-la)/1.94f):Vertex(ax,az,la,ax*.5f,az*.5f);
+        float u0=ax==bx?az*.5f:ax*.5f,u1=ax==bx?bz*.5f:bx*.5f,origin=Math.Max(a,b);
+        var p0=slot<0?Vertex(ax,az,a,u0,(origin-a)/1.94f):Vertex(ax,az,a,ax*.5f,az*.5f);
+        var p1=slot<0?Vertex(bx,bz,b,u1,(origin-b)/1.94f):Vertex(bx,bz,b,bx*.5f,bz*.5f);
+        var p2=slot<0?Vertex(bx,bz,lb,u1,(origin-lb)/1.94f):Vertex(bx,bz,lb,bx*.5f,bz*.5f);
+        var p3=slot<0?Vertex(ax,az,la,u0,(origin-la)/1.94f):Vertex(ax,az,la,ax*.5f,az*.5f);
         Add(slot,p0,p2,p1);Add(slot,p0,p3,p2);
     }
     private void Section(GameState state,TerrainRenderer floor,int orientation,int ox,int oz)

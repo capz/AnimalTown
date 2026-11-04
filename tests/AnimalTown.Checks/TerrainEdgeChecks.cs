@@ -25,7 +25,7 @@ internal static class TerrainEdgeChecks
         var state=new GameState(17);var strips=new FloorStrips();
         // Alternating materials exercise the maximum split cost rather than
         // relying on a uniform floor that merges into one strip per row.
-        for(int z=0;z<Town.Height;z++)for(int x=0;x<Town.Width;x++)state.Town.Tiles[z*Town.Width+x]=(byte)((x+z)%2);
+        for(int z=0;z<Town.Height;z++)for(int x=0;x<Town.Width;x++)state.Town.Tiles[z*Town.Width+x]=(byte)((x+z)%2==0?Terrain.Grass:Terrain.Plaza);
         int extra=0,visibleSamples=0,maximum=0;
         for(int offset=0;offset<16;offset++){
             state.X=99.01f+offset*.137f;state.Z=99.01f+offset*.113f;

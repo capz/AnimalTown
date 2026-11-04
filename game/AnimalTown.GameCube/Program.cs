@@ -81,6 +81,7 @@ internal sealed class TownGame
     private bool indexedModels=true,batchedDrawing=true;
     private int uvDebug;
     private bool cliffPreview;
+    private int waterInspection;
     private static readonly string[] tabs={"Backpack","Jobs","Catalog","Home","Post office","Settings"};
     private static readonly string[] itemActions={"Drop","Place (R rotates)","Plant","Eat","Wear","Equip","Bury","Open money bag","Read","Quit"};
     internal TownGame()
@@ -152,6 +153,8 @@ internal sealed class TownGame
     {
         bool chord=p.L.IsHeld&&p.R.IsHeld;
         if(chord&&p.DPadUp.WasPressed&&room==0){cliffPreview=!cliffPreview;return;}
+        if(chord&&p.DPadLeft.WasPressed&&room==0&&screen=="world"){waterInspection=(waterInspection+1)%6;return;}
+        if(waterInspection!=0)return;
         if(chord&&p.Start.WasPressed){InspectTerrain();return;}
         bool navigating=screen=="menu"||screen=="keyboard"||screen=="create"||screen=="item"||screen=="sell"||screen=="shop"||screen=="store"||screen=="post"||screen=="mail"||screen=="lost";
         int direction=menuNavigation.Read(screen,screen=="menu"?menuTab:-1,p.Stick.X,p.Stick.Y,(int)p.PressedButtons,Clock.Timestamp,navigating&&!chord);
@@ -317,7 +320,7 @@ internal sealed class TownGame
             if(g.Kind==1&&state.Tool==7&&state.Receive(g.Item)){state.Town.RemoveGround(ground);Say("Digging","You found something!");return;}
             if(g.Kind==2&&state.Tool==8){jobProgress++;Say("Flowers","Watered with care.");return;}
         }
-        if(state.Tool==5&&(state.Town.At(tx,tz)==1||state.Town.At(tx+1,tz)==1))
+        if(state.Tool==5&&(WaterSurface.IsWater(state.Town,tx,tz)||WaterSurface.IsWater(state.Town,tx+1,tz)))
         { Say("Fishing",state.Receive(14)?"A river fish!":"Your pockets are full.");return; }
         if(state.Tool==6){Say("Bug net",tick%3==0&&state.Receive(15)?"Caught a butterfly!":"No butterfly in reach. Try again nearby.");return;}
         if(state.Tool==7&&state.Town.AddGround(16,tx,tz,1,day)){Say("Digging","A spot for something buried.");return;}
@@ -391,6 +394,12 @@ internal sealed class TownGame
     }
     internal void Draw()
     {
+        float x=state.X,z=state.Z;
+        try{if(waterInspection!=0)WaterInspection.Focus(state,waterInspection);DrawScene();}
+        finally{state.X=x;state.Z=z;}
+    }
+    private void DrawScene()
+    {
         long phase=FrameProfile.Start();terrain.Prepare(state,room,month,cliffPreview);terrain.Animate((Clock.Timestamp-sessionStart)/1000000.0);terrainWalls.Prepare(state,room,terrain,cliffPreview);FrameProfile.End(2,phase);
         phase=FrameProfile.Start();uiShapes.Prepare(screen,screen=="menu"?menuTab:-1,batchedDrawing);if(batchedDrawing&&screen=="map")mapBackground.Prepare(state.Town);modelUsed=0;FrameProfile.End(8,phase);
         phase=FrameProfile.Start();device.BeginFrame(new Color32(149,198,186));
@@ -422,7 +431,7 @@ internal sealed class TownGame
         for(int i=0;i<state.Town.PlacedCount;i++){var q=state.Town.Placed[i];if(q.Room==room)Box(q.X,0,q.Z,.7f,.7f,.7f,new Color32(176,119,81));}
         if(batchedDrawing)boxes.Flush();
         FrameProfile.End(7,phase);phase=FrameProfile.Start();
-        ModelAt(actors[0],state.X,state.Z,1.8f,facingYaw);
+        if(waterInspection==0)ModelAt(actors[0],state.X,state.Z,1.8f,facingYaw);
         if(batchedDrawing)actorQueue.Execute(renderer);
         FrameProfile.End(5,phase);phase=FrameProfile.Start();
         if(screen=="plot")
@@ -532,7 +541,7 @@ internal sealed class TownGame
         { Panel(115,181,410,132);Heading("Saving your town",142,199,ink);Text("Please keep the memory\ncard inserted.",142,245,ink,1.25f);return; }
         if(screen=="create")
         { Panel(55,90,530,295);Heading("Make yourself at home",78,102,ink);string[] options={"Species: "+species[state.Species],"Name: "+state.Name,"Catchphrase: "+state.Catchphrase,"Palette: "+state.Palette,"Right: change / A: edit","Choose your house plot"};for(int i=0;i<options.Length;i++){if(selected==i)Rounded(69,148+i*31,495,28,14,new Color32(221,231,188));Text((selected==i?"> ":"  ")+options[i],75,149+i*31,ink);}return; }
-        if(screen=="world"){if(cliffPreview)Text("Cliff kit preview / L+R+Up closes",42,343,ink);return;}
+        if(screen=="world"){if(waterInspection!=0)Text("Water inspection "+waterInspection+" / L+R+Left cycles",42,320,ink);if(cliffPreview)Text("Cliff kit preview / L+R+Up closes",42,343,ink);return;}
         if((screen=="menu"&&menuTab==0)||screen=="sell"||screen=="item"){DrawBackpack();return;}
         Panel(45,75,550,350);string title=screen=="menu"?tabs[menuTab]:screen=="shop"?"Store stock":screen=="store"?"Hearth's store":screen=="post"?"Town hall":screen=="mail"?"Mailbox":"Lost and Found";
         Heading(title,68,91,ink);

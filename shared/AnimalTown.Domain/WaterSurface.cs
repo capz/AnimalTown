@@ -5,7 +5,8 @@ public static class WaterSurface
 {
     public const int TextureSize=64,MaximumCells=FloorStrips.Capacity;
     public const float Height=-.06f,UvScale=.25f,FoamWidth=.12f;
-    public static bool IsWater(Town town,int x,int z)=>town.At(x,z)==(int)Terrain.Water;
+    public static bool IsWater(Town town,int x,int z)=>town.At(x,z)==(int)Terrain.Water||WaterTerrain.IsSea(town,x,z);
+    public static float HeightAt(Town town,int cx,int cz,float x,float z)=>TerrainElevation.AtCell(town,cx,cz,x,z)+(town.At(cx,cz)==(int)Terrain.Bridge?WaterTerrain.RiverHeight:0);
     // Bridges cover the river rather than creating a new bank.
     public static bool IsBank(Town town,int x,int z)=>town.Inside(x,z)&&!IsWater(town,x,z)&&town.At(x,z)!=(int)Terrain.Bridge;
     // One value per logical corner: adjacent cells always interpolate the same

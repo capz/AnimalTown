@@ -16,14 +16,14 @@ internal static class TownGenerationChecks
             while(front<back){int cell=queue[front++],x=cell%Town.Width,z=cell/Town.Width;
                 for(int d=0;d<4;d++){int nx=x+(d==0?-1:d==1?1:0),nz=z+(d==2?-1:d==3?1:0);if(!town.Inside(nx,nz))continue;int next=nz*Town.Width+nx;if(!visited[next]&&!blocked[next]&&town.Walkable(nx,nz)){visited[next]=true;queue[back++]=next;}}
             }
-            bool connected=true;int bridgeCells=0,waterCells=0;for(int i=0;i<Town.Cells;i++){if(town.Walkable(i%Town.Width,i/Town.Width)&&!blocked[i]&&!visited[i])connected=false;if(town.Tiles[i]==(byte)Terrain.Bridge)bridgeCells++;if(town.Tiles[i]==(byte)Terrain.Water)waterCells++;}
+            bool connected=true;int bridgeCells=0,waterCells=0;for(int i=0;i<Town.Cells;i++){if(town.Walkable(i%Town.Width,i/Town.Width)&&!blocked[i]&&!visited[i])connected=false;if(town.Tiles[i]==(byte)Terrain.Bridge)bridgeCells++;if(WaterSurface.IsWater(town,i%Town.Width,i/Town.Width))waterCells++;}
             check(waterCells>=Town.Cells/5&&waterCells<=Town.Cells*3/10,"water covers twenty to thirty percent");check(connected,"every playable cell reachable with tree collision enabled");check(bridgeCells>=18&&bridgeCells<=60,"two river crossings have bounded width and clear approaches");
             check(town.ValidPlot(12,22)&&visited[28*Town.Width+32]&&visited[28*Town.Width+50]&&visited[50*Town.Width+65],"mandatory plots and service entrances retained");
             for(int i=0;i<6;i++)check(visited[town.Residents[i].Z*Town.Width+town.Residents[i].X],"generated resident reachable");
             Array.Clear(visited);int bodies=0;
-            for(int start=0;start<Town.Cells;start++)if(!visited[start]&&(town.Tiles[start]==1||town.Tiles[start]==2)){
+            for(int start=0;start<Town.Cells;start++)if(!visited[start]&&(WaterSurface.IsWater(town,start%Town.Width,start/Town.Width)||town.Tiles[start]==2)){
                 bodies++;front=0;back=0;queue[back++]=start;visited[start]=true;
-                while(front<back){int cell=queue[front++],x=cell%Town.Width,z=cell/Town.Width;for(int d=0;d<4;d++){int nx=x+(d==0?-1:d==1?1:0),nz=z+(d==2?-1:d==3?1:0);if(!town.Inside(nx,nz))continue;int next=nz*Town.Width+nx;if(!visited[next]&&(town.Tiles[next]==1||town.Tiles[next]==2)){visited[next]=true;queue[back++]=next;}}}
+                while(front<back){int cell=queue[front++],x=cell%Town.Width,z=cell/Town.Width;for(int d=0;d<4;d++){int nx=x+(d==0?-1:d==1?1:0),nz=z+(d==2?-1:d==3?1:0);if(!town.Inside(nx,nz))continue;int next=nz*Town.Width+nx;if(!visited[next]&&(WaterSurface.IsWater(town,nx,nz)||town.Tiles[next]==2)){visited[next]=true;queue[back++]=next;}}}
             }
             check(bodies==3||bodies==4,"river joins ocean, with two or three separate ponds");
             byte[] encoded=SaveCodec.Encode(state);var loaded=SaveCodec.Decode(encoded);check(encoded.SequenceEqual(SaveCodec.Encode(loaded)),"generated map, seed and objects survive save round trip");

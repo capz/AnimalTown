@@ -4,6 +4,7 @@ internal static class WaterSurfaceChecks
 {
     internal static void Run(Action<bool,string> check)
     {
+        RiverCoastChecks.Run(check);
         var state=new GameState(49);var town=state.Town;
         Array.Fill(town.Tiles,(byte)Terrain.Water);Array.Clear(town.Elevation);
         check(WaterSurface.Depth(town,80,80)==1&&WaterSurface.Depth(town,-10,-10)==1,"open sea and pond interiors use deep tint, including outside world bounds");

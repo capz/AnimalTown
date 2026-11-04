@@ -12,18 +12,19 @@ The user approved implementation after reviewing top-down/oblique and cross-sect
 - Keep the existing opaque GX material, two independently scrolling layers, tint/depth variation and restrained optional foam. No vertex wave simulation.
 - Preserve possessions, structures, progress and edited terrain when migrating saves. Do not regenerate saved towns.
 
-## Continuation state
+## Implementation
 
-The handoff branch integrates the pending water-material and versioning branches with the current main cliff kit. Merge conflicts were resolved to retain both cliff-preview/material binding and water animation. This integration checkpoint has not yet been built or tested. The new river/sea terrain behavior above is not implemented yet.
+Implemented on the handoff branch: explicit sea/coast IDs, lowered inland water,
+pooled bank geometry, half-footprint coastal sections, wet-sand beach transitions,
+watertight 0.44 m opaque estuary curtains, and versioned save migration without
+regeneration. See [water-rendering.md](water-rendering.md) for geometry, migration
+policy, regression coverage and the read-only Dolphin inspection tour.
 
-Important implementation considerations:
-
-- The current persisted `Terrain` enum has values 0..7 and one `Water` value. Both `SaveCodec` (v5) and `SplitSaveCodec` (v1) currently validate terrain against 7. Explicit new kinds need backward-compatible versioned decoding and regression tests.
-- New-town generation uses narrow rivers connected to a broad southern sea. A naive boundary flood fill would classify connected rivers as sea; preserve a deliberate mouth boundary.
-- Visible river lowering and unchanged sea height leave a height difference at the mouth (currently 0.44 m with the existing 6 cm sea offset). Keep the approved heights and implement/document an explicit watertight estuary/transition rather than silently flattening the river.
-- Reuse `TerrainWalls`, `TerrainCliffGeometry` and `TerrainCliffBinding` for cliff art, pooled meshes and world-aligned ground/soil material bindings. Preserve the developer cliff gallery.
-- `FloorStrips` selects visible cells, `TerrainRenderer` owns the floor/water caches, and `WaterRenderer`/`WaterMaterial` provide the current opaque TEV effect.
-- Verify collision, map colors, terrain/elevation caches, save round trips, coast adjacency, half-footprint orientation, exact bank heights and corner/mouth closure. Then perform targeted Dolphin captures, clean console/server builds and matching release packaging as required by AGENTS.md.
+The initial checkpoint passed terrain/generation/save/core checks. Its first
+native build exposed missing nested-container proxy settings in the cloud setup;
+the session build wrapper supplies the inherited proxy and trusted CA. The .NET
+10 SDK was installed for the matching backend. These are environment setup
+changes outside the repository.
 
 ## Versioning and delivery
 
