@@ -8,9 +8,12 @@ The product brief is [design-doc.md](design-doc.md).
 
 Build artifacts are delivered through [GitHub Releases](https://github.com/capz/AnimalTown/releases).
 Each successful push to `main` builds and checks the console and backend, then
-publishes a commit-tagged development prerelease. The release contains a compressed
+publishes a version-tagged development prerelease. Versions use
+[`xx.yy.zz.bb`](docs/versioning.md): user-controlled major, feature counter,
+bugfix counter, and 12-character commit hash. Use `feat:`/`fix:` PR titles;
+rebuilding a commit keeps its version. The release contains a compressed
 full-size GameCube ISO, a separate .NET 10 server ZIP, `BUILD.txt` with the engine
-and SDK revisions, and `SHA256SUMS.txt`. Extract the ISO before loading it through
+and SDK revisions, `version.json`, and `SHA256SUMS.txt`. Extract the ISO before loading it through
 GCLoader/Swiss or writing it to suitable media. Development status and physical
 hardware validation are recorded in the release notes.
 
@@ -41,7 +44,7 @@ git submodule update --init --recursive
 ./tools/build-game.ps1
 ```
 
-A successful console build always produces `out/AnimalTown-<commit>.iso`
+A successful console build always produces `out/AnimalTown-<xx.yy.zz.bb>.iso`
 (1,459,978,240 bytes), with bootable homebrew apploader, DOL, assets, opening.bnr,
 save artwork and BUILD.txt. Boot this ISO directly in Dolphin/GCLoader/Swiss.
 Physical hardware validation remains outstanding. Rebuilds can use
@@ -95,7 +98,7 @@ container:
 
 ```powershell
 docker build -t animaltown-dolphin -f vendor/hypercube-engine/tools/Dockerfile.dolphin vendor/hypercube-engine
-docker run --rm --init --shm-size=512m --mount "type=bind,src=$PWD,dst=/work" -w /work animaltown-dolphin python3 tools/iso-smoke.py out/AnimalTown-COMMIT.iso out/smoke --play
+docker run --rm --init --shm-size=512m --mount "type=bind,src=$PWD,dst=/work" -w /work animaltown-dolphin python3 tools/iso-smoke.py out/AnimalTown-VERSION.iso out/smoke --play
 ```
 
 Inspect screenshots and logs; smoke script capture alone is not a gameplay

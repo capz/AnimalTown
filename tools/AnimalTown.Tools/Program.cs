@@ -101,9 +101,9 @@ static class Program
     {
         string disc=Path.Combine(Root,"out/disc");Art();TextureAudit.Run(Root);
         var bnr=new byte[6496];Encoding.ASCII.GetBytes("BNR1").CopyTo(bnr,0);Banner(96).CopyTo(bnr,32);
-        Text(bnr,0x1820,32,"AnimalTown");Text(bnr,0x1840,32,"AnimalTown contributors");Text(bnr,0x1860,64,"AnimalTown / "+commit);Text(bnr,0x18a0,64,"AnimalTown contributors");Text(bnr,0x18e0,128,"A rolling village life game. Commit "+commit);
+        Text(bnr,0x1820,32,"AnimalTown");Text(bnr,0x1840,32,"AnimalTown contributors");Text(bnr,0x1860,64,"AnimalTown / "+commit);Text(bnr,0x18a0,64,"AnimalTown contributors");Text(bnr,0x18e0,128,"A rolling village life game. Version "+commit);
         File.WriteAllBytes(Path.Combine(disc,"opening.bnr"),bnr);
-        File.WriteAllText(Path.Combine(disc,"BUILD.txt"),"AnimalTown\nGame commit: "+commit+"\n"+File.ReadAllText(Path.Combine(Root,"out/build-revisions.txt")));
+        File.WriteAllText(Path.Combine(disc,"BUILD.txt"),"AnimalTown\nBuild version: "+commit+"\n"+File.ReadAllText(Path.Combine(Root,"out/build-revisions.txt")));
         byte[] dol=File.ReadAllBytes(dolPath),app=File.ReadAllBytes(Path.Combine(Root,"out/apploader.bin"));ValidateDol(dol);
         if(app.Length>0x10000-0x2460)throw new InvalidDataException("Apploader too large");
         var files=Directory.GetFiles(disc,"*",SearchOption.AllDirectories).Where(p=>!p.EndsWith(".deps.json",StringComparison.Ordinal)).Select(p=>(path:p,name:Path.GetRelativePath(disc,p).Replace('\\','/'))).OrderBy(p=>p.name,StringComparer.Ordinal).ToArray();

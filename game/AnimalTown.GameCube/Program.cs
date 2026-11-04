@@ -16,7 +16,7 @@ internal static class Program
     private static int Main()
     {
         DebugOverlay.PerformanceVisible=false;
-        DebugOverlay.WriteLine("AnimalTown "+BuildInfo.Commit);
+        DebugOverlay.WriteLine("AnimalTown "+BuildInfo.Version);
         if(!Aram.Initialize(2*1024*1024))throw new InvalidOperationException("Audio ARAM reservation failed");
         if(!Storage.MountDisc())throw new IOException("AnimalTown game disc not found");
         var game=new TownGame();long previous=Clock.Timestamp;double accumulator=0;
@@ -107,7 +107,7 @@ internal sealed class TownGame
             else props[i-6]=models[i].CreateInstance(512*1024);
         }
         trees=new LowPolyTrees(worldRoot);terrain=new TerrainRenderer();SelectSpecies();lastSave=Clock.Timestamp;
-        DebugOverlay.WriteLine("ANIMALTOWN READY "+BuildInfo.Commit+" native bytes "+device.NativeBytes);
+        DebugOverlay.WriteLine("ANIMALTOWN READY "+BuildInfo.Version+" native bytes "+device.NativeBytes);
     }
     private void SelectSpecies()
     { if(actors[0]!=null)actors[0].Dispose();actors[0]=models[state.Species].CreateInstance(512*1024);moveClip=-1; }
@@ -141,7 +141,7 @@ internal sealed class TownGame
                 new SaveRepository(new CardSaveStorage(card,banner,icon)).Save(state);
             }
             finally{state.X=px;state.Z=pz;}
-            saveStatus="Saved / "+BuildInfo.Commit;lastSave=Clock.Timestamp;
+            saveStatus="Saved / "+BuildInfo.Version;lastSave=Clock.Timestamp;
         }
         catch(Exception error){saveStatus="Save failed ("+phase+", code "+NativeCalendar.CardError()+"). Check Slot A and retry.";DebugOverlay.WriteLine("SAVE ERROR: "+phase+" "+error.Message);card=null;}
     }
@@ -288,7 +288,7 @@ internal sealed class TownGame
         }
         if(menuTab==4){PostAction();return;}
         if(selected==0){Save();Say("Save",saveStatus);}else if(selected==1){Say("Controls","Stick / D-pad: walk / menus. L/R: tabs. B: run / back. A: interact / select. X: backpack. Y: map. Z: tool. START: save / settings.");}
-        else if(selected==2)Say("About","AnimalTown / "+BuildInfo.Commit+" / hypercube-engine. Original homebrew for Nintendo GameCube.");
+        else if(selected==2)Say("About","AnimalTown / "+BuildInfo.Version+" / hypercube-engine. Original homebrew for Nintendo GameCube.");
         else if(selected==3){FrameProfile.Enabled=!FrameProfile.Enabled;}
         else if(selected==4){Say("Calendar","Console RTC / day "+day+". New days begin at 06:00.");}
         else if(selected==5)Say("Chat","Quick phrases and online chat are pending the companion transport.");
@@ -506,7 +506,7 @@ internal sealed class TownGame
     private static string Letter(char c)=>new string(new[]{c});
     private void DrawHud()
     {
-        var ink=new Color32(49,72,62);Panel(20,18,282,36);Text("AnimalTown / "+BuildInfo.Commit,32,24,ink,.9f);
+        var ink=new Color32(49,72,62);Panel(20,18,282,36);Text("AnimalTown / "+BuildInfo.Version,32,24,ink,.9f);
         if(FrameProfile.Enabled)Text((indexedModels?"GX indexed":"Direct")+(batchedDrawing?" / batched":" / baseline"),420,418,ink,.8f);
         Panel(410,18,210,56);Strong(state.Wallet+" acorns",427,22,ink,1.35f);Text("Loan "+state.Debt,427,47,ink,.95f);
         Rounded(20,440,420,29,14.5f,new Color32(48,76,57,210));Text("A interact   X backpack   Y map",32,451,Color32.White,1.3f);
@@ -518,7 +518,7 @@ internal sealed class TownGame
             const string tagline="A little life, well rooted.";Text(tagline,(640-font.Measure(tagline))/2,255,ink);
             Rounded(167,302,306,49,24.5f,new Color32(53,105,84));string prompt=loaded?"A  Continue your town":"A  Begin a new life";
             Strong(prompt,(640-strongFont.Measure(prompt))/2,312,new Color32(255,245,221));
-            Text("GameCube / "+BuildInfo.Commit,187,367,ink,.9f);return;
+            Text("GameCube / "+BuildInfo.Version,187,367,ink,.9f);return;
         }
         if(screen=="dialogue")
         { SpeechBubble();return; }

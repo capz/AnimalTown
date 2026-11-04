@@ -9,32 +9,37 @@ $Root=(Resolve-Path -LiteralPath $Root).Path
 $commit=(& git -C $Root rev-parse HEAD).Trim()
 if($LASTEXITCODE -ne 0 -or $commit -notmatch '^[0-9a-f]{40}$'){throw 'Cannot determine source commit'}
 if(& git -C $Root status --porcelain --untracked-files=normal){throw 'Release packaging requires a clean source checkout'}
-$short=$commit.Substring(0,12)
+. (Join-Path $PSScriptRoot 'version.ps1')
+$identity=Get-BuildVersion $Root
+Write-VersionMetadata $identity $Root
+$version=$identity.version
+$versionPattern=[regex]::Escape($version)
 $validation=Get-Content (Join-Path $Root 'out/validation-plan.json') -Raw|ConvertFrom-Json
 if($validation.schema -ne 1 -or $validation.commit -ne $commit){throw 'Release validation plan must match source commit'}
-$tag="build-$short"
+$tag=$identity.tag
 $out=Join-Path $Root 'out'
 $revisions=[IO.File]::ReadAllText((Join-Path $out 'build-revisions.txt'))
 $server=Join-Path $out 'server'
 $serverBuild=[IO.File]::ReadAllText((Join-Path $server 'BUILD.txt'))
-if($revisions -notmatch "(?m)^Game source: $commit\r?$" -or $revisions -notmatch '(?m)^Dirty: False\r?$' -or
+if($revisions -notmatch "(?m)^Version: $versionPattern\r?$" -or $serverBuild -notmatch "(?m)^Version: $versionPattern\r?$" -or
+   $revisions -notmatch "(?m)^Game source: $commit\r?$" -or $revisions -notmatch '(?m)^Dirty: False\r?$' -or
    $serverBuild -notmatch "(?m)^Server source: $commit\r?$" -or $serverBuild -notmatch '(?m)^Dirty: False\r?$'){
     throw 'Console and backend must both be clean builds of the release commit'
 }
-$iso=Join-Path $out "AnimalTown-$short.iso"
+$iso=Join-Path $out "AnimalTown-$version.iso"
 if((Get-Item -LiteralPath $iso).Length -ne 1459978240){throw 'Release requires a full-size GameCube ISO'}
 & dotnet run --project (Join-Path $Root 'tools/AnimalTown.Tools') -c Release --no-build -- verify $Root $iso
 if($LASTEXITCODE -ne 0){throw 'ISO validation failed'}
 $package=Join-Path $out "releases/$tag"
 New-Item -ItemType Directory -Force -Path $package | Out-Null
-$isoZip=Join-Path $package "AnimalTown-$short.iso.zip"
-$serverZip=Join-Path $package "AnimalTown-server-$short.zip"
+$isoZip=Join-Path $package "AnimalTown-$version.iso.zip"
+$serverZip=Join-Path $package "AnimalTown-server-$version.zip"
 $toolsDirectory=Join-Path $out 'tools-published'
 & dotnet publish (Join-Path $Root 'tools/AnimalTown.Tools') -c Release --no-self-contained -o $toolsDirectory -v quiet
 if($LASTEXITCODE -ne 0){throw 'Offline tool publication failed'}
 Copy-Item -LiteralPath (Join-Path $Root 'docs/texture-repacker.md') -Destination (Join-Path $toolsDirectory 'texture-repacker.md') -Force
 Copy-Item -LiteralPath (Join-Path $Root 'docs/uv-editor-design.md') -Destination (Join-Path $toolsDirectory 'uv-editor-design.md') -Force
-$toolsZip=Join-Path $package "AnimalTown-tools-$short.zip"
+$toolsZip=Join-Path $package "AnimalTown-tools-$version.zip"
 # These two exact paths are generated archives; rebuilding a draft can replace them.
 foreach($archive in @($isoZip,$serverZip,$toolsZip)){if(Test-Path -LiteralPath $archive){Remove-Item -LiteralPath $archive}}
 $zip=[IO.Compression.ZipFile]::Open($isoZip,[IO.Compression.ZipArchiveMode]::Create)
@@ -44,16 +49,17 @@ try{[IO.Compression.ZipFileExtensions]::CreateEntryFromFile($zip,$iso,[IO.Path]:
 Copy-Item -LiteralPath (Join-Path $out 'build-revisions.txt') -Destination (Join-Path $package 'BUILD.txt') -Force
 Copy-Item -LiteralPath (Join-Path $out 'texture-audit.json') -Destination (Join-Path $package 'texture-audit.json') -Force
 Copy-Item -LiteralPath (Join-Path $out 'validation-plan.json') -Destination (Join-Path $package 'validation-plan.json') -Force
-$checksums=foreach($file in @($iso,$isoZip,$serverZip,$toolsZip,(Join-Path $package 'BUILD.txt'),(Join-Path $package 'texture-audit.json'),(Join-Path $package 'validation-plan.json'))){"$((Get-FileHash -LiteralPath $file -Algorithm SHA256).Hash.ToLowerInvariant())  $([IO.Path]::GetFileName($file))"}
+Copy-Item -LiteralPath (Join-Path $out 'version.json') -Destination (Join-Path $package 'version.json') -Force
+$checksums=foreach($file in @($iso,$isoZip,$serverZip,$toolsZip,(Join-Path $package 'BUILD.txt'),(Join-Path $package 'texture-audit.json'),(Join-Path $package 'validation-plan.json'),(Join-Path $package 'version.json'))){"$((Get-FileHash -LiteralPath $file -Algorithm SHA256).Hash.ToLowerInvariant())  $([IO.Path]::GetFileName($file))"}
 [IO.File]::WriteAllText((Join-Path $package 'SHA256SUMS.txt'),($checksums -join "`n")+"`n")
 $notes=@"
-AnimalTown development build from commit $commit.
+AnimalTown $version development build from commit $commit.
 
-**AnimalTown-tools-$short.zip** contains the offline texture/UV repacker and its guide. Requires .NET 8; run `dotnet AnimalTown.Tools.dll repack-textures . INPUT.glb OUTPUT.glb --size256` (or --size128/512/1024/Original). Exact flat colours share UV space; appearance checks reject excessive loss. Original game assets are not automatically repacked.
+**AnimalTown-tools-$version.zip** contains the offline texture/UV repacker and its guide. Requires .NET 8; run `dotnet AnimalTown.Tools.dll repack-textures . INPUT.glb OUTPUT.glb --size256` (or --size128/512/1024/Original). Exact flat colours share UV space; appearance checks reject excessive loss. Original game assets are not automatically repacked.
 
-Download **AnimalTown-$short.iso.zip** and extract the full 1,459,978,240-byte ISO. The disc includes the game title, commit identity, disc banner and memory-card banner/icon. The server is a separate **AnimalTown-server-$short.zip** archive and requires .NET 10 and PostgreSQL. It does not run on the console.
+Download **AnimalTown-$version.iso.zip** and extract the full 1,459,978,240-byte ISO. The disc includes the game title, commit identity, disc banner and memory-card banner/icon. The server is a separate **AnimalTown-server-$version.zip** archive and requires .NET 10 and PostgreSQL. It does not run on the console.
 
-BUILD.txt records the game, engine and SDK revisions. validation-plan.json records the comparison base and selected checks. texture-audit.json records texture source identities, fingerprints and 256-pixel default residency and 128/256/512/1024 model variants. SHA256SUMS.txt covers the archives, manifests and the extracted ISO.
+version.json records the xx.yy.zz.bb identity and change classification. BUILD.txt records the version and game, engine and SDK revisions. validation-plan.json records the comparison base and selected checks. texture-audit.json records texture source identities, fingerprints and 256-pixel default residency and 128/256/512/1024 model variants. SHA256SUMS.txt covers the archives, manifests and the extracted ISO.
 
 This is an early playable build, not the completed game. Physical GameCube testing is outstanding. See [implementation status](https://github.com/$Repository/blob/$commit/docs/implementation-status.md) and [build instructions](https://github.com/$Repository/blob/$commit/README.md).
 "@
@@ -65,7 +71,7 @@ function InvokeGh([string[]]$Arguments){
     if($LASTEXITCODE -ne 0){throw "GitHub CLI failed: $($Arguments[0]) $($Arguments[1])"}
     return $result
 }
-$assets=@($isoZip,$serverZip,$toolsZip,(Join-Path $package 'BUILD.txt'),(Join-Path $package 'texture-audit.json'),(Join-Path $package 'validation-plan.json'),(Join-Path $package 'SHA256SUMS.txt'))
+$assets=@($isoZip,$serverZip,$toolsZip,(Join-Path $package 'BUILD.txt'),(Join-Path $package 'texture-audit.json'),(Join-Path $package 'validation-plan.json'),(Join-Path $package 'version.json'),(Join-Path $package 'SHA256SUMS.txt'))
 $existing=& $Gh release view $tag --repo $Repository --json isDraft,targetCommitish,assets 2>$null
 if($LASTEXITCODE -eq 0){
     $release=$existing | ConvertFrom-Json
@@ -88,7 +94,7 @@ if($LASTEXITCODE -eq 0){
         return
     }
 }else{
-    InvokeGh @('release','create',$tag,'--repo',$Repository,'--target',$commit,'--title',"AnimalTown $short",'--notes-file',$notesPath,'--prerelease','--draft') | Out-Null
+    InvokeGh @('release','create',$tag,'--repo',$Repository,'--target',$commit,'--title',"AnimalTown $version",'--notes-file',$notesPath,'--prerelease','--draft') | Out-Null
 }
 InvokeGh (@('release','upload',$tag,'--repo',$Repository,'--clobber')+$assets) | Out-Null
 $remote=(InvokeGh @('release','view',$tag,'--repo',$Repository,'--json','assets') | ConvertFrom-Json).assets
