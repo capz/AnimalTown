@@ -4,4 +4,5 @@ internal static class NativeRenderProbe
     // this body; it deliberately fails if that bridge has not been installed.
     internal static int Indexed(int enabled)=>throw new System.PlatformNotSupportedException("Native rendering probe requires AOT");
     internal static int Batch(int enabled)=>throw new System.PlatformNotSupportedException("Native batch probe requires AOT");
+    internal static int Uv(int flags)=>throw new System.PlatformNotSupportedException("Native UV probe requires AOT");
 }

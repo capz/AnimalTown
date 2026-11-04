@@ -15,6 +15,20 @@ if(([regex]::Matches($generated,$errorPattern,[Text.RegularExpressions.RegexOpti
 $generated=[regex]::Replace($generated,$errorPattern,'intptr_t $1(void) { return (intptr_t)animaltown_card_debug; }',[Text.RegularExpressions.RegexOptions]::Singleline)
 $generated="extern int animaltown_calendar(void);`nextern int animaltown_card_debug;`n"+$generated
 [IO.File]::WriteAllText($generatedPath,$generated)
+$uvPattern='intptr_t (dnd_value_AnimalTown_GameCube_NativeRenderProbe_Uv_[a-z0-9]+)\(intptr_t (\w+)\) \{.*?\r?\n\}'
+if(([regex]::Matches($generated,$uvPattern,[Text.RegularExpressions.RegexOptions]::Singleline)).Count -ne 1){throw 'Native UV diagnostic bridge signature changed'}
+$generated=[regex]::Replace($generated,$uvPattern,'intptr_t $1(intptr_t $2) { return animaltown_uv_mode((int)$2); }',[Text.RegularExpressions.RegexOptions]::Singleline)
+$generated="extern int animaltown_uv_mode(int);`n"+$generated
+[IO.File]::WriteAllText($generatedPath,$generated)
+$modelGraphicsPath=Join-Path $Root 'out/native/source/model_graphics.c'
+$modelGraphics=[IO.File]::ReadAllText($modelGraphicsPath)
+$drawSignature='static int draw_model_selected(DndInstance *in,const float world[16],const DndDrawEffect *effect,int filter,int only) {'
+if(([regex]::Matches($modelGraphics,[regex]::Escape($drawSignature))).Count -ne 1){throw 'Pinned model UV diagnostic hook changed'}
+$modelGraphics=$modelGraphics.Replace($drawSignature,$drawSignature.Replace('draw_model_selected(','draw_model_selected_base('))
+$modelGraphics+="`n#include `"animaltown_uv_debug.inc`"`n"
+[IO.File]::WriteAllText($modelGraphicsPath,$modelGraphics)
+Copy-Item -LiteralPath (Join-Path $Root 'tools/native-uv-debug.inc') -Destination (Join-Path $Root 'out/native/source/animaltown_uv_debug.inc') -Force
+Copy-Item -LiteralPath (Join-Path $Root 'tools/native-uv-topology.h') -Destination (Join-Path $Root 'out/native/source/animaltown_uv_topology.h') -Force
 $entryPath=Join-Path $Root 'out/native/source/main.c'
 $entrySource=[IO.File]::ReadAllText($entryPath).Replace('dnd_platform_init();','dnd_platform_init(); dnd_console_set_visible(0);')
 $entrySource=$entrySource.Replace('managed_heap_memory[256 * 1024]','managed_heap_memory[4 * 1024 * 1024]')

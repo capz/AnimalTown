@@ -94,7 +94,7 @@ def settings_navigation():
         screenshot(name+'.png')
         pixels=subprocess.check_output(['ffmpeg','-v','error','-i',str(root/(name+'.png')),'-frames:v','1','-f','rawvideo','-pix_fmt','rgb24','-'])
         scores=[sum(all(abs(pixels[(y*800+x)*3+c]-target)<=3 for c,target in enumerate((221,231,188)))
-                    for y in range(131+i*29,155+i*29) for x in range(100,540,4)) for i in range(7)]
+                    for y in range(131+i*24,151+i*24) for x in range(100,540,4)) for i in range(9)]
         return scores.index(max(scores)) if max(scores)>100 else -1
     def focus(name,expected):
         actual=read_focus(name)
@@ -111,7 +111,8 @@ def settings_navigation():
     press('D_DOWN');press('D_DOWN');press('A');focus('settings-performance-on',3)
     press('A');focus('settings-performance-off',3)
     for _ in range(3):press('D_UP')
-    press('D_UP');focus('settings-wrap',6)
+    press('D_UP');focus('settings-wrap',8)
+    press('D_UP');press('D_UP');focus('settings-model-row',6)
     press('A');focus('settings-model-direct',6)
     press('A');focus('settings-model-indexed',6)
     press('R');screenshot('settings-next-tab.png');press('L');focus('settings-tab-return',0)
@@ -187,7 +188,18 @@ with (root/'emulator.log').open('w') as log:
         if p.poll() is not None:
             raise RuntimeError(f'Dolphin exited during boot ({p.returncode}); see {root / "emulator.log"}')
         screenshot('screen.png')
-        if '--dialogue-cycles' in sys.argv:
+        if '--uv-debug' in sys.argv:
+            press('A');time.sleep(3);screenshot('uv-normal.png')
+            def setting(up,name):
+                press('X');press('L')
+                for _ in range(up):press('D_UP')
+                screenshot(name+'-setting.png');press('A');time.sleep(2);screenshot(name+'-enabled.png');press('B');time.sleep(3);screenshot(name+'.png')
+            setting(2,'uv-colors')
+            setting(1,'uv-combined')
+            setting(2,'uv-lines')
+            setting(1,'uv-restored')
+            press('START');time.sleep(12);screenshot('uv-save.png')
+        elif '--dialogue-cycles' in sys.argv:
             dialogue_cycles()
         elif '--movement-directions' in sys.argv:
             press('A');time.sleep(2);screenshot('movement-start.png')

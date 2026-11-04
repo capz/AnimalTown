@@ -79,6 +79,7 @@ internal sealed class TownGame
     private float facingYaw=3.1415927f;
     private bool loaded,relocate,damagedSave;
     private bool indexedModels=true,batchedDrawing=true;
+    private int uvDebug;
     private static readonly string[] tabs={"Backpack","Jobs","Catalog","Home","Post office","Settings"};
     private static readonly string[] itemActions={"Drop","Place (R rotates)","Plant","Eat","Wear","Equip","Bury","Open money bag","Read","Quit"};
     internal TownGame()
@@ -240,7 +241,7 @@ internal sealed class TownGame
         { int index=LostIndex(selected);Say("Town hall",state.ClaimLost(index,0)?"Recovered!":"Your pockets are full, or the item is reserved.");return; }
         if(screen=="menu")MenuAction();
     }
-    private int TabCount()=>menuTab==0?state.Capacity:menuTab==1?7:menuTab==2?Catalog.Items.Length-1:menuTab==3?7:menuTab==4?7:7;
+    private int TabCount()=>menuTab==0?state.Capacity:menuTab==1?7:menuTab==2?Catalog.Items.Length-1:menuTab==3?7:menuTab==4?7:9;
     private void ToggleModelPath()
     {int next=indexedModels?0:1;if(NativeRenderProbe.Indexed(next)!=next)throw new InvalidOperationException("Model renderer switch failed");indexedModels=!indexedModels;}
     private int LostCount(){int c=0;for(int i=0;i<state.Town.GroundCount;i++)if(state.Town.Ground[i].Kind==4)c++;return c;}
@@ -291,7 +292,8 @@ internal sealed class TownGame
         else if(selected==3){FrameProfile.Enabled=!FrameProfile.Enabled;}
         else if(selected==4){Say("Calendar","Console RTC / day "+day+". New days begin at 06:00.");}
         else if(selected==5)Say("Chat","Quick phrases and online chat are pending the companion transport.");
-        else ToggleModelPath();
+        else if(selected==6)ToggleModelPath();
+        else {int next=uvDebug^(selected==7?1:2);if(NativeRenderProbe.Uv(next)==next)uvDebug=next;else Say("UV display","Not enough memory to prepare UV regions. The current view is unchanged.");}
     }
     private void Interact()
     {
@@ -533,8 +535,8 @@ internal sealed class TownGame
         Panel(45,75,550,350);string title=screen=="menu"?tabs[menuTab]:screen=="shop"?"Store stock":screen=="store"?"Hearth's store":screen=="post"?"Town hall":screen=="mail"?"Mailbox":"Lost and Found";
         Heading(title,68,91,ink);
         int total=screen=="menu"?TabCount():screen=="shop"?state.Town.StockCount:screen=="mail"?Math.Max(1,state.MailCount):screen=="lost"?Math.Max(1,LostCount()):screen=="store"?8:7;
-        int first=selected/8*8;
-        for(int i=first;i<Math.Min(total,first+8);i++){if(i==selected){Rounded(57,131+(i-first)*29,520,27,13.5f,new Color32(221,231,188));Strong("> "+RowLabel(i),68,131+(i-first)*29,ink,1.4f);}else Text("  "+RowLabel(i),68,131+(i-first)*29,ink,1.4f);}
+        bool settings=screen=="menu"&&menuTab==5;int page=settings?9:8,step=settings?24:29;float rowScale=settings?1.2f:1.4f;int first=selected/page*page;
+        for(int i=first;i<Math.Min(total,first+page);i++){float y=131+(i-first)*step;if(i==selected){Rounded(57,y,520,step-2,(step-2)*.5f,new Color32(221,231,188));Strong("> "+RowLabel(i),68,y,ink,rowScale);}else Text("  "+RowLabel(i),68,y,ink,rowScale);}
         Text("Stick / D-pad choose   L/R tabs   A select   B close",65,392,ink,1);
         if(screen=="menu"&&menuTab==5)Text(saveStatusText.Get(saveStatus),65,357,ink,1);
     }
@@ -549,7 +551,7 @@ internal sealed class TownGame
         if(menuTab==1)return i==0?"Tutorial / daily jobs":state.Town.Residents[i-1].Name+" / friendship "+state.Town.Residents[i-1].Friendship;
         if(menuTab==2)return Catalog.Items[i+1].Name+(state.Owned[i+1]==0?" (not owned)":" / "+Catalog.Items[i+1].Buy);
         if(menuTab==3){string[] a={"Roof palette","Exterior palette","Fence style","Mailbox","Relocate (50000)","Expand house","Expand garden"};return a[i];}
-        string[] settings={"Save now","Controls","About / build identity","Performance display: "+(FrameProfile.Enabled?"On":"Off"),"Calendar","Chat settings","Model drawing: "+(indexedModels?"GX indexed":"Direct comparison")};return settings[i];
+        string[] settings={"Save now","Controls","About / build identity","Performance display: "+(FrameProfile.Enabled?"On":"Off"),"Calendar","Chat settings","Model drawing: "+(indexedModels?"GX indexed":"Direct comparison"),"UV island colors: "+((uvDebug&1)!=0?"On":"Off"),"UV island outlines: "+((uvDebug&2)!=0?"On":"Off")};return settings[i];
     }
     private void DrawBackpack()
     {
