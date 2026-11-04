@@ -63,6 +63,8 @@ play works; save errors are shown for retry.
 
 Outdoor ground shares the supplied neutral repeating texture with configurable
 terrain/season tints: see [neutral ground](docs/neutral-ground.md).
+Rivers, ponds and the ocean use [opaque GX water](docs/water-rendering.md) with
+two scrolling neutral textures, depth tint and optional shoreline foam.
 Walk and run are 5% faster, with normalized diagonals and facing that follows
 travel direction. Dialogue syllables use one explicitly retired audio channel;
 an unavailable sound voice leaves text and controls responsive.

@@ -217,6 +217,30 @@ with (root/'emulator.log').open('w') as log:
                     if mode=='dpad':os.write(controller,(''.join(f'RELEASE {button}\n' for button in pads[n])).encode())
                     time.sleep(.5);screenshot(f'movement-{mode}-{n}.png')
             press('START');time.sleep(12);screenshot('movement-save.png')
+        elif '--water' in sys.argv:
+            # Fresh card: create a player, then use the clear starter reserve
+            # to reach the western ocean boundary in any generated town.
+            press('A');press('D_UP');press('A');press('A');time.sleep(2);press('B');press('B')
+            os.write(controller,b'SET MAIN 0.0 0.5\nPRESS B\n');time.sleep(14)
+            os.write(controller,b'SET MAIN 0.5 0.5\nRELEASE B\n');time.sleep(2)
+            def water_frame(name):
+                screenshot(name+'.png')
+                return subprocess.check_output(['ffmpeg','-v','error','-i',str(root/(name+'.png')),'-frames:v','1','-f','rawvideo','-pix_fmt','rgb24','-'])
+            first=water_frame('water-a');time.sleep(8);second=water_frame('water-b')
+            wet=changed=0
+            for y in range(120,430):
+                for x in range(20,300):
+                    at=(y*800+x)*3;r,g,b=first[at:at+3]
+                    if r<120 and g>100 and b>g+4:
+                        wet+=1
+                        if first[at:at+3]!=second[at:at+3]:changed+=1
+            (root/'water-check.txt').write_text(f'Water pixels: {wet}\nAnimated water pixels: {changed}\n')
+            if wet<1000 or changed<50:raise AssertionError('Expected visible animated ocean; inspect water-a/b.png and water-check.txt')
+            # Exercise camera reprojection, then a plain 2D material immediately
+            # after dual-texture TEV (state must not leak into menus).
+            os.write(controller,b'SET MAIN 0.5 0.1\n');time.sleep(2)
+            os.write(controller,b'SET MAIN 0.5 0.5\n');time.sleep(2);screenshot('water-camera.png')
+            press('X');screenshot('water-menu.png');press('B');screenshot('water-return.png')
         elif '--terrain-edges' in sys.argv:
             press('A');time.sleep(2);screenshot('terrain-edge-start.png')
             directions=[(.5,0,3),(0,.5,2),(1,.5,4),(.5,0,2),(0,.5,2),(.5,1,2),(1,0,2),(0,1,2)]
