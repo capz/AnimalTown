@@ -32,7 +32,7 @@ public sealed class VillagerNavigation
         }
         tick++;LastExpansions=0;var town=game.Town;
         if(treeCount!=town.GroundCount||placedCount!=town.PlacedCount||plotStamp!=town.HouseZ*Town.Width+town.HouseX||tick%30==1){
-            Array.Clear(trees);for(int i=0;i<town.GroundCount;i++){var g=town.Ground[i];if(g.Kind==3&&town.Inside(g.X,g.Z))trees[g.Z*Town.Width+g.X]=true;}
+            Array.Clear(trees,0,trees.Length);for(int i=0;i<town.GroundCount;i++){var g=town.Ground[i];if(g.Kind==3&&town.Inside(g.X,g.Z))trees[g.Z*Town.Width+g.X]=true;}
             for(int i=0;i<town.PlacedCount;i++){var p=town.Placed[i];if(p.Room!=0)continue;int w=Catalog.Items[p.Item].Width,h=Catalog.Items[p.Item].Height;if((p.Rotation&1)!=0){int swap=w;w=h;h=swap;}for(int z=p.Z;z<p.Z+h;z++)for(int x=p.X;x<p.X+w;x++)if(town.Inside(x,z))trees[z*Town.Width+x]=true;}
             treeCount=town.GroundCount;placedCount=town.PlacedCount;plotStamp=town.HouseZ*Town.Width+town.HouseX;
         }
@@ -46,7 +46,7 @@ public sealed class VillagerNavigation
     private void Goal(int agent)
     {
         var r=Routes[agent];var town=state!.Town;r.GoalKind=r.InitialGoal>=0?r.InitialGoal:Next(r,6);r.InitialGoal=-1;
-        Array.Clear(r.Observed);r.Stuck=0;
+        Array.Clear(r.Observed,0,r.Observed.Length);r.Stuck=0;
         int target=Next(r,6);if(target==agent)target=(target+1)%6;
         r.GoalX=r.GoalKind==0?32:r.GoalKind==1?50:town.Residents[target].HomeX+1;
         r.GoalZ=r.GoalKind<2?28:town.Residents[target].HomeZ+4;
@@ -75,7 +75,7 @@ public sealed class VillagerNavigation
     }
     private void Begin(int agent)
     {
-        worker=agent;var v=state!.Town.Residents[agent];start=(int)v.PosZ*Town.Width+(int)v.PosX;Array.Clear(parent);front=0;back=1;queue[0]=(ushort)start;parent[start]=(ushort)(start+1);
+        worker=agent;var v=state!.Town.Residents[agent];start=(int)v.PosZ*Town.Width+(int)v.PosX;Array.Clear(parent,0,parent.Length);front=0;back=1;queue[0]=(ushort)start;parent[start]=(ushort)(start+1);
     }
     private void Search()
     {

@@ -22,7 +22,7 @@ public static class TerrainElevation
     }
     public static void Generate(Town town)
     {
-        Array.Clear(town.Elevation);uint random=unchecked((uint)town.Seed^0xb5297a4du);int placed=0,start=(int)(random%24);
+        Array.Clear(town.Elevation,0,town.Elevation.Length);uint random=unchecked((uint)town.Seed^0xb5297a4du);int placed=0,start=(int)(random%24);
         for(int n=0;n<24&&placed<3;n++){
             int candidate=(start+n*5)%24,col=candidate%8,row=2+candidate/8;if(col<4&&row==2)continue;
             int x=col*20+4,z=row*20+2;bool clear=true;
