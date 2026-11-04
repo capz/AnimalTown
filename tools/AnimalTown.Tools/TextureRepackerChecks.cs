@@ -55,6 +55,7 @@ internal static class TextureRepackerChecks
         // Force an atlas too small for the gradient chart and verify the quality
         // gate refuses its lossy resampling rather than blessing a damaged model.
         refused=false;try{TextureRepacker.Repack(input,rejected,16,0);}catch(InvalidDataException){refused=true;}Check(refused&&!File.Exists(rejected),"appearance gate rejects lossy output");
-        Console.WriteLine($"Texture repacker: {checks} checks passed (all five size policies, UV sharing, skinning, animation, source safety and quality rejection)");
+        checks+=TextureRepackerRotationChecks.Run(folder);
+        Console.WriteLine($"Texture repacker: {checks} checks passed (all five size policies, rotated UV sharing, skinning, animation, source safety and quality rejection)");
     }
 }

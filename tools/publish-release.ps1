@@ -28,9 +28,10 @@ New-Item -ItemType Directory -Force -Path $package | Out-Null
 $isoZip=Join-Path $package "AnimalTown-$short.iso.zip"
 $serverZip=Join-Path $package "AnimalTown-server-$short.zip"
 $toolsDirectory=Join-Path $out 'tools-published'
-& dotnet publish (Join-Path $Root 'tools/AnimalTown.Tools') -c Release --no-restore --no-self-contained -o $toolsDirectory -v quiet
+& dotnet publish (Join-Path $Root 'tools/AnimalTown.Tools') -c Release --no-self-contained -o $toolsDirectory -v quiet
 if($LASTEXITCODE -ne 0){throw 'Offline tool publication failed'}
 Copy-Item -LiteralPath (Join-Path $Root 'docs/texture-repacker.md') -Destination (Join-Path $toolsDirectory 'texture-repacker.md') -Force
+Copy-Item -LiteralPath (Join-Path $Root 'docs/uv-editor-design.md') -Destination (Join-Path $toolsDirectory 'uv-editor-design.md') -Force
 $toolsZip=Join-Path $package "AnimalTown-tools-$short.zip"
 # These two exact paths are generated archives; rebuilding a draft can replace them.
 foreach($archive in @($isoZip,$serverZip,$toolsZip)){if(Test-Path -LiteralPath $archive){Remove-Item -LiteralPath $archive}}

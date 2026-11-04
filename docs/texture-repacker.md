@@ -19,7 +19,9 @@ The repacker identifies triangles whose complete source sampling rectangle is
 one **exact RGBA colour**, and redirects matching triangles to the same swatch.
 This conservative test includes bilinear neighbours; it never equates similar
 colours or discards painted detail. Textured triangles are grouped into connected
-UV charts, which are packed without rotation. Numbered outputs shrink chart
+UV charts. Exact chart pixels and their filter context are compared at 0, 90,
+180 and 270 degrees; matching charts share one atlas region with compensating UV
+rotation. The rectangle packer also considers 90-degree placement. Numbered outputs shrink chart
 contents only when necessary to fit. Two base-level gutter texels retain source
 sampling context, including clamp/repeat/mirror addressing, and protect the base
 plus one half-size mip used by AnimalTown. More mip levels need larger gutters
@@ -72,3 +74,10 @@ additional coordinated map/geometry handling, not silent approximation.
 The Linux build runs synthetic tests for all five size policies, exact colour
 sharing, position/weight/joint preservation, animation remapping, source safety,
 and refusal of unsupported or excessively lossy conversions.
+
+The report also records `sharedCharts` and `rotatedStacks`; rotated matches are
+byte-compared after fingerprint lookup. Tests exercise 90/180/270-degree sharing
+with asymmetric, non-square painted charts and verify their appearance.
+
+See [human-driven editor design](uv-editor-design.md) for the proposed Blender UI,
+source/target UV workflow and preview-baking requirements.

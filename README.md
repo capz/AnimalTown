@@ -105,6 +105,8 @@ The native IPL font API is supplied by [DolphinDotNet PR #145](https://github.co
 The offline [texture/UV repacker](docs/texture-repacker.md) stacks exact flat
 colours, packs textured charts, and checks appearance before writing a new GLB.
 Use `repack-textures . INPUT OUTPUT --size256` or `--sizeOriginal`.
+The [human-driven editor design](docs/uv-editor-design.md) describes the proposed
+interactive workflow; the current command-line tool supports rotated chart matches.
 
 The default maximum texture edge is 256 pixels. `TextureResolution.Size128`,
 `Size256`, `Size512` and `Size1024` select a maximum edge at load time; rectangular

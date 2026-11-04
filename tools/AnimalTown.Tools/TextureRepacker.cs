@@ -13,6 +13,9 @@ internal sealed class TextureRepacker
     {
         public int Id,X,Y,W,H,OutX,OutY,OutW,OutH;
         public Rgba32? Solid;
+        public Patch? Master;
+        public int StackTurn;
+        public bool Rotated;
         public readonly List<Triangle> Triangles=new();
     }
     sealed class Triangle
@@ -145,16 +148,33 @@ internal sealed class TextureRepacker
         foreach(var chart in Enumerable.Range(0,remaining.Count).GroupBy(Find)){
             var ts=chart.Select(k=>remaining[k]).ToList();var b=Bounds(ts,source.Width,source.Height);var p=new Patch{Id=patches.Count,X=b.x,Y=b.y,W=b.w,H=b.h};p.Triangles.AddRange(ts);foreach(var t in ts)t.Patch=p;patches.Add(p);
         }
-        float scale=1;bool fit=Pack(patches,width,height,scale),preserveLayout=!fit&&size==null;
-        if(!fit&&!preserveLayout){
-            float low=0,high=1;for(int k=0;k<24;k++){float mid=(low+high)/2;if(Pack(patches,width,height,mid))low=mid;else high=mid;}scale=low;if(scale==0||!Pack(patches,width,height,scale))throw new InvalidDataException("Atlas too small for protected chart gutters");}
-        using var output=new RasterImage(width,height);
-        if(preserveLayout){for(int y=0;y<height;y++)for(int x=0;x<width;x++)output[x,y]=source[x,y];foreach(var p in patches){p.OutX=p.X;p.OutY=p.Y;p.OutW=p.W;p.OutH=p.H;}}
-        if(!preserveLayout)
-        foreach(var p in patches){
-            for(int y=-Gutter;y<p.OutH+Gutter;y++)for(int x=-Gutter;x<p.OutW+Gutter;x++)output[p.OutX+x,p.OutY+y]=p.Solid??Area(source,p.X+x*(double)p.W/p.OutW,p.Y+y*(double)p.H/p.OutH,p.W/(double)p.OutW,p.H/(double)p.OutH,wrap.Item1,wrap.Item2);
+        int sharedCharts=0,rotatedStacks=0;
+        var fingerprints=new Dictionary<string,List<(Patch patch,byte[] pixels)>>();
+        foreach(var p in patches.Where(p=>p.Solid==null)){
+            bool found=false;
+            for(int turn=0;turn<4&&!found;turn++){
+                int rw=turn%2==0?p.W:p.H,rh=turn%2==0?p.H:p.W;var pixels=new byte[(rw+4)*(rh+4)*4];
+                for(int y=-2;y<rh+2;y++)for(int x=-2;x<rw+2;x++){
+                    int sx=turn switch{0=>x,1=>y,2=>p.W-1-x,_=>p.W-1-y},sy=turn switch{0=>y,1=>p.H-1-x,2=>p.H-1-y,_=>x};
+                    var pixel=source[Address(p.X+sx,source.Width,wrap.Item1),Address(p.Y+sy,source.Height,wrap.Item2)];int at=((y+2)*(rw+4)+x+2)*4;pixels[at]=pixel.R;pixels[at+1]=pixel.G;pixels[at+2]=pixel.B;pixels[at+3]=pixel.A;
+                }
+                string key=rw+":"+rh+":"+Convert.ToHexString(SHA256.HashData(pixels));
+                if(fingerprints.TryGetValue(key,out var matches))foreach(var match in matches)if(pixels.AsSpan().SequenceEqual(match.pixels)){p.Master=match.patch;p.StackTurn=turn;sharedCharts++;if(turn!=0)rotatedStacks++;found=true;break;}
+            }
+            if(!found){var pixels=new byte[(p.W+4)*(p.H+4)*4];for(int y=-2;y<p.H+2;y++)for(int x=-2;x<p.W+2;x++){var pixel=source[Address(p.X+x,source.Width,wrap.Item1),Address(p.Y+y,source.Height,wrap.Item2)];int at=((y+2)*(p.W+4)+x+2)*4;pixels[at]=pixel.R;pixels[at+1]=pixel.G;pixels[at+2]=pixel.B;pixels[at+3]=pixel.A;}
+                string key=p.W+":"+p.H+":"+Convert.ToHexString(SHA256.HashData(pixels));if(!fingerprints.TryGetValue(key,out var entries))fingerprints.Add(key,entries=new());entries.Add((p,pixels));}
         }
-        Vector2 Map(Triangle t,Vector2 uv){var p=t.Patch;return p.Solid!=null?new Vector2((p.OutX+.5f)/width,(p.OutY+.5f)/height):new Vector2((p.OutX+(uv.X*source.Width-p.X)*p.OutW/p.W)/width,(p.OutY+(uv.Y*source.Height-p.Y)*p.OutH/p.H)/height);}
+        var packedPatches=patches.Where(p=>p.Master==null).ToList();
+        float scale=1;bool fit=Pack(packedPatches,width,height,scale),preserveLayout=!fit&&size==null;
+        if(!fit&&!preserveLayout){
+            float low=0,high=1;for(int k=0;k<24;k++){float mid=(low+high)/2;if(Pack(packedPatches,width,height,mid))low=mid;else high=mid;}scale=low;if(scale==0||!Pack(packedPatches,width,height,scale))throw new InvalidDataException("Atlas too small for protected chart gutters");}
+        using var output=new RasterImage(width,height);
+        if(preserveLayout){for(int y=0;y<height;y++)for(int x=0;x<width;x++)output[x,y]=source[x,y];foreach(var p in packedPatches){p.OutX=p.X;p.OutY=p.Y;p.OutW=p.W;p.OutH=p.H;p.Rotated=false;}}
+        if(!preserveLayout)
+        foreach(var p in packedPatches){
+            for(int y=-Gutter;y<p.OutH+Gutter;y++)for(int x=-Gutter;x<p.OutW+Gutter;x++)output[p.OutX+x,p.OutY+y]=p.Solid??(p.Rotated?Area(source,p.X+y*(double)p.W/p.OutH,p.Y+(p.OutW-x-1)*(double)p.H/p.OutW,p.W/(double)p.OutH,p.H/(double)p.OutW,wrap.Item1,wrap.Item2):Area(source,p.X+x*(double)p.W/p.OutW,p.Y+y*(double)p.H/p.OutH,p.W/(double)p.OutW,p.H/(double)p.OutH,wrap.Item1,wrap.Item2));
+        }
+        Vector2 Map(Triangle t,Vector2 uv){var p=t.Patch;if(p.Solid!=null)return new Vector2((p.OutX+.5f)/width,(p.OutY+.5f)/height);float x=(uv.X*source.Width-p.X)/p.W,y=(uv.Y*source.Height-p.Y)/p.H;for(int k=0;k<p.StackTurn;k++)(x,y)=(1-y,x);p=p.Master??p;if(p.Rotated)(x,y)=(1-y,x);return new Vector2((p.OutX+x*p.OutW)/width,(p.OutY+y*p.OutH)/height);}
         double error=0,max=0,maxTriangleRmse=0;int samples=0;
         foreach(var t in list){double triangleError=0;int triangleSamples=0;for(int a=0;a<=8;a++)for(int b=0;b<=8-a;b++){
             Vector2 uv=t.Uv[0]*(a/8f)+t.Uv[1]*(b/8f)+t.Uv[2]*((8-a-b)/8f);var before=Sample(source,uv,wrap.Item1,wrap.Item2,nearest);var after=Sample(output,Map(t,uv),wrap.Item1,wrap.Item2,nearest);
@@ -163,7 +183,7 @@ internal sealed class TextureRepacker
         double rmse=Math.Sqrt(error/(samples*4));if(maxTriangleRmse>maximumRmse)throw new InvalidDataException($"Appearance check failed for image {index}: worst triangle RGBA RMSE {maxTriangleRmse:F3}, overall {rmse:F3}, limit {maximumRmse}. No output model written");
         foreach(var t in list)for(int k=0;k<3;k++)t.Uv[k]=Map(t,t.Uv[k]);
         using var png=new MemoryStream();output.SaveAsPng(png);image["bufferView"]=AppendView(png.ToArray());image["mimeType"]="image/png";image.AsObject().Remove("uri");
-        reports.Add(new{image=index,sourceWidth=source.Width,sourceHeight=source.Height,width,height,charts=patches.Count,solidTriangles,sharedSolidColors=solids.Count,scale,preserveLayout,rgbaRmse=rmse,maxTriangleRmse,maxChannelError=max,samples,gutter=preserveLayout?0:Gutter,allocatedPixels=patches.Sum(p=>(p.OutW+Gutter*2)*(p.OutH+Gutter*2))});
+        reports.Add(new{image=index,sourceWidth=source.Width,sourceHeight=source.Height,width,height,charts=patches.Count,sharedCharts,rotatedStacks,solidTriangles,sharedSolidColors=solids.Count,scale,preserveLayout,rgbaRmse=rmse,maxTriangleRmse,maxChannelError=max,samples,gutter=preserveLayout?0:Gutter,atlasPixels=width*height,chartBoundingBoxPixels=packedPatches.Sum(p=>(p.OutW+Gutter*2)*(p.OutH+Gutter*2))});
     }
     static int Address(int value,int size,int wrap)
     {if(wrap==33071)return Math.Clamp(value,0,size-1);int period=wrap==33648?size*2:size,n=(value%period+period)%period;return n>=size?period-1-n:n;}
@@ -187,9 +207,10 @@ internal sealed class TextureRepacker
         var free=new List<Rect>{new(0,0,width,height)};
         foreach(var p in patches.OrderByDescending(p=>p.Solid==null?Math.Max(p.W,p.H):1).ThenBy(p=>p.Id)){
             p.OutW=p.Solid!=null?1:Math.Max(1,(int)Math.Ceiling(p.W*scale));p.OutH=p.Solid!=null?1:Math.Max(1,(int)Math.Ceiling(p.H*scale));int w=p.OutW+Gutter*2,h=p.OutH+Gutter*2;
-            int best=-1,score=int.MaxValue;
-            for(int k=0;k<free.Count;k++){var r=free[k];if(r.W<w||r.H<h)continue;int waste=r.W*r.H-w*h;if(waste<score){best=k;score=waste;}}
+            int best=-1,score=int.MaxValue,shortSide=int.MaxValue;p.Rotated=false;
+            for(int k=0;k<free.Count;k++)for(int turn=0;turn<2;turn++){var r=free[k];int tw=turn==0?w:h,th=turn==0?h:w;if(r.W<tw||r.H<th)continue;int waste=r.W*r.H-tw*th,tight=Math.Min(r.W-tw,r.H-th);if(waste<score||waste==score&&tight<shortSide){best=k;score=waste;shortSide=tight;p.Rotated=turn==1;}}
             if(best<0)return false;
+            if(p.Rotated){(p.OutW,p.OutH)=(p.OutH,p.OutW);(w,h)=(h,w);}
             var chosen=free[best];free.RemoveAt(best);p.OutX=chosen.X+Gutter;p.OutY=chosen.Y+Gutter;
             // Nonoverlapping guillotine free regions bound the work to O(charts²)
             // per trial; thousands of tiny artist charts cannot explode a
