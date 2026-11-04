@@ -12,7 +12,9 @@
         2
       ],
       "rise": 2,
-      "groundMaterial": "surrounding-ground",
+      "upperMaterial": "neighbor-upper-ground",
+      "lowerMaterial": "neighbor-lower-ground",
+      "lipMaterial": "neighbor-upper-ground",
       "groundUv": "unrolled town X/Z divided by 2; never rotate with geometry",
       "soilUv": "all wall charts stacked in the same 0..1 rectangle; no wasted gutters",
       "bottomFaces": 0
@@ -27,7 +29,9 @@
         2
       ],
       "rise": 2,
-      "groundMaterial": "surrounding-ground",
+      "upperMaterial": "neighbor-upper-ground",
+      "lowerMaterial": "neighbor-lower-ground",
+      "lipMaterial": "neighbor-upper-ground",
       "groundUv": "unrolled town X/Z divided by 2; never rotate with geometry",
       "soilUv": "all wall charts stacked in the same 0..1 rectangle; no wasted gutters",
       "bottomFaces": 0
@@ -42,7 +46,9 @@
         2
       ],
       "rise": 2,
-      "groundMaterial": "surrounding-ground",
+      "upperMaterial": "neighbor-upper-ground",
+      "lowerMaterial": "neighbor-lower-ground",
+      "lipMaterial": "neighbor-upper-ground",
       "groundUv": "unrolled town X/Z divided by 2; never rotate with geometry",
       "soilUv": "all wall charts stacked in the same 0..1 rectangle; no wasted gutters",
       "bottomFaces": 0
@@ -57,7 +63,9 @@
         2
       ],
       "rise": 2,
-      "groundMaterial": "surrounding-ground",
+      "upperMaterial": "neighbor-upper-ground",
+      "lowerMaterial": "neighbor-lower-ground",
+      "lipMaterial": "neighbor-upper-ground",
       "groundUv": "unrolled town X/Z divided by 2; never rotate with geometry",
       "soilUv": "all wall charts stacked in the same 0..1 rectangle; no wasted gutters",
       "bottomFaces": 0
@@ -72,7 +80,9 @@
         2
       ],
       "rise": 2,
-      "groundMaterial": "surrounding-ground",
+      "upperMaterial": "neighbor-upper-ground",
+      "lowerMaterial": "neighbor-lower-ground",
+      "lipMaterial": "neighbor-upper-ground",
       "groundUv": "unrolled town X/Z divided by 2; never rotate with geometry",
       "soilUv": "all wall charts stacked in the same 0..1 rectangle; no wasted gutters",
       "bottomFaces": 0
@@ -87,7 +97,9 @@
         2
       ],
       "rise": 2,
-      "groundMaterial": "surrounding-ground",
+      "upperMaterial": "neighbor-upper-ground",
+      "lowerMaterial": "neighbor-lower-ground",
+      "lipMaterial": "neighbor-upper-ground",
       "groundUv": "unrolled town X/Z divided by 2; never rotate with geometry",
       "soilUv": "all wall charts stacked in the same 0..1 rectangle; no wasted gutters",
       "bottomFaces": 0
@@ -102,7 +114,9 @@
         2
       ],
       "rise": 2,
-      "groundMaterial": "surrounding-ground",
+      "upperMaterial": "neighbor-upper-ground",
+      "lowerMaterial": "neighbor-lower-ground",
+      "lipMaterial": "neighbor-upper-ground",
       "groundUv": "unrolled town X/Z divided by 2; never rotate with geometry",
       "soilUv": "all wall charts stacked in the same 0..1 rectangle; no wasted gutters",
       "bottomFaces": 0
@@ -117,7 +131,9 @@
         2
       ],
       "rise": 2,
-      "groundMaterial": "surrounding-ground",
+      "upperMaterial": "neighbor-upper-ground",
+      "lowerMaterial": "neighbor-lower-ground",
+      "lipMaterial": "neighbor-upper-ground",
       "groundUv": "unrolled town X/Z divided by 2; never rotate with geometry",
       "soilUv": "all wall charts stacked in the same 0..1 rectangle; no wasted gutters",
       "bottomFaces": 0

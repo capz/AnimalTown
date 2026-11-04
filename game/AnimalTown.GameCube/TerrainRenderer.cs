@@ -16,6 +16,7 @@ internal sealed class TerrainRenderer
     private int season=-1,forced,slots,cachedRoom=-1,cachedTier=-1,cachedTerrainVersion=-1;
     private float cachedX,cachedZ;
     private Town? cachedTown;
+    private bool cachedPreview;
     internal int VisibleTriangles,RejectedQuads;
     internal int MaterialRevision {get;private set;}
     internal int GroundSlot(GameState state,int x,int z)=>FloorStrips.At(state,data,x,z,0);
@@ -25,7 +26,7 @@ internal sealed class TerrainRenderer
         var cfg=File.ReadAllBytes("dvd:/terrain.cfg");if(cfg.Length!=4)throw new IOException("Invalid floor season config");forced=FloorStrips.Read(cfg,0);if(forced< -1||forced>3)throw new IOException("Invalid floor season");
         for(int i=0;i<materials.Length;i++)materials[i]=new Material{Cull=CullMode.Back,Lighting=LightingMode.Unlit};
     }
-    internal void Prepare(GameState state,int room,int month)
+    internal void Prepare(GameState state,int room,int month,bool cliffPreview=false)
     {
         int next=TerrainTiles.Season(month,forced);bool changed=next!=season;
         if(changed){
@@ -40,10 +41,11 @@ internal sealed class TerrainRenderer
             season=next;
             MaterialRevision++;
         }
-        if(!changed&&cachedX==state.X&&cachedZ==state.Z&&cachedRoom==room&&cachedTier==state.HouseTier&&cachedTown==state.Town&&cachedTerrainVersion==state.Town.TerrainVersion)return;
+        if(!changed&&cachedX==state.X&&cachedZ==state.Z&&cachedRoom==room&&cachedTier==state.HouseTier&&cachedTown==state.Town&&cachedTerrainVersion==state.Town.TerrainVersion&&cachedPreview==cliffPreview)return;
+        cachedPreview=cliffPreview;
         cachedX=state.X;cachedZ=state.Z;cachedRoom=room;cachedTier=state.HouseTier;cachedTown=state.Town;
         cachedTerrainVersion=state.Town.TerrainVersion;
-        strips.Prepare(state,room,data);VisibleTriangles=strips.Count*2;RejectedQuads=strips.RejectedQuads;
+        strips.Prepare(state,room,data,cliffPreview);VisibleTriangles=strips.Count*2;RejectedQuads=strips.RejectedQuads;
         for(int i=0;i<used.Length;i++)used[i]=0;
         int previousZ=int.MinValue;var a=new CylinderPose(0,0,1,0,0);var b=a;
         for(int n=0;n<strips.Count;n++){
