@@ -22,6 +22,7 @@ internal static class NeutralFloorChecks
         int grass=FloorStrips.Read(winter,24);Check(FloorStrips.Tint(winter,grass)==0xffffffffu,"winter grass bright-white tint");Check(FloorStrips.Tint(spring,FloorStrips.Read(spring,24))==0x72b955ffu,"spring grass green tint");
         var fall=File.ReadAllBytes(Path.Combine(disc,"floor-fall.bin"));Check(FloorStrips.Tint(fall,FloorStrips.Read(fall,24))==0xad9694ffu,"fall grass reddish-gray tint");
         var package=FloorTexture.Prepare(File.ReadAllBytes(Path.Combine(disc,"floor-outdoor-neutral.dndtex")));
+        Check(TexturePixels.Int(File.ReadAllBytes(Path.Combine(disc,"floor-outdoor-neutral.dndtex")),8)==14,"neutral source ships compressed to bound console load staging");
         uint dark=TexturePixels.Pixel(package,0,0),light=TexturePixels.Pixel(package,8,0);Check((dark>>24)>=210&&(light>>24)>(dark>>24),"bright neutral master retains source contrast for snow");
         var broken=(byte[])winter.Clone();int materialAt=FloorStrips.Records;broken[materialAt]=2;Reject(()=>FloorStrips.Validate(broken),"invalid texture reference");broken=(byte[])winter.Clone();broken[materialAt+4]=0;Reject(()=>FloorStrips.Validate(broken),"transparent tint");
         config["neutralFloor"]!["brightnessFloor"]=1;Reject(Build,"invalid brightness floor");config["neutralFloor"]!["brightnessFloor"]=.86;

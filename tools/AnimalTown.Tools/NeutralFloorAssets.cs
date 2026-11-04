@@ -21,6 +21,10 @@ internal static class NeutralFloorAssets
         using var master=new SKBitmap(image.Width,image.Height);
         for(int y=0;y<image.Height;y++)for(int x=0;x<image.Width;x++){float l=max==min?1:(Luma(image.GetPixel(x,y))-min)/(float)(max-min);byte v=(byte)Math.Clamp((int)MathF.Round((floor+(1-floor)*l)*255),0,255);master.SetPixel(x,y,new SKColor(v,v,v));}
         byte[] package=RepeatFloorAssets.Encode(master,new SKRectI(0,0,master.Width,master.Height));
+        // Keep the 1024px source option without reading a 2 MiB RGB565 staging
+        // image into the console's 4 MiB managed heap. The runtime still chooses
+        // its requested size and regenerates the two native target mip levels.
+        package=FloorTexture.Prepare(package,TextureResolution.Size1024);
         File.WriteAllBytes(Path.Combine(output,"floor-outdoor-neutral.dndtex"),package);string digest=Convert.ToHexString(SHA256.HashData(package));
         var provenance=new List<object>();
         foreach(string season in new[]{"spring","summer","fall","winter"}){

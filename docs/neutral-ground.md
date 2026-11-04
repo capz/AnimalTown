@@ -36,7 +36,10 @@ contrast/darkness for every variant. It does not modify the original PNG or make
 season-specific image copies. Changes take effect on rebuilding.
 
 The disc contains one `floor-outdoor-neutral.dndtex`; all four seasonal metadata
-files reference it with different material colors. Identical tints are merged
+files reference it with different material colors. The master is compressed on
+disc (up to 1024px), avoiding a 2 MiB RGB565 source allocation on the console.
+The loader still selects its requested size and generates target mip levels.
+Identical tints are merged
 into one material. UVs repeat every 2 metres in world coordinates, continuing
 through strip/acre joins and raised-section tops. The shared texture uses true
 repeat wrapping rather than mirrored repetition. Exposed vertical terrain walls
