@@ -26,7 +26,7 @@ public sealed class FloorStrips
         if(room==0)for(int i=0;i<Read(data,280);i++){int p=Records+i*28;if(Read(data,p+4)==surface&&x>=Read(data,p+8)&&z>=Read(data,p+12)&&x<Read(data,p+8)+Read(data,p+16)&&z<Read(data,p+12)+Read(data,p+20)){surface=Read(data,p);break;}}
         int at=20+surface*20,variant=TerrainTiles.Variant(x/8,z/8,surface,Read(data,at));return Read(data,at+4+variant*4);
     }
-    public void Prepare(GameState state,int room,byte[] data)
+    public void Prepare(GameState state,int room,byte[] data,bool cliffPreview=false)
     {
         Count=0;RejectedQuads=0;
         if(room!=0){int size=state.HouseTier==0?4:state.HouseTier==1?6:8;Add(0,size,0,size,At(state,data,0,0,room));return;}
@@ -43,7 +43,10 @@ public sealed class FloorStrips
                     float minH=mode==1?2:0,maxH=minH;
                     if(mode>=2){float h0=TerrainElevation.AtCell(state.Town,x,z,x,z),h1=TerrainElevation.AtCell(state.Town,x,z,x+1,z),h2=TerrainElevation.AtCell(state.Town,x,z,x,z+1),h3=TerrainElevation.AtCell(state.Town,x,z,x+1,z+1);minH=Math.Min(Math.Min(h0,h1),Math.Min(h2,h3));maxH=Math.Max(Math.Max(h0,h1),Math.Max(h2,h3));}
                     float h=(minH+maxH)*.5f;
-                    if(RenderView.Sphere(x+.5f,(a.Y+b.Y+h*(a.UpY+b.UpY))*.5f,(a.Z+b.Z+h*(a.UpZ+b.UpZ))*.5f,TerrainTiles.GroundVisibilityRadius+(maxH-minH)*.5f,state.X,state.Z,focusHeight))next=At(state,data,x,z,room)+mode*MaximumMaterials;else RejectedQuads++;
+                    if(RenderView.Sphere(x+.5f,(a.Y+b.Y+h*(a.UpY+b.UpY))*.5f,(a.Z+b.Z+h*(a.UpZ+b.UpZ))*.5f,TerrainTiles.GroundVisibilityRadius+(maxH-minH)*.5f,state.X,state.Z,focusHeight)){
+                        int neighbor=cliffPreview?TerrainCliffBinding.PreviewLowNeighbor(state.Town,(int)state.X,(int)state.Z,x,z):-1;
+                        next=(neighbor<0?At(state,data,x,z,room):At(state,data,neighbor%Town.Width,neighbor/Town.Width,room))+mode*MaximumMaterials;
+                    }else RejectedQuads++;
                 }
                 if(next==key&&key>=MaximumMaterials*2&&x%2==0){Add(start,x,z,z+1,key);start=x;}
                 if(next!=key){if(key>=0)Add(start,x,z,z+1,key);start=x;key=next;}

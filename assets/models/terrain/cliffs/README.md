@@ -14,12 +14,22 @@ ramps. See `docs/concepts/cliff-kit-v3.md` for the orientation predicates.
 
 ## Materials and UVs
 
-Material 0 is **Bind surrounding ground (tops, low half, lip)**. Replace this
-entire placeholder with the ground material already used at the placed section.
-It contains no grass texture image. Its preview green factor is not an extra
-runtime multiplier. The 6cm lip uses this same material/tint, while the tall wall
-uses soil. The low triangle may be omitted if the regular ground already renders
-it, as in the live inspection view.
+Material 0 is **Bind upper-level neighbor (top and lip)**. Material 2 is
+**Bind ground-level neighbor (low half)**. Resolve these independently: sand
+below a grass terrace stays sand, including the complete low triangle. Replace
+each entire placeholder with its neighbor's existing ground material, including
+seasonal tint; neither placeholder contains a texture image or an extra runtime
+multiplier. The 6cm lip always follows the upper material. Material 1 remains soil.
+
+The live preview checks touching north/east/south/west edges in that fixed order,
+accepting only neighbors on the corresponding high or low side and at the same
+height. An isolated section without a matching neighbor falls back to its own
+ground material. The floor renderer binds the low half to that lower neighbor;
+the separate low triangle is omitted to avoid coplanar duplicate geometry.
+The preview can choose different existing material batches above and below
+without loading any new ground textures. At a junction with several surface
+types the fixed neighbor order is deterministic; an eventual terrain editor
+should let the player explicitly select the intended surface.
 
 For placed sections, compute U=unrolled town X/2 and V=unrolled town Z/2 before
 cylinder bending. Never rotate, mirror or restart these UVs with the mesh. A

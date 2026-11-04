@@ -28,7 +28,7 @@ internal sealed class TerrainWalls
             Edge(cx,cz,cx,cz,cx+1,cz,cx,cz-1,slot);Edge(cx,cz,cx+1,cz,cx+1,cz+1,cx+1,cz,slot);
             Edge(cx,cz,cx+1,cz+1,cx,cz+1,cx,cz+1,slot);Edge(cx,cz,cx,cz+1,cx,cz,cx-1,cz,slot);
         }
-        if(preview)for(int i=0;i<8;i++)Section(state,floor,i,(int)x/2*2-5+i%4*3,(int)z/2*2-11+i/4*5);
+        if(preview)for(int i=0;i<8;i++){TerrainCliffBinding.PreviewOrigin((int)x,(int)z,i,out int ox,out int oz);Section(state,floor,i,ox,oz);}
         if(soilUsed>0){if(texture==null){texture=TextureCache.LoadFloor("dvd:/cliff-soil.dndtex",repeat:true,repeatV:false);material.Texture=texture.Pages[0];}Pad(soil,soilUsed);if(soilSize!=soil.Length){soilMesh?.Dispose();soilMesh=DynamicMesh.Create(soil);soilSize=soil.Length;}else soilMesh!.SetVertices(soil);}
         for(int i=0;i<used.Length;i++)if(used[i]>0){var buffer=ground[i]!;Pad(buffer,used[i]);if(sizes[i]!=buffer.Length){groundMesh[i]?.Dispose();groundMesh[i]=DynamicMesh.Create(buffer);sizes[i]=buffer.Length;}else groundMesh[i]!.SetVertices(buffer);}
     }
@@ -60,7 +60,8 @@ internal sealed class TerrainWalls
     }
     private void Section(GameState state,TerrainRenderer floor,int orientation,int ox,int oz)
     {
-        var g=TerrainCliffGeometry.For(orientation);int groundSlot=floor.GroundSlot(state,ox,oz);
+        var g=TerrainCliffGeometry.For(orientation);int neighbor=TerrainCliffBinding.Neighbor(state.Town,orientation,ox,oz,true);
+        int groundSlot=floor.GroundSlot(state,neighbor%Town.Width,neighbor/Town.Width);
         for(int t=0;t<g.Triangles;t++){
             // Ordinary ground already supplies the zero-height half; omit its
             // duplicate coplanar triangle and reuse the floor material directly.
