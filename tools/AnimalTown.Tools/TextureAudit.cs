@@ -28,8 +28,8 @@ internal static class TextureAudit
         foreach(string path in Directory.GetFiles(Path.Combine(root,"out/disc"),"*.dndtex").Order())
         {
             byte[] bytes=File.ReadAllBytes(path);TexturePixels.Validate(bytes);int width=TexturePixels.Width(bytes),height=TexturePixels.Height(bytes);
-            if(Path.GetFileName(path).StartsWith("floor-",StringComparison.Ordinal)){
-                byte[] native=FloorTexture.Prepare(bytes);records.Add(new{source="dvd:/"+Path.GetFileName(path),sourceSha=Convert.ToHexString(SHA256.HashData(bytes)),width,height,runtimeWidth=TexturePixels.Width(native),runtimeHeight=TexturePixels.Height(native),format=TexturePixels.Int(native,8),levels=TexturePixels.Int(native,24),residentBytes=native.Length-32,policy=Path.GetFileName(path)=="floor-outdoor-neutral.dndtex"?"floor256-mip2-repeat-tinted-v4":"floor256-mip2-mirror-auto-v4"});continue;
+            if(Path.GetFileName(path).StartsWith("floor-",StringComparison.Ordinal)||Path.GetFileName(path)=="cliff-soil.dndtex"){
+                byte[] native=FloorTexture.Prepare(bytes);records.Add(new{source="dvd:/"+Path.GetFileName(path),sourceSha=Convert.ToHexString(SHA256.HashData(bytes)),width,height,runtimeWidth=TexturePixels.Width(native),runtimeHeight=TexturePixels.Height(native),format=TexturePixels.Int(native,8),levels=TexturePixels.Int(native,24),residentBytes=native.Length-32,policy=Path.GetFileName(path)=="cliff-soil.dndtex"?"cliff-soil-mip2-repeat-clamp-v1":Path.GetFileName(path)=="floor-outdoor-neutral.dndtex"?"floor256-mip2-repeat-tinted-v5":"floor256-mip2-mirror-auto-v5"});continue;
             }
             bool atlas=Path.GetFileName(path) is "gorditas-bold.dndtex" or "wordmark.dndtex" or "item-icons.dndtex";
             records.Add(new{source="dvd:/"+Path.GetFileName(path),sourceSha=Convert.ToHexString(SHA256.HashData(bytes)),width,height,

@@ -20,7 +20,7 @@ static class Program
             Root=Path.GetFullPath(args[1]);
             if(args[0]=="repack-textures")TextureRepacker.Command(args);
             else if(args[0]=="town-preview")TownGenerationPreview.Run(args[2],int.Parse(args[3]),args.Length>4?int.Parse(args[4]):1);
-            else if(args[0]=="terrain-primitives")TerrainPrimitiveAssets.Build(Root);
+            else if(args[0]=="terrain-primitives")TerrainPrimitiveAssets.Build(Root,args.Length>2?int.Parse(args[2]):128);
             else if(args[0]=="repack-check")TextureRepackerChecks.Run(Root);
             else if(args[0]=="audit")Audit();
             else if(args[0]=="prepare")Prepare(args[2],args[3]);
@@ -94,7 +94,7 @@ static class Program
     static void Art()
     {
         string dir=Path.Combine(Root,"out/disc");Directory.CreateDirectory(dir);
-        BrandAssets.Build(Root);RepeatFloorAssets.Build(Root);
+        BrandAssets.Build(Root);RepeatFloorAssets.Build(Root);TerrainCliffAssets.CookTexture(Root);
         byte[] image=Banner(96);File.WriteAllBytes(Path.Combine(dir,"savebanner.rgb5a3"),image);File.WriteAllBytes(Path.Combine(dir,"saveicon.rgb5a3"),Banner(32));
     }
     static void Disc(string dolPath,string commit)
@@ -161,6 +161,7 @@ static class Program
         if(!seen.Contains("tent.dndmodel"))throw new InvalidDataException("Missing supplied tent model");
         foreach(string season in new[]{"spring","summer","fall","winter"})foreach(string extension in new[]{"bin","dndtex"})if(!seen.Contains(extension=="bin"?"floor-"+season+".bin":"floor-"+season+(seen.Contains("floor-outdoor-neutral.dndtex")?"-1.dndtex":"-0.dndtex")))throw new InvalidDataException("Missing seasonal terrain asset");
         if(!seen.Contains("terrain.cfg"))throw new InvalidDataException("Missing terrain configuration");
+        if(!seen.Contains("cliff-soil.dndtex"))throw new InvalidDataException("Missing shared cliff soil texture");
         Console.WriteLine("Verified full-size bootable disc structure, "+(count-1)+" files");
     }
 }

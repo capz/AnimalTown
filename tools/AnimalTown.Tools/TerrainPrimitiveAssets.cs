@@ -3,10 +3,11 @@ using System.Text.Json.Nodes;
 
 internal static class TerrainPrimitiveAssets
 {
-    internal static void Build(string root)
+    internal static void Build(string root,int cliffTextureSize=128)
     {
         string folder=Path.Combine(root,"assets/models/terrain");Directory.CreateDirectory(folder);
         Write(Path.Combine(folder,"section_cube_2m.glb"),false);Write(Path.Combine(folder,"section_ramp_2m.glb"),true);
+        TerrainCliffAssets.Build(root,cliffTextureSize);
         Console.WriteLine("Terrain prototypes: 2x2x2m cube (12 triangles), 2m single-section ramp (8 triangles)");
     }
     private static void Write(string path,bool ramp)

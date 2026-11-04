@@ -80,6 +80,7 @@ internal sealed class TownGame
     private bool loaded,relocate,damagedSave;
     private bool indexedModels=true,batchedDrawing=true;
     private int uvDebug;
+    private bool cliffPreview;
     private static readonly string[] tabs={"Backpack","Jobs","Catalog","Home","Post office","Settings"};
     private static readonly string[] itemActions={"Drop","Place (R rotates)","Plant","Eat","Wear","Equip","Bury","Open money bag","Read","Quit"};
     internal TownGame()
@@ -150,6 +151,7 @@ internal sealed class TownGame
     internal void Input(ControllerState p)
     {
         bool chord=p.L.IsHeld&&p.R.IsHeld;
+        if(chord&&p.DPadUp.WasPressed&&room==0){cliffPreview=!cliffPreview;return;}
         if(chord&&p.Start.WasPressed){InspectTerrain();return;}
         bool navigating=screen=="menu"||screen=="keyboard"||screen=="create"||screen=="item"||screen=="sell"||screen=="shop"||screen=="store"||screen=="post"||screen=="mail"||screen=="lost";
         int direction=menuNavigation.Read(screen,screen=="menu"?menuTab:-1,p.Stick.X,p.Stick.Y,(int)p.PressedButtons,Clock.Timestamp,navigating&&!chord);
@@ -389,11 +391,11 @@ internal sealed class TownGame
     }
     internal void Draw()
     {
-        long phase=FrameProfile.Start();terrain.Prepare(state,room,month);terrainWalls.Prepare(state,room);FrameProfile.End(2,phase);
+        long phase=FrameProfile.Start();terrain.Prepare(state,room,month);terrainWalls.Prepare(state,room,terrain,cliffPreview);FrameProfile.End(2,phase);
         phase=FrameProfile.Start();uiShapes.Prepare(screen,screen=="menu"?menuTab:-1,batchedDrawing);if(batchedDrawing&&screen=="map")mapBackground.Prepare(state.Town);modelUsed=0;FrameProfile.End(8,phase);
         phase=FrameProfile.Start();device.BeginFrame(new Color32(149,198,186));
         float eyeHeight=PlayerHeight();camera.LookAt(new Vector3(state.X,CylinderWorld.CameraHeight+eyeHeight,state.Z+CylinderWorld.CameraBack),new Vector3(state.X,eyeHeight,state.Z-CylinderWorld.CameraAimAhead),new Vector3(0,1,0));renderer.Begin3D(camera);FrameProfile.End(4,phase);
-        phase=FrameProfile.Start();terrain.Draw(renderer,identity,room);terrainWalls.Draw(renderer,identity);FrameProfile.End(4,phase);phase=FrameProfile.Start();
+        phase=FrameProfile.Start();terrain.Draw(renderer,identity,room);terrainWalls.Draw(renderer,identity,terrain);FrameProfile.End(4,phase);phase=FrameProfile.Start();
         if(room==0)
         {
             for(int i=0;i<6;i++){var v=state.Town.Residents[i];ModelAt(actors[i+1],v.PosX,v.PosZ,1.8f,v.Yaw);}
@@ -530,7 +532,7 @@ internal sealed class TownGame
         { Panel(115,181,410,132);Heading("Saving your town",142,199,ink);Text("Please keep the memory\ncard inserted.",142,245,ink,1.25f);return; }
         if(screen=="create")
         { Panel(55,90,530,295);Heading("Make yourself at home",78,102,ink);string[] options={"Species: "+species[state.Species],"Name: "+state.Name,"Catchphrase: "+state.Catchphrase,"Palette: "+state.Palette,"Right: change / A: edit","Choose your house plot"};for(int i=0;i<options.Length;i++){if(selected==i)Rounded(69,148+i*31,495,28,14,new Color32(221,231,188));Text((selected==i?"> ":"  ")+options[i],75,149+i*31,ink);}return; }
-        if(screen=="world")return;
+        if(screen=="world"){if(cliffPreview)Text("Cliff kit preview / L+R+Up closes",42,343,ink);return;}
         if((screen=="menu"&&menuTab==0)||screen=="sell"||screen=="item"){DrawBackpack();return;}
         Panel(45,75,550,350);string title=screen=="menu"?tabs[menuTab]:screen=="shop"?"Store stock":screen=="store"?"Hearth's store":screen=="post"?"Town hall":screen=="mail"?"Mailbox":"Lost and Found";
         Heading(title,68,91,ink);
