@@ -4,6 +4,7 @@ internal static class TerrainEdgeChecks
 {
     internal static void Run(Action<bool,string> check)
     {
+        WaterSurfaceChecks.Run(check);
         for(int edge=0;edge<4;edge++)for(int depth=2;depth<CylinderWorld.Far-2;depth+=3){
             float x=0,up=0;
             float tangent=edge<2?RenderView.TanX:RenderView.TanY;

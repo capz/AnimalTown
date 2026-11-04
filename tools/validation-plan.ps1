@@ -13,6 +13,7 @@ function Get-ValidationPlan {
         if($p -match '^(build/|\.github/|Directory\.|.*\.sln$|.*\.csproj$|\.gitmodules$|vendor/|tools/(build-|publish-release|patch-native|.*validation|test-changes)|tests/validation-plan)'){$broad=$true;continue}
         if($p -match '^server/|^tests/(server-integration|AnimalTown.ServerChecks)'){$backend=$true;continue}
         if($p -match '^tests/AnimalTown.Checks/Program.cs$'){$broad=$true;continue}
+        if($p -match '^(shared/AnimalTown.Domain/WaterSurface|tests/AnimalTown.Checks/WaterSurfaceChecks)\.cs$') {[void]$managed.Add('terrain');continue}
         if($p -match '(MenuNavigation|UiShapePlan|WrappedText|PlayerMovement|DialogueVoice|TownTrim|TerrainEdge|TownGeneration|TerrainLife|SplitSave)Checks\.cs$'){
             $names=@{MenuNavigation='menu';UiShapePlan='ui';WrappedText='text';PlayerMovement='movement';DialogueVoice='dialogue';TownTrim='trim';TerrainEdge='terrain';TownGeneration='generation';TerrainLife='life';SplitSave='saves'}
             [void]$managed.Add($names[$Matches[1]]);continue
@@ -44,7 +45,7 @@ function Get-ValidationPlan {
         if($p -match '^assets/(terrain/|textures/environment/)'){[void]$tooling.Add('terrain');[void]$managed.Add('core');continue}
         if($p -match '^assets/(fonts/|textures/)|^tools/AnimalTown.Tools/Brand'){[void]$managed.Add('ui');[void]$managed.Add('text');continue}
         if($p -match '^game/'){
-            if($p -match '(Terrain|Tree|Texture|Model|Render|FrameProfile)'){[void]$managed.Add('core');[void]$managed.Add('terrain')}
+            if($p -match '(Terrain|Water|Tree|Texture|Model|Render|FrameProfile)'){[void]$managed.Add('core');[void]$managed.Add('terrain')}
             elseif($p -match 'NativeCalendar'){[void]$managed.Add('life')}
             elseif($p -match 'Dialogue'){[void]$managed.Add('dialogue')}
             elseif($p -match 'CardSave'){[void]$managed.Add('saves');[void]$native.Add('card')}

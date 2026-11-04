@@ -391,7 +391,7 @@ internal sealed class TownGame
     }
     internal void Draw()
     {
-        long phase=FrameProfile.Start();terrain.Prepare(state,room,month,cliffPreview);terrainWalls.Prepare(state,room,terrain,cliffPreview);FrameProfile.End(2,phase);
+        long phase=FrameProfile.Start();terrain.Prepare(state,room,month,cliffPreview);terrain.Animate((Clock.Timestamp-sessionStart)/1000000.0);terrainWalls.Prepare(state,room,terrain,cliffPreview);FrameProfile.End(2,phase);
         phase=FrameProfile.Start();uiShapes.Prepare(screen,screen=="menu"?menuTab:-1,batchedDrawing);if(batchedDrawing&&screen=="map")mapBackground.Prepare(state.Town);modelUsed=0;FrameProfile.End(8,phase);
         phase=FrameProfile.Start();device.BeginFrame(new Color32(149,198,186));
         float eyeHeight=PlayerHeight();camera.LookAt(new Vector3(state.X,CylinderWorld.CameraHeight+eyeHeight,state.Z+CylinderWorld.CameraBack),new Vector3(state.X,eyeHeight,state.Z-CylinderWorld.CameraAimAhead),new Vector3(0,1,0));renderer.Begin3D(camera);FrameProfile.End(4,phase);
