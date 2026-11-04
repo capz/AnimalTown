@@ -97,3 +97,27 @@ In this editing environment the isolated GCC fixture passes. PowerShell, .NET,
 Docker and the console toolchain are unavailable, so the repository runner,
 AOT build, emulator behavior and hardware behavior have not been validated.
 No new runtime FPS improvement is claimed by this change.
+
+## Settings allocation follow-up (2026-11-04)
+
+A host benchmark invoked the actual private `TownGame.RowLabel` method through a
+bound delegate on an uninitialized instance configured for the Settings tab.
+After 10,000 warm-up calls, 100,000 passes over all nine rows (900,000 calls)
+allocated 352,802,016 bytes before the change and 2,016 bytes afterward, measured
+with `GC.GetAllocatedBytesForCurrentThread`. Both runs produced a label-length
+checksum of 15,900,000. This removes 392 bytes per row call, or 3,528 bytes per
+nine-row Settings redraw, on the host runtime. Each run includes the same small
+benchmark overhead. Elapsed host times were 841.57 ms and 80.91 ms respectively;
+these are single-run host results, not guest frame times or console speedups.
+
+Settings now returns only the requested label from constant variants. State
+changes remain visible immediately, without a cache invalidation path. The
+native release-build checks also execute the selected `performance` fixture;
+previously only the development validation runner executed that fixture.
+
+The configured follow-up environment supports .NET 8/10, PowerShell and Docker.
+Full local validation, including native accounting and backend integration,
+passed before the settings optimization. Subsequent validation and Dolphin
+captures are reported with their build identity, separately from these host
+allocation measurements. The original runtime bottleneck hypotheses above
+still require guest measurements before changing terrain, animation or pacing.

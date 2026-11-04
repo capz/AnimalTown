@@ -562,7 +562,18 @@ internal sealed class TownGame
         if(menuTab==1)return i==0?"Tutorial / daily jobs":state.Town.Residents[i-1].Name+" / friendship "+state.Town.Residents[i-1].Friendship;
         if(menuTab==2)return Catalog.Items[i+1].Name+(state.Owned[i+1]==0?" (not owned)":" / "+Catalog.Items[i+1].Buy);
         if(menuTab==3){string[] a={"Roof palette","Exterior palette","Fence style","Mailbox","Relocate (50000)","Expand house","Expand garden"};return a[i];}
-        string[] settings={"Save now","Controls","About / build identity","Performance display: "+(FrameProfile.Enabled?"On":"Off"),"Calendar","Chat settings","Model drawing: "+(indexedModels?"GX indexed":"Direct comparison"),"UV island colors: "+((uvDebug&1)!=0?"On":"Off"),"UV island outlines: "+((uvDebug&2)!=0?"On":"Off")};return settings[i];
+        // Return only the requested label; all variants are interned literals.
+        // Building every row here allocated an array and four strings per call.
+        if(i==0)return "Save now";
+        if(i==1)return "Controls";
+        if(i==2)return "About / build identity";
+        if(i==3)return FrameProfile.Enabled?"Performance display: On":"Performance display: Off";
+        if(i==4)return "Calendar";
+        if(i==5)return "Chat settings";
+        if(i==6)return indexedModels?"Model drawing: GX indexed":"Model drawing: Direct comparison";
+        if(i==7)return (uvDebug&1)!=0?"UV island colors: On":"UV island colors: Off";
+        if(i==8)return (uvDebug&2)!=0?"UV island outlines: On":"UV island outlines: Off";
+        throw new IndexOutOfRangeException();
     }
     private void DrawBackpack()
     {
