@@ -1,5 +1,8 @@
 # Cliff kit concept, revision 2
 
+Superseded by [revision 3](cliff-kit-v3.md): retain the low half at ground level
+to complete the square tile, and keep all ground UVs world-aligned.
+
 Generated with the built-in image-generation tool, using the first cliff sheet
 as a visual reference. This is a modeling concept, not runtime model geometry.
 
