@@ -38,3 +38,10 @@ unverified triangle counts.
 Modeling note: bands and lip should primarily be painted. Cube and triangular
 prism prototypes can be rotated for the eight orientations, with shared indexed
 buffers, matching seam heights, opaque materials and radial world parenting.
+
+A basic closed cube is 12 triangles; a closed half-cube triangular prism is
+8 before optional bevels. Paint the soil bands and thin lip rather than modeling
+them as extra rings. Every vertical face uses the soil material, including the
+diagonal cut: its top strip can depict the lip, but the grass-top material must
+never cover a vertical wall. These are primitive starting counts, not certified
+triangle counts for an eventual finished mesh.

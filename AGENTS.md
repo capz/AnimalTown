@@ -22,3 +22,12 @@ World asset requests must stay within GameCube/3DS-era Animal Crossing types:
 natural ramps, river/pond/shore banks, cliffs, waterfalls and bridges, with original
 designs. See `docs/world-asset-requests.md`; do not introduce New Horizons-only
 terraforming or placeable incline-kit scope.
+
+# Change validation
+
+Use `tools/test-changes.ps1` for local validation; `-PlanOnly` shows the selected
+checks. Run only suites and emulator scenarios relevant to the change. Broaden
+coverage for related failures, unknown dependencies, or validation/build-gate
+changes, rather than routinely repeating all tests. See `docs/change-validation.md`.
+Docs/concept-art-only changes need no console build. When a release is built,
+the same-commit ISO/backend delivery requirements above still apply.
