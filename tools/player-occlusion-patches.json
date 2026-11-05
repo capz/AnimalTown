@@ -1,0 +1,18 @@
+[
+  {
+    "find": "static bool matrix_array(DndArray *a, float out[16]) {",
+    "replace": "#include \"animaltown_player_occlusion.inc\"\n\nstatic bool matrix_array(DndArray *a, float out[16]) {"
+  },
+  {
+    "find": "    dnd_performance_add_triangles(mesh->indices / 3);\n    unsigned bindings=0;",
+    "replace": "    DndMaterial player_copy;\n    if(town_occluded_player){player_copy=*mat;player_copy.mode|=2;mat=&player_copy;}\n    dnd_performance_add_triangles(mesh->indices / 3);\n    unsigned bindings=0;"
+  },
+  {
+    "find": "bool reuse=model_batch_active&&anim==NULL&&batch_model==model&&batch_material==mat;",
+    "replace": "bool reuse=!town_occluded_player&&model_batch_active&&anim==NULL&&batch_model==model&&batch_material==mat;"
+  },
+  {
+    "find": "    if(!reuse)dnd_draw_backend_tev(selected, mat->texture >= 0);",
+    "replace": "    if(!reuse)dnd_draw_backend_tev(selected, mat->texture >= 0);\n    if(town_occluded_player)town_player_white(selected?(int)selected->count:1,mat);"
+  }
+]

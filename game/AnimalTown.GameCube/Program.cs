@@ -390,6 +390,13 @@ internal sealed class TownGame
     {
         if(!Visible(x,z,scale)){FrameProfile.CulledObjects++;return;}
         var pose=batchedDrawing?modelPoses[modelUsed++]:transform;pose.LocalPosition=SurfacePoint(x,z);pose.LocalScale=new Vector3(scale,scale,scale);pose.LocalRotation=SurfaceRotation(z,facing);
+        if(m==actors[0]){
+            // Scene depth is complete here. Submit hidden fragments first using
+            // the same pose/skin; the ordinary draw then covers visible parts.
+            if(NativeRenderProbe.OccludedPlayer(1)!=1)throw new InvalidOperationException("Player occlusion pass unavailable");
+            try{renderer.DrawModel(m,pose);}
+            finally{NativeRenderProbe.OccludedPlayer(0);}
+        }
         if(batchedDrawing){if(m==props[0])structureQueue.Submit(m,pose);else actorQueue.Submit(m,pose);}else renderer.DrawModel(m,pose);
     }
     internal void Draw()

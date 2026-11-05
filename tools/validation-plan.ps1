@@ -34,6 +34,7 @@ function Get-ValidationPlan {
         if($p -match '^shared/AnimalTown.Domain/'){
             foreach($s in $allManaged){[void]$managed.Add($s)};$backend=$true;continue
         }
+        if($p -match '^(tools/native-player-occlusion|tools/player-occlusion-patches|tests/player-occlusion)'){[void]$native.Add('occlusion');continue}
         if($p -match '^(tools/native-performance|tests/native-performance)'){[void]$native.Add('performance');continue}
         if($p -match '^(tools/native-uv|tests/native-uv)'){[void]$native.Add('uv');continue}
         if($p -match '^(tools/native-card|tests/native-card)'){[void]$native.Add('card');[void]$managed.Add('saves');continue}
@@ -57,6 +58,6 @@ function Get-ValidationPlan {
         if($p -match '^tools/iso-smoke.py$'){[void]$native.Add('python');continue} # Scenarios are explicitly selected.
         $broad=$true
     }
-    if($broad){foreach($s in $allManaged){[void]$managed.Add($s)};foreach($s in @('terrain','repack')){[void]$tooling.Add($s)};foreach($s in @('uv','card','texture','voices','python','performance')){[void]$native.Add($s)};$backend=$true;$policy=$true}
+    if($broad){foreach($s in $allManaged){[void]$managed.Add($s)};foreach($s in @('terrain','repack')){[void]$tooling.Add($s)};foreach($s in @('uv','card','texture','voices','python','performance','occlusion')){[void]$native.Add($s)};$backend=$true;$policy=$true}
     [pscustomobject]@{schema=1;commit=$Commit;baseRef=$BaseRef;release=$release;full=$broad;managed=@($allManaged|Where-Object {$managed.Contains($_)});tooling=@($tooling|Sort-Object);native=@($native|Sort-Object);backend=$backend;policy=$policy;paths=@($ChangedPaths|Sort-Object -Unique)}
 }

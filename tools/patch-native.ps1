@@ -30,9 +30,20 @@ $uvPattern='intptr_t (dnd_value_AnimalTown_GameCube_NativeRenderProbe_Uv_[a-z0-9
 if(([regex]::Matches($generated,$uvPattern,[Text.RegularExpressions.RegexOptions]::Singleline)).Count -ne 1){throw 'Native UV diagnostic bridge signature changed'}
 $generated=[regex]::Replace($generated,$uvPattern,'intptr_t $1(intptr_t $2) { return animaltown_uv_mode((int)$2); }',[Text.RegularExpressions.RegexOptions]::Singleline)
 $generated="extern int animaltown_uv_mode(int);`n"+$generated
+$occlusionPattern='intptr_t (dnd_value_AnimalTown_GameCube_NativeRenderProbe_OccludedPlayer_[a-z0-9]+)\(intptr_t (\w+)\) \{.*?\r?\n\}'
+if(([regex]::Matches($generated,$occlusionPattern,[Text.RegularExpressions.RegexOptions]::Singleline)).Count -ne 1){throw 'Player occlusion bridge signature changed'}
+$generated=[regex]::Replace($generated,$occlusionPattern,'intptr_t $1(intptr_t $2) { return animaltown_player_occlusion((int)$2); }',[Text.RegularExpressions.RegexOptions]::Singleline)
+$generated="extern int animaltown_player_occlusion(int);`n"+$generated
 [IO.File]::WriteAllText($generatedPath,$generated)
 $modelGraphicsPath=Join-Path $Root 'out/native/source/model_graphics.c'
 $modelGraphics=[IO.File]::ReadAllText($modelGraphicsPath)
+# One guarded patch table is shared with the production-GX recording test.
+$modelGraphics=$modelGraphics.Replace("`r`n","`n")
+foreach($patch in (Get-Content (Join-Path $Root 'tools/player-occlusion-patches.json') -Raw|ConvertFrom-Json)){
+    if(([regex]::Matches($modelGraphics,[regex]::Escape($patch.find))).Count -ne 1){throw 'Pinned player occlusion render hook changed'}
+    $modelGraphics=$modelGraphics.Replace($patch.find,$patch.replace)
+}
+Copy-Item -LiteralPath (Join-Path $Root 'tools/native-player-occlusion.inc') -Destination (Join-Path $Root 'out/native/source/animaltown_player_occlusion.inc') -Force
 $drawSignature='static int draw_model_selected(DndInstance *in,const float world[16],const DndDrawEffect *effect,int filter,int only) {'
 if(([regex]::Matches($modelGraphics,[regex]::Escape($drawSignature))).Count -ne 1){throw 'Pinned model UV diagnostic hook changed'}
 $modelGraphics=$modelGraphics.Replace($drawSignature,$drawSignature.Replace('draw_model_selected(','draw_model_selected_base('))

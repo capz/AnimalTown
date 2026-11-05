@@ -55,6 +55,7 @@ static void town_uv_draw(DndInstance *in,const float world[16],int filter,int on
 }
 #endif
 static int draw_model_selected(DndInstance *in,const float world[16],const DndDrawEffect *effect,int filter,int only){
+  if(town_occluded_player)return draw_model_selected_base(in,world,effect,filter,only);
   if(!town_uv_flags)return draw_model_selected_base(in,world,effect,filter,only);
 #if defined(DND_GAMECUBE_STORAGE) || defined(DND_MODEL_GX_TEST)
   int result=0;if(town_uv_flags&1)town_uv_draw(in,world,filter,only,false);else result=draw_model_selected_base(in,world,effect,filter,only);
