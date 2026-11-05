@@ -8,6 +8,8 @@ internal sealed class TerrainRenderer
 {
     private readonly FloorStrips strips=new FloorStrips();
     private readonly WaterRenderer water=new WaterRenderer();
+    private readonly CloudShadows clouds=new CloudShadows();
+    private readonly Color32[] baseTints=new Color32[FloorStrips.MaximumMaterials];
     private readonly DynamicMesh?[] meshes=new DynamicMesh?[FloorStrips.MaximumMaterials];
     private readonly VertexPositionColorTexture[]?[] buffers=new VertexPositionColorTexture[]?[FloorStrips.MaximumMaterials];
     private readonly Material[] materials=new Material[FloorStrips.MaximumMaterials];
@@ -25,7 +27,7 @@ internal sealed class TerrainRenderer
     internal TerrainRenderer()
     {
         var cfg=File.ReadAllBytes("dvd:/terrain.cfg");if(cfg.Length!=4)throw new IOException("Invalid floor season config");forced=FloorStrips.Read(cfg,0);if(forced< -1||forced>3)throw new IOException("Invalid floor season");
-        for(int i=0;i<materials.Length;i++)materials[i]=new Material{Cull=CullMode.Back,Lighting=LightingMode.Unlit};
+        for(int i=0;i<materials.Length;i++)materials[i]=new Material{Cull=CullMode.Back,Lighting=LightingMode.Unlit,SecondarySampler=new SamplerState(TextureAddressMode.Repeat,TextureAddressMode.Repeat,TextureFilter.Linear)};
     }
     internal void Prepare(GameState state,int room,int month,bool cliffPreview=false)
     {
@@ -38,7 +40,8 @@ internal sealed class TerrainRenderer
             for(int i=0;i<slots;i++){
                 int source=FloorStrips.TextureSlot(data,i);bool neutral=FloorStrips.Read(data,4)==2&&source==0;
                 if(textures[source]==null)textures[source]=TextureCache.LoadFloor(neutral?"dvd:/floor-outdoor-neutral.dndtex":"dvd:/"+name+"-"+source+".dndtex",repeat:neutral);
-                materials[i].Texture=textures[source]!.Pages[0];uint tint=FloorStrips.Tint(data,i);materials[i].Color=new Color32((byte)(tint>>24),(byte)(tint>>16),(byte)(tint>>8));
+                materials[i].Sampler=new SamplerState(neutral?TextureAddressMode.Repeat:TextureAddressMode.Clamp,neutral?TextureAddressMode.Repeat:TextureAddressMode.Clamp);
+                materials[i].Texture=textures[source]!.Pages[0];uint tint=FloorStrips.Tint(data,i);baseTints[i]=materials[i].Color=new Color32((byte)(tint>>24),(byte)(tint>>16),(byte)(tint>>8));
             }
             season=next;
             MaterialRevision++;
@@ -79,6 +82,11 @@ internal sealed class TerrainRenderer
             if(shore)h=WaterSurface.Height;
         }
         return new CylinderPose(p.Y+h*p.UpY,p.Z+h*p.UpZ,p.UpY,p.UpZ,p.Pitch);}
-    internal void Animate(double seconds)=>water.Animate(seconds);
+    internal void CycleCloudCover()=>clouds.Cover=clouds.Cover==.5f?0:clouds.Cover==0?1:.5f;
+    internal void Animate(double seconds)
+    {
+        water.Animate(seconds);clouds.Animate(seconds);
+        for(int i=0;i<slots;i++)clouds.Apply(materials[i],baseTints[i],cachedRoom==0);
+    }
     internal void Draw(Renderer renderer,Transform parent,int room){for(int i=0;i<slots;i++)if(used[i]>0)renderer.DrawMesh(meshes[i]!,materials[i],parent);water.Draw(renderer,parent);}
 }

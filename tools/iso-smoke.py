@@ -226,6 +226,17 @@ with (root/'emulator.log').open('w') as log:
                     if mode=='dpad':os.write(controller,(''.join(f'RELEASE {button}\n' for button in pads[n])).encode())
                     time.sleep(.5);screenshot(f'movement-{mode}-{n}.png')
             press('START');time.sleep(12);screenshot('movement-save.png')
+        elif '--cloud-shadows' in sys.argv:
+            press('A');press('D_UP');press('A');press('A');time.sleep(2);press('B');press('B')
+            time.sleep(2);screenshot('cloud-partial-a.png');time.sleep(20);screenshot('cloud-partial-b.png')
+            def cloud_cover():
+                os.write(controller,b'PRESS L\nPRESS R\n');time.sleep(.2);press('D_RIGHT');os.write(controller,b'RELEASE L\nRELEASE R\n');time.sleep(2)
+            cloud_cover();screenshot('cloud-clear.png')
+            cloud_cover();screenshot('cloud-overcast.png')
+            cloud_cover();screenshot('cloud-restored.png')
+            press('X');screenshot('cloud-menu.png');press('B')
+            press('A');time.sleep(2);screenshot('cloud-indoor-a.png');time.sleep(8);screenshot('cloud-indoor-b.png')
+            press('A');time.sleep(2);screenshot('cloud-exterior-return.png')
         elif '--river-coast' in sys.argv:
             press('A');press('D_UP');press('A');press('A');time.sleep(2);press('B');press('B')
             for scene in ['river', 'river-corner', 'bridge', 'coast-beach', 'estuary', 'restored']:

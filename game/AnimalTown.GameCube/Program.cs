@@ -152,6 +152,7 @@ internal sealed class TownGame
     internal void Input(ControllerState p)
     {
         bool chord=p.L.IsHeld&&p.R.IsHeld;
+        if(chord&&p.DPadRight.WasPressed&&room==0){terrain.CycleCloudCover();return;}
         if(chord&&p.DPadUp.WasPressed&&room==0){cliffPreview=!cliffPreview;return;}
         if(chord&&p.DPadLeft.WasPressed&&room==0&&screen=="world"){waterInspection=(waterInspection+1)%6;return;}
         if(waterInspection!=0)return;
@@ -338,7 +339,7 @@ internal sealed class TownGame
         }
         if(screen=="world"||screen=="plot")
         {
-            if(PlayerMovement.Move(state,room,pad.Stick.X,pad.Stick.Y,(int)pad.HeldButtons,pad.B.IsHeld,out float dx,out float dz))
+            if(!(pad.L.IsHeld&&pad.R.IsHeld)&&PlayerMovement.Move(state,room,pad.Stick.X,pad.Stick.Y,(int)pad.HeldButtons,pad.B.IsHeld,out float dx,out float dz))
             {
                 facingYaw=PlayerMovement.Yaw(dx,dz);PlayerMovement.Target(dx,dz,out faceX,out faceZ);
                 int clip=pad.B.IsHeld?1:0;if(clip!=moveClip){string name=clip==1?"Running":"Walking";if(models[state.Species].TryGetAnimation(name,out var _)){actors[0].Animator.Play(name,true);actors[0].Animator.SetSpeed(1.05f);}moveClip=clip;}
