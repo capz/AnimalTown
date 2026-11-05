@@ -13,11 +13,16 @@ internal static class TerrainCliffChecks
             var g=TerrainCliffGeometry.For(orientation);bool diagonal=orientation>=4;Check(g.Triangles==(diagonal?14:18),"bounded cliff triangle count");total+=g.Triangles;float highArea=0,lowArea=0;
             for(int i=0;i<g.VertexCount;i++){
                 var p=P(i);Check(p.X>=0&&p.X<=2&&p.Z>=0&&p.Z<=2&&p.Y>=0&&p.Y<=2,"section stays inside one cube");
-                Check(Math.Abs(N(i).Length()-1)<.0001f,"flat normals normalized");Check(g.Uvs[i*2]>=0&&g.Uvs[i*2]<=1&&g.Uvs[i*2+1]>=0&&g.Uvs[i*2+1]<=1,"UVs bounded, including stacked soil charts");
+                Check(Math.Abs(N(i).Length()-1)<.0001f,"flat normals normalized");float guard=N(i).Y==0&&p.Y>=2-TerrainCliffGeometry.LipDepth?TerrainCliffGeometry.LipDepth*.5f:0;Check(g.Uvs[i*2]>=-guard&&g.Uvs[i*2]<=1+guard&&g.Uvs[i*2+1]>=-guard&&g.Uvs[i*2+1]<=1+guard,"UVs bounded with narrow repeating lip wrap");
             }
             for(int t=0;t<g.Triangles;t++){
                 int ia=g.Indices[t*3],ib=g.Indices[t*3+1],ic=g.Indices[t*3+2];var a=P(ia);var b=P(ib);var c=P(ic);var cross=Vector3.Cross(b-a,c-a);Check(Vector3.Dot(cross,N(ia))>.00001f,"outward non-degenerate triangles");
-                int part=g.Parts[t];if(part==TerrainCliffGeometry.Top||part==TerrainCliffGeometry.Low){
+                int part=g.Parts[t];
+                if(part==TerrainCliffGeometry.Lip)foreach(int i in new[]{ia,ib,ic}){
+                    float drop=2-P(i).Y;
+                    Check(Math.Abs(g.Uvs[i*2]-(P(i).X-N(i).X*drop)*.5f)<.00001f&&Math.Abs(g.Uvs[i*2+1]-(P(i).Z-N(i).Z*drop)*.5f)<.00001f,"lip unfolds upper texture inward, continuous at top seam");
+                }
+                if(part==TerrainCliffGeometry.Top||part==TerrainCliffGeometry.Low){
                     float h=part==TerrainCliffGeometry.Top?2:0;Check(a.Y==h&&b.Y==h&&c.Y==h,"horizontal cap has constant height, never a ramp");
                     if(part==TerrainCliffGeometry.Top)highArea+=cross.Y*.5f;else lowArea+=cross.Y*.5f;
                     foreach(int i in new[]{ia,ib,ic})Check(g.Uvs[i*2]==g.Positions[i*3]*.5f&&g.Uvs[i*2+1]==g.Positions[i*3+2]*.5f,"ground UVs stay in original tile orientation");
