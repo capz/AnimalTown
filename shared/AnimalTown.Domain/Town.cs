@@ -1,6 +1,6 @@
 namespace AnimalTown;
 
-public enum Terrain { Grass, Water, Bridge, Beach, Cliff, Plaza, Building, Camp }
+public enum Terrain { Grass, Water, Bridge, Beach, Cliff, Plaza, Building, Camp, Sea, CoastNorth, CoastEast, CoastSouth, CoastWest }
 public sealed class Villager
 {
     public int X,Z,Friendship,Request,RequestDay,Met;
@@ -28,7 +28,7 @@ public sealed class Town
     // Bulk importers that write Tiles directly call this once after committing.
     public void NotifyTerrainChanged(){TerrainVersion++;}
     public bool SetTerrain(int x,int z,Terrain terrain)
-    {if(!Inside(x,z)||(uint)terrain>7||Tiles[z*Width+x]==(byte)terrain)return false;Tiles[z*Width+x]=(byte)terrain;NotifyTerrainChanged();return true;}
+    {if(!Inside(x,z)||(uint)terrain>(uint)Terrain.CoastWest||Tiles[z*Width+x]==(byte)terrain)return false;Tiles[z*Width+x]=(byte)terrain;NotifyTerrainChanged();return true;}
     public readonly Villager[] Residents=new Villager[6];
     public readonly GroundItem[] Ground=new GroundItem[512];
     public readonly Placement[] Placed=new Placement[256];
@@ -49,9 +49,9 @@ public sealed class Town
         Generate();
     }
     public bool Inside(int x,int z)=>x>=0&&x<Width&&z>=0&&z<Height;
-    public int At(int x,int z)=>Inside(x,z)?Tiles[z*Width+x]:(int)Terrain.Water;
+    public int At(int x,int z)=>Inside(x,z)?Tiles[z*Width+x]:(int)Terrain.Sea;
     public bool Walkable(int x,int z)
-    { int t=At(x,z);return Inside(x,z)&&t!=(int)Terrain.Water&&t!=(int)Terrain.Building&&t!=(int)Terrain.Cliff; }
+    { int t=At(x,z);return Inside(x,z)&&!WaterSurface.IsWater(this,x,z)&&!WaterTerrain.IsCoast(t)&&t!=(int)Terrain.Building&&t!=(int)Terrain.Cliff; }
     public void Generate()
     {
         if(Day>=0||PlacedCount!=0)throw new InvalidOperationException("Generate is only for an unplayed town; saved terrain must be loaded intact");

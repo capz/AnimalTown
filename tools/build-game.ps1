@@ -6,6 +6,9 @@ function Run([string]$File, [string[]]$Arguments) {
     if ($LASTEXITCODE -ne 0) { throw "$File failed ($LASTEXITCODE)" }
 }
 $projectRoot = (Get-Location).Path
+. ./tools/version.ps1
+$identity=Get-BuildVersion $projectRoot
+Write-VersionMetadata $identity $projectRoot
 if(!$ValidationPlan){& ./tools/select-validation.ps1 -Full;$ValidationPlan='out/validation-plan.json'}
 $validation=Get-Content -LiteralPath $ValidationPlan -Raw|ConvertFrom-Json
 if($validation.schema -ne 1 -or $validation.commit -ne (& git rev-parse HEAD).Trim()){throw 'Validation plan must match this source commit'}
@@ -58,11 +61,12 @@ if (!$SkipAssets) {
         }
     }
 }
-$gameCommit = (& git rev-parse --short=12 HEAD).Trim()
-$gameFullCommit = (& git rev-parse HEAD).Trim()
+$gameCommit = $identity.bb
+$gameFullCommit = $identity.commit
+$gameVersion = $identity.version
 $workingChanges = & git status --porcelain --untracked-files=normal
-if ($workingChanges) { $gameCommit += '-dirty' }
-$buildSource = "internal static class BuildInfo { internal const string Commit=`"$gameCommit`"; }"
+if ($workingChanges) { $gameCommit += '-dirty'; $gameVersion += '-dirty' }
+$buildSource = "internal static class BuildInfo { internal const string Commit=`"$gameCommit`"; internal const string Version=`"$gameVersion`"; }"
 [IO.File]::WriteAllText((Join-Path $projectRoot 'out/BuildInfo.cs'), $buildSource)
 $engineCommit = (& git -C vendor/hypercube-engine rev-parse HEAD).Trim()
 $sdkCommit = (& git -C $sdkRoot rev-parse HEAD).Trim()
@@ -70,7 +74,7 @@ $sourceManifest = foreach($sourceFile in (& git ls-files --cached --others --exc
     if(Test-Path -LiteralPath $sourceFile -PathType Leaf){ "$sourceFile $((Get-FileHash -LiteralPath $sourceFile -Algorithm SHA256).Hash)" }
 }
 $sourceDigest=[Convert]::ToHexString([Security.Cryptography.SHA256]::HashData([Text.Encoding]::UTF8.GetBytes(($sourceManifest -join "`n"))))
-[IO.File]::WriteAllText((Join-Path $projectRoot 'out/build-revisions.txt'), "Game source: $gameFullCommit`nEngine: $engineCommit`nSDK: $sdkCommit`nDirty: $([bool]$workingChanges)`nSource digest: $sourceDigest`nBuild image: $env:ANIMALTOWN_BUILD_IMAGE`n")
+[IO.File]::WriteAllText((Join-Path $projectRoot 'out/build-revisions.txt'), "Version: $($identity.version)`nGame source: $gameFullCommit`nEngine: $engineCommit`nSDK: $sdkCommit`nDirty: $([bool]$workingChanges)`nSource digest: $sourceDigest`nBuild image: $env:ANIMALTOWN_BUILD_IMAGE`n")
 if($validation.managed.Count){Run dotnet @('run','--project','tests/AnimalTown.Checks','-c','Release','--','--suites',($validation.managed -join ','))}
 if('card' -in $validation.native){RunNative '.' 'sh' @('-c','cc -std=c11 -Wall -Wextra -Werror tests/native-card-read.c -o /tmp/animaltown-card-read && /tmp/animaltown-card-read')}
 if('uv' -in $validation.native){RunNative '.' 'sh' @('-c','cc -std=c11 -Wall -Wextra -Werror tests/native-uv-topology.c -o /tmp/animaltown-uv-topology && /tmp/animaltown-uv-topology')}
@@ -101,5 +105,5 @@ powerpc-eabi-gcc -mcpu=750 -m32 -mbig-endian -msdata=none -Os -fno-builtin -fno-
 powerpc-eabi-objcopy -O binary out/apploader.elf out/apploader.bin
 '
 RunNative '.' 'sh' @('-c',$loaderBuild.Replace("`r`n","`n"))
-Run dotnet @('run','--project','tools/AnimalTown.Tools','-c','Release','--no-build','--','iso',$projectRoot,'out/native/Game.dol',$gameCommit)
-Write-Host "Bootable ISO: $projectRoot/out/AnimalTown-$gameCommit.iso"
+Run dotnet @('run','--project','tools/AnimalTown.Tools','-c','Release','--no-build','--','iso',$projectRoot,'out/native/Game.dol',$gameVersion)
+Write-Host "Bootable ISO: $projectRoot/out/AnimalTown-$gameVersion.iso"

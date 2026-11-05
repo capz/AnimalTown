@@ -3,8 +3,9 @@ $ErrorActionPreference='Stop'
 $PSNativeCommandUseErrorActionPreference=$false
 Set-Location (Split-Path $PSScriptRoot -Parent)
 . ./tools/validation-plan.ps1
+. ./tools/version.ps1
 $commit=(& git rev-parse HEAD).Trim()
-if(!$Full -and !$BaseRef){$anchor=if($WorkingTree){'HEAD'}else{'HEAD^'};$BaseRef=(& git describe --first-parent --tags --match 'build-*' --abbrev=0 $anchor 2>$null);if($LASTEXITCODE){$Full=$true;$BaseRef=''}}
+if(!$Full -and !$BaseRef){$anchor=if($WorkingTree){'HEAD'}else{'HEAD^'};$BaseRef=Get-ReleaseAnchor (Get-Location).Path $anchor;if(!$BaseRef){$Full=$true;$BaseRef=''}}
 $paths=@()
 if(!$Full){
     & git merge-base --is-ancestor $BaseRef HEAD
@@ -16,5 +17,5 @@ $parent=Split-Path $OutputPath -Parent;if($parent){New-Item -ItemType Directory 
 [IO.File]::WriteAllText([IO.Path]::GetFullPath($OutputPath),($plan|ConvertTo-Json -Depth 5)+"`n")
 if($GitHubOutput){Add-Content -LiteralPath $GitHubOutput -Value ('release='+$plan.release.ToString().ToLowerInvariant())}
 Write-Host "Validation: managed=$($plan.managed -join ',') tooling=$($plan.tooling -join ',') native=$($plan.native -join ',') backend=$($plan.backend); release=$($plan.release)"
-if($plan.policy){& ./tests/validation-plan.ps1}
+if($plan.policy){& ./tests/validation-plan.ps1;& ./tests/versioning.ps1}
 $global:LASTEXITCODE=0

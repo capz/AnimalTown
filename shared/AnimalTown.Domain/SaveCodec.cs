@@ -20,7 +20,7 @@ public static class SaveCodec
         int capacity=4096+elevationRuns*4+(s.Name.Length+s.Catchphrase.Length)*4+s.MailCount*4+s.Town.GroundCount*24+s.Town.PlacedCount*24+terrainRuns*4;
         if(capacity>MaximumBytes)throw new InvalidOperationException("Save exceeds format budget");
         // Allocate from actual encoded content, not the 1-MiB format ceiling.
-        var b=new byte[capacity];int p=0;Put(b,ref p,0x41544f57);Put(b,ref p,5);Put(b,ref p,Catalog.Version);Put(b,ref p,s.Sequence);
+        var b=new byte[capacity];int p=0;Put(b,ref p,0x41544f57);Put(b,ref p,6);Put(b,ref p,Catalog.Version);Put(b,ref p,s.Sequence);
         Put(b,ref p,0);Put(b,ref p,0);
         Put(b,ref p,Town.Width);Put(b,ref p,Town.Height);
         int[] f={s.Town.Seed,s.Town.Day,s.Town.Month,s.Wallet,(int)s.Savings,(int)(s.Savings>>32),(int)s.Debt,(int)(s.Debt>>32),s.Species,s.Palette,s.Tool,s.Shirt,s.HouseTier,s.GardenTier,s.PendingKind,s.PendingTier,s.PendingDay,s.Tutorial,s.MetMask,s.Jobs,s.JobDay,s.MailCount,s.Roof,s.Wall,s.Fence,s.Mailbox,s.Exterior,s.HousePlaced?1:0,(int)(s.X*1024),(int)(s.Z*1024),s.Town.HouseX,s.Town.HouseZ,s.Town.Spending,s.Town.StockCount};
@@ -45,7 +45,7 @@ public static class SaveCodec
     {
         if(b.Length<160||b.Length>MaximumBytes)throw new InvalidOperationException("Invalid save size");int p=0;
         if(Get(b,ref p)!=0x41544f57)throw new InvalidOperationException("Invalid save magic");int version=Get(b,ref p);
-        if((version<1||version>5)||Get(b,ref p)!=Catalog.Version)throw new InvalidOperationException("Unsupported save version");
+        if((version<1||version>6)||Get(b,ref p)!=Catalog.Version)throw new InvalidOperationException("Unsupported save version");
         int seq=Range(b,ref p,0,int.MaxValue);if(Get(b,ref p)!=b.Length||(uint)Get(b,ref p)!=Crc(b,24,b.Length-24))throw new InvalidOperationException("Save checksum failed");
         int sourceWidth=version==1?80:400,sourceHeight=version==1?72:400;
         if(version>=4){sourceWidth=Range(b,ref p,Town.Width,Town.Width);sourceHeight=Range(b,ref p,Town.Height,Town.Height);}
@@ -73,7 +73,7 @@ public static class SaveCodec
             int sourceCells=sourceWidth*sourceHeight,runCount=Range(b,ref p,1,sourceCells),cell=0;
             for(int i=0;i<runCount;i++){
                 int packed=Get(b,ref p),terrain=(int)((uint)packed>>24),length=packed&0xffffff;
-                if(terrain>7||length==0||length>sourceCells-cell)throw new InvalidOperationException("Terrain run invalid");
+                if(terrain>(version>=6?(int)Terrain.CoastWest:7)||length==0||length>sourceCells-cell)throw new InvalidOperationException("Terrain run invalid");
                 // Consume the original row stride, copying only the retained
                 // rectangle. Never allocate the old 400 x 400 terrain buffer.
                 while(length>0){int z=cell/sourceWidth,x=cell%sourceWidth,n=Math.Min(length,sourceWidth-x);
@@ -112,6 +112,7 @@ public static class SaveCodec
             if(!s.CanWalk(s.X,s.Z,0)&&!s.MoveToHouseEntrance()){int cell=SafeImportedCell(s,18,38);s.X=cell%Town.Width+.5f;s.Z=cell/Town.Width+.5f;}
         }
         if(version<5)for(int i=0;i<6;i++){s.Town.Residents[i].PosX=s.Town.Residents[i].X+.5f;s.Town.Residents[i].PosZ=s.Town.Residents[i].Z+.5f;}
+        if(version<6)WaterTerrain.Migrate(s.Town);
         s.Town.NotifyTerrainChanged();return s;
     }
     private static int SafeImportedCell(GameState s,int x,int z)
