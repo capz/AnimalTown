@@ -17,6 +17,8 @@ public sealed class TerrainCliffGeometry
     {if(orientation<0||orientation>7)throw new ArgumentOutOfRangeException("orientation");return orientation<4?square:corners[orientation-4];}
     public static string Name(int orientation)=>orientation==0?"up":orientation==1?"down":orientation==2?"left":orientation==3?"right":orientation==4?"up_left":orientation==5?"up_right":orientation==6?"down_left":"down_right";
     public static bool Raised(int orientation,float x,float z)=>orientation<4|| (orientation==UpLeft?x+z>=2:orientation==UpRight?x<=z:orientation==DownLeft?z<=x:x+z<=2);
+    // Unfold the upper surface over the lip, sampling inward as it drops.
+    public static float SpillUv(float coordinate,float drop,float outward)=>(coordinate-outward*drop)*.5f;
     private int Vertex(float x,float y,float z,float nx,float ny,float nz,float u,float v)
     {int i=VertexCount++;Positions[i*3]=x;Positions[i*3+1]=y;Positions[i*3+2]=z;Normals[i*3]=nx;Normals[i*3+1]=ny;Normals[i*3+2]=nz;Uvs[i*2]=u;Uvs[i*2+1]=v;return i;}
     private void Triangle(int part,int a,int b,int c)
@@ -29,6 +31,10 @@ public sealed class TerrainCliffGeometry
         float u=part==Soil?0:ax*.5f,v=part==Soil?(2-LipDepth-high)/(2-LipDepth):az*.5f;
         Vertex(ax,high,az,nx,0,nz,u,v);Vertex(bx,high,bz,nx,0,nz,part==Soil?1:bx*.5f,part==Soil?(2-LipDepth-high)/(2-LipDepth):bz*.5f);
         Vertex(bx,low,bz,nx,0,nz,part==Soil?1:bx*.5f,part==Soil?(2-LipDepth-low)/(2-LipDepth):bz*.5f);Vertex(ax,low,az,nx,0,nz,u,part==Soil?(2-LipDepth-low)/(2-LipDepth):az*.5f);
+        if(part==Lip)for(int i=start;i<start+4;i++){
+            float drop=Height-Positions[i*3+1];
+            Uvs[i*2]=SpillUv(Positions[i*3],drop,nx);Uvs[i*2+1]=SpillUv(Positions[i*3+2],drop,nz);
+        }
         Triangle(part,start,start+1,start+2);Triangle(part,start,start+2,start+3);
     }
     private static TerrainCliffGeometry Build(int corner)

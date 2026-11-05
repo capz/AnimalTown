@@ -83,13 +83,17 @@ internal sealed class TerrainWalls
     }
     private void Wall(float ax,float az,float bx,float bz,float a,float b,float la,float lb,int slot)
     {
-        float u0=ax==bx?az*.5f:ax*.5f,u1=ax==bx?bz*.5f:bx*.5f,origin=Math.Max(a,b);
-        var p0=slot<0?Vertex(ax,az,a,u0,(origin-a)/1.94f):Vertex(ax,az,a,ax*.5f,az*.5f);
-        var p1=slot<0?Vertex(bx,bz,b,u1,(origin-b)/1.94f):Vertex(bx,bz,b,bx*.5f,bz*.5f);
-        var p2=slot<0?Vertex(bx,bz,lb,u1,(origin-lb)/1.94f):Vertex(bx,bz,lb,bx*.5f,bz*.5f);
-        var p3=slot<0?Vertex(ax,az,la,u0,(origin-la)/1.94f):Vertex(ax,az,la,ax*.5f,az*.5f);
+        float origin=Math.Max(a,b);
+        float u0=ax==bx?az*.5f:ax*.5f,u1=ax==bx?bz*.5f:bx*.5f;
+        float dx=bx-ax,dz=bz-az,length=(float)Math.Sqrt(dx*dx+dz*dz),nx=dz/length,nz=-dx/length;
+        var p0=slot<0?Vertex(ax,az,a,u0,(origin-a)/1.94f):LipVertex(ax,az,a,a,nx,nz);
+        var p1=slot<0?Vertex(bx,bz,b,u1,(origin-b)/1.94f):LipVertex(bx,bz,b,b,nx,nz);
+        var p2=slot<0?Vertex(bx,bz,lb,u1,(origin-lb)/1.94f):LipVertex(bx,bz,lb,b,nx,nz);
+        var p3=slot<0?Vertex(ax,az,la,u0,(origin-la)/1.94f):LipVertex(ax,az,la,a,nx,nz);
         Add(slot,p0,p2,p1);Add(slot,p0,p3,p2);
     }
+    private VertexPositionColorTexture LipVertex(float px,float pz,float height,float top,float nx,float nz)
+        =>Vertex(px,pz,height,TerrainCliffGeometry.SpillUv(px,top-height,nx),TerrainCliffGeometry.SpillUv(pz,top-height,nz));
     private void Section(GameState state,TerrainRenderer floor,int orientation,int ox,int oz)
     {
         var g=TerrainCliffGeometry.For(orientation);int neighbor=TerrainCliffBinding.Neighbor(state.Town,orientation,ox,oz,true);
@@ -102,7 +106,7 @@ internal sealed class TerrainWalls
         }
     }
     private VertexPositionColorTexture TemplateVertex(TerrainCliffGeometry g,int i,int ox,int oz,bool wall)
-    {float px=ox+g.Positions[i*3],pz=oz+g.Positions[i*3+2];return Vertex(px,pz,g.Positions[i*3+1],wall?g.Uvs[i*2]:px*.5f,wall?g.Uvs[i*2+1]:pz*.5f);}
+    {float px=ox+g.Positions[i*3],pz=oz+g.Positions[i*3+2];return Vertex(px,pz,g.Positions[i*3+1],wall?g.Uvs[i*2]:TerrainCliffGeometry.SpillUv(px,Math.Max(0,2-g.Positions[i*3+1]),g.Normals[i*3]),wall?g.Uvs[i*2+1]:TerrainCliffGeometry.SpillUv(pz,Math.Max(0,2-g.Positions[i*3+1]),g.Normals[i*3+2]));}
     internal void Draw(Renderer renderer,Transform parent,TerrainRenderer floor)
     {if(soilUsed>0&&soilMesh!=null)renderer.DrawMesh(soilMesh,material,parent);for(int i=0;i<used.Length;i++)if(used[i]>0)renderer.DrawMesh(groundMesh[i]!,floor.GroundMaterial(i),parent);}
 }
