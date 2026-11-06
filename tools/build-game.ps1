@@ -65,12 +65,18 @@ if (!$SkipAssets) {
         }
         foreach($textureEdge in @(128,256,512,1024)){
         $suffix=if($textureEdge -eq 256){''}else{"-tex$textureEdge"}
-        $importArguments=@($assetTools,'model',"out/prepared/$name.glb","out/disc/$name$suffix.dndmodel",'--texture-limit',"$textureEdge",'--mip-levels','2','--compile-gx-materials')
+        # DNMD retains its package and charges a decoded RGBA8 copy of each
+        # texture per model, even when the native texture cache shares pixels.
+        # A 64px atlas + 32px mip keeps all seven static parts below 768 KiB.
+        $importEdge=if($buildingImports.ContainsKey($name) -and $textureEdge -eq 128){64}else{$textureEdge}
+        $importArguments=@($assetTools,'model',"out/prepared/$name.glb","out/disc/$name$suffix.dndmodel",'--texture-limit',"$importEdge",'--mip-levels','2','--compile-gx-materials')
         if($assetMap[$name].StartsWith('villagers/villager_')){$importArguments+='--allow-material-approximation'}
         Run dotnet $importArguments
         }
     }
 }
+$buildingNativeParts=@((Get-Content out/building-assets.json -Raw|ConvertFrom-Json -AsHashtable).Keys|Sort-Object|ForEach-Object{"out/disc/$($_)-tex128.dndmodel"})
+RunNative '.' 'sh' (@('-c','cc -std=c11 -Wall -Wextra -Werror -ffunction-sections -fdata-sections -Ivendor/sdk/include tests/native-building-assets.c vendor/sdk/source/model.c vendor/sdk/source/model_animation.c -Wl,--gc-sections -lm -o /tmp/animaltown-building-assets && /tmp/animaltown-building-assets "$@"','building-assets')+$buildingNativeParts)
 $gameCommit = $identity.bb
 $gameFullCommit = $identity.commit
 $gameVersion = $identity.version

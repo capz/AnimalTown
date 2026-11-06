@@ -27,6 +27,15 @@ def press(button):
 def screenshot(name):
     subprocess.run(['ffmpeg','-v','error','-f','x11grab','-video_size','800x600','-i',':93','-frames:v','1','-y',str(root/name)],env=env,check=True)
 
+def building_view(name, indoors):
+    screenshot(name)
+    pixels=subprocess.check_output(['ffmpeg','-v','error','-i',str(root/name),'-frames:v','1','-f','rawvideo','-pix_fmt','rgb24','-'])
+    target=(32,40,39) if indoors else (149,198,186)
+    matches=sum(all(abs(pixels[(y*800+x)*3+c]-value)<=3 for c,value in enumerate(target))
+                for y in range(80,300,4) for x in range(40,600,4))
+    if p.poll() is not None or matches<500:
+        raise AssertionError(f'Building scenario did not reach the expected {"interior" if indoors else "town"} view: {name}; matching background samples={matches}')
+
 def dialogue_cycles():
     import json
     def pixels(name):
@@ -189,18 +198,18 @@ with (root/'emulator.log').open('w') as log:
             raise RuntimeError(f'Dolphin exited during boot ({p.returncode}); see {root / "emulator.log"}')
         screenshot('screen.png')
         if '--building-reload' in sys.argv:
-            press('A');time.sleep(5);screenshot('building-reloaded-interior.png')
+            press('A');time.sleep(5);building_view('building-reloaded-interior.png',True)
         elif '--buildings' in sys.argv:
             os.write(controller,b'PRESS L\nPRESS R\n');time.sleep(.2);press('B');os.write(controller,b'RELEASE L\nRELEASE R\n')
-            time.sleep(3);screenshot('building-exterior.png')
+            time.sleep(3);building_view('building-exterior.png',False)
             time.sleep(10);screenshot('building-npc-journey.png')
             os.write(controller,b'PRESS A\n');time.sleep(.5);screenshot('building-door-opening.png');os.write(controller,b'RELEASE A\n')
-            time.sleep(4);screenshot('building-interior-0.png')
+            time.sleep(4);building_view('building-interior-0.png',True)
             for view in range(1,5):
                 os.write(controller,b'SET C 0.9 0.5\n');time.sleep(2);os.write(controller,b'SET C 0.5 0.5\n');time.sleep(1);screenshot(f'building-interior-{view}.png')
             press('L');time.sleep(1)
             press('START');time.sleep(8);screenshot('building-save-indoor.png');press('B')
-            press('A');time.sleep(4);screenshot('building-exited.png')
+            press('A');time.sleep(4);building_view('building-exited.png',False)
         elif '--cliff-kit' in sys.argv:
             press('A')
             if '--new-town' in sys.argv:press('D_UP');press('A');press('A');time.sleep(2);press('B');press('B')

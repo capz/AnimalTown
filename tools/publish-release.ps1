@@ -59,7 +59,7 @@ try{
 }finally{$cliffArchive.Dispose()}
 $buildingArchive=[IO.Compression.ZipFile]::Open($buildingsZip,[IO.Compression.ZipArchiveMode]::Create)
 try{
-    foreach($folder in @('assets/models/buildings','assets/models/interiors/cottage_small','assets/textures/buildings','assets/definitions')){
+    foreach($folder in @('assets/models/buildings','assets/models/interiors','assets/textures/buildings','assets/definitions')){
         foreach($file in Get-ChildItem -LiteralPath (Join-Path $Root $folder) -File -Recurse){
             $entry=[IO.Path]::GetRelativePath($Root,$file.FullName).Replace('\','/')
             [IO.Compression.ZipFileExtensions]::CreateEntryFromFile($buildingArchive,$file.FullName,$entry,[IO.Compression.CompressionLevel]::Optimal)|Out-Null

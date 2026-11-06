@@ -72,8 +72,10 @@ furniture. The player home retains its 4/6/8m expansion sizes and old room keys.
 
 The host importer validates source confinement, identifiers, static geometry,
 triangle/material limits, bounds, normals, UVs, fixture bounds and exit clearance.
-Generated source GLBs embed the same 128px palette. The native renderer loads only
-the 128px compiled variants. The ISO verifier requires the catalog and every part.
+Generated source GLBs embed the same 128px palette. The native renderer loads the
+smallest compiled variants, with 64px textures and a 32px mip; larger variants
+retain the author's resolution. Variant suffixes specify a maximum texture size.
+The ISO verifier requires the catalog and every part.
 
 ## Domain and persistence
 
@@ -102,6 +104,10 @@ occupants recover to a safe exterior rather than remain in an unavailable room.
 There are seven actors, nine building instances and at most four shared building
 art definitions. Native building resources have a combined 768 KiB residency
 ceiling, a 256 KiB model-load ceiling and a 16 KiB instance ceiling per part.
+The build loads every cooked native part through the production C model loader,
+creates all static instances together, and enforces these budgets before linking.
+Budget accounting includes retained packages and decoded texture charges, even
+when the immutable texture cache shares the same atlas across parts.
 Meshes/poses are allocated before rendering; there is no room-entry allocation
 or per-frame model/texture creation. A room change reuses the same kit.
 
