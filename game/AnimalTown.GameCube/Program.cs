@@ -53,6 +53,7 @@ internal sealed class TownGame
     private readonly CachedTexture wordmark,itemIcons;
     private readonly Transform worldRoot=new Transform(),transform=new Transform(),identity=new Transform();
     private readonly TerrainRenderer terrain;
+    private long profiledTerrainRevision=-1;
     private readonly int[] visibleTrees=new int[LowPolyTrees.Capacity];
     private readonly float[] treeDistances=new float[LowPolyTrees.Capacity];
     private readonly LowPolyTrees trees;
@@ -467,7 +468,7 @@ internal sealed class TownGame
         if(room==0)camera.LookAt(new Vector3(state.X,CylinderWorld.CameraHeight+eyeHeight,state.Z+CylinderWorld.CameraBack),new Vector3(state.X,eyeHeight,state.Z-CylinderWorld.CameraAimAhead),new Vector3(0,1,0));
         else{float size=BuildingWorld.Size(state,room);indoorView.LookAt(new Vector3(indoorCamera.EyeX(size),indoorCamera.EyeY(size),indoorCamera.EyeZ(size)),new Vector3(size*.5f,.7f,size*.5f),new Vector3(0,1,0));}
         renderer.Begin3D(room==0?camera:indoorView);buildings.Begin(villagers.Doors);FrameProfile.End(4,phase);
-        phase=FrameProfile.Start();if(room==0){terrain.Draw(renderer,identity,room);terrainWalls.Draw(renderer,identity,terrain);}else buildings.Interior(renderer,state,worldRoot,indoorCamera,villagers.Doors);FrameProfile.End(4,phase);phase=FrameProfile.Start();
+        phase=FrameProfile.Start();if(room==0){terrain.Draw(renderer,terrain.ScrollTransform,room);terrainWalls.Draw(renderer,terrain.ScrollTransform,terrain);}else buildings.Interior(renderer,state,worldRoot,indoorCamera,villagers.Doors);FrameProfile.End(4,phase);phase=FrameProfile.Start();
         if(room==0)
         {
             for(int i=0;i<6;i++){var v=state.Town.Residents[i];if(v.Space==0){var visual=villagers.Doors.VisualLocation(state,i+1);ModelAt(actors[i+1],visual.X,visual.Z,1.8f,visual.Yaw);}}
@@ -521,7 +522,8 @@ internal sealed class TownGame
         if(!resourcesReady||!FrameProfile.Enabled)return;
         int scene=screen=="map"?10:screen=="menu"&&menuTab==0?(indexedModels?1:7):room!=0?2:screen=="world"?(indexedModels?0:6):3;
         int drawingScene=batchedDrawing?(UiFont.Batched?scene:scene+32):scene+16;
-        FrameProfile.Complete(GpuProfiler.Snapshot().Triangles,room==0?terrain.VisibleTriangles:0,room==0?terrain.RejectedQuads:0,drawingScene+RuntimeOptions.Mode*64);
+        bool terrainRebuilt=room==0&&profiledTerrainRevision!=terrain.GeometryRevision;profiledTerrainRevision=terrain.GeometryRevision;
+        FrameProfile.Complete(GpuProfiler.Snapshot().Triangles,room==0?terrain.VisibleTriangles:0,room==0?terrain.RejectedQuads:0,drawingScene+RuntimeOptions.Mode*64,terrainRebuilt);
     }
     private bool IsTree(GroundItem g)=>g.Kind==3||(g.Kind==2&&g.Item!=2);
     private void InspectTerrain()

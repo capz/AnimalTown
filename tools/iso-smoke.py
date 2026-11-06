@@ -195,7 +195,7 @@ DumpCodec = ffv1
 [Hacks]
 EFBToTextureEnable = False
 ''')
-if '--profile' in sys.argv or '--interaction-profile' in sys.argv or '--runtime-profile' in sys.argv:
+if '--profile' in sys.argv or '--interaction-profile' in sys.argv or '--runtime-profile' in sys.argv or '--terrain-scroll' in sys.argv:
     config=user/'Config'/'Dolphin.ini'
     config.write_text(config.read_text()+'\n[Movie]\nDumpFrames = True\nDumpFramesSilent = True\n')
     config=user/'Config'/'GFX.ini'
@@ -287,6 +287,17 @@ with (root/'emulator.log').open('w') as log:
             press('X');screenshot('cloud-menu.png');press('B')
             press('A');time.sleep(2);screenshot('cloud-indoor-a.png');time.sleep(8);screenshot('cloud-indoor-b.png')
             press('A');time.sleep(2);screenshot('cloud-exterior-return.png')
+        elif '--terrain-scroll' in sys.argv:
+            press('A');press('D_UP');press('A');press('A');time.sleep(2);press('B');press('B')
+            os.write(controller,b'PRESS L\nPRESS R\n');time.sleep(.2);press('START');os.write(controller,b'RELEASE L\nRELEASE R\n');time.sleep(2)
+            os.write(controller,b'PRESS L\nPRESS R\n');time.sleep(.2);press('Z');os.write(controller,b'RELEASE L\nRELEASE R\n')
+            time.sleep(profile_seconds);screenshot('scroll-ramp-start.png')
+            # Slow axial motion includes fractional steps, cache boundaries and
+            # the complete ramp. Then strafe on the terrace and return downhill.
+            for name,axes in [('up',(0.5,0.72)),('right',(0.72,0.5)),('left',(0.28,0.5)),('down',(0.5,0.28))]:
+                os.write(controller,f'SET MAIN {axes[0]} {axes[1]}\n'.encode());time.sleep(profile_seconds)
+                os.write(controller,b'SET MAIN 0.5 0.5\n');time.sleep(1);screenshot('scroll-'+name+'.png')
+            time.sleep(profile_seconds);screenshot('scroll-rest.png')
         elif '--river-coast' in sys.argv:
             press('A');press('D_UP');press('A');press('A');time.sleep(2);press('B');press('B')
             for scene in ['river', 'river-corner', 'bridge', 'coast-beach', 'estuary', 'restored']:

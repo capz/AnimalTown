@@ -22,6 +22,7 @@ internal static class TerrainEdgeChecks
         for(int i=0;i<header.Length;i++)Put(i*4,header[i]);
         for(int s=0;s<13;s++){Put(20+s*20,1);Put(24+s*20,s);for(int v=1;v<4;v++)Put(24+s*20+v*4,-1);}
         FloorStrips.Validate(data);
+        ScrollChecks(check,data);
         var state=new GameState(17);var strips=new FloorStrips();
         // Alternating materials exercise the maximum split cost rather than
         // relying on a uniform floor that merges into one strip per row.
@@ -54,6 +55,49 @@ internal static class TerrainEdgeChecks
         }
         check(extra>500&&visibleSamples>1000,"fractional-camera sweep retains visible cells and a real extra border");
         Console.WriteLine("Terrain edge sweep: "+extra+" extra cells retained; maximum checkerboard strips "+maximum+" / "+FloorStrips.Capacity);
+    }
+    private static void ScrollChecks(Action<bool,string> check,byte[] data)
+    {
+        // A rigid transform must agree with fresh analytic cylinder samples,
+        // including normals, elevated ground and the row chords used by banks.
+        float maxError=0;
+        for(int anchor=1;anchor<Town.Height;anchor+=18)for(int offset=-12;offset<=12;offset++){
+            float focus=anchor+offset*.083f;var scroll=CylinderWorld.Scroll(anchor,focus);
+            for(int row=-44;row<=24;row+=2)foreach(float height in new[]{-.5f,0f,.008f,2f}){
+                var point=CylinderWorld.Surface(anchor+row,anchor,height);var moved=scroll.Apply(point);var expected=CylinderWorld.Surface(anchor+row,focus,height);
+                float error=Math.Max(Math.Abs(moved.Y-expected.Y),Math.Abs(moved.Z-expected.Z));maxError=Math.Max(maxError,error);
+                check(error<.00006f&&Math.Abs(moved.UpY-expected.UpY)<.000001f&&Math.Abs(moved.UpZ-expected.UpZ)<.000001f,"one axis transform exactly preserves cylinder vertices and radial normals");
+                var next=CylinderWorld.Surface(anchor+row+1,anchor,height);var chord=new CylinderPose((point.Y+next.Y)*.5f,(point.Z+next.Z)*.5f,0,0,0);
+                var transformedChord=scroll.Apply(chord);var expectedNext=CylinderWorld.Surface(anchor+row+1,focus,height);
+                check(Math.Abs(transformedChord.Y-(expected.Y+expectedNext.Y)*.5f)<.00006f&&Math.Abs(transformedChord.Z-(expected.Z+expectedNext.Z)*.5f)<.00006f,"rigid scrolling keeps bank toes, foam and floor chords coincident");
+            }
+        }
+        // One cached selection must cover the complete sub-cell journey, at
+        // both terrace heights. Alternate materials stress strip capacity.
+        var state=new GameState(17);var strips=new FloorStrips();Array.Clear(state.Town.Elevation);
+        for(int z=0;z<Town.Height;z++)for(int x=0;x<Town.Width;x++)state.Town.Tiles[z*Town.Width+x]=(byte)((x+z)%2==0?Terrain.Grass:Terrain.Plaza);
+        int maximum=0;
+        foreach(byte elevation in new byte[]{0,TerrainElevation.Block}){
+            Array.Fill(state.Town.Elevation,elevation);state.X=98.01f;state.Z=98.01f;strips.Prepare(state,0,data,scrollWindow:true);
+            maximum=Math.Max(maximum,strips.Count);check(strips.Count<=FloorStrips.Capacity,"cached checkerboard remains within the existing strip budget");
+            var selected=new HashSet<int>();for(int n=0;n<strips.Count;n++)for(int x=strips.X0[n];x<strips.X1[n];x++)selected.Add(strips.Z0[n]*1024+x);
+            for(int iz=0;iz<5;iz++)for(int ix=0;ix<5;ix++){
+                state.X=98.001f+ix*.4995f;state.Z=98.001f+iz*.4995f;
+                check(CylinderWorld.ScrollAnchor(state.X)==99&&CylinderWorld.ScrollAnchor(state.Z)==99,"fractional scrolling retains a common cache key");
+                float h=elevation==0?0:2;
+                for(int z=34;z<140;z++){
+                    var a=CylinderWorld.Surface(z,state.Z,h);var b=CylinderWorld.Surface(z+1,state.Z,h);
+                    if(!RenderView.SurfaceFront(z,state.Z,h)&&!RenderView.SurfaceFront(z+1,state.Z,h))continue;
+                    for(int x=34;x<164;x++)if(RenderView.Sphere(x+.5f,(a.Y+b.Y)*.5f,(a.Z+b.Z)*.5f,TerrainTiles.GroundVisibilityRadius,state.X,state.Z,h))
+                        check(selected.Contains(z*1024+x),"cached window covers the padded viewport at every fractional offset and terrace height");
+                }
+                var previous=selected;strips.Prepare(state,0,data,scrollWindow:true);
+                var current=new HashSet<int>();for(int n=0;n<strips.Count;n++)for(int x=strips.X0[n];x<strips.X1[n];x++)current.Add(strips.Z0[n]*1024+x);
+                check(previous.SetEquals(current),"sub-cell movement never changes cached topology or UV source cells");
+            }
+        }
+        check(CylinderWorld.ScrollAnchor(99.999f)!=CylinderWorld.ScrollAnchor(100)&&CylinderWorld.ScrollAnchor(-.001f)==-1,"window keys advance exactly at scroll boundaries, including negative edge coordinates");
+        Console.WriteLine("Rigid terrain scroll: maximum error "+maxError+"m; cached checkerboard strips "+maximum+" / "+FloorStrips.Capacity);
     }
     private static bool Inside(float x,float y,float z,float fx,float fz){
         float dy=y-CylinderWorld.CameraHeight,dz=z-fz-CylinderWorld.CameraBack;

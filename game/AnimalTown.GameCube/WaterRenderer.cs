@@ -4,7 +4,8 @@ using Dolphin.Graphics;
 using Hypercube.GameCube;
 
 // Reuses the floor's visibility selection. Cells keep depth tint continuous;
-// vertices change only with the camera/terrain, never to simulate waves.
+// Geometry is baked at the terrain window's reference Z, then scrolled by the
+// same rigid transform as dry ground and banks. Waves only animate materials.
 internal sealed class WaterRenderer
 {
     private readonly WaterMaterial material=new WaterMaterial();
@@ -13,10 +14,11 @@ internal sealed class WaterRenderer
     private long revision;
     private int surfaceCount,foamCount;
     private GameState state=null!;
+    private float referenceZ;
     internal int Triangles=>(surfaceCount+foamCount)/3;
-    internal void Prepare(GameState next,FloorStrips strips,int room)
+    internal void Prepare(GameState next,FloorStrips strips,int room,float referenceZ)
     {
-        state=next;surfaceCount=foamCount=0;int cells=0;
+        state=next;this.referenceZ=referenceZ;surfaceCount=foamCount=0;int cells=0;
         if(room==0)for(int n=0;n<strips.Count;n++){
             int z=strips.Z0[n];
             for(int x=strips.X0[n];x<strips.X1[n];x++){
@@ -79,7 +81,7 @@ internal sealed class WaterRenderer
     {
         // Interpolate on the SAME row chord as the surface, not a new cylinder
         // sample inside a cell (which would float above the water chord).
-        var a=CylinderWorld.Surface(cz,state.Z,height);var b=CylinderWorld.Surface(cz+1,state.Z,height);float t=z-cz;
+        var a=CylinderWorld.Surface(cz,referenceZ,height);var b=CylinderWorld.Surface(cz+1,referenceZ,height);float t=z-cz;
         var color=isFoam?Color32.White:material.Tint(WaterSurface.Depth(state.Town,(int)x,(int)z));
         return new VertexPositionColorTexture(new Vector3(x,a.Y+(b.Y-a.Y)*t,a.Z+(b.Z-a.Z)*t),color,new Vector2(x*WaterSurface.UvScale,z*WaterSurface.UvScale));
     }

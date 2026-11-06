@@ -21,12 +21,12 @@ internal sealed class TerrainWalls
     internal void Prepare(GameState state,int room,TerrainRenderer floor,bool preview)
     {
         if(room!=0){soilUsed=total=0;for(int i=0;i<used.Length;i++)used[i]=0;version=-1;return;}
-        if(town==state.Town&&version==state.Town.TerrainVersion&&x==state.X&&z==state.Z&&materials==floor.MaterialRevision&&gallery==preview)return;
-        town=state.Town;version=town.TerrainVersion;x=state.X;z=state.Z;materials=floor.MaterialRevision;gallery=preview;soilUsed=total=0;for(int i=0;i<used.Length;i++)used[i]=0;
-        float eye=TerrainElevation.At(town,x,z);int minZ=(int)z-TerrainTiles.GroundRowsAhead;
+        if(town==state.Town&&version==state.Town.TerrainVersion&&x==floor.ReferenceX&&z==floor.ReferenceZ&&materials==floor.MaterialRevision&&gallery==preview)return;
+        town=state.Town;version=town.TerrainVersion;x=floor.ReferenceX;z=floor.ReferenceZ;materials=floor.MaterialRevision;gallery=preview;soilUsed=total=0;for(int i=0;i<used.Length;i++)used[i]=0;
+        float eye=1;int minZ=(int)z-1-TerrainTiles.GroundRowsAhead;
         for(int row=-2;row<TerrainTiles.GroundRows+2;row++)for(int cx=(int)x-TerrainTiles.RowHalfWidth(Math.Max(0,Math.Min(TerrainTiles.GroundRows-1,row)))-2;cx<=(int)x+TerrainTiles.RowHalfWidth(Math.Max(0,Math.Min(TerrainTiles.GroundRows-1,row)))+2;cx++){
             int cz=minZ+row,mode=WaterTerrain.IsCoast(town.At(cx,minZ+row))?1:TerrainElevation.Mode(town,cx,cz);var p=CylinderWorld.Surface(cz+.5f,z,1);
-            if(!RenderView.Sphere(cx+.5f,p.Y,p.Z,3.5f,x,z,eye))continue;
+            if(!RenderView.Sphere(cx+.5f,p.Y,p.Z,3.5f+CylinderWorld.ScrollGuard,x,z,eye))continue;
             if(town.At(cx,cz)==(int)Terrain.Water){RiverCell(state,floor,cx,cz);continue;}
             if(WaterSurface.IsWater(town,cx,cz))continue;
             if(mode>=TerrainElevation.CornerUpLeft){if(cx%2==0&&cz%2==0)PlacedSection(state,floor,mode-2,cx,cz);continue;}

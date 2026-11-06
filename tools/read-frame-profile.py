@@ -31,7 +31,10 @@ for path in paths:
             if frame[at]>128:values[bit//16]|=1<<(bit%16)
         checksum=0
         for value in values[:31]:checksum^=value
-        if values[0]!=0x4154 or values[1] not in (1,2,3,4) or values[31]!=checksum:continue
+        if values[0]!=0x4154 or values[1] not in (1,2,3,4,5) or values[31]!=checksum:continue
+        rebuilt=bool(values[30]&32768) if values[1]==5 else None
+        if values[1]==5:values[30]&=32767
+        values.append(rebuilt)
         if '--interaction-panels' in sys.argv and values[30] in (2,3):
             # Old releases used "other" for all these panels. Classify their
             # distinct opaque panel coverage without modifying that ISO.
@@ -59,17 +62,15 @@ def stats(values):
             for name,q in [('p50',.5),('p95',.95),('max',1)]}
     result['mean']=round(sum(values)/len(values),3)
     return result
-if versions.intersection((3,4)):
+if versions.intersection((3,4,5)):
     if len(versions)!=1:raise RuntimeError('Cannot mix phase/counter protocol versions')
     names[3]='ground_items';names[4]='frame_setup_terrain_submit';names[7]='structures_props';names[15]='tree_selection'
 # Distinguish actual camera/terrain rebuilds from cached world frames, using
 # measured work rather than assuming injected stick input always moves a player.
-groups[4]=[r for r in groups.get(0,[])[5:] if r[6]==0]
-groups[5]=[r for r in groups.get(0,[])[5:] if r[6]!=0]
-groups[8]=[r for r in groups.get(6,[])[5:] if r[6]==0]
-groups[9]=[r for r in groups.get(6,[])[5:] if r[6]!=0]
-groups[20]=[r for r in groups.get(16,[])[5:] if r[6]==0]
-groups[21]=[r for r in groups.get(16,[])[5:] if r[6]!=0]
+def rebuilt(row):return row[32] if row[1]==5 else row[6]!=0
+for source,cached,changed in ((0,4,5),(6,8,9),(16,20,21)):
+    groups[cached]=[r for r in groups.get(source,[])[5:] if not rebuilt(r)]
+    groups[changed]=[r for r in groups.get(source,[])[5:] if rebuilt(r)]
 report={'units':'milliseconds; guest clock, not physical hardware or GPU duration',
         'capture_files':paths,'protocol_versions':sorted(versions),'scenarios':{}}
 for scene,rows in groups.items():
@@ -89,6 +90,7 @@ for scene,rows in groups.items():
         timings[name]=result
     report['scenarios'][{0:'world',1:'backpack',2:'indoor',3:'other',4:'world_cached_terrain',5:'world_rebuilt_terrain',6:'world_direct',7:'backpack_direct',8:'world_direct_cached_terrain',9:'world_direct_rebuilt_terrain',10:'map',11:'dialogue',12:'item_actions',13:'interaction_list',14:'dialogue_long',16:'world_baseline',17:'backpack_baseline',20:'world_baseline_cached_terrain',21:'world_baseline_rebuilt_terrain',26:'map_baseline',32:'world_legacy_font',33:'backpack_legacy_font',42:'map_legacy_font'}.get(scene,('runtime_'+str(scene//64)+'_scene_'+str(scene%64) if scene>=64 else str(scene)))]={
         'frames':len(rows),'timings':timings,
+        **({'terrain_rebuild_frames':sum(r[32] for r in rows),'terrain_cached_frames':sum(not r[32] for r in rows)} if versions=={5} else {}),
         'triangles':stats([r[20]+(r[21]<<16) for r in rows]),
         'terrain_triangles':stats([r[22] for r in rows]),
         'rejected_terrain_quads':stats([r[23] for r in rows]),
@@ -96,7 +98,7 @@ for scene,rows in groups.items():
         'culled_objects':stats([r[24] for r in rows]),
         'draw_submissions':stats([r[28] for r in rows]),
         'texture_bindings':stats([r[29] for r in rows]),
-        **({'drawing_api_calls':stats([r[26] for r in rows]),'material_changes':stats([r[27] for r in rows])} if versions=={4} else
+        **({'drawing_api_calls':stats([r[26] for r in rows]),'material_changes':stats([r[27] for r in rows])} if versions in ({4},{5}) else
            {'texture_cache_hits_max':max(r[26] for r in rows),'texture_cache_misses_max':max(r[27] for r in rows)})}
 if not report['scenarios']:raise RuntimeError('No valid AnimalTown telemetry found')
 print(json.dumps(report,indent=2))

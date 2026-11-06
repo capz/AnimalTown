@@ -10,6 +10,11 @@ public readonly struct CylinderPose
 }
 public static class CylinderWorld
 {
+    // Reuse the visible material batches throughout a two-metre scroll window.
+    // Culling uses its centre and a guard for fractional motion / terrace height.
+    public const int ScrollWindow=2;
+    public const float ScrollGuard=2;
+    public static float ScrollAnchor(float coordinate)=>(float)Math.Floor(coordinate/ScrollWindow)*ScrollWindow+ScrollWindow*.5f;
     // Curvature is independent of playable bounds. A ten-percent smaller
     // radius brings the horizon closer without changing the camera lens.
     public const float Radius=360f/6.28318530718f;
@@ -24,4 +29,21 @@ public static class CylinderWorld
         float sine=(float)Math.Sin(angle),cosine=(float)Math.Cos(angle);
         return new CylinderPose((Radius+height)*cosine-Radius,focusZ+(Radius+height)*sine,cosine,sine,angle);
     }
+    public static CylinderScroll Scroll(float referenceZ,float focusZ)=>new CylinderScroll(referenceZ,focusZ);
+}
+
+// Exact rigid mapping of a mesh baked at referenceZ onto the current cylinder.
+// Translation accounts for the axis at Y=-Radius, Z=referenceZ and camera Z.
+public readonly struct CylinderScroll
+{
+    public readonly float Sin,Cos,HalfSin,HalfCos,Y,Z;
+    public CylinderScroll(float referenceZ,float focusZ)
+    {
+        float angle=(referenceZ-focusZ)/CylinderWorld.Radius;
+        Sin=(float)Math.Sin(angle);Cos=(float)Math.Cos(angle);
+        HalfSin=(float)Math.Sin(angle*.5f);HalfCos=(float)Math.Cos(angle*.5f);
+        Y=CylinderWorld.Radius*(Cos-1)+referenceZ*Sin;
+        Z=focusZ-referenceZ*Cos+CylinderWorld.Radius*Sin;
+    }
+    public CylinderPose Apply(CylinderPose p)=>new CylinderPose(Cos*p.Y-Sin*p.Z+Y,Sin*p.Y+Cos*p.Z+Z,Cos*p.UpY-Sin*p.UpZ,Sin*p.UpY+Cos*p.UpZ,p.Pitch+(float)Math.Atan2(Sin,Cos));
 }

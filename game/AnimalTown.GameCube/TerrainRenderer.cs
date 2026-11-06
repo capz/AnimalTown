@@ -8,11 +8,15 @@ using Hypercube.GameCube;
 internal sealed class TerrainRenderer
 {
     private readonly FloorStrips strips=new FloorStrips();
+    internal readonly Transform ScrollTransform=new Transform();
+    internal float ReferenceX=>cachedX;
+    internal float ReferenceZ=>cachedZ;
     private readonly WaterRenderer water=new WaterRenderer();
     private readonly CloudShadows clouds=new CloudShadows();
     private readonly Color32[] baseTints=new Color32[FloorStrips.MaximumMaterials];
     private readonly DynamicMeshBuffer?[] meshes=new DynamicMeshBuffer?[FloorStrips.MaximumMaterials];
     private long geometryRevision;
+    internal long GeometryRevision=>geometryRevision;
     private readonly VertexPositionColorTexture[]?[] buffers=new VertexPositionColorTexture[]?[FloorStrips.MaximumMaterials];
     private readonly Material[] materials=new Material[FloorStrips.MaximumMaterials];
     private readonly CachedTexture?[] textures=new CachedTexture?[FloorStrips.MaximumMaterials];
@@ -48,18 +52,22 @@ internal sealed class TerrainRenderer
             season=next;
             MaterialRevision++;
         }
-        if(!changed&&cachedX==state.X&&cachedZ==state.Z&&cachedRoom==room&&cachedTier==state.HouseTier&&cachedTown==state.Town&&cachedTerrainVersion==state.Town.TerrainVersion&&cachedPreview==cliffPreview)return;
+        float referenceX=room==0?CylinderWorld.ScrollAnchor(state.X):0,referenceZ=room==0?CylinderWorld.ScrollAnchor(state.Z):0;
+        var scroll=CylinderWorld.Scroll(referenceZ,state.Z);
+        ScrollTransform.LocalPosition=room==0?new Vector3(0,scroll.Y,scroll.Z):new Vector3(0,0,0);
+        ScrollTransform.LocalRotation=room==0?new Quaternion(scroll.HalfSin,0,0,scroll.HalfCos):Quaternion.Identity;
+        if(!changed&&cachedX==referenceX&&cachedZ==referenceZ&&cachedRoom==room&&cachedTier==state.HouseTier&&cachedTown==state.Town&&cachedTerrainVersion==state.Town.TerrainVersion&&cachedPreview==cliffPreview)return;
         cachedPreview=cliffPreview;
-        cachedX=state.X;cachedZ=state.Z;cachedRoom=room;cachedTier=state.HouseTier;cachedTown=state.Town;
+        cachedX=referenceX;cachedZ=referenceZ;cachedRoom=room;cachedTier=state.HouseTier;cachedTown=state.Town;
         cachedTerrainVersion=state.Town.TerrainVersion;
-        strips.Prepare(state,room,data,cliffPreview);VisibleTriangles=0;RejectedQuads=strips.RejectedQuads;
+        strips.Prepare(state,room,data,cliffPreview,scrollWindow:true);VisibleTriangles=0;RejectedQuads=strips.RejectedQuads;
         for(int i=0;i<used.Length;i++)used[i]=0;
         int previousZ=int.MinValue;var a=new CylinderPose(0,0,1,0,0);var b=a;
         for(int n=0;n<strips.Count;n++){
             if(strips.Water[n])continue;
             VisibleTriangles+=2;
             int slot=strips.Material[n],z=strips.Z0[n];
-            if(previousZ!=z){a=room==0?CylinderWorld.Surface(z,state.Z):new CylinderPose(0,z,1,0,0);b=room==0?CylinderWorld.Surface(strips.Z1[n],state.Z):new CylinderPose(0,strips.Z1[n],1,0,0);previousZ=z;}
+            if(previousZ!=z){a=room==0?CylinderWorld.Surface(z,cachedZ):new CylinderPose(0,z,1,0,0);b=room==0?CylinderWorld.Surface(strips.Z1[n],cachedZ):new CylinderPose(0,strips.Z1[n],1,0,0);previousZ=z;}
             int at=used[slot],required=at+6;var buffer=buffers[slot];
             if(meshes[slot]==null)meshes[slot]=new DynamicMeshBuffer(FloorStrips.Capacity*12);
             buffers[slot]=buffer=GeometryStaging.Reserve(meshes[slot]!,buffer??new VertexPositionColorTexture[0],at,required,FrameProfile.Counters);
@@ -76,7 +84,7 @@ internal sealed class TerrainRenderer
             if(used[slot]==0){meshes[slot]?.Dispose();meshes[slot]=null;buffers[slot]=null;continue;}
             meshes[slot]!.Commit(used[slot],geometryRevision,FrameProfile.Counters);
         }
-        water.Prepare(state,strips,room);VisibleTriangles+=water.Triangles;
+        water.Prepare(state,strips,room,cachedZ);VisibleTriangles+=water.Triangles;
     }
     private static VertexPositionColorTexture Vertex(float x,CylinderPose p,float u,float v,Color32 tint)=>new VertexPositionColorTexture(new Vector3(x,p.Y,p.Z),tint,new Vector2(u,v));
     private static CylinderPose Elevated(GameState state,int room,int cx,int cz,float x,float z,CylinderPose p)
