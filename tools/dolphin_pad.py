@@ -16,4 +16,3 @@ def pad_config():
             text+=f'D-Pad/{direction} = `Button D_{direction.upper()}`\n'
         text+='\n'
     return text
-

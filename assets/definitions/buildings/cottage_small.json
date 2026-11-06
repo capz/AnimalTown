@@ -1,0 +1,23 @@
+{
+  "version": 1,
+  "type": 0,
+  "id": "cottage_small",
+  "prefix": "cottage",
+  "interior": "cottage_small",
+  "footprint": [
+    3,
+    3
+  ],
+  "hinge": [
+    0.95,
+    0,
+    3.02
+  ],
+  "approach": [
+    1.5,
+    0,
+    3.5
+  ],
+  "exterior": "assets/models/buildings/cottage_small/exterior.glb",
+  "door": "assets/models/buildings/cottage_small/door.glb"
+}

@@ -1,7 +1,7 @@
 # Pure path-to-check routing; conservative fallback for new production paths.
 function Get-ValidationPlan {
     param([string[]]$ChangedPaths=@(),[switch]$Full,[string]$Commit='',[string]$BaseRef='')
-    $allManaged=@('ui','menu','text','trim','terrain','movement','dialogue','generation','life','saves','core')
+    $allManaged=@('ui','menu','text','trim','terrain','movement','dialogue','generation','life','saves','buildings','core')
     $managed=[Collections.Generic.HashSet[string]]::new()
     $tooling=[Collections.Generic.HashSet[string]]::new()
     $native=[Collections.Generic.HashSet[string]]::new()
@@ -31,6 +31,12 @@ function Get-ValidationPlan {
         if($p -match '^shared/AnimalTown.Domain/(TexturePixels|TextureResolution|FloorTexture)\.cs$'){
             [void]$managed.Add('core');[void]$tooling.Add('terrain');[void]$tooling.Add('repack');continue
         }
+        if($p -match '^(shared/AnimalTown.Domain/(BuildingWorld|BuildingState|BuildingSave|PortalSystem|InteriorNavigation|InteriorCamera|VillagerJourney)|tests/AnimalTown.Checks/BuildingChecks)\.cs$'){
+            foreach($s in @('buildings','movement','life','saves')){[void]$managed.Add($s)};continue
+        }
+        if($p -match '^assets/definitions/|^assets/models/(buildings/|interiors/cottage_small/)|^assets/textures/buildings/|^tools/AnimalTown.Tools/BuildingAssets\.cs$'){
+            [void]$managed.Add('buildings');[void]$tooling.Add('building');continue
+        }
         if($p -match '^shared/AnimalTown.Domain/'){
             foreach($s in $allManaged){[void]$managed.Add($s)};$backend=$true;continue
         }
@@ -56,6 +62,6 @@ function Get-ValidationPlan {
         if($p -match '^tools/iso-smoke.py$'){[void]$native.Add('python');continue} # Scenarios are explicitly selected.
         $broad=$true
     }
-    if($broad){foreach($s in $allManaged){[void]$managed.Add($s)};foreach($s in @('terrain','repack')){[void]$tooling.Add($s)};foreach($s in @('uv','card','texture','voices','python')){[void]$native.Add($s)};$backend=$true;$policy=$true}
+    if($broad){foreach($s in $allManaged){[void]$managed.Add($s)};foreach($s in @('terrain','repack','building')){[void]$tooling.Add($s)};foreach($s in @('uv','card','texture','voices','python')){[void]$native.Add($s)};$backend=$true;$policy=$true}
     [pscustomobject]@{schema=1;commit=$Commit;baseRef=$BaseRef;release=$release;full=$broad;managed=@($allManaged|Where-Object {$managed.Contains($_)});tooling=@($tooling|Sort-Object);native=@($native|Sort-Object);backend=$backend;policy=$policy;paths=@($ChangedPaths|Sort-Object -Unique)}
 }

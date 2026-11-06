@@ -22,7 +22,7 @@ internal static class PlayerMovementChecks
         state.X=state.Z=50.5f;PlayerMovement.Move(state,0,.5f,0,4,false,out float priorityX,out float priorityZ);
         check(priorityX>0&&priorityZ==0&&Math.Abs(state.X-50.5f-PlayerMovement.WalkStep*.5f)<.00001,"analog input keeps proportional speed and takes priority over a duplicate D-pad mapping");
         check(!PlayerMovement.Move(state,0,0,0,15,false,out _,out _),"opposite D-pad directions cancel without movement");
-        state.X=3.75f;state.Z=2;PlayerMovement.Move(state,1,1,-1,0,false,out float slideX,out float slideZ);
+        state.HousePlaced=true;state.X=3.75f;state.Z=2;PlayerMovement.Move(state,1,1,-1,0,false,out float slideX,out float slideZ);
         check(state.X==3.75f&&state.Z>2&&slideX==0&&slideZ>0,"diagonal collision slides along an indoor wall and faces actual travel");
         state.X=state.Z=2.98f;state.Town.SetTerrain(3,2,Terrain.Water);state.Town.SetTerrain(2,3,Terrain.Water);
         check(PlayerMovement.Move(state,0,1,-1,0,false,out float blockedX,out float blockedZ)&&state.X==2.98f&&state.Z==2.98f&&blockedX>0&&blockedZ>0,"blocked diagonal cannot cut corners and can still face the obstacle for interaction");

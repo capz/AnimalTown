@@ -25,7 +25,7 @@ A patch is rebuilt when it is newly needed, its town/terrain revision changes,
 its seasonal material revision changes, or the developer gallery toggles. No
 camera coordinate is part of its content key. The gallery is anchored at its
 activation position so walking around it does not move or rebuild its sections.
-Indoor floors retain their separate house-tier cache and identity transform.
+Town patches stay separate from the authored building interiors and indoor camera. Portal movement, room-specific villager visibility and journeys use the same coalesced animation clock.
 
 Visibility uses conservative patch spheres that include the terrain's -0.50 m
 to 2 m range and gallery caps crossing an origin patch boundary. Required patches

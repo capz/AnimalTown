@@ -13,8 +13,8 @@ public static class PlayerMovement
         if(lengthSquared>1){float factor=1/(float)Math.Sqrt(lengthSquared);dx*=factor;dz*=factor;}
         float speed=run?RunStep:WalkStep,oldX=state.X,oldZ=state.Z;
         float nx=oldX+dx*speed,nz=oldZ+dz*speed;
-        if(state.CanWalk(nx,oldZ,room)&&(room!=0||TerrainElevation.Traverse(state.Town,oldX,oldZ,nx,oldZ)))state.X=nx;
-        if(state.CanWalk(state.X,nz,room)&&(room!=0||TerrainElevation.Traverse(state.Town,state.X,oldZ,state.X,nz)))state.Z=nz;
+        if(state.CanWalk(nx,oldZ,room)&&(room==0||BuildingWorld.Segment(state,room,oldX,oldZ,nx,oldZ,0,true))&&(room!=0||TerrainElevation.Traverse(state.Town,oldX,oldZ,nx,oldZ)))state.X=nx;
+        if(state.CanWalk(state.X,nz,room)&&(room==0||BuildingWorld.Segment(state,room,state.X,oldZ,state.X,nz,0,true))&&(room!=0||TerrainElevation.Traverse(state.Town,state.X,oldZ,state.X,nz)))state.Z=nz;
         headingX=state.X-oldX;headingZ=state.Z-oldZ;
         // Sliding follows actual travel. Fully blocked input still lets the
         // player face a tree/wall to interact with it.
