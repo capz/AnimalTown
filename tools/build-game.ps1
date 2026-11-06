@@ -106,13 +106,18 @@ $nativeOutput=[IO.Path]::GetFullPath((Join-Path $projectRoot 'out/native'))
 $workspacePrefix=$projectRoot.TrimEnd([IO.Path]::DirectorySeparatorChar)+[IO.Path]::DirectorySeparatorChar
 if(!$nativeOutput.StartsWith($workspacePrefix,[StringComparison]::OrdinalIgnoreCase)){throw 'Native output must stay inside the workspace'}
 $nativeWorkingRoot=if($NativeInProcess){$nativeOutput}else{'/project/out/native'}
-$nativeKey="$nativeWorkingRoot|$nativeImage|$env:ANIMALTOWN_BUILD_IMAGE"
+$nativeKey="$nativeWorkingRoot|$nativeImage|$env:ANIMALTOWN_BUILD_IMAGE|$sdkContentHash"
 $nativeKeyFile=Join-Path $nativeOutput '.build-root'
 # Make dependency files contain absolute mount paths. Never reuse objects from
 # the host-native /project mount inside the combined /workspace image (or vice versa).
+# Packaged SDK sources retain archive timestamps; a newer ABI can otherwise
+# appear older than cached objects. Include package content in the cache key.
 if((Test-Path -LiteralPath (Join-Path $nativeOutput 'build')) -and
    (!(Test-Path -LiteralPath $nativeKeyFile) -or [IO.File]::ReadAllText($nativeKeyFile) -ne $nativeKey)){
+    # Preserve the independently verified upstream checkout across object cleans.
+    RunNative 'out/native' 'sh' @('-c','if [ -d build/exi-upstream/.git ] && [ ! -e .exi-source-cache ]; then mv build/exi-upstream .exi-source-cache; fi')
     RunNative 'out/native' 'make' @('clean')
+    RunNative 'out/native' 'sh' @('-c','if [ -d .exi-source-cache/.git ]; then mkdir -p build; mv .exi-source-cache build/exi-upstream; fi')
 }
 [IO.File]::WriteAllText($nativeKeyFile,$nativeKey)
 RunNative 'out/native' 'make' @('-j2')

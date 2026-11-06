@@ -521,7 +521,7 @@ internal sealed class TownGame
         if(!resourcesReady||!FrameProfile.Enabled)return;
         int scene=screen=="map"?10:screen=="menu"&&menuTab==0?(indexedModels?1:7):room!=0?2:screen=="world"?(indexedModels?0:6):3;
         int drawingScene=batchedDrawing?(UiFont.Batched?scene:scene+32):scene+16;
-        FrameProfile.Complete(GpuProfiler.Snapshot().Triangles,terrain.VisibleTriangles,terrain.RejectedQuads,drawingScene+RuntimeOptions.Mode*64);
+        FrameProfile.Complete(GpuProfiler.Snapshot().Triangles,room==0?terrain.VisibleTriangles:0,room==0?terrain.RejectedQuads:0,drawingScene+RuntimeOptions.Mode*64);
     }
     private bool IsTree(GroundItem g)=>g.Kind==3||(g.Kind==2&&g.Item!=2);
     private void InspectTerrain()
