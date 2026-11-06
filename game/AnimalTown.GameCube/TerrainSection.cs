@@ -3,7 +3,7 @@ using AnimalTown;
 using Dolphin.Graphics;
 using Hypercube.GameCube;
 
-// One recyclable 8x2m section. Buffers retain their high-water capacity; changing
+// One recyclable 8x4m section. Active buffers retain capacity; changing
 // its address updates only this section. Textures and materials belong to owner.
 internal sealed class TerrainSection
 {
