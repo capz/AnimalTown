@@ -36,6 +36,7 @@ internal sealed class WaterRenderer
                     Mouth(x,z,x+1,z+1,x,z+1,x,z+1);Mouth(x,z,x,z+1,x,z,x-1,z);
                 }
                 if(bridge||!material.FoamEnabled)continue;
+                if(state.Town.At(x,z)==(int)Terrain.Water){RiverFoam(x,z);continue;}
                 float w=WaterSurface.FoamWidth;
                 if(WaterSurface.IsBank(state.Town,x,z-1))Quad(ref foam,ref foamCount,x,z,x,z,x+1,z,x+1,z+w,x,z+w,true);
                 if(WaterSurface.IsBank(state.Town,x,z+1))Quad(ref foam,ref foamCount,x,z,x,z+1-w,x+1,z+1-w,x+1,z+1,x,z+1,true);
@@ -51,6 +52,16 @@ internal sealed class WaterRenderer
         if(foamCount==0&&foamMesh.Capacity>0){foamMesh.Dispose();foamMesh=new DynamicMeshBuffer(maximumCells*24);foam=new VertexPositionColorTexture[0];}
         else foamMesh.Commit(foamCount,revision,FrameProfile.Counters);
     }
+    private void RiverFoam(int x,int z)
+    {
+        for(int side=0;side<4;side++)if(RiverBankGeometry.Foam(state.Town,x,z,side,out var a,out var b,out var c,out var d))
+            Quad(ref foam,ref foamCount,x,z,a.X,a.Z,b.X,b.Z,c.X,c.Z,d.X,d.Z,true);
+        for(int corner=0;corner<4;corner++)if(RiverBankGeometry.Corner(state.Town,x,z,corner,out var a,out var b,out var c)){
+            var ob=RiverBankGeometry.FoamOuter(a,b);var oc=RiverBankGeometry.FoamOuter(a,c);
+            Quad(ref foam,ref foamCount,x,z,c.X,c.Z,b.X,b.Z,ob.X,ob.Z,oc.X,oc.Z,true);
+        }
+    }
+
     private void Mouth(int cx,int cz,float ax,float az,float bx,float bz,int nx,int nz)
     {
         if(state.Town.At(nx,nz)!=(int)Terrain.Water)return;

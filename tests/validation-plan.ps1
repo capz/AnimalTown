@@ -18,4 +18,5 @@ $p=Get-ValidationPlan -ChangedPaths @('game/AnimalTown.GameCube/MenuNavigation.c
 $p=Get-ValidationPlan -ChangedPaths @('shared/AnimalTown.Domain/WaterSurface.cs','tests/AnimalTown.Checks/WaterSurfaceChecks.cs');Assert (($p.managed -join ',') -eq 'terrain' -and !$p.backend) 'Water rules use terrain checks'
 $p=Get-ValidationPlan -ChangedPaths @('game/AnimalTown.GameCube/WaterMaterial.cs','game/AnimalTown.GameCube/WaterRenderer.cs');Assert (($p.managed -join ',') -eq 'terrain,core' -and !$p.backend) 'Water rendering needs terrain and core checks'
 $p=Get-ValidationPlan -ChangedPaths @('shared/AnimalTown.Domain/PortalSystem.cs','assets/definitions/buildings/cottage_small.json');Assert ('buildings' -in $p.managed -and 'building' -in $p.tooling -and !$p.full) 'Building logic/assets need bounded component checks'
-Write-Host 'Validation routing checks passed (17 cases).'
+$p=Get-ValidationPlan -ChangedPaths @('shared/AnimalTown.Domain/RiverBankGeometry.cs','tests/AnimalTown.Checks/RiverBankChecks.cs');Assert (($p.managed -join ',') -eq 'terrain,movement,generation,life' -and !$p.backend -and !$p.full) 'River banks need geometry, movement and route checks'
+Write-Host 'Validation routing checks passed (18 cases).'

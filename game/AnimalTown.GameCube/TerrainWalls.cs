@@ -27,7 +27,9 @@ internal sealed class TerrainWalls
     {
         town=state.Town;soilUsed=total=0;for(int i=0;i<used.Length;i++)used[i]=0;
         for(int cz=oz;cz<oz+size;cz++)for(int cx=ox;cx<ox+size;cx++){
-            int mode=WaterTerrain.IsCoast(town.At(cx,cz))?1:TerrainElevation.Mode(town,cx,cz);if(WaterSurface.IsWater(town,cx,cz))continue;
+            int mode=WaterTerrain.IsCoast(town.At(cx,cz))?1:TerrainElevation.Mode(town,cx,cz);
+            if(town.At(cx,cz)==(int)Terrain.Water){RiverCell(state,floor,cx,cz);continue;}
+            if(WaterSurface.IsWater(town,cx,cz))continue;
             if(mode>=TerrainElevation.CornerUpLeft){if(cx%2==0&&cz%2==0)PlacedSection(state,floor,mode-2,cx,cz);continue;}
             int slot=floor.GroundSlot(state,cx,cz);
             Edge(cx,cz,cx,cz,cx+1,cz,cx,cz-1,slot);Edge(cx,cz,cx+1,cz,cx+1,cz+1,cx+1,cz,slot);
@@ -89,10 +91,33 @@ internal sealed class TerrainWalls
     {
         if(town!.At(cx,cz)==(int)Terrain.Bridge)return;
         if(town.At(cx,cz)==(int)Terrain.Beach&&WaterTerrain.IsSea(town,nx,nz))return;
+        int riverSide=cz<nz?0:cx>nx?1:cz>nz?2:3;
+        if(RiverBankGeometry.HasEdge(town,nx,nz,riverSide))return;
         float a=TerrainElevation.AtCell(town!,cx,cz,ax,az),b=TerrainElevation.AtCell(town!,cx,cz,bx,bz),la=TerrainElevation.AtCell(town!,nx,nz,ax,az),lb=TerrainElevation.AtCell(town!,nx,nz,bx,bz);
         if(a<=la+.001f&&b<=lb+.001f)return;la=Math.Min(a,la);lb=Math.Min(b,lb);
         float sa=Math.Max(la,a-TerrainCliffGeometry.LipDepth),sb=Math.Max(lb,b-TerrainCliffGeometry.LipDepth);
         Wall(ax,az,bx,bz,sa,sb,la,lb,-1);Wall(ax,az,bx,bz,a,b,sa,sb,slot);
+    }
+    private VertexPositionColorTexture RiverVertex(RiverBankPoint p,bool soil,float top)
+        =>Vertex(p.X,p.Z,p.Height,soil?(p.X+p.Z)*.5f:p.X*.5f,soil?(top-p.Height)/1.94f:p.Z*.5f);
+    private void RiverCell(GameState state,TerrainRenderer floor,int cx,int cz)
+    {
+        for(int side=0;side<4;side++)if(RiverBankGeometry.Edge(town!,cx,cz,side,out var a,out var b,out var c,out var d)){
+            int slot=floor.GroundSlot(state,RiverBankGeometry.NeighborX(cx,side),RiverBankGeometry.NeighborZ(cz,side));
+            var la=RiverBankGeometry.Lip(a,d);var lb=RiverBankGeometry.Lip(b,c);
+            Add(slot,RiverVertex(a,false,0),RiverVertex(b,false,0),RiverVertex(lb,false,0));Add(slot,RiverVertex(a,false,0),RiverVertex(lb,false,0),RiverVertex(la,false,0));
+            Add(-1,RiverVertex(la,true,a.Height),RiverVertex(lb,true,b.Height),RiverVertex(c,true,b.Height));Add(-1,RiverVertex(la,true,a.Height),RiverVertex(c,true,b.Height),RiverVertex(d,true,a.Height));
+        }
+        for(int corner=0;corner<4;corner++)if(RiverBankGeometry.Corner(town!,cx,cz,corner,out var a,out var b,out var c)){
+            int nx=cx+(corner==0||corner==3?-1:1),nz=cz+(corner<2?-1:1),slot=floor.GroundSlot(state,nx,nz);
+            var lb=RiverBankGeometry.Lip(a,b);var lc=RiverBankGeometry.Lip(a,c);
+            Add(slot,RiverVertex(a,false,0),RiverVertex(lb,false,0),RiverVertex(lc,false,0));
+            Add(-1,RiverVertex(lb,true,a.Height),RiverVertex(b,true,a.Height),RiverVertex(c,true,a.Height));Add(-1,RiverVertex(lb,true,a.Height),RiverVertex(c,true,a.Height),RiverVertex(lc,true,a.Height));
+        }
+        for(int corner=0;corner<4;corner++)if(RiverBankGeometry.Join(town!,cx,cz,corner,out var a,out var b,out var c)){
+            // Close a height discontinuity between two adjacent dry banks.
+            float top=Math.Max(a.Height,b.Height);Add(-1,RiverVertex(a,true,top),RiverVertex(b,true,top),RiverVertex(c,true,top));Add(-1,RiverVertex(a,true,top),RiverVertex(c,true,top),RiverVertex(b,true,top));
+        }
     }
     private void Wall(float ax,float az,float bx,float bz,float a,float b,float la,float lb,int slot)
     {
