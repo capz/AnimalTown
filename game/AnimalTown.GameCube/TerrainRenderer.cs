@@ -32,11 +32,19 @@ internal sealed class TerrainRenderer
     private CachedTexture? soilTexture;
     private byte[] data=new byte[0];
     private Town? town;
+    private GroundRingRenderer? groundRing;
+    private int patchBytes;
+    internal bool GroundRingRequested {get;private set;}
+    internal int SharedFlatMaterial {get;private set;}=-1;
+    internal bool GroundRingActive=>SharedFlatMaterial>=0;
+    internal bool GroundRingUploaded=>groundRing?.Uploaded??false;
+    internal int ResidentBytes=>patchBytes+(groundRing?.ResidentBytes??0);
+    internal void ToggleGroundRing(){GroundRingRequested=!GroundRingRequested;}
     private int season=-1,forced,slots,terrainVersion=-1,generation,selectionStamp,clock,wantedCount,visibleCount,previewX,previewZ,indoorTier=-1,indoorRevision=-1;
     private float viewX=float.NaN,viewZ,viewHeight;
     private bool preview;
     private ulong floorMask,wallMask;
-    internal int VisibleTriangles,RejectedQuads,ResidentBytes,BuiltThisFrame;
+    internal int VisibleTriangles,RejectedQuads,BuiltThisFrame;
     internal int MaterialRevision {get;private set;}
     internal byte[] Data=>data;
     internal int GroundSlot(GameState state,int x,int z)=>FloorStrips.At(state,data,x,z,0);
@@ -66,7 +74,11 @@ internal sealed class TerrainRenderer
             season=next;
             MaterialRevision++;
         }
-        bool invalid=changed||town!=state.Town||terrainVersion!=state.Town.TerrainVersion||preview!=cliffPreview;
+        int flat=GroundRingRequested&&!cliffPreview&&FloorStrips.Read(data,4)==2?FloorStrips.Read(data,24):-1;
+        if(flat>=0&&FloorStrips.TextureSlot(data,flat)!=0)flat=-1;
+        bool invalid=changed||town!=state.Town||terrainVersion!=state.Town.TerrainVersion||preview!=cliffPreview||flat!=SharedFlatMaterial;
+        SharedFlatMaterial=flat;
+        if(flat<0){groundRing?.Dispose();groundRing=null;}
         if(invalid){
             if(cliffPreview&&(!preview||town!=state.Town)){previewX=(int)state.X;previewZ=(int)state.Z;}
             town=state.Town;terrainVersion=town.TerrainVersion;preview=cliffPreview;generation++;viewX=float.NaN;
@@ -78,6 +90,7 @@ internal sealed class TerrainRenderer
         depth.Prepare(state.Town);clock++;
         var motion=new CylinderMotion(state.Z);
         worldPose.LocalPosition=new Vector3(0,motion.Y,motion.Z);worldPose.LocalRotation=new Quaternion(motion.HalfSin,0,0,motion.HalfCos);
+        if(GroundRingActive){if(groundRing==null)groundRing=new GroundRingRenderer();groundRing.Prepare(state,data,SharedFlatMaterial,rows,invalid);}
         float eye=TerrainElevation.At(state.Town,state.X,state.Z);
         if(viewX!=state.X||viewZ!=state.Z||viewHeight!=eye){
             viewX=state.X;viewZ=state.Z;viewHeight=eye;Plan(state,motion,eye);
@@ -109,7 +122,7 @@ internal sealed class TerrainRenderer
                 int at=lookup[Key(x,z)];if(at>=0){if(shown){chunks[at]!.WantedStamp=selectionStamp;chunks[at]!.VisibleStamp=selectionStamp;}}
             }
         }
-        floorMask=wallMask=0;VisibleTriangles=0;
+        floorMask=wallMask=0;VisibleTriangles=GroundRingActive?GroundRingPlan.IndexCount/3:0;
         for(int i=0;i<wantedCount;i++)if(wantedVisible[i]){
             if(visibleCount==CacheCapacity)throw new InvalidOperationException("Visible terrain exceeds patch budget");
             int at=Build(state,wantedX[i],wantedZ[i],true);visible[visibleCount++]=at;var patch=chunks[at]!;
@@ -136,13 +149,13 @@ internal sealed class TerrainRenderer
                 if(oldest<0||(p.WantedStamp!=selectionStamp&&chunks[oldest]!.WantedStamp==selectionStamp)||((p.WantedStamp==selectionStamp)==(chunks[oldest]!.WantedStamp==selectionStamp)&&p.LastUse<chunks[oldest]!.LastUse))oldest=i;
             }
             if(oldest<0)throw new InvalidOperationException("No evictable terrain patch");at=oldest;
-            if(chunks[at]!=null){lookup[Key(chunks[at]!.X,chunks[at]!.Z)]=-1;ResidentBytes-=chunks[at]!.Bytes;chunks[at]!.Bytes=0;}
+            if(chunks[at]!=null){lookup[Key(chunks[at]!.X,chunks[at]!.Z)]=-1;patchBytes-=chunks[at]!.Bytes;chunks[at]!.Bytes=0;}
             else chunks[at]=new TerrainChunk(waterMaterial,depth,rows);
             lookup[key]=at;
         }
         var patch=chunks[at]!;
         if(patch.Generation!=generation||patch.X!=x||patch.Z!=z){
-            BuiltThisFrame++;ResidentBytes-=patch.Bytes;patch.Build(state,this,x,z,generation,preview,previewX,previewZ,rows);ResidentBytes+=patch.Bytes;
+            BuiltThisFrame++;patchBytes-=patch.Bytes;patch.Build(state,this,x,z,generation,preview,previewX,previewZ,rows);patchBytes+=patch.Bytes;
         }
         patch.WantedStamp=selectionStamp;if(shown)patch.VisibleStamp=selectionStamp;patch.LastUse=clock;return at;
     }
@@ -158,7 +171,7 @@ internal sealed class TerrainRenderer
     {
         while(ResidentBytes>TargetBytes){
             int oldest=-1;for(int i=0;i<chunks.Length;i++)if(chunks[i]!=null&&chunks[i]!.VisibleStamp!=selectionStamp&&(oldest<0||chunks[i]!.LastUse<chunks[oldest]!.LastUse))oldest=i;
-            if(oldest<0)return;var patch=chunks[oldest]!;ResidentBytes-=patch.Bytes;lookup[Key(patch.X,patch.Z)]=-1;patch.Dispose();chunks[oldest]=null;
+            if(oldest<0)return;var patch=chunks[oldest]!;patchBytes-=patch.Bytes;lookup[Key(patch.X,patch.Z)]=-1;patch.Dispose();chunks[oldest]=null;
         }
     }
     internal void CycleCloudCover()=>clouds.Cover=clouds.Cover==.5f?0:clouds.Cover==0?1:.5f;
@@ -176,6 +189,7 @@ internal sealed class TerrainRenderer
     internal void Draw(Renderer renderer,Transform parent,int room)
     {
         if(room!=0){for(int slot=0;slot<slots;slot++){var mesh=indoor.Mesh(slot);if(mesh!=null)renderer.DrawMesh(mesh,materials[slot],parent);}return;}
+        if(GroundRingActive)groundRing!.Draw(renderer,materials[SharedFlatMaterial],worldPose);
         for(int slot=0;slot<slots;slot++)if((floorMask&(1UL<<slot))!=0)DrawGroup(renderer,0,slot,materials[slot]);
         DrawGroup(renderer,1,0,waterMaterial.Surface);DrawGroup(renderer,2,0,waterMaterial.Foam);DrawGroup(renderer,3,0,soil);
         for(int slot=0;slot<slots;slot++)if((wallMask&(1UL<<slot))!=0)DrawGroup(renderer,4,slot,materials[slot]);

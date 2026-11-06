@@ -12,7 +12,7 @@ internal sealed class TerrainChunk
     internal void Build(GameState state,TerrainRenderer owner,int x,int z,int generation,bool preview,int previewX,int previewZ,CylinderRows rows)
     {
         strips.PreparePatch(state,owner.Data,x,z,TerrainRenderer.ChunkSize,preview,previewX,previewZ);
-        Floor.Build(state,strips,0,rows);Water.Prepare(state,strips,0);Walls.Build(state,x,z,TerrainRenderer.ChunkSize,owner,preview,previewX,previewZ);
+        Floor.Build(state,strips,0,rows,owner.SharedFlatMaterial);Water.Prepare(state,strips,0);Walls.Build(state,x,z,TerrainRenderer.ChunkSize,owner,preview,previewX,previewZ);
         X=x;Z=z;Generation=generation;Bytes=Floor.ResidentBytes+Water.ResidentBytes+Walls.ResidentBytes;
     }
     internal void Dispose(){Floor.Dispose();Water.Dispose();Walls.Dispose();}

@@ -15,13 +15,13 @@ internal sealed class FloorGeometry : IDisposable
     internal FloorGeometry(int maximumVertices){this.maximumVertices=maximumVertices;}
     internal Mesh? Mesh(int slot)=>meshes[slot]?.Mesh;
     internal int ResidentBytes {get{int n=0;for(int i=0;i<meshes.Length;i++)if(meshes[i]!=null)n+=meshes[i]!.Capacity*24+(meshes[i]!.Mesh?.NativeBytes??0);return n;}}
-    internal void Build(GameState state,FloorStrips strips,int room,CylinderRows rows)
+    internal void Build(GameState state,FloorStrips strips,int room,CylinderRows rows,int sharedFlatMaterial=-1)
     {
         int VisibleTriangles=0;
         for(int i=0;i<used.Length;i++)used[i]=0;
         int previousZ=int.MinValue;var a=new CylinderPose(0,0,1,0,0);var b=a;
         for(int n=0;n<strips.Count;n++){
-            if(strips.Water[n])continue;
+            if(strips.Water[n]||room==0&&GroundRingPlan.Uses(state.Town,strips.X0[n],strips.Z0[n],strips.Material[n],sharedFlatMaterial))continue;
             VisibleTriangles+=2;
             int slot=strips.Material[n],z=strips.Z0[n];
             if(previousZ!=z){a=room==0?rows.At(z):new CylinderPose(0,z,1,0,0);b=room==0?rows.At(strips.Z1[n]):new CylinderPose(0,strips.Z1[n],1,0,0);previousZ=z;}

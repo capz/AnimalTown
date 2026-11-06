@@ -4,7 +4,7 @@ on:
   pull_request:
     types: [opened, edited, synchronize, reopened, ready_for_review]
   push:
-    branches: [main, feat/river-coast-terrain, feat/cloud-shadows, feat/nuget-rendering-services, feat/building-interiors-journeys, fix/movement-terrain-cache]
+    branches: [main, feat/river-coast-terrain, feat/cloud-shadows, feat/nuget-rendering-services, feat/building-interiors-journeys, fix/movement-terrain-cache, feat/reusable-cylinder-ground]
   workflow_dispatch:
 
 permissions:
