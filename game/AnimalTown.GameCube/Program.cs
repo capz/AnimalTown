@@ -202,6 +202,7 @@ internal sealed class TownGame
         bool chord=p.L.IsHeld&&p.R.IsHeld;
         if(chord&&p.Z.IsHeld&&p.Y.WasPressed){lighting=(lighting+1)&3;terrain.ObjectShadowsEnabled=(lighting&2)!=0;return;}
         if(chord&&p.A.WasPressed&&(screen=="world"||screen=="title")){InspectBuilding();return;}
+        if(chord&&p.CStick.Y>.8f&&p.Z.WasPressed&&room==0){terrain.ToggleGroundRing();return;}
         if(chord&&p.B.WasPressed){RuntimeOptions.Cycle();return;}
         if(chord&&p.DPadRight.WasPressed&&room==0){terrain.CycleCloudCover();return;}
         if(chord&&p.DPadUp.WasPressed&&room==0){cliffPreview=!cliffPreview;return;}
@@ -619,7 +620,7 @@ internal sealed class TownGame
         int scene=screen=="map"?10:screen=="menu"&&menuTab==0?(indexedModels?1:7):room!=0?2:screen=="world"?(indexedModels?0:6):3;
         int drawingScene=batchedDrawing?(UiFont.Batched?scene:scene+32):scene+16;
         bool moved=!float.IsNaN(profiledX)&&(state.X!=profiledX||state.Z!=profiledZ);profiledX=state.X;profiledZ=state.Z;
-        FrameProfile.Complete(GpuProfiler.Snapshot().Triangles,room==0?terrain.VisibleTriangles:0,room==0?terrain.RejectedQuads:0,drawingScene+RuntimeOptions.Mode*64,room==0?terrain.BuiltThisFrame:0,moved?(moveClip==1?2:1):0);
+        FrameProfile.Complete(GpuProfiler.Snapshot().Triangles,room==0?terrain.VisibleTriangles:0,room==0?terrain.RejectedQuads:0,drawingScene+RuntimeOptions.Mode*64,room==0?terrain.BuiltThisFrame:0,moved?(moveClip==1?2:1):0,room==0&&terrain.GroundRingActive,room==0&&terrain.GroundRingUploaded);
     }
     private bool IsTree(GroundItem g)=>g.Kind==3||(g.Kind==2&&g.Item!=2);
     private void InspectTerrain()
@@ -713,7 +714,7 @@ internal sealed class TownGame
         var ink=new Color32(49,72,62);Panel(20,18,282,36);Text("AnimalTown / "+BuildInfo.Version,32,24,ink,.9f);
         if(FrameProfile.Enabled){
             Text((indexedModels?"GX indexed":"Direct")+(batchedDrawing?" / batched":" / baseline"),420,418,ink,.8f);
-            Text("Shadows: "+NativeShadows.Stats(0)+" pages / "+NativeShadows.Stats(2)+" updated",420,433,ink,.65f);
+            Text((room==0&&terrain.GroundRingActive?"Ring / ":"")+"Shadows: "+NativeShadows.Stats(0)+" pages / "+NativeShadows.Stats(2)+" updated",420,433,ink,.65f);
         }
         if(cachedWallet!=state.Wallet){cachedWallet=state.Wallet;walletLabel=state.Wallet+" acorns";}
         if(cachedDebt!=state.Debt){cachedDebt=state.Debt;debtLabel="Loan "+state.Debt;}
