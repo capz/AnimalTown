@@ -38,6 +38,7 @@ internal sealed class TownGame
 {
     private GameState state;
     private readonly TownClock townClock=new TownClock();
+    private readonly bool[] villagersMoving=new bool[6],restartClips=new bool[7];
     private readonly AnimationFrameClock animationClock=new AnimationFrameClock(7);
     private readonly int[] appliedClips={-2,-2,-2,-2,-2,-2,-2};
     private readonly VillagerNavigation villagers=new VillagerNavigation();
@@ -125,7 +126,7 @@ internal sealed class TownGame
             if(loadingModel==null){loadingLabel="Loading "+modelNames[loadingIndex]+" ("+(loadingIndex+1)+" / "+models.Length+")";loadingModel=ModelResources.LoadAsync(modelNames[loadingIndex]);return;}
             if(!loadingModel.IsCompleted)return;
             var model=loadingModel.GetAwaiter().GetResult();models[loadingIndex]=model;
-            if(loadingIndex<6){actors[loadingIndex+1]=model.CreateInstance(512*1024);if(model.TryGetAnimation("Walking",out var clip)){actors[loadingIndex+1].Animator.Play("Walking",true);actors[loadingIndex+1].Animator.SetSpeed(.45f);}}
+            if(loadingIndex<6){actors[loadingIndex+1]=model.CreateInstance(512*1024);if(model.TryGetAnimation("Walking",out var clip)){actors[loadingIndex+1].Animator.Play("Walking",true);actors[loadingIndex+1].Animator.SetSpeed(.45f);animationClock.Step(loadingIndex+1,0,false);appliedClips[loadingIndex+1]=0;}}
             else props[0]=model.CreateInstance(512*1024);
             loadingModel=null;loadingIndex++;
             if(loadingIndex==models.Length){SelectSpecies();resourcesReady=true;DebugOverlay.WriteLine("ANIMALTOWN READY "+BuildInfo.Version+" native bytes "+device.NativeBytes);}
@@ -381,7 +382,10 @@ internal sealed class TownGame
         animationClock.Step(0,moveClip,models[state.Species].Animations.Count>0);
         for(int i=1;i<7;i++){
             var v=state.Town.Residents[i-1];bool moving=room==0&&screen=="world"&&villagers.Routes[i-1].Moving;
-            animationClock.Step(i,moving?0:-1,moving&&Visible(v.PosX,v.PosZ,1.8f));
+            if(moving!=villagersMoving[i-1]){
+                villagersMoving[i-1]=moving;animationClock.Reset(i);animationClock.Step(i,moving?0:-1,false);restartClips[i]=moving;
+            }
+            animationClock.Step(i,animationClock.Clip(i),moving&&Visible(v.PosX,v.PosZ,1.8f));
         }
         if(Clock.Timestamp-lastSave>300000000){Save();}
     }
@@ -390,7 +394,8 @@ internal sealed class TownGame
         long start=FrameProfile.Start();
         for(int i=0;i<7;i++){
             int clip=animationClock.Clip(i);float seconds=animationClock.Consume(i);
-            if(appliedClips[i]!=clip){
+            if(restartClips[i]||appliedClips[i]!=clip){
+                restartClips[i]=false;
                 string name=clip==1?"Running":"Walking";int model=i==0?state.Species:i-1;
                 if(clip<0)actors[i].Animator.Stop();
                 else if(models[model].TryGetAnimation(name,out var _)){actors[i].Animator.Play(name,true);actors[i].Animator.SetSpeed(i==0?1.05f:1);}

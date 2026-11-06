@@ -45,7 +45,7 @@ AnimationFrameClock accumulates those ticks and the renderer consumes their
 elapsed time in one ModelInstance.Update call per actor per rendered frame.
 Intermediate catch-up poses are not skinned. Clip changes discard time belonging
 to the previous clip; offscreen villagers retain the existing frozen-time policy.
-SDK Play/Stop controls still evaluate transition poses when a clip changes.
+The initial resident walking pose is retained until its first navigation transition. SDK Play/Stop controls still evaluate transition poses when a clip changes.
 Skinning is now outside the measured simulation phase, so it is not subtracted
 from that phase again. Terrain, collision and save codecs are unchanged.
 
