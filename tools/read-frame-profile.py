@@ -87,7 +87,7 @@ for scene,rows in groups.items():
             selected=sorted(zip(values,clipped))[min(len(rows)-1,math.ceil(q*len(rows))-1)]
             result[key+'_is_lower_bound']=selected[1]
         timings[name]=result
-    report['scenarios'][{0:'world',1:'backpack',2:'indoor',3:'other',4:'world_cached_terrain',5:'world_rebuilt_terrain',6:'world_direct',7:'backpack_direct',8:'world_direct_cached_terrain',9:'world_direct_rebuilt_terrain',10:'map',11:'dialogue',12:'item_actions',13:'interaction_list',14:'dialogue_long',16:'world_baseline',17:'backpack_baseline',20:'world_baseline_cached_terrain',21:'world_baseline_rebuilt_terrain',26:'map_baseline',32:'world_legacy_font',33:'backpack_legacy_font',42:'map_legacy_font'}.get(scene,str(scene))]={
+    report['scenarios'][{0:'world',1:'backpack',2:'indoor',3:'other',4:'world_cached_terrain',5:'world_rebuilt_terrain',6:'world_direct',7:'backpack_direct',8:'world_direct_cached_terrain',9:'world_direct_rebuilt_terrain',10:'map',11:'dialogue',12:'item_actions',13:'interaction_list',14:'dialogue_long',16:'world_baseline',17:'backpack_baseline',20:'world_baseline_cached_terrain',21:'world_baseline_rebuilt_terrain',26:'map_baseline',32:'world_legacy_font',33:'backpack_legacy_font',42:'map_legacy_font'}.get(scene,('runtime_'+str(scene//64)+'_scene_'+str(scene%64) if scene>=64 else str(scene)))]={
         'frames':len(rows),'timings':timings,
         'triangles':stats([r[20]+(r[21]<<16) for r in rows]),
         'terrain_triangles':stats([r[22] for r in rows]),

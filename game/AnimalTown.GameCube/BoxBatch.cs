@@ -1,21 +1,19 @@
 using Dolphin.Graphics;
+using Hypercube.GameCube;
 
-// Snapshot transforms/colors; never queue the game's shared mutable objects.
+// All box coordinates are projected into world space before submission. No
+// parent is applied: TownGame's worldRoot is an identity transform.
 internal sealed class BoxBatch
 {
-    private const int Capacity=128;
-    private readonly Mesh[] meshes=new Mesh[Capacity];
-    private readonly Transform[] poses=new Transform[Capacity];
-    private readonly uint[] colors=new uint[Capacity];
-    private readonly Material material=new Material{Cull=CullMode.Back,Lighting=LightingMode.Unlit};
+    private readonly MeshBatch batch=new MeshBatch(128,1,1);
     private readonly Renderer renderer;
-    private int count;
-    internal BoxBatch(Renderer renderer,Mesh cube,Transform root)
-    {this.renderer=renderer;for(int i=0;i<Capacity;i++){meshes[i]=cube;poses[i]=new Transform{Parent=root};}}
+    private readonly int mesh,material;
+    internal BoxBatch(Renderer renderer,Mesh cube)
+    {this.renderer=renderer;mesh=batch.RegisterMesh(cube);material=batch.RegisterMaterial(new Material{Cull=CullMode.Back,Lighting=LightingMode.Unlit});}
     internal void Add(Vector3 position,Vector3 scale,Quaternion rotation,Color32 color)
     {
-        if(count==Capacity||count>0&&colors[count-1]!=color.Packed)Flush();
-        var pose=poses[count];pose.LocalPosition=position;pose.LocalScale=scale;pose.LocalRotation=rotation;colors[count++]=color.Packed;material.Color=color;
+        if(batch.Count==batch.Capacity)Flush();
+        if(!batch.TryAdd(mesh,material,position,rotation,scale,color,FrameProfile.Counters))throw new System.InvalidOperationException("Box batch full after flush");
     }
-    internal void Flush(){if(count==0)return;renderer.DrawMeshes(meshes,poses,material,0,count);count=0;}
+    internal void Flush()=>batch.Flush(renderer,FrameProfile.Counters);
 }

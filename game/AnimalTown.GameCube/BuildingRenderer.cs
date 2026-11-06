@@ -16,11 +16,31 @@ internal sealed class BuildingRenderer
     internal BuildingRenderer(Transform world)
     {
         for(int i=0;i<roots.Length;i++)roots[i]=new Transform{Parent=world};for(int i=0;i<poses.Length;i++)poses[i]=new Transform{Parent=world};
-        for(int type=0;type<BuildingCatalog.Count;type++){
-            var d=BuildingCatalog.Get(type);string[] names={d.Exterior,d.Door,d.Floor,d.North,d.East,d.South,d.West};int before=ResidentBytes;
-            try{for(int i=0;i<7;i++){int slot=type*7+i;models[slot]=Model.LoadAsync(TexturePolicy.ModelPath(names[i],TextureResolution.Size128),default,256*1024).GetAwaiter().GetResult();parts[slot]=models[slot]!.CreateInstance(16*1024);ResidentBytes+=models[slot]!.NativeBytes+parts[slot]!.NativeBytes;if(ResidentBytes>768*1024)throw new InvalidOperationException("Building resident memory budget");}ready[type]=true;}
-            catch(Exception error){for(int i=0;i<7;i++){int slot=type*7+i;parts[slot]?.Dispose();parts[slot]=null;models[slot]?.Dispose();models[slot]=null;}ResidentBytes=before;Dolphin.Diagnostics.DebugOverlay.WriteLine("BUILDING ASSET ERROR "+d.Id+": "+error.Message);}
+    }
+    private System.Threading.Tasks.Task<Model>? pending;
+    private int loadType,loadPart,typeStartBytes;
+    internal int LoadedParts=>loadType*7+loadPart;
+    internal string LoadingLabel {get;private set;}="Loading buildings";
+    internal bool AdvanceLoading()
+    {
+        if(loadType>=BuildingCatalog.Count)return true;
+        var d=BuildingCatalog.Get(loadType);
+        try{
+            if(pending==null){
+                string name=loadPart==0?d.Exterior:loadPart==1?d.Door:loadPart==2?d.Floor:loadPart==3?d.North:loadPart==4?d.East:loadPart==5?d.South:d.West;
+                LoadingLabel="Loading "+name;pending=Model.LoadAsync(TexturePolicy.ModelPath(name,TextureResolution.Size128),default,256*1024);return false;
+            }
+            if(!pending.IsCompleted)return false;
+            int slot=loadType*7+loadPart;models[slot]=pending.GetAwaiter().GetResult();parts[slot]=models[slot]!.CreateInstance(16*1024);
+            ResidentBytes+=models[slot]!.NativeBytes+parts[slot]!.NativeBytes;
+            if(ResidentBytes>768*1024)throw new InvalidOperationException("Building resident memory budget");
+            loadPart++;if(loadPart==7)ready[loadType]=true;
+        }catch(Exception error){
+            for(int i=0;i<7;i++){int slot=loadType*7+i;parts[slot]?.Dispose();parts[slot]=null;models[slot]?.Dispose();models[slot]=null;}
+            ResidentBytes=typeStartBytes;loadPart=7;Dolphin.Diagnostics.DebugOverlay.WriteLine("BUILDING ASSET ERROR "+d.Id+": "+error.Message);
         }
+        pending=null;if(loadPart==7){loadType++;loadPart=0;typeStartBytes=ResidentBytes;}
+        return loadType>=BuildingCatalog.Count;
     }
     internal void Begin(PortalSystem doors){used=0;for(int i=0;i<ready.Length;i++)doors.Ready[i]=ready[i];}
     internal bool Ready(int type)=>type>=0&&type<ready.Length&&ready[type];

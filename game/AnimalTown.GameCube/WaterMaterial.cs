@@ -1,6 +1,7 @@
 using System;
 using AnimalTown;
 using Dolphin.Graphics;
+using Hypercube.GameCube;
 
 // Own one per water style and share it between river, pond and sea meshes.
 // Textures/effect are created outside frames; animation only changes UV matrices.
@@ -12,6 +13,7 @@ internal sealed class WaterMaterial : IDisposable
     internal readonly Material Foam=new Material{Blend=BlendMode.Alpha,DepthWrite=false,Lighting=LightingMode.Unlit,Cull=CullMode.Back};
     internal Color32 Shallow=new Color32(99,181,196),Deep=new Color32(75,154,187);
     internal Vector2 BaseSpeed=new Vector2(.012f,.025f),RippleSpeed=new Vector2(-.018f,.035f);
+    private readonly ScrollingTextureLayer baseMotion=new ScrollingTextureLayer(new Vector2(.012f,.025f),new Vector2(1,1)),rippleMotion=new ScrollingTextureLayer(new Vector2(-.018f,.035f),new Vector2(1.35f,1.35f));
     internal bool FoamEnabled=true;
     internal WaterMaterial()
     {
@@ -34,8 +36,8 @@ internal sealed class WaterMaterial : IDisposable
     }
     internal void Animate(double seconds)
     {
-        Surface.TextureTransform=new UvTransform(new Vector2(WaterSurface.Scroll(seconds,BaseSpeed.X),WaterSurface.Scroll(seconds,BaseSpeed.Y)),new Vector2(1,1));
-        Surface.SecondaryTextureTransform=new UvTransform(new Vector2(WaterSurface.Scroll(seconds,RippleSpeed.X),WaterSurface.Scroll(seconds,RippleSpeed.Y)),new Vector2(1.35f,1.35f));
+        baseMotion.RepeatsPerSecond=BaseSpeed;rippleMotion.RepeatsPerSecond=RippleSpeed;
+        baseMotion.Apply(Surface,seconds);rippleMotion.Apply(Surface,seconds,true);
         Foam.Color=new Color32(202,232,222,(byte)(65+15*Math.Sin(seconds*1.2)));
     }
     public void Dispose(){tev.Dispose();ripples.Dispose();baseTexture.Dispose();}

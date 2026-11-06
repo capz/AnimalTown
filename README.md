@@ -40,7 +40,8 @@ Windows requirements: Git, .NET 8 and 10 SDKs, PowerShell 7 and Docker Desktop
 with Linux containers running. Native tools are pinned by image digest.
 
 ```powershell
-git submodule update --init --recursive
+dotnet restore game/AnimalTown.GameCube --locked-mode
+dotnet tool restore
 ./tools/build-game.ps1
 ```
 
@@ -103,7 +104,7 @@ container. It uses ports 55439 and 5189. To inspect a direct ISO boot in a Linux
 container:
 
 ```powershell
-docker build -t animaltown-dolphin -f vendor/hypercube-engine/tools/Dockerfile.dolphin vendor/hypercube-engine
+docker build -t animaltown-dolphin -f build/Dockerfile.dolphin build
 docker run --rm --init --shm-size=512m --mount "type=bind,src=$PWD,dst=/work" -w /work animaltown-dolphin python3 tools/iso-smoke.py out/AnimalTown-VERSION.iso out/smoke --play
 ```
 
@@ -113,7 +114,7 @@ success alone is not console validation. `tools/patch-native.ps1` adds the small
 RTC bridge, sector-aligned card reader fix and card diagnostics to the pinned native bundle, configures the managed heap, and hides startup diagnostics;
 it fails if the expected AOT signature changes.
 
-The native IPL font API is supplied by [DolphinDotNet PR #145](https://github.com/capz/DolphinDotNet/pull/145), pinned by the SDK submodule. Its CI checks pass. Firmware font data is read on the console and is never bundled on disc.
+The native IPL font API is supplied by [DolphinDotNet PR #145](https://github.com/capz/DolphinDotNet/pull/145), included in the pinned DolphinDotNet.Sdk NuGet package. Its CI checks pass. Firmware font data is read on the console and is never bundled on disc.
 # Terrain and village life
 
 See the [terrain/villager update](docs/terrain-villager-update.md) for 2m cube/ramp sections, new-town water coverage, villager journeys, persistent names, the RTC clock, clipping and save v5 compatibility.
@@ -145,7 +146,7 @@ the original filenames; others use `-tex128`, `-tex512` or `-tex1024` suffixes.
 to standalone and repeating-floor textures. Cache identity includes resolution,
 source URI and commit. UI atlases remain lossless 128-pixel pages to preserve
 font/icon coordinates. The texture cache is bounded to 4 MiB, and active default
-floor textures to 2 MiB. Larger options are per asset; native model budgets still
+floor textures to 4 MiB. Larger options are per asset; native model budgets still
 apply and selecting 1024 for every model is not a supported whole-scene budget.
 
 

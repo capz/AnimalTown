@@ -22,7 +22,7 @@ authorized generated low-poly trees and repeating, load-time optimized textures.
 
 `game/AnimalTown.GameCube` is a C# net8 assembly compiled by DolphinDotNet to
 native PowerPC code and linked with libogc2. It references Hypercube.Core and
-Hypercube.GameCube from a pinned submodule. `shared/AnimalTown.Domain` contains
+Hypercube.GameCube from pinned NuGet packages. `shared/AnimalTown.Domain` contains
 bounded gameplay rules usable by both AOT and desktop .NET. No ASP.NET, EF,
 reflection-based serializer, dynamic code generation or desktop dependency enters
 the console dependency graph.
@@ -32,13 +32,11 @@ Its database, web dependencies and credentials never enter the disc. Independent
 commands build the console ISO, host rule checks, and server container. A server
 build does not cross-compile a game; a game build never starts a server.
 
-Pinned starting revisions:
+Pinned package baseline (see [package adoption](nuget-rendering-services.md)):
 
-* hypercube-engine: d0a49c3d0b437250a3eefa2aff3f882621db698e.
-* DolphinDotNet: 4327c9fc4e0b6aa3a307802ba5928107f7bd1684
-  (native IPL font addition, https://github.com/capz/DolphinDotNet/pull/145).
-  The engine's original SDK baseline was 0416b5707bf405319dd5ec1acf01a07efe4b230b;
-  AnimalTown explicitly overrides it with its own pinned SDK submodule.
+* Capz.Hypercube.GameCube/Core `0.1.0-preview.4.1`.
+* DolphinDotNet.Sdk/GameCube/Core and Assets `0.1.0-preview.245.1`.
+* Package locks record exact transitive content hashes; global.json pins the SDK.
 * Native toolchain: ghcr.io/extremscorner/libogc2 at
   sha256:13bb658d3f18903816617223f5d7c6f776d3db3ea806aae67f8d35a7a69d4c85.
 
@@ -348,7 +346,7 @@ rules or creating an ISO does not establish a complete game or hardware success.
 
 ## API evidence
 
-Engine README/build pipeline and ScenePolicy are in the pinned submodule.
+Engine README/build pipeline and ScenePolicy are in the [engine repository](https://github.com/capz/hypercube-engine).
 SDK Model/ModelInstance, Storage.MemoryCard/MemoryCardSaveOptions, IPv4 network
 types, asset converter and SaveImage tool are in the pinned SDK checkout. Inspect
 these concrete APIs before adding calls; desktop compilation is not proof of AOT

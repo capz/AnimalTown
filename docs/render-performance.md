@@ -41,14 +41,11 @@ capture horizontal, vertical and diagonal camera movement in the released ISO.
 
 ## Texture policy
 
-Every native texture allocated by the game is at most 128 by 128 pixels.
-Model import applies `--texture-limit 128 --mip-levels 2`; the ISO builder rejects
-oversized embedded model textures and writes `out/texture-audit.json` with
-package and texture fingerprints. High-resolution GLB images stay on the build
-machine. The SDK shares identical converted model texture payloads using a
-hash, length and full byte comparison. Its retained DNMD package still contains
-the converted texture section for model restore/export; that section is already
-bounded to 128 pixels, rather than being the original high-resolution image.
+The default maximum model/world texture edge is 256 pixels. Explicit per-asset
+128/256/512/1024 variants are imported from original sources with two mip levels.
+Only the selected variant enters RAM. The ISO audit records package and texture
+fingerprints; UI/IPL atlases remain lossless 128-pixel pages. SDK model resources
+share identical native payloads; their residency is outside the application cache.
 
 Ordinary DNTX textures are box filtered while loading, preserving aspect ratio
 and weighting RGB by alpha to avoid fringes. The decoder supports I4, I8, IA4,
@@ -66,18 +63,18 @@ rotated headings retain a shared pivot. The IPL font is extracted into six
 libogc decoded font storage are freed after extraction; no oversized font
 texture is uploaded and no firmware font is distributed.
 
-The application cache holds at most 256 source entries and 2 MiB of native pixels.
+The application cache holds at most 256 source entries and 4 MiB of native pixels.
 Its immutable-disc key is the build identity plus original disc URI, processing
 version and atlas layout. A source FNV fingerprint and original dimensions remain
 available without retaining original pixels. A hit avoids disc I/O and decoding.
 Leases prevent eviction of active textures; zero-lease entries are evicted by
-least recent use. Repeating floors have their own <=64-pixel policy with CMPR or
-RGB565 two-level mipmaps and mirrored-repeat samplers; the current season uses
-12,864 bytes (about 12.6 KiB). The floor processing key is
-`floor64-mip2-mirror-auto-v2`, invalidating entries from the previous policy.
-See [generated-trees-repeat-floor.md](generated-trees-repeat-floor.md).
+least recent use. Repeating floors use the selected resolution policy, CMPR/RGB565 mipmaps and
+explicit addressing. The `floor-mip2-auto-v5` key distinguishes repeat, clamp and
+repeat-U/clamp-V soil. Neutral ground UVs use logical world XZ; seasonal tint,
+cliff material bindings and cloud motion are independent of mesh generation.
+See [nuget-rendering-services.md](nuget-rendering-services.md).
 This is a read-only disc cache, not a hot-reloading SD asset
-cache. The SDK's separate model texture cache is outside that 2 MiB budget.
+cache. The SDK's separate model texture cache is outside that 4 MiB budget.
 See [mipmaps-streaming-async.md](mipmaps-streaming-async.md) for mip tradeoffs,
 streaming applicability and the distinction between completion checks and waits.
 
@@ -108,7 +105,7 @@ Settings → Performance display enables checksummed pixel telemetry in the last
 and includes terrain, triangle and cache counters. Rendering the telemetry has
 its own measured cost. Results are displayed one frame after collection.
 The developer shortcut L + R + Z toggles the same display from any screen.
-Use at least 512 MiB of Docker shared memory for the Linux Dolphin container;
+Use at least 514 MiB of Docker shared memory for the Linux Dolphin container;
 the default 64 MiB can make Mesa/Dolphin exit with SIGBUS before boot.
 
 Run the Linux Dolphin image with `tools/iso-smoke.py ISO CAPTURE_DIR --resume

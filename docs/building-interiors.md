@@ -26,7 +26,7 @@ is abandoned after bounded stalled time; long walks are not timed out while the
 actor is making progress. New furniture cannot obstruct doorway clearance.
 Existing saved possessions are retained even if they overlap a new doorway.
 
-The developer chord L+R+B focuses successive resident entrances outside. Indoors
+The developer chord L+R+A focuses successive resident entrances outside. Indoors
 it focuses that room's exit. It never performs a portal transfer. This is also
 available from the title for focused emulator scenarios. Normal entry and exit
 still require A and run through the same validation and animation.
@@ -111,7 +111,8 @@ The build loads every cooked native part through the production C model loader,
 creates all static instances together, and enforces these budgets before linking.
 Budget accounting includes retained packages and decoded texture charges, even
 when the immutable texture cache shares the same atlas across parts.
-Meshes/poses are allocated before rendering; there is no room-entry allocation
+One asset task runs at a time; the loading screen stays responsive between parts.
+Meshes/poses are allocated before gameplay rendering; there is no room-entry allocation
 or per-frame model/texture creation. A room change reuses the same kit.
 
 Indoor search has one 1024-cell parent/queue scratch pair, seven bounded 512-step

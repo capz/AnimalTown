@@ -1,6 +1,0 @@
-[submodule "vendor/hypercube-engine"]
-	path = vendor/hypercube-engine
-	url = https://github.com/capz/hypercube-engine.git
-[submodule "vendor/sdk"]
-	path = vendor/sdk
-	url = https://github.com/capz/DolphinDotNet.git
