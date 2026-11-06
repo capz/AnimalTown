@@ -16,12 +16,19 @@ internal sealed class WaterRenderer
     private int surfaceCount,foamCount;
     private GameState state=null!;
     private float referenceZ;
+    private readonly Color32[] cornerTint=new Color32[(TerrainStream.Width+1)*(TerrainStream.Height+1)];
+    private readonly bool[] tintReady=new bool[(TerrainStream.Width+1)*(TerrainStream.Height+1)];
+    private int originX,originZ,cachedRow=int.MinValue;
+    private CylinderPose rowA,rowB;
     internal int Triangles=>(surfaceCount+foamCount)/3;
     internal Mesh? SurfaceMesh=>surfaceCount==0?null:surfaceMesh?.Mesh;
     internal Mesh? FoamMesh=>foamCount==0?null:foamMesh?.Mesh;
     internal void Prepare(GameState next,FloorStrips strips,int room,float referenceZ)
     {
-        state=next;this.referenceZ=referenceZ;surfaceCount=foamCount=0;int cells=0;
+        state=next;this.referenceZ=referenceZ;surfaceCount=foamCount=0;int cells=0;cachedRow=int.MinValue;
+        Array.Clear(tintReady,0,tintReady.Length);
+        originX=strips.Count==0?0:strips.X0[0];originZ=strips.Count==0?0:strips.Z0[0];
+        for(int n=1;n<strips.Count;n++){originX=Math.Min(originX,strips.X0[n]);originZ=Math.Min(originZ,strips.Z0[n]);}
         if(room==0)for(int n=0;n<strips.Count;n++){
             int z=strips.Z0[n];
             for(int x=strips.X0[n];x<strips.X1[n];x++){
@@ -91,9 +98,18 @@ internal sealed class WaterRenderer
     {
         // Interpolate on the SAME row chord as the surface, not a new cylinder
         // sample inside a cell (which would float above the water chord).
-        var a=CylinderWorld.Surface(cz,referenceZ,height);var b=CylinderWorld.Surface(cz+1,referenceZ,height);float t=z-cz;
-        var color=isFoam?Color32.White:material.Tint(WaterSurface.Depth(state.Town,(int)x,(int)z));
-        return new VertexPositionColorTexture(new Vector3(x,a.Y+(b.Y-a.Y)*t,a.Z+(b.Z-a.Z)*t),color,new Vector2(x*WaterSurface.UvScale,z*WaterSurface.UvScale));
+        if(cachedRow!=cz){rowA=CylinderWorld.Surface(cz,referenceZ);rowB=CylinderWorld.Surface(cz+1,referenceZ);cachedRow=cz;}
+        float ay=rowA.Y+height*rowA.UpY,az=rowA.Z+height*rowA.UpZ,by=rowB.Y+height*rowB.UpY,bz=rowB.Z+height*rowB.UpZ,t=z-cz;
+        var color=isFoam?Color32.White:Tint((int)x,(int)z);
+        return new VertexPositionColorTexture(new Vector3(x,ay+(by-ay)*t,az+(bz-az)*t),color,new Vector2(x*WaterSurface.UvScale,z*WaterSurface.UvScale));
+    }
+    private Color32 Tint(int x,int z)
+    {
+        int dx=x-originX,dz=z-originZ;
+        if((uint)dx>TerrainStream.Width||(uint)dz>TerrainStream.Height)return material.Tint(WaterSurface.Depth(state.Town,x,z));
+        int at=dz*(TerrainStream.Width+1)+dx;
+        if(!tintReady[at]){cornerTint[at]=material.Tint(WaterSurface.Depth(state.Town,x,z));tintReady[at]=true;}
+        return cornerTint[at];
     }
     internal void Draw(Renderer renderer,Transform parent)
     {
