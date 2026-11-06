@@ -55,7 +55,14 @@ if (!$SkipAssets) {
         }
     }
     foreach ($name in $assetMap.Keys) {
-        Run dotnet @('run','--project','tools/AnimalTown.Tools','-c','Release','--no-build','--','prepare',$projectRoot,"assets/models/$($assetMap[$name])","out/prepared/$name.glb")
+        if($buildingImports.ContainsKey($name)){
+            # Building parts are authored in metres with hinge/floor pivots.
+            # Actor normalization would invalidate their collision/socket data.
+            New-Item -ItemType Directory -Force -Path out/prepared | Out-Null
+            Copy-Item -LiteralPath "assets/models/$($assetMap[$name])" -Destination "out/prepared/$name.glb" -Force
+        }else{
+            Run dotnet @('run','--project','tools/AnimalTown.Tools','-c','Release','--no-build','--','prepare',$projectRoot,"assets/models/$($assetMap[$name])","out/prepared/$name.glb")
+        }
         foreach($textureEdge in @(128,256,512,1024)){
         $suffix=if($textureEdge -eq 256){''}else{"-tex$textureEdge"}
         $importArguments=@($assetTools,'model',"out/prepared/$name.glb","out/disc/$name$suffix.dndmodel",'--texture-limit',"$textureEdge",'--mip-levels','2','--compile-gx-materials')

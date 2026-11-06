@@ -16,7 +16,7 @@ public sealed class VillagerJourney
         Outdoors.Tick(s);Indoors.BeginTick();Doors.Tick(s);tick++;
         for(int i=0;i<6;i++){
             int actor=i+1;var v=s.Town.Residents[i];Moving[i]=false;
-            if(Doors.Busy(actor)){Outdoors.Stop(i);Moving[i]=Doors.Actors[actor].Phase!=DoorPhase.Waiting;continue;}
+            if(Doors.Busy(actor)){Outdoors.Stop(i);Moving[i]=Doors.Moving(actor);continue;}
             if(v.Space!=0){
                 Outdoors.Stop(i);
                 if(v.JourneyPhase<2){v.JourneyPhase=2;v.Dwell=0;}

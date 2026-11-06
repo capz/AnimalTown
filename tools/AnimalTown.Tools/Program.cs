@@ -102,7 +102,7 @@ static class Program
     }
     static void Disc(string dolPath,string commit)
     {
-        string disc=Path.Combine(Root,"out/disc");Art();TextureAudit.Run(Root);
+        string disc=Path.Combine(Root,"out/disc");BuildingAssets.Cook(Root);Art();TextureAudit.Run(Root);
         var bnr=new byte[6496];Encoding.ASCII.GetBytes("BNR1").CopyTo(bnr,0);Banner(96).CopyTo(bnr,32);
         Text(bnr,0x1820,32,"AnimalTown");Text(bnr,0x1840,32,"AnimalTown contributors");Text(bnr,0x1860,64,"AnimalTown / "+commit);Text(bnr,0x18a0,64,"AnimalTown contributors");Text(bnr,0x18e0,128,"A rolling village life game. Version "+commit);
         File.WriteAllBytes(Path.Combine(disc,"opening.bnr"),bnr);

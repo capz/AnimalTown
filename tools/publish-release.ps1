@@ -41,8 +41,9 @@ Copy-Item -LiteralPath (Join-Path $Root 'docs/texture-repacker.md') -Destination
 Copy-Item -LiteralPath (Join-Path $Root 'docs/uv-editor-design.md') -Destination (Join-Path $toolsDirectory 'uv-editor-design.md') -Force
 $toolsZip=Join-Path $package "AnimalTown-tools-$version.zip"
 $cliffsZip=Join-Path $package "AnimalTown-cliff-kit-$version.zip"
+$buildingsZip=Join-Path $package "AnimalTown-building-kit-$version.zip"
 # These two exact paths are generated archives; rebuilding a draft can replace them.
-foreach($archive in @($isoZip,$serverZip,$toolsZip,$cliffsZip)){if(Test-Path -LiteralPath $archive){Remove-Item -LiteralPath $archive}}
+foreach($archive in @($isoZip,$serverZip,$toolsZip,$cliffsZip,$buildingsZip)){if(Test-Path -LiteralPath $archive){Remove-Item -LiteralPath $archive}}
 $zip=[IO.Compression.ZipFile]::Open($isoZip,[IO.Compression.ZipArchiveMode]::Create)
 try{[IO.Compression.ZipFileExtensions]::CreateEntryFromFile($zip,$iso,[IO.Path]::GetFileName($iso),[IO.Compression.CompressionLevel]::Optimal) | Out-Null}finally{$zip.Dispose()}
 [IO.Compression.ZipFile]::CreateFromDirectory($server,$serverZip,[IO.Compression.CompressionLevel]::Optimal,$false)
@@ -56,14 +57,26 @@ try{
         }
     }
 }finally{$cliffArchive.Dispose()}
+$buildingArchive=[IO.Compression.ZipFile]::Open($buildingsZip,[IO.Compression.ZipArchiveMode]::Create)
+try{
+    foreach($folder in @('assets/models/buildings','assets/models/interiors/cottage_small','assets/textures/buildings','assets/definitions')){
+        foreach($file in Get-ChildItem -LiteralPath (Join-Path $Root $folder) -File -Recurse){
+            $entry=[IO.Path]::GetRelativePath($Root,$file.FullName).Replace('\','/')
+            [IO.Compression.ZipFileExtensions]::CreateEntryFromFile($buildingArchive,$file.FullName,$entry,[IO.Compression.CompressionLevel]::Optimal)|Out-Null
+        }
+    }
+    [IO.Compression.ZipFileExtensions]::CreateEntryFromFile($buildingArchive,(Join-Path $Root 'docs/building-interiors.md'),'building-interiors.md',[IO.Compression.CompressionLevel]::Optimal)|Out-Null
+}finally{$buildingArchive.Dispose()}
 Copy-Item -LiteralPath (Join-Path $out 'build-revisions.txt') -Destination (Join-Path $package 'BUILD.txt') -Force
 Copy-Item -LiteralPath (Join-Path $out 'texture-audit.json') -Destination (Join-Path $package 'texture-audit.json') -Force
 Copy-Item -LiteralPath (Join-Path $out 'validation-plan.json') -Destination (Join-Path $package 'validation-plan.json') -Force
 Copy-Item -LiteralPath (Join-Path $out 'version.json') -Destination (Join-Path $package 'version.json') -Force
-$checksums=foreach($file in @($iso,$isoZip,$serverZip,$toolsZip,$cliffsZip,(Join-Path $package 'BUILD.txt'),(Join-Path $package 'texture-audit.json'),(Join-Path $package 'validation-plan.json'),(Join-Path $package 'version.json'))){"$((Get-FileHash -LiteralPath $file -Algorithm SHA256).Hash.ToLowerInvariant())  $([IO.Path]::GetFileName($file))"}
+$checksums=foreach($file in @($iso,$isoZip,$serverZip,$toolsZip,$cliffsZip,$buildingsZip,(Join-Path $package 'BUILD.txt'),(Join-Path $package 'texture-audit.json'),(Join-Path $package 'validation-plan.json'),(Join-Path $package 'version.json'))){"$((Get-FileHash -LiteralPath $file -Algorithm SHA256).Hash.ToLowerInvariant())  $([IO.Path]::GetFileName($file))"}
 [IO.File]::WriteAllText((Join-Path $package 'SHA256SUMS.txt'),($checksums -join "`n")+"`n")
 $notes=@"
 AnimalTown $version development build from commit $commit.
+
+AnimalTown-building-kit-$version.zip contains the original cottage exterior, hinged door, cutaway interior parts, atlas, definitions and authoring guide. A at doormats enters/exits; C-stick turns the indoor camera, L recentres. NPCs visit homes and resume their journeys even while the player is indoors. Physical GameCube testing remains outstanding.
 
 AnimalTown-cliff-kit-$version.zip contains eight low-poly cliff GLBs, shared 128/256px soil textures and the ground-material binding guide. The game reuses its existing floor texture and tint for cliff tops/lips. L+R+D-pad Up toggles a rendering-only eight-piece inspection gallery.
 
@@ -83,7 +96,7 @@ function InvokeGh([string[]]$Arguments){
     if($LASTEXITCODE -ne 0){throw "GitHub CLI failed: $($Arguments[0]) $($Arguments[1])"}
     return $result
 }
-$assets=@($isoZip,$serverZip,$toolsZip,$cliffsZip,(Join-Path $package 'BUILD.txt'),(Join-Path $package 'texture-audit.json'),(Join-Path $package 'validation-plan.json'),(Join-Path $package 'version.json'),(Join-Path $package 'SHA256SUMS.txt'))
+$assets=@($isoZip,$serverZip,$toolsZip,$cliffsZip,$buildingsZip,(Join-Path $package 'BUILD.txt'),(Join-Path $package 'texture-audit.json'),(Join-Path $package 'validation-plan.json'),(Join-Path $package 'version.json'),(Join-Path $package 'SHA256SUMS.txt'))
 $existing=& $Gh release view $tag --repo $Repository --json isDraft,targetCommitish,assets 2>$null
 if($LASTEXITCODE -eq 0){
     $release=$existing | ConvertFrom-Json

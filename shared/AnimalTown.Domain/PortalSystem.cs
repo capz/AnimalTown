@@ -7,8 +7,9 @@ public sealed class PortalSystem
     public sealed class Transition
     {
         public DoorPhase Phase;
-        public int Building=-1,Tick,Wait,Cooldown;
-        public bool Committed;
+        public int Building=-1,Tick,Wait,Cooldown,Type;
+        public float OriginX,OriginZ;
+        public bool Committed,WaitMoving;
         public ActorLocation Source,Destination;
     }
     public readonly Transition[] Actors=new Transition[BuildingWorld.Actors];
@@ -24,7 +25,7 @@ public sealed class PortalSystem
         var p=BuildingWorld.Location(s,actor);int destination;
         if(p.Space.IsTown){destination=BuildingWorld.Space(building);BuildingWorld.Entrance(s,building,out float x,out float z);if(Distance(p.X,p.Z,x,z)>.95f)return false;BuildingWorld.InsideDoor(s,destination,out x,out z);t.Destination=new ActorLocation(destination,x,z-.7f,(float)Math.PI);}
         else{if(BuildingWorld.Building(p.Space.Value)!=building)return false;BuildingWorld.InsideDoor(s,p.Space.Value,out float x,out float z);if(Distance(p.X,p.Z,x,z)>.95f)return false;BuildingWorld.Entrance(s,building,out x,out z);t.Destination=new ActorLocation(0,x,z+1f,0);}
-        t.Source=new ActorLocation(p.Space.Value,p.X,p.Z,p.Space.IsTown?(float)Math.PI:0);BuildingWorld.SetLocation(s,actor,t.Source);t.Building=building;t.Tick=t.Wait=0;t.Committed=false;t.Phase=DoorPhase.Waiting;return true;
+        t.Source=new ActorLocation(p.Space.Value,p.X,p.Z,p.Space.IsTown?(float)Math.PI:0);BuildingWorld.SetLocation(s,actor,t.Source);t.Building=building;BuildingWorld.Origin(s,building,out t.OriginX,out t.OriginZ);t.Type=s.BuildingTypes[building];t.Tick=t.Wait=0;t.Committed=false;t.Phase=DoorPhase.Waiting;return true;
     }
     public int Nearby(GameState s,int actor,float facing)
     {
@@ -37,22 +38,50 @@ public sealed class PortalSystem
     public void Tick(GameState s)
     {
         for(int actor=0;actor<Actors.Length;actor++){
-            var t=Actors[actor];if(t.Cooldown>0)t.Cooldown--;if(t.Phase==DoorPhase.Idle)continue;
+            var t=Actors[actor];t.WaitMoving=false;if(t.Cooldown>0)t.Cooldown--;if(t.Phase==DoorPhase.Idle)continue;
             var current=BuildingWorld.Location(s,actor);
             if(!BuildingWorld.Exists(s,t.Building)||current.Space.Value!=(t.Committed?t.Destination.Space.Value:t.Source.Space.Value)){Cancel(actor);continue;}
+            BuildingWorld.Origin(s,t.Building,out float ox,out float oz);
+            var expected=t.Committed?t.Destination:t.Source;
+            if(ox!=t.OriginX||oz!=t.OriginZ||s.BuildingTypes[t.Building]!=t.Type||!Ready[t.Type]||Distance(current.X,current.Z,expected.X,expected.Z)>.01f){Cancel(actor);continue;}
             if(t.Phase==DoorPhase.Waiting){
                 if(++t.Wait>MaximumWait){Cancel(actor);continue;}
-                if(owners[t.Building]>=0)continue;
+                if(owners[t.Building]>=0){StepAside(s,actor,t);continue;}
                 // Entry and exit landings must both be available before opening.
                 if(!BuildingWorld.CanStand(s,t.Destination.Space.Value,t.Destination.X,t.Destination.Z,actor,true))continue;
-                owners[t.Building]=actor;t.Phase=DoorPhase.Opening;t.Tick=0;
+                owners[t.Building]=actor;t.Phase=DoorPhase.Opening;t.Tick=t.Wait=0;
+                t.Source=new ActorLocation(t.Source.Space.Value,t.Source.X,t.Source.Z,t.Source.Space.IsTown?(float)Math.PI:0);BuildingWorld.SetLocation(s,actor,t.Source);
             }
             if(++t.Tick==CommitTick){
-                if(!BuildingWorld.CanStand(s,t.Destination.Space.Value,t.Destination.X,t.Destination.Z,actor,true)){Cancel(actor);continue;}
+                if(!CorridorClear(s,actor,t)||!BuildingWorld.CanStand(s,t.Destination.Space.Value,t.Destination.X,t.Destination.Z,actor,true)){
+                    t.Tick--;if(++t.Wait>MaximumWait)Cancel(actor);continue;
+                }
                 BuildingWorld.SetLocation(s,actor,t.Destination);t.Committed=true;
             }
             t.Phase=t.Tick<10?DoorPhase.Opening:t.Tick<26?DoorPhase.Crossing:DoorPhase.Closing;
             if(t.Tick>=Duration){owners[t.Building]=-1;t.Phase=DoorPhase.Idle;t.Cooldown=30;}
+        }
+    }
+    public bool Moving(int actor)
+    {var t=Actors[actor];return t.WaitMoving||Busy(actor)&&t.Phase!=DoorPhase.Waiting&&t.Tick>=8&&t.Tick<28;}
+    private static bool CorridorClear(GameState s,int actor,Transition t)
+    {
+        float x,z;
+        if(t.Destination.Space.IsTown){BuildingWorld.Entrance(s,t.Building,out x,out z);}
+        else BuildingWorld.InsideDoor(s,t.Destination.Space.Value,out x,out z);
+        for(int other=0;other<BuildingWorld.Actors;other++)if(other!=actor){var p=BuildingWorld.Location(s,other);if(p.Space.Value==t.Destination.Space.Value&&Math.Abs(p.X-x)<BuildingWorld.Radius*2&&Math.Abs(p.Z-z)<1)return false;}
+        return true;
+    }
+    private static void StepAside(GameState s,int actor,Transition t)
+    {
+        var p=BuildingWorld.Location(s,actor);float x,z;
+        if(p.Space.IsTown){BuildingWorld.Entrance(s,t.Building,out x,out z);z+=.65f;}
+        else{BuildingWorld.InsideDoor(s,p.Space.Value,out x,out z);z-=.7f;}
+        for(int side=0;side<2;side++){
+            float gx=x+(side==0?.8f:-.8f),dx=gx-p.X,dz=z-p.Z,distance=(float)Math.Sqrt(dx*dx+dz*dz);if(distance<.03f)return;
+            float step=Math.Min(.05f,distance),nx=p.X+dx/distance*step,nz=p.Z+dz/distance*step;
+            if(!BuildingWorld.Segment(s,p.Space.Value,p.X,p.Z,nx,nz,actor,true))continue;
+            t.Source=new ActorLocation(p.Space.Value,nx,nz,PlayerMovement.Yaw(dx,dz));BuildingWorld.SetLocation(s,actor,t.Source);t.WaitMoving=true;return;
         }
     }
     public void Cancel(int actor)

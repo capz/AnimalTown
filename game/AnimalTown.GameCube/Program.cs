@@ -360,7 +360,7 @@ internal sealed class TownGame
                 facingYaw=PlayerMovement.Yaw(dx,dz);PlayerMovement.Target(dx,dz,out faceX,out faceZ);
                 int clip=pad.B.IsHeld?1:0;if(clip!=moveClip){string name=clip==1?"Running":"Walking";if(models[state.Species].TryGetAnimation(name,out var _)){actors[0].Animator.Play(name,true);actors[0].Animator.SetSpeed(1.05f);}moveClip=clip;}
             }
-            else if(villagers.Doors.Busy(0)&&villagers.Doors.Actors[0].Tick>=8&&villagers.Doors.Actors[0].Tick<28){
+            else if(villagers.Doors.Moving(0)){
                 if(moveClip!=0&&models[state.Species].TryGetAnimation("Walking",out var _)){actors[0].Animator.Play("Walking",true);actors[0].Animator.SetSpeed(1);moveClip=0;}
             }
             else if(moveClip>=0){actors[0].Animator.Stop();moveClip=-1;}
