@@ -44,8 +44,8 @@ def building_save():
         screenshot('building-save-indoor.png')
         pixels=subprocess.check_output(['ffmpeg','-v','error','-i',str(root/'building-save-indoor.png'),'-frames:v','1','-f','rawvideo','-pix_fmt','rgb24','-'])
         paper=sum(all(abs(pixels[(y*800+x)*3+c]-value)<=3 for c,value in enumerate((255,245,221)))
-                  for y in range(110,160,2) for x in range(90,130,2))
-        if paper>300:
+                  for y in range(200,240,2) for x in range(530,550,2))
+        if paper>150:
             print(f'Indoor save returned to settings after sample {sample}',flush=True);return
         if p.poll() is not None:raise RuntimeError('Game exited while saving indoors')
         time.sleep(2)
