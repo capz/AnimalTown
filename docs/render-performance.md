@@ -144,10 +144,12 @@ cache of 160 sections, each 8x4m. Moving the player only changes the shared
 transform and the visible section selection. Four metres of prefetch surround
 the view. Existing sections never rebuild because a scroll window changed.
 
-The renderer pumps at most two incoming sections (64 cells) per frame and stops
-starting work after a 2ms guest-clock deadline. A single section is the atomic
-unit and can exceed that deadline; native profiling must check the worst pump,
-not merely its average or the fraction of cached frames. Frustum selection is
+The renderer pumps at most eight small generation stages per frame and stops
+starting work after a 2ms guest-clock deadline. Ground, water and walls each
+generate one eight-cell row at a time; upload is a separate stage. A section is
+pinned while in progress and becomes drawable only when every stage completes.
+An individual stage can exceed the deadline; native profiling checks the worst
+pump, not merely its average or the fraction of cached frames. Frustum selection is
 cached in half-metre buckets and missing-section priority is updated without
 repeating those tests. Horizon culling uses the YZ bound, independently of width.
 
@@ -162,7 +164,9 @@ behind a loading transition instead of drawing holes or constructing the whole
 view in one frame. Input/simulation pause during that cold transition. Normal
 movement prefetches ahead of the view. `--terrain-scroll --stream-stress
 --profile-seconds 5 --dsp-hle` profiles a generated ramp and river/corner/bridge/
-sea transitions. Protocol v5's revision flag now denotes small section updates.
+sea transitions. Protocol v5's revision flag now denotes streaming work, including
+generation stages that have not yet published a section. Shore-depth tints and
+cylinder row poses are reused while generating each section.
 
 `present_total` includes `gpu_blocking_wait` and `retrace_wait`; do not add them
 together. Blocking GX completion is outstanding-work wait, not total GPU time.

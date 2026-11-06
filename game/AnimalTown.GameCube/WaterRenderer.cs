@@ -23,13 +23,16 @@ internal sealed class WaterRenderer
     internal int Triangles=>(surfaceCount+foamCount)/3;
     internal Mesh? SurfaceMesh=>surfaceCount==0?null:surfaceMesh?.Mesh;
     internal Mesh? FoamMesh=>foamCount==0?null:foamMesh?.Mesh;
-    internal void Prepare(GameState next,FloorStrips strips,int room,float referenceZ)
+    private int cells;
+    internal void Begin(GameState next,int left,int top)
     {
-        state=next;this.referenceZ=referenceZ;surfaceCount=foamCount=0;int cells=0;cachedRow=int.MinValue;
+        state=next;referenceZ=0;surfaceCount=foamCount=cells=0;cachedRow=int.MinValue;
         Array.Clear(tintReady,0,tintReady.Length);
-        originX=strips.Count==0?0:strips.X0[0];originZ=strips.Count==0?0:strips.Z0[0];
-        for(int n=1;n<strips.Count;n++){originX=Math.Min(originX,strips.X0[n]);originZ=Math.Min(originZ,strips.Z0[n]);}
-        if(room==0)for(int n=0;n<strips.Count;n++){
+        originX=left;originZ=top;
+    }
+    internal void Append(FloorStrips strips)
+    {
+        for(int n=0;n<strips.Count;n++){
             int z=strips.Z0[n];
             for(int x=strips.X0[n];x<strips.X1[n];x++){
                 bool bridge=state.Town.At(x,z)==(int)Terrain.Bridge;if(!strips.Water[n]&&!bridge)continue;
@@ -50,6 +53,9 @@ internal sealed class WaterRenderer
                 if(WaterSurface.IsBank(state.Town,x+1,z))Quad(ref foam,ref foamCount,x,z,x+1-w,z+lo,x+1,z+lo,x+1,z+hi,x+1-w,z+hi,true);
             }
         }
+    }
+    internal void Finish()
+    {
         revision++;
         if(surfaceCount>0)surfaceMesh!.Commit(surfaceCount,revision,FrameProfile.Counters);
         else if(surfaceMesh!=null){surfaceMesh.Dispose();surfaceMesh=null;surface=new VertexPositionColorTexture[0];}

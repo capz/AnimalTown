@@ -13,13 +13,33 @@ internal sealed class TerrainSection
     internal readonly TerrainWalls Walls;
     internal readonly WaterRenderer Water;
     private long revision;
+    private int left,top,row,phase;
     internal int Triangles {get;private set;}
     internal TerrainSection(TerrainSoil soil,WaterMaterial water){Walls=new TerrainWalls(soil);Water=new WaterRenderer(water);}
     internal Mesh? GroundMesh(int slot)=>used[slot]==0?null:meshes[slot]?.Mesh;
-    internal void Build(GameState state,TerrainRenderer owner,FloorStrips strips,int x,int top,byte[] data)
+    internal void Begin(GameState state,int x,int z)
     {
-        strips.PrepareRegion(state,data,x,top,TerrainStream.Width,TerrainStream.Height);Triangles=0;
+        left=x;top=z;row=phase=0;Triangles=0;
         for(int i=0;i<used.Length;i++)used[i]=0;
+        Water.Begin(state,x,z);Walls.Begin(state,z);
+    }
+    internal bool Advance(GameState state,TerrainRenderer owner,FloorStrips strips,byte[] data)
+    {
+        if(row<TerrainStream.Height){
+            if(phase==0){strips.PrepareRegion(state,data,left,top+row,TerrainStream.Width,1);AppendGround(state,strips);}
+            else if(phase==1)Water.Append(strips);
+            else Walls.AppendRow(state,owner,left,top+row);
+            phase++;if(phase==3){phase=0;row++;}return false;
+        }
+        revision++;
+        for(int slot=0;slot<used.Length;slot++){
+            if(used[slot]>0)meshes[slot]!.Commit(used[slot],revision,FrameProfile.Counters);
+            else if(meshes[slot]!=null){meshes[slot]!.Dispose();meshes[slot]=null;buffers[slot]=null;}
+        }
+        Water.Finish();Walls.Finish();Triangles+=Water.Triangles+Walls.Triangles;return true;
+    }
+    private void AppendGround(GameState state,FloorStrips strips)
+    {
         for(int n=0;n<strips.Count;n++){
             if(strips.Water[n])continue;
             Triangles+=2;int slot=strips.Material[n],z=strips.Z0[n],at=used[slot];
@@ -36,12 +56,6 @@ internal sealed class TerrainSection
             buffer[at++]=Vertex(x0,p0,u0,v0,tint);buffer[at++]=Vertex(x1,p1,u1,v0,tint);buffer[at++]=Vertex(x1,p2,u1,v1,tint);
             buffer[at++]=Vertex(x0,p0,u0,v0,tint);buffer[at++]=Vertex(x1,p2,u1,v1,tint);buffer[at++]=Vertex(x0,p3,u0,v1,tint);used[slot]=at;
         }
-        revision++;
-        for(int slot=0;slot<used.Length;slot++){
-            if(used[slot]>0)meshes[slot]!.Commit(used[slot],revision,FrameProfile.Counters);
-            else if(meshes[slot]!=null){meshes[slot]!.Dispose();meshes[slot]=null;buffers[slot]=null;}
-        }
-        Water.Prepare(state,strips,0,0);Walls.PrepareRegion(state,owner,x,top);Triangles+=Water.Triangles+Walls.Triangles;
     }
     private static VertexPositionColorTexture Vertex(float x,CylinderPose p,float u,float v,Color32 tint)=>new VertexPositionColorTexture(new Vector3(x,p.Y,p.Z),tint,new Vector2(u,v));
     private static CylinderPose Elevated(GameState state,int cx,int cz,float x,float z,CylinderPose p)

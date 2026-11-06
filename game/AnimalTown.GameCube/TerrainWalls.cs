@@ -23,11 +23,15 @@ internal sealed class TerrainWalls
     internal int Triangles=>total/3;
     internal Mesh? SoilMesh=>soilUsed==0?null:soilMesh?.Mesh;
     internal Mesh? GroundMesh(int slot)=>used[slot]==0?null:groundMesh[slot]?.Mesh;
-    internal void PrepareRegion(GameState state,TerrainRenderer floor,int left,int top)
+    internal void Begin(GameState state,int top)
     {
         town=state.Town;z=0;soilUsed=total=0;for(int i=0;i<used.Length;i++)used[i]=0;
         rowBase=top;for(int i=0;i<rows.Length;i++)rows[i]=CylinderWorld.Surface(top+i,0);
-        for(int cz=top;cz<top+TerrainStream.Height;cz++)for(int cx=left;cx<left+TerrainStream.Width;cx++){
+    }
+    internal void AppendRow(GameState state,TerrainRenderer floor,int left,int cz)
+    {
+        for(int cx=left;cx<left+TerrainStream.Width;cx++){
+            var town=state.Town;
             int mode=WaterTerrain.IsCoast(town.At(cx,cz))?1:TerrainElevation.Mode(town,cx,cz);
             if(town.At(cx,cz)==(int)Terrain.Water){RiverCell(state,floor,cx,cz);continue;}
             if(WaterSurface.IsWater(town,cx,cz))continue;
@@ -35,8 +39,8 @@ internal sealed class TerrainWalls
             Edge(state,floor,cx,cz,cx,cz,cx+1,cz,cx,cz-1);Edge(state,floor,cx,cz,cx+1,cz,cx+1,cz+1,cx+1,cz);
             Edge(state,floor,cx,cz,cx+1,cz+1,cx,cz+1,cx,cz+1);Edge(state,floor,cx,cz,cx,cz+1,cx,cz,cx-1,cz);
         }
-        Commit();
     }
+    internal void Finish()=>Commit();
     internal void PrepareGallery(GameState state,TerrainRenderer floor,bool preview)
     {
         int px=(int)CylinderWorld.ScrollAnchor(state.X),pz=(int)CylinderWorld.ScrollAnchor(state.Z);
