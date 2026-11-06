@@ -5,6 +5,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <LangVersion>12</LangVersion>
     <DndBuildNative>false</DndBuildNative>
-    <DolphinDotNetRoot>$(MSBuildThisFileDirectory)vendor/sdk</DolphinDotNetRoot>
+    <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
+    <RestoreLockedMode Condition="'$(CI)' == 'true'">true</RestoreLockedMode>
   </PropertyGroup>
 </Project>

@@ -1,18 +1,21 @@
 using System;
 using AnimalTown;
 using Dolphin.Graphics;
+using Hypercube.GameCube;
 
 // Pooled soil and shared ground-material batches. No per-section textures,
 // model loads, hidden bottoms or internal walls.
 internal sealed class TerrainWalls
 {
     private const int Capacity=6144;
-    private VertexPositionColorTexture[] soil=new VertexPositionColorTexture[192];
+    private VertexPositionColorTexture[] soil=new VertexPositionColorTexture[0];
+    private readonly DynamicMeshBuffer soilMesh=new DynamicMeshBuffer(3072);
+    private long revision;
     private readonly VertexPositionColorTexture[]?[] ground=new VertexPositionColorTexture[]?[FloorStrips.MaximumMaterials];
-    private readonly DynamicMesh?[] groundMesh=new DynamicMesh?[FloorStrips.MaximumMaterials];
-    private readonly int[] used=new int[FloorStrips.MaximumMaterials],sizes=new int[FloorStrips.MaximumMaterials];
+    private readonly DynamicMeshBuffer?[] groundMesh=new DynamicMeshBuffer?[FloorStrips.MaximumMaterials];
+    private readonly int[] used=new int[FloorStrips.MaximumMaterials];
     private readonly Material material=new Material{Cull=CullMode.Back,Lighting=LightingMode.Unlit};
-    private CachedTexture? texture;private DynamicMesh? soilMesh;private int soilUsed,total,soilSize;
+    private CachedTexture? texture;private int soilUsed,total;
     private Town? town;private float x,z;private int version=-1,materials=-1;private bool gallery;
     internal int Triangles=>total/3;
     internal void Prepare(GameState state,int room,TerrainRenderer floor,bool preview)
@@ -30,10 +33,14 @@ internal sealed class TerrainWalls
             Edge(cx,cz,cx+1,cz+1,cx,cz+1,cx,cz+1,slot);Edge(cx,cz,cx,cz+1,cx,cz,cx-1,cz,slot);
         }
         if(preview)for(int i=0;i<8;i++){TerrainCliffBinding.PreviewOrigin((int)x,(int)z,i,out int ox,out int oz);Section(state,floor,i,ox,oz);}
-        if(soilUsed>0){if(texture==null){texture=TextureCache.LoadFloor("dvd:/cliff-soil.dndtex",repeat:true,repeatV:false);material.Texture=texture.Pages[0];}Pad(soil,soilUsed);if(soilSize!=soil.Length){soilMesh?.Dispose();soilMesh=DynamicMesh.Create(soil);soilSize=soil.Length;}else soilMesh!.SetVertices(soil);}
-        for(int i=0;i<used.Length;i++)if(used[i]>0){var buffer=ground[i]!;Pad(buffer,used[i]);if(sizes[i]!=buffer.Length){groundMesh[i]?.Dispose();groundMesh[i]=DynamicMesh.Create(buffer);sizes[i]=buffer.Length;}else groundMesh[i]!.SetVertices(buffer);}
+        revision++;
+        if(soilUsed>0&&texture==null){texture=TextureCache.LoadFloor("dvd:/cliff-soil.dndtex",repeat:true,repeatV:false);material.Texture=texture.Pages[0];}
+        soilMesh.Commit(soilUsed,revision,FrameProfile.Counters);
+        for(int i=0;i<used.Length;i++){
+            if(used[i]==0){groundMesh[i]?.Dispose();groundMesh[i]=null;ground[i]=null;}
+            else groundMesh[i]!.Commit(used[i],revision,FrameProfile.Counters);
+        }
     }
-    private static void Pad(VertexPositionColorTexture[] buffer,int start){for(int i=start;i<buffer.Length;i++)buffer[i]=new VertexPositionColorTexture(Vector3.Zero,Color32.White,Vector2.Zero);}
     private void PlacedSection(GameState state,TerrainRenderer floor,int orientation,int ox,int oz)
     {
         var g=TerrainCliffGeometry.For(orientation);
@@ -68,8 +75,9 @@ internal sealed class TerrainWalls
     private void Add(int slot,VertexPositionColorTexture a,VertexPositionColorTexture b,VertexPositionColorTexture c)
     {
         if(total+3>Capacity)throw new InvalidOperationException("Cliff geometry exceeds batch budget");total+=3;
-        if(slot<0){if(soilUsed+3>soil.Length){int n=soil.Length*2;if(n>3072)throw new InvalidOperationException("Cliff soil exceeds batch budget");var next=new VertexPositionColorTexture[n];Array.Copy(soil,next,soilUsed);soil=next;}soil[soilUsed++]=a;soil[soilUsed++]=b;soil[soilUsed++]=c;return;}
-        int at=used[slot];var buffer=ground[slot];if(buffer==null||buffer.Length<at+3){int n=buffer==null?192:buffer.Length;while(n<at+3)n*=2;var next=new VertexPositionColorTexture[n];if(buffer!=null)Array.Copy(buffer,next,at);ground[slot]=buffer=next;}
+        if(slot<0){soil=GeometryStaging.Reserve(soilMesh,soil,soilUsed,soilUsed+3,FrameProfile.Counters);soil[soilUsed++]=a;soil[soilUsed++]=b;soil[soilUsed++]=c;return;}
+        int at=used[slot];if(groundMesh[slot]==null)groundMesh[slot]=new DynamicMeshBuffer(Capacity);
+        var buffer=ground[slot]=GeometryStaging.Reserve(groundMesh[slot]!,ground[slot]??new VertexPositionColorTexture[0],at,at+3,FrameProfile.Counters);
         buffer[at++]=a;buffer[at++]=b;buffer[at++]=c;used[slot]=at;
     }
     private void Edge(int cx,int cz,int ax,int az,int bx,int bz,int nx,int nz,int slot)
@@ -108,5 +116,5 @@ internal sealed class TerrainWalls
     private VertexPositionColorTexture TemplateVertex(TerrainCliffGeometry g,int i,int ox,int oz,bool wall)
     {float px=ox+g.Positions[i*3],pz=oz+g.Positions[i*3+2];return Vertex(px,pz,g.Positions[i*3+1],wall?g.Uvs[i*2]:TerrainCliffGeometry.SpillUv(px,Math.Max(0,2-g.Positions[i*3+1]),g.Normals[i*3]),wall?g.Uvs[i*2+1]:TerrainCliffGeometry.SpillUv(pz,Math.Max(0,2-g.Positions[i*3+1]),g.Normals[i*3+2]));}
     internal void Draw(Renderer renderer,Transform parent,TerrainRenderer floor)
-    {if(soilUsed>0&&soilMesh!=null)renderer.DrawMesh(soilMesh,material,parent);for(int i=0;i<used.Length;i++)if(used[i]>0)renderer.DrawMesh(groundMesh[i]!,floor.GroundMaterial(i),parent);}
+    {if(soilUsed>0&&soilMesh.Mesh!=null)renderer.DrawMesh(soilMesh.Mesh!,material,parent);for(int i=0;i<used.Length;i++)if(used[i]>0)renderer.DrawMesh(groundMesh[i]!.Mesh!,floor.GroundMaterial(i),parent);}
 }

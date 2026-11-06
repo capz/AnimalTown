@@ -21,7 +21,7 @@ build script. A clean Linux build imports only the current six villagers.
 
 All five new files are used as supplied, retaining their UVs, materials and
 available skinning data. Normalization preserves their bind pose and places the
-feet at ground level. Texture import caps native images at 128 pixels. Because
+feet at ground level. Texture import defaults native images to 256 pixels, with explicit 128/256/512/1024 variants. Because
 the replacement files use metallic/roughness PBR materials, their base-color
 maps use the SDK's explicit diffuse approximation on GX; normal maps and PBR
 metallic/roughness response are omitted rather than requiring a programmable shader.

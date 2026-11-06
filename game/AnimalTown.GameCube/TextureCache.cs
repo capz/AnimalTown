@@ -2,6 +2,8 @@ using System;
 using System.IO;
 using AnimalTown;
 using Dolphin.Graphics;
+using Hypercube;
+using Hypercube.GameCube;
 
 // Cache owns GPU resources. Entries retain identity/metrics, never source pixels.
 internal sealed class CachedTexture
@@ -12,6 +14,8 @@ internal sealed class CachedTexture
     internal bool Atlas;
     internal Texture2D[] Pages=new Texture2D[0];
     internal int[]? FontMetrics;
+    internal ResourceLease[] Leases=new ResourceLease[0];
+    internal int OwnedPages,LeasedPages;
     internal int Bytes {get{int n=0;for(int i=0;i<Pages.Length;i++)n+=Pages[i].NativeBytes;return n;}}
     internal void Draw(Draw2D ui,RectF source,RectF target,Color32 color,float rotation=0,Vector2 pivot=default)
     {
@@ -28,7 +32,11 @@ internal static class TextureCache
 {
     private static readonly CachedTexture?[] entries=new CachedTexture?[256];
     private const int Budget=4*1024*1024;
-    private static int clock;
+    // Every resident page has one registry lease. Entry References is the
+    // application's LRU policy; only the registry disposes registered pages.
+    private static readonly SharedGraphicsResources resources=new SharedGraphicsResources(4096,4096,Budget);
+    private static int clock,nextResource;
+
     internal static int Hits,Misses,Evictions;
     internal static int ResidentBytes {get{int n=0;for(int i=0;i<entries.Length;i++)if(entries[i]!=null)n+=entries[i]!.Bytes;return n;}}
     internal static CachedTexture? Find(string source,bool atlas)
@@ -36,13 +44,30 @@ internal static class TextureCache
     internal static void Release(CachedTexture source){if(source.References<1)throw new InvalidOperationException("Texture lease released twice");source.References--;}
     internal static CachedTexture Store(CachedTexture entry)
     {
+        if(GraphicsDevice.Default.IsFrameActive)throw new InvalidOperationException("Load textures between frames");
         int bytes=entry.Bytes;
         while(ResidentBytes+bytes>Budget){int oldest=-1;for(int i=0;i<entries.Length;i++)if(entries[i]!=null&&entries[i]!.References==0&&(oldest<0||entries[i]!.LastUse<entries[oldest]!.LastUse))oldest=i;
             if(oldest<0){Dispose(entry);throw new InvalidOperationException("Pinned texture cache exceeds budget");}Dispose(entries[oldest]!);entries[oldest]=null;Evictions++;}
-        for(int i=0;i<entries.Length;i++)if(entries[i]==null){entry.References=1;entry.LastUse=++clock;entries[i]=entry;Misses++;return entry;}
+        for(int i=0;i<entries.Length;i++)if(entries[i]==null){try{
+            entry.Leases=new ResourceLease[entry.Pages.Length];
+            for(int page=0;page<entry.Pages.Length;page++){
+                int key=nextResource++;resources.RegisterTexture(key,entry.Pages[page]);entry.OwnedPages++;
+                entry.Leases[page]=resources.Acquire(key);entry.LeasedPages++;
+            }
+        }catch{Dispose(entry);throw;}
+        entry.References=1;entry.LastUse=++clock;entries[i]=entry;Misses++;return entry;}
         Dispose(entry);throw new InvalidOperationException("Texture cache entry limit reached");
     }
-    private static void Dispose(CachedTexture e){for(int i=0;i<e.Pages.Length;i++)e.Pages[i]?.Dispose();}
+    private static void Dispose(CachedTexture e)
+    {
+        if(GraphicsDevice.Default.IsFrameActive)throw new InvalidOperationException("Evict textures after EndFrame");
+        for(int i=0;i<e.LeasedPages;i++)resources.Release(e.Leases[i]);
+        // EndFrame synchronously completes submitted GPU work. All other
+        // resident pages retain a lease, so trimming only removes this entry.
+        resources.TrimUnused(-1);
+        for(int i=e.OwnedPages;i<e.Pages.Length;i++)e.Pages[i]?.Dispose();
+        e.OwnedPages=e.LeasedPages=0;
+    }
     internal static CachedTexture Load(string path,bool atlas=false,TextureResolution resolution=TexturePolicy.Default)
     {
         // Disc URI + build commit identifies immutable original bytes before I/O.

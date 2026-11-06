@@ -80,7 +80,7 @@ rewritten by the mip-policy change. Moving GX calls into `Task.Run` would not
 be an appropriate fix.
 
 Relevant sources are `game/AnimalTown.GameCube/Program.cs`,
-`vendor/hypercube-engine/src/Hypercube.GameCube/WorldStreamer.cs` and
+[WorldStreamer.cs](https://github.com/capz/hypercube-engine/blob/a9482f8ec6226a8a87bd60d7235c497457a8d978/src/Hypercube.GameCube/WorldStreamer.cs) and
 `TexturePool.cs`, the SDK's `StreamingTexture.cs`, `Tasks.cs`,
 `source/async_runtime.c` and `docs/async-runtime.md`. The historical capture
 behind the delay observation is linked from `docs/viewport-and-indexed-models.md` and the

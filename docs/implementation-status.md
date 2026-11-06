@@ -5,7 +5,7 @@ the GDD. The technical baseline was committed/pushed first as `0064efd`.
 
 ## Implemented foundation
 
-* Pinned hypercube-engine and DolphinDotNet submodules, separate console and
+* Pinned Hypercube and DolphinDotNet NuGet packages, separate console and
   ASP.NET Core/PostgreSQL server builds; shared AOT-compatible gameplay assembly.
 * Full-size bootable GameCube ISO, original homebrew apploader, FST, game title,
   commit in disc header/BNR/title/save comment, disc banner and save banner/icon.

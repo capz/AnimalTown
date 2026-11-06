@@ -1,0 +1,18 @@
+{
+  "version": 1,
+  "dependencies": {
+    "net8.0": {
+      "Capz.Hypercube.Core": {
+        "type": "Transitive",
+        "resolved": "0.1.0-preview.4.1",
+        "contentHash": "FlX1KNPUdK2oY3WIEcJPGtkijNXVyipRkxfjTg0U5gmioFwhkBikDzfJEQXoSbNhn4YkOtsgbIWZRPpZ7Xirxg=="
+      },
+      "animaltown.domain": {
+        "type": "Project",
+        "dependencies": {
+          "Capz.Hypercube.Core": "[0.1.0-preview.4.1, 0.1.0-preview.4.1]"
+        }
+      }
+    }
+  }
+}

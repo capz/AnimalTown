@@ -25,8 +25,6 @@ RUN curl -fsSL https://github.com/cli/cli/releases/download/v2.103.3/gh_2.103.3_
 # Trust only the documented bind-mount locations, not arbitrary host repositories.
 RUN git config --system core.autocrlf input \
     && git config --system --add safe.directory /workspace \
-    && git config --system --add safe.directory /workspace/vendor/sdk \
-    && git config --system --add safe.directory /workspace/vendor/hypercube-engine \
     && dotnet --info && dotnet --list-sdks \
     && pwsh -NoProfile -Command '$PSVersionTable.PSVersion.ToString()' \
     && powerpc-eabi-gcc --version && gh --version

@@ -1,7 +1,7 @@
 /* Reuse the SDK's deterministic storage/DSP fake with its actual native audio
  * implementation. This fake never ends a voice until explicitly stopped. */
 #define main sdk_audio_acceptance_main
-#include "../vendor/sdk/tests/audio_native_test.c"
+#include "fixtures/sdk-audio-fake.c"
 #undef main
 int main(void) {
     assert(dnd_audio_init()==1);

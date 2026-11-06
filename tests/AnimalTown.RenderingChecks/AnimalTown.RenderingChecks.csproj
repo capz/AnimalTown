@@ -1,0 +1,8 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup><OutputType>Exe</OutputType></PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../shared/AnimalTown.Domain/AnimalTown.Domain.csproj" />
+    <PackageReference Include="Capz.Hypercube.GameCube" Version="[0.1.0-preview.4.1]" />
+    <Compile Include="../../game/AnimalTown.GameCube/GeometryStaging.cs" Link="GeometryStaging.cs" />
+  </ItemGroup>
+</Project>

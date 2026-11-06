@@ -14,11 +14,10 @@ credentials or firmware font bytes. Source is mounted at `/workspace`.
 
 ## Local build with the same image
 
-Use a clean clone with recursive submodules, and Linux containers in Docker.
+Use a clean clone; packages restore from NuGet.org, and Linux containers in Docker.
 These commands also work from PowerShell on Windows; no Windows SDK is needed.
 
 ```sh
-git submodule update --init --recursive
 docker compose -f build/compose.yml build builder
 docker compose -f build/compose.yml run --rm builder
 docker compose -f build/compose.yml down --volumes --remove-orphans

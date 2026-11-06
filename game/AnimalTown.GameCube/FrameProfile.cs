@@ -2,11 +2,14 @@ using System;
 using Dolphin.Graphics;
 using Dolphin.Timing;
 using Dolphin.Diagnostics;
+using Hypercube;
+using Hypercube.GameCube;
 
 // Guest-clock CPU/submission timings. GPU wait is blocking duration, not GPU time.
 // Pixel telemetry can be read from unmodified real hardware output as well as Dolphin.
 internal static class FrameProfile
 {
+    internal static readonly RenderCounters Counters=new RenderCounters();
     internal static bool Enabled;
     internal static int CulledObjects;
     private static readonly long[] current=new long[16];
@@ -16,11 +19,12 @@ internal static class FrameProfile
     internal static long Start()=>Enabled?Clock.Timestamp:0;
     internal static void Add(int slot,long microseconds){if(Enabled)current[slot]+=microseconds;}
     internal static void End(int slot,long start){if(Enabled)current[slot]+=Clock.Timestamp-start;}
-    internal static void Begin(){if(!Enabled)return;for(int i=0;i<16;i++)current[i]=0;CulledObjects=0;}
+    internal static void Begin(){Counters.Reset();if(!Enabled)return;for(int i=0;i<16;i++)current[i]=0;CulledObjects=0;}
     internal static void Complete(int triangles,int terrainTriangles,int rejected,int scenario)
     {
         if(!Enabled)return;long now=Clock.Timestamp;current[12]=previous==0?0:now-previous;previous=now;
-        current[10]=GpuProfiler.GpuWaitMicroseconds;current[11]=GpuProfiler.RetraceWaitMicroseconds;
+        RenderTelemetry.CaptureCompletedFrame(Counters);
+        current[10]=Counters.GpuWaitMicroseconds;current[11]=Counters.RetraceWaitMicroseconds;
         // 0.1 ms units support 6.55-second frames without hiding slow paths.
         current[0]=Math.Max(0,current[0]-current[1]);
         current[6]=Math.Max(0,current[6]-current[15]);
@@ -29,8 +33,8 @@ internal static class FrameProfile
         for(int i=0;i<16;i++){if(current[i]/100>65535)data[3]|=1<<i;data[4+i]=(int)Math.Min(65535,current[i]/100);}
         data[30]=scenario;data[31]=0;
         data[20]=triangles&65535;data[21]=(int)((uint)triangles>>16);data[22]=terrainTriangles;data[23]=rejected;data[24]=CulledObjects;
-        var submitted=GpuProfiler.Snapshot();
-        data[25]=TextureCache.ResidentBytes/1024;data[26]=GpuProfiler.DrawingApiCalls;data[27]=GpuProfiler.MaterialChanges;data[28]=submitted.DrawSubmissions;data[29]=submitted.TextureBindings;
+        Counters.CulledObjects=CulledObjects;
+        data[25]=TextureCache.ResidentBytes/1024;data[26]=Counters.DrawingApiCalls;data[27]=Counters.MaterialChanges;data[28]=Counters.DrawSubmissions;data[29]=Counters.TextureBindings;
         for(int i=0;i<31;i++)data[31]^=data[i]&65535;
     }
     internal static void Draw(Draw2D ui)

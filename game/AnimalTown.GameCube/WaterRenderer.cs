@@ -1,6 +1,7 @@
 using System;
 using AnimalTown;
 using Dolphin.Graphics;
+using Hypercube.GameCube;
 
 // Reuses the floor's visibility selection. Cells keep depth tint continuous;
 // vertices change only with the camera/terrain, never to simulate waves.
@@ -8,8 +9,9 @@ internal sealed class WaterRenderer
 {
     private readonly WaterMaterial material=new WaterMaterial();
     private VertexPositionColorTexture[] surface=new VertexPositionColorTexture[0],foam=new VertexPositionColorTexture[0];
-    private DynamicMesh? surfaceMesh,foamMesh;
-    private int surfaceCount,foamCount,surfaceCapacity,foamCapacity;
+    private readonly DynamicMeshBuffer surfaceMesh=new DynamicMeshBuffer(WaterSurface.MaximumCells*54),foamMesh=new DynamicMeshBuffer(WaterSurface.MaximumCells*24);
+    private long revision;
+    private int surfaceCount,foamCount;
     private GameState state=null!;
     internal int Triangles=>(surfaceCount+foamCount)/3;
     internal void Prepare(GameState next,FloorStrips strips,int room)
@@ -35,8 +37,7 @@ internal sealed class WaterRenderer
                 if(WaterSurface.IsBank(state.Town,x+1,z))Quad(ref foam,ref foamCount,x,z,x+1-w,z+lo,x+1,z+lo,x+1,z+hi,x+1-w,z+hi,true);
             }
         }
-        Upload(ref surfaceMesh,surface,surfaceCount,ref surfaceCapacity);
-        Upload(ref foamMesh,foam,foamCount,ref foamCapacity);
+        revision++;surfaceMesh.Commit(surfaceCount,revision,FrameProfile.Counters);foamMesh.Commit(foamCount,revision,FrameProfile.Counters);
     }
     private void Mouth(int cx,int cz,float ax,float az,float bx,float bz,int nx,int nz)
     {
@@ -46,20 +47,15 @@ internal sealed class WaterRenderer
         if(topA<=lowA&&topB<=lowB)return;
         var a=AtHeight(cx,cz,ax,az,topA,false);var b=AtHeight(cx,cz,bx,bz,topB,false);
         var c=AtHeight(cx,cz,bx,bz,lowB,false);var d=AtHeight(cx,cz,ax,az,lowA,false);
-        Reserve(ref surface,surfaceCount);Reserve(ref surface,surfaceCount+6);
+        surface=GeometryStaging.Reserve(surfaceMesh,surface,surfaceCount,surfaceCount+12,FrameProfile.Counters);
         surface[surfaceCount++]=a;surface[surfaceCount++]=b;surface[surfaceCount++]=c;surface[surfaceCount++]=a;surface[surfaceCount++]=c;surface[surfaceCount++]=d;
         surface[surfaceCount++]=a;surface[surfaceCount++]=c;surface[surfaceCount++]=b;surface[surfaceCount++]=a;surface[surfaceCount++]=d;surface[surfaceCount++]=c;
     }
     internal void Animate(double seconds)=>material.Animate(seconds);
     internal void SetTerrainTint(uint rgba)=>material.SetTerrainTint(rgba);
-    private static void Reserve(ref VertexPositionColorTexture[] buffer,int used)
-    {
-        if(used+6<=buffer.Length)return;int size=buffer.Length==0?6:buffer.Length*2;
-        var replacement=new VertexPositionColorTexture[size];Array.Copy(buffer,replacement,used);buffer=replacement;
-    }
     private void Quad(ref VertexPositionColorTexture[] buffer,ref int used,int cx,int cz,float ax,float az,float bx,float bz,float dx,float dz,float ex,float ez,bool isFoam)
     {
-        Reserve(ref buffer,used);
+        buffer=GeometryStaging.Reserve(isFoam?foamMesh:surfaceMesh,buffer,used,used+6,FrameProfile.Counters);
         var a=Vertex(cx,cz,ax,az,isFoam);var b=Vertex(cx,cz,bx,bz,isFoam);var d=Vertex(cx,cz,dx,dz,isFoam);var e=Vertex(cx,cz,ex,ez,isFoam);
         buffer[used++]=a;buffer[used++]=b;buffer[used++]=d;buffer[used++]=a;buffer[used++]=d;buffer[used++]=e;
     }
@@ -76,15 +72,9 @@ internal sealed class WaterRenderer
         var color=isFoam?Color32.White:material.Tint(WaterSurface.Depth(state.Town,(int)x,(int)z));
         return new VertexPositionColorTexture(new Vector3(x,a.Y+(b.Y-a.Y)*t,a.Z+(b.Z-a.Z)*t),color,new Vector2(x*WaterSurface.UvScale,z*WaterSurface.UvScale));
     }
-    private static void Upload(ref DynamicMesh? mesh,VertexPositionColorTexture[] buffer,int used,ref int capacity)
-    {
-        if(used==0)return;
-        for(int i=used;i<buffer.Length;i++)buffer[i]=new VertexPositionColorTexture(Vector3.Zero,Color32.White,Vector2.Zero);
-        if(capacity!=buffer.Length){mesh?.Dispose();mesh=DynamicMesh.Create(buffer);capacity=buffer.Length;}else mesh!.SetVertices(buffer);
-    }
     internal void Draw(Renderer renderer,Transform parent)
     {
-        if(surfaceCount>0)renderer.DrawMesh(surfaceMesh!,material.Surface,parent);
-        if(foamCount>0)renderer.DrawMesh(foamMesh!,material.Foam,parent);
+        if(surfaceCount>0)renderer.DrawMesh(surfaceMesh.Mesh!,material.Surface,parent);
+        if(foamCount>0)renderer.DrawMesh(foamMesh.Mesh!,material.Foam,parent);
     }
 }

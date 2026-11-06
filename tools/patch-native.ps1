@@ -1,6 +1,7 @@
 param([string]$Root)
 $ErrorActionPreference='Stop'
-$generatedPath=Join-Path $Root 'out/native/source/generated_program.c'
+$nativeRoot=[IO.Path]::GetFullPath((Join-Path $Root 'out/native'))
+$generatedPath=Join-Path $nativeRoot 'source/generated_program.c'
 $generated=[IO.File]::ReadAllText($generatedPath)
 $pattern='intptr_t (dnd_value_AnimalTown_GameCube_NativeCalendar_Read_[a-z0-9]+)\(void\) \{.*?\r?\n\}'
 $matchesFound=[regex]::Matches($generated,$pattern,[Text.RegularExpressions.RegexOptions]::Singleline)
@@ -30,7 +31,11 @@ $modelGraphics+="`n#include `"animaltown_uv_debug.inc`"`n"
 Copy-Item -LiteralPath (Join-Path $Root 'tools/native-uv-debug.inc') -Destination (Join-Path $Root 'out/native/source/animaltown_uv_debug.inc') -Force
 Copy-Item -LiteralPath (Join-Path $Root 'tools/native-uv-topology.h') -Destination (Join-Path $Root 'out/native/source/animaltown_uv_topology.h') -Force
 $entryPath=Join-Path $Root 'out/native/source/main.c'
-$entrySource=[IO.File]::ReadAllText($entryPath).Replace('dnd_platform_init();','dnd_platform_init(); dnd_console_set_visible(0);')
+$entrySource=[IO.File]::ReadAllText($entryPath)
+foreach($signature in @('dnd_platform_init();','managed_heap_memory[256 * 1024]')){
+    if(([regex]::Matches($entrySource,[regex]::Escape($signature))).Count -ne 1){throw "Pinned native entry signature changed: $signature"}
+}
+$entrySource=$entrySource.Replace('dnd_platform_init();','dnd_platform_init(); dnd_console_set_visible(0);')
 $entrySource=$entrySource.Replace('managed_heap_memory[256 * 1024]','managed_heap_memory[4 * 1024 * 1024]')
 [IO.File]::WriteAllText($entryPath,$entrySource)
 Copy-Item -LiteralPath (Join-Path $Root 'tools/native-calendar.c') -Destination (Join-Path $Root 'out/native/source/animaltown_calendar.c') -Force

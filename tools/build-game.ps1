@@ -1,4 +1,4 @@
-param([switch]$SkipAssets,[string]$SdkRootOverride='',[switch]$NativeInProcess,[string]$ValidationPlan='')
+param([switch]$SkipAssets,[switch]$NativeInProcess,[string]$ValidationPlan='',[ValidateRange(0,7)][int]$RuntimeProfile=0)
 $ErrorActionPreference = 'Stop'
 Set-Location (Split-Path $PSScriptRoot -Parent)
 function Run([string]$File, [string[]]$Arguments) {
@@ -13,8 +13,7 @@ if(!$ValidationPlan){& ./tools/select-validation.ps1 -Full;$ValidationPlan='out/
 $validation=Get-Content -LiteralPath $ValidationPlan -Raw|ConvertFrom-Json
 if($validation.schema -ne 1 -or $validation.commit -ne (& git rev-parse HEAD).Trim()){throw 'Validation plan must match this source commit'}
 if($NativeInProcess -and !$IsLinux){throw 'NativeInProcess requires the Linux build image'}
-$sdkRoot = if($SdkRootOverride){(Resolve-Path -LiteralPath $SdkRootOverride).Path}else{Join-Path $projectRoot 'vendor/sdk'}
-if (!(Test-Path "$sdkRoot/tools/DolphinDotNet.Compiler")) { throw 'Run git submodule update --init --recursive first.' }
+. ./tools/resolve-packages.ps1
 $nativeImage = 'ghcr.io/extremscorner/libogc2@sha256:13bb658d3f18903816617223f5d7c6f776d3db3ea806aae67f8d35a7a69d4c85'
 function RunNative([string]$Directory,[string]$Command,[string[]]$Arguments){
     if($NativeInProcess){
@@ -28,8 +27,7 @@ function RunNative([string]$Directory,[string]$Command,[string[]]$Arguments){
 Run dotnet @('build', 'tools/AnimalTown.Tools', '-c', 'Release', '-v', 'quiet')
 if('repack' -in $validation.tooling){Run dotnet @('run','--project','tools/AnimalTown.Tools','-c','Release','--no-build','--','repack-check',$projectRoot)}
 if('terrain' -in $validation.tooling){Run dotnet @('run','--project','tools/AnimalTown.Tools','-c','Release','--no-build','--','terrain-check',$projectRoot)}
-$assetTools = "$sdkRoot/tools/DolphinDotNet.Assets/bin/Release/net8.0/DolphinDotNet.Assets.dll"
-Run dotnet @('build', "$sdkRoot/tools/DolphinDotNet.Assets", '-c', 'Release', '-v', 'quiet')
+Run dotnet @('tool','restore')
 Run dotnet @('run','--project','tools/AnimalTown.Tools','-c','Release','--no-build','--','audit',$projectRoot)
 if (!$SkipAssets) {
     $assetMap = [ordered]@{
@@ -55,12 +53,14 @@ if (!$SkipAssets) {
         Run dotnet @('run','--project','tools/AnimalTown.Tools','-c','Release','--no-build','--','prepare',$projectRoot,"assets/models/$($assetMap[$name])","out/prepared/$name.glb")
         foreach($textureEdge in @(128,256,512,1024)){
         $suffix=if($textureEdge -eq 256){''}else{"-tex$textureEdge"}
-        $importArguments=@($assetTools,'model',"out/prepared/$name.glb","out/disc/$name$suffix.dndmodel",'--texture-limit',"$textureEdge",'--mip-levels','2','--compile-gx-materials')
+        $importArguments=@('tool','run','dnd-assets','--','model',"out/prepared/$name.glb","out/disc/$name$suffix.dndmodel",'--texture-limit',"$textureEdge",'--mip-levels','2','--compile-gx-materials')
         if($assetMap[$name].StartsWith('villagers/villager_')){$importArguments+='--allow-material-approximation'}
         Run dotnet $importArguments
         }
     }
 }
+New-Item -ItemType Directory -Force -Path out/disc|Out-Null
+[IO.File]::WriteAllBytes((Join-Path $projectRoot 'out/disc/runtime.cfg'),[byte[]]@($RuntimeProfile))
 $gameCommit = $identity.bb
 $gameFullCommit = $identity.commit
 $gameVersion = $identity.version
@@ -68,22 +68,22 @@ $workingChanges = & git status --porcelain --untracked-files=normal
 if ($workingChanges) { $gameCommit += '-dirty'; $gameVersion += '-dirty' }
 $buildSource = "internal static class BuildInfo { internal const string Commit=`"$gameCommit`"; internal const string Version=`"$gameVersion`"; }"
 [IO.File]::WriteAllText((Join-Path $projectRoot 'out/BuildInfo.cs'), $buildSource)
-$engineCommit = (& git -C vendor/hypercube-engine rev-parse HEAD).Trim()
-$sdkCommit = (& git -C $sdkRoot rev-parse HEAD).Trim()
+$packageLocks=(Get-FileHash game/AnimalTown.GameCube/packages.lock.json -Algorithm SHA256).Hash
+$assetsContentHash=(Get-Content (Join-Path $packageCache 'dolphindotnet.assets/0.1.0-preview.245.1/dolphindotnet.assets.0.1.0-preview.245.1.nupkg.sha512') -Raw).Trim()
 $sourceManifest = foreach($sourceFile in (& git ls-files --cached --others --exclude-standard | Sort-Object)) {
     if(Test-Path -LiteralPath $sourceFile -PathType Leaf){ "$sourceFile $((Get-FileHash -LiteralPath $sourceFile -Algorithm SHA256).Hash)" }
 }
 $sourceDigest=[Convert]::ToHexString([Security.Cryptography.SHA256]::HashData([Text.Encoding]::UTF8.GetBytes(($sourceManifest -join "`n"))))
-[IO.File]::WriteAllText((Join-Path $projectRoot 'out/build-revisions.txt'), "Version: $($identity.version)`nGame source: $gameFullCommit`nEngine: $engineCommit`nSDK: $sdkCommit`nDirty: $([bool]$workingChanges)`nSource digest: $sourceDigest`nBuild image: $env:ANIMALTOWN_BUILD_IMAGE`n")
+[IO.File]::WriteAllText((Join-Path $projectRoot 'out/build-revisions.txt'), "Version: $($identity.version)`nGame source: $gameFullCommit`nEngine: $engineCommit`nSDK: $sdkCommit`nPackage lock SHA256: $packageLocks`nEngine NuGet SHA512: $engineContentHash`nSDK NuGet SHA512: $sdkContentHash`nAssets NuGet SHA512: $assetsContentHash`nRuntime profile: $RuntimeProfile`nDirty: $([bool]$workingChanges)`nSource digest: $sourceDigest`nBuild image: $env:ANIMALTOWN_BUILD_IMAGE`n")
+if('terrain' -in $validation.managed){Run dotnet @('run','--project','tests/AnimalTown.RenderingChecks','-c','Release')}
 if($validation.managed.Count){Run dotnet @('run','--project','tests/AnimalTown.Checks','-c','Release','--','--suites',($validation.managed -join ','))}
 if('card' -in $validation.native){RunNative '.' 'sh' @('-c','cc -std=c11 -Wall -Wextra -Werror tests/native-card-read.c -o /tmp/animaltown-card-read && /tmp/animaltown-card-read')}
 if('uv' -in $validation.native){RunNative '.' 'sh' @('-c','cc -std=c11 -Wall -Wextra -Werror tests/native-uv-topology.c -o /tmp/animaltown-uv-topology && /tmp/animaltown-uv-topology')}
-if('texture' -in $validation.native){RunNative '.' 'sh' @('-c','cc -std=c11 -Wall -Wextra -Werror -Ivendor/sdk/include tests/native-texture-pages.c -o /tmp/animaltown-texture-pages && /tmp/animaltown-texture-pages')}
-if('voices' -in $validation.native){RunNative '.' 'sh' @('-c','cc -std=c11 -Wall -Wextra -Werror -Ivendor/sdk/include tests/native-dialogue-voices.c vendor/sdk/source/audio.c -lm -o /tmp/animaltown-dialogue-voices && /tmp/animaltown-dialogue-voices')}
+if('texture' -in $validation.native){RunNative '.' 'sh' @('-c','cc -std=c11 -Wall -Wextra -Werror -Iout/sdk-native/include tests/native-texture-pages.c -o /tmp/animaltown-texture-pages && /tmp/animaltown-texture-pages')}
+if('voices' -in $validation.native){RunNative '.' 'sh' @('-c','cc -std=c11 -Wall -Wextra -Werror -Iout/sdk-native/include tests/native-dialogue-voices.c out/sdk-native/source/audio.c -lm -o /tmp/animaltown-dialogue-voices && /tmp/animaltown-dialogue-voices')}
 if('python' -in $validation.native){RunNative '.' 'python3' @('-c','import ast; ast.parse(open("tools/iso-smoke.py").read())')}
-Run dotnet @('build',"$sdkRoot/tools/DolphinDotNet.Compiler",'-c','Release','-v','quiet')
-Run dotnet @('build','game/AnimalTown.GameCube','-c','Release',"-p:DolphinDotNetRoot=$sdkRoot",'-v','quiet')
-Run dotnet @("$sdkRoot/tools/DolphinDotNet.Compiler/bin/Release/net8.0/DolphinDotNet.Compiler.dll",'--bundle','game/AnimalTown.GameCube/bin/Release/net8.0/AnimalTown.GameCube.dll','out/native')
+Run dotnet @('build','game/AnimalTown.GameCube','-c','Release','--no-restore','-v','quiet')
+Run dotnet @("$sdkRoot/tools/compiler/DolphinDotNet.Compiler.dll",'--bundle','game/AnimalTown.GameCube/bin/Release/net8.0/AnimalTown.GameCube.dll','out/native')
 & (Join-Path $PSScriptRoot 'patch-native.ps1') -Root $projectRoot
 $nativeOutput=[IO.Path]::GetFullPath((Join-Path $projectRoot 'out/native'))
 $workspacePrefix=$projectRoot.TrimEnd([IO.Path]::DirectorySeparatorChar)+[IO.Path]::DirectorySeparatorChar
