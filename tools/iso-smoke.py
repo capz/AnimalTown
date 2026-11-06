@@ -36,6 +36,21 @@ def building_view(name, indoors):
     if p.poll() is not None or matches<500:
         raise AssertionError(f'Building scenario did not reach the expected {"interior" if indoors else "town"} view: {name}; matching background samples={matches}')
 
+def building_save():
+    press('START');screenshot('building-saving.png')
+    # First-use card allocation and transactional readback take longer than a
+    # frame. Do not send exit input until the settings panel is actually drawn.
+    for sample in range(45):
+        screenshot('building-save-indoor.png')
+        pixels=subprocess.check_output(['ffmpeg','-v','error','-i',str(root/'building-save-indoor.png'),'-frames:v','1','-f','rawvideo','-pix_fmt','rgb24','-'])
+        paper=sum(all(abs(pixels[(y*800+x)*3+c]-value)<=3 for c,value in enumerate((255,245,221)))
+                  for y in range(110,160,2) for x in range(90,130,2))
+        if paper>300:
+            print(f'Indoor save returned to settings after sample {sample}',flush=True);return
+        if p.poll() is not None:raise RuntimeError('Game exited while saving indoors')
+        time.sleep(2)
+    raise AssertionError('Indoor save did not return to settings within the bounded wait')
+
 def dialogue_cycles():
     import json
     def pixels(name):
@@ -208,7 +223,7 @@ with (root/'emulator.log').open('w') as log:
             for view in range(1,5):
                 os.write(controller,b'SET C 0.9 0.5\n');time.sleep(2);os.write(controller,b'SET C 0.5 0.5\n');time.sleep(1);screenshot(f'building-interior-{view}.png')
             press('L');time.sleep(1)
-            press('START');time.sleep(8);screenshot('building-save-indoor.png');press('B')
+            building_save();press('B')
             press('A');time.sleep(4);building_view('building-exited.png',False)
         elif '--cliff-kit' in sys.argv:
             press('A')

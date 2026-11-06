@@ -72,6 +72,7 @@ if (!$SkipAssets) {
         $importArguments=@($assetTools,'model',"out/prepared/$name.glb","out/disc/$name$suffix.dndmodel",'--texture-limit',"$importEdge",'--mip-levels','2','--compile-gx-materials')
         if($assetMap[$name].StartsWith('villagers/villager_')){$importArguments+='--allow-material-approximation'}
         Run dotnet $importArguments
+        if($buildingImports.ContainsKey($name)){Run dotnet @('run','--project','tools/AnimalTown.Tools','-c','Release','--no-build','--','building-native',$projectRoot,"out/disc/$name$suffix.dndmodel")}
         }
     }
 }

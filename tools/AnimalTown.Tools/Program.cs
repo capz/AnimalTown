@@ -20,6 +20,7 @@ static class Program
             Root=Path.GetFullPath(args[1]);
             if(args[0]=="buildings-generate")BuildingAssets.Generate(Root);
             else if(args[0]=="buildings")BuildingAssets.Cook(Root);
+            else if(args[0]=="building-native")BuildingAssets.Native(args[2]);
             else if(args[0]=="building-check")BuildingAssets.Check(Root);
             else if(args[0]=="repack-textures")TextureRepacker.Command(args);
             else if(args[0]=="town-preview")TownGenerationPreview.Run(args[2],int.Parse(args[3]),args.Length>4?int.Parse(args[4]):1);

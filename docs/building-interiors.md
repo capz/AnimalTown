@@ -76,6 +76,9 @@ Generated source GLBs embed the same 128px palette. The native renderer loads th
 smallest compiled variants, with 64px textures and a 32px mip; larger variants
 retain the author's resolution. Variant suffixes specify a maximum texture size.
 The ISO verifier requires the catalog and every part.
+Source GLBs retain standard counterclockwise winding and outward normals. The
+build converts freshly imported package indices to the game's clockwise GX
+submission convention. Native checks verify that winding without changing normals.
 
 ## Domain and persistence
 

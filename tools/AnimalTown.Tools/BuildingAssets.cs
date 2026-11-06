@@ -1,12 +1,35 @@
 using System.Numerics;
 using System.Text;
 using System.Text.Json;
+using System.Buffers.Binary;
 using AnimalTown;
 using SkiaSharp;
 
 internal static class BuildingAssets
 {
     private static readonly JsonSerializerOptions JsonOptions=new(){WriteIndented=true};
+    // Sources keep standard glTF CCW faces and outward normals. The game's GX
+    // camera/submission convention requires clockwise faces; convert only the
+    // newly imported package, preserving author pivots, normals and source art.
+    internal static void Native(string path)
+    {
+        byte[] bytes=File.ReadAllBytes(path);
+        int Read(int at)=>checked((int)BinaryPrimitives.ReadUInt32BigEndian(bytes.AsSpan(at,4)));
+        void Put(int at,int value)=>BinaryPrimitives.WriteUInt32BigEndian(bytes.AsSpan(at,4),(uint)value);
+        uint Hash(int at,int length){uint h=2166136261;for(int i=at;i<at+length;i++)h=unchecked((h^bytes[i])*16777619);return h;}
+        if(bytes.Length<160||Read(0)!=0x444e444d||Read(8)!=bytes.Length||Read(12)!=6)throw new InvalidDataException("Invalid building package");
+        int directory=32,start=Read(directory+4),length=Read(directory+8);
+        if(start<160||length<4||start>bytes.Length-length||BinaryPrimitives.ReadUInt32BigEndian(bytes.AsSpan(directory+12,4))!=Hash(start,length))throw new InvalidDataException("Invalid building mesh section");
+        int count=Read(start),at=start+4;if(count<1||count>4096)throw new InvalidDataException("Building mesh count");
+        for(int mesh=0;mesh<count;mesh++){
+            if(at>start+length-44)throw new InvalidDataException("Truncated building mesh");
+            int vertices=Read(at+12),indices=Read(at+16);if(vertices<1||vertices>65535||indices<3||indices>196605||indices%3!=0)throw new InvalidDataException("Building mesh bounds");
+            at=checked(at+44+vertices*80);if(at>start+length-indices*4)throw new InvalidDataException("Truncated building indices");
+            for(int i=0;i<indices;i+=3){int b=Read(at+(i+1)*4),c=Read(at+(i+2)*4);Put(at+(i+1)*4,c);Put(at+(i+2)*4,b);}at+=indices*4;
+        }
+        if(at!=start+length)throw new InvalidDataException("Building mesh trailing bytes");
+        BinaryPrimitives.WriteUInt32BigEndian(bytes.AsSpan(directory+12,4),Hash(start,length));File.WriteAllBytes(path,bytes);
+    }
     internal static void Generate(string root)
     {
         string exterior=Path.Combine(root,"assets/models/buildings/cottage_small"),interior=Path.Combine(root,"assets/models/interiors/cottage_small"),textures=Path.Combine(root,"assets/textures/buildings/cottage_small");
