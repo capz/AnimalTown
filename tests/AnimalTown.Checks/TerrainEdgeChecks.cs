@@ -23,6 +23,7 @@ internal static class TerrainEdgeChecks
         for(int s=0;s<13;s++){Put(20+s*20,1);Put(24+s*20,s);for(int v=1;v<4;v++)Put(24+s*20+v*4,-1);}
         FloorStrips.Validate(data);
         ScrollChecks(check,data);
+        StreamChecks(check,data);
         var state=new GameState(17);var strips=new FloorStrips();
         // Alternating materials exercise the maximum split cost rather than
         // relying on a uniform floor that merges into one strip per row.
@@ -61,13 +62,13 @@ internal static class TerrainEdgeChecks
         // A rigid transform must agree with fresh analytic cylinder samples,
         // including normals, elevated ground and the row chords used by banks.
         float maxError=0;
-        for(int anchor=1;anchor<Town.Height;anchor+=18)for(int offset=-12;offset<=12;offset++){
-            float focus=anchor+offset*.083f;var scroll=CylinderWorld.Scroll(anchor,focus);
+        for(int anchor=1;anchor<Town.Height;anchor+=18)for(int offset=-12;offset<=12;offset++)foreach(int reference in new[]{0,anchor}){
+            float focus=anchor+offset*.083f;var scroll=CylinderWorld.Scroll(reference,focus);
             for(int row=-44;row<=24;row+=2)foreach(float height in new[]{-.5f,0f,.008f,2f}){
-                var point=CylinderWorld.Surface(anchor+row,anchor,height);var moved=scroll.Apply(point);var expected=CylinderWorld.Surface(anchor+row,focus,height);
+                var point=CylinderWorld.Surface(anchor+row,reference,height);var moved=scroll.Apply(point);var expected=CylinderWorld.Surface(anchor+row,focus,height);
                 float error=Math.Max(Math.Abs(moved.Y-expected.Y),Math.Abs(moved.Z-expected.Z));maxError=Math.Max(maxError,error);
                 check(error<.00006f&&Math.Abs(moved.UpY-expected.UpY)<.000001f&&Math.Abs(moved.UpZ-expected.UpZ)<.000001f,"one axis transform exactly preserves cylinder vertices and radial normals");
-                var next=CylinderWorld.Surface(anchor+row+1,anchor,height);var chord=new CylinderPose((point.Y+next.Y)*.5f,(point.Z+next.Z)*.5f,0,0,0);
+                var next=CylinderWorld.Surface(anchor+row+1,reference,height);var chord=new CylinderPose((point.Y+next.Y)*.5f,(point.Z+next.Z)*.5f,0,0,0);
                 var transformedChord=scroll.Apply(chord);var expectedNext=CylinderWorld.Surface(anchor+row+1,focus,height);
                 check(Math.Abs(transformedChord.Y-(expected.Y+expectedNext.Y)*.5f)<.00006f&&Math.Abs(transformedChord.Z-(expected.Z+expectedNext.Z)*.5f)<.00006f,"rigid scrolling keeps bank toes, foam and floor chords coincident");
             }
@@ -103,5 +104,40 @@ internal static class TerrainEdgeChecks
         float dy=y-CylinderWorld.CameraHeight,dz=z-fz-CylinderWorld.CameraBack;
         float depth=dy*RenderView.ForwardY+dz*RenderView.ForwardZ,up=-dy*RenderView.ForwardZ+dz*RenderView.ForwardY;
         return depth>=CylinderWorld.Near&&depth<=CylinderWorld.Far&&Math.Abs(x-fx)<=depth*RenderView.TanX&&Math.Abs(up)<=depth*RenderView.TanY;
+    }
+    private static void StreamChecks(Action<bool,string> check,byte[] data)
+    {
+        var stream=new TerrainStream();int maximum=0,updates=0;
+        void Tick(float x,float z){stream.Prepare(x,z);maximum=Math.Max(maximum,stream.WantedCount);if(stream.BuildSlot>=0){check(stream.X[stream.BuildSlot]%2==0&&stream.Z[stream.BuildSlot]%2==0,"stream sections own complete diagonal cliff templates");stream.Complete();updates++;}}
+        foreach(float h in new[]{0f,2f}){
+            stream.Reset();for(int n=0;n<TerrainStream.Capacity;n++)Tick(80.01f,80.01f);
+            check(stream.Ready&&stream.MissingWanted==0,"cold stream prepares visible ground and prefetch within its fixed slot pool");
+            for(int n=0;n<500;n++){
+                float x=80.01f+n*.1187f,z=80.01f+n*.1187f;Tick(x,z);
+                check(stream.Ready,"running diagonally never exposes an unbuilt section or triggers a full refresh");
+                for(int cz=(int)z-45;cz<(int)z+20;cz++){
+                    var p=CylinderWorld.Surface(cz+.5f,z,h);
+                    for(int cx=(int)x-50;cx<(int)x+50;cx++){
+                        if(!RenderView.Sphere(cx+.5f,p.Y,p.Z,.8f,x,z,h)||!RenderView.AboveHorizon(p.Y,p.Z,.8f,z,h))continue;
+                        int hits=0;for(int i=0;i<stream.Count;i++)if(stream.Visible[i]&&cx>=stream.X[i]&&cx<stream.X[i]+TerrainStream.Width&&cz>=stream.Z[i]&&cz<stream.Z[i]+TerrainStream.Height)hits++;
+                        check(hits==1,"visible terrain has exactly one ready section throughout continuous scrolling");
+                    }
+                }
+            }
+        }
+        // A reverse journey must recycle slots rather than retaining a town.
+        float finish=80.01f+499*.1187f;
+        for(int n=0;n<500;n++){Tick(finish-n*.1187f,finish-n*.1187f);check(stream.Ready,"fast direction reversal retains the prefetch guard");}
+        int before=updates;for(int n=0;n<300;n++)Tick(80.01f,80.01f);
+        check(updates-before<TerrainStream.Capacity,"stationary streaming settles without continuous rebuilding");
+        before=updates;for(int n=0;n<10;n++)Tick(80.02f,80.02f);check(updates==before,"fractional movement reuses cached section geometry");
+        stream.Reset();Tick(1,1);check(!stream.Ready,"cold teleport requires a covered loading transition rather than a terrain construction burst");
+        foreach(float x in new[]{.001f,159.999f})foreach(float z in new[]{.001f,159.999f}){stream.Reset();for(int n=0;n<TerrainStream.Capacity;n++)Tick(x,z);check(stream.Ready&&stream.MissingWanted==0,"streaming at every town boundary remains bounded and complete");}
+        var state=new GameState(17);Array.Fill(state.Town.Tiles,(byte)Terrain.Grass);Array.Clear(state.Town.Elevation);
+        var strips=new FloorStrips(TerrainStream.Width*TerrainStream.Height);strips.PrepareRegion(state,data,80,80,TerrainStream.Width,TerrainStream.Height);
+        check(strips.Count==TerrainStream.Height,"uniform sections retain merged horizontal floor strips");
+        for(int z=80;z<82;z++)for(int x=80;x<88;x++)state.Town.Tiles[z*Town.Width+x]=(byte)((x+z)%2==0?Terrain.Grass:Terrain.Plaza);
+        strips.PrepareRegion(state,data,80,80,TerrainStream.Width,TerrainStream.Height);check(strips.Count==TerrainStream.Width*TerrainStream.Height,"maximum material splits fit the small shared staging plan");
+        Console.WriteLine("Terrain stream: maximum "+maximum+" wanted sections / "+TerrainStream.Capacity+"; one section per frame, scrolling coverage and recycling passed");
     }
 }

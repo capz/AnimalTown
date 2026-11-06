@@ -138,25 +138,37 @@ and cloud materials still need CPU work on cached frames. Older captures remain
 readable. `--terrain-scroll --profile-seconds 5 --dsp-hle` captures slow axial
 motion up/down a generated ramp, lateral motion and stationary frames.
 
-Outdoor ground, water, foam and banks now share a rigid rotation about the
-cylinder axis. Their pooled meshes are baked at the centre of a two-metre
-scroll window. Fractional player movement updates one transform, with no
-topology rebuild, vertex rewrite or geometry commit. East/west movement uses
-the camera's translation. The cached selection includes a guard for the whole
-window and both terrace heights; UVs retain their logical-world coordinates.
+Outdoor ground, water, foam and banks share a rigid rotation about the cylinder
+axis. Geometry is baked in fixed cylinder coordinates and retained in a bounded
+cache of 256 sections, each 8x2m. Moving the player only changes the shared
+transform and the visible section selection. Four metres of prefetch surround
+the view. Existing sections never rebuild because a scroll window changed.
 
-Crossing a window boundary refreshes the visible material batches. Terrain
-edits, town/season changes and cliff inspection also invalidate the appropriate
-caches. This deliberately keeps merged strips and few material draw calls;
-it does not create a separate mesh per row or keep an entire town resident.
-Window refreshes still rebuild the visible patch rather than updating only an
-entering row. The existing strip, water and wall allocation limits remain.
+The renderer pumps at most two incoming sections (32 cells) per frame and stops
+starting work after a 2ms guest-clock deadline. A single section is the atomic
+unit and can exceed that deadline; native profiling must check the worst pump,
+not merely its average or the fraction of cached frames. Frustum selection is
+cached in half-metre buckets and missing-section priority is updated without
+repeating those tests. Horizon culling uses the YZ bound, independently of width.
+
+Sections keep their mesh allocations and recycle inactive material buffers.
+All sections share ground, water and soil materials/textures, and draw through
+native indexed mesh batches grouped by material. No per-section texture or
+water effect is allocated. World UVs, curved row chords and cliff ownership
+remain stable across section boundaries.
+
+Cold entry, teleports, terrain edits and town/season changes prepare geometry
+behind a loading transition instead of drawing holes or constructing the whole
+view in one frame. Input/simulation pause during that cold transition. Normal
+movement prefetches ahead of the view. `--terrain-scroll --stream-stress
+--profile-seconds 5 --dsp-hle` profiles a generated ramp and river/corner/bridge/
+sea transitions. Protocol v5's revision flag now denotes small section updates.
 
 `present_total` includes `gpu_blocking_wait` and `retrace_wait`; do not add them
 together. Blocking GX completion is outstanding-work wait, not total GPU time.
 `frame_interval` includes presentation and deliberate delay. Simulation excludes
 the separately recorded skinning work. World samples include movement and idle;
-terrain geometry is cached throughout fractional movement within a scroll window.
+terrain geometry remains cached while movement streams incoming sections.
 In older v1/v2 captures UI construction and the final batch flush were separate
 timings. The final flush also includes the telemetry rectangles.
 

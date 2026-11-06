@@ -38,7 +38,6 @@ internal sealed class TownGame
 {
     private GameState state;
     private readonly TownClock townClock=new TownClock();
-    private readonly TerrainWalls terrainWalls=new TerrainWalls();
     private readonly VillagerJourney villagers=new VillagerJourney();
     private readonly InteriorCamera indoorCamera=new InteriorCamera();
     private readonly Camera indoorView=new Camera(CylinderWorld.CameraFieldOfView,4f/3,.1f,64);
@@ -147,11 +146,11 @@ internal sealed class TownGame
             DebugOverlay.WriteLine("ANIMALTOWN READY "+BuildInfo.Version+" native bytes "+device.NativeBytes);
         }catch(Exception){loadingFailed=true;loadingLabel="Could not load town assets. Restart with a valid disc.";DebugOverlay.WriteLine("ANIMALTOWN ASSET LOAD FAILED");}
     }
-    private void DrawLoading()
+    private void DrawLoading(bool landscape=false)
     {
         uiShapes.Prepare("loading",-1,batchedDrawing);device.BeginFrame(new Color32(149,198,186));ui.Begin();
-        var ink=new Color32(49,72,62);Panel(60,170,520,140);Heading("AnimalTown",85,190,ink);Text(loadingLabel,85,242,ink,1);
-        int progress=loadingIndex+buildings.LoadedParts,total=models.Length+BuildingCatalog.Count*7;
+        var ink=new Color32(49,72,62);Panel(60,170,520,140);Heading("AnimalTown",85,190,ink);Text(landscape?"Preparing landscape...":loadingLabel,85,242,ink,1);
+        int progress=landscape?terrain.LoadingTotal-terrain.LoadingRemaining:loadingIndex+buildings.LoadedParts,total=landscape?Math.Max(1,terrain.LoadingTotal):models.Length+BuildingCatalog.Count*7;
         Rounded(85,275,460,8,4,new Color32(231,222,190));if(progress>0)Rounded(85,275,460f*progress/total,8,4,ink);
         ui.End();device.EndFrame();
     }
@@ -190,7 +189,7 @@ internal sealed class TownGame
     private bool Press(ControllerState p)=>p.A.WasPressed;
     internal void Input(ControllerState p)
     {
-        if(!resourcesReady)return;
+        if(!resourcesReady||room==0&&!terrain.Ready)return;
         bool chord=p.L.IsHeld&&p.R.IsHeld;
         if(chord&&p.A.WasPressed&&(screen=="world"||screen=="title")){InspectBuilding();return;}
         if(chord&&p.B.WasPressed){RuntimeOptions.Cycle();return;}
@@ -375,7 +374,7 @@ internal sealed class TownGame
     }
     internal void Step(ControllerState pad)
     {
-        if(!resourcesReady)return;
+        if(!resourcesReady||room==0&&!terrain.Ready)return;
         tick++;
         if(tick%30==0)townClock.Update(NativeCalendar.ReadClock());
         if(tick%900==0){int previousDay=state.Town.Day;ReadCalendar();state.Rollover(day,month);if(state.Town.Day!=previousDay)Save();}
@@ -461,14 +460,15 @@ internal sealed class TownGame
     private void DrawScene()
     {
         cachedPlayerHeight=PlayerHeight();if(room==0)RenderView.Prepare(state.X,state.Z,cachedPlayerHeight);
-        long phase=FrameProfile.Start();if(room==0){terrain.Prepare(state,room,month,cliffPreview);terrain.Animate((Clock.Timestamp-sessionStart)/1000000.0);terrainWalls.Prepare(state,room,terrain,cliffPreview);}FrameProfile.End(2,phase);
+        long phase=FrameProfile.Start();if(room==0){terrain.Prepare(state,room,month,cliffPreview);terrain.Animate((Clock.Timestamp-sessionStart)/1000000.0);}FrameProfile.End(2,phase);
+        if(room==0&&!terrain.Ready){DrawLoading(landscape:true);return;}
         phase=FrameProfile.Start();uiShapes.Prepare(screen,screen=="menu"?menuTab:-1,batchedDrawing);if(batchedDrawing&&screen=="map")mapBackground.Prepare(state.Town);modelUsed=0;FrameProfile.End(8,phase);
         phase=FrameProfile.Start();device.BeginFrame(room==0?new Color32(149,198,186):new Color32(32,40,39));
         float eyeHeight=PlayerHeight();
         if(room==0)camera.LookAt(new Vector3(state.X,CylinderWorld.CameraHeight+eyeHeight,state.Z+CylinderWorld.CameraBack),new Vector3(state.X,eyeHeight,state.Z-CylinderWorld.CameraAimAhead),new Vector3(0,1,0));
         else{float size=BuildingWorld.Size(state,room);indoorView.LookAt(new Vector3(indoorCamera.EyeX(size),indoorCamera.EyeY(size),indoorCamera.EyeZ(size)),new Vector3(size*.5f,.7f,size*.5f),new Vector3(0,1,0));}
         renderer.Begin3D(room==0?camera:indoorView);buildings.Begin(villagers.Doors);FrameProfile.End(4,phase);
-        phase=FrameProfile.Start();if(room==0){terrain.Draw(renderer,terrain.ScrollTransform,room);terrainWalls.Draw(renderer,terrain.ScrollTransform,terrain);}else buildings.Interior(renderer,state,worldRoot,indoorCamera,villagers.Doors);FrameProfile.End(4,phase);phase=FrameProfile.Start();
+        phase=FrameProfile.Start();if(room==0){terrain.Draw(renderer,terrain.ScrollTransform,room);}else buildings.Interior(renderer,state,worldRoot,indoorCamera,villagers.Doors);FrameProfile.End(4,phase);phase=FrameProfile.Start();
         if(room==0)
         {
             for(int i=0;i<6;i++){var v=state.Town.Residents[i];if(v.Space==0){var visual=villagers.Doors.VisualLocation(state,i+1);ModelAt(actors[i+1],visual.X,visual.Z,1.8f,visual.Yaw);}}
