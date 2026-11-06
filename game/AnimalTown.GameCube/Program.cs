@@ -151,7 +151,7 @@ internal sealed class TownGame
         uiShapes.Prepare("loading",-1,batchedDrawing);device.BeginFrame(new Color32(149,198,186));ui.Begin();
         var ink=new Color32(49,72,62);Panel(60,170,520,140);Heading("AnimalTown",85,190,ink);Text(landscape?"Preparing landscape...":loadingLabel,85,242,ink,1);
         int progress=landscape?terrain.LoadingTotal-terrain.LoadingRemaining:loadingIndex+buildings.LoadedParts,total=landscape?Math.Max(1,terrain.LoadingTotal):models.Length+BuildingCatalog.Count*7;
-        Rounded(85,275,460,8,4,new Color32(231,222,190));if(progress>0)Rounded(85,275,460f*progress/total,8,4,ink);
+        Rounded(85,275,460,8,4,new Color32(231,222,190));if(progress>0){float width=460f*progress/total;Rounded(85,275,width,8,Math.Min(4,width*.5f),ink);}
         ui.End();device.EndFrame();
     }
     private void SelectSpecies()
