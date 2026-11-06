@@ -36,9 +36,9 @@ internal static class TextureAudit
                 pageWidth=atlas?Math.Min(128,width):TexturePixels.FitWidth(width,height),pageHeight=atlas?Math.Min(128,height):TexturePixels.FitHeight(width,height),
                 pages=atlas?((width+127)/128)*((height+127)/128):1});
         }
-        if(models!=32)throw new InvalidDataException("Expected eight models in four texture resolutions; trees are generated native meshes");
+        int expected=32+BuildingCatalog.Count*7*4;if(models!=expected)throw new InvalidDataException("Expected eight legacy models plus seven parts per building definition in four texture resolutions");
         string originals=Path.Combine(root,"out/floor-sources.json");if(File.Exists(originals))records.Add(new{floorSourceProvenance=JsonSerializer.Deserialize<JsonElement>(File.ReadAllText(originals))});
         File.WriteAllText(Path.Combine(root,"out/texture-audit.json"),JsonSerializer.Serialize(records,new JsonSerializerOptions{WriteIndented=true}));
-        Console.WriteLine("Texture audit: eight imported models in 128/256/512/1024px variants; generated trees use no textures");
+        Console.WriteLine($"Texture audit: {models/4} imported models in 128/256/512/1024px variants; generated trees use no textures");
     }
 }

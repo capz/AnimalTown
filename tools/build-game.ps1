@@ -27,6 +27,7 @@ function RunNative([string]$Directory,[string]$Command,[string[]]$Arguments){
 Run dotnet @('build', 'tools/AnimalTown.Tools', '-c', 'Release', '-v', 'quiet')
 if('repack' -in $validation.tooling){Run dotnet @('run','--project','tools/AnimalTown.Tools','-c','Release','--no-build','--','repack-check',$projectRoot)}
 if('terrain' -in $validation.tooling){Run dotnet @('run','--project','tools/AnimalTown.Tools','-c','Release','--no-build','--','terrain-check',$projectRoot)}
+Run dotnet @('run','--project','tools/AnimalTown.Tools','-c','Release','--no-build','--','buildings',$projectRoot)
 Run dotnet @('tool','restore')
 Run dotnet @('run','--project','tools/AnimalTown.Tools','-c','Release','--no-build','--','audit',$projectRoot)
 if (!$SkipAssets) {
@@ -40,6 +41,8 @@ if (!$SkipAssets) {
         building='world-stuctures/Meshy_AI_animal_crossing_konbi_1102122741_texture.glb'
         tent='world-stuctures/structure_tent.glb'
     }
+    $buildingImports=Get-Content out/building-assets.json -Raw|ConvertFrom-Json -AsHashtable
+    foreach($key in $buildingImports.Keys){$assetMap[$key]=$buildingImports[$key].Substring(14)}
     # Retire stale generated outputs from the previous species list without
     # touching artist sources. Never package both old and replacement villagers.
     foreach($retired in @('gecko','prairie','deciduous','palm','pine')){
@@ -50,15 +53,29 @@ if (!$SkipAssets) {
         }
     }
     foreach ($name in $assetMap.Keys) {
-        Run dotnet @('run','--project','tools/AnimalTown.Tools','-c','Release','--no-build','--','prepare',$projectRoot,"assets/models/$($assetMap[$name])","out/prepared/$name.glb")
+        if($buildingImports.ContainsKey($name)){
+            # Building parts are authored in metres with hinge/floor pivots.
+            # Actor normalization would invalidate their collision/socket data.
+            New-Item -ItemType Directory -Force -Path out/prepared | Out-Null
+            Copy-Item -LiteralPath "assets/models/$($assetMap[$name])" -Destination "out/prepared/$name.glb" -Force
+        }else{
+            Run dotnet @('run','--project','tools/AnimalTown.Tools','-c','Release','--no-build','--','prepare',$projectRoot,"assets/models/$($assetMap[$name])","out/prepared/$name.glb")
+        }
         foreach($textureEdge in @(128,256,512,1024)){
         $suffix=if($textureEdge -eq 256){''}else{"-tex$textureEdge"}
-        $importArguments=@('tool','run','dnd-assets','--','model',"out/prepared/$name.glb","out/disc/$name$suffix.dndmodel",'--texture-limit',"$textureEdge",'--mip-levels','2','--compile-gx-materials')
+        # DNMD retains its package and charges a decoded RGBA8 copy of each
+        # texture per model, even when the native texture cache shares pixels.
+        # A 64px atlas + 32px mip keeps all seven static parts below 768 KiB.
+        $importEdge=if($buildingImports.ContainsKey($name) -and $textureEdge -eq 128){64}else{$textureEdge}
+        $importArguments=@('tool','run','dnd-assets','--','model',"out/prepared/$name.glb","out/disc/$name$suffix.dndmodel",'--texture-limit',"$importEdge",'--mip-levels','2','--compile-gx-materials')
         if($assetMap[$name].StartsWith('villagers/villager_')){$importArguments+='--allow-material-approximation'}
         Run dotnet $importArguments
+        if($buildingImports.ContainsKey($name)){Run dotnet @('run','--project','tools/AnimalTown.Tools','-c','Release','--no-build','--','building-native',$projectRoot,"out/disc/$name$suffix.dndmodel")}
         }
     }
 }
+$buildingNativeParts=@((Get-Content out/building-assets.json -Raw|ConvertFrom-Json -AsHashtable).Keys|Sort-Object|ForEach-Object{"out/disc/$($_)-tex128.dndmodel"})
+RunNative '.' 'sh' (@('-c','cc -std=c11 -Wall -Wextra -Werror -ffunction-sections -fdata-sections -Iout/sdk-native/include tests/native-building-assets.c out/sdk-native/source/model.c out/sdk-native/source/model_animation.c -Wl,--gc-sections -lm -o /tmp/animaltown-building-assets && /tmp/animaltown-building-assets "$@"','building-assets')+$buildingNativeParts)
 New-Item -ItemType Directory -Force -Path out/disc|Out-Null
 [IO.File]::WriteAllBytes((Join-Path $projectRoot 'out/disc/runtime.cfg'),[byte[]]@($RuntimeProfile))
 $gameCommit = $identity.bb
@@ -89,13 +106,18 @@ $nativeOutput=[IO.Path]::GetFullPath((Join-Path $projectRoot 'out/native'))
 $workspacePrefix=$projectRoot.TrimEnd([IO.Path]::DirectorySeparatorChar)+[IO.Path]::DirectorySeparatorChar
 if(!$nativeOutput.StartsWith($workspacePrefix,[StringComparison]::OrdinalIgnoreCase)){throw 'Native output must stay inside the workspace'}
 $nativeWorkingRoot=if($NativeInProcess){$nativeOutput}else{'/project/out/native'}
-$nativeKey="$nativeWorkingRoot|$nativeImage|$env:ANIMALTOWN_BUILD_IMAGE"
+$nativeKey="$nativeWorkingRoot|$nativeImage|$env:ANIMALTOWN_BUILD_IMAGE|$sdkContentHash"
 $nativeKeyFile=Join-Path $nativeOutput '.build-root'
 # Make dependency files contain absolute mount paths. Never reuse objects from
 # the host-native /project mount inside the combined /workspace image (or vice versa).
+# Packaged SDK sources retain archive timestamps; a newer ABI can otherwise
+# appear older than cached objects. Include package content in the cache key.
 if((Test-Path -LiteralPath (Join-Path $nativeOutput 'build')) -and
    (!(Test-Path -LiteralPath $nativeKeyFile) -or [IO.File]::ReadAllText($nativeKeyFile) -ne $nativeKey)){
+    # Preserve the independently verified upstream checkout across object cleans.
+    RunNative 'out/native' 'sh' @('-c','if [ -d build/exi-upstream/.git ] && [ ! -e .exi-source-cache ]; then mv build/exi-upstream .exi-source-cache; fi')
     RunNative 'out/native' 'make' @('clean')
+    RunNative 'out/native' 'sh' @('-c','if [ -d .exi-source-cache/.git ]; then mkdir -p build; mv .exi-source-cache build/exi-upstream; fi')
 }
 [IO.File]::WriteAllText($nativeKeyFile,$nativeKey)
 RunNative 'out/native' 'make' @('-j2')

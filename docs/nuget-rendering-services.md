@@ -15,6 +15,8 @@ heap. No global package files are patched. Offline imaging references the Imagin
 assembly shipped inside the pinned Assets package via PackageDownload, with its
 matching SkiaSharp dependencies; it does not compile SDK sources. BUILD.txt
 records package versions, source commits and the game package-lock SHA256.
+Native object cache identity includes the SDK package content hash. Packaged
+source timestamps alone cannot invalidate objects after an SDK ABI change.
 
 ## Adopted services
 

@@ -2,7 +2,7 @@ using AnimalTown;
 
 int checks=0;
 void Check(bool value,string message){checks++;if(!value)throw new Exception(message);}
-string[] available={"ui","menu","text","trim","terrain","movement","dialogue","generation","life","saves","core"};
+string[] available={"ui","menu","text","trim","terrain","movement","dialogue","generation","life","saves","buildings","core"};
 if(args.Length!=0&&(args.Length!=2||args[0]!="--suites"))throw new ArgumentException("Use --suites name,name or omit for all checks");
 var selected=args.Length==0?available:args[1].Split(',');
 foreach(string name in selected)if(!available.Contains(name))throw new ArgumentException("Unknown check suite: "+name);
@@ -17,6 +17,7 @@ if(Wants("dialogue"))DialogueVoiceChecks.Run(Check);
 if(Wants("generation"))TownGenerationChecks.Run(Check);
 if(Wants("life"))TerrainLifeChecks.Run(Check);
 if(Wants("saves"))SplitSaveChecks.Run(Check);
+if(Wants("buildings"))BuildingChecks.Run(Check);
 if(!Wants("core")){Console.WriteLine(checks+" checks passed; suites: "+string.Join(",",selected));return;}
 var terrainEdit=new GameState(74);int terrainVersion=terrainEdit.Town.TerrainVersion;
 Check(terrainEdit.Town.SetTerrain(20,20,Terrain.Water)&&terrainEdit.Town.TerrainVersion==terrainVersion+1,"terrain edit invalidates render caches");

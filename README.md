@@ -148,3 +148,9 @@ source URI and commit. UI atlases remain lossless 128-pixel pages to preserve
 font/icon coordinates. The texture cache is bounded to 4 MiB, and active default
 floor textures to 4 MiB. Larger options are per asset; native model budgets still
 apply and selecting 1024 for every model is not a supported whole-scene budget.
+
+
+Building and interior gameplay is documented in [building-interiors.md](docs/building-interiors.md).
+A near a doormat enters/exits; C-stick turns the indoor view and L recentres it.
+NPC villagers visit homes and resume their journeys independently of the player's
+location. New exterior/interior models use validated definitions and shared door logic.
