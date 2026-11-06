@@ -1,0 +1,44 @@
+{
+  "version": 1,
+  "dependencies": {
+    "net8.0": {
+      "SkiaSharp": {
+        "type": "Direct",
+        "requested": "[4.153.1, 4.153.1]",
+        "resolved": "4.153.1",
+        "contentHash": "TghYLOUaP3q6rTjQw7U9uQaaXh8lEs9rfA1U7/VtmyAptVDtj/SmjtcWzFWmcC/VMWxe3QgbV9uyvqDL7ySFtQ==",
+        "dependencies": {
+          "SkiaSharp.NativeAssets.Win32": "4.153.1",
+          "SkiaSharp.NativeAssets.macOS": "4.153.1"
+        }
+      },
+      "SkiaSharp.NativeAssets.Linux.NoDependencies": {
+        "type": "Direct",
+        "requested": "[4.153.1, 4.153.1]",
+        "resolved": "4.153.1",
+        "contentHash": "NrnPjcxjcRau4GMOY0BTpUdMey+MnmLU3jC5AuExEFHPS2NkX1tdkXW0n/c5nQMMHBTAMpHnt7qEOpXs2FNfIQ=="
+      },
+      "Capz.Hypercube.Core": {
+        "type": "Transitive",
+        "resolved": "0.1.0-preview.4.1",
+        "contentHash": "FlX1KNPUdK2oY3WIEcJPGtkijNXVyipRkxfjTg0U5gmioFwhkBikDzfJEQXoSbNhn4YkOtsgbIWZRPpZ7Xirxg=="
+      },
+      "SkiaSharp.NativeAssets.macOS": {
+        "type": "Transitive",
+        "resolved": "4.153.1",
+        "contentHash": "YTojWeWIhnpF7uC8vpMxB5wRONKkDB2t3r/nNPA3DL2pgj9fqMXRevA/rIanYazWnco4jo1ufgp3HkXuh1Tz8A=="
+      },
+      "SkiaSharp.NativeAssets.Win32": {
+        "type": "Transitive",
+        "resolved": "4.153.1",
+        "contentHash": "Yqg6rChTVh0BUE8QQxtOA3uUBnihfgID4yex/AvDa0+os2bVcBjmI3Qj9tnOB+R1hd/Jry1Gwl8qw5JI9HZG8Q=="
+      },
+      "animaltown.domain": {
+        "type": "Project",
+        "dependencies": {
+          "Capz.Hypercube.Core": "[0.1.0-preview.4.1, 0.1.0-preview.4.1]"
+        }
+      }
+    }
+  }
+}

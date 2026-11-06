@@ -11,8 +11,7 @@ root=Path(sys.argv[2]).resolve();root.mkdir(parents=True,exist_ok=True)
 profile_seconds=int(sys.argv[sys.argv.index('--profile-seconds')+1]) if '--profile-seconds' in sys.argv else 25
 if not 5<=profile_seconds<=300:raise ValueError('Profile duration must be 5..300 seconds per stationary scenario')
 user=root/'user';(user/'Config').mkdir(parents=True,exist_ok=True)
-sys.path.insert(0,str(Path('/work/vendor/sdk/scripts')))
-from dolphin_controller_test import pad_config
+from dolphin_pad import pad_config
 (user/'Config'/'GCPadNew.ini').write_text(pad_config())
 (user/'Pipes').mkdir(exist_ok=True)
 for i in range(4):
@@ -172,7 +171,7 @@ DumpCodec = ffv1
 [Hacks]
 EFBToTextureEnable = False
 ''')
-if '--profile' in sys.argv or '--interaction-profile' in sys.argv:
+if '--profile' in sys.argv or '--interaction-profile' in sys.argv or '--runtime-profile' in sys.argv:
     config=user/'Config'/'Dolphin.ini'
     config.write_text(config.read_text()+'\n[Movie]\nDumpFrames = True\nDumpFramesSilent = True\n')
     config=user/'Config'/'GFX.ini'
@@ -184,11 +183,25 @@ time.sleep(1)
 with (root/'emulator.log').open('w') as log:
     p=subprocess.Popen(['/usr/games/dolphin-emu-nogui','-u',str(user),'-e',str(disc),'-v','OGL'],env=env,stdout=log,stderr=subprocess.STDOUT)
     try:
-        time.sleep(45)
+        if '--loading' in sys.argv:
+            for n,seconds in enumerate((1,1,2,4,8,12,17)):
+                time.sleep(seconds);screenshot(f'loading-{n}.png')
+        else:time.sleep(45)
         if p.poll() is not None:
             raise RuntimeError(f'Dolphin exited during boot ({p.returncode}); see {root / "emulator.log"}')
         screenshot('screen.png')
-        if '--cliff-kit' in sys.argv:
+        if '--runtime-profile' in sys.argv:
+            import json
+            press('A')
+            if '--new-town' in sys.argv:press('D_UP');press('A');press('A');time.sleep(2);press('B');press('B')
+            os.write(controller,b'PRESS L\nPRESS R\n');time.sleep(.2);press('Z');os.write(controller,b'RELEASE L\nRELEASE R\n')
+            for mode in range(8):
+                time.sleep(profile_seconds);screenshot(f'runtime-{mode}.png')
+                if mode<7:
+                    os.write(controller,b'PRESS L\nPRESS R\n');time.sleep(.2);press('B');os.write(controller,b'RELEASE L\nRELEASE R\n')
+            os.write(controller,b'PRESS L\nPRESS R\n');time.sleep(.2);press('B');os.write(controller,b'RELEASE L\nRELEASE R\n')
+            press('X');screenshot('runtime-backpack.png');press('B');press('START');time.sleep(12);screenshot('runtime-save.png')
+        elif '--cliff-kit' in sys.argv:
             press('A')
             if '--new-town' in sys.argv:press('D_UP');press('A');press('A');time.sleep(2);press('B');press('B')
             time.sleep(3);screenshot('cliff-normal.png')

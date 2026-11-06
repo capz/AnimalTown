@@ -69,7 +69,7 @@ and temporary decode/encode arrays leave scope before explicit collection.
 `texture-audit.json` includes runtime format, dimensions, mip count and resident
 bytes, plus original PNG SHA-256 and crop provenance. Identical source packages
 are deduplicated within each season. The application cache remains limited to
-2 MiB of native pixels, with 256 source slots and lease-aware eviction.
+4 MiB of native pixels, with 256 source slots and lease-aware eviction.
 
 ## Geometry and memory
 

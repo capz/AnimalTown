@@ -1,1 +1,3 @@
-<Project Sdk="Microsoft.NET.Sdk" />
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup><PackageReference Include="Capz.Hypercube.Core" Version="[0.1.0-preview.4.1]" /></ItemGroup>
+</Project>

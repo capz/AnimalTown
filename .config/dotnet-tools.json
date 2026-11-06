@@ -1,0 +1,12 @@
+{
+  "version": 1,
+  "isRoot": true,
+  "tools": {
+    "dolphindotnet.assets": {
+      "version": "0.1.0-preview.245.1",
+      "commands": [
+        "dnd-assets"
+      ]
+    }
+  }
+}
