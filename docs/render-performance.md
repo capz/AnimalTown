@@ -144,3 +144,5 @@ not establish GameCube hardware frame times. The same pixel protocol can be
 decoded from a native-resolution physical console video capture. Physical
 hardware, GC Loader, Swiss and burned-disc compatibility require device tests
 in addition to structural ISO validation and direct ISO boot in Dolphin.
+
+Camera-driven terrain rebuilds are addressed by [cached terrain patches](movement-terrain-cache.md). Continuous walking/running captures, rather than stationary scenes alone, are the acceptance test.

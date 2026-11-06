@@ -9,36 +9,41 @@ internal sealed class TerrainWalls
 {
     private const int Capacity=6144;
     private VertexPositionColorTexture[] soil=new VertexPositionColorTexture[0];
-    private readonly DynamicMeshBuffer soilMesh=new DynamicMeshBuffer(3072);
+    private DynamicMeshBuffer soilMesh=new DynamicMeshBuffer(3072);
     private long revision;
     private readonly VertexPositionColorTexture[]?[] ground=new VertexPositionColorTexture[]?[FloorStrips.MaximumMaterials];
     private readonly DynamicMeshBuffer?[] groundMesh=new DynamicMeshBuffer?[FloorStrips.MaximumMaterials];
     private readonly int[] used=new int[FloorStrips.MaximumMaterials];
-    private readonly Material material=new Material{Cull=CullMode.Back,Lighting=LightingMode.Unlit};
-    private CachedTexture? texture;private int soilUsed,total;
-    private Town? town;private float x,z;private int version=-1,materials=-1;private bool gallery;
+    private readonly CylinderRows rows;
+    private int soilUsed,total;
+    internal TerrainWalls(CylinderRows rows){this.rows=rows;}
+    internal Mesh? SoilMesh=>soilMesh.Mesh;
+    internal Mesh? GroundMesh(int slot)=>groundMesh[slot]?.Mesh;
+    internal int ResidentBytes {get{int n=soilMesh.Capacity*24+(SoilMesh?.NativeBytes??0);for(int i=0;i<groundMesh.Length;i++)if(groundMesh[i]!=null)n+=groundMesh[i]!.Capacity*24+(groundMesh[i]!.Mesh?.NativeBytes??0);return n;}}
+    private Town? town;
     internal int Triangles=>total/3;
-    internal void Prepare(GameState state,int room,TerrainRenderer floor,bool preview)
+    internal ulong MaterialMask {get;private set;}
+    internal void Build(GameState state,int ox,int oz,int size,TerrainRenderer floor,bool preview,int previewX,int previewZ)
     {
-        if(room!=0){soilUsed=total=0;for(int i=0;i<used.Length;i++)used[i]=0;version=-1;return;}
-        if(town==state.Town&&version==state.Town.TerrainVersion&&x==state.X&&z==state.Z&&materials==floor.MaterialRevision&&gallery==preview)return;
-        town=state.Town;version=town.TerrainVersion;x=state.X;z=state.Z;materials=floor.MaterialRevision;gallery=preview;soilUsed=total=0;for(int i=0;i<used.Length;i++)used[i]=0;
-        float eye=TerrainElevation.At(town,x,z);int minZ=(int)z-TerrainTiles.GroundRowsAhead;
-        for(int row=-2;row<TerrainTiles.GroundRows+2;row++)for(int cx=(int)x-TerrainTiles.RowHalfWidth(Math.Max(0,Math.Min(TerrainTiles.GroundRows-1,row)))-2;cx<=(int)x+TerrainTiles.RowHalfWidth(Math.Max(0,Math.Min(TerrainTiles.GroundRows-1,row)))+2;cx++){
-            int cz=minZ+row,mode=WaterTerrain.IsCoast(town.At(cx,minZ+row))?1:TerrainElevation.Mode(town,cx,cz);if(WaterSurface.IsWater(town,cx,cz))continue;var p=CylinderWorld.Surface(cz+.5f,z,1);
-            if(!RenderView.Sphere(cx+.5f,p.Y,p.Z,3.5f,x,z,eye))continue;
+        town=state.Town;soilUsed=total=0;for(int i=0;i<used.Length;i++)used[i]=0;
+        for(int cz=oz;cz<oz+size;cz++)for(int cx=ox;cx<ox+size;cx++){
+            int mode=WaterTerrain.IsCoast(town.At(cx,cz))?1:TerrainElevation.Mode(town,cx,cz);if(WaterSurface.IsWater(town,cx,cz))continue;
             if(mode>=TerrainElevation.CornerUpLeft){if(cx%2==0&&cz%2==0)PlacedSection(state,floor,mode-2,cx,cz);continue;}
             int slot=floor.GroundSlot(state,cx,cz);
             Edge(cx,cz,cx,cz,cx+1,cz,cx,cz-1,slot);Edge(cx,cz,cx+1,cz,cx+1,cz+1,cx+1,cz,slot);
             Edge(cx,cz,cx+1,cz+1,cx,cz+1,cx,cz+1,slot);Edge(cx,cz,cx,cz+1,cx,cz,cx-1,cz,slot);
         }
-        if(preview)for(int i=0;i<8;i++){TerrainCliffBinding.PreviewOrigin((int)x,(int)z,i,out int ox,out int oz);Section(state,floor,i,ox,oz);}
-        revision++;
-        if(soilUsed>0&&texture==null){texture=TextureCache.LoadFloor("dvd:/cliff-soil.dndtex",repeat:true,repeatV:false);material.Texture=texture.Pages[0];}
-        soilMesh.Commit(soilUsed,revision,FrameProfile.Counters);
+        if(preview)for(int i=0;i<8;i++){
+            TerrainCliffBinding.PreviewOrigin(previewX,previewZ,i,out int px,out int pz);
+            if(px>=ox&&px<ox+size&&pz>=oz&&pz<oz+size)Section(state,floor,i,px,pz);
+        }
+        revision++;MaterialMask=0;
+        if(soilUsed>0)floor.EnsureSoil();
+        if(soilUsed==0&&soilMesh.Capacity>0){soilMesh.Dispose();soilMesh=new DynamicMeshBuffer(3072);soil=new VertexPositionColorTexture[0];}
+        else soilMesh.Commit(soilUsed,revision,FrameProfile.Counters);
         for(int i=0;i<used.Length;i++){
             if(used[i]==0){groundMesh[i]?.Dispose();groundMesh[i]=null;ground[i]=null;}
-            else groundMesh[i]!.Commit(used[i],revision,FrameProfile.Counters);
+            else {MaterialMask|=1UL<<i;groundMesh[i]!.Commit(used[i],revision,FrameProfile.Counters);}
         }
     }
     private void PlacedSection(GameState state,TerrainRenderer floor,int orientation,int ox,int oz)
@@ -70,7 +75,7 @@ internal sealed class TerrainWalls
     private static Vector3 Mid(Vector3 a,Vector3 b)=>new Vector3((a.X+b.X)*.5f,(a.Y+b.Y)*.5f,(a.Z+b.Z)*.5f);
     private VertexPositionColorTexture GroundVertex(Vector3 p)=>Vertex(p.X,p.Z,p.Y,p.X*.5f,p.Z*.5f);
     private void Cap(int slot,Vector3 a,Vector3 b,Vector3 c)=>Add(slot,GroundVertex(a),GroundVertex(b),GroundVertex(c));
-    private Vector3 Point(float px,float pz,float h){int row=(int)Math.Floor(pz);var a=CylinderWorld.Surface(row,z,h);var b=CylinderWorld.Surface(row+1,z,h);float t=pz-row;return new Vector3(px,a.Y+(b.Y-a.Y)*t,a.Z+(b.Z-a.Z)*t);}
+    private Vector3 Point(float px,float pz,float h){var p=rows.Chord(pz,h);return new Vector3(px,p.Y,p.Z);}
     private VertexPositionColorTexture Vertex(float px,float pz,float h,float u,float v)=>new VertexPositionColorTexture(Point(px,pz,h),Color32.White,new Vector2(u,v));
     private void Add(int slot,VertexPositionColorTexture a,VertexPositionColorTexture b,VertexPositionColorTexture c)
     {
@@ -115,6 +120,5 @@ internal sealed class TerrainWalls
     }
     private VertexPositionColorTexture TemplateVertex(TerrainCliffGeometry g,int i,int ox,int oz,bool wall)
     {float px=ox+g.Positions[i*3],pz=oz+g.Positions[i*3+2];return Vertex(px,pz,g.Positions[i*3+1],wall?g.Uvs[i*2]:TerrainCliffGeometry.SpillUv(px,Math.Max(0,2-g.Positions[i*3+1]),g.Normals[i*3]),wall?g.Uvs[i*2+1]:TerrainCliffGeometry.SpillUv(pz,Math.Max(0,2-g.Positions[i*3+1]),g.Normals[i*3+2]));}
-    internal void Draw(Renderer renderer,Transform parent,TerrainRenderer floor)
-    {if(soilUsed>0&&soilMesh.Mesh!=null)renderer.DrawMesh(soilMesh.Mesh!,material,parent);for(int i=0;i<used.Length;i++)if(used[i]>0)renderer.DrawMesh(groundMesh[i]!.Mesh!,floor.GroundMaterial(i),parent);}
+    internal void Dispose(){soilMesh.Dispose();for(int i=0;i<groundMesh.Length;i++)groundMesh[i]?.Dispose();}
 }

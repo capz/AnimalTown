@@ -171,7 +171,7 @@ DumpCodec = ffv1
 [Hacks]
 EFBToTextureEnable = False
 ''')
-if '--profile' in sys.argv or '--interaction-profile' in sys.argv or '--runtime-profile' in sys.argv:
+if '--profile' in sys.argv or '--interaction-profile' in sys.argv or '--runtime-profile' in sys.argv or '--movement-profile' in sys.argv:
     config=user/'Config'/'Dolphin.ini'
     config.write_text(config.read_text()+'\n[Movie]\nDumpFrames = True\nDumpFramesSilent = True\n')
     config=user/'Config'/'GFX.ini'
@@ -190,7 +190,25 @@ with (root/'emulator.log').open('w') as log:
         if p.poll() is not None:
             raise RuntimeError(f'Dolphin exited during boot ({p.returncode}); see {root / "emulator.log"}')
         screenshot('screen.png')
-        if '--runtime-profile' in sys.argv:
+        if '--movement-profile' in sys.argv:
+            press('A')
+            if '--new-town' in sys.argv:press('D_UP');press('A');press('A');time.sleep(2);press('B');press('B')
+            os.write(controller,b'PRESS L\nPRESS R\n');time.sleep(.2);press('Z');os.write(controller,b'RELEASE L\nRELEASE R\n')
+            time.sleep(profile_seconds);screenshot('movement-stationary.png')
+            routes=[(.9,.5,False),(.1,.5,False),(.5,.1,False),(.5,.9,False),(.9,.1,True),(.1,.9,True)]
+            for n,(x,y,running) in enumerate(routes):
+                os.write(controller,f'SET MAIN {x} {y}\n'.encode())
+                if running:os.write(controller,b'PRESS B\n')
+                time.sleep(profile_seconds)
+                os.write(controller,b'SET MAIN 0.5 0.5\nRELEASE B\n');time.sleep(2);screenshot(f'movement-route-{n}.png')
+            # Existing developer ramp focus verifies north/south reprojection
+            # and elevation changes on the same saved town.
+            os.write(controller,b'PRESS L\nPRESS R\n');time.sleep(.2);press('START');os.write(controller,b'RELEASE L\nRELEASE R\n')
+            for n,y in enumerate((.9,.1)):
+                os.write(controller,f'SET MAIN 0.5 {y}\n'.encode());time.sleep(3)
+                os.write(controller,b'SET MAIN 0.5 0.5\n');time.sleep(2);screenshot(f'movement-ramp-{n}.png')
+            press('START');time.sleep(12);screenshot('movement-save.png')
+        elif '--runtime-profile' in sys.argv:
             import json
             press('A')
             if '--new-town' in sys.argv:press('D_UP');press('A');press('A');time.sleep(2);press('B');press('B')

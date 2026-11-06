@@ -4,9 +4,11 @@ namespace AnimalTown;
 public sealed class FloorStrips
 {
     public const int Capacity=2048,MaximumMaterials=52,Records=284;
-    public readonly int[] X0=new int[Capacity],X1=new int[Capacity],Z0=new int[Capacity],Z1=new int[Capacity],Material=new int[Capacity];
-    public readonly byte[] Elevation=new byte[Capacity];
-    public readonly bool[] Water=new bool[Capacity];
+    public readonly int[] X0,X1,Z0,Z1,Material;
+    public readonly byte[] Elevation;
+    public readonly bool[] Water;
+    public FloorStrips(int capacity=Capacity)
+    {if(capacity<1||capacity>Capacity)throw new ArgumentOutOfRangeException();X0=new int[capacity];X1=new int[capacity];Z0=new int[capacity];Z1=new int[capacity];Material=new int[capacity];Elevation=new byte[capacity];Water=new bool[capacity];}
     public int Count,RejectedQuads;
     public static int Read(byte[] data,int at)=>data[at]|data[at+1]<<8|data[at+2]<<16|data[at+3]<<24;
     private static int MaterialOffset(byte[] data,int slot)=>Records+Read(data,280)*28+slot*8;
@@ -56,6 +58,29 @@ public sealed class FloorStrips
             }
         }
     }
+    // Complete patch topology. Visibility is tested per cached patch, so moving
+    // the camera never changes these strips or their shared edge vertices.
+    public void PreparePatch(GameState state,byte[] data,int ox,int oz,int size,bool preview,int previewX,int previewZ)
+    {
+        Count=RejectedQuads=0;
+        for(int z=oz;z<oz+size;z++){
+            int start=ox,key=-1;
+            for(int x=ox;x<=ox+size;x++){
+                int next=-1;
+                if(x<ox+size){
+                    int kind=state.Town.At(x,z);bool water=WaterSurface.IsWater(state.Town,x,z);
+                    int mode=state.Town.Inside(x,z)?state.Town.Elevation[z*Town.Width+x]:0;
+                    if(WaterTerrain.IsCoast(kind)&&!water)mode=1;
+                    if(mode<TerrainElevation.CornerUpLeft||water){
+                        int neighbor=preview?TerrainCliffBinding.PreviewLowNeighbor(state.Town,previewX,previewZ,x,z):-1;
+                        next=(neighbor<0?At(state,data,x,z,0):At(state,data,neighbor%Town.Width,neighbor/Town.Width,0))+(mode+(water?8:0))*MaximumMaterials;
+                    }
+                }
+                if(next==key&&key>=0&&((key/MaximumMaterials)%8>=2&&x%2==0||state.Town.At(x-1,z)==(int)Terrain.Beach||state.Town.At(x,z)==(int)Terrain.Beach)){Add(start,x,z,z+1,key);start=x;}
+                if(next!=key){if(key>=0)Add(start,x,z,z+1,key);start=x;key=next;}
+            }
+        }
+    }
     private void Add(int x0,int x1,int z0,int z1,int material)
-    {if(Count>=Capacity)throw new InvalidOperationException("Repeating terrain exceeds geometry budget");X0[Count]=x0;X1[Count]=x1;Z0[Count]=z0;Z1[Count]=z1;Material[Count]=material%MaximumMaterials;Water[Count]=material/MaximumMaterials>=8;Elevation[Count++]=(byte)(material/MaximumMaterials%8);}
+    {if(Count>=X0.Length)throw new InvalidOperationException("Repeating terrain exceeds geometry budget");X0[Count]=x0;X1[Count]=x1;Z0[Count]=z0;Z1[Count]=z1;Material[Count]=material%MaximumMaterials;Water[Count]=material/MaximumMaterials>=8;Elevation[Count++]=(byte)(material/MaximumMaterials%8);}
 }

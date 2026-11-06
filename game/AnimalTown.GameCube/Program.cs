@@ -38,9 +38,9 @@ internal sealed class TownGame
 {
     private GameState state;
     private readonly TownClock townClock=new TownClock();
-    private readonly TerrainWalls terrainWalls=new TerrainWalls();
+    private readonly AnimationFrameClock animationClock=new AnimationFrameClock(7);
+    private readonly int[] appliedClips={-2,-2,-2,-2,-2,-2,-2};
     private readonly VillagerNavigation villagers=new VillagerNavigation();
-    private readonly bool[] villagersMoving=new bool[6];
     private readonly GraphicsDevice device=GraphicsDevice.Default;
     private readonly Renderer renderer=new Renderer(GraphicsDevice.Default,128);
     private readonly Camera camera=new Camera(CylinderWorld.CameraFieldOfView,4f/3,CylinderWorld.Near,CylinderWorld.Far);
@@ -65,6 +65,7 @@ internal sealed class TownGame
     private bool resourcesReady,loadingFailed;
     private string loadingLabel="Preparing town assets";
     private float cachedPlayerHeight;
+    private float profiledX=float.NaN,profiledZ;
     private long cachedWallet=long.MinValue,cachedDebt=long.MinValue;
     private string walletLabel="",debtLabel="";
     private readonly string[] creationRows=new string[6];
@@ -138,7 +139,7 @@ internal sealed class TownGame
         ui.End();device.EndFrame();
     }
     private void SelectSpecies()
-    { if(actors[0]!=null)actors[0].Dispose();actors[0]=models[state.Species].CreateInstance(512*1024);moveClip=-1; }
+    { if(actors[0]!=null)actors[0].Dispose();actors[0]=models[state.Species].CreateInstance(512*1024);moveClip=-1;animationClock.Reset(0);appliedClips[0]=-2; }
     private void LoadSave()
     {
         try
@@ -371,21 +372,33 @@ internal sealed class TownGame
             if(!(pad.L.IsHeld&&pad.R.IsHeld)&&PlayerMovement.Move(state,room,pad.Stick.X,pad.Stick.Y,(int)pad.HeldButtons,pad.B.IsHeld,out float dx,out float dz))
             {
                 facingYaw=PlayerMovement.Yaw(dx,dz);PlayerMovement.Target(dx,dz,out faceX,out faceZ);
-                int clip=pad.B.IsHeld?1:0;if(clip!=moveClip){string name=clip==1?"Running":"Walking";if(models[state.Species].TryGetAnimation(name,out var _)){actors[0].Animator.Play(name,true);actors[0].Animator.SetSpeed(1.05f);}moveClip=clip;}
+                int clip=pad.B.IsHeld?1:0;moveClip=clip;
             }
-            else if(moveClip>=0){actors[0].Animator.Stop();moveClip=-1;}
+            else if(moveClip>=0)moveClip=-1;
         }
         if(room==0&&screen=="world")villagers.Tick(state);
         cachedPlayerHeight=PlayerHeight();RenderView.Prepare(state.X,state.Z,cachedPlayerHeight);
-        long skinAt=FrameProfile.Start();
-        if(models[state.Species].Animations.Count>0)actors[0].Update(1f/30);
+        animationClock.Step(0,moveClip,models[state.Species].Animations.Count>0);
         for(int i=1;i<7;i++){
             var v=state.Town.Residents[i-1];bool moving=room==0&&screen=="world"&&villagers.Routes[i-1].Moving;
-            if(moving!=villagersMoving[i-1]){villagersMoving[i-1]=moving;if(moving&&models[i-1].TryGetAnimation("Walking",out var _)){actors[i].Animator.Play("Walking",true);actors[i].Animator.SetSpeed(1);}else actors[i].Animator.Stop();}
-            if(moving&&Visible(v.PosX,v.PosZ,1.8f))actors[i].Update(1f/30);
+            animationClock.Step(i,moving?0:-1,moving&&Visible(v.PosX,v.PosZ,1.8f));
         }
-        FrameProfile.End(1,skinAt);
         if(Clock.Timestamp-lastSave>300000000){Save();}
+    }
+    private void UpdateAnimationFrame()
+    {
+        long start=FrameProfile.Start();
+        for(int i=0;i<7;i++){
+            int clip=animationClock.Clip(i);float seconds=animationClock.Consume(i);
+            if(appliedClips[i]!=clip){
+                string name=clip==1?"Running":"Walking";int model=i==0?state.Species:i-1;
+                if(clip<0)actors[i].Animator.Stop();
+                else if(models[model].TryGetAnimation(name,out var _)){actors[i].Animator.Play(name,true);actors[i].Animator.SetSpeed(i==0?1.05f:1);}
+                appliedClips[i]=clip;
+            }
+            if(seconds>0){actors[i].Update(seconds);FrameProfile.AnimationUpdates++;}
+        }
+        FrameProfile.End(1,start);
     }
     private void ReadCalendar(){int date=NativeCalendar.Read();day=date&0x1ffff;month=(int)((uint)date>>17);townClock.Update(NativeCalendar.ReadClock());}
     private Vector3 SurfacePoint(float x,float z,float height=0)
@@ -433,11 +446,12 @@ internal sealed class TownGame
     private void DrawScene()
     {
         cachedPlayerHeight=PlayerHeight();RenderView.Prepare(state.X,state.Z,cachedPlayerHeight);
-        long phase=FrameProfile.Start();terrain.Prepare(state,room,month,cliffPreview);terrain.Animate((Clock.Timestamp-sessionStart)/1000000.0);terrainWalls.Prepare(state,room,terrain,cliffPreview);FrameProfile.End(2,phase);
+        UpdateAnimationFrame();
+        long phase=FrameProfile.Start();terrain.Prepare(state,room,month,cliffPreview);terrain.Animate((Clock.Timestamp-sessionStart)/1000000.0);FrameProfile.End(2,phase);
         phase=FrameProfile.Start();uiShapes.Prepare(screen,screen=="menu"?menuTab:-1,batchedDrawing);if(batchedDrawing&&screen=="map")mapBackground.Prepare(state.Town);modelUsed=0;FrameProfile.End(8,phase);
         phase=FrameProfile.Start();device.BeginFrame(new Color32(149,198,186));
         float eyeHeight=cachedPlayerHeight;camera.LookAt(new Vector3(state.X,CylinderWorld.CameraHeight+eyeHeight,state.Z+CylinderWorld.CameraBack),new Vector3(state.X,eyeHeight,state.Z-CylinderWorld.CameraAimAhead),new Vector3(0,1,0));renderer.Begin3D(camera);FrameProfile.End(4,phase);
-        phase=FrameProfile.Start();terrain.Draw(renderer,identity,room);terrainWalls.Draw(renderer,identity,terrain);FrameProfile.End(4,phase);phase=FrameProfile.Start();
+        phase=FrameProfile.Start();terrain.Draw(renderer,identity,room);FrameProfile.End(4,phase);phase=FrameProfile.Start();
         if(room==0)
         {
             for(int i=0;i<6;i++){var v=state.Town.Residents[i];ModelAt(actors[i+1],v.PosX,v.PosZ,1.8f,v.Yaw);}
@@ -478,14 +492,15 @@ internal sealed class TownGame
         if(!resourcesReady||!FrameProfile.Enabled)return;
         int scene=screen=="map"?10:screen=="menu"&&menuTab==0?(indexedModels?1:7):room!=0?2:screen=="world"?(indexedModels?0:6):3;
         int drawingScene=batchedDrawing?(UiFont.Batched?scene:scene+32):scene+16;
-        FrameProfile.Complete(GpuProfiler.Snapshot().Triangles,terrain.VisibleTriangles,terrain.RejectedQuads,drawingScene+RuntimeOptions.Mode*64);
+        bool moved=!float.IsNaN(profiledX)&&(state.X!=profiledX||state.Z!=profiledZ);profiledX=state.X;profiledZ=state.Z;
+        FrameProfile.Complete(GpuProfiler.Snapshot().Triangles,terrain.VisibleTriangles,terrain.RejectedQuads,drawingScene+RuntimeOptions.Mode*64,terrain.BuiltThisFrame,moved?(moveClip==1?2:1):0);
     }
     private bool IsTree(GroundItem g)=>g.Kind==3||(g.Kind==2&&g.Item!=2);
     private void InspectTerrain()
     {
         if(room!=0)return;
         for(int z=2;z<Town.Height-2;z+=2)for(int x=2;x<Town.Width-2;x+=2)if(TerrainElevation.Mode(state.Town,x,z)==TerrainElevation.RampNorth){
-            state.X=x+.5f;state.Z=z+2.5f;screen="world";facingYaw=(float)Math.PI;moveClip=-1;actors[0].Animator.Stop();return;
+            state.X=x+.5f;state.Z=z+2.5f;screen="world";facingYaw=(float)Math.PI;moveClip=-1;animationClock.Reset(0);return;
         }
     }
     private void DrawTrees()
