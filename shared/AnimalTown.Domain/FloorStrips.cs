@@ -7,9 +7,9 @@ public sealed class FloorStrips
     public readonly int[] X0,X1,Z0,Z1,Material;
     public readonly byte[] Elevation;
     public readonly bool[] Water;
+    public int Count,RejectedQuads;
     public FloorStrips(int capacity=Capacity)
     {if(capacity<1||capacity>Capacity)throw new ArgumentOutOfRangeException();X0=new int[capacity];X1=new int[capacity];Z0=new int[capacity];Z1=new int[capacity];Material=new int[capacity];Elevation=new byte[capacity];Water=new bool[capacity];}
-    public int Count,RejectedQuads;
     public static int Read(byte[] data,int at)=>data[at]|data[at+1]<<8|data[at+2]<<16|data[at+3]<<24;
     private static int MaterialOffset(byte[] data,int slot)=>Records+Read(data,280)*28+slot*8;
     public static int TextureSlot(byte[] data,int slot)=>Read(data,4)==1?slot:Read(data,MaterialOffset(data,slot));
@@ -57,6 +57,22 @@ public sealed class FloorStrips
                         int neighbor=cliffPreview?TerrainCliffBinding.PreviewLowNeighbor(state.Town,(int)focusX,(int)focusZ,x,z):-1;
                         next=(neighbor<0?At(state,data,x,z,room):At(state,data,neighbor%Town.Width,neighbor/Town.Width,room))+(mode+(WaterSurface.IsWater(state.Town,x,z)?8:0))*MaximumMaterials;
                     }else RejectedQuads++;
+                }
+                if(next==key&&key>=0&&((key/MaximumMaterials)%8>=2&&x%2==0||state.Town.At(x-1,z)==(int)Terrain.Beach||state.Town.At(x,z)==(int)Terrain.Beach)){Add(start,x,z,z+1,key);start=x;}
+                if(next!=key){if(key>=0)Add(start,x,z,z+1,key);start=x;key=next;}
+            }
+        }
+    }
+    public void PrepareRegion(GameState state,byte[] data,int left,int top,int width,int height)
+    {
+        Count=RejectedQuads=0;
+        for(int z=top;z<top+height;z++){
+            int start=left,key=-1;
+            for(int x=left;x<=left+width;x++){
+                int next=-1;
+                if(x<left+width){int mode=TerrainElevation.Mode(state.Town,x,z);bool water=WaterSurface.IsWater(state.Town,x,z);
+                    if(WaterTerrain.IsCoast(state.Town.At(x,z))&&!water)mode=1;
+                    if(mode<TerrainElevation.CornerUpLeft||water)next=At(state,data,x,z,0)+(mode+(water?8:0))*MaximumMaterials;
                 }
                 if(next==key&&key>=0&&((key/MaximumMaterials)%8>=2&&x%2==0||state.Town.At(x-1,z)==(int)Terrain.Beach||state.Town.At(x,z)==(int)Terrain.Beach)){Add(start,x,z,z+1,key);start=x;}
                 if(next!=key){if(key>=0)Add(start,x,z,z+1,key);start=x;key=next;}

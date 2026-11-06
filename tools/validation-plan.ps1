@@ -26,7 +26,7 @@ function Get-ValidationPlan {
         if($p -match '^shared/AnimalTown.Domain/(TownClock|VillagerNavigation|VillagerNames)\.cs$'){[void]$managed.Add('life');[void]$managed.Add('generation');continue}
         if($p -match '^shared/AnimalTown.Domain/TownGenerator\.cs$'){foreach($s in @('generation','life','trim','core')){[void]$managed.Add($s)};continue}
         if($p -match '^shared/AnimalTown.Domain/LowPolyTree\.cs$'){[void]$managed.Add('core');[void]$managed.Add('terrain');continue}
-        if($p -match '^shared/AnimalTown.Domain/(TerrainElevation|CylinderWorld|RenderView|TerrainTiles|FloorStrips)\.cs$'){
+        if($p -match '^shared/AnimalTown.Domain/(TerrainElevation|CylinderWorld|RenderView|TerrainTiles|FloorStrips|TerrainStream)\.cs$'){
             foreach($s in @('core','terrain','movement','generation','life')){[void]$managed.Add($s)};continue
         }
         if($p -match '^shared/AnimalTown.Domain/(TexturePixels|TextureResolution|FloorTexture)\.cs$'){

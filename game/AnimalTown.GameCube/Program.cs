@@ -151,11 +151,11 @@ internal sealed class TownGame
             DebugOverlay.WriteLine("ANIMALTOWN READY "+BuildInfo.Version+" native bytes "+device.NativeBytes);
         }catch(Exception){loadingFailed=true;loadingLabel="Could not load town assets. Restart with a valid disc.";DebugOverlay.WriteLine("ANIMALTOWN ASSET LOAD FAILED");}
     }
-    private void DrawLoading()
+    private void DrawLoading(bool landscape=false)
     {
         uiShapes.Prepare("loading",-1,batchedDrawing);device.BeginFrame(new Color32(149,198,186));ui.Begin();
-        var ink=new Color32(49,72,62);Panel(60,170,520,140);Heading("AnimalTown",85,190,ink);Text(loadingLabel,85,242,ink,1);
-        int progress=loadingIndex+buildings.LoadedParts,total=models.Length+BuildingCatalog.Count*7;
+        var ink=new Color32(49,72,62);Panel(60,170,520,140);Heading("AnimalTown",85,190,ink);Text(landscape?"Preparing landscape...":loadingLabel,85,242,ink,1);
+        int progress=landscape?terrain.LoadingTotal-terrain.LoadingRemaining:loadingIndex+buildings.LoadedParts,total=landscape?Math.Max(1,terrain.LoadingTotal):models.Length+BuildingCatalog.Count*7;
         Rounded(85,275,460,8,4,new Color32(231,222,190));if(progress>0)Rounded(85,275,460f*progress/total,8,4,ink);
         ui.End();device.EndFrame();
     }
@@ -194,7 +194,7 @@ internal sealed class TownGame
     private bool Press(ControllerState p)=>p.A.WasPressed;
     internal void Input(ControllerState p)
     {
-        if(!resourcesReady)return;
+        if(!resourcesReady||room==0&&!terrain.Ready)return;
         bool chord=p.L.IsHeld&&p.R.IsHeld;
         if(chord&&p.A.WasPressed&&(screen=="world"||screen=="title")){InspectBuilding();return;}
         if(chord&&p.B.WasPressed){RuntimeOptions.Cycle();return;}
@@ -379,7 +379,7 @@ internal sealed class TownGame
     }
     internal void Step(ControllerState pad)
     {
-        if(!resourcesReady)return;
+        if(!resourcesReady||room==0&&!terrain.Ready)return;
         tick++;
         if(tick%30==0)townClock.Update(NativeCalendar.ReadClock());
         if(tick%900==0){int previousDay=state.Town.Day;ReadCalendar();state.Rollover(day,month);if(state.Town.Day!=previousDay)Save();}

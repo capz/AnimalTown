@@ -307,7 +307,7 @@ with (root/'emulator.log').open('w') as log:
             press('A');time.sleep(2);screenshot('cloud-exterior-return.png')
         elif '--terrain-scroll' in sys.argv:
             press('A');press('D_UP');press('A');press('A');time.sleep(2);press('B');press('B')
-            os.write(controller,b'PRESS L\nPRESS R\n');time.sleep(.2);press('START');os.write(controller,b'RELEASE L\nRELEASE R\n');time.sleep(2)
+            os.write(controller,b'PRESS L\nPRESS R\n');time.sleep(.2);press('START');os.write(controller,b'RELEASE L\nRELEASE R\n');time.sleep(12)
             os.write(controller,b'PRESS L\nPRESS R\n');time.sleep(.2);press('Z');os.write(controller,b'RELEASE L\nRELEASE R\n')
             time.sleep(profile_seconds);screenshot('scroll-ramp-start.png')
             # Slow axial motion includes fractional steps, cache boundaries and
@@ -316,6 +316,10 @@ with (root/'emulator.log').open('w') as log:
                 os.write(controller,f'SET MAIN {axes[0]} {axes[1]}\n'.encode());time.sleep(profile_seconds)
                 os.write(controller,b'SET MAIN 0.5 0.5\n');time.sleep(1);screenshot('scroll-'+name+'.png')
             time.sleep(profile_seconds);screenshot('scroll-rest.png')
+            if '--stream-stress' in sys.argv:
+                for name in ['river','corner','bridge','coast']:
+                    os.write(controller,b'PRESS L\nPRESS R\n');time.sleep(.2);press('D_LEFT');os.write(controller,b'RELEASE L\nRELEASE R\n')
+                    time.sleep(12+profile_seconds);screenshot('stream-'+name+'.png')
         elif '--river-coast' in sys.argv:
             press('A');press('D_UP');press('A');press('A');time.sleep(2);press('B');press('B')
             for scene in ['river', 'river-corner', 'bridge', 'coast-beach', 'estuary', 'restored']:
