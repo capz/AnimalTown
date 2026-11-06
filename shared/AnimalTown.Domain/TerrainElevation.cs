@@ -23,6 +23,13 @@ public static class TerrainElevation
     public static bool Traverse(Town town,float ax,float az,float bx,float bz)
     {
         if(!town.Inside((int)ax,(int)az)||!town.Inside((int)bx,(int)bz)||ax<0||az<0||bx<0||bz<0)return false;
+        // Sloped banks are still water footprints. Clip exactly so a short
+        // diagonal cannot slip through a wet corner between height samples.
+        for(int cz=(int)Math.Min(az,bz);cz<=(int)Math.Max(az,bz);cz++)for(int cx=(int)Math.Min(ax,bx);cx<=(int)Math.Max(ax,bx);cx++){
+            if(!WaterSurface.IsWater(town,cx,cz))continue;float lo=0,hi=1,dx=bx-ax,dz=bz-az;
+            if(!Clip(ax,dx,cx,cx+1,ref lo,ref hi)||!Clip(az,dz,cz,cz+1,ref lo,ref hi)||hi-lo<.000001f)continue;
+            float mid=(lo+hi)*.5f;if((int)(ax+dx*mid)==cx&&(int)(az+dz*mid)==cz)return false;
+        }
         // Exact clipping catches even a very short passage through a high
         // triangle at a corner; sampling alone can tunnel across its tip.
         for(int oz=(int)Math.Min(az,bz)/2*2;oz<=(int)Math.Max(az,bz)/2*2;oz+=2)for(int ox=(int)Math.Min(ax,bx)/2*2;ox<=(int)Math.Max(ax,bx)/2*2;ox+=2){

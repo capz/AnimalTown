@@ -5,6 +5,7 @@ internal static class WaterSurfaceChecks
     internal static void Run(Action<bool,string> check)
     {
         RiverCoastChecks.Run(check);
+        RiverBankChecks.Run(check);
         CloudShadowChecks.Run(check);
         var state=new GameState(49);var town=state.Town;
         Array.Fill(town.Tiles,(byte)Terrain.Water);Array.Clear(town.Elevation);
