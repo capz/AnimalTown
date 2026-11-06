@@ -17,6 +17,7 @@ internal sealed class TerrainRenderer
     private readonly TerrainWalls gallery;
     internal readonly Transform ScrollTransform=new Transform();
     private readonly CloudShadows clouds=new CloudShadows();
+    private readonly ObjectShadows shadows;
     private readonly Color32[] baseTints=new Color32[FloorStrips.MaximumMaterials];
     private readonly Material[] materials=new Material[FloorStrips.MaximumMaterials];
     private readonly CachedTexture?[] textures=new CachedTexture?[FloorStrips.MaximumMaterials];
@@ -34,11 +35,13 @@ internal sealed class TerrainRenderer
     private Town? cachedTown;
     internal int VisibleTriangles,RejectedQuads;
     internal int MaterialRevision {get;private set;}
+    internal bool ObjectShadowsEnabled {get=>shadows.Enabled;set=>shadows.Enabled=value;}
     internal int GroundSlot(GameState state,int x,int z)=>FloorStrips.At(state,data,x,z,0);
     internal Material GroundMaterial(int slot)=>materials[slot];
     internal TerrainRenderer()
     {
         gallery=new TerrainWalls(soil);
+        shadows=new ObjectShadows(ScrollTransform);
         var cfg=File.ReadAllBytes("dvd:/terrain.cfg");if(cfg.Length!=4)throw new IOException("Invalid floor season config");forced=FloorStrips.Read(cfg,0);if(forced< -1||forced>3)throw new IOException("Invalid floor season");
         for(int i=0;i<materials.Length;i++)materials[i]=new Material{Cull=CullMode.Back,Lighting=LightingMode.Unlit,SecondarySampler=new SamplerState(TextureAddressMode.Repeat,TextureAddressMode.Repeat,TextureFilter.Linear)};
         for(int i=0;i<poses.Length;i++)poses[i]=ScrollTransform;
@@ -74,6 +77,8 @@ internal sealed class TerrainRenderer
             bool complete=sections[building]!.Advance(state,this,staging,data);steps++;geometryRevision++;
             if(complete){stream.Complete();building=-1;stream.Prepare(state.X,state.Z);}
         }while(steps<8&&Clock.Timestamp<deadline);
+        shadows.Prepare(state);
+        while(steps<8&&Clock.Timestamp<deadline){if(!shadows.Advance())break;steps++;geometryRevision++;}
         gallery.PrepareGallery(state,this,cliffPreview);
         VisibleTriangles=gallery.Triangles;RejectedQuads=0;
         for(int i=0;i<stream.Count;i++)if(stream.Visible[i])VisibleTriangles+=sections[i]!.Triangles;
@@ -105,5 +110,6 @@ internal sealed class TerrainRenderer
             Flush(renderer,materials[slot]);
         }
         gallery.Draw(renderer,ScrollTransform,this);
+        shadows.Draw(renderer);
     }
 }

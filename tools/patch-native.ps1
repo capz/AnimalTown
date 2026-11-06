@@ -23,6 +23,34 @@ $generated="extern int animaltown_uv_mode(int);`n"+$generated
 [IO.File]::WriteAllText($generatedPath,$generated)
 $modelGraphicsPath=Join-Path $Root 'out/native/source/model_graphics.c'
 $modelGraphics=[IO.File]::ReadAllText($modelGraphicsPath)
+# Keep the game-owned rim hook pinned to the imported indexed model path. Fail
+# closed if a package upgrade changes a hook rather than silently CPU-expanding.
+$rimHooks=@{
+    '#include "dnd_indexed_model.inc"'='#include "dnd_indexed_model.inc"'
+    '    if(!reuse)dnd_draw_backend_tev(selected, mat->texture >= 0);'="    if(!reuse)dnd_draw_backend_tev(selected, mat->texture >= 0);`n    if(town_rim_enabled&&!effect)town_rim_apply(normal,selected,reuse,&bindings);"
+    'if(!(mat->mode&2)){Mtx n;'='if(town_rim_enabled||!(mat->mode&2)){Mtx n;'
+    'if(custom_scene&&!(mat->mode&2))GX_Normal3f32'='if(town_rim_enabled||(custom_scene&&!(mat->mode&2)))GX_Normal3f32'
+    '    if(custom_scene){'='    if(custom_scene||town_rim_enabled){'
+    '      dnd_draw_backend_scene(!(mat->mode&2),frame_view);'='      if(custom_scene)dnd_draw_backend_scene(!(mat->mode&2),frame_view);'
+}
+foreach($hook in $rimHooks.Keys){
+    if(([regex]::Matches($modelGraphics,[regex]::Escape($hook))).Count -ne 1){throw "Pinned native rim hook changed: $hook"}
+    $modelGraphics=$modelGraphics.Replace($hook,$rimHooks[$hook])
+}
+$modelGraphics=$modelGraphics.Replace('int dnd_model_state_cache(int enabled){',"#include `"animaltown_rim.inc`"`nint dnd_model_state_cache(int enabled){")
+Copy-Item -LiteralPath (Join-Path $Root 'tools/native-rim.inc') -Destination (Join-Path $Root 'out/native/source/animaltown_rim.inc') -Force
+$indexedPath=Join-Path $Root 'out/native/include/dnd_indexed_model.inc'
+$indexed=[IO.File]::ReadAllText($indexedPath)
+foreach($hook in @('if(lit){GX_SetVtxDesc(GX_VA_NRM','if(lit)GX_Normal1x16(index);')){
+    if(([regex]::Matches($indexed,[regex]::Escape($hook))).Count -ne 1){throw "Pinned indexed rim normals changed: $hook"}
+    $indexed=$indexed.Replace($hook,$hook.Replace('if(lit)','if(lit||town_rim_enabled)'))
+}
+[IO.File]::WriteAllText($indexedPath,$indexed)
+$rimPattern='intptr_t (dnd_value_AnimalTown_GameCube_NativeRim_Enable_[a-z0-9]+)\(intptr_t (\w+)\) \{.*?\r?\n\}'
+if(([regex]::Matches($generated,$rimPattern,[Text.RegularExpressions.RegexOptions]::Singleline)).Count -ne 1){throw 'Pinned rim scope bridge changed'}
+$generated=[regex]::Replace($generated,$rimPattern,'intptr_t $1(intptr_t $2) { return animaltown_rim_enable((int)$2); }',[Text.RegularExpressions.RegexOptions]::Singleline)
+$generated="extern int animaltown_rim_enable(int);`n"+$generated
+[IO.File]::WriteAllText($generatedPath,$generated)
 $drawSignature='static int draw_model_selected(DndInstance *in,const float world[16],const DndDrawEffect *effect,int filter,int only) {'
 if(([regex]::Matches($modelGraphics,[regex]::Escape($drawSignature))).Count -ne 1){throw 'Pinned model UV diagnostic hook changed'}
 $modelGraphics=$modelGraphics.Replace($drawSignature,$drawSignature.Replace('draw_model_selected(','draw_model_selected_base('))
