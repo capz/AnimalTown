@@ -140,11 +140,11 @@ motion up/down a generated ramp, lateral motion and stationary frames.
 
 Outdoor ground, water, foam and banks share a rigid rotation about the cylinder
 axis. Geometry is baked in fixed cylinder coordinates and retained in a bounded
-cache of 256 sections, each 8x2m. Moving the player only changes the shared
+cache of 160 sections, each 8x4m. Moving the player only changes the shared
 transform and the visible section selection. Four metres of prefetch surround
 the view. Existing sections never rebuild because a scroll window changed.
 
-The renderer pumps at most two incoming sections (32 cells) per frame and stops
+The renderer pumps at most two incoming sections (64 cells) per frame and stops
 starting work after a 2ms guest-clock deadline. A single section is the atomic
 unit and can exceed that deadline; native profiling must check the worst pump,
 not merely its average or the fraction of cached frames. Frustum selection is

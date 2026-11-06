@@ -1,13 +1,13 @@
 namespace AnimalTown;
 
 // Bounded virtual terrain cache. Movement requests small immutable sections,
-// never a rebuild of the visible patch. Each request is only sixteen cells;
+// never a rebuild of the visible patch. Each request is only thirty-two cells;
 // the renderer pumps requests under its per-frame time and section limits.
 public sealed class TerrainStream
 {
-    public const int Width=8,Height=2,Capacity=256;
+    public const int Width=8,Height=4,Capacity=160;
     public const float Prefetch=4;
-    private const float Radius=6.25f;
+    private const float Radius=6.75f;
     private const int MinX=-CylinderWorld.ViewHalfWidth/Width-2,MinZ=-TerrainTiles.GroundRowsAhead/Height-2;
     private const int Columns=(Town.Width+2*CylinderWorld.ViewHalfWidth)/Width+5;
     private const int Rows=(Town.Height+TerrainTiles.GroundRowsAhead+TerrainTiles.GroundRowsBehind)/Height+5;
@@ -44,14 +44,14 @@ public sealed class TerrainStream
         if(cachedX!=fx||cachedZ!=fz){
         cachedX=fx;cachedZ=fz;WantedCount=0;
         int left=(int)Math.Floor((fx-CylinderWorld.ViewHalfWidth)/Width)*Width,right=(int)Math.Floor((fx+CylinderWorld.ViewHalfWidth)/Width)*Width;
-        int top=(int)Math.Floor((fz-TerrainTiles.GroundRowsAhead)/Height)*Height,bottom=(int)Math.Floor((fz+TerrainTiles.GroundRowsBehind)/Height)*Height;
+        int top=(int)Math.Floor((fz-TerrainTiles.GroundRowsAhead-Height*2)/Height)*Height,bottom=(int)Math.Floor((fz+TerrainTiles.GroundRowsBehind)/Height)*Height;
         for(int cz=top;cz<=bottom;cz+=Height){
             var p=CylinderWorld.Surface(cz+Height*.5f,fz,1);
             for(int cx=left;cx<=right;cx+=Width){
                 // Horizon bounds live in the YZ cross-section: the section's
                 // east/west width must not inflate its apparent height.
-                if(!RenderView.Sphere(cx+Width*.5f,p.Y,p.Z,Radius+Prefetch,fx,fz,1)||!RenderView.AboveHorizon(p.Y,p.Z,3+Prefetch,fz,1))continue;
-                bool visible=RenderView.Sphere(cx+Width*.5f,p.Y,p.Z,Radius,fx,fz,1)&&RenderView.AboveHorizon(p.Y,p.Z,3,fz,1);
+                if(!RenderView.Sphere(cx+Width*.5f,p.Y,p.Z,Radius+Prefetch,fx,fz,1)||!RenderView.AboveHorizon(p.Y,p.Z,4+Prefetch,fz,1))continue;
+                bool visible=RenderView.Sphere(cx+Width*.5f,p.Y,p.Z,Radius,fx,fz,1)&&RenderView.AboveHorizon(p.Y,p.Z,4,fz,1);
                 if(WantedCount>=Capacity)throw new InvalidOperationException("Terrain prefetch exceeds cache capacity");
                 candidateX[WantedCount]=cx;candidateZ[WantedCount]=cz;candidateVisible[WantedCount]=visible;
                 float dx=cx+Width*.5f-fx,dz=cz+Height*.5f-fz;priority[WantedCount++]=dx*dx+dz*dz+(visible?0:100000);

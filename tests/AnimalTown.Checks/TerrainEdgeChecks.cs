@@ -136,7 +136,7 @@ internal static class TerrainEdgeChecks
         var state=new GameState(17);Array.Fill(state.Town.Tiles,(byte)Terrain.Grass);Array.Clear(state.Town.Elevation);
         var strips=new FloorStrips(TerrainStream.Width*TerrainStream.Height);strips.PrepareRegion(state,data,80,80,TerrainStream.Width,TerrainStream.Height);
         check(strips.Count==TerrainStream.Height,"uniform sections retain merged horizontal floor strips");
-        for(int z=80;z<82;z++)for(int x=80;x<88;x++)state.Town.Tiles[z*Town.Width+x]=(byte)((x+z)%2==0?Terrain.Grass:Terrain.Plaza);
+        for(int z=80;z<80+TerrainStream.Height;z++)for(int x=80;x<80+TerrainStream.Width;x++)state.Town.Tiles[z*Town.Width+x]=(byte)((x+z)%2==0?Terrain.Grass:Terrain.Plaza);
         strips.PrepareRegion(state,data,80,80,TerrainStream.Width,TerrainStream.Height);check(strips.Count==TerrainStream.Width*TerrainStream.Height,"maximum material splits fit the small shared staging plan");
         Console.WriteLine("Terrain stream: maximum "+maximum+" wanted sections / "+TerrainStream.Capacity+"; one section per frame, scrolling coverage and recycling passed");
     }
