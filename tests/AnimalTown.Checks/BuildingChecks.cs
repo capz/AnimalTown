@@ -52,6 +52,14 @@ internal static class BuildingChecks
         check(entered==63&&left==63,"all six NPCs enter and leave homes while player remains indoors");
         check(resumed==63,"every villager resumes its saved outdoor waypoint after the visit");
         check(journeyState.Space==16,"NPC journeys never switch the player's room");
+        foreach(int seed in new[]{204,931,911,912}){
+            var generated=new GameState(seed){Space=16,X=2,Z=2};var travel=new VillagerJourney();int visited=0,returned=0;
+            for(int frame=0;frame<6000&&returned!=63;frame++){
+                travel.Tick(generated);check(travel.Outdoors.LastExpansions<=128&&travel.Indoors.LastExpansions<=128,"generated-town journeys preserve both shared search budgets");
+                for(int i=0;i<6;i++){if(generated.Town.Residents[i].Space!=0)visited|=1<<i;else if((visited&(1<<i))!=0)returned|=1<<i;}
+            }
+            check(visited==63&&returned==63,"all six villagers walk from generated spawns, visit and leave without resetting an incremental search");
+        }
         var houseState=new GameState(912){HousePlaced=true,Space=16};Array.Fill(houseState.Town.Tiles,(byte)Terrain.Grass);Array.Clear(houseState.Town.Elevation);houseState.Town.GroundCount=0;
         var route=new VillagerNavigation();var walker=houseState.Town.Residents[0];walker.PosX=houseState.Town.HouseX+1.5f;walker.PosZ=houseState.Town.HouseZ+2.5f;route.Tick(houseState);route.Target(0,houseState.Town.HouseX+5,houseState.Town.HouseZ+2);
         for(int step=0;step<600;step++){route.Tick(houseState);check(!(walker.PosX>=houseState.Town.HouseX+2&&walker.PosX<houseState.Town.HouseX+5&&walker.PosZ>=houseState.Town.HouseZ+1&&walker.PosZ<houseState.Town.HouseZ+4),"player home remains an NPC obstacle while player is indoors");}

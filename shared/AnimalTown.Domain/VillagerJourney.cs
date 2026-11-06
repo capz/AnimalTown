@@ -41,7 +41,7 @@ public sealed class VillagerJourney
                 if(dx*dx+dz*dz<.08f){v.JourneyPhase=0;v.JourneyNextX=v.JourneyNextZ=-1;v.Dwell=180;continue;}
                 var r=Outdoors.Routes[i];Moving[i]=r.Moving;v.Dwell=Moving[i]?0:v.Dwell+1;
                 if(v.Dwell>900){v.JourneyPhase=0;v.Dwell=180;continue;}
-                if(r.GoalX!=v.JourneyNextX||r.GoalZ!=v.JourneyNextZ||r.Index>=r.Length&&r.Wait==0)Outdoors.Target(i,v.JourneyNextX,v.JourneyNextZ);
+                if(r.GoalX!=v.JourneyNextX||r.GoalZ!=v.JourneyNextZ||r.Index>=r.Length&&r.Wait==0&&!Outdoors.Planning(i))Outdoors.Target(i,v.JourneyNextX,v.JourneyNextZ);
                 continue;
             }
             if(v.JourneyPhase==0){
@@ -54,7 +54,7 @@ public sealed class VillagerJourney
                 int b=v.JourneyBuilding;v.Dwell=Outdoors.Routes[i].Moving?0:v.Dwell+1;if(v.Dwell>900||!BuildingWorld.Exists(s,b)){v.JourneyPhase=5;v.Dwell=0;continue;}
                 BuildingWorld.Entrance(s,b,out float x,out float z);float dx=v.PosX-x,dz=v.PosZ-z;
                 if(dx*dx+dz*dz<.7f){Outdoors.Stop(i);Doors.Request(s,actor,b);}
-                else{Moving[i]=Outdoors.Routes[i].Moving;var r=Outdoors.Routes[i];if(r.GoalX!=(int)x||r.GoalZ!=(int)z||r.Index>=r.Length&&r.Wait==0)Outdoors.Target(i,(int)x,(int)z);}
+                else{Moving[i]=Outdoors.Routes[i].Moving;var r=Outdoors.Routes[i];if(r.GoalX!=(int)x||r.GoalZ!=(int)z||r.Index>=r.Length&&r.Wait==0&&!Outdoors.Planning(i))Outdoors.Target(i,(int)x,(int)z);}
             }
         }
     }

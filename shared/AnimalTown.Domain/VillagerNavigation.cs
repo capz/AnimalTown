@@ -47,6 +47,9 @@ public sealed class VillagerNavigation
     }
     public void Target(int agent,int x,int z)
     {var r=Routes[agent];if(worker==agent)worker=-1;r.GoalX=x;r.GoalZ=z;r.Length=r.Index=r.LocalIndex=r.LocalLength=0;r.Replan=true;r.Wait=0;Array.Clear(r.Observed,0,r.Observed.Length);}
+    // An empty route can still be queued or searching across multiple ticks.
+    // Journey callers must not restart that work every frame.
+    public bool Planning(int agent)=>worker==agent||Routes[agent].Replan;
     public void Stop(int agent)
     {if(worker==agent)worker=-1;var r=Routes[agent];r.Length=r.Index=r.LocalLength=r.LocalIndex=0;r.Wait=2;r.Moving=false;}
     private void Goal(int agent)
