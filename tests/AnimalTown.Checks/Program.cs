@@ -57,7 +57,7 @@ Check(Town.ScreenTiles==8&&Town.Width==Town.Height&&Town.Width==8*Town.ScreenTil
 double previousFocusDepth=-6*RenderView.ForwardY-8*RenderView.ForwardZ;
 double focusDepth=-CylinderWorld.CameraHeight*RenderView.ForwardY-CylinderWorld.CameraBack*RenderView.ForwardZ;
 Check(Math.Abs(focusDepth/previousFocusDepth-.9)<.00001,"closer camera shows ninety percent of the previous horizontal span at the player");
-Check(Math.Abs(RenderView.ForwardY/RenderView.ForwardZ-9f/16)<.00001,"closer camera retains its previous pitch");
+Check(Math.Abs(Math.Atan2(-RenderView.ForwardY,-RenderView.ForwardZ)*180/Math.PI-36.8699)<.001,"outdoor camera tilts down to the player while retaining its lens and eye position");
 Check(CylinderWorld.ViewHalfWidth>CylinderWorld.Far*Math.Tan(CylinderWorld.CameraFieldOfView*Math.PI/360)*4/3,"cylinder extends past far-plane viewport sides");
 double oldRadius=400/(2*Math.PI),oldEye=Math.Sqrt((oldRadius+CylinderWorld.CameraHeight)*(oldRadius+CylinderWorld.CameraHeight)+CylinderWorld.CameraBack*CylinderWorld.CameraBack);
 double eye=Math.Sqrt((CylinderWorld.Radius+CylinderWorld.CameraHeight)*(CylinderWorld.Radius+CylinderWorld.CameraHeight)+CylinderWorld.CameraBack*CylinderWorld.CameraBack);

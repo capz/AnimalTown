@@ -14,9 +14,9 @@ public static class CylinderWorld
     // radius brings the horizon closer without changing the camera lens.
     public const float Radius=360f/6.28318530718f;
     public const int ViewHalfWidth=64;
-    // Preserve the lens; scale eye and aim offsets together to keep the pitch.
+    // Keep the lens and eye distance; aim at the player to show more ground.
     public const float CameraFieldOfView=53.54f;
-    public const float CameraHeight=5.4f,CameraBack=7.2f,CameraAimAhead=2.4f;
+    public const float CameraHeight=5.4f,CameraBack=7.2f,CameraAimAhead=0;
     public const float Near=.1f,Far=60;
     public static CylinderPose Surface(float logicalZ,float focusZ,float height=0)
     {

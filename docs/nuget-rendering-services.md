@@ -28,7 +28,7 @@ source timestamps alone cannot invalidate objects after an SDK ABI change.
 | MeshBatch | Groups opaque box colors within the existing pass boundaries; fixed capacity 128 |
 | SharedGraphicsResources / ResourceLease | Sole owner of resident application texture pages; cache retains identity and LRU policy |
 | CameraFrustum | Shared sphere culling with the existing .025 m guard band |
-| RenderCounters / RenderTelemetry | Shared counters and completed-frame snapshot; existing 16 phases and v4 pixel protocol retained |
+| RenderCounters / RenderTelemetry | Shared counters and completed-frame snapshot; existing 16 phases; v5 adds movement/patch counters |
 | Model.LoadAsync | One model task in flight; loading UI between frames, instance publication outside passes |
 | Runtime scheduling / frame-clear controls | Independent opt-in experiments; existing 30 Hz simulation retained |
 
@@ -37,8 +37,7 @@ The parent worldRoot is an identity; MeshBatch receives those world TRS values
 without parenting them again. Indexed immutable trees and SDK model queues stay
 in use. Transparent foam and painter-ordered UI remain outside opaque grouping.
 
-Geometry revision changes follow camera/room/terrain/material changes; animated
-UVs never dirty vertices. Inactive floor/cliff material slots release their CPU
+Terrain geometry now uses [cached patches and shared cylinder motion](movement-terrain-cache.md). Camera movement changes a transform and visibility; terrain/material revisions change mesh content. Animated UVs never dirty vertices. Inactive floor/cliff material slots release their CPU
 and native capacity. Water/soil buffers retain bounded capacity. GeometryStaging
 preserves the currently written prefix during growth: package preview.4.1's
 Reserve only preserves the previous committed Count. Capacity recreation can
