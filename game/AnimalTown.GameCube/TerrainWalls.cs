@@ -18,20 +18,22 @@ internal sealed class TerrainWalls
     internal TerrainWalls(TerrainSoil shared){this.shared=shared;}
     private int soilUsed,total;
     private Town? town;private float x,z;private int version=-1,materials=-1;private bool gallery;
+    private readonly CylinderPose[] rows=new CylinderPose[TerrainStream.Height+1];
+    private int rowBase=int.MinValue;
     internal int Triangles=>total/3;
     internal Mesh? SoilMesh=>soilUsed==0?null:soilMesh?.Mesh;
     internal Mesh? GroundMesh(int slot)=>used[slot]==0?null:groundMesh[slot]?.Mesh;
     internal void PrepareRegion(GameState state,TerrainRenderer floor,int left,int top)
     {
         town=state.Town;z=0;soilUsed=total=0;for(int i=0;i<used.Length;i++)used[i]=0;
+        rowBase=top;for(int i=0;i<rows.Length;i++)rows[i]=CylinderWorld.Surface(top+i,0);
         for(int cz=top;cz<top+TerrainStream.Height;cz++)for(int cx=left;cx<left+TerrainStream.Width;cx++){
             int mode=WaterTerrain.IsCoast(town.At(cx,cz))?1:TerrainElevation.Mode(town,cx,cz);
             if(town.At(cx,cz)==(int)Terrain.Water){RiverCell(state,floor,cx,cz);continue;}
             if(WaterSurface.IsWater(town,cx,cz))continue;
             if(mode>=TerrainElevation.CornerUpLeft){if(cx%2==0&&cz%2==0)PlacedSection(state,floor,mode-2,cx,cz);continue;}
-            int slot=floor.GroundSlot(state,cx,cz);
-            Edge(cx,cz,cx,cz,cx+1,cz,cx,cz-1,slot);Edge(cx,cz,cx+1,cz,cx+1,cz+1,cx+1,cz,slot);
-            Edge(cx,cz,cx+1,cz+1,cx,cz+1,cx,cz+1,slot);Edge(cx,cz,cx,cz+1,cx,cz,cx-1,cz,slot);
+            Edge(state,floor,cx,cz,cx,cz,cx+1,cz,cx,cz-1);Edge(state,floor,cx,cz,cx+1,cz,cx+1,cz+1,cx+1,cz);
+            Edge(state,floor,cx,cz,cx+1,cz+1,cx,cz+1,cx,cz+1);Edge(state,floor,cx,cz,cx,cz+1,cx,cz,cx-1,cz);
         }
         Commit();
     }
@@ -39,7 +41,7 @@ internal sealed class TerrainWalls
     {
         int px=(int)CylinderWorld.ScrollAnchor(state.X),pz=(int)CylinderWorld.ScrollAnchor(state.Z);
         if(town==state.Town&&x==px&&version==pz&&materials==floor.MaterialRevision&&gallery==preview)return;
-        town=state.Town;x=px;version=pz;materials=floor.MaterialRevision;gallery=preview;z=0;
+        town=state.Town;x=px;version=pz;materials=floor.MaterialRevision;gallery=preview;z=0;rowBase=int.MinValue;
         soilUsed=total=0;for(int i=0;i<used.Length;i++)used[i]=0;
         if(preview)for(int i=0;i<8;i++){TerrainCliffBinding.PreviewOrigin(px,pz,i,out int ox,out int oz);Section(state,floor,i,ox,oz);}
         Commit();
@@ -84,7 +86,14 @@ internal sealed class TerrainWalls
     private static Vector3 Mid(Vector3 a,Vector3 b)=>new Vector3((a.X+b.X)*.5f,(a.Y+b.Y)*.5f,(a.Z+b.Z)*.5f);
     private VertexPositionColorTexture GroundVertex(Vector3 p)=>Vertex(p.X,p.Z,p.Y,p.X*.5f,p.Z*.5f);
     private void Cap(int slot,Vector3 a,Vector3 b,Vector3 c)=>Add(slot,GroundVertex(a),GroundVertex(b),GroundVertex(c));
-    private Vector3 Point(float px,float pz,float h){int row=(int)Math.Floor(pz);var a=CylinderWorld.Surface(row,z,h);var b=CylinderWorld.Surface(row+1,z,h);float t=pz-row;return new Vector3(px,a.Y+(b.Y-a.Y)*t,a.Z+(b.Z-a.Z)*t);}
+    private Vector3 Point(float px,float pz,float h)
+    {
+        int row=(int)Math.Floor(pz),at=rowBase==int.MinValue?-2:row-rowBase;float t=pz-row;
+        var a=(uint)at<rows.Length?rows[at]:CylinderWorld.Surface(row,z);
+        var b=(uint)(at+1)<rows.Length?rows[at+1]:t==0?a:CylinderWorld.Surface(row+1,z);
+        float ay=a.Y+h*a.UpY,az=a.Z+h*a.UpZ,by=b.Y+h*b.UpY,bz=b.Z+h*b.UpZ;
+        return new Vector3(px,ay+(by-ay)*t,az+(bz-az)*t);
+    }
     private VertexPositionColorTexture Vertex(float px,float pz,float h,float u,float v)=>new VertexPositionColorTexture(Point(px,pz,h),Color32.White,new Vector2(u,v));
     private void Add(int slot,VertexPositionColorTexture a,VertexPositionColorTexture b,VertexPositionColorTexture c)
     {
@@ -97,7 +106,7 @@ internal sealed class TerrainWalls
         var buffer=ground[slot]=GeometryStaging.Reserve(groundMesh[slot]!,ground[slot]??new VertexPositionColorTexture[0],at,at+3,FrameProfile.Counters);
         buffer[at++]=a;buffer[at++]=b;buffer[at++]=c;used[slot]=at;
     }
-    private void Edge(int cx,int cz,int ax,int az,int bx,int bz,int nx,int nz,int slot)
+    private void Edge(GameState state,TerrainRenderer floor,int cx,int cz,int ax,int az,int bx,int bz,int nx,int nz)
     {
         if(town!.At(cx,cz)==(int)Terrain.Bridge)return;
         if(town.At(cx,cz)==(int)Terrain.Beach&&WaterTerrain.IsSea(town,nx,nz))return;
@@ -105,6 +114,7 @@ internal sealed class TerrainWalls
         if(RiverBankGeometry.HasEdge(town,nx,nz,riverSide))return;
         float a=TerrainElevation.AtCell(town!,cx,cz,ax,az),b=TerrainElevation.AtCell(town!,cx,cz,bx,bz),la=TerrainElevation.AtCell(town!,nx,nz,ax,az),lb=TerrainElevation.AtCell(town!,nx,nz,bx,bz);
         if(a<=la+.001f&&b<=lb+.001f)return;la=Math.Min(a,la);lb=Math.Min(b,lb);
+        int slot=floor.GroundSlot(state,cx,cz);
         float sa=Math.Max(la,a-TerrainCliffGeometry.LipDepth),sb=Math.Max(lb,b-TerrainCliffGeometry.LipDepth);
         Wall(ax,az,bx,bz,sa,sb,la,lb,-1);Wall(ax,az,bx,bz,a,b,sa,sb,slot);
     }
