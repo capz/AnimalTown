@@ -47,9 +47,9 @@ static void town_rim_apply(const float normal[16],const DndDrawEffect *effect,bo
   Mtx n,post={{.5f,0,0,.5f},{0,.5f,0,.5f},{0,0,0,1}};
   for(int r=0;r<3;r++)for(int c=0;c<4;c++)n[r][c]=c<3?normal[r*4+c]:0;
   GX_LoadTexMtxImm(n,GX_TEXMTX9,GX_MTX3x4);
-  GX_LoadTexMtxImm(post,GX_PTTEXMTX0,GX_MTX3x4);
+  GX_LoadTexMtxImm(post,GX_DTTMTX0,GX_MTX3x4);
   /* Normalize AFTER inverse-transpose, then bias normal XY into the lookup.
    * Refresh this matrix for every instance/node even when materials reuse. */
-  GX_SetTexCoordGen2(GX_TEXCOORD2,GX_TG_MTX3x4,GX_TG_NRM,GX_TEXMTX9,GX_TRUE,GX_PTTEXMTX0);
+  GX_SetTexCoordGen2(GX_TEXCOORD2,GX_TG_MTX3x4,GX_TG_NRM,GX_TEXMTX9,GX_TRUE,GX_DTTMTX0);
 }
 #endif
