@@ -133,6 +133,21 @@ internal static class TerrainEdgeChecks
         before=updates;for(int n=0;n<10;n++)Tick(80.02f,80.02f);check(updates==before,"fractional movement reuses cached section geometry");
         stream.Reset();Tick(1,1);check(!stream.Ready,"cold teleport requires a covered loading transition rather than a terrain construction burst");
         foreach(float x in new[]{.001f,159.999f})foreach(float z in new[]{.001f,159.999f}){stream.Reset();for(int n=0;n<TerrainStream.Capacity;n++)Tick(x,z);check(stream.Ready&&stream.MissingWanted==0,"streaming at every town boundary remains bounded and complete");}
+        var staged=new TerrainStream();int remaining=0,held=-1;
+        void StagedFrame(float x,float z){
+            staged.Prepare(x,z);
+            for(int step=0;step<8&&staged.BuildSlot>=0;step++){
+                if(remaining==0){held=staged.BuildSlot;staged.Hold();remaining=TerrainStream.Height*3+1;}
+                check(staged.BuildSlot==held&&!staged.Visible[held],"unfinished sections stay pinned and hidden across frames");
+                if(--remaining==0){staged.Complete();staged.Prepare(x,z);}
+            }
+        }
+        for(int n=0;n<TerrainStream.Capacity*2;n++)StagedFrame(50,50);
+        check(staged.Ready&&staged.MissingWanted==0,"staged uploads warm up without publishing partial terrain");
+        for(int n=0;n<600;n++){StagedFrame(50+n*.1187f,50+n*.1187f);check(staged.Ready,"bounded row-stage throughput preserves visibility while running");}
+        staged.Reset();staged.Prepare(50,50);int active=staged.BuildSlot;staged.Hold();staged.Prepare(140,140);
+        check(staged.BuildSlot==active,"a camera jump cannot recycle an in-progress section");staged.Complete();
+        check(!staged.Ready,"finishing an obsolete section does not mark the new view ready");
         var state=new GameState(17);Array.Fill(state.Town.Tiles,(byte)Terrain.Grass);Array.Clear(state.Town.Elevation);
         var strips=new FloorStrips(TerrainStream.Width*TerrainStream.Height);strips.PrepareRegion(state,data,80,80,TerrainStream.Width,TerrainStream.Height);
         check(strips.Count==TerrainStream.Height,"uniform sections retain merged horizontal floor strips");

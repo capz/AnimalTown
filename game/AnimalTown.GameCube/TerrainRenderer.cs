@@ -6,7 +6,7 @@ using Dolphin.Graphics;
 using Hypercube.GameCube;
 
 // Immutable small sections revolve about one axis. The fixed cache prefetches
-// and recycles sections under a 2ms / two-section work limit per frame.
+// and generates row stages under a 2ms / eight-stage work limit per frame.
 internal sealed class TerrainRenderer
 {
     private readonly TerrainStream stream=new TerrainStream();
@@ -24,6 +24,7 @@ internal sealed class TerrainRenderer
     private readonly Transform[] poses=new Transform[128];
     private int batchCount;
     private long geometryRevision;
+    private int building=-1;
     internal long GeometryRevision=>geometryRevision;
     internal bool Ready=>stream.Ready;
     internal int LoadingRemaining=>stream.MissingVisible;
@@ -59,18 +60,20 @@ internal sealed class TerrainRenderer
             season=next;
             MaterialRevision++;
         }
-        if(changed||cachedTown!=state.Town||cachedTerrainVersion!=state.Town.TerrainVersion){stream.Reset();cachedTown=state.Town;cachedTerrainVersion=state.Town.TerrainVersion;}
+        if(changed||cachedTown!=state.Town||cachedTerrainVersion!=state.Town.TerrainVersion){stream.Reset();building=-1;cachedTown=state.Town;cachedTerrainVersion=state.Town.TerrainVersion;}
         var scroll=CylinderWorld.Scroll(0,state.Z);
         ScrollTransform.LocalPosition=new Vector3(0,scroll.Y,scroll.Z);
         ScrollTransform.LocalRotation=new Quaternion(scroll.HalfSin,0,0,scroll.HalfCos);
-        long deadline=Clock.Timestamp+2000;int built=0;
+        long deadline=Clock.Timestamp+2000;int steps=0;stream.Prepare(state.X,state.Z);
         do{
-            stream.Prepare(state.X,state.Z);int slotToBuild=stream.BuildSlot;
-            if(slotToBuild<0)break;
-            var section=sections[slotToBuild];if(section==null)sections[slotToBuild]=section=new TerrainSection(soil,waterMaterial);
-            section.Build(state,this,staging,stream.X[slotToBuild],stream.Z[slotToBuild],data);
-            stream.Complete();geometryRevision++;built++;
-        }while(built<2&&Clock.Timestamp<deadline&&stream.MissingWanted>0);
+            if(building<0){
+                if(stream.BuildSlot<0)break;building=stream.BuildSlot;stream.Hold();
+                if(sections[building]==null)sections[building]=new TerrainSection(soil,waterMaterial);
+                sections[building]!.Begin(state,stream.X[building],stream.Z[building]);
+            }
+            bool complete=sections[building]!.Advance(state,this,staging,data);steps++;geometryRevision++;
+            if(complete){stream.Complete();building=-1;stream.Prepare(state.X,state.Z);}
+        }while(steps<8&&Clock.Timestamp<deadline);
         gallery.PrepareGallery(state,this,cliffPreview);
         VisibleTriangles=gallery.Triangles;RejectedQuads=0;
         for(int i=0;i<stream.Count;i++)if(stream.Visible[i])VisibleTriangles+=sections[i]!.Triangles;

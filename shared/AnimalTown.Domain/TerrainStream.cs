@@ -25,10 +25,9 @@ public sealed class TerrainStream
     public int WantedCount {get;private set;}
     public int VisibleCount {get;private set;}
     public bool Ready=>MissingVisible==0&&Count!=0;
-    private int cursor;private float cachedX=float.NaN,cachedZ;
-    private bool buildVisible;
+    private int cursor,building=-1;private float cachedX=float.NaN,cachedZ;
     public void Reset()
-    {Array.Clear(lookup,0,lookup.Length);Array.Clear(ready,0,ready.Length);Array.Clear(Visible,0,Visible.Length);Count=0;cursor=0;BuildSlot=-1;MissingVisible=MissingWanted=0;cachedX=float.NaN;}
+    {Array.Clear(lookup,0,lookup.Length);Array.Clear(ready,0,ready.Length);Array.Clear(Visible,0,Visible.Length);Count=0;cursor=0;building=BuildSlot=-1;MissingVisible=MissingWanted=0;cachedX=float.NaN;}
     private static int Index(int x,int z)
     {
         int col=x/Width-MinX,row=z/Height-MinZ;
@@ -40,7 +39,7 @@ public sealed class TerrainStream
         BuildSlot=-1;
         // Selection has a guard for this half-metre bucket and eye height 0..2.
         float fx=(float)Math.Floor(x*2)*.5f+.25f,fz=(float)Math.Floor(z*2)*.5f+.25f;
-        if(cachedX==fx&&cachedZ==fz&&MissingWanted==0)return;
+        if(cachedX==fx&&cachedZ==fz&&MissingWanted==0&&building<0)return;
         if(cachedX!=fx||cachedZ!=fz){
         cachedX=fx;cachedZ=fz;WantedCount=0;
         int left=(int)Math.Floor((fx-CylinderWorld.ViewHalfWidth)/Width)*Width,right=(int)Math.Floor((fx+CylinderWorld.ViewHalfWidth)/Width)*Width;
@@ -59,14 +58,15 @@ public sealed class TerrainStream
         }
         }
         Array.Clear(wanted,0,wanted.Length);Array.Clear(Visible,0,Visible.Length);MissingVisible=MissingWanted=VisibleCount=0;
-        float best=float.MaxValue;int nextX=0,nextZ=0;bool nextVisible=false;
+        float best=float.MaxValue;int nextX=0,nextZ=0;
         for(int n=0;n<WantedCount;n++){
             int slot=lookup[Index(candidateX[n],candidateZ[n])]-1;bool visible=candidateVisible[n];
             if(visible)VisibleCount++;
             if(slot>=0){wanted[slot]=true;Visible[slot]=visible&&ready[slot];if(ready[slot])continue;}
             MissingWanted++;if(visible)MissingVisible++;
-            if(priority[n]<best){best=priority[n];nextX=candidateX[n];nextZ=candidateZ[n];nextVisible=visible;}
+            if(priority[n]<best){best=priority[n];nextX=candidateX[n];nextZ=candidateZ[n];}
         }
+        if(building>=0){BuildSlot=building;return;}
         if(MissingWanted==0)return;
         int selected=lookup[Index(nextX,nextZ)]-1;
         if(selected<0){
@@ -78,11 +78,14 @@ public sealed class TerrainStream
             }
             X[selected]=nextX;Z[selected]=nextZ;lookup[Index(nextX,nextZ)]=selected+1;ready[selected]=false;
         }
-        BuildSlot=selected;buildVisible=nextVisible;
+        BuildSlot=selected;
     }
     public void Complete()
     {
         if(BuildSlot<0)throw new InvalidOperationException("No terrain section awaiting completion");
-        ready[BuildSlot]=true;Visible[BuildSlot]=buildVisible;MissingWanted--;if(buildVisible)MissingVisible--;BuildSlot=-1;
+        int slot=BuildSlot;ready[slot]=true;Visible[slot]=false;
+        for(int n=0;n<WantedCount;n++)if(candidateX[n]==X[slot]&&candidateZ[n]==Z[slot]){MissingWanted--;Visible[slot]=candidateVisible[n];if(candidateVisible[n])MissingVisible--;break;}
+        building=BuildSlot=-1;
     }
+    public void Hold(){if(BuildSlot<0)throw new InvalidOperationException("No terrain section to hold");building=BuildSlot;}
 }
