@@ -18,7 +18,10 @@ static class Program
         {
             if(args.Length<2)throw new ArgumentException("repack-textures ROOT INPUT.glb OUTPUT.glb --size128|--size256|--size512|--size1024|--sizeOriginal [--max-rmse N]; or repack-check ROOT");
             Root=Path.GetFullPath(args[1]);
-            if(args[0]=="repack-textures")TextureRepacker.Command(args);
+            if(args[0]=="buildings-generate")BuildingAssets.Generate(Root);
+            else if(args[0]=="buildings")BuildingAssets.Cook(Root);
+            else if(args[0]=="building-check")BuildingAssets.Check(Root);
+            else if(args[0]=="repack-textures")TextureRepacker.Command(args);
             else if(args[0]=="town-preview")TownGenerationPreview.Run(args[2],int.Parse(args[3]),args.Length>4?int.Parse(args[4]):1);
             else if(args[0]=="terrain-primitives")TerrainPrimitiveAssets.Build(Root,args.Length>2?int.Parse(args[2]):128);
             else if(args[0]=="repack-check")TextureRepackerChecks.Run(Root);
@@ -154,6 +157,7 @@ static class Program
             int name=count*12+(int)Read(fst,i*12);if(name<count*12||name>=length)throw new InvalidDataException("FST name invalid");int end=Array.IndexOf(fst,(byte)0,name);if(end<0)throw new InvalidDataException("FST name not terminated");
             string n=Encoding.ASCII.GetString(fst,name,end-name);uint offset=Read(fst,i*12+4),size=Read(fst,i*12+8);
             if(!seen.Add(n)||offset%32768!=0||offset<previous||(long)offset+size>f.Length)throw new InvalidDataException("FST range invalid");previous=offset+size;
+            if(n=="buildings.bin"){byte[] descriptor=new byte[size];f.Position=offset;f.ReadExactly(descriptor);AnimalTown.BuildingCatalog.Configure(descriptor);}
             if(n=="opening.bnr"){byte[] b=new byte[size];f.Position=offset;f.ReadExactly(b);if(b.Length!=6496||Encoding.ASCII.GetString(b,0,4)!="BNR1")throw new InvalidDataException("Banner invalid");}
         }
         foreach(string n in new[]{"opening.bnr","BUILD.txt","savebanner.rgb5a3","saveicon.rgb5a3","gorditas-bold.dndtex","gorditas-bold.metrics","wordmark.dndtex","item-icons.dndtex","cat.dndmodel","fox.dndmodel","bunny.dndmodel","giraffe.dndmodel","hamster.dndmodel","spaniel.dndmodel","building.dndmodel"})if(!seen.Contains(n))throw new InvalidDataException("Missing "+n);
@@ -161,6 +165,11 @@ static class Program
         if(!seen.Contains("tent.dndmodel"))throw new InvalidDataException("Missing supplied tent model");
         foreach(string season in new[]{"spring","summer","fall","winter"})foreach(string extension in new[]{"bin","dndtex"})if(!seen.Contains(extension=="bin"?"floor-"+season+".bin":"floor-"+season+(seen.Contains("floor-outdoor-neutral.dndtex")?"-1.dndtex":"-0.dndtex")))throw new InvalidDataException("Missing seasonal terrain asset");
         if(!seen.Contains("terrain.cfg"))throw new InvalidDataException("Missing terrain configuration");
+        if(!seen.Contains("buildings.bin"))throw new InvalidDataException("Missing building catalog");
+        for(int type=0;type<AnimalTown.BuildingCatalog.Count;type++){
+            var d=AnimalTown.BuildingCatalog.Get(type);foreach(string model in new[]{d.Exterior,d.Door,d.Floor,d.North,d.East,d.South,d.West})
+                if(!seen.Contains(model+"-tex128.dndmodel"))throw new InvalidDataException("Missing building model "+model);
+        }
         if(!seen.Contains("cliff-soil.dndtex"))throw new InvalidDataException("Missing shared cliff soil texture");
         Console.WriteLine("Verified full-size bootable disc structure, "+(count-1)+" files");
     }

@@ -16,6 +16,7 @@ The runner and main-branch release workflow use the same dependency map in
 | Native UV diagnostics | Native UV topology checks |
 | Ground texture/import | Terrain importer and core render/texture checks |
 | Repacker | Repacker checks |
+| Buildings, portals, interiors and journeys | Building, movement, life and save checks; definition/model changes also run the building importer checks |
 | Villager navigation/naming | Terrain-life and generation checks |
 | Server/database | Backend integration |
 | Shared gameplay/save behavior | Managed domain suites and backend integration |
@@ -29,7 +30,7 @@ checks for an unrecognized path.
 
 The managed runner accepts `--suites` with comma-separated names: `ui`, `menu`,
 `text`, `trim`, `terrain`, `movement`, `dialogue`, `generation`, `life`, `saves`,
-`core`. Omitting it still runs everything. Unknown names fail rather than passing
+`buildings`, `core`. Omitting it still runs everything. Unknown names fail rather than passing
 with zero checks. The older inline gameplay/render/texture checks remain together
 as `core`; they can be split later if their measured cost warrants it.
 

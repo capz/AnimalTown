@@ -188,7 +188,20 @@ with (root/'emulator.log').open('w') as log:
         if p.poll() is not None:
             raise RuntimeError(f'Dolphin exited during boot ({p.returncode}); see {root / "emulator.log"}')
         screenshot('screen.png')
-        if '--cliff-kit' in sys.argv:
+        if '--building-reload' in sys.argv:
+            press('A');time.sleep(5);screenshot('building-reloaded-interior.png')
+        elif '--buildings' in sys.argv:
+            os.write(controller,b'PRESS L\nPRESS R\n');time.sleep(.2);press('B');os.write(controller,b'RELEASE L\nRELEASE R\n')
+            time.sleep(3);screenshot('building-exterior.png')
+            time.sleep(10);screenshot('building-npc-journey.png')
+            os.write(controller,b'PRESS A\n');time.sleep(.5);screenshot('building-door-opening.png');os.write(controller,b'RELEASE A\n')
+            time.sleep(4);screenshot('building-interior-0.png')
+            for view in range(1,5):
+                os.write(controller,b'SET C 0.9 0.5\n');time.sleep(2);os.write(controller,b'SET C 0.5 0.5\n');time.sleep(1);screenshot(f'building-interior-{view}.png')
+            press('L');time.sleep(1)
+            press('START');time.sleep(8);screenshot('building-save-indoor.png');press('B')
+            press('A');time.sleep(4);screenshot('building-exited.png')
+        elif '--cliff-kit' in sys.argv:
             press('A')
             if '--new-town' in sys.argv:press('D_UP');press('A');press('A');time.sleep(2);press('B');press('B')
             time.sleep(3);screenshot('cliff-normal.png')

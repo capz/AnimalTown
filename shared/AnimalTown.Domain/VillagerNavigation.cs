@@ -17,6 +17,7 @@ public sealed class VillagerNavigation
         internal uint Random;
     }
     public readonly Route[] Routes=new Route[6];
+    public readonly bool[] Paused=new bool[6];
     private readonly ushort[] parent=new ushort[Town.Cells],queue=new ushort[Town.Cells];
     private readonly bool[] trees=new bool[Town.Cells];
     private readonly int[] localParent=new int[169],localQueue=new int[169];
@@ -36,13 +37,18 @@ public sealed class VillagerNavigation
             for(int i=0;i<town.PlacedCount;i++){var p=town.Placed[i];if(p.Room!=0)continue;int w=Catalog.Items[p.Item].Width,h=Catalog.Items[p.Item].Height;if((p.Rotation&1)!=0){int swap=w;w=h;h=swap;}for(int z=p.Z;z<p.Z+h;z++)for(int x=p.X;x<p.X+w;x++)if(town.Inside(x,z))trees[z*Town.Width+x]=true;}
             treeCount=town.GroundCount;placedCount=town.PlacedCount;plotStamp=town.HouseZ*Town.Width+town.HouseX;
         }
+        if(worker>=0&&Paused[worker])worker=-1;
         if(worker>=0)Search();
         for(int i=0;i<6;i++){
-            var r=Routes[i];r.Moving=false;if(r.Wait>0){r.Wait--;continue;}
+            var r=Routes[i];r.Moving=false;if(Paused[i]||town.Residents[i].Space!=0)continue;if(r.Wait>0){r.Wait--;continue;}
             if(r.Index>=r.Length&&r.LocalIndex>=r.LocalLength){if(worker<0){if(!r.Replan)Goal(i);r.Replan=false;Begin(i);}continue;}
-            Walk(i);
+            if(town.Residents[i].Space==0)Walk(i);
         }
     }
+    public void Target(int agent,int x,int z)
+    {var r=Routes[agent];if(worker==agent)worker=-1;r.GoalX=x;r.GoalZ=z;r.Length=r.Index=r.LocalIndex=r.LocalLength=0;r.Replan=true;r.Wait=0;Array.Clear(r.Observed,0,r.Observed.Length);}
+    public void Stop(int agent)
+    {if(worker==agent)worker=-1;var r=Routes[agent];r.Length=r.Index=r.LocalLength=r.LocalIndex=0;r.Wait=2;r.Moving=false;}
     private void Goal(int agent)
     {
         var r=Routes[agent];var town=state!.Town;r.GoalKind=r.InitialGoal>=0?r.InitialGoal:Next(r,6);r.InitialGoal=-1;
@@ -69,8 +75,8 @@ public sealed class VillagerNavigation
     {
         var town=state!.Town;if(!town.Walkable(x,z)||trees[z*Town.Width+x])return true;
         if(state.HousePlaced&&x>=town.HouseX+2&&x<=town.HouseX+4&&z>=town.HouseZ+1&&z<=town.HouseZ+3)return true;
-        if(people){for(int i=0;i<6;i++)if(i!=agent){var v=town.Residents[i];if(Math.Abs(v.PosX-x-.5f)<.7f&&Math.Abs(v.PosZ-z-.5f)<.7f)return true;}
-            if(Math.Abs(state.X-x-.5f)<.7f&&Math.Abs(state.Z-z-.5f)<.7f)return true;}
+        if(people){for(int i=0;i<6;i++)if(i!=agent){var v=town.Residents[i];if(v.Space==0&&Math.Abs(v.PosX-x-.5f)<.7f&&Math.Abs(v.PosZ-z-.5f)<.7f)return true;}
+            if(state.Space==0&&Math.Abs(state.X-x-.5f)<.7f&&Math.Abs(state.Z-z-.5f)<.7f)return true;}
         return false;
     }
     private void Begin(int agent)

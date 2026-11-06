@@ -5,6 +5,7 @@ public sealed class Villager
 {
     public int X,Z,Friendship,Request,RequestDay,Met;
     public int HomeX,HomeZ;
+    public int Space,JourneyBuilding=-1,JourneyPhase,Dwell,JourneyNextX=-1,JourneyNextZ=-1;
     public float PosX,PosZ,Yaw;
     public string Name="",Phrase="";
 }

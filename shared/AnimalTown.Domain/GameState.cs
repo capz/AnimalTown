@@ -1,6 +1,6 @@
 namespace AnimalTown;
 
-public sealed class GameState
+public sealed partial class GameState
 {
     public readonly Town Town;
     public const int MaximumPockets=30;
@@ -51,7 +51,7 @@ public sealed class GameState
     }
     public bool PlaceHouse(int x,int z,bool relocate)
     {
-        if(!Town.ValidPlot(x,z)||(relocate&&Wallet<50000))return false;
+        if(Space!=0||!Town.ValidPlot(x,z)||(relocate&&Wallet<50000))return false;
         if(!HouseEntrance(x,z,out float arrivalX,out float arrivalZ))return false;
         int dx=x-Town.HouseX,dz=z-Town.HouseZ;
         for(int i=0;i<Town.PlacedCount;i++)if(Town.Placed[i].Room==0){Town.Placed[i].X+=dx;Town.Placed[i].Z+=dz;}
@@ -67,13 +67,17 @@ public sealed class GameState
     public bool MoveToHouseEntrance()
     {if(!HousePlaced||!HouseEntrance(Town.HouseX,Town.HouseZ,out float x,out float z))return false;X=x;Z=z;return true;}
     public bool InGarden(int x,int z)=>HousePlaced&&x>=Town.HouseX&&x<Town.HouseX+GardenWidths[GardenTier]&&z>=Town.HouseZ&&z<Town.HouseZ+GardenHeights[GardenTier];
-    public bool CanPlace(int id,int x,int z,int rotation,int room,int actor)
+    public bool CanPlace(int id,int x,int z,int rotation,int room,int actor,bool existing=false)
     {
-        if(actor!=0||rotation<0||rotation>3||room<0||room>4||!Catalog.Has(id,ItemFlags.Place)||(!HousePlaced))return false;
+        if(rotation<0||rotation>3||!BuildingWorld.ValidSpace(room)||!Catalog.Has(id,ItemFlags.Place))return false;
+        bool ownPlayer=actor==0&&HousePlaced&&room>=0&&room<=4;
+        bool ownResident=actor>=1&&actor<=6&&room==15+actor;
+        if(!ownPlayer&&!ownResident)return false;
         if(room==0&&!Catalog.Has(id,ItemFlags.Outdoor))return false;
         if((room==2&&HouseTier<3)||(room==3&&HouseTier<4)||(room==4&&HouseTier<5))return false;
         int w=Catalog.Items[id].Width,h=Catalog.Items[id].Height;if((rotation&1)!=0){int swap=w;w=h;h=swap;}
-        int size=room==1?(HouseTier==0?4:HouseTier==1?6:8):room==3?8:6;
+        if(room!=0&&!existing&&!BuildingWorld.Available(this,room))return false;
+        int size=room==0?0:existing&&!BuildingCatalog.Available(BuildingTypes[BuildingWorld.Building(room)])?16:BuildingWorld.Size(this,room);
         for(int j=0;j<h;j++)for(int i=0;i<w;i++)
         {
             int tx=x+i,tz=z+j;
@@ -83,7 +87,7 @@ public sealed class GameState
                 if(tx>=Town.HouseX+2&&tx<=Town.HouseX+4&&tz>=Town.HouseZ+1&&tz<=Town.HouseZ+3)return false;
                 if(tx==Town.HouseX+1&&tz==Town.HouseZ+3)return false;
             }
-            else if(tx<0||tz<0||tx>=size||tz>=size)return false;
+            else if(tx<0||tz<0||tx>=size||tz>=size||!existing&&BuildingWorld.DoorClearance(size,tx,tz,1,1))return false;
             for(int p=0;p<Town.PlacedCount;p++)
             {
                 var q=Town.Placed[p];if(q.Room!=room)continue;
@@ -120,10 +124,11 @@ public sealed class GameState
     public bool CanWalk(float x,float z,int room)
     {
         int tx=(int)x,tz=(int)z;
-        if(room!=0){int size=HouseTier==0?4:HouseTier==1?6:8;return x>=.2f&&z>=.2f&&x<size-.2f&&z<size-.2f;}
+        if(room!=0)return BuildingWorld.CanStand(this,room,x,z);
         if(!Town.Walkable(tx,tz)||x<.2f||z<.2f)return false;
         if(HousePlaced&&tx>=Town.HouseX+2&&tx<=Town.HouseX+4&&tz>=Town.HouseZ+1&&tz<=Town.HouseZ+3)return false;
         int g=Town.FindGround(tx,tz,3);if(g>=0)return false;
+        for(int i=0;i<Town.PlacedCount;i++){var p=Town.Placed[i];if(p.Room!=0)continue;BuildingWorld.Footprint(p,out int w,out int d);if(x>p.X-BuildingWorld.Radius&&x<p.X+w+BuildingWorld.Radius&&z>p.Z-BuildingWorld.Radius&&z<p.Z+d+BuildingWorld.Radius)return false;}
         return true;
     }
     public string Talk(int index)

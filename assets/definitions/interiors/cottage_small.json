@@ -1,0 +1,66 @@
+{
+  "version": 1,
+  "id": "cottage_small",
+  "size": 4,
+  "units": "metres",
+  "up": "\u002BY",
+  "walls": [
+    "north",
+    "east",
+    "south",
+    "west"
+  ],
+  "door": {
+    "center": [
+      2,
+      0,
+      4
+    ],
+    "arrival": [
+      2,
+      0,
+      3.35
+    ]
+  },
+  "camera": {
+    "pitch": "fixed",
+    "quarterTurns": true,
+    "heightScale": 0.7,
+    "heightOffset": 2.8,
+    "backScale": 0.9,
+    "backOffset": 1.2
+  },
+  "activities": [
+    [
+      3,
+      2
+    ],
+    [
+      1.8,
+      2.2
+    ]
+  ],
+  "fixtures": [
+    {
+      "x": 0.25,
+      "z": 0.35,
+      "width": 1.15,
+      "depth": 1.6,
+      "height": 0.5,
+      "kind": 1
+    },
+    {
+      "x": 2.65,
+      "z": 0.35,
+      "width": 1,
+      "depth": 0.7,
+      "height": 0.8,
+      "kind": 2
+    }
+  ],
+  "floor": "assets/models/interiors/cottage_small/floor.glb",
+  "north": "assets/models/interiors/cottage_small/north.glb",
+  "east": "assets/models/interiors/cottage_small/east.glb",
+  "south": "assets/models/interiors/cottage_small/south.glb",
+  "west": "assets/models/interiors/cottage_small/west.glb"
+}

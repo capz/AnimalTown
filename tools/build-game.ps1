@@ -29,6 +29,7 @@ Run dotnet @('build', 'tools/AnimalTown.Tools', '-c', 'Release', '-v', 'quiet')
 if('repack' -in $validation.tooling){Run dotnet @('run','--project','tools/AnimalTown.Tools','-c','Release','--no-build','--','repack-check',$projectRoot)}
 if('terrain' -in $validation.tooling){Run dotnet @('run','--project','tools/AnimalTown.Tools','-c','Release','--no-build','--','terrain-check',$projectRoot)}
 $assetTools = "$sdkRoot/tools/DolphinDotNet.Assets/bin/Release/net8.0/DolphinDotNet.Assets.dll"
+Run dotnet @('run','--project','tools/AnimalTown.Tools','-c','Release','--no-build','--','buildings',$projectRoot)
 Run dotnet @('build', "$sdkRoot/tools/DolphinDotNet.Assets", '-c', 'Release', '-v', 'quiet')
 Run dotnet @('run','--project','tools/AnimalTown.Tools','-c','Release','--no-build','--','audit',$projectRoot)
 if (!$SkipAssets) {
@@ -42,6 +43,8 @@ if (!$SkipAssets) {
         building='world-stuctures/Meshy_AI_animal_crossing_konbi_1102122741_texture.glb'
         tent='world-stuctures/structure_tent.glb'
     }
+    $buildingImports=Get-Content out/building-assets.json -Raw|ConvertFrom-Json -AsHashtable
+    foreach($key in $buildingImports.Keys){$assetMap[$key]=$buildingImports[$key].Substring(14)}
     # Retire stale generated outputs from the previous species list without
     # touching artist sources. Never package both old and replacement villagers.
     foreach($retired in @('gecko','prairie','deciduous','palm','pine')){

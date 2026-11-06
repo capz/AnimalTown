@@ -21,8 +21,8 @@ internal static class TownTrimChecks
             check(trees==128&&bounded,"only trees inside the cropped town remain and every ground record stays in bounds");
             for(int i=0;i<6;i++)check(state.Town.Inside(state.Town.Residents[i].X,state.Town.Residents[i].Z),"every imported resident stays in bounds");
             byte[] encoded=SaveCodec.Encode(state);
-            check(Int(encoded,4)==6&&Int(encoded,24)==160&&Int(encoded,28)==160,"v6 save records the 160 x 160 fine-cell dimensions");
-            check(encoded.SequenceEqual(SaveCodec.Encode(SaveCodec.Decode(encoded))),"trimmed v6 save is stable on repeated loading and saving");
+            check(Int(encoded,4)==7&&Int(encoded,24)==160&&Int(encoded,28)==160,"v7 save records the 160 x 160 fine-cell dimensions");
+            check(encoded.SequenceEqual(SaveCodec.Encode(SaveCodec.Decode(encoded))),"trimmed v7 save is stable on repeated loading and saving");
             check(encoded.Length<fixture.Length,"cropped terrain reduces the serialized save size");
         }
         var retained=SaveCodec.Decode(normal);
