@@ -131,11 +131,32 @@ Protocol v4 adds complete imported-model primitive/texture counts and replaces
 cache hit/miss fields with drawing API entries/material setups. It also labels
 in-ISO batch comparisons. See [batched-drawing.md](batched-drawing.md).
 
+Protocol v5 retains those fields and records a terrain mesh revision flag in
+bit 15 of the scenario word. The decoder reports actual rebuilt/cached frame
+counts instead of inferring them from elapsed preparation time; animated water
+and cloud materials still need CPU work on cached frames. Older captures remain
+readable. `--terrain-scroll --profile-seconds 5 --dsp-hle` captures slow axial
+motion up/down a generated ramp, lateral motion and stationary frames.
+
+Outdoor ground, water, foam and banks now share a rigid rotation about the
+cylinder axis. Their pooled meshes are baked at the centre of a two-metre
+scroll window. Fractional player movement updates one transform, with no
+topology rebuild, vertex rewrite or geometry commit. East/west movement uses
+the camera's translation. The cached selection includes a guard for the whole
+window and both terrace heights; UVs retain their logical-world coordinates.
+
+Crossing a window boundary refreshes the visible material batches. Terrain
+edits, town/season changes and cliff inspection also invalidate the appropriate
+caches. This deliberately keeps merged strips and few material draw calls;
+it does not create a separate mesh per row or keep an entire town resident.
+Window refreshes still rebuild the visible patch rather than updating only an
+entering row. The existing strip, water and wall allocation limits remain.
+
 `present_total` includes `gpu_blocking_wait` and `retrace_wait`; do not add them
 together. Blocking GX completion is outstanding-work wait, not total GPU time.
 `frame_interval` includes presentation and deliberate delay. Simulation excludes
 the separately recorded skinning work. World samples include movement and idle;
-terrain preparation is cached while the camera is stationary.
+terrain geometry is cached throughout fractional movement within a scroll window.
 In older v1/v2 captures UI construction and the final batch flush were separate
 timings. The final flush also includes the telemetry rectangles.
 
