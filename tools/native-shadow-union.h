@@ -10,6 +10,7 @@
 #define SU_STATIC 32
 #define SU_VERTICES 288
 #define SU_PAGES 160 /* 39 footprints, each smaller than a page: <=156 pages. */
+#define SU_LOOKUP 512 /* Power of two; at most 160 live entries. */
 #define SU_SIDE 64
 #define SU_BYTES 4096
 #define SU_OPACITY 66
@@ -20,9 +21,10 @@ typedef struct {
 typedef struct { int used,x,z,space,needed,static_dirty,dirty,publish; } SuPage;
 typedef struct {
     SuCaster caster[SU_CASTERS]; SuPage page[SU_PAGES];
+    uint16_t lookup[SU_LOOKUP];
     uint8_t shapes[4*4096+1024];
     uint8_t *base,*pixels;
-    int space,enabled,scope,overflow,changed,static_rasters,dynamic_rasters;
+    int space,enabled,scope,overflow,changed,static_rasters,dynamic_rasters,layout_dirty;
     float span;
 } SuState;
 static inline size_t su_storage_bytes(void){return ((sizeof(SuState)+31)&~(size_t)31)+SU_PAGES*SU_BYTES*2;}
@@ -30,6 +32,37 @@ static inline void su_init(SuState *s){
     memset(s,0,su_storage_bytes());s->span=8;
     s->base=(uint8_t*)s+((sizeof(SuState)+31)&~(size_t)31);s->pixels=s->base+SU_PAGES*SU_BYTES;
 }
+static inline unsigned su_hash(int space,int x,int z){
+    uint32_t h=(uint32_t)x*0x9e3779b1u^(uint32_t)z*0x85ebca6bu^(uint32_t)space*0xc2b2ae35u;
+    h^=h>>16;return h&(SU_LOOKUP-1);
+}
+static inline void su_index(SuState *s,int slot){
+    const SuPage *p=&s->page[slot];unsigned at=su_hash(p->space,p->x,p->z);
+    while(s->lookup[at])at=(at+1)&(SU_LOOKUP-1);
+    s->lookup[at]=(uint16_t)(slot+1);
+}
+static inline void su_unindex(SuState *s,int slot){
+    if(!s->page[slot].used)return;
+    const SuPage *p=&s->page[slot];unsigned at=su_hash(p->space,p->x,p->z);
+    while(s->lookup[at]&&s->lookup[at]!=slot+1)at=(at+1)&(SU_LOOKUP-1);
+    if(!s->lookup[at])return;
+    s->lookup[at]=0;
+    /* Reinsert the remaining probe cluster so deleting an evicted page cannot
+     * hide a colliding page. Occupancy stays below one third of the table. */
+    for(at=(at+1)&(SU_LOOKUP-1);s->lookup[at];at=(at+1)&(SU_LOOKUP-1)){
+        int next=s->lookup[at]-1;s->lookup[at]=0;su_index(s,next);
+    }
+}
+static inline int su_find_space(const SuState *s,int space,int x,int z){
+    unsigned at=su_hash(space,x,z);
+    while(s->lookup[at]){
+        int slot=s->lookup[at]-1;const SuPage *p=&s->page[slot];
+        if(p->space==space&&p->x==x&&p->z==z)return slot;
+        at=(at+1)&(SU_LOOKUP-1);
+    }
+    return -1;
+}
+static inline int su_find(const SuState *s,int x,int z){return su_find_space(s,s->space,x,z);}
 static inline int su_offset(int x,int y){return ((y/4)*8+x/8)*32+y%4*8+x%8;}
 static inline int su_floor(float x){int i=(int)x;return i-(i>x);}
 static inline void su_bounds(const SuCaster *c,float b[4]){
@@ -42,20 +75,23 @@ static inline int su_intersects(const SuState *s,const SuPage *p,const float b[4
 }
 static inline void su_dirty(SuState *s,const SuCaster *c){
     if(!c->count)return;
-    float b[4];su_bounds(c,b);
-    for(int i=0;i<SU_PAGES;i++)if(s->page[i].used&&s->page[i].space==c->space&&su_intersects(s,&s->page[i],b)){
-        s->page[i].dirty=1;if(c->profile!=4)s->page[i].static_dirty=1;
+    float b[4];su_bounds(c,b);float pad=s->span/62;
+    int l=su_floor((b[0]-pad)/s->span),r=su_floor((b[2]+pad)/s->span),t=su_floor((b[1]-pad)/s->span),bot=su_floor((b[3]+pad)/s->span);
+    for(int z=t;z<=bot;z++)for(int x=l;x<=r;x++){
+        int at=su_find_space(s,c->space,x,z);if(at<0||!su_intersects(s,&s->page[at],b))continue;
+        s->page[at].dirty=1;if(c->profile!=4)s->page[at].static_dirty=1;
     }
 }
 static inline void su_begin(SuState *s,int space,int enabled,int size){
+    if(s->space!=space||s->enabled!=enabled)s->layout_dirty=1;
     s->space=space;s->enabled=enabled;s->scope=0;s->overflow=0;
     /* Current rooms fit one page; larger catalog rooms keep that property. */
     float span=space&&size>8?(float)size:8;
-    if(s->span!=span){memset(s->page,0,sizeof(s->page));s->span=span;}
+    if(s->span!=span){memset(s->page,0,sizeof(s->page));memset(s->lookup,0,sizeof(s->lookup));s->span=span;s->layout_dirty=1;}
     for(int i=SU_STATIC;i<SU_CASTERS;i++)s->caster[i].requested=0;
 }
 static inline void su_mesh(SuState *s,int slot,int count,int profile,const float *uv,const float *bounds){
-    SuCaster *c=&s->caster[slot];if(c->count)su_dirty(s,c);
+    SuCaster *c=&s->caster[slot];s->layout_dirty=1;if(c->count)su_dirty(s,c);
     c->count=count;c->profile=profile;c->space=slot<SU_STATIC?0:s->space;
     memcpy(c->bounds,bounds,16);if(count)memcpy(c->uv,uv,(size_t)count*8);
     if(!count)c->active=0;
@@ -65,8 +101,8 @@ static inline void su_active(SuState *s,int slot,int active,float x,float z){
     SuCaster *c=&s->caster[slot];active=active&&c->count>0;
     if(slot>=SU_STATIC){
         c->requested=active;
-        if(c->x!=x||c->z!=z){su_dirty(s,c);c->x=x;c->z=z;su_dirty(s,c);}
-    }else if(c->active!=active){su_dirty(s,c);c->active=active;su_dirty(s,c);}
+        if(c->x!=x||c->z!=z){s->layout_dirty=1;su_dirty(s,c);c->x=x;c->z=z;su_dirty(s,c);}
+    }else if(c->active!=active){s->layout_dirty=1;su_dirty(s,c);c->active=active;su_dirty(s,c);}
 }
 static inline uint8_t su_sample(const SuState *s,const SuCaster *c,float x,float z){
     float b[4];su_bounds(c,b);float u=(x-b[0])/(b[2]-b[0]),v=(z-b[1])/(b[3]-b[1]);
@@ -115,34 +151,32 @@ static inline void su_raster(SuState *s,const SuPage *p,const SuCaster *c,uint8_
         if(alpha>dest[at])dest[at]=alpha;
     }
 }
-static inline int su_find(const SuState *s,int x,int z){
-    for(int i=0;i<SU_PAGES;i++)if(s->page[i].used&&s->page[i].space==s->space&&s->page[i].x==x&&s->page[i].z==z)return i;
-    return -1;
-}
 static inline void su_prepare(SuState *s,int static_budget){
     s->changed=s->static_rasters=s->dynamic_rasters=0;
     for(int i=SU_STATIC;i<SU_CASTERS;i++){
-        SuCaster *c=&s->caster[i];if(c->active!=c->requested){su_dirty(s,c);c->active=c->requested;su_dirty(s,c);}
+        SuCaster *c=&s->caster[i];if(c->active!=c->requested){s->layout_dirty=1;su_dirty(s,c);c->active=c->requested;su_dirty(s,c);}
     }
     if(!s->enabled)return;
-    for(int i=0;i<SU_PAGES;i++)s->page[i].needed=0;
-    /* Mark existing pages before allocating, so eviction cannot discard a
-     * page needed by a later caster in this same frame. */
-    for(int i=0;i<SU_PAGES;i++)if(s->page[i].used&&s->page[i].space==s->space)
-        for(int j=0;j<SU_CASTERS;j++){SuCaster *c=&s->caster[j];float b[4];su_bounds(c,b);if(c->active&&c->space==s->space&&su_intersects(s,&s->page[i],b)){s->page[i].needed=1;break;}}
-    for(int j=0;j<SU_CASTERS;j++){
-        SuCaster *c=&s->caster[j];if(!c->active||c->space!=s->space)continue;float b[4];su_bounds(c,b);float pad=s->span/62;
-        int l=su_floor((b[0]-pad)/s->span),r=su_floor((b[2]+pad)/s->span),t=su_floor((b[1]-pad)/s->span),bot=su_floor((b[3]+pad)/s->span);
-        for(int z=t;z<=bot;z++)for(int x=l;x<=r;x++){
-            int at=su_find(s,x,z);
-            if(at<0){for(int i=0;i<SU_PAGES;i++)if(!s->page[i].needed){at=i;break;}
-                if(at<0){s->overflow++;continue;}
-                s->page[at]=(SuPage){1,x,z,s->space,1,1,1,0};
-                /* An evicted allocation must not expose another tile while
-                 * its static union waits for the cooperative rebuild budget. */
-                memset(s->base+at*SU_BYTES,0,SU_BYTES);
-            }else s->page[at].needed=1;
+    if(s->layout_dirty){
+        for(int i=0;i<SU_PAGES;i++)s->page[i].needed=0;
+        /* First protect every existing footprint, then allocate missing pages.
+         * Bounded page ranges replace the pages-times-casters intersection scan. */
+        for(int pass=0;pass<2;pass++)for(int j=0;j<SU_CASTERS;j++){
+            SuCaster *c=&s->caster[j];if(!c->active||c->space!=s->space)continue;
+            float b[4];su_bounds(c,b);float pad=s->span/62;
+            int l=su_floor((b[0]-pad)/s->span),r=su_floor((b[2]+pad)/s->span),t=su_floor((b[1]-pad)/s->span),bot=su_floor((b[3]+pad)/s->span);
+            for(int z=t;z<=bot;z++)for(int x=l;x<=r;x++){
+                int at=su_find(s,x,z);
+                if(at<0&&pass){
+                    for(int i=0;i<SU_PAGES;i++)if(!s->page[i].needed){at=i;break;}
+                    if(at<0){s->overflow++;continue;}
+                    su_unindex(s,at);s->page[at]=(SuPage){1,x,z,s->space,1,1,1,0};su_index(s,at);
+                    /* Never expose an evicted tile while static work waits. */
+                    memset(s->base+at*SU_BYTES,0,SU_BYTES);
+                }else if(at>=0)s->page[at].needed=1;
+            }
         }
+        s->layout_dirty=s->overflow!=0;
     }
     for(int i=0;i<SU_PAGES;i++){
         SuPage *p=&s->page[i];if(p->space!=s->space||!p->used)continue;
