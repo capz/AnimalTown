@@ -65,7 +65,7 @@ Controls: stick or D-pad moves in eight directions, B run/cancel, A interact/con
 tool, Start settings; stick or D-pad selects and L/R changes menu tabs. Hold
 the stick to repeat a selection; recenter after opening a menu or changing tabs.
 Press Start and choose **Save now** in Settings to save. New towns, timed play, day rollover, travel, menus and debug actions never save automatically.
-Choose **Debug / testing menu** in Settings (or R to its tab) for rendering, lighting, runtime, previews and the experimental ground ring; these options last for this session.
+Choose **Debug / testing menu** in Settings (or R to its tab) for rendering, lighting, runtime and preview options; these options last for this session.
 Closing an explanation returns to the same selected menu row. Memory-card
 saves use Slot A, `AMTE/01`, [four split records in two banks](docs/split-saves.md), banner and icon. Missing-card
 play works; save errors are shown for retry.
