@@ -15,6 +15,8 @@ public readonly struct ShadowCaster
         float rx=scale*(profile==3?.77f:.62f),rz=scale*(profile==3?.72f:.66f);
         Left=cx-rx;Right=cx+rx;Top=cz-rz;Bottom=cz+rz;
     }
+    public ShadowCaster(float x,float z,float height,float left,float top,float right,float bottom)
+    {X=x;Z=z;Height=height;Scale=1;Profile=0;Left=left;Top=top;Right=right;Bottom=bottom;}
 }
 public sealed class GroundShadow
 {
@@ -32,14 +34,24 @@ public sealed class GroundShadow
     private ShadowCaster caster;
     private CylinderPose rowA,rowB;
     private int row;
-    public void Begin(Town source,ShadowCaster value){town=source;caster=value;row=(int)Math.Floor(value.Top);Vertices=0;Overflow=false;}
+    private bool worldUv,entryMat;
+    private int indoorSize;
+    public void Begin(Town source,ShadowCaster value,bool worldCoordinates=false)
+    {town=source;indoorSize=0;entryMat=false;worldUv=worldCoordinates;Start(value);}
+    public void BeginIndoor(ShadowCaster value,int size,bool cottageMat)
+    {indoorSize=size;entryMat=cottageMat;worldUv=true;Start(value);}
+    private void Start(ShadowCaster value){caster=value;row=(int)Math.Floor(value.Top);Vertices=0;Overflow=false;}
     // One fine row per job; callers own the shared frame work deadline.
     public bool Advance()
     {
         if(row>(int)Math.Floor(caster.Bottom))return true;
         int z=row++;
-        rowA=CylinderWorld.Surface(z,0);rowB=CylinderWorld.Surface(z+1,0);
+        if(indoorSize==0){rowA=CylinderWorld.Surface(z,0);rowB=CylinderWorld.Surface(z+1,0);}
         for(int x=(int)Math.Floor(caster.Left);x<=Math.Floor(caster.Right);x++){
+            if(indoorSize>0){
+                if(x<0||z<0||x>=indoorSize||z>=indoorSize)continue;
+                for(int half=0;half<2;half++){Triangle(x,z,half,-1);if(entryMat)Triangle(x,z,half,2);}continue;
+            }
             int terrain=town.At(x,z);
             if(!town.Inside(x,z)||WaterSurface.IsWater(town,x,z)||WaterTerrain.IsCoast(terrain)||terrain==(int)Terrain.Building||terrain==(int)Terrain.Cliff)continue;
             int mode=TerrainElevation.Mode(town,x,z);
@@ -52,6 +64,7 @@ public sealed class GroundShadow
     }
     private P Point(int cx,int cz,float x,float z,int level)
     {
+        if(indoorSize>0)return new P(x,z,level==2?.032f:.012f,z);
         float h=level<0?GroundSurface.HeightAt(town,cx,cz,x,z):level*2;
         var p=z==cz?rowA:rowB;
         return new P(x,z,p.Y+(h+.012f)*p.UpY,p.Z+(h+.012f)*p.UpZ);
@@ -64,15 +77,17 @@ public sealed class GroundShadow
         int n=3;
         n=Clip(n,1,0,-caster.Left);n=Clip(n,-1,0,caster.Right);
         n=Clip(n,0,1,-caster.Top);n=Clip(n,0,-1,caster.Bottom);
-        int mode=TerrainElevation.Mode(town,x,z);
-        if(level>=0){
+        if(indoorSize>0){n=Clip(n,1,0,0);n=Clip(n,0,1,0);n=Clip(n,-1,0,indoorSize);n=Clip(n,0,-1,indoorSize);
+            if(level==2){float s=indoorSize/4f;n=Clip(n,1,0,-1.35f*s);n=Clip(n,-1,0,2.65f*s);n=Clip(n,0,1,-2.85f*s);n=Clip(n,0,-1,3.95f*s);}}
+        int mode=indoorSize>0?0:TerrainElevation.Mode(town,x,z);
+        if(indoorSize==0&&level>=0){
             float sx=mode==6||mode==8?1:-1,sz=mode==6||mode==7?1:-1;
             float c=mode==6?-2:mode==9?2:0;c-=sx*(x/2*2)+sz*(z/2*2);
             float sign=level==1?1:-1;n=Clip(n,sx*sign,sz*sign,c*sign);
         }
         if(n<3)return;
         float mx=0,mz=0;for(int i=0;i<n;i++){mx+=a[i].X;mz+=a[i].Z;}mx/=n;mz/=n;
-        if(!Supported(mx,mz))return;
+        if(indoorSize==0&&!Connected(town,caster.X,caster.Z,caster.Height,mx,mz))return;
         for(int i=1;i<n-1;i++){
             float area=(a[i].X-a[0].X)*(a[i+1].Z-a[0].Z)-(a[i].Z-a[0].Z)*(a[i+1].X-a[0].X);
             if(area<.000001f)continue;
@@ -80,12 +95,12 @@ public sealed class GroundShadow
             Emit(a[0]);Emit(a[i]);Emit(a[i+1]);
         }
     }
-    private bool Supported(float x,float z)
+    public static bool Connected(Town town,float anchorX,float anchorZ,float height,float x,float z)
     {
-        float dx=x-caster.X,dz=z-caster.Z;int steps=1+(int)(Math.Max(Math.Abs(dx),Math.Abs(dz))/.1f);
-        float previous=caster.Height;
+        float dx=x-anchorX,dz=z-anchorZ;int steps=1+(int)(Math.Max(Math.Abs(dx),Math.Abs(dz))/.1f);
+        float previous=height;
         for(int i=1;i<=steps;i++){
-            float px=caster.X+dx*i/steps,pz=caster.Z+dz*i/steps,h=TerrainElevation.At(town,px,pz);
+            float px=anchorX+dx*i/steps,pz=anchorZ+dz*i/steps,h=TerrainElevation.At(town,px,pz);
             if(WaterSurface.IsWater(town,(int)px,(int)pz)||Math.Abs(h-previous)>.16f)return false;
             previous=h;
         }
@@ -104,6 +119,7 @@ public sealed class GroundShadow
     private void Emit(P p)
     {
         int at=Vertices++;Positions[at*3]=p.X;Positions[at*3+1]=p.Y;Positions[at*3+2]=p.Depth;
+        if(worldUv){Uvs[at*2]=p.X;Uvs[at*2+1]=p.Z;return;}
         // Two-pixel transparent gutters isolate the four atlas profiles.
         Uvs[at*2]=((caster.Profile%2)*64+2+60*(p.X-caster.Left)/(caster.Right-caster.Left))/128;
         Uvs[at*2+1]=((caster.Profile/2)*64+2+60*(p.Z-caster.Top)/(caster.Bottom-caster.Top))/128;
@@ -127,6 +143,6 @@ public sealed class GroundShadow
     // Keep the byte return boundary. The pinned AOT compiler otherwise infers
     // a floating array store for an inline float-to-byte cast (zero alpha).
     // patch-native.ps1 audits the generated byte-array writes as a regression gate.
-    private static byte Opacity(float alpha)=>(byte)(alpha*255);
+    internal static byte Opacity(float alpha)=>(byte)(alpha*255);
     private static float Ellipse(float x,float y,float rx,float ry)=>(float)Math.Sqrt(x*x/(rx*rx)+y*y/(ry*ry));
 }

@@ -46,7 +46,7 @@ internal sealed class TerrainRenderer
         for(int i=0;i<materials.Length;i++)materials[i]=new Material{Cull=CullMode.Back,Lighting=LightingMode.Unlit,SecondarySampler=new SamplerState(TextureAddressMode.Repeat,TextureAddressMode.Repeat,TextureFilter.Linear)};
         for(int i=0;i<poses.Length;i++)poses[i]=ScrollTransform;
     }
-    internal void Prepare(GameState state,int room,int month,bool cliffPreview=false)
+    internal void Prepare(GameState state,int room,int month,VillagerShadows movingShadows,bool cliffPreview=false)
     {
         int next=TerrainTiles.Season(month,forced);bool changed=next!=season;
         if(changed){
@@ -68,6 +68,9 @@ internal sealed class TerrainRenderer
         ScrollTransform.LocalPosition=new Vector3(0,scroll.Y,scroll.Z);
         ScrollTransform.LocalRotation=new Quaternion(scroll.HalfSin,0,0,scroll.HalfCos);
         long deadline=Clock.Timestamp+2000;int steps=0;stream.Prepare(state.X,state.Z);
+        // Moving feet need bounded progress even while scenery is streaming.
+        // These stages consume the SAME deadline and eight-stage allowance.
+        while(steps<2&&Clock.Timestamp<deadline){if(!movingShadows.Advance())break;steps++;geometryRevision++;}
         do{
             if(building<0){
                 if(stream.BuildSlot<0)break;building=stream.BuildSlot;stream.Hold();
@@ -77,6 +80,7 @@ internal sealed class TerrainRenderer
             bool complete=sections[building]!.Advance(state,this,staging,data);steps++;geometryRevision++;
             if(complete){stream.Complete();building=-1;stream.Prepare(state.X,state.Z);}
         }while(steps<8&&Clock.Timestamp<deadline);
+        while(steps<8&&Clock.Timestamp<deadline){if(!movingShadows.Advance())break;steps++;geometryRevision++;}
         shadows.Prepare(state);
         while(steps<8&&Clock.Timestamp<deadline){if(!shadows.Advance())break;steps++;geometryRevision++;}
         gallery.PrepareGallery(state,this,cliffPreview);

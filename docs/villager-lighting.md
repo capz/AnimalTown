@@ -1,5 +1,35 @@
 # Villager rim and object ground shadows
 
+The player and six NPCs also share a soft circular contact-shadow mask. It is
+one 32×32 IA8 texture (2 KiB), with at most seven retained receiver meshes and
+96 triangles per receiver. The mask moves through a GPU UV transform each
+frame. Receivers remain fixed within a 2 m movement bucket; overlapping 6 m
+outdoor patches retain coverage while the next patch is generated. No skin
+silhouette pass or per-frame shadow vertex reconstruction is involved.
+
+Actor receivers use the same clipped ground surfaces as scenery shadows,
+including ramps, beach toes and diagonal cliffs. They follow the doorway's
+visual actor position and switch space at the actual entry/exit commit. Indoors,
+4 m patches clip to the room floor; the cottage floor's raised entry mat gets
+its own receiver level. New flat-floor assets use the same logic without that
+asset-specific overlay. Furniture and walls occlude the shadows through depth
+testing. Teleports, terrain changes and disconnected support changes suppress
+obsolete receivers until replacements are ready.
+
+Two stages at the beginning of the existing terrain work budget guarantee
+progress for moving actors, prioritizing the player and then rotating through
+NPCs. Remaining stages serve terrain and shadow jobs within the same 2 ms/eight
+stage allowance. Indoors, the same bound applies without outdoor terrain work.
+The developer lighting toggle also toggles actor shadows. Run
+`tools/iso-smoke.py --actor-shadows --dsp-hle` for walking, NPC journeys, entry,
+exit, indoor camera, ramp, cliff-edge, menu and water captures.
+
+An animated outline is feasible with skinned silhouette rendering to textures
+or baked directional animation masks. Live silhouettes add per-actor render
+passes and framebuffer copies; baked masks consume assets per species, facing
+direction and pose and can mismatch animation. The circular mask keeps a stable
+cost while grounding villagers during walking and camera rotation.
+
 Villagers retain their imported albedo, vertex/material colour, cutout and
 transparency. The native model renderer adds a grazing-angle rim in the same
 draw: GX normal TexGen transforms the existing static or skinned normals into

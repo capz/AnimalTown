@@ -195,7 +195,7 @@ DumpCodec = ffv1
 [Hacks]
 EFBToTextureEnable = False
 ''')
-if '--profile' in sys.argv or '--interaction-profile' in sys.argv or '--runtime-profile' in sys.argv or '--terrain-scroll' in sys.argv or '--lighting' in sys.argv:
+if '--profile' in sys.argv or '--interaction-profile' in sys.argv or '--runtime-profile' in sys.argv or '--terrain-scroll' in sys.argv or '--lighting' in sys.argv or '--actor-shadows' in sys.argv:
     config=user/'Config'/'Dolphin.ini'
     config.write_text(config.read_text()+'\n[Movie]\nDumpFrames = True\nDumpFramesSilent = True\n')
     config=user/'Config'/'GFX.ini'
@@ -287,6 +287,32 @@ with (root/'emulator.log').open('w') as log:
             press('X');screenshot('cloud-menu.png');press('B')
             press('A');time.sleep(2);screenshot('cloud-indoor-a.png');time.sleep(8);screenshot('cloud-indoor-b.png')
             press('A');time.sleep(2);screenshot('cloud-exterior-return.png')
+        elif '--actor-shadows' in sys.argv:
+            press('A');press('D_UP');press('A');press('A');time.sleep(2);press('B');press('B')
+            os.write(controller,b'PRESS L\nPRESS R\n');time.sleep(.2);press('A');os.write(controller,b'RELEASE L\nRELEASE R\n');time.sleep(15)
+            os.write(controller,b'PRESS L\nPRESS R\n');time.sleep(.2);press('Z');os.write(controller,b'RELEASE L\nRELEASE R\n')
+            time.sleep(profile_seconds);screenshot('actor-shadow-standing.png')
+            for name,axes in [('right',(.72,.5)),('down',(.5,.28)),('left',(.28,.5)),('up',(.5,.72))]:
+                os.write(controller,f'SET MAIN {axes[0]} {axes[1]}\n'.encode());time.sleep(1.4)
+                screenshot('actor-shadow-walking-'+name+'.png');os.write(controller,b'SET MAIN .5 .5\n');time.sleep(1)
+            # A fresh doorway position avoids depending on collisions during
+            # the walking loop. NPCs keep their normal journeys throughout.
+            os.write(controller,b'PRESS L\nPRESS R\n');time.sleep(.2);press('A');os.write(controller,b'RELEASE L\nRELEASE R\n');time.sleep(12)
+            press('A');time.sleep(5);building_view('actor-shadow-interior.png',True)
+            os.write(controller,b'SET C .9 .5\n');time.sleep(2);os.write(controller,b'SET C .5 .5\n');time.sleep(1);screenshot('actor-shadow-indoor-camera.png')
+            press('L');time.sleep(1);press('A')
+            for sample in range(12):
+                time.sleep(3)
+                try:building_view('actor-shadow-exited.png',False);break
+                except AssertionError:
+                    if p.poll() is not None or sample==11:raise
+                    if sample in (3,7):press('B');press('B');press('A')
+            os.write(controller,b'PRESS L\nPRESS R\n');time.sleep(.2);press('START');os.write(controller,b'RELEASE L\nRELEASE R\n');time.sleep(15)
+            screenshot('actor-shadow-ramp-low.png')
+            os.write(controller,b'SET MAIN .5 .8\n');time.sleep(1.5);os.write(controller,b'SET MAIN .5 .5\n');time.sleep(2);screenshot('actor-shadow-ramp-high.png')
+            os.write(controller,b'SET MAIN .28 .5\n');time.sleep(1);os.write(controller,b'SET MAIN .5 .5\n');time.sleep(2);screenshot('actor-shadow-cliff-edge.png')
+            press('X');screenshot('actor-shadow-menu.png');press('B')
+            os.write(controller,b'PRESS L\nPRESS R\n');time.sleep(.2);press('D_LEFT');os.write(controller,b'RELEASE L\nRELEASE R\n');time.sleep(15);screenshot('actor-shadow-water.png')
         elif '--lighting' in sys.argv:
             press('A');press('D_UP');press('A');press('A');time.sleep(2);press('B');press('B')
             os.write(controller,b'PRESS L\nPRESS R\n');time.sleep(.2);press('A');os.write(controller,b'RELEASE L\nRELEASE R\n');time.sleep(15)

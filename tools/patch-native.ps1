@@ -7,11 +7,13 @@ $generated=[IO.File]::ReadAllText($generatedPath)
 # the pinned compiler. On a byte[] that silently stores the low IEEE bits,
 # producing an invisible shadow mask. The byte-returning Opacity boundary must
 # keep BOTH atlas writes integer; check the real bundled native output.
-$atlasPattern='intptr_t dnd_value_AnimalTown_Domain_AnimalTown_GroundShadow_Atlas_[a-z0-9]+\(void\) \{.*?\r?\n\}'
-$atlasMatches=[regex]::Matches($generated,$atlasPattern,[Text.RegularExpressions.RegexOptions]::Singleline)
-if($atlasMatches.Count -ne 1 -or $atlasMatches[0].Value -match 'dnd_array_store_r[48]_fast' -or
-   ([regex]::Matches($atlasMatches[0].Value,'dnd_array_store_u1_fast')).Count -ne 2){
-    throw 'Native shadow atlas requires two integer byte stores; preserve the Opacity byte-return boundary'
+foreach($mask in @('GroundShadow_Atlas','VillagerShadowPatch_Texture')){
+    $atlasPattern='intptr_t dnd_value_AnimalTown_Domain_AnimalTown_'+$mask+'_[a-z0-9]+\(void\) \{.*?\r?\n\}'
+    $atlasMatches=[regex]::Matches($generated,$atlasPattern,[Text.RegularExpressions.RegexOptions]::Singleline)
+    if($atlasMatches.Count -ne 1 -or $atlasMatches[0].Value -match 'dnd_array_store_r[48]_fast' -or
+       ([regex]::Matches($atlasMatches[0].Value,'dnd_array_store_u1_fast')).Count -ne 2){
+        throw "Native shadow mask $mask requires two integer byte stores; preserve the Opacity byte-return boundary"
+    }
 }
 $pattern='intptr_t (dnd_value_AnimalTown_GameCube_NativeCalendar_Read_[a-z0-9]+)\(void\) \{.*?\r?\n\}'
 $matchesFound=[regex]::Matches($generated,$pattern,[Text.RegularExpressions.RegexOptions]::Singleline)
