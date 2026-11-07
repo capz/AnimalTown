@@ -30,9 +30,11 @@ jobs:
         run: ./tools/write-version.ps1 -GitHubOutput $env:GITHUB_OUTPUT
       - name: Install emulator and capture tools
         run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y dolphin-emu xvfb ffmpeg
-          test -x /usr/games/dolphin-emu-nogui
+          docker build -t animaltown-performance - <<'DOCKER'
+          FROM debian:trixie
+          RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends dolphin-emu xvfb xauth ffmpeg python3 libxcb-cursor0 ca-certificates && rm -rf /var/lib/apt/lists/*
+          DOCKER
+          docker run --rm animaltown-performance test -x /usr/games/dolphin-emu-nogui
       - name: Fetch and verify current-main control ISO
         run: |
           mkdir -p out/performance-base
@@ -49,12 +51,12 @@ jobs:
           PY
       - name: Create a disposable saved-town fixture
         run: |
-          python3 tools/iso-smoke.py out/performance-base/AnimalTown-0.6.3.28174414ed84.iso out/performance-fixture --movement-profile --new-town --profile-seconds 5
+          docker run --rm --init --shm-size=512m --user "$(id -u):$(id -g)" -e LIBGL_ALWAYS_SOFTWARE=1 --mount type=bind,src="$PWD",dst=/work -w /work animaltown-performance python3 tools/iso-smoke.py out/performance-base/AnimalTown-0.6.3.28174414ed84.iso out/performance-fixture --movement-profile --new-town --profile-seconds 5
       - name: Measure baseline from a copy of the fixture
         run: |
           mkdir -p out/performance-baseline
           cp out/performance-fixture/MemoryCardA.USA.raw out/performance-baseline/
-          python3 tools/iso-smoke.py out/performance-base/AnimalTown-0.6.3.28174414ed84.iso out/performance-baseline --movement-profile --profile-seconds 8
+          docker run --rm --init --shm-size=512m --user "$(id -u):$(id -g)" -e LIBGL_ALWAYS_SOFTWARE=1 --mount type=bind,src="$PWD",dst=/work -w /work animaltown-performance python3 tools/iso-smoke.py out/performance-base/AnimalTown-0.6.3.28174414ed84.iso out/performance-baseline --movement-profile --profile-seconds 8
           python3 tools/read-frame-profile.py out/performance-baseline/user/Dump/Frames/*.avi --check-movement > out/performance-baseline.json
       - name: Download and verify matching published upgrade
         env:
@@ -88,7 +90,7 @@ jobs:
         run: |
           mkdir -p out/performance-upgraded
           cp out/performance-fixture/MemoryCardA.USA.raw out/performance-upgraded/
-          python3 tools/iso-smoke.py "$(cat out/performance-iso.txt)" out/performance-upgraded --movement-profile --profile-seconds 8
+          docker run --rm --init --shm-size=512m --user "$(id -u):$(id -g)" -e LIBGL_ALWAYS_SOFTWARE=1 --mount type=bind,src="$PWD",dst=/work -w /work animaltown-performance python3 tools/iso-smoke.py "$(cat out/performance-iso.txt)" out/performance-upgraded --movement-profile --profile-seconds 8
           python3 tools/read-frame-profile.py out/performance-upgraded/user/Dump/Frames/*.avi --check-movement > out/performance-upgraded.json
       - name: Verify real memory-card update preserves town and progress
         run: |
@@ -128,17 +130,17 @@ jobs:
           dotnet run --project out/performance-card-check -c Release > out/performance-save.txt
       - name: Inspect water, shores, lighting, interiors and compact ISO
         run: |
-          python3 tools/iso-smoke.py "$(cat out/performance-iso.txt)" out/performance-water --river-coast
+          docker run --rm --init --shm-size=512m --user "$(id -u):$(id -g)" -e LIBGL_ALWAYS_SOFTWARE=1 --mount type=bind,src="$PWD",dst=/work -w /work animaltown-performance python3 tools/iso-smoke.py "$(cat out/performance-iso.txt)" out/performance-water --river-coast
           mkdir -p out/performance-lighting
           cp out/performance-fixture/MemoryCardA.USA.raw out/performance-lighting/
-          python3 tools/iso-smoke.py "$(cat out/performance-iso.txt)" out/performance-lighting --lighting --profile-seconds 5
+          docker run --rm --init --shm-size=512m --user "$(id -u):$(id -g)" -e LIBGL_ALWAYS_SOFTWARE=1 --mount type=bind,src="$PWD",dst=/work -w /work animaltown-performance python3 tools/iso-smoke.py "$(cat out/performance-iso.txt)" out/performance-lighting --lighting --profile-seconds 5
           mkdir -p out/performance-buildings
           cp out/performance-fixture/MemoryCardA.USA.raw out/performance-buildings/
-          python3 tools/iso-smoke.py "$(cat out/performance-iso.txt)" out/performance-buildings --buildings
+          docker run --rm --init --shm-size=512m --user "$(id -u):$(id -g)" -e LIBGL_ALWAYS_SOFTWARE=1 --mount type=bind,src="$PWD",dst=/work -w /work animaltown-performance python3 tools/iso-smoke.py "$(cat out/performance-iso.txt)" out/performance-buildings --buildings
           mkdir -p out/performance-building-reload
           cp out/performance-buildings/MemoryCardA.USA.raw out/performance-building-reload/
-          python3 tools/iso-smoke.py "$(cat out/performance-iso.txt)" out/performance-building-reload --building-reload
-          python3 tools/iso-smoke.py "$(cat out/performance-nkit.txt)" out/performance-nkit --loading
+          docker run --rm --init --shm-size=512m --user "$(id -u):$(id -g)" -e LIBGL_ALWAYS_SOFTWARE=1 --mount type=bind,src="$PWD",dst=/work -w /work animaltown-performance python3 tools/iso-smoke.py "$(cat out/performance-iso.txt)" out/performance-building-reload --building-reload
+          docker run --rm --init --shm-size=512m --user "$(id -u):$(id -g)" -e LIBGL_ALWAYS_SOFTWARE=1 --mount type=bind,src="$PWD",dst=/work -w /work animaltown-performance python3 tools/iso-smoke.py "$(cat out/performance-nkit.txt)" out/performance-nkit --loading
       - name: Publish comparison evidence
         if: always()
         env:
@@ -173,4 +175,6 @@ jobs:
               lines.append(h.hexdigest()+'  '+p.name)
           (root/'performance-SHA256SUMS.txt').write_text('\n'.join(lines)+'\n')
           PY
-          gh release upload "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" out/performance-evidence/* --clobber
+          if gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release upload "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" out/performance-evidence/* --clobber
+          fi
