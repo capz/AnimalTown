@@ -37,7 +37,8 @@ The default `all` target:
 3. Compiles the game to PowerPC, builds the apploader, produces and validates the
    full-size bootable ISO, including title/commit/disc and save banners.
 4. Independently publishes the .NET 10 backend and exercises it against PostgreSQL.
-5. Packages the ISO ZIP, separate backend ZIP, revisions and SHA-256 checksums.
+5. Prepares direct full-size ISO and compact NKit ISO downloads, separate backend
+   ZIP, revisions and SHA-256 checksums. Disc images have no ZIP wrappers.
 
 Outputs remain under the mounted checkout's `out/`. CI then publishes these
 packages to GitHub Releases. The source SHA tag identifies the image; `BUILD.txt`

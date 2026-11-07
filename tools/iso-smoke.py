@@ -26,6 +26,107 @@ def press(button):
 def screenshot(name):
     subprocess.run(['ffmpeg','-v','error','-f','x11grab','-video_size','800x600','-i',':93','-frames:v','1','-y',str(root/name)],env=env,check=True)
 
+def save_menu():
+    press('START');press('A')
+
+def committed_card_sequence(path):
+    """Read a complete generation from either redundant directory/BAT pair."""
+    import struct
+    import zlib
+    if not path.exists():return 0
+    card=path.read_bytes();sector=8192
+    if len(card)%sector:raise AssertionError('Truncated emulator memory card')
+    def be16(at):return struct.unpack_from('>H',card,at)[0]
+    def record(payload,kind):
+        if len(payload)<32:raise ValueError('Short save record')
+        magic,version,catalog,actual,sequence,seed,length=struct.unpack_from('<7I',payload)
+        crc=struct.unpack_from('<I',payload,len(payload)-4)[0]
+        if magic!=0x50535441 or version!=3 or actual!=kind or length!=len(payload) or zlib.crc32(payload[:-4])!=crc:
+            raise ValueError('Invalid save record')
+        return version,catalog,sequence,seed,crc
+    best=0
+    for directory in (1,2):
+        for bat in (3,4):
+            files={}
+            try:
+                for i in range(127):
+                    at=directory*sector+i*64
+                    if card[at:at+6]!=b'AMTE01':continue
+                    name=card[at+8:at+40].split(b'\0',1)[0].decode('ascii')
+                    if not name.startswith('AT-'):continue
+                    block,count=be16(at+54),be16(at+56);seen=set();data=bytearray()
+                    for _ in range(count):
+                        if block<5 or block>=len(card)//sector or block in seen:raise ValueError('Invalid card chain')
+                        seen.add(block);data.extend(card[block*sector:(block+1)*sector])
+                        block=be16(bat*sector+10+(block-5)*2)
+                    if block!=65535 or data[:8]!=b'DNDSAVE1':raise ValueError('Invalid card container')
+                    length,offset=struct.unpack_from('>II',data,8)
+                    if offset<32 or offset+length>len(data):raise ValueError('Truncated card container')
+                    files[name]=bytes(data[offset:offset+length])
+                for bank in (0,1):
+                    names=[f'AT-{kind}{bank}' for kind in ('Town','Houses','Shops','Player','Commit')]
+                    if not all(name in files for name in names):continue
+                    commit=files[names[4]];identity=record(commit,4)
+                    if len(commit)!=64:continue
+                    for kind,name in enumerate(names[:4]):
+                        part=files[name];part_identity=record(part,kind)
+                        expected_length,expected_crc=struct.unpack_from('<II',commit,28+kind*8)
+                        if part_identity[:4]!=identity[:4] or len(part)!=expected_length or part_identity[4]!=expected_crc:
+                            raise ValueError('Mixed save generation')
+                    best=max(best,identity[2])
+            except (ValueError,UnicodeError,struct.error):continue
+    return best
+
+def testing_menu():
+    import hashlib
+    def card_digest():
+        card=root/'MemoryCardA.USA.raw'
+        return hashlib.sha256(card.read_bytes()).hexdigest() if card.exists() else None
+    def label(name,row):
+        y=131+(row%9)*24
+        for sample in range(45):
+            screenshot(name+'.png')
+            pixels=subprocess.check_output(['ffmpeg','-v','error','-i',str(root/(name+'.png')),
+                '-frames:v','1','-f','rawvideo','-pix_fmt','rgb24','-'])
+            focused=sum(all(abs(pixels[(py*800+px)*3+c]-value)<=3
+                for c,value in enumerate((221,231,188)))
+                for py in range(y,y+21) for px in range(100,540,4))
+            if focused>100:
+                return b''.join(pixels[(py*800+85)*3:(py*800+575)*3] for py in range(y,y+21))
+            if p.poll() is not None:raise RuntimeError('Game exited during Testing menu checks')
+            time.sleep(1)
+        raise AssertionError(f'Testing row {row} did not become available after landscape loading')
+    # Complete normal player creation before testing gameplay or saving.
+    press('A');press('D_UP');press('A');press('A');time.sleep(2);press('B');press('B')
+    before=card_digest()
+    for _ in range(3):press('START');time.sleep(1);press('B')
+    if card_digest()!=before:raise AssertionError('Opening Settings wrote to the memory card')
+    press('START');screenshot('testing-settings-no-save.png');press('R')
+    for row in range(14):
+        original=label(f'testing-row-{row}-before',row)
+        press('A');changed=label(f'testing-row-{row}-after',row)
+        if original==changed:raise AssertionError(f'Testing row {row} did not change its displayed state')
+        # Restore the initial setting, including the three/six-state previews.
+        for step in range(2 if row==8 else 5 if row==10 else 1):
+            press('A');label(f'testing-row-{row}-restore-{step}',row)
+        if row==10:
+            # A water preview must allow Start to reopen the menu while active.
+            press('A');label('testing-water-active',row);press('B');time.sleep(15);press('START');press('R')
+            for _ in range(10):press('D_DOWN')
+            label('testing-water-menu-return',row)
+            for step in range(5):
+                press('A');label(f'testing-water-off-{step}',row)
+        press('D_DOWN')
+    card=root/'MemoryCardA.USA.raw';previous=committed_card_sequence(card)
+    press('B');save_menu()
+    for sample in range(45):
+        time.sleep(1)
+        if committed_card_sequence(card)>previous:break
+        if p.poll() is not None:raise RuntimeError('Game exited during explicit save')
+    else:raise AssertionError('Explicit Save now did not commit a complete checksummed save generation')
+    screenshot('testing-explicit-save.png')
+    (root/'testing-menu.txt').write_text('Start opened Settings without writing the card.\nAll 14 testing toggles changed their labels.\nWater preview allowed menu re-entry.\nExplicit Save now committed all four records and their matching checksummed commit.\n')
+
 def building_view(name, indoors):
     screenshot(name)
     pixels=subprocess.check_output(['ffmpeg','-v','error','-i',str(root/name),'-frames:v','1','-f','rawvideo','-pix_fmt','rgb24','-'])
@@ -36,7 +137,7 @@ def building_view(name, indoors):
         raise AssertionError(f'Building scenario did not reach the expected {"interior" if indoors else "town"} view: {name}; matching background samples={matches}')
 
 def building_save():
-    press('START');screenshot('building-saving.png')
+    save_menu();screenshot('building-saving.png')
     # First-use card allocation and transactional readback take longer than a
     # frame. Do not send exit input until the settings panel is actually drawn.
     for sample in range(45):
@@ -59,7 +160,7 @@ def dialogue_cycles():
     def returned(frame):
         return sum(all(abs(frame[(row*800+col)*3+c]-target)<=3 for c,target in enumerate((221,231,188))) for row in range(160,181) for col in range(100,540,4))>100
     results=[]
-    press('A');press('X');press('L');press('D_DOWN')
+    press('A');press('START');press('D_DOWN')
     press('A');press('A');reference=body(pixels('dialogue-skipped-reference'));time.sleep(3)
     press('B')
     if not returned(pixels('dialogue-skipped-return')):raise AssertionError('Dialogue could not return after skip-to-end')
@@ -78,7 +179,7 @@ def dialogue_cycles():
         (root/'dialogue-cycles.json').write_text(json.dumps(results,indent=2)+'\n')
         if not responsive:raise AssertionError('Game stopped responding after dialogue completion')
     (root/'dialogue-cycles.json').write_text(json.dumps(results,indent=2)+'\n')
-    press('START');time.sleep(12);screenshot('dialogue-cycles-save.png')
+    save_menu();time.sleep(12);screenshot('dialogue-cycles-save.png')
 
 def item_navigation():
     results=[]
@@ -131,16 +232,16 @@ def settings_navigation():
     press('A');screenshot('settings-about.png');press('B');press('B');focus('settings-about-return',2)
     press('D_UP');focus('settings-dpad-up',1)
     press('A');screenshot('settings-controls.png');press('B');press('B');focus('settings-controls-return',1)
-    press('D_DOWN');press('D_DOWN');press('A');focus('settings-performance-on',3)
-    press('A');focus('settings-performance-off',3)
-    for _ in range(3):press('D_UP')
-    press('D_UP');focus('settings-wrap',8)
-    press('D_UP');press('D_UP');focus('settings-model-row',6)
-    press('A');focus('settings-model-direct',6)
-    press('A');focus('settings-model-indexed',6)
-    press('R');screenshot('settings-next-tab.png');press('L');focus('settings-tab-return',0)
+    press('D_UP');press('D_UP');focus('settings-wrap',4)
+    press('R');focus('testing-entry',0)
+    press('A');focus('testing-performance-on',0)
+    press('A');focus('testing-performance-off',0)
+    press('D_DOWN');focus('testing-model-row',1)
+    press('A');focus('testing-model-direct',1)
+    press('A');focus('testing-model-indexed',1)
+    press('L');focus('settings-tab-return',0)
     press('B');screenshot('settings-close.png')
-    press('X');press('L');focus('settings-backpack-entry',0)
+    press('X');press('L');press('L');focus('settings-backpack-entry',0)
     # Guest time need not advance at wall-clock speed in Dolphin. Observe
     # progress under a continuously held stick instead of assuming how many
     # 120 ms guest-clock repeats fit into a short wall-clock pulse.
@@ -195,7 +296,7 @@ DumpCodec = ffv1
 [Hacks]
 EFBToTextureEnable = False
 ''')
-if '--profile' in sys.argv or '--interaction-profile' in sys.argv or '--runtime-profile' in sys.argv or '--movement-profile' in sys.argv:
+if '--profile' in sys.argv or '--interaction-profile' in sys.argv or '--runtime-profile' in sys.argv or '--terrain-scroll' in sys.argv or '--lighting' in sys.argv or '--actor-shadows' in sys.argv or '--movement-profile' in sys.argv:
     config=user/'Config'/'Dolphin.ini'
     config.write_text(config.read_text()+'\n[Movie]\nDumpFrames = True\nDumpFramesSilent = True\n')
     config=user/'Config'/'GFX.ini'
@@ -214,7 +315,9 @@ with (root/'emulator.log').open('w') as log:
         if p.poll() is not None:
             raise RuntimeError(f'Dolphin exited during boot ({p.returncode}); see {root / "emulator.log"}')
         screenshot('screen.png')
-        if '--building-reload' in sys.argv:
+        if '--testing-menu' in sys.argv:
+            testing_menu()
+        elif '--building-reload' in sys.argv:
             press('A');time.sleep(5);building_view('building-reloaded-interior.png',True)
         elif '--buildings' in sys.argv:
             os.write(controller,b'PRESS L\nPRESS R\n');time.sleep(.2);press('A');os.write(controller,b'RELEASE L\nRELEASE R\n')
@@ -244,7 +347,7 @@ with (root/'emulator.log').open('w') as log:
             for n,y in enumerate((.9,.1)):
                 os.write(controller,f'SET MAIN 0.5 {y}\n'.encode());time.sleep(3)
                 os.write(controller,b'SET MAIN 0.5 0.5\n');time.sleep(2);screenshot(f'movement-ramp-{n}.png')
-            press('START');time.sleep(12);screenshot('movement-save.png')
+            save_menu();time.sleep(12);screenshot('movement-save.png')
         elif '--runtime-profile' in sys.argv:
             import json
             press('A')
@@ -255,7 +358,7 @@ with (root/'emulator.log').open('w') as log:
                 if mode<7:
                     os.write(controller,b'PRESS L\nPRESS R\n');time.sleep(.2);press('B');os.write(controller,b'RELEASE L\nRELEASE R\n')
             os.write(controller,b'PRESS L\nPRESS R\n');time.sleep(.2);press('B');os.write(controller,b'RELEASE L\nRELEASE R\n')
-            press('X');screenshot('runtime-backpack.png');press('B');press('START');time.sleep(12);screenshot('runtime-save.png')
+            press('X');screenshot('runtime-backpack.png');press('B');save_menu();time.sleep(12);screenshot('runtime-save.png')
         elif '--cliff-kit' in sys.argv:
             press('A')
             if '--new-town' in sys.argv:press('D_UP');press('A');press('A');time.sleep(2);press('B');press('B')
@@ -268,14 +371,14 @@ with (root/'emulator.log').open('w') as log:
         elif '--uv-debug' in sys.argv:
             press('A');time.sleep(3);screenshot('uv-normal.png')
             def setting(up,name):
-                press('X');press('L')
-                for _ in range(up):press('D_UP')
+                press('START');press('R')
+                for _ in range(up):press('D_DOWN')
                 screenshot(name+'-setting.png');press('A');time.sleep(2);screenshot(name+'-enabled.png');press('B');time.sleep(3);screenshot(name+'.png')
             setting(2,'uv-colors')
-            setting(1,'uv-combined')
+            setting(3,'uv-combined')
             setting(2,'uv-lines')
-            setting(1,'uv-restored')
-            press('START');time.sleep(12);screenshot('uv-save.png')
+            setting(3,'uv-restored')
+            save_menu();time.sleep(12);screenshot('uv-save.png')
         elif '--dialogue-cycles' in sys.argv:
             dialogue_cycles()
         elif '--movement-directions' in sys.argv:
@@ -293,7 +396,7 @@ with (root/'emulator.log').open('w') as log:
                     os.write(controller,b'SET MAIN 0.5 0.5\nRELEASE B\n')
                     if mode=='dpad':os.write(controller,(''.join(f'RELEASE {button}\n' for button in pads[n])).encode())
                     time.sleep(.5);screenshot(f'movement-{mode}-{n}.png')
-            press('START');time.sleep(12);screenshot('movement-save.png')
+            save_menu();time.sleep(12);screenshot('movement-save.png')
         elif '--cloud-shadows' in sys.argv:
             press('A');press('D_UP');press('A');press('A');time.sleep(2);press('B');press('B')
             time.sleep(2);screenshot('cloud-partial-a.png');time.sleep(20);screenshot('cloud-partial-b.png')
@@ -305,6 +408,62 @@ with (root/'emulator.log').open('w') as log:
             press('X');screenshot('cloud-menu.png');press('B')
             press('A');time.sleep(2);screenshot('cloud-indoor-a.png');time.sleep(8);screenshot('cloud-indoor-b.png')
             press('A');time.sleep(2);screenshot('cloud-exterior-return.png')
+        elif '--actor-shadows' in sys.argv:
+            press('A');press('D_UP');press('A');press('A');time.sleep(2);press('B');press('B')
+            os.write(controller,b'PRESS L\nPRESS R\n');time.sleep(.2);press('A');os.write(controller,b'RELEASE L\nRELEASE R\n');time.sleep(15)
+            os.write(controller,b'PRESS L\nPRESS R\n');time.sleep(.2);press('Z');os.write(controller,b'RELEASE L\nRELEASE R\n')
+            time.sleep(profile_seconds);screenshot('actor-shadow-standing.png')
+            for name,axes in [('right',(.72,.5)),('down',(.5,.28)),('left',(.28,.5)),('up',(.5,.72))]:
+                os.write(controller,f'SET MAIN {axes[0]} {axes[1]}\n'.encode());time.sleep(1.4)
+                screenshot('actor-shadow-walking-'+name+'.png');os.write(controller,b'SET MAIN .5 .5\n');time.sleep(1)
+            # A fresh doorway position avoids depending on collisions during
+            # the walking loop. NPCs keep their normal journeys throughout.
+            os.write(controller,b'PRESS L\nPRESS R\n');time.sleep(.2);press('A');os.write(controller,b'RELEASE L\nRELEASE R\n');time.sleep(12)
+            press('A');time.sleep(5);building_view('actor-shadow-interior.png',True)
+            os.write(controller,b'SET C .9 .5\n');time.sleep(2);os.write(controller,b'SET C .5 .5\n');time.sleep(1);screenshot('actor-shadow-indoor-camera.png')
+            press('L');time.sleep(1);press('A')
+            for sample in range(12):
+                time.sleep(3)
+                try:building_view('actor-shadow-exited.png',False);break
+                except AssertionError:
+                    if p.poll() is not None or sample==11:raise
+                    if sample in (3,7):press('B');press('B');press('A')
+            os.write(controller,b'PRESS L\nPRESS R\n');time.sleep(.2);press('START');os.write(controller,b'RELEASE L\nRELEASE R\n');time.sleep(15)
+            screenshot('actor-shadow-ramp-low.png')
+            os.write(controller,b'SET MAIN .5 .8\n');time.sleep(1.5);os.write(controller,b'SET MAIN .5 .5\n');time.sleep(2);screenshot('actor-shadow-ramp-high.png')
+            os.write(controller,b'SET MAIN .28 .5\n');time.sleep(1);os.write(controller,b'SET MAIN .5 .5\n');time.sleep(2);screenshot('actor-shadow-cliff-edge.png')
+            press('X');screenshot('actor-shadow-menu.png');press('B')
+            os.write(controller,b'PRESS L\nPRESS R\n');time.sleep(.2);press('D_LEFT');os.write(controller,b'RELEASE L\nRELEASE R\n');time.sleep(15);screenshot('actor-shadow-water.png')
+        elif '--lighting' in sys.argv:
+            press('A');press('D_UP');press('A');press('A');time.sleep(2);press('B');press('B')
+            os.write(controller,b'PRESS L\nPRESS R\n');time.sleep(.2);press('A');os.write(controller,b'RELEASE L\nRELEASE R\n');time.sleep(15)
+            # Z enables telemetry; while held, Y cycles both/off/rim/shadows.
+            os.write(controller,b'PRESS L\nPRESS R\nPRESS Z\n');time.sleep(1)
+            time.sleep(profile_seconds);building_view('lighting-both.png',False)
+            for name in ['off','rim','shadows','restored']:
+                press('Y');time.sleep(profile_seconds);screenshot('lighting-'+name+'.png')
+            os.write(controller,b'RELEASE Z\nRELEASE L\nRELEASE R\n')
+            press('A');time.sleep(5);building_view('lighting-interior.png',True)
+            os.write(controller,b'SET C 0.9 0.5\n');time.sleep(2);os.write(controller,b'SET C 0.5 0.5\n');time.sleep(1);screenshot('lighting-indoor-camera.png')
+            press('L');time.sleep(1);press('A');time.sleep(7);building_view('lighting-exited.png',False)
+            press('X');screenshot('lighting-menu.png');press('B')
+            # A normal water/material pass immediately follows the model rim.
+            os.write(controller,b'PRESS L\nPRESS R\n');time.sleep(.2);press('D_LEFT');os.write(controller,b'RELEASE L\nRELEASE R\n');time.sleep(15);screenshot('lighting-water.png')
+        elif '--terrain-scroll' in sys.argv:
+            press('A');press('D_UP');press('A');press('A');time.sleep(2);press('B');press('B')
+            os.write(controller,b'PRESS L\nPRESS R\n');time.sleep(.2);press('START');os.write(controller,b'RELEASE L\nRELEASE R\n');time.sleep(12)
+            os.write(controller,b'PRESS L\nPRESS R\n');time.sleep(.2);press('Z');os.write(controller,b'RELEASE L\nRELEASE R\n')
+            time.sleep(profile_seconds);screenshot('scroll-ramp-start.png')
+            # Slow axial motion includes fractional steps, cache boundaries and
+            # the complete ramp. Then strafe on the terrace and return downhill.
+            for name,axes in [('up',(0.5,0.72)),('right',(0.72,0.5)),('left',(0.28,0.5)),('down',(0.5,0.28))]:
+                os.write(controller,f'SET MAIN {axes[0]} {axes[1]}\n'.encode());time.sleep(profile_seconds)
+                os.write(controller,b'SET MAIN 0.5 0.5\n');time.sleep(1);screenshot('scroll-'+name+'.png')
+            time.sleep(profile_seconds);screenshot('scroll-rest.png')
+            if '--stream-stress' in sys.argv:
+                for name in ['river','corner','bridge','coast']:
+                    os.write(controller,b'PRESS L\nPRESS R\n');time.sleep(.2);press('D_LEFT');os.write(controller,b'RELEASE L\nRELEASE R\n')
+                    time.sleep(12+profile_seconds);screenshot('stream-'+name+'.png')
         elif '--river-coast' in sys.argv:
             press('A');press('D_UP');press('A');press('A');time.sleep(2);press('B');press('B')
             for scene in ['river', 'river-corner', 'bridge', 'coast-beach', 'estuary', 'restored']:
@@ -351,7 +510,7 @@ with (root/'emulator.log').open('w') as log:
             for n,(axis_x,axis_y,duration) in enumerate(directions):
                 os.write(controller,f'SET MAIN {axis_x} {axis_y}\nPRESS B\n'.encode());time.sleep(duration)
                 os.write(controller,b'SET MAIN 0.5 0.5\nRELEASE B\n');time.sleep(.5);screenshot(f'terrain-edge-{n}.png')
-            press('START');time.sleep(12);screenshot('terrain-edge-save.png')
+            save_menu();time.sleep(12);screenshot('terrain-edge-save.png')
         elif '--interaction-profile' in sys.argv:
             press('A');time.sleep(2)
             os.write(controller,b'PRESS L\nPRESS R\n');time.sleep(1);press('Z')
@@ -359,7 +518,7 @@ with (root/'emulator.log').open('w') as log:
             press('A');screenshot('interaction-typing.png');time.sleep(profile_seconds);screenshot('interaction-dialogue.png')
             press('B');press('X');time.sleep(profile_seconds);screenshot('interaction-backpack.png')
             press('A');time.sleep(profile_seconds);screenshot('interaction-actions.png')
-            press('B');press('L');press('D_DOWN');press('A');screenshot('interaction-long-typing.png')
+            press('B');press('START');press('D_DOWN');press('A');screenshot('interaction-long-typing.png')
             time.sleep(profile_seconds);screenshot('interaction-long-dialogue.png')
         elif '--terrain-life' in sys.argv:
             press('A');press('D_UP');press('A');press('A');time.sleep(2);press('B');press('B')
@@ -367,15 +526,15 @@ with (root/'emulator.log').open('w') as log:
             os.write(controller,b'PRESS L\nPRESS R\n');time.sleep(.2);press('START');os.write(controller,b'RELEASE L\nRELEASE R\n');time.sleep(2)
             screenshot('terrain-ramp-low.png')
             os.write(controller,b'SET MAIN 0.5 0.9\n');time.sleep(1.7);os.write(controller,b'SET MAIN 0.5 0.5\n');time.sleep(2);screenshot('terrain-ramp-high.png')
-            press('START');time.sleep(12);screenshot('terrain-high-save.png');press('B')
+            save_menu();time.sleep(12);screenshot('terrain-high-save.png');press('B')
             os.write(controller,b'SET MAIN 0.5 0.1\n');time.sleep(1.7);os.write(controller,b'SET MAIN 0.5 0.5\n');time.sleep(2);screenshot('terrain-ramp-return.png')
-            press('Y');time.sleep(2);screenshot('life-map.png');press('B');press('START');time.sleep(12);screenshot('terrain-life-save.png')
+            press('Y');time.sleep(2);screenshot('life-map.png');press('B');save_menu();time.sleep(12);screenshot('terrain-life-save.png')
         elif '--play' in sys.argv:
             press('A');press('D_UP');press('A');press('A');time.sleep(2);screenshot('bubble.png');press('B');press('B')
             time.sleep(2);screenshot('world.png')
             press('Y');time.sleep(1);screenshot('map.png');press('Y')
             press('X');time.sleep(1);screenshot('pockets.png');press('B')
-            press('START');time.sleep(12);screenshot('save.png')
+            save_menu();time.sleep(12);screenshot('save.png')
         elif '--resume' in sys.argv:
             press('A');time.sleep(2);screenshot('resume.png')
             press('X');time.sleep(1);screenshot('resume-backpack.png')
@@ -400,9 +559,9 @@ with (root/'emulator.log').open('w') as log:
                 for _ in range(9):press('D_DOWN')
                 press('A');screenshot('backpack-quit.png')
             if '--item-navigation' in sys.argv:item_navigation()
-            press('START');time.sleep(12);screenshot('resume-save.png')
+            save_menu();time.sleep(12);screenshot('resume-save.png')
             if '--split-save' in sys.argv:
-                press('B');time.sleep(5);press('START');time.sleep(12);screenshot('split-save-second.png')
+                press('B');time.sleep(5);save_menu();time.sleep(12);screenshot('split-save-second.png')
             if '--settings-navigation' in sys.argv:settings_navigation()
         if '--profile' in sys.argv:
             press('B')

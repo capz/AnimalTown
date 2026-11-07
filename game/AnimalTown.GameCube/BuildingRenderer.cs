@@ -59,7 +59,8 @@ internal sealed class BuildingRenderer
     internal void Interior(Renderer renderer,GameState state,Transform world,InteriorCamera camera,PortalSystem doors)
     {
         int building=BuildingWorld.Building(state.Space),type=state.BuildingTypes[building];float size=BuildingWorld.Size(state,state.Space),scale=size/4;
-        Part(renderer,type,2,world,Vector3.Zero,new Vector3(scale,1,scale));
+        NativeShadows.Scope(2);
+        try{Part(renderer,type,2,world,Vector3.Zero,new Vector3(scale,1,scale));}finally{NativeShadows.Scope(0);}
         for(int wall=0;wall<4;wall++)if(camera.WallVisible(wall))Part(renderer,type,3+wall,world,Vector3.Zero,new Vector3(scale,1,scale));
         // Keep the doorway legible even when the front wall is cut away.
         if(camera.WallVisible(2)||doors.Openness(building)>0)Part(renderer,type,1,world,new Vector3(size*.5f-.55f*scale,0,size+.01f),new Vector3(scale,1,1),doors.Openness(building)*1.4f);

@@ -11,15 +11,18 @@ Each successful push to `main` builds and checks the console and backend, then
 publishes a version-tagged development prerelease. Versions use
 [`xx.yy.zz.bb`](docs/versioning.md): user-controlled major, feature counter,
 bugfix counter, and 12-character commit hash. Use `feat:`/`fix:` PR titles;
-rebuilding a commit keeps its version. The release contains a compressed
-full-size GameCube ISO, a separate .NET 10 server ZIP, `BUILD.txt` with the engine
-and SDK revisions, `version.json`, and `SHA256SUMS.txt`. Extract the ISO before loading it through
-GCLoader/Swiss or writing it to suitable media. Development status and physical
-hardware validation are recorded in the release notes.
+rebuilding a commit keeps its version. For SD-card storage through Swiss/GC Loader,
+download `AnimalTown-VERSION.nkit.iso` and copy it directly to the card.
+The full-size `.iso` remains available for archival, fallback and disc burning;
+you only need one image on the card. See [NKit images](docs/nkit-images.md) for
+size savings and the exact round-trip/payload verification gates. Releases also
+contain the separate .NET 10 server ZIP, `BUILD.txt` with engine/SDK revisions,
+`version.json`, `nkit-validation.json` and `SHA256SUMS.txt`. Development status
+and physical hardware validation are recorded in the release notes.
 
 To publish a locally verified build, use a clean checkout, run both build commands
 below, then run `./tools/publish-release.ps1` with an authenticated GitHub CLI.
-`-PackageOnly` prepares archives without publishing. The publisher rejects dirty
+`-PackageOnly` prepares the disc images, archives and manifests without publishing. The publisher rejects dirty
 or mismatched console/backend revisions, verifies the ISO structure, uploads into
 a draft, checks uploaded asset hashes, and only then publishes the prerelease.
 The workflow can also be rerun from GitHub Actions using **Build and release**.
@@ -59,9 +62,10 @@ Outlying homes relocate with furniture, and loose possessions go to Lost & Found
 See [town size and save migration](docs/town-size.md).
 
 Controls: stick or D-pad moves in eight directions, B run/cancel, A interact/confirm, X backpack, Y map, Z equip
-tool, Start save/settings; stick or D-pad selects and L/R changes menu tabs. Hold
+tool, Start settings; stick or D-pad selects and L/R changes menu tabs. Hold
 the stick to repeat a selection; recenter after opening a menu or changing tabs.
-Closing a settings explanation returns to the same selected settings row. Memory-card
+Choose Save now in Settings to save; opening the menu never writes a save. The Testing tab exposes rendering, lighting, runtime and preview options; its changes last for this session. Timed and day-rollover autosaves remain active.
+Closing an explanation returns to the same selected menu row. Memory-card
 saves use Slot A, `AMTE/01`, [four split records in two banks](docs/split-saves.md), banner and icon. Missing-card
 play works; save errors are shown for retry.
 

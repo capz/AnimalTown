@@ -1,5 +1,18 @@
 # River/coast validation
 
+Inland banks now lean 0.35m into the blocked water footprint. Cardinal slopes
+share concave miters; triangular bevels close convex corners, and height-step
+junctions are closed separately. The narrow upper border reuses the adjacent
+land's texture, seasonal tint and cloud material. Soil uses the existing shared
+cliff texture and pooled geometry. No terrain IDs, saved layouts, land heights,
+water levels or bridge approach widths change.
+
+Foam follows the new waterline at the bank toe, with non-overlapping corner
+bands. Players and villagers still use the water collision rules; exact segment
+clipping also rejects very short diagonal cuts through a wet corner. Managed
+checks exercise all 256 local shore topologies, convex/concave joins, narrow
+channels, different-height banks, bridge clearance and movement blocking.
+
 The handoff integration checkpoint was checked before implementation. Its
 terrain, generation, save and core suites passed (133,106 checks); the first
 native attempt exposed missing proxy routing in nested cloud containers. The

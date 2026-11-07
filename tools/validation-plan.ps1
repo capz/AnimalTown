@@ -14,6 +14,7 @@ function Get-ValidationPlan {
         if($p -match '^server/|^tests/(server-integration|AnimalTown.ServerChecks)'){$backend=$true;continue}
         if($p -match '^tests/AnimalTown.Checks/Program.cs$'){$broad=$true;continue}
         if($p -match '^(shared/AnimalTown.Domain/WaterSurface|tests/AnimalTown.Checks/WaterSurfaceChecks)\.cs$') {[void]$managed.Add('terrain');continue}
+        if($p -match '^(shared/AnimalTown.Domain/RiverBankGeometry|tests/AnimalTown.Checks/RiverBankChecks)\.cs$'){foreach($s in @('terrain','movement','life','generation')){[void]$managed.Add($s)};continue}
         if($p -match '(MenuNavigation|UiShapePlan|WrappedText|PlayerMovement|DialogueVoice|TownTrim|TerrainEdge|TownGeneration|TerrainLife|SplitSave)Checks\.cs$'){
             $names=@{MenuNavigation='menu';UiShapePlan='ui';WrappedText='text';PlayerMovement='movement';DialogueVoice='dialogue';TownTrim='trim';TerrainEdge='terrain';TownGeneration='generation';TerrainLife='life';SplitSave='saves'}
             [void]$managed.Add($names[$Matches[1]]);continue
@@ -25,7 +26,7 @@ function Get-ValidationPlan {
         if($p -match '^shared/AnimalTown.Domain/(TownClock|VillagerNavigation|VillagerNames)\.cs$'){[void]$managed.Add('life');[void]$managed.Add('generation');continue}
         if($p -match '^shared/AnimalTown.Domain/TownGenerator\.cs$'){foreach($s in @('generation','life','trim','core')){[void]$managed.Add($s)};continue}
         if($p -match '^shared/AnimalTown.Domain/LowPolyTree\.cs$'){[void]$managed.Add('core');[void]$managed.Add('terrain');continue}
-        if($p -match '^shared/AnimalTown.Domain/(TerrainElevation|CylinderWorld|RenderView|TerrainTiles|FloorStrips)\.cs$'){
+        if($p -match '^shared/AnimalTown.Domain/(TerrainElevation|CylinderWorld|RenderView|TerrainTiles|FloorStrips|TerrainStream)\.cs$'){
             foreach($s in @('core','terrain','movement','generation','life')){[void]$managed.Add($s)};continue
         }
         if($p -match '^shared/AnimalTown.Domain/(TexturePixels|TextureResolution|FloorTexture)\.cs$'){
@@ -43,6 +44,7 @@ function Get-ValidationPlan {
         if($p -match '^(tools/native-uv|tests/native-uv)'){[void]$native.Add('uv');continue}
         if($p -match '^(tools/native-card|tests/native-card)'){[void]$native.Add('card');[void]$managed.Add('saves');continue}
         if($p -match '^(tools/native-texture|tests/native-texture)'){[void]$native.Add('texture');[void]$managed.Add('core');continue}
+        if($p -match '^(tools/native-shadow|tests/native-shadow)'){[void]$native.Add('shadows');[void]$managed.Add('terrain');continue}
         if($p -match '^tests/native-dialogue') {[void]$native.Add('voices');[void]$managed.Add('dialogue');continue}
         if($p -match '^tools/native-calendar'){[void]$managed.Add('life');continue}
         if($p -match '^tools/AnimalTown.Tools/(TextureRepacker|Uv)'){[void]$tooling.Add('repack');continue}
@@ -62,6 +64,6 @@ function Get-ValidationPlan {
         if($p -match '^tools/iso-smoke.py$'){[void]$native.Add('python');continue} # Scenarios are explicitly selected.
         $broad=$true
     }
-    if($broad){foreach($s in $allManaged){[void]$managed.Add($s)};foreach($s in @('terrain','repack','building')){[void]$tooling.Add($s)};foreach($s in @('uv','card','texture','voices','python')){[void]$native.Add($s)};$backend=$true;$policy=$true}
+    if($broad){foreach($s in $allManaged){[void]$managed.Add($s)};foreach($s in @('terrain','repack','building','nkit')){[void]$tooling.Add($s)};foreach($s in @('uv','card','texture','voices','python','shadows')){[void]$native.Add($s)};$backend=$true;$policy=$true}
     [pscustomobject]@{schema=1;commit=$Commit;baseRef=$BaseRef;release=$release;full=$broad;managed=@($allManaged|Where-Object {$managed.Contains($_)});tooling=@($tooling|Sort-Object);native=@($native|Sort-Object);backend=$backend;policy=$policy;paths=@($ChangedPaths|Sort-Object -Unique)}
 }
