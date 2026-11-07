@@ -48,6 +48,39 @@ jobs:
         if: always()
         run: |
           mkdir -p out/evidence
+          python3 - <<'PY'
+          import struct,json
+          from pathlib import Path
+          report={}
+          for label in ['fixture','buildings']:
+              b=Path('out/control-'+label+'/MemoryCardA.USA.raw').read_bytes()
+              directory=max([b[8192:16384],b[16384:24576]],key=lambda x:struct.unpack_from('>H',x,0x1ffa)[0])
+              bat=max([b[24576:32768],b[32768:40960]],key=lambda x:struct.unpack_from('>H',x,4)[0])
+              records={}
+              for at in range(0,127*64,64):
+                  if directory[at:at+4]!=b'AMTE':continue
+                  name=directory[at+8:at+40].split(b'\0')[0].decode();block,n=struct.unpack_from('>HH',directory,at+54);data=b''
+                  for _ in range(n):
+                      assert 5<=block<len(b)//8192;data+=b[block*8192:(block+1)*8192];block=struct.unpack_from('>H',bat,10+(block-5)*2)[0]
+                  if data[:8]!=b'DNDSAVE1':continue
+                  length,offset=struct.unpack_from('>II',data,8);p=data[offset:offset+length]
+                  if p[:4]!=b'ATSP':continue
+                  entry={'sequence':struct.unpack_from('<i',p,16)[0],'bytes':len(p)}
+                  if name.startswith('AT-Player'):
+                      f=list(struct.unpack_from('<53i',p,len(p)-4-53*4));entry['playerSpaceFacingTypes']=f[:11];entry['journeys']=[f[11+i*7:18+i*7] for i in range(6)];entry['playerFields']=list(struct.unpack_from('<27i',p,28))
+                  if name.startswith('AT-Town'):
+                      pos=48
+                      for _ in range(2):
+                          runs=struct.unpack_from('<i',p,pos)[0];pos+=4+4*runs
+                      residents=[]
+                      for _ in range(6):
+                          x,z,n=struct.unpack_from('<iii',p,pos);pos+=12+4*n
+                          px,pz=struct.unpack_from('<ii',p,pos);pos+=8;residents.append([x,z,px,pz])
+                      entry['residents']=residents
+                  records[name]=entry
+              report[label]=records
+          text=json.dumps(report,indent=2);print(text);Path('out/evidence/baseline-control-save-state.json').write_text(text+'\n')
+          PY
           for image in out/control-buildings/*.png; do cp "$image" "out/evidence/baseline-control-$(basename "$image")"; done
           cp out/control-buildings/emulator.log out/evidence/baseline-control-emulator.log
-          gh release upload v0.7.3.88149d5aaab7 --repo "$GITHUB_REPOSITORY" out/evidence/* --clobber
+          gh release upload v0.7.4.88149d5aaab7 --repo "$GITHUB_REPOSITORY" out/evidence/* --clobber
