@@ -46,6 +46,15 @@ internal static class GroundShadowChecks
         check(front&&house.Bottom>83,"house projection extends beyond its camera-facing footprint");
         Array.Fill(t.Tiles,(byte)Terrain.Grass);for(int z=78;z<84;z++)for(int x=78;x<84;x++)t.Elevation[z*Town.Width+x]=TerrainElevation.RampNorth;
         Build(new ShadowCaster(80.5f,80.5f,.75f,0,1.5f));check(g.Vertices>0,"continuous natural ramp receives a slanted shadow");
+        Array.Clear(t.Elevation);for(int z=76;z<86;z++){t.Tiles[z*Town.Width+78]=(byte)Terrain.Sea;t.Tiles[z*Town.Width+79]=(byte)Terrain.Beach;}
+        check(GroundSurface.HeightAt(t,79,80,79,80)==WaterSurface.Height&&GroundSurface.HeightAt(t,79,80,80,80)==0,"floor and overlay share the slanted beach-edge receiver heights");
+        Build(new ShadowCaster(79.5f,80.5f,3,1,0));bool shoreVertex=false;
+        for(int i=0;i<g.Vertices;i++)if(Math.Abs(g.Positions[i*3]-79)<.0001f){
+            float py=g.Positions[i*3+1]+CylinderWorld.Radius,pz=g.Positions[i*3+2];
+            check(Math.Abs((float)Math.Sqrt(py*py+pz*pz)-(CylinderWorld.Radius+WaterSurface.Height+.012f))<.006f,"shadow meets the actual wet beach toe instead of floating over its slope");shoreVertex=true;
+        }
+        check(shoreVertex,"shoreline receiver fixture exercises a clipped beach edge");
+        Array.Fill(t.Tiles,(byte)Terrain.Grass);
         byte[] atlas=GroundShadow.Atlas();check(atlas.Length==32768,"all four shared IA8 masks use 32KiB");
         for(int kind=0;kind<4;kind++){
             int total=0;for(int y=0;y<64;y++)for(int x=0;x<64;x++){

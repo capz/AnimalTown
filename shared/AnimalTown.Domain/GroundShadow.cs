@@ -52,7 +52,7 @@ public sealed class GroundShadow
     }
     private P Point(int cx,int cz,float x,float z,int level)
     {
-        float h=level<0?TerrainElevation.AtCell(town,cx,cz,x,z):level*2;
+        float h=level<0?GroundSurface.HeightAt(town,cx,cz,x,z):level*2;
         var p=z==cz?rowA:rowB;
         return new P(x,z,p.Y+(h+.012f)*p.UpY,p.Z+(h+.012f)*p.UpZ);
     }

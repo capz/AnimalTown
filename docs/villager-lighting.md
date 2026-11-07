@@ -30,7 +30,8 @@ float-to-byte array-store bug. The native patch/build step checks the bundled
 atlas function for integer byte stores; managed texture tests alone cannot
 detect this compiler regression. Native captures must show actual ground shade.
 
-Receiver triangles are clipped to the projected footprint, dry ground cells and
+Receiver heights share the floor's `GroundSurface` rule, including the low beach
+toe. Receiver triangles are clipped to the projected footprint, dry ground cells and
 the exact upper/lower diagonal half-planes. Clipping interpolates the existing
 cylinder row chords, rather than independently bending fractional vertices.
 Ramps receive the shadow; discontinuous support heights and water stop it.
