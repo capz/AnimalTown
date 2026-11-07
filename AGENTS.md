@@ -12,7 +12,8 @@ backend builds of the same commit. The main-branch release workflow does this
 automatically after its checks pass.
 
 Every console build must produce the full-size bootable ISO with game title,
-commit identity, disc banner and save banner/icon. Release its compressed ISO,
+commit identity, disc banner and save banner/icon. Publish the full ISO and compact
+NKit ISO directly, without ZIP wrappers, alongside the
 separate backend archive, revision manifest and SHA-256 checksums. Keep development
 builds marked as prereleases and report hardware validation honestly.
 
