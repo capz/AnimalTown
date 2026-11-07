@@ -333,6 +333,8 @@ with (root/'emulator.log').open('w') as log:
         elif '--movement-profile' in sys.argv:
             press('A')
             if '--new-town' in sys.argv:press('D_UP');press('A');press('A');time.sleep(2);press('B');press('B')
+            if '--ground-ring' in sys.argv:
+                os.write(controller,b'SET C 0.5 0.95\nPRESS L\nPRESS R\n');time.sleep(.2);press('Z');os.write(controller,b'RELEASE L\nRELEASE R\nSET C 0.5 0.5\n');time.sleep(2)
             os.write(controller,b'PRESS L\nPRESS R\n');time.sleep(.2);press('Z');os.write(controller,b'RELEASE L\nRELEASE R\n')
             time.sleep(profile_seconds);screenshot('movement-stationary.png')
             routes=[(.9,.5,False),(.1,.5,False),(.5,.1,False),(.5,.9,False),(.9,.1,True),(.1,.9,True)]

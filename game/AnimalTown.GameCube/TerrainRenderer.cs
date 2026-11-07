@@ -33,6 +33,12 @@ internal sealed class TerrainRenderer
     private byte[] data=new byte[0];
     private int season=-1,forced,slots,cachedTerrainVersion=-1;
     private Town? cachedTown;
+    private GroundRingRenderer? groundRing;
+    internal bool GroundRingRequested {get;private set;}
+    internal int SharedFlatMaterial {get;private set;}=-1;
+    internal bool GroundRingActive=>SharedFlatMaterial>=0;
+    internal bool GroundRingUploaded=>groundRing?.Uploaded??false;
+    internal void ToggleGroundRing(){GroundRingRequested=!GroundRingRequested;}
     internal int VisibleTriangles,RejectedQuads;
     internal int BuiltThisFrame {get;private set;}
     internal int MaterialRevision {get;private set;}
@@ -65,7 +71,13 @@ internal sealed class TerrainRenderer
             season=next;
             MaterialRevision++;
         }
-        if(changed||cachedTown!=state.Town||cachedTerrainVersion!=state.Town.TerrainVersion){stream.Reset();building=-1;cachedTown=state.Town;cachedTerrainVersion=state.Town.TerrainVersion;}
+        int flat=GroundRingRequested&&!cliffPreview&&FloorStrips.Read(data,4)==2?FloorStrips.Read(data,24):-1;
+        if(flat>=0&&FloorStrips.TextureSlot(data,flat)!=0)flat=-1;
+        bool invalid=changed||cachedTown!=state.Town||cachedTerrainVersion!=state.Town.TerrainVersion||flat!=SharedFlatMaterial;
+        SharedFlatMaterial=flat;
+        if(flat<0){groundRing?.Dispose();groundRing=null;}
+        if(invalid){stream.Reset();building=-1;cachedTown=state.Town;cachedTerrainVersion=state.Town.TerrainVersion;}
+        if(GroundRingActive){if(groundRing==null)groundRing=new GroundRingRenderer();groundRing.Prepare(state,data,flat,invalid);}
         var scroll=CylinderWorld.Scroll(0,state.Z);
         ScrollTransform.LocalPosition=new Vector3(0,scroll.Y,scroll.Z);
         ScrollTransform.LocalRotation=new Quaternion(scroll.HalfSin,0,0,scroll.HalfCos);
@@ -85,7 +97,7 @@ internal sealed class TerrainRenderer
         shadows.Prepare(state);
         while(steps<8&&Clock.Timestamp<deadline){if(!shadows.Advance())break;steps++;geometryRevision++;BuiltThisFrame++;}
         gallery.PrepareGallery(state,this,cliffPreview);
-        VisibleTriangles=gallery.Triangles;RejectedQuads=0;
+        VisibleTriangles=gallery.Triangles+(GroundRingActive?GroundRingPlan.IndexCount/3:0);RejectedQuads=0;
         for(int i=0;i<stream.Count;i++)if(stream.Visible[i])VisibleTriangles+=sections[i]!.Triangles;
     }
     internal void CycleCloudCover()=>clouds.Cover=clouds.Cover==.5f?0:clouds.Cover==0?1:.5f;
@@ -112,7 +124,9 @@ internal sealed class TerrainRenderer
         for(int i=0;i<stream.Count;i++)if(stream.Visible[i])Add(renderer,soil.Material,sections[i]!.Walls.SoilMesh);
         Flush(renderer,soil.Material);
         NativeShadows.Scope(1);
-        try{for(int slot=0;slot<slots;slot++){
+        try{
+            if(GroundRingActive)groundRing!.Draw(renderer,materials[SharedFlatMaterial],ScrollTransform);
+            for(int slot=0;slot<slots;slot++){
             for(int i=0;i<stream.Count;i++)if(stream.Visible[i]){var section=sections[i]!;Add(renderer,materials[slot],section.GroundMesh(slot));Add(renderer,materials[slot],section.Walls.GroundMesh(slot));}
             Flush(renderer,materials[slot]);
         }}finally{NativeShadows.Scope(0);}

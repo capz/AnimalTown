@@ -26,7 +26,7 @@ internal sealed class TerrainSection
     internal bool Advance(GameState state,TerrainRenderer owner,FloorStrips strips,byte[] data)
     {
         if(row<TerrainStream.Height){
-            if(phase==0){strips.PrepareRegion(state,data,left,top+row,TerrainStream.Width,1);AppendGround(state,strips);}
+            if(phase==0){strips.PrepareRegion(state,data,left,top+row,TerrainStream.Width,1);AppendGround(state,strips,owner.SharedFlatMaterial);}
             else if(phase==1)Water.Append(strips);
             else Walls.AppendRow(state,owner,left,top+row);
             phase++;if(phase==3){phase=0;row++;}return false;
@@ -38,10 +38,10 @@ internal sealed class TerrainSection
         }
         Water.Finish();Walls.Finish();Triangles+=Water.Triangles+Walls.Triangles;return true;
     }
-    private void AppendGround(GameState state,FloorStrips strips)
+    private void AppendGround(GameState state,FloorStrips strips,int sharedFlatMaterial)
     {
         for(int n=0;n<strips.Count;n++){
-            if(strips.Water[n])continue;
+            if(strips.Water[n]||GroundRingPlan.Uses(state.Town,strips.X0[n],strips.Z0[n],strips.Material[n],sharedFlatMaterial))continue;
             Triangles+=2;int slot=strips.Material[n],z=strips.Z0[n],at=used[slot];
             if(meshes[slot]==null){
                 for(int old=0;old<used.Length;old++)if(used[old]==0&&meshes[old]!=null){meshes[slot]=meshes[old];buffers[slot]=buffers[old];meshes[old]=null;buffers[old]=null;break;}
