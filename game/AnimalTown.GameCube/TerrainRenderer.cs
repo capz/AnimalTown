@@ -70,7 +70,8 @@ internal sealed class TerrainRenderer
         long deadline=Clock.Timestamp+2000;int steps=0;stream.Prepare(state.X,state.Z);
         // Moving feet need bounded progress even while scenery is streaming.
         // These stages consume the SAME deadline and eight-stage allowance.
-        while(steps<2&&Clock.Timestamp<deadline){if(!movingShadows.Advance())break;steps++;geometryRevision++;}
+        int actorStages=stream.MissingWanted>0?1:2;
+        while(steps<actorStages&&Clock.Timestamp<deadline){if(!movingShadows.Advance())break;steps++;geometryRevision++;}
         do{
             if(building<0){
                 if(stream.BuildSlot<0)break;building=stream.BuildSlot;stream.Hold();
