@@ -21,7 +21,8 @@ Packaging uses [NKit 3.2.0](https://github.com/Nanook/NKit/releases/tag/v3.2.0),
 with platform-specific archive SHA-256 pins in `build/nkit.lock.json`. The Linux
 builder preloads the legacy-glibc x64/ARM64 CLI; desktop packaging can cache the
 matching Windows/macOS CLI. The executable is verified against its trusted ZIP
-entry on each use. No local NKit configuration is loaded and source deletion is
+entry on each use. NKit's MIT notice accompanies cached tools and the builder
+image. No local NKit configuration is loaded and source deletion is
 never enabled.
 
 Every package must pass:

@@ -29,6 +29,8 @@ function Get-NKitTool([string]$CacheRoot) {
             try{[IO.Compression.ZipFileExtensions]::ExtractToFile($entries[0],$temporary);[IO.File]::Move($temporary,$executable,$true)}finally{if(Test-Path $temporary){Remove-Item -LiteralPath $temporary}}
         }
     }finally{$zip.Dispose()}
+    $notice=Join-Path $PSScriptRoot 'NKit.LICENSE';$cachedNotice=Join-Path $cache 'LICENSE-NKit.txt'
+    if(!(Test-Path $cachedNotice) -or (Get-FileHash $cachedNotice -Algorithm SHA256).Hash -ne (Get-FileHash $notice -Algorithm SHA256).Hash){Copy-Item -LiteralPath $notice -Destination $cachedNotice -Force}
     if(!$IsWindows){
         $execute=[IO.UnixFileMode]::UserExecute -bor [IO.UnixFileMode]::GroupExecute -bor [IO.UnixFileMode]::OtherExecute
         if(([IO.File]::GetUnixFileMode($executable) -band $execute) -ne $execute){& chmod a+x $executable;if($LASTEXITCODE){throw 'Cannot mark NKit executable'}}

@@ -28,7 +28,7 @@ RUN git config --system core.autocrlf input \
     && dotnet --info && dotnet --list-sdks \
     && pwsh -NoProfile -Command '$PSVersionTable.PSVersion.ToString()' \
     && powerpc-eabi-gcc --version && gh --version
-COPY nkit.ps1 nkit.lock.json /opt/animaltown-nkit/
+COPY nkit.ps1 nkit.lock.json NKit.LICENSE /opt/animaltown-nkit/
 RUN pwsh -NoProfile -File /opt/animaltown-nkit/nkit.ps1 -CacheRoot /opt/animaltown-nkit/cache
 ENV ANIMALTOWN_NKIT_CACHE=/opt/animaltown-nkit/cache
 WORKDIR /workspace
