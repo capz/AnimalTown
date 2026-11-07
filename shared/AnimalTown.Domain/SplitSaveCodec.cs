@@ -76,6 +76,8 @@ public static class SplitSaveCodec
     }
     public static byte[] EncodeCommit(GameState s,byte[][] records)
     {var w=new Writer(s,Commit,96);for(int i=0;i<4;i++){var r=new Reader(records[i],i);if(r.Sequence!=s.Sequence||r.Seed!=s.Town.Seed)throw new InvalidOperationException("Mixed save commit");w.Int(records[i].Length);w.Int((int)SaveCodec.Crc(records[i],0,records[i].Length-4));}return w.Finish();}
+    public static void VerifyCommitted(byte[] commit,byte[][] records)
+    {var r=new Reader(commit,Commit);if(records.Length!=4)throw new InvalidOperationException("Incomplete save commit");for(int i=0;i<4;i++){var part=new Reader(records[i],i);part.Match(r);if(r.Int()!=records[i].Length||(uint)r.Int()!=SaveCodec.Crc(records[i],0,records[i].Length-4))throw new InvalidOperationException("Save commit mismatch");}r.End();}
     public static GameState DecodeCommitted(byte[] commit,byte[][] records)
-    {var r=new Reader(commit,Commit);if(records.Length!=4)throw new InvalidOperationException("Incomplete save commit");for(int i=0;i<4;i++){var part=new Reader(records[i],i);part.Match(r);if(r.Int()!=records[i].Length||(uint)r.Int()!=SaveCodec.Crc(records[i],0,records[i].Length-4))throw new InvalidOperationException("Save commit mismatch");}r.End();return Decode(records);}
+    {VerifyCommitted(commit,records);return Decode(records);}
 }

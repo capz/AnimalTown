@@ -30,7 +30,10 @@ public sealed class SaveRepository
             for(int i=0;i<4;i++)storage.Write(SplitSaveCodec.FileName(i,bank),parts[i]);
             SplitSaveCodec.DecodeCommitted(commit,ReadParts(bank));
             storage.Write(SplitSaveCodec.FileName(4,bank),commit);
-            SplitSaveCodec.DecodeCommitted(storage.Read(SplitSaveCodec.FileName(4,bank)),ReadParts(bank));
+            // The first readback already validated the full town. Verify the
+            // durable commit and identical record checksums without allocating
+            // another town while the first decoded state is still on the stack.
+            SplitSaveCodec.VerifyCommitted(storage.Read(SplitSaveCodec.FileName(4,bank)),ReadParts(bank));
         }catch{state.Sequence=previous;throw;}
     }
 }
