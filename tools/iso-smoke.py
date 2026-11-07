@@ -29,6 +29,54 @@ def screenshot(name):
 def save_menu():
     press('START');press('A')
 
+def committed_card_sequence(path):
+    """Read a complete generation from either redundant directory/BAT pair."""
+    import struct
+    import zlib
+    if not path.exists():return 0
+    card=path.read_bytes();sector=8192
+    if len(card)%sector:raise AssertionError('Truncated emulator memory card')
+    def be16(at):return struct.unpack_from('>H',card,at)[0]
+    def record(payload,kind):
+        if len(payload)<32:raise ValueError('Short save record')
+        magic,version,catalog,actual,sequence,seed,length=struct.unpack_from('<7I',payload)
+        crc=struct.unpack_from('<I',payload,len(payload)-4)[0]
+        if magic!=0x50535441 or version!=3 or actual!=kind or length!=len(payload) or zlib.crc32(payload[:-4])!=crc:
+            raise ValueError('Invalid save record')
+        return version,catalog,sequence,seed,crc
+    best=0
+    for directory in (1,2):
+        for bat in (3,4):
+            files={}
+            try:
+                for i in range(127):
+                    at=directory*sector+i*64
+                    if card[at:at+6]!=b'AMTE01':continue
+                    name=card[at+8:at+40].split(b'\0',1)[0].decode('ascii')
+                    if not name.startswith('AT-'):continue
+                    block,count=be16(at+54),be16(at+56);seen=set();data=bytearray()
+                    for _ in range(count):
+                        if block<5 or block>=len(card)//sector or block in seen:raise ValueError('Invalid card chain')
+                        seen.add(block);data.extend(card[block*sector:(block+1)*sector])
+                        block=be16(bat*sector+10+(block-5)*2)
+                    if block!=65535 or data[:8]!=b'DNDSAVE1':raise ValueError('Invalid card container')
+                    length,offset=struct.unpack_from('>II',data,8)
+                    if offset<32 or offset+length>len(data):raise ValueError('Truncated card container')
+                    files[name]=bytes(data[offset:offset+length])
+                for bank in (0,1):
+                    names=[f'AT-{kind}{bank}' for kind in ('Town','Houses','Shops','Player','Commit')]
+                    if not all(name in files for name in names):continue
+                    commit=files[names[4]];identity=record(commit,4)
+                    if len(commit)!=64:continue
+                    for kind,name in enumerate(names[:4]):
+                        part=files[name];part_identity=record(part,kind)
+                        expected_length,expected_crc=struct.unpack_from('<II',commit,28+kind*8)
+                        if part_identity[:4]!=identity[:4] or len(part)!=expected_length or part_identity[4]!=expected_crc:
+                            raise ValueError('Mixed save generation')
+                    best=max(best,identity[2])
+            except (ValueError,UnicodeError,struct.error):continue
+    return best
+
 def testing_menu():
     import hashlib
     def card_digest():
@@ -48,9 +96,8 @@ def testing_menu():
             if p.poll() is not None:raise RuntimeError('Game exited during Testing menu checks')
             time.sleep(1)
         raise AssertionError(f'Testing row {row} did not become available after landscape loading')
-    # Start in a fresh town without depending on a pre-existing player's save.
-    os.write(controller,b'PRESS L\nPRESS R\n');time.sleep(.2);press('A')
-    os.write(controller,b'RELEASE L\nRELEASE R\n');time.sleep(15)
+    # Complete normal player creation before testing gameplay or saving.
+    press('A');press('D_UP');press('A');press('A');time.sleep(2);press('B');press('B')
     before=card_digest()
     for _ in range(3):press('START');time.sleep(1);press('B')
     if card_digest()!=before:raise AssertionError('Opening Settings wrote to the memory card')
@@ -70,9 +117,15 @@ def testing_menu():
             for step in range(5):
                 press('A');label(f'testing-water-off-{step}',row)
         press('D_DOWN')
-    press('B');save_menu();time.sleep(15);screenshot('testing-explicit-save.png')
-    if card_digest()==before:raise AssertionError('Explicit Save now did not update the memory card')
-    (root/'testing-menu.txt').write_text('Start opened Settings without writing the card.\nAll 14 testing toggles changed their labels.\nWater preview allowed menu re-entry.\nExplicit Save now updated the card.\n')
+    card=root/'MemoryCardA.USA.raw';previous=committed_card_sequence(card)
+    press('B');save_menu()
+    for sample in range(45):
+        time.sleep(1)
+        if committed_card_sequence(card)>previous:break
+        if p.poll() is not None:raise RuntimeError('Game exited during explicit save')
+    else:raise AssertionError('Explicit Save now did not commit a complete checksummed save generation')
+    screenshot('testing-explicit-save.png')
+    (root/'testing-menu.txt').write_text('Start opened Settings without writing the card.\nAll 14 testing toggles changed their labels.\nWater preview allowed menu re-entry.\nExplicit Save now committed all four records and their matching checksummed commit.\n')
 
 def building_view(name, indoors):
     screenshot(name)
