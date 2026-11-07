@@ -66,7 +66,7 @@ jobs:
         run: |
           mkdir -p out/performance-release
           for attempt in $(seq 1 50); do
-            if [ "$(gh release view \"$RELEASE_TAG\" --repo \"$GITHUB_REPOSITORY\" --json isDraft --jq .isDraft 2>/dev/null)" = false ] && gh release download "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --dir out/performance-release --clobber; then break; fi
+            if [ "$(gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --json isDraft --jq .isDraft 2>/dev/null)" = false ] && gh release download "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --dir out/performance-release --clobber; then break; fi
             test "$attempt" != 50
             sleep 15
           done
