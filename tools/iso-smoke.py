@@ -99,6 +99,13 @@ def testing_menu():
             if p.poll() is not None:raise RuntimeError('Game exited during Testing menu checks')
             time.sleep(1)
         raise AssertionError(f'Testing row {row} did not become available after landscape loading')
+    def changed_label(name,row,before):
+        for sample in range(45):
+            current=label(name,row)
+            if current!=before:return current
+            if p.poll() is not None:raise RuntimeError('Game exited while updating debug state')
+            time.sleep(1)
+        raise AssertionError(f'Debug row {row} did not change after its loading transition')
     card=root/'MemoryCardA.USA.raw'
     if committed_card_sequence(card)!=0:raise AssertionError('Fresh-town test found a save before any explicit action')
     # Complete normal player creation before testing gameplay or saving.
@@ -111,7 +118,8 @@ def testing_menu():
     # Enter through the visible Settings action, without a hidden shortcut.
     for _ in range(5):press('D_DOWN')
     label('testing-settings-debug-entry',5);press('A')
-    for row in range(14):
+    manual_only='--manual-save-only' in sys.argv
+    for row in range(1 if manual_only else 14):
         original=label(f'testing-row-{row}-before',row)
         press('A');changed=label(f'testing-row-{row}-after',row)
         if original==changed:raise AssertionError(f'Testing row {row} did not change its displayed state')
@@ -128,10 +136,11 @@ def testing_menu():
         press('D_DOWN')
     # The remaining two rows are navigation actions; the final row toggles
     # the newly merged ground-ring prototype and must also be reachable.
-    press('D_DOWN');press('D_DOWN');original=label('testing-ground-ring-before',16)
-    press('A');changed=label('testing-ground-ring-after',16)
+    direction='D_UP' if manual_only else 'D_DOWN'
+    press(direction);press(direction);original=label('testing-ground-ring-before',16)
+    press('A');changed=changed_label('testing-ground-ring-after',16,original)
     if original==changed:raise AssertionError('Ground-ring debug action did not change state')
-    press('A');label('testing-ground-ring-restored',16)
+    press('A');changed_label('testing-ground-ring-restored',16,changed)
     if card_digest()!=before:raise AssertionError('Debug actions wrote to the memory card')
     press('B')
     wait_seconds=int(sys.argv[sys.argv.index('--manual-save-wait')+1]) if '--manual-save-wait' in sys.argv else 0
@@ -159,7 +168,7 @@ def testing_menu():
         committed_card_sequence(card,expected_day=expected_day)
     saved=card_digest();press('B');press('START');press('B');time.sleep(5)
     if card_digest()!=saved:raise AssertionError('Closing/reopening Settings wrote another save')
-    (root/'testing-menu.txt').write_text('Player creation and Settings never saved automatically.\nVisible Settings entry opened Debug / testing.\nAll 14 original toggles and the ground ring changed state and were restored.\nWater preview allowed menu re-entry.\n'+f'{wait_seconds}s idle play preserved the card bytes.\n'+'Only Save now committed all four records and their matching checksummed commit.\nReopening Settings left the saved generation unchanged.\n')
+    (root/'testing-menu.txt').write_text('Player creation and Settings never saved automatically.\nVisible Settings entry opened Debug / testing.\n'+('Performance display and ground ring toggled/restored.\n' if manual_only else 'All 14 original toggles and the ground ring toggled/restored; water preview allowed menu re-entry.\n')+f'{wait_seconds}s idle play preserved the card bytes.\n'+'Only Save now committed all four records and their matching checksummed commit.\nReopening Settings left the saved generation unchanged.\n')
 
 def building_view(name, indoors):
     screenshot(name)
