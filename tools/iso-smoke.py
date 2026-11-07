@@ -29,7 +29,7 @@ def screenshot(name):
 def save_menu():
     press('START');press('A')
 
-def committed_card_sequence(path):
+def committed_card_sequence(path, expected_day=None):
     """Read a complete generation from either redundant directory/BAT pair."""
     import struct
     import zlib
@@ -44,7 +44,7 @@ def committed_card_sequence(path):
         if magic!=0x50535441 or version!=3 or actual!=kind or length!=len(payload) or zlib.crc32(payload[:-4])!=crc:
             raise ValueError('Invalid save record')
         return version,catalog,sequence,seed,crc
-    best=0
+    best=0;best_day=None
     for directory in (1,2):
         for bat in (3,4):
             files={}
@@ -73,8 +73,11 @@ def committed_card_sequence(path):
                         expected_length,expected_crc=struct.unpack_from('<II',commit,28+kind*8)
                         if part_identity[:4]!=identity[:4] or len(part)!=expected_length or part_identity[4]!=expected_crc:
                             raise ValueError('Mixed save generation')
-                    best=max(best,identity[2])
+                    if identity[2]>best:
+                        best=identity[2];best_day=struct.unpack_from('<i',files[names[0]],40)[0]
             except (ValueError,UnicodeError,struct.error):continue
+    if expected_day is not None and best_day!=expected_day:
+        raise AssertionError(f'Explicit save did not retain the new rollover day: expected {expected_day}, got {best_day}')
     return best
 
 def testing_menu():
@@ -96,12 +99,18 @@ def testing_menu():
             if p.poll() is not None:raise RuntimeError('Game exited during Testing menu checks')
             time.sleep(1)
         raise AssertionError(f'Testing row {row} did not become available after landscape loading')
+    card=root/'MemoryCardA.USA.raw'
+    if committed_card_sequence(card)!=0:raise AssertionError('Fresh-town test found a save before any explicit action')
     # Complete normal player creation before testing gameplay or saving.
     press('A');press('D_UP');press('A');press('A');time.sleep(2);press('B');press('B')
+    if committed_card_sequence(card)!=0:raise AssertionError('Player creation saved automatically')
     before=card_digest()
     for _ in range(3):press('START');time.sleep(1);press('B')
     if card_digest()!=before:raise AssertionError('Opening Settings wrote to the memory card')
-    press('START');screenshot('testing-settings-no-save.png');press('R')
+    press('START');screenshot('testing-settings-no-save.png')
+    # Enter through the visible Settings action, without a hidden shortcut.
+    for _ in range(5):press('D_DOWN')
+    label('testing-settings-debug-entry',5);press('A')
     for row in range(14):
         original=label(f'testing-row-{row}-before',row)
         press('A');changed=label(f'testing-row-{row}-after',row)
@@ -117,15 +126,40 @@ def testing_menu():
             for step in range(5):
                 press('A');label(f'testing-water-off-{step}',row)
         press('D_DOWN')
-    card=root/'MemoryCardA.USA.raw';previous=committed_card_sequence(card)
-    press('B');save_menu()
+    # The remaining two rows are navigation actions; the final row toggles
+    # the newly merged ground-ring prototype and must also be reachable.
+    press('D_DOWN');press('D_DOWN');original=label('testing-ground-ring-before',16)
+    press('A');changed=label('testing-ground-ring-after',16)
+    if original==changed:raise AssertionError('Ground-ring debug action did not change state')
+    press('A');label('testing-ground-ring-restored',16)
+    if card_digest()!=before:raise AssertionError('Debug actions wrote to the memory card')
+    press('B')
+    wait_seconds=int(sys.argv[sys.argv.index('--manual-save-wait')+1]) if '--manual-save-wait' in sys.argv else 0
+    if not 0<=wait_seconds<=600:raise ValueError('Manual save wait must be 0..600 seconds')
+    # Keep the real simulation running past the old five-minute trigger.
+    # The optional RTC fixture also crosses the 06:00 daily rollover.
+    for second in range(wait_seconds):
+        time.sleep(1)
+        if p.poll() is not None:raise RuntimeError('Game exited during manual-save idle check')
+        if (second+1)%30==0:
+            if card_digest()!=before:raise AssertionError('Timed play or day rollover wrote to the memory card')
+            print(f'Manual-save idle check: {second+1}/{wait_seconds}s; card unchanged',flush=True)
+    if card_digest()!=before:raise AssertionError('Gameplay wrote to the card without Save now')
+    screenshot('testing-manual-save-idle.png')
+    previous=committed_card_sequence(card)
+    save_menu()
     for sample in range(45):
         time.sleep(1)
         if committed_card_sequence(card)>previous:break
         if p.poll() is not None:raise RuntimeError('Game exited during explicit save')
     else:raise AssertionError('Explicit Save now did not commit a complete checksummed save generation')
     screenshot('testing-explicit-save.png')
-    (root/'testing-menu.txt').write_text('Start opened Settings without writing the card.\nAll 14 testing toggles changed their labels.\nWater preview allowed menu re-entry.\nExplicit Save now committed all four records and their matching checksummed commit.\n')
+    if '--rtc-rollover' in sys.argv:
+        expected_day=int((datetime(2027,month,15,6,tzinfo=timezone.utc).timestamp()-6*3600)//86400)
+        committed_card_sequence(card,expected_day=expected_day)
+    saved=card_digest();press('B');press('START');press('B');time.sleep(5)
+    if card_digest()!=saved:raise AssertionError('Closing/reopening Settings wrote another save')
+    (root/'testing-menu.txt').write_text('Player creation and Settings never saved automatically.\nVisible Settings entry opened Debug / testing.\nAll 14 original toggles and the ground ring changed state and were restored.\nWater preview allowed menu re-entry.\n'+f'{wait_seconds}s idle play preserved the card bytes.\n'+'Only Save now committed all four records and their matching checksummed commit.\nReopening Settings left the saved generation unchanged.\n')
 
 def building_view(name, indoors):
     screenshot(name)
@@ -232,7 +266,7 @@ def settings_navigation():
     press('A');screenshot('settings-about.png');press('B');press('B');focus('settings-about-return',2)
     press('D_UP');focus('settings-dpad-up',1)
     press('A');screenshot('settings-controls.png');press('B');press('B');focus('settings-controls-return',1)
-    press('D_UP');press('D_UP');focus('settings-wrap',4)
+    press('D_UP');press('D_UP');focus('settings-wrap',5)
     press('R');focus('testing-entry',0)
     press('A');focus('testing-performance-on',0)
     press('A');focus('testing-performance-off',0)
@@ -280,7 +314,7 @@ UsePanicHandlers = False
 if '--season' in sys.argv:
     season=sys.argv[sys.argv.index('--season')+1]
     month={'spring':4,'summer':7,'fall':10,'winter':1}[season]
-    rtc=int(datetime(2027,month,15,12,tzinfo=timezone.utc).timestamp())
+    rtc=int(datetime(2027,month,15,5,59,30,tzinfo=timezone.utc).timestamp()) if '--rtc-rollover' in sys.argv else int(datetime(2027,month,15,12,tzinfo=timezone.utc).timestamp())
     config=user/'Config'/'Dolphin.ini'
     config.write_text(config.read_text().replace('SkipIPL = True\n',f'SkipIPL = True\nEnableCustomRTC = True\nCustomRTCValue = {rtc}\n'))
 if '--dsp-hle' in sys.argv:
