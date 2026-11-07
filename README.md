@@ -11,11 +11,14 @@ Each successful push to `main` builds and checks the console and backend, then
 publishes a version-tagged development prerelease. Versions use
 [`xx.yy.zz.bb`](docs/versioning.md): user-controlled major, feature counter,
 bugfix counter, and 12-character commit hash. Use `feat:`/`fix:` PR titles;
-rebuilding a commit keeps its version. The release contains a compressed
-full-size GameCube ISO, a separate .NET 10 server ZIP, `BUILD.txt` with the engine
-and SDK revisions, `version.json`, and `SHA256SUMS.txt`. Extract the ISO before loading it through
-GCLoader/Swiss or writing it to suitable media. Development status and physical
-hardware validation are recorded in the release notes.
+rebuilding a commit keeps its version. For SD-card storage through Swiss/GC Loader,
+download `AnimalTown-VERSION.nkit.iso.zip` and extract its compact `.nkit.iso`.
+The full-size ISO ZIP remains available for archival, fallback and disc burning;
+you only need one image on the card. See [NKit images](docs/nkit-images.md) for
+size savings and the exact round-trip/payload verification gates. Releases also
+contain the separate .NET 10 server ZIP, `BUILD.txt` with engine/SDK revisions,
+`version.json`, `nkit-validation.json` and `SHA256SUMS.txt`. Development status
+and physical hardware validation are recorded in the release notes.
 
 To publish a locally verified build, use a clean checkout, run both build commands
 below, then run `./tools/publish-release.ps1` with an authenticated GitHub CLI.
