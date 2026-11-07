@@ -12,8 +12,8 @@ publishes a version-tagged development prerelease. Versions use
 [`xx.yy.zz.bb`](docs/versioning.md): user-controlled major, feature counter,
 bugfix counter, and 12-character commit hash. Use `feat:`/`fix:` PR titles;
 rebuilding a commit keeps its version. For SD-card storage through Swiss/GC Loader,
-download `AnimalTown-VERSION.nkit.iso.zip` and extract its compact `.nkit.iso`.
-The full-size ISO ZIP remains available for archival, fallback and disc burning;
+download `AnimalTown-VERSION.nkit.iso` and copy it directly to the card.
+The full-size `.iso` remains available for archival, fallback and disc burning;
 you only need one image on the card. See [NKit images](docs/nkit-images.md) for
 size savings and the exact round-trip/payload verification gates. Releases also
 contain the separate .NET 10 server ZIP, `BUILD.txt` with engine/SDK revisions,
@@ -22,7 +22,7 @@ and physical hardware validation are recorded in the release notes.
 
 To publish a locally verified build, use a clean checkout, run both build commands
 below, then run `./tools/publish-release.ps1` with an authenticated GitHub CLI.
-`-PackageOnly` prepares archives without publishing. The publisher rejects dirty
+`-PackageOnly` prepares the disc images, archives and manifests without publishing. The publisher rejects dirty
 or mismatched console/backend revisions, verifies the ISO structure, uploads into
 a draft, checks uploaded asset hashes, and only then publishes the prerelease.
 The workflow can also be rerun from GitHub Actions using **Build and release**.

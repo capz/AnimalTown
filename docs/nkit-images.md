@@ -1,7 +1,7 @@
 # Compact SD-card images
 
-Releases include `AnimalTown-VERSION.nkit.iso.zip` for Swiss/GC Loader use.
-Extract the `.nkit.iso` onto the SD card and launch it through Swiss. Keep that
+Releases include `AnimalTown-VERSION.nkit.iso` for Swiss/GC Loader use.
+Copy the `.nkit.iso` onto the SD card and launch it through Swiss. Keep that
 extension; do not convert it to GCZ or RVZ for the GameCube loader. Only one
 image is needed on the card. Physical Swiss/GC Loader testing remains separate
 from Dolphin testing.
@@ -9,10 +9,10 @@ from Dolphin testing.
 NKit ISO removes unused disc padding and reorganizes file placement. The game
 files are preserved; this is not a ZIP that the console must decompress. A
 production sample shrank from 1,459,978,240 to 88,160,256 bytes (93.96% less SD
-space). Sizes vary with build contents. The ZIP download savings are smaller
-because the existing full-ISO ZIP already compresses blank padding well.
+space). Sizes vary with build contents. Both disc images are published directly,
+without ZIP wrappers, so no extraction is needed.
 
-The canonical full-size bootable ISO and its ZIP remain available for archival,
+The canonical full-size bootable ISO remains available for archival,
 fallback and disc burning. NKit is an additional delivery artifact, not a
 replacement for the required canonical build. Smaller files do not remove
 filesystem fragmentation; copy to a card with sufficient contiguous free space.
@@ -42,8 +42,8 @@ sections keep 32-byte DMA alignment. This is checked rather than inferred from
 a successful round trip: a reversible container alone does not prove bootability.
 
 `nkit-validation.json` records converter provenance, both sizes/hashes, the
-round-trip result and per-file hashes. `SHA256SUMS.txt` covers both image ZIPs,
-both extracted images and the reports. Temporary expanded images are removed;
+round-trip result and per-file hashes. `SHA256SUMS.txt` covers both disc images,
+the other release archives and the reports. Temporary expanded images are removed;
 publication only proceeds after verification. No game/save schema changes are
 needed.
 

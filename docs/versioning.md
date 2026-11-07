@@ -71,10 +71,11 @@ identity from that history.
 
 The game display, disc title/banner and ISO filename use the four-part version.
 `BUILD.txt` inside the ISO, the server and release records the version alongside
-the full source revisions. Archive names include it, for example:
+the full source revisions. Disc image and archive names include it, for example:
 
 ```text
-AnimalTown-0.3.2.a1b2c3d4e5f6.iso.zip
+AnimalTown-0.3.2.a1b2c3d4e5f6.iso
+AnimalTown-0.3.2.a1b2c3d4e5f6.nkit.iso
 AnimalTown-server-0.3.2.a1b2c3d4e5f6.zip
 AnimalTown-tools-0.3.2.a1b2c3d4e5f6.zip
 ```
