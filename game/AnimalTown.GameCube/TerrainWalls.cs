@@ -88,7 +88,7 @@ internal sealed class TerrainWalls
     }
     private static Vector3 Local(TerrainCliffGeometry g,int i,int ox,int oz)=>new Vector3(ox+g.Positions[i*3],g.Positions[i*3+1],oz+g.Positions[i*3+2]);
     private static Vector3 Mid(Vector3 a,Vector3 b)=>new Vector3((a.X+b.X)*.5f,(a.Y+b.Y)*.5f,(a.Z+b.Z)*.5f);
-    private VertexPositionColorTexture GroundVertex(Vector3 p)=>Vertex(p.X,p.Z,p.Y,p.X*.5f,p.Z*.5f);
+    private VertexPositionColorTexture GroundVertex(Vector3 p)=>new VertexPositionColorTexture(Point(p.X,p.Z,p.Y),Color32.White,new Vector2(p.X*.5f,p.Z*.5f));
     private void Cap(int slot,Vector3 a,Vector3 b,Vector3 c)=>Add(slot,GroundVertex(a),GroundVertex(b),GroundVertex(c));
     private Vector3 Point(float px,float pz,float h)
     {
@@ -98,7 +98,7 @@ internal sealed class TerrainWalls
         float ay=a.Y+h*a.UpY,az=a.Z+h*a.UpZ,by=b.Y+h*b.UpY,bz=b.Z+h*b.UpZ;
         return new Vector3(px,ay+(by-ay)*t,az+(bz-az)*t);
     }
-    private VertexPositionColorTexture Vertex(float px,float pz,float h,float u,float v)=>new VertexPositionColorTexture(Point(px,pz,h),Color32.White,new Vector2(u,v));
+    private VertexPositionColorTexture Vertex(float px,float pz,float h,float u,float v)=>new VertexPositionColorTexture(Point(px,pz,h),new Color32(255,255,255,0),new Vector2(u,v));
     private void Add(int slot,VertexPositionColorTexture a,VertexPositionColorTexture b,VertexPositionColorTexture c)
     {
         if(total+3>Capacity)throw new InvalidOperationException("Cliff geometry exceeds batch budget");total+=3;

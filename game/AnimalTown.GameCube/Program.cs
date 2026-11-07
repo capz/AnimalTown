@@ -56,6 +56,7 @@ internal sealed class TownGame
     private readonly CachedTexture wordmark,itemIcons;
     private readonly Transform worldRoot=new Transform(),transform=new Transform(),identity=new Transform();
     private readonly TerrainRenderer terrain;
+    private readonly VillagerShadows villagerShadows;
     private long profiledTerrainRevision=-1;
     private readonly int[] visibleTrees=new int[LowPolyTrees.Capacity];
     private readonly float[] treeDistances=new float[LowPolyTrees.Capacity];
@@ -101,6 +102,7 @@ internal sealed class TownGame
     private float facingYaw=3.1415927f;
     private bool loaded,relocate,damagedSave;
     private bool indexedModels=true,batchedDrawing=true;
+    private int lighting=3;
     private int uvDebug;
     private bool cliffPreview;
     private int waterInspection;
@@ -127,7 +129,9 @@ internal sealed class TownGame
         state.Rollover(day,month);
         if(room==0&&state.HousePlaced&&!state.CanWalk(state.X,state.Z,0))state.MoveToHouseEntrance();
         buildings=new BuildingRenderer(worldRoot);
-        trees=new LowPolyTrees(worldRoot);terrain=new TerrainRenderer();lastSave=Clock.Timestamp;
+        trees=new LowPolyTrees(worldRoot);terrain=new TerrainRenderer();villagerShadows=new VillagerShadows();
+        if(NativeShadows.Init(GroundShadow.Atlas(),VillagerShadowPatch.Texture())!=1)throw new InvalidOperationException("Shadow union native budget");
+        NativeRim.Enable(1);NativeRim.Enable(0);lastSave=Clock.Timestamp;
     }
     internal void AdvanceLoading()
     {
@@ -196,6 +200,7 @@ internal sealed class TownGame
     {
         if(!resourcesReady||room==0&&!terrain.Ready)return;
         bool chord=p.L.IsHeld&&p.R.IsHeld;
+        if(chord&&p.Z.IsHeld&&p.Y.WasPressed){lighting=(lighting+1)&3;terrain.ObjectShadowsEnabled=(lighting&2)!=0;return;}
         if(chord&&p.A.WasPressed&&(screen=="world"||screen=="title")){InspectBuilding();return;}
         if(chord&&p.B.WasPressed){RuntimeOptions.Cycle();return;}
         if(chord&&p.DPadRight.WasPressed&&room==0){terrain.CycleCloudCover();return;}
@@ -470,7 +475,20 @@ internal sealed class TownGame
     {
         if(!Visible(x,z,scale)){FrameProfile.CulledObjects++;return;}
         var pose=batchedDrawing?modelPoses[modelUsed++]:transform;pose.LocalPosition=SurfacePoint(x,z);pose.LocalScale=new Vector3(scale,scale,scale);pose.LocalRotation=SurfaceRotation(z,facing);
-        if(batchedDrawing){actorQueue.Submit(m,pose);}else renderer.DrawModel(m,pose);
+        if(batchedDrawing){actorQueue.Submit(m,pose);}else{NativeRim.Enable(lighting&1);try{renderer.DrawModel(m,pose);}finally{NativeRim.Enable(0);}}
+    }
+    private void DrawActors()
+    {NativeRim.Enable(lighting&1);try{actorQueue.Execute(renderer);}finally{NativeRim.Enable(0);}}
+    private void PrepareVillagerShadows()
+    {
+        villagerShadows.Enabled=(lighting&2)!=0;villagerShadows.BeginFrame(state.Town);
+        NativeShadows.Begin(room,villagerShadows.Enabled?1:0,room==0?0:BuildingWorld.Size(state,room));if(!villagerShadows.Enabled)return;
+        int size=room==0?0:BuildingWorld.Size(state,room);
+        bool mat=room!=0&&BuildingWorld.Definition(state,BuildingWorld.Building(room)).Floor==BuildingCatalog.Cottage.Floor;
+        for(int actor=0;actor<BuildingWorld.Actors;actor++){
+            if(BuildingWorld.Location(state,actor).Space.Value!=room||actor==0&&waterInspection!=0)continue;
+            var p=villagers.Doors.VisualLocation(state,actor);if(Visible(p.X,p.Z,1.8f))villagerShadows.Set(actor,room,p.X,p.Z,size,mat);
+        }
     }
     internal void Draw()
     {
@@ -483,18 +501,24 @@ internal sealed class TownGame
     {
         cachedPlayerHeight=PlayerHeight();if(room==0)RenderView.Prepare(state.X,state.Z,cachedPlayerHeight);
         UpdateAnimationFrame();
-        long phase=FrameProfile.Start();if(room==0){terrain.Prepare(state,room,month,cliffPreview);terrain.Animate((Clock.Timestamp-sessionStart)/1000000.0);}FrameProfile.End(2,phase);
+        long phase=FrameProfile.Start();PrepareVillagerShadows();
+        if(room==0){terrain.Prepare(state,room,month,villagerShadows,cliffPreview);terrain.Animate((Clock.Timestamp-sessionStart)/1000000.0);}
+        else{long until=Clock.Timestamp+2000;int steps=0;while(steps<8&&Clock.Timestamp<until){if(!villagerShadows.Advance())break;steps++;}}
+        villagerShadows.Publish();if(NativeShadows.Prepare()!=1)throw new InvalidOperationException("Shadow union page capacity");
+        FrameProfile.End(2,phase);
+        if(room==0&&!terrain.Ready){DrawLoading(landscape:true);return;}
         phase=FrameProfile.Start();uiShapes.Prepare(screen,screen=="menu"?menuTab:-1,batchedDrawing);if(batchedDrawing&&screen=="map")mapBackground.Prepare(state.Town);modelUsed=0;FrameProfile.End(8,phase);
         phase=FrameProfile.Start();device.BeginFrame(room==0?new Color32(149,198,186):new Color32(32,40,39));
         float eyeHeight=PlayerHeight();
         if(room==0)camera.LookAt(new Vector3(state.X,CylinderWorld.CameraHeight+eyeHeight,state.Z+CylinderWorld.CameraBack),new Vector3(state.X,eyeHeight,state.Z-CylinderWorld.CameraAimAhead),new Vector3(0,1,0));
         else{float size=BuildingWorld.Size(state,room);indoorView.LookAt(new Vector3(indoorCamera.EyeX(size),indoorCamera.EyeY(size),indoorCamera.EyeZ(size)),new Vector3(size*.5f,.7f,size*.5f),new Vector3(0,1,0));}
         renderer.Begin3D(room==0?camera:indoorView);buildings.Begin(villagers.Doors);FrameProfile.End(4,phase);
-        phase=FrameProfile.Start();if(room==0){terrain.Draw(renderer,terrain.ScrollTransform,room);}else buildings.Interior(renderer,state,worldRoot,indoorCamera,villagers.Doors);FrameProfile.End(4,phase);phase=FrameProfile.Start();
+        phase=FrameProfile.Start();if(room==0){terrain.Draw(renderer,terrain.ScrollTransform,room);}else buildings.Interior(renderer,state,worldRoot,indoorCamera,villagers.Doors);
+        FrameProfile.End(4,phase);phase=FrameProfile.Start();
         if(room==0)
         {
             for(int i=0;i<6;i++){var v=state.Town.Residents[i];if(v.Space==0){var visual=villagers.Doors.VisualLocation(state,i+1);ModelAt(actors[i+1],visual.X,visual.Z,1.8f,visual.Yaw);}}
-            if(batchedDrawing)actorQueue.Execute(renderer);
+            if(batchedDrawing)DrawActors();
             FrameProfile.End(5,phase);phase=FrameProfile.Start();DrawTrees();FrameProfile.End(6,phase);phase=FrameProfile.Start();
             long groundAt=FrameProfile.Start();
             for(int i=0;i<state.Town.GroundCount;i++)
@@ -530,7 +554,7 @@ internal sealed class TownGame
         if(batchedDrawing)boxes.Flush();
         FrameProfile.End(7,phase);phase=FrameProfile.Start();
         if(waterInspection==0){var visual=villagers.Doors.VisualLocation(state,0);ModelAt(actors[0],visual.X,visual.Z,1.8f,facingYaw);}
-        if(batchedDrawing)actorQueue.Execute(renderer);
+        if(batchedDrawing)DrawActors();
         FrameProfile.End(5,phase);phase=FrameProfile.Start();
         if(screen=="plot")
         { int x=(int)state.X-3,z=(int)state.Z-3;bool valid=state.Town.ValidPlot(x,z);for(int i=0;i<15;i++){Box(x+i,.02f,z,.9f,.03f,.9f,valid?new Color32(74,230,113):new Color32(229,82,72));Box(x+i,.02f,z+12,.9f,.03f,.9f,valid?new Color32(74,230,113):new Color32(229,82,72));} }
@@ -637,7 +661,10 @@ internal sealed class TownGame
     private void DrawHud()
     {
         var ink=new Color32(49,72,62);Panel(20,18,282,36);Text("AnimalTown / "+BuildInfo.Version,32,24,ink,.9f);
-        if(FrameProfile.Enabled)Text((indexedModels?"GX indexed":"Direct")+(batchedDrawing?" / batched":" / baseline"),420,418,ink,.8f);
+        if(FrameProfile.Enabled){
+            Text((indexedModels?"GX indexed":"Direct")+(batchedDrawing?" / batched":" / baseline"),420,418,ink,.8f);
+            Text("Shadows: "+NativeShadows.Stats(0)+" pages / "+NativeShadows.Stats(2)+" updated",420,433,ink,.65f);
+        }
         if(cachedWallet!=state.Wallet){cachedWallet=state.Wallet;walletLabel=state.Wallet+" acorns";}
         if(cachedDebt!=state.Debt){cachedDebt=state.Debt;debtLabel="Loan "+state.Debt;}
         Panel(410,18,210,56);Strong(walletLabel,427,22,ink,1.35f);Text(debtLabel,427,47,ink,.95f);

@@ -17,6 +17,7 @@ internal sealed class TerrainRenderer
     private readonly TerrainWalls gallery;
     internal readonly Transform ScrollTransform=new Transform();
     private readonly CloudShadows clouds=new CloudShadows();
+    private readonly ObjectShadows shadows;
     private readonly Color32[] baseTints=new Color32[FloorStrips.MaximumMaterials];
     private readonly Material[] materials=new Material[FloorStrips.MaximumMaterials];
     private readonly CachedTexture?[] textures=new CachedTexture?[FloorStrips.MaximumMaterials];
@@ -34,16 +35,18 @@ internal sealed class TerrainRenderer
     private Town? cachedTown;
     internal int VisibleTriangles,RejectedQuads;
     internal int MaterialRevision {get;private set;}
+    internal bool ObjectShadowsEnabled {get=>shadows.Enabled;set=>shadows.Enabled=value;}
     internal int GroundSlot(GameState state,int x,int z)=>FloorStrips.At(state,data,x,z,0);
     internal Material GroundMaterial(int slot)=>materials[slot];
     internal TerrainRenderer()
     {
         gallery=new TerrainWalls(soil);
+        shadows=new ObjectShadows();
         var cfg=File.ReadAllBytes("dvd:/terrain.cfg");if(cfg.Length!=4)throw new IOException("Invalid floor season config");forced=FloorStrips.Read(cfg,0);if(forced< -1||forced>3)throw new IOException("Invalid floor season");
         for(int i=0;i<materials.Length;i++)materials[i]=new Material{Cull=CullMode.Back,Lighting=LightingMode.Unlit,SecondarySampler=new SamplerState(TextureAddressMode.Repeat,TextureAddressMode.Repeat,TextureFilter.Linear)};
         for(int i=0;i<poses.Length;i++)poses[i]=ScrollTransform;
     }
-    internal void Prepare(GameState state,int room,int month,bool cliffPreview=false)
+    internal void Prepare(GameState state,int room,int month,VillagerShadows movingShadows,bool cliffPreview=false)
     {
         int next=TerrainTiles.Season(month,forced);bool changed=next!=season;
         if(changed){
@@ -65,6 +68,8 @@ internal sealed class TerrainRenderer
         ScrollTransform.LocalPosition=new Vector3(0,scroll.Y,scroll.Z);
         ScrollTransform.LocalRotation=new Quaternion(scroll.HalfSin,0,0,scroll.HalfCos);
         long deadline=Clock.Timestamp+2000;int steps=0;stream.Prepare(state.X,state.Z);
+        // Landscape readiness takes priority. Moving shadows use spare stages
+        // after terrain, retaining overlapping receivers while replacements wait.
         do{
             if(building<0){
                 if(stream.BuildSlot<0)break;building=stream.BuildSlot;stream.Hold();
@@ -74,6 +79,9 @@ internal sealed class TerrainRenderer
             bool complete=sections[building]!.Advance(state,this,staging,data);steps++;geometryRevision++;
             if(complete){stream.Complete();building=-1;stream.Prepare(state.X,state.Z);}
         }while(steps<8&&Clock.Timestamp<deadline);
+        while(steps<8&&Clock.Timestamp<deadline){if(!movingShadows.Advance())break;steps++;geometryRevision++;}
+        shadows.Prepare(state);
+        while(steps<8&&Clock.Timestamp<deadline){if(!shadows.Advance())break;steps++;geometryRevision++;}
         gallery.PrepareGallery(state,this,cliffPreview);
         VisibleTriangles=gallery.Triangles;RejectedQuads=0;
         for(int i=0;i<stream.Count;i++)if(stream.Visible[i])VisibleTriangles+=sections[i]!.Triangles;
@@ -100,10 +108,11 @@ internal sealed class TerrainRenderer
         Flush(renderer,waterMaterial.Foam);
         for(int i=0;i<stream.Count;i++)if(stream.Visible[i])Add(renderer,soil.Material,sections[i]!.Walls.SoilMesh);
         Flush(renderer,soil.Material);
-        for(int slot=0;slot<slots;slot++){
+        NativeShadows.Scope(1);
+        try{for(int slot=0;slot<slots;slot++){
             for(int i=0;i<stream.Count;i++)if(stream.Visible[i]){var section=sections[i]!;Add(renderer,materials[slot],section.GroundMesh(slot));Add(renderer,materials[slot],section.Walls.GroundMesh(slot));}
             Flush(renderer,materials[slot]);
-        }
+        }}finally{NativeShadows.Scope(0);}
         gallery.Draw(renderer,ScrollTransform,this);
     }
 }

@@ -26,6 +26,8 @@ public sealed class Town
     public readonly byte[] Tiles=new byte[Cells];
     public readonly byte[] Elevation=new byte[Cells];
     public int TerrainVersion {get;private set;}
+    public int ShadowVersion {get;private set;}
+    public void NotifyCastersChanged(){ShadowVersion++;}
     // Bulk importers that write Tiles directly call this once after committing.
     public void NotifyTerrainChanged(){TerrainVersion++;}
     public bool SetTerrain(int x,int z,Terrain terrain)
@@ -80,8 +82,8 @@ public sealed class Town
     public bool AddGround(int item,int x,int z,int kind,int day)
     {
         if(GroundCount==Ground.Length||!Catalog.Valid(item)||!Walkable(x,z)||FindGround(x,z)>=0)return false;
-        var g=Ground[GroundCount++];g.Item=item;g.X=x;g.Z=z;g.Kind=kind;g.Day=day;g.Owner=0;return true;
+        var g=Ground[GroundCount++];g.Item=item;g.X=x;g.Z=z;g.Kind=kind;g.Day=day;g.Owner=0;NotifyCastersChanged();return true;
     }
     public void RemoveGround(int index)
-    { var old=Ground[index];Ground[index]=Ground[--GroundCount];Ground[GroundCount]=old; }
+    { var old=Ground[index];Ground[index]=Ground[--GroundCount];Ground[GroundCount]=old;NotifyCastersChanged(); }
 }

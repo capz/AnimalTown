@@ -34,6 +34,8 @@ static class Program
             else if(args[0]=="tree-audit")TreeRenderAudit.Run(Root,args[2]);
             else if(args[0]=="iso")Disc(args[2],args[3]);
             else if(args[0]=="verify")Verify(args[2]);
+            else if(args[0]=="verify-nkit"){Verify(args[2]);NKitImages.Verify(args[2],args[3],args[4]);}
+            else if(args[0]=="nkit-check")NKitImages.Check();
             else throw new ArgumentException("repack-textures|repack-check|audit|art|iso|verify|tree-audit ROOT [PATH] [COMMIT]");
             return 0;
         }
