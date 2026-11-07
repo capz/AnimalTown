@@ -638,7 +638,10 @@ internal sealed class TownGame
     private void DrawHud()
     {
         var ink=new Color32(49,72,62);Panel(20,18,282,36);Text("AnimalTown / "+BuildInfo.Version,32,24,ink,.9f);
-        if(FrameProfile.Enabled)Text((indexedModels?"GX indexed":"Direct")+(batchedDrawing?" / batched":" / baseline"),420,418,ink,.8f);
+        if(FrameProfile.Enabled){
+            Text((indexedModels?"GX indexed":"Direct")+(batchedDrawing?" / batched":" / baseline"),420,418,ink,.8f);
+            Text("Shadows: "+NativeShadows.Stats(0)+" pages / "+NativeShadows.Stats(2)+" updated",420,433,ink,.65f);
+        }
         if(cachedWallet!=state.Wallet){cachedWallet=state.Wallet;walletLabel=state.Wallet+" acorns";}
         if(cachedDebt!=state.Debt){cachedDebt=state.Debt;debtLabel="Loan "+state.Debt;}
         Panel(410,18,210,56);Strong(walletLabel,427,22,ink,1.35f);Text(debtLabel,427,47,ink,.95f);
