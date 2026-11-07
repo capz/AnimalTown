@@ -1,9 +1,9 @@
 # NuGet rendering services
 
 AnimalTown builds without engine or SDK source submodules. It consumes
-`Capz.Hypercube.GameCube` and `Capz.Hypercube.Core` **0.1.0-preview.4.1**, paired
+`Capz.Hypercube.GameCube` and `Capz.Hypercube.Core` **0.1.0-preview.9.1**, paired
 with `DolphinDotNet.Sdk`, GameCube/Core and the Assets tool
-**0.1.0-preview.245.1**. global.json pins the SDK; exact PackageReference versions,
+**0.1.0-preview.266.1**. global.json pins the SDK; exact PackageReference versions,
 committed package locks and the local tool manifest pin the runtime/tool graph.
 NuGet.Config uses NuGet.org only. Package licenses are GPL-2.0-only.
 
@@ -15,7 +15,7 @@ heap. No global package files are patched. Offline imaging references the Imagin
 assembly shipped inside the pinned Assets package via PackageDownload, with its
 matching SkiaSharp dependencies; it does not compile SDK sources. BUILD.txt
 records package versions, source commits and the game package-lock SHA256.
-Native object cache identity includes the SDK package content hash. Packaged
+The SDK managed-heap build setting retains AnimalTown's 4 MiB budget; package source arrays are not rewritten. Native object cache identity includes the SDK package content hash. Packaged
 source timestamps alone cannot invalidate objects after an SDK ABI change.
 
 ## Adopted services
@@ -24,7 +24,9 @@ source timestamps alone cannot invalidate objects after an SDK ABI change.
 | --- | --- |
 | CloudShadowLayer | Owns the 4 KiB mask and TEV effect; game supplies cover and world motion |
 | ScrollingTextureLayer | Two independent water UV layers; opaque surface, depth tint and foam retained |
-| DynamicMeshBuffer / BufferGrowth | Bounded floor, water, foam and soil/ground cliff uploads; explicit content revisions |
+| IndexedMeshCache | Exact used vertex/index ranges for immutable streamed floor sections; shares identical row-edge vertices |
+| DynamicMeshBuffer / BufferGrowth | Bounded water, foam and soil/ground cliff uploads; explicit content revisions |
+| SDK indexed vertex colours | Eligible unlit identity-tint meshes, including depth-tinted opaque water, avoid CPU triangle expansion |
 | MeshBatch | Groups opaque box colors within the existing pass boundaries; fixed capacity 128 |
 | SharedGraphicsResources / ResourceLease | Sole owner of resident application texture pages; cache retains identity and LRU policy |
 | CameraFrustum | Shared sphere culling with the existing .025 m guard band |
@@ -37,7 +39,7 @@ The parent worldRoot is an identity; MeshBatch receives those world TRS values
 without parenting them again. Indexed immutable trees and SDK model queues stay
 in use. Transparent foam and painter-ordered UI remain outside opaque grouping.
 
-Terrain geometry now uses [cached patches and shared cylinder motion](movement-terrain-cache.md). Camera movement changes a transform and visibility; terrain/material revisions change mesh content. Animated UVs never dirty vertices. Inactive floor/cliff material slots release their CPU
+Terrain geometry uses bounded streamed sections and shared cylinder motion. The [package performance upgrade](package-performance-upgrade.md) adds exact indexed floor storage while retaining section build budgets. Camera movement changes a transform and visibility; terrain/material revisions change mesh content. Animated UVs never dirty vertices. Inactive floor/cliff material slots release their CPU
 and native capacity. Water/soil buffers retain bounded capacity. GeometryStaging
 preserves the currently written prefix during growth: package preview.4.1's
 Reserve only preserves the previous committed Count. Capacity recreation can

@@ -1,0 +1,192 @@
+name: Package performance comparison
+on:
+  push:
+    branches: [feat/package-performance-services]
+  workflow_dispatch:
+permissions:
+  contents: write
+concurrency:
+  group: package-performance-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  compare:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    env:
+      GH_TOKEN: ${{ github.token }}
+      LIBGL_ALWAYS_SOFTWARE: "1"
+      QT_X11_NO_MITSHM: "1"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: |
+            10.0.x
+            8.0.x
+      - name: Resolve matching release identity
+        id: version
+        shell: pwsh
+        run: ./tools/write-version.ps1 -GitHubOutput $env:GITHUB_OUTPUT
+      - name: Install emulator and capture tools
+        run: |
+          docker build -t animaltown-performance - <<'DOCKER'
+          FROM debian:trixie
+          RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends dolphin-emu xvfb xauth ffmpeg python3 libxcb-cursor0 ca-certificates && rm -rf /var/lib/apt/lists/*
+          DOCKER
+          docker run --rm animaltown-performance test -x /usr/games/dolphin-emu-nogui
+      - name: Fetch and verify current-main control ISO
+        run: |
+          mkdir -p out/performance-base
+          gh release download v0.6.3.28174414ed84 --repo "$GITHUB_REPOSITORY" --dir out/performance-base --pattern 'AnimalTown-0.6.3.28174414ed84.iso' --pattern SHA256SUMS.txt
+          python3 - <<'PY'
+          import hashlib
+          from pathlib import Path
+          root=Path('out/performance-base');name='AnimalTown-0.6.3.28174414ed84.iso'
+          expected=next(s.split()[0] for s in (root/'SHA256SUMS.txt').read_text().splitlines() if s.split()[-1].lstrip('*')==name)
+          h=hashlib.sha256()
+          with (root/name).open('rb') as f:
+              while b:=f.read(8*1024*1024):h.update(b)
+          assert h.hexdigest().lower()==expected.lower()
+          PY
+      - name: Create a disposable saved-town fixture
+        run: |
+          docker run --rm --init --shm-size=512m --user "$(id -u):$(id -g)" -e LIBGL_ALWAYS_SOFTWARE=1 --mount type=bind,src="$PWD",dst=/work -w /work animaltown-performance python3 tools/iso-smoke.py out/performance-base/AnimalTown-0.6.3.28174414ed84.iso out/performance-fixture --movement-profile --new-town --profile-seconds 5
+      - name: Measure baseline from a copy of the fixture
+        run: |
+          mkdir -p out/performance-baseline
+          cp out/performance-fixture/MemoryCardA.USA.raw out/performance-baseline/
+          docker run --rm --init --shm-size=512m --user "$(id -u):$(id -g)" -e LIBGL_ALWAYS_SOFTWARE=1 --mount type=bind,src="$PWD",dst=/work -w /work animaltown-performance python3 tools/iso-smoke.py out/performance-base/AnimalTown-0.6.3.28174414ed84.iso out/performance-baseline --movement-profile --profile-seconds 8
+          docker run --rm --user "$(id -u):$(id -g)" --mount type=bind,src="$PWD",dst=/work -w /work animaltown-performance python3 tools/read-frame-profile.py out/performance-baseline/user/Dump/Frames/*.avi --check-movement > out/performance-baseline.json
+      - name: Download and verify matching published upgrade
+        env:
+          RELEASE_TAG: ${{ steps.version.outputs.tag }}
+        run: |
+          mkdir -p out/performance-release
+          for attempt in $(seq 1 50); do
+            if [ "$(gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --json isDraft --jq .isDraft 2>/dev/null)" = false ] && gh release download "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --dir out/performance-release --clobber; then break; fi
+            test "$attempt" != 50
+            sleep 15
+          done
+          python3 - <<'PY'
+          from pathlib import Path
+          import hashlib,json,os,zipfile
+          root=Path('out/performance-release')
+          for line in (root/'SHA256SUMS.txt').read_text().splitlines():
+              digest,name=line.split(None,1);name=name.strip().lstrip('*');h=hashlib.sha256()
+              with (root/name).open('rb') as f:
+                  while b:=f.read(8*1024*1024):h.update(b)
+              assert h.hexdigest().lower()==digest.lower(),name
+          meta=json.loads((root/'version.json').read_text());assert meta['commit']==os.environ['GITHUB_SHA'] and not meta['dirty']
+          version=meta['version'];iso=root/f'AnimalTown-{version}.iso';assert iso.stat().st_size==1459978240
+          build=(root/'BUILD.txt').read_text();assert os.environ['GITHUB_SHA'] in build and 'Dirty: False' in build
+          with zipfile.ZipFile(root/f'AnimalTown-server-{version}.zip') as z:
+              manifests=[z.read(n).decode() for n in z.namelist() if n.endswith('BUILD.txt')]
+              assert len(manifests)==1 and os.environ['GITHUB_SHA'] in manifests[0] and 'Dirty: False' in manifests[0]
+          Path('out/performance-iso.txt').write_text(str(iso))
+          Path('out/performance-nkit.txt').write_text(str(root/f'AnimalTown-{version}.nkit.iso'))
+          PY
+      - name: Measure upgrade from the same saved fixture
+        run: |
+          mkdir -p out/performance-upgraded
+          cp out/performance-fixture/MemoryCardA.USA.raw out/performance-upgraded/
+          docker run --rm --init --shm-size=512m --user "$(id -u):$(id -g)" -e LIBGL_ALWAYS_SOFTWARE=1 --mount type=bind,src="$PWD",dst=/work -w /work animaltown-performance python3 tools/iso-smoke.py "$(cat out/performance-iso.txt)" out/performance-upgraded --movement-profile --profile-seconds 8
+          docker run --rm --user "$(id -u):$(id -g)" --mount type=bind,src="$PWD",dst=/work -w /work animaltown-performance python3 tools/read-frame-profile.py out/performance-upgraded/user/Dump/Frames/*.avi --check-movement > out/performance-upgraded.json
+      - name: Verify real memory-card update preserves town and progress
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import struct
+          for label in ['fixture','baseline','upgraded']:
+              b=Path(f'out/performance-{label}/MemoryCardA.USA.raw').read_bytes()
+              directory=max([b[8192:16384],b[16384:24576]],key=lambda x:struct.unpack_from('>H',x,0x1ffa)[0])
+              bat=max([b[24576:32768],b[32768:40960]],key=lambda x:struct.unpack_from('>H',x,4)[0])
+              root=Path('out/performance-card-'+label);root.mkdir(exist_ok=True)
+              for at in range(0,127*64,64):
+                  if directory[at:at+4]!=b'AMTE':continue
+                  name=directory[at+8:at+40].split(b'\0')[0].decode();block,n=struct.unpack_from('>HH',directory,at+54);data=b''
+                  for _ in range(n):
+                      assert 5<=block<len(b)//8192;data+=b[block*8192:(block+1)*8192];block=struct.unpack_from('>H',bat,10+(block-5)*2)[0]
+                  assert data[:8]==b'DNDSAVE1';length,offset=struct.unpack_from('>II',data,8);assert offset+length<=len(data)
+                  (root/name).write_bytes(data[offset:offset+length])
+          root=Path('out/performance-card-check');root.mkdir(exist_ok=True)
+          (root/'Check.csproj').write_text('<Project Sdk="Microsoft.NET.Sdk"><PropertyGroup><OutputType>Exe</OutputType></PropertyGroup><ItemGroup><ProjectReference Include="../../shared/AnimalTown.Domain/AnimalTown.Domain.csproj" /></ItemGroup></Project>')
+          (root/'Program.cs').write_text('''using AnimalTown;
+          GameState Read(string label)=>new SaveRepository(new Files("out/performance-card-"+label)).Load()??throw new Exception("Missing card commit: "+label);
+          void Check(bool ok,string name){if(!ok)throw new Exception("Save preservation: "+name);}
+          var before=Read("fixture");
+          foreach(var label in new[]{"baseline","upgraded"}){
+          var after=Read(label);Check(after.Sequence==before.Sequence+1,"sequence");
+          Check(before.Town.Seed==after.Town.Seed&&before.Town.Tiles.SequenceEqual(after.Town.Tiles)&&before.Town.Elevation.SequenceEqual(after.Town.Elevation),"seed and all terrain/elevation");
+          Check(before.Pockets.SequenceEqual(after.Pockets)&&before.Owned.SequenceEqual(after.Owned)&&before.Mail.SequenceEqual(after.Mail),"possessions/mail");
+          Check(before.Wallet==after.Wallet&&before.Debt==after.Debt&&before.Savings==after.Savings&&before.Tutorial==after.Tutorial&&before.Jobs==after.Jobs&&before.MetMask==after.MetMask,"currency/progress");
+          Check(before.HousePlaced==after.HousePlaced&&before.HouseTier==after.HouseTier&&before.GardenTier==after.GardenTier&&before.Town.HouseX==after.Town.HouseX&&before.Town.HouseZ==after.Town.HouseZ,"housing");
+          Check(before.Town.GroundCount==after.Town.GroundCount&&before.Town.PlacedCount==after.Town.PlacedCount,"ground counts");
+          for(int i=0;i<before.Town.GroundCount;i++){var a=before.Town.Ground[i];var b=after.Town.Ground[i];Check(a.Item==b.Item&&a.X==b.X&&a.Z==b.Z&&a.Owner==b.Owner&&a.Kind==b.Kind&&a.Day==b.Day,"ground item");}
+          Console.WriteLine(label+": save update preserved town, possessions, housing and progress; sequence "+before.Sequence+" -> "+after.Sequence);}
+          sealed class Files(string root):ISaveStorage{public byte[] Read(string name)=>File.ReadAllBytes(Path.Combine(root,name));public void Write(string name,byte[] value)=>throw new NotSupportedException();}
+          ''')
+          PY
+          dotnet run --project out/performance-card-check -c Release -p:RestoreLockedMode=false > out/performance-save.txt
+      - name: Inspect water, shores, lighting, interiors and compact ISO
+        run: |
+          docker run --rm --init --shm-size=512m --user "$(id -u):$(id -g)" -e LIBGL_ALWAYS_SOFTWARE=1 --mount type=bind,src="$PWD",dst=/work -w /work animaltown-performance python3 tools/iso-smoke.py "$(cat out/performance-iso.txt)" out/performance-water --river-coast
+          mkdir -p out/performance-lighting
+          cp out/performance-fixture/MemoryCardA.USA.raw out/performance-lighting/
+          docker run --rm --init --shm-size=512m --user "$(id -u):$(id -g)" -e LIBGL_ALWAYS_SOFTWARE=1 --mount type=bind,src="$PWD",dst=/work -w /work animaltown-performance python3 tools/iso-smoke.py "$(cat out/performance-iso.txt)" out/performance-lighting --lighting --profile-seconds 5
+          docker run --rm --init --shm-size=512m --user "$(id -u):$(id -g)" -e LIBGL_ALWAYS_SOFTWARE=1 --mount type=bind,src="$PWD",dst=/work -w /work animaltown-performance python3 tools/iso-smoke.py "$(cat out/performance-nkit.txt)" out/performance-nkit --loading
+      # Baseline control was intermittent; keep indoor saves as a blocking gate.
+      - name: Inspect indoor save and reload
+        id: indoor
+        run: |
+          mkdir -p out/performance-buildings
+          cp out/performance-fixture/MemoryCardA.USA.raw out/performance-buildings/
+          docker run --rm --init --shm-size=512m --user "$(id -u):$(id -g)" -e LIBGL_ALWAYS_SOFTWARE=1 --mount type=bind,src="$PWD",dst=/work -w /work animaltown-performance python3 tools/iso-smoke.py "$(cat out/performance-iso.txt)" out/performance-buildings --buildings
+          mkdir -p out/performance-building-reload
+          cp out/performance-buildings/MemoryCardA.USA.raw out/performance-building-reload/
+          docker run --rm --init --shm-size=512m --user "$(id -u):$(id -g)" -e LIBGL_ALWAYS_SOFTWARE=1 --mount type=bind,src="$PWD",dst=/work -w /work animaltown-performance python3 tools/iso-smoke.py "$(cat out/performance-iso.txt)" out/performance-building-reload --building-reload
+      - name: Record indoor regression status
+        if: always()
+        env:
+          INDOOR_OUTCOME: ${{ steps.indoor.outcome }}
+        run: |
+          printf '%s\n' "Indoor save/reload outcome: $INDOOR_OUTCOME; baseline controls were intermittent (one failed, one passed)." > out/performance-indoor-status.txt
+      - name: Publish comparison evidence
+        if: always()
+        env:
+          RELEASE_TAG: ${{ steps.version.outputs.tag }}
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import hashlib,json,shutil
+          root=Path('out/performance-evidence');root.mkdir(parents=True,exist_ok=True)
+          for name in ['performance-baseline.json','performance-upgraded.json','performance-save.txt','performance-indoor-status.txt']:
+              p=Path('out')/name
+              if p.exists():shutil.copy2(p,root/name)
+          report={}
+          for label in ['baseline','upgraded']:
+              path=Path(f'out/performance-{label}.json')
+              if not path.exists() or not path.stat().st_size:continue
+              data=json.loads(path.read_text());report[label]={key:data['scenarios'][key] for key in ['stationary','walking','running']}
+          (root/'performance-comparison.json').write_text(json.dumps(report,indent=2)+'\n')
+          for label in ['fixture','baseline','upgraded','water','lighting','buildings','building-reload','nkit']:
+              directory=Path('out/performance-'+label)
+              if directory.exists():
+                  for p in directory.glob('*.png'):shutil.copy2(p,root/('performance-'+label+'-'+p.name))
+                  for p in directory.glob('*.txt'):shutil.copy2(p,root/('performance-'+label+'-'+p.name))
+                  if (directory/'emulator.log').exists():shutil.copy2(directory/'emulator.log',root/('performance-'+label+'-emulator.log'))
+              if label in ['baseline','upgraded']:
+                  for i,p in enumerate((directory/'user/Dump/Frames').glob('*.avi')):shutil.copy2(p,root/f'performance-{label}-{i}.avi')
+          lines=[]
+          for p in sorted(root.iterdir()):
+              h=hashlib.sha256()
+              with p.open('rb') as f:
+                  while b:=f.read(8*1024*1024):h.update(b)
+              lines.append(h.hexdigest()+'  '+p.name)
+          (root/'performance-SHA256SUMS.txt').write_text('\n'.join(lines)+'\n')
+          PY
+          if gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release upload "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" out/performance-evidence/* --clobber
+          fi

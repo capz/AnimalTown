@@ -81,7 +81,7 @@ $rimHooks=@{
     '#include "dnd_indexed_model.inc"'='#include "dnd_indexed_model.inc"'
     '    if(!reuse)dnd_draw_backend_tev(selected, mat->texture >= 0);'="    if(!reuse)dnd_draw_backend_tev(selected, mat->texture >= 0);`n    if(town_rim_enabled&&!effect)town_rim_apply(normal,selected,reuse,&bindings);"
     'if(!(mat->mode&2)){Mtx n;'='if(town_rim_enabled||!(mat->mode&2)){Mtx n;'
-    'if(custom_scene&&!(mat->mode&2))GX_Normal3f32'='if(town_rim_enabled||(custom_scene&&!(mat->mode&2)))GX_Normal3f32'
+    'if(authored||(custom_scene&&!(mat->mode&2)))GX_Normal3f32'='if(authored||town_rim_enabled||(custom_scene&&!(mat->mode&2)))GX_Normal3f32'
     '    if(custom_scene){'='    if(custom_scene||town_rim_enabled){'
     '      dnd_draw_backend_scene(!(mat->mode&2),frame_view);'='      if(custom_scene)dnd_draw_backend_scene(!(mat->mode&2),frame_view);'
 }
@@ -116,11 +116,16 @@ Copy-Item -LiteralPath (Join-Path $Root 'tools/native-uv-debug.inc') -Destinatio
 Copy-Item -LiteralPath (Join-Path $Root 'tools/native-uv-topology.h') -Destination (Join-Path $Root 'out/native/source/animaltown_uv_topology.h') -Force
 $entryPath=Join-Path $Root 'out/native/source/main.c'
 $entrySource=[IO.File]::ReadAllText($entryPath)
-foreach($signature in @('dnd_platform_init();','managed_heap_memory[256 * 1024]')){
+foreach($signature in @('dnd_platform_init();','managed_heap_memory[DND_MANAGED_HEAP_BYTES]')){
     if(([regex]::Matches($entrySource,[regex]::Escape($signature))).Count -ne 1){throw "Pinned native entry signature changed: $signature"}
 }
 $entrySource=$entrySource.Replace('dnd_platform_init();','dnd_platform_init(); dnd_console_set_visible(0);')
-$entrySource=$entrySource.Replace('managed_heap_memory[256 * 1024]','managed_heap_memory[4 * 1024 * 1024]')
+$makePath=Join-Path $nativeRoot 'Makefile'
+$makeSource=[IO.File]::ReadAllText($makePath)
+$heapSetting='DND_MANAGED_HEAP_BYTES ?= 262144'
+if(([regex]::Matches($makeSource,[regex]::Escape($heapSetting))).Count -ne 1){throw 'Pinned SDK managed heap setting changed'}
+$makeSource=$makeSource.Replace($heapSetting,'DND_MANAGED_HEAP_BYTES ?= 4194304')
+[IO.File]::WriteAllText($makePath,$makeSource)
 [IO.File]::WriteAllText($entryPath,$entrySource)
 Copy-Item -LiteralPath (Join-Path $Root 'tools/native-calendar.c') -Destination (Join-Path $Root 'out/native/source/animaltown_calendar.c') -Force
 Copy-Item -LiteralPath (Join-Path $Root 'tools/native-texture-pages.c') -Destination (Join-Path $Root 'out/native/source/animaltown_texture_pages.c') -Force

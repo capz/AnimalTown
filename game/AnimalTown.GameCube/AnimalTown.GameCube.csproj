@@ -4,6 +4,6 @@
     <Compile Remove="BuildInfo.cs" Condition="Exists('../../out/BuildInfo.cs')" />
     <Compile Include="../../out/BuildInfo.cs" Condition="Exists('../../out/BuildInfo.cs')" />
     <ProjectReference Include="../../shared/AnimalTown.Domain/AnimalTown.Domain.csproj" />
-    <PackageReference Include="Capz.Hypercube.GameCube" Version="[0.1.0-preview.4.1]" />
+    <PackageReference Include="Capz.Hypercube.GameCube" Version="[0.1.0-preview.9.1]" />
   </ItemGroup>
 </Project>

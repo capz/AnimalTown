@@ -1,5 +1,5 @@
 <Project Sdk="Microsoft.NET.Sdk">
-  <PropertyGroup><OutputType>Exe</OutputType><DndAssetsVersion>0.1.0-preview.245.1</DndAssetsVersion></PropertyGroup>
+  <PropertyGroup><OutputType>Exe</OutputType><DndAssetsVersion>0.1.0-preview.266.1</DndAssetsVersion></PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="../../shared/AnimalTown.Domain/AnimalTown.Domain.csproj" />
     <!-- Imaging is shipped inside the published Assets tool, not a standalone
