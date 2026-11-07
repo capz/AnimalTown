@@ -347,7 +347,7 @@ internal sealed class TownGame
         }
         if(menuTab==4){PostAction();return;}
         if(menuTab==TestingTab){TestingAction();return;}
-        if(selected==0){Save();Say("Save",saveStatus);}else if(selected==1){Say("Controls","Stick / D-pad: walk / menus. L/R: tabs. B: run / back. A: interact / select. X: backpack. Y: map. Z: tool. START: settings. Choose Save now to save.");}
+        if(selected==0){Save();}else if(selected==1){Say("Controls","Stick / D-pad: walk / menus. L/R: tabs. B: run / back. A: interact / select. X: backpack. Y: map. Z: tool. START: settings. Choose Save now to save.");}
         else if(selected==2)Say("About","AnimalTown / "+BuildInfo.Version+" / hypercube-engine. Original homebrew for Nintendo GameCube.");
         else if(selected==3){Say("Calendar","Console RTC / day "+day+". New days begin at 06:00.");}
         else Say("Chat","Quick phrases and online chat are pending the companion transport.");
@@ -373,7 +373,7 @@ internal sealed class TownGame
             case 12:RuntimeOptions.Toggle(2);break;
             case 13:RuntimeOptions.Toggle(4);break;
             case 14:if(room==0){waterInspection=0;InspectTerrain();}break;
-            case 15:waterInspection=0;InspectBuilding();break;
+            case 15:waterInspection=0;InspectBuilding();screen="world";break;
         }
     }
     private void ToggleBatching()
@@ -401,7 +401,7 @@ internal sealed class TownGame
             case 12:return "Productive waits: "+OnOff((RuntimeOptions.Mode&2)!=0);
             case 13:return "Reuse frame clear: "+OnOff((RuntimeOptions.Mode&4)!=0);
             case 14:return room==0?"Go to test ramp":"Test ramp: outdoors only";
-            default:return "Go to next test building";
+            default:return room==0?"Go to next test building":"Go to indoor doorway";
         }
     }
     private void Interact()

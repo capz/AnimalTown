@@ -131,10 +131,11 @@ Protocol v4 adds complete imported-model primitive/texture counts and replaces
 cache hit/miss fields with drawing API entries/material setups. It also labels
 in-ISO batch comparisons. See [batched-drawing.md](batched-drawing.md).
 
-Protocol v5 retains those fields and records a terrain mesh revision flag in
-bit 15 of the scenario word. The decoder reports actual rebuilt/cached frame
-counts instead of inferring them from elapsed preparation time; animated water
-and cloud materials still need CPU work on cached frames. Older captures remain
+Protocol v5 records streamed work in word 23 bits 0..7, animation updates in
+bits 8..10 and walking/running flags in bits 12..13. The decoder classifies
+cached/rebuilt frames using the build-stage count, including generation that
+has not yet published a section. Animated materials still need CPU work on
+cached frames. Older captures remain
 readable. `--terrain-scroll --profile-seconds 5 --dsp-hle` captures slow axial
 motion up/down a generated ramp, lateral motion and stationary frames.
 
@@ -164,7 +165,7 @@ behind a loading transition instead of drawing holes or constructing the whole
 view in one frame. Input/simulation pause during that cold transition. Normal
 movement prefetches ahead of the view. `--terrain-scroll --stream-stress
 --profile-seconds 5 --dsp-hle` profiles a generated ramp and river/corner/bridge/
-sea transitions. Protocol v5's revision flag now denotes streaming work, including
+sea transitions. Protocol v5's build-stage count denotes streaming work, including
 generation stages that have not yet published a section. Shore-depth tints and
 cylinder row poses are reused while generating each section.
 
