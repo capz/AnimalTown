@@ -35,10 +35,19 @@ def testing_menu():
         card=root/'MemoryCardA.USA.raw'
         return hashlib.sha256(card.read_bytes()).hexdigest() if card.exists() else None
     def label(name,row):
-        screenshot(name+'.png')
         y=131+(row%9)*24
-        return subprocess.check_output(['ffmpeg','-v','error','-i',str(root/(name+'.png')),
-            '-vf',f'crop=490:21:85:{y}','-frames:v','1','-f','rawvideo','-pix_fmt','rgb24','-'])
+        for sample in range(45):
+            screenshot(name+'.png')
+            pixels=subprocess.check_output(['ffmpeg','-v','error','-i',str(root/(name+'.png')),
+                '-frames:v','1','-f','rawvideo','-pix_fmt','rgb24','-'])
+            focused=sum(all(abs(pixels[(py*800+px)*3+c]-value)<=3
+                for c,value in enumerate((221,231,188)))
+                for py in range(y,y+21) for px in range(100,540,4))
+            if focused>100:
+                return b''.join(pixels[(py*800+85)*3:(py*800+575)*3] for py in range(y,y+21))
+            if p.poll() is not None:raise RuntimeError('Game exited during Testing menu checks')
+            time.sleep(1)
+        raise AssertionError(f'Testing row {row} did not become available after landscape loading')
     # Start in a fresh town without depending on a pre-existing player's save.
     os.write(controller,b'PRESS L\nPRESS R\n');time.sleep(.2);press('A')
     os.write(controller,b'RELEASE L\nRELEASE R\n');time.sleep(15)
@@ -51,12 +60,15 @@ def testing_menu():
         press('A');changed=label(f'testing-row-{row}-after',row)
         if original==changed:raise AssertionError(f'Testing row {row} did not change its displayed state')
         # Restore the initial setting, including the three/six-state previews.
-        for _ in range(2 if row==8 else 5 if row==10 else 1):press('A')
+        for step in range(2 if row==8 else 5 if row==10 else 1):
+            press('A');label(f'testing-row-{row}-restore-{step}',row)
         if row==10:
             # A water preview must allow Start to reopen the menu while active.
-            press('A');press('B');time.sleep(15);press('START');press('R')
+            press('A');label('testing-water-active',row);press('B');time.sleep(15);press('START');press('R')
             for _ in range(10):press('D_DOWN')
-            for _ in range(5):press('A')
+            label('testing-water-menu-return',row)
+            for step in range(5):
+                press('A');label(f'testing-water-off-{step}',row)
         press('D_DOWN')
     press('B');save_menu();time.sleep(15);screenshot('testing-explicit-save.png')
     if card_digest()==before:raise AssertionError('Explicit Save now did not update the memory card')
