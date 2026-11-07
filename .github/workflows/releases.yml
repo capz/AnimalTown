@@ -4,7 +4,7 @@ on:
   pull_request:
     types: [opened, edited, synchronize, reopened, ready_for_review]
   push:
-    branches: [main, feat/river-coast-terrain, feat/cloud-shadows, feat/nuget-rendering-services, feat/building-interiors-journeys, fix/movement-terrain-cache, feat/sloped-river-banks, feat/cached-terrain-rotation, feat/villager-rim-object-shadows, feat/nkit-release-images, feat/reusable-cylinder-ground, fix/terrain-shadow-work]
+    branches: [main, feat/river-coast-terrain, feat/cloud-shadows, feat/nuget-rendering-services, feat/building-interiors-journeys, fix/movement-terrain-cache, feat/sloped-river-banks, feat/cached-terrain-rotation, feat/villager-rim-object-shadows, feat/nkit-release-images, feat/reusable-cylinder-ground, fix/terrain-shadow-work, feat/package-performance-services]
   workflow_dispatch:
 
 permissions:
