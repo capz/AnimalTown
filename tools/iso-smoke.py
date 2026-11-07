@@ -131,8 +131,10 @@ def building_view(name, indoors):
     screenshot(name)
     pixels=subprocess.check_output(['ffmpeg','-v','error','-i',str(root/name),'-frames:v','1','-f','rawvideo','-pix_fmt','rgb24','-'])
     target=(32,40,39) if indoors else (149,198,186)
+    # The lowered outdoor camera puts sky above row 80. Include that band;
+    # keep the same colour tolerance and minimum coverage for scene detection.
     matches=sum(all(abs(pixels[(y*800+x)*3+c]-value)<=3 for c,value in enumerate(target))
-                for y in range(80,300,4) for x in range(40,600,4))
+                for y in range(80 if indoors else 4,300,4) for x in range(40,600,4))
     if p.poll() is not None or matches<500:
         raise AssertionError(f'Building scenario did not reach the expected {"interior" if indoors else "town"} view: {name}; matching background samples={matches}')
 
