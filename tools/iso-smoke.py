@@ -87,7 +87,7 @@ def testing_menu():
         return hashlib.sha256(card.read_bytes()).hexdigest() if card.exists() else None
     def label(name,row):
         y=131+(row%9)*24
-        for sample in range(45):
+        for sample in range(90):
             screenshot(name+'.png')
             pixels=subprocess.check_output(['ffmpeg','-v','error','-i',str(root/(name+'.png')),
                 '-frames:v','1','-f','rawvideo','-pix_fmt','rgb24','-'])
@@ -143,11 +143,14 @@ def testing_menu():
     screenshot('testing-manual-save-idle.png')
     previous=committed_card_sequence(card)
     save_menu()
-    for sample in range(45):
+    for sample in range(180):
         time.sleep(1)
         if committed_card_sequence(card)>previous:break
         if p.poll() is not None:raise RuntimeError('Game exited during explicit save')
-    else:raise AssertionError('Explicit Save now did not commit a complete checksummed save generation')
+    else:
+        screenshot('testing-save-failure.png')
+        raise AssertionError('Explicit Save now did not commit a complete checksummed save generation')
+    label('testing-save-returned-to-settings',0)
     screenshot('testing-explicit-save.png')
     if '--rtc-rollover' in sys.argv:
         expected_day=int((datetime(2027,month,15,6,tzinfo=timezone.utc).timestamp()-6*3600)//86400)

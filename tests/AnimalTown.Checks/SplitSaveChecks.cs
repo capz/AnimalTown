@@ -23,6 +23,8 @@ internal static class SplitSaveChecks
         var parts=SplitSaveCodec.Encode(s);var restored=SplitSaveCodec.Decode(parts);
         check(SaveCodec.Encode(s).SequenceEqual(SaveCodec.Encode(restored)),"all fields round-trip through four separate records");
         var commit=SplitSaveCodec.EncodeCommit(s,parts);check(SplitSaveCodec.DecodeCommitted(commit,parts).Wallet==1234,"commit binds complete save set");
+        long allocated=GC.GetAllocatedBytesForCurrentThread();SplitSaveCodec.VerifyCommitted(commit,parts);
+        check(GC.GetAllocatedBytesForCurrentThread()-allocated<16384,"final commit verification fits a small allocation budget without reconstructing a town");
         void Reject(Action operation,string reason){bool rejected=false;try{operation();}catch{rejected=true;}check(rejected,reason);}
         for(int kind=0;kind<4;kind++){
             var broken=parts.Select(p=>(byte[])p.Clone()).ToArray();broken[kind][32]^=1;Reject(()=>SplitSaveCodec.DecodeCommitted(commit,broken),"corrupt part rejected");
