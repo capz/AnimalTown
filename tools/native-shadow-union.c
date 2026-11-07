@@ -31,7 +31,7 @@ int animaltown_shadows_active(int slot,int active,DndArray *center){
 }
 int animaltown_shadows_prepare(void){
     if(!shadows||dnd_device_active())return 0;
-    su_prepare(shadows);
+    su_prepare(shadows,1);
     /* Present already fenced the previous frame. Flush only modified pages;
      * publication invalidates GX's texture cache without an extra DrawDone. */
     if(shadows->changed){
@@ -41,7 +41,8 @@ int animaltown_shadows_prepare(void){
     return shadows->overflow?0:1;
 }
 int animaltown_shadows_scope(int mode){
-    if(!shadows)return 0;shadows->scope=mode;dnd_draw_backend_invalidate_cache();animaltown_shadows_model_reset();return mode;
+    if(!shadows)return 0;
+    shadows->scope=mode;dnd_draw_backend_invalidate_cache();animaltown_shadows_model_reset();return mode;
 }
 int animaltown_shadows_mode(void){return shadows&&shadows->enabled?shadows->scope:0;}
 const uint8_t *animaltown_shadows_page(float x,float z,float *origin){

@@ -26,6 +26,13 @@ stationary coverage performs no rasterization or publication. Only modified
 4 KiB pages are flushed after the previous frame's normal present fence. No
 additional DrawDone is introduced.
 
+At most one static page is rebuilt per frame. Pending static coverage retains
+its previous cached value while current actor coverage still updates; new pages
+start clear. Unneeded pages clear immediately. Static edits can therefore take
+a few frames to refresh, rather than making all affected raster jobs stall one
+frame. Triangle bounds reject work outside a small actor footprint before pixel
+tests, and the inner loops avoid library rounding/min/max calls.
+
 All cache storage, profiles and receiver coordinates occupy one SDK-accounted
 native buffer below 1.5 MiB; the 16 MiB/512-handle limits remain unchanged. The
 previous 39 shadow mesh buffers/materials and native profile textures are

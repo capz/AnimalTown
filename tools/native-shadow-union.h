@@ -31,6 +31,7 @@ static inline void su_init(SuState *s){
     s->base=(uint8_t*)s+((sizeof(SuState)+31)&~(size_t)31);s->pixels=s->base+SU_PAGES*SU_BYTES;
 }
 static inline int su_offset(int x,int y){return ((y/4)*8+x/8)*32+y%4*8+x%8;}
+static inline int su_floor(float x){int i=(int)x;return i-(i>x);}
 static inline void su_bounds(const SuCaster *c,float b[4]){
     if(c->profile==4){b[0]=c->x+.12f-.55f;b[1]=c->z+.1f-.55f;b[2]=b[0]+1.1f;b[3]=b[1]+1.1f;}
     else memcpy(b,c->bounds,16);
@@ -72,8 +73,8 @@ static inline uint8_t su_sample(const SuState *s,const SuCaster *c,float x,float
     if(u<=0||u>=1||v<=0||v>=1)return 0;
     int side=c->profile==4?32:64;const uint8_t *a=s->shapes+(c->profile==4?4*4096:c->profile*4096);
     float fx=c->profile==4?u*32-.5f:1.5f+u*60,fz=c->profile==4?v*32-.5f:1.5f+v*60;
-    int ix=(int)floorf(fx),iz=(int)floorf(fz);float tx=fx-ix,tz=fz-iz;
-    if(ix<0||iz<0||ix+1>=side||iz+1>=side)return 0;
+    if(fx<0||fz<0||fx>=side-1||fz>=side-1)return 0;
+    int ix=(int)fx,iz=(int)fz;float tx=fx-ix,tz=fz-iz;
     float a0=a[iz*side+ix]+(a[iz*side+ix+1]-a[iz*side+ix])*tx;
     float a1=a[(iz+1)*side+ix]+(a[(iz+1)*side+ix+1]-a[(iz+1)*side+ix])*tx;
     return (uint8_t)((a0+(a1-a0)*tz)*SU_OPACITY/255+.5f);
@@ -90,15 +91,17 @@ static inline void su_raster(SuState *s,const SuPage *p,const SuCaster *c,uint8_
     /* Coverage is unioned before erosion, so internal triangle/room-mat edges
      * never become seams. A one-texel guard prevents bilinear cliff leakage. */
     uint8_t valid[66*66];memset(valid,0,sizeof(valid));
-    float step=s->span/62,ox=p->x*s->span-1.5f*step,oz=p->z*s->span-1.5f*step;
-    int l=su_clamp((int)floorf((bounds[0]-ox)/step)-1,65),r=su_clamp((int)ceilf((bounds[2]-ox)/step)+1,65);
-    int t=su_clamp((int)floorf((bounds[1]-oz)/step)-1,65),b=su_clamp((int)ceilf((bounds[3]-oz)/step)+1,65);
+    float step=s->span/62,inv=62/s->span,ox=p->x*s->span-1.5f*step,oz=p->z*s->span-1.5f*step;
+    int l=su_clamp((int)((bounds[0]-ox)*inv)-1,65),r=su_clamp((int)((bounds[2]-ox)*inv)+2,65);
+    int t=su_clamp((int)((bounds[1]-oz)*inv)-1,65),b=su_clamp((int)((bounds[3]-oz)*inv)+2,65);
+    float clipL=ox+l*step,clipR=ox+r*step,clipT=oz+t*step,clipB=oz+b*step;
     for(int i=0;i<c->count;i+=3){
         const float *v=c->uv+i*2;
-        int vl=su_clamp((int)floorf((fminf(v[0],fminf(v[2],v[4]))-ox)/step),65);
-        int vr=su_clamp((int)ceilf((fmaxf(v[0],fmaxf(v[2],v[4]))-ox)/step),65);
-        int vt=su_clamp((int)floorf((fminf(v[1],fminf(v[3],v[5]))-oz)/step),65);
-        int vb=su_clamp((int)ceilf((fmaxf(v[1],fmaxf(v[3],v[5]))-oz)/step),65);
+        float minX=v[0],maxX=v[0],minZ=v[1],maxZ=v[1];
+        for(int k=2;k<6;k+=2){if(v[k]<minX)minX=v[k];if(v[k]>maxX)maxX=v[k];if(v[k+1]<minZ)minZ=v[k+1];if(v[k+1]>maxZ)maxZ=v[k+1];}
+        if(maxX<clipL||minX>clipR||maxZ<clipT||minZ>clipB)continue;
+        int vl=su_clamp((int)((minX-ox)*inv),65),vr=su_clamp((int)((maxX-ox)*inv)+1,65);
+        int vt=su_clamp((int)((minZ-oz)*inv),65),vb=su_clamp((int)((maxZ-oz)*inv)+1,65);
         if(vl<l)vl=l;
         if(vr>r)vr=r;
         if(vt<t)vt=t;
@@ -116,7 +119,7 @@ static inline int su_find(const SuState *s,int x,int z){
     for(int i=0;i<SU_PAGES;i++)if(s->page[i].used&&s->page[i].space==s->space&&s->page[i].x==x&&s->page[i].z==z)return i;
     return -1;
 }
-static inline void su_prepare(SuState *s){
+static inline void su_prepare(SuState *s,int static_budget){
     s->changed=s->static_rasters=s->dynamic_rasters=0;
     for(int i=SU_STATIC;i<SU_CASTERS;i++){
         SuCaster *c=&s->caster[i];if(c->active!=c->requested){su_dirty(s,c);c->active=c->requested;su_dirty(s,c);}
@@ -129,24 +132,33 @@ static inline void su_prepare(SuState *s){
         for(int j=0;j<SU_CASTERS;j++){SuCaster *c=&s->caster[j];float b[4];su_bounds(c,b);if(c->active&&c->space==s->space&&su_intersects(s,&s->page[i],b)){s->page[i].needed=1;break;}}
     for(int j=0;j<SU_CASTERS;j++){
         SuCaster *c=&s->caster[j];if(!c->active||c->space!=s->space)continue;float b[4];su_bounds(c,b);float pad=s->span/62;
-        int l=(int)floorf((b[0]-pad)/s->span),r=(int)floorf((b[2]+pad)/s->span),t=(int)floorf((b[1]-pad)/s->span),bot=(int)floorf((b[3]+pad)/s->span);
+        int l=su_floor((b[0]-pad)/s->span),r=su_floor((b[2]+pad)/s->span),t=su_floor((b[1]-pad)/s->span),bot=su_floor((b[3]+pad)/s->span);
         for(int z=t;z<=bot;z++)for(int x=l;x<=r;x++){
             int at=su_find(s,x,z);
             if(at<0){for(int i=0;i<SU_PAGES;i++)if(!s->page[i].needed){at=i;break;}
                 if(at<0){s->overflow++;continue;}
                 s->page[at]=(SuPage){1,x,z,s->space,1,1,1,0};
+                /* An evicted allocation must not expose another tile while
+                 * its static union waits for the cooperative rebuild budget. */
+                memset(s->base+at*SU_BYTES,0,SU_BYTES);
             }else s->page[at].needed=1;
         }
     }
     for(int i=0;i<SU_PAGES;i++){
-        SuPage *p=&s->page[i];if(p->space!=s->space||!p->used||!p->dirty)continue;
+        SuPage *p=&s->page[i];if(p->space!=s->space||!p->used)continue;
         uint8_t *base=s->base+i*SU_BYTES,*dest=s->pixels+i*SU_BYTES;
-        if(p->static_dirty){memset(base,0,SU_BYTES);
+        if(!p->needed){
+            if(p->dirty||p->static_dirty){memset(base,0,SU_BYTES);memset(dest,0,SU_BYTES);p->dirty=p->static_dirty=0;p->publish=1;s->changed++;}
+            continue;
+        }
+        if(!p->dirty&&!(p->static_dirty&&static_budget>0))continue;
+        if(p->static_dirty&&static_budget>0){memset(base,0,SU_BYTES);static_budget--;
             for(int j=0;j<SU_STATIC;j++){SuCaster *c=&s->caster[j];if(c->active&&c->space==s->space){su_raster(s,p,c,base);s->static_rasters++;}}
+            p->static_dirty=0;
         }
         memcpy(dest,base,SU_BYTES);
         for(int j=SU_STATIC;j<SU_CASTERS;j++){SuCaster *c=&s->caster[j];if(c->active&&c->space==s->space){su_raster(s,p,c,dest);s->dynamic_rasters++;}}
-        p->static_dirty=p->dirty=0;p->publish=1;s->changed++;
+        p->dirty=0;p->publish=1;s->changed++;
     }
 }
 #endif

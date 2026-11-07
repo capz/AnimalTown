@@ -34,7 +34,7 @@ static void town_shadow_apply(float x,float z,const float *world,const DndDrawEf
     GX_SetTevAlphaIn((u8)stage,GX_CA_ZERO,GX_CA_ZERO,GX_CA_ZERO,GX_CA_APREV);
     GX_SetTevAlphaOp((u8)stage,GX_TEV_ADD,GX_TB_ZERO,GX_CS_SCALE_1,GX_TRUE,GX_TEVPREV);
 }
-static void town_shadow_ground(const DndDrawVertex *v,const uint16_t *ix,int count,const DndDrawMaterial *mat,unsigned *bindings){
+static inline void town_shadow_ground(const DndDrawVertex *v,const uint16_t *ix,int count,const DndDrawMaterial *mat,unsigned *bindings){
     if(animaltown_shadows_mode()!=1||count<3)return;
     int a=0,b=1,c=2;
     for(int i=0;i+2<count;i+=3){a=ix?ix[i]:i;b=ix?ix[i+1]:i+1;c=ix?ix[i+2]:i+2;if(v[a].color&255u)break;}
