@@ -89,6 +89,7 @@ internal sealed class TerrainRenderer
         for(int i=0;i<stream.Count;i++)if(stream.Visible[i])VisibleTriangles+=sections[i]!.Triangles;
     }
     internal void CycleCloudCover()=>clouds.Cover=clouds.Cover==.5f?0:clouds.Cover==0?1:.5f;
+    internal float CloudCover=>clouds.Cover;
     internal void Animate(double seconds)
     {
         waterMaterial.Animate(seconds);clouds.Animate(seconds);
