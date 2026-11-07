@@ -68,10 +68,8 @@ internal sealed class TerrainRenderer
         ScrollTransform.LocalPosition=new Vector3(0,scroll.Y,scroll.Z);
         ScrollTransform.LocalRotation=new Quaternion(scroll.HalfSin,0,0,scroll.HalfCos);
         long deadline=Clock.Timestamp+2000;int steps=0;stream.Prepare(state.X,state.Z);
-        // Moving feet need bounded progress even while scenery is streaming.
-        // These stages consume the SAME deadline and eight-stage allowance.
-        int actorStages=stream.MissingWanted>0?1:2;
-        while(steps<actorStages&&Clock.Timestamp<deadline){if(!movingShadows.Advance())break;steps++;geometryRevision++;}
+        // Landscape readiness takes priority. Moving shadows use spare stages
+        // after terrain, retaining overlapping receivers while replacements wait.
         do{
             if(building<0){
                 if(stream.BuildSlot<0)break;building=stream.BuildSlot;stream.Hold();

@@ -16,11 +16,11 @@ asset-specific overlay. Furniture and walls occlude the shadows through depth
 testing. Teleports, terrain changes and disconnected support changes suppress
 obsolete receivers until replacements are ready.
 
-One stage at the beginning of the existing terrain work budget guarantees
-progress for moving actors while terrain has a backlog; warm terrain allows two.
-The player has priority, followed by rotating NPCs. Remaining stages serve
-terrain and shadow jobs within the same 2 ms/eight
-stage allowance. Indoors, the same bound applies without outdoor terrain work.
+Terrain receives the existing 2 ms/eight-stage work allowance first. Moving
+actors use its remaining time, with the player ahead of rotating NPCs, then
+scenery shadows. Overlapping receivers retain coverage during replacement;
+unsupported or expired receivers are omitted while terrain has priority.
+Indoors, the same bound applies without outdoor terrain work.
 The developer lighting toggle also toggles actor shadows. Run
 `tools/iso-smoke.py --actor-shadows --dsp-hle` for walking, NPC journeys, entry,
 exit, indoor camera, ramp, cliff-edge, menu and water captures.
