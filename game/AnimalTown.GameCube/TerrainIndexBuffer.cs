@@ -22,7 +22,10 @@ internal sealed class TerrainIndexBuffer
     }
     private ushort Vertex(VertexPositionNormalColorTexture value,RenderCounters? counters)
     {
-        for(int i=0;i<VertexCount;i++)if(Same(Vertices[i],value))return (ushort)i;
+        // Shared row edges are recent. Bound the search so fragmented sections
+        // cannot turn vertex staging into a quadratic per-frame cost.
+        int first=Math.Max(0,VertexCount-8);
+        for(int i=VertexCount-1;i>=first;i--)if(Same(Vertices[i],value))return (ushort)i;
         if(VertexCount>=MaximumVertices)throw new InvalidOperationException("Terrain section vertex budget exceeded");
         if(VertexCount==Vertices.Length){int size=Math.Min(MaximumVertices,Math.Max(4,Vertices.Length*2));var next=new VertexPositionNormalColorTexture[size];Array.Copy(Vertices,next,VertexCount);Vertices=next;Grew(counters);}
         Vertices[VertexCount]=value;return (ushort)VertexCount++;

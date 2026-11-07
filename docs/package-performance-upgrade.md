@@ -11,6 +11,9 @@ SDK 266.1 identifies source `858577c63aaf191fce7c83fd4308075d3775f43a`.
 Engine 9.1 identifies `230d0422e5a5a91641dff9486bde7de6b4f87a0e` and pins the
 same SDK dependency. The engine's existing NuGet preview workflow verifies a
 relocated external consumer and a real native build before trusted publication.
+SDK 276.1 appeared during validation. Its changes after 266.1 concern storage
+and ISO-defragmentation; the renderer is unchanged. This integration retains the
+verified engine/SDK pair above.
 The packaging compatibility change is [Hypercube PR #10](https://github.com/capz/hypercube-engine/pull/10).
 No project references point into engine/SDK source checkouts or private feeds.
 The offline Assets tool and Imaging payload advance with the compiler/runtime.
@@ -26,12 +29,15 @@ Tinted, lit and generated-UV cases retain exact fallback behaviour. Merely
 upgrading does not make every mesh eligible or establish a frame-rate gain.
 
 `TerrainSection` now uses Hypercube's `IndexedMeshCache`. Its reusable staging
-shares only completely identical positions, normals, colours and UVs, preserving
+searches at most eight recent vertices and shares only completely identical
+positions, normals, colours and UVs, preserving
 wet-sand tint, cliff-height and UV seams. Indices retain the authored triangle
 order. Native meshes contain only used prefixes; spare CPU capacity is not drawn
 or uploaded. Four common flat row strips need ten vertices and 24 indices:
 408 native payload bytes instead of 864 bytes for 24 duplicated native vertices.
-The result depends on section topology; no approximate welding is performed.
+The result depends on section topology; older matches may remain duplicated.
+The fixed recent window keeps comparison work bounded for fragmented sections;
+no approximate welding is performed.
 
 The existing 8×4-cell streaming, per-frame terrain budget and dirty revisions
 remain in place. Water/foam and frequently rebuilt cliff buffers retain their

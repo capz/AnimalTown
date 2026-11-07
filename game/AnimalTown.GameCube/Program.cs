@@ -195,7 +195,7 @@ internal sealed class TownGame
             new SaveRepository(new CardSaveStorage(card,banner,icon)).Save(state);
             saveStatus="Saved / "+BuildInfo.Version;
         }
-        catch(Exception error){saveStatus="Save failed ("+phase+"): "+error.Message+" (card "+NativeCalendar.CardError()+"). Retry in Settings.";DebugOverlay.WriteLine("SAVE ERROR: "+phase+" "+error.Message);card=null;}
+        catch(Exception error){saveStatus="Save failed ("+phase+", code "+NativeCalendar.CardError()+"). Check Slot A and retry.";DebugOverlay.WriteLine("SAVE ERROR: "+phase+" "+error.Message);card=null;}
     }
     private void Say(string name,string text){dialogueVoice.Begin();voiceTick=0;returnToMenu=screen=="menu"&&(menuTab==SettingsTab||menuTab==TestingTab);if(returnToMenu){returnMenuTab=menuTab;returnMenuSelection=selected;}speaker=name;message=text;wrappedDialogue=dialogueText.Get(text);typeAt=0;screen="dialogue";}
     private bool Press(ControllerState p)=>p.A.WasPressed;

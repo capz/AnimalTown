@@ -136,13 +136,23 @@ jobs:
           mkdir -p out/performance-lighting
           cp out/performance-fixture/MemoryCardA.USA.raw out/performance-lighting/
           docker run --rm --init --shm-size=512m --user "$(id -u):$(id -g)" -e LIBGL_ALWAYS_SOFTWARE=1 --mount type=bind,src="$PWD",dst=/work -w /work animaltown-performance python3 tools/iso-smoke.py "$(cat out/performance-iso.txt)" out/performance-lighting --lighting --profile-seconds 5
+          docker run --rm --init --shm-size=512m --user "$(id -u):$(id -g)" -e LIBGL_ALWAYS_SOFTWARE=1 --mount type=bind,src="$PWD",dst=/work -w /work animaltown-performance python3 tools/iso-smoke.py "$(cat out/performance-nkit.txt)" out/performance-nkit --loading
+      # Baseline control was intermittent; keep indoor saves as a blocking gate.
+      - name: Inspect indoor save and reload
+        id: indoor
+        run: |
           mkdir -p out/performance-buildings
           cp out/performance-fixture/MemoryCardA.USA.raw out/performance-buildings/
           docker run --rm --init --shm-size=512m --user "$(id -u):$(id -g)" -e LIBGL_ALWAYS_SOFTWARE=1 --mount type=bind,src="$PWD",dst=/work -w /work animaltown-performance python3 tools/iso-smoke.py "$(cat out/performance-iso.txt)" out/performance-buildings --buildings
           mkdir -p out/performance-building-reload
           cp out/performance-buildings/MemoryCardA.USA.raw out/performance-building-reload/
           docker run --rm --init --shm-size=512m --user "$(id -u):$(id -g)" -e LIBGL_ALWAYS_SOFTWARE=1 --mount type=bind,src="$PWD",dst=/work -w /work animaltown-performance python3 tools/iso-smoke.py "$(cat out/performance-iso.txt)" out/performance-building-reload --building-reload
-          docker run --rm --init --shm-size=512m --user "$(id -u):$(id -g)" -e LIBGL_ALWAYS_SOFTWARE=1 --mount type=bind,src="$PWD",dst=/work -w /work animaltown-performance python3 tools/iso-smoke.py "$(cat out/performance-nkit.txt)" out/performance-nkit --loading
+      - name: Record indoor regression status
+        if: always()
+        env:
+          INDOOR_OUTCOME: ${{ steps.indoor.outcome }}
+        run: |
+          printf '%s\n' "Indoor save/reload outcome: $INDOOR_OUTCOME; baseline controls were intermittent (one failed, one passed)." > out/performance-indoor-status.txt
       - name: Publish comparison evidence
         if: always()
         env:
@@ -151,8 +161,8 @@ jobs:
           python3 - <<'PY'
           from pathlib import Path
           import hashlib,json,shutil
-          root=Path('out/performance-evidence');root.mkdir(exist_ok=True)
-          for name in ['performance-baseline.json','performance-upgraded.json','performance-save.txt']:
+          root=Path('out/performance-evidence');root.mkdir(parents=True,exist_ok=True)
+          for name in ['performance-baseline.json','performance-upgraded.json','performance-save.txt','performance-indoor-status.txt']:
               p=Path('out')/name
               if p.exists():shutil.copy2(p,root/name)
           report={}
