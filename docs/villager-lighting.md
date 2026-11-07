@@ -25,6 +25,11 @@ the visible generated trees. Houses use a simple roof/body footprint; future
 building shapes will need an appropriate proxy. Projection bounds include
 offscreen casters whose shadows can reach the view.
 
+Mask quantization uses a byte-returning helper to avoid a pinned AOT compiler
+float-to-byte array-store bug. The native patch/build step checks the bundled
+atlas function for integer byte stores; managed texture tests alone cannot
+detect this compiler regression. Native captures must show actual ground shade.
+
 Receiver triangles are clipped to the projected footprint, dry ground cells and
 the exact upper/lower diagonal half-planes. Clipping interpolates the existing
 cylinder row chords, rather than independently bending fractional vertices.
