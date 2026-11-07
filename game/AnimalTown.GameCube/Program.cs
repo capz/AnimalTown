@@ -57,7 +57,6 @@ internal sealed class TownGame
     private readonly Transform worldRoot=new Transform(),transform=new Transform(),identity=new Transform();
     private readonly TerrainRenderer terrain;
     private readonly VillagerShadows villagerShadows;
-    private long profiledTerrainRevision=-1;
     private readonly int[] visibleTrees=new int[LowPolyTrees.Capacity];
     private readonly float[] treeDistances=new float[LowPolyTrees.Capacity];
     private readonly LowPolyTrees trees;

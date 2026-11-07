@@ -34,6 +34,7 @@ internal sealed class TerrainRenderer
     private int season=-1,forced,slots,cachedTerrainVersion=-1;
     private Town? cachedTown;
     internal int VisibleTriangles,RejectedQuads;
+    internal int BuiltThisFrame {get;private set;}
     internal int MaterialRevision {get;private set;}
     internal bool ObjectShadowsEnabled {get=>shadows.Enabled;set=>shadows.Enabled=value;}
     internal int GroundSlot(GameState state,int x,int z)=>FloorStrips.At(state,data,x,z,0);
@@ -48,6 +49,7 @@ internal sealed class TerrainRenderer
     }
     internal void Prepare(GameState state,int room,int month,VillagerShadows movingShadows,bool cliffPreview=false)
     {
+        BuiltThisFrame=0;
         int next=TerrainTiles.Season(month,forced);bool changed=next!=season;
         if(changed){
             string name="floor-"+TerrainTiles.SeasonName(next);data=File.ReadAllBytes("dvd:/"+name+".bin");FloorStrips.Validate(data);
@@ -76,12 +78,12 @@ internal sealed class TerrainRenderer
                 if(sections[building]==null)sections[building]=new TerrainSection(soil,waterMaterial);
                 sections[building]!.Begin(state,stream.X[building],stream.Z[building]);
             }
-            bool complete=sections[building]!.Advance(state,this,staging,data);steps++;geometryRevision++;
+            bool complete=sections[building]!.Advance(state,this,staging,data);steps++;geometryRevision++;BuiltThisFrame++;
             if(complete){stream.Complete();building=-1;stream.Prepare(state.X,state.Z);}
         }while(steps<8&&Clock.Timestamp<deadline);
-        while(steps<8&&Clock.Timestamp<deadline){if(!movingShadows.Advance())break;steps++;geometryRevision++;}
+        while(steps<8&&Clock.Timestamp<deadline){if(!movingShadows.Advance())break;steps++;geometryRevision++;BuiltThisFrame++;}
         shadows.Prepare(state);
-        while(steps<8&&Clock.Timestamp<deadline){if(!shadows.Advance())break;steps++;geometryRevision++;}
+        while(steps<8&&Clock.Timestamp<deadline){if(!shadows.Advance())break;steps++;geometryRevision++;BuiltThisFrame++;}
         gallery.PrepareGallery(state,this,cliffPreview);
         VisibleTriangles=gallery.Triangles;RejectedQuads=0;
         for(int i=0;i<stream.Count;i++)if(stream.Visible[i])VisibleTriangles+=sections[i]!.Triangles;
