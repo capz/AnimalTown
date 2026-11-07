@@ -97,7 +97,7 @@ internal sealed class TownGame
     private int returnMenuTab,returnMenuSelection;
     private int selected,slot,rotation,tick,day,month,menuTab,faceX,faceZ=-1,typeAt,voiceTick,keyboard;
     private int jobProgress,moveClip=-1;
-    private long lastSave,sessionStart;
+    private long sessionStart;
     private float facingYaw=3.1415927f;
     private bool loaded,relocate,damagedSave;
     private bool indexedModels=true,batchedDrawing=true;
@@ -107,7 +107,7 @@ internal sealed class TownGame
     private int waterInspection;
     private int buildingInspection;
     private const int SettingsTab=5,TestingTab=6,TestingRows=16;
-    private static readonly string[] tabs={"Backpack","Jobs","Catalog","Home","Post office","Settings","Testing"};
+    private static readonly string[] tabs={"Backpack","Jobs","Catalog","Home","Post office","Settings","Debug / testing"};
     private static readonly string[] itemActions={"Drop","Place (R rotates)","Plant","Eat","Wear","Equip","Bury","Open money bag","Read","Quit"};
     internal TownGame()
     {
@@ -131,7 +131,7 @@ internal sealed class TownGame
         buildings=new BuildingRenderer(worldRoot);
         trees=new LowPolyTrees(worldRoot);terrain=new TerrainRenderer();villagerShadows=new VillagerShadows();
         if(NativeShadows.Init(GroundShadow.Atlas(),VillagerShadowPatch.Texture())!=1)throw new InvalidOperationException("Shadow union native budget");
-        NativeRim.Enable(1);NativeRim.Enable(0);lastSave=Clock.Timestamp;
+        NativeRim.Enable(1);NativeRim.Enable(0);
     }
     internal void AdvanceLoading()
     {
@@ -178,8 +178,11 @@ internal sealed class TownGame
         }
         catch(Exception){saveStatus="Insert memory card in Slot A to save";}
     }
-    private void Save()
+    // The only card-write entry point. Loading, timers, rollover and debug
+    // actions never request a save; this must be the selected menu action.
+    private void SaveFromMenu()
     {
+        if(screen!="menu"||menuTab!=SettingsTab||selected!=0)return;
         if(damagedSave){saveStatus="Damaged saves preserved. Use another card.";return;}
         string previousScreen=screen;screen="saving";Draw();screen=previousScreen;
         string phase="mount";
@@ -190,7 +193,7 @@ internal sealed class TownGame
             state.Facing=facingYaw;
             phase="save set";
             new SaveRepository(new CardSaveStorage(card,banner,icon)).Save(state);
-            saveStatus="Saved / "+BuildInfo.Version;lastSave=Clock.Timestamp;
+            saveStatus="Saved / "+BuildInfo.Version;
         }
         catch(Exception error){saveStatus="Save failed ("+phase+", code "+NativeCalendar.CardError()+"). Check Slot A and retry.";DebugOverlay.WriteLine("SAVE ERROR: "+phase+" "+error.Message);card=null;}
     }
@@ -301,7 +304,7 @@ internal sealed class TownGame
         { int index=LostIndex(selected);Say("Town hall",state.ClaimLost(index,0)?"Recovered!":"Your pockets are full, or the item is reserved.");return; }
         if(screen=="menu")MenuAction();
     }
-    private int TabCount()=>menuTab==0?state.Capacity:menuTab==1?7:menuTab==2?Catalog.Items.Length-1:menuTab==3?7:menuTab==4?7:menuTab==TestingTab?TestingRows:5;
+    private int TabCount()=>menuTab==0?state.Capacity:menuTab==1?7:menuTab==2?Catalog.Items.Length-1:menuTab==3?7:menuTab==4?7:menuTab==TestingTab?TestingRows:6;
     private void ToggleModelPath()
     {int next=indexedModels?0:1;if(NativeRenderProbe.Indexed(next)!=next)throw new InvalidOperationException("Model renderer switch failed");indexedModels=!indexedModels;}
     private int LostCount(){int c=0;for(int i=0;i<state.Town.GroundCount;i++)if(state.Town.Ground[i].Kind==4)c++;return c;}
@@ -348,7 +351,9 @@ internal sealed class TownGame
         }
         if(menuTab==4){PostAction();return;}
         if(menuTab==TestingTab){TestingAction();return;}
-        if(selected==0){Save();}else if(selected==1){Say("Controls","Stick / D-pad: walk / menus. L/R: tabs. B: run / back. A: interact / select. X: backpack. Y: map. Z: tool. START: settings. Choose Save now to save.");}
+        if(menuTab!=SettingsTab)return;
+        if(selected==5){menuTab=TestingTab;selected=0;return;}
+        if(selected==0){SaveFromMenu();}else if(selected==1){Say("Controls","Stick / D-pad: walk / menus. L/R: tabs. B: run / back. A: interact / select. X: backpack. Y: map. Z: tool. START: settings. Choose Save now to save.");}
         else if(selected==2)Say("About","AnimalTown / "+BuildInfo.Version+" / hypercube-engine. Original homebrew for Nintendo GameCube.");
         else if(selected==3){Say("Calendar","Console RTC / day "+day+". New days begin at 06:00.");}
         else Say("Chat","Quick phrases and online chat are pending the companion transport.");
@@ -438,7 +443,7 @@ internal sealed class TownGame
         if(!resourcesReady||room==0&&!terrain.Ready)return;
         tick++;
         if(tick%30==0)townClock.Update(NativeCalendar.ReadClock());
-        if(tick%900==0){int previousDay=state.Town.Day;ReadCalendar();state.Rollover(day,month);if(state.Town.Day!=previousDay)Save();}
+        if(tick%900==0){ReadCalendar();state.Rollover(day,month);}
         if(screen=="dialogue"&&typeAt<message.Length){
             typeAt++;
             if(typeAt==message.Length)dialogueVoice.Stop();
@@ -473,7 +478,6 @@ internal sealed class TownGame
             }
             animationClock.Step(i,animationClock.Clip(i),moving&&Visible(v.PosX,v.PosZ,1.8f));
         }
-        if(Clock.Timestamp-lastSave>300000000){Save();}
     }
     private void UpdateAnimationFrame()
     {
@@ -753,8 +757,11 @@ internal sealed class TownGame
         bool compact=screen=="menu"&&(menuTab==SettingsTab||menuTab==TestingTab);int page=compact?9:8,step=compact?24:29;float rowScale=compact?1.2f:1.4f;int first=selected/page*page;
         for(int i=first;i<Math.Min(total,first+page);i++){float y=131+(i-first)*step;if(i==selected){Rounded(57,y,520,step-2,(step-2)*.5f,new Color32(221,231,188));Strong("> "+RowLabel(i),68,y,ink,rowScale);}else Text("  "+RowLabel(i),68,y,ink,rowScale);}
         Text("Stick / D-pad choose   L/R tabs   A select   B close",65,392,ink,1);
-        if(screen=="menu"&&menuTab==SettingsTab)Text(saveStatusText.Get(saveStatus),65,357,ink,1);
-        if(screen=="menu"&&menuTab==TestingTab)Text("Test options "+(first+1)+"-"+Math.Min(total,first+page)+" / "+total,65,357,ink,1);
+        if(screen=="menu"&&menuTab==SettingsTab){
+            Text("Manual saves only. Choose Save now to write the card.",65,331,ink,1);
+            Text(saveStatusText.Get(saveStatus),65,357,ink,1);
+        }
+        if(screen=="menu"&&menuTab==TestingTab)Text("Session options "+(first+1)+"-"+Math.Min(total,first+page)+" / "+total,65,357,ink,1);
     }
     private string RowLabel(int i)
     {
@@ -768,7 +775,7 @@ internal sealed class TownGame
         if(menuTab==2)return Catalog.Items[i+1].Name+(state.Owned[i+1]==0?" (not owned)":" / "+Catalog.Items[i+1].Buy);
         if(menuTab==3){string[] a={"Roof palette","Exterior palette","Fence style","Mailbox","Relocate (50000)","Expand house","Expand garden"};return a[i];}
         if(menuTab==TestingTab)return TestingLabel(i);
-        string[] settings={"Save now","Controls","About / build identity","Calendar","Chat settings"};return settings[i];
+        string[] settings={"Save now","Controls","About / build identity","Calendar","Chat settings","Debug / testing menu"};return settings[i];
     }
     private void DrawBackpack()
     {

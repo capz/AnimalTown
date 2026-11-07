@@ -64,7 +64,8 @@ See [town size and save migration](docs/town-size.md).
 Controls: stick or D-pad moves in eight directions, B run/cancel, A interact/confirm, X backpack, Y map, Z equip
 tool, Start settings; stick or D-pad selects and L/R changes menu tabs. Hold
 the stick to repeat a selection; recenter after opening a menu or changing tabs.
-Choose Save now in Settings to save; opening the menu never writes a save. The Testing tab exposes rendering, lighting, runtime and preview options; its changes last for this session. Timed and day-rollover autosaves remain active.
+Press Start and choose **Save now** in Settings to save. New towns, timed play, day rollover, travel, menus and debug actions never save automatically.
+Choose **Debug / testing menu** in Settings (or R to its tab) for rendering, lighting, runtime and preview options; these options last for this session.
 Closing an explanation returns to the same selected menu row. Memory-card
 saves use Slot A, `AMTE/01`, [four split records in two banks](docs/split-saves.md), banner and icon. Missing-card
 play works; save errors are shown for retry.

@@ -235,7 +235,8 @@ schema 1 migration preserves the former 80×72 region. Save staging allocates
 from actual encoded size rather than the 1-MiB format ceiling. The managed heap
 is explicitly 4 MiB to accommodate bounded terrain, native-font loading and save staging.
 Never format a card, overwrite another game's file, or silently discard errors.
-Autosave every five minutes, on rollover, travel and explicit save. Report card
+Save only through Settings → Save now. Timers, rollover, travel and debug tools
+never write a save. Loading and legacy migration stay read-only until that action. Report card
 missing/full/write failures; gameplay continues and player can retry. Unknown
 newer versions are read-only errors; migrations must preserve a backup.
 
