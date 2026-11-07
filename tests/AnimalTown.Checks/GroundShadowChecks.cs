@@ -40,6 +40,10 @@ internal static class GroundShadowChecks
         }
         Array.Clear(t.Elevation);Array.Fill(t.Tiles,(byte)Terrain.Water);Build(new ShadowCaster(80,80,3,0,WaterTerrain.RiverHeight));check(g.Vertices==0,"no shadow polygons on water or sloped wet banks");
         Array.Fill(t.Tiles,(byte)Terrain.Building);Build(new ShadowCaster(80,80,3,3,0));check(g.Vertices==0,"no ground shadow painted on building footprints");
+        Array.Fill(t.Tiles,(byte)Terrain.Grass);for(int z=79;z<82;z++)for(int x=79;x<82;x++)t.Tiles[z*Town.Width+x]=(byte)Terrain.Building;
+        var house=new ShadowCaster(80.5f,80.5f,3,3,0);Build(house);bool front=false;
+        for(int i=0;i<g.Vertices;i++)if(g.Positions[i*3]>82)front=true;
+        check(front&&house.Bottom>83,"house projection extends beyond its camera-facing footprint");
         Array.Fill(t.Tiles,(byte)Terrain.Grass);for(int z=78;z<84;z++)for(int x=78;x<84;x++)t.Elevation[z*Town.Width+x]=TerrainElevation.RampNorth;
         Build(new ShadowCaster(80.5f,80.5f,.75f,0,1.5f));check(g.Vertices>0,"continuous natural ramp receives a slanted shadow");
         byte[] atlas=GroundShadow.Atlas();check(atlas.Length==32768,"all four shared IA8 masks use 32KiB");

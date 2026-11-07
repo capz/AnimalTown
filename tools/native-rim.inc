@@ -41,6 +41,8 @@ static void town_rim_apply(const float normal[16],const DndDrawEffect *effect,bo
     GX_SetTevAlphaIn((u8)stage,GX_CA_ZERO,GX_CA_ZERO,GX_CA_ZERO,GX_CA_APREV);
     GX_SetTevAlphaOp((u8)stage,GX_TEV_ADD,GX_TB_ZERO,GX_CS_SCALE_1,GX_TRUE,GX_TEVPREV);
     GX_SetNumTexGens(3);
+    GX_SetTexCoordScaleManually(GX_TEXCOORD2,GX_FALSE,1,1);
+    GX_SetTexCoordBias(GX_TEXCOORD2,GX_FALSE,GX_FALSE);
     /* Coordinate 1 may be unused, but all enabled generators are defined. */
     if(!effect)GX_SetTexCoordGen(GX_TEXCOORD1,GX_TG_MTX2x4,GX_TG_TEX0,GX_IDENTITY);
   }

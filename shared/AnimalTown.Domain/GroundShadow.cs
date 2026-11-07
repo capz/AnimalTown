@@ -9,7 +9,9 @@ public readonly struct ShadowCaster
     public ShadowCaster(float x,float z,float scale,int profile,float height)
     {
         X=x;Z=z;Scale=scale;Profile=profile;Height=height;
-        float cx=x+scale*.24f,cz=z-scale*.2f;
+        // Fixed north-west light: project toward the camera-facing south/east
+        // edges too, so a cottage's roof does not hide its entire ground cue.
+        float cx=x+scale*.4f,cz=z+scale*.32f;
         float rx=scale*(profile==3?.77f:.62f),rz=scale*(profile==3?.72f:.66f);
         Left=cx-rx;Right=cx+rx;Top=cz-rz;Bottom=cz+rz;
     }
@@ -28,6 +30,7 @@ public sealed class GroundShadow
     private readonly P[] a=new P[12],b=new P[12];
     private Town town=null!;
     private ShadowCaster caster;
+    private CylinderPose rowA,rowB;
     private int row;
     public void Begin(Town source,ShadowCaster value){town=source;caster=value;row=(int)Math.Floor(value.Top);Vertices=0;Overflow=false;}
     // One fine row per job; callers own the shared frame work deadline.
@@ -35,6 +38,7 @@ public sealed class GroundShadow
     {
         if(row>(int)Math.Floor(caster.Bottom))return true;
         int z=row++;
+        rowA=CylinderWorld.Surface(z,0);rowB=CylinderWorld.Surface(z+1,0);
         for(int x=(int)Math.Floor(caster.Left);x<=Math.Floor(caster.Right);x++){
             int terrain=town.At(x,z);
             if(!town.Inside(x,z)||WaterSurface.IsWater(town,x,z)||WaterTerrain.IsCoast(terrain)||terrain==(int)Terrain.Building||terrain==(int)Terrain.Cliff)continue;
@@ -49,8 +53,8 @@ public sealed class GroundShadow
     private P Point(int cx,int cz,float x,float z,int level)
     {
         float h=level<0?TerrainElevation.AtCell(town,cx,cz,x,z):level*2;
-        var p=CylinderWorld.Surface(z,0,h+.012f);
-        return new P(x,z,p.Y,p.Z);
+        var p=z==cz?rowA:rowB;
+        return new P(x,z,p.Y+(h+.012f)*p.UpY,p.Z+(h+.012f)*p.UpZ);
     }
     private void Triangle(int x,int z,int half,int level)
     {
