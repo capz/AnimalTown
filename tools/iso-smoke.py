@@ -195,7 +195,7 @@ DumpCodec = ffv1
 [Hacks]
 EFBToTextureEnable = False
 ''')
-if '--profile' in sys.argv or '--interaction-profile' in sys.argv or '--runtime-profile' in sys.argv:
+if '--profile' in sys.argv or '--interaction-profile' in sys.argv or '--runtime-profile' in sys.argv or '--terrain-scroll' in sys.argv or '--lighting' in sys.argv or '--actor-shadows' in sys.argv:
     config=user/'Config'/'Dolphin.ini'
     config.write_text(config.read_text()+'\n[Movie]\nDumpFrames = True\nDumpFramesSilent = True\n')
     config=user/'Config'/'GFX.ini'
@@ -287,6 +287,62 @@ with (root/'emulator.log').open('w') as log:
             press('X');screenshot('cloud-menu.png');press('B')
             press('A');time.sleep(2);screenshot('cloud-indoor-a.png');time.sleep(8);screenshot('cloud-indoor-b.png')
             press('A');time.sleep(2);screenshot('cloud-exterior-return.png')
+        elif '--actor-shadows' in sys.argv:
+            press('A');press('D_UP');press('A');press('A');time.sleep(2);press('B');press('B')
+            os.write(controller,b'PRESS L\nPRESS R\n');time.sleep(.2);press('A');os.write(controller,b'RELEASE L\nRELEASE R\n');time.sleep(15)
+            os.write(controller,b'PRESS L\nPRESS R\n');time.sleep(.2);press('Z');os.write(controller,b'RELEASE L\nRELEASE R\n')
+            time.sleep(profile_seconds);screenshot('actor-shadow-standing.png')
+            for name,axes in [('right',(.72,.5)),('down',(.5,.28)),('left',(.28,.5)),('up',(.5,.72))]:
+                os.write(controller,f'SET MAIN {axes[0]} {axes[1]}\n'.encode());time.sleep(1.4)
+                screenshot('actor-shadow-walking-'+name+'.png');os.write(controller,b'SET MAIN .5 .5\n');time.sleep(1)
+            # A fresh doorway position avoids depending on collisions during
+            # the walking loop. NPCs keep their normal journeys throughout.
+            os.write(controller,b'PRESS L\nPRESS R\n');time.sleep(.2);press('A');os.write(controller,b'RELEASE L\nRELEASE R\n');time.sleep(12)
+            press('A');time.sleep(5);building_view('actor-shadow-interior.png',True)
+            os.write(controller,b'SET C .9 .5\n');time.sleep(2);os.write(controller,b'SET C .5 .5\n');time.sleep(1);screenshot('actor-shadow-indoor-camera.png')
+            press('L');time.sleep(1);press('A')
+            for sample in range(12):
+                time.sleep(3)
+                try:building_view('actor-shadow-exited.png',False);break
+                except AssertionError:
+                    if p.poll() is not None or sample==11:raise
+                    if sample in (3,7):press('B');press('B');press('A')
+            os.write(controller,b'PRESS L\nPRESS R\n');time.sleep(.2);press('START');os.write(controller,b'RELEASE L\nRELEASE R\n');time.sleep(15)
+            screenshot('actor-shadow-ramp-low.png')
+            os.write(controller,b'SET MAIN .5 .8\n');time.sleep(1.5);os.write(controller,b'SET MAIN .5 .5\n');time.sleep(2);screenshot('actor-shadow-ramp-high.png')
+            os.write(controller,b'SET MAIN .28 .5\n');time.sleep(1);os.write(controller,b'SET MAIN .5 .5\n');time.sleep(2);screenshot('actor-shadow-cliff-edge.png')
+            press('X');screenshot('actor-shadow-menu.png');press('B')
+            os.write(controller,b'PRESS L\nPRESS R\n');time.sleep(.2);press('D_LEFT');os.write(controller,b'RELEASE L\nRELEASE R\n');time.sleep(15);screenshot('actor-shadow-water.png')
+        elif '--lighting' in sys.argv:
+            press('A');press('D_UP');press('A');press('A');time.sleep(2);press('B');press('B')
+            os.write(controller,b'PRESS L\nPRESS R\n');time.sleep(.2);press('A');os.write(controller,b'RELEASE L\nRELEASE R\n');time.sleep(15)
+            # Z enables telemetry; while held, Y cycles both/off/rim/shadows.
+            os.write(controller,b'PRESS L\nPRESS R\nPRESS Z\n');time.sleep(1)
+            time.sleep(profile_seconds);building_view('lighting-both.png',False)
+            for name in ['off','rim','shadows','restored']:
+                press('Y');time.sleep(profile_seconds);screenshot('lighting-'+name+'.png')
+            os.write(controller,b'RELEASE Z\nRELEASE L\nRELEASE R\n')
+            press('A');time.sleep(5);building_view('lighting-interior.png',True)
+            os.write(controller,b'SET C 0.9 0.5\n');time.sleep(2);os.write(controller,b'SET C 0.5 0.5\n');time.sleep(1);screenshot('lighting-indoor-camera.png')
+            press('L');time.sleep(1);press('A');time.sleep(7);building_view('lighting-exited.png',False)
+            press('X');screenshot('lighting-menu.png');press('B')
+            # A normal water/material pass immediately follows the model rim.
+            os.write(controller,b'PRESS L\nPRESS R\n');time.sleep(.2);press('D_LEFT');os.write(controller,b'RELEASE L\nRELEASE R\n');time.sleep(15);screenshot('lighting-water.png')
+        elif '--terrain-scroll' in sys.argv:
+            press('A');press('D_UP');press('A');press('A');time.sleep(2);press('B');press('B')
+            os.write(controller,b'PRESS L\nPRESS R\n');time.sleep(.2);press('START');os.write(controller,b'RELEASE L\nRELEASE R\n');time.sleep(12)
+            os.write(controller,b'PRESS L\nPRESS R\n');time.sleep(.2);press('Z');os.write(controller,b'RELEASE L\nRELEASE R\n')
+            time.sleep(profile_seconds);screenshot('scroll-ramp-start.png')
+            # Slow axial motion includes fractional steps, cache boundaries and
+            # the complete ramp. Then strafe on the terrace and return downhill.
+            for name,axes in [('up',(0.5,0.72)),('right',(0.72,0.5)),('left',(0.28,0.5)),('down',(0.5,0.28))]:
+                os.write(controller,f'SET MAIN {axes[0]} {axes[1]}\n'.encode());time.sleep(profile_seconds)
+                os.write(controller,b'SET MAIN 0.5 0.5\n');time.sleep(1);screenshot('scroll-'+name+'.png')
+            time.sleep(profile_seconds);screenshot('scroll-rest.png')
+            if '--stream-stress' in sys.argv:
+                for name in ['river','corner','bridge','coast']:
+                    os.write(controller,b'PRESS L\nPRESS R\n');time.sleep(.2);press('D_LEFT');os.write(controller,b'RELEASE L\nRELEASE R\n')
+                    time.sleep(12+profile_seconds);screenshot('stream-'+name+'.png')
         elif '--river-coast' in sys.argv:
             press('A');press('D_UP');press('A');press('A');time.sleep(2);press('B');press('B')
             for scene in ['river', 'river-corner', 'bridge', 'coast-beach', 'estuary', 'restored']:

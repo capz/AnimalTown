@@ -1,44 +1,59 @@
 using System;
 using System.IO;
+using Dolphin.Timing;
 using AnimalTown;
 using Dolphin.Graphics;
 using Hypercube.GameCube;
 
-// Shared repeating textures and merged strips; white padding enables indexed GX.
+// Immutable small sections revolve about one axis. The fixed cache prefetches
+// and generates row stages under a 2ms / eight-stage work limit per frame.
 internal sealed class TerrainRenderer
 {
-    private readonly FloorStrips strips=new FloorStrips();
-    private readonly WaterRenderer water=new WaterRenderer();
+    private readonly TerrainStream stream=new TerrainStream();
+    private readonly TerrainSection?[] sections=new TerrainSection?[TerrainStream.Capacity];
+    private readonly FloorStrips staging=new FloorStrips(TerrainStream.Width*TerrainStream.Height);
+    private readonly TerrainSoil soil=new TerrainSoil();
+    private readonly WaterMaterial waterMaterial=new WaterMaterial();
+    private readonly TerrainWalls gallery;
+    internal readonly Transform ScrollTransform=new Transform();
     private readonly CloudShadows clouds=new CloudShadows();
+    private readonly ObjectShadows shadows;
     private readonly Color32[] baseTints=new Color32[FloorStrips.MaximumMaterials];
-    private readonly DynamicMeshBuffer?[] meshes=new DynamicMeshBuffer?[FloorStrips.MaximumMaterials];
-    private long geometryRevision;
-    private readonly VertexPositionColorTexture[]?[] buffers=new VertexPositionColorTexture[]?[FloorStrips.MaximumMaterials];
     private readonly Material[] materials=new Material[FloorStrips.MaximumMaterials];
     private readonly CachedTexture?[] textures=new CachedTexture?[FloorStrips.MaximumMaterials];
-    private readonly int[] used=new int[FloorStrips.MaximumMaterials];
+    private readonly Mesh[] batch=new Mesh[128];
+    private readonly Transform[] poses=new Transform[128];
+    private int batchCount;
+    private long geometryRevision;
+    private int building=-1;
+    internal long GeometryRevision=>geometryRevision;
+    internal bool Ready=>stream.Ready;
+    internal int LoadingRemaining=>stream.MissingVisible;
+    internal int LoadingTotal=>stream.VisibleCount;
     private byte[] data=new byte[0];
-    private int season=-1,forced,slots,cachedRoom=-1,cachedTier=-1,cachedTerrainVersion=-1;
-    private float cachedX,cachedZ;
+    private int season=-1,forced,slots,cachedTerrainVersion=-1;
     private Town? cachedTown;
-    private bool cachedPreview;
     internal int VisibleTriangles,RejectedQuads;
     internal int MaterialRevision {get;private set;}
+    internal bool ObjectShadowsEnabled {get=>shadows.Enabled;set=>shadows.Enabled=value;}
     internal int GroundSlot(GameState state,int x,int z)=>FloorStrips.At(state,data,x,z,0);
     internal Material GroundMaterial(int slot)=>materials[slot];
     internal TerrainRenderer()
     {
+        gallery=new TerrainWalls(soil);
+        shadows=new ObjectShadows();
         var cfg=File.ReadAllBytes("dvd:/terrain.cfg");if(cfg.Length!=4)throw new IOException("Invalid floor season config");forced=FloorStrips.Read(cfg,0);if(forced< -1||forced>3)throw new IOException("Invalid floor season");
         for(int i=0;i<materials.Length;i++)materials[i]=new Material{Cull=CullMode.Back,Lighting=LightingMode.Unlit,SecondarySampler=new SamplerState(TextureAddressMode.Repeat,TextureAddressMode.Repeat,TextureFilter.Linear)};
+        for(int i=0;i<poses.Length;i++)poses[i]=ScrollTransform;
     }
-    internal void Prepare(GameState state,int room,int month,bool cliffPreview=false)
+    internal void Prepare(GameState state,int room,int month,VillagerShadows movingShadows,bool cliffPreview=false)
     {
         int next=TerrainTiles.Season(month,forced);bool changed=next!=season;
         if(changed){
             string name="floor-"+TerrainTiles.SeasonName(next);data=File.ReadAllBytes("dvd:/"+name+".bin");FloorStrips.Validate(data);
             for(int i=0;i<textures.Length;i++)if(textures[i]!=null){TextureCache.Release(textures[i]!);textures[i]=null;materials[i].Texture=null;}
             slots=FloorStrips.Read(data,12);
-            if(FloorStrips.Read(data,4)==2)water.SetTerrainTint(FloorStrips.Tint(data,FloorStrips.Read(data,24+TerrainTiles.Water*20)));
+            if(FloorStrips.Read(data,4)==2)waterMaterial.SetTerrainTint(FloorStrips.Tint(data,FloorStrips.Read(data,24+TerrainTiles.Water*20)));
             for(int i=0;i<slots;i++){
                 int source=FloorStrips.TextureSlot(data,i);bool neutral=FloorStrips.Read(data,4)==2&&source==0;
                 if(textures[source]==null)textures[source]=TextureCache.LoadFloor(neutral?"dvd:/floor-outdoor-neutral.dndtex":"dvd:/"+name+"-"+source+".dndtex",repeat:neutral);
@@ -48,49 +63,56 @@ internal sealed class TerrainRenderer
             season=next;
             MaterialRevision++;
         }
-        if(!changed&&cachedX==state.X&&cachedZ==state.Z&&cachedRoom==room&&cachedTier==state.HouseTier&&cachedTown==state.Town&&cachedTerrainVersion==state.Town.TerrainVersion&&cachedPreview==cliffPreview)return;
-        cachedPreview=cliffPreview;
-        cachedX=state.X;cachedZ=state.Z;cachedRoom=room;cachedTier=state.HouseTier;cachedTown=state.Town;
-        cachedTerrainVersion=state.Town.TerrainVersion;
-        strips.Prepare(state,room,data,cliffPreview);VisibleTriangles=0;RejectedQuads=strips.RejectedQuads;
-        for(int i=0;i<used.Length;i++)used[i]=0;
-        int previousZ=int.MinValue;var a=new CylinderPose(0,0,1,0,0);var b=a;
-        for(int n=0;n<strips.Count;n++){
-            if(strips.Water[n])continue;
-            VisibleTriangles+=2;
-            int slot=strips.Material[n],z=strips.Z0[n];
-            if(previousZ!=z){a=room==0?CylinderWorld.Surface(z,state.Z):new CylinderPose(0,z,1,0,0);b=room==0?CylinderWorld.Surface(strips.Z1[n],state.Z):new CylinderPose(0,strips.Z1[n],1,0,0);previousZ=z;}
-            int at=used[slot],required=at+6;var buffer=buffers[slot];
-            if(meshes[slot]==null)meshes[slot]=new DynamicMeshBuffer(FloorStrips.Capacity*12);
-            buffers[slot]=buffer=GeometryStaging.Reserve(meshes[slot]!,buffer??new VertexPositionColorTexture[0],at,required,FrameProfile.Counters);
-            float x0=strips.X0[n],x1=strips.X1[n],u0=x0*.5f,u1=x1*.5f,v0=z*.5f,v1=strips.Z1[n]*.5f;
-            var p0=Elevated(state,room,(int)x0,z,x0,z,a);var p1=Elevated(state,room,(int)x0,z,x1,z,a);var p2=Elevated(state,room,(int)x0,z,x1,z+1,b);var p3=Elevated(state,room,(int)x0,z,x0,z+1,b);
-            bool wet=room==0&&state.Town.At((int)x0,z)==(int)Terrain.Beach&&(WaterTerrain.IsSea(state.Town,(int)x0-1,z)||WaterTerrain.IsSea(state.Town,(int)x0+1,z)||WaterTerrain.IsSea(state.Town,(int)x0,z-1)||WaterTerrain.IsSea(state.Town,(int)x0,z+1));
-            var tint=wet?new Color32(205,199,181):Color32.White;
-            buffer[at++]=Vertex(x0,p0,u0,v0,tint);buffer[at++]=Vertex(x1,p1,u1,v0,tint);buffer[at++]=Vertex(x1,p2,u1,v1,tint);
-            buffer[at++]=Vertex(x0,p0,u0,v0,tint);buffer[at++]=Vertex(x1,p2,u1,v1,tint);buffer[at++]=Vertex(x0,p3,u0,v1,tint);used[slot]=at;
-        }
-        geometryRevision++;
-        for(int slot=0;slot<meshes.Length;slot++){
-            // Drop inactive slots rather than retaining every seasonal/room peak.
-            if(used[slot]==0){meshes[slot]?.Dispose();meshes[slot]=null;buffers[slot]=null;continue;}
-            meshes[slot]!.Commit(used[slot],geometryRevision,FrameProfile.Counters);
-        }
-        water.Prepare(state,strips,room);VisibleTriangles+=water.Triangles;
+        if(changed||cachedTown!=state.Town||cachedTerrainVersion!=state.Town.TerrainVersion){stream.Reset();building=-1;cachedTown=state.Town;cachedTerrainVersion=state.Town.TerrainVersion;}
+        var scroll=CylinderWorld.Scroll(0,state.Z);
+        ScrollTransform.LocalPosition=new Vector3(0,scroll.Y,scroll.Z);
+        ScrollTransform.LocalRotation=new Quaternion(scroll.HalfSin,0,0,scroll.HalfCos);
+        long deadline=Clock.Timestamp+2000;int steps=0;stream.Prepare(state.X,state.Z);
+        // Landscape readiness takes priority. Moving shadows use spare stages
+        // after terrain, retaining overlapping receivers while replacements wait.
+        do{
+            if(building<0){
+                if(stream.BuildSlot<0)break;building=stream.BuildSlot;stream.Hold();
+                if(sections[building]==null)sections[building]=new TerrainSection(soil,waterMaterial);
+                sections[building]!.Begin(state,stream.X[building],stream.Z[building]);
+            }
+            bool complete=sections[building]!.Advance(state,this,staging,data);steps++;geometryRevision++;
+            if(complete){stream.Complete();building=-1;stream.Prepare(state.X,state.Z);}
+        }while(steps<8&&Clock.Timestamp<deadline);
+        while(steps<8&&Clock.Timestamp<deadline){if(!movingShadows.Advance())break;steps++;geometryRevision++;}
+        shadows.Prepare(state);
+        while(steps<8&&Clock.Timestamp<deadline){if(!shadows.Advance())break;steps++;geometryRevision++;}
+        gallery.PrepareGallery(state,this,cliffPreview);
+        VisibleTriangles=gallery.Triangles;RejectedQuads=0;
+        for(int i=0;i<stream.Count;i++)if(stream.Visible[i])VisibleTriangles+=sections[i]!.Triangles;
     }
-    private static VertexPositionColorTexture Vertex(float x,CylinderPose p,float u,float v,Color32 tint)=>new VertexPositionColorTexture(new Vector3(x,p.Y,p.Z),tint,new Vector2(u,v));
-    private static CylinderPose Elevated(GameState state,int room,int cx,int cz,float x,float z,CylinderPose p)
-    {float h=room==0?TerrainElevation.AtCell(state.Town,cx,cz,x,z):0;
-        if(room==0&&state.Town.At(cx,cz)==(int)Terrain.Beach){
-            bool shore=x==cx&&WaterTerrain.IsSea(state.Town,cx-1,cz)||x==cx+1&&WaterTerrain.IsSea(state.Town,cx+1,cz)||z==cz&&WaterTerrain.IsSea(state.Town,cx,cz-1)||z==cz+1&&WaterTerrain.IsSea(state.Town,cx,cz+1);
-            if(shore)h=WaterSurface.Height;
-        }
-        return new CylinderPose(p.Y+h*p.UpY,p.Z+h*p.UpZ,p.UpY,p.UpZ,p.Pitch);}
     internal void CycleCloudCover()=>clouds.Cover=clouds.Cover==.5f?0:clouds.Cover==0?1:.5f;
     internal void Animate(double seconds)
     {
-        water.Animate(seconds);clouds.Animate(seconds);
-        for(int i=0;i<slots;i++)clouds.Apply(materials[i],baseTints[i],cachedRoom==0);
+        waterMaterial.Animate(seconds);clouds.Animate(seconds);
+        for(int i=0;i<slots;i++)clouds.Apply(materials[i],baseTints[i],true);
     }
-    internal void Draw(Renderer renderer,Transform parent,int room){for(int i=0;i<slots;i++)if(used[i]>0)renderer.DrawMesh(meshes[i]!.Mesh!,materials[i],parent);water.Draw(renderer,parent);}
+    private void Add(Renderer renderer,Material material,Mesh? mesh)
+    {
+        if(mesh==null)return;batch[batchCount++]=mesh;
+        if(batchCount==batch.Length)Flush(renderer,material);
+    }
+    private void Flush(Renderer renderer,Material material)
+    {if(batchCount==0)return;renderer.DrawMeshes(batch,poses,material,0,batchCount);batchCount=0;}
+    internal void Draw(Renderer renderer,Transform parent,int room)
+    {
+        // Keep water below banks, and transparent foam below opaque soil/lips.
+        for(int i=0;i<stream.Count;i++)if(stream.Visible[i])Add(renderer,waterMaterial.Surface,sections[i]!.Water.SurfaceMesh);
+        Flush(renderer,waterMaterial.Surface);
+        for(int i=0;i<stream.Count;i++)if(stream.Visible[i])Add(renderer,waterMaterial.Foam,sections[i]!.Water.FoamMesh);
+        Flush(renderer,waterMaterial.Foam);
+        for(int i=0;i<stream.Count;i++)if(stream.Visible[i])Add(renderer,soil.Material,sections[i]!.Walls.SoilMesh);
+        Flush(renderer,soil.Material);
+        NativeShadows.Scope(1);
+        try{for(int slot=0;slot<slots;slot++){
+            for(int i=0;i<stream.Count;i++)if(stream.Visible[i]){var section=sections[i]!;Add(renderer,materials[slot],section.GroundMesh(slot));Add(renderer,materials[slot],section.Walls.GroundMesh(slot));}
+            Flush(renderer,materials[slot]);
+        }}finally{NativeShadows.Scope(0);}
+        gallery.Draw(renderer,ScrollTransform,this);
+    }
 }

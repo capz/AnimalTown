@@ -20,7 +20,7 @@ internal static class FrameProfile
     internal static void Add(int slot,long microseconds){if(Enabled)current[slot]+=microseconds;}
     internal static void End(int slot,long start){if(Enabled)current[slot]+=Clock.Timestamp-start;}
     internal static void Begin(){Counters.Reset();if(!Enabled)return;for(int i=0;i<16;i++)current[i]=0;CulledObjects=0;}
-    internal static void Complete(int triangles,int terrainTriangles,int rejected,int scenario)
+    internal static void Complete(int triangles,int terrainTriangles,int rejected,int scenario,bool terrainRebuilt)
     {
         if(!Enabled)return;long now=Clock.Timestamp;current[12]=previous==0?0:now-previous;previous=now;
         RenderTelemetry.CaptureCompletedFrame(Counters);
@@ -29,9 +29,11 @@ internal static class FrameProfile
         current[0]=Math.Max(0,current[0]-current[1]);
         current[6]=Math.Max(0,current[6]-current[15]);
         current[7]=Math.Max(0,current[7]-current[3]);
-        data[0]=0x4154;data[1]=4;data[2]=++frames&65535;data[3]=0;
+        data[0]=0x4154;data[1]=5;data[2]=++frames&65535;data[3]=0;
         for(int i=0;i<16;i++){if(current[i]/100>65535)data[3]|=1<<i;data[4+i]=(int)Math.Min(65535,current[i]/100);}
-        data[30]=scenario;data[31]=0;
+        // v5 records a real mesh revision instead of inferring rebuilds from
+        // timing (material animation also contributes to terrain preparation).
+        data[30]=scenario|(terrainRebuilt?32768:0);data[31]=0;
         data[20]=triangles&65535;data[21]=(int)((uint)triangles>>16);data[22]=terrainTriangles;data[23]=rejected;data[24]=CulledObjects;
         Counters.CulledObjects=CulledObjects;
         data[25]=TextureCache.ResidentBytes/1024;data[26]=Counters.DrawingApiCalls;data[27]=Counters.MaterialChanges;data[28]=Counters.DrawSubmissions;data[29]=Counters.TextureBindings;
