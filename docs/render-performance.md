@@ -184,3 +184,31 @@ hardware, GC Loader, Swiss and burned-disc compatibility require device tests
 in addition to structural ISO validation and direct ISO boot in Dolphin.
 
 Camera-driven terrain rebuilds are addressed by [cached terrain patches](movement-terrain-cache.md). Continuous walking/running captures, rather than stationary scenes alone, are the acceptance test.
+
+## Shadow-page and terrain-material lookup costs
+
+The shadow union keeps a 512-entry, 16-bit hash index for its bounded 160-page
+cache. Page lookup and movement dirtying visit the caster's intersected page
+range rather than scanning all cached pages. Selection marks every existing
+footprint before allocating replacements, so eviction cannot discard a page
+needed by a later caster. Removing an entry reinserts its probe cluster; room
+identity is part of each key and page-size changes clear the index.
+
+Page selection is reused while caster coverage, activation, room and page size
+are unchanged. Static raster work still respects the one-page cooperative
+budget, and dynamic masks and pending static pages still update every frame
+that needs them. The 1 KiB index keeps the complete cache below 1.5 MiB. Coverage
+resolution, opacity, max-overlap union, clipping and the TEV program are unchanged.
+
+Each completed terrain section and wall batch records its nonempty ground
+materials. The renderer combines these masks for visible sections and visits
+only their live materials during submission. It keeps the existing meshes,
+triangle order, water/foam/soil ordering, texture detail and streaming deadline;
+there are no additional vertex uploads or per-frame allocations for this filter.
+
+Native host checks include colliding keys, deletion within a probe cluster,
+repeated eviction, room switches, resized pages, clipping and overlap. A
+3,000-frame deterministic before/after host comparison produced the same mask
+hash while reducing shadow update plus 128 page-lookups CPU time from about
+62 ms to 30 ms for the entire run. This is a host microbenchmark, not a GameCube
+frame-time measurement; direct Dolphin walking/running is checked separately.

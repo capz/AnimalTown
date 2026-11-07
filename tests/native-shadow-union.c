@@ -61,5 +61,27 @@ int main(void){
     su_prepare(s,0);CHECK(s->static_rasters==0);CHECK(pixel(4,4)==SU_OPACITY);
     next();su_active(s,32,1,5,5);su_prepare(s,1);CHECK(s->static_rasters<=SU_STATIC);CHECK(pixel(5,5)==SU_OPACITY);
     next();su_prepare(s,1);CHECK(pixel(4,4)==SU_OPACITY);
+    /* Hash collisions, deletion within a probe cluster, and slot recycling. */
+    reset();int keys[3],found=0;unsigned hash=su_hash(0,0,0);
+    for(int x=0;found<3;x++)if(su_hash(0,x,0)==hash)keys[found++]=x;
+    for(int i=0;i<3;i++){s->page[i]=(SuPage){.used=1,.x=keys[i]};su_index(s,i);}
+    for(int i=0;i<3;i++)CHECK(su_find(s,keys[i],0)==i);
+    su_unindex(s,0);s->page[0].used=0;
+    CHECK(su_find(s,keys[0],0)==-1);CHECK(su_find(s,keys[1],0)==1);CHECK(su_find(s,keys[2],0)==2);
+    su_unindex(s,1);s->page[1].used=0;CHECK(su_find(s,keys[2],0)==2);
+    /* Travel forces repeated eviction; every hash entry must agree with the
+     * page keys across outdoor/indoor spaces and resized room pages. */
+    reset();for(int frame=0;frame<240;frame++){
+        int space=frame%17==0?3:0;su_begin(s,space,1,space?(frame>230?12:4):0);
+        float x=frame*8.f+4,z=(frame%7)*8.f+4,uv[12],b[4]={x-3,z-3,x+3,z+3};
+        for(int j=0;j<6;j++){uv[j*2]=rect[j*2]+x-4;uv[j*2+1]=rect[j*2+1]+z-4;}
+        su_mesh(s,32,6,4,uv,b);su_active(s,32,1,x,z);su_prepare(s,1);
+        CHECK(!s->overflow);CHECK(su_find(s,su_floor(x/s->span),su_floor(z/s->span))>=0);
+        for(int i=0;i<SU_PAGES;i++)if(s->page[i].used){
+            int current=s->space;s->space=s->page[i].space;
+            CHECK(su_find(s,s->page[i].x,s->page[i].z)==i);s->space=current;
+        }
+        su_prepare(s,1);CHECK(!s->layout_dirty);
+    }
     free(s);printf("Shadow union: %d checks; max overlap, soft edges, trails, clipping, seams, rooms and 156-page bound passed\n",assertions);return 0;
 }
