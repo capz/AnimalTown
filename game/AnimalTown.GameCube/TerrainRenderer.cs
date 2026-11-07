@@ -24,6 +24,7 @@ internal sealed class TerrainRenderer
     private readonly Mesh[] batch=new Mesh[128];
     private readonly Transform[] poses=new Transform[128];
     private int batchCount;
+    private ulong visibleGroundMask;
     private long geometryRevision;
     private int building=-1;
     internal long GeometryRevision=>geometryRevision;
@@ -85,8 +86,11 @@ internal sealed class TerrainRenderer
         shadows.Prepare(state);
         while(steps<8&&Clock.Timestamp<deadline){if(!shadows.Advance())break;steps++;geometryRevision++;BuiltThisFrame++;}
         gallery.PrepareGallery(state,this,cliffPreview);
-        VisibleTriangles=gallery.Triangles;RejectedQuads=0;
-        for(int i=0;i<stream.Count;i++)if(stream.Visible[i])VisibleTriangles+=sections[i]!.Triangles;
+        VisibleTriangles=gallery.Triangles;RejectedQuads=0;visibleGroundMask=0;
+        for(int i=0;i<stream.Count;i++)if(stream.Visible[i]){
+            var section=sections[i]!;VisibleTriangles+=section.Triangles;
+            visibleGroundMask|=section.GroundMask|section.Walls.GroundMask;
+        }
     }
     internal void CycleCloudCover()=>clouds.Cover=clouds.Cover==.5f?0:clouds.Cover==0?1:.5f;
     internal float CloudCover=>clouds.Cover;
@@ -113,7 +117,12 @@ internal sealed class TerrainRenderer
         Flush(renderer,soil.Material);
         NativeShadows.Scope(1);
         try{for(int slot=0;slot<slots;slot++){
-            for(int i=0;i<stream.Count;i++)if(stream.Visible[i]){var section=sections[i]!;Add(renderer,materials[slot],section.GroundMesh(slot));Add(renderer,materials[slot],section.Walls.GroundMesh(slot));}
+            ulong mask=1UL<<slot;if((visibleGroundMask&mask)==0)continue;
+            for(int i=0;i<stream.Count;i++)if(stream.Visible[i]){
+                var section=sections[i]!;
+                if((section.GroundMask&mask)!=0)Add(renderer,materials[slot],section.GroundMesh(slot));
+                if((section.Walls.GroundMask&mask)!=0)Add(renderer,materials[slot],section.Walls.GroundMesh(slot));
+            }
             Flush(renderer,materials[slot]);
         }}finally{NativeShadows.Scope(0);}
         gallery.Draw(renderer,ScrollTransform,this);

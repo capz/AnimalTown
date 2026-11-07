@@ -15,6 +15,7 @@ internal sealed class TerrainSection
     private long revision;
     private int left,top,row,phase;
     internal int Triangles {get;private set;}
+    internal ulong GroundMask {get;private set;}
     internal TerrainSection(TerrainSoil soil,WaterMaterial water){Walls=new TerrainWalls(soil);Water=new WaterRenderer(water);}
     internal Mesh? GroundMesh(int slot)=>used[slot]==0?null:meshes[slot]?.Mesh;
     internal void Begin(GameState state,int x,int z)
@@ -31,9 +32,9 @@ internal sealed class TerrainSection
             else Walls.AppendRow(state,owner,left,top+row);
             phase++;if(phase==3){phase=0;row++;}return false;
         }
-        revision++;
+        revision++;GroundMask=0;
         for(int slot=0;slot<used.Length;slot++){
-            if(used[slot]>0)meshes[slot]!.Commit(used[slot],revision,FrameProfile.Counters);
+            if(used[slot]>0){GroundMask|=1UL<<slot;meshes[slot]!.Commit(used[slot],revision,FrameProfile.Counters);}
             else if(meshes[slot]!=null){meshes[slot]!.Dispose();meshes[slot]=null;buffers[slot]=null;}
         }
         Water.Finish();Walls.Finish();Triangles+=Water.Triangles+Walls.Triangles;return true;

@@ -21,6 +21,7 @@ internal sealed class TerrainWalls
     private readonly CylinderPose[] rows=new CylinderPose[TerrainStream.Height+1];
     private int rowBase=int.MinValue;
     internal int Triangles=>total/3;
+    internal ulong GroundMask {get;private set;}
     internal Mesh? SoilMesh=>soilUsed==0?null:soilMesh?.Mesh;
     internal Mesh? GroundMesh(int slot)=>used[slot]==0?null:groundMesh[slot]?.Mesh;
     internal void Begin(GameState state,int top)
@@ -52,12 +53,12 @@ internal sealed class TerrainWalls
     }
     private void Commit()
     {
-        revision++;
+        revision++;GroundMask=0;
         if(soilUsed>0)shared.Prepare();
         if(soilUsed>0)soilMesh!.Commit(soilUsed,revision,FrameProfile.Counters);
         else if(soilMesh!=null){soilMesh.Dispose();soilMesh=null;soil=new VertexPositionColorTexture[0];}
         for(int i=0;i<used.Length;i++){
-            if(used[i]>0)groundMesh[i]!.Commit(used[i],revision,FrameProfile.Counters);
+            if(used[i]>0){GroundMask|=1UL<<i;groundMesh[i]!.Commit(used[i],revision,FrameProfile.Counters);}
             else if(groundMesh[i]!=null){groundMesh[i]!.Dispose();groundMesh[i]=null;ground[i]=null;}
         }
     }
