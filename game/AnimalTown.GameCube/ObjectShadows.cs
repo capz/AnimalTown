@@ -3,8 +3,8 @@ using AnimalTown;
 using Dolphin.Graphics;
 using Hypercube.GameCube;
 
-// Fixed caster cache: 32 native handles, shared atlas/material, no frame-time
-// vertex rebuilding. Offscreen casters are selected by their shadow bounds.
+// Fixed caster cache. Clipped triangles feed a shared coverage union instead
+// of independently blended native meshes.
 internal sealed class ObjectShadows
 {
     internal const int Capacity=32;
@@ -13,8 +13,7 @@ internal sealed class ObjectShadows
         internal int Key=-1,Version;
         internal ShadowCaster Caster;
         internal bool Ready;
-        internal DynamicMeshBuffer? Buffer;
-        internal long Revision;
+        internal readonly float[] Bounds=new float[4],Center=new float[2];
         internal int Count;
     }
     private readonly Entry[] entries=new Entry[Capacity];
@@ -23,20 +22,14 @@ internal sealed class ObjectShadows
     private readonly int[] selected=new int[Capacity];
     private readonly float[] distances=new float[Capacity];
     private readonly GroundShadow staging=new GroundShadow();
-    private readonly Mesh[] meshes=new Mesh[Capacity];
-    private readonly Transform[] poses=new Transform[Capacity];
-    private readonly Texture2D atlas;
-    private readonly Material material;
     private Town? town;
     private int groundVersion=-1,terrainVersion=-1,houseHash,building=-1;
     private float focusX=float.NaN,focusZ;
     internal int Triangles {get;private set;}
     internal bool Enabled=true;
-    internal ObjectShadows(Transform scroll)
+    internal ObjectShadows()
     {
-        atlas=Texture2D.CreateNative(128,128,NativeTextureFormat.Ia8,true);atlas.ReplaceNative(GroundShadow.Atlas());
-        material=new Material{Texture=atlas,Color=new Color32(35,49,66,66),Blend=BlendMode.Alpha,DepthWrite=false,Lighting=LightingMode.Unlit,Cull=CullMode.Back,Sampler=new SamplerState(TextureAddressMode.Clamp,TextureAddressMode.Clamp,TextureFilter.Linear)};
-        for(int i=0;i<Capacity;i++){entries[i]=new Entry();poses[i]=scroll;}
+        for(int i=0;i<Capacity;i++)entries[i]=new Entry();
     }
     private static bool Same(ShadowCaster a,ShadowCaster b)=>a.X==b.X&&a.Z==b.Z&&a.Scale==b.Scale&&a.Profile==b.Profile&&a.Height==b.Height;
     internal void Prepare(GameState state)
@@ -63,7 +56,7 @@ internal sealed class ObjectShadows
             }
         }
         float fx=(float)Math.Floor(state.X*2)*.5f,fz=(float)Math.Floor(state.Z*2)*.5f;
-        if(!changed&&focusX==fx&&focusZ==fz)return;focusX=fx;focusZ=fz;
+        if(!changed&&focusX==fx&&focusZ==fz){Publish();return;}focusX=fx;focusZ=fz;
         int count=0;
         for(int key=0;key<exists.Length;key++)if(exists[key]){
             var c=casters[key];float cx=(c.Left+c.Right)*.5f,cz=(c.Top+c.Bottom)*.5f;
@@ -85,7 +78,9 @@ internal sealed class ObjectShadows
             if(found)continue;
             for(int i=0;i<Capacity;i++)if(entries[i].Key<0){entries[i].Key=key;entries[i].Ready=false;break;}
         }
+        Publish();
     }
+    private void Publish(){for(int i=0;i<Capacity;i++){var e=entries[i];NativeShadows.Active(i,e.Key>=0&&e.Ready&&e.Count>0?1:0,e.Center);}}
     // Called only while the terrain renderer's SAME deadline has time left.
     internal bool Advance()
     {
@@ -93,22 +88,13 @@ internal sealed class ObjectShadows
         if(building<0){
             for(int i=0;i<Capacity;i++)if(entries[i].Key>=0&&!entries[i].Ready){building=i;break;}
             if(building<0)return false;
-            var next=entries[building];next.Caster=casters[next.Key];next.Version=terrainVersion;staging.Begin(town,next.Caster);
+            var next=entries[building];next.Caster=casters[next.Key];next.Version=terrainVersion;staging.Begin(town,next.Caster,true);
         }
         if(!staging.Advance())return true;
         var e=entries[building];e.Count=staging.Overflow?0:staging.Vertices;
-        if(e.Count>0){
-            if(e.Buffer==null)e.Buffer=new DynamicMeshBuffer(GroundShadow.MaximumTriangles*3);
-            var buffer=e.Buffer.Reserve(e.Count,FrameProfile.Counters);
-            for(int i=0;i<e.Count;i++)buffer[i]=new VertexPositionColorTexture(new Vector3(staging.Positions[i*3],staging.Positions[i*3+1],staging.Positions[i*3+2]),Color32.White,new Vector2(staging.Uvs[i*2],staging.Uvs[i*2+1]));
-            e.Buffer.Commit(e.Count,++e.Revision,FrameProfile.Counters);
-        }
+        e.Bounds[0]=e.Caster.Left;e.Bounds[1]=e.Caster.Top;e.Bounds[2]=e.Caster.Right;e.Bounds[3]=e.Caster.Bottom;
+        if(NativeShadows.Mesh(building,e.Count,e.Caster.Profile,staging.Uvs,e.Bounds)!=1)throw new InvalidOperationException("Invalid scenery shadow coverage");
+        NativeShadows.Active(building,e.Count>0?1:0,e.Center);
         e.Ready=true;building=-1;return true;
-    }
-    internal void Draw(Renderer renderer)
-    {
-        int count=0;Triangles=0;if(!Enabled)return;
-        for(int i=0;i<Capacity;i++){var e=entries[i];if(e.Key>=0&&e.Ready&&e.Count>0){meshes[count++]=e.Buffer!.Mesh!;Triangles+=e.Count/3;}}
-        if(count>0)renderer.DrawMeshes(meshes,poses,material,0,count);
     }
 }

@@ -33,6 +33,46 @@ if(([regex]::Matches($generated,$uvPattern,[Text.RegularExpressions.RegexOptions
 $generated=[regex]::Replace($generated,$uvPattern,'intptr_t $1(intptr_t $2) { return animaltown_uv_mode((int)$2); }',[Text.RegularExpressions.RegexOptions]::Singleline)
 $generated="extern int animaltown_uv_mode(int);`n"+$generated
 [IO.File]::WriteAllText($generatedPath,$generated)
+# Pinned, game-owned coverage union bridge. All buffers use SDK resource
+# accounting; shader hooks shade existing ground geometry exactly once.
+$shadowArgs=@{Init=2;Begin=3;Mesh=5;Active=3;Prepare=0;Scope=1;Stats=1}
+foreach($method in $shadowArgs.Keys){
+    $n=$shadowArgs[$method];$argsPattern=if($n){((1..$n|ForEach-Object {'intptr_t (\w+)'}) -join ', ')}else{'void'}
+    $p='intptr_t (dnd_value_AnimalTown_GameCube_NativeShadows_'+$method+'_[a-z0-9]+)\('+$argsPattern+'\) \{.*?\r?\n\}'
+    if(([regex]::Matches($generated,$p,[Text.RegularExpressions.RegexOptions]::Singleline)).Count -ne 1){throw "Pinned shadow union bridge changed: $method"}
+    $m=$method.ToLowerInvariant()
+    $generated=[regex]::Replace($generated,$p,[Text.RegularExpressions.MatchEvaluator]{param($hit)
+        $a=@();for($i=0;$i -lt $n;$i++){$cast=if(($method -eq 'Init') -or ($method -eq 'Mesh' -and $i -ge 3) -or ($method -eq 'Active' -and $i -eq 2)){'(DndArray*)'}else{'(int)'};$a+=$cast+$hit.Groups[$i+2].Value}
+        'intptr_t '+$hit.Groups[1].Value+'('+$(if($n){((0..($n-1)|ForEach-Object {'intptr_t '+$hit.Groups[$_+2].Value}) -join ', ')}else{'void'})+') { return animaltown_shadows_'+$m+'('+($a -join ',')+'); }'
+    },[Text.RegularExpressions.RegexOptions]::Singleline)
+}
+$generated=@'
+#include "dnd_managed.h"
+extern int animaltown_shadows_init(DndArray*,DndArray*);
+extern int animaltown_shadows_begin(int,int,int);
+extern int animaltown_shadows_mesh(int,int,int,DndArray*,DndArray*);
+extern int animaltown_shadows_active(int,int,DndArray*);
+extern int animaltown_shadows_prepare(void);
+extern int animaltown_shadows_scope(int);
+extern int animaltown_shadows_stats(int);
+'@+"`n"+$generated
+[IO.File]::WriteAllText($generatedPath,$generated)
+Copy-Item (Join-Path $Root 'tools/native-shadow-union.c') (Join-Path $nativeRoot 'source/animaltown_shadow_union.c') -Force
+Copy-Item (Join-Path $Root 'tools/native-shadow-union.h') (Join-Path $nativeRoot 'include/animaltown_shadow_union.h') -Force
+Copy-Item (Join-Path $Root 'tools/native-shadow-union-gx.inc') (Join-Path $nativeRoot 'source/animaltown_shadow_union_gx.inc') -Force
+$gxPath=Join-Path $nativeRoot 'source/graphics_gx.c';$gx=[IO.File]::ReadAllText($gxPath)
+$gxSignature='void dnd_draw_backend_vertices(const DndDrawVertex *v,int count,int primitive,const DndDrawTexture *texture,const DndDrawMaterial *material,const float *world) {'
+if(([regex]::Matches($gx,[regex]::Escape($gxSignature))).Count -ne 1){throw 'Pinned shadow ground scope changed'}
+$gx=$gx.Replace($gxSignature,"#include `"animaltown_shadow_union_gx.inc`"`n"+$gxSignature)
+$gxHook='    if(!draw_state(texture,material,world,&state))return;'
+if(([regex]::Matches($gx,[regex]::Escape($gxHook))).Count -ne 1){throw 'Pinned direct ground shadow hook changed'}
+$gx=$gx.Replace($gxHook,$gxHook+"`n    town_shadow_ground(v,NULL,count,material,&state.bindings);")
+[IO.File]::WriteAllText($gxPath,$gx)
+$meshPath=Join-Path $nativeRoot 'include/dnd_indexed_mesh.inc';$mesh=[IO.File]::ReadAllText($meshPath)
+$meshHook='    if(!draw_state(texture,material,world,&state))return true;'
+if(([regex]::Matches($mesh,[regex]::Escape($meshHook))).Count -ne 1){throw 'Pinned indexed ground shadow hook changed'}
+$mesh=$mesh.Replace($meshHook,$meshHook+"`n    town_shadow_ground(vertices,indices,count,material,&state.bindings);")
+[IO.File]::WriteAllText($meshPath,$mesh)
 $modelGraphicsPath=Join-Path $Root 'out/native/source/model_graphics.c'
 $modelGraphics=[IO.File]::ReadAllText($modelGraphicsPath)
 # Keep the game-owned rim hook pinned to the imported indexed model path. Fail
@@ -50,6 +90,10 @@ foreach($hook in $rimHooks.Keys){
     $modelGraphics=$modelGraphics.Replace($hook,$rimHooks[$hook])
 }
 $modelGraphics=$modelGraphics.Replace('int dnd_model_state_cache(int enabled){',"#include `"animaltown_rim.inc`"`nint dnd_model_state_cache(int enabled){")
+$modelGraphics=$modelGraphics.Replace('int dnd_model_state_cache(int enabled){',"#include `"animaltown_shadow_union_gx.inc`"`nvoid animaltown_shadows_model_reset(void){batch_model=NULL;batch_material=NULL;model_batch_vertex_ready=false;}`nint dnd_model_state_cache(int enabled){")
+$shadowModelHook='    if(!reuse)dnd_draw_backend_tev(selected, mat->texture >= 0);'
+if(([regex]::Matches($modelGraphics,[regex]::Escape($shadowModelHook))).Count -ne 1){throw 'Pinned interior shadow hook changed'}
+$modelGraphics=$modelGraphics.Replace($shadowModelHook,$shadowModelHook+"`n    if(animaltown_shadows_mode()==2)town_shadow_apply(object[12]+2*object[0]+2*object[8],object[14]+2*object[2]+2*object[10],object,selected,&bindings);")
 Copy-Item -LiteralPath (Join-Path $Root 'tools/native-rim.inc') -Destination (Join-Path $Root 'out/native/source/animaltown_rim.inc') -Force
 $indexedPath=Join-Path $Root 'out/native/include/dnd_indexed_model.inc'
 $indexed=[IO.File]::ReadAllText($indexedPath)

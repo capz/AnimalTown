@@ -2,34 +2,27 @@ using AnimalTown;
 using Dolphin.Graphics;
 using Hypercube.GameCube;
 
-// Seven retained receivers, one shared 2KiB mask. GPU UV translation moves a
-// circle over cached ground triangles instead of reskinning a shadow outline.
+// Seven clipped receivers feed the shared coverage mask. Only small dirty mask
+// pages change while walking; ground geometry remains immutable.
 internal sealed class VillagerShadows
 {
     private sealed class Entry
     {
-        internal bool Active,Ready,UvReady;
+        internal bool Active,Ready;
         internal int Revision;
-        internal long Upload;
         internal VillagerShadowPatch Wanted,Built;
-        internal readonly Material Material;
-        internal DynamicMeshBuffer? Mesh;
+        internal readonly float[] Bounds=new float[4],Center=new float[2];
         internal int Count;
-        internal Entry(Texture2D mask)
-        {Material=new Material{Texture=mask,Color=new Color32(35,49,66,82),Blend=BlendMode.Alpha,DepthWrite=false,AlphaCutoff=.004f,Lighting=LightingMode.Unlit,Cull=CullMode.Back,Sampler=new SamplerState(TextureAddressMode.Clamp,TextureAddressMode.Clamp,TextureFilter.Linear)};}
     }
     private readonly Entry[] entries=new Entry[BuildingWorld.Actors];
     private readonly GroundShadow staging=new GroundShadow();
-    private readonly Transform scroll,flat;
-    private readonly Texture2D mask;
     private Town? town;
     private int building=-1,jobRevision,cursor=1;
     private VillagerShadowPatch job;
     internal bool Enabled=true;
-    internal VillagerShadows(Transform outdoor,Transform indoor)
+    internal VillagerShadows()
     {
-        scroll=outdoor;flat=indoor;mask=Texture2D.CreateNative(32,32,NativeTextureFormat.Ia8,true);mask.ReplaceNative(VillagerShadowPatch.Texture());
-        for(int i=0;i<entries.Length;i++)entries[i]=new Entry(mask);
+        for(int i=0;i<entries.Length;i++)entries[i]=new Entry();
     }
     internal void BeginFrame(Town source)
     {
@@ -39,10 +32,9 @@ internal sealed class VillagerShadows
     internal void Set(int actor,int space,float x,float z,int size,bool entryMat)
     {
         var e=entries[actor];var p=new VillagerShadowPatch(town!,space,x,z,size,entryMat);
-        bool moved=!e.UvReady||e.Wanted.X!=x||e.Wanted.Z!=z;
         if(!e.Wanted.SameRegion(p)||e.Revision==0)e.Revision++;
         e.Wanted=p;e.Active=true;
-        if(moved){e.Material.TextureTransform=new UvTransform(new Vector2(p.UOffset,p.VOffset),new Vector2(VillagerShadowPatch.UvScale,VillagerShadowPatch.UvScale));e.UvReady=true;}
+        e.Center[0]=x;e.Center[1]=z;
     }
     private bool Dirty(int i)=>entries[i].Active&&(!entries[i].Ready||!entries[i].Built.SameRegion(entries[i].Wanted));
     internal bool Advance()
@@ -58,20 +50,16 @@ internal sealed class VillagerShadows
         }
         if(!staging.Advance())return true;
         var target=entries[building];target.Count=staging.Overflow?0:staging.Vertices;
-        if(target.Count>0){
-            if(target.Mesh==null)target.Mesh=new DynamicMeshBuffer(GroundShadow.MaximumTriangles*3);
-            var vertices=target.Mesh.Reserve(target.Count,FrameProfile.Counters);
-            for(int i=0;i<target.Count;i++)vertices[i]=new VertexPositionColorTexture(new Vector3(staging.Positions[i*3],staging.Positions[i*3+1],staging.Positions[i*3+2]),Color32.White,new Vector2(staging.Uvs[i*2],staging.Uvs[i*2+1]));
-            target.Mesh.Commit(target.Count,++target.Upload,FrameProfile.Counters);
-        }
+        target.Bounds[0]=job.Left;target.Bounds[1]=job.Top;target.Bounds[2]=job.Left+job.Span;target.Bounds[3]=job.Top+job.Span;
+        if(NativeShadows.Mesh(building+ObjectShadows.Capacity,target.Count,4,staging.Uvs,target.Bounds)!=1)throw new System.InvalidOperationException("Invalid villager shadow coverage");
         target.Built=job;target.Ready=true;cursor=1+building%(entries.Length-1);building=-1;return true;
     }
-    internal void Draw(Renderer renderer)
+    internal void Publish()
     {
-        if(!Enabled||town==null)return;
+        if(town==null)return;
         for(int i=0;i<entries.Length;i++){
-            var e=entries[i];if(!e.Active||!e.Ready||e.Count==0||!e.Built.Covers(town,e.Wanted))continue;
-            renderer.DrawMesh(e.Mesh!.Mesh!,e.Material,e.Wanted.Space==0?scroll:flat);
+            var e=entries[i];bool active=Enabled&&e.Active&&e.Ready&&e.Count>0&&e.Built.Covers(town,e.Wanted);
+            NativeShadows.Active(i+ObjectShadows.Capacity,active?1:0,e.Center);
         }
     }
 }

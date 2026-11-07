@@ -41,7 +41,7 @@ internal sealed class TerrainRenderer
     internal TerrainRenderer()
     {
         gallery=new TerrainWalls(soil);
-        shadows=new ObjectShadows(ScrollTransform);
+        shadows=new ObjectShadows();
         var cfg=File.ReadAllBytes("dvd:/terrain.cfg");if(cfg.Length!=4)throw new IOException("Invalid floor season config");forced=FloorStrips.Read(cfg,0);if(forced< -1||forced>3)throw new IOException("Invalid floor season");
         for(int i=0;i<materials.Length;i++)materials[i]=new Material{Cull=CullMode.Back,Lighting=LightingMode.Unlit,SecondarySampler=new SamplerState(TextureAddressMode.Repeat,TextureAddressMode.Repeat,TextureFilter.Linear)};
         for(int i=0;i<poses.Length;i++)poses[i]=ScrollTransform;
@@ -108,11 +108,11 @@ internal sealed class TerrainRenderer
         Flush(renderer,waterMaterial.Foam);
         for(int i=0;i<stream.Count;i++)if(stream.Visible[i])Add(renderer,soil.Material,sections[i]!.Walls.SoilMesh);
         Flush(renderer,soil.Material);
-        for(int slot=0;slot<slots;slot++){
+        NativeShadows.Scope(1);
+        try{for(int slot=0;slot<slots;slot++){
             for(int i=0;i<stream.Count;i++)if(stream.Visible[i]){var section=sections[i]!;Add(renderer,materials[slot],section.GroundMesh(slot));Add(renderer,materials[slot],section.Walls.GroundMesh(slot));}
             Flush(renderer,materials[slot]);
-        }
+        }}finally{NativeShadows.Scope(0);}
         gallery.Draw(renderer,ScrollTransform,this);
-        shadows.Draw(renderer);
     }
 }

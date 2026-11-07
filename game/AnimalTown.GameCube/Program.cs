@@ -124,7 +124,9 @@ internal sealed class TownGame
         state.Rollover(day,month);
         if(room==0&&state.HousePlaced&&!state.CanWalk(state.X,state.Z,0))state.MoveToHouseEntrance();
         buildings=new BuildingRenderer(worldRoot);
-        trees=new LowPolyTrees(worldRoot);terrain=new TerrainRenderer();villagerShadows=new VillagerShadows(terrain.ScrollTransform,worldRoot);NativeRim.Enable(1);NativeRim.Enable(0);lastSave=Clock.Timestamp;
+        trees=new LowPolyTrees(worldRoot);terrain=new TerrainRenderer();villagerShadows=new VillagerShadows();
+        if(NativeShadows.Init(GroundShadow.Atlas(),VillagerShadowPatch.Texture())!=1)throw new InvalidOperationException("Shadow union native budget");
+        NativeRim.Enable(1);NativeRim.Enable(0);lastSave=Clock.Timestamp;
     }
     internal void AdvanceLoading()
     {
@@ -457,7 +459,8 @@ internal sealed class TownGame
     {NativeRim.Enable(lighting&1);try{actorQueue.Execute(renderer);}finally{NativeRim.Enable(0);}}
     private void PrepareVillagerShadows()
     {
-        villagerShadows.Enabled=(lighting&2)!=0;villagerShadows.BeginFrame(state.Town);if(!villagerShadows.Enabled)return;
+        villagerShadows.Enabled=(lighting&2)!=0;villagerShadows.BeginFrame(state.Town);
+        NativeShadows.Begin(room,villagerShadows.Enabled?1:0,room==0?0:BuildingWorld.Size(state,room));if(!villagerShadows.Enabled)return;
         int size=room==0?0:BuildingWorld.Size(state,room);
         bool mat=room!=0&&BuildingWorld.Definition(state,BuildingWorld.Building(room)).Floor==BuildingCatalog.Cottage.Floor;
         for(int actor=0;actor<BuildingWorld.Actors;actor++){
@@ -478,6 +481,7 @@ internal sealed class TownGame
         long phase=FrameProfile.Start();PrepareVillagerShadows();
         if(room==0){terrain.Prepare(state,room,month,villagerShadows,cliffPreview);terrain.Animate((Clock.Timestamp-sessionStart)/1000000.0);}
         else{long until=Clock.Timestamp+2000;int steps=0;while(steps<8&&Clock.Timestamp<until){if(!villagerShadows.Advance())break;steps++;}}
+        villagerShadows.Publish();if(NativeShadows.Prepare()!=1)throw new InvalidOperationException("Shadow union page capacity");
         FrameProfile.End(2,phase);
         if(room==0&&!terrain.Ready){DrawLoading(landscape:true);return;}
         phase=FrameProfile.Start();uiShapes.Prepare(screen,screen=="menu"?menuTab:-1,batchedDrawing);if(batchedDrawing&&screen=="map")mapBackground.Prepare(state.Town);modelUsed=0;FrameProfile.End(8,phase);
@@ -487,7 +491,7 @@ internal sealed class TownGame
         else{float size=BuildingWorld.Size(state,room);indoorView.LookAt(new Vector3(indoorCamera.EyeX(size),indoorCamera.EyeY(size),indoorCamera.EyeZ(size)),new Vector3(size*.5f,.7f,size*.5f),new Vector3(0,1,0));}
         renderer.Begin3D(room==0?camera:indoorView);buildings.Begin(villagers.Doors);FrameProfile.End(4,phase);
         phase=FrameProfile.Start();if(room==0){terrain.Draw(renderer,terrain.ScrollTransform,room);}else buildings.Interior(renderer,state,worldRoot,indoorCamera,villagers.Doors);
-        villagerShadows.Draw(renderer);FrameProfile.End(4,phase);phase=FrameProfile.Start();
+        FrameProfile.End(4,phase);phase=FrameProfile.Start();
         if(room==0)
         {
             for(int i=0;i<6;i++){var v=state.Town.Residents[i];if(v.Space==0){var visual=villagers.Doors.VisualLocation(state,i+1);ModelAt(actors[i+1],visual.X,visual.Z,1.8f,visual.Yaw);}}
