@@ -1,0 +1,53 @@
+name: Baseline indoor-save control
+on:
+  push:
+    branches: [ci/package-save-control]
+permissions:
+  contents: write
+jobs:
+  control:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Prepare published baseline and emulator
+        run: |
+          mkdir -p out/base
+          gh release download v0.6.3.28174414ed84 --repo "$GITHUB_REPOSITORY" --dir out/base --pattern 'AnimalTown-0.6.3.28174414ed84.iso' --pattern SHA256SUMS.txt
+          python3 - <<'PY'
+          import hashlib
+          from pathlib import Path
+          root=Path('out/base');name='AnimalTown-0.6.3.28174414ed84.iso'
+          expected=next(s.split()[0] for s in (root/'SHA256SUMS.txt').read_text().splitlines() if s.split()[-1].lstrip('*')==name)
+          h=hashlib.sha256()
+          with (root/name).open('rb') as f:
+              while b:=f.read(8*1024*1024):h.update(b)
+          assert h.hexdigest()==expected
+          p=Path('tools/iso-smoke.py');s=p.read_text()
+          s=s.replace("def building_save():\n    save_menu()", "def building_save():\n    previous=committed_card_sequence(root/'MemoryCardA.USA.raw')\n    save_menu()")
+          s=s.replace("if paper>150:", "if paper>150 and committed_card_sequence(root/'MemoryCardA.USA.raw')>previous:")
+          p.write_text(s)
+          PY
+          docker build -t animaltown-control - <<'DOCKER'
+          FROM debian:trixie
+          RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends dolphin-emu xvfb xauth ffmpeg python3 libxcb-cursor0 ca-certificates && rm -rf /var/lib/apt/lists/*
+          DOCKER
+      - name: Create a fresh baseline town
+        run: |
+          docker run --rm --init --shm-size=512m --user "$(id -u):$(id -g)" -e LIBGL_ALWAYS_SOFTWARE=1 --mount type=bind,src="$PWD",dst=/work -w /work animaltown-control python3 tools/iso-smoke.py out/base/AnimalTown-0.6.3.28174414ed84.iso out/control-fixture --movement-profile --new-town --profile-seconds 5
+      - name: Require a committed indoor save on the old packages
+        run: |
+          mkdir -p out/control-buildings
+          cp out/control-fixture/MemoryCardA.USA.raw out/control-buildings/
+          docker run --rm --init --shm-size=512m --user "$(id -u):$(id -g)" -e LIBGL_ALWAYS_SOFTWARE=1 --mount type=bind,src="$PWD",dst=/work -w /work animaltown-control python3 tools/iso-smoke.py out/base/AnimalTown-0.6.3.28174414ed84.iso out/control-buildings --buildings
+      - name: Publish diagnostic screenshots only
+        if: always()
+        run: |
+          mkdir -p out/evidence
+          for image in out/control-buildings/*.png; do cp "$image" "out/evidence/baseline-control-$(basename "$image")"; done
+          cp out/control-buildings/emulator.log out/evidence/baseline-control-emulator.log
+          gh release upload v0.7.3.88149d5aaab7 --repo "$GITHUB_REPOSITORY" out/evidence/* --clobber
