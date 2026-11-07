@@ -23,7 +23,9 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: '10.0.x'
+          dotnet-version: |
+            10.0.x
+            8.0.x
       - name: Resolve matching release identity
         id: version
         shell: pwsh
@@ -57,7 +59,7 @@ jobs:
           mkdir -p out/performance-baseline
           cp out/performance-fixture/MemoryCardA.USA.raw out/performance-baseline/
           docker run --rm --init --shm-size=512m --user "$(id -u):$(id -g)" -e LIBGL_ALWAYS_SOFTWARE=1 --mount type=bind,src="$PWD",dst=/work -w /work animaltown-performance python3 tools/iso-smoke.py out/performance-base/AnimalTown-0.6.3.28174414ed84.iso out/performance-baseline --movement-profile --profile-seconds 8
-          python3 tools/read-frame-profile.py out/performance-baseline/user/Dump/Frames/*.avi --check-movement > out/performance-baseline.json
+          docker run --rm --user "$(id -u):$(id -g)" --mount type=bind,src="$PWD",dst=/work -w /work animaltown-performance python3 tools/read-frame-profile.py out/performance-baseline/user/Dump/Frames/*.avi --check-movement > out/performance-baseline.json
       - name: Download and verify matching published upgrade
         env:
           RELEASE_TAG: ${{ steps.version.outputs.tag }}
@@ -91,7 +93,7 @@ jobs:
           mkdir -p out/performance-upgraded
           cp out/performance-fixture/MemoryCardA.USA.raw out/performance-upgraded/
           docker run --rm --init --shm-size=512m --user "$(id -u):$(id -g)" -e LIBGL_ALWAYS_SOFTWARE=1 --mount type=bind,src="$PWD",dst=/work -w /work animaltown-performance python3 tools/iso-smoke.py "$(cat out/performance-iso.txt)" out/performance-upgraded --movement-profile --profile-seconds 8
-          python3 tools/read-frame-profile.py out/performance-upgraded/user/Dump/Frames/*.avi --check-movement > out/performance-upgraded.json
+          docker run --rm --user "$(id -u):$(id -g)" --mount type=bind,src="$PWD",dst=/work -w /work animaltown-performance python3 tools/read-frame-profile.py out/performance-upgraded/user/Dump/Frames/*.avi --check-movement > out/performance-upgraded.json
       - name: Verify real memory-card update preserves town and progress
         run: |
           python3 - <<'PY'
@@ -127,7 +129,7 @@ jobs:
           sealed class Files(string root):ISaveStorage{public byte[] Read(string name)=>File.ReadAllBytes(Path.Combine(root,name));public void Write(string name,byte[] value)=>throw new NotSupportedException();}
           ''')
           PY
-          dotnet run --project out/performance-card-check -c Release > out/performance-save.txt
+          dotnet run --project out/performance-card-check -c Release -p:RestoreLockedMode=false > out/performance-save.txt
       - name: Inspect water, shores, lighting, interiors and compact ISO
         run: |
           docker run --rm --init --shm-size=512m --user "$(id -u):$(id -g)" -e LIBGL_ALWAYS_SOFTWARE=1 --mount type=bind,src="$PWD",dst=/work -w /work animaltown-performance python3 tools/iso-smoke.py "$(cat out/performance-iso.txt)" out/performance-water --river-coast
@@ -156,7 +158,7 @@ jobs:
           report={}
           for label in ['baseline','upgraded']:
               path=Path(f'out/performance-{label}.json')
-              if not path.exists():continue
+              if not path.exists() or not path.stat().st_size:continue
               data=json.loads(path.read_text());report[label]={key:data['scenarios'][key] for key in ['stationary','walking','running']}
           (root/'performance-comparison.json').write_text(json.dumps(report,indent=2)+'\n')
           for label in ['fixture','baseline','upgraded','water','lighting','buildings','building-reload','nkit']:
