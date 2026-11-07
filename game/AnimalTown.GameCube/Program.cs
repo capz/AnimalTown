@@ -106,7 +106,7 @@ internal sealed class TownGame
     private bool cliffPreview;
     private int waterInspection;
     private int buildingInspection;
-    private const int SettingsTab=5,TestingTab=6,TestingRows=17;
+    private const int SettingsTab=5,TestingTab=6,TestingRows=16;
     private static readonly string[] tabs={"Backpack","Jobs","Catalog","Home","Post office","Settings","Debug / testing"};
     private static readonly string[] itemActions={"Drop","Place (R rotates)","Plant","Eat","Wear","Equip","Bury","Open money bag","Read","Quit"};
     internal TownGame()
@@ -380,7 +380,6 @@ internal sealed class TownGame
             case 13:RuntimeOptions.Toggle(4);break;
             case 14:if(room==0){waterInspection=0;InspectTerrain();}break;
             case 15:waterInspection=0;InspectBuilding();screen="world";break;
-            case 16:if(room==0)terrain.ToggleGroundRing();break;
         }
     }
     private void ToggleBatching()
@@ -408,8 +407,7 @@ internal sealed class TownGame
             case 12:return "Productive waits: "+OnOff((RuntimeOptions.Mode&2)!=0);
             case 13:return "Reuse frame clear: "+OnOff((RuntimeOptions.Mode&4)!=0);
             case 14:return room==0?"Go to test ramp":"Test ramp: outdoors only";
-            case 15:return room==0?"Go to next test building":"Go to indoor doorway";
-            default:return "Reusable ground ring: "+(room==0?OnOff(terrain.GroundRingRequested):"Outdoors only");
+            default:return room==0?"Go to next test building":"Go to indoor doorway";
         }
     }
     private void Interact()
