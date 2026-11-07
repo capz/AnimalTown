@@ -167,7 +167,7 @@ public sealed partial class GameState
             var g=Town.Ground[i];
             if(g.Kind==0&&!InGarden(g.X,g.Z)){g.Kind=4;g.Day=day;}
             else if(g.Kind==4&&day-g.Day>=7)Town.RemoveGround(i);
-            else if(g.Kind==2&&g.Item!=2&&day-g.Day>=3)g.Kind=3;
+            else if(g.Kind==2&&g.Item!=2&&day-g.Day>=3){g.Kind=3;Town.NotifyCastersChanged();}
         }
         Town.AddGround(16,8+day%20,45,1,day);Town.AddGround(12,55+day%15,42,1,day);
     }

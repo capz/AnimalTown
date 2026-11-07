@@ -30,9 +30,12 @@ $iso=Join-Path $out "AnimalTown-$version.iso"
 if((Get-Item -LiteralPath $iso).Length -ne 1459978240){throw 'Release requires a full-size GameCube ISO'}
 & dotnet run --project (Join-Path $Root 'tools/AnimalTown.Tools') -c Release --no-build -- verify $Root $iso
 if($LASTEXITCODE -ne 0){throw 'ISO validation failed'}
+$nkit=Join-Path $out "AnimalTown-$version.nkit.iso"
+$nkitValidation=Join-Path $out 'nkit-validation.json'
+& (Join-Path $PSScriptRoot 'compress-nkit.ps1') -Root $Root -Iso $iso -Destination $nkit -Report $nkitValidation
+$nkitInfo=Get-Content $nkitValidation -Raw|ConvertFrom-Json
 $package=Join-Path $out "releases/$tag"
 New-Item -ItemType Directory -Force -Path $package | Out-Null
-$isoZip=Join-Path $package "AnimalTown-$version.iso.zip"
 $serverZip=Join-Path $package "AnimalTown-server-$version.zip"
 $toolsDirectory=Join-Path $out 'tools-published'
 & dotnet publish (Join-Path $Root 'tools/AnimalTown.Tools') -c Release --no-self-contained -o $toolsDirectory -v quiet
@@ -42,10 +45,8 @@ Copy-Item -LiteralPath (Join-Path $Root 'docs/uv-editor-design.md') -Destination
 $toolsZip=Join-Path $package "AnimalTown-tools-$version.zip"
 $cliffsZip=Join-Path $package "AnimalTown-cliff-kit-$version.zip"
 $buildingsZip=Join-Path $package "AnimalTown-building-kit-$version.zip"
-# These two exact paths are generated archives; rebuilding a draft can replace them.
-foreach($archive in @($isoZip,$serverZip,$toolsZip,$cliffsZip,$buildingsZip)){if(Test-Path -LiteralPath $archive){Remove-Item -LiteralPath $archive}}
-$zip=[IO.Compression.ZipFile]::Open($isoZip,[IO.Compression.ZipArchiveMode]::Create)
-try{[IO.Compression.ZipFileExtensions]::CreateEntryFromFile($zip,$iso,[IO.Path]::GetFileName($iso),[IO.Compression.CompressionLevel]::Optimal) | Out-Null}finally{$zip.Dispose()}
+# Rebuilding a draft can replace these generated archives. Disc images are uploaded directly.
+foreach($archive in @($serverZip,$toolsZip,$cliffsZip,$buildingsZip)){if(Test-Path -LiteralPath $archive){Remove-Item -LiteralPath $archive}}
 [IO.Compression.ZipFile]::CreateFromDirectory($server,$serverZip,[IO.Compression.CompressionLevel]::Optimal,$false)
 [IO.Compression.ZipFile]::CreateFromDirectory($toolsDirectory,$toolsZip,[IO.Compression.CompressionLevel]::Optimal,$false)
 $cliffArchive=[IO.Compression.ZipFile]::Open($cliffsZip,[IO.Compression.ZipArchiveMode]::Create)
@@ -71,7 +72,8 @@ Copy-Item -LiteralPath (Join-Path $out 'build-revisions.txt') -Destination (Join
 Copy-Item -LiteralPath (Join-Path $out 'texture-audit.json') -Destination (Join-Path $package 'texture-audit.json') -Force
 Copy-Item -LiteralPath (Join-Path $out 'validation-plan.json') -Destination (Join-Path $package 'validation-plan.json') -Force
 Copy-Item -LiteralPath (Join-Path $out 'version.json') -Destination (Join-Path $package 'version.json') -Force
-$checksums=foreach($file in @($iso,$isoZip,$serverZip,$toolsZip,$cliffsZip,$buildingsZip,(Join-Path $package 'BUILD.txt'),(Join-Path $package 'texture-audit.json'),(Join-Path $package 'validation-plan.json'),(Join-Path $package 'version.json'))){"$((Get-FileHash -LiteralPath $file -Algorithm SHA256).Hash.ToLowerInvariant())  $([IO.Path]::GetFileName($file))"}
+Copy-Item -LiteralPath $nkitValidation -Destination (Join-Path $package 'nkit-validation.json') -Force
+$checksums=foreach($file in @($iso,$nkit,$serverZip,$toolsZip,$cliffsZip,$buildingsZip,(Join-Path $package 'BUILD.txt'),(Join-Path $package 'texture-audit.json'),(Join-Path $package 'validation-plan.json'),(Join-Path $package 'version.json'),(Join-Path $package 'nkit-validation.json'))){"$((Get-FileHash -LiteralPath $file -Algorithm SHA256).Hash.ToLowerInvariant())  $([IO.Path]::GetFileName($file))"}
 [IO.File]::WriteAllText((Join-Path $package 'SHA256SUMS.txt'),($checksums -join "`n")+"`n")
 $notes=@"
 AnimalTown $version development build from commit $commit.
@@ -82,21 +84,23 @@ AnimalTown-cliff-kit-$version.zip contains eight low-poly cliff GLBs, shared 128
 
 **AnimalTown-tools-$version.zip** contains the offline texture/UV repacker and its guide. Requires .NET 8; run `dotnet AnimalTown.Tools.dll repack-textures . INPUT.glb OUTPUT.glb --size256` (or --size128/512/1024/Original). Exact flat colours share UV space; appearance checks reject excessive loss. Original game assets are not automatically repacked.
 
-Download **AnimalTown-$version.iso.zip** and extract the full 1,459,978,240-byte ISO. The disc includes the game title, commit identity, disc banner and memory-card banner/icon. The server is a separate **AnimalTown-server-$version.zip** archive and requires .NET 10 and PostgreSQL. It does not run on the console.
+For Swiss/GC Loader SD-card storage, download **AnimalTown-$version.nkit.iso** and copy it directly onto the card. No extraction is needed. This build occupies $($nkitInfo.compactBytes) bytes instead of 1,459,978,240 bytes ($([Math]::Round($nkitInfo.savedPercent,2))% smaller). NKit compacts padding; the playable image preserves every game file, title, commit identity, disc banner and save banner/icon. The pipeline restores it to the original full ISO and verifies an exact SHA-256 match, plus the compact image's physical apploader, DOL and file payloads. Physical Swiss/GC Loader testing remains outstanding.
 
-version.json records the xx.yy.zz.bb identity and change classification. BUILD.txt records the version and game, engine and SDK revisions. validation-plan.json records the comparison base and selected checks. texture-audit.json records texture source identities, fingerprints and 256-pixel default residency and 128/256/512/1024 model variants. SHA256SUMS.txt covers the archives, manifests and the extracted ISO.
+**AnimalTown-$version.iso** remains available as the full-size canonical ISO for archival and fallback use. Both disc images are published directly, without ZIP wrappers. Choose one image download; you do not need both on the card. The server is a separate **AnimalTown-server-$version.zip** archive and requires .NET 10 and PostgreSQL. It does not run on the console.
+
+version.json records the xx.yy.zz.bb identity and change classification. BUILD.txt records the version and game, engine and SDK revisions. validation-plan.json records the comparison base and selected checks. texture-audit.json records texture source identities, fingerprints and 256-pixel default residency and 128/256/512/1024 model variants. nkit-validation.json records the pinned converter, sizes, per-file hashes and round-trip verification. SHA256SUMS.txt covers both disc images, the archives and manifests.
 
 This is an early playable build, not the completed game. Physical GameCube testing is outstanding. See [implementation status](https://github.com/$Repository/blob/$commit/docs/implementation-status.md) and [build instructions](https://github.com/$Repository/blob/$commit/README.md).
 "@
 $notesPath=Join-Path $package 'release-notes.md'
 [IO.File]::WriteAllText($notesPath,$notes)
-if($PackageOnly){Write-Host "Release package: $package";return}
+if($PackageOnly){Write-Host "Release package: $package";Write-Host "Disc images: $iso; $nkit";return}
 function InvokeGh([string[]]$Arguments){
     $result=& $Gh @Arguments
     if($LASTEXITCODE -ne 0){throw "GitHub CLI failed: $($Arguments[0]) $($Arguments[1])"}
     return $result
 }
-$assets=@($isoZip,$serverZip,$toolsZip,$cliffsZip,$buildingsZip,(Join-Path $package 'BUILD.txt'),(Join-Path $package 'texture-audit.json'),(Join-Path $package 'validation-plan.json'),(Join-Path $package 'version.json'),(Join-Path $package 'SHA256SUMS.txt'))
+$assets=@($iso,$nkit,$serverZip,$toolsZip,$cliffsZip,$buildingsZip,(Join-Path $package 'BUILD.txt'),(Join-Path $package 'texture-audit.json'),(Join-Path $package 'validation-plan.json'),(Join-Path $package 'version.json'),(Join-Path $package 'nkit-validation.json'),(Join-Path $package 'SHA256SUMS.txt'))
 $existing=& $Gh release view $tag --repo $Repository --json isDraft,targetCommitish,assets 2>$null
 if($LASTEXITCODE -eq 0){
     $release=$existing | ConvertFrom-Json

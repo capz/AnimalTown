@@ -1,0 +1,12 @@
+{
+  "version": "3.2.0",
+  "repository": "Nanook/NKit",
+  "platforms": {
+    "linux-x64": { "asset": "NKit_linux-legacy-x64_CLI_3.2.0.zip", "sha256": "df657af7a30e81051ed9b13891fcae19c39a04504a6b14c1c5b8217a4d1b7b43" },
+    "linux-arm64": { "asset": "NKit_linux-legacy-arm64_CLI_3.2.0.zip", "sha256": "3a61413df51a5b44174845211de3397e71da2da0f0e3b384938873023a1b2d05" },
+    "win-x64": { "asset": "NKit_win-x64_CLI_3.2.0.zip", "sha256": "0e01520d1cd5699c285001e1af5b4dd9e80f2660d5561bb2fdcc1ad9a1cd8a8c" },
+    "win-arm64": { "asset": "NKit_win-arm64_CLI_3.2.0.zip", "sha256": "bc147f8599173d080a87ac4e036fd262d055a156e68486d86db495dbb0b6029f" },
+    "osx-x64": { "asset": "NKit_macOS-Intel_CLI_3.2.0.zip", "sha256": "352c26dbae67548c58d8a1771754ce956bceb3eb1a5336e6a287b06ff6540b80" },
+    "osx-arm64": { "asset": "NKit_macOS-AppleSilicon_CLI_3.2.0.zip", "sha256": "403d7a0458d73c5f48e5b8ce48b86f6e72785bd92c887c19616755958033413e" }
+  }
+}

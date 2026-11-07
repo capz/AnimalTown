@@ -60,11 +60,7 @@ internal sealed class TerrainSection
     private static VertexPositionColorTexture Vertex(float x,CylinderPose p,float u,float v,Color32 tint)=>new VertexPositionColorTexture(new Vector3(x,p.Y,p.Z),tint,new Vector2(u,v));
     private static CylinderPose Elevated(GameState state,int cx,int cz,float x,float z,CylinderPose p)
     {
-        float h=TerrainElevation.AtCell(state.Town,cx,cz,x,z);
-        if(state.Town.At(cx,cz)==(int)Terrain.Beach){
-            bool shore=x==cx&&WaterTerrain.IsSea(state.Town,cx-1,cz)||x==cx+1&&WaterTerrain.IsSea(state.Town,cx+1,cz)||z==cz&&WaterTerrain.IsSea(state.Town,cx,cz-1)||z==cz+1&&WaterTerrain.IsSea(state.Town,cx,cz+1);
-            if(shore)h=WaterSurface.Height;
-        }
+        float h=GroundSurface.HeightAt(state.Town,cx,cz,x,z);
         return new CylinderPose(p.Y+h*p.UpY,p.Z+h*p.UpZ,p.UpY,p.UpZ,p.Pitch);
     }
 }
