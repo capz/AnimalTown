@@ -328,7 +328,7 @@ DumpCodec = ffv1
 [Hacks]
 EFBToTextureEnable = False
 ''')
-if '--profile' in sys.argv or '--interaction-profile' in sys.argv or '--runtime-profile' in sys.argv or '--terrain-scroll' in sys.argv or '--lighting' in sys.argv or '--actor-shadows' in sys.argv or '--movement-profile' in sys.argv:
+if '--profile' in sys.argv or '--interaction-profile' in sys.argv or '--runtime-profile' in sys.argv or '--terrain-scroll' in sys.argv or '--lighting' in sys.argv or '--actor-shadows' in sys.argv or '--movement-profile' in sys.argv or '--stream-travel' in sys.argv:
     config=user/'Config'/'Dolphin.ini'
     config.write_text(config.read_text()+'\n[Movie]\nDumpFrames = True\nDumpFramesSilent = True\n')
     config=user/'Config'/'GFX.ini'
@@ -362,6 +362,17 @@ with (root/'emulator.log').open('w') as log:
             press('L');time.sleep(1)
             building_save();press('B')
             press('A');time.sleep(4);building_view('building-exited.png',False)
+        elif '--stream-travel' in sys.argv:
+            press('A')
+            if '--new-town' in sys.argv:press('D_UP');press('A');press('A');time.sleep(2);press('B');press('B')
+            time.sleep(12)
+            os.write(controller,b'PRESS L\nPRESS R\n');time.sleep(.2);press('Z');os.write(controller,b'RELEASE L\nRELEASE R\n')
+            time.sleep(profile_seconds);screenshot('travel-start.png')
+            # No inspector teleports: any landscape transition in this capture
+            # interrupts ordinary travel and must fail --check-streaming.
+            for n,(x,y) in enumerate(((.9,.5),(.1,.5),(.5,.1),(.5,.9),(.9,.1),(.1,.9))):
+                os.write(controller,f'SET MAIN {x} {y}\nPRESS B\n'.encode());time.sleep(profile_seconds*2)
+                os.write(controller,b'SET MAIN .5 .5\nRELEASE B\n');time.sleep(2);screenshot(f'travel-{n}.png')
         elif '--movement-profile' in sys.argv:
             press('A')
             if '--new-town' in sys.argv:press('D_UP');press('A');press('A');time.sleep(2);press('B');press('B')

@@ -6,7 +6,8 @@ using Dolphin.Graphics;
 using Hypercube.GameCube;
 
 // Immutable small sections revolve about one axis. The fixed cache prefetches
-// and generates row stages under a 2ms / eight-stage work limit per frame.
+// and generates background stages under a 2ms / eight-stage target, with a
+// separate bounded repair path for incoming visible terrain.
 internal sealed class TerrainRenderer
 {
     private readonly TerrainStream stream=new TerrainStream();
@@ -26,11 +27,13 @@ internal sealed class TerrainRenderer
     private int batchCount;
     private ulong visibleGroundMask;
     private long geometryRevision;
-    private int building=-1;
     internal long GeometryRevision=>geometryRevision;
-    internal bool Ready=>stream.Ready;
-    internal int LoadingRemaining=>stream.MissingVisible;
-    internal int LoadingTotal=>stream.VisibleCount;
+    internal bool Ready=>stream.Presentable;
+    internal int LoadingRemaining=>stream.MissingWanted;
+    internal int LoadingTotal=>stream.WantedCount;
+    internal int MissingVisible=>stream.MissingVisible;
+    internal int UrgentStages {get;private set;}
+    internal CylinderRows Rows=>stream.CylinderRows;
     private byte[] data=new byte[0];
     private int season=-1,forced,slots,cachedTerrainVersion=-1;
     private Town? cachedTown;
@@ -56,7 +59,7 @@ internal sealed class TerrainRenderer
     }
     internal void Prepare(GameState state,int room,int month,VillagerShadows movingShadows,long deadline,bool cliffPreview=false)
     {
-        BuiltThisFrame=0;
+        BuiltThisFrame=UrgentStages=0;
         int next=TerrainTiles.Season(month,forced);bool changed=next!=season;
         if(changed){
             string name="floor-"+TerrainTiles.SeasonName(next);data=File.ReadAllBytes("dvd:/"+name+".bin");FloorStrips.Validate(data);
@@ -77,7 +80,7 @@ internal sealed class TerrainRenderer
         bool invalid=changed||cachedTown!=state.Town||cachedTerrainVersion!=state.Town.TerrainVersion||flat!=SharedFlatMaterial;
         SharedFlatMaterial=flat;
         if(flat<0){groundRing?.Dispose();groundRing=null;}
-        if(invalid){stream.Reset();building=-1;cachedTown=state.Town;cachedTerrainVersion=state.Town.TerrainVersion;}
+        if(invalid){stream.Reset();cachedTown=state.Town;cachedTerrainVersion=state.Town.TerrainVersion;}
         if(GroundRingActive){if(groundRing==null)groundRing=new GroundRingRenderer();groundRing.Prepare(state,data,flat,invalid);}
         var scroll=CylinderWorld.Scroll(0,state.Z);
         ScrollTransform.LocalPosition=new Vector3(0,scroll.Y,scroll.Z);
@@ -88,14 +91,12 @@ internal sealed class TerrainRenderer
         // after terrain. Masks publish first so an indivisible terrain stage
         // cannot consume their reservation. New receivers publish next frame.
         while(steps<8&&Clock.Timestamp<deadline){
-            if(building<0){
-                if(stream.BuildSlot<0)break;building=stream.BuildSlot;stream.Hold();
-                if(sections[building]==null)sections[building]=new TerrainSection(soil,waterMaterial);
-                sections[building]!.Begin(state,stream.X[building],stream.Z[building]);
-            }
-            bool complete=sections[building]!.Advance(state,this,staging,data);steps++;geometryRevision++;BuiltThisFrame++;
-            if(complete){stream.Complete();building=-1;stream.Prepare(state.X,state.Z);}
+            if(!AdvanceSection(state))break;steps++;
         }
+        // A brief CPU stall must not replace established travel with a loading
+        // panel or a hole. Repair only the incoming visible section(s), with a
+        // fixed stage ceiling; ordinary prefetch retains the shared deadline.
+        while(stream.Presentable&&stream.MissingVisible>0&&UrgentStages<16){if(!AdvanceSection(state))break;UrgentStages++;}
         while(steps<8&&Clock.Timestamp<deadline){if(!movingShadows.Advance())break;steps++;}
         while(steps<8&&Clock.Timestamp<deadline){if(!shadows.Advance())break;steps++;}
         gallery.PrepareGallery(state,this,cliffPreview);
@@ -104,6 +105,18 @@ internal sealed class TerrainRenderer
             var section=sections[i]!;VisibleTriangles+=section.Triangles;
             visibleGroundMask|=section.GroundMask|section.Walls.GroundMask;
         }
+    }
+    private bool AdvanceSection(GameState state)
+    {
+        if(stream.BuildSlot<0)return false;
+        int building=stream.BuildSlot;
+        if(!stream.InProgress(building)){
+            stream.Hold();if(sections[building]==null)sections[building]=new TerrainSection(soil,waterMaterial);
+            sections[building]!.Begin(state,stream.X[building],stream.Z[building],Rows);
+        }
+        bool complete=sections[building]!.Advance(state,this,staging,data);geometryRevision++;BuiltThisFrame++;
+        if(complete){stream.Complete();stream.Prepare(state.X,state.Z);}
+        return true;
     }
     internal void CycleCloudCover()=>clouds.Cover=clouds.Cover==.5f?0:clouds.Cover==0?1:.5f;
     internal float CloudCover=>clouds.Cover;

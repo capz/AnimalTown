@@ -16,7 +16,7 @@ names=['simulation','animation_skinning','terrain_prepare','frame_setup','terrai
 groups=defaultdict(list)
 seen=set()
 versions=set()
-paths=[path for path in sys.argv[1:] if path not in ('--interaction-panels','--check-movement')]
+paths=[path for path in sys.argv[1:] if path not in ('--interaction-panels','--check-movement','--check-streaming')]
 for path in paths:
     command=['ffmpeg','-v','error','-i',path,'-vf','scale=640:480:flags=neighbor',
              '-pix_fmt','rgb24','-f','rawvideo','-']
@@ -50,7 +50,7 @@ for path in paths:
         if identity in seen:continue
         seen.add(identity)
         versions.add(values[1])
-        groups[values[30]].append(values)
+        groups[2000 if values[30]&32768 else values[30]&8191].append(values)
     if process.wait()!=0:raise RuntimeError('ffmpeg failed')
 
 def stats(values):
@@ -74,7 +74,7 @@ if versions=={5}:
     groups[1001]=[r for r in world if r[23]&4096 and not r[23]&8192]
     groups[1002]=[r for r in world if r[23]&8192]
 report={'units':'milliseconds; guest clock, not physical hardware or GPU duration',
-        'capture_files':paths,'protocol_versions':sorted(versions),'scenarios':{}}
+        'capture_files':paths,'protocol_versions':sorted(versions),'landscape_loading_frames':len(groups.get(2000,[])),'scenarios':{}}
 for scene,rows in groups.items():
     # Drop first five valid frames per scenario to reduce menu-transition effects.
     if scene in (0,1,2,3,6,7,10,11,12,13,14,16,17,18,19,22,23,26,32,33,42):rows=rows[5:]
@@ -92,6 +92,8 @@ for scene,rows in groups.items():
         timings[name]=result
     report['scenarios'][{0:'world',1:'backpack',2:'indoor',3:'other',4:'world_cached_terrain',5:'world_rebuilt_terrain',6:'world_direct',7:'backpack_direct',8:'world_direct_cached_terrain',9:'world_direct_rebuilt_terrain',10:'map',11:'dialogue',12:'item_actions',13:'interaction_list',14:'dialogue_long',16:'world_baseline',17:'backpack_baseline',20:'world_baseline_cached_terrain',21:'world_baseline_rebuilt_terrain',26:'map_baseline',32:'world_legacy_font',33:'backpack_legacy_font',42:'map_legacy_font',1000:'stationary',1001:'walking',1002:'running'}.get(scene,('runtime_'+str(scene//64)+'_scene_'+str(scene%64) if scene>=64 else str(scene)))]={
         'frames':len(rows),'timings':timings,
+        'missing_terrain_frames':sum(bool(r[30]&16384) for r in rows),
+        'terrain_repair_frames':sum(bool(r[30]&8192) for r in rows),
         'triangles':stats([r[20]+(r[21]<<16) for r in rows]),
         'terrain_triangles':stats([r[22] for r in rows]),
         **({'terrain_patch_builds':stats([r[23]&255 for r in rows]),'shadow_deferred_frames':sum(bool(r[23]&2048) for r in rows),'animation_update_calls':stats([(r[23]>>8)&7 for r in rows]),'ground_ring_enabled':stats([int(bool(r[23]&16384)) for r in rows]),'ground_ring_uploads':stats([int(bool(r[23]&32768)) for r in rows])} if versions=={5} else {'rejected_terrain_quads':stats([r[23] for r in rows])}),
@@ -103,6 +105,13 @@ for scene,rows in groups.items():
            {'texture_cache_hits_max':max(r[26] for r in rows),'texture_cache_misses_max':max(r[27] for r in rows)})}
 if not report['scenarios']:raise RuntimeError('No valid AnimalTown telemetry found')
 print(json.dumps(report,indent=2))
+
+if '--check-streaming' in sys.argv:
+    if versions!={5}:raise RuntimeError('Streaming checks require telemetry v5')
+    if report['landscape_loading_frames']:raise RuntimeError('Landscape loading interrupted travel')
+    world=report['scenarios'].get('world')
+    if not world or world['frames']<100:raise RuntimeError('Not enough world frames for streaming checks')
+    if world['missing_terrain_frames']:raise RuntimeError('Visible terrain was missing during travel')
 
 if '--check-movement' in sys.argv:
     if versions!={5}:raise RuntimeError('Movement checks require telemetry v5')
