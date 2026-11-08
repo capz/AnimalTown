@@ -108,6 +108,7 @@ internal static class TerrainEdgeChecks
     }
     private static void StreamChecks(Action<bool,string> check,byte[] data)
     {
+        TerrainStreamingChecks.Run(check);
         var stream=new TerrainStream();int maximum=0,updates=0;
         void Tick(float x,float z){stream.Prepare(x,z);maximum=Math.Max(maximum,stream.WantedCount);if(stream.BuildSlot>=0){check(stream.X[stream.BuildSlot]%2==0&&stream.Z[stream.BuildSlot]%2==0,"stream sections own complete diagonal cliff templates");stream.Complete();updates++;}}
         foreach(float h in new[]{0f,2f}){
@@ -119,7 +120,7 @@ internal static class TerrainEdgeChecks
                 for(int cz=(int)z-45;cz<(int)z+20;cz++){
                     var p=CylinderWorld.Surface(cz+.5f,z,h);
                     for(int cx=(int)x-50;cx<(int)x+50;cx++){
-                        if(!RenderView.Sphere(cx+.5f,p.Y,p.Z,.8f,x,z,h)||!RenderView.AboveHorizon(p.Y,p.Z,.8f,z,h))continue;
+                        if(!RenderView.Sphere(cx+.5f,p.Y,p.Z,0,x,z,h)||!RenderView.AboveHorizon(p.Y,p.Z,0,z,h))continue;
                         int hits=0;for(int i=0;i<stream.Count;i++)if(stream.Visible[i]&&cx>=stream.X[i]&&cx<stream.X[i]+TerrainStream.Width&&cz>=stream.Z[i]&&cz<stream.Z[i]+TerrainStream.Height)hits++;
                         check(hits==1,"visible terrain has exactly one ready section throughout continuous scrolling");
                     }
@@ -134,20 +135,21 @@ internal static class TerrainEdgeChecks
         before=updates;for(int n=0;n<10;n++)Tick(80.02f,80.02f);check(updates==before,"fractional movement reuses cached section geometry");
         stream.Reset();Tick(1,1);check(!stream.Ready,"cold teleport requires a covered loading transition rather than a terrain construction burst");
         foreach(float x in new[]{.001f,159.999f})foreach(float z in new[]{.001f,159.999f}){stream.Reset();for(int n=0;n<TerrainStream.Capacity;n++)Tick(x,z);check(stream.Ready&&stream.MissingWanted==0,"streaming at every town boundary remains bounded and complete");}
-        var staged=new TerrainStream();int remaining=0,held=-1;
+        var staged=new TerrainStream();var remaining=new int[TerrainStream.Capacity];
         void StagedFrame(float x,float z){
             staged.Prepare(x,z);
             for(int step=0;step<8&&staged.BuildSlot>=0;step++){
-                if(remaining==0){held=staged.BuildSlot;staged.Hold();remaining=TerrainStream.Height*3+1;}
-                check(staged.BuildSlot==held&&!staged.Visible[held],"unfinished sections stay pinned and hidden across frames");
-                if(--remaining==0){staged.Complete();staged.Prepare(x,z);}
+                int held=staged.BuildSlot;
+                if(!staged.InProgress(held)){staged.Hold();remaining[held]=TerrainStream.Height*3+1;}
+                check(!staged.Visible[held],"unfinished sections stay hidden across frames and preemption");
+                if(--remaining[held]==0){staged.Complete();staged.Prepare(x,z);}
             }
         }
         for(int n=0;n<TerrainStream.Capacity*2;n++)StagedFrame(50,50);
         check(staged.Ready&&staged.MissingWanted==0,"staged uploads warm up without publishing partial terrain");
         for(int n=0;n<600;n++){StagedFrame(50+n*.1187f,50+n*.1187f);check(staged.Ready,"bounded row-stage throughput preserves visibility while running");}
         staged.Reset();staged.Prepare(50,50);int active=staged.BuildSlot;staged.Hold();staged.Prepare(140,140);
-        check(staged.BuildSlot==active,"a camera jump cannot recycle an in-progress section");staged.Complete();
+        check(staged.BuildSlot!=active&&!staged.InProgress(active),"a camera jump cancels obsolete prefetch without blocking its new destination");staged.Complete();
         check(!staged.Ready,"finishing an obsolete section does not mark the new view ready");
         var state=new GameState(17);Array.Fill(state.Town.Tiles,(byte)Terrain.Grass);Array.Clear(state.Town.Elevation);
         var strips=new FloorStrips(TerrainStream.Width*TerrainStream.Height);strips.PrepareRegion(state,data,80,80,TerrainStream.Width,TerrainStream.Height);

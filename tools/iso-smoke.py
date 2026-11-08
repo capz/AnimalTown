@@ -328,7 +328,7 @@ DumpCodec = ffv1
 [Hacks]
 EFBToTextureEnable = False
 ''')
-if '--profile' in sys.argv or '--interaction-profile' in sys.argv or '--runtime-profile' in sys.argv or '--terrain-scroll' in sys.argv or '--lighting' in sys.argv or '--actor-shadows' in sys.argv or '--movement-profile' in sys.argv:
+if '--profile' in sys.argv or '--interaction-profile' in sys.argv or '--runtime-profile' in sys.argv or '--terrain-scroll' in sys.argv or '--lighting' in sys.argv or '--actor-shadows' in sys.argv or '--movement-profile' in sys.argv or '--stream-travel' in sys.argv:
     config=user/'Config'/'Dolphin.ini'
     config.write_text(config.read_text()+'\n[Movie]\nDumpFrames = True\nDumpFramesSilent = True\n')
     config=user/'Config'/'GFX.ini'
@@ -362,6 +362,38 @@ with (root/'emulator.log').open('w') as log:
             press('L');time.sleep(1)
             building_save();press('B')
             press('A');time.sleep(4);building_view('building-exited.png',False)
+        elif '--stream-travel' in sys.argv:
+            press('A')
+            if '--new-town' in sys.argv:press('D_UP');press('A');press('A');time.sleep(2);press('B');press('B')
+            time.sleep(12)
+            os.write(controller,b'PRESS L\nPRESS R\n');time.sleep(.2);press('Z');os.write(controller,b'RELEASE L\nRELEASE R\n')
+            time.sleep(profile_seconds);screenshot('travel-start.png')
+            def marker(name):
+                pixels=subprocess.check_output(['ffmpeg','-v','error','-i',str(root/name),'-frames:v','1','-f','rawvideo','-pix_fmt','rgb24','-'])
+                for origin in range(20,36):
+                    for width in range(570,601):
+                        def word(index):
+                            result=0
+                            for bit in range(16):
+                                n=index*16+bit;x=origin+int((n%64+.5)*width/64);y=450+n//64*4
+                                if pixels[(y*800+x)*3]>128:result|=1<<bit
+                            return result
+                        if word(0)!=0x4154:continue
+                        values=[word(n) for n in range(32)];checksum=0
+                        for value in values[:31]:checksum^=value
+                        if values[1]==5 and checksum==values[31]:return values[2]
+                raise AssertionError('No valid travel telemetry in '+name)
+            previous=marker('travel-start.png')
+            # No inspector teleports: any landscape transition in this capture
+            # interrupts ordinary travel and must fail --check-streaming.
+            for n,(x,y,running) in enumerate(((1,.5,False),(0,.5,True),(.5,0,False),(.5,1,True),(1,0,True),(0,1,True))):
+                os.write(controller,f'SET MAIN {x} {y}\n'.encode())
+                if running:os.write(controller,b'PRESS B\n')
+                time.sleep(profile_seconds*2)
+                os.write(controller,b'SET MAIN .5 .5\nRELEASE B\n');time.sleep(2);screenshot(f'travel-{n}.png')
+                current=marker(f'travel-{n}.png')
+                if ((current-previous)&65535)<30:raise AssertionError('Game stopped presenting frames during travel route '+str(n))
+                previous=current
         elif '--movement-profile' in sys.argv:
             press('A')
             if '--new-town' in sys.argv:press('D_UP');press('A');press('A');time.sleep(2);press('B');press('B')
