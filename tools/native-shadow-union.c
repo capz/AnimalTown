@@ -57,5 +57,7 @@ const uint8_t *animaltown_shadows_page(float x,float z,float *origin){
 int animaltown_shadows_stats(int kind){
     if(!shadows)return 0;
     if(kind==0){int n=0;for(int i=0;i<SU_PAGES;i++)n+=shadows->page[i].needed;return n;}
+    if(kind==9)return dnd_draw_live();
+    if(kind==10)return dnd_draw_total_bytes();
     return kind==1?shadows->overflow:kind==2?shadows->changed:kind==3?(int)su_storage_bytes():kind==4?shadows->static_rasters:kind==5?shadows->dynamic_rasters:kind==6?shadows->support_builds:kind==7?shadows->support_hits:shadows->deferred;
 }

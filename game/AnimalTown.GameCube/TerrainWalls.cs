@@ -24,10 +24,10 @@ internal sealed class TerrainWalls
     internal ulong GroundMask {get;private set;}
     internal Mesh? SoilMesh=>soilUsed==0?null:soilMesh?.Mesh;
     internal Mesh? GroundMesh(int slot)=>used[slot]==0?null:groundMesh[slot]?.Mesh;
-    internal void Begin(GameState state,int top)
+    internal void Begin(GameState state,int top,CylinderRows cache)
     {
         town=state.Town;z=0;soilUsed=total=0;for(int i=0;i<used.Length;i++)used[i]=0;
-        rowBase=top;for(int i=0;i<rows.Length;i++)rows[i]=CylinderWorld.Surface(top+i,0);
+        rowBase=top;for(int i=0;i<rows.Length;i++)rows[i]=cache.At(top+i);
     }
     internal void AppendRow(GameState state,TerrainRenderer floor,int left,int cz)
     {

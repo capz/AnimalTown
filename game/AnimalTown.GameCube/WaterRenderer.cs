@@ -15,21 +15,24 @@ internal sealed class WaterRenderer
     private long revision;
     private int surfaceCount,foamCount;
     private GameState state=null!;
-    private float referenceZ;
     private readonly Color32[] cornerTint=new Color32[(TerrainStream.Width+1)*(TerrainStream.Height+1)];
     private readonly bool[] tintReady=new bool[(TerrainStream.Width+1)*(TerrainStream.Height+1)];
     private int originX,originZ,cachedRow=int.MinValue;
     private CylinderPose rowA,rowB;
+    private CylinderRows rows=null!;
+    private bool deepSea;
+    private Color32 deepTint;
     internal int Triangles=>(surfaceCount+foamCount)/3;
     internal Mesh? SurfaceMesh=>surfaceCount==0?null:surfaceMesh?.Mesh;
     internal Mesh? FoamMesh=>foamCount==0?null:foamMesh?.Mesh;
     private int cells;
-    internal void Begin(GameState next,int left,int top)
+    internal void Begin(GameState next,int left,int top,CylinderRows cache,bool deep)
     {
-        state=next;referenceZ=0;surfaceCount=foamCount=cells=0;cachedRow=int.MinValue;
+        state=next;surfaceCount=foamCount=cells=0;cachedRow=int.MinValue;rows=cache;deepSea=deep;deepTint=material.Tint(1);
         Array.Clear(tintReady,0,tintReady.Length);
         originX=left;originZ=top;
     }
+    internal void AppendDeepRow(int z)=>Quad(ref surface,ref surfaceCount,originX,z,originX,z,originX+TerrainStream.Width,z,originX+TerrainStream.Width,z+1,originX,z+1,false);
     internal void Append(FloorStrips strips)
     {
         for(int n=0;n<strips.Count;n++){
@@ -104,13 +107,14 @@ internal sealed class WaterRenderer
     {
         // Interpolate on the SAME row chord as the surface, not a new cylinder
         // sample inside a cell (which would float above the water chord).
-        if(cachedRow!=cz){rowA=CylinderWorld.Surface(cz,referenceZ);rowB=CylinderWorld.Surface(cz+1,referenceZ);cachedRow=cz;}
+        if(cachedRow!=cz){rowA=rows.At(cz);rowB=rows.At(cz+1);cachedRow=cz;}
         float ay=rowA.Y+height*rowA.UpY,az=rowA.Z+height*rowA.UpZ,by=rowB.Y+height*rowB.UpY,bz=rowB.Z+height*rowB.UpZ,t=z-cz;
         var color=isFoam?Color32.White:Tint((int)x,(int)z);
         return new VertexPositionColorTexture(new Vector3(x,ay+(by-ay)*t,az+(bz-az)*t),color,new Vector2(x*WaterSurface.UvScale,z*WaterSurface.UvScale));
     }
     private Color32 Tint(int x,int z)
     {
+        if(deepSea)return deepTint;
         int dx=x-originX,dz=z-originZ;
         if((uint)dx>TerrainStream.Width||(uint)dz>TerrainStream.Height)return material.Tint(WaterSurface.Depth(state.Town,x,z));
         int at=dz*(TerrainStream.Width+1)+dx;
