@@ -1,6 +1,7 @@
 #include "dnd_draw.h"
 #include "dnd_model.h"
 #include "animaltown_shadow_union.h"
+#include "dnd_timing.h"
 static SuState *shadows;
 static int shadow_storage;
 extern void animaltown_shadows_model_reset(void);
@@ -29,9 +30,11 @@ int animaltown_shadows_active(int slot,int active,DndArray *center){
     float *p=(float*)center->data;if(!isfinite(p[0])||!isfinite(p[1]))return 0;
     su_active(shadows,slot,active,p[0],p[1]);return 1;
 }
-int animaltown_shadows_prepare(void){
+static int shadow_can_work(void *deadline){return dnd_timing_now()<*(int64_t*)deadline;}
+int animaltown_shadows_prepare(int microseconds){
     if(!shadows||dnd_device_active())return 0;
-    su_prepare(shadows,1);
+    int64_t deadline=dnd_timing_now()+(microseconds>0?microseconds:0);
+    su_prepare_budget(shadows,1,shadow_can_work,&deadline);
     /* Present already fenced the previous frame. Flush only modified pages;
      * publication invalidates GX's texture cache without an extra DrawDone. */
     if(shadows->changed){
@@ -54,5 +57,5 @@ const uint8_t *animaltown_shadows_page(float x,float z,float *origin){
 int animaltown_shadows_stats(int kind){
     if(!shadows)return 0;
     if(kind==0){int n=0;for(int i=0;i<SU_PAGES;i++)n+=shadows->page[i].needed;return n;}
-    return kind==1?shadows->overflow:kind==2?shadows->changed:kind==3?(int)su_storage_bytes():kind==4?shadows->static_rasters:shadows->dynamic_rasters;
+    return kind==1?shadows->overflow:kind==2?shadows->changed:kind==3?(int)su_storage_bytes():kind==4?shadows->static_rasters:kind==5?shadows->dynamic_rasters:kind==6?shadows->support_builds:kind==7?shadows->support_hits:shadows->deferred;
 }

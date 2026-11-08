@@ -35,7 +35,7 @@ $generated="extern int animaltown_uv_mode(int);`n"+$generated
 [IO.File]::WriteAllText($generatedPath,$generated)
 # Pinned, game-owned coverage union bridge. All buffers use SDK resource
 # accounting; shader hooks shade existing ground geometry exactly once.
-$shadowArgs=@{Init=2;Begin=3;Mesh=5;Active=3;Prepare=0;Scope=1;Stats=1}
+$shadowArgs=@{Init=2;Begin=3;Mesh=5;Active=3;Prepare=1;Scope=1;Stats=1}
 foreach($method in $shadowArgs.Keys){
     $n=$shadowArgs[$method];$argsPattern=if($n){((1..$n|ForEach-Object {'intptr_t (\w+)'}) -join ', ')}else{'void'}
     $p='intptr_t (dnd_value_AnimalTown_GameCube_NativeShadows_'+$method+'_[a-z0-9]+)\('+$argsPattern+'\) \{.*?\r?\n\}'
@@ -52,7 +52,7 @@ extern int animaltown_shadows_init(DndArray*,DndArray*);
 extern int animaltown_shadows_begin(int,int,int);
 extern int animaltown_shadows_mesh(int,int,int,DndArray*,DndArray*);
 extern int animaltown_shadows_active(int,int,DndArray*);
-extern int animaltown_shadows_prepare(void);
+extern int animaltown_shadows_prepare(int);
 extern int animaltown_shadows_scope(int);
 extern int animaltown_shadows_stats(int);
 '@+"`n"+$generated

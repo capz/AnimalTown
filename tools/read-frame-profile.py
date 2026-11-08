@@ -94,7 +94,7 @@ for scene,rows in groups.items():
         'frames':len(rows),'timings':timings,
         'triangles':stats([r[20]+(r[21]<<16) for r in rows]),
         'terrain_triangles':stats([r[22] for r in rows]),
-        **({'terrain_patch_builds':stats([r[23]&255 for r in rows]),'animation_update_calls':stats([(r[23]>>8)&7 for r in rows]),'ground_ring_enabled':stats([int(bool(r[23]&16384)) for r in rows]),'ground_ring_uploads':stats([int(bool(r[23]&32768)) for r in rows])} if versions=={5} else {'rejected_terrain_quads':stats([r[23] for r in rows])}),
+        **({'terrain_patch_builds':stats([r[23]&255 for r in rows]),'shadow_deferred_frames':sum(bool(r[23]&2048) for r in rows),'animation_update_calls':stats([(r[23]>>8)&7 for r in rows]),'ground_ring_enabled':stats([int(bool(r[23]&16384)) for r in rows]),'ground_ring_uploads':stats([int(bool(r[23]&32768)) for r in rows])} if versions=={5} else {'rejected_terrain_quads':stats([r[23] for r in rows])}),
         'texture_cache_kib':stats([r[25] for r in rows]),
         'culled_objects':stats([r[24] for r in rows]),
         'draw_submissions':stats([r[28] for r in rows]),

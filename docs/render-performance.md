@@ -212,3 +212,28 @@ repeated eviction, room switches, resized pages, clipping and overlap. A
 hash while reducing shadow update plus 128 page-lookups CPU time from about
 62 ms to 30 ms for the entire run. This is a host microbenchmark, not a GameCube
 frame-time measurement; direct Dolphin walking/running is checked separately.
+
+## Retaining receiver coverage and bounding preparation
+
+Shadow receivers generate logical UV coverage directly; they no longer construct
+unused cylinder positions. A staged flat-ground check emits two triangles when
+the complete footprint is level, dry and clear of buildings and terrain edges.
+Water, shorelines, ramps, diagonal cliffs and indoor floor boundaries retain the
+clipped path. Moving circles reuse packed receiver support on each mask page;
+their shape sampling and maximum-opacity overlap union remain unchanged.
+
+The 32 active scenery slots share a separate 64-entry LRU receiver cache. Leaving
+the view retains coverage for a return visit. Exact local tile/elevation snapshots
+let distant terrain edits keep valid entries; changed local terrain, caster
+geometry or town identity invalidates them. Array payload is 157,824 bytes, plus
+entry overhead. The native page/support cache occupies 1,448,128 bytes on the host
+ABI, below its 1.5 MiB ceiling. No ARAM transfer is required for these warm entries.
+
+Terrain stages, receiver stages and native mask preparation now share a 2 ms
+deadline, reserving the final millisecond for native work. Static unions yield
+between casters and moving masks yield between pages. These are cooperative
+limits: one stage, caster, page or upload can exceed the remaining time. A
+deferred moving page clears its old moving coverage while retaining static
+coverage, then retries on a later frame. Protocol v5 bit 11 records frames with
+deferred native work; `read-frame-profile.py` reports `shadow_deferred_frames`.
+This counter and movement captures check whether the budget causes visible gaps.
