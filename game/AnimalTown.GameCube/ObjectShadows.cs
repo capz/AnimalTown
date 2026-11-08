@@ -18,6 +18,7 @@ internal sealed class ObjectShadows
     }
     private readonly Entry[] entries=new Entry[Capacity];
     private readonly ShadowCaster[] casters=new ShadowCaster[512+BuildingWorld.Count];
+    private readonly float[] radialY=new float[512+BuildingWorld.Count],radialZ=new float[512+BuildingWorld.Count];
     private readonly bool[] exists=new bool[512+BuildingWorld.Count];
     private readonly int[] selected=new int[Capacity];
     private readonly float[] distances=new float[Capacity];
@@ -33,6 +34,14 @@ internal sealed class ObjectShadows
         for(int i=0;i<Capacity;i++)entries[i]=new Entry();
     }
     private static bool Same(ShadowCaster a,ShadowCaster b)=>a.X==b.X&&a.Z==b.Z&&a.Scale==b.Scale&&a.Profile==b.Profile&&a.Height==b.Height;
+    private void SetCaster(int key,ShadowCaster value)
+    {
+        if(!Same(casters[key],value)){
+            var p=CylinderWorld.Surface((value.Top+value.Bottom)*.5f,0,value.Height);
+            radialY[key]=p.Y;radialZ[key]=p.Z;casters[key]=value;
+        }
+        exists[key]=true;
+    }
     internal void Prepare(GameState state)
     {
         var t=state.Town;int hash=state.HousePlaced?1:0;
@@ -45,11 +54,11 @@ internal sealed class ObjectShadows
             for(int i=0;i<t.GroundCount;i++){
                 var g=t.Ground[i];if(g.Kind!=3&&(g.Kind!=2||g.Item==2))continue;
                 int profile=g.Item==2?1:g.Item==3?2:0;float scale=g.Kind==2?.75f:3;
-                casters[i]=new ShadowCaster(g.X,g.Z,scale,profile,TerrainElevation.At(t,g.X,g.Z));exists[i]=true;
+                SetCaster(i,new ShadowCaster(g.X,g.Z,scale,profile,TerrainElevation.At(t,g.X,g.Z)));
             }
             for(int i=0;i<BuildingWorld.Count;i++)if(BuildingWorld.Exists(state,i)){
                 BuildingWorld.Origin(state,i,out float x,out float z);x+=1.5f;z+=1.5f;
-                int key=512+i;casters[key]=new ShadowCaster(x,z,3,3,TerrainElevation.At(t,x,z));exists[key]=true;
+                int key=512+i;SetCaster(key,new ShadowCaster(x,z,3,3,TerrainElevation.At(t,x,z)));
             }
             for(int i=0;i<Capacity;i++){
                 var e=entries[i];if(e.Key<0)continue;
@@ -58,12 +67,13 @@ internal sealed class ObjectShadows
         }
         float fx=(float)Math.Floor(state.X*2)*.5f,fz=(float)Math.Floor(state.Z*2)*.5f;
         if(!changed&&focusX==fx&&focusZ==fz){Publish();return;}focusX=fx;focusZ=fz;
-        int count=0;float eye=TerrainElevation.At(t,state.X,state.Z);
+        int count=0;float eye=TerrainElevation.At(t,state.X,state.Z);var scroll=CylinderWorld.Scroll(0,state.Z);
         for(int key=0;key<exists.Length;key++)if(exists[key]){
             var c=casters[key];float cx=(c.Left+c.Right)*.5f,cz=(c.Top+c.Bottom)*.5f;
             if(Math.Abs(cx-fx)>CylinderWorld.ViewHalfWidth+5||cz<fz-TerrainTiles.GroundRowsAhead-5||cz>fz+TerrainTiles.GroundRowsBehind+5)continue;
-            var p=CylinderWorld.Surface(cz,state.Z,c.Height);float radius=(c.Right-c.Left+c.Bottom-c.Top)*.5f;
-            if(!RenderView.Sphere(cx,p.Y,p.Z,radius,state.X,state.Z,eye)||!RenderView.AboveHorizon(p.Y,p.Z,radius,state.Z,eye))continue;
+            float py=scroll.Cos*radialY[key]-scroll.Sin*radialZ[key]+scroll.Y,pz=scroll.Sin*radialY[key]+scroll.Cos*radialZ[key]+scroll.Z;
+            float radius=(c.Right-c.Left+c.Bottom-c.Top)*.5f;
+            if(!RenderView.Sphere(cx,py,pz,radius,state.X,state.Z,eye)||!RenderView.AboveHorizon(py,pz,radius,state.Z,eye))continue;
             float d=(cx-fx)*(cx-fx)+(cz-fz)*(cz-fz)-(c.Profile==3?10000:0);int at=count;
             if(at==Capacity){if(d>=distances[Capacity-1])continue;at--;}
             else count++;

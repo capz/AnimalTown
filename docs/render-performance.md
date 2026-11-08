@@ -241,3 +241,10 @@ deferred native work; `read-frame-profile.py` reports `shadow_deferred_frames`.
 This counter and movement captures check whether the budget causes visible gaps.
 The terrain build counter counts terrain stages only; receiver clipping no longer
 appears as a terrain rebuild or advances the terrain geometry revision.
+
+Scenery culling retains each caster's cylinder position at the common origin and
+applies one scroll rotation per selection pass. Unchanged casters keep those
+positions across catalog refreshes. Two bounded float arrays cost about 4 KiB;
+walking no longer evaluates sine/cosine for each nearby caster. Mask publication
+runs before terrain/scenery visibility scans as well as before geometry stages;
+scenery selection changes enter the masks on the following frame.

@@ -84,7 +84,6 @@ internal sealed class TerrainRenderer
         ScrollTransform.LocalRotation=new Quaternion(scroll.HalfSin,0,0,scroll.HalfCos);
         int steps=0;stream.Prepare(state.X,state.Z);
         shadows.Prepare(state);
-        movingShadows.PrepareMasks(deadline);
         // Landscape readiness takes priority. Moving shadows use spare stages
         // after terrain. Masks publish first so an indivisible terrain stage
         // cannot consume their reservation. New receivers publish next frame.
