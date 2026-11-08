@@ -1,5 +1,6 @@
 using AnimalTown;
 using Dolphin.Graphics;
+using Dolphin.Timing;
 using Hypercube.GameCube;
 
 // Seven clipped receivers feed the shared coverage mask. Only small dirty mask
@@ -8,7 +9,7 @@ internal sealed class VillagerShadows
 {
     private sealed class Entry
     {
-        internal bool Active,Ready;
+        internal bool Active,Ready,Flat;
         internal int Revision;
         internal VillagerShadowPatch Wanted,Built;
         internal readonly float[] Bounds=new float[4],Center=new float[2];
@@ -46,20 +47,25 @@ internal sealed class VillagerShadows
             else for(int n=0;n<entries.Length-1;n++){int i=1+(cursor-1+n)%(entries.Length-1);if(Dirty(i)){building=i;break;}}
             if(building<0)return false;
             var e=entries[building];job=e.Wanted;jobRevision=e.Revision;
-            if(job.Space==0)staging.Begin(town,job.Receiver,true);else staging.BeginIndoor(job.Receiver,job.Size,job.EntryMat);
+            if(job.Space==0)staging.BeginCoverage(town,job.Receiver);else staging.BeginIndoorCoverage(job.Receiver,job.Size,job.EntryMat);
         }
         if(!staging.Advance())return true;
         var target=entries[building];target.Count=staging.Overflow?0:staging.Vertices;
         target.Bounds[0]=job.Left;target.Bounds[1]=job.Top;target.Bounds[2]=job.Left+job.Span;target.Bounds[3]=job.Top+job.Span;
         if(NativeShadows.Mesh(building+ObjectShadows.Capacity,target.Count,4,staging.Uvs,target.Bounds)!=1)throw new System.InvalidOperationException("Invalid villager shadow coverage");
-        target.Built=job;target.Ready=true;cursor=1+building%(entries.Length-1);building=-1;return true;
+        target.Built=job;target.Flat=staging.FlatCoverage;target.Ready=true;cursor=1+building%(entries.Length-1);building=-1;return true;
     }
     internal void Publish()
     {
         if(town==null)return;
         for(int i=0;i<entries.Length;i++){
-            var e=entries[i];bool active=Enabled&&e.Active&&e.Ready&&e.Count>0&&e.Built.Covers(town,e.Wanted);
+            var e=entries[i];bool active=Enabled&&e.Active&&e.Ready&&e.Count>0&&e.Built.Covers(town,e.Wanted,e.Flat);
             NativeShadows.Active(i+ObjectShadows.Capacity,active?1:0,e.Center);
         }
+    }
+    internal void PrepareMasks(long deadline)
+    {
+        Publish();
+        if(NativeShadows.Prepare((int)System.Math.Min(1000,System.Math.Max(0,deadline-Clock.Timestamp)))!=1)throw new System.InvalidOperationException("Shadow union page capacity");
     }
 }

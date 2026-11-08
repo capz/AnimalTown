@@ -560,10 +560,10 @@ internal sealed class TownGame
     {
         cachedPlayerHeight=PlayerHeight();if(room==0)RenderView.Prepare(state.X,state.Z,cachedPlayerHeight);
         UpdateAnimationFrame();
-        long phase=FrameProfile.Start();PrepareVillagerShadows();
-        if(room==0){terrain.Prepare(state,room,month,villagerShadows,cliffPreview);terrain.Animate((Clock.Timestamp-sessionStart)/1000000.0);}
-        else{long until=Clock.Timestamp+2000;int steps=0;while(steps<8&&Clock.Timestamp<until){if(!villagerShadows.Advance())break;steps++;}}
-        villagerShadows.Publish();if(NativeShadows.Prepare()!=1)throw new InvalidOperationException("Shadow union page capacity");
+        long phase=FrameProfile.Start(),preparationDeadline=Clock.Timestamp+2000;PrepareVillagerShadows();
+        villagerShadows.PrepareMasks(preparationDeadline);
+        if(room==0){terrain.Prepare(state,room,month,villagerShadows,preparationDeadline,cliffPreview);terrain.Animate((Clock.Timestamp-sessionStart)/1000000.0);}
+        else{int steps=0;while(steps<8&&Clock.Timestamp<preparationDeadline){if(!villagerShadows.Advance())break;steps++;}}
         FrameProfile.End(2,phase);
         if(room==0&&!terrain.Ready){DrawLoading(landscape:true);return;}
         phase=FrameProfile.Start();uiShapes.Prepare(screen,screen=="menu"?menuTab:-1,batchedDrawing);if(batchedDrawing&&screen=="map")mapBackground.Prepare(state.Town);modelUsed=0;FrameProfile.End(8,phase);
@@ -628,7 +628,7 @@ internal sealed class TownGame
         int scene=screen=="map"?10:screen=="menu"&&menuTab==0?(indexedModels?1:7):room!=0?2:screen=="world"?(indexedModels?0:6):3;
         int drawingScene=batchedDrawing?(UiFont.Batched?scene:scene+32):scene+16;
         bool moved=!float.IsNaN(profiledX)&&(state.X!=profiledX||state.Z!=profiledZ);profiledX=state.X;profiledZ=state.Z;
-        FrameProfile.Complete(GpuProfiler.Snapshot().Triangles,room==0?terrain.VisibleTriangles:0,room==0?terrain.RejectedQuads:0,drawingScene+RuntimeOptions.Mode*64,room==0?terrain.BuiltThisFrame:0,moved?(moveClip==1?2:1):0,room==0&&terrain.GroundRingActive,room==0&&terrain.GroundRingUploaded);
+        FrameProfile.Complete(GpuProfiler.Snapshot().Triangles,room==0?terrain.VisibleTriangles:0,room==0?terrain.RejectedQuads:0,drawingScene+RuntimeOptions.Mode*64,room==0?terrain.BuiltThisFrame:0,moved?(moveClip==1?2:1):0,room==0&&terrain.GroundRingActive,room==0&&terrain.GroundRingUploaded,NativeShadows.Stats(8)>0);
     }
     private bool IsTree(GroundItem g)=>g.Kind==3||(g.Kind==2&&g.Item!=2);
     private void InspectTerrain()

@@ -54,7 +54,7 @@ internal sealed class TerrainRenderer
         for(int i=0;i<materials.Length;i++)materials[i]=new Material{Cull=CullMode.Back,Lighting=LightingMode.Unlit,SecondarySampler=new SamplerState(TextureAddressMode.Repeat,TextureAddressMode.Repeat,TextureFilter.Linear)};
         for(int i=0;i<poses.Length;i++)poses[i]=ScrollTransform;
     }
-    internal void Prepare(GameState state,int room,int month,VillagerShadows movingShadows,bool cliffPreview=false)
+    internal void Prepare(GameState state,int room,int month,VillagerShadows movingShadows,long deadline,bool cliffPreview=false)
     {
         BuiltThisFrame=0;
         int next=TerrainTiles.Season(month,forced);bool changed=next!=season;
@@ -82,10 +82,12 @@ internal sealed class TerrainRenderer
         var scroll=CylinderWorld.Scroll(0,state.Z);
         ScrollTransform.LocalPosition=new Vector3(0,scroll.Y,scroll.Z);
         ScrollTransform.LocalRotation=new Quaternion(scroll.HalfSin,0,0,scroll.HalfCos);
-        long deadline=Clock.Timestamp+2000;int steps=0;stream.Prepare(state.X,state.Z);
+        int steps=0;stream.Prepare(state.X,state.Z);
+        shadows.Prepare(state);
         // Landscape readiness takes priority. Moving shadows use spare stages
-        // after terrain, retaining overlapping receivers while replacements wait.
-        do{
+        // after terrain. Masks publish first so an indivisible terrain stage
+        // cannot consume their reservation. New receivers publish next frame.
+        while(steps<8&&Clock.Timestamp<deadline){
             if(building<0){
                 if(stream.BuildSlot<0)break;building=stream.BuildSlot;stream.Hold();
                 if(sections[building]==null)sections[building]=new TerrainSection(soil,waterMaterial);
@@ -93,10 +95,9 @@ internal sealed class TerrainRenderer
             }
             bool complete=sections[building]!.Advance(state,this,staging,data);steps++;geometryRevision++;BuiltThisFrame++;
             if(complete){stream.Complete();building=-1;stream.Prepare(state.X,state.Z);}
-        }while(steps<8&&Clock.Timestamp<deadline);
-        while(steps<8&&Clock.Timestamp<deadline){if(!movingShadows.Advance())break;steps++;geometryRevision++;BuiltThisFrame++;}
-        shadows.Prepare(state);
-        while(steps<8&&Clock.Timestamp<deadline){if(!shadows.Advance())break;steps++;geometryRevision++;BuiltThisFrame++;}
+        }
+        while(steps<8&&Clock.Timestamp<deadline){if(!movingShadows.Advance())break;steps++;}
+        while(steps<8&&Clock.Timestamp<deadline){if(!shadows.Advance())break;steps++;}
         gallery.PrepareGallery(state,this,cliffPreview);
         VisibleTriangles=gallery.Triangles+(GroundRingActive?GroundRingPlan.IndexCount/3:0);RejectedQuads=0;visibleGroundMask=0;
         for(int i=0;i<stream.Count;i++)if(stream.Visible[i]){

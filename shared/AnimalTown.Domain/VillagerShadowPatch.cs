@@ -20,13 +20,13 @@ public readonly struct VillagerShadowPatch
         Side=space==0&&TerrainElevation.Mode(town,(int)x,(int)z)>=6?1+(int)Height:0;
     }
     public bool SameRegion(VillagerShadowPatch p)=>Space==p.Space&&Size==p.Size&&EntryMat==p.EntryMat&&Left==p.Left&&Top==p.Top&&Version==p.Version&&Side==p.Side;
-    public bool Covers(Town town,VillagerShadowPatch current)
+    public bool Covers(Town town,VillagerShadowPatch current,bool verifiedFlat=false)
     {
         if(Space!=current.Space||Size!=current.Size||EntryMat!=current.EntryMat||Version!=current.Version)return false;
         float x=current.X+OffsetX,z=current.Z+OffsetZ;
         float l=x-Radius,r=x+Radius,t=z-Radius,b=z+Radius;
         if(Space!=0){l=Math.Max(0,l);t=Math.Max(0,t);r=Math.Min(Size,r);b=Math.Min(Size,b);}
-        return l>=Left&&r<=Left+Span&&t>=Top&&b<=Top+Span&&(Space!=0||GroundShadow.Connected(town,X,Z,Height,current.X,current.Z));
+        return l>=Left&&r<=Left+Span&&t>=Top&&b<=Top+Span&&(Space!=0||verifiedFlat||GroundShadow.Connected(town,X,Z,Height,current.X,current.Z));
     }
     public static byte[] Texture()
     {

@@ -34,19 +34,45 @@ public sealed class GroundShadow
     private ShadowCaster caster;
     private CylinderPose rowA,rowB;
     private int row;
-    private bool worldUv,entryMat;
+    private bool worldUv,entryMat,coverageOnly,checkingFlat;
+    public bool FlatCoverage {get;private set;}
     private int indoorSize;
     public void Begin(Town source,ShadowCaster value,bool worldCoordinates=false)
-    {town=source;indoorSize=0;entryMat=false;worldUv=worldCoordinates;Start(value);}
+    {town=source;indoorSize=0;entryMat=false;worldUv=worldCoordinates;coverageOnly=false;Start(value);}
     public void BeginIndoor(ShadowCaster value,int size,bool cottageMat)
-    {indoorSize=size;entryMat=cottageMat;worldUv=true;Start(value);}
-    private void Start(ShadowCaster value){caster=value;row=(int)Math.Floor(value.Top);Vertices=0;Overflow=false;}
+    {indoorSize=size;entryMat=cottageMat;worldUv=true;coverageOnly=false;Start(value);}
+    // Coverage consumers need logical UVs only, not projected 3D vertices.
+    public void BeginCoverage(Town source,ShadowCaster value)
+    {Begin(source,value,true);coverageOnly=true;checkingFlat=(value.Height==0||value.Height==TerrainElevation.Height)&&value.X>=value.Left&&value.X<=value.Right&&value.Z>=value.Top&&value.Z<=value.Bottom;}
+    public void BeginIndoorCoverage(ShadowCaster value,int size,bool cottageMat)
+    {BeginIndoor(value,size,cottageMat);coverageOnly=true;}
+    private void Start(ShadowCaster value){caster=value;row=(int)Math.Floor(value.Top);Vertices=0;Overflow=FlatCoverage=checkingFlat=false;}
+    private bool FlatRow(int z)
+    {
+        for(int x=(int)Math.Floor(caster.Left);x<=(int)Math.Floor(caster.Right);x++){
+            int kind=town.At(x,z),mode=TerrainElevation.Mode(town,x,z);
+            if(!town.Inside(x,z)||!(caster.Height==0&&mode==0||caster.Height==TerrainElevation.Height&&mode==TerrainElevation.Block)||WaterSurface.IsWater(town,x,z)||WaterTerrain.IsCoast(kind)||kind==(int)Terrain.Beach||kind==(int)Terrain.Building||kind==(int)Terrain.Cliff)return false;
+        }
+        return true;
+    }
+    private void FlatRectangle()
+    {
+        a[0]=new P(caster.Left,caster.Top,0,0);a[1]=new P(caster.Right,caster.Top,0,0);a[2]=new P(caster.Right,caster.Bottom,0,0);
+        Emit(a[0]);Emit(a[1]);Emit(a[2]);Emit(a[0]);Emit(a[2]);Emit(new P(caster.Left,caster.Bottom,0,0));FlatCoverage=true;
+    }
     // One fine row per job; callers own the shared frame work deadline.
     public bool Advance()
     {
+        if(checkingFlat){
+            if(row<=(int)Math.Floor(caster.Bottom)){
+                if(FlatRow(row++))return false;
+                checkingFlat=false;row=(int)Math.Floor(caster.Top);return false;
+            }
+            checkingFlat=false;FlatRectangle();return true;
+        }
         if(row>(int)Math.Floor(caster.Bottom))return true;
         int z=row++;
-        if(indoorSize==0){rowA=CylinderWorld.Surface(z,0);rowB=CylinderWorld.Surface(z+1,0);}
+        if(indoorSize==0&&!coverageOnly){rowA=CylinderWorld.Surface(z,0);rowB=CylinderWorld.Surface(z+1,0);}
         for(int x=(int)Math.Floor(caster.Left);x<=Math.Floor(caster.Right);x++){
             if(indoorSize>0){
                 if(x<0||z<0||x>=indoorSize||z>=indoorSize)continue;
@@ -64,6 +90,7 @@ public sealed class GroundShadow
     }
     private P Point(int cx,int cz,float x,float z,int level)
     {
+        if(coverageOnly)return new P(x,z,0,0);
         if(indoorSize>0)return new P(x,z,level==2?.032f:.012f,z);
         float h=level<0?GroundSurface.HeightAt(town,cx,cz,x,z):level*2;
         var p=z==cz?rowA:rowB;
@@ -118,7 +145,7 @@ public sealed class GroundShadow
     }
     private void Emit(P p)
     {
-        int at=Vertices++;Positions[at*3]=p.X;Positions[at*3+1]=p.Y;Positions[at*3+2]=p.Depth;
+        int at=Vertices++;if(!coverageOnly){Positions[at*3]=p.X;Positions[at*3+1]=p.Y;Positions[at*3+2]=p.Depth;}
         if(worldUv){Uvs[at*2]=p.X;Uvs[at*2+1]=p.Z;return;}
         // Two-pixel transparent gutters isolate the four atlas profiles.
         Uvs[at*2]=((caster.Profile%2)*64+2+60*(p.X-caster.Left)/(caster.Right-caster.Left))/128;

@@ -11,6 +11,8 @@ static void reset(void){su_init(s);memset(s->shapes,255,sizeof(s->shapes));su_be
 static void caster(int i,int profile,const float *uv,int n,const float *b){su_mesh(s,i,n,profile,uv,b);su_active(s,i,1,4,4);}
 static void next(void){su_begin(s,0,1,0);}
 static int pixel(float x,float z){int p=su_find(s,(int)floorf(x/8),(int)floorf(z/8));CHECK(p>=0);int a=(int)((x-s->page[p].x*8)*62/8+1),b=(int)((z-s->page[p].z*8)*62/8+1);return s->pixels[p*SU_BYTES+su_offset(a,b)];}
+static int credits;
+static int allow_work(void *unused){(void)unused;return credits-->0;}
 int main(void){
     s=calloc(1,su_storage_bytes());CHECK(s!=NULL);CHECK(su_storage_bytes()<1536*1024);
     reset();caster(0,0,rect,6,bounds);su_prepare(s,SU_PAGES);CHECK(pixel(4,4)==SU_OPACITY);
@@ -83,5 +85,34 @@ int main(void){
         }
         su_prepare(s,1);CHECK(!s->layout_dirty);
     }
+    /* Moving a circle reuses support; changing its receiver invalidates it. */
+    reset();caster(32,4,rect,6,bounds);su_prepare(s,SU_PAGES);
+    next();su_active(s,32,1,4.1f,4);su_prepare(s,SU_PAGES);
+    CHECK(s->support_builds==0&&s->support_hits>0);
+    su_mesh(s,32,3,4,half,all);su_active(s,32,1,6,6);su_prepare(s,SU_PAGES);
+    CHECK(s->support_builds>0);CHECK(pixel(6,6)==0);
+    /* An exhausted deadline removes the old moving footprint, retains the
+     * job, and can finish it on a later frame without trails. */
+    reset();caster(32,4,rect,6,bounds);su_prepare(s,SU_PAGES);CHECK(pixel(4,4)==SU_OPACITY);
+    next();su_active(s,32,1,6,6);credits=0;su_prepare_budget(s,1,allow_work,NULL);
+    CHECK(s->deferred>0);CHECK(pixel(4,4)==0);CHECK(pixel(6,6)==0);
+    credits=1000;su_prepare_budget(s,1,allow_work,NULL);CHECK(pixel(6,6)==SU_OPACITY);CHECK(pixel(4,4)==0);
+    /* Static composition yields between casters. Invalidating a paused job
+     * discards its scratch union, so a removed tree cannot reappear. */
+    reset();caster(0,0,rect,6,bounds);credits=2;su_prepare_budget(s,1,allow_work,NULL);
+    CHECK(s->static_page>=0&&s->static_caster<SU_STATIC);CHECK(pixel(4,4)==0);
+    su_active(s,0,0,0,0);credits=1000;su_prepare_budget(s,1,allow_work,NULL);
+    credits=1000;su_prepare_budget(s,1,allow_work,NULL);CHECK(pixel(4,4)==0);
+    /* The two-triangle flat shortcut and the old subdivided receiver must
+     * produce identical final pixels, including the erosion guard. */
+    reset();float grid[432];int at=0;
+    for(int z=0;z<6;z++)for(int x=0;x<6;x++){
+        float v[]={x,z,x+1,z,x+1,z+1,x,z,x+1,z+1,x,z+1};memcpy(grid+at,v,sizeof(v));at+=12;
+    }
+    const float square[]={0,0,6,0,6,6,0,0,6,6,0,6},box[]={0,0,6,6};
+    caster(32,4,grid,216,box);su_prepare(s,SU_PAGES);
+    uint8_t *pixels=malloc(SU_PAGES*SU_BYTES);CHECK(pixels!=NULL);memcpy(pixels,s->pixels,SU_PAGES*SU_BYTES);
+    su_mesh(s,32,6,4,square,box);su_active(s,32,1,4,4);su_prepare(s,SU_PAGES);
+    CHECK(memcmp(pixels,s->pixels,SU_PAGES*SU_BYTES)==0);free(pixels);
     free(s);printf("Shadow union: %d checks; max overlap, soft edges, trails, clipping, seams, rooms and 156-page bound passed\n",assertions);return 0;
 }

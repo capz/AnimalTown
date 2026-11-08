@@ -5,6 +5,7 @@ internal static class GroundShadowChecks
     internal static void Run(Action<bool,string> check)
     {
         VillagerShadowChecks.Run(check);
+        ShadowCoverageChecks.Run(check);
         var t=new Town(73);Array.Fill(t.Tiles,(byte)Terrain.Grass);Array.Clear(t.Elevation);
         var g=new GroundShadow();
         void Build(ShadowCaster caster){g.Begin(t,caster);int jobs=0;while(!g.Advance()){jobs++;check(jobs<16,"shadow build has a bounded row count");}check(!g.Overflow&&g.Vertices<=GroundShadow.MaximumTriangles*3,"shadow proxy stays within its fixed vertex budget");}
