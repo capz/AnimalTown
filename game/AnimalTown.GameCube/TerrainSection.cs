@@ -13,24 +13,33 @@ internal sealed class TerrainSection
     internal readonly TerrainWalls Walls;
     internal readonly WaterRenderer Water;
     private long revision;
-    private int left,top,row,phase;
+    private int left,top,row,phase,kind;
+    private CylinderRows rows=null!;
     internal int Triangles {get;private set;}
     internal ulong GroundMask {get;private set;}
     internal TerrainSection(TerrainSoil soil,WaterMaterial water){Walls=new TerrainWalls(soil);Water=new WaterRenderer(water);}
     internal Mesh? GroundMesh(int slot)=>(buffers[slot]?.IndexCount??0)==0?null:meshes[slot]?.Mesh;
-    internal void Begin(GameState state,int x,int z)
+    internal void Begin(GameState state,int x,int z,CylinderRows cache)
     {
-        left=x;top=z;row=phase=0;Triangles=0;
+        left=x;top=z;row=phase=0;Triangles=0;rows=cache;kind=TerrainSectionPlan.Kind(state.Town,x,z);
         for(int i=0;i<buffers.Length;i++)buffers[i]?.Reset();
-        Water.Begin(state,x,z);Walls.Begin(state,z);
+        Water.Begin(state,x,z,cache,kind==TerrainSectionPlan.DeepSea);Walls.Begin(state,z,cache);
     }
     internal bool Advance(GameState state,TerrainRenderer owner,FloorStrips strips,byte[] data)
     {
+        if(kind!=TerrainSectionPlan.Detailed&&row==0){
+            for(int z=top;z<top+TerrainStream.Height;z++){
+                if(kind==TerrainSectionPlan.DeepSea)Water.AppendDeepRow(z);
+                else{strips.PrepareRegion(state,data,left,z,TerrainStream.Width,1);AppendGround(state,strips,owner.SharedFlatMaterial);}
+            }
+            row=TerrainStream.Height;return false;
+        }
         if(row<TerrainStream.Height){
-            if(phase==0){strips.PrepareRegion(state,data,left,top+row,TerrainStream.Width,1);AppendGround(state,strips,owner.SharedFlatMaterial);}
-            else if(phase==1)Water.Append(strips);
-            else Walls.AppendRow(state,owner,left,top+row);
-            phase++;if(phase==3){phase=0;row++;}return false;
+            if(phase==0){
+                strips.PrepareRegion(state,data,left,top+row,TerrainStream.Width,1);AppendGround(state,strips,owner.SharedFlatMaterial);Water.Append(strips);
+                if(TerrainSectionPlan.Walls(state.Town,left,top+row))phase=1;else row++;
+            }else{Walls.AppendRow(state,owner,left,top+row);phase=0;row++;}
+            return false;
         }
         revision++;GroundMask=0;
         for(int slot=0;slot<buffers.Length;slot++){
@@ -49,7 +58,7 @@ internal sealed class TerrainSection
                 if(meshes[slot]==null){meshes[slot]=new IndexedMeshCache();buffers[slot]=new TerrainIndexBuffer();}
             }
             var buffer=buffers[slot]!;
-            var a=CylinderWorld.Surface(z,0);var b=CylinderWorld.Surface(z+1,0);
+            var a=rows.At(z);var b=rows.At(z+1);
             float x0=strips.X0[n],x1=strips.X1[n],u0=x0*.5f,u1=x1*.5f,v0=z*.5f,v1=(z+1)*.5f;
             var p0=Elevated(state,(int)x0,z,x0,z,a);var p1=Elevated(state,(int)x0,z,x1,z,a);var p2=Elevated(state,(int)x0,z,x1,z+1,b);var p3=Elevated(state,(int)x0,z,x0,z+1,b);
             bool wet=state.Town.At((int)x0,z)==(int)Terrain.Beach&&(WaterTerrain.IsSea(state.Town,(int)x0-1,z)||WaterTerrain.IsSea(state.Town,(int)x0+1,z)||WaterTerrain.IsSea(state.Town,(int)x0,z-1)||WaterTerrain.IsSea(state.Town,(int)x0,z+1));
