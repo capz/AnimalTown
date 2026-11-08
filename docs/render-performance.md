@@ -230,10 +230,14 @@ entry overhead. The native page/support cache occupies 1,448,128 bytes on the ho
 ABI, below its 1.5 MiB ceiling. No ARAM transfer is required for these warm entries.
 
 Terrain stages, receiver stages and native mask preparation now share a 2 ms
-deadline, reserving the final millisecond for native work. Static unions yield
+deadline. Native masks run before geometry stages with up to 1 ms of that budget,
+so an indivisible geometry stage cannot consume their reservation. Newly prepared
+receivers become visible on the following frame. Static unions yield
 between casters and moving masks yield between pages. These are cooperative
 limits: one stage, caster, page or upload can exceed the remaining time. A
 deferred moving page clears its old moving coverage while retaining static
 coverage, then retries on a later frame. Protocol v5 bit 11 records frames with
 deferred native work; `read-frame-profile.py` reports `shadow_deferred_frames`.
 This counter and movement captures check whether the budget causes visible gaps.
+The terrain build counter counts terrain stages only; receiver clipping no longer
+appears as a terrain rebuild or advances the terrain geometry revision.

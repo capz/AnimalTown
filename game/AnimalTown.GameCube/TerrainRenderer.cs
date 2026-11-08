@@ -83,8 +83,11 @@ internal sealed class TerrainRenderer
         ScrollTransform.LocalPosition=new Vector3(0,scroll.Y,scroll.Z);
         ScrollTransform.LocalRotation=new Quaternion(scroll.HalfSin,0,0,scroll.HalfCos);
         int steps=0;stream.Prepare(state.X,state.Z);
+        shadows.Prepare(state);
+        movingShadows.PrepareMasks(deadline);
         // Landscape readiness takes priority. Moving shadows use spare stages
-        // after terrain, retaining overlapping receivers while replacements wait.
+        // after terrain. Masks publish first so an indivisible terrain stage
+        // cannot consume their reservation. New receivers publish next frame.
         while(steps<8&&Clock.Timestamp<deadline){
             if(building<0){
                 if(stream.BuildSlot<0)break;building=stream.BuildSlot;stream.Hold();
@@ -94,9 +97,8 @@ internal sealed class TerrainRenderer
             bool complete=sections[building]!.Advance(state,this,staging,data);steps++;geometryRevision++;BuiltThisFrame++;
             if(complete){stream.Complete();building=-1;stream.Prepare(state.X,state.Z);}
         }
-        while(steps<8&&Clock.Timestamp<deadline){if(!movingShadows.Advance())break;steps++;geometryRevision++;BuiltThisFrame++;}
-        shadows.Prepare(state);
-        while(steps<8&&Clock.Timestamp<deadline){if(!shadows.Advance())break;steps++;geometryRevision++;BuiltThisFrame++;}
+        while(steps<8&&Clock.Timestamp<deadline){if(!movingShadows.Advance())break;steps++;}
+        while(steps<8&&Clock.Timestamp<deadline){if(!shadows.Advance())break;steps++;}
         gallery.PrepareGallery(state,this,cliffPreview);
         VisibleTriangles=gallery.Triangles+(GroundRingActive?GroundRingPlan.IndexCount/3:0);RejectedQuads=0;visibleGroundMask=0;
         for(int i=0;i<stream.Count;i++)if(stream.Visible[i]){

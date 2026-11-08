@@ -1,5 +1,6 @@
 using AnimalTown;
 using Dolphin.Graphics;
+using Dolphin.Timing;
 using Hypercube.GameCube;
 
 // Seven clipped receivers feed the shared coverage mask. Only small dirty mask
@@ -61,5 +62,10 @@ internal sealed class VillagerShadows
             var e=entries[i];bool active=Enabled&&e.Active&&e.Ready&&e.Count>0&&e.Built.Covers(town,e.Wanted,e.Flat);
             NativeShadows.Active(i+ObjectShadows.Capacity,active?1:0,e.Center);
         }
+    }
+    internal void PrepareMasks(long deadline)
+    {
+        Publish();
+        if(NativeShadows.Prepare((int)System.Math.Min(1000,System.Math.Max(0,deadline-Clock.Timestamp)))!=1)throw new System.InvalidOperationException("Shadow union page capacity");
     }
 }

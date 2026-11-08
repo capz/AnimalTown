@@ -561,9 +561,8 @@ internal sealed class TownGame
         cachedPlayerHeight=PlayerHeight();if(room==0)RenderView.Prepare(state.X,state.Z,cachedPlayerHeight);
         UpdateAnimationFrame();
         long phase=FrameProfile.Start(),preparationDeadline=Clock.Timestamp+2000;PrepareVillagerShadows();
-        if(room==0){terrain.Prepare(state,room,month,villagerShadows,preparationDeadline-1000,cliffPreview);terrain.Animate((Clock.Timestamp-sessionStart)/1000000.0);}
-        else{long until=preparationDeadline-1000;int steps=0;while(steps<8&&Clock.Timestamp<until){if(!villagerShadows.Advance())break;steps++;}}
-        villagerShadows.Publish();if(NativeShadows.Prepare((int)Math.Max(0,preparationDeadline-Clock.Timestamp))!=1)throw new InvalidOperationException("Shadow union page capacity");
+        if(room==0){terrain.Prepare(state,room,month,villagerShadows,preparationDeadline,cliffPreview);terrain.Animate((Clock.Timestamp-sessionStart)/1000000.0);}
+        else{villagerShadows.PrepareMasks(preparationDeadline);int steps=0;while(steps<8&&Clock.Timestamp<preparationDeadline){if(!villagerShadows.Advance())break;steps++;}}
         FrameProfile.End(2,phase);
         if(room==0&&!terrain.Ready){DrawLoading(landscape:true);return;}
         phase=FrameProfile.Start();uiShapes.Prepare(screen,screen=="menu"?menuTab:-1,batchedDrawing);if(batchedDrawing&&screen=="map")mapBackground.Prepare(state.Town);modelUsed=0;FrameProfile.End(8,phase);
