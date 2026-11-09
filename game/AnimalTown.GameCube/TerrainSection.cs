@@ -59,7 +59,10 @@ internal sealed class TerrainSection
         if(NativeTerrain.Complete(section)!=1)throw new InvalidOperationException("Terrain archive section did not complete");
     }
     internal static void ArchivePart(int section,int kind,Mesh? mesh,int used)
-    {if(mesh!=null&&NativeTerrain.Append(section,kind,mesh,used)<0)throw new InvalidOperationException("Terrain archive exceeded its native budget");}
+    {
+        if(mesh==null)return;int result=NativeTerrain.Append(section,kind,mesh,used);
+        if(result<0)throw new InvalidOperationException("Terrain archive append: "+result+" section "+section+" bytes "+NativeTerrain.Stat(0));
+    }
     internal void Dispose()
     {
         for(int i=0;i<meshes.Length;i++){meshes[i]?.Dispose();meshes[i]=null;buffers[i]=null;}

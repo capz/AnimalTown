@@ -199,6 +199,7 @@ if($IsLinux){
         $check=Join-Path $Root "out/native-$fixture-check"
         [string[]]$extra=@()
         if($fixture -eq 'managed-allocator'){$extra=@((Join-Path $nativeRoot 'source/managed_runtime.c'))}
+        if($fixture -eq 'terrain-archive'){$extra=@((Join-Path $nativeRoot 'source/aram.c'))}
         & cc -std=c11 -O2 -Wall -Wextra -Werror -ffunction-sections -fdata-sections "-I$(Join-Path $nativeRoot 'include')" "-I$(Join-Path $nativeRoot 'source')" (Join-Path $Root "tests/native-$fixture.c") @extra '-Wl,--gc-sections' -lm -o $check
         if($LASTEXITCODE){throw "Native $fixture compilation failed"}
         & $check

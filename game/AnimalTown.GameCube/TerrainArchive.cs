@@ -3,8 +3,8 @@ using AnimalTown;
 using Dolphin.Graphics;
 
 // Cold-load construction uses one scratch section; the full immutable archive
-// lives in native BUFFER pages, outside the small managed heap. At runtime the
-// fixed mesh pool only changes views into those pages between frames.
+// lives in ARAM, outside the small managed heap. At runtime the
+// fixed mesh pool draws a bounded MEM1 cache of the original bytes.
 internal sealed class TerrainArchive
 {
     private sealed class View : Mesh
@@ -29,18 +29,22 @@ internal sealed class TerrainArchive
     internal ulong GroundMask {get;private set;}
     internal int ViewCount {get;private set;}
     internal int Bytes=>NativeTerrain.Stat(0);
-    internal void Reset()
+    private void ReleaseViews()
     {
         // Drop every view before freeing its parent pages. Archive reset rejects
         // live aliases; resource release also holds pages until GX has retired.
         for(int i=0;i<views.Length;i++){views[i]?.Dispose();views[i]=null;}
         scratch?.Dispose();scratch=null;
-        if(NativeTerrain.Reset(TerrainArchivePlan.Count)!=1)throw new InvalidOperationException("Terrain archive reset with live views");
+    }
+    internal void Reset()
+    {
+        ReleaseViews();
+        int result=NativeTerrain.Reset(TerrainArchivePlan.Count);if(result!=1)throw new InvalidOperationException("Terrain archive initialization: "+result);
         Array.Clear(bound,0,bound.Length);baked=0;building=collect=false;revision=-1;selection.Reset();
     }
     internal void Dispose()
     {
-        Reset();if(NativeTerrain.Reset(0)!=1)throw new InvalidOperationException("Terrain archive disposal failed");
+        ReleaseViews();if(NativeTerrain.Reset(0)!=1)throw new InvalidOperationException("Terrain archive disposal failed");
     }
     internal void Bake(GameState state,TerrainRenderer owner,FloorStrips staging,byte[] data)
     {
@@ -53,7 +57,7 @@ internal sealed class TerrainArchive
         scratch.Dispose();scratch=null;collect=true;
         for(int i=0;i<first.Length;i++){first[i]=NativeTerrain.Info(i,0);count[i]=NativeTerrain.Info(i,1);triangles[i]=NativeTerrain.Info(i,2);}
         for(int i=0;i<views.Length;i++)views[i]=new View();
-        Dolphin.Diagnostics.DebugOverlay.WriteLine("Terrain archive: "+Bytes+" bytes / "+NativeTerrain.Stat(1)+" parts / "+NativeTerrain.Stat(2)+" pages");
+        Dolphin.Diagnostics.DebugOverlay.WriteLine("Terrain archive: "+NativeTerrain.Stat(5)+" ARAM bytes / "+Bytes+" MEM1 bytes / "+NativeTerrain.Stat(1)+" parts");
     }
     internal void Prepare(float x,float z,CylinderRows rows)
     {
@@ -79,7 +83,7 @@ internal sealed class TerrainArchive
                 while(free<views.Length&&views[free]!.Section>=0)free++;
                 if(free==views.Length)throw new InvalidOperationException("Visible terrain exceeds fixed native view budget");
                 var view=views[free++]!;
-                if(NativeTerrain.Bind(view.Handle,entry)!=1)throw new InvalidOperationException("Terrain view bind failed");
+                int result=NativeTerrain.Bind(view.Handle,entry);if(result!=1)throw new InvalidOperationException("Terrain view bind: "+result+" cache peak "+NativeTerrain.Stat(7));
                 view.Section=section;view.Entry=entry;view.Kind=kind;FrameProfile.RecycledSections++;
             }
             bound[section]=true;

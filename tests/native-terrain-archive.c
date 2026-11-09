@@ -12,6 +12,7 @@ void dnd_draw_backend_wait(void){}
 void dnd_draw_backend_flush(void *p,int bytes,int operation){(void)p;(void)bytes;(void)operation;flushes++;}
 static DndArray *array(int n,int size){DndArray *a=calloc(1,sizeof(*a)+(size_t)n*size);assert(a);a->length=n;a->element_size=size;return a;}
 int main(void){
+    assert(dnd_aram_initialize(2*1024*1024));
     DndArray *v=array(12,36),*ix=array(12,2);float *p=(float*)v->data;uint16_t *ids=(uint16_t*)ix->data;
     for(int i=0;i<12;i++){p[i*9]=i;p[i*9+7]=4+i*.5f;((uint32_t*)v->data)[i*9+6]=i%2?0xffffff00:0xffffffff;ids[i]=(uint16_t)(i%6);}
     int indexed=dnd_mesh_create_range(v,12,ix,12,2,0),plain=dnd_mesh_create_range(v,12,NULL,0,2,0);
@@ -40,7 +41,7 @@ int main(void){
     active=true;assert(animaltown_terrain_bind(view,0)==-1&&animaltown_terrain_unbind(view)==-1&&animaltown_terrain_reset(0)==-1&&!animaltown_terrain_view());active=false;
     assert(animaltown_terrain_bind(view,9999)==-1);
     assert(animaltown_terrain_unbind(view)==1&&r->data==NULL&&!r->terrain_parent);
-    assert(animaltown_terrain_reset(0)==1&&dnd_draw_live()==1&&dnd_draw_bytes(view)==1);
+    assert(animaltown_terrain_reset(0)==1&&dnd_draw_live()==1&&dnd_draw_bytes(view)==1&&dnd_aram_stat(4)==0);
     assert(animaltown_terrain_bind(view,0)==-1&&dnd_draw_release(view)==0&&dnd_draw_live()==0);
     assert(animaltown_terrain_reset(1)==1);plain=dnd_mesh_create_range(v,12,NULL,0,2,0);
     assert(animaltown_terrain_append(0,0,plain,6)==1&&animaltown_terrain_complete(0)==1);
@@ -48,6 +49,18 @@ int main(void){
     assert(dnd_draw_release(page)==0&&r->data!=NULL); // Parent remains pinned through pending disposal.
     assert(dnd_draw_release(view)==0);assert(!find(page,BUFFER));
     // Simulate external buffer retirement only for this lifetime probe.
-    ta_page_count=0;assert(animaltown_terrain_reset(0)==1);assert(dnd_draw_release(plain)==0&&dnd_draw_live()==0);
-    free(v);free(ix);puts("Terrain archive: exact indexed/trimmed payloads retain UV/alpha; 10000 zero-copy view binds; no uploads/allocations; guards and pinned parent lifetime passed");
+    ta_cache=0;assert(animaltown_terrain_reset(0)==1);assert(dnd_draw_release(plain)==0&&dnd_draw_live()==0);
+    assert(animaltown_terrain_reset(1)==1);
+    DndArray *big=array(1818,36);plain=dnd_mesh_create_range(big,1818,NULL,0,2,0);assert(plain>0);
+    for(int i=0;i<17;i++)assert(animaltown_terrain_append(0,104,plain,1818)==i+1);
+    assert(animaltown_terrain_complete(0)==1&&dnd_draw_release(plain)==0);
+    int pool[17];for(int i=0;i<17;i++){pool[i]=animaltown_terrain_view();assert(pool[i]);}
+    for(int i=0;i<16;i++)assert(animaltown_terrain_bind(pool[i],i)==1);
+    unsigned char saved[36];memcpy(saved,find(pool[0],MESH)->data,sizeof(saved));int resident=animaltown_terrain_stat(0);
+    assert(animaltown_terrain_bind(pool[16],16)==-2&&!memcmp(saved,find(pool[0],MESH)->data,sizeof(saved)));
+    assert(animaltown_terrain_stat(0)==resident&&animaltown_terrain_stat(7)==TA_CACHE);
+    assert(animaltown_terrain_unbind(pool[0])==1&&animaltown_terrain_bind(pool[16],16)==1);
+    for(int i=0;i<17;i++)assert(dnd_draw_release(pool[i])==0);
+    assert(animaltown_terrain_reset(0)==1&&dnd_draw_live()==0&&dnd_aram_stat(4)==0);free(big);
+    free(v);free(ix);puts("Terrain archive: exact indexed/trimmed payloads retain UV/alpha; 10000 byte-exact ARAM view binds; no uploads/allocations; atomic cache exhaustion, reuse, guards and pinned parent lifetime passed");
 }

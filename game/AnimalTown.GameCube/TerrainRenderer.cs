@@ -97,11 +97,11 @@ internal sealed class TerrainRenderer
         ScrollTransform.LocalPosition=new Vector3(0,scroll.Y,scroll.Z);
         ScrollTransform.LocalRotation=new Quaternion(scroll.HalfSin,0,0,scroll.HalfCos);
         if(!legacy){
-            // Initial loading can spend 6ms/64 small stages per frame. Walking
+            // Initial loading can spend 12ms/256 small stages per frame. Walking
             // never runs a build stage, mutates geometry or uploads a mesh.
             if(!archive!.Ready){
-                long bakeDeadline=Clock.Timestamp+6000;
-                for(int n=0;n<64&&!archive.Ready&&(n==0||Clock.Timestamp<bakeDeadline);n++){archive.Bake(state,this,staging,data);BuiltThisFrame++;}
+                long bakeDeadline=Clock.Timestamp+12000;
+                for(int n=0;n<256&&!archive.Ready&&(n==0||Clock.Timestamp<bakeDeadline);n++){archive.Bake(state,this,staging,data);BuiltThisFrame++;}
             }
             long at=FrameProfile.Start();archive.Prepare(state.X,state.Z,Rows);FrameProfile.DetailEnd(0,at);
             shadows.Prepare(state);
