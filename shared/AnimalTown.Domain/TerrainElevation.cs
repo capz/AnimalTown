@@ -23,7 +23,7 @@ public static class TerrainElevation
     }
     private static float BeachCorner(Town town,int cx,int cz,int x,int z)
     {
-        bool shore=x==cx&&WaterTerrain.IsSea(town,cx-1,cz)||x==cx+1&&WaterTerrain.IsSea(town,cx+1,cz)||z==cz&&WaterTerrain.IsSea(town,cx,cz-1)||z==cz+1&&WaterTerrain.IsSea(town,cx,cz+1);
+        bool shore=WaterTerrain.IsSea(town,x-1,z-1)||WaterTerrain.IsSea(town,x,z-1)||WaterTerrain.IsSea(town,x-1,z)||WaterTerrain.IsSea(town,x,z);
         return shore?WaterSurface.Height:BaseAtCell(town,cx,cz,x,z);
     }
     private static float BaseAtCell(Town town,int cellX,int cellZ,float x,float z)

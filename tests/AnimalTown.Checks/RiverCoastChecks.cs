@@ -45,6 +45,10 @@ internal static class RiverCoastChecks
             check(TerrainElevation.Traverse(t,80.1f,80.1f,80.9f,80.9f),"sloping dry beach remains traversable for player and shared villager navigation");
             check(!TerrainElevation.Traverse(t,80.5f,80.5f,81.5f,80.5f)||(mask&1)==0,"wet edge remains untraversable");
         }
+        Array.Fill(t.Tiles,(byte)Terrain.Beach);t.SetTerrain(81,80,Terrain.Sea);
+        float edge=TerrainElevation.AtCell(t,80,80,81,81),corner=TerrainElevation.AtCell(t,80,81,81,81);
+        check(edge==corner&&edge==WaterSurface.Height,"diagonally touching sea shares one wet corner across adjacent beach meshes");
+        check(Math.Abs(TerrainElevation.At(t,80.75f,81.25f)-WaterSurface.Height*.5f)<.00001f,"diagonal shoreline has continuous support across its closing beach triangle");
         s.Town.Tiles[0]=13;
         bool rejected=false;try{SaveCodec.Decode(SaveCodec.Encode(s));}catch(InvalidOperationException){rejected=true;}
         check(rejected,"current save rejects unknown terrain IDs");s.Town.Tiles[0]=0;
