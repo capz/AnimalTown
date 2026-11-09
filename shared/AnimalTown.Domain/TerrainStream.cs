@@ -58,12 +58,18 @@ public sealed class TerrainStream
         for(int cz=top;cz<=bottom;cz+=Height){
             var center=CylinderRows.At(cz+Height/2,1);motion.Point(center.Y,center.Z,out float py,out float pz);ahead.Point(center.Y,center.Z,out float ay,out float az);az-=leadZ;
             var box=new TerrainSectionBounds(CylinderRows,motion,cz,fz);var future=new TerrainSectionBounds(CylinderRows,ahead,cz,fz+leadZ);
+            float requestedWidth=RenderView.SphereRowWidth(py,pz,6.75f+Prefetch,fx,fz);
+            if(requestedWidth<0||!RenderView.TerrainHorizon(py,pz,HorizonRadius+Prefetch,fz))continue;
+            float halfWidth=Width*.5f+TerrainSectionBounds.SideGuard;
+            float visibleWidth=RenderView.TerrainHorizon(py,pz,HorizonRadius,fz)?RenderView.BoxRowWidth(box.MinY,box.MinZ,box.MaxY,box.MaxZ,halfWidth,fx,fz):-1;
+            float upcomingWidth=RenderView.TerrainHorizon(ay,az,HorizonRadius,fz)?RenderView.BoxRowWidth(future.MinY,future.MinZ-leadZ,future.MaxY,future.MaxZ-leadZ,halfWidth,fx,fz):-1;
             for(int cx=left;cx<=right;cx+=Width){
                 // Horizon bounds live in the YZ cross-section: the section's
                 // east/west width must not inflate its apparent height.
-                if(!RenderView.Sphere(cx+Width*.5f,py,pz,6.75f+Prefetch,fx,fz,1)||!RenderView.TerrainHorizon(py,pz,HorizonRadius+Prefetch,fz))continue;
-                bool visible=RenderView.Box(cx-TerrainSectionBounds.SideGuard,box.MinY,box.MinZ,cx+Width+TerrainSectionBounds.SideGuard,box.MaxY,box.MaxZ,fx,fz)&&RenderView.TerrainHorizon(py,pz,HorizonRadius,fz);
-                bool upcoming=RenderView.Box(cx-TerrainSectionBounds.SideGuard-leadX,future.MinY,future.MinZ-leadZ,cx+Width+TerrainSectionBounds.SideGuard-leadX,future.MaxY,future.MaxZ-leadZ,fx,fz)&&RenderView.TerrainHorizon(ay,az,HorizonRadius,fz);
+                float column=cx+Width*.5f-fx;
+                if(Math.Abs(column)>requestedWidth)continue;
+                bool visible=Math.Abs(column)<=visibleWidth;
+                bool upcoming=Math.Abs(column-leadX)<=upcomingWidth;
                 if(WantedCount>=Capacity)throw new InvalidOperationException("Terrain prefetch exceeds cache capacity");
                 candidateX[WantedCount]=cx;candidateZ[WantedCount]=cz;candidateVisible[WantedCount]=visible;
                 float dx=cx+Width*.5f-fx-leadX,dz=cz+Height*.5f-fz-leadZ;priority[WantedCount++]=dx*dx+dz*dz+(visible?0:upcoming?50000:100000);
