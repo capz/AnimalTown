@@ -150,6 +150,7 @@ internal sealed class TerrainRenderer
     }
     internal void CycleCloudCover()=>clouds.Cover=clouds.Cover==.5f?0:clouds.Cover==0?1:.5f;
     internal float CloudCover=>clouds.Cover;
+    internal bool RoughOcean {get=>waterMaterial.RoughOcean;set=>waterMaterial.RoughOcean=value;}
     internal void Animate(double seconds)
     {
         if(FreezeMotion)return;long at=FrameProfile.Start();
@@ -169,7 +170,7 @@ internal sealed class TerrainRenderer
     internal void Draw(Renderer renderer,Transform parent,int room)
     {
         if(!legacy){
-            AddArchive(renderer,waterMaterial.Surface,104);AddArchive(renderer,waterMaterial.Foam,105);AddArchive(renderer,soil.Material,106);
+            AddArchive(renderer,waterMaterial.Surface,104);AddArchive(renderer,waterMaterial.OceanSurface,107);AddArchive(renderer,waterMaterial.Foam,105);AddArchive(renderer,soil.Material,106);
             NativeShadows.Scope(1);
             try{for(int slot=0;slot<slots;slot++)if((visibleGroundMask&(1UL<<slot))!=0)AddArchive(renderer,materials[slot],slot);}
             finally{NativeShadows.Scope(0);}
@@ -178,6 +179,8 @@ internal sealed class TerrainRenderer
         // Keep water below banks, and transparent foam below opaque soil/lips.
         for(int i=0;i<stream.Count;i++)if(stream.Visible[i])Add(renderer,waterMaterial.Surface,sections[i]!.Water.SurfaceMesh);
         Flush(renderer,waterMaterial.Surface);
+        for(int i=0;i<stream.Count;i++)if(stream.Visible[i])Add(renderer,waterMaterial.OceanSurface,sections[i]!.Water.OceanMesh);
+        Flush(renderer,waterMaterial.OceanSurface);
         for(int i=0;i<stream.Count;i++)if(stream.Visible[i])Add(renderer,waterMaterial.Foam,sections[i]!.Water.FoamMesh);
         Flush(renderer,waterMaterial.Foam);
         for(int i=0;i<stream.Count;i++)if(stream.Visible[i])Add(renderer,soil.Material,sections[i]!.Walls.SoilMesh);

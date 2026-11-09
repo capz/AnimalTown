@@ -38,6 +38,8 @@ internal sealed class TownGame
 {
     private GameState state;
     private readonly TownClock townClock=new TownClock();
+    private readonly DebugWeather weather=new DebugWeather();
+    private readonly RainRenderer rain=new RainRenderer();
     private readonly ActorFrameVisibility actorVisibility=new ActorFrameVisibility();
     private readonly AnimationFrameClock animationClock=new AnimationFrameClock(7);
     private readonly bool[] restartClips=new bool[7];
@@ -110,7 +112,7 @@ internal sealed class TownGame
     private bool cliffPreview;
     private int waterInspection;
     private int buildingInspection;
-    private const int SettingsTab=5,TestingTab=6,TestingRows=16;
+    private const int SettingsTab=5,TestingTab=6,TestingRows=18;
     private static readonly string[] tabs={"Backpack","Jobs","Catalog","Home","Post office","Settings","Debug / testing"};
     private static readonly string[] itemActions={"Drop","Place (R rotates)","Plant","Eat","Wear","Equip","Bury","Open money bag","Read","Quit"};
     internal TownGame()
@@ -392,6 +394,8 @@ internal sealed class TownGame
             case 13:RuntimeOptions.Toggle(4);break;
             case 14:if(room==0){waterInspection=0;InspectTerrain();}break;
             case 15:waterInspection=0;InspectBuilding();screen="world";break;
+            case 16:weather.RainEnabled=!weather.RainEnabled;break;
+            case 17:weather.RoughOceanWhenRaining=!weather.RoughOceanWhenRaining;break;
         }
     }
     private void ToggleBatching()
@@ -419,7 +423,9 @@ internal sealed class TownGame
             case 12:return "Productive waits: "+OnOff((RuntimeOptions.Mode&2)!=0);
             case 13:return "Reuse frame clear: "+OnOff((RuntimeOptions.Mode&4)!=0);
             case 14:return room==0?"Go to test ramp":"Test ramp: outdoors only";
-            default:return room==0?"Go to next test building":"Go to indoor doorway";
+            case 15:return room==0?"Go to next test building":"Go to indoor doorway";
+            case 16:return "Rain preview: "+OnOff(weather.RainEnabled);
+            default:return "Rough ocean in rain: "+OnOff(weather.RoughOceanWhenRaining);
         }
     }
     private void Interact()
@@ -571,6 +577,7 @@ internal sealed class TownGame
     }
     private void DrawScene()
     {
+        terrain.RoughOcean=weather.RoughOcean(room);
         cachedPlayerHeight=PlayerHeight();if(room==0)RenderView.Prepare(state.X,state.Z,cachedPlayerHeight);
         if(room!=0)indoorCamera.Configure(BuildingWorld.Definition(state,BuildingWorld.Building(room)));
         long phase=FrameProfile.Start(),preparationDeadline=Clock.Timestamp+2000;PrepareVillagerShadows();
@@ -581,10 +588,11 @@ internal sealed class TownGame
         if(room==0&&!terrain.Ready){DrawLoading(landscape:true);return;}
         // Only a drawable scene may evaluate native poses. Shadow receivers
         // use logical positions and can prepare while the landscape loads.
+        if(weather.Raining(room)&&villagers.Doors.PlayerFade<1)rain.Prepare();
         actorVisibility.Prepare(state,villagers.Doors,indoorCamera,waterInspection,cachedPlayerHeight);
         UpdateAnimationFrame();
         phase=FrameProfile.Start();uiShapes.Prepare(screen,screen=="menu"?menuTab:-1,batchedDrawing);if(batchedDrawing&&screen=="map")mapBackground.Prepare(state.Town);modelUsed=0;FrameProfile.End(8,phase);
-        phase=FrameProfile.Start();device.BeginFrame(room==0?new Color32(149,198,186):new Color32(32,40,39));
+        phase=FrameProfile.Start();device.BeginFrame(room==0?(weather.Raining(room)?new Color32(112,143,151):new Color32(149,198,186)):new Color32(32,40,39));
         float eyeHeight=PlayerHeight();
         if(room==0)camera.LookAt(new Vector3(state.X,CylinderWorld.CameraHeight+eyeHeight,state.Z+CylinderWorld.CameraBack),new Vector3(state.X,eyeHeight,state.Z-CylinderWorld.CameraAimAhead),new Vector3(0,1,0));
         else{float size=BuildingWorld.Size(state,room);indoorView.LookAt(new Vector3(indoorCamera.EyeX(size),indoorCamera.EyeY(size),indoorCamera.EyeZ(size)),new Vector3(size*.5f,.7f,size*.5f),new Vector3(0,1,0));}
@@ -634,7 +642,9 @@ internal sealed class TownGame
         FrameProfile.End(5,phase);phase=FrameProfile.Start();
         if(screen=="plot")
         { int x=(int)state.X-3,z=(int)state.Z-3;bool valid=state.Town.ValidPlot(x,z);for(int i=0;i<15;i++){Box(x+i,.02f,z,.9f,.03f,.9f,valid?new Color32(74,230,113):new Color32(229,82,72));Box(x+i,.02f,z+12,.9f,.03f,.9f,valid?new Color32(74,230,113):new Color32(229,82,72));} }
-        if(batchedDrawing)boxes.Flush();renderer.End3D();ui.Begin();DrawHud();FrameProfile.End(8,phase);FrameProfile.Draw(ui);
+        if(batchedDrawing)boxes.Flush();
+        if(weather.Raining(room)&&villagers.Doors.PlayerFade<1)rain.Draw(renderer,state,(Clock.Timestamp-sessionStart)/1000000.0,cachedPlayerHeight);
+        renderer.End3D();ui.Begin();DrawHud();FrameProfile.End(8,phase);FrameProfile.Draw(ui);
         float fade=villagers.Doors.PlayerFade;if(fade>0)ui.FillRectangle(new RectF(0,0,640,480),new Color32(12,19,25,(byte)(fade*255)));
         phase=FrameProfile.Start();ui.End();FrameProfile.End(8,phase);
         phase=FrameProfile.Start();device.EndFrame();FrameProfile.End(9,phase);

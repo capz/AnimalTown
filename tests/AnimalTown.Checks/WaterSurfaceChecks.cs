@@ -7,6 +7,7 @@ internal static class WaterSurfaceChecks
         RiverCoastChecks.Run(check);
         RiverBankChecks.Run(check);
         CloudShadowChecks.Run(check);
+        DebugWeatherChecks.Run(check);
         var state=new GameState(49);var town=state.Town;
         Array.Fill(town.Tiles,(byte)Terrain.Water);Array.Clear(town.Elevation);
         check(WaterSurface.Depth(town,80,80)==1&&WaterSurface.Depth(town,-10,-10)==1,"open sea and pond interiors use deep tint, including outside world bounds");
@@ -16,7 +17,7 @@ internal static class WaterSurfaceChecks
         town.SetTerrain(80,80,Terrain.Bridge);
         check(!WaterSurface.IsBank(town,80,80)&&WaterSurface.Depth(town,80,80)==1,"bridges neither emit foam nor pinch river depth tint");
         check(!WaterSurface.IsBank(town,-1,0)&&WaterSurface.IsWater(town,-1,0),"map boundary continues as ocean without a false foam seam");
-        check(WaterSurface.Height<0&&WaterSurface.Height>-.1f,"water sits just below ground and bridges");
+        check(WaterSurface.Height==WaterTerrain.RiverHeight,"all water sits on the same plane beneath ground and bridges");
         foreach(bool ripples in new[]{false,true}){
             var texture=WaterSurface.Texture(ripples);check(texture.Length==4096,"each GX I8 map uses exactly four KiB");
             int at=0,nonzero=0;for(int by=0;by<64;by+=4)for(int bx=0;bx<64;bx+=8)for(int y=by;y<by+4;y++)for(int x=bx;x<bx+8;x++){

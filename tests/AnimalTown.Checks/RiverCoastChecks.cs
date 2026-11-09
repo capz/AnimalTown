@@ -8,8 +8,8 @@ internal static class RiverCoastChecks
         Array.Fill(t.Tiles,(byte)Terrain.Grass);Array.Clear(t.Elevation);
         t.SetTerrain(80,80,Terrain.Water);t.SetTerrain(81,80,Terrain.Water);t.SetTerrain(80,81,Terrain.Sea);
         check(TerrainElevation.AtCell(t,80,80,80,80)==-.5f,"visible river and bed drop exactly half a metre");
-        check(Math.Abs(TerrainElevation.AtCell(t,80,81,80,81)+.06f)<.00001,"sea retains six centimetre offset");
-        check(Math.Abs(TerrainElevation.AtCell(t,80,81,80,81)-TerrainElevation.AtCell(t,80,80,80,81)-.44f)<.00001,"mouth retains explicit forty-four centimetre step");
+        check(TerrainElevation.AtCell(t,80,81,80,81)==WaterTerrain.RiverHeight,"sea and river share the same half-metre water plane");
+        check(TerrainElevation.AtCell(t,80,81,80,81)==TerrainElevation.AtCell(t,80,80,80,81),"river mouth has no artificial water step or connecting wall");
         check(!WaterSurface.IsBank(t,81,80)&&WaterSurface.IsBank(t,79,80),"adjacent water emits no internal bank; dry shore does");
         t.SetTerrain(79,80,Terrain.Bridge);check(!WaterSurface.IsBank(t,79,80)&&t.Walkable(79,80)&&TerrainElevation.At(t,79.5f,80.5f)==0,"bridge approach stays on local land plane");
         check(WaterSurface.HeightAt(t,79,80,79,80)==-.5f,"lowered river water continues beneath bridge decks without a sky gap");
