@@ -103,5 +103,18 @@ python3 docs/performance/world_debug_controls.py IMAGE.nkit.iso out/world-debug-
 python3 docs/performance/analyze_world_debug.py out/world-debug-outdoor out/world-debug-indoor --capture OUTDOOR.mkv
 ```
 
-The indoor case requires the documented disposable room fixture, not an arbitrary
-player card. Its metadata and source/fixture digests are in the result JSON.
+Create the indoor fixture from a **copyable current-schema emulator card** after
+building the host building catalog (`out/disc/buildings.bin`). The helper preserves
+card allocation/banner metadata and refuses to overwrite its input. The host
+codec validates all records/commits, safe NPC positions and fixed record lengths:
+
+```sh
+python3 docs/performance/world-debug-fixture/card.py extract SOURCE_CARD.raw out/world-debug-indoor
+dotnet run --project docs/performance/world-debug-fixture/Fixture.csproj -- out/world-debug-indoor
+python3 docs/performance/world-debug-fixture/card.py write SOURCE_CARD.raw out/world-debug-indoor
+```
+
+Only the disposable output card changes: player and six NPCs occupy room 16,
+with valid long dwell timers for static comparison. Metadata and source/fixture
+digests are in the result JSON. Unsupported card allocation/schema or different
+record lengths fail validation rather than rewriting the input.
