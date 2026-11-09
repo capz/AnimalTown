@@ -135,6 +135,7 @@ if(([regex]::Matches($resourceSource,'#define SLOTS 512')).Count -ne 1){throw 'P
 $resourceSource=$resourceSource.Replace('#define SLOTS 512',"#include `"native-resource-limits.h`"`n#define SLOTS ANIMALTOWN_DRAW_RESOURCE_SLOTS")
 [IO.File]::WriteAllText($resourcePath,$resourceSource)
 Copy-Item -LiteralPath (Join-Path $Root 'tools/native-resource-limits.h') -Destination (Join-Path $nativeRoot 'include/native-resource-limits.h') -Force
+Copy-Item -LiteralPath (Join-Path $Root 'tools/native-frame-counters.h') -Destination (Join-Path $nativeRoot 'include/native-frame-counters.h') -Force
 if($IsLinux){
     $resourceCheck=Join-Path $Root 'out/native-resource-slots-check'
     & cc -std=c11 -Wall -Wextra -Werror -ffunction-sections -fdata-sections "-I$(Join-Path $nativeRoot 'include')" (Join-Path $Root 'tests/native-resource-slots.c') $resourcePath '-Wl,--gc-sections' -lm -o $resourceCheck
@@ -183,3 +184,16 @@ $storagePath=Join-Path $Root 'out/native/source/storage.c'
 $storageSource="extern int animaltown_card_debug;`n"+[IO.File]::ReadAllText($storagePath)
 $storageSource=$storageSource.Replace('fail(-rc, "Memory card write failed.");','{ animaltown_card_debug=animaltown_card_debug*1000-rc; fail(-rc, "Memory card write failed."); }')
 [IO.File]::WriteAllText($storagePath,$storageSource)
+& python3 (Join-Path $Root 'tools/patch-managed-allocator.py') $nativeRoot
+if($LASTEXITCODE){throw 'Pinned allocation/frame profiling patch failed'}
+if($IsLinux){
+    foreach($fixture in @('managed-allocator','terrain-recycle')){
+        $check=Join-Path $Root "out/native-$fixture-check"
+        [string[]]$extra=@()
+        if($fixture -eq 'managed-allocator'){$extra=@((Join-Path $nativeRoot 'source/managed_runtime.c'))}
+        & cc -std=c11 -O2 -Wall -Wextra -Werror -ffunction-sections -fdata-sections "-I$(Join-Path $nativeRoot 'include')" "-I$(Join-Path $nativeRoot 'source')" (Join-Path $Root "tests/native-$fixture.c") @extra '-Wl,--gc-sections' -lm -o $check
+        if($LASTEXITCODE){throw "Native $fixture compilation failed"}
+        & $check
+        if($LASTEXITCODE){throw "Native $fixture checks failed"}
+    }
+}

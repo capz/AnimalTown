@@ -21,11 +21,11 @@ budget. One terrain stage is guaranteed even if masks consumed the deadline,
 preventing sustained prefetch starvation. Initial loading and cold teleports warm the full twelve-metre prefetch
 band. Once presented, ordinary travel keeps input, simulation and world drawing
 active even when background work is pending. It never reenters landscape loading
-because a tile or section boundary was crossed. Recovery reserves up to nine
+because a tile or section boundary was crossed. Recovery reserves up to eleven
 stages per unfinished visible section, including upload, before drawing if
 prefetch falls behind. This work-derived bound may exceed the background time
 target; a fixed sixteen-stage cutoff left one gap in a native diagonal route.
-Terrain/town/material changes reset the stream. Flat dry ground and deep ocean use two stages, retaining the original row
+Terrain/town/material changes reset the stream. Flat dry ground and deep ocean use four row stages and three publication stages, retaining the original row
 chords and UVs. Other sections generate ground and water together per row and
 skip wall rows proven to have no exposed edges. All sections share cached
 cylinder rows. Deep-ocean strips merge only where every depth sample is fully
@@ -98,7 +98,7 @@ python3 tools/read-frame-profile.py out/travel/user/Dump/Frames/*.avi \
 ```
 
 The managed stress test traverses three generated towns at full run speed,
-including diagonal travel and immediate reversals. It permits only two normal
+including diagonal travel and immediate reversals. It permits eight finer normal
 stages per frame and no normal work every seventh frame. Bounded urgent repair
 keeps all visible sections ready; separate checks prove the section bounds
 include fractional camera motion, both eye heights, river bottoms and cliff
@@ -107,3 +107,42 @@ Another 720 full-speed diagonal frames deliberately allow no normal background
 stages, including turns, and verify work-derived recovery still covers every section.
 The emulator route also checks frame-counter progress after every direction;
 a frozen framebuffer cannot pass simply by retaining a valid telemetry header.
+
+## Allocation and recycling follow-up
+
+The pinned indexed cache allocated a new native mesh on each changed commit.
+Terrain ground now updates validated indexed payloads in place when native
+capacity fits, retaining its handle; growth creates a replacement before releasing
+the old mesh. Invalid indices, nonfinite vertices and active-frame updates leave
+old content intact. Empty ground staging arrays survive slot recycling, while
+unused native handles still release to respect the 768-slot bound. Ground, water
+and wall publication use separate stages; dry/deep rows no longer generate four
+rows in one indivisible call.
+
+A game-owned generated-runtime patch maintains a real intrusive free-block chain
+and append tail. Allocation no longer searches live blocks or rebuilds/coalesces
+the whole heap. Collection retains the existing tracing/root rules, coalesces free
+blocks and rebuilds the chain. Free links occupy unused payload; the heap adds one
+tail pointer. The managed heap and native resource byte budgets are unchanged.
+Fixtures cover rooted graphs, split/reuse/coalescing, reclaimed tails and GC stress.
+The SDK checkout and package versions are unchanged.
+
+Frame completion already waits for retrace. The default extra frame wait now
+services runtime callbacks without allocating a one-shot timer/task. HUD version
+text is retained and profiling labels refresh every thirty frames.
+
+An optional checksummed diagnostic bar at y=432..447 supplements v5. Sixteen
+16-bit words contain magic 0x4144, matching frame ID, five 0.1ms phase timings
+(selection, generation, publication, material animation, native masks), allocation
+count, packed free-search count (low 12 bits)/GC count (high 4 bits), packed texture
+operations (low byte)/shadow-page updates (high byte), mesh creates/updates/releases,
+staging growths, recycled sections and XOR checksum. Counts saturate to their
+fields. The decoder accepts older captures without this bar. Diagnostic timing
+separates UV/material updates from texture payload operations and native mask work.
+
+Use `--stream-travel --freeze-textures` to freeze UV/material animation, or
+`--stream-travel --recreate-terrain-meshes` to force the old allocate/release policy
+for ground. Both use the published ISO and copied regression card; the scenario
+records its flags and frame progression in travel-scenario.json. Developer chords
+L+R+Z+DpadDown and L+R+Z+X toggle these controls. Normal play uses motion and mesh
+reuse. Published-build comparison results are recorded in the PR.

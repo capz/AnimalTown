@@ -2,6 +2,8 @@
 #include <stdio.h>
 #include "dnd_draw.h"
 #include "native-resource-limits.h"
+#include "native-frame-counters.h"
+TownFrameCounters town_frame_counters;
 int dnd_raw_depth(void){return 0;}
 bool dnd_device_active(void){return false;}
 void dnd_draw_backend_wait(void){}

@@ -1,5 +1,6 @@
 """Direct ISO boot: no separately selected DOL. Run inside animaltown-dolphin."""
 import os
+import json
 from pathlib import Path
 import subprocess
 import sys
@@ -366,7 +367,11 @@ with (root/'emulator.log').open('w') as log:
             press('A')
             if '--new-town' in sys.argv:press('D_UP');press('A');press('A');time.sleep(2);press('B');press('B')
             time.sleep(12)
-            os.write(controller,b'PRESS L\nPRESS R\n');time.sleep(.2);press('Z');os.write(controller,b'RELEASE L\nRELEASE R\n')
+            os.write(controller,b'PRESS L\nPRESS R\n');time.sleep(.2)
+            os.write(controller,b'PRESS Z\n');time.sleep(1)
+            if '--freeze-textures' in sys.argv:press('D_DOWN')
+            if '--recreate-terrain-meshes' in sys.argv:press('X')
+            os.write(controller,b'RELEASE Z\nRELEASE L\nRELEASE R\n');time.sleep(1)
             time.sleep(profile_seconds);screenshot('travel-start.png')
             def marker(name):
                 pixels=subprocess.check_output(['ffmpeg','-v','error','-i',str(root/name),'-frames:v','1','-f','rawvideo','-pix_fmt','rgb24','-'])
@@ -384,6 +389,7 @@ with (root/'emulator.log').open('w') as log:
                         if values[1]==5 and checksum==values[31]:return values[2]
                 raise AssertionError('No valid travel telemetry in '+name)
             previous=marker('travel-start.png')
+            travel_report={'disc':str(disc),'freeze_textures':'--freeze-textures' in sys.argv,'recreate_terrain_meshes':'--recreate-terrain-meshes' in sys.argv,'seconds_per_direction':profile_seconds*2,'frame_counters':[previous]}
             # No inspector teleports: any landscape transition in this capture
             # interrupts ordinary travel and must fail --check-streaming.
             for n,(x,y,running) in enumerate(((1,.5,False),(0,.5,True),(.5,0,False),(.5,1,True),(1,0,True),(0,1,True))):
@@ -394,6 +400,8 @@ with (root/'emulator.log').open('w') as log:
                 current=marker(f'travel-{n}.png')
                 if ((current-previous)&65535)<30:raise AssertionError('Game stopped presenting frames during travel route '+str(n))
                 previous=current
+                travel_report['frame_counters'].append(current)
+                (root/'travel-scenario.json').write_text(json.dumps(travel_report,indent=2))
         elif '--movement-profile' in sys.argv:
             press('A')
             if '--new-town' in sys.argv:press('D_UP');press('A');press('A');time.sleep(2);press('B');press('B')

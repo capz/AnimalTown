@@ -16,6 +16,7 @@ names=['simulation','animation_skinning','terrain_prepare','frame_setup','terrai
 groups=defaultdict(list)
 seen=set()
 versions=set()
+details={}
 paths=[path for path in sys.argv[1:] if path not in ('--interaction-panels','--check-movement','--check-streaming')]
 for path in paths:
     command=['ffmpeg','-v','error','-i',path,'-vf','scale=640:480:flags=neighbor',
@@ -51,6 +52,13 @@ for path in paths:
         seen.add(identity)
         versions.add(values[1])
         groups[2000 if values[30]&32768 else values[30]&8191].append(values)
+        extra=[0]*16
+        for bit in range(256):
+            at=((434+bit//64*4)*640+bit%64*10+5)*3
+            if frame[at]>128:extra[bit//16]|=1<<(bit%16)
+        check=0
+        for value in extra[:15]:check^=value
+        if extra[0]==0x4144 and extra[1]==values[2] and extra[15]==check:details[values[2]]=extra
     if process.wait()!=0:raise RuntimeError('ffmpeg failed')
 
 def stats(values):
@@ -103,6 +111,13 @@ for scene,rows in groups.items():
         'texture_bindings':stats([r[29] for r in rows]),
         **({'drawing_api_calls':stats([r[26] for r in rows]),'material_changes':stats([r[27] for r in rows])} if versions in ({4},{5}) else
            {'texture_cache_hits_max':max(r[26] for r in rows),'texture_cache_misses_max':max(r[27] for r in rows)})}
+if details:
+    rows=list(details.values())
+    report['preparation_details']={'frames':len(rows),
+        **{name:stats([r[i]/10 for r in rows]) for i,name in enumerate(('selection_ms','generation_ms','publication_ms','material_animation_ms','native_masks_ms'),2)},
+        **{name:stats([r[i] for r in rows]) for i,name in {7:'managed_allocations',10:'mesh_creates',11:'mesh_updates',12:'mesh_releases',13:'staging_growths',14:'recycled_sections'}.items()},
+        'gc_collections':sum(r[8]>>12 for r in rows),'free_block_searches':sum(r[8]&4095 for r in rows),
+        'texture_operations':sum(r[9]&255 for r in rows),'shadow_page_updates':sum(r[9]>>8 for r in rows)}
 if not report['scenarios']:raise RuntimeError('No valid AnimalTown telemetry found')
 print(json.dumps(report,indent=2))
 

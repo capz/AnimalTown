@@ -7,7 +7,7 @@ using Hypercube.GameCube;
 // its address updates only this section. Textures and materials belong to owner.
 internal sealed class TerrainSection
 {
-    private readonly IndexedMeshCache?[] meshes=new IndexedMeshCache?[FloorStrips.MaximumMaterials];
+    private readonly TerrainMeshCache?[] meshes=new TerrainMeshCache?[FloorStrips.MaximumMaterials];
     private readonly TerrainIndexBuffer?[] buffers=new TerrainIndexBuffer?[FloorStrips.MaximumMaterials];
 
     internal readonly TerrainWalls Walls;
@@ -17,6 +17,7 @@ internal sealed class TerrainSection
     private CylinderRows rows=null!;
     internal int Triangles {get;private set;}
     internal ulong GroundMask {get;private set;}
+    internal bool Publishing=>row>=TerrainStream.Height;
     internal TerrainSection(TerrainSoil soil,WaterMaterial water){Walls=new TerrainWalls(soil);Water=new WaterRenderer(water);}
     internal Mesh? GroundMesh(int slot)=>(buffers[slot]?.IndexCount??0)==0?null:meshes[slot]?.Mesh;
     internal void Begin(GameState state,int x,int z,CylinderRows cache)
@@ -27,12 +28,11 @@ internal sealed class TerrainSection
     }
     internal bool Advance(GameState state,TerrainRenderer owner,FloorStrips strips,byte[] data)
     {
-        if(kind!=TerrainSectionPlan.Detailed&&row==0){
-            for(int z=top;z<top+TerrainStream.Height;z++){
-                if(kind==TerrainSectionPlan.DeepSea)Water.AppendDeepRow(z);
-                else{strips.PrepareRegion(state,data,left,z,TerrainStream.Width,1);AppendGround(state,strips,owner.SharedFlatMaterial);}
-            }
-            row=TerrainStream.Height;return false;
+        if(kind!=TerrainSectionPlan.Detailed&&row<TerrainStream.Height){
+            int z=top+row++;
+            if(kind==TerrainSectionPlan.DeepSea)Water.AppendDeepRow(z);
+            else{strips.PrepareRegion(state,data,left,z,TerrainStream.Width,1);AppendGround(state,strips,owner.SharedFlatMaterial);}
+            return false;
         }
         if(row<TerrainStream.Height){
             if(phase==0){
@@ -41,12 +41,16 @@ internal sealed class TerrainSection
             }else{Walls.AppendRow(state,owner,left,top+row);phase=0;row++;}
             return false;
         }
-        revision++;GroundMask=0;
-        for(int slot=0;slot<buffers.Length;slot++){
-            if((buffers[slot]?.IndexCount??0)>0){var buffer=buffers[slot]!;GroundMask|=1UL<<slot;meshes[slot]!.Commit(buffer.Vertices,buffer.VertexCount,buffer.Indices,buffer.IndexCount,revision,FrameProfile.Counters);}
-            else if(meshes[slot]!=null){meshes[slot]!.Dispose();meshes[slot]=null;buffers[slot]=null;}
-        }
-        Water.Finish();Walls.Finish();Triangles+=Water.Triangles+Walls.Triangles;return true;
+        if(phase==0){
+            revision++;GroundMask=0;
+            for(int slot=0;slot<buffers.Length;slot++){
+                if((buffers[slot]?.IndexCount??0)>0){var buffer=buffers[slot]!;GroundMask|=1UL<<slot;meshes[slot]!.Commit(buffer.Vertices,buffer.VertexCount,buffer.Indices,buffer.IndexCount,revision,FrameProfile.Counters,owner.RecreateMeshes);}
+                else if(meshes[slot]!=null){meshes[slot]!.Dispose();meshes[slot]=null;}
+            }
+        }else if(phase==1)Water.Finish();
+        else Walls.Finish();
+        if(++phase<3)return false;
+        Triangles+=Water.Triangles+Walls.Triangles;return true;
     }
     private void AppendGround(GameState state,FloorStrips strips,int sharedFlatMaterial)
     {
@@ -54,8 +58,9 @@ internal sealed class TerrainSection
             if(strips.Water[n]||GroundRingPlan.Uses(state.Town,strips.X0[n],strips.Z0[n],strips.Material[n],sharedFlatMaterial))continue;
             Triangles+=2;int slot=strips.Material[n],z=strips.Z0[n];
             if(meshes[slot]==null){
-                for(int old=0;old<buffers.Length;old++)if((buffers[old]?.IndexCount??0)==0&&meshes[old]!=null){meshes[slot]=meshes[old];buffers[slot]=buffers[old];meshes[old]=null;buffers[old]=null;break;}
-                if(meshes[slot]==null){meshes[slot]=new IndexedMeshCache();buffers[slot]=new TerrainIndexBuffer();}
+                if(buffers[slot]==null)for(int old=0;old<buffers.Length;old++)if(buffers[old]!=null&&buffers[old]!.IndexCount==0){meshes[slot]=meshes[old];buffers[slot]=buffers[old];meshes[old]=null;buffers[old]=null;break;}
+                if(meshes[slot]==null)meshes[slot]=new TerrainMeshCache();
+                if(buffers[slot]==null)buffers[slot]=new TerrainIndexBuffer();
             }
             var buffer=buffers[slot]!;
             var a=rows.At(z);var b=rows.At(z+1);
