@@ -148,11 +148,12 @@ the view. Existing sections never rebuild because a scroll window changed.
 The renderer pumps at most eight normal generation stages per frame, guaranteeing
 one for terrain even if masks consumed the shared 2ms guest-clock deadline.
 Further background stages start only before that deadline. Flat dry
-sections and deep ocean take two stages. Other sections combine ground/water per
+sections and deep ocean generate one row per stage and publish ground, water
+and walls separately (seven stages). Other sections combine ground/water per
 row and generate wall rows only where required; upload is separate. Partial
 sections retain their staging while visible work preempts offscreen prefetch. A
 section becomes drawable only when every stage completes. During established
-travel, recovery reserves at most nine stages per unfinished visible section,
+travel, recovery reserves at most eleven stages per unfinished visible section,
 including upload, before drawing. This work-derived bound can exceed the
 background deadline and cannot leave a section unfinished at a fixed cutoff.
 An individual stage can exceed the deadline; native profiling checks the worst

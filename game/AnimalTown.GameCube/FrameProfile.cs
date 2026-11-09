@@ -14,12 +14,16 @@ internal static class FrameProfile
     internal static int CulledObjects,AnimationUpdates;
     private static readonly long[] current=new long[16];
     private static readonly int[] data=new int[32];
+    private static readonly int[] detail=new int[16],native=new int[8];
+    private static readonly long[] detailTime=new long[5];
+    internal static int RecycledSections;
     private static int frames;
     private static long previous;
     internal static long Start()=>Enabled?Clock.Timestamp:0;
     internal static void Add(int slot,long microseconds){if(Enabled)current[slot]+=microseconds;}
     internal static void End(int slot,long start){if(Enabled)current[slot]+=Clock.Timestamp-start;}
-    internal static void Begin(){Counters.Reset();AnimationUpdates=0;if(!Enabled)return;for(int i=0;i<16;i++)current[i]=0;CulledObjects=0;}
+    internal static void Begin(){Counters.Reset();AnimationUpdates=RecycledSections=0;NativeFrame.Reset(Enabled?1:0);if(!Enabled)return;for(int i=0;i<16;i++)current[i]=0;for(int i=0;i<5;i++)detailTime[i]=0;CulledObjects=0;}
+    internal static void DetailEnd(int slot,long at){if(Enabled)detailTime[slot]+=Clock.Timestamp-at;}
     internal static void Complete(int triangles,int terrainTriangles,int rejected,int scenario,int terrainBuilds,int movement,bool groundRing,bool groundUpload,bool shadowDeferred)
     {
         if(!Enabled)return;long now=Clock.Timestamp;current[12]=previous==0?0:now-previous;previous=now;
@@ -36,12 +40,21 @@ internal static class FrameProfile
         Counters.CulledObjects=CulledObjects;
         data[25]=TextureCache.ResidentBytes/1024;data[26]=Counters.DrawingApiCalls;data[27]=Counters.MaterialChanges;data[28]=Counters.DrawSubmissions;data[29]=Counters.TextureBindings;
         for(int i=0;i<31;i++)data[31]^=data[i]&65535;
+        NativeFrame.Snapshot(native);detail[0]=0x4144;detail[1]=frames&65535;
+        for(int i=0;i<5;i++)detail[i+2]=(int)Math.Min(65535,detailTime[i]/100);
+        detail[7]=Math.Min(65535,native[0]);detail[8]=Math.Min(4095,native[1])|(Math.Min(15,native[7])<<12);
+        detail[9]=Math.Min(255,native[5]+native[6])|(Math.Min(255,NativeShadows.Stats(2))<<8);
+        detail[10]=Math.Min(65535,native[2]);detail[11]=Math.Min(65535,native[3]);detail[12]=Math.Min(65535,native[4]);
+        detail[13]=Math.Min(65535,Counters.BufferGrowths);detail[14]=Math.Min(65535,RecycledSections);detail[15]=0;
+        for(int i=0;i<15;i++)detail[15]^=detail[i];
     }
     internal static void Draw(Draw2D ui)
     {
         if(!Enabled)return;long start=Clock.Timestamp;
         ui.FillRectangle(new RectF(0,448,640,32),new Color32(16,16,16));
         for(int at=0;at<512;){int length=Hypercube.TelemetryRuns.Length(data,at);if(Hypercube.TelemetryRuns.Lit(data,at))ui.FillRectangle(new RectF(at%64*10,448+at/64*4,length*10,4),new Color32(240,240,240));at+=length;}
+        ui.FillRectangle(new RectF(0,432,640,16),new Color32(16,16,16));
+        for(int at=0;at<256;){int length=Hypercube.TelemetryRuns.Length(detail,at);if(Hypercube.TelemetryRuns.Lit(detail,at))ui.FillRectangle(new RectF(at%64*10,432+at/64*4,length*10,4),new Color32(240,240,240));at+=length;}
         current[14]+=Clock.Timestamp-start;
     }
 }

@@ -34,6 +34,7 @@ internal sealed class TerrainRenderer
     internal int LoadingTotal=>stream.WantedCount;
     internal int MissingVisible=>stream.MissingVisible;
     internal int UrgentStages {get;private set;}
+    internal bool FreezeMotion,RecreateMeshes;
     internal CylinderRows Rows=>stream.CylinderRows;
     private byte[] data=new byte[0];
     private int season=-1,forced,slots,cachedTerrainVersion=-1;
@@ -86,8 +87,9 @@ internal sealed class TerrainRenderer
         var scroll=CylinderWorld.Scroll(0,state.Z);
         ScrollTransform.LocalPosition=new Vector3(0,scroll.Y,scroll.Z);
         ScrollTransform.LocalRotation=new Quaternion(scroll.HalfSin,0,0,scroll.HalfCos);
-        int steps=0;stream.Prepare(state.X,state.Z);
+        int steps=0;long selectAt=FrameProfile.Start();stream.Prepare(state.X,state.Z);
         shadows.Prepare(state);cliffs.Prepare(state.Town);
+        FrameProfile.DetailEnd(0,selectAt);
         // Landscape readiness takes priority. Moving shadows use spare stages
         // after terrain. Masks publish first so an indivisible terrain stage
         // cannot consume their reservation. New receivers publish next frame.
@@ -96,7 +98,7 @@ internal sealed class TerrainRenderer
         }
         // A brief CPU stall must not replace established travel with a loading
         // panel or a hole. Reserve enough stages for the currently missing
-        // visible jobs: each has at most nine stages, including upload. A fixed
+        // visible jobs: each has at most eleven stages, including uploads. A fixed
         // sixteen-stage cutoff could leave a hole after a starved diagonal turn.
         int repairs=stream.RepairStages;
         while(stream.Presentable&&stream.MissingVisible>0&&UrgentStages<repairs){if(!AdvanceSection(state))break;UrgentStages++;}
@@ -118,21 +120,25 @@ internal sealed class TerrainRenderer
     private bool AdvanceSection(GameState state)
     {
         if(stream.BuildSlot<0)return false;
-        int building=stream.BuildSlot;
+        int building=stream.BuildSlot;long at=FrameProfile.Start();bool publishing=stream.InProgress(building)&&sections[building]!.Publishing;
         if(!stream.InProgress(building)){
             stream.Hold();if(sections[building]==null)sections[building]=new TerrainSection(soil,waterMaterial);
+            else FrameProfile.RecycledSections++;
             sections[building]!.Begin(state,stream.X[building],stream.Z[building],Rows);
         }
         bool complete=sections[building]!.Advance(state,this,staging,data);geometryRevision++;BuiltThisFrame++;
-        if(complete){stream.Complete();stream.Prepare(state.X,state.Z);}
+        FrameProfile.DetailEnd(publishing?2:1,at);
+        if(complete){at=FrameProfile.Start();stream.Complete();stream.Prepare(state.X,state.Z);FrameProfile.DetailEnd(0,at);}
         return true;
     }
     internal void CycleCloudCover()=>clouds.Cover=clouds.Cover==.5f?0:clouds.Cover==0?1:.5f;
     internal float CloudCover=>clouds.Cover;
     internal void Animate(double seconds)
     {
+        if(FreezeMotion)return;long at=FrameProfile.Start();
         waterMaterial.Animate(seconds);clouds.Animate(seconds);
         for(int i=0;i<slots;i++)clouds.Apply(materials[i],baseTints[i],true);
+        FrameProfile.DetailEnd(3,at);
     }
     private void Add(Renderer renderer,Material material,Mesh? mesh)
     {

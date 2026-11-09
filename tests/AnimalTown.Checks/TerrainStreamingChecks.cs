@@ -13,7 +13,7 @@ internal static class TerrainStreamingChecks
             }
         }
         var flat=new Town(17);Array.Fill(flat.Tiles,(byte)Terrain.Grass);Array.Clear(flat.Elevation);
-        check(TerrainSectionPlan.Kind(flat,40,40)==TerrainSectionPlan.Dry,"level dry sections use the two-stage path");
+        check(TerrainSectionPlan.Kind(flat,40,40)==TerrainSectionPlan.Dry,"level dry sections use row generation and separate publication");
         Array.Fill(flat.Elevation,(byte)TerrainElevation.Block);
         check(TerrainSectionPlan.Kind(flat,40,40)==TerrainSectionPlan.Dry,"level upper terraces retain the fast path");
         foreach(byte mode in new byte[]{0,2,3,4,5,6,7,8,9}){
@@ -67,12 +67,14 @@ internal static class TerrainStreamingChecks
             foreach(var goal in new[]{(140f,20f),(140f,140f),(20f,140f),(20f,20f),(140f,140f),(20f,20f)}){
                 while(Math.Abs(px-goal.Item1)>.001f||Math.Abs(pz-goal.Item2)>.001f){
                     float dx=goal.Item1-px,dz=goal.Item2-pz,d=(float)Math.Sqrt(dx*dx+dz*dz),step=Math.Min(PlayerMovement.RunStep,d);
-                    px+=dx/d*step;pz+=dz/d*step;Tick(px,pz,++frame%7==0?0:2);
+                    // A former flat stage generated four rows; the new stage
+                    // generates one. Normalize the work allowance accordingly.
+                    px+=dx/d*step;pz+=dz/d*step;Tick(px,pz,++frame%7==0?0:8);
                     check(stream.Presentable,"running, tile crossings and reversals never reenter a loading transition");
                     if(!stream.Ready)misses++;
                 }
             }
-            check(misses==0,"two-stage frame budgets with periodic stalls retain all conservatively visible geometry; misses="+misses);
+            check(misses==0,"eight fine-stage budgets with periodic stalls retain all conservatively visible geometry; misses="+misses);
             // Native masks can consume several consecutive background budgets.
             // Cover full-speed diagonal turns with no normal stages at all.
             for(int n=0;n<240;n++){
@@ -87,6 +89,6 @@ internal static class TerrainStreamingChecks
             stream.Reset();check(!stream.Presentable,"changing towns explicitly starts initial preparation");
         }
         check(repairs*100<frames,"bounded visible repairs are exceptional, rather than the normal streaming budget");
-        Console.WriteLine("Seamless stream: max "+maximum+" / "+TerrainStream.Capacity+" slots; coverage misses "+misses+"; bounded repair frames "+repairs+" / "+frames+" under two-stage/stalled-frame budgets; "+starvedRepairs+" recovery frames during 720 fully starved diagonal frames");
+        Console.WriteLine("Seamless stream: max "+maximum+" / "+TerrainStream.Capacity+" slots; coverage misses "+misses+"; bounded repair frames "+repairs+" / "+frames+" under eight fine-stage/stalled-frame budgets; "+starvedRepairs+" recovery frames during 720 fully starved diagonal frames");
     }
 }

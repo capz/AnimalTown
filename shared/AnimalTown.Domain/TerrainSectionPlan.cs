@@ -5,7 +5,7 @@ namespace AnimalTown;
 public static class TerrainSectionPlan
 {
     public const int Detailed=0,Dry=1,DeepSea=2;
-    public const int MaximumStages=TerrainStream.Height*2+1;
+    public const int MaximumStages=TerrainStream.Height*2+3;
     public static int Kind(Town town,int left,int top)
     {
         bool dry=true;
@@ -36,8 +36,8 @@ public static class TerrainSectionPlan
     }
     public static int Stages(Town town,int left,int top)
     {
-        if(Kind(town,left,top)!=Detailed)return 2;
-        int count=TerrainStream.Height+1;for(int z=top;z<top+TerrainStream.Height;z++)if(Walls(town,left,z))count++;
+        if(Kind(town,left,top)!=Detailed)return TerrainStream.Height+3;
+        int count=TerrainStream.Height+3;for(int z=top;z<top+TerrainStream.Height;z++)if(Walls(town,left,z))count++;
         return count;
     }
 }
