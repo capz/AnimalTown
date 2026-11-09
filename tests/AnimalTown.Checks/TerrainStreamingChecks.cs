@@ -5,6 +5,7 @@ internal static class TerrainStreamingChecks
     internal static void Run(Action<bool,string> check)
     {
         var cachedRows=new CylinderRows();
+        RowVisibility(check,cachedRows);
         foreach(float focus in new[]{.25f,40.25f,159.75f})for(int offset=-60;offset<=36;offset+=4){
             int top=(int)Math.Floor(focus/4)*4+offset;var bounds=new TerrainSectionBounds(cachedRows,new CylinderMotion(focus),top,focus);
             foreach(float delta in new[]{-.249f,.249f})foreach(float eye in new[]{0f,2f})foreach(float height in new[]{-.5f,0,2.01f})for(int n=0;n<=8;n++){
@@ -90,5 +91,33 @@ internal static class TerrainStreamingChecks
         }
         check(repairs*100<frames,"bounded visible repairs are exceptional, rather than the normal streaming budget");
         Console.WriteLine("Seamless stream: max "+maximum+" / "+TerrainStream.Capacity+" slots; coverage misses "+misses+"; bounded repair frames "+repairs+" / "+frames+" under eight fine-stage/stalled-frame budgets; "+starvedRepairs+" recovery frames during 720 fully starved diagonal frames");
+    }
+    private static void RowVisibility(Action<bool,string> check,CylinderRows rows)
+    {
+        int samples=0,extra=0;
+        foreach(float fx in new[]{.25f,20.25f,79.75f,159.75f})foreach(float fz in new[]{.25f,20.25f,79.75f,159.75f})
+        foreach(var lead in new[]{(0f,0f),(12f,0f),(-12f,0f),(0f,12f),(0f,-12f),(8.485282f,8.485282f),(-8.485282f,-8.485282f),(-8.485282f,8.485282f)}){
+            var motion=new CylinderMotion(fz);var ahead=new CylinderMotion(fz+lead.Item2);
+            for(int offset=-64;offset<=40;offset+=TerrainStream.Height){
+                int top=(int)Math.Floor(fz/TerrainStream.Height)*TerrainStream.Height+offset;
+                var p=rows.At(top+TerrainStream.Height/2,1);motion.Point(p.Y,p.Z,out float y,out float z);
+                var bounds=new TerrainSectionBounds(rows,motion,top,fz);var future=new TerrainSectionBounds(rows,ahead,top,fz+lead.Item2);
+                float requested=RenderView.SphereRowWidth(y,z,6.75f+TerrainStream.Prefetch,fx,fz);
+                float visible=RenderView.BoxRowWidth(bounds.MinY,bounds.MinZ,bounds.MaxY,bounds.MaxZ,TerrainStream.Width*.5f+TerrainSectionBounds.SideGuard,fx,fz);
+                float upcoming=RenderView.BoxRowWidth(future.MinY,future.MinZ-lead.Item2,future.MaxY,future.MaxZ-lead.Item2,TerrainStream.Width*.5f+TerrainSectionBounds.SideGuard,fx,fz);
+                for(int offsetX=-88;offsetX<=88;offsetX+=TerrainStream.Width){
+                    int left=(int)Math.Floor(fx/TerrainStream.Width)*TerrainStream.Width+offsetX;float column=left+TerrainStream.Width*.5f-fx;
+                    bool old=RenderView.Sphere(left+TerrainStream.Width*.5f,y,z,6.75f+TerrainStream.Prefetch,fx,fz,1),now=Math.Abs(column)<=requested;
+                    Compare(old,now);
+                    old=RenderView.Box(left-TerrainSectionBounds.SideGuard,bounds.MinY,bounds.MinZ,left+TerrainStream.Width+TerrainSectionBounds.SideGuard,bounds.MaxY,bounds.MaxZ,fx,fz);now=Math.Abs(column)<=visible;
+                    Compare(old,now);
+                    old=RenderView.Box(left-TerrainSectionBounds.SideGuard-lead.Item1,future.MinY,future.MinZ-lead.Item2,left+TerrainStream.Width+TerrainSectionBounds.SideGuard-lead.Item1,future.MaxY,future.MaxZ-lead.Item2,fx,fz);now=Math.Abs(column-lead.Item1)<=upcoming;
+                    Compare(old,now);
+                }
+            }
+        }
+        void Compare(bool previous,bool current){samples++;if(current&&!previous)extra++;check(!previous||current,"row culling retains every section accepted by the independent generic camera frustum");}
+        check(extra*1000<samples,"rounding guard retains fewer than one in a thousand extra reference bounds");
+        Console.WriteLine("Terrain row visibility: "+samples+" generic sphere/box comparisons, no false negatives, "+extra+" guarded extras");
     }
 }

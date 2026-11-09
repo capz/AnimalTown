@@ -36,6 +36,25 @@ public static class RenderView
     }
     public static bool Box(float x0,float y0,float z0,float x1,float y1,float z1,float focusX,float focusZ)
     {Prepare(focusX,focusZ,1);return frustum.Box(x0,y0,z0,x1,y1,z1);}
+    // Terrain columns share Y/Z bounds and the outdoor camera has no X tilt.
+    // Test the vertical slice once, then retain an interval for every column.
+    // Return the maximum horizontal distance from focusX, or -1 for a culled row.
+    // One millimetre covers float rounding between fixed and translated bases;
+    // it may retain an edge section, never remove visible geometry.
+    public static float SphereRowWidth(float y,float z,float radius,float focusX,float focusZ)
+    {
+        if(!Sphere(focusX,y,z,radius,focusX,focusZ,1))return -1;
+        float depth=(y-(CylinderWorld.CameraHeight+1))*ForwardY+(z-(focusZ+CylinderWorld.CameraBack))*ForwardZ;
+        return depth*TanX+(radius+.025f)*SideNorm+.001f;
+    }
+    public static float BoxRowWidth(float y0,float z0,float y1,float z1,float halfWidth,float focusX,float focusZ)
+    {
+        if(!(halfWidth>=0)||float.IsInfinity(halfWidth))throw new ArgumentOutOfRangeException();
+        if(!Box(focusX,y0,z0,focusX,y1,z1,focusX,focusZ))return -1;
+        float y=(y0+y1)*.5f-(CylinderWorld.CameraHeight+1),z=(z0+z1)*.5f-(focusZ+CylinderWorld.CameraBack);
+        float depth=y*ForwardY+z*ForwardZ,extent=Math.Abs(ForwardY)*(y1-y0)*.5f+Math.Abs(ForwardZ)*(z1-z0)*.5f;
+        return (depth+extent)*TanX+halfWidth+.001f;
+    }
     // The highest allowed eye sees the furthest horizon. Keep this independent
     // of the frustum cache so terrain selection never rebuilds it per section.
     public static bool TerrainHorizon(float y,float z,float radius,float focusZ)
