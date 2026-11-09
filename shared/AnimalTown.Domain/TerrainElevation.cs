@@ -10,7 +10,21 @@ public static class TerrainElevation
     public static byte Mode(Town town,int x,int z)=>town.Inside(x,z)?town.Elevation[z*Town.Width+x]:(byte)0;
     public static float AtCell(Town town,int cellX,int cellZ,float x,float z)
     {
-        int terrain=town.At(cellX,cellZ);if(terrain==(int)Terrain.Water)return BaseAtCell(town,cellX,cellZ,x,z)+WaterTerrain.RiverHeight;if(WaterTerrain.IsSea(town,cellX,cellZ))return BaseAtCell(town,cellX,cellZ,x,z)+WaterSurface.Height;if(WaterTerrain.IsCoast(terrain))return Height;return BaseAtCell(town,cellX,cellZ,x,z);
+        int terrain=town.At(cellX,cellZ);if(terrain==(int)Terrain.Water)return BaseAtCell(town,cellX,cellZ,x,z)+WaterTerrain.RiverHeight;if(WaterTerrain.IsSea(town,cellX,cellZ))return BaseAtCell(town,cellX,cellZ,x,z)+WaterSurface.Height;if(WaterTerrain.IsCoast(terrain))return Height;if(terrain==(int)Terrain.Beach)return BeachAtCell(town,cellX,cellZ,x,z);return BaseAtCell(town,cellX,cellZ,x,z);
+    }
+    // Match the floor's two triangles (A-B-C, A-C-D), including corner
+    // beaches. Bilinear interpolation would float feet over the diagonal.
+    private static float BeachAtCell(Town town,int cx,int cz,float x,float z)
+    {
+        float u=Math.Max(0,Math.Min(1,x-cx)),v=Math.Max(0,Math.Min(1,z-cz));
+        float a=BeachCorner(town,cx,cz,cx,cz),b=BeachCorner(town,cx,cz,cx+1,cz);
+        float c=BeachCorner(town,cx,cz,cx+1,cz+1),d=BeachCorner(town,cx,cz,cx,cz+1);
+        return u>=v?a+(b-a)*u+(c-b)*v:a+(c-d)*u+(d-a)*v;
+    }
+    private static float BeachCorner(Town town,int cx,int cz,int x,int z)
+    {
+        bool shore=x==cx&&WaterTerrain.IsSea(town,cx-1,cz)||x==cx+1&&WaterTerrain.IsSea(town,cx+1,cz)||z==cz&&WaterTerrain.IsSea(town,cx,cz-1)||z==cz+1&&WaterTerrain.IsSea(town,cx,cz+1);
+        return shore?WaterSurface.Height:BaseAtCell(town,cx,cz,x,z);
     }
     private static float BaseAtCell(Town town,int cellX,int cellZ,float x,float z)
     {
