@@ -200,9 +200,11 @@ internal sealed class TownGame
             saveStatus="Saved / "+BuildInfo.Version;
         }
         catch(Exception error){
-            string detail=error.Message;if(detail.Length>64)detail=detail.Substring(0,61)+"...";
+            // Built-in native exceptions may have no managed message. The
+            // recovery screen must remain usable even after an allocation fails.
+            string detail=error.Message??"Native save error (no message)";if(detail.Length>64)detail=detail.Substring(0,61)+"...";
             saveStatus="Save failed: "+detail;
-            DebugOverlay.WriteLine("SAVE ERROR: "+phase+" (code "+NativeCalendar.CardError()+"): "+error.Message);card=null;
+            DebugOverlay.WriteLine("SAVE ERROR: "+phase+" (code "+NativeCalendar.CardError()+"): "+detail);card=null;
         }
     }
     private void Say(string name,string text){dialogueVoice.Begin();voiceTick=0;returnToMenu=screen=="menu"&&(menuTab==SettingsTab||menuTab==TestingTab);if(returnToMenu){returnMenuTab=menuTab;returnMenuSelection=selected;}speaker=name;message=text;wrappedDialogue=dialogueText.Get(text);typeAt=0;screen="dialogue";}
