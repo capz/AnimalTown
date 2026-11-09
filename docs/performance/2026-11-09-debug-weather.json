@@ -1,0 +1,107 @@
+{
+  "game_commit": "f6e90258b4097bd2d0089f422c96c44b23e631d0",
+  "release": "https://github.com/capz/AnimalTown/releases/tag/v0.8.20.f6e90258b409",
+  "pull_request": "https://github.com/capz/AnimalTown/pull/21",
+  "ci_run": "https://github.com/capz/AnimalTown/actions/runs/42618475082",
+  "host_checks": {
+    "gameplay_render_texture": 2511635,
+    "rendering_service": 325110,
+    "native_archive_rebinds": 10000,
+    "address_undefined_sanitizers_passed": true,
+    "backend_integration_passed": true
+  },
+  "delivery": {
+    "sourceBytes": 1459978240,
+    "compactBytes": 88520704,
+    "sourceSha256": "967b624a11f5b33ff1275095cb269ad1df8fe01171c96b8e5f0ef37ebc2eb207",
+    "compactSha256": "a04b9689ee7d91a13b01cd770f6220970aa34f75603e49377165f983a7ea1bd8",
+    "dolAndApploaderUnchanged": true,
+    "roundTripVerified": true
+  },
+  "physical_gamecube_tested": false,
+  "earlier_coast_reference": {
+    "game_commit": "ba85070cc444113526de2a4b7c1010060c4958b1",
+    "frames": 151,
+    "frame_interval_ms": {
+      "median": 33.3,
+      "p95": 33.3,
+      "max": 33.3
+    },
+    "terrain_prepare_ms": {
+      "median": 0.2,
+      "p95": 0.2,
+      "max": 0.2
+    },
+    "method": "Previously decoded visibility-native.mkv coast interval, frame 529..679; same source card."
+  },
+  "method": "One instrumented stationary saved-town coast capture per condition, guest counters at 0.1 ms resolution; telemetry/capture overhead remains. This is not a worst-case or locked-60-FPS claim.",
+  "native": {
+    "units": "Guest 0.1 ms counters; stationary coast, single instrumented captures; physical GameCube untested",
+    "intervals": {
+      "dry": {
+        "from_frame": 659,
+        "to_frame": 810,
+        "frames": 152,
+        "frame_interval_ms": {
+          "median": 33.3,
+          "p95": 33.3,
+          "max": 33.3
+        },
+        "terrain_prepare_ms": {
+          "median": 0.2,
+          "p95": 0.2,
+          "max": 0.2
+        },
+        "terrain_build_stages": 0,
+        "loading_missing_or_recovery_frames": 0,
+        "managed_allocations": 526,
+        "gc_collections": 0,
+        "texture_operations": 0,
+        "mesh_creates": 0,
+        "mesh_updates": 0,
+        "mesh_releases": 0
+      },
+      "storm": {
+        "from_frame": 1189,
+        "to_frame": 1328,
+        "frames": 140,
+        "frame_interval_ms": {
+          "median": 33.3,
+          "p95": 33.3,
+          "max": 33.3
+        },
+        "terrain_prepare_ms": {
+          "median": 0.2,
+          "p95": 0.2,
+          "max": 0.2
+        },
+        "terrain_build_stages": 0,
+        "loading_missing_or_recovery_frames": 0,
+        "managed_allocations": 490,
+        "gc_collections": 0,
+        "texture_operations": 0,
+        "mesh_creates": 0,
+        "mesh_updates": 0,
+        "mesh_releases": 0
+      }
+    },
+    "native_debug_labels_changed": true,
+    "bright_water_pixels": {
+      "rain_calm": 60,
+      "rain_rough": 1041
+    },
+    "scenario": {
+      "source_card_sha256": "a780d11c1aa99f930c6e17d29b4695c480cd22c99a57c8f3f8d26ca667a35f44",
+      "card_unchanged": true,
+      "defaults_only": false,
+      "rain_toggles_via_debug_menu_only": true
+    }
+  },
+  "lossless_capture_rgb_hashes_verified": true,
+  "limitations": [
+    "Stationary instrumented coast samples, not a worst-case or locked-60-FPS guarantee.",
+    "Water roughness is material/whitecap motion on a fixed water plane, without simulated wave displacement.",
+    "No automatic weather, rain audio, wetness gameplay or saved weather preferences.",
+    "Physical GameCube validation remains outstanding."
+  ]
+}
