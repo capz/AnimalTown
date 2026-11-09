@@ -29,6 +29,17 @@ Open **START → Settings → Debug / testing**. The last page adds:
   diagnostics. It is independent from the existing Performance display option
   used for AnimalTown frame-capture telemetry. The native panel occupies the
   bottom-left corner; hide it when recording the encoded frame-capture bars.
+- **Ground mipmaps:** On by default. Uses trilinear filtering and a complete
+  chain down to 4 pixels per shorter axis (256/128/64/32/16/8/4 for the shared
+  outdoor texture). Off samples the original base level for comparison.
+- **Ground mip distance:** Auto by default; Left/Right select Auto or 1–10
+  individual one-metre ground squares, A increases, and Z restores Auto. The
+  number calibrates the first half-size mip at that many squares ahead of the
+  player along the centreline of the lower cylinder. Larger values retain detail
+  farther away. GX selects and blends levels per pixel from the projected
+  footprint, so these are smooth reference distances, not exact rings or evenly
+  spaced bands; terrace heights, surface angle and the section chords affect
+  their actual position. Auto restores unbiased hardware selection.
 
 All rendering previews are session-only. They never write saves automatically and
 are not serialized by Save now. The attention icon uses one reusable 44-triangle
@@ -36,6 +47,14 @@ mesh and six transforms; no icon animation or per-frame particle allocation is
 introduced. Its mesh is prepared between frames on first enable. Rim intensity
 changes only the TEV constant color, with one immutable shared lookup texture;
 no geometry or texture is regenerated when changing the percentage.
+Ground mip options change only the sampler between frames, once per setting or
+season load. They introduce no terrain rebuilds, UV edits, extra draws or pixel
+uploads during movement. Floor/cap/lip materials share the same mip texture and
+retain independent saved tints/bindings. The cloud texture and merged shadow
+coverage use their existing independent coordinates and filtering. Water,
+building interiors, actors, UI and soil keep their previous texture policies.
+The default shared 256px CMPR ground payload grows from 40,960 to 43,712 bytes;
+the terrain ARAM reservation and MEM1 geometry cache budgets are unchanged.
 
 ## Optimized defaults
 

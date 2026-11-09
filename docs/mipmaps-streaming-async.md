@@ -2,6 +2,11 @@
 
 ## Applied texture policy
 
+The later [ground mip controls](world-debug-controls.md) supersede the two-level
+limit below for outdoor floor/cap/lip textures: those now generate a complete
+chain down to four pixels and expose session-only GX distance calibration.
+Models and cliff soil retain the two-level policy described here.
+
 World textures already had source-derived mipmaps. This change caps the chain
 at two levels total, not two additional levels: 128/64 for maximum-size model
 textures and 64/32 for maximum-size floors. Smaller images stop before either

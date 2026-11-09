@@ -51,6 +51,10 @@ internal sealed class TerrainRenderer
     internal int BuiltThisFrame {get;private set;}
     internal int MaterialRevision {get;private set;}
     internal int SeasonOverride=-1;
+    internal bool GroundMipmaps=true;
+    internal int GroundMipDistance;
+    private bool appliedGroundMipmaps;
+    private int appliedGroundMipDistance=-1;
     internal int RenderSeason=>season;
     internal bool ObjectShadowsEnabled {get=>shadows.Enabled;set=>shadows.Enabled=value;}
     internal int GroundSlot(GameState state,int x,int z)=>FloorStrips.At(state,data,x,z,0);
@@ -74,12 +78,21 @@ internal sealed class TerrainRenderer
             if(FloorStrips.Read(data,4)==2)waterMaterial.SetTerrainTint(FloorStrips.Tint(data,FloorStrips.Read(data,24+TerrainTiles.Water*20)));
             for(int i=0;i<slots;i++){
                 int source=FloorStrips.TextureSlot(data,i);bool neutral=FloorStrips.Read(data,4)==2&&source==0;
-                if(textures[source]==null)textures[source]=TextureCache.LoadFloor(neutral?"dvd:/floor-outdoor-neutral.dndtex":"dvd:/"+name+"-"+source+".dndtex",repeat:neutral);
+                if(textures[source]==null)textures[source]=TextureCache.LoadFloor(neutral?"dvd:/floor-outdoor-neutral.dndtex":"dvd:/"+name+"-"+source+".dndtex",repeat:neutral,fullMipChain:true);
                 materials[i].Sampler=new SamplerState(neutral?TextureAddressMode.Repeat:TextureAddressMode.Clamp,neutral?TextureAddressMode.Repeat:TextureAddressMode.Clamp);
                 materials[i].Texture=textures[source]!.Pages[0];uint tint=FloorStrips.Tint(data,i);baseTints[i]=materials[i].Color=new Color32((byte)(tint>>24),(byte)(tint>>16),(byte)(tint>>8));
             }
             season=next;
             MaterialRevision++;
+        }
+        if(changed||appliedGroundMipmaps!=GroundMipmaps||appliedGroundMipDistance!=GroundMipDistance){
+            for(int source=0;source<textures.Length;source++)if(textures[source]!=null){
+                var texture=textures[source]!.Pages[0];
+                var wrap=FloorStrips.Read(data,4)==2&&source==0?TextureWrapMode.Repeat:TextureWrapMode.Mirror;
+                bool mip=GroundMipmaps&&texture.MipLevels>1;
+                texture.ConfigureSampler(wrap,wrap,mip?TextureMinFilter.LinearMipmapLinear:TextureMinFilter.Linear,TextureMagFilter.Linear,mip?RenderDebugOptions.GroundMipBias(texture.Width,texture.Height,GroundMipDistance):0);
+            }
+            appliedGroundMipmaps=GroundMipmaps;appliedGroundMipDistance=GroundMipDistance;
         }
         int flat=GroundRingRequested&&!cliffPreview&&FloorStrips.Read(data,4)==2?FloorStrips.Read(data,24):-1;
         if(flat>=0&&FloorStrips.TextureSlot(data,flat)!=0)flat=-1;

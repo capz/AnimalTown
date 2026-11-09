@@ -114,7 +114,7 @@ internal sealed class TownGame
     private bool cliffPreview;
     private int waterInspection;
     private int buildingInspection;
-    private const int SettingsTab=5,TestingTab=6,TestingRows=22;
+    private const int SettingsTab=5,TestingTab=6,TestingRows=24;
     private static readonly string[] tabs={"Backpack","Jobs","Catalog","Home","Post office","Settings","Debug / testing"};
     private static readonly string[] itemActions={"Drop","Place (R rotates)","Plant","Eat","Wear","Equip","Bury","Open money bag","Read","Quit"};
     internal TownGame()
@@ -235,6 +235,10 @@ internal sealed class TownGame
         if(screen=="menu"&&menuTab==TestingTab&&selected==20&&!chord){
             if(left||right){renderDebug.AdjustRim(right?1:-1);return;}
             if(p.Z.WasPressed){renderDebug.ResetRim();return;}
+        }
+        if(screen=="menu"&&menuTab==TestingTab&&selected==23&&!chord){
+            if(left||right){renderDebug.AdjustGroundMipDistance(right?1:-1);return;}
+            if(p.Z.WasPressed){renderDebug.ResetGroundMipDistance();return;}
         }
         if(p.L.IsHeld&&p.R.IsHeld&&p.Z.WasPressed){FrameProfile.Enabled=!FrameProfile.Enabled;return;}
         if(p.L.IsHeld&&p.R.IsHeld&&p.Y.WasPressed){ToggleModelPath();return;}
@@ -407,6 +411,8 @@ internal sealed class TownGame
             case 19:renderDebug.ForceAttention=!renderDebug.ForceAttention;break;
             case 20:renderDebug.AdjustRim(1);break;
             case 21:DebugOverlay.PerformanceVisible=!DebugOverlay.PerformanceVisible;break;
+            case 22:renderDebug.GroundMipmaps=!renderDebug.GroundMipmaps;break;
+            case 23:renderDebug.AdjustGroundMipDistance(1);break;
         }
     }
     private void ToggleBatching()
@@ -440,7 +446,9 @@ internal sealed class TownGame
             case 18:return "Season preview: "+(renderDebug.SeasonOverride<0?"Auto":TerrainTiles.SeasonName(renderDebug.SeasonOverride));
             case 19:return "Villager attention bubbles: "+OnOff(renderDebug.ForceAttention);
             case 20:return "Rim intensity: "+renderDebug.RimPercent+"%";
-            default:return "SDK performance overlay: "+OnOff(DebugOverlay.PerformanceVisible);
+            case 21:return "SDK performance overlay: "+OnOff(DebugOverlay.PerformanceVisible);
+            case 22:return "Ground mipmaps: "+OnOff(renderDebug.GroundMipmaps);
+            default:return "Ground mip distance: "+(renderDebug.GroundMipDistance==0?"Auto":renderDebug.GroundMipDistance+(renderDebug.GroundMipDistance==1?" square":" squares"));
         }
     }
     private void Interact()
@@ -595,6 +603,7 @@ internal sealed class TownGame
     private void DrawScene()
     {
         terrain.RoughOcean=weather.RoughOcean(room);terrain.SeasonOverride=renderDebug.SeasonOverride;
+        terrain.GroundMipmaps=renderDebug.GroundMipmaps;terrain.GroundMipDistance=renderDebug.GroundMipDistance;
         cachedPlayerHeight=PlayerHeight();if(room==0)RenderView.Prepare(state.X,state.Z,cachedPlayerHeight);
         if(room!=0)indoorCamera.Configure(BuildingWorld.Definition(state,BuildingWorld.Building(room)));
         long phase=FrameProfile.Start(),preparationDeadline=Clock.Timestamp+2000;PrepareVillagerShadows();
@@ -806,7 +815,7 @@ internal sealed class TownGame
         int total=screen=="menu"?TabCount():screen=="shop"?state.Town.StockCount:screen=="mail"?Math.Max(1,state.MailCount):screen=="lost"?Math.Max(1,LostCount()):screen=="store"?8:7;
         bool compact=screen=="menu"&&(menuTab==SettingsTab||menuTab==TestingTab);int page=compact?9:8,step=compact?24:29;float rowScale=compact?1.2f:1.4f;int first=selected/page*page;
         for(int i=first;i<Math.Min(total,first+page);i++){float y=131+(i-first)*step;if(i==selected){Rounded(57,y,520,step-2,(step-2)*.5f,new Color32(221,231,188));Strong("> "+RowLabel(i),68,y,ink,rowScale);}else Text("  "+RowLabel(i),68,y,ink,rowScale);}
-        Text(screen=="menu"&&menuTab==TestingTab&&selected==20?"Left/Right: 5%   A: +5%   Z: reset":"Stick / D-pad choose   L/R tabs   A select   B close",65,392,ink,1);
+        Text(screen=="menu"&&menuTab==TestingTab&&selected==20?"Left/Right: 5%   A: +5%   Z: reset":screen=="menu"&&menuTab==TestingTab&&selected==23?"Left/Right: 1 square   A: +1   Z: Auto":"Stick / D-pad choose   L/R tabs   A select   B close",65,392,ink,1);
         if(screen=="menu"&&menuTab==SettingsTab){
             Text("Manual saves only. Choose Save now to write the card.",65,331,ink,1);
             Text(saveStatusText.Get(saveStatus),65,357,ink,1);

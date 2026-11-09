@@ -42,7 +42,8 @@ block=r'''        elif '--stream-travel' in sys.argv:
             card=root/'MemoryCardA.USA.raw';before=hashlib.sha256(card.read_bytes()).hexdigest()
             press('A');time.sleep(5);screenshot('sdk-overlay-default-off.png')
             def option():
-                press('START');press('R');press('D_UP')
+                press('START');press('R')
+                for _ in range(3):press('D_UP')
             option();screenshot('sdk-overlay-menu-off.png');press('A');time.sleep(2);screenshot('sdk-overlay-menu-on.png');press('B');time.sleep(4);screenshot('sdk-overlay-world-on-a.png')
             os.write(controller,b'SET MAIN 1 .5\n');time.sleep(2);os.write(controller,b'SET MAIN .5 .5\n');time.sleep(2);screenshot('sdk-overlay-world-on-b.png')
             option();press('A');screenshot('sdk-overlay-menu-restored.png');press('B');time.sleep(3);screenshot('sdk-overlay-world-off.png')
