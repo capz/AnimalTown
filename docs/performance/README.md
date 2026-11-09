@@ -1,6 +1,7 @@
 # Streamed-town frame investigation — 2026-11-09
 
-Latest follow-up: [immutable terrain and world shadow projection](2026-11-09-immutable-terrain.md).
+Latest follow-up: [actor visibility and global backface culling](2026-11-09-visibility-culling.md).
+Previous: [immutable terrain and world shadow projection](2026-11-09-immutable-terrain.md).
 Previous: [row visibility optimization and native measurements](2026-11-09-row-culling.md).
 The measurements below document the preceding allocation/save pass.
 
