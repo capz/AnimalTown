@@ -55,9 +55,14 @@ public static class WaterSurface
     public static byte StormSample(int x,int y)
     {
         x=(x%64+64)%64;y=(y%64+64)%64;
-        double a=Wrap(y-14-5*Math.Sin(x*Math.PI/16)),b=Wrap(y-46-4*Math.Cos(x*Math.PI/16));
-        double crest=Math.Max(Math.Max(0,1-Math.Abs(a)/1.8),Math.Max(0,1-Math.Abs(b)/1.5));
-        return (byte)(crest*(150+70*Math.Sin(x*Math.PI/32)*Math.Sin(x*Math.PI/32)));
+        double value=0;
+        for(int i=0;i<4;i++){
+            double dx=Wrap(x-(i==0?9:i==1?43:i==2?24:58)),dy=Wrap(y-(i==0?12:i==1?28:i==2?47:58));
+            double length=i==1?13:i==2?9:11,edge=dx*dx/(length*length);
+            double crest=Math.Max(0,1-Math.Abs(dy-dx*dx*.055)/1.5)*Math.Max(0,1-edge*edge);
+            value=Math.Max(value,crest);
+        }
+        return (byte)(value*220);
     }
     private static double Wrap(double value)=>value-64*Math.Floor((value+32)/64);
 }
