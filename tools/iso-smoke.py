@@ -36,7 +36,9 @@ def cliff_minimap():
                    for y in range(top,bottom) for x in range(left,right))
     results=[]
     def map_state(name,expected):
-        pixels=frame(name);count=paper(pixels,600,330,795,450);visible=count>400
+        # Dolphin's 640x480 EFB appears in the 584-pixel-wide game viewport.
+        # Sample the panel around the map, not the area past the viewport edge.
+        pixels=frame(name);count=paper(pixels,450,310,620,435);visible=count>400
         results.append(f'{name}: paper samples={count}, visible={visible}, expected={expected}')
         (root/'cliff-minimap.txt').write_text('\n'.join(results)+'\n')
         if visible!=expected:raise AssertionError('Unexpected minimap visibility: '+results[-1])
