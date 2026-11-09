@@ -94,7 +94,8 @@ searches and dynamic occupancy checks. Player movement uses the same interior
 furniture/occupancy collision. `PortalSystem` commits location once, at tick 18 of
 a 36-tick transition; visual interpolation does not alter saved coordinates.
 
-Legacy saves now write version 7; split records write version 3. Old saves remain
+Combined saves now write version 8; split records write version 4.
+The appended villager encounter history is described in [villager attention](villager-attention.md). Old saves remain
 readable and give actors outdoor locations. New records persist player/villager
 spaces, facing, building types, journey phases, dwell/stall timers and the next
 outdoor waypoint. Paths, camera interpolation, door reservations and animations

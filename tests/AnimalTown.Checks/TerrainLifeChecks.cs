@@ -4,6 +4,7 @@ internal static class TerrainLifeChecks
 {
     internal static void Run(Action<bool,string> check)
     {
+        VillagerAttentionChecks.Run(check);
         var state=new GameState(781);int blocks=0,ramps=0;for(int i=0;i<Town.Cells;i++){if(state.Town.Elevation[i]==1)blocks++;if(state.Town.Elevation[i]>=2)ramps++;}
         check(blocks>0&&ramps>0,"generation places raised blocks and ramp access");
         int corners=0;for(int i=0;i<Town.Cells;i++)if(state.Town.Elevation[i]>=6)corners|=1<<(state.Town.Elevation[i]-6);

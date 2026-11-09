@@ -39,9 +39,9 @@ internal static class RiverCoastChecks
         old.Town.SetTerrain(20,140,Terrain.Plaza);old.Town.SetTerrain(80,120,Terrain.Water);old.Town.SetTerrain(80,140,Terrain.Water);
         var expected=(byte[])old.Town.Tiles.Clone();var elevation=(byte[])old.Town.Elevation.Clone();
         void Put(byte[] bytes,int at,int value){for(int i=0;i<4;i++)bytes[at+i]=(byte)(value>>(8*i));}
-        var combined=SaveCodec.Encode(old);Array.Resize(ref combined,combined.Length-BuildingSave.FieldCount*4);Put(combined,4,5);Put(combined,16,combined.Length);Put(combined,20,(int)SaveCodec.Crc(combined,24,combined.Length-24));
+        var combined=SaveCodec.Encode(old);Array.Resize(ref combined,combined.Length-BuildingSave.FieldCount*4-72);Put(combined,4,5);Put(combined,16,combined.Length);Put(combined,20,(int)SaveCodec.Crc(combined,24,combined.Length-24));
         var a=SaveCodec.Decode(combined);
-        var parts=SplitSaveCodec.Encode(old);var historicalPlayer=new byte[parts[3].Length-BuildingSave.FieldCount*4];Array.Copy(parts[3],historicalPlayer,historicalPlayer.Length-4);parts[3]=historicalPlayer;Put(parts[3],24,parts[3].Length);foreach(var part in parts){Put(part,4,1);Put(part,part.Length-4,(int)SaveCodec.Crc(part,0,part.Length-4));}
+        var parts=SplitSaveCodec.Encode(old);var historicalPlayer=new byte[parts[3].Length-BuildingSave.FieldCount*4-72];Array.Copy(parts[3],historicalPlayer,historicalPlayer.Length-4);parts[3]=historicalPlayer;Put(parts[3],24,parts[3].Length);foreach(var part in parts){Put(part,4,1);Put(part,part.Length-4,(int)SaveCodec.Crc(part,0,part.Length-4));}
         var b=SplitSaveCodec.Decode(parts);
         foreach(var loaded in new[]{a,b}){
             for(int i=0;i<Town.Cells;i++)check(loaded.Town.Tiles[i]==(expected[i]==1&&i/Town.Width>=WaterTerrain.SeaStart?8:expected[i]),"legacy migration only relabels southern water, never regenerates terrain");

@@ -18,7 +18,8 @@ static class Program
         {
             if(args.Length<2)throw new ArgumentException("repack-textures ROOT INPUT.glb OUTPUT.glb --size128|--size256|--size512|--size1024|--sizeOriginal [--max-rmse N]; or repack-check ROOT");
             Root=Path.GetFullPath(args[1]);
-            if(args[0]=="buildings-generate")BuildingAssets.Generate(Root);
+            if(args[0]=="attention-fixture")AttentionFixture.Write(args[2],int.Parse(args[3]),args.Length>4&&args[4]=="deadline");
+            else if(args[0]=="buildings-generate")BuildingAssets.Generate(Root);
             else if(args[0]=="buildings")BuildingAssets.Cook(Root);
             else if(args[0]=="building-native")BuildingAssets.Native(args[2]);
             else if(args[0]=="building-check")BuildingAssets.Check(Root);
