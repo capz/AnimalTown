@@ -114,7 +114,7 @@ internal sealed class TownGame
     private bool cliffPreview;
     private int waterInspection;
     private int buildingInspection;
-    private const int SettingsTab=5,TestingTab=6,TestingRows=21;
+    private const int SettingsTab=5,TestingTab=6,TestingRows=22;
     private static readonly string[] tabs={"Backpack","Jobs","Catalog","Home","Post office","Settings","Debug / testing"};
     private static readonly string[] itemActions={"Drop","Place (R rotates)","Plant","Eat","Wear","Equip","Bury","Open money bag","Read","Quit"};
     internal TownGame()
@@ -406,6 +406,7 @@ internal sealed class TownGame
             case 18:renderDebug.CycleSeason();break;
             case 19:renderDebug.ForceAttention=!renderDebug.ForceAttention;break;
             case 20:renderDebug.AdjustRim(1);break;
+            case 21:DebugOverlay.PerformanceVisible=!DebugOverlay.PerformanceVisible;break;
         }
     }
     private void ToggleBatching()
@@ -438,7 +439,8 @@ internal sealed class TownGame
             case 17:return "Rough ocean in rain: "+OnOff(weather.RoughOceanWhenRaining);
             case 18:return "Season preview: "+(renderDebug.SeasonOverride<0?"Auto":TerrainTiles.SeasonName(renderDebug.SeasonOverride));
             case 19:return "Villager attention bubbles: "+OnOff(renderDebug.ForceAttention);
-            default:return "Rim intensity: "+renderDebug.RimPercent+"%";
+            case 20:return "Rim intensity: "+renderDebug.RimPercent+"%";
+            default:return "SDK performance overlay: "+OnOff(DebugOverlay.PerformanceVisible);
         }
     }
     private void Interact()

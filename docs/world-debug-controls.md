@@ -23,8 +23,14 @@ Open **START → Settings → Debug / testing**. The last page adds:
   Left/right adjust by 5%; A increases and Z resets to 100%. L/R still change
   tabs. The existing Actor rim lighting switch remains a separate enable control.
   At 0% the extra rim TEV stage and normal texture generation are disabled.
+- **SDK performance overlay:** Off by default. Toggles the built-in
+  `Dolphin.Diagnostics.DebugOverlay.PerformanceVisible` panel used by SDK examples,
+  with live FPS/frame time, triangles, main/ARAM memory and available network
+  diagnostics. It is independent from the existing Performance display option
+  used for AnimalTown frame-capture telemetry. The native panel occupies the
+  bottom-left corner; hide it when recording the encoded frame-capture bars.
 
-All three previews are session-only. They never write saves automatically and
+All rendering previews are session-only. They never write saves automatically and
 are not serialized by Save now. The attention icon uses one reusable 44-triangle
 mesh and six transforms; no icon animation or per-frame particle allocation is
 introduced. Its mesh is prepared between frames on first enable. Rim intensity

@@ -16,7 +16,7 @@ block=r'''        elif '--stream-travel' in sys.argv:
                 os.write(controller,b'PRESS L\nPRESS R\n');time.sleep(.2);press(button);os.write(controller,b'RELEASE L\nRELEASE R\n')
             def focus(row):
                 press('START');press('R')
-                for _ in range(21-row):press('D_UP')
+                for _ in range(22-row):press('D_UP')
             def ready(row,name):
                 y=131+(row%9)*24
                 for _ in range(90):
