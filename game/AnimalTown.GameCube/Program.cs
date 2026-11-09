@@ -117,6 +117,7 @@ internal sealed class TownGame
     private int waterInspection;
     private int buildingInspection;
     private int pendingInspection;
+    private int pendingUv=-1;
     private const int SettingsTab=5,TestingTab=6,TestingRows=24;
     private static readonly string[] tabs={"Backpack","Jobs","Catalog","Home","Post office","Settings","Debug / testing"};
     private static readonly string[] itemActions={"Drop","Place (R rotates)","Plant","Eat","Wear","Equip","Bury","Open money bag","Read","Quit"};
@@ -394,9 +395,9 @@ internal sealed class TownGame
             case 0:FrameProfile.Enabled=!FrameProfile.Enabled;break;
             case 1:ToggleModelPath();break;
             case 2:case 3:
-                int next=uvDebug^(selected==2?1:2);
-                if(NativeRenderProbe.Uv(next)==next)uvDebug=next;
-                else Say("UV display","Not enough memory to prepare UV regions. The current view is unchanged.");
+                int next=(pendingUv>=0?pendingUv:uvDebug)^(selected==2?1:2);
+                if(next!=0&&!assetResidency.AllReady)pendingUv=next;
+                else{pendingUv=-1;ApplyUv(next);}
                 break;
             case 4:ToggleBatching();break;
             case 5:if(batchedDrawing)UiFont.Batched=!UiFont.Batched;break;
@@ -425,6 +426,11 @@ internal sealed class TownGame
         int next=batchedDrawing?0:1;
         if(NativeRenderProbe.Batch(next)!=next)throw new InvalidOperationException("Batch switch failed");
         batchedDrawing=next!=0;UiFont.Batched=batchedDrawing;
+    }
+    private void ApplyUv(int flags)
+    {
+        if(NativeRenderProbe.Uv(flags)==flags)uvDebug=flags;
+        else Say("UV display","Not enough memory to prepare UV regions. The current view is unchanged.");
     }
     private static string OnOff(bool value)=>value?"On":"Off";
     private string TestingLabel(int row)
@@ -603,9 +609,10 @@ internal sealed class TownGame
         if(!resourcesReady){DrawLoading();return;}
         if(screen!="title"&&wordmark!=null){TextureCache.ReleaseAndDiscard(wordmark);wordmark=null;DebugOverlay.WriteLine("TITLE LOGO RELEASED");}
         long assetAt=FrameProfile.Start();
-        try{assetResidency.Prepare(state,villagers.Doors,screen=="title"||screen=="create"||pendingInspection!=0||waterInspection!=0);}
+        try{assetResidency.Prepare(state,villagers.Doors,screen=="title"||screen=="create"||pendingInspection!=0||waterInspection!=0||pendingUv>=0||uvDebug!=0);}
         catch(Exception){resourcesReady=false;loadingFailed=true;loadingLabel="Could not restore town assets. Check the game disc.";DebugOverlay.WriteLine("ASSET RESTORE FAILED; SAVE UNCHANGED");DrawLoading();return;}
         FrameProfile.End(2,assetAt);
+        if(pendingUv>=0&&assetResidency.AllReady){int flags=pendingUv;pendingUv=-1;ApplyUv(flags);}
         if(pendingInspection!=0&&assetResidency.AllReady){int request=pendingInspection;pendingInspection=0;if(request==1)InspectTerrainNow();else InspectBuildingNow();}
         float x=state.X,z=state.Z;
         try{if(waterInspection!=0)WaterInspection.Focus(state,waterInspection);DrawScene();}
@@ -794,7 +801,7 @@ internal sealed class TownGame
         var ink=new Color32(49,72,62);
         if(FrameProfile.Enabled){
             if(++profileLabelFrames>=30){profileLabelFrames=0;profileNativeLabel="Native: "+NativeShadows.Stats(9)+" slots / "+NativeShadows.Stats(10)/1024+" KiB";profileShadowLabel=(room==0&&terrain.GroundRingActive?"Ring / ":"")+"Shadows: "+NativeShadows.Stats(0)+" pages / "+NativeShadows.Stats(2)+" updated";profileAssetLabel="Assets: "+NativeAssetResidency.Stats(1)+" cold / "+NativeAssetResidency.Stats(2)/1024+" KiB / "+NativeAssetResidency.Stats(5)+" restores / "+NativeAssetResidency.Stats(9)+" us max";}
-            Text(profileAssetLabel,42,342,ink,.9f);
+            Text(profileAssetLabel,42,20,room==0?ink:new Color32(255,245,221),.9f);
             Text(indexedModels?(batchedDrawing?"GX indexed / batched":"GX indexed / baseline"):(batchedDrawing?"Direct / batched":"Direct / baseline"),420,397,ink,.8f);
             Text(profileNativeLabel,420,408,ink,.55f);
             Text(profileShadowLabel,420,419,ink,.55f);

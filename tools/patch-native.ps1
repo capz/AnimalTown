@@ -83,6 +83,9 @@ foreach($method in $assetBridge.Keys){
 $generated="#include `"dnd_managed.h`"`nextern int animaltown_assets_capture(int,int,int,DndString*);`nextern int animaltown_assets_advance(DndArray*,int);`nextern int animaltown_assets_state(int);`nextern int animaltown_assets_stats(int);`nextern int animaltown_assets_forget(int);`n"+$generated
 [IO.File]::WriteAllText($generatedPath,$generated)
 Copy-Item (Join-Path $Root 'tools/native-asset-residency.c') (Join-Path $nativeRoot 'source/animaltown_asset_residency.c') -Force
+Copy-Item (Join-Path $Root 'tools/native-asset-textures.inc') (Join-Path $nativeRoot 'source/animaltown_asset_textures.inc') -Force
+$assetModelPath=Join-Path $nativeRoot 'source/model.c'
+[IO.File]::AppendAllText($assetModelPath,"`n#include `"animaltown_asset_textures.inc`"`n")
 $gxPath=Join-Path $nativeRoot 'source/graphics_gx.c';$gx=[IO.File]::ReadAllText($gxPath)
 $gxSignature='void dnd_draw_backend_vertices(const DndDrawVertex *v,int count,int primitive,const DndDrawTexture *texture,const DndDrawMaterial *material,const float *world) {'
 if(([regex]::Matches($gx,[regex]::Escape($gxSignature))).Count -ne 1){throw 'Pinned shadow ground scope changed'}

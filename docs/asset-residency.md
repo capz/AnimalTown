@@ -9,13 +9,13 @@ keep their existing ownership and manual-save behavior.
 Exterior and door models stay resident. Interior floor/wall models are shared
 by building definition, and become cold after the last current room, transition
 or approach-prefetch demand ends. After exit, source-room parts remain pinned
-until the door animation finishes. An approach within 12 metres while facing a
+until the door animation finishes. An approach within 20 metres while facing a
 door prefetches its parts and occupants. Exiting facing away does not retain them
 merely because the player is still beside the door.
 
 The six species share their model package between player/NPC instances. The
 player's species always stays resident. Current-room villagers remain resident
-for immediate camera rotation. Outside, a 24-metre guard around the conservative
+for immediate camera rotation. Outside, a 32-metre guard around the conservative
 animated view/horizon envelope requests models before they can become visible;
 unused species wait 120 rendered frames before eviction. Hidden animation time
 continues to be discarded, and native animation/submission calls require a ready
@@ -33,9 +33,9 @@ AnimalTown owns one transfer scheduler rather than mixing SDK asynchronous
 model transitions with terrain binds. Both use the SDK's single ARAM transfer
 channel. Every scheduler call completes at most one 32 KiB aligned DMA quantum
 between frames, leaving the channel idle before terrain can bind its own pages.
-One fixed 32 KiB native staging buffer is retained. CPU work is bounded by the
-chunk size; the SDK's final restore validation/pose publication is a separate
-indivisible operation and must be measured on target.
+One fixed 32 KiB native staging buffer is retained. Package checks, texture copies and shared-texture comparisons each process at
+most 32 KiB per call. One retained pose is prepared per call; that existing SDK
+pose evaluator remains indivisible and must be measured on target.
 
 Startup registers each sequential, completed model load explicitly. Native
 registration requires exactly one unclaimed model and matching native byte
@@ -54,8 +54,15 @@ allocation failure gracefully retains that asset in main RAM.
 
 Eviction frees the model package, unreferenced shared texture payloads and instance
 vertex buffers using the SDK. Reusable metadata, instances and animation intent
-remain. Restore fills unpublished storage incrementally, then the SDK checks the
-original package hash/structure and rebuilds its pose buffers before publication.
+remain. The original SDK load validates the package structure once. Native metadata
+retains checked offsets into that immutable package. Restore verifies each
+32 KiB block with CRC32 and the whole package with its original FNV hash, then
+rebases those validated offsets without reparsing all vertices. Texture payloads
+are copied/compared incrementally through the same shared registry and byte
+accounting as the SDK; retained poses are prepared one per call before publishing.
+A restore owns each partial texture copy; urgent work may preempt between
+complete textures or transport blocks. Partially filled textures remain
+unpublished. Uninitialized staging is fully filled and verified before use.
 GX texture and model-state caches are invalidated when resources change. No draw
 or animator call is allowed on a cold model. A failed ARAM read/hash falls back to
 the exact original read-only disc path, in bounded read chunks, and disables
@@ -82,6 +89,6 @@ room/approach demand, asset-gated doorway commits, independent offscreen journey
 allocation-free demand updates and unchanged saves.
 
 The existing **Performance display** adds a cached assets label: cold-model count,
-budgeted model KiB, restore count and worst final restore/publication microseconds.
+budgeted model KiB, restore count and worst restore-quantum microseconds.
 Its counters are diagnostics, not a physical-console frame-time guarantee. The
 SDK performance panel remains available for actual main/ARAM memory totals.

@@ -21,7 +21,8 @@ internal static class AssetDemandChecks
         int type0=state.BuildingTypes[1];for(int p=2;p<7;p++)check(demand.Priority[AssetDemand.BuildingPart(type0,p)]==2,"current shared interior definition stays pinned");
         state.Space=0;BuildingWorld.Entrance(state,1,out float ex,out float ez);state.X=ex;state.Z=ez+.5f;state.Facing=(float)Math.PI;
         demand.Prepare(state,doors,false);check(demand.Priority[AssetDemand.BuildingPart(type0,2)]==2,"approaching the door prefetches its interior");
-        state.Facing=0;demand.Prepare(state,doors,false);check(demand.Priority[AssetDemand.BuildingPart(type0,2)]==0,"exiting facing away releases the unused interior rather than proximity-pinning it");
+        state.Facing=0;demand.Prepare(state,doors,false);check(demand.Priority[0]==0,"exiting facing away stops prefetching the previous room's occupants");
+        state.X=Town.Width-2;state.Z=Town.Height-2;demand.Prepare(state,doors,false);check(demand.Priority[AssetDemand.BuildingPart(type0,2)]==0,"unused shared interior parts are released once no room or approach needs them");state.X=ex;state.Z=ez+.5f;
         check(doors.Request(state,0,1),"residency portal fixture starts a player entrance");
         doors.VisualReady[0]=false;for(int i=0;i<100;i++)doors.Tick(state);
         check(state.Space==0&&doors.Actors[0].Tick==PortalSystem.CommitTick-1&&doors.PlayerFade==1,"cold destination waits under an opaque fade without committing or cancelling the player");

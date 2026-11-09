@@ -11,9 +11,9 @@ static unsigned invalidations,publications;
 void dnd_draw_backend_invalidate_cache(void){invalidations++;}
 void animaltown_shadows_model_reset(void){}
 void dnd_draw_backend_publish_texture(void){publications++;}
-static void *buffers[8];static unsigned sizes[8];static int holds[8],next_buffer=1;
+static void *buffers[64];static unsigned sizes[64];static int holds[64],next_buffer=1;
 bool dnd_device_active(void){return active;}
-int dnd_buffer_create(int size,int alignment){assert(alignment==32&&next_buffer<8);int n=next_buffer++;buffers[n]=aligned_alloc(32,(size_t)size);assert(buffers[n]);sizes[n]=(unsigned)size;return n;}
+int dnd_buffer_create(int size,int alignment){assert(alignment==32&&next_buffer<64);int n=next_buffer++;buffers[n]=aligned_alloc(32,((size_t)size+31u)&~31u);assert(buffers[n]);sizes[n]=(unsigned)size;return n;}
 int dnd_buffer_hold(int n){if(n<=0||n>=next_buffer||!buffers[n])return -1;holds[n]++;return 0;}
 int dnd_buffer_unhold(int n){if(n<=0||n>=next_buffer||holds[n]<=0)return -1;holds[n]--;return 0;}
 uint64_t dnd_buffer_address(int n,int offset){return n>0&&n<next_buffer&&buffers[n]&&offset>=0&&(unsigned)offset<sizes[n]?(uintptr_t)buffers[n]+(unsigned)offset:0;}
@@ -29,14 +29,15 @@ int64_t dnd_timing_now(void){static int64_t tick;return ++tick;}
 #include "../tools/native-asset-residency.c"
 static DndString *str(const char *p){size_t n=strlen(p);DndString *s=calloc(1,sizeof(*s)+n*2);assert(s);s->length=(unsigned)n;for(size_t i=0;i<n;i++)s->chars[i]=(uint16_t)p[i];return s;}
 static int load(const char *name){char path[256];snprintf(path,sizeof(path),"out/disc/%s.dndmodel",name);FILE *f=fopen(path,"rb");assert(f&&!fseek(f,0,SEEK_END));long n=ftell(f);assert(n>0&&!fseek(f,0,SEEK_SET));void *p=malloc((size_t)n);assert(p&&fread(p,1,(size_t)n,f)==(size_t)n&&!fclose(f));int token=dnd_model_begin_data(p,(unsigned)n,3*1024*1024);free(p);assert(token);return token;}
+static unsigned pose_hash(int token){DndInstance *in=dnd_instance_find(token);assert(in);unsigned h=hash_bytes(FNV,(unsigned char*)in->global,in->model->nodes*64);for(unsigned i=0;i<in->model->meshes;i++)if(in->vertices[i])h=hash_bytes(h,(unsigned char*)in->vertices[i],in->model->mesh[i].vertices*24);return h;}
 int main(void){
     assert(dnd_aram_initialize(2*1024*1024));int terrain=dnd_aram_allocate(8*1024*1024);assert(terrain&&dnd_aram_retain(terrain)==0);
     DndArray *priorities=calloc(1,sizeof(*priorities)+ASSETS*4);assert(priorities);priorities->length=ASSETS;priorities->element_size=4;int32_t *want=(int32_t*)priorities->data;
     const char *names[]={"fox","bunny","giraffe","cat","hamster","spaniel","cottage-floor-tex128","cottage-north-tex128","cottage-east-tex128","cottage-south-tex128","cottage-west-tex128"};
-    int tokens[11],instances[11];unsigned hashes[11];
+    int tokens[11],instances[11];unsigned hashes[11],poses[11];
     for(int i=0;i<11;i++){
         tokens[i]=load(names[i]);DndModel *m=dnd_model_find(tokens[i],false);hashes[i]=m->hash;instances[i]=dnd_model_instance(tokens[i],512*1024);assert(instances[i]);
-        char path[256];snprintf(path,sizeof(path),"dvd:/%s.dndmodel",names[i]);DndString *s=str(path);assert(animaltown_assets_capture(i,(int)m->bytes,0,s)==1);free(s);want[i]=2;
+        poses[i]=pose_hash(instances[i]);char path[256];snprintf(path,sizeof(path),"dvd:/%s.dndmodel",names[i]);DndString *s=str(path);assert(animaltown_assets_capture(i,(int)m->bytes,0,s)==1);free(s);want[i]=2;
     }
     active=true;assert(animaltown_assets_advance(priorities,1)==-1&&animaltown_assets_forget(0)==0);active=false;
     // Loading/verification quanta leave the shared DMA channel idle, and never
@@ -58,11 +59,22 @@ int main(void){
     for(int cycle=0;cycle<5;cycle++){
         for(int i=0;i<11;i++)want[i]=2;
         int steps=0;while(animaltown_assets_stats(1)){assert(animaltown_assets_advance(priorities,0)>=0);assert(++steps<1000);}
-        for(int i=0;i<11;i++){DndModel *m=dnd_model_find(tokens[i],false);assert(m->ready&&m->hash==hashes[i]&&dnd_model_hash(m->package,m->length)==hashes[i]);assert(dnd_model_evaluate(dnd_instance_find(instances[i]))==0);}
+        for(int i=0;i<11;i++){
+            DndModel *m=dnd_model_find(tokens[i],false);assert(m->ready&&m->hash==hashes[i]&&dnd_model_hash(m->package,m->length)==hashes[i]);assert(pose_hash(instances[i])==poses[i]);
+            for(unsigned t=0;t<m->textures;t++)assert(!memcmp(m->texture[t].data,m->package+assets[i].links[assets[i].texture_base+t*2],m->texture[t].size));
+            unsigned n=0;for(unsigned mesh=0;mesh<m->meshes;mesh++){assert(m->mesh[mesh].data==m->package+assets[i].links[n++]);assert(m->mesh[mesh].index==m->package+assets[i].links[n++]);}
+            assert(dnd_model_evaluate(dnd_instance_find(instances[i]))==0);
+        }
         assert((unsigned)animaltown_assets_stats(2)==original);
         for(int i=0;i<11;i++)want[i]=0;
         for(int i=0;i<20;i++)assert(animaltown_assets_advance(priorities,0)>=0);
     }
+    // Urgent work preempts a transport block and the saved job resumes exactly.
+    want[2]=1;assert(animaltown_assets_advance(priorities,0)>=0&&active_restore==2);
+    want[3]=2;assert(animaltown_assets_advance(priorities,0)>=0&&active_restore==3);
+    int resume=0;while(!(animaltown_assets_state(2)&1)||!(animaltown_assets_state(3)&1)){assert(animaltown_assets_advance(priorities,0)>=0);assert(++resume<1000);}
+    assert(pose_hash(instances[2])==poses[2]&&pose_hash(instances[3])==poses[3]);
+    want[2]=want[3]=0;for(int i=0;i<20;i++)assert(animaltown_assets_advance(priorities,0)>=0);
     // Failed DMA during restore falls back to the exact original disc package.
     want[0]=2;dnd_aram_test_fail_next();assert(animaltown_assets_advance(priorities,0)>=0);
     int steps=0;while(!(animaltown_assets_state(0)&1)){assert(animaltown_assets_advance(priorities,0)>=0);assert(++steps<1000);}

@@ -5,7 +5,7 @@ namespace AnimalTown;
 public sealed class AssetDemand
 {
     public const int Species=6,Parts=7,BuildingStart=Species,Capacity=Species+BuildingCatalog.MaximumDefinitions*Parts;
-    public const float PrefetchGuard=24;
+    public const float PrefetchGuard=32;
     public readonly int[] Priority=new int[Capacity]; // 0 cold, 1 prefetch, 2 required
     private uint prefetchSpaces;
     public static int BuildingPart(int type,int part)=>BuildingStart+type*Parts+part;
@@ -17,8 +17,8 @@ public sealed class AssetDemand
         var center=CylinderWorld.Surface(p.Z,focusZ,h+.9f);
         if(!RenderView.Sphere(p.X,center.Y,center.Z,2.7f+PrefetchGuard,focusX,focusZ,eye)
             ||!RenderView.AboveHorizon(center.Y,center.Z,2.7f+PrefetchGuard,focusZ,eye))return 0;
-        return RenderView.Sphere(p.X,center.Y,center.Z,2.7f,focusX,focusZ,eye)
-            &&RenderView.AboveHorizon(center.Y,center.Z,2.7f,focusZ,eye)?2:1;
+        return RenderView.Sphere(p.X,center.Y,center.Z,10.7f,focusX,focusZ,eye)
+            &&RenderView.AboveHorizon(center.Y,center.Z,10.7f,focusZ,eye)?2:1;
     }
     private void Interior(GameState state,int space)
     {
@@ -37,7 +37,7 @@ public sealed class AssetDemand
         if(viewer==0&&!doors.Busy(0))for(int b=0;b<BuildingWorld.Count;b++)if(BuildingWorld.Exists(state,b)){
             BuildingWorld.Entrance(state,b,out float x,out float z);float dx=x-state.X,dz=z-state.Z;
             // Approach prefetch, not a pin after exiting facing away from a door.
-            if(dx*dx+dz*dz<=144&&dx*(float)Math.Sin(state.Facing)+dz*(float)Math.Cos(state.Facing)>.1f)Interior(state,BuildingWorld.Space(b));
+            if(dx*dx+dz*dz<=400&&dx*(float)Math.Sin(state.Facing)+dz*(float)Math.Cos(state.Facing)>.1f)Interior(state,BuildingWorld.Space(b));
         }
         for(int i=0;i<Species;i++){
             var position=BuildingWorld.Location(state,i+1);var door=doors.Actors[i+1];
