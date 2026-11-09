@@ -75,10 +75,13 @@ def cliff_minimap():
     os.write(controller,b'PRESS L\nPRESS R\nPRESS Z\n');time.sleep(.2)
     for _ in range(3):press('Y')
     os.write(controller,b'RELEASE Z\nRELEASE L\nRELEASE R\n')
-    for _ in range(4):
+    for scene in range(1,5):
         os.write(controller,b'PRESS L\nPRESS R\n');time.sleep(.2);press('D_LEFT')
         os.write(controller,b'RELEASE L\nRELEASE R\n')
-    time.sleep(15);frame('coastal-cliff-water')
+        # The next input must wait for the newly focused terrain to load.
+        # Inputs during loading are intentionally ignored by the game.
+        time.sleep(15);frame('water-tour-'+str(scene))
+    frame('coastal-cliff-water')
 
 def save_menu():
     press('START');press('A')
