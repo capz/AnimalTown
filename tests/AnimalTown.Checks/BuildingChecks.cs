@@ -3,6 +3,7 @@ internal static class BuildingChecks
 {
     internal static void Run(Action<bool,string> check)
     {
+        AssetDemandChecks.Run(check);
         var s=new GameState(204);s.HousePlaced=true;
         check(BuildingWorld.Space(0)==1&&BuildingWorld.Space(1)==16&&BuildingWorld.Space(6)==21&&BuildingWorld.Space(7)==24&&BuildingWorld.Space(8)==25,"stable distinct building spaces");
         for(int b=0;b<BuildingWorld.Count;b++)check(BuildingWorld.Building(BuildingWorld.Space(b))==b,"building and space identity round trip");

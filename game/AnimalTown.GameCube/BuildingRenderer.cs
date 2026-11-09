@@ -2,23 +2,25 @@ using System;
 using AnimalTown;
 using Dolphin.Graphics;
 
-// All instances share seven tiny static parts per definition. No room mesh,
-// texture or pose is allocated on entry or per frame. Never load invisible NPC
-// rooms. The initial kit remains resident within an explicit combined ceiling.
+// Exteriors/doors stay resident. Shared interior parts are restored from verified
+// ARAM backing before player entry, and released after their last visible use.
 internal sealed class BuildingRenderer
 {
     private readonly Model?[] models=new Model?[BuildingCatalog.MaximumDefinitions*7];
     private readonly ModelInstance?[] parts=new ModelInstance?[BuildingCatalog.MaximumDefinitions*7];
     private readonly Transform[] roots=new Transform[BuildingWorld.Count],poses=new Transform[32];
     private readonly bool[] ready=new bool[BuildingCatalog.MaximumDefinitions];
+    private readonly AssetResidency residency;
     private int used;
     internal int ResidentBytes {get;private set;}
-    internal BuildingRenderer(Transform world)
+    internal BuildingRenderer(Transform world,AssetResidency residency)
     {
+        this.residency=residency;
         for(int i=0;i<roots.Length;i++)roots[i]=new Transform{Parent=world};for(int i=0;i<poses.Length;i++)poses[i]=new Transform{Parent=world};
     }
     private System.Threading.Tasks.Task<Model>? pending;
     private int loadType,loadPart,typeStartBytes;
+    private string pendingPath="";
     internal int LoadedParts=>loadType*7+loadPart;
     internal string LoadingLabel {get;private set;}="Loading buildings";
     internal bool AdvanceLoading()
@@ -28,15 +30,15 @@ internal sealed class BuildingRenderer
         try{
             if(pending==null){
                 string name=loadPart==0?d.Exterior:loadPart==1?d.Door:loadPart==2?d.Floor:loadPart==3?d.North:loadPart==4?d.East:loadPart==5?d.South:d.West;
-                LoadingLabel="Loading "+name;pending=Model.LoadAsync(TexturePolicy.ModelPath(name,TextureResolution.Size128),default,256*1024);return false;
+                LoadingLabel="Loading "+name;pendingPath=TexturePolicy.ModelPath(name,TextureResolution.Size128);pending=Model.LoadAsync(pendingPath,default,256*1024);return false;
             }
             if(!pending.IsCompleted)return false;
-            int slot=loadType*7+loadPart;models[slot]=pending.GetAwaiter().GetResult();parts[slot]=models[slot]!.CreateInstance(16*1024);
+            int slot=loadType*7+loadPart;models[slot]=pending.GetAwaiter().GetResult();residency.Register(AssetDemand.BuildingPart(loadType,loadPart),models[slot]!,pendingPath,loadPart<2);parts[slot]=models[slot]!.CreateInstance(16*1024);
             ResidentBytes+=models[slot]!.NativeBytes+parts[slot]!.NativeBytes;
             if(ResidentBytes>768*1024)throw new InvalidOperationException("Building resident memory budget");
             loadPart++;if(loadPart==7)ready[loadType]=true;
         }catch(Exception error){
-            for(int i=0;i<7;i++){int slot=loadType*7+i;parts[slot]?.Dispose();parts[slot]=null;models[slot]?.Dispose();models[slot]=null;}
+            for(int i=0;i<7;i++){int slot=loadType*7+i;residency.Forget(AssetDemand.BuildingPart(loadType,i));parts[slot]?.Dispose();parts[slot]=null;models[slot]?.Dispose();models[slot]=null;}
             ResidentBytes=typeStartBytes;loadPart=7;Dolphin.Diagnostics.DebugOverlay.WriteLine("BUILDING ASSET ERROR "+d.Id+": "+error.Message);
         }
         pending=null;if(loadPart==7){loadType++;loadPart=0;typeStartBytes=ResidentBytes;}
@@ -46,7 +48,7 @@ internal sealed class BuildingRenderer
     internal bool Ready(int type)=>type>=0&&type<ready.Length&&ready[type];
     private void Part(Renderer renderer,int type,int part,Transform parent,Vector3 position,Vector3 scale,float yaw=0)
     {
-        if(!Ready(type))return;if(used==poses.Length)throw new InvalidOperationException("Building draw budget");var pose=poses[used++];pose.Parent=parent;pose.LocalPosition=position;pose.LocalScale=scale;pose.LocalRotation=new Quaternion(0,(float)Math.Sin(yaw*.5f),0,(float)Math.Cos(yaw*.5f));renderer.DrawModel(parts[type*7+part]!,pose);
+        if(!Ready(type)||!residency.Ready(AssetDemand.BuildingPart(type,part)))return;if(used==poses.Length)throw new InvalidOperationException("Building draw budget");var pose=poses[used++];pose.Parent=parent;pose.LocalPosition=position;pose.LocalScale=scale;pose.LocalRotation=new Quaternion(0,(float)Math.Sin(yaw*.5f),0,(float)Math.Cos(yaw*.5f));renderer.DrawModel(parts[type*7+part]!,pose);
     }
     internal void Exterior(Renderer renderer,GameState state,int building,PortalSystem doors)
     {

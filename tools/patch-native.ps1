@@ -68,6 +68,21 @@ extern int animaltown_shadows_stats(int);
 Copy-Item (Join-Path $Root 'tools/native-shadow-union.c') (Join-Path $nativeRoot 'source/animaltown_shadow_union.c') -Force
 Copy-Item (Join-Path $Root 'tools/native-shadow-union.h') (Join-Path $nativeRoot 'include/animaltown_shadow_union.h') -Force
 Copy-Item (Join-Path $Root 'tools/native-shadow-union-gx.inc') (Join-Path $nativeRoot 'source/animaltown_shadow_union_gx.inc') -Force
+# Game-owned, serialized model backing/restore. Never infer managed field offsets.
+$assetBridge=@{Capture=4;Advance=2;State=1;Stats=1;Forget=1}
+foreach($method in $assetBridge.Keys){
+    $n=$assetBridge[$method];$parameters=((1..$n|ForEach-Object {'intptr_t (\w+)'}) -join ', ')
+    $pattern='intptr_t (dnd_value_AnimalTown_GameCube_NativeAssetResidency_'+$method+'_[a-z0-9]+)\('+$parameters+'\) \{.*?\r?\n\}'
+    if(([regex]::Matches($generated,$pattern,[Text.RegularExpressions.RegexOptions]::Singleline)).Count -ne 1){throw "Pinned asset residency bridge changed: $method"}
+    $operation=$method.ToLowerInvariant()
+    $generated=[regex]::Replace($generated,$pattern,[Text.RegularExpressions.MatchEvaluator]{param($hit)
+        $arguments=@();for($i=0;$i -lt $n;$i++){$cast=if($method -eq 'Capture' -and $i -eq 3){'(DndString*)'}elseif($method -eq 'Advance' -and $i -eq 0){'(DndArray*)'}else{'(int)'};$arguments+=$cast+$hit.Groups[$i+2].Value}
+        'intptr_t '+$hit.Groups[1].Value+'('+((0..($n-1)|ForEach-Object {'intptr_t '+$hit.Groups[$_+2].Value}) -join ', ')+') { return animaltown_assets_'+$operation+'('+($arguments -join ',')+'); }'
+    },[Text.RegularExpressions.RegexOptions]::Singleline)
+}
+$generated="#include `"dnd_managed.h`"`nextern int animaltown_assets_capture(int,int,int,DndString*);`nextern int animaltown_assets_advance(DndArray*,int);`nextern int animaltown_assets_state(int);`nextern int animaltown_assets_stats(int);`nextern int animaltown_assets_forget(int);`n"+$generated
+[IO.File]::WriteAllText($generatedPath,$generated)
+Copy-Item (Join-Path $Root 'tools/native-asset-residency.c') (Join-Path $nativeRoot 'source/animaltown_asset_residency.c') -Force
 $gxPath=Join-Path $nativeRoot 'source/graphics_gx.c';$gx=[IO.File]::ReadAllText($gxPath)
 $gxSignature='void dnd_draw_backend_vertices(const DndDrawVertex *v,int count,int primitive,const DndDrawTexture *texture,const DndDrawMaterial *material,const float *world) {'
 if(([regex]::Matches($gx,[regex]::Escape($gxSignature))).Count -ne 1){throw 'Pinned shadow ground scope changed'}

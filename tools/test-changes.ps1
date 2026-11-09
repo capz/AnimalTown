@@ -13,6 +13,7 @@ if($plan.tooling.Count){
     foreach($suite in $plan.tooling){Run dotnet @('run','--project','tools/AnimalTown.Tools','-c','Release','--no-build','--',($suite+'-check'),(Get-Location).Path)}
 }
 $commands=@{
+    assets='cc -std=c11 -O2 -Wall -Wextra -Werror -DDND_ARAM_TEST -ffunction-sections -fdata-sections -Iout/sdk-native/include tests/native-asset-residency.c out/sdk-native/source/aram.c out/sdk-native/source/model.c out/sdk-native/source/model_animation.c -Wl,--gc-sections -lm -o /tmp/animaltown-assets && /tmp/animaltown-assets'
     card='cc -std=c11 -Wall -Wextra -Werror tests/native-card-read.c -o /tmp/animaltown-card-read && /tmp/animaltown-card-read'
     uv='cc -std=c11 -Wall -Wextra -Werror tests/native-uv-topology.c -o /tmp/animaltown-uv-topology && /tmp/animaltown-uv-topology'
     texture='cc -std=c11 -Wall -Wextra -Werror -Iout/sdk-native/include tests/native-texture-pages.c -o /tmp/animaltown-texture-pages && /tmp/animaltown-texture-pages'

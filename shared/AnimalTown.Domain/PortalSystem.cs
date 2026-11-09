@@ -14,6 +14,8 @@ public sealed class PortalSystem
     }
     public readonly Transition[] Actors=new Transition[BuildingWorld.Actors];
     public readonly bool[] Ready={true,true,true,true};
+    // Runtime graphics readiness, never persisted or required for distant NPCs.
+    public readonly bool[] VisualReady={true,true,true,true,true,true,true};
     private readonly int[] owners=new int[BuildingWorld.Count];
     public PortalSystem(){for(int i=0;i<Actors.Length;i++)Actors[i]=new Transition();for(int i=0;i<owners.Length;i++)owners[i]=-1;}
     public bool Busy(int actor)=>Actors[actor].Phase!=DoorPhase.Idle;
@@ -53,6 +55,7 @@ public sealed class PortalSystem
                 t.Source=new ActorLocation(t.Source.Space.Value,t.Source.X,t.Source.Z,t.Source.Space.IsTown?(float)Math.PI:0);BuildingWorld.SetLocation(s,actor,t.Source);
             }
             if(++t.Tick==CommitTick){
+                if(!VisualReady[actor]){t.Tick--;continue;}
                 if(!CorridorClear(s,actor,t)||!BuildingWorld.CanStand(s,t.Destination.Space.Value,t.Destination.X,t.Destination.Z,actor,true)){
                     t.Tick--;if(++t.Wait>MaximumWait)Cancel(actor);continue;
                 }

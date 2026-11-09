@@ -42,6 +42,12 @@ internal static class TextureCache
     internal static CachedTexture? Find(string source,bool atlas)
     {for(int i=0;i<entries.Length;i++){var e=entries[i];if(e!=null&&e.Source==source&&e.Atlas==atlas){e.References++;e.LastUse=++clock;Hits++;return e;}}return null;}
     internal static void Release(CachedTexture source){if(source.References<1)throw new InvalidOperationException("Texture lease released twice");source.References--;}
+    internal static void ReleaseAndDiscard(CachedTexture source)
+    {
+        Release(source);if(source.References!=0)return;
+        for(int i=0;i<entries.Length;i++)if(entries[i]==source){Dispose(source);entries[i]=null;Evictions++;return;}
+        throw new InvalidOperationException("Discarded texture is not registered");
+    }
     internal static CachedTexture Store(CachedTexture entry)
     {
         if(GraphicsDevice.Default.IsFrameActive)throw new InvalidOperationException("Load textures between frames");
