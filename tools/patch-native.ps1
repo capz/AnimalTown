@@ -15,6 +15,13 @@ foreach($mask in @('GroundShadow_Atlas','VillagerShadowPatch_Texture')){
         throw "Native shadow mask $mask requires two integer byte stores; preserve the Opacity byte-return boundary"
     }
 }
+# Cliff chunks contain only byte/boolean array writes. Keep them integer too.
+$cliffPattern='intptr_t dnd_value_AnimalTown_Domain_AnimalTown_CliffShadowMap_Advance_[a-z0-9]+\(intptr_t \w+\) \{.*?\r?\n\}'
+$cliffStores=[regex]::Matches($generated,$cliffPattern,[Text.RegularExpressions.RegexOptions]::Singleline)
+if($cliffStores.Count -ne 1 -or $cliffStores[0].Value -match 'dnd_array_store_r[48]_fast' -or
+   ([regex]::Matches($cliffStores[0].Value,'dnd_array_store_u1_fast')).Count -ne 2){
+    throw 'Cliff shadow tiles require two integer byte stores'
+}
 $pattern='intptr_t (dnd_value_AnimalTown_GameCube_NativeCalendar_Read_[a-z0-9]+)\(void\) \{.*?\r?\n\}'
 $matchesFound=[regex]::Matches($generated,$pattern,[Text.RegularExpressions.RegexOptions]::Singleline)
 if ($matchesFound.Count -ne 1) { throw 'Pinned AOT RTC bridge signature changed' }
@@ -35,20 +42,21 @@ $generated="extern int animaltown_uv_mode(int);`n"+$generated
 [IO.File]::WriteAllText($generatedPath,$generated)
 # Pinned, game-owned coverage union bridge. All buffers use SDK resource
 # accounting; shader hooks shade existing ground geometry exactly once.
-$shadowArgs=@{Init=2;Begin=3;Mesh=5;Active=3;Prepare=1;Scope=1;Stats=1}
+$shadowArgs=@{Init=2;Terrain=3;Begin=3;Mesh=5;Active=3;Prepare=1;Scope=1;Stats=1}
 foreach($method in $shadowArgs.Keys){
     $n=$shadowArgs[$method];$argsPattern=if($n){((1..$n|ForEach-Object {'intptr_t (\w+)'}) -join ', ')}else{'void'}
     $p='intptr_t (dnd_value_AnimalTown_GameCube_NativeShadows_'+$method+'_[a-z0-9]+)\('+$argsPattern+'\) \{.*?\r?\n\}'
     if(([regex]::Matches($generated,$p,[Text.RegularExpressions.RegexOptions]::Singleline)).Count -ne 1){throw "Pinned shadow union bridge changed: $method"}
     $m=$method.ToLowerInvariant()
     $generated=[regex]::Replace($generated,$p,[Text.RegularExpressions.MatchEvaluator]{param($hit)
-        $a=@();for($i=0;$i -lt $n;$i++){$cast=if(($method -eq 'Init') -or ($method -eq 'Mesh' -and $i -ge 3) -or ($method -eq 'Active' -and $i -eq 2)){'(DndArray*)'}else{'(int)'};$a+=$cast+$hit.Groups[$i+2].Value}
+        $a=@();for($i=0;$i -lt $n;$i++){$cast=if(($method -eq 'Init') -or ($method -eq 'Terrain' -and $i -eq 0) -or ($method -eq 'Mesh' -and $i -ge 3) -or ($method -eq 'Active' -and $i -eq 2)){'(DndArray*)'}else{'(int)'};$a+=$cast+$hit.Groups[$i+2].Value}
         'intptr_t '+$hit.Groups[1].Value+'('+$(if($n){((0..($n-1)|ForEach-Object {'intptr_t '+$hit.Groups[$_+2].Value}) -join ', ')}else{'void'})+') { return animaltown_shadows_'+$m+'('+($a -join ',')+'); }'
     },[Text.RegularExpressions.RegexOptions]::Singleline)
 }
 $generated=@'
 #include "dnd_managed.h"
 extern int animaltown_shadows_init(DndArray*,DndArray*);
+extern int animaltown_shadows_terrain(DndArray*,int,int);
 extern int animaltown_shadows_begin(int,int,int);
 extern int animaltown_shadows_mesh(int,int,int,DndArray*,DndArray*);
 extern int animaltown_shadows_active(int,int,DndArray*);

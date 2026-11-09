@@ -24,5 +24,6 @@ internal sealed class MapBackground
         town=current;version=current.TerrainVersion;
     }
     internal static Color32 TileColor(int t)=>t==1||t==(int)Terrain.Sea?new Color32(75,154,187):t==2?new Color32(167,119,73):t==3?new Color32(229,209,150):t==4||WaterTerrain.IsCoast(t)?new Color32(130,127,92):t==5?new Color32(191,179,147):new Color32(119,168,88);
-    internal void Draw(Draw2D ui)=>ui.DrawTexture(texture!,new RectF(0,0,Samples,Samples),new RectF(160,115,Size,Size),Color32.White);
+    internal void Draw(Draw2D ui)=>Draw(ui,new RectF(160,115,Size,Size));
+    internal void Draw(Draw2D ui,RectF bounds)=>ui.DrawTexture(texture!,new RectF(0,0,Samples,Samples),bounds,Color32.White);
 }

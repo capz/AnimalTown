@@ -18,6 +18,7 @@ internal sealed class TerrainRenderer
     internal readonly Transform ScrollTransform=new Transform();
     private readonly CloudShadows clouds=new CloudShadows();
     private readonly ObjectShadows shadows;
+    private readonly CliffShadows cliffs=new CliffShadows();
     private readonly Color32[] baseTints=new Color32[FloorStrips.MaximumMaterials];
     private readonly Material[] materials=new Material[FloorStrips.MaximumMaterials];
     private readonly CachedTexture?[] textures=new CachedTexture?[FloorStrips.MaximumMaterials];
@@ -83,7 +84,7 @@ internal sealed class TerrainRenderer
         ScrollTransform.LocalPosition=new Vector3(0,scroll.Y,scroll.Z);
         ScrollTransform.LocalRotation=new Quaternion(scroll.HalfSin,0,0,scroll.HalfCos);
         int steps=0;stream.Prepare(state.X,state.Z);
-        shadows.Prepare(state);
+        shadows.Prepare(state);cliffs.Prepare(state.Town);
         // Landscape readiness takes priority. Moving shadows use spare stages
         // after terrain. Masks publish first so an indivisible terrain stage
         // cannot consume their reservation. New receivers publish next frame.
@@ -97,6 +98,7 @@ internal sealed class TerrainRenderer
             if(complete){stream.Complete();building=-1;stream.Prepare(state.X,state.Z);}
         }
         while(steps<8&&Clock.Timestamp<deadline){if(!movingShadows.Advance())break;steps++;}
+        while(steps<8&&Clock.Timestamp<deadline){if(!cliffs.Advance())break;steps++;}
         while(steps<8&&Clock.Timestamp<deadline){if(!shadows.Advance())break;steps++;}
         gallery.PrepareGallery(state,this,cliffPreview);
         VisibleTriangles=gallery.Triangles+(GroundRingActive?GroundRingPlan.IndexCount/3:0);RejectedQuads=0;visibleGroundMask=0;
@@ -104,6 +106,11 @@ internal sealed class TerrainRenderer
             var section=sections[i]!;VisibleTriangles+=section.Triangles;
             visibleGroundMask|=section.GroundMask|section.Walls.GroundMask;
         }
+    }
+    internal void WarmCliffs(Town town,long deadline)
+    {
+        cliffs.Prepare(town);int steps=0;
+        while(steps<8&&Clock.Timestamp<deadline){if(!cliffs.Advance())break;steps++;}
     }
     internal void CycleCloudCover()=>clouds.Cover=clouds.Cover==.5f?0:clouds.Cover==0?1:.5f;
     internal float CloudCover=>clouds.Cover;
@@ -122,8 +129,11 @@ internal sealed class TerrainRenderer
     internal void Draw(Renderer renderer,Transform parent,int room)
     {
         // Keep water below banks, and transparent foam below opaque soil/lips.
-        for(int i=0;i<stream.Count;i++)if(stream.Visible[i])Add(renderer,waterMaterial.Surface,sections[i]!.Water.SurfaceMesh);
-        Flush(renderer,waterMaterial.Surface);
+        NativeShadows.Scope(3);
+        try{
+            for(int i=0;i<stream.Count;i++)if(stream.Visible[i])Add(renderer,waterMaterial.Surface,sections[i]!.Water.SurfaceMesh);
+            Flush(renderer,waterMaterial.Surface);
+        }finally{NativeShadows.Scope(0);}
         for(int i=0;i<stream.Count;i++)if(stream.Visible[i])Add(renderer,waterMaterial.Foam,sections[i]!.Water.FoamMesh);
         Flush(renderer,waterMaterial.Foam);
         for(int i=0;i<stream.Count;i++)if(stream.Visible[i])Add(renderer,soil.Material,sections[i]!.Walls.SoilMesh);
