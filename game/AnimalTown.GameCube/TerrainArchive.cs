@@ -18,7 +18,7 @@ internal sealed class TerrainArchive
     private readonly View?[] views=new View?[Capacity];
     private readonly bool[] visible=new bool[TerrainArchivePlan.Count],bound=new bool[TerrainArchivePlan.Count];
     private readonly int[] first=new int[TerrainArchivePlan.Count],count=new int[TerrainArchivePlan.Count],triangles=new int[TerrainArchivePlan.Count];
-    private readonly int[] heads=new int[107],links=new int[Capacity];
+    private readonly int[] heads=new int[108],links=new int[Capacity];
     private readonly TerrainArchiveView selection=new TerrainArchiveView();
     private TerrainSection? scratch;
     private int baked,revision=-1;

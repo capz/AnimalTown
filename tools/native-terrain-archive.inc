@@ -49,7 +49,7 @@ int animaltown_terrain_reset(int count){
 }
 int animaltown_terrain_append(int section,int kind,int token,int used){
     Resource *source=find(token,MESH);
-    if(dnd_device_active()||dnd_raw_depth()||ta_sealed||section<0||section!=ta_completed||section>=ta_sections||kind<0||kind>=107||!source||source->geometry||source->terrain_parent||source->commands||source->format<1||source->format>2||used<0||ta_parts>=TA_PARTS)return -1;
+    if(dnd_device_active()||dnd_raw_depth()||ta_sealed||section<0||section!=ta_completed||section>=ta_sections||kind<0||kind>=108||!source||source->geometry||source->terrain_parent||source->commands||source->format<1||source->format>2||used<0||ta_parts>=TA_PARTS)return -1;
     int n=source->indices?source->vertices:used?used:source->vertices,m=source->indices;
     if(n<1||n>source->vertices||(!m&&n%3))return -1;
     size_t bytes=(size_t)n*sizeof(DndDrawVertex)+(size_t)m*2;
