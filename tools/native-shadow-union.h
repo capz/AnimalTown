@@ -14,6 +14,8 @@
 #define SU_SIDE 64
 #define SU_BYTES 4096
 #define SU_OPACITY 66
+#define SU_TERRAIN_SIDE 512
+#define SU_TERRAIN_BYTES (SU_TERRAIN_SIDE*SU_TERRAIN_SIDE)
 #define SU_SUPPORT_BYTES ((66*66+7)/8)
 #define SU_SUPPORT_PAGES 4
 typedef struct {
@@ -21,13 +23,15 @@ typedef struct {
     unsigned revision;
     float x,z,bounds[4],uv[SU_VERTICES*2];
 } SuCaster;
-typedef struct { int used,x,z,space,needed,static_dirty,dirty,publish,base_blank,blank; unsigned version; } SuPage;
+typedef struct { int used,x,z,space,needed,static_dirty,dirty,publish,base_blank,blank,static_pending; unsigned version; } SuPage;
 typedef struct {int used,x,z,space;unsigned revision,use;uint8_t bits[SU_SUPPORT_BYTES];} SuSupport;
 typedef int (*SuCanWork)(void*);
 typedef struct {
     SuCaster caster[SU_CASTERS]; SuPage page[SU_PAGES];
     uint16_t lookup[SU_LOOKUP];
     uint8_t shapes[4*4096+1024];
+    uint8_t *terrain;
+    int terrain_ready;
     SuSupport support[(SU_CASTERS-SU_STATIC)*SU_SUPPORT_PAGES];
     uint8_t static_work[SU_BYTES];
     int static_page,static_caster,cursor,deferred,support_builds,support_hits;
@@ -36,10 +40,39 @@ typedef struct {
     int space,enabled,scope,overflow,changed,static_rasters,dynamic_rasters,layout_dirty;
     float span;
 } SuState;
-static inline size_t su_storage_bytes(void){return ((sizeof(SuState)+31)&~(size_t)31)+SU_PAGES*SU_BYTES*2;}
+static inline size_t su_storage_bytes(void){return ((sizeof(SuState)+31)&~(size_t)31)+SU_PAGES*SU_BYTES*2+SU_TERRAIN_BYTES;}
 static inline void su_init(SuState *s){
     memset(s,0,su_storage_bytes());s->span=8;s->static_page=-1;
-    s->base=(uint8_t*)s+((sizeof(SuState)+31)&~(size_t)31);s->pixels=s->base+SU_PAGES*SU_BYTES;
+    s->base=(uint8_t*)s+((sizeof(SuState)+31)&~(size_t)31);s->pixels=s->base+SU_PAGES*SU_BYTES;s->terrain=s->pixels+SU_PAGES*SU_BYTES;
+}
+/* One terrain texture, shared by every section; no extra caster/page slots. */
+static inline int su_terrain_offset(int x,int y){return ((y/4)*(SU_TERRAIN_SIDE/8)+x/8)*32+y%4*8+x%8;}
+static inline void su_terrain_changed(SuState *s){
+    for(int i=0;i<SU_PAGES;i++)if(s->page[i].used&&s->page[i].space==0){
+        s->page[i].static_dirty=s->page[i].dirty=1;
+        s->page[i].base_blank=0;s->page[i].version=++s->serial;
+    }
+    if(s->static_page>=0&&s->page[s->static_page].space==0)s->static_page=-1;
+}
+static inline void su_terrain_reset(SuState *s){
+    s->terrain_ready=0;memset(s->terrain,0,SU_TERRAIN_BYTES);su_terrain_changed(s);
+}
+static inline void su_terrain_publish(SuState *s){s->terrain_ready=1;su_terrain_changed(s);}
+static inline uint8_t su_terrain_sample(const SuState *s,float x,float z){
+    if(!s->terrain_ready)return 0;
+    float fx=x*2+.5f,fz=z*2+.5f;
+    if(fx<0||fz<0||fx>=SU_TERRAIN_SIDE-1||fz>=SU_TERRAIN_SIDE-1)return 0;
+    int ix=(int)fx,iz=(int)fz;float tx=fx-ix,tz=fz-iz;
+    float a=s->terrain[su_terrain_offset(ix,iz)],b=s->terrain[su_terrain_offset(ix+1,iz)];
+    float c=s->terrain[su_terrain_offset(ix,iz+1)],d=s->terrain[su_terrain_offset(ix+1,iz+1)];
+    return (uint8_t)((a+(b-a)*tx)*(1-tz)+(c+(d-c)*tx)*tz+.5f);
+}
+static inline void su_seed_terrain(const SuState *s,const SuPage *p,uint8_t *dest){
+    memset(dest,0,SU_BYTES);
+    if(p->space||!s->terrain_ready)return;
+    float step=s->span/62;
+    for(int y=0;y<SU_SIDE;y++)for(int x=0;x<SU_SIDE;x++)
+        dest[((y/4)*8+x/8)*32+y%4*8+x%8]=su_terrain_sample(s,p->x*s->span+(x-.5f)*step,p->z*s->span+(y-.5f)*step);
 }
 static inline unsigned su_hash(int space,int x,int z){
     uint32_t h=(uint32_t)x*0x9e3779b1u^(uint32_t)z*0x85ebca6bu^(uint32_t)space*0xc2b2ae35u;
@@ -172,17 +205,17 @@ static inline void su_raster(SuState *s,const SuPage *p,const SuCaster *c,uint8_
 }
 static inline int su_can_work(SuCanWork can,void *context){return !can||can(context);}
 static inline void su_static_work(SuState *s,int static_budget,SuCanWork can,void *context){
-    if(static_budget>0){
+    if(static_budget>0&&su_can_work(can,context)){
         if(s->static_page<0)for(int i=0;i<SU_PAGES;i++)if(s->page[i].used&&s->page[i].needed&&s->page[i].space==s->space&&s->page[i].static_dirty){
-            s->static_page=i;s->static_caster=0;s->static_version=s->page[i].version;memset(s->static_work,0,SU_BYTES);break;
+            s->static_page=i;s->static_caster=0;s->static_version=s->page[i].version;su_seed_terrain(s,&s->page[i],s->static_work);break;
         }
         while(s->static_page>=0&&static_budget>0&&su_can_work(can,context)){
             SuPage *p=&s->page[s->static_page];
             if(s->static_caster<SU_STATIC){
                 SuCaster *c=&s->caster[s->static_caster++];if(c->active&&c->space==s->space){su_raster(s,p,c,s->static_work);s->static_rasters++;}
             }else{
-                memcpy(s->base+s->static_page*SU_BYTES,s->static_work,SU_BYTES);p->static_dirty=0;p->base_blank=0;p->blank=0;p->dirty=1;s->static_page=-1;static_budget--;
-                if(!can&&static_budget>0)for(int i=0;i<SU_PAGES;i++)if(s->page[i].used&&s->page[i].needed&&s->page[i].space==s->space&&s->page[i].static_dirty){s->static_page=i;s->static_caster=0;s->static_version=s->page[i].version;memset(s->static_work,0,SU_BYTES);break;}
+                memcpy(s->base+s->static_page*SU_BYTES,s->static_work,SU_BYTES);p->static_dirty=0;p->base_blank=0;p->blank=0;p->dirty=1;p->static_pending=1;s->static_page=-1;static_budget--;
+                if(!can&&static_budget>0)for(int i=0;i<SU_PAGES;i++)if(s->page[i].used&&s->page[i].needed&&s->page[i].space==s->space&&s->page[i].static_dirty){s->static_page=i;s->static_caster=0;s->static_version=s->page[i].version;su_seed_terrain(s,&s->page[i],s->static_work);break;}
             }
         }
     }
@@ -229,19 +262,19 @@ static inline void su_prepare_budget(SuState *s,int static_budget,SuCanWork can,
         int i=(first+n)%SU_PAGES;SuPage *p=&s->page[i];if(p->space!=s->space||!p->used)continue;
         uint8_t *base=s->base+i*SU_BYTES,*dest=s->pixels+i*SU_BYTES;
         if(!p->needed){
-            if(p->dirty||p->static_dirty){memset(base,0,SU_BYTES);memset(dest,0,SU_BYTES);p->dirty=p->static_dirty=0;p->publish=1;p->blank=1;s->changed++;}
+            if(p->dirty||p->static_dirty){memset(base,0,SU_BYTES);memset(dest,0,SU_BYTES);p->dirty=p->static_dirty=p->static_pending=0;p->publish=1;p->blank=1;s->changed++;}
             continue;
         }
         if(!p->dirty)continue;
         if(!su_can_work(can,context)){
             /* Erase old moving coverage rather than showing a trail. Keep the
              * page pending; round-robin scheduling gives every page a turn. */
-            if(!p->blank){memcpy(dest,base,SU_BYTES);p->blank=1;p->publish=1;s->changed++;}
+            if(!p->blank){memcpy(dest,base,SU_BYTES);p->blank=1;p->static_pending=0;p->publish=1;s->changed++;}
             s->deferred++;continue;
         }
         memcpy(dest,base,SU_BYTES);
         for(int j=SU_STATIC;j<SU_CASTERS;j++){SuCaster *c=&s->caster[j];if(c->active&&c->space==s->space){su_raster(s,p,c,dest);s->dynamic_rasters++;}}
-        p->dirty=0;p->blank=0;p->publish=1;s->changed++;s->cursor=(i+1)%SU_PAGES;
+        p->dirty=0;p->blank=0;p->static_pending=0;p->publish=1;s->changed++;s->cursor=(i+1)%SU_PAGES;
     }
     if(can)su_static_work(s,static_budget,can,context);
 }

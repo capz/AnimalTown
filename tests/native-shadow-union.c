@@ -14,7 +14,7 @@ static int pixel(float x,float z){int p=su_find(s,(int)floorf(x/8),(int)floorf(z
 static int credits;
 static int allow_work(void *unused){(void)unused;return credits-->0;}
 int main(void){
-    s=calloc(1,su_storage_bytes());CHECK(s!=NULL);CHECK(su_storage_bytes()<1536*1024);
+    s=aligned_alloc(32,su_storage_bytes());CHECK(s!=NULL);CHECK(su_storage_bytes()<1792*1024);
     reset();caster(0,0,rect,6,bounds);su_prepare(s,SU_PAGES);CHECK(pixel(4,4)==SU_OPACITY);
     uint8_t original[SU_BYTES];int page=su_find(s,0,0);memcpy(original,s->pixels+page*SU_BYTES,SU_BYTES);
     for(int i=1;i<32;i++)caster(i,i%4,rect,6,bounds);
@@ -114,5 +114,29 @@ int main(void){
     uint8_t *pixels=malloc(SU_PAGES*SU_BYTES);CHECK(pixels!=NULL);memcpy(pixels,s->pixels,SU_PAGES*SU_BYTES);
     su_mesh(s,32,6,4,square,box);su_active(s,32,1,4,4);su_prepare(s,SU_PAGES);
     CHECK(memcmp(pixels,s->pixels,SU_PAGES*SU_BYTES)==0);free(pixels);
+    /* Cliff coverage survives object movement, merges by maximum, and never
+     * leaks into interiors. Global sampling is independent of page allocation. */
+    reset();CHECK((uintptr_t)s->terrain%32==0);memset(s->shapes,0,sizeof(s->shapes));
+    for(int z=0;z<32;z++)for(int x=0;x<32;x++)s->terrain[su_terrain_offset(x,z)]=33;
+    CHECK(su_terrain_sample(s,4,4)==0);su_terrain_publish(s);
+    CHECK(su_terrain_sample(s,4,4)==33);CHECK(su_terrain_sample(s,80,80)==0);
+    CHECK(su_terrain_sample(s,-1,4)==0);
+    caster(0,0,rect,6,bounds);su_prepare(s,SU_PAGES);CHECK(pixel(4,4)==33);
+    memset(s->shapes,255,4096);su_dirty(s,&s->caster[0]);su_prepare(s,SU_PAGES);
+    CHECK(pixel(4,4)==SU_OPACITY); /* max(33,66), never 99 */
+    memset(s->shapes,0,4096);su_dirty(s,&s->caster[0]);su_prepare(s,SU_PAGES);CHECK(pixel(4,4)==33);
+    su_begin(s,16,1,4);caster(32,4,rect,6,bounds);su_prepare(s,SU_PAGES);
+    CHECK(pixel(4,4)==0);
+    su_begin(s,0,1,0);su_prepare(s,SU_PAGES);CHECK(pixel(4,4)==33);
+    /* A dirty moving circle may defer, but the already composed cliff/scenery
+     * base remains a publishable local page. New static bases wait one cycle. */
+    next();caster(32,4,rect,6,bounds);credits=1000;su_prepare_budget(s,1,allow_work,NULL);
+    int terrain_page=su_find(s,0,0);
+    CHECK(terrain_page>=0&&!s->page[terrain_page].static_pending);
+    next();su_active(s,32,1,5,5);credits=0;su_prepare_budget(s,1,allow_work,NULL);
+    CHECK(s->page[terrain_page].dirty&&!s->page[terrain_page].static_dirty&&!s->page[terrain_page].static_pending);
+    CHECK(pixel(4,4)==33);
+    su_terrain_reset(s);CHECK(!s->terrain_ready&&su_terrain_sample(s,4,4)==0);
+    su_prepare(s,SU_PAGES);CHECK(pixel(4,4)==0);
     free(s);printf("Shadow union: %d checks; max overlap, soft edges, trails, clipping, seams, rooms and 156-page bound passed\n",assertions);return 0;
 }

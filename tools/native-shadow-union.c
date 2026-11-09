@@ -18,6 +18,24 @@ int animaltown_shadows_init(DndArray *atlas,DndArray *circle){
     for(int y=0;y<32;y++)for(int x=0;x<32;x++)shadows->shapes[4*4096+y*32+x]=c[(((y/4)*8+x/4)*16+y%4*4+x%4)*2];
     return 1;
 }
+/* Reset/32-byte tile write/publish all happen between frames. The old field is
+ * hidden while baking; one final flush makes the complete mask visible. */
+int animaltown_shadows_terrain(DndArray *tile,int offset,int mode){
+    if(!shadows||dnd_device_active()||!tile||tile->element_size!=1)return 0;
+    if(mode==0){if(tile->length)return 0;su_terrain_reset(shadows);return 1;}
+    if(mode==1){
+        if(shadows->terrain_ready||tile->length!=32||offset<0||offset%32||offset>SU_TERRAIN_BYTES-32)return 0;
+        const uint8_t *p=(const uint8_t*)tile->data;
+        for(int i=0;i<32;i++)if(p[i]>SU_OPACITY)return 0;
+        memcpy(shadows->terrain+offset,p,32);return 1;
+    }
+    if(mode==2){
+        if(tile->length)return 0;
+        dnd_draw_backend_flush(shadows->terrain,SU_TERRAIN_BYTES,0);
+        dnd_draw_backend_publish_texture();su_terrain_publish(shadows);return 1;
+    }
+    return 0;
+}
 int animaltown_shadows_begin(int space,int enabled,int size){if(!shadows)return 0;su_begin(shadows,space,enabled,size);return 1;}
 int animaltown_shadows_mesh(int slot,int count,int profile,DndArray *uv,DndArray *bounds){
     if(!shadows||slot<0||slot>=SU_CASTERS||count<0||count>SU_VERTICES||count%3||profile<0||profile>4||!uv||uv->element_size!=4||uv->length<(unsigned)count*2||!bounds||bounds->element_size!=4||bounds->length!=4)return 0;
@@ -52,7 +70,14 @@ const uint8_t *animaltown_shadows_page(float x,float z,float *origin){
     if(!shadows)return NULL;
     int px=(int)floorf(x/shadows->span),pz=(int)floorf(z/shadows->span),at=su_find(shadows,px,pz);
     origin[0]=px*shadows->span;origin[1]=pz*shadows->span;origin[2]=shadows->span;
-    return at>=0?shadows->pixels+at*SU_BYTES:NULL;
+    origin[3]=64;
+    if(shadows->scope!=3&&at>=0&&shadows->page[at].needed&&!shadows->page[at].static_dirty&&!shadows->page[at].static_pending)
+        return shadows->pixels+at*SU_BYTES;
+    if(shadows->space==0&&shadows->terrain_ready){
+        origin[0]=origin[1]=0;origin[2]=(SU_TERRAIN_SIDE-2)*.5f;origin[3]=SU_TERRAIN_SIDE;
+        return shadows->terrain;
+    }
+    return NULL;
 }
 int animaltown_shadows_stats(int kind){
     if(!shadows)return 0;

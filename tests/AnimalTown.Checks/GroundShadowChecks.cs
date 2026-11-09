@@ -4,6 +4,7 @@ internal static class GroundShadowChecks
 {
     internal static void Run(Action<bool,string> check)
     {
+        CliffShadowChecks.Run(check);
         VillagerShadowChecks.Run(check);
         ShadowCoverageChecks.Run(check);
         var t=new Town(73);Array.Fill(t.Tiles,(byte)Terrain.Grass);Array.Clear(t.Elevation);

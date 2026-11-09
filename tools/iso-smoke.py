@@ -26,6 +26,63 @@ def press(button):
 def screenshot(name):
     subprocess.run(['ffmpeg','-v','error','-f','x11grab','-video_size','800x600','-i',':93','-frames:v','1','-y',str(root/name)],env=env,check=True)
 
+
+def cliff_minimap():
+    def frame(name):
+        screenshot(name+'.png')
+        return subprocess.check_output(['ffmpeg','-v','error','-i',str(root/(name+'.png')),'-frames:v','1','-f','rawvideo','-pix_fmt','rgb24','-'])
+    def paper(pixels,left,top,right,bottom):
+        return sum(all(abs(pixels[(y*800+x)*3+c]-value)<=3 for c,value in enumerate((255,245,221)))
+                   for y in range(top,bottom) for x in range(left,right))
+    results=[]
+    def map_state(name,expected):
+        # Dolphin's 640x480 EFB appears in the 584-pixel-wide game viewport.
+        # Sample the panel around the map, not the area past the viewport edge.
+        pixels=frame(name);count=paper(pixels,450,310,620,435);visible=count>400
+        results.append(f'{name}: paper samples={count}, visible={visible}, expected={expected}')
+        (root/'cliff-minimap.txt').write_text('\n'.join(results)+'\n')
+        if visible!=expected:raise AssertionError('Unexpected minimap visibility: '+results[-1])
+        return pixels
+    # Normal onboarding; the starting area below z=42 is kept clear of trees.
+    press('A');press('D_UP');press('A');press('A');time.sleep(2);press('B');press('B');time.sleep(12)
+    pixels=map_state('hud-clean',False)
+    if paper(pixels,60,22,620,55)>200:raise AssertionError('Build/currency HUD panel remains visible')
+    os.write(controller,b'PRESS B\n')
+    def circles(count):
+        # Small south/east/north/west loops keep actual running in the clear
+        # arrival area without hitting the house or relying on a long random route.
+        for _ in range(count):
+            for x,y in ((.5,.35),(.65,.5),(.5,.65),(.35,.5)):
+                os.write(controller,f'SET MAIN {x} {y}\n'.encode());time.sleep(.35)
+    circles(2);map_state('minimap-before-six',False)
+    circles(6);map_state('minimap-running',True)
+    os.write(controller,b'SET MAIN 0.5 0.5\nRELEASE B\n')
+    time.sleep(1);map_state('minimap-stopping-grace',True)
+    time.sleep(5);map_state('minimap-hidden',False)
+    # Inspect the real generated terrace, with cloud motion disabled so the
+    # shadow comparison is not a comparison of different weather frames.
+    os.write(controller,b'PRESS L\nPRESS R\n');time.sleep(.2);press('D_RIGHT');press('START')
+    os.write(controller,b'RELEASE L\nRELEASE R\n');time.sleep(15)
+    on=frame('cliff-shadow-on')
+    os.write(controller,b'PRESS L\nPRESS R\nPRESS Z\n');time.sleep(.2);press('Y')
+    os.write(controller,b'RELEASE Z\nRELEASE L\nRELEASE R\n');time.sleep(2)
+    off=frame('cliff-shadow-off')
+    darkened=sum(sum(off[(y*800+x)*3:(y*800+x)*3+3])-sum(on[(y*800+x)*3:(y*800+x)*3+3])>45
+                 for y in range(150,340) for x in range(430,650))
+    results.append(f'Cliff shadow comparison: {darkened} darkened ground samples')
+    (root/'cliff-minimap.txt').write_text('\n'.join(results)+'\n')
+    if darkened<25:raise AssertionError('No visible ground shadow at the generated cliff')
+    os.write(controller,b'PRESS L\nPRESS R\nPRESS Z\n');time.sleep(.2)
+    for _ in range(3):press('Y')
+    os.write(controller,b'RELEASE Z\nRELEASE L\nRELEASE R\n')
+    for scene in range(1,5):
+        os.write(controller,b'PRESS L\nPRESS R\n');time.sleep(.2);press('D_LEFT')
+        os.write(controller,b'RELEASE L\nRELEASE R\n')
+        # The next input must wait for the newly focused terrain to load.
+        # Inputs during loading are intentionally ignored by the game.
+        time.sleep(15);frame('water-tour-'+str(scene))
+    frame('coastal-cliff-water')
+
 def save_menu():
     press('START');press('A')
 
@@ -347,7 +404,9 @@ with (root/'emulator.log').open('w') as log:
         if p.poll() is not None:
             raise RuntimeError(f'Dolphin exited during boot ({p.returncode}); see {root / "emulator.log"}')
         screenshot('screen.png')
-        if '--testing-menu' in sys.argv:
+        if '--cliff-minimap' in sys.argv:
+            cliff_minimap()
+        elif '--testing-menu' in sys.argv:
             testing_menu()
         elif '--building-reload' in sys.argv:
             press('A');time.sleep(5);building_view('building-reloaded-interior.png',True)

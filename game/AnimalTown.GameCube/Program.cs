@@ -62,6 +62,7 @@ internal sealed class TownGame
     private readonly LowPolyTrees trees;
     private readonly UiShapes uiShapes=new UiShapes();
     private readonly MapBackground mapBackground=new MapBackground();
+    private readonly RunningMinimap runningMinimap=new RunningMinimap();
     private readonly MenuNavigation menuNavigation=new MenuNavigation();
     private readonly WrappedText dialogueText=new WrappedText(41),itemTitleText=new WrappedText(14),saveStatusText=new WrappedText(48);
     private string wrappedDialogue="";
@@ -74,8 +75,6 @@ internal sealed class TownGame
     private string loadingLabel="Preparing town assets";
     private float cachedPlayerHeight;
     private float profiledX=float.NaN,profiledZ;
-    private long cachedWallet=long.MinValue,cachedDebt=long.MinValue;
-    private string walletLabel="",debtLabel="";
     private readonly string[] creationRows=new string[6];
     private int creationSpecies=-1,creationPalette=-1,creationSelected=-1;
     private string creationName="",creationPhrase="";
@@ -137,6 +136,7 @@ internal sealed class TownGame
     {
         if(resourcesReady||loadingFailed)return;
         try{
+            terrain.WarmCliffs(state.Town,Clock.Timestamp+1000);
             if(loadingIndex<models.Length){
                 if(loadingModel==null){loadingLabel="Loading "+modelNames[loadingIndex];loadingModel=ModelResources.LoadAsync(modelNames[loadingIndex]);return;}
                 if(!loadingModel.IsCompleted)return;
@@ -444,7 +444,8 @@ internal sealed class TownGame
     }
     internal void Step(ControllerState pad)
     {
-        if(!resourcesReady||room==0&&!terrain.Ready)return;
+        if(!resourcesReady||room==0&&!terrain.Ready){runningMinimap.Update(Clock.Timestamp,false,false);return;}
+        bool running=false;float beforeX=state.X,beforeZ=state.Z;
         tick++;
         if(tick%30==0)townClock.Update(NativeCalendar.ReadClock());
         if(tick%900==0){ReadCalendar();state.Rollover(day,month);}
@@ -462,7 +463,7 @@ internal sealed class TownGame
             if(!villagers.Doors.Busy(0)&&!(pad.L.IsHeld&&pad.R.IsHeld)&&PlayerMovement.Move(state,room,inputX,inputY,room==0?(int)pad.HeldButtons:0,pad.B.IsHeld,out float dx,out float dz))
             {
                 facingYaw=PlayerMovement.Yaw(dx,dz);PlayerMovement.Target(dx,dz,out faceX,out faceZ);
-                int clip=pad.B.IsHeld?1:0;moveClip=clip;desiredPlayerSpeed=1.05f;
+                int clip=pad.B.IsHeld?1:0;moveClip=clip;running=clip==1&&(state.X!=beforeX||state.Z!=beforeZ);desiredPlayerSpeed=1.05f;
             }
             else if(villagers.Doors.Moving(0)){
                 moveClip=0;desiredPlayerSpeed=1;
@@ -473,6 +474,7 @@ internal sealed class TownGame
             int oldRoom=room;villagers.Tick(state);
             if(room!=oldRoom){facingYaw=state.Facing;faceX=0;faceZ=room==0?1:-1;indoorCamera.Reset();}
         }
+        runningMinimap.Update(Clock.Timestamp,running,screen=="world"&&room==0&&waterInspection==0&&!cliffPreview);
         state.Facing=facingYaw;cachedPlayerHeight=PlayerHeight();if(room==0)RenderView.Prepare(state.X,state.Z,cachedPlayerHeight);
         animationClock.Step(0,moveClip,models[state.Species].Animations.Count>0);
         for(int i=1;i<7;i++){
@@ -566,7 +568,7 @@ internal sealed class TownGame
         else{int steps=0;while(steps<8&&Clock.Timestamp<preparationDeadline){if(!villagerShadows.Advance())break;steps++;}}
         FrameProfile.End(2,phase);
         if(room==0&&!terrain.Ready){DrawLoading(landscape:true);return;}
-        phase=FrameProfile.Start();uiShapes.Prepare(screen,screen=="menu"?menuTab:-1,batchedDrawing);if(batchedDrawing&&screen=="map")mapBackground.Prepare(state.Town);modelUsed=0;FrameProfile.End(8,phase);
+        phase=FrameProfile.Start();uiShapes.Prepare(screen,screen=="menu"?menuTab:-1,batchedDrawing);if((batchedDrawing&&screen=="map")||(runningMinimap.Visible&&screen=="world"&&room==0))mapBackground.Prepare(state.Town);modelUsed=0;FrameProfile.End(8,phase);
         phase=FrameProfile.Start();device.BeginFrame(room==0?new Color32(149,198,186):new Color32(32,40,39));
         float eyeHeight=PlayerHeight();
         if(room==0)camera.LookAt(new Vector3(state.X,CylinderWorld.CameraHeight+eyeHeight,state.Z+CylinderWorld.CameraBack),new Vector3(state.X,eyeHeight,state.Z-CylinderWorld.CameraAimAhead),new Vector3(0,1,0));
@@ -719,14 +721,11 @@ internal sealed class TownGame
     }
     private void DrawHud()
     {
-        var ink=new Color32(49,72,62);Panel(20,18,282,36);Text("AnimalTown / "+BuildInfo.Version,32,24,ink,.9f);
+        var ink=new Color32(49,72,62);
         if(FrameProfile.Enabled){
             Text((indexedModels?"GX indexed":"Direct")+(batchedDrawing?" / batched":" / baseline"),420,418,ink,.8f);
             Text((room==0&&terrain.GroundRingActive?"Ring / ":"")+"Shadows: "+NativeShadows.Stats(0)+" pages / "+NativeShadows.Stats(2)+" updated",420,433,ink,.65f);
         }
-        if(cachedWallet!=state.Wallet){cachedWallet=state.Wallet;walletLabel=state.Wallet+" acorns";}
-        if(cachedDebt!=state.Debt){cachedDebt=state.Debt;debtLabel="Loan "+state.Debt;}
-        Panel(410,18,210,56);Strong(walletLabel,427,22,ink,1.35f);Text(debtLabel,427,47,ink,.95f);
         Rounded(20,440,420,29,14.5f,new Color32(48,76,57,210));Text("A interact   X backpack   Y map",32,451,Color32.White,1.3f);
         if(screen=="world"&&room!=0){Panel(205,371,410,61);Text("C-stick turn view / L recenter",220,380,ink,.95f);Text(room>=16&&room<=21?state.Town.Residents[room-16].Name+"'s home":"Home",220,402,ink,1.1f);}
         if(screen=="world"){
@@ -741,7 +740,7 @@ internal sealed class TownGame
             const string tagline="A little life, well rooted.";Text(tagline,(640-font.Measure(tagline))/2,255,ink);
             Rounded(167,302,306,49,24.5f,new Color32(53,105,84));string prompt=loaded?"A  Continue your town":"A  Begin a new life";
             Strong(prompt,(640-strongFont.Measure(prompt))/2,312,new Color32(255,245,221));
-            Text("GameCube / "+BuildInfo.Version,187,367,ink,.9f);return;
+            return;
         }
         if(screen=="dialogue")
         { SpeechBubble();return; }
@@ -753,7 +752,7 @@ internal sealed class TownGame
         { Panel(115,181,410,132);Heading("Saving your town",142,199,ink);Text("Please keep the memory\ncard inserted.",142,245,ink,1.25f);return; }
         if(screen=="create")
         { Panel(55,90,530,295);Heading("Make yourself at home",78,102,ink);UpdateCreationRows();for(int i=0;i<creationRows.Length;i++){if(selected==i)Rounded(69,148+i*31,495,28,14,new Color32(221,231,188));Text(creationRows[i],75,149+i*31,ink);}return; }
-        if(screen=="world"){if(waterInspection!=0)Text("Water inspection "+waterInspection+" / L+R+Left cycles",42,320,ink);if(cliffPreview)Text("Cliff kit preview / L+R+Up closes",42,343,ink);return;}
+        if(screen=="world"){if(room==0&&runningMinimap.Visible)DrawMinimap();if(waterInspection!=0)Text("Water inspection "+waterInspection+" / L+R+Left cycles",42,320,ink);if(cliffPreview)Text("Cliff kit preview / L+R+Up closes",42,343,ink);return;}
         if((screen=="menu"&&menuTab==0)||screen=="sell"||screen=="item"){DrawBackpack();return;}
         Panel(45,75,550,350);string title=screen=="menu"?tabs[menuTab]:screen=="shop"?"Store stock":screen=="store"?"Hearth's store":screen=="post"?"Town hall":screen=="mail"?"Mailbox":"Lost and Found";
         Heading(title,68,91,ink);
@@ -826,6 +825,22 @@ internal sealed class TownGame
             Text(screen=="sell"?"Sell: "+Catalog.Items[item].Sell+" acorns":"One item",textX,popY+69,ink,1.05f);
             Strong(screen=="sell"?"A  Sell item":"A  Item actions",textX,popY+101,ink,1.05f);
         }
+    }
+    private void DrawMinimap()
+    {
+        Panel(482,312,138,138);
+        mapBackground.Draw(ui,new RectF(490,320,122,122));
+        MinimapMarker(32,26,new Color32(187,107,71),3);
+        MinimapMarker(50,26,new Color32(132,96,155),3);
+        if(state.HousePlaced)MinimapMarker(state.Town.HouseX+3,state.Town.HouseZ+3,new Color32(220,182,124),4);
+        MinimapMarker(state.X,state.Z,new Color32(35,49,44),6);
+        MinimapMarker(state.X,state.Z,Color32.White,4);
+    }
+    private void MinimapMarker(float x,float z,Color32 color,float size)
+    {
+        float px=490+Math.Max(0,Math.Min(Town.Width,x))*122/Town.Width;
+        float py=320+Math.Max(0,Math.Min(Town.Height,z))*122/Town.Height;
+        ui.FillRectangle(new RectF(px-size*.5f,py-size*.5f,size,size),color);
     }
     private Color32 MapTileColor(int x,int z)
     { return MapBackground.TileColor(state.Town.At(x,z)); }
