@@ -518,8 +518,8 @@ internal sealed class TownGame
     }
     private string FitAttentionLine(string value)
     {
-        if(font.Measure(value,.9f)<=AttentionBubbleLayout.Width-24)return value;
-        int end=value.Length;while(end>0&&font.Measure(value.Substring(0,end)+"...",.9f)>AttentionBubbleLayout.Width-24)end--;
+        if(font.Measure(value)<=AttentionBubbleLayout.Width-24)return value;
+        int end=value.Length;while(end>0&&font.Measure(value.Substring(0,end)+"...")>AttentionBubbleLayout.Width-24)end--;
         return value.Substring(0,end)+"...";
     }
     private void UpdateAnimationFrame()
@@ -878,11 +878,12 @@ internal sealed class TownGame
             Rounded(x,top,w,AttentionBubbleLayout.BodyHeight,24,paper);
             AttentionTail(x,top,hx,hy,paper);
             bool urgent=kind>=VillagerAttention.RequestReady;
-            float nameWidth=Math.Max(68,font.Measure(v.Name,attentionNameScale[i])+24);
+            float nameTextWidth=font.Measure(v.Name,attentionNameScale[i]),nameWidth=Math.Max(68,nameTextWidth+24);
             Rounded(x+14,y,nameWidth,28,14,urgent?new Color32(194,138,69):new Color32(83,116,95));
-            Strong(v.Name,x+26,y+5,paper,attentionNameScale[i]);
-            if(urgent){float badge=x+nameWidth+19;Rounded(badge,y,28,28,14,new Color32(232,183,86));Strong("!",badge+10,y+4,new Color32(35,49,44),1.1f);}
-            Text(attentionText[i],x+12,top+14,new Color32(35,49,44),.9f);
+            strongFont.Draw(ui,v.Name,x+14+(nameWidth-nameTextWidth)*.5f,y+5,paper,attentionNameScale[i]);
+            if(urgent){float badge=x+nameWidth+19;Rounded(badge,y,28,28,14,new Color32(232,183,86));strongFont.Draw(ui,"!",badge+10,y+4,new Color32(35,49,44),1.1f);}
+            // Use font units directly, matching the width measurements above.
+            font.Draw(ui,attentionText[i],x+12,top+13,new Color32(35,49,44));
             attention.Shown(state,i,Clock.Timestamp);
             if(occupied)return;occupied=true;occupiedX=x;occupiedY=y;
         }

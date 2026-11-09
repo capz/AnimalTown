@@ -100,13 +100,23 @@ def villager_attention():
     pulse('A');time.sleep(1.2)
     reloading='--attention-reload' in sys.argv
     before=frame('attention-reloaded' if reloading else 'attention-both')
-    friendly,urgent=notices(before);record(f'Named tabs: friendly={friendly}, urgent={urgent}, reload={reloading}')
+    friendly,urgent=notices(before)
+    # Dolphin guest time can lag wall time. Observe the 0.8-second stagger
+    # rather than assuming the second notice fits into a fixed wall delay.
+    if not reloading:
+        for _ in range(24):
+            if friendly>=300 and urgent>=300:break
+            time.sleep(.35);before=frame('attention-both');friendly,urgent=notices(before)
+    record(f'Named tabs: friendly={friendly}, urgent={urgent}, reload={reloading}')
     if reloading:
         if friendly>300 or urgent>300:raise AssertionError('Saved encounter cooldowns did not survive reload')
         record('Explicit save/reload preserves the absence/urgent notice cooldowns.');return
     if friendly<300 or urgent<300:raise AssertionError('Expected two independently named friendly/urgent bubbles')
     if '--attention-deadline' in sys.argv:
         time.sleep(7);after=frame('attention-deadline-expired')
+        for _ in range(30):
+            if not any(n>300 for n in notices(after)):break
+            time.sleep(.5);after=frame('attention-deadline-expired')
         if any(n>300 for n in notices(after)):raise AssertionError('Deadline notice failed to expire')
         record('A real pending errand produces a final-hour warning at 05:30; bubbles expire without forcing dialogue.');return
     # Move while the ambient bubbles are visible, then talk normally to Pip.
