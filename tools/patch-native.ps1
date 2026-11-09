@@ -206,3 +206,12 @@ if($IsLinux){
         if($LASTEXITCODE){throw "Native $fixture checks failed"}
     }
 }
+
+& python3 (Join-Path $Root 'tools/patch-face-culling.py') $nativeRoot
+if($LASTEXITCODE){throw 'Pinned backface culling patch failed'}
+if($IsLinux){
+    & cc -std=c11 -Wall -Wextra -Werror "-I$(Join-Path $Root 'tools')" (Join-Path $Root 'tests/native-face-culling.c') -o (Join-Path $Root 'out/native-face-culling-check')
+    if($LASTEXITCODE){throw 'Face culling fixture compilation failed'}
+    & (Join-Path $Root 'out/native-face-culling-check')
+    if($LASTEXITCODE){throw 'Face culling fixture failed'}
+}
