@@ -1,0 +1,46 @@
+{
+  "baseline_commit": "4876eff25cb9690fdf7dbb3c3469803108dd4e16",
+  "method": "Dolphin AVI complete video chunk cadence with the game profiler/display off; zero-size AVI repeat chunks advance VI time but do not count as new presentations. Same source card, spring RTC, six eight-guest-second directions. AVI capture overhead remains.",
+  "baseline": {
+    "guest_seconds": 54.838116666666664,
+    "presentations": 2823,
+    "frame_interval_ms": {
+      "median": 16.683333333333334,
+      "p95": 33.36666666666667,
+      "max": 33.36666666666667,
+      "mean": 19.426446964327898
+    },
+    "multi_vi_intervals": 464,
+    "multi_vi_percent": 16.44223954642098,
+    "actual_guest_seconds": [
+      8.024683333333334,
+      8.008,
+      8.008,
+      8.024683333333334,
+      8.024683333333334,
+      8.05805
+    ]
+  },
+  "final_commit": "a53fa6d2e020cd34581ae221df5de5ebf62cc72f",
+  "final": {
+    "guest_seconds": 54.971583333333335,
+    "presentations": 3223,
+    "frame_interval_ms": {
+      "median": 16.683333333333334,
+      "p95": 16.683333333333334,
+      "max": 33.36666666666667,
+      "mean": 17.056145251396647
+    },
+    "multi_vi_intervals": 72,
+    "multi_vi_percent": 2.2346368715083798,
+    "actual_guest_seconds": [
+      8.024683333333334,
+      8.041366666666667,
+      8.008,
+      8.024683333333334,
+      8.008,
+      8.05805
+    ]
+  },
+  "cadence_validation": "Finalized AVI nb_frames and nonempty packet counts match the incremental parser; instrumented control has exactly 3110 AVI presentations for 3110 native frame-counter increments."
+}

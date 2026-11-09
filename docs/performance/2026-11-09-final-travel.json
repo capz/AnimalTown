@@ -1,0 +1,90 @@
+{
+  "game_commit": "a53fa6d2e020cd34581ae221df5de5ebf62cc72f",
+  "baseline_commit": "4876eff25cb9690fdf7dbb3c3469803108dd4e16",
+  "release": "https://github.com/capz/AnimalTown/releases/tag/v0.7.11.a53fa6d2e020",
+  "units": "Dolphin guest-clock milliseconds; physical hardware not measured",
+  "method": "Same copied save, spring RTC, six full-stick walking/running directions; each direction waits eight NTSC guest seconds using incremental AVI VI chunks (including empty repeats), then one guest second neutral. Profiles exclude warmup and post-route save/menu work.",
+  "card_sha256": "a780d11c1aa99f930c6e17d29b4695c480cd22c99a57c8f3f8d26ca667a35f44",
+  "cases": {
+    "final": {
+      "profiled_frames": 3110,
+      "actual_guest_seconds": [
+        8.008,
+        8.008,
+        8.008,
+        8.008,
+        8.024683333333334,
+        8.008
+      ],
+      "frame_interval_ms": {
+        "median": 16.6,
+        "p95": 33.3,
+        "max": 33.3,
+        "mean": 17.5988
+      },
+      "preparation_ms": {
+        "median": 0.3,
+        "p95": 6.0,
+        "max": 7.4,
+        "mean": 1.1375
+      },
+      "ui_ms": {
+        "median": 1.6,
+        "p95": 1.7,
+        "max": 6.0,
+        "mean": 1.609
+      },
+      "pacing_ms": {
+        "median": 0.0,
+        "p95": 0.0,
+        "max": 0.0,
+        "mean": 0.0
+      },
+      "recovery_frames": 0,
+      "missing_terrain_frames": 0,
+      "loading_frames": 0,
+      "frames_over_50ms": 0,
+      "details": {
+        "selection_ms": {
+          "median": 0.0,
+          "p95": 5.3,
+          "max": 5.7,
+          "mean": 0.5623
+        },
+        "generation_ms": {
+          "median": 0.0,
+          "p95": 0.6,
+          "max": 2.1,
+          "mean": 0.0849
+        },
+        "publication_ms": {
+          "median": 0.0,
+          "p95": 0.0,
+          "max": 0.4,
+          "mean": 0.0041
+        },
+        "uv_material_ms": {
+          "median": 0.0,
+          "p95": 0.0,
+          "max": 0.0,
+          "mean": 0.0
+        },
+        "native_masks_ms": {
+          "median": 0.0,
+          "p95": 1.0,
+          "max": 1.5,
+          "mean": 0.1751
+        },
+        "allocations": 4005,
+        "gc_collections": 1,
+        "texture_operations": 0,
+        "shadow_page_updates": 3216,
+        "mesh_creates": 261,
+        "mesh_updates": 245,
+        "mesh_releases": 204,
+        "staging_growths": 1056,
+        "recycled_sections": 266
+      }
+    }
+  }
+}

@@ -135,6 +135,22 @@ if(([regex]::Matches($makeSource,[regex]::Escape($heapSetting))).Count -ne 1){th
 $makeSource=$makeSource.Replace($heapSetting,'DND_MANAGED_HEAP_BYTES ?= 4194304')
 [IO.File]::WriteAllText($makePath,$makeSource)
 [IO.File]::WriteAllText($entryPath,$entrySource)
+# Keep the SDK's 16 MiB byte budget; the wider terrain prefetch pool needs more
+# small mesh handles. The ten-bit token index supports at most 1023 slots.
+$resourcePath=Join-Path $nativeRoot 'source/draw_resources.c'
+$resourceSource=[IO.File]::ReadAllText($resourcePath)
+if(([regex]::Matches($resourceSource,'#define SLOTS 512')).Count -ne 1){throw 'Pinned native resource table changed'}
+$resourceSource=$resourceSource.Replace('#define SLOTS 512',"#include `"native-resource-limits.h`"`n#define SLOTS ANIMALTOWN_DRAW_RESOURCE_SLOTS")
+[IO.File]::WriteAllText($resourcePath,$resourceSource)
+Copy-Item -LiteralPath (Join-Path $Root 'tools/native-resource-limits.h') -Destination (Join-Path $nativeRoot 'include/native-resource-limits.h') -Force
+Copy-Item -LiteralPath (Join-Path $Root 'tools/native-frame-counters.h') -Destination (Join-Path $nativeRoot 'include/native-frame-counters.h') -Force
+if($IsLinux){
+    $resourceCheck=Join-Path $Root 'out/native-resource-slots-check'
+    & cc -std=c11 -Wall -Wextra -Werror -ffunction-sections -fdata-sections "-I$(Join-Path $nativeRoot 'include')" (Join-Path $Root 'tests/native-resource-slots.c') $resourcePath '-Wl,--gc-sections' -lm -o $resourceCheck
+    if($LASTEXITCODE){throw 'Native resource-slot fixture compilation failed'}
+    & $resourceCheck
+    if($LASTEXITCODE){throw 'Native resource-slot fixture failed'}
+}
 Copy-Item -LiteralPath (Join-Path $Root 'tools/native-calendar.c') -Destination (Join-Path $Root 'out/native/source/animaltown_calendar.c') -Force
 Copy-Item -LiteralPath (Join-Path $Root 'tools/native-texture-pages.c') -Destination (Join-Path $Root 'out/native/source/animaltown_texture_pages.c') -Force
 $pagePattern='intptr_t (dnd_value_AnimalTown_GameCube_AnimalTown_GameCube_NativeTexturePages_IplPage_[a-z0-9]+)\(intptr_t (\w+), intptr_t (\w+), intptr_t (\w+)\) \{.*?\r?\n\}'
@@ -176,3 +192,26 @@ $storagePath=Join-Path $Root 'out/native/source/storage.c'
 $storageSource="extern int animaltown_card_debug;`n"+[IO.File]::ReadAllText($storagePath)
 $storageSource=$storageSource.Replace('fail(-rc, "Memory card write failed.");','{ animaltown_card_debug=animaltown_card_debug*1000-rc; fail(-rc, "Memory card write failed."); }')
 [IO.File]::WriteAllText($storagePath,$storageSource)
+& python3 (Join-Path $Root 'tools/patch-managed-allocator.py') $nativeRoot
+if($LASTEXITCODE){throw 'Pinned allocation/frame profiling patch failed'}
+if($IsLinux){
+    foreach($fixture in @('managed-allocator','terrain-recycle','terrain-archive')){
+        $check=Join-Path $Root "out/native-$fixture-check"
+        [string[]]$extra=@()
+        if($fixture -eq 'managed-allocator'){$extra=@((Join-Path $nativeRoot 'source/managed_runtime.c'))}
+        if($fixture -eq 'terrain-archive'){$extra=@((Join-Path $nativeRoot 'source/aram.c'))}
+        & cc -std=c11 -O2 -Wall -Wextra -Werror -ffunction-sections -fdata-sections "-I$(Join-Path $nativeRoot 'include')" "-I$(Join-Path $nativeRoot 'source')" (Join-Path $Root "tests/native-$fixture.c") @extra '-Wl,--gc-sections' -lm -o $check
+        if($LASTEXITCODE){throw "Native $fixture compilation failed"}
+        & $check
+        if($LASTEXITCODE){throw "Native $fixture checks failed"}
+    }
+}
+
+& python3 (Join-Path $Root 'tools/patch-face-culling.py') $nativeRoot
+if($LASTEXITCODE){throw 'Pinned backface culling patch failed'}
+if($IsLinux){
+    & cc -std=c11 -Wall -Wextra -Werror "-I$(Join-Path $Root 'tools')" (Join-Path $Root 'tests/native-face-culling.c') -o (Join-Path $Root 'out/native-face-culling-check')
+    if($LASTEXITCODE){throw 'Face culling fixture compilation failed'}
+    & (Join-Path $Root 'out/native-face-culling-check')
+    if($LASTEXITCODE){throw 'Face culling fixture failed'}
+}

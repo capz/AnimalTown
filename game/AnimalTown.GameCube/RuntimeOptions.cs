@@ -1,5 +1,4 @@
 using System.IO;
-using System.Threading.Tasks;
 using Dolphin.Diagnostics;
 using Scheduler=Dolphin.Threading.Tasks.Scheduler;
 
@@ -12,5 +11,7 @@ internal static class RuntimeOptions
     internal static void Cycle()=>Apply((Mode+1)%8);
     internal static void Toggle(int flag)=>Apply(Mode^flag);
     private static void Apply(int mode){Mode=mode;Scheduler.ProductiveWaits=(mode&2)!=0;GpuProfiler.ReuseFrameClear=(mode&4)!=0;DebugOverlay.WriteLine("ANIMALTOWN RUNTIME "+mode);}
-    internal static void Wait(){if((Mode&1)==0)Task.Delay(1).GetAwaiter().GetResult();}
+    // EndFrame already waits for retrace. Service callbacks without allocating
+    // a Timer, completion source, task and delegate after every presented frame.
+    internal static void Wait(){if((Mode&1)==0)NativeFrame.Service();}
 }

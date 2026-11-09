@@ -35,8 +35,8 @@ public static class SplitSaveCodec
         internal int Int(){if(at>bytes.Length-8)throw new InvalidOperationException("Truncated save record");int n=0;for(int i=0;i<4;i++)n|=bytes[at++]<<(i*8);return n;}
         internal int Range(int min,int max){int n=Int();if(n<min||n>max)throw new InvalidOperationException("Save record value outside range");return n;}
         internal string Text(int limit){int n=Range(0,limit);var c=new char[n];for(int i=0;i<n;i++)c[i]=(char)Range(0,65535);return new string(c);}
-        internal void Rle(byte[] target,int max)
-        {int runs=Range(1,target.Length),cell=0;for(int i=0;i<runs;i++){int packed=Int(),mode=(int)((uint)packed>>24),n=packed&0xffffff;if(mode>max||n==0||n>target.Length-cell)throw new InvalidOperationException("Invalid save terrain run");for(int j=0;j<n;j++)target[cell++]=(byte)mode;}if(cell!=target.Length)throw new InvalidOperationException("Incomplete save terrain");}
+        internal void Rle(byte[] target,int max,bool compare=false)
+        {int runs=Range(1,target.Length),cell=0;for(int i=0;i<runs;i++){int packed=Int(),mode=(int)((uint)packed>>24),n=packed&0xffffff;if(mode>max||n==0||n>target.Length-cell)throw new InvalidOperationException("Invalid save terrain run");for(int j=0;j<n;j++){if(compare){if(target[cell]!=mode)throw new InvalidOperationException("Save terrain differs from snapshot");}else target[cell]=(byte)mode;cell++;}}if(cell!=target.Length)throw new InvalidOperationException("Incomplete save terrain");}
         internal void Match(Reader other){if(Version!=other.Version||Seed!=other.Seed||Sequence!=other.Sequence)throw new InvalidOperationException("Mixed save generations");}
         internal void End(){if(at!=bytes.Length-4)throw new InvalidOperationException("Trailing save record data");}
     }
@@ -58,9 +58,13 @@ public static class SplitSaveCodec
         w.Int(t.PlacedCount);for(int i=0;i<t.PlacedCount;i++){var p=t.Placed[i];w.Int(p.Item);w.Int(p.X);w.Int(p.Z);w.Int(p.Rotation);w.Int(p.Room);w.Int(p.Owner);}var buildingFields=BuildingSave.Encode(s);for(int i=0;i<buildingFields.Length;i++)w.Int(buildingFields[i]);records[3]=w.Finish();return records;
     }
     public static GameState Decode(byte[][] records)
+    {return Decode(records,null);}
+    private static GameState Decode(byte[][] records,Town? snapshot)
     {
-        if(records.Length!=4)throw new InvalidOperationException("Incomplete save set");var r=new Reader(records[0],TownData);var root=r;var s=new GameState(r.Seed);s.Sequence=r.Sequence;var t=s.Town;
-        r.Range(Town.Width,Town.Width);r.Range(Town.Height,Town.Height);r.Range(1,TownGenerator.Version);t.Day=r.Int();t.Month=r.Int();r.Rle(t.Tiles,r.Version>=2?(int)Terrain.CoastWest:7);r.Rle(t.Elevation,TerrainElevation.MaximumMode);
+        if(records.Length!=4)throw new InvalidOperationException("Incomplete save set");var r=new Reader(records[0],TownData);var root=r;
+        if(snapshot!=null&&(r.Version!=3||r.Seed!=snapshot.Seed))throw new InvalidOperationException("Readback snapshot identity mismatch");
+        var s=snapshot==null?new GameState(r.Seed):new GameState(r.Seed,snapshot);s.Sequence=r.Sequence;var t=s.Town;
+        r.Range(Town.Width,Town.Width);r.Range(Town.Height,Town.Height);r.Range(1,TownGenerator.Version);t.Day=r.Int();t.Month=r.Int();r.Rle(t.Tiles,r.Version>=2?(int)Terrain.CoastWest:7,snapshot!=null);r.Rle(t.Elevation,TerrainElevation.MaximumMode,snapshot!=null);
         for(int i=0;i<6;i++){var v=t.Residents[i];v.X=r.Int();v.Z=r.Int();v.Name=r.Text(24);v.PosX=r.Int()/1024f;v.PosZ=r.Int()/1024f;}
         t.GroundCount=r.Range(0,512);for(int i=0;i<t.GroundCount;i++){var g=t.Ground[i];g.Item=r.Int();g.X=r.Int();g.Z=r.Int();g.Owner=r.Int();g.Day=r.Int();g.Kind=r.Int();}r.End();
         r=new Reader(records[1],HousePositions);r.Match(root);s.HousePlaced=r.Range(0,1)==1;t.HouseX=r.Int();t.HouseZ=r.Int();for(int i=0;i<6;i++){t.Residents[i].HomeX=r.Int();t.Residents[i].HomeZ=r.Int();}r.End();
@@ -72,7 +76,7 @@ public static class SplitSaveCodec
         t.PlacedCount=r.Range(0,256);for(int i=0;i<t.PlacedCount;i++){var p=t.Placed[i];p.Item=r.Int();p.X=r.Int();p.Z=r.Int();p.Rotation=r.Int();p.Room=r.Int();p.Owner=r.Int();}if(root.Version>=3){var fields=new int[BuildingSave.FieldCount];for(int i=0;i<fields.Length;i++)fields[i]=r.Int();BuildingSave.Decode(s,fields);}r.End();
         // Reuse all legacy range, placement and catalog validation before use.
         if(root.Version<2)WaterTerrain.Migrate(t);
-        return SaveCodec.Decode(SaveCodec.Encode(s));
+        return snapshot==null?SaveCodec.Decode(SaveCodec.Encode(s)):SaveCodec.ValidateSnapshot(SaveCodec.Encode(s),snapshot);
     }
     public static byte[] EncodeCommit(GameState s,byte[][] records)
     {var w=new Writer(s,Commit,96);for(int i=0;i<4;i++){var r=new Reader(records[i],i);if(r.Sequence!=s.Sequence||r.Seed!=s.Town.Seed)throw new InvalidOperationException("Mixed save commit");w.Int(records[i].Length);w.Int((int)SaveCodec.Crc(records[i],0,records[i].Length-4));}return w.Finish();}
@@ -80,4 +84,8 @@ public static class SplitSaveCodec
     {var r=new Reader(commit,Commit);if(records.Length!=4)throw new InvalidOperationException("Incomplete save commit");for(int i=0;i<4;i++){var part=new Reader(records[i],i);part.Match(r);if(r.Int()!=records[i].Length||(uint)r.Int()!=SaveCodec.Crc(records[i],0,records[i].Length-4))throw new InvalidOperationException("Save commit mismatch");}r.End();}
     public static GameState DecodeCommitted(byte[] commit,byte[][] records)
     {VerifyCommitted(commit,records);return Decode(records);}
+    // Only SaveRepository uses this path, after exact byte readback. Terrain is
+    // compared read-only; no validation state that borrows it escapes the call.
+    internal static void ValidateSnapshot(byte[] commit,byte[][] records,Town snapshot)
+    {VerifyCommitted(commit,records);Decode(records,snapshot);}
 }

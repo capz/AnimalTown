@@ -141,14 +141,21 @@ motion up/down a generated ramp, lateral motion and stationary frames.
 
 Outdoor ground, water, foam and banks share a rigid rotation about the cylinder
 axis. Geometry is baked in fixed cylinder coordinates and retained in a bounded
-cache of 160 sections, each 8x4m. Moving the player only changes the shared
-transform and the visible section selection. Four metres of prefetch surround
+cache of 256 sections, each 8x4m. Moving the player only changes the shared
+transform and the visible section selection. Twelve metres of prefetch surround
 the view. Existing sections never rebuild because a scroll window changed.
 
-The renderer pumps at most eight small generation stages per frame and stops
-starting work after a 2ms guest-clock deadline. Ground, water and walls each
-generate one eight-cell row at a time; upload is a separate stage. A section is
-pinned while in progress and becomes drawable only when every stage completes.
+The renderer pumps at most eight normal generation stages per frame, guaranteeing
+one for terrain even if masks consumed the shared 2ms guest-clock deadline.
+Further background stages start only before that deadline. Flat dry
+sections and deep ocean generate one row per stage and publish ground, water
+and walls separately (seven stages). Other sections combine ground/water per
+row and generate wall rows only where required; upload is separate. Partial
+sections retain their staging while visible work preempts offscreen prefetch. A
+section becomes drawable only when every stage completes. During established
+travel, recovery reserves at most eleven stages per unfinished visible section,
+including upload, before drawing. This work-derived bound can exceed the
+background deadline and cannot leave a section unfinished at a fixed cutoff.
 An individual stage can exceed the deadline; native profiling checks the worst
 pump, not merely its average or the fraction of cached frames. Frustum selection is
 cached in half-metre buckets and missing-section priority is updated without
@@ -160,10 +167,11 @@ native indexed mesh batches grouped by material. No per-section texture or
 water effect is allocated. World UVs, curved row chords and cliff ownership
 remain stable across section boundaries.
 
-Cold entry, teleports, terrain edits and town/season changes prepare geometry
-behind a loading transition instead of drawing holes or constructing the whole
+Initial entry, large teleports, terrain edits and town/season changes prepare
+the entire prefetch band behind a loading transition instead of drawing holes or constructing the whole
 view in one frame. Input/simulation pause during that cold transition. Normal
-movement prefetches ahead of the view. `--terrain-scroll --stream-stress
+movement never reenters that transition; input, simulation and cached world
+drawing remain active while directional prefetch prepares incoming sections. `--terrain-scroll --stream-stress
 --profile-seconds 5 --dsp-hle` profiles a generated ramp and river/corner/bridge/
 sea transitions. Protocol v5's build-stage count denotes streaming work, including
 generation stages that have not yet published a section. Shore-depth tints and
@@ -248,3 +256,7 @@ positions across catalog refreshes. Two bounded float arrays cost about 4 KiB;
 walking no longer evaluates sine/cosine for each nearby caster. Mask publication
 runs before terrain/scenery visibility scans as well as before geometry stages;
 scenery selection changes enter the masks on the following frame.
+
+Landscape loading is now included in profiling captures. See [the no-loading
+travel regression](movement-terrain-cache.md#no-loading-travel-regression) for
+`--stream-travel` and the explicit loading/missing-terrain rejection gate.

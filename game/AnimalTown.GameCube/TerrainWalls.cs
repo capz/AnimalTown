@@ -24,10 +24,10 @@ internal sealed class TerrainWalls
     internal ulong GroundMask {get;private set;}
     internal Mesh? SoilMesh=>soilUsed==0?null:soilMesh?.Mesh;
     internal Mesh? GroundMesh(int slot)=>used[slot]==0?null:groundMesh[slot]?.Mesh;
-    internal void Begin(GameState state,int top)
+    internal void Begin(GameState state,int top,CylinderRows cache)
     {
         town=state.Town;z=0;soilUsed=total=0;for(int i=0;i<used.Length;i++)used[i]=0;
-        rowBase=top;for(int i=0;i<rows.Length;i++)rows[i]=CylinderWorld.Surface(top+i,0);
+        rowBase=top;for(int i=0;i<rows.Length;i++)rows[i]=cache.At(top+i);
     }
     internal void AppendRow(GameState state,TerrainRenderer floor,int left,int cz)
     {
@@ -41,6 +41,12 @@ internal sealed class TerrainWalls
             Edge(state,floor,cx,cz,cx+1,cz+1,cx,cz+1,cx,cz+1);Edge(state,floor,cx,cz,cx,cz+1,cx,cz,cx-1,cz);
         }
     }
+    internal void Archive(int section)
+    {
+        TerrainSection.ArchivePart(section,106,SoilMesh,soilUsed);
+        for(int i=0;i<used.Length;i++)TerrainSection.ArchivePart(section,52+i,GroundMesh(i),used[i]);
+    }
+    internal void Dispose(){soilMesh?.Dispose();soilMesh=null;for(int i=0;i<groundMesh.Length;i++){groundMesh[i]?.Dispose();groundMesh[i]=null;}}
     internal void Finish()=>Commit();
     internal void PrepareGallery(GameState state,TerrainRenderer floor,bool preview)
     {

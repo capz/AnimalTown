@@ -4,7 +4,7 @@ namespace AnimalTown;
 public static class WaterSurface
 {
     public const int TextureSize=64,MaximumCells=FloorStrips.Capacity;
-    public const float Height=-.06f,UvScale=.25f,FoamWidth=.12f;
+    public const float Height=WaterTerrain.RiverHeight,UvScale=.25f,FoamWidth=.12f;
     public static bool IsWater(Town town,int x,int z)=>town.At(x,z)==(int)Terrain.Water||WaterTerrain.IsSea(town,x,z);
     public static float HeightAt(Town town,int cx,int cz,float x,float z)=>TerrainElevation.AtCell(town,cx,cz,x,z)+(town.At(cx,cz)==(int)Terrain.Bridge?WaterTerrain.RiverHeight:0);
     // Bridges cover the river rather than creating a new bank.
@@ -43,6 +43,26 @@ public static class WaterSurface
             value=Math.Max(value,weight);
         }
         return (byte)(value*72);
+    }
+    // Original looping whitecaps for the optional storm material, GX I8 8x4.
+    public static byte[] StormTexture()
+    {
+        var pixels=new byte[TextureSize*TextureSize];int at=0;
+        for(int by=0;by<64;by+=4)for(int bx=0;bx<64;bx+=8)
+            for(int y=by;y<by+4;y++)for(int x=bx;x<bx+8;x++)pixels[at++]=StormSample(x,y);
+        return pixels;
+    }
+    public static byte StormSample(int x,int y)
+    {
+        x=(x%64+64)%64;y=(y%64+64)%64;
+        double value=0;
+        for(int i=0;i<4;i++){
+            double dx=Wrap(x-(i==0?9:i==1?43:i==2?24:58)),dy=Wrap(y-(i==0?12:i==1?28:i==2?47:58));
+            double length=i==1?13:i==2?9:11,edge=dx*dx/(length*length);
+            double crest=Math.Max(0,1-Math.Abs(dy-dx*dx*.055)/1.5)*Math.Max(0,1-edge*edge);
+            value=Math.Max(value,crest);
+        }
+        return (byte)(value*220);
     }
     private static double Wrap(double value)=>value-64*Math.Floor((value+32)/64);
 }

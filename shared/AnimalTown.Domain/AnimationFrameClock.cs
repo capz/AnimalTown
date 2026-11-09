@@ -13,5 +13,8 @@ public sealed class AnimationFrameClock
         if(clips[actor]!=clip){clips[actor]=clip;elapsed[actor]=0;}
         if(advance&&clip>=0)elapsed[actor]+=1f/30;
     }
-    public float Consume(int actor){float seconds=elapsed[actor];elapsed[actor]=0;return seconds;}
+    public float Consume(int actor)=>Consume(actor,true);
+    // Hidden elapsed time is discarded, never accumulated into a costly
+    // catch-up pose when a room/camera/doorway makes the actor visible again.
+    public float Consume(int actor,bool visible){float seconds=elapsed[actor];elapsed[actor]=0;return visible?seconds:0;}
 }
