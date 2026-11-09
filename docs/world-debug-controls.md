@@ -39,7 +39,9 @@ Open **START → Settings → Debug / testing**. The last page adds:
   farther away. GX selects and blends levels per pixel from the projected
   footprint, so these are smooth reference distances, not exact rings or evenly
   spaced bands; terrace heights, surface angle and the section chords affect
-  their actual position. Auto restores unbiased hardware selection.
+  their actual position. Auto restores unbiased hardware selection. The
+  ten-square limit keeps the reference inside GX's LOD-bias range for the
+  current 256px ground and camera.
 
 All rendering previews are session-only. They never write saves automatically and
 are not serialized by Save now. The attention icon uses one reusable 44-triangle
@@ -77,7 +79,50 @@ and extreme integer inputs. Clean CI and local checks pass 2,702,371 gameplay/re
 The shadow chord oracle uses full Y/Z segment distance: projected Z alone folds
 near a quarter turn and cannot robustly identify a row chord at this curvature.
 
-## SDK performance panel delivery
+## Ground mipmap delivery
+
+Current game: `ec3b83a1f8159aec789d5053187c33219c188584`.
+[Release 0.11.8.ec3b83a1f815](https://github.com/capz/AnimalTown/releases/tag/v0.11.8.ec3b83a1f815)
+contains the full 1,459,978,240-byte bootable ISO, direct 88,619,008-byte NKit ISO
+and matching clean backend. Downloaded checksums and clean identities match;
+the NKit audit verifies an exact full-image roundtrip and unchanged boot/files.
+[Machine-readable results and image digests](performance/2026-11-09-ground-mipmaps.json).
+Clean CI/local validation passes 2,702,415 gameplay/render/texture checks,
+324,925 rendering-service checks, backend integration and native/tooling fixtures.
+The published texture audit confirms seven CMPR ground levels at 43,712 bytes
+and the unchanged two-level, 10,240-byte soil policy.
+
+The published NKit image boots directly in Dolphin. The actual debug menu checks
+On/Off, Auto, 1 and 10 squares, Z reset and L shoulder tab navigation. An unchanged
+foreground grass region has horizontal red-channel edge energy 11,642 in Auto,
+13,254 with mips Off, 13,132 at 1 square and 13,254 at 10 squares; reset restores
+11,642 exactly. These fixed-scene detail comparisons verify that the sampler
+changes take effect. They are not a general image-quality metric. The generated
+ramp, cliff material border and tree shadows remain aligned in the inspected view.
+Every input memory-card byte is unchanged.
+
+![Ground mip distance control](performance/ground-mip-controls.png)
+![Automatic complete mip chain](performance/ground-mip-auto.png)
+[Base level comparison with mipmaps Off](performance/ground-mip-off.png).
+
+After resetting Auto, a marked movement interval covers 284 consecutive frames,
+including 123 moving frames. Terrain build stages, mesh creates/updates/releases,
+texture operations, loading/missing/recovery frames and garbage collections are
+zero; shadow coverage updates 354 pages. Terrain preparation median/p95/max is
+0.8/2.5/4.1 ms. Reported frame intervals are 16.6 ms at 0.1 ms guest resolution.
+This short software-rendered Dolphin window, including stationary frames, does
+not establish locked 60 FPS or physical hardware timing. Physical GameCube
+testing remains outstanding; four pre-existing unused HUD-field warnings remain.
+
+Reproduce in the existing Dolphin container with `--shm-size=1g`,
+`LIBGL_ALWAYS_SOFTWARE=1` and a copied card in the output directory:
+
+```sh
+python3 docs/performance/ground_mipmaps.py IMAGE.nkit.iso out/ground-mip-native --stream-travel --season spring --dsp-hle
+python3 docs/performance/analyze_ground_mips.py out/ground-mip-native --capture out/ground-mip-native/user/Dump/Frames/*.avi
+```
+
+## Earlier SDK performance panel delivery
 
 The additional SDK overlay is validated at
 `edf96ad36b9c1c8c98242a6f4e6afab641d01f34` in

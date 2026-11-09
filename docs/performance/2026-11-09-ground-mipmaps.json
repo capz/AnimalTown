@@ -1,0 +1,102 @@
+{
+  "game_commit": "ec3b83a1f8159aec789d5053187c33219c188584",
+  "release": "https://github.com/capz/AnimalTown/releases/tag/v0.11.8.ec3b83a1f815",
+  "pull_request": "https://github.com/capz/AnimalTown/pull/24",
+  "ci_run": "https://github.com/capz/AnimalTown/actions/runs/42687490432",
+  "host_checks": {
+    "gameplay_render_texture": 2702415,
+    "rendering_service": 324925,
+    "backend_integration_passed": true,
+    "native_and_tooling_fixtures_passed": true
+  },
+  "delivery": {
+    "sourceBytes": 1459978240,
+    "compactBytes": 88619008,
+    "sourceSha256": "849fc62fda08a733d63ed41d636e0ce50172cc125c670ab3fd1916de21aebbf4",
+    "compactSha256": "26636971ff71eb6ef47344330820f6d2e01212bf1431d030feba20309b2898fc",
+    "dolAndApploaderUnchanged": true,
+    "roundTripVerified": true
+  },
+  "ground_and_soil_audit": [
+    {
+      "source": "dvd:/cliff-soil.dndtex",
+      "sourceSha": "246DF2888D38164CB8DAC02D75E4D31B702974C1589089564DF63306D2E7EB4A",
+      "width": 128,
+      "height": 128,
+      "runtimeWidth": 128,
+      "runtimeHeight": 128,
+      "format": 14,
+      "levels": 2,
+      "residentBytes": 10240,
+      "policy": "cliff-soil-mip2-repeat-clamp-v1"
+    },
+    {
+      "source": "dvd:/floor-outdoor-neutral.dndtex",
+      "sourceSha": "B39F994FED7F729246899E68C4F72FEC49B1B429D7896B34C46F807271C6DDEA",
+      "width": 1024,
+      "height": 1024,
+      "runtimeWidth": 256,
+      "runtimeHeight": 256,
+      "format": 14,
+      "levels": 7,
+      "residentBytes": 43712,
+      "policy": "floor256-full-mips-repeat-tinted-v6"
+    }
+  ],
+  "native": {
+    "scenario": {
+      "source_card_sha256": "a780d11c1aa99f930c6e17d29b4695c480cd22c99a57c8f3f8d26ca667a35f44",
+      "card_unchanged": true,
+      "debug_menu_only": true
+    },
+    "auto_reset_and_numeric_labels_verified": true,
+    "ground_region": [
+      400,
+      300,
+      540,
+      350
+    ],
+    "ground_horizontal_red_edge_energy": {
+      "auto": 11642,
+      "off": 13254,
+      "one": 13132,
+      "ten": 13254,
+      "reset-auto": 11642
+    },
+    "default_ground_travel": {
+      "frames": 284,
+      "moving_frames": 123,
+      "frame_interval_ms": {
+        "median": 16.6,
+        "p95": 16.6,
+        "max": 16.6
+      },
+      "terrain_prepare_ms": {
+        "median": 0.8,
+        "p95": 2.5,
+        "max": 4.1
+      },
+      "terrain_stages": 0,
+      "loading_missing_recovery_frames": 0,
+      "mesh_creates": 0,
+      "mesh_updates": 0,
+      "mesh_releases": 0,
+      "texture_operations": 0,
+      "shadow_page_updates": 354,
+      "gc_collections": 0
+    },
+    "method": "Single Dolphin software-rendered capture; guest counters at 0.1 ms resolution, not hardware timing"
+  },
+  "visual_inspection": {
+    "default_on_and_auto": true,
+    "distance_one_and_ten_labels": true,
+    "shoulder_l_returns_to_settings": true,
+    "generated_ramp_cliff_material_border_and_tree_shadows_aligned": true
+  },
+  "physical_gamecube_tested": false,
+  "limitations": [
+    "Distance is a centreline reference for mip 1; GX blends by projected footprint, not exact distance bands.",
+    "One short Dolphin software-rendered capture, including stationary frames, does not establish locked 60 FPS or physical hardware timing.",
+    "Four pre-existing unused HUD-field managed warnings remain."
+  ]
+}
