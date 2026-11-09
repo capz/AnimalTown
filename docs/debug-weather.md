@@ -4,6 +4,8 @@ Ocean, coast-water halves, inland rivers/ponds and water under bridges share
 `WaterTerrain.RiverHeight` (-0.50 m relative to the local terrain support).
 The former ocean offset (-0.06 m) and artificial 0.44 m river-mouth wall are
 removed. Beach toes follow the same water plane; coastal land remains raised.
+Player/NPC support interpolates the same two beach triangles as rendering,
+including diagonal shore corners, so actors follow the lowered shoreline.
 Water footprints and player/villager traversal rules are unchanged. Stored
 terrain/elevation layouts are not regenerated or migrated.
 
