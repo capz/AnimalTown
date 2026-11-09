@@ -6,6 +6,7 @@ internal static class TerrainChecks
 {
     public static void Run(string project)
     {
+        NativeModelWindingChecks.Run();
         NeutralFloorChecks.Run(project);
         TerrainCliffChecks.Run(project);
         string root=Path.Combine(project,"out/terrain-import-check");Directory.CreateDirectory(Path.Combine(root,"assets/terrain"));
