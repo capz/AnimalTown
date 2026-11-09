@@ -1,0 +1,219 @@
+{
+  "baseline_commit": "a53fa6d2e020cd34581ae221df5de5ebf62cc72f",
+  "game_commit": "c5c388ea7fad5e3470dc7af7ccaca0e845ee8373",
+  "release": "https://github.com/capz/AnimalTown/releases/tag/v0.7.12.c5c388ea7fad",
+  "source_card_sha256": "a780d11c1aa99f930c6e17d29b4695c480cd22c99a57c8f3f8d26ca667a35f44",
+  "method": "Separate copied cards, same spring RTC and six eight-guest-second walking/running directions, with shadows and material animation enabled. Route markers exclude warmup and save work. Dolphin guest measurements, not physical hardware.",
+  "instrumented": {
+    "before": {
+      "disc": "/work/out/frame-save-release/AnimalTown-0.7.11.a53fa6d2e020.nkit.iso",
+      "actual_guest_seconds": [
+        8.008,
+        8.008,
+        8.008,
+        8.008,
+        8.024683333333334,
+        8.008
+      ],
+      "overlay_enabled": true,
+      "units": "guest milliseconds; internal counters have 0.1 ms resolution; profiling overhead remains",
+      "profiled_frames": 3110,
+      "frame_interval_ms": {
+        "median": 16.6,
+        "p95": 33.3,
+        "max": 33.3,
+        "mean": 17.5988
+      },
+      "preparation_ms": {
+        "median": 0.3,
+        "p95": 6.0,
+        "max": 7.4,
+        "mean": 1.1375
+      },
+      "ui_ms": {
+        "median": 1.6,
+        "p95": 1.7,
+        "max": 6.0,
+        "mean": 1.609
+      },
+      "recovery_frames": 0,
+      "missing_terrain_frames": 0,
+      "loading_frames": 0,
+      "details": {
+        "selection_ms": {
+          "median": 0.0,
+          "p95": 5.3,
+          "max": 5.7,
+          "mean": 0.5623
+        },
+        "generation_ms": {
+          "median": 0.0,
+          "p95": 0.6,
+          "max": 2.1,
+          "mean": 0.0849
+        },
+        "publication_ms": {
+          "median": 0.0,
+          "p95": 0.0,
+          "max": 0.4,
+          "mean": 0.0041
+        },
+        "uv_material_ms": {
+          "median": 0.0,
+          "p95": 0.0,
+          "max": 0.0,
+          "mean": 0.0
+        },
+        "native_masks_ms": {
+          "median": 0.0,
+          "p95": 1.0,
+          "max": 1.5,
+          "mean": 0.1751
+        },
+        "allocations": 4005,
+        "gc_collections": 1,
+        "texture_operations": 0,
+        "shadow_page_updates": 3216,
+        "mesh_creates": 261,
+        "mesh_updates": 245,
+        "mesh_releases": 204
+      }
+    },
+    "after": {
+      "disc": "/work/out/row-culling-release/AnimalTown-0.7.12.c5c388ea7fad.nkit.iso",
+      "actual_guest_seconds": [
+        8.024683333333334,
+        8.024683333333334,
+        8.024683333333334,
+        8.008,
+        8.024683333333334,
+        8.024683333333334
+      ],
+      "overlay_enabled": true,
+      "units": "guest milliseconds; internal counters have 0.1 ms resolution; profiling overhead remains",
+      "profiled_frames": 3255,
+      "frame_interval_ms": {
+        "median": 16.6,
+        "p95": 16.6,
+        "max": 33.3,
+        "mean": 16.8463
+      },
+      "preparation_ms": {
+        "median": 0.3,
+        "p95": 3.1,
+        "max": 7.4,
+        "mean": 0.8488
+      },
+      "ui_ms": {
+        "median": 1.6,
+        "p95": 1.6,
+        "max": 1.8,
+        "mean": 1.6047
+      },
+      "recovery_frames": 0,
+      "missing_terrain_frames": 0,
+      "loading_frames": 0,
+      "details": {
+        "selection_ms": {
+          "median": 0.0,
+          "p95": 2.5,
+          "max": 2.8,
+          "mean": 0.2773
+        },
+        "generation_ms": {
+          "median": 0.0,
+          "p95": 0.6,
+          "max": 4.4,
+          "mean": 0.0826
+        },
+        "publication_ms": {
+          "median": 0.0,
+          "p95": 0.0,
+          "max": 0.4,
+          "mean": 0.0033
+        },
+        "uv_material_ms": {
+          "median": 0.0,
+          "p95": 0.0,
+          "max": 0.0,
+          "mean": 0.0
+        },
+        "native_masks_ms": {
+          "median": 0.0,
+          "p95": 1.0,
+          "max": 1.5,
+          "mean": 0.1736
+        },
+        "allocations": 4177,
+        "gc_collections": 1,
+        "texture_operations": 0,
+        "shadow_page_updates": 3260,
+        "mesh_creates": 272,
+        "mesh_updates": 234,
+        "mesh_releases": 215
+      }
+    }
+  },
+  "profiler_off": {
+    "before": {
+      "disc": "/work/out/frame-save-release/AnimalTown-0.7.11.a53fa6d2e020.nkit.iso",
+      "actual_guest_seconds": [
+        8.024683333333334,
+        8.041366666666667,
+        8.008,
+        8.024683333333334,
+        8.008,
+        8.05805
+      ],
+      "overlay_enabled": false,
+      "units": "guest milliseconds; one NTSC VI resolution; profiler off; capture overhead remains",
+      "guest_seconds": 54.971583333333335,
+      "presentations": 3223,
+      "frame_interval_ms": {
+        "median": 16.6833,
+        "p95": 16.6833,
+        "max": 33.3667,
+        "mean": 17.0561
+      },
+      "multi_vi_intervals": 72,
+      "multi_vi_percent": 2.2346368715083798
+    },
+    "after": {
+      "disc": "/work/out/row-culling-release/AnimalTown-0.7.12.c5c388ea7fad.nkit.iso",
+      "actual_guest_seconds": [
+        8.024683333333334,
+        8.008,
+        8.024683333333334,
+        8.05805,
+        8.008,
+        8.05805
+      ],
+      "overlay_enabled": false,
+      "units": "guest milliseconds; one NTSC VI resolution; profiler off; capture overhead remains",
+      "guest_seconds": 54.971583333333335,
+      "presentations": 3276,
+      "frame_interval_ms": {
+        "median": 16.6833,
+        "p95": 16.6833,
+        "max": 33.3667,
+        "mean": 16.7801
+      },
+      "multi_vi_intervals": 19,
+      "multi_vi_percent": 0.5801526717557252
+    }
+  },
+  "validation": {
+    "reference_bounds": 238464,
+    "dropped_reference_bounds": 0,
+    "conservative_extras": 2,
+    "exact_cache_camera_positions": 2500,
+    "normal_stream_stress_frames": 16779,
+    "starved_stream_stress_frames": 720,
+    "coverage_misses": 0,
+    "post_travel_save": {
+      "before": 1,
+      "after": 2,
+      "returned_to_settings": true
+    }
+  }
+}

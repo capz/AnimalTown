@@ -52,8 +52,12 @@ block=block.replace("travel_report['frame_counters'].append(current)","travel_re
 if '--save-after-travel' in sys.argv:
     block+='''            before_save=committed_card_sequence(root/'MemoryCardA.USA.raw')
             building_save()
-            after_save=committed_card_sequence(root/'MemoryCardA.USA.raw')
-            if after_save<=before_save:raise AssertionError('Post-travel save did not publish a complete checksummed generation')
+            for sample in range(30):
+                after_save=committed_card_sequence(root/'MemoryCardA.USA.raw')
+                if after_save>before_save:break
+                if p.poll() is not None:raise AssertionError('Emulator stopped before the saved card flushed')
+                time.sleep(1)
+            else:raise AssertionError('Post-travel save did not flush a complete checksummed generation')
             screenshot('travel-save-returned.png')
             (root/'travel-save.json').write_text(json.dumps({'before':before_save,'after':after_save,'returned_to_settings':True},indent=2))
 '''

@@ -1,5 +1,8 @@
 # Streamed-town frame investigation — 2026-11-09
 
+Latest follow-up: [row visibility optimization and native measurements](2026-11-09-row-culling.md).
+The measurements below document the preceding allocation/save pass.
+
 Final validated game/build: `a53fa6d2e020cd34581ae221df5de5ebf62cc72f`.
 [Release: full ISO, direct NKit ISO and matching backend](https://github.com/capz/AnimalTown/releases/tag/v0.7.11.a53fa6d2e020).
 Baseline: `4876eff25cb9690fdf7dbb3c3469803108dd4e16`.
