@@ -26,9 +26,9 @@ internal sealed class LowPolyTrees
             }
         }
     }
-    internal void Draw(Renderer renderer,Town town,int[] selected,float focusZ,int month)
+    internal void Draw(Renderer renderer,Town town,int[] selected,float focusZ,int month,int seasonOverride=-1)
     {
-        int season=TerrainTiles.Season(month);
+        int season=TerrainTiles.Season(month,seasonOverride);
         int count=0;
         for(int n=0;n<selected.Length;n++)if(selected[n]>=0){var g=town.Ground[selected[n]];float scale=g.Kind==2?.75f:3;var p=CylinderWorld.Surface(g.Z,focusZ,TerrainElevation.At(town,g.X,g.Z));float angle=p.Pitch*.5f;var pose=poses[count];pose.LocalPosition=new Vector3(g.X,p.Y,p.Z);pose.LocalScale=new Vector3(scale,scale,scale);pose.LocalRotation=new Quaternion((float)Math.Sin(angle),0,0,(float)Math.Cos(angle));kinds[count++]=g.Item==3?2:g.Item==2?1:0;}
         for(int kind=0;kind<3;kind++){

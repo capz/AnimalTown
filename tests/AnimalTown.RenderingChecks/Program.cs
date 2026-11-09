@@ -4,4 +4,5 @@ MovementTerrainChecks.Run((passed,message)=>{count++;if(!passed)throw new Except
 GroundRingChecks.Run((passed,message)=>{count++;if(!passed)throw new Exception(message);});
 TerrainIndexChecks.Run((passed,message)=>{count++;if(!passed)throw new Exception(message);});
 ActorVisibilityChecks.Run((passed,message)=>{count++;if(!passed)throw new Exception(message);});
+AttentionGeometryChecks.Run((passed,message)=>{count++;if(!passed)throw new Exception(message);});
 Console.WriteLine(count+" rendering service checks passed");

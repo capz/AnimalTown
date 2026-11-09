@@ -38,6 +38,8 @@ internal sealed class TownGame
 {
     private GameState state;
     private readonly TownClock townClock=new TownClock();
+    private readonly RenderDebugOptions renderDebug=new RenderDebugOptions();
+    private readonly VillagerAttentionRenderer attention=new VillagerAttentionRenderer();
     private readonly DebugWeather weather=new DebugWeather();
     private readonly RainRenderer rain=new RainRenderer();
     private readonly ActorFrameVisibility actorVisibility=new ActorFrameVisibility();
@@ -112,7 +114,7 @@ internal sealed class TownGame
     private bool cliffPreview;
     private int waterInspection;
     private int buildingInspection;
-    private const int SettingsTab=5,TestingTab=6,TestingRows=18;
+    private const int SettingsTab=5,TestingTab=6,TestingRows=21;
     private static readonly string[] tabs={"Backpack","Jobs","Catalog","Home","Post office","Settings","Debug / testing"};
     private static readonly string[] itemActions={"Drop","Place (R rotates)","Plant","Eat","Wear","Equip","Bury","Open money bag","Read","Quit"};
     internal TownGame()
@@ -137,7 +139,7 @@ internal sealed class TownGame
         buildings=new BuildingRenderer(worldRoot);
         trees=new LowPolyTrees(worldRoot);terrain=new TerrainRenderer();villagerShadows=new VillagerShadows();
         if(NativeShadows.Init(GroundShadow.Atlas(),VillagerShadowPatch.Texture())!=1)throw new InvalidOperationException("Shadow union native budget");
-        NativeRim.Enable(1);NativeRim.Enable(0);
+        NativeRim.Enable(RenderDebugOptions.DefaultRimPercent);NativeRim.Enable(0);
     }
     internal void AdvanceLoading()
     {
@@ -148,7 +150,7 @@ internal sealed class TownGame
                 if(loadingModel==null){loadingLabel="Loading "+modelNames[loadingIndex];loadingModel=ModelResources.LoadAsync(modelNames[loadingIndex]);return;}
                 if(!loadingModel.IsCompleted)return;
                 var model=loadingModel.GetAwaiter().GetResult();models[loadingIndex]=model;
-                actors[loadingIndex+1]=model.CreateInstance(512*1024);if(model.TryGetAnimation("Walking",out var clip))animationClock.Step(loadingIndex+1,0,false);
+                actors[loadingIndex+1]=model.CreateInstance(512*1024);attention.Register(loadingIndex,actors[loadingIndex+1]);if(model.TryGetAnimation("Walking",out var clip))animationClock.Step(loadingIndex+1,0,false);
                 loadingModel=null;loadingIndex++;return;
             }
             bool complete=buildings.AdvanceLoading();loadingLabel=buildings.LoadingLabel;if(!complete)return;
@@ -230,6 +232,10 @@ internal sealed class TownGame
         bool navigating=screen=="menu"||screen=="keyboard"||screen=="create"||screen=="item"||screen=="sell"||screen=="shop"||screen=="store"||screen=="post"||screen=="mail"||screen=="lost";
         int direction=menuNavigation.Read(screen,screen=="menu"?menuTab:-1,p.Stick.X,p.Stick.Y,(int)p.PressedButtons,Clock.Timestamp,navigating&&!chord);
         bool up=direction==MenuNavigation.Up,down=direction==MenuNavigation.Down,left=direction==MenuNavigation.Left,right=direction==MenuNavigation.Right;
+        if(screen=="menu"&&menuTab==TestingTab&&selected==20&&!chord){
+            if(left||right){renderDebug.AdjustRim(right?1:-1);return;}
+            if(p.Z.WasPressed){renderDebug.ResetRim();return;}
+        }
         if(p.L.IsHeld&&p.R.IsHeld&&p.Z.WasPressed){FrameProfile.Enabled=!FrameProfile.Enabled;return;}
         if(p.L.IsHeld&&p.R.IsHeld&&p.Y.WasPressed){ToggleModelPath();return;}
         if(p.L.IsHeld&&p.R.IsHeld&&p.DPadDown.WasPressed){if(batchedDrawing)UiFont.Batched=!UiFont.Batched;return;}
@@ -397,6 +403,9 @@ internal sealed class TownGame
             case 15:waterInspection=0;InspectBuilding();screen="world";break;
             case 16:weather.RainEnabled=!weather.RainEnabled;break;
             case 17:weather.RoughOceanWhenRaining=!weather.RoughOceanWhenRaining;break;
+            case 18:renderDebug.CycleSeason();break;
+            case 19:renderDebug.ForceAttention=!renderDebug.ForceAttention;break;
+            case 20:renderDebug.AdjustRim(1);break;
         }
     }
     private void ToggleBatching()
@@ -426,7 +435,10 @@ internal sealed class TownGame
             case 14:return room==0?"Go to test ramp":"Test ramp: outdoors only";
             case 15:return room==0?"Go to next test building":"Go to indoor doorway";
             case 16:return "Rain preview: "+OnOff(weather.RainEnabled);
-            default:return "Rough ocean in rain: "+OnOff(weather.RoughOceanWhenRaining);
+            case 17:return "Rough ocean in rain: "+OnOff(weather.RoughOceanWhenRaining);
+            case 18:return "Season preview: "+(renderDebug.SeasonOverride<0?"Auto":TerrainTiles.SeasonName(renderDebug.SeasonOverride));
+            case 19:return "Villager attention bubbles: "+OnOff(renderDebug.ForceAttention);
+            default:return "Rim intensity: "+renderDebug.RimPercent+"%";
         }
     }
     private void Interact()
@@ -556,10 +568,10 @@ internal sealed class TownGame
         if(!actorVisibility.Visible[actor]){FrameProfile.CulledObjects++;return;}
         var location=actorVisibility.Locations[actor];float x=location.X,z=location.Z,scale=1.8f,facing=actor==0?facingYaw:location.Yaw;
         var pose=batchedDrawing?modelPoses[modelUsed++]:transform;pose.LocalPosition=SurfacePoint(x,z);pose.LocalScale=new Vector3(scale,scale,scale);pose.LocalRotation=SurfaceRotation(z,facing);
-        if(batchedDrawing){actorQueue.Submit(actors[actor],pose);}else{NativeRim.Enable(lighting&1);try{renderer.DrawModel(actors[actor],pose);}finally{NativeRim.Enable(0);}}
+        if(batchedDrawing){actorQueue.Submit(actors[actor],pose);}else{NativeRim.Enable((lighting&1)!=0?renderDebug.RimPercent:0);try{renderer.DrawModel(actors[actor],pose);}finally{NativeRim.Enable(0);}}
     }
     private void DrawActors()
-    {NativeRim.Enable(lighting&1);try{actorQueue.Execute(renderer);}finally{NativeRim.Enable(0);}}
+    {NativeRim.Enable((lighting&1)!=0?renderDebug.RimPercent:0);try{actorQueue.Execute(renderer);}finally{NativeRim.Enable(0);}}
     private void PrepareVillagerShadows()
     {
         villagerShadows.Enabled=(lighting&2)!=0;villagerShadows.BeginFrame(state.Town);
@@ -580,7 +592,7 @@ internal sealed class TownGame
     }
     private void DrawScene()
     {
-        terrain.RoughOcean=weather.RoughOcean(room);
+        terrain.RoughOcean=weather.RoughOcean(room);terrain.SeasonOverride=renderDebug.SeasonOverride;
         cachedPlayerHeight=PlayerHeight();if(room==0)RenderView.Prepare(state.X,state.Z,cachedPlayerHeight);
         if(room!=0)indoorCamera.Configure(BuildingWorld.Definition(state,BuildingWorld.Building(room)));
         long phase=FrameProfile.Start(),preparationDeadline=Clock.Timestamp+2000;PrepareVillagerShadows();
@@ -594,6 +606,7 @@ internal sealed class TownGame
         if(weather.Raining(room)&&villagers.Doors.PlayerFade<1)rain.Prepare();
         actorVisibility.Prepare(state,villagers.Doors,indoorCamera,waterInspection,cachedPlayerHeight);
         UpdateAnimationFrame();
+        if(renderDebug.ForceAttention&&villagers.Doors.PlayerFade<1)attention.Prepare();
         phase=FrameProfile.Start();uiShapes.Prepare(screen,screen=="menu"?menuTab:-1,batchedDrawing);if((batchedDrawing&&screen=="map")||(runningMinimap.Visible&&screen=="world"&&room==0))mapBackground.Prepare(state.Town);modelUsed=0;FrameProfile.End(8,phase);
         phase=FrameProfile.Start();device.BeginFrame(room==0?(weather.Raining(room)?new Color32(112,143,151):new Color32(149,198,186)):new Color32(32,40,39));
         float eyeHeight=PlayerHeight();
@@ -646,6 +659,7 @@ internal sealed class TownGame
         if(screen=="plot")
         { int x=(int)state.X-3,z=(int)state.Z-3;bool valid=state.Town.ValidPlot(x,z);for(int i=0;i<15;i++){Box(x+i,.02f,z,.9f,.03f,.9f,valid?new Color32(74,230,113):new Color32(229,82,72));Box(x+i,.02f,z+12,.9f,.03f,.9f,valid?new Color32(74,230,113):new Color32(229,82,72));} }
         if(batchedDrawing)boxes.Flush();
+        if(renderDebug.ForceAttention&&villagers.Doors.PlayerFade<1)attention.Draw(renderer,state,actorVisibility,indoorCamera,cachedPlayerHeight);
         if(weather.Raining(room)&&villagers.Doors.PlayerFade<1)rain.Draw(renderer,state,(Clock.Timestamp-sessionStart)/1000000.0,cachedPlayerHeight);
         renderer.End3D();ui.Begin();DrawHud();FrameProfile.End(8,phase);FrameProfile.Draw(ui);
         float fade=villagers.Doors.PlayerFade;if(fade>0)ui.FillRectangle(new RectF(0,0,640,480),new Color32(12,19,25,(byte)(fade*255)));
@@ -689,7 +703,7 @@ internal sealed class TownGame
             {for(int j=visibleTrees.Length-1;j>n;j--){visibleTrees[j]=visibleTrees[j-1];treeDistances[j]=treeDistances[j-1];}visibleTrees[n]=i;treeDistances[n]=d;break;}
         }
         FrameProfile.End(15,selectionAt);
-        trees.Draw(renderer,state.Town,visibleTrees,state.Z,month);
+        trees.Draw(renderer,state.Town,visibleTrees,state.Z,month,terrain.RenderSeason);
     }
     private void FenceAt(int x,int z)
     { Box(x,0,z,.12f,.55f,.12f,new Color32(211,191,147)); }
@@ -790,7 +804,7 @@ internal sealed class TownGame
         int total=screen=="menu"?TabCount():screen=="shop"?state.Town.StockCount:screen=="mail"?Math.Max(1,state.MailCount):screen=="lost"?Math.Max(1,LostCount()):screen=="store"?8:7;
         bool compact=screen=="menu"&&(menuTab==SettingsTab||menuTab==TestingTab);int page=compact?9:8,step=compact?24:29;float rowScale=compact?1.2f:1.4f;int first=selected/page*page;
         for(int i=first;i<Math.Min(total,first+page);i++){float y=131+(i-first)*step;if(i==selected){Rounded(57,y,520,step-2,(step-2)*.5f,new Color32(221,231,188));Strong("> "+RowLabel(i),68,y,ink,rowScale);}else Text("  "+RowLabel(i),68,y,ink,rowScale);}
-        Text("Stick / D-pad choose   L/R tabs   A select   B close",65,392,ink,1);
+        Text(screen=="menu"&&menuTab==TestingTab&&selected==20?"Left/Right: 5%   A: +5%   Z: reset":"Stick / D-pad choose   L/R tabs   A select   B close",65,392,ink,1);
         if(screen=="menu"&&menuTab==SettingsTab){
             Text("Manual saves only. Choose Save now to write the card.",65,331,ink,1);
             Text(saveStatusText.Get(saveStatus),65,357,ink,1);

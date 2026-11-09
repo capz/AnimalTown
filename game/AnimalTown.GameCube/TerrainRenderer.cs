@@ -10,7 +10,7 @@ using Hypercube.GameCube;
 internal sealed class TerrainRenderer
 {
     private TerrainArchive? archive;
-    private bool legacy;
+    private bool legacy=false; // Default: immutable ARAM archive and fixed MEM1 views.
     internal TerrainSection CreateSection()=>new TerrainSection(soil,waterMaterial);
     private readonly TerrainStream stream=new TerrainStream();
     private readonly TerrainSection?[] sections=new TerrainSection?[TerrainStream.Capacity];
@@ -36,13 +36,13 @@ internal sealed class TerrainRenderer
     internal int LoadingTotal=>legacy?stream.WantedCount:TerrainArchivePlan.Count;
     internal int MissingVisible=>legacy?stream.MissingVisible:Ready?0:1;
     internal int UrgentStages {get;private set;}
-    internal bool FreezeMotion,RecreateMeshes;
+    internal bool FreezeMotion,RecreateMeshes=false;
     internal CylinderRows Rows=>stream.CylinderRows;
     private byte[] data=new byte[0];
     private int season=-1,forced,slots,cachedTerrainVersion=-1;
     private Town? cachedTown;
     private GroundRingRenderer? groundRing;
-    internal bool GroundRingRequested {get;private set;}
+    internal bool GroundRingRequested {get;private set;}=false; // Legacy comparison only.
     internal int SharedFlatMaterial {get;private set;}=-1;
     internal bool GroundRingActive=>SharedFlatMaterial>=0;
     internal bool GroundRingUploaded=>groundRing?.Uploaded??false;
@@ -50,6 +50,8 @@ internal sealed class TerrainRenderer
     internal int VisibleTriangles,RejectedQuads;
     internal int BuiltThisFrame {get;private set;}
     internal int MaterialRevision {get;private set;}
+    internal int SeasonOverride=-1;
+    internal int RenderSeason=>season;
     internal bool ObjectShadowsEnabled {get=>shadows.Enabled;set=>shadows.Enabled=value;}
     internal int GroundSlot(GameState state,int x,int z)=>FloorStrips.At(state,data,x,z,0);
     internal Material GroundMaterial(int slot)=>materials[slot];
@@ -64,7 +66,7 @@ internal sealed class TerrainRenderer
     internal void Prepare(GameState state,int room,int month,VillagerShadows movingShadows,long deadline,bool cliffPreview=false)
     {
         BuiltThisFrame=UrgentStages=0;
-        int next=TerrainTiles.Season(month,forced);bool changed=next!=season;
+        int next=TerrainTiles.Season(month,SeasonOverride>=0?SeasonOverride:forced);bool changed=next!=season;
         if(changed){
             string name="floor-"+TerrainTiles.SeasonName(next);data=File.ReadAllBytes("dvd:/"+name+".bin");FloorStrips.Validate(data);
             for(int i=0;i<textures.Length;i++)if(textures[i]!=null){TextureCache.Release(textures[i]!);textures[i]=null;materials[i].Texture=null;}

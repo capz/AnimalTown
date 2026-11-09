@@ -15,9 +15,9 @@ public static class CylinderWorld
     public const int ScrollWindow=2;
     public const float ScrollGuard=2;
     public static float ScrollAnchor(float coordinate)=>(float)Math.Floor(coordinate/ScrollWindow)*ScrollWindow+ScrollWindow*.5f;
-    // Curvature is independent of playable bounds. A ten-percent smaller
-    // radius brings the horizon closer without changing the camera lens.
-    public const float Radius=360f/6.28318530718f;
+    // Curvature (1/radius) increases by exactly 8%; playable arc distances and
+    // the camera lens stay unchanged. Every projection consumes this radius.
+    public const float Radius=(360f/6.28318530718f)/1.08f;
     public const int ViewHalfWidth=64;
     // Keep the lens and eye distance; aim at the player to show more ground.
     public const float CameraFieldOfView=53.54f;

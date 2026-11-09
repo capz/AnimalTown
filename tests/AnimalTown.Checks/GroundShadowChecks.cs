@@ -17,8 +17,11 @@ internal static class GroundShadowChecks
                 check(x>=caster.Left-.0001f&&x<=caster.Right+.0001f,"shadow clipped to projection bounds");
                 int row=(int)Math.Floor(caster.Top);float error=float.MaxValue;
                 for(int r=row;r<=Math.Ceiling(caster.Bottom);r++){
-                    var a=CylinderWorld.Surface(r,0,.012f);var b=CylinderWorld.Surface(r+1,0,.012f);float f=(z-a.Z)/(b.Z-a.Z);
-                    if(f>=-.0001f&&f<=1.0001f)error=Math.Min(error,Math.Abs(y-a.Y-(b.Y-a.Y)*f));
+                    var a=CylinderWorld.Surface(r,0,.012f);var b=CylinderWorld.Surface(r+1,0,.012f);
+                    // Logical Z can cross the cylinder's quarter turn. Its
+                    // projected Z alone is not an invertible chord coordinate.
+                    float dy=b.Y-a.Y,dz=b.Z-a.Z,f=((y-a.Y)*dy+(z-a.Z)*dz)/(dy*dy+dz*dz);
+                    if(f>=-.0001f&&f<=1.0001f){float ey=y-a.Y-dy*f,ez=z-a.Z-dz*f;error=Math.Min(error,(float)Math.Sqrt(ey*ey+ez*ez));}
                 }
                 check(error<.0001f,"clipped shadow uses the actual receiver row chord, not an independently curved surface");
                 check(g.Uvs[i*2]>=profile%2*.5f+2f/128-.0001f&&g.Uvs[i*2]<=profile%2*.5f+62f/128+.0001f,"UVs stay inside the profile gutter");
