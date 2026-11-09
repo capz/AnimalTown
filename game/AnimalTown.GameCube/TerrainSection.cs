@@ -52,6 +52,19 @@ internal sealed class TerrainSection
         if(++phase<3)return false;
         Triangles+=Water.Triangles+Walls.Triangles;return true;
     }
+    internal void Archive(int section)
+    {
+        for(int slot=0;slot<meshes.Length;slot++)ArchivePart(section,slot,GroundMesh(slot),0);
+        Water.Archive(section);Walls.Archive(section);
+        if(NativeTerrain.Complete(section)!=1)throw new InvalidOperationException("Terrain archive section did not complete");
+    }
+    internal static void ArchivePart(int section,int kind,Mesh? mesh,int used)
+    {if(mesh!=null&&NativeTerrain.Append(section,kind,mesh,used)<0)throw new InvalidOperationException("Terrain archive exceeded its native budget");}
+    internal void Dispose()
+    {
+        for(int i=0;i<meshes.Length;i++){meshes[i]?.Dispose();meshes[i]=null;buffers[i]=null;}
+        Water.Dispose();Walls.Dispose();
+    }
     private void AppendGround(GameState state,FloorStrips strips,int sharedFlatMaterial)
     {
         for(int n=0;n<strips.Count;n++){

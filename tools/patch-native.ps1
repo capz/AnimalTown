@@ -195,7 +195,7 @@ $storageSource=$storageSource.Replace('fail(-rc, "Memory card write failed.");',
 & python3 (Join-Path $Root 'tools/patch-managed-allocator.py') $nativeRoot
 if($LASTEXITCODE){throw 'Pinned allocation/frame profiling patch failed'}
 if($IsLinux){
-    foreach($fixture in @('managed-allocator','terrain-recycle')){
+    foreach($fixture in @('managed-allocator','terrain-recycle','terrain-archive')){
         $check=Join-Path $Root "out/native-$fixture-check"
         [string[]]$extra=@()
         if($fixture -eq 'managed-allocator'){$extra=@((Join-Path $nativeRoot 'source/managed_runtime.c'))}

@@ -2,7 +2,7 @@
  * Validate everything before mutating a published buffer. */
 int animaltown_mesh_recycle(int token,DndArray *a,int n,DndArray *indices,int m){
     Resource *r=find(token,MESH);
-    if(dnd_device_active()||!r||r->geometry||r->holds||r->commands||r->format!=2||n<1||n>65535||m<3||m>3*65535||m%3||!array_range(a,0,n)||a->element_size!=36||!array_range(indices,0,m)||indices->element_size!=2)return -1;
+    if(dnd_device_active()||!r||r->terrain_parent||r->geometry||r->holds||r->commands||r->format!=2||n<1||n>65535||m<3||m>3*65535||m%3||!array_range(a,0,n)||a->element_size!=36||!array_range(indices,0,m)||indices->element_size!=2)return -1;
     if((size_t)n*sizeof(DndDrawVertex)+(size_t)m*2>(size_t)r->bytes)return 0;
     const uint16_t *ix=(const uint16_t*)indices->data;
     for(int i=0;i<m;i++)if(ix[i]>=n)return -1;
