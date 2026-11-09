@@ -30,14 +30,17 @@ static DndObject *prepare_block(DndManagedHeap *heap,DndHeapBlock *b,const DndTy
     TOWN_COUNT(TOWN_ALLOCATIONS);return object;
 }
 static DndObject *allocate_from_free(DndManagedHeap *heap,const DndType *type,size_t bytes) {
-    DndHeapBlock *previous=NULL;
+    // Preserve the few large holes for terrain/save arrays. First-fit reused
+    // their prefixes for tiny retained objects even with smaller holes free.
+    DndHeapBlock *previous=NULL,*best=NULL,*best_previous=NULL;
     for(DndHeapBlock *b=heap->free_list;b;previous=b,b=free_next(b)){
         TOWN_COUNT(TOWN_FREE_SEARCHES);
-        if(b->size<bytes)continue;
-        DndHeapBlock *next=free_next(b);if(previous)free_link(previous,next);else heap->free_list=next;
-        return prepare_block(heap,b,type,bytes);
+        if(b->size<bytes||(best&&b->size>=best->size))continue;
+        best=b;best_previous=previous;if(b->size==bytes)break;
     }
-    return NULL;
+    if(!best)return NULL;
+    DndHeapBlock *next=free_next(best);if(best_previous)free_link(best_previous,next);else heap->free_list=next;
+    return prepare_block(heap,best,type,bytes);
 }
 static DndObject *allocate(DndManagedHeap *heap,const DndType *type,size_t bytes) {
     if(!heap||!type)return NULL;

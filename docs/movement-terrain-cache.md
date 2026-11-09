@@ -123,7 +123,9 @@ A game-owned generated-runtime patch maintains a real intrusive free-block chain
 and append tail. Allocation no longer searches live blocks or rebuilds/coalesces
 the whole heap. Collection retains the existing tracing/root rules, coalesces free
 blocks and rebuilds the chain. Free links occupy unused payload; the heap adds one
-tail pointer. The managed heap and native resource byte budgets are unchanged.
+tail pointer. It chooses the smallest fitting free block so small retained
+objects do not consume the only contiguous space for town/save arrays. The
+managed heap and native resource byte budgets are unchanged.
 Fixtures cover rooted graphs, split/reuse/coalescing, reclaimed tails and GC stress.
 The SDK checkout and package versions are unchanged.
 

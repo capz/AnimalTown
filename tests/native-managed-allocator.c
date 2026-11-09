@@ -32,5 +32,17 @@ int main(void){
     root=dnd_object_new(&heap,&type);((Node*)root)->value=73;dnd_gc_set_stress(true);
     for(int i=0;i<100;i++){assert(dnd_object_new(&heap,&DND_TYPE_OBJECT));assert(((Node*)root)->value==73);}
     dnd_gc_set_stress(false);dnd_gc_unregister_roots(&registration);root=NULL;dnd_gc_collect(&heap,NULL);assert(!heap.used);
-    free(memory);puts("Managed allocator: 16000 live objects, zero live-block searches, rooted graph, holes/splits/coalescing, tail reclamation, 200 reuse cycles and GC stress passed");
+    // A small retained allocation must use the smaller hole. Consuming the
+    // large hole first strands enough total free memory for the next save-sized
+    // array, but leaves no contiguous block that can hold it.
+    DndGcRootRegistration fragments={0};assert(dnd_gc_register_roots(&fragments,&liveRoots));
+    assert(dnd_managed_array_new(&heap,32000,1));live[0]=dnd_object_new(&heap,&type);
+    assert(dnd_managed_array_new(&heap,4000,1));live[1]=dnd_object_new(&heap,&type);
+    live[2]=(DndObject*)dnd_managed_array_new(&heap,(int)(heap.capacity-heap.used-256),1);assert(live[2]);
+    dnd_gc_collect(&heap,&liveRoots);
+    live[3]=(DndObject*)dnd_managed_array_new(&heap,3000,1);assert(live[3]);
+    live[4]=(DndObject*)dnd_managed_array_new(&heap,32000,1);assert(live[4]);
+    for(int i=0;i<8;i++)live[i]=NULL;
+    dnd_gc_unregister_roots(&fragments);dnd_gc_collect(&heap,NULL);assert(!heap.used);
+    free(memory);puts("Managed allocator: 16000 live objects, zero live-block searches, rooted graph, holes/splits/coalescing, tail reclamation, 200 reuse cycles, GC stress and contiguous save-sized buffers passed");
 }
