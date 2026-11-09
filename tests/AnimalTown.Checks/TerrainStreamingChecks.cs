@@ -6,6 +6,7 @@ internal static class TerrainStreamingChecks
     {
         var cachedRows=new CylinderRows();
         RowVisibility(check,cachedRows);
+        ArchiveVisibility(check,cachedRows);
         foreach(float focus in new[]{.25f,40.25f,159.75f})for(int offset=-60;offset<=36;offset+=4){
             int top=(int)Math.Floor(focus/4)*4+offset;var bounds=new TerrainSectionBounds(cachedRows,new CylinderMotion(focus),top,focus);
             foreach(float delta in new[]{-.249f,.249f})foreach(float eye in new[]{0f,2f})foreach(float height in new[]{-.5f,0,2.01f})for(int n=0;n<=8;n++){
@@ -91,6 +92,27 @@ internal static class TerrainStreamingChecks
         }
         check(repairs*100<frames,"bounded visible repairs are exceptional, rather than the normal streaming budget");
         Console.WriteLine("Seamless stream: max "+maximum+" / "+TerrainStream.Capacity+" slots; coverage misses "+misses+"; bounded repair frames "+repairs+" / "+frames+" under eight fine-stage/stalled-frame budgets; "+starvedRepairs+" recovery frames during 720 fully starved diagonal frames");
+    }
+    private static void ArchiveVisibility(Action<bool,string> check,CylinderRows rows)
+    {
+        var view=new TerrainArchiveView();var expected=new TerrainStream();var ids=new bool[TerrainArchivePlan.Count];int maximum=0;
+        for(int i=0;i<TerrainArchivePlan.Count;i++){
+            int x=TerrainArchivePlan.X(i),z=TerrainArchivePlan.Z(i);
+            check(TerrainArchivePlan.Index(x,z)==i,"every immutable section has a unique reversible archive address");
+            check(x%8==0&&z%4==0&&z%8+TerrainStream.Height<=8,"each archived section fits one world shadow page");
+        }
+        foreach(float x in new[]{0f,.249f,.501f,7.999f,20.25f,79.75f,159.999f,160f})
+        foreach(float z in new[]{0f,.249f,.501f,3.999f,20.25f,79.75f,159.999f,160f}){
+            expected.Reset();expected.Prepare(x,z);while(expected.BuildSlot>=0){expected.Complete();expected.Prepare(x,z);}
+            view.Prepare(x,z,rows);Array.Clear(ids);maximum=Math.Max(maximum,view.Count);
+            for(int n=0;n<view.Count;n++){check(!ids[view.Sections[n]],"immutable view contains no duplicate draw sections");ids[view.Sections[n]]=true;}
+            for(int n=0;n<expected.Count;n++)if(expected.Visible[n])check(ids[TerrainArchivePlan.Index(expected.X[n],expected.Z[n])],"archived visibility preserves every independently selected streaming section, including town/ocean edges");
+            int revision=view.Revision;view.Prepare(x,z,rows);check(view.Revision==revision,"stationary terrain changes neither selection nor view bindings");
+        }
+        long before=GC.GetAllocatedBytesForCurrentThread();
+        for(int i=0;i<1200;i++)view.Prepare(20+i*.08f,80+(i%200)*.08f,rows);
+        check(GC.GetAllocatedBytesForCurrentThread()==before,"moving archive selection allocates no managed memory");
+        Console.WriteLine("Immutable terrain: "+TerrainArchivePlan.Count+" sections, max "+maximum+" visible; shadow-page boundaries, stream coverage and allocation-free movement passed");
     }
     private static void RowVisibility(Action<bool,string> check,CylinderRows rows)
     {

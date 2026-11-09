@@ -17,7 +17,7 @@ assert text[start:end].count('rebuild_free_list(heap);')==1
 source.write_text(text[:start]+'#include "native-managed-allocator.inc"\n\n'+text[end:])
 
 here=Path(__file__).resolve().parent
-for name in ('native-managed-allocator.inc','native-frame-counters.h','native-terrain-mesh.inc'):
+for name in ('native-managed-allocator.inc','native-frame-counters.h','native-terrain-mesh.inc','native-terrain-archive.inc'):
     shutil.copyfile(here/name,root/'include'/name)
 shutil.copyfile(here/'native-frame-counters.c',root/'source/animaltown_frame_counters.c')
 resource=root/'source/draw_resources.c'
@@ -27,15 +27,17 @@ def replace(old,new):
     assert text.count(old)==1, 'Pinned resource hook changed: '+old[:60]
     text=text.replace(old,new)
 text='#include "native-frame-counters.h"\n'+text
+replace('int holds,geometry,extra_bytes;','int holds,geometry,extra_bytes,terrain_parent;')
 replace('return (generation<<10)|(i+1);','if(kind==MESH){TOWN_COUNT(TOWN_MESH_CREATES);}\n        if(kind==TEXTURE){TOWN_COUNT(TOWN_TEXTURE_CREATES);}\n        return (generation<<10)|(i+1);')
-replace('int parent=r->geometry;','if(r->kind==MESH)TOWN_COUNT(TOWN_MESH_RELEASES);\n    int parent=r->geometry;')
+replace('int parent=r->geometry;','if(r->kind==MESH)TOWN_COUNT(TOWN_MESH_RELEASES);\n    int parent=r->geometry,terrain_parent=r->terrain_parent;')
+replace('if(base&&--base->holds==0&&base->pending)release(base);','if(base&&--base->holds==0&&base->pending)release(base);\n    if(terrain_parent)(void)dnd_buffer_unhold(terrain_parent);')
 replace('dnd_draw_backend_flush(r->data,count,2);','dnd_draw_backend_flush(r->data,count,2);TOWN_COUNT(TOWN_TEXTURE_UPDATES);')
 replace('dnd_draw_backend_flush(texture->data,count,2);','dnd_draw_backend_flush(texture->data,count,2);TOWN_COUNT(TOWN_TEXTURE_UPDATES);')
 assert text.count('dnd_draw_backend_flush(r->data,count,0);return 0;')==2
 text=text.replace('dnd_draw_backend_flush(r->data,count,0);return 0;','dnd_draw_backend_flush(r->data,count,0);TOWN_COUNT(TOWN_TEXTURE_UPDATES);return 0;')
 replace('dnd_draw_backend_flush(r->data,r->bytes,2);return 0;', 'dnd_draw_backend_flush(r->data,r->bytes,2);TOWN_COUNT(TOWN_TEXTURE_UPDATES);return 0;')
 replace('mesh_color(r);dnd_draw_backend_flush(r->data,r->bytes,0);dnd_draw_backend_mesh_changed();return 0;', 'mesh_color(r);dnd_draw_backend_flush(r->data,r->bytes,0);dnd_draw_backend_mesh_changed();TOWN_COUNT(TOWN_MESH_UPDATES);return 0;')
-replace('#include "dnd_mesh_streams.inc"','#include "native-terrain-mesh.inc"\n#include "dnd_mesh_streams.inc"')
+replace('#include "dnd_mesh_streams.inc"','#include "native-terrain-mesh.inc"\n#include "native-terrain-archive.inc"\n#include "dnd_mesh_streams.inc"')
 resource.write_text(text)
 
 generated=root/'source/generated_program.c'
@@ -57,5 +59,35 @@ extern void animaltown_frame_reset(int,DndManagedHeap*);
 extern void animaltown_frame_snapshot(DndArray*,DndManagedHeap*);
 extern void animaltown_frame_service(void);
 extern int animaltown_mesh_recycle(int,DndArray*,int,DndArray*,int);
+'''+text
+    generated.write_text(text)
+    # Mesh.Token is an internal SDK field. Pin its actual generated getter
+    # layout before exposing only the token to the game's archive bridge.
+    getter=re.search(r'intptr_t dnd_value_DolphinDotNet_GameCube_Dolphin_Graphics_Mesh_get_NativeBytes_[a-z0-9]+\(intptr_t a0\) \{.*?\n\}',text,re.S)
+    assert getter and '+sizeof(DndObject)+0+0)' in getter[0], 'Pinned Mesh.Token layout changed'
+    archive={
+        'Reset':(1,'return animaltown_terrain_reset((int){0});'),
+        'Append':(4,'int32_t token=0;if(!{2})return -1;memcpy(&token,(uint8_t*){2}+sizeof(DndObject),4);return animaltown_terrain_append((int){0},(int){1},token,(int){3});'),
+        'Complete':(1,'return animaltown_terrain_complete((int){0});'),
+        'Info':(2,'return animaltown_terrain_info((int){0},(int){1});'),
+        'Kind':(1,'return animaltown_terrain_kind((int){0});'),
+        'View':(0,'return animaltown_terrain_view();'),
+        'Bind':(2,'return animaltown_terrain_bind((int){0},(int){1});'),
+        'Unbind':(1,'return animaltown_terrain_unbind((int){0});'),
+        'Stat':(1,'return animaltown_terrain_stat((int){0});')}
+    for method,(count,body) in archive.items():
+        pattern=r'intptr_t (dnd_value_AnimalTown_GameCube_NativeTerrain_'+method+r'_[a-z0-9]+)\(([^)]*)\) \{.*?\n\}'
+        matches=list(re.finditer(pattern,text,re.S));assert len(matches)==1, 'NativeTerrain bridge changed: '+method
+        m=matches[0];args=re.findall(r'intptr_t (\w+)',m[2]);assert len(args)==count
+        text=text[:m.start()]+'intptr_t '+m[1]+'('+m[2]+') { '+body.format(*args)+' }'+text[m.end():]
+    text='''extern int animaltown_terrain_reset(int);
+extern int animaltown_terrain_append(int,int,int,int);
+extern int animaltown_terrain_complete(int);
+extern int animaltown_terrain_info(int,int);
+extern int animaltown_terrain_kind(int);
+extern int animaltown_terrain_view(void);
+extern int animaltown_terrain_bind(int,int);
+extern int animaltown_terrain_unbind(int);
+extern int animaltown_terrain_stat(int);
 '''+text
     generated.write_text(text)

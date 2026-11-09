@@ -41,6 +41,12 @@ internal sealed class TerrainWalls
             Edge(state,floor,cx,cz,cx+1,cz+1,cx,cz+1,cx,cz+1);Edge(state,floor,cx,cz,cx,cz+1,cx,cz,cx-1,cz);
         }
     }
+    internal void Archive(int section)
+    {
+        TerrainSection.ArchivePart(section,106,SoilMesh,soilUsed);
+        for(int i=0;i<used.Length;i++)TerrainSection.ArchivePart(section,52+i,GroundMesh(i),used[i]);
+    }
+    internal void Dispose(){soilMesh?.Dispose();soilMesh=null;for(int i=0;i<groundMesh.Length;i++){groundMesh[i]?.Dispose();groundMesh[i]=null;}}
     internal void Finish()=>Commit();
     internal void PrepareGallery(GameState state,TerrainRenderer floor,bool preview)
     {

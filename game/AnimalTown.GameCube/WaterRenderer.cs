@@ -65,6 +65,12 @@ internal sealed class WaterRenderer
         if(foamCount>0)foamMesh!.Commit(foamCount,revision,FrameProfile.Counters);
         else if(foamMesh!=null){foamMesh.Dispose();foamMesh=null;foam=new VertexPositionColorTexture[0];}
     }
+    internal void Archive(int section)
+    {
+        TerrainSection.ArchivePart(section,104,SurfaceMesh,surfaceCount);
+        TerrainSection.ArchivePart(section,105,FoamMesh,foamCount);
+    }
+    internal void Dispose(){surfaceMesh?.Dispose();foamMesh?.Dispose();surfaceMesh=foamMesh=null;}
     private void RiverFoam(int x,int z)
     {
         for(int side=0;side<4;side++)if(RiverBankGeometry.Foam(state.Town,x,z,side,out var a,out var b,out var c,out var d))
