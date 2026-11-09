@@ -12,8 +12,16 @@ public sealed class SaveRepository
 {
     private readonly ISaveStorage storage;
     public SaveRepository(ISaveStorage storage){this.storage=storage;}
-    private byte[][] ReadParts(int bank)
-    {var parts=new byte[4][];for(int i=0;i<4;i++)parts[i]=storage.Read(SplitSaveCodec.FileName(i,bank));return parts;}
+    private static void Match(byte[] actual,byte[] expected)
+    {if(actual.Length!=expected.Length)throw new InvalidOperationException("Save readback length differs");for(int i=0;i<actual.Length;i++)if(actual[i]!=expected[i])throw new InvalidOperationException("Save readback differs from snapshot");}
+    private byte[][] ReadParts(int bank,byte[][]? expected=null)
+    {var parts=new byte[4][];for(int i=0;i<4;i++){parts[i]=storage.Read(SplitSaveCodec.FileName(i,bank));if(expected!=null)Match(parts[i],expected[i]);}return parts;}
+    // Separate native GC frames release readback/validation temporaries before
+    // the final verification. No decoded town or card buffer escapes either call.
+    private void ValidateReadback(int bank,byte[][] parts,byte[] commit,Town snapshot)
+    {SplitSaveCodec.ValidateSnapshot(commit,ReadParts(bank,parts),snapshot);}
+    private void VerifyReadback(int bank,byte[][] parts,byte[] commit)
+    {var durable=storage.Read(SplitSaveCodec.FileName(4,bank));Match(durable,commit);SplitSaveCodec.VerifyCommitted(durable,ReadParts(bank,parts));}
     public GameState? Load()
     {
         GameState? best=null;
@@ -28,12 +36,11 @@ public sealed class SaveRepository
         try{
             int bank=state.Sequence%2;var parts=SplitSaveCodec.Encode(state);var commit=SplitSaveCodec.EncodeCommit(state,parts);
             for(int i=0;i<4;i++)storage.Write(SplitSaveCodec.FileName(i,bank),parts[i]);
-            SplitSaveCodec.DecodeCommitted(commit,ReadParts(bank));
+            ValidateReadback(bank,parts,commit,state.Town);
             storage.Write(SplitSaveCodec.FileName(4,bank),commit);
-            // The first readback already validated the full town. Verify the
-            // durable commit and identical record checksums without allocating
-            // another town while the first decoded state is still on the stack.
-            SplitSaveCodec.VerifyCommitted(storage.Read(SplitSaveCodec.FileName(4,bank)),ReadParts(bank));
+            // Preserve full semantic validation and exact readback while sharing
+            // the live terrain read-only instead of allocating 25 KiB arrays.
+            VerifyReadback(bank,parts,commit);
         }catch{state.Sequence=previous;throw;}
     }
 }

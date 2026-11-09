@@ -23,8 +23,8 @@ public sealed class Town
     public const int ScreenTiles=8,ScreenTileSize=20;
     public const int Width=ScreenTiles*ScreenTileSize,Height=Width,Cells=Width*Height;
     // Fine cells support furniture/plant footprints within each screen tile.
-    public readonly byte[] Tiles=new byte[Cells];
-    public readonly byte[] Elevation=new byte[Cells];
+    public readonly byte[] Tiles;
+    public readonly byte[] Elevation;
     public int TerrainVersion {get;private set;}
     public int ShadowVersion {get;private set;}
     public void NotifyCastersChanged(){ShadowVersion++;}
@@ -38,9 +38,12 @@ public sealed class Town
     public readonly int[] Stock=new int[12];
     public int Seed,Day=-1,Month=-1,GroundCount,PlacedCount,Spending,StockCount=6;
     public int HouseX=12,HouseZ=22;
-    public Town(int seed)
+    public Town(int seed):this(seed,null){}
+    // Save readback validates terrain against the live snapshot without writing
+    // to it. Other mutable records remain private to this validation town.
+    internal Town(int seed,Town? snapshot)
     {
-        Seed=seed;
+        Seed=seed;Tiles=snapshot==null?new byte[Cells]:snapshot.Tiles;Elevation=snapshot==null?new byte[Cells]:snapshot.Elevation;
         string[] phrases={"tails up","little leaf","sky high","soft paws","dig deep","good cheer"};
         for(int i=0;i<6;i++){
             int x=10+i*11+(i==3?3:0);string name=VillagerNames.Generate(seed,i);
@@ -49,7 +52,7 @@ public sealed class Town
         }
         for(int i=0;i<Ground.Length;i++)Ground[i]=new GroundItem();
         for(int i=0;i<Placed.Length;i++)Placed[i]=new Placement();
-        Generate();
+        if(snapshot==null)Generate();
     }
     public bool Inside(int x,int z)=>x>=0&&x<Width&&z>=0&&z<Height;
     public int At(int x,int z)=>Inside(x,z)?Tiles[z*Width+x]:(int)Terrain.Sea;

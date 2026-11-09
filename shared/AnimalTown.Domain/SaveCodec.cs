@@ -43,15 +43,21 @@ public static class SaveCodec
     private static int Range(byte[] b,ref int p,int min,int max)
     { int n=Get(b,ref p);if(n<min||n>max)throw new InvalidOperationException("Save value outside range");return n; }
     public static GameState Decode(byte[] b)
+    {return Decode(b,null);}
+    internal static GameState ValidateSnapshot(byte[] b,Town snapshot)
+    {return Decode(b,snapshot);}
+    private static GameState Decode(byte[] b,Town? snapshot)
     {
         if(b.Length<160||b.Length>MaximumBytes)throw new InvalidOperationException("Invalid save size");int p=0;
         if(Get(b,ref p)!=0x41544f57)throw new InvalidOperationException("Invalid save magic");int version=Get(b,ref p);
         if((version<1||version>7)||Get(b,ref p)!=Catalog.Version)throw new InvalidOperationException("Unsupported save version");
+        if(snapshot!=null&&version!=7)throw new InvalidOperationException("Readback requires current save format");
         int seq=Range(b,ref p,0,int.MaxValue);if(Get(b,ref p)!=b.Length||(uint)Get(b,ref p)!=Crc(b,24,b.Length-24))throw new InvalidOperationException("Save checksum failed");
         int sourceWidth=version==1?80:400,sourceHeight=version==1?72:400;
         if(version>=4){sourceWidth=Range(b,ref p,Town.Width,Town.Width);sourceHeight=Range(b,ref p,Town.Height,Town.Height);}
         bool trimmed=sourceWidth>Town.Width||sourceHeight>Town.Height;
-        var s=new GameState(Get(b,ref p));Array.Clear(s.Town.Elevation,0,s.Town.Elevation.Length);s.Sequence=seq;s.Town.Day=Get(b,ref p);s.Town.Month=Get(b,ref p);s.Wallet=Range(b,ref p,0,99999);
+        int seed=Get(b,ref p);if(snapshot!=null&&seed!=snapshot.Seed)throw new InvalidOperationException("Readback snapshot seed mismatch");
+        var s=snapshot==null?new GameState(seed):new GameState(seed,snapshot);if(snapshot==null)Array.Clear(s.Town.Elevation,0,s.Town.Elevation.Length);s.Sequence=seq;s.Town.Day=Get(b,ref p);s.Town.Month=Get(b,ref p);s.Wallet=Range(b,ref p,0,99999);
         uint low=(uint)Get(b,ref p);int high=Range(b,ref p,0,int.MaxValue);s.Savings=((long)high<<32)|low;
         low=(uint)Get(b,ref p);high=Range(b,ref p,0,0);s.Debt=((long)high<<32)|low;if(s.Debt>1600000)throw new InvalidOperationException("Debt invalid");
         s.Species=Range(b,ref p,0,5);s.Palette=Range(b,ref p,0,7);s.Tool=Range(b,ref p,0,25);s.Shirt=Range(b,ref p,0,25);s.HouseTier=Range(b,ref p,0,5);s.GardenTier=Range(b,ref p,0,4);s.PendingKind=Range(b,ref p,0,2);s.PendingTier=Range(b,ref p,0,5);s.PendingDay=Get(b,ref p);
@@ -78,7 +84,11 @@ public static class SaveCodec
                 // Consume the original row stride, copying only the retained
                 // rectangle. Never allocate the old 400 x 400 terrain buffer.
                 while(length>0){int z=cell/sourceWidth,x=cell%sourceWidth,n=Math.Min(length,sourceWidth-x);
-                    if(z<Town.Height&&x<Town.Width)for(int j=0;j<Math.Min(n,Town.Width-x);j++)s.Town.Tiles[z*Town.Width+x+j]=(byte)terrain;
+                    if(z<Town.Height&&x<Town.Width)for(int j=0;j<Math.Min(n,Town.Width-x);j++){
+                        int at=z*Town.Width+x+j;
+                        if(snapshot!=null){if(s.Town.Tiles[at]!=terrain)throw new InvalidOperationException("Readback terrain differs from snapshot");}
+                        else s.Town.Tiles[at]=(byte)terrain;
+                    }
                     cell+=n;length-=n;}
             }
             if(cell!=sourceCells)throw new InvalidOperationException("Incomplete terrain");
@@ -103,7 +113,7 @@ public static class SaveCodec
         for(int i=0;i<count;i++){var q=s.Town.Placed[i];q.Item=Range(b,ref p,1,25);q.X=Get(b,ref p);q.Z=Get(b,ref p);q.Rotation=Range(b,ref p,0,3);q.Room=Range(b,ref p,0,version>=7?25:4);q.Owner=Range(b,ref p,0,version>=7?6:0);if(q.Room==0){q.X+=houseDx;q.Z+=houseDz;}s.Town.PlacedCount++;}
         if(version>=5){
             Range(b,ref p,1,TownGenerator.Version);int elevationRuns=Range(b,ref p,1,Town.Cells),cell=0;
-            for(int i=0;i<elevationRuns;i++){int packed=Get(b,ref p),mode=(int)((uint)packed>>24),length=packed&0xffffff;if(mode>TerrainElevation.MaximumMode||length==0||length>Town.Cells-cell)throw new InvalidOperationException("Invalid saved elevation");for(int j=0;j<length;j++)s.Town.Elevation[cell++]=(byte)mode;}
+            for(int i=0;i<elevationRuns;i++){int packed=Get(b,ref p),mode=(int)((uint)packed>>24),length=packed&0xffffff;if(mode>TerrainElevation.MaximumMode||length==0||length>Town.Cells-cell)throw new InvalidOperationException("Invalid saved elevation");for(int j=0;j<length;j++){if(snapshot!=null){if(s.Town.Elevation[cell]!=mode)throw new InvalidOperationException("Readback elevation differs from snapshot");}else s.Town.Elevation[cell]=(byte)mode;cell++;}}
             if(cell!=Town.Cells)throw new InvalidOperationException("Incomplete saved elevation");
             for(int i=0;i<6;i++){var v=s.Town.Residents[i];v.Name=Text(b,ref p,24);v.HomeX=Range(b,ref p,1,Town.Width-4);v.HomeZ=Range(b,ref p,1,Town.Height-4);v.PosX=Range(b,ref p,0,Town.Width*1024-1)/1024f;v.PosZ=Range(b,ref p,0,Town.Height*1024-1)/1024f;}
         }else for(int i=0;i<6;i++){var v=s.Town.Residents[i];v.PosX=v.X+.5f;v.PosZ=v.Z+.5f;}

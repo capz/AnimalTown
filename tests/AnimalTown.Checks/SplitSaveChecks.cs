@@ -5,8 +5,17 @@ internal static class SplitSaveChecks
     private sealed class Storage : ISaveStorage
     {
         internal readonly Dictionary<string,byte[]> Files=new();
-        internal int CutAt,Mode,Writes;
-        public byte[] Read(string name)=>(byte[])Files[name].Clone();
+        internal int CutAt,Mode,Writes,CorruptReadAt,Reads;
+        public byte[] Read(string name)
+        {
+            var bytes=(byte[])Files[name].Clone();
+            if(++Reads==CorruptReadAt){
+                bytes[bytes.Length/2]^=1;
+                uint crc=SaveCodec.Crc(bytes,0,bytes.Length-4);
+                for(int i=0;i<4;i++)bytes[bytes.Length-4+i]=(byte)(crc>>(i*8));
+            }
+            return bytes;
+        }
         public void Write(string name,byte[] bytes)
         {
             Writes++;bool cut=Writes==CutAt;
@@ -39,6 +48,26 @@ internal static class SplitSaveChecks
         s.Town.Residents[0].HomeX++;changed=SplitSaveCodec.Encode(s);check(parts[0].SequenceEqual(changed[0])&&!parts[1].SequenceEqual(changed[1])&&parts[2].SequenceEqual(changed[2])&&parts[3].SequenceEqual(changed[3]),"house anchors reside only in house-position record");s.Town.Residents[0].HomeX--;
         s.Town.Tiles[0]=(byte)((s.Town.Tiles[0]+1)%8);changed=SplitSaveCodec.Encode(s);check(!parts[0].SequenceEqual(changed[0])&&parts[1].SequenceEqual(changed[1])&&parts[2].SequenceEqual(changed[2])&&parts[3].SequenceEqual(changed[3]),"terrain resides only in town record");s.Town.Tiles[0]=restored.Town.Tiles[0];
         var storage=new Storage();var repository=new SaveRepository(storage);s.Sequence=0;repository.Save(s);s.Wallet=2000;repository.Save(s);
+        var bounded=SaveCodec.Decode(SaveCodec.Encode(s));var boundedRepository=new SaveRepository(storage.Copy());
+        var tiles=bounded.Town.Tiles;var elevation=bounded.Town.Elevation;var beforeSave=SaveCodec.Encode(bounded);
+        allocated=GC.GetAllocatedBytesForCurrentThread();boundedRepository.Save(bounded);
+        check(GC.GetAllocatedBytesForCurrentThread()-allocated<192*1024,"full save/readback validation stays below 192 KiB without duplicate terrain arrays or town generation");
+        check(ReferenceEquals(tiles,bounded.Town.Tiles)&&ReferenceEquals(elevation,bounded.Town.Elevation),"readback preserves ownership of live terrain arrays");
+        bounded.Sequence--;check(beforeSave.SequenceEqual(SaveCodec.Encode(bounded)),"successful read-only validation does not normalize or mutate live state");
+        for(int invalid=0;invalid<3;invalid++){
+            var disk=storage.Copy();var game=SaveCodec.Decode(SaveCodec.Encode(s));
+            if(invalid==0)game.Wallet=100000;else if(invalid==1)game.Town.Residents[0].PosX=-2;else game.Town.Elevation[0]=255;
+            var original=SaveCodec.Encode(game);
+            Reject(()=>new SaveRepository(disk).Save(game),"snapshot readback retains full range/terrain semantic validation");
+            check(original.SequenceEqual(SaveCodec.Encode(game)),"failed semantic validation leaves the complete live state unchanged");
+            check(new SaveRepository(disk).Load()!.Sequence==2,"invalid snapshots preserve the previous complete generation");
+        }
+        for(int read=1;read<=9;read++){
+            var disk=storage.Copy();disk.CorruptReadAt=read;var game=SaveCodec.Decode(SaveCodec.Encode(s));var original=SaveCodec.Encode(game);
+            Reject(()=>new SaveRepository(disk).Save(game),"exact readback rejects altered bytes even with a valid recomputed CRC");
+            check(original.SequenceEqual(SaveCodec.Encode(game)),"readback failure restores sequence and leaves live state unchanged");
+            check(new SaveRepository(disk).Load()!.Sequence==(read>=5?3:2),"readback corruption recovers one complete generation, including an already durable commit");
+        }
         for(int mode=0;mode<3;mode++)for(int cut=1;cut<=5;cut++){
             var disk=storage.Copy();disk.Mode=mode;disk.CutAt=cut;var game=SaveCodec.Decode(SaveCodec.Encode(s));game.Wallet=3000;game.Town.Stock[0]=0;
             Reject(()=>new SaveRepository(disk).Save(game),"injected interrupted write reports failure");check(game.Sequence==2,"failed write restores in-memory sequence");
