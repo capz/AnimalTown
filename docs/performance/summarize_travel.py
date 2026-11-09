@@ -56,6 +56,7 @@ else:
                    'recovery_frames':sum(bool(r[30]&8192) for r in rows),
                    'missing_terrain_frames':sum(bool(r[30]&16384) for r in rows),
                    'loading_frames':sum(bool(r[30]&32768) for r in rows),
+                   'terrain_build_stages':sum(r[23]&255 for r in rows),
                    'details':{name:stats([d[i]/10 for d in details]) for i,name in enumerate(
                        ['selection_ms','generation_ms','publication_ms','uv_material_ms','native_masks_ms'],2)}})
     result['details'].update({'allocations':sum(d[7] for d in details),

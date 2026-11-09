@@ -1,6 +1,7 @@
 # Streamed-town frame investigation — 2026-11-09
 
-Latest follow-up: [row visibility optimization and native measurements](2026-11-09-row-culling.md).
+Latest follow-up: [immutable terrain and world shadow projection](2026-11-09-immutable-terrain.md).
+Previous: [row visibility optimization and native measurements](2026-11-09-row-culling.md).
 The measurements below document the preceding allocation/save pass.
 
 Final validated game/build: `a53fa6d2e020cd34581ae221df5de5ebf62cc72f`.
