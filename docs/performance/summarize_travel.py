@@ -53,6 +53,8 @@ else:
     result.update({'units':'guest milliseconds; internal counters have 0.1 ms resolution; profiling overhead remains',
                    'profiled_frames':len(rows),'frame_interval_ms':stats([r[16]/10 for r in rows]),
                    'preparation_ms':stats([r[6]/10 for r in rows]),'ui_ms':stats([r[12]/10 for r in rows]),
+                   'animation_ms':stats([r[5]/10 for r in rows]),'actor_submission_ms':stats([r[9]/10 for r in rows]),
+                   'explicit_pose_updates':sum(r[23]>>8&7 for r in rows),
                    'recovery_frames':sum(bool(r[30]&8192) for r in rows),
                    'missing_terrain_frames':sum(bool(r[30]&16384) for r in rows),
                    'loading_frames':sum(bool(r[30]&32768) for r in rows),

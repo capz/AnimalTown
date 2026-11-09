@@ -1,0 +1,222 @@
+{
+  "game_commit": "1aa9f9f3adf24ecbb73196fe851773afc051d82d",
+  "baseline_commit": "fbba8e2e52e43c63b52704c1b7880226017f52ee",
+  "release": "https://github.com/capz/AnimalTown/releases/tag/v0.7.17.1aa9f9f3adf2",
+  "ci_run": "https://github.com/capz/AnimalTown/actions/runs/42609915829",
+  "source_card_sha256": "a780d11c1aa99f930c6e17d29b4695c480cd22c99a57c8f3f8d26ca667a35f44",
+  "host_checks": {
+    "gameplay_render_texture": 2504000,
+    "rendering_service": 325110,
+    "native_villager_triangles": 9895
+  },
+  "delivery": {
+    "sourceBytes": 1459978240,
+    "compactBytes": 88487936,
+    "sourceSha256": "3e6a9953783641a4c820ec9f4e98196e055d67f8e0375848860979c3966ae716",
+    "compactSha256": "62c6caa27548d9243882a7b6a992f6743df231420c7ca4e78e676a2cae5f9254",
+    "dolAndApploaderUnchanged": true,
+    "roundTripVerified": true
+  },
+  "instrumented_before": {
+    "disc": "/work/out/terrain-aram-release/AnimalTown-0.7.14.fbba8e2e52e4.nkit.iso",
+    "actual_guest_seconds": [
+      8.008,
+      8.024683333333334,
+      8.041366666666667,
+      8.008,
+      8.05805,
+      8.05805
+    ],
+    "overlay_enabled": true,
+    "units": "guest milliseconds; internal counters have 0.1 ms resolution; profiling overhead remains",
+    "profiled_frames": 3285,
+    "frame_interval_ms": {
+      "median": 16.6,
+      "p95": 16.6,
+      "max": 33.3,
+      "mean": 16.7017
+    },
+    "preparation_ms": {
+      "median": 0.2,
+      "p95": 2.6,
+      "max": 4.0,
+      "mean": 0.6049
+    },
+    "ui_ms": {
+      "median": 1.6,
+      "p95": 1.6,
+      "max": 1.7,
+      "mean": 1.6049
+    },
+    "animation_ms": {
+      "median": 0.0,
+      "p95": 6.2,
+      "max": 11.5,
+      "mean": 1.7253
+    },
+    "actor_submission_ms": {
+      "median": 0.1,
+      "p95": 0.1,
+      "max": 0.1,
+      "mean": 0.1
+    },
+    "explicit_pose_updates": 1446,
+    "recovery_frames": 0,
+    "missing_terrain_frames": 0,
+    "loading_frames": 0,
+    "terrain_build_stages": 0,
+    "details": {
+      "selection_ms": {
+        "median": 0.0,
+        "p95": 0.7,
+        "max": 2.2,
+        "mean": 0.0665
+      },
+      "generation_ms": {
+        "median": 0.0,
+        "p95": 0.0,
+        "max": 0.0,
+        "mean": 0.0
+      },
+      "publication_ms": {
+        "median": 0.0,
+        "p95": 0.0,
+        "max": 0.0,
+        "mean": 0.0
+      },
+      "uv_material_ms": {
+        "median": 0.0,
+        "p95": 0.0,
+        "max": 0.0,
+        "mean": 0.0
+      },
+      "native_masks_ms": {
+        "median": 0.0,
+        "p95": 1.0,
+        "max": 1.5,
+        "mean": 0.1789
+      },
+      "allocations": 1553,
+      "gc_collections": 0,
+      "texture_operations": 0,
+      "shadow_page_updates": 3231,
+      "mesh_creates": 0,
+      "mesh_updates": 0,
+      "mesh_releases": 0
+    },
+    "two_refresh_frames": 20
+  },
+  "physical_gamecube_tested": false,
+  "hidden_interval": {
+    "from_frame": 511,
+    "to_frame": 644,
+    "frames": 134,
+    "native_pose_updates": 0,
+    "animation_phase_max_ms": 0.0,
+    "units": "Guest 0.1 ms counters; explicit Update calls only. Source guard also covers Play/Stop/speed."
+  },
+  "focused_card_unchanged": true,
+  "method": "Separate copies of the same saved town; spring RTC, shadows and material animation enabled. Focused inspector scenario checks hidden actor work and native winding; six eight-guest-second ordinary directions measure travel separately. Single captures per build; telemetry/capture overhead remains. Physical GameCube untested.",
+  "instrumented_after": {
+    "disc": "/work/out/visibility-release/AnimalTown-0.7.17.1aa9f9f3adf2.nkit.iso",
+    "actual_guest_seconds": [
+      8.024683333333334,
+      8.024683333333334,
+      8.024683333333334,
+      8.008,
+      8.024683333333334,
+      8.041366666666667
+    ],
+    "overlay_enabled": true,
+    "units": "guest milliseconds; internal counters have 0.1 ms resolution; profiling overhead remains",
+    "profiled_frames": 3303,
+    "frame_interval_ms": {
+      "median": 16.6,
+      "p95": 16.6,
+      "max": 16.6,
+      "mean": 16.6
+    },
+    "preparation_ms": {
+      "median": 0.2,
+      "p95": 2.6,
+      "max": 4.1,
+      "mean": 0.6038
+    },
+    "ui_ms": {
+      "median": 1.6,
+      "p95": 1.6,
+      "max": 1.7,
+      "mean": 1.6034
+    },
+    "animation_ms": {
+      "median": 0.0,
+      "p95": 3.2,
+      "max": 6.4,
+      "mean": 1.4102
+    },
+    "actor_submission_ms": {
+      "median": 0.1,
+      "p95": 0.1,
+      "max": 0.1,
+      "mean": 0.1
+    },
+    "explicit_pose_updates": 1444,
+    "recovery_frames": 0,
+    "missing_terrain_frames": 0,
+    "loading_frames": 0,
+    "terrain_build_stages": 0,
+    "details": {
+      "selection_ms": {
+        "median": 0.0,
+        "p95": 0.7,
+        "max": 2.2,
+        "mean": 0.0663
+      },
+      "generation_ms": {
+        "median": 0.0,
+        "p95": 0.0,
+        "max": 0.0,
+        "mean": 0.0
+      },
+      "publication_ms": {
+        "median": 0.0,
+        "p95": 0.0,
+        "max": 0.0,
+        "mean": 0.0
+      },
+      "uv_material_ms": {
+        "median": 0.0,
+        "p95": 0.0,
+        "max": 0.0,
+        "mean": 0.0
+      },
+      "native_masks_ms": {
+        "median": 0.0,
+        "p95": 1.0,
+        "max": 1.5,
+        "mean": 0.1789
+      },
+      "allocations": 1553,
+      "gc_collections": 0,
+      "texture_operations": 0,
+      "shadow_page_updates": 3238,
+      "mesh_creates": 0,
+      "mesh_updates": 0,
+      "mesh_releases": 0
+    },
+    "two_refresh_frames": 0
+  },
+  "post_travel_save": {
+    "before": 1,
+    "after": 2,
+    "returned_to_settings": true
+  },
+  "lossless_capture_rgb_hashes_verified": true,
+  "limitations": [
+    "Single instrumented route per build; guest counters have 0.1 ms resolution and capture/profiler overhead remains.",
+    "No new profiler-off capture; no claim of locked 60 FPS or a worst-case bound.",
+    "Conservative bounds retain partial silhouettes and can retain fully occluded actors. GX clipping/depth testing handles hidden fragments; no CPU per-triangle occlusion scan.",
+    "Backface culling does not remove CPU vertex-transform costs for submitted meshes.",
+    "Physical GameCube validation remains outstanding."
+  ]
+}
