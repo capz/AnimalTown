@@ -58,7 +58,38 @@ and extreme integer inputs. Clean CI and local checks pass 2,702,371 gameplay/re
 The shadow chord oracle uses full Y/Z segment distance: projected Z alone folds
 near a quarter turn and cannot robustly identify a row chord at this curvature.
 
-## Native delivery and captures
+## SDK performance panel delivery
+
+The additional SDK overlay is validated at
+`edf96ad36b9c1c8c98242a6f4e6afab641d01f34` in
+[release 0.10.8.edf96ad36b9c](https://github.com/capz/AnimalTown/releases/tag/v0.10.8.edf96ad36b9c).
+The release contains the full 1,459,978,240-byte bootable ISO and direct
+88,586,240-byte NKit ISO, with matching clean backend identity. Downloaded
+checksums, the release metadata and exact NKit roundtrip audit agree.
+[Machine-readable results](performance/2026-11-09-sdk-performance-overlay.json)
+include both image digests.
+
+Dolphin boots the published NKit image and checks the actual menu's Off → On →
+Off behavior. FPS/frame time, triangles and main/ARAM memory are visible; moving
+changes the displayed triangle count from 6,527 to 6,405. A fixed image region
+contains over 11,800 black panel pixels when enabled and zero when hidden; the
+Off label is restored exactly. The independent frame-capture option remains Off.
+Every input memory-card byte is unchanged. This is a UI/counter check, not a
+hardware performance measurement. Local managed suites and the clean release
+build pass; physical GameCube testing remains outstanding.
+
+![SDK panel enabled in the debug menu](performance/sdk-performance-menu.png)
+![Live SDK panel in the town](performance/sdk-performance-overlay.png)
+
+Reproduce using the same Dolphin container settings and a copied card in the
+output directory:
+
+```sh
+python3 docs/performance/sdk_performance_overlay.py IMAGE.nkit.iso out/sdk-overlay-native --stream-travel --season spring --dsp-hle
+python3 docs/performance/sdk_performance_overlay.py --analyze-only out/sdk-overlay-native
+```
+
+## Earlier curvature, season, attention and rim captures
 
 Validated game: `b7a19e9a73350ca603049960e652b4d359e71aa3`.
 [Release 0.9.8.b7a19e9a7335](https://github.com/capz/AnimalTown/releases/tag/v0.9.8.b7a19e9a7335).

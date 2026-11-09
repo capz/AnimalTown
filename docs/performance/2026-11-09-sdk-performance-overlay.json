@@ -1,0 +1,47 @@
+{
+  "game_commit": "edf96ad36b9c1c8c98242a6f4e6afab641d01f34",
+  "release": "https://github.com/capz/AnimalTown/releases/tag/v0.10.8.edf96ad36b9c",
+  "pull_request": "https://github.com/capz/AnimalTown/pull/24",
+  "ci_run": "https://github.com/capz/AnimalTown/actions/runs/42680202030",
+  "host_checks": {
+    "gameplay_render_texture": 2702371,
+    "rendering_service": 324925,
+    "managed_build_passed": true
+  },
+  "delivery": {
+    "sourceBytes": 1459978240,
+    "compactBytes": 88586240,
+    "sourceSha256": "1a5402073877913312ca817423595211a070b602a290e5080e9fd11b86e69e82",
+    "compactSha256": "ce518e6dbf6009cedac204e2e5ee7b832ddab27cf9cb36a484c595d51a3fd365",
+    "dolAndApploaderUnchanged": true,
+    "roundTripVerified": true
+  },
+  "native": {
+    "source_card_sha256": "a780d11c1aa99f930c6e17d29b4695c480cd22c99a57c8f3f8d26ca667a35f44",
+    "card_unchanged": true,
+    "sdk_toggle_via_debug_menu": true,
+    "panel_black_pixels": {
+      "default-off": 0,
+      "menu-off": 0,
+      "menu-on": 11843,
+      "world-on-a": 11848,
+      "world-on-b": 11831,
+      "menu-restored": 0,
+      "world-off": 0,
+      "frame-capture-off": 0
+    },
+    "menu_label_off_on_off_verified": true
+  },
+  "visual_inspection": {
+    "fps_frame_time_triangles_main_aram_visible": true,
+    "triangles_before_movement": 6527,
+    "triangles_after_movement": 6405,
+    "existing_frame_capture_control_remains_off": true
+  },
+  "physical_gamecube_tested": false,
+  "limitations": [
+    "Dolphin software-rendered screenshots validate visibility and live counters, not physical hardware performance.",
+    "The native bottom-left panel overlaps part of the date HUD and encoded capture bars; it is opt-in and independent of AnimalTown frame-capture telemetry.",
+    "Four pre-existing unused HUD-field managed warnings remain."
+  ]
+}
