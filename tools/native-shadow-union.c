@@ -71,7 +71,7 @@ const uint8_t *animaltown_shadows_page(float x,float z,float *origin){
     int px=(int)floorf(x/shadows->span),pz=(int)floorf(z/shadows->span),at=su_find(shadows,px,pz);
     origin[0]=px*shadows->span;origin[1]=pz*shadows->span;origin[2]=shadows->span;
     origin[3]=64;
-    if(shadows->scope!=3&&at>=0&&shadows->page[at].needed&&!shadows->page[at].static_dirty&&!shadows->page[at].dirty)
+    if(shadows->scope!=3&&at>=0&&shadows->page[at].needed&&!shadows->page[at].static_dirty&&!shadows->page[at].static_pending)
         return shadows->pixels+at*SU_BYTES;
     if(shadows->space==0&&shadows->terrain_ready){
         origin[0]=origin[1]=0;origin[2]=(SU_TERRAIN_SIDE-2)*.5f;origin[3]=SU_TERRAIN_SIDE;

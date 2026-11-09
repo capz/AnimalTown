@@ -128,6 +128,14 @@ int main(void){
     su_begin(s,16,1,4);caster(32,4,rect,6,bounds);su_prepare(s,SU_PAGES);
     CHECK(pixel(4,4)==0);
     su_begin(s,0,1,0);su_prepare(s,SU_PAGES);CHECK(pixel(4,4)==33);
+    /* A dirty moving circle may defer, but the already composed cliff/scenery
+     * base remains a publishable local page. New static bases wait one cycle. */
+    next();caster(32,4,rect,6,bounds);credits=1000;su_prepare_budget(s,1,allow_work,NULL);
+    int terrain_page=su_find(s,0,0);
+    CHECK(terrain_page>=0&&!s->page[terrain_page].static_pending);
+    next();su_active(s,32,1,5,5);credits=0;su_prepare_budget(s,1,allow_work,NULL);
+    CHECK(s->page[terrain_page].dirty&&!s->page[terrain_page].static_dirty&&!s->page[terrain_page].static_pending);
+    CHECK(pixel(4,4)==33);
     su_terrain_reset(s);CHECK(!s->terrain_ready&&su_terrain_sample(s,4,4)==0);
     su_prepare(s,SU_PAGES);CHECK(pixel(4,4)==0);
     free(s);printf("Shadow union: %d checks; max overlap, soft edges, trails, clipping, seams, rooms and 156-page bound passed\n",assertions);return 0;
