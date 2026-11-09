@@ -24,9 +24,11 @@ int main(void){
     assert(animaltown_terrain_append(0,55,plain,6)==2);
     assert(animaltown_terrain_complete(0)==1&&animaltown_terrain_info(0,0)==-1);
     assert(animaltown_terrain_append(1,104,plain,6)==3);
+    assert(animaltown_terrain_append(1,108,plain,6)==-1);
+    assert(animaltown_terrain_append(1,107,plain,6)==4);
     assert(animaltown_terrain_complete(1)==1);
     assert(animaltown_terrain_info(0,0)==0&&animaltown_terrain_info(0,1)==2&&animaltown_terrain_info(0,2)==6);
-    assert(animaltown_terrain_info(1,0)==2&&animaltown_terrain_info(1,1)==1&&animaltown_terrain_kind(1)==55);
+    assert(animaltown_terrain_info(1,0)==2&&animaltown_terrain_info(1,1)==2&&animaltown_terrain_kind(1)==55&&animaltown_terrain_kind(3)==107);
     assert(animaltown_terrain_append(1,3,indexed,0)==-1);
     assert(dnd_draw_release(indexed)==0&&dnd_draw_release(plain)==0);
     int view=animaltown_terrain_view();assert(view>0&&dnd_draw_bytes(view)==1);
@@ -34,8 +36,8 @@ int main(void){
     assert(animaltown_terrain_reset(0)==-1);
     int flushed=flushes;town_frame_counters.enabled=1;
     for(int i=0;i<10000;i++){
-        assert(animaltown_terrain_bind(view,i%3)==1);assert(animaltown_mesh_recycle(view,v,6,ix,6)==-1);
-        assert(r->vertices==(i%3?6:12));assert(r->indices==(i%3?0:12));
+        assert(animaltown_terrain_bind(view,i%4)==1);assert(animaltown_mesh_recycle(view,v,6,ix,6)==-1);
+        assert(r->vertices==(i%4?6:12));assert(r->indices==(i%4?0:12));
     }
     assert(flushes==flushed&&!town_frame_counters.count[TOWN_MESH_UPDATES]&&!town_frame_counters.count[TOWN_MESH_CREATES]);
     active=true;assert(animaltown_terrain_bind(view,0)==-1&&animaltown_terrain_unbind(view)==-1&&animaltown_terrain_reset(0)==-1&&!animaltown_terrain_view());active=false;

@@ -8,8 +8,8 @@ internal static class RiverCoastChecks
         Array.Fill(t.Tiles,(byte)Terrain.Grass);Array.Clear(t.Elevation);
         t.SetTerrain(80,80,Terrain.Water);t.SetTerrain(81,80,Terrain.Water);t.SetTerrain(80,81,Terrain.Sea);
         check(TerrainElevation.AtCell(t,80,80,80,80)==-.5f,"visible river and bed drop exactly half a metre");
-        check(Math.Abs(TerrainElevation.AtCell(t,80,81,80,81)+.06f)<.00001,"sea retains six centimetre offset");
-        check(Math.Abs(TerrainElevation.AtCell(t,80,81,80,81)-TerrainElevation.AtCell(t,80,80,80,81)-.44f)<.00001,"mouth retains explicit forty-four centimetre step");
+        check(TerrainElevation.AtCell(t,80,81,80,81)==WaterTerrain.RiverHeight,"sea and river share the same half-metre water plane");
+        check(TerrainElevation.AtCell(t,80,81,80,81)==TerrainElevation.AtCell(t,80,80,80,81),"river mouth has no artificial water step or connecting wall");
         check(!WaterSurface.IsBank(t,81,80)&&WaterSurface.IsBank(t,79,80),"adjacent water emits no internal bank; dry shore does");
         t.SetTerrain(79,80,Terrain.Bridge);check(!WaterSurface.IsBank(t,79,80)&&t.Walkable(79,80)&&TerrainElevation.At(t,79.5f,80.5f)==0,"bridge approach stays on local land plane");
         check(WaterSurface.HeightAt(t,79,80,79,80)==-.5f,"lowered river water continues beneath bridge decks without a sky gap");
@@ -26,6 +26,29 @@ internal static class RiverCoastChecks
             check(SaveCodec.Decode(SaveCodec.Encode(s)).Town.At(90,90)==(int)kind,"new coastal ID survives combined save");
             check(SplitSaveCodec.Decode(SplitSaveCodec.Encode(s)).Town.At(90,90)==(int)kind,"new coastal ID survives split save");
         }
+        // Lower ocean level must not leave players/NPCs floating over beaches.
+        Array.Fill(t.Tiles,(byte)Terrain.Beach);
+        for(int mask=0;mask<16;mask++){
+            t.SetTerrain(81,80,(mask&1)!=0?Terrain.Sea:Terrain.Beach);t.SetTerrain(80,81,(mask&2)!=0?Terrain.Sea:Terrain.Beach);
+            t.SetTerrain(79,80,(mask&4)!=0?Terrain.Sea:Terrain.Beach);t.SetTerrain(80,79,(mask&8)!=0?Terrain.Sea:Terrain.Beach);
+            for(int iz=0;iz<=8;iz++)for(int ix=0;ix<=8;ix++){
+                float u=ix/8f,v=iz/8f;
+                // Boundary coordinates belong to the neighboring cell in At;
+                // use the beach cell explicitly for the rendered edge tests.
+                float h=TerrainElevation.AtCell(t,80,80,80+u,80+v);
+                check(h>=WaterSurface.Height&&h<=0,"all shoreline support stays between beach and shared water levels");
+                check(h==GroundSurface.HeightAt(t,80,80,80+u,80+v),"beach rendering and player/NPC support share the same triangles");
+                if(mask==1)check(Math.Abs(h-WaterSurface.Height*u)<.00001f,"east shoreline support follows its actual sloped quad");
+                if(mask==2)check(Math.Abs(h-WaterSurface.Height*v)<.00001f,"south shoreline support follows its actual sloped quad");
+                if(mask==3)check(Math.Abs(h-WaterSurface.Height*Math.Max(u,v))<.00001f,"corner beach uses triangle interpolation rather than a bilinear floating patch");
+            }
+            check(TerrainElevation.Traverse(t,80.1f,80.1f,80.9f,80.9f),"sloping dry beach remains traversable for player and shared villager navigation");
+            check(!TerrainElevation.Traverse(t,80.5f,80.5f,81.5f,80.5f)||(mask&1)==0,"wet edge remains untraversable");
+        }
+        Array.Fill(t.Tiles,(byte)Terrain.Beach);t.SetTerrain(81,80,Terrain.Sea);
+        float edge=TerrainElevation.AtCell(t,80,80,81,81),corner=TerrainElevation.AtCell(t,80,81,81,81);
+        check(edge==corner&&edge==WaterSurface.Height,"diagonally touching sea shares one wet corner across adjacent beach meshes");
+        check(Math.Abs(TerrainElevation.At(t,80.75f,81.25f)-WaterSurface.Height*.5f)<.00001f,"diagonal shoreline has continuous support across its closing beach triangle");
         s.Town.Tiles[0]=13;
         bool rejected=false;try{SaveCodec.Decode(SaveCodec.Encode(s));}catch(InvalidOperationException){rejected=true;}
         check(rejected,"current save rejects unknown terrain IDs");s.Town.Tiles[0]=0;
