@@ -27,8 +27,9 @@ def replace(old,new):
     assert text.count(old)==1, 'Pinned resource hook changed: '+old[:60]
     text=text.replace(old,new)
 text='#include "native-frame-counters.h"\n'+text
-replace('int holds,geometry,extra_bytes;','int holds,geometry,extra_bytes,terrain_parent;')
+replace('int holds,geometry,extra_bytes;','int holds,geometry,extra_bytes,terrain_parent,terrain_entry;')
 replace('return (generation<<10)|(i+1);','if(kind==MESH){TOWN_COUNT(TOWN_MESH_CREATES);}\n        if(kind==TEXTURE){TOWN_COUNT(TOWN_TEXTURE_CREATES);}\n        return (generation<<10)|(i+1);')
+replace('static void release(Resource *r) {','static void terrain_detach(Resource *r);\nstatic void release(Resource *r) {\n    if(r->terrain_entry)terrain_detach(r);')
 replace('int parent=r->geometry;','if(r->kind==MESH)TOWN_COUNT(TOWN_MESH_RELEASES);\n    int parent=r->geometry,terrain_parent=r->terrain_parent;')
 replace('if(base&&--base->holds==0&&base->pending)release(base);','if(base&&--base->holds==0&&base->pending)release(base);\n    if(terrain_parent)(void)dnd_buffer_unhold(terrain_parent);')
 replace('dnd_draw_backend_flush(r->data,count,2);','dnd_draw_backend_flush(r->data,count,2);TOWN_COUNT(TOWN_TEXTURE_UPDATES);')
