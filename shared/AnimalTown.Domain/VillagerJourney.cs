@@ -8,15 +8,17 @@ public sealed class VillagerJourney
     public readonly InteriorNavigation Indoors=new InteriorNavigation();
     public readonly PortalSystem Doors=new PortalSystem();
     public readonly bool[] Moving=new bool[6];
+    public int AttentionMask;
     private GameState? current;private int tick;
     public void Tick(GameState s)
     {
         if(current!=s){current=s;tick=0;for(int i=0;i<6;i++)if(s.Town.Residents[i].JourneyPhase==0&&s.Town.Residents[i].Dwell==0)s.Town.Residents[i].Dwell=90+i*45;}
-        for(int i=0;i<6;i++)Outdoors.Paused[i]=Doors.Busy(i+1)||s.Town.Residents[i].Space!=0;
+        for(int i=0;i<6;i++)Outdoors.Paused[i]=Doors.Busy(i+1)||s.Town.Residents[i].Space!=0||(AttentionMask&(1<<i))!=0;
         Outdoors.Tick(s);Indoors.BeginTick();Doors.Tick(s);tick++;
         for(int i=0;i<6;i++){
             int actor=i+1;var v=s.Town.Residents[i];Moving[i]=false;
             if(Doors.Busy(actor)){Outdoors.Stop(i);Moving[i]=Doors.Moving(actor);continue;}
+            if(v.Space==0&&(AttentionMask&(1<<i))!=0){v.Yaw=PlayerMovement.Yaw(s.X-v.PosX,s.Z-v.PosZ);continue;}
             if(v.Space!=0){
                 Outdoors.Stop(i);
                 if(v.JourneyPhase<2){v.JourneyPhase=2;v.Dwell=0;}

@@ -83,6 +83,85 @@ def cliff_minimap():
         time.sleep(15);frame('water-tour-'+str(scene))
     frame('coastal-cliff-water')
 
+def villager_attention():
+    def frame(name):
+        screenshot(name+'.png')
+        return subprocess.check_output(['ffmpeg','-v','error','-i',str(root/(name+'.png')),'-frames:v','1','-f','rawvideo','-pix_fmt','rgb24','-'])
+    def samples(pixels,color,top=0,bottom=350):
+        return sum(all(abs(pixels[(y*800+x)*3+c]-v)<=3 for c,v in enumerate(color))
+                   for y in range(top,bottom) for x in range(28,612))
+    def notices(pixels):return samples(pixels,(83,116,95)),samples(pixels,(194,138,69))
+    def pulse(button):
+        os.write(controller,f'PRESS {button}\n'.encode());time.sleep(.18)
+        os.write(controller,f'RELEASE {button}\n'.encode())
+    report=[]
+    def record(line):
+        report.append(line);(root/'villager-attention.txt').write_text('\n'.join(report)+'\n')
+    pulse('A');time.sleep(1.2)
+    reloading='--attention-reload' in sys.argv
+    before=frame('attention-reloaded' if reloading else 'attention-both')
+    friendly,urgent=notices(before)
+    # Dolphin guest time can lag wall time. Observe the 0.8-second stagger
+    # rather than assuming the second notice fits into a fixed wall delay.
+    if not reloading:
+        for _ in range(24):
+            if friendly>=300 and urgent>=300:break
+            time.sleep(.35);before=frame('attention-both');friendly,urgent=notices(before)
+    record(f'Named tabs: friendly={friendly}, urgent={urgent}, reload={reloading}')
+    if reloading:
+        if friendly>300 or urgent>300:raise AssertionError('Saved encounter cooldowns did not survive reload')
+        record('Explicit save/reload preserves the absence/urgent notice cooldowns.');return
+    if friendly<300 or urgent<300:raise AssertionError('Expected two independently named friendly/urgent bubbles')
+    if '--attention-deadline' in sys.argv:
+        time.sleep(7);after=frame('attention-deadline-expired')
+        for _ in range(30):
+            if not any(n>300 for n in notices(after)):break
+            time.sleep(.5);after=frame('attention-deadline-expired')
+        if any(n>300 for n in notices(after)):raise AssertionError('Deadline notice failed to expire')
+        record('A real pending errand produces a final-hour warning at 05:30; bubbles expire without forcing dialogue.');return
+    # Move while the ambient bubbles are visible, then talk normally to Pip.
+    os.write(controller,b'SET MAIN 0.9 0.5\n');time.sleep(.25);os.write(controller,b'SET MAIN 0.5 0.5\n')
+    moving=frame('attention-moving')
+    changed=sum(before[(y*800+x)*3:(y*800+x)*3+3]!=moving[(y*800+x)*3:(y*800+x)*3+3]
+                for y in range(100,310) for x in range(240,430))
+    record(f'World changed while walking with ambient notices: {changed} samples')
+    if changed<100:raise AssertionError('No visible movement while ambient notices were active')
+    pulse('A');time.sleep(1);dialogue=frame('attention-regular-dialogue')
+    paper=samples(dialogue,(255,245,221),335,430)
+    record(f'Regular opt-in dialogue paper samples: {paper}')
+    if paper<10000 or any(n>300 for n in notices(dialogue)):raise AssertionError('Ambient notices interfered with normal dialogue')
+    press('B');press('B');time.sleep(2);quiet=frame('attention-quiet')
+    if any(n>300 for n in notices(quiet)):raise AssertionError('Displayed notices repeated after conversation')
+    save_menu()
+    # GCI-folder mode is only for this disposable test card. Validate a whole
+    # new generation, including all four records and the commit, before reboot.
+    import struct
+    import zlib
+    def records():
+        found={}
+        for path in (user/'GC'/'USA'/'Card A').glob('*.gci'):
+            b=path.read_bytes()
+            if len(b)<96 or b[:6]!=b'AMTE01' or b[64:72]!=b'DNDSAVE1':continue
+            name=b[8:40].split(b'\0',1)[0].decode('ascii')
+            length,offset=struct.unpack_from('>II',b,72);payload=b[64+offset:64+offset+length]
+            if len(payload)<32 or payload[:4]!=b'ATSP':continue
+            version,kind,sequence=struct.unpack_from('<III',payload,4)[0],struct.unpack_from('<I',payload,12)[0],struct.unpack_from('<I',payload,16)[0]
+            if version!=4 or sequence!=2 or zlib.crc32(payload[:-4])!=struct.unpack_from('<I',payload,len(payload)-4)[0]:continue
+            found[name]=payload
+        return found
+    for _ in range(90):
+        saved=records()
+        if all(f'AT-{name}0' in saved for name in ('Town','Houses','Shops','Player','Commit')):break
+        if p.poll() is not None:raise RuntimeError('Game exited while saving attention history')
+        time.sleep(1)
+    else:raise AssertionError('Explicit save failed to commit the v4 history records')
+    commit=saved['AT-Commit0']
+    for kind,name in enumerate(('Town','Houses','Shops','Player')):
+        payload=saved[f'AT-{name}0'];length,crc=struct.unpack_from('<II',commit,28+kind*8)
+        if length!=len(payload) or crc!=zlib.crc32(payload[:-4]):raise AssertionError('Mixed saved attention generation')
+    screenshot('attention-saved.png');record('Explicit save committed a complete checksummed v4 generation; the input legacy card remains intact.')
+
+
 def save_menu():
     press('START');press('A')
 
@@ -98,7 +177,7 @@ def committed_card_sequence(path, expected_day=None):
         if len(payload)<32:raise ValueError('Short save record')
         magic,version,catalog,actual,sequence,seed,length=struct.unpack_from('<7I',payload)
         crc=struct.unpack_from('<I',payload,len(payload)-4)[0]
-        if magic!=0x50535441 or version!=3 or actual!=kind or length!=len(payload) or zlib.crc32(payload[:-4])!=crc:
+        if magic!=0x50535441 or version not in (3,4) or actual!=kind or length!=len(payload) or zlib.crc32(payload[:-4])!=crc:
             raise ValueError('Invalid save record')
         return version,catalog,sequence,seed,crc
     best=0;best_day=None
@@ -375,6 +454,16 @@ if '--season' in sys.argv:
 if '--dsp-hle' in sys.argv:
     config=user/'Config'/'Dolphin.ini'
     config.write_text(config.read_text().replace('DSPHLE = False','DSPHLE = True'))
+if '--villager-attention' in sys.argv:
+    import shutil
+    config=user/'Config'/'Dolphin.ini'
+    deadline='--attention-deadline' in sys.argv
+    rtc=int(datetime(2026,11,9,5 if deadline else 12,30 if deadline else 0,tzinfo=timezone.utc).timestamp())
+    config.write_text(config.read_text().replace('SlotA = 1','SlotA = 8').replace('SkipIPL = True\n',f'SkipIPL = True\nEnableCustomRTC = True\nCustomRTCValue = {rtc}\n'))
+    if '--attention-gci' in sys.argv:
+        fixture=Path(sys.argv[sys.argv.index('--attention-gci')+1]).resolve()
+        folder=user/'GC'/'USA'/'Card A';folder.mkdir(parents=True,exist_ok=True)
+        shutil.copy2(fixture,folder/'01-AMTE-AnimalTown1.gci')
 (user/'Config'/'GFX.ini').write_text('''[Settings]
 InternalResolution = 1
 MSAA = 1
@@ -404,7 +493,9 @@ with (root/'emulator.log').open('w') as log:
         if p.poll() is not None:
             raise RuntimeError(f'Dolphin exited during boot ({p.returncode}); see {root / "emulator.log"}')
         screenshot('screen.png')
-        if '--cliff-minimap' in sys.argv:
+        if '--villager-attention' in sys.argv:
+            villager_attention()
+        elif '--cliff-minimap' in sys.argv:
             cliff_minimap()
         elif '--testing-menu' in sys.argv:
             testing_menu()

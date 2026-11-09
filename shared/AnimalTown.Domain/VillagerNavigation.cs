@@ -37,7 +37,7 @@ public sealed class VillagerNavigation
             for(int i=0;i<town.PlacedCount;i++){var p=town.Placed[i];if(p.Room!=0)continue;int w=Catalog.Items[p.Item].Width,h=Catalog.Items[p.Item].Height;if((p.Rotation&1)!=0){int swap=w;w=h;h=swap;}for(int z=p.Z;z<p.Z+h;z++)for(int x=p.X;x<p.X+w;x++)if(town.Inside(x,z))trees[z*Town.Width+x]=true;}
             treeCount=town.GroundCount;placedCount=town.PlacedCount;plotStamp=town.HouseZ*Town.Width+town.HouseX;
         }
-        if(worker>=0&&Paused[worker])worker=-1;
+        if(worker>=0&&Paused[worker]){Routes[worker].Replan=true;worker=-1;}
         if(worker>=0)Search();
         for(int i=0;i<6;i++){
             var r=Routes[i];r.Moving=false;if(Paused[i]||town.Residents[i].Space!=0)continue;if(r.Wait>0){r.Wait--;continue;}

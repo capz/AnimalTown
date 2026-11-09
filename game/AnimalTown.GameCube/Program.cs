@@ -63,6 +63,11 @@ internal sealed class TownGame
     private readonly UiShapes uiShapes=new UiShapes();
     private readonly MapBackground mapBackground=new MapBackground();
     private readonly RunningMinimap runningMinimap=new RunningMinimap();
+    private readonly VillagerAttention attention=new VillagerAttention();
+    private readonly string[] attentionText=new string[6];
+    private readonly int[] attentionKinds=new int[6];
+    private readonly float[] attentionNameScale=new float[6];
+    private int attentionRevision=-1;
     private readonly MenuNavigation menuNavigation=new MenuNavigation();
     private readonly WrappedText dialogueText=new WrappedText(41),itemTitleText=new WrappedText(14),saveStatusText=new WrappedText(48);
     private string wrappedDialogue="";
@@ -421,12 +426,12 @@ internal sealed class TownGame
         int door=villagers.Doors.Nearby(state,0,facingYaw);
         if(door>=0){if(!buildings.Ready(state.BuildingTypes[door])){Say("Home","This home is unavailable right now.");return;}if(!villagers.Doors.Request(state,0,door))Say("Door","Please wait for the doorway to clear.");return;}
         if(room!=0){
-            for(int i=0;i<6;i++){var v=state.Town.Residents[i];if(v.Space==room&&Math.Abs(v.PosX-state.X)<2&&Math.Abs(v.PosZ-state.Z)<2){Say(v.Name,state.Talk(i));return;}}
+            for(int i=0;i<6;i++){var v=state.Town.Residents[i];if(v.Space==room&&Math.Abs(v.PosX-state.X)<2&&Math.Abs(v.PosZ-state.Z)<2){TalkToVillager(i);return;}}
             if(room==24){screen="store";selected=0;return;}if(room==25){screen="post";selected=0;return;}
             Say("Home","A at the doorway to leave. C-stick turns the view; L recentres it.");return;
         }
         if(x>=32&&x<=40&&z<=12){Say("Gate","The gate awaits a Broadband Adapter and companion connection.");return;}
-        for(int i=0;i<6;i++){var v=state.Town.Residents[i];if(v.Space==0&&Math.Abs(v.PosX-state.X)<2.8f&&Math.Abs(v.PosZ-state.Z)<2.8f){Say(v.Name,state.Talk(i));return;}}
+        for(int i=0;i<6;i++){var v=state.Town.Residents[i];if(v.Space==0&&Math.Abs(v.PosX-state.X)<2.8f&&Math.Abs(v.PosZ-state.Z)<2.8f){TalkToVillager(i);return;}}
         if(state.Pickup(tx,tz)||state.Pickup(x,z)){Say("Backpack","Picked up!");return;}
         int ground=state.Town.FindGround(tx,tz);
         if(ground>=0)
@@ -442,9 +447,11 @@ internal sealed class TownGame
         if(state.Tool==7&&state.Town.AddGround(16,tx,tz,1,day)){Say("Digging","A spot for something buried.");return;}
         Say("Meadowroll","A quiet moment. Try the store, town hall, or your neighbours.");
     }
+    private void TalkToVillager(int index)
+    {attention.Spoke(index,Clock.Timestamp);Say(state.Town.Residents[index].Name,state.Talk(index));}
     internal void Step(ControllerState pad)
     {
-        if(!resourcesReady||room==0&&!terrain.Ready){runningMinimap.Update(Clock.Timestamp,false,false);return;}
+        if(!resourcesReady||room==0&&!terrain.Ready){runningMinimap.Update(Clock.Timestamp,false,false);attention.Update(state,Clock.Timestamp,townClock.MinuteOfDay,false,0);return;}
         bool running=false;float beforeX=state.X,beforeZ=state.Z;
         tick++;
         if(tick%30==0)townClock.Update(NativeCalendar.ReadClock());
@@ -475,6 +482,7 @@ internal sealed class TownGame
             if(room!=oldRoom){facingYaw=state.Facing;faceX=0;faceZ=room==0?1:-1;indoorCamera.Reset();}
         }
         runningMinimap.Update(Clock.Timestamp,running,screen=="world"&&room==0&&waterInspection==0&&!cliffPreview);
+        UpdateAttention();
         state.Facing=facingYaw;cachedPlayerHeight=PlayerHeight();if(room==0)RenderView.Prepare(state.X,state.Z,cachedPlayerHeight);
         animationClock.Step(0,moveClip,models[state.Species].Animations.Count>0);
         for(int i=1;i<7;i++){
@@ -484,6 +492,35 @@ internal sealed class TownGame
             }
             animationClock.Step(i,animationClock.Clip(i),moving&&Visible(v.PosX,v.PosZ,1.8f));
         }
+    }
+    private void UpdateAttention()
+    {
+        bool enabled=screen=="world"&&room==0&&waterInspection==0&&!cliffPreview&&!villagers.Doors.Busy(0);
+        int mask=0;
+        if(enabled)for(int i=0;i<6;i++){
+            var v=state.Town.Residents[i];
+            if(v.Space==0&&!villagers.Doors.Busy(i+1)&&AttentionBubbleLayout.Project(state.Town,v.PosX,v.PosZ,state.X,state.Z,PlayerHeight(),out float hx,out float hy)&&(!runningMinimap.Visible||hx<460||hy<300))mask|=1<<i;
+        }
+        attention.Update(state,Clock.Timestamp,townClock.MinuteOfDay,enabled,mask);
+        villagers.AttentionMask=0;for(int i=0;i<6;i++)if(attention.Calling(i))villagers.AttentionMask|=1<<i;
+    }
+    private void PrepareAttentionText()
+    {
+        if(attentionRevision==attention.Revision)return;attentionRevision=attention.Revision;
+        for(int i=0;i<6;i++){
+            int kind=attention.Kind(i);attentionKinds[i]=kind;if(kind==0)continue;
+            var v=state.Town.Residents[i];
+            attentionNameScale[i]=Math.Min(1,136/Math.Max(1,font.Measure(v.Name)));
+            string first=kind==VillagerAttention.Greeting?"Hey, "+state.Name+"!":kind==VillagerAttention.RequestReady?"Is that my":"I need a hand";
+            string second=kind==VillagerAttention.Greeting?"It's been a while.":kind==VillagerAttention.RequestReady?Catalog.Items[v.Request].Name+"?":"before morning!";
+            attentionText[i]=FitAttentionLine(first)+"\n"+FitAttentionLine(second);
+        }
+    }
+    private string FitAttentionLine(string value)
+    {
+        if(font.Measure(value)<=AttentionBubbleLayout.Width-24)return value;
+        int end=value.Length;while(end>0&&font.Measure(value.Substring(0,end)+"...")>AttentionBubbleLayout.Width-24)end--;
+        return value.Substring(0,end)+"...";
     }
     private void UpdateAnimationFrame()
     {
@@ -568,7 +605,7 @@ internal sealed class TownGame
         else{int steps=0;while(steps<8&&Clock.Timestamp<preparationDeadline){if(!villagerShadows.Advance())break;steps++;}}
         FrameProfile.End(2,phase);
         if(room==0&&!terrain.Ready){DrawLoading(landscape:true);return;}
-        phase=FrameProfile.Start();uiShapes.Prepare(screen,screen=="menu"?menuTab:-1,batchedDrawing);if((batchedDrawing&&screen=="map")||(runningMinimap.Visible&&screen=="world"&&room==0))mapBackground.Prepare(state.Town);modelUsed=0;FrameProfile.End(8,phase);
+        phase=FrameProfile.Start();PrepareAttentionText();uiShapes.Prepare(screen,screen=="menu"?menuTab:-1,batchedDrawing);if((batchedDrawing&&screen=="map")||(runningMinimap.Visible&&screen=="world"&&room==0))mapBackground.Prepare(state.Town);modelUsed=0;FrameProfile.End(8,phase);
         phase=FrameProfile.Start();device.BeginFrame(room==0?new Color32(149,198,186):new Color32(32,40,39));
         float eyeHeight=PlayerHeight();
         if(room==0)camera.LookAt(new Vector3(state.X,CylinderWorld.CameraHeight+eyeHeight,state.Z+CylinderWorld.CameraBack),new Vector3(state.X,eyeHeight,state.Z-CylinderWorld.CameraAimAhead),new Vector3(0,1,0));
@@ -752,7 +789,7 @@ internal sealed class TownGame
         { Panel(115,181,410,132);Heading("Saving your town",142,199,ink);Text("Please keep the memory\ncard inserted.",142,245,ink,1.25f);return; }
         if(screen=="create")
         { Panel(55,90,530,295);Heading("Make yourself at home",78,102,ink);UpdateCreationRows();for(int i=0;i<creationRows.Length;i++){if(selected==i)Rounded(69,148+i*31,495,28,14,new Color32(221,231,188));Text(creationRows[i],75,149+i*31,ink);}return; }
-        if(screen=="world"){if(room==0&&runningMinimap.Visible)DrawMinimap();if(waterInspection!=0)Text("Water inspection "+waterInspection+" / L+R+Left cycles",42,320,ink);if(cliffPreview)Text("Cliff kit preview / L+R+Up closes",42,343,ink);return;}
+        if(screen=="world"){if(room==0&&waterInspection==0&&!cliffPreview)DrawAttention();if(room==0&&runningMinimap.Visible)DrawMinimap();if(waterInspection!=0)Text("Water inspection "+waterInspection+" / L+R+Left cycles",42,320,ink);if(cliffPreview)Text("Cliff kit preview / L+R+Up closes",42,343,ink);return;}
         if((screen=="menu"&&menuTab==0)||screen=="sell"||screen=="item"){DrawBackpack();return;}
         Panel(45,75,550,350);string title=screen=="menu"?tabs[menuTab]:screen=="shop"?"Store stock":screen=="store"?"Hearth's store":screen=="post"?"Town hall":screen=="mail"?"Mailbox":"Lost and Found";
         Heading(title,68,91,ink);
@@ -824,6 +861,42 @@ internal sealed class TownGame
         {
             Text(screen=="sell"?"Sell: "+Catalog.Items[item].Sell+" acorns":"One item",textX,popY+69,ink,1.05f);
             Strong(screen=="sell"?"A  Sell item":"A  Item actions",textX,popY+101,ink,1.05f);
+        }
+    }
+    private void DrawAttention()
+    {
+        bool occupied=false;float occupiedX=0,occupiedY=0;
+        for(int pass=0;pass<2;pass++)for(int i=0;i<6;i++){
+            int kind=attentionKinds[i];if(kind==0||(kind>=VillagerAttention.RequestReady)!=(pass==0))continue;
+            var v=state.Town.Residents[i];
+            if(!AttentionBubbleLayout.Project(state.Town,v.PosX,v.PosZ,state.X,state.Z,cachedPlayerHeight,out float hx,out float hy)||
+               !AttentionBubbleLayout.Place(hx,hy,occupied,occupiedX,occupiedY,out float x,out float y))continue;
+            float top=y+22,w=AttentionBubbleLayout.Width;
+            var paper=new Color32(255,245,221);var shadow=new Color32(49,72,62,130);
+            Rounded(x+3,top+4,w,AttentionBubbleLayout.BodyHeight,24,shadow);
+            AttentionTail(x+3,top+4,hx+3,hy+4,shadow);
+            Rounded(x,top,w,AttentionBubbleLayout.BodyHeight,24,paper);
+            AttentionTail(x,top,hx,hy,paper);
+            bool urgent=kind>=VillagerAttention.RequestReady;
+            float nameTextWidth=font.Measure(v.Name,attentionNameScale[i]),nameWidth=Math.Max(68,nameTextWidth+24);
+            Rounded(x+14,y,nameWidth,28,14,urgent?new Color32(194,138,69):new Color32(83,116,95));
+            strongFont.Draw(ui,v.Name,x+14+(nameWidth-nameTextWidth)*.5f,y+5,paper,attentionNameScale[i]);
+            if(urgent){float badge=x+nameWidth+19;Rounded(badge,y,28,28,14,new Color32(232,183,86));strongFont.Draw(ui,"!",badge+10,y+4,new Color32(35,49,44),1.1f);}
+            // Use font units directly, matching the width measurements above.
+            font.Draw(ui,attentionText[i],x+12,top+13,new Color32(35,49,44));
+            attention.Shown(state,i,Clock.Timestamp);
+            if(occupied)return;occupied=true;occupiedX=x;occupiedY=y;
+        }
+    }
+    private void AttentionTail(float x,float y,float hx,float hy,Color32 color)
+    {
+        float w=AttentionBubbleLayout.Width,h=AttentionBubbleLayout.BodyHeight;
+        if(hy<y+h+8&&(hx<x||hx>x+w)){
+            float edge=hx<x?x+3:x+w-3,at=Math.Max(y+20,Math.Min(y+h-20,hy));
+            ui.FillTriangle(new Vector2(edge,at-10),new Vector2(edge,at+10),new Vector2(hx,hy),color);
+        }else{
+            float at=Math.Max(x+26,Math.Min(x+w-26,hx));
+            ui.FillTriangle(new Vector2(at-10,y+h-5),new Vector2(at+10,y+h-5),new Vector2(hx,hy),color);
         }
     }
     private void DrawMinimap()
