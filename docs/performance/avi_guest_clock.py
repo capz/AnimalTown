@@ -23,13 +23,18 @@ class AviGuestClock:
                     else:continue
                 while offset+8<=size:
                     f.seek(offset);tag,length=struct.unpack('<4sI',f.read(8));end=offset+8+length+(length&1)
+                    # OpenDML starts another RIFF/AVIX + LIST/movi near 1 GiB.
+                    # Its container length is incomplete while recording; enter
+                    # known containers before requiring their complete payload.
+                    if tag in (b'RIFF',b'LIST'):
+                        if offset+12>size:break
+                        kind=f.read(4)
+                        if tag==b'RIFF' and kind in (b'AVI ',b'AVIX') or tag==b'LIST' and kind in (b'movi',b'rec '):
+                            offset+=12;continue
                     if end>size:break
                     if tag in (b'00dc',b'00db'):
                         count+=1
                         if length and self.track_presentations:self.presentations.append(total+count)
-                    if tag==b'LIST':
-                        kind=f.read(4)
-                        if kind==b'rec ':offset+=12;continue
                     offset=end
                 self.state[path]=(offset,count);total+=count
         return total
