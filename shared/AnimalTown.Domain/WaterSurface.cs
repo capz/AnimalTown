@@ -35,14 +35,43 @@ public static class WaterSurface
     {
         x=(x%64+64)%64;y=(y%64+64)%64;
         if(!ripples)return (byte)(239+8*Math.Sin((x+y)*Math.PI/32)+7*Math.Cos((x-2*y)*Math.PI/32));
-        double value=0;
-        for(int i=0;i<3;i++){
-            double dx=Wrap(x-(i==0?13:i==1?43:29)),dy=Wrap(y-(i==0?15:i==1?38:57));
-            double length=i==1?8:6,arc=dy-dx*dx*.045;
-            double weight=Math.Max(0,1-Math.Abs(arc)/1.6)*Math.Max(0,1-dx*dx/(length*length));
-            value=Math.Max(value,weight);
-        }
-        return (byte)(value*72);
+        return WindWakerWaterPattern.Foam(x,y);
+    }
+    // Pale shoreline breakers use IA8, unlike the opaque I8 surface masks.
+    // GX IA8 stores alpha first and luminance second in each 4x4 native tile.
+    // The material scrolls this texture without rewriting any shoreline vertices.
+    public static byte[] ShoreTexture()
+    {
+        var tex=new byte[TextureSize*TextureSize*2];int at=0;
+        for(int by=0;by<TextureSize;by+=4)for(int bx=0;bx<TextureSize;bx+=4)
+            for(int y=by;y<by+4;y++)for(int x=bx;x<bx+4;x++){
+                tex[at++]=WindWakerWaterPattern.ShoreAlpha(x,y);
+                tex[at++]=255;
+            }
+        return tex;
+    }
+    // Separate X/Y signed offsets stored in periodic GX RGB565 4x4 tiles.
+    // Native format is big-endian u16 per texel. Generated once at startup.
+    public static ushort WarpSample(int x,int y)
+    {
+        x=(x%TextureSize+TextureSize)%TextureSize;
+        y=(y%TextureSize+TextureSize)%TextureSize;
+        double a=6.283185307179586*(2*x+y)/TextureSize;
+        double b=6.283185307179586*(x-2*y)/TextureSize;
+        int red=(int)Math.Round(16+13*Math.Sin(a));
+        int green=(int)Math.Round(32+27*Math.Cos(b));
+        return (ushort)((red<<11)|(green<<5)|16);
+    }
+    public static byte[] WarpTexture()
+    {
+        var tex=new byte[TextureSize*TextureSize*2];int at=0;
+        for(int by=0;by<TextureSize;by+=4)for(int bx=0;bx<TextureSize;bx+=4)
+            for(int y=by;y<by+4;y++)for(int x=bx;x<bx+4;x++){
+                ushort sample=WarpSample(x,y);
+                tex[at++]=(byte)(sample>>8);
+                tex[at++]=(byte)sample;
+            }
+        return tex;
     }
     // Original looping whitecaps for the optional storm material, GX I8 8x4.
     public static byte[] StormTexture()

@@ -17,6 +17,7 @@ internal sealed class TerrainRenderer
     private readonly FloorStrips staging=new FloorStrips(TerrainStream.Width*TerrainStream.Height);
     private readonly TerrainSoil soil=new TerrainSoil();
     private readonly WaterMaterial waterMaterial=new WaterMaterial();
+    private readonly LocalOceanWaves oceanWaves=new LocalOceanWaves();
     private readonly TerrainWalls gallery;
     internal readonly Transform ScrollTransform=new Transform();
     private readonly CloudShadows clouds=new CloudShadows();
@@ -70,6 +71,7 @@ internal sealed class TerrainRenderer
     internal void Prepare(GameState state,int room,int month,VillagerShadows movingShadows,long deadline,bool cliffPreview=false)
     {
         BuiltThisFrame=UrgentStages=0;
+        oceanWaves.Prepare(state,waterMaterial.RoughOcean,cliffPreview,waterMaterial.Tint(1));
         int next=TerrainTiles.Season(month,SeasonOverride>=0?SeasonOverride:forced);bool changed=next!=season;
         if(changed){
             string name="floor-"+TerrainTiles.SeasonName(next);data=File.ReadAllBytes("dvd:/"+name+".bin");FloorStrips.Validate(data);
@@ -123,7 +125,7 @@ internal sealed class TerrainRenderer
             int work=0;while(work<8&&Clock.Timestamp<deadline){if(!movingShadows.Advance())break;work++;}
             while(work<8&&Clock.Timestamp<deadline){if(!shadows.Advance())break;work++;}
             gallery.PrepareGallery(state,this,cliffPreview);
-            VisibleTriangles=gallery.Triangles+archive.Triangles;visibleGroundMask=archive.GroundMask;RejectedQuads=0;
+            VisibleTriangles=gallery.Triangles+archive.Triangles+oceanWaves.Triangles;visibleGroundMask=archive.GroundMask;RejectedQuads=0;
             return;
         }
         int steps=0;long selectAt=FrameProfile.Start();stream.Prepare(state.X,state.Z);
@@ -145,7 +147,7 @@ internal sealed class TerrainRenderer
         while(steps<8&&Clock.Timestamp<deadline){if(!cliffs.Advance())break;steps++;}
         while(steps<8&&Clock.Timestamp<deadline){if(!shadows.Advance())break;steps++;}
         gallery.PrepareGallery(state,this,cliffPreview);
-        VisibleTriangles=gallery.Triangles+(GroundRingActive?GroundRingPlan.IndexCount/3:0);RejectedQuads=0;visibleGroundMask=0;
+        VisibleTriangles=gallery.Triangles+oceanWaves.Triangles+(GroundRingActive?GroundRingPlan.IndexCount/3:0);RejectedQuads=0;visibleGroundMask=0;
         for(int i=0;i<stream.Count;i++)if(stream.Visible[i]){
             var section=sections[i]!;VisibleTriangles+=section.Triangles;
             visibleGroundMask|=section.GroundMask|section.Walls.GroundMask;
@@ -176,7 +178,7 @@ internal sealed class TerrainRenderer
     internal void Animate(double seconds)
     {
         if(FreezeMotion)return;long at=FrameProfile.Start();
-        waterMaterial.Animate(seconds);clouds.Animate(seconds);
+        waterMaterial.Animate(seconds);oceanWaves.Update(seconds);clouds.Animate(seconds);
         for(int i=0;i<slots;i++)clouds.Apply(materials[i],baseTints[i],true);
         FrameProfile.DetailEnd(3,at);
     }
@@ -192,7 +194,9 @@ internal sealed class TerrainRenderer
     internal void Draw(Renderer renderer,Transform parent,int room)
     {
         if(!legacy){
-            AddArchive(renderer,waterMaterial.Surface,104);AddArchive(renderer,waterMaterial.OceanSurface,107);AddArchive(renderer,waterMaterial.Foam,105);AddArchive(renderer,soil.Material,106);
+            AddArchive(renderer,waterMaterial.Surface,104);AddArchive(renderer,waterMaterial.OceanSurface,107);
+            oceanWaves.Draw(renderer,waterMaterial.OceanSurface,ScrollTransform);
+            AddArchive(renderer,waterMaterial.Foam,105);AddArchive(renderer,soil.Material,106);
             NativeShadows.Scope(1);
             try{for(int slot=0;slot<slots;slot++)if((visibleGroundMask&(1UL<<slot))!=0)AddArchive(renderer,materials[slot],slot);}
             finally{NativeShadows.Scope(0);}
@@ -206,6 +210,7 @@ internal sealed class TerrainRenderer
         }finally{NativeShadows.Scope(0);}
         for(int i=0;i<stream.Count;i++)if(stream.Visible[i])Add(renderer,waterMaterial.OceanSurface,sections[i]!.Water.OceanMesh);
         Flush(renderer,waterMaterial.OceanSurface);
+        oceanWaves.Draw(renderer,waterMaterial.OceanSurface,ScrollTransform);
         for(int i=0;i<stream.Count;i++)if(stream.Visible[i])Add(renderer,waterMaterial.Foam,sections[i]!.Water.FoamMesh);
         Flush(renderer,waterMaterial.Foam);
         for(int i=0;i<stream.Count;i++)if(stream.Visible[i])Add(renderer,soil.Material,sections[i]!.Walls.SoilMesh);
