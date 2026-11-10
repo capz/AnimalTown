@@ -35,14 +35,20 @@ public static class WaterSurface
     {
         x=(x%64+64)%64;y=(y%64+64)%64;
         if(!ripples)return (byte)(239+8*Math.Sin((x+y)*Math.PI/32)+7*Math.Cos((x-2*y)*Math.PI/32));
-        double value=0;
-        for(int i=0;i<3;i++){
-            double dx=Wrap(x-(i==0?13:i==1?43:29)),dy=Wrap(y-(i==0?15:i==1?38:57));
-            double length=i==1?8:6,arc=dy-dx*dx*.045;
-            double weight=Math.Max(0,1-Math.Abs(arc)/1.6)*Math.Max(0,1-dx*dx/(length*length));
-            value=Math.Max(value,weight);
-        }
-        return (byte)(value*72);
+        return WindWakerWaterPattern.Foam(x,y);
+    }
+    // Pale shoreline breakers use IA8, unlike the opaque I8 surface masks.
+    // GX IA8 stores alpha first and luminance second in each 4x4 native tile.
+    // The material scrolls this texture without rewriting any shoreline vertices.
+    public static byte[] ShoreTexture()
+    {
+        var tex=new byte[TextureSize*TextureSize*2];int at=0;
+        for(int by=0;by<TextureSize;by+=4)for(int bx=0;bx<TextureSize;bx+=4)
+            for(int y=by;y<by+4;y++)for(int x=bx;x<bx+4;x++){
+                tex[at++]=WindWakerWaterPattern.ShoreAlpha(x,y);
+                tex[at++]=255;
+            }
+        return tex;
     }
     // Original looping whitecaps for the optional storm material, GX I8 8x4.
     public static byte[] StormTexture()
