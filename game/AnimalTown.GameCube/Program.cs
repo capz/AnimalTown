@@ -20,7 +20,12 @@ internal static class Program
         if(!Aram.Initialize(2*1024*1024))throw new InvalidOperationException("Audio ARAM reservation failed");
         if(!Storage.MountDisc())throw new IOException("AnimalTown game disc not found");
         RuntimeOptions.Load();
-        var game=new TownGame();long previous=Clock.Timestamp;double accumulator=0;
+        var game=StartupSplash.Run();
+        // Run's stack and using scope are gone, so splash batch/package arrays
+        // cannot remain rooted in its locals during this collection.
+        AnimalTown.GameCube.NativeTexturePages.Collect();
+        DebugOverlay.WriteLine("ANIMALTOWN SPLASH RELEASED");
+        long previous=Clock.Timestamp;double accumulator=0;
         while(true)
         {
             game.AdvanceLoading();

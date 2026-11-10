@@ -3,6 +3,7 @@ internal static class UiShapePlanChecks
     internal static void Run(Action<bool,string> check)
     {
         RunningMinimapChecks.Run(check);
+        SplashTimingChecks.Run(check);
         var plan=new UiShapePlan();plan.BeginFrame("world",-1,true);
         int hud=plan.Request(282,36,18,false);
         check(plan.Request(282,36,18,false)==hud&&plan.PendingCount==1,"shared shape misses queue once");
