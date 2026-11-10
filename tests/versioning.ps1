@@ -10,10 +10,14 @@ function FixtureGit([string[]]$Arguments){Invoke-VersionGit $repo $Arguments}
 function Commit([string]$message){$null=FixtureGit @('-c','commit.gpgsign=false','commit','--allow-empty','-m',$message)}
 $null=FixtureGit @('init','-b','main');$null=FixtureGit @('config','user.name','Version checks');$null=FixtureGit @('config','user.email','version-checks@example.invalid');$null=FixtureGit @('config','core.autocrlf','false')
 [IO.File]::WriteAllText((Join-Path $repo '.gitignore'),"out/`n")
-$null=FixtureGit @('add','.gitignore');Commit 'Existing main baseline'
+[IO.File]::WriteAllText((Join-Path $repo 'version.json'),'{"schema":1}')
+$null=FixtureGit @('add','.gitignore','version.json');Commit 'Existing main baseline'
 $base=FixtureGit @('rev-parse','HEAD')
 $config=@{schema=2;major=0;minor=11;patch=10;baseCommit=$base}
-function Config {[IO.File]::WriteAllText((Join-Path $repo 'version.json'),($config|ConvertTo-Json)+"`n")}
+function Config {
+    [IO.File]::WriteAllText((Join-Path $repo 'version.json'),($config|ConvertTo-Json)+"`n")
+    if($script:commitConfig){$null=FixtureGit @('add','version.json');Commit 'Fixture checkpoint configuration'}
+}
 Config;$null=FixtureGit @('add','version.json');Commit 'Adopt policy'
 $merges=@()
 function Version([string]$kind='main',[string]$mainRef='main') {Get-BuildVersion $repo -BuildKind $kind -MainRef $mainRef -MergedPullRequests $script:merges}
@@ -22,6 +26,7 @@ Assert ($a.version -ceq '0.11.10' -and $a.isMain -and !$a.dirty) 'Adoption freez
 Assert (!$a.canPublish) 'Unmerged direct main commits cannot overwrite a numbered release'
 Assert ((Version).version -ceq $a.version) 'Repeated resolution is deterministic'
 $empty=Get-BuildVersion $repo -BuildKind branch -MainRef $base
+Assert ($empty.policySource -ceq 'migration') 'The adoption PR can introduce the new frozen checkpoint before main has schema 2'
 Assert ((Get-BuildVersion $repo -BuildKind branch -MainRef $base).version -ceq $empty.version) 'Empty baseline history round-trips through the offline cache'
 Assert (@((Get-Content (Join-Path $repo 'out/version-context.json') -Raw|ConvertFrom-Json).merges).Count -eq 0) 'Empty cached history contains an empty array rather than a null entry'
 $null=FixtureGit @('switch','-c','feature')
@@ -74,6 +79,10 @@ Reject {Version 'branch'} 'Duplicate PR records cannot inflate the patch'
 $merges=$merges[0..2]
 $merges+=@{number=0;mergeCommit=$merge};Reject {Version 'branch'} 'Invalid PR identities are rejected';$merges=$merges[0..2]
 Reject {Version 'branch' 'missing-main'} 'Missing main history fails instead of falling back to feature history'
+$config.patch=99;Config
+Assert ((Version 'branch').patch -eq 13 -and (Version 'branch').policySource -ceq 'main') 'Feature-branch configuration edits cannot alter current main version numbers'
+$config.patch=10;Config
+$null=FixtureGit @('switch','main');$script:commitConfig=$true
 $config.baseCommit='ffffffffffffffffffffffffffffffffffffffff';Config
 Reject {Version 'branch'} 'Missing baseline fails instead of inventing a version'
 $config.baseCommit=$featureCommit;Config
