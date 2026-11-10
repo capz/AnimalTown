@@ -1,11 +1,11 @@
 # Pure path-to-check routing; conservative fallback for new production paths.
 function Get-ValidationPlan {
-    param([string[]]$ChangedPaths=@(),[switch]$Full,[string]$Commit='',[string]$BaseRef='')
+    param([string[]]$ChangedPaths=@(),[switch]$Full,[switch]$ForceRelease,[string]$Commit='',[string]$BaseRef='')
     $allManaged=@('ui','menu','text','trim','terrain','movement','dialogue','generation','life','saves','buildings','core')
     $managed=[Collections.Generic.HashSet[string]]::new()
     $tooling=[Collections.Generic.HashSet[string]]::new()
     $native=[Collections.Generic.HashSet[string]]::new()
-    $backend=$false;$policy=$false;$release=[bool]$Full;$broad=[bool]$Full
+    $backend=$false;$policy=$false;$release=[bool]($Full -or $ForceRelease);$broad=[bool]$Full
     foreach($raw in $ChangedPaths){
         $p=$raw.Replace('\','/')
         if($p -match '^(docs/|.*\.md$|LICENSE$|\.gitignore$)'){continue}

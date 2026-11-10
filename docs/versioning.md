@@ -1,96 +1,107 @@
-# Release versions: xx.yy.zz.bb
+# Incremental main and PR versions
 
-AnimalTown uses four parts, for example `0.3.2.a1b2c3d4e5f6`:
+The frozen starting version is **0.11.10**, corresponding to main commit
+`9a4aad4ff05c307bcc7daf4e553269ac93027c03`. `version.json` stores this checkpoint.
+Major and minor stay fixed. Patch advances once for every PR merged to main,
+including documentation, features, bugfixes and reverts. Commit titles and the
+number of implementation commits have no effect.
 
-| Part | Meaning | Changes when |
-| --- | --- | --- |
-| `xx` | User-controlled major | Only when the user explicitly requests it |
-| `yy` | Feature counter | A `feat:` change lands |
-| `zz` | Bugfix counter | A `fix:` change lands |
-| `bb` | Source identity | First 12 lowercase hexadecimal characters of the full Git commit |
+| Build | Version example |
+| --- | --- |
+| Current main baseline | `0.11.10` |
+| First PR merged after the checkpoint | `0.11.11` |
+| Next PR merged to main | `0.11.12` |
+| PR built while main is `0.11.12` | `0.11.12+a1b2c3d4e5f6` |
 
-The initial baseline is `0.0.0`; no major bump has been requested. Counters are independent: features do not reset
-bugfixes, and changing `xx` does not reset `yy` or `zz`. Numbers are not padded
-or limited to two digits. This is the project's requested scheme, not SemVer.
-Breaking-change markers (`!`) never change `xx` automatically.
+PR versions use current main's numeric version plus `+` and the first 12 lowercase
+hexadecimal characters of the **actual feature-head commit**. They never predict
+the next patch, count feature commits, or use GitHub's synthetic test-merge hash.
+A stale feature branch still uses the current main snapshot fetched for that build.
+Pushing more commits to a PR changes only its hash while main stays unchanged.
 
-## Describe each integrated change
+Only change the frozen baseline or major/minor components at the user's explicit
+request. Conventional titles such as `feat:`, `fix:` and `docs:` remain useful for
+readability but do not control versions or block version calculation.
 
-Use a conventional PR title and retain that title when merging:
+## Counting integrations correctly
 
-```text
-feat(water): add river bank meshes
-fix(water): close shoreline corner gaps
-docs: describe terrain authoring
-```
+The resolver uses GitHub's merged PR records for base `main`, then includes only
+integration boundaries on the selected main snapshot's first-parent history after
+the checkpoint. Each PR number is counted once. GitHub reports the merge commit,
+squash commit, or final rebased commit in `merge_commit_sha`; therefore normal,
+squash and multi-commit rebase merges all increment patch exactly once. See
+[GitHub's integration-boundary contract](https://docs.github.com/en/rest/pulls/pulls#get-a-pull-request).
+Unmerged PRs, PRs targeting another branch, baseline history, and integrations after
+the selected snapshot are excluded. Duplicate or invalid records are rejected.
 
-`feat:` increments `yy`; `fix:` increments `zz`. The other accepted prefixes are
-`docs:`, `chore:`, `test:`, `ci:`, `build:`, `refactor:`, `style:` and `revert:`.
-They change the hash without changing the numeric counters. Optional scopes and
-`!` are accepted. Split independent feature additions and bugfixes into separate
-PRs so each has its own classification; supporting fixes within a feature PR
-belong to that feature's integration unit.
+No counter commits are pushed by CI. Parallel branch jobs cannot consume patch
+numbers, and retries do not increment anything. Main releases are numbered by
+merged history rather than successful build counts, timestamps, tags or job order.
+A failed release can be retried at the same number. Direct commits to main do not
+count as PRs and cannot publish over an existing numbered release; integrate
+changes through a PR. Missing history or API failures fail rather than guessing.
 
-The GitHub workflow checks PR titles on open, edits, new commits and reopening.
-For a normal GitHub merge commit, versioning reads the PR title in the merge
-message body and counts the PR once. For squash merges/direct commits it reads
-the commit subject. Rebase merges count each first-parent `feat:`/`fix:` commit;
-use one classified commit per logical change and non-feature prefixes for support
-commits. Preserve the default PR title in merge messages. Unknown post-adoption
-integration titles fail version resolution rather than silently missing a bump.
-History-sync merges are not counted as another feature/fix.
+## Main snapshots and local builds
 
-## Reproducible calculation
+The exact source and main commits are recorded separately in `out/version.json`.
+Rebuilding the same pair produces the same identity. Rebuilding a feature commit
+after main advances deliberately uses main's newer numeric version.
 
-`version.json` stores the starting counters, user-controlled `xx` and baseline
-commit. `tools/version.ps1` walks first-parent integration history after that
-baseline, counting classified changes. History before this policy was introduced
-is retained as the baseline and is not retroactively classified. CI never pushes
-counter commits, and calculation does not depend on the order of release jobs,
-successful uploads, run numbers or tag discovery. Retrying the same source commit
-produces the same version. A documentation commit changes `bb` only.
-
-Only change `xx` in `version.json` after an explicit user request. Leave the
-baseline commit and starting `yy`/`zz` unchanged when doing so. CI does not infer
-major changes from code, PR labels, commit markers or workflow dispatches.
-
-Use a full clone (`fetch-depth: 0` in Actions). Missing baseline/history is an
-error, never a fallback to zero counters. Inspect a local identity with:
+Use a full clone. Before a local branch build, refresh main and prepare metadata:
 
 ```powershell
-./tools/write-version.ps1
+git fetch origin main
+./tools/write-version.ps1 -Refresh
 ```
 
-The resolver writes `out/version.json` with the version, full commit, dirty flag,
-baseline and classified changes. Local dirty builds display `-dirty` separately
-from the clean version identity and cannot be released. Branch builds have their
-own hash and integration-history preview; the merged main commit gets its final
-identity from that history.
+Local `main` checkouts resolve against their own HEAD; branch checkouts use
+`refs/remotes/origin/main`. Detached CI checkouts explicitly select `main` or
+`branch` through `ANIMALTOWN_VERSION_BUILD_KIND` and pin the main ref through
+`ANIMALTOWN_VERSION_MAIN_REF`. An older main rebuild uses that older main commit,
+not whichever commit happens to be latest on the remote.
 
-## Build and release identity
+GitHub history is normalized into ignored `out/version-context.json`, keyed by
+main commit and configuration SHA-256. Console, backend and packaging reuse the
+same context without another API call or a token in the compilation container.
+Changing main or the frozen configuration invalidates the cache. The resolver can
+read public PR history anonymously; CI reads the same API with its job token when
+preparing the context. That token is not passed into compilation containers.
+`-Refresh` discards the cached history. Offline builds require an
+already prepared context for the same snapshot.
 
-The game display, disc title/banner and ISO filename use the four-part version.
-`BUILD.txt` inside the ISO, the server and release records the version alongside
-the full source revisions. Disc image and archive names include it, for example:
+## CI and published artifacts
+
+Every PR runs version-policy tests. Same-repository PRs also build and publish
+the full console/backend prerelease with the source-head hash suffix. Fork PRs
+run read-only policy checks, without publishing access. Rebase older feature
+branches onto main after adopting this policy so their version tools and
+configuration use schema 2.
+
+Main merge builds publish the numeric version, including documentation-only PRs.
+The regular path-based validation planner still selects relevant suites;
+`-ForceRelease` requests artifacts without forcing unrelated test suites.
+Console/backend/source consistency, clean-checkout checks, disc verification,
+uploaded asset hashes and idempotent publication remain enforced.
+
+The game display, disc metadata, archives and release tags use the same identity:
 
 ```text
-AnimalTown-0.3.2.a1b2c3d4e5f6.iso
-AnimalTown-0.3.2.a1b2c3d4e5f6.nkit.iso
-AnimalTown-server-0.3.2.a1b2c3d4e5f6.zip
-AnimalTown-tools-0.3.2.a1b2c3d4e5f6.zip
+AnimalTown-0.11.12.iso
+AnimalTown-0.11.12.nkit.iso
+AnimalTown-server-0.11.12.zip
+v0.11.12
+
+AnimalTown-0.11.12+a1b2c3d4e5f6.iso
+AnimalTown-server-0.11.12+a1b2c3d4e5f6.zip
+v0.11.12+a1b2c3d4e5f6
 ```
 
-GitHub release tags use `v0.3.2.a1b2c3d4e5f6`. Releases include `version.json` and
-its checksum. Packaging rejects console/backend outputs whose source commit,
-version or clean state differs from the checkout. Existing draft/upload hash
-checks and idempotent publishing remain in force.
+Validation-base discovery recognizes numeric main tags, branch `+hash` tags,
+legacy four-part `vxx.yy.zz.hash` tags and `build-<hash>` tags. Hash-bearing tags
+must contain the tagged commit's actual hash. Main history uses first-parent
+ancestors, so unrelated branch releases cannot hide pending main changes.
 
-Validation-base discovery recognizes both new `vxx.yy.zz.bb` and legacy
-`build-<hash>` tags on first-parent ancestors. Tags must contain the tagged
-commit's actual 12-character hash. A rerun excludes its own commit when choosing
-the previous release, so it cannot skip checks by discovering its own tag.
-
-`tests/versioning.ps1` exercises classification, merge/rebase-compatible history,
-independent counters, explicit major control, deterministic rebuilds, metadata,
-bad history/configuration and old/new release anchors. It runs with build-policy
-checks through `tools/test-changes.ps1` and the release workflow.
+`tests/versioning.ps1` builds disposable Git histories covering the checkpoint,
+feature/stale branches, normal/squash/rebase integration boundaries, historical
+snapshots, direct commits, duplicate records, overflow, bad configuration/history,
+REST pagination/filtering, offline cache reuse and old/new release anchors.

@@ -11,6 +11,7 @@ if($LASTEXITCODE -ne 0 -or $commit -notmatch '^[0-9a-f]{40}$'){throw 'Cannot det
 if(& git -C $Root status --porcelain --untracked-files=normal){throw 'Release packaging requires a clean source checkout'}
 . (Join-Path $PSScriptRoot 'version.ps1')
 $identity=Get-BuildVersion $Root
+if(!$identity.canPublish){throw 'Main releases must end at a merged PR boundary; direct main commits do not advance the patch'}
 Write-VersionMetadata $identity $Root
 $version=$identity.version
 $versionPattern=[regex]::Escape($version)
@@ -88,7 +89,7 @@ For Swiss/GC Loader SD-card storage, download **AnimalTown-$version.nkit.iso** a
 
 **AnimalTown-$version.iso** remains available as the full-size canonical ISO for archival and fallback use. Both disc images are published directly, without ZIP wrappers. Choose one image download; you do not need both on the card. The server is a separate **AnimalTown-server-$version.zip** archive and requires .NET 10 and PostgreSQL. It does not run on the console.
 
-version.json records the xx.yy.zz.bb identity and change classification. BUILD.txt records the version and game, engine and SDK revisions. validation-plan.json records the comparison base and selected checks. texture-audit.json records texture source identities, fingerprints and 256-pixel default residency and 128/256/512/1024 model variants. nkit-validation.json records the pinned converter, sizes, per-file hashes and round-trip verification. SHA256SUMS.txt covers both disc images, the archives and manifests.
+version.json records the main major.minor.patch version, merged PR boundaries and source commit (branch builds append +hash). BUILD.txt records the version and game, engine and SDK revisions. validation-plan.json records the comparison base and selected checks. texture-audit.json records texture source identities, fingerprints and 256-pixel default residency and 128/256/512/1024 model variants. nkit-validation.json records the pinned converter, sizes, per-file hashes and round-trip verification. SHA256SUMS.txt covers both disc images, the archives and manifests.
 
 This is an early playable build, not the completed game. Physical GameCube testing is outstanding. See [implementation status](https://github.com/$Repository/blob/$commit/docs/implementation-status.md) and [build instructions](https://github.com/$Repository/blob/$commit/README.md).
 "@

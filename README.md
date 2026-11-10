@@ -7,11 +7,12 @@ The product brief is [design-doc.md](design-doc.md).
 ## Downloads and releases
 
 Build artifacts are delivered through [GitHub Releases](https://github.com/capz/AnimalTown/releases).
-Each successful push to `main` builds and checks the console and backend, then
+Each PR merged to `main` builds and checks the console and backend, then
 publishes a version-tagged development prerelease. Versions use
-[`xx.yy.zz.bb`](docs/versioning.md): user-controlled major, feature counter,
-bugfix counter, and 12-character commit hash. Use `feat:`/`fix:` PR titles;
-rebuilding a commit keeps its version. For SD-card storage through Swiss/GC Loader,
+[`major.minor.patch`](docs/versioning.md): major/minor are frozen and every PR
+merged to main increments patch once. PR builds use the current main version
+plus `+<12-character feature-branch commit hash>`. Rebuilding the same source/main
+snapshot keeps its version. For SD-card storage through Swiss/GC Loader,
 download `AnimalTown-VERSION.nkit.iso` and copy it directly to the card.
 The full-size `.iso` remains available for archival, fallback and disc burning;
 you only need one image on the card. See [NKit images](docs/nkit-images.md) for
@@ -48,7 +49,7 @@ dotnet tool restore
 ./tools/build-game.ps1
 ```
 
-A successful console build always produces `out/AnimalTown-<xx.yy.zz.bb>.iso`
+A successful console build always produces `out/AnimalTown-<version>.iso`
 (1,459,978,240 bytes), with bootable homebrew apploader, DOL, assets, opening.bnr,
 save artwork and BUILD.txt. Boot this ISO directly in Dolphin/GCLoader/Swiss.
 Physical hardware validation remains outstanding. Rebuilds can use

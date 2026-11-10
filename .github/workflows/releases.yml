@@ -2,34 +2,53 @@ name: Build and release
 
 on:
   pull_request:
-    types: [opened, edited, synchronize, reopened, ready_for_review]
+    types: [opened, synchronize, reopened, ready_for_review]
   push:
-    branches: [main, feat/reduce-gpu-submissions, feat/startup-splashes, feat/cliff-shadows-running-minimap, feat/package-performance-services, feat/river-coast-terrain, feat/cloud-shadows, feat/nuget-rendering-services, feat/building-interiors-journeys, fix/movement-terrain-cache, feat/sloped-river-banks, feat/cached-terrain-rotation, feat/villager-rim-object-shadows, feat/nkit-release-images, feat/reusable-cylinder-ground, fix/terrain-shadow-work, fix/debug-menu-manual-save, fix/shadow-coverage-cache, fix/seamless-town-streaming, feat/debug-rain-ocean, feat/world-curve-debug-controls]
+    branches: [main]
   workflow_dispatch:
 
 permissions:
   contents: write
   packages: write
+  pull-requests: read
 
 concurrency:
-  group: release-${{ github.sha }}
+  group: release-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: false
 
+env:
+  ANIMALTOWN_VERSION_BUILD_KIND: ${{ github.event_name != 'pull_request' && github.ref == 'refs/heads/main' && 'main' || 'branch' }}
+  ANIMALTOWN_VERSION_MAIN_REF: ${{ github.event_name != 'pull_request' && github.ref == 'refs/heads/main' && github.sha || 'refs/remotes/origin/main' }}
+
 jobs:
-  change-title:
-    if: github.event_name == 'pull_request'
+  version-policy:
     runs-on: ubuntu-24.04
     permissions:
       contents: read
+      pull-requests: read
     steps:
       - uses: actions/checkout@v4
-      - name: Classify the change for versioning
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Pin current main history
+        run: git fetch origin main
+      - name: Check version and validation policy
+        shell: pwsh
+        run: |
+          ./tests/versioning.ps1
+          ./tests/validation-plan.ps1
+      - name: Resolve main version and actual source identity
         shell: pwsh
         env:
-          CHANGE_TITLE: ${{ github.event.pull_request.title }}
-        run: ./tools/check-change-title.ps1 -Title $env:CHANGE_TITLE
+          GH_TOKEN: ${{ github.token }}
+        run: ./tools/write-version.ps1 -Refresh
+
   release:
-    if: github.event_name != 'pull_request'
+    needs: version-policy
+    # Forks run the read-only policy checks; publishing uses same-repository code.
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     defaults:
@@ -38,26 +57,31 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
           fetch-depth: 0
           persist-credentials: false
-      - name: Resolve xx.yy.zz.bb version from integration history
+      - name: Pin current main history
+        run: git fetch origin main
+      - name: Resolve incremental main or branch build version
         id: version
         shell: pwsh
-        run: ./tools/write-version.ps1 -GitHubOutput $env:GITHUB_OUTPUT
-      - name: Select checks affected since the previous release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          ./tools/write-version.ps1 -Refresh -GitHubOutput $env:GITHUB_OUTPUT
+          $identity=Get-Content out/version.json -Raw|ConvertFrom-Json
+          if(!$identity.canPublish){throw 'Main release must end at a merged PR boundary; refresh GitHub merge metadata or merge through a PR'}
+      - name: Select checks and publish every merged PR
         id: validation
         shell: pwsh
-        run: ./tools/select-validation.ps1 -Full:($env:GITHUB_EVENT_NAME -eq 'workflow_dispatch') -GitHubOutput $env:GITHUB_OUTPUT
+        run: ./tools/select-validation.ps1 -ForceRelease -Full:($env:GITHUB_EVENT_NAME -eq 'workflow_dispatch') -GitHubOutput $env:GITHUB_OUTPUT
       - uses: docker/setup-buildx-action@v3
-        if: steps.validation.outputs.release == 'true'
       - uses: docker/login-action@v3
-        if: steps.validation.outputs.release == 'true'
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ github.token }}
       - name: Build and publish Linux toolchain image
-        if: steps.validation.outputs.release == 'true'
         id: image
         uses: docker/build-push-action@v6
         with:
@@ -67,11 +91,10 @@ jobs:
           push: true
           load: true
           provenance: false
-          tags: ghcr.io/capz/animaltown-build:${{ github.sha }}
+          tags: ghcr.io/capz/animaltown-build:${{ steps.version.outputs.commit }}
           cache-from: type=gha
           cache-to: type=gha,mode=min
       - name: Build ISO/backend, run selected checks and package
-        if: steps.validation.outputs.release == 'true'
         env:
           ANIMALTOWN_BUILD_IMAGE: ghcr.io/capz/animaltown-build@${{ steps.image.outputs.digest }}
         run: |
@@ -81,11 +104,10 @@ jobs:
             docker compose -f build/compose.yml run --rm --pull always --no-deps builder
           fi
       - name: Package and publish GitHub prerelease
-        if: steps.validation.outputs.release == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
           ANIMALTOWN_BUILD_IMAGE: ghcr.io/capz/animaltown-build@${{ steps.image.outputs.digest }}
         run: docker compose -f build/compose.yml run --rm --pull always --no-deps -e GH_TOKEN builder pwsh -NoLogo -NoProfile -File tools/build-linux.ps1 -Target publish
       - name: Stop disposable test database
-        if: always() && steps.validation.outputs.release == 'true'
+        if: always()
         run: docker compose -f build/compose.yml down --volumes --remove-orphans

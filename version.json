@@ -1,7 +1,7 @@
 {
-  "schema": 1,
-  "xx": 0,
-  "yy": 0,
-  "zz": 0,
-  "baseCommit": "9ef21cafb4b702c09c200f1702bde6fbbc724235"
+  "schema": 2,
+  "major": 0,
+  "minor": 11,
+  "patch": 10,
+  "baseCommit": "9a4aad4ff05c307bcc7daf4e553269ac93027c03"
 }

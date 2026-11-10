@@ -35,7 +35,8 @@ with zero checks. The older inline gameplay/render/texture checks remain togethe
 as `core`; they can be split later if their measured cost warrants it.
 
 CI compares all commits since the preceding first-parent ancestor release tag
-(`vxx.yy.zz.bb`, with legacy `build-<hash>` compatibility),
+(`vmajor.minor.patch` or branch `vmajor.minor.patch+<hash>`, with legacy
+four-part and `build-<hash>` compatibility),
 not merely the last pushed commit. Thus an unreleased/failed commit's changes
 remain in the next plan. Renames include both old and new paths. Missing history,
 an invalid base or manual workflow dispatch selects full validation. Reruns exclude

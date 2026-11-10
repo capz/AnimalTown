@@ -1,10 +1,12 @@
 # Build delivery
 
-Use `xx.yy.zz.bb` release versions; see `docs/versioning.md`. Classify feature
-PRs/commits with `feat:` and bugfixes with `fix:`. Other changes use an accepted
-non-feature prefix. Keep the classified PR title in merge messages. Only change
-`xx` in `version.json` when the user explicitly asks; never infer a major bump.
-Feature and bugfix counters are independent and do not reset each other.
+Use incremental `major.minor.patch` main versions; see `docs/versioning.md`.
+The frozen baseline is `0.11.10`; each PR merged to main increments patch once,
+regardless of title, merge method or implementation commit count. Major/minor
+and the baseline only change at the user's explicit request. PR builds use the
+current main numeric version plus `+<12-character feature-head hash>`. Preserve
+the same source/main snapshot for console, backend and release packaging.
+Conventional PR titles remain useful descriptions but never determine versions.
 
 Publish build artifacts in GitHub Releases, not only as local output paths or
 temporary Actions artifacts. Use `tools/publish-release.ps1` after clean game and

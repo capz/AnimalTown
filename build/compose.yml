@@ -11,6 +11,8 @@ services:
     environment:
       ANIMALTOWN_TEST_CONNECTION: Host=database;Port=5432;Database=postgres;Username=postgres;Password=animaltown-test-only
       ANIMALTOWN_BUILD_IMAGE: ${ANIMALTOWN_BUILD_IMAGE:-animaltown-builder:local}
+      ANIMALTOWN_VERSION_BUILD_KIND: ${ANIMALTOWN_VERSION_BUILD_KIND:-}
+      ANIMALTOWN_VERSION_MAIN_REF: ${ANIMALTOWN_VERSION_MAIN_REF:-}
     depends_on:
       database:
         condition: service_healthy
