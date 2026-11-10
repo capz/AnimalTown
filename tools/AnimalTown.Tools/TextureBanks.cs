@@ -10,7 +10,7 @@ internal static class TextureBanks
     internal const int Magic=0x58545441,RecordBytes=256,ModelBytes=128,Quantum=32768;
     internal sealed class Image
     {
-        internal int Width,Height,Minimum,SafeLevels,Format=6;
+        internal int Width,Height,Minimum,SafeLevels,Alternate,Format=6;
         internal uint Hash;
         internal string Sha="";
         internal readonly List<byte[]> Levels=new();
@@ -61,13 +61,26 @@ internal static class TextureBanks
         if(images.Count>512||outputs.Count>128)throw new InvalidDataException("External texture catalog capacity");
         string policyPath=Path.Combine(root,"assets/texture-policy.json");
         var policies=File.Exists(policyPath)?JsonSerializer.Deserialize<Dictionary<string,Policy>>(File.ReadAllText(policyPath),new JsonSerializerOptions{PropertyNameCaseInsensitive=true})!:new();
-        foreach(var image in images)if(policies.TryGetValue(image.Sha,out var policy)){
+        foreach(var image in images.ToArray())if(policies.TryGetValue(image.Sha,out var policy)){
             if(!policy.Reviewed)continue;
+            if(string.IsNullOrWhiteSpace(policy.Review))throw new InvalidDataException("Reviewed texture policy requires source-specific visual evidence");
             if(policy.MinimumEdge!=64&&policy.MinimumEdge!=128)throw new InvalidDataException("Reviewed minimum edge must be 64 or 128");
             image.Minimum=0;while(image.Minimum+1<image.Levels.Count&&Math.Max(image.Width>>image.Minimum,image.Height>>image.Minimum)>policy.MinimumEdge)image.Minimum++;
-            image.SafeLevels=Math.Clamp(policy.SafeLevels,image.Minimum+1,image.Levels.Count);
-            if(policy.Format!=6)throw new InvalidDataException("Reviewed compressed formats must be cooked through the candidate pipeline");
+            if(policy.SafeLevels<=image.Minimum||policy.SafeLevels>image.Levels.Count)throw new InvalidDataException("Reviewed mip range is invalid");
+            image.SafeLevels=policy.SafeLevels;
+            if(policy.Format!=6){
+                if(policy.Format!=4&&policy.Format!=5&&policy.Format!=14)throw new InvalidDataException("Reviewed format must be RGBA8/RGB565/RGB5A3/CMPR");
+                var variant=new Image{Width=image.Width,Height=image.Height,Minimum=image.Minimum,SafeLevels=image.SafeLevels,Format=policy.Format,Hash=image.Hash,Sha=image.Sha};
+                for(int l=0;l<image.Levels.Count;l++){
+                    int w=image.Width>>l,h=image.Height>>l;byte[] rgba=TextureCandidates.Decode(image.Levels[l],w,h,6);
+                    if(policy.Format==4)for(int a=3;a<rgba.Length;a+=4)if(rgba[a]!=255)throw new InvalidDataException("RGB565 cannot preserve this asset's alpha");
+                    variant.Levels.Add(TextureCandidates.Encode(rgba,w,h,policy.Format));
+                }
+                image.Alternate=images.Count+1;images.Add(variant);
+            }
         }
+        if(images.Count>512)throw new InvalidDataException("Reviewed texture variant capacity");
+        TextureCandidates.Write(root,images);
         using var baseBank=new MemoryStream();using var detailBank=new MemoryStream();var checksums=new List<uint>();
         foreach(var image in images)for(int l=0;l<image.Levels.Count;l++){
             var bank=l>=image.Minimum?baseBank:detailBank;while((bank.Position&31)!=0)bank.WriteByte(0);int offset=checked((int)bank.Position),first=checksums.Count;var pixels=image.Levels[l];
@@ -77,13 +90,13 @@ internal static class TextureBanks
         int modelOffset=32+images.Count*RecordBytes,blockOffset=modelOffset+outputs.Count*ModelBytes;
         var index=new byte[blockOffset+checksums.Count*4];int[] header={Magic,1,images.Count,outputs.Count,checksums.Count,32,modelOffset,blockOffset};for(int i=0;i<header.Length;i++)Put(index,i*4,header[i]);
         for(int i=0;i<images.Count;i++){
-            var image=images[i];int p=32+i*RecordBytes;int[] values={image.Width,image.Height,image.Format,image.Minimum,image.SafeLevels,image.Levels.Count,unchecked((int)image.Hash),0};for(int k=0;k<values.Length;k++)Put(index,p+k*4,values[k]);
+            var image=images[i];int p=32+i*RecordBytes;int[] values={image.Width,image.Height,image.Format,image.Minimum,image.SafeLevels,image.Levels.Count,unchecked((int)image.Hash),image.Alternate};for(int k=0;k<values.Length;k++)Put(index,p+k*4,values[k]);
             for(int l=0;l<image.Ranges.Count;l++){var r=image.Ranges[l];int q=p+32+l*24;int[] fields={r.Bank,r.Offset,r.Length,unchecked((int)r.Crc),r.Block,r.Blocks};for(int k=0;k<fields.Length;k++)Put(index,q+k*4,fields[k]);}
         }
         int m=0;foreach(var pair in outputs){byte[] path=Encoding.UTF8.GetBytes(pair.Key);if(path.Length>=ModelBytes)throw new InvalidDataException("Model bank path too long");path.CopyTo(index,modelOffset+m++*ModelBytes);string name=Path.GetFileNameWithoutExtension(pair.Key);File.WriteAllBytes(Path.Combine(disc,name+"-stream.dndmodel"),pair.Value);}
         for(int i=0;i<checksums.Count;i++)Put(index,blockOffset+i*4,unchecked((int)checksums[i]));
         File.WriteAllBytes(Path.Combine(disc,"textures.idx"),index);File.WriteAllBytes(Path.Combine(disc,"textures-base.bank"),baseBank.ToArray());File.WriteAllBytes(Path.Combine(disc,"textures-detail.bank"),detailBank.ToArray());
-        var report=new{schema=1,externalModels=outputs.Count,uniqueTextures=images.Count,removedEmbeddedBytes=removed,baseBankBytes=baseBank.Length,detailBankBytes=detailBank.Length,textures=images.Select((image,id)=>new{id,image.Width,image.Height,image.Format,image.Minimum,image.SafeLevels,generatedLevels=image.Levels.Count,sourcePayloadSha256=image.Sha,levels=image.Ranges.Select(r=>new{r.Bank,r.Offset,r.Length,crc32=r.Crc})})};
+        var report=new{schema=1,externalModels=outputs.Count,uniqueTextures=images.Count,removedEmbeddedBytes=removed,baseBankBytes=baseBank.Length,detailBankBytes=detailBank.Length,textures=images.Select((image,id)=>new{id,image.Width,image.Height,image.Format,image.Minimum,image.SafeLevels,image.Alternate,generatedLevels=image.Levels.Count,sourcePayloadSha256=image.Sha,levels=image.Ranges.Select(r=>new{r.Bank,r.Offset,r.Length,crc32=r.Crc})})};
         File.WriteAllText(Path.Combine(root,"out/texture-banks.json"),JsonSerializer.Serialize(report,new JsonSerializerOptions{WriteIndented=true}));
         Console.WriteLine($"Texture banks: {outputs.Count} external models, {images.Count} shared images, {removed} embedded bytes removed");
     }
@@ -104,8 +117,18 @@ internal static class TextureBanks
             Build(root);byte[] before=File.ReadAllBytes(Path.Combine(root,"out/disc/textures.idx"));Build(root);byte[] after=File.ReadAllBytes(Path.Combine(root,"out/disc/textures.idx"));
             if(!before.SequenceEqual(after)||TexturePixels.Int(after,8)!=1||TexturePixels.Int(after,12)!=6)throw new Exception("Deterministic texture deduplication");
             foreach(var name in names){if(!File.ReadAllBytes(Path.Combine(root,"out/disc",name+".dndmodel")).SequenceEqual(model))throw new Exception("Bank cooker changed original model");byte[] external=File.ReadAllBytes(Path.Combine(root,"out/disc",name+"-stream.dndmodel"));if(Be(external,4)!=3||external.Length>=model.Length)throw new Exception("External image extraction");for(int i=0;i<6;i++){int a=Be(external,20+i*16),n=Be(external,24+i*16);if(BinaryPrimitives.ReadUInt32BigEndian(external.AsSpan(28+i*16,4))!=TexturePixels.Hash(external.AsSpan(a,n).ToArray()))throw new Exception("External section checksum");}}
+            Directory.CreateDirectory(Path.Combine(root,"assets"));string sha=Convert.ToHexString(SHA256.HashData(first.Concat(second).ToArray()));
+            var policy=new Dictionary<string,Policy>{{sha,new Policy{Reviewed=true,Review="Synthetic opaque color oracle",Format=4,MinimumEdge=128,SafeLevels=2}}};
+            File.WriteAllText(Path.Combine(root,"assets/texture-policy.json"),JsonSerializer.Serialize(policy));Build(root);
+            byte[] reviewed=File.ReadAllBytes(Path.Combine(root,"out/disc/textures.idx"));
+            if(TexturePixels.Int(reviewed,8)!=2||TexturePixels.Int(reviewed,60)!=2||TexturePixels.Int(reviewed,32+256+8)!=4)throw new Exception("Reviewed format keeps an explicit RGBA8 fallback");
+            // CMPR is tile-padded down to 4px and preserves binary alpha.
+            var transparent=(byte[])rgba.Clone();transparent[3]=0;var cmpr=TextureCandidates.Encode(transparent,8,8,14);var decoded=TextureCandidates.Decode(cmpr,8,8,14);
+            if(cmpr.Length!=32||decoded[3]!=0||decoded[7]!=255||TextureCandidates.Encode(rgba,4,4,14).Length!=32)throw new Exception("CMPR alpha/tile oracle");
+            policy[sha].Review="";File.WriteAllText(Path.Combine(root,"assets/texture-policy.json"),JsonSerializer.Serialize(policy));bool rejected=false;
+            try{Build(root);}catch(InvalidDataException){rejected=true;}if(!rejected)throw new Exception("Format approval without evidence was accepted");
             Console.WriteLine("Texture banks: CRC32 oracle, exact mip bytes, shared identities, deterministic output, versioned references and original preservation passed");
         }finally{if(Directory.Exists(root))Directory.Delete(root,true);}
     }
-    internal sealed class Policy {public bool Reviewed{get;set;}public int MinimumEdge{get;set;}=128;public int SafeLevels{get;set;}=2;public int Format{get;set;}=6;}
+    internal sealed class Policy {public bool Reviewed{get;set;}public string Review{get;set;}="";public int MinimumEdge{get;set;}=128;public int SafeLevels{get;set;}=2;public int Format{get;set;}=6;}
 }

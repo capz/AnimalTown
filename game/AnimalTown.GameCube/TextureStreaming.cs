@@ -25,32 +25,36 @@ internal static class TextureStreaming
     private static Task<int>? read;
     internal static int Features=127;
     internal static long WorstMicroseconds;
+    internal static int LongestReadFrames;private static int frame,readStarted;
     internal static bool Reading=>read!=null;
     internal static bool BasesReady=>NativeTextures.Stats(0)==1;
     internal static void Initialize()
     {if(NativeTextures.Init(File.ReadAllBytes("dvd:/textures.idx"))!=1)throw new InvalidOperationException("Invalid texture catalog or native budget");}
     internal static void Begin(bool startup)
     {
-        long at=FrameProfile.Start();Poll();FrameProfile.End(2,at);if(NativeTextures.Begin(startup?1:0)!=1)throw new InvalidOperationException("Texture frame ownership");
+        frame++;long at=FrameProfile.Start();Poll();FrameProfile.End(2,at);if(NativeTextures.Begin(startup?1:0)!=1)throw new InvalidOperationException("Texture frame ownership");
     }
     private static void Poll()
     {
         if(read==null||!read.IsCompleted)return;
         int count;try{count=read.GetAwaiter().GetResult();}catch{count=-1;}
-        NativeTextures.Complete(count);read=null;
+        if(NativeTextures.Complete(count)<0)throw new IOException("Native texture lease could not be restored");
+        int elapsed=frame-readStarted;if(elapsed>LongestReadFrames)LongestReadFrames=elapsed;read=null;
     }
     private static int ReadNative()=>NativeTextures.Read();
     internal static void Advance(bool allowRead)
     {
-        Poll();if(read!=null){NativeTextures.Step(0);return;}long start=Clock.Timestamp,deadline=start+1000;
+        Poll();long start=Clock.Timestamp,deadline=start+1000;
+        if(read!=null){if(NativeTextures.Step(0)<0)throw new IOException("Required texture restore failed");RecordWork(start);return;}
         do{
             int action=NativeTextures.Step(allowRead?1:0);
             if(action<0)throw new IOException("Required texture could not be restored");
             if(action==0)break;
-            if(action==1){read=Task.Run(ReadNative);break;}
+            if(action==1){readStarted=frame;read=Task.Run(ReadNative);break;}
         }while(Clock.Timestamp<deadline);
-        long elapsed=Clock.Timestamp-start;if(elapsed>WorstMicroseconds)WorstMicroseconds=elapsed;
+        RecordWork(start);
     }
+    private static void RecordWork(long start){long elapsed=Clock.Timestamp-start;if(elapsed>WorstMicroseconds)WorstMicroseconds=elapsed;}
     internal static string ModelPath(string name,TextureResolution resolution=TexturePolicy.Default)
     {
         string original=TexturePolicy.ModelPath(name,resolution);

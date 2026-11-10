@@ -31,6 +31,12 @@ public sealed class InteriorCamera
         float dot=wall==0?-(float)Math.Cos(Angle):wall==1?(float)Math.Sin(Angle):wall==2?(float)Math.Cos(Angle):-(float)Math.Sin(Angle);
         return dot<-.05f;
     }
+    public int ProjectedPixels(float x,float y,float z,float diameter,float size)
+    {
+        float ex=EyeX(size),ey=EyeY(size),ez=EyeZ(size),dx=size*.5f-ex,dy=.7f-ey,dz=size*.5f-ez;
+        float length=(float)Math.Sqrt(dx*dx+dy*dy+dz*dz),depth=((x-ex)*dx+(y-ey)*dy+(z-ez)*dz)/length;
+        return (int)Math.Clamp(240*diameter/(RenderView.TanY*Math.Max(.1f,depth-diameter*.5f)),1,1024);
+    }
     public bool Sphere(float x,float y,float z,float radius,float size)
     {
         if(cachedAngle!=Angle||cachedSize!=size||cachedDefinition!=definition){

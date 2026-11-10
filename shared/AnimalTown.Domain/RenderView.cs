@@ -34,6 +34,11 @@ public static class RenderView
         // Retain the established GX clip guard band.
         return frustum.Sphere(x,y,z,radius+.025f);
     }
+    public static int ProjectedPixels(float y,float z,float diameter,float focusZ,float focusHeight=0)
+    {
+        float depth=(y-(CylinderWorld.CameraHeight+focusHeight))*ForwardY+(z-(focusZ+CylinderWorld.CameraBack))*ForwardZ;
+        return (int)Math.Clamp(240*diameter/(TanY*Math.Max(CylinderWorld.Near,depth-diameter*.5f)),1,1024);
+    }
     public static bool Box(float x0,float y0,float z0,float x1,float y1,float z1,float focusX,float focusZ)
     {Prepare(focusX,focusZ,1);return frustum.Box(x0,y0,z0,x1,y1,z1);}
     // Terrain columns share Y/Z bounds and the outdoor camera has no X tilt.

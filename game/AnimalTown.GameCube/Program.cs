@@ -85,7 +85,7 @@ internal sealed class TownGame
     private float profiledX=float.NaN,profiledZ;
     private long cachedWallet=long.MinValue,cachedDebt=long.MinValue;
     private string walletLabel="",debtLabel="";
-    private string profileNativeLabel="",profileShadowLabel="",profileAssetLabel="",profileTextureLabel="";
+    private string profileNativeLabel="",profileShadowLabel="",profileAssetLabel="",profileTextureLabel="",profileTextureIoLabel="",profileReuseLabel="";
     private int profileLabelFrames=30;
     private readonly string[] creationRows=new string[6];
     private int creationSpecies=-1,creationPalette=-1,creationSelected=-1;
@@ -606,8 +606,8 @@ internal sealed class TownGame
     {
         if(!actorVisibility.Visible[actor]||!assetResidency.Ready(actor==0?state.Species:actor-1)){FrameProfile.CulledObjects++;return;}
         var location=actorVisibility.Locations[actor];
-        float distance=room==0?Math.Abs(location.Z-state.Z)+5:5;
-        int detail=actor==0||screen=="dialogue"?256:(int)Math.Min(256,1200/Math.Max(1,distance));
+        var center=SurfacePoint(location.X,location.Z,.9f);
+        int detail=actor==0||screen=="dialogue"?256:room==0?RenderView.ProjectedPixels(center.Y,center.Z,1.8f,state.Z,cachedPlayerHeight):indoorCamera.ProjectedPixels(location.X,.9f,location.Z,1.8f,BuildingWorld.Size(state,room));
         TextureStreaming.Request(actor==0?state.Species:actor-1,detail);
         float x=location.X,z=location.Z,scale=1.8f,facing=actor==0?facingYaw:location.Yaw;
         var pose=batchedDrawing?modelPoses[modelUsed++]:transform;pose.LocalPosition=SurfacePoint(x,z);pose.LocalScale=new Vector3(scale,scale,scale);pose.LocalRotation=SurfaceRotation(z,facing);
@@ -825,8 +825,8 @@ internal sealed class TownGame
     {
         var ink=new Color32(49,72,62);
         if(FrameProfile.Enabled){
-            if(++profileLabelFrames>=30){profileLabelFrames=0;profileTextureLabel="Textures: "+NativeTextures.Stats(1)/1024+" KiB / "+NativeTextures.Stats(5)+" upgrades / "+TextureStreaming.WorstMicroseconds+" us max";profileNativeLabel="Native: "+NativeShadows.Stats(9)+" slots / "+NativeShadows.Stats(10)/1024+" KiB";profileShadowLabel=(room==0&&terrain.GroundRingActive?"Ring / ":"")+"Shadows: "+NativeShadows.Stats(0)+" pages / "+NativeShadows.Stats(2)+" updated";profileAssetLabel="Assets: "+NativeAssetResidency.Stats(1)+" cold / "+NativeAssetResidency.Stats(2)/1024+" KiB / "+NativeAssetResidency.Stats(5)+" restores / "+NativeAssetResidency.Stats(9)+" us max";}
-            Text(profileAssetLabel,42,20,room==0?ink:new Color32(255,245,221),.9f);Text(profileTextureLabel,42,34,room==0?ink:new Color32(255,245,221),.85f);
+            if(++profileLabelFrames>=30){profileLabelFrames=0;profileTextureLabel="Textures: "+NativeTextures.Stats(1)/1024+" KiB / "+NativeTextures.Stats(5)+" upgrades / "+TextureStreaming.WorstMicroseconds+" us max";profileTextureIoLabel="DVD: "+NativeTextures.Stats(7)+" reads / "+Dolphin.Storage.AssetStream.ReadStat(6)/1000+" ms / "+TextureStreaming.LongestReadFrames+" frames max / ARAM "+NativeTextures.Stats(15)+" hits";profileReuseLabel="Reuse: "+NativeTextures.Stats(33)+" lists / "+NativeTextures.Stats(41)+" poses / "+NativeTextures.Stats(44)/1024+" KiB skin shared";profileNativeLabel="Native: "+NativeShadows.Stats(9)+" slots / "+NativeShadows.Stats(10)/1024+" KiB";profileShadowLabel=(room==0&&terrain.GroundRingActive?"Ring / ":"")+"Shadows: "+NativeShadows.Stats(0)+" pages / "+NativeShadows.Stats(2)+" updated";profileAssetLabel="Assets: "+NativeAssetResidency.Stats(1)+" cold / "+NativeAssetResidency.Stats(2)/1024+" KiB / "+NativeAssetResidency.Stats(5)+" restores / "+NativeAssetResidency.Stats(9)+" us max";}
+            Text(profileAssetLabel,42,20,room==0?ink:new Color32(255,245,221),.9f);Text(profileTextureLabel,42,34,room==0?ink:new Color32(255,245,221),.85f);Text(profileTextureIoLabel,42,48,room==0?ink:new Color32(255,245,221),.8f);Text(profileReuseLabel,42,62,room==0?ink:new Color32(255,245,221),.8f);
             Text(indexedModels?(batchedDrawing?"GX indexed / batched":"GX indexed / baseline"):(batchedDrawing?"Direct / batched":"Direct / baseline"),420,397,ink,.8f);
             Text(profileNativeLabel,420,408,ink,.55f);
             Text(profileShadowLabel,420,419,ink,.55f);

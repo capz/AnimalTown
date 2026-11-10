@@ -1,6 +1,8 @@
 # Texture residency and static-instance plan
 
-Status: measured technical proposal; no runtime implementation in this change.
+Status: accepted design, implemented in the texture-streaming/static-reuse branch.
+See [implementation and validation](texture-streaming.md). The measurements below
+remain the original baseline and arithmetic projections, not new console results.
 
 ## Accepted requirements and scope
 
@@ -11,11 +13,11 @@ assumptions. Keep stock GameCube memory limits, existing generated terrain,
 world-aligned materials, projected shadow union, visibility gates and manual-save
 behavior. Ground mip distances continue to mean individual ground squares.
 
-Provisional presentation choices are immediate room entry once geometry and
-minimum-quality textures are ready, and simple texture-quality changes. These
-were recommended but not explicitly selected by the user. They remain design
-choices, not additional accepted requirements. A minimum-quality room may still
-need the existing door fade while geometry/base textures restore.
+Room entry requires geometry and minimum-quality textures; sharpening uses simple
+texture swaps. The existing door fade covers required restoration. Finished
+optimizations default on after correctness validation, as requested; performance
+measurements do not gate the defaults. Smaller texture formats require per-asset
+visual review. Unreviewed artwork keeps RGBA8 and the existing safe mip range.
 
 ## Measurements and provenance
 

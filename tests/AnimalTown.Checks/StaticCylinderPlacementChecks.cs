@@ -3,6 +3,9 @@ internal static class StaticCylinderPlacementChecks
 {
     internal static void Run(Action<bool,string> check)
     {
+        check(RenderView.ProjectedPixels(1,50,1.8f,50)>RenderView.ProjectedPixels(1,30,1.8f,50),"texture detail follows projected depth");
+        check(RenderView.ProjectedPixels(1,50,3.6f,50)>RenderView.ProjectedPixels(1,50,1.8f,50),"larger projected coverage requests sharper detail");
+        var indoor=new InteriorCamera();int pixels=indoor.ProjectedPixels(2,.9f,2,1.8f,4);check(pixels>0&&pixels<=1024,"room projected texture coverage is bounded");
         var cache=new StaticCylinderPlacements(8);var owner=new object();float maximum=0;
         for(int focus=0;focus<Town.Height;focus+=3)for(int z=0;z<Town.Height;z+=2)foreach(float fraction in new[]{0f,.17f,.53f,.99f})foreach(float height in new[]{0f,2f}){
             cache.Begin(owner,0,focus+fraction);var p=cache.Get(z%8,17,z,height);

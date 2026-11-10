@@ -26,7 +26,7 @@ int dnd_fs_read_native(int token,void *data,int count){assert(files[token]);retu
 void dnd_fs_close(int token){assert(files[token]);assert(!fclose(files[token]));files[token]=NULL;}
 bool dnd_fs_path_utf8_native(DndString *s,char *path,unsigned capacity){if(!s||s->length>=capacity)return false;for(unsigned i=0;i<s->length;i++)path[i]=(char)s->chars[i];path[s->length]=0;return true;}
 int dnd_asset_read(int token,int64_t offset,int buffer,int destination,int count){
- assert(files[token]&&count>0&&count<=32768&&destination==0&&!pins[buffer]);reads++;if(fail_next){fail_next=0;return -1;}
+ assert(files[token]&&count>0&&count<=32768&&destination==0&&!pins[buffer]);reads++;if(fail_next){fail_next--;return -1;}
  assert(!fseek(files[token],(long)offset,SEEK_SET));unsigned char *p=(void*)(uintptr_t)dnd_buffer_address(buffer,destination);assert(p);int n=(int)fread(p,1,(unsigned)count,files[token]);if(corrupt_next&&n){p[0]^=1;corrupt_next=0;}return n;
 }
 #include "../tools/native-texture-stream.c"
@@ -40,6 +40,25 @@ static unsigned pose_hash(DndInstance *in){
  unsigned hash=dnd_model_hash(in->global,in->model->nodes*64);
  for(unsigned i=0;i<in->model->meshes;i++)if(in->vertices[i])hash^=dnd_model_hash(in->vertices[i],in->model->mesh[i].vertices*24);
  return hash;
+}
+static void format_checks(DndModel *model){
+ unsigned id=(unsigned)(-model->texture[0].cache-2),extra=texture_count;TownTexture *source=textures+id;
+ unsigned char source_record[256],variant_record[256];memcpy(source_record,source->record,256);memcpy(variant_record,source->record,256);
+ const unsigned char *old=source->record;source->record=source_record;
+ // Fixture has a fully reviewed alternate; the shipping catalog deliberately
+ // has none. Exercise the actual selector and lease path for every GX format.
+ source_record[28]=(unsigned char)(extra+1);source_record[29]=0;source_record[30]=0;source_record[31]=0;texture_count++;
+ for(int format=4;format<=14;format+=(format==4?1:9)){
+  variant_record[8]=(unsigned char)format;TownTexture *variant=textures+extra;*variant=(TownTexture){.record=variant_record,.base=source->base,.base_size=source->base_size,.detail_level=-1};
+  DndTexture view,lease;int found;unsigned refs=source->refs;
+  assert(town_texture_acquire(&lease,id)==1&&source->refs==refs+1&&variant->refs==1);
+  assert(town_texture_view(&lease,&view,&found)&&found==format&&view.data==variant->base);
+  assert(animaltown_textures_flags(127&~4)>=0&&town_texture_view(&lease,&view,&found)&&found==6);
+  // Do not free the borrowed fixture pixels when releasing its last lease.
+  texture_warm=1;town_texture_release(&lease);texture_warm=0;assert(!variant->refs&&source->refs==refs);
+  assert(animaltown_textures_flags(127)>=0);
+ }
+ source->record=old;memset(textures+extra,0,sizeof(*textures));texture_count--;
 }
 static void pose_checks(int model,int original){
  unsigned expected[60];assert(animaltown_textures_flags(127&~64)>=0);
@@ -93,6 +112,7 @@ int main(void){
   snprintf(path,sizeof(path),"dvd:/%s-stream.dndmodel",names[i]);DndString *path_string=text_string(path);assert(animaltown_assets_capture(i,(int)m->bytes,0,path_string)==1);free(path_string);want[i]=2;
  }
  while(animaltown_assets_stats(0)){animaltown_textures_begin(1);assert(animaltown_assets_advance(demand,1)>=0);texture_work();assert(++ticks<3000);}
+ format_checks(dnd_model_find(tokens[0],false));
  pose_checks(tokens[0],instances[0]);
  assert(animaltown_assets_stats(3)<1500*1024); // Geometry backing no longer duplicates 2.64 MiB of images.
  for(int cycle=0;cycle<5;cycle++){
@@ -120,6 +140,9 @@ int main(void){
  unsigned failures_before=checksum_failures;corrupt_next=1;
  for(int n=0;n<1000&&checksum_failures==failures_before;n++){animaltown_textures_begin(0);animaltown_textures_demand(0,256,2);texture_work();}
  assert(checksum_failures>failures_before&&fox->base&&!fox->fatal);
+ unsigned io_before=io_failures;fail_next=1;
+ for(int n=0;n<1000&&io_failures==io_before;n++){animaltown_textures_begin(0);animaltown_textures_demand(0,256,2);texture_work();}
+ assert(io_failures>io_before&&fox->base&&!fox->fatal);
  // Warm a single repeated image; the bounded ARAM cache must avoid some DVD reads.
  for(int n=0;n<2000&&!fox->detail;n++){animaltown_textures_begin(0);animaltown_textures_demand(0,256,2);texture_work();}
  assert(fox->detail);for(int n=0;n<32;n++){animaltown_textures_begin(0);animaltown_textures_demand(0,256,2);texture_work();}
@@ -137,6 +160,15 @@ int main(void){
  for(int n=0;n<1000&&!fox->detail;n++){animaltown_textures_begin(0);animaltown_textures_demand(0,256,2);texture_work();}
  assert(fox->detail&&texture_cache_errors>cache_errors_before&&dnd_model_hash(fox->detail,fox->detail_size)==payload_hash[0][0]);
  unsigned cache_bytes_before=(unsigned)dnd_aram_stat(1);town_texture_reclaim_aram();assert(!texture_cache_store&&(unsigned)dnd_aram_stat(1)+1024*1024==cache_bytes_before);
+ // A required minimum that fails twice reaches the explicit asset-error path.
+ for(int i=0;i<13;i++)want[i]=0;
+ for(int n=0;n<32;n++){animaltown_textures_begin(0);assert(animaltown_assets_advance(demand,0)>=0);texture_work();}
+ assert(!fox->base);fail_next=2;int fatal=0;
+ for(int n=0;n<1000&&!fatal;n++){
+  animaltown_textures_begin(0);assert(town_texture_minimum((unsigned)(fox-textures))>=0);
+  for(int step=0;step<16;step++){int action=animaltown_textures_step(1);if(action<0){fatal=1;break;}if(!action)break;if(action==1)animaltown_textures_complete(animaltown_textures_read());}
+ }
+ assert(fatal&&fox->fatal&&!fox->base&&!texture_io_pending&&pins[texture_stage[0]]==1);
  printf("Texture streaming: 13 external models, nine shared images, five exact cold/warm cycles; %d bounded reads, CRC rejection and active-frame guards passed\n",reads);
  return 0;
 }

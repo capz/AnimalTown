@@ -18,8 +18,8 @@
 #define TEX_MIN(a,b) ((a)<(b)?(a):(b))
 typedef struct {
  unsigned char *base,*detail;
- unsigned base_size,detail_size,refs,generation,want,last_high,retry,errors;
- int detail_level,priority,fatal;
+ unsigned base_size,detail_size,refs,generation,want,last_high,retry,errors,queued;
+ int detail_level,priority,fatal,retry_minimum;
  const unsigned char *record;
 } TownTexture;
 typedef struct {
@@ -33,7 +33,7 @@ static DndModel *texture_models[TEX_MODEL_CAP];
 static TownTextureJob texture_job={.texture=-1};
 static unsigned char *texture_catalog;
 static unsigned texture_count,texture_model_count,texture_blocks,model_offset,block_offset,texture_frame;
-static unsigned texture_bytes,texture_peak,promotions,demotions,io_reads,io_bytes,io_failures,checksum_failures,publication_count;
+static unsigned texture_bytes,texture_peak,promotions,demotions,io_reads,io_bytes,io_failures,checksum_failures,publication_count,texture_cancellations,texture_queue_worst;
 static int texture_banks[2],texture_stage[2],texture_initialized,texture_warm=1,texture_io_pending,texture_aram_used;
 static int texture_features=127;
 static unsigned texture_crc_table[256];
@@ -51,6 +51,9 @@ static unsigned tex_u32(const unsigned char *p){return (unsigned)p[0]|(unsigned)
 static unsigned tex_crc(unsigned c,const unsigned char *p,unsigned n){while(n--)c=texture_crc_table[(c^*p++)&255u]^(c>>8);return c;}
 static unsigned tex_field(const TownTexture *t,unsigned k){return tex_u32(t->record+k*4);}
 static const unsigned char *tex_range(const TownTexture *t,int level){return t->record+32+(unsigned)level*24;}
+static unsigned tex_level_size(unsigned w,unsigned h,unsigned format){
+ return format==14?((w+7)/8)*((h+7)/8)*32:((w+3)/4)*((h+3)/4)*(format==6?64:32);
+}
 static unsigned tex_charge(unsigned n){return (n+63u)&~31u;}
 static int tex_memory_available(unsigned charge){
 #ifdef DND_GAMECUBE_STORAGE
@@ -85,7 +88,8 @@ static void tex_flush(void *p,unsigned n){
 static void tex_abort(int failure){
  TownTextureJob *j=&texture_job;if(j->texture<0)return;TownTexture *t=textures+j->texture;
  tex_free(j->data);j->data=NULL;
- if(failure){t->errors++;t->retry=texture_frame+120;if(j->minimum&&t->errors>=2)t->fatal=1;}
+ if(failure){t->retry=texture_frame+120;t->retry_minimum=j->minimum;if(j->minimum){t->errors++;if(tex_field(t,2)==6&&t->errors>=2)t->fatal=1;}}
+ if(!failure)texture_cancellations++;
  j->texture=-1;
 }
 #include "native-texture-cache.inc"
@@ -96,10 +100,16 @@ static int tex_catalog_valid(const unsigned char *p,unsigned n){
  for(unsigned i=0;i<models;i++)if(!memchr(p+mo+i*128,0,128))return 0;
  for(unsigned i=0;i<count;i++){
   const unsigned char *r=p+32+i*256;unsigned w=tex_u32(r),h=tex_u32(r+4),format=tex_u32(r+8),minimum=tex_u32(r+12),safe=tex_u32(r+16),levels=tex_u32(r+20);
-  if(w<4||h<4||w>1024||h>1024||(w&(w-1))||(h&(h-1))||format!=6||!levels||levels>9||!safe||safe>levels||minimum>=safe)return 0;
+  if(w<4||h<4||w>1024||h>1024||(w&(w-1))||(h&(h-1))||(format!=6&&format!=4&&format!=5&&format!=14)||!levels||levels>9||!safe||safe>levels||minimum>=safe)return 0;
+  unsigned alternate=tex_u32(r+28);
+  if(alternate){
+   if(format!=6||alternate>count||alternate==i+1)return 0;
+   const unsigned char *a=p+32+(alternate-1)*256;
+   if(tex_u32(a)!=w||tex_u32(a+4)!=h||tex_u32(a+8)==6||tex_u32(a+24)!=tex_u32(r+24)||tex_u32(a+28))return 0;
+  }
   for(unsigned l=0;l<levels;l++){
    const unsigned char *q=r+32+l*24;unsigned bank=tex_u32(q),offset=tex_u32(q+4),size=tex_u32(q+8),block=tex_u32(q+16),bc=tex_u32(q+20);
-   if((w>>l)<4||(h>>l)<4||bank>1||(offset&31)||size!=(w>>l)*(h>>l)*4||bc!=(size+TEX_QUANTUM-1)/TEX_QUANTUM||block>blocks||bc>blocks-block)return 0;
+   if((w>>l)<4||(h>>l)<4||bank>1||(offset&31)||size!=tex_level_size(w>>l,h>>l,format)||bc!=(size+TEX_QUANTUM-1)/TEX_QUANTUM||block>blocks||bc>blocks-block)return 0;
    int64_t length=dnd_fs_length_native(texture_banks[bank]);if(length<0||offset>(uint64_t)length||size>(uint64_t)length-offset)return 0;
   }
  }
@@ -129,21 +139,30 @@ int animaltown_textures_hasmodel(DndString *path){
 int animaltown_textures_begin(int startup){
  if(!texture_initialized||dnd_device_active())return 0;
  texture_frame++;texture_aram_used=0;texture_warm=startup;if(town_geometry_begin)town_geometry_begin(texture_frame);
- for(unsigned i=0;i<texture_count;i++){TownTexture *t=textures+i;t->want=tex_field(t,3);t->priority=0;}
+ for(unsigned i=0;i<texture_count;i++){TownTexture *t=textures+i;if(!t->priority&&texture_job.texture!=(int)i)t->queued=0;t->want=tex_field(t,3);t->priority=0;}
  return 1;
 }
 void town_texture_aram_used(void){texture_aram_used=1;}
 int town_texture_io_busy(void){return texture_io_pending;}
 void town_texture_model(int slot,DndModel *m){if(slot>=0&&slot<TEX_MODEL_CAP)texture_models[slot]=m;}
+static void tex_demand(TownTexture *t,int pixels,int priority){
+ unsigned level=0;while(level<tex_field(t,3)&&TEX_MIN(tex_field(t,0)>>(level+1),tex_field(t,1)>>(level+1))>=(unsigned)pixels)level++;
+ // A sharper tier survives until projected coverage falls below 75% of
+ // its promotion threshold, followed by the existing 120-frame grace.
+ if(t->detail&&level>(unsigned)t->detail_level&&(unsigned)pixels*4>=TEX_MIN(tex_field(t,0)>>(t->detail_level+1),tex_field(t,1)>>(t->detail_level+1))*3)level=(unsigned)t->detail_level;
+ if(priority&&(!t->base||(level<tex_field(t,3)&&(!t->detail||level<(unsigned)t->detail_level)))&&!t->queued)t->queued=texture_frame;
+ if(priority&&level<t->want)t->want=level;
+ if(priority>t->priority)t->priority=priority;
+ if(priority&&level<tex_field(t,3))t->last_high=texture_frame;
+}
 int animaltown_textures_demand(int slot,int pixels,int priority){
- if(slot<0||slot>=TEX_MODEL_CAP||pixels<0||priority<0||priority>2)return 0;
+ if(slot<0||slot>=TEX_MODEL_CAP||pixels<0||pixels>4096||priority<0||priority>2)return 0;
  DndModel *m=texture_models[slot];if(!m)return 1;
  for(unsigned i=0;i<m->textures;i++){
   DndTexture *tx=m->texture+i;if(tx->cache> -2)continue;unsigned id=(unsigned)(-tx->cache-2);if(id>=texture_count)return 0;
-  TownTexture *t=textures+id;unsigned level=0;while(level<tex_field(t,3)&&TEX_MIN(tex_field(t,0)>>(level+1),tex_field(t,1)>>(level+1))>=(unsigned)pixels)level++;
-  if(priority&&level<t->want)t->want=level;
-  if(priority>t->priority)t->priority=priority;
-  if(priority&&level<tex_field(t,3))t->last_high=texture_frame;
+  TownTexture *t=textures+id;unsigned alternate=tex_field(t,7);
+  if(alternate&&(texture_features&4))tex_demand(textures+alternate-1,pixels,priority);
+  else tex_demand(t,pixels,priority);
  }
  return 1;
 }
@@ -151,31 +170,35 @@ int town_texture_acquire(DndTexture *tx,unsigned id){
  if(id>=texture_count)return 0;
  TownTexture *t=textures+id;
  if(!t->base){t->priority=2;return t->fatal?-1:0;}
- unsigned minimum=tex_field(t,3);tx->width=tex_field(t,0)>>minimum;tx->height=tex_field(t,1)>>minimum;tx->levels=tex_field(t,4)-minimum;tx->size=t->base_size;tx->data=t->base;tx->cache=-(int)id-2;t->refs++;return 1;
+ unsigned minimum=tex_field(t,3);tx->width=tex_field(t,0)>>minimum;tx->height=tex_field(t,1)>>minimum;tx->levels=tex_field(t,4)-minimum;tx->size=t->base_size;tx->data=t->base;tx->cache=-(int)id-2;t->refs++;
+ unsigned alternate=tex_field(t,7);if(alternate)textures[alternate-1].refs++;
+ return 1;
+}
+static void tex_release_id(unsigned id){
+ TownTexture *t=textures+id;if(t->refs)t->refs--;
+ if(!t->refs&&!texture_warm){tex_free(t->base);tex_free(t->detail);t->base=t->detail=NULL;t->base_size=t->detail_size=0;t->detail_level=-1;t->errors=0;t->retry=0;if(texture_job.texture==(int)id)texture_job.cancel=1;tex_publish();}
 }
 void town_texture_release(DndTexture *tx){
  if(!tx||tx->cache> -2||!tx->data)return;
- unsigned id=(unsigned)(-tx->cache-2);if(id>=texture_count)return;TownTexture *t=textures+id;
- if(t->refs)t->refs--;
- tx->data=NULL;
- if(!t->refs&&!texture_warm){tex_free(t->base);tex_free(t->detail);t->base=t->detail=NULL;t->base_size=t->detail_size=0;t->detail_level=-1;if(texture_job.texture==(int)id)texture_job.cancel=1;tex_publish();}
+ unsigned id=(unsigned)(-tx->cache-2);if(id>=texture_count)return;
+ unsigned alternate=tex_field(textures+id,7);tex_release_id(id);if(alternate)tex_release_id(alternate-1);tx->data=NULL;
 }
 int town_texture_view(const DndTexture *original,DndTexture *view,int *format){
  *view=*original;*format=6;if(original->cache> -2)return 1;unsigned id=(unsigned)(-original->cache-2);if(id>=texture_count)return 0;
- TownTexture *t=textures+id;int level=t->detail?t->detail_level:(int)tex_field(t,3);view->data=t->detail?t->detail:t->base;if(!view->data)return 0;
+ TownTexture *t=textures+id;unsigned alternate=tex_field(t,7);if(alternate&&(texture_features&4)&&textures[alternate-1].base)t=textures+alternate-1;int level=t->detail?t->detail_level:(int)tex_field(t,3);view->data=t->detail?t->detail:t->base;if(!view->data)return 0;
  view->width=tex_field(t,0)>>(unsigned)level;view->height=tex_field(t,1)>>(unsigned)level;view->levels=tex_field(t,4)-(unsigned)level;
  if(!(texture_features&2)&&view->levels>2)view->levels=2;
  view->size=t->detail?t->detail_size:t->base_size;*format=(int)tex_field(t,2);return 1;
 }
 int animaltown_textures_flags(int flags){if(flags<0)return texture_features;if(dnd_device_active()||flags>127)return -1;texture_features=flags;if(!(flags&8))town_texture_reclaim_aram();if(!(flags&32)&&town_geometry_clear)town_geometry_clear();tex_publish();return flags;}
 static void tex_start(int id,int level){
- TownTexture *t=textures+id;TownTextureJob *j=&texture_job;int minimum=level==(int)tex_field(t,3);unsigned size=tex_size(t,level,(int)tex_field(t,4));
+ TownTexture *t=textures+id;TownTextureJob *j=&texture_job;if(t->queued&&texture_frame-t->queued>texture_queue_worst)texture_queue_worst=texture_frame-t->queued;int minimum=level==(int)tex_field(t,3);unsigned size=tex_size(t,level,(int)tex_field(t,4));
  unsigned char *data=tex_allocate(size,minimum);
  if(!data&&minimum){
   for(unsigned i=0;i<texture_count;i++)if(textures[i].detail){tex_free(textures[i].detail);textures[i].detail=NULL;textures[i].detail_size=0;textures[i].detail_level=-1;demotions++;}
   tex_publish();data=tex_allocate(size,1);
  }
- if(!data){t->retry=texture_frame+30;if(minimum)t->fatal=1;return;}
+ if(!data){t->retry=texture_frame+30;t->retry_minimum=minimum;if(minimum&&tex_field(t,2)==6)t->fatal=1;return;}
  *j=(TownTextureJob){.texture=id,.level=level,.first=level,.end=(int)tex_field(t,4),.minimum=minimum,.cache_hit=-1,.data=data,.size=size,.block_crc=~0u,.level_crc=~0u};
 }
 int animaltown_textures_step(int allow_read){
@@ -192,9 +215,9 @@ int animaltown_textures_step(int allow_read){
    if(t->fatal)return -1;
   }
   for(int phase=0;phase<2;phase++)for(int priority=2;priority>=0;priority--)for(unsigned i=0;i<texture_count;i++){
-   TownTexture *t=textures+i;if(t->retry>texture_frame||t->priority!=priority)continue;
-   if(phase==0&&!t->base&&(texture_warm||t->priority||t->refs)){tex_start((int)i,(int)tex_field(t,3));return texture_job.texture>=0?2:0;}
-   unsigned desired=(texture_features&1)?t->want:0;
+   TownTexture *t=textures+i;if((t->retry>texture_frame&&(t->base||t->retry_minimum))||t->priority!=priority)continue;
+   if(phase==0&&!t->base&&(tex_field(t,2)==6?(texture_warm||t->priority||t->refs):((texture_features&4)&&t->refs&&t->priority))){tex_start((int)i,(int)tex_field(t,3));return texture_job.texture>=0?2:0;}
+   unsigned desired=((tex_field(t,2)!=6&&!(texture_features&4))||(tex_field(t,7)&&(texture_features&4)))?tex_field(t,3):((texture_features&1)?t->want:0);
    if(phase==1&&t->base&&t->refs&&desired<tex_field(t,3)&&(!t->detail||desired<(unsigned)t->detail_level)){tex_start((int)i,(int)desired);return texture_job.texture>=0?2:0;}
   }
   return town_geometry_pump&&town_geometry_pump()?2:0;
@@ -202,7 +225,7 @@ int animaltown_textures_step(int allow_read){
  TownTexture *t=textures+j->texture;
  if(j->level==j->end){
   if(j->minimum){t->base=j->data;t->base_size=j->size;}else{tex_free(t->detail);t->detail=j->data;t->detail_size=j->size;t->detail_level=j->first;promotions++;}
-  t->generation++;t->errors=0;j->data=NULL;j->texture=-1;tex_publish();return 2;
+  t->generation++;t->errors=0;t->queued=0;j->data=NULL;j->texture=-1;tex_publish();return 2;
  }
  const unsigned char *r=tex_range(t,j->level);unsigned length=tex_u32(r+8);
  // Promotions reuse verified minimum levels instead of rereading DVD tails.
@@ -252,8 +275,8 @@ int animaltown_textures_complete(int count){
  io_bytes+=(unsigned)count;texture_job.read_ready=1;return 1;
 }
 int animaltown_textures_stats(int kind){
- unsigned base=0,detail=0,ready=0,fatal=0;for(unsigned i=0;i<texture_count;i++){base+=textures[i].base_size;detail+=textures[i].detail_size;ready+=textures[i].base!=NULL;fatal+=textures[i].fatal!=0;}
- return kind==0?(int)(ready==texture_count):kind==1?(int)texture_bytes:kind==2?(int)texture_peak:kind==3?(int)base:kind==4?(int)detail:kind==5?(int)promotions:kind==6?(int)demotions:kind==7?(int)io_reads:kind==8?(int)io_bytes:kind==9?(int)io_failures:kind==10?(int)checksum_failures:kind==11?(int)fatal:kind==12?(int)publication_count:kind==13?texture_io_pending:kind==14?texture_job.texture:kind==15?(int)texture_cache_hits:kind==16?(int)texture_cache_misses:kind==17?(int)texture_cache_bytes:kind==18?(texture_cache_store?1024*1024:0):kind==19?(int)texture_cache_stores:kind==20?(int)texture_cache_errors:kind>=32&&kind<38&&town_geometry_stats?town_geometry_stats(kind-32):kind>=40&&kind<45&&town_pose_stats?town_pose_stats(kind-40):-1;
+ unsigned base=0,detail=0,ready=0,required=0,fatal=0;for(unsigned i=0;i<texture_count;i++){base+=textures[i].base_size;detail+=textures[i].detail_size;if(tex_field(textures+i,2)==6){required++;ready+=textures[i].base!=NULL;}fatal+=textures[i].fatal!=0;}
+ return kind==0?(int)(ready==required):kind==1?(int)texture_bytes:kind==2?(int)texture_peak:kind==3?(int)base:kind==4?(int)detail:kind==5?(int)promotions:kind==6?(int)demotions:kind==7?(int)io_reads:kind==8?(int)io_bytes:kind==9?(int)io_failures:kind==10?(int)checksum_failures:kind==11?(int)fatal:kind==12?(int)publication_count:kind==13?texture_io_pending:kind==14?texture_job.texture:kind==15?(int)texture_cache_hits:kind==16?(int)texture_cache_misses:kind==17?(int)texture_cache_bytes:kind==18?(texture_cache_store?1024*1024:0):kind==19?(int)texture_cache_stores:kind==20?(int)texture_cache_errors:kind==21?(int)texture_queue_worst:kind==22?(int)texture_cancellations:kind>=32&&kind<38&&town_geometry_stats?town_geometry_stats(kind-32):kind>=40&&kind<45&&town_pose_stats?town_pose_stats(kind-40):-1;
 }
 
 int town_texture_minimum(unsigned id){if(id>=texture_count)return -1;TownTexture *t=textures+id;if(t->base)return 1;t->priority=2;return t->fatal?-1:0;}
