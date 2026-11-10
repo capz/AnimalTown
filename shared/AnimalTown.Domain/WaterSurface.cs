@@ -50,6 +50,29 @@ public static class WaterSurface
             }
         return tex;
     }
+    // Separate X/Y signed offsets stored in periodic GX RGB565 4x4 tiles.
+    // Native format is big-endian u16 per texel. Generated once at startup.
+    public static ushort WarpSample(int x,int y)
+    {
+        x=(x%TextureSize+TextureSize)%TextureSize;
+        y=(y%TextureSize+TextureSize)%TextureSize;
+        double a=6.283185307179586*(2*x+y)/TextureSize;
+        double b=6.283185307179586*(x-2*y)/TextureSize;
+        int red=(int)Math.Round(16+13*Math.Sin(a));
+        int green=(int)Math.Round(32+27*Math.Cos(b));
+        return (ushort)((red<<11)|(green<<5)|16);
+    }
+    public static byte[] WarpTexture()
+    {
+        var tex=new byte[TextureSize*TextureSize*2];int at=0;
+        for(int by=0;by<TextureSize;by+=4)for(int bx=0;bx<TextureSize;bx+=4)
+            for(int y=by;y<by+4;y++)for(int x=bx;x<bx+4;x++){
+                ushort sample=WarpSample(x,y);
+                tex[at++]=(byte)(sample>>8);
+                tex[at++]=(byte)sample;
+            }
+        return tex;
+    }
     // Original looping whitecaps for the optional storm material, GX I8 8x4.
     public static byte[] StormTexture()
     {
