@@ -11,19 +11,40 @@ public static class FloorTexture
         int limit=TexturePolicy.Edge(resolution);
         while(w>limit||h>limit){w=Math.Max(1,w/2);h=Math.Max(1,h/2);}
         if(w<4||h<4)throw new InvalidOperationException("Floor textures need at least four pixels on each axis");
+        // Cooked ground chains are already in GX layout, including the authored
+        // base and its filtered levels. Upload them without another lossy pass.
+        int sourceFormat=TexturePixels.Int(source,8);
+        if(fullMipChain&&w==sw&&h==sh&&TexturePixels.Int(source,4)==2&&(sourceFormat==14||sourceFormat==4)){
+            int bytes=MipLayout(w,h,sourceFormat,GroundMipLevels,out int levels);
+            if(TexturePixels.Int(source,24)==levels&&source.Length==32+bytes)return source;
+        }
         var rgba=new byte[w*h*4];TexturePixels.Resample(source,0,0,sw,sh,rgba,w,h);
+        return Encode(rgba,w,h,fullMipChain);
+    }
+
+    public static byte[] Encode(byte[] rgba,int w,int h,bool fullMipChain)
+    {
+        if(w<4||h<4||w>TexturePixels.Maximum||h>TexturePixels.Maximum||
+            (w&(w-1))!=0||(h&(h-1))!=0||rgba.Length!=w*h*4)
+            throw new InvalidOperationException("Invalid floor texture dimensions");
         for(int i=3;i<rgba.Length;i+=4)if(rgba[i]!=255)throw new InvalidOperationException("Repeating floors must be opaque");
         var cmpr=Compress(rgba,w,h);var test=Package(cmpr,w,h,14,1);long error=0;
         for(int y=0;y<h;y++)for(int x=0;x<w;x++){uint p=TexturePixels.Pixel(test,x,y);int at=(y*w+x)*4;long r=(int)(p>>24)-rgba[at],g=(int)((p>>16)&255)-rgba[at+1],b=(int)((p>>8)&255)-rgba[at+2];error+=r*r+g*g+b*b;}
         int format=cmpr.Length<w*h*2&&error<=w*h*3*256L?14:4;
-        int bytes=0,levels=0,maximumLevels=fullMipChain?GroundMipLevels:MaximumMipLevels;
-        for(int mw=w,mh=h;mw>=4&&mh>=4&&levels<maximumLevels;mw/=2,mh/=2){bytes+=Size(mw,mh,format);levels++;}
+        int bytes=MipLayout(w,h,format,fullMipChain?GroundMipLevels:MaximumMipLevels,out int levels);
         var payload=new byte[bytes];int write=0;
         for(int level=0,mw=w,mh=h;level<levels;level++,mw/=2,mh/=2){
             var encoded=format==14?(level==0?cmpr:Compress(rgba,mw,mh)):TexturePixels.Encode(rgba,mw,mh,4);Array.Copy(encoded,0,payload,write,encoded.Length);write+=encoded.Length;
             if(level+1<levels){var next=new byte[mw/2*(mh/2)*4];for(int y=0;y<mh/2;y++)for(int x=0;x<mw/2;x++)for(int c=0;c<4;c++){int a=(y*2*mw+x*2)*4+c;next[(y*(mw/2)+x)*4+c]=(byte)((rgba[a]+rgba[a+4]+rgba[a+mw*4]+rgba[a+mw*4+4])/4);}rgba=next;}
         }
         return Package(payload,w,h,format,levels);
+    }
+    private static int MipLayout(int w,int h,int format,int maximumLevels,out int levels)
+    {
+        int bytes=0;
+        for(levels=0;w>=4&&h>=4&&levels<maximumLevels;w/=2,h/=2,levels++)
+            bytes+=Size(w,h,format);
+        return bytes;
     }
     private static int Size(int w,int h,int f)=>f==14?((w+7)/8)*((h+7)/8)*32:((w+3)/4)*((h+3)/4)*32;
     private static byte[] Package(byte[] payload,int w,int h,int f,int levels)
