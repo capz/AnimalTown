@@ -7,7 +7,7 @@ using Hypercube.GameCube;
 // Textures/effect are created outside frames; animation only changes UV matrices.
 internal sealed class WaterMaterial : IDisposable
 {
-    private readonly Texture2D baseTexture,ripples,whitecaps;
+    private readonly Texture2D baseTexture,ripples,whitecaps,shoreFoam;
     private readonly TevMaterial tev,storm;
     internal readonly Material Surface;
     internal readonly Material Storm;
@@ -29,6 +29,12 @@ internal sealed class WaterMaterial : IDisposable
         Surface.Blend=BlendMode.Opaque;Surface.DepthWrite=true;
         Surface.Sampler=new SamplerState(TextureAddressMode.Repeat,TextureAddressMode.Repeat,TextureFilter.Linear);
         Surface.SecondarySampler=Surface.Sampler;
+        // Keep shoreline geometry archived. Alpha movement lives entirely in a
+        // shared IA8 mask and its GX UV matrix, not dynamic mesh uploads.
+        shoreFoam=Texture2D.CreateNative(WaterSurface.TextureSize,WaterSurface.TextureSize,NativeTextureFormat.Ia8,true);
+        shoreFoam.ReplaceNative(WaterSurface.ShoreTexture());
+        Foam.Texture=shoreFoam;
+        Foam.Sampler=new SamplerState(TextureAddressMode.Repeat,TextureAddressMode.Repeat,TextureFilter.Linear);
         whitecaps=Texture2D.CreateNative(64,64,NativeTextureFormat.I8,true);whitecaps.ReplaceNative(WaterSurface.StormTexture());
         var waves=new TevProgramBuilder();waves.AddColor("Whitecaps",new Color32(231,247,244));
         waves.AddStage(TevInput.Zero,TevInput.Raster,TevInput.Texture,TevInput.Zero);
@@ -48,11 +54,12 @@ internal sealed class WaterMaterial : IDisposable
     {
         baseMotion.RepeatsPerSecond=BaseSpeed;rippleMotion.RepeatsPerSecond=RippleSpeed;
         baseMotion.Apply(Surface,seconds);rippleMotion.Apply(Surface,seconds,true);
-        Foam.Color=new Color32(202,232,222,(byte)(65+15*Math.Sin(seconds*1.2)));
+        Foam.Color=new Color32(220,241,235,(byte)(70+14*Math.Sin(seconds*1.2)));
+        Foam.TextureTransform=new UvTransform(new Vector2(WaterSurface.Scroll(seconds,.032f),WaterSurface.Scroll(seconds,-.058f)),new Vector2(1.10f,1.10f));
         if(RoughOcean){
             Storm.TextureTransform=new UvTransform(new Vector2(WaterSurface.Scroll(seconds,.035f),WaterSurface.Scroll(seconds,.075f)),new Vector2(1,1));
             Storm.SecondaryTextureTransform=new UvTransform(new Vector2(WaterSurface.Scroll(seconds,-.055f),WaterSurface.Scroll(seconds,.12f)),new Vector2(1.05f,.85f));
         }
     }
-    public void Dispose(){storm.Dispose();tev.Dispose();whitecaps.Dispose();ripples.Dispose();baseTexture.Dispose();}
+    public void Dispose(){storm.Dispose();tev.Dispose();whitecaps.Dispose();shoreFoam.Dispose();ripples.Dispose();baseTexture.Dispose();}
 }
