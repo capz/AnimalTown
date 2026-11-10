@@ -2,8 +2,8 @@
 
 Boot fades in the user-supplied DolphinDotNet logo, holds it, fades through black
 to the approved disintegrating-block Hypercube Engine logo, then fades to the
-existing loading/title screen. Each logo gets a 650 ms fade in, 1.2 second hold
-and 650 ms fade out: identical 2.5 second real-time deadlines. Between-frame
+existing loading/title screen. Each logo gets a 650 ms fade in, 3 second hold
+at full visibility and 650 ms fade out: identical 4.3 second real-time deadlines. Between-frame
 loading time counts toward these deadlines rather than extending one logo's
 hold. Like any frame-based presentation, a blocking loader step can delay the
 next displayed frame; the timeline catches up instead of lengthening the sequence.
