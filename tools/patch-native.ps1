@@ -242,3 +242,9 @@ if($IsLinux){
 }
 # Versioned external textures, native I/O and stable material bindings.
 & (Join-Path $Root 'tools/patch-texture-stream.ps1') -Root $Root -NativeRoot $nativeRoot
+
+& python3 (Join-Path $Root 'tools/patch-geometry-lists.py') $nativeRoot
+if($LASTEXITCODE){throw 'Pinned static geometry list patch failed'}
+
+& python3 (Join-Path $Root 'tools/patch-pose-sharing.py') $nativeRoot
+if($LASTEXITCODE){throw 'Pinned exact-pose sharing patch failed'}

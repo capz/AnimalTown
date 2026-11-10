@@ -5,6 +5,7 @@ function Replace-Once([string]$source,[string]$old,[string]$new){
     return $source.Replace($old,$new)
 }
 Copy-Item (Join-Path $Root 'tools/native-texture-stream.h') (Join-Path $NativeRoot 'include/native-texture-stream.h') -Force
+Copy-Item (Join-Path $Root 'tools/native-texture-cache.inc') (Join-Path $NativeRoot 'source/native-texture-cache.inc') -Force
 Copy-Item (Join-Path $Root 'tools/native-texture-stream.c') (Join-Path $NativeRoot 'source/animaltown_texture_stream.c') -Force
 & python3 (Join-Path $Root 'tools/patch-texture-model.py') $NativeRoot
 if($LASTEXITCODE){throw 'External texture loader patch failed'}
@@ -32,7 +33,7 @@ if(Test-Path $assetPath){[IO.File]::WriteAllText($assetPath,"#define ANIMALTOWN_
 $generatedPath=Join-Path $NativeRoot 'source/generated_program.c'
 if(Test-Path $generatedPath){
     $generated=[IO.File]::ReadAllText($generatedPath)
-    $bridges=@{Init=1;Begin=1;Step=1;Read=0;Complete=1;Stats=1;Flags=1;HasModel=1;Demand=3}
+    $bridges=@{Init=1;Begin=1;Step=1;Read=0;Complete=1;Stats=1;Flags=1;HasModel=1;Demand=3;GeometryScope=1;PoseRegister=3;PoseActor=1;PoseBatch=1}
     foreach($method in $bridges.Keys){
         $n=$bridges[$method];$parameters=if($n){((1..$n|ForEach-Object {'intptr_t (\w+)'}) -join ', ')}else{'void'}
         $pattern='intptr_t (dnd_value_AnimalTown_GameCube_NativeTextures_'+$method+'_[a-z0-9]+)\('+$parameters+'\) \{.*?\r?\n\}'

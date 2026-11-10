@@ -119,7 +119,7 @@ internal sealed class TownGame
     private int buildingInspection;
     private int pendingInspection;
     private int pendingUv=-1;
-    private const int SettingsTab=5,TestingTab=6,TestingRows=26;
+    private const int SettingsTab=5,TestingTab=6,TestingRows=31;
     private static readonly string[] tabs={"Backpack","Jobs","Catalog","Home","Post office","Settings","Debug / testing"};
     private static readonly string[] itemActions={"Drop","Place (R rotates)","Plant","Eat","Wear","Equip","Bury","Open money bag","Read","Quit"};
     internal TownGame()
@@ -163,12 +163,12 @@ internal sealed class TownGame
                 if(loadingModel==null){loadingLabel="Loading "+modelNames[loadingIndex];loadingModel=ModelResources.LoadAsync(modelNames[loadingIndex]);return;}
                 if(!loadingModel.IsCompleted)return;
                 var model=loadingModel.GetAwaiter().GetResult();models[loadingIndex]=model;assetResidency.Register(loadingIndex,model,TextureStreaming.ModelPath(modelNames[loadingIndex]));
-                actors[loadingIndex+1]=model.CreateInstance(512*1024);attention.Register(loadingIndex,actors[loadingIndex+1]);if(model.TryGetAnimation("Walking",out var clip))animationClock.Step(loadingIndex+1,0,false);
+                actors[loadingIndex+1]=model.CreateInstance(512*1024);if(NativeTextures.PoseRegister(loadingIndex+1,loadingIndex,actors[loadingIndex+1].NativeBytes)!=1)throw new InvalidOperationException("Actor pose registration");attention.Register(loadingIndex,actors[loadingIndex+1]);if(model.TryGetAnimation("Walking",out var clip))animationClock.Step(loadingIndex+1,0,false);
                 loadingModel=null;loadingIndex++;return;
             }
             bool complete=buildings.AdvanceLoading();loadingLabel=buildings.LoadingLabel;if(!complete)return;
             if(!assetResidency.Backed){loadingLabel="Caching town models";return;}
-            buildings.Begin(villagers.Doors);
+            buildings.Begin(villagers.Doors,state);
             for(int actor=0;actor<BuildingWorld.Actors;actor++){
                 var location=BuildingWorld.Location(state,actor);if(location.Space.IsTown)continue;int building=BuildingWorld.Building(location.Space.Value);
                 if(!buildings.Ready(state.BuildingTypes[building])){BuildingWorld.Entrance(state,building,out float rx,out float rz);BuildingWorld.SetLocation(state,actor,new ActorLocation(0,rx,rz+1,0));saveStatus="A home is unavailable; its occupants are outside.";}
@@ -187,7 +187,7 @@ internal sealed class TownGame
         FrameProfile.Draw(ui);ui.End();device.EndFrame();
     }
     private void SelectSpecies()
-    { if(actors[0]!=null)actors[0].Dispose();actors[0]=models[state.Species].CreateInstance(512*1024);moveClip=-1;animationClock.Reset(0);appliedClips[0]=-2; }
+    { if(actors[0]!=null)actors[0].Dispose();actors[0]=models[state.Species].CreateInstance(512*1024);if(NativeTextures.PoseRegister(0,state.Species,actors[0].NativeBytes)!=1)throw new InvalidOperationException("Player pose registration");moveClip=-1;animationClock.Reset(0);appliedClips[0]=-2; }
     private void LoadSave()
     {
         try
@@ -551,11 +551,13 @@ internal sealed class TownGame
     private void UpdateAnimationFrame()
     {
         long start=FrameProfile.Start();
-        for(int i=0;i<7;i++){
+        if(NativeTextures.PoseBatch(1)!=1)throw new InvalidOperationException("Pose batch frame ownership");
+        try{for(int i=0;i<7;i++){
             bool visible=actorVisibility.Visible[i]&&assetResidency.Ready(i==0?state.Species:i-1);float seconds=animationClock.Consume(i,visible);
             // Clip controls can reskin too. Defer every native animation call,
             // including Stop/Play/speed changes, until this actor can be drawn.
             if(!visible)continue;
+            if(NativeTextures.PoseActor(i)!=1)throw new InvalidOperationException("Visible pose actor missing");
             int clip=animationClock.Clip(i);
             if(restartClips[i]||appliedClips[i]!=clip){
                 restartClips[i]=false;
@@ -567,6 +569,7 @@ internal sealed class TownGame
             if(i==0&&clip>=0&&appliedPlayerSpeed!=desiredPlayerSpeed){actors[0].Animator.SetSpeed(desiredPlayerSpeed);appliedPlayerSpeed=desiredPlayerSpeed;}
             if(seconds>0){actors[i].Update(seconds);FrameProfile.AnimationUpdates++;}
         }
+        }finally{if(NativeTextures.PoseBatch(0)!=1)throw new InvalidOperationException("Could not evaluate visible poses");}
         FrameProfile.End(1,start);
     }
     private void ReadCalendar(){int date=NativeCalendar.Read();day=date&0x1ffff;month=(int)((uint)date>>17);townClock.Update(NativeCalendar.ReadClock());}
@@ -664,7 +667,7 @@ internal sealed class TownGame
         float eyeHeight=PlayerHeight();
         if(room==0)camera.LookAt(new Vector3(state.X,CylinderWorld.CameraHeight+eyeHeight,state.Z+CylinderWorld.CameraBack),new Vector3(state.X,eyeHeight,state.Z-CylinderWorld.CameraAimAhead),new Vector3(0,1,0));
         else{float size=BuildingWorld.Size(state,room);indoorView.LookAt(new Vector3(indoorCamera.EyeX(size),indoorCamera.EyeY(size),indoorCamera.EyeZ(size)),new Vector3(size*.5f,.7f,size*.5f),new Vector3(0,1,0));}
-        renderer.Begin3D(room==0?camera:indoorView);buildings.Begin(villagers.Doors);FrameProfile.End(4,phase);
+        renderer.Begin3D(room==0?camera:indoorView);buildings.Begin(villagers.Doors,state);FrameProfile.End(4,phase);
         phase=FrameProfile.Start();if(room==0){terrain.Draw(renderer,terrain.ScrollTransform,room);}else buildings.Interior(renderer,state,worldRoot,indoorCamera,villagers.Doors);
         FrameProfile.End(4,phase);phase=FrameProfile.Start();
         if(room==0)
@@ -680,7 +683,7 @@ internal sealed class TownGame
                 if(!IsTree(g))Box(g.X+.25f,y+.02f,g.Z+.25f,.5f,g.Kind==1?.03f:.25f,.5f,g.Kind==1?new Color32(105,81,54):g.Kind==2?new Color32(242,174,170):new Color32(229,190,82));
             }
             if(batchedDrawing)boxes.Flush();FrameProfile.End(3,groundAt);
-            for(int building=0;building<BuildingWorld.Count;building++)buildings.Exterior(renderer,state,building,villagers.Doors);
+            for(int building=0;building<BuildingWorld.Count;building++)buildings.Exterior(renderer,state,building,villagers.Doors);buildings.Flush(renderer);
             if(state.HousePlaced)
             {
                 int w=GameState.GardenWidths[state.GardenTier],h=GameState.GardenHeights[state.GardenTier];
@@ -749,11 +752,11 @@ internal sealed class TownGame
     private void DrawTrees()
     {
         // Generated low-poly meshes share native geometry and indexed GX draws.
-        long selectionAt=FrameProfile.Start();
+        long selectionAt=FrameProfile.Start();trees.Prepare(state.Town,state.Z);
         for(int n=0;n<visibleTrees.Length;n++){visibleTrees[n]=-1;treeDistances[n]=float.MaxValue;}
         for(int i=0;i<state.Town.GroundCount;i++)
         {
-            var g=state.Town.Ground[i];if(!IsTree(g)||!Visible(g.X,g.Z,g.Kind==2?.75f:3))continue;
+            var g=state.Town.Ground[i];if(!IsTree(g)||!trees.Visible(state.Town,i,state.X,state.Z,cachedPlayerHeight))continue;
             float dx=g.X-state.X,dz=g.Z-state.Z,d=dx*dx+dz*dz;
             for(int n=0;n<visibleTrees.Length;n++)if(d<treeDistances[n])
             {for(int j=visibleTrees.Length-1;j>n;j--){visibleTrees[j]=visibleTrees[j-1];treeDistances[j]=treeDistances[j-1];}visibleTrees[n]=i;treeDistances[n]=d;break;}

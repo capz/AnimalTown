@@ -26,7 +26,7 @@ int dnd_fs_read_native(int token,void *data,int count){assert(files[token]);retu
 void dnd_fs_close(int token){assert(files[token]);assert(!fclose(files[token]));files[token]=NULL;}
 bool dnd_fs_path_utf8_native(DndString *s,char *path,unsigned capacity){if(!s||s->length>=capacity)return false;for(unsigned i=0;i<s->length;i++)path[i]=(char)s->chars[i];path[s->length]=0;return true;}
 int dnd_asset_read(int token,int64_t offset,int buffer,int destination,int count){
- assert(files[token]&&count>0&&count<=32768&&destination==0);reads++;if(fail_next){fail_next=0;return -1;}
+ assert(files[token]&&count>0&&count<=32768&&destination==0&&!pins[buffer]);reads++;if(fail_next){fail_next=0;return -1;}
  assert(!fseek(files[token],(long)offset,SEEK_SET));unsigned char *p=(void*)(uintptr_t)dnd_buffer_address(buffer,destination);assert(p);int n=(int)fread(p,1,(unsigned)count,files[token]);if(corrupt_next&&n){p[0]^=1;corrupt_next=0;}return n;
 }
 #include "../tools/native-texture-stream.c"
@@ -35,6 +35,47 @@ int dnd_asset_read(int token,int64_t offset,int buffer,int destination,int count
 static void *bytes(const char *path,unsigned *length){FILE *f=fopen(path,"rb");assert(f&&!fseek(f,0,SEEK_END));long n=ftell(f);assert(n>0&&!fseek(f,0,SEEK_SET));void *p=malloc((size_t)n);assert(p&&fread(p,1,(size_t)n,f)==(size_t)n&&!fclose(f));*length=(unsigned)n;return p;}
 static DndString *text_string(const char *p){unsigned n=(unsigned)strlen(p);DndString *s=calloc(1,sizeof(*s)+n*2);assert(s);s->length=n;for(unsigned i=0;i<n;i++)s->chars[i]=(uint16_t)p[i];return s;}
 static void texture_work(void){for(int i=0;i<16;i++){int a=animaltown_textures_step(1);assert(a>=0);if(a==0)break;if(a==1){assert(animaltown_textures_stats(13));int count=animaltown_textures_read();animaltown_textures_complete(count);}}}
+extern int town_pose_stats(int);
+static unsigned pose_hash(DndInstance *in){
+ unsigned hash=dnd_model_hash(in->global,in->model->nodes*64);
+ for(unsigned i=0;i<in->model->meshes;i++)if(in->vertices[i])hash^=dnd_model_hash(in->vertices[i],in->model->mesh[i].vertices*24);
+ return hash;
+}
+static void pose_checks(int model,int original){
+ unsigned expected[60];assert(animaltown_textures_flags(127&~64)>=0);
+ int baseline=dnd_model_instance(model,512*1024);assert(baseline);
+ assert(dnd_model_play(baseline,0,1,0)==0);
+ for(int i=0;i<60;i++){assert(!dnd_model_control(baseline,0,.016f));expected[i]=pose_hash(dnd_instance_find(baseline));}
+ assert(!dnd_model_instance_dispose(baseline));assert(animaltown_textures_flags(127)>=0);
+ int twin=dnd_model_instance(model,512*1024);assert(twin);
+ DndInstance *a=dnd_instance_find(original),*b=dnd_instance_find(twin);
+ unsigned old=b->bytes;b->bytes=a->bytes;assert(animaltown_textures_poseregister(0,0,(int)a->bytes)==0);b->bytes=old; // Ambiguous: explicit actor mapping refuses to guess.
+ // Register before the second instance exists in the real startup path; here
+ // account for an explicit temporary native budget difference.
+ b->bytes=a->bytes+1;assert(animaltown_textures_poseregister(0,0,(int)a->bytes)==1);b->bytes=old;
+ assert(animaltown_textures_poseregister(1,0,(int)b->bytes)==1);
+ assert(animaltown_textures_posebatch(1)==1);
+ assert(!dnd_model_play(original,0,1,0)&&!dnd_model_play(twin,0,1,0));
+ assert(animaltown_textures_posebatch(0)==1);
+ unsigned splits=(unsigned)town_pose_stats(3),evals=(unsigned)town_pose_stats(0);
+ for(int i=0;i<60;i++){
+  assert(animaltown_textures_posebatch(1)==1);
+  assert(animaltown_textures_poseactor(0)==1&&animaltown_textures_poseactor(1)==1);
+  assert(!dnd_model_control(original,0,.016f)&&!dnd_model_control(twin,0,.016f));
+  assert(animaltown_textures_posebatch(0)==1);
+  assert(pose_hash(a)==expected[i]&&pose_hash(b)==expected[i]);
+  for(unsigned m=0;m<a->model->meshes;m++)if(a->model->mesh[m].skin>=0)assert(a->vertices[m]==b->vertices[m]);
+ }
+ assert((unsigned)town_pose_stats(0)-evals==60&&(unsigned)town_pose_stats(3)==splits&&town_pose_stats(4)>0);
+ assert(!dnd_model_control(twin,4,.123f)&&pose_hash(a)==expected[59]);
+ for(unsigned m=0;m<a->model->meshes;m++)if(a->model->mesh[m].skin>=0)assert(a->vertices[m]!=b->vertices[m]);
+ // Blending and overrides remain independent; compare against the original evaluator.
+ assert(!dnd_model_play(twin,1,1,.2f)&&!dnd_model_control(twin,0,.03f));
+ unsigned blended=pose_hash(b);assert(animaltown_textures_flags(127&~64)>=0);assert(!dnd_model_evaluate(b)&&pose_hash(b)==blended);
+ assert(animaltown_textures_flags(127)>=0);assert(!dnd_model_control(original,3,0)&&!dnd_model_control(twin,3,0));
+ assert(town_pose_stats(4)>0);assert(!dnd_model_instance_dispose(twin));assert(!dnd_model_evaluate(a));
+ puts("Exact live poses: independent reference hashes, synchronized buffer reuse, divergence COW, blends, disabled path and owner disposal passed");
+}
 int main(void){
  unsigned size;void *data=bytes("out/disc/textures.idx",&size);DndArray *index=calloc(1,sizeof(*index)+size);assert(index);index->element_size=1;index->length=size;memcpy(index->data,data,size);free(data);
  assert(dnd_aram_initialize(2*1024*1024));int terrain=dnd_aram_allocate(8*1024*1024);assert(terrain&&dnd_aram_retain(terrain)==0);
@@ -52,6 +93,7 @@ int main(void){
   snprintf(path,sizeof(path),"dvd:/%s-stream.dndmodel",names[i]);DndString *path_string=text_string(path);assert(animaltown_assets_capture(i,(int)m->bytes,0,path_string)==1);free(path_string);want[i]=2;
  }
  while(animaltown_assets_stats(0)){animaltown_textures_begin(1);assert(animaltown_assets_advance(demand,1)>=0);texture_work();assert(++ticks<3000);}
+ pose_checks(tokens[0],instances[0]);
  assert(animaltown_assets_stats(3)<1500*1024); // Geometry backing no longer duplicates 2.64 MiB of images.
  for(int cycle=0;cycle<5;cycle++){
   ticks=0;
@@ -78,6 +120,23 @@ int main(void){
  unsigned failures_before=checksum_failures;corrupt_next=1;
  for(int n=0;n<1000&&checksum_failures==failures_before;n++){animaltown_textures_begin(0);animaltown_textures_demand(0,256,2);texture_work();}
  assert(checksum_failures>failures_before&&fox->base&&!fox->fatal);
+ // Warm a single repeated image; the bounded ARAM cache must avoid some DVD reads.
+ for(int n=0;n<2000&&!fox->detail;n++){animaltown_textures_begin(0);animaltown_textures_demand(0,256,2);texture_work();}
+ assert(fox->detail);for(int n=0;n<32;n++){animaltown_textures_begin(0);animaltown_textures_demand(0,256,2);texture_work();}
+ assert(texture_cache_store&&texture_cache_stores);
+ fox->last_high=texture_frame-121;animaltown_textures_begin(0);texture_work();assert(!fox->detail&&fox->base);
+ unsigned hits_before=texture_cache_hits;int reads_before=reads;
+ for(int n=0;n<1000&&!fox->detail;n++){animaltown_textures_begin(0);animaltown_textures_demand(0,256,2);texture_work();}
+ assert(fox->detail&&texture_cache_hits>hits_before&&reads-reads_before<8);
+ // Poison a genuinely cached ARAM block; verification must reread DVD, never publish it.
+ int poisoned=-1;const unsigned char *fox_range=tex_range(fox,0);
+ for(int i=0;i<32;i++)if(texture_cache_blocks[i].valid&&texture_cache_blocks[i].bank==1&&texture_cache_blocks[i].offset>=tex_u32(fox_range+4)&&texture_cache_blocks[i].offset<tex_u32(fox_range+4)+tex_u32(fox_range+8)){poisoned=i;break;}
+ assert(poisoned>=0);texture_cache_phase=0;texture_aram_used=0;assert(tex_cache_dma(poisoned,texture_stage[1],texture_cache_blocks[poisoned].count,0)==1);
+ ((unsigned char*)(uintptr_t)dnd_buffer_address(texture_stage[1],0))[0]^=1;texture_aram_used=0;assert(tex_cache_dma(poisoned,texture_stage[1],texture_cache_blocks[poisoned].count,1)==1);
+ unsigned cache_errors_before=texture_cache_errors;fox->last_high=texture_frame-121;animaltown_textures_begin(0);texture_work();assert(!fox->detail);
+ for(int n=0;n<1000&&!fox->detail;n++){animaltown_textures_begin(0);animaltown_textures_demand(0,256,2);texture_work();}
+ assert(fox->detail&&texture_cache_errors>cache_errors_before&&dnd_model_hash(fox->detail,fox->detail_size)==payload_hash[0][0]);
+ unsigned cache_bytes_before=(unsigned)dnd_aram_stat(1);town_texture_reclaim_aram();assert(!texture_cache_store&&(unsigned)dnd_aram_stat(1)+1024*1024==cache_bytes_before);
  printf("Texture streaming: 13 external models, nine shared images, five exact cold/warm cycles; %d bounded reads, CRC rejection and active-frame guards passed\n",reads);
  return 0;
 }

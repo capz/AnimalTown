@@ -14,6 +14,10 @@ internal static class NativeTextures
     internal static int Stats(int kind)=>throw new PlatformNotSupportedException("Native texture accounting required");
     internal static int Flags(int flags)=>throw new PlatformNotSupportedException("Native texture policy required");
     internal static int HasModel(string path)=>throw new PlatformNotSupportedException("Native model catalog required");
+    internal static int PoseRegister(int actor,int model,int expectedBytes)=>throw new PlatformNotSupportedException("Native pose registration required");
+    internal static int PoseActor(int actor)=>throw new PlatformNotSupportedException("Native pose grouping required");
+    internal static int PoseBatch(int begin)=>throw new PlatformNotSupportedException("Native pose grouping required");
+    internal static int GeometryScope(int enabled)=>throw new PlatformNotSupportedException("Native geometry cache required");
     internal static int Demand(int slot,int pixels,int priority)=>throw new PlatformNotSupportedException("Native texture demand required");
 }
 internal static class TextureStreaming
@@ -38,7 +42,7 @@ internal static class TextureStreaming
     private static int ReadNative()=>NativeTextures.Read();
     internal static void Advance(bool allowRead)
     {
-        Poll();if(read!=null)return;long start=Clock.Timestamp,deadline=start+1000;
+        Poll();if(read!=null){NativeTextures.Step(0);return;}long start=Clock.Timestamp,deadline=start+1000;
         do{
             int action=NativeTextures.Step(allowRead?1:0);
             if(action<0)throw new IOException("Required texture could not be restored");

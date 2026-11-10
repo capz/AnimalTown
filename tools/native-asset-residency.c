@@ -257,6 +257,9 @@ int animaltown_assets_advance(DndArray *priorities,int startup){
         }else{
             if(!a->store){
                 a->store=dnd_aram_allocate((int)((a->length+31u)&~31u));
+#ifdef ANIMALTOWN_TEXTURE_STREAM
+                if(!a->store){town_texture_reclaim_aram();a->store=dnd_aram_allocate((int)((a->length+31u)&~31u));}
+#endif
                 if(!a->store||dnd_aram_retain(a->store)){fail_backup(a);return 1;}
                 a->phase=1;a->offset=0;a->hash=FNV;
             }
