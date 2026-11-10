@@ -125,12 +125,27 @@ a replacement for the fixed sea plane. Profiling should verify the cost
 of `DynamicMesh.SetVertices` and possible overlap at its edge.
 
 The GameCube's indirect texture sampling can give more authentic UV warping
-without additional vertex movement. The optional DNEF v3 two-unit warp effect
-is implemented separately in DolphinDotNet PR #162. This game branch does
-**not** call it, because `Capz.Hypercube.GameCube 0.1.0-preview.9.1`
-pins `DolphinDotNet.GameCube 0.1.0-preview.266.1`. Upgrading must preserve
-the package/lockfile and native source checksum contracts; testing a newer
-SDK without an updated Hypercube dependency is not a valid release build.
+without additional vertex movement. The DNEF v3 implementation lives in
+DolphinDotNet PR #162. `WindWakerWaterEffect.Package` produces a small
+four-stage v3 program with two independent foam UV samples (TEX0) and a
+single signed indirect displacement map (TEX1). `WaterSurface.WarpTexture`
+provides a periodic 64x64 GX RGB565 map (8 KiB), generated once.
+
+`WaterMaterial` attempts to create the v3 material exactly once at startup.
+If the pinned native SDK rejects v3, it falls back to the previous v2
+`TevMaterial` without allocating the displacement map or changing
+per-frame geometry. If an updated SDK accepts v3, its material uses both
+texture units with separate animated UV matrices; no runtime texture upload
+or terrain rebuild is needed. This compatibility bridge intentionally uses
+the public `GxEffect.FromPackage` API rather than a compile-time reference
+to the new builder signature.
+
+The current `Capz.Hypercube.GameCube 0.1.0-preview.9.1` dependency
+pins `DolphinDotNet.GameCube 0.1.0-preview.266.1`, so the full indirect
+warp **is not active in the default distributable build**. A later
+coordinated Hypercube / DolphinDotNet NuGet dependency update is required
+to activate it in released GameCube binaries while preserving the
+locked-package and native checksum contracts.
 
 ### Cost model
 
@@ -139,8 +154,9 @@ SDK without an updated Hypercube dependency is not a valid release build.
 - Shoreline: one shared 8 KiB IA8 mask in addition to the existing I8 maps.
 - Rough sea opt-in: 289 vertices and 512 triangles; one small dynamic
   vertex upload and draw per frame while a pure deep-sea patch is active.
-- DNEF v3 when integrated: two textures, three authored TEV stages plus the
-  automatic opacity stage, and one indirect GX stage.
+- DNEF v3 on a compatible SDK: two textures (foam + indirect mask), three
+  authored TEV stages plus a base-alpha stage, and one indirect GX stage.
+  On the currently pinned SDK this path is automatically disabled.
 
 The normal world remains one batched opaque surface, one sea pass and
 an optional shoreline pass using existing archive-bound mesh views.
