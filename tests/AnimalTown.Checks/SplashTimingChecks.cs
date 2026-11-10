@@ -5,7 +5,7 @@ internal static class SplashTimingChecks
         var timing=new SplashTiming();
         check(timing.Alpha==0&&!timing.Complete,"splash starts black");
         timing.Advance(-1);check(timing.Alpha==0,"invalid clock delta cannot reverse the fade");
-        timing.Advance(10000000);check(timing.Alpha>0&&timing.Alpha<30&&!timing.FullyVisible,"slow I/O cannot skip a fade");
+        timing.Advance(50000);check(timing.Alpha>0&&timing.Alpha<30&&!timing.FullyVisible,"fade starts gradually");
         for(int i=1;i<13;i++)timing.Advance(50000);
         check(timing.Alpha==255&&timing.FullyVisible,"first fade reaches full opacity after 650ms of presentation");
         for(int i=0;i<23;i++)timing.Advance(50000);
@@ -16,5 +16,10 @@ internal static class SplashTimingChecks
         check(timing.Alpha==0&&timing.Complete,"splash completes on black before texture disposal");
         timing.Advance(long.MaxValue);check(timing.Alpha==0&&timing.Complete,"completed splash remains black");
         timing=new SplashTiming();check(timing.Alpha==0&&!timing.Complete,"second logo has an independent fade");
+        var first=new SplashTiming();var second=new SplashTiming();
+        first.Advance(1000000);first.Advance(500000);first.Advance(1000000);
+        for(int i=0;i<50;i++)second.Advance(50000);
+        check(first.Complete&&second.Complete&&first.Alpha==second.Alpha,"different loading/frame costs cannot extend one logo's deadline");
+        timing.Advance(long.MaxValue);check(timing.Complete&&timing.Alpha==0,"long stalled frames are bounded safely by the presentation deadline");
     }
 }

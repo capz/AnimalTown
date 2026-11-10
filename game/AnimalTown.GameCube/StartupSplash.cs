@@ -20,19 +20,18 @@ internal sealed class StartupSplash : IDisposable
     {
         TownGame game;
         using(var splash=new StartupSplash()){
+            // Synchronous save/font/terrain setup must not extend either logo.
+            // Keep the display black until the identical timed presentations.
+            splash.device.BeginFrame(new Color32(0,0,0));splash.device.EndFrame();
+            game=new TownGame();
             splash.Load("dolphindotnet");
             var timing=new SplashTiming();
-            // Show the first fade before synchronous town/save initialization.
-            // The visible logo stays on screen while that main-thread work runs.
-            while(!timing.FullyVisible)splash.Frame(timing,null);
-            splash.Frame(timing,null);
-            game=new TownGame();
             while(!timing.Complete)splash.Frame(timing,game);
-            splash.Frame(timing,game);
+            splash.BlackFrame();
             splash.Load("hypercube-engine");
             timing=new SplashTiming();
             while(!timing.Complete)splash.Frame(timing,game);
-            splash.Frame(timing,game);
+            splash.BlackFrame();
         }
         return game;
     }
@@ -48,7 +47,10 @@ internal sealed class StartupSplash : IDisposable
 
     private static Texture2D LoadTexture(string path)=>Texture2D.FromPackage(File.ReadAllBytes(path),true);
 
-    private void Frame(SplashTiming timing,TownGame? game)
+    private void BlackFrame()
+    {device.BeginFrame(new Color32(0,0,0));device.EndFrame();}
+
+    private void Frame(SplashTiming timing,TownGame game)
     {
         long start=Clock.Timestamp;
         Controller.Update(); // Consume splash input; it cannot open the title menu.
@@ -58,7 +60,7 @@ internal sealed class StartupSplash : IDisposable
         ui.End();device.EndFrame();
         // Existing async model I/O and staged resource creation run only between
         // frames on the app thread; never Task.Run a constructor or a GX upload.
-        game?.AdvanceLoading();
+        game.AdvanceLoading();
         RuntimeOptions.Wait();
         timing.Advance(Clock.Timestamp-start);
     }

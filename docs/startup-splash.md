@@ -3,8 +3,11 @@
 Boot fades in the user-supplied DolphinDotNet logo, holds it, fades through black
 to the approved disintegrating-block Hypercube Engine logo, then fades to the
 existing loading/title screen. Each logo gets a 650 ms fade in, 1.2 second hold
-and 650 ms fade out. Presentation deltas are capped at 50 ms so a slow disc or
-initialization step cannot skip an entire logo. Input during the sequence is
+and 650 ms fade out: identical 2.5 second real-time deadlines. Between-frame
+loading time counts toward these deadlines rather than extending one logo's
+hold. Like any frame-based presentation, a blocking loader step can delay the
+next displayed frame; the timeline catches up instead of lengthening the sequence.
+Input during the sequence is
 consumed; the player must press A again on the title screen.
 
 Both PNG files in `assets/textures/splash` are exactly 384 x 256, matching the
@@ -28,9 +31,8 @@ do not escape the loader helper; the existing native collection bridge reclaims
 them after upload and reclaims all remaining managed splash arrays after the
 entire splash call returns. No splash resource is pinned for gameplay.
 
-The first fade is displayed before synchronous town/save initialization. That
-initialization stays on the app thread, with the fully visible DolphinDotNet
-frame on screen. Thereafter each splash frame calls the existing `AdvanceLoading`
+Synchronous town/save/font/terrain initialization stays on the app thread before
+either timed logo begins, with the display black. Each splash frame calls the existing `AdvanceLoading`
 between render passes: async model reads overlap presentation and the existing
 loader publishes models/building parts on the app thread. No extra worker, parallel
 DVD stream, `Task.Run`, or off-thread GX/resource construction is introduced.
@@ -41,6 +43,6 @@ sequence, so startup time is not treated as gameplay elapsed time.
 `dotnet run --project tools/AnimalTown.Tools -c Release -- splash-check .`
 checks package dimensions, format, byte budget and every decoded pixel against
 the composed originals within RGB565 quantization bounds. ISO art generation
-also runs this check. The managed `ui` suite checks fades, minimum holds, slow-I/O
-timing, completion and independent second-logo timing. Physical GameCube validation
+also runs this check. The managed `ui` suite checks fades, holds, equal deadlines
+under different frame/loading costs, completion and independent second-logo timing. Physical GameCube validation
 is still required for final hardware appearance and timing.
