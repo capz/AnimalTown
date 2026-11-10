@@ -38,9 +38,14 @@ def cliff_minimap():
     results=[]
     def map_state(name,expected):
         # Dolphin's 640x480 EFB appears in the 584-pixel-wide game viewport.
-        # Sample the panel around the map, not the area past the viewport edge.
-        pixels=frame(name);count=paper(pixels,450,310,620,435);visible=count>400
-        results.append(f'{name}: paper samples={count}, visible={visible}, expected={expected}')
+        # The running map fills its bulged silhouette; it has no paper frame.
+        # Look for its flat terrain palette inside the viewport instead.
+        pixels=frame(name)
+        palette=((75,154,187),(167,119,73),(229,209,150),(130,127,92),(191,179,147),(119,168,88))
+        count=sum(any(all(abs(pixels[(y*800+x)*3+c]-value)<=3 for c,value in enumerate(color)) for color in palette)
+                  for y in range(310,435) for x in range(450,620))
+        visible=count>400
+        results.append(f'{name}: map terrain samples={count}, visible={visible}, expected={expected}')
         (root/'cliff-minimap.txt').write_text('\n'.join(results)+'\n')
         if visible!=expected:raise AssertionError('Unexpected minimap visibility: '+results[-1])
         return pixels
