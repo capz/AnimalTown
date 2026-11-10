@@ -73,7 +73,9 @@ Copy-Item -LiteralPath (Join-Path $out 'texture-audit.json') -Destination (Join-
 Copy-Item -LiteralPath (Join-Path $out 'validation-plan.json') -Destination (Join-Path $package 'validation-plan.json') -Force
 Copy-Item -LiteralPath (Join-Path $out 'version.json') -Destination (Join-Path $package 'version.json') -Force
 Copy-Item -LiteralPath $nkitValidation -Destination (Join-Path $package 'nkit-validation.json') -Force
-$checksums=foreach($file in @($iso,$nkit,$serverZip,$toolsZip,$cliffsZip,$buildingsZip,(Join-Path $package 'BUILD.txt'),(Join-Path $package 'texture-audit.json'),(Join-Path $package 'validation-plan.json'),(Join-Path $package 'version.json'),(Join-Path $package 'nkit-validation.json'))){"$((Get-FileHash -LiteralPath $file -Algorithm SHA256).Hash.ToLowerInvariant())  $([IO.Path]::GetFileName($file))"}
+Copy-Item -LiteralPath (Join-Path $out 'disc/animal-town-updater.dol') -Destination (Join-Path $package 'animal-town-updater.dol') -Force
+$updaterDol=Join-Path $package 'animal-town-updater.dol'
+$checksums=foreach($file in @($iso,$nkit,$updaterDol,$serverZip,$toolsZip,$cliffsZip,$buildingsZip,(Join-Path $package 'BUILD.txt'),(Join-Path $package 'texture-audit.json'),(Join-Path $package 'validation-plan.json'),(Join-Path $package 'version.json'),(Join-Path $package 'nkit-validation.json'))){"$((Get-FileHash -LiteralPath $file -Algorithm SHA256).Hash.ToLowerInvariant())  $([IO.Path]::GetFileName($file))"}
 [IO.File]::WriteAllText((Join-Path $package 'SHA256SUMS.txt'),($checksums -join "`n")+"`n")
 $notes=@"
 AnimalTown $version development build from commit $commit.
@@ -88,6 +90,8 @@ For Swiss/GC Loader SD-card storage, download **AnimalTown-$version.nkit.iso** a
 
 **AnimalTown-$version.iso** remains available as the full-size canonical ISO for archival and fallback use. Both disc images are published directly, without ZIP wrappers. Choose one image download; you do not need both on the card. The server is a separate **AnimalTown-server-$version.zip** archive and requires .NET 10 and PostgreSQL. It does not run on the console.
 
+**animal-town-updater.dol** is also embedded in the ISO for the title Update option. Install Swiss and provision HTTPS inputs as described in the updater repository before a hardware update.
+
 version.json records the xx.yy.zz.bb identity and change classification. BUILD.txt records the version and game, engine and SDK revisions. validation-plan.json records the comparison base and selected checks. texture-audit.json records texture source identities, fingerprints and 256-pixel default residency and 128/256/512/1024 model variants. nkit-validation.json records the pinned converter, sizes, per-file hashes and round-trip verification. SHA256SUMS.txt covers both disc images, the archives and manifests.
 
 This is an early playable build, not the completed game. Physical GameCube testing is outstanding. See [implementation status](https://github.com/$Repository/blob/$commit/docs/implementation-status.md) and [build instructions](https://github.com/$Repository/blob/$commit/README.md).
@@ -100,7 +104,7 @@ function InvokeGh([string[]]$Arguments){
     if($LASTEXITCODE -ne 0){throw "GitHub CLI failed: $($Arguments[0]) $($Arguments[1])"}
     return $result
 }
-$assets=@($iso,$nkit,$serverZip,$toolsZip,$cliffsZip,$buildingsZip,(Join-Path $package 'BUILD.txt'),(Join-Path $package 'texture-audit.json'),(Join-Path $package 'validation-plan.json'),(Join-Path $package 'version.json'),(Join-Path $package 'nkit-validation.json'),(Join-Path $package 'SHA256SUMS.txt'))
+$assets=@($iso,$nkit,$updaterDol,$serverZip,$toolsZip,$cliffsZip,$buildingsZip,(Join-Path $package 'BUILD.txt'),(Join-Path $package 'texture-audit.json'),(Join-Path $package 'validation-plan.json'),(Join-Path $package 'version.json'),(Join-Path $package 'nkit-validation.json'),(Join-Path $package 'SHA256SUMS.txt'))
 $existing=& $Gh release view $tag --repo $Repository --json isDraft,targetCommitish,assets 2>$null
 if($LASTEXITCODE -eq 0){
     $release=$existing | ConvertFrom-Json

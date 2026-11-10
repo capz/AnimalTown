@@ -159,3 +159,5 @@ Building and interior gameplay is documented in [building-interiors.md](docs/bui
 A near a doormat enters/exits; C-stick turns the indoor view and L recentres it.
 NPC villagers visit homes and resume their journeys independently of the player's
 location. New exterior/interior models use validated definitions and shared door logic.
+
+The lightweight [title menu](docs/title-menu.md) defers town assets until Start, saves startup debug options in a separate **dev config** memory-card item, and launches the standalone updater through Update.
