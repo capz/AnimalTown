@@ -3,7 +3,7 @@ using System;
 // Both logos use the same real-time deadline, including between-frame loading.
 internal sealed class SplashTiming
 {
-    internal const long Fade=650000,Hold=1200000,Duration=Fade*2+Hold;
+    internal const long Fade=650000,Hold=3000000,Duration=Fade*2+Hold;
     private long elapsed;
     internal bool Complete=>elapsed>=Duration;
     internal bool FullyVisible=>elapsed>=Fade&&elapsed<Fade+Hold;

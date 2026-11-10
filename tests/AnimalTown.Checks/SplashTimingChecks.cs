@@ -8,17 +8,17 @@ internal static class SplashTimingChecks
         timing.Advance(50000);check(timing.Alpha>0&&timing.Alpha<30&&!timing.FullyVisible,"fade starts gradually");
         for(int i=1;i<13;i++)timing.Advance(50000);
         check(timing.Alpha==255&&timing.FullyVisible,"first fade reaches full opacity after 650ms of presentation");
-        for(int i=0;i<23;i++)timing.Advance(50000);
-        check(timing.Alpha==255&&timing.FullyVisible,"logo stays fully visible for its minimum hold");
-        timing.Advance(50000);check(timing.Alpha==255&&!timing.FullyVisible,"hold transitions to fade out");
+        timing.Advance(2999999);
+        check(timing.Alpha==255&&timing.FullyVisible,"logo stays fully visible until the final microsecond of its three-second hold");
+        timing.Advance(1);check(timing.Alpha==255&&!timing.FullyVisible,"exactly three seconds at full visibility transitions to fade out");
         timing.Advance(50000);check(timing.Alpha>0&&timing.Alpha<255&&!timing.Complete,"outgoing logo fades down");
         for(int i=0;i<12;i++)timing.Advance(50000);
         check(timing.Alpha==0&&timing.Complete,"splash completes on black before texture disposal");
         timing.Advance(long.MaxValue);check(timing.Alpha==0&&timing.Complete,"completed splash remains black");
         timing=new SplashTiming();check(timing.Alpha==0&&!timing.Complete,"second logo has an independent fade");
         var first=new SplashTiming();var second=new SplashTiming();
-        first.Advance(1000000);first.Advance(500000);first.Advance(1000000);
-        for(int i=0;i<50;i++)second.Advance(50000);
+        first.Advance(1000000);first.Advance(2300000);first.Advance(1000000);
+        for(int i=0;i<86;i++)second.Advance(50000);
         check(first.Complete&&second.Complete&&first.Alpha==second.Alpha,"different loading/frame costs cannot extend one logo's deadline");
         timing.Advance(long.MaxValue);check(timing.Complete&&timing.Alpha==0,"long stalled frames are bounded safely by the presentation deadline");
     }
