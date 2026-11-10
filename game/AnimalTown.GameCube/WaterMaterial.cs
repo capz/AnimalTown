@@ -9,7 +9,12 @@ internal sealed class WaterMaterial : IDisposable
 {
     private readonly Texture2D baseTexture,ripples,whitecaps,shoreFoam;
     private readonly TevMaterial tev,storm;
-    internal readonly Material Surface;
+    private readonly Material plainSurface;
+    private readonly Material? warpedSurface;
+    private readonly GxEffect? warpedEffect;
+    private readonly Texture2D? distortion;
+    internal bool IndirectWarpAvailable=>warpedSurface!=null;
+    internal Material Surface=>warpedSurface??plainSurface;
     internal readonly Material Storm;
     internal bool RoughOcean;
     internal Material OceanSurface=>RoughOcean?Storm:Surface;
@@ -25,10 +30,10 @@ internal sealed class WaterMaterial : IDisposable
         var program=new TevProgramBuilder();program.AddColor("Highlight",new Color32(196,228,222));
         program.AddStage(TevInput.Zero,TevInput.Raster,TevInput.Texture,TevInput.Zero);
         program.AddStage(TevInput.Previous,TevInput.Constant,TevInput.SecondaryTexture,TevInput.Zero,colorSlot:0);
-        tev=new TevMaterialDefinition(program).Create(baseTexture,ripples);Surface=tev.Material;
-        Surface.Blend=BlendMode.Opaque;Surface.DepthWrite=true;
-        Surface.Sampler=new SamplerState(TextureAddressMode.Repeat,TextureAddressMode.Repeat,TextureFilter.Linear);
-        Surface.SecondarySampler=Surface.Sampler;
+        tev=new TevMaterialDefinition(program).Create(baseTexture,ripples);plainSurface=tev.Material;
+        plainSurface.Blend=BlendMode.Opaque;plainSurface.DepthWrite=true;
+        plainSurface.Sampler=new SamplerState(TextureAddressMode.Repeat,TextureAddressMode.Repeat,TextureFilter.Linear);
+        plainSurface.SecondarySampler=plainSurface.Sampler;
         // Keep shoreline geometry archived. Alpha movement lives entirely in a
         // shared IA8 mask and its GX UV matrix, not dynamic mesh uploads.
         shoreFoam=Texture2D.CreateNative(WaterSurface.TextureSize,WaterSurface.TextureSize,NativeTextureFormat.Ia8,true);
@@ -41,7 +46,24 @@ internal sealed class WaterMaterial : IDisposable
         waves.AddStage(TevInput.Previous,TevInput.Constant,TevInput.SecondaryTexture,TevInput.Zero,colorSlot:0);
         storm=new TevMaterialDefinition(waves).Create(baseTexture,whitecaps);Storm=storm.Material;
         Storm.Blend=BlendMode.Opaque;Storm.DepthWrite=true;Storm.Cull=CullMode.Back;
-        Storm.Sampler=Storm.SecondarySampler=Surface.Sampler;
+        Storm.Sampler=Storm.SecondarySampler=plainSurface.Sampler;
+        // The pinned SDK's native DNEF v2 rejects v3. Probing the immutable
+        // package once before the first frame is safe: keep the proven TEV v2
+        // material as an exact fallback until Hypercube can use DNEF v3.
+        try{
+            warpedEffect=GxEffect.FromPackage(WindWakerWaterEffect.Package(196,228,222,229,245,237));
+        }catch(ArgumentException){
+            warpedEffect=null;
+        }
+        if(warpedEffect!=null){
+            distortion=Texture2D.CreateNative(WaterSurface.TextureSize,WaterSurface.TextureSize,NativeTextureFormat.Rgb565,true);
+            distortion.ReplaceNative(WaterSurface.WarpTexture());
+            warpedSurface=new Material{
+                Effect=warpedEffect,Texture=ripples,SecondaryTexture=distortion,
+                Blend=BlendMode.Opaque,DepthWrite=true,Cull=CullMode.Back,Lighting=LightingMode.Unlit,
+                Sampler=plainSurface.Sampler,SecondarySampler=plainSurface.Sampler
+            };
+        }
         Animate(0);
     }
     internal Color32 Tint(float depth)=>new Color32((byte)(Shallow.R+(Deep.R-Shallow.R)*depth),(byte)(Shallow.G+(Deep.G-Shallow.G)*depth),(byte)(Shallow.B+(Deep.B-Shallow.B)*depth));
@@ -53,7 +75,11 @@ internal sealed class WaterMaterial : IDisposable
     internal void Animate(double seconds)
     {
         baseMotion.RepeatsPerSecond=BaseSpeed;rippleMotion.RepeatsPerSecond=RippleSpeed;
-        baseMotion.Apply(Surface,seconds);rippleMotion.Apply(Surface,seconds,true);
+        baseMotion.Apply(plainSurface,seconds);rippleMotion.Apply(plainSurface,seconds,true);
+        if(warpedSurface!=null){
+            rippleMotion.Apply(warpedSurface,seconds);
+            baseMotion.Apply(warpedSurface,seconds,true);
+        }
         Foam.Color=new Color32(220,241,235,(byte)(70+14*Math.Sin(seconds*1.2)));
         Foam.TextureTransform=new UvTransform(new Vector2(WaterSurface.Scroll(seconds,.032f),WaterSurface.Scroll(seconds,-.058f)),new Vector2(1.10f,1.10f));
         if(RoughOcean){
@@ -61,5 +87,8 @@ internal sealed class WaterMaterial : IDisposable
             Storm.SecondaryTextureTransform=new UvTransform(new Vector2(WaterSurface.Scroll(seconds,-.055f),WaterSurface.Scroll(seconds,.12f)),new Vector2(1.05f,.85f));
         }
     }
-    public void Dispose(){storm.Dispose();tev.Dispose();whitecaps.Dispose();shoreFoam.Dispose();ripples.Dispose();baseTexture.Dispose();}
+    public void Dispose(){
+        warpedEffect?.Dispose();storm.Dispose();tev.Dispose();
+        distortion?.Dispose();whitecaps.Dispose();shoreFoam.Dispose();ripples.Dispose();baseTexture.Dispose();
+    }
 }
