@@ -23,6 +23,8 @@ internal static class Program
         DevConfigStorage.ApplyGlobal(config);
         StartupSplash.Run();
         if(!TitleScreen.Run(config))return 0;
+        AnimalTown.GameCube.NativeTexturePages.Collect();
+        DebugOverlay.WriteLine("ANIMALTOWN TITLE RELEASED native bytes "+GraphicsDevice.Default.NativeBytes);
         DebugOverlay.WriteLine("ANIMALTOWN GAME START");
         if(!Aram.Initialize(2*1024*1024))throw new InvalidOperationException("Audio ARAM reservation failed");
         var game=new TownGame(config);

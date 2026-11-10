@@ -42,6 +42,13 @@ internal static class TextureCache
     internal static CachedTexture? Find(string source,bool atlas)
     {for(int i=0;i<entries.Length;i++){var e=entries[i];if(e!=null&&e.Source==source&&e.Atlas==atlas){e.References++;e.LastUse=++clock;Hits++;return e;}}return null;}
     internal static void Release(CachedTexture source){if(source.References<1)throw new InvalidOperationException("Texture lease released twice");source.References--;}
+    // Mode transitions must return released splash/title pages to MEM1 even
+    // when the cache's own byte limit has not been reached. Models and terrain
+    // share that physical memory without charging this texture-only budget.
+    internal static void TrimUnused()
+    {
+        for(int i=0;i<entries.Length;i++)if(entries[i]!=null&&entries[i]!.References==0){Dispose(entries[i]!);entries[i]=null;Evictions++;}
+    }
     internal static CachedTexture Store(CachedTexture entry)
     {
         if(GraphicsDevice.Default.IsFrameActive)throw new InvalidOperationException("Load textures between frames");
