@@ -91,7 +91,7 @@ For Swiss/GC Loader SD-card storage, download **AnimalTown-$version.nkit.iso** a
 
 **AnimalTown-$version.iso** remains available as the full-size canonical ISO for archival and fallback use. Both disc images are published directly, without ZIP wrappers. Choose one image download; you do not need both on the card. The server is a separate **AnimalTown-server-$version.zip** archive and requires .NET 10 and PostgreSQL. It does not run on the console.
 
-**animal-town-updater.dol** is also embedded in the ISO for the title Update option. Install Swiss and provision HTTPS inputs as described in the updater repository before a hardware update.
+**animal-town-updater.dol** is also embedded in the ISO for the title Update option. For that option, name the installed game `/AnimalTown.iso` on GC Loader; place `/swiss.dol` alongside it and provision HTTPS inputs as described in the updater repository before updating.
 
 version.json records the main major.minor.patch version, merged PR boundaries and source commit (branch builds append +hash). BUILD.txt records the version and game, engine and SDK revisions. validation-plan.json records the comparison base and selected checks. texture-audit.json records texture source identities, fingerprints and 256-pixel default residency and 128/256/512/1024 model variants. nkit-validation.json records the pinned converter, sizes, per-file hashes and round-trip verification. SHA256SUMS.txt covers both disc images, the archives and manifests.
 
