@@ -21,14 +21,40 @@ internal static class WaterSurfaceChecks
         check(WaterSurface.Height==WaterTerrain.RiverHeight,"all water sits on the same plane beneath ground and bridges");
         foreach(bool ripples in new[]{false,true}){
             var texture=WaterSurface.Texture(ripples);check(texture.Length==4096,"each GX I8 map uses exactly four KiB");
-            int at=0,nonzero=0;for(int by=0;by<64;by+=4)for(int bx=0;bx<64;bx+=8)for(int y=by;y<by+4;y++)for(int x=bx;x<bx+8;x++){
+            int at=0,nonzero=0,bright=0;for(int by=0;by<64;by+=4)for(int bx=0;bx<64;bx+=8)for(int y=by;y<by+4;y++)for(int x=bx;x<bx+8;x++){
                 int sample=texture[at++];
                 check(sample==WaterSurface.Sample(x,y,ripples),"GX 8x4 intensity tile order matches logical pattern");
                 check(sample==WaterSurface.Sample(x+64,y-64,ripples),"patterns repeat exactly along both axes");
-                check(ripples?sample<=72:sample>=224,"base stays neutral and subtle; highlight weight stays below thirty percent");
+                check(ripples?sample<=210:sample>=224,"opaque base stays subtle, connected foam retains bounded highlights");
                 if(sample>0)nonzero++;
+                if(sample>96)bright++;
             }
-            if(ripples)check(nonzero>0&&nonzero<4096/8,"sparse curved highlights leave most water undisturbed");
+            if(ripples){
+                check(nonzero>4096/8&&nonzero<4096/2,"periodic cellular contour spans substantial but bounded surface coverage");
+                check(bright>64&&bright<4096/4,"bright connected highlights leave most water colored");
+            }
+        }
+        var shore=WaterSurface.ShoreTexture();
+        check(shore.Length==8192,"IA8 shore texture has alpha and luminance in 4x4 tiled layout");
+        int foamAt=0;bool varying=false;byte initial=shore[0];
+        for(int by=0;by<64;by+=4)for(int bx=0;bx<64;bx+=4)for(int y=by;y<by+4;y++)for(int x=bx;x<bx+4;x++){
+            byte alpha=shore[foamAt++],luma=shore[foamAt++];
+            check(alpha==WindWakerWaterPattern.ShoreAlpha(x,y)&&alpha==WindWakerWaterPattern.ShoreAlpha(x+64,y-64),
+                "shore foam alpha is periodic and GX IA8 tile ordering is deterministic");
+            check(luma==255&&alpha>=80,"shore foam colors stay pale without transparent holes");
+            if(alpha!=initial)varying=true;
+        }
+        check(varying,"shoreline mask moves visible opacity, not RGB");
+        check(WindWakerWaveField.Cells==16&&WindWakerWaveField.EdgeWeight(0,8)==0&&
+              WindWakerWaveField.EdgeWeight(8,8)==1&&WindWakerWaveField.EdgeWeight(17,8)==0,
+              "small rough-water patch fades into the immutable surrounding sea");
+        foreach(double time in new[]{0.0,1,3600,86400,1e8}){
+            float flat=WindWakerWaveField.Height(130,135,time,0);
+            float lifted=WindWakerWaveField.Height(130,135,time,1);
+            check(Math.Abs(flat-WindWakerWaveField.BaseLift)<.0000001f&&lifted>=flat&&lifted<.22f,
+                "four-component waves stay above the immutable background, including long sessions");
+            check(Math.Abs(WindWakerWaveField.Height(130,135,time+.001,1)-lifted)<.001f,
+                "wave motion is continuous and is independent of tile boundaries");
         }
         foreach(float speed in new[]{.012f,.025f,-.018f,.035f}){
             check(WaterSurface.Scroll(0,speed)==0,"animation starts at authored UVs");
