@@ -18,6 +18,9 @@ hexadecimal characters of the **actual feature-head commit**. They never predict
 the next patch, count feature commits, or use GitHub's synthetic test-merge hash.
 A stale feature branch still uses the current main snapshot fetched for that build.
 Pushing more commits to a PR changes only its hash while main stays unchanged.
+Version configuration comes from the selected main commit, so editing it on a
+feature branch cannot alter that PR's numeric version. The one-time adoption PR
+uses its new schema-2 checkpoint while main still has the legacy schema.
 
 Only change the frozen baseline or major/minor components at the user's explicit
 request. Conventional titles such as `feat:`, `fix:` and `docs:` remain useful for
@@ -76,6 +79,8 @@ the full console/backend prerelease with the source-head hash suffix. Fork PRs
 run read-only policy checks, without publishing access. Rebase older feature
 branches onto main after adopting this policy so their version tools and
 configuration use schema 2.
+New PR heads cancel obsolete PR builds; main releases are serialized and are
+not canceled by newer main pushes.
 
 Main merge builds publish the numeric version, including documentation-only PRs.
 The regular path-based validation planner still selects relevant suites;

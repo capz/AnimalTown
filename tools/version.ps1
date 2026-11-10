@@ -59,13 +59,6 @@ function Get-BuildVersion {
     )
     $PSNativeCommandUseErrorActionPreference=$false
     $Root=(Resolve-Path -LiteralPath $Root).Path
-    $configPath=Join-Path $Root 'version.json'
-    $config=Get-Content -LiteralPath $configPath -Raw|ConvertFrom-Json
-    if($config.schema -ne 2 -or $config.baseCommit -cnotmatch '^[0-9a-f]{40}$'){throw 'Invalid version.json schema/baseCommit'}
-    foreach($field in @('major','minor','patch')){
-        $value=$config.$field
-        if(($value -isnot [long] -and $value -isnot [int]) -or $value -lt 0 -or $value -gt [int]::MaxValue){throw "Invalid version.json counter: $field"}
-    }
     $commit=Invoke-VersionGit $Root @('rev-parse','HEAD')
     if($commit -cnotmatch '^[0-9a-f]{40}$'){throw 'Invalid source commit'}
     if(!$BuildKind){$BuildKind=$env:ANIMALTOWN_VERSION_BUILD_KIND}
@@ -75,11 +68,25 @@ function Get-BuildVersion {
     if(!$MainRef){$MainRef=if($BuildKind -eq 'main'){'HEAD'}else{'refs/remotes/origin/main'}}
     $mainCommit=Invoke-VersionGit $Root @('rev-parse',"${MainRef}^{commit}")
     if($BuildKind -eq 'main' -and $mainCommit -cne $commit){throw 'A main build must resolve the checked-out main commit'}
+    $configText=Invoke-VersionGit $Root @('show',"${mainCommit}:version.json")
+    $config=$configText|ConvertFrom-Json
+    $policySource='main'
+    # The adoption PR introduces schema 2 before main contains it. After that
+    # one migration, branch edits can never change main's numeric identity.
+    if($config.schema -eq 1){
+        $configText=(Get-Content -LiteralPath (Join-Path $Root 'version.json') -Raw).Trim()
+        $config=$configText|ConvertFrom-Json;$policySource='migration'
+    }
+    if($config.schema -ne 2 -or $config.baseCommit -cnotmatch '^[0-9a-f]{40}$'){throw 'Invalid version.json schema/baseCommit'}
+    foreach($field in @('major','minor','patch')){
+        $value=$config.$field
+        if(($value -isnot [long] -and $value -isnot [int]) -or $value -lt 0 -or $value -gt [int]::MaxValue){throw "Invalid version.json counter: $field"}
+    }
     $null=Invoke-VersionGit $Root @('merge-base','--is-ancestor',$config.baseCommit,$mainCommit)
     $history=@((Invoke-VersionGit $Root @('rev-list','--first-parent',"$($config.baseCommit)..$mainCommit")) -split '\n'|Where-Object {$_})
     $firstParent=@((Invoke-VersionGit $Root @('rev-list','--first-parent',$mainCommit)) -split '\n')
     if($config.baseCommit -cnotin $firstParent){throw 'Version baseline must be on main first-parent history'}
-    $hash=(Get-FileHash -LiteralPath $configPath -Algorithm SHA256).Hash
+    $hash=[Convert]::ToHexString([Security.Cryptography.SHA256]::HashData([Text.Encoding]::UTF8.GetBytes($configText)))
     $contextPath=Join-Path $Root 'out/version-context.json'
     if($PSBoundParameters.ContainsKey('MergedPullRequests')){$merges=@($MergedPullRequests)}
     else{
@@ -109,7 +116,7 @@ function Get-BuildVersion {
     $isMain=$BuildKind -eq 'main'
     $version=if($isMain){$baseVersion}else{"$baseVersion+$bb"}
     $dirty=[bool](Invoke-VersionGit $Root @('status','--porcelain','--untracked-files=normal'))
-    [pscustomobject]@{schema=2;version=$version;tag="v$version";baseVersion=$baseVersion;major=$config.major;minor=$config.minor;patch=$patch;bb=$bb;commit=$commit;mainCommit=$mainCommit;isMain=$isMain;dirty=$dirty;baseCommit=$config.baseCommit;changes=$changes;canPublish=(!$isMain -or $commit -ceq $config.baseCommit -or $commit -cin @($changes.commit))}
+    [pscustomobject]@{schema=2;version=$version;tag="v$version";baseVersion=$baseVersion;major=$config.major;minor=$config.minor;patch=$patch;bb=$bb;commit=$commit;mainCommit=$mainCommit;policySource=$policySource;isMain=$isMain;dirty=$dirty;baseCommit=$config.baseCommit;changes=$changes;canPublish=(!$isMain -or $commit -ceq $config.baseCommit -or $commit -cin @($changes.commit))}
 }
 function Write-VersionMetadata {
     param($Version,[string]$Root)
