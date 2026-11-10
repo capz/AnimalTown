@@ -12,6 +12,7 @@ internal sealed class StartupSplash : IDisposable
     private readonly GraphicsDevice device=GraphicsDevice.Default;
     private readonly Draw2D ui;
     private Texture2D? texture;
+    private bool whiteBackground;
 
     private StartupSplash()
     {ui=new Draw2D(device,new Draw2DOptions{Width=640,Height=480,ScaleMode=CanvasScaleMode.Fit,VertexCapacity=12});}
@@ -41,6 +42,7 @@ internal sealed class StartupSplash : IDisposable
         // Previous EndFrame completed GX_DrawDone. No frame/pass is active here.
         texture?.Dispose();texture=null;
         texture=LoadTexture("dvd:/splash-"+name+".dndtex");
+        whiteBackground=name=="dolphindotnet";
         NativeTexturePages.Collect();
         DebugOverlay.WriteLine("ANIMALTOWN SPLASH "+name+" native bytes "+texture.NativeBytes);
     }
@@ -54,7 +56,9 @@ internal sealed class StartupSplash : IDisposable
     {
         long start=Clock.Timestamp;
         Controller.Update(); // Consume splash input; it cannot open the title menu.
-        device.BeginFrame(new Color32(0,0,0));
+        // Clear the whole display, including areas outside the fitted canvas.
+        // DolphinDotNet's black mark fades against white without a boxed border.
+        device.BeginFrame(whiteBackground?new Color32(255,255,255):new Color32(0,0,0));
         ui.Begin();
         ui.DrawTexture(texture!,new RectF(0,0,384,256),new RectF(32,48,576,384),new Color32(255,255,255,timing.Alpha));
         ui.End();device.EndFrame();

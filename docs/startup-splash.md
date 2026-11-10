@@ -10,6 +10,11 @@ next displayed frame; the timeline catches up instead of lengthening the sequenc
 Input during the sequence is
 consumed; the player must press A again on the title screen.
 
+DolphinDotNet uses a solid white background across the entire display, including
+the margins outside the fitted logo canvas. Its black logo fades in from white
+and back out to white. The display then switches to black for the Hypercube
+presentation, whose logo fades against black. Both keep the same timings.
+
 Both PNG files in `assets/textures/splash` are exactly 384 x 256, matching the
 supplied DolphinDotNet image. The Hypercube design has been downsampled without
 stretching, with its navy gradient and floor glow replaced by flat RGB(0,0,0)
