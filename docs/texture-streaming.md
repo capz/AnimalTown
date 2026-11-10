@@ -114,3 +114,11 @@ checks, exact source texture hashes after cold/warm model cycles, DVD/ARAM CRC a
 read failures, and ASan/UBSan. The managed cylinder sweep has maximum placement
 error below 0.0001 m. Native Dolphin results and release identities are recorded
 separately; host checks do not establish physical DVD frame-time performance.
+
+Native release validation and screenshots are recorded in
+[texture-streaming-a39b6211f733](performance/texture-streaming-a39b6211f733/README.md).
+The warm six-villager room uses 21.47 / 24 MiB MAIN versus 23.35 MiB previously;
+repeat and reuse-switch views match exactly. A separate 950-frame travel capture
+has no loading/missing flags. The report distinguishes startup work, doorway
+telemetry gaps, cache/pose cases without measured savings and hardware work still
+outstanding.

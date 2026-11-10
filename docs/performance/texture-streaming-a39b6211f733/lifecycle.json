@@ -1,0 +1,129 @@
+{
+  "scenario": {
+    "source_card_sha256": "fdf357ad6fa95eeca0bebe13cb28847fe0724350e6a145bff9ad9f0077f79abe",
+    "two_house_entry_exit_cycles": true,
+    "six_villagers_in_one_room_fixture": true,
+    "reuse_ab": true,
+    "sustained_walk": true,
+    "explicit_save": true,
+    "card_unchanged_before_explicit_save": true
+  },
+  "logo_texture_kib": {
+    "title": 1524,
+    "after_retirement": 1012,
+    "freed": 512
+  },
+  "room_region": [
+    170,
+    80,
+    440,
+    315
+  ],
+  "room_rgb_sha256": "af906eb9be28b5d2f68d9351901a496873d21dd3939806e41aa48e565078054f",
+  "repeated_room_differing_channels": 0,
+  "inspector_early_prefetch": {
+    "observed_frames": 180,
+    "elapsed_frames": 180,
+    "unreadable_frames": 0,
+    "moving_frames": 1,
+    "frame_interval_ms": {
+      "median": 16.6,
+      "p95": 17.8,
+      "max": 17.8
+    },
+    "preparation_ms": {
+      "median": 0.2,
+      "p95": 3.1,
+      "max": 4.4
+    },
+    "terrain_stages": 0,
+    "mesh_creates": 1,
+    "mesh_updates": 0,
+    "mesh_releases": 8,
+    "loading_missing_recovery_frames": 0,
+    "gc_collections": 0,
+    "draw_api_texture_operations": 0,
+    "shadow_page_updates": 20
+  },
+  "inspector_prewarm_teleport_and_first_entry": {
+    "observed_frames": 365,
+    "elapsed_frames": 388,
+    "unreadable_frames": 23,
+    "moving_frames": 1,
+    "frame_interval_ms": {
+      "median": 16.6,
+      "p95": 17.6,
+      "max": 17.8
+    },
+    "preparation_ms": {
+      "median": 0.3,
+      "p95": 2.1,
+      "max": 4.4
+    },
+    "terrain_stages": 0,
+    "mesh_creates": 1,
+    "mesh_updates": 0,
+    "mesh_releases": 8,
+    "loading_missing_recovery_frames": 0,
+    "gc_collections": 0,
+    "draw_api_texture_operations": 0,
+    "shadow_page_updates": 28
+  },
+  "ordinary_approach_before_entry": {
+    "observed_frames": 126,
+    "elapsed_frames": 126,
+    "unreadable_frames": 0,
+    "moving_frames": 2,
+    "frame_interval_ms": {
+      "median": 16.6,
+      "p95": 17.8,
+      "max": 17.8
+    },
+    "preparation_ms": {
+      "median": 0.2,
+      "p95": 2.8,
+      "max": 4.4
+    },
+    "terrain_stages": 0,
+    "mesh_creates": 0,
+    "mesh_updates": 0,
+    "mesh_releases": 0,
+    "loading_missing_recovery_frames": 0,
+    "gc_collections": 0,
+    "draw_api_texture_operations": 0,
+    "shadow_page_updates": 2
+  },
+  "ordinary_approach_and_second_entry": {
+    "observed_frames": 400,
+    "elapsed_frames": 424,
+    "unreadable_frames": 24,
+    "moving_frames": 2,
+    "frame_interval_ms": {
+      "median": 16.6,
+      "p95": 17.6,
+      "max": 17.8
+    },
+    "preparation_ms": {
+      "median": 0.7,
+      "p95": 2.0,
+      "max": 4.4
+    },
+    "terrain_stages": 0,
+    "mesh_creates": 0,
+    "mesh_updates": 0,
+    "mesh_releases": 0,
+    "loading_missing_recovery_frames": 0,
+    "gc_collections": 0,
+    "draw_api_texture_operations": 0,
+    "shadow_page_updates": 10
+  },
+  "method": "Single software-rendered Dolphin capture; guest counters have 0.1 ms resolution; intervals include stationary frames. Early-prefetch markers can precede complete restoration. Entry endpoints span every required restore and the scene transition, but doorway fades obscure some encoded frames. Those gaps are reported, not counted as passing timing samples. Draw API counters do not include ARAM model/texture byte copies.",
+  "reuse_fixed_view_differing_channels": {
+    "texture-lists-off": 0,
+    "texture-placement-off": 0,
+    "texture-poses-off": 0,
+    "texture-poses-on": 0,
+    "texture-placement-on": 0,
+    "texture-reuse-on": 0
+  }
+}

@@ -1,0 +1,73 @@
+{
+  "commit": "a39b6211f733d76811e45d95f65073a38bf6621f",
+  "version": "0.13.9.a39b6211f733",
+  "release": "https://github.com/capz/AnimalTown/releases/tag/v0.13.9.a39b6211f733",
+  "environment": "Dolphin, software OpenGL, DSP HLE, standard 24 MiB; not physical GameCube/DVD",
+  "main_mib": {
+    "baseline_same_fixture_warm": 23.35,
+    "warm": 21.47,
+    "capacity": 24,
+    "warm_reduction": 1.88,
+    "warm_headroom": 2.53,
+    "note": "Rounded physical MAIN values from the SDK overlay; not peak allocation measurements. Outdoor screenshot follows exit before every age-based eviction settles."
+  },
+  "aram_mib": {
+    "baseline": 13.78,
+    "current": 12.18,
+    "capacity": 16
+  },
+  "texture_hud": {
+    "warm_kib": 3092,
+    "promotions": 15,
+    "dvd_max_read_ms": 90,
+    "longest_read_frames": 7,
+    "cumulative_texture_work_max_us": 15273,
+    "note": "Cumulative work maximum includes startup. The 1 ms admission deadline is not a hard single-quantum bound. This room fixture recorded zero ARAM texture-cache hits and zero currently shared skin bytes; host fixtures separately prove hit/corruption handling and exact shared-pose savings."
+  },
+  "checks": {
+    "gameplay_render_texture": 2841109,
+    "rendering_services": 324925,
+    "native_models": 13,
+    "unique_images": 9,
+    "exact_cold_warm_cycles": 5,
+    "native_fault_asan_ubsan": "passed",
+    "static_placement_max_error_m": 3.8146973e-05,
+    "physical_DVD_GameCube": "outstanding"
+  },
+  "disc": {
+    "sourceBytes": 1459978240,
+    "compactBytes": 93001728,
+    "dolAndApploaderUnchanged": true,
+    "sourceSha256": "3f95cc4252f4d144f575e56a8354660ec81c64c18c6bafa08b6c872c424e956b",
+    "compactSha256": "3331ad6a5443ca8743a72eef6e0673466bf50aee2ca88cd27a01c3b8b9d4e31e",
+    "roundTripSha256": "3f95cc4252f4d144f575e56a8354660ec81c64c18c6bafa08b6c872c424e956b",
+    "roundTripVerified": true
+  },
+  "published_full_iso": {
+    "bytes": 1459978240,
+    "sha256": "3f95cc4252f4d144f575e56a8354660ec81c64c18c6bafa08b6c872c424e956b",
+    "publishedFullIsoVerified": true
+  },
+  "clean_same_commit_console_backend": true,
+  "screenshots": {
+    "asset-interior-first.png": "ef5ae261393d1f8f59b9c4da3ab472499e55b9e2ef3e50b8989316706f0a6954",
+    "asset-interior-sharp.png": "6495f74a564e3b13cf59343d912d5a95fd8755b5ec6026c43df9c70b899f7b82",
+    "asset-interior-rotated.png": "1df21e8bcf2d70a40059213d196550aa07e0f2448c9d9ab2b41562486a034f64",
+    "asset-sdk-interior-warm.png": "6a5e4c04ebbdcc23bc262c65d372c4e8578e0c1c51e5a6d24334d9a638c05d92",
+    "asset-sdk-outside-cold.png": "bcf381b863e769ad16887493018d8f06adf637f6db797c6dd7f70abca5c342b8",
+    "texture-lists-off.png": "76fb9f0d688b3bf2654b8d84db6da7b96aeb13ff408a77b678fce58a3456d2a8",
+    "texture-poses-off.png": "f4ba04bfb540558ea1c8a7fa1f442a02d17672d8d17b81c751264a4023f4e074",
+    "texture-reuse-on.png": "f3f0fb35f2124106f21d49d54b73288d891e3e2592c028c72d4aad0851f079c7",
+    "texture-manual-save.png": "6fd0f192040edf49e02a879d057a938e11b313eead0e98fd461ce5a6a3140450"
+  },
+  "captures": {
+    "out/texture-final-native/user/Dump/Frames/AMTE01_2026-11-10_03-15-54_0.avi": {
+      "bytes": 875140350,
+      "sha256": "22cc4ac10b2eaa7c982c7793d7a7fd3c5457c65e329764412142a34fdc4e2f8c"
+    },
+    "out/texture-final-travel/user/Dump/Frames/AMTE01_2026-11-10_03-24-05_0.avi": {
+      "bytes": 409451390,
+      "sha256": "33d1605e0d5f1a8a6f61c0811a9073b8e1a961eb290e02f2498d2e497736af48"
+    }
+  }
+}
