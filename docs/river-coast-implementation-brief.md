@@ -28,6 +28,6 @@ changes outside the repository.
 
 ## Versioning and delivery
 
-Use the branch's `xx.yy.zz.bb` workflow. `xx` remains 0: the user's earlier “use 1” referred to the water-height option, not a major-version request. Features use `feat:` and fixes use `fix:`; counters are independent. Read AGENTS.md and docs/versioning.md.
+Use the current incremental version workflow in AGENTS.md and docs/versioning.md. Major remains 0: the user's earlier “use 1” referred to the water-height option, not a major-version request. Every merged PR increments patch once; feature builds use current main plus their source hash.
 
 Existing open PRs: #1 is the original scrolling-water material; #2 is versioning. This branch contains their changes for implementation convenience. Do not merge PRs or push main without user authorization. Complete the approved changes on the handoff branch, run the relevant checks, commit, push, open/update a review PR and publish matching development build artifacts. Report physical hardware validation honestly.
