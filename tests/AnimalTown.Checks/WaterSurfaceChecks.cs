@@ -45,6 +45,27 @@ internal static class WaterSurfaceChecks
             if(alpha!=initial)varying=true;
         }
         check(varying,"shoreline mask moves visible opacity, not RGB");
+        var warpTex=WaterSurface.WarpTexture();
+        check(warpTex.Length==WaterSurface.TextureSize*WaterSurface.TextureSize*2,
+            "indirect GX RGB565 mask is a single eight KiB native texture");
+        int w=0;bool differentWarp=false;ushort firstWarp=WaterSurface.WarpSample(0,0);
+        for(int by=0;by<64;by+=4)for(int bx=0;bx<64;bx+=4)
+            for(int y=by;y<by+4;y++)for(int x=bx;x<bx+4;x++){
+                ushort actual=(ushort)((warpTex[w++]<<8)|warpTex[w++]);
+                check(actual==WaterSurface.WarpSample(x,y),"RGB565 displacement follows GX native tile order");
+                check(actual==WaterSurface.WarpSample(x+64,y-64),"indirect displacement repeats exactly across tiles");
+                if(actual!=firstWarp)differentWarp=true;
+            }
+        check(differentWarp,"warp map has independent animated displacement components");
+        var indirect=WindWakerWaterEffect.Package(196,228,222,229,245,237);
+        check(indirect.Length==208&&indirect[0]=='D'&&indirect[1]=='N'&&indirect[2]=='E'&&indirect[3]=='F',
+            "water program has bounded native DNEF envelope");
+        check(indirect[4]==3&&indirect[8]==4&&indirect[12]==3&&indirect[16]==2&&indirect[20]==76,
+            "v3 program supplies two bound textures, two colors and one warp stage");
+        check(indirect[176+15]==0&&indirect[176+23]==2&&indirect[176+31]==0,
+            "second foam sample uses alternate UV while epilogue returns to base alpha");
+        check(indirect[64]==196&&indirect[65]==228&&indirect[66]==222&&indirect[100]==229,
+            "water pattern colors are independent configurable TEV constants");
         check(WindWakerWaveField.Cells==16&&WindWakerWaveField.EdgeWeight(0,8)==0&&
               WindWakerWaveField.EdgeWeight(8,8)==1&&WindWakerWaveField.EdgeWeight(17,8)==0,
               "small rough-water patch fades into the immutable surrounding sea");
