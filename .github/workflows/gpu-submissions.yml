@@ -93,7 +93,8 @@ jobs:
           import hashlib,shutil
           root=Path('out/submit-evidence');root.mkdir(parents=True,exist_ok=True)
           for label in ['base','candidate','seed']:
-              for p in Path('out/submit-'+label+'-run').glob('*'):
+              run=Path('out/submit-seed' if label=='seed' else 'out/submit-'+label+'-run')
+              for p in run.glob('*'):
                   if p.suffix in ['.png','.txt','.json'] or p.name=='emulator.log':shutil.copy2(p,root/('gpu-submit-'+label+'-'+p.name))
               report=Path('out/submit-'+label+'-report.json')
               if report.exists():shutil.copy2(report,root/('gpu-submit-'+label+'-report.json'))

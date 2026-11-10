@@ -38,7 +38,7 @@ static inline void town_shadow_ground(const DndDrawVertex *v,const uint16_t *ix,
     int mode=animaltown_shadows_mode();if((mode!=1&&mode!=3)||count<3)return;
     int a=0,b=1,c=2;
     for(int i=0;i+2<count;i+=3){a=ix?ix[i]:i;b=ix?ix[i+1]:i+1;c=ix?ix[i+2]:i+2;if(v[a].color&255u)break;}
-    /* Every cached ground batch belongs to one 8x4m section. A triangle's
+    /* Every cached ground batch belongs to one 8x8m shadow page. A triangle's
      * interior identifies its 8m page even when a vertex lies on its border. */
     float factor=(mode==3?4.f:2.f)/3;
     town_shadow_apply((v[a].u+v[b].u+v[c].u)*factor,(v[a].v+v[b].v+v[c].v)*factor,NULL,mat->effect,bindings);
