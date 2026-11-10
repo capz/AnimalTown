@@ -8,6 +8,6 @@ internal static class ModelResources
     {
         int edge=AnimalTown.TexturePolicy.Edge(resolution);
         int budget=edge<=256?3*1024*1024:edge==512?8*1024*1024:16*1024*1024;
-        return Model.LoadAsync(AnimalTown.TexturePolicy.ModelPath(name,resolution),default,budget);
+        return Model.LoadAsync(TextureStreaming.ModelPath(name,resolution),default,budget);
     }
 }

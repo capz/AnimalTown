@@ -51,6 +51,7 @@ internal sealed class TerrainRenderer
     internal int BuiltThisFrame {get;private set;}
     internal int MaterialRevision {get;private set;}
     internal int SeasonOverride=-1;
+    internal bool DeferSeasonChanges;
     internal bool GroundMipmaps=true;
     internal int GroundMipDistance;
     private bool appliedGroundMipmaps;
@@ -70,7 +71,7 @@ internal sealed class TerrainRenderer
     internal void Prepare(GameState state,int room,int month,VillagerShadows movingShadows,long deadline,bool cliffPreview=false)
     {
         BuiltThisFrame=UrgentStages=0;
-        int next=TerrainTiles.Season(month,SeasonOverride>=0?SeasonOverride:forced);bool changed=next!=season;
+        int next=TerrainTiles.Season(month,SeasonOverride>=0?SeasonOverride:forced);if(DeferSeasonChanges&&season>=0)next=season;bool changed=next!=season;
         if(changed){
             string name="floor-"+TerrainTiles.SeasonName(next);data=File.ReadAllBytes("dvd:/"+name+".bin");FloorStrips.Validate(data);
             for(int i=0;i<textures.Length;i++)if(textures[i]!=null){TextureCache.Release(textures[i]!);textures[i]=null;materials[i].Texture=null;}

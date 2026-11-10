@@ -23,8 +23,8 @@ internal static class Program
         var game=new TownGame();long previous=Clock.Timestamp;double accumulator=0;
         while(true)
         {
-            game.AdvanceLoading();
-            FrameProfile.Begin();long simulation=FrameProfile.Start();
+            FrameProfile.Begin();game.BeginAssetsFrame();game.AdvanceLoading();
+            long simulation=FrameProfile.Start();
             long now=Clock.Timestamp;accumulator+=(now-previous)/1000000.0;previous=now;if(accumulator>.1334)accumulator=.1334;
             Controller.Update();var pad=Controller.GetState(0);game.Input(pad);
             while(accumulator>=1.0/30){game.Step(pad);accumulator-=1.0/30;}
@@ -40,6 +40,7 @@ internal sealed class TownGame
     private readonly TownClock townClock=new TownClock();
     private readonly RenderDebugOptions renderDebug=new RenderDebugOptions();
     private readonly AssetResidency assetResidency=new AssetResidency();
+    private bool pendingManualSave;
     private readonly VillagerAttentionRenderer attention=new VillagerAttentionRenderer();
     private readonly DebugWeather weather=new DebugWeather();
     private readonly RainRenderer rain=new RainRenderer();
@@ -84,7 +85,7 @@ internal sealed class TownGame
     private float profiledX=float.NaN,profiledZ;
     private long cachedWallet=long.MinValue,cachedDebt=long.MinValue;
     private string walletLabel="",debtLabel="";
-    private string profileNativeLabel="",profileShadowLabel="",profileAssetLabel="";
+    private string profileNativeLabel="",profileShadowLabel="",profileAssetLabel="",profileTextureLabel="",profileTextureIoLabel="",profileReuseLabel="";
     private int profileLabelFrames=30;
     private readonly string[] creationRows=new string[6];
     private int creationSpecies=-1,creationPalette=-1,creationSelected=-1;
@@ -118,7 +119,7 @@ internal sealed class TownGame
     private int buildingInspection;
     private int pendingInspection;
     private int pendingUv=-1;
-    private const int SettingsTab=5,TestingTab=6,TestingRows=24;
+    private const int SettingsTab=5,TestingTab=6,TestingRows=31;
     private static readonly string[] tabs={"Backpack","Jobs","Catalog","Home","Post office","Settings","Debug / testing"};
     private static readonly string[] itemActions={"Drop","Place (R rotates)","Plant","Eat","Wear","Equip","Bury","Open money bag","Read","Quit"};
     internal TownGame()
@@ -144,23 +145,30 @@ internal sealed class TownGame
         trees=new LowPolyTrees(worldRoot);terrain=new TerrainRenderer();villagerShadows=new VillagerShadows();
         if(NativeShadows.Init(GroundShadow.Atlas(),VillagerShadowPatch.Texture())!=1)throw new InvalidOperationException("Shadow union native budget");
         NativeRim.Enable(RenderDebugOptions.DefaultRimPercent);NativeRim.Enable(0);
+        TextureStreaming.Initialize();
+    }
+    internal void BeginAssetsFrame()
+    {
+        TextureStreaming.Begin(!resourcesReady);
+        if(pendingManualSave&&!TextureStreaming.Reading){pendingManualSave=false;SaveNow();}
     }
     internal void AdvanceLoading()
     {
         if(resourcesReady||loadingFailed)return;
         try{
+            if(!TextureStreaming.BasesReady){loadingLabel="Loading minimum texture detail";return;}
             assetResidency.Prepare(state,villagers.Doors,true,startup:true);
             terrain.WarmCliffs(state.Town,Clock.Timestamp+1000);
             if(loadingIndex<models.Length){
                 if(loadingModel==null){loadingLabel="Loading "+modelNames[loadingIndex];loadingModel=ModelResources.LoadAsync(modelNames[loadingIndex]);return;}
                 if(!loadingModel.IsCompleted)return;
-                var model=loadingModel.GetAwaiter().GetResult();models[loadingIndex]=model;assetResidency.Register(loadingIndex,model,TexturePolicy.ModelPath(modelNames[loadingIndex]));
-                actors[loadingIndex+1]=model.CreateInstance(512*1024);attention.Register(loadingIndex,actors[loadingIndex+1]);if(model.TryGetAnimation("Walking",out var clip))animationClock.Step(loadingIndex+1,0,false);
+                var model=loadingModel.GetAwaiter().GetResult();models[loadingIndex]=model;assetResidency.Register(loadingIndex,model,TextureStreaming.ModelPath(modelNames[loadingIndex]));
+                actors[loadingIndex+1]=model.CreateInstance(512*1024);if(NativeTextures.PoseRegister(loadingIndex+1,loadingIndex,actors[loadingIndex+1].NativeBytes)!=1)throw new InvalidOperationException("Actor pose registration");attention.Register(loadingIndex,actors[loadingIndex+1]);if(model.TryGetAnimation("Walking",out var clip))animationClock.Step(loadingIndex+1,0,false);
                 loadingModel=null;loadingIndex++;return;
             }
             bool complete=buildings.AdvanceLoading();loadingLabel=buildings.LoadingLabel;if(!complete)return;
             if(!assetResidency.Backed){loadingLabel="Caching town models";return;}
-            buildings.Begin(villagers.Doors);
+            buildings.Begin(villagers.Doors,state);
             for(int actor=0;actor<BuildingWorld.Actors;actor++){
                 var location=BuildingWorld.Location(state,actor);if(location.Space.IsTown)continue;int building=BuildingWorld.Building(location.Space.Value);
                 if(!buildings.Ready(state.BuildingTypes[building])){BuildingWorld.Entrance(state,building,out float rx,out float rz);BuildingWorld.SetLocation(state,actor,new ActorLocation(0,rx,rz+1,0));saveStatus="A home is unavailable; its occupants are outside.";}
@@ -179,7 +187,7 @@ internal sealed class TownGame
         FrameProfile.Draw(ui);ui.End();device.EndFrame();
     }
     private void SelectSpecies()
-    { if(actors[0]!=null)actors[0].Dispose();actors[0]=models[state.Species].CreateInstance(512*1024);moveClip=-1;animationClock.Reset(0);appliedClips[0]=-2; }
+    { if(actors[0]!=null)actors[0].Dispose();actors[0]=models[state.Species].CreateInstance(512*1024);if(NativeTextures.PoseRegister(0,state.Species,actors[0].NativeBytes)!=1)throw new InvalidOperationException("Player pose registration");moveClip=-1;animationClock.Reset(0);appliedClips[0]=-2; }
     private void LoadSave()
     {
         try
@@ -199,6 +207,11 @@ internal sealed class TownGame
     {
         if(screen!="menu"||menuTab!=SettingsTab||selected!=0)return;
         if(damagedSave){saveStatus="Damaged saves preserved. Use another card.";return;}
+        if(TextureStreaming.Reading){pendingManualSave=true;saveStatus="Waiting for the current disc read";return;}
+        SaveNow();
+    }
+    private void SaveNow()
+    {
         string previousScreen=screen;screen="saving";Draw();screen=previousScreen;
         string phase="mount";
         try
@@ -391,6 +404,7 @@ internal sealed class TownGame
     }
     private void TestingAction()
     {
+        if(selected>=24){TextureStreaming.Toggle(1<<(selected-24));return;}
         switch(selected){
             case 0:FrameProfile.Enabled=!FrameProfile.Enabled;break;
             case 1:ToggleModelPath();break;
@@ -435,6 +449,7 @@ internal sealed class TownGame
     private static string OnOff(bool value)=>value?"On":"Off";
     private string TestingLabel(int row)
     {
+        if(row>=24){string name=row==24?"Texture streaming":row==25?"Model deeper mipmaps":row==26?"Reviewed texture formats":row==27?"Texture ARAM cache":row==28?"Cached object placement":row==29?"GX geometry lists":"Shared exact poses";return name+": "+OnOff(TextureStreaming.Enabled(1<<(row-24)));}
         switch(row){
             case 0:return "Performance display: "+OnOff(FrameProfile.Enabled);
             case 1:return "Model drawing: "+(indexedModels?"GX indexed":"Direct comparison");
@@ -536,11 +551,13 @@ internal sealed class TownGame
     private void UpdateAnimationFrame()
     {
         long start=FrameProfile.Start();
-        for(int i=0;i<7;i++){
+        if(NativeTextures.PoseBatch(1)!=1)throw new InvalidOperationException("Pose batch frame ownership");
+        try{for(int i=0;i<7;i++){
             bool visible=actorVisibility.Visible[i]&&assetResidency.Ready(i==0?state.Species:i-1);float seconds=animationClock.Consume(i,visible);
             // Clip controls can reskin too. Defer every native animation call,
             // including Stop/Play/speed changes, until this actor can be drawn.
             if(!visible)continue;
+            if(NativeTextures.PoseActor(i)!=1)throw new InvalidOperationException("Visible pose actor missing");
             int clip=animationClock.Clip(i);
             if(restartClips[i]||appliedClips[i]!=clip){
                 restartClips[i]=false;
@@ -552,6 +569,7 @@ internal sealed class TownGame
             if(i==0&&clip>=0&&appliedPlayerSpeed!=desiredPlayerSpeed){actors[0].Animator.SetSpeed(desiredPlayerSpeed);appliedPlayerSpeed=desiredPlayerSpeed;}
             if(seconds>0){actors[i].Update(seconds);FrameProfile.AnimationUpdates++;}
         }
+        }finally{if(NativeTextures.PoseBatch(0)!=1)throw new InvalidOperationException("Could not evaluate visible poses");}
         FrameProfile.End(1,start);
     }
     private void ReadCalendar(){int date=NativeCalendar.Read();day=date&0x1ffff;month=(int)((uint)date>>17);townClock.Update(NativeCalendar.ReadClock());}
@@ -587,7 +605,11 @@ internal sealed class TownGame
     private void ModelAt(int actor)
     {
         if(!actorVisibility.Visible[actor]||!assetResidency.Ready(actor==0?state.Species:actor-1)){FrameProfile.CulledObjects++;return;}
-        var location=actorVisibility.Locations[actor];float x=location.X,z=location.Z,scale=1.8f,facing=actor==0?facingYaw:location.Yaw;
+        var location=actorVisibility.Locations[actor];
+        var center=SurfacePoint(location.X,location.Z,.9f);
+        int detail=actor==0||screen=="dialogue"?256:room==0?RenderView.ProjectedPixels(center.Y,center.Z,1.8f,state.Z,cachedPlayerHeight):indoorCamera.ProjectedPixels(location.X,.9f,location.Z,1.8f,BuildingWorld.Size(state,room));
+        TextureStreaming.Request(actor==0?state.Species:actor-1,detail);
+        float x=location.X,z=location.Z,scale=1.8f,facing=actor==0?facingYaw:location.Yaw;
         var pose=batchedDrawing?modelPoses[modelUsed++]:transform;pose.LocalPosition=SurfacePoint(x,z);pose.LocalScale=new Vector3(scale,scale,scale);pose.LocalRotation=SurfaceRotation(z,facing);
         if(batchedDrawing){actorQueue.Submit(actors[actor],pose);}else{NativeRim.Enable((lighting&1)!=0?renderDebug.RimPercent:0);try{renderer.DrawModel(actors[actor],pose);}finally{NativeRim.Enable(0);}}
     }
@@ -606,7 +628,7 @@ internal sealed class TownGame
     }
     internal void Draw()
     {
-        if(!resourcesReady){DrawLoading();return;}
+        if(!resourcesReady){DrawLoading();if(!loadingFailed)try{TextureStreaming.Advance(true);}catch(Exception){loadingFailed=true;loadingLabel="Could not read minimum texture data. Check the disc.";}return;}
         if(screen!="title"&&wordmark!=null){TextureCache.ReleaseAndDiscard(wordmark);wordmark=null;DebugOverlay.WriteLine("TITLE LOGO RELEASED");}
         long assetAt=FrameProfile.Start();
         try{assetResidency.Prepare(state,villagers.Doors,screen=="title"||screen=="create"||pendingInspection!=0||waterInspection!=0||pendingUv>=0||uvDebug!=0);}
@@ -617,10 +639,13 @@ internal sealed class TownGame
         float x=state.X,z=state.Z;
         try{if(waterInspection!=0)WaterInspection.Focus(state,waterInspection);DrawScene();}
         finally{state.X=x;state.Z=z;}
+        long texturesAt=FrameProfile.Start();
+        try{TextureStreaming.Advance(screen!="saving"&&!pendingManualSave);}catch(Exception){resourcesReady=false;loadingFailed=true;loadingLabel="Could not restore required texture data. Check the disc.";}
+        FrameProfile.End(2,texturesAt);
     }
     private void DrawScene()
     {
-        terrain.RoughOcean=weather.RoughOcean(room);terrain.SeasonOverride=renderDebug.SeasonOverride;
+        terrain.RoughOcean=weather.RoughOcean(room);terrain.DeferSeasonChanges=TextureStreaming.Reading;terrain.SeasonOverride=renderDebug.SeasonOverride;
         terrain.GroundMipmaps=renderDebug.GroundMipmaps;terrain.GroundMipDistance=renderDebug.GroundMipDistance;
         cachedPlayerHeight=PlayerHeight();if(room==0)RenderView.Prepare(state.X,state.Z,cachedPlayerHeight);
         if(room!=0)indoorCamera.Configure(BuildingWorld.Definition(state,BuildingWorld.Building(room)));
@@ -642,7 +667,7 @@ internal sealed class TownGame
         float eyeHeight=PlayerHeight();
         if(room==0)camera.LookAt(new Vector3(state.X,CylinderWorld.CameraHeight+eyeHeight,state.Z+CylinderWorld.CameraBack),new Vector3(state.X,eyeHeight,state.Z-CylinderWorld.CameraAimAhead),new Vector3(0,1,0));
         else{float size=BuildingWorld.Size(state,room);indoorView.LookAt(new Vector3(indoorCamera.EyeX(size),indoorCamera.EyeY(size),indoorCamera.EyeZ(size)),new Vector3(size*.5f,.7f,size*.5f),new Vector3(0,1,0));}
-        renderer.Begin3D(room==0?camera:indoorView);buildings.Begin(villagers.Doors);FrameProfile.End(4,phase);
+        renderer.Begin3D(room==0?camera:indoorView);buildings.Begin(villagers.Doors,state);FrameProfile.End(4,phase);
         phase=FrameProfile.Start();if(room==0){terrain.Draw(renderer,terrain.ScrollTransform,room);}else buildings.Interior(renderer,state,worldRoot,indoorCamera,villagers.Doors);
         FrameProfile.End(4,phase);phase=FrameProfile.Start();
         if(room==0)
@@ -658,7 +683,7 @@ internal sealed class TownGame
                 if(!IsTree(g))Box(g.X+.25f,y+.02f,g.Z+.25f,.5f,g.Kind==1?.03f:.25f,.5f,g.Kind==1?new Color32(105,81,54):g.Kind==2?new Color32(242,174,170):new Color32(229,190,82));
             }
             if(batchedDrawing)boxes.Flush();FrameProfile.End(3,groundAt);
-            for(int building=0;building<BuildingWorld.Count;building++)buildings.Exterior(renderer,state,building,villagers.Doors);
+            for(int building=0;building<BuildingWorld.Count;building++)buildings.Exterior(renderer,state,building,villagers.Doors);buildings.Flush(renderer);
             if(state.HousePlaced)
             {
                 int w=GameState.GardenWidths[state.GardenTier],h=GameState.GardenHeights[state.GardenTier];
@@ -727,11 +752,11 @@ internal sealed class TownGame
     private void DrawTrees()
     {
         // Generated low-poly meshes share native geometry and indexed GX draws.
-        long selectionAt=FrameProfile.Start();
+        long selectionAt=FrameProfile.Start();trees.Prepare(state.Town,state.Z);
         for(int n=0;n<visibleTrees.Length;n++){visibleTrees[n]=-1;treeDistances[n]=float.MaxValue;}
         for(int i=0;i<state.Town.GroundCount;i++)
         {
-            var g=state.Town.Ground[i];if(!IsTree(g)||!Visible(g.X,g.Z,g.Kind==2?.75f:3))continue;
+            var g=state.Town.Ground[i];if(!IsTree(g)||!trees.Visible(state.Town,i,state.X,state.Z,cachedPlayerHeight))continue;
             float dx=g.X-state.X,dz=g.Z-state.Z,d=dx*dx+dz*dz;
             for(int n=0;n<visibleTrees.Length;n++)if(d<treeDistances[n])
             {for(int j=visibleTrees.Length-1;j>n;j--){visibleTrees[j]=visibleTrees[j-1];treeDistances[j]=treeDistances[j-1];}visibleTrees[n]=i;treeDistances[n]=d;break;}
@@ -800,8 +825,8 @@ internal sealed class TownGame
     {
         var ink=new Color32(49,72,62);
         if(FrameProfile.Enabled){
-            if(++profileLabelFrames>=30){profileLabelFrames=0;profileNativeLabel="Native: "+NativeShadows.Stats(9)+" slots / "+NativeShadows.Stats(10)/1024+" KiB";profileShadowLabel=(room==0&&terrain.GroundRingActive?"Ring / ":"")+"Shadows: "+NativeShadows.Stats(0)+" pages / "+NativeShadows.Stats(2)+" updated";profileAssetLabel="Assets: "+NativeAssetResidency.Stats(1)+" cold / "+NativeAssetResidency.Stats(2)/1024+" KiB / "+NativeAssetResidency.Stats(5)+" restores / "+NativeAssetResidency.Stats(9)+" us max";}
-            Text(profileAssetLabel,42,20,room==0?ink:new Color32(255,245,221),.9f);
+            if(++profileLabelFrames>=30){profileLabelFrames=0;profileTextureLabel="Textures: "+NativeTextures.Stats(1)/1024+" KiB / "+NativeTextures.Stats(5)+" upgrades / "+TextureStreaming.WorstMicroseconds+" us max";profileTextureIoLabel="DVD: "+NativeTextures.Stats(7)+" reads / "+Dolphin.Storage.AssetStream.ReadStat(6)/1000+" ms / "+TextureStreaming.LongestReadFrames+" frames max / ARAM "+NativeTextures.Stats(15)+" hits";profileReuseLabel="Reuse: "+NativeTextures.Stats(33)+" lists / "+NativeTextures.Stats(41)+" poses / "+NativeTextures.Stats(44)/1024+" KiB skin shared";profileNativeLabel="Native: "+NativeShadows.Stats(9)+" slots / "+NativeShadows.Stats(10)/1024+" KiB";profileShadowLabel=(room==0&&terrain.GroundRingActive?"Ring / ":"")+"Shadows: "+NativeShadows.Stats(0)+" pages / "+NativeShadows.Stats(2)+" updated";profileAssetLabel="Assets: "+NativeAssetResidency.Stats(1)+" cold / "+NativeAssetResidency.Stats(2)/1024+" KiB / "+NativeAssetResidency.Stats(5)+" restores / "+NativeAssetResidency.Stats(9)+" us max";}
+            Text(profileAssetLabel,42,20,room==0?ink:new Color32(255,245,221),.9f);Text(profileTextureLabel,42,34,room==0?ink:new Color32(255,245,221),.85f);Text(profileTextureIoLabel,42,48,room==0?ink:new Color32(255,245,221),.8f);Text(profileReuseLabel,42,62,room==0?ink:new Color32(255,245,221),.8f);
             Text(indexedModels?(batchedDrawing?"GX indexed / batched":"GX indexed / baseline"):(batchedDrawing?"Direct / batched":"Direct / baseline"),420,397,ink,.8f);
             Text(profileNativeLabel,420,408,ink,.55f);
             Text(profileShadowLabel,420,419,ink,.55f);

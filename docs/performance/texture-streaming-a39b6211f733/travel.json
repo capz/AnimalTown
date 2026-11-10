@@ -1,0 +1,24 @@
+{
+  "scenario": {
+    "source_card_sha256": "fdf357ad6fa95eeca0bebe13cb28847fe0724350e6a145bff9ad9f0077f79abe",
+    "card_unchanged": true,
+    "four_running_directions": true,
+    "sdk_overlay": false
+  },
+  "method": "Separate unobscured outdoor capture; checksummed guest telemetry, 0.1 ms timing resolution. Not physical DVD performance.",
+  "sustained_walk": {
+    "frames": 950,
+    "moving_frames": 297,
+    "loading_missing_recovery_frames": 0,
+    "frame_interval_ms": {
+      "median": 16.6,
+      "p95": 16.6,
+      "max": 16.6
+    },
+    "preparation_ms": {
+      "median": 0.2,
+      "p95": 1.8,
+      "max": 3.2
+    }
+  }
+}

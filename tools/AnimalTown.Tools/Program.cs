@@ -26,6 +26,9 @@ static class Program
             else if(args[0]=="town-preview")TownGenerationPreview.Run(args[2],int.Parse(args[3]),args.Length>4?int.Parse(args[4]):1);
             else if(args[0]=="terrain-primitives")TerrainPrimitiveAssets.Build(Root,args.Length>2?int.Parse(args[2]):128);
             else if(args[0]=="repack-check")TextureRepackerChecks.Run(Root);
+            else if(args[0]=="banks-check")TextureBanks.Check();
+            else if(args[0]=="texture-banks")TextureBanks.Build(Root);
+            else if(args[0]=="prepared-floors")PreparedFloors.Build(Root);
             else if(args[0]=="audit")Audit();
             else if(args[0]=="prepare")Prepare(args[2],args[3]);
             else if(args[0]=="art")Art();
@@ -100,7 +103,7 @@ static class Program
     static void Art()
     {
         string dir=Path.Combine(Root,"out/disc");Directory.CreateDirectory(dir);
-        BrandAssets.Build(Root);RepeatFloorAssets.Build(Root);TerrainCliffAssets.CookTexture(Root);
+        BrandAssets.Build(Root);RepeatFloorAssets.Build(Root);TerrainCliffAssets.CookTexture(Root);PreparedFloors.Build(Root);
         byte[] image=Banner(96);File.WriteAllBytes(Path.Combine(dir,"savebanner.rgb5a3"),image);File.WriteAllBytes(Path.Combine(dir,"saveicon.rgb5a3"),Banner(32));
     }
     static void Disc(string dolPath,string commit)

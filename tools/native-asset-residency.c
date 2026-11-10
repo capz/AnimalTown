@@ -2,6 +2,9 @@
  * use the same ARAM channel afterward. Immutable models are backed and verified
  * before eviction; verified immutable bytes reuse validated native metadata. */
 #include "dnd_model_internal.h"
+#ifdef ANIMALTOWN_TEXTURE_STREAM
+#include "native-texture-stream.h"
+#endif
 #include "dnd_aram.h"
 #include "dnd_draw.h"
 #include "dnd_storage.h"
@@ -26,7 +29,7 @@ typedef struct {
     int token,store,hold,age,phase,restoring,file,disabled,fatal;
     DndModel *model;
     unsigned length,offset,hash;
-    int metadata,work,texture_kind;
+    int metadata,work,texture_kind,disc_pending;
     unsigned *links,texture_base,block_base,texture,cursor,search,instance;
     char path[192];
 } Asset;
@@ -59,7 +62,11 @@ static int capture_metadata(Asset *a,DndModel *m){
     if(start>m->length||bytes>m->length-start||bytes<4||dnd_model_u32(m->package+start)!=m->textures)return 0;
     unsigned at=start+4;
     for(unsigned i=0;i<m->textures;i++){
-        if(at>start+bytes||start+bytes-at<28||dnd_model_u32(m->package+at+24)!=m->texture[i].size)return 0;
+        if(at>start+bytes||start+bytes-at<28)return 0;
+#ifdef ANIMALTOWN_TEXTURE_STREAM
+        if(dnd_model_u32(m->package+4)==3){if(start+bytes-at<32)return 0;unsigned id=dnd_model_u32(m->package+at+24),hash=dnd_model_u32(m->package+at+28);if(!town_texture_identity(id,dnd_model_u32(m->package+at),dnd_model_u32(m->package+at+4),hash))return 0;a->links[n++]=id;a->links[n++]=hash;at+=32;continue;}
+#endif
+        if(dnd_model_u32(m->package+at+24)!=m->texture[i].size)return 0;
         at+=28;if(m->texture[i].size>start+bytes-at)return 0;
         a->links[n++]=at;if(!animaltown_assets_texture_hash(m,i,a->links+n++))return 0;at+=m->texture[i].size;
     }
@@ -86,7 +93,11 @@ int animaltown_assets_capture(int slot,int expected,int hold,DndString *path){
     if(!stage){int next_stage=dnd_buffer_create(QUANTUM,32);if(!next_stage)return 0;if(dnd_buffer_hold(next_stage)){(void)dnd_draw_release(next_stage);return 0;}stage=next_stage;}
     next.model=model;next.token=model->token;next.length=model->length;next.hold=hold;next.hash=FNV;
     if(hold>=0&&!capture_metadata(&next,model)){drop_metadata(&next);return 0;}
-    model->refs++;assets[slot]=next;return 1;
+    model->refs++;assets[slot]=next;
+#ifdef ANIMALTOWN_TEXTURE_STREAM
+    town_texture_model(slot,model);
+#endif
+    return 1;
 }
 int animaltown_assets_forget(int slot){
     if(dnd_device_active()||slot<0||slot>=ASSETS)return 0;
@@ -95,7 +106,11 @@ int animaltown_assets_forget(int slot){
     if(a->file)dnd_fs_close(a->file);
     if(a->restoring)animaltown_assets_abort(m);
     if(active_restore==slot)active_restore=-1;
-    drop_store(a);drop_metadata(a);memset(a,0,sizeof(*a));dnd_model_release(m);return 1;
+    drop_store(a);drop_metadata(a);memset(a,0,sizeof(*a));
+#ifdef ANIMALTOWN_TEXTURE_STREAM
+    town_texture_model(slot,NULL);
+#endif
+    dnd_model_release(m);return 1;
 }
 int animaltown_assets_state(int slot){
     if(slot<0||slot>=ASSETS||!assets[slot].token)return 0;
@@ -107,7 +122,11 @@ static int dma(Asset *a,unsigned count,int write){
     if(dnd_aram_begin_native(a->store,(int)a->offset,stage,0,(int)bytes,write))return 0;
     int rc;do{rc=dnd_aram_poll_native();}while(!rc);
     if(rc!=1)return 0;
-    transferred+=bytes;return 1;
+    transferred+=bytes;
+#ifdef ANIMALTOWN_TEXTURE_STREAM
+    town_texture_aram_used();
+#endif
+    return 1;
 }
 static void fail_backup(Asset *a){drop_store(a);a->disabled=1;a->phase=0;a->offset=0;failures++;}
 static int disc_recovery(Asset *a){
@@ -122,6 +141,12 @@ static int disc_recovery(Asset *a){
 }
 static int restore_step(Asset *a,unsigned char *buffer){
     DndModel *m=a->model;
+#ifdef ANIMALTOWN_TEXTURE_STREAM
+    if(a->file&&town_texture_io_busy())return 1;
+    if(a->file&&a->offset==a->length&&dnd_model_u32(m->staged+4)==3){
+        for(unsigned i=0;i<m->textures;i++){int ready=town_texture_minimum(a->links[a->texture_base+i*2]);if(ready<0)return -2;if(!ready)return 1;}
+    }
+#endif
     if(!a->restoring){
         if(!animaltown_assets_stage_begin(m))return 0;
         a->restoring=1;a->offset=0;a->hash=FNV;a->work=0;
@@ -156,6 +181,9 @@ static int restore_step(Asset *a,unsigned char *buffer){
     if(a->work==1){
         if(a->texture==m->textures){a->work=2;return 1;}
         unsigned index=a->texture,source=a->links[a->texture_base+index*2],hash=a->links[a->texture_base+index*2+1];
+#ifdef ANIMALTOWN_TEXTURE_STREAM
+        if(dnd_model_u32(m->staged+4)==3){int ready=town_texture_acquire(m->texture+index,source);if(ready<0)return -2;if(ready)a->texture++;return 1;}
+#endif
         if(!a->texture_kind){a->texture_kind=animaltown_assets_texture_begin(m,index,hash,a->search);if(!a->texture_kind)return -2;return 1;}
         unsigned count=m->texture[index].size-a->cursor;if(count>QUANTUM)count=QUANTUM;
         int result=animaltown_assets_texture_step(m,index,source,a->cursor,count,a->texture_kind==2);
@@ -181,6 +209,9 @@ int animaltown_assets_advance(DndArray *priorities,int startup){
     for(int i=0;i<ASSETS;i++){
         Asset *a=&assets[i];if(!a->token)continue;
         if(want[i])a->age=0;else if(a->age<INT_MAX)a->age++;
+#ifdef ANIMALTOWN_TEXTURE_STREAM
+        if(want[i])animaltown_textures_demand(i,0,want[i]);
+#endif
     }
     if(active_restore>=0&&(!assets[active_restore].token||assets[active_restore].fatal))active_restore=-1;
     if(active_restore>=0&&want[active_restore]<2){
@@ -207,16 +238,28 @@ int animaltown_assets_advance(DndArray *priorities,int startup){
         if(!m||m->closed||!buffer)return -1;
         unsigned count;
         if(!m->ready){
-            active_restore=chosen;int64_t begin=dnd_timing_now();int result=restore_step(a,buffer);
+            active_restore=chosen;
+#ifdef ANIMALTOWN_TEXTURE_STREAM
+            if(a->disc_pending){if(town_texture_io_busy())return 0;a->disc_pending=0;(void)disc_recovery(a);return 1;}
+#endif
+            int64_t begin=dnd_timing_now();int result=restore_step(a,buffer);
             unsigned elapsed=(unsigned)(dnd_timing_now()-begin);if(elapsed>max_restore_us)max_restore_us=elapsed;
             if(result<0){
                 failures++;
-                if(result==-1&&!a->file)(void)disc_recovery(a);
+                if(result==-1&&!a->file){
+#ifdef ANIMALTOWN_TEXTURE_STREAM
+                    if(town_texture_io_busy())a->disc_pending=1;else
+#endif
+                    (void)disc_recovery(a);
+                }
                 else{if(a->file){dnd_fs_close(a->file);a->file=0;}animaltown_assets_abort(m);a->restoring=0;a->fatal=1;active_restore=-1;}
             }else if(result==2){invalidate_model_cache();dnd_draw_backend_publish_texture();restores++;active_restore=-1;}
         }else{
             if(!a->store){
                 a->store=dnd_aram_allocate((int)((a->length+31u)&~31u));
+#ifdef ANIMALTOWN_TEXTURE_STREAM
+                if(!a->store){town_texture_reclaim_aram();a->store=dnd_aram_allocate((int)((a->length+31u)&~31u));}
+#endif
                 if(!a->store||dnd_aram_retain(a->store)){fail_backup(a);return 1;}
                 a->phase=1;a->offset=0;a->hash=FNV;
             }

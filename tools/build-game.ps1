@@ -25,6 +25,7 @@ function RunNative([string]$Directory,[string]$Command,[string[]]$Arguments){
     }
 }
 Run dotnet @('build', 'tools/AnimalTown.Tools', '-c', 'Release', '-v', 'quiet')
+if('banks' -in $validation.tooling){Run dotnet @('run','--project','tools/AnimalTown.Tools','-c','Release','--no-build','--','banks-check',$projectRoot)}
 if('repack' -in $validation.tooling){Run dotnet @('run','--project','tools/AnimalTown.Tools','-c','Release','--no-build','--','repack-check',$projectRoot)}
 if('terrain' -in $validation.tooling){Run dotnet @('run','--project','tools/AnimalTown.Tools','-c','Release','--no-build','--','terrain-check',$projectRoot)}
 if('nkit' -in $validation.tooling){Run dotnet @('run','--project','tools/AnimalTown.Tools','-c','Release','--no-build','--','nkit-check',$projectRoot)}
@@ -75,6 +76,8 @@ if (!$SkipAssets) {
         }
     }
 }
+Run dotnet @('run','--project','tools/AnimalTown.Tools','-c','Release','--no-build','--','texture-banks',$projectRoot)
+if('stream' -in $validation.native){RunNative '.' 'python3' @('tests/texture-stream-fixture.py')}
 $buildingNativeParts=@((Get-Content out/building-assets.json -Raw|ConvertFrom-Json -AsHashtable).Keys|Sort-Object|ForEach-Object{"out/disc/$($_)-tex128.dndmodel"})
 RunNative '.' 'sh' (@('-c','cc -std=c11 -Wall -Wextra -Werror -ffunction-sections -fdata-sections -Iout/sdk-native/include tests/native-building-assets.c out/sdk-native/source/model.c out/sdk-native/source/model_animation.c -Wl,--gc-sections -lm -o /tmp/animaltown-building-assets && /tmp/animaltown-building-assets "$@"','building-assets')+$buildingNativeParts)
 $actorWindingParts=@('fox','bunny','giraffe','cat','hamster','spaniel'|ForEach-Object{"out/disc/$($_)-tex128.dndmodel"})
