@@ -1,0 +1,37 @@
+name: Water renderer PR validation
+
+on:
+  push:
+    branches: [feat/wind-waker-water-rendering]
+  pull_request:
+    paths:
+      - 'game/AnimalTown.GameCube/Water*.cs'
+      - 'game/AnimalTown.GameCube/LocalOceanWaves.cs'
+      - 'game/AnimalTown.GameCube/TerrainRenderer.cs'
+      - 'shared/AnimalTown.Domain/Water*.cs'
+      - 'shared/AnimalTown.Domain/WindWaker*.cs'
+      - 'tests/AnimalTown.Checks/WaterSurfaceChecks.cs'
+      - '.github/workflows/water-renderer-pr.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  managed:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: |
+            8.0.x
+            10.0.x
+      - name: Restore pinned SDK and engine
+        run: dotnet restore game/AnimalTown.GameCube/AnimalTown.GameCube.csproj --locked-mode
+      - name: Compile GameCube renderer against pinned SDK
+        run: dotnet build game/AnimalTown.GameCube/AnimalTown.GameCube.csproj -c Release --no-restore
+      - name: Water and terrain regression checks
+        run: dotnet run --project tests/AnimalTown.Checks -c Release -- --suites terrain
+      - name: Rendering and geometry regression checks
+        run: dotnet run --project tests/AnimalTown.RenderingChecks -c Release
