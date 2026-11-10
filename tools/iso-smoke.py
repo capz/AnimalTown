@@ -477,7 +477,7 @@ if '--profile' in sys.argv or '--interaction-profile' in sys.argv or '--runtime-
     config.write_text(config.read_text().replace('DumpCodec = ffv1','DumpCodec = ffv1\nDumpEncoder = ffv1\nDumpPixelFormat = bgr0'))
 (user/'Config'/'Logger.ini').write_text('[Options]\nWriteToFile = True\nVerbosity = 4\n[Logs]\nBOOT = True\nOSREPORT = True\nDVDINTERFACE = True\n')
 env=dict(os.environ,DISPLAY=':93',QT_QPA_PLATFORM='xcb')
-xvfb=subprocess.Popen(['Xvfb',':93','-screen','0','800x600x24'],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
+xvfb=subprocess.Popen(['Xvfb',':93','-nocursor','-screen','0','800x600x24'],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
 time.sleep(1)
 with (root/'emulator.log').open('w') as log:
     p=subprocess.Popen(['/usr/games/dolphin-emu-nogui','-u',str(user),'-e',str(disc),'-v','OGL'],env=env,stdout=log,stderr=subprocess.STDOUT)
@@ -492,7 +492,7 @@ with (root/'emulator.log').open('w') as log:
         if '--title-menu' in sys.argv:
             title_menu()
         elif '--title-load' in sys.argv:
-            screenshot('title-dev-config-loaded.png');press('A');time.sleep(45);screenshot('title-continued-game.png')
+            screenshot('title-dev-config-loaded.png');press('A');time.sleep(110);screenshot('title-continued-game.png')
         elif '--title-update' in sys.argv:
             press('D_DOWN');press('A');time.sleep(20);screenshot('title-updater.png')
         elif '--submission-seed' in sys.argv:
