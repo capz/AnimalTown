@@ -89,12 +89,15 @@ internal static class BuildingAssets
             var before=ReadMergePart(model,out var sourcePng,out _);var doorData=ReadMergePart(Path.Combine(temp,"assets/models/buildings/cottage_small/door.glb"),out _,out _);
             var combined=ReadMergePart(Path.Combine(temp,"out/derived-buildings/cottage-exterior-closed.glb"),out var mergedPng,out _);
             if(!sourcePng.AsSpan().SequenceEqual(mergedPng)||!combined.Normals.SequenceEqual(before.Normals.Concat(doorData.Normals))||!combined.Uvs.SequenceEqual(before.Uvs.Concat(doorData.Uvs))||!combined.Positions.Take(before.Positions.Count).SequenceEqual(before.Positions))throw new InvalidDataException("Merged building changed original attributes/atlas");
-            for(int i=0;i<doorData.Positions.Count;i++){float expected=doorData.Positions[i]+(i%3==0?.95f:i%3==2?3.02f:0);if(combined.Positions[before.Positions.Count+i]!=expected)throw new InvalidDataException("Merged door lost its hinge pivot");}
+            for(int i=0;i<doorData.Positions.Count;i++){float expected=doorData.Positions[i]+(i%3==0?BuildingCatalog.Get(0).HingeX:i%3==2?BuildingCatalog.Get(0).HingeZ:0);if(combined.Positions[before.Positions.Count+i]!=expected)throw new InvalidDataException("Merged door lost its hinge pivot");}
             Console.WriteLine("Building checks passed: source confinement, explicit IDs, collision frame, sockets, activity/fixture bounds, exit clearance and triangle budgets");
         }finally{Directory.Delete(temp,true);Cook(root);}
     }
     private static void MergeClosed(string exterior,string door,string output,float hingeX,float hingeZ)
     {
+        // Match the 1/1024 m sockets written to buildings.bin and used by
+        // the animated door, including the closed-to-opening handoff.
+        hingeX=(int)(hingeX*1024)/1024f;hingeZ=(int)(hingeZ*1024)/1024f;
         var body=ReadMergePart(exterior,out byte[] atlas,out var template);
         var leaf=ReadMergePart(door,out byte[] doorAtlas,out var doorTemplate);
         foreach(string key in new[]{"materials","textures","samplers"})
