@@ -24,6 +24,10 @@ running within that grace keeps it visible. Menus and interiors hide/reset it.
 The minimap shares the full map's terrain texture and shows the player, home
 and shops with a fixed number of markers. Terrain texture updates remain
 revision-based.
+The terrain fills the running map's rounded, bulging silhouette edge to edge,
+including its convex sides, with only the offset shadow behind it. Markers use
+the same enlarged map coordinates and stay inside the curved edge. The full
+town-map screen retains its existing layout.
 
 The persistent build-number, acorns and loan panels are removed, including the
 title-screen version caption. Build identity remains available through Settings

@@ -889,8 +889,8 @@ internal sealed class TownGame
     }
     private void DrawMinimap()
     {
-        Panel(482,312,138,138);
-        mapBackground.Draw(ui,new RectF(490,320,122,122));
+        Bulged(MapBackground.MinimapLeft+4,MapBackground.MinimapTop+5,MapBackground.MinimapSize,MapBackground.MinimapSize,MapBackground.MinimapRadius,new Color32(49,72,62,130));
+        mapBackground.DrawMinimap(ui);
         MinimapMarker(32,26,new Color32(187,107,71),3);
         MinimapMarker(50,26,new Color32(132,96,155),3);
         if(state.HousePlaced)MinimapMarker(state.Town.HouseX+3,state.Town.HouseZ+3,new Color32(220,182,124),4);
@@ -899,9 +899,8 @@ internal sealed class TownGame
     }
     private void MinimapMarker(float x,float z,Color32 color,float size)
     {
-        float px=490+Math.Max(0,Math.Min(Town.Width,x))*122/Town.Width;
-        float py=320+Math.Max(0,Math.Min(Town.Height,z))*122/Town.Height;
-        ui.FillRectangle(new RectF(px-size*.5f,py-size*.5f,size,size),color);
+        var p=MapBackground.MinimapPosition(x,z);
+        ui.FillRectangle(new RectF(p.X-size*.5f,p.Y-size*.5f,size,size),color);
     }
     private Color32 MapTileColor(int x,int z)
     { return MapBackground.TileColor(state.Town.At(x,z)); }
