@@ -3,8 +3,9 @@
 Outdoor water uses one shared `WaterRenderer` / `WaterMaterial`, with distinct
 persisted inland and sea semantics. `Terrain.Water` (ID 1) means rivers and ponds;
 `Terrain.Sea` (ID 8) means sea and the external ocean. Inland water ground and
-visible opaque surface are exactly 0.50 m below their local elevation. Sea keeps
-the existing -0.06 m offset. Bridges retain the land plane and collision.
+visible opaque surface are exactly 0.50 m below their local elevation. Sea
+uses the same current -0.50 m surface level. Bridges retain their land
+plane and collision.
 
 `TerrainWalls` emits shared soil/lip batches along dry-to-river boundaries,
 including corners. Water cells never emit retaining walls against one another.
@@ -20,11 +21,9 @@ Beach cells touching sea slope to the sea plane and receive a wet-sand tint;
 restrained surface foam supplies the surf edge. New generation permits sea to
 border only water, beach or a facing coastal cliff.
 
-At a mouth, river -0.50 m and sea -0.06 m remain distinct. An opaque, two-sided
-water curtain joins their shared edge over the exact 0.44 m step. Its endpoints
-meet both surface chords and the bank endpoints, closing the estuary without
-flattening the river or adding a soil wall between water cells. This is a stylized
-static tidal step, not a physical flowing-water simulation.
+The river and sea now use the same water elevation. The former 0.44 m
+estuary height step was removed when sea level was unified with rivers.
+This is stylized, static terrain water rather than a physical flow simulation.
 
 The surface has two triangles per visible cell, with world-coordinate UVs (one
 base repeat per four metres). No vertices move for waves. Geometry updates only
@@ -50,7 +49,7 @@ The pinned DolphinDotNet SDK supports two textures, separate UV matrices and GX
 TEV programs directly; no native patch or engine submodule change is needed.
 
 `WaterSurface.Texture` creates two original neutral 64x64 GX I8 patterns once at
-startup: broad low-contrast modulation and sparse curved ripple weights. Each
+startup: broad low-contrast modulation and connected irregular foam/crest weights. Each
 uses 4 KiB, for 8 KiB resident texture data total, without mipmaps. Both repeat
 periodically in two dimensions and use linear filtering. Existing artist source
 images and nine-slice atlases are preserved. No runtime image decoding or texture
@@ -92,6 +91,10 @@ and no depth writes; the water underneath remains fully opaque. Corner strips
 are trimmed to avoid overlapping alpha, and there are no foam edges against
 bridges or the external ocean. Foam interpolates on the water's row chord with
 an 8 mm radial lift, so it does not float above the curved surface.
+A shared 64x64 GX IA8 shoreline mask (8 KiB) supplies moving opacity
+through a per-frame UV matrix; no shoreline vertices are changed.
+The mask repeats seamlessly and scrolls along the bank independently
+of the opaque surface layers.
 
 The floor visibility window bounds selection. Water is limited to 2,048 visible
 cells (4,096 horizontal surface triangles); each cell can add at most four foam quads and four two-sided mouth curtains.
@@ -100,12 +103,59 @@ material transforms/color. Empty geometry is not submitted. The normal scene
 requires one opaque water draw plus one optional foam draw, sharing textures and
 effect across every visible water body. The triangle counter includes both.
 
+## Wind Waker-inspired water (2026-11-10)
+
+The ordinary water material remains compatible with the currently pinned
+DolphinDotNet SDK. `WindWakerWaterPattern.Foam` builds a 64x64 GX I8
+texture with four-by-four periodic jittered Voronoi sites. Smooth periodic
+coordinate warping makes interconnected irregular foam lines; fixed intensity
+is blended by the existing two UV/TEV layers. CPU work happens once at startup.
+`WaterSurface.StormTexture()` preserves the more forceful optional storm
+whitecaps, while shore breakers use the new translucent IA8 mask.
+
+A separate `LocalOceanWaves` is active only for the existing opt-in
+`DebugWeather.RoughOceanWhenRaining` condition near deep water. It checks an
+8x8 m area for pure sea tiles, and then updates a 17x17 vertex / 512-triangle
+grid with four travelling cosine waves. The wave patch is positioned 6 m
+towards the outer sea; the wave amplitude fades over three outer grid cells.
+A 12 mm positive lift from the archived water avoids coincident depth.
+The patch follows the same rigid cylindrical scroll transform and does not
+change archived ARAM terrain or collision. It is a decorative overlay, not
+a replacement for the fixed sea plane. Profiling should verify the cost
+of `DynamicMesh.SetVertices` and possible overlap at its edge.
+
+The GameCube's indirect texture sampling can give more authentic UV warping
+without additional vertex movement. The optional DNEF v3 two-unit warp effect
+is implemented separately in DolphinDotNet PR #162. This game branch does
+**not** call it, because `Capz.Hypercube.GameCube 0.1.0-preview.9.1`
+pins `DolphinDotNet.GameCube 0.1.0-preview.266.1`. Upgrading must preserve
+the package/lockfile and native source checksum contracts; testing a newer
+SDK without an updated Hypercube dependency is not a valid release build.
+
+### Cost model
+
+- Calm river / ocean: no geometry changes and no per-frame image uploads;
+  material UV/opacity updates only.
+- Shoreline: one shared 8 KiB IA8 mask in addition to the existing I8 maps.
+- Rough sea opt-in: 289 vertices and 512 triangles; one small dynamic
+  vertex upload and draw per frame while a pure deep-sea patch is active.
+- DNEF v3 when integrated: two textures, three authored TEV stages plus the
+  automatic opacity stage, and one indirect GX stage.
+
+The normal world remains one batched opaque surface, one sea pass and
+an optional shoreline pass using existing archive-bound mesh views.
+The original `d_a_sea.cpp` source in `zeldaret/tww` informed the
+separation of near-field wave heights from texture-based distant water;
+these masks and numbers are an original AnimalTown approximation, not copied
+Nintendo textures or a bit-identical GameCube pipeline.
+
 ## Verification
 
 `./tools/test-changes.ps1` selects the terrain/core checks for water files. The
 terrain suite covers aliased floor materials, land/bridge exclusion, interior
 transitions, bounded ocean selection, continuous corner depth, periodic GX tile
-packing, ripple density and long-running/negative UV scrolling.
+packing, connected foam density, shoreline IA8 native tile order,
+positive wave displacement and long-running/negative UV scrolling.
 
 Build with `./tools/build-game.ps1`. For the targeted Dolphin check, use a fresh
 output directory/card:
@@ -120,7 +170,10 @@ and return to the world. Inspect `water-a.png`, `water-b.png`, `water-camera.png
 `water-menu.png`, `water-return.png`, and emulator logs for seams, depth/foam edges,
 unchanged geometry and subsequent material state. Pixel animation alone does not
 prove visual quality or distinguish the individual scrolling layers. Physical
-GameCube appearance/performance remains unverified.
+GameCube appearance/performance remains unverified. The existing Dolphin
+water smoke test does not automatically enable rainy-ocean wave mode; inspect
+that mode separately with the in-game debug weather setting and measure it
+against the calm ocean baseline.
 
 ## River/coast inspection
 
