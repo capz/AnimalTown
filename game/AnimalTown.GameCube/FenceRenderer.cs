@@ -26,17 +26,18 @@ internal sealed class FenceRenderer
         int[] ids={0,2,1,0,3,2,4,5,6,4,6,7,0,4,7,0,7,3,1,2,6,1,6,5,3,7,6,3,6,2,0,1,5,0,5,4};
         for(int side=0;side<4;side++){
             starts[side]=count;int posts=side==0?w:side==1?w-1:h-2;
-            var vertices=new VertexPositionColor[posts*36];int used=0;
+            var vertices=new VertexPositionColor[posts*8];var indices=new ushort[posts*36];
             for(int j=0;j<posts;j++){
                 int px=x+(side<2?(side==1&&j>=3?j+1:j):side==2?0:w-1),pz=z+(side==0?0:side==1?h-1:j+1);
                 var p=CylinderWorld.Surface(pz,0,TerrainElevation.At(town,px,pz));
                 centerX[count]=px+.06f;centerY[count]=p.Y+.275f*p.UpY-.06f*p.UpZ;centerZ[count++]=p.Z+.275f*p.UpZ+.06f*p.UpY;
-                for(int i=0;i<36;i++){
-                    int at=ids[i%3==0?i:i%3==1?i+1:i-1]*3;float cy=cube[at+1]*.55f,cz=cube[at+2]*.12f;
-                    vertices[used++]=new VertexPositionColor(new Vector3(px+cube[at]*.12f,p.Y+cy*p.UpY-cz*p.UpZ,p.Z+cy*p.UpZ+cz*p.UpY),Color32.White);
+                for(int i=0;i<8;i++){
+                    int at=i*3;float cy=cube[at+1]*.55f,cz=cube[at+2]*.12f;
+                    vertices[j*8+i]=new VertexPositionColor(new Vector3(px+cube[at]*.12f,p.Y+cy*p.UpY-cz*p.UpZ,p.Z+cy*p.UpZ+cz*p.UpY),Color32.White);
                 }
+                for(int i=0;i<36;i++)indices[j*36+i]=(ushort)(j*8+ids[i%3==0?i:i%3==1?i+1:i-1]);
             }
-            meshes[side]=Mesh.Create(vertices);
+            meshes[side]=Mesh.Create(vertices,indices);
         }
         starts[4]=count;
     }

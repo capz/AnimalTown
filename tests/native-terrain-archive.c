@@ -17,6 +17,7 @@ int main(void){
     for(int i=0;i<12;i++){p[i*9]=i;p[i*9+7]=4+i*.5f;((uint32_t*)v->data)[i*9+6]=i%2?0xffffff00:0xffffffff;ids[i]=(uint16_t)(i%6);}
     int indexed=dnd_mesh_create_range(v,12,ix,12,2,0),plain=dnd_mesh_create_range(v,12,NULL,0,2,0);
     assert(indexed>0&&plain>0&&animaltown_terrain_reset(2)==1);
+    assert(animaltown_terrain_stat(0)==1024*1024+64*1024); /* Original cold MEM1 budget. */
     Resource *source=find(indexed,MESH);unsigned char expected[456];memcpy(expected,source->data,sizeof(expected));
     assert(animaltown_terrain_append(-1,0,indexed,0)==-1);
     assert(animaltown_terrain_append(1,0,indexed,0)==-1);
@@ -58,7 +59,9 @@ int main(void){
     assert(animaltown_terrain_append(0,104,plain,6)==2);
     assert(animaltown_terrain_append(0,3,indexed,0)==3);
     assert(animaltown_terrain_append(0,107,plain,6)==4);
+    int cold_resources=dnd_draw_live();
     assert(animaltown_terrain_complete(0)==1&&animaltown_terrain_info(0,1)==3&&animaltown_terrain_info(0,2)==12);
+    assert(dnd_draw_live()==cold_resources-1&&find(ta_cache,BUFFER)->holds==0); /* Coalescing allocates nothing; stage retires. */
     assert(animaltown_terrain_kind(0)==3&&animaltown_terrain_kind(1)==104&&animaltown_terrain_kind(2)==107);
     view=animaltown_terrain_view();assert(animaltown_terrain_bind(view,0)==1);r=find(view,MESH);
     assert(r->vertices==24&&r->indices==24&&!r->uniform_color);

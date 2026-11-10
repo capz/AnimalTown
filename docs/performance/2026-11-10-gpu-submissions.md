@@ -17,15 +17,18 @@ These changes merge retained geometry instead of expanding indexed vertices in
 | IPL text | Crop to ink plus filter guard; group disjoint glyphs by page | Fewer atlas flushes when safe; retain order of overlaps |
 
 Terrain keeps the 8 MiB ARAM reservation, 1 MiB MEM1 cache, exact source vertex
-attributes and shadow-page/material boundaries. Coalescing uses a temporary
-128 KiB cold staging buffer (previously 64 KiB), released when baking finishes.
+attributes and shadow-page/material boundaries. Coalescing keeps the original 64 KiB staging buffer, released when baking
+finishes. Its output and descriptor scratch borrow the idle MEM1 cache before
+views exist, adding no second staging allocation or static descriptor arrays.
 Pages over 64 KiB or the bounded coalescer limits retain their original parts.
 The conservative visibility oracle still evaluates the original 8×4 m cells,
 then deduplicates their parent pages. Drawing a selected page can submit an extra
 half-page of offscreen triangles. No geometry is built while travelling.
 
 Fences rebuild only for town identity, house placement/relocation, garden tier
-or terrain revision. Visibility is accepted if any original post in a side is
+or terrain revision. Each post shares eight indexed corners, reducing native
+fence geometry from about 66 KiB to 18 KiB at the maximum garden size.
+Visibility is accepted if any original post in a side is
 visible. Extra offscreen posts trade a bounded amount of GPU geometry for fewer
 submissions. Collision and placement stay unchanged.
 
@@ -47,6 +50,12 @@ triangle order, alpha blending and depth testing. Inactive weather has no upload
 `tools/test-changes.ps1 -BaseRef HEAD -NativeInProcess` selects full coverage.
 Local managed, rendering, importer and native checks pass; backend integration
 requires the clean CI database because the managed cloud's Docker disk is full.
+The earlier `f5613a78ab76` preview is not validated for gameplay: native startup
+rejected a water mesh allocation with only 34,664 bytes of fragmented libc heap
+free. The final implementation reuses the idle cache for cold coalescing and
+indexes fence corners, avoiding the added staging/static scratch and redundant
+fence vertices. Budget checks enforce the original 64 KiB staging allocation
+and verify coalescing creates no additional native resources.
 Native archive regression tests compare every merged vertex byte and rebased
 index, separate uniform color/water passes, exercise 10,000 rebinds and verify
 atomic cache exhaustion. Managed tests cover page-oracle coverage, zero travel

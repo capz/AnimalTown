@@ -44,6 +44,20 @@ def submission_scenario():
         segments.append({'name':name,'start_vi':start,'end_vi':end,'guest_seconds':(end-start)*1001/60000,'presentations':len(present),'fps':len(present)*60000/(1001*(end-start)),'frame_ms_p50':percentile(.5),'frame_ms_p95':percentile(.95)})
         (root/'submission-segments.json').write_text(json.dumps({'segments':segments,'clock':'NTSC VI chunks including repeated frames; software Dolphin, not hardware'},indent=2))
         screenshot('submissions-'+name+'.png')
+        if name=='stationary':
+            pixels=subprocess.check_output(['ffmpeg','-v','error','-i',str(root/('submissions-'+name+'.png')),'-frames:v','1','-f','rawvideo','-pix_fmt','rgb24','-'])
+            valid=False
+            for origin in range(20,36):
+                for width in range(570,601):
+                    words=[0]*32
+                    for bit in range(512):
+                        x=origin+int((bit%64+.5)*width/64)
+                        if pixels[((450+bit//64*4)*800+x)*3]>128:words[bit//16]|=1<<(bit%16)
+                    checksum=0
+                    for word in words[:31]:checksum^=word
+                    if words[0]==0x4154 and words[1]==5 and words[31]==checksum and words[30]==0:valid=True;break
+                if valid:break
+            if not valid:raise AssertionError('No valid gameplay telemetry after startup; inspect stationary screenshot')
     press('A');time.sleep(15)
     segment('stationary-profiler-off',6)
     os.write(controller,b'SET MAIN .9 .5\n');segment('walking-profiler-off',3)
