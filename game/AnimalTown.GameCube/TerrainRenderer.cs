@@ -10,7 +10,7 @@ using Hypercube.GameCube;
 internal sealed class TerrainRenderer
 {
     private TerrainArchive? archive;
-    private bool legacy;
+    private bool legacy=false; // Default: immutable ARAM archive and fixed MEM1 views.
     internal TerrainSection CreateSection()=>new TerrainSection(soil,waterMaterial);
     private readonly TerrainStream stream=new TerrainStream();
     private readonly TerrainSection?[] sections=new TerrainSection?[TerrainStream.Capacity];
@@ -36,13 +36,13 @@ internal sealed class TerrainRenderer
     internal int LoadingTotal=>legacy?stream.WantedCount:TerrainArchivePlan.Count;
     internal int MissingVisible=>legacy?stream.MissingVisible:Ready?0:1;
     internal int UrgentStages {get;private set;}
-    internal bool FreezeMotion,RecreateMeshes;
+    internal bool FreezeMotion,RecreateMeshes=false;
     internal CylinderRows Rows=>stream.CylinderRows;
     private byte[] data=new byte[0];
     private int season=-1,forced,slots,cachedTerrainVersion=-1;
     private Town? cachedTown;
     private GroundRingRenderer? groundRing;
-    internal bool GroundRingRequested {get;private set;}
+    internal bool GroundRingRequested {get;private set;}=false; // Legacy comparison only.
     internal int SharedFlatMaterial {get;private set;}=-1;
     internal bool GroundRingActive=>SharedFlatMaterial>=0;
     internal bool GroundRingUploaded=>groundRing?.Uploaded??false;
@@ -50,6 +50,12 @@ internal sealed class TerrainRenderer
     internal int VisibleTriangles,RejectedQuads;
     internal int BuiltThisFrame {get;private set;}
     internal int MaterialRevision {get;private set;}
+    internal int SeasonOverride=-1;
+    internal bool GroundMipmaps=true;
+    internal int GroundMipDistance;
+    private bool appliedGroundMipmaps;
+    private int appliedGroundMipDistance=-1;
+    internal int RenderSeason=>season;
     internal bool ObjectShadowsEnabled {get=>shadows.Enabled;set=>shadows.Enabled=value;}
     internal int GroundSlot(GameState state,int x,int z)=>FloorStrips.At(state,data,x,z,0);
     internal Material GroundMaterial(int slot)=>materials[slot];
@@ -64,7 +70,7 @@ internal sealed class TerrainRenderer
     internal void Prepare(GameState state,int room,int month,VillagerShadows movingShadows,long deadline,bool cliffPreview=false)
     {
         BuiltThisFrame=UrgentStages=0;
-        int next=TerrainTiles.Season(month,forced);bool changed=next!=season;
+        int next=TerrainTiles.Season(month,SeasonOverride>=0?SeasonOverride:forced);bool changed=next!=season;
         if(changed){
             string name="floor-"+TerrainTiles.SeasonName(next);data=File.ReadAllBytes("dvd:/"+name+".bin");FloorStrips.Validate(data);
             for(int i=0;i<textures.Length;i++)if(textures[i]!=null){TextureCache.Release(textures[i]!);textures[i]=null;materials[i].Texture=null;}
@@ -72,12 +78,21 @@ internal sealed class TerrainRenderer
             if(FloorStrips.Read(data,4)==2)waterMaterial.SetTerrainTint(FloorStrips.Tint(data,FloorStrips.Read(data,24+TerrainTiles.Water*20)));
             for(int i=0;i<slots;i++){
                 int source=FloorStrips.TextureSlot(data,i);bool neutral=FloorStrips.Read(data,4)==2&&source==0;
-                if(textures[source]==null)textures[source]=TextureCache.LoadFloor(neutral?"dvd:/floor-outdoor-neutral.dndtex":"dvd:/"+name+"-"+source+".dndtex",repeat:neutral);
+                if(textures[source]==null)textures[source]=TextureCache.LoadFloor(neutral?"dvd:/floor-outdoor-neutral.dndtex":"dvd:/"+name+"-"+source+".dndtex",repeat:neutral,fullMipChain:true);
                 materials[i].Sampler=new SamplerState(neutral?TextureAddressMode.Repeat:TextureAddressMode.Clamp,neutral?TextureAddressMode.Repeat:TextureAddressMode.Clamp);
                 materials[i].Texture=textures[source]!.Pages[0];uint tint=FloorStrips.Tint(data,i);baseTints[i]=materials[i].Color=new Color32((byte)(tint>>24),(byte)(tint>>16),(byte)(tint>>8));
             }
             season=next;
             MaterialRevision++;
+        }
+        if(changed||appliedGroundMipmaps!=GroundMipmaps||appliedGroundMipDistance!=GroundMipDistance){
+            for(int source=0;source<textures.Length;source++)if(textures[source]!=null){
+                var texture=textures[source]!.Pages[0];
+                var wrap=FloorStrips.Read(data,4)==2&&source==0?TextureWrapMode.Repeat:TextureWrapMode.Mirror;
+                bool mip=GroundMipmaps&&texture.MipLevels>1;
+                texture.ConfigureSampler(wrap,wrap,mip?TextureMinFilter.LinearMipmapLinear:TextureMinFilter.Linear,TextureMagFilter.Linear,mip?RenderDebugOptions.GroundMipBias(texture.Width,texture.Height,GroundMipDistance):0);
+            }
+            appliedGroundMipmaps=GroundMipmaps;appliedGroundMipDistance=GroundMipDistance;
         }
         int flat=GroundRingRequested&&!cliffPreview&&FloorStrips.Read(data,4)==2?FloorStrips.Read(data,24):-1;
         if(flat>=0&&FloorStrips.TextureSlot(data,flat)!=0)flat=-1;

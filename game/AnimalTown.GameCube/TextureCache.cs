@@ -77,15 +77,15 @@ internal static class TextureCache
         var loaded=LoadAndDecode(key,path,atlas,resolution);AnimalTown.GameCube.NativeTexturePages.Collect();return loaded;
     }
     private static CachedTexture LoadAndDecode(string key,string path,bool atlas,TextureResolution resolution)=>Decode(key,File.ReadAllBytes(path),atlas,resolution);
-    internal static CachedTexture LoadFloor(string path,TextureResolution resolution=TexturePolicy.Default,bool repeat=false,bool repeatV=true)
+    internal static CachedTexture LoadFloor(string path,TextureResolution resolution=TexturePolicy.Default,bool repeat=false,bool repeatV=true,bool fullMipChain=false)
     {
-        string key=BuildInfo.Commit+":"+path+":floor-mip2-auto-v5:"+(repeat?(repeatV?"repeat:":"repeat-clamp:"):"mirror:")+TexturePolicy.Edge(resolution);
+        string key=BuildInfo.Commit+":"+path+(fullMipChain?":floor-full-mips-v6:":":floor-mip2-auto-v5:")+(repeat?(repeatV?"repeat:":"repeat-clamp:"):"mirror:")+TexturePolicy.Edge(resolution);
         var cached=Find(key,false);if(cached!=null)return cached;
-        var loaded=DecodeFloor(key,path,resolution,repeat,repeatV);AnimalTown.GameCube.NativeTexturePages.Collect();return loaded;
+        var loaded=DecodeFloor(key,path,resolution,repeat,repeatV,fullMipChain);AnimalTown.GameCube.NativeTexturePages.Collect();return loaded;
     }
-    private static CachedTexture DecodeFloor(string key,string path,TextureResolution resolution,bool repeat,bool repeatV)
+    private static CachedTexture DecodeFloor(string key,string path,TextureResolution resolution,bool repeat,bool repeatV,bool fullMipChain)
     {
-        var source=File.ReadAllBytes(path);var package=FloorTexture.Prepare(source,resolution);
+        var source=File.ReadAllBytes(path);var package=FloorTexture.Prepare(source,resolution,fullMipChain);
         var entry=new CachedTexture{Source=key,SourceHash=TexturePixels.Hash(source),SourceWidth=TexturePixels.Width(source),SourceHeight=TexturePixels.Height(source),Pages=new Texture2D[1]};
         try{var texture=Texture2D.FromPackage(package,true);entry.Pages[0]=texture;var wrap=repeat?TextureWrapMode.Repeat:TextureWrapMode.Mirror;texture.ConfigureSampler(wrap,repeat&&!repeatV?TextureWrapMode.Clamp:wrap,texture.MipLevels>1?TextureMinFilter.LinearMipmapLinear:TextureMinFilter.Linear,TextureMagFilter.Linear);}
         catch{Dispose(entry);throw;}

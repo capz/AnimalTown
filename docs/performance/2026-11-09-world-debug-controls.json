@@ -1,0 +1,81 @@
+{
+  "game_commit": "b7a19e9a73350ca603049960e652b4d359e71aa3",
+  "release": "https://github.com/capz/AnimalTown/releases/tag/v0.9.8.b7a19e9a7335",
+  "pull_request": "https://github.com/capz/AnimalTown/pull/24",
+  "ci_run": "https://github.com/capz/AnimalTown/actions/runs/42675260213",
+  "host_checks": {
+    "gameplay_render_texture": 2702371,
+    "rendering_service": 324925,
+    "backend_integration_passed": true,
+    "native_rim_policy_passed": true
+  },
+  "delivery": {
+    "sourceBytes": 1459978240,
+    "compactBytes": 88586240,
+    "sourceSha256": "346362e62db35191abef902891544a8e19ea364e147f3849947b1e2e1963ebdb",
+    "compactSha256": "78a3e1238895cf004dff48adde47b81adad4b3ac38ddf8c45f423ed714dbc5ee",
+    "dolAndApploaderUnchanged": true,
+    "roundTripVerified": true
+  },
+  "indoor_fixture": {
+    "source_card_sha256": "a780d11c1aa99f930c6e17d29b4695c480cd22c99a57c8f3f8d26ca667a35f44",
+    "fixture_card_sha256": "ffff416a00f527d35ad84888bed3232e9d7bac6c28ef483c5831d18d502dea31",
+    "test_only": "All six NPCs dwell in room 16 for stable rig/attention/rim inspection; original card unchanged."
+  },
+  "physical_gamecube_tested": false,
+  "native": {
+    "method": "Single instrumented Dolphin captures; guest 0.1 ms counters, not hardware timing",
+    "native_rim_region_rgb_sums": {
+      "zero": 24088765,
+      "default_100": 24309727,
+      "maximum_200": 24536451
+    },
+    "bubble_paper_pixels": {
+      "off": 0,
+      "on": 8920,
+      "restored_off": 0
+    },
+    "default_ground_travel": {
+      "frame_interval_ms": {
+        "median": 16.6,
+        "p95": 16.6,
+        "max": 16.6
+      },
+      "terrain_prepare_ms": {
+        "median": 0.8,
+        "p95": 2.5,
+        "max": 4.1
+      },
+      "frames": 280,
+      "moving_frames": 122,
+      "terrain_stages": 0,
+      "loading_missing_recovery_frames": 0,
+      "mesh_creates": 0,
+      "mesh_updates": 0,
+      "mesh_releases": 0,
+      "texture_operations": 0,
+      "shadow_page_updates": 352,
+      "gc_collections": 0
+    },
+    "outdoor": {
+      "source_card_sha256": "a780d11c1aa99f930c6e17d29b4695c480cd22c99a57c8f3f8d26ca667a35f44",
+      "card_unchanged": true,
+      "indoor_fixture": false,
+      "debug_menu_only": true
+    },
+    "indoor": {
+      "source_card_sha256": "ffff416a00f527d35ad84888bed3232e9d7bac6c28ef483c5831d18d502dea31",
+      "card_unchanged": true,
+      "indoor_fixture": true,
+      "debug_menu_only": true
+    }
+  },
+  "lossless_capture_rgb_hashes_verified": true,
+  "limitations": [
+    "One short instrumented movement window, including stationary frames, does not establish locked 60 FPS or physical hardware timing.",
+    "Season changes deliberately rebuild the cold archive once; normal movement uses the immutable cache.",
+    "Attention bubbles are a visual preview; requests, dialogue and NPC journeys are not changed.",
+    "Four pre-existing unused HUD-field managed warnings remain.",
+    "Physical GameCube validation is outstanding."
+  ]
+}

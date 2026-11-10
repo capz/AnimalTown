@@ -69,8 +69,9 @@ version and atlas layout. A source FNV fingerprint and original dimensions remai
 available without retaining original pixels. A hit avoids disc I/O and decoding.
 Leases prevent eviction of active textures; zero-lease entries are evicted by
 least recent use. Repeating floors use the selected resolution policy, CMPR/RGB565 mipmaps and
-explicit addressing. The `floor-mip2-auto-v5` key distinguishes repeat, clamp and
-repeat-U/clamp-V soil. Neutral ground UVs use logical world XZ; seasonal tint,
+explicit addressing. The `floor-full-mips-v6` key selects complete outdoor ground
+mips; `floor-mip2-auto-v5` retains the two-level soil policy, with distinct repeat,
+clamp and repeat-U/clamp-V keys. Neutral ground UVs use logical world XZ; seasonal tint,
 cliff material bindings and cloud motion are independent of mesh generation.
 See [nuget-rendering-services.md](nuget-rendering-services.md).
 This is a read-only disc cache, not a hot-reloading SD asset

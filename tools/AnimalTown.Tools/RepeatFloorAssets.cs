@@ -58,7 +58,7 @@ internal static class RepeatFloorAssets
             var patches=config["patches"]!.AsArray();writer.Write(patches.Count);
             foreach(var p in patches){writer.Write(Array.IndexOf(Names,(string)p!["surface"]!));writer.Write(Array.IndexOf(Names,(string)p["terrain"]!));foreach(string field in new[]{"x","z","width","height","border"})writer.Write((int)p[field]!);}
             File.WriteAllBytes(Path.Combine(output,$"floor-{season}.bin"),stream.ToArray());
-            int nativeBytes=0;foreach(var package in packages)nativeBytes+=FloorTexture.Prepare(package).Length-32;
+            int nativeBytes=0;foreach(var package in packages)nativeBytes+=FloorTexture.Prepare(package,fullMipChain:true).Length-32;
             if(nativeBytes>2*1024*1024)throw new InvalidDataException("Active repeating floor exceeds 2 MiB budget");
             Console.WriteLine($"Repeat floor {season}: {packages.Count} unique sources, {nativeBytes} resident bytes with load-time compression/mips");
         }

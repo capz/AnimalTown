@@ -103,6 +103,13 @@ $shadowModelHook='    if(!reuse)dnd_draw_backend_tev(selected, mat->texture >= 0
 if(([regex]::Matches($modelGraphics,[regex]::Escape($shadowModelHook))).Count -ne 1){throw 'Pinned interior shadow hook changed'}
 $modelGraphics=$modelGraphics.Replace($shadowModelHook,$shadowModelHook+"`n    if(animaltown_shadows_mode()==2)town_shadow_apply(object[12]+2*object[0]+2*object[8],object[14]+2*object[2]+2*object[10],object,selected,&bindings);")
 Copy-Item -LiteralPath (Join-Path $Root 'tools/native-rim.inc') -Destination (Join-Path $Root 'out/native/source/animaltown_rim.inc') -Force
+Copy-Item -LiteralPath (Join-Path $Root 'tools/native-rim-policy.h') -Destination (Join-Path $Root 'out/native/source/native-rim-policy.h') -Force
+if($IsLinux){
+    & cc -std=c11 -Wall -Wextra -Werror "-I$(Join-Path $Root 'tools')" (Join-Path $Root 'tests/native-rim-policy.c') -o (Join-Path $Root 'out/native-rim-policy-check')
+    if($LASTEXITCODE){throw 'Native rim policy compilation failed'}
+    & (Join-Path $Root 'out/native-rim-policy-check')
+    if($LASTEXITCODE){throw 'Native rim policy fixture failed'}
+}
 $indexedPath=Join-Path $Root 'out/native/include/dnd_indexed_model.inc'
 $indexed=[IO.File]::ReadAllText($indexedPath)
 foreach($hook in @('if(lit){GX_SetVtxDesc(GX_VA_NRM','if(lit)GX_Normal1x16(index);')){

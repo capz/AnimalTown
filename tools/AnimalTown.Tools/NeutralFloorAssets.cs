@@ -23,7 +23,7 @@ internal static class NeutralFloorAssets
         byte[] package=RepeatFloorAssets.Encode(master,new SKRectI(0,0,master.Width,master.Height));
         // Keep the 1024px source option without reading a 2 MiB RGB565 staging
         // image into the console's 4 MiB managed heap. The runtime still chooses
-        // its requested size and regenerates the two native target mip levels.
+        // its requested size and generates the full ground mip chain at load.
         package=FloorTexture.Prepare(package,TextureResolution.Size1024);
         File.WriteAllBytes(Path.Combine(output,"floor-outdoor-neutral.dndtex"),package);string digest=Convert.ToHexString(SHA256.HashData(package));
         var provenance=new List<object>();
@@ -48,7 +48,7 @@ internal static class NeutralFloorAssets
             foreach(var p in patches){writer.Write(Array.IndexOf(RepeatFloorAssets.Names,(string)p!["surface"]!));writer.Write(Array.IndexOf(RepeatFloorAssets.Names,(string)p["terrain"]!));foreach(string field in new[]{"x","z","width","height","border"})writer.Write((int)p[field]!);}
             for(int i=0;i<colors.Count;i++){writer.Write(textureSlots[i]);writer.Write(colors[i]);}
             var data=stream.ToArray();FloorStrips.Validate(data);File.WriteAllBytes(Path.Combine(output,$"floor-{season}.bin"),data);
-            Console.WriteLine($"Shared neutral floor {season}: 1 outdoor texture, {colors.Count-1} outdoor tints; {FloorTexture.Prepare(package).Length-32} resident outdoor bytes");
+            Console.WriteLine($"Shared neutral floor {season}: 1 outdoor texture, {colors.Count-1} outdoor tints; {FloorTexture.Prepare(package,fullMipChain:true).Length-32} resident outdoor bytes");
         }
         File.WriteAllText(Path.Combine(root,"out/floor-sources.json"),JsonSerializer.Serialize(provenance,new JsonSerializerOptions{WriteIndented=true}));
     }
