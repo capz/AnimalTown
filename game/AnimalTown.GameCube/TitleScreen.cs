@@ -116,5 +116,5 @@ internal sealed class TitleScreen : IDisposable
         }
         var texture=Texture2D.Create(64,64,pixels);texture.ConfigureSampler(TextureWrapMode.Repeat,TextureWrapMode.Repeat,TextureMinFilter.Linear,TextureMagFilter.Linear);return texture;
     }
-    public void Dispose(){dots.Dispose();TextureCache.Release(logo);font.Release();ui.Dispose();}
+    public void Dispose(){dots.Dispose();TextureCache.Release(logo);font.Release();ui.Dispose();TextureCache.TrimUnused();}
 }
