@@ -25,7 +25,7 @@ def press(button):
     os.write(controller,f'PRESS {button}\n'.encode());time.sleep(hold)
     os.write(controller,f'RELEASE {button}\n'.encode());time.sleep(hold)
 def screenshot(name):
-    subprocess.run(['ffmpeg','-v','error','-f','x11grab','-video_size','800x600','-i',':93','-frames:v','1','-y',str(root/name)],env=env,check=True)
+    subprocess.run(['ffmpeg','-v','error','-f','x11grab','-draw_mouse','0','-video_size','800x600','-i',':93','-frames:v','1','-y',str(root/name)],env=env,check=True)
 
 
 def submission_scenario():
@@ -492,7 +492,7 @@ with (root/'emulator.log').open('w') as log:
         if '--title-menu' in sys.argv:
             title_menu()
         elif '--title-load' in sys.argv:
-            screenshot('title-dev-config-loaded.png');press('A');time.sleep(110);screenshot('title-continued-game.png')
+            screenshot('title-dev-config-loaded.png');press('A');time.sleep(180);screenshot('title-continued-game.png')
         elif '--title-update' in sys.argv:
             press('D_DOWN');press('A');time.sleep(20);screenshot('title-updater.png')
         elif '--submission-seed' in sys.argv:

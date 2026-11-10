@@ -4,7 +4,10 @@ Startup mounts the disc, reads its runtime defaults and the independent Slot A
 `dev_config` record, then runs the SDK/engine splash screens. `TitleScreen` owns
 only the wordmark, IPL menu font and a procedural 64×64 mint dot texture. The
 staggered dots repeat and drift diagonally at four pixels per second. It creates
-no town, terrain, model, building or audio resources.
+no town, terrain, model, building or audio resources. Exiting the title trims
+released splash/title texture pages immediately, then collects their managed
+staging data before constructing the game; native model/terrain allocations do
+not share the texture cache's budget.
 
 Start saves changed dev settings, then constructs `TownGame`, loads the last
 complete town commit set, and begins staged game loading. Without a town save it
