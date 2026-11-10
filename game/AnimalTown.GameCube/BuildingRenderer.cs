@@ -77,5 +77,6 @@ internal sealed class BuildingRenderer
         for(int wall=0;wall<4;wall++)if(camera.WallVisible(wall))Part(renderer,type,3+wall,world,Vector3.Zero,new Vector3(scale,1,scale));
         // Keep the doorway legible even when the front wall is cut away.
         if(camera.WallVisible(2)||doors.Openness(building)>0)Part(renderer,type,1,world,new Vector3(size*.5f-.55f*scale,0,size+.01f),new Vector3(scale,1,1),doors.Openness(building)*1.4f);
+        Flush(renderer);
     }
 }

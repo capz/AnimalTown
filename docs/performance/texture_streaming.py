@@ -17,6 +17,12 @@ block=r'''        elif '--stream-travel' in sys.argv:
             press('A');time.sleep(5);building_view('asset-outside-cold.png',False)
             screenshot('asset-restore-start.png');chord('A');time.sleep(4);screenshot('asset-restore-end.png');building_view('asset-prefetched-porch.png',False)
             press('A');time.sleep(5);building_view('asset-interior-first.png',True)
+            # A floor-only image can pass the generic room check. Verify the
+            # stable north wall too, before any camera turn or debugging menu.
+            pixels=subprocess.check_output(['ffmpeg','-v','error','-i',str(root/'asset-interior-first.png'),'-frames:v','1','-f','rawvideo','-pix_fmt','rgb24','-'])
+            wall=sum(pixels[(y*800+x)*3]>100 and pixels[(y*800+x)*3+1]>90 for y in range(65,120) for x in range(220,280))
+            if wall<1500:raise AssertionError('Interior north wall was not submitted')
+
             os.write(controller,b'SET C .9 .5\n');time.sleep(2);os.write(controller,b'SET C .5 .5\n');time.sleep(1);building_view('asset-interior-rotated.png',True)
             chord('A');press('A');time.sleep(5);building_view('asset-exit-cold.png',False)
             # A real approach prefetches occupants and walls, without another
