@@ -19,13 +19,16 @@ internal sealed class UiFont
     private readonly float[] layoutX=new float[64*128],layoutY=new float[64*128],layoutWidths=new float[64];
     private readonly Texture2D[] quadTextures=new Texture2D[128];
     private readonly float[] quadVertices=new float[128*24];
+    private readonly Texture2D[] sortedTextures=new Texture2D[128];
+    private readonly float[] sortedVertices=new float[128*24];
+    private readonly int[] pages=new int[128],order=new int[128],layoutOrder=new int[64*128],layoutOrderCounts=new int[64];
     private UiFont(CachedTexture texture,byte[] metrics){this.texture=texture;this.metrics=metrics;PrepareGlyphs();}
     private UiFont(CachedTexture font){firmware=font.FontMetrics;texture=font;metrics=new byte[0];PrepareGlyphs();}
     private void PrepareGlyphs()
     {
         for(int i=0;i<96;i++){
             int first=i*8;
-            if(firmware!=null){int n=i<95?i:'?'-32;advances[i]=firmware[8+n*5+4];regionCounts[i]=1;Region(first,texture.Pages[n/16],n%4*32,n%16/4*32,firmware[0],firmware[1],0,0);continue;}
+            if(firmware!=null){int n=i<95?i:'?'-32;advances[i]=firmware[8+n*5+4];int m=8+n*5;regionCounts[i]=firmware[m+2]>0?1:0;Region(first,texture.Pages[n/16],n%4*32+firmware[m],n%16/4*32+firmware[m+1],firmware[m+2],firmware[m+3],firmware[m],firmware[m+1]);continue;}
             int at=16+i*8,x=Get(at),y=Get(at+2),w=Get(at+4);advances[i]=Get(at+6);
             int firstX=x/128,firstY=y/128,lastX=(x+w+127)/128,lastY=(y+64+127)/128,used=0;
             if((lastX-firstX)*(lastY-firstY)>8)throw new IOException("Glyph exceeds bounded page layout");
@@ -49,7 +52,7 @@ internal sealed class UiFont
         uint hash=2166136261;for(int i=0;i<text.Length;i++)hash=(hash^text[i])*16777619;
         int slot=(int)(hash&63),start=slot*128;
         if(layoutTexts[slot]==text)return slot;
-        layoutTexts[slot]=text;float x=0,y=0,max=0;
+        layoutTexts[slot]=text;layoutOrderCounts[slot]=-1;float x=0,y=0,max=0;
         for(int i=0;i<text.Length;i++){
             layoutX[start+i]=x;layoutY[start+i]=y;char c=text[i];
             if(c=='\r')continue;if(c=='\n'){max=Math.Max(max,x);x=0;y+=firmware!=null?firmware[4]:64;continue;}
@@ -59,7 +62,7 @@ internal sealed class UiFont
     }
     internal static UiFont LoadSystem()
     {
-        const string key="firmware:IPL/ascii-paged-v1";var cached=TextureCache.Find(key,true);if(cached!=null)return new UiFont(cached);
+        const string key="firmware:IPL/ascii-paged-v2";var cached=TextureCache.Find(key,true);if(cached!=null)return new UiFont(cached);
         var pixels=new byte[128*128*2];var info=new int[8+95*5];
         var result=new CachedTexture{Source=key,Atlas=true,SourceWidth=512,SourceHeight=256,Pages=new Texture2D[6],FontMetrics=info};
         try{
@@ -96,7 +99,7 @@ internal sealed class UiFont
             char c=text[i];if(c=='\r')continue;if(c=='\n'){pen=0;line+=firmware!=null?firmware[4]:64;continue;}
             int glyph=Index(c);float gx=x+(layout>=0?layoutX[layout*128+i]:pen)*f,gy=y+(layout>=0?layoutY[layout*128+i]:line)*f;
             if(c!=' '&&(firmware==null||c!='\t'))for(int p=glyph*8;p<glyph*8+regionCounts[glyph];p++){
-                if(used==quadTextures.Length){ui.DrawTexturedQuads(quadTextures,quadVertices,used,color);used=0;}
+                if(used==quadTextures.Length){Flush(ui,used,color,layout);used=0;}
                 int d=p*8,at=used*24;float left=gx+regionData[d]*f,top=gy+regionData[d+1]*f,right=left+regionData[d+2]*f,bottom=top+regionData[d+3]*f;
                 float x0=left,y0=top,x1=right,y1=top,x2=right,y2=bottom,x3=left,y3=bottom;
                 if(firmware==null&&rotation!=0){float l=left-pivotX,r=right-pivotX,t=top-pivotY,b=bottom-pivotY;x0=pivotX+l*cosine-t*sine;y0=pivotY+l*sine+t*cosine;x1=pivotX+r*cosine-t*sine;y1=pivotY+r*sine+t*cosine;x2=pivotX+r*cosine-b*sine;y2=pivotY+r*sine+b*cosine;x3=pivotX+l*cosine-b*sine;y3=pivotY+l*sine+b*cosine;}
@@ -105,7 +108,21 @@ internal sealed class UiFont
             }
             pen+=firmware!=null&&c=='\t'?advances[0]*4:advances[glyph];
         }
-        if(used>0)ui.DrawTexturedQuads(quadTextures,quadVertices,used,color);
+        if(used>0)Flush(ui,used,color,layout);
+    }
+    private void Flush(Draw2D ui,int count,Color32 color,int layout)
+    {
+        // One draw call's glyphs only: never cross text/widget/transparency layers.
+        // Headings can overlap heavily and are small; keep their original order.
+        if(firmware==null||count<3){ui.DrawTexturedQuads(quadTextures,quadVertices,count,color);return;}
+        for(int i=0;i<count;i++){int page=0;while(page<texture.Pages.Length&&texture.Pages[page]!=quadTextures[i])page++;pages[i]=page;}
+        if(layout>=0&&layoutOrderCounts[layout]==count){for(int i=0;i<count;i++)order[i]=layoutOrder[layout*128+i];}
+        else{
+            UiQuadOrder.Build(quadVertices,pages,count,order);
+            if(layout>=0){layoutOrderCounts[layout]=count;for(int i=0;i<count;i++)layoutOrder[layout*128+i]=order[i];}
+        }
+        for(int i=0;i<count;i++){int original=order[i];sortedTextures[i]=quadTextures[original];for(int n=0;n<24;n++)sortedVertices[i*24+n]=quadVertices[original*24+n];}
+        ui.DrawTexturedQuads(sortedTextures,sortedVertices,count,color);
     }
     private void DrawLegacy(Draw2D ui,string text,float x,float y,Color32 color,float scale,float rotation,int end)
     {

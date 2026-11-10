@@ -17,6 +17,7 @@ groups=defaultdict(list)
 seen=set()
 versions=set()
 details={}
+submissions={}
 paths=[path for path in sys.argv[1:] if path not in ('--interaction-panels','--check-movement','--check-streaming')]
 for path in paths:
     command=['ffmpeg','-v','error','-i',path,'-vf','scale=640:480:flags=neighbor',
@@ -59,6 +60,13 @@ for path in paths:
         check=0
         for value in extra[:15]:check^=value
         if extra[0]==0x4144 and extra[1]==values[2] and extra[15]==check:details[values[2]]=extra
+        batch=[0]*16
+        for bit in range(256):
+            at=((418+bit//64*4)*640+bit%64*10+5)*3
+            if frame[at]>128:batch[bit//16]|=1<<(bit%16)
+        check=0
+        for value in batch[:15]:check^=value
+        if batch[0]==0x4153 and batch[1]==1 and batch[2]==values[2] and batch[15]==check:submissions[values[2]]=batch
     if process.wait()!=0:raise RuntimeError('ffmpeg failed')
 
 def stats(values):
@@ -108,6 +116,7 @@ for scene,rows in groups.items():
         'texture_cache_kib':stats([r[25] for r in rows]),
         'culled_objects':stats([r[24] for r in rows]),
         'draw_submissions':stats([r[28] for r in rows]),
+        **({'pass_draw_submissions':{name:stats([submissions[r[2]][i] for r in rows if r[2] in submissions]) for i,name in enumerate(('terrain_or_interior','trees','buildings','fences','rain','ui_before_profiler','ui_final_flush'),3)}} if all(r[2] in submissions for r in rows) else {}),
         'texture_bindings':stats([r[29] for r in rows]),
         **({'drawing_api_calls':stats([r[26] for r in rows]),'material_changes':stats([r[27] for r in rows])} if versions in ({4},{5}) else
            {'texture_cache_hits_max':max(r[26] for r in rows),'texture_cache_misses_max':max(r[27] for r in rows)})}

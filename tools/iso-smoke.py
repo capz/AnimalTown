@@ -28,6 +28,47 @@ def screenshot(name):
     subprocess.run(['ffmpeg','-v','error','-f','x11grab','-video_size','800x600','-i',':93','-frames:v','1','-y',str(root/name)],env=env,check=True)
 
 
+def submission_scenario():
+    sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'docs/performance'))
+    from avi_guest_clock import AviGuestClock
+    clock=AviGuestClock(root/'user/Dump/Frames',track_presentations=True);segments=[]
+    def segment(name,seconds):
+        start=clock.frames();target=start+int(seconds*60000/1001+.999);deadline=time.monotonic()+seconds*12+30
+        while clock.frames()<target:
+            if p.poll() is not None:raise AssertionError('Emulator stopped during '+name)
+            if time.monotonic()>deadline:raise AssertionError('Guest VI clock stopped during '+name)
+            time.sleep(.1)
+        end=clock.frames();present=[v for v in clock.presentations if start<v<=end]
+        gaps=[(b-a)*1001/60 for a,b in zip(present,present[1:])]
+        def percentile(q):return sorted(gaps)[min(len(gaps)-1,int((len(gaps)-1)*q))] if gaps else None
+        segments.append({'name':name,'start_vi':start,'end_vi':end,'guest_seconds':(end-start)*1001/60000,'presentations':len(present),'fps':len(present)*60000/(1001*(end-start)),'frame_ms_p50':percentile(.5),'frame_ms_p95':percentile(.95)})
+        (root/'submission-segments.json').write_text(json.dumps({'segments':segments,'clock':'NTSC VI chunks including repeated frames; software Dolphin, not hardware'},indent=2))
+        screenshot('submissions-'+name+'.png')
+    press('A');time.sleep(15)
+    segment('stationary-profiler-off',6)
+    os.write(controller,b'SET MAIN .9 .5\n');segment('walking-profiler-off',3)
+    os.write(controller,b'SET MAIN .1 .5\n');segment('return-profiler-off',3)
+    os.write(controller,b'SET MAIN .5 .5\n')
+    os.write(controller,b'PRESS L\nPRESS R\n');time.sleep(.2);press('Z');os.write(controller,b'RELEASE L\nRELEASE R\n')
+    segment('stationary',profile_seconds)
+    for n,(x,y,running) in enumerate(((.9,.5,False),(.1,.5,True))):
+        os.write(controller,f'SET MAIN {x} {y}\n'.encode())
+        if running:os.write(controller,b'PRESS B\n')
+        segment('travel-'+str(n),profile_seconds);os.write(controller,b'SET MAIN .5 .5\nRELEASE B\n')
+    press('X');segment('backpack',profile_seconds);press('B')
+    # Session-only weather toggle through the visible debug menu (row 16).
+    press('START');press('R')
+    for _ in range(16):press('D_DOWN')
+    press('A');press('B');segment('rain',profile_seconds)
+    press('START');press('R')
+    for _ in range(16):press('D_DOWN')
+    press('A');press('B')
+    # Existing inspector selects the same NPC cottage in both builds.
+    os.write(controller,b'PRESS L\nPRESS R\n');time.sleep(.2);press('A');os.write(controller,b'RELEASE L\nRELEASE R\n')
+    segment('cottage-closed',5)
+    os.write(controller,b'PRESS A\n');time.sleep(.15);screenshot('submissions-cottage-opening.png');os.write(controller,b'RELEASE A\n')
+    segment('interior',5)
+
 def cliff_minimap():
     def frame(name):
         screenshot(name+'.png')
@@ -386,7 +427,7 @@ DumpCodec = ffv1
 [Hacks]
 EFBToTextureEnable = False
 ''')
-if '--profile' in sys.argv or '--interaction-profile' in sys.argv or '--runtime-profile' in sys.argv or '--terrain-scroll' in sys.argv or '--lighting' in sys.argv or '--actor-shadows' in sys.argv or '--movement-profile' in sys.argv or '--stream-travel' in sys.argv:
+if '--profile' in sys.argv or '--interaction-profile' in sys.argv or '--runtime-profile' in sys.argv or '--terrain-scroll' in sys.argv or '--lighting' in sys.argv or '--actor-shadows' in sys.argv or '--movement-profile' in sys.argv or '--stream-travel' in sys.argv or '--submissions' in sys.argv:
     config=user/'Config'/'Dolphin.ini'
     config.write_text(config.read_text()+'\n[Movie]\nDumpFrames = True\nDumpFramesSilent = True\n')
     config=user/'Config'/'GFX.ini'
@@ -405,7 +446,17 @@ with (root/'emulator.log').open('w') as log:
         if p.poll() is not None:
             raise RuntimeError(f'Dolphin exited during boot ({p.returncode}); see {root / "emulator.log"}')
         screenshot('screen.png')
-        if '--cliff-minimap' in sys.argv:
+        if '--submission-seed' in sys.argv:
+            press('A');press('D_UP');press('A');press('A');time.sleep(2);press('B');press('B');time.sleep(45)
+            save_menu()
+            for _ in range(90):
+                time.sleep(1)
+                if committed_card_sequence(root/'MemoryCardA.USA.raw')>0:break
+            else:raise AssertionError('Disposable fixture seed failed to save')
+            screenshot('submission-seed.png')
+        elif '--submissions' in sys.argv:
+            submission_scenario()
+        elif '--cliff-minimap' in sys.argv:
             cliff_minimap()
         elif '--testing-menu' in sys.argv:
             testing_menu()

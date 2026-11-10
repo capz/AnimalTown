@@ -52,6 +52,28 @@ int main(void){
     assert(dnd_draw_release(view)==0);assert(!find(page,BUFFER));
     // Simulate external buffer retirement only for this lifetime probe.
     ta_cache=0;assert(animaltown_terrain_reset(0)==1);assert(dnd_draw_release(plain)==0&&dnd_draw_live()==0);
+    // Adjacent halves: exact indexed attributes, triangle order and rebasing.
+    assert(animaltown_terrain_reset(1)==1);indexed=dnd_mesh_create_range(v,12,ix,12,2,0);plain=dnd_mesh_create_range(v,12,NULL,0,2,0);
+    assert(animaltown_terrain_append(0,3,indexed,0)==1);
+    assert(animaltown_terrain_append(0,104,plain,6)==2);
+    assert(animaltown_terrain_append(0,3,indexed,0)==3);
+    assert(animaltown_terrain_append(0,107,plain,6)==4);
+    assert(animaltown_terrain_complete(0)==1&&animaltown_terrain_info(0,1)==3&&animaltown_terrain_info(0,2)==12);
+    assert(animaltown_terrain_kind(0)==3&&animaltown_terrain_kind(1)==104&&animaltown_terrain_kind(2)==107);
+    view=animaltown_terrain_view();assert(animaltown_terrain_bind(view,0)==1);r=find(view,MESH);
+    assert(r->vertices==24&&r->indices==24&&!r->uniform_color);
+    assert(!memcmp(r->data,expected,432)&&!memcmp(r->data+432,expected,432));
+    uint16_t *merged_ids=(uint16_t*)(r->data+864);
+    for(int i=0;i<12;i++){assert(merged_ids[i]==ids[i]);assert(merged_ids[i+12]==ids[i]+12);}
+    assert(dnd_draw_release(view)==0&&dnd_draw_release(indexed)==0&&dnd_draw_release(plain)==0&&animaltown_terrain_reset(0)==1);
+    // Different uniform tints must keep separate indexed GX material classes.
+    assert(animaltown_terrain_reset(1)==1);plain=dnd_mesh_create_range(v,12,NULL,0,2,0);
+    Resource *colored=find(plain,MESH);for(int i=0;i<12;i++)((DndDrawVertex*)colored->data)[i].color=0xff123456;
+    assert(animaltown_terrain_append(0,3,plain,6)==1);
+    for(int i=0;i<12;i++)((DndDrawVertex*)colored->data)[i].color=0xff654321;
+    assert(animaltown_terrain_append(0,3,plain,6)==2);
+    assert(animaltown_terrain_complete(0)==1&&animaltown_terrain_info(0,1)==2);
+    assert(dnd_draw_release(plain)==0&&animaltown_terrain_reset(0)==1);
     assert(animaltown_terrain_reset(1)==1);
     DndArray *big=array(1818,36);plain=dnd_mesh_create_range(big,1818,NULL,0,2,0);assert(plain>0);
     for(int i=0;i<17;i++)assert(animaltown_terrain_append(0,104,plain,1818)==i+1);

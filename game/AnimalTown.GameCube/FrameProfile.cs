@@ -17,12 +17,15 @@ internal static class FrameProfile
     private static readonly int[] detail=new int[16],native=new int[8];
     private static readonly long[] detailTime=new long[5];
     internal static int RecycledSections;
+    private static readonly int[] submissions=new int[16],currentSubmissions=new int[16];
     private static int frames;
+    internal static int SubmissionStart()=>Enabled?GpuProfiler.Snapshot().DrawSubmissions:0;
+    internal static void SubmissionEnd(int slot,int start){if(Enabled)currentSubmissions[slot+3]+=GpuProfiler.Snapshot().DrawSubmissions-start;}
     private static long previous;
     internal static long Start()=>Enabled?Clock.Timestamp:0;
     internal static void Add(int slot,long microseconds){if(Enabled)current[slot]+=microseconds;}
     internal static void End(int slot,long start){if(Enabled)current[slot]+=Clock.Timestamp-start;}
-    internal static void Begin(){Counters.Reset();AnimationUpdates=RecycledSections=0;NativeFrame.Reset(Enabled?1:0);if(!Enabled)return;for(int i=0;i<16;i++)current[i]=0;for(int i=0;i<5;i++)detailTime[i]=0;CulledObjects=0;}
+    internal static void Begin(){Counters.Reset();AnimationUpdates=RecycledSections=0;NativeFrame.Reset(Enabled?1:0);if(!Enabled)return;for(int i=0;i<16;i++){current[i]=0;currentSubmissions[i]=0;}for(int i=0;i<5;i++)detailTime[i]=0;CulledObjects=0;}
     internal static void DetailEnd(int slot,long at){if(Enabled)detailTime[slot]+=Clock.Timestamp-at;}
     internal static void Complete(int triangles,int terrainTriangles,int rejected,int scenario,int terrainBuilds,int movement,bool groundRing,bool groundUpload,bool shadowDeferred)
     {
@@ -40,6 +43,9 @@ internal static class FrameProfile
         Counters.CulledObjects=CulledObjects;
         data[25]=TextureCache.ResidentBytes/1024;data[26]=Counters.DrawingApiCalls;data[27]=Counters.MaterialChanges;data[28]=Counters.DrawSubmissions;data[29]=Counters.TextureBindings;
         for(int i=0;i<31;i++)data[31]^=data[i]&65535;
+        for(int i=0;i<16;i++)submissions[i]=currentSubmissions[i];
+        submissions[0]=0x4153;submissions[1]=1;submissions[2]=frames&65535;submissions[15]=0;
+        for(int i=0;i<15;i++){submissions[i]=Math.Min(65535,submissions[i]);submissions[15]^=submissions[i];}
         NativeFrame.Snapshot(native);detail[0]=0x4144;detail[1]=frames&65535;
         for(int i=0;i<5;i++)detail[i+2]=(int)Math.Min(65535,detailTime[i]/100);
         detail[7]=Math.Min(65535,native[0]);detail[8]=Math.Min(4095,native[1])|(Math.Min(15,native[7])<<12);
@@ -55,6 +61,8 @@ internal static class FrameProfile
         for(int at=0;at<512;){int length=Hypercube.TelemetryRuns.Length(data,at);if(Hypercube.TelemetryRuns.Lit(data,at))ui.FillRectangle(new RectF(at%64*10,448+at/64*4,length*10,4),new Color32(240,240,240));at+=length;}
         ui.FillRectangle(new RectF(0,432,640,16),new Color32(16,16,16));
         for(int at=0;at<256;){int length=Hypercube.TelemetryRuns.Length(detail,at);if(Hypercube.TelemetryRuns.Lit(detail,at))ui.FillRectangle(new RectF(at%64*10,432+at/64*4,length*10,4),new Color32(240,240,240));at+=length;}
+        ui.FillRectangle(new RectF(0,416,640,16),new Color32(16,16,16));
+        for(int at=0;at<256;){int length=Hypercube.TelemetryRuns.Length(submissions,at);if(Hypercube.TelemetryRuns.Lit(submissions,at))ui.FillRectangle(new RectF(at%64*10,416+at/64*4,length*10,4),new Color32(240,240,240));at+=length;}
         current[14]+=Clock.Timestamp-start;
     }
 }

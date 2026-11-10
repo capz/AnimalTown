@@ -1,0 +1,103 @@
+name: GPU submission comparison
+on:
+  push:
+    branches: [feat/reduce-gpu-submissions]
+  workflow_dispatch:
+permissions:
+  contents: write
+concurrency:
+  group: gpu-submissions-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  compare:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    env:
+      GH_TOKEN: ${{ github.token }}
+      LIBGL_ALWAYS_SOFTWARE: "1"
+      QT_X11_NO_MITSHM: "1"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: |
+            10.0.x
+            8.0.x
+      - name: Resolve matching release identity
+        id: version
+        shell: pwsh
+        run: ./tools/write-version.ps1 -GitHubOutput $env:GITHUB_OUTPUT
+      - name: Install emulator and capture tools
+        run: |
+          docker build -t animaltown-performance - <<'DOCKER'
+          FROM debian:trixie
+          RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends dolphin-emu xvfb xauth ffmpeg python3 libxcb-cursor0 ca-certificates && rm -rf /var/lib/apt/lists/*
+          DOCKER
+          docker run --rm animaltown-performance test -x /usr/games/dolphin-emu-nogui
+      - name: Download baseline and wait for matching clean candidate release
+        env:
+          TAG: ${{ steps.version.outputs.tag }}
+        run: |
+          mkdir -p out/submit-base out/submit-candidate
+          gh release download v0.11.10.9a4aad4ff05c --repo "$GITHUB_REPOSITORY" --dir out/submit-base --pattern 'AnimalTown-0.11.10.9a4aad4ff05c.iso' --pattern SHA256SUMS.txt --pattern version.json
+          for attempt in $(seq 1 100); do
+            if [ "$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json isDraft --jq .isDraft 2>/dev/null)" = false ] && gh release download "$TAG" --repo "$GITHUB_REPOSITORY" --dir out/submit-candidate --clobber --pattern 'AnimalTown-*.iso' --pattern 'AnimalTown-server-*.zip' --pattern SHA256SUMS.txt --pattern version.json --pattern BUILD.txt; then break; fi
+            test "$attempt" != 100
+            sleep 15
+          done
+          python3 - <<'PYTHON'
+          import hashlib,json,os,zipfile
+          from pathlib import Path
+          for label,commit in [('base','9a4aad4ff05c307bcc7daf4e553269ac93027c03'),('candidate',os.environ['GITHUB_SHA'])]:
+              root=Path('out/submit-'+label);meta=json.loads((root/'version.json').read_text())
+              assert meta['commit']==commit and not meta['dirty']
+              iso=root/('AnimalTown-'+meta['version']+'.iso');assert iso.stat().st_size==1459978240
+              for p in root.iterdir():
+                  if p.name=='SHA256SUMS.txt':continue
+                  expected=next(line.split()[0] for line in (root/'SHA256SUMS.txt').read_text().splitlines() if line.split()[-1].lstrip('*')==p.name)
+                  digest=hashlib.sha256()
+                  with p.open('rb') as f:
+                      while data:=f.read(8*1024*1024):digest.update(data)
+                  assert digest.hexdigest().lower()==expected.lower(),p.name
+              Path('out/submit-'+label+'-iso.txt').write_text(str(iso))
+              if label=='candidate':
+                  with zipfile.ZipFile(root/('AnimalTown-server-'+meta['version']+'.zip')) as z:
+                      manifests=[z.read(n).decode() for n in z.namelist() if n.endswith('BUILD.txt')]
+                      assert len(manifests)==1 and commit in manifests[0] and 'Dirty: False' in manifests[0]
+          PYTHON
+      - name: Create a disposable memory card and deterministic outdoor fixture
+        run: |
+          dotnet run --project tools/AnimalTown.Tools -c Release -- buildings "$PWD"
+          docker run --rm --init --shm-size=1g --user "$(id -u):$(id -g)" -e LIBGL_ALWAYS_SOFTWARE=1 --mount type=bind,src="$PWD",dst=/work -w /work animaltown-performance python3 tools/iso-smoke.py "$(cat out/submit-base-iso.txt)" out/submit-seed --submission-seed
+          python3 docs/performance/submission-fixture/card.py extract out/submit-seed/MemoryCardA.USA.raw out/submit-fixture
+          dotnet run --project docs/performance/submission-fixture -- out/submit-fixture
+          python3 docs/performance/submission-fixture/card.py write out/submit-seed/MemoryCardA.USA.raw out/submit-fixture
+      - name: Compare the same town in baseline and candidate
+        run: |
+          for label in base candidate; do
+            mkdir -p "out/submit-$label-run"
+            cp out/submit-fixture/MemoryCardA.USA.raw "out/submit-$label-run/"
+            docker run --rm --init --shm-size=1g --user "$(id -u):$(id -g)" -e LIBGL_ALWAYS_SOFTWARE=1 --mount type=bind,src="$PWD",dst=/work -w /work animaltown-performance python3 tools/iso-smoke.py "$(cat out/submit-$label-iso.txt)" "out/submit-$label-run" --submissions --profile-seconds 10
+            docker run --rm --user "$(id -u):$(id -g)" --mount type=bind,src="$PWD",dst=/work -w /work animaltown-performance python3 tools/read-frame-profile.py out/submit-$label-run/user/Dump/Frames/*.avi > "out/submit-$label-report.json"
+          done
+      - name: Publish comparison and visual evidence
+        if: always()
+        env:
+          TAG: ${{ steps.version.outputs.tag }}
+        run: |
+          python3 - <<'PYTHON'
+          from pathlib import Path
+          import hashlib,shutil
+          root=Path('out/submit-evidence');root.mkdir(parents=True,exist_ok=True)
+          for label in ['base','candidate','seed']:
+              for p in Path('out/submit-'+label+'-run').glob('*'):
+                  if p.suffix in ['.png','.txt','.json'] or p.name=='emulator.log':shutil.copy2(p,root/('gpu-submit-'+label+'-'+p.name))
+              report=Path('out/submit-'+label+'-report.json')
+              if report.exists():shutil.copy2(report,root/('gpu-submit-'+label+'-report.json'))
+          for p in Path('out/submit-fixture').glob('*.json'):shutil.copy2(p,root/('gpu-submit-'+p.name))
+          (root/'gpu-submit-SHA256SUMS.txt').write_text('\n'.join(hashlib.sha256(p.read_bytes()).hexdigest()+'  '+p.name for p in sorted(root.iterdir()))+'\n')
+          PYTHON
+          if [ -n "$TAG" ] && gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then gh release upload "$TAG" --repo "$GITHUB_REPOSITORY" out/submit-evidence/* --clobber; fi

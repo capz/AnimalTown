@@ -8,6 +8,8 @@ public sealed class TerrainArchiveView
     public readonly int[] Sections=new int[TerrainStream.Capacity];
     public int Count {get;private set;}
     public int Revision {get;private set;}
+    private readonly int[] marks=new int[TerrainArchivePlan.Count];
+    private int stamp;
     private float cachedX=float.NaN,cachedZ;
     public void Reset(){cachedX=float.NaN;Count=0;Revision++;}
     public void Prepare(float x,float z,CylinderRows rows)
@@ -15,6 +17,7 @@ public sealed class TerrainArchiveView
         float fx=(float)Math.Floor(x*2)*.5f+.25f,fz=(float)Math.Floor(z*2)*.5f+.25f;
         if(cachedX==fx&&cachedZ==fz)return;
         cachedX=fx;cachedZ=fz;Count=0;Revision++;
+        if(++stamp==int.MaxValue){Array.Clear(marks,0,marks.Length);stamp=1;}
         var motion=new CylinderMotion(fz);
         int top=(int)Math.Floor((fz-TerrainTiles.GroundRowsAhead-TerrainStream.Prefetch)/TerrainStream.Height)*TerrainStream.Height;
         int bottom=(int)Math.Floor((fz+TerrainTiles.GroundRowsBehind+TerrainStream.Prefetch)/TerrainStream.Height)*TerrainStream.Height;
@@ -28,8 +31,10 @@ public sealed class TerrainArchiveView
             if(width<0)continue;
             for(int cx=left;cx<=right;cx+=TerrainStream.Width){
                 if(Math.Abs(cx+TerrainStream.Width*.5f-fx)>width)continue;
+                int pageZ=(int)Math.Floor(cz/(float)TerrainArchivePlan.Height)*TerrainArchivePlan.Height;
+                int section=TerrainArchivePlan.Index(cx,pageZ);if(marks[section]==stamp)continue;marks[section]=stamp;
                 if(Count==Sections.Length)throw new InvalidOperationException("Terrain view exceeds its fixed section budget");
-                Sections[Count++]=TerrainArchivePlan.Index(cx,cz);
+                Sections[Count++]=section;
             }
         }
     }

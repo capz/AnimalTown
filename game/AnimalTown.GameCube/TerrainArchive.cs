@@ -21,7 +21,7 @@ internal sealed class TerrainArchive
     private readonly int[] heads=new int[108],links=new int[Capacity];
     private readonly TerrainArchiveView selection=new TerrainArchiveView();
     private TerrainSection? scratch;
-    private int baked,revision=-1;
+    private int baked,half,revision=-1;
     private bool building,collect;
     internal bool Ready=>baked==TerrainArchivePlan.Count;
     internal int Remaining=>TerrainArchivePlan.Count-baked;
@@ -40,7 +40,7 @@ internal sealed class TerrainArchive
     {
         ReleaseViews();
         int result=NativeTerrain.Reset(TerrainArchivePlan.Count);if(result!=1)throw new InvalidOperationException("Terrain archive initialization: "+result);
-        Array.Clear(bound,0,bound.Length);baked=0;building=collect=false;revision=-1;selection.Reset();
+        Array.Clear(bound,0,bound.Length);baked=half=0;building=collect=false;revision=-1;selection.Reset();
     }
     internal void Dispose()
     {
@@ -50,9 +50,10 @@ internal sealed class TerrainArchive
     {
         if(Ready)return;
         if(scratch==null)scratch=owner.CreateSection();
-        if(!building){scratch.Begin(state,TerrainArchivePlan.X(baked),TerrainArchivePlan.Z(baked),owner.Rows);building=true;}
+        if(!building){scratch.Begin(state,TerrainArchivePlan.X(baked),TerrainArchivePlan.Z(baked)+half*TerrainStream.Height,owner.Rows);building=true;}
         if(!scratch.Advance(state,owner,staging,data))return;
-        scratch.Archive(baked++);building=false;
+        scratch.Archive(baked,half==1);building=false;
+        if(++half==2){baked++;half=0;}
         if(!Ready)return;
         scratch.Dispose();scratch=null;collect=true;
         for(int i=0;i<first.Length;i++){first[i]=NativeTerrain.Info(i,0);count[i]=NativeTerrain.Info(i,1);triangles[i]=NativeTerrain.Info(i,2);}
