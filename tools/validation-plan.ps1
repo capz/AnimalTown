@@ -45,6 +45,7 @@ function Get-ValidationPlan {
         if($p -match '^(tools/native-card|tests/native-card)'){[void]$native.Add('card');[void]$managed.Add('saves');continue}
         if($p -match '^(tools/native-texture|tests/native-texture)'){[void]$native.Add('texture');[void]$managed.Add('core');continue}
         if($p -match '^(tools/native-shadow|tests/native-shadow)'){[void]$native.Add('shadows');[void]$managed.Add('terrain');continue}
+        if($p -match '^(tools/native-asset|tests/native-asset)'){[void]$native.Add('assets');[void]$managed.Add('buildings');[void]$managed.Add('terrain');continue}
         if($p -match '^tests/native-dialogue') {[void]$native.Add('voices');[void]$managed.Add('dialogue');continue}
         if($p -match '^tools/native-calendar'){[void]$managed.Add('life');continue}
         if($p -match '^tools/AnimalTown.Tools/(TextureRepacker|Uv)'){[void]$tooling.Add('repack');continue}
@@ -64,6 +65,6 @@ function Get-ValidationPlan {
         if($p -match '^tools/iso-smoke.py$'){[void]$native.Add('python');continue} # Scenarios are explicitly selected.
         $broad=$true
     }
-    if($broad){foreach($s in $allManaged){[void]$managed.Add($s)};foreach($s in @('terrain','repack','building','nkit')){[void]$tooling.Add($s)};foreach($s in @('uv','card','texture','voices','python','shadows')){[void]$native.Add($s)};$backend=$true;$policy=$true}
+    if($broad){foreach($s in $allManaged){[void]$managed.Add($s)};foreach($s in @('terrain','repack','building','nkit')){[void]$tooling.Add($s)};foreach($s in @('uv','card','texture','voices','python','shadows','assets')){[void]$native.Add($s)};$backend=$true;$policy=$true}
     [pscustomobject]@{schema=1;commit=$Commit;baseRef=$BaseRef;release=$release;full=$broad;managed=@($allManaged|Where-Object {$managed.Contains($_)});tooling=@($tooling|Sort-Object);native=@($native|Sort-Object);backend=$backend;policy=$policy;paths=@($ChangedPaths|Sort-Object -Unique)}
 }

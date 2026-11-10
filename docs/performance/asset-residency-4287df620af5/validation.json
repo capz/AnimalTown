@@ -1,0 +1,57 @@
+{
+  "commit": "4287df620af5881433b5b48b7275ade00c6e7542",
+  "version": "0.12.9.4287df620af5",
+  "release": "https://github.com/capz/AnimalTown/releases/tag/v0.12.9.4287df620af5",
+  "environment": "Dolphin, software OpenGL, DSP HLE; not physical GameCube",
+  "fixture": {
+    "source_card_sha256": "a780d11c1aa99f930c6e17d29b4695c480cd22c99a57c8f3f8d26ca667a35f44",
+    "fixture_card_sha256": "fdf357ad6fa95eeca0bebe13cb28847fe0724350e6a145bff9ad9f0077f79abe",
+    "test_only": "All six NPCs dwell in room 16 for stable rig/attention/rim inspection; original card unchanged."
+  },
+  "lifecycle": {
+    "source_card_sha256": "fdf357ad6fa95eeca0bebe13cb28847fe0724350e6a145bff9ad9f0077f79abe",
+    "card_unchanged": true,
+    "two_house_entry_exit_cycles": true,
+    "six_villagers_in_one_room_fixture": true
+  },
+  "main_mib": {
+    "interior_warm": 23.35,
+    "outside_cold": 17.64,
+    "reclaimed": 5.71,
+    "capacity": 24
+  },
+  "aram_mib": {
+    "used": 13.78,
+    "capacity": 16
+  },
+  "native_asset_label": {
+    "warm_model_kib": 6680,
+    "cold_model_kib": 1046,
+    "cold_models": 10,
+    "completed_restores": 20,
+    "worst_restore_quantum_us": 4070
+  },
+  "capture": {
+    "file": "AMTE01_2026-11-09_21-28-57_0.avi",
+    "bytes": 413131854,
+    "sha256": "042eb71e021bbda7dcc4fb6cc329f27b14240d5fab6f9505f6696ee933a2aab6"
+  },
+  "screenshots": {
+    "asset-title-logo.png": "7a74b053d06e7f7fa8b2383ef586473a9a6a07b705334f599d2054372eb17d8f",
+    "asset-outside-cold.png": "5022f3f1b65340aab8c93b878f0747d806d2b64012ad7cd4d05e6f168646f84c",
+    "asset-interior-first.png": "e6113213db13800d7b29296a9070d951500d9bfcfb6fb618f218b247e426d804",
+    "asset-interior-rotated.png": "09281d9990198700e6f758e0bd576404fded24e2de98af12a0d0481c92635d1d",
+    "asset-interior-second-reset.png": "ed3bac0fdb30948eed0e4013282ee2f8ef73a5d9bf64c6f1f53e35dcad7ba55e",
+    "asset-sdk-interior-warm.png": "a1c9787bdb53dd521213ff49e69e9a303e51dec94173f244f1f95ee319814b6e",
+    "asset-sdk-outside-cold.png": "5a5f015843c79136edf9bcab73a2e471bfc22118c0ad32755d4e3c1aea755685"
+  },
+  "disc": {
+    "sourceBytes": 1459978240,
+    "compactBytes": 88684544,
+    "dolAndApploaderUnchanged": true,
+    "sourceSha256": "2fd6078cf130cd954d85d9ebf6dd6e9ecfa3ce052fea9ff52cab34a086b89fcc",
+    "compactSha256": "1dd847790a371fc9c56ee07c4c0dc3cee214ddd1c20e160e069dee9af1d21073",
+    "roundTripSha256": "2fd6078cf130cd954d85d9ebf6dd6e9ecfa3ce052fea9ff52cab34a086b89fcc",
+    "roundTripVerified": true
+  }
+}
