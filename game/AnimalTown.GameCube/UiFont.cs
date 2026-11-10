@@ -21,9 +21,10 @@ internal sealed class UiFont
     private readonly float[] quadVertices=new float[128*24];
     private readonly Texture2D[] sortedTextures=new Texture2D[128];
     private readonly float[] sortedVertices=new float[128*24];
-    private readonly int[] pages=new int[128],order=new int[128],layoutOrder=new int[64*128],layoutOrderCounts=new int[64];
-    private UiFont(CachedTexture texture,byte[] metrics){this.texture=texture;this.metrics=metrics;PrepareGlyphs();}
-    private UiFont(CachedTexture font){firmware=font.FontMetrics;texture=font;metrics=new byte[0];PrepareGlyphs();}
+    private readonly int[] pages=new int[128],order=new int[128],layoutOrderCounts=new int[64];
+    private readonly int[] layoutOrder;
+    private UiFont(CachedTexture texture,byte[] metrics){layoutOrder=new int[0];this.texture=texture;this.metrics=metrics;PrepareGlyphs();}
+    private UiFont(CachedTexture font){layoutOrder=new int[64*128];firmware=font.FontMetrics;texture=font;metrics=new byte[0];PrepareGlyphs();}
     private void PrepareGlyphs()
     {
         for(int i=0;i<96;i++){

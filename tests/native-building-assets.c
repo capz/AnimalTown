@@ -11,7 +11,7 @@ bool dnd_device_active(void) { return false; }
 int dnd_fs_close(int handle) { (void)handle; return 0; }
 
 int main(int argc, char **argv) {
-    assert(argc > 1 && argc <= 29);
+    assert(argc > 1 && argc <= 33);
     unsigned resident = 0;
     for (int part = 1; part < argc; part++) {
         FILE *file = fopen(argv[part], "rb");

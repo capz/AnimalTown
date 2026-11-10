@@ -63,11 +63,13 @@ wall time determines only watchdog deadlines.
 
 The optional `0x4153` checksummed telemetry strip at y=416 records GX draw deltas
 for terrain/interior, trees, buildings, fences, rain, UI before profiler and the
-final UI flush. That last flush includes pending profiler geometry. Existing
+final UI flush. A profiler-only flush before sampling keeps UI counts separate
+from profiler geometry; the final flush contains the remaining profiler pixels. Existing
 frame/detail strips and decoders remain compatible. Profiling is off by default;
 no snapshots or strip draws execute during normal play. `read-frame-profile.py`
 reports per-pass statistics only when matching complete samples are present.
 
 Submission bounds above describe geometry, not measured frame-rate gains.
-Record clean CI and Dolphin results here after the matching release completes.
+The completed comparison, clean release and review status are linked from
+[PR #33](https://github.com/capz/AnimalTown/pull/33).
 Physical GameCube hardware remains untested.
