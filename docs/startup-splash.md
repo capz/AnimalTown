@@ -7,9 +7,12 @@ and 650 ms fade out. Presentation deltas are capped at 50 ms so a slow disc or
 initialization step cannot skip an entire logo. Input during the sequence is
 consumed; the player must press A again on the title screen.
 
-The exact approved PNGs are retained in `assets/textures/splash`. Both are fitted
-without cropping or stretching into the DolphinDotNet source's 384 x 256 canvas.
-The Hypercube image is downsampled to this same content size. `SplashAssets`
+Both PNG files in `assets/textures/splash` are exactly 384 x 256, matching the
+supplied DolphinDotNet image. The Hypercube design has been downsampled without
+stretching, with its navy gradient and floor glow replaced by flat RGB(0,0,0)
+black as requested. `splash-import-engine ROOT PATH` normalizes an edited image
+to these exact source dimensions; `splash-check` rejects mismatched source sizes
+or non-black engine background margins. `SplashAssets`
 converts them offline into opaque, big-endian RGB565 4 x 4 GX tiles in DNTX
 packages. Power-of-two storage adds unused right padding (512 x 256); runtime
 UVs exclude it. Each texture costs 262,144 bytes, with no mipmaps or runtime PNG

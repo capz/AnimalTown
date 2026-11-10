@@ -9,6 +9,24 @@ internal static class SplashAssets
     // require power-of-two edges; right padding is excluded by runtime UVs.
     internal const int Width=384,Height=256,TextureWidth=512,Bytes=TextureWidth*Height*2;
     internal static readonly string[] Names={"dolphindotnet","hypercube-engine"};
+    internal static void ImportEngine(string root,string path)
+    {
+        using var source=SKBitmap.Decode(path)??throw new InvalidDataException("Engine splash missing");
+        using var bitmap=new SKBitmap(Width,Height,SKColorType.Rgba8888,SKAlphaType.Opaque);
+        using(var canvas=new SKCanvas(bitmap)){
+            canvas.Clear(SKColors.Black);
+            float scale=Math.Min((float)Width/source.Width,(float)Height/source.Height);
+            float w=source.Width*scale,h=source.Height*scale;
+            canvas.DrawBitmap(source,new SKRect((Width-w)/2,(Height-h)/2,(Width+w)/2,(Height+h)/2),new SKSamplingOptions(SKFilterMode.Linear,SKMipmapMode.None));
+        }
+        // Normalize sub-quantization background noise to exact RGB(0,0,0).
+        // Keep the logo's bright colors and antialiased silhouette.
+        for(int y=0;y<Height;y++)for(int x=0;x<Width;x++){
+            var p=bitmap.GetPixel(x,y);if(p.Red<=8&&p.Green<=8&&p.Blue<=8)bitmap.SetPixel(x,y,SKColors.Black);
+        }
+        using var image=SKImage.FromBitmap(bitmap);using var png=image.Encode(SKEncodedImageFormat.Png,100);
+        File.WriteAllBytes(Path.Combine(root,"assets/textures/splash/hypercube-engine.png"),png.ToArray());
+    }
     internal static void Build(string root)
     {
         Directory.CreateDirectory(Path.Combine(root,"out/disc"));
@@ -26,6 +44,7 @@ internal static class SplashAssets
     private static SKBitmap Compose(string root,string name)
     {
         using var source=SKBitmap.Decode(Path.Combine(root,"assets/textures/splash/"+name+".png"))??throw new InvalidDataException("Missing approved splash: "+name);
+        if(source.Width!=Width||source.Height!=Height)throw new InvalidDataException("Both splash PNG files must be exactly 384x256");
         var bitmap=new SKBitmap(TextureWidth,Height,SKColorType.Rgba8888,SKAlphaType.Opaque);
         using var canvas=new SKCanvas(bitmap);
         canvas.Clear(name=="dolphindotnet"?SKColors.White:SKColors.Black);
@@ -51,6 +70,14 @@ internal static class SplashAssets
     {
         Build(root);
         foreach(string name in Names){
+            if(name=="hypercube-engine"){
+                using var source=SKBitmap.Decode(Path.Combine(root,"assets/textures/splash/"+name+".png"));
+                for(int y=0;y<source.Height;y++)for(int x=0;x<source.Width;x++){
+                    var p=source.GetPixel(x,y);
+                    bool margin=x<16||x>=source.Width-16||y<16||y>=source.Height-16;
+                    if(margin&&(p.Red!=0||p.Green!=0||p.Blue!=0))throw new InvalidDataException("Engine splash background must be flat black");
+                }
+            }
             byte[] data=File.ReadAllBytes(Path.Combine(root,"out/disc/splash-"+name+".dndtex"));
             TexturePixels.Validate(data);
             // The SDK's v1 loader requires both reserved words to be zero (the
