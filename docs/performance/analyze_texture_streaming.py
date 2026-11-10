@@ -8,9 +8,7 @@ for flag in ('--skip-walk','--travel-only'):
     if flag in sys.argv:sys.argv.remove(flag)
 script=Path(__file__).with_name('analyze_asset_residency.py')
 source=script.read_text().replace("first=rgb('asset-interior-first')", "first=rgb('asset-interior-sharp')")
-source=source[:source.rindex('if result['scenario'].get('explicit_save') and 'card_unchanged' in result['scenario']:
-    result['scenario']['card_unchanged_before_explicit_save']=result['scenario'].pop('card_unchanged')
-print(json.dumps(result,indent=2))')]
+source=source[:source.rindex('print(json.dumps(result,indent=2))')]
 namespace={'__name__':'__main__','__file__':str(script)}
 if travel_only:
     exec(compile(source[:source.index("logo=marker")],str(script),'exec'),namespace)
