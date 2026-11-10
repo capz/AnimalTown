@@ -31,6 +31,7 @@ internal static class BrandAssets
         Directory.CreateDirectory(Path.Combine(root,"out/brand"));Directory.CreateDirectory(Path.Combine(root,"out/disc"));
         using var title=Title(root);
         ItemIcons.Build(root);
+        SplashAssets.Check(root);
         Font(root,"gorditas-bold",title,24);
         foreach(string obsolete in new[]{"fredoka-medium.dndtex","fredoka-medium.metrics","fredoka-semibold.dndtex","fredoka-semibold.metrics","Fredoka-OFL.txt"})File.Delete(Path.Combine(root,"out/disc",obsolete));
         using(var wordmark=new SKBitmap(1024,256,SKColorType.Rgba8888,SKAlphaType.Unpremul))

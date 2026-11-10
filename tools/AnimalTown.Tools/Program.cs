@@ -29,6 +29,8 @@ static class Program
             else if(args[0]=="audit")Audit();
             else if(args[0]=="prepare")Prepare(args[2],args[3]);
             else if(args[0]=="art")Art();
+            else if(args[0]=="splash-check")SplashAssets.Check(Root);
+            else if(args[0]=="splash-import-engine")SplashAssets.ImportEngine(Root,args[2]);
             else if(args[0]=="terrain")RepeatFloorAssets.Build(Root);
             else if(args[0]=="terrain-check")TerrainChecks.Run(Root);
             else if(args[0]=="tree-audit")TreeRenderAudit.Run(Root,args[2]);

@@ -28,6 +28,10 @@ internal static class TextureAudit
         foreach(string path in Directory.GetFiles(Path.Combine(root,"out/disc"),"*.dndtex").Order())
         {
             byte[] bytes=File.ReadAllBytes(path);TexturePixels.Validate(bytes);int width=TexturePixels.Width(bytes),height=TexturePixels.Height(bytes);
+            if(Path.GetFileName(path).StartsWith("splash-",StringComparison.Ordinal)){
+                if(width!=512||height!=256||TexturePixels.Int(bytes,8)!=4||bytes.Length!=32+SplashAssets.Bytes)throw new InvalidDataException("Splash texture exceeds one-shot RGB565 budget");
+                records.Add(new{source="dvd:/"+Path.GetFileName(path),sourceSha=Convert.ToHexString(SHA256.HashData(bytes)),width,height,contentWidth=384,contentHeight=256,residentBytes=SplashAssets.Bytes,policy="private-one-shot-no-cache"});continue;
+            }
             if(Path.GetFileName(path).StartsWith("floor-",StringComparison.Ordinal)||Path.GetFileName(path)=="cliff-soil.dndtex"){
                 bool ground=Path.GetFileName(path)!="cliff-soil.dndtex";
                 byte[] native=FloorTexture.Prepare(bytes,fullMipChain:ground);records.Add(new{source="dvd:/"+Path.GetFileName(path),sourceSha=Convert.ToHexString(SHA256.HashData(bytes)),width,height,runtimeWidth=TexturePixels.Width(native),runtimeHeight=TexturePixels.Height(native),format=TexturePixels.Int(native,8),levels=TexturePixels.Int(native,24),residentBytes=native.Length-32,policy=!ground?"cliff-soil-mip2-repeat-clamp-v1":Path.GetFileName(path)=="floor-outdoor-neutral.dndtex"?"floor256-full-mips-repeat-tinted-v6":"floor256-full-mips-mirror-v6"});continue;
