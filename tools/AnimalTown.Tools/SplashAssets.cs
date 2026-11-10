@@ -37,7 +37,7 @@ internal static class SplashAssets
     private static byte[] Encode(SKBitmap bitmap)
     {
         var data=new byte[32+Bytes];
-        int[] header={0x58544e44,1,4,TextureWidth,Height,Bytes,1,0};
+        int[] header={0x58544e44,1,4,TextureWidth,Height,Bytes,0,0};
         for(int i=0;i<header.Length;i++)BinaryPrimitives.WriteInt32LittleEndian(data.AsSpan(i*4),header[i]);
         int at=32;
         for(int ty=0;ty<Height;ty+=4)for(int tx=0;tx<TextureWidth;tx+=4)
@@ -53,7 +53,9 @@ internal static class SplashAssets
         foreach(string name in Names){
             byte[] data=File.ReadAllBytes(Path.Combine(root,"out/disc/splash-"+name+".dndtex"));
             TexturePixels.Validate(data);
-            if(data.Length!=32+Bytes||TexturePixels.Int(data,8)!=4||TexturePixels.Width(data)!=TextureWidth||TexturePixels.Height(data)!=Height)throw new InvalidDataException("Splash exceeds native budget");
+            // The SDK's v1 loader requires both reserved words to be zero (the
+            // general pixel decoder also accepts v2 and does not enforce this).
+            if(data.Length!=32+Bytes||TexturePixels.Int(data,4)!=1||TexturePixels.Int(data,8)!=4||TexturePixels.Width(data)!=TextureWidth||TexturePixels.Height(data)!=Height||TexturePixels.Int(data,24)!=0||TexturePixels.Int(data,28)!=0)throw new InvalidDataException("Splash exceeds native budget or violates the SDK v1 header");
             using var expected=Compose(root,name);
             var rgba=new byte[TextureWidth*Height*4];TexturePixels.Resample(data,0,0,TextureWidth,Height,rgba,TextureWidth,Height);
             for(int y=0;y<Height;y++)for(int x=0;x<TextureWidth;x++){
