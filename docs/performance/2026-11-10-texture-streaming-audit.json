@@ -1,0 +1,376 @@
+{
+  "method": "Pinned production loader and evaluator on a 64-bit host; byte payloads exact, metadata/instance accounting uses host pointer sizes; no GPU timing measurement",
+  "models": [
+    {
+      "name": "fox",
+      "package_bytes": 578656,
+      "embedded_texture_bytes": 327680,
+      "non_texture_package_bytes": 250976,
+      "budgeted_model_bytes_host": 910160,
+      "model_metadata_charge_host": 3760,
+      "instance_bytes_host": 89528,
+      "skinned_vertex_bytes": 52392,
+      "nodes": 27,
+      "meshes": 1,
+      "vertices": 2183,
+      "triangles": 2064,
+      "textures": [
+        {
+          "width": 256,
+          "height": 256,
+          "levels": 2,
+          "bytes": 327680,
+          "fnv": 584423484
+        }
+      ],
+      "package_sha256": "308d93ca96e53765f06387828254fc6011395bb4d8afdccb174fbde7b9d77065"
+    },
+    {
+      "name": "bunny",
+      "package_bytes": 867744,
+      "embedded_texture_bytes": 655360,
+      "non_texture_package_bytes": 212384,
+      "budgeted_model_bytes_host": 1524048,
+      "model_metadata_charge_host": 848,
+      "instance_bytes_host": 696,
+      "skinned_vertex_bytes": 0,
+      "nodes": 2,
+      "meshes": 1,
+      "vertices": 2410,
+      "triangles": 1575,
+      "textures": [
+        {
+          "width": 256,
+          "height": 256,
+          "levels": 2,
+          "bytes": 327680,
+          "fnv": 3551325755
+        },
+        {
+          "width": 256,
+          "height": 256,
+          "levels": 2,
+          "bytes": 327680,
+          "fnv": 934206909
+        }
+      ],
+      "package_sha256": "6a4d6e89cf2c879cfddb00ada6789edb243dfbb17d43d5b15cb0d5696eab7671"
+    },
+    {
+      "name": "giraffe",
+      "package_bytes": 491488,
+      "embedded_texture_bytes": 327680,
+      "non_texture_package_bytes": 163808,
+      "budgeted_model_bytes_host": 823216,
+      "model_metadata_charge_host": 3984,
+      "instance_bytes_host": 79480,
+      "skinned_vertex_bytes": 41784,
+      "nodes": 31,
+      "meshes": 1,
+      "vertices": 1741,
+      "triangles": 1572,
+      "textures": [
+        {
+          "width": 256,
+          "height": 256,
+          "levels": 2,
+          "bytes": 327680,
+          "fnv": 3341917749
+        }
+      ],
+      "package_sha256": "796cda8486aba87d31da585bb8a12c93ecd9f6a52d2e8a14b4ac38ef2dfffe65"
+    },
+    {
+      "name": "cat",
+      "package_bytes": 902432,
+      "embedded_texture_bytes": 655360,
+      "non_texture_package_bytes": 247072,
+      "budgeted_model_bytes_host": 1562544,
+      "model_metadata_charge_host": 4656,
+      "instance_bytes_host": 105144,
+      "skinned_vertex_bytes": 66528,
+      "nodes": 37,
+      "meshes": 1,
+      "vertices": 2772,
+      "triangles": 1548,
+      "textures": [
+        {
+          "width": 256,
+          "height": 256,
+          "levels": 2,
+          "bytes": 327680,
+          "fnv": 1683776361
+        },
+        {
+          "width": 256,
+          "height": 256,
+          "levels": 2,
+          "bytes": 327680,
+          "fnv": 4208631237
+        }
+      ],
+      "package_sha256": "3850975810e19234fd69a7c6ab0dc514fe1b4d04ea52e51f293417c76e4bdd1c"
+    },
+    {
+      "name": "hamster",
+      "package_bytes": 481504,
+      "embedded_texture_bytes": 327680,
+      "non_texture_package_bytes": 153824,
+      "budgeted_model_bytes_host": 812912,
+      "model_metadata_charge_host": 3664,
+      "instance_bytes_host": 76216,
+      "skinned_vertex_bytes": 38976,
+      "nodes": 28,
+      "meshes": 1,
+      "vertices": 1624,
+      "triangles": 1562,
+      "textures": [
+        {
+          "width": 256,
+          "height": 256,
+          "levels": 2,
+          "bytes": 327680,
+          "fnv": 1984368525
+        }
+      ],
+      "package_sha256": "2c693e25ba76ebd701cd620b55409ce0713fd01daa2c29ecb733c424a74bbaec"
+    },
+    {
+      "name": "spaniel",
+      "package_bytes": 490304,
+      "embedded_texture_bytes": 327680,
+      "non_texture_package_bytes": 162624,
+      "budgeted_model_bytes_host": 823536,
+      "model_metadata_charge_host": 5488,
+      "instance_bytes_host": 80472,
+      "skinned_vertex_bytes": 40680,
+      "nodes": 45,
+      "meshes": 1,
+      "vertices": 1695,
+      "triangles": 1574,
+      "textures": [
+        {
+          "width": 256,
+          "height": 256,
+          "levels": 2,
+          "bytes": 327680,
+          "fnv": 878371741
+        }
+      ],
+      "package_sha256": "f3c9c0505f8ecb7a0811289a8a43226524851520136b6de2a7fe4ff285febf8c"
+    },
+    {
+      "name": "cottage-exterior-tex128",
+      "package_bytes": 67904,
+      "embedded_texture_bytes": 20480,
+      "non_texture_package_bytes": 47424,
+      "budgeted_model_bytes_host": 89168,
+      "model_metadata_charge_host": 720,
+      "instance_bytes_host": 568,
+      "skinned_vertex_bytes": 0,
+      "nodes": 1,
+      "meshes": 1,
+      "vertices": 558,
+      "triangles": 186,
+      "textures": [
+        {
+          "width": 64,
+          "height": 64,
+          "levels": 2,
+          "bytes": 20480,
+          "fnv": 3305629382
+        }
+      ],
+      "package_sha256": "364f7c0bff3e7625753b59442b0f796f0b0eea647e6ab66fa77a5a7b94c81787"
+    },
+    {
+      "name": "cottage-door-tex128",
+      "package_bytes": 30080,
+      "embedded_texture_bytes": 20480,
+      "non_texture_package_bytes": 9600,
+      "budgeted_model_bytes_host": 51344,
+      "model_metadata_charge_host": 720,
+      "instance_bytes_host": 568,
+      "skinned_vertex_bytes": 0,
+      "nodes": 1,
+      "meshes": 1,
+      "vertices": 108,
+      "triangles": 36,
+      "textures": [
+        {
+          "width": 64,
+          "height": 64,
+          "levels": 2,
+          "bytes": 20480,
+          "fnv": 3305629382
+        }
+      ],
+      "package_sha256": "9606bc8a4f8dbfd8af151bfc7542b2e9d0c4640fbd92f585c4781e505ce460fa"
+    },
+    {
+      "name": "cottage-floor-tex128",
+      "package_bytes": 27072,
+      "embedded_texture_bytes": 20480,
+      "non_texture_package_bytes": 6592,
+      "budgeted_model_bytes_host": 48336,
+      "model_metadata_charge_host": 720,
+      "instance_bytes_host": 568,
+      "skinned_vertex_bytes": 0,
+      "nodes": 1,
+      "meshes": 1,
+      "vertices": 72,
+      "triangles": 24,
+      "textures": [
+        {
+          "width": 64,
+          "height": 64,
+          "levels": 2,
+          "bytes": 20480,
+          "fnv": 3305629382
+        }
+      ],
+      "package_sha256": "a1cf8ddd1e3f7e9e870c5a53535cb8533b3a39fd2783b6cafb83ba61aceb934d"
+    },
+    {
+      "name": "cottage-north-tex128",
+      "package_bytes": 33120,
+      "embedded_texture_bytes": 20480,
+      "non_texture_package_bytes": 12640,
+      "budgeted_model_bytes_host": 54384,
+      "model_metadata_charge_host": 720,
+      "instance_bytes_host": 568,
+      "skinned_vertex_bytes": 0,
+      "nodes": 1,
+      "meshes": 1,
+      "vertices": 144,
+      "triangles": 48,
+      "textures": [
+        {
+          "width": 64,
+          "height": 64,
+          "levels": 2,
+          "bytes": 20480,
+          "fnv": 3305629382
+        }
+      ],
+      "package_sha256": "be9f6db201db1deff6648f97eb1d264b0a6021432432e5e9923b8c915a6c6aee"
+    },
+    {
+      "name": "cottage-east-tex128",
+      "package_bytes": 24032,
+      "embedded_texture_bytes": 20480,
+      "non_texture_package_bytes": 3552,
+      "budgeted_model_bytes_host": 45296,
+      "model_metadata_charge_host": 720,
+      "instance_bytes_host": 568,
+      "skinned_vertex_bytes": 0,
+      "nodes": 1,
+      "meshes": 1,
+      "vertices": 36,
+      "triangles": 12,
+      "textures": [
+        {
+          "width": 64,
+          "height": 64,
+          "levels": 2,
+          "bytes": 20480,
+          "fnv": 3305629382
+        }
+      ],
+      "package_sha256": "7ccdc39e282963a789a4fe5010d16ef3b673223167f2ce3efac86cad99721172"
+    },
+    {
+      "name": "cottage-south-tex128",
+      "package_bytes": 30080,
+      "embedded_texture_bytes": 20480,
+      "non_texture_package_bytes": 9600,
+      "budgeted_model_bytes_host": 51344,
+      "model_metadata_charge_host": 720,
+      "instance_bytes_host": 568,
+      "skinned_vertex_bytes": 0,
+      "nodes": 1,
+      "meshes": 1,
+      "vertices": 108,
+      "triangles": 36,
+      "textures": [
+        {
+          "width": 64,
+          "height": 64,
+          "levels": 2,
+          "bytes": 20480,
+          "fnv": 3305629382
+        }
+      ],
+      "package_sha256": "3052d2d60ce9c1f8cc7a2f593da83054f38ff903dd2f3ed05cfcf9252503f73d"
+    },
+    {
+      "name": "cottage-west-tex128",
+      "package_bytes": 24032,
+      "embedded_texture_bytes": 20480,
+      "non_texture_package_bytes": 3552,
+      "budgeted_model_bytes_host": 45296,
+      "model_metadata_charge_host": 720,
+      "instance_bytes_host": 568,
+      "skinned_vertex_bytes": 0,
+      "nodes": 1,
+      "meshes": 1,
+      "vertices": 36,
+      "triangles": 12,
+      "textures": [
+        {
+          "width": 64,
+          "height": 64,
+          "levels": 2,
+          "bytes": 20480,
+          "fnv": 3305629382
+        }
+      ],
+      "package_sha256": "757bab69cd25eb992c95a28eb32a61a5388796bc9ea4caefd5a0b5ef2a262abd"
+    }
+  ],
+  "totals": {
+    "package_bytes": 4048448,
+    "embedded_texture_bytes": 2764800,
+    "shared_texture_cache_charged_bytes": 2642208,
+    "budgeted_model_bytes_host": 6841584,
+    "instance_bytes_host_one_per_model": 435512,
+    "additional_player_instance_bytes_host": 89528,
+    "skinned_vertex_bytes_one_per_species": 240360,
+    "additional_player_skinned_bytes": 52392
+  },
+  "runtime_commit": "4287df620af5881433b5b48b7275ade00c6e7542",
+  "release": "v0.12.9.4287df620af5",
+  "audited_packages_match_published_manifest": true,
+  "ground_texture": {
+    "payload_bytes": 43712,
+    "runtime_width": 256,
+    "runtime_height": 256,
+    "levels": 7,
+    "format": "CMPR"
+  },
+  "projection": {
+    "basis": "Arithmetic projection from the previous 23.35 MiB Dolphin warm-room measurement; not a new runtime measurement. Includes all 13 current models. Future loader, cache metadata and allocator effects still need measurement. No new runtime code implemented.",
+    "baseline_warm_mib": 23.35,
+    "remove_embedded_images_mib": 2.63671875,
+    "retain_species_64_plus_32_fallbacks_mib": 0.15625,
+    "retain_species_128_plus_64_fallbacks_mib": 0.625,
+    "stream_staging_mib": 0.0625,
+    "conservative_incoming_texture_mib": 0.3125,
+    "coarse_64": {
+      "steady_all_current_quality_mib": 20.86953125,
+      "with_staging_and_incoming_mib": 21.24453125
+    },
+    "coarse_128": {
+      "steady_all_current_quality_mib": 21.33828125,
+      "with_staging_and_incoming_mib": 21.71328125
+    }
+  },
+  "residency_notes": [
+    "The cottage contributes seven embedded 20 KiB copies but only one shared 20 KiB pixel payload; cache accounting includes allocation headers.",
+    "Skin output is not duplicated for every model. The bunny has no skinned vertex output in this release. The extra fox player output is 52,392 bytes.",
+    "Default/animated maximum working set: six resident species, one extra fox player instance and seven shared cottage parts."
+  ],
+  "audit_source_sha256": "9cf5201e49e3350377063b8e3055f681e280e43d7edf0ae341ff5936c611e143",
+  "shared_texture_pixel_payload_bytes": 2641920,
+  "additional_full_quality_chain_note": "Projection preserves the current two mip levels per quality tier. A deeper full chain would add bytes and needs a separate atlas-quality audit."
+}

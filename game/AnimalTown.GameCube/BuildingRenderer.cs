@@ -30,7 +30,7 @@ internal sealed class BuildingRenderer
         try{
             if(pending==null){
                 string name=loadPart==0?d.Exterior:loadPart==1?d.Door:loadPart==2?d.Floor:loadPart==3?d.North:loadPart==4?d.East:loadPart==5?d.South:d.West;
-                LoadingLabel="Loading "+name;pendingPath=TexturePolicy.ModelPath(name,TextureResolution.Size128);pending=Model.LoadAsync(pendingPath,default,256*1024);return false;
+                LoadingLabel="Loading "+name;pendingPath=TextureStreaming.ModelPath(name,TextureResolution.Size128);pending=Model.LoadAsync(pendingPath,default,256*1024);return false;
             }
             if(!pending.IsCompleted)return false;
             int slot=loadType*7+loadPart;models[slot]=pending.GetAwaiter().GetResult();residency.Register(AssetDemand.BuildingPart(loadType,loadPart),models[slot]!,pendingPath,loadPart<2);parts[slot]=models[slot]!.CreateInstance(16*1024);
@@ -48,7 +48,7 @@ internal sealed class BuildingRenderer
     internal bool Ready(int type)=>type>=0&&type<ready.Length&&ready[type];
     private void Part(Renderer renderer,int type,int part,Transform parent,Vector3 position,Vector3 scale,float yaw=0)
     {
-        if(!Ready(type)||!residency.Ready(AssetDemand.BuildingPart(type,part)))return;if(used==poses.Length)throw new InvalidOperationException("Building draw budget");var pose=poses[used++];pose.Parent=parent;pose.LocalPosition=position;pose.LocalScale=scale;pose.LocalRotation=new Quaternion(0,(float)Math.Sin(yaw*.5f),0,(float)Math.Cos(yaw*.5f));renderer.DrawModel(parts[type*7+part]!,pose);
+        if(!Ready(type)||!residency.Ready(AssetDemand.BuildingPart(type,part)))return;if(used==poses.Length)throw new InvalidOperationException("Building draw budget");var pose=poses[used++];pose.Parent=parent;pose.LocalPosition=position;pose.LocalScale=scale;pose.LocalRotation=new Quaternion(0,(float)Math.Sin(yaw*.5f),0,(float)Math.Cos(yaw*.5f));TextureStreaming.Request(AssetDemand.BuildingPart(type,part),128);renderer.DrawModel(parts[type*7+part]!,pose);
     }
     internal void Exterior(Renderer renderer,GameState state,int building,PortalSystem doors)
     {

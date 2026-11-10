@@ -240,3 +240,5 @@ if($IsLinux){
     & (Join-Path $Root 'out/native-face-culling-check')
     if($LASTEXITCODE){throw 'Face culling fixture failed'}
 }
+# Versioned external textures, native I/O and stable material bindings.
+& (Join-Path $Root 'tools/patch-texture-stream.ps1') -Root $Root -NativeRoot $nativeRoot
