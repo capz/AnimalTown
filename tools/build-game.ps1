@@ -81,6 +81,9 @@ $actorWindingParts=@('fox','bunny','giraffe','cat','hamster','spaniel'|ForEach-O
 RunNative '.' 'sh' (@('-c','cc -std=c11 -Wall -Wextra -Werror -ffunction-sections -fdata-sections -Iout/sdk-native/include tests/native-model-winding.c out/sdk-native/source/model.c out/sdk-native/source/model_animation.c -Wl,--gc-sections -lm -o /tmp/animaltown-model-winding && /tmp/animaltown-model-winding "$@"','model-winding')+$actorWindingParts)
 New-Item -ItemType Directory -Force -Path out/disc|Out-Null
 [IO.File]::WriteAllBytes((Join-Path $projectRoot 'out/disc/runtime.cfg'),[byte[]]@($RuntimeProfile))
+& (Join-Path $PSScriptRoot 'build-updater.ps1') -NativeInProcess:$NativeInProcess
+$updaterCommit=(Get-Content build/updater.lock.json -Raw|ConvertFrom-Json).commit
+$updaterHash=(Get-FileHash out/disc/animal-town-updater.dol -Algorithm SHA256).Hash
 $gameCommit = $identity.bb
 $gameFullCommit = $identity.commit
 $gameVersion = $identity.version
@@ -94,7 +97,7 @@ $sourceManifest = foreach($sourceFile in (& git ls-files --cached --others --exc
     if(Test-Path -LiteralPath $sourceFile -PathType Leaf){ "$sourceFile $((Get-FileHash -LiteralPath $sourceFile -Algorithm SHA256).Hash)" }
 }
 $sourceDigest=[Convert]::ToHexString([Security.Cryptography.SHA256]::HashData([Text.Encoding]::UTF8.GetBytes(($sourceManifest -join "`n"))))
-[IO.File]::WriteAllText((Join-Path $projectRoot 'out/build-revisions.txt'), "Version: $($identity.version)`nGame source: $gameFullCommit`nEngine: $engineCommit`nSDK: $sdkCommit`nPackage lock SHA256: $packageLocks`nEngine NuGet SHA512: $engineContentHash`nSDK NuGet SHA512: $sdkContentHash`nAssets NuGet SHA512: $assetsContentHash`nRuntime profile: $RuntimeProfile`nDirty: $([bool]$workingChanges)`nSource digest: $sourceDigest`nBuild image: $env:ANIMALTOWN_BUILD_IMAGE`n")
+[IO.File]::WriteAllText((Join-Path $projectRoot 'out/build-revisions.txt'), "Version: $($identity.version)`nGame source: $gameFullCommit`nEngine: $engineCommit`nSDK: $sdkCommit`nPackage lock SHA256: $packageLocks`nEngine NuGet SHA512: $engineContentHash`nSDK NuGet SHA512: $sdkContentHash`nAssets NuGet SHA512: $assetsContentHash`nUpdater source: $updaterCommit`nUpdater DOL SHA256: $updaterHash`nRuntime profile: $RuntimeProfile`nDirty: $([bool]$workingChanges)`nSource digest: $sourceDigest`nBuild image: $env:ANIMALTOWN_BUILD_IMAGE`n")
 if('terrain' -in $validation.managed){Run dotnet @('run','--project','tests/AnimalTown.RenderingChecks','-c','Release')}
 if($validation.managed.Count){Run dotnet @('run','--project','tests/AnimalTown.Checks','-c','Release','--','--suites',($validation.managed -join ','))}
 if('card' -in $validation.native){RunNative '.' 'sh' @('-c','cc -std=c11 -Wall -Wextra -Werror tests/native-card-read.c -o /tmp/animaltown-card-read && /tmp/animaltown-card-read')}

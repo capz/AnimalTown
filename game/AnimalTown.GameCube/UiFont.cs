@@ -57,6 +57,7 @@ internal sealed class UiFont
         }
         layoutWidths[slot]=Math.Max(max,x);return slot;
     }
+    internal void Release()=>TextureCache.Release(texture);
     internal static UiFont LoadSystem()
     {
         const string key="firmware:IPL/ascii-paged-v1";var cached=TextureCache.Find(key,true);if(cached!=null)return new UiFont(cached);

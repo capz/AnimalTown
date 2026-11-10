@@ -28,6 +28,22 @@ def screenshot(name):
     subprocess.run(['ffmpeg','-v','error','-f','x11grab','-video_size','800x600','-i',':93','-frames:v','1','-y',str(root/name)],env=env,check=True)
 
 
+def title_menu():
+    screenshot('title-dots-a.png');time.sleep(3);screenshot('title-dots-b.png')
+    def rgb(name):
+        return subprocess.check_output(['ffmpeg','-v','error','-i',str(root/name),'-frames:v','1','-f','rawvideo','-pix_fmt','rgb24','-'])
+    a,b=rgb('title-dots-a.png'),rgb('title-dots-b.png')
+    # Inspect a margin away from the wordmark/menu; dots must move while the
+    # title remains idle and no world has been started.
+    changed=sum(a[(y*800+x)*3:(y*800+x)*3+3]!=b[(y*800+x)*3:(y*800+x)*3+3]
+                for y in range(100,450) for x in range(40,160))
+    if changed<20:raise AssertionError('Title background is not scrolling')
+    for _ in range(3):press('D_DOWN')
+    press('D_RIGHT');screenshot('title-debug-edited.png')
+    press('D_UP');press('A');screenshot('title-dev-config-saved.png')
+    press('D_UP');press('D_UP');press('A');time.sleep(45);screenshot('title-start-game.png')
+    (root/'title-menu.txt').write_text(f'Diagonal dot margin changed pixels: {changed}\nEdited first debug option, saved dev config, then selected Start.\n')
+
 def cliff_minimap():
     def frame(name):
         screenshot(name+'.png')
@@ -405,7 +421,13 @@ with (root/'emulator.log').open('w') as log:
         if p.poll() is not None:
             raise RuntimeError(f'Dolphin exited during boot ({p.returncode}); see {root / "emulator.log"}')
         screenshot('screen.png')
-        if '--cliff-minimap' in sys.argv:
+        if '--title-menu' in sys.argv:
+            title_menu()
+        elif '--title-load' in sys.argv:
+            screenshot('title-dev-config-loaded.png');press('A');time.sleep(45);screenshot('title-continued-game.png')
+        elif '--title-update' in sys.argv:
+            press('D_DOWN');press('A');time.sleep(20);screenshot('title-updater.png')
+        elif '--cliff-minimap' in sys.argv:
             cliff_minimap()
         elif '--testing-menu' in sys.argv:
             testing_menu()
