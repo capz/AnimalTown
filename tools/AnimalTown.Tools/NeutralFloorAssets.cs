@@ -6,6 +6,9 @@ using SkiaSharp;
 
 internal static class NeutralFloorAssets
 {
+    internal const string FullTexture="floor-outdoor-neutral.dndtex";
+    internal const string PreviewTexture="floor-outdoor-neutral-64.dndtex";
+
     internal static void Build(string root,JsonNode config,string output)
     {
         var neutral=config["neutralFloor"]!;string file=(string)neutral["source"]!;
@@ -26,7 +29,11 @@ internal static class NeutralFloorAssets
             int at=(y*edge+x)*4;master[at]=master[at+1]=master[at+2]=v;master[at+3]=255;
         }
         byte[] package=FloorTexture.Encode(master,edge,edge,fullMipChain:true);
-        File.WriteAllBytes(Path.Combine(output,"floor-outdoor-neutral.dndtex"),package);string digest=Convert.ToHexString(SHA256.HashData(package));
+        byte[] preview=FloorTexture.ExtractMipTail(package,firstLevel:2);
+        File.WriteAllBytes(Path.Combine(output,FullTexture),package);
+        File.WriteAllBytes(Path.Combine(output,PreviewTexture),preview);
+        string digest=Convert.ToHexString(SHA256.HashData(package));
+        string previewDigest=Convert.ToHexString(SHA256.HashData(preview));
         var provenance=new List<object>();
         foreach(string season in new[]{"spring","summer","fall","winter"}){
             // Indoor floors retain their own artwork/color, outside the shared
@@ -40,7 +47,7 @@ internal static class NeutralFloorAssets
                 bool interior=name=="floor";var color=interior?SKColors.White:Parse((string?)(neutral["seasons"]?[season]?[name]??neutral["tints"]?[name])??throw new InvalidDataException("Missing neutral tint: "+name));
                 uint tint=(uint)(color.Red<<24|color.Green<<16|color.Blue<<8|255);int texture=interior?1:0;
                 if(!lookup.TryGetValue((texture,tint),out int material)){material=colors.Count;lookup.Add((texture,tint),material);colors.Add(tint);textureSlots.Add(texture);}styles.Add(material);
-                provenance.Add(new{season,surface=name,variant=0,imageFile=interior?null:file,imageSha=interior?null:imageSha,crop=interior?new[]{0,0,4,4}:new[]{0,0,image.Width,image.Height},source=interior?$"dvd:/floor-{season}-1.dndtex":"dvd:/floor-outdoor-neutral.dndtex",sourceSha=interior?Convert.ToHexString(SHA256.HashData(inside)):digest,derivedFromTransitionCenter=false,tint=$"#{color.Red:X2}{color.Green:X2}{color.Blue:X2}",brightnessFloor=interior?0:floor});
+                provenance.Add(new{season,surface=name,variant=0,imageFile=interior?null:file,imageSha=interior?null:imageSha,crop=interior?new[]{0,0,4,4}:new[]{0,0,image.Width,image.Height},source=interior?$"dvd:/floor-{season}-1.dndtex":"dvd:/"+FullTexture,sourceSha=interior?Convert.ToHexString(SHA256.HashData(inside)):digest,previewSource=interior?null:"dvd:/"+PreviewTexture,previewSha=interior?null:previewDigest,derivedFromTransitionCenter=false,tint=$"#{color.Red:X2}{color.Green:X2}{color.Blue:X2}",brightnessFloor=interior?0:floor});
             }
             using var stream=new MemoryStream();using var writer=new BinaryWriter(stream);
             writer.Write(0x32525441);writer.Write(2);writer.Write(RepeatFloorAssets.Names.Length);writer.Write(colors.Count);writer.Write(FloorTexture.Maximum);

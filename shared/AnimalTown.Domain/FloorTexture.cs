@@ -39,6 +39,23 @@ public static class FloorTexture
         }
         return Package(payload,w,h,format,levels);
     }
+
+    public static byte[] ExtractMipTail(byte[] source,int firstLevel)
+    {
+        TexturePixels.Validate(source);
+        int w=TexturePixels.Width(source),h=TexturePixels.Height(source),format=TexturePixels.Int(source,8);
+        int levels=TexturePixels.Int(source,24);
+        if(TexturePixels.Int(source,4)!=2||(format!=14&&format!=4)||firstLevel<0||firstLevel>=levels||levels>GroundMipLevels)
+            throw new InvalidOperationException("Invalid floor mip tail");
+        int size=MipLayout(w,h,format,levels,out int actualLevels);
+        if(actualLevels!=levels||source.Length!=32+size)
+            throw new InvalidOperationException("Invalid floor mip layout");
+        int skip=MipLayout(w,h,format,firstLevel,out _);
+        var payload=new byte[size-skip];
+        Array.Copy(source,32+skip,payload,0,payload.Length);
+        return Package(payload,w>>firstLevel,h>>firstLevel,format,levels-firstLevel);
+    }
+
     private static int MipLayout(int w,int h,int format,int maximumLevels,out int levels)
     {
         int bytes=0;
