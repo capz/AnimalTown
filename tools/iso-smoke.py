@@ -104,6 +104,7 @@ def shared_profiles():
     slot=int(sys.argv[sys.argv.index('--profile-slot')+1]) if '--profile-slot' in sys.argv else 0
     if not 0<=slot<4:raise ValueError('Profile slot must be 0..3')
     before=committed_card_sequence(root/'MemoryCardA.USA.raw',details=True)
+    creating=not before or not before['profiles'][slot]['created']
     wait_title();press('A');wait_profiles()
     press('B');wait_title();screenshot('profile-cancel-to-title.png');press('A');wait_profiles()
     for _ in range((slot-(before['active'] if before else 0))%4):press('D_DOWN')
@@ -117,6 +118,10 @@ def shared_profiles():
         if p.poll() is not None:raise AssertionError('Emulator stopped loading selected villager')
         time.sleep(2)
     else:raise AssertionError('Selected villager never reached gameplay')
+    if creating:
+        # An unused slot reaches Create, not the world/settings menu. Complete
+        # the same house-placement flow as the fresh water-renderer scenario.
+        press('D_UP');press('A');press('A');time.sleep(2);press('B');press('B')
     save_menu();deadline=time.monotonic()+180
     while time.monotonic()<deadline:
         after=committed_card_sequence(root/'MemoryCardA.USA.raw',details=True)
@@ -125,8 +130,10 @@ def shared_profiles():
     else:raise AssertionError('Selected villager did not save a complete shared-town generation')
     if after['active']!=slot:raise AssertionError('Wrong villager profile was saved')
     if before:
-        if after['profiles']!=before['profiles']:raise AssertionError('Saving changed personal data unexpectedly')
-        if after['terrain_sha256']!=before['terrain_sha256'] or after['houses_sha256']!=before['houses_sha256']:raise AssertionError('Switching villagers changed the shared terrain/home plots')
+        for index in range(4):
+            if index!=slot or not creating:
+                if after['profiles'][index]!=before['profiles'][index]:raise AssertionError('Saving changed another profile unexpectedly')
+        if not creating and (after['terrain_sha256']!=before['terrain_sha256'] or after['houses_sha256']!=before['houses_sha256']):raise AssertionError('Switching villagers changed the shared terrain/home plots')
     screenshot('profile-saved.png');(root/'profiles.json').write_text(json.dumps({'before':before,'after':after,'loading_background_seen':loading},indent=2))
 
 def submission_scenario():
