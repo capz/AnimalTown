@@ -27,7 +27,7 @@ for index,path in enumerate(files):
     payload=path.read_bytes()
     if payload[:4]!=b'ATSP' or not 32<=len(payload)<=1024*1024:raise ValueError('Invalid fixture record: '+path.name)
     data=bytearray(96);data[:8]=b'DNDSAVE1';struct.pack_into('>II',data,8,len(payload),96)
-    data[32:42]=b'AnimalTown';data[64:88]=b'Shared town test fixture\0';data.extend(payload)
+    data[32:42]=b'AnimalTown';comment=b'Shared town test fixture';data[64:64+len(comment)]=comment;data.extend(payload)
     count=(len(data)+sector-1)//sector;data.extend(bytes(count*sector-len(data)))
     if cursor+count>blocks:raise ValueError('Fixture does not fit the template')
     entry=bytearray(b'\xff'*64);entry[:8]=b'AMTE01\xff\x00';name=path.name.encode('ascii')
