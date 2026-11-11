@@ -30,12 +30,12 @@ internal static class SplitSaveChecks
         var s=new GameState(7319){Sequence=42,Wallet=1234,Name="Juniper",Species=3,Palette=5,Roof=2,Savings=9876543210};s.MailCount=2;s.Mail[0]=4;s.Mail[1]=-3;
         s.Town.Residents[0].Name="Savedfox";s.Town.Residents[0].Friendship=73;s.Town.Residents[0].PosX=12.125f;s.Town.Stock[0]=1;s.Town.Stock[2]=0;s.Town.Spending=777;
         var parts=SplitSaveCodec.Encode(s);var restored=SplitSaveCodec.Decode(parts);
-        check(SaveCodec.Encode(s).SequenceEqual(SaveCodec.Encode(restored)),"all fields round-trip through four separate records");
+        check(SaveCodec.Encode(s).SequenceEqual(SaveCodec.Encode(restored)),"all fields round-trip through shared records and four profiles");
         var commit=SplitSaveCodec.EncodeCommit(s,parts);check(SplitSaveCodec.DecodeCommitted(commit,parts).Wallet==1234,"commit binds complete save set");
         long allocated=GC.GetAllocatedBytesForCurrentThread();SplitSaveCodec.VerifyCommitted(commit,parts);
         check(GC.GetAllocatedBytesForCurrentThread()-allocated<16384,"final commit verification fits a small allocation budget without reconstructing a town");
         void Reject(Action operation,string reason){bool rejected=false;try{operation();}catch{rejected=true;}check(rejected,reason);}
-        for(int kind=0;kind<4;kind++){
+        for(int kind=0;kind<SplitSaveCodec.PartCount;kind++){
             var broken=parts.Select(p=>(byte[])p.Clone()).ToArray();broken[kind][32]^=1;Reject(()=>SplitSaveCodec.DecodeCommitted(commit,broken),"corrupt part rejected");
             broken=parts.Select(p=>(byte[])p.Clone()).ToArray();broken[kind]=broken[kind][..^1];Reject(()=>SplitSaveCodec.Decode(broken),"truncated part rejected");
         }
@@ -51,7 +51,8 @@ internal static class SplitSaveChecks
         var bounded=SaveCodec.Decode(SaveCodec.Encode(s));var boundedRepository=new SaveRepository(storage.Copy());
         var tiles=bounded.Town.Tiles;var elevation=bounded.Town.Elevation;var beforeSave=SaveCodec.Encode(bounded);
         allocated=GC.GetAllocatedBytesForCurrentThread();boundedRepository.Save(bounded);
-        check(GC.GetAllocatedBytesForCurrentThread()-allocated<192*1024,"full save/readback validation stays below 192 KiB without duplicate terrain arrays or town generation");
+        long saveBytes=GC.GetAllocatedBytesForCurrentThread()-allocated;Console.WriteLine("Shared roster save validation allocated "+saveBytes+" bytes");
+        check(saveBytes<256*1024,"full save/readback validation stays below 256 KiB with four profiles without duplicate terrain arrays or town generation");
         check(ReferenceEquals(tiles,bounded.Town.Tiles)&&ReferenceEquals(elevation,bounded.Town.Elevation),"readback preserves ownership of live terrain arrays");
         bounded.Sequence--;check(beforeSave.SequenceEqual(SaveCodec.Encode(bounded)),"successful read-only validation does not normalize or mutate live state");
         for(int invalid=0;invalid<3;invalid++){
@@ -62,19 +63,19 @@ internal static class SplitSaveChecks
             check(original.SequenceEqual(SaveCodec.Encode(game)),"failed semantic validation leaves the complete live state unchanged");
             check(new SaveRepository(disk).Load()!.Sequence==2,"invalid snapshots preserve the previous complete generation");
         }
-        for(int read=1;read<=9;read++){
+        for(int read=1;read<=15;read++){
             var disk=storage.Copy();disk.CorruptReadAt=read;var game=SaveCodec.Decode(SaveCodec.Encode(s));var original=SaveCodec.Encode(game);
             Reject(()=>new SaveRepository(disk).Save(game),"exact readback rejects altered bytes even with a valid recomputed CRC");
             check(original.SequenceEqual(SaveCodec.Encode(game)),"readback failure restores sequence and leaves live state unchanged");
-            check(new SaveRepository(disk).Load()!.Sequence==(read>=5?3:2),"readback corruption recovers one complete generation, including an already durable commit");
+            check(new SaveRepository(disk).Load()!.Sequence==(read>=8?3:2),"readback corruption recovers one complete generation, including an already durable commit");
         }
-        for(int mode=0;mode<3;mode++)for(int cut=1;cut<=5;cut++){
+        for(int mode=0;mode<3;mode++)for(int cut=1;cut<=8;cut++){
             var disk=storage.Copy();disk.Mode=mode;disk.CutAt=cut;var game=SaveCodec.Decode(SaveCodec.Encode(s));game.Wallet=3000;game.Town.Stock[0]=0;
             Reject(()=>new SaveRepository(disk).Save(game),"injected interrupted write reports failure");check(game.Sequence==2,"failed write restores in-memory sequence");
-            var recovered=new SaveRepository(disk).Load();bool committed=mode==2&&cut==5;
+            var recovered=new SaveRepository(disk).Load();bool committed=mode==2&&cut==8;
             check(recovered!=null&&recovered.Sequence==(committed?3:2)&&recovered.Wallet==(committed?3000:2000)&&recovered.Town.Stock[0]==(committed?0:s.Town.Stock[0]),"power-cut recovery uses one whole generation");
         }
-        for(int kind=0;kind<5;kind++){
+        for(int kind=0;kind<8;kind++){
             var disk=storage.Copy();disk.Files.Remove(SplitSaveCodec.FileName(kind,0));var recovered=new SaveRepository(disk).Load();check(recovered!=null&&recovered.Sequence==1&&recovered.Wallet==1234,"missing record falls back to previous complete bank");
         }
         var legacy=new Storage();legacy.Files["AnimalTown1"]=SaveCodec.Encode(s);var imported=new SaveRepository(legacy).Load()!;check(imported.Sequence==2&&imported.Wallet==2000,"legacy combined save imports");new SaveRepository(legacy).Save(imported);

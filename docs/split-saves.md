@@ -1,5 +1,8 @@
 # Split persistence
 
+The current four-profile extension is documented in [shared town profiles](shared-town-profiles.md).
+The layout below describes the original single-player split format, which remains readable for migration.
+
 Storage now consists of four independent, versioned records. This changes
 physical memory-card files and database storage, not just in-memory classes.
 

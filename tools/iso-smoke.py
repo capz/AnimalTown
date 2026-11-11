@@ -82,6 +82,45 @@ def title_menu():
     else:raise AssertionError('Game never left loading screen')
     (root/'title-menu.txt').write_text(f'Diagonal dot pixels changed: {changed}\nOpened debug modal, edited and paged settings, saved/closed/reopened, then selected Start.\nThree loading frames contained no cream title/menu and an animated sprout; game then became visible.\n')
 
+def wait_profiles(name='profile-picker.png'):
+    deadline=time.monotonic()+180
+    while time.monotonic()<deadline:
+        screenshot(name);pixels=rgb(name)
+        count=sum(all(abs(pixels[(y*800+x)*3+c]-value)<=5 for c,value in enumerate((53,105,84))) for y in range(160,365) for x in range(120,165))
+        if count>150 and color_count(pixels,(255,245,221))>70000:return
+        if p.poll() is not None:raise AssertionError('Emulator stopped before villager picker')
+        time.sleep(1)
+    raise AssertionError('Villager picker did not appear')
+
+def shared_profiles():
+    slot=int(sys.argv[sys.argv.index('--profile-slot')+1]) if '--profile-slot' in sys.argv else 0
+    if not 0<=slot<4:raise ValueError('Profile slot must be 0..3')
+    before=committed_card_sequence(root/'MemoryCardA.USA.raw',details=True)
+    wait_title();press('A');wait_profiles()
+    press('B');wait_title();screenshot('profile-cancel-to-title.png');press('A');wait_profiles()
+    for _ in range((slot-(before['active'] if before else 0))%4):press('D_DOWN')
+    screenshot('profile-selected.png');press('A')
+    deadline=time.monotonic()+300;loading=False
+    while time.monotonic()<deadline:
+        screenshot('profile-game.png');pixels=rgb('profile-game.png')
+        mint=color_count(pixels,(149,198,186));cream=color_count(pixels,(255,245,221))
+        if mint>150000 and cream<100:loading=True
+        if loading and mint<150000:break
+        if p.poll() is not None:raise AssertionError('Emulator stopped loading selected villager')
+        time.sleep(2)
+    else:raise AssertionError('Selected villager never reached gameplay')
+    save_menu();deadline=time.monotonic()+180
+    while time.monotonic()<deadline:
+        after=committed_card_sequence(root/'MemoryCardA.USA.raw',details=True)
+        if after and after['sequence']>(before['sequence'] if before else 0):break
+        time.sleep(2)
+    else:raise AssertionError('Selected villager did not save a complete shared-town generation')
+    if after['active']!=slot:raise AssertionError('Wrong villager profile was saved')
+    if before:
+        if after['profiles']!=before['profiles']:raise AssertionError('Saving changed personal data unexpectedly')
+        if after['terrain_sha256']!=before['terrain_sha256'] or after['houses_sha256']!=before['houses_sha256']:raise AssertionError('Switching villagers changed the shared terrain/home plots')
+    screenshot('profile-saved.png');(root/'profiles.json').write_text(json.dumps({'before':before,'after':after,'loading_background_seen':loading},indent=2))
+
 def submission_scenario():
     sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'docs/performance'))
     from avi_guest_clock import AviGuestClock
@@ -208,7 +247,7 @@ def cliff_minimap():
 def save_menu():
     press('START');press('A')
 
-def committed_card_sequence(path, expected_day=None):
+def committed_card_sequence(path, expected_day=None, details=False):
     """Read a complete generation from either redundant directory/BAT pair."""
     import struct
     import zlib
@@ -220,10 +259,10 @@ def committed_card_sequence(path, expected_day=None):
         if len(payload)<32:raise ValueError('Short save record')
         magic,version,catalog,actual,sequence,seed,length=struct.unpack_from('<7I',payload)
         crc=struct.unpack_from('<I',payload,len(payload)-4)[0]
-        if magic!=0x50535441 or version!=3 or actual!=kind or length!=len(payload) or zlib.crc32(payload[:-4])!=crc:
+        if magic!=0x50535441 or version not in (1,2,3,4) or actual!=kind or length!=len(payload) or zlib.crc32(payload[:-4])!=crc:
             raise ValueError('Invalid save record')
         return version,catalog,sequence,seed,crc
-    best=0;best_day=None
+    best=0;best_day=None;best_details=None
     for directory in (1,2):
         for bat in (3,4):
             files={}
@@ -243,21 +282,35 @@ def committed_card_sequence(path, expected_day=None):
                     if offset<32 or offset+length>len(data):raise ValueError('Truncated card container')
                     files[name]=bytes(data[offset:offset+length])
                 for bank in (0,1):
-                    names=[f'AT-{kind}{bank}' for kind in ('Town','Houses','Shops','Player','Commit')]
-                    if not all(name in files for name in names):continue
-                    commit=files[names[4]];identity=record(commit,4)
-                    if len(commit)!=64:continue
-                    for kind,name in enumerate(names[:4]):
-                        part=files[name];part_identity=record(part,kind)
+                    names=[f'AT-{kind}{bank}' for kind in ('Town','Houses','Shops','Player')]
+                    commit_name=f'AT-Commit{bank}'
+                    if commit_name not in files:continue
+                    commit=files[commit_name];identity=record(commit,4)
+                    if identity[0]>=4:names.extend(f'AT-Villager{slot}-{bank}' for slot in (2,3,4))
+                    if len(commit)!=32+8*len(names) or not all(name in files for name in names):continue
+                    for kind,name in enumerate(names):
+                        part=files[name];part_identity=record(part,kind if kind<4 else kind+1)
                         expected_length,expected_crc=struct.unpack_from('<II',commit,28+kind*8)
                         if part_identity[:4]!=identity[:4] or len(part)!=expected_length or part_identity[4]!=expected_crc:
                             raise ValueError('Mixed save generation')
                     if identity[2]>best:
-                        best=identity[2];best_day=struct.unpack_from('<i',files[names[0]],40)[0]
+                        best=identity[2];town=files[names[0]];best_day=struct.unpack_from('<i',town,40)[0]
+                        if identity[0]>=4:
+                            at=48
+                            for _ in range(2):at+=4+struct.unpack_from('<I',town,at)[0]*4
+                            terrain_hash=__import__('hashlib').sha256(town[48:at]).hexdigest()
+                            for _ in range(6):at+=8;at+=4+struct.unpack_from('<I',town,at)[0]*4;at+=8
+                            for _ in range(2):at+=4+struct.unpack_from('<I',town,at)[0]*24
+                            active=struct.unpack_from('<I',town,at)[0];profiles=[]
+                            for name in names[3:]:
+                                part=files[name];length=struct.unpack_from('<I',part,160)[0]
+                                label=''.join(chr(struct.unpack_from('<I',part,164+i*4)[0]) for i in range(length))
+                                profiles.append({'name':label,'created':struct.unpack_from('<I',part,28)[0],'wallet':struct.unpack_from('<I',part,40)[0],'species':struct.unpack_from('<I',part,44)[0]})
+                            best_details={'sequence':best,'active':active,'profiles':profiles,'terrain_sha256':terrain_hash,'houses_sha256':__import__('hashlib').sha256(files[names[1]][28:-4]).hexdigest()}
             except (ValueError,UnicodeError,struct.error):continue
     if expected_day is not None and best_day!=expected_day:
         raise AssertionError(f'Explicit save did not retain the new rollover day: expected {expected_day}, got {best_day}')
-    return best
+    return best_details if details else best
 
 def testing_menu():
     import hashlib
@@ -527,7 +580,9 @@ with (root/'emulator.log').open('w') as log:
             raise RuntimeError(f'Dolphin exited during boot ({p.returncode}); see {root / "emulator.log"}')
         screenshot('screen.png')
         if any(flag in sys.argv for flag in ('--title-menu','--title-load','--title-update')):wait_title()
-        if '--title-menu' in sys.argv:
+        if '--shared-profiles' in sys.argv:
+            shared_profiles()
+        elif '--title-menu' in sys.argv:
             title_menu()
         elif '--title-load' in sys.argv:
             press('D_DOWN');press('D_DOWN');press('A');screenshot('title-dev-config-loaded.png');press('B');press('D_UP');press('D_UP');press('A');time.sleep(180);screenshot('title-continued-game.png')

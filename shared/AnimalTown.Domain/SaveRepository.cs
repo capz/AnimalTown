@@ -15,7 +15,7 @@ public sealed class SaveRepository
     private static void Match(byte[] actual,byte[] expected)
     {if(actual.Length!=expected.Length)throw new InvalidOperationException("Save readback length differs");for(int i=0;i<actual.Length;i++)if(actual[i]!=expected[i])throw new InvalidOperationException("Save readback differs from snapshot");}
     private byte[][] ReadParts(int bank,byte[][]? expected=null)
-    {var parts=new byte[4][];for(int i=0;i<4;i++){parts[i]=storage.Read(SplitSaveCodec.FileName(i,bank));if(expected!=null)Match(parts[i],expected[i]);}return parts;}
+    {var town=storage.Read(SplitSaveCodec.FileName(0,bank));var parts=new byte[SplitSaveCodec.ReadVersion(town)>=4?SplitSaveCodec.PartCount:4][];parts[0]=town;if(expected!=null)Match(town,expected[0]);for(int i=1;i<parts.Length;i++){parts[i]=storage.Read(SplitSaveCodec.FileName(SplitSaveCodec.RecordKind(i),bank));if(expected!=null)Match(parts[i],expected[i]);}return parts;}
     // Separate native GC frames release readback/validation temporaries before
     // the final verification. No decoded town or card buffer escapes either call.
     private void ValidateReadback(int bank,byte[][] parts,byte[] commit,Town snapshot)
@@ -35,7 +35,7 @@ public sealed class SaveRepository
         int previous=state.Sequence;if(previous==int.MaxValue)throw new InvalidOperationException("Save sequence exhausted");state.Sequence++;
         try{
             int bank=state.Sequence%2;var parts=SplitSaveCodec.Encode(state);var commit=SplitSaveCodec.EncodeCommit(state,parts);
-            for(int i=0;i<4;i++)storage.Write(SplitSaveCodec.FileName(i,bank),parts[i]);
+            for(int i=0;i<parts.Length;i++)storage.Write(SplitSaveCodec.FileName(SplitSaveCodec.RecordKind(i),bank),parts[i]);
             ValidateReadback(bank,parts,commit,state.Town);
             storage.Write(SplitSaveCodec.FileName(4,bank),commit);
             // Preserve full semantic validation and exact readback while sharing

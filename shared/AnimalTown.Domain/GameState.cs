@@ -53,9 +53,10 @@ public sealed partial class GameState
     public bool PlaceHouse(int x,int z,bool relocate)
     {
         if(Space!=0||!Town.ValidPlot(x,z)||(relocate&&Wallet<50000))return false;
+        for(int p=0;p<ProfileCount;p++)if(p!=ActiveProfile&&HomePlaced(p)&&x<HomeX(p)+15&&x+15>HomeX(p)&&z<HomeZ(p)+13&&z+13>HomeZ(p))return false;
         if(!HouseEntrance(x,z,out float arrivalX,out float arrivalZ))return false;
         int dx=x-Town.HouseX,dz=z-Town.HouseZ;
-        for(int i=0;i<Town.PlacedCount;i++)if(Town.Placed[i].Room==0){Town.Placed[i].X+=dx;Town.Placed[i].Z+=dz;}
+        for(int i=0;i<Town.PlacedCount;i++)if(Town.Placed[i].Room==0&&Town.Placed[i].Owner==PlayerOwner){Town.Placed[i].X+=dx;Town.Placed[i].Z+=dz;}
         Town.HouseX=x;Town.HouseZ=z;HousePlaced=true;X=arrivalX;Z=arrivalZ;if(relocate)Wallet-=50000;return true;
     }
     private bool HouseEntrance(int x,int z,out float arrivalX,out float arrivalZ)
@@ -71,11 +72,14 @@ public sealed partial class GameState
     public bool CanPlace(int id,int x,int z,int rotation,int room,int actor,bool existing=false)
     {
         if(rotation<0||rotation>3||!BuildingWorld.ValidSpace(room)||!Catalog.Has(id,ItemFlags.Place))return false;
-        bool ownPlayer=actor==0&&HousePlaced&&room>=0&&room<=4;
+        int profile=existing?OwnerProfile(actor):actor==0?ActiveProfile:OwnerProfile(actor);
+        if(!existing&&actor>=1&&actor<=6)profile=-1;
+        bool ownPlayer=profile>=0&&HomePlaced(profile)&&(room==0||BuildingWorld.RoomProfile(room)==profile);
         bool ownResident=actor>=1&&actor<=6&&room==15+actor;
         if(!ownPlayer&&!ownResident)return false;
         if(room==0&&!Catalog.Has(id,ItemFlags.Outdoor))return false;
-        if((room==2&&HouseTier<3)||(room==3&&HouseTier<4)||(room==4&&HouseTier<5))return false;
+        int personalRoom=BuildingWorld.PersonalRoom(room),homeTier=profile>=0?HomeTier(profile):0;
+        if(ownPlayer&&((personalRoom==2&&homeTier<3)||(personalRoom==3&&homeTier<4)||(personalRoom==4&&homeTier<5)))return false;
         int w=Catalog.Items[id].Width,h=Catalog.Items[id].Height;if((rotation&1)!=0){int swap=w;w=h;h=swap;}
         if(room!=0&&!existing&&!BuildingWorld.Available(this,room))return false;
         int size=room==0?0:existing&&!BuildingCatalog.Available(BuildingTypes[BuildingWorld.Building(room)])?16:BuildingWorld.Size(this,room);
@@ -84,9 +88,9 @@ public sealed partial class GameState
             int tx=x+i,tz=z+j;
             if(room==0)
             {
-                if(!InGarden(tx,tz)||Town.At(tx,tz)!=0||tx==Town.HouseX||tz==Town.HouseZ||tx==Town.HouseX+GardenWidths[GardenTier]-1||tz==Town.HouseZ+GardenHeights[GardenTier]-1)return false;
-                if(tx>=Town.HouseX+2&&tx<=Town.HouseX+4&&tz>=Town.HouseZ+1&&tz<=Town.HouseZ+3)return false;
-                if(tx==Town.HouseX+1&&tz==Town.HouseZ+3)return false;
+                if(!GardenContains(profile,tx,tz)||Town.At(tx,tz)!=0||tx==HomeX(profile)||tz==HomeZ(profile)||tx==HomeX(profile)+GardenWidths[HomeGardenTier(profile)]-1||tz==HomeZ(profile)+GardenHeights[HomeGardenTier(profile)]-1)return false;
+                if(tx>=HomeX(profile)+2&&tx<=HomeX(profile)+4&&tz>=HomeZ(profile)+1&&tz<=HomeZ(profile)+3)return false;
+                if(tx==HomeX(profile)+1&&tz==HomeZ(profile)+3)return false;
             }
             else if(tx<0||tz<0||tx>=size||tz>=size||!existing&&BuildingWorld.DoorClearance(size,tx,tz,1,1))return false;
             for(int p=0;p<Town.PlacedCount;p++)
@@ -101,7 +105,7 @@ public sealed partial class GameState
     public bool Place(int slot,int x,int z,int rotation,int room)
     {
         if(slot<0||slot>=Capacity||Town.PlacedCount==Town.Placed.Length||!CanPlace(Pockets[slot],x,z,rotation,room,0))return false;
-        var p=Town.Placed[Town.PlacedCount++];p.Item=Pockets[slot];p.X=x;p.Z=z;p.Room=room;p.Rotation=rotation;p.Owner=0;Pockets[slot]=0;return true;
+        var p=Town.Placed[Town.PlacedCount++];p.Item=Pockets[slot];p.X=x;p.Z=z;p.Room=room;p.Rotation=rotation;p.Owner=PlayerOwner;Pockets[slot]=0;return true;
     }
     public bool Use(int slot,int action,int x,int z)
     {
@@ -127,7 +131,7 @@ public sealed partial class GameState
         int tx=(int)x,tz=(int)z;
         if(room!=0)return BuildingWorld.CanStand(this,room,x,z);
         if(!Town.Walkable(tx,tz)||x<.2f||z<.2f)return false;
-        if(HousePlaced&&tx>=Town.HouseX+2&&tx<=Town.HouseX+4&&tz>=Town.HouseZ+1&&tz<=Town.HouseZ+3)return false;
+        if(HomeBlocks(tx,tz))return false;
         int g=Town.FindGround(tx,tz,3);if(g>=0)return false;
         for(int i=0;i<Town.PlacedCount;i++){var p=Town.Placed[i];if(p.Room!=0)continue;BuildingWorld.Footprint(p,out int w,out int d);if(x>p.X-BuildingWorld.Radius&&x<p.X+w+BuildingWorld.Radius&&z>p.Z-BuildingWorld.Radius&&z<p.Z+d+BuildingWorld.Radius)return false;}
         return true;
@@ -156,17 +160,15 @@ public sealed partial class GameState
         // retention window on the first calendar update, before catch-up expiry.
         for(int i=0;i<Town.GroundCount;i++)if(Town.Ground[i].Kind==4&&Town.Ground[i].Day==GroundItem.PendingRecoveryDay)Town.Ground[i].Day=Math.Max(day,Town.Day);
         if(day<=Town.Day)return;
-        if(Town.Month>=0&&month>Town.Month&&Savings<=long.MaxValue-Savings/200)Savings+=Savings/200;
-        Town.Month=month;Town.Day=day;Jobs=0;JobDay=day;
-        if(PendingKind!=0&&day>=PendingDay){if(PendingKind==1)HouseTier=PendingTier;else GardenTier=PendingTier;PendingKind=0;}
+        CaptureProfile();
+        for(int p=0;p<ProfileCount;p++)if(Profiles[p].Created)Profiles[p].Rollover(day,month,Town.Month);
+        RestoreProfile(ActiveProfile);Town.Month=month;Town.Day=day;
         Town.StockCount=Town.Spending>=100000?12:Town.Spending>=25000?9:6;
         for(int i=0;i<Town.StockCount;i++)Town.Stock[i]=i<5?i+5:10+(day+i)%4;
-        for(int i=0;i<MailCount;i++)if(Mail[i]<0)Mail[i]=-Mail[i];
-        for(int i=0;i<6;i++){var v=Town.Residents[i];if(v.Request!=0){v.Friendship=Math.Max(0,v.Friendship-2);v.Request=0;}}
         for(int i=Town.GroundCount-1;i>=0;i--)
         {
             var g=Town.Ground[i];
-            if(g.Kind==0&&!InGarden(g.X,g.Z)){g.Kind=4;g.Day=day;}
+            if(g.Kind==0&&!AnyGardenContains(g.X,g.Z)){g.Kind=4;g.Day=day;}
             else if(g.Kind==4&&day-g.Day>=7)Town.RemoveGround(i);
             else if(g.Kind==2&&g.Item!=2&&day-g.Day>=3){g.Kind=3;Town.NotifyCastersChanged();}
         }

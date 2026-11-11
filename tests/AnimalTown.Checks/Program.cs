@@ -1,5 +1,7 @@
 using AnimalTown;
 
+if(args.Length==2&&args[0]=="--profile-fixture"){ProfileFixture.Write(args[1]);return;}
+
 int checks=0;
 void Check(bool value,string message){checks++;if(!value)throw new Exception(message);}
 string[] available={"ui","menu","text","trim","terrain","movement","dialogue","generation","life","saves","buildings","core"};
@@ -16,7 +18,7 @@ if(Wants("movement"))PlayerMovementChecks.Run(Check);
 if(Wants("dialogue"))DialogueVoiceChecks.Run(Check);
 if(Wants("generation"))TownGenerationChecks.Run(Check);
 if(Wants("life"))TerrainLifeChecks.Run(Check);
-if(Wants("saves")){SplitSaveChecks.Run(Check);DevConfigChecks.Run(Check);}
+if(Wants("saves")){SplitSaveChecks.Run(Check);DevConfigChecks.Run(Check);ProfileChecks.Run(Check);}
 if(Wants("buildings"))BuildingChecks.Run(Check);
 if(!Wants("core")){Console.WriteLine(checks+" checks passed; suites: "+string.Join(",",selected));return;}
 var terrainEdit=new GameState(74);int terrainVersion=terrainEdit.Town.TerrainVersion;

@@ -38,6 +38,7 @@ public sealed class Town
     public readonly int[] Stock=new int[12];
     public int Seed,Day=-1,Month=-1,GroundCount,PlacedCount,Spending,StockCount=6;
     public int HouseX=12,HouseZ=22;
+    public int ActiveProfile {get;internal set;}
     public Town(int seed):this(seed,null){}
     // Save readback validates terrain against the live snapshot without writing
     // to it. Other mutable records remain private to this validation town.
@@ -85,7 +86,7 @@ public sealed class Town
     public bool AddGround(int item,int x,int z,int kind,int day)
     {
         if(GroundCount==Ground.Length||!Catalog.Valid(item)||!Walkable(x,z)||FindGround(x,z)>=0)return false;
-        var g=Ground[GroundCount++];g.Item=item;g.X=x;g.Z=z;g.Kind=kind;g.Day=day;g.Owner=0;NotifyCastersChanged();return true;
+        var g=Ground[GroundCount++];g.Item=item;g.X=x;g.Z=z;g.Kind=kind;g.Day=day;g.Owner=ActiveProfile;NotifyCastersChanged();return true;
     }
     public void RemoveGround(int index)
     { var old=Ground[index];Ground[index]=Ground[--GroundCount];Ground[GroundCount]=old;NotifyCastersChanged(); }

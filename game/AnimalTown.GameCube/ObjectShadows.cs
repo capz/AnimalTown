@@ -45,7 +45,7 @@ internal sealed class ObjectShadows
     internal void Prepare(GameState state)
     {
         var t=state.Town;int hash=state.HousePlaced?1:0;
-        for(int i=0;i<BuildingWorld.Count;i++){BuildingWorld.Origin(state,i,out float x,out float z);hash=unchecked(hash*31+(int)x*397+(int)z);}
+        for(int i=0;i<BuildingWorld.Count;i++){BuildingWorld.Origin(state,i,out float x,out float z);hash=unchecked(hash*31+(int)x*397+(int)z+(BuildingWorld.Exists(state,i)?1:0));}
         bool changed=t!=town||groundVersion!=t.ShadowVersion||terrainVersion!=t.TerrainVersion||hash!=houseHash;
         if(changed){
             if(t!=town){for(int i=0;i<Capacity;i++)entries[i].Key=-1;building=-1;}
