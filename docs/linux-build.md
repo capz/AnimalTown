@@ -71,8 +71,6 @@ The regular host PowerShell build commands remain supported; their native stages
 use the original libogc2 container. `-NativeInProcess` is for the combined Linux
 image and runs those stages directly, with no nested Docker daemon.
 
-The boot component is owned by DolphinDotNet, pinned separately in
-`build/apploader.lock.json`. `tools/resolve-apploader.ps1` verifies image/license
-SHA-256 and byte counts before publication to the build output. See
-[sdk-apploader.md](sdk-apploader.md); no AnimalTown loader C or linker script is
-compiled. The game runtime/compiler package pin stays independent.
+The pinned DolphinDotNet SDK emits the boot component during `make apploader`,
+including validation of the game's DOL. The game packs the complete SDK image
+and includes the SDK boot license. See [sdk-apploader.md](sdk-apploader.md).

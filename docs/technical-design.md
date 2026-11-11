@@ -34,8 +34,8 @@ build does not cross-compile a game; a game build never starts a server.
 
 Pinned package baseline (see [package adoption](nuget-rendering-services.md)):
 
-* Capz.Hypercube.GameCube/Core `0.1.0-preview.15.1`.
-* DolphinDotNet.Sdk/GameCube/Core and Assets `0.1.0-preview.305.1`.
+* Capz.Hypercube.GameCube/Core `0.1.0-preview.28.1`.
+* DolphinDotNet.Sdk/GameCube/Core and Assets `0.1.0-preview.315.1`.
 * Package locks record exact transitive content hashes; global.json pins the SDK.
 * Native toolchain: ghcr.io/extremscorner/libogc2 at
   sha256:13bb658d3f18903816617223f5d7c6f776d3db3ea806aae67f8d35a7a69d4c85.
