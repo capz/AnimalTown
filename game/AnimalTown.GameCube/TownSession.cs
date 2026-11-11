@@ -9,9 +9,11 @@ internal sealed class TownSession
 {
     internal GameState State {get;private set;}
     internal OnboardingDraft? Draft {get;private set;}
+    internal bool PreviewStarted {get;set;}
     internal string OnboardingSaveError {get;private set;}="";
-    internal readonly bool Loaded,Damaged;
-    internal readonly string Status;
+    internal bool Loaded {get;private set;}
+    internal readonly bool Damaged;
+    internal string Status {get;private set;}
     private TownSession(GameState state,bool loaded,bool damaged,string status){State=state;Loaded=loaded;Damaged=damaged;Status=status;}
     internal void SelectProfile(int profile)
     {
@@ -33,7 +35,7 @@ internal sealed class TownSession
             bool files=false;var entries=card.GetEntries();var names=new string[entries.Length];
             for(int i=0;i<entries.Length;i++){names[i]=entries[i].Name;if(SplitSaveCodec.IsFile(names[i]))files=true;}
             var store=new CardSaveStorage(card,File.ReadAllBytes("dvd:/savebanner.rgb5a3"),File.ReadAllBytes("dvd:/saveicon.rgb5a3"));
-            Draft.Commit(new SaveRepository(store),files,names);State=Draft.State;Draft.Dispose();Draft=null;return true;
+            Draft.Commit(new SaveRepository(store),files,names);State=Draft.State;Draft.Dispose();Draft=null;Loaded=true;Status="Saved / "+BuildInfo.Version;return true;
         }catch(Exception error){
             OnboardingSaveError=error.Message!=null&&(error.Message.StartsWith("The town on this card")||error.Message.StartsWith("This card already"))?
                 "Card changed. Return to the title and reload your town.":"Couldn't save. Check Slot A and try again.";

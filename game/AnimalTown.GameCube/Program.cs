@@ -26,7 +26,7 @@ internal static class Program
             if(!TitleScreen.Run(config))return 0;
             var session=TownSession.Load();LoadingScreen.Finish();
             if(!ProfilePicker.Run(session)){AnimalTown.GameCube.NativeTexturePages.Collect();continue;}
-            if(session.Draft!=null&&!OnboardingFlow.Identity(session)){
+            if(session.Draft!=null&&!OnboardingFlow.Run(config,session)){
                 session.DiscardDraft();AnimalTown.GameCube.NativeTexturePages.Collect();continue;
             }
             RunSession(config,session);
@@ -36,7 +36,7 @@ internal static class Program
             AnimalTown.GameCube.NativeTexturePages.Collect();
         }
     }
-    private static void RunSession(DevConfig config,TownSession session)
+    internal static int RunSession(DevConfig config,TownSession session)
     {
         LoadingScreen.Draw();TextureCache.TrimUnused();
         AnimalTown.GameCube.NativeTexturePages.Collect();
@@ -53,9 +53,10 @@ internal static class Program
             FrameProfile.Begin();long simulation=FrameProfile.Start();
             long now=Clock.Timestamp;accumulator+=(now-previous)/1000000.0;previous=now;if(accumulator>.1334)accumulator=.1334;
             Controller.Update();var pad=Controller.GetState(0);game.Input(pad);
-            if(game.ExitToTitle)return;
-            // Input's review/save scope has returned. No disposed view or
-            // encoded draft remains a conservative-GC root on that stack.
+            if(game.ExitToTitle)return OnboardingFlow.ToTitle;
+            if(game.NextSetup!=0)return game.NextSetup;
+            // Setup and preview scopes have returned before gameplay starts.
+            // Their disposed views/snapshots cannot remain stack roots here.
             game.ReleaseIntro();
             while(accumulator>=1.0/30){game.Step(pad);accumulator-=1.0/30;}
             FrameProfile.End(0,simulation);game.Draw();
@@ -68,10 +69,8 @@ internal sealed class TownGame : IDisposable
 {
     private GameState state;
     private readonly TownSession session;
-    private OnboardingUi? onboardingReview;
-    private string onboardingError="";
     private bool releaseIntro,disposed;
-    private int previewPlotX,previewPlotZ;
+    internal int NextSetup {get;private set;}
     internal bool ExitToTitle {get;private set;}
 
     private readonly TownClock townClock=new TownClock();
@@ -165,7 +164,7 @@ internal sealed class TownGame : IDisposable
         BuildingCatalog.Configure(File.ReadAllBytes("dvd:/buildings.bin"));
         LoadingScreen.Pulse();
         screen=session.Draft!=null?"plot":"world";
-        if(session.Draft!=null)FindStartingPlot();
+        if(session.Draft!=null&&!session.PreviewStarted){FindStartingPlot();session.PreviewStarted=true;}
         facingYaw=state.Facing;
         if(session.Draft==null)state.Rollover(day,month);
         if(room==0&&state.HousePlaced&&!state.CanWalk(state.X,state.Z,0))state.MoveToHouseEntrance();
@@ -204,35 +203,11 @@ internal sealed class TownGame : IDisposable
     }
     private void OnboardingInput(ControllerState p)
     {
-        if(screen=="onboard-review"){
-            if(p.B.WasPressed){
-                onboardingReview!.Dispose();onboardingReview=null;session.Draft!.ClearHome();
-                state.X=previewPlotX+3.5f;state.Z=previewPlotZ+6.5f;screen="plot";return;
-            }
-            if(p.A.WasPressed){
-                onboardingReview!.DrawReview(state,"",true);state.Facing=facingYaw;
-                if(session.SaveOnboarding()){
-                    onboardingReview.Dispose();onboardingReview=null;onboardingError="";
-                    loaded=true;saveStatus="Saved / "+BuildInfo.Version;ReadCalendar();state.Rollover(day,month);screen="world";releaseIntro=true;
-                }else onboardingError=session.OnboardingSaveError;
-            }
-            return;
-        }
-        if(p.B.WasPressed){
-            // Terrain preparation has unwound before setup borrows this canvas.
-            TextureCache.TrimUnused();AnimalTown.GameCube.NativeTexturePages.Collect();
-            DebugOverlay.WriteLine("ONBOARDING LOOK slots "+NativeShadows.Stats(9)+" native bytes "+device.NativeBytes);
-            if(!OnboardingFlow.Identity(session,true,ui)){ExitToTitle=true;return;}
-            SelectSpecies();TextureCache.TrimUnused();AnimalTown.GameCube.NativeTexturePages.Collect();return;
-        }
-        if(p.A.WasPressed){
-            previewPlotX=(int)state.X-3;previewPlotZ=(int)state.Z-6;
-            if(session.Draft!.PlaceHome(previewPlotX,previewPlotZ)){
-                onboardingError="";screen="onboard-review";
-                TextureCache.TrimUnused();AnimalTown.GameCube.NativeTexturePages.Collect();
-                DebugOverlay.WriteLine("ONBOARDING REVIEW slots "+NativeShadows.Stats(9)+" native bytes "+device.NativeBytes);
-                onboardingReview=new OnboardingUi(OnboardingUi.Review,state.Species,ui);
-            }
+        // Do not load setup imagery beside the resident town. RunSession
+        // disposes this renderer and unwinds before the next view is created.
+        if(p.B.WasPressed){NextSetup=OnboardingFlow.ToLook;return;}
+        if(p.A.WasPressed&&session.Draft!.PlaceHome((int)state.X-3,(int)state.Z-6)){
+            state.Facing=facingYaw;NextSetup=OnboardingFlow.ToReview;
         }
     }
     internal void ReleaseIntro()
@@ -250,7 +225,6 @@ internal sealed class TownGame : IDisposable
     public void Dispose()
     {
         if(disposed)return;disposed=true;LoadingScreen.Finish();
-        onboardingReview?.Dispose();onboardingReview=null;
         dialogueVoice.Stop();syllable.Dispose();
         Model? unadopted=null;
         if(loadingModel!=null){try{unadopted=loadingModel.GetAwaiter().GetResult();}catch(Exception){if(!loadingModel.IsCompleted)throw;}loadingModel=null;}
@@ -578,7 +552,6 @@ internal sealed class TownGame : IDisposable
     internal void Step(ControllerState pad)
     {
         if(!resourcesReady||room==0&&!terrain.Ready){runningMinimap.Update(Clock.Timestamp,false,false);return;}
-        if(screen=="onboard-review")return;
         bool running=false;float beforeX=state.X,beforeZ=state.Z;
         tick++;
         if(tick%30==0)townClock.Update(NativeCalendar.ReadClock());
@@ -692,7 +665,6 @@ internal sealed class TownGame : IDisposable
     }
     internal void Draw()
     {
-        if(screen=="onboard-review"){onboardingReview!.DrawReview(state,onboardingError,false);return;}
         if(!resourcesReady){DrawLoading();return;}
         float x=state.X,z=state.Z;
         try{if(waterInspection!=0)WaterInspection.Focus(state,waterInspection);DrawScene();}

@@ -59,18 +59,20 @@ only Hearth's Spaniel portrait; look selection loads six portraits; review loads
 only the chosen species. No portrait/image loading happens in the drawing loop.
 Keyboard glyphs/count labels are prepared once for their screen.
 
-Disposal releases every view's portrait, wordmark, font lease, background texture
-and owned Draw2D buffers, clears managed layout references and trims unused texture
-pages. Views shown while the world is resident borrow its existing Draw2D canvas
-to avoid a second large native batch; disposal detaches that reference while
-gameplay retains its canvas. Name/look views are disposed before outdoor loading; returning from the
-world to identity also scopes and disposes those views. Review is disposed on
-back navigation and successful saving. Gameplay keeps only font resources that
-its own renderer still uses. The draft's encoded baseline and candidate reference
-are dropped on commit/discard. Cancelling after the world loaded also disposes
-that temporary gameplay renderer before returning to the title.
+Disposal releases every view's portraits, wordmark, font leases, background
+texture and Draw2D buffers, clears managed layout references and trims unused
+texture pages. The complete preview renderer is disposed before opening look
+selection or review. This releases its actors/models, terrain, buildings,
+shadows, audio and UI; collection runs after that renderer's scope unwinds.
+There is never a full town resident alongside the image-based setup screens.
 
-After the save/input stack unwinds, the runtime trims unused pages and collects
+Returning from review or identity loads the outdoor preview again at the same
+plot cursor. After **Save & begin**, review and the draft's encoded baseline and
+attempted-save snapshot are released before the gameplay renderer loads. These
+loading transitions keep resource lifetimes within GameCube MEM1. Gameplay
+retains only its own fonts, renderer and other resources it actually uses.
+
+After the setup/save stack unwinds, the runtime trims unused pages and collects
 retired managed/native data before the first gameplay frame. A hard invariant
 requires zero live onboarding views, no session draft and zero cached source
 bytes for picker portraits or the wordmark. Failure stops the transition instead

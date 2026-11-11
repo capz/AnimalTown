@@ -1,19 +1,62 @@
 using System;
+using AnimalTown;
 using Dolphin.Input;
-using Dolphin.Graphics;
 using Dolphin.Timing;
 
 // Each view lives in its own frame/scope. No introductory UI survives the
 // return to the town loader, including when revisiting identity from the plot.
 internal static class OnboardingFlow
 {
-    internal static bool Identity(TownSession session,bool lookFirst=false,Draw2D? sharedUi=null)
+    internal const int ToLook=1,ToReview=2,ToTitle=3;
+    internal static bool Run(DevConfig config,TownSession session)
+    {
+        int phase=ToLook;bool lookFirst=false;
+        while(true){
+            if(phase==ToLook){
+                if(!Identity(session,lookFirst))return false;
+                Retire();phase=0;
+            }
+            if(phase==0){
+                int next=Program.RunSession(config,session);
+                // The complete preview, including its model/terrain locals,
+                // has unwound before any image-based setup view is allocated.
+                Retire();
+                if(next==ToTitle)return false;
+                if(next==ToLook){lookFirst=true;phase=ToLook;continue;}
+                phase=ToReview;
+            }
+            if(phase==ToReview){
+                bool saved=Review(session);Retire();
+                if(saved)return true;
+                phase=0;
+            }
+        }
+    }
+    private static void Retire()
+    {LoadingScreen.Finish();TextureCache.TrimUnused();AnimalTown.GameCube.NativeTexturePages.Collect();}
+    private static bool Review(TownSession session)
+    {
+        var state=session.State;using var view=new OnboardingUi(OnboardingUi.Review,state.Species);string error="";
+        while(true){
+            view.DrawReview(state,error,false);RuntimeOptions.Wait();Controller.Update();var p=Controller.GetState(0);
+            if(p.B.WasPressed){
+                int x=state.Town.HouseX,z=state.Town.HouseZ;session.Draft!.ClearHome();
+                state.X=x+3.5f;state.Z=z+6.5f;return false;
+            }
+            if(p.A.WasPressed){
+                view.DrawReview(state,"",true);
+                if(session.SaveOnboarding())return true;
+                error=session.OnboardingSaveError;
+            }
+        }
+    }
+    internal static bool Identity(TownSession session,bool lookFirst=false)
     {
         var draft=session.Draft??throw new InvalidOperationException("Missing onboarding draft");
         string entry=draft.IsNewProfile&&!lookFirst?"":draft.State.Name;
         int stage=lookFirst?OnboardingUi.Look:OnboardingUi.Name,key=0;
         while(true){
-            using var view=new OnboardingUi(stage,draft.State.Species,sharedUi);
+            using var view=new OnboardingUi(stage,draft.State.Species);
             var navigation=new MenuNavigation();bool exit=false,discard=false;string message="";
             while(true){
                 if(stage==OnboardingUi.Name)view.DrawName(entry,key,exit,discard,message);
