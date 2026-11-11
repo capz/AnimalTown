@@ -36,12 +36,20 @@ The cooker accepts the current kit's one unindexed static primitive, identity
 node and shared atlas/material. Unsupported layouts fail the build explicitly.
 The derived GLB lives under `out/derived-buildings`; originals and the seven-name
 building catalog/save schema are unchanged. Eight native parts share the existing
-768 KiB residency ceiling. Door animation and interior wall cutaways keep their
-original paths.
+768 KiB residency ceiling. After loading, static building parts retain their
+exact geometry section and release redundant embedded texture/table bytes; the
+SDK already owns parsed transforms/materials and shares decoded textures. The
+eight cooked parts drop from 487,936 to 320,256 budgeted host-native bytes.
+This opt-in representation rejects package copying and unloading; actors keep
+the original streaming representation. Door animation and interior wall cutaways
+keep their original paths. Native lifecycle tests verify byte-identical geometry
+and textures, atomic allocation failure, instance ownership and slot reuse.
 
 IPL ordering is confined to one text draw. A glyph moves past another only when
 both filtered rectangles are disjoint. Headings keep their original order.
-Layout ordering and geometry lookup use bounded caches; partial typewriter text
+Layout ordering uses byte-sized entries and one quad of in-place scratch,
+avoiding full duplicate vertex buffers and unused heading caches. Geometry
+lookup stays bounded; partial typewriter text
 uses a separate count key. Blank ink retains its advance. Rain retains drop and
 triangle order, alpha blending and depth testing. Inactive weather has no upload.
 
@@ -52,10 +60,16 @@ Local managed, rendering, importer and native checks pass; backend integration
 requires the clean CI database because the managed cloud's Docker disk is full.
 The earlier `f5613a78ab76` preview is not validated for gameplay: native startup
 rejected a water mesh allocation with only 34,664 bytes of fragmented libc heap
-free. The final implementation reuses the idle cache for cold coalescing and
-indexes fence corners, avoiding the added staging/static scratch and redundant
-fence vertices. Budget checks enforce the original 64 KiB staging allocation
+free. The subsequent `d5184a12d9d3` preview booted but exhausted native memory
+when the running minimap allocated its texture. These previews are superseded
+and must not be used as gameplay validation. The final implementation reuses the
+idle cache for cold coalescing, indexes fence corners, releases redundant building
+package bytes, and avoids duplicate glyph-ordering buffers. Budget checks enforce the original 64 KiB staging allocation
 and verify coalescing creates no additional native resources.
+The local native candidate completes walking/running with the automatic minimap,
+backpack, town map, rain, door animation, interior entry and a post-route save
+whose complete generation advances on the raw memory card. Address/undefined
+behavior sanitizers pass for the static-building retention lifecycle.
 Native archive regression tests compare every merged vertex byte and rebased
 index, separate uniform color/water passes, exercise 10,000 rebinds and verify
 atomic cache exhaustion. Managed tests cover page-oracle coverage, zero travel
@@ -66,7 +80,8 @@ ISO, matching server/tools/kits, manifests and checksums. The GPU submission
 workflow compares main and candidate against the same disposable 32-tree,
 maximum-garden card. It verifies full ISO SHA-256 and clean source identities,
 then captures profiler-off guest-VI cadence, walking/running, backpack, rain,
-closed/opening cottage and interior screenshots. Reports and evidence are uploaded
+map, closed/opening cottage and interior screenshots, followed by a save that
+must publish a complete checksummed generation. Reports and evidence are uploaded
 to the matching prerelease. Timings use guest NTSC VI chunks, including repeats;
 wall time determines only watchdog deadlines.
 

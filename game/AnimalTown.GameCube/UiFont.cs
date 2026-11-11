@@ -19,12 +19,11 @@ internal sealed class UiFont
     private readonly float[] layoutX=new float[64*128],layoutY=new float[64*128],layoutWidths=new float[64];
     private readonly Texture2D[] quadTextures=new Texture2D[128];
     private readonly float[] quadVertices=new float[128*24];
-    private readonly Texture2D[] sortedTextures=new Texture2D[128];
-    private readonly float[] sortedVertices=new float[128*24];
-    private readonly int[] pages=new int[128],order=new int[128],layoutOrderCounts=new int[64];
-    private readonly int[] layoutOrder;
-    private UiFont(CachedTexture texture,byte[] metrics){layoutOrder=new int[0];this.texture=texture;this.metrics=metrics;PrepareGlyphs();}
-    private UiFont(CachedTexture font){layoutOrder=new int[64*128];firmware=font.FontMetrics;texture=font;metrics=new byte[0];PrepareGlyphs();}
+    private readonly int[] pages,order,layoutOrderCounts=new int[64];
+    private readonly byte[] layoutOrder;
+    private readonly float[] quadScratch;
+    private UiFont(CachedTexture texture,byte[] metrics){layoutOrder=new byte[0];pages=order=new int[0];quadScratch=new float[0];this.texture=texture;this.metrics=metrics;PrepareGlyphs();}
+    private UiFont(CachedTexture font){layoutOrder=new byte[64*128];pages=new int[128];order=new int[128];quadScratch=new float[24];firmware=font.FontMetrics;texture=font;metrics=new byte[0];PrepareGlyphs();}
     private void PrepareGlyphs()
     {
         for(int i=0;i<96;i++){
@@ -120,10 +119,11 @@ internal sealed class UiFont
         if(layout>=0&&layoutOrderCounts[layout]==count){for(int i=0;i<count;i++)order[i]=layoutOrder[layout*128+i];}
         else{
             UiQuadOrder.Build(quadVertices,pages,count,order);
-            if(layout>=0){layoutOrderCounts[layout]=count;for(int i=0;i<count;i++)layoutOrder[layout*128+i]=order[i];}
+            if(layout>=0){layoutOrderCounts[layout]=count;for(int i=0;i<count;i++)layoutOrder[layout*128+i]=(byte)order[i];}
         }
-        for(int i=0;i<count;i++){int original=order[i];sortedTextures[i]=quadTextures[original];for(int n=0;n<24;n++)sortedVertices[i*24+n]=quadVertices[original*24+n];}
-        ui.DrawTexturedQuads(sortedTextures,sortedVertices,count,color);
+        UiQuadOrder.Apply(quadVertices,pages,count,order,quadScratch);
+        for(int i=0;i<count;i++)quadTextures[i]=texture.Pages[pages[i]];
+        ui.DrawTexturedQuads(quadTextures,quadVertices,count,color);
     }
     private void DrawLegacy(Draw2D ui,string text,float x,float y,Color32 color,float scale,float rotation,int end)
     {

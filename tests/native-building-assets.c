@@ -43,11 +43,32 @@ int main(int argc, char **argv) {
                 assert(dot <= 0.00001f); /* Clockwise GX faces, outward source normals. */
             }
         }
+#ifdef ANIMALTOWN_RETAIN_BUILDINGS
+        extern int animaltown_building_retain(int);
+        unsigned geometry_hash=0,texture_hash=0,original_bytes=data->bytes;
+        const unsigned char *original_package=data->package;
+        for(unsigned i=0;i<data->meshes;i++)geometry_hash^=dnd_model_hash(data->mesh[i].data,data->mesh[i].vertices*80)^dnd_model_hash(data->mesh[i].index,data->mesh[i].indices*4);
+        for(unsigned i=0;i<data->textures;i++)texture_hash^=dnd_model_hash(data->texture[i].data,data->texture[i].size);
+        unsigned budget=data->budget;data->budget=data->bytes;
+        assert(animaltown_building_retain(model)==-2&&data->package==original_package&&data->bytes==original_bytes);
+        data->budget=budget;assert(animaltown_building_retain(model)==1&&data->bytes<original_bytes&&data->ready);
+        unsigned actual_geometry=0,actual_texture=0;
+        for(unsigned i=0;i<data->meshes;i++)actual_geometry^=dnd_model_hash(data->mesh[i].data,data->mesh[i].vertices*80)^dnd_model_hash(data->mesh[i].index,data->mesh[i].indices*4);
+        for(unsigned i=0;i<data->textures;i++)actual_texture^=dnd_model_hash(data->texture[i].data,data->texture[i].size);
+        assert(actual_geometry==geometry_hash&&actual_texture==texture_hash&&dnd_model_unload(model)==-1);
+        DndArray *probe=calloc(1,sizeof(*probe)+1);assert(probe);probe->length=probe->element_size=1;
+        assert(dnd_model_copy(model,0,probe,1,0)==-1);free(probe);
+        assert(animaltown_building_retain(model)==1);
+#endif
         int instance = dnd_model_instance(model, 16 * 1024);
         assert(instance);
         unsigned used = data->bytes + dnd_instance_find(instance)->bytes;
         resident += used;
         printf("Building part %s: %u budgeted native bytes\n", argv[part], used);
+#ifdef ANIMALTOWN_RETAIN_BUILDINGS
+        assert(dnd_model_dispose(model)==0&&dnd_instance_find(instance)->model->ready);
+        assert(dnd_model_instance_dispose(instance)==0);
+#endif
     }
     printf("Building kit: %u / %u budgeted native bytes\n", resident, 768u * 1024);
     fflush(stdout);

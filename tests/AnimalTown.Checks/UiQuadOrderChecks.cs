@@ -11,7 +11,11 @@ internal static class UiQuadOrderChecks
         check(Array.IndexOf(order,1)<Array.IndexOf(order,2)&&order.OrderBy(n=>n).SequenceEqual(new[]{0,1,2,3}),"overlapping translucent glyphs keep their painter order");
         Rect(2,22,34);UiQuadOrder.Build(vertices,pages,4,order);
         check(Array.IndexOf(order,1)<Array.IndexOf(order,2)&&order.OrderBy(n=>n).SequenceEqual(new[]{0,1,2,3}),"touching filtered glyph bounds also preserve painter order");
-        long before=GC.GetAllocatedBytesForCurrentThread();for(int i=0;i<1000;i++)UiQuadOrder.Build(vertices,pages,4,order);
+        var payload=new float[72];for(int i=0;i<3;i++)for(int n=0;n<24;n++)payload[i*24+n]=i;
+        var ids=new[]{10,11,12};var permutation=new[]{2,0,1};var scratch=new float[24];
+        UiQuadOrder.Apply(payload,ids,3,permutation,scratch);
+        check(ids.SequenceEqual(new[]{12,10,11})&&payload[0]==2&&payload[24]==0&&payload[48]==1&&permutation.SequenceEqual(new[]{0,1,2}),"in-place glyph permutation retains complete quad/page pairs through a three-element cycle");
+        long before=GC.GetAllocatedBytesForCurrentThread();for(int i=0;i<1000;i++){UiQuadOrder.Build(vertices,pages,4,order);permutation[0]=2;permutation[1]=0;permutation[2]=1;UiQuadOrder.Apply(payload,ids,3,permutation,scratch);}
         check(GC.GetAllocatedBytesForCurrentThread()==before,"text ordering uses only fixed scratch memory");
     }
 }

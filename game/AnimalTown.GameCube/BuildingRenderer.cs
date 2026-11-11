@@ -31,7 +31,9 @@ internal sealed class BuildingRenderer
                 LoadingLabel="Loading "+name;pending=Model.LoadAsync(TexturePolicy.ModelPath(name,TextureResolution.Size128),default,256*1024);return false;
             }
             if(!pending.IsCompleted)return false;
-            int slot=loadType*8+loadPart;models[slot]=pending.GetAwaiter().GetResult();parts[slot]=models[slot]!.CreateInstance(16*1024);
+            int slot=loadType*8+loadPart;models[slot]=pending.GetAwaiter().GetResult();
+            if(NativeBuildings.Retain(models[slot]!)!=1)throw new InvalidOperationException("Static building geometry retention failed");
+            parts[slot]=models[slot]!.CreateInstance(16*1024);
             ResidentBytes+=models[slot]!.NativeBytes+parts[slot]!.NativeBytes;
             if(ResidentBytes>768*1024)throw new InvalidOperationException("Building resident memory budget");
             loadPart++;if(loadPart==8)ready[loadType]=true;

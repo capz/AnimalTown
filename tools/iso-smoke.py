@@ -70,6 +70,7 @@ def submission_scenario():
         if running:os.write(controller,b'PRESS B\n')
         segment('travel-'+str(n),profile_seconds);os.write(controller,b'SET MAIN .5 .5\nRELEASE B\n')
     press('X');segment('backpack',profile_seconds);press('B')
+    press('Y');segment('map',5);press('B')
     # Session-only weather toggle through the visible debug menu (row 16).
     press('START');press('R')
     for _ in range(16):press('D_DOWN')
@@ -82,6 +83,12 @@ def submission_scenario():
     segment('cottage-closed',5)
     os.write(controller,b'PRESS A\n');time.sleep(.15);screenshot('submissions-cottage-opening.png');os.write(controller,b'RELEASE A\n')
     segment('interior',5)
+    before_save=committed_card_sequence(root/'MemoryCardA.USA.raw')
+    building_save()
+    for sample in range(30):
+        if committed_card_sequence(root/'MemoryCardA.USA.raw')>before_save:break
+        time.sleep(1)
+    else:raise AssertionError('Post-route save did not publish a complete generation')
 
 def cliff_minimap():
     def frame(name):

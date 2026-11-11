@@ -19,6 +19,22 @@ internal static class UiQuadOrder
             }
         }
     }
+    // Apply a destination-to-source permutation in place. Warm identity runs
+    // copy no vertices; cycles need only one quad of scratch and consume order.
+    internal static void Apply(float[] vertices,int[] pages,int count,int[] order,float[] scratch)
+    {
+        for(int start=0;start<count;start++){
+            if(order[start]==start)continue;
+            int savedPage=pages[start],current=start;
+            for(int n=0;n<24;n++)scratch[n]=vertices[start*24+n];
+            while(order[current]!=start){
+                int next=order[current];pages[current]=pages[next];
+                for(int n=0;n<24;n++)vertices[current*24+n]=vertices[next*24+n];
+                order[current]=current;current=next;
+            }
+            pages[current]=savedPage;for(int n=0;n<24;n++)vertices[current*24+n]=scratch[n];order[current]=current;
+        }
+    }
     private static bool Overlap(float[] v,int a,int b)
     {
         float al=float.MaxValue,at=float.MaxValue,ar=float.MinValue,ab=float.MinValue,bl=al,bt=at,br=ar,bb=ab;
