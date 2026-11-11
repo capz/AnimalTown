@@ -99,14 +99,14 @@ internal static class TerrainStreamingChecks
         for(int i=0;i<TerrainArchivePlan.Count;i++){
             int x=TerrainArchivePlan.X(i),z=TerrainArchivePlan.Z(i);
             check(TerrainArchivePlan.Index(x,z)==i,"every immutable section has a unique reversible archive address");
-            check(x%8==0&&z%4==0&&z%8+TerrainStream.Height<=8,"each archived section fits one world shadow page");
+            check(x%8==0&&z%8==0&&TerrainArchivePlan.Height==8,"each archived section fits one world shadow page");
         }
         foreach(float x in new[]{0f,.249f,.501f,7.999f,20.25f,79.75f,159.999f,160f})
         foreach(float z in new[]{0f,.249f,.501f,3.999f,20.25f,79.75f,159.999f,160f}){
             expected.Reset();expected.Prepare(x,z);while(expected.BuildSlot>=0){expected.Complete();expected.Prepare(x,z);}
             view.Prepare(x,z,rows);Array.Clear(ids);maximum=Math.Max(maximum,view.Count);
             for(int n=0;n<view.Count;n++){check(!ids[view.Sections[n]],"immutable view contains no duplicate draw sections");ids[view.Sections[n]]=true;}
-            for(int n=0;n<expected.Count;n++)if(expected.Visible[n])check(ids[TerrainArchivePlan.Index(expected.X[n],expected.Z[n])],"archived visibility preserves every independently selected streaming section, including town/ocean edges");
+            for(int n=0;n<expected.Count;n++)if(expected.Visible[n])check(ids[TerrainArchivePlan.Index(expected.X[n],(int)Math.Floor(expected.Z[n]/8f)*8)],"archived visibility preserves every independently selected streaming section, including town/ocean edges");
             int revision=view.Revision;view.Prepare(x,z,rows);check(view.Revision==revision,"stationary terrain changes neither selection nor view bindings");
         }
         long before=GC.GetAllocatedBytesForCurrentThread();

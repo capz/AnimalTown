@@ -64,6 +64,11 @@ internal static class BuildingAssets
                 string source=(part=="exterior"||part=="door"?b:r).GetProperty(part).GetString()!;string full=Path.GetFullPath(Path.Combine(root,source));if(!full.StartsWith(Path.GetFullPath(Path.Combine(root,"assets/models"))+Path.DirectorySeparatorChar,StringComparison.Ordinal)||!full.EndsWith(".glb",StringComparison.Ordinal))throw new InvalidDataException("Building source escapes assets/models");
                 Audit(full,part);string alias=prefix+"-"+part;if(!imports.TryAdd(alias,source))throw new InvalidDataException("Duplicate building runtime model");Text(alias);
             }
+            // Derived output only: preserve supplied source art and the seven-name
+            // catalog/save schema. The closed form is an optional eighth runtime part.
+            string closed="out/derived-buildings/"+prefix+"-exterior-closed.glb";
+            MergeClosed(Path.Combine(root,b.GetProperty("exterior").GetString()!),Path.Combine(root,b.GetProperty("door").GetString()!),Path.Combine(root,closed),b.GetProperty("hinge")[0].GetSingle(),b.GetProperty("hinge")[2].GetSingle());
+            imports.Add(prefix+"-exterior-closed",closed);
         }
         Directory.CreateDirectory(Path.Combine(root,"out/disc"));byte[] bytes=stream.ToArray();BuildingCatalog.Configure(bytes);File.WriteAllBytes(Path.Combine(root,"out/disc/buildings.bin"),bytes);File.WriteAllText(Path.Combine(root,"out/building-assets.json"),JsonSerializer.Serialize(imports,JsonOptions));Console.WriteLine($"Building catalog: {files.Length} definitions, {imports.Count} shared model parts, {bytes.Length} descriptor bytes");
         void Text(string value){ValidateName(value);byte[] data=Encoding.ASCII.GetBytes(value);writer.Write(data.Length);writer.Write(data);}
@@ -80,8 +85,51 @@ internal static class BuildingAssets
             void Interior(string key,object value){var node=System.Text.Json.Nodes.JsonNode.Parse(interior)!;node[key]=JsonSerializer.SerializeToNode(value);File.WriteAllText(inside,node.ToJsonString());}
             Building("exterior","../outside.glb");Reject("source escape");Building("footprint",new[]{4,4});Reject("footprint mismatch");Building("hinge",new[]{20,0,3});Reject("door socket bounds");Building("type",2);Reject("type ID reorder");Interior("size",32);Reject("navigation grid overflow");Interior("activities",new[]{new[]{100,100}});Reject("activity bounds");Interior("fixtures",new[]{new{x=1.5,z=3,width=1,depth=.5,height=.5,kind=1}});Reject("blocked exit");
             string model=Path.Combine(temp,"assets/models/buildings/cottage_small/exterior.glb");byte[] modelBytes=File.ReadAllBytes(model);var oversized=new MeshData();for(int i=0;i<70;i++)oversized.Box(0,0,0,1,1,1,0);Write(model,oversized,File.ReadAllBytes(Path.Combine(root,"assets/textures/buildings/cottage_small/cottage-atlas.png")));Reject("triangle budget");File.WriteAllBytes(model,modelBytes);
-            Cook(temp);Console.WriteLine("Building checks passed: source confinement, explicit IDs, collision frame, sockets, activity/fixture bounds, exit clearance and triangle budgets");
+            Cook(temp);
+            var before=ReadMergePart(model,out var sourcePng,out _);var doorData=ReadMergePart(Path.Combine(temp,"assets/models/buildings/cottage_small/door.glb"),out _,out _);
+            var combined=ReadMergePart(Path.Combine(temp,"out/derived-buildings/cottage-exterior-closed.glb"),out var mergedPng,out _);
+            if(!sourcePng.AsSpan().SequenceEqual(mergedPng)||!combined.Normals.SequenceEqual(before.Normals.Concat(doorData.Normals))||!combined.Uvs.SequenceEqual(before.Uvs.Concat(doorData.Uvs))||!combined.Positions.Take(before.Positions.Count).SequenceEqual(before.Positions))throw new InvalidDataException("Merged building changed original attributes/atlas");
+            for(int i=0;i<doorData.Positions.Count;i++){float expected=doorData.Positions[i]+(i%3==0?BuildingCatalog.Get(0).HingeX:i%3==2?BuildingCatalog.Get(0).HingeZ:0);if(combined.Positions[before.Positions.Count+i]!=expected)throw new InvalidDataException("Merged door lost its hinge pivot");}
+            Console.WriteLine("Building checks passed: source confinement, explicit IDs, collision frame, sockets, activity/fixture bounds, exit clearance and triangle budgets");
         }finally{Directory.Delete(temp,true);Cook(root);}
+    }
+    private static void MergeClosed(string exterior,string door,string output,float hingeX,float hingeZ)
+    {
+        // Match the 1/1024 m sockets written to buildings.bin and used by
+        // the animated door, including the closed-to-opening handoff.
+        hingeX=(int)(hingeX*1024)/1024f;hingeZ=(int)(hingeZ*1024)/1024f;
+        var body=ReadMergePart(exterior,out byte[] atlas,out var template);
+        var leaf=ReadMergePart(door,out byte[] doorAtlas,out var doorTemplate);
+        foreach(string key in new[]{"materials","textures","samplers"})
+            if(!System.Text.Json.Nodes.JsonNode.DeepEquals(System.Text.Json.Nodes.JsonNode.Parse(template.GetProperty(key).GetRawText()),System.Text.Json.Nodes.JsonNode.Parse(doorTemplate.GetProperty(key).GetRawText())))throw new InvalidDataException("Closed building material mismatch: "+key);
+        if(!atlas.AsSpan().SequenceEqual(doorAtlas))throw new InvalidDataException("Closed building atlas mismatch");
+        for(int i=0;i<leaf.Positions.Count;i+=3){leaf.Positions[i]+=hingeX;leaf.Positions[i+2]+=hingeZ;}
+        body.Positions.AddRange(leaf.Positions);body.Normals.AddRange(leaf.Normals);body.Uvs.AddRange(leaf.Uvs);
+        Directory.CreateDirectory(Path.GetDirectoryName(output)!);Write(output,body,atlas,template);Audit(output,"exterior");
+    }
+    // Narrow, validated cooker for this static kit. Unsupported source layouts
+    // fail the build instead of silently dropping a node transform or material.
+    private static MeshData ReadMergePart(string path,out byte[] png,out JsonElement template)
+    {
+        byte[] bytes=File.ReadAllBytes(path);using var doc=JsonDocument.Parse(bytes.AsMemory(20,BitConverter.ToInt32(bytes,12)));var root=doc.RootElement;template=root.Clone();
+        if(root.GetProperty("meshes").GetArrayLength()!=1||root.GetProperty("nodes").GetArrayLength()!=1||root.GetProperty("materials").GetArrayLength()!=1||root.GetProperty("images").GetArrayLength()!=1)throw new InvalidDataException("Closed building requires one static mesh/material/atlas");
+        var node=root.GetProperty("nodes")[0];foreach(var property in node.EnumerateObject())if(property.Name!="mesh"&&property.Name!="name")throw new InvalidDataException("Closed building node transform/extension is unsupported");
+        var primitives=root.GetProperty("meshes")[0].GetProperty("primitives");if(primitives.GetArrayLength()!=1)throw new InvalidDataException("Closed building requires one primitive");var primitive=primitives[0];
+        foreach(var property in primitive.EnumerateObject())if(property.Name!="attributes"&&property.Name!="material"&&property.Name!="mode")throw new InvalidDataException("Closed building primitive extension/index layout is unsupported");
+        if(primitive.GetProperty("material").GetInt32()!=0||primitive.GetProperty("mode").GetInt32()!=4)throw new InvalidDataException("Closed building requires triangles");
+        int bin=28+BitConverter.ToInt32(bytes,12);var mesh=new MeshData();var attrs=primitive.GetProperty("attributes");
+        foreach(var property in attrs.EnumerateObject())if(property.Name!="POSITION"&&property.Name!="NORMAL"&&property.Name!="TEXCOORD_0")throw new InvalidDataException("Closed building vertex attribute unsupported");
+        Read("POSITION",3,mesh.Positions);Read("NORMAL",3,mesh.Normals);Read("TEXCOORD_0",2,mesh.Uvs);
+        if(mesh.Positions.Count!=mesh.Normals.Count||mesh.Positions.Count/3*2!=mesh.Uvs.Count||mesh.Positions.Count%9!=0)throw new InvalidDataException("Closed building attribute counts");
+        var image=root.GetProperty("bufferViews")[root.GetProperty("images")[0].GetProperty("bufferView").GetInt32()];png=bytes.AsSpan(bin+image.GetProperty("byteOffset").GetInt32(),image.GetProperty("byteLength").GetInt32()).ToArray();return mesh;
+        void Read(string name,int width,List<float> output){
+            var accessor=root.GetProperty("accessors")[attrs.GetProperty(name).GetInt32()];var view=root.GetProperty("bufferViews")[accessor.GetProperty("bufferView").GetInt32()];
+            if(accessor.GetProperty("componentType").GetInt32()!=5126||accessor.GetProperty("type").GetString()!=(width==3?"VEC3":"VEC2")||accessor.TryGetProperty("sparse",out _)||view.GetProperty("buffer").GetInt32()!=0)throw new InvalidDataException("Closed building accessor unsupported");
+            int offset=accessor.TryGetProperty("byteOffset",out var o)?o.GetInt32():0,stride=view.TryGetProperty("byteStride",out var st)?st.GetInt32():width*4,count=accessor.GetProperty("count").GetInt32();
+            if(count<1||stride<width*4||offset<0||(long)offset+(long)(count-1)*stride+width*4>view.GetProperty("byteLength").GetInt32())throw new InvalidDataException("Closed building accessor bounds");
+            int start=bin+view.GetProperty("byteOffset").GetInt32()+offset;
+            for(int i=0;i<count;i++)for(int axis=0;axis<width;axis++){float value=BitConverter.ToSingle(bytes,start+i*stride+axis*4);if(!float.IsFinite(value))throw new InvalidDataException("Closed building non-finite vertex");output.Add(value);}
+        }
     }
     private static void ValidateName(string name){if(name.Length<1||name.Length>64||name.Any(c=>!(c>='a'&&c<='z'||c>='0'&&c<='9'||c=='_'||c=='-')))throw new InvalidDataException("Invalid asset identifier");}
     private static void Audit(string path,string part)
@@ -101,11 +149,13 @@ internal static class BuildingAssets
         internal void Quad(Vector3 a,Vector3 b,Vector3 c,Vector3 d,int swatch){Triangle(a,b,c,swatch);Triangle(a,c,d,swatch);}
         internal void Box(float x,float y,float z,float w,float h,float d,int swatch){Vector3 a=new(x,y,z),b=new(x+w,y,z),c=new(x+w,y+h,z),e=new(x,y+h,z),f=new(x,y,z+d),g=new(x+w,y,z+d),j=new(x+w,y+h,z+d),k=new(x,y+h,z+d);Quad(a,e,c,b,swatch);Quad(f,g,j,k,swatch);Quad(a,f,k,e,swatch);Quad(b,c,j,g,swatch);Quad(e,k,j,c,swatch);Quad(a,b,g,f,swatch);}
     }
-    private static void Write(string path,MeshData mesh,byte[] png)
+    private static void Write(string path,MeshData mesh,byte[] png,JsonElement? template=null)
     {
         using var stream=new MemoryStream();using var writer=new BinaryWriter(stream);foreach(float f in mesh.Positions)writer.Write(f);int normal=(int)stream.Position;foreach(float f in mesh.Normals)writer.Write(f);int uv=(int)stream.Position;foreach(float f in mesh.Uvs)writer.Write(f);int image=(int)stream.Position;writer.Write(png);while(stream.Length%4!=0)writer.Write((byte)0);
         int count=mesh.Positions.Count/3;float[] min={float.MaxValue,float.MaxValue,float.MaxValue},max={float.MinValue,float.MinValue,float.MinValue};for(int i=0;i<count;i++)for(int axis=0;axis<3;axis++){min[axis]=Math.Min(min[axis],mesh.Positions[i*3+axis]);max[axis]=Math.Max(max[axis],mesh.Positions[i*3+axis]);}
         var gltf=new{asset=new{version="2.0",generator="AnimalTown original cottage kit"},buffers=new[]{new{byteLength=stream.Length}},bufferViews=new[]{new{buffer=0,byteOffset=0,byteLength=normal},new{buffer=0,byteOffset=normal,byteLength=uv-normal},new{buffer=0,byteOffset=uv,byteLength=image-uv},new{buffer=0,byteOffset=image,byteLength=png.Length}},accessors=new object[]{new{bufferView=0,componentType=5126,count,type="VEC3",min,max},new{bufferView=1,componentType=5126,count,type="VEC3"},new{bufferView=2,componentType=5126,count,type="VEC2"}},images=new[]{new{bufferView=3,mimeType="image/png"}},samplers=new[]{new{magFilter=9729,minFilter=9987,wrapS=33071,wrapT=33071}},textures=new[]{new{sampler=0,source=0}},materials=new[]{new{name="Shared cottage palette",pbrMetallicRoughness=new{baseColorTexture=new{index=0},metallicFactor=0,roughnessFactor=1}}},meshes=new[]{new{primitives=new[]{new{attributes=new{POSITION=0,NORMAL=1,TEXCOORD_0=2},material=0,mode=4}}}},nodes=new[]{new{mesh=0,name=Path.GetFileNameWithoutExtension(path)}},scenes=new[]{new{nodes=new[]{0}}},scene=0};
-        byte[] json=Encoding.UTF8.GetBytes(JsonSerializer.Serialize(gltf));int padded=(json.Length+3)&~3;using var output=File.Create(path);using var dst=new BinaryWriter(output);dst.Write(0x46546c67);dst.Write(2);dst.Write(12+8+padded+8+(int)stream.Length);dst.Write(padded);dst.Write(0x4e4f534a);dst.Write(json);for(int i=json.Length;i<padded;i++)dst.Write((byte)32);dst.Write((int)stream.Length);dst.Write(0x004e4942);dst.Write(stream.ToArray());
+        var document=System.Text.Json.Nodes.JsonNode.Parse(JsonSerializer.Serialize(gltf))!;
+        if(template.HasValue)foreach(string key in new[]{"materials","textures","samplers"})document[key]=System.Text.Json.Nodes.JsonNode.Parse(template.Value.GetProperty(key).GetRawText());
+        byte[] json=Encoding.UTF8.GetBytes(document.ToJsonString());int padded=(json.Length+3)&~3;using var output=File.Create(path);using var dst=new BinaryWriter(output);dst.Write(0x46546c67);dst.Write(2);dst.Write(12+8+padded+8+(int)stream.Length);dst.Write(padded);dst.Write(0x4e4f534a);dst.Write(json);for(int i=json.Length;i<padded;i++)dst.Write((byte)32);dst.Write((int)stream.Length);dst.Write(0x004e4942);dst.Write(stream.ToArray());
     }
 }

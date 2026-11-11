@@ -52,11 +52,11 @@ internal sealed class TerrainSection
         if(++phase<3)return false;
         Triangles+=Water.Triangles+Walls.Triangles;return true;
     }
-    internal void Archive(int section)
+    internal void Archive(int section,bool complete=true)
     {
         for(int slot=0;slot<meshes.Length;slot++)ArchivePart(section,slot,GroundMesh(slot),0);
         Water.Archive(section);Walls.Archive(section);
-        if(NativeTerrain.Complete(section)!=1)throw new InvalidOperationException("Terrain archive section did not complete");
+        if(complete&&NativeTerrain.Complete(section)!=1)throw new InvalidOperationException("Terrain archive section did not complete");
     }
     internal static void ArchivePart(int section,int kind,Mesh? mesh,int used)
     {

@@ -5,7 +5,7 @@ internal sealed class UiShapePlan
 {
     internal const int Capacity=64;
     internal readonly float[] Widths=new float[Capacity],Heights=new float[Capacity],Radii=new float[Capacity];
-    internal readonly bool[] Bulges=new bool[Capacity];
+    internal readonly bool[] Bulges=new bool[Capacity],Panels=new bool[Capacity];
     private readonly byte[] states=new byte[Capacity]; // 0 free, 1 requested, 2 resident
     private readonly int[] lastUse=new int[Capacity],buckets=new int[128],entryBuckets=new int[Capacity];
     private readonly int[] free=new int[Capacity],pending=new int[Capacity];
@@ -26,21 +26,21 @@ internal sealed class UiShapePlan
         }
         view=nextView;tab=nextTab;
     }
-    internal int Request(float w,float h,float radius,bool bulge)
+    internal int Request(float w,float h,float radius,bool bulge,bool panel=false)
     {
-        int hash=unchecked((int)(w*2)*73856093^(int)(h*2)*19349663^(int)(radius*2)*83492791^(bulge?7919:0));
+        int hash=unchecked((int)(w*2)*73856093^(int)(h*2)*19349663^(int)(radius*2)*83492791^(bulge?7919:0)^(panel?104729:0));
         int empty=-1;
         for(int n=0;n<buckets.Length;n++){
             int bucket=(hash+n)&127,token=buckets[bucket];
             if(token==0){if(empty<0)empty=bucket;break;}
             if(token<0){if(empty<0)empty=bucket;continue;}
             int at=token-1;
-            if(Widths[at]!=w||Heights[at]!=h||Radii[at]!=radius||Bulges[at]!=bulge)continue;
+            if(Widths[at]!=w||Heights[at]!=h||Radii[at]!=radius||Bulges[at]!=bulge||Panels[at]!=panel)continue;
             lastUse[at]=frame;return at;
         }
         if(freeCount==0){overflow=true;return -1;}
         if(empty<0)throw new InvalidOperationException("Shape lookup exhausted");
-        int slot=free[--freeCount];Widths[slot]=w;Heights[slot]=h;Radii[slot]=radius;Bulges[slot]=bulge;
+        int slot=free[--freeCount];Widths[slot]=w;Heights[slot]=h;Radii[slot]=radius;Bulges[slot]=bulge;Panels[slot]=panel;
         states[slot]=1;lastUse[slot]=frame;entryBuckets[slot]=empty;buckets[empty]=slot+1;pending[pendingCount++]=slot;
         return slot;
     }

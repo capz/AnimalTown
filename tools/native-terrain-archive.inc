@@ -5,6 +5,7 @@
 #define TA_SECTIONS 4096
 #define TA_PARTS 16384
 #define TA_STAGE 65536
+#define TA_PAGE_PARTS 216
 #define TA_BYTES (8*1024*1024)
 #define TA_CACHE (1024*1024)
 #define TA_BLOCK 1024
@@ -67,8 +68,53 @@ int animaltown_terrain_append(int section,int kind,int token,int used){
     TaPart *entry=(TaPart*)find(ta_meta[ta_parts/256],BUFFER)->data+ta_parts%256;*entry=part;
     ta_parts++;ta_tail+=padded;ta_triangles[section]+=(m?m:n)/3;return ta_parts;
 }
+/* Cold-load only. Coalesce within a shadow page and an identical native
+ * material/format/color class. Payloads retain every vertex attribute; indices
+ * are rebased, never expanded. Oversized pages keep their original parts. */
+static int ta_same(const TaPart *a,const TaPart *b){
+    return a->kind==b->kind&&a->format==b->format&&(a->indices!=0)==(b->indices!=0)&&a->uniform==b->uniform&&(!a->uniform||a->color==b->color);
+}
+static int ta_coalesce(int section){
+    int first=ta_first[section],count=ta_parts-first;if(count<2||count>TA_PAGE_PARTS)return 1;
+    int groups[TA_PAGE_PARTS],group_count=0,start=ta_part(first)->offset,bytes=ta_tail-start;
+    if(bytes>TA_STAGE)return 1;
+    Resource *stage=find(ta_stage,BUFFER),*cache=find(ta_cache,BUFFER);if(!stage||!cache)return -1;
+    /* No views exist until sealing: borrow the idle MEM1 cache for output and
+     * descriptor scratch, retaining the original 64 KiB staging/MEM1 budget. */
+    _Static_assert(TA_STAGE+TA_PAGE_PARTS*sizeof(TaPart)<=TA_CACHE,"Cold coalescer cache scratch");
+    TaPart *merged=(TaPart*)(cache->data+TA_STAGE);
+    for(int i=0;i<count;i++){
+        const TaPart *original=ta_part(first+i);int group=0;
+        while(group<group_count&&!ta_same(original,&merged[group]))group++;
+        if(group==group_count){merged[group]=*original;merged[group].vertices=merged[group].indices=0;group_count++;}
+        groups[i]=group;merged[group].vertices+=original->vertices;merged[group].indices+=original->indices;
+        if(merged[group].vertices>65535||merged[group].indices>65535)return 1;
+    }
+    if(group_count==count)return 1;
+    if(ta_dma(start,ta_stage,0,bytes,0)!=1)return -3;
+    unsigned char *src=(unsigned char*)stage->data,*dst=(unsigned char*)cache->data;int end=0;
+    for(int group=0;group<group_count;group++){
+        TaPart *p=&merged[group];int size=ta_size(p);if(size>TA_STAGE-end)return -2;
+        memset(dst+end,0,(size_t)size);int vertex=0,index=0;
+        for(int i=0;i<count;i++)if(groups[i]==group){
+            const TaPart *q=ta_part(first+i);const unsigned char *data=src+q->offset-start;
+            memcpy(dst+end+(size_t)vertex*sizeof(DndDrawVertex),data,(size_t)q->vertices*sizeof(DndDrawVertex));
+            const uint16_t *in=(const uint16_t*)(data+(size_t)q->vertices*sizeof(DndDrawVertex));
+            uint16_t *out=(uint16_t*)(dst+end+(size_t)p->vertices*sizeof(DndDrawVertex));
+            for(int j=0;j<q->indices;j++)out[index++]=(uint16_t)(in[j]+vertex);
+            vertex+=q->vertices;
+        }
+        p->offset=start+end;end+=size;
+    }
+    if(end>bytes)return -2; /* Padding can shrink, never grow. */
+    if(dnd_buffer_hold(ta_cache))return -1;
+    int rc=ta_dma(start,ta_cache,0,end,1);(void)dnd_buffer_unhold(ta_cache);if(rc!=1)return -3;
+    for(int i=0;i<group_count;i++)*ta_part(first+i)=merged[i];
+    ta_tail=start+end;ta_parts=first+group_count;return 1;
+}
 int animaltown_terrain_complete(int section){
     if(dnd_device_active()||dnd_raw_depth()||ta_sealed||section<0||section!=ta_completed||section>=ta_sections)return -1;
+    int rc=ta_coalesce(section);if(rc!=1)return rc;
     ta_first[++ta_completed]=ta_parts;
     if(ta_completed==ta_sections){ta_sealed=true;(void)dnd_buffer_unhold(ta_stage);(void)dnd_draw_release(ta_stage);ta_stage=0;ta_bytes-=TA_STAGE;}
     return 1;

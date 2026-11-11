@@ -185,3 +185,6 @@ telemetry confirming world/backpack scenes and the card SHA-256 unchanged.
 CI passes 2,250,160 gameplay/render/texture checks and 323,098 rendering-service
 checks, plus backend integration and native fixtures. Physical hardware testing
 remains outstanding.
+
+See [GPU submission merging](2026-11-10-gpu-submissions.md) for the retained tree,
+fence, terrain-page, cottage, rain and UI changes and the same-town comparison.

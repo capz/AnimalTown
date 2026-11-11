@@ -2,6 +2,7 @@ internal static class UiShapePlanChecks
 {
     internal static void Run(Action<bool,string> check)
     {
+        UiQuadOrderChecks.Run(check);
         RunningMinimapChecks.Run(check);
         SplashTimingChecks.Run(check);
         var plan=new UiShapePlan();plan.BeginFrame("world",-1,true);
@@ -32,6 +33,10 @@ internal static class UiShapePlanChecks
         check(collisions.Request(10+64*64,40,10,false)==released&&collisions.PendingCount==1,"a deleted hash slot can be reused for a distinct shape");
         collisions.BeginFrame("world",-1,true);
         check(!collisions.HasWork,"cancellation also clears overflow/reused pending slots");
+
+        var panels=new UiShapePlan();panels.BeginFrame("menu",0,true);
+        int shape=panels.Request(338,182,30,true),panel=panels.Request(338,182,30,true,true);
+        check(shape!=panel&&panels.Panels[panel]&&!panels.Panels[shape]&&panels.Request(338,182,30,true,true)==panel,"combined panel has a distinct stable geometry key from single-color shape");
 
         var fractional=new UiShapePlan();fractional.BeginFrame("world",-1,true);
         int a=fractional.Request(100.25f,40,10,false),b=fractional.Request(100.26f,40,10,false);

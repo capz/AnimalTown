@@ -1,37 +1,30 @@
-using System;
 using AnimalTown;
 using Dolphin.Graphics;
 
-// Fixed shared geometry/transform pool. No simulation or resource work when off.
-// Draw in the outdoor 3D pass so roofs, trees, actors and terrain occlude rain.
+// One fixed dynamic stream, updated before BeginFrame. Invisible slots are
+// degenerate; visible drops retain the original alpha painter order and depth test.
 internal sealed class RainRenderer
 {
-    private Mesh? mesh;
-    private readonly Mesh[] meshes=new Mesh[DebugWeather.DropCount];
-    private readonly Transform[] poses=new Transform[DebugWeather.DropCount];
+    private DynamicMesh? mesh;
+    private readonly VertexPositionColor[] vertices=new VertexPositionColor[DebugWeather.DropCount*6];
+    private readonly Transform pose=new Transform();
+    private bool visible;
     private readonly Material material=new Material{Blend=BlendMode.Alpha,DepthWrite=false,Cull=CullMode.Back,Lighting=LightingMode.Unlit,Color=new Color32(195,222,236,155)};
-    internal RainRenderer(){for(int i=0;i<poses.Length;i++)poses[i]=new Transform();}
-    internal void Draw(Renderer renderer,GameState state,double seconds,float eyeHeight)
+    internal void Prepare(GameState state,double seconds,float eyeHeight)
     {
-        // First enable is prepared before BeginFrame by Prepare; never allocate here.
-        if(mesh==null)return;int count=0;
+        visible=false;
         for(int i=0;i<DebugWeather.DropCount;i++){
             DebugWeather.Drop(i,state.X,state.Z,seconds,out float x,out float z,out float h);
-            float ground=TerrainElevation.At(state.Town,x,z);
-            var p=CylinderWorld.Surface(z,state.Z,ground+h);
-            if(!RenderView.Sphere(x,p.Y,p.Z,.8f,state.X,state.Z,eyeHeight)||!RenderView.AboveHorizon(p.Y,p.Z,.8f,state.Z,eyeHeight))continue;
-            poses[count].LocalPosition=new Vector3(x,p.Y,p.Z);meshes[count++]=mesh;
+            var p=CylinderWorld.Surface(z,state.Z,TerrainElevation.At(state.Town,x,z)+h);
+            bool draw=RenderView.Sphere(x,p.Y,p.Z,.8f,state.X,state.Z,eyeHeight)&&RenderView.AboveHorizon(p.Y,p.Z,.8f,state.Z,eyeHeight);
+            visible|=draw;int at=i*6;
+            var a=new VertexPositionColor(draw?new Vector3(x-.015f,p.Y,p.Z):Vector3.Zero,Color32.White);
+            var b=new VertexPositionColor(draw?new Vector3(x-.11f,p.Y+.7f,p.Z):Vector3.Zero,Color32.White);
+            var c=new VertexPositionColor(draw?new Vector3(x-.08f,p.Y+.7f,p.Z):Vector3.Zero,Color32.White);
+            var d=new VertexPositionColor(draw?new Vector3(x+.015f,p.Y,p.Z):Vector3.Zero,Color32.White);
+            vertices[at]=a;vertices[at+1]=b;vertices[at+2]=c;vertices[at+3]=a;vertices[at+4]=c;vertices[at+5]=d;
         }
-        if(count>0)renderer.DrawMeshes(meshes,poses,material,0,count);
+        if(mesh==null)mesh=DynamicMesh.Create(vertices);else mesh.SetVertices(vertices);
     }
-    internal void Prepare()
-    {
-        if(mesh!=null)return;
-        // Clockwise toward the camera (+Z), including the slanted leading edge.
-        var a=new VertexPositionColor(new Vector3(-.015f,0,0),Color32.White);
-        var b=new VertexPositionColor(new Vector3(-.11f,.7f,0),Color32.White);
-        var c=new VertexPositionColor(new Vector3(-.08f,.7f,0),Color32.White);
-        var d=new VertexPositionColor(new Vector3(.015f,0,0),Color32.White);
-        mesh=Mesh.Create(new[]{a,b,c,a,c,d});
-    }
+    internal void Draw(Renderer renderer){if(visible&&mesh!=null)renderer.DrawMesh(mesh,material,pose);}
 }

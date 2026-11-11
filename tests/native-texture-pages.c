@@ -17,6 +17,11 @@ int main(void){
     assert(!animaltown_ipl_page(6,pixels,metrics)&&!animaltown_ipl_page(0,NULL,metrics));
     for(int page=0;page<6;page++){
         assert(animaltown_ipl_page(page,pixels,metrics));
+        int *m=(int*)metrics->data;
+        for(int local=0;local<16;local++){
+            int g=page*16+local;if(g>=95)break;int at=8+g*5;
+            assert(m[at]==0&&m[at+1]==0&&m[at+2]==(g?24:0)&&m[at+3]==(g?24:0));
+        }
         for(int y=0;y<128;y++)for(int x=0;x<128;x++){
             int glyph=page*16+y/32*4+x/32,at=((y/4)*32+x/4)*32+(y%4*4+x%4)*2;
             assert(pixels->data[at]==(glyph<95?glyph:0));

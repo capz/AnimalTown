@@ -43,7 +43,7 @@ if (!$SkipAssets) {
         tent='world-stuctures/structure_tent.glb'
     }
     $buildingImports=Get-Content out/building-assets.json -Raw|ConvertFrom-Json -AsHashtable
-    foreach($key in $buildingImports.Keys){$assetMap[$key]=$buildingImports[$key].Substring(14)}
+    foreach($key in $buildingImports.Keys){$assetMap[$key]=$buildingImports[$key]}
     # Retire stale generated outputs from the previous species list without
     # touching artist sources. Never package both old and replacement villagers.
     foreach($retired in @('gecko','prairie','deciduous','palm','pine')){
@@ -58,7 +58,7 @@ if (!$SkipAssets) {
             # Building parts are authored in metres with hinge/floor pivots.
             # Actor normalization would invalidate their collision/socket data.
             New-Item -ItemType Directory -Force -Path out/prepared | Out-Null
-            Copy-Item -LiteralPath "assets/models/$($assetMap[$name])" -Destination "out/prepared/$name.glb" -Force
+            Copy-Item -LiteralPath $buildingImports[$name] -Destination "out/prepared/$name.glb" -Force
         }else{
             Run dotnet @('run','--project','tools/AnimalTown.Tools','-c','Release','--no-build','--','prepare',$projectRoot,"assets/models/$($assetMap[$name])","out/prepared/$name.glb")
         }
@@ -66,7 +66,7 @@ if (!$SkipAssets) {
         $suffix=if($textureEdge -eq 256){''}else{"-tex$textureEdge"}
         # DNMD retains its package and charges a decoded RGBA8 copy of each
         # texture per model, even when the native texture cache shares pixels.
-        # A 64px atlas + 32px mip keeps all seven static parts below 768 KiB.
+        # A 64px atlas + 32px mip keeps all eight static parts below 768 KiB.
         $importEdge=if($buildingImports.ContainsKey($name) -and $textureEdge -eq 128){64}else{$textureEdge}
         $importArguments=@('tool','run','dnd-assets','--','model',"out/prepared/$name.glb","out/disc/$name$suffix.dndmodel",'--texture-limit',"$importEdge",'--mip-levels','2','--compile-gx-materials')
         if($assetMap[$name].StartsWith('villagers/villager_')){$importArguments+='--allow-material-approximation'}
@@ -77,6 +77,8 @@ if (!$SkipAssets) {
 }
 $buildingNativeParts=@((Get-Content out/building-assets.json -Raw|ConvertFrom-Json -AsHashtable).Keys|Sort-Object|ForEach-Object{"out/disc/$($_)-tex128.dndmodel"})
 RunNative '.' 'sh' (@('-c','cc -std=c11 -Wall -Wextra -Werror -ffunction-sections -fdata-sections -Iout/sdk-native/include tests/native-building-assets.c out/sdk-native/source/model.c out/sdk-native/source/model_animation.c -Wl,--gc-sections -lm -o /tmp/animaltown-building-assets && /tmp/animaltown-building-assets "$@"','building-assets')+$buildingNativeParts)
+# Exercise the opt-in static retention patch with the real cooked parts after
+# AOT/native patching below; the pinned SDK test above remains independent.
 $actorWindingParts=@('fox','bunny','giraffe','cat','hamster','spaniel'|ForEach-Object{"out/disc/$($_)-tex128.dndmodel"})
 RunNative '.' 'sh' (@('-c','cc -std=c11 -Wall -Wextra -Werror -ffunction-sections -fdata-sections -Iout/sdk-native/include tests/native-model-winding.c out/sdk-native/source/model.c out/sdk-native/source/model_animation.c -Wl,--gc-sections -lm -o /tmp/animaltown-model-winding && /tmp/animaltown-model-winding "$@"','model-winding')+$actorWindingParts)
 New-Item -ItemType Directory -Force -Path out/disc|Out-Null
@@ -106,6 +108,7 @@ if('shadows' -in $validation.native){RunNative '.' 'sh' @('-c','cc -std=c11 -Wal
 Run dotnet @('build','game/AnimalTown.GameCube','-c','Release','--no-restore','-v','quiet')
 Run dotnet @("$sdkRoot/tools/compiler/DolphinDotNet.Compiler.dll",'--bundle','game/AnimalTown.GameCube/bin/Release/net8.0/AnimalTown.GameCube.dll','out/native')
 & (Join-Path $PSScriptRoot 'patch-native.ps1') -Root $projectRoot
+RunNative '.' 'sh' (@('-c','cc -DANIMALTOWN_RETAIN_BUILDINGS -std=c11 -Wall -Wextra -Werror -ffunction-sections -fdata-sections -Iout/native/include tests/native-building-assets.c out/native/source/model.c out/native/source/model_animation.c -Wl,--gc-sections -lm -o /tmp/animaltown-building-retained && /tmp/animaltown-building-retained "$@"','building-retained')+$buildingNativeParts)
 $nativeOutput=[IO.Path]::GetFullPath((Join-Path $projectRoot 'out/native'))
 $workspacePrefix=$projectRoot.TrimEnd([IO.Path]::DirectorySeparatorChar)+[IO.Path]::DirectorySeparatorChar
 if(!$nativeOutput.StartsWith($workspacePrefix,[StringComparison]::OrdinalIgnoreCase)){throw 'Native output must stay inside the workspace'}

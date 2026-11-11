@@ -173,7 +173,7 @@ internal sealed class TownGame
     {
         uiShapes.Prepare("loading",-1,batchedDrawing);device.BeginFrame(new Color32(149,198,186));ui.Begin();
         var ink=new Color32(49,72,62);Panel(60,170,520,140);Heading("AnimalTown",85,190,ink);Text(landscape?"Preparing landscape...":loadingLabel,85,242,ink,1);
-        int progress=landscape?terrain.LoadingTotal-terrain.LoadingRemaining:loadingIndex+buildings.LoadedParts,total=landscape?Math.Max(1,terrain.LoadingTotal):models.Length+BuildingCatalog.Count*7;
+        int progress=landscape?terrain.LoadingTotal-terrain.LoadingRemaining:loadingIndex+buildings.LoadedParts,total=landscape?Math.Max(1,terrain.LoadingTotal):models.Length+BuildingCatalog.Count*8;
         Rounded(85,275,460,8,4,new Color32(231,222,190));if(progress>0){float width=460f*progress/total;Rounded(85,275,width,8,Math.Min(4,width*.5f),ink);}
         FrameProfile.Draw(ui);ui.End();device.EndFrame();
     }
@@ -605,6 +605,7 @@ internal sealed class TownGame
         try{if(waterInspection!=0)WaterInspection.Focus(state,waterInspection);DrawScene();}
         finally{state.X=x;state.Z=z;}
     }
+    private readonly FenceRenderer fences=new FenceRenderer();
     private void DrawScene()
     {
         terrain.RoughOcean=weather.RoughOcean(room);terrain.SeasonOverride=renderDebug.SeasonOverride;
@@ -619,7 +620,8 @@ internal sealed class TownGame
         if(room==0&&!terrain.Ready){DrawLoading(landscape:true);return;}
         // Only a drawable scene may evaluate native poses. Shadow receivers
         // use logical positions and can prepare while the landscape loads.
-        if(weather.Raining(room)&&villagers.Doors.PlayerFade<1)rain.Prepare();
+        if(room==0){trees.Prepare(terrain.RenderSeason);fences.Prepare(state);}
+        if(weather.Raining(room)&&villagers.Doors.PlayerFade<1)rain.Prepare(state,(Clock.Timestamp-sessionStart)/1000000.0,cachedPlayerHeight);
         actorVisibility.Prepare(state,villagers.Doors,indoorCamera,waterInspection,cachedPlayerHeight);
         UpdateAnimationFrame();
         if(renderDebug.ForceAttention&&villagers.Doors.PlayerFade<1)attention.Prepare();
@@ -629,13 +631,13 @@ internal sealed class TownGame
         if(room==0)camera.LookAt(new Vector3(state.X,CylinderWorld.CameraHeight+eyeHeight,state.Z+CylinderWorld.CameraBack),new Vector3(state.X,eyeHeight,state.Z-CylinderWorld.CameraAimAhead),new Vector3(0,1,0));
         else{float size=BuildingWorld.Size(state,room);indoorView.LookAt(new Vector3(indoorCamera.EyeX(size),indoorCamera.EyeY(size),indoorCamera.EyeZ(size)),new Vector3(size*.5f,.7f,size*.5f),new Vector3(0,1,0));}
         renderer.Begin3D(room==0?camera:indoorView);buildings.Begin(villagers.Doors);FrameProfile.End(4,phase);
-        phase=FrameProfile.Start();if(room==0){terrain.Draw(renderer,terrain.ScrollTransform,room);}else buildings.Interior(renderer,state,worldRoot,indoorCamera,villagers.Doors);
-        FrameProfile.End(4,phase);phase=FrameProfile.Start();
+        phase=FrameProfile.Start();int submissionAt=FrameProfile.SubmissionStart();if(room==0){terrain.Draw(renderer,terrain.ScrollTransform,room);}else buildings.Interior(renderer,state,worldRoot,indoorCamera,villagers.Doors);
+        FrameProfile.SubmissionEnd(0,submissionAt);FrameProfile.End(4,phase);phase=FrameProfile.Start();
         if(room==0)
         {
             for(int i=1;i<BuildingWorld.Actors;i++)ModelAt(i);
             if(batchedDrawing)DrawActors();
-            FrameProfile.End(5,phase);phase=FrameProfile.Start();DrawTrees();FrameProfile.End(6,phase);phase=FrameProfile.Start();
+            FrameProfile.End(5,phase);phase=FrameProfile.Start();submissionAt=FrameProfile.SubmissionStart();DrawTrees();FrameProfile.SubmissionEnd(1,submissionAt);FrameProfile.End(6,phase);phase=FrameProfile.Start();
             long groundAt=FrameProfile.Start();
             for(int i=0;i<state.Town.GroundCount;i++)
             {
@@ -644,13 +646,10 @@ internal sealed class TownGame
                 if(!IsTree(g))Box(g.X+.25f,y+.02f,g.Z+.25f,.5f,g.Kind==1?.03f:.25f,.5f,g.Kind==1?new Color32(105,81,54):g.Kind==2?new Color32(242,174,170):new Color32(229,190,82));
             }
             if(batchedDrawing)boxes.Flush();FrameProfile.End(3,groundAt);
+            submissionAt=FrameProfile.SubmissionStart();
             for(int building=0;building<BuildingWorld.Count;building++)buildings.Exterior(renderer,state,building,villagers.Doors);
-            if(state.HousePlaced)
-            {
-                int w=GameState.GardenWidths[state.GardenTier],h=GameState.GardenHeights[state.GardenTier];
-                for(int i=0;i<w;i++){FenceAt(state.Town.HouseX+i,state.Town.HouseZ);if(i!=3)FenceAt(state.Town.HouseX+i,state.Town.HouseZ+h-1);}
-                for(int j=1;j<h;j++){FenceAt(state.Town.HouseX,state.Town.HouseZ+j);FenceAt(state.Town.HouseX+w-1,state.Town.HouseZ+j);}
-            }
+            FrameProfile.SubmissionEnd(2,submissionAt);submissionAt=FrameProfile.SubmissionStart();
+            fences.Draw(renderer,state,terrain.ScrollTransform,cachedPlayerHeight);FrameProfile.SubmissionEnd(3,submissionAt);
         }
         if(room!=0){
             if(!indoorCamera.WallVisible(2)){
@@ -676,10 +675,10 @@ internal sealed class TownGame
         { int x=(int)state.X-3,z=(int)state.Z-3;bool valid=state.Town.ValidPlot(x,z);for(int i=0;i<15;i++){Box(x+i,.02f,z,.9f,.03f,.9f,valid?new Color32(74,230,113):new Color32(229,82,72));Box(x+i,.02f,z+12,.9f,.03f,.9f,valid?new Color32(74,230,113):new Color32(229,82,72));} }
         if(batchedDrawing)boxes.Flush();
         if(renderDebug.ForceAttention&&villagers.Doors.PlayerFade<1)attention.Draw(renderer,state,actorVisibility,indoorCamera,cachedPlayerHeight);
-        if(weather.Raining(room)&&villagers.Doors.PlayerFade<1)rain.Draw(renderer,state,(Clock.Timestamp-sessionStart)/1000000.0,cachedPlayerHeight);
-        renderer.End3D();ui.Begin();DrawHud();FrameProfile.End(8,phase);FrameProfile.Draw(ui);
+        submissionAt=FrameProfile.SubmissionStart();if(weather.Raining(room)&&villagers.Doors.PlayerFade<1)rain.Draw(renderer);FrameProfile.SubmissionEnd(4,submissionAt);
+        renderer.End3D();ui.Begin();submissionAt=FrameProfile.SubmissionStart();DrawHud();if(FrameProfile.Enabled)ui.Flush();FrameProfile.SubmissionEnd(5,submissionAt);FrameProfile.End(8,phase);FrameProfile.Draw(ui);
         float fade=villagers.Doors.PlayerFade;if(fade>0)ui.FillRectangle(new RectF(0,0,640,480),new Color32(12,19,25,(byte)(fade*255)));
-        phase=FrameProfile.Start();ui.End();FrameProfile.End(8,phase);
+        phase=FrameProfile.Start();submissionAt=FrameProfile.SubmissionStart();ui.End();FrameProfile.SubmissionEnd(6,submissionAt);FrameProfile.End(8,phase);
         phase=FrameProfile.Start();device.EndFrame();FrameProfile.End(9,phase);
     }
     internal void RecordFrame()
@@ -719,18 +718,16 @@ internal sealed class TownGame
             {for(int j=visibleTrees.Length-1;j>n;j--){visibleTrees[j]=visibleTrees[j-1];treeDistances[j]=treeDistances[j-1];}visibleTrees[n]=i;treeDistances[n]=d;break;}
         }
         FrameProfile.End(15,selectionAt);
-        trees.Draw(renderer,state.Town,visibleTrees,state.Z,month,terrain.RenderSeason);
+        trees.Draw(renderer,state.Town,visibleTrees,state.Z);
     }
-    private void FenceAt(int x,int z)
-    { Box(x,0,z,.12f,.55f,.12f,new Color32(211,191,147)); }
     private void Text(string text,float x,float y,Color32 c,float scale=1.5f,int visibleCharacters=-1)=>font.Draw(ui,text,x,y,c,scale/1.5f,0,visibleCharacters);
     private void Strong(string text,float x,float y,Color32 c,float scale=1.5f)=>strongFont.Draw(ui,text,x,y,c,scale/1.5f);
     private void Heading(string text,float x,float y,Color32 c,float scale=1)=>headingFont.Draw(ui,text,x,y,c,scale,(float)Math.Sin(tick*.018f+x*.01f)*1.8f);
     private void Panel(float x,float y,float w,float h)
-    { float radius=Math.Min(30,h*.5f);Bulged(x+4,y+5,w,h,radius,new Color32(49,72,62,130));Bulged(x,y,w,h,radius,new Color32(255,245,221)); }
-    private void Bulged(float x,float y,float w,float h,float radius,Color32 color)
+    { float radius=Math.Min(30,h*.5f);if(batchedDrawing&&uiShapes.DrawPanel(ui,x,y,w,h,radius))return;Bulged(x+4,y+5,w,h,radius,new Color32(49,72,62,130),false);Bulged(x,y,w,h,radius,new Color32(255,245,221),false); }
+    private void Bulged(float x,float y,float w,float h,float radius,Color32 color,bool cache=true)
     {
-        if(batchedDrawing&&uiShapes.Draw(ui,x,y,w,h,radius,true,color))return;
+        if(cache&&batchedDrawing&&uiShapes.Draw(ui,x,y,w,h,radius,true,color))return;
         Rounded(x,y,w,h,radius,color,false);if(h<=radius*2+1)return;
         float start=y+radius,span=h-2*radius;
         for(int side=0;side<2;side++)
