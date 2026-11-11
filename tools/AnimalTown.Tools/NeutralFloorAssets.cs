@@ -6,6 +6,9 @@ using SkiaSharp;
 
 internal static class NeutralFloorAssets
 {
+    internal const string FullTexture="floor-outdoor-neutral.dndtex";
+    internal const string PreviewTexture="floor-outdoor-neutral-64.dndtex";
+
     internal static void Build(string root,JsonNode config,string output)
     {
         var neutral=config["neutralFloor"]!;string file=(string)neutral["source"]!;
@@ -13,19 +16,24 @@ internal static class NeutralFloorAssets
         if(!path.StartsWith(Path.GetFullPath(root)+Path.DirectorySeparatorChar,StringComparison.OrdinalIgnoreCase))throw new InvalidDataException("Neutral floor source escapes repository");
         string imageSha=Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(path)));
         using var image=SKBitmap.Decode(path)??throw new InvalidDataException("Cannot decode neutral floor");
-        if(image.Width<4||image.Height<4||image.Width>4096||image.Height>4096)throw new InvalidDataException("Invalid neutral floor dimensions");
+        int edge=FloorTexture.Maximum;
+        if(image.Width!=edge||image.Height!=edge)throw new InvalidDataException($"Neutral floor source must be {edge}x{edge}");
         float floor=(float?)neutral["brightnessFloor"]??.86f;if(!float.IsFinite(floor)||floor<0||floor>=1)throw new InvalidDataException("Invalid neutral brightness floor");
         int min=255,max=0;for(int y=0;y<image.Height;y++)for(int x=0;x<image.Width;x++){var c=image.GetPixel(x,y);if(c.Alpha!=255)throw new InvalidDataException("Neutral floor must be opaque");int l=Luma(c);min=Math.Min(min,l);max=Math.Max(max,l);}
-        // One bright grayscale master supports white snow through ordinary GX
-        // modulation. The artist's source file is preserved byte for byte.
-        using var master=new SKBitmap(image.Width,image.Height);
-        for(int y=0;y<image.Height;y++)for(int x=0;x<image.Width;x++){float l=max==min?1:(Luma(image.GetPixel(x,y))-min)/(float)(max-min);byte v=(byte)Math.Clamp((int)MathF.Round((floor+(1-floor)*l)*255),0,255);master.SetPixel(x,y,new SKColor(v,v,v));}
-        byte[] package=RepeatFloorAssets.Encode(master,new SKRectI(0,0,master.Width,master.Height));
-        // Keep the 1024px source option without reading a 2 MiB RGB565 staging
-        // image into the console's 4 MiB managed heap. The runtime still chooses
-        // its requested size and generates the full ground mip chain at load.
-        package=FloorTexture.Prepare(package,TextureResolution.Size1024);
-        File.WriteAllBytes(Path.Combine(output,"floor-outdoor-neutral.dndtex"),package);string digest=Convert.ToHexString(SHA256.HashData(package));
+        // Keep the bright grayscale master for seasonal GX modulation. Filter
+        // its uncompressed pixels before encoding each native mip separately.
+        var master=new byte[edge*edge*4];
+        for(int y=0;y<edge;y++)for(int x=0;x<edge;x++){
+            float l=max==min?1:(Luma(image.GetPixel(x,y))-min)/(float)(max-min);
+            byte v=(byte)Math.Clamp((int)MathF.Round((floor+(1-floor)*l)*255),0,255);
+            int at=(y*edge+x)*4;master[at]=master[at+1]=master[at+2]=v;master[at+3]=255;
+        }
+        byte[] package=FloorTexture.Encode(master,edge,edge,fullMipChain:true);
+        byte[] preview=FloorTexture.ExtractMipTail(package,firstLevel:2);
+        File.WriteAllBytes(Path.Combine(output,FullTexture),package);
+        File.WriteAllBytes(Path.Combine(output,PreviewTexture),preview);
+        string digest=Convert.ToHexString(SHA256.HashData(package));
+        string previewDigest=Convert.ToHexString(SHA256.HashData(preview));
         var provenance=new List<object>();
         foreach(string season in new[]{"spring","summer","fall","winter"}){
             // Indoor floors retain their own artwork/color, outside the shared
@@ -39,7 +47,7 @@ internal static class NeutralFloorAssets
                 bool interior=name=="floor";var color=interior?SKColors.White:Parse((string?)(neutral["seasons"]?[season]?[name]??neutral["tints"]?[name])??throw new InvalidDataException("Missing neutral tint: "+name));
                 uint tint=(uint)(color.Red<<24|color.Green<<16|color.Blue<<8|255);int texture=interior?1:0;
                 if(!lookup.TryGetValue((texture,tint),out int material)){material=colors.Count;lookup.Add((texture,tint),material);colors.Add(tint);textureSlots.Add(texture);}styles.Add(material);
-                provenance.Add(new{season,surface=name,variant=0,imageFile=interior?null:file,imageSha=interior?null:imageSha,crop=interior?new[]{0,0,4,4}:new[]{0,0,image.Width,image.Height},source=interior?$"dvd:/floor-{season}-1.dndtex":"dvd:/floor-outdoor-neutral.dndtex",sourceSha=interior?Convert.ToHexString(SHA256.HashData(inside)):digest,derivedFromTransitionCenter=false,tint=$"#{color.Red:X2}{color.Green:X2}{color.Blue:X2}",brightnessFloor=interior?0:floor});
+                provenance.Add(new{season,surface=name,variant=0,imageFile=interior?null:file,imageSha=interior?null:imageSha,crop=interior?new[]{0,0,4,4}:new[]{0,0,image.Width,image.Height},source=interior?$"dvd:/floor-{season}-1.dndtex":"dvd:/"+FullTexture,sourceSha=interior?Convert.ToHexString(SHA256.HashData(inside)):digest,previewSource=interior?null:"dvd:/"+PreviewTexture,previewSha=interior?null:previewDigest,derivedFromTransitionCenter=false,tint=$"#{color.Red:X2}{color.Green:X2}{color.Blue:X2}",brightnessFloor=interior?0:floor});
             }
             using var stream=new MemoryStream();using var writer=new BinaryWriter(stream);
             writer.Write(0x32525441);writer.Write(2);writer.Write(RepeatFloorAssets.Names.Length);writer.Write(colors.Count);writer.Write(FloorTexture.Maximum);
@@ -48,7 +56,7 @@ internal static class NeutralFloorAssets
             foreach(var p in patches){writer.Write(Array.IndexOf(RepeatFloorAssets.Names,(string)p!["surface"]!));writer.Write(Array.IndexOf(RepeatFloorAssets.Names,(string)p["terrain"]!));foreach(string field in new[]{"x","z","width","height","border"})writer.Write((int)p[field]!);}
             for(int i=0;i<colors.Count;i++){writer.Write(textureSlots[i]);writer.Write(colors[i]);}
             var data=stream.ToArray();FloorStrips.Validate(data);File.WriteAllBytes(Path.Combine(output,$"floor-{season}.bin"),data);
-            Console.WriteLine($"Shared neutral floor {season}: 1 outdoor texture, {colors.Count-1} outdoor tints; {FloorTexture.Prepare(package,fullMipChain:true).Length-32} resident outdoor bytes");
+            Console.WriteLine($"Shared neutral floor {season}: 1 outdoor texture, {colors.Count-1} outdoor tints; {package.Length-32} resident outdoor bytes");
         }
         File.WriteAllText(Path.Combine(root,"out/floor-sources.json"),JsonSerializer.Serialize(provenance,new JsonSerializerOptions{WriteIndented=true}));
     }

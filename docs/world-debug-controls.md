@@ -58,6 +58,15 @@ building interiors, actors, UI and soil keep their previous texture policies.
 The default shared 256px CMPR ground payload grows from 40,960 to 43,712 bytes;
 the terrain ARAM reservation and MEM1 geometry cache budgets are unchanged.
 
+The disc also carries `dvd:/floor-outdoor-neutral-64.dndtex` for callers that
+need a small texture while the full asset loads. It has a 64×64 base and four
+smaller mip levels, with 2,752 bytes of GX payload. To control its lifetime,
+load it as an owned `Texture2D.FromPackage` texture and set both sampler axes
+to Repeat. Between frames on the application thread, bind the loaded
+`dvd:/floor-outdoor-neutral.dndtex` to every material using the preview, then
+dispose the preview. The full package has the contiguous mip levels GX needs
+for distance filtering. Normal terrain rendering loads the full package directly.
+
 ## Optimized defaults
 
 Normal startup already uses immutable ARAM terrain, fixed MEM1 mesh views,
