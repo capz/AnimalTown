@@ -7,6 +7,7 @@ using Dolphin.Graphics;
 internal sealed class ProfilePickerUi : IDisposable
 {
     private static readonly string[] Species={"fox","bunny","giraffe","cat","hamster","spaniel"};
+    private static readonly string[] DeleteActions={"Cancel","Delete"};
     private static readonly Color32 Honey=new Color32(255,183,64),Warm=new Color32(245,226,186),Sage=new Color32(158,181,136);
     private readonly Draw2D ui=new Draw2D(GraphicsDevice.Default,new Draw2DOptions{Width=640,Height=480,VertexCapacity=8192,SpriteCapacity=128});
     private readonly TitleBackdrop background=new TitleBackdrop();
@@ -17,21 +18,32 @@ internal sealed class ProfilePickerUi : IDisposable
     private UiFont? font,heading;
     private CachedTexture? logo;
     internal int Selected;
+    internal const int Confirm=1,Busy=2,Failure=3;
+    internal int Modal;
+    internal bool DeleteFocus;
+    internal string Status="";
+    internal bool Occupied=>species[Selected]>=0;
 
     internal ProfilePickerUi(GameState state,bool savedTown)
     {
         try{
             font=UiFont.LoadSystem();heading=UiFont.Load("gorditas-bold");logo=TextureCache.Load("dvd:/wordmark.dndtex",true);
             Selected=state.ActiveProfile;
-            for(int i=0;i<GameState.ProfileCount;i++){
+            Refresh(state,savedTown);
+        }catch{Dispose();throw;}
+    }
+    internal void Refresh(GameState state,bool savedTown)
+    {
+        var used=new bool[6];
+        for(int i=0;i<GameState.ProfileCount;i++){
                 bool occupied=state.Profiles[i].Created&&(savedTown||i!=0);
                 names[i]=occupied?state.ProfileName(i):"New Villager";
                 labels[i]=CardLabel(names[i]);
                 species[i]=occupied?(i==state.ActiveProfile?state.Species:state.Profiles[i].Species):-1;
-                if(species[i]>=0&&portraits[species[i]]==null)
-                    portraits[species[i]]=TextureCache.Load("dvd:/picker-"+Species[species[i]]+".dndtex",true);
-            }
-        }catch{Dispose();throw;}
+                if(species[i]>=0){used[species[i]]=true;if(portraits[species[i]]==null)
+                    portraits[species[i]]=TextureCache.Load("dvd:/picker-"+Species[species[i]]+".dndtex",true);}
+        }
+        for(int i=0;i<portraits.Length;i++)if(!used[i]&&portraits[i]!=null){TextureCache.Release(portraits[i]!,true);portraits[i]=null;}
     }
     private string CardLabel(string name)
     {
@@ -69,8 +81,42 @@ internal sealed class ProfilePickerUi : IDisposable
         TitleArt.Rounded(ui,318,263,3,8,1,new Color32(183,130,65));
         TitleArt.Ellipse(ui,314,261,6,3,Sage);TitleArt.Ellipse(ui,325,261,6,3,Sage);
         for(int i=0;i<4;i++)Card(i);
-        TitleArt.Rounded(ui,66,411,508,35,17,TitleArt.Leaf);Button("A","Select",205);Button("B","Back",374);
+        TitleArt.Rounded(ui,66,411,508,35,17,TitleArt.Leaf);
+        if(Occupied){Button("A","Select",153);Button("B","Back",312);Button("Z","Delete",450);}
+        else{Button("A","Select",205);Button("B","Back",374);}
+        if(Status.Length>0)Center(Status,320,397,.58f,500);
+        if(Modal!=0)DrawDeletion();
         ui.End();device.EndFrame();
+    }
+    private void DrawDeletion()
+    {
+        ui.FillRectangle(new RectF(0,0,640,480),new Color32(25,44,36,160));
+        TitleArt.Panel(ui,84,111,472,264);
+        string title=Modal==Busy?"Deleting villager...":Modal==Failure?"Check memory card":"Delete villager?";
+        float scale=Math.Min(1.08f,416/heading!.Measure(title));
+        heading.Draw(ui,title,320-heading.Measure(title,scale)*.5f,132,TitleArt.Ink,scale);
+        if(Modal==Failure){
+            Center("Couldn't verify every save operation.",320,198,.78f,416);
+            Center("The last complete save will load.",320,224,.78f,416);
+            Center("Check Slot A, then return to the title.",320,250,.78f,416);
+            TitleArt.Rounded(ui,179,309,282,38,19,TitleArt.Leaf);
+            font!.Draw(ui,"Return to title",320-font.Measure("Return to title",.95f)*.5f,317,TitleArt.Cream,.95f);
+            return;
+        }
+        Center(names[Selected],320,180,1.05f,416);
+        if(Modal==Busy){
+            Center("Keep the memory card in Slot A.",320,229,.88f,416);
+            Center("Updating and checking the town's saves.",320,261,.75f,416);return;
+        }
+        Center("Removes their home, furniture and progress.",320,214,.75f,416);
+        Center("The town and other villagers will stay.",320,237,.75f,416);
+        Center("This cannot be undone.",320,260,.75f,416);
+        for(int i=0;i<2;i++){
+            float x=127+i*208;bool focus=DeleteFocus==(i==1);
+            TitleArt.Rounded(ui,x,309,178,38,19,focus?(i==0?TitleArt.Leaf:new Color32(195,109,84)):Warm);
+            font!.Draw(ui,DeleteActions[i],x+89-font.Measure(DeleteActions[i],.95f)*.5f,317,focus?TitleArt.Cream:TitleArt.Ink,.95f);
+        }
+        Center("A: confirm    B: cancel",320,355,.65f,416);
     }
     private void Leaves(float x,float y)
     {

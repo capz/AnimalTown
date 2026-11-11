@@ -15,9 +15,14 @@ public static class SaveCodec
     { uint c=0xffffffff;for(int i=start;i<start+count;i++){c^=b[i];for(int j=0;j<8;j++)c=(c>>1)^((c&1)!=0?0xedb88320u:0);}return ~c; }
     public static byte[] Encode(GameState s)=>EncodeCore(s,true);
     public static byte[] EncodeLegacy(GameState s)=>EncodeCore(s,false);
+    internal static void RequireLegacyProfile(GameState s)
+    {
+        if(s.ActiveProfile!=0||!s.Profiles[0].Created)throw new InvalidOperationException("Legacy export requires the original single player");
+        for(int i=1;i<GameState.ProfileCount;i++)if(s.Profiles[i].Created)throw new InvalidOperationException("Legacy export cannot discard villager profiles");
+    }
     private static byte[] EncodeCore(GameState s,bool profiles)
     {
-        if(!profiles){if(s.ActiveProfile!=0)throw new InvalidOperationException("Legacy export requires the original single player");for(int i=1;i<GameState.ProfileCount;i++)if(s.Profiles[i].Created)throw new InvalidOperationException("Legacy export cannot discard villager profiles");}
+        if(!profiles)RequireLegacyProfile(s);
         s.CaptureProfile();
         int terrainRuns=1;for(int i=1;i<Town.Cells;i++)if(s.Town.Tiles[i]!=s.Town.Tiles[i-1])terrainRuns++;
         int elevationRuns=1;for(int i=1;i<Town.Cells;i++)if(s.Town.Elevation[i]!=s.Town.Elevation[i-1])elevationRuns++;
@@ -126,7 +131,8 @@ public static class SaveCodec
         if(version>=8){
             var body=new VillagerProfile{Created=true};body.Capture(s);int active=Range(b,ref p,0,GameState.ProfileCount-1);
             for(int i=0;i<GameState.ProfileCount;i++){int length=Range(b,ref p,32,2048);if(p>b.Length-length)throw new InvalidOperationException("Truncated profile");var data=new byte[length];Array.Copy(b,p,data,0,length);p+=length;s.Profiles[i]=ProfileCodec.Decode(s,i,data);}
-            if(!s.Profiles[active].Created||!ProfileCodec.Same(body,s.Profiles[active]))throw new InvalidOperationException("Selected profile differs from active state");s.RestoreProfile(active);
+            body.Created=s.Profiles[active].Created;
+            if(!ProfileCodec.Same(body,s.Profiles[active]))throw new InvalidOperationException("Selected profile differs from active state");s.RestoreProfile(active);
         }else s.CaptureProfile();
         for(int a=0;a<GameState.ProfileCount;a++)if(s.HomePlaced(a))for(int c=a+1;c<GameState.ProfileCount;c++)if(s.HomePlaced(c)&&s.HomeX(a)<s.HomeX(c)+15&&s.HomeX(a)+15>s.HomeX(c)&&s.HomeZ(a)<s.HomeZ(c)+13&&s.HomeZ(a)+13>s.HomeZ(c))throw new InvalidOperationException("Overlapping player home plots");
         int placedCount=s.Town.PlacedCount;s.Town.PlacedCount=0;

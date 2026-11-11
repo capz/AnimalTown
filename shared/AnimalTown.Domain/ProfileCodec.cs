@@ -44,7 +44,7 @@ internal static class ProfileCodec
     }
     internal static bool Same(VillagerProfile a,VillagerProfile b)
     {
-        bool same=true;
+        bool same=a.Created==b.Created;
         same &= a.BackpackTier==b.BackpackTier;
         same &= a.Wallet==b.Wallet;
         same &= a.Species==b.Species;

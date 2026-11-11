@@ -26,7 +26,7 @@ internal static class Program
         while(true){
             if(!TitleScreen.Run(config))return 0;
             session=TownSession.Load();LoadingScreen.Finish();
-            if(ProfilePicker.Run(session.State,session.Loaded))break;
+            if(ProfilePicker.Run(session))break;
             AnimalTown.GameCube.NativeTexturePages.Collect();
         }
         LoadingScreen.Draw();
@@ -208,8 +208,8 @@ internal sealed class TownGame
     }
     private void SelectSpecies()
     { if(actors[0]!=null)actors[0].Dispose();actors[0]=models[state.Species].CreateInstance(512*1024);moveClip=-1;animationClock.Reset(0);appliedClips[0]=-2; }
-    // The only card-write entry point. Loading, timers, rollover and debug
-    // actions never request a save; this must be the selected menu action.
+    // Gameplay saves require this explicit menu action. The profile picker's
+    // separately confirmed Delete action also commits, via TownSession.
     private void SaveFromMenu()
     {
         if(screen!="menu"||menuTab!=SettingsTab||selected!=0)return;

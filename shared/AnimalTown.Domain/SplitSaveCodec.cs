@@ -60,6 +60,7 @@ public static class SplitSaveCodec
     }
     public static byte[][] EncodeLegacy(GameState s)
     {
+        SaveCodec.RequireLegacyProfile(s);
         var t=s.Town;var records=new byte[4][];
         var w=new Writer(s,TownData,2048+4*(Runs(t.Tiles)+Runs(t.Elevation))+24*t.GroundCount,3);
         w.Int(Town.Width);w.Int(Town.Height);w.Int(TownGenerator.Version);w.Int(t.Day);w.Int(t.Month);w.Rle(t.Tiles);w.Rle(t.Elevation);

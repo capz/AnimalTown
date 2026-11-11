@@ -25,5 +25,14 @@ if(args[0]=="seed-legacy"){
     if(!rejected)throw new Exception("Database accepted partial villager roster");
     rejected=false;try{await using var cmd=new NpgsqlCommand("UPDATE players SET player_villager2=NULL,player_villager3=NULL,player_villager4=NULL WHERE id=$1",c);cmd.Parameters.AddWithValue(id);await cmd.ExecuteNonQueryAsync();}catch(PostgresException e)when(e.SqlState=="23514"){rejected=true;}
     if(!rejected)throw new Exception("Database accepted a schema-4 town with its extra profiles removed");
-    Console.WriteLine("Backend split storage and exact legacy migration checks passed");
+    var empty=SaveCodec.Decode(SaveCodec.Encode(original));empty.DeleteProfile(0);var emptyParts=SplitSaveCodec.Encode(empty);
+    await using(var cmd=new NpgsqlCommand("UPDATE players SET town_data=$2,house_positions=$3,shop_states=$4,player_villager=$5,player_villager2=$6,player_villager3=$7,player_villager4=$8 WHERE id=$1",c)){
+        cmd.Parameters.AddWithValue(id);foreach(var part in emptyParts)cmd.Parameters.AddWithValue(part);await cmd.ExecuteNonQueryAsync();
+    }
+    await using(var cmd=new NpgsqlCommand("SELECT town_data,house_positions,shop_states,player_villager,player_villager2,player_villager3,player_villager4 FROM players WHERE id=$1",c)){
+        cmd.Parameters.AddWithValue(id);await using var r=await cmd.ExecuteReaderAsync();if(!await r.ReadAsync())throw new Exception("Empty town disappeared");
+        var parts=new byte[7][];for(int i=0;i<7;i++)parts[i]=r.GetFieldValue<byte[]>(i);var restored=SplitSaveCodec.Decode(parts);
+        if(restored.Profiles.Any(p=>p.Created)||!SaveCodec.Encode(empty).SequenceEqual(SaveCodec.Encode(restored)))throw new Exception("Backend resurrected a resident or changed the empty town");
+    }
+    Console.WriteLine("Backend split storage, exact legacy migration and last-resident deletion checks passed");
 }

@@ -6,7 +6,7 @@ public interface ISaveStorage
     void Write(string name,byte[] bytes);
 }
 
-// A bank is visible only after all four records pass readback and the commit
+// A bank is visible only after all records pass readback and the commit
 // record is written. Never combine records from different banks/generations.
 public sealed class SaveRepository
 {
@@ -14,6 +14,8 @@ public sealed class SaveRepository
     public SaveRepository(ISaveStorage storage){this.storage=storage;}
     private static void Match(byte[] actual,byte[] expected)
     {if(actual.Length!=expected.Length)throw new InvalidOperationException("Save readback length differs");for(int i=0;i<actual.Length;i++)if(actual[i]!=expected[i])throw new InvalidOperationException("Save readback differs from snapshot");}
+    private static void MatchSnapshot(GameState actual,GameState expected)
+    {Match(SaveCodec.Encode(actual),SaveCodec.Encode(expected));}
     private byte[][] ReadParts(int bank,byte[][]? expected=null)
     {var town=storage.Read(SplitSaveCodec.FileName(0,bank));var parts=new byte[SplitSaveCodec.ReadVersion(town)>=4?SplitSaveCodec.PartCount:4][];parts[0]=town;if(expected!=null)Match(town,expected[0]);for(int i=1;i<parts.Length;i++){parts[i]=storage.Read(SplitSaveCodec.FileName(SplitSaveCodec.RecordKind(i),bank));if(expected!=null)Match(parts[i],expected[i]);}return parts;}
     // Separate native GC frames release readback/validation temporaries before
@@ -42,5 +44,21 @@ public sealed class SaveRepository
             // the live terrain read-only instead of allocating 25 KiB arrays.
             VerifyReadback(bank,parts,commit);
         }catch{state.Sequence=previous;throw;}
+    }
+    public GameState DeleteProfile(GameState expected,int profile)
+    {
+        if((uint)profile>=GameState.ProfileCount||!expected.Profiles[profile].Created)throw new InvalidOperationException("Villager does not exist");
+        if(expected.Sequence>int.MaxValue-2)throw new InvalidOperationException("Save sequence exhausted");
+        var candidate=Load()??throw new InvalidOperationException("No complete saved town");
+        // Refuse a removed/swapped card or a newer/different town. The displayed
+        // snapshot remains untouched until both verified banks are committed.
+        // Keep serialized comparisons in their own native GC frame, so their
+        // buffers can retire before the two save/readback operations allocate.
+        MatchSnapshot(candidate,expected);
+        candidate.DeleteProfile(profile);
+        Save(candidate);Save(candidate);
+        // Mirror only after a complete commit: ordinary fallback must not
+        // resurrect the resident from the previous bank after successful delete.
+        return candidate;
     }
 }

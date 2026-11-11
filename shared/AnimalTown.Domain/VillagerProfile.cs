@@ -106,7 +106,49 @@ public sealed partial class GameState
     public int ActiveProfile {get;private set;}
     public void CaptureProfile()=>Profiles[ActiveProfile].Capture(this);
     internal void RestoreProfile(int profile)
-    {if(profile<0||profile>=ProfileCount||!Profiles[profile].Created)throw new InvalidOperationException("Invalid villager profile");ActiveProfile=profile;Town.ActiveProfile=profile;Profiles[profile].Restore(this);}
+    {
+        if(profile<0||profile>=ProfileCount)throw new InvalidOperationException("Invalid villager profile");
+        if(!Profiles[profile].Created){
+            if(profile!=0)throw new InvalidOperationException("Empty town must use slot 1 as its save anchor");
+            for(int i=0;i<ProfileCount;i++)if(Profiles[i].Created)throw new InvalidOperationException("Active villager is empty");
+        }
+        ActiveProfile=profile;Town.ActiveProfile=profile;Profiles[profile].Restore(this);
+    }
+    // Mutate only a private candidate; SaveRepository publishes the deletion.
+    // Loose items/plants and edited terrain are shared world state, not a home.
+    public void DeleteProfile(int profile)
+    {
+        if((uint)profile>=ProfileCount||!Profiles[profile].Created)throw new InvalidOperationException("Villager does not exist");
+        CaptureProfile();int owner=profile==0?0:profile+6,building=BuildingWorld.PlayerBuilding(profile);
+        BuildingWorld.Entrance(this,building,out float outsideX,out float outsideZ);
+        int active=ActiveProfile,kept=0;
+        for(int i=0;i<Town.PlacedCount;i++){
+            var p=Town.Placed[i];if(p.Owner==owner||BuildingWorld.RoomProfile(p.Room)==profile)continue;
+            var spare=Town.Placed[kept];Town.Placed[kept++]=p;Town.Placed[i]=spare;
+        }
+        Town.PlacedCount=kept;Profiles[profile]=new VillagerProfile();BuildingTypes[building]=0;
+        if(active==profile){active=0;for(int i=0;i<ProfileCount;i++)if(Profiles[i].Created){active=i;break;}}
+        RestoreProfile(active);
+        bool visitors=false;
+        for(int i=0;i<ProfileCount;i++)if(Profiles[i].Created&&BuildingWorld.RoomProfile(Profiles[i].Space)==profile)visitors=true;
+        for(int i=0;i<6;i++)if(BuildingWorld.RoomProfile(Town.Residents[i].Space)==profile)visitors=true;
+        if(visitors&&!CanWalk(outsideX,outsideZ,0)){
+            bool found=false;for(int cell=0;cell<Town.Cells;cell++)if(CanWalk(cell%Town.Width+.5f,cell/Town.Width+.5f,0)){
+                outsideX=cell%Town.Width+.5f;outsideZ=cell/Town.Width+.5f;found=true;break;
+            }
+            if(!found)throw new InvalidOperationException("Town has no safe place for visitors");
+        }
+        for(int i=0;i<ProfileCount;i++)if(Profiles[i].Created&&BuildingWorld.RoomProfile(Profiles[i].Space)==profile){
+            Profiles[i].Space=0;Profiles[i].X=outsideX;Profiles[i].Z=outsideZ;Profiles[i].Facing=0;
+        }
+        for(int i=0;i<6;i++){
+            var v=Town.Residents[i];
+            bool visitor=BuildingWorld.RoomProfile(v.Space)==profile;
+            if(visitor){v.Space=0;v.PosX=outsideX;v.PosZ=outsideZ;v.X=(int)outsideX;v.Z=(int)outsideZ;v.Yaw=0;}
+            if(visitor||v.JourneyBuilding==building){v.JourneyBuilding=-1;v.JourneyPhase=0;v.Dwell=0;v.JourneyNextX=v.JourneyNextZ=-1;}
+        }
+        RestoreProfile(active);Town.NotifyCastersChanged();
+    }
     public bool SelectProfile(int profile)
     {
         if(profile<0||profile>=ProfileCount)throw new InvalidOperationException("Invalid villager profile");

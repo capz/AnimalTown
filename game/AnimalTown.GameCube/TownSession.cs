@@ -1,4 +1,5 @@
 using System;
+using System.IO;
 using AnimalTown;
 using Dolphin.Storage;
 using Dolphin.Timing;
@@ -6,10 +7,19 @@ using Dolphin.Timing;
 // Read the shared save before constructing any game renderer or town assets.
 internal sealed class TownSession
 {
-    internal readonly GameState State;
+    internal GameState State {get;private set;}
     internal readonly bool Loaded,Damaged;
     internal readonly string Status;
     private TownSession(GameState state,bool loaded,bool damaged,string status){State=state;Loaded=loaded;Damaged=damaged;Status=status;}
+    internal bool DeleteProfile(int profile)
+    {
+        if(!Loaded||Damaged||!State.Profiles[profile].Created)return false;
+        try{
+            using var card=MemoryCard.Mount(StorageDevice.MemoryCardSlotA,new MemoryCardIdentity("AMTE","01"));
+            var storage=new CardSaveStorage(card,File.ReadAllBytes("dvd:/savebanner.rgb5a3"),File.ReadAllBytes("dvd:/saveicon.rgb5a3"));
+            State=new SaveRepository(storage).DeleteProfile(State,profile);return true;
+        }catch(Exception){return false;}
+    }
     internal static TownSession Load()
     {
         GameState? state=null;bool damaged=false;string status="New town - no valid save";
