@@ -23,4 +23,5 @@ $p=Get-ValidationPlan -ChangedPaths @('shared/AnimalTown.Domain/RiverBankGeometr
 $p=Get-ValidationPlan -ChangedPaths @('shared/AnimalTown.Domain/TerrainStream.cs');Assert (($p.managed -join ',') -eq 'terrain,movement,generation,life,core' -and !$p.backend -and !$p.full) 'Terrain streaming must exercise visibility, movement and generation checks'
 $p=Get-ValidationPlan -ChangedPaths @('docs/versioning.md') -ForceRelease;Assert ($p.release -and !$p.full -and !$p.managed.Count -and !$p.backend) 'Every merged PR can publish without forcing unrelated test suites'
 $p=Get-ValidationPlan -ChangedPaths @('game/AnimalTown.GameCube/TitleArt.cs','game/AnimalTown.GameCube/TitleBackdrop.cs','game/AnimalTown.GameCube/LoadingScreen.cs');Assert (($p.managed -join ',') -eq 'ui,menu,saves' -and !$p.backend -and !$p.full) 'Independent title/loading UI needs UI, navigation and save checks'
-Write-Host 'Validation routing checks passed (22 cases).'
+$p=Get-ValidationPlan -ChangedPaths @('game/AnimalTown.GameCube/ProfilePicker.cs','game/AnimalTown.GameCube/TownSession.cs');Assert (($p.managed -join ',') -eq 'ui,menu,saves' -and !$p.backend -and !$p.full) 'Profile selection must exercise UI, navigation and save loading'
+Write-Host 'Validation routing checks passed (23 cases).'

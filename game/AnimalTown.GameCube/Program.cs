@@ -22,13 +22,20 @@ internal static class Program
         var config=DevConfigStorage.Load();
         DevConfigStorage.ApplyGlobal(config);
         StartupSplash.Run();
-        if(!TitleScreen.Run(config))return 0;
+        TownSession session;
+        while(true){
+            if(!TitleScreen.Run(config))return 0;
+            session=TownSession.Load();LoadingScreen.Finish();
+            if(ProfilePicker.Run(session.State,session.Loaded))break;
+            AnimalTown.GameCube.NativeTexturePages.Collect();
+        }
+        LoadingScreen.Draw();
         AnimalTown.GameCube.NativeTexturePages.Collect();
         DebugOverlay.WriteLine("ANIMALTOWN TITLE RELEASED native bytes "+GraphicsDevice.Default.NativeBytes);
         DebugOverlay.WriteLine("ANIMALTOWN GAME START");
         if(!Aram.Initialize(2*1024*1024))throw new InvalidOperationException("Audio ARAM reservation failed");
         LoadingScreen.Pulse();
-        var game=new TownGame(config);
+        var game=new TownGame(config,session);
         // Run's stack and using scope are gone, so splash batch/package arrays
         // cannot remain rooted in its locals during this collection.
         AnimalTown.GameCube.NativeTexturePages.Collect();
@@ -130,7 +137,7 @@ internal sealed class TownGame
     private const int SettingsTab=5,TestingTab=6,TestingRows=24;
     private static readonly string[] tabs={"Backpack","Jobs","Catalog","Home","Post office","Settings","Debug / testing"};
     private static readonly string[] itemActions={"Drop","Place (R rotates)","Plant","Eat","Wear","Equip","Bury","Open money bag","Read","Quit"};
-    internal TownGame(DevConfig config)
+    internal TownGame(DevConfig config,TownSession session)
     {
         ui=new Draw2D(device,new Draw2DOptions{Width=640,Height=480,VertexCapacity=8192,SpriteCapacity=128});
         font=UiFont.LoadSystem();strongFont=font;headingFont=UiFont.Load("gorditas-bold");cube=Cube();
@@ -144,12 +151,10 @@ internal sealed class TownGame
         syllable=Sound.FromPcm8(pcm,16000);syllable.Volume=.12f;dialogueVoice=new DialogueVoice(syllable);
         sessionStart=Clock.Timestamp;
         ReadCalendar();
-        long seedClock=Clock.Timestamp;state=new GameState(unchecked((int)(seedClock^(seedClock>>32)^day*7919L^month*104729L)));
+        state=session.State;loaded=session.Loaded;damagedSave=session.Damaged;saveStatus=session.Status;day=Math.Max(day,state.Town.Day);month=Math.Max(month,state.Town.Month);
         BuildingCatalog.Configure(File.ReadAllBytes("dvd:/buildings.bin"));
         LoadingScreen.Pulse();
-        LoadSave();
-        LoadingScreen.Pulse();
-        screen=loaded?"world":"create";
+        screen=state.HousePlaced?"world":"create";
         facingYaw=state.Facing;
         state.Rollover(day,month);
         if(room==0&&state.HousePlaced&&!state.CanWalk(state.X,state.Z,0))state.MoveToHouseEntrance();
@@ -205,19 +210,6 @@ internal sealed class TownGame
     }
     private void SelectSpecies()
     { if(actors[0]!=null)actors[0].Dispose();actors[0]=models[state.Species].CreateInstance(512*1024);moveClip=-1;animationClock.Reset(0);appliedClips[0]=-2; }
-    private void LoadSave()
-    {
-        try
-        {
-            card=MemoryCard.Mount(StorageDevice.MemoryCardSlotA,new MemoryCardIdentity("AMTE","01"));
-            int existing=0;var entries=card.GetEntries();for(int i=0;i<entries.Length;i++)if(SplitSaveCodec.IsFile(entries[i].Name))existing++;
-            GameState? best=new SaveRepository(new CardSaveStorage(card,banner,icon)).Load();
-            if(best!=null){state=best;day=Math.Max(day,state.Town.Day);month=Math.Max(month,state.Town.Month);loaded=true;saveStatus="Save loaded";}
-            else if(existing>0){damagedSave=true;saveStatus="No complete save set. Backup card before recovery.";}
-            else saveStatus="New town - no valid save";
-        }
-        catch(Exception){saveStatus="Insert memory card in Slot A to save";}
-    }
     // The only card-write entry point. Loading, timers, rollover and debug
     // actions never request a save; this must be the selected menu action.
     private void SaveFromMenu()
@@ -355,7 +347,7 @@ internal sealed class TownGame
         if(screen=="mail")
         { if(selected<state.MailCount&&state.Mail[selected]>0&&state.Receive(state.Mail[selected])){for(int i=selected;i<state.MailCount-1;i++)state.Mail[i]=state.Mail[i+1];state.MailCount--;Say("Mailbox","Delivery collected.");}return; }
         if(screen=="lost")
-        { int index=LostIndex(selected);Say("Town hall",state.ClaimLost(index,0)?"Recovered!":"Your pockets are full, or the item is reserved.");return; }
+        { int index=LostIndex(selected);Say("Town hall",state.ClaimLost(index,state.ActiveProfile)?"Recovered!":"Your pockets are full, or the item is reserved.");return; }
         if(screen=="menu")MenuAction();
     }
     private int TabCount()=>menuTab==0?state.Capacity:menuTab==1?7:menuTab==2?Catalog.Items.Length-1:menuTab==3?7:menuTab==4?7:menuTab==TestingTab?TestingRows:6;
@@ -803,7 +795,7 @@ internal sealed class TownGame
             Text(profileShadowLabel,420,419,ink,.55f);
         }
         Rounded(20,440,420,29,14.5f,new Color32(48,76,57,210));Text("A interact   X backpack   Y map",32,451,Color32.White,1.3f);
-        if(screen=="world"&&room!=0){Panel(205,371,410,61);Text("C-stick turn view / L recenter",220,380,ink,.95f);Text(room>=16&&room<=21?state.Town.Residents[room-16].Name+"'s home":"Home",220,402,ink,1.1f);}
+        if(screen=="world"&&room!=0){Panel(205,371,410,61);Text("C-stick turn view / L recenter",220,380,ink,.95f);Text(room>=16&&room<=21?state.Town.Residents[room-16].Name+"'s home":BuildingWorld.RoomProfile(room)>=0?state.ProfileName(BuildingWorld.RoomProfile(room))+"'s home":"Home",220,402,ink,1.1f);}
         if(screen=="world"){
             int door=villagers.Doors.Nearby(state,0,facingYaw);
             if(door>=0||villagers.Doors.Busy(0)){Panel(220,320,240,36);Strong(villagers.Doors.Busy(0)?villagers.Doors.Actors[0].Phase==DoorPhase.Waiting?"Waiting at door":"Through the doorway":room==0?"A  Enter":"A  Exit",230,326,ink,1.05f);}
@@ -899,7 +891,7 @@ internal sealed class TownGame
         mapBackground.DrawMinimap(ui);
         MinimapMarker(32,26,new Color32(187,107,71),3);
         MinimapMarker(50,26,new Color32(132,96,155),3);
-        if(state.HousePlaced)MinimapMarker(state.Town.HouseX+3,state.Town.HouseZ+3,new Color32(220,182,124),4);
+        for(int p=0;p<GameState.ProfileCount;p++)if(state.HomePlaced(p))MinimapMarker(state.HomeX(p)+3,state.HomeZ(p)+3,new Color32(220,182,124),4);
         MinimapMarker(state.X,state.Z,new Color32(35,49,44),6);
         MinimapMarker(state.X,state.Z,Color32.White,4);
     }
@@ -928,7 +920,7 @@ internal sealed class TownGame
         ui.FillRectangle(new RectF(left+32*scale,top+26*scale,4,4),new Color32(187,107,71));
         ui.FillRectangle(new RectF(left+50*scale,top+26*scale,4,4),new Color32(132,96,155));
         ui.FillRectangle(new RectF(left+36*scale,top+9*scale,4,4),new Color32(81,98,130));
-        if(state.HousePlaced)ui.FillRectangle(new RectF(left+state.Town.HouseX*scale,top+state.Town.HouseZ*scale,GameState.GardenWidths[state.GardenTier]*scale,GameState.GardenHeights[state.GardenTier]*scale),new Color32(220,182,124,180));
+        for(int p=0;p<GameState.ProfileCount;p++)if(state.HomePlaced(p))ui.FillRectangle(new RectF(left+state.HomeX(p)*scale,top+state.HomeZ(p)*scale,GameState.GardenWidths[state.HomeGardenTier(p)]*scale,GameState.GardenHeights[state.HomeGardenTier(p)]*scale),new Color32(220,182,124,180));
         for(int i=0;i<6;i++){var v=state.Town.Residents[i];ui.FillRectangle(new RectF(left+v.X*scale,top+v.Z*scale,3,3),new Color32(153,76,103));}
         float mapX=state.X,mapZ=state.Z;if(room!=0)BuildingWorld.Entrance(state,BuildingWorld.Building(room),out mapX,out mapZ);
         ui.FillRectangle(new RectF(left+mapX*scale,top+mapZ*scale,4,4),Color32.White);

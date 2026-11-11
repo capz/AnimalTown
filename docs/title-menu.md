@@ -16,9 +16,11 @@ assets and the landscape load. No world, loading panel or debug overlays are
 drawn during this transition. The animation uses simple UI geometry and retires
 its native resources before the first gameplay scene needs them.
 
-Start saves changed dev settings, then constructs `TownGame`, loads the last
-complete town commit set, and begins staged game loading. Without a town save it
-opens character creation. A held confirmation button cannot accept the next game
+Start saves changed dev settings and loads the last complete town commit set.
+A four-slot villager picker appears before `TownGame` is constructed or town
+assets load. A selects a villager; B returns to the title. Empty slots open
+character creation in the shared town. After selection, the dot background and
+sprout cover staged game loading. See [shared town profiles](shared-town-profiles.md). A held confirmation button cannot accept the next game
 screen because the controller edge was consumed by the title.
 
 The title has exactly three options: Start, Update and Debug configuration.

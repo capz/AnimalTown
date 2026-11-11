@@ -96,7 +96,7 @@ sealed class GameDatabase(NpgsqlDataSource source)
         Guid id=Guid.NewGuid();var state=new GameState(RandomNumberGenerator.GetInt32(1,int.MaxValue)){Name=request.Name};state.Rollover(Day,DateTime.UtcNow.Year*12+DateTime.UtcNow.Month);
         byte[] salt=RandomNumberGenerator.GetBytes(16);await using var c=await source.OpenConnectionAsync();
         var parts=SplitSaveCodec.Encode(state);
-        await using(var cmd=Cmd(c,null,"INSERT INTO players(id,name,salt,password,town_data,house_positions,shop_states,player_villager) VALUES($1,$2,$3,$4,$5,$6,$7,$8)",id,request.Name,salt,Password(request.Password,salt),parts[0],parts[1],parts[2],parts[3]))await cmd.ExecuteNonQueryAsync();
+        await using(var cmd=Cmd(c,null,"INSERT INTO players(id,name,salt,password,town_data,house_positions,shop_states,player_villager,player_villager2,player_villager3,player_villager4) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)",id,request.Name,salt,Password(request.Password,salt),parts[0],parts[1],parts[2],parts[3],parts[4],parts[5],parts[6]))await cmd.ExecuteNonQueryAsync();
         return new{id,token=await Token(c,id)};
     }
     async Task<string> Token(NpgsqlConnection c,Guid id)
@@ -111,9 +111,9 @@ sealed class GameDatabase(NpgsqlDataSource source)
     public async Task<Guid?> Authenticate(string token)
     {await using var c=await source.OpenConnectionAsync();await using var cmd=Cmd(c,null,"SELECT player FROM sessions WHERE token_hash=$1 AND expires>now()",Hash(token));return await cmd.ExecuteScalarAsync() is Guid id?id:null;}
     async Task<(GameState State,long Revision)> Load(NpgsqlConnection c,NpgsqlTransaction? t,Guid id,bool locked)
-    {await using var cmd=Cmd(c,t,"SELECT town_data,house_positions,shop_states,player_villager,revision FROM players WHERE id=$1"+(locked?" FOR UPDATE":""),id);await using var r=await cmd.ExecuteReaderAsync();if(!await r.ReadAsync())throw new GameError(404,"player-not-found");return(SplitSaveCodec.Decode(new[]{r.GetFieldValue<byte[]>(0),r.GetFieldValue<byte[]>(1),r.GetFieldValue<byte[]>(2),r.GetFieldValue<byte[]>(3)}),r.GetInt64(4));}
+    {await using var cmd=Cmd(c,t,"SELECT town_data,house_positions,shop_states,player_villager,player_villager2,player_villager3,player_villager4,revision FROM players WHERE id=$1"+(locked?" FOR UPDATE":""),id);await using var r=await cmd.ExecuteReaderAsync();if(!await r.ReadAsync())throw new GameError(404,"player-not-found");var parts=new byte[r.IsDBNull(4)?4:7][];for(int i=0;i<parts.Length;i++)parts[i]=r.GetFieldValue<byte[]>(i);return(SplitSaveCodec.Decode(parts),r.GetInt64(7));}
     static async Task WriteParts(NpgsqlConnection c,NpgsqlTransaction t,Guid id,GameState state,bool bump)
-    {var p=SplitSaveCodec.Encode(state);await using var cmd=Cmd(c,t,"UPDATE players SET state=NULL,town_data=$2,house_positions=$3,shop_states=$4,player_villager=$5"+(bump?",revision=revision+1":"")+" WHERE id=$1",id,p[0],p[1],p[2],p[3]);await cmd.ExecuteNonQueryAsync();}
+    {var p=SplitSaveCodec.Encode(state);await using var cmd=Cmd(c,t,"UPDATE players SET state=NULL,town_data=$2,house_positions=$3,shop_states=$4,player_villager=$5,player_villager2=$6,player_villager3=$7,player_villager4=$8"+(bump?",revision=revision+1":"")+" WHERE id=$1",id,p[0],p[1],p[2],p[3],p[4],p[5],p[6]);await cmd.ExecuteNonQueryAsync();}
     async Task Save(NpgsqlConnection c,NpgsqlTransaction t,Guid id,GameState state)
     {state.Sequence=checked(state.Sequence+1);await WriteParts(c,t,id,state,true);}
     public async Task<(GameState State,long Revision)> State(Guid id)

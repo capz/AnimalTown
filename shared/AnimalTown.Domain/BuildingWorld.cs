@@ -51,23 +51,29 @@ public static class BuildingCatalog
 }
 public static class BuildingWorld
 {
-    public const int Count=9,Actors=7;
+    public const int Count=12,Actors=7;
+    public static int PlayerBuilding(int profile)=>profile==0?0:8+profile;
+    public static int PlayerRoom(int profile,int room=1)=>profile==0?room:28+profile*4+room-1;
+    public static int RoomProfile(int space)=>space>=1&&space<=4?0:space>=32&&space<=43?(space-32)/4+1:-1;
+    public static int PersonalRoom(int space)=>space>=1&&space<=4?space:space>=32&&space<=43?(space-32)%4+1:0;
+    public static int BuildingProfile(int building)=>building==0?0:building>=9&&building<12?building-8:-1;
     public const float Radius=.22f;
-    public static int Space(int building)=>building==0?1:building<=6?15+building:17+building;
-    public static int Building(int space)=>space>=1&&space<=4?0:space>=16&&space<=21?space-15:space==24?7:space==25?8:-1;
+    public static int Space(int building)=>building==0?1:building<=6?15+building:building<=8?17+building:PlayerRoom(building-8);
+    public static int Building(int space)=>space>=1&&space<=4?0:space>=16&&space<=21?space-15:space==24?7:space==25?8:space>=32&&space<=43?PlayerBuilding(RoomProfile(space)):-1;
     public static bool ValidSpace(int space)=>space==0||Building(space)>=0;
-    public static bool Exists(GameState s,int building)=>building>=0&&building<Count&&(building!=0||s.HousePlaced);
+    public static bool Exists(GameState s,int building)=>building>=0&&building<Count&&(BuildingProfile(building)<0||s.HomePlaced(BuildingProfile(building)));
     public static bool Available(GameState s,int space)=>space==0||Exists(s,Building(space))&&BuildingCatalog.Available(s.BuildingTypes[Building(space)]);
     public static BuildingDefinition Definition(GameState s,int building)=>BuildingCatalog.Get(s.BuildingTypes[building]);
     public static int Size(GameState s,int space)
     {
         int b=Building(space);if(b<0)return 0;
-        if(space==1&&s.BuildingTypes[0]==0)return s.HouseTier==0?4:s.HouseTier==1?6:8;
-        if(space>=2&&space<=4)return space==3?8:6;
+        int profile=RoomProfile(space),room=PersonalRoom(space);
+        if(profile>=0&&room==1&&s.BuildingTypes[PlayerBuilding(profile)]==0){int tier=s.HomeTier(profile);return tier==0?4:tier==1?6:8;}
+        if(profile>=0&&room>=2)return room==3?8:6;
         return Definition(s,b).InteriorSize;
     }
     public static void Origin(GameState s,int building,out float x,out float z)
-    {if(building==0){x=s.Town.HouseX+2;z=s.Town.HouseZ+1;}else if(building<=6){x=s.Town.Residents[building-1].HomeX;z=s.Town.Residents[building-1].HomeZ;}else{x=building==7?31:49;z=25;}}
+    {if(BuildingProfile(building)>=0){int p=BuildingProfile(building);x=s.HomeX(p)+2;z=s.HomeZ(p)+1;}else if(building<=6){x=s.Town.Residents[building-1].HomeX;z=s.Town.Residents[building-1].HomeZ;}else{x=building==7?31:49;z=25;}}
     public static void Entrance(GameState s,int building,out float x,out float z)
     {Origin(s,building,out x,out z);var d=Definition(s,building);x+=d.DoorX;z+=d.DoorZ;}
     public static void InsideDoor(GameState s,int space,out float x,out float z)

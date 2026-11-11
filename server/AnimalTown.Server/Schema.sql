@@ -9,13 +9,14 @@ ALTER TABLE players ADD COLUMN IF NOT EXISTS town_data bytea;
 ALTER TABLE players ADD COLUMN IF NOT EXISTS house_positions bytea;
 ALTER TABLE players ADD COLUMN IF NOT EXISTS shop_states bytea;
 ALTER TABLE players ADD COLUMN IF NOT EXISTS player_villager bytea;
-DO $$ BEGIN
- IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='players_complete_save_set' AND conrelid='players'::regclass) THEN
-  ALTER TABLE players ADD CONSTRAINT players_complete_save_set CHECK (
-   (state IS NOT NULL AND town_data IS NULL AND house_positions IS NULL AND shop_states IS NULL AND player_villager IS NULL)
-   OR (state IS NULL AND town_data IS NOT NULL AND house_positions IS NOT NULL AND shop_states IS NOT NULL AND player_villager IS NOT NULL));
- END IF;
-END $$;
+ALTER TABLE players ADD COLUMN IF NOT EXISTS player_villager2 bytea;
+ALTER TABLE players ADD COLUMN IF NOT EXISTS player_villager3 bytea;
+ALTER TABLE players ADD COLUMN IF NOT EXISTS player_villager4 bytea;
+ALTER TABLE players DROP CONSTRAINT IF EXISTS players_complete_save_set;
+ALTER TABLE players ADD CONSTRAINT players_complete_save_set CHECK (
+ (state IS NOT NULL AND town_data IS NULL AND house_positions IS NULL AND shop_states IS NULL AND player_villager IS NULL AND player_villager2 IS NULL AND player_villager3 IS NULL AND player_villager4 IS NULL)
+ OR (state IS NULL AND town_data IS NOT NULL AND house_positions IS NOT NULL AND shop_states IS NOT NULL AND player_villager IS NOT NULL AND
+  ((player_villager2 IS NULL AND player_villager3 IS NULL AND player_villager4 IS NULL) OR (player_villager2 IS NOT NULL AND player_villager3 IS NOT NULL AND player_villager4 IS NOT NULL))));
 CREATE TABLE IF NOT EXISTS sessions (
  token_hash text PRIMARY KEY, player uuid NOT NULL REFERENCES players(id), expires timestamptz NOT NULL
 );

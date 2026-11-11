@@ -77,7 +77,7 @@ public sealed class VillagerNavigation
     private bool Blocked(int x,int z,int agent,bool people)
     {
         var town=state!.Town;if(!town.Walkable(x,z)||trees[z*Town.Width+x])return true;
-        if(state.HousePlaced&&x>=town.HouseX+2&&x<=town.HouseX+4&&z>=town.HouseZ+1&&z<=town.HouseZ+3)return true;
+        if(state.HomeBlocks(x,z))return true;
         if(people){for(int i=0;i<6;i++)if(i!=agent){var v=town.Residents[i];if(v.Space==0&&Math.Abs(v.PosX-x-.5f)<.7f&&Math.Abs(v.PosZ-z-.5f)<.7f)return true;}
             if(state.Space==0&&Math.Abs(state.X-x-.5f)<.7f&&Math.Abs(state.Z-z-.5f)<.7f)return true;}
         return false;
