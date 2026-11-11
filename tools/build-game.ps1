@@ -94,7 +94,8 @@ if ($workingChanges) { $gameCommit += '-dirty'; $gameVersion += '-dirty' }
 $buildSource = "internal static class BuildInfo { internal const string Commit=`"$gameCommit`"; internal const string Version=`"$gameVersion`"; }"
 [IO.File]::WriteAllText((Join-Path $projectRoot 'out/BuildInfo.cs'), $buildSource)
 $packageLocks=(Get-FileHash game/AnimalTown.GameCube/packages.lock.json -Algorithm SHA256).Hash
-$assetsContentHash=(Get-Content (Join-Path $packageCache 'dolphindotnet.assets/0.1.0-preview.266.1/dolphindotnet.assets.0.1.0-preview.266.1.nupkg.sha512') -Raw).Trim()
+$assetsVersion=(Get-Content (Join-Path $projectRoot '.config/dotnet-tools.json') -Raw|ConvertFrom-Json).tools.'dolphindotnet.assets'.version
+$assetsContentHash=(Get-Content (Join-Path $packageCache "dolphindotnet.assets/$assetsVersion/dolphindotnet.assets.$assetsVersion.nupkg.sha512") -Raw).Trim()
 $sourceManifest = foreach($sourceFile in (& git ls-files --cached --others --exclude-standard | Sort-Object)) {
     if(Test-Path -LiteralPath $sourceFile -PathType Leaf){ "$sourceFile $((Get-FileHash -LiteralPath $sourceFile -Algorithm SHA256).Hash)" }
 }

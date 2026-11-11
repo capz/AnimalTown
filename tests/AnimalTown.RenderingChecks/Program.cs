@@ -1,4 +1,5 @@
 int count=0;
+WaterEffectChecks.Run((passed,message)=>{count++;if(!passed)throw new Exception(message);});
 RenderingServiceChecks.Run((passed,message)=>{count++;if(!passed)throw new Exception(message);});
 MovementTerrainChecks.Run((passed,message)=>{count++;if(!passed)throw new Exception(message);});
 GroundRingChecks.Run((passed,message)=>{count++;if(!passed)throw new Exception(message);});

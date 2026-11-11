@@ -4,19 +4,19 @@
     "net10.0": {
       "Npgsql": {
         "type": "Direct",
-        "requested": "[10.0.0, )",
-        "resolved": "10.0.0",
-        "contentHash": "xZAYhPOU2rUIFpV48xsqhCx9vXs6Y+0jX2LCoSEfDFYMw9jtAOUk3iQsCnDLrFIv9NT3JGMihn7nnuZsPKqJmA=="
+        "requested": "[10.0.3, )",
+        "resolved": "10.0.3",
+        "contentHash": "7nb5YzXuvWWJxB0J8DiyL3we+X4FOctZrt0fIBnucOIaIevFEEwGQVZKtiu9olXdlNAK1eNgqSral6r/jlhI4w=="
       },
       "Capz.Hypercube.Core": {
         "type": "Transitive",
-        "resolved": "0.1.0-preview.9.1",
-        "contentHash": "Ow7hpHlf5tJ72JlrFsjDvjga4pTfAcV0Th0uKv7Q/za0KFY0aDjCXDCl/MKBCz5XoY71YQM2N+37rNP3WBQk3g=="
+        "resolved": "0.1.0-preview.15.1",
+        "contentHash": "vfPAKGWAw2vs6EpfHar6sLG+9hUoW5eZdWHlvTIW6ebL8gxW6cUr/rKU8TBdoPdq7UbQSyG/GD+PiCGAicAI/g=="
       },
       "animaltown.domain": {
         "type": "Project",
         "dependencies": {
-          "Capz.Hypercube.Core": "[0.1.0-preview.9.1, 0.1.0-preview.9.1]"
+          "Capz.Hypercube.Core": "[0.1.0-preview.15.1, 0.1.0-preview.15.1]"
         }
       }
     }

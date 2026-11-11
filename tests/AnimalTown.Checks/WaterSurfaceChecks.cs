@@ -57,15 +57,6 @@ internal static class WaterSurfaceChecks
                 if(actual!=firstWarp)differentWarp=true;
             }
         check(differentWarp,"warp map has independent animated displacement components");
-        var indirect=WindWakerWaterEffect.Package(196,228,222,229,245,237);
-        check(indirect.Length==208&&indirect[0]=='D'&&indirect[1]=='N'&&indirect[2]=='E'&&indirect[3]=='F',
-            "water program has bounded native DNEF envelope");
-        check(indirect[4]==3&&indirect[8]==4&&indirect[12]==3&&indirect[16]==2&&indirect[20]==76,
-            "v3 program supplies two bound textures, two colors and one warp stage");
-        check(indirect[176+15]==0&&indirect[176+23]==2&&indirect[176+31]==0,
-            "second foam sample uses alternate UV while epilogue returns to base alpha");
-        check(indirect[64]==196&&indirect[65]==228&&indirect[66]==222&&indirect[100]==229,
-            "water pattern colors are independent configurable TEV constants");
         check(WindWakerWaveField.Cells==16&&WindWakerWaveField.EdgeWeight(0,8)==0&&
               WindWakerWaveField.EdgeWeight(8,8)==1&&WindWakerWaveField.EdgeWeight(17,8)==0,
               "small rough-water patch fades into the immutable surrounding sea");
@@ -77,6 +68,17 @@ internal static class WaterSurfaceChecks
             check(Math.Abs(WindWakerWaveField.Height(130,135,time+.001,1)-lifted)<.001f,
                 "wave motion is continuous and is independent of tile boundaries");
         }
+        var grid=new WindWakerWaveGrid();
+        foreach(float origin in new[]{-32.5f,0,128,2048})foreach(double time in new[]{0.0,1.25,3600,86400,1e8}){
+            grid.Prepare(origin,origin+7,time);
+            for(int z=0;z<=WindWakerWaveField.Cells;z++)for(int x=0;x<=WindWakerWaveField.Cells;x++){
+                float expected=WindWakerWaveField.Height(origin+x*.5f,origin+7+z*.5f,time,WindWakerWaveField.EdgeWeight(x,z));
+                check(Math.Abs(grid.Height(x,z)-expected)<.0000001f,"cached rough-water phases preserve all authored heights, edges and long sessions");
+            }
+        }
+        long allocated=GC.GetAllocatedBytesForCurrentThread();
+        for(int frame=0;frame<1000;frame++){grid.Prepare(128,135,frame*.016);grid.Height(8,8);}
+        check(GC.GetAllocatedBytesForCurrentThread()==allocated,"warm rough-water sampling has no per-frame allocations");
         // Sunshine's 5 native IA8 levels intentionally have different RGB and
         // alpha content; a conventional downsampling mip generator would lose
         // the distance-dependent shimmering/reflection band.

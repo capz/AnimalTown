@@ -17,6 +17,12 @@ $engineVersion=([string]($gameProject.Project.ItemGroup.PackageReference|Where-O
 $engineRoot=Join-Path $packageCache "capz.hypercube.gamecube/$engineVersion"
 [xml]$engineMetadata=Get-Content (Join-Path $engineRoot 'capz.hypercube.gamecube.nuspec') -Raw
 [xml]$sdkMetadata=Get-Content (Join-Path $sdkRoot 'dolphindotnet.sdk.nuspec') -Raw
+$sdkVersion=[string]$sdkMetadata.package.metadata.version
+$assetVersion=(Get-Content (Join-Path (Split-Path $PSScriptRoot -Parent) '.config/dotnet-tools.json') -Raw|ConvertFrom-Json).tools.'dolphindotnet.assets'.version
+[xml]$toolsProject=Get-Content (Join-Path (Split-Path $PSScriptRoot -Parent) 'tools/AnimalTown.Tools/AnimalTown.Tools.csproj') -Raw
+if($assetVersion -ne $sdkVersion -or [string]$toolsProject.Project.PropertyGroup.DndAssetsVersion -ne $sdkVersion){throw 'Compiler, Assets tool and Imaging package must use the same DolphinDotNet version'}
+$runtimeDependency=$engineMetadata.package.metadata.dependencies.group.dependency|Where-Object id -eq 'DolphinDotNet.GameCube'
+if([string]$runtimeDependency.version -ne "[$sdkVersion]"){throw 'Hypercube must be packaged against the selected DolphinDotNet runtime'}
 $engineCommit="$($engineMetadata.package.metadata.id) $($engineMetadata.package.metadata.version) ($($engineMetadata.package.metadata.repository.commit))"
 $sdkCommit="$($sdkMetadata.package.metadata.id) $($sdkMetadata.package.metadata.version) ($($sdkMetadata.package.metadata.repository.commit))"
 $sdkContentHash=(Get-Content (Join-Path $sdkRoot "dolphindotnet.sdk.$($sdkMetadata.package.metadata.version).nupkg.sha512") -Raw).Trim()

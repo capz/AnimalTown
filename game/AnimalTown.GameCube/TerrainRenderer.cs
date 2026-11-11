@@ -88,6 +88,7 @@ internal sealed class TerrainRenderer
             soil.Prepare(); // Reuse the existing cliff-soil texture as sandy seabed.
             waterMaterial.PrepareSunshine(soil.Material.Texture!);
         }
+        waterMaterial.PrepareRoughOcean();
         // Sunlit translucent water is drawn once, not again through the storm
         // mesh, so its alpha never accumulates over the same surface.
         oceanWaves.Prepare(state,waterMaterial.RoughOcean&&!waterMaterial.IsSunshine,cliffPreview,waterMaterial.Tint(1));

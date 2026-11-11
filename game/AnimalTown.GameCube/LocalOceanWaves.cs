@@ -7,17 +7,22 @@ using Dolphin.Graphics;
 // updated while a rough-sea scene is actually within view.
 internal sealed class LocalOceanWaves : IDisposable
 {
-    private readonly VertexPositionColorTexture[] vertices=new VertexPositionColorTexture[(WindWakerWaveField.Cells+1)*(WindWakerWaveField.Cells+1)];
-    private readonly ushort[] indices=new ushort[WindWakerWaveField.Cells*WindWakerWaveField.Cells*6];
-    private readonly CylinderRows rows=new CylinderRows();
+    private VertexPositionColorTexture[]? vertices;
+    private ushort[]? indices;
+    private CylinderRows? rows;
+    private WindWakerWaveGrid? waves;
     private DynamicMesh? mesh;
     private bool active;
     private int x0,z0;
     private Color32 tint;
     internal bool Active=>active;
-    internal int Triangles=>active?indices.Length/3:0;
-    internal LocalOceanWaves()
+    internal int Triangles=>active?WindWakerWaveField.Cells*WindWakerWaveField.Cells*2:0;
+    private void PrepareBuffers()
     {
+        if(vertices!=null)return;
+        vertices=new VertexPositionColorTexture[(WindWakerWaveField.Cells+1)*(WindWakerWaveField.Cells+1)];
+        indices=new ushort[WindWakerWaveField.Cells*WindWakerWaveField.Cells*6];
+        rows=new CylinderRows();waves=new WindWakerWaveGrid();
         int width=WindWakerWaveField.Cells+1;
         for(int z=0;z<WindWakerWaveField.Cells;z++)for(int x=0;x<WindWakerWaveField.Cells;x++){
             int at=(z*WindWakerWaveField.Cells+x)*6,a=z*width+x,b=a+width;
@@ -43,22 +48,23 @@ internal sealed class LocalOceanWaves : IDisposable
     internal void Update(double seconds)
     {
         if(!active)return;
+        PrepareBuffers();waves!.Prepare(x0,z0,seconds);
         const int width=WindWakerWaveField.Cells+1;
         for(int z=0;z<width;z++)
         {
             float worldZ=z0+z*WindWakerWaveField.CellSize;
-            var chord=rows.Chord(worldZ,WaterSurface.Height);
+            var chord=rows!.Chord(worldZ,WaterSurface.Height);
             for(int x=0;x<width;x++)
             {
                 float worldX=x0+x*WindWakerWaveField.CellSize;
-                float y=WindWakerWaveField.Height(worldX,worldZ,seconds,WindWakerWaveField.EdgeWeight(x,z));
+                float y=waves.Height(x,z);
                 var position=new Vector3(worldX,chord.Y+chord.UpY*y,chord.Z+chord.UpZ*y);
-                vertices[z*width+x]=new VertexPositionColorTexture(position,tint,
+                vertices![z*width+x]=new VertexPositionColorTexture(position,tint,
                     new Vector2(worldX*WaterSurface.UvScale,worldZ*WaterSurface.UvScale));
             }
         }
-        if(mesh==null)mesh=DynamicMesh.Create(vertices,indices);
-        else mesh.SetVertices(vertices);
+        if(mesh==null)mesh=DynamicMesh.Create(vertices!,indices!);
+        else mesh.SetVertices(vertices!);
     }
     internal void Draw(Renderer renderer,Material water,Transform scroll)
     {
