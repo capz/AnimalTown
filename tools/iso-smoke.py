@@ -25,8 +25,62 @@ def press(button):
     os.write(controller,f'PRESS {button}\n'.encode());time.sleep(hold)
     os.write(controller,f'RELEASE {button}\n'.encode());time.sleep(hold)
 def screenshot(name):
-    subprocess.run(['ffmpeg','-v','error','-f','x11grab','-video_size','800x600','-i',':93','-frames:v','1','-y',str(root/name)],env=env,check=True)
+    subprocess.run(['ffmpeg','-v','error','-f','x11grab','-draw_mouse','0','-video_size','800x600','-i',':93','-frames:v','1','-y',str(root/name)],env=env,check=True)
 
+
+def rgb(name):
+    return subprocess.check_output(['ffmpeg','-v','error','-i',str(root/name),'-frames:v','1','-f','rawvideo','-pix_fmt','rgb24','-'])
+
+def color_count(pixels,color,tolerance=5):
+    return sum(all(abs(pixels[i+c]-value)<=tolerance for c,value in enumerate(color))
+               for i in range(0,len(pixels),3))
+
+def wait_title():
+    # Observe the actual menu, rather than sending input during either splash.
+    deadline=time.monotonic()+180
+    while time.monotonic()<deadline:
+        if p.poll() is not None:raise AssertionError('Emulator stopped before title')
+        screenshot('title-wait.png');pixels=rgb('title-wait.png')
+        if color_count(pixels,(149,198,186))>15000 and color_count(pixels,(255,245,221))>70000 and color_count(pixels,(53,105,84))>6000:return
+        time.sleep(2)
+    raise AssertionError('Original cream title/menu did not appear')
+
+def title_menu():
+    screenshot('title-dots-a.png');time.sleep(3);screenshot('title-dots-b.png')
+    a,b=rgb('title-dots-a.png'),rgb('title-dots-b.png')
+    # Background-only pixels must change while the game remains deferred.
+    mint=lambda pixels,i: all(abs(pixels[i+c]-value)<=5 for c,value in enumerate((149,198,186)))
+    changed=sum(a[i:i+3]!=b[i:i+3] and (mint(a,i) or mint(b,i)) for i in range(0,len(a),3))
+    if changed<100:raise AssertionError('Title background is not scrolling')
+    press('D_DOWN');press('D_DOWN');press('A');screenshot('title-debug-modal.png')
+    press('D_RIGHT');screenshot('title-debug-edited.png')
+    # Exercise paging, wraparound and slider rows, then return to row zero.
+    press('D_UP');screenshot('title-debug-last-page.png');press('D_DOWN')
+    press('B');screenshot('title-dev-config-saved.png')
+    press('A');screenshot('title-debug-reopened.png');press('B')
+    press('D_UP');press('D_UP')
+    # Capture during loading, not after a multi-second press/release helper.
+    os.write(controller,b'PRESS A\n');time.sleep(.2)
+    os.write(controller,b'RELEASE A\n')
+    loading=[];deadline=time.monotonic()+60
+    while len(loading)<3 and time.monotonic()<deadline:
+        name='title-start-loading-'+str(len(loading))+'.png';screenshot(name);pixels=rgb(name)
+        if color_count(pixels,(149,198,186))>150000 and color_count(pixels,(255,245,221))<100:
+            loading.append(pixels)
+        time.sleep(.35)
+    if len(loading)<3:raise AssertionError('Start did not show only dots and the corner loading animation')
+    # Once the panel disappears, dark pixels belong only to the sprout. Check
+    # that its silhouette moves while assets are still being loaded.
+    dark=lambda pixels: {i for i in range(0,len(pixels),3) if all(abs(pixels[i+c]-value)<=5 for c,value in enumerate((49,72,62)))}
+    if not any(dark(loading[0])!=dark(frame) for frame in loading[1:]):raise AssertionError('Corner sprout is not animated')
+    deadline=time.monotonic()+240
+    while time.monotonic()<deadline:
+        screenshot('title-start-game.png');pixels=rgb('title-start-game.png')
+        if color_count(pixels,(149,198,186))<150000:break
+        if p.poll() is not None:raise AssertionError('Emulator stopped during game loading')
+        time.sleep(3)
+    else:raise AssertionError('Game never left loading screen')
+    (root/'title-menu.txt').write_text(f'Diagonal dot pixels changed: {changed}\nOpened debug modal, edited and paged settings, saved/closed/reopened, then selected Start.\nThree loading frames contained no cream title/menu and an animated sprout; game then became visible.\n')
 
 def submission_scenario():
     sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'docs/performance'))
@@ -460,7 +514,7 @@ if '--profile' in sys.argv or '--interaction-profile' in sys.argv or '--runtime-
     config.write_text(config.read_text().replace('DumpCodec = ffv1','DumpCodec = ffv1\nDumpEncoder = ffv1\nDumpPixelFormat = bgr0'))
 (user/'Config'/'Logger.ini').write_text('[Options]\nWriteToFile = True\nVerbosity = 4\n[Logs]\nBOOT = True\nOSREPORT = True\nDVDINTERFACE = True\n')
 env=dict(os.environ,DISPLAY=':93',QT_QPA_PLATFORM='xcb')
-xvfb=subprocess.Popen(['Xvfb',':93','-screen','0','800x600x24'],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
+xvfb=subprocess.Popen(['Xvfb',':93','-nocursor','-screen','0','800x600x24'],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
 time.sleep(1)
 with (root/'emulator.log').open('w') as log:
     p=subprocess.Popen(['/usr/games/dolphin-emu-nogui','-u',str(user),'-e',str(disc),'-v','OGL'],env=env,stdout=log,stderr=subprocess.STDOUT)
@@ -472,7 +526,14 @@ with (root/'emulator.log').open('w') as log:
         if p.poll() is not None:
             raise RuntimeError(f'Dolphin exited during boot ({p.returncode}); see {root / "emulator.log"}')
         screenshot('screen.png')
-        if '--submission-seed' in sys.argv:
+        if any(flag in sys.argv for flag in ('--title-menu','--title-load','--title-update')):wait_title()
+        if '--title-menu' in sys.argv:
+            title_menu()
+        elif '--title-load' in sys.argv:
+            press('D_DOWN');press('D_DOWN');press('A');screenshot('title-dev-config-loaded.png');press('B');press('D_UP');press('D_UP');press('A');time.sleep(180);screenshot('title-continued-game.png')
+        elif '--title-update' in sys.argv:
+            press('D_DOWN');press('A');time.sleep(20);screenshot('title-updater.png')
+        elif '--submission-seed' in sys.argv:
             press('A');press('D_UP');press('A');press('A');time.sleep(2);press('B');press('B');time.sleep(45)
             save_menu()
             for _ in range(90):

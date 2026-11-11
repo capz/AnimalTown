@@ -17,24 +17,20 @@ internal sealed class StartupSplash : IDisposable
     private StartupSplash()
     {ui=new Draw2D(device,new Draw2DOptions{Width=640,Height=480,ScaleMode=CanvasScaleMode.Fit,VertexCapacity=12});}
 
-    internal static TownGame Run()
+    internal static void Run()
     {
-        TownGame game;
         using(var splash=new StartupSplash()){
-            // Synchronous save/font/terrain setup must not extend either logo.
-            // Keep the display black until the identical timed presentations.
+            // Splash ownership is independent of both title and town assets.
             splash.device.BeginFrame(new Color32(0,0,0));splash.device.EndFrame();
-            game=new TownGame();
             splash.Load("dolphindotnet");
             var timing=new SplashTiming();
-            while(!timing.Complete)splash.Frame(timing,game);
+            while(!timing.Complete)splash.Frame(timing);
             splash.BlackFrame();
             splash.Load("hypercube-engine");
             timing=new SplashTiming();
-            while(!timing.Complete)splash.Frame(timing,game);
+            while(!timing.Complete)splash.Frame(timing);
             splash.BlackFrame();
         }
-        return game;
     }
 
     private void Load(string name)
@@ -52,7 +48,7 @@ internal sealed class StartupSplash : IDisposable
     private void BlackFrame()
     {device.BeginFrame(new Color32(0,0,0));device.EndFrame();}
 
-    private void Frame(SplashTiming timing,TownGame game)
+    private void Frame(SplashTiming timing)
     {
         long start=Clock.Timestamp;
         Controller.Update(); // Consume splash input; it cannot open the title menu.
@@ -62,9 +58,6 @@ internal sealed class StartupSplash : IDisposable
         ui.Begin();
         ui.DrawTexture(texture!,new RectF(0,0,384,256),new RectF(32,48,576,384),new Color32(255,255,255,timing.Alpha));
         ui.End();device.EndFrame();
-        // Existing async model I/O and staged resource creation run only between
-        // frames on the app thread; never Task.Run a constructor or a GX upload.
-        game.AdvanceLoading();
         RuntimeOptions.Wait();
         timing.Advance(Clock.Timestamp-start);
     }
