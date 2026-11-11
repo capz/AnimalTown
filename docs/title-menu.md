@@ -47,3 +47,11 @@ Swiss, BBA networking and HTTPS provisioning. The updater owns release checking,
 verification, backup/replacement and boot handoff. Missing updater media leaves
 the title usable with an error message. Memory-card town data is not modified by
 an update.
+
+For Dolphin validation, build `build/Dockerfile.dolphin` and provide at least
+`--shm-size=512m`. Run `tools/iso-smoke.py DISC OUTPUT --title-menu` to exercise
+title/modal navigation, dot motion and distinct sprout poses before
+the game appears. `--title-config` checks the modal after reboot using a copied
+`OUTPUT/MemoryCardA.USA.raw`; `--title-update` captures the updater handoff.
+The checks wait for visible title/modal states around memory-card operations
+rather than assuming software emulation advances at wall-clock speed.
