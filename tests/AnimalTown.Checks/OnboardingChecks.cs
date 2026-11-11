@@ -7,7 +7,8 @@ internal static class OnboardingChecks
         internal readonly Dictionary<string,byte[]> Files=new();
         internal int Writes,FailAt;
         internal bool FailAfter;
-        public byte[] Read(string name)=>(byte[])Files[name].Clone();
+        internal string? Unreadable;
+        public byte[] Read(string name){if(name==Unreadable)throw new IOException("Unreadable present record");return (byte[])Files[name].Clone();}
         public void Write(string name,byte[] bytes)
         {
             Writes++;
@@ -41,8 +42,8 @@ internal static class OnboardingChecks
     }
     internal static void Run(Action<bool,string> check)
     {
-        DraftChecks(check);PlotChecks(check);CommitChecks(check);FailureChecks(check);EmptyTownChecks(check);
-        Console.WriteLine("Onboarding: private drafts, zero-allocation plot previews, discard, card guards, preserved profiles and 16 interrupted writes passed");
+        DraftChecks(check);PlotChecks(check);CommitChecks(check);FailureChecks(check);FreshFailureChecks(check);EmptyTownChecks(check);
+        Console.WriteLine("Onboarding: private drafts, zero-allocation plot previews, discard, strict card guards, preserved profiles and 32 interrupted writes passed");
     }
     private static void DraftChecks(Action<bool,string> check)
     {
@@ -121,6 +122,48 @@ internal static class OnboardingChecks
             check(store.Load()!.Profiles[2].Name=="Alex"&&draft.State.HousePlaced,"saving can retry after every interruption including a durably written commit");
             if(afterWrite&&fail==8)check(disk.Writes==writes,"a retry recognizes an already persisted identical commit without rewriting it");
         }
+    }
+    private static GameState FreshTown()
+    {var source=Town();source.DeleteProfile(1);source.DeleteProfile(0);return source;}
+    private static void FreshFailureChecks(Action<bool,string> check)
+    {
+        var source=FreshTown();byte[] baseline=SaveCodec.Encode(source);
+        foreach(bool afterWrite in new[]{false,true})for(int fail=1;fail<=8;fail++){
+            var disk=new Storage{FailAt=fail,FailAfter=afterWrite};var store=new SaveRepository(disk);using var draft=Ready(source,false,3);
+            bool failed=false;try{draft.Commit(store,false,Array.Empty<string>());}catch(IOException){failed=true;}
+            check(failed&&draft.State.Name=="Alex"&&draft.State.HousePlaced&&draft.State.Sequence==0,"an interrupted first-town save keeps all choices and its original sequence");
+            check(SaveCodec.Encode(source).SequenceEqual(baseline),"an interrupted first-town save preserves the unsaved source snapshot");
+            int writes=disk.Writes;disk.FailAt=0;draft.Commit(store,disk.Files.Count>0,disk.Files.Keys.ToArray());var saved=store.Load()!;
+            check(saved.Name=="Alex"&&saved.ActiveProfile==3&&saved.HousePlaced&&saved.Profiles.Count(p=>p.Created)==1,"a first-town save retries after every before/after write interruption");
+            check(saved.Town.Tiles.SequenceEqual(source.Town.Tiles)&&saved.Town.GroundCount==source.Town.GroundCount,"first-save recovery preserves the selected town and its shared objects");
+            if(afterWrite&&fail==8)check(disk.Writes==writes,"a durable first-town manifest is recognized without another write");
+        }
+        // Each case starts with a single known, exact record left by this
+        // draft's failed first transaction. Extra or unreadable present files
+        // cannot be treated as an absent record or evidence of ownership.
+        foreach(string scenario in new[]{"edited","no-directory","mismatch","other-bank","legacy","unexpected-manifest","unreadable"}){
+            var disk=new Storage{FailAt=2};var store=new SaveRepository(disk);using var draft=Ready(source,false,0);
+            try{draft.Commit(store,false,Array.Empty<string>());}catch(IOException){}
+            disk.FailAt=0;int writes=disk.Writes;string first=SplitSaveCodec.FileName(SplitSaveCodec.TownData,1);
+            if(scenario=="edited")draft.SetName("River");
+            if(scenario=="mismatch")disk.Files[first][40]^=1;
+            if(scenario=="other-bank")disk.Files[SplitSaveCodec.FileName(SplitSaveCodec.TownData,0)]=(byte[])disk.Files[first].Clone();
+            if(scenario=="legacy")disk.Files["AnimalTown0"]=new byte[]{1,2,3};
+            if(scenario=="unexpected-manifest")disk.Files[SplitSaveCodec.FileName(SplitSaveCodec.Commit,1)]=new byte[]{1,2,3};
+            if(scenario=="unreadable")disk.Unreadable=first;
+            if(scenario=="edited"){
+                draft.Commit(store,true,disk.Files.Keys.ToArray());check(store.Load()!.Name=="River","a proven uncommitted partial attempt can be safely replaced after reviewing choices");
+            }else{
+                string[]? names=scenario=="no-directory"?null:disk.Files.Keys.ToArray();
+                check(Refuses(()=>draft.Commit(store,true,names))&&disk.Writes==writes,"fresh-save retry refuses absent directory proof, corruption, other banks, legacy data, unexpected manifests and unreadable present files");
+            }
+        }
+        // A copied/damaged town cannot qualify just because this draft once
+        // attempted some writes on another card.
+        var partial=new Storage{FailAt=2};var partialRepo=new SaveRepository(partial);using var swapped=Ready(source,false,0);
+        try{swapped.Commit(partialRepo,false,Array.Empty<string>());}catch(IOException){}
+        var otherDisk=new Storage();var otherRepo=new SaveRepository(otherDisk);otherRepo.Save(Town());int otherWrites=otherDisk.Writes;
+        check(Refuses(()=>swapped.Commit(otherRepo,true,otherDisk.Files.Keys.ToArray()))&&otherDisk.Writes==otherWrites,"own partial-write history never authorizes overwriting a different complete town");
     }
     private static void EmptyTownChecks(Action<bool,string> check)
     {

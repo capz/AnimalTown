@@ -40,7 +40,11 @@ preview, back navigation, review and discard do not write the town to the card.
 readback verification. Before publishing, it reloads the mounted card and checks
 that the saved town still matches the baseline. A changed/swapped town or missing
 required save is refused. An interrupted attempt that already committed the
-same candidate can be recognized safely on retry. Save failure retains the
+same candidate can be recognized safely on retry. For a first-ever save without
+a committed bank, retry requires an authoritative directory listing and exact
+byte matches for every existing town file against this draft's previous attempt;
+foreign, torn or unreadable records are refused. That temporary attempted
+snapshot is also released on commit/discard. Save failure retains the
 choices and shows a retry message; gameplay begins only after a verified commit.
 After that first explicit save, the normal **Settings → Save now** action remains
 the way to save subsequent progress. Gameplay does not add an automatic save.
@@ -56,8 +60,10 @@ only the chosen species. No portrait/image loading happens in the drawing loop.
 Keyboard glyphs/count labels are prepared once for their screen.
 
 Disposal releases every view's portrait, wordmark, font lease, background texture
-and Draw2D buffers, clears managed layout references and trims unused texture
-pages. Name/look views are disposed before outdoor loading; returning from the
+and owned Draw2D buffers, clears managed layout references and trims unused texture
+pages. Views shown while the world is resident borrow its existing Draw2D canvas
+to avoid a second large native batch; disposal detaches that reference while
+gameplay retains its canvas. Name/look views are disposed before outdoor loading; returning from the
 world to identity also scopes and disposes those views. Review is disposed on
 back navigation and successful saving. Gameplay keeps only font resources that
 its own renderer still uses. The draft's encoded baseline and candidate reference

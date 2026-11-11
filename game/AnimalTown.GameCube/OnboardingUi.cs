@@ -3,8 +3,8 @@ using AnimalTown;
 using Dolphin.Graphics;
 using Dolphin.Timing;
 
-// One short-lived surface per setup stage. No GPU resource or managed layout
-// array is kept in a static field or survives Dispose into the gameplay loop.
+// One short-lived surface per setup stage. No setup-only GPU resource or layout
+// array survives Dispose. World-resident views borrow the gameplay canvas.
 internal sealed class OnboardingUi : IDisposable
 {
     internal const int Name=0,Look=1,Review=2;
@@ -17,7 +17,7 @@ internal sealed class OnboardingUi : IDisposable
     private string[]? files,labels,keys,counts;
     private string? cachedEntry;
     private float entryScale;
-    private bool disposed,counted;
+    private bool disposed,counted,ownsUi;
     internal static int LiveViews {get;private set;}
     internal bool IsDisposed=>disposed;
     internal int PortraitBytes
@@ -25,11 +25,12 @@ internal sealed class OnboardingUi : IDisposable
         get{int bytes=0;if(portraits!=null)for(int i=0;i<portraits.Length;i++)if(portraits[i]!=null)bytes+=portraits[i]!.Bytes;return bytes;}
     }
 
-    internal OnboardingUi(int stage,int species=0)
+    internal OnboardingUi(int stage,int species=0,Draw2D? sharedUi=null)
     {
         try{
             if(stage<Name||stage>Review||(uint)species>=6)throw new ArgumentOutOfRangeException("stage/species");
-            ui=new Draw2D(GraphicsDevice.Default,new Draw2DOptions{Width=640,Height=480,VertexCapacity=8192,SpriteCapacity=128});
+            if(sharedUi!=null)ui=sharedUi;
+            else{ui=new Draw2D(GraphicsDevice.Default,new Draw2DOptions{Width=640,Height=480,VertexCapacity=8192,SpriteCapacity=128});ownsUi=true;}
             background=new TitleBackdrop();font=UiFont.LoadSystem();heading=UiFont.Load("gorditas-bold");
             logo=TextureCache.Load("dvd:/wordmark.dndtex",true);
             portraits=new CachedTexture?[6];
@@ -220,7 +221,7 @@ internal sealed class OnboardingUi : IDisposable
         if(portraits!=null)for(int i=0;i<portraits.Length;i++)if(portraits[i]!=null){TextureCache.Release(portraits[i]!);portraits[i]=null;}
         if(logo!=null)TextureCache.Release(logo);logo=null;
         heading?.Release();heading=null;font?.Release();font=null;
-        background?.Dispose();background=null;ui?.Dispose();ui=null;
+        background?.Dispose();background=null;if(ownsUi)ui?.Dispose();ui=null;
         portraits=null;files=null;labels=null;keys=null;counts=null;cachedEntry=null;
         TextureCache.TrimUnused();
     }

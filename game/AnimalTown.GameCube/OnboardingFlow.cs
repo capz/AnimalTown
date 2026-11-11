@@ -1,18 +1,19 @@
 using System;
 using Dolphin.Input;
+using Dolphin.Graphics;
 using Dolphin.Timing;
 
 // Each view lives in its own frame/scope. No introductory UI survives the
 // return to the town loader, including when revisiting identity from the plot.
 internal static class OnboardingFlow
 {
-    internal static bool Identity(TownSession session,bool lookFirst=false)
+    internal static bool Identity(TownSession session,bool lookFirst=false,Draw2D? sharedUi=null)
     {
         var draft=session.Draft??throw new InvalidOperationException("Missing onboarding draft");
         string entry=draft.IsNewProfile&&!lookFirst?"":draft.State.Name;
         int stage=lookFirst?OnboardingUi.Look:OnboardingUi.Name,key=0;
         while(true){
-            using var view=new OnboardingUi(stage,draft.State.Species);
+            using var view=new OnboardingUi(stage,draft.State.Species,sharedUi);
             var navigation=new MenuNavigation();bool exit=false,discard=false;string message="";
             while(true){
                 if(stage==OnboardingUi.Name)view.DrawName(entry,key,exit,discard,message);

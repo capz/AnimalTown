@@ -6,6 +6,7 @@ namespace AnimalTown;
 public sealed class OnboardingDraft : IDisposable
 {
     private byte[]? baseline;
+    private byte[]? attempted;
     private GameState? state;
     private readonly bool savedTown;
     private readonly int sourceSequence;
@@ -86,7 +87,7 @@ public sealed class OnboardingDraft : IDisposable
     public GameState Restore()
     {if(baseline==null)throw new ObjectDisposedException(nameof(OnboardingDraft));return SaveCodec.ValidateSnapshot(baseline,State.Town);}
 
-    public void Commit(SaveRepository repository,bool hasTownFiles)
+    public void Commit(SaveRepository repository,bool hasTownFiles,string[]? townFiles=null)
     {
         if(committed)return;
         var s=State;
@@ -99,10 +100,23 @@ public sealed class OnboardingDraft : IDisposable
         }
         if(savedTown){
             if(actual==null||!MatchesBaseline(actual))throw new InvalidOperationException("The town on this card has changed. Return to the title and reload.");
-        }else if(actual!=null||hasTownFiles){
+        }else if(actual!=null||hasTownFiles&&!MatchesAttemptedFiles(repository,townFiles)){
             throw new InvalidOperationException("This card already contains town data. Return to the title and reload.");
         }
+        if(!savedTown)attempted=CaptureAttempt(s);
         repository.Save(s);committed=true;
+    }
+    // A fresh town has no older bank to fall back to. After an interrupted
+    // first save, only exact records from this draft's own previous attempt
+    // may be replaced. Directory names are authoritative: unreadable present
+    // files must never be mistaken for absent records or an empty card.
+    private bool MatchesAttemptedFiles(SaveRepository repository,string[]? townFiles)
+    {return attempted!=null&&townFiles!=null&&repository.MatchesAttemptedFiles(SaveCodec.ValidateSnapshot(attempted,State.Town),townFiles);}
+    private static byte[] CaptureAttempt(GameState s)
+    {
+        int sequence=s.Sequence;if(sequence==int.MaxValue)throw new InvalidOperationException("Save sequence exhausted");
+        s.Sequence++;
+        try{return SaveCodec.Encode(s);}finally{s.Sequence=sequence;}
     }
     private bool MatchesBaseline(GameState actual)
     {return Same(SaveCodec.Encode(actual),baseline!);}
@@ -115,5 +129,5 @@ public sealed class OnboardingDraft : IDisposable
     {if(a.Length!=b.Length)return false;for(int i=0;i<a.Length;i++)if(a[i]!=b[i])return false;return true;}
     private void EnsureEditable()
     {if(state==null)throw new ObjectDisposedException(nameof(OnboardingDraft));if(committed)throw new InvalidOperationException("Onboarding is already saved");}
-    public void Dispose(){baseline=null;state=null;}
+    public void Dispose(){baseline=null;attempted=null;state=null;}
 }

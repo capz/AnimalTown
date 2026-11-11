@@ -192,8 +192,13 @@ internal sealed class TownGame : IDisposable
         var draft=session.Draft!;int best=int.MaxValue,bx=15,bz=35;
         for(int z=1;z<=Town.Height-13;z++)for(int x=1;x<=Town.Width-15;x++){
             int distance=(x-15)*(x-15)+(z-35)*(z-35);
-            if(distance>=best||!draft.CanPlaceHome(x,z,out _))continue;
-            best=distance;bx=x;bz=z;
+            if(distance>=best||!draft.CanPlaceHome(x,z,out _)||!state.CanWalk(x+3.5f,z+6.5f,0))continue;
+            // Favor an unobstructed first view without removing garden trees.
+            for(int i=0;i<state.Town.GroundCount;i++){
+                var g=state.Town.Ground[i];
+                if(IsTree(g)&&Math.Abs(g.X+.5f-(x+3.5f))<3&&g.Z+.5f>z+6&&g.Z+.5f<z+12)distance+=10000;
+            }
+            if(distance<best){best=distance;bx=x;bz=z;}
         }
         if(best<int.MaxValue){state.X=bx+3.5f;state.Z=bz+6.5f;}
     }
@@ -214,13 +219,19 @@ internal sealed class TownGame : IDisposable
             return;
         }
         if(p.B.WasPressed){
-            if(!OnboardingFlow.Identity(session,true)){ExitToTitle=true;return;}
+            // Terrain preparation has unwound before setup borrows this canvas.
+            TextureCache.TrimUnused();AnimalTown.GameCube.NativeTexturePages.Collect();
+            DebugOverlay.WriteLine("ONBOARDING LOOK slots "+NativeShadows.Stats(9)+" native bytes "+device.NativeBytes);
+            if(!OnboardingFlow.Identity(session,true,ui)){ExitToTitle=true;return;}
             SelectSpecies();TextureCache.TrimUnused();AnimalTown.GameCube.NativeTexturePages.Collect();return;
         }
         if(p.A.WasPressed){
             previewPlotX=(int)state.X-3;previewPlotZ=(int)state.Z-6;
             if(session.Draft!.PlaceHome(previewPlotX,previewPlotZ)){
-                onboardingError="";screen="onboard-review";onboardingReview=new OnboardingUi(OnboardingUi.Review,state.Species);
+                onboardingError="";screen="onboard-review";
+                TextureCache.TrimUnused();AnimalTown.GameCube.NativeTexturePages.Collect();
+                DebugOverlay.WriteLine("ONBOARDING REVIEW slots "+NativeShadows.Stats(9)+" native bytes "+device.NativeBytes);
+                onboardingReview=new OnboardingUi(OnboardingUi.Review,state.Species,ui);
             }
         }
     }

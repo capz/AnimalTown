@@ -30,9 +30,10 @@ internal sealed class TownSession
         if(Damaged){OnboardingSaveError="Incomplete save preserved. Back up the card before recovery.";return false;}
         try{
             using var card=MemoryCard.Mount(StorageDevice.MemoryCardSlotA,new MemoryCardIdentity("AMTE","01"));
-            bool files=false;var entries=card.GetEntries();for(int i=0;i<entries.Length;i++)if(SplitSaveCodec.IsFile(entries[i].Name))files=true;
+            bool files=false;var entries=card.GetEntries();var names=new string[entries.Length];
+            for(int i=0;i<entries.Length;i++){names[i]=entries[i].Name;if(SplitSaveCodec.IsFile(names[i]))files=true;}
             var store=new CardSaveStorage(card,File.ReadAllBytes("dvd:/savebanner.rgb5a3"),File.ReadAllBytes("dvd:/saveicon.rgb5a3"));
-            Draft.Commit(new SaveRepository(store),files);State=Draft.State;Draft.Dispose();Draft=null;return true;
+            Draft.Commit(new SaveRepository(store),files,names);State=Draft.State;Draft.Dispose();Draft=null;return true;
         }catch(Exception error){
             OnboardingSaveError=error.Message!=null&&(error.Message.StartsWith("The town on this card")||error.Message.StartsWith("This card already"))?
                 "Card changed. Return to the title and reload your town.":"Couldn't save. Check Slot A and try again.";
