@@ -95,10 +95,38 @@ def wait_profiles(name='profile-picker.png'):
     while time.monotonic()<deadline:
         screenshot(name);pixels=rgb(name)
         count=sum(all(abs(pixels[(y*800+x)*3+c]-value)<=5 for c,value in enumerate((53,105,84))) for y in range(160,365) for x in range(120,165))
-        if count>150 and color_count(pixels,(255,245,221))>70000:return
+        cards=color_count(pixels,(107,151,90))>3000 and color_count(pixels,(255,183,64))>150
+        if (count>150 or cards) and color_count(pixels,(255,245,221))>70000:return
         if p.poll() is not None:raise AssertionError('Emulator stopped before villager picker')
         time.sleep(1)
     raise AssertionError('Villager picker did not appear')
+
+def profile_cards():
+    before=committed_card_sequence(root/'MemoryCardA.USA.raw',details=True)
+    active=before['active'] if before else 0
+    wait_title();press('A');wait_profiles('cards-enter.png')
+    def focus_center(name):
+        screenshot(name);pixels=rgb(name)
+        focus=[x for y in range(275,400) for x in range(55,620)
+               if all(abs(pixels[(y*800+x)*3+c]-v)<=5 for c,v in enumerate((255,216,136)))]
+        if len(focus)<400:raise AssertionError('Graphical picker has no highlighted portrait card')
+        return sum(focus)/len(focus)
+    centers=[]
+    for step in range(5):
+        centers.append(focus_center(f'cards-{step}.png'))
+        if step<4:press('D_RIGHT')
+    ordered=sorted(range(4),key=lambda i:centers[i])
+    if ([(active+i)%4 for i in ordered]!=[0,1,2,3] or abs(centers[0]-centers[4])>2 or
+        any(centers[ordered[i+1]]-centers[ordered[i]]<60 for i in range(3))):
+        raise AssertionError('Portrait-card right navigation/wrap does not follow the four profiles')
+    press('D_LEFT')
+    if abs(focus_center('cards-left-wrap.png')-centers[3])>2:raise AssertionError('Portrait-card left wrap selected the wrong profile')
+    press('B');wait_title();screenshot('cards-back.png');press('A');wait_profiles('cards-return.png')
+    if abs(focus_center('cards-return.png')-centers[0])>2:raise AssertionError('Cancelling changed the initial resident focus')
+    press('B');wait_title()
+    after=committed_card_sequence(root/'MemoryCardA.USA.raw',details=True)
+    if after!=before:raise AssertionError('Browsing/cancelling the picker modified the saved town')
+    (root/'profile-cards.json').write_text(json.dumps({'before':before,'after':after,'focus_centers':centers,'right_wrap':True,'back_to_title':True},indent=2))
 
 def shared_profiles():
     slot=int(sys.argv[sys.argv.index('--profile-slot')+1]) if '--profile-slot' in sys.argv else 0
@@ -600,7 +628,9 @@ with (root/'emulator.log').open('w') as log:
             raise RuntimeError(f'Dolphin exited during boot ({p.returncode}); see {root / "emulator.log"}')
         screenshot('screen.png')
         if any(flag in sys.argv for flag in ('--title-menu','--title-load','--title-config','--title-update')):wait_title()
-        if '--shared-profiles' in sys.argv:
+        if '--profile-cards' in sys.argv:
+            profile_cards()
+        elif '--shared-profiles' in sys.argv:
             shared_profiles()
         elif '--title-menu' in sys.argv:
             title_menu()

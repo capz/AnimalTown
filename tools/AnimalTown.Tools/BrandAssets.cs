@@ -1,4 +1,7 @@
 using System.Buffers.Binary;
+using System.Security.Cryptography;
+using System.Text.Json;
+using AnimalTown;
 using SkiaSharp;
 
 // Build-time rasterization only. The GameCube loads baked atlases; no font
@@ -31,6 +34,7 @@ internal static class BrandAssets
         Directory.CreateDirectory(Path.Combine(root,"out/brand"));Directory.CreateDirectory(Path.Combine(root,"out/disc"));
         using var title=Title(root);
         ItemIcons.Build(root);
+        PickerPortraits(root);
         SplashAssets.Check(root);
         Font(root,"gorditas-bold",title,24);
         foreach(string obsolete in new[]{"fredoka-medium.dndtex","fredoka-medium.metrics","fredoka-semibold.dndtex","fredoka-semibold.metrics","Fredoka-OFL.txt"})File.Delete(Path.Combine(root,"out/disc",obsolete));
@@ -54,6 +58,30 @@ internal static class BrandAssets
         }
         SavePng(bitmap,Path.Combine(root,"out/brand/"+name+".png"));
         Texture(root,name,bitmap);File.WriteAllBytes(Path.Combine(root,"out/disc/"+name+".metrics"),metrics);
+    }
+    private static void PickerPortraits(string root)
+    {
+        string directory=Path.Combine(root,"assets/textures/ui/villagers");
+        using var manifest=JsonDocument.Parse(File.ReadAllText(Path.Combine(directory,"provenance.json")));
+        foreach(string name in new[]{"fox","bunny","giraffe","cat","hamster","spaniel"}){
+            var entry=manifest.RootElement.GetProperty(name);string path=Path.Combine(directory,name+".png");
+            string Hash(string p)=>Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(p))).ToLowerInvariant();
+            if(Hash(Path.Combine(root,entry.GetProperty("source").GetString()!))!=entry.GetProperty("sourceSha256").GetString()||
+               Hash(path)!=entry.GetProperty("pngSha256").GetString())throw new InvalidDataException("Rebake changed picker portrait/source: "+name);
+            using var bitmap=SKBitmap.Decode(path)??throw new InvalidDataException("Picker portrait missing: "+name);
+            if(bitmap.Width!=256||bitmap.Height!=256)throw new InvalidDataException("Picker portraits must be 256px square");
+            var rgba=new byte[256*256*4];int at=0,visible=0,clear=0;
+            for(int y=0;y<256;y++)for(int x=0;x<256;x++){
+                var p=bitmap.GetPixel(x,y);rgba[at++]=p.Red;rgba[at++]=p.Green;rgba[at++]=p.Blue;rgba[at++]=p.Alpha;
+                if(p.Alpha>128)visible++;if(p.Alpha==0)clear++;
+            }
+            if(visible<3000||clear<1000)throw new InvalidDataException("Picker portrait must have a visible character and transparent background: "+name);
+            byte[] pixels=TexturePixels.Encode(rgba,256,256,5),package=new byte[32+pixels.Length];
+            int[] header={0x58544e44,1,5,256,256,pixels.Length,0,0};
+            for(int i=0;i<header.Length;i++)BinaryPrimitives.WriteInt32LittleEndian(package.AsSpan(i*4),header[i]);
+            pixels.CopyTo(package,32);TexturePixels.Validate(package);
+            File.WriteAllBytes(Path.Combine(root,"out/disc/picker-"+name+".dndtex"),package);
+        }
     }
     private static void Texture(string root,string name,SKBitmap bitmap)
     {

@@ -17,9 +17,13 @@ drawn during this transition. The animation uses simple UI geometry and retires
 its native resources before the first gameplay scene needs them.
 
 Start saves changed dev settings and loads the last complete town commit set.
-A four-slot villager picker appears before `TownGame` is constructed or town
-assets load. A selects a villager; B returns to the title. Empty slots open
-character creation in the shared town. After selection, the dot background and
+A four-card villager picker follows the approved graphical mockup: original-model
+portraits, a large selected-villager vignette, rounded name tabs, a honey focus
+ring and silhouette/plus cards for empty slots. It appears before `TownGame` is
+constructed or town assets load. Left/Right selects a card (Up/Down also work);
+A selects a villager; B returns to the title. Empty slots open
+character creation in the shared town. See [picker artwork and validation](villager-picker.md).
+After selection, the dot background and
 sprout cover staged game loading. See [shared town profiles](shared-town-profiles.md). A held confirmation button cannot accept the next game
 screen because the controller edge was consumed by the title.
 
