@@ -10,6 +10,8 @@ on:
       - 'game/AnimalTown.GameCube/TerrainRenderer.cs'
       - 'shared/AnimalTown.Domain/Water*.cs'
       - 'shared/AnimalTown.Domain/WindWaker*.cs'
+      - 'shared/AnimalTown.Domain/SunshineWater.cs'
+      - 'tools/iso-smoke.py'
       - 'tests/AnimalTown.Checks/WaterSurfaceChecks.cs'
       - '.github/workflows/water-renderer-pr.yml'
 
@@ -35,3 +37,5 @@ jobs:
         run: dotnet run --project tests/AnimalTown.Checks -c Release -- --suites terrain
       - name: Rendering and geometry regression checks
         run: dotnet run --project tests/AnimalTown.RenderingChecks -c Release
+      - name: Check Dolphin water A/B smoke script syntax
+        run: python3 -m py_compile tools/iso-smoke.py
