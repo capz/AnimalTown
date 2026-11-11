@@ -6,8 +6,10 @@ internal static class ProfileChecks
     {
         internal readonly Dictionary<string,byte[]> Files=new();
         internal int Writes;
+        internal int FailAt;
+        internal bool FailAfter;
         public byte[] Read(string name)=>(byte[])Files[name].Clone();
-        public void Write(string name,byte[] bytes){Writes++;Files[name]=(byte[])bytes.Clone();}
+        public void Write(string name,byte[] bytes){Writes++;if(Writes==FailAt&&!FailAfter)throw new IOException("Interrupted write");Files[name]=(byte[])bytes.Clone();if(Writes==FailAt&&FailAfter)throw new IOException("Interrupted after write");}
     }
     internal static void Run(Action<bool,string> check)
     {
@@ -53,6 +55,65 @@ internal static class ProfileChecks
         var legacy=new GameState(98){Name="Original",Wallet=1234};var imported=SplitSaveCodec.Decode(SplitSaveCodec.EncodeLegacy(legacy));
         check(imported.ActiveProfile==0&&imported.Name=="Original"&&imported.Profiles.Skip(1).All(p=>!p.Created),"old single-player saves migrate to slot one with three empty slots");
         var combinedLegacy=SaveCodec.Decode(SaveCodec.EncodeLegacy(legacy));check(combinedLegacy.Name=="Original"&&combinedLegacy.Wallet==1234,"v7 import remains supported");
+        DeleteChecks(check);
         Console.WriteLine("Four shared-town profiles: independent progress, homes, world ownership, calendar, commits and migration passed");
+    }
+    private static GameState DeletionTown()
+    {
+        var s=new GameState(7319);Array.Fill(s.Town.Tiles,(byte)Terrain.Grass);Array.Clear(s.Town.Elevation);s.Town.GroundCount=0;
+        for(int i=0;i<4;i++){
+            s.SelectProfile(i);s.Name="Player"+i;s.Wallet=1000+i;s.Species=i;s.GardenTier=2;s.Savings=2000+i;
+            if(!s.PlaceHouse(10+i*25,60,false))throw new Exception("Deletion fixture plot");
+            s.Pockets[0]=10;if(!s.Place(0,1,1,0,BuildingWorld.PlayerRoom(i)))throw new Exception("Deletion fixture room");
+            s.Pockets[0]=10;if(!s.Place(0,s.Town.HouseX+2,s.Town.HouseZ+7,0,0))throw new Exception("Deletion fixture garden");
+            s.Pockets[0]=5+i;s.Owned[5+i]=1;s.Mail[0]=12;s.MailCount=1;s.PendingKind=1;s.PendingTier=2;s.PendingDay=100;
+            s.Town.Residents[0].Friendship=20+i;
+        }
+        s.SelectProfile(0);s.Town.AddGround(17,8,90,0,0);s.Town.AddGround(2,9,90,2,0);s.Town.SetTerrain(150,150,Terrain.Beach);return s;
+    }
+    private static void DeleteChecks(Action<bool,string> check)
+    {
+        for(int target=0;target<4;target++){
+            var s=DeletionTown();var tiles=(byte[])s.Town.Tiles.Clone();var elevation=(byte[])s.Town.Elevation.Clone();var before=SplitSaveCodec.Encode(s);
+            s.DeleteProfile(target);var after=SplitSaveCodec.Encode(s);
+            check(!s.Profiles[target].Created&&!s.HomePlaced(target)&&s.Town.PlacedCount==6,"deletion removes only the selected home and its interior/garden furniture");
+            check(s.Town.Placed.Take(s.Town.PlacedCount).All(p=>p.Owner!=(target==0?0:target+6)&&BuildingWorld.RoomProfile(p.Room)!=target),"deleted owner/rooms have no furniture");
+            check(s.Town.Tiles.SequenceEqual(tiles)&&s.Town.Elevation.SequenceEqual(elevation)&&s.Town.GroundCount==2,"deletion keeps edited terrain, loose items and plants");
+            for(int i=0;i<4;i++)if(i!=target)check(before[3+i].SequenceEqual(after[3+i]),"every other profile record stays byte-exact");
+            foreach(var copy in new[]{SaveCodec.Decode(SaveCodec.Encode(s)),SplitSaveCodec.Decode(after)})check(!copy.Profiles[target].Created&&copy.Profiles.Count(p=>p.Created)==3,"deletion survives both current codecs");
+            s.SelectProfile(target);check(s.Name=="Newcomer"&&s.Wallet==0&&s.Savings==0&&!s.HousePlaced&&s.MailCount==0&&s.PendingKind==0,"reusing the deleted slot starts fresh");
+        }
+        var guests=DeletionTown();guests.SelectProfile(1);guests.Space=BuildingWorld.PlayerRoom(0);guests.X=2.5f;guests.Z=2.5f;guests.CaptureProfile();
+        var npc=guests.Town.Residents[0];npc.Space=BuildingWorld.PlayerRoom(0);npc.PosX=npc.PosZ=2.5f;npc.JourneyBuilding=0;npc.JourneyPhase=3;
+        guests.DeleteProfile(0);check(guests.Space==0&&guests.Profiles[1].Space==0&&guests.CanWalk(guests.X,guests.Z,0),"an offline/active visitor returns safely outside the removed home");
+        check(npc.Space==0&&npc.JourneyBuilding==-1&&npc.JourneyPhase==0,"NPC visits and routes to a deleted home are cancelled");
+        var disk=new Storage();var repo=new SaveRepository(disk);var original=DeletionTown();repo.Save(original);repo.Save(original);var frozen=SaveCodec.Encode(original);
+        var removed=repo.DeleteProfile(original,0);check(SaveCodec.Encode(original).SequenceEqual(frozen),"durable deletion never mutates the displayed snapshot");
+        check(removed.Sequence==original.Sequence+2&&!repo.Load()!.Profiles[0].Created,"deletion verifies both save banks");
+        int latest=removed.Sequence%2;disk.Files[SplitSaveCodec.FileName(4,latest)][40]^=1;
+        check(!repo.Load()!.Profiles[0].Created,"fallback to the other bank cannot resurrect a successfully deleted resident");
+        foreach(bool afterWrite in new[]{false,true})for(int fail=1;fail<=16;fail++){
+            var fault=new Storage();foreach(var f in new StorageCopy(original).Files)fault.Files[f.Key]=(byte[])f.Value.Clone();
+            var store=new SaveRepository(fault);var expected=store.Load()!;byte[] source=SaveCodec.Encode(expected);fault.Writes=0;fault.FailAt=fail;fault.FailAfter=afterWrite;
+            bool failed=false;try{store.DeleteProfile(expected,0);}catch(IOException){failed=true;}
+            check(failed&&SaveCodec.Encode(expected).SequenceEqual(source),"interrupted deletion preserves its displayed source snapshot");
+            var recovered=store.Load()!;check(recovered!=null&&recovered.Town.Tiles.SequenceEqual(expected.Town.Tiles),"every interrupted deletion loads a complete old or new town");
+            for(int i=1;i<4;i++)check(recovered!.Profiles[i].Created&&recovered.Profiles[i].Name=="Player"+i&&recovered.Profiles[i].Wallet==1000+i,"interrupted deletion preserves every other villager");
+        }
+        var emptyDisk=new Storage();var emptyRepo=new SaveRepository(emptyDisk);var last=new GameState(91){Name="Last",Wallet=999};emptyRepo.Save(last);emptyRepo.Save(last);
+        var empty=emptyRepo.DeleteProfile(last,0);check(empty.Profiles.All(p=>!p.Created)&&empty.ActiveProfile==0&&empty.Name=="Newcomer"&&empty.Wallet==0,"last deletion retains an empty shared town");
+        check(SplitSaveCodec.Decode(SplitSaveCodec.Encode(empty)).Profiles.All(p=>!p.Created)&&SaveCodec.Decode(SaveCodec.Encode(empty)).Profiles.All(p=>!p.Created),"empty roster round-trips without creating a resident");
+        foreach(Action encode in new Action[]{()=>SaveCodec.EncodeLegacy(empty),()=>SplitSaveCodec.EncodeLegacy(empty)}){bool refused=false;try{encode();}catch(InvalidOperationException){refused=true;}check(refused,"legacy export cannot recreate the last deleted villager");}
+        var sameTown=empty.Town.Tiles;empty.SelectProfile(3);check(ReferenceEquals(sameTown,empty.Town.Tiles)&&empty.ActiveProfile==3&&empty.Profiles.Count(p=>p.Created)==1,"an empty town can start any new resident without regeneration");
+        var changedDisk=new StorageCopy(original);var changedRepo=new SaveRepository(changedDisk);var stale=changedRepo.Load()!;var changed=changedRepo.Load()!;changed.Wallet++;changedRepo.Save(changed);int writes=changedDisk.Writes;
+        bool rejected=false;try{changedRepo.DeleteProfile(stale,0);}catch(InvalidOperationException){rejected=true;}check(rejected&&changedDisk.Writes==writes,"a stale picker cannot overwrite a newer/different card snapshot");
+        Console.WriteLine("Profile deletion: ownership, visitors, last resident, both banks, stale cards and 32 interrupted-write cases passed");
+    }
+    private sealed class StorageCopy : ISaveStorage
+    {
+        internal readonly Dictionary<string,byte[]> Files=new();internal int Writes;
+        internal StorageCopy(GameState state){var copy=SaveCodec.Decode(SaveCodec.Encode(state));copy.Sequence=0;var repo=new SaveRepository(this);repo.Save(copy);repo.Save(copy);}
+        public byte[] Read(string name)=>(byte[])Files[name].Clone();
+        public void Write(string name,byte[] data){Writes++;Files[name]=(byte[])data.Clone();}
     }
 }

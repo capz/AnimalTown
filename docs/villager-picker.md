@@ -7,6 +7,7 @@ small tree/cottage vignette and “Who is visiting today?” copy. Four horizont
 portrait cards sit below the sprout divider. A honey/cream outline highlights
 the selected card; rounded moss tabs show the actual saved names. Unused slots
 show a sage silhouette, plus sign and “New Villager”. A selects; B returns.
+Z on an occupied card opens a [deletion confirmation](villager-deletion.md).
 
 ![Native Dolphin capture with two saved residents and two empty slots](concepts/villager-picker-dolphin.png)
 

@@ -164,6 +164,48 @@ def shared_profiles():
         if not creating and (after['terrain_sha256']!=before['terrain_sha256'] or after['houses_sha256']!=before['houses_sha256']):raise AssertionError('Switching villagers changed the shared terrain/home plots')
     screenshot('profile-saved.png');(root/'profiles.json').write_text(json.dumps({'before':before,'after':after,'loading_background_seen':loading},indent=2))
 
+def delete_profile():
+    slot=int(sys.argv[sys.argv.index('--profile-slot')+1]) if '--profile-slot' in sys.argv else 0
+    before=committed_card_sequence(root/'MemoryCardA.USA.raw',details=True)
+    if not before or not before['profiles'][slot]['created']:raise AssertionError('Deletion requires a disposable occupied slot')
+    wait_title();press('A');wait_profiles('delete-picker.png')
+    for _ in range((slot-before['active'])%4):press('D_RIGHT')
+    press('Z');screenshot('delete-default-cancel.png');press('A');wait_profiles()
+    if committed_card_sequence(root/'MemoryCardA.USA.raw',details=True)!=before:raise AssertionError('Default Cancel changed the town')
+    press('Z');press('D_RIGHT');screenshot('delete-focused.png');press('B');wait_profiles()
+    if committed_card_sequence(root/'MemoryCardA.USA.raw',details=True)!=before:raise AssertionError('B cancellation changed the town')
+    press('Z');press('D_RIGHT');screenshot('delete-confirm.png');press('A')
+    deadline=time.monotonic()+240
+    while time.monotonic()<deadline:
+        after=committed_card_sequence(root/'MemoryCardA.USA.raw',details=True)
+        if after and after['sequence']>=before['sequence']+2 and not after['profiles'][slot]['created']:break
+        if p.poll() is not None:raise AssertionError('Emulator stopped while deleting a resident')
+        time.sleep(2)
+    else:
+        screenshot('delete-not-completed.png');raise AssertionError('Deletion did not publish two complete empty-profile generations')
+    for i in range(4):
+        if i!=slot and (before['profiles'][i]!=after['profiles'][i] or before['plots'][i]!=after['plots'][i]):
+            raise AssertionError('Deletion changed another resident or their home')
+    if after['terrain_sha256']!=before['terrain_sha256']:raise AssertionError('Deletion changed the shared landscape')
+    wait_profiles('delete-complete.png');press('B');wait_title();press('A');wait_profiles('delete-reloaded.png')
+    for _ in range((slot-after['active'])%4):press('D_RIGHT')
+    press('Z');screenshot('delete-empty-z.png')
+    if color_count(rgb('delete-empty-z.png'),(107,151,90))<3000:raise AssertionError('Z on an empty card opened a deletion modal')
+    if committed_card_sequence(root/'MemoryCardA.USA.raw',details=True)!=after:raise AssertionError('Reopening the picker changed the deletion')
+    if '--profile-delete-start-new' in sys.argv:
+        press('A');deadline=time.monotonic()+300;loading=False
+        while time.monotonic()<deadline:
+            screenshot('delete-new-creation.png');pixels=rgb('delete-new-creation.png')
+            mint=color_count(pixels,(149,198,186));cream=color_count(pixels,(255,245,221))
+            if mint>150000 and cream<100:loading=True
+            if loading and mint<150000:break
+            if p.poll() is not None:raise AssertionError('Emulator stopped loading replacement villager')
+            time.sleep(2)
+        else:raise AssertionError('Replacement villager never reached character setup')
+        time.sleep(8);screenshot('delete-new-creation.png')
+        if committed_card_sequence(root/'MemoryCardA.USA.raw',details=True)!=after:raise AssertionError('Replacement creation autosaved')
+    (root/'profile-deletion.json').write_text(json.dumps({'slot':slot,'before':before,'after':after,'default_cancel':True,'back_cancel':True,'reloaded':True},indent=2))
+
 def submission_scenario():
     sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'docs/performance'))
     from avi_guest_clock import AviGuestClock
@@ -349,7 +391,8 @@ def committed_card_sequence(path, expected_day=None, details=False):
                                 part=files[name];length=struct.unpack_from('<I',part,160)[0]
                                 label=''.join(chr(struct.unpack_from('<I',part,164+i*4)[0]) for i in range(length))
                                 profiles.append({'name':label,'created':struct.unpack_from('<I',part,28)[0],'wallet':struct.unpack_from('<I',part,40)[0],'species':struct.unpack_from('<I',part,44)[0]})
-                            best_details={'sequence':best,'active':active,'profiles':profiles,'terrain_sha256':terrain_hash,'houses_sha256':__import__('hashlib').sha256(files[names[1]][28:-4]).hexdigest()}
+                            plots=[dict(zip(('placed','x','z'),struct.unpack_from('<3i',files[names[1]],28+i*12))) for i in range(4)]
+                            best_details={'sequence':best,'active':active,'profiles':profiles,'plots':plots,'terrain_sha256':terrain_hash,'houses_sha256':__import__('hashlib').sha256(files[names[1]][28:-4]).hexdigest()}
             except (ValueError,UnicodeError,struct.error):continue
     if expected_day is not None and best_day!=expected_day:
         raise AssertionError(f'Explicit save did not retain the new rollover day: expected {expected_day}, got {best_day}')
@@ -628,7 +671,9 @@ with (root/'emulator.log').open('w') as log:
             raise RuntimeError(f'Dolphin exited during boot ({p.returncode}); see {root / "emulator.log"}')
         screenshot('screen.png')
         if any(flag in sys.argv for flag in ('--title-menu','--title-load','--title-config','--title-update')):wait_title()
-        if '--profile-cards' in sys.argv:
+        if '--profile-delete' in sys.argv:
+            delete_profile()
+        elif '--profile-cards' in sys.argv:
             profile_cards()
         elif '--shared-profiles' in sys.argv:
             shared_profiles()

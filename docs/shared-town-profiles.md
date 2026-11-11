@@ -6,6 +6,10 @@ in the existing town. Each session plays one villager; offline profiles are not
 additional simulated actors. Creation and selection do not autosave: use the
 in-game Save action to commit the shared town and every profile.
 
+Z on an occupied card opens a named deletion confirmation. Cancel is initially
+selected; B cancels. Selecting Delete explicitly commits the removal. See
+[profile deletion](villager-deletion.md). Empty cards have no Delete action.
+
 The town shares its terrain, calendar, shop stock/spending, NPC names/locations/
 journeys, building definitions, dropped/planted objects and placed furnishings.
 Each villager has independent identity, appearance, position/interior, inventory,
