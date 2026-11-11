@@ -1,5 +1,6 @@
 """Direct ISO boot: no separately selected DOL. Run inside animaltown-dolphin."""
 import os
+import atexit
 import json
 from pathlib import Path
 import subprocess
@@ -35,15 +36,17 @@ def color_count(pixels,color,tolerance=5):
     return sum(all(abs(pixels[i+c]-value)<=tolerance for c,value in enumerate(color))
                for i in range(0,len(pixels),3))
 
-def wait_title():
+def wait_title(modal=False):
     # Observe the actual menu, rather than sending input during either splash.
     deadline=time.monotonic()+180
     while time.monotonic()<deadline:
         if p.poll() is not None:raise AssertionError('Emulator stopped before title')
-        screenshot('title-wait.png');pixels=rgb('title-wait.png')
-        if color_count(pixels,(149,198,186))>15000 and color_count(pixels,(255,245,221))>70000 and color_count(pixels,(53,105,84))>6000:return
+        name='title-modal-wait.png' if modal else 'title-wait.png'
+        screenshot(name);pixels=rgb(name)
+        cream=color_count(pixels,(255,245,221));leaf=color_count(pixels,(53,105,84))
+        if cream>70000 and (leaf<1000 if modal else leaf>6000 and color_count(pixels,(149,198,186))>15000):return
         time.sleep(2)
-    raise AssertionError('Original cream title/menu did not appear')
+    raise AssertionError('Debug modal did not appear' if modal else 'Original cream title/menu did not appear')
 
 def title_menu():
     screenshot('title-dots-a.png');time.sleep(3);screenshot('title-dots-b.png')
@@ -52,27 +55,32 @@ def title_menu():
     mint=lambda pixels,i: all(abs(pixels[i+c]-value)<=5 for c,value in enumerate((149,198,186)))
     changed=sum(a[i:i+3]!=b[i:i+3] and (mint(a,i) or mint(b,i)) for i in range(0,len(a),3))
     if changed<100:raise AssertionError('Title background is not scrolling')
-    press('D_DOWN');press('D_DOWN');press('A');screenshot('title-debug-modal.png')
+    press('D_DOWN');press('D_DOWN');press('A');wait_title(modal=True);screenshot('title-debug-modal.png')
     press('D_RIGHT');screenshot('title-debug-edited.png')
     # Exercise paging, wraparound and slider rows, then return to row zero.
     press('D_UP');screenshot('title-debug-last-page.png');press('D_DOWN')
-    press('B');screenshot('title-dev-config-saved.png')
-    press('A');screenshot('title-debug-reopened.png');press('B')
+    press('B');wait_title();screenshot('title-dev-config-saved.png')
+    press('A');wait_title(modal=True);screenshot('title-debug-reopened.png');press('B');wait_title()
     press('D_UP');press('D_UP')
+    # Start opens the shared-town resident picker before game asset loading.
+    press('A');wait_profiles('title-villager-picker.png')
     # Capture during loading, not after a multi-second press/release helper.
     os.write(controller,b'PRESS A\n');time.sleep(.2)
     os.write(controller,b'RELEASE A\n')
-    loading=[];deadline=time.monotonic()+60
+    # Startup contains bounded synchronous card/asset reads. Observe distinct
+    # sprout poses over time instead of assuming the first three captures span
+    # three guest frames (software Dolphin can still be inside one read).
+    dark=lambda pixels: frozenset(i for i in range(0,len(pixels),3) if all(abs(pixels[i+c]-value)<=5 for c,value in enumerate((49,72,62))))
+    loading=[];poses=set();started=time.monotonic();deadline=started+90
     while len(loading)<3 and time.monotonic()<deadline:
         name='title-start-loading-'+str(len(loading))+'.png';screenshot(name);pixels=rgb(name)
         if color_count(pixels,(149,198,186))>150000 and color_count(pixels,(255,245,221))<100:
-            loading.append(pixels)
+            pose=dark(pixels)
+            if pose and pose not in poses:poses.add(pose);loading.append(pixels)
+        if p.poll() is not None:raise AssertionError('Emulator stopped during loading animation')
         time.sleep(.35)
-    if len(loading)<3:raise AssertionError('Start did not show only dots and the corner loading animation')
-    # Once the panel disappears, dark pixels belong only to the sprout. Check
-    # that its silhouette moves while assets are still being loaded.
-    dark=lambda pixels: {i for i in range(0,len(pixels),3) if all(abs(pixels[i+c]-value)<=5 for c,value in enumerate((49,72,62)))}
-    if not any(dark(loading[0])!=dark(frame) for frame in loading[1:]):raise AssertionError('Corner sprout is not animated')
+    if len(loading)<3:raise AssertionError('Start did not present three animated sprout poses over the plain dot background')
+    print(f'Observed three distinct loading poses after {time.monotonic()-started:.1f}s',flush=True)
     deadline=time.monotonic()+240
     while time.monotonic()<deadline:
         screenshot('title-start-game.png');pixels=rgb('title-start-game.png')
@@ -568,6 +576,11 @@ if '--profile' in sys.argv or '--interaction-profile' in sys.argv or '--runtime-
 (user/'Config'/'Logger.ini').write_text('[Options]\nWriteToFile = True\nVerbosity = 4\n[Logs]\nBOOT = True\nOSREPORT = True\nDVDINTERFACE = True\n')
 env=dict(os.environ,DISPLAY=':93',QT_QPA_PLATFORM='xcb')
 xvfb=subprocess.Popen(['Xvfb',':93','-nocursor','-screen','0','800x600x24'],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
+def close_display():
+    xvfb.terminate()
+    try:xvfb.wait(timeout=5)
+    except subprocess.TimeoutExpired:xvfb.kill();xvfb.wait()
+atexit.register(close_display)
 time.sleep(1)
 with (root/'emulator.log').open('w') as log:
     p=subprocess.Popen(['/usr/games/dolphin-emu-nogui','-u',str(user),'-e',str(disc),'-v','OGL'],env=env,stdout=log,stderr=subprocess.STDOUT)
@@ -579,13 +592,15 @@ with (root/'emulator.log').open('w') as log:
         if p.poll() is not None:
             raise RuntimeError(f'Dolphin exited during boot ({p.returncode}); see {root / "emulator.log"}')
         screenshot('screen.png')
-        if any(flag in sys.argv for flag in ('--title-menu','--title-load','--title-update')):wait_title()
+        if any(flag in sys.argv for flag in ('--title-menu','--title-load','--title-config','--title-update')):wait_title()
         if '--shared-profiles' in sys.argv:
             shared_profiles()
         elif '--title-menu' in sys.argv:
             title_menu()
+        elif '--title-config' in sys.argv:
+            press('D_DOWN');press('D_DOWN');press('A');wait_title(modal=True);screenshot('title-dev-config-loaded.png');press('B');wait_title();screenshot('title-modal-closed.png')
         elif '--title-load' in sys.argv:
-            press('D_DOWN');press('D_DOWN');press('A');screenshot('title-dev-config-loaded.png');press('B');press('D_UP');press('D_UP');press('A');time.sleep(180);screenshot('title-continued-game.png')
+            press('D_DOWN');press('D_DOWN');press('A');wait_title(modal=True);screenshot('title-dev-config-loaded.png');press('B');wait_title();press('D_UP');press('D_UP');press('A');wait_profiles('title-loaded-villager-picker.png');press('A');time.sleep(180);screenshot('title-continued-game.png')
         elif '--title-update' in sys.argv:
             press('D_DOWN');press('A');time.sleep(20);screenshot('title-updater.png')
         elif '--submission-seed' in sys.argv:
@@ -925,6 +940,6 @@ with (root/'emulator.log').open('w') as log:
         p.terminate()
         try:p.wait(timeout=5)
         except subprocess.TimeoutExpired:p.kill();p.wait()
-xvfb.terminate();xvfb.wait()
+close_display();atexit.unregister(close_display)
 os.close(controller)
 print(root/'screen.png')
