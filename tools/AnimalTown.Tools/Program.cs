@@ -37,7 +37,7 @@ static class Program
             else if(args[0]=="iso")Disc(args[2],args[3]);
             else if(args[0]=="verify")Verify(args[2]);
             else if(args[0]=="verify-nkit"){Verify(args[2]);NKitImages.Verify(args[2],args[3],args[4]);}
-            else if(args[0]=="nkit-check")NKitImages.Check();
+            else if(args[0]=="nkit-check"){SdkApploader.Check();NKitImages.Check();}
             else throw new ArgumentException("repack-textures|repack-check|audit|art|iso|verify|tree-audit ROOT [PATH] [COMMIT]");
             return 0;
         }
@@ -112,8 +112,9 @@ static class Program
         Text(bnr,0x1820,32,"AnimalTown");Text(bnr,0x1840,32,"AnimalTown contributors");Text(bnr,0x1860,64,"AnimalTown / "+commit);Text(bnr,0x18a0,64,"AnimalTown contributors");Text(bnr,0x18e0,128,"A rolling village life game. Version "+commit);
         File.WriteAllBytes(Path.Combine(disc,"opening.bnr"),bnr);
         File.WriteAllText(Path.Combine(disc,"BUILD.txt"),"AnimalTown\nBuild version: "+commit+"\n"+File.ReadAllText(Path.Combine(Root,"out/build-revisions.txt")));
-        byte[] dol=File.ReadAllBytes(dolPath),app=File.ReadAllBytes(Path.Combine(Root,"out/apploader.bin"));ValidateDol(dol);
-        if(app.Length>0x10000-0x2460)throw new InvalidDataException("Apploader too large");
+        byte[] dol=File.ReadAllBytes(dolPath),app=File.ReadAllBytes(Path.Combine(Root,"out/apploader.img"));ValidateDol(dol);
+        SdkApploader.Validate(app);
+        if(!File.Exists(Path.Combine(disc,"sdk-apploader-LICENSE.txt")))throw new InvalidDataException("SDK apploader license missing; run tools/resolve-apploader.ps1");
         var files=Directory.GetFiles(disc,"*",SearchOption.AllDirectories).Where(p=>!p.EndsWith(".deps.json",StringComparison.Ordinal)).Select(p=>(path:p,name:Path.GetRelativePath(disc,p).Replace('\\','/'))).OrderBy(p=>p.name,StringComparer.Ordinal).ToArray();
         if(files.Any(p=>p.name.Contains('/')))throw new InvalidDataException("Disc assets must use flat filenames");
         long fstAt=Align(0x10000+dol.Length,32768);var names=new MemoryStream();names.WriteByte(0);var nameOffsets=new List<int>();
@@ -128,8 +129,7 @@ static class Program
             Put(boot,0x420,0x10000);Put(boot,0x424,(uint)fstAt);Put(boot,0x428,(uint)fst.Length);Put(boot,0x42c,(uint)fst.Length);Put(boot,0x458,0xffffffff);
             // BI2: conservative retail-compatible fields, US region, 24 MiB memory.
             Put(boot,0x440+4,0x1800000);Put(boot,0x440+0x18,1);Put(boot,0x440+0x1c,1);
-            Text(boot,0x2440,16,"2026/11/02");Put(boot,0x2450,0x81200000);Put(boot,0x2454,(uint)Align(app.Length));Put(boot,0x2458,0);
-            WriteAt(f,0,boot);WriteAt(f,0x2460,app);WriteAt(f,0x10000,dol);WriteAt(f,fstAt,fst);
+            WriteAt(f,0,boot);WriteAt(f,SdkApploader.DiscOffset,app);WriteAt(f,0x10000,dol);WriteAt(f,fstAt,fst);
             for(int i=0;i<files.Length;i++){f.Position=offsets[i];using var input=File.OpenRead(files[i].path);input.CopyTo(f);}
         }
         Verify(output);Console.WriteLine(output);

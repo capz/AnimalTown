@@ -12,6 +12,7 @@ if($plan.tooling.Count){
     Run dotnet @('build','tools/AnimalTown.Tools','-c','Release','-v','quiet')
     foreach($suite in $plan.tooling){Run dotnet @('run','--project','tools/AnimalTown.Tools','-c','Release','--no-build','--',($suite+'-check'),(Get-Location).Path)}
 }
+if('nkit' -in $plan.tooling){& ./tests/sdk-apploader.ps1}
 $commands=@{
     card='cc -std=c11 -Wall -Wextra -Werror tests/native-card-read.c -o /tmp/animaltown-card-read && /tmp/animaltown-card-read'
     uv='cc -std=c11 -Wall -Wextra -Werror tests/native-uv-topology.c -o /tmp/animaltown-uv-topology && /tmp/animaltown-uv-topology'

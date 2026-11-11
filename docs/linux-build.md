@@ -42,7 +42,7 @@ The default `all` target:
 
 1. Converts all supplied models, fonts, icons and seasonal terrain.
 2. Runs terrain import, gameplay and native memory-card regression checks.
-3. Compiles the game to PowerPC, builds the apploader, produces and validates the
+3. Compiles the game to PowerPC, verifies the pinned SDK apploader image, produces and validates the
    full-size bootable ISO, including title/commit/disc and save banners.
 4. Independently publishes the .NET 10 backend and exercises it against PostgreSQL.
 5. Prepares direct full-size ISO and compact NKit ISO downloads, separate backend
@@ -70,3 +70,9 @@ To reuse a published toolchain, set `ANIMALTOWN_BUILD_IMAGE` to its full
 The regular host PowerShell build commands remain supported; their native stages
 use the original libogc2 container. `-NativeInProcess` is for the combined Linux
 image and runs those stages directly, with no nested Docker daemon.
+
+The boot component is owned by DolphinDotNet, pinned separately in
+`build/apploader.lock.json`. `tools/resolve-apploader.ps1` verifies image/license
+SHA-256 and byte counts before publication to the build output. See
+[sdk-apploader.md](sdk-apploader.md); no AnimalTown loader C or linker script is
+compiled. The game runtime/compiler package pin stays independent.
