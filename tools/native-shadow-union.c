@@ -1,10 +1,21 @@
 #include "dnd_draw.h"
 #include "dnd_model.h"
+#ifndef ANIMALTOWN_SHADOW_UNION_H
 #include "animaltown_shadow_union.h"
+#endif
 #include "dnd_timing.h"
 static SuState *shadows;
 static int shadow_storage;
 extern void animaltown_shadows_model_reset(void);
+int animaltown_shadows_shutdown(void){
+    if(dnd_device_active())return 0;
+    if(!shadows)return 1;
+    /* No frame may still sample the coverage pages. The resource release
+     * waits for GX retirement before freeing the charged SDK buffer. */
+    if(dnd_draw_release(shadow_storage)<0)return 0;
+    shadows=NULL;shadow_storage=0;
+    dnd_draw_backend_invalidate_cache();animaltown_shadows_model_reset();return 1;
+}
 int animaltown_shadows_init(DndArray *atlas,DndArray *circle){
     if(shadows)return 1;
     if(!atlas||!circle||atlas->element_size!=1||circle->element_size!=1||atlas->length!=32768||circle->length!=2048)return 0;

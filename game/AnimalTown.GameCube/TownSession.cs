@@ -8,9 +8,39 @@ using Dolphin.Timing;
 internal sealed class TownSession
 {
     internal GameState State {get;private set;}
+    internal OnboardingDraft? Draft {get;private set;}
+    internal string OnboardingSaveError {get;private set;}="";
     internal readonly bool Loaded,Damaged;
     internal readonly string Status;
     private TownSession(GameState state,bool loaded,bool damaged,string status){State=state;Loaded=loaded;Damaged=damaged;Status=status;}
+    internal void SelectProfile(int profile)
+    {
+        if(!State.Profiles[profile].Created||!State.HomePlaced(profile)){
+            Draft=new OnboardingDraft(State,profile,Loaded);State=Draft.State;
+        }else State.SelectProfile(profile);
+    }
+    internal void DiscardDraft()
+    {
+        if(Draft==null)return;
+        State=Draft.Restore();Draft.Dispose();Draft=null;
+    }
+    internal bool SaveOnboarding()
+    {
+        if(Draft==null)return false;
+        if(Damaged){OnboardingSaveError="Incomplete save preserved. Back up the card before recovery.";return false;}
+        try{
+            using var card=MemoryCard.Mount(StorageDevice.MemoryCardSlotA,new MemoryCardIdentity("AMTE","01"));
+            bool files=false;var entries=card.GetEntries();for(int i=0;i<entries.Length;i++)if(SplitSaveCodec.IsFile(entries[i].Name))files=true;
+            var store=new CardSaveStorage(card,File.ReadAllBytes("dvd:/savebanner.rgb5a3"),File.ReadAllBytes("dvd:/saveicon.rgb5a3"));
+            Draft.Commit(new SaveRepository(store),files);State=Draft.State;Draft.Dispose();Draft=null;return true;
+        }catch(Exception error){
+            OnboardingSaveError=error.Message!=null&&(error.Message.StartsWith("The town on this card")||error.Message.StartsWith("This card already"))?
+                "Card changed. Return to the title and reload your town.":"Couldn't save. Check Slot A and try again.";
+            // A successful commit remains successful if closing the card fails.
+            // Never leave a review screen holding an already released draft.
+            return Draft==null;
+        }
+    }
     internal bool DeleteProfile(int profile)
     {
         if(!Loaded||Damaged||!State.Profiles[profile].Created)return false;

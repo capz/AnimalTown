@@ -2,7 +2,7 @@ using AnimalTown;
 using Dolphin.Graphics;
 
 // Sampled terrain only; live markers/grid stay in their original overlay order.
-internal sealed class MapBackground
+internal sealed class MapBackground : System.IDisposable
 {
     // Rivers are three fine cells wide. A five-cell stride can miss entire
     // segments; sample every two cells while retaining a single cached quad.
@@ -20,6 +20,12 @@ internal sealed class MapBackground
     private Texture2D? texture;
     private Town? town;
     private int version=-1;
+    public void Dispose()
+    {
+        // All minimap quads borrow one texture.
+        System.Array.Clear(minimapTextures,0,minimapTextures.Length);
+        texture?.Dispose();texture=null;town=null;version=-1;
+    }
     internal MapBackground()
     {
         var first=default(Vector2);var previous=default(Vector2);int vertices=0;

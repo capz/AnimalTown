@@ -3,12 +3,13 @@ using Dolphin.Graphics;
 
 // Native geometry is built/evicted between frames. Misses use the original
 // immediate path for one frame; dimensions, colors and painter order are exact.
-internal sealed class UiShapes
+internal sealed class UiShapes : IDisposable
 {
     private readonly UiShapePlan plan=new UiShapePlan();
     private readonly Geometry2D?[] geometry=new Geometry2D?[UiShapePlan.Capacity];
     private int bytes;
     internal int ResidentBytes=>bytes;
+    public void Dispose(){for(int i=0;i<geometry.Length;i++)if(geometry[i]!=null)Release(i);}
     internal void Prepare(string view,int tab,bool enabled)
     {
         plan.BeginFrame(view,tab,enabled);

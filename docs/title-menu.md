@@ -22,9 +22,11 @@ portraits, a large selected-villager vignette, rounded name tabs, a honey focus
 ring and silhouette/plus cards for empty slots. It appears before `TownGame` is
 constructed or town assets load. Left/Right selects a card (Up/Down also work);
 A selects a villager; B returns to the title. Empty slots open
-character creation in the shared town. See [picker artwork and validation](villager-picker.md).
-After selection, the dot background and
-sprout cover staged game loading. See [shared town profiles](shared-town-profiles.md). A held confirmation button cannot accept the next game
+[onboarding](onboarding.md) in the shared town: name and portrait screens precede
+outdoor loading, then a real home preview and explicit **Save & begin** follow.
+See [picker artwork and validation](villager-picker.md).
+After identity selection, the dot background and sprout cover staged game
+loading. See [shared town profiles](shared-town-profiles.md). A held confirmation button cannot accept the next game
 screen because the controller edge was consumed by the title.
 
 The title has exactly three options: Start, Update and Debug configuration.

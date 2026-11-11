@@ -39,6 +39,15 @@ internal static class TextureCache
 
     internal static int Hits,Misses,Evictions;
     internal static int ResidentBytes {get{int n=0;for(int i=0;i<entries.Length;i++)if(entries[i]!=null)n+=entries[i]!.Bytes;return n;}}
+    // Counts resident pages, including released entries waiting for TrimUnused.
+    // Shared gameplay font leases may stay resident; picker portraits and the
+    // title wordmark must reach zero before the first gameplay frame.
+    internal static int SourceBytesContaining(string sourcePart)
+    {
+        int bytes=0;
+        for(int i=0;i<entries.Length;i++)if(entries[i]!=null&&entries[i]!.Source.Contains(sourcePart))bytes+=entries[i]!.Bytes;
+        return bytes;
+    }
     internal static CachedTexture? Find(string source,bool atlas)
     {for(int i=0;i<entries.Length;i++){var e=entries[i];if(e!=null&&e.Source==source&&e.Atlas==atlas){e.References++;e.LastUse=++clock;Hits++;return e;}}return null;}
     internal static void Release(CachedTexture source,bool evict=false)

@@ -9,7 +9,7 @@ using Hypercube.GameCube;
 
 // Ordinary play draws immutable sections baked once at town/season load.
 // The old rolling builder remains available only for explicit profiler controls.
-internal sealed class TerrainRenderer
+internal sealed class TerrainRenderer : IDisposable
 {
     private TerrainArchive? archive;
     private bool legacy=false; // Default: immutable ARAM archive and fixed MEM1 views.
@@ -52,6 +52,7 @@ internal sealed class TerrainRenderer
     private int season=-1,forced,slots,cachedTerrainVersion=-1;
     private Town? cachedTown;
     private GroundRingRenderer? groundRing;
+    private bool disposed;
     internal bool GroundRingRequested {get;private set;}=false; // Legacy comparison only.
     internal int SharedFlatMaterial {get;private set;}=-1;
     internal bool GroundRingActive=>SharedFlatMaterial>=0;
@@ -80,6 +81,23 @@ internal sealed class TerrainRenderer
             poses[i]=ScrollTransform;
             riverBedPoses[i]=riverBedTransform;seaBedPoses[i]=seaBedTransform;
         }
+    }
+    public void Dispose()
+    {
+        if(disposed)return;
+        // Finish any byte-only read before the discarded session loses its
+        // final root. Model/texture creation never runs in this read's worker.
+        if(pendingGround!=null){try{pendingGround.GetAwaiter().GetResult();}catch(Exception){if(!pendingGround.IsCompleted)throw;}pendingGround=null;}
+        archive?.Dispose();archive=null;
+        for(int i=0;i<sections.Length;i++){sections[i]?.Dispose();sections[i]=null;}
+        groundRing?.Dispose();groundRing=null;gallery.Dispose();oceanWaves.Dispose();
+        Array.Clear(batch,0,batch.Length);batchCount=0;
+        // Cloud/water effects borrow texture bindings, so retire them before
+        // releasing the cache leases supplying their ground and seabed art.
+        clouds.Dispose();waterMaterial.Dispose();soil.Dispose();
+        for(int i=0;i<textures.Length;i++)if(textures[i]!=null){TextureCache.Release(textures[i]!);textures[i]=null;}
+        for(int i=0;i<materials.Length;i++){materials[i].Texture=null;materials[i].SecondaryTexture=null;}
+        data=new byte[0];cachedTown=null;stream.Reset();disposed=true;
     }
     internal void Prepare(GameState state,int room,int month,VillagerShadows movingShadows,long deadline,bool cliffPreview=false)
     {

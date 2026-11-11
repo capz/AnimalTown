@@ -62,6 +62,11 @@ crop automatically on load while keeping retained coordinates and progress.
 Outlying homes relocate with furniture, and loose possessions go to Lost & Found.
 See [town size and save migration](docs/town-size.md).
 
+Empty villager cards open [four-step onboarding](docs/onboarding.md): enter a name,
+choose a portrait, preview the actual cottage/home plot, then **Save & begin**.
+Choices stay in a discardable draft until that explicit save. Introductory
+portraits, wordmark, UI buffers and draft data are released before gameplay.
+
 Controls: stick or D-pad moves in eight directions, B run/cancel, A interact/confirm, X backpack, Y map, Z equip
 tool, Start settings; stick or D-pad selects and L/R changes menu tabs. Hold
 the stick to repeat a selection; recenter after opening a menu or changing tabs.

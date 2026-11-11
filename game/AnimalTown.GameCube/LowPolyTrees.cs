@@ -4,7 +4,7 @@ using Dolphin.Graphics;
 
 // One vertex-colored indexed mesh per species. White material tint keeps the
 // SDK indexed path; seasonal resources change only between frames.
-internal sealed class LowPolyTrees
+internal sealed class LowPolyTrees : IDisposable
 {
     internal const int Capacity=32;
     private readonly Mesh[] geometry=new Mesh[3];
@@ -16,6 +16,13 @@ internal sealed class LowPolyTrees
     internal LowPolyTrees(Transform world)
     {
         for(int i=0;i<Capacity;i++)poses[i]=new Transform{Parent=world};
+    }
+    public void Dispose()
+    {
+        // Batch entries borrow the three shared meshes; dispose each owner once.
+        Array.Clear(batchMeshes,0,batchMeshes.Length);
+        for(int i=0;i<geometry.Length;i++){geometry[i]?.Dispose();geometry[i]=null!;}
+        preparedSeason=-1;
     }
     internal void Prepare(int season)
     {

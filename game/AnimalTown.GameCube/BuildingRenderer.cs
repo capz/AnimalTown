@@ -5,7 +5,7 @@ using Dolphin.Graphics;
 // All instances share eight tiny static parts per definition. No room mesh,
 // texture or pose is allocated on entry or per frame. Never load invisible NPC
 // rooms. The initial kit remains resident within an explicit combined ceiling.
-internal sealed class BuildingRenderer
+internal sealed class BuildingRenderer : IDisposable
 {
     private readonly Model?[] models=new Model?[BuildingCatalog.MaximumDefinitions*8];
     private readonly ModelInstance?[] parts=new ModelInstance?[BuildingCatalog.MaximumDefinitions*8];
@@ -21,6 +21,17 @@ internal sealed class BuildingRenderer
     private int loadType,loadPart,typeStartBytes;
     internal int LoadedParts=>loadType*8+loadPart;
     internal string LoadingLabel {get;private set;}="Loading buildings";
+    public void Dispose()
+    {
+        // A completed async load owns a native model even before AdvanceLoading
+        // adopts it. Drain it outside a frame so disc work cannot outlive a draft.
+        Model? unadopted=null;
+        if(pending!=null){try{unadopted=pending.GetAwaiter().GetResult();}catch(Exception){if(!pending.IsCompleted)throw;}pending=null;}
+        for(int i=0;i<parts.Length;i++){parts[i]?.Dispose();parts[i]=null;}
+        unadopted?.Dispose();
+        for(int i=0;i<models.Length;i++){models[i]?.Dispose();models[i]=null;}
+        Array.Clear(ready,0,ready.Length);ResidentBytes=0;loadType=BuildingCatalog.Count;loadPart=used=0;
+    }
     internal bool AdvanceLoading()
     {
         if(loadType>=BuildingCatalog.Count)return true;
@@ -58,6 +69,17 @@ internal sealed class BuildingRenderer
         var root=roots[building];root.LocalPosition=new Vector3(x,p.Y,p.Z);float a=(z-state.Z)/CylinderWorld.Radius*.5f;root.LocalRotation=new Quaternion((float)Math.Sin(a),0,0,(float)Math.Cos(a));root.LocalScale=new Vector3(1,1,1);
         if(doors.Openness(building)==0){Part(renderer,type,7,root,Vector3.Zero,new Vector3(1,1,1));return;}
         Part(renderer,type,0,root,Vector3.Zero,new Vector3(1,1,1));Part(renderer,type,1,root,new Vector3(BuildingWorld.Definition(state,building).HingeX,0,BuildingWorld.Definition(state,building).HingeZ),new Vector3(1,1,1),-doors.Openness(building)*1.4f);
+    }
+    // Uses the already resident closed cottage. The ghost never places a
+    // building, changes collision or allocates a second model/texture set.
+    internal void PreviewHome(Renderer renderer,GameState state,int plotX,int plotZ)
+    {
+        int building=BuildingWorld.PlayerBuilding(state.ActiveProfile),type=state.BuildingTypes[building];
+        if(!Ready(type))return;float x=plotX+2,z=plotZ+1;
+        var p=CylinderWorld.Surface(z,state.Z,TerrainElevation.At(state.Town,x+1.5f,z+1.5f));
+        var root=roots[building];root.LocalPosition=new Vector3(x,p.Y,p.Z);root.LocalScale=new Vector3(1,1,1);
+        float a=(z-state.Z)/CylinderWorld.Radius*.5f;root.LocalRotation=new Quaternion((float)Math.Sin(a),0,0,(float)Math.Cos(a));
+        Part(renderer,type,7,root,Vector3.Zero,new Vector3(1,1,1));
     }
     internal void Interior(Renderer renderer,GameState state,Transform world,InteriorCamera camera,PortalSystem doors)
     {
