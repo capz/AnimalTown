@@ -13,17 +13,16 @@ public static class SunshineWater
     public const float RiverBedDepth=.40f,SeaBedDepth=.75f;
     private const double Tau=6.283185307179586;
 
-    public static byte Brightness(int level,int x,int y)
+    public static byte Brightness(int level,int x,int y)=>BrightnessFromWave(level,Pattern(level,x,y));
+    public static byte Alpha(int level,int x,int y)=>AlphaFromWave(level,Pattern(level,x,y));
+    private static byte BrightnessFromWave(int level,double wave)
     {
-        double wave=Pattern(level,x,y);
         int baseValue=level switch{0=>8,1=>20,2=>88,3=>34,_=>12};
         int contrast=level switch{0=>95,1=>142,2=>166,3=>110,_=>72};
         return (byte)Math.Min(255,baseValue+(int)Math.Round(contrast*wave));
     }
-
-    public static byte Alpha(int level,int x,int y)
+    private static byte AlphaFromWave(int level,double wave)
     {
-        double wave=Pattern(level,x,y);
         int baseValue=level switch{0=>96,1=>140,2=>196,3=>158,_=>119};
         return (byte)(baseValue+(int)Math.Round(31*wave));
     }
@@ -35,9 +34,13 @@ public static class SunshineWater
         x=Mod(x,size);y=Mod(y,size);
         double u=x/(double)size,v=y/(double)size;
         double phase=Tau*(3*u+2*v)+.43*Math.Sin(Tau*(u-v));
-        double crest=Math.Pow(1-Math.Abs(Math.Sin(phase)),8);
-        double glimmer=Math.Pow(Math.Max(0,Math.Sin(Tau*(2*u-3*v))*
-            Math.Cos(Tau*(u+4*v))),2);
+        // Eight-power and squared crests with multiplications rather than
+        // expensive per-texel pow() calls on the GameCube's CPU.
+        double crest=1-Math.Abs(Math.Sin(phase));
+        crest*=crest;crest*=crest;crest*=crest;
+        double glimmer=Math.Max(0,Math.Sin(Tau*(2*u-3*v))*
+            Math.Cos(Tau*(u+4*v)));
+        glimmer*=glimmer;
         return Math.Min(1,.72*crest+.28*glimmer);
     }
 
@@ -53,8 +56,9 @@ public static class SunshineWater
             int size=TextureSize>>level;
             for(int by=0;by<size;by+=4)for(int bx=0;bx<size;bx+=4)
                 for(int y=by;y<by+4;y++)for(int x=bx;x<bx+4;x++){
-                    result[at++]=Alpha(level,x,y);
-                    result[at++]=Brightness(level,x,y);
+                    double wave=Pattern(level,x,y);
+                    result[at++]=AlphaFromWave(level,wave);
+                    result[at++]=BrightnessFromWave(level,wave);
                 }
         }
         if(at!=result.Length)throw new InvalidOperationException("Invalid Sunshine mip payload size.");
