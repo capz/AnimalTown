@@ -1,8 +1,8 @@
 {
   "schema": 1,
   "repository": "capz/DolphinDotNet",
-  "commit": "82afa128cc3c33daf1f9624678bd48724d3c6cd8",
-  "tag": "apploader-82afa128cc3c",
+  "commit": "efda89f3e1ad50fe4cac20124ad8a89f75b1c002",
+  "tag": "apploader-efda89f3e1ad",
   "files": {
     "apploader.img": {
       "bytes": 960,

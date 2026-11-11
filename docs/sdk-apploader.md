@@ -13,11 +13,17 @@ both the runtime SDK and boot-component source/hash. Normal release requirements
 still include full-size ISO, direct NKit image, title/build identity, disc/save
 artwork, same-commit backend and integrity manifests.
 
+The pin uses the SDK main-branch release
+[`apploader-efda89f3e1ad`](https://github.com/capz/DolphinDotNet/releases/tag/apploader-efda89f3e1ad),
+built after [SDK PR #168](https://github.com/capz/DolphinDotNet/pull/168) merged.
+AnimalTown contains no apploader C or linker script and does not compile a
+separate game-owned loader.
+
 The boot component is deliberately independent of AnimalTown's existing runtime
 and compiler NuGet pins. It has no managed runtime dependency. This migration
 therefore does not require an unrelated rendering, storage or compiler upgrade.
 The SDK also emits the same component from new NuGet/standalone GameCube builds;
-see [SDK boot documentation](https://github.com/capz/DolphinDotNet/blob/feat/gamecube-apploader/docs/gamecube-apploader.md).
+see [SDK boot documentation](https://github.com/capz/DolphinDotNet/blob/main/docs/gamecube-apploader.md).
 
 `tools/resolve-apploader.ps1` runs before packaging. It never fetches `latest`,
 compiles loader C or edits the SDK. `SdkApploader.Validate` separately checks the
