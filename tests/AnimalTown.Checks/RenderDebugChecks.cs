@@ -6,6 +6,17 @@ internal static class RenderDebugChecks
     {
         var preview=new RenderDebugOptions();var state=new GameState(73);var before=SaveCodec.Encode(state);
         GroundMipChecks(check,preview);
+        check(preview.WaterStyle==WaterRenderStyle.WindWaker,
+            "render debug defaults to the original Wind Waker path");
+        preview.CycleWaterStyle();
+        check(preview.WaterStyle==WaterRenderStyle.Sunshine,
+            "water debug selector enables Sunshine without a terrain rebuild");
+        preview.CycleWaterStyle();
+        check(preview.WaterStyle==WaterRenderStyle.WindWaker,
+            "water debug selector returns to Wind Waker without changing saves");
+        preview.CycleWaterStyle();preview.ResetWaterStyle();
+        check(preview.WaterStyle==WaterRenderStyle.WindWaker,
+            "debug reset restores original water rendering");
         check(preview.SeasonOverride==-1&&!preview.ForceAttention&&preview.RimPercent==100,"render previews start automatic, with attention off and original rim strength");
         for(int month=-24;month<36;month++){
             check(preview.EffectiveSeason(month)==TerrainTiles.Season(month),"automatic preview follows the existing calendar and negative-month wrapping");
@@ -30,7 +41,7 @@ internal static class RenderDebugChecks
         float previousY=previousRadius*((float)Math.Cos(12/previousRadius)-1);
         check(p.Y<previousY&&p.Z>0,"stronger curvature bends downward while preserving logical north/south orientation");
         long allocated=GC.GetAllocatedBytesForCurrentThread();
-        for(int n=0;n<1000;n++){preview.AdjustRim(1);preview.AdjustRim(-1);preview.CycleSeason();preview.EffectiveSeason(n);preview.AdjustGroundMipDistance(1);preview.ResetGroundMipDistance();RenderDebugOptions.GroundMipBias(256,256,n%11);}
+        for(int n=0;n<1000;n++){preview.AdjustRim(1);preview.AdjustRim(-1);preview.CycleSeason();preview.EffectiveSeason(n);preview.AdjustGroundMipDistance(1);preview.ResetGroundMipDistance();preview.CycleWaterStyle();preview.ResetWaterStyle();RenderDebugOptions.GroundMipBias(256,256,n%11);}
         check(GC.GetAllocatedBytesForCurrentThread()==allocated,"preview adjustments allocate no managed frame data");
     }
     private static void GroundMipChecks(Action<bool,string> check,RenderDebugOptions preview)

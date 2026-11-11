@@ -821,10 +821,27 @@ with (root/'emulator.log').open('w') as log:
                     (root/'river-animation.txt').write_text(f'Water pixels: {wet}\nAnimated water pixels: {changed}\n')
                     if wet<1000 or changed<50:raise AssertionError('Expected visible animated lowered river')
             press('X');screenshot('river-coast-menu.png');press('B')
-        elif '--water' in sys.argv:
+        elif '--water' in sys.argv or '--water-ab' in sys.argv:
             # Fresh card: create a player, then use the clear starter reserve
             # to reach the western ocean boundary in any generated town.
-            press('A');press('D_UP');press('A');press('A');time.sleep(2);press('B');press('B')
+            if '--water-ab' in sys.argv:
+                # Current main adds a villager picker between Title and Create.
+                # Wait until that profile and the create panel are visible before
+                # sending the old test's build-a-home inputs.
+                wait_title();press('A');wait_profiles('water-ab-picker.png');press('A')
+                deadline=time.monotonic()+300;loading=False
+                while time.monotonic()<deadline:
+                    screenshot('water-ab-loading.png');pixels=rgb('water-ab-loading.png')
+                    mint=color_count(pixels,(149,198,186))
+                    cream=color_count(pixels,(255,245,221))
+                    if mint>150000 and cream<100:loading=True
+                    if loading and mint<150000:break
+                    if p.poll() is not None:raise AssertionError('Game stopped while loading new water-test villager')
+                    time.sleep(2)
+                else:raise AssertionError('New water-test villager never reached Create')
+            else:
+                press('A')
+            press('D_UP');press('A');press('A');time.sleep(2);press('B');press('B')
             os.write(controller,b'SET MAIN 0.0 0.5\nPRESS B\n');time.sleep(14)
             os.write(controller,b'SET MAIN 0.5 0.5\nRELEASE B\n');time.sleep(2)
             def water_frame(name):
@@ -845,6 +862,40 @@ with (root/'emulator.log').open('w') as log:
             os.write(controller,b'SET MAIN 0.5 0.1\n');time.sleep(2)
             os.write(controller,b'SET MAIN 0.5 0.5\n');time.sleep(2);screenshot('water-camera.png')
             press('X');screenshot('water-menu.png');press('B');screenshot('water-return.png')
+            if '--water-ab' in sys.argv:
+                # Same camera and save, no scene/terrain regeneration. From the
+                # first Testing row, D_UP wraps straight to the final selector.
+                press('START');press('R');press('D_UP')
+                screenshot('water-ab-selector-windwaker.png')
+                press('A');screenshot('water-ab-selector-sunshine.png')
+                press('B');time.sleep(3)
+                sun0=water_frame('water-sunshine-a')
+                time.sleep(7);sun1=water_frame('water-sunshine-b')
+                press('START');press('R');press('D_UP')
+                press('A');screenshot('water-ab-selector-restored.png')
+                press('B');time.sleep(3)
+                restored=water_frame('water-windwaker-restored')
+                # These measurements are diagnostics, not an assertion that
+                # animated frames are pixel identical before/after switching.
+                changed_mode=changed_animation=0
+                for y in range(120,430):
+                    for x in range(20,300):
+                        i=(y*800+x)*3
+                        if first[i:i+3]!=sun0[i:i+3]:changed_mode+=1
+                        if sun0[i:i+3]!=sun1[i:i+3]:changed_animation+=1
+                (root/'water-ab-comparison.json').write_text(json.dumps({
+                    'comparison':'Wind Waker vs Sunshine, same camera and world',
+                    'water_style_rows':25,
+                    'changed_pixels_between_styles':changed_mode,
+                    'sunshine_animated_pixels':changed_animation,
+                    'restored_windwaker_frame':len(restored),
+                    'screenshots':['water-a.png','water-sunshine-a.png',
+                        'water-sunshine-b.png','water-windwaker-restored.png',
+                        'water-ab-selector-windwaker.png','water-ab-selector-sunshine.png',
+                        'water-ab-selector-restored.png']
+                },indent=2))
+                if changed_mode<500 or changed_animation<50:
+                    raise AssertionError('Sunshine renderer did not visibly differ/animate; inspect water-ab-comparison.json')
         elif '--terrain-edges' in sys.argv:
             press('A');time.sleep(2);screenshot('terrain-edge-start.png')
             directions=[(.5,0,3),(0,.5,2),(1,.5,4),(.5,0,2),(0,.5,2),(.5,1,2),(1,0,2),(0,1,2)]

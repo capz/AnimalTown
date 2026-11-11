@@ -8,6 +8,9 @@ public sealed class RenderDebugOptions
     public bool ForceAttention;
     public int RimPercent {get;private set;}=DefaultRimPercent;
     public const int MaximumGroundMipDistance=10;
+    public WaterRenderStyle WaterStyle {get;private set;}=WaterRenderStyle.WindWaker;
+    public void CycleWaterStyle()=>WaterStyle=WaterStyle==WaterRenderStyle.WindWaker?WaterRenderStyle.Sunshine:WaterRenderStyle.WindWaker;
+    public void ResetWaterStyle()=>WaterStyle=WaterRenderStyle.WindWaker;
     public bool GroundMipmaps=true;
     public int GroundMipDistance {get;private set;} // 0 = automatic GX footprint.
     public static float AttentionHeight(float highestJoint)=>float.IsFinite(highestJoint)?Math.Max(2.35f,Math.Min(5,highestJoint*1.8f+.7f)):3.6f;

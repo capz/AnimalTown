@@ -19,6 +19,10 @@ internal sealed class TerrainRenderer
     private readonly FloorStrips staging=new FloorStrips(TerrainStream.Width*TerrainStream.Height);
     private readonly TerrainSoil soil=new TerrainSoil();
     private readonly WaterMaterial waterMaterial=new WaterMaterial();
+    // Reuse the archived water mesh twice, with different transforms. No
+    // duplicated water vertices are stored in ARAM or the MEM1 mesh pool.
+    private readonly Transform riverBedTransform=new Transform(),seaBedTransform=new Transform();
+    private readonly Transform[] riverBedPoses=new Transform[128],seaBedPoses=new Transform[128];
     private readonly LocalOceanWaves oceanWaves=new LocalOceanWaves();
     private readonly TerrainWalls gallery;
     internal readonly Transform ScrollTransform=new Transform();
@@ -59,6 +63,7 @@ internal sealed class TerrainRenderer
     internal int SeasonOverride=-1;
     internal bool GroundMipmaps=true;
     internal int GroundMipDistance;
+    internal WaterRenderStyle WaterStyle {get=>waterMaterial.Style;set=>waterMaterial.Style=value;}
     private bool appliedGroundMipmaps;
     private int appliedGroundMipDistance=-1;
     internal int RenderSeason=>season;
@@ -71,12 +76,21 @@ internal sealed class TerrainRenderer
         shadows=new ObjectShadows();
         var cfg=File.ReadAllBytes("dvd:/terrain.cfg");if(cfg.Length!=4)throw new IOException("Invalid floor season config");forced=FloorStrips.Read(cfg,0);if(forced< -1||forced>3)throw new IOException("Invalid floor season");
         for(int i=0;i<materials.Length;i++)materials[i]=new Material{Cull=CullMode.Back,Lighting=LightingMode.Unlit,SecondarySampler=new SamplerState(TextureAddressMode.Repeat,TextureAddressMode.Repeat,TextureFilter.Linear)};
-        for(int i=0;i<poses.Length;i++)poses[i]=ScrollTransform;
+        for(int i=0;i<poses.Length;i++){
+            poses[i]=ScrollTransform;
+            riverBedPoses[i]=riverBedTransform;seaBedPoses[i]=seaBedTransform;
+        }
     }
     internal void Prepare(GameState state,int room,int month,VillagerShadows movingShadows,long deadline,bool cliffPreview=false)
     {
         BuiltThisFrame=UrgentStages=0;
-        oceanWaves.Prepare(state,waterMaterial.RoughOcean,cliffPreview,waterMaterial.Tint(1));
+        if(waterMaterial.IsSunshine){
+            soil.Prepare(); // Reuse the existing cliff-soil texture as sandy seabed.
+            waterMaterial.PrepareSunshine(soil.Material.Texture!);
+        }
+        // Sunlit translucent water is drawn once, not again through the storm
+        // mesh, so its alpha never accumulates over the same surface.
+        oceanWaves.Prepare(state,waterMaterial.RoughOcean&&!waterMaterial.IsSunshine,cliffPreview,waterMaterial.Tint(1));
         int next=TerrainTiles.Season(month,SeasonOverride>=0?SeasonOverride:forced);bool changed=next!=season;
         if(changed){
             string name="floor-"+TerrainTiles.SeasonName(next);data=File.ReadAllBytes("dvd:/"+name+".bin");FloorStrips.Validate(data);
@@ -128,6 +142,10 @@ internal sealed class TerrainRenderer
         var scroll=CylinderWorld.Scroll(0,state.Z);
         ScrollTransform.LocalPosition=new Vector3(0,scroll.Y,scroll.Z);
         ScrollTransform.LocalRotation=new Quaternion(scroll.HalfSin,0,0,scroll.HalfCos);
+        if(waterMaterial.IsSunshine){
+            SetBedTransform(riverBedTransform,scroll,SunshineWater.RiverBedDepth);
+            SetBedTransform(seaBedTransform,scroll,SunshineWater.SeaBedDepth);
+        }
         if(!legacy){
             // Initial loading can spend 12ms/256 small stages per frame. Walking
             // never runs a build stage, mutates geometry or uploads a mesh.
@@ -244,19 +262,49 @@ internal sealed class TerrainRenderer
     {if(batchCount==0)return;renderer.DrawMeshes(batch,poses,material,0,batchCount);batchCount=0;}
     private void AddArchive(Renderer renderer,Material material,int kind)
     {for(int i=archive!.First(kind);i>=0;i=archive.Next(i))Add(renderer,material,archive.Mesh(i));Flush(renderer,material);}
-    internal void Draw(Renderer renderer,Transform parent,int room)
+    private void SetBedTransform(Transform transform,CylinderScroll scroll,float depth)
     {
-        if(groundLoad==GroundLoad.Preview)groundLoad=GroundLoad.Visible;
-        if(!legacy){
-            AddArchive(renderer,waterMaterial.Surface,104);AddArchive(renderer,waterMaterial.OceanSurface,107);
-            oceanWaves.Draw(renderer,waterMaterial.OceanSurface,ScrollTransform);
-            AddArchive(renderer,waterMaterial.Foam,105);AddArchive(renderer,soil.Material,106);
-            NativeShadows.Scope(1);
-            try{for(int slot=0;slot<slots;slot++)if((visibleGroundMask&(1UL<<slot))!=0)AddArchive(renderer,materials[slot],slot);}
-            finally{NativeShadows.Scope(0);}
-            gallery.Draw(renderer,ScrollTransform,this);return;
+        float scale=SunshineWater.BedScale(depth),inset=SunshineWater.BedAxisOffset(depth);
+        // Offset is rotated with the existing rigid-cylinder scroll. Exactly
+        // matches an inward radial shift, even near the horizon and at seam Z.
+        transform.LocalScale=new Vector3(1,scale,scale);
+        transform.LocalRotation=ScrollTransform.LocalRotation;
+        transform.LocalPosition=new Vector3(0,scroll.Y+scroll.Cos*inset,scroll.Z+scroll.Sin*inset);
+    }
+
+    private void FlushBed(Renderer renderer,Transform[] transforms)
+    {
+        if(batchCount==0)return;
+        renderer.DrawMeshes(batch,transforms,waterMaterial.Bed,0,batchCount);
+        batchCount=0;
+    }
+    private void AddArchiveBed(Renderer renderer,int kind,Transform[] transforms)
+    {
+        for(int i=archive!.First(kind);i>=0;i=archive.Next(i)){
+            batch[batchCount++]=archive.Mesh(i);
+            if(batchCount==batch.Length)FlushBed(renderer,transforms);
         }
-        // Keep water below banks, and transparent foam below opaque soil/lips.
+        FlushBed(renderer,transforms);
+    }
+    private void AddLegacyBed(Renderer renderer,bool ocean,Transform[] transforms)
+    {
+        for(int i=0;i<stream.Count;i++)if(stream.Visible[i]){
+            Mesh? mesh=ocean?sections[i]!.Water.OceanMesh:sections[i]!.Water.SurfaceMesh;
+            if(mesh==null)continue;
+            batch[batchCount++]=mesh;
+            if(batchCount==batch.Length)FlushBed(renderer,transforms);
+        }
+        FlushBed(renderer,transforms);
+    }
+    private void DrawArchiveWater(Renderer renderer)
+    {
+        AddArchive(renderer,waterMaterial.Surface,104);
+        AddArchive(renderer,waterMaterial.OceanSurface,107);
+        oceanWaves.Draw(renderer,waterMaterial.OceanSurface,ScrollTransform);
+        AddArchive(renderer,waterMaterial.Foam,105);
+    }
+    private void DrawLegacyWater(Renderer renderer)
+    {
         NativeShadows.Scope(3);
         try{
             for(int i=0;i<stream.Count;i++)if(stream.Visible[i])Add(renderer,waterMaterial.Surface,sections[i]!.Water.SurfaceMesh);
@@ -267,6 +315,31 @@ internal sealed class TerrainRenderer
         oceanWaves.Draw(renderer,waterMaterial.OceanSurface,ScrollTransform);
         for(int i=0;i<stream.Count;i++)if(stream.Visible[i])Add(renderer,waterMaterial.Foam,sections[i]!.Water.FoamMesh);
         Flush(renderer,waterMaterial.Foam);
+    }
+
+    internal void Draw(Renderer renderer,Transform parent,int room)
+    {
+        if(groundLoad==GroundLoad.Preview)groundLoad=GroundLoad.Visible;
+        bool sunshine=waterMaterial.IsSunshine;
+        if(!legacy){
+            if(sunshine){
+                // Opaque sandy floor first, then land, then translucent water
+                // and shoreline foam. All three sample the same ARAM views.
+                AddArchiveBed(renderer,104,riverBedPoses);
+                AddArchiveBed(renderer,107,seaBedPoses);
+            }else DrawArchiveWater(renderer);
+            AddArchive(renderer,soil.Material,106);
+            NativeShadows.Scope(1);
+            try{for(int slot=0;slot<slots;slot++)if((visibleGroundMask&(1UL<<slot))!=0)AddArchive(renderer,materials[slot],slot);}
+            finally{NativeShadows.Scope(0);}
+            gallery.Draw(renderer,ScrollTransform,this);
+            if(sunshine)DrawArchiveWater(renderer);
+            return;
+        }
+        if(sunshine){
+            AddLegacyBed(renderer,false,riverBedPoses);
+            AddLegacyBed(renderer,true,seaBedPoses);
+        }else DrawLegacyWater(renderer);
         for(int i=0;i<stream.Count;i++)if(stream.Visible[i])Add(renderer,soil.Material,sections[i]!.Walls.SoilMesh);
         Flush(renderer,soil.Material);
         NativeShadows.Scope(1);
@@ -279,8 +352,10 @@ internal sealed class TerrainRenderer
                     if((section.GroundMask&mask)!=0)Add(renderer,materials[slot],section.GroundMesh(slot));
                     if((section.Walls.GroundMask&mask)!=0)Add(renderer,materials[slot],section.Walls.GroundMesh(slot));
                 }
-            Flush(renderer,materials[slot]);
-        }}finally{NativeShadows.Scope(0);}
+                Flush(renderer,materials[slot]);
+            }
+        }finally{NativeShadows.Scope(0);}
         gallery.Draw(renderer,ScrollTransform,this);
+        if(sunshine)DrawLegacyWater(renderer);
     }
 }
