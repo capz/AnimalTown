@@ -4,7 +4,7 @@ using Dolphin.Graphics;
 using Dolphin.Timing;
 
 // One short-lived surface per setup stage. No setup-only GPU resource or layout
-// array survives Dispose. World-resident views borrow the gameplay canvas.
+// array survives Dispose. Each view owns its canvas outside the town lifetime.
 internal sealed class OnboardingUi : IDisposable
 {
     internal const int Name=0,Look=1,Review=2;
