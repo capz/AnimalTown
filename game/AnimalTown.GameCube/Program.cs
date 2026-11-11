@@ -27,6 +27,7 @@ internal static class Program
         DebugOverlay.WriteLine("ANIMALTOWN TITLE RELEASED native bytes "+GraphicsDevice.Default.NativeBytes);
         DebugOverlay.WriteLine("ANIMALTOWN GAME START");
         if(!Aram.Initialize(2*1024*1024))throw new InvalidOperationException("Audio ARAM reservation failed");
+        LoadingScreen.Pulse();
         var game=new TownGame(config);
         // Run's stack and using scope are gone, so splash batch/package arrays
         // cannot remain rooted in its locals during this collection.
@@ -134,7 +135,9 @@ internal sealed class TownGame
         ui=new Draw2D(device,new Draw2DOptions{Width=640,Height=480,VertexCapacity=8192,SpriteCapacity=128});
         font=UiFont.LoadSystem();strongFont=font;headingFont=UiFont.Load("gorditas-bold");cube=Cube();
         boxes=new BoxBatch(renderer,cube);for(int i=0;i<modelPoses.Length;i++)modelPoses[i]=new Transform{Parent=worldRoot};
+        LoadingScreen.Pulse();
         itemIcons=TextureCache.Load("dvd:/item-icons.dndtex",true);
+        LoadingScreen.Pulse();
         transform.Parent=worldRoot;identity.Parent=worldRoot;
         banner=File.ReadAllBytes("dvd:/savebanner.rgb5a3");icon=File.ReadAllBytes("dvd:/saveicon.rgb5a3");
         var pcm=new byte[512];for(int i=0;i<pcm.Length;i++)pcm[i]=(byte)(128+(i%24<12?25:-25)*(pcm.Length-i)/pcm.Length);
@@ -143,7 +146,9 @@ internal sealed class TownGame
         ReadCalendar();
         long seedClock=Clock.Timestamp;state=new GameState(unchecked((int)(seedClock^(seedClock>>32)^day*7919L^month*104729L)));
         BuildingCatalog.Configure(File.ReadAllBytes("dvd:/buildings.bin"));
+        LoadingScreen.Pulse();
         LoadSave();
+        LoadingScreen.Pulse();
         screen=loaded?"world":"create";
         facingYaw=state.Facing;
         state.Rollover(day,month);
@@ -195,11 +200,8 @@ internal sealed class TownGame
     }
     private void DrawLoading(bool landscape=false)
     {
-        uiShapes.Prepare("loading",-1,batchedDrawing);device.BeginFrame(new Color32(149,198,186));ui.Begin();
-        var ink=new Color32(49,72,62);Panel(60,170,520,140);Heading("AnimalTown",85,190,ink);Text(landscape?"Preparing landscape...":loadingLabel,85,242,ink,1);
-        int progress=landscape?terrain.LoadingTotal-terrain.LoadingRemaining:loadingIndex+buildings.LoadedParts,total=landscape?Math.Max(1,terrain.LoadingTotal):models.Length+BuildingCatalog.Count*8;
-        Rounded(85,275,460,8,4,new Color32(231,222,190));if(progress>0){float width=460f*progress/total;Rounded(85,275,width,8,Math.Min(4,width*.5f),ink);}
-        FrameProfile.Draw(ui);ui.End();device.EndFrame();
+        if(loadingFailed)LoadingScreen.Draw("Could not load town assets.\nRestart with a valid disc.",font);
+        else LoadingScreen.Draw();
     }
     private void SelectSpecies()
     { if(actors[0]!=null)actors[0].Dispose();actors[0]=models[state.Species].CreateInstance(512*1024);moveClip=-1;animationClock.Reset(0);appliedClips[0]=-2; }
@@ -640,6 +642,7 @@ internal sealed class TownGame
         else{int steps=0;while(steps<8&&Clock.Timestamp<preparationDeadline){if(!villagerShadows.Advance())break;steps++;}}
         FrameProfile.End(2,phase);
         if(room==0&&!terrain.Ready){DrawLoading(landscape:true);return;}
+        LoadingScreen.Finish();
         // Only a drawable scene may evaluate native poses. Shadow receivers
         // use logical positions and can prepare while the landscape loads.
         if(room==0){trees.Prepare(terrain.RenderSeason);fences.Prepare(state);}

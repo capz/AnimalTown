@@ -2,24 +2,33 @@
 
 Startup mounts the disc, reads its runtime defaults and the independent Slot A
 `dev_config` record, then runs the SDK/engine splash screens. `TitleScreen` owns
-only the wordmark, IPL menu font and a procedural 64×64 mint dot texture. The
+only the original cream panel, tree emblem, wordmark, tagline, IPL menu font
+and a procedural 64×64 mint dot texture. The
 staggered dots repeat and drift diagonally at four pixels per second. It creates
 no town, terrain, model, building or audio resources. Exiting the title trims
 released splash/title texture pages immediately, then collects their managed
 staging data before constructing the game; native model/terrain allocations do
 not share the texture cache's budget.
 
+Start immediately removes the panel, logo and menu. Only the moving dot
+background and a small hopping, blinking sprout in the bottom-right remain while
+assets and the landscape load. No world, loading panel or debug overlays are
+drawn during this transition. The animation uses simple UI geometry and retires
+its native resources before the first gameplay scene needs them.
+
 Start saves changed dev settings, then constructs `TownGame`, loads the last
 complete town commit set, and begins staged game loading. Without a town save it
 opens character creation. A held confirmation button cannot accept the next game
 screen because the controller edge was consumed by the title.
 
-The title exposes Start, Update and Save dev config, followed by paged debug
-options. Up/Down selects; A or Left/Right changes a setting; Z resets the rim or
-mip-distance slider. The record's memory-card title is `dev config`. Its versioned,
+The title has exactly three options: Start, Update and Debug configuration.
+Up/Down selects and A activates; START also activates the focused Start option.
+Debug configuration opens a modal above the dimmed title. Inside it, Up/Down
+selects a paged setting; A or Left/Right changes it; Z resets the rim or
+mip-distance slider. B (or START) saves changed settings and closes the modal. The record's memory-card title is `dev config`. Its versioned,
 checksummed payload is separate from the town commit set and never increments a
 town sequence. Missing/corrupt/unavailable settings use the disc defaults and
-report a status; explicit Save dev config retries writing. Starting/updating also
+report a status; closing the modal retries writing changed settings. Starting/updating also
 attempts to save edited settings. In-game debug controls remain session controls;
 the title's configuration is the saved startup configuration.
 
