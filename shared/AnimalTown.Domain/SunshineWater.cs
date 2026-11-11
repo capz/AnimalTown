@@ -2,6 +2,8 @@ using System;
 
 namespace AnimalTown;
 
+public enum WaterRenderStyle { WindWaker, Sunshine }
+
 // Original, fixed-function GameCube tropical-water approximation. Hand-authored
 // mip *content* changes glint strength and surface opacity with distance; every
 // mip is packed directly into native GX IA8 4x4 blocks. This is not copied art.
