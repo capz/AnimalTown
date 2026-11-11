@@ -77,6 +77,51 @@ internal static class WaterSurfaceChecks
             check(Math.Abs(WindWakerWaveField.Height(130,135,time+.001,1)-lifted)<.001f,
                 "wave motion is continuous and is independent of tile boundaries");
         }
+        // Sunshine's 5 native IA8 levels intentionally have different RGB and
+        // alpha content; a conventional downsampling mip generator would lose
+        // the distance-dependent shimmering/reflection band.
+        var sunshine=SunshineWater.TexturePackage();
+        TexturePixels.Validate(sunshine);
+        check(TexturePixels.Int(sunshine,0)==0x58544e44&&TexturePixels.Int(sunshine,4)==2&&
+              TexturePixels.Int(sunshine,8)==3&&TexturePixels.Int(sunshine,24)==SunshineWater.MipLevels,
+              "Sunshine builds GX IA8 DNTX v2 with explicit authored mip levels");
+        check(TexturePixels.Int(sunshine,20)==SunshineWater.PayloadBytes&&
+              sunshine.Length==SunshineWater.PayloadBytes+32,"Sunshine texture takes 10912 GX bytes across all mips");
+        int sunshineAt=32;int[] meanBrightness=new int[SunshineWater.MipLevels],meanAlpha=new int[SunshineWater.MipLevels];
+        for(int level=0;level<SunshineWater.MipLevels;level++){
+            int edge=SunshineWater.TextureSize>>level;
+            for(int by=0;by<edge;by+=4)for(int bx=0;bx<edge;bx+=4)
+                for(int y=by;y<by+4;y++)for(int x=bx;x<bx+4;x++){
+                    int alpha=sunshine[sunshineAt++],brightness=sunshine[sunshineAt++];
+                    check(alpha==SunshineWater.Alpha(level,x,y)&&brightness==SunshineWater.Brightness(level,x,y),
+                        "Sunshine IA8 texels use native 4x4 GX tile order");
+                    check(alpha==SunshineWater.Alpha(level,x+edge,y-edge)&&
+                          brightness==SunshineWater.Brightness(level,x+edge,y-edge),
+                        "Sunshine authored mip texels repeat seamlessly at every level");
+                    meanBrightness[level]+=brightness;meanAlpha[level]+=alpha;
+                }
+            meanBrightness[level]/=edge*edge;meanAlpha[level]/=edge*edge;
+        }
+        check(sunshineAt==sunshine.Length,"mip chain is contiguous and contains no extra bytes");
+        check(meanBrightness[0]<meanBrightness[1]&&meanBrightness[1]<meanBrightness[2]&&
+              meanBrightness[2]>meanBrightness[3]&&meanBrightness[3]>meanBrightness[4],
+              "Sunshine mip level 2 creates the bright reflection band instead of simple downsampling");
+        check(meanAlpha[0]<meanAlpha[1]&&meanAlpha[1]<meanAlpha[2]&&
+              meanAlpha[2]>meanAlpha[3]&&meanAlpha[3]>meanAlpha[4],
+              "near water is clear, the reflection band less transparent, and distant water softer");
+        foreach(float depth in new[]{SunshineWater.RiverBedDepth,SunshineWater.SeaBedDepth}){
+            float scale=SunshineWater.BedScale(depth),offset=SunshineWater.BedAxisOffset(depth);
+            check(scale>0&&scale<1&&float.IsFinite(offset),"seabed uses a small finite inward cylinder transform");
+            for(int z=-50;z<=Town.Height+30;z+=5){
+                var surface=CylinderWorld.Surface(z,0,WaterSurface.Height);
+                var bottom=CylinderWorld.Surface(z,0,WaterSurface.Height-depth);
+                float y=surface.Y*scale+offset,projectedZ=surface.Z*scale;
+                check(Math.Abs(y-bottom.Y)<.0001f&&Math.Abs(projectedZ-bottom.Z)<.0001f,
+                    "reused water mesh lies at constant radial bed depth even over the cylinder horizon");
+            }
+        }
+        check(SunshineWater.SeaBedDepth>SunshineWater.RiverBedDepth,
+            "sea floor is deeper than the inland water floor");
         foreach(float speed in new[]{.012f,.025f,-.018f,.035f}){
             check(WaterSurface.Scroll(0,speed)==0,"animation starts at authored UVs");
             foreach(double time in new[]{1.0,59,3600,86400,1e8}){
