@@ -41,7 +41,14 @@ internal static class TextureCache
     internal static int ResidentBytes {get{int n=0;for(int i=0;i<entries.Length;i++)if(entries[i]!=null)n+=entries[i]!.Bytes;return n;}}
     internal static CachedTexture? Find(string source,bool atlas)
     {for(int i=0;i<entries.Length;i++){var e=entries[i];if(e!=null&&e.Source==source&&e.Atlas==atlas){e.References++;e.LastUse=++clock;Hits++;return e;}}return null;}
-    internal static void Release(CachedTexture source){if(source.References<1)throw new InvalidOperationException("Texture lease released twice");source.References--;}
+    internal static void Release(CachedTexture source,bool evict=false)
+    {
+        if(evict&&GraphicsDevice.Default.IsFrameActive)throw new InvalidOperationException("Evict textures after EndFrame");
+        if(source.References<1)throw new InvalidOperationException("Texture lease released twice");
+        source.References--;
+        if(!evict||source.References!=0)return;
+        for(int i=0;i<entries.Length;i++)if(entries[i]==source){Dispose(source);entries[i]=null;Evictions++;return;}
+    }
     internal static CachedTexture Store(CachedTexture entry)
     {
         if(GraphicsDevice.Default.IsFrameActive)throw new InvalidOperationException("Load textures between frames");
@@ -77,15 +84,15 @@ internal static class TextureCache
         var loaded=LoadAndDecode(key,path,atlas,resolution);AnimalTown.GameCube.NativeTexturePages.Collect();return loaded;
     }
     private static CachedTexture LoadAndDecode(string key,string path,bool atlas,TextureResolution resolution)=>Decode(key,File.ReadAllBytes(path),atlas,resolution);
-    internal static CachedTexture LoadFloor(string path,TextureResolution resolution=TexturePolicy.Default,bool repeat=false,bool repeatV=true,bool fullMipChain=false)
+    internal static CachedTexture LoadFloor(string path,TextureResolution resolution=TexturePolicy.Default,bool repeat=false,bool repeatV=true,bool fullMipChain=false,byte[]? source=null)
     {
         string key=BuildInfo.Commit+":"+path+(fullMipChain?":floor-full-mips-v6:":":floor-mip2-auto-v5:")+(repeat?(repeatV?"repeat:":"repeat-clamp:"):"mirror:")+TexturePolicy.Edge(resolution);
         var cached=Find(key,false);if(cached!=null)return cached;
-        var loaded=DecodeFloor(key,path,resolution,repeat,repeatV,fullMipChain);AnimalTown.GameCube.NativeTexturePages.Collect();return loaded;
+        var loaded=DecodeFloor(key,path,resolution,repeat,repeatV,fullMipChain,source);AnimalTown.GameCube.NativeTexturePages.Collect();return loaded;
     }
-    private static CachedTexture DecodeFloor(string key,string path,TextureResolution resolution,bool repeat,bool repeatV,bool fullMipChain)
+    private static CachedTexture DecodeFloor(string key,string path,TextureResolution resolution,bool repeat,bool repeatV,bool fullMipChain,byte[]? source)
     {
-        var source=File.ReadAllBytes(path);var package=FloorTexture.Prepare(source,resolution,fullMipChain);
+        source??=File.ReadAllBytes(path);var package=FloorTexture.Prepare(source,resolution,fullMipChain);
         var entry=new CachedTexture{Source=key,SourceHash=TexturePixels.Hash(source),SourceWidth=TexturePixels.Width(source),SourceHeight=TexturePixels.Height(source),Pages=new Texture2D[1]};
         try{var texture=Texture2D.FromPackage(package,true);entry.Pages[0]=texture;var wrap=repeat?TextureWrapMode.Repeat:TextureWrapMode.Mirror;texture.ConfigureSampler(wrap,repeat&&!repeatV?TextureWrapMode.Clamp:wrap,texture.MipLevels>1?TextureMinFilter.LinearMipmapLinear:TextureMinFilter.Linear,TextureMagFilter.Linear);}
         catch{Dispose(entry);throw;}
