@@ -1,6 +1,6 @@
 # Four villagers, one town
 
-Start opens a four-slot villager picker before game assets load. A continues
+Start opens a four-card [graphical villager picker](villager-picker.md) before game assets load. A continues
 with that villager; B returns to the title. Empty slots start character creation
 in the existing town. Each session plays one villager; offline profiles are not
 additional simulated actors. Creation and selection do not autosave: use the
