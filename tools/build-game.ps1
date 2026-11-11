@@ -14,6 +14,7 @@ $validation=Get-Content -LiteralPath $ValidationPlan -Raw|ConvertFrom-Json
 if($validation.schema -ne 1 -or $validation.commit -ne (& git rev-parse HEAD).Trim()){throw 'Validation plan must match this source commit'}
 if($NativeInProcess -and !$IsLinux){throw 'NativeInProcess requires the Linux build image'}
 . ./tools/resolve-packages.ps1
+. ./tools/resolve-apploader.ps1
 $nativeImage = 'ghcr.io/extremscorner/libogc2@sha256:13bb658d3f18903816617223f5d7c6f776d3db3ea806aae67f8d35a7a69d4c85'
 function RunNative([string]$Directory,[string]$Command,[string[]]$Arguments){
     if($NativeInProcess){
@@ -27,7 +28,7 @@ function RunNative([string]$Directory,[string]$Command,[string[]]$Arguments){
 Run dotnet @('build', 'tools/AnimalTown.Tools', '-c', 'Release', '-v', 'quiet')
 if('repack' -in $validation.tooling){Run dotnet @('run','--project','tools/AnimalTown.Tools','-c','Release','--no-build','--','repack-check',$projectRoot)}
 if('terrain' -in $validation.tooling){Run dotnet @('run','--project','tools/AnimalTown.Tools','-c','Release','--no-build','--','terrain-check',$projectRoot)}
-if('nkit' -in $validation.tooling){Run dotnet @('run','--project','tools/AnimalTown.Tools','-c','Release','--no-build','--','nkit-check',$projectRoot)}
+if('nkit' -in $validation.tooling){Run dotnet @('run','--project','tools/AnimalTown.Tools','-c','Release','--no-build','--','nkit-check',$projectRoot);& ./tests/sdk-apploader.ps1}
 Run dotnet @('run','--project','tools/AnimalTown.Tools','-c','Release','--no-build','--','buildings',$projectRoot)
 Run dotnet @('tool','restore')
 Run dotnet @('run','--project','tools/AnimalTown.Tools','-c','Release','--no-build','--','audit',$projectRoot)
@@ -100,7 +101,7 @@ $sourceManifest = foreach($sourceFile in (& git ls-files --cached --others --exc
     if(Test-Path -LiteralPath $sourceFile -PathType Leaf){ "$sourceFile $((Get-FileHash -LiteralPath $sourceFile -Algorithm SHA256).Hash)" }
 }
 $sourceDigest=[Convert]::ToHexString([Security.Cryptography.SHA256]::HashData([Text.Encoding]::UTF8.GetBytes(($sourceManifest -join "`n"))))
-[IO.File]::WriteAllText((Join-Path $projectRoot 'out/build-revisions.txt'), "Version: $($identity.version)`nGame source: $gameFullCommit`nEngine: $engineCommit`nSDK: $sdkCommit`nPackage lock SHA256: $packageLocks`nEngine NuGet SHA512: $engineContentHash`nSDK NuGet SHA512: $sdkContentHash`nAssets NuGet SHA512: $assetsContentHash`nUpdater source: $updaterCommit`nUpdater DOL SHA256: $updaterHash`nRuntime profile: $RuntimeProfile`nDirty: $([bool]$workingChanges)`nSource digest: $sourceDigest`nBuild image: $env:ANIMALTOWN_BUILD_IMAGE`n")
+[IO.File]::WriteAllText((Join-Path $projectRoot 'out/build-revisions.txt'), "Version: $($identity.version)`nGame source: $gameFullCommit`nEngine: $engineCommit`nSDK: $sdkCommit`nPackage lock SHA256: $packageLocks`nEngine NuGet SHA512: $engineContentHash`nSDK NuGet SHA512: $sdkContentHash`nApploader SDK: capz/DolphinDotNet ($apploaderCommit)`nApploader SHA256: $apploaderContentHash`nAssets NuGet SHA512: $assetsContentHash`nUpdater source: $updaterCommit`nUpdater DOL SHA256: $updaterHash`nRuntime profile: $RuntimeProfile`nDirty: $([bool]$workingChanges)`nSource digest: $sourceDigest`nBuild image: $env:ANIMALTOWN_BUILD_IMAGE`n")
 if('terrain' -in $validation.managed){Run dotnet @('run','--project','tests/AnimalTown.RenderingChecks','-c','Release')}
 if($validation.managed.Count){Run dotnet @('run','--project','tests/AnimalTown.Checks','-c','Release','--','--suites',($validation.managed -join ','))}
 if('card' -in $validation.native){RunNative '.' 'sh' @('-c','cc -std=c11 -Wall -Wextra -Werror tests/native-card-read.c -o /tmp/animaltown-card-read && /tmp/animaltown-card-read')}
@@ -132,11 +133,5 @@ if((Test-Path -LiteralPath (Join-Path $nativeOutput 'build')) -and
 }
 [IO.File]::WriteAllText($nativeKeyFile,$nativeKey)
 RunNative 'out/native' 'make' @('-j2')
-$loaderBuild = 'set -eu
-export PATH=/opt/devkitpro/devkitPPC/bin:$PATH
-powerpc-eabi-gcc -mcpu=750 -m32 -mbig-endian -msdata=none -Os -fno-builtin -fno-pic -fno-asynchronous-unwind-tables -ffunction-sections -nostdlib -Wl,-T,tools/apploader/link.ld tools/apploader/apploader.c -lgcc -o out/apploader.elf
-powerpc-eabi-objcopy -O binary out/apploader.elf out/apploader.bin
-'
-RunNative '.' 'sh' @('-c',$loaderBuild.Replace("`r`n","`n"))
 Run dotnet @('run','--project','tools/AnimalTown.Tools','-c','Release','--no-build','--','iso',$projectRoot,'out/native/Game.dol',$gameVersion)
 Write-Host "Bootable ISO: $projectRoot/out/AnimalTown-$gameVersion.iso"

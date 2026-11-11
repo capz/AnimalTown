@@ -1,0 +1,16 @@
+{
+  "schema": 1,
+  "repository": "capz/DolphinDotNet",
+  "commit": "efda89f3e1ad50fe4cac20124ad8a89f75b1c002",
+  "tag": "apploader-efda89f3e1ad",
+  "files": {
+    "apploader.img": {
+      "bytes": 960,
+      "sha256": "d01084fa2894eddcfb4f4c60bfe6433e6b82ce4961353c757fd2fe4131fce3aa"
+    },
+    "LICENSE": {
+      "bytes": 1080,
+      "sha256": "dd74bf6369a40436958238d0a75d2a6478bd00387096b150564ec0210e876261"
+    }
+  }
+}

@@ -319,8 +319,9 @@ dirty marker and record a source digest; releases require clean source.
 Package to a full 1,459,978,240-byte GameCube image for mini-DVD compatibility;
 sparse local creation is acceptable, archived artifacts compress padding. Verify
 offsets, DOL load sections/BSS/entrypoint, FST hierarchy, alignment, banner format,
-required files and hashes before publishing. Build the homebrew apploader from
-redistributable source with license; never copy Nintendo boot code. Boot ISO
+required files and hashes before publishing. Consume the pinned SDK-owned
+apploader image with its source identity and license; the SDK builds it from
+redistributable source. Never copy Nintendo boot code. Boot ISO
 directly in Dolphin with no separately selected DOL, then test GCLoader/Swiss.
 Burned media additionally requires suitable modified hardware and media; ISO
 structure alone cannot validate an optical drive or disc. Physical tests must
