@@ -12,6 +12,14 @@ images by digest. GitHub CLI is versioned and its download is SHA-256 checked.
 The image contains compilers/tools only: no game assets, source checkout,
 credentials or firmware font bytes. Source is mounted at `/workspace`.
 
+Main releases use incremental `major.minor.patch` versions. Same-repository PRs
+also run the full build and publish `main-version+feature-head-hash` prereleases;
+the workflow checks out the actual PR head, not GitHub's synthetic merge commit.
+Fork PRs run read-only version-policy checks without publication permissions.
+Main and source revisions are pinned before building. The workflow prepares
+`out/version-context.json` using read-only PR history, so build containers reuse
+that context without a GitHub token. See [versioning](versioning.md).
+
 ## Local build with the same image
 
 Use a clean clone; packages restore from NuGet.org, and Linux containers in Docker.

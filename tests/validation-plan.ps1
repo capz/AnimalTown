@@ -21,4 +21,5 @@ $p=Get-ValidationPlan -ChangedPaths @('game/AnimalTown.GameCube/WaterMaterial.cs
 $p=Get-ValidationPlan -ChangedPaths @('shared/AnimalTown.Domain/PortalSystem.cs','assets/definitions/buildings/cottage_small.json');Assert ('buildings' -in $p.managed -and 'building' -in $p.tooling -and !$p.full) 'Building logic/assets need bounded component checks'
 $p=Get-ValidationPlan -ChangedPaths @('shared/AnimalTown.Domain/RiverBankGeometry.cs','tests/AnimalTown.Checks/RiverBankChecks.cs');Assert (($p.managed -join ',') -eq 'terrain,movement,generation,life' -and !$p.backend -and !$p.full) 'River banks need geometry, movement and route checks'
 $p=Get-ValidationPlan -ChangedPaths @('shared/AnimalTown.Domain/TerrainStream.cs');Assert (($p.managed -join ',') -eq 'terrain,movement,generation,life,core' -and !$p.backend -and !$p.full) 'Terrain streaming must exercise visibility, movement and generation checks'
-Write-Host 'Validation routing checks passed (20 cases).'
+$p=Get-ValidationPlan -ChangedPaths @('docs/versioning.md') -ForceRelease;Assert ($p.release -and !$p.full -and !$p.managed.Count -and !$p.backend) 'Every merged PR can publish without forcing unrelated test suites'
+Write-Host 'Validation routing checks passed (21 cases).'

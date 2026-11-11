@@ -1,4 +1,4 @@
-param([string]$BaseRef='',[switch]$Full,[switch]$WorkingTree,[string]$OutputPath='out/validation-plan.json',[string]$GitHubOutput='')
+param([string]$BaseRef='',[switch]$Full,[switch]$ForceRelease,[switch]$WorkingTree,[string]$OutputPath='out/validation-plan.json',[string]$GitHubOutput='')
 $ErrorActionPreference='Stop'
 $PSNativeCommandUseErrorActionPreference=$false
 Set-Location (Split-Path $PSScriptRoot -Parent)
@@ -12,7 +12,7 @@ if(!$Full){
     if($LASTEXITCODE){$Full=$true}else{$paths=@(& git diff --no-renames --name-only $BaseRef HEAD);if($LASTEXITCODE){throw 'Cannot determine changed paths'}}
 }
 if($WorkingTree){$paths+=@(& git diff --no-renames --name-only HEAD);if($LASTEXITCODE){throw 'Cannot inspect tracked working changes'};$paths+=@(& git ls-files --others --exclude-standard);if($LASTEXITCODE){throw 'Cannot inspect untracked changes'}}
-$plan=Get-ValidationPlan -ChangedPaths @($paths|Sort-Object -Unique) -Full:$Full -Commit $commit -BaseRef $BaseRef
+$plan=Get-ValidationPlan -ChangedPaths @($paths|Sort-Object -Unique) -Full:$Full -ForceRelease:$ForceRelease -Commit $commit -BaseRef $BaseRef
 $parent=Split-Path $OutputPath -Parent;if($parent){New-Item -ItemType Directory -Path $parent -Force|Out-Null}
 [IO.File]::WriteAllText([IO.Path]::GetFullPath($OutputPath),($plan|ConvertTo-Json -Depth 5)+"`n")
 if($GitHubOutput){Add-Content -LiteralPath $GitHubOutput -Value ('release='+$plan.release.ToString().ToLowerInvariant())}

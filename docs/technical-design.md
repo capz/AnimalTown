@@ -307,7 +307,7 @@ most 50 lines with membership checks; restrict chat both at send and receive.
 
 ## Bootable disc contract
 
-Every successful console build ends with `out/AnimalTown-<xx.yy.zz.bb>.iso`, never
+Every successful console build ends with `out/AnimalTown-<version>.iso`, never
 only an ELF/DOL or the engine's data ISO. Disc has a GameCube boot header/magic,
 BI2, a redistributable homebrew apploader, valid main.dol, aligned FST and assets,
 root opening.bnr and BUILD.txt with full game/engine/SDK revisions. Header title,
