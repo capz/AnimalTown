@@ -100,8 +100,6 @@ internal sealed class TownGame
     private string loadingLabel="Preparing town assets";
     private float cachedPlayerHeight;
     private float profiledX=float.NaN,profiledZ;
-    private long cachedWallet=long.MinValue,cachedDebt=long.MinValue;
-    private string walletLabel="",debtLabel="";
     private string profileNativeLabel="",profileShadowLabel="";
     private int profileLabelFrames=30;
     private readonly string[] creationRows=new string[6];

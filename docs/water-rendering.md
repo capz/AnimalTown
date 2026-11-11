@@ -124,28 +124,27 @@ change archived ARAM terrain or collision. It is a decorative overlay, not
 a replacement for the fixed sea plane. Profiling should verify the cost
 of `DynamicMesh.SetVertices` and possible overlap at its edge.
 
-The GameCube's indirect texture sampling can give more authentic UV warping
-without additional vertex movement. The DNEF v3 implementation lives in
-DolphinDotNet PR #162. `WindWakerWaterEffect.Package` produces a small
-four-stage v3 program with two independent foam UV samples (TEX0) and a
-single signed indirect displacement map (TEX1). `WaterSurface.WarpTexture`
-provides a periodic 64x64 GX RGB565 map (8 KiB), generated once.
+The coordinated DolphinDotNet 305 / Hypercube 15 package update enables GX
+indirect texture sampling in the default Wind Waker material. The game uses
+`TevMaterialPresets.WaterWarp` directly: two independent foam UV samples (TEX0)
+and one signed 64x64 RGB565 displacement map (TEX1, 8 KiB). The SDK owns DNEF v3
+validation and serialization; the game's hand-written package/failure probe and
+unused v2 calm-water fallback have been removed. The warp changes UVs on the GPU,
+without per-frame texture uploads or changes to archived terrain vertices.
 
-`WaterMaterial` attempts to create the v3 material exactly once at startup.
-If the pinned native SDK rejects v3, it falls back to the previous v2
-`TevMaterial` without allocating the displacement map or changing
-per-frame geometry. If an updated SDK accepts v3, its material uses both
-texture units with separate animated UV matrices; no runtime texture upload
-or terrain rebuild is needed. This compatibility bridge intentionally uses
-the public `GxEffect.FromPackage` API rather than a compile-time reference
-to the new builder signature.
+The old storm material and its two I8 images are created between frames only
+when rough weather is first selected. This avoids 8 KiB of unused native image
+data and obsolete effect work compared with keeping both the v2 fallback and
+new v3 material. Sunshine retains its existing independent material and seafloor.
 
-The current `Capz.Hypercube.GameCube 0.1.0-preview.9.1` dependency
-pins `DolphinDotNet.GameCube 0.1.0-preview.266.1`, so the full indirect
-warp **is not active in the default distributable build**. A later
-coordinated Hypercube / DolphinDotNet NuGet dependency update is required
-to activate it in released GameCube binaries while preserving the
-locked-package and native checksum contracts.
+The optional rough geometry retains exactly the four travelling waves and edge
+fade. `WindWakerWaveGrid` caches spatial phases when the patch origin changes;
+steady frames compute four sine/cosine pairs instead of 1,156 cosines. Tests
+compare every grid sample against the previous height function, including long
+sessions, with a 0.0000001 m tolerance and no warm-frame allocations. The small
+phase cache adds 3,264 payload bytes once rough water is used. Vertex/index and
+cylinder-row staging are now lazy, deferring 16,428 payload bytes during ordinary
+play. Terrain levels, collision and save formats remain unchanged.
 
 ### Cost model
 

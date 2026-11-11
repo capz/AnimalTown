@@ -1,5 +1,8 @@
 # Published package performance integration
 
+This records the earlier 266/9 integration. For current pins and the next
+optimization pass, see [the dependency upgrade](dependency-upgrade-2026-11.md).
+
 AnimalTown consumes these exact public NuGet versions, with committed locks:
 
 | Packages | Previous | Updated |

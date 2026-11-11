@@ -4,9 +4,9 @@
     "net8.0": {
       "Capz.Hypercube.Core": {
         "type": "Direct",
-        "requested": "[0.1.0-preview.9.1, 0.1.0-preview.9.1]",
-        "resolved": "0.1.0-preview.9.1",
-        "contentHash": "Ow7hpHlf5tJ72JlrFsjDvjga4pTfAcV0Th0uKv7Q/za0KFY0aDjCXDCl/MKBCz5XoY71YQM2N+37rNP3WBQk3g=="
+        "requested": "[0.1.0-preview.15.1, 0.1.0-preview.15.1]",
+        "resolved": "0.1.0-preview.15.1",
+        "contentHash": "vfPAKGWAw2vs6EpfHar6sLG+9hUoW5eZdWHlvTIW6ebL8gxW6cUr/rKU8TBdoPdq7UbQSyG/GD+PiCGAicAI/g=="
       }
     }
   }

@@ -1,12 +1,12 @@
 <Project Sdk="Microsoft.NET.Sdk">
-  <PropertyGroup><OutputType>Exe</OutputType><DndAssetsVersion>0.1.0-preview.266.1</DndAssetsVersion></PropertyGroup>
+  <PropertyGroup><OutputType>Exe</OutputType><DndAssetsVersion>0.1.0-preview.305.1</DndAssetsVersion></PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="../../shared/AnimalTown.Domain/AnimalTown.Domain.csproj" />
     <!-- Imaging is shipped inside the published Assets tool, not a standalone
          library package. Download that pinned payload through NuGet restore. -->
     <PackageDownload Include="DolphinDotNet.Assets" Version="[$(DndAssetsVersion)]" />
     <Reference Include="DolphinDotNet.Imaging"><HintPath>$(NuGetPackageRoot)/dolphindotnet.assets/$(DndAssetsVersion)/tools/net8.0/any/DolphinDotNet.Imaging.dll</HintPath><Private>true</Private></Reference>
-    <PackageReference Include="SkiaSharp" Version="[4.153.1]" />
-    <PackageReference Include="SkiaSharp.NativeAssets.Linux.NoDependencies" Version="[4.153.1]" />
+    <PackageReference Include="SkiaSharp" Version="[4.155.0]" />
+    <PackageReference Include="SkiaSharp.NativeAssets.Linux.NoDependencies" Version="[4.155.0]" />
   </ItemGroup>
 </Project>
