@@ -1,5 +1,7 @@
 using System;
 using System.IO;
+using System.Threading.Tasks;
+using Dolphin.Diagnostics;
 using Dolphin.Timing;
 using AnimalTown;
 using Dolphin.Graphics;
@@ -26,6 +28,9 @@ internal sealed class TerrainRenderer
     private readonly Color32[] baseTints=new Color32[FloorStrips.MaximumMaterials];
     private readonly Material[] materials=new Material[FloorStrips.MaximumMaterials];
     private readonly CachedTexture?[] textures=new CachedTexture?[FloorStrips.MaximumMaterials];
+    private enum GroundLoad { Unloaded,Preview,Visible,Reading,Complete,Failed }
+    private GroundLoad groundLoad;
+    private Task<byte[]>? pendingGround;
     private readonly Mesh[] batch=new Mesh[128];
     private readonly Transform[] poses=new Transform[128];
     private int batchCount;
@@ -80,14 +85,24 @@ internal sealed class TerrainRenderer
             if(FloorStrips.Read(data,4)==2)waterMaterial.SetTerrainTint(FloorStrips.Tint(data,FloorStrips.Read(data,24+TerrainTiles.Water*20)));
             for(int i=0;i<slots;i++){
                 int source=FloorStrips.TextureSlot(data,i);bool neutral=FloorStrips.Read(data,4)==2&&source==0;
-                if(textures[source]==null)textures[source]=TextureCache.LoadFloor(neutral?"dvd:/floor-outdoor-neutral.dndtex":"dvd:/"+name+"-"+source+".dndtex",repeat:neutral,fullMipChain:true);
+                if(textures[source]==null){
+                    bool preview=neutral&&groundLoad!=GroundLoad.Complete;
+                    textures[source]=TextureCache.LoadFloor(preview?"dvd:/floor-outdoor-neutral-64.dndtex":neutral?"dvd:/floor-outdoor-neutral.dndtex":"dvd:/"+name+"-"+source+".dndtex",repeat:neutral,fullMipChain:true);
+                    if(preview&&groundLoad==GroundLoad.Unloaded){
+                        groundLoad=GroundLoad.Preview;
+                        DebugOverlay.WriteLine("GROUND PREVIEW 64 bytes "+textures[source]!.Bytes);
+                    }
+                }
                 materials[i].Sampler=new SamplerState(neutral?TextureAddressMode.Repeat:TextureAddressMode.Clamp,neutral?TextureAddressMode.Repeat:TextureAddressMode.Clamp);
                 materials[i].Texture=textures[source]!.Pages[0];uint tint=FloorStrips.Tint(data,i);baseTints[i]=materials[i].Color=new Color32((byte)(tint>>24),(byte)(tint>>16),(byte)(tint>>8));
             }
             season=next;
             MaterialRevision++;
         }
-        if(changed||appliedGroundMipmaps!=GroundMipmaps||appliedGroundMipDistance!=GroundMipDistance){
+        bool upgraded=AdvanceGroundTexture();
+        // The completed task and package arrays are out of the upgrade frame.
+        if(upgraded)AnimalTown.GameCube.NativeTexturePages.Collect();
+        if(changed||upgraded||appliedGroundMipmaps!=GroundMipmaps||appliedGroundMipDistance!=GroundMipDistance){
             for(int source=0;source<textures.Length;source++)if(textures[source]!=null){
                 var texture=textures[source]!.Pages[0];
                 var wrap=FloorStrips.Read(data,4)==2&&source==0?TextureWrapMode.Repeat:TextureWrapMode.Mirror;
@@ -153,6 +168,44 @@ internal sealed class TerrainRenderer
             visibleGroundMask|=section.GroundMask|section.Walls.GroundMask;
         }
     }
+    private bool AdvanceGroundTexture()
+    {
+        // Draw marks the first preview frame. Its EndFrame has retired before
+        // this next Prepare, so even immediately completed reads show the preview.
+        if(groundLoad==GroundLoad.Visible){
+            try{
+                pendingGround=Dolphin.IO.File.ReadAllBytesAsync("dvd:/floor-outdoor-neutral.dndtex");
+                groundLoad=GroundLoad.Reading;
+                DebugOverlay.WriteLine("GROUND PREVIEW PRESENTED read full");
+            }catch(Exception error){GroundTextureFailed(error);}
+            return false;
+        }
+        if(groundLoad!=GroundLoad.Reading||!pendingGround!.IsCompleted)return false;
+        CachedTexture full;
+        try{
+            var source=pendingGround.GetAwaiter().GetResult();
+            TexturePixels.Validate(source);
+            if(TexturePixels.Width(source)!=FloorTexture.Maximum||TexturePixels.Height(source)!=FloorTexture.Maximum)
+                throw new InvalidDataException("Full ground texture must be 256x256");
+            full=TextureCache.LoadFloor("dvd:/floor-outdoor-neutral.dndtex",repeat:true,fullMipChain:true,source:source);
+        }catch(Exception error){GroundTextureFailed(error);return false;}
+        pendingGround=null;
+        var preview=textures[0]!;
+        int previewBytes=preview.Bytes;
+        for(int i=0;i<slots;i++)if(FloorStrips.TextureSlot(data,i)==0)materials[i].Texture=full.Pages[0];
+        textures[0]=full;
+        groundLoad=GroundLoad.Complete;
+        int before=GraphicsDevice.Default.NativeBytes;
+        TextureCache.Release(preview,evict:true);
+        DebugOverlay.WriteLine("GROUND FULL 256 bytes "+full.Bytes);
+        DebugOverlay.WriteLine("GROUND PREVIEW FREED "+previewBytes+" native "+before+" -> "+GraphicsDevice.Default.NativeBytes);
+        return true;
+    }
+    private void GroundTextureFailed(Exception error)
+    {
+        pendingGround=null;groundLoad=GroundLoad.Failed;
+        DebugOverlay.WriteLine("GROUND FULL LOAD FAILED keep preview: "+error.Message);
+    }
     internal void WarmCliffs(Town town,long deadline)
     {
         cliffs.Prepare(town);int steps=0;
@@ -193,6 +246,7 @@ internal sealed class TerrainRenderer
     {for(int i=archive!.First(kind);i>=0;i=archive.Next(i))Add(renderer,material,archive.Mesh(i));Flush(renderer,material);}
     internal void Draw(Renderer renderer,Transform parent,int room)
     {
+        if(groundLoad==GroundLoad.Preview)groundLoad=GroundLoad.Visible;
         if(!legacy){
             AddArchive(renderer,waterMaterial.Surface,104);AddArchive(renderer,waterMaterial.OceanSurface,107);
             oceanWaves.Draw(renderer,waterMaterial.OceanSurface,ScrollTransform);
