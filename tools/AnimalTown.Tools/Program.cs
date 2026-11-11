@@ -112,9 +112,9 @@ static class Program
         Text(bnr,0x1820,32,"AnimalTown");Text(bnr,0x1840,32,"AnimalTown contributors");Text(bnr,0x1860,64,"AnimalTown / "+commit);Text(bnr,0x18a0,64,"AnimalTown contributors");Text(bnr,0x18e0,128,"A rolling village life game. Version "+commit);
         File.WriteAllBytes(Path.Combine(disc,"opening.bnr"),bnr);
         File.WriteAllText(Path.Combine(disc,"BUILD.txt"),"AnimalTown\nBuild version: "+commit+"\n"+File.ReadAllText(Path.Combine(Root,"out/build-revisions.txt")));
-        byte[] dol=File.ReadAllBytes(dolPath),app=File.ReadAllBytes(Path.Combine(Root,"out/apploader.img"));ValidateDol(dol);
+        byte[] dol=File.ReadAllBytes(dolPath),app=File.ReadAllBytes(Path.Combine(Root,"out/native/apploader.img"));ValidateDol(dol);
         SdkApploader.Validate(app);
-        if(!File.Exists(Path.Combine(disc,"sdk-apploader-LICENSE.txt")))throw new InvalidDataException("SDK apploader license missing; run tools/resolve-apploader.ps1");
+        if(!File.Exists(Path.Combine(disc,"sdk-apploader-LICENSE.txt")))throw new InvalidDataException("SDK apploader license missing; run tools/build-game.ps1");
         var files=Directory.GetFiles(disc,"*",SearchOption.AllDirectories).Where(p=>!p.EndsWith(".deps.json",StringComparison.Ordinal)).Select(p=>(path:p,name:Path.GetRelativePath(disc,p).Replace('\\','/'))).OrderBy(p=>p.name,StringComparer.Ordinal).ToArray();
         if(files.Any(p=>p.name.Contains('/')))throw new InvalidDataException("Disc assets must use flat filenames");
         long fstAt=Align(0x10000+dol.Length,32768);var names=new MemoryStream();names.WriteByte(0);var nameOffsets=new List<int>();

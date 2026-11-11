@@ -1,34 +1,22 @@
 # SDK-owned apploader
 
-AnimalTown no longer builds a local apploader C file or linker script. It uses
-DolphinDotNet's complete `apploader.img`, including the IPL header, native code
-and initialized loader BSS. The game packer writes those bytes at disc offset
-`0x2440` and keeps its DOL at `0x10000`.
+AnimalTown uses the complete `out/native/apploader.img` emitted by its pinned
+DolphinDotNet SDK package. The compiler bundle owns the loader C, linker script,
+PowerPC build and IPL header. `make apploader` builds the game and validates its
+DOL's DMA alignment, entry point and reserved loader memory before disc packing.
+The game writes the complete image at `0x2440` and keeps its DOL at `0x10000`.
 
-The SDK source revision, immutable boot-component release, image/license lengths
-and SHA-256 hashes are pinned in `build/apploader.lock.json`. The resolver caches
-only verified files, rejects a mismatched download before replacing output and
-includes the SDK's MIT license in the disc filesystem. Build revisions record
-both the runtime SDK and boot-component source/hash. Normal release requirements
-still include full-size ISO, direct NKit image, title/build identity, disc/save
-artwork, same-commit backend and integrity manifests.
+The compiler, runtime and boot source now share the SDK version in `global.json`
+and the committed package locks. There is no separate boot release resolver or
+download pin. The SDK's MIT boot-component license is copied from the generated
+bundle into the disc filesystem. Build revisions record the actual compiled
+image's SHA-256 and SDK source identity alongside the package hashes.
 
-The pin uses the SDK main-branch release
-[`apploader-efda89f3e1ad`](https://github.com/capz/DolphinDotNet/releases/tag/apploader-efda89f3e1ad),
-built after [SDK PR #168](https://github.com/capz/DolphinDotNet/pull/168) merged.
-AnimalTown contains no apploader C or linker script and does not compile a
-separate game-owned loader.
+`SdkApploader.Validate` still checks the complete IPL header, fixed entry, DMA
+size and exact payload length before writing the disc. The `nkit` checks include
+malformed image rejection. Full-size ISO, direct NKit, title/build identity,
+disc/save artwork and same-commit backend requirements remain in effect.
 
-The boot component is deliberately independent of AnimalTown's existing runtime
-and compiler NuGet pins. It has no managed runtime dependency. This migration
-therefore does not require an unrelated rendering, storage or compiler upgrade.
-The SDK also emits the same component from new NuGet/standalone GameCube builds;
-see [SDK boot documentation](https://github.com/capz/DolphinDotNet/blob/main/docs/gamecube-apploader.md).
-
-`tools/resolve-apploader.ps1` runs before packaging. It never fetches `latest`,
-compiles loader C or edits the SDK. `SdkApploader.Validate` separately checks the
-complete header, entry, DMA size and exact payload length. The `nkit` test group
-includes these layout checks and the isolated resolver cache/failure tests.
-
-Physical GameCube IPL/DVD/Swiss/GC Loader testing must still be reported
-separately from source checks and Dolphin boot validation.
+See the [SDK boot documentation](https://github.com/capz/DolphinDotNet/blob/main/docs/gamecube-apploader.md).
+Physical GameCube IPL/DVD/Swiss/GC Loader testing is separate from Dolphin boot
+validation and must be reported independently.

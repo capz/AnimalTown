@@ -13,8 +13,8 @@
       },
       "Capz.Hypercube.Core": {
         "type": "Transitive",
-        "resolved": "0.1.0-preview.15.1",
-        "contentHash": "vfPAKGWAw2vs6EpfHar6sLG+9hUoW5eZdWHlvTIW6ebL8gxW6cUr/rKU8TBdoPdq7UbQSyG/GD+PiCGAicAI/g=="
+        "resolved": "0.1.0-preview.28.1",
+        "contentHash": "ND4NNxQGS8n6IMpPyKmWH3QkGeuZJiKJnki4hNm2K0w68Zgr6hsX4DyadKY9p0CUAPRQYqI7txTDq8v7XJr/NQ=="
       },
       "Microsoft.Extensions.DependencyInjection.Abstractions": {
         "type": "Transitive",
@@ -32,7 +32,7 @@
       "animaltown.domain": {
         "type": "Project",
         "dependencies": {
-          "Capz.Hypercube.Core": "[0.1.0-preview.15.1, 0.1.0-preview.15.1]"
+          "Capz.Hypercube.Core": "[0.1.0-preview.28.1, 0.1.0-preview.28.1]"
         }
       }
     }

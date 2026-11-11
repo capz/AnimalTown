@@ -1,5 +1,8 @@
 # Published dependency upgrade and rendering work
 
+The follow-up [SDK 315 capability integration](sdk315-capabilities.md) records
+the current compiler/runtime/asset pins and shared SDK apploader build.
+
 | Dependency | Previous | Updated |
 | --- | --- | --- |
 | DolphinDotNet SDK, Core, GameCube, Assets | preview.266.1 | preview.305.1 |
