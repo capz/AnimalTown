@@ -98,7 +98,7 @@ def shared_profiles():
     before=committed_card_sequence(root/'MemoryCardA.USA.raw',details=True)
     wait_title();press('A');wait_profiles()
     press('B');wait_title();screenshot('profile-cancel-to-title.png');press('A');wait_profiles()
-    for _ in range(slot):press('D_DOWN')
+    for _ in range((slot-(before['active'] if before else 0))%4):press('D_DOWN')
     screenshot('profile-selected.png');press('A')
     deadline=time.monotonic()+300;loading=False
     while time.monotonic()<deadline:

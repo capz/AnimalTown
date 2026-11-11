@@ -23,5 +23,7 @@ if(args[0]=="seed-legacy"){
     if(!rejected)throw new Exception("Database accepted partial save set");
     rejected=false;try{await using var cmd=new NpgsqlCommand("UPDATE players SET player_villager3=NULL WHERE id=$1",c);cmd.Parameters.AddWithValue(id);await cmd.ExecuteNonQueryAsync();}catch(PostgresException e)when(e.SqlState=="23514"){rejected=true;}
     if(!rejected)throw new Exception("Database accepted partial villager roster");
+    rejected=false;try{await using var cmd=new NpgsqlCommand("UPDATE players SET player_villager2=NULL,player_villager3=NULL,player_villager4=NULL WHERE id=$1",c);cmd.Parameters.AddWithValue(id);await cmd.ExecuteNonQueryAsync();}catch(PostgresException e)when(e.SqlState=="23514"){rejected=true;}
+    if(!rejected)throw new Exception("Database accepted a schema-4 town with its extra profiles removed");
     Console.WriteLine("Backend split storage and exact legacy migration checks passed");
 }

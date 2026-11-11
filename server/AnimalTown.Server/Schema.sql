@@ -16,7 +16,7 @@ ALTER TABLE players DROP CONSTRAINT IF EXISTS players_complete_save_set;
 ALTER TABLE players ADD CONSTRAINT players_complete_save_set CHECK (
  (state IS NOT NULL AND town_data IS NULL AND house_positions IS NULL AND shop_states IS NULL AND player_villager IS NULL AND player_villager2 IS NULL AND player_villager3 IS NULL AND player_villager4 IS NULL)
  OR (state IS NULL AND town_data IS NOT NULL AND house_positions IS NOT NULL AND shop_states IS NOT NULL AND player_villager IS NOT NULL AND
-  ((player_villager2 IS NULL AND player_villager3 IS NULL AND player_villager4 IS NULL) OR (player_villager2 IS NOT NULL AND player_villager3 IS NOT NULL AND player_villager4 IS NOT NULL))));
+  ((player_villager2 IS NULL AND player_villager3 IS NULL AND player_villager4 IS NULL AND CASE WHEN octet_length(town_data)>=8 THEN get_byte(town_data,4) BETWEEN 1 AND 3 ELSE false END) OR (player_villager2 IS NOT NULL AND player_villager3 IS NOT NULL AND player_villager4 IS NOT NULL))));
 CREATE TABLE IF NOT EXISTS sessions (
  token_hash text PRIMARY KEY, player uuid NOT NULL REFERENCES players(id), expires timestamptz NOT NULL
 );
