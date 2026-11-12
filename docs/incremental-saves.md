@@ -64,6 +64,10 @@ never modified in place. The reconstructed snapshot receives a common sequence
 and CRC before passing the existing decoder. Bounded parsing and semantic checks
 reject invalid projections, references and runtime fields.
 
+Cold terrain baking uses a 96 KiB coalescer scratch buffer; the full rendering
+cache is allocated only after baking scratch meshes have retired. This reduces
+startup peak MEM1 use by 928 KiB without changing the gameplay cache budget.
+
 During the blocking in-game Save action, the renderer releases its rebuildable
 1 MiB GX terrain working cache before card mount/I/O. Immutable geometry stays
 in ARAM. The card is closed before restoring that cache; visible views rebind

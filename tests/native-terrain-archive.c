@@ -17,7 +17,7 @@ int main(void){
     for(int i=0;i<12;i++){p[i*9]=i;p[i*9+7]=4+i*.5f;((uint32_t*)v->data)[i*9+6]=i%2?0xffffff00:0xffffffff;ids[i]=(uint16_t)(i%6);}
     int indexed=dnd_mesh_create_range(v,12,ix,12,2,0),plain=dnd_mesh_create_range(v,12,NULL,0,2,0);
     assert(indexed>0&&plain>0&&animaltown_terrain_reset(2)==1);
-    assert(animaltown_terrain_stat(0)==1024*1024+64*1024); /* Original cold MEM1 budget. */
+    assert(animaltown_terrain_stat(0)==TA_COLD_CACHE+TA_STAGE); /* Only the cold coalescer scratch is reserved while baking. */
     Resource *source=find(indexed,MESH);unsigned char expected[456];memcpy(expected,source->data,sizeof(expected));
     assert(animaltown_terrain_append(-1,0,indexed,0)==-1);
     assert(animaltown_terrain_append(1,0,indexed,0)==-1);
@@ -33,6 +33,10 @@ int main(void){
     assert(animaltown_terrain_append(1,3,indexed,0)==-1);
     assert(dnd_draw_release(indexed)==0&&dnd_draw_release(plain)==0);
     int view=animaltown_terrain_view();assert(view>0&&dnd_draw_bytes(view)==1);
+    assert(animaltown_terrain_bind(view,0)==-1); /* Cold scratch cannot be bound to GX. */
+    int cold=animaltown_terrain_stat(0),archive_bytes=dnd_aram_stat(4);
+    assert(animaltown_terrain_cache(1)==1&&animaltown_terrain_stat(0)==cold+TA_CACHE-TA_COLD_CACHE&&dnd_aram_stat(4)==archive_bytes);
+    assert(animaltown_terrain_cache(1)==1&&animaltown_terrain_stat(0)==cold+TA_CACHE-TA_COLD_CACHE);
     assert(animaltown_terrain_bind(view,0)==1);Resource *r=find(view,MESH);assert(r&&r->vertices==12&&r->indices==12&&!memcmp(r->data,expected,sizeof(expected)));
     assert(animaltown_terrain_reset(0)==-1);
     int flushed=flushes;town_frame_counters.enabled=1;
@@ -48,7 +52,7 @@ int main(void){
     assert(animaltown_terrain_bind(view,0)==-1&&dnd_draw_release(view)==0&&dnd_draw_live()==0);
     assert(animaltown_terrain_reset(1)==1);plain=dnd_mesh_create_range(v,12,NULL,0,2,0);
     assert(animaltown_terrain_append(0,0,plain,6)==1&&animaltown_terrain_complete(0)==1);
-    view=animaltown_terrain_view();assert(animaltown_terrain_bind(view,0)==1);r=find(view,MESH);int page=r->terrain_parent;
+    assert(animaltown_terrain_cache(1)==1);view=animaltown_terrain_view();assert(animaltown_terrain_bind(view,0)==1);r=find(view,MESH);int page=r->terrain_parent;
     assert(dnd_draw_release(page)==0&&r->data!=NULL); // Parent remains pinned through pending disposal.
     assert(dnd_draw_release(view)==0);assert(!find(page,BUFFER));
     // Simulate external buffer retirement only for this lifetime probe.
@@ -63,7 +67,7 @@ int main(void){
     assert(animaltown_terrain_complete(0)==1&&animaltown_terrain_info(0,1)==3&&animaltown_terrain_info(0,2)==12);
     assert(dnd_draw_live()==cold_resources-1&&find(ta_cache,BUFFER)->holds==0); /* Coalescing allocates nothing; stage retires. */
     assert(animaltown_terrain_kind(0)==3&&animaltown_terrain_kind(1)==104&&animaltown_terrain_kind(2)==107);
-    view=animaltown_terrain_view();assert(animaltown_terrain_bind(view,0)==1);r=find(view,MESH);
+    assert(animaltown_terrain_cache(1)==1);view=animaltown_terrain_view();assert(animaltown_terrain_bind(view,0)==1);r=find(view,MESH);
     assert(r->vertices==24&&r->indices==24&&!r->uniform_color);
     assert(!memcmp(r->data,expected,432)&&!memcmp(r->data+432,expected,432));
     uint16_t *merged_ids=(uint16_t*)(r->data+864);
@@ -81,7 +85,7 @@ int main(void){
     DndArray *big=array(1818,36);plain=dnd_mesh_create_range(big,1818,NULL,0,2,0);assert(plain>0);
     for(int i=0;i<17;i++)assert(animaltown_terrain_append(0,104,plain,1818)==i+1);
     assert(animaltown_terrain_complete(0)==1&&dnd_draw_release(plain)==0);
-    int pool[17];for(int i=0;i<17;i++){pool[i]=animaltown_terrain_view();assert(pool[i]);}
+    assert(animaltown_terrain_cache(1)==1);int pool[17];for(int i=0;i<17;i++){pool[i]=animaltown_terrain_view();assert(pool[i]);}
     for(int i=0;i<16;i++)assert(animaltown_terrain_bind(pool[i],i)==1);
     unsigned char saved[36];memcpy(saved,find(pool[0],MESH)->data,sizeof(saved));int resident=animaltown_terrain_stat(0);
     assert(animaltown_terrain_bind(pool[16],16)==-2&&!memcmp(saved,find(pool[0],MESH)->data,sizeof(saved)));
@@ -101,5 +105,5 @@ int main(void){
     assert(animaltown_terrain_stat(0)==resident&&dnd_aram_stat(4)==aram);
 
     assert(animaltown_terrain_reset(0)==1&&dnd_draw_live()==0&&dnd_aram_stat(4)==0);free(big);
-    free(v);free(ix);puts("Terrain archive: exact indexed/trimmed payloads retain UV/alpha; 10000 byte-exact ARAM view binds; no uploads/allocations; atomic cache exhaustion, save-cache suspension/resume, reuse, guards and pinned parent lifetime passed");
+    free(v);free(ix);puts("Terrain archive: exact indexed/trimmed payloads retain UV/alpha; 10000 byte-exact ARAM view binds; no uploads/allocations; 96 KiB cold scratch/full-cache promotion, atomic cache exhaustion, save-cache suspension/resume, reuse, guards and pinned parent lifetime passed");
 }
