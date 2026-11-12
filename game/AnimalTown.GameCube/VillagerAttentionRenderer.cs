@@ -8,6 +8,8 @@ using Dolphin.Graphics;
 internal sealed class VillagerAttentionRenderer : IDisposable
 {
     private Mesh? mesh;
+    private Texture2D? noise;
+    private int preparedNoise=-1;
     private readonly float[] heights=new float[6],joint=new float[16];
     internal void Register(int species,ModelInstance instance)
     {
@@ -18,13 +20,19 @@ internal sealed class VillagerAttentionRenderer : IDisposable
     private readonly Transform[] poses=new Transform[6];
     private readonly Material material=new Material{Lighting=LightingMode.Unlit,Blend=BlendMode.Alpha,DepthWrite=false,DepthTest=true,Cull=CullMode.Back};
     internal VillagerAttentionRenderer(){for(int i=0;i<poses.Length;i++)poses[i]=new Transform();}
-    internal void Prepare(){if(mesh==null)mesh=Mesh.Create(BuildVertices());}
-    public void Dispose(){Array.Clear(meshes,0,meshes.Length);mesh?.Dispose();mesh=null;}
-    internal static VertexPositionColor[] BuildVertices()
+    internal void Prepare(){
+        if(mesh==null)mesh=Mesh.Create(BuildVertices());
+        int percent=UiNoiseSettings.Percent;if(preparedNoise==percent)return;
+        Texture2D? replacement=percent==0?null:Texture2D.FromPackage(LowPolyTree.DetailTexture(percent),true);
+        replacement?.ConfigureSampler(TextureWrapMode.Repeat,TextureWrapMode.Repeat,TextureMinFilter.LinearMipmapLinear,TextureMagFilter.Linear);
+        material.Texture=replacement;noise?.Dispose();noise=replacement;preparedNoise=percent;
+    }
+    public void Dispose(){Array.Clear(meshes,0,meshes.Length);mesh?.Dispose();mesh=null;material.Texture=null;noise?.Dispose();noise=null;preparedNoise=-1;}
+    internal static VertexPositionColorTexture[] BuildVertices()
     {
-        var vertices=new List<VertexPositionColor>(132);
+        var vertices=new List<VertexPositionColorTexture>(132);
         void Triangle(float ax,float ay,float bx,float by,float cx,float cy,float z,Color32 color){
-            vertices.Add(new VertexPositionColor(new Vector3(ax,ay,z),color));vertices.Add(new VertexPositionColor(new Vector3(bx,by,z),color));vertices.Add(new VertexPositionColor(new Vector3(cx,cy,z),color));
+            vertices.Add(new VertexPositionColorTexture(new Vector3(ax,ay,z),color,new Vector2(ax*1.5f,ay*1.5f)));vertices.Add(new VertexPositionColorTexture(new Vector3(bx,by,z),color,new Vector2(bx*1.5f,by*1.5f)));vertices.Add(new VertexPositionColorTexture(new Vector3(cx,cy,z),color,new Vector2(cx*1.5f,cy*1.5f)));
         }
         void Disc(float cx,float cy,float rx,float ry,float z,Color32 color,int count){
             for(int i=0;i<count;i++){float a=-i*6.2831853f/count,b=-(i+1)*6.2831853f/count;Triangle(cx,cy,cx+rx*(float)Math.Cos(a),cy+ry*(float)Math.Sin(a),cx+rx*(float)Math.Cos(b),cy+ry*(float)Math.Sin(b),z,color);}

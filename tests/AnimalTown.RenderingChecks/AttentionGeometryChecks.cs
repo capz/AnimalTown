@@ -12,6 +12,7 @@ internal static class AttentionGeometryChecks
         }
         foreach(var v in vertices){
             check(float.IsFinite(v.Position.X)&&float.IsFinite(v.Position.Y)&&Math.Abs(v.Position.X)<.5f&&v.Position.Y>-.4f&&v.Position.Y<.3f,"complete icon fits its conservative viewport bound");
+            check(Math.Abs(v.TextureCoordinate.X-v.Position.X*1.5f)<.00001f&&Math.Abs(v.TextureCoordinate.Y-v.Position.Y*1.5f)<.00001f,"attention paper/tail/glyph share continuous noise coordinates");
             check(v.Position.Z>=0&&v.Position.Z<=.02f,"icon layers stay in front-to-back order for depth-tested drawing");
             translucent|=v.Color.A<255;opaque|=v.Color.A==255;
         }

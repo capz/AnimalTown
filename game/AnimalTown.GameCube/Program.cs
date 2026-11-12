@@ -13,7 +13,8 @@ using Hypercube;
 
 internal static class Program
 {
-    private static int Main()
+    private static int Main(){try{return Run();}finally{UiNoise.Shutdown();}}
+    private static int Run()
     {
         DebugOverlay.PerformanceVisible=false;
         DebugOverlay.WriteLine("AnimalTown "+BuildInfo.Version);
@@ -145,7 +146,7 @@ internal sealed class TownGame : IDisposable
     private bool cliffPreview;
     private int waterInspection;
     private int buildingInspection;
-    private const int SettingsTab=5,TestingTab=6,TestingRows=29;
+    private const int SettingsTab=5,TestingTab=6,TestingRows=30;
     private static readonly string[] tabs={"Backpack","Jobs","Catalog","Home","Post office","Settings","Debug / testing"};
     private static readonly string[] itemActions={"Drop","Place (R rotates)","Plant","Eat","Wear","Equip","Bury","Open money bag","Read","Quit"};
     internal TownGame(DevConfig config,TownSession session)
@@ -336,6 +337,10 @@ internal sealed class TownGame : IDisposable
             if(left||right){renderDebug.CycleWaterStyle();return;}
             if(p.Z.WasPressed){renderDebug.ResetWaterStyle();return;}
         }
+        if(screen=="menu"&&menuTab==TestingTab&&selected==29&&!chord){
+            if(left||right){UiNoiseSettings.Adjust(right?1:-1);return;}
+            if(p.Z.WasPressed){UiNoiseSettings.Reset();return;}
+        }
         if(screen=="menu"&&menuTab==TestingTab&&(selected==25||selected==26)&&!chord){
             int option=selected==25?DevConfig.TreeNoiseStrength:DevConfig.TreeNoiseScale;
             if(left||right){debugConfig.Adjust(option,right?1:-1);return;}
@@ -493,6 +498,7 @@ internal sealed class TownGame : IDisposable
             case 22:renderDebug.GroundMipmaps=!renderDebug.GroundMipmaps;break;
             case 23:renderDebug.AdjustGroundMipDistance(1);break;
             case 24:renderDebug.CycleWaterStyle();break;
+            case 29:UiNoiseSettings.Adjust(1);break;
             case 25:debugConfig.Adjust(DevConfig.TreeNoiseStrength,1);break;
             case 26:debugConfig.Adjust(DevConfig.TreeNoiseScale,1);break;
             case 27:uiShapes.Trim();card?.Dispose();card=null;DevConfigStorage.Save(debugConfig);Say("Tree noise",DevConfigStorage.Status);break;
@@ -542,7 +548,8 @@ internal sealed class TownGame : IDisposable
             case 25:return "Tree noise strength: "+debugConfig.TreeNoiseStrengthPercent+"%";
             case 26:return "Tree noise scale: "+debugConfig.TreeNoiseScalePercent+"%";
             case 27:return "Save tree noise settings";
-            default:return "Restore saved tree noise";
+            case 28:return "Restore saved tree noise";
+            default:return "UI bubble noise: "+UiNoiseSettings.Percent+"% (session)";
         }
     }
     private void Interact()
@@ -723,7 +730,7 @@ internal sealed class TownGame : IDisposable
         UpdateAnimationFrame();
         if(renderDebug.ForceAttention&&villagers.Doors.PlayerFade<1)attention.Prepare();
         phase=FrameProfile.Start();uiShapes.Prepare(screen,screen=="menu"?menuTab:-1,batchedDrawing);if((batchedDrawing&&screen=="map")||(runningMinimap.Visible&&screen=="world"&&room==0))mapBackground.Prepare(state.Town);modelUsed=0;FrameProfile.End(8,phase);
-        phase=FrameProfile.Start();device.BeginFrame(room==0?(weather.Raining(room)?new Color32(112,143,151):new Color32(149,198,186)):new Color32(32,40,39));
+        phase=FrameProfile.Start();UiNoise.Prepare();device.BeginFrame(room==0?(weather.Raining(room)?new Color32(112,143,151):new Color32(149,198,186)):new Color32(32,40,39));
         float eyeHeight=PlayerHeight();
         if(room==0)camera.LookAt(new Vector3(state.X,CylinderWorld.CameraHeight+eyeHeight,state.Z+CylinderWorld.CameraBack),new Vector3(state.X,eyeHeight,state.Z-CylinderWorld.CameraAimAhead),new Vector3(0,1,0));
         else{float size=BuildingWorld.Size(state,room);indoorView.LookAt(new Vector3(indoorCamera.EyeX(size),indoorCamera.EyeY(size),indoorCamera.EyeZ(size)),new Vector3(size*.5f,.7f,size*.5f),new Vector3(0,1,0));}
@@ -843,9 +850,9 @@ internal sealed class TownGame : IDisposable
         Strong(label,left+(action?48:16),328,new Color32(49,72,62),scale);
     }
     private void Panel(float x,float y,float w,float h)
-    { float radius=Math.Min(30,h*.5f);if(batchedDrawing&&uiShapes.DrawPanel(ui,x,y,w,h,radius))return;Bulged(x+4,y+5,w,h,radius,new Color32(49,72,62,130),false);Bulged(x,y,w,h,radius,new Color32(255,245,221),false); }
+    { using var grain=UiNoise.Scope(); float radius=Math.Min(30,h*.5f);if(batchedDrawing&&uiShapes.DrawPanel(ui,x,y,w,h,radius))return;Bulged(x+4,y+5,w,h,radius,new Color32(49,72,62,130),false);Bulged(x,y,w,h,radius,new Color32(255,245,221),false); }
     private void Bulged(float x,float y,float w,float h,float radius,Color32 color,bool cache=true)
-    {
+    { using var grain=UiNoise.Scope();
         if(cache&&batchedDrawing&&uiShapes.Draw(ui,x,y,w,h,radius,true,color))return;
         Rounded(x,y,w,h,radius,color,false);if(h<=radius*2+1)return;
         float start=y+radius,span=h-2*radius;
@@ -857,7 +864,7 @@ internal sealed class TownGame : IDisposable
         }
     }
     private void Rounded(float x,float y,float w,float h,float radius,Color32 color,bool cache=true)
-    {
+    { using var grain=UiNoise.Scope();
         if(cache&&batchedDrawing&&uiShapes.Draw(ui,x,y,w,h,radius,false,color))return;
         ui.FillRectangle(new RectF(x+radius,y,w-2*radius,h),color);
         ui.FillRectangle(new RectF(x,y+radius,radius,h-2*radius),color);
@@ -874,7 +881,7 @@ internal sealed class TownGame : IDisposable
     {
         Rounded(36,329,576,108,30,new Color32(48,65,58,130));
         Rounded(32,324,576,108,30,new Color32(255,245,221));
-        ui.FillTriangle(new Vector2(112,428),new Vector2(142,428),new Vector2(118,446),new Color32(255,245,221));
+        using(UiNoise.Scope())ui.FillTriangle(new Vector2(112,428),new Vector2(142,428),new Vector2(118,446),new Color32(255,245,221));
         Rounded(48,299,180,38,19,new Color32(53,105,84));
         Strong(speaker,62,306,new Color32(255,245,221),1.35f);Text(wrappedDialogue,57,344,new Color32(49,72,62),1.4f,typeAt);
     }
@@ -921,7 +928,7 @@ internal sealed class TownGame : IDisposable
         int total=screen=="menu"?TabCount():screen=="shop"?state.Town.StockCount:screen=="mail"?Math.Max(1,state.MailCount):screen=="lost"?Math.Max(1,LostCount()):screen=="store"?8:7;
         bool compact=screen=="menu"&&(menuTab==SettingsTab||menuTab==TestingTab);int page=compact?9:8,step=compact?24:29;float rowScale=compact?1.2f:1.4f;int first=selected/page*page;
         for(int i=first;i<Math.Min(total,first+page);i++){float y=131+(i-first)*step;if(i==selected){Rounded(57,y,520,step-2,(step-2)*.5f,new Color32(221,231,188));Strong("> "+RowLabel(i),68,y,ink,rowScale);}else Text("  "+RowLabel(i),68,y,ink,rowScale);}
-        Text(screen=="menu"&&menuTab==TestingTab&&(selected==25||selected==26)?"Left/Right: adjust   A: increase   Z: reset":screen=="menu"&&menuTab==TestingTab&&selected==20?"Left/Right: 5%   A: +5%   Z: reset":screen=="menu"&&menuTab==TestingTab&&selected==23?"Left/Right: 1 square   A: +1   Z: Auto":screen=="menu"&&menuTab==TestingTab&&selected==24?"A / Left/Right: switch   Z: Wind Waker":"Stick / D-pad choose   L/R tabs   A select   B close",65,392,ink,1);
+        Text(screen=="menu"&&menuTab==TestingTab&&(selected==25||selected==26||selected==29)?"Left/Right: adjust   A: increase   Z: reset":screen=="menu"&&menuTab==TestingTab&&selected==20?"Left/Right: 5%   A: +5%   Z: reset":screen=="menu"&&menuTab==TestingTab&&selected==23?"Left/Right: 1 square   A: +1   Z: Auto":screen=="menu"&&menuTab==TestingTab&&selected==24?"A / Left/Right: switch   Z: Wind Waker":"Stick / D-pad choose   L/R tabs   A select   B close",65,392,ink,1);
         if(screen=="menu"&&menuTab==SettingsTab){
             Text("Manual saves only. Choose Save now to write the card.",65,331,ink,1);
             Text(saveStatusText.Get(saveStatus),65,357,ink,1);
