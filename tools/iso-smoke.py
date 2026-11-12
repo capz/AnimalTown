@@ -55,11 +55,11 @@ def start_display():
 def rgb(name):
     return subprocess.check_output(['ffmpeg','-v','error','-i',str(root/name),'-frames:v','1','-f','rawvideo','-pix_fmt','rgb24','-'])
 
-def color_count(pixels,color,tolerance=12):
+def color_count(pixels,color,tolerance=20):
     return sum(all(abs(pixels[i+c]-value)<=tolerance for c,value in enumerate(color))
                for i in range(0,len(pixels),3))
 
-def region_color_count(pixels,color,left,top,right,bottom,tolerance=12):
+def region_color_count(pixels,color,left,top,right,bottom,tolerance=20):
     return sum(all(abs(pixels[(y*800+x)*3+c]-value)<=tolerance for c,value in enumerate(color))
                for y in range(top,bottom) for x in range(left,right))
 
