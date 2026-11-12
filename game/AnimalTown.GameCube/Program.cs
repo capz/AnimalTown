@@ -74,6 +74,7 @@ internal sealed class TownGame : IDisposable
     internal bool ExitToTitle {get;private set;}
 
     private readonly TownClock townClock=new TownClock();
+    private readonly DevConfig debugConfig;
     private readonly RenderDebugOptions renderDebug=new RenderDebugOptions();
     private readonly VillagerAttentionRenderer attention=new VillagerAttentionRenderer();
     private readonly DebugWeather weather=new DebugWeather();
@@ -144,7 +145,7 @@ internal sealed class TownGame : IDisposable
     private bool cliffPreview;
     private int waterInspection;
     private int buildingInspection;
-    private const int SettingsTab=5,TestingTab=6,TestingRows=25;
+    private const int SettingsTab=5,TestingTab=6,TestingRows=29;
     private static readonly string[] tabs={"Backpack","Jobs","Catalog","Home","Post office","Settings","Debug / testing"};
     private static readonly string[] itemActions={"Drop","Place (R rotates)","Plant","Eat","Wear","Equip","Bury","Open money bag","Read","Quit"};
     internal TownGame(DevConfig config,TownSession session)
@@ -162,6 +163,7 @@ internal sealed class TownGame : IDisposable
         syllable=Sound.FromPcm8(pcm,16000);syllable.Volume=.12f;dialogueVoice=new DialogueVoice(syllable);
         sessionStart=Clock.Timestamp;
         ReadCalendar();
+        debugConfig=config;
         state=session.State;loaded=session.Loaded;damagedSave=session.Damaged;saveStatus=session.Status;day=Math.Max(day,state.Town.Day);month=Math.Max(month,state.Town.Month);
         BuildingCatalog.Configure(File.ReadAllBytes("dvd:/buildings.bin"));
         LoadingScreen.Pulse();
@@ -333,6 +335,11 @@ internal sealed class TownGame : IDisposable
             if(left||right){renderDebug.CycleWaterStyle();return;}
             if(p.Z.WasPressed){renderDebug.ResetWaterStyle();return;}
         }
+        if(screen=="menu"&&menuTab==TestingTab&&(selected==25||selected==26)&&!chord){
+            int option=selected==25?DevConfig.TreeNoiseStrength:DevConfig.TreeNoiseScale;
+            if(left||right){debugConfig.Adjust(option,right?1:-1);return;}
+            if(p.Z.WasPressed){debugConfig.Reset(option);return;}
+        }
         if(p.L.IsHeld&&p.R.IsHeld&&p.Z.WasPressed){FrameProfile.Enabled=!FrameProfile.Enabled;return;}
         if(p.L.IsHeld&&p.R.IsHeld&&p.Y.WasPressed){ToggleModelPath();return;}
         if(p.L.IsHeld&&p.R.IsHeld&&p.DPadDown.WasPressed){if(batchedDrawing)UiFont.Batched=!UiFont.Batched;return;}
@@ -485,6 +492,15 @@ internal sealed class TownGame : IDisposable
             case 22:renderDebug.GroundMipmaps=!renderDebug.GroundMipmaps;break;
             case 23:renderDebug.AdjustGroundMipDistance(1);break;
             case 24:renderDebug.CycleWaterStyle();break;
+            case 25:debugConfig.Adjust(DevConfig.TreeNoiseStrength,1);break;
+            case 26:debugConfig.Adjust(DevConfig.TreeNoiseScale,1);break;
+            case 27:card?.Dispose();card=null;DevConfigStorage.Save(debugConfig);Say("Tree noise",DevConfigStorage.Status);break;
+            case 28:
+                card?.Dispose();card=null;
+                var saved=DevConfigStorage.Load();
+                debugConfig.Values[DevConfig.TreeNoiseStrength]=saved.Values[DevConfig.TreeNoiseStrength];
+                debugConfig.Values[DevConfig.TreeNoiseScale]=saved.Values[DevConfig.TreeNoiseScale];
+                Say("Tree noise",DevConfigStorage.Status);break;
         }
     }
     private void ToggleBatching()
@@ -521,7 +537,11 @@ internal sealed class TownGame : IDisposable
             case 21:return "SDK performance overlay: "+OnOff(DebugOverlay.PerformanceVisible);
             case 22:return "Ground mipmaps: "+OnOff(renderDebug.GroundMipmaps);
             case 23:return "Ground mip distance: "+(renderDebug.GroundMipDistance==0?"Auto":renderDebug.GroundMipDistance+(renderDebug.GroundMipDistance==1?" square":" squares"));
-            default:return "Water rendering: "+(renderDebug.WaterStyle==WaterRenderStyle.WindWaker?"Wind Waker":"Sunshine");
+            case 24:return "Water rendering: "+(renderDebug.WaterStyle==WaterRenderStyle.WindWaker?"Wind Waker":"Sunshine");
+            case 25:return "Tree noise strength: "+debugConfig.TreeNoiseStrengthPercent+"%";
+            case 26:return "Tree noise scale: "+debugConfig.TreeNoiseScalePercent+"%";
+            case 27:return "Save tree noise settings";
+            default:return "Restore saved tree noise";
         }
     }
     private void Interact()
@@ -690,7 +710,7 @@ internal sealed class TownGame : IDisposable
         LoadingScreen.Finish();
         // Only a drawable scene may evaluate native poses. Shadow receivers
         // use logical positions and can prepare while the landscape loads.
-        if(room==0){trees.Prepare(terrain.RenderSeason);fences.Prepare(state);droppedItems.Prepare(state,cachedPlayerHeight);}
+        if(room==0){trees.Prepare(terrain.RenderSeason,debugConfig.TreeNoiseStrengthPercent,debugConfig.TreeNoiseScalePercent);fences.Prepare(state);droppedItems.Prepare(state,cachedPlayerHeight);}
         if(weather.Raining(room)&&villagers.Doors.PlayerFade<1)rain.Prepare(state,(Clock.Timestamp-sessionStart)/1000000.0,cachedPlayerHeight);
         actorVisibility.Prepare(state,villagers.Doors,indoorCamera,waterInspection,cachedPlayerHeight);
         UpdateAnimationFrame();
@@ -894,7 +914,7 @@ internal sealed class TownGame : IDisposable
         int total=screen=="menu"?TabCount():screen=="shop"?state.Town.StockCount:screen=="mail"?Math.Max(1,state.MailCount):screen=="lost"?Math.Max(1,LostCount()):screen=="store"?8:7;
         bool compact=screen=="menu"&&(menuTab==SettingsTab||menuTab==TestingTab);int page=compact?9:8,step=compact?24:29;float rowScale=compact?1.2f:1.4f;int first=selected/page*page;
         for(int i=first;i<Math.Min(total,first+page);i++){float y=131+(i-first)*step;if(i==selected){Rounded(57,y,520,step-2,(step-2)*.5f,new Color32(221,231,188));Strong("> "+RowLabel(i),68,y,ink,rowScale);}else Text("  "+RowLabel(i),68,y,ink,rowScale);}
-        Text(screen=="menu"&&menuTab==TestingTab&&selected==20?"Left/Right: 5%   A: +5%   Z: reset":screen=="menu"&&menuTab==TestingTab&&selected==23?"Left/Right: 1 square   A: +1   Z: Auto":screen=="menu"&&menuTab==TestingTab&&selected==24?"A / Left/Right: switch   Z: Wind Waker":"Stick / D-pad choose   L/R tabs   A select   B close",65,392,ink,1);
+        Text(screen=="menu"&&menuTab==TestingTab&&(selected==25||selected==26)?"Left/Right: adjust   A: increase   Z: reset":screen=="menu"&&menuTab==TestingTab&&selected==20?"Left/Right: 5%   A: +5%   Z: reset":screen=="menu"&&menuTab==TestingTab&&selected==23?"Left/Right: 1 square   A: +1   Z: Auto":screen=="menu"&&menuTab==TestingTab&&selected==24?"A / Left/Right: switch   Z: Wind Waker":"Stick / D-pad choose   L/R tabs   A select   B close",65,392,ink,1);
         if(screen=="menu"&&menuTab==SettingsTab){
             Text("Manual saves only. Choose Save now to write the card.",65,331,ink,1);
             Text(saveStatusText.Get(saveStatus),65,357,ink,1);

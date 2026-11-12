@@ -21,7 +21,9 @@ material pass. Fixed-seed soft mottling and fine grain use tree-local planar
 UVs, repeat wrapping and a complete box-filtered trilinear mip chain to reduce
 distant shimmer. The texture is shared across species and seasons: 1,440 native
 pixel bytes (1,472 including its temporary package header). It is generated once
-per tree renderer, never uploaded per frame, and disposed with the renderer.
+per tree renderer, updated only when its debug strength changes, and disposed
+with the renderer. [Debug strength and scale controls](tree-noise-debug.md)
+include persistent Save/Restore actions.
 The textured vertices add UV bandwidth and one texture sample; triangle counts
 and submission counts stay unchanged. No overlay pass or per-tree texture is used.
 

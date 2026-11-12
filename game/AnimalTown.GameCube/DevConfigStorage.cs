@@ -8,6 +8,7 @@ internal static class DevConfigStorage
     internal static string Status="Dev config defaults";
     internal static DevConfig Load()
     {
+        Status="Dev config defaults";
         try{
             using var card=MemoryCard.Mount(StorageDevice.MemoryCardSlotA,new MemoryCardIdentity("AMTE","01"));
             var entries=card.GetEntries();for(int i=0;i<entries.Length;i++)if(entries[i].Name==FileName){var config=DevConfig.Decode(card.ReadAllBytes(FileName));Status="Dev config loaded";Dolphin.Diagnostics.DebugOverlay.WriteLine("ANIMALTOWN DEV CONFIG LOADED");return config;}

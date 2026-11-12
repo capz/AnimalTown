@@ -35,7 +35,7 @@ internal sealed class TitleScreen : IDisposable
                 if(direction==MenuNavigation.Down)title.debugSelected=(title.debugSelected+1)%title.rows.Length;
                 if(p.A.WasPressed||direction==MenuNavigation.Left||direction==MenuNavigation.Right||p.Z.WasPressed){
                     int row=title.rows[title.debugSelected];
-                    if(p.Z.WasPressed&&(row==20||row==23))config.Values[row]=row==20?100:0;
+                    if(p.Z.WasPressed&&DevConfig.IsSlider(row))config.Reset(row);
                     else if(!p.Z.WasPressed)config.Adjust(row,direction==MenuNavigation.Left?-1:1);
                     else continue;
                     title.dirty=true;DevConfigStorage.ApplyGlobal(config);
@@ -120,7 +120,9 @@ internal sealed class TitleScreen : IDisposable
             case 21:return "SDK performance overlay: "+toggle;case 22:return "Ground mipmaps: "+toggle;
             case 23:return "Ground mip distance: "+(value==0?"Auto":value+" squares");
             case 24:return "Freeze landscape motion: "+toggle;case 25:return "Recreate terrain meshes: "+toggle;
-            default:return "Legacy ground ring: "+toggle;
+            case 26:return "Legacy ground ring: "+toggle;
+            case DevConfig.TreeNoiseStrength:return "Tree noise strength: "+config.TreeNoiseStrengthPercent+"%";
+            default:return "Tree noise scale: "+config.TreeNoiseScalePercent+"%";
         }
     }
     public void Dispose(){background.Dispose();TextureCache.Release(logo);font.Release();ui.Dispose();TextureCache.TrimUnused();}

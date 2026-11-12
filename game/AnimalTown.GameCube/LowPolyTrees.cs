@@ -10,7 +10,7 @@ internal sealed class LowPolyTrees : IDisposable
     private readonly Mesh[] geometry=new Mesh[3];
     private readonly Material material=new Material{Cull=CullMode.Back,Lighting=LightingMode.Unlit,Color=Color32.White};
     private Texture2D? detail;
-    private int preparedSeason=-1;
+    private int preparedSeason=-1,preparedStrength=-1,preparedScale=-1;
     private readonly Transform[] poses=new Transform[Capacity],batchTransforms=new Transform[Capacity];
     private readonly Mesh[] batchMeshes=new Mesh[Capacity];
     private readonly int[] kinds=new int[Capacity];
@@ -24,16 +24,21 @@ internal sealed class LowPolyTrees : IDisposable
         Array.Clear(batchMeshes,0,batchMeshes.Length);
         for(int i=0;i<geometry.Length;i++){geometry[i]?.Dispose();geometry[i]=null!;}
         material.Texture=null;detail?.Dispose();detail=null;
-        preparedSeason=-1;
+        preparedSeason=preparedStrength=preparedScale=-1;
     }
-    internal void Prepare(int season)
+    internal void Prepare(int season,int strengthPercent=100,int scalePercent=100)
     {
-        if(preparedSeason==season)return;
-        if(detail==null){
-            detail=Texture2D.FromPackage(LowPolyTree.DetailTexture(),true);
-            detail.ConfigureSampler(TextureWrapMode.Repeat,TextureWrapMode.Repeat,TextureMinFilter.LinearMipmapLinear,TextureMagFilter.Linear);
-            material.Texture=detail;
+        if(strengthPercent<0||strengthPercent>300||scalePercent<25||scalePercent>400)throw new ArgumentOutOfRangeException();
+        if(preparedStrength!=strengthPercent){
+            Texture2D? replacement=null;
+            if(strengthPercent>0){
+                replacement=Texture2D.FromPackage(LowPolyTree.DetailTexture(strengthPercent),true);
+                replacement.ConfigureSampler(TextureWrapMode.Repeat,TextureWrapMode.Repeat,TextureMinFilter.LinearMipmapLinear,TextureMagFilter.Linear);
+            }
+            material.Texture=replacement;detail?.Dispose();detail=replacement;preparedStrength=strengthPercent;
         }
+        if(preparedSeason==season&&preparedScale==scalePercent)return;
+        float uvScale=100f/scalePercent;
         for(int kind=0;kind<3;kind++){
             var tree=LowPolyTree.Build(kind);
             Color32 leaf=kind==1?new Color32(61,139,77):kind==2?new Color32(50,111,69):season==2?new Color32(184,121,49):season==3?new Color32(124,158,143):new Color32(84,147,65);
@@ -41,11 +46,11 @@ internal sealed class LowPolyTrees : IDisposable
             var vertices=new VertexPositionColorTexture[tree.Triangles*3];
             // Retain the old part/triangle order, including the same face colors.
             int at=0;for(int part=0;part<4;part++)for(int t=0;t<tree.Triangles;t++)if(tree.Parts[t]==part)for(int v=0;v<3;v++){
-                int p=t*9+v*3;vertices[at++]=new VertexPositionColorTexture(new Vector3(tree.Positions[p],tree.Positions[p+1],tree.Positions[p+2]),colors[part],new Vector2(tree.Uvs[t*6+v*2],tree.Uvs[t*6+v*2+1]));
+                int p=t*9+v*3;vertices[at++]=new VertexPositionColorTexture(new Vector3(tree.Positions[p],tree.Positions[p+1],tree.Positions[p+2]),colors[part],new Vector2(tree.Uvs[t*6+v*2]*uvScale,tree.Uvs[t*6+v*2+1]*uvScale));
             }
             var replacement=Mesh.Create(vertices);geometry[kind]?.Dispose();geometry[kind]=replacement;
         }
-        preparedSeason=season;
+        preparedSeason=season;preparedScale=scalePercent;
     }
     internal void Draw(Renderer renderer,Town town,int[] selected,float focusZ)
     {
