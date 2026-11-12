@@ -17,7 +17,7 @@ public sealed class TerrainStream
     private readonly float[] priority=new float[Capacity];
     private readonly bool[] candidateVisible=new bool[Capacity];
     public readonly bool[] Visible=new bool[Capacity];
-    public readonly CylinderRows CylinderRows=new CylinderRows();
+    public readonly CylinderRows CylinderRows;
     public readonly int[] X=new int[Capacity],Z=new int[Capacity];
     public int Count {get;private set;}
     public int BuildSlot {get;private set;}=-1;
@@ -31,6 +31,8 @@ public sealed class TerrainStream
     public bool Ready=>MissingVisible==0&&Count!=0;
     public bool Presentable {get;private set;}
     private int cursor,building=-1;private float cachedX=float.NaN,cachedZ;
+    public TerrainStream():this(new CylinderRows()){}
+    public TerrainStream(CylinderRows rows){CylinderRows=rows??throw new ArgumentNullException(nameof(rows));}
     public void Reset()
     {Array.Clear(lookup,0,lookup.Length);Array.Clear(ready,0,ready.Length);Array.Clear(started,0,started.Length);Array.Clear(Visible,0,Visible.Length);Count=0;cursor=0;building=BuildSlot=-1;MissingVisible=MissingWanted=0;cachedX=float.NaN;Presentable=false;}
     public bool InProgress(int slot)=>started[slot];

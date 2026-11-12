@@ -2,7 +2,7 @@
 function Get-ValidationPlan {
     param([string[]]$ChangedPaths=@(),[switch]$Full,[switch]$ForceRelease,[string]$Commit='',[string]$BaseRef='')
     $allManaged=@('ui','menu','text','trim','terrain','movement','dialogue','generation','life','saves','buildings','core')
-    $allRendering=@('water','services','movement','ground','index','visibility','attention','dropped-item')
+    $allRendering=@('water','services','movement','ground','index','visibility','attention','dropped-item','font')
     $rendering=[Collections.Generic.HashSet[string]]::new()
     $managed=[Collections.Generic.HashSet[string]]::new()
     # Each terrain-producing rule contributes its own rendering dependencies.
@@ -31,8 +31,8 @@ function Get-ValidationPlan {
         if($p -match '^server/|^tests/(server-integration|AnimalTown.ServerChecks)'){$backend=$true;continue}
         if($p -match '^(shared/AnimalTown.Domain/DevConfig|game/AnimalTown.GameCube/DevConfigStorage|tests/AnimalTown.Checks/DevConfigChecks)\.cs$'){Add-Managed 'saves';Add-Managed 'menu';continue}
         if($p -match '^game/AnimalTown.GameCube/(TitleScreen|TitleArt|TitleBackdrop|LoadingScreen|ProfilePicker|TownSession)\.cs$'){Add-Managed 'ui';Add-Managed 'menu';Add-Managed 'saves';continue}
-        if($p -match '^tests/AnimalTown.RenderingChecks/(WaterEffect|RenderingService|MovementTerrain|GroundRing|TerrainIndex|ActorVisibility|AttentionGeometry|DroppedItem)Checks\.cs$'){
-            $names=@{WaterEffect='water';RenderingService='services';MovementTerrain='movement';GroundRing='ground';TerrainIndex='index';ActorVisibility='visibility';AttentionGeometry='attention';DroppedItem='dropped-item'}
+        if($p -match '^tests/AnimalTown.RenderingChecks/(WaterEffect|RenderingService|MovementTerrain|GroundRing|TerrainIndex|ActorVisibility|AttentionGeometry|DroppedItem|UiTextLayout)Checks\.cs$'){
+            $names=@{WaterEffect='water';RenderingService='services';MovementTerrain='movement';GroundRing='ground';TerrainIndex='index';ActorVisibility='visibility';AttentionGeometry='attention';DroppedItem='dropped-item';UiTextLayout='font'}
             [void]$rendering.Add($names[$Matches[1]]);continue
         }
         if($p -match '^(shared/AnimalTown.Domain/(SunshineWater|WindWakerWaterPattern|WindWakerWaveField|WindWakerWaveGrid|WaterDepthCache|GroundRingPlan|ActorFrameVisibility|AnimationFrameClock)|game/AnimalTown.GameCube/(LocalOceanWaves|GroundRingRenderer|GeometryStaging|TerrainIndexBuffer|VillagerAttentionRenderer))\.cs$'){
@@ -40,6 +40,9 @@ function Get-ValidationPlan {
         }
         if($p -match '^(tools/native-terrain-(archive|recycle)\.inc|tests/native-terrain-(archive|recycle)\.c)$'){
             Add-Managed 'terrain';Add-Managed 'core';[void]$native.Add('patched');continue
+        }
+        if($p -match '^game/AnimalTown.GameCube/(UiFont|UiTextLayoutCache)\.cs$'){
+            Add-Managed 'ui';Add-Managed 'text';[void]$rendering.Add('font');continue
         }
         if($p -match '^tests/AnimalTown.Checks/Program.cs$'){$broad=$true;continue}
         if($p -match '^(shared/AnimalTown.Domain/WaterSurface|tests/AnimalTown.Checks/WaterSurfaceChecks)\.cs$') {Add-Managed 'terrain';continue}

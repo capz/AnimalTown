@@ -26,6 +26,7 @@ The runner and main-branch release workflow use the same dependency map in
 | Native terrain archive/recycling | Terrain/core, rendering, and native patch fixtures; no database/importer suites |
 | Dropped item renderer/plan | Terrain/core domain checks and dropped-item rendering checks |
 | Dropped item texture/cooker | Dropped-item asset and rendering checks; terrain/core domain checks |
+| Font storage/layout | UI, text and font layout equivalence checks |
 | Rendering test fixture only | That rendering fixture group |
 | Running minimap geometry | UI suite |
 | Docs/concept art only | No component tests or local console build |
@@ -42,7 +43,7 @@ The managed runner accepts `--suites` with comma-separated names: `ui`, `menu`,
 with zero checks.
 
 The rendering runner also accepts `--suites`: `water`, `services`, `movement`,
-`ground`, `index`, `visibility`, `attention`, `dropped-item`. No argument runs all eight; empty or
+`ground`, `index`, `visibility`, `attention`, `dropped-item`, `font`. No argument runs all nine; empty or
 unknown selections fail. The validation plan records these separately in
 `rendering`, so camera/terrain changes can retain broad geometry coverage while
 material or fixture edits run only their affected groups. Mixed changes take the

@@ -11,23 +11,35 @@ internal sealed class UiFont
     internal static bool Batched=true;
     // Flat storage avoids hundreds of per-glyph/layout objects in the console
     // managed heap. Direct-mapped layout slots have bounded lookup and memory.
-    private readonly Texture2D?[] regionTextures=new Texture2D?[96*8];
+    private readonly int regionStride;
+    private readonly Texture2D?[] regionTextures;
     // Per page slice: offset XY, size WH, normalized UV/size.
-    private readonly float[] regionData=new float[96*8*8],advances=new float[96];
+    private readonly float[] regionData;
+    private readonly float[] advances=new float[96];
     private readonly int[] regionCounts=new int[96];
-    private readonly string?[] layoutTexts=new string?[64];
-    private readonly float[] layoutX=new float[64*128],layoutY=new float[64*128],layoutWidths=new float[64];
+    private readonly UiTextLayoutCache layouts=new UiTextLayoutCache();
     private readonly Texture2D[] quadTextures=new Texture2D[128];
     private readonly float[] quadVertices=new float[128*24];
-    private readonly int[] pages,order,layoutOrderCounts=new int[64];
+    private readonly int[] pages,order,layoutOrderCounts;
     private readonly byte[] layoutOrder;
     private readonly float[] quadScratch;
-    private UiFont(CachedTexture texture,byte[] metrics){layoutOrder=new byte[0];pages=order=new int[0];quadScratch=new float[0];this.texture=texture;this.metrics=metrics;PrepareGlyphs();}
-    private UiFont(CachedTexture font){layoutOrder=new byte[64*128];pages=new int[128];order=new int[128];quadScratch=new float[24];firmware=font.FontMetrics;texture=font;metrics=new byte[0];PrepareGlyphs();}
+    private UiFont(CachedTexture texture,byte[] metrics):this(texture,metrics,false){}
+    private UiFont(CachedTexture font):this(font,new byte[0],true){}
+    private UiFont(CachedTexture texture,byte[] metrics,bool system)
+    {
+        this.texture=texture;this.metrics=metrics;firmware=system?texture.FontMetrics:null;
+        if(system&&firmware==null)throw new IOException("Missing firmware font metrics");
+        regionStride=system?1:UiTextLayoutCache.GlyphRegionStride(metrics);
+        regionTextures=new Texture2D?[96*regionStride];regionData=new float[96*regionStride*8];
+        layoutOrder=new byte[system?UiTextLayoutCache.Slots*UiTextLayoutCache.Characters:0];
+        layoutOrderCounts=new int[system?UiTextLayoutCache.Slots:0];
+        pages=new int[system?128:0];order=new int[system?128:0];quadScratch=new float[system?24:0];
+        PrepareGlyphs();
+    }
     private void PrepareGlyphs()
     {
         for(int i=0;i<96;i++){
-            int first=i*8;
+            int first=i*regionStride;
             if(firmware!=null){int n=i<95?i:'?'-32;advances[i]=firmware[8+n*5+4];int m=8+n*5;regionCounts[i]=firmware[m+2]>0?1:0;Region(first,texture.Pages[n/16],n%4*32+firmware[m],n%16/4*32+firmware[m+1],firmware[m+2],firmware[m+3],firmware[m],firmware[m+1]);continue;}
             int at=16+i*8,x=Get(at),y=Get(at+2),w=Get(at+4);advances[i]=Get(at+6);
             int firstX=x/128,firstY=y/128,lastX=(x+w+127)/128,lastY=(y+64+127)/128,used=0;
@@ -48,17 +60,9 @@ internal sealed class UiFont
     {quadVertices[at]=x;quadVertices[at+1]=y;quadVertices[at+2]=u;quadVertices[at+3]=v;}
     private int FindLayout(string text)
     {
-        if(text.Length>128)return -1;
-        uint hash=2166136261;for(int i=0;i<text.Length;i++)hash=(hash^text[i])*16777619;
-        int slot=(int)(hash&63),start=slot*128;
-        if(layoutTexts[slot]==text)return slot;
-        layoutTexts[slot]=text;layoutOrderCounts[slot]=-1;float x=0,y=0,max=0;
-        for(int i=0;i<text.Length;i++){
-            layoutX[start+i]=x;layoutY[start+i]=y;char c=text[i];
-            if(c=='\r')continue;if(c=='\n'){max=Math.Max(max,x);x=0;y+=firmware!=null?firmware[4]:64;continue;}
-            x+=firmware!=null&&c=='\t'?advances[0]*4:advances[Index(c)];
-        }
-        layoutWidths[slot]=Math.Max(max,x);return slot;
+        int slot=layouts.Find(text,advances,firmware!=null?firmware[4]:64,firmware!=null,out bool changed);
+        if(slot>=0&&changed&&firmware!=null)layoutOrderCounts[slot]=-1;
+        return slot;
     }
     internal void Release()=>TextureCache.Release(texture);
     internal static UiFont LoadSystem()
@@ -95,11 +99,11 @@ internal sealed class UiFont
         float f=firmware!=null?scale*22/firmware[1]:scale*Factor;
         int layout=FindLayout(text);float pen=0,line=0,pivotX=x,pivotY=y+16*scale;
         int used=0;float cosine=1,sine=0;
-        if(firmware==null&&rotation!=0){pivotX+=(layout>=0?layoutWidths[layout]*f:Measure(text,scale))*.5f;float a=rotation*.01745329252f;cosine=(float)Math.Cos(a);sine=(float)Math.Sin(a);}
+        if(firmware==null&&rotation!=0){pivotX+=(layout>=0?layouts.Width(layout)*f:Measure(text,scale))*.5f;float a=rotation*.01745329252f;cosine=(float)Math.Cos(a);sine=(float)Math.Sin(a);}
         for(int i=0;i<end;i++){
             char c=text[i];if(c=='\r')continue;if(c=='\n'){pen=0;line+=firmware!=null?firmware[4]:64;continue;}
-            int glyph=Index(c);float gx=x+(layout>=0?layoutX[layout*128+i]:pen)*f,gy=y+(layout>=0?layoutY[layout*128+i]:line)*f;
-            if(c!=' '&&(firmware==null||c!='\t'))for(int p=glyph*8;p<glyph*8+regionCounts[glyph];p++){
+            int glyph=Index(c);float gx=x+(layout>=0?layouts.X(layout,i):pen)*f,gy=y+(layout>=0?layouts.Y(layout,i):line)*f;
+            if(c!=' '&&(firmware==null||c!='\t'))for(int p=glyph*regionStride;p<glyph*regionStride+regionCounts[glyph];p++){
                 if(used==quadTextures.Length){Flush(ui,used,color,layout);used=0;}
                 int d=p*8,at=used*24;float left=gx+regionData[d]*f,top=gy+regionData[d+1]*f,right=left+regionData[d+2]*f,bottom=top+regionData[d+3]*f;
                 float x0=left,y0=top,x1=right,y1=top,x2=right,y2=bottom,x3=left,y3=bottom;

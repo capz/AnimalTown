@@ -25,16 +25,16 @@ $p=Get-ValidationPlan -ChangedPaths @('docs/versioning.md') -ForceRelease;Assert
 $p=Get-ValidationPlan -ChangedPaths @('game/AnimalTown.GameCube/TitleArt.cs','game/AnimalTown.GameCube/TitleBackdrop.cs','game/AnimalTown.GameCube/LoadingScreen.cs');Assert (($p.managed -join ',') -eq 'ui,menu,saves' -and !$p.backend -and !$p.full) 'Independent title/loading UI needs UI, navigation and save checks'
 $p=Get-ValidationPlan -ChangedPaths @('game/AnimalTown.GameCube/ProfilePicker.cs','game/AnimalTown.GameCube/TownSession.cs');Assert (($p.managed -join ',') -eq 'ui,menu,saves' -and !$p.backend -and !$p.full) 'Profile selection must exercise UI, navigation and save loading'
 # Rendering fixture edits exercise only that fixture; production edits include dependents.
-$fixtures=@{WaterEffect='water';RenderingService='services';MovementTerrain='movement';GroundRing='ground';TerrainIndex='index';ActorVisibility='visibility';AttentionGeometry='attention';DroppedItem='dropped-item'}
+$fixtures=@{WaterEffect='water';RenderingService='services';MovementTerrain='movement';GroundRing='ground';TerrainIndex='index';ActorVisibility='visibility';AttentionGeometry='attention';DroppedItem='dropped-item';UiTextLayout='font'}
 foreach($fixture in $fixtures.Keys){
     $p=Get-ValidationPlan -ChangedPaths @("tests/AnimalTown.RenderingChecks/$($fixture)Checks.cs")
     Assert (($p.rendering -join ',') -eq $fixtures[$fixture] -and !$p.managed.Count -and !$p.backend -and !$p.full) "Rendering fixture routing incorrect: $fixture"
 }
 $p=Get-ValidationPlan -ChangedPaths @('shared/AnimalTown.Domain/SunshineWater.cs');Assert (($p.managed -join ',') -eq 'terrain,core' -and ($p.rendering -join ',') -eq 'water' -and !$p.backend -and !$p.full) 'Water materials must not start backend/importer tests'
 $p=Get-ValidationPlan -ChangedPaths @('shared/AnimalTown.Domain/WaterSurface.cs');Assert (($p.rendering -join ',') -eq 'water,movement') 'Water geometry must exercise the depth cache and cylinder movement checks'
-$p=Get-ValidationPlan -ChangedPaths @('shared/AnimalTown.Domain/WaterTerrain.cs');Assert (($p.managed -join ',') -eq 'terrain,movement,generation,life,core' -and $p.rendering.Count -eq 8 -and !$p.backend) 'Water terrain topology needs geometry, navigation and generation coverage'
-$p=Get-ValidationPlan -ChangedPaths @('shared/AnimalTown.Domain/SunshineWater.cs','shared/AnimalTown.Domain/RenderView.cs');Assert ($p.rendering.Count -eq 8) 'Mixed water and camera changes must retain all camera dependents'
-$p=Get-ValidationPlan -ChangedPaths @('shared/AnimalTown.Domain/RenderView.cs','shared/AnimalTown.Domain/SunshineWater.cs');Assert ($p.rendering.Count -eq 8) 'Selection must not depend on changed-path order'
+$p=Get-ValidationPlan -ChangedPaths @('shared/AnimalTown.Domain/WaterTerrain.cs');Assert (($p.managed -join ',') -eq 'terrain,movement,generation,life,core' -and $p.rendering.Count -eq 9 -and !$p.backend) 'Water terrain topology needs geometry, navigation and generation coverage'
+$p=Get-ValidationPlan -ChangedPaths @('shared/AnimalTown.Domain/SunshineWater.cs','shared/AnimalTown.Domain/RenderView.cs');Assert ($p.rendering.Count -eq 9) 'Mixed water and camera changes must retain all camera dependents'
+$p=Get-ValidationPlan -ChangedPaths @('shared/AnimalTown.Domain/RenderView.cs','shared/AnimalTown.Domain/SunshineWater.cs');Assert ($p.rendering.Count -eq 9) 'Selection must not depend on changed-path order'
 $p=Get-ValidationPlan -ChangedPaths @('shared/AnimalTown.Domain/GroundRingPlan.cs','tests/AnimalTown.RenderingChecks/WaterEffectChecks.cs');Assert (($p.rendering -join ',') -eq 'water,ground') 'Rendering selections must union across components'
 $p=Get-ValidationPlan -ChangedPaths @('game/AnimalTown.GameCube/GeometryStaging.cs');Assert (($p.rendering -join ',') -eq 'services' -and !$p.backend) 'Geometry staging must run rendering service checks'
 $p=Get-ValidationPlan -ChangedPaths @('game/AnimalTown.GameCube/TerrainIndexBuffer.cs');Assert (($p.rendering -join ',') -eq 'index') 'Index buffers must run index topology checks'
@@ -44,8 +44,8 @@ $p=Get-ValidationPlan -ChangedPaths @('tools/native-terrain-archive.inc','tests/
 $p=Get-ValidationPlan -ChangedPaths @('tests/AnimalTown.Checks/WaterSurfaceChecks.cs');Assert (($p.managed -join ',') -eq 'terrain' -and !$p.rendering.Count) 'Managed test-only edits must not rerun rendering fixtures'
 $p=Get-ValidationPlan -ChangedPaths @('shared/AnimalTown.Domain/RunningMinimap.cs');Assert (($p.managed -join ',') -eq 'ui' -and !$p.backend) 'Minimap geometry must use its UI fixture'
 $p=Get-ValidationPlan -ChangedPaths @('shared\AnimalTown.Domain\SunshineWater.cs','shared/AnimalTown.Domain/SunshineWater.cs');Assert (($p.rendering -join ',') -eq 'water') 'Windows path normalization and deduplication must preserve narrow checks'
-$p=Get-ValidationPlan -ChangedPaths @('tests/AnimalTown.RenderingChecks/NewChecks.cs');Assert ($p.full -and $p.rendering.Count -eq 8 -and $p.backend) 'Unknown rendering fixtures must be conservative'
-$p=Get-ValidationPlan -Full;Assert ($p.schema -eq 2 -and $p.rendering.Count -eq 8 -and 'patched' -in $p.native) 'Full validation must cover rendering and native patch fixtures'
+$p=Get-ValidationPlan -ChangedPaths @('tests/AnimalTown.RenderingChecks/NewChecks.cs');Assert ($p.full -and $p.rendering.Count -eq 9 -and $p.backend) 'Unknown rendering fixtures must be conservative'
+$p=Get-ValidationPlan -Full;Assert ($p.schema -eq 2 -and $p.rendering.Count -eq 9 -and 'patched' -in $p.native) 'Full validation must cover rendering and native patch fixtures'
 $p=Get-ValidationPlan -ChangedPaths @('shared/AnimalTown.Domain/DroppedItemPlan.cs','game/AnimalTown.GameCube/DroppedItemRenderer.cs');Assert (($p.managed -join ',') -eq 'terrain,core' -and ($p.rendering -join ',') -eq 'dropped-item' -and !$p.backend -and !$p.full) 'Dropped sprites need visibility and actual quad geometry checks'
 $p=Get-ValidationPlan -ChangedPaths @('assets/textures/items/dropped-item.dndtex','tools/AnimalTown.Tools/DroppedItemAssets.cs');Assert (($p.tooling -join ',') -eq 'dropped-item' -and ($p.rendering -join ',') -eq 'dropped-item' -and 'terrain' -in $p.managed -and !$p.full -and !$p.backend) 'Dropped item sources and native assets must exercise their cooker and geometry checks'
 $p=Get-ValidationPlan -Full;Assert ('dropped-item' -in $p.tooling -and 'dropped-item' -in $p.rendering) 'Full validation must include sprite source/native round trips and geometry'
@@ -55,4 +55,5 @@ foreach($path in @('shared/AnimalTown.Domain/BuildingPrompt.cs','tests/AnimalTow
     $p=Get-ValidationPlan -ChangedPaths @($path)
     Assert (($p.managed -join ',') -eq 'movement,life,saves,buildings' -and !$p.backend -and !$p.full -and !$p.rendering.Count) "Building entry routing must retain component coverage: $path"
 }
-Write-Host 'Validation routing checks passed (54 cases).'
+$p=Get-ValidationPlan -ChangedPaths @('game/AnimalTown.GameCube/UiFont.cs','game/AnimalTown.GameCube/UiTextLayoutCache.cs');Assert (($p.managed -join ',') -eq 'ui,text' -and ($p.rendering -join ',') -eq 'font' -and !$p.backend -and !$p.full) 'Font storage must select layout equivalence checks'
+Write-Host 'Validation routing checks passed (56 cases).'

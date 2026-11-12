@@ -14,7 +14,9 @@ internal sealed class TerrainRenderer : IDisposable
     private TerrainArchive? archive;
     private bool legacy=false; // Default: immutable ARAM archive and fixed MEM1 views.
     internal TerrainSection CreateSection()=>new TerrainSection(soil,waterMaterial);
-    private readonly TerrainStream stream=new TerrainStream();
+    // Archive mode needs row geometry, but not the legacy cache/job arrays.
+    private readonly CylinderRows rows=new CylinderRows();
+    private TerrainStream? stream;
     private readonly TerrainSection?[] sections=new TerrainSection?[TerrainStream.Capacity];
     private readonly FloorStrips staging=new FloorStrips(TerrainStream.Width*TerrainStream.Height);
     private readonly TerrainSoil soil=new TerrainSoil();
@@ -41,13 +43,13 @@ internal sealed class TerrainRenderer : IDisposable
     private ulong visibleGroundMask;
     private long geometryRevision;
     internal long GeometryRevision=>geometryRevision;
-    internal bool Ready=>legacy?stream.Presentable:archive?.Ready??false;
-    internal int LoadingRemaining=>legacy?stream.MissingWanted:archive?.Remaining??TerrainArchivePlan.Count;
-    internal int LoadingTotal=>legacy?stream.WantedCount:TerrainArchivePlan.Count;
-    internal int MissingVisible=>legacy?stream.MissingVisible:Ready?0:1;
+    internal bool Ready=>legacy?stream!.Presentable:archive?.Ready??false;
+    internal int LoadingRemaining=>legacy?stream!.MissingWanted:archive?.Remaining??TerrainArchivePlan.Count;
+    internal int LoadingTotal=>legacy?stream!.WantedCount:TerrainArchivePlan.Count;
+    internal int MissingVisible=>legacy?stream!.MissingVisible:Ready?0:1;
     internal int UrgentStages {get;private set;}
     internal bool FreezeMotion,RecreateMeshes=false;
-    internal CylinderRows Rows=>stream.CylinderRows;
+    internal CylinderRows Rows=>rows;
     private byte[] data=new byte[0];
     private int season=-1,forced,slots,cachedTerrainVersion=-1;
     private Town? cachedTown;
@@ -97,7 +99,7 @@ internal sealed class TerrainRenderer : IDisposable
         clouds.Dispose();waterMaterial.Dispose();soil.Dispose();
         for(int i=0;i<textures.Length;i++)if(textures[i]!=null){TextureCache.Release(textures[i]!);textures[i]=null;}
         for(int i=0;i<materials.Length;i++){materials[i].Texture=null;materials[i].SecondaryTexture=null;}
-        data=new byte[0];cachedTown=null;stream.Reset();disposed=true;
+        data=new byte[0];cachedTown=null;stream=null;legacy=false;disposed=true;
     }
     internal void Prepare(GameState state,int room,int month,VillagerShadows movingShadows,long deadline,bool cliffPreview=false)
     {
@@ -153,8 +155,13 @@ internal sealed class TerrainRenderer : IDisposable
         if(invalid){
             archive?.Dispose();archive=null;
             for(int i=0;i<sections.Length;i++){sections[i]?.Dispose();sections[i]=null;}
-            stream.Reset();legacy=nextLegacy;
-            if(!legacy){archive=new TerrainArchive();archive.Reset();}
+            legacy=nextLegacy;
+            if(legacy){
+                if(stream==null)stream=new TerrainStream(rows);else stream.Reset();
+            }else{
+                stream=null; // Let comparison-only lookup/job arrays retire.
+                archive=new TerrainArchive();archive.Reset();
+            }
             cachedTown=state.Town;cachedTerrainVersion=state.Town.TerrainVersion;
         }
         if(GroundRingActive){if(groundRing==null)groundRing=new GroundRingRenderer();groundRing.Prepare(state,data,flat,invalid);}
@@ -180,7 +187,7 @@ internal sealed class TerrainRenderer : IDisposable
             VisibleTriangles=gallery.Triangles+archive.Triangles+oceanWaves.Triangles;visibleGroundMask=archive.GroundMask;RejectedQuads=0;
             return;
         }
-        int steps=0;long selectAt=FrameProfile.Start();stream.Prepare(state.X,state.Z);
+        int steps=0;long selectAt=FrameProfile.Start();stream!.Prepare(state.X,state.Z);
         shadows.Prepare(state);cliffs.Prepare(state.Town);
         FrameProfile.DetailEnd(0,selectAt);
         // Landscape readiness takes priority. Moving shadows use spare stages
@@ -193,14 +200,14 @@ internal sealed class TerrainRenderer : IDisposable
         // panel or a hole. Reserve enough stages for the currently missing
         // visible jobs: each has at most eleven stages, including uploads. A fixed
         // sixteen-stage cutoff could leave a hole after a starved diagonal turn.
-        int repairs=stream.RepairStages;
-        while(stream.Presentable&&stream.MissingVisible>0&&UrgentStages<repairs){if(!AdvanceSection(state))break;UrgentStages++;}
+        int repairs=stream!.RepairStages;
+        while(stream!.Presentable&&stream!.MissingVisible>0&&UrgentStages<repairs){if(!AdvanceSection(state))break;UrgentStages++;}
         while(steps<8&&Clock.Timestamp<deadline){if(!movingShadows.Advance())break;steps++;}
         while(steps<8&&Clock.Timestamp<deadline){if(!cliffs.Advance())break;steps++;}
         while(steps<8&&Clock.Timestamp<deadline){if(!shadows.Advance())break;steps++;}
         gallery.PrepareGallery(state,this,cliffPreview);
         VisibleTriangles=gallery.Triangles+oceanWaves.Triangles+(GroundRingActive?GroundRingPlan.IndexCount/3:0);RejectedQuads=0;visibleGroundMask=0;
-        for(int i=0;i<stream.Count;i++)if(stream.Visible[i]){
+        for(int i=0;i<stream!.Count;i++)if(stream!.Visible[i]){
             var section=sections[i]!;VisibleTriangles+=section.Triangles;
             visibleGroundMask|=section.GroundMask|section.Walls.GroundMask;
         }
@@ -250,16 +257,16 @@ internal sealed class TerrainRenderer : IDisposable
     }
     private bool AdvanceSection(GameState state)
     {
-        if(stream.BuildSlot<0)return false;
-        int building=stream.BuildSlot;long at=FrameProfile.Start();bool publishing=stream.InProgress(building)&&sections[building]!.Publishing;
-        if(!stream.InProgress(building)){
-            stream.Hold();if(sections[building]==null)sections[building]=new TerrainSection(soil,waterMaterial);
+        if(stream!.BuildSlot<0)return false;
+        int building=stream!.BuildSlot;long at=FrameProfile.Start();bool publishing=stream!.InProgress(building)&&sections[building]!.Publishing;
+        if(!stream!.InProgress(building)){
+            stream!.Hold();if(sections[building]==null)sections[building]=new TerrainSection(soil,waterMaterial);
             else FrameProfile.RecycledSections++;
-            sections[building]!.Begin(state,stream.X[building],stream.Z[building],Rows);
+            sections[building]!.Begin(state,stream!.X[building],stream!.Z[building],Rows);
         }
         bool complete=sections[building]!.Advance(state,this,staging,data);geometryRevision++;BuiltThisFrame++;
         FrameProfile.DetailEnd(publishing?2:1,at);
-        if(complete){at=FrameProfile.Start();stream.Complete();stream.Prepare(state.X,state.Z);FrameProfile.DetailEnd(0,at);}
+        if(complete){at=FrameProfile.Start();stream!.Complete();stream!.Prepare(state.X,state.Z);FrameProfile.DetailEnd(0,at);}
         return true;
     }
     internal void CycleCloudCover()=>clouds.Cover=clouds.Cover==.5f?0:clouds.Cover==0?1:.5f;
@@ -307,7 +314,7 @@ internal sealed class TerrainRenderer : IDisposable
     }
     private void AddLegacyBed(Renderer renderer,bool ocean,Transform[] transforms)
     {
-        for(int i=0;i<stream.Count;i++)if(stream.Visible[i]){
+        for(int i=0;i<stream!.Count;i++)if(stream!.Visible[i]){
             Mesh? mesh=ocean?sections[i]!.Water.OceanMesh:sections[i]!.Water.SurfaceMesh;
             if(mesh==null)continue;
             batch[batchCount++]=mesh;
@@ -332,19 +339,19 @@ internal sealed class TerrainRenderer : IDisposable
     {
         NativeShadows.Scope(3);
         try{
-            for(int i=0;i<stream.Count;i++)if(stream.Visible[i])Add(renderer,waterMaterial.Surface,sections[i]!.Water.SurfaceMesh);
+            for(int i=0;i<stream!.Count;i++)if(stream!.Visible[i])Add(renderer,waterMaterial.Surface,sections[i]!.Water.SurfaceMesh);
             Flush(renderer,waterMaterial.Surface);
         }finally{NativeShadows.Scope(0);}
-        for(int i=0;i<stream.Count;i++)if(stream.Visible[i])Add(renderer,waterMaterial.OceanSurface,sections[i]!.Water.OceanMesh);
+        for(int i=0;i<stream!.Count;i++)if(stream!.Visible[i])Add(renderer,waterMaterial.OceanSurface,sections[i]!.Water.OceanMesh);
         Flush(renderer,waterMaterial.OceanSurface);
         oceanWaves.Draw(renderer,waterMaterial.OceanSurface,ScrollTransform);
         if(waterMaterial.IsSunshine){
-            for(int i=0;i<stream.Count;i++)if(stream.Visible[i])Add(renderer,waterMaterial.SunshineGlints,sections[i]!.Water.SurfaceMesh);
+            for(int i=0;i<stream!.Count;i++)if(stream!.Visible[i])Add(renderer,waterMaterial.SunshineGlints,sections[i]!.Water.SurfaceMesh);
             Flush(renderer,waterMaterial.SunshineGlints);
-            for(int i=0;i<stream.Count;i++)if(stream.Visible[i])Add(renderer,waterMaterial.SunshineGlints,sections[i]!.Water.OceanMesh);
+            for(int i=0;i<stream!.Count;i++)if(stream!.Visible[i])Add(renderer,waterMaterial.SunshineGlints,sections[i]!.Water.OceanMesh);
             Flush(renderer,waterMaterial.SunshineGlints);
         }
-        for(int i=0;i<stream.Count;i++)if(stream.Visible[i])Add(renderer,waterMaterial.Foam,sections[i]!.Water.FoamMesh);
+        for(int i=0;i<stream!.Count;i++)if(stream!.Visible[i])Add(renderer,waterMaterial.Foam,sections[i]!.Water.FoamMesh);
         Flush(renderer,waterMaterial.Foam);
     }
 
@@ -371,14 +378,14 @@ internal sealed class TerrainRenderer : IDisposable
             AddLegacyBed(renderer,false,riverBedPoses);
             AddLegacyBed(renderer,true,seaBedPoses);
         }else DrawLegacyWater(renderer);
-        for(int i=0;i<stream.Count;i++)if(stream.Visible[i])Add(renderer,soil.Material,sections[i]!.Walls.SoilMesh);
+        for(int i=0;i<stream!.Count;i++)if(stream!.Visible[i])Add(renderer,soil.Material,sections[i]!.Walls.SoilMesh);
         Flush(renderer,soil.Material);
         NativeShadows.Scope(1);
         try{
             if(GroundRingActive)groundRing!.Draw(renderer,materials[SharedFlatMaterial],ScrollTransform);
             for(int slot=0;slot<slots;slot++){
                 ulong mask=1UL<<slot;if((visibleGroundMask&mask)==0)continue;
-                for(int i=0;i<stream.Count;i++)if(stream.Visible[i]){
+                for(int i=0;i<stream!.Count;i++)if(stream!.Visible[i]){
                     var section=sections[i]!;
                     if((section.GroundMask&mask)!=0)Add(renderer,materials[slot],section.GroundMesh(slot));
                     if((section.Walls.GroundMask&mask)!=0)Add(renderer,materials[slot],section.Walls.GroundMesh(slot));
