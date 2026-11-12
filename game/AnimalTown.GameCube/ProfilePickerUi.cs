@@ -61,7 +61,7 @@ internal sealed class ProfilePickerUi : IDisposable
     }
     internal void Draw()
     {
-        var device=GraphicsDevice.Default;device.BeginFrame(TitleBackdrop.Color);ui.Begin();background.Draw(ui);
+        var device=GraphicsDevice.Default;UiNoise.Prepare();device.BeginFrame(TitleBackdrop.Color);ui.Begin();background.Draw(ui);
         TitleArt.Panel(ui,36,18,568,440);
         TitleArt.Rounded(ui,312,27,16,17,8,TitleArt.Leaf);TitleArt.Rounded(ui,317,34,6,11,3,TitleArt.Cream);
         TitleArt.Rounded(ui,309,21,8,5,2,Honey);TitleArt.Rounded(ui,323,21,8,5,2,Honey);

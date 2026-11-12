@@ -96,7 +96,7 @@ public sealed class OnboardingDraft : IDisposable
         if(!s.HousePlaced)throw new InvalidOperationException("Choose a home before saving");
         var actual=repository.Load();
         if(actual!=null&&actual.Sequence>sourceSequence&&MatchesCandidate(actual)){
-            s.Sequence=actual.Sequence;committed=true;return;
+            repository.Save(actual);s.Sequence=actual.Sequence;committed=true;return;
         }
         if(savedTown){
             if(actual==null||!MatchesBaseline(actual))throw new InvalidOperationException("The town on this card has changed. Return to the title and reload.");

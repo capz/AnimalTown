@@ -43,7 +43,7 @@ internal static class OnboardingChecks
     internal static void Run(Action<bool,string> check)
     {
         DraftChecks(check);PlotChecks(check);CommitChecks(check);FailureChecks(check);FreshFailureChecks(check);EmptyTownChecks(check);
-        Console.WriteLine("Onboarding: private drafts, zero-allocation plot previews, discard, strict card guards, preserved profiles and 32 interrupted writes passed");
+        Console.WriteLine("Onboarding: private drafts, zero-allocation plot previews, discard, strict card guards, preserved profiles and every interrupted-write phase passed");
     }
     private static void DraftChecks(Action<bool,string> check)
     {
@@ -112,7 +112,8 @@ internal static class OnboardingChecks
     private static void FailureChecks(Action<bool,string> check)
     {
         var source=Town();var initial=new Storage();var repo=new SaveRepository(initial);repo.Save(source);repo.Save(source);byte[] baseline=SaveCodec.Encode(source);
-        foreach(bool afterWrite in new[]{false,true})for(int fail=1;fail<=8;fail++){
+        var measure=initial.Copy();using(var ready=Ready(source))ready.Commit(new SaveRepository(measure),true);int updateWrites=measure.Writes;
+        foreach(bool afterWrite in new[]{false,true})for(int fail=1;fail<=updateWrites;fail++){
             var disk=initial.Copy();var store=new SaveRepository(disk);disk.FailAt=fail;disk.FailAfter=afterWrite;using var draft=Ready(source);
             bool failed=false;try{draft.Commit(store,true);}catch(IOException){failed=true;}
             check(failed&&draft.State.Name=="Alex"&&draft.State.Species==5&&draft.State.HousePlaced&&draft.State.Sequence==source.Sequence,"interrupted saving keeps the full draft visible and retryable");
@@ -120,7 +121,7 @@ internal static class OnboardingChecks
             var recovered=store.Load()!;check(recovered!=null&&recovered.Profiles[0].Name=="Fern"&&recovered.Profiles[1].Name=="Resume"&&recovered.Town.Tiles.SequenceEqual(source.Town.Tiles),"all interrupted writes recover a complete town and preserve other residents");
             int writes=disk.Writes;disk.FailAt=0;draft.Commit(store,true);
             check(store.Load()!.Profiles[2].Name=="Alex"&&draft.State.HousePlaced,"saving can retry after every interruption including a durably written commit");
-            if(afterWrite&&fail==8)check(disk.Writes==writes,"a retry recognizes an already persisted identical commit without rewriting it");
+            if(afterWrite&&fail==updateWrites)check(disk.Writes==writes,"a retry recognizes an already persisted identical commit without rewriting it");
         }
     }
     private static GameState FreshTown()
@@ -128,7 +129,8 @@ internal static class OnboardingChecks
     private static void FreshFailureChecks(Action<bool,string> check)
     {
         var source=FreshTown();byte[] baseline=SaveCodec.Encode(source);
-        foreach(bool afterWrite in new[]{false,true})for(int fail=1;fail<=8;fail++){
+        var measure=new Storage();using(var ready=Ready(source,false,3))ready.Commit(new SaveRepository(measure),false,Array.Empty<string>());int firstWrites=measure.Writes;
+        foreach(bool afterWrite in new[]{false,true})for(int fail=1;fail<=firstWrites;fail++){
             var disk=new Storage{FailAt=fail,FailAfter=afterWrite};var store=new SaveRepository(disk);using var draft=Ready(source,false,3);
             bool failed=false;try{draft.Commit(store,false,Array.Empty<string>());}catch(IOException){failed=true;}
             check(failed&&draft.State.Name=="Alex"&&draft.State.HousePlaced&&draft.State.Sequence==0,"an interrupted first-town save keeps all choices and its original sequence");
@@ -136,7 +138,7 @@ internal static class OnboardingChecks
             int writes=disk.Writes;disk.FailAt=0;draft.Commit(store,disk.Files.Count>0,disk.Files.Keys.ToArray());var saved=store.Load()!;
             check(saved.Name=="Alex"&&saved.ActiveProfile==3&&saved.HousePlaced&&saved.Profiles.Count(p=>p.Created)==1,"a first-town save retries after every before/after write interruption");
             check(saved.Town.Tiles.SequenceEqual(source.Town.Tiles)&&saved.Town.GroundCount==source.Town.GroundCount,"first-save recovery preserves the selected town and its shared objects");
-            if(afterWrite&&fail==8)check(disk.Writes==writes,"a durable first-town manifest is recognized without another write");
+            if(afterWrite&&fail==firstWrites)check(disk.Writes==writes,"a durable first-town manifest is recognized without another write");
         }
         // Each case starts with a single known, exact record left by this
         // draft's failed first transaction. Extra or unreadable present files
@@ -175,7 +177,7 @@ internal static class OnboardingChecks
             check(saved.ActiveProfile==3&&!saved.Profiles[0].Created&&saved.Profiles[3].Created&&saved.Town.Tiles.SequenceEqual(source.Town.Tiles),"onboarding preserves the empty slot-one save anchor and existing landscape");
         }
         var fresh=Town();fresh.DeleteProfile(1);fresh.DeleteProfile(0);using var first=Ready(fresh,false,0);var blankDisk=new Storage();var blankRepo=new SaveRepository(blankDisk);
-        first.Commit(blankRepo,false);check(blankRepo.Load()!.Name=="Alex"&&blankDisk.Writes==8,"a genuinely blank card supports the explicit first-town save");
+        first.Commit(blankRepo,false);check(blankRepo.Load()!.Name=="Alex"&&blankDisk.Writes==18,"a genuinely blank card supports the explicit first-town save");
         var occupied=new Storage();var occupiedRepo=new SaveRepository(occupied);var other=Town();occupiedRepo.Save(other);int writes=occupied.Writes;
         using var unexpected=Ready(fresh,false,0);check(Refuses(()=>unexpected.Commit(occupiedRepo,true))&&occupied.Writes==writes,"a first save never overwrites an unexpected existing valid town");
         var damaged=new Storage();damaged.Files[SplitSaveCodec.FileName(0,0)]=new byte[]{1,2,3};var damagedRepo=new SaveRepository(damaged);
