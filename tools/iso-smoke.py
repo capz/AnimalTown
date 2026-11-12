@@ -26,7 +26,30 @@ def press(button):
     os.write(controller,f'PRESS {button}\n'.encode());time.sleep(hold)
     os.write(controller,f'RELEASE {button}\n'.encode());time.sleep(hold)
 def screenshot(name):
-    subprocess.run(['ffmpeg','-v','error','-f','x11grab','-draw_mouse','0','-video_size','800x600','-i',':93','-frames:v','1','-y',str(root/name)],env=env,check=True)
+    subprocess.run(['ffmpeg','-v','error','-f','x11grab','-draw_mouse','0','-video_size','800x600','-i',env['DISPLAY'],'-frames:v','1','-y',str(root/name)],env=env,check=True)
+
+def start_display():
+    # Let Xvfb select a free display instead of reusing image-baked :93 locks.
+    # -displayfd reports its number only once the server accepts clients.
+    import select
+    read_fd,write_fd=os.pipe();server=None
+    try:
+        with (root/'xvfb.log').open('w') as log:
+            server=subprocess.Popen(['Xvfb','-displayfd',str(write_fd),'-nocursor','-screen','0','800x600x24'],pass_fds=(write_fd,),stdout=log,stderr=subprocess.STDOUT)
+        os.close(write_fd);write_fd=-1
+        if not select.select([read_fd],[],[],30)[0]:raise RuntimeError('Xvfb did not report a ready display; inspect xvfb.log')
+        number=os.read(read_fd,32).decode().strip()
+        if not number.isdigit() or server.poll() is not None:raise RuntimeError('Xvfb failed to initialize; inspect xvfb.log')
+        return server,dict(os.environ,DISPLAY=':'+number,QT_QPA_PLATFORM='xcb')
+    except BaseException:
+        if server is not None:
+            server.terminate()
+            try:server.wait(timeout=5)
+            except subprocess.TimeoutExpired:server.kill();server.wait()
+        raise
+    finally:
+        os.close(read_fd)
+        if write_fd>=0:os.close(write_fd)
 
 
 def rgb(name):
@@ -984,15 +1007,15 @@ if '--profile' in sys.argv or '--interaction-profile' in sys.argv or '--runtime-
     config.write_text(config.read_text()+'\n[Movie]\nDumpFrames = True\nDumpFramesSilent = True\n')
     config=user/'Config'/'GFX.ini'
     config.write_text(config.read_text().replace('DumpCodec = ffv1','DumpCodec = ffv1\nDumpEncoder = ffv1\nDumpPixelFormat = bgr0'))
-(user/'Config'/'Logger.ini').write_text('[Options]\nWriteToFile = True\nVerbosity = 4\n[Logs]\nBOOT = True\nOSREPORT = True\nDVDINTERFACE = True\n')
-env=dict(os.environ,DISPLAY=':93',QT_QPA_PLATFORM='xcb')
-xvfb=subprocess.Popen(['Xvfb',':93','-nocursor','-screen','0','800x600x24'],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
+(user/'Logs').mkdir(exist_ok=True)
+(user/'Config'/'Logger.ini').write_text('[Options]\nWriteToFile = True\nWriteToConsole = True\nVerbosity = 3\n[Logs]\nBOOT = True\nCORE = True\nPOWERPC = True\nOSREPORT = True\nOSREPORT_HLE = True\nDVDINTERFACE = True\n')
+xvfb,env=start_display()
 def close_display():
     xvfb.terminate()
     try:xvfb.wait(timeout=5)
     except subprocess.TimeoutExpired:xvfb.kill();xvfb.wait()
 atexit.register(close_display)
-time.sleep(1)
+screenshot('display-ready.png') # Prove an actual X11 capture before booting.
 with (root/'emulator.log').open('w') as log:
     p=subprocess.Popen(['/usr/games/dolphin-emu-nogui','-u',str(user),'-e',str(disc),'-v','OGL'],env=env,stdout=log,stderr=subprocess.STDOUT)
     try:

@@ -75,6 +75,10 @@ ANIMALTOWN TERRAIN CACHE READY cache bytes 1048576 archive bytes <N>
 
 The archive payload `<N>` must remain unchanged across that pair. Initial baking,
 warm selections and repeated suspension do not emit these markers.
+The game forwards these sparse events and `ANIMALTOWN ` messages to the native
+serial report channel before the SDK's on-screen ring truncates them. Dolphin's
+`OSREPORT` logger can therefore capture complete byte and timing fields even
+while the overlay is hidden. Ordinary frame messages are excluded.
 
 ## Verification
 
