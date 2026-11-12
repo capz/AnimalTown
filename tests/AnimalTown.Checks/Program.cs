@@ -198,11 +198,28 @@ for(int kind=0;kind<3;kind++){
         Check(tree.Parts[t]<4,"tree material range");parts[tree.Parts[t]]++;int at=t*9;
         float ax=tree.Positions[at+3]-tree.Positions[at],ay=tree.Positions[at+4]-tree.Positions[at+1],az=tree.Positions[at+5]-tree.Positions[at+2],bx=tree.Positions[at+6]-tree.Positions[at],by=tree.Positions[at+7]-tree.Positions[at+1],bz=tree.Positions[at+8]-tree.Positions[at+2];
         float nx=ay*bz-az*by,ny=az*bx-ax*bz,nz=ax*by-ay*bx;Check(nx*nx+ny*ny+nz*nz>1e-10f,"generated faces are nondegenerate");
+        int uv=t*6;float au=tree.Uvs[uv+2]-tree.Uvs[uv],av=tree.Uvs[uv+3]-tree.Uvs[uv+1],bu=tree.Uvs[uv+4]-tree.Uvs[uv],bv=tree.Uvs[uv+5]-tree.Uvs[uv+1];
+        Check(float.IsFinite(au)&&float.IsFinite(av)&&float.IsFinite(bu)&&float.IsFinite(bv)&&Math.Abs(au*bv-av*bu)>1e-8f,"every tree face has finite noncollapsed detail UVs");
         for(int v=0;v<3;v++){float y=tree.Positions[at+v*3+1];minY=Math.Min(minY,y);maxY=Math.Max(maxY,y);}
     }
     Check(minY==0&&maxY>.9f&&maxY<=1.01f,"tree ground pivot and normalized height");for(int part=0;part<4;part++)Check(parts[part]>0,"every generated material has geometry");
     Console.WriteLine("Generated tree "+kind+": "+tree.Triangles+" triangles");
 }
+var treeDetail=LowPolyTree.DetailTexture();TexturePixels.Validate(treeDetail);
+Check(treeDetail.SequenceEqual(LowPolyTree.DetailTexture()),"tree detail is deterministic");
+Check(treeDetail.Length==1472&&TexturePixels.Int(treeDetail,4)==2&&TexturePixels.Int(treeDetail,8)==1&&TexturePixels.Width(treeDetail)==32&&TexturePixels.Height(treeDetail)==32&&TexturePixels.Int(treeDetail,24)==6,"tree detail is a bounded native I8 package with complete mipmaps");
+byte[]? previousDetail=null;int detailOffset=32,detailMin=255,detailMax=0;
+for(int edge=32;edge>=1;edge/=2){
+    int size=((edge+7)/8)*((edge+3)/4)*32;var pixels=new byte[edge*edge];
+    for(int y=0;y<edge;y++)for(int x=0;x<edge;x++){
+        byte value=treeDetail[detailOffset+((y/4)*((edge+7)/8)+x/8)*32+(y%4)*8+x%8];pixels[y*edge+x]=value;
+        Check(value>=208,"tree detail preserves restrained opaque intensity");
+        if(previousDetail!=null){int at=y*2*edge*2+x*2;Check(value==(previousDetail[at]+previousDetail[at+1]+previousDetail[at+edge*2]+previousDetail[at+edge*2+1]+2)/4,"tree detail mip is box filtered, including smallest GX levels");}
+        else{detailMin=Math.Min(detailMin,value);detailMax=Math.Max(detailMax,value);uint color=TexturePixels.Pixel(treeDetail,x,y);Check((color&255)==255&&((color>>24)&255)==value&&((color>>16)&255)==value&&((color>>8)&255)==value,"I8 detail modulates RGB without changing opacity");}
+    }
+    previousDetail=pixels;detailOffset+=size;
+}
+Check(detailOffset==treeDetail.Length&&detailMax-detailMin>=20,"tree detail has visible grain and exact padded mip payload");
 var floorPixels=new byte[128*128*4];
 for(int y=0;y<128;y++)for(int x=0;x<128;x++){int at=(y*128+x)*4;floorPixels[at]=(byte)(x<64?255:0);floorPixels[at+2]=(byte)(x>=64?255:0);floorPixels[at+3]=255;}
 var floorSource=Package(4,128,128,TexturePixels.Encode(floorPixels,128,128,4));uint floorHash=TexturePixels.Hash(floorSource);var optimized=FloorTexture.Prepare(floorSource);

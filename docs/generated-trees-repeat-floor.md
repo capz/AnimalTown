@@ -5,15 +5,25 @@ superseding the earlier supplied-tree-only restriction.
 
 ## Trees
 
-The game generates three texture-free meshes: deciduous (84 triangles), palm
+The game generates three meshes: deciduous (84 triangles), palm
 (68 triangles), and pine (60 triangles). Four uniform-color parts provide a
 trunk and flat canopy shading. Geometry is shared across placements and uses
-the SDK's indexed, unlit GX path. Up to 32 visible trees are submitted in
+the SDK's unlit GX path. Up to 32 visible trees are submitted in
 material groups through DrawMeshes; this is shared geometry and batched CPU
 submission, not hardware instancing. Saplings reuse the same meshes at smaller
 scale. Trees retain their planting/collision data, world parent and radial pose.
 Deciduous colors follow seasons; palms and pines stay green, with winter snow
 color on suitable upper faces.
+
+All three species, including trunks and saplings, multiply their existing
+seasonal vertex colors by one generated 32×32 I8 noise texture in the same
+material pass. Fixed-seed soft mottling and fine grain use tree-local planar
+UVs, repeat wrapping and a complete box-filtered trilinear mip chain to reduce
+distant shimmer. The texture is shared across species and seasons: 1,440 native
+pixel bytes (1,472 including its temporary package header). It is generated once
+per tree renderer, never uploaded per frame, and disposed with the renderer.
+The textured vertices add UV bandwidth and one texture sample; triangle counts
+and submission counts stay unchanged. No overlay pass or per-tree texture is used.
 
 Original tree GLBs remain in source for reference. Their converted DNMDs are
 retired from disc staging and rejected by ISO verification. They are no longer

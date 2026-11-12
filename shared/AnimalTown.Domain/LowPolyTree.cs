@@ -6,6 +6,7 @@ public sealed class LowPolyTree
 {
     public const int TriangleBudget=96;
     public readonly float[] Positions=new float[TriangleBudget*9];
+    public readonly float[] Uvs=new float[TriangleBudget*6];
     public readonly byte[] Parts=new byte[TriangleBudget];
     public int Triangles;
     private readonly struct P
@@ -63,7 +64,46 @@ public sealed class LowPolyTree
         float shade=nx*.4f+ny*.8f+nz*.2f;
         if(Triangles>=TriangleBudget)throw new InvalidOperationException("Generated tree budget exceeded");
         Parts[Triangles]=(byte)(trunk?0:shade>.01f?3:shade< -.01f?1:2);
-        int at=Triangles++*9;Put(at,a);Put(at+3,c);Put(at+6,b);
+        int triangle=Triangles++,at=triangle*9;Put(at,a);Put(at+3,c);Put(at+6,b);
+        // Dominant face projection avoids collapsed UVs on vertical trunks
+        // and horizontal foliage. Coordinates stay attached to each tree.
+        int axis=Math.Abs(nx)>Math.Abs(ny)&&Math.Abs(nx)>Math.Abs(nz)?0:Math.Abs(ny)>Math.Abs(nz)?1:2;
+        TexturePoint(triangle*6,a,axis);TexturePoint(triangle*6+2,c,axis);TexturePoint(triangle*6+4,b,axis);
     }
+    private void TexturePoint(int at,P p,int axis)
+    {Uvs[at]=(axis==0?p.Z:p.X)*2;Uvs[at+1]=(axis==1?p.Z:p.Y)*2;}
+
+    public const int DetailEdge=32,DetailBytes=1440;
+    // One shared opaque GX I8 texture with a complete box-filtered mip chain.
+    // A fixed toroidal grid supplies soft mottling, plus restrained fine grain.
+    public static byte[] DetailTexture()
+    {
+        var result=new byte[32+DetailBytes];
+        Write(result,0,0x58544e44);Write(result,4,2);Write(result,8,1);
+        Write(result,12,DetailEdge);Write(result,16,DetailEdge);Write(result,20,DetailBytes);Write(result,24,6);
+        var level=new byte[DetailEdge*DetailEdge];
+        for(int y=0;y<DetailEdge;y++)for(int x=0;x<DetailEdge;x++){
+            int gx=x/8,gy=y/8,fx=x%8,fy=y%8;
+            int top=Grain(gx,gy)*(8-fx)+Grain((gx+1)%4,gy)*fx;
+            int bottom=Grain(gx,(gy+1)%4)*(8-fx)+Grain((gx+1)%4,(gy+1)%4)*fx;
+            int coarse=(top*(8-fy)+bottom*fy)/64;
+            level[y*DetailEdge+x]=(byte)(208+(coarse*3+Grain(x+17,y+31))/4);
+        }
+        int offset=32;
+        for(int edge=DetailEdge;edge>=1;edge/=2){
+            for(int by=0;by<edge;by+=4)for(int bx=0;bx<edge;bx+=8)for(int y=0;y<4;y++)for(int x=0;x<8;x++)
+                result[offset++]=level[Math.Min(edge-1,by+y)*edge+Math.Min(edge-1,bx+x)];
+            if(edge==1)break;
+            int next=edge/2;var filtered=new byte[next*next];
+            for(int y=0;y<next;y++)for(int x=0;x<next;x++){
+                int at=y*2*edge+x*2;filtered[y*next+x]=(byte)((level[at]+level[at+1]+level[at+edge]+level[at+edge+1]+2)/4);
+            }
+            level=filtered;
+        }
+        return result;
+    }
+    private static int Grain(int x,int y)
+    {uint v=unchecked((uint)(x*374761393+y*668265263));v=(v^(v>>13))*1274126177u;return (int)((v^(v>>16))%48);}
+    private static void Write(byte[] b,int at,int n){for(int i=0;i<4;i++)b[at+i]=(byte)(n>>(i*8));}
     private void Put(int at,P p){Positions[at]=p.X;Positions[at+1]=p.Y;Positions[at+2]=p.Z;}
 }
