@@ -106,6 +106,7 @@ internal sealed class TownGame : IDisposable
     private readonly MapBackground mapBackground=new MapBackground();
     private readonly RunningMinimap runningMinimap=new RunningMinimap();
     private readonly MenuNavigation menuNavigation=new MenuNavigation();
+    private readonly BuildingPrompt buildingPrompt=new BuildingPrompt();
     private readonly WrappedText dialogueText=new WrappedText(41),itemTitleText=new WrappedText(14),saveStatusText=new WrappedText(48);
     private string wrappedDialogue="";
     private readonly RenderQueue actorQueue=new RenderQueue(7,7);
@@ -800,6 +801,20 @@ internal sealed class TownGame : IDisposable
     private void Text(string text,float x,float y,Color32 c,float scale=1.5f,int visibleCharacters=-1)=>font.Draw(ui,text,x,y,c,scale/1.5f,0,visibleCharacters);
     private void Strong(string text,float x,float y,Color32 c,float scale=1.5f)=>strongFont.Draw(ui,text,x,y,c,scale/1.5f);
     private void Heading(string text,float x,float y,Color32 c,float scale=1)=>headingFont.Draw(ui,text,x,y,c,scale,(float)Math.Sin(tick*.018f+x*.01f)*1.8f);
+    private void DoorPopover(string label,bool action)
+    {
+        const float normalScale=1.05f;
+        float measured=strongFont.Measure(label,normalScale/1.5f),padding=action?62:32;
+        float width=Math.Max(224,Math.Min(584,measured+padding)),left=(640-width)*.5f;
+        float scale=normalScale*Math.Min(1,(width-padding)/Math.Max(1,measured));
+        Panel(left,320,width,40);
+        if(action){
+            // Match the controller's round green A key using cached UI shapes.
+            Rounded(left+12,328,24,24,12,new Color32(53,105,84));
+            Strong("A",left+24-strongFont.Measure("A",normalScale/1.5f)*.5f,328,Color32.White,normalScale);
+        }
+        Strong(label,left+(action?48:16),328,new Color32(49,72,62),scale);
+    }
     private void Panel(float x,float y,float w,float h)
     { float radius=Math.Min(30,h*.5f);if(batchedDrawing&&uiShapes.DrawPanel(ui,x,y,w,h,radius))return;Bulged(x+4,y+5,w,h,radius,new Color32(49,72,62,130),false);Bulged(x,y,w,h,radius,new Color32(255,245,221),false); }
     private void Bulged(float x,float y,float w,float h,float radius,Color32 color,bool cache=true)
@@ -856,10 +871,14 @@ internal sealed class TownGame : IDisposable
             Text(profileShadowLabel,420,419,ink,.55f);
         }
         Rounded(20,440,420,29,14.5f,new Color32(48,76,57,210));Text("A interact   X backpack   Y map",32,451,Color32.White,1.3f);
-        if(screen=="world"&&room!=0){Panel(205,371,410,61);Text("C-stick turn view / L recenter",220,380,ink,.95f);Text(room>=16&&room<=21?state.Town.Residents[room-16].Name+"'s home":BuildingWorld.RoomProfile(room)>=0?state.ProfileName(BuildingWorld.RoomProfile(room))+"'s home":"Home",220,402,ink,1.1f);}
+        if(screen=="world"&&room!=0){Panel(205,371,410,61);Text("C-stick turn view / L recenter",220,380,ink,.95f);Text(buildingPrompt.Name(state,BuildingWorld.Building(room)),220,402,ink,1.1f);}
         if(screen=="world"){
             int door=villagers.Doors.Nearby(state,0,facingYaw);
-            if(door>=0||villagers.Doors.Busy(0)){Panel(220,320,240,36);Strong(villagers.Doors.Busy(0)?villagers.Doors.Actors[0].Phase==DoorPhase.Waiting?"Waiting at door":"Through the doorway":room==0?"A  Enter":"A  Exit",230,326,ink,1.05f);}
+            if(door>=0||villagers.Doors.Busy(0)){
+                bool action=!villagers.Doors.Busy(0);
+                string label=action?room==0?buildingPrompt.Enter(state,door):"Exit":villagers.Doors.Actors[0].Phase==DoorPhase.Waiting?"Waiting at door":"Through the doorway";
+                DoorPopover(label,action);
+            }
         }
         if(screen=="world"||screen=="plot"){Panel(20,371,170,61);Text(townClock.Date,32,380,ink,1.1f);Strong(townClock.Time,32,400,ink,1.6f);}
         if(screen=="dialogue")

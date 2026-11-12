@@ -34,7 +34,7 @@ function Get-ValidationPlan {
         if($p -match '^shared/AnimalTown.Domain/(TexturePixels|TextureResolution|FloorTexture)\.cs$'){
             [void]$managed.Add('core');[void]$tooling.Add('terrain');[void]$tooling.Add('repack');continue
         }
-        if($p -match '^(shared/AnimalTown.Domain/(BuildingWorld|BuildingState|BuildingSave|PortalSystem|InteriorNavigation|InteriorCamera|VillagerJourney)|tests/AnimalTown.Checks/BuildingChecks)\.cs$'){
+        if($p -match '^(shared/AnimalTown.Domain/(BuildingWorld|BuildingPrompt|BuildingState|BuildingSave|PortalSystem|InteriorNavigation|InteriorCamera|VillagerJourney)|tests/AnimalTown.Checks/(BuildingChecks|BuildingEntryChecks))\.cs$'){
             foreach($s in @('buildings','movement','life','saves')){[void]$managed.Add($s)};continue
         }
         if($p -match '^assets/definitions/|^assets/models/(buildings/|interiors/cottage_small/)|^assets/textures/buildings/|^tools/AnimalTown.Tools/BuildingAssets\.cs$'){

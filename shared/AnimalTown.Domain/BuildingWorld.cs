@@ -49,9 +49,16 @@ public static class BuildingCatalog
         if(at!=data.Length||next[0].Id!="cottage_small")throw new InvalidOperationException("Invalid building catalog layout");definitions=next;
     }
 }
+public enum BuildingRole { House, Store, TownHall }
+
 public static class BuildingWorld
 {
     public const int Count=12,Actors=7;
+    // Use belongs to the placed building, independently of its shared art kit.
+    public static BuildingRole Role(int building)
+    {if(building<0||building>=Count)throw new ArgumentOutOfRangeException("building");return building==7?BuildingRole.Store:building==8?BuildingRole.TownHall:BuildingRole.House;}
+    public static string OwnerName(GameState s,int building)
+    {if(Role(building)!=BuildingRole.House)return "";int profile=BuildingProfile(building);return profile>=0?s.ProfileName(profile):s.Town.Residents[building-1].Name;}
     public static int PlayerBuilding(int profile)=>profile==0?0:8+profile;
     public static int PlayerRoom(int profile,int room=1)=>profile==0?room:28+profile*4+room-1;
     public static int RoomProfile(int space)=>space>=1&&space<=4?0:space>=32&&space<=43?(space-32)/4+1:-1;
