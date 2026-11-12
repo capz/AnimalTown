@@ -25,6 +25,7 @@ internal static class WaterEffectChecks
               (sunshine[176+32+8+5]&128)!=0,
             "the second layer samples TEX1 with its own alpha rather than reusing TEX0");
         CheckIdleInteraction(check);
+    }
 
     private static void CheckIdleInteraction(Action<bool,string> check)
     {
