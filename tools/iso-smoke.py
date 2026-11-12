@@ -661,6 +661,179 @@ def building_save():
         time.sleep(2)
     raise AssertionError('Indoor save did not return to settings within the bounded wait')
 
+def card_dev_config(path):
+    """Decode the independent, checksummed dev_config item in a raw GC card."""
+    import struct
+    if not path.exists():return None
+    card=path.read_bytes();sector=8192;candidates=[]
+    if len(card)%sector:raise AssertionError('Truncated emulator memory card')
+    def be16(at):return struct.unpack_from('>H',card,at)[0]
+    for directory in (1,2):
+        for bat in (3,4):
+            try:
+                for entry in range(127):
+                    at=directory*sector+entry*64
+                    if card[at:at+6]!=b'AMTE01' or card[at+8:at+40].split(b'\0',1)[0]!=b'dev_config':continue
+                    block,count=be16(at+54),be16(at+56);seen=set();data=bytearray()
+                    for _ in range(count):
+                        if block<5 or block>=len(card)//sector or block in seen:raise ValueError('Invalid card chain')
+                        seen.add(block);data.extend(card[block*sector:(block+1)*sector]);block=be16(bat*sector+10+(block-5)*2)
+                    if block!=65535 or data[:8]!=b'DNDSAVE1':continue
+                    length,offset=struct.unpack_from('>II',data,8)
+                    if length not in (36,40) or offset<32 or offset+length>len(data):continue
+                    payload=bytes(data[offset:offset+length])
+                    if payload[:3]!=b'ATD' or payload[3] not in (1,2,3):continue
+                    checksum_at=32 if payload[3]==1 else 36
+                    count=27 if payload[3]==1 else 29 if payload[3]==2 else 30
+                    if length!=checksum_at+4 or any(payload[4+count:checksum_at]):continue
+                    checksum=2166136261
+                    for value in payload[:checksum_at]:checksum=((checksum^value)*16777619)&0xffffffff
+                    if checksum!=struct.unpack_from('<I',payload,checksum_at)[0]:continue
+                    candidates.append((be16(directory*sector+0x1ffa),payload))
+            except (ValueError,struct.error):continue
+    if not candidates:return None
+    # Compare the redundant directory update counters modulo 16 bits.
+    newest=candidates[0]
+    for candidate in candidates[1:]:
+        if 0<((candidate[0]-newest[0])&65535)<32768:newest=candidate
+    payload=newest[1]
+    count=27 if payload[3]==1 else 29 if payload[3]==2 else 30
+    return {'version':payload[3],'values':list(payload[4:4+count]),'discard_terrain_cache_when_indoors':payload[3]==3 and payload[33]==1}
+
+def aram_residency_scenario():
+    """Real door/cache/model transitions, plus separate-card config roundtrips."""
+    import re
+    global p
+    sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'docs/performance'))
+    from avi_guest_clock import AviGuestClock
+    clock=AviGuestClock(user/'Dump/Frames',track_presentations=True)
+    card=root/'MemoryCardA.USA.raw';segments=[];report={'segments':segments,'clock':'NTSC VI chunks; software Dolphin, not hardware'}
+    def logs():
+        # OSReport normally goes to dolphin.log; stdout is a fallback for builds
+        # that route it to the launcher. Avoid counting the same events twice.
+        files=list((user/'Logs').glob('*.log'))
+        return '\n'.join(path.read_text(errors='replace') for path in files) if files else (root/'emulator.log').read_text(errors='replace')
+    def alive():
+        if p.poll() is not None:raise AssertionError('Emulator stopped during ARAM residency scenario')
+        if 'ANIMALTOWN ASSET LOAD FAILED' in logs():raise AssertionError('AnimalTown assets failed to load')
+    def wait_log(pattern,after=0,seconds=180):
+        deadline=time.monotonic()+seconds
+        while time.monotonic()<deadline:
+            alive();match=re.search(pattern,logs()[after:])
+            if match:return match
+            time.sleep(.2)
+        screenshot('aram-marker-timeout.png');raise AssertionError('Missing ARAM runtime marker: '+pattern)
+    def guest(name,seconds):
+        start=clock.frames();target=start+int(seconds*60000/1001+.999);deadline=time.monotonic()+max(60,seconds*20)
+        while clock.frames()<target:
+            alive()
+            if time.monotonic()>deadline:raise AssertionError('Guest VI clock stopped during '+name)
+            time.sleep(.1)
+        end=clock.frames();present=[value for value in clock.presentations if start<value<=end]
+        gaps=sorted((b-a)*1001/60 for a,b in zip(present,present[1:]))
+        percentile=lambda q:gaps[min(len(gaps)-1,int((len(gaps)-1)*q))] if gaps else None
+        segments.append({'name':name,'start_vi':start,'end_vi':end,'guest_seconds':(end-start)*1001/60000,'presentations':len(present),'frame_ms_p50':percentile(.5),'frame_ms_p95':percentile(.95),'frame_ms_max':max(gaps) if gaps else None})
+        (root/'aram-residency.json').write_text(json.dumps(report,indent=2))
+    def view(name,indoors):
+        deadline=time.monotonic()+120
+        while time.monotonic()<deadline:
+            alive()
+            try:
+                building_view(name+'.png',indoors)
+                # The dot loading screen shares the town's mint clear color.
+                # It must not count as a restored, drawable outdoor scene.
+                pixels=rgb(name+'.png')
+                if indoors or color_count(pixels,(149,198,186))<150000:return
+            except AssertionError:time.sleep(.5)
+            time.sleep(.2)
+        raise AssertionError('ARAM door did not reach '+name)
+    def config(expected):
+        deadline=time.monotonic()+60
+        while time.monotonic()<deadline:
+            alive();value=card_dev_config(card)
+            if value and value['discard_terrain_cache_when_indoors']==expected:return value
+            time.sleep(.2)
+        raise AssertionError('Separate dev config item did not persist terrain option '+str(expected))
+    def title_terrain_row(name):
+        press('D_DOWN');press('D_DOWN');press('A');wait_title(modal=True)
+        # The appended session-only UI grain control follows persisted options.
+        press('D_UP');press('D_UP');screenshot(name+'.png') # config index 29
+    def inspect():
+        os.write(controller,b'PRESS L\nPRESS R\n');time.sleep(.2);press('A');os.write(controller,b'RELEASE L\nRELEASE R\n')
+    def enter(name):
+        inspect();view(name+'-outside',False);press('A');view(name+'-inside',True)
+        # The crossing lands 0.7 m from the exit. Walk into the room so the
+        # early-exit prefetch guard does not deliberately keep outdoor models hot.
+        os.write(controller,b'SET MAIN .5 .8\n')
+        try:guest(name+'-walk-away-from-door',1)
+        finally:os.write(controller,b'SET MAIN .5 .5\n')
+        view(name+'-away-from-door',True)
+    def leave(name,reversal=False):
+        inspect() # the existing indoor inspector focuses the real exit socket
+        started=time.monotonic();start_vi=clock.frames()
+        os.write(controller,b'PRESS A\n');time.sleep(1);os.write(controller,b'RELEASE A\n')
+        if reversal:
+            # Try to reverse movement/action while the existing portal owns the
+            # actor; this must neither publish a partial restore nor strand it.
+            os.write(controller,b'SET MAIN .5 .8\n');guest(name+'-reversal-input',.3);os.write(controller,b'SET MAIN .5 .5\n');press('A')
+        view(name,False);report[name+'_wall_seconds']=time.monotonic()-started
+        report[name+'_guest_seconds']=(clock.frames()-start_vi)*1001/60000
+        guest(name+'-outdoor-settle',2)
+
+    wait_title();initial=card_dev_config(card);report['initial_dev_config']=initial
+    title_terrain_row('aram-title-row29-baseline')
+    if initial and initial['discard_terrain_cache_when_indoors']:press('A')
+    press('B');wait_title()
+    if initial:config(False)
+    press('D_UP');press('D_UP');start_game(False,'aram')
+    wait_log(r'ANIMALTOWN READY ',seconds=300)
+    wait_log(r'Terrain archive: [0-9]+ ARAM bytes',seconds=300)
+    wait_log(r'ANIMALTOWN ONBOARDING RELEASED',seconds=120)
+    view('aram-game-started',False)
+    baseline=len(logs());enter('aram-flag-off');guest('flag-off-indoor-steady',8)
+    if 'ANIMALTOWN TERRAIN CACHE SUSPENDED' in logs()[baseline:]:raise AssertionError('Default-off terrain option suspended the cache')
+    screenshot('aram-flag-off-indoor.png');leave('aram-flag-off-exited')
+    # Testing has 31 rows; Up wraps to new row 30 after tree and UI grain rows.
+    press('START');press('R');press('D_UP');screenshot('aram-game-row30-off.png');press('A')
+    report['ingame_saved_config']=config(True);screenshot('aram-game-row30-on.png');press('B')
+    cold=len(logs());enter('aram-flag-on');guest('flag-on-indoor-steady',6)
+    suspended=wait_log(r'ANIMALTOWN TERRAIN CACHE SUSPENDED cache bytes (\d+) reclaimed bytes (\d+) archive bytes (\d+)',cold)
+    if tuple(map(int,suspended.groups()[:2]))!=(0,1048576):raise AssertionError('Terrain cache did not physically release exactly 1 MiB')
+    # This assertion is independent of the terrain flag: automatic model paging
+    # must actually retire at least one cold shared species, not only plan it.
+    model=wait_log(r'ANIMALTOWN MODEL COLD (\d+) aram bytes (\d+) native budget bytes (\d+) max advance us (\d+)',baseline)
+    if int(model[2])<=0:raise AssertionError('Cold model has no ARAM package backing')
+    report['suspended']={'cache_bytes':int(suspended[1]),'reclaimed_bytes':int(suspended[2]),'archive_bytes':int(suspended[3])}
+    report['model_cold']={'species':int(model[1]),'aram_bytes':int(model[2]),'native_bytes':int(model[3]),'max_advance_us':int(model[4])}
+    screenshot('aram-flag-on-cold-indoor.png');warm=len(logs());leave('aram-restored-exterior',reversal=True)
+    restored=wait_log(r'ANIMALTOWN TERRAIN CACHE READY cache bytes (\d+) archive bytes (\d+)',warm)
+    if int(restored[1])!=1048576 or int(restored[2])!=int(suspended[3]):raise AssertionError('Terrain cache restore changed the retained archive')
+    report['restored']={'cache_bytes':int(restored[1]),'archive_bytes':int(restored[2])}
+    # Back-to-back crossings exercise drain/cancel and reuse of restored backing.
+    enter('aram-rapid-reentry');guest('rapid-reentry-indoor',1);leave('aram-rapid-return',reversal=True)
+    cold_species=set();consumed=[]
+    for event in re.finditer(r'ANIMALTOWN MODEL (COLD|WARM) (\d+)',logs()[baseline:]):
+        species=int(event[2])
+        if event[1]=='COLD':cold_species.add(species)
+        elif species in cold_species:consumed.append(species)
+    if not consumed:raise AssertionError('No actually cold model was restored before the drawable exterior returned')
+    report['cold_species_restored_before_exterior_return']=consumed
+    report['runtime_markers']=re.findall(r'ANIMALTOWN (?:MODEL [^\r\n]+|TERRAIN CACHE [^\r\n]+)',logs())
+    (root/'aram-runtime.log').write_text(logs())
+    # Restart the same ISO/card. Toggling the title's last row once must produce
+    # Off in the binary record; that proves startup loaded the prior On setting.
+    p.terminate();p.wait(timeout=10)
+    frames=user/'Dump/Frames'
+    if frames.exists():frames.rename(user/'Dump/Frames-residency')
+    p=subprocess.Popen(['/usr/games/dolphin-emu-nogui','-u',str(user),'-e',str(disc),'-v','OGL'],env=env,stdout=log,stderr=subprocess.STDOUT)
+    wait_title();wait_log(r'ANIMALTOWN DEV CONFIG LOADED')
+    title_terrain_row('aram-title-row29-loaded-on');press('A');press('B');wait_title();config(False)
+    # Leave the option enabled and prove the corresponding title row roundtrip.
+    press('A');wait_title(modal=True);screenshot('aram-title-row29-off.png');press('A');press('B');wait_title()
+    report['restart_saved_config']=config(True);report['startup_load_verified']=True
+    screenshot('aram-title-restart-complete.png')
+    (root/'aram-residency.json').write_text(json.dumps(report,indent=2))
+
 def dialogue_cycles():
     import json
     def pixels(name):
@@ -806,7 +979,7 @@ DumpCodec = ffv1
 [Hacks]
 EFBToTextureEnable = False
 ''')
-if '--profile' in sys.argv or '--interaction-profile' in sys.argv or '--runtime-profile' in sys.argv or '--terrain-scroll' in sys.argv or '--lighting' in sys.argv or '--actor-shadows' in sys.argv or '--movement-profile' in sys.argv or '--stream-travel' in sys.argv or '--submissions' in sys.argv:
+if '--profile' in sys.argv or '--interaction-profile' in sys.argv or '--runtime-profile' in sys.argv or '--terrain-scroll' in sys.argv or '--lighting' in sys.argv or '--actor-shadows' in sys.argv or '--movement-profile' in sys.argv or '--stream-travel' in sys.argv or '--submissions' in sys.argv or '--aram-residency' in sys.argv:
     config=user/'Config'/'Dolphin.ini'
     config.write_text(config.read_text()+'\n[Movie]\nDumpFrames = True\nDumpFramesSilent = True\n')
     config=user/'Config'/'GFX.ini'
@@ -833,6 +1006,8 @@ with (root/'emulator.log').open('w') as log:
         if any(flag in sys.argv for flag in ('--title-menu','--title-load','--title-config','--title-update')):wait_title()
         if '--onboarding' in sys.argv:
             onboarding()
+        elif '--aram-residency' in sys.argv:
+            aram_residency_scenario()
         elif '--profile-delete' in sys.argv:
             delete_profile()
         elif '--profile-cards' in sys.argv:

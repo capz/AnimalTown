@@ -3,7 +3,7 @@ namespace AnimalTown;
 // Independent of town saves. Location actions 14/15 are never startup settings.
 public sealed class DevConfig
 {
-    public const int Count=29,TreeNoiseStrength=27,TreeNoiseScale=28;
+    public const int Count=30,TreeNoiseStrength=27,TreeNoiseScale=28,DiscardTerrainCacheWhenIndoorsIndex=29;
     public readonly int[] Values=new int[Count];
     public DevConfig(int runtimeMode=0)
     {
@@ -27,14 +27,14 @@ public sealed class DevConfig
     public int RuntimeMode=>Values[11]|Values[12]<<1|Values[13]<<2;
     public byte[] Encode()
     {
-        var data=new byte[40];data[0]=65;data[1]=84;data[2]=68;data[3]=2;
+        var data=new byte[40];data[0]=65;data[1]=84;data[2]=68;data[3]=3;
         for(int i=0;i<Count;i++){if(Values[i]<0||Values[i]>Maximum(i)||i==20&&Values[i]%5!=0)throw new InvalidOperationException("Invalid dev config");data[4+i]=(byte)Values[i];}
         uint hash=Hash(data,36);for(int i=0;i<4;i++)data[36+i]=(byte)(hash>>(i*8));return data;
     }
     public static DevConfig Decode(byte[] data)
     {
-        if(data.Length<4||data[0]!=65||data[1]!=84||data[2]!=68||(data[3]!=1&&data[3]!=2))throw new IOException("Invalid dev config");
-        bool legacy=data[3]==1;int checksum=legacy?32:36,count=legacy?27:Count;
+        if(data.Length<4||data[0]!=65||data[1]!=84||data[2]!=68||(data[3]!=1&&data[3]!=2&&data[3]!=3))throw new IOException("Invalid dev config");
+        int checksum=data[3]==1?32:36,count=data[3]==1?27:data[3]==2?29:Count;
         if(data.Length!=checksum+4)throw new IOException("Invalid dev config length");
         for(int i=4+count;i<checksum;i++)if(data[i]!=0)throw new IOException("Invalid dev config padding");
         uint hash=0;for(int i=0;i<4;i++)hash|=(uint)data[checksum+i]<<(i*8);if(hash!=Hash(data,checksum))throw new IOException("Damaged dev config");

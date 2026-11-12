@@ -13,13 +13,13 @@ if(Wants("ui")){UiShapePlanChecks.Run(Check);UpdateImagePathChecks.Run(Check);}
 if(Wants("menu"))MenuNavigationChecks.Run(Check);
 if(Wants("trim"))TownTrimChecks.Run(Check);
 if(Wants("text"))WrappedTextChecks.Run(Check);
-if(Wants("terrain"))TerrainEdgeChecks.Run(Check);
+if(Wants("terrain")){TerrainEdgeChecks.Run(Check);TerrainResidencyChecks.Run(Check);}
 if(Wants("movement"))PlayerMovementChecks.Run(Check);
 if(Wants("dialogue"))DialogueVoiceChecks.Run(Check);
 if(Wants("generation"))TownGenerationChecks.Run(Check);
 if(Wants("life"))TerrainLifeChecks.Run(Check);
 if(Wants("saves")){SplitSaveChecks.Run(Check);DevConfigChecks.Run(Check);ProfileChecks.Run(Check);}
-if(Wants("buildings"))BuildingChecks.Run(Check);
+if(Wants("buildings")){BuildingChecks.Run(Check);ModelResidencyDemandChecks.Run(Check);ModelResidencyChecks.Run(Check);}
 if(!Wants("core")){Console.WriteLine(checks+" checks passed; suites: "+string.Join(",",selected));return;}
 var terrainEdit=new GameState(74);int terrainVersion=terrainEdit.Town.TerrainVersion;
 Check(terrainEdit.Town.SetTerrain(20,20,Terrain.Water)&&terrainEdit.Town.TerrainVersion==terrainVersion+1,"terrain edit invalidates render caches");

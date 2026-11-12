@@ -15,6 +15,9 @@ public sealed class PortalSystem
     }
     public readonly Transition[] Actors=new Transition[BuildingWorld.Actors];
     public readonly bool[] Ready={true,true,true,true};
+    // Rendering admission is transient, separate from art availability and saves.
+    // Existing callers keep their original behavior until a residency owner gates it.
+    public readonly bool[] ResourcesReady={true,true,true,true,true,true,true};
     private readonly int[] owners=new int[BuildingWorld.Count];
     public PortalSystem(){for(int i=0;i<Actors.Length;i++)Actors[i]=new Transition();for(int i=0;i<owners.Length;i++)owners[i]=-1;}
     public bool Busy(int actor)=>Actors[actor].Phase!=DoorPhase.Idle;
@@ -59,6 +62,7 @@ public sealed class PortalSystem
             if(ox!=t.OriginX||oz!=t.OriginZ||s.BuildingTypes[t.Building]!=t.Type||!Ready[t.Type]||Distance(current.X,current.Z,expected.X,expected.Z)>.01f){Cancel(actor);continue;}
             if(t.Phase==DoorPhase.Waiting){
                 if(++t.Wait>MaximumWait){Cancel(actor);continue;}
+                if(!ResourcesReady[actor])continue;
                 if(owners[t.Building]>=0){StepAside(s,actor,t);continue;}
                 // Entry and exit landings must both be available before opening.
                 if(!BuildingWorld.CanStand(s,t.Destination.Space.Value,t.Destination.X,t.Destination.Z,actor,true))continue;
@@ -66,7 +70,7 @@ public sealed class PortalSystem
                 t.Source=new ActorLocation(t.Source.Space.Value,t.Source.X,t.Source.Z,t.Source.Space.IsTown?(float)Math.PI:0);BuildingWorld.SetLocation(s,actor,t.Source);
             }
             if(++t.Tick==CommitTick){
-                if(!CorridorClear(s,actor,t)||!BuildingWorld.CanStand(s,t.Destination.Space.Value,t.Destination.X,t.Destination.Z,actor,true)){
+                if(!ResourcesReady[actor]||!CorridorClear(s,actor,t)||!BuildingWorld.CanStand(s,t.Destination.Space.Value,t.Destination.X,t.Destination.Z,actor,true)){
                     t.Tick--;if(++t.Wait>MaximumWait)Cancel(actor);continue;
                 }
                 BuildingWorld.SetLocation(s,actor,t.Destination);t.Committed=true;
