@@ -10,9 +10,10 @@ public enum WaterRenderStyle { WindWaker, Sunshine }
 public static class SunshineWater
 {
     public const int TextureSize=64,MipLevels=5,PayloadBytes=10912;
-    // GX's two-reference alpha test retains sparse crests and weak clear
-    // regions while discarding the intervening foggy alpha band.
-    public const byte GlintLowReference=78,GlintHighReference=140;
+    // The pinned SDK supports a primary-texture alpha cutoff (DNEF v2).
+    // This passes sparse bright glints while the separate color film
+    // provides the transparent low-alpha region.
+    public const float GlintAlphaCutoff=.54f;
     public const float RippleLodBias=1.1f,ReflectionLodBias=1.3f;
     public const float RiverBedDepth=.40f,SeaBedDepth=.75f;
     private const double Tau=6.283185307179586;
