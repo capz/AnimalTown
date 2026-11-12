@@ -485,7 +485,8 @@ internal sealed class TownGame
         if(room!=0){
             for(int i=0;i<6;i++){var v=state.Town.Residents[i];if(v.Space==room&&Math.Abs(v.PosX-state.X)<2&&Math.Abs(v.PosZ-state.Z)<2){Say(v.Name,state.Talk(i));return;}}
             if(room==24){screen="store";selected=0;return;}if(room==25){screen="post";selected=0;return;}
-            Say("Home","A at the doorway to leave. C-stick turns the view; L recentres it.");return;
+            // No nearby villager or usable doorway: A does nothing.
+            return;
         }
         if(x>=32&&x<=40&&z<=12){Say("Gate","The gate awaits a Broadband Adapter and companion connection.");return;}
         for(int i=0;i<6;i++){var v=state.Town.Residents[i];if(v.Space==0&&Math.Abs(v.PosX-state.X)<2.8f&&Math.Abs(v.PosZ-state.Z)<2.8f){Say(v.Name,state.Talk(i));return;}}
@@ -500,9 +501,14 @@ internal sealed class TownGame
         }
         if(state.Tool==5&&(WaterSurface.IsWater(state.Town,tx,tz)||WaterSurface.IsWater(state.Town,tx+1,tz)))
         { Say("Fishing",state.Receive(14)?"A river fish!":"Your pockets are full.");return; }
-        if(state.Tool==6){Say("Bug net",tick%3==0&&state.Receive(15)?"Caught a butterfly!":"No butterfly in reach. Try again nearby.");return;}
+        if(state.Tool==6){
+            // Keep successful bug catches; misses are silent like all other
+            // empty-space interactions.
+            if(tick%3==0&&state.Receive(15))Say("Bug net","Caught a butterfly!");
+            return;
+        }
         if(state.Tool==7&&state.Town.AddGround(16,tx,tz,1,day)){Say("Digging","A spot for something buried.");return;}
-        Say("Meadowroll","A quiet moment. Try the store, town hall, or your neighbours.");
+        // Nothing in reach. Do not interrupt movement with an idle dialogue.
     }
     internal void Step(ControllerState pad)
     {
