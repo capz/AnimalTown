@@ -9,7 +9,7 @@ internal static class UiNoise
     internal static void Prepare()
     {
         int percent=UiNoiseSettings.Percent;if(prepared==percent)return;
-        if(NativePrepare(percent==0?null:LowPolyTree.DetailTexture(percent))!=0)throw new InvalidOperationException("UI noise texture preparation failed");
+        if(NativePrepare(percent==0?null:LowPolyTree.DetailTexture(percent,uniform:true))!=0)throw new InvalidOperationException("UI noise texture preparation failed");
         prepared=percent;
     }
     internal static void Begin()

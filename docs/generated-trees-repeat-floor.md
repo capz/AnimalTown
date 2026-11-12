@@ -97,6 +97,6 @@ is capped at 1,365 strips; rounded active buffer capacity stays below 16,380
 vertices. Typical views use far less geometry. All allocation/upload work is
 outside render passes, and a stationary camera reuses prepared meshes.
 
-Releases contain a full-size ISO with title/hash/disc/save banners, the separate
+Releases contain a compact NKit ISO with title/hash/disc/save banners, the separate
 server build, and texture audit. Dolphin measurements are diagnostic; physical
 GameCube performance and GC Loader/Swiss/media testing remain outstanding.

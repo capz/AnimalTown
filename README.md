@@ -14,8 +14,7 @@ merged to main increments patch once. PR builds use the current main version
 plus `+<12-character feature-branch commit hash>`. Rebuilding the same source/main
 snapshot keeps its version. For SD-card storage through Swiss/GC Loader,
 download `AnimalTown-VERSION.nkit.iso` and copy it directly to the card.
-The full-size `.iso` remains available for archival, fallback and disc burning;
-you only need one image on the card. See [NKit images](docs/nkit-images.md) for
+The NKit ISO is the only console image built for delivery. See [NKit images](docs/nkit-images.md) for
 size savings and the exact round-trip/payload verification gates. Releases also
 contain the separate .NET 10 server ZIP, `BUILD.txt` with engine/SDK revisions,
 `version.json`, `nkit-validation.json` and `SHA256SUMS.txt`. Development status
@@ -23,8 +22,8 @@ and physical hardware validation are recorded in the release notes.
 
 To publish a locally verified build, use a clean checkout, run both build commands
 below, then run `./tools/publish-release.ps1` with an authenticated GitHub CLI.
-`-PackageOnly` prepares the disc images, archives and manifests without publishing. The publisher rejects dirty
-or mismatched console/backend revisions, verifies the ISO structure, uploads into
+`-PackageOnly` prepares the NKit image, archives and manifests without publishing. The publisher rejects dirty
+or mismatched console/backend revisions, verifies the NKit image and its conversion report, uploads into
 a draft, checks uploaded asset hashes, and only then publishes the prerelease.
 The workflow can also be rerun from GitHub Actions using **Build and release**.
 
@@ -49,9 +48,10 @@ dotnet tool restore
 ./tools/build-game.ps1
 ```
 
-A successful console build always produces `out/AnimalTown-<version>.iso`
-(1,459,978,240 bytes), with bootable homebrew apploader, DOL, assets, opening.bnr,
-save artwork and BUILD.txt. Boot this ISO directly in Dolphin/GCLoader/Swiss.
+A successful console build produces only `out/AnimalTown-<version>.nkit.iso`,
+with bootable homebrew apploader, DOL, assets, opening.bnr, save artwork and
+BUILD.txt. Full-size source and round-trip images are temporary conversion files
+and are deleted after verification. Boot the NKit ISO directly in Dolphin/GCLoader/Swiss.
 Physical hardware validation remains outstanding. Rebuilds can use
 `-SkipAssets` only when converted assets already exist for the same sources.
 Dirty source is marked in all build identities. Generated assets/ISOs stay out
@@ -116,7 +116,7 @@ container:
 
 ```powershell
 docker build -t animaltown-dolphin -f build/Dockerfile.dolphin build
-docker run --rm --init --shm-size=512m --mount "type=bind,src=$PWD,dst=/work" -w /work animaltown-dolphin python3 tools/iso-smoke.py out/AnimalTown-VERSION.iso out/smoke --play
+docker run --rm --init --shm-size=512m --mount "type=bind,src=$PWD,dst=/work" -w /work animaltown-dolphin python3 tools/iso-smoke.py out/AnimalTown-VERSION.nkit.iso out/smoke --play
 ```
 
 Inspect screenshots and logs; smoke script capture alone is not a gameplay
