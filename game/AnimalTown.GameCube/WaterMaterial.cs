@@ -13,6 +13,15 @@ internal sealed class WaterMaterial : IDisposable
     private TevMaterial? storm;
     private Texture2D? sunshineTexture;
     private TevMaterial? sunshineLayer,sunshineBed;
+    // A very thin tropical-blue body under the specular cutout, so the seabed
+    // stays readable nearby while distant open water keeps its blue depth.
+    // This remains a shared material; no new terrain geometry or textures.
+    private readonly Material sunshineBody=new Material{
+        Blend=BlendMode.Alpha,DepthTest=true,DepthWrite=false,
+        Lighting=LightingMode.Unlit,Cull=CullMode.Back,
+        Color=new Color32(90,189,215,48)
+    };
+    internal Material SunshineBody=>sunshineBody;
     internal WaterRenderStyle Style=WaterRenderStyle.WindWaker;
     internal bool IsSunshine=>Style==WaterRenderStyle.Sunshine;
     internal Material Surface=>IsSunshine&&sunshineLayer!=null?sunshineLayer.Material:water.Material;
@@ -74,23 +83,38 @@ internal sealed class WaterMaterial : IDisposable
         Texture2D? wave=null;
         TevMaterial? layer=null,bed=null;
         try{
-            wave=Texture2D.FromPackage(SunshineWater.TexturePackage(),linear:true);
+            // Read a *pre-authored* GX mip package baked from five different
+            // PNGs. Generating/downsampling at runtime would erase the effect.
+            var package=Dolphin.IO.File.ReadAllBytes(SunshineWater.DiscTexture);
+            SunshineWater.ValidatePackage(package);
+            wave=Texture2D.FromPackage(package,linear:true);
+            if(wave.MipLevels!=SunshineWater.MipLevels)
+                throw new InvalidOperationException("Sunshine GPU mip chain was truncated.");
+            // Explicitly enable GX trilinear LOD. Material sampling overrides
+            // texture sampler settings, so also configure both material slots
+            // with the full 0..4 chain and the same positive hardware LOD bias.
+            wave.ConfigureSampler(TextureWrapMode.Repeat,TextureWrapMode.Repeat,
+                TextureMinFilter.LinearMipmapLinear,TextureMagFilter.Linear,SunshineWater.LodBias);
             var sparkle=new TevProgramBuilder();
-            sparkle.AddColor("Glint",new Color32(168,244,232));
-            sparkle.AddColor("Glint2",new Color32(232,255,248));
+            sparkle.AddColor("PrimaryLight",new Color32(102,150,176));
+            sparkle.AddColor("ReflectedSky",new Color32(215,248,244));
             sparkle.AddStage(TevInput.Zero,TevInput.Zero,TevInput.Zero,TevInput.Raster);
-            sparkle.AddStage(TevInput.Previous,TevInput.Constant,TevInput.Texture,TevInput.Zero,colorSlot:0);
-            sparkle.AddStage(TevInput.Previous,TevInput.Constant,TevInput.SecondaryTexture,TevInput.Zero,colorSlot:1);
-            // Two independently scrolling taps of one authored-mip IA8 texture,
-            // with translucent GX alpha and no water depth write.
+            // Add both independent scrolling samples, rather than *blending*
+            // two samples into a mostly unchanging base tint.
+            sparkle.AddStage(TevInput.Zero,TevInput.Constant,TevInput.Texture,TevInput.Previous,colorSlot:0);
+            sparkle.AddStage(TevInput.Zero,TevInput.Constant,TevInput.SecondaryTexture,TevInput.Previous,colorSlot:1);
             layer=new TevMaterialDefinition(sparkle).Create(wave,wave);
             layer.Material.Blend=BlendMode.Alpha;
+            layer.Material.AlphaCutoff=SunshineWater.GlintAlphaCutoff;
             layer.Material.DepthWrite=false;
             layer.Material.DepthTest=true;
             layer.Material.Cull=CullMode.Back;
-            layer.Material.Color=new Color32(216,255,248,242);
-            layer.Material.Sampler=new SamplerState(TextureAddressMode.Repeat,TextureAddressMode.Repeat,TextureFilter.Linear);
-            layer.Material.SecondarySampler=layer.Material.Sampler;
+            layer.Material.Color=new Color32(205,246,249,255);
+            var mip=new SamplerState(TextureMinFilter.LinearMipmapLinear,
+                TextureMagFilter.Linear,minLod:0,maxLod:4,lodBias:SunshineWater.LodBias,
+                u:TextureAddressMode.Repeat,v:TextureAddressMode.Repeat);
+            layer.Material.Sampler=mip;
+            layer.Material.SecondarySampler=mip;
 
             var sand=new TevProgramBuilder();
             sand.AddColor("Sand",new Color32(239,225,189));
@@ -127,9 +151,11 @@ internal sealed class WaterMaterial : IDisposable
             // Both GX texgens sample the same small native mipmapped texture.
             var water=sunshineLayer.Material;
             water.TextureTransform=new UvTransform(new Vector2(
-                WaterSurface.Scroll(seconds,.021f),WaterSurface.Scroll(seconds,.013f)),new Vector2(1,1));
+                WaterSurface.Scroll(seconds,.017f),WaterSurface.Scroll(seconds,.044f)),new Vector2(1,1));
+            // Sunshine's second copy scrolls primarily in one axis. Keeping
+            // identical UV scale generates the shifting moire/caustic pattern.
             water.SecondaryTextureTransform=new UvTransform(new Vector2(
-                WaterSurface.Scroll(seconds,-.017f),WaterSurface.Scroll(seconds,.032f)),new Vector2(1.45f,.92f));
+                0,WaterSurface.Scroll(seconds,-.067f)),new Vector2(1,1));
         }
         if(RoughOcean&&!IsSunshine&&storm!=null){
             storm.Material.TextureTransform=new UvTransform(new Vector2(WaterSurface.Scroll(seconds,.035f),WaterSurface.Scroll(seconds,.075f)),new Vector2(1,1));
