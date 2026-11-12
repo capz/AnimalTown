@@ -43,6 +43,8 @@ $toolsDirectory=Join-Path $out 'tools-published'
 if($LASTEXITCODE -ne 0){throw 'Offline tool publication failed'}
 Copy-Item -LiteralPath (Join-Path $Root 'docs/texture-repacker.md') -Destination (Join-Path $toolsDirectory 'texture-repacker.md') -Force
 Copy-Item -LiteralPath (Join-Path $Root 'docs/uv-editor-design.md') -Destination (Join-Path $toolsDirectory 'uv-editor-design.md') -Force
+Copy-Item -LiteralPath (Join-Path $out 'updater-provision.py') -Destination (Join-Path $toolsDirectory 'provision-updater.py') -Force
+Copy-Item -LiteralPath (Join-Path $out 'updater-setup.md') -Destination (Join-Path $toolsDirectory 'updater-setup.md') -Force
 $toolsZip=Join-Path $package "AnimalTown-tools-$version.zip"
 $cliffsZip=Join-Path $package "AnimalTown-cliff-kit-$version.zip"
 $buildingsZip=Join-Path $package "AnimalTown-building-kit-$version.zip"
@@ -87,11 +89,11 @@ AnimalTown-cliff-kit-$version.zip contains eight low-poly cliff GLBs, shared 128
 
 **AnimalTown-tools-$version.zip** contains the offline texture/UV repacker and its guide. Requires .NET 8; run `dotnet AnimalTown.Tools.dll repack-textures . INPUT.glb OUTPUT.glb --size256` (or --size128/512/1024/Original). Exact flat colours share UV space; appearance checks reject excessive loss. Original game assets are not automatically repacked.
 
-For Swiss/GC Loader SD-card storage, download **AnimalTown-$version.nkit.iso** and copy it directly onto the card. No extraction is needed. This build occupies $($nkitInfo.compactBytes) bytes instead of 1,459,978,240 bytes ($([Math]::Round($nkitInfo.savedPercent,2))% smaller). NKit compacts padding; the playable image preserves every game file, title, commit identity, disc banner and save banner/icon. The pipeline restores it to the original full ISO and verifies an exact SHA-256 match, plus the compact image's physical apploader, DOL and file payloads. Physical Swiss/GC Loader testing remains outstanding.
+For GC Loader SD-card storage, download **AnimalTown-$version.nkit.iso** and copy it directly onto the card. No extraction is needed. This build occupies $($nkitInfo.compactBytes) bytes instead of 1,459,978,240 bytes ($([Math]::Round($nkitInfo.savedPercent,2))% smaller). NKit compacts padding; the playable image preserves every game file, title, commit identity, disc banner and save banner/icon. The pipeline restores it to the original full ISO and verifies an exact SHA-256 match, plus the compact image's physical apploader, DOL and file payloads. Physical direct GC Loader testing remains outstanding.
 
 **AnimalTown-$version.iso** remains available as the full-size canonical ISO for archival and fallback use. Both disc images are published directly, without ZIP wrappers. Choose one image download; you do not need both on the card. The server is a separate **AnimalTown-server-$version.zip** archive and requires .NET 10 and PostgreSQL. It does not run on the console.
 
-**animal-town-updater.dol** is also embedded in the ISO for the title Update option. For that option, name the installed game `/AnimalTown.iso` on GC Loader; place `/swiss.dol` alongside it and provision HTTPS inputs as described in the updater repository before updating.
+**animal-town-updater.dol** is also embedded in the ISO for the title Update option. Keep the installed image's chosen filename/folder and provision its host-side SD path with the updater repository's provision.py --image option, together with HTTPS inputs. The SD-root animaltown-updater/image-path.txt selects the target; the game verifies its AnimalTown identity/current version before passing the exact path to the updater. Missing/conflicting paths stop Update. A verified installation ends with Power off/on so GC Loader firmware can reopen the replaced image. Physical storage, BBA and restart behavior remain unverified.
 
 version.json records the main major.minor.patch version, merged PR boundaries and source commit (branch builds append +hash). BUILD.txt records the version and game, engine and SDK revisions. validation-plan.json records the comparison base and selected checks. texture-audit.json records texture source identities, fingerprints and 256-pixel default residency and 128/256/512/1024 model variants. nkit-validation.json records the pinned converter, sizes, per-file hashes and round-trip verification. SHA256SUMS.txt covers both disc images, the archives and manifests.
 

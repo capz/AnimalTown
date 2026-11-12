@@ -39,3 +39,7 @@ if($manifest.source -ne $lock.commit -or $manifest.dirty){throw 'Updater must be
 New-Item -ItemType Directory -Force (Join-Path $root 'out/disc')|Out-Null
 Copy-Item -LiteralPath $dol -Destination (Join-Path $root 'out/disc/animal-town-updater.dol') -Force
 Write-Host "Packaged animal-town-updater.dol ($($lock.commit))"
+
+# Ship the matching PC-side setup tool with the release tools archive.
+Copy-Item -LiteralPath (Join-Path $source 'tools/provision.py') -Destination (Join-Path $root 'out/updater-provision.py') -Force
+Copy-Item -LiteralPath (Join-Path $source 'README.md') -Destination (Join-Path $root 'out/updater-setup.md') -Force

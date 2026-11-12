@@ -6,5 +6,6 @@
   <ItemGroup><Compile Include="../../game/AnimalTown.GameCube/MenuNavigation.cs" Link="MenuNavigation.cs" /></ItemGroup>
   <ItemGroup><Compile Include="../../game/AnimalTown.GameCube/WrappedText.cs" Link="WrappedText.cs" /></ItemGroup>
   <ItemGroup><Compile Include="../../game/AnimalTown.GameCube/DialogueVoice.cs" Link="DialogueVoice.cs" /></ItemGroup>
+  <ItemGroup><Compile Include="../../game/AnimalTown.GameCube/UpdateImagePath.cs" Link="UpdateImagePath.cs" /></ItemGroup>
   <ItemGroup><None Update="Fixtures/*.bin" CopyToOutputDirectory="PreserveNewest" /></ItemGroup>
 </Project>

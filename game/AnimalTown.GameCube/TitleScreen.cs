@@ -4,7 +4,6 @@ using AnimalTown;
 using Dolphin.Diagnostics;
 using Dolphin.Graphics;
 using Dolphin.Input;
-using DolLauncher=Dolphin.IO.DolLauncher;
 using Dolphin.Timing;
 
 // The title owns only UI resources. TownGame is constructed only after Start.
@@ -54,15 +53,11 @@ internal sealed class TitleScreen : IDisposable
             title.Save();
             try{
                 title.status="Starting updater...";title.Draw();
-                string path="dvd:/animal-town-updater.dol";
-                if(!System.IO.File.Exists(path)){
-                    if(!Dolphin.Storage.Storage.Mount(Dolphin.Storage.StorageDevice.GcLoader))throw new IOException("GC Loader unavailable");
-                    path="gcloader:/animal-town-updater.dol";
-                }
-                using var updater=DolLauncher.Prepare(path);
-                updater.SetArguments("gcloader:/animal-town-updater.dol",BuildInfo.Version,"gcloader:/AnimalTown.iso");
-                DolLauncher.RequestLaunch(updater);return false;
-            }catch(Exception){title.status="Updater unavailable. Check the game disc or GC Loader.";}
+                UpdaterLaunch.Request();return false;
+            }catch(Exception error){
+                title.status=error.Message??"";
+                if(title.status.Length==0)title.status="Update failed: "+UpdaterLaunch.Operation+".";
+            }
         }
     }
     private void Save()
