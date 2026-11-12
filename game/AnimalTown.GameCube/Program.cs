@@ -42,9 +42,13 @@ internal static class Program
         AnimalTown.GameCube.NativeTexturePages.Collect();
         DebugOverlay.WriteLine("ANIMALTOWN TITLE RELEASED native bytes "+GraphicsDevice.Default.NativeBytes);
         DebugOverlay.WriteLine("ANIMALTOWN GAME START");
+        DebugOverlay.WriteLine("ANIMALTOWN ARAM INIT BEGIN");
         if(!Aram.Initialize(2*1024*1024))throw new InvalidOperationException("Audio ARAM reservation failed");
+        DebugOverlay.WriteLine("ANIMALTOWN ARAM INIT READY");
         LoadingScreen.Pulse();
+        DebugOverlay.WriteLine("ANIMALTOWN GAME CONSTRUCT BEGIN");
         using var game=new TownGame(config,session);
+        DebugOverlay.WriteLine("ANIMALTOWN GAME CONSTRUCT READY");
         AnimalTown.GameCube.NativeTexturePages.Collect();
         long previous=Clock.Timestamp;double accumulator=0;
         while(true)
@@ -120,7 +124,7 @@ internal sealed class TownGame : IDisposable
     private readonly BoxBatch boxes;
     private int modelUsed,loadingIndex;
     private Task<Model>? loadingModel;
-    private bool resourcesReady,loadingFailed;
+    private bool resourcesReady,loadingFailed,loadingBuildingsStarted;
     private string loadingLabel="Preparing town assets";
     private float cachedPlayerHeight;
     private float profiledX=float.NaN,profiledZ;
@@ -164,8 +168,11 @@ internal sealed class TownGame : IDisposable
         LoadingScreen.Pulse();
         transform.Parent=worldRoot;identity.Parent=worldRoot;
         banner=File.ReadAllBytes("dvd:/savebanner.rgb5a3");icon=File.ReadAllBytes("dvd:/saveicon.rgb5a3");
+        DebugOverlay.WriteLine("ANIMALTOWN GAME UI READY");
         var pcm=new byte[512];for(int i=0;i<pcm.Length;i++)pcm[i]=(byte)(128+(i%24<12?25:-25)*(pcm.Length-i)/pcm.Length);
+        DebugOverlay.WriteLine("ANIMALTOWN GAME AUDIO BEGIN");
         syllable=Sound.FromPcm8(pcm,16000);syllable.Volume=.12f;dialogueVoice=new DialogueVoice(syllable);
+        DebugOverlay.WriteLine("ANIMALTOWN GAME AUDIO READY");
         sessionStart=Clock.Timestamp;
         ReadCalendar();
         debugConfig=config;
@@ -173,12 +180,18 @@ internal sealed class TownGame : IDisposable
         BuildingCatalog.Configure(File.ReadAllBytes("dvd:/buildings.bin"));
         LoadingScreen.Pulse();
         screen=session.Draft!=null?"plot":"world";
-        if(session.Draft!=null&&!session.PreviewStarted){FindStartingPlot();session.PreviewStarted=true;}
+        if(session.Draft!=null&&!session.PreviewStarted){
+            DebugOverlay.WriteLine("ANIMALTOWN INITIAL PLOT BEGIN");
+            FindStartingPlot();session.PreviewStarted=true;
+            DebugOverlay.WriteLine("ANIMALTOWN INITIAL PLOT READY");
+        }
         facingYaw=state.Facing;
         if(session.Draft==null)state.Rollover(day,month);
         if(room==0&&state.HousePlaced&&!state.CanWalk(state.X,state.Z,0))state.MoveToHouseEntrance();
+        DebugOverlay.WriteLine("ANIMALTOWN WORLD RENDERERS BEGIN");
         buildings=new BuildingRenderer(worldRoot);
         trees=new LowPolyTrees(worldRoot);terrain=new TerrainRenderer();villagerShadows=new VillagerShadows();
+        DebugOverlay.WriteLine("ANIMALTOWN WORLD RENDERERS READY");
         if(NativeShadows.Init(GroundShadow.Atlas(),VillagerShadowPatch.Texture())!=1)throw new InvalidOperationException("Shadow union native budget");
         if(config.Values[1]==0)ToggleModelPath();
         if(config.Values[4]==0)ToggleBatching();
@@ -254,14 +267,21 @@ internal sealed class TownGame : IDisposable
         try{
             terrain.WarmCliffs(state.Town,Clock.Timestamp+1000);
             if(loadingIndex<models.Length){
-                if(loadingModel==null){loadingLabel="Loading "+modelNames[loadingIndex];loadingModel=ModelResources.LoadAsync(modelNames[loadingIndex]);return;}
+                if(loadingModel==null){
+                    loadingLabel="Loading "+modelNames[loadingIndex];
+                    DebugOverlay.WriteLine("ANIMALTOWN MODEL LOAD BEGIN "+loadingIndex+" "+modelNames[loadingIndex]);
+                    loadingModel=ModelResources.LoadAsync(modelNames[loadingIndex]);return;
+                }
                 if(!loadingModel.IsCompleted)return;
                 var model=loadingModel.GetAwaiter().GetResult();models[loadingIndex]=model;
                 modelResidency.Register(loadingIndex,model,Clock.Timestamp);
                 actors[loadingIndex+1]=model.CreateInstance(512*1024);attention.Register(loadingIndex,actors[loadingIndex+1]);if(model.TryGetAnimation("Walking",out var clip))animationClock.Step(loadingIndex+1,0,false);
+                DebugOverlay.WriteLine("ANIMALTOWN MODEL LOAD READY "+loadingIndex+" "+modelNames[loadingIndex]);
                 loadingModel=null;loadingIndex++;return;
             }
+            if(!loadingBuildingsStarted){loadingBuildingsStarted=true;DebugOverlay.WriteLine("ANIMALTOWN BUILDINGS LOAD BEGIN");}
             bool complete=buildings.AdvanceLoading();loadingLabel=buildings.LoadingLabel;if(!complete)return;
+            DebugOverlay.WriteLine("ANIMALTOWN BUILDINGS LOAD READY");
             buildings.Begin(villagers.Doors);
             for(int actor=0;actor<BuildingWorld.Actors;actor++){
                 var location=BuildingWorld.Location(state,actor);if(location.Space.IsTown)continue;int building=BuildingWorld.Building(location.Space.Value);
