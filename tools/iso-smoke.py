@@ -82,11 +82,12 @@ def runtime_log_text():
 def check_runtime_failure():
     # Session errors must be detected before native shutdown can hide the
     # managed exception behind an unchanged loading frame.
-    for line in reversed(runtime_log_text().splitlines()):
-        if ('ANIMALTOWN SESSION FAILED' in line or 'ANIMALTOWN ASSET LOAD FAILED' in line
-                or 'ANIMALTOWN BUILDING ASSET ERROR' in line):
-            (root/'runtime-failure.txt').write_text(line+'\n')
-            raise AssertionError('Game runtime failure: '+line)
+    failures=[line for line in runtime_log_text().splitlines()
+              if ('ANIMALTOWN SESSION FAILED' in line or 'ANIMALTOWN ASSET LOAD FAILED' in line
+                  or 'ANIMALTOWN BUILDING ASSET ERROR' in line)]
+    if failures:
+        (root/'runtime-failure.txt').write_text('\n'.join(failures)+'\n')
+        raise AssertionError('Game runtime failure: '+failures[0])
 
 def card_digest():
     import hashlib
@@ -742,6 +743,20 @@ def card_dev_config(path):
     count=27 if payload[3]==1 else 29 if payload[3]==2 else 30
     return {'version':payload[3],'values':list(payload[4:4+count]),'discard_terrain_cache_when_indoors':payload[3]==3 and payload[33]==1}
 
+def aram_model_cycles(text,after):
+    """Match real retire/restore pairs in the current town session only."""
+    import re
+    session=text.rfind('ANIMALTOWN GAME START')
+    if session<0:raise AssertionError('No traced town session for model residency evidence')
+    cold={};cycles=[]
+    for event in re.finditer(r'ANIMALTOWN MODEL (COLD|WARM) (\d+)',text[session:]):
+        species=int(event[2]);offset=session+event.start()
+        if event[1]=='COLD':cold[species]=offset
+        elif species in cold:
+            retired=cold.pop(species)
+            if offset>=after:cycles.append({'species':species,'cold_offset':retired,'warm_offset':offset})
+    return {'session_start':session,'cycles':cycles,'cold_species':sorted(cold)}
+
 def aram_residency_scenario():
     """Real door/cache/model transitions, plus separate-card config roundtrips."""
     import re
@@ -750,6 +765,7 @@ def aram_residency_scenario():
     from avi_guest_clock import AviGuestClock
     clock=AviGuestClock(user/'Dump/Frames',track_presentations=True)
     card=root/'MemoryCardA.USA.raw';segments=[];report={'segments':segments,'clock':'NTSC VI chunks; software Dolphin, not hardware'}
+    building_inspections=0
     def logs():return runtime_log_text()
     def alive():
         check_runtime_failure()
@@ -796,9 +812,16 @@ def aram_residency_scenario():
         press('D_DOWN');press('D_DOWN');press('A');wait_title(modal=True)
         # The appended session-only UI grain control follows persisted options.
         press('D_UP');press('D_UP');screenshot(name+'.png') # config index 29
-    def inspect():
+    def inspect(indoors=False):
+        nonlocal building_inspections
         os.write(controller,b'PRESS L\nPRESS R\n');time.sleep(.2);press('A');os.write(controller,b'RELEASE L\nRELEASE R\n')
-    def enter(name):
+        if not indoors:building_inspections+=1
+    def enter(name,target_species=None):
+        if target_species is not None:
+            # The existing inspector cycles the six actual resident homes in
+            # species order. Tour real camera locations to the cold target.
+            for step in range((target_species-building_inspections)%6):
+                inspect();view(name+'-camera-'+str(step),False)
         inspect();view(name+'-outside',False);press('A');view(name+'-inside',True)
         # The crossing lands 0.7 m from the exit. Walk into the room so the
         # early-exit prefetch guard does not deliberately keep outdoor models hot.
@@ -807,7 +830,7 @@ def aram_residency_scenario():
         finally:os.write(controller,b'SET MAIN .5 .5\n')
         view(name+'-away-from-door',True)
     def leave(name,reversal=False):
-        inspect() # the existing indoor inspector focuses the real exit socket
+        inspect(True) # the existing indoor inspector focuses the real exit socket
         started=time.monotonic();start_vi=clock.frames()
         os.write(controller,b'PRESS A\n');time.sleep(1);os.write(controller,b'RELEASE A\n')
         if reversal:
@@ -829,16 +852,25 @@ def aram_residency_scenario():
         terrain=session.find('ANIMALTOWN STARTUP TERRAIN READY')
         building_begin=session.find('ANIMALTOWN BUILDINGS LOAD BEGIN')
         building_ready=session.find('ANIMALTOWN BUILDINGS LOAD READY')
-        model=session.find('ANIMALTOWN MODEL LOAD BEGIN 0 ')
+        admissions=list(re.finditer(r'ANIMALTOWN MODEL LOAD BEGIN (\d+) ',session))
+        model=admissions[0].start() if admissions else -1
         bake=session.find('ANIMALTOWN TERRAIN BAKE READY')
         if not 0<=bake<terrain<building_begin<building_ready<model:
             raise AssertionError('Session '+str(index)+' did not retire terrain scratch and compact the building kit before species admission')
-        startup.append({'session':index,'bake_ready_before_terrain_ready_before_building_kit_before_first_model':True})
+        player=re.search(r'ANIMALTOWN PLAYER MODEL READY (\d+) ',session)
+        first_ready=session.find('ANIMALTOWN MODEL LOAD READY '+admissions[0][1]+' ') if admissions else -1
+        if (len(admissions)!=6 or len({event[1] for event in admissions})!=6 or player is None
+                or player[1]!=admissions[0][1] or not model<player.start()<first_ready<admissions[1].start()):
+            raise AssertionError('Session '+str(index)+' did not reserve the selected player instance before the remaining five species')
+        startup.append({'session':index,'first_species':int(admissions[0][1]),
+                        'bake_ready_before_terrain_ready_before_building_kit_before_first_model':True,
+                        'selected_player_ready_before_other_species':True})
     if not startup:raise AssertionError('No traced startup ordering was observed')
     report['startup_order']=startup
-    wait_log(r'ANIMALTOWN READY ',seconds=300)
-    wait_log(r'Terrain archive: [0-9]+ ARAM bytes',seconds=300)
-    wait_log(r'ANIMALTOWN ONBOARDING RELEASED',seconds=120)
+    session_start=logs().rfind('ANIMALTOWN GAME START')
+    wait_log(r'ANIMALTOWN READY ',session_start,seconds=300)
+    wait_log(r'Terrain archive: [0-9]+ ARAM bytes',session_start,seconds=300)
+    wait_log(r'ANIMALTOWN ONBOARDING RELEASED',session_start,seconds=120)
     view('aram-game-started',False)
     baseline=len(logs());enter('aram-flag-off');guest('flag-off-indoor-steady',8)
     if 'ANIMALTOWN TERRAIN CACHE SUSPENDED' in logs()[baseline:]:raise AssertionError('Default-off terrain option suspended the cache')
@@ -851,7 +883,8 @@ def aram_residency_scenario():
     if tuple(map(int,suspended.groups()[:2]))!=(0,1048576):raise AssertionError('Terrain cache did not physically release exactly 1 MiB')
     # This assertion is independent of the terrain flag: automatic model paging
     # must actually retire at least one cold shared species, not only plan it.
-    model=wait_log(r'ANIMALTOWN MODEL COLD (\d+) aram bytes (\d+) native budget bytes (\d+) max advance us (\d+)',baseline)
+    # Startup may already have retired it in this session before the first door.
+    model=wait_log(r'ANIMALTOWN MODEL COLD (\d+) aram bytes (\d+) native budget bytes (\d+) max advance us (\d+)',session_start)
     if int(model[2])<=0:raise AssertionError('Cold model has no ARAM package backing')
     report['suspended']={'cache_bytes':int(suspended[1]),'reclaimed_bytes':int(suspended[2]),'archive_bytes':int(suspended[3])}
     report['model_cold']={'species':int(model[1]),'aram_bytes':int(model[2]),'native_bytes':int(model[3]),'max_advance_us':int(model[4])}
@@ -861,14 +894,18 @@ def aram_residency_scenario():
     report['restored']={'cache_bytes':int(restored[1]),'archive_bytes':int(restored[2])}
     # Back-to-back crossings exercise drain/cancel and reuse of restored backing.
     enter('aram-rapid-reentry');guest('rapid-reentry-indoor',1);leave('aram-rapid-return',reversal=True)
-    cold_species=set();consumed=[]
-    for event in re.finditer(r'ANIMALTOWN MODEL (COLD|WARM) (\d+)',logs()[baseline:]):
-        species=int(event[2])
-        if event[1]=='COLD':cold_species.add(species)
-        elif species in cold_species:consumed.append(species)
-    if not consumed:raise AssertionError('No actually cold model was restored before the drawable exterior returned')
-    report['cold_species_restored_before_exterior_return']=consumed
-    report['runtime_markers']=re.findall(r'ANIMALTOWN (?:MODEL [^\r\n]+|TERRAIN CACHE [^\r\n]+)',logs())
+    evidence=aram_model_cycles(logs(),baseline);toured=set();report['extra_cold_home_routes']=[]
+    while not evidence['cycles']:
+        candidates=[species for species in evidence['cold_species'] if species not in toured]
+        if not candidates:raise AssertionError('No current-session cold model was restored by actual door/camera demand')
+        species=candidates[0];toured.add(species);name='aram-cold-species-'+str(species)
+        report['extra_cold_home_routes'].append({'species':species,'resident_building':species+1})
+        enter(name,target_species=species);guest(name+'-indoor',1);leave(name+'-returned')
+        evidence=aram_model_cycles(logs(),baseline)
+    if evidence['session_start']!=session_start:raise AssertionError('Town session changed during residency acceptance')
+    report['cold_species_restored_before_exterior_return']=[event['species'] for event in evidence['cycles']]
+    report['cold_to_warm_after_gameplay_demand']=evidence['cycles']
+    report['runtime_markers']=re.findall(r'ANIMALTOWN (?:MODEL [^\r\n]+|TERRAIN CACHE [^\r\n]+)',logs()[session_start:])
     (root/'aram-runtime.log').write_text(logs())
     # Restart the same ISO/card. Toggling the title's last row once must produce
     # Off in the binary record; that proves startup loaded the prior On setting.

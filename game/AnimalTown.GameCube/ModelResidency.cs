@@ -7,6 +7,19 @@ using Dolphin.Graphics;
 using Dolphin.Memory;
 using Dolphin.Timing;
 
+internal static class ModelStartup
+{
+    internal static int SpeciesAt(int selected,int progress)
+    {
+        if(selected<0||selected>=ModelResidencyDemand.SpeciesCount||progress<0||progress>=ModelResidencyDemand.SpeciesCount)
+            throw new ArgumentOutOfRangeException("species");
+        if(progress==0)return selected;
+        int species=progress-1;return species>=selected?species+1:species;
+    }
+    internal static ModelInstance? ReservePlayer(int selected,int species,Model model)
+        =>species==selected?model.CreateInstance(512*1024):null;
+}
+
 // One owner drives whole shared models outside render frames. ARAM backing is
 // counted even after a restore, and cannot consume terrain/audio reservations.
 internal sealed class ModelResidency
@@ -17,6 +30,8 @@ internal sealed class ModelResidency
     private readonly long[] lastRequired=new long[ModelResidencyDemand.SpeciesCount],warmUntil=new long[ModelResidencyDemand.SpeciesCount],retryAt=new long[ModelResidencyDemand.SpeciesCount];
     private readonly ModelResidencyDemand demand=new ModelResidencyDemand();
     private readonly bool[] urgent=new bool[ModelResidencyDemand.SpeciesCount];
+    private readonly bool[] startupAttempted=new bool[ModelResidencyDemand.SpeciesCount];
+    private int startupCheckpoint=-1;
     private Task? pending;
     private CancellationTokenSource? cancellation;
     private int active=-1;
@@ -26,6 +41,7 @@ internal sealed class ModelResidency
     internal int WorkSteps,MaxAdvanceUs,MaxAdmissionUs,ReadinessWaits,PortalWaits;
     internal long AdvanceUs,AdmissionUs,SnapshotBytes,RestoredBytes;
     internal int PendingSpecies=>active;
+    internal int RequiredSpeciesCount {get{int count=0;for(int i=0;i<demand.Required.Length;i++)if(demand.Required[i])count++;return count;}}
     internal void WaitForScene()=>ReadinessWaits++;
     internal void WaitForPortal()=>PortalWaits++;
     internal bool Required(int species)=>demand.Required[species];
@@ -66,6 +82,32 @@ internal sealed class ModelResidency
     internal void Pump(long now,bool allowDemotion,long deadline)
     {
         if(stopped||Clock.Timestamp>=deadline)return;
+        if(!CompletePending(now,deadline)||RestoreRequired(now))return;
+        if(!Enabled){ReleaseWarmBacking();return;}
+        if(allowDemotion)TryDemote(Candidate(now,false),now);
+    }
+    // Loading remains visible, but work still yields between bounded grants.
+    // A checkpoint owns no disc load; it must settle its DMA before another
+    // large package is admitted. Only startup bypasses the idle/grace timers.
+    internal bool PrepareStartup(GameState state,PortalSystem doors,int checkpoint,long now,long deadline,bool pinAll=false)
+    {
+        if(stopped)return false;
+        if(startupCheckpoint!=checkpoint){Array.Clear(startupAttempted,0,startupAttempted.Length);startupCheckpoint=checkpoint;}
+        Require(state,doors,now,pinAll);
+        if(Clock.Timestamp>=deadline||!CompletePending(now,deadline)||RestoreRequired(now))return false;
+        if(!Enabled){ReleaseWarmBacking();return true;}
+        int candidate;
+        while((candidate=Candidate(now,true))>=0){
+            // Optional failure, cancellation or exhausted ARAM must not trap
+            // this checkpoint in a retry loop. A later load may try again.
+            startupAttempted[candidate]=true;
+            if(TryDemote(candidate,now))return false;
+            if(Clock.Timestamp>=deadline)return false;
+        }
+        return true;
+    }
+    private bool CompletePending(long now,long deadline)
+    {
         // A false step is waiting on native DMA/resources; never busy-poll it.
         if(pending!=null){
             var model=models[active]!;
@@ -74,7 +116,7 @@ internal sealed class ModelResidency
                 int elapsed=(int)(Clock.Timestamp-at);AdvanceUs+=elapsed;WorkSteps++;if(elapsed>MaxAdvanceUs)MaxAdvanceUs=elapsed;
                 if(!progressed)break;
             }
-            if(!pending.IsCompleted)return;
+            if(!pending.IsCompleted)return false;
             int species=active;bool wasRestore=restoring;bool failed=false;
             try{pending.GetAwaiter().GetResult();}
             catch(OperationCanceledException){ }
@@ -85,36 +127,48 @@ internal sealed class ModelResidency
                 if(wasRestore&&!failed){Restores++;RestoredBytes+=model.PackageBytes;DebugOverlay.WriteLine("ANIMALTOWN MODEL WARM "+species+" aram bytes "+model.AramBytes+" max advance us "+MaxAdvanceUs+" readiness waits "+ReadinessWaits+" portal wait ticks "+PortalWaits);}
             }else if(!failed&&!wasRestore){Demotions++;if(!hadBacking)SnapshotBytes+=model.PackageBytes;DebugOverlay.WriteLine("ANIMALTOWN MODEL COLD "+species+" aram bytes "+model.AramBytes+" native budget bytes "+model.NativeBytes+" max advance us "+MaxAdvanceUs);}
         }
+        return true;
+    }
+    private bool RestoreRequired(long now)
+    {
         // Demand always precedes optional demotion, including a disable request.
         bool missing=false;
         for(int priority=0;priority<2;priority++)for(int i=0;i<models.Length;i++)if(models[i]!=null&&demand.Required[i]&&!Ready(i)&&urgent[i]==(priority==0)){
             missing=true;
-            if(now>=retryAt[i]&&!models[i]!.IsTransitioning){Start(i,true,now);return;}
+            if(now>=retryAt[i]&&!models[i]!.IsTransitioning){Start(i,true,now);return true;}
         }
-        if(missing)return;
-        if(!Enabled){
-            for(int i=0;i<models.Length;i++)if(Ready(i)&&models[i]!.AramBytes>0){models[i]!.ReleaseAramBacking();BackingReleases++;return;}
-            return;
-        }
-        if(!allowDemotion)return;
+        return missing;
+    }
+    private void ReleaseWarmBacking()
+    {
+        for(int i=0;i<models.Length;i++)if(Ready(i)&&models[i]!.AramBytes>0){models[i]!.ReleaseAramBacking();BackingReleases++;return;}
+    }
+    private int Candidate(long now,bool startup)
+    {
         int candidate=-1;
-        for(int i=0;i<models.Length;i++)if(models[i]!=null&&!demand.Required[i]&&Ready(i)&&now-lastRequired[i]>=IdleDelayUs&&now>=warmUntil[i]&&now>=retryAt[i]&&
+        for(int i=0;i<models.Length;i++)if(models[i]!=null&&!demand.Required[i]&&Ready(i)&&now>=retryAt[i]&&
+            (startup?!startupAttempted[i]:now-lastRequired[i]>=IdleDelayUs&&now>=warmUntil[i])&&
             (candidate<0||lastRequired[i]<lastRequired[candidate]))candidate=i;
-        if(candidate<0)return;
+        return candidate;
+    }
+    private bool TryDemote(int candidate,long now)
+    {
+        if(candidate<0)return false;
         var source=models[candidate]!;int bytes=Round(source.PackageBytes);
-        if(bytes<1||bytes>ColdBudget){retryAt[candidate]=now+IdleDelayUs;return;}
+        if(bytes<1||bytes>ColdBudget){retryAt[candidate]=now+IdleDelayUs;return false;}
         if(source.AramBytes==0){
             int retained=ColdBytes;
             if(bytes>ColdBudget-retained){
                 // Drop one hot recoverable snapshot, never a cold model's only copy.
-                for(int i=0;i<models.Length;i++)if(i!=candidate&&Ready(i)&&models[i]!.AramBytes>0){models[i]!.ReleaseAramBacking();BackingReleases++;return;}
-                retryAt[candidate]=now+RetryDelayUs;return;
+                for(int i=0;i<models.Length;i++)if(i!=candidate&&Ready(i)&&models[i]!.AramBytes>0){models[i]!.ReleaseAramBacking();BackingReleases++;return false;}
+                retryAt[candidate]=now+RetryDelayUs;return false;
             }
-            if(!Aram.IsAvailable){retryAt[candidate]=now+IdleDelayUs;return;}
+            if(!Aram.IsAvailable){retryAt[candidate]=now+IdleDelayUs;return false;}
             var stats=Aram.Statistics;
-            if(stats.FreeBytes<bytes+AramReserve||stats.LargestFreeBlockBytes<bytes||stats.AllocationCount>=248){retryAt[candidate]=now+RetryDelayUs;return;}
+            if(stats.FreeBytes<bytes+AramReserve||stats.LargestFreeBlockBytes<bytes||stats.AllocationCount>=248){retryAt[candidate]=now+RetryDelayUs;return false;}
         }
         Start(candidate,false,now);
+        return pending!=null;
     }
     // Session teardown is an explicit blocking boundary, after EndFrame. A
     // manually driven model must reach its terminal state before its instances

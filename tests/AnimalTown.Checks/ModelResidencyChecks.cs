@@ -23,6 +23,12 @@ namespace Dolphin.Memory
 }
 namespace Dolphin.Graphics
 {
+    public sealed class ModelInstance
+    {
+        public readonly Model Model;
+        public readonly int Budget;
+        public ModelInstance(Model model,int budget){Model=model;Budget=budget;}
+    }
     // Tasks deliberately complete only through explicit advancement, matching
     // native ownership/polling instead of making every async call succeed inline.
     public sealed class Model
@@ -34,13 +40,19 @@ namespace Dolphin.Graphics
         public bool IsTransitioning=>completion!=null;
         public int AramBytes {get;private set;}
         public int NativeBytes=>IsResident?PackageBytes*2:128;
-        public bool FailAdmission,FailWork,CommitCancellation;
+        public bool FailAdmission,FailWork,CancelWork,CommitCancellation;
+        public int InstanceCreations;
         public int Starts,Advances,AnimationPosition=37,PendingDmaPolls=1;
         public Task? LastTransition {get;private set;}
         private TaskCompletionSource<int>? completion;
         private CancellationToken cancellation;
         private bool restore;
         private int step;
+        public ModelInstance CreateInstance(int budget)
+        {
+            if(!IsResident||IsTransitioning)throw new InvalidOperationException("A cold or transitioning model cannot create an instance");
+            InstanceCreations++;return new ModelInstance(this,budget);
+        }
         public Task PrepareAsync(CancellationToken token)=>Start(true,token);
         public Task UnloadToAramAsync(CancellationToken token)=>Start(false,token);
         private Task Start(bool warming,CancellationToken token)
@@ -55,7 +67,7 @@ namespace Dolphin.Graphics
             Clock.Timestamp+=7;Advances++;
             if(++step<=PendingDmaPolls)return false; // Native DMA is pending; ordinary frame work must not spin.
             var done=completion;completion=null;
-            if(cancellation.IsCancellationRequested&&!CommitCancellation){done.SetCanceled();return true;}
+            if(CancelWork||cancellation.IsCancellationRequested&&!CommitCancellation){CancelWork=false;done.SetCanceled();return true;}
             if(FailWork){FailWork=false;done.SetException(new IOException("Injected restore/copy failure"));return true;}
             if(!restore&&AramBytes==0){AramBytes=(PackageBytes+31)&~31;Aram.FreeBytes-=AramBytes;Aram.AllocationCount++;}
             IsResident=restore;done.SetResult(0);return true;
@@ -84,6 +96,10 @@ internal static class ModelResidencyChecks
     private static void Pump(ModelResidency manager,bool demote=false)=>manager.Pump(Clock.Timestamp,demote,Clock.Timestamp+1000);
     private static void Drain(ModelResidency manager)
     {for(int i=0;i<20&&manager.PendingSpecies>=0;i++)Pump(manager);if(manager.PendingSpecies>=0)throw new Exception("Residency failed to drain");}
+    private static bool Startup(ModelResidency manager,GameState state,PortalSystem doors,int checkpoint,bool pinAll=false)
+        =>manager.PrepareStartup(state,doors,checkpoint,Clock.Timestamp,Clock.Timestamp+1000,pinAll);
+    private static void FinishStartup(ModelResidency manager,GameState state,PortalSystem doors,int checkpoint,bool pinAll=false)
+    {for(int i=0;i<100;i++)if(Startup(manager,state,doors,checkpoint,pinAll))return;throw new Exception("Startup residency checkpoint did not finish");}
     internal static void Run(Action<bool,string> check)
     {
         var manager=Setup(out var models,out var state,out var doors);
@@ -170,5 +186,82 @@ internal static class ModelResidencyChecks
         check(shutdownRestore.IsCanceled&&!models[1].IsTransitioning&&models[1].Advances==restoreAt+5&&manager.PendingSpecies<0,
             "session teardown drains restoration before its instances or model can be disposed");
         check(!models[1].IsResident&&manager.ColdBytes==65536&&models[1].Starts==2,"canceled shutdown preserves the cold model's backing for normal disposal without restarting it");
+
+        StartupChecks(check);
+    }
+    private static void StartupChecks(Action<bool,string> check)
+    {
+        // Exercise every profile species, including spaniel which was formerly
+        // last in the loader. The same production order/factory reserves one
+        // player before any later model is admitted, without a second late copy.
+        for(int selected=0;selected<6;selected++){
+            Clock.Timestamp=0;Aram.Reset();var state=State();state.Species=selected;var doors=new PortalSystem();var manager=new ModelResidency();
+            var cohort=new Model[6];var seen=new bool[6];ModelInstance? player=null;
+            for(int progress=0;progress<6;progress++){
+                FinishStartup(manager,state,doors,progress);
+                int species=ModelStartup.SpeciesAt(selected,progress);
+                check(!seen[species]&&(progress!=0||species==selected),"selected species loads first and each shared species loads once");seen[species]=true;
+                if(progress>0)check(player!=null&&ReferenceEquals(player.Model,cohort[selected]),"the selected player instance is reserved before every later package");
+                var model=cohort[species]=new Model();manager.Register(species,model,Clock.Timestamp);
+                _=model.CreateInstance(512*1024); // NPC adoption precedes paging.
+                var reserved=ModelStartup.ReservePlayer(selected,species,model);if(reserved!=null)player=reserved;
+                if(progress==0)check(player!=null&&player.Budget==512*1024&&!manager.AllReady,"player reservation does not wait for the unregistered cohort");
+            }
+            FinishStartup(manager,state,doors,6);
+            check(player!=null&&cohort[selected].InstanceCreations==2&&cohort.Where((_,i)=>i!=selected).All(x=>x.InstanceCreations==1),
+                "startup creates exactly seven instances and never repeats final player allocation");
+            check(cohort[selected].IsResident&&cohort.Where((_,i)=>i!=selected).All(x=>!x.IsResident)&&manager.Demotions==5,
+                "startup protects the selected shared model while reclaiming every genuinely unused species");
+            check(Clock.Timestamp<ModelResidency.WarmGraceUs&&manager.ReadyForSpace(state,doors,state.Space),"startup bypasses dwell without exposing a cold drawable actor");
+            manager.Require(state,doors,Clock.Timestamp);Pump(manager);
+            check(cohort.Count(x=>x.IsResident)==1,"normal demand keeps startup-cold unused species cold without a draft-wide pin");
+        }
+
+        Clock.Timestamp=0;Aram.Reset();var partialState=State();var partialDoors=new PortalSystem();var partial=new ModelResidency();
+        var selectedModel=new Model();partial.Register(0,selectedModel,0);var unused=new Model{PendingDmaPolls=4};partial.Register(1,unused,0);
+        check(!Startup(partial,partialState,partialDoors,2)&&unused.Starts==1,"startup admits a store without waiting five seconds");
+        for(int i=0;i<4;i++){
+            int before=unused.Advances;
+            check(!Startup(partial,partialState,partialDoors,2)&&unused.Advances==before+1,"pending startup DMA blocks next package admission and consumes one polling grant");
+        }
+        check(Startup(partial,partialState,partialDoors,2)&&!unused.IsResident&&partial.PendingSpecies<0&&!partial.AllReady,
+            "a checkpoint drains its owned transfer without waiting for unloaded species");
+        partialState.Town.Residents[1].Space=partialState.Space;
+        check(!Startup(partial,partialState,partialDoors,2)&&!partial.ReadyForSpace(partialState,partialDoors,partialState.Space),
+            "new drawable demand keeps startup gated until its cold model restores");
+        FinishStartup(partial,partialState,partialDoors,2);
+        check(unused.IsResident&&partial.ReadyForSpace(partialState,partialDoors,partialState.Space),"the original shared instance resource is restored before startup can publish");
+
+        foreach(string fault in new[]{"admission","work","cancel","unavailable","reserve","fragment","slots","budget"}){
+            Clock.Timestamp=0;Aram.Reset();var state=State();var doors=new PortalSystem();var manager=new ModelResidency();
+            manager.Register(0,new Model(),0);var optional=new Model{FailAdmission=fault=="admission",FailWork=fault=="work",CancelWork=fault=="cancel"};manager.Register(1,optional,0);
+            if(fault=="unavailable")Aram.IsAvailable=false;
+            if(fault=="reserve")Aram.FreeBytes=ModelResidency.AramReserve+optional.PackageBytes-1;
+            if(fault=="fragment")Aram.LargestFreeBlockBytes=optional.PackageBytes-1;
+            if(fault=="slots")Aram.AllocationCount=248;
+            if(fault=="budget")optional.PackageBytes=ModelResidency.ColdBudget+32;
+            FinishStartup(manager,state,doors,2);
+            check(optional.IsResident&&optional.Starts<=1&&manager.PendingSpecies<0,"an optional startup "+fault+" failure cannot trap loading in a retry loop");
+            int starts=optional.Starts;FinishStartup(manager,state,doors,2);check(optional.Starts==starts,"a checkpoint never repeats its failed optional admission");
+            if(fault=="work"||fault=="admission"){
+                FinishStartup(manager,state,doors,3);check(optional.Starts==starts,"a new checkpoint preserves failure retry backoff");
+            }
+        }
+
+        Clock.Timestamp=0;Aram.Reset();var pinnedState=State();var pinnedDoors=new PortalSystem();var pinned=new ModelResidency();
+        pinned.Register(0,new Model(),0);var protectedModel=new Model();pinned.Register(1,protectedModel,0);
+        check(Startup(pinned,pinnedState,pinnedDoors,2,true)&&protectedModel.Starts==0,"UV and water inspection pins prohibit startup paging without waiting for unloaded species");
+        pinned.Enabled=false;check(Startup(pinned,pinnedState,pinnedDoors,3)&&protectedModel.Starts==0,"disabled residency keeps the partial cohort resident");
+        pinned.Enabled=true;
+        var crossing=pinnedDoors.Actors[0];crossing.Phase=DoorPhase.Waiting;crossing.Source=new ActorLocation(1,2,2,0);crossing.Destination=new ActorLocation(17,2,2,0);
+        check(Startup(pinned,pinnedState,pinnedDoors,4)&&protectedModel.Starts==0,"startup cannot retire a species needed at the player's doorway destination");
+        crossing.Phase=DoorPhase.Idle;pinnedState.Space=0;pinnedState.X=pinnedState.Z=80;var resident=pinnedState.Town.Residents[1];resident.Space=0;bool found=false;
+        for(int z=24;z<137&&!found;z+=2)for(int x=24;x<137&&!found;x+=2){resident.PosX=x;resident.PosZ=z;found=ModelResidencyDemand.UsesSpace(pinnedState,pinnedDoors,1,0)&&!ModelResidencyDemand.DrawableUsesSpace(pinnedState,pinnedDoors,1,0);}
+        check(found&&Startup(pinned,pinnedState,pinnedDoors,5)&&protectedModel.Starts==0,"startup preserves invisible species inside the twenty-four metre prefetch guard");
+
+        Clock.Timestamp=0;Aram.Reset();var fullState=new GameState(-634240096){HousePlaced=true,Species=0,Space=0,X=18.5f,Z=40.5f};var fullDoors=new PortalSystem();var full=new ModelResidency();var required=new Model[6];
+        for(int i=0;i<6;i++){required[i]=new Model();full.Register(i,required[i],0);}
+        check(Startup(full,fullState,fullDoors,6)&&full.RequiredSpeciesCount==6&&required.All(x=>x.IsResident&&x.Starts==0),
+            "the actual starting plot reports all six guarded species and never evicts one to hide a full working-set limit");
     }
 }

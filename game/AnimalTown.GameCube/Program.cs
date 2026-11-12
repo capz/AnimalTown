@@ -162,7 +162,7 @@ internal sealed class TownGame : IDisposable
     internal TownGame(DevConfig config,TownSession session)
     {
         this.session=session;releaseIntro=session.Draft==null;
-        ui=new Draw2D(device,new Draw2DOptions{Width=640,Height=480,VertexCapacity=8192,SpriteCapacity=128});
+        ui=new Draw2D(device,new Draw2DOptions{Width=640,Height=480,VertexCapacity=4096,SpriteCapacity=128});
         font=UiFont.LoadSystem();strongFont=font;headingFont=UiFont.Load("gorditas-bold");cube=Cube();
         boxes=new BoxBatch(renderer,cube);for(int i=0;i<modelPoses.Length;i++)modelPoses[i]=new Transform{Parent=worldRoot};
         LoadingScreen.Pulse();
@@ -286,37 +286,53 @@ internal sealed class TownGame : IDisposable
                 // Admit the compact kit before large species packages occupy MEM1.
                 if(!loadingBuildingsStarted){loadingBuildingsStarted=true;DebugOverlay.WriteLine("ANIMALTOWN BUILDINGS LOAD BEGIN");}
                 bool complete=buildings.AdvanceLoading();loadingLabel=buildings.LoadingLabel;if(!complete)return;
+                buildings.Begin(villagers.Doors);
+                for(int actor=0;actor<BuildingWorld.Actors;actor++){
+                    var location=BuildingWorld.Location(state,actor);if(location.Space.IsTown)continue;int building=BuildingWorld.Building(location.Space.Value);
+                    if(!buildings.Ready(state.BuildingTypes[building])){BuildingWorld.Entrance(state,building,out float rx,out float rz);BuildingWorld.SetLocation(state,actor,new ActorLocation(0,rx,rz+1,0));saveStatus="A home is unavailable; its occupants are outside.";}
+                }
                 loadingBuildingsReady=true;
                 DebugOverlay.WriteLine("ANIMALTOWN BUILDINGS LOAD READY");
                 return;
             }
             if(loadingIndex<models.Length){
+                int species=ModelStartup.SpeciesAt(state.Species,loadingIndex);
                 if(loadingModel==null){
-                    loadingLabel="Loading "+modelNames[loadingIndex];
-                    DebugOverlay.WriteLine("ANIMALTOWN MODEL LOAD BEGIN "+loadingIndex+" "+modelNames[loadingIndex]);
-                    loadingModel=ModelResources.LoadAsync(modelNames[loadingIndex]);return;
+                    loadingLabel="Preparing villagers";
+                    if(!PrepareStartupResidency())return;
+                    loadingLabel="Loading "+modelNames[species];
+                    DebugOverlay.WriteLine("ANIMALTOWN MODEL LOAD BEGIN "+species+" "+modelNames[species]+" progress "+(loadingIndex+1)+" / "+models.Length+" required species "+modelResidency.RequiredSpeciesCount);
+                    loadingModel=ModelResources.LoadAsync(modelNames[species]);return;
                 }
                 if(!loadingModel.IsCompleted)return;
-                var model=loadingModel.GetAwaiter().GetResult();models[loadingIndex]=model;
-                modelResidency.Register(loadingIndex,model,Clock.Timestamp);
-                actors[loadingIndex+1]=model.CreateInstance(512*1024);attention.Register(loadingIndex,actors[loadingIndex+1]);if(model.TryGetAnimation("Walking",out var clip))animationClock.Step(loadingIndex+1,0,false);
-                DebugOverlay.WriteLine("ANIMALTOWN MODEL LOAD READY "+loadingIndex+" "+modelNames[loadingIndex]);
+                var model=loadingModel.GetAwaiter().GetResult();models[species]=model;
+                modelResidency.Register(species,model,Clock.Timestamp);
+                actors[species+1]=model.CreateInstance(512*1024);attention.Register(species,actors[species+1]);if(model.TryGetAnimation("Walking",out var clip))animationClock.Step(species+1,0,false);
+                var player=ModelStartup.ReservePlayer(state.Species,species,model);
+                if(player!=null){
+                    actors[0]=player;moveClip=-1;animationClock.Reset(0);appliedClips[0]=-2;
+                    DebugOverlay.WriteLine("ANIMALTOWN PLAYER MODEL READY "+species+" "+modelNames[species]);
+                }
+                DebugOverlay.WriteLine("ANIMALTOWN MODEL LOAD READY "+species+" "+modelNames[species]+" progress "+(loadingIndex+1)+" / "+models.Length);
                 loadingModel=null;loadingIndex++;return;
             }
-            buildings.Begin(villagers.Doors);
-            for(int actor=0;actor<BuildingWorld.Actors;actor++){
-                var location=BuildingWorld.Location(state,actor);if(location.Space.IsTown)continue;int building=BuildingWorld.Building(location.Space.Value);
-                if(!buildings.Ready(state.BuildingTypes[building])){BuildingWorld.Entrance(state,building,out float rx,out float rz);BuildingWorld.SetLocation(state,actor,new ActorLocation(0,rx,rz+1,0));saveStatus="A home is unavailable; its occupants are outside.";}
-            }
+            if(!PrepareStartupResidency()||!modelResidency.ReadyForSpace(state,villagers.Doors,room))return;
+            if(actors[0]==null)throw new InvalidOperationException("Selected player model was not prepared");
+            if(uvDebug!=0&&!modelResidency.AllReady)return;
             droppedItems.Load();
-            SelectSpecies();
             // UV regions require the fully loaded model set. Enabling them in
             // the constructor would leave an empty cache and hide the actors.
             if(uvDebug!=0&&NativeRenderProbe.Uv(uvDebug)!=uvDebug){uvDebug=0;saveStatus="UV preview unavailable: not enough memory.";}
             resourcesReady=true;
             DebugOverlay.WriteLine("BUILDINGS READY native bytes "+buildings.ResidentBytes);
             DebugOverlay.WriteLine("ANIMALTOWN READY "+BuildInfo.Version+" native bytes "+device.NativeBytes);
-        }catch(Exception error){loadingFailed=true;loadingLabel="Could not load town assets. Restart with a valid disc.";DebugOverlay.WriteLine("ANIMALTOWN ASSET LOAD FAILED "+error.Message);}
+        }catch(Exception error){loadingFailed=true;loadingLabel="Could not load town assets. Restart with a valid disc.";DebugOverlay.WriteLine("ANIMALTOWN ASSET LOAD FAILED "+error.Message+" required species "+modelResidency.RequiredSpeciesCount);}
+    }
+    private bool PrepareStartupResidency()
+    {
+        long now=Clock.Timestamp;
+        return modelResidency.PrepareStartup(state,villagers.Doors,loadingIndex,now,now+1000,
+            uvDebug!=0||requestedUv>=0||waterInspection!=0);
     }
     private bool PrepareStartupTerrain()
     {
@@ -375,7 +391,7 @@ internal sealed class TownGame : IDisposable
         bool nearExit=false;
         if(room!=0){BuildingWorld.InsideDoor(state,room,out float x,out float z);float dx=state.X-x,dz=state.Z-z;nearExit=dx*dx+dz*dz<1.1025f;}
         outdoorModelLookahead=room!=0&&(nearExit||now-playerStillSince<2000000);
-        modelResidency.Require(state,villagers.Doors,now,uvDebug!=0||requestedUv>=0||waterInspection!=0||session.Draft!=null,outdoorModelLookahead?0:-1);
+        modelResidency.Require(state,villagers.Doors,now,uvDebug!=0||requestedUv>=0||waterInspection!=0,outdoorModelLookahead?0:-1);
         modelSceneReady=modelResidency.ReadyForSpace(state,villagers.Doors,room);
         UpdatePortalReadiness();
     }
@@ -395,8 +411,6 @@ internal sealed class TownGame : IDisposable
         if(NativeRenderProbe.Uv(next)==next)uvDebug=next;
         else Say("UV display","Not enough memory to prepare UV regions. The current view is unchanged.");
     }
-    private void SelectSpecies()
-    { if(actors[0]!=null)actors[0].Dispose();actors[0]=models[state.Species].CreateInstance(512*1024);moveClip=-1;animationClock.Reset(0);appliedClips[0]=-2; }
     // Gameplay saves require this explicit menu action. The profile picker's
     // separately confirmed Delete action also commits, via TownSession.
     private void SaveFromMenu()
@@ -847,7 +861,7 @@ internal sealed class TownGame : IDisposable
         // Input/debug camera changes may occur on a frame with no simulation
         // tick. Resolve final drawable residency after the effective view changes.
         long residencyAt=FrameProfile.Start();
-        modelResidency.Require(state,villagers.Doors,Clock.Timestamp,uvDebug!=0||requestedUv>=0||waterInspection!=0||session.Draft!=null,outdoorModelLookahead?0:-1);
+        modelResidency.Require(state,villagers.Doors,Clock.Timestamp,uvDebug!=0||requestedUv>=0||waterInspection!=0,outdoorModelLookahead?0:-1);
         modelSceneReady=modelResidency.ReadyForSpace(state,villagers.Doors,room);
         FrameProfile.End(2,residencyAt);
         if(!modelSceneReady){modelResidency.WaitForScene();DrawLoading();return;}

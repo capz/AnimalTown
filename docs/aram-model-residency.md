@@ -11,7 +11,26 @@ and then the species models. Its scratch-building helper returns before
 collection; the kit begins on the following frame, and species wait for its
 completion. This avoids overlapping terrain scratch or building conversion with
 the fully resident model cohort, including when loading an indoor save. The
-existing loading surface stays visible until scene resources are ready.
+existing loading surface stays visible until scene resources are ready. The
+selected species loads first and reserves its player instance immediately, so
+the player is not a final allocation competing with the complete NPC cohort.
+Between package admissions, startup can retire an already adopted species that
+is outside all demand. These bounded checkpoints skip only the ordinary idle
+and warm-grace timers; they retain the 24 m lookahead, drawable/doorway/player
+pins, debug inspection pins and ARAM limits, and drain before another disc load.
+The default outdoor camera can require all six species, in which case startup
+does not evict one to force the allocation to succeed.
+
+The town's UI canvas uses the SDK default of 4,096 vertices. Its 36-byte native
+vertices require 147,456 bytes less storage than the former 8,192-vertex canvas.
+Sprite capacity and visual content are unchanged; oversized batches use the
+existing automatic flush path. Terrain's default 1 MiB cache remains intact.
+A native recording comparison preserved the exact vertex/color order across
+6,144 map vertices, 3,090 profiling vertices and 11,556 mixed panel/glyph vertices.
+The legacy uncached map needs two draws instead of one; the tested profiling and
+mixed UI workloads retain their draw counts. A host native fox instance uses
+59,840 bytes under its 512 KiB budget, less than half the canvas saving. These
+are allocation and submission checks, not stock-console frame-time measurements.
 
 ## Admission and ownership
 
@@ -90,7 +109,8 @@ MEM1. ARAM transfer statistics remain necessary to measure actual bus traffic.
 Portable source-linked tests exercise asynchronous ownership and controlled DMA
 completion, both cancellation boundaries, admission/fragmentation/slot limits,
 restore retries, snapshot release, foreground priority, zero-allocation warm
-polling, teardown during pending snapshot/restore DMA, and preserved
+polling, selected-species-first startup admission, early player reservation,
+startup demand/ARAM limits, teardown during pending snapshot/restore DMA, and preserved
 model/animation identity. Domain tests cover shared player
 ownership, doorway commit/save semantics, visible-actor coverage, hidden prefetch
 without scene stalls, exact landing focus and late camera/doorway view changes.
