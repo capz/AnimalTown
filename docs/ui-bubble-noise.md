@@ -1,8 +1,11 @@
 # UI bubble grain
 
 The title, resident picker, onboarding panels, gameplay menus, dialogue/name
-bubbles and door/date popovers use the generated tree-noise pattern as a subtle
-paper grain. The optional villager-attention icon uses the same pattern too.
+bubbles and door/date popovers use deterministic, uniformly distributed fine
+grain. The optional villager-attention icon uses the same pattern too. Each
+texel is sampled independently from a fixed coordinate hash, without the tree
+texture's coarse interpolated layer. This removes broad mottling; random nearby
+matches can still occur. Tree noise is unchanged.
 
 **UI bubble noise** appears at the bottom of both Debug configuration and
 START → Debug / testing. Left/Right or A adjusts intensity in 5% steps from
@@ -12,8 +15,11 @@ application starts. It is absent from `dev_config` and every town save record;
 changing only this title option does not mark debug configuration dirty.
 
 The generated 32×32 I8 texture has six mips and 1,440 resident native bytes.
-Intensity uses the existing deterministic tree pattern, independently of the
-tree controls. A shared app-lifetime UI texture is rebuilt only on an intensity
+At the 35% default, texels uniformly span intensities 222–255 (0–13% darkening).
+The slider scales the sampled
+range, capped at 0–255 before sampling to avoid clipping or byte wrap at high
+settings. The existing box-filtered mip chain smooths grain under minification.
+A shared app-lifetime UI texture is rebuilt only on an intensity
 change and released at zero/shutdown. The attention renderer lazily owns one
 additional 1,440-byte copy while its icon is in use, released with that renderer.
 No per-bubble textures, geometry copies, wave animation or overlay pass are used.
