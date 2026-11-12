@@ -25,7 +25,8 @@ and 28; the gameplay menu has its own row mapping. Actions 14/15 remain transien
 The generated noise remains one shared opaque 32×32 I8 texture, 1,440 native
 pixel bytes with six mip levels. Strength regenerates only that texture when
 changed; disabling releases it. Scale changes only UVs in the three shared meshes,
-reusing the texture. Season changes reuse its strength/scale. All updates happen
+reusing the texture and updating retained native buffers in place. Managed vertex
+streams are also reused; slider changes do not churn native mesh allocations. Season changes reuse its strength/scale. All updates happen
 outside rendering passes. Unchanged settings cause no uploads, allocations or
 extra draw calls. Superseded textures/meshes are disposed, and town teardown
 releases the current resources.
