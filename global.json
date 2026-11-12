@@ -4,6 +4,6 @@
     "rollForward": "latestFeature"
   },
   "msbuild-sdks": {
-    "DolphinDotNet.Sdk": "0.1.0-preview.315.1"
+    "DolphinDotNet.Sdk": "0.1.0-preview.318.1"
   }
 }

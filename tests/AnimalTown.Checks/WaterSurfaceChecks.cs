@@ -118,8 +118,8 @@ internal static class WaterSurfaceChecks
         check(meanBrightness[2]>meanBrightness[1]&&meanBrightness[1]>meanBrightness[3],
             "authored third mip creates a bright middle-distance reflection band");
         check(SunshineWater.LodBias>0&&SunshineWater.LodBias<3.99f&&
-              SunshineWater.GlintAlphaCutoff>.13f&&SunshineWater.GlintAlphaCutoff<.92f,
-              "GX samples independent mips with supported bias and high glint cutoff");
+              SunshineWater.GlintLowReference==33&&SunshineWater.GlintHighReference==235,
+              "GX samples authored mips with supported bias and exact outside-band references");
         var truncated=(byte[])sunshine.Clone();truncated[32+SunshineWater.PayloadBytes-1]++;
         bool rejected=false;try{SunshineWater.ValidatePackage(truncated);}catch(InvalidOperationException){rejected=true;}
         check(rejected,"Sunshine texture validation rejects corrupt authored level/alpha data");

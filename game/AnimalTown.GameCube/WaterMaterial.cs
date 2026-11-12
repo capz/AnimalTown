@@ -56,6 +56,27 @@ internal sealed class WaterMaterial : IDisposable
     // texture is an indirect UV map; calm water never changes mesh vertices.
     internal static TevMaterialDefinition WindWakerDefinition()=>TevMaterialPresets.WaterWarp(
         new Color32(196,228,222),new Color32(229,245,237));
+    // SDK v4 combines both scrolling texture alphas and owns the two-reference
+    // GX test. No game-owned package bytes or native TEV patch are needed.
+    internal static TevMaterialDefinition SunshineDefinition()=>TevMaterialPresets.DualTextureGlints(
+        new Color32(102,150,176),new Color32(215,248,244),
+        SunshineWater.GlintLowReference,SunshineWater.GlintHighReference);
+    internal static void ConfigureSunshine(Material material,bool closeWaves)
+    {
+        material.Blend=BlendMode.Alpha;material.DepthTest=true;material.DepthWrite=false;
+        material.Cull=CullMode.Back;material.Lighting=LightingMode.Unlit;
+        // Alpha is tested after raster modulation: 206 would make >=235
+        // unreachable. Both mesh vertex colors and this tint stay opaque.
+        material.Color=closeWaves?new Color32(214,249,243,255):new Color32(205,246,249,255);
+        material.AlphaCutoff=0; // The effect owns the complete OR comparison.
+        var sampler=closeWaves?
+            new SamplerState(TextureMinFilter.LinearMipmapNearest,TextureMagFilter.Linear,
+                minLod:1,maxLod:1,lodBias:3.9f,u:TextureAddressMode.Repeat,v:TextureAddressMode.Repeat):
+            new SamplerState(TextureMinFilter.LinearMipmapLinear,TextureMagFilter.Linear,
+                minLod:0,maxLod:SunshineWater.MipLevels-1,lodBias:SunshineWater.LodBias,
+                u:TextureAddressMode.Repeat,v:TextureAddressMode.Repeat);
+        material.Sampler=material.SecondarySampler=sampler;
+    }
     // Called between frames. Avoid retaining the old two-texture storm shader
     // and its 8 KiB of image data until rough weather is actually selected.
     internal void PrepareRoughOcean()
@@ -96,43 +117,13 @@ internal sealed class WaterMaterial : IDisposable
             // with the full 0..4 chain and the same positive hardware LOD bias.
             wave.ConfigureSampler(TextureWrapMode.Repeat,TextureWrapMode.Repeat,
                 TextureMinFilter.LinearMipmapLinear,TextureMagFilter.Linear,SunshineWater.LodBias);
-            var sparkle=new TevProgramBuilder();
-            sparkle.AddColor("PrimaryLight",new Color32(102,150,176));
-            sparkle.AddColor("ReflectedSky",new Color32(215,248,244));
-            sparkle.AddStage(TevInput.Zero,TevInput.Zero,TevInput.Zero,TevInput.Raster);
-            // Add both independent scrolling samples, rather than *blending*
-            // two samples into a mostly unchanging base tint.
-            sparkle.AddStage(TevInput.Zero,TevInput.Constant,TevInput.Texture,TevInput.Previous,colorSlot:0);
-            sparkle.AddStage(TevInput.Zero,TevInput.Constant,TevInput.SecondaryTexture,TevInput.Previous,colorSlot:1);
-            var glintDefinition=new TevMaterialDefinition(sparkle);
+            var glintDefinition=SunshineDefinition();
             layer=glintDefinition.Create(wave,wave);
-            layer.Material.Blend=BlendMode.Alpha;
-            layer.Material.AlphaCutoff=SunshineWater.GlintAlphaCutoff;
-            layer.Material.DepthWrite=false;
-            layer.Material.DepthTest=true;
-            layer.Material.Cull=CullMode.Back;
-            layer.Material.Color=new Color32(205,246,249,255);
-            var mip=new SamplerState(TextureMinFilter.LinearMipmapLinear,
-                TextureMagFilter.Linear,minLod:0,maxLod:4,lodBias:SunshineWater.LodBias,
-                u:TextureAddressMode.Repeat,v:TextureAddressMode.Repeat);
-            layer.Material.Sampler=mip;
-            layer.Material.SecondarySampler=mip;
-            // The original Sunshine also has a separate player-centered wave
-            // overlay using its own texture. Share our authored 32px caustic
-            // mip instead: a dedicated material fixes both hardware samplers
-            // on level 1 even right by the camera, adding no resident image.
+            ConfigureSunshine(layer.Material,false);
+            // Both materials borrow one authored texture. Force L1 only for
+            // the bounded near-field waves; the main surface keeps all mips.
             close=glintDefinition.Create(wave,wave);
-            close.Material.Blend=BlendMode.Alpha;
-            close.Material.AlphaCutoff=.34f;
-            close.Material.DepthWrite=false;
-            close.Material.DepthTest=true;
-            close.Material.Cull=CullMode.Back;
-            close.Material.Color=new Color32(214,249,243,206);
-            var closeMip=new SamplerState(TextureMinFilter.LinearMipmapNearest,
-                TextureMagFilter.Linear,minLod:1,maxLod:1,lodBias:3.9f,
-                u:TextureAddressMode.Repeat,v:TextureAddressMode.Repeat);
-            close.Material.Sampler=closeMip;
-            close.Material.SecondarySampler=closeMip;
+            ConfigureSunshine(close.Material,true);
 
             var sand=new TevProgramBuilder();
             sand.AddColor("Sand",new Color32(239,225,189));

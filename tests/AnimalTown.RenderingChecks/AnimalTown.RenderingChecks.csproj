@@ -3,6 +3,8 @@
   <ItemGroup>
     <ProjectReference Include="../../shared/AnimalTown.Domain/AnimalTown.Domain.csproj" />
     <PackageReference Include="Capz.Hypercube.GameCube" Version="[0.1.0-preview.28.1]" />
+    <!-- Verified additive SDK upgrade: Hypercube 28 was compiled against 315. -->
+    <PackageReference Include="DolphinDotNet.GameCube" Version="[0.1.0-preview.318.1]" NoWarn="NU1608" />
     <Compile Include="../../game/AnimalTown.GameCube/WaterMaterial.cs" Link="WaterMaterial.cs" />
     <Compile Include="../../game/AnimalTown.GameCube/GeometryStaging.cs" Link="GeometryStaging.cs" />
   <Compile Include="../../game/AnimalTown.GameCube/TerrainIndexBuffer.cs" Link="TerrainIndexBuffer.cs" />

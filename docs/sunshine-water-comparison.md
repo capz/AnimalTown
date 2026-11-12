@@ -27,156 +27,107 @@ Left/right are captured on that row (L/R continue switching menu tabs).
 Z restores Wind Waker. The option is **session-only**: saved-town,
 calendar, collision, geometry revisions and season metadata are untouched.
 
-## Rendering intent
+## Water rendering
 
-- **Wind Waker:** identical current opaque/tile-textured surface + optional
-  local wave mesh. No underwater floor pass.
-- **Sunshine:** transparent, low-depth-write, two independently scrolling
-  samples of a small shared wave texture. Individual hand-authored mip levels
-  change highlight brightness and opacity with LOD, rather than being normal
-  downsampled copies. Foam remains an independent bank overlay.
-- **Underwater floor:** draw the **same immutable water meshes again**
-  with an inward cylindrical transform, *before* the translucent surface.
-  Share the game's existing cliff-soil/sand texture and apply a pale sandy tint.
-  River floor is shallower than open sea. No additional water geometry, archive
-  entries, per-frame texture uploads or modifications to saved water tiles.
-- **Ordering:** floor before other opaque terrain; transparent water and
-  existing shoreline foam after other opaque terrain, with depth testing
-  retained and water depth writes disabled.
-- **Resource policy:** allocate the Sunshine texture/effects only when
-  the option is first selected. Keep the assets through the session for instant
-  A/B switching. Original mode has no extra draws. Compare with the existing
-  frame-performance debug overlay. The style is an original approximation,
-  not copied game textures or an exact Sunshine alpha-test implementation.
+Wind Waker remains the default. Sunshine is an opt-in, session-only comparison
+using the existing water meshes, sandy seabed, independent scrolling caustics and
+bounded local ocean waves. It does not change saved terrain or collision.
 
-## Implementation
+The game pins DolphinDotNet SDK/Core/GameCube/Assets **0.1.0-preview.318.1**.
+Its public `TevMaterialPresets.DualTextureGlints` replaces the game-owned RGB-only
+program. The three-stage DNEF v4 effect adds both scrolling RGB contributions,
+combines their alphas, and owns the exact GX comparison:
 
-The selector uses the existing 25-row paginated Debug / testing menu,
-with its original parchment-colored highlight and controls. It does not
-introduce any HUD or permanent settings.
+```text
+RGB = saturate(raster + PrimaryLight * TEX0 + ReflectedLight * TEX1)
+A   ≈ raster.a * (TEX0.a + TEX1.a) / 2    (GX fixed-point rounding)
+pass if A <= 33 OR A >= 235               (approximately 0.13 / 0.92)
+```
 
-The Sunshine surface has a **64×64 GX IA8, five-level DNTX texture chain**
-using exactly **10,912 native texture bytes** (64², 32², 16², 8², 4²).
-Intensity and alpha intentionally change across levels: the level-2 mip
-has a stronger bright reflection band, while level 0 is clear and subtle.
-No transparent render targets, scene captures, shaders, indirect GX effects,
-or copies of Nintendo textures are involved. The two moving stages bind
-the same resident image to both GX texture slots. A four-stage DNEF v2
-TEV program retains the primary texture's alpha; Sunshine surface alpha
-blends with **depth test on** and **depth writes off**.
+There is no legacy TEX0 opacity epilogue. Both the main surface and close-wave
+material use opaque raster alpha; reducing it to 206 would prevent the >=235
+branch from ever passing. The effect overrides the single material cutoff.
+Ordinary following draws restore their own comparison through the SDK.
+Materials retain alpha blending, backface culling, depth testing and disabled
+depth writes. Clear near/far mips have zero output alpha even though the low
+comparison passes. This is an original averaged-alpha approximation, not a
+claim of the retail game's exact TEV equation. EFB refraction and screen-space
+reflections are not included.
 
-The seabed reuses `TerrainSoil.Material.Texture` (the existing
-`dvd:/cliff-soil.dndtex` texture) with a dedicated sandy TEV constant.
-`SunshineWater.BedScale` scales the already archived water vertices
-around the exact cylinder axis: inland 40 cm inward, offshore 75 cm.
-Two shared `Transform` instances and draw-transform arrays replace all
-separate seafloor mesh allocations. No save, collision, terrain height,
-UV, archive geometry or texture-cache entry is modified by switching.
+## Original authored mip chain
 
-The depth-correct order is:
+Five independently editable grayscale PNGs live in
+`assets/textures/environment/water/sunshine-wave-mipN-SIZE.png`:
 
-1. Opaque river and ocean beds at their inward radial positions
-2. Existing opaque soil, cliffs and ground
-3. Translucent Sunshine surface and existing translucent foam
+| GX level | Size | Purpose |
+| --- | --- | --- |
+| L0 | 64×64 | Clear near field |
+| L1 | 32×32 | Irregular scrolling caustic cells |
+| L2 | 16×16 | Brightest reflection band |
+| L3 | 8×8 | Subdued fading tail |
+| L4 | 4×4 | Clear far field |
 
-Wind Waker continues its original ordering and optional storm-wave patch.
-The local storm overlay is suppressed in Sunshine mode to avoid alpha
-accumulation across two overlapping water surfaces.
+The existing SkiaSharp cooker preserves each original PNG's luminance, derives
+coverage alpha, and packs one **10,912-byte GX IA8 DNTX v2 chain**. It performs no
+automatic downsampling or runtime image synthesis. L1's alpha gain is 1.55 so its
+near-wave glints survive the stronger >=235 threshold; L2 retains its authored
+bright reflection band. The validator requires sufficient high-branch coverage
+in both levels and clear endpoints. The disc and texture audits require the
+cooked `out/disc/sunshine-water.dndtex` asset.
 
-Only the first switch to Sunshine generates the mipmap and creates two
-TEV programs. Subsequent A/B switches reuse the same GPU resources,
-reassigning the original water materials with **zero terrain rebuilds**.
-Ground material mipmap toggles remain independent of Sunshine mipmaps.
+Both texture slots borrow the same resident image. Main-surface samplers use
+GX trilinear minification, levels 0–4 and +0.65 LOD bias. Equal UV scales and
+independent one-axis/two-axis scrolls produce moving interference. Close waves
+borrow the same texture but force both samplers to L1, with positive bias to
+keep them minifying near the camera. No second image is allocated.
 
-### Verification
+Only the first selection loads the cooked image and creates effects. Warm style
+switches reuse resources and do not rebuild terrain. Animation changes UV
+matrices; it does not upload textures. A separate bounded two-sine near-field
+mesh updates only over visible open sea, independently of archived terrain.
 
-- `dotnet run --project tests/AnimalTown.Checks -c Release -- --suites terrain`
-  validates mip packing, explicit LOD contrast, transparency, same-batch
-  cylinder depth, SaveCodec independence and the two state transitions.
-- `dotnet run --project tests/AnimalTown.RenderingChecks -c Release`
-  verifies the existing immutable geometry and draw-path contracts.
-- The existing `Water renderer PR validation` workflow compiles
-  `game/AnimalTown.GameCube` against the locked DolphinDotNet SDK.
-- On a complete, bootable local ISO, capture reproducible A/B screenshots:
+## Seabed and draw order
+
+The seabed uses the existing cliff-soil texture with a sandy constant and the
+same immutable river/ocean geometry, transformed inward around the cylinder
+axis: 40 cm for rivers and 75 cm for sea. This adds no mesh/archive records.
+
+1. Draw opaque river/ocean beds.
+2. Draw the remaining opaque terrain.
+3. Draw the thin blue water body, cutout glints, shoreline foam and local waves.
+
+Ground mip controls remain independent of the water's authored levels. The
+existing Wind Waker warp material and its optional storm-wave path are retained.
+
+## Package compatibility
+
+Hypercube Core/GameCube remains at **preview.28.1**, the latest published engine.
+Its GameCube package was compiled against SDK 315 and declares an exact 315
+runtime dependency. The game and rendering checks explicitly pin runtime 318;
+NuGet's direct reference wins. Only that intentional NU1608 constraint warning
+is suppressed on the direct runtime reference. `resolve-packages.ps1` accepts
+this specific verified 28/315→318 combination and rejects other mismatches.
+The compiler, runtime, offline Assets tool and Imaging payload all use 318;
+locked restore records the actual resolved graph and package hashes.
+
+## Validation
+
+`tools/test-changes.ps1` selects SDK-upgrade coverage, including gameplay,
+rendering, importers, native helpers and backend integration. The rendering
+checks consume the actual SDK-generated water package and cover all 65,536
+alpha pairs, both cutout branches, full raster opacity, shared mip selection
+and the existing engine drawing surface. Asset cooking checks the real source
+PNGs against the new high-alpha coverage threshold.
+
+For a full bootable ISO, the existing focused Dolphin scenario is:
 
 ```sh
 python3 tools/iso-smoke.py <AnimalTown.iso> out/sunshine-ab --water-ab
 ```
 
-The script walks to a water view, captures original/sunshine/restored
-frames and the debug selector, records pixel differences in
-`water-ab-comparison.json`, and checks that Sunshine continues animating.
-It does not alter the saved game or modify a pixel of either source
-texture during rendering.
-
-**Differences from retail Sunshine:** this is a compact visual
-approximation of its mipmapped transparency and two scrolling passes.
-The SDK's current managed material does not expose Sunshine's
-two-sided alpha-comparison threshold; the effect uses standard GX
-alpha blending with authored per-mip alpha instead. Its bed is generated
-by re-projecting one existing mesh, not a detailed independent bathymetry.
-No physical GameCube frame-time or Dolphin screenshot comparison has
-yet been run for this PR. Verify depth ordering, nearshore visibility,
-shader output and draw-submit overhead before production rollout.
-
-## Rebuilt Sunshine material and authored water texture
-
-The original A/B preview generated five slight variations of one procedural
-straight-line pattern and blended them using a TEV that was tuned for a soft
-color overlay. That could only look like faint diagonal marks on the water.
-
-The improved preview is now built from **five separately editable PNGs** in
-`assets/textures/environment/water/sunshine-wave-mipN-SIZE.png`:
-
-| GX level | Native size | Original-authored purpose |
-| --- | --- | --- |
-| L0 | 64×64 | Completely clear; no wave/shimmer pixels in the near field |
-| L1 | 32×32 | Irregular caustic cells, thin connecting glints at moderate distance |
-| L2 | 16×16 | Brightest, wider caustic reflections; apparent distant sky/glare band |
-| L3 | 8×8 | Near-black tail with soft, distant fading |
-| L4 | 4×4 | Completely clear; no bright horizon checkerboard |
-
-These are independent grayscale **source** PNGs, not copies of Nintendo's
-assets. Editing any single mip changes *only that mip*. The existing SkiaSharp
-asset-cooking pipeline reads and validates every PNG on building an ISO and
-packs each image into a **10,912-byte GX IA8 native texture chain**. No image
-resampling, box filtering or runtime sine-wave art is permitted in the cook.
-The derived alpha channel maps authored brightness to a specular-coverage
-threshold while preserving each RGB intensity.
-
-`SunshineWaterAssets.Build` writes `out/disc/sunshine-water.dndtex`.
-The disc validator requires this file. The texture audit verifies both the
-5-level native header and per-pixel authored alpha, and CI actually performs
-the PNG-to-GX cook. Runtime reads the prepared package only on the first
-selection of Sunshine mode.
-
-The game now explicitly requests GX trilinear filtering for both water
-texture bindings, with native LOD range 0–4 and a +0.65 LOD bias to position
-the bright L2 band within the curved AnimalTown horizon. The primary and
-secondary texture coordinates have equal scale; the first scrolls in two
-axes and the second scrolls predominantly in one, producing changing moiré
-caustics. The TEV **adds** both glint contributions rather than blending
-them into the old constant color. Material alpha comparison requires
-`alpha >= 0.68` before writing a specular pixel; water depth writes remain
-off. A thin blue transparent body shows above the opaque sandy seabed.
-Unlike the former static preview, the open ocean additionally uses a
-bounded two-sine near-field wave patch that fades to the fixed sea.
-
-The existing Wind Waker renderer is unchanged by the A/B selector.
-
-**Technical limitation:** DolphinDotNet's currently pinned DNEF v2 alpha
-program always computes opacity as vertex alpha × TEX0 alpha. Therefore
-the first sample controls the glint silhouette; the second contributes to
-the moving *RGB* highlights. Sunshine's original double-sided 0.13/0.92
-alpha test and the full two-sample alpha formula would require an upstream
-SDK effect/alpha-comparison extension. Likewise, original EFB refraction
-and screen-space environment reflections are not reproduced here.
-This patch achieves the artistic LOD structure, deliberate GX mip sampling,
-two-texture moiré animation, high-threshold highlights, local wave geometry
-and separate seabed within the published SDK. The near-field wave mesh
-also uses a second, shared TEV material with both samplers locked to the
-32×32 authored L1. This emulates Sunshine's localized `wave.bti` overlay
-even where the main surface deliberately uses a blank L0, without allocating
-another texture. Its geometry is updated only over an open-sea patch.
-It does not claim pixel
-identity with the retail game.
+It captures original/Sunshine/restored views and selector states, checks visible
+animation and writes `water-ab-comparison.json`. A successful host test does not
+establish console image quality or frame time. Dolphin capture and physical
+GameCube validation of this material remain outstanding until run against the
+updated build. Release builds publish a same-commit full ISO, NKit ISO and backend
+through the existing release workflow.
