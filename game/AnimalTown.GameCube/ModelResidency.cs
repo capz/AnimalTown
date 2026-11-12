@@ -20,7 +20,7 @@ internal sealed class ModelResidency
     private Task? pending;
     private CancellationTokenSource? cancellation;
     private int active=-1;
-    private bool restoring,cancelRequested,hadBacking;
+    private bool restoring,cancelRequested,hadBacking,stopped;
     internal bool Enabled=true;
     internal int Demotions,Restores,Cancellations,Failures,BackingReleases;
     internal int WorkSteps,MaxAdvanceUs,MaxAdmissionUs,ReadinessWaits,PortalWaits;
@@ -33,13 +33,14 @@ internal sealed class ModelResidency
     internal bool AllReady {get{for(int i=0;i<models.Length;i++)if(!Ready(i))return false;return true;}}
     internal void Register(int species,Model model,long now)
     {
-        if(species<0||species>=models.Length||models[species]!=null)throw new InvalidOperationException("Invalid species residency registration");
+        if(stopped||species<0||species>=models.Length||models[species]!=null)throw new InvalidOperationException("Invalid species residency registration");
         models[species]=model;lastRequired[species]=now;warmUntil[species]=now+WarmGraceUs;
         model.AutomaticResidencyProgress=false;
         model.ResidencyBytesPerStep=65536;model.ResidencyWorkItemsPerStep=256;
     }
     internal void Require(GameState state,PortalSystem doors,long now,bool pinAll=false,int targetSpace=-1)
     {
+        if(stopped)return;
         demand.Prepare(state,doors,pinAll||!Enabled,targetSpace);
         bool otherUrgent=false;
         for(int i=0;i<models.Length;i++){
@@ -64,7 +65,7 @@ internal sealed class ModelResidency
     }
     internal void Pump(long now,bool allowDemotion,long deadline)
     {
-        if(Clock.Timestamp>=deadline)return;
+        if(stopped||Clock.Timestamp>=deadline)return;
         // A false step is waiting on native DMA/resources; never busy-poll it.
         if(pending!=null){
             var model=models[active]!;
@@ -114,6 +115,24 @@ internal sealed class ModelResidency
             if(stats.FreeBytes<bytes+AramReserve||stats.LargestFreeBlockBytes<bytes||stats.AllocationCount>=248){retryAt[candidate]=now+RetryDelayUs;return;}
         }
         Start(candidate,false,now);
+    }
+    // Session teardown is an explicit blocking boundary, after EndFrame. A
+    // manually driven model must reach its terminal state before its instances
+    // and shared package are disposed. Poll only our owner; normal Pump could
+    // admit a replacement restore or demotion while the session is unwinding.
+    internal void Stop()
+    {
+        stopped=true;
+        if(pending==null)return;
+        if(!pending.IsCompleted&&!cancelRequested){cancelRequested=true;Cancellations++;cancellation!.Cancel();}
+        var model=models[active]!;
+        while(!pending.IsCompleted)model.AdvanceResidency();
+        try{pending.GetAwaiter().GetResult();}
+        catch(OperationCanceledException){ }
+        catch(Exception error){Failures++;DebugOverlay.WriteLine("ANIMALTOWN MODEL RESIDENCY SHUTDOWN: "+error.Message);}
+        finally{
+            cancellation!.Dispose();cancellation=null;pending=null;active=-1;cancelRequested=false;
+        }
     }
     private void Start(int species,bool restore,long now)
     {
