@@ -2,7 +2,10 @@ namespace AnimalTown;
 internal static class ProfileCodec
 {
     internal static byte[] Encode(GameState s,int profile)
-    {var w=new SplitSaveCodec.Writer(s,SplitSaveCodec.RecordKind(3+profile),1408);Write(w,s.Profiles[profile]);return w.Finish();}
+    {var w=new SplitSaveCodec.Writer(s,SplitSaveCodec.RecordKind(3+profile),EncodedLength(s.Profiles[profile]));Write(w,s.Profiles[profile]);return w.Finish();}
+    // 33 scalar words and two string-length words, plus variable contents.
+    private const int FixedPayloadWords=35;
+    internal static int EncodedLength(VillagerProfile p)=>32+4*(FixedPayloadWords+p.Name.Length+p.Catchphrase.Length+p.Pockets.Length+p.Owned.Length+p.MailCount+p.Relationships.Length);
     internal static VillagerProfile Decode(GameState s,int profile,byte[] bytes)
     {var r=new SplitSaveCodec.Reader(bytes,SplitSaveCodec.RecordKind(3+profile));if(r.Version!=4||r.Sequence!=s.Sequence||r.Seed!=s.Town.Seed)throw new InvalidOperationException("Mixed profile generation");var p=Read(r);r.End();return p;}
     internal static void Write(SplitSaveCodec.Writer w,VillagerProfile p)
@@ -79,6 +82,20 @@ internal static class ProfileCodec
         same &= a.Catchphrase==b.Catchphrase;
         if(!same)return false;
         for(int i=0;i<30;i++)if(a.Pockets[i]!=b.Pockets[i])return false;for(int i=0;i<64;i++)if(a.Owned[i]!=b.Owned[i])return false;for(int i=0;i<a.MailCount;i++)if(a.Mail[i]!=b.Mail[i])return false;for(int i=0;i<24;i++)if(a.Relationships[i]!=b.Relationships[i])return false;return true;
+    }
+    internal static void Validate(VillagerProfile p)
+    {
+        SaveCodec.Value(p.BackpackTier,0,2);SaveCodec.Value(p.Wallet,0,99999);SaveCodec.Value(p.Species,0,5);SaveCodec.Value(p.Palette,0,7);
+        SaveCodec.Value(p.Tool,0,25);SaveCodec.Value(p.Shirt,0,25);SaveCodec.Value(p.HouseTier,0,5);SaveCodec.Value(p.GardenTier,0,4);
+        SaveCodec.Value(p.PendingKind,0,2);SaveCodec.Value(p.PendingTier,0,5);SaveCodec.Value(p.Tutorial,0,6);SaveCodec.Value(p.MetMask,0,63);SaveCodec.Value(p.Jobs,0,2);SaveCodec.Value(p.MailCount,0,128);
+        SaveCodec.Value(p.Roof,0,11);SaveCodec.Value(p.Wall,0,11);SaveCodec.Value(p.Fence,0,5);SaveCodec.Value(p.Mailbox,0,5);SaveCodec.Value(p.Exterior,0,4);
+        SaveCodec.Value(p.Space,0,43);SaveCodec.Value(p.HouseX,1,145);SaveCodec.Value(p.HouseZ,1,147);
+        if(p.Savings<0||p.Debt<0||p.Debt>1600000||!BuildingWorld.ValidSpace(p.Space)||!p.Created&&p.HousePlaced)throw new InvalidOperationException("Invalid profile state");
+        SaveCodec.Fixed(p.X,0,Town.Width*1024-1);SaveCodec.Fixed(p.Z,0,Town.Height*1024-1);SaveCodec.Fixed(p.Facing,-6434,6434);
+        if(p.Name.Length>16||p.Catchphrase.Length>32)throw new InvalidOperationException("Invalid profile text");
+        for(int i=0;i<30;i++){SaveCodec.Value(p.Pockets[i],0,25);if(i>=(p.BackpackTier+1)*10&&p.Pockets[i]!=0)throw new InvalidOperationException("Locked profile pocket");}
+        for(int i=0;i<64;i++)SaveCodec.Value(p.Owned[i],0,1);for(int i=0;i<p.MailCount;i++)SaveCodec.Value(p.Mail[i],-25,25);
+        for(int i=0;i<6;i++){int at=i*4;SaveCodec.Value(p.Relationships[at],0,255);SaveCodec.Value(p.Relationships[at+1],0,25);SaveCodec.Value(p.Relationships[at+3],0,1);}
     }
     internal static VillagerProfile Read(SplitSaveCodec.Reader r)
     {

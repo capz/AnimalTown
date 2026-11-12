@@ -4,6 +4,8 @@ namespace AnimalTown;
 public static class SaveCodec
 {
     public const int MaximumBytes=1024*1024;
+    // Header, scalar fields, fixed arrays, NPC data and variable-section counts.
+    private const int FixedPayloadWords=222;
     private static void Put(byte[] b,ref int at,int n){for(int i=0;i<4;i++)b[at++]=(byte)((uint)n>>(i*8));}
     private static int Get(byte[] b,ref int at)
     { if(at>b.Length-4)throw new InvalidOperationException("Truncated save");int n=0;for(int i=0;i<4;i++)n|=b[at++]<<(8*i);return n; }
@@ -26,7 +28,11 @@ public static class SaveCodec
         s.CaptureProfile();
         int terrainRuns=1;for(int i=1;i<Town.Cells;i++)if(s.Town.Tiles[i]!=s.Town.Tiles[i-1])terrainRuns++;
         int elevationRuns=1;for(int i=1;i<Town.Cells;i++)if(s.Town.Elevation[i]!=s.Town.Elevation[i-1])elevationRuns++;
-        int capacity=(profiles?9728:4096)+elevationRuns*4+(s.Name.Length+s.Catchphrase.Length)*4+s.MailCount*4+s.Town.GroundCount*24+s.Town.PlacedCount*24+terrainRuns*4;
+        var buildingFields=profiles?BuildingSave.Encode(s):BuildingSave.EncodeLegacy(s);
+        byte[][]? profileRecords=null;int profileBytes=0;
+        if(profiles){profileRecords=new byte[GameState.ProfileCount][];for(int i=0;i<GameState.ProfileCount;i++){var data=ProfileCodec.Encode(s,i);profileRecords[i]=data;profileBytes+=data.Length;}}
+        int names=0;for(int i=0;i<6;i++)names+=s.Town.Residents[i].Name.Length;
+        int capacity=4*(FixedPayloadWords+buildingFields.Length+(profiles?1+GameState.ProfileCount:0)+terrainRuns+elevationRuns+s.Name.Length+s.Catchphrase.Length+names+s.MailCount+6*(s.Town.GroundCount+s.Town.PlacedCount))+profileBytes;
         if(capacity>MaximumBytes)throw new InvalidOperationException("Save exceeds format budget");
         // Allocate from actual encoded content, not the 1-MiB format ceiling.
         var b=new byte[capacity];int p=0;Put(b,ref p,0x41544f57);Put(b,ref p,profiles?8:7);Put(b,ref p,Catalog.Version);Put(b,ref p,s.Sequence);
@@ -46,9 +52,9 @@ public static class SaveCodec
         Put(b,ref p,TownGenerator.Version);Put(b,ref p,elevationRuns);
         for(int i=0;i<Town.Cells;){byte mode=s.Town.Elevation[i];int length=1;while(i+length<Town.Cells&&s.Town.Elevation[i+length]==mode)length++;Put(b,ref p,(mode<<24)|length);i+=length;}
         for(int i=0;i<6;i++){var v=s.Town.Residents[i];Text(b,ref p,v.Name);Put(b,ref p,v.HomeX);Put(b,ref p,v.HomeZ);Put(b,ref p,(int)(v.PosX*1024));Put(b,ref p,(int)(v.PosZ*1024));}
-        var buildingFields=profiles?BuildingSave.Encode(s):BuildingSave.EncodeLegacy(s);for(int i=0;i<buildingFields.Length;i++)Put(b,ref p,buildingFields[i]);
-        if(profiles){Put(b,ref p,s.ActiveProfile);for(int i=0;i<GameState.ProfileCount;i++){var data=ProfileCodec.Encode(s,i);Put(b,ref p,data.Length);Array.Copy(data,0,b,p,data.Length);p+=data.Length;}}
-        int h=16;Put(b,ref h,p);Put(b,ref h,(int)Crc(b,24,p-24));var result=new byte[p];Array.Copy(b,result,p);return result;
+        for(int i=0;i<buildingFields.Length;i++)Put(b,ref p,buildingFields[i]);
+        if(profiles){Put(b,ref p,s.ActiveProfile);for(int i=0;i<GameState.ProfileCount;i++){var data=profileRecords![i];Put(b,ref p,data.Length);Array.Copy(data,0,b,p,data.Length);p+=data.Length;}}
+        if(p!=b.Length)throw new InvalidOperationException("Save length calculation mismatch");int h=16;Put(b,ref h,p);Put(b,ref h,(int)Crc(b,24,p-24));return b;
     }
     private static int Range(byte[] b,ref int p,int min,int max)
     { int n=Get(b,ref p);if(n<min||n>max)throw new InvalidOperationException("Save value outside range");return n; }
@@ -134,9 +140,8 @@ public static class SaveCodec
             body.Created=s.Profiles[active].Created;
             if(!ProfileCodec.Same(body,s.Profiles[active]))throw new InvalidOperationException("Selected profile differs from active state");s.RestoreProfile(active);
         }else s.CaptureProfile();
-        for(int a=0;a<GameState.ProfileCount;a++)if(s.HomePlaced(a))for(int c=a+1;c<GameState.ProfileCount;c++)if(s.HomePlaced(c)&&s.HomeX(a)<s.HomeX(c)+15&&s.HomeX(a)+15>s.HomeX(c)&&s.HomeZ(a)<s.HomeZ(c)+13&&s.HomeZ(a)+13>s.HomeZ(c))throw new InvalidOperationException("Overlapping player home plots");
-        int placedCount=s.Town.PlacedCount;s.Town.PlacedCount=0;
-        for(int i=0;i<placedCount;i++){var q=s.Town.Placed[i];if(!s.CanPlace(q.Item,q.X,q.Z,q.Rotation,q.Room,q.Owner,true))throw new InvalidOperationException("Invalid placement");s.Town.PlacedCount++;}
+        if(version>=8){if(p!=b.Length)throw new InvalidOperationException("Trailing save bytes");return ValidateDecodedState(s);}
+        ValidatePlacements(s);
         if(p!=b.Length)throw new InvalidOperationException("Trailing save bytes");
         if(trimmed){
             for(int i=0;i<6;i++){var v=s.Town.Residents[i];if(!s.Town.Inside(v.X,v.Z)){int cell=SafeImportedCell(s,10+i*11+(i==3?3:0),14);v.X=cell%Town.Width;v.Z=cell/Town.Width;}}
@@ -145,6 +150,35 @@ public static class SaveCodec
         if(version<5)for(int i=0;i<6;i++){s.Town.Residents[i].PosX=s.Town.Residents[i].X+.5f;s.Town.Residents[i].PosZ=s.Town.Residents[i].Z+.5f;}
         if(version<6)WaterTerrain.Migrate(s.Town);
         s.NormalizeBuildingLocations();s.CaptureProfile();s.Town.NotifyTerrainChanged();return s;
+    }
+    internal static int Value(int value,int min,int max)
+    {if(value<min||value>max)throw new InvalidOperationException("Save value outside range");return value;}
+    internal static float Fixed(float value,int min,int max)=>Value((int)(value*1024),min,max)/1024f;
+    // Shared current-state validation replaces split->combined->decoded-world
+    // copying. Readers retain wire/CRC/version checks and terrain snapshot guards.
+    internal static GameState ValidateDecodedState(GameState s)
+    {
+        Value(s.Sequence,0,int.MaxValue);var t=s.Town;Value(t.Spending,0,int.MaxValue);Value(t.StockCount,6,12);
+        for(int i=0;i<t.Stock.Length;i++)Value(t.Stock[i],0,25);
+        for(int i=0;i<Town.Cells;i++){Value(t.Tiles[i],0,(int)Terrain.CoastWest);Value(t.Elevation[i],0,TerrainElevation.MaximumMode);}
+        for(int i=0;i<GameState.ProfileCount;i++)ProfileCodec.Validate(s.Profiles[i]);
+        for(int i=0;i<6;i++){
+            var v=t.Residents[i];Value(v.X,0,Town.Width-1);Value(v.Z,0,Town.Height-1);Value(v.HomeX,1,Town.Width-4);Value(v.HomeZ,1,Town.Height-4);
+            v.PosX=Fixed(v.PosX,0,Town.Width*1024-1);v.PosZ=Fixed(v.PosZ,0,Town.Height*1024-1);v.Yaw=Fixed(v.Yaw,-6434,6434);
+            Value(v.Friendship,0,255);Value(v.Request,0,25);Value(v.Met,0,1);if(v.Name.Length>24)throw new InvalidOperationException("Invalid resident name");
+            Value(v.Space,0,43);Value(v.JourneyBuilding,-1,BuildingWorld.Count-1);Value(v.JourneyPhase,0,5);Value(v.Dwell,0,36000);
+            Value(v.JourneyNextX,-1,Town.Width-1);Value(v.JourneyNextZ,-1,Town.Height-1);
+            if(!BuildingWorld.ValidSpace(v.Space)||(v.JourneyNextX<0)!=(v.JourneyNextZ<0)||v.JourneyPhase==1&&v.JourneyBuilding<0)throw new InvalidOperationException("Invalid saved journey");
+        }
+        Value(t.GroundCount,0,t.Ground.Length);
+        for(int i=0;i<t.GroundCount;i++){var g=t.Ground[i];Value(g.Item,1,25);Value(g.X,0,Town.Width-1);Value(g.Z,0,Town.Height-1);Value(g.Owner,0,3);Value(g.Kind,0,4);}
+        ValidatePlacements(s);s.NormalizeBuildingLocations();s.CaptureProfile();t.NotifyTerrainChanged();return s;
+    }
+    private static void ValidatePlacements(GameState s)
+    {
+        for(int a=0;a<GameState.ProfileCount;a++)if(s.HomePlaced(a))for(int c=a+1;c<GameState.ProfileCount;c++)if(s.HomePlaced(c)&&s.HomeX(a)<s.HomeX(c)+15&&s.HomeX(a)+15>s.HomeX(c)&&s.HomeZ(a)<s.HomeZ(c)+13&&s.HomeZ(a)+13>s.HomeZ(c))throw new InvalidOperationException("Overlapping player home plots");
+        int placedCount=Value(s.Town.PlacedCount,0,s.Town.Placed.Length);s.Town.PlacedCount=0;
+        for(int i=0;i<placedCount;i++){var q=s.Town.Placed[i];Value(q.Item,1,25);Value(q.Rotation,0,3);Value(q.Room,0,43);Value(q.Owner,0,9);if(!s.CanPlace(q.Item,q.X,q.Z,q.Rotation,q.Room,q.Owner,true))throw new InvalidOperationException("Invalid placement");s.Town.PlacedCount++;}
     }
     private static int SafeImportedCell(GameState s,int x,int z)
     {

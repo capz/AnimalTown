@@ -7,7 +7,7 @@ camera-facing dropped items). SDK `0.1.0-preview.315.1`, Hypercube
 Implementation scope is the game runtime: fonts, game terrain/shadows, and
 villager navigation. Gameplay classes under `shared/AnimalTown.Domain` are
 included; supporting test/native-build checks accompany them. Save-codec
-copy reduction below is investigation only.
+copy reduction was investigation only in this first pass; the follow-up implements it.
 
 The first pass targets retained managed storage in a normal town session. The
 implemented changes remove **173,888 bytes (169.8 KiB) of array payload** with the
@@ -99,6 +99,10 @@ Dolphin/hardware run is implied by these host checks. Archive/legacy toggles and
 native-resolution text remain useful emulator/hardware follow-up scenarios.
 
 ## Further opportunities
+
+All four high/medium items below are implemented in the
+[game memory follow-up](2026-11-12-memory-followups.md), with measurements and
+explicit cold-allocation tradeoffs. This table records the original investigation.
 
 | Priority | Opportunity | Evidence / next step |
 | --- | --- | --- |

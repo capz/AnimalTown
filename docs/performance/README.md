@@ -1,6 +1,7 @@
 # Streamed-town frame investigation — 2026-11-09
 
-Memory follow-up: [runtime memory reduction and remaining opportunities](2026-11-12-memory-reduction.md).
+Memory follow-ups: [initial runtime reductions](2026-11-12-memory-reduction.md) and
+[implemented high/medium opportunities](2026-11-12-memory-followups.md).
 
 Latest follow-up: [stronger cylinder, seasons, attention and rim controls](../world-debug-controls.md).
 Previous: [actor visibility and global backface culling](2026-11-09-visibility-culling.md).

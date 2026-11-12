@@ -81,6 +81,71 @@ internal static class SplitSaveChecks
         var legacy=new Storage();legacy.Files["AnimalTown1"]=SaveCodec.Encode(s);var imported=new SaveRepository(legacy).Load()!;check(imported.Sequence==2&&imported.Wallet==2000,"legacy combined save imports");new SaveRepository(legacy).Save(imported);
         check(legacy.Files.ContainsKey("AnimalTown1")&&new SaveRepository(legacy).Load()!.Sequence==3,"migration preserves original legacy file and selects split save");
         check(new SaveRepository(new Storage()).Load()==null,"empty card starts new town");
+        CopyReductionChecks(check);
         Console.WriteLine("Split save records, ownership, corruption, interrupted-write fallback and legacy migration checks passed");
     }
+    private static void CopyReductionChecks(Action<bool,string> check)
+    {
+        var state=new GameState(7319);var records=SplitSaveCodec.Encode(state);var encoded=SaveCodec.Encode(state);
+        // Baseline fixtures from 3baec95: exact byte compatibility also protects
+        // record lengths/checksums while writers switch to one exact allocation.
+        check(Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(encoded))=="710357B1A658A42567D8853F171AB2C5EA56D6B3016829B8B39A8B80CAA7797F","combined save remains byte-identical to the baseline format");
+        check(Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(records.SelectMany(x=>x).ToArray()))=="F04A6D20B7C4C77FD50775D20A732EF25D8117D53F87BC3610B0B5F3019034F7","split records remain byte-identical to the baseline format");
+        GC.KeepAlive(SplitSaveCodec.Decode(records));
+        long before=GC.GetAllocatedBytesForCurrentThread();var decoded=SplitSaveCodec.Decode(records);long decodeBytes=GC.GetAllocatedBytesForCurrentThread()-before;
+        check(decodeBytes<128*1024,"split loading validates one world without another serialized/decoded copy");
+        before=GC.GetAllocatedBytesForCurrentThread();var exact=SplitSaveCodec.Encode(state);long splitBytes=GC.GetAllocatedBytesForCurrentThread()-before;
+        check(splitBytes<exact.Sum(p=>p.Length)+2048,"split writers allocate the final records without temporary capacity buffers");
+        before=GC.GetAllocatedBytesForCurrentThread();encoded=SaveCodec.Encode(state);long combinedBytes=GC.GetAllocatedBytesForCurrentThread()-before;
+        check(combinedBytes<encoded.Length+8192,"combined writer keeps one exact output buffer and bounded profile records");
+        Console.WriteLine("Save allocation seed 7319: combined "+combinedBytes+", split "+splitBytes+", decode "+decodeBytes+" bytes");GC.KeepAlive(decoded);
+
+        int Get(byte[] b,int at)=>b[at]|b[at+1]<<8|b[at+2]<<16|b[at+3]<<24;
+        void Put(byte[] b,int at,int value){for(int i=0;i<4;i++)b[at+i]=(byte)((uint)value>>(i*8));}
+        void Seal(byte[] b){Put(b,24,b.Length);Put(b,b.Length-4,(int)SaveCodec.Crc(b,0,b.Length-4));}
+        void Reject(int part,int at,int value,string reason){var broken=(byte[][])records.Clone();broken[part]=(byte[])broken[part].Clone();Put(broken[part],at,value);Seal(broken[part]);bool refused=false;try{SplitSaveCodec.Decode(broken);}catch{refused=true;}check(refused,reason);}
+        int npc=48;for(int i=0;i<2;i++)npc+=4+Get(records[0],npc)*4;
+        Reject(0,npc,Town.Width,"shared validation rejects resident grid coordinates with valid CRC");
+        Reject(0,npc+4,Town.Height,"shared validation rejects resident Z coordinates with valid CRC");
+        Reject(0,npc+12+Get(records[0],npc+8)*4,Town.Width*1024,"shared validation rejects resident fixed-point positions with valid CRC");
+        int ground=npc;for(int i=0;i<6;i++)ground+=20+Get(records[0],ground+8)*4;
+        check(Get(records[0],ground)>0,"semantic corruption fixture includes a live ground record");
+        Reject(0,ground+4,0,"shared validation rejects invalid ground catalog IDs with valid CRC");
+        Reject(0,ground+4+12,4,"shared validation rejects invalid loose-item owners with valid CRC");
+        Reject(0,ground+4+20,5,"shared validation rejects invalid ground kinds with valid CRC");
+        Reject(1,28+GameState.ProfileCount*12,0,"shared validation rejects resident home anchors with valid CRC");
+        Reject(2,28,-1,"shared validation rejects negative shop spending with valid CRC");
+        Reject(2,32,5,"shared validation rejects short shop stock lists with valid CRC");
+        Reject(2,36,26,"shared validation rejects shop catalog IDs with valid CRC");
+
+        var maximum=new GameState(7319);Array.Fill(maximum.Town.Tiles,(byte)Terrain.Grass);Array.Clear(maximum.Town.Elevation);maximum.Town.GroundCount=maximum.Town.PlacedCount=0;
+        for(int profile=0;profile<GameState.ProfileCount;profile++){
+            maximum.SelectProfile(profile);maximum.Name=new string('N',16);maximum.Catchphrase=new string('C',32);maximum.BackpackTier=2;maximum.HouseTier=5;maximum.GardenTier=4;
+            maximum.MailCount=128;for(int i=0;i<128;i++)maximum.Mail[i]=i%51-25;for(int i=0;i<30;i++)maximum.Pockets[i]=i%25+1;
+            check(maximum.PlaceHouse(10+profile*35,60,false),"max-size profile fixture keeps distinct valid home plots");
+        }
+        maximum.SelectProfile(0);
+        for(int i=0;i<maximum.Town.Ground.Length;i++){var g=maximum.Town.Ground[i];g.Item=i%25+1;g.X=i%160;g.Z=110+i/160;g.Kind=i%5;g.Owner=i%4;}maximum.Town.GroundCount=maximum.Town.Ground.Length;
+        for(int profile=0;profile<4&&maximum.Town.PlacedCount<maximum.Town.Placed.Length;profile++)for(int room=1;room<=4&&maximum.Town.PlacedCount<maximum.Town.Placed.Length;room++){
+            int space=BuildingWorld.PlayerRoom(profile,room),size=BuildingWorld.Size(maximum,space),owner=profile==0?0:profile+6;
+            for(int z=0;z<size&&maximum.Town.PlacedCount<maximum.Town.Placed.Length;z++)for(int x=0;x<size&&maximum.Town.PlacedCount<maximum.Town.Placed.Length;x++){
+                if(!maximum.CanPlace(10,x,z,0,space,owner,true))continue;var q=maximum.Town.Placed[maximum.Town.PlacedCount++];q.Item=10;q.X=x;q.Z=z;q.Room=space;q.Owner=owner;
+            }
+        }
+        check(maximum.Town.PlacedCount==maximum.Town.Placed.Length,"max-size fixture fills all furniture slots");
+        var maxBytes=SaveCodec.Encode(maximum);var maxRecords=SplitSaveCodec.Encode(maximum);
+        check(maxBytes.SequenceEqual(SaveCodec.Encode(SaveCodec.Decode(maxBytes)))&&maxBytes.SequenceEqual(SaveCodec.Encode(SplitSaveCodec.Decode(maxRecords))),"exact writers fit maximum profile strings/mail and all512 ground/256 furniture records");
+
+        var legacy=new GameState(101);Array.Fill(legacy.Town.Tiles,(byte)Terrain.Grass);Array.Clear(legacy.Town.Elevation);legacy.Town.GroundCount=0;legacy.Town.Tiles[WaterTerrain.SeaStart*Town.Width]=(byte)Terrain.Water;
+        for(int version=1;version<=3;version++){
+            var old=SplitSaveCodec.EncodeLegacy(legacy);
+            if(version<3){var player=new byte[old[3].Length-(2+9+6*7)*4];Array.Copy(old[3],player,player.Length-4);old[3]=player;}
+            foreach(var part in old){Put(part,4,version);Seal(part);}
+            var imported=SplitSaveCodec.Decode(old);
+            check(imported.ActiveProfile==0&&imported.Name==legacy.Name&&!imported.Profiles[1].Created,"legacy split schemas retain semantic migration and active-profile defaults");
+            check(imported.Town.TerrainVersion==SaveCodec.Decode(SaveCodec.Encode(imported)).Town.TerrainVersion,"legacy split import publishes the same final terrain revision as combined decoding");
+            check(imported.Town.Tiles[WaterTerrain.SeaStart*Town.Width]==(byte)(version==1?Terrain.Sea:Terrain.Water),"legacy water relabeling applies only to the historical schema");
+        }
+    }
+
 }
