@@ -1,9 +1,16 @@
+string[] available={"water","services","movement","ground","index","visibility","attention"};
+if(args.Length!=0&&(args.Length!=2||args[0]!="--suites"))throw new ArgumentException("Use --suites name,name or omit for all checks");
+var selected=args.Length==0?available:args[1].Split(',',StringSplitOptions.RemoveEmptyEntries);
+if(selected.Length==0)throw new ArgumentException("Select at least one rendering suite");
+foreach(string name in selected)if(!available.Contains(name))throw new ArgumentException("Unknown rendering suite: "+name);
+bool Wants(string name)=>selected.Contains(name);
 int count=0;
-WaterEffectChecks.Run((passed,message)=>{count++;if(!passed)throw new Exception(message);});
-RenderingServiceChecks.Run((passed,message)=>{count++;if(!passed)throw new Exception(message);});
-MovementTerrainChecks.Run((passed,message)=>{count++;if(!passed)throw new Exception(message);});
-GroundRingChecks.Run((passed,message)=>{count++;if(!passed)throw new Exception(message);});
-TerrainIndexChecks.Run((passed,message)=>{count++;if(!passed)throw new Exception(message);});
-ActorVisibilityChecks.Run((passed,message)=>{count++;if(!passed)throw new Exception(message);});
-AttentionGeometryChecks.Run((passed,message)=>{count++;if(!passed)throw new Exception(message);});
-Console.WriteLine(count+" rendering service checks passed");
+void Check(bool passed,string message){count++;if(!passed)throw new Exception(message);}
+if(Wants("water"))WaterEffectChecks.Run(Check);
+if(Wants("services"))RenderingServiceChecks.Run(Check);
+if(Wants("movement"))MovementTerrainChecks.Run(Check);
+if(Wants("ground"))GroundRingChecks.Run(Check);
+if(Wants("index"))TerrainIndexChecks.Run(Check);
+if(Wants("visibility"))ActorVisibilityChecks.Run(Check);
+if(Wants("attention"))AttentionGeometryChecks.Run(Check);
+Console.WriteLine(count+" rendering service checks passed; suites: "+string.Join(",",selected));
