@@ -327,13 +327,7 @@ internal sealed class TerrainRenderer : IDisposable
         }
         AddArchive(renderer,waterMaterial.Surface,104);
         AddArchive(renderer,waterMaterial.OceanSurface,107);
-        oceanWaves.Draw(renderer,waterMaterial.OceanSurface,ScrollTransform);
-        if(waterMaterial.IsSunshine){
-            // A separate transparent, GX-alpha-tested reflection layer draws
-            // over the color film. Both are depth-tested against the seabed.
-            AddArchive(renderer,waterMaterial.SunshineGlints,104);
-            AddArchive(renderer,waterMaterial.SunshineGlints,107);
-        }
+        oceanWaves.Draw(renderer,waterMaterial.IsSunshine?waterMaterial.CloseWaves:waterMaterial.OceanSurface,ScrollTransform);
         AddArchive(renderer,waterMaterial.Foam,105);
     }
     private void DrawLegacyWater(Renderer renderer)
@@ -351,13 +345,7 @@ internal sealed class TerrainRenderer : IDisposable
         }finally{NativeShadows.Scope(0);}
         for(int i=0;i<stream.Count;i++)if(stream.Visible[i])Add(renderer,waterMaterial.OceanSurface,sections[i]!.Water.OceanMesh);
         Flush(renderer,waterMaterial.OceanSurface);
-        oceanWaves.Draw(renderer,waterMaterial.OceanSurface,ScrollTransform);
-        if(waterMaterial.IsSunshine){
-            for(int i=0;i<stream.Count;i++)if(stream.Visible[i])Add(renderer,waterMaterial.SunshineGlints,sections[i]!.Water.SurfaceMesh);
-            Flush(renderer,waterMaterial.SunshineGlints);
-            for(int i=0;i<stream.Count;i++)if(stream.Visible[i])Add(renderer,waterMaterial.SunshineGlints,sections[i]!.Water.OceanMesh);
-            Flush(renderer,waterMaterial.SunshineGlints);
-        }
+        oceanWaves.Draw(renderer,waterMaterial.IsSunshine?waterMaterial.CloseWaves:waterMaterial.OceanSurface,ScrollTransform);
         for(int i=0;i<stream.Count;i++)if(stream.Visible[i])Add(renderer,waterMaterial.Foam,sections[i]!.Water.FoamMesh);
         Flush(renderer,waterMaterial.Foam);
     }
