@@ -79,6 +79,14 @@ def runtime_log_text():
     path=root/'emulator.log'
     return path.read_text(errors='replace') if path.exists() else ''
 
+def aram_residency_errors(text):
+    import re
+    session=text.rfind('ANIMALTOWN GAME START');errors=[];counts={}
+    for event in re.finditer(r'ANIMALTOWN MODEL RESIDENCY (RETRY|ADMISSION) (\d+): ([^\r\n]+)',text[max(0,session):]):
+        species=int(event[2]);counts[species]=counts.get(species,0)+1
+        errors.append({'operation':event[1],'species':species,'message':event[3]})
+    return {'session_start':session,'errors':errors,'repeated_species':sorted(species for species,count in counts.items() if count>1)}
+
 def check_runtime_failure():
     # Session errors must be detected before native shutdown can hide the
     # managed exception behind an unchanged loading frame.
@@ -88,6 +96,13 @@ def check_runtime_failure():
     if failures:
         (root/'runtime-failure.txt').write_text('\n'.join(failures)+'\n')
         raise AssertionError('Game runtime failure: '+failures[0])
+    if '--aram-residency' in sys.argv:
+        evidence=aram_residency_errors(runtime_log_text())
+        if evidence['errors']:(root/'runtime-residency-errors.json').write_text(json.dumps(evidence,indent=2)+'\n')
+        if evidence['repeated_species']:
+            cause=next(error for error in evidence['errors'] if error['species'] in evidence['repeated_species'])
+            raise AssertionError('Repeated model residency failures for species '+str(evidence['repeated_species'])+
+                                 ': '+cause['message'])
 
 def card_digest():
     import hashlib
@@ -748,14 +763,17 @@ def aram_model_cycles(text,after):
     import re
     session=text.rfind('ANIMALTOWN GAME START')
     if session<0:raise AssertionError('No traced town session for model residency evidence')
-    cold={};cycles=[]
+    cold={};retired=set();cycles=[]
     for event in re.finditer(r'ANIMALTOWN MODEL (COLD|WARM) (\d+)',text[session:]):
         species=int(event[2]);offset=session+event.start()
-        if event[1]=='COLD':cold[species]=offset
+        if event[1]=='COLD':cold[species]=offset;retired.add(species)
         elif species in cold:
-            retired=cold.pop(species)
-            if offset>=after:cycles.append({'species':species,'cold_offset':retired,'warm_offset':offset})
-    return {'session_start':session,'cycles':cycles,'cold_species':sorted(cold)}
+            retired_at=cold.pop(species)
+            if offset>=after:cycles.append({'species':species,'cold_offset':retired_at,'warm_offset':offset})
+    restored={event['species'] for event in cycles}
+    return {'session_start':session,'cycles':cycles,'cold_species':sorted(cold),
+            'retired_species':sorted(retired),'restored_species':sorted(restored),
+            'unrestored_species':sorted((retired-restored)|set(cold))}
 
 def aram_residency_scenario():
     """Real door/cache/model transitions, plus separate-card config roundtrips."""
@@ -872,7 +890,7 @@ def aram_residency_scenario():
     wait_log(r'Terrain archive: [0-9]+ ARAM bytes',session_start,seconds=300)
     wait_log(r'ANIMALTOWN ONBOARDING RELEASED',session_start,seconds=120)
     view('aram-game-started',False)
-    baseline=len(logs());enter('aram-flag-off');guest('flag-off-indoor-steady',8)
+    baseline=len(logs());enter('aram-flag-off');guest('flag-off-indoor-steady',16)
     if 'ANIMALTOWN TERRAIN CACHE SUSPENDED' in logs()[baseline:]:raise AssertionError('Default-off terrain option suspended the cache')
     screenshot('aram-flag-off-indoor.png');leave('aram-flag-off-exited')
     # Testing has 31 rows; Up wraps to new row 30 after tree and UI grain rows.
@@ -895,16 +913,26 @@ def aram_residency_scenario():
     # Back-to-back crossings exercise drain/cancel and reuse of restored backing.
     enter('aram-rapid-reentry');guest('rapid-reentry-indoor',1);leave('aram-rapid-return',reversal=True)
     evidence=aram_model_cycles(logs(),baseline);toured=set();report['extra_cold_home_routes']=[]
-    while not evidence['cycles']:
-        candidates=[species for species in evidence['cold_species'] if species not in toured]
-        if not candidates:raise AssertionError('No current-session cold model was restored by actual door/camera demand')
+    while evidence['unrestored_species']:
+        candidates=[species for species in evidence['unrestored_species'] if species not in toured]
+        if not candidates:raise AssertionError('Cold species lacked a real gameplay-demand restore: '+str(evidence['unrestored_species']))
         species=candidates[0];toured.add(species);name='aram-cold-species-'+str(species)
-        report['extra_cold_home_routes'].append({'species':species,'resident_building':species+1})
+        route={'species':species,'resident_building':species+1};report['extra_cold_home_routes'].append(route)
+        if species not in evidence['cold_species']:
+            # A startup-only restore is insufficient. Idle in a different real
+            # home to retire that shared model before demanding it during play.
+            neutral=(species+1)%6;route['staging_resident_building']=neutral+1
+            enter(name+'-staging',target_species=neutral);guest(name+'-staging-idle',16);leave(name+'-staging-exited')
+            evidence=aram_model_cycles(logs(),baseline)
+            if species not in evidence['unrestored_species']:continue
         enter(name,target_species=species);guest(name+'-indoor',1);leave(name+'-returned')
         evidence=aram_model_cycles(logs(),baseline)
     if evidence['session_start']!=session_start:raise AssertionError('Town session changed during residency acceptance')
+    if not evidence['retired_species']:raise AssertionError('No actual model retirement was observed in the current town session')
     report['cold_species_restored_before_exterior_return']=[event['species'] for event in evidence['cycles']]
     report['cold_to_warm_after_gameplay_demand']=evidence['cycles']
+    report['all_cold_species_restored_after_gameplay_demand']=not evidence['unrestored_species']
+    report['runtime_residency_errors']=aram_residency_errors(logs())
     report['runtime_markers']=re.findall(r'ANIMALTOWN (?:MODEL [^\r\n]+|TERRAIN CACHE [^\r\n]+)',logs()[session_start:])
     (root/'aram-runtime.log').write_text(logs())
     # Restart the same ISO/card. Toggling the title's last row once must produce

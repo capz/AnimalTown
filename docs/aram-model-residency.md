@@ -21,6 +21,15 @@ pins, debug inspection pins and ARAM limits, and drain before another disc load.
 The default outdoor camera can require all six species, in which case startup
 does not evict one to force the allocation to succeed.
 
+The selected player's shared species is permanently pinned for the session.
+It therefore uses the existing resident-model compactor before either its NPC
+or player instance is created. Other species keep their complete source packages
+for ARAM snapshots. The manager excludes models without ARAM residency support
+from demotion. This combines a smaller permanent player model with paging of
+unused species without compacting a pageable model's only source package.
+The native fixture saves 330,912 requested allocation bytes for fox; selected
+species results are documented in [resident model memory](resident-model-memory.md).
+
 The town's UI canvas uses the SDK default of 4,096 vertices. Its 36-byte native
 vertices require 147,456 bytes less storage than the former 8,192-vertex canvas.
 Sprite capacity and visual content are unchanged; oversized batches use the
@@ -94,7 +103,7 @@ required models are ready. They do not call native model APIs on cold resources.
 Models disable automatic residency advancement and receive explicit work credit
 before and after drawing. Both opportunities share a one-millisecond **soft CPU
 budget**, including terrain residency work; each terrain call receives at most
-500 microseconds. A model callback uses at most 64 KiB and 256 native work items.
+500 microseconds. A model callback uses at most 8 KiB and 32 native work items.
 Polling stops when DMA is pending. The frame's preparation profiler includes
 this work rather than excluding it from the measured frame.
 
@@ -133,7 +142,8 @@ six current species GLBs cooked with Assets 328, the normal preparation/winding
 steps and two mip levels. It runs production SDK source `d53a6589` with six shared
 models and seven instances, keeping a fox player and its fox NPC warm while the
 other five species demote and restore. The default quality remains 256 pixels;
-128 pixels is only a comparison cohort.
+128 pixels is only a comparison cohort. This report keeps the fox source package
+complete; it does not include the separate selected-species compaction saving.
 
 | Texture edge | Five cold packages in ARAM | Warm native requests | Cold native requests | Native request bytes freed |
 | --- | ---: | ---: | ---: | ---: |

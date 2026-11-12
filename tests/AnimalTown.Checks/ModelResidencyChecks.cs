@@ -3,6 +3,11 @@ using Dolphin.Graphics;
 using Dolphin.Memory;
 using Dolphin.Timing;
 
+internal static class NativeModels
+{
+    internal static int Retain(Model model)=>model.RetainPermanently();
+}
+
 namespace Dolphin.Memory
 {
     public sealed class AramStatistics
@@ -37,12 +42,13 @@ namespace Dolphin.Graphics
         public int ResidencyBytesPerStep,ResidencyWorkItemsPerStep;
         public int PackageBytes {get;set;}=65536;
         public bool IsResident {get;private set;}=true;
+        public bool SupportsAramResidency {get;private set;}=true;
         public bool IsTransitioning=>completion!=null;
         public int AramBytes {get;private set;}
         public int NativeBytes=>IsResident?PackageBytes*2:128;
-        public bool FailAdmission,FailWork,CancelWork,CommitCancellation;
-        public int InstanceCreations;
-        public int Starts,Advances,AnimationPosition=37,PendingDmaPolls=1;
+        public bool FailAdmission,FailWork,CancelWork,CommitCancellation,FailRetention;
+        public int InstanceCreations,RetentionCalls;
+        public int Starts,Advances,AnimationPosition=37,PendingDmaPolls=1,WorkUs=7,ProgressSteps;
         public Task? LastTransition {get;private set;}
         private TaskCompletionSource<int>? completion;
         private CancellationToken cancellation;
@@ -53,10 +59,18 @@ namespace Dolphin.Graphics
             if(!IsResident||IsTransitioning)throw new InvalidOperationException("A cold or transitioning model cannot create an instance");
             InstanceCreations++;return new ModelInstance(this,budget);
         }
+        public int RetainPermanently()
+        {
+            if(!IsResident||IsTransitioning||InstanceCreations!=0)throw new InvalidOperationException("Retain before creating either instance");
+            RetentionCalls++;
+            if(FailRetention)return -2;
+            SupportsAramResidency=false;return 1;
+        }
         public Task PrepareAsync(CancellationToken token)=>Start(true,token);
         public Task UnloadToAramAsync(CancellationToken token)=>Start(false,token);
         private Task Start(bool warming,CancellationToken token)
         {
+            if(!SupportsAramResidency)throw new InvalidOperationException("Compacted models cannot enter ARAM residency");
             if(FailAdmission){FailAdmission=false;throw new OutOfMemoryException("Injected admission failure");}
             if(IsTransitioning)throw new InvalidOperationException("Overlapping model owners");
             Starts++;restore=warming;cancellation=token;step=0;completion=new TaskCompletionSource<int>();LastTransition=completion.Task;return completion.Task;
@@ -64,8 +78,9 @@ namespace Dolphin.Graphics
         public bool AdvanceResidency()
         {
             if(completion==null)return false;
-            Clock.Timestamp+=7;Advances++;
+            Clock.Timestamp+=WorkUs;Advances++;
             if(++step<=PendingDmaPolls)return false; // Native DMA is pending; ordinary frame work must not spin.
+            if(step<=PendingDmaPolls+ProgressSteps)return true;
             var done=completion;completion=null;
             if(CancelWork||cancellation.IsCancellationRequested&&!CommitCancellation){CancelWork=false;done.SetCanceled();return true;}
             if(FailWork){FailWork=false;done.SetException(new IOException("Injected restore/copy failure"));return true;}
@@ -103,7 +118,7 @@ internal static class ModelResidencyChecks
     internal static void Run(Action<bool,string> check)
     {
         var manager=Setup(out var models,out var state,out var doors);
-        check(models.All(x=>!x.AutomaticResidencyProgress&&x.ResidencyBytesPerStep==65536),"application grants bounded manual model work");
+        check(models.All(x=>!x.AutomaticResidencyProgress&&x.ResidencyBytesPerStep==8192&&x.ResidencyWorkItemsPerStep==32),"application grants eight KiB and thirty-two work items per manual model step");
         Pump(manager,true);check(manager.PendingSpecies==1&&manager.Ready(0),"one idle shared model starts without touching the player");
         int before=models[1].Advances;Pump(manager);
         check(models[1].Advances==before+1&&manager.PendingSpecies==1,"a pending DMA stops work rather than spinning through frame credit");
@@ -202,7 +217,7 @@ internal static class ModelResidencyChecks
                 int species=ModelStartup.SpeciesAt(selected,progress);
                 check(!seen[species]&&(progress!=0||species==selected),"selected species loads first and each shared species loads once");seen[species]=true;
                 if(progress>0)check(player!=null&&ReferenceEquals(player.Model,cohort[selected]),"the selected player instance is reserved before every later package");
-                var model=cohort[species]=new Model();manager.Register(species,model,Clock.Timestamp);
+                var model=cohort[species]=new Model();ModelStartup.RetainSelected(selected,species,model);manager.Register(species,model,Clock.Timestamp);
                 _=model.CreateInstance(512*1024); // NPC adoption precedes paging.
                 var reserved=ModelStartup.ReservePlayer(selected,species,model);if(reserved!=null)player=reserved;
                 if(progress==0)check(player!=null&&player.Budget==512*1024&&!manager.AllReady,"player reservation does not wait for the unregistered cohort");
@@ -210,6 +225,8 @@ internal static class ModelResidencyChecks
             FinishStartup(manager,state,doors,6);
             check(player!=null&&cohort[selected].InstanceCreations==2&&cohort.Where((_,i)=>i!=selected).All(x=>x.InstanceCreations==1),
                 "startup creates exactly seven instances and never repeats final player allocation");
+            check(cohort[selected].RetentionCalls==1&&!cohort[selected].SupportsAramResidency&&cohort.Where((_,i)=>i!=selected).All(x=>x.RetentionCalls==0&&x.SupportsAramResidency),
+                "only the permanently pinned selected shared species is compacted before its instances");
             check(cohort[selected].IsResident&&cohort.Where((_,i)=>i!=selected).All(x=>!x.IsResident)&&manager.Demotions==5,
                 "startup protects the selected shared model while reclaiming every genuinely unused species");
             check(Clock.Timestamp<ModelResidency.WarmGraceUs&&manager.ReadyForSpace(state,doors,state.Space),"startup bypasses dwell without exposing a cold drawable actor");
@@ -263,5 +280,24 @@ internal static class ModelResidencyChecks
         for(int i=0;i<6;i++){required[i]=new Model();full.Register(i,required[i],0);}
         check(Startup(full,fullState,fullDoors,6)&&full.RequiredSpeciesCount==6&&required.All(x=>x.IsResident&&x.Starts==0),
             "the actual starting plot reports all six guarded species and never evicts one to hide a full working-set limit");
+
+        Clock.Timestamp=0;Aram.Reset();var guardState=State();var guardDoors=new PortalSystem();var guard=new ModelResidency();
+        guard.Register(0,new Model(),0);var permanent=new Model();permanent.RetainPermanently();guard.Register(1,permanent,0);
+        check(Startup(guard,guardState,guardDoors,2)&&permanent.Starts==0&&guard.Failures==0,"an unsupported compact model is excluded even if a future caller leaves it outside demand");
+        Clock.Timestamp=ModelResidency.IdleDelayUs+1;guard.Require(guardState,guardDoors,Clock.Timestamp);Pump(guard,true);
+        check(permanent.IsResident&&permanent.Starts==0&&guard.Failures==0,"normal idle eviction also rejects models without complete ARAM packages");
+        var failed=new Model{FailRetention=true};bool rejected=false;
+        try{ModelStartup.RetainSelected(4,4,failed);}catch(InvalidOperationException){rejected=true;}
+        check(rejected&&failed.RetentionCalls==1&&failed.IsResident&&failed.SupportsAramResidency&&failed.InstanceCreations==0,
+            "failed selected compaction leaves its original model owned and prevents premature instance creation");
+
+        var budgeted=Setup(out var budgetModels,out var budgetState,out var budgetDoors);
+        budgetModels[1].PendingDmaPolls=0;budgetModels[1].ProgressSteps=5;budgetModels[1].WorkUs=400;
+        Pump(budgeted,true);long beforeBudget=Clock.Timestamp;
+        budgeted.Pump(Clock.Timestamp,false,Clock.Timestamp+1000);
+        check(budgetModels[1].Advances==2&&Clock.Timestamp-beforeBudget==800,"observed indivisible work cost prevents a predicted extra grant from exceeding frame credit");
+        beforeBudget=Clock.Timestamp;budgeted.Pump(Clock.Timestamp,false,Clock.Timestamp+100);
+        check(budgetModels[1].Advances==3&&Clock.Timestamp-beforeBudget==400,"the first bounded grant remains available even when its observed cost exceeds remaining credit");
+        budgeted.Stop();
     }
 }

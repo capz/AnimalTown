@@ -306,6 +306,7 @@ internal sealed class TownGame : IDisposable
                 }
                 if(!loadingModel.IsCompleted)return;
                 var model=loadingModel.GetAwaiter().GetResult();models[species]=model;
+                ModelStartup.RetainSelected(state.Species,species,model);
                 modelResidency.Register(species,model,Clock.Timestamp);
                 actors[species+1]=model.CreateInstance(512*1024);attention.Register(species,actors[species+1]);if(model.TryGetAnimation("Walking",out var clip))animationClock.Step(species+1,0,false);
                 var player=ModelStartup.ReservePlayer(state.Species,species,model);

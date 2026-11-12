@@ -18,6 +18,15 @@ internal static class ModelStartup
     }
     internal static ModelInstance? ReservePlayer(int selected,int species,Model model)
         =>species==selected?model.CreateInstance(512*1024):null;
+    internal static void RetainSelected(int selected,int species,Model model)
+    {
+        if(species!=selected)return;
+        // The selected shared model stays pinned until this town is disposed.
+        // Retain before either instance exists; pageable species keep their
+        // complete immutable package for the SDK's ARAM snapshot/restore path.
+        int result=NativeModels.Retain(model);
+        if(result!=1)throw new InvalidOperationException("Selected model retention failed: "+result);
+    }
 }
 
 // One owner drives whole shared models outside render frames. ARAM backing is
@@ -52,7 +61,7 @@ internal sealed class ModelResidency
         if(stopped||species<0||species>=models.Length||models[species]!=null)throw new InvalidOperationException("Invalid species residency registration");
         models[species]=model;lastRequired[species]=now;warmUntil[species]=now+WarmGraceUs;
         model.AutomaticResidencyProgress=false;
-        model.ResidencyBytesPerStep=65536;model.ResidencyWorkItemsPerStep=256;
+        model.ResidencyBytesPerStep=8192;model.ResidencyWorkItemsPerStep=32;
     }
     internal void Require(GameState state,PortalSystem doors,long now,bool pinAll=false,int targetSpace=-1)
     {
@@ -112,6 +121,10 @@ internal sealed class ModelResidency
         if(pending!=null){
             var model=models[active]!;
             for(int steps=0;steps<64&&!pending.IsCompleted&&Clock.Timestamp<deadline;steps++){
+                // Always permit the first grant so an expensive allocation or
+                // urgent restore cannot starve. Further grants use the observed
+                // indivisible cost instead of knowingly overrunning the credit.
+                if(steps>0&&MaxAdvanceUs>deadline-Clock.Timestamp)break;
                 long at=Clock.Timestamp;bool progressed=model.AdvanceResidency();
                 int elapsed=(int)(Clock.Timestamp-at);AdvanceUs+=elapsed;WorkSteps++;if(elapsed>MaxAdvanceUs)MaxAdvanceUs=elapsed;
                 if(!progressed)break;
@@ -146,7 +159,7 @@ internal sealed class ModelResidency
     private int Candidate(long now,bool startup)
     {
         int candidate=-1;
-        for(int i=0;i<models.Length;i++)if(models[i]!=null&&!demand.Required[i]&&Ready(i)&&now>=retryAt[i]&&
+        for(int i=0;i<models.Length;i++)if(models[i]!=null&&!demand.Required[i]&&models[i]!.SupportsAramResidency&&Ready(i)&&now>=retryAt[i]&&
             (startup?!startupAttempted[i]:now-lastRequired[i]>=IdleDelayUs&&now>=warmUntil[i])&&
             (candidate<0||lastRequired[i]<lastRequired[candidate]))candidate=i;
         return candidate;
