@@ -44,7 +44,7 @@ internal static class WaterEffectChecks
         foreach(bool near in new[]{false,true}){
             var material=new Material();WaterMaterial.ConfigureSunshine(material,near);
             check(material.Color.A==255&&material.AlphaCutoff==0&&material.Cull==CullMode.None,
-                "Effect owns the comparison and draws both water faces as the reference does");
+                "Material retains the reference CullNone declaration and effect-owned comparison");
             check(material.Blend==BlendMode.Alpha&&material.DepthTest&&!material.DepthWrite,
                 "Transparent classification preserves depth testing without water depth writes");
             check(material.Sampler.MinFilter==TextureMinFilter.LinearMipmapLinear&&
