@@ -69,15 +69,14 @@ internal sealed class TerrainArchive
         Array.Clear(bound,0,bound.Length);revision=-1;selection.Reset();
         if(NativeTerrain.Cache(0)!=1)throw new InvalidOperationException("Terrain save cache release failed");return true;
     }
-    internal void RestoreCache()
-    {if(NativeTerrain.Cache(1)!=1)throw new InvalidOperationException("Terrain cache restore failed");}
+    internal void ResumeAfterSave()
+    {if(NativeTerrain.Cache(1)!=1)throw new InvalidOperationException("Terrain save cache restore failed");}
     internal void Prepare(float x,float z,CylinderRows rows)
     {
         if(!Ready)return;
         // Called after Bake has returned so the scratch arrays are no longer GC
-        // roots in the AOT native frame. Promote the 96 KiB cold coalescer
-        // scratch only after its meshes have retired. No collections in travel.
-        if(collect){AnimalTown.GameCube.NativeTexturePages.Collect();RestoreCache();collect=false;}
+        // roots in the AOT native frame. There are no collections in travel.
+        if(collect){AnimalTown.GameCube.NativeTexturePages.Collect();collect=false;}
         selection.Prepare(x,z,rows);if(revision==selection.Revision)return;revision=selection.Revision;
         Array.Clear(visible,0,visible.Length);Triangles=0;GroundMask=0;
         for(int i=0;i<selection.Count;i++){int section=selection.Sections[i];visible[section]=true;Triangles+=triangles[section];}

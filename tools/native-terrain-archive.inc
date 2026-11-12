@@ -8,12 +8,11 @@
 #define TA_PAGE_PARTS 216
 #define TA_BYTES (8*1024*1024)
 #define TA_CACHE (1024*1024)
-#define TA_COLD_CACHE (96*1024)
 #define TA_BLOCK 1024
 typedef struct {int offset,vertices,indices,kind,format;uint32_t color;int uniform,cache,users;} TaPart;
 static int ta_meta[TA_PARTS/256],ta_first[TA_SECTIONS+1],ta_triangles[TA_SECTIONS];
 static unsigned char ta_used[TA_CACHE/TA_BLOCK];
-static int ta_store,ta_cache,ta_cache_bytes,ta_stage,ta_meta_count,ta_bytes,ta_tail,ta_parts,ta_sections,ta_completed,ta_live,ta_peak;
+static int ta_store,ta_cache,ta_stage,ta_meta_count,ta_bytes,ta_tail,ta_parts,ta_sections,ta_completed,ta_live,ta_peak;
 static unsigned ta_bindings,ta_reads;static bool ta_sealed;
 static TaPart *ta_part(int index){
     if(index<0||index>=ta_parts)return NULL;
@@ -40,12 +39,12 @@ int animaltown_terrain_reset(int count){
     for(int i=0;i<ta_meta_count;i++)if(dnd_draw_release(ta_meta[i]))return -1;
     if(ta_store){if(dnd_aram_release(ta_store)||dnd_aram_dispose(ta_store))return -1;}
     memset(ta_first,0,sizeof(ta_first));memset(ta_triangles,0,sizeof(ta_triangles));memset(ta_used,0,sizeof(ta_used));
-    ta_store=ta_stage=ta_cache=ta_cache_bytes=ta_meta_count=ta_bytes=ta_tail=ta_parts=ta_completed=ta_live=ta_peak=0;
+    ta_store=ta_stage=ta_cache=ta_meta_count=ta_bytes=ta_tail=ta_parts=ta_completed=ta_live=ta_peak=0;
     ta_bindings=ta_reads=0;ta_sections=count;ta_sealed=false;
     if(!count)return 1;
     ta_store=dnd_aram_allocate(TA_BYTES);if(!ta_store)return -2;
     if(dnd_aram_retain(ta_store)){(void)dnd_aram_dispose(ta_store);ta_store=0;return -2;}
-    ta_cache=ta_buffer(TA_COLD_CACHE);ta_cache_bytes=ta_cache?TA_COLD_CACHE:0;ta_stage=ta_buffer(TA_STAGE);
+    ta_cache=ta_buffer(TA_CACHE);ta_stage=ta_buffer(TA_STAGE);
     if(!ta_cache||!ta_stage||dnd_buffer_hold(ta_stage)){(void)animaltown_terrain_reset(0);return -2;}
     return 1;
 }
@@ -82,7 +81,7 @@ static int ta_coalesce(int section){
     Resource *stage=find(ta_stage,BUFFER),*cache=find(ta_cache,BUFFER);if(!stage||!cache)return -1;
     /* No views exist until sealing: borrow the idle MEM1 cache for output and
      * descriptor scratch, retaining the original 64 KiB staging/MEM1 budget. */
-    _Static_assert(TA_STAGE+TA_PAGE_PARTS*sizeof(TaPart)<=TA_COLD_CACHE,"Cold coalescer cache scratch");
+    _Static_assert(TA_STAGE+TA_PAGE_PARTS*sizeof(TaPart)<=TA_CACHE,"Cold coalescer cache scratch");
     TaPart *merged=(TaPart*)(cache->data+TA_STAGE);
     for(int i=0;i<count;i++){
         const TaPart *original=ta_part(first+i);int group=0;
@@ -138,7 +137,7 @@ int animaltown_terrain_unbind(int token){
 }
 int animaltown_terrain_bind(int token,int index){
     Resource *r=find(token,MESH);TaPart *p=ta_part(index);Resource *cache=find(ta_cache,BUFFER);
-    if(dnd_device_active()||dnd_raw_depth()||!ta_sealed||!r||r->holds||r->geometry||r->commands||r->allocation||r->bytes!=1||!p||!cache||ta_cache_bytes!=TA_CACHE)return -1;
+    if(dnd_device_active()||dnd_raw_depth()||!ta_sealed||!r||r->holds||r->geometry||r->commands||r->allocation||r->bytes!=1||!p||!cache)return -1;
     if(r->terrain_entry==index+1)return 1;
     if(p->cache<0){
         int blocks=(ta_size(p)+TA_BLOCK-1)/TA_BLOCK,run=0,first=-1;
@@ -158,14 +157,10 @@ int animaltown_terrain_bind(int token,int index){
 /* Optional GX working set: immutable ARAM data survives blocking card I/O. */
 int animaltown_terrain_cache(int enabled){
     if(dnd_device_active()||dnd_raw_depth()||!ta_sealed||(enabled!=0&&enabled!=1))return -1;
-    if(enabled){
-        if(ta_cache&&ta_cache_bytes==TA_CACHE)return 1;
-        if(ta_cache&&animaltown_terrain_cache(0)!=1)return -1;
-        ta_cache=ta_buffer(TA_CACHE);ta_cache_bytes=ta_cache?TA_CACHE:0;return ta_cache?1:-2;
-    }
+    if(enabled){if(ta_cache)return 1;ta_cache=ta_buffer(TA_CACHE);return ta_cache?1:-2;}
     if(!ta_cache)return 1;
     for(int i=0;i<SLOTS;i++)if(slots[i].terrain_parent==ta_cache)return -1;
     if(ta_live||dnd_draw_release(ta_cache))return -1;
-    ta_cache=0;ta_bytes-=ta_cache_bytes;ta_cache_bytes=0;memset(ta_used,0,sizeof(ta_used));return 1;
+    ta_cache=0;ta_bytes-=TA_CACHE;memset(ta_used,0,sizeof(ta_used));return 1;
 }
 int animaltown_terrain_stat(int kind){return kind==0?ta_bytes:kind==1?ta_parts:kind==2?ta_meta_count:kind==3?ta_completed:kind==4?(int)ta_bindings:kind==5?ta_tail:kind==6?(int)ta_reads:kind==7?ta_peak:-1;}
