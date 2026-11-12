@@ -113,6 +113,8 @@ Run dotnet @('build','game/AnimalTown.GameCube','-c','Release','--no-restore','-
 Run dotnet @("$sdkRoot/tools/compiler/DolphinDotNet.Compiler.dll",'--bundle','game/AnimalTown.GameCube/bin/Release/net8.0/AnimalTown.GameCube.dll','out/native')
 & (Join-Path $PSScriptRoot 'patch-native.ps1') -Root $projectRoot
 RunNative '.' 'sh' (@('-c','cc -DANIMALTOWN_RETAIN_BUILDINGS -std=c11 -Wall -Wextra -Werror -ffunction-sections -fdata-sections -Iout/native/include tests/native-building-assets.c out/native/source/model.c out/native/source/model_animation.c -Wl,--gc-sections -lm -o /tmp/animaltown-building-retained && /tmp/animaltown-building-retained "$@"','building-retained')+$buildingNativeParts)
+$residentNativeModels=@(@('fox','bunny','giraffe','cat','hamster','spaniel')|ForEach-Object{"out/disc/$($_).dndmodel"})
+RunNative '.' 'sh' (@('-c','cc -std=c11 -Wall -Wextra -Werror -ffunction-sections -fdata-sections -Iout/native/include tests/native-resident-models.c out/native/source/model.c out/native/source/model_animation.c -Wl,--gc-sections -lm -o /tmp/animaltown-resident-models && /tmp/animaltown-resident-models "$@"','resident-models')+$residentNativeModels)
 $nativeOutput=[IO.Path]::GetFullPath((Join-Path $projectRoot 'out/native'))
 $workspacePrefix=$projectRoot.TrimEnd([IO.Path]::DirectorySeparatorChar)+[IO.Path]::DirectorySeparatorChar
 if(!$nativeOutput.StartsWith($workspacePrefix,[StringComparison]::OrdinalIgnoreCase)){throw 'Native output must stay inside the workspace'}
