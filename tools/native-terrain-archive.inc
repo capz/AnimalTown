@@ -154,4 +154,13 @@ int animaltown_terrain_bind(int token,int index){
     r->uniform_color=p->uniform!=0;r->mesh_color=p->color;r->dynamic=0;
     ta_bindings++;dnd_draw_backend_mesh_changed();return 1;
 }
+/* Optional GX working set: immutable ARAM data survives blocking card I/O. */
+int animaltown_terrain_cache(int enabled){
+    if(dnd_device_active()||dnd_raw_depth()||!ta_sealed||(enabled!=0&&enabled!=1))return -1;
+    if(enabled){if(ta_cache)return 1;ta_cache=ta_buffer(TA_CACHE);return ta_cache?1:-2;}
+    if(!ta_cache)return 1;
+    for(int i=0;i<SLOTS;i++)if(slots[i].terrain_parent==ta_cache)return -1;
+    if(ta_live||dnd_draw_release(ta_cache))return -1;
+    ta_cache=0;ta_bytes-=TA_CACHE;memset(ta_used,0,sizeof(ta_used));return 1;
+}
 int animaltown_terrain_stat(int kind){return kind==0?ta_bytes:kind==1?ta_parts:kind==2?ta_meta_count:kind==3?ta_completed:kind==4?(int)ta_bindings:kind==5?ta_tail:kind==6?(int)ta_reads:kind==7?ta_peak:-1;}

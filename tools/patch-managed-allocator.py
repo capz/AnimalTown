@@ -96,6 +96,7 @@ extern int animaltown_mesh_recycle(int,DndArray*,int,DndArray*,int);
         'View':(0,'return animaltown_terrain_view();'),
         'Bind':(2,'return animaltown_terrain_bind((int){0},(int){1});'),
         'Unbind':(1,'return animaltown_terrain_unbind((int){0});'),
+        'Cache':(1,'return animaltown_terrain_cache((int){0});'),
         'Stat':(1,'return animaltown_terrain_stat((int){0});')}
     for method,(count,body) in archive.items():
         pattern=r'intptr_t (dnd_value_AnimalTown_GameCube_NativeTerrain_'+method+r'_[a-z0-9]+)\(([^)]*)\) \{.*?\n\}'
@@ -111,5 +112,6 @@ extern int animaltown_terrain_view(void);
 extern int animaltown_terrain_bind(int,int);
 extern int animaltown_terrain_unbind(int);
 extern int animaltown_terrain_stat(int);
+extern int animaltown_terrain_cache(int);
 '''+text
     generated.write_text(text)

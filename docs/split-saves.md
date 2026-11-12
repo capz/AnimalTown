@@ -1,6 +1,7 @@
 # Split persistence
 
 The current four-profile extension is documented in [shared town profiles](shared-town-profiles.md).
+Current console writes use [incremental reference saves](incremental-saves.md); the backend keeps its existing transactional snapshot format.
 The layout below describes the original single-player split format, which remains readable for migration.
 
 Storage now consists of four independent, versioned records. This changes
