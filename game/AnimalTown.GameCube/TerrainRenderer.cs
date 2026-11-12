@@ -14,7 +14,7 @@ internal sealed class TerrainRenderer : IDisposable
     private TerrainArchive? archive;
     private bool legacy=false; // Default: immutable ARAM archive and fixed MEM1 views.
     internal bool SuspendForSave()=>!legacy&&archive!=null&&archive.SuspendForSave();
-    internal void ResumeAfterSave(){archive?.ResumeAfterSave();}
+    internal void ResumeAfterSave(){archive?.RestoreCache();}
     internal TerrainSection CreateSection()=>new TerrainSection(soil,waterMaterial);
     private readonly TerrainStream stream=new TerrainStream();
     private readonly TerrainSection?[] sections=new TerrainSection?[TerrainStream.Capacity];
