@@ -79,38 +79,58 @@ internal static class WaterSurfaceChecks
         long allocated=GC.GetAllocatedBytesForCurrentThread();
         for(int frame=0;frame<1000;frame++){grid.Prepare(128,135,frame*.016);grid.Height(8,8);}
         check(GC.GetAllocatedBytesForCurrentThread()==allocated,"warm rough-water sampling has no per-frame allocations");
-        // Sunshine's 5 native IA8 levels intentionally have different RGB and
-        // alpha content; a conventional downsampling mip generator would lose
-        // the distance-dependent shimmering/reflection band.
-        var sunshine=SunshineWater.TexturePackage();
+        // The visual effect is encoded in five *independent* grayscale images
+        // instead of a run-time procedural pattern or regular box mipmapping.
+        var artistLevels=new byte[SunshineWater.MipLevels][];
+        for(int level=0;level<SunshineWater.MipLevels;level++){
+            int size=SunshineWater.Edge(level);
+            var pixels=artistLevels[level]=new byte[size*size];
+            for(int y=0;y<size;y++)for(int x=0;x<size;x++)
+                pixels[y*size+x]=(byte)(level switch{
+                    1=>70+(x*7+y*11)%170,
+                    2=>160+(x*3+y*5)%96,
+                    3=>20+(x+y)%30,
+                    _=>0
+                });
+        }
+        byte[] sunshine=SunshineWater.PackLevels(artistLevels);
+        SunshineWater.ValidatePackage(sunshine);
         TexturePixels.Validate(sunshine);
         check(TexturePixels.Int(sunshine,0)==0x58544e44&&TexturePixels.Int(sunshine,4)==2&&
-              TexturePixels.Int(sunshine,8)==3&&TexturePixels.Int(sunshine,24)==SunshineWater.MipLevels,
-              "Sunshine builds GX IA8 DNTX v2 with explicit authored mip levels");
-        check(TexturePixels.Int(sunshine,20)==SunshineWater.PayloadBytes&&
-              sunshine.Length==SunshineWater.PayloadBytes+32,"Sunshine texture takes 10912 GX bytes across all mips");
+              TexturePixels.Int(sunshine,8)==3&&TexturePixels.Int(sunshine,24)==SunshineWater.MipLevels&&
+              sunshine.Length==32+SunshineWater.PayloadBytes,
+              "Sunshine artist mips cook into a contiguous GX IA8 DNTX v2 chain");
         int sunshineAt=32;int[] meanBrightness=new int[SunshineWater.MipLevels],meanAlpha=new int[SunshineWater.MipLevels];
         for(int level=0;level<SunshineWater.MipLevels;level++){
-            int edge=SunshineWater.TextureSize>>level;
+            int edge=SunshineWater.Edge(level);
             for(int by=0;by<edge;by+=4)for(int bx=0;bx<edge;bx+=4)
                 for(int y=by;y<by+4;y++)for(int x=bx;x<bx+4;x++){
-                    int alpha=sunshine[sunshineAt++],brightness=sunshine[sunshineAt++];
-                    check(alpha==SunshineWater.Alpha(level,x,y)&&brightness==SunshineWater.Brightness(level,x,y),
-                        "Sunshine IA8 texels use native 4x4 GX tile order");
-                    check(alpha==SunshineWater.Alpha(level,x+edge,y-edge)&&
-                          brightness==SunshineWater.Brightness(level,x+edge,y-edge),
-                        "Sunshine authored mip texels repeat seamlessly at every level");
-                    meanBrightness[level]+=brightness;meanAlpha[level]+=alpha;
+                    int alpha=sunshine[sunshineAt++],lum=sunshine[sunshineAt++];
+                    check(lum==artistLevels[level][y*edge+x]&&alpha==SunshineWater.AlphaForLuma(level,(byte)lum),
+                        "each author-selected mip texel preserves its luminance and receives native IA8 alpha");
+                    meanBrightness[level]+=lum;meanAlpha[level]+=alpha;
                 }
             meanBrightness[level]/=edge*edge;meanAlpha[level]/=edge*edge;
         }
-        check(sunshineAt==sunshine.Length,"mip chain is contiguous and contains no extra bytes");
-        check(meanBrightness[0]<meanBrightness[1]&&meanBrightness[1]<meanBrightness[2]&&
-              meanBrightness[2]>meanBrightness[3]&&meanBrightness[3]>meanBrightness[4],
-              "Sunshine mip level 2 creates the bright reflection band instead of simple downsampling");
-        check(meanAlpha[0]<meanAlpha[1]&&meanAlpha[1]<meanAlpha[2]&&
-              meanAlpha[2]>meanAlpha[3]&&meanAlpha[3]>meanAlpha[4],
-              "near water is clear, the reflection band less transparent, and distant water softer");
+        check(sunshineAt==sunshine.Length,"native IA8 chain has exactly the required GX tiles");
+        check(meanBrightness[0]==0&&meanBrightness[4]==0&&meanAlpha[0]==0&&meanAlpha[4]==0,
+            "base and farthest Sunshine mip levels draw no specular reflection");
+        check(meanBrightness[2]>meanBrightness[1]&&meanBrightness[1]>meanBrightness[3],
+            "authored third mip creates a bright middle-distance reflection band");
+        check(SunshineWater.LodBias>0&&SunshineWater.LodBias<3.99f&&
+              SunshineWater.GlintAlphaCutoff>.13f&&SunshineWater.GlintAlphaCutoff<.92f,
+              "GX samples independent mips with supported bias and high glint cutoff");
+        var truncated=(byte[])sunshine.Clone();truncated[32+SunshineWater.PayloadBytes-1]++;
+        bool rejected=false;try{SunshineWater.ValidatePackage(truncated);}catch(InvalidOperationException){rejected=true;}
+        check(rejected,"Sunshine texture validation rejects corrupt authored level/alpha data");
+        foreach(double time in new[]{0.0,1,3600,86400,1e8}){
+            float atEdge=SunshineWater.LocalWaveHeight(0,8,12,24,time);
+            float center=SunshineWater.LocalWaveHeight(8,8,12,24,time);
+            check(Math.Abs(atEdge-.047f)<.000001f&&center>.005f&&center<.09f,
+                "Sunshine two-wave patch fades at its rim and stays above static sea geometry");
+            check(Math.Abs(center-SunshineWater.LocalWaveHeight(8,8,12,24,time+.001))<.001f,
+                "Sunshine nearby geometry has continuous two-direction motion");
+        }
         foreach(float depth in new[]{SunshineWater.RiverBedDepth,SunshineWater.SeaBedDepth}){
             float scale=SunshineWater.BedScale(depth),offset=SunshineWater.BedAxisOffset(depth);
             check(scale>0&&scale<1&&float.IsFinite(offset),"seabed uses a small finite inward cylinder transform");
