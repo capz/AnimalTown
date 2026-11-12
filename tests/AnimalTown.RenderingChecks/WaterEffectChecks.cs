@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using AnimalTown;
 internal static class WaterEffectChecks
 {
     internal static void Run(Action<bool,string> check)
