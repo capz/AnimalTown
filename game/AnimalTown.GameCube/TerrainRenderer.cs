@@ -96,6 +96,7 @@ internal sealed class TerrainRenderer : IDisposable
     {
         BuiltThisFrame=UrgentStages=0;
         if(waterMaterial.IsSunshine)waterMaterial.PrepareSunshine();
+        else waterMaterial.ReleaseCapture();
         waterMaterial.PrepareRoughOcean();
         // Sunlit translucent water is drawn once, not again through the storm
         // mesh, so its alpha never accumulates over the same surface.
@@ -318,6 +319,8 @@ internal sealed class TerrainRenderer : IDisposable
         }
     }
     internal void CaptureWaterScene()=>waterMaterial.CaptureScene();
+    internal void ReleaseWaterCapture()=>waterMaterial.ReleaseCapture();
+    internal bool TakeWaterPreparationFailure(out string error)=>waterMaterial.TakePreparationFailure(out error);
     internal void DrawRefraction(Renderer renderer)
     {
         var material=waterMaterial.Refraction;

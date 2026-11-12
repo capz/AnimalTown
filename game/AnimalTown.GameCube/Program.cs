@@ -251,6 +251,7 @@ internal sealed class TownGame : IDisposable
                 if(loadingModel==null){loadingLabel="Loading "+modelNames[loadingIndex];loadingModel=ModelResources.LoadAsync(modelNames[loadingIndex]);return;}
                 if(!loadingModel.IsCompleted)return;
                 var model=loadingModel.GetAwaiter().GetResult();models[loadingIndex]=model;
+                if(NativeModels.Retain(model)!=1)throw new InvalidOperationException("Animated model retention failed");
                 actors[loadingIndex+1]=model.CreateInstance(512*1024);attention.Register(loadingIndex,actors[loadingIndex+1]);if(model.TryGetAnimation("Walking",out var clip))animationClock.Step(loadingIndex+1,0,false);
                 loadingModel=null;loadingIndex++;return;
             }
@@ -710,8 +711,16 @@ internal sealed class TownGame : IDisposable
         if(room!=0)indoorCamera.Configure(BuildingWorld.Definition(state,BuildingWorld.Building(room)));
         long phase=FrameProfile.Start(),preparationDeadline=Clock.Timestamp+2000;PrepareVillagerShadows();
         long masksAt=FrameProfile.Start();villagerShadows.PrepareMasks(preparationDeadline);FrameProfile.DetailEnd(4,masksAt);
-        if(room==0){terrain.Prepare(state,room,month,villagerShadows,preparationDeadline,cliffPreview);terrain.Animate((Clock.Timestamp-sessionStart)/1000000.0);}
-        else{int steps=0;while(steps<8&&Clock.Timestamp<preparationDeadline){if(!villagerShadows.Advance())break;steps++;}}
+        if(room==0){
+            terrain.Prepare(state,room,month,villagerShadows,preparationDeadline,cliffPreview);
+            if(terrain.TakeWaterPreparationFailure(out string waterError)){
+                renderDebug.ResetWaterStyle();uiShapes.Trim();
+                DebugOverlay.WriteLine("SUNSHINE PREPARATION FAILED: "+waterError);
+                Say("Water rendering","Sunshine couldn't be prepared. Wind Waker restored.");
+            }
+            terrain.Animate((Clock.Timestamp-sessionStart)/1000000.0);
+        }
+        else{terrain.ReleaseWaterCapture();int steps=0;while(steps<8&&Clock.Timestamp<preparationDeadline){if(!villagerShadows.Advance())break;steps++;}}
         FrameProfile.End(2,phase);
         if(room==0&&!terrain.Ready){DrawLoading(landscape:true);return;}
         LoadingScreen.Finish();

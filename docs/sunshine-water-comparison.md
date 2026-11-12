@@ -132,8 +132,9 @@ wrapping. Basic mapping does not invert T. Near waves advance
 AnimalTown UV scales are (0.48,0.48) and (0.48,0.6), scrolling S and T respectively.
 The public demonstration's 5× BTK playback is deliberately not used.
 
-Only the first selection loads these packages and creates effects. Warm style
-switches reuse them; UV animation does not regenerate or upload textures.
+Only the first selection loads these packages and creates the small glint
+effects. Warm style switches reuse those images; UV animation does not
+regenerate or upload textures.
 The small two-sine near-wave mesh updates only over visible open sea, separately
 from immutable terrain. Ground mip controls remain independent of water mips;
 the existing Wind Waker warp and optional storm-wave paths remain available.
@@ -145,7 +146,17 @@ samples it on visible water. It does not render a mirrored camera. Capture is
 half the viewport width and height in RGB565: **153,600 bytes at 640×480**,
 bringing texture/capture image payload to **189,056 bytes** at that resolution,
 excluding object metadata and transient loading buffers. Resolution changes
-recreate the capture; no per-frame capture allocation is needed.
+recreate the capture; no per-frame capture allocation is needed. The capture
+and its borrowing effect are released indoors or when Wind Waker is selected,
+and recreated on the next outdoor Sunshine selection without rereading images.
+
+Resident villager models release duplicated embedded texture payloads after
+the shared GX texture cache acquires them. The six default villagers recover
+2,641,856 bytes of MEM1 without reducing texture quality or animation data;
+this provides room for the capture instead of adding it at the old RAM limit.
+Preparation failure retires partial water resources and restores Wind Waker
+with a debug-menu message. See [resident model memory](resident-model-memory.md)
+for ownership, bounds and validation.
 
 The recorded indirect setup has one 8-bit stage, STU bias, coordinate scales 1:1,
 no indirect wrapping, no addPrevious and no originalLOD. Its matrix is

@@ -14,6 +14,7 @@ internal sealed class WaterMaterial : IDisposable
     private Texture2D? sunshineTexture,sunshineWaveTexture,sunshineDistortion;
     private SceneCapture? sunshineCapture;
     private TevMaterial? sunshineRefraction;
+    private string preparationFailure="";
     private Viewport captureSource;
     private TevMaterial? sunshineLayer,sunshineCloseWaves;
     internal Material CloseWaves=>sunshineCloseWaves?.Material??Surface;
@@ -133,6 +134,19 @@ internal sealed class WaterMaterial : IDisposable
     // The dark-blue bed uses the normal untextured material path.
     internal void PrepareSunshine()
     {
+        preparationFailure="";
+        try{PrepareSunshineCore();}
+        catch(Exception error){
+            ReleaseSunshine();Style=WaterRenderStyle.WindWaker;
+            preparationFailure=string.IsNullOrEmpty(error.Message)?"Water preparation failed.":error.Message;
+        }
+    }
+    internal bool TakePreparationFailure(out string error)
+    {
+        error=preparationFailure;preparationFailure="";return error.Length!=0;
+    }
+    private void PrepareSunshineCore()
+    {
         if(sunshineLayer!=null){PrepareCapture();return;}
         Texture2D? wave=null,nearWave=null,distort=null;
         TevMaterial? layer=null,close=null;
@@ -163,7 +177,7 @@ internal sealed class WaterMaterial : IDisposable
     {
         var device=GraphicsDevice.Default;
         if(sunshineCapture!=null&&captureSource.Width==device.Width&&captureSource.Height==device.Height)return;
-        sunshineRefraction?.Dispose();sunshineRefraction=null;sunshineCapture?.Dispose();sunshineCapture=null;
+        ReleaseCapture();
         var capture=new SceneCapture(device,device.Width/2,device.Height/2,NativeTextureFormat.Rgb565);
         TevMaterial? material=null;
         try{
@@ -180,6 +194,22 @@ internal sealed class WaterMaterial : IDisposable
     // Once per drawable Sunshine frame, between 3D passes. No allocations.
     internal void CaptureScene()=>sunshineCapture!.Capture(captureSource);
     internal Material Refraction=>sunshineRefraction!.Material;
+    // The large EFB buffer is active only outdoors in Sunshine mode. Keep the
+    // small images warm so returning to the style needs no further DVD reads.
+    internal void ReleaseCapture()
+    {
+        sunshineRefraction?.Dispose();sunshineRefraction=null;
+        sunshineCapture?.Dispose();sunshineCapture=null;
+    }
+    private void ReleaseSunshine()
+    {
+        ReleaseCapture();
+        sunshineCloseWaves?.Dispose();sunshineCloseWaves=null;
+        sunshineLayer?.Dispose();sunshineLayer=null;
+        sunshineDistortion?.Dispose();sunshineDistortion=null;
+        sunshineWaveTexture?.Dispose();sunshineWaveTexture=null;
+        sunshineTexture?.Dispose();sunshineTexture=null;
+    }
     internal Color32 Tint(float depth)=>new Color32((byte)(Shallow.R+(Deep.R-Shallow.R)*depth),(byte)(Shallow.G+(Deep.G-Shallow.G)*depth),(byte)(Shallow.B+(Deep.B-Shallow.B)*depth));
     internal void SetTerrainTint(uint rgba)
     {
@@ -215,8 +245,7 @@ internal sealed class WaterMaterial : IDisposable
         }
     }
     public void Dispose(){
-        sunshineRefraction?.Dispose();sunshineCapture?.Dispose();
-        sunshineCloseWaves?.Dispose();sunshineLayer?.Dispose();sunshineDistortion?.Dispose();sunshineWaveTexture?.Dispose();sunshineTexture?.Dispose();
+        ReleaseSunshine();
         storm?.Dispose();water.Dispose();
         whitecaps?.Dispose();stormBase?.Dispose();distortion.Dispose();shoreFoam.Dispose();ripples.Dispose();
     }
