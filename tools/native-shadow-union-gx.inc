@@ -31,7 +31,9 @@ static void town_shadow_apply(float x,float z,const float *world,const DndDrawEf
     GX_SetTevKColor(GX_KCOLOR3,(GXColor){35,49,66,255});GX_SetTevKColorSel((u8)stage,GX_TEV_KCSEL_K3);
     GX_SetTevColorIn((u8)stage,GX_CC_CPREV,GX_CC_KONST,GX_CC_A2,GX_CC_ZERO);
     GX_SetTevColorOp((u8)stage,GX_TEV_ADD,GX_TB_ZERO,GX_CS_SCALE_1,GX_TRUE,GX_TEVPREV);
-    GX_SetTevAlphaIn((u8)stage,GX_CA_ZERO,GX_CA_ZERO,GX_CA_ZERO,GX_CA_APREV);
+    /* A inputs use the GX low byte. Copying signed-wide APREV through D with
+     * clamp enabled would change the original cutout and blend alpha. */
+    GX_SetTevAlphaIn((u8)stage,GX_CA_APREV,GX_CA_ZERO,GX_CA_ZERO,GX_CA_ZERO);
     GX_SetTevAlphaOp((u8)stage,GX_TEV_ADD,GX_TB_ZERO,GX_CS_SCALE_1,GX_TRUE,GX_TEVPREV);
 }
 static inline void town_shadow_ground(const DndDrawVertex *v,const uint16_t *ix,int count,const DndDrawMaterial *mat,unsigned *bindings){
