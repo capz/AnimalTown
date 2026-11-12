@@ -63,6 +63,20 @@ def region_color_count(pixels,color,left,top,right,bottom,tolerance=20):
     return sum(all(abs(pixels[(y*800+x)*3+c]-value)<=tolerance for c,value in enumerate(color))
                for y in range(top,bottom) for x in range(left,right))
 
+def runtime_log_text():
+    files=sorted((user/'Logs').glob('*.log'))
+    if files:return '\n'.join(path.read_text(errors='replace') for path in files)
+    path=root/'emulator.log'
+    return path.read_text(errors='replace') if path.exists() else ''
+
+def check_runtime_failure():
+    # Session errors must be detected before native shutdown can hide the
+    # managed exception behind an unchanged loading frame.
+    for line in reversed(runtime_log_text().splitlines()):
+        if 'ANIMALTOWN SESSION FAILED' in line or 'ANIMALTOWN ASSET LOAD FAILED' in line:
+            (root/'runtime-failure.txt').write_text(line+'\n')
+            raise AssertionError('Game runtime failure: '+line)
+
 def card_digest():
     import hashlib
     card=root/'MemoryCardA.USA.raw'
@@ -108,6 +122,7 @@ def wait_onboarding(stage,name=None):
     deadline=time.monotonic()+(360 if stage in ('home','world') else 180)
     loading=False
     while time.monotonic()<deadline:
+        check_runtime_failure()
         if p.poll() is not None:raise AssertionError('Emulator stopped before onboarding '+stage)
         screenshot(name);pixels=rgb(name)
         if color_count(pixels,(149,198,186))>150000 and color_count(pixels,(255,245,221))<100:loading=True
@@ -119,6 +134,7 @@ def wait_saved_after(before):
     deadline=time.monotonic()+240
     sequence=before['sequence'] if before else 0
     while time.monotonic()<deadline:
+        check_runtime_failure()
         after=committed_card_sequence(root/'MemoryCardA.USA.raw',details=True)
         if after and after['sequence']>sequence:return after
         if p.poll() is not None:raise AssertionError('Emulator stopped during explicit onboarding save')
@@ -206,6 +222,7 @@ def wait_title(modal=False):
     # Observe the actual menu, rather than sending input during either splash.
     deadline=time.monotonic()+180
     while time.monotonic()<deadline:
+        check_runtime_failure()
         if p.poll() is not None:raise AssertionError('Emulator stopped before title')
         name='title-modal-wait.png' if modal else 'title-wait.png'
         screenshot(name);pixels=rgb(name)
@@ -268,6 +285,7 @@ def title_menu():
 def wait_profiles(name='profile-picker.png'):
     deadline=time.monotonic()+180
     while time.monotonic()<deadline:
+        check_runtime_failure()
         screenshot(name);pixels=rgb(name)
         count=sum(all(abs(pixels[(y*800+x)*3+c]-value)<=5 for c,value in enumerate((53,105,84))) for y in range(160,365) for x in range(120,165))
         cards=color_count(pixels,(107,151,90))>3000 and color_count(pixels,(255,183,64))>150
@@ -721,14 +739,10 @@ def aram_residency_scenario():
     from avi_guest_clock import AviGuestClock
     clock=AviGuestClock(user/'Dump/Frames',track_presentations=True)
     card=root/'MemoryCardA.USA.raw';segments=[];report={'segments':segments,'clock':'NTSC VI chunks; software Dolphin, not hardware'}
-    def logs():
-        # OSReport normally goes to dolphin.log; stdout is a fallback for builds
-        # that route it to the launcher. Avoid counting the same events twice.
-        files=list((user/'Logs').glob('*.log'))
-        return '\n'.join(path.read_text(errors='replace') for path in files) if files else (root/'emulator.log').read_text(errors='replace')
+    def logs():return runtime_log_text()
     def alive():
+        check_runtime_failure()
         if p.poll() is not None:raise AssertionError('Emulator stopped during ARAM residency scenario')
-        if 'ANIMALTOWN ASSET LOAD FAILED' in logs():raise AssertionError('AnimalTown assets failed to load')
     def wait_log(pattern,after=0,seconds=180):
         deadline=time.monotonic()+seconds
         while time.monotonic()<deadline:
@@ -799,6 +813,15 @@ def aram_residency_scenario():
     press('B');wait_title()
     if initial:config(False)
     press('D_UP');press('D_UP');start_game(False,'aram')
+    startup=[]
+    for index,session in enumerate(logs().split('ANIMALTOWN GAME START')[1:]):
+        terrain=session.find('ANIMALTOWN STARTUP TERRAIN READY')
+        model=session.find('ANIMALTOWN MODEL LOAD BEGIN 0 ')
+        bake=session.find('ANIMALTOWN TERRAIN BAKE READY')
+        if not 0<=bake<terrain<model:raise AssertionError('Session '+str(index)+' admitted species before terrain bake/scratch retirement completed')
+        startup.append({'session':index,'bake_ready_before_terrain_ready_before_first_model':True})
+    if not startup:raise AssertionError('No traced startup ordering was observed')
+    report['startup_order']=startup
     wait_log(r'ANIMALTOWN READY ',seconds=300)
     wait_log(r'Terrain archive: [0-9]+ ARAM bytes',seconds=300)
     wait_log(r'ANIMALTOWN ONBOARDING RELEASED',seconds=120)

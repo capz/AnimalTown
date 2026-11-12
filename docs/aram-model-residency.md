@@ -6,6 +6,12 @@ to ARAM after initial model loading and terrain baking. It uses SDK
 `UnloadToAramAsync` and `PrepareAsync`; it does not destroy/recreate villagers or
 change texture resolution. Buildings keep their existing compact resident kit.
 
+Startup completes terrain preparation before loading the species models. Its
+scratch-building helper returns before collection, and model admission starts
+on the following frame. This avoids overlapping the terrain bake's temporary
+storage with the fully resident model cohort, including when loading an indoor
+save. The existing loading surface stays visible until scene resources are ready.
+
 ## Admission and ownership
 
 All instances of a model must be outside demand before it can be demoted. The

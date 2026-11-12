@@ -51,21 +51,23 @@ internal static class Program
         DebugOverlay.WriteLine("ANIMALTOWN GAME CONSTRUCT READY");
         AnimalTown.GameCube.NativeTexturePages.Collect();
         long previous=Clock.Timestamp;double accumulator=0;
-        while(true)
-        {
-            game.AdvanceLoading();
-            FrameProfile.Begin();game.AdvanceResidency();long simulation=FrameProfile.Start();
-            long now=Clock.Timestamp;accumulator+=(now-previous)/1000000.0;previous=now;if(accumulator>.1334)accumulator=.1334;
-            Controller.Update();var pad=Controller.GetState(0);game.Input(pad);
-            if(game.ExitToTitle)return OnboardingFlow.ToTitle;
-            if(game.NextSetup!=0)return game.NextSetup;
-            // Setup and preview scopes have returned before gameplay starts.
-            // Their disposed views/snapshots cannot remain stack roots here.
-            game.ReleaseIntro();
-            while(accumulator>=1.0/30){game.Step(pad);accumulator-=1.0/30;}
-            FrameProfile.End(0,simulation);game.Draw();game.AdvanceResidency(afterDraw:true);
-            long delay=FrameProfile.Start();RuntimeOptions.Wait();FrameProfile.End(13,delay);game.RecordFrame();
-        }
+        try{
+            while(true)
+            {
+                game.AdvanceLoading();
+                FrameProfile.Begin();game.AdvanceResidency();long simulation=FrameProfile.Start();
+                long now=Clock.Timestamp;accumulator+=(now-previous)/1000000.0;previous=now;if(accumulator>.1334)accumulator=.1334;
+                Controller.Update();var pad=Controller.GetState(0);game.Input(pad);
+                if(game.ExitToTitle)return OnboardingFlow.ToTitle;
+                if(game.NextSetup!=0)return game.NextSetup;
+                // Setup and preview scopes have returned before gameplay starts.
+                // Their disposed views/snapshots cannot remain stack roots here.
+                game.ReleaseIntro();
+                while(accumulator>=1.0/30){game.Step(pad);accumulator-=1.0/30;}
+                FrameProfile.End(0,simulation);game.Draw();game.AdvanceResidency(afterDraw:true);
+                long delay=FrameProfile.Start();RuntimeOptions.Wait();FrameProfile.End(13,delay);game.RecordFrame();
+            }
+        }catch(Exception error){DebugOverlay.WriteLine("ANIMALTOWN SESSION FAILED "+error.Message);throw;}
     }
 }
 
@@ -124,7 +126,7 @@ internal sealed class TownGame : IDisposable
     private readonly BoxBatch boxes;
     private int modelUsed,loadingIndex;
     private Task<Model>? loadingModel;
-    private bool resourcesReady,loadingFailed,loadingBuildingsStarted;
+    private bool resourcesReady,loadingFailed,loadingBuildingsStarted,loadingTerrainStarted,loadingTerrainReady;
     private string loadingLabel="Preparing town assets";
     private float cachedPlayerHeight;
     private float profiledX=float.NaN,profiledZ;
@@ -269,6 +271,17 @@ internal sealed class TownGame : IDisposable
         if(resourcesReady||loadingFailed)return;
         try{
             terrain.WarmCliffs(state.Town,Clock.Timestamp+1000);
+            if(!loadingTerrainReady){
+                if(!loadingTerrainStarted){loadingTerrainStarted=true;DebugOverlay.WriteLine("ANIMALTOWN STARTUP TERRAIN BEGIN");}
+                loadingLabel="Preparing landscape";
+                if(!PrepareStartupTerrain())return;
+                // The helper has returned and its scratch-building frames have
+                // unwound. Collect now; the next frame admits the first model.
+                AnimalTown.GameCube.NativeTexturePages.Collect();
+                loadingTerrainReady=true;
+                DebugOverlay.WriteLine("ANIMALTOWN STARTUP TERRAIN READY native bytes "+device.NativeBytes);
+                return;
+            }
             if(loadingIndex<models.Length){
                 if(loadingModel==null){
                     loadingLabel="Loading "+modelNames[loadingIndex];
@@ -298,7 +311,19 @@ internal sealed class TownGame : IDisposable
             resourcesReady=true;
             DebugOverlay.WriteLine("BUILDINGS READY native bytes "+buildings.ResidentBytes);
             DebugOverlay.WriteLine("ANIMALTOWN READY "+BuildInfo.Version+" native bytes "+device.NativeBytes);
-        }catch(Exception){loadingFailed=true;loadingLabel="Could not load town assets. Restart with a valid disc.";DebugOverlay.WriteLine("ANIMALTOWN ASSET LOAD FAILED");}
+        }catch(Exception error){loadingFailed=true;loadingLabel="Could not load town assets. Restart with a valid disc.";DebugOverlay.WriteLine("ANIMALTOWN ASSET LOAD FAILED "+error.Message);}
+    }
+    private bool PrepareStartupTerrain()
+    {
+        // Bake even for an indoor save: its first exit must reuse the completed
+        // archive rather than overlap scratch geometry with resident villagers.
+        terrain.RoughOcean=weather.RoughOcean(0);terrain.SeasonOverride=renderDebug.SeasonOverride;
+        terrain.WaterStyle=renderDebug.WaterStyle;
+        terrain.GroundMipmaps=renderDebug.GroundMipmaps;terrain.GroundMipDistance=renderDebug.GroundMipDistance;
+        // Indoor actors have height zero; this selects the outdoor town cache.
+        RenderView.Prepare(state.X,state.Z,TerrainElevation.At(state.Town,state.X,state.Z));
+        terrain.Prepare(state,room,month,villagerShadows,Clock.Timestamp+2000,cliffPreview);
+        return terrain.Ready;
     }
     private void DrawLoading(bool landscape=false)
     {
