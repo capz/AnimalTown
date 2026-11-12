@@ -2,6 +2,20 @@ param([string]$Root)
 $ErrorActionPreference='Stop'
 $nativeRoot=[IO.Path]::GetFullPath((Join-Path $Root 'out/native'))
 $generatedPath=Join-Path $nativeRoot 'source/generated_program.c'
+# Forward sparse acceptance markers before the SDK's overlay truncates them.
+& python3 (Join-Path $Root 'tools/patch-residency-trace.py') $nativeRoot
+if($LASTEXITCODE){throw 'Pinned residency trace bridge patch failed'}
+if($IsLinux){
+    foreach($target in @('host','gekko')){
+        $check=Join-Path $Root "out/native-residency-trace-$target-check"
+        [string[]]$traceFlags=@()
+        if($target -eq 'gekko'){$traceFlags=@('-DGEKKO',"-I$(Join-Path $Root 'tests/residency-trace-sdk')")}
+        & cc -std=c11 -O2 -Wall -Wextra -Werror -ffunction-sections -fdata-sections @traceFlags "-I$(Join-Path $nativeRoot 'include')" "-I$(Join-Path $nativeRoot 'source')" (Join-Path $Root 'tests/native-residency-trace.c') '-Wl,--gc-sections' -lm -o $check
+        if($LASTEXITCODE){throw "Native residency trace $target compilation failed"}
+        & $check
+        if($LASTEXITCODE){throw "Native residency trace $target fixture failed"}
+    }
+}
 $generated=[IO.File]::ReadAllText($generatedPath)
 # A direct float-to-byte expression currently retains a floating SSA type in
 # the pinned compiler. On a byte[] that silently stores the low IEEE bits,

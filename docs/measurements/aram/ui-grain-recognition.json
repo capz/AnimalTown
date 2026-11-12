@@ -1,0 +1,55 @@
+{
+  "schema": 1,
+  "purpose": "Actual captured title-frame regression for old and uniform UI grain; only smoke UI color recognition changed. Resource byte/count assertions and explicit strict color tolerances remain unchanged.",
+  "fixtures": [
+    {
+      "game_commit": "331f8b9a63d0fa9357a58a468d75be8e8cbb388b",
+      "capture": "out/aram-residency-331f8b9/title-wait.png",
+      "capture_sha256": "102eec214be06ab10b19330a837e6bac5bb5ba180eab64773005337f2cc3b040",
+      "cream_pixels_by_tolerance": {
+        "5": 11374,
+        "12": 114514,
+        "20": 134426
+      },
+      "title_threshold": 70000,
+      "current_default_passes": true
+    },
+    {
+      "game_commit": "6a24b95f9b5087dce55092836153a0bef115e343",
+      "capture": "out/aram-residency-6a24b95-grain12-failed/title-wait.png",
+      "capture_sha256": "ec2008202a57e279a7cc46e3ab390a49dedc2e2654aa755eaad8f8df30d3f76a",
+      "cream_pixels_by_tolerance": {
+        "5": 9971,
+        "12": 43935,
+        "20": 91807
+      },
+      "title_threshold": 70000,
+      "current_default_passes": true
+    }
+  ],
+  "winter_white_snow": {
+    "rgb": [
+      255,
+      255,
+      255
+    ],
+    "cream_rgb": [
+      255,
+      245,
+      221
+    ],
+    "blue_difference": 34,
+    "tolerance": 20,
+    "incorrectly_matched": false
+  },
+  "uniform_modal": {
+    "game_commit": "6a24b95f9b5087dce55092836153a0bef115e343",
+    "capture": "out/aram-residency-6a24b95-modal-leaf20-failed/title-modal-wait.png",
+    "capture_sha256": "295c1e098ee1ec07948fecd57e5c98ddf5b26e8d11c6afbed8e12cc92d4eda46",
+    "cream_pixels_tolerance20": 110553,
+    "leaf_pixels_tolerance20": 1920,
+    "leaf_pixels_explicit_tolerance12": 41,
+    "maximum_modal_leaf_pixels": 1000,
+    "actual_wait_title_passes": true
+  }
+}

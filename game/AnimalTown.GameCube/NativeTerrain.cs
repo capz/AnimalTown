@@ -8,6 +8,10 @@ internal static class NativeTerrain
     internal static int Kind(int entry)=>throw new System.PlatformNotSupportedException();
     internal static int View()=>throw new System.PlatformNotSupportedException();
     internal static int Bind(int handle,int entry)=>throw new System.PlatformNotSupportedException();
+    internal static int BindStep(int handle,int entry)=>throw new System.PlatformNotSupportedException();
+    internal static int CancelBind()=>throw new System.PlatformNotSupportedException();
+    internal static int Suspend()=>throw new System.PlatformNotSupportedException();
+    internal static int Resume()=>throw new System.PlatformNotSupportedException();
     internal static int Unbind(int handle)=>throw new System.PlatformNotSupportedException();
     internal static int Cache(int enabled)=>throw new System.PlatformNotSupportedException();
     internal static int Stat(int kind)=>throw new System.PlatformNotSupportedException();

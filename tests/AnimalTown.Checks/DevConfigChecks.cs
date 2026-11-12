@@ -4,8 +4,18 @@ internal static class DevConfigChecks
     internal static void Run(Action<bool,string> check)
     {
         var defaults=new DevConfig(7);check(defaults.RuntimeMode==7,"dev defaults preserve disc runtime profile");
+        check(defaults.Values[DevConfig.DiscardTerrainCacheWhenIndoorsIndex]==0,"indoor terrain cache discard is opt-in");
+        // A record written before the terrain option existed. Keep accepting
+        // the original checksum and preserve the previous startup options.
+        var legacy=DevConfig.Decode(Convert.FromHexString("4154440100010000010101010200000000000000000000006400010000000000BFA20D87"));
+        check(legacy.Values[1]==1&&legacy.Values[8]==2&&legacy.Values[20]==100&&legacy.Values[22]==1,"version-one dev config remains readable");
+        check(legacy.Values[DevConfig.DiscardTerrainCacheWhenIndoorsIndex]==0,"legacy saves keep terrain cache retention enabled");
+        var previous=DevConfig.Decode(Convert.FromHexString("4154440200010000010101010200000000000000000000006400010000000016070000003360CDB9"));
+        check(previous.TreeNoiseStrengthPercent==220&&previous.TreeNoiseScalePercent==200,"published version-two tree settings remain readable");
+        check(previous.Values[DevConfig.DiscardTerrainCacheWhenIndoorsIndex]==0,"version-two files leave the new terrain option off");
         for(int row=0;row<DevConfig.Count;row++)if(DevConfig.IsSetting(row))defaults.Adjust(row,1);
         var encoded=defaults.Encode();var restored=DevConfig.Decode(encoded);
+        check(encoded[3]==3&&restored.Values[DevConfig.DiscardTerrainCacheWhenIndoorsIndex]==1,"new terrain toggle persists in version-three dev config");
         check(defaults.Values.SequenceEqual(restored.Values),"all dev options survive their own save record");
         check(!SplitSaveCodec.IsFile("dev_config"),"dev config cannot be counted as a damaged town save");
         check(!DevConfig.IsSetting(14)&&!DevConfig.IsSetting(15),"teleport actions are not startup configuration");
@@ -22,7 +32,7 @@ internal static class DevConfigChecks
         check(noise.TreeNoiseStrengthPercent==0&&noise.TreeNoiseScalePercent==400,"tree strength and scale clamp rather than wrapping");
         for(int i=0;i<100;i++){noise.Adjust(DevConfig.TreeNoiseStrength,1);noise.Adjust(DevConfig.TreeNoiseScale,-1);}
         check(noise.TreeNoiseStrengthPercent==300&&noise.TreeNoiseScalePercent==25,"tree sliders cover their full supported ranges");
-        var savedNoise=noise.Encode();check(savedNoise.Length==40&&savedNoise[3]==2,"extended debug settings have a versioned checksummed 40-byte record");
+        var savedNoise=noise.Encode();check(savedNoise.Length==40&&savedNoise[3]==3,"extended debug settings have a versioned checksummed 40-byte record");
         var loadedNoise=DevConfig.Decode(savedNoise);check(loadedNoise.TreeNoiseStrengthPercent==300&&loadedNoise.TreeNoiseScalePercent==25,"both tree settings restore independently after a save");
         noise.Reset(DevConfig.TreeNoiseStrength);noise.Reset(DevConfig.TreeNoiseScale);check(noise.TreeNoiseStrengthPercent==100&&noise.TreeNoiseScalePercent==100,"Z/reset restores the original appearance");
         savedNoise[32]^=1;rejected=false;try{DevConfig.Decode(savedNoise);}catch(IOException){rejected=true;}check(rejected,"the new scale byte is protected by the checksum");
@@ -37,6 +47,12 @@ internal static class DevConfigChecks
         check(Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(normal))=="68E634A7F48038AEA7F92E05FBAFEF4E4B62C09D058C5A29629A3CB9DFE43EE5","default tree detail stays byte-identical to the approved texture");
         rejected=false;try{LowPolyTree.DetailTexture(301);}catch(ArgumentOutOfRangeException){rejected=true;}check(rejected,"unsupported runtime noise strength is rejected");
         UniformUiGrain(check);
+        // Valid checksums cannot turn reserved legacy bytes into new settings.
+        void Rehash(byte[] data,int end){uint h=2166136261;for(int i=0;i<end;i++)h=unchecked((h^data[i])*16777619);for(int i=0;i<4;i++)data[end+i]=(byte)(h>>(i*8));}
+        var reserved=Convert.FromHexString("4154440200010000010101010200000000000000000000006400010000000016070000003360CDB9");reserved[33]=1;Rehash(reserved,36);
+        rejected=false;try{DevConfig.Decode(reserved);}catch(IOException){rejected=true;}check(rejected,"v2 padding cannot enable the new terrain option");
+        var current=new DevConfig().Encode();current[34]=1;Rehash(current,36);
+        rejected=false;try{DevConfig.Decode(current);}catch(IOException){rejected=true;}check(rejected,"v3 retains strict zero padding");
         rejected=false;try{DevConfig.Decode(new byte[8]);}catch(IOException){rejected=true;}check(rejected,"truncated dev config rejected");
     }
     private static void UniformUiGrain(Action<bool,string> check)

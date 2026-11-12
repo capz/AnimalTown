@@ -39,7 +39,17 @@ internal sealed class TerrainRenderer : IDisposable
     private ulong visibleGroundMask;
     private long geometryRevision;
     internal long GeometryRevision=>geometryRevision;
-    internal bool Ready=>legacy?stream.Presentable:archive?.Ready??false;
+    internal bool Ready=>!resetting&&(legacy?stream.Presentable:archive?.Presentable??false);
+    internal bool ArchiveReady=>archive?.Ready??false;
+    internal bool CacheSuspended=>archive?.CacheSuspended??false;
+    internal int CacheResidencyError=>archive?.ResidencyError??0;
+    internal bool DiscardTerrainCacheWhenIndoors;
+    private bool resetting;
+    internal bool SuspendOutdoorCache()=>!DiscardTerrainCacheWhenIndoors||legacy||archive==null||archive.Suspend();
+    // A not-yet-baked landscape follows the existing initial loading path.
+    // Only a previously built cold cache must be prefetched before door commit.
+    internal bool PrepareOutdoorResidency(float x,float z,long deadline,bool refreshSelection=false)
+        =>legacy||archive==null||!archive.Ready||(!refreshSelection&&archive.Presentable)||archive.PrepareAsync(x,z,Rows,deadline,waterMaterial.IsSunshine);
     internal int LoadingRemaining=>legacy?stream.MissingWanted:archive?.Remaining??TerrainArchivePlan.Count;
     internal int LoadingTotal=>legacy?stream.WantedCount:TerrainArchivePlan.Count;
     internal int MissingVisible=>legacy?stream.MissingVisible:Ready?0:1;
@@ -80,10 +90,14 @@ internal sealed class TerrainRenderer : IDisposable
     public void Dispose()
     {
         if(disposed)return;
+        if(GraphicsDevice.Default.IsFrameActive)throw new InvalidOperationException("Dispose terrain after EndFrame");
         // Finish any byte-only read before the discarded session loses its
         // final root. Model/texture creation never runs in this read's worker.
         if(pendingGround!=null){try{pendingGround.GetAwaiter().GetResult();}catch(Exception){if(!pendingGround.IsCompleted)throw;}pendingGround=null;}
-        archive?.Dispose();archive=null;
+        // Session teardown is a blocking lifetime boundary, unlike ordinary
+        // frame pumping. Drain only this archive's outstanding DMA ticket.
+        while(archive!=null&&!archive.TryDispose()){}
+        archive=null;
         for(int i=0;i<sections.Length;i++){sections[i]?.Dispose();sections[i]=null;}
         groundRing?.Dispose();groundRing=null;gallery.Dispose();oceanWaves.Dispose();
         Array.Clear(batch,0,batch.Length);batchCount=0;
@@ -141,15 +155,18 @@ internal sealed class TerrainRenderer : IDisposable
         int flat=GroundRingRequested&&!cliffPreview&&FloorStrips.Read(data,4)==2?FloorStrips.Read(data,24):-1;
         if(flat>=0&&FloorStrips.TextureSlot(data,flat)!=0)flat=-1;
         bool nextLegacy=RecreateMeshes||GroundRingRequested;
-        bool invalid=legacy!=nextLegacy||changed||cachedTown!=state.Town||cachedTerrainVersion!=state.Town.TerrainVersion||flat!=SharedFlatMaterial;
+        bool invalid=resetting||legacy!=nextLegacy||changed||cachedTown!=state.Town||cachedTerrainVersion!=state.Town.TerrainVersion||flat!=SharedFlatMaterial;
         SharedFlatMaterial=flat;
         if(flat<0){groundRing?.Dispose();groundRing=null;}
         if(invalid){
-            archive?.Dispose();archive=null;
+            resetting=true;
+            if(archive!=null&&!archive.TryDispose())return;
+            archive=null;
             for(int i=0;i<sections.Length;i++){sections[i]?.Dispose();sections[i]=null;}
             stream.Reset();legacy=nextLegacy;
             if(!legacy){archive=new TerrainArchive();archive.Reset();}
             cachedTown=state.Town;cachedTerrainVersion=state.Town.TerrainVersion;
+            resetting=false;
         }
         if(GroundRingActive){if(groundRing==null)groundRing=new GroundRingRenderer();groundRing.Prepare(state,data,flat,invalid);}
         var scroll=CylinderWorld.Scroll(0,state.Z);

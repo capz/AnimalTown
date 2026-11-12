@@ -150,10 +150,10 @@ recreate the capture; no per-frame capture allocation is needed. The capture
 and its borrowing effect are released indoors or when Wind Waker is selected,
 and recreated on the next outdoor Sunshine selection without rereading images.
 
-Resident villager models release duplicated embedded texture payloads after
-the shared GX texture cache acquires them. The six default villagers recover
-2,641,856 bytes of MEM1 without reducing texture quality or animation data;
-this provides room for the capture instead of adding it at the old RAM limit.
+Villagers use complete model packages for ARAM snapshot/restore. Permanent
+compaction and paging are mutually exclusive; the earlier 2,641,856-byte
+compaction saving is not included in the paging budget. Startup scratch is
+retired and the compact building kit loads before the species cohort.
 Preparation failure retires partial water resources and restores Wind Waker
 with a debug-menu message. See [resident model memory](resident-model-memory.md)
 for ownership, bounds and validation.
@@ -188,14 +188,11 @@ transform, with no per-frame geometry update. Outdoor Sunshine draw order is:
 
 ## Dependencies and validation
 
-The game pins DolphinDotNet SDK/Core/GameCube/Assets **preview.326.1**, source
-`1b6bc6d35cae4471a615a0f377acd86658840e55`. [SDK PR 172](https://github.com/capz/DolphinDotNet/pull/172)
+The game pins DolphinDotNet SDK/Core/GameCube/Assets **preview.328.1**.
+[SDK PR 172](https://github.com/capz/DolphinDotNet/pull/172)
 provides complete stage RGB state, blend factors, the signed indirect matrix
-and projected `SceneCapture`. Hypercube remains at the published **preview.28.1**.
-Its exact SDK 315 dependency is explicitly overridden to runtime 326; the SDK
-preserves the original AddStage/capture ABI used by the compiled engine.
-Package resolution accepts only this reviewed combination, and NU1608 is
-suppressed only on the direct runtime reference. Compiler, runtime, Assets and
+and projected `SceneCapture`. Hypercube **preview.41.1** depends directly on
+SDK 328, so this branch needs no runtime dependency override. Compiler, runtime, Assets and
 Imaging use the same SDK revision; lockfiles record the actual package hashes.
 
 `tools/test-changes.ps1` checks the generated effect packages and independently

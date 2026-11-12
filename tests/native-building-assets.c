@@ -58,6 +58,8 @@ int main(int argc, char **argv) {
         assert(actual_geometry==geometry_hash&&actual_texture==texture_hash&&dnd_model_unload(model)==-1);
         DndArray *probe=calloc(1,sizeof(*probe)+1);assert(probe);probe->length=probe->element_size=1;
         assert(dnd_model_copy(model,0,probe,1,0)==-1);free(probe);
+        assert(data->residency_disabled&&dnd_model_stat(model,8)==0);
+        assert(dnd_model_residency_begin(model,1,0)==-1);
         assert(animaltown_building_retain(model)==1);
 #endif
         int instance = dnd_model_instance(model, 16 * 1024);

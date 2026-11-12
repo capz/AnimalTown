@@ -26,7 +26,30 @@ def press(button):
     os.write(controller,f'PRESS {button}\n'.encode());time.sleep(hold)
     os.write(controller,f'RELEASE {button}\n'.encode());time.sleep(hold)
 def screenshot(name):
-    subprocess.run(['ffmpeg','-v','error','-f','x11grab','-draw_mouse','0','-video_size','800x600','-i',':93','-frames:v','1','-y',str(root/name)],env=env,check=True)
+    subprocess.run(['ffmpeg','-v','error','-f','x11grab','-draw_mouse','0','-video_size','800x600','-i',env['DISPLAY'],'-frames:v','1','-y',str(root/name)],env=env,check=True)
+
+def start_display():
+    # Let Xvfb select a free display instead of reusing image-baked :93 locks.
+    # -displayfd reports its number only once the server accepts clients.
+    import select
+    read_fd,write_fd=os.pipe();server=None
+    try:
+        with (root/'xvfb.log').open('w') as log:
+            server=subprocess.Popen(['Xvfb','-displayfd',str(write_fd),'-nocursor','-screen','0','800x600x24'],pass_fds=(write_fd,),stdout=log,stderr=subprocess.STDOUT)
+        os.close(write_fd);write_fd=-1
+        if not select.select([read_fd],[],[],30)[0]:raise RuntimeError('Xvfb did not report a ready display; inspect xvfb.log')
+        number=os.read(read_fd,32).decode().strip()
+        if not number.isdigit() or server.poll() is not None:raise RuntimeError('Xvfb failed to initialize; inspect xvfb.log')
+        return server,dict(os.environ,DISPLAY=':'+number,QT_QPA_PLATFORM='xcb')
+    except BaseException:
+        if server is not None:
+            server.terminate()
+            try:server.wait(timeout=5)
+            except subprocess.TimeoutExpired:server.kill();server.wait()
+        raise
+    finally:
+        os.close(read_fd)
+        if write_fd>=0:os.close(write_fd)
 
 
 def rgb(name):
@@ -49,6 +72,53 @@ def color_count(pixels,color,tolerance=5):
 def region_color_count(pixels,color,left,top,right,bottom,tolerance=5):
     return sum(fill_matches(pixels[(y*800+x)*3:(y*800+x)*3+3],color,tolerance)
                for y in range(top,bottom) for x in range(left,right))
+
+def runtime_log_text():
+    files=sorted((user/'Logs').glob('*.log'))
+    if files:return '\n'.join(path.read_text(errors='replace') for path in files)
+    path=root/'emulator.log'
+    return path.read_text(errors='replace') if path.exists() else ''
+
+def aram_residency_errors(text):
+    import re
+    session=text.rfind('ANIMALTOWN GAME START');errors=[];counts={}
+    for event in re.finditer(r'ANIMALTOWN MODEL RESIDENCY (RETRY|ADMISSION) (\d+): ([^\r\n]+)',text[max(0,session):]):
+        species=int(event[2]);counts[species]=counts.get(species,0)+1
+        errors.append({'operation':event[1],'species':species,'message':event[3]})
+    return {'session_start':session,'errors':errors,'repeated_species':sorted(species for species,count in counts.items() if count>1)}
+
+def check_runtime_failure():
+    # Session errors must be detected before native shutdown can hide the
+    # managed exception behind an unchanged loading frame.
+    failures=[line for line in runtime_log_text().splitlines()
+              if ('ANIMALTOWN SESSION FAILED' in line or 'ANIMALTOWN ASSET LOAD FAILED' in line
+                  or 'ANIMALTOWN BUILDING ASSET ERROR' in line)]
+    if failures:
+        (root/'runtime-failure.txt').write_text('\n'.join(failures)+'\n')
+        raise AssertionError('Game runtime failure: '+failures[0])
+    if '--aram-residency' in sys.argv:
+        evidence=aram_residency_errors(runtime_log_text())
+        if evidence['errors']:(root/'runtime-residency-errors.json').write_text(json.dumps(evidence,indent=2)+'\n')
+        if evidence['repeated_species']:
+            cause=next(error for error in evidence['errors'] if error['species'] in evidence['repeated_species'])
+            raise AssertionError('Repeated model residency failures for species '+str(evidence['repeated_species'])+
+                                 ': '+cause['message'])
+
+def press_presented(button,clock):
+    # Card I/O and software rendering can outlast a wall-timed button pulse.
+    # Hold each edge across actual guest presentations before sending the next.
+    def frames(count):
+        clock.frames();target=len(clock.presentations)+count;deadline=time.monotonic()+90
+        while True:
+            clock.frames()
+            if len(clock.presentations)>=target:return
+            check_runtime_failure()
+            if p.poll() is not None:raise AssertionError('Emulator stopped during title checkpoint input')
+            if time.monotonic()>deadline:raise AssertionError('Guest did not present during title checkpoint input')
+            time.sleep(.05)
+    os.write(controller,b'RELEASE A\nRELEASE B\nRELEASE START\nRELEASE D_UP\nRELEASE D_DOWN\n')
+    frames(8);os.write(controller,f'PRESS {button}\n'.encode());frames(12)
+    os.write(controller,f'RELEASE {button}\n'.encode());frames(12)
 
 def card_digest():
     import hashlib
@@ -95,6 +165,7 @@ def wait_onboarding(stage,name=None):
     deadline=time.monotonic()+(360 if stage in ('home','world') else 180)
     loading=False
     while time.monotonic()<deadline:
+        check_runtime_failure()
         if p.poll() is not None:raise AssertionError('Emulator stopped before onboarding '+stage)
         screenshot(name);pixels=rgb(name)
         if color_count(pixels,(149,198,186))>150000 and color_count(pixels,(255,245,221))<100:loading=True
@@ -106,6 +177,7 @@ def wait_saved_after(before):
     deadline=time.monotonic()+240
     sequence=before['sequence'] if before else 0
     while time.monotonic()<deadline:
+        check_runtime_failure()
         after=committed_card_sequence(root/'MemoryCardA.USA.raw',details=True)
         if after and after['sequence']>sequence:return after
         if p.poll() is not None:raise AssertionError('Emulator stopped during explicit onboarding save')
@@ -193,10 +265,11 @@ def wait_title(modal=False):
     # Observe the actual menu, rather than sending input during either splash.
     deadline=time.monotonic()+180
     while time.monotonic()<deadline:
+        check_runtime_failure()
         if p.poll() is not None:raise AssertionError('Emulator stopped before title')
         name='title-modal-wait.png' if modal else 'title-wait.png'
         screenshot(name);pixels=rgb(name)
-        cream=color_count(pixels,(255,245,221));leaf=color_count(pixels,(53,105,84))
+        cream=color_count(pixels,(255,245,221));leaf=color_count(pixels,(53,105,84),tolerance=12)
         if cream>70000 and (leaf<1000 if modal else leaf>6000 and color_count(pixels,(149,198,186))>15000):return
         time.sleep(2)
     raise AssertionError('Debug modal did not appear' if modal else 'Original cream title/menu did not appear')
@@ -255,6 +328,7 @@ def title_menu():
 def wait_profiles(name='profile-picker.png'):
     deadline=time.monotonic()+180
     while time.monotonic()<deadline:
+        check_runtime_failure()
         screenshot(name);pixels=rgb(name)
         count=sum(all(abs(pixels[(y*800+x)*3+c]-value)<=5 for c,value in enumerate((53,105,84))) for y in range(160,365) for x in range(120,165))
         cards=color_count(pixels,(107,151,90))>3000 and color_count(pixels,(255,183,64))>150
@@ -661,6 +735,239 @@ def building_save():
         time.sleep(2)
     raise AssertionError('Indoor save did not return to settings within the bounded wait')
 
+def card_dev_config(path):
+    """Decode the independent, checksummed dev_config item in a raw GC card."""
+    import struct
+    if not path.exists():return None
+    card=path.read_bytes();sector=8192;candidates=[]
+    if len(card)%sector:raise AssertionError('Truncated emulator memory card')
+    def be16(at):return struct.unpack_from('>H',card,at)[0]
+    for directory in (1,2):
+        for bat in (3,4):
+            try:
+                for entry in range(127):
+                    at=directory*sector+entry*64
+                    if card[at:at+6]!=b'AMTE01' or card[at+8:at+40].split(b'\0',1)[0]!=b'dev_config':continue
+                    block,count=be16(at+54),be16(at+56);seen=set();data=bytearray()
+                    for _ in range(count):
+                        if block<5 or block>=len(card)//sector or block in seen:raise ValueError('Invalid card chain')
+                        seen.add(block);data.extend(card[block*sector:(block+1)*sector]);block=be16(bat*sector+10+(block-5)*2)
+                    if block!=65535 or data[:8]!=b'DNDSAVE1':continue
+                    length,offset=struct.unpack_from('>II',data,8)
+                    if length not in (36,40) or offset<32 or offset+length>len(data):continue
+                    payload=bytes(data[offset:offset+length])
+                    if payload[:3]!=b'ATD' or payload[3] not in (1,2,3):continue
+                    checksum_at=32 if payload[3]==1 else 36
+                    count=27 if payload[3]==1 else 29 if payload[3]==2 else 30
+                    if length!=checksum_at+4 or any(payload[4+count:checksum_at]):continue
+                    checksum=2166136261
+                    for value in payload[:checksum_at]:checksum=((checksum^value)*16777619)&0xffffffff
+                    if checksum!=struct.unpack_from('<I',payload,checksum_at)[0]:continue
+                    candidates.append((be16(directory*sector+0x1ffa),payload))
+            except (ValueError,struct.error):continue
+    if not candidates:return None
+    # Compare the redundant directory update counters modulo 16 bits.
+    newest=candidates[0]
+    for candidate in candidates[1:]:
+        if 0<((candidate[0]-newest[0])&65535)<32768:newest=candidate
+    payload=newest[1]
+    count=27 if payload[3]==1 else 29 if payload[3]==2 else 30
+    return {'version':payload[3],'values':list(payload[4:4+count]),'discard_terrain_cache_when_indoors':payload[3]==3 and payload[33]==1}
+
+def aram_model_cycles(text,after):
+    """Match real retire/restore pairs in the current town session only."""
+    import re
+    session=text.rfind('ANIMALTOWN GAME START')
+    if session<0:raise AssertionError('No traced town session for model residency evidence')
+    cold={};retired=set();cycles=[]
+    for event in re.finditer(r'ANIMALTOWN MODEL (COLD|WARM) (\d+)',text[session:]):
+        species=int(event[2]);offset=session+event.start()
+        if event[1]=='COLD':cold[species]=offset;retired.add(species)
+        elif species in cold:
+            retired_at=cold.pop(species)
+            if offset>=after:cycles.append({'species':species,'cold_offset':retired_at,'warm_offset':offset})
+    restored={event['species'] for event in cycles}
+    return {'session_start':session,'cycles':cycles,'cold_species':sorted(cold),
+            'retired_species':sorted(retired),'restored_species':sorted(restored),
+            'unrestored_species':sorted((retired-restored)|set(cold))}
+
+def aram_residency_scenario():
+    """Real door/cache/model transitions, plus separate-card config roundtrips."""
+    import re
+    global p
+    sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'docs/performance'))
+    from avi_guest_clock import AviGuestClock
+    clock=AviGuestClock(user/'Dump/Frames',track_presentations=True)
+    card=root/'MemoryCardA.USA.raw';segments=[];report={'segments':segments,'clock':'NTSC VI chunks; software Dolphin, not hardware'}
+    building_inspections=0
+    def logs():return runtime_log_text()
+    def alive():
+        check_runtime_failure()
+        if p.poll() is not None:raise AssertionError('Emulator stopped during ARAM residency scenario')
+    def wait_log(pattern,after=0,seconds=180):
+        deadline=time.monotonic()+seconds
+        while time.monotonic()<deadline:
+            alive();match=re.search(pattern,logs()[after:])
+            if match:return match
+            time.sleep(.2)
+        screenshot('aram-marker-timeout.png');raise AssertionError('Missing ARAM runtime marker: '+pattern)
+    def guest(name,seconds):
+        start=clock.frames();target=start+int(seconds*60000/1001+.999);deadline=time.monotonic()+max(60,seconds*20)
+        while clock.frames()<target:
+            alive()
+            if time.monotonic()>deadline:raise AssertionError('Guest VI clock stopped during '+name)
+            time.sleep(.1)
+        end=clock.frames();present=[value for value in clock.presentations if start<value<=end]
+        gaps=sorted((b-a)*1001/60 for a,b in zip(present,present[1:]))
+        percentile=lambda q:gaps[min(len(gaps)-1,int((len(gaps)-1)*q))] if gaps else None
+        segments.append({'name':name,'start_vi':start,'end_vi':end,'guest_seconds':(end-start)*1001/60000,'presentations':len(present),'frame_ms_p50':percentile(.5),'frame_ms_p95':percentile(.95),'frame_ms_max':max(gaps) if gaps else None})
+        (root/'aram-residency.json').write_text(json.dumps(report,indent=2))
+    def view(name,indoors):
+        deadline=time.monotonic()+120
+        while time.monotonic()<deadline:
+            alive()
+            try:
+                building_view(name+'.png',indoors)
+                # The dot loading screen shares the town's mint clear color.
+                # It must not count as a restored, drawable outdoor scene.
+                pixels=rgb(name+'.png')
+                if indoors or color_count(pixels,(149,198,186))<150000:return
+            except AssertionError:time.sleep(.5)
+            time.sleep(.2)
+        raise AssertionError('ARAM door did not reach '+name)
+    def config(expected):
+        deadline=time.monotonic()+60
+        while time.monotonic()<deadline:
+            alive();value=card_dev_config(card)
+            if value and value['discard_terrain_cache_when_indoors']==expected:return value
+            time.sleep(.2)
+        raise AssertionError('Separate dev config item did not persist terrain option '+str(expected))
+    def title_terrain_row(name,pressed=press):
+        pressed('D_DOWN');pressed('D_DOWN');pressed('A');wait_title(modal=True)
+        # The appended session-only UI grain control follows persisted options.
+        pressed('D_UP');pressed('D_UP');screenshot(name+'.png') # config index 29
+    def inspect(indoors=False):
+        nonlocal building_inspections
+        os.write(controller,b'PRESS L\nPRESS R\n');time.sleep(.2);press('A');os.write(controller,b'RELEASE L\nRELEASE R\n')
+        if not indoors:building_inspections+=1
+    def enter(name,target_species=None):
+        if target_species is not None:
+            # The existing inspector cycles the six actual resident homes in
+            # species order. Tour real camera locations to the cold target.
+            for step in range((target_species-building_inspections)%6):
+                inspect();view(name+'-camera-'+str(step),False)
+        inspect();view(name+'-outside',False);press('A');view(name+'-inside',True)
+        # The crossing lands 0.7 m from the exit. Walk into the room so the
+        # early-exit prefetch guard does not deliberately keep outdoor models hot.
+        os.write(controller,b'SET MAIN .5 .8\n')
+        try:guest(name+'-walk-away-from-door',1)
+        finally:os.write(controller,b'SET MAIN .5 .5\n')
+        view(name+'-away-from-door',True)
+    def leave(name,reversal=False):
+        inspect(True) # the existing indoor inspector focuses the real exit socket
+        started=time.monotonic();start_vi=clock.frames()
+        os.write(controller,b'PRESS A\n');time.sleep(1);os.write(controller,b'RELEASE A\n')
+        if reversal:
+            # Try to reverse movement/action while the existing portal owns the
+            # actor; this must neither publish a partial restore nor strand it.
+            os.write(controller,b'SET MAIN .5 .8\n');guest(name+'-reversal-input',.3);os.write(controller,b'SET MAIN .5 .5\n');press('A')
+        view(name,False);report[name+'_wall_seconds']=time.monotonic()-started
+        report[name+'_guest_seconds']=(clock.frames()-start_vi)*1001/60000
+        guest(name+'-outdoor-settle',2)
+
+    wait_title();initial=card_dev_config(card);report['initial_dev_config']=initial
+    title_terrain_row('aram-title-row29-baseline')
+    if initial and initial['discard_terrain_cache_when_indoors']:press('A')
+    press('B');wait_title()
+    if initial:config(False)
+    press('D_UP');press('D_UP');start_game(False,'aram')
+    startup=[]
+    for index,session in enumerate(logs().split('ANIMALTOWN GAME START')[1:]):
+        terrain=session.find('ANIMALTOWN STARTUP TERRAIN READY')
+        building_begin=session.find('ANIMALTOWN BUILDINGS LOAD BEGIN')
+        building_ready=session.find('ANIMALTOWN BUILDINGS LOAD READY')
+        admissions=list(re.finditer(r'ANIMALTOWN MODEL LOAD BEGIN (\d+) ',session))
+        model=admissions[0].start() if admissions else -1
+        bake=session.find('ANIMALTOWN TERRAIN BAKE READY')
+        if not 0<=bake<terrain<building_begin<building_ready<model:
+            raise AssertionError('Session '+str(index)+' did not retire terrain scratch and compact the building kit before species admission')
+        player=re.search(r'ANIMALTOWN PLAYER MODEL READY (\d+) ',session)
+        first_ready=session.find('ANIMALTOWN MODEL LOAD READY '+admissions[0][1]+' ') if admissions else -1
+        if (len(admissions)!=6 or len({event[1] for event in admissions})!=6 or player is None
+                or player[1]!=admissions[0][1] or not model<player.start()<first_ready<admissions[1].start()):
+            raise AssertionError('Session '+str(index)+' did not reserve the selected player instance before the remaining five species')
+        startup.append({'session':index,'first_species':int(admissions[0][1]),
+                        'bake_ready_before_terrain_ready_before_building_kit_before_first_model':True,
+                        'selected_player_ready_before_other_species':True})
+    if not startup:raise AssertionError('No traced startup ordering was observed')
+    report['startup_order']=startup
+    session_start=logs().rfind('ANIMALTOWN GAME START')
+    wait_log(r'ANIMALTOWN READY ',session_start,seconds=300)
+    wait_log(r'Terrain archive: [0-9]+ ARAM bytes',session_start,seconds=300)
+    wait_log(r'ANIMALTOWN ONBOARDING RELEASED',session_start,seconds=120)
+    view('aram-game-started',False)
+    baseline=len(logs());enter('aram-flag-off');guest('flag-off-indoor-steady',16)
+    if 'ANIMALTOWN TERRAIN CACHE SUSPENDED' in logs()[baseline:]:raise AssertionError('Default-off terrain option suspended the cache')
+    screenshot('aram-flag-off-indoor.png');leave('aram-flag-off-exited')
+    # Testing has 31 rows; Up wraps to new row 30 after tree and UI grain rows.
+    press('START');press('R');press('D_UP');screenshot('aram-game-row30-off.png');press('A')
+    report['ingame_saved_config']=config(True);screenshot('aram-game-row30-on.png');press('B')
+    cold=len(logs());enter('aram-flag-on');guest('flag-on-indoor-steady',6)
+    suspended=wait_log(r'ANIMALTOWN TERRAIN CACHE SUSPENDED cache bytes (\d+) reclaimed bytes (\d+) archive bytes (\d+)',cold)
+    if tuple(map(int,suspended.groups()[:2]))!=(0,1048576):raise AssertionError('Terrain cache did not physically release exactly 1 MiB')
+    # This assertion is independent of the terrain flag: automatic model paging
+    # must actually retire at least one cold shared species, not only plan it.
+    # Startup may already have retired it in this session before the first door.
+    model=wait_log(r'ANIMALTOWN MODEL COLD (\d+) aram bytes (\d+) native budget bytes (\d+) max advance us (\d+)',session_start)
+    if int(model[2])<=0:raise AssertionError('Cold model has no ARAM package backing')
+    report['suspended']={'cache_bytes':int(suspended[1]),'reclaimed_bytes':int(suspended[2]),'archive_bytes':int(suspended[3])}
+    report['model_cold']={'species':int(model[1]),'aram_bytes':int(model[2]),'native_bytes':int(model[3]),'max_advance_us':int(model[4])}
+    screenshot('aram-flag-on-cold-indoor.png');warm=len(logs());leave('aram-restored-exterior',reversal=True)
+    restored=wait_log(r'ANIMALTOWN TERRAIN CACHE READY cache bytes (\d+) archive bytes (\d+)',warm)
+    if int(restored[1])!=1048576 or int(restored[2])!=int(suspended[3]):raise AssertionError('Terrain cache restore changed the retained archive')
+    report['restored']={'cache_bytes':int(restored[1]),'archive_bytes':int(restored[2])}
+    # Back-to-back crossings exercise drain/cancel and reuse of restored backing.
+    enter('aram-rapid-reentry');guest('rapid-reentry-indoor',1);leave('aram-rapid-return',reversal=True)
+    evidence=aram_model_cycles(logs(),baseline);toured=set();report['extra_cold_home_routes']=[]
+    while evidence['unrestored_species']:
+        candidates=[species for species in evidence['unrestored_species'] if species not in toured]
+        if not candidates:raise AssertionError('Cold species lacked a real gameplay-demand restore: '+str(evidence['unrestored_species']))
+        species=candidates[0];toured.add(species);name='aram-cold-species-'+str(species)
+        route={'species':species,'resident_building':species+1};report['extra_cold_home_routes'].append(route)
+        if species not in evidence['cold_species']:
+            # A startup-only restore is insufficient. Idle in a different real
+            # home to retire that shared model before demanding it during play.
+            neutral=(species+1)%6;route['staging_resident_building']=neutral+1
+            enter(name+'-staging',target_species=neutral);guest(name+'-staging-idle',16);leave(name+'-staging-exited')
+            evidence=aram_model_cycles(logs(),baseline)
+            if species not in evidence['unrestored_species']:continue
+        enter(name,target_species=species);guest(name+'-indoor',1);leave(name+'-returned')
+        evidence=aram_model_cycles(logs(),baseline)
+    if evidence['session_start']!=session_start:raise AssertionError('Town session changed during residency acceptance')
+    if not evidence['retired_species']:raise AssertionError('No actual model retirement was observed in the current town session')
+    report['cold_species_restored_before_exterior_return']=[event['species'] for event in evidence['cycles']]
+    report['cold_to_warm_after_gameplay_demand']=evidence['cycles']
+    report['all_cold_species_restored_after_gameplay_demand']=not evidence['unrestored_species']
+    report['runtime_residency_errors']=aram_residency_errors(logs())
+    report['runtime_markers']=re.findall(r'ANIMALTOWN (?:MODEL [^\r\n]+|TERRAIN CACHE [^\r\n]+)',logs()[session_start:])
+    (root/'aram-runtime.log').write_text(logs())
+    # Restart the same ISO/card. Toggling the title's last row once must produce
+    # Off in the binary record; that proves startup loaded the prior On setting.
+    p.terminate();p.wait(timeout=10)
+    frames=user/'Dump/Frames'
+    if frames.exists():frames.rename(user/'Dump/Frames-residency')
+    p=subprocess.Popen(['/usr/games/dolphin-emu-nogui','-u',str(user),'-e',str(disc),'-v','OGL'],env=env,stdout=log,stderr=subprocess.STDOUT)
+    title_clock=AviGuestClock(frames,track_presentations=True)
+    edge=lambda button:press_presented(button,title_clock)
+    wait_title();wait_log(r'ANIMALTOWN DEV CONFIG LOADED')
+    title_terrain_row('aram-title-row29-loaded-on',edge);edge('A');edge('START');wait_title();config(False)
+    # Leave the option enabled and prove the corresponding title row roundtrip.
+    edge('A');wait_title(modal=True);screenshot('aram-title-row29-off.png');edge('A');edge('START');wait_title()
+    report['restart_saved_config']=config(True);report['startup_load_verified']=True
+    report['title_restart_input']='8 release / 12 press / 12 release guest presentations; START save/close'
+    screenshot('aram-title-restart-complete.png')
+    (root/'aram-residency.json').write_text(json.dumps(report,indent=2))
+
 def dialogue_cycles():
     import json
     def pixels(name):
@@ -806,26 +1113,27 @@ DumpCodec = ffv1
 [Hacks]
 EFBToTextureEnable = False
 ''')
-if '--profile' in sys.argv or '--interaction-profile' in sys.argv or '--runtime-profile' in sys.argv or '--terrain-scroll' in sys.argv or '--lighting' in sys.argv or '--actor-shadows' in sys.argv or '--movement-profile' in sys.argv or '--stream-travel' in sys.argv or '--submissions' in sys.argv:
+if '--profile' in sys.argv or '--interaction-profile' in sys.argv or '--runtime-profile' in sys.argv or '--terrain-scroll' in sys.argv or '--lighting' in sys.argv or '--actor-shadows' in sys.argv or '--movement-profile' in sys.argv or '--stream-travel' in sys.argv or '--submissions' in sys.argv or '--aram-residency' in sys.argv:
     config=user/'Config'/'Dolphin.ini'
     config.write_text(config.read_text()+'\n[Movie]\nDumpFrames = True\nDumpFramesSilent = True\n')
     config=user/'Config'/'GFX.ini'
     config.write_text(config.read_text().replace('DumpCodec = ffv1','DumpCodec = ffv1\nDumpEncoder = ffv1\nDumpPixelFormat = bgr0'))
-(user/'Config'/'Logger.ini').write_text('[Options]\nWriteToFile = True\nVerbosity = 4\n[Logs]\nBOOT = True\nOSREPORT = True\nDVDINTERFACE = True\n')
-env=dict(os.environ,DISPLAY=':93',QT_QPA_PLATFORM='xcb')
-xvfb=subprocess.Popen(['Xvfb',':93','-nocursor','-screen','0','800x600x24'],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
+(user/'Logs').mkdir(exist_ok=True)
+(user/'Config'/'Logger.ini').write_text('[Options]\nWriteToFile = True\nWriteToConsole = True\nVerbosity = 3\n[Logs]\nBOOT = True\nCORE = True\nPOWERPC = True\nOSREPORT = True\nOSREPORT_HLE = True\nDVDINTERFACE = True\n')
+xvfb,env=start_display()
 def close_display():
     xvfb.terminate()
     try:xvfb.wait(timeout=5)
     except subprocess.TimeoutExpired:xvfb.kill();xvfb.wait()
 atexit.register(close_display)
-time.sleep(1)
+screenshot('display-ready.png') # Prove an actual X11 capture before booting.
 with (root/'emulator.log').open('w') as log:
     p=subprocess.Popen(['/usr/games/dolphin-emu-nogui','-u',str(user),'-e',str(disc),'-v','OGL'],env=env,stdout=log,stderr=subprocess.STDOUT)
     try:
         if '--loading' in sys.argv:
             for n,seconds in enumerate((1,1,2,4,8,12,17)):
                 time.sleep(seconds);screenshot(f'loading-{n}.png')
+        elif '--aram-residency' in sys.argv:wait_title()
         else:time.sleep(45)
         if p.poll() is not None:
             raise RuntimeError(f'Dolphin exited during boot ({p.returncode}); see {root / "emulator.log"}')
@@ -833,6 +1141,8 @@ with (root/'emulator.log').open('w') as log:
         if any(flag in sys.argv for flag in ('--title-menu','--title-load','--title-config','--title-update')):wait_title()
         if '--onboarding' in sys.argv:
             onboarding()
+        elif '--aram-residency' in sys.argv:
+            aram_residency_scenario()
         elif '--profile-delete' in sys.argv:
             delete_profile()
         elif '--profile-cards' in sys.argv:
