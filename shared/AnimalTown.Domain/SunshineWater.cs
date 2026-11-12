@@ -17,9 +17,9 @@ public static class SunshineWater
     // A positive hardware LOD bias brings the strong 16px reflection band
     // inside the curved AnimalTown camera's visible sea, without LOD shells.
     public const float LodBias=.65f;
-    // GX's ordinary alpha GEQUAL threshold leaves open water completely clear
-    // near/far and emphasizes the highlights in the 16px reflection band.
-    public const float GlintAlphaCutoff=.68f;
+    // Exact GX byte references: retain low alpha or strong glints and reject
+    // the middle band after both texture samples have contributed to opacity.
+    public const byte GlintLowReference=33,GlintHighReference=235;
 
     public static int Edge(int level)
     {
@@ -35,7 +35,8 @@ public static class SunshineWater
         if((uint)level>=MipLevels)throw new ArgumentOutOfRangeException(nameof(level));
         int a=level switch {
             0 or 4 => 0,
-            1 => (int)Math.Round(Math.Max(0,value-12)*1.13),
+            // L1 needs enough near-wave glints to survive the >=235 branch.
+            1 => (int)Math.Round(Math.Max(0,value-12)*1.55),
             2 => (int)Math.Round(Math.Max(0,value-35)*1.31),
             _ => (int)Math.Round(value*.72)
         };
@@ -88,7 +89,7 @@ public static class SunshineWater
                 if((level==0||level==4)&&(lum!=0||alpha!=0))
                     throw new InvalidOperationException("Near/far Sunshine levels must be fully clear.");
                 total+=lum;
-                if(alpha>=GlintAlphaCutoff*255)bright++;
+                if(alpha>=GlintHighReference)bright++;
             }
             mean[level]=total/(size*size);
             if(level==1&&bright<64||level==2&&bright<24)

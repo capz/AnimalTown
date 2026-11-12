@@ -21,7 +21,8 @@ selects a different authored level, faking a reflection/brightness band.
    glints, L3 very subdued remnants.
 2. Keep each image **opaque 8-bit grayscale** (RGB channels equal, alpha 255).
    The cooker derives GX alpha from the chosen luminance at each mip:
-   highlights are cut out by the GPU's 0.68 alpha threshold. Do not
+   the GPU tests both sampled alphas with <=33 OR >=235. L1's derived alpha
+   gain is tuned to retain high-branch near-wave coverage. Do not
    pre-multiply or store transparency in the source PNG.
 3. Do **not** use an image editor's automatic mipmap generation, nor resize
    the 64px blank image to fill the chain.
@@ -39,15 +40,16 @@ selects a different authored level, faking a reflection/brightness band.
 - Texture minification: GX trilinear (LinearMipmapLinear), min LOD 0,
   max LOD 4, bias +0.65. Filter is specified both on the texture resource
   and the active material samplers.
-- Alpha cutoff: >= 0.68 after TEX0 * raster alpha. The local two-sine
-  wave overlay forces both samplers to L1 for near-camera ripples.
+- Alpha: SDK DNEF v4 combines both samples (their mean, modulated by raster
+  opacity) and keeps <=33 OR >=235. Both materials use raster alpha 255.
+  The local two-sine wave overlay forces both samplers to L1.
 - The sandy floor is a separate reused/offset mesh pass underneath all
   transparent water. It uses the existing cliff-soil texture.
 
 See [technical implementation](../../../../docs/sunshine-water-comparison.md)
 and [Sunshine's original visual technique breakdown](https://blog.mecheye.net/2018/03/deconstructing-the-water-effect-in-super-mario-sunshine/).
 
-The current published DolphinDotNet SDK does not expose the original game's
-combined double-sided alpha test or full two-sample TEV alpha computation, so
-this is a visually targeted **GX-compatible approximation**, not an extracted
-retail material.
+DolphinDotNet preview.318.1 supplies the independent alpha stages and two-reference
+GX comparison through its public glint preset. The material remains an original
+averaged-alpha approximation; it does not claim the retail game's exact TEV
+formula or implement EFB reflection/refraction.
