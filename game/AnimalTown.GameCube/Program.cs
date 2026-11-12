@@ -13,8 +13,7 @@ using Hypercube;
 
 internal static class Program
 {
-    private static int Main(){try{return Run();}finally{UiNoise.Shutdown();}}
-    private static int Run()
+    private static int Main()
     {
         DebugOverlay.PerformanceVisible=false;
         DebugOverlay.WriteLine("AnimalTown "+BuildInfo.Version);
@@ -844,11 +843,11 @@ internal sealed class TownGame : IDisposable
         Strong(label,left+(action?48:16),328,new Color32(49,72,62),scale);
     }
     private void Panel(float x,float y,float w,float h)
-    { using var grain=UiNoise.Scope(); float radius=Math.Min(30,h*.5f);if(batchedDrawing&&uiShapes.DrawPanel(ui,x,y,w,h,radius))return;Bulged(x+4,y+5,w,h,radius,new Color32(49,72,62,130),false);Bulged(x,y,w,h,radius,new Color32(255,245,221),false); }
+    {UiNoise.Begin(); float radius=Math.Min(30,h*.5f);if(batchedDrawing&&uiShapes.DrawPanel(ui,x,y,w,h,radius)){UiNoise.End();return;}Bulged(x+4,y+5,w,h,radius,new Color32(49,72,62,130),false);Bulged(x,y,w,h,radius,new Color32(255,245,221),false); UiNoise.End();}
     private void Bulged(float x,float y,float w,float h,float radius,Color32 color,bool cache=true)
-    { using var grain=UiNoise.Scope();
-        if(cache&&batchedDrawing&&uiShapes.Draw(ui,x,y,w,h,radius,true,color))return;
-        Rounded(x,y,w,h,radius,color,false);if(h<=radius*2+1)return;
+    {UiNoise.Begin();
+        if(cache&&batchedDrawing&&uiShapes.Draw(ui,x,y,w,h,radius,true,color)){UiNoise.End();return;}
+        Rounded(x,y,w,h,radius,color,false);if(h<=radius*2+1){UiNoise.End();return;}
         float start=y+radius,span=h-2*radius;
         for(int side=0;side<2;side++)
         {
@@ -856,10 +855,10 @@ internal sealed class TownGame : IDisposable
             for(int i=0;i<20;i++)
             {float a=i/20f,b=(i+1)/20f;ui.FillTriangle(new Vector2(edge-direction*2,y+h*.5f),new Vector2(edge+direction*9*(float)Math.Sin(a*3.1415927f),start+a*span),new Vector2(edge+direction*9*(float)Math.Sin(b*3.1415927f),start+b*span),color);}
         }
-    }
+    UiNoise.End();}
     private void Rounded(float x,float y,float w,float h,float radius,Color32 color,bool cache=true)
-    { using var grain=UiNoise.Scope();
-        if(cache&&batchedDrawing&&uiShapes.Draw(ui,x,y,w,h,radius,false,color))return;
+    {UiNoise.Begin();
+        if(cache&&batchedDrawing&&uiShapes.Draw(ui,x,y,w,h,radius,false,color)){UiNoise.End();return;}
         ui.FillRectangle(new RectF(x+radius,y,w-2*radius,h),color);
         ui.FillRectangle(new RectF(x,y+radius,radius,h-2*radius),color);
         ui.FillRectangle(new RectF(x+w-radius,y+radius,radius,h-2*radius),color);
@@ -870,12 +869,12 @@ internal sealed class TownGame : IDisposable
             float start=corner==0?3.1415927f:corner==1?4.712389f:corner==2?0:1.5707964f;
             for(int i=0;i<10;i++){float a=start+i*.15707964f,b=a+.15707964f;ui.FillTriangle(new Vector2(cx,cy),new Vector2(cx+radius*(float)Math.Cos(a),cy+radius*(float)Math.Sin(a)),new Vector2(cx+radius*(float)Math.Cos(b),cy+radius*(float)Math.Sin(b)),color);}
         }
-    }
+    UiNoise.End();}
     private void SpeechBubble()
     {
         Rounded(36,329,576,108,30,new Color32(48,65,58,130));
         Rounded(32,324,576,108,30,new Color32(255,245,221));
-        using(UiNoise.Scope())ui.FillTriangle(new Vector2(112,428),new Vector2(142,428),new Vector2(118,446),new Color32(255,245,221));
+        UiNoise.Begin();ui.FillTriangle(new Vector2(112,428),new Vector2(142,428),new Vector2(118,446),new Color32(255,245,221));UiNoise.End();
         Rounded(48,299,180,38,19,new Color32(53,105,84));
         Strong(speaker,62,306,new Color32(255,245,221),1.35f);Text(wrappedDialogue,57,344,new Color32(49,72,62),1.4f,typeAt);
     }

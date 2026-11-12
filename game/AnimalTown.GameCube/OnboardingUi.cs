@@ -81,10 +81,10 @@ internal sealed class OnboardingUi : IDisposable
         Rays(203,145,.7f);
         TitleArt.Rounded(ui!,226,136,332,62,22,Warm);
         TitleArt.Rounded(ui!,228,138,328,58,20,TitleArt.Cream);
-        using(UiNoise.Scope()){
+        UiNoise.Begin();{
         ui!.FillTriangle(new Vector2(228,159),new Vector2(215,169),new Vector2(228,179),Warm);
         ui.FillTriangle(new Vector2(229,162),new Vector2(220,169),new Vector2(229,176),TitleArt.Cream);
-        }
+        }UiNoise.End();
         TitleArt.Rounded(ui,239,122,103,26,13,TitleArt.Leaf);Text("Hearth",290,124,.88f,90,TitleArt.Cream);
         Text("What should we call you?",393,159,.98f,296,TitleArt.Ink);
         TitleArt.Rounded(ui,226,207,332,44,22,Honey);TitleArt.Rounded(ui,228,209,328,40,20,TitleArt.Cream);

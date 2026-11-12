@@ -12,13 +12,16 @@ internal static class UiNoise
         if(NativePrepare(percent==0?null:LowPolyTree.DetailTexture(percent))!=0)throw new InvalidOperationException("UI noise texture preparation failed");
         prepared=percent;
     }
-    internal static NoiseScope Scope()=>new NoiseScope(true);
-    internal readonly struct NoiseScope : IDisposable
+    internal static void Begin()
     {
-        internal NoiseScope(bool begin){if(depth++==0&&UiNoiseSettings.Percent>0&&NativeScope(1)!=0)throw new InvalidOperationException("UI noise scope failed");}
-        public void Dispose(){if(--depth==0&&UiNoiseSettings.Percent>0&&NativeScope(0)!=0)throw new InvalidOperationException("UI noise scope restoration failed");}
+        if(depth==0&&UiNoiseSettings.Percent>0&&NativeScope(1)!=0)throw new InvalidOperationException("UI noise scope failed");
+        depth++;
     }
-    internal static void Shutdown(){if(NativePrepare(null)!=0)throw new InvalidOperationException("UI noise shutdown failed");prepared=-1;}
+    internal static void End()
+    {
+        if(depth==1&&UiNoiseSettings.Percent>0&&NativeScope(0)!=0)throw new InvalidOperationException("UI noise scope restoration failed");
+        depth--;
+    }
     internal static int NativePrepare(byte[]? package)=>throw new PlatformNotSupportedException("UI noise native bridge required");
     internal static int NativeScope(int enabled)=>throw new PlatformNotSupportedException("UI noise native bridge required");
 }
