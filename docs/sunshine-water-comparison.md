@@ -173,5 +173,10 @@ SDK effect/alpha-comparison extension. Likewise, original EFB refraction
 and screen-space environment reflections are not reproduced here.
 This patch achieves the artistic LOD structure, deliberate GX mip sampling,
 two-texture moiré animation, high-threshold highlights, local wave geometry
-and separate seabed within the published SDK. It does not claim pixel
+and separate seabed within the published SDK. The near-field wave mesh
+also uses a second, shared TEV material with both samplers locked to the
+32×32 authored L1. This emulates Sunshine's localized `wave.bti` overlay
+even where the main surface deliberately uses a blank L0, without allocating
+another texture. Its geometry is updated only over an open-sea patch.
+It does not claim pixel
 identity with the retail game.
