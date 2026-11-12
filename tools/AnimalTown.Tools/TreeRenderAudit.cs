@@ -79,10 +79,10 @@ internal static class TreeRenderAudit
         iso.Position=0;string isoSha=Convert.ToHexString(SHA256.HashData(iso));
         var generated=new List<object>();
         for(int kind=0;kind<3;kind++){
-            var tree=LowPolyTree.Build(kind);generated.Add(new{kind,triangles=tree.Triangles,parts=4,textures=0,indexedPositionPayloadBytes=tree.Triangles*3*2});
+            var tree=LowPolyTree.Build(kind);generated.Add(new{kind,triangles=tree.Triangles,parts=4,textures=1,sharedDetailBytes=LowPolyTree.DetailBytes,directVertexPayloadBytes=tree.Triangles*3*24});
         }
         var report=new{referenceIsoSha256=isoSha,originals,generated,
-            note="Static asset/submission audit, not isolated timings. Old counts assume the default lit imported-model path; generated counts assume the uniform-color unlit indexed path."};
+            note="Static asset/submission audit, not isolated timings. Old counts assume the default lit imported-model path; generated trees share one mipmapped I8 detail texture modulated by vertex colors."};
         Directory.CreateDirectory(Path.Combine(root,"out"));string output=Path.Combine(root,"out/tree-render-audit.json");
         File.WriteAllText(output,JsonSerializer.Serialize(report,new JsonSerializerOptions{WriteIndented=true}));Console.WriteLine(output);
     }

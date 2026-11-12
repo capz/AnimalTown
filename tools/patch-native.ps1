@@ -42,7 +42,7 @@ $generated="extern int animaltown_uv_mode(int);`n"+$generated
 [IO.File]::WriteAllText($generatedPath,$generated)
 # Pinned, game-owned coverage union bridge. All buffers use SDK resource
 # accounting; shader hooks shade existing ground geometry exactly once.
-$shadowArgs=@{Init=2;Terrain=3;Begin=3;Mesh=5;Active=3;Prepare=1;Scope=1;Stats=1}
+$shadowArgs=@{Init=2;Shutdown=0;Terrain=3;Begin=3;Mesh=5;Active=3;Prepare=1;Scope=1;Stats=1}
 foreach($method in $shadowArgs.Keys){
     $n=$shadowArgs[$method];$argsPattern=if($n){((1..$n|ForEach-Object {'intptr_t (\w+)'}) -join ', ')}else{'void'}
     $p='intptr_t (dnd_value_AnimalTown_GameCube_NativeShadows_'+$method+'_[a-z0-9]+)\('+$argsPattern+'\) \{.*?\r?\n\}'
@@ -56,6 +56,7 @@ foreach($method in $shadowArgs.Keys){
 $generated=@'
 #include "dnd_managed.h"
 extern int animaltown_shadows_init(DndArray*,DndArray*);
+extern int animaltown_shadows_shutdown(void);
 extern int animaltown_shadows_terrain(DndArray*,int,int);
 extern int animaltown_shadows_begin(int,int,int);
 extern int animaltown_shadows_mesh(int,int,int,DndArray*,DndArray*);
@@ -221,4 +222,18 @@ if($IsLinux){
     if($LASTEXITCODE){throw 'Face culling fixture compilation failed'}
     & (Join-Path $Root 'out/native-face-culling-check')
     if($LASTEXITCODE){throw 'Face culling fixture failed'}
+}
+
+# Incoming libogc argv is a project bridge; keep packaged SDK sources unchanged.
+& python3 (Join-Path $Root 'tools/patch-launch-arguments.py') $nativeRoot
+if($LASTEXITCODE){throw 'Native launch arguments bridge patch failed'}
+if($IsLinux){
+    foreach($fixture in @('launch-arguments','launch-handoff')){
+        $check=Join-Path $Root "out/native-$fixture-check"
+        [string[]]$extra=@();if($fixture -eq 'launch-handoff'){$extra=@((Join-Path $nativeRoot 'source/dol.c'))}
+        & cc -std=c11 -Wall -Wextra -Werror -ffunction-sections -fdata-sections "-I$(Join-Path $nativeRoot 'include')" (Join-Path $Root "tests/native-$fixture.c") @extra '-Wl,--gc-sections' -o $check
+        if($LASTEXITCODE){throw "Native $fixture compilation failed"}
+        & $check
+        if($LASTEXITCODE){throw "Native $fixture checks failed"}
+    }
 }

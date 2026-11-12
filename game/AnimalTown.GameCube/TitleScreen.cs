@@ -4,7 +4,6 @@ using AnimalTown;
 using Dolphin.Diagnostics;
 using Dolphin.Graphics;
 using Dolphin.Input;
-using DolLauncher=Dolphin.IO.DolLauncher;
 using Dolphin.Timing;
 
 // The title owns only UI resources. TownGame is constructed only after Start.
@@ -36,7 +35,7 @@ internal sealed class TitleScreen : IDisposable
                 if(direction==MenuNavigation.Down)title.debugSelected=(title.debugSelected+1)%title.rows.Length;
                 if(p.A.WasPressed||direction==MenuNavigation.Left||direction==MenuNavigation.Right||p.Z.WasPressed){
                     int row=title.rows[title.debugSelected];
-                    if(p.Z.WasPressed&&(row==20||row==23))config.Values[row]=row==20?100:0;
+                    if(p.Z.WasPressed&&DevConfig.IsSlider(row))config.Reset(row);
                     else if(!p.Z.WasPressed)config.Adjust(row,direction==MenuNavigation.Left?-1:1);
                     else continue;
                     title.dirty=true;DevConfigStorage.ApplyGlobal(config);
@@ -54,15 +53,11 @@ internal sealed class TitleScreen : IDisposable
             title.Save();
             try{
                 title.status="Starting updater...";title.Draw();
-                string path="dvd:/animal-town-updater.dol";
-                if(!System.IO.File.Exists(path)){
-                    if(!Dolphin.Storage.Storage.Mount(Dolphin.Storage.StorageDevice.GcLoader))throw new IOException("GC Loader unavailable");
-                    path="gcloader:/animal-town-updater.dol";
-                }
-                using var updater=DolLauncher.Prepare(path);
-                updater.SetArguments("gcloader:/animal-town-updater.dol",BuildInfo.Version,"gcloader:/AnimalTown.iso");
-                DolLauncher.RequestLaunch(updater);return false;
-            }catch(Exception){title.status="Updater unavailable. Check the game disc or GC Loader.";}
+                UpdaterLaunch.Request();return false;
+            }catch(Exception error){
+                title.status=error.Message??"";
+                if(title.status.Length==0)title.status="Update failed: "+UpdaterLaunch.Operation+".";
+            }
         }
     }
     private void Save()
@@ -125,7 +120,9 @@ internal sealed class TitleScreen : IDisposable
             case 21:return "SDK performance overlay: "+toggle;case 22:return "Ground mipmaps: "+toggle;
             case 23:return "Ground mip distance: "+(value==0?"Auto":value+" squares");
             case 24:return "Freeze landscape motion: "+toggle;case 25:return "Recreate terrain meshes: "+toggle;
-            default:return "Legacy ground ring: "+toggle;
+            case 26:return "Legacy ground ring: "+toggle;
+            case DevConfig.TreeNoiseStrength:return "Tree noise strength: "+config.TreeNoiseStrengthPercent+"%";
+            default:return "Tree noise scale: "+config.TreeNoiseScalePercent+"%";
         }
     }
     public void Dispose(){background.Dispose();TextureCache.Release(logo);font.Release();ui.Dispose();TextureCache.TrimUnused();}

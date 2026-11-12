@@ -1,8 +1,8 @@
 # New-villager onboarding proposal
 
-Design mockup only: the deletion PR does not replace the existing character-
-creation gameplay. This storyboard records the requested direction for a later
-implementation, alongside the existing [portrait picker](villager-picker.md).
+Approved design reference for the [implemented onboarding flow](onboarding.md),
+alongside the existing [portrait picker](villager-picker.md). The deletion PR
+introduced this proposal; the following implementation adds the four screens.
 
 ![Proposed AnimalTown onboarding: name, look, home, explicit save](concepts/onboarding-storyboard.png)
 

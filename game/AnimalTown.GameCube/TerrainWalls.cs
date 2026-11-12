@@ -178,9 +178,10 @@ internal sealed class TerrainWalls
     {if(soilUsed>0&&soilMesh?.Mesh!=null)renderer.DrawMesh(soilMesh.Mesh!,shared.Material,parent);for(int i=0;i<used.Length;i++)if(used[i]>0)renderer.DrawMesh(groundMesh[i]!.Mesh!,floor.GroundMaterial(i),parent);}
 }
 
-internal sealed class TerrainSoil
+internal sealed class TerrainSoil : IDisposable
 {
     internal readonly Material Material=new Material{Cull=CullMode.Back,Lighting=LightingMode.Unlit};
     private CachedTexture? texture;
     internal void Prepare(){if(texture!=null)return;texture=TextureCache.LoadFloor("dvd:/cliff-soil.dndtex",repeat:true,repeatV:false);Material.Texture=texture.Pages[0];}
+    public void Dispose(){Material.Texture=null;if(texture!=null){TextureCache.Release(texture);texture=null;}}
 }

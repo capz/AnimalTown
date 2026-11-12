@@ -2,7 +2,7 @@
 function Get-ValidationPlan {
     param([string[]]$ChangedPaths=@(),[switch]$Full,[switch]$ForceRelease,[string]$Commit='',[string]$BaseRef='')
     $allManaged=@('ui','menu','text','trim','terrain','movement','dialogue','generation','life','saves','buildings','core')
-    $allRendering=@('water','services','movement','ground','index','visibility','attention')
+    $allRendering=@('water','services','movement','ground','index','visibility','attention','dropped-item')
     $rendering=[Collections.Generic.HashSet[string]]::new()
     $managed=[Collections.Generic.HashSet[string]]::new()
     # Each terrain-producing rule contributes its own rendering dependencies.
@@ -24,14 +24,15 @@ function Get-ValidationPlan {
         elseif($p -match '^game/AnimalTown.GameCube/GeometryStaging\.cs$'){$renderingForPath=@('services')}
         elseif($p -match '^game/AnimalTown.GameCube/TerrainIndexBuffer\.cs$'){$renderingForPath=@('index')}
         elseif($p -match '^game/AnimalTown.GameCube/VillagerAttentionRenderer\.cs$'){$renderingForPath=@('attention')}
+        elseif($p -match '^(shared/AnimalTown.Domain/DroppedItemPlan|game/AnimalTown.GameCube/DroppedItemRenderer)\.cs$|^assets/textures/items/|^tools/AnimalTown.Tools/DroppedItemAssets\.cs$'){$renderingForPath=@('dropped-item')}
         if($p -match '^(docs/|.*\.md$|LICENSE$|\.gitignore$)'){continue}
         $release=$true
         if($p -match '^(build/|\.github/|Directory\.|.*\.sln$|.*\.csproj$|\.gitmodules$|vendor/|tools/(build-|publish-release|patch-native|.*validation|test-changes)|tests/validation-(plan|selection))'){$broad=$true;continue}
         if($p -match '^server/|^tests/(server-integration|AnimalTown.ServerChecks)'){$backend=$true;continue}
         if($p -match '^(shared/AnimalTown.Domain/DevConfig|game/AnimalTown.GameCube/DevConfigStorage|tests/AnimalTown.Checks/DevConfigChecks)\.cs$'){Add-Managed 'saves';Add-Managed 'menu';continue}
         if($p -match '^game/AnimalTown.GameCube/(TitleScreen|TitleArt|TitleBackdrop|LoadingScreen|ProfilePicker|TownSession)\.cs$'){Add-Managed 'ui';Add-Managed 'menu';Add-Managed 'saves';continue}
-        if($p -match '^tests/AnimalTown.RenderingChecks/(WaterEffect|RenderingService|MovementTerrain|GroundRing|TerrainIndex|ActorVisibility|AttentionGeometry)Checks\.cs$'){
-            $names=@{WaterEffect='water';RenderingService='services';MovementTerrain='movement';GroundRing='ground';TerrainIndex='index';ActorVisibility='visibility';AttentionGeometry='attention'}
+        if($p -match '^tests/AnimalTown.RenderingChecks/(WaterEffect|RenderingService|MovementTerrain|GroundRing|TerrainIndex|ActorVisibility|AttentionGeometry|DroppedItem)Checks\.cs$'){
+            $names=@{WaterEffect='water';RenderingService='services';MovementTerrain='movement';GroundRing='ground';TerrainIndex='index';ActorVisibility='visibility';AttentionGeometry='attention';DroppedItem='dropped-item'}
             [void]$rendering.Add($names[$Matches[1]]);continue
         }
         if($p -match '^(shared/AnimalTown.Domain/(SunshineWater|WindWakerWaterPattern|WindWakerWaveField|WindWakerWaveGrid|WaterDepthCache|GroundRingPlan|ActorFrameVisibility|AnimationFrameClock)|game/AnimalTown.GameCube/(LocalOceanWaves|GroundRingRenderer|GeometryStaging|TerrainIndexBuffer|VillagerAttentionRenderer))\.cs$'){
@@ -63,11 +64,17 @@ function Get-ValidationPlan {
         if($p -match '^shared/AnimalTown.Domain/(TexturePixels|TextureResolution|FloorTexture)\.cs$'){
             Add-Managed 'core';[void]$tooling.Add('terrain');[void]$tooling.Add('repack');continue
         }
-        if($p -match '^(shared/AnimalTown.Domain/(BuildingWorld|BuildingState|BuildingSave|PortalSystem|InteriorNavigation|InteriorCamera|VillagerJourney)|tests/AnimalTown.Checks/BuildingChecks)\.cs$'){
+        if($p -match '^(shared/AnimalTown.Domain/(BuildingWorld|BuildingPrompt|BuildingState|BuildingSave|PortalSystem|InteriorNavigation|InteriorCamera|VillagerJourney)|tests/AnimalTown.Checks/(BuildingChecks|BuildingEntryChecks))\.cs$'){
             foreach($s in @('buildings','movement','life','saves')){Add-Managed $s};continue
         }
         if($p -match '^assets/definitions/|^assets/models/(buildings/|interiors/cottage_small/)|^assets/textures/buildings/|^tools/AnimalTown.Tools/BuildingAssets\.cs$'){
             Add-Managed 'buildings';[void]$tooling.Add('building');continue
+        }
+        if($p -match '^(shared/AnimalTown.Domain/DroppedItemPlan|game/AnimalTown.GameCube/DroppedItemRenderer)\.cs$'){
+            Add-Managed 'core';Add-Managed 'terrain';continue
+        }
+        if($p -match '^assets/textures/items/|^tools/AnimalTown.Tools/DroppedItemAssets\.cs$'){
+            [void]$tooling.Add('dropped-item');Add-Managed 'core';Add-Managed 'terrain';continue
         }
         if($p -match '^shared/AnimalTown.Domain/'){
             foreach($s in $allManaged){Add-Managed $s};$backend=$true;continue
@@ -95,7 +102,7 @@ function Get-ValidationPlan {
         if($p -match '^tools/iso-smoke.py$'){[void]$native.Add('python');continue} # Scenarios are explicitly selected.
         $broad=$true
     }
-    if($broad){foreach($s in $allManaged){Add-Managed $s};foreach($s in @('terrain','repack','building','nkit')){[void]$tooling.Add($s)};foreach($s in @('uv','card','texture','voices','python','shadows','patched')){[void]$native.Add($s)};$backend=$true;$policy=$true}
+    if($broad){foreach($s in $allManaged){Add-Managed $s};foreach($s in @('terrain','repack','building','nkit','dropped-item')){[void]$tooling.Add($s)};foreach($s in @('uv','card','texture','voices','python','shadows','patched')){[void]$native.Add($s)};$backend=$true;$policy=$true}
     if($broad){foreach($r in $allRendering){[void]$rendering.Add($r)}}
     [pscustomobject]@{schema=2;commit=$Commit;baseRef=$BaseRef;release=$release;full=$broad;managed=@($allManaged|Where-Object {$managed.Contains($_)});rendering=@($allRendering|Where-Object {$rendering.Contains($_)});tooling=@($tooling|Sort-Object);native=@($native|Sort-Object);backend=$backend;policy=$policy;paths=@($ChangedPaths|Sort-Object -Unique)}
 }

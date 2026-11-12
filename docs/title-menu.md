@@ -22,9 +22,11 @@ portraits, a large selected-villager vignette, rounded name tabs, a honey focus
 ring and silhouette/plus cards for empty slots. It appears before `TownGame` is
 constructed or town assets load. Left/Right selects a card (Up/Down also work);
 A selects a villager; B returns to the title. Empty slots open
-character creation in the shared town. See [picker artwork and validation](villager-picker.md).
-After selection, the dot background and
-sprout cover staged game loading. See [shared town profiles](shared-town-profiles.md). A held confirmation button cannot accept the next game
+[onboarding](onboarding.md) in the shared town: name and portrait screens precede
+outdoor loading, then a real home preview and explicit **Save & begin** follow.
+See [picker artwork and validation](villager-picker.md).
+After identity selection, the dot background and sprout cover staged game
+loading. See [shared town profiles](shared-town-profiles.md). A held confirmation button cannot accept the next game
 screen because the controller edge was consumed by the title.
 
 The title has exactly three options: Start, Update and Debug configuration.
@@ -45,12 +47,26 @@ distance, frozen landscape motion, mesh recreation and the legacy ground ring.
 Teleport/debug-location actions remain actions rather than stored settings.
 
 Update chainloads `dvd:/animal-town-updater.dol` when packaged, or falls back to
-`gcloader:/animal-town-updater.dol`. The standalone
-[updater repository](https://github.com/capz/AnimalTown.Updater) documents SD setup,
-Swiss, BBA networking and HTTPS provisioning. The updater owns release checking,
-verification, backup/replacement and boot handoff. Missing updater media leaves
-the title usable with an error message. Memory-card town data is not modified by
-an update.
+`gcloader:/animal-town-updater.dol`. Before loading it, the title resolves an
+explicit installation path from available native launch/image-mount information
+and the SD-root `animaltown-updater/image-path.txt` record. For direct GC Loader
+boot, the documented device API does not report the active physical filename;
+the updater repository's `tools/provision.py --image` creates the installer-
+selected mapping. Paths from multiple sources must agree. The game mounts the
+GC Loader card and validates the target's GameCube header, `AMTE01` identity and
+exact running version, then passes that image path/version in a four-argument
+launch request. No usable path, a conflict, an invalid image or missing updater
+media leaves the title usable with an error. No default filename is guessed.
+
+The standalone [updater repository](https://github.com/capz/AnimalTown.Updater)
+documents direct GC Loader SD setup, BBA networking and HTTPS provisioning. The
+updater owns release checking, verification and backup/replacement at that exact
+path. A completed installation asks the player to **Power off/on** and reopen
+the image through GC Loader firmware; no automatic raw-DOL/disc boot follows.
+Failures keep the stopped phase and operation visible with available exception,
+path and native-result details. See [packaging and path setup](updater-build.md).
+Memory-card town data is not modified by an update. Physical storage/network
+and restart behavior remain subject to hardware validation.
 
 For Dolphin validation, build `build/Dockerfile.dolphin` and provide at least
 `--shm-size=512m`. Run `tools/iso-smoke.py DISC OUTPUT --title-menu` to exercise

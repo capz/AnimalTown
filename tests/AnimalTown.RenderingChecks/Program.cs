@@ -1,4 +1,4 @@
-string[] available={"water","services","movement","ground","index","visibility","attention"};
+string[] available={"water","services","movement","ground","index","visibility","attention","dropped-item"};
 if(args.Length!=0&&(args.Length!=2||args[0]!="--suites"))throw new ArgumentException("Use --suites name,name or omit for all checks");
 var selected=args.Length==0?available:args[1].Split(',',StringSplitOptions.RemoveEmptyEntries);
 if(selected.Length==0)throw new ArgumentException("Select at least one rendering suite");
@@ -13,4 +13,5 @@ if(Wants("ground"))GroundRingChecks.Run(Check);
 if(Wants("index"))TerrainIndexChecks.Run(Check);
 if(Wants("visibility"))ActorVisibilityChecks.Run(Check);
 if(Wants("attention"))AttentionGeometryChecks.Run(Check);
+if(Wants("dropped-item"))DroppedItemChecks.Run(Check);
 Console.WriteLine(count+" rendering service checks passed; suites: "+string.Join(",",selected));

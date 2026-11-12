@@ -48,24 +48,27 @@ try{
     Remove-Item "$fixture/game/AnimalTown.GameCube/WaterMaterial.cs"
 
     # Record runner dispatch without restoring/building anything in the fixture.
-    $global:ValidationRecordedCommands=[Collections.Generic.List[string]]::new()
-    function global:dotnet {
-        $global:ValidationRecordedCommands.Add(($args -join '|'))
-        $global:LASTEXITCODE=0
+    $originalDotnet=Get-Command dotnet
+    & {
+        $ValidationRecordedCommands=[Collections.Generic.List[string]]::new()
+        function dotnet {
+            $ValidationRecordedCommands.Add(($args -join '|'))
+            $global:LASTEXITCODE=0
+        }
+        Set-Content "$fixture/docs/notes.md" 'Documentation only'
+        & "$fixture/tools/test-changes.ps1" -BaseRef HEAD
+        Assert ($ValidationRecordedCommands.Count -eq 0) 'Docs-only validation must not restore the game SDK or run dotnet'
+        Set-Content "$fixture/game/AnimalTown.GameCube/MenuNavigation.cs" '// local menu change'
+        & "$fixture/tools/test-changes.ps1" -BaseRef HEAD
+        Assert ($ValidationRecordedCommands.Count -eq 1 -and $ValidationRecordedCommands[0] -eq 'run|--project|tests/AnimalTown.Checks|-c|Release|--|--suites|menu') 'Menu validation must dispatch only its managed suite without SDK restore'
+        $ValidationRecordedCommands.Clear()
+        & "$fixture/tools/test-changes.ps1" -BaseRef HEAD -PlanOnly
+        Assert ($ValidationRecordedCommands.Count -eq 0) 'PlanOnly must not execute component checks'
     }
-    Set-Content "$fixture/docs/notes.md" 'Documentation only'
-    & "$fixture/tools/test-changes.ps1" -BaseRef HEAD
-    Assert ($global:ValidationRecordedCommands.Count -eq 0) 'Docs-only validation must not restore the game SDK or run dotnet'
-    Set-Content "$fixture/game/AnimalTown.GameCube/MenuNavigation.cs" '// local menu change'
-    & "$fixture/tools/test-changes.ps1" -BaseRef HEAD
-    Assert ($global:ValidationRecordedCommands.Count -eq 1 -and $global:ValidationRecordedCommands[0] -eq 'run|--project|tests/AnimalTown.Checks|-c|Release|--|--suites|menu') 'Menu validation must dispatch only its managed suite without SDK restore'
-    $global:ValidationRecordedCommands.Clear()
-    & "$fixture/tools/test-changes.ps1" -BaseRef HEAD -PlanOnly
-    Assert ($global:ValidationRecordedCommands.Count -eq 0) 'PlanOnly must not execute component checks'
-    Write-Host 'Validation selection integration checks passed (7 cases).'
+    $restoredDotnet=Get-Command dotnet
+    Assert ($restoredDotnet.CommandType -eq $originalDotnet.CommandType -and $restoredDotnet.Definition -eq $originalDotnet.Definition) 'Selection fixture must restore the real dotnet command before subsequent checks'
+    Write-Host 'Validation selection integration checks passed (8 cases).'
 }finally{
-    Remove-Item Function:global:dotnet -ErrorAction SilentlyContinue
-    Remove-Variable ValidationRecordedCommands -Scope Global -ErrorAction SilentlyContinue
     Set-Location $originalLocation
     Remove-Item -LiteralPath $fixture -Recurse -Force -ErrorAction SilentlyContinue
 }

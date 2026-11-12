@@ -3,6 +3,7 @@
 internal static class NativeShadows
 {
     internal static int Init(byte[] atlas,byte[] circle)=>throw new System.PlatformNotSupportedException("Native shadow union bridge required");
+    internal static int Shutdown()=>throw new System.PlatformNotSupportedException("Native shadow union bridge required");
     internal static int Terrain(byte[] tile,int offset,int mode)=>throw new System.PlatformNotSupportedException("Native cliff shadow bridge required");
     internal static int Begin(int space,int enabled,int size)=>throw new System.PlatformNotSupportedException("Native shadow union bridge required");
     internal static int Mesh(int slot,int count,int profile,float[] uv,float[] bounds)=>throw new System.PlatformNotSupportedException("Native shadow union bridge required");

@@ -4,6 +4,7 @@ public enum DoorPhase { Idle, Waiting, Opening, Crossing, Closing }
 public sealed class PortalSystem
 {
     public const int Duration=36,CommitTick=18,MaximumWait=180;
+    public const float PlayerEntryRadius=1.6f,DoorRadius=.95f;
     public sealed class Transition
     {
         public DoorPhase Phase;
@@ -23,16 +24,28 @@ public sealed class PortalSystem
         if(actor<0||actor>=Actors.Length||!BuildingWorld.Exists(s,building))return false;
         var t=Actors[actor];if(Busy(actor)||t.Cooldown>0||!BuildingCatalog.Available(s.BuildingTypes[building])||!Ready[s.BuildingTypes[building]])return false;
         var p=BuildingWorld.Location(s,actor);int destination;
-        if(p.Space.IsTown){destination=BuildingWorld.Space(building);BuildingWorld.Entrance(s,building,out float x,out float z);if(Distance(p.X,p.Z,x,z)>.95f)return false;BuildingWorld.InsideDoor(s,destination,out x,out z);t.Destination=new ActorLocation(destination,x,z-.7f,(float)Math.PI);}
-        else{if(BuildingWorld.Building(p.Space.Value)!=building)return false;BuildingWorld.InsideDoor(s,p.Space.Value,out float x,out float z);if(Distance(p.X,p.Z,x,z)>.95f)return false;BuildingWorld.Entrance(s,building,out x,out z);t.Destination=new ActorLocation(0,x,z+1f,0);}
+        if(p.Space.IsTown){destination=BuildingWorld.Space(building);if(!ExteriorReach(s,actor,building,p,out _))return false;BuildingWorld.InsideDoor(s,destination,out float x,out float z);t.Destination=new ActorLocation(destination,x,z-.7f,(float)Math.PI);}
+        else{if(BuildingWorld.Building(p.Space.Value)!=building)return false;BuildingWorld.InsideDoor(s,p.Space.Value,out float x,out float z);if(Distance(p.X,p.Z,x,z)>DoorRadius)return false;BuildingWorld.Entrance(s,building,out x,out z);t.Destination=new ActorLocation(0,x,z+1f,0);}
         t.Source=new ActorLocation(p.Space.Value,p.X,p.Z,p.Space.IsTown?(float)Math.PI:0);BuildingWorld.SetLocation(s,actor,t.Source);t.Building=building;BuildingWorld.Origin(s,building,out t.OriginX,out t.OriginZ);t.Type=s.BuildingTypes[building];t.Tick=t.Wait=0;t.Committed=false;t.Phase=DoorPhase.Waiting;return true;
+    }
+    // Both the prompt and the actual request use the same approach test.
+    private static bool ExteriorReach(GameState s,int actor,int building,ActorLocation p,out float distance)
+    {
+        BuildingWorld.Entrance(s,building,out float x,out float z);distance=Distance(p.X,p.Z,x,z);
+        if(distance>(actor==0?PlayerEntryRadius+.0001f:DoorRadius))return false; // coordinate rounding at the boundary
+        if(actor!=0)return true;
+        // The extra reach stays on the front approach, never through the side
+        // or back wall. Trees, furniture, water and cliff steps block the walk.
+        return p.Z>=z-.25f&&BuildingWorld.Segment(s,0,p.X,p.Z,x,z,actor);
     }
     public int Nearby(GameState s,int actor,float facing)
     {
-        var p=BuildingWorld.Location(s,actor);if(!p.Space.IsTown){BuildingWorld.InsideDoor(s,p.Space.Value,out float x,out float z);return Distance(p.X,p.Z,x,z)<.95f?BuildingWorld.Building(p.Space.Value):-1;}
-        int best=-1;float distance=.95f;
-        for(int b=0;b<BuildingWorld.Count;b++)if(BuildingWorld.Exists(s,b)){BuildingWorld.Entrance(s,b,out float x,out float z);float d=Distance(p.X,p.Z,x,z);
-            if(d<distance&&(z-p.Z)*(float)Math.Cos(facing)+(x-p.X)*(float)Math.Sin(facing)>-.1f){best=b;distance=d;}}
+        var p=BuildingWorld.Location(s,actor);if(!p.Space.IsTown){BuildingWorld.InsideDoor(s,p.Space.Value,out float x,out float z);return Distance(p.X,p.Z,x,z)<=DoorRadius?BuildingWorld.Building(p.Space.Value):-1;}
+        int best=-1;float distance=float.MaxValue;
+        for(int b=0;b<BuildingWorld.Count;b++)if(BuildingWorld.Exists(s,b)&&ExteriorReach(s,actor,b,p,out float d)){
+            BuildingWorld.Entrance(s,b,out float x,out float z);
+            if(d<distance&&(z-p.Z)*(float)Math.Cos(facing)+(x-p.X)*(float)Math.Sin(facing)>-.1f){best=b;distance=d;}
+        }
         return best;
     }
     public void Tick(GameState s)

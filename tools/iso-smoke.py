@@ -36,6 +36,149 @@ def color_count(pixels,color,tolerance=5):
     return sum(all(abs(pixels[i+c]-value)<=tolerance for c,value in enumerate(color))
                for i in range(0,len(pixels),3))
 
+def region_color_count(pixels,color,left,top,right,bottom,tolerance=5):
+    return sum(all(abs(pixels[(y*800+x)*3+c]-value)<=tolerance for c,value in enumerate(color))
+               for y in range(top,bottom) for x in range(left,right))
+
+def card_digest():
+    import hashlib
+    card=root/'MemoryCardA.USA.raw'
+    return hashlib.sha256(card.read_bytes()).hexdigest() if card.exists() else None
+
+def onboarding_signature(pixels,stage):
+    # Draw2D's 640x480 canvas is letterboxed to Dolphin's 584px viewport.
+    # These are broad interior fill samples, so neither text rasterization nor
+    # the animated backdrop affects the stage checks.
+    cream=color_count(pixels,(255,245,221))
+    if stage=='name':
+        return (cream>70000 and region_color_count(pixels,(245,226,186),65,279,590,400)>23000
+                and region_color_count(pixels,(53,105,84),350,143,550,168)<1000)
+    if stage=='look':
+        return cream>70000 and region_color_count(pixels,(53,105,84),350,143,550,168)>3000
+    if stage=='review':
+        return cream>70000 and region_color_count(pixels,(53,105,84),130,353,380,397)>7000
+    if stage=='exit':
+        return (cream>70000 and region_color_count(pixels,(53,105,84),150,300,300,328)>2500
+                and region_color_count(pixels,(245,226,186),340,300,490,328)>2500)
+    if stage=='home' or stage=='world':
+        if cream>=70000 or color_count(pixels,(149,198,186))>=150000:return False
+        # Autumn/winter views may contain no green grass or trees. Require an
+        # actual rendered viewport, then distinguish the placement header
+        # from gameplay instead of depending on the seasonal ground palette.
+        rendered=sum(max(pixels[(y*800+x)*3:(y*800+x)*3+3])>20
+                     for y in range(0,480,2) for x in range(28,612,2))
+        header=region_color_count(pixels,(255,245,221),160,25,480,67)
+        if stage=='home':return rendered>60000 and header>5000
+        # Gameplay's translucent green control strip and cream date/time
+        # panel are absent from the placement/review/loading screens.
+        controls=sum(35<=pixels[(y*800+x)*3]<=105
+                     and 60<=pixels[(y*800+x)*3+1]<=130
+                     and pixels[(y*800+x)*3+1]>pixels[(y*800+x)*3]+5
+                     and pixels[(y*800+x)*3+1]>pixels[(y*800+x)*3+2]+5
+                     for y in range(442,467) for x in range(65,415))
+        date=region_color_count(pixels,(255,245,221),60,378,180,427)
+        return rendered>60000 and header<5000 and controls>3000 and date>2500
+    raise ValueError('Unknown onboarding stage: '+stage)
+
+def wait_onboarding(stage,name=None):
+    name=name or 'onboarding-'+stage+'.png'
+    deadline=time.monotonic()+(360 if stage in ('home','world') else 180)
+    loading=False
+    while time.monotonic()<deadline:
+        if p.poll() is not None:raise AssertionError('Emulator stopped before onboarding '+stage)
+        screenshot(name);pixels=rgb(name)
+        if color_count(pixels,(149,198,186))>150000 and color_count(pixels,(255,245,221))<100:loading=True
+        if onboarding_signature(pixels,stage):return loading
+        time.sleep(1)
+    raise AssertionError('Onboarding did not reach '+stage+'; inspect '+name)
+
+def wait_saved_after(before):
+    deadline=time.monotonic()+240
+    sequence=before['sequence'] if before else 0
+    while time.monotonic()<deadline:
+        after=committed_card_sequence(root/'MemoryCardA.USA.raw',details=True)
+        if after and after['sequence']>sequence:return after
+        if p.poll() is not None:raise AssertionError('Emulator stopped during explicit onboarding save')
+        time.sleep(1)
+    screenshot('onboarding-save-failure.png')
+    raise AssertionError('Save & begin did not publish a complete checksummed generation')
+
+def finish_onboarding(prefix='new-villager',before=None):
+    """Complete an already selected empty slot via the actual four stages."""
+    before=before if before is not None else committed_card_sequence(root/'MemoryCardA.USA.raw',details=True)
+    wait_onboarding('name',prefix+'-name.png');press('A');press('START')
+    wait_onboarding('look',prefix+'-look.png');press('A')
+    loading=wait_onboarding('home',prefix+'-home.png');press('A')
+    wait_onboarding('review',prefix+'-review.png');press('A')
+    after=wait_saved_after(before);wait_onboarding('world',prefix+'-game.png')
+    return after,loading
+
+def start_game(new_town=False,prefix='start'):
+    """Navigate Title and the resident picker before sending gameplay input."""
+    before=committed_card_sequence(root/'MemoryCardA.USA.raw',details=True)
+    wait_title();press('A');wait_profiles(prefix+'-picker.png');press('A')
+    active=before['active'] if before else 0
+    if new_town or not before or not before['profiles'][active]['created']:
+        return finish_onboarding(prefix,before)
+    return before,wait_onboarding('world',prefix+'-game.png')
+
+def onboarding():
+    before=committed_card_sequence(root/'MemoryCardA.USA.raw',details=True)
+    slot=int(sys.argv[sys.argv.index('--profile-slot')+1]) if '--profile-slot' in sys.argv else next((i for i in range(4) if not before or not before['profiles'][i]['created']),-1)
+    if not 0<=slot<4:raise ValueError('Onboarding requires an unused profile slot 0..3')
+    if before and before['profiles'][slot]['created']:raise AssertionError('Onboarding fixture slot is already occupied')
+    original_digest=None
+    def unchanged(label):
+        if card_digest()!=original_digest or committed_card_sequence(root/'MemoryCardA.USA.raw',details=True)!=before:
+            raise AssertionError(label+' changed the card before Save & begin')
+    def choose():
+        wait_title();press('A');wait_profiles('onboarding-picker.png')
+        for _ in range((slot-(before['active'] if before else 0))%4):press('D_RIGHT')
+        press('A');wait_onboarding('name','onboarding-name-empty.png')
+    choose()
+    if committed_card_sequence(root/'MemoryCardA.USA.raw',details=True)!=before:raise AssertionError('Entering Name saved a draft')
+    # The first card mount may initialize a fresh emulator card. From Name
+    # onward even uncommitted card bytes must remain unchanged until saving.
+    original_digest=card_digest();press('START');wait_onboarding('name','onboarding-name-required.png');unchanged('Blank name validation')
+    # Keep editing is the safe default; discarding is a separate explicit act.
+    press('B');wait_onboarding('exit','onboarding-exit-default.png');press('A')
+    wait_onboarding('name','onboarding-kept-editing.png');unchanged('Keep editing')
+    press('A');screenshot('onboarding-name-entered.png');press('START')
+    wait_onboarding('look','onboarding-look-fox.png')
+    press('B');wait_onboarding('name','onboarding-back-to-name.png');press('START')
+    wait_onboarding('look');press('D_RIGHT');screenshot('onboarding-look-bunny.png');press('A')
+    loading=wait_onboarding('home','onboarding-home-first.png');unchanged('Home preview')
+    # Discard after the real town renderer was constructed, exercising its
+    # cleanup path as well as cancellation of the initial 2D identity screens.
+    press('B');wait_onboarding('look','onboarding-back-to-look.png');press('B')
+    wait_onboarding('name','onboarding-returned-name.png');press('B');wait_onboarding('exit')
+    press('D_RIGHT');screenshot('onboarding-exit-discard.png');press('A')
+    wait_title();screenshot('onboarding-discarded-to-title.png');unchanged('Discard after home preview')
+    choose();press('A');press('START');wait_onboarding('look');press('D_RIGHT');press('A')
+    loading=wait_onboarding('home','onboarding-home.png') or loading;press('A')
+    wait_onboarding('review','onboarding-review.png');unchanged('Review')
+    press('B');wait_onboarding('home','onboarding-review-back-home.png');press('A')
+    wait_onboarding('review','onboarding-review-final.png');time.sleep(4);unchanged('Review idle')
+    press('A');after=wait_saved_after(before);wait_onboarding('world','onboarding-gameplay.png')
+    if after['active']!=slot or not after['profiles'][slot]['created'] or not after['plots'][slot]['placed']:
+        raise AssertionError('Save & begin did not activate the completed resident and home')
+    if after['profiles'][slot]['name']!='A' or after['profiles'][slot]['species']!=1:
+        raise AssertionError('Name/look choices were not retained through back navigation and save')
+    if before:
+        for i in range(4):
+            if i!=slot and (after['profiles'][i]!=before['profiles'][i] or after['plots'][i]!=before['plots'][i] or after['profile_payload_sha256'][i]!=before['profile_payload_sha256'][i]):
+                raise AssertionError('Onboarding changed another resident or their private save data')
+        if after['terrain_sha256']!=before['terrain_sha256']:raise AssertionError('Onboarding regenerated or changed the shared landscape')
+    saved_digest=card_digest();time.sleep(8);screenshot('onboarding-gameplay-idle.png')
+    if card_digest()!=saved_digest:raise AssertionError('Gameplay after Save & begin wrote another implicit save')
+    # Reaching world also passes TownGame's hard cleanup invariant: no live
+    # onboarding views, draft, picker portraits, or wordmark source bytes.
+    report={'slot':slot,'before':before,'after':after,'default_keep_editing':True,'discard_to_title':True,
+            'blank_name_rejected':True,'back_navigation':['look-name','home-look','review-home'],'review_did_not_save':True,
+            'explicit_save_committed':True,'other_profiles_preserved':True,'loading_background_seen':loading,
+            'gameplay_cleanup_invariant_passed':True,'gameplay_did_not_autosave':True}
+    (root/'onboarding.json').write_text(json.dumps(report,indent=2))
+
 def wait_title(modal=False):
     # Observe the actual menu, rather than sending input during either splash.
     deadline=time.monotonic()+180
@@ -49,6 +192,9 @@ def wait_title(modal=False):
     raise AssertionError('Debug modal did not appear' if modal else 'Original cream title/menu did not appear')
 
 def title_menu():
+    before=committed_card_sequence(root/'MemoryCardA.USA.raw',details=True)
+    active=before['active'] if before else 0
+    creating=not before or not before['profiles'][active]['created']
     screenshot('title-dots-a.png');time.sleep(3);screenshot('title-dots-b.png')
     a,b=rgb('title-dots-a.png'),rgb('title-dots-b.png')
     # Background-only pixels must change while the game remains deferred.
@@ -64,6 +210,9 @@ def title_menu():
     press('D_UP');press('D_UP')
     # Start opens the shared-town resident picker before game asset loading.
     press('A');wait_profiles('title-villager-picker.png')
+    if creating:
+        press('A');wait_onboarding('name','title-onboarding-name.png');press('A');press('START')
+        wait_onboarding('look','title-onboarding-look.png')
     # Capture during loading, not after a multi-second press/release helper.
     os.write(controller,b'PRESS A\n');time.sleep(.2)
     os.write(controller,b'RELEASE A\n')
@@ -88,7 +237,10 @@ def title_menu():
         if p.poll() is not None:raise AssertionError('Emulator stopped during game loading')
         time.sleep(3)
     else:raise AssertionError('Game never left loading screen')
-    (root/'title-menu.txt').write_text(f'Diagonal dot pixels changed: {changed}\nOpened debug modal, edited and paged settings, saved/closed/reopened, then selected Start.\nThree loading frames contained no cream title/menu and an animated sprout; game then became visible.\n')
+    if creating:
+        press('A');wait_onboarding('review','title-onboarding-review.png');press('A')
+        wait_saved_after(before);wait_onboarding('world','title-start-game.png')
+    (root/'title-menu.txt').write_text(f'Diagonal dot pixels changed: {changed}\nOpened debug modal, edited and paged settings, saved/closed/reopened, then selected Start.\nThree loading frames contained no cream title/menu and an animated sprout; game then became visible.\n'+('Completed Name, Look, Home and explicit Save & begin.\n' if creating else ''))
 
 def wait_profiles(name='profile-picker.png'):
     deadline=time.monotonic()+180
@@ -135,27 +287,12 @@ def shared_profiles():
     creating=not before or not before['profiles'][slot]['created']
     wait_title();press('A');wait_profiles()
     press('B');wait_title();screenshot('profile-cancel-to-title.png');press('A');wait_profiles()
-    for _ in range((slot-(before['active'] if before else 0))%4):press('D_DOWN')
+    for _ in range((slot-(before['active'] if before else 0))%4):press('D_RIGHT')
     screenshot('profile-selected.png');press('A')
-    deadline=time.monotonic()+300;loading=False
-    while time.monotonic()<deadline:
-        screenshot('profile-game.png');pixels=rgb('profile-game.png')
-        mint=color_count(pixels,(149,198,186));cream=color_count(pixels,(255,245,221))
-        if mint>150000 and cream<100:loading=True
-        if loading and mint<150000:break
-        if p.poll() is not None:raise AssertionError('Emulator stopped loading selected villager')
-        time.sleep(2)
-    else:raise AssertionError('Selected villager never reached gameplay')
     if creating:
-        # An unused slot reaches Create, not the world/settings menu. Complete
-        # the same house-placement flow as the fresh water-renderer scenario.
-        press('D_UP');press('A');press('A');time.sleep(2);press('B');press('B')
-    save_menu();deadline=time.monotonic()+180
-    while time.monotonic()<deadline:
-        after=committed_card_sequence(root/'MemoryCardA.USA.raw',details=True)
-        if after and after['sequence']>(before['sequence'] if before else 0):break
-        time.sleep(2)
-    else:raise AssertionError('Selected villager did not save a complete shared-town generation')
+        after,loading=finish_onboarding('profile',before)
+    else:
+        loading=wait_onboarding('world','profile-game.png');save_menu();after=wait_saved_after(before)
     if after['active']!=slot:raise AssertionError('Wrong villager profile was saved')
     if before:
         for index in range(4):
@@ -193,15 +330,7 @@ def delete_profile():
     if color_count(rgb('delete-empty-z.png'),(107,151,90))<3000:raise AssertionError('Z on an empty card opened a deletion modal')
     if committed_card_sequence(root/'MemoryCardA.USA.raw',details=True)!=after:raise AssertionError('Reopening the picker changed the deletion')
     if '--profile-delete-start-new' in sys.argv:
-        press('A');deadline=time.monotonic()+300;loading=False
-        while time.monotonic()<deadline:
-            screenshot('delete-new-creation.png');pixels=rgb('delete-new-creation.png')
-            mint=color_count(pixels,(149,198,186));cream=color_count(pixels,(255,245,221))
-            if mint>150000 and cream<100:loading=True
-            if loading and mint<150000:break
-            if p.poll() is not None:raise AssertionError('Emulator stopped loading replacement villager')
-            time.sleep(2)
-        else:raise AssertionError('Replacement villager never reached character setup')
+        press('A');wait_onboarding('name','delete-new-creation.png')
         time.sleep(8);screenshot('delete-new-creation.png')
         if committed_card_sequence(root/'MemoryCardA.USA.raw',details=True)!=after:raise AssertionError('Replacement creation autosaved')
     (root/'profile-deletion.json').write_text(json.dumps({'slot':slot,'before':before,'after':after,'default_cancel':True,'back_cancel':True,'reloaded':True},indent=2))
@@ -290,7 +419,7 @@ def cliff_minimap():
         if visible!=expected:raise AssertionError('Unexpected minimap visibility: '+results[-1])
         return pixels
     # Normal onboarding; the starting area below z=42 is kept clear of trees.
-    press('A');press('D_UP');press('A');press('A');time.sleep(2);press('B');press('B');time.sleep(12)
+    start_game(True,'cliff-minimap');time.sleep(12)
     pixels=map_state('hud-clean',False)
     if paper(pixels,60,22,620,55)>200:raise AssertionError('Build/currency HUD panel remains visible')
     os.write(controller,b'PRESS B\n')
@@ -392,17 +521,14 @@ def committed_card_sequence(path, expected_day=None, details=False):
                                 label=''.join(chr(struct.unpack_from('<I',part,164+i*4)[0]) for i in range(length))
                                 profiles.append({'name':label,'created':struct.unpack_from('<I',part,28)[0],'wallet':struct.unpack_from('<I',part,40)[0],'species':struct.unpack_from('<I',part,44)[0]})
                             plots=[dict(zip(('placed','x','z'),struct.unpack_from('<3i',files[names[1]],28+i*12))) for i in range(4)]
-                            best_details={'sequence':best,'active':active,'profiles':profiles,'plots':plots,'terrain_sha256':terrain_hash,'houses_sha256':__import__('hashlib').sha256(files[names[1]][28:-4]).hexdigest()}
+                            profile_hashes=[__import__('hashlib').sha256(files[name][28:-4]).hexdigest() for name in names[3:]]
+                            best_details={'sequence':best,'active':active,'profiles':profiles,'profile_payload_sha256':profile_hashes,'plots':plots,'terrain_sha256':terrain_hash,'houses_sha256':__import__('hashlib').sha256(files[names[1]][28:-4]).hexdigest()}
             except (ValueError,UnicodeError,struct.error):continue
     if expected_day is not None and best_day!=expected_day:
         raise AssertionError(f'Explicit save did not retain the new rollover day: expected {expected_day}, got {best_day}')
     return best_details if details else best
 
 def testing_menu():
-    import hashlib
-    def card_digest():
-        card=root/'MemoryCardA.USA.raw'
-        return hashlib.sha256(card.read_bytes()).hexdigest() if card.exists() else None
     def label(name,row):
         y=131+(row%9)*24
         for sample in range(90):
@@ -419,9 +545,10 @@ def testing_menu():
         raise AssertionError(f'Testing row {row} did not become available after landscape loading')
     card=root/'MemoryCardA.USA.raw'
     if committed_card_sequence(card)!=0:raise AssertionError('Fresh-town test found a save before any explicit action')
-    # Complete normal player creation before testing gameplay or saving.
-    press('A');press('D_UP');press('A');press('A');time.sleep(2);press('B');press('B')
-    if committed_card_sequence(card)!=0:raise AssertionError('Player creation saved automatically')
+    # Save & begin is the first explicit save. Later menu/gameplay actions
+    # must preserve that completed generation until Save now is selected.
+    start_game(True,'testing')
+    if committed_card_sequence(card)==0:raise AssertionError('Save & begin did not save the completed villager')
     before=card_digest()
     for _ in range(3):press('START');time.sleep(1);press('B')
     if card_digest()!=before:raise AssertionError('Opening Settings wrote to the memory card')
@@ -475,7 +602,7 @@ def testing_menu():
         committed_card_sequence(card,expected_day=expected_day)
     saved=card_digest();press('B');press('START');press('B');time.sleep(5)
     if card_digest()!=saved:raise AssertionError('Closing/reopening Settings wrote another save')
-    (root/'testing-menu.txt').write_text('Player creation and Settings never saved automatically.\nVisible Settings entry opened Debug / testing.\n'+('Performance display toggled/restored.\n' if manual_only else 'All 14 debug toggles changed state and were restored; water preview allowed menu re-entry.\n')+f'{wait_seconds}s idle play preserved the card bytes.\n'+'Only Save now committed all four records and their matching checksummed commit.\nReopening Settings left the saved generation unchanged.\n')
+    (root/'testing-menu.txt').write_text('Completed onboarding with explicit Save & begin; Settings never saved automatically.\nVisible Settings entry opened Debug / testing.\n'+('Performance display toggled/restored.\n' if manual_only else 'All 14 debug toggles changed state and were restored; water preview allowed menu re-entry.\n')+f'{wait_seconds}s idle play preserved the card bytes.\n'+'Only Save now committed the next generation of records and their matching checksummed commit.\nReopening Settings left the saved generation unchanged.\n')
 
 def building_view(name, indoors):
     screenshot(name)
@@ -671,7 +798,9 @@ with (root/'emulator.log').open('w') as log:
             raise RuntimeError(f'Dolphin exited during boot ({p.returncode}); see {root / "emulator.log"}')
         screenshot('screen.png')
         if any(flag in sys.argv for flag in ('--title-menu','--title-load','--title-config','--title-update')):wait_title()
-        if '--profile-delete' in sys.argv:
+        if '--onboarding' in sys.argv:
+            onboarding()
+        elif '--profile-delete' in sys.argv:
             delete_profile()
         elif '--profile-cards' in sys.argv:
             profile_cards()
@@ -686,8 +815,7 @@ with (root/'emulator.log').open('w') as log:
         elif '--title-update' in sys.argv:
             press('D_DOWN');press('A');time.sleep(20);screenshot('title-updater.png')
         elif '--submission-seed' in sys.argv:
-            press('A');press('D_UP');press('A');press('A');time.sleep(2);press('B');press('B');time.sleep(45)
-            save_menu()
+            start_game(True,'submission-seed')
             for _ in range(90):
                 time.sleep(1)
                 if committed_card_sequence(root/'MemoryCardA.USA.raw')>0:break
@@ -713,8 +841,7 @@ with (root/'emulator.log').open('w') as log:
             building_save();press('B')
             press('A');time.sleep(4);building_view('building-exited.png',False)
         elif '--stream-travel' in sys.argv:
-            press('A')
-            if '--new-town' in sys.argv:press('D_UP');press('A');press('A');time.sleep(2);press('B');press('B')
+            start_game('--new-town' in sys.argv,'stream-travel')
             time.sleep(12)
             os.write(controller,b'PRESS L\nPRESS R\n');time.sleep(.2)
             os.write(controller,b'PRESS Z\n');time.sleep(1)
@@ -752,8 +879,7 @@ with (root/'emulator.log').open('w') as log:
                 travel_report['frame_counters'].append(current)
                 (root/'travel-scenario.json').write_text(json.dumps(travel_report,indent=2))
         elif '--movement-profile' in sys.argv:
-            press('A')
-            if '--new-town' in sys.argv:press('D_UP');press('A');press('A');time.sleep(2);press('B');press('B')
+            start_game('--new-town' in sys.argv,'movement-profile')
             if '--ground-ring' in sys.argv:
                 os.write(controller,b'SET C 0.5 0.95\nPRESS L\nPRESS R\n');time.sleep(.2);press('Z');os.write(controller,b'RELEASE L\nRELEASE R\nSET C 0.5 0.5\n');time.sleep(2)
             os.write(controller,b'PRESS L\nPRESS R\n');time.sleep(.2);press('Z');os.write(controller,b'RELEASE L\nRELEASE R\n')
@@ -773,8 +899,7 @@ with (root/'emulator.log').open('w') as log:
             save_menu();time.sleep(12);screenshot('movement-save.png')
         elif '--runtime-profile' in sys.argv:
             import json
-            press('A')
-            if '--new-town' in sys.argv:press('D_UP');press('A');press('A');time.sleep(2);press('B');press('B')
+            start_game('--new-town' in sys.argv,'runtime-profile')
             os.write(controller,b'PRESS L\nPRESS R\n');time.sleep(.2);press('Z');os.write(controller,b'RELEASE L\nRELEASE R\n')
             for mode in range(8):
                 time.sleep(profile_seconds);screenshot(f'runtime-{mode}.png')
@@ -783,8 +908,7 @@ with (root/'emulator.log').open('w') as log:
             os.write(controller,b'PRESS L\nPRESS R\n');time.sleep(.2);press('B');os.write(controller,b'RELEASE L\nRELEASE R\n')
             press('X');screenshot('runtime-backpack.png');press('B');save_menu();time.sleep(12);screenshot('runtime-save.png')
         elif '--cliff-kit' in sys.argv:
-            press('A')
-            if '--new-town' in sys.argv:press('D_UP');press('A');press('A');time.sleep(2);press('B');press('B')
+            start_game('--new-town' in sys.argv,'cliff-kit')
             time.sleep(3);screenshot('cliff-normal.png')
             os.write(controller,b'PRESS L\nPRESS R\n');time.sleep(.2);press('D_UP');os.write(controller,b'RELEASE L\nRELEASE R\n');time.sleep(3);screenshot('cliff-kit-eight.png')
             os.write(controller,b'SET MAIN 0.9 0.5\n');time.sleep(1);os.write(controller,b'SET MAIN 0.5 0.5\n');time.sleep(2);screenshot('cliff-kit-uv-shift.png')
@@ -821,7 +945,7 @@ with (root/'emulator.log').open('w') as log:
                     time.sleep(.5);screenshot(f'movement-{mode}-{n}.png')
             save_menu();time.sleep(12);screenshot('movement-save.png')
         elif '--cloud-shadows' in sys.argv:
-            press('A');press('D_UP');press('A');press('A');time.sleep(2);press('B');press('B')
+            start_game(True)
             time.sleep(2);screenshot('cloud-partial-a.png');time.sleep(20);screenshot('cloud-partial-b.png')
             def cloud_cover():
                 os.write(controller,b'PRESS L\nPRESS R\n');time.sleep(.2);press('D_RIGHT');os.write(controller,b'RELEASE L\nRELEASE R\n');time.sleep(2)
@@ -832,7 +956,7 @@ with (root/'emulator.log').open('w') as log:
             press('A');time.sleep(2);screenshot('cloud-indoor-a.png');time.sleep(8);screenshot('cloud-indoor-b.png')
             press('A');time.sleep(2);screenshot('cloud-exterior-return.png')
         elif '--actor-shadows' in sys.argv:
-            press('A');press('D_UP');press('A');press('A');time.sleep(2);press('B');press('B')
+            start_game(True)
             os.write(controller,b'PRESS L\nPRESS R\n');time.sleep(.2);press('A');os.write(controller,b'RELEASE L\nRELEASE R\n');time.sleep(15)
             os.write(controller,b'PRESS L\nPRESS R\n');time.sleep(.2);press('Z');os.write(controller,b'RELEASE L\nRELEASE R\n')
             time.sleep(profile_seconds);screenshot('actor-shadow-standing.png')
@@ -858,7 +982,7 @@ with (root/'emulator.log').open('w') as log:
             press('X');screenshot('actor-shadow-menu.png');press('B')
             os.write(controller,b'PRESS L\nPRESS R\n');time.sleep(.2);press('D_LEFT');os.write(controller,b'RELEASE L\nRELEASE R\n');time.sleep(15);screenshot('actor-shadow-water.png')
         elif '--lighting' in sys.argv:
-            press('A');press('D_UP');press('A');press('A');time.sleep(2);press('B');press('B')
+            start_game(True)
             os.write(controller,b'PRESS L\nPRESS R\n');time.sleep(.2);press('A');os.write(controller,b'RELEASE L\nRELEASE R\n');time.sleep(15)
             # Z enables telemetry; while held, Y cycles both/off/rim/shadows.
             os.write(controller,b'PRESS L\nPRESS R\nPRESS Z\n');time.sleep(1)
@@ -873,7 +997,7 @@ with (root/'emulator.log').open('w') as log:
             # A normal water/material pass immediately follows the model rim.
             os.write(controller,b'PRESS L\nPRESS R\n');time.sleep(.2);press('D_LEFT');os.write(controller,b'RELEASE L\nRELEASE R\n');time.sleep(15);screenshot('lighting-water.png')
         elif '--terrain-scroll' in sys.argv:
-            press('A');press('D_UP');press('A');press('A');time.sleep(2);press('B');press('B')
+            start_game(True)
             os.write(controller,b'PRESS L\nPRESS R\n');time.sleep(.2);press('START');os.write(controller,b'RELEASE L\nRELEASE R\n');time.sleep(12)
             os.write(controller,b'PRESS L\nPRESS R\n');time.sleep(.2);press('Z');os.write(controller,b'RELEASE L\nRELEASE R\n')
             time.sleep(profile_seconds);screenshot('scroll-ramp-start.png')
@@ -888,7 +1012,7 @@ with (root/'emulator.log').open('w') as log:
                     os.write(controller,b'PRESS L\nPRESS R\n');time.sleep(.2);press('D_LEFT');os.write(controller,b'RELEASE L\nRELEASE R\n')
                     time.sleep(12+profile_seconds);screenshot('stream-'+name+'.png')
         elif '--river-coast' in sys.argv:
-            press('A');press('D_UP');press('A');press('A');time.sleep(2);press('B');press('B')
+            start_game(True)
             for scene in ['river', 'river-corner', 'bridge', 'coast-beach', 'estuary', 'restored']:
                 os.write(controller,b'PRESS L\nPRESS R\n');time.sleep(.2);press('D_LEFT');os.write(controller,b'RELEASE L\nRELEASE R\n')
                 time.sleep(3);screenshot(scene+'.png')
@@ -906,24 +1030,7 @@ with (root/'emulator.log').open('w') as log:
         elif '--water' in sys.argv or '--water-ab' in sys.argv:
             # Fresh card: create a player, then use the clear starter reserve
             # to reach the western ocean boundary in any generated town.
-            if '--water-ab' in sys.argv:
-                # Current main adds a villager picker between Title and Create.
-                # Wait until that profile and the create panel are visible before
-                # sending the old test's build-a-home inputs.
-                wait_title();press('A');wait_profiles('water-ab-picker.png');press('A')
-                deadline=time.monotonic()+300;loading=False
-                while time.monotonic()<deadline:
-                    screenshot('water-ab-loading.png');pixels=rgb('water-ab-loading.png')
-                    mint=color_count(pixels,(149,198,186))
-                    cream=color_count(pixels,(255,245,221))
-                    if mint>150000 and cream<100:loading=True
-                    if loading and mint<150000:break
-                    if p.poll() is not None:raise AssertionError('Game stopped while loading new water-test villager')
-                    time.sleep(2)
-                else:raise AssertionError('New water-test villager never reached Create')
-            else:
-                press('A')
-            press('D_UP');press('A');press('A');time.sleep(2);press('B');press('B')
+            start_game(True,'water')
             os.write(controller,b'SET MAIN 0.0 0.5\nPRESS B\n');time.sleep(14)
             os.write(controller,b'SET MAIN 0.5 0.5\nRELEASE B\n');time.sleep(2)
             def water_frame(name):
@@ -995,7 +1102,7 @@ with (root/'emulator.log').open('w') as log:
             press('B');press('START');press('D_DOWN');press('A');screenshot('interaction-long-typing.png')
             time.sleep(profile_seconds);screenshot('interaction-long-dialogue.png')
         elif '--terrain-life' in sys.argv:
-            press('A');press('D_UP');press('A');press('A');time.sleep(2);press('B');press('B')
+            start_game(True)
             screenshot('life-world-before.png');time.sleep(20);screenshot('life-world-after.png')
             os.write(controller,b'PRESS L\nPRESS R\n');time.sleep(.2);press('START');os.write(controller,b'RELEASE L\nRELEASE R\n');time.sleep(2)
             screenshot('terrain-ramp-low.png')
@@ -1004,7 +1111,7 @@ with (root/'emulator.log').open('w') as log:
             os.write(controller,b'SET MAIN 0.5 0.1\n');time.sleep(1.7);os.write(controller,b'SET MAIN 0.5 0.5\n');time.sleep(2);screenshot('terrain-ramp-return.png')
             press('Y');time.sleep(2);screenshot('life-map.png');press('B');save_menu();time.sleep(12);screenshot('terrain-life-save.png')
         elif '--play' in sys.argv:
-            press('A');press('D_UP');press('A');press('A');time.sleep(2);screenshot('bubble.png');press('B');press('B')
+            start_game(True);screenshot('bubble.png')
             time.sleep(2);screenshot('world.png')
             press('Y');time.sleep(1);screenshot('map.png');press('Y')
             press('X');time.sleep(1);screenshot('pockets.png');press('B')

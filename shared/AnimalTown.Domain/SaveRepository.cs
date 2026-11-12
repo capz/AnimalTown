@@ -45,6 +45,22 @@ public sealed class SaveRepository
             VerifyReadback(bank,parts,commit);
         }catch{state.Sequence=previous;throw;}
     }
+    internal bool MatchesAttemptedFiles(GameState attempted,string[] names)
+    {
+        int bank=attempted.Sequence%2;var parts=SplitSaveCodec.Encode(attempted);bool found=false;
+        foreach(string name in names){
+            if(!SplitSaveCodec.IsFile(name))continue;
+            byte[]? expected=null;
+            for(int i=0;i<parts.Length;i++)if(name==SplitSaveCodec.FileName(SplitSaveCodec.RecordKind(i),bank)){expected=parts[i];break;}
+            if(name==SplitSaveCodec.FileName(SplitSaveCodec.Commit,bank))expected=SplitSaveCodec.EncodeCommit(attempted,parts);
+            // Includes legacy records and either record/manifest in the other
+            // bank. No file outside this exact attempted generation is ours.
+            if(expected==null)return false;
+            try{Match(storage.Read(name),expected);}catch(Exception){return false;}
+            found=true;
+        }
+        return found;
+    }
     public GameState DeleteProfile(GameState expected,int profile)
     {
         if((uint)profile>=GameState.ProfileCount||!expected.Profiles[profile].Created)throw new InvalidOperationException("Villager does not exist");

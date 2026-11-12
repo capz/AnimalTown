@@ -14,9 +14,9 @@ Z on an occupied card opens a [deletion confirmation](villager-deletion.md).
 Left/Right on the D-pad or main stick moves through the four cards and wraps.
 Up/Down remain equivalent for existing controls and automation. START confirms.
 The active saved profile is initially focused. Browsing and cancelling do not
-select/create a profile or write the memory card. Confirmation continues through
-the existing profile-selection/character-creation flow. Save formats, town
-ownership and explicit-save behavior are unchanged.
+select/create a profile or write the memory card. A saved resident with a home
+continues to gameplay; an unused slot opens [four-step onboarding](onboarding.md)
+with an explicit **Save & begin**. Save formats and town ownership are unchanged.
 
 ## Artwork and memory
 

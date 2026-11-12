@@ -35,7 +35,7 @@ internal static class ProfilePicker
                 if(direction==MenuNavigation.Right||direction==MenuNavigation.Down)view.Selected=(view.Selected+1)%4;
                 if(direction!=0)view.Status="";
                 if(pad.B.WasPressed)return false;
-                if(pad.A.WasPressed||pad.Start.WasPressed){session.State.SelectProfile(view.Selected);return true;}
+                if(pad.A.WasPressed||pad.Start.WasPressed){session.SelectProfile(view.Selected);return true;}
             }
         }finally{DebugOverlay.PerformanceVisible=performance;DebugOverlay.TextVisible=text;}
     }

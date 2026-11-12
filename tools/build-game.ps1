@@ -27,6 +27,7 @@ function RunNative([string]$Directory,[string]$Command,[string[]]$Arguments){
 Run dotnet @('build', 'tools/AnimalTown.Tools', '-c', 'Release', '-v', 'quiet')
 if('repack' -in $validation.tooling){Run dotnet @('run','--project','tools/AnimalTown.Tools','-c','Release','--no-build','--','repack-check',$projectRoot)}
 if('terrain' -in $validation.tooling){Run dotnet @('run','--project','tools/AnimalTown.Tools','-c','Release','--no-build','--','terrain-check',$projectRoot)}
+if('dropped-item' -in $validation.tooling){Run dotnet @('run','--project','tools/AnimalTown.Tools','-c','Release','--no-build','--','dropped-item-check',$projectRoot)}
 if('nkit' -in $validation.tooling){Run dotnet @('run','--project','tools/AnimalTown.Tools','-c','Release','--no-build','--','nkit-check',$projectRoot)}
 Run dotnet @('run','--project','tools/AnimalTown.Tools','-c','Release','--no-build','--','buildings',$projectRoot)
 Run dotnet @('tool','restore')
@@ -107,7 +108,7 @@ if('uv' -in $validation.native){RunNative '.' 'sh' @('-c','cc -std=c11 -Wall -We
 if('texture' -in $validation.native){RunNative '.' 'sh' @('-c','cc -std=c11 -Wall -Wextra -Werror -Iout/sdk-native/include tests/native-texture-pages.c -o /tmp/animaltown-texture-pages && /tmp/animaltown-texture-pages')}
 if('voices' -in $validation.native){RunNative '.' 'sh' @('-c','cc -std=c11 -Wall -Wextra -Werror -Iout/sdk-native/include tests/native-dialogue-voices.c out/sdk-native/source/audio.c -lm -o /tmp/animaltown-dialogue-voices && /tmp/animaltown-dialogue-voices')}
 if('python' -in $validation.native){RunNative '.' 'python3' @('tests/frame-profile-streaming.py')}
-if('shadows' -in $validation.native){RunNative '.' 'sh' @('-c','cc -std=c11 -Wall -Wextra -Werror tests/native-shadow-union.c -lm -o /tmp/animaltown-shadow-union && /tmp/animaltown-shadow-union')}
+if('shadows' -in $validation.native){RunNative '.' 'sh' @('-c','cc -std=c11 -Wall -Wextra -Werror tests/native-shadow-union.c -lm -o /tmp/animaltown-shadow-union && /tmp/animaltown-shadow-union && cc -std=c11 -Wall -Wextra -Werror -Iout/sdk-native/include tests/native-shadow-lifecycle.c -lm -o /tmp/animaltown-shadow-lifecycle && /tmp/animaltown-shadow-lifecycle')}
 Run dotnet @('build','game/AnimalTown.GameCube','-c','Release','--no-restore','-v','quiet')
 Run dotnet @("$sdkRoot/tools/compiler/DolphinDotNet.Compiler.dll",'--bundle','game/AnimalTown.GameCube/bin/Release/net8.0/AnimalTown.GameCube.dll','out/native')
 & (Join-Path $PSScriptRoot 'patch-native.ps1') -Root $projectRoot

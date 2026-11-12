@@ -1,10 +1,11 @@
 # Four villagers, one town
 
 Start opens a four-card [graphical villager picker](villager-picker.md) before game assets load. A continues
-with that villager; B returns to the title. Empty slots start character creation
-in the existing town. Each session plays one villager; offline profiles are not
-additional simulated actors. Creation and selection do not autosave: use the
-in-game Save action to commit the shared town and every profile.
+with that villager; B returns to the title. Empty slots start
+[onboarding](onboarding.md) in the existing town. Each session plays one villager;
+offline profiles are not additional simulated actors. Selecting a resident does
+not save. New residents remain a draft until the explicit **Save & begin** action;
+later use the in-game Save action to commit the shared town and every profile.
 
 Z on an occupied card opens a named deletion confirmation. Cancel is initially
 selected; B cancels. Selecting Delete explicitly commits the removal. See

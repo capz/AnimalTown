@@ -5,7 +5,7 @@ using Dolphin.Graphics;
 
 // One shared billboard mesh, six fixed transforms. Debug-only visual attention;
 // dialogue, requests and NPC journeys are untouched. Normal depth/culling apply.
-internal sealed class VillagerAttentionRenderer
+internal sealed class VillagerAttentionRenderer : IDisposable
 {
     private Mesh? mesh;
     private readonly float[] heights=new float[6],joint=new float[16];
@@ -19,6 +19,7 @@ internal sealed class VillagerAttentionRenderer
     private readonly Material material=new Material{Lighting=LightingMode.Unlit,Blend=BlendMode.Alpha,DepthWrite=false,DepthTest=true,Cull=CullMode.Back};
     internal VillagerAttentionRenderer(){for(int i=0;i<poses.Length;i++)poses[i]=new Transform();}
     internal void Prepare(){if(mesh==null)mesh=Mesh.Create(BuildVertices());}
+    public void Dispose(){Array.Clear(meshes,0,meshes.Length);mesh?.Dispose();mesh=null;}
     internal static VertexPositionColor[] BuildVertices()
     {
         var vertices=new List<VertexPositionColor>(132);

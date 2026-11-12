@@ -3,7 +3,7 @@ using Dolphin.Graphics;
 
 // One fixed dynamic stream, updated before BeginFrame. Invisible slots are
 // degenerate; visible drops retain the original alpha painter order and depth test.
-internal sealed class RainRenderer
+internal sealed class RainRenderer : System.IDisposable
 {
     private DynamicMesh? mesh;
     private readonly VertexPositionColor[] vertices=new VertexPositionColor[DebugWeather.DropCount*6];
@@ -27,4 +27,5 @@ internal sealed class RainRenderer
         if(mesh==null)mesh=DynamicMesh.Create(vertices);else mesh.SetVertices(vertices);
     }
     internal void Draw(Renderer renderer){if(visible&&mesh!=null)renderer.DrawMesh(mesh,material,pose);}
+    public void Dispose(){mesh?.Dispose();mesh=null;visible=false;}
 }

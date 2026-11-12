@@ -1,0 +1,14 @@
+{
+  "origin": "User-supplied golden pinecone image in this conversation",
+  "edit": "Background and ground shadow removed with image editing; transparent cutout fitted to a 64x64 canvas with two pixels minimum padding",
+  "transparentEditSha256": "d9ac1ee30332c6c6db20a5cb55ec479a9d4c281e2cbbff9d28beb9f9991745ee",
+  "canvas": [
+    64,
+    64
+  ],
+  "sourcePngSha256": "3bf80e6aba06485ccd96d052f66f46cf742c1b0408a4da120bcb47829837d95e",
+  "nativePackageSha256": "60b6f40eb525f194584421611bffee5a827a710ecea94325e4ec7b1f68488d2b",
+  "nativeFormat": "GX_TF_RGB5A3",
+  "mipLevels": 7,
+  "nativePixelBytes": 10976
+}

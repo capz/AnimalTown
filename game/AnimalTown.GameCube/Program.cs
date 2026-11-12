@@ -22,24 +22,30 @@ internal static class Program
         var config=DevConfigStorage.Load();
         DevConfigStorage.ApplyGlobal(config);
         StartupSplash.Run();
-        TownSession session;
         while(true){
             if(!TitleScreen.Run(config))return 0;
-            session=TownSession.Load();LoadingScreen.Finish();
-            if(ProfilePicker.Run(session))break;
+            var session=TownSession.Load();LoadingScreen.Finish();
+            if(!ProfilePicker.Run(session)){AnimalTown.GameCube.NativeTexturePages.Collect();continue;}
+            if(session.Draft!=null&&!OnboardingFlow.Run(config,session)){
+                session.DiscardDraft();AnimalTown.GameCube.NativeTexturePages.Collect();continue;
+            }
+            RunSession(config,session);
+            // RunSession and all its rendering locals have unwound before the
+            // draft is restored and the native collector reclaims managed roots.
+            session.DiscardDraft();LoadingScreen.Finish();TextureCache.TrimUnused();
             AnimalTown.GameCube.NativeTexturePages.Collect();
         }
-        LoadingScreen.Draw();
+    }
+    internal static int RunSession(DevConfig config,TownSession session)
+    {
+        LoadingScreen.Draw();TextureCache.TrimUnused();
         AnimalTown.GameCube.NativeTexturePages.Collect();
         DebugOverlay.WriteLine("ANIMALTOWN TITLE RELEASED native bytes "+GraphicsDevice.Default.NativeBytes);
         DebugOverlay.WriteLine("ANIMALTOWN GAME START");
         if(!Aram.Initialize(2*1024*1024))throw new InvalidOperationException("Audio ARAM reservation failed");
         LoadingScreen.Pulse();
-        var game=new TownGame(config,session);
-        // Run's stack and using scope are gone, so splash batch/package arrays
-        // cannot remain rooted in its locals during this collection.
+        using var game=new TownGame(config,session);
         AnimalTown.GameCube.NativeTexturePages.Collect();
-        DebugOverlay.WriteLine("ANIMALTOWN SPLASH RELEASED");
         long previous=Clock.Timestamp;double accumulator=0;
         while(true)
         {
@@ -47,6 +53,11 @@ internal static class Program
             FrameProfile.Begin();long simulation=FrameProfile.Start();
             long now=Clock.Timestamp;accumulator+=(now-previous)/1000000.0;previous=now;if(accumulator>.1334)accumulator=.1334;
             Controller.Update();var pad=Controller.GetState(0);game.Input(pad);
+            if(game.ExitToTitle)return OnboardingFlow.ToTitle;
+            if(game.NextSetup!=0)return game.NextSetup;
+            // Setup and preview scopes have returned before gameplay starts.
+            // Their disposed views/snapshots cannot remain stack roots here.
+            game.ReleaseIntro();
             while(accumulator>=1.0/30){game.Step(pad);accumulator-=1.0/30;}
             FrameProfile.End(0,simulation);game.Draw();
             long delay=FrameProfile.Start();RuntimeOptions.Wait();FrameProfile.End(13,delay);game.RecordFrame();
@@ -54,10 +65,16 @@ internal static class Program
     }
 }
 
-internal sealed class TownGame
+internal sealed class TownGame : IDisposable
 {
     private GameState state;
+    private readonly TownSession session;
+    private bool releaseIntro,disposed;
+    internal int NextSetup {get;private set;}
+    internal bool ExitToTitle {get;private set;}
+
     private readonly TownClock townClock=new TownClock();
+    private readonly DevConfig debugConfig;
     private readonly RenderDebugOptions renderDebug=new RenderDebugOptions();
     private readonly VillagerAttentionRenderer attention=new VillagerAttentionRenderer();
     private readonly DebugWeather weather=new DebugWeather();
@@ -85,10 +102,12 @@ internal sealed class TownGame
     private readonly int[] visibleTrees=new int[LowPolyTrees.Capacity];
     private readonly float[] treeDistances=new float[LowPolyTrees.Capacity];
     private readonly LowPolyTrees trees;
+    private readonly DroppedItemRenderer droppedItems=new DroppedItemRenderer();
     private readonly UiShapes uiShapes=new UiShapes();
     private readonly MapBackground mapBackground=new MapBackground();
     private readonly RunningMinimap runningMinimap=new RunningMinimap();
     private readonly MenuNavigation menuNavigation=new MenuNavigation();
+    private readonly BuildingPrompt buildingPrompt=new BuildingPrompt();
     private readonly WrappedText dialogueText=new WrappedText(41),itemTitleText=new WrappedText(14),saveStatusText=new WrappedText(48);
     private string wrappedDialogue="";
     private readonly RenderQueue actorQueue=new RenderQueue(7,7);
@@ -102,26 +121,20 @@ internal sealed class TownGame
     private float profiledX=float.NaN,profiledZ;
     private string profileNativeLabel="",profileShadowLabel="";
     private int profileLabelFrames=30;
-    private readonly string[] creationRows=new string[6];
-    private int creationSpecies=-1,creationPalette=-1,creationSelected=-1;
-    private string creationName="",creationPhrase="";
-    private static readonly string[] keyboardGlyphs=KeyboardGlyphs();
-    private static string[] KeyboardGlyphs(){const string keys="ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789 .!?";var glyphs=new string[40];for(int i=0;i<40;i++)glyphs[i]=keys.Substring(i,1);return glyphs;}
 
     private readonly Material plain=new Material{Cull=CullMode.Back,Lighting=LightingMode.Unlit};
     private readonly Model[] models=new Model[6];
     private readonly ModelInstance[] actors=new ModelInstance[7];
     private readonly string[] modelNames={"fox","bunny","giraffe","cat","hamster","spaniel"};
-    private readonly string[] species={"Fox","Bunny","Giraffe","Maine coon","Hamster","Cocker spaniel"};
     private readonly Mesh cube;
     private readonly byte[] banner,icon;
     private readonly Sound syllable;
     private readonly DialogueVoice dialogueVoice;
     private MemoryCard? card;
-    private string screen="world",message="",speaker="AnimalTown",saveStatus="Not saved",action="",entry="";
+    private string screen="world",message="",speaker="AnimalTown",saveStatus="Not saved";
     private bool returnToMenu;
     private int returnMenuTab,returnMenuSelection;
-    private int selected,slot,rotation,tick,day,month,menuTab,faceX,faceZ=-1,typeAt,voiceTick,keyboard;
+    private int selected,slot,rotation,tick,day,month,menuTab,faceX,faceZ=-1,typeAt,voiceTick;
     private int jobProgress,moveClip=-1;
     private long sessionStart;
     private float facingYaw=3.1415927f;
@@ -132,11 +145,12 @@ internal sealed class TownGame
     private bool cliffPreview;
     private int waterInspection;
     private int buildingInspection;
-    private const int SettingsTab=5,TestingTab=6,TestingRows=25;
+    private const int SettingsTab=5,TestingTab=6,TestingRows=29;
     private static readonly string[] tabs={"Backpack","Jobs","Catalog","Home","Post office","Settings","Debug / testing"};
     private static readonly string[] itemActions={"Drop","Place (R rotates)","Plant","Eat","Wear","Equip","Bury","Open money bag","Read","Quit"};
     internal TownGame(DevConfig config,TownSession session)
     {
+        this.session=session;releaseIntro=session.Draft==null;
         ui=new Draw2D(device,new Draw2DOptions{Width=640,Height=480,VertexCapacity=8192,SpriteCapacity=128});
         font=UiFont.LoadSystem();strongFont=font;headingFont=UiFont.Load("gorditas-bold");cube=Cube();
         boxes=new BoxBatch(renderer,cube);for(int i=0;i<modelPoses.Length;i++)modelPoses[i]=new Transform{Parent=worldRoot};
@@ -149,12 +163,14 @@ internal sealed class TownGame
         syllable=Sound.FromPcm8(pcm,16000);syllable.Volume=.12f;dialogueVoice=new DialogueVoice(syllable);
         sessionStart=Clock.Timestamp;
         ReadCalendar();
+        debugConfig=config;
         state=session.State;loaded=session.Loaded;damagedSave=session.Damaged;saveStatus=session.Status;day=Math.Max(day,state.Town.Day);month=Math.Max(month,state.Town.Month);
         BuildingCatalog.Configure(File.ReadAllBytes("dvd:/buildings.bin"));
         LoadingScreen.Pulse();
-        screen=state.HousePlaced?"world":"create";
+        screen=session.Draft!=null?"plot":"world";
+        if(session.Draft!=null&&!session.PreviewStarted){FindStartingPlot();session.PreviewStarted=true;}
         facingYaw=state.Facing;
-        state.Rollover(day,month);
+        if(session.Draft==null)state.Rollover(day,month);
         if(room==0&&state.HousePlaced&&!state.CanWalk(state.X,state.Z,0))state.MoveToHouseEntrance();
         buildings=new BuildingRenderer(worldRoot);
         trees=new LowPolyTrees(worldRoot);terrain=new TerrainRenderer();villagerShadows=new VillagerShadows();
@@ -174,6 +190,58 @@ internal sealed class TownGame
         terrain.FreezeMotion=config.Values[24]!=0;terrain.RecreateMeshes=config.Values[25]!=0;if(config.Values[26]!=0)terrain.ToggleGroundRing();
         NativeRim.Enable(0);
     }
+    private void FindStartingPlot()
+    {
+        var draft=session.Draft!;int best=int.MaxValue,bx=15,bz=35;
+        for(int z=1;z<=Town.Height-13;z++)for(int x=1;x<=Town.Width-15;x++){
+            int distance=(x-15)*(x-15)+(z-35)*(z-35);
+            if(distance>=best||!draft.CanPlaceHome(x,z,out _)||!state.CanWalk(x+3.5f,z+6.5f,0))continue;
+            // Favor an unobstructed first view without removing garden trees.
+            for(int i=0;i<state.Town.GroundCount;i++){
+                var g=state.Town.Ground[i];
+                if(IsTree(g)&&Math.Abs(g.X+.5f-(x+3.5f))<3&&g.Z+.5f>z+6&&g.Z+.5f<z+12)distance+=10000;
+            }
+            if(distance<best){best=distance;bx=x;bz=z;}
+        }
+        if(best<int.MaxValue){state.X=bx+3.5f;state.Z=bz+6.5f;}
+    }
+    private void OnboardingInput(ControllerState p)
+    {
+        // Do not load setup imagery beside the resident town. RunSession
+        // disposes this renderer and unwinds before the next view is created.
+        if(p.B.WasPressed){NextSetup=OnboardingFlow.ToLook;return;}
+        if(p.A.WasPressed&&session.Draft!.PlaceHome((int)state.X-3,(int)state.Z-6)){
+            state.Facing=facingYaw;NextSetup=OnboardingFlow.ToReview;
+        }
+    }
+    internal void ReleaseIntro()
+    {
+        if(!releaseIntro||!resourcesReady||room==0&&!terrain.Ready)return;
+        LoadingScreen.Finish();
+        TextureCache.TrimUnused();AnimalTown.GameCube.NativeTexturePages.Collect();
+        if(session.Draft!=null||OnboardingUi.LiveViews!=0||
+           TextureCache.SourceBytesContaining("dvd:/picker-")!=0||
+           TextureCache.SourceBytesContaining("dvd:/wordmark.dndtex")!=0)
+            throw new InvalidOperationException("Onboarding resources survived gameplay transition");
+        releaseIntro=false;
+        DebugOverlay.WriteLine("ANIMALTOWN ONBOARDING RELEASED native bytes "+device.NativeBytes);
+    }
+    public void Dispose()
+    {
+        if(disposed)return;disposed=true;LoadingScreen.Finish();
+        dialogueVoice.Stop();syllable.Dispose();
+        Model? unadopted=null;
+        if(loadingModel!=null){try{unadopted=loadingModel.GetAwaiter().GetResult();}catch(Exception){if(!loadingModel.IsCompleted)throw;}loadingModel=null;}
+        for(int i=0;i<actors.Length;i++){actors[i]?.Dispose();actors[i]=null!;}
+        if(unadopted!=null&&Array.IndexOf(models,unadopted)<0)unadopted.Dispose();
+        for(int i=0;i<models.Length;i++){models[i]?.Dispose();models[i]=null!;}
+        attention.Dispose();rain.Dispose();trees.Dispose();droppedItems.Dispose();buildings.Dispose();terrain.Dispose();fences.Dispose();
+        uiShapes.Dispose();mapBackground.Dispose();cube.Dispose();ui.Dispose();
+        font.Release();headingFont.Release();TextureCache.Release(itemIcons);card?.Dispose();card=null;
+        NativeRim.Enable(0);NativeRenderProbe.Uv(0);
+        if(NativeShadows.Shutdown()!=1)throw new InvalidOperationException("Shadow shutdown failed");
+        TextureCache.TrimUnused();
+    }
     internal void AdvanceLoading()
     {
         if(resourcesReady||loadingFailed)return;
@@ -192,6 +260,7 @@ internal sealed class TownGame
                 var location=BuildingWorld.Location(state,actor);if(location.Space.IsTown)continue;int building=BuildingWorld.Building(location.Space.Value);
                 if(!buildings.Ready(state.BuildingTypes[building])){BuildingWorld.Entrance(state,building,out float rx,out float rz);BuildingWorld.SetLocation(state,actor,new ActorLocation(0,rx,rz+1,0));saveStatus="A home is unavailable; its occupants are outside.";}
             }
+            droppedItems.Load();
             SelectSpecies();
             // UV regions require the fully loaded model set. Enabling them in
             // the constructor would leave an empty cache and hide the actors.
@@ -203,7 +272,7 @@ internal sealed class TownGame
     }
     private void DrawLoading(bool landscape=false)
     {
-        if(loadingFailed)LoadingScreen.Draw("Could not load town assets.\nRestart with a valid disc.",font);
+        if(loadingFailed)LoadingScreen.Draw("Could not load town assets.\n"+(session.Draft!=null?"B: return to the title.":"Restart with a valid disc."),font);
         else LoadingScreen.Draw();
     }
     private void SelectSpecies()
@@ -215,6 +284,7 @@ internal sealed class TownGame
         if(screen!="menu"||menuTab!=SettingsTab||selected!=0)return;
         if(damagedSave){saveStatus="Damaged saves preserved. Use another card.";return;}
         string previousScreen=screen;screen="saving";Draw();screen=previousScreen;
+        uiShapes.Trim();
         string phase="mount";
         try
         {
@@ -230,14 +300,15 @@ internal sealed class TownGame
             // recovery screen must remain usable even after an allocation fails.
             string detail=error.Message??"Native save error (no message)";if(detail.Length>64)detail=detail.Substring(0,61)+"...";
             saveStatus="Save failed: "+detail;
-            DebugOverlay.WriteLine("SAVE ERROR: "+phase+" (code "+NativeCalendar.CardError()+"): "+detail);card=null;
+            DebugOverlay.WriteLine("SAVE ERROR: "+phase+" (code "+NativeCalendar.CardError()+"): "+detail);card?.Dispose();card=null;
         }
     }
     private void Say(string name,string text){dialogueVoice.Begin();voiceTick=0;returnToMenu=screen=="menu"&&(menuTab==SettingsTab||menuTab==TestingTab);if(returnToMenu){returnMenuTab=menuTab;returnMenuSelection=selected;}speaker=name;message=text;wrappedDialogue=dialogueText.Get(text);typeAt=0;screen="dialogue";}
     private bool Press(ControllerState p)=>p.A.WasPressed;
     internal void Input(ControllerState p)
     {
-        if(!resourcesReady||room==0&&!terrain.Ready)return;
+        if(!resourcesReady||room==0&&!terrain.Ready){if(loadingFailed&&session.Draft!=null&&p.B.WasPressed)ExitToTitle=true;return;}
+        if(session.Draft!=null){OnboardingInput(p);return;}
         bool chord=p.L.IsHeld&&p.R.IsHeld;
         if(chord&&p.Z.IsHeld&&p.DPadDown.WasPressed){terrain.FreezeMotion=!terrain.FreezeMotion;return;}
         if(chord&&p.Z.IsHeld&&p.X.WasPressed){terrain.RecreateMeshes=!terrain.RecreateMeshes;return;}
@@ -250,7 +321,7 @@ internal sealed class TownGame
         if(chord&&p.DPadLeft.WasPressed&&room==0&&screen=="world"){waterInspection=(waterInspection+1)%6;return;}
         if(waterInspection!=0&&screen=="world"&&!p.Start.WasPressed){if(p.B.WasPressed)waterInspection=0;return;}
         if(chord&&p.Start.WasPressed){InspectTerrain();return;}
-        bool navigating=screen=="menu"||screen=="keyboard"||screen=="create"||screen=="item"||screen=="sell"||screen=="shop"||screen=="store"||screen=="post"||screen=="mail"||screen=="lost";
+        bool navigating=screen=="menu"||screen=="item"||screen=="sell"||screen=="shop"||screen=="store"||screen=="post"||screen=="mail"||screen=="lost";
         int direction=menuNavigation.Read(screen,screen=="menu"?menuTab:-1,p.Stick.X,p.Stick.Y,(int)p.PressedButtons,Clock.Timestamp,navigating&&!chord);
         bool up=direction==MenuNavigation.Up,down=direction==MenuNavigation.Down,left=direction==MenuNavigation.Left,right=direction==MenuNavigation.Right;
         if(screen=="menu"&&menuTab==TestingTab&&selected==20&&!chord){
@@ -265,6 +336,11 @@ internal sealed class TownGame
             if(left||right){renderDebug.CycleWaterStyle();return;}
             if(p.Z.WasPressed){renderDebug.ResetWaterStyle();return;}
         }
+        if(screen=="menu"&&menuTab==TestingTab&&(selected==25||selected==26)&&!chord){
+            int option=selected==25?DevConfig.TreeNoiseStrength:DevConfig.TreeNoiseScale;
+            if(left||right){debugConfig.Adjust(option,right?1:-1);return;}
+            if(p.Z.WasPressed){debugConfig.Reset(option);return;}
+        }
         if(p.L.IsHeld&&p.R.IsHeld&&p.Z.WasPressed){FrameProfile.Enabled=!FrameProfile.Enabled;return;}
         if(p.L.IsHeld&&p.R.IsHeld&&p.Y.WasPressed){ToggleModelPath();return;}
         if(p.L.IsHeld&&p.R.IsHeld&&p.DPadDown.WasPressed){if(batchedDrawing)UiFont.Batched=!UiFont.Batched;return;}
@@ -272,26 +348,6 @@ internal sealed class TownGame
         if(p.L.IsHeld&&p.R.IsHeld)return;
         if(screen=="dialogue")
         { if(Press(p)||p.B.WasPressed){dialogueVoice.Stop();if(typeAt<message.Length)typeAt=message.Length;else{screen=returnToMenu?"menu":"world";if(returnToMenu){menuTab=returnMenuTab;selected=returnMenuSelection;}}}return; }
-        if(screen=="keyboard")
-        {
-            if(left)keyboard=(keyboard+39)%40;if(right)keyboard=(keyboard+1)%40;
-            if(up)keyboard=(keyboard+30)%40;if(down)keyboard=(keyboard+10)%40;
-            if(Press(p)&&entry.Length<(action=="name"?16:32))entry+=Letter("ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789 .!?"[keyboard]);
-            if(p.X.WasPressed&&entry.Length>0)entry=entry.Substring(0,entry.Length-1);
-            if(p.Start.WasPressed){if(action=="name")state.Name=entry.Length>0?entry:"Newcomer";else state.Catchphrase=entry;screen="create";}
-            return;
-        }
-        if(screen=="create")
-        {
-            if(up)selected=(selected+5)%6;if(down)selected=(selected+1)%6;
-            if(right){if(selected==0){state.Species=(state.Species+1)%6;SelectSpecies();}else state.Palette=(state.Palette+1)%8;}
-            if(Press(p))
-            {
-                if(selected==1||selected==2){action=selected==1?"name":"phrase";entry="";screen="keyboard";}
-                else if(selected==5){screen="plot";relocate=false;}
-            }
-            return;
-        }
         if(screen=="plot")
         {
             if(Press(p)){if(state.PlaceHouse((int)state.X-3,(int)state.Z-3,relocate))Say("Hearth","Your home is ready! Visit the store for your first job.");else Say("Hearth","This plot needs 15 x 13 clear land tiles.");}
@@ -437,6 +493,15 @@ internal sealed class TownGame
             case 22:renderDebug.GroundMipmaps=!renderDebug.GroundMipmaps;break;
             case 23:renderDebug.AdjustGroundMipDistance(1);break;
             case 24:renderDebug.CycleWaterStyle();break;
+            case 25:debugConfig.Adjust(DevConfig.TreeNoiseStrength,1);break;
+            case 26:debugConfig.Adjust(DevConfig.TreeNoiseScale,1);break;
+            case 27:uiShapes.Trim();card?.Dispose();card=null;DevConfigStorage.Save(debugConfig);Say("Tree noise",DevConfigStorage.Status);break;
+            case 28:
+                uiShapes.Trim();card?.Dispose();card=null;
+                var saved=DevConfigStorage.Load();
+                debugConfig.Values[DevConfig.TreeNoiseStrength]=saved.Values[DevConfig.TreeNoiseStrength];
+                debugConfig.Values[DevConfig.TreeNoiseScale]=saved.Values[DevConfig.TreeNoiseScale];
+                Say("Tree noise",DevConfigStorage.Status);break;
         }
     }
     private void ToggleBatching()
@@ -473,7 +538,11 @@ internal sealed class TownGame
             case 21:return "SDK performance overlay: "+OnOff(DebugOverlay.PerformanceVisible);
             case 22:return "Ground mipmaps: "+OnOff(renderDebug.GroundMipmaps);
             case 23:return "Ground mip distance: "+(renderDebug.GroundMipDistance==0?"Auto":renderDebug.GroundMipDistance+(renderDebug.GroundMipDistance==1?" square":" squares"));
-            default:return "Water rendering: "+(renderDebug.WaterStyle==WaterRenderStyle.WindWaker?"Wind Waker":"Sunshine");
+            case 24:return "Water rendering: "+(renderDebug.WaterStyle==WaterRenderStyle.WindWaker?"Wind Waker":"Sunshine");
+            case 25:return "Tree noise strength: "+debugConfig.TreeNoiseStrengthPercent+"%";
+            case 26:return "Tree noise scale: "+debugConfig.TreeNoiseScalePercent+"%";
+            case 27:return "Save tree noise settings";
+            default:return "Restore saved tree noise";
         }
     }
     private void Interact()
@@ -510,7 +579,7 @@ internal sealed class TownGame
         bool running=false;float beforeX=state.X,beforeZ=state.Z;
         tick++;
         if(tick%30==0)townClock.Update(NativeCalendar.ReadClock());
-        if(tick%900==0){ReadCalendar();state.Rollover(day,month);}
+        if(tick%900==0&&session.Draft==null){ReadCalendar();state.Rollover(day,month);}
         if(screen=="dialogue"&&typeAt<message.Length){
             typeAt++;
             if(typeAt==message.Length)dialogueVoice.Stop();
@@ -642,7 +711,7 @@ internal sealed class TownGame
         LoadingScreen.Finish();
         // Only a drawable scene may evaluate native poses. Shadow receivers
         // use logical positions and can prepare while the landscape loads.
-        if(room==0){trees.Prepare(terrain.RenderSeason);fences.Prepare(state);}
+        if(room==0){trees.Prepare(terrain.RenderSeason,debugConfig.TreeNoiseStrengthPercent,debugConfig.TreeNoiseScalePercent);fences.Prepare(state);droppedItems.Prepare(state,cachedPlayerHeight);}
         if(weather.Raining(room)&&villagers.Doors.PlayerFade<1)rain.Prepare(state,(Clock.Timestamp-sessionStart)/1000000.0,cachedPlayerHeight);
         actorVisibility.Prepare(state,villagers.Doors,indoorCamera,waterInspection,cachedPlayerHeight);
         UpdateAnimationFrame();
@@ -663,7 +732,7 @@ internal sealed class TownGame
             long groundAt=FrameProfile.Start();
             for(int i=0;i<state.Town.GroundCount;i++)
             {
-                var g=state.Town.Ground[i];if(g.Kind==4)continue;
+                var g=state.Town.Ground[i];if(g.Kind==0||g.Kind==4)continue;
                 float y=0;
                 if(!IsTree(g))Box(g.X+.25f,y+.02f,g.Z+.25f,.5f,g.Kind==1?.03f:.25f,.5f,g.Kind==1?new Color32(105,81,54):g.Kind==2?new Color32(242,174,170):new Color32(229,190,82));
             }
@@ -672,6 +741,7 @@ internal sealed class TownGame
             for(int building=0;building<BuildingWorld.Count;building++)buildings.Exterior(renderer,state,building,villagers.Doors);
             FrameProfile.SubmissionEnd(2,submissionAt);submissionAt=FrameProfile.SubmissionStart();
             fences.Draw(renderer,state,terrain.ScrollTransform,cachedPlayerHeight);FrameProfile.SubmissionEnd(3,submissionAt);
+            groundAt=FrameProfile.Start();droppedItems.Draw(renderer);FrameProfile.End(3,groundAt);
         }
         if(room!=0){
             if(!indoorCamera.WallVisible(2)){
@@ -694,7 +764,14 @@ internal sealed class TownGame
         if(batchedDrawing)DrawActors();
         FrameProfile.End(5,phase);phase=FrameProfile.Start();
         if(screen=="plot")
-        { int x=(int)state.X-3,z=(int)state.Z-3;bool valid=state.Town.ValidPlot(x,z);for(int i=0;i<15;i++){Box(x+i,.02f,z,.9f,.03f,.9f,valid?new Color32(74,230,113):new Color32(229,82,72));Box(x+i,.02f,z+12,.9f,.03f,.9f,valid?new Color32(74,230,113):new Color32(229,82,72));} }
+        {
+            int x=(int)state.X-3,z=(int)state.Z-(session.Draft!=null?6:3);
+            bool valid=session.Draft!=null?session.Draft.CanPlaceHome(x,z,out _):state.Town.ValidPlot(x,z);
+            var color=valid?new Color32(115,202,114):new Color32(229,116,89);
+            for(int i=0;i<15;i++){Box(x+i,.035f,z,.9f,.04f,.9f,color);Box(x+i,.035f,z+12,.9f,.04f,.9f,color);}
+            for(int i=1;i<12;i++){Box(x,.035f,z+i,.9f,.04f,.9f,color);Box(x+14,.035f,z+i,.9f,.04f,.9f,color);}
+            if(session.Draft!=null)buildings.PreviewHome(renderer,state,x,z);
+        }
         if(batchedDrawing)boxes.Flush();
         if(renderDebug.ForceAttention&&villagers.Doors.PlayerFade<1)attention.Draw(renderer,state,actorVisibility,indoorCamera,cachedPlayerHeight);
         submissionAt=FrameProfile.SubmissionStart();if(weather.Raining(room)&&villagers.Doors.PlayerFade<1)rain.Draw(renderer);FrameProfile.SubmissionEnd(4,submissionAt);
@@ -745,6 +822,20 @@ internal sealed class TownGame
     private void Text(string text,float x,float y,Color32 c,float scale=1.5f,int visibleCharacters=-1)=>font.Draw(ui,text,x,y,c,scale/1.5f,0,visibleCharacters);
     private void Strong(string text,float x,float y,Color32 c,float scale=1.5f)=>strongFont.Draw(ui,text,x,y,c,scale/1.5f);
     private void Heading(string text,float x,float y,Color32 c,float scale=1)=>headingFont.Draw(ui,text,x,y,c,scale,(float)Math.Sin(tick*.018f+x*.01f)*1.8f);
+    private void DoorPopover(string label,bool action)
+    {
+        const float normalScale=1.05f;
+        float measured=strongFont.Measure(label,normalScale/1.5f),padding=action?62:32;
+        float width=Math.Max(224,Math.Min(584,measured+padding)),left=(640-width)*.5f;
+        float scale=normalScale*Math.Min(1,(width-padding)/Math.Max(1,measured));
+        Panel(left,320,width,40);
+        if(action){
+            // Match the controller's round green A key using cached UI shapes.
+            Rounded(left+12,328,24,24,12,new Color32(53,105,84));
+            Strong("A",left+24-strongFont.Measure("A",normalScale/1.5f)*.5f,328,Color32.White,normalScale);
+        }
+        Strong(label,left+(action?48:16),328,new Color32(49,72,62),scale);
+    }
     private void Panel(float x,float y,float w,float h)
     { float radius=Math.Min(30,h*.5f);if(batchedDrawing&&uiShapes.DrawPanel(ui,x,y,w,h,radius))return;Bulged(x+4,y+5,w,h,radius,new Color32(49,72,62,130),false);Bulged(x,y,w,h,radius,new Color32(255,245,221),false); }
     private void Bulged(float x,float y,float w,float h,float radius,Color32 color,bool cache=true)
@@ -782,17 +873,18 @@ internal sealed class TownGame
         Strong(speaker,62,306,new Color32(255,245,221),1.35f);Text(wrappedDialogue,57,344,new Color32(49,72,62),1.4f,typeAt);
     }
     private static string Letter(char c)=>new string(new[]{c});
-    private void UpdateCreationRows()
-    {
-        if(creationSpecies==state.Species&&creationPalette==state.Palette&&creationSelected==selected&&creationName==state.Name&&creationPhrase==state.Catchphrase)return;
-        creationSpecies=state.Species;creationPalette=state.Palette;creationSelected=selected;creationName=state.Name;creationPhrase=state.Catchphrase;
-        creationRows[0]="Species: "+species[state.Species];creationRows[1]="Name: "+state.Name;creationRows[2]="Catchphrase: "+state.Catchphrase;
-        creationRows[3]="Palette: "+state.Palette;creationRows[4]="Right: change / A: edit";creationRows[5]="Choose your house plot";
-        for(int i=0;i<creationRows.Length;i++)creationRows[i]=(selected==i?"> ":"  ")+creationRows[i];
-    }
     private void DrawHud()
     {
         var ink=new Color32(49,72,62);
+        if(screen=="plot"&&session.Draft!=null){
+            session.Draft.CanPlaceHome((int)state.X-3,(int)state.Z-6,out string reason);
+            Panel(150,24,340,42);Heading("Find your little corner",168,31,ink,1.05f);
+            Panel(28,355,584,101);Rounded(44,342,104,28,14,new Color32(53,105,84));
+            Strong("Hearth",58,346,new Color32(255,245,221),1.1f);
+            Text(reason,48,372,ink,1.13f);
+            Text("Your home and garden need 15 x 13 clear tiles.",48,402,ink,1);
+            Text("Stick move   A choose spot   B back",48,430,ink,1.05f);return;
+        }
         if(FrameProfile.Enabled){
             if(++profileLabelFrames>=30){profileLabelFrames=0;profileNativeLabel="Native: "+NativeShadows.Stats(9)+" slots / "+NativeShadows.Stats(10)/1024+" KiB";profileShadowLabel=(room==0&&terrain.GroundRingActive?"Ring / ":"")+"Shadows: "+NativeShadows.Stats(0)+" pages / "+NativeShadows.Stats(2)+" updated";}
             Text(indexedModels?(batchedDrawing?"GX indexed / batched":"GX indexed / baseline"):(batchedDrawing?"Direct / batched":"Direct / baseline"),420,397,ink,.8f);
@@ -800,22 +892,22 @@ internal sealed class TownGame
             Text(profileShadowLabel,420,419,ink,.55f);
         }
         Rounded(20,440,420,29,14.5f,new Color32(48,76,57,210));Text("A interact   X backpack   Y map",32,451,Color32.White,1.3f);
-        if(screen=="world"&&room!=0){Panel(205,371,410,61);Text("C-stick turn view / L recenter",220,380,ink,.95f);Text(room>=16&&room<=21?state.Town.Residents[room-16].Name+"'s home":BuildingWorld.RoomProfile(room)>=0?state.ProfileName(BuildingWorld.RoomProfile(room))+"'s home":"Home",220,402,ink,1.1f);}
+        if(screen=="world"&&room!=0){Panel(205,371,410,61);Text("C-stick turn view / L recenter",220,380,ink,.95f);Text(buildingPrompt.Name(state,BuildingWorld.Building(room)),220,402,ink,1.1f);}
         if(screen=="world"){
             int door=villagers.Doors.Nearby(state,0,facingYaw);
-            if(door>=0||villagers.Doors.Busy(0)){Panel(220,320,240,36);Strong(villagers.Doors.Busy(0)?villagers.Doors.Actors[0].Phase==DoorPhase.Waiting?"Waiting at door":"Through the doorway":room==0?"A  Enter":"A  Exit",230,326,ink,1.05f);}
+            if(door>=0||villagers.Doors.Busy(0)){
+                bool action=!villagers.Doors.Busy(0);
+                string label=action?room==0?buildingPrompt.Enter(state,door):"Exit":villagers.Doors.Actors[0].Phase==DoorPhase.Waiting?"Waiting at door":"Through the doorway";
+                DoorPopover(label,action);
+            }
         }
         if(screen=="world"||screen=="plot"){Panel(20,371,170,61);Text(townClock.Date,32,380,ink,1.1f);Strong(townClock.Time,32,400,ink,1.6f);}
         if(screen=="dialogue")
         { SpeechBubble();return; }
         if(screen=="map"){DrawMap();return;}
         if(screen=="plot"){Panel(55,370,530,55);Text("Choose a 15 x 13 plot. A: confirm",70,385,ink);return;}
-        if(screen=="keyboard")
-        { Panel(60,100,520,280);Rounded(78,118,480,35,17,new Color32(231,222,190));Text(entry+"_",88,128,ink);for(int i=0;i<40;i++){Rounded(82+i%10*45,177+i/10*38,34,32,14,i==keyboard?new Color32(225,177,119):new Color32(236,226,197));Text(keyboardGlyphs[i],88+i%10*45,185+i/10*38,ink,2);}Text("A type  X erase  START done",85,355,ink);return; }
         if(screen=="saving")
         { Panel(115,181,410,132);Heading("Saving your town",142,199,ink);Text("Please keep the memory\ncard inserted.",142,245,ink,1.25f);return; }
-        if(screen=="create")
-        { Panel(55,90,530,295);Heading("Make yourself at home",78,102,ink);UpdateCreationRows();for(int i=0;i<creationRows.Length;i++){if(selected==i)Rounded(69,148+i*31,495,28,14,new Color32(221,231,188));Text(creationRows[i],75,149+i*31,ink);}return; }
         if(screen=="world"){if(room==0&&runningMinimap.Visible)DrawMinimap();if(waterInspection!=0)Text("Water inspection "+waterInspection+" / L+R+Left cycles",42,320,ink);if(cliffPreview)Text("Cliff kit preview / L+R+Up closes",42,343,ink);return;}
         if((screen=="menu"&&menuTab==0)||screen=="sell"||screen=="item"){DrawBackpack();return;}
         Panel(45,75,550,350);string title=screen=="menu"?tabs[menuTab]:screen=="shop"?"Store stock":screen=="store"?"Hearth's store":screen=="post"?"Town hall":screen=="mail"?"Mailbox":"Lost and Found";
@@ -823,7 +915,7 @@ internal sealed class TownGame
         int total=screen=="menu"?TabCount():screen=="shop"?state.Town.StockCount:screen=="mail"?Math.Max(1,state.MailCount):screen=="lost"?Math.Max(1,LostCount()):screen=="store"?8:7;
         bool compact=screen=="menu"&&(menuTab==SettingsTab||menuTab==TestingTab);int page=compact?9:8,step=compact?24:29;float rowScale=compact?1.2f:1.4f;int first=selected/page*page;
         for(int i=first;i<Math.Min(total,first+page);i++){float y=131+(i-first)*step;if(i==selected){Rounded(57,y,520,step-2,(step-2)*.5f,new Color32(221,231,188));Strong("> "+RowLabel(i),68,y,ink,rowScale);}else Text("  "+RowLabel(i),68,y,ink,rowScale);}
-        Text(screen=="menu"&&menuTab==TestingTab&&selected==20?"Left/Right: 5%   A: +5%   Z: reset":screen=="menu"&&menuTab==TestingTab&&selected==23?"Left/Right: 1 square   A: +1   Z: Auto":screen=="menu"&&menuTab==TestingTab&&selected==24?"A / Left/Right: switch   Z: Wind Waker":"Stick / D-pad choose   L/R tabs   A select   B close",65,392,ink,1);
+        Text(screen=="menu"&&menuTab==TestingTab&&(selected==25||selected==26)?"Left/Right: adjust   A: increase   Z: reset":screen=="menu"&&menuTab==TestingTab&&selected==20?"Left/Right: 5%   A: +5%   Z: reset":screen=="menu"&&menuTab==TestingTab&&selected==23?"Left/Right: 1 square   A: +1   Z: Auto":screen=="menu"&&menuTab==TestingTab&&selected==24?"A / Left/Right: switch   Z: Wind Waker":"Stick / D-pad choose   L/R tabs   A select   B close",65,392,ink,1);
         if(screen=="menu"&&menuTab==SettingsTab){
             Text("Manual saves only. Choose Save now to write the card.",65,331,ink,1);
             Text(saveStatusText.Get(saveStatus),65,357,ink,1);

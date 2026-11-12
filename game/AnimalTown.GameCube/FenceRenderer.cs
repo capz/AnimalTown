@@ -5,7 +5,7 @@ using Dolphin.Graphics;
 // Four immutable sides, baked into the same reference cylinder as terrain.
 // Each side retains the original per-post visibility envelope. Travel changes
 // only the shared scroll transform; garden/terrain edits rebuild between frames.
-internal sealed class FenceRenderer
+internal sealed class FenceRenderer : IDisposable
 {
     private readonly Mesh?[] meshes=new Mesh?[16];
     private readonly float[] centerX=new float[224],centerY=new float[224],centerZ=new float[224];
@@ -15,6 +15,11 @@ internal sealed class FenceRenderer
     private int version=-1,tier=-1;
     private bool placed;
     private const float Radius=.3378f;
+    public void Dispose()
+    {
+        for(int i=0;i<meshes.Length;i++){meshes[i]?.Dispose();meshes[i]=null;}
+        town=null;version=tier=-1;placed=false;
+    }
     internal void Prepare(GameState state)
     {
         int stamp=0;for(int p=0;p<GameState.ProfileCount;p++)stamp=unchecked(stamp*31+state.HomeX(p)*397+state.HomeZ(p)*17+state.HomeGardenTier(p)*2+(state.HomePlaced(p)?1:0));

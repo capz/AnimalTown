@@ -14,6 +14,28 @@ internal static class DevConfigChecks
         check(sliders.Values[20]==0&&sliders.Values[23]==10,"dev sliders remain bounded");
         sliders.Adjust(8,-1);check(sliders.Values[8]==1,"dev enums cycle in both directions");
         sliders.Values[20]=1;rejected=false;try{sliders.Encode();}catch(InvalidOperationException){rejected=true;}check(rejected,"invalid rim increments cannot create an un-restorable config");
+        var original=DevConfig.Decode(Convert.FromBase64String("QVREAQEBAAABAQEBAgAAAAAAAAAAAAIAfQABBAAAAADlXYtQ"));
+        check(original.Values[0]==1&&original.Values[20]==125&&original.Values[23]==4&&original.Values[18]==2,"v1 debug file keeps existing options during migration");
+        check(original.TreeNoiseStrengthPercent==100&&original.TreeNoiseScalePercent==100,"v1 debug files adopt the current tree appearance");
+        var noise=new DevConfig();check(noise.TreeNoiseStrengthPercent==100&&noise.TreeNoiseScalePercent==100,"new defaults match the original tree appearance");
+        for(int i=0;i<100;i++){noise.Adjust(DevConfig.TreeNoiseStrength,-1);noise.Adjust(DevConfig.TreeNoiseScale,1);}
+        check(noise.TreeNoiseStrengthPercent==0&&noise.TreeNoiseScalePercent==400,"tree strength and scale clamp rather than wrapping");
+        for(int i=0;i<100;i++){noise.Adjust(DevConfig.TreeNoiseStrength,1);noise.Adjust(DevConfig.TreeNoiseScale,-1);}
+        check(noise.TreeNoiseStrengthPercent==300&&noise.TreeNoiseScalePercent==25,"tree sliders cover their full supported ranges");
+        var savedNoise=noise.Encode();check(savedNoise.Length==40&&savedNoise[3]==2,"extended debug settings have a versioned checksummed 40-byte record");
+        var loadedNoise=DevConfig.Decode(savedNoise);check(loadedNoise.TreeNoiseStrengthPercent==300&&loadedNoise.TreeNoiseScalePercent==25,"both tree settings restore independently after a save");
+        noise.Reset(DevConfig.TreeNoiseStrength);noise.Reset(DevConfig.TreeNoiseScale);check(noise.TreeNoiseStrengthPercent==100&&noise.TreeNoiseScalePercent==100,"Z/reset restores the original appearance");
+        savedNoise[32]^=1;rejected=false;try{DevConfig.Decode(savedNoise);}catch(IOException){rejected=true;}check(rejected,"the new scale byte is protected by the checksum");
+        noise.Values[DevConfig.TreeNoiseStrength]=31;rejected=false;try{noise.Encode();}catch(InvalidOperationException){rejected=true;}check(rejected,"unsupported strength cannot be saved");
+        noise.Values[DevConfig.TreeNoiseStrength]=10;noise.Values[DevConfig.TreeNoiseScale]=16;rejected=false;try{noise.Encode();}catch(InvalidOperationException){rejected=true;}check(rejected,"unsupported scale cannot be saved");
+        byte[] off=LowPolyTree.DetailTexture(0),normal=LowPolyTree.DetailTexture(),strong=LowPolyTree.DetailTexture(300);
+        TexturePixels.Validate(off);TexturePixels.Validate(strong);
+        check(off.Skip(32).All(v=>v==255),"zero strength is an identity modulation at every mip level");
+        check(normal.Length==strong.Length&&strong.Length==1472&&TexturePixels.Int(strong,24)==6,"stronger noise keeps the same tiny native mip budget");
+        long ordinary=0,pronounced=0;for(int y=0;y<32;y++)for(int x=0;x<32;x++){ordinary+=TexturePixels.Pixel(normal,x,y)>>24;pronounced+=TexturePixels.Pixel(strong,x,y)>>24;}
+        check(pronounced<ordinary&&strong.Skip(32).Min()>0,"higher strength increases detail without clipping to black");
+        check(Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(normal))=="68E634A7F48038AEA7F92E05FBAFEF4E4B62C09D058C5A29629A3CB9DFE43EE5","default tree detail stays byte-identical to the approved texture");
+        rejected=false;try{LowPolyTree.DetailTexture(301);}catch(ArgumentOutOfRangeException){rejected=true;}check(rejected,"unsupported runtime noise strength is rejected");
         rejected=false;try{DevConfig.Decode(new byte[8]);}catch(IOException){rejected=true;}check(rejected,"truncated dev config rejected");
     }
 }

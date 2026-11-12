@@ -42,14 +42,20 @@ internal static class TextureAudit
                 };
                 byte[] native=FloorTexture.Prepare(bytes,fullMipChain:ground);records.Add(new{source="dvd:/"+Path.GetFileName(path),sourceSha=Convert.ToHexString(SHA256.HashData(bytes)),width,height,runtimeWidth=TexturePixels.Width(native),runtimeHeight=TexturePixels.Height(native),format=TexturePixels.Int(native,8),levels=TexturePixels.Int(native,24),residentBytes=native.Length-32,policy});continue;
             }
+            if(Path.GetFileName(path)=="dropped-item.dndtex"){
+                if(width!=64||height!=64||TexturePixels.Int(bytes,8)!=5||TexturePixels.Int(bytes,24)!=7||bytes.Length!=11008)throw new InvalidDataException("Dropped-item texture violates native budget");
+                records.Add(new{source="dvd:/dropped-item.dndtex",sourceSha=Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(Path.Combine(root,"assets/textures/items/dropped-item.png")))),width,height,format=5,levels=7,residentBytes=bytes.Length-32,payloadSha=Convert.ToHexString(SHA256.HashData(bytes)),policy="shared-dropped-item-rgb5a3-alpha-weighted-mips-clamp-trilinear"});continue;
+            }
             bool atlas=Path.GetFileName(path) is "gorditas-bold.dndtex" or "wordmark.dndtex" or "item-icons.dndtex";
             records.Add(new{source="dvd:/"+Path.GetFileName(path),sourceSha=Convert.ToHexString(SHA256.HashData(bytes)),width,height,
                 pageWidth=atlas?Math.Min(128,width):TexturePixels.FitWidth(width,height),pageHeight=atlas?Math.Min(128,height):TexturePixels.FitHeight(width,height),
                 pages=atlas?((width+127)/128)*((height+127)/128):1});
         }
+        byte[] treeDetail=LowPolyTree.DetailTexture();TexturePixels.Validate(treeDetail);
+        records.Add(new{source="generated:tree-detail-noise-v1",sourceSha=Convert.ToHexString(SHA256.HashData(treeDetail)),width=TexturePixels.Width(treeDetail),height=TexturePixels.Height(treeDetail),format=TexturePixels.Int(treeDetail,8),levels=TexturePixels.Int(treeDetail,24),residentBytes=treeDetail.Length-32,policy="shared-all-tree-species-seasons-repeat-trilinear"});
         int expected=32+BuildingCatalog.Count*8*4;if(models!=expected)throw new InvalidDataException("Expected eight legacy models plus eight parts per building definition in four texture resolutions");
         string originals=Path.Combine(root,"out/floor-sources.json");if(File.Exists(originals))records.Add(new{floorSourceProvenance=JsonSerializer.Deserialize<JsonElement>(File.ReadAllText(originals))});
         File.WriteAllText(Path.Combine(root,"out/texture-audit.json"),JsonSerializer.Serialize(records,new JsonSerializerOptions{WriteIndented=true}));
-        Console.WriteLine($"Texture audit: {models/4} imported models in 128/256/512/1024px variants; generated trees use no textures");
+        Console.WriteLine($"Texture audit: {models/4} imported models in 128/256/512/1024px variants; generated trees share {LowPolyTree.DetailBytes} native texture bytes");
     }
 }

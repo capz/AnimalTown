@@ -29,6 +29,8 @@ static class Program
             else if(args[0]=="audit")Audit();
             else if(args[0]=="prepare")Prepare(args[2],args[3]);
             else if(args[0]=="art")Art();
+            else if(args[0]=="dropped-item-import")DroppedItemAssets.Import(Root);
+            else if(args[0]=="dropped-item-check")DroppedItemAssets.Check(Root);
             else if(args[0]=="splash-check")SplashAssets.Check(Root);
             else if(args[0]=="splash-import-engine")SplashAssets.ImportEngine(Root,args[2]);
             else if(args[0]=="terrain")RepeatFloorAssets.Build(Root);
@@ -102,7 +104,7 @@ static class Program
     static void Art()
     {
         string dir=Path.Combine(Root,"out/disc");Directory.CreateDirectory(dir);
-        BrandAssets.Build(Root);RepeatFloorAssets.Build(Root);TerrainCliffAssets.CookTexture(Root);
+        BrandAssets.Build(Root);RepeatFloorAssets.Build(Root);TerrainCliffAssets.CookTexture(Root);DroppedItemAssets.Build(Root);
         byte[] image=Banner(96);File.WriteAllBytes(Path.Combine(dir,"savebanner.rgb5a3"),image);File.WriteAllBytes(Path.Combine(dir,"saveicon.rgb5a3"),Banner(32));
     }
     static void Disc(string dolPath,string commit)
