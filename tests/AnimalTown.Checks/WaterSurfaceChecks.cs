@@ -4,6 +4,7 @@ internal static class WaterSurfaceChecks
 {
     internal static void Run(Action<bool,string> check)
     {
+        BedRuns(check);
         RiverCoastChecks.Run(check);
         RiverBankChecks.Run(check);
         CloudShadowChecks.Run(check);
@@ -146,5 +147,54 @@ internal static class WaterSurfaceChecks
         }
         check(cells>100&&cells<=WaterSurface.MaximumCells&&land==2,"visible open sea stays bounded and leaves bridge/land surfaces intact");
         strips.Prepare(state,1,data);check(strips.Count==1&&!strips.Water[0],"interior floors never inherit outdoor water");
+    }
+    private static void BedRuns(Action<bool,string> check)
+    {
+        var town=new Town(43);Array.Fill(town.Tiles,(byte)Terrain.Grass);Array.Clear(town.Elevation);
+        for(int z=40;z<44;z++)for(int x=40;x<48;x++)town.Tiles[z*Town.Width+x]=(byte)Terrain.Water;
+        int quads=0;for(int z=40;z<44;z++){
+            check(WaterSurface.BedRunEnd(town,40,z,48)==48,"flat 8m-wide waterbed uses one full row quad");quads++;
+        }
+        check(quads*2==8&&quads*8==32,"flat 8x4m bed needs eight triangles instead of 64");
+        town.Tiles[40*Town.Width+42]=(byte)Terrain.Bridge;
+        check(WaterSurface.BedRunEnd(town,40,40,48)==48,"bed spans a bridge without a seam or hidden material split");
+        town.Tiles[40*Town.Width+44]=(byte)Terrain.Grass;
+        check(WaterSurface.BedRunEnd(town,40,40,48)==44&&WaterSurface.BedRunEnd(town,44,40,48)==44,
+            "bed runs stop at dry holes and dry cells emit no geometry");
+        town.Tiles[40*Town.Width+44]=(byte)Terrain.Sea;
+        check(WaterSurface.BedRunEnd(town,40,40,48)==44,"inland and deeper ocean beds never merge across their depth change");
+        town.Elevation[40*Town.Width+42]=TerrainElevation.Block;
+        check(WaterSurface.BedRunEnd(town,40,40,48)==42,"raised water splits before a height discontinuity");
+        town.Elevation[40*Town.Width+40]=TerrainElevation.RampEast;
+        check(WaterSurface.BedRunEnd(town,40,40,48)==41,"X-sloped cells retain their original two triangles");
+        for(int x=40;x<48;x++){town.Tiles[40*Town.Width+x]=(byte)Terrain.Water;town.Elevation[40*Town.Width+x]=TerrainElevation.RampSouth;}
+        check(WaterSurface.BedRunEnd(town,40,40,48)==48,"identical Z-sloped height profiles merge without changing their plane");
+        int totalCells=0,totalQuads=0;
+        for(int seed=0;seed<12;seed++){
+            town=new Town(seed);
+            for(int z=-4;z<Town.Height+4;z++)for(int left=-8;left<=Town.Width;left+=8){
+                int covered=0;
+                for(int x=left;x<left+8;){
+                    int end=WaterSurface.BedRunEnd(town,x,z,left+8);
+                    if(end==x){check(!WaterSurface.HasBed(town,x,z),"only dry cells are skipped");x++;continue;}
+                    check(end>x&&end<=left+8,"bed run remains inside its immutable section");
+                    bool sea=WaterTerrain.IsSea(town,x,z);float near=WaterSurface.HeightAt(town,x,z,x,z),far=WaterSurface.HeightAt(town,x,z,x,z+1);
+                    for(int at=x;at<end;at++){
+                        check(WaterSurface.HasBed(town,at,z)&&WaterTerrain.IsSea(town,at,z)==sea,"merged beds cover water/bridge cells with one shared depth");
+                        if(end-x>1)check(WaterSurface.HeightAt(town,at,z,at,z)==near&&WaterSurface.HeightAt(town,at,z,at+1,z)==near&&
+                            WaterSurface.HeightAt(town,at,z,at,z+1)==far&&WaterSurface.HeightAt(town,at,z,at+1,z+1)==far,
+                            "every merged cell retains its original cylinder-row corner heights");
+                    }
+                    covered+=end-x;totalQuads++;x=end;
+                }
+                int expected=0;for(int x=left;x<left+8;x++)if(WaterSurface.HasBed(town,x,z))expected++;
+                check(covered==expected,"seeded waterbed coverage has no holes or overlaps");totalCells+=expected;
+            }
+        }
+        check(totalQuads*3<totalCells,"seed sweep reduces waterbed polygon count by more than two thirds");
+        long bytes=GC.GetAllocatedBytesForCurrentThread();
+        for(int n=0;n<10000;n++)WaterSurface.BedRunEnd(town,40,40,48);
+        check(GC.GetAllocatedBytesForCurrentThread()==bytes,"bed run selection allocates no temporary lists or per-cell objects");
+        Console.WriteLine("Waterbeds: "+totalCells+" cells -> "+totalQuads+" row quads across 12 town seeds");
     }
 }

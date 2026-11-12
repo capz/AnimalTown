@@ -68,7 +68,7 @@ public static class SunshineWater
     // Uniform scale of the curved water mesh around its cylinder axis:
     // Pbed = scale*Psurface + (scale-1)*Radius along local Y. As the mesh
     // already sits on Radius + WaterSurface.Height, this produces a constant
-    // physical inset without storing a second geometry archive in ARAM.
+    // physical inset for the merged bed vertices baked into the terrain archive.
     public static float BedScale(float depth)
     {
         float radius=CylinderWorld.Radius+WaterSurface.Height;

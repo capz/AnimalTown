@@ -35,11 +35,10 @@ calendar, collision, geometry revisions and season metadata are untouched.
   samples of a small shared wave texture. Individual hand-authored mip levels
   change highlight brightness and opacity with LOD, rather than being normal
   downsampled copies. Foam remains an independent bank overlay.
-- **Underwater floor:** draw the **same immutable water meshes again**
-  with an inward cylindrical transform, *before* the translucent surface.
-  Share the game's existing cliff-soil/sand texture and apply a pale sandy tint.
-  River floor is shallower than open sea. No additional water geometry, archive
-  entries, per-frame texture uploads or modifications to saved water tiles.
+- **Underwater floor:** draw separate, merged **solid dark-blue** bed meshes
+  before the translucent surface. The unlit opaque material is RGB (18, 48, 82),
+  with no texture or custom TEV effect. River floor is shallower than open sea.
+  Bed geometry is baked once; saved terrain and surface-water geometry are unchanged.
 - **Ordering:** floor before other opaque terrain; transparent water and
   existing shoreline foam after other opaque terrain, with depth testing
   retained and water depth writes disabled.
@@ -65,13 +64,30 @@ the same resident image to both GX texture slots. A four-stage DNEF v2
 TEV program retains the primary texture's alpha; Sunshine surface alpha
 blends with **depth test on** and **depth writes off**.
 
-The seabed reuses `TerrainSoil.Material.Texture` (the existing
-`dvd:/cliff-soil.dndtex` texture) with a dedicated sandy TEV constant.
-`SunshineWater.BedScale` scales the already archived water vertices
-around the exact cylinder axis: inland 40 cm inward, offshore 75 cm.
-Two shared `Transform` instances and draw-transform arrays replace all
-separate seafloor mesh allocations. No save, collision, terrain height,
-UV, archive geometry or texture-cache entry is modified by switching.
+The seabed uses `WaterMaterial.Bed`, an ordinary untextured material with opaque
+blending, depth testing/writing and unlit shading. White vertex colors and zero
+UVs keep the tint independent of surface-water gradients, seasonal floor
+materials and the cliff-soil texture. Sunshine selection no longer loads the
+cliff-soil texture on behalf of the bed or allocates a bed TEV program.
+
+`WaterSurface.BedRunEnd` finds the longest adjacent run in each curved row that
+shares an X-flat near/far height profile and the same river/sea depth. Dry banks,
+height changes and X-sloped cells break the run; bridges remain covered. Material
+variant boundaries do not split it. Rows retain their exact cylinder chords:
+merging across Z would flatten the curved bed or create T-junction gaps. A flat
+8x4 m patch therefore takes four row quads (eight triangles) instead of 32 cell
+quads (64 triangles). A 12-seed sweep covers 122,639 water/bridge cells using
+19,453 quads, about 84% fewer than one quad per cell.
+
+`SunshineWater.BedScale` and `BedAxisOffset` bake the inward radial positions into
+the bed vertices: inland 40 cm inward, offshore 75 cm. All beds share one mesh per
+section and the normal terrain scroll transform, with no per-frame bed geometry
+updates or extra bed transforms. Archive kind 108 stores this compact payload;
+the native coalescer combines the two scratch halves within each 8x8 m page.
+Wind Waker skips binding the bed entries. Switching styles rebinds existing
+archive views without rebuilding terrain, loading textures or changing the fixed
+256-view / 1 MiB MEM1 cache budgets. Visible triangle counters include bed draws
+only when Sunshine is selected.
 
 The depth-correct order is:
 
@@ -83,8 +99,8 @@ Wind Waker continues its original ordering and optional storm-wave patch.
 The local storm overlay is suppressed in Sunshine mode to avoid alpha
 accumulation across two overlapping water surfaces.
 
-Only the first switch to Sunshine generates the mipmap and creates two
-TEV programs. Subsequent A/B switches reuse the same GPU resources,
+Only the first switch to Sunshine generates the mipmap and creates the wave
+TEV program. Subsequent A/B switches reuse the same GPU resources,
 reassigning the original water materials with **zero terrain rebuilds**.
 Ground material mipmap toggles remain independent of Sunshine mipmaps.
 

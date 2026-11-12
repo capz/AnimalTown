@@ -12,11 +12,14 @@ internal sealed class WaterMaterial : IDisposable
     private Texture2D? stormBase,whitecaps;
     private TevMaterial? storm;
     private Texture2D? sunshineTexture;
-    private TevMaterial? sunshineLayer,sunshineBed;
+    private TevMaterial? sunshineLayer;
     internal WaterRenderStyle Style=WaterRenderStyle.WindWaker;
     internal bool IsSunshine=>Style==WaterRenderStyle.Sunshine;
     internal Material Surface=>IsSunshine&&sunshineLayer!=null?sunshineLayer.Material:water.Material;
-    internal Material Bed=>sunshineBed?.Material??throw new InvalidOperationException("Sunshine bed material was not prepared.");
+    internal readonly Material Bed=CreateBedMaterial();
+    internal static Material CreateBedMaterial()=>new Material{
+        Color=new Color32(18,48,82),Blend=BlendMode.Opaque,DepthWrite=true,
+        DepthTest=true,Lighting=LightingMode.Unlit,Cull=CullMode.Back};
     internal bool RoughOcean;
     internal Material OceanSurface=>IsSunshine?Surface:RoughOcean?storm!.Material:Surface;
     internal readonly Material Foam=new Material{Blend=BlendMode.Alpha,DepthWrite=false,Lighting=LightingMode.Unlit,Cull=CullMode.Back};
@@ -64,15 +67,13 @@ internal sealed class WaterMaterial : IDisposable
         }catch{effect?.Dispose();second?.Dispose();first?.Dispose();throw;}
         stormBase=first;whitecaps=second;storm=effect;
     }
-    // The existing cliff-soil texture doubles as the seafloor. The Sunshine
-    // wave texture and TEV effects are allocated only on first selection;
-    // neither water style requires changing any archived terrain geometry.
-    internal void PrepareSunshine(Texture2D seabedTexture)
+    // Only the translucent wave layer requires a texture/effect. The solid
+    // dark-blue bed uses the normal untextured material path.
+    internal void PrepareSunshine()
     {
         if(sunshineLayer!=null)return;
-        if(seabedTexture==null)throw new ArgumentNullException(nameof(seabedTexture));
         Texture2D? wave=null;
-        TevMaterial? layer=null,bed=null;
+        TevMaterial? layer=null;
         try{
             wave=Texture2D.FromPackage(SunshineWater.TexturePackage(),linear:true);
             var sparkle=new TevProgramBuilder();
@@ -92,20 +93,9 @@ internal sealed class WaterMaterial : IDisposable
             layer.Material.Sampler=new SamplerState(TextureAddressMode.Repeat,TextureAddressMode.Repeat,TextureFilter.Linear);
             layer.Material.SecondarySampler=layer.Material.Sampler;
 
-            var sand=new TevProgramBuilder();
-            sand.AddColor("Sand",new Color32(239,225,189));
-            // Ignore blue vertex tints; underwater sediment has its own palette.
-            sand.AddStage(TevInput.Zero,TevInput.Constant,TevInput.Texture,TevInput.Zero,colorSlot:0);
-            bed=new TevMaterialDefinition(sand).Create(seabedTexture);
-            bed.Material.Blend=BlendMode.Opaque;
-            bed.Material.DepthWrite=true;
-            bed.Material.DepthTest=true;
-            bed.Material.Cull=CullMode.Back;
-            bed.Material.Sampler=new SamplerState(TextureAddressMode.Repeat,TextureAddressMode.Repeat,TextureFilter.Linear);
-
-            sunshineTexture=wave;sunshineLayer=layer;sunshineBed=bed;
+            sunshineTexture=wave;sunshineLayer=layer;
         }catch{
-            bed?.Dispose();layer?.Dispose();wave?.Dispose();
+            layer?.Dispose();wave?.Dispose();
             throw;
         }
     }
@@ -137,7 +127,7 @@ internal sealed class WaterMaterial : IDisposable
         }
     }
     public void Dispose(){
-        sunshineBed?.Dispose();sunshineLayer?.Dispose();sunshineTexture?.Dispose();
+        sunshineLayer?.Dispose();sunshineTexture?.Dispose();
         storm?.Dispose();water.Dispose();
         whitecaps?.Dispose();stormBase?.Dispose();distortion.Dispose();shoreFoam.Dispose();ripples.Dispose();
     }
