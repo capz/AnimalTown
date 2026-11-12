@@ -32,12 +32,22 @@ def screenshot(name):
 def rgb(name):
     return subprocess.check_output(['ffmpeg','-v','error','-i',str(root/name),'-frames:v','1','-f','rawvideo','-pix_fmt','rgb24','-'])
 
+def fill_matches(pixel,color,tolerance=5):
+    # Default UI grain multiplies fill RGB by an I8 sample of 222..255;
+    # alpha/text stay unchanged. Compare hue along that brightness range,
+    # allowing a small margin for GX integer rounding and filtered samples.
+    peak=max(color)
+    if peak==0:return max(pixel)<=tolerance
+    scale=max(pixel)/peak
+    return .85<=scale<=1.02 and all(abs(pixel[c]-value*scale)<=tolerance
+        for c,value in enumerate(color))
+
 def color_count(pixels,color,tolerance=5):
-    return sum(all(abs(pixels[i+c]-value)<=tolerance for c,value in enumerate(color))
+    return sum(fill_matches(pixels[i:i+3],color,tolerance)
                for i in range(0,len(pixels),3))
 
 def region_color_count(pixels,color,left,top,right,bottom,tolerance=5):
-    return sum(all(abs(pixels[(y*800+x)*3+c]-value)<=tolerance for c,value in enumerate(color))
+    return sum(fill_matches(pixels[(y*800+x)*3:(y*800+x)*3+3],color,tolerance)
                for y in range(top,bottom) for x in range(left,right))
 
 def card_digest():
@@ -1076,10 +1086,18 @@ with (root/'emulator.log').open('w') as log:
             press('X');screenshot('water-menu.png');press('B');screenshot('water-return.png')
             if '--water-ab' in sys.argv:
                 # Same camera and save, no scene/terrain regeneration. Water
-                # is row24 of29; tree-noise options now follow it.
+                # is row24; derive the row count so later trailing settings
+                # do not silently select another option when wrapping upward.
+                import re
+                pad_source=Path(sys.modules['dolphin_pad'].__file__).resolve()
+                program=pad_source.parents[1]/'game/AnimalTown.GameCube/Program.cs'
+                try:row_match=re.search(r'\bTestingRows\s*=\s*(\d+)',program.read_text())
+                except OSError:row_match=None
+                testing_rows=int(row_match.group(1)) if row_match else 30
+                if not 25<=testing_rows<=128:raise ValueError('Unexpected testing-menu row count')
                 def water_selector():
                     press('START');press('R')
-                    for _ in range(5):press('D_UP')
+                    for _ in range(testing_rows-24):press('D_UP')
                 water_selector()
                 screenshot('water-ab-selector-windwaker.png')
                 press('A');screenshot('water-ab-selector-sunshine.png')
@@ -1090,6 +1108,9 @@ with (root/'emulator.log').open('w') as log:
                 press('A');screenshot('water-ab-selector-restored.png')
                 press('B');time.sleep(3)
                 restored=water_frame('water-windwaker-restored')
+                for label,frame in [('Sunshine',sun0),('animated Sunshine',sun1),('restored Wind Waker',restored)]:
+                    if not onboarding_signature(frame,'world'):
+                        raise AssertionError(label+' did not return to gameplay; inspect style selectors and preparation feedback')
                 # These measurements are diagnostics, not an assertion that
                 # animated frames are pixel identical before/after switching.
                 changed_mode=changed_animation=0
@@ -1100,7 +1121,7 @@ with (root/'emulator.log').open('w') as log:
                         if sun0[i:i+3]!=sun1[i:i+3]:changed_animation+=1
                 (root/'water-ab-comparison.json').write_text(json.dumps({
                     'comparison':'Wind Waker vs Sunshine, same camera and world',
-                    'water_style_rows':29,
+                    'water_style_rows':testing_rows,
                     'changed_pixels_between_styles':changed_mode,
                     'sunshine_animated_pixels':changed_animation,
                     'restored_windwaker_frame':len(restored),
