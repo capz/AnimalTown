@@ -124,6 +124,50 @@ internal static class WaterSurfaceChecks
         }
         check(SunshineWater.SeaBedDepth>SunshineWater.RiverBedDepth,
             "sea floor is deeper than the inland water floor");
+        // Separate authored texture on TEX1; the earlier single-image
+        // implementation had no distinct reflection content at all.
+        var glints=SunshineWater.GlintTexturePackage();
+        TexturePixels.Validate(glints);
+        check(glints.Length==sunshine.Length&&TexturePixels.Int(glints,24)==SunshineWater.MipLevels,
+            "second Sunshine layer has a complete independent IA8 mip chain");
+        check(!glints.SequenceEqual(sunshine),"Sunshine TEV texture units have different image data");
+        int glintAt=32;int[] glintMean=new int[SunshineWater.MipLevels];
+        for(int level=0;level<SunshineWater.MipLevels;level++){
+            int size=SunshineWater.TextureSize>>level;
+            for(int by=0;by<size;by+=4)for(int bx=0;bx<size;bx+=4)
+                for(int y=by;y<by+4;y++)for(int x=bx;x<bx+4;x++){
+                    byte alpha=glints[glintAt++],brightness=glints[glintAt++];
+                    check(alpha==SunshineWater.GlintAlpha(level,x,y)&&
+                          brightness==SunshineWater.GlintBrightness(level,x,y),
+                        "independent glint IA8 texture uses GX 4x4 packing");
+                    check(alpha==SunshineWater.GlintAlpha(level,x+size,y-size)&&
+                          brightness==SunshineWater.GlintBrightness(level,x+size,y-size),
+                        "second scrolling glint texture wraps in every mip");
+                    glintMean[level]+=brightness;
+                }
+            glintMean[level]/=size*size;
+        }
+        check(glintAt==glints.Length&&glintMean[0]<glintMean[1]&&
+              glintMean[1]<glintMean[2]&&glintMean[2]>glintMean[3],
+            "secondary authored levels create a bright mid-distance reflection band");
+        check(SunshineWater.RippleLodBias>=0&&SunshineWater.RippleLodBias<=3.99f&&
+              SunshineWater.ReflectionLodBias>=0&&SunshineWater.ReflectionLodBias<=3.99f,
+            "two texture samplers have valid GX LOD biases");
+        int clear=0,nearCrests=0,mediumCrests=0,rejected=0;
+        for(int level=0;level<3;level++){
+            int size=SunshineWater.TextureSize>>level;
+            for(int y=0;y<size;y++)for(int x=0;x<size;x++){
+                int alpha=(SunshineWater.Alpha(level,x,y)+
+                    SunshineWater.GlintAlpha(level,2*x+5,3*y+11))/2;
+                if(level==0&&alpha<=SunshineWater.GlintLowReference)clear++;
+                if(level==0&&alpha>=SunshineWater.GlintHighReference)nearCrests++;
+                if(level==2&&alpha>=SunshineWater.GlintHighReference)mediumCrests++;
+                if(level==2&&alpha>SunshineWater.GlintLowReference&&
+                    alpha<SunshineWater.GlintHighReference)rejected++;
+            }
+        }
+        check(clear>2000&&nearCrests>50&&mediumCrests>20&&rejected>50,
+            "Sunshine alpha test retains near clarity and crest glints while cutting out a middle band");
         foreach(float speed in new[]{.012f,.025f,-.018f,.035f}){
             check(WaterSurface.Scroll(0,speed)==0,"animation starts at authored UVs");
             foreach(double time in new[]{1.0,59,3600,86400,1e8}){
