@@ -104,6 +104,22 @@ def check_runtime_failure():
             raise AssertionError('Repeated model residency failures for species '+str(evidence['repeated_species'])+
                                  ': '+cause['message'])
 
+def press_presented(button,clock):
+    # Card I/O and software rendering can outlast a wall-timed button pulse.
+    # Hold each edge across actual guest presentations before sending the next.
+    def frames(count):
+        clock.frames();target=len(clock.presentations)+count;deadline=time.monotonic()+90
+        while True:
+            clock.frames()
+            if len(clock.presentations)>=target:return
+            check_runtime_failure()
+            if p.poll() is not None:raise AssertionError('Emulator stopped during title checkpoint input')
+            if time.monotonic()>deadline:raise AssertionError('Guest did not present during title checkpoint input')
+            time.sleep(.05)
+    os.write(controller,b'RELEASE A\nRELEASE B\nRELEASE START\nRELEASE D_UP\nRELEASE D_DOWN\n')
+    frames(8);os.write(controller,f'PRESS {button}\n'.encode());frames(12)
+    os.write(controller,f'RELEASE {button}\n'.encode());frames(12)
+
 def card_digest():
     import hashlib
     card=root/'MemoryCardA.USA.raw'
@@ -826,10 +842,10 @@ def aram_residency_scenario():
             if value and value['discard_terrain_cache_when_indoors']==expected:return value
             time.sleep(.2)
         raise AssertionError('Separate dev config item did not persist terrain option '+str(expected))
-    def title_terrain_row(name):
-        press('D_DOWN');press('D_DOWN');press('A');wait_title(modal=True)
+    def title_terrain_row(name,pressed=press):
+        pressed('D_DOWN');pressed('D_DOWN');pressed('A');wait_title(modal=True)
         # The appended session-only UI grain control follows persisted options.
-        press('D_UP');press('D_UP');screenshot(name+'.png') # config index 29
+        pressed('D_UP');pressed('D_UP');screenshot(name+'.png') # config index 29
     def inspect(indoors=False):
         nonlocal building_inspections
         os.write(controller,b'PRESS L\nPRESS R\n');time.sleep(.2);press('A');os.write(controller,b'RELEASE L\nRELEASE R\n')
@@ -941,11 +957,14 @@ def aram_residency_scenario():
     frames=user/'Dump/Frames'
     if frames.exists():frames.rename(user/'Dump/Frames-residency')
     p=subprocess.Popen(['/usr/games/dolphin-emu-nogui','-u',str(user),'-e',str(disc),'-v','OGL'],env=env,stdout=log,stderr=subprocess.STDOUT)
+    title_clock=AviGuestClock(frames,track_presentations=True)
+    edge=lambda button:press_presented(button,title_clock)
     wait_title();wait_log(r'ANIMALTOWN DEV CONFIG LOADED')
-    title_terrain_row('aram-title-row29-loaded-on');press('A');press('B');wait_title();config(False)
+    title_terrain_row('aram-title-row29-loaded-on',edge);edge('A');edge('START');wait_title();config(False)
     # Leave the option enabled and prove the corresponding title row roundtrip.
-    press('A');wait_title(modal=True);screenshot('aram-title-row29-off.png');press('A');press('B');wait_title()
+    edge('A');wait_title(modal=True);screenshot('aram-title-row29-off.png');edge('A');edge('START');wait_title()
     report['restart_saved_config']=config(True);report['startup_load_verified']=True
+    report['title_restart_input']='8 release / 12 press / 12 release guest presentations; START save/close'
     screenshot('aram-title-restart-complete.png')
     (root/'aram-residency.json').write_text(json.dumps(report,indent=2))
 

@@ -1,0 +1,275 @@
+{
+  "schema": 1,
+  "status": "passed_with_title_input_checkpoint_continuation",
+  "game_revision": "a44206d4a77a5ccc2298da87e7dcbfaa3e1f76e8",
+  "canonical_release": {
+    "source": "a44206d4a77a5ccc2298da87e7dcbfaa3e1f76e8",
+    "release": "https://github.com/capz/AnimalTown/releases/tag/v0.11.34%2Ba44206d4a77a",
+    "tag": "v0.11.34+a44206d4a77a",
+    "nkit_file": "AnimalTown-0.11.34+a44206d4a77a.nkit.iso",
+    "nkit_bytes": 93308928,
+    "nkit_sha256": "3a537acaa07bb5e30ae6475f10f7f8833a6462eb0e82e3a536f8c986cab04eca",
+    "server_file": "AnimalTown-server-0.11.34+a44206d4a77a.zip",
+    "server_sha256": "c4df746a975a0345f821945ed34679dd789a2b7c9cda1de20c1ce188c4d42142",
+    "all_downloaded_asset_api_and_manifest_digests_match": true,
+    "same_commit_clean_console_and_backend": true,
+    "round_trip_and_boot_payload_attestation": true,
+    "tools_verify": "Verified NKit build output and conversion proof: 101 files, 93,308,928 bytes"
+  },
+  "platform": {
+    "emulator": "Dolphin2503",
+    "video": "OpenGL, software rendering",
+    "dsp": "HLE",
+    "region": "NTSC",
+    "fixture_season": "spring",
+    "original_hardware_measured": false
+  },
+  "startup": [
+    {
+      "session": 0,
+      "first_species": 0,
+      "bake_ready_before_terrain_ready_before_building_kit_before_first_model": true,
+      "selected_player_ready_before_other_species": true
+    }
+  ],
+  "models": {
+    "retired_species": [
+      1,
+      2,
+      3,
+      4,
+      5
+    ],
+    "restored_through_gameplay_demand": [
+      1,
+      2,
+      3,
+      4,
+      5
+    ],
+    "unrestored_species": [],
+    "cold_package_backing_bytes_by_species": {
+      "4": 481504,
+      "5": 490304,
+      "1": 867744,
+      "2": 491488,
+      "3": 902432
+    },
+    "total_cold_package_backing_bytes": 3233472,
+    "runtime_errors": [],
+    "maximum_advance_us": 841,
+    "soft_frame_cpu_budget_us": 1000,
+    "all_actual_retirements_have_later_gameplay_restore": true,
+    "maximum_scene_readiness_waits": 0,
+    "maximum_portal_wait_ticks": 1
+  },
+  "terrain": {
+    "default_off_kept_cache_resident": true,
+    "flag_on_suspended": {
+      "cache_bytes": 0,
+      "reclaimed_bytes": 1048576,
+      "archive_bytes": 5337888
+    },
+    "restored": {
+      "cache_bytes": 1048576,
+      "archive_bytes": 5337888
+    },
+    "archive_unchanged": true
+  },
+  "frames": {
+    "clock": "NTSC VI chunks; software Dolphin, not hardware",
+    "segments": [
+      {
+        "name": "aram-flag-off-walk-away-from-door",
+        "start_vi": 3255,
+        "end_vi": 3315,
+        "guest_seconds": 1.001,
+        "presentations": 60,
+        "frame_ms_p50": 16.683333333333334,
+        "frame_ms_p95": 16.683333333333334,
+        "frame_ms_max": 16.683333333333334
+      },
+      {
+        "name": "flag-off-indoor-steady",
+        "start_vi": 3330,
+        "end_vi": 4291,
+        "guest_seconds": 16.032683333333335,
+        "presentations": 961,
+        "frame_ms_p50": 16.683333333333334,
+        "frame_ms_p95": 16.683333333333334,
+        "frame_ms_max": 16.683333333333334
+      },
+      {
+        "name": "aram-flag-off-exited-outdoor-settle",
+        "start_vi": 4474,
+        "end_vi": 4595,
+        "guest_seconds": 2.018683333333333,
+        "presentations": 121,
+        "frame_ms_p50": 16.683333333333334,
+        "frame_ms_p95": 16.683333333333334,
+        "frame_ms_max": 16.683333333333334
+      },
+      {
+        "name": "aram-flag-on-walk-away-from-door",
+        "start_vi": 5071,
+        "end_vi": 5134,
+        "guest_seconds": 1.05105,
+        "presentations": 63,
+        "frame_ms_p50": 16.683333333333334,
+        "frame_ms_p95": 16.683333333333334,
+        "frame_ms_max": 16.683333333333334
+      },
+      {
+        "name": "flag-on-indoor-steady",
+        "start_vi": 5146,
+        "end_vi": 5508,
+        "guest_seconds": 6.039366666666667,
+        "presentations": 362,
+        "frame_ms_p50": 16.683333333333334,
+        "frame_ms_p95": 16.683333333333334,
+        "frame_ms_max": 16.683333333333334
+      },
+      {
+        "name": "aram-restored-exterior-reversal-input",
+        "start_vi": 5619,
+        "end_vi": 5638,
+        "guest_seconds": 0.31698333333333334,
+        "presentations": 19,
+        "frame_ms_p50": 16.683333333333334,
+        "frame_ms_p95": 16.683333333333334,
+        "frame_ms_max": 16.683333333333334
+      },
+      {
+        "name": "aram-restored-exterior-outdoor-settle",
+        "start_vi": 5803,
+        "end_vi": 5924,
+        "guest_seconds": 2.018683333333333,
+        "presentations": 121,
+        "frame_ms_p50": 16.683333333333334,
+        "frame_ms_p95": 16.683333333333334,
+        "frame_ms_max": 16.683333333333334
+      },
+      {
+        "name": "aram-rapid-reentry-walk-away-from-door",
+        "start_vi": 6052,
+        "end_vi": 6114,
+        "guest_seconds": 1.0343666666666667,
+        "presentations": 62,
+        "frame_ms_p50": 16.683333333333334,
+        "frame_ms_p95": 16.683333333333334,
+        "frame_ms_max": 16.683333333333334
+      },
+      {
+        "name": "rapid-reentry-indoor",
+        "start_vi": 6132,
+        "end_vi": 6192,
+        "guest_seconds": 1.001,
+        "presentations": 60,
+        "frame_ms_p50": 16.683333333333334,
+        "frame_ms_p95": 16.683333333333334,
+        "frame_ms_max": 16.683333333333334
+      },
+      {
+        "name": "aram-rapid-return-reversal-input",
+        "start_vi": 6254,
+        "end_vi": 6273,
+        "guest_seconds": 0.31698333333333334,
+        "presentations": 19,
+        "frame_ms_p50": 16.683333333333334,
+        "frame_ms_p95": 16.683333333333334,
+        "frame_ms_max": 16.683333333333334
+      },
+      {
+        "name": "aram-rapid-return-outdoor-settle",
+        "start_vi": 6345,
+        "end_vi": 6465,
+        "guest_seconds": 2.002,
+        "presentations": 120,
+        "frame_ms_p50": 16.683333333333334,
+        "frame_ms_p95": 16.683333333333334,
+        "frame_ms_max": 16.683333333333334
+      }
+    ]
+  },
+  "scripted_door_timings": {
+    "aram-flag-off-exited_wall_seconds": 4.436346695998509,
+    "aram-flag-off-exited_guest_seconds": 1.7017,
+    "aram-restored-exterior_wall_seconds": 8.431283135003468,
+    "aram-restored-exterior_guest_seconds": 3.6036,
+    "aram-rapid-return_wall_seconds": 10.837864496999828,
+    "aram-rapid-return_guest_seconds": 1.7350666666666668
+  },
+  "door_timing_scope": "Includes debug-inspector teleport, scripted button holds/reversal and screenshot polling; not isolated ordinary-door latency or original hardware performance.",
+  "configuration": {
+    "version": 3,
+    "final_terrain_option_on": true,
+    "loaded_on_after_restart_proved_by_toggle_to_raw_off": true,
+    "other_dev_fields_unchanged": true,
+    "town_and_all_player_records_unchanged": true,
+    "town_sequence": 1
+  },
+  "card_provenance": {
+    "seed": {
+      "source_file": "out/aram-residency-fe6038e/MemoryCardA.USA.raw",
+      "sha256": "477483907826c2041a974193256b506b8b5cdef8a63044162c8030b484988558",
+      "bytes": 16777216,
+      "committed_sequence": 1,
+      "active_profile": 0,
+      "profiles": [
+        {
+          "name": "A",
+          "created": 1,
+          "wallet": 0,
+          "species": 0
+        },
+        {
+          "name": "Newcomer",
+          "created": 0,
+          "wallet": 0,
+          "species": 0
+        },
+        {
+          "name": "Newcomer",
+          "created": 0,
+          "wallet": 0,
+          "species": 0
+        },
+        {
+          "name": "Newcomer",
+          "created": 0,
+          "wallet": 0,
+          "species": 0
+        }
+      ],
+      "copy_digest_verified": true,
+      "original_modified": false
+    },
+    "original_seed_sha256_unchanged": true,
+    "checkpoint_parent": {
+      "source_commit": "a44206d4a77a5ccc2298da87e7dcbfaa3e1f76e8",
+      "nkit_sha256": "3a537acaa07bb5e30ae6475f10f7f8833a6462eb0e82e3a536f8c986cab04eca",
+      "parent_card": "out/aram-residency-a44206d/MemoryCardA.USA.raw",
+      "parent_card_sha256": "7aae404fc458089f545b4535cd5517270032b6303df42c847654e05a4f52a048",
+      "copied_card_sha256": "7aae404fc458089f545b4535cd5517270032b6303df42c847654e05a4f52a048",
+      "purpose": "Continue only the pending title/card checkpoint after the original script lost wall-timed input; original timeout evidence preserved"
+    },
+    "checkpoint_parent_sha256_matches_resource_run_final_card": true
+  },
+  "checkpoint": {
+    "original_timeout_preserved": "out/aram-residency-a44206d/title-wait.png",
+    "reason": "Wall-timed A/B input was missed while the title continued presenting frames; recognition classified the actual modal correctly.",
+    "continued_on_same_nkit_sha256": "3a537acaa07bb5e30ae6475f10f7f8833a6462eb0e82e3a536f8c986cab04eca",
+    "input": "release8 / press12 / release12 observed guest presentations; START save/close",
+    "result": "out/aram-title-checkpoint-a44206d/title-checkpoint.json",
+    "recovery_harness_sha256": "a21c3ebbfcd4bad2db1bda0fea1d60f2db24d4152fbe5ba30de75b4eb623dfd7"
+  },
+  "runtime_log_sha256": "87a1d6ff63c1101a39c230af15440b72bf7ff8d694f44822ed1e0159b60df60a",
+  "screenshots": [
+    "out/aram-residency-a44206d/aram-flag-off-indoor.png",
+    "out/aram-residency-a44206d/aram-flag-on-cold-indoor.png",
+    "out/aram-residency-a44206d/aram-restored-exterior.png",
+    "out/aram-residency-a44206d/aram-rapid-return.png",
+    "out/aram-title-checkpoint-a44206d/checkpoint-restarted-loaded-on.png",
+    "out/aram-title-checkpoint-a44206d/checkpoint-complete.png"
+  ]
+}

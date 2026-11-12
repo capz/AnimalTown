@@ -135,6 +135,14 @@ latency, matched frame intervals, audio and cancellation under DMA contention.
 Hardware qualification is required before claiming unchanged stock-console
 performance.
 
+The [canonical Dolphin evidence](measurements/aram/game-dolphin.json) records all
+five non-player species retiring and restoring, zero residency errors, an 841 µs
+maximum advance, exact terrain cache reclamation/restoration and preserved
+save records. Its title persistence checkpoint used presentation-paced input
+after a wall-timed scripted input was missed; both phases use the same immutable
+NKit source and verified memory-card chain. These measurements are from Dolphin,
+not original hardware.
+
 ## Actual asset allocation verification
 
 The [native cohort report](measurements/aram/current-model-cohort.json) uses the
