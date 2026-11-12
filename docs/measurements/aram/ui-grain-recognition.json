@@ -41,5 +41,15 @@
     "blue_difference": 34,
     "tolerance": 20,
     "incorrectly_matched": false
+  },
+  "uniform_modal": {
+    "game_commit": "6a24b95f9b5087dce55092836153a0bef115e343",
+    "capture": "out/aram-residency-6a24b95-modal-leaf20-failed/title-modal-wait.png",
+    "capture_sha256": "295c1e098ee1ec07948fecd57e5c98ddf5b26e8d11c6afbed8e12cc92d4eda46",
+    "cream_pixels_tolerance20": 110553,
+    "leaf_pixels_tolerance20": 1920,
+    "leaf_pixels_explicit_tolerance12": 41,
+    "maximum_modal_leaf_pixels": 1000,
+    "actual_wait_title_passes": true
   }
 }
