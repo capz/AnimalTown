@@ -153,21 +153,20 @@ internal static class WaterSurfaceChecks
         check(SunshineWater.RippleLodBias>=0&&SunshineWater.RippleLodBias<=3.99f&&
               SunshineWater.ReflectionLodBias>=0&&SunshineWater.ReflectionLodBias<=3.99f,
             "two texture samplers have valid GX LOD biases");
-        int clear=0,nearCrests=0,mediumCrests=0,rejected=0;
+        int nearCrests=0,nearClears=0,mediumCrests=0,mediumClears=0;
         for(int level=0;level<3;level++){
             int size=SunshineWater.TextureSize>>level;
             for(int y=0;y<size;y++)for(int x=0;x<size;x++){
-                int alpha=(SunshineWater.Alpha(level,x,y)+
-                    SunshineWater.GlintAlpha(level,2*x+5,3*y+11))/2;
-                if(level==0&&alpha<=SunshineWater.GlintLowReference)clear++;
-                if(level==0&&alpha>=SunshineWater.GlintHighReference)nearCrests++;
-                if(level==2&&alpha>=SunshineWater.GlintHighReference)mediumCrests++;
-                if(level==2&&alpha>SunshineWater.GlintLowReference&&
-                    alpha<SunshineWater.GlintHighReference)rejected++;
+                // Native DNEF v2 uses primary TEX0 alpha for the overlay's
+                // one-sided cutout; low alpha remains visible through the
+                // independently translucent film below.
+                bool passes=SunshineWater.GlintAlpha(level,x,y)/255f>SunshineWater.GlintAlphaCutoff;
+                if(level==0){if(passes)nearCrests++;else nearClears++;}
+                if(level==2){if(passes)mediumCrests++;else mediumClears++;}
             }
         }
-        check(clear>2000&&nearCrests>50&&mediumCrests>20&&rejected>50,
-            "Sunshine alpha test retains near clarity and crest glints while cutting out a middle band");
+        check(nearClears>2000&&nearCrests>150&&mediumCrests>12&&mediumClears>100,
+            "GX glint cutoff preserves transparent film and strong near/mid-distance crest fragments");
         foreach(float speed in new[]{.012f,.025f,-.018f,.035f}){
             check(WaterSurface.Scroll(0,speed)==0,"animation starts at authored UVs");
             foreach(double time in new[]{1.0,59,3600,86400,1e8}){
