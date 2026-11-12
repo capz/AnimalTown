@@ -35,7 +35,8 @@ namespace Dolphin.Graphics
         public int AramBytes {get;private set;}
         public int NativeBytes=>IsResident?PackageBytes*2:128;
         public bool FailAdmission,FailWork,CommitCancellation;
-        public int Starts,Advances,AnimationPosition=37;
+        public int Starts,Advances,AnimationPosition=37,PendingDmaPolls=1;
+        public Task? LastTransition {get;private set;}
         private TaskCompletionSource<int>? completion;
         private CancellationToken cancellation;
         private bool restore;
@@ -46,13 +47,13 @@ namespace Dolphin.Graphics
         {
             if(FailAdmission){FailAdmission=false;throw new OutOfMemoryException("Injected admission failure");}
             if(IsTransitioning)throw new InvalidOperationException("Overlapping model owners");
-            Starts++;restore=warming;cancellation=token;step=0;completion=new TaskCompletionSource<int>();return completion.Task;
+            Starts++;restore=warming;cancellation=token;step=0;completion=new TaskCompletionSource<int>();LastTransition=completion.Task;return completion.Task;
         }
         public bool AdvanceResidency()
         {
             if(completion==null)return false;
             Clock.Timestamp+=7;Advances++;
-            if(++step==1)return false; // Native DMA is pending; owner must not spin.
+            if(++step<=PendingDmaPolls)return false; // Native DMA is pending; ordinary frame work must not spin.
             var done=completion;completion=null;
             if(cancellation.IsCancellationRequested&&!CommitCancellation){done.SetCanceled();return true;}
             if(FailWork){FailWork=false;done.SetException(new IOException("Injected restore/copy failure"));return true;}
@@ -149,5 +150,25 @@ internal static class ModelResidencyChecks
         int starts=models[1].Starts;Pump(manager);check(models[1].Starts==starts,"failed restore has a bounded retry delay");
         Clock.Timestamp+=ModelResidency.RetryDelayUs+1;Pump(manager);Drain(manager);
         check(manager.Ready(1)&&models[1].AnimationPosition==37,"restore retry recovers the same animation/game object");
+
+        manager=Setup(out models,out state,out doors);models[1].PendingDmaPolls=5;Pump(manager,true);Pump(manager);
+        var shutdownDemotion=models[1].LastTransition!;
+        check(!shutdownDemotion.IsCompleted&&manager.PendingSpecies==1,"session exit fixture owns an unfinished snapshot DMA");
+        manager.Stop();
+        check(shutdownDemotion.IsCanceled&&!models[1].IsTransitioning&&models[1].Advances==6&&manager.PendingSpecies<0,
+            "session teardown cancels and drains a manually driven snapshot across pending DMA polls");
+        check(models[1].IsResident&&manager.ColdBytes==0&&manager.Cancellations==1,"precommit shutdown keeps the original model until normal disposal");
+        int advances=models[1].Advances,admissions=models.Sum(x=>x.Starts);
+        manager.Stop();manager.Require(state,doors,Clock.Timestamp);Pump(manager,true);
+        check(models[1].Advances==advances&&models.Sum(x=>x.Starts)==admissions,"stopped residency is idempotent and admits no replacement work");
+
+        manager=Setup(out models,out state,out doors);Pump(manager,true);Drain(manager);
+        state.Town.Residents[1].Space=1;manager.Require(state,doors,Clock.Timestamp);models[1].PendingDmaPolls=5;Pump(manager);Pump(manager);
+        var shutdownRestore=models[1].LastTransition!;int restoreAt=models[1].Advances;
+        check(!shutdownRestore.IsCompleted&&manager.PendingSpecies==1,"session exit fixture owns an unfinished restoration DMA");
+        manager.Stop();
+        check(shutdownRestore.IsCanceled&&!models[1].IsTransitioning&&models[1].Advances==restoreAt+5&&manager.PendingSpecies<0,
+            "session teardown drains restoration before its instances or model can be disposed");
+        check(!models[1].IsResident&&manager.ColdBytes==65536&&models[1].Starts==2,"canceled shutdown preserves the cold model's backing for normal disposal without restarting it");
     }
 }

@@ -35,6 +35,11 @@ model's only backing is never discarded. Disabling the internal manager restores
 all models before releasing their ARAM copies. The terrain checkbox is separate
 and defaults off; it does not disable model paging.
 
+Returning to the title stops new admissions, cancels and drains the owned model
+transition, and observes its terminal result before disposing instances and
+shared models. This explicit teardown boundary keeps a manually driven transfer
+from losing its progress owner while it still retains native or ARAM storage.
+
 ## Prefetch and scene gates
 
 Moving indoors, approaching its exit, and requesting a doorway trigger outdoor
@@ -78,7 +83,8 @@ MEM1. ARAM transfer statistics remain necessary to measure actual bus traffic.
 Portable source-linked tests exercise asynchronous ownership and controlled DMA
 completion, both cancellation boundaries, admission/fragmentation/slot limits,
 restore retries, snapshot release, foreground priority, zero-allocation warm
-polling and preserved model/animation identity. Domain tests cover shared player
+polling, teardown during pending snapshot/restore DMA, and preserved
+model/animation identity. Domain tests cover shared player
 ownership, doorway commit/save semantics, visible-actor coverage, hidden prefetch
 without scene stalls, exact landing focus and late camera/doorway view changes.
 

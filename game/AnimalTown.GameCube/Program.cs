@@ -247,10 +247,13 @@ internal sealed class TownGame : IDisposable
     }
     public void Dispose()
     {
-        if(disposed)return;disposed=true;LoadingScreen.Finish();
+        if(disposed)return;
+        if(device.IsFrameActive)throw new InvalidOperationException("Dispose the town after EndFrame");
+        disposed=true;LoadingScreen.Finish();
         dialogueVoice.Stop();syllable.Dispose();
         Model? unadopted=null;
         if(loadingModel!=null){try{unadopted=loadingModel.GetAwaiter().GetResult();}catch(Exception){if(!loadingModel.IsCompleted)throw;}loadingModel=null;}
+        modelResidency.Stop();
         for(int i=0;i<actors.Length;i++){actors[i]?.Dispose();actors[i]=null!;}
         if(unadopted!=null&&Array.IndexOf(models,unadopted)<0)unadopted.Dispose();
         for(int i=0;i<models.Length;i++){models[i]?.Dispose();models[i]=null!;}
