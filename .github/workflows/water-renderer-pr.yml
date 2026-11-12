@@ -27,23 +27,48 @@ jobs:
     timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: |
             8.0.x
             10.0.x
+      - name: Select affected checks
+        shell: pwsh
+        env:
+          PR_BASE: ${{ github.event.pull_request.base.sha }}
+        run: |
+          $base=''
+          if($env:GITHUB_EVENT_NAME -eq 'pull_request'){
+            $base=(& git merge-base HEAD $env:PR_BASE).Trim()
+            if($LASTEXITCODE){throw 'Cannot determine PR comparison base'}
+          }
+          ./tools/select-validation.ps1 -BaseRef $base
       - name: Restore pinned SDK and engine
         run: dotnet restore game/AnimalTown.GameCube/AnimalTown.GameCube.csproj --locked-mode
       - name: Compile GameCube renderer against pinned SDK
         run: dotnet build game/AnimalTown.GameCube/AnimalTown.GameCube.csproj -c Release --no-restore
       - name: Water and terrain regression checks
-        run: dotnet run --project tests/AnimalTown.Checks -c Release -- --suites terrain
+        shell: pwsh
+        run: |
+          $plan=Get-Content out/validation-plan.json -Raw|ConvertFrom-Json
+          if($plan.managed.Count){
+            & dotnet run --project tests/AnimalTown.Checks -c Release -- --suites ($plan.managed -join ',')
+            if($LASTEXITCODE){throw 'Managed checks failed'}
+          }
       - name: Rendering and geometry regression checks
-        run: dotnet run --project tests/AnimalTown.RenderingChecks -c Release
+        shell: pwsh
+        run: |
+          $plan=Get-Content out/validation-plan.json -Raw|ConvertFrom-Json
+          if($plan.rendering.Count){
+            & dotnet run --project tests/AnimalTown.RenderingChecks -c Release -- --suites ($plan.rendering -join ',')
+            if($LASTEXITCODE){throw 'Rendering checks failed'}
+          }
       - name: Cook and validate original Sunshine PNG mip art
         run: |
           dotnet build tools/AnimalTown.Tools -c Release
           dotnet run --project tools/AnimalTown.Tools -c Release --no-build -- sunshine-water "$PWD"
-
       - name: Check Dolphin water A/B smoke script syntax
         run: python3 -m py_compile tools/iso-smoke.py
