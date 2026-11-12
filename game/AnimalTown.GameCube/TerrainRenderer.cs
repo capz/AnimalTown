@@ -309,7 +309,7 @@ internal sealed class TerrainRenderer
         }
         AddArchive(renderer,waterMaterial.Surface,104);
         AddArchive(renderer,waterMaterial.OceanSurface,107);
-        oceanWaves.Draw(renderer,waterMaterial.OceanSurface,ScrollTransform);
+        oceanWaves.Draw(renderer,waterMaterial.IsSunshine?waterMaterial.CloseWaves:waterMaterial.OceanSurface,ScrollTransform);
         AddArchive(renderer,waterMaterial.Foam,105);
     }
     private void DrawLegacyWater(Renderer renderer)
@@ -327,7 +327,7 @@ internal sealed class TerrainRenderer
         }finally{NativeShadows.Scope(0);}
         for(int i=0;i<stream.Count;i++)if(stream.Visible[i])Add(renderer,waterMaterial.OceanSurface,sections[i]!.Water.OceanMesh);
         Flush(renderer,waterMaterial.OceanSurface);
-        oceanWaves.Draw(renderer,waterMaterial.OceanSurface,ScrollTransform);
+        oceanWaves.Draw(renderer,waterMaterial.IsSunshine?waterMaterial.CloseWaves:waterMaterial.OceanSurface,ScrollTransform);
         for(int i=0;i<stream.Count;i++)if(stream.Visible[i])Add(renderer,waterMaterial.Foam,sections[i]!.Water.FoamMesh);
         Flush(renderer,waterMaterial.Foam);
     }
