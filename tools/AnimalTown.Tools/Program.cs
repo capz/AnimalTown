@@ -179,8 +179,8 @@ static class Program
                 if(!seen.Contains(model+"-tex128.dndmodel"))throw new InvalidDataException("Missing building model "+model);
         }
         if(!seen.Contains("cliff-soil.dndtex"))throw new InvalidDataException("Missing shared cliff soil texture");
-        if(!seen.Contains(SunshineWaterAssets.DiscName))
-            throw new InvalidDataException("Missing authored Sunshine reflection mip chain");
+        foreach(string waterAsset in new[]{SunshineWaterAssets.DiscName,"sunshine-wave.dndtex","sunshine-distortion.dndtex"})
+            if(!seen.Contains(waterAsset))throw new InvalidDataException("Missing authored Sunshine water asset: "+waterAsset);
         Console.WriteLine("Verified full-size bootable disc structure, "+(count-1)+" files");
     }
 }

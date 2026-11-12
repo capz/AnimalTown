@@ -769,6 +769,13 @@ internal sealed class TownGame : IDisposable
         ModelAt(0);
         if(batchedDrawing)DrawActors();
         FrameProfile.End(5,phase);phase=FrameProfile.Start();
+        // Original seaindirect ordering: capture the complete main scene,
+        // including glints and actors, once; refract only visible water.
+        // HUD, attention indicators and rain remain outside the capture.
+        if(room==0&&terrain.RefractionVisible){
+            renderer.End3D();terrain.CaptureWaterScene();
+            renderer.Begin3D(camera);terrain.DrawRefraction(renderer);
+        }
         if(screen=="plot")
         {
             int x=(int)state.X-3,z=(int)state.Z-(session.Draft!=null?6:3);

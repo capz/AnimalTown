@@ -350,6 +350,27 @@ internal sealed class TerrainRenderer : IDisposable
         Flush(renderer,waterMaterial.Foam);
     }
 
+    internal bool RefractionVisible
+    {
+        get {
+            if(!waterMaterial.IsSunshine||!Ready)return false;
+            if(!legacy)return archive!.First(104)>=0||archive.First(107)>=0;
+            for(int i=0;i<stream.Count;i++)if(stream.Visible[i]&&
+                (sections[i]!.Water.SurfaceMesh!=null||sections[i]!.Water.OceanMesh!=null))return true;
+            return false;
+        }
+    }
+    internal void CaptureWaterScene()=>waterMaterial.CaptureScene();
+    internal void DrawRefraction(Renderer renderer)
+    {
+        var material=waterMaterial.Refraction;
+        if(!legacy){AddArchive(renderer,material,104);AddArchive(renderer,material,107);return;}
+        for(int i=0;i<stream.Count;i++)if(stream.Visible[i])Add(renderer,material,sections[i]!.Water.SurfaceMesh);
+        Flush(renderer,material);
+        for(int i=0;i<stream.Count;i++)if(stream.Visible[i])Add(renderer,material,sections[i]!.Water.OceanMesh);
+        Flush(renderer,material);
+    }
+
     internal void Draw(Renderer renderer,Transform parent,int room)
     {
         if(groundLoad==GroundLoad.Preview)groundLoad=GroundLoad.Visible;

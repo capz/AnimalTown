@@ -59,7 +59,8 @@ internal sealed class LocalOceanWaves : IDisposable
                 float worldX=x0+x*WindWakerWaveField.CellSize;
                 float y=sunshine?SunshineWater.LocalWaveHeight(x,z,worldX,worldZ,seconds):waves!.Height(x,z);
                 var position=new Vector3(worldX,chord.Y+chord.UpY*y,chord.Z+chord.UpZ*y);
-                vertices![z*width+x]=new VertexPositionColorTexture(position,tint,
+                var color=sunshine?new Color32(255,255,255,SunshineWater.VertexFade(x,z)):tint;
+                vertices![z*width+x]=new VertexPositionColorTexture(position,color,
                     new Vector2(worldX*WaterSurface.UvScale,worldZ*WaterSurface.UvScale));
             }
         }

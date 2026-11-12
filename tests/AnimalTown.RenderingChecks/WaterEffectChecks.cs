@@ -7,44 +7,50 @@ internal static class WaterEffectChecks
     internal static void Run(Action<bool,string> check)
     {
         var indirect=WaterMaterial.WindWakerDefinition().GetPackage();
-        check(indirect.Length==208&&indirect[0]=='D'&&indirect[1]=='N'&&indirect[2]=='E'&&indirect[3]=='F',
-            "water program has bounded native DNEF envelope");
-        check(indirect[4]==3&&indirect[8]==4&&indirect[12]==3&&indirect[16]==2&&indirect[20]==76,
-            "v3 program supplies two bound textures, two colors and one warp stage");
-        check(indirect[176+15]==0&&indirect[176+23]==2&&indirect[176+31]==0,
-            "second foam sample uses alternate UV while epilogue returns to base alpha");
-        check(indirect[64]==196&&indirect[65]==228&&indirect[66]==222&&indirect[100]==229,
-            "water pattern colors are independent configurable TEV constants");
-        var glints=WaterMaterial.SunshineDefinition();var program=glints.GetPackage();
-        check(program.Length==224&&program[4]==4&&program[8]==3&&program[12]==3,
-            "Sunshine uses the SDK's three-stage independent-alpha program without a legacy opacity epilogue");
-        check(program[21]==1&&program[24]==(byte)AlphaComparison.LessOrEqual&&
-            program[25]==SunshineWater.GlintLowReference&&program[26]==(byte)AlphaCompareOperation.Or&&
-            program[27]==(byte)AlphaComparison.GreaterOrEqual&&program[28]==SunshineWater.GlintHighReference,
-            "Sunshine GX cutout keeps both outside-band branches with exact references");
-        for(int primary=0;primary<256;primary++)for(int secondary=0;secondary<256;secondary++){
-            int alpha=Alpha(program,primary,secondary);
-            check(alpha==(primary+secondary)/2,"Both scrolling samples contribute to the SDK water opacity");
-            bool pass=alpha<=program[25]||alpha>=program[28];
-            check(pass==(alpha<=33||alpha>=235),"Cutout classifies the complete alpha-pair domain");
+        check(indirect.Length==208&&indirect[4]==3&&indirect[8]==4&&indirect[12]==3&&indirect[20]==76,
+            "Wind Waker keeps its original bounded v3 indirect material");
+        check(indirect[191]==0&&indirect[199]==2&&indirect[207]==0,
+            "Wind Waker still selects alternate UV then resolves base opacity");
+        var sea=WaterMaterial.SunshineDefinition().GetPackage();
+        var wave=WaterMaterial.SunshineWaveDefinition().GetPackage();
+        check(sea[4]==5&&sea[8]==2&&sea[12]==3&&sea.Length==208,
+            "Sea reproduces the two-stage program without an opacity epilogue");
+        check(sea[21]==1&&sea[24]==6&&sea[25]==235&&sea[26]==3&&sea[27]==6&&sea[28]==35,
+            "Sea uses GE235 XNOR GE35, including the original exclusive low boundary");
+        check(sea[22]==1&&sea[29]==4&&sea[30]==1,"Sea adds source-alpha-scaled color to its background");
+        check(wave[8]==2&&wave[24]==6&&wave[25]==85&&wave[26]==1&&wave[27]==3&&wave[28]==35&&
+            wave[29]==4&&wave[30]==2,"Near waves have their own compare and SrcAlpha/SrcColor blend");
+        var color=Rgb(sea);
+        check(color[0]==203&&color[1]==200&&color[2]==248,"Sea emits wrapped signed-wide RGB, not saturated white");
+        for(int first=0;first<256;first++)for(int second=0;second<256;second++){
+            int product=((2*second*(first+(first>>7)))+128)>>8;
+            int actual=Alpha(sea,first,second,255);
+            check(actual==(product&255),"Sea alpha matches the recorded two-sample fixed-point product, including overflow");
+            check(Compare(sea,actual)==(actual<35||actual>=235),"Exact original sea cutout boundaries");
+            int near=Alpha(wave,first,second,255);
+            check(near==Math.Min(255,product),"Near waves clamp their doubled product instead of wrapping");
         }
-        check(Alpha(program,0,0)==0&&Alpha(program,255,255)==255&&Alpha(program,0,255)==127,
-            "Clear endpoints stay invisible, strong glints survive and conflicting samples reject");
-        foreach(bool close in new[]{false,true}){
-            var material=new Material();WaterMaterial.ConfigureSunshine(material,close);
-            check(material.Color.A==255&&material.AlphaCutoff==0,
-                "Main and near waves leave raster alpha opaque for the effect's high comparison");
-            check(material.Blend==BlendMode.Alpha&&material.DepthTest&&!material.DepthWrite&&material.Cull==CullMode.Back,
-                "Water blends over the seabed with depth testing and no depth writes");
-            foreach(var sampler in new[]{material.Sampler,material.SecondarySampler}){
-                check(sampler.U==TextureAddressMode.Repeat&&sampler.V==TextureAddressMode.Repeat&&
-                    sampler.MagFilter==TextureMagFilter.Linear,"Both scrolling texture bindings use repeated filtered authored art");
-                check(close?sampler.MinLod==1&&sampler.MaxLod==1&&sampler.MinFilter==TextureMinFilter.LinearMipmapNearest:
-                    sampler.MinLod==0&&sampler.MaxLod==4&&sampler.MinFilter==TextureMinFilter.LinearMipmapLinear&&sampler.LodBias==SunshineWater.LodBias,
-                    "Near waves force authored L1 while the main surface traverses the full trilinear chain");
-            }
+        check(Alpha(sea,255,128,255)==0&&Alpha(sea,255,255,255)==254,
+            "Overflow cases distinguish original arithmetic from average or saturated alpha");
+        foreach(int fade in new[]{0,1,32,127,255}){
+            check(Alpha(wave,255,255,fade)==Math.Min(255,(2*255*(fade+(fade>>7))+128)>>8),"Near-wave raster fade participates in alpha");
         }
-
+        foreach(bool near in new[]{false,true}){
+            var material=new Material();WaterMaterial.ConfigureSunshine(material,near);
+            check(material.Color.A==255&&material.AlphaCutoff==0&&material.Cull==CullMode.None,
+                "Effect owns the comparison and draws both water faces as the reference does");
+            check(material.Blend==BlendMode.Alpha&&material.DepthTest&&!material.DepthWrite,
+                "Transparent classification preserves depth testing without water depth writes");
+            check(material.Sampler.MinFilter==TextureMinFilter.LinearMipmapLinear&&
+                material.Sampler.MinLod==0&&material.Sampler.MaxLod==4&&material.Sampler.LodBias==0&&
+                material.SecondarySampler.LodBias==(near?0:-.5f),"Each sampler retains its recorded LOD bias and full authored chain");
+        }
+        var refract=WaterMaterial.SunshineRefractionDefinition();var rp=refract.GetPackage();
+        check(refract.TextureCoordinates==TextureCoordinateMode.ScreenProjection&&rp[8]==1&&rp[12]==3&&rp[23]==1&&rp[31]==7,
+            "Refraction uses projected capture coordinates plus the original signed STU matrix");
+        int matrix=176+rp[8]*16;
+        check(BitConverter.ToSingle(rp,matrix+16)==.001f&&BitConverter.ToSingle(rp,matrix+20)==.015f&&rp[matrix+24]==2,
+            "Refraction retains both matrix coefficients and exponent two");
         CheckIdleInteraction(check);
     }
     private static void CheckIdleInteraction(Action<bool,string> check)
@@ -69,25 +75,40 @@ internal static class WaterEffectChecks
               action.Contains("Say(\"Backpack\",\"Picked up!\")"),
             "genuine villager conversation and item-pickup feedback remain enabled");
     }
-
-    // Interpret serialized alpha records rather than the game/preset source.
-    // The preset uses raster alpha 255; each stage shares its RGB texture order.
-    private static int Alpha(byte[] package,int primary,int secondary)
+    // Independent GX integer oracle: A/B/C wrap, D stays wide, and scaling
+    // precedes interpolation truncation. Final output keeps the low byte.
+    private static int Combine(int a,int b,int c,int d,int op,int control)
     {
-        var registers=new int[4];
-        for(int stage=0;stage<package[8];stage++){
-            int rgb=176+stage*16,at=rgb+8,control=package[at+5];
-            if((control&128)==0)throw new Exception("Legacy hard-wired alpha in Sunshine material");
-            int Read(int selector)=>selector switch {
-                <=3=>registers[selector],4=>package[rgb+7]==1?secondary:primary,
-                5 or 6=>255,7=>0,_=>throw new Exception("Unexpected alpha selector")
-            };
-            int a=Read(package[at]),b=Read(package[at+1]),c=Read(package[at+2]),d=Read(package[at+3]);
-            int value=d+a+((b-a)*(c+(c>>7))>>8);
-            if(((control>>4)&3)==3)value>>=1;
-            registers[control&3]=Math.Clamp(value,0,255);
-        }
-        return registers[0];
+        a&=255;b&=255;c&=255;c+=c>>7;
+        int bias=(control>>2)&3,scale=(control>>4)&3;
+        d+=bias==1?128:bias==2?-128:0;
+        int shift=scale==1?1:scale==2?2:0;
+        int lerp=((a<<8)+(b-a)*c)<<shift;
+        int term=(lerp+(scale==3?0:op==0?128:127))>>8;
+        int value=(d<<shift)+(op==0?term:-term);
+        if(scale==3)value>>=1;
+        return (control&64)!=0?Math.Clamp(value,0,255):Math.Clamp(value,-1024,1023);
     }
-
+    private static int Alpha(byte[] package,int first,int second,int raster)
+    {
+        var r=new int[4];
+        for(int stage=0;stage<package[8];stage++){
+            int at=176+stage*16+8,control=package[at+5];
+            int Read(int v)=>v<=3?r[v]:v==4?(package[at-1]==1?second:first):v==5?raster:v==6?255:0;
+            r[control&3]=Combine(Read(package[at]),Read(package[at+1]),Read(package[at+2]),Read(package[at+3]),package[at+4],control);
+        }
+        return r[0]&255;
+    }
+    private static int[] Rgb(byte[] p)
+    {
+        var output=new int[3];
+        for(int ch=0;ch<3;ch++)for(int stage=0;stage<p[8];stage++){
+            int at=176+stage*16,control=p[at+5];
+            if((control&128)==0)control|=64;
+            int Read(int v)=>v==0?output[ch]:v==14?p[64+(p[at+6]-12)*36+ch]:v==12?255:0;
+            output[ch]=Combine(Read(p[at]),Read(p[at+1]),Read(p[at+2]),Read(p[at+3]),p[at+4],control);
+        }
+        for(int ch=0;ch<3;ch++)output[ch]&=255;return output;
+    }
+    private static bool Compare(byte[] p,int alpha)=>(alpha>=p[25])==(alpha>=p[28]);
 }
