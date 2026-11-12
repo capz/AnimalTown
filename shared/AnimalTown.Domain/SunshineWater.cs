@@ -99,6 +99,17 @@ public static class SunshineWater
             throw new InvalidOperationException("Sunshine mip levels are not independently authored.");
     }
 
+    // Sunshine's separate small near-field wave overlay uses just two sine
+    // components and fades at its edges. The GPU handles all fine caustics.
+    public static float LocalWaveHeight(int x,int z,float worldX,float worldZ,double seconds)
+    {
+        float fade=WindWakerWaveField.EdgeWeight(x,z);
+        double tA=Math.IEEERemainder(seconds*1.13,2*Math.PI);
+        double tB=Math.IEEERemainder(seconds*.86,2*Math.PI);
+        return .047f+fade*(.024f*(float)Math.Sin(worldX*1.75+tA)+
+                             .015f*(float)Math.Sin(worldZ*1.42+tB));
+    }
+
     // Reproject the *existing* sea and river meshes inward on the world
     // cylinder rather than allocating duplicate mesh/ARAM archive records.
     public static float BedScale(float depth)
