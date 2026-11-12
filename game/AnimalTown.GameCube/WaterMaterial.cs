@@ -12,7 +12,8 @@ internal sealed class WaterMaterial : IDisposable
     private Texture2D? stormBase,whitecaps;
     private TevMaterial? storm;
     private Texture2D? sunshineTexture;
-    private TevMaterial? sunshineLayer,sunshineBed;
+    private TevMaterial? sunshineLayer,sunshineBed,sunshineCloseWaves;
+    internal Material CloseWaves=>sunshineCloseWaves?.Material??Surface;
     // A very thin tropical-blue body under the specular cutout, so the seabed
     // stays readable nearby while distant open water keeps its blue depth.
     // This remains a shared material; no new terrain geometry or textures.
@@ -81,7 +82,7 @@ internal sealed class WaterMaterial : IDisposable
         if(sunshineLayer!=null)return;
         if(seabedTexture==null)throw new ArgumentNullException(nameof(seabedTexture));
         Texture2D? wave=null;
-        TevMaterial? layer=null,bed=null;
+        TevMaterial? layer=null,bed=null,close=null;
         try{
             // Read a *pre-authored* GX mip package baked from five different
             // PNGs. Generating/downsampling at runtime would erase the effect.
@@ -103,7 +104,8 @@ internal sealed class WaterMaterial : IDisposable
             // two samples into a mostly unchanging base tint.
             sparkle.AddStage(TevInput.Zero,TevInput.Constant,TevInput.Texture,TevInput.Previous,colorSlot:0);
             sparkle.AddStage(TevInput.Zero,TevInput.Constant,TevInput.SecondaryTexture,TevInput.Previous,colorSlot:1);
-            layer=new TevMaterialDefinition(sparkle).Create(wave,wave);
+            var glintDefinition=new TevMaterialDefinition(sparkle);
+            layer=glintDefinition.Create(wave,wave);
             layer.Material.Blend=BlendMode.Alpha;
             layer.Material.AlphaCutoff=SunshineWater.GlintAlphaCutoff;
             layer.Material.DepthWrite=false;
@@ -115,6 +117,22 @@ internal sealed class WaterMaterial : IDisposable
                 u:TextureAddressMode.Repeat,v:TextureAddressMode.Repeat);
             layer.Material.Sampler=mip;
             layer.Material.SecondarySampler=mip;
+            // The original Sunshine also has a separate player-centered wave
+            // overlay using its own texture. Share our authored 32px caustic
+            // mip instead: a dedicated material fixes both hardware samplers
+            // on level 1 even right by the camera, adding no resident image.
+            close=glintDefinition.Create(wave,wave);
+            close.Material.Blend=BlendMode.Alpha;
+            close.Material.AlphaCutoff=.34f;
+            close.Material.DepthWrite=false;
+            close.Material.DepthTest=true;
+            close.Material.Cull=CullMode.Back;
+            close.Material.Color=new Color32(214,249,243,206);
+            var closeMip=new SamplerState(TextureMinFilter.LinearMipmapNearest,
+                TextureMagFilter.Linear,minLod:1,maxLod:1,lodBias:3.9f,
+                u:TextureAddressMode.Repeat,v:TextureAddressMode.Repeat);
+            close.Material.Sampler=closeMip;
+            close.Material.SecondarySampler=closeMip;
 
             var sand=new TevProgramBuilder();
             sand.AddColor("Sand",new Color32(239,225,189));
@@ -127,9 +145,9 @@ internal sealed class WaterMaterial : IDisposable
             bed.Material.Cull=CullMode.Back;
             bed.Material.Sampler=new SamplerState(TextureAddressMode.Repeat,TextureAddressMode.Repeat,TextureFilter.Linear);
 
-            sunshineTexture=wave;sunshineLayer=layer;sunshineBed=bed;
+            sunshineTexture=wave;sunshineLayer=layer;sunshineCloseWaves=close;sunshineBed=bed;
         }catch{
-            bed?.Dispose();layer?.Dispose();wave?.Dispose();
+            bed?.Dispose();close?.Dispose();layer?.Dispose();wave?.Dispose();
             throw;
         }
     }
@@ -156,6 +174,11 @@ internal sealed class WaterMaterial : IDisposable
             // identical UV scale generates the shifting moire/caustic pattern.
             water.SecondaryTextureTransform=new UvTransform(new Vector2(
                 0,WaterSurface.Scroll(seconds,-.067f)),new Vector2(1,1));
+            if(sunshineCloseWaves!=null){
+                var close=sunshineCloseWaves.Material;
+                close.TextureTransform=water.TextureTransform;
+                close.SecondaryTextureTransform=water.SecondaryTextureTransform;
+            }
         }
         if(RoughOcean&&!IsSunshine&&storm!=null){
             storm.Material.TextureTransform=new UvTransform(new Vector2(WaterSurface.Scroll(seconds,.035f),WaterSurface.Scroll(seconds,.075f)),new Vector2(1,1));
@@ -163,7 +186,7 @@ internal sealed class WaterMaterial : IDisposable
         }
     }
     public void Dispose(){
-        sunshineBed?.Dispose();sunshineLayer?.Dispose();sunshineTexture?.Dispose();
+        sunshineBed?.Dispose();sunshineCloseWaves?.Dispose();sunshineLayer?.Dispose();sunshineTexture?.Dispose();
         storm?.Dispose();water.Dispose();
         whitecaps?.Dispose();stormBase?.Dispose();distortion.Dispose();shoreFoam.Dispose();ripples.Dispose();
     }
