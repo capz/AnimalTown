@@ -1,11 +1,14 @@
 namespace AnimalTown;
 
-// Independently versioned records. The legacy codec remains the import/export
-// format and the common semantic validator, never the new storage payload.
+// Independently versioned records. Both formats share semantic validation;
+// importing split records never serializes another complete world.
 public static class SplitSaveCodec
 {
     public const int TownData=0,HousePositions=1,ShopStates=2,PlayerVillager=3,Commit=4;
     public const int PartCount=7;
+    private const int HeaderAndChecksumBytes=32;
+    // Fixed scalar/count words; run words, names and object rows are variable.
+    private const int SharedTownWords=94,LegacyTownWords=38,LegacyPlayerWords=201;
     public static int RecordKind(int part)=>part<4?part:part+1;
     public static int ReadVersion(byte[] bytes)=>new Reader(bytes,TownData).Version;
     public static string FileName(int kind,int bank)
@@ -16,11 +19,11 @@ public static class SplitSaveCodec
     {
         private readonly byte[] bytes;private int at;
         internal Writer(GameState s,int kind,int capacity,int version=4)
-        {bytes=new byte[capacity];Int(0x50535441);Int(version);Int(Catalog.Version);Int(kind);Int(s.Sequence);Int(s.Town.Seed);Int(0);}
+        {if(capacity<32||capacity>SaveCodec.MaximumBytes)throw new InvalidOperationException("Save record exceeds budget");bytes=new byte[capacity];Int(0x50535441);Int(version);Int(Catalog.Version);Int(kind);Int(s.Sequence);Int(s.Town.Seed);Int(0);}
         internal void Int(int n){if(at>bytes.Length-4)throw new InvalidOperationException("Save record exceeds budget");for(int i=0;i<4;i++)bytes[at++]=(byte)((uint)n>>(i*8));}
         internal void Text(string s){Int(s.Length);for(int i=0;i<s.Length;i++)Int(s[i]);}
         internal void Rle(byte[] source){Int(Runs(source));for(int i=0;i<source.Length;){int n=1;while(i+n<source.Length&&source[i+n]==source[i])n++;Int((source[i]<<24)|n);i+=n;}}
-        internal byte[] Finish(){int length=at+4;for(int i=0;i<4;i++)bytes[24+i]=(byte)(length>>(i*8));Int((int)SaveCodec.Crc(bytes,0,at));var result=new byte[at];Array.Copy(bytes,result,at);return result;}
+        internal byte[] Finish(){int length=at+4;if(length!=bytes.Length)throw new InvalidOperationException("Save record length calculation mismatch");for(int i=0;i<4;i++)bytes[24+i]=(byte)(length>>(i*8));Int((int)SaveCodec.Crc(bytes,0,at));return bytes;}
     }
     internal sealed class Reader
     {
@@ -47,28 +50,30 @@ public static class SplitSaveCodec
     public static byte[][] Encode(GameState s)
     {
         s.CaptureProfile();var t=s.Town;var records=new byte[PartCount][];
-        var w=new Writer(s,TownData,2048+4*(Runs(t.Tiles)+Runs(t.Elevation))+24*(t.GroundCount+t.PlacedCount));
+        int names=0;for(int i=0;i<6;i++)names+=t.Residents[i].Name.Length;
+        var w=new Writer(s,TownData,HeaderAndChecksumBytes+4*(SharedTownWords+Runs(t.Tiles)+Runs(t.Elevation)+names+6*(t.GroundCount+t.PlacedCount)));
         w.Int(Town.Width);w.Int(Town.Height);w.Int(TownGenerator.Version);w.Int(t.Day);w.Int(t.Month);w.Rle(t.Tiles);w.Rle(t.Elevation);
         for(int i=0;i<6;i++){var v=t.Residents[i];w.Int(v.X);w.Int(v.Z);w.Text(v.Name);w.Int((int)(v.PosX*1024));w.Int((int)(v.PosZ*1024));}
         w.Int(t.GroundCount);for(int i=0;i<t.GroundCount;i++){var g=t.Ground[i];w.Int(g.Item);w.Int(g.X);w.Int(g.Z);w.Int(g.Owner);w.Int(g.Day);w.Int(g.Kind);}
         w.Int(t.PlacedCount);for(int i=0;i<t.PlacedCount;i++){var p=t.Placed[i];w.Int(p.Item);w.Int(p.X);w.Int(p.Z);w.Int(p.Rotation);w.Int(p.Room);w.Int(p.Owner);}
         w.Int(s.ActiveProfile);for(int i=0;i<s.BuildingTypes.Length;i++)w.Int(s.BuildingTypes[i]);
         for(int i=0;i<6;i++){var v=t.Residents[i];w.Int(v.Space);w.Int(v.JourneyBuilding);w.Int(v.JourneyPhase);w.Int(v.Dwell);w.Int((int)(v.Yaw*1024));w.Int(v.JourneyNextX);w.Int(v.JourneyNextZ);}records[0]=w.Finish();
-        w=new Writer(s,HousePositions,256);for(int i=0;i<GameState.ProfileCount;i++){w.Int(s.HomePlaced(i)?1:0);w.Int(s.HomeX(i));w.Int(s.HomeZ(i));}for(int i=0;i<6;i++){w.Int(t.Residents[i].HomeX);w.Int(t.Residents[i].HomeZ);}records[1]=w.Finish();
-        w=new Writer(s,ShopStates,128);w.Int(t.Spending);w.Int(t.StockCount);for(int i=0;i<12;i++)w.Int(t.Stock[i]);records[2]=w.Finish();
+        w=new Writer(s,HousePositions,HeaderAndChecksumBytes+4*(GameState.ProfileCount*3+6*2));for(int i=0;i<GameState.ProfileCount;i++){w.Int(s.HomePlaced(i)?1:0);w.Int(s.HomeX(i));w.Int(s.HomeZ(i));}for(int i=0;i<6;i++){w.Int(t.Residents[i].HomeX);w.Int(t.Residents[i].HomeZ);}records[1]=w.Finish();
+        w=new Writer(s,ShopStates,HeaderAndChecksumBytes+4*14);w.Int(t.Spending);w.Int(t.StockCount);for(int i=0;i<12;i++)w.Int(t.Stock[i]);records[2]=w.Finish();
         for(int i=0;i<GameState.ProfileCount;i++)records[3+i]=ProfileCodec.Encode(s,i);return records;
     }
     public static byte[][] EncodeLegacy(GameState s)
     {
         SaveCodec.RequireLegacyProfile(s);
         var t=s.Town;var records=new byte[4][];
-        var w=new Writer(s,TownData,2048+4*(Runs(t.Tiles)+Runs(t.Elevation))+24*t.GroundCount,3);
+        int names=0;for(int i=0;i<6;i++)names+=t.Residents[i].Name.Length;
+        var w=new Writer(s,TownData,HeaderAndChecksumBytes+4*(LegacyTownWords+Runs(t.Tiles)+Runs(t.Elevation)+names+6*t.GroundCount),3);
         w.Int(Town.Width);w.Int(Town.Height);w.Int(TownGenerator.Version);w.Int(t.Day);w.Int(t.Month);w.Rle(t.Tiles);w.Rle(t.Elevation);
         for(int i=0;i<6;i++){var v=t.Residents[i];w.Int(v.X);w.Int(v.Z);w.Text(v.Name);w.Int((int)(v.PosX*1024));w.Int((int)(v.PosZ*1024));}
         w.Int(t.GroundCount);for(int i=0;i<t.GroundCount;i++){var g=t.Ground[i];w.Int(g.Item);w.Int(g.X);w.Int(g.Z);w.Int(g.Owner);w.Int(g.Day);w.Int(g.Kind);}records[0]=w.Finish();
-        w=new Writer(s,HousePositions,128,3);w.Int(s.HousePlaced?1:0);w.Int(t.HouseX);w.Int(t.HouseZ);for(int i=0;i<6;i++){w.Int(t.Residents[i].HomeX);w.Int(t.Residents[i].HomeZ);}records[1]=w.Finish();
-        w=new Writer(s,ShopStates,128,3);w.Int(t.Spending);w.Int(t.StockCount);for(int i=0;i<12;i++)w.Int(t.Stock[i]);records[2]=w.Finish();
-        w=new Writer(s,PlayerVillager,4096+24*t.PlacedCount,3);
+        w=new Writer(s,HousePositions,HeaderAndChecksumBytes+4*15,3);w.Int(s.HousePlaced?1:0);w.Int(t.HouseX);w.Int(t.HouseZ);for(int i=0;i<6;i++){w.Int(t.Residents[i].HomeX);w.Int(t.Residents[i].HomeZ);}records[1]=w.Finish();
+        w=new Writer(s,ShopStates,HeaderAndChecksumBytes+4*14,3);w.Int(t.Spending);w.Int(t.StockCount);for(int i=0;i<12;i++)w.Int(t.Stock[i]);records[2]=w.Finish();
+        w=new Writer(s,PlayerVillager,HeaderAndChecksumBytes+4*(LegacyPlayerWords+s.Name.Length+s.Catchphrase.Length+s.MailCount+6*t.PlacedCount),3);
         int[] fields={s.Wallet,(int)s.Savings,(int)(s.Savings>>32),(int)s.Debt,(int)(s.Debt>>32),s.Species,s.Palette,s.Tool,s.Shirt,s.HouseTier,s.GardenTier,s.PendingKind,s.PendingTier,s.PendingDay,s.Tutorial,s.MetMask,s.Jobs,s.JobDay,s.MailCount,s.Roof,s.Wall,s.Fence,s.Mailbox,s.Exterior,s.BackpackTier,(int)(s.X*1024),(int)(s.Z*1024)};
         for(int i=0;i<fields.Length;i++)w.Int(fields[i]);w.Text(s.Name);w.Text(s.Catchphrase);
         for(int i=0;i<GameState.MaximumPockets;i++)w.Int(s.Pockets[i]);for(int i=0;i<64;i++)w.Int(s.Owned[i]);for(int i=0;i<s.MailCount;i++)w.Int(s.Mail[i]);
@@ -93,12 +98,13 @@ public static class SplitSaveCodec
         for(int i=0;i<6;i++){var v=t.Residents[i];v.Friendship=r.Int();v.Request=r.Int();v.RequestDay=r.Int();v.Met=r.Int();}
         t.PlacedCount=r.Range(0,256);for(int i=0;i<t.PlacedCount;i++){var p=t.Placed[i];p.Item=r.Int();p.X=r.Int();p.Z=r.Int();p.Rotation=r.Int();p.Room=r.Int();p.Owner=r.Int();}if(root.Version>=3){var fields=new int[BuildingSave.LegacyFieldCount];for(int i=0;i<fields.Length;i++)fields[i]=r.Int();BuildingSave.Decode(s,fields);}r.End();
         // Reuse all legacy range, placement and catalog validation before use.
-        if(root.Version<2)WaterTerrain.Migrate(t);
-        return snapshot==null?SaveCodec.Decode(SaveCodec.Encode(s)):SaveCodec.ValidateSnapshot(SaveCodec.Encode(s),snapshot);
+        if(root.Version<2)WaterTerrain.Migrate(t,false);
+        s.CaptureProfile();return SaveCodec.ValidateDecodedState(s);
     }
     private static GameState DecodeProfiles(byte[][] records,Town? snapshot)
     {
         var r=new Reader(records[0],TownData);if(r.Version!=4)throw new InvalidOperationException("Invalid shared town schema");var root=r;
+        if(snapshot!=null&&r.Seed!=snapshot.Seed)throw new InvalidOperationException("Readback snapshot seed mismatch");
         var s=snapshot==null?new GameState(r.Seed):new GameState(r.Seed,snapshot);s.Sequence=r.Sequence;var t=s.Town;
         r.Range(Town.Width,Town.Width);r.Range(Town.Height,Town.Height);r.Range(1,TownGenerator.Version);t.Day=r.Int();t.Month=r.Int();r.Rle(t.Tiles,(int)Terrain.CoastWest,snapshot!=null);r.Rle(t.Elevation,TerrainElevation.MaximumMode,snapshot!=null);
         for(int i=0;i<6;i++){var v=t.Residents[i];v.X=r.Int();v.Z=r.Int();v.Name=r.Text(24);v.PosX=r.Int()/1024f;v.PosZ=r.Int()/1024f;}
@@ -109,10 +115,10 @@ public static class SplitSaveCodec
         for(int i=0;i<GameState.ProfileCount;i++)s.Profiles[i]=ProfileCodec.Decode(s,i,records[3+i]);
         r=new Reader(records[1],HousePositions);r.Match(root);for(int i=0;i<GameState.ProfileCount;i++){var p=s.Profiles[i];if(r.Range(0,1)!=(p.HousePlaced?1:0)||r.Int()!=p.HouseX||r.Int()!=p.HouseZ)throw new InvalidOperationException("Profile plot differs from shared houses");}for(int i=0;i<6;i++){t.Residents[i].HomeX=r.Int();t.Residents[i].HomeZ=r.Int();}r.End();
         r=new Reader(records[2],ShopStates);r.Match(root);t.Spending=r.Int();t.StockCount=r.Int();for(int i=0;i<12;i++)t.Stock[i]=r.Int();r.End();s.RestoreProfile(active);
-        return snapshot==null?SaveCodec.Decode(SaveCodec.Encode(s)):SaveCodec.ValidateSnapshot(SaveCodec.Encode(s),snapshot);
+        return SaveCodec.ValidateDecodedState(s);
     }
     public static byte[] EncodeCommit(GameState s,byte[][] records)
-    {if(records.Length!=4&&records.Length!=PartCount)throw new InvalidOperationException("Incomplete save commit");var w=new Writer(s,Commit,128,records.Length==4?3:4);for(int i=0;i<records.Length;i++){var r=new Reader(records[i],RecordKind(i));if(r.Sequence!=s.Sequence||r.Seed!=s.Town.Seed)throw new InvalidOperationException("Mixed save commit");w.Int(records[i].Length);w.Int((int)SaveCodec.Crc(records[i],0,records[i].Length-4));}return w.Finish();}
+    {if(records.Length!=4&&records.Length!=PartCount)throw new InvalidOperationException("Incomplete save commit");var w=new Writer(s,Commit,HeaderAndChecksumBytes+records.Length*8,records.Length==4?3:4);for(int i=0;i<records.Length;i++){var r=new Reader(records[i],RecordKind(i));if(r.Sequence!=s.Sequence||r.Seed!=s.Town.Seed)throw new InvalidOperationException("Mixed save commit");w.Int(records[i].Length);w.Int((int)SaveCodec.Crc(records[i],0,records[i].Length-4));}return w.Finish();}
     public static void VerifyCommitted(byte[] commit,byte[][] records)
     {var r=new Reader(commit,Commit);if(records.Length!=(r.Version>=4?PartCount:4))throw new InvalidOperationException("Incomplete save commit");for(int i=0;i<records.Length;i++){var part=new Reader(records[i],RecordKind(i));part.Match(r);if(r.Int()!=records[i].Length||(uint)r.Int()!=SaveCodec.Crc(records[i],0,records[i].Length-4))throw new InvalidOperationException("Save commit mismatch");}r.End();}
     public static GameState DecodeCommitted(byte[] commit,byte[][] records)

@@ -4,6 +4,7 @@ internal static class ShadowCoverageChecks
 {
     internal static void Run(Action<bool,string> check)
     {
+        ShadowReceiverCacheChecks.Run(check);
         var town=new Town(31);Array.Fill(town.Tiles,(byte)Terrain.Grass);Array.Clear(town.Elevation);
         var legacy=new GroundShadow();var coverage=new GroundShadow();
         void Build(GroundShadow g,bool optimized,ShadowCaster caster){if(optimized)g.BeginCoverage(town,caster);else g.Begin(town,caster,true);int stages=0;while(!g.Advance())check(++stages<32,"coverage work is staged and bounded");check(!g.Overflow,"coverage fixture fits receiver capacity");}

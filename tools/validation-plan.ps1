@@ -2,7 +2,7 @@
 function Get-ValidationPlan {
     param([string[]]$ChangedPaths=@(),[switch]$Full,[switch]$ForceRelease,[string]$Commit='',[string]$BaseRef='')
     $allManaged=@('ui','menu','text','trim','terrain','movement','dialogue','generation','life','saves','buildings','core')
-    $allRendering=@('water','services','movement','ground','index','visibility','attention','dropped-item','font')
+    $allRendering=@('water','services','movement','ground','index','visibility','attention','dropped-item','font','map','rain')
     $rendering=[Collections.Generic.HashSet[string]]::new()
     $managed=[Collections.Generic.HashSet[string]]::new()
     # Each terrain-producing rule contributes its own rendering dependencies.
@@ -25,14 +25,15 @@ function Get-ValidationPlan {
         elseif($p -match '^game/AnimalTown.GameCube/TerrainIndexBuffer\.cs$'){$renderingForPath=@('index')}
         elseif($p -match '^game/AnimalTown.GameCube/VillagerAttentionRenderer\.cs$'){$renderingForPath=@('attention')}
         elseif($p -match '^(shared/AnimalTown.Domain/DroppedItemPlan|game/AnimalTown.GameCube/DroppedItemRenderer)\.cs$|^assets/textures/items/|^tools/AnimalTown.Tools/DroppedItemAssets\.cs$'){$renderingForPath=@('dropped-item')}
+        elseif($p -match '^game/AnimalTown.GameCube/RainRenderer\.cs$'){$renderingForPath=@('rain')}
         if($p -match '^(docs/|.*\.md$|LICENSE$|\.gitignore$)'){continue}
         $release=$true
         if($p -match '^(build/|\.github/|Directory\.|.*\.sln$|.*\.csproj$|\.gitmodules$|vendor/|tools/(build-|publish-release|patch-native|.*validation|test-changes)|tests/validation-(plan|selection))'){$broad=$true;continue}
         if($p -match '^server/|^tests/(server-integration|AnimalTown.ServerChecks)'){$backend=$true;continue}
         if($p -match '^(shared/AnimalTown.Domain/DevConfig|game/AnimalTown.GameCube/DevConfigStorage|tests/AnimalTown.Checks/DevConfigChecks)\.cs$'){Add-Managed 'saves';Add-Managed 'menu';continue}
         if($p -match '^game/AnimalTown.GameCube/(TitleScreen|TitleArt|TitleBackdrop|LoadingScreen|ProfilePicker|TownSession)\.cs$'){Add-Managed 'ui';Add-Managed 'menu';Add-Managed 'saves';continue}
-        if($p -match '^tests/AnimalTown.RenderingChecks/(WaterEffect|RenderingService|MovementTerrain|GroundRing|TerrainIndex|ActorVisibility|AttentionGeometry|DroppedItem|UiTextLayout)Checks\.cs$'){
-            $names=@{WaterEffect='water';RenderingService='services';MovementTerrain='movement';GroundRing='ground';TerrainIndex='index';ActorVisibility='visibility';AttentionGeometry='attention';DroppedItem='dropped-item';UiTextLayout='font'}
+        if($p -match '^tests/AnimalTown.RenderingChecks/(WaterEffect|RenderingService|MovementTerrain|GroundRing|TerrainIndex|ActorVisibility|AttentionGeometry|DroppedItem|UiTextLayout|MapMemory|RainMemory)Checks\.cs$'){
+            $names=@{WaterEffect='water';RenderingService='services';MovementTerrain='movement';GroundRing='ground';TerrainIndex='index';ActorVisibility='visibility';AttentionGeometry='attention';DroppedItem='dropped-item';UiTextLayout='font';MapMemory='map';RainMemory='rain'}
             [void]$rendering.Add($names[$Matches[1]]);continue
         }
         if($p -match '^(shared/AnimalTown.Domain/(SunshineWater|WindWakerWaterPattern|WindWakerWaveField|WindWakerWaveGrid|WaterDepthCache|GroundRingPlan|ActorFrameVisibility|AnimationFrameClock)|game/AnimalTown.GameCube/(LocalOceanWaves|GroundRingRenderer|GeometryStaging|TerrainIndexBuffer|VillagerAttentionRenderer))\.cs$'){
@@ -43,6 +44,12 @@ function Get-ValidationPlan {
         }
         if($p -match '^game/AnimalTown.GameCube/(UiFont|UiTextLayoutCache)\.cs$'){
             Add-Managed 'ui';Add-Managed 'text';[void]$rendering.Add('font');continue
+        }
+        if($p -match '^game/AnimalTown.GameCube/MapBackground\.cs$'){
+            Add-Managed 'ui';[void]$rendering.Add('map');continue
+        }
+        if($p -match '^game/AnimalTown.GameCube/RainRenderer\.cs$'){
+            Add-Managed 'terrain';continue
         }
         if($p -match '^tests/AnimalTown.Checks/Program.cs$'){$broad=$true;continue}
         if($p -match '^(shared/AnimalTown.Domain/WaterSurface|tests/AnimalTown.Checks/WaterSurfaceChecks)\.cs$') {Add-Managed 'terrain';continue}
