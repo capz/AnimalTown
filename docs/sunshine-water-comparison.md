@@ -119,52 +119,59 @@ No physical GameCube frame-time or Dolphin screenshot comparison has
 yet been run for this PR. Verify depth ordering, nearshore visibility,
 shader output and draw-submit overhead before production rollout.
 
-## Follow-up fix: true layered water and silent idle interactions (PR #56)
+## Rebuilt Sunshine material and authored water texture
 
-The original Sunshine prototype bound **one IA8 texture in both texture slots**
-and rendered one translucent pass. It could not produce two independent
-interference patterns, and its alpha control discarded the second tap's alpha.
+The original A/B preview generated five slight variations of one procedural
+straight-line pattern and blended them using a TEV that was tuned for a soft
+color overlay. That could only look like faint diagonal marks on the water.
 
-The corrected renderer uses, in order:
+The improved preview is now built from **five separately editable PNGs** in
+`assets/textures/environment/water/sunshine-wave-mipN-SIZE.png`:
 
-1. The existing opaque underwater sand/cliff-soil texture, with archived river
-   and sea meshes inset 0.4m and 0.75m radially into the curved world.
-2. A separate transparent color film over the water meshes, retaining vertex
-   colors for water depth/season tint; depth test on, depth write off.
-3. A second **independent translucent sparkle pass** over the same geometry:
-   * TEX0 uses the 64x64 IA8 authored reflection/glint texture (five mips)
-     and its alpha provides the mask for the overlay.
-   * TEX1 uses a different 64x64 IA8 authored ripple texture
-     (five mips and its own periodic wave directions).
-   * Each slot has its own scrolling/rotating UVs and explicit trilinear
-     LinearMipmapLinear filtering and LOD bias. Mid-distance LODs are brighter
-     than near and distant LODs, so the effect changes naturally with distance.
-   * The pinned DolphinDotNet preview.315.1 supports DNEF v2, combining
-     independent TEX0/TEX1 RGB and a final TEX0 alpha. GX's single-reference
-     material cutoff retains strong glints (alpha > 0.54); the separate
-     translucent film below provides clear, softly tinted water everywhere.
-     SDK source has a newer v4 two-reference alpha API but that version is
-     not yet available in the locked published SDK/Hypercube package chain.
-4. The original bank foam continues to draw above the water.
+| GX level | Native size | Original-authored purpose |
+| --- | --- | --- |
+| L0 | 64×64 | Completely clear; no wave/shimmer pixels in the near field |
+| L1 | 32×32 | Irregular caustic cells, thin connecting glints at moderate distance |
+| L2 | 16×16 | Brightest, wider caustic reflections; apparent distant sky/glare band |
+| L3 | 8×8 | Near-black tail with soft, distant fading |
+| L4 | 4×4 | Completely clear; no bright horizon checkerboard |
 
-The two authored IA8 images total 21,824 native texture bytes. Sunshine mode
-adds one water-surface submission pass compared with the original mode but
-no new mesh/archive geometry or per-frame texture uploads. Wind Waker stays the
-default debug style, with its existing draw count, storm patch and materials.
+These are independent grayscale **source** PNGs, not copies of Nintendo's
+assets. Editing any single mip changes *only that mip*. The existing SkiaSharp
+asset-cooking pipeline reads and validates every PNG on building an ISO and
+packs each image into a **10,912-byte GX IA8 native texture chain**. No image
+resampling, box filtering or runtime sine-wave art is permitted in the cook.
+The derived alpha channel maps authored brightness to a specular-coverage
+threshold while preserving each RGB intensity.
 
-The alpha cutoff is deliberately calibrated to TEX0's authored glint mask:
-a higher cutoff would erase the sparkle layer, while a lower one would turn
-its highlights into a continuous cloudy overlay. The transparent base film,
-two independent RGB images, authored mip bands and UV interference are the
-working features in the currently pinned native SDK. Retail Sunshine's
-two-sided alpha comparison remains a future native SDK-package upgrade.
+`SunshineWaterAssets.Build` writes `out/disc/sunshine-water.dndtex`.
+The disc validator requires this file. The texture audit verifies both the
+5-level native header and per-pixel authored alpha, and CI actually performs
+the PNG-to-GX cook. Runtime reads the prepared package only on the first
+selection of Sunshine mode.
 
-**Interaction fix:** when A is pressed with no usable target, the player now
-does nothing, indoors or outside. Unsuccessful bug-net catches are also silent.
-Valid conversations, pickups, door operations and successful tool interactions
-retain their previous messages.
+The game now explicitly requests GX trilinear filtering for both water
+texture bindings, with native LOD range 0–4 and a +0.65 LOD bias to position
+the bright L2 band within the curved AnimalTown horizon. The primary and
+secondary texture coordinates have equal scale; the first scrolls in two
+axes and the second scrolls predominantly in one, producing changing moiré
+caustics. The TEV **adds** both glint contributions rather than blending
+them into the old constant color. Material alpha comparison requires
+`alpha >= 0.68` before writing a specular pixel; water depth writes remain
+off. A thin blue transparent body shows above the opaque sandy seabed.
+Unlike the former static preview, the open ocean additionally uses a
+bounded two-sine near-field wave patch that fades to the fixed sea.
 
-CI checks validate authored mip packing, independent texture contents, the
-DNEF v2 TEX0/TEX1 stage selectors, calibrated glint cutoff and regression
-guards on the interaction handler. A visual comparison in Dolphin/real GameCube
-is still required to assess glint brightness and performance.
+The existing Wind Waker renderer is unchanged by the A/B selector.
+
+**Technical limitation:** DolphinDotNet's currently pinned DNEF v2 alpha
+program always computes opacity as vertex alpha × TEX0 alpha. Therefore
+the first sample controls the glint silhouette; the second contributes to
+the moving *RGB* highlights. Sunshine's original double-sided 0.13/0.92
+alpha test and the full two-sample alpha formula would require an upstream
+SDK effect/alpha-comparison extension. Likewise, original EFB refraction
+and screen-space environment reflections are not reproduced here.
+This patch achieves the artistic LOD structure, deliberate GX mip sampling,
+two-texture moiré animation, high-threshold highlights, local wave geometry
+and separate seabed within the published SDK. It does not claim pixel
+identity with the retail game.
