@@ -115,13 +115,19 @@ alpha blending, texture decode loop or tree animation explains the measured
 addition to native decoded resources. This is a residency issue, not evidence
 of a new allocation every frame.
 
-Generated trees contain 84/68/60 triangles for deciduous/palm/pine, no textures,
+In the measurements above, generated trees contain 84/68/60 triangles for deciduous/palm/pine, no textures,
 and four uniform-color unlit parts. They share native geometry and use the SDK
 `include/dnd_indexed_mesh.inc` path, which submits position indices instead of
 repeating CPU diffuse/color work. Their position-index payload is 504/408/360
 bytes per placement, plus command/material overhead. Up to 32 selected trees
 are supported. `DrawMeshes` batches CPU submission; this is not hardware
 instancing. Original GLBs remain source references and are excluded from the ISO.
+
+The subsequent noise-detail change retains these triangle counts and species
+batches, adding one shared 32×32 I8 texture (1,440 native bytes), full mipmaps
+and per-vertex UVs. See [the current rendering guide](generated-trees-repeat-floor.md).
+The historical texture-free/index payload figures and timings above do not
+measure the textured path; its direct vertex payload is 24 bytes per corner.
 
 ## Engine/SDK priorities
 
