@@ -140,5 +140,16 @@ Copy-Item -LiteralPath (Join-Path $nativeOutput 'boot/gamecube/LICENSE') -Destin
 $apploaderCommit=$sdkMetadata.package.metadata.repository.commit
 $apploaderContentHash=(Get-FileHash -LiteralPath (Join-Path $nativeOutput 'apploader.img') -Algorithm SHA256).Hash.ToLowerInvariant()
 [IO.File]::WriteAllText((Join-Path $projectRoot 'out/build-revisions.txt'), "Version: $($identity.version)`nGame source: $gameFullCommit`nEngine: $engineCommit`nSDK: $sdkCommit`nPackage lock SHA256: $packageLocks`nEngine NuGet SHA512: $engineContentHash`nSDK NuGet SHA512: $sdkContentHash`nApploader SDK: capz/DolphinDotNet ($apploaderCommit)`nApploader SHA256: $apploaderContentHash`nAssets NuGet SHA512: $assetsContentHash`nUpdater source: $updaterCommit`nUpdater DOL SHA256: $updaterHash`nRuntime profile: $RuntimeProfile`nDirty: $([bool]$workingChanges)`nSource digest: $sourceDigest`nBuild image: $env:ANIMALTOWN_BUILD_IMAGE`n")
-Run dotnet @('run','--project','tools/AnimalTown.Tools','-c','Release','--no-build','--','iso',$projectRoot,'out/native/Game.dol',$gameVersion)
-Write-Host "Bootable ISO: $projectRoot/out/AnimalTown-$gameVersion.iso"
+# NKit needs a raw source for conversion and the exact round-trip check. Keep
+# both raw images temporary; the sole console build output is the verified NKit.
+$discStage=Join-Path $projectRoot ('out/disc-work/'+[guid]::NewGuid().ToString('N'))
+$nkit=Join-Path $projectRoot "out/AnimalTown-$gameVersion.nkit.iso"
+New-Item -ItemType Directory -Force -Path $discStage|Out-Null
+try{
+    $sourceIso=Join-Path $discStage 'source.iso'
+    Run dotnet @('run','--project','tools/AnimalTown.Tools','-c','Release','--no-build','--','iso',$projectRoot,'out/native/Game.dol',$gameVersion,$sourceIso)
+    & (Join-Path $PSScriptRoot 'compress-nkit.ps1') -Root $projectRoot -Iso $sourceIso -Destination $nkit -Report (Join-Path $projectRoot 'out/nkit-validation.json')
+}finally{
+    if(Test-Path -LiteralPath $discStage){Remove-Item -LiteralPath $discStage -Recurse -Force}
+}
+Write-Host "Bootable NKit ISO: $nkit"

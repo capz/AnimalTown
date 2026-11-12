@@ -37,9 +37,10 @@ static class Program
             else if(args[0]=="terrain")RepeatFloorAssets.Build(Root);
             else if(args[0]=="terrain-check")TerrainChecks.Run(Root);
             else if(args[0]=="tree-audit")TreeRenderAudit.Run(Root,args[2]);
-            else if(args[0]=="iso")Disc(args[2],args[3]);
+            else if(args[0]=="iso")Disc(args[2],args[3],args.Length>4?args[4]:null);
             else if(args[0]=="verify")Verify(args[2]);
             else if(args[0]=="verify-nkit"){Verify(args[2]);NKitImages.Verify(args[2],args[3],args[4]);}
+            else if(args[0]=="verify-nkit-output")NKitImages.VerifyOutput(args[2],args[3]);
             else if(args[0]=="nkit-check"){SdkApploader.Check();NKitImages.Check();}
             else throw new ArgumentException("repack-textures|repack-check|audit|art|iso|verify|tree-audit ROOT [PATH] [COMMIT]");
             return 0;
@@ -108,7 +109,7 @@ static class Program
         BrandAssets.Build(Root);RepeatFloorAssets.Build(Root);TerrainCliffAssets.CookTexture(Root);DroppedItemAssets.Build(Root);SunshineWaterAssets.Build(Root);
         byte[] image=Banner(96);File.WriteAllBytes(Path.Combine(dir,"savebanner.rgb5a3"),image);File.WriteAllBytes(Path.Combine(dir,"saveicon.rgb5a3"),Banner(32));
     }
-    static void Disc(string dolPath,string commit)
+    static void Disc(string dolPath,string commit,string? output=null)
     {
         string disc=Path.Combine(Root,"out/disc");BuildingAssets.Cook(Root);Art();TextureAudit.Run(Root);
         var bnr=new byte[6496];Encoding.ASCII.GetBytes("BNR1").CopyTo(bnr,0);Banner(96).CopyTo(bnr,32);
@@ -126,7 +127,9 @@ static class Program
         long cursor=Align(fstAt+fst.Length,32768);
         var offsets=new List<long>();for(int i=0;i<files.Length;i++){offsets.Add(cursor);Put(fst,(i+1)*12,(uint)nameOffsets[i]);Put(fst,(i+1)*12+4,(uint)cursor);Put(fst,(i+1)*12+8,(uint)new FileInfo(files[i].path).Length);cursor=Align(cursor+new FileInfo(files[i].path).Length,32768);}
         const long capacity=1459978240;if(cursor>capacity)throw new InvalidDataException("Disc full");
-        string output=Path.Combine(Root,"out/AnimalTown-"+commit+".iso");using(var f=new FileStream(output,FileMode.Create,FileAccess.ReadWrite))
+        output=Path.GetFullPath(output??Path.Combine(Root,"out/AnimalTown-"+commit+".iso"));
+        Directory.CreateDirectory(Path.GetDirectoryName(output)!);
+        using(var f=new FileStream(output,FileMode.Create,FileAccess.ReadWrite))
         {
             f.SetLength(capacity);var boot=new byte[0x2460];Text(boot,0,7,"AMTE01");Put(boot,0x1c,0xc2339f3d);Text(boot,0x20,0x3e0,"AnimalTown / "+commit);
             Put(boot,0x420,0x10000);Put(boot,0x424,(uint)fstAt);Put(boot,0x428,(uint)fst.Length);Put(boot,0x42c,(uint)fst.Length);Put(boot,0x458,0xffffffff);

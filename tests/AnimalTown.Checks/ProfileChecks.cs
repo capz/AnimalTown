@@ -90,10 +90,11 @@ internal static class ProfileChecks
         check(npc.Space==0&&npc.JourneyBuilding==-1&&npc.JourneyPhase==0,"NPC visits and routes to a deleted home are cancelled");
         var disk=new Storage();var repo=new SaveRepository(disk);var original=DeletionTown();repo.Save(original);repo.Save(original);var frozen=SaveCodec.Encode(original);
         var removed=repo.DeleteProfile(original,0);check(SaveCodec.Encode(original).SequenceEqual(frozen),"durable deletion never mutates the displayed snapshot");
-        check(removed.Sequence==original.Sequence+2&&!repo.Load()!.Profiles[0].Created,"deletion verifies both save banks");
+        check(removed.Sequence==original.Sequence+1&&!repo.Load()!.Profiles[0].Created,"deletion verifies both save banks");
         int latest=removed.Sequence%2;disk.Files[SplitSaveCodec.FileName(4,latest)][40]^=1;
         check(!repo.Load()!.Profiles[0].Created,"fallback to the other bank cannot resurrect a successfully deleted resident");
-        foreach(bool afterWrite in new[]{false,true})for(int fail=1;fail<=16;fail++){
+        var measure=new StorageCopy(original);var measuredRepo=new SaveRepository(measure);var measuredState=measuredRepo.Load()!;measure.Writes=0;measuredRepo.DeleteProfile(measuredState,0);int deletionWrites=measure.Writes;
+        foreach(bool afterWrite in new[]{false,true})for(int fail=1;fail<=deletionWrites;fail++){
             var fault=new Storage();foreach(var f in new StorageCopy(original).Files)fault.Files[f.Key]=(byte[])f.Value.Clone();
             var store=new SaveRepository(fault);var expected=store.Load()!;byte[] source=SaveCodec.Encode(expected);fault.Writes=0;fault.FailAt=fail;fault.FailAfter=afterWrite;
             bool failed=false;try{store.DeleteProfile(expected,0);}catch(IOException){failed=true;}
@@ -108,7 +109,7 @@ internal static class ProfileChecks
         var sameTown=empty.Town.Tiles;empty.SelectProfile(3);check(ReferenceEquals(sameTown,empty.Town.Tiles)&&empty.ActiveProfile==3&&empty.Profiles.Count(p=>p.Created)==1,"an empty town can start any new resident without regeneration");
         var changedDisk=new StorageCopy(original);var changedRepo=new SaveRepository(changedDisk);var stale=changedRepo.Load()!;var changed=changedRepo.Load()!;changed.Wallet++;changedRepo.Save(changed);int writes=changedDisk.Writes;
         bool rejected=false;try{changedRepo.DeleteProfile(stale,0);}catch(InvalidOperationException){rejected=true;}check(rejected&&changedDisk.Writes==writes,"a stale picker cannot overwrite a newer/different card snapshot");
-        Console.WriteLine("Profile deletion: ownership, visitors, last resident, both banks, stale cards and 32 interrupted-write cases passed");
+        Console.WriteLine("Profile deletion: ownership, visitors, last resident, both banks, stale cards and all interrupted-write phases passed");
     }
     private sealed class StorageCopy : ISaveStorage
     {

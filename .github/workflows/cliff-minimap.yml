@@ -29,14 +29,14 @@ jobs:
           FROM debian:trixie
           RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends dolphin-emu xvfb xauth ffmpeg python3 libxcb-cursor0 ca-certificates && rm -rf /var/lib/apt/lists/*
           DOCKER
-      - name: Fetch and verify the matching full ISO
+      - name: Fetch and verify the matching NKit ISO
         env:
           TAG: ${{ steps.version.outputs.tag }}
           VERSION: ${{ steps.version.outputs.version }}
         run: |
           mkdir -p out/hud-release
           for attempt in $(seq 1 70); do
-            if [ "$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json isDraft --jq .isDraft 2>/dev/null)" = false ] && gh release download "$TAG" --repo "$GITHUB_REPOSITORY" --dir out/hud-release --clobber --pattern "AnimalTown-$VERSION.iso" --pattern version.json --pattern SHA256SUMS.txt; then break; fi
+            if [ "$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json isDraft --jq .isDraft 2>/dev/null)" = false ] && gh release download "$TAG" --repo "$GITHUB_REPOSITORY" --dir out/hud-release --clobber --pattern "AnimalTown-$VERSION.nkit.iso" --pattern version.json --pattern SHA256SUMS.txt; then break; fi
             test "$attempt" != 70
             sleep 15
           done
@@ -45,8 +45,10 @@ jobs:
           from pathlib import Path
           root=Path('out/hud-release');meta=json.loads((root/'version.json').read_text())
           assert meta['commit']==os.environ['GITHUB_SHA'] and not meta['dirty']
-          name='AnimalTown-'+meta['version']+'.iso';iso=root/name
-          assert iso.stat().st_size==1459978240
+          name='AnimalTown-'+meta['version']+'.nkit.iso';iso=root/name
+          assert 0<iso.stat().st_size<1459978240
+          with iso.open('rb') as f: header=f.read(0x214)
+          assert header[0x200:0x208]==b'NKIT v01' and int.from_bytes(header[0x210:0x214],'big')==1459978240
           expected=next(s.split()[0] for s in (root/'SHA256SUMS.txt').read_text().splitlines() if s.split()[-1].lstrip('*')==name)
           h=hashlib.sha256()
           with iso.open('rb') as f:

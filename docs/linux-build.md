@@ -43,9 +43,10 @@ The default `all` target:
 1. Converts all supplied models, fonts, icons and seasonal terrain.
 2. Runs terrain import, gameplay and native memory-card regression checks.
 3. Compiles the game to PowerPC, verifies the pinned SDK apploader image, produces and validates the
-   full-size bootable ISO, including title/commit/disc and save banners.
+   bootable NKit ISO, including title/commit/disc and save banners. Full-size
+   source and round-trip images are temporary and removed after verification.
 4. Independently publishes the .NET 10 backend and exercises it against PostgreSQL.
-5. Prepares direct full-size ISO and compact NKit ISO downloads, separate backend
+5. Prepares a direct NKit ISO download, separate backend
    ZIP, revisions and SHA-256 checksums. Disc images have no ZIP wrappers.
 
 Outputs remain under the mounted checkout's `out/`. CI then publishes these

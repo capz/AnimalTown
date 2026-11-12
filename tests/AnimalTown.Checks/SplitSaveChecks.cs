@@ -2,29 +2,6 @@ using AnimalTown;
 
 internal static class SplitSaveChecks
 {
-    private sealed class Storage : ISaveStorage
-    {
-        internal readonly Dictionary<string,byte[]> Files=new();
-        internal int CutAt,Mode,Writes,CorruptReadAt,Reads;
-        public byte[] Read(string name)
-        {
-            var bytes=(byte[])Files[name].Clone();
-            if(++Reads==CorruptReadAt){
-                bytes[bytes.Length/2]^=1;
-                uint crc=SaveCodec.Crc(bytes,0,bytes.Length-4);
-                for(int i=0;i<4;i++)bytes[bytes.Length-4+i]=(byte)(crc>>(i*8));
-            }
-            return bytes;
-        }
-        public void Write(string name,byte[] bytes)
-        {
-            Writes++;bool cut=Writes==CutAt;
-            if(cut&&Mode==0)throw new IOException("Power cut before write");
-            Files[name]=cut&&Mode==1?bytes[..(bytes.Length/2)]:(byte[])bytes.Clone();
-            if(cut)throw new IOException("Power cut during/after write");
-        }
-        internal Storage Copy(){var result=new Storage();foreach(var p in Files)result.Files[p.Key]=(byte[])p.Value.Clone();return result;}
-    }
     internal static void Run(Action<bool,string> check)
     {
         var s=new GameState(7319){Sequence=42,Wallet=1234,Name="Juniper",Species=3,Palette=5,Roof=2,Savings=9876543210};s.MailCount=2;s.Mail[0]=4;s.Mail[1]=-3;
@@ -47,40 +24,7 @@ internal static class SplitSaveChecks
         s.Town.Stock[0]=0;changed=SplitSaveCodec.Encode(s);check(parts[0].SequenceEqual(changed[0])&&parts[1].SequenceEqual(changed[1])&&!parts[2].SequenceEqual(changed[2])&&parts[3].SequenceEqual(changed[3]),"stock resides only in shop record");s.Town.Stock[0]=restored.Town.Stock[0];
         s.Town.Residents[0].HomeX++;changed=SplitSaveCodec.Encode(s);check(parts[0].SequenceEqual(changed[0])&&!parts[1].SequenceEqual(changed[1])&&parts[2].SequenceEqual(changed[2])&&parts[3].SequenceEqual(changed[3]),"house anchors reside only in house-position record");s.Town.Residents[0].HomeX--;
         s.Town.Tiles[0]=(byte)((s.Town.Tiles[0]+1)%8);changed=SplitSaveCodec.Encode(s);check(!parts[0].SequenceEqual(changed[0])&&parts[1].SequenceEqual(changed[1])&&parts[2].SequenceEqual(changed[2])&&parts[3].SequenceEqual(changed[3]),"terrain resides only in town record");s.Town.Tiles[0]=restored.Town.Tiles[0];
-        var storage=new Storage();var repository=new SaveRepository(storage);s.Sequence=0;repository.Save(s);s.Wallet=2000;repository.Save(s);
-        var bounded=SaveCodec.Decode(SaveCodec.Encode(s));var boundedRepository=new SaveRepository(storage.Copy());
-        var tiles=bounded.Town.Tiles;var elevation=bounded.Town.Elevation;var beforeSave=SaveCodec.Encode(bounded);
-        allocated=GC.GetAllocatedBytesForCurrentThread();boundedRepository.Save(bounded);
-        long saveBytes=GC.GetAllocatedBytesForCurrentThread()-allocated;Console.WriteLine("Shared roster save validation allocated "+saveBytes+" bytes");
-        check(saveBytes<256*1024,"full save/readback validation stays below 256 KiB with four profiles without duplicate terrain arrays or town generation");
-        check(ReferenceEquals(tiles,bounded.Town.Tiles)&&ReferenceEquals(elevation,bounded.Town.Elevation),"readback preserves ownership of live terrain arrays");
-        bounded.Sequence--;check(beforeSave.SequenceEqual(SaveCodec.Encode(bounded)),"successful read-only validation does not normalize or mutate live state");
-        for(int invalid=0;invalid<3;invalid++){
-            var disk=storage.Copy();var game=SaveCodec.Decode(SaveCodec.Encode(s));
-            if(invalid==0)game.Wallet=100000;else if(invalid==1)game.Town.Residents[0].PosX=-2;else game.Town.Elevation[0]=255;
-            var original=SaveCodec.Encode(game);
-            Reject(()=>new SaveRepository(disk).Save(game),"snapshot readback retains full range/terrain semantic validation");
-            check(original.SequenceEqual(SaveCodec.Encode(game)),"failed semantic validation leaves the complete live state unchanged");
-            check(new SaveRepository(disk).Load()!.Sequence==2,"invalid snapshots preserve the previous complete generation");
-        }
-        for(int read=1;read<=15;read++){
-            var disk=storage.Copy();disk.CorruptReadAt=read;var game=SaveCodec.Decode(SaveCodec.Encode(s));var original=SaveCodec.Encode(game);
-            Reject(()=>new SaveRepository(disk).Save(game),"exact readback rejects altered bytes even with a valid recomputed CRC");
-            check(original.SequenceEqual(SaveCodec.Encode(game)),"readback failure restores sequence and leaves live state unchanged");
-            check(new SaveRepository(disk).Load()!.Sequence==(read>=8?3:2),"readback corruption recovers one complete generation, including an already durable commit");
-        }
-        for(int mode=0;mode<3;mode++)for(int cut=1;cut<=8;cut++){
-            var disk=storage.Copy();disk.Mode=mode;disk.CutAt=cut;var game=SaveCodec.Decode(SaveCodec.Encode(s));game.Wallet=3000;game.Town.Stock[0]=0;
-            Reject(()=>new SaveRepository(disk).Save(game),"injected interrupted write reports failure");check(game.Sequence==2,"failed write restores in-memory sequence");
-            var recovered=new SaveRepository(disk).Load();bool committed=mode==2&&cut==8;
-            check(recovered!=null&&recovered.Sequence==(committed?3:2)&&recovered.Wallet==(committed?3000:2000)&&recovered.Town.Stock[0]==(committed?0:s.Town.Stock[0]),"power-cut recovery uses one whole generation");
-        }
-        for(int kind=0;kind<8;kind++){
-            var disk=storage.Copy();disk.Files.Remove(SplitSaveCodec.FileName(kind,0));var recovered=new SaveRepository(disk).Load();check(recovered!=null&&recovered.Sequence==1&&recovered.Wallet==1234,"missing record falls back to previous complete bank");
-        }
-        var legacy=new Storage();legacy.Files["AnimalTown1"]=SaveCodec.Encode(s);var imported=new SaveRepository(legacy).Load()!;check(imported.Sequence==2&&imported.Wallet==2000,"legacy combined save imports");new SaveRepository(legacy).Save(imported);
-        check(legacy.Files.ContainsKey("AnimalTown1")&&new SaveRepository(legacy).Load()!.Sequence==3,"migration preserves original legacy file and selects split save");
-        check(new SaveRepository(new Storage()).Load()==null,"empty card starts new town");
+        IncrementalSaveChecks.Run(check);
         Console.WriteLine("Split save records, ownership, corruption, interrupted-write fallback and legacy migration checks passed");
     }
 }

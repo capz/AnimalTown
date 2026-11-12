@@ -237,3 +237,21 @@ if($IsLinux){
         if($LASTEXITCODE){throw "Native $fixture checks failed"}
     }
 }
+
+& python3 (Join-Path $Root 'tools/patch-ui-noise.py') $nativeRoot
+if($LASTEXITCODE){throw 'Pinned UI noise bridge patch failed'}
+if($IsLinux){
+    $uiNoiseCheck=Join-Path $Root 'out/native-ui-noise-check'
+    & cc -std=c11 -Wall -Wextra -Werror -ffunction-sections -fdata-sections "-I$(Join-Path $nativeRoot 'include')" "-I$(Join-Path $nativeRoot 'source')" (Join-Path $Root 'tests/native-ui-noise.c') '-Wl,--gc-sections' -lm -o $uiNoiseCheck
+    if($LASTEXITCODE){throw 'UI grain fixture compilation failed'}
+    & $uiNoiseCheck
+    if($LASTEXITCODE){throw 'UI grain checks failed'}
+}
+
+if($IsLinux){
+    $uiNoiseGxCheck=Join-Path $Root 'out/native-ui-noise-gx-check'
+    & cc -std=c11 -Wall -Wextra -Werror "-I$(Join-Path $nativeRoot 'include')" (Join-Path $Root 'tests/native-ui-noise-gx.c') -lm -o $uiNoiseGxCheck
+    if($LASTEXITCODE){throw 'UI grain GX fixture compilation failed'}
+    & $uiNoiseGxCheck
+    if($LASTEXITCODE){throw 'UI grain GX checks failed'}
+}

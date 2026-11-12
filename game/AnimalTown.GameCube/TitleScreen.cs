@@ -16,12 +16,12 @@ internal sealed class TitleScreen : IDisposable
     private readonly TitleBackdrop background=new TitleBackdrop();
     private readonly MenuNavigation navigation=new MenuNavigation();
     private readonly DevConfig config;
-    private readonly int[] rows=new int[DevConfig.Count-2];
+    private readonly int[] rows=new int[DevConfig.Count-1];
     private int selected,debugSelected;
     private bool debugOpen,dirty;
     private string status="";
     private TitleScreen(DevConfig config)
-    {this.config=config;int at=0;for(int i=0;i<DevConfig.Count;i++)if(DevConfig.IsSetting(i))rows[at++]=i;}
+    {this.config=config;int at=0;for(int i=0;i<DevConfig.Count;i++)if(DevConfig.IsSetting(i))rows[at++]=i;rows[at]=DevConfig.Count;}
     internal static bool Run(DevConfig config)
     {
         using var title=new TitleScreen(config);
@@ -35,6 +35,7 @@ internal sealed class TitleScreen : IDisposable
                 if(direction==MenuNavigation.Down)title.debugSelected=(title.debugSelected+1)%title.rows.Length;
                 if(p.A.WasPressed||direction==MenuNavigation.Left||direction==MenuNavigation.Right||p.Z.WasPressed){
                     int row=title.rows[title.debugSelected];
+                    if(row==DevConfig.Count){if(p.Z.WasPressed)UiNoiseSettings.Reset();else UiNoiseSettings.Adjust(direction==MenuNavigation.Left?-1:1);continue;}
                     if(p.Z.WasPressed&&DevConfig.IsSlider(row))config.Reset(row);
                     else if(!p.Z.WasPressed)config.Adjust(row,direction==MenuNavigation.Left?-1:1);
                     else continue;
@@ -69,7 +70,7 @@ internal sealed class TitleScreen : IDisposable
     private void Draw()
     {
         DebugOverlay.TextVisible=false;DebugOverlay.PerformanceVisible=false;
-        device.BeginFrame(TitleBackdrop.Color);ui.Begin();background.Draw(ui);
+        UiNoise.Prepare();device.BeginFrame(TitleBackdrop.Color);ui.Begin();background.Draw(ui);
         TitleArt.Panel(ui,70,52,500,392);TitleArt.BrandMark(ui,320,105);
         logo.Draw(ui,new RectF(0,0,logo.SourceWidth,logo.SourceHeight),new RectF(90,128,460,115),TitleArt.Ink);
         const string tagline="A little life, well rooted.";
@@ -100,10 +101,11 @@ internal sealed class TitleScreen : IDisposable
         font.Draw(ui,page,518-font.Measure(page,.65f),88,TitleArt.Ink,.65f);
         font.Draw(ui,"A / Left / Right: change    Z: reset slider",90,359,TitleArt.Ink,.7f);
         font.Draw(ui,"B: save and close",90,386,TitleArt.Ink,.85f);
-        font.Draw(ui,dirty?"Changes will be saved to dev config.":DevConfigStorage.Status,90,412,TitleArt.Ink,.65f);
+        font.Draw(ui,rows[debugSelected]==DevConfig.Count?"Session only; resets on restart.":dirty?"Changes will be saved to dev config.":DevConfigStorage.Status,90,412,TitleArt.Ink,.65f);
     }
     private string Label(int row)
     {
+        if(row==DevConfig.Count)return "UI bubble noise: "+UiNoiseSettings.Percent+"% (session)";
         int value=config.Values[row];string toggle=value==0?"Off":"On";
         switch(row){
             case 0:return "Performance display: "+toggle;

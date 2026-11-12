@@ -26,17 +26,17 @@ internal sealed class UiShapes : IDisposable
     }
     private void Release(int slot){var cached=geometry[slot]!;bytes-=cached.NativeBytes;cached.Dispose();geometry[slot]=null;plan.Remove(slot);}
     internal bool Draw(Draw2D ui,float x,float y,float w,float h,float radius,bool bulge,Color32 color)
-    {
+    {UiNoise.Begin();
         bulge=bulge&&h>radius*2+1;
         int slot=plan.Request(w,h,radius,bulge);
-        if(slot<0||geometry[slot]==null)return false;
-        ui.DrawGeometry(geometry[slot]!,new Vector2(x,y),color);return true;
+        if(slot<0||geometry[slot]==null){UiNoise.End();return false;}
+        ui.DrawGeometry(geometry[slot]!,new Vector2(x,y),color);UiNoise.End();return true;
     }
     internal bool DrawPanel(Draw2D ui,float x,float y,float w,float h,float radius)
-    {
+    {UiNoise.Begin();
         int slot=plan.Request(w,h,radius,h>radius*2+1,true);
-        if(slot<0||geometry[slot]==null)return false;
-        ui.DrawGeometry(geometry[slot]!,new Vector2(x,y),Color32.White);return true;
+        if(slot<0||geometry[slot]==null){UiNoise.End();return false;}
+        ui.DrawGeometry(geometry[slot]!,new Vector2(x,y),Color32.White);UiNoise.End();return true;
     }
     private static Geometry2D Build(float w,float h,float radius,bool bulge,bool panel)
     {

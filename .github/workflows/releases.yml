@@ -103,7 +103,7 @@ jobs:
           tags: ghcr.io/capz/animaltown-build:${{ steps.version.outputs.commit }}
           cache-from: type=gha
           cache-to: type=gha,mode=min
-      - name: Build ISO/backend, run selected checks and package
+      - name: Build NKit ISO/backend, run selected checks and package
         env:
           ANIMALTOWN_BUILD_IMAGE: ghcr.io/capz/animaltown-build@${{ steps.image.outputs.digest }}
         run: |
@@ -112,7 +112,16 @@ jobs:
           else
             docker compose -f build/compose.yml run --rm --pull always --no-deps builder
           fi
-      - name: Package and publish GitHub prerelease
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          root=Path('out');version=json.loads((root/'version.json').read_text())['version']
+          expected=f'AnimalTown-{version}.nkit.iso'
+          assert sorted(p.name for p in root.glob('*.iso'))==[expected], 'Console build must retain only its NKit ISO'
+          assert not any((root/'disc-work').rglob('*.iso')), 'Temporary source ISO was not removed'
+          assert not any((root/'nkit-work').rglob('*.iso')), 'Temporary round-trip ISO was not removed'
+          PY
+      - name: Publish NKit-only GitHub prerelease
         env:
           GH_TOKEN: ${{ github.token }}
           ANIMALTOWN_BUILD_IMAGE: ghcr.io/capz/animaltown-build@${{ steps.image.outputs.digest }}

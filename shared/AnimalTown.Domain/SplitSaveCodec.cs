@@ -9,9 +9,9 @@ public static class SplitSaveCodec
     public static int RecordKind(int part)=>part<4?part:part+1;
     public static int ReadVersion(byte[] bytes)=>new Reader(bytes,TownData).Version;
     public static string FileName(int kind,int bank)
-    {string[] names={"AT-Town","AT-Houses","AT-Shops","AT-Player","AT-Commit","AT-Villager2-","AT-Villager3-","AT-Villager4-"};return names[kind]+bank;}
+    {string[] names={"AT-Town","AT-Houses","AT-Shops","AT-Player","AT-Commit","AT-Villager2-","AT-Villager3-","AT-Villager4-","AT-Residents"};return names[kind]+bank;}
     public static bool IsFile(string name)
-    {for(int bank=0;bank<2;bank++)for(int kind=0;kind<8;kind++)if(name==FileName(kind,bank))return true;return name=="AnimalTown0"||name=="AnimalTown1";}
+    {for(int bank=0;bank<2;bank++)for(int kind=0;kind<9;kind++)if(name==FileName(kind,bank))return true;return name=="AnimalTown0"||name=="AnimalTown1";}
     internal sealed class Writer
     {
         private readonly byte[] bytes;private int at;
@@ -30,7 +30,7 @@ public static class SplitSaveCodec
         {
             bytes=source;if(bytes.Length<32||bytes.Length>SaveCodec.MaximumBytes)throw new InvalidOperationException("Invalid save record size");
             if(Int()!=0x50535441)throw new InvalidOperationException("Wrong save record magic");Version=Int();
-            if((Version<1||Version>4)||Int()!=Catalog.Version||Int()!=kind)throw new InvalidOperationException("Wrong save record type or version");
+            if((Version<1||Version>5)||Int()!=Catalog.Version||Int()!=kind)throw new InvalidOperationException("Wrong save record type or version");
             Sequence=Range(0,int.MaxValue);Seed=Int();if(Int()!=bytes.Length)throw new InvalidOperationException("Save record length mismatch");
             int crc=0;for(int i=0;i<4;i++)crc|=bytes[bytes.Length-4+i]<<(i*8);
             if((uint)crc!=SaveCodec.Crc(bytes,0,bytes.Length-4))throw new InvalidOperationException("Save record checksum failed");
@@ -40,23 +40,38 @@ public static class SplitSaveCodec
         internal string Text(int limit){int n=Range(0,limit);var c=new char[n];for(int i=0;i<n;i++)c[i]=(char)Range(0,65535);return new string(c);}
         internal void Rle(byte[] target,int max,bool compare=false)
         {int runs=Range(1,target.Length),cell=0;for(int i=0;i<runs;i++){int packed=Int(),mode=(int)((uint)packed>>24),n=packed&0xffffff;if(mode>max||n==0||n>target.Length-cell)throw new InvalidOperationException("Invalid save terrain run");for(int j=0;j<n;j++){if(compare){if(target[cell]!=mode)throw new InvalidOperationException("Save terrain differs from snapshot");}else target[cell]=(byte)mode;cell++;}}if(cell!=target.Length)throw new InvalidOperationException("Incomplete save terrain");}
+        internal int Offset=>at;
+        internal void SkipText(int limit){int n=Range(0,limit);for(int i=0;i<n;i++)Range(0,65535);}
+        internal void SkipTerrain(){int n=Range(1,Town.Width*Town.Height);for(int i=0;i<n;i++)Int();}
         internal void Match(Reader other){if(Version!=other.Version||Seed!=other.Seed||Sequence!=other.Sequence)throw new InvalidOperationException("Mixed save generations");}
         internal void End(){if(at!=bytes.Length-4)throw new InvalidOperationException("Trailing save record data");}
     }
     private static int Runs(byte[] a){int n=1;for(int i=1;i<a.Length;i++)if(a[i]!=a[i-1])n++;return n;}
     public static byte[][] Encode(GameState s)
     {
-        s.CaptureProfile();var t=s.Town;var records=new byte[PartCount][];
+        s.CaptureProfile();var records=new byte[PartCount][];
+        for(int i=0;i<records.Length;i++)records[i]=EncodePart(s,i);return records;
+    }
+    internal static byte[] EncodePart(GameState s,int part)
+    {
+        var t=s.Town;
+        if(part==0){
         var w=new Writer(s,TownData,2048+4*(Runs(t.Tiles)+Runs(t.Elevation))+24*(t.GroundCount+t.PlacedCount));
         w.Int(Town.Width);w.Int(Town.Height);w.Int(TownGenerator.Version);w.Int(t.Day);w.Int(t.Month);w.Rle(t.Tiles);w.Rle(t.Elevation);
         for(int i=0;i<6;i++){var v=t.Residents[i];w.Int(v.X);w.Int(v.Z);w.Text(v.Name);w.Int((int)(v.PosX*1024));w.Int((int)(v.PosZ*1024));}
         w.Int(t.GroundCount);for(int i=0;i<t.GroundCount;i++){var g=t.Ground[i];w.Int(g.Item);w.Int(g.X);w.Int(g.Z);w.Int(g.Owner);w.Int(g.Day);w.Int(g.Kind);}
         w.Int(t.PlacedCount);for(int i=0;i<t.PlacedCount;i++){var p=t.Placed[i];w.Int(p.Item);w.Int(p.X);w.Int(p.Z);w.Int(p.Rotation);w.Int(p.Room);w.Int(p.Owner);}
         w.Int(s.ActiveProfile);for(int i=0;i<s.BuildingTypes.Length;i++)w.Int(s.BuildingTypes[i]);
-        for(int i=0;i<6;i++){var v=t.Residents[i];w.Int(v.Space);w.Int(v.JourneyBuilding);w.Int(v.JourneyPhase);w.Int(v.Dwell);w.Int((int)(v.Yaw*1024));w.Int(v.JourneyNextX);w.Int(v.JourneyNextZ);}records[0]=w.Finish();
-        w=new Writer(s,HousePositions,256);for(int i=0;i<GameState.ProfileCount;i++){w.Int(s.HomePlaced(i)?1:0);w.Int(s.HomeX(i));w.Int(s.HomeZ(i));}for(int i=0;i<6;i++){w.Int(t.Residents[i].HomeX);w.Int(t.Residents[i].HomeZ);}records[1]=w.Finish();
-        w=new Writer(s,ShopStates,128);w.Int(t.Spending);w.Int(t.StockCount);for(int i=0;i<12;i++)w.Int(t.Stock[i]);records[2]=w.Finish();
-        for(int i=0;i<GameState.ProfileCount;i++)records[3+i]=ProfileCodec.Encode(s,i);return records;
+        for(int i=0;i<6;i++){var v=t.Residents[i];w.Int(v.Space);w.Int(v.JourneyBuilding);w.Int(v.JourneyPhase);w.Int(v.Dwell);w.Int((int)(v.Yaw*1024));w.Int(v.JourneyNextX);w.Int(v.JourneyNextZ);}return w.Finish();
+        }
+        if(part==1){
+        var w=new Writer(s,HousePositions,256);for(int i=0;i<GameState.ProfileCount;i++){w.Int(s.HomePlaced(i)?1:0);w.Int(s.HomeX(i));w.Int(s.HomeZ(i));}for(int i=0;i<6;i++){w.Int(t.Residents[i].HomeX);w.Int(t.Residents[i].HomeZ);}return w.Finish();
+        }
+        if(part==2){
+        var w=new Writer(s,ShopStates,128);w.Int(t.Spending);w.Int(t.StockCount);for(int i=0;i<12;i++)w.Int(t.Stock[i]);return w.Finish();
+        }
+        if(part<3||part>=PartCount)throw new ArgumentOutOfRangeException(nameof(part));
+        return ProfileCodec.Encode(s,part-3);
     }
     public static byte[][] EncodeLegacy(GameState s)
     {
@@ -77,7 +92,7 @@ public static class SplitSaveCodec
     }
     public static GameState Decode(byte[][] records)
     {return Decode(records,null);}
-    private static GameState Decode(byte[][] records,Town? snapshot)
+    internal static GameState Decode(byte[][] records,Town? snapshot)
     {
         if(records.Length==PartCount)return DecodeProfiles(records,snapshot);if(records.Length!=4)throw new InvalidOperationException("Incomplete save set");var r=new Reader(records[0],TownData);var root=r;
         if(snapshot!=null&&(r.Version!=4||r.Seed!=snapshot.Seed))throw new InvalidOperationException("Readback snapshot identity mismatch");
