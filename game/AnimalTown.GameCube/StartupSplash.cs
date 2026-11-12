@@ -15,7 +15,11 @@ internal sealed class StartupSplash : IDisposable
     private bool whiteBackground;
 
     private StartupSplash()
-    {ui=new Draw2D(device,new Draw2DOptions{Width=640,Height=480,ScaleMode=CanvasScaleMode.Fit,VertexCapacity=12});}
+    {
+        // Match logical units to framebuffer pixels; a fitted 640x480 canvas
+        // could rescale the logo on other display modes.
+        ui=new Draw2D(device,new Draw2DOptions{Width=device.Width,Height=device.Height,ScaleMode=CanvasScaleMode.Stretch,VertexCapacity=12});
+    }
 
     internal static void Run()
     {
@@ -43,7 +47,7 @@ internal sealed class StartupSplash : IDisposable
         DebugOverlay.WriteLine("ANIMALTOWN SPLASH "+name+" native bytes "+texture.NativeBytes);
     }
 
-    private static Texture2D LoadTexture(string path)=>Texture2D.FromPackage(File.ReadAllBytes(path),true);
+    private static Texture2D LoadTexture(string path)=>Texture2D.FromPackage(File.ReadAllBytes(path),false);
 
     private void BlackFrame()
     {device.BeginFrame(new Color32(0,0,0));device.EndFrame();}
@@ -52,11 +56,13 @@ internal sealed class StartupSplash : IDisposable
     {
         long start=Clock.Timestamp;
         Controller.Update(); // Consume splash input; it cannot open the title menu.
-        // Clear the whole display, including areas outside the fitted canvas.
+        // Clear the whole display, including the margins around the logo.
         // DolphinDotNet's black mark fades against white without a boxed border.
         device.BeginFrame(whiteBackground?new Color32(255,255,255):new Color32(0,0,0));
         ui.Begin();
-        ui.DrawTexture(texture!,new RectF(0,0,384,256),new RectF(32,48,576,384),new Color32(255,255,255,timing.Alpha));
+        // Draw only the 384x256 content, excluding texture padding. Integer
+        // centering and equal source/destination sizes give a 1:1 texel mapping.
+        ui.DrawTexture(texture!,new RectF(0,0,384,256),new RectF((device.Width-384)/2,(device.Height-256)/2,384,256),new Color32(255,255,255,timing.Alpha));
         ui.End();device.EndFrame();
         RuntimeOptions.Wait();
         timing.Advance(Clock.Timestamp-start);

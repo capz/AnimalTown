@@ -16,7 +16,7 @@ Write-VersionMetadata $identity $Root
 $version=$identity.version
 $versionPattern=[regex]::Escape($version)
 $validation=Get-Content (Join-Path $Root 'out/validation-plan.json') -Raw|ConvertFrom-Json
-if($validation.schema -ne 1 -or $validation.commit -ne $commit){throw 'Release validation plan must match source commit'}
+if($validation.schema -ne 2 -or $validation.commit -ne $commit){throw 'Release validation plan must match source commit'}
 $tag=$identity.tag
 $out=Join-Path $Root 'out'
 $revisions=[IO.File]::ReadAllText((Join-Path $out 'build-revisions.txt'))
