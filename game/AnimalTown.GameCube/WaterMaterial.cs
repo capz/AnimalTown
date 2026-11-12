@@ -82,33 +82,38 @@ internal sealed class WaterMaterial : IDisposable
         Texture2D? wave=null,reflection=null;
         TevMaterial? layer=null,bed=null;
         try{
-            wave=Texture2D.FromPackage(SunshineWater.TexturePackage(),linear:true);
-            reflection=Texture2D.FromPackage(SunshineWater.GlintTexturePackage(),linear:true);
+            // TEX0 provides the sparse alpha-tested reflection mask; TEX1
+            // adds a separate, smoother scrolling water-ripple pattern.
+            wave=Texture2D.FromPackage(SunshineWater.GlintTexturePackage(),linear:true);
+            reflection=Texture2D.FromPackage(SunshineWater.TexturePackage(),linear:true);
             // Both authored mip chains must reach GX's LOD sampler. The old
             // material selected a linear base level, losing the reflection band.
             wave.ConfigureSampler(TextureWrapMode.Repeat,TextureWrapMode.Repeat,
-                TextureMinFilter.LinearMipmapLinear,TextureMagFilter.Linear,SunshineWater.RippleLodBias);
-            reflection.ConfigureSampler(TextureWrapMode.Repeat,TextureWrapMode.Repeat,
                 TextureMinFilter.LinearMipmapLinear,TextureMagFilter.Linear,SunshineWater.ReflectionLodBias);
-            // DNEF v4: the first and second texture contribute independent
-            // RGB/alpha, then GX keeps alpha <= low OR >= high. This is the
-            // crucial Sunshine-like cutout missing from the original single-pass.
+            reflection.ConfigureSampler(TextureWrapMode.Repeat,TextureWrapMode.Repeat,
+                TextureMinFilter.LinearMipmapLinear,TextureMagFilter.Linear,SunshineWater.RippleLodBias);
+            // The locked SDK supports two distinct RGB/UV stages (DNEF v2)
+            // but not yet v4's independent TEX1 alpha. An alpha cutoff on
+            // TEX0 masks this overlay, while the separate translucent film
+            // below remains visible everywhere. It preserves visual layering
+            // without an unpublished SDK dependency.
             layer=SunshineGlintDefinition().Create(wave,reflection);
             layer.Material.Blend=BlendMode.Alpha;
             layer.Material.DepthWrite=false;
             layer.Material.DepthTest=true;
             layer.Material.Cull=CullMode.Back;
+            layer.Material.AlphaCutoff=SunshineWater.GlintAlphaCutoff;
             // Vertex color supplies the existing seasonal water tint. Keep
-            // raster alpha opaque: lower alpha would prevent high-reference
-            // sparkle fragments from passing the GX two-sided alpha test.
+            // raster alpha opaque so the primary glint-cutout texture's alpha
+            // remains the effective per-fragment cutoff input.
             layer.Material.Color=new Color32(225,246,242,255);
             layer.Material.Sampler=new SamplerState(
                 TextureMinFilter.LinearMipmapLinear,TextureMagFilter.Linear,
-                maxLod:SunshineWater.MipLevels-1,lodBias:SunshineWater.RippleLodBias,
+                maxLod:SunshineWater.MipLevels-1,lodBias:SunshineWater.ReflectionLodBias,
                 u:TextureAddressMode.Repeat,v:TextureAddressMode.Repeat);
             layer.Material.SecondarySampler=new SamplerState(
                 TextureMinFilter.LinearMipmapLinear,TextureMagFilter.Linear,
-                maxLod:SunshineWater.MipLevels-1,lodBias:SunshineWater.ReflectionLodBias,
+                maxLod:SunshineWater.MipLevels-1,lodBias:SunshineWater.RippleLodBias,
                 u:TextureAddressMode.Repeat,v:TextureAddressMode.Repeat);
 
             var sand=new TevProgramBuilder();
@@ -128,11 +133,18 @@ internal sealed class WaterMaterial : IDisposable
             throw;
         }
     }
-    // Two different scrolling textures, explicit alpha mixing and GX alpha
-    // comparison. The color film underneath remains transparent everywhere.
-    internal static TevMaterialDefinition SunshineGlintDefinition()=>TevMaterialPresets.DualTextureGlints(
-        new Color32(82,134,142),new Color32(212,247,245),
-        SunshineWater.GlintLowReference,SunshineWater.GlintHighReference);
+    // DNEF v2 keeps the two independent animated RGB textures and a final
+    // TEX0 opacity resolve. The separate color film is the translucent base.
+    internal static TevMaterialDefinition SunshineGlintDefinition()
+    {
+        var p=new TevProgramBuilder();
+        p.AddColor("PrimaryLight",new Color32(212,247,245));
+        p.AddColor("SecondaryLight",new Color32(82,134,142));
+        p.AddStage(TevInput.Zero,TevInput.Zero,TevInput.Zero,TevInput.Raster);
+        p.AddStage(TevInput.Zero,TevInput.Constant,TevInput.Texture,TevInput.Previous,colorSlot:0);
+        p.AddStage(TevInput.Zero,TevInput.Constant,TevInput.SecondaryTexture,TevInput.Previous,colorSlot:1);
+        return new TevMaterialDefinition(p);
+    }
     internal Color32 Tint(float depth)=>new Color32((byte)(Shallow.R+(Deep.R-Shallow.R)*depth),(byte)(Shallow.G+(Deep.G-Shallow.G)*depth),(byte)(Shallow.B+(Deep.B-Shallow.B)*depth));
     internal void SetTerrainTint(uint rgba)
     {
