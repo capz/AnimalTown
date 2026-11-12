@@ -5,7 +5,8 @@
 #define TA_SECTIONS 4096
 #define TA_PARTS 16384
 #define TA_STAGE 65536
-#define TA_PAGE_PARTS 216
+#define TA_KINDS 109
+#define TA_PAGE_PARTS (TA_KINDS*2)
 #define TA_BYTES (8*1024*1024)
 #define TA_CACHE (1024*1024)
 #define TA_BLOCK 1024
@@ -50,7 +51,7 @@ int animaltown_terrain_reset(int count){
 }
 int animaltown_terrain_append(int section,int kind,int token,int used){
     Resource *source=find(token,MESH);
-    if(dnd_device_active()||dnd_raw_depth()||ta_sealed||section<0||section!=ta_completed||section>=ta_sections||kind<0||kind>=108||!source||source->geometry||source->terrain_parent||source->commands||source->format<1||source->format>2||used<0||ta_parts>=TA_PARTS)return -1;
+    if(dnd_device_active()||dnd_raw_depth()||ta_sealed||section<0||section!=ta_completed||section>=ta_sections||kind<0||kind>=TA_KINDS||!source||source->geometry||source->terrain_parent||source->commands||source->format<1||source->format>2||used<0||ta_parts>=TA_PARTS)return -1;
     int n=source->indices?source->vertices:used?used:source->vertices,m=source->indices;
     if(n<1||n>source->vertices||(!m&&n%3))return -1;
     size_t bytes=(size_t)n*sizeof(DndDrawVertex)+(size_t)m*2;
@@ -121,6 +122,12 @@ int animaltown_terrain_complete(int section){
 }
 int animaltown_terrain_info(int section,int kind){
     if(!ta_sealed||section<0||section>=ta_sections)return -1;
+    if(kind==3){
+        int count=0;for(int i=ta_first[section];i<ta_first[section+1];i++){
+            const TaPart *part=ta_part(i);if(part->kind==108)count+=(part->indices?part->indices:part->vertices)/3;
+        }
+        return count;
+    }
     return kind==0?ta_first[section]:kind==1?ta_first[section+1]-ta_first[section]:kind==2?ta_triangles[section]:-1;
 }
 int animaltown_terrain_kind(int entry){TaPart *p=ta_part(entry);return ta_sealed&&p?p->kind:-1;}
