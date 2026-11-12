@@ -7,5 +7,7 @@
   <ItemGroup><Compile Include="../../game/AnimalTown.GameCube/WrappedText.cs" Link="WrappedText.cs" /></ItemGroup>
   <ItemGroup><Compile Include="../../game/AnimalTown.GameCube/DialogueVoice.cs" Link="DialogueVoice.cs" /></ItemGroup>
   <ItemGroup><Compile Include="../../game/AnimalTown.GameCube/UpdateImagePath.cs" Link="UpdateImagePath.cs" /></ItemGroup>
+  <ItemGroup><Compile Include="../../game/AnimalTown.GameCube/TerrainArchive.cs" Link="TerrainArchive.cs" /></ItemGroup>
+  <ItemGroup><Compile Include="../../game/AnimalTown.GameCube/ModelResidency.cs" Link="ModelResidency.cs" /></ItemGroup>
   <ItemGroup><None Update="Fixtures/*.bin" CopyToOutputDirectory="PreserveNewest" /></ItemGroup>
 </Project>

@@ -27,11 +27,14 @@ model=model_source.read_text()
 anchor='/* Texture payloads are immutable and shared across independently loaded models.'
 assert model.count(anchor)==1, 'Pinned model retention anchor changed'
 model=model.replace(anchor,'#include "native-building-retained.inc"\n'+anchor)
-for old,new in [
- ('if (!m || !array || array->element_size != 1 ||','if (!m || town_building_retained(m) || !array || array->element_size != 1 ||'),
- ('if (!m || !m->ready || m->restoring || dnd_device_active())','if (!m || town_building_retained(m) || !m->ready || m->restoring || dnd_device_active())')]:
-    assert model.count(old)==1, 'Pinned resident building guard changed'
-    model=model.replace(old,new)
+for name in ('dnd_model_copy','dnd_model_unload'):
+    start=model.index('int '+name+'(')
+    end=model.index('\n}',start)+2
+    body=model[start:end]
+    lookup='DndModel *m = dnd_model_find(token, false);'
+    assert body.count(lookup)==1, 'Pinned resident building lookup changed: '+name
+    body=body.replace(lookup,lookup+'\n  if (!m || town_building_retained(m)) return -1;')
+    model=model[:start]+body+model[end:]
 model_source.write_text(model)
 shutil.copyfile(here/'native-building-retained.inc',root/'include/native-building-retained.inc')
 resource=root/'source/draw_resources.c'
@@ -95,6 +98,10 @@ extern int animaltown_mesh_recycle(int,DndArray*,int,DndArray*,int);
         'Kind':(1,'return animaltown_terrain_kind((int){0});'),
         'View':(0,'return animaltown_terrain_view();'),
         'Bind':(2,'return animaltown_terrain_bind((int){0},(int){1});'),
+        'BindStep':(2,'return animaltown_terrain_bind_step((int){0},(int){1});'),
+        'CancelBind':(0,'return animaltown_terrain_cancel_bind();'),
+        'Suspend':(0,'return animaltown_terrain_suspend();'),
+        'Resume':(0,'return animaltown_terrain_resume();'),
         'Unbind':(1,'return animaltown_terrain_unbind((int){0});'),
         'Cache':(1,'return animaltown_terrain_cache((int){0});'),
         'Stat':(1,'return animaltown_terrain_stat((int){0});')}
@@ -110,6 +117,10 @@ extern int animaltown_terrain_info(int,int);
 extern int animaltown_terrain_kind(int);
 extern int animaltown_terrain_view(void);
 extern int animaltown_terrain_bind(int,int);
+extern int animaltown_terrain_bind_step(int,int);
+extern int animaltown_terrain_cancel_bind(void);
+extern int animaltown_terrain_suspend(void);
+extern int animaltown_terrain_resume(void);
 extern int animaltown_terrain_unbind(int);
 extern int animaltown_terrain_stat(int);
 extern int animaltown_terrain_cache(int);

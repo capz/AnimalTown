@@ -124,7 +124,8 @@ internal sealed class TitleScreen : IDisposable
             case 24:return "Freeze landscape motion: "+toggle;case 25:return "Recreate terrain meshes: "+toggle;
             case 26:return "Legacy ground ring: "+toggle;
             case DevConfig.TreeNoiseStrength:return "Tree noise strength: "+config.TreeNoiseStrengthPercent+"%";
-            default:return "Tree noise scale: "+config.TreeNoiseScalePercent+"%";
+            case DevConfig.TreeNoiseScale:return "Tree noise scale: "+config.TreeNoiseScalePercent+"%";
+            default:return "discard terrain cache when indoors: "+toggle;
         }
     }
     public void Dispose(){background.Dispose();TextureCache.Release(logo);font.Release();ui.Dispose();TextureCache.TrimUnused();}

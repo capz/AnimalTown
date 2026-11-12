@@ -27,6 +27,9 @@ int animaltown_building_retain(int token){
         DndMesh *mesh=&m->mesh[i];mesh->data=compact+(mesh->data-base);mesh->index=compact+(mesh->index-base);
     }
     dnd_model_free(m->package,&m->bytes);m->package=compact;
+    // The immutable DNMD package has been replaced by a geometry-only view.
+    // Never expose its original length to the SDK's native snapshot DMA path.
+    m->residency_disabled=true;
     town_retained_buildings[town_building_slot(m)]=m->token;
 #ifdef DND_GAMECUBE_STORAGE
     DCFlushRange(compact,length);
