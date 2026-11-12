@@ -44,7 +44,7 @@ jobs:
           mkdir -p out/submit-base out/submit-candidate
           gh release download v0.11.10.9a4aad4ff05c --repo "$GITHUB_REPOSITORY" --dir out/submit-base --pattern 'AnimalTown-0.11.10.9a4aad4ff05c.iso' --pattern SHA256SUMS.txt --pattern version.json
           for attempt in $(seq 1 100); do
-            if [ "$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json isDraft --jq .isDraft 2>/dev/null)" = false ] && gh release download "$TAG" --repo "$GITHUB_REPOSITORY" --dir out/submit-candidate --clobber --pattern 'AnimalTown-*.iso' --pattern 'AnimalTown-server-*.zip' --pattern SHA256SUMS.txt --pattern version.json --pattern BUILD.txt; then break; fi
+            if [ "$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json isDraft --jq .isDraft 2>/dev/null)" = false ] && gh release download "$TAG" --repo "$GITHUB_REPOSITORY" --dir out/submit-candidate --clobber --pattern 'AnimalTown-*.nkit.iso' --pattern 'AnimalTown-server-*.zip' --pattern SHA256SUMS.txt --pattern version.json --pattern BUILD.txt; then break; fi
             test "$attempt" != 100
             sleep 15
           done
@@ -54,7 +54,13 @@ jobs:
           for label,commit in [('base','9a4aad4ff05c307bcc7daf4e553269ac93027c03'),('candidate',os.environ['GITHUB_SHA'])]:
               root=Path('out/submit-'+label);meta=json.loads((root/'version.json').read_text())
               assert meta['commit']==commit and not meta['dirty']
-              iso=root/('AnimalTown-'+meta['version']+'.iso');assert iso.stat().st_size==1459978240
+              suffix='.iso' if label=='base' else '.nkit.iso'
+              iso=root/('AnimalTown-'+meta['version']+suffix)
+              if label=='base': assert iso.stat().st_size==1459978240
+              else:
+                  assert 0<iso.stat().st_size<1459978240
+                  with iso.open('rb') as f: header=f.read(0x214)
+                  assert header[0x200:0x208]==b'NKIT v01' and int.from_bytes(header[0x210:0x214],'big')==1459978240
               for p in root.iterdir():
                   if p.name=='SHA256SUMS.txt':continue
                   expected=next(line.split()[0] for line in (root/'SHA256SUMS.txt').read_text().splitlines() if line.split()[-1].lstrip('*')==p.name)

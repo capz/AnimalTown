@@ -2,6 +2,7 @@ using System.Buffers.Binary;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 
 // Validate the physical compact layout, not just its reversible container.
 // The homebrew apploader currently reads its DOL at the fixed 0x10000 address.
@@ -31,6 +32,34 @@ internal static class NKitImages
         return files;
     }
     public static void Verify(string source,string compact,string report)=>VerifyCore(source,compact,report,Capacity);
+    // Packaging reuses the verified build output after its raw conversion files
+    // have been deleted. Bind the proof to the complete compact image and files.
+    public static void VerifyOutput(string compact,string report)=>VerifyOutputCore(compact,report,Capacity);
+    static void VerifyOutputCore(string compact,string report,long expectedSize)
+    {
+        using var proof=JsonDocument.Parse(File.ReadAllText(report));var info=proof.RootElement;
+        using var packed=File.OpenRead(compact);
+        string? sourceHash=info.GetProperty("sourceSha256").GetString();
+        if(info.GetProperty("schema").GetInt32()!=1||info.GetProperty("format").GetString()!="nkit.iso"||
+           info.GetProperty("sourceBytes").GetInt64()!=expectedSize||info.GetProperty("compactBytes").GetInt64()!=packed.Length||
+           packed.Length<0x2460||packed.Length>=expectedSize||info.GetProperty("compactFile").GetString()!=Path.GetFileName(compact)||
+           !info.GetProperty("roundTripVerified").GetBoolean()||!info.GetProperty("dolAndApploaderUnchanged").GetBoolean()||
+           sourceHash is not {Length:64}||!sourceHash.All(Uri.IsHexDigit)||info.GetProperty("roundTripSha256").GetString()!=sourceHash||
+           info.GetProperty("compactSha256").GetString()!=Hash(packed,0,packed.Length))
+            throw new InvalidDataException("NKit build output does not match its verified conversion report");
+        var header=Bytes(packed,0,0x2460);
+        if(Read(header,0x1c)!=0xc2339f3d||!header.AsSpan(0x200,8).SequenceEqual("NKIT v01"u8)||Read(header,0x210)!=expectedSize||Read(header,0x420)!=0x10000)
+            throw new InvalidDataException("Invalid built NKit boot identity");
+        var files=Files(packed,header);var records=info.GetProperty("files");var seen=new HashSet<string>(StringComparer.Ordinal);
+        if(records.GetArrayLength()!=files.Count)throw new InvalidDataException("NKit build file count changed");
+        foreach(var record in records.EnumerateArray()){
+            string name=record.GetProperty("file").GetString()!;
+            if(!seen.Add(name)||!files.TryGetValue(name,out var file)||record.GetProperty("bytes").GetInt64()!=file.Size||
+               record.GetProperty("sha256").GetString()!=Hash(packed,file.Offset,file.Size))
+                throw new InvalidDataException("NKit build payload changed: "+name);
+        }
+        Console.WriteLine($"Verified NKit build output and conversion proof: {files.Count} files, {packed.Length:N0} bytes");
+    }
     static void VerifyCore(string source,string compact,string report,long expectedSize)
     {
         using var original=File.OpenRead(source);using var packed=File.OpenRead(compact);
@@ -68,6 +97,21 @@ internal static class NKitImages
             File.WriteAllBytes(full,a);File.WriteAllBytes(small,b);VerifyCore(full,small,report,a.Length);
             int rejected=0;void Reject(Action<byte[]> edit){var v=(byte[])b.Clone();edit(v);File.WriteAllBytes(small,v);try{VerifyCore(full,small,report,a.Length);}catch(InvalidDataException){rejected++;return;}throw new Exception("NKit corruption accepted");}
             Reject(v=>v[0x20104]^=1);Reject(v=>v[0x2460]^=1);Reject(v=>v[0x10100]^=1);Reject(v=>Put(v,0x420,0x10020));Reject(v=>Put(v,0x210,0));Reject(v=>Put(v,0x20014,1000));Reject(v=>Put(v,0x20010,0x20105));Reject(v=>v[0x20]^=1);
+            File.WriteAllBytes(small,b);
+            var proof=JsonNode.Parse(File.ReadAllText(report))!;
+            string sourceHash=Convert.ToHexString(SHA256.HashData(a)).ToLowerInvariant();
+            proof["sourceSha256"]=sourceHash;proof["roundTripSha256"]=sourceHash;proof["roundTripVerified"]=true;
+            proof["compactSha256"]=Convert.ToHexString(SHA256.HashData(b)).ToLowerInvariant();
+            string validProof=proof.ToJsonString();File.WriteAllText(report,validProof);
+            VerifyOutputCore(small,report,a.Length);
+            foreach(Action<JsonNode> edit in new Action<JsonNode>[]{p=>p["roundTripVerified"]=false,p=>p["dolAndApploaderUnchanged"]=false,
+                p=>p["sourceBytes"]=0,p=>p["compactBytes"]=0,p=>p["compactFile"]="other.nkit.iso",p=>p["roundTripSha256"]=new string('0',64),
+                p=>p["sourceSha256"]="invalid",p=>p["files"]![0]!["sha256"]=new string('0',64)}){
+                var changed=JsonNode.Parse(validProof)!;edit(changed);File.WriteAllText(report,changed.ToJsonString());
+                try{VerifyOutputCore(small,report,a.Length);throw new Exception("Invalid NKit conversion proof accepted");}catch(InvalidDataException){rejected++;}
+            }
+            File.WriteAllText(report,validProof);var damaged=(byte[])b.Clone();damaged[0x20104]^=1;File.WriteAllBytes(small,damaged);
+            try{VerifyOutputCore(small,report,a.Length);throw new Exception("Changed NKit output accepted");}catch(InvalidDataException){rejected++;}
             Console.WriteLine($"NKit checks: compact 4-byte FST offsets accepted; {rejected} payload/boot/identity/range corruptions rejected");
         }finally{Directory.Delete(root,true);}
     }

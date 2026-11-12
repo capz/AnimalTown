@@ -27,13 +27,10 @@ if($revisions -notmatch "(?m)^Version: $versionPattern\r?$" -or $serverBuild -no
    $serverBuild -notmatch "(?m)^Server source: $commit\r?$" -or $serverBuild -notmatch '(?m)^Dirty: False\r?$'){
     throw 'Console and backend must both be clean builds of the release commit'
 }
-$iso=Join-Path $out "AnimalTown-$version.iso"
-if((Get-Item -LiteralPath $iso).Length -ne 1459978240){throw 'Release requires a full-size GameCube ISO'}
-& dotnet run --project (Join-Path $Root 'tools/AnimalTown.Tools') -c Release --no-build -- verify $Root $iso
-if($LASTEXITCODE -ne 0){throw 'ISO validation failed'}
 $nkit=Join-Path $out "AnimalTown-$version.nkit.iso"
 $nkitValidation=Join-Path $out 'nkit-validation.json'
-& (Join-Path $PSScriptRoot 'compress-nkit.ps1') -Root $Root -Iso $iso -Destination $nkit -Report $nkitValidation
+& dotnet run --project (Join-Path $Root 'tools/AnimalTown.Tools') -c Release --no-build -- verify-nkit-output $Root $nkit $nkitValidation
+if($LASTEXITCODE -ne 0){throw 'Built NKit image/report validation failed'}
 $nkitInfo=Get-Content $nkitValidation -Raw|ConvertFrom-Json
 $package=Join-Path $out "releases/$tag"
 New-Item -ItemType Directory -Force -Path $package | Out-Null
@@ -78,7 +75,7 @@ Copy-Item -LiteralPath (Join-Path $out 'version.json') -Destination (Join-Path $
 Copy-Item -LiteralPath $nkitValidation -Destination (Join-Path $package 'nkit-validation.json') -Force
 Copy-Item -LiteralPath (Join-Path $out 'disc/animal-town-updater.dol') -Destination (Join-Path $package 'animal-town-updater.dol') -Force
 $updaterDol=Join-Path $package 'animal-town-updater.dol'
-$checksums=foreach($file in @($iso,$nkit,$updaterDol,$serverZip,$toolsZip,$cliffsZip,$buildingsZip,(Join-Path $package 'BUILD.txt'),(Join-Path $package 'texture-audit.json'),(Join-Path $package 'validation-plan.json'),(Join-Path $package 'version.json'),(Join-Path $package 'nkit-validation.json'))){"$((Get-FileHash -LiteralPath $file -Algorithm SHA256).Hash.ToLowerInvariant())  $([IO.Path]::GetFileName($file))"}
+$checksums=foreach($file in @($nkit,$updaterDol,$serverZip,$toolsZip,$cliffsZip,$buildingsZip,(Join-Path $package 'BUILD.txt'),(Join-Path $package 'texture-audit.json'),(Join-Path $package 'validation-plan.json'),(Join-Path $package 'version.json'),(Join-Path $package 'nkit-validation.json'))){"$((Get-FileHash -LiteralPath $file -Algorithm SHA256).Hash.ToLowerInvariant())  $([IO.Path]::GetFileName($file))"}
 [IO.File]::WriteAllText((Join-Path $package 'SHA256SUMS.txt'),($checksums -join "`n")+"`n")
 $notes=@"
 AnimalTown $version development build from commit $commit.
@@ -91,23 +88,23 @@ AnimalTown-cliff-kit-$version.zip contains eight low-poly cliff GLBs, shared 128
 
 For GC Loader SD-card storage, download **AnimalTown-$version.nkit.iso** and copy it directly onto the card. No extraction is needed. This build occupies $($nkitInfo.compactBytes) bytes instead of 1,459,978,240 bytes ($([Math]::Round($nkitInfo.savedPercent,2))% smaller). NKit compacts padding; the playable image preserves every game file, title, commit identity, disc banner and save banner/icon. The pipeline restores it to the original full ISO and verifies an exact SHA-256 match, plus the compact image's physical apploader, DOL and file payloads. Physical direct GC Loader testing remains outstanding.
 
-**AnimalTown-$version.iso** remains available as the full-size canonical ISO for archival and fallback use. Both disc images are published directly, without ZIP wrappers. Choose one image download; you do not need both on the card. The server is a separate **AnimalTown-server-$version.zip** archive and requires .NET 10 and PostgreSQL. It does not run on the console.
+The NKit ISO is the only disc image built for delivery and is published directly, without a ZIP wrapper. Full-size conversion and round-trip images are temporary and deleted after verification. The server is a separate **AnimalTown-server-$version.zip** archive and requires .NET 10 and PostgreSQL. It does not run on the console.
 
 **animal-town-updater.dol** is also embedded in the ISO for the title Update option. Keep the installed image's chosen filename/folder and provision its host-side SD path with the updater repository's provision.py --image option, together with HTTPS inputs. The SD-root animaltown-updater/image-path.txt selects the target; the game verifies its AnimalTown identity/current version before passing the exact path to the updater. Missing/conflicting paths stop Update. A verified installation ends with Power off/on so GC Loader firmware can reopen the replaced image. Physical storage, BBA and restart behavior remain unverified.
 
-version.json records the main major.minor.patch version, merged PR boundaries and source commit (branch builds append +hash). BUILD.txt records the version and game, engine and SDK revisions. validation-plan.json records the comparison base and selected checks. texture-audit.json records texture source identities, fingerprints and 256-pixel default residency and 128/256/512/1024 model variants. nkit-validation.json records the pinned converter, sizes, per-file hashes and round-trip verification. SHA256SUMS.txt covers both disc images, the archives and manifests.
+version.json records the main major.minor.patch version, merged PR boundaries and source commit (branch builds append +hash). BUILD.txt records the version and game, engine and SDK revisions. validation-plan.json records the comparison base and selected checks. texture-audit.json records texture source identities, fingerprints and 256-pixel default residency and 128/256/512/1024 model variants. nkit-validation.json records the pinned converter, sizes, per-file hashes and round-trip verification. SHA256SUMS.txt covers the NKit image, the archives and manifests.
 
 This is an early playable build, not the completed game. Physical GameCube testing is outstanding. See [implementation status](https://github.com/$Repository/blob/$commit/docs/implementation-status.md) and [build instructions](https://github.com/$Repository/blob/$commit/README.md).
 "@
 $notesPath=Join-Path $package 'release-notes.md'
 [IO.File]::WriteAllText($notesPath,$notes)
-if($PackageOnly){Write-Host "Release package: $package";Write-Host "Disc images: $iso; $nkit";return}
+if($PackageOnly){Write-Host "Release package: $package";Write-Host "Disc image: $nkit";return}
 function InvokeGh([string[]]$Arguments){
     $result=& $Gh @Arguments
     if($LASTEXITCODE -ne 0){throw "GitHub CLI failed: $($Arguments[0]) $($Arguments[1])"}
     return $result
 }
-$assets=@($iso,$nkit,$updaterDol,$serverZip,$toolsZip,$cliffsZip,$buildingsZip,(Join-Path $package 'BUILD.txt'),(Join-Path $package 'texture-audit.json'),(Join-Path $package 'validation-plan.json'),(Join-Path $package 'version.json'),(Join-Path $package 'nkit-validation.json'),(Join-Path $package 'SHA256SUMS.txt'))
+$assets=@($nkit,$updaterDol,$serverZip,$toolsZip,$cliffsZip,$buildingsZip,(Join-Path $package 'BUILD.txt'),(Join-Path $package 'texture-audit.json'),(Join-Path $package 'validation-plan.json'),(Join-Path $package 'version.json'),(Join-Path $package 'nkit-validation.json'),(Join-Path $package 'SHA256SUMS.txt'))
 $existing=& $Gh release view $tag --repo $Repository --json isDraft,targetCommitish,assets 2>$null
 if($LASTEXITCODE -eq 0){
     $release=$existing | ConvertFrom-Json

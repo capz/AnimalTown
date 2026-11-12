@@ -307,7 +307,7 @@ most 50 lines with membership checks; restrict chat both at send and receive.
 
 ## Bootable disc contract
 
-Every successful console build ends with `out/AnimalTown-<version>.iso`, never
+Every successful console build ends with `out/AnimalTown-<version>.nkit.iso`, never
 only an ELF/DOL or the engine's data ISO. Disc has a GameCube boot header/magic,
 BI2, a redistributable homebrew apploader, valid main.dol, aligned FST and assets,
 root opening.bnr and BUILD.txt with full game/engine/SDK revisions. Header title,
@@ -316,8 +316,9 @@ source commits remain in BUILD.txt; see [versioning](versioning.md). Disc
 and memory-card artwork are different required outputs. Dirty builds append a
 dirty marker and record a source digest; releases require clean source.
 
-Package to a full 1,459,978,240-byte GameCube image for mini-DVD compatibility;
-sparse local creation is acceptable, archived artifacts compress padding. Verify
+Deliver only the compact NKit ISO. The converter uses a temporary sparse
+1,459,978,240-byte source image and a temporary round-trip image; both are deleted
+after verification, including on failure. Verify
 offsets, DOL load sections/BSS/entrypoint, FST hierarchy, alignment, banner format,
 required files and hashes before publishing. Consume the pinned SDK-owned
 apploader image with its source identity and license; the SDK builds it from

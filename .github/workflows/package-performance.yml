@@ -80,7 +80,9 @@ jobs:
                   while b:=f.read(8*1024*1024):h.update(b)
               assert h.hexdigest().lower()==digest.lower(),name
           meta=json.loads((root/'version.json').read_text());assert meta['commit']==os.environ['GITHUB_SHA'] and not meta['dirty']
-          version=meta['version'];iso=root/f'AnimalTown-{version}.iso';assert iso.stat().st_size==1459978240
+          version=meta['version'];iso=root/f'AnimalTown-{version}.nkit.iso';assert 0<iso.stat().st_size<1459978240
+          with iso.open('rb') as f: header=f.read(0x214)
+          assert header[0x200:0x208]==b'NKIT v01' and int.from_bytes(header[0x210:0x214],'big')==1459978240
           build=(root/'BUILD.txt').read_text();assert os.environ['GITHUB_SHA'] in build and 'Dirty: False' in build
           with zipfile.ZipFile(root/f'AnimalTown-server-{version}.zip') as z:
               manifests=[z.read(n).decode() for n in z.namelist() if n.endswith('BUILD.txt')]

@@ -86,7 +86,7 @@ then build the console normally. In the [Dolphin container](../README.md#checks)
 run against a disposable card/output directory:
 
 ```sh
-python3 tools/iso-smoke.py out/AnimalTown-VERSION.iso out/smoke-onboarding --onboarding
+python3 tools/iso-smoke.py out/AnimalTown-VERSION.nkit.iso out/smoke-onboarding --onboarding
 ```
 
 The smoke waits for actual name/look/review/world screen signatures. It exercises

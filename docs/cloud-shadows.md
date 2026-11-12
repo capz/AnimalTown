@@ -45,7 +45,7 @@ Dolphin scenario uses a fresh card, captures stationary partial clouds twenty
 seconds apart, clear and overcast cover, restored partial cover, the menu, indoor floors and return outside:
 
 ```sh
-docker run --rm --init --shm-size=512m --mount "type=bind,src=$PWD,dst=/work" -w /work animaltown-dolphin python3 tools/iso-smoke.py out/AnimalTown-VERSION.iso out/cloud-smoke --cloud-shadows
+docker run --rm --init --shm-size=512m --mount "type=bind,src=$PWD,dst=/work" -w /work animaltown-dolphin python3 tools/iso-smoke.py out/AnimalTown-VERSION.nkit.iso out/cloud-smoke --cloud-shadows
 ```
 
 Inspect cloud-partial-a/b.png, cloud-clear.png, cloud-overcast.png,
