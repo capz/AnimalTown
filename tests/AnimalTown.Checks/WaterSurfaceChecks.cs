@@ -81,9 +81,13 @@ internal static class WaterSurfaceChecks
         check(GC.GetAllocatedBytesForCurrentThread()==allocated,"warm rough-water sampling has no per-frame allocations");
         // The visual effect is encoded in five *independent* grayscale images
         // instead of a run-time procedural pattern or regular box mipmapping.
+        for(int level=0;level<SunshineWater.MipLevels;level++)
+            check(SunshineWater.AlphaForLuma(level,0)==0&&SunshineWater.AlphaForLuma(level,127)==119&&
+                  SunshineWater.AlphaForLuma(level,128)==136&&SunshineWater.AlphaForLuma(level,255)==255,
+                  "all I4 levels use the same nearest-nibble intensity/alpha expansion without bespoke opacity gains");
         var artistLevels=new byte[SunshineWater.MipLevels][];
         for(int level=0;level<SunshineWater.MipLevels;level++){
-            int size=SunshineWater.Edge(level);
+            int size=SunshineWater.SourceEdge(level);
             var pixels=artistLevels[level]=new byte[size*size];
             for(int y=0;y<size;y++)for(int x=0;x<size;x++)
                 pixels[y*size+x]=(byte)(level switch{
@@ -97,32 +101,80 @@ internal static class WaterSurfaceChecks
         SunshineWater.ValidatePackage(sunshine);
         TexturePixels.Validate(sunshine);
         check(TexturePixels.Int(sunshine,0)==0x58544e44&&TexturePixels.Int(sunshine,4)==2&&
-              TexturePixels.Int(sunshine,8)==3&&TexturePixels.Int(sunshine,24)==SunshineWater.MipLevels&&
+              TexturePixels.Int(sunshine,8)==0&&TexturePixels.Width(sunshine)==128&&TexturePixels.Height(sunshine)==128&&
+              TexturePixels.Int(sunshine,24)==SunshineWater.MipLevels&&
               sunshine.Length==32+SunshineWater.PayloadBytes,
-              "Sunshine artist mips cook into a contiguous GX IA8 DNTX v2 chain");
-        int sunshineAt=32;int[] meanBrightness=new int[SunshineWater.MipLevels],meanAlpha=new int[SunshineWater.MipLevels];
+              "Sunshine artist mips cook into the verified 128-square GX I4 DNTX v2 chain");
+        int sunshineAt=32;int[] meanBrightness=new int[SunshineWater.MipLevels];
         for(int level=0;level<SunshineWater.MipLevels;level++){
-            int edge=SunshineWater.Edge(level);
-            for(int by=0;by<edge;by+=4)for(int bx=0;bx<edge;bx+=4)
-                for(int y=by;y<by+4;y++)for(int x=bx;x<bx+4;x++){
-                    int alpha=sunshine[sunshineAt++],lum=sunshine[sunshineAt++];
-                    check(lum==artistLevels[level][y*edge+x]&&alpha==SunshineWater.AlphaForLuma(level,(byte)lum),
-                        "each author-selected mip texel preserves its luminance and receives native IA8 alpha");
-                    meanBrightness[level]+=lum;meanAlpha[level]+=alpha;
+            int edge=SunshineWater.Edge(level),sourceEdge=SunshineWater.SourceEdge(level);
+            for(int by=0;by<edge;by+=8)for(int bx=0;bx<edge;bx+=8)
+                for(int y=by;y<by+8;y++)for(int x=bx;x<bx+8;x+=2){
+                    byte packed=sunshine[sunshineAt++];
+                    for(int part=0;part<2;part++){
+                        byte source=artistLevels[level][y/2*sourceEdge+(x+part)/2];
+                        int lum=(part==0?packed>>4:packed&15)*17;
+                        check(lum==((source+8)/17)*17&&lum==SunshineWater.AlphaForLuma(level,source),
+                            "I4 8x8 tiles store high nibble first, expand each authored pixel 2x and use equal decoded intensity/alpha");
+                        meanBrightness[level]+=lum;
+                    }
                 }
-            meanBrightness[level]/=edge*edge;meanAlpha[level]/=edge*edge;
+            meanBrightness[level]/=edge*edge;
         }
-        check(sunshineAt==sunshine.Length,"native IA8 chain has exactly the required GX tiles");
-        check(meanBrightness[0]==0&&meanBrightness[4]==0&&meanAlpha[0]==0&&meanAlpha[4]==0,
+        check(sunshineAt==sunshine.Length&&SunshineWater.PayloadBytes==10912,"native I4 chain has exactly the required five GX tile levels");
+        check(meanBrightness[0]==0&&meanBrightness[4]==0,
             "base and farthest Sunshine mip levels draw no specular reflection");
         check(meanBrightness[2]>meanBrightness[1]&&meanBrightness[1]>meanBrightness[3],
             "authored third mip creates a bright middle-distance reflection band");
-        check(SunshineWater.LodBias>0&&SunshineWater.LodBias<3.99f&&
-              SunshineWater.GlintLowReference==33&&SunshineWater.GlintHighReference==235,
-              "GX samples authored mips with supported bias and exact outside-band references");
+        check(SunshineWater.LodBias==0&&SunshineWater.SecondaryLodBias==-.5f&&
+              SunshineWater.GlintLowReference==35&&SunshineWater.GlintHighReference==235&&
+              SunshineWater.NearLowReference==35&&SunshineWater.NearHighReference==85,
+              "surface uses the source LOD biases and exclusive low35 threshold; near waves have distinct inclusive35/high85 references");
         var truncated=(byte[])sunshine.Clone();truncated[32+SunshineWater.PayloadBytes-1]++;
         bool rejected=false;try{SunshineWater.ValidatePackage(truncated);}catch(InvalidOperationException){rejected=true;}
-        check(rejected,"Sunshine texture validation rejects corrupt authored level/alpha data");
+        check(rejected,"Sunshine texture validation rejects nonclear final authored levels");
+        byte[] nearWave=SunshineWater.PackNearWave(artistLevels[1]),distortion=SunshineWater.PackDistortion(artistLevels[1]);
+        SunshineWater.ValidateNearWavePackage(nearWave);SunshineWater.ValidateDistortionPackage(distortion);
+        TexturePixels.Validate(nearWave);TexturePixels.Validate(distortion);
+        check(TexturePixels.Width(nearWave)==128&&TexturePixels.Height(nearWave)==256&&TexturePixels.Int(nearWave,24)==5&&nearWave.Length==32+21824,
+            "separate near-wave I4 package matches 128x256, five levels and 21824 native bytes");
+        check(TexturePixels.Width(distortion)==64&&TexturePixels.Height(distortion)==64&&TexturePixels.Int(distortion,24)==4&&distortion.Length==32+2720,
+            "separate displacement I4 package matches 64x64, four levels and 2720 native bytes");
+        foreach(var package in new[]{nearWave,distortion}){
+            int width=TexturePixels.Width(package),height=TexturePixels.Height(package);
+            for(int y=0;y<height;y++)for(int x=0;x<width;x++){
+                int lum=(int)(TexturePixels.Pixel(package,x,y)>>24);
+                byte source=artistLevels[1][y*32/height*32+x*32/width];
+                check(lum==((source+8)/17)*17,"near-wave and displacement bases reuse our independent caustic art with exact nearest expansion");
+            }
+        }
+        var checker=new byte[32*32];for(int y=0;y<32;y++)for(int x=0;x<32;x++)checker[y*32+x]=(byte)(((x+y)&1)*255);
+        byte[] filteredDistortion=SunshineWater.PackDistortion(checker),filteredNear=SunshineWater.PackNearWave(checker);
+        // The final displacement level averages 4x4 source samples; the near
+        // level averages 4x2. Both must reduce the checker to intensity136.
+        foreach(var package in new[]{filteredDistortion,filteredNear}){
+            int lastBytes=ReferenceEquals(package,filteredDistortion)?32:64;
+            for(int i=package.Length-lastBytes;i<package.Length;i++)
+                check(package[i]==0x88,"ordinary mips of the two independent overlay textures filter source detail before I4 quantization");
+        }
+        check(SunshineWater.SurfacePhase(0)==0&&SunshineWater.SurfacePhase(40)==0&&
+              Math.Abs(SunshineWater.SurfacePhase(10)-.203125f)<.0000001f&&SunshineWater.SurfacePhase(20)==.5f&&
+              Math.Abs(SunshineWater.SurfacePhase(30)-.796875f)<.0000001f,
+              "surface BTK reproduces the source Hermite tangents over a forty-second 30fps cycle");
+        check(SunshineWater.IndirectPhase(10)==.75f&&SunshineWater.IndirectPhase(20)==1.5f&&SunshineWater.IndirectPhase(40)==0&&
+              Math.Abs(SunshineWater.NearPhase(10)-.45f)<.0000001f,
+              "refraction scrolls three repeats per forty seconds and near waves advance .0015 repeats per 30fps frame");
+        foreach(double seconds in new[]{-3600.0,-1,1,3600,86400,1e8}){
+            check(SunshineWater.SurfacePhase(seconds)>=0&&SunshineWater.SurfacePhase(seconds)<1&&
+                  SunshineWater.IndirectPhase(seconds)>=0&&SunshineWater.IndirectPhase(seconds)<3&&
+                  SunshineWater.NearPhase(seconds)>=0&&SunshineWater.NearPhase(seconds)<1,
+                  "all source UV phases remain finite and bounded in long sessions or negative elapsed time");
+            check(Math.Abs(SunshineWater.SurfacePhase(seconds+40)-SunshineWater.SurfacePhase(seconds))<.000001f,
+                "surface animation repeats without changing the authored Hermite profile");
+        }
+        check(SunshineWater.Cells==16&&SunshineWater.VertexFade(8,8)==255&&SunshineWater.VertexFade(4,8)==127&&
+              SunshineWater.VertexFade(4,4)==127&&SunshineWater.VertexFade(0,8)==0&&SunshineWater.VertexFade(17,8)==0,
+              "near-wave vertex alpha fades linearly by max-axis distance around the player");
         foreach(double time in new[]{0.0,1,3600,86400,1e8}){
             float atEdge=SunshineWater.LocalWaveHeight(0,8,12,24,time);
             float center=SunshineWater.LocalWaveHeight(8,8,12,24,time);

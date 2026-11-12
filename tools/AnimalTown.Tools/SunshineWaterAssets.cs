@@ -2,19 +2,21 @@ using System.Security.Cryptography;
 using SkiaSharp;
 using AnimalTown;
 
-// Cook exactly the five independently edited PNG source levels. A generic
-// texture compressor/mipmap generator must NEVER touch this artist-authored
-// chain: the empty/highlight/bright-band/fade/empty sequence *is* the effect.
+// Preserve all five independent surface sources. The near-wave and indirect
+// textures reuse our caustic art in separate conventional mip chains; they do
+// not replace or regenerate the artist-selected surface levels.
 internal static class SunshineWaterAssets
 {
     internal const string DiscName="sunshine-water.dndtex";
+    internal const string NearWaveDiscName="sunshine-wave.dndtex";
+    internal const string DistortionDiscName="sunshine-distortion.dndtex";
     internal const string SourceDirectory="assets/textures/environment/water";
 
     internal static void Build(string root)
     {
         var levels=new byte[SunshineWater.MipLevels][];
         for(int level=0;level<SunshineWater.MipLevels;level++){
-            int size=SunshineWater.Edge(level);
+            int size=SunshineWater.SourceEdge(level);
             string source=Path.Combine(root,SourceDirectory,
                 $"sunshine-wave-mip{level}-{size}.png");
             using var image=SKBitmap.Decode(source)??throw new InvalidDataException("Invalid authored Sunshine PNG: "+source);
@@ -30,9 +32,17 @@ internal static class SunshineWaterAssets
         }
         byte[] native=SunshineWater.PackLevels(levels);
         SunshineWater.ValidatePackage(native);
+        byte[] nearWave=SunshineWater.PackNearWave(levels[1]);
+        SunshineWater.ValidateNearWavePackage(nearWave);
+        byte[] distortion=SunshineWater.PackDistortion(levels[1]);
+        SunshineWater.ValidateDistortionPackage(distortion);
         string directory=Path.Combine(root,"out/disc");
         Directory.CreateDirectory(directory);
-        File.WriteAllBytes(Path.Combine(directory,DiscName),native);
-        Console.WriteLine($"Sunshine authored GX IA8 mips: {SunshineWater.MipLevels} levels, {native.Length-32} GPU bytes, SHA256 {Convert.ToHexString(SHA256.HashData(native))}");
+        Write(DiscName,native);Write(NearWaveDiscName,nearWave);Write(DistortionDiscName,distortion);
+        void Write(string name,byte[] data)
+        {
+            File.WriteAllBytes(Path.Combine(directory,name),data);
+            Console.WriteLine($"Sunshine GX I4 {name}: {TexturePixels.Int(data,12)}x{TexturePixels.Int(data,16)}, {TexturePixels.Int(data,24)} levels, {data.Length-32} GPU bytes, SHA256 {Convert.ToHexString(SHA256.HashData(data))}");
+        }
     }
 }
