@@ -25,8 +25,12 @@ converts them offline into opaque, big-endian RGB565 4 x 4 GX tiles in DNTX
 packages. Power-of-two storage adds unused right padding (512 x 256); runtime
 UVs exclude it. Each texture costs 262,144 bytes, with no mipmaps or runtime PNG
 decoder. Previews in `out/brand/splash-*.png` show the actual 384 x 256 content.
-The centered 576 x 384 display rectangle and fitted 640 x 480 canvas keep the
-logos inside overscan margins and preserve proportions on display modes.
+Both logos draw at their native 384 x 256 content size, centered on integer
+framebuffer coordinates with nearest-neighbor sampling. Source and destination
+dimensions match exactly, excluding the package's unused padding. The drawing
+canvas matches the actual framebuffer dimensions instead of fitting a 640 x 480
+logical canvas, so other display modes do not rescale the logos. At 640 x 480,
+the destination rectangle is (128,112,384,256).
 
 Only one splash texture is resident. It bypasses the shared texture cache and
 resource registry, is disposed after its final black frame (after `EndFrame`'s
