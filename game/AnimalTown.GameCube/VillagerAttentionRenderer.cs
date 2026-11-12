@@ -22,7 +22,7 @@ internal sealed class VillagerAttentionRenderer : IDisposable
     internal void Prepare(){
         if(mesh==null)mesh=Mesh.Create(BuildVertices());
         int percent=UiNoiseSettings.Percent;if(preparedNoise==percent)return;
-        Texture2D? replacement=percent==0?null:Texture2D.FromPackage(LowPolyTree.DetailTexture(percent),true);
+        Texture2D? replacement=percent==0?null:Texture2D.FromPackage(LowPolyTree.DetailTexture(percent,uniform:true),true);
         replacement?.ConfigureSampler(TextureWrapMode.Repeat,TextureWrapMode.Repeat,TextureMinFilter.LinearMipmapLinear,TextureMagFilter.Linear);
         material.Texture=replacement;noise?.Dispose();noise=replacement;preparedNoise=percent;
     }
