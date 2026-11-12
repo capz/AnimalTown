@@ -83,7 +83,8 @@ def check_runtime_failure():
     # Session errors must be detected before native shutdown can hide the
     # managed exception behind an unchanged loading frame.
     for line in reversed(runtime_log_text().splitlines()):
-        if 'ANIMALTOWN SESSION FAILED' in line or 'ANIMALTOWN ASSET LOAD FAILED' in line:
+        if ('ANIMALTOWN SESSION FAILED' in line or 'ANIMALTOWN ASSET LOAD FAILED' in line
+                or 'ANIMALTOWN BUILDING ASSET ERROR' in line):
             (root/'runtime-failure.txt').write_text(line+'\n')
             raise AssertionError('Game runtime failure: '+line)
 
@@ -826,10 +827,13 @@ def aram_residency_scenario():
     startup=[]
     for index,session in enumerate(logs().split('ANIMALTOWN GAME START')[1:]):
         terrain=session.find('ANIMALTOWN STARTUP TERRAIN READY')
+        building_begin=session.find('ANIMALTOWN BUILDINGS LOAD BEGIN')
+        building_ready=session.find('ANIMALTOWN BUILDINGS LOAD READY')
         model=session.find('ANIMALTOWN MODEL LOAD BEGIN 0 ')
         bake=session.find('ANIMALTOWN TERRAIN BAKE READY')
-        if not 0<=bake<terrain<model:raise AssertionError('Session '+str(index)+' admitted species before terrain bake/scratch retirement completed')
-        startup.append({'session':index,'bake_ready_before_terrain_ready_before_first_model':True})
+        if not 0<=bake<terrain<building_begin<building_ready<model:
+            raise AssertionError('Session '+str(index)+' did not retire terrain scratch and compact the building kit before species admission')
+        startup.append({'session':index,'bake_ready_before_terrain_ready_before_building_kit_before_first_model':True})
     if not startup:raise AssertionError('No traced startup ordering was observed')
     report['startup_order']=startup
     wait_log(r'ANIMALTOWN READY ',seconds=300)

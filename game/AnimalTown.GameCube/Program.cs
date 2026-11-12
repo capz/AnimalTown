@@ -126,7 +126,7 @@ internal sealed class TownGame : IDisposable
     private readonly BoxBatch boxes;
     private int modelUsed,loadingIndex;
     private Task<Model>? loadingModel;
-    private bool resourcesReady,loadingFailed,loadingBuildingsStarted,loadingTerrainStarted,loadingTerrainReady;
+    private bool resourcesReady,loadingFailed,loadingBuildingsStarted,loadingBuildingsReady,loadingTerrainStarted,loadingTerrainReady;
     private string loadingLabel="Preparing town assets";
     private float cachedPlayerHeight;
     private float profiledX=float.NaN,profiledZ;
@@ -276,10 +276,18 @@ internal sealed class TownGame : IDisposable
                 loadingLabel="Preparing landscape";
                 if(!PrepareStartupTerrain())return;
                 // The helper has returned and its scratch-building frames have
-                // unwound. Collect now; the next frame admits the first model.
+                // unwound. Collect now; the next frame starts the compact kit.
                 AnimalTown.GameCube.NativeTexturePages.Collect();
                 loadingTerrainReady=true;
                 DebugOverlay.WriteLine("ANIMALTOWN STARTUP TERRAIN READY native bytes "+device.NativeBytes);
+                return;
+            }
+            if(!loadingBuildingsReady){
+                // Admit the compact kit before large species packages occupy MEM1.
+                if(!loadingBuildingsStarted){loadingBuildingsStarted=true;DebugOverlay.WriteLine("ANIMALTOWN BUILDINGS LOAD BEGIN");}
+                bool complete=buildings.AdvanceLoading();loadingLabel=buildings.LoadingLabel;if(!complete)return;
+                loadingBuildingsReady=true;
+                DebugOverlay.WriteLine("ANIMALTOWN BUILDINGS LOAD READY");
                 return;
             }
             if(loadingIndex<models.Length){
@@ -295,9 +303,6 @@ internal sealed class TownGame : IDisposable
                 DebugOverlay.WriteLine("ANIMALTOWN MODEL LOAD READY "+loadingIndex+" "+modelNames[loadingIndex]);
                 loadingModel=null;loadingIndex++;return;
             }
-            if(!loadingBuildingsStarted){loadingBuildingsStarted=true;DebugOverlay.WriteLine("ANIMALTOWN BUILDINGS LOAD BEGIN");}
-            bool complete=buildings.AdvanceLoading();loadingLabel=buildings.LoadingLabel;if(!complete)return;
-            DebugOverlay.WriteLine("ANIMALTOWN BUILDINGS LOAD READY");
             buildings.Begin(villagers.Doors);
             for(int actor=0;actor<BuildingWorld.Actors;actor++){
                 var location=BuildingWorld.Location(state,actor);if(location.Space.IsTown)continue;int building=BuildingWorld.Building(location.Space.Value);

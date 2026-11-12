@@ -50,7 +50,7 @@ internal sealed class BuildingRenderer : IDisposable
             loadPart++;if(loadPart==8)ready[loadType]=true;
         }catch(Exception error){
             for(int i=0;i<8;i++){int slot=loadType*8+i;parts[slot]?.Dispose();parts[slot]=null;models[slot]?.Dispose();models[slot]=null;}
-            ResidentBytes=typeStartBytes;loadPart=8;Dolphin.Diagnostics.DebugOverlay.WriteLine("BUILDING ASSET ERROR "+d.Id+": "+error.Message);
+            ResidentBytes=typeStartBytes;loadPart=8;Dolphin.Diagnostics.DebugOverlay.WriteLine("ANIMALTOWN BUILDING ASSET ERROR "+d.Id+": "+error.Message);
         }
         pending=null;if(loadPart==8){loadType++;loadPart=0;typeStartBytes=ResidentBytes;}
         return loadType>=BuildingCatalog.Count;
