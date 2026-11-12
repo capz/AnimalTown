@@ -113,8 +113,10 @@ public static class SunshineWater
                              .015f*(float)Math.Sin(worldZ*1.42+tB));
     }
 
-    // Reproject the *existing* sea and river meshes inward on the world
-    // cylinder rather than allocating duplicate mesh/ARAM archive records.
+    // Uniform scale of the curved water mesh around its cylinder axis:
+    // Pbed = scale*Psurface + (scale-1)*Radius along local Y. As the mesh
+    // already sits on Radius + WaterSurface.Height, this produces a constant
+    // physical inset for the merged bed vertices baked into the terrain archive.
     public static float BedScale(float depth)
     {
         float radius=CylinderWorld.Radius+WaterSurface.Height;

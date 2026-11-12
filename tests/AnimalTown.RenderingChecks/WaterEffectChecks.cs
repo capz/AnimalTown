@@ -6,6 +6,12 @@ internal static class WaterEffectChecks
 {
     internal static void Run(Action<bool,string> check)
     {
+        var bed=WaterMaterial.CreateBedMaterial();
+        check(bed.Texture==null&&bed.SecondaryTexture==null,"underwater bed binds no sand or other texture");
+        check(bed.Color.R==18&&bed.Color.G==48&&bed.Color.B==82&&bed.Color.A==255,
+            "underwater bed has a uniform opaque dark-blue tint");
+        check(bed.Blend==Dolphin.Graphics.BlendMode.Opaque&&bed.DepthWrite&&bed.DepthTest&&bed.Lighting==Dolphin.Graphics.LightingMode.Unlit,
+            "solid bed writes depth without lighting or translucency changing its tint");
         var indirect=WaterMaterial.WindWakerDefinition().GetPackage();
         check(indirect.Length==208&&indirect[4]==3&&indirect[8]==4&&indirect[12]==3&&indirect[20]==76,
             "Wind Waker keeps its original bounded v3 indirect material");

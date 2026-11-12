@@ -17,12 +17,12 @@ internal sealed class TerrainArchive
     private const int Capacity=256;
     private readonly View?[] views=new View?[Capacity];
     private readonly bool[] visible=new bool[TerrainArchivePlan.Count],bound=new bool[TerrainArchivePlan.Count];
-    private readonly int[] first=new int[TerrainArchivePlan.Count],count=new int[TerrainArchivePlan.Count],triangles=new int[TerrainArchivePlan.Count];
-    private readonly int[] heads=new int[108],links=new int[Capacity];
+    private readonly int[] first=new int[TerrainArchivePlan.Count],count=new int[TerrainArchivePlan.Count],triangles=new int[TerrainArchivePlan.Count],bedTriangles=new int[TerrainArchivePlan.Count];
+    private readonly int[] heads=new int[WaterRenderer.PartKinds],links=new int[Capacity];
     private readonly TerrainArchiveView selection=new TerrainArchiveView();
     private TerrainSection? scratch;
     private int baked,half,revision=-1;
-    private bool building,collect;
+    private bool building,collect,beds;
     internal bool Ready=>baked==TerrainArchivePlan.Count;
     internal int Remaining=>TerrainArchivePlan.Count-baked;
     internal int Triangles {get;private set;}
@@ -56,22 +56,23 @@ internal sealed class TerrainArchive
         if(++half==2){baked++;half=0;}
         if(!Ready)return;
         scratch.Dispose();scratch=null;collect=true;
-        for(int i=0;i<first.Length;i++){first[i]=NativeTerrain.Info(i,0);count[i]=NativeTerrain.Info(i,1);triangles[i]=NativeTerrain.Info(i,2);}
+        for(int i=0;i<first.Length;i++){first[i]=NativeTerrain.Info(i,0);count[i]=NativeTerrain.Info(i,1);triangles[i]=NativeTerrain.Info(i,2);bedTriangles[i]=NativeTerrain.Info(i,3);}
         for(int i=0;i<views.Length;i++)views[i]=new View();
         Dolphin.Diagnostics.DebugOverlay.WriteLine("Terrain archive: "+NativeTerrain.Stat(5)+" ARAM bytes / "+Bytes+" MEM1 bytes / "+NativeTerrain.Stat(1)+" parts");
     }
-    internal void Prepare(float x,float z,CylinderRows rows)
+    internal void Prepare(float x,float z,CylinderRows rows,bool drawBeds)
     {
         if(!Ready)return;
         // Called after Bake has returned so the scratch arrays are no longer GC
         // roots in the AOT native frame. There are no collections in travel.
         if(collect){AnimalTown.GameCube.NativeTexturePages.Collect();collect=false;}
-        selection.Prepare(x,z,rows);if(revision==selection.Revision)return;revision=selection.Revision;
+        selection.Prepare(x,z,rows);bool styleChanged=beds!=drawBeds;
+        if(revision==selection.Revision&&!styleChanged)return;revision=selection.Revision;beds=drawBeds;
         Array.Clear(visible,0,visible.Length);Triangles=0;GroundMask=0;
-        for(int i=0;i<selection.Count;i++){int section=selection.Sections[i];visible[section]=true;Triangles+=triangles[section];}
+        for(int i=0;i<selection.Count;i++){int section=selection.Sections[i];visible[section]=true;Triangles+=triangles[section]-(drawBeds?0:bedTriangles[section]);}
         for(int i=0;i<views.Length;i++){
             var view=views[i]!;
-            if(view.Section<0||visible[view.Section])continue;
+            if(view.Section<0||!styleChanged&&visible[view.Section])continue;
             if(NativeTerrain.Unbind(view.Handle)!=1)throw new InvalidOperationException("Terrain view unbind failed");
             bound[view.Section]=false;view.Section=view.Entry=view.Kind=-1;
         }
@@ -79,7 +80,7 @@ internal sealed class TerrainArchive
         for(int n=0;n<selection.Count;n++){
             int section=selection.Sections[n];bool retained=bound[section];
             for(int entry=first[section];entry<first[section]+count[section];entry++){
-                int kind=NativeTerrain.Kind(entry);if(kind<104)GroundMask|=1UL<<(kind%52);ViewCount++;
+                int kind=NativeTerrain.Kind(entry);if(!drawBeds&&kind==WaterRenderer.BedKind)continue;if(kind<104)GroundMask|=1UL<<(kind%52);ViewCount++;
                 if(retained)continue;
                 while(free<views.Length&&views[free]!.Section>=0)free++;
                 if(free==views.Length)throw new InvalidOperationException("Visible terrain exceeds fixed native view budget");

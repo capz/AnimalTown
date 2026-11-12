@@ -15,7 +15,7 @@ internal sealed class WaterMaterial : IDisposable
     private SceneCapture? sunshineCapture;
     private TevMaterial? sunshineRefraction;
     private Viewport captureSource;
-    private TevMaterial? sunshineLayer,sunshineBed,sunshineCloseWaves;
+    private TevMaterial? sunshineLayer,sunshineCloseWaves;
     internal Material CloseWaves=>sunshineCloseWaves?.Material??Surface;
     // A very thin tropical-blue body under the specular cutout, so the seabed
     // stays readable nearby while distant open water keeps its blue depth.
@@ -29,7 +29,10 @@ internal sealed class WaterMaterial : IDisposable
     internal WaterRenderStyle Style=WaterRenderStyle.WindWaker;
     internal bool IsSunshine=>Style==WaterRenderStyle.Sunshine;
     internal Material Surface=>IsSunshine&&sunshineLayer!=null?sunshineLayer.Material:water.Material;
-    internal Material Bed=>sunshineBed?.Material??throw new InvalidOperationException("Sunshine bed material was not prepared.");
+    internal readonly Material Bed=CreateBedMaterial();
+    internal static Material CreateBedMaterial()=>new Material{
+        Color=new Color32(18,48,82),Blend=BlendMode.Opaque,DepthWrite=true,
+        DepthTest=true,Lighting=LightingMode.Unlit,Cull=CullMode.Back};
     internal bool RoughOcean;
     internal Material OceanSurface=>IsSunshine?Surface:RoughOcean?storm!.Material:Surface;
     internal readonly Material Foam=new Material{Blend=BlendMode.Alpha,DepthWrite=false,Lighting=LightingMode.Unlit,Cull=CullMode.Back};
@@ -127,15 +130,12 @@ internal sealed class WaterMaterial : IDisposable
         }catch{effect?.Dispose();second?.Dispose();first?.Dispose();throw;}
         stormBase=first;whitecaps=second;storm=effect;
     }
-    // The existing cliff-soil texture doubles as the seafloor. The Sunshine
-    // wave texture and TEV effects are allocated only on first selection;
-    // neither water style requires changing any archived terrain geometry.
-    internal void PrepareSunshine(Texture2D seabedTexture)
+    // The dark-blue bed uses the normal untextured material path.
+    internal void PrepareSunshine()
     {
         if(sunshineLayer!=null){PrepareCapture();return;}
-        if(seabedTexture==null)throw new ArgumentNullException(nameof(seabedTexture));
         Texture2D? wave=null,nearWave=null,distort=null;
-        TevMaterial? layer=null,bed=null,close=null;
+        TevMaterial? layer=null,close=null;
         try{
             // Read a *pre-authored* GX mip package baked from five different
             // PNGs. Generating/downsampling at runtime would erase the effect.
@@ -151,21 +151,10 @@ internal sealed class WaterMaterial : IDisposable
             layer=SunshineDefinition().Create(wave,wave);ConfigureSunshine(layer.Material,false);
             close=SunshineWaveDefinition().Create(nearWave,nearWave);ConfigureSunshine(close.Material,true);
 
-            var sand=new TevProgramBuilder();
-            sand.AddColor("Sand",new Color32(239,225,189));
-            // Ignore blue vertex tints; underwater sediment has its own palette.
-            sand.AddStage(TevInput.Zero,TevInput.Constant,TevInput.Texture,TevInput.Zero,colorSlot:0);
-            bed=new TevMaterialDefinition(sand).Create(seabedTexture);
-            bed.Material.Blend=BlendMode.Opaque;
-            bed.Material.DepthWrite=true;
-            bed.Material.DepthTest=true;
-            bed.Material.Cull=CullMode.Back;
-            bed.Material.Sampler=new SamplerState(TextureAddressMode.Repeat,TextureAddressMode.Repeat,TextureFilter.Linear);
-
             sunshineTexture=wave;sunshineWaveTexture=nearWave;sunshineDistortion=distort;
-            sunshineLayer=layer;sunshineCloseWaves=close;sunshineBed=bed;
+            sunshineLayer=layer;sunshineCloseWaves=close;
         }catch{
-            bed?.Dispose();close?.Dispose();layer?.Dispose();distort?.Dispose();nearWave?.Dispose();wave?.Dispose();
+            close?.Dispose();layer?.Dispose();distort?.Dispose();nearWave?.Dispose();wave?.Dispose();
             throw;
         }
         PrepareCapture();
@@ -226,7 +215,7 @@ internal sealed class WaterMaterial : IDisposable
         }
     }
     public void Dispose(){
-        sunshineRefraction?.Dispose();sunshineCapture?.Dispose();sunshineBed?.Dispose();
+        sunshineRefraction?.Dispose();sunshineCapture?.Dispose();
         sunshineCloseWaves?.Dispose();sunshineLayer?.Dispose();sunshineDistortion?.Dispose();sunshineWaveTexture?.Dispose();sunshineTexture?.Dispose();
         storm?.Dispose();water.Dispose();
         whitecaps?.Dispose();stormBase?.Dispose();distortion.Dispose();shoreFoam.Dispose();ripples.Dispose();

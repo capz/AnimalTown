@@ -6,6 +6,22 @@ public static class WaterSurface
     public const int TextureSize=64,MaximumCells=FloorStrips.Capacity;
     public const float Height=WaterTerrain.RiverHeight,UvScale=.25f,FoamWidth=.12f;
     public static bool IsWater(Town town,int x,int z)=>town.At(x,z)==(int)Terrain.Water||WaterTerrain.IsSea(town,x,z);
+    public static bool HasBed(Town town,int x,int z)=>IsWater(town,x,z)||town.At(x,z)==(int)Terrain.Bridge;
+    // X is straight on the cylinder; each Z row must retain its own chord.
+    // Merge only matching, X-flat height profiles and one bed depth. This
+    // also crosses floor-material/variant boundaries, which do not tint beds.
+    public static int BedRunEnd(Town town,int left,int z,int right)
+    {
+        if(right<=left)throw new ArgumentOutOfRangeException(nameof(right));
+        if(!HasBed(town,left,z))return left;
+        float near=HeightAt(town,left,z,left,z),far=HeightAt(town,left,z,left,z+1);
+        if(near!=HeightAt(town,left,z,left+1,z)||far!=HeightAt(town,left,z,left+1,z+1))return left+1;
+        bool sea=WaterTerrain.IsSea(town,left,z);int end=left+1;
+        while(end<right&&HasBed(town,end,z)&&WaterTerrain.IsSea(town,end,z)==sea&&
+            HeightAt(town,end,z,end,z)==near&&HeightAt(town,end,z,end+1,z)==near&&
+            HeightAt(town,end,z,end,z+1)==far&&HeightAt(town,end,z,end+1,z+1)==far)end++;
+        return end;
+    }
     public static float HeightAt(Town town,int cx,int cz,float x,float z)=>TerrainElevation.AtCell(town,cx,cz,x,z)+(town.At(cx,cz)==(int)Terrain.Bridge?WaterTerrain.RiverHeight:0);
     // Bridges cover the river rather than creating a new bank.
     public static bool IsBank(Town town,int x,int z)=>town.Inside(x,z)&&!IsWater(town,x,z)&&town.At(x,z)!=(int)Terrain.Bridge;

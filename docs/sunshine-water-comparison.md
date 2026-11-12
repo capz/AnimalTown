@@ -32,7 +32,7 @@ calendar, collision, geometry revisions and season metadata are untouched.
 ## Water rendering
 
 Wind Waker remains the default. Sunshine is an opt-in, session-only comparison
-using the existing water meshes, sandy seabed, thresholded surface glints,
+using the existing water meshes, solid dark-blue seabed, thresholded surface glints,
 separate nearby waves and screen-space refraction. Saved terrain and collision
 are unchanged. The sea and near-wave programs reproduce the recorded GX state
 from Sunshine's Plaza sea material and `TMapObjWave`; the art, world scale,
@@ -155,9 +155,18 @@ swaps capture/distortion map and coordinate slots together to fit the SDK's
 screen-projection API while preserving those lookup roles. Terrain in front of
 water fails the depth test; the pass does not classify or redraw land.
 
-The seabed reuses the cliff-soil texture and existing river/ocean meshes,
-transformed inward around the cylinder axis by 40cm/75cm. No duplicate terrain
-mesh or ARAM archive records are needed. Outdoor Sunshine draw order is:
+The seabed retains the merged dark-blue quads from the current town renderer.
+One untextured, unlit opaque material uses RGB (18,48,82), with white vertex
+colors and zero UVs; it requires no texture or bed TEV program. River/sea bed
+vertices are baked 40cm/75cm inward around the cylinder axis. Adjacent X-flat
+cells with matching depth and near/far heights share a row quad, while separate
+Z rows preserve the cylinder chords. An 8×4m flat patch uses four row quads
+instead of 32 cell quads.
+
+Archive kind 108 stores the compact bed geometry. Wind Waker skips those views;
+Sunshine rebinds them without rebuilding terrain or changing the existing
+256-view / 1MiB MEM1 cache budgets. All bed meshes use the normal terrain scroll
+transform, with no per-frame geometry update. Outdoor Sunshine draw order is:
 
 1. Opaque water beds, then land and cliffs.
 2. Thin blue body, main sea glints, nearby waves and shoreline foam.
