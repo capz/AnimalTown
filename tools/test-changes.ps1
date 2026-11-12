@@ -4,9 +4,10 @@ Set-Location (Split-Path $PSScriptRoot -Parent)
 & ./tools/select-validation.ps1 -BaseRef $BaseRef -Full:$Full -WorkingTree
 $plan=Get-Content out/validation-plan.json -Raw|ConvertFrom-Json
 if($PlanOnly){return}
-. ./tools/resolve-packages.ps1
+# Managed/backend/docs checks do not need a GameCube SDK restore or native copy.
+if(@($plan.native | Where-Object {$_ -in @('texture','voices','patched')}).Count){. ./tools/resolve-packages.ps1}
 function Run([string]$file,[string[]]$arguments){& $file @arguments;if($LASTEXITCODE){throw "$file checks failed"}}
-if('terrain' -in $plan.managed){Run dotnet @('run','--project','tests/AnimalTown.RenderingChecks','-c','Release')}
+if($plan.rendering.Count){Run dotnet @('run','--project','tests/AnimalTown.RenderingChecks','-c','Release','--','--suites',($plan.rendering -join ','))}
 if($plan.managed.Count){Run dotnet @('run','--project','tests/AnimalTown.Checks','-c','Release','--','--suites',($plan.managed -join ','))}
 if($plan.tooling.Count){
     Run dotnet @('build','tools/AnimalTown.Tools','-c','Release','-v','quiet')
@@ -20,7 +21,18 @@ $commands=@{
     python='python3 tests/frame-profile-streaming.py'
     shadows='cc -std=c11 -Wall -Wextra -Werror tests/native-shadow-union.c -lm -o /tmp/animaltown-shadow-union && /tmp/animaltown-shadow-union && cc -std=c11 -Wall -Wextra -Werror -Iout/sdk-native/include tests/native-shadow-lifecycle.c -lm -o /tmp/animaltown-shadow-lifecycle && /tmp/animaltown-shadow-lifecycle'
 }
-foreach($suite in $plan.native){
+if('patched' -in $plan.native){
+    # Generate fresh native sources so stale output cannot hide a patch regression.
+    # This bundles C sources and runs host fixtures; it does not build a console ISO.
+    Run dotnet @('build','game/AnimalTown.GameCube','-c','Release','--no-restore')
+    Run dotnet @("$sdkRoot/tools/compiler/DolphinDotNet.Compiler.dll",'--bundle','game/AnimalTown.GameCube/bin/Release/net8.0/AnimalTown.GameCube.dll','out/native')
+    if($NativeInProcess){& ./tools/patch-native.ps1 -Root (Get-Location).Path}
+    else{
+        $image=if($env:ANIMALTOWN_BUILD_IMAGE){$env:ANIMALTOWN_BUILD_IMAGE}else{'animaltown-builder:local'}
+        Run docker @('run','--rm','--mount',"type=bind,src=$((Get-Location).Path),dst=/work",'-w','/work',$image,'pwsh','-NoProfile','-File','tools/patch-native.ps1','-Root','/work')
+    }
+}
+foreach($suite in @($plan.native | Where-Object {$_ -ne 'patched'})){
     if($NativeInProcess){Run sh @('-c',$commands[$suite])}
     else{$image=if($env:ANIMALTOWN_BUILD_IMAGE){$env:ANIMALTOWN_BUILD_IMAGE}else{'animaltown-builder:local'};Run docker @('run','--rm','--mount',"type=bind,src=$((Get-Location).Path),dst=/work",'-w','/work',$image,'sh','-c',$commands[$suite])}
 }

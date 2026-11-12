@@ -7,7 +7,7 @@ Set-Location (Split-Path $PSScriptRoot -Parent)
 if($Target -in @('all','release','game')){
     if(!(Test-Path out/validation-plan.json)){& ./tools/select-validation.ps1 -Full}
     $validation=Get-Content out/validation-plan.json -Raw|ConvertFrom-Json
-    if($validation.schema -ne 1 -or $validation.commit -ne (& git rev-parse HEAD).Trim()){throw 'Stale validation plan; regenerate it for this commit'}
+    if($validation.schema -ne 2 -or $validation.commit -ne (& git rev-parse HEAD).Trim()){throw 'Stale validation plan; regenerate it for this commit'}
     if($Target -in @('all','release') -and $validation.backend -and !$env:ANIMALTOWN_TEST_CONNECTION){throw 'A disposable PostgreSQL test database is required; use build/compose.yml'}
     & ./tools/build-game.ps1 -NativeInProcess -ValidationPlan out/validation-plan.json
 }
