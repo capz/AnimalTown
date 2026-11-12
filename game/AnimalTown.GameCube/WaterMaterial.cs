@@ -12,7 +12,7 @@ internal sealed class WaterMaterial : IDisposable
     private Texture2D? stormBase,whitecaps;
     private TevMaterial? storm;
     private Texture2D? sunshineTexture,sunshineGlintTexture;
-    private TevMaterial? sunshineLayer,sunshineBed;
+    private TevMaterial? sunshineLayer;
     // Color/depth film and alpha-tested glint interference are separately
     // submitted. Neither pass modifies the stored water mesh or its tint.
     private readonly Material sunshineFilm=new Material{
@@ -24,7 +24,10 @@ internal sealed class WaterMaterial : IDisposable
     internal bool IsSunshine=>Style==WaterRenderStyle.Sunshine;
     internal Material Surface=>IsSunshine&&sunshineLayer!=null?sunshineFilm:water.Material;
     internal Material SunshineGlints=>sunshineLayer?.Material??throw new InvalidOperationException("Sunshine glints were not prepared.");
-    internal Material Bed=>sunshineBed?.Material??throw new InvalidOperationException("Sunshine bed material was not prepared.");
+    internal readonly Material Bed=CreateBedMaterial();
+    internal static Material CreateBedMaterial()=>new Material{
+        Color=new Color32(18,48,82),Blend=BlendMode.Opaque,DepthWrite=true,
+        DepthTest=true,Lighting=LightingMode.Unlit,Cull=CullMode.Back};
     internal bool RoughOcean;
     internal Material OceanSurface=>IsSunshine?Surface:RoughOcean?storm!.Material:Surface;
     internal readonly Material Foam=new Material{Blend=BlendMode.Alpha,DepthWrite=false,Lighting=LightingMode.Unlit,Cull=CullMode.Back};
@@ -72,15 +75,12 @@ internal sealed class WaterMaterial : IDisposable
         }catch{effect?.Dispose();second?.Dispose();first?.Dispose();throw;}
         stormBase=first;whitecaps=second;storm=effect;
     }
-    // The existing cliff-soil texture doubles as the seafloor. The Sunshine
-    // wave texture and TEV effects are allocated only on first selection;
-    // neither water style requires changing any archived terrain geometry.
-    internal void PrepareSunshine(Texture2D seabedTexture)
+    // The dark-blue bed uses the normal untextured material path.
+    internal void PrepareSunshine()
     {
         if(sunshineLayer!=null)return;
-        if(seabedTexture==null)throw new ArgumentNullException(nameof(seabedTexture));
         Texture2D? wave=null,reflection=null;
-        TevMaterial? layer=null,bed=null;
+        TevMaterial? layer=null;
         try{
             // TEX0 provides the sparse alpha-tested reflection mask; TEX1
             // adds a separate, smoother scrolling water-ripple pattern.
@@ -116,20 +116,9 @@ internal sealed class WaterMaterial : IDisposable
                 maxLod:SunshineWater.MipLevels-1,lodBias:SunshineWater.RippleLodBias,
                 u:TextureAddressMode.Repeat,v:TextureAddressMode.Repeat);
 
-            var sand=new TevProgramBuilder();
-            sand.AddColor("Sand",new Color32(239,225,189));
-            // Ignore blue vertex tints; underwater sediment has its own palette.
-            sand.AddStage(TevInput.Zero,TevInput.Constant,TevInput.Texture,TevInput.Zero,colorSlot:0);
-            bed=new TevMaterialDefinition(sand).Create(seabedTexture);
-            bed.Material.Blend=BlendMode.Opaque;
-            bed.Material.DepthWrite=true;
-            bed.Material.DepthTest=true;
-            bed.Material.Cull=CullMode.Back;
-            bed.Material.Sampler=new SamplerState(TextureAddressMode.Repeat,TextureAddressMode.Repeat,TextureFilter.Linear);
-
-            sunshineTexture=wave;sunshineGlintTexture=reflection;sunshineLayer=layer;sunshineBed=bed;
+            sunshineTexture=wave;sunshineGlintTexture=reflection;sunshineLayer=layer;
         }catch{
-            bed?.Dispose();layer?.Dispose();reflection?.Dispose();wave?.Dispose();
+            layer?.Dispose();reflection?.Dispose();wave?.Dispose();
             throw;
         }
     }
@@ -173,7 +162,7 @@ internal sealed class WaterMaterial : IDisposable
         }
     }
     public void Dispose(){
-        sunshineBed?.Dispose();sunshineLayer?.Dispose();
+        sunshineLayer?.Dispose();
         sunshineGlintTexture?.Dispose();sunshineTexture?.Dispose();
         storm?.Dispose();water.Dispose();
         whitecaps?.Dispose();stormBase?.Dispose();distortion.Dispose();shoreFoam.Dispose();ripples.Dispose();
