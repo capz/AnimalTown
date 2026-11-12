@@ -8,5 +8,8 @@
   <Compile Include="../../game/AnimalTown.GameCube/TerrainIndexBuffer.cs" Link="TerrainIndexBuffer.cs" />
     <Compile Include="../../game/AnimalTown.GameCube/VillagerAttentionRenderer.cs" Link="VillagerAttentionRenderer.cs" />
     <Compile Include="../../game/AnimalTown.GameCube/DroppedItemRenderer.cs" Link="DroppedItemRenderer.cs" />
+    <Compile Include="../../game/AnimalTown.GameCube/UiTextLayoutCache.cs" Link="UiTextLayoutCache.cs" />
+    <Compile Include="../../game/AnimalTown.GameCube/MapBackground.cs" Link="MapBackground.cs" />
+    <Compile Include="../../game/AnimalTown.GameCube/RainRenderer.cs" Link="RainRenderer.cs" />
   </ItemGroup>
 </Project>

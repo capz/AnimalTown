@@ -6,13 +6,25 @@ using Dolphin.Graphics;
 internal sealed class RainRenderer : System.IDisposable
 {
     private DynamicMesh? mesh;
-    private readonly VertexPositionColor[] vertices=new VertexPositionColor[DebugWeather.DropCount*6];
+    private VertexPositionColor[]? vertices;
     private readonly Transform pose=new Transform();
     private bool visible;
     private readonly Material material=new Material{Blend=BlendMode.Alpha,DepthWrite=false,Cull=CullMode.Back,Lighting=LightingMode.Unlit,Color=new Color32(195,222,236,155)};
     internal void Prepare(GameState state,double seconds,float eyeHeight)
     {
-        visible=false;
+        var staged=Stage(state,seconds,eyeHeight);
+        if(mesh==null)mesh=DynamicMesh.Create(staged);else mesh.SetVertices(staged);
+    }
+    // Retain one stream after the first rainy frame; dry sessions own none.
+    internal VertexPositionColor[] Stage(GameState state,double seconds,float eyeHeight)
+    {
+        if(vertices==null)vertices=new VertexPositionColor[DebugWeather.DropCount*6];
+        visible=WriteVertices(state,seconds,eyeHeight,vertices);
+        return vertices;
+    }
+    internal static bool WriteVertices(GameState state,double seconds,float eyeHeight,VertexPositionColor[] vertices)
+    {
+        bool visible=false;
         for(int i=0;i<DebugWeather.DropCount;i++){
             DebugWeather.Drop(i,state.X,state.Z,seconds,out float x,out float z,out float h);
             var p=CylinderWorld.Surface(z,state.Z,TerrainElevation.At(state.Town,x,z)+h);
@@ -24,8 +36,8 @@ internal sealed class RainRenderer : System.IDisposable
             var d=new VertexPositionColor(draw?new Vector3(x+.015f,p.Y,p.Z):Vector3.Zero,Color32.White);
             vertices[at]=a;vertices[at+1]=b;vertices[at+2]=c;vertices[at+3]=a;vertices[at+4]=c;vertices[at+5]=d;
         }
-        if(mesh==null)mesh=DynamicMesh.Create(vertices);else mesh.SetVertices(vertices);
+        return visible;
     }
     internal void Draw(Renderer renderer){if(visible&&mesh!=null)renderer.DrawMesh(mesh,material,pose);}
-    public void Dispose(){mesh?.Dispose();mesh=null;visible=false;}
+    public void Dispose(){mesh?.Dispose();mesh=null;vertices=null;visible=false;}
 }

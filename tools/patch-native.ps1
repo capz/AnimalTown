@@ -15,12 +15,29 @@ foreach($mask in @('GroundShadow_Atlas','VillagerShadowPatch_Texture')){
         throw "Native shadow mask $mask requires two integer byte stores; preserve the Opacity byte-return boundary"
     }
 }
-# Cliff chunks contain only byte/boolean array writes. Keep them integer too.
+# Cliff pixels remain integer bytes; candidate occupancy now uses uint words.
 $cliffPattern='intptr_t dnd_value_AnimalTown_Domain_AnimalTown_CliffShadowMap_Advance_[a-z0-9]+\(intptr_t \w+\) \{.*?\r?\n\}'
 $cliffStores=[regex]::Matches($generated,$cliffPattern,[Text.RegularExpressions.RegexOptions]::Singleline)
 if($cliffStores.Count -ne 1 -or $cliffStores[0].Value -match 'dnd_array_store_r[48]_fast' -or
-   ([regex]::Matches($cliffStores[0].Value,'dnd_array_store_u1_fast')).Count -ne 2){
-    throw 'Cliff shadow tiles require two integer byte stores'
+   ([regex]::Matches($cliffStores[0].Value,'dnd_array_store_u1_fast')).Count -ne 1){
+    throw 'Cliff shadow tiles require one integer byte store'
+}
+# Compact occupancy maps must remain uint stores, including bit 31. Font
+# coordinates use a ushort-returning boundary to avoid float SSA array stores.
+foreach($method in @('AnimalTown_Domain_AnimalTown_CliffShadowMap_Mark','AnimalTown_Domain_AnimalTown_VillagerNavigation_MarkTree')){
+    $methodPattern='intptr_t dnd_value_'+$method+'_[a-z0-9]+\(intptr_t \w+, intptr_t \w+\) \{.*?\r?\n\}'
+    $body=[regex]::Matches($generated,$methodPattern,[Text.RegularExpressions.RegexOptions]::Singleline)
+    # Compound array assignments lower through ldelema/stind.i4 in this SDK.
+    # Accept its typed 32-bit memcpy store as well as a direct uint array store.
+    $integerStores=if($body.Count -eq 1){([regex]::Matches($body[0].Value,'dnd_array_store_u4_fast|int32_t value=\(int32_t\)\w+;memcpy\(\(void\*\)\w+,&value,sizeof\(value\)\);')).Count}else{0}
+    if($body.Count -ne 1 -or $integerStores -ne 1 -or $body[0].Value -match 'dnd_array_store_r[48]_fast'){
+        throw "Compact occupancy requires an integer word store: $method"
+    }
+}
+$layoutPattern='intptr_t dnd_value_AnimalTown_GameCube_UiTextLayoutCache_Find_[a-z0-9]+\([^)]*\) \{.*?\r?\n\}'
+$layoutBody=[regex]::Matches($generated,$layoutPattern,[Text.RegularExpressions.RegexOptions]::Singleline)
+if($layoutBody.Count -ne 1 -or ([regex]::Matches($layoutBody[0].Value,'dnd_array_store_u2_fast')).Count -ne 2){
+    throw 'Compact font coordinates require two integer ushort stores'
 }
 $pattern='intptr_t (dnd_value_AnimalTown_GameCube_NativeCalendar_Read_[a-z0-9]+)\(void\) \{.*?\r?\n\}'
 $matchesFound=[regex]::Matches($generated,$pattern,[Text.RegularExpressions.RegexOptions]::Singleline)
