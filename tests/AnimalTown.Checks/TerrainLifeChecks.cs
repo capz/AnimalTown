@@ -51,6 +51,41 @@ internal static class TerrainLifeChecks
         }
         int moved=0;for(int i=0;i<6;i++)if(visited[i])moved++;check(moved>=4,"computer villagers travel through generated town");check(navigation.LocalPlans>0,"nearby obstructions trigger bounded local detours");check((kinds&63)==63,"villagers choose diverse destinations");
         var next=SaveCodec.Decode(SaveCodec.Encode(state));for(int i=0;i<6;i++)check(next.Town.Residents[i].Name==state.Town.Residents[i].Name&&Math.Abs(next.Town.Residents[i].PosX-state.Town.Residents[i].PosX)<.002f,"moving villager identities and locations persist");
+        ObstacleBitmapChecks(check);
         Console.WriteLine("Raised terrain, clock and bounded villager navigation checks passed");
     }
+    private static void ObstacleBitmapChecks(Action<bool,string> check)
+    {
+        long before=GC.GetAllocatedBytesForCurrentThread();var navigation=new VillagerNavigation();
+        check(GC.GetAllocatedBytesForCurrentThread()-before<150000,"navigation retains a compact shared obstacle map within its allocation budget");
+        var state=new GameState(7319);Array.Fill(state.Town.Tiles,(byte)Terrain.Grass);Array.Clear(state.Town.Elevation);
+        state.Town.GroundCount=state.Town.PlacedCount=0;
+        for(int i=0;i<navigation.Paused.Length;i++)navigation.Paused[i]=true;
+        navigation.Tick(state);
+        // Include both sides of a 32-cell word and the final bit of the world.
+        foreach(int cell in new[]{0,31,32,Town.Cells-1}){
+            var tree=state.Town.Ground[0];tree.X=cell%Town.Width;tree.Z=cell/Town.Width;tree.Kind=3;tree.Item=3;state.Town.GroundCount=1;
+            check(!AdvanceTo(navigation,state,cell),"a tree blocks a route at each obstacle-word/world boundary");
+            tree.Kind=0;for(int i=0;i<30;i++)navigation.Tick(state);
+            check(AdvanceTo(navigation,state,cell),"same-count tree removal refreshes the occupancy map at its bounded periodic rebuild");
+            tree.Kind=3;for(int i=0;i<30;i++)navigation.Tick(state);
+            check(!AdvanceTo(navigation,state,cell),"same-count tree insertion restores the obstacle bit at its periodic rebuild");
+            state.Town.GroundCount=0;
+            check(AdvanceTo(navigation,state,cell),"tree-count changes clear stale obstacle bits immediately");
+        }
+        // A two-cell footprint crosses a word boundary, and removal must clear
+        // both cells rather than preserving a bit from the preceding rebuild.
+        var table=state.Town.Placed[0];table.Item=11;table.X=31;table.Z=0;table.Rotation=0;table.Room=0;state.Town.PlacedCount=1;
+        check(!AdvanceTo(navigation,state,31)&&!AdvanceTo(navigation,state,32),"furniture footprints cover both sides of an obstacle word boundary");
+        state.Town.PlacedCount=0;
+        check(AdvanceTo(navigation,state,31)&&AdvanceTo(navigation,state,32),"furniture-count changes clear the entire old footprint");
+    }
+    private static bool AdvanceTo(VillagerNavigation navigation,GameState state,int cell)
+    {
+        int x=cell%Town.Width,z=cell/Town.Width;var npc=state.Town.Residents[0];npc.PosX=x==0?1.5f:x-.5f;npc.PosZ=z+.5f;npc.X=(int)npc.PosX;npc.Z=z;npc.Space=0;
+        var route=navigation.Routes[0];route.Path[0]=cell;route.Length=1;route.Index=route.LocalLength=route.LocalIndex=route.Wait=0;
+        float beforeX=npc.PosX,beforeZ=npc.PosZ;navigation.Paused[0]=false;navigation.Tick(state);navigation.Paused[0]=true;
+        return npc.PosX!=beforeX||npc.PosZ!=beforeZ;
+    }
+
 }

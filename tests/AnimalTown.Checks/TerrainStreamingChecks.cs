@@ -5,6 +5,7 @@ internal static class TerrainStreamingChecks
     internal static void Run(Action<bool,string> check)
     {
         var cachedRows=new CylinderRows();
+        SharedRows(check,cachedRows);
         RowVisibility(check,cachedRows);
         ArchiveVisibility(check,cachedRows);
         foreach(float focus in new[]{.25f,40.25f,159.75f})for(int offset=-60;offset<=36;offset+=4){
@@ -92,6 +93,27 @@ internal static class TerrainStreamingChecks
         }
         check(repairs*100<frames,"bounded visible repairs are exceptional, rather than the normal streaming budget");
         Console.WriteLine("Seamless stream: max "+maximum+" / "+TerrainStream.Capacity+" slots; coverage misses "+misses+"; bounded repair frames "+repairs+" / "+frames+" under eight fine-stage/stalled-frame budgets; "+starvedRepairs+" recovery frames during 720 fully starved diagonal frames");
+    }
+    private static void SharedRows(Action<bool,string> check,CylinderRows rows)
+    {
+        var owned=new TerrainStream();var shared=new TerrainStream(rows);
+        check(ReferenceEquals(shared.CylinderRows,rows),"legacy streaming can borrow the archive's immutable cylinder rows");
+        var before=rows.At(80,2);
+        foreach(var point in new[]{(20.25f,20.25f),(20.75f,21.25f),(159.75f,159.75f),(0f,0f)}){
+            owned.Reset();shared.Reset();
+            check(ReferenceEquals(shared.CylinderRows,rows)&&shared.Count==0&&shared.BuildSlot==-1&&!shared.Presentable,"reset clears legacy jobs without replacing the shared row geometry");
+            int stages=0;
+            do{
+                owned.Prepare(point.Item1,point.Item2);shared.Prepare(point.Item1,point.Item2);
+                check(owned.BuildSlot==shared.BuildSlot&&owned.Count==shared.Count&&owned.MissingWanted==shared.MissingWanted&&owned.MissingVisible==shared.MissingVisible&&owned.WantedCount==shared.WantedCount&&owned.Presentable==shared.Presentable,"shared row streaming retains identical selection, scheduling and readiness");
+                for(int n=0;n<owned.Count;n++)check(owned.X[n]==shared.X[n]&&owned.Z[n]==shared.Z[n]&&owned.Visible[n]==shared.Visible[n],"shared rows preserve every legacy section address and visible bit");
+                if(owned.BuildSlot<0)break;
+                owned.Hold();shared.Hold();owned.Complete();shared.Complete();
+            }while(++stages<400);
+            check(stages<400&&owned.Presentable&&shared.Presentable,"shared and owned row streams complete initial preparation within the same bounded work");
+        }
+        shared.Reset();var after=rows.At(80,2);
+        check(before.Y==after.Y&&before.Z==after.Z&&before.UpY==after.UpY&&before.UpZ==after.UpZ&&before.Pitch==after.Pitch,"discarding legacy cache work leaves archive row geometry unchanged");
     }
     private static void ArchiveVisibility(Action<bool,string> check,CylinderRows rows)
     {
