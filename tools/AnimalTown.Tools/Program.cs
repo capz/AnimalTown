@@ -104,7 +104,7 @@ static class Program
     static void Art()
     {
         string dir=Path.Combine(Root,"out/disc");Directory.CreateDirectory(dir);
-        BrandAssets.Build(Root);RepeatFloorAssets.Build(Root);TerrainCliffAssets.CookTexture(Root);DroppedItemAssets.Build(Root);
+        BrandAssets.Build(Root);RepeatFloorAssets.Build(Root);TerrainCliffAssets.CookTexture(Root);DroppedItemAssets.Build(Root);SunshineWaterAssets.Build(Root);
         byte[] image=Banner(96);File.WriteAllBytes(Path.Combine(dir,"savebanner.rgb5a3"),image);File.WriteAllBytes(Path.Combine(dir,"saveicon.rgb5a3"),Banner(32));
     }
     static void Disc(string dolPath,string commit)
@@ -178,6 +178,8 @@ static class Program
                 if(!seen.Contains(model+"-tex128.dndmodel"))throw new InvalidDataException("Missing building model "+model);
         }
         if(!seen.Contains("cliff-soil.dndtex"))throw new InvalidDataException("Missing shared cliff soil texture");
+        if(!seen.Contains(SunshineWaterAssets.DiscName))
+            throw new InvalidDataException("Missing authored Sunshine reflection mip chain");
         Console.WriteLine("Verified full-size bootable disc structure, "+(count-1)+" files");
     }
 }
