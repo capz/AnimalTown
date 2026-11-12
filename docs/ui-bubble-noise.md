@@ -26,8 +26,8 @@ painter-order flushes and material-cache invalidation restore normal text/portra
 sampling and prevent grain from leaking into the following world frame.
 
 The native bridge uses SDK resource accounting and forbids replacement during a
-frame. Shape scopes nest without additional state transitions; the managed scope
-value is emitted on the AOT stack. Title/setup views retain no extra noise copies.
+frame. Shape scopes nest without additional state transitions; a nesting counter
+avoids per-call managed allocations. SDK shutdown releases the final UI texture. Title/setup views retain no extra noise copies.
 
 Regression fixtures cover SDK allocation/replacement/disable, scope ordering,
 atlas isolation, retained geometry, frame guards, position UV mapping, original
