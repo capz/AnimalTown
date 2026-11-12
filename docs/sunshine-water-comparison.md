@@ -2,12 +2,12 @@
 
 ## Debug UI mockup — reuse existing settings panel
 
-No new screen, asset or menu layout. Add one final option to the existing
+No new screen, asset or menu layout. Use the existing option in
 **START → Settings → Debug / testing**, after **Ground mip distance**:
 
 ```text
 ┌───────────────────────────────────────────────┐
-│  Debug / testing                    page 3 / 3 │
+│  Debug / testing                    page 3 / 4 │
 │                                               │
 │    Season preview: Auto                       │
 │    Villager attention bubbles: Off            │
@@ -16,9 +16,11 @@ No new screen, asset or menu layout. Add one final option to the existing
 │    Ground mipmaps: On                         │
 │    Ground mip distance: Auto                  │
 │  > Water rendering: Wind Waker                │
+│    Tree noise strength: 100%                  │
+│    Tree noise scale: 100%                     │
 │                                               │
 │  A / Left / Right: switch  ·  Z: Wind Waker    │
-│  Session options 19-25 / 25                   │
+│  Session options 19-27 / 29                   │
 └───────────────────────────────────────────────┘
 ```
 

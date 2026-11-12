@@ -1052,15 +1052,18 @@ with (root/'emulator.log').open('w') as log:
             os.write(controller,b'SET MAIN 0.5 0.5\n');time.sleep(2);screenshot('water-camera.png')
             press('X');screenshot('water-menu.png');press('B');screenshot('water-return.png')
             if '--water-ab' in sys.argv:
-                # Same camera and save, no scene/terrain regeneration. From the
-                # first Testing row, D_UP wraps straight to the final selector.
-                press('START');press('R');press('D_UP')
+                # Same camera and save, no scene/terrain regeneration. Water
+                # is row24 of29; tree-noise options now follow it.
+                def water_selector():
+                    press('START');press('R')
+                    for _ in range(5):press('D_UP')
+                water_selector()
                 screenshot('water-ab-selector-windwaker.png')
                 press('A');screenshot('water-ab-selector-sunshine.png')
                 press('B');time.sleep(3)
                 sun0=water_frame('water-sunshine-a')
                 time.sleep(7);sun1=water_frame('water-sunshine-b')
-                press('START');press('R');press('D_UP')
+                water_selector()
                 press('A');screenshot('water-ab-selector-restored.png')
                 press('B');time.sleep(3)
                 restored=water_frame('water-windwaker-restored')
@@ -1074,7 +1077,7 @@ with (root/'emulator.log').open('w') as log:
                         if sun0[i:i+3]!=sun1[i:i+3]:changed_animation+=1
                 (root/'water-ab-comparison.json').write_text(json.dumps({
                     'comparison':'Wind Waker vs Sunshine, same camera and world',
-                    'water_style_rows':25,
+                    'water_style_rows':29,
                     'changed_pixels_between_styles':changed_mode,
                     'sunshine_animated_pixels':changed_animation,
                     'restored_windwaker_frame':len(restored),
