@@ -223,3 +223,17 @@ if($IsLinux){
     & (Join-Path $Root 'out/native-face-culling-check')
     if($LASTEXITCODE){throw 'Face culling fixture failed'}
 }
+
+# Incoming libogc argv is a project bridge; keep packaged SDK sources unchanged.
+& python3 (Join-Path $Root 'tools/patch-launch-arguments.py') $nativeRoot
+if($LASTEXITCODE){throw 'Native launch arguments bridge patch failed'}
+if($IsLinux){
+    foreach($fixture in @('launch-arguments','launch-handoff')){
+        $check=Join-Path $Root "out/native-$fixture-check"
+        [string[]]$extra=@();if($fixture -eq 'launch-handoff'){$extra=@((Join-Path $nativeRoot 'source/dol.c'))}
+        & cc -std=c11 -Wall -Wextra -Werror -ffunction-sections -fdata-sections "-I$(Join-Path $nativeRoot 'include')" (Join-Path $Root "tests/native-$fixture.c") @extra '-Wl,--gc-sections' -o $check
+        if($LASTEXITCODE){throw "Native $fixture compilation failed"}
+        & $check
+        if($LASTEXITCODE){throw "Native $fixture checks failed"}
+    }
+}

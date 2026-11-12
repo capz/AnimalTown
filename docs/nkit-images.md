@@ -1,10 +1,19 @@
 # Compact SD-card images
 
-Releases include `AnimalTown-VERSION.nkit.iso` for Swiss/GC Loader use.
-Copy the `.nkit.iso` onto the SD card and launch it through Swiss. Keep that
+Releases include `AnimalTown-VERSION.nkit.iso` for GC Loader SD-card storage.
+Copy the `.nkit.iso` onto the SD card and select it in GC Loader firmware. Keep that
 extension; do not convert it to GCZ or RVZ for the GameCube loader. Only one
-image is needed on the card. Physical Swiss/GC Loader testing remains separate
+image is needed on the card. Physical direct GC Loader testing remains separate
 from Dolphin testing.
+
+The title's Update option supports the installed image's chosen filename and
+folder. For direct firmware boot, use the updater repository's provisioning tool
+with the host-side installed path, for example
+`--image 'games/AnimalTown/My Town.nkit.iso'`. It records the canonical target in
+the SD-root `animaltown-updater/image-path.txt`; the game checks its identity and
+current version before passing the exact path to the updater. Missing/conflicting
+path information stops Update. See [updater setup](updater-build.md). After a
+verified replacement, follow **Power off/on** and reopen the image in firmware.
 
 NKit ISO removes unused disc padding and reorganizes file placement. The game
 files are preserved; this is not a ZIP that the console must decompress. A
