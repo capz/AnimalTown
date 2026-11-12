@@ -42,6 +42,10 @@ internal static class TextureAudit
                 };
                 byte[] native=FloorTexture.Prepare(bytes,fullMipChain:ground);records.Add(new{source="dvd:/"+Path.GetFileName(path),sourceSha=Convert.ToHexString(SHA256.HashData(bytes)),width,height,runtimeWidth=TexturePixels.Width(native),runtimeHeight=TexturePixels.Height(native),format=TexturePixels.Int(native,8),levels=TexturePixels.Int(native,24),residentBytes=native.Length-32,policy});continue;
             }
+            if(Path.GetFileName(path)=="dropped-item.dndtex"){
+                if(width!=64||height!=64||TexturePixels.Int(bytes,8)!=5||TexturePixels.Int(bytes,24)!=7||bytes.Length!=11008)throw new InvalidDataException("Dropped-item texture violates native budget");
+                records.Add(new{source="dvd:/dropped-item.dndtex",sourceSha=Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(Path.Combine(root,"assets/textures/items/dropped-item.png")))),width,height,format=5,levels=7,residentBytes=bytes.Length-32,payloadSha=Convert.ToHexString(SHA256.HashData(bytes)),policy="shared-dropped-item-rgb5a3-alpha-weighted-mips-clamp-trilinear"});continue;
+            }
             bool atlas=Path.GetFileName(path) is "gorditas-bold.dndtex" or "wordmark.dndtex" or "item-icons.dndtex";
             records.Add(new{source="dvd:/"+Path.GetFileName(path),sourceSha=Convert.ToHexString(SHA256.HashData(bytes)),width,height,
                 pageWidth=atlas?Math.Min(128,width):TexturePixels.FitWidth(width,height),pageHeight=atlas?Math.Min(128,height):TexturePixels.FitHeight(width,height),

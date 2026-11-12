@@ -101,6 +101,7 @@ internal sealed class TownGame : IDisposable
     private readonly int[] visibleTrees=new int[LowPolyTrees.Capacity];
     private readonly float[] treeDistances=new float[LowPolyTrees.Capacity];
     private readonly LowPolyTrees trees;
+    private readonly DroppedItemRenderer droppedItems=new DroppedItemRenderer();
     private readonly UiShapes uiShapes=new UiShapes();
     private readonly MapBackground mapBackground=new MapBackground();
     private readonly RunningMinimap runningMinimap=new RunningMinimap();
@@ -231,7 +232,7 @@ internal sealed class TownGame : IDisposable
         for(int i=0;i<actors.Length;i++){actors[i]?.Dispose();actors[i]=null!;}
         if(unadopted!=null&&Array.IndexOf(models,unadopted)<0)unadopted.Dispose();
         for(int i=0;i<models.Length;i++){models[i]?.Dispose();models[i]=null!;}
-        attention.Dispose();rain.Dispose();trees.Dispose();buildings.Dispose();terrain.Dispose();fences.Dispose();
+        attention.Dispose();rain.Dispose();trees.Dispose();droppedItems.Dispose();buildings.Dispose();terrain.Dispose();fences.Dispose();
         uiShapes.Dispose();mapBackground.Dispose();cube.Dispose();ui.Dispose();
         font.Release();headingFont.Release();TextureCache.Release(itemIcons);card?.Dispose();card=null;
         NativeRim.Enable(0);NativeRenderProbe.Uv(0);
@@ -256,6 +257,7 @@ internal sealed class TownGame : IDisposable
                 var location=BuildingWorld.Location(state,actor);if(location.Space.IsTown)continue;int building=BuildingWorld.Building(location.Space.Value);
                 if(!buildings.Ready(state.BuildingTypes[building])){BuildingWorld.Entrance(state,building,out float rx,out float rz);BuildingWorld.SetLocation(state,actor,new ActorLocation(0,rx,rz+1,0));saveStatus="A home is unavailable; its occupants are outside.";}
             }
+            droppedItems.Load();
             SelectSpecies();
             // UV regions require the fully loaded model set. Enabling them in
             // the constructor would leave an empty cache and hide the actors.
@@ -687,7 +689,7 @@ internal sealed class TownGame : IDisposable
         LoadingScreen.Finish();
         // Only a drawable scene may evaluate native poses. Shadow receivers
         // use logical positions and can prepare while the landscape loads.
-        if(room==0){trees.Prepare(terrain.RenderSeason);fences.Prepare(state);}
+        if(room==0){trees.Prepare(terrain.RenderSeason);fences.Prepare(state);droppedItems.Prepare(state,cachedPlayerHeight);}
         if(weather.Raining(room)&&villagers.Doors.PlayerFade<1)rain.Prepare(state,(Clock.Timestamp-sessionStart)/1000000.0,cachedPlayerHeight);
         actorVisibility.Prepare(state,villagers.Doors,indoorCamera,waterInspection,cachedPlayerHeight);
         UpdateAnimationFrame();
@@ -708,7 +710,7 @@ internal sealed class TownGame : IDisposable
             long groundAt=FrameProfile.Start();
             for(int i=0;i<state.Town.GroundCount;i++)
             {
-                var g=state.Town.Ground[i];if(g.Kind==4)continue;
+                var g=state.Town.Ground[i];if(g.Kind==0||g.Kind==4)continue;
                 float y=0;
                 if(!IsTree(g))Box(g.X+.25f,y+.02f,g.Z+.25f,.5f,g.Kind==1?.03f:.25f,.5f,g.Kind==1?new Color32(105,81,54):g.Kind==2?new Color32(242,174,170):new Color32(229,190,82));
             }
@@ -717,6 +719,7 @@ internal sealed class TownGame : IDisposable
             for(int building=0;building<BuildingWorld.Count;building++)buildings.Exterior(renderer,state,building,villagers.Doors);
             FrameProfile.SubmissionEnd(2,submissionAt);submissionAt=FrameProfile.SubmissionStart();
             fences.Draw(renderer,state,terrain.ScrollTransform,cachedPlayerHeight);FrameProfile.SubmissionEnd(3,submissionAt);
+            groundAt=FrameProfile.Start();droppedItems.Draw(renderer);FrameProfile.End(3,groundAt);
         }
         if(room!=0){
             if(!indoorCamera.WallVisible(2)){

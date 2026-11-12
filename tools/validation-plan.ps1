@@ -40,6 +40,12 @@ function Get-ValidationPlan {
         if($p -match '^assets/definitions/|^assets/models/(buildings/|interiors/cottage_small/)|^assets/textures/buildings/|^tools/AnimalTown.Tools/BuildingAssets\.cs$'){
             [void]$managed.Add('buildings');[void]$tooling.Add('building');continue
         }
+        if($p -match '^(shared/AnimalTown.Domain/DroppedItemPlan|game/AnimalTown.GameCube/DroppedItemRenderer|tests/AnimalTown.RenderingChecks/DroppedItemChecks)\.cs$'){
+            [void]$managed.Add('core');[void]$managed.Add('terrain');continue
+        }
+        if($p -match '^assets/textures/items/|^tools/AnimalTown.Tools/DroppedItemAssets\.cs$'){
+            [void]$tooling.Add('dropped-item');[void]$managed.Add('core');[void]$managed.Add('terrain');continue
+        }
         if($p -match '^shared/AnimalTown.Domain/'){
             foreach($s in $allManaged){[void]$managed.Add($s)};$backend=$true;continue
         }
@@ -66,6 +72,6 @@ function Get-ValidationPlan {
         if($p -match '^tools/iso-smoke.py$'){[void]$native.Add('python');continue} # Scenarios are explicitly selected.
         $broad=$true
     }
-    if($broad){foreach($s in $allManaged){[void]$managed.Add($s)};foreach($s in @('terrain','repack','building','nkit')){[void]$tooling.Add($s)};foreach($s in @('uv','card','texture','voices','python','shadows')){[void]$native.Add($s)};$backend=$true;$policy=$true}
+    if($broad){foreach($s in $allManaged){[void]$managed.Add($s)};foreach($s in @('terrain','repack','building','nkit','dropped-item')){[void]$tooling.Add($s)};foreach($s in @('uv','card','texture','voices','python','shadows')){[void]$native.Add($s)};$backend=$true;$policy=$true}
     [pscustomobject]@{schema=1;commit=$Commit;baseRef=$BaseRef;release=$release;full=$broad;managed=@($allManaged|Where-Object {$managed.Contains($_)});tooling=@($tooling|Sort-Object);native=@($native|Sort-Object);backend=$backend;policy=$policy;paths=@($ChangedPaths|Sort-Object -Unique)}
 }
