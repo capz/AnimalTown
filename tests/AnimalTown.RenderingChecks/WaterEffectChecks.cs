@@ -14,16 +14,14 @@ internal static class WaterEffectChecks
         check(indirect[64]==196&&indirect[65]==228&&indirect[66]==222&&indirect[100]==229,
             "water pattern colors are independent configurable TEV constants");
         var sunshine=WaterMaterial.SunshineGlintDefinition().GetPackage();
-        check(sunshine.Length==224&&sunshine[4]==4&&sunshine[8]==3&&
+        check(sunshine.Length==208&&sunshine[4]==2&&sunshine[8]==4&&
               sunshine[12]==3&&sunshine[16]==2,
-            "Sunshine uses DNEF v4 with both GX texture units and explicit alpha");
-        check(sunshine[21]==1&&sunshine[24]==3&&
-              sunshine[25]==SunshineWater.GlintLowReference&&sunshine[26]==1&&
-              sunshine[27]==6&&sunshine[28]==SunshineWater.GlintHighReference,
-            "Sunshine configures GX alpha <= low OR alpha >= high");
-        check(sunshine[176+16+7]==0&&sunshine[176+32+7]==1&&
-              (sunshine[176+32+8+5]&128)!=0,
-            "the second layer samples TEX1 with its own alpha rather than reusing TEX0");
+            "Sunshine uses native DNEF v2 two-texture RGB interference");
+        check(sunshine[176+8+7]==0&&sunshine[176+16+7]==1&&
+              sunshine[176+24+7]==0,
+            "second scrolling reflection sample is TEX1, with TEX0 alpha restored");
+        check(SunshineWater.GlintAlphaCutoff>.4f&&SunshineWater.GlintAlphaCutoff<.7f,
+            "Sunshine reflection cutoff matches its authored primary glint alpha range");
         CheckIdleInteraction(check);
     }
 
