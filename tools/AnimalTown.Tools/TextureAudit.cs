@@ -28,6 +28,14 @@ internal static class TextureAudit
         foreach(string path in Directory.GetFiles(Path.Combine(root,"out/disc"),"*.dndtex").Order())
         {
             byte[] bytes=File.ReadAllBytes(path);TexturePixels.Validate(bytes);int width=TexturePixels.Width(bytes),height=TexturePixels.Height(bytes);
+            if(Path.GetFileName(path)==SunshineWaterAssets.DiscName){
+                SunshineWater.ValidatePackage(bytes);
+                records.Add(new{source="dvd:/"+SunshineWaterAssets.DiscName,sourceSha=Convert.ToHexString(SHA256.HashData(bytes)),
+                    width=SunshineWater.TextureSize,height=SunshineWater.TextureSize,
+                    format=3,levels=SunshineWater.MipLevels,residentBytes=SunshineWater.PayloadBytes,
+                    policy="authored-mip-content-no-downsampling"});
+                continue;
+            }
             if(Path.GetFileName(path).StartsWith("splash-",StringComparison.Ordinal)){
                 if(width!=512||height!=256||TexturePixels.Int(bytes,8)!=4||bytes.Length!=32+SplashAssets.Bytes)throw new InvalidDataException("Splash texture exceeds one-shot RGB565 budget");
                 records.Add(new{source="dvd:/"+Path.GetFileName(path),sourceSha=Convert.ToHexString(SHA256.HashData(bytes)),width,height,contentWidth=384,contentHeight=256,residentBytes=SplashAssets.Bytes,policy="private-one-shot-no-cache"});continue;
