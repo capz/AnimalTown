@@ -28,6 +28,21 @@ internal static class TextureAudit
         foreach(string path in Directory.GetFiles(Path.Combine(root,"out/disc"),"*.dndtex").Order())
         {
             byte[] bytes=File.ReadAllBytes(path);TexturePixels.Validate(bytes);int width=TexturePixels.Width(bytes),height=TexturePixels.Height(bytes);
+            if(Path.GetFileName(path)==SunshineWaterAssets.DiscName){
+                SunshineWater.ValidatePackage(bytes);
+                records.Add(new{source="dvd:/"+SunshineWaterAssets.DiscName,sourceSha=Convert.ToHexString(SHA256.HashData(bytes)),
+                    width=SunshineWater.TextureSize,height=SunshineWater.TextureSize,
+                    format=0,levels=SunshineWater.MipLevels,residentBytes=SunshineWater.PayloadBytes,
+                    policy="independent-authored-mips-i4-nearest2x"});
+                continue;
+            }
+            if(Path.GetFileName(path) is "sunshine-wave.dndtex" or "sunshine-distortion.dndtex"){
+                bool near=Path.GetFileName(path)=="sunshine-wave.dndtex";
+                if(near)SunshineWater.ValidateNearWavePackage(bytes);else SunshineWater.ValidateDistortionPackage(bytes);
+                records.Add(new{source="dvd:/"+Path.GetFileName(path),sourceSha=Convert.ToHexString(SHA256.HashData(bytes)),
+                    width,height,format=0,levels=TexturePixels.Int(bytes,24),residentBytes=bytes.Length-32,
+                    policy=near?"near-wave-separate-i4-mips":"indirect-displacement-separate-i4-mips"});continue;
+            }
             if(Path.GetFileName(path).StartsWith("splash-",StringComparison.Ordinal)){
                 if(width!=512||height!=256||TexturePixels.Int(bytes,8)!=4||bytes.Length!=32+SplashAssets.Bytes)throw new InvalidDataException("Splash texture exceeds one-shot RGB565 budget");
                 records.Add(new{source="dvd:/"+Path.GetFileName(path),sourceSha=Convert.ToHexString(SHA256.HashData(bytes)),width,height,contentWidth=384,contentHeight=256,residentBytes=SplashAssets.Bytes,policy="private-one-shot-no-cache"});continue;

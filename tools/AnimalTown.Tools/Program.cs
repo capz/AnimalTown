@@ -31,6 +31,7 @@ static class Program
             else if(args[0]=="art")Art();
             else if(args[0]=="dropped-item-import")DroppedItemAssets.Import(Root);
             else if(args[0]=="dropped-item-check")DroppedItemAssets.Check(Root);
+            else if(args[0]=="sunshine-water")SunshineWaterAssets.Build(Root);
             else if(args[0]=="splash-check")SplashAssets.Check(Root);
             else if(args[0]=="splash-import-engine")SplashAssets.ImportEngine(Root,args[2]);
             else if(args[0]=="terrain")RepeatFloorAssets.Build(Root);
@@ -105,7 +106,7 @@ static class Program
     static void Art()
     {
         string dir=Path.Combine(Root,"out/disc");Directory.CreateDirectory(dir);
-        BrandAssets.Build(Root);RepeatFloorAssets.Build(Root);TerrainCliffAssets.CookTexture(Root);DroppedItemAssets.Build(Root);
+        BrandAssets.Build(Root);RepeatFloorAssets.Build(Root);TerrainCliffAssets.CookTexture(Root);DroppedItemAssets.Build(Root);SunshineWaterAssets.Build(Root);
         byte[] image=Banner(96);File.WriteAllBytes(Path.Combine(dir,"savebanner.rgb5a3"),image);File.WriteAllBytes(Path.Combine(dir,"saveicon.rgb5a3"),Banner(32));
     }
     static void Disc(string dolPath,string commit,string? output=null)
@@ -181,6 +182,8 @@ static class Program
                 if(!seen.Contains(model+"-tex128.dndmodel"))throw new InvalidDataException("Missing building model "+model);
         }
         if(!seen.Contains("cliff-soil.dndtex"))throw new InvalidDataException("Missing shared cliff soil texture");
+        foreach(string waterAsset in new[]{SunshineWaterAssets.DiscName,"sunshine-wave.dndtex","sunshine-distortion.dndtex"})
+            if(!seen.Contains(waterAsset))throw new InvalidDataException("Missing authored Sunshine water asset: "+waterAsset);
         Console.WriteLine("Verified full-size bootable disc structure, "+(count-1)+" files");
     }
 }

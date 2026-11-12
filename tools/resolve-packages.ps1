@@ -22,7 +22,18 @@ $assetVersion=(Get-Content (Join-Path (Split-Path $PSScriptRoot -Parent) '.confi
 [xml]$toolsProject=Get-Content (Join-Path (Split-Path $PSScriptRoot -Parent) 'tools/AnimalTown.Tools/AnimalTown.Tools.csproj') -Raw
 if($assetVersion -ne $sdkVersion -or [string]$toolsProject.Project.PropertyGroup.DndAssetsVersion -ne $sdkVersion){throw 'Compiler, Assets tool and Imaging package must use the same DolphinDotNet version'}
 $runtimeDependency=$engineMetadata.package.metadata.dependencies.group.dependency|Where-Object id -eq 'DolphinDotNet.GameCube'
-if([string]$runtimeDependency.version -ne "[$sdkVersion]"){throw 'Hypercube must be packaged against the selected DolphinDotNet runtime'}
+if([string]$runtimeDependency.version -ne "[$sdkVersion]"){
+    # Hypercube 28's SDK dependency is exact. SDK 326 retains the original
+    # AddStage/capture ABI; rendering checks exercise the compiled engine too.
+    # Require this explicit, reviewed override rather than accepting drift.
+    $runtimeOverride=$gameProject.Project.ItemGroup.PackageReference|Where-Object Include -eq 'DolphinDotNet.GameCube'
+    if($engineVersion -ne '0.1.0-preview.28.1' -or
+       [string]$runtimeDependency.version -ne '[0.1.0-preview.315.1]' -or
+       $sdkVersion -ne '0.1.0-preview.326.1' -or
+       [string]$runtimeOverride.Version -ne "[$sdkVersion]"){
+        throw 'Engine/runtime mismatch without a verified explicit override'
+    }
+}
 $engineCommit="$($engineMetadata.package.metadata.id) $($engineMetadata.package.metadata.version) ($($engineMetadata.package.metadata.repository.commit))"
 $sdkCommit="$($sdkMetadata.package.metadata.id) $($sdkMetadata.package.metadata.version) ($($sdkMetadata.package.metadata.repository.commit))"
 $sdkContentHash=(Get-Content (Join-Path $sdkRoot "dolphindotnet.sdk.$($sdkMetadata.package.metadata.version).nupkg.sha512") -Raw).Trim()

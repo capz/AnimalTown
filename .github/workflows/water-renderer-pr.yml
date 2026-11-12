@@ -6,6 +6,9 @@ on:
   pull_request:
     paths:
       - 'game/AnimalTown.GameCube/Water*.cs'
+      - 'assets/textures/environment/water/**'
+      - 'tools/AnimalTown.Tools/SunshineWaterAssets.cs'
+      - 'tools/AnimalTown.Tools/Program.cs'
       - 'game/AnimalTown.GameCube/LocalOceanWaves.cs'
       - 'game/AnimalTown.GameCube/TerrainRenderer.cs'
       - 'shared/AnimalTown.Domain/Water*.cs'
@@ -63,5 +66,10 @@ jobs:
             & dotnet run --project tests/AnimalTown.RenderingChecks -c Release -- --suites ($plan.rendering -join ',')
             if($LASTEXITCODE){throw 'Rendering checks failed'}
           }
+      - name: Cook and validate original Sunshine PNG mip art
+        run: |
+          dotnet build tools/AnimalTown.Tools -c Release
+          dotnet run --project tools/AnimalTown.Tools -c Release --no-build -- sunshine-water "$PWD"
+
       - name: Check Dolphin water A/B smoke script syntax
         run: python3 -m py_compile tools/iso-smoke.py

@@ -20,7 +20,7 @@ here=Path(__file__).resolve().parent
 for name in ('native-managed-allocator.inc','native-frame-counters.h','native-terrain-mesh.inc','native-terrain-archive.inc'):
     shutil.copyfile(here/name,root/'include'/name)
 shutil.copyfile(here/'native-frame-counters.c',root/'source/animaltown_frame_counters.c')
-# Retain exact static geometry while discarding redundant source-package tables.
+# Retain exact resident geometry/skin/animation while dropping source textures.
 # All streaming/copy operations must reject the opt-in compact representation.
 model_source=root/'source/model.c'
 model=model_source.read_text()
@@ -82,6 +82,10 @@ extern int animaltown_mesh_recycle(int,DndArray*,int,DndArray*,int);
     assert len(re.findall(bridge,text,re.S))==1, 'Pinned building retention bridge changed'
     text=re.sub(bridge,r'intptr_t \1(intptr_t a0) { int32_t token=0;if(!a0)return -1;memcpy(&token,(uint8_t*)a0+sizeof(DndObject),4);return animaltown_building_retain(token); }',text,flags=re.S)
     text='extern int animaltown_building_retain(int);\n'+text
+    bridge=r'intptr_t (dnd_value_AnimalTown_GameCube_NativeModels_Retain_[a-z0-9]+)\(intptr_t a0\) \{.*?\n\}'
+    assert len(re.findall(bridge,text,re.S))==1, 'Pinned resident model retention bridge changed'
+    text=re.sub(bridge,r'intptr_t \1(intptr_t a0) { int32_t token=0;if(!a0)return -1;memcpy(&token,(uint8_t*)a0+sizeof(DndObject),4);return animaltown_model_retain(token); }',text,flags=re.S)
+    text='extern int animaltown_model_retain(int);\n'+text
     generated.write_text(text)
     # Mesh.Token is an internal SDK field. Pin its actual generated getter
     # layout before exposing only the token to the game's archive bridge.

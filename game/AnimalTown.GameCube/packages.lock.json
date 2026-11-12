@@ -12,6 +12,15 @@
           "DolphinDotNet.GameCube": "[0.1.0-preview.315.1]"
         }
       },
+      "DolphinDotNet.GameCube": {
+        "type": "Direct",
+        "requested": "[0.1.0-preview.326.1, 0.1.0-preview.326.1]",
+        "resolved": "0.1.0-preview.326.1",
+        "contentHash": "gFdFXdANgyS6peYHUFud+h/qtxCht41wO8HdSQMQbBOjjUldv+Op8sJ7OnxOkmiNtIImM01yEBSiRSTrRpPnIw==",
+        "dependencies": {
+          "DolphinDotNet.Core": "0.1.0-preview.326.1"
+        }
+      },
       "Capz.Hypercube.Core": {
         "type": "Transitive",
         "resolved": "0.1.0-preview.28.1",
@@ -19,16 +28,8 @@
       },
       "DolphinDotNet.Core": {
         "type": "Transitive",
-        "resolved": "0.1.0-preview.315.1",
-        "contentHash": "8Dtma08vjyQkCpQ7B6xqHwDAIPDj3RtsnULiQCeNDWrwR581zaZdq0++MjmB8jOTE0MkMDgjJBqXITVX4m4CXg=="
-      },
-      "DolphinDotNet.GameCube": {
-        "type": "Transitive",
-        "resolved": "0.1.0-preview.315.1",
-        "contentHash": "yYMnLsvXaDMvbozyx7JyO0m0x6GiGg1D07xwJNyY31UwUGXsccN2PYZSaWKXkMmx/ZW2asS49fFkRk+dyOCLnA==",
-        "dependencies": {
-          "DolphinDotNet.Core": "0.1.0-preview.315.1"
-        }
+        "resolved": "0.1.0-preview.326.1",
+        "contentHash": "17dYUIs068sNsJQvbYgGgAhCKV/q9D2kuVrwIB5DMlYTbTI677ubCxrTNxCg2cpZ1rKRh7XXpcBym8ELPL/lgg=="
       },
       "animaltown.domain": {
         "type": "Project",

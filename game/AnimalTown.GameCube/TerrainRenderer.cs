@@ -98,10 +98,12 @@ internal sealed class TerrainRenderer : IDisposable
     {
         BuiltThisFrame=UrgentStages=0;
         if(waterMaterial.IsSunshine)waterMaterial.PrepareSunshine();
+        else waterMaterial.ReleaseCapture();
         waterMaterial.PrepareRoughOcean();
         // Sunlit translucent water is drawn once, not again through the storm
         // mesh, so its alpha never accumulates over the same surface.
-        oceanWaves.Prepare(state,waterMaterial.RoughOcean&&!waterMaterial.IsSunshine,cliffPreview,waterMaterial.Tint(1));
+        oceanWaves.Prepare(state,waterMaterial.RoughOcean||waterMaterial.IsSunshine,
+            cliffPreview,waterMaterial.Tint(1),waterMaterial.IsSunshine);
         int next=TerrainTiles.Season(month,SeasonOverride>=0?SeasonOverride:forced);bool changed=next!=season;
         if(changed){
             string name="floor-"+TerrainTiles.SeasonName(next);data=File.ReadAllBytes("dvd:/"+name+".bin");FloorStrips.Validate(data);
@@ -276,19 +278,26 @@ internal sealed class TerrainRenderer : IDisposable
     }
     private void DrawArchiveWater(Renderer renderer)
     {
+        // The original mode retains its exact draw count. Sunshine first lays
+        // a very thin tropical tint over the shared dark-blue bed, then its
+        // alpha-cutout caustic/reflection layer and the original shore foam.
+        if(waterMaterial.IsSunshine){
+            AddArchive(renderer,waterMaterial.SunshineBody,104);
+            AddArchive(renderer,waterMaterial.SunshineBody,107);
+        }
         AddArchive(renderer,waterMaterial.Surface,104);
         AddArchive(renderer,waterMaterial.OceanSurface,107);
-        oceanWaves.Draw(renderer,waterMaterial.OceanSurface,ScrollTransform);
-        if(waterMaterial.IsSunshine){
-            // A separate transparent, GX-alpha-tested reflection layer draws
-            // over the color film. Both are depth-tested against the seabed.
-            AddArchive(renderer,waterMaterial.SunshineGlints,104);
-            AddArchive(renderer,waterMaterial.SunshineGlints,107);
-        }
+        oceanWaves.Draw(renderer,waterMaterial.IsSunshine?waterMaterial.CloseWaves:waterMaterial.OceanSurface,ScrollTransform);
         AddArchive(renderer,waterMaterial.Foam,105);
     }
     private void DrawLegacyWater(Renderer renderer)
     {
+        if(waterMaterial.IsSunshine){
+            for(int i=0;i<stream.Count;i++)if(stream.Visible[i])Add(renderer,waterMaterial.SunshineBody,sections[i]!.Water.SurfaceMesh);
+            Flush(renderer,waterMaterial.SunshineBody);
+            for(int i=0;i<stream.Count;i++)if(stream.Visible[i])Add(renderer,waterMaterial.SunshineBody,sections[i]!.Water.OceanMesh);
+            Flush(renderer,waterMaterial.SunshineBody);
+        }
         NativeShadows.Scope(3);
         try{
             for(int i=0;i<stream.Count;i++)if(stream.Visible[i])Add(renderer,waterMaterial.Surface,sections[i]!.Water.SurfaceMesh);
@@ -296,15 +305,32 @@ internal sealed class TerrainRenderer : IDisposable
         }finally{NativeShadows.Scope(0);}
         for(int i=0;i<stream.Count;i++)if(stream.Visible[i])Add(renderer,waterMaterial.OceanSurface,sections[i]!.Water.OceanMesh);
         Flush(renderer,waterMaterial.OceanSurface);
-        oceanWaves.Draw(renderer,waterMaterial.OceanSurface,ScrollTransform);
-        if(waterMaterial.IsSunshine){
-            for(int i=0;i<stream.Count;i++)if(stream.Visible[i])Add(renderer,waterMaterial.SunshineGlints,sections[i]!.Water.SurfaceMesh);
-            Flush(renderer,waterMaterial.SunshineGlints);
-            for(int i=0;i<stream.Count;i++)if(stream.Visible[i])Add(renderer,waterMaterial.SunshineGlints,sections[i]!.Water.OceanMesh);
-            Flush(renderer,waterMaterial.SunshineGlints);
-        }
+        oceanWaves.Draw(renderer,waterMaterial.IsSunshine?waterMaterial.CloseWaves:waterMaterial.OceanSurface,ScrollTransform);
         for(int i=0;i<stream.Count;i++)if(stream.Visible[i])Add(renderer,waterMaterial.Foam,sections[i]!.Water.FoamMesh);
         Flush(renderer,waterMaterial.Foam);
+    }
+
+    internal bool RefractionVisible
+    {
+        get {
+            if(!waterMaterial.IsSunshine||!Ready)return false;
+            if(!legacy)return archive!.First(104)>=0||archive.First(107)>=0;
+            for(int i=0;i<stream.Count;i++)if(stream.Visible[i]&&
+                (sections[i]!.Water.SurfaceMesh!=null||sections[i]!.Water.OceanMesh!=null))return true;
+            return false;
+        }
+    }
+    internal void CaptureWaterScene()=>waterMaterial.CaptureScene();
+    internal void ReleaseWaterCapture()=>waterMaterial.ReleaseCapture();
+    internal bool TakeWaterPreparationFailure(out string error)=>waterMaterial.TakePreparationFailure(out error);
+    internal void DrawRefraction(Renderer renderer)
+    {
+        var material=waterMaterial.Refraction;
+        if(!legacy){AddArchive(renderer,material,104);AddArchive(renderer,material,107);return;}
+        for(int i=0;i<stream.Count;i++)if(stream.Visible[i])Add(renderer,material,sections[i]!.Water.SurfaceMesh);
+        Flush(renderer,material);
+        for(int i=0;i<stream.Count;i++)if(stream.Visible[i])Add(renderer,material,sections[i]!.Water.OceanMesh);
+        Flush(renderer,material);
     }
 
     internal void Draw(Renderer renderer,Transform parent,int room)

@@ -2,12 +2,12 @@
 
 ## Debug UI mockup — reuse existing settings panel
 
-No new screen, asset or menu layout. Add one final option to the existing
+No new screen, asset or menu layout. Use the existing option in
 **START → Settings → Debug / testing**, after **Ground mip distance**:
 
 ```text
 ┌───────────────────────────────────────────────┐
-│  Debug / testing                    page 3 / 3 │
+│  Debug / testing                    page 3 / 4 │
 │                                               │
 │    Season preview: Auto                       │
 │    Villager attention bubbles: Off            │
@@ -16,9 +16,11 @@ No new screen, asset or menu layout. Add one final option to the existing
 │    Ground mipmaps: On                         │
 │    Ground mip distance: Auto                  │
 │  > Water rendering: Wind Waker                │
+│    Tree noise strength: 100%                  │
+│    Tree noise scale: 100%                     │
 │                                               │
 │  A / Left / Right: switch  ·  Z: Wind Waker    │
-│  Session options 19-25 / 25                   │
+│  Session options 19-27 / 29                   │
 └───────────────────────────────────────────────┘
 ```
 
@@ -27,160 +29,212 @@ Left/right are captured on that row (L/R continue switching menu tabs).
 Z restores Wind Waker. The option is **session-only**: saved-town,
 calendar, collision, geometry revisions and season metadata are untouched.
 
-## Rendering intent
+## Water rendering
 
-- **Wind Waker:** identical current opaque/tile-textured surface + optional
-  local wave mesh. No underwater floor pass.
-- **Sunshine:** transparent, low-depth-write, two independently scrolling
-  samples of a small shared wave texture. Individual hand-authored mip levels
-  change highlight brightness and opacity with LOD, rather than being normal
-  downsampled copies. Foam remains an independent bank overlay.
-- **Underwater floor:** draw separate, merged **solid dark-blue** bed meshes
-  before the translucent surface. The unlit opaque material is RGB (18, 48, 82),
-  with no texture or custom TEV effect. River floor is shallower than open sea.
-  Bed geometry is baked once; saved terrain and surface-water geometry are unchanged.
-- **Ordering:** floor before other opaque terrain; transparent water and
-  existing shoreline foam after other opaque terrain, with depth testing
-  retained and water depth writes disabled.
-- **Resource policy:** allocate the Sunshine texture/effects only when
-  the option is first selected. Keep the assets through the session for instant
-  A/B switching. Original mode has no extra draws. Compare with the existing
-  frame-performance debug overlay. The style is an original approximation,
-  not copied game textures or an exact Sunshine alpha-test implementation.
+Wind Waker remains the default. Sunshine is an opt-in, session-only comparison
+using the existing water meshes, solid dark-blue seabed, thresholded surface glints,
+separate nearby waves and screen-space refraction. Saved terrain and collision
+are unchanged. The sea and near-wave programs reproduce the recorded GX state
+from Sunshine's Plaza sea material and `TMapObjWave`; the art, world scale,
+thin blue body and bounded wave geometry remain AnimalTown's own. This does
+not claim identical retail images, lighting or camera behavior.
 
-## Implementation
+## Exact TEV arithmetic
 
-The selector uses the existing 25-row paginated Debug / testing menu,
-with its original parchment-colored highlight and controls. It does not
-introduce any HUD or permanent settings.
+The main surface follows `sea.bmd` material `_umi`, with two stages and initial
+TEV colors C0=(252,255,255) and C1=(232,228,252). The source material's vertex
+alpha is 255; its RGB path does not use vertex color or texture RGB.
 
-The Sunshine surface has a **64×64 GX IA8, five-level DNTX texture chain**
-using exactly **10,912 native texture bytes** (64², 32², 16², 8², 4²).
-Intensity and alpha intentionally change across levels: the level-2 mip
-has a stronger bright reflection band, while level 0 is clear and subtle.
-No transparent render targets, scene captures, shaders, indirect GX effects,
-or copies of Nintendo textures are involved. The two moving stages bind
-the same resident image to both GX texture slots. A four-stage DNEF v2
-TEV program retains the primary texture's alpha; Sunshine surface alpha
-blends with **depth test on** and **depth writes off**.
+For the products below, define the native integer interpolation helper:
 
-The seabed uses `WaterMaterial.Bed`, an ordinary untextured material with opaque
-blending, depth testing/writing and unlit shading. White vertex colors and zero
-UVs keep the tint independent of surface-water gradients, seasonal floor
-materials and the cliff-soil texture. Sunshine selection no longer loads the
-cliff-soil texture on behalf of the bed or allocates a bed TEV program.
+```text
+P(scale, a, b) = (scale * b * (a + (a >> 7)) + 128) >> 8
+```
 
-`WaterSurface.BedRunEnd` finds the longest adjacent run in each curved row that
-shares an X-flat near/far height profile and the same river/sea depth. Dry banks,
-height changes and X-sloped cells break the run; bridges remain covered. Material
-variant boundaries do not split it. Rows retain their exact cylinder chords:
-merging across Z would flatten the curved bed or create T-junction gaps. A flat
-8x4 m patch therefore takes four row quads (eight triangles) instead of 32 cell
-quads (64 triangles). A 12-seed sweep covers 122,639 water/bridge cells using
-19,453 quads, about 84% fewer than one quad per cell.
+Inputs `a` and `b` are eight-bit values; scale is 1 or 2. This includes GX's
+255→256 interpolation endpoint expansion, scaling before truncation and rounding.
+It describes these ADD/zero-bias stages, rather than a general floating-point
+shader equation.
 
-`SunshineWater.BedScale` and `BedAxisOffset` bake the inward radial positions into
-the bed vertices: inland 40 cm inward, offshore 75 cm. All beds share one mesh per
-section and the normal terrain scroll transform, with no per-frame bed geometry
-updates or extra bed transforms. Archive kind 108 stores this compact payload;
-the native coalescer combines the two scratch halves within each 8x8 m page.
-Wind Waker skips binding the bed entries. Switching styles rebinds existing
-archive views without rebuilding terrain, loading textures or changing the fixed
-256-view / 1 MiB MEM1 cache budgets. Visible triangle counters include bed draws
-only when Sunshine is selected.
+| Stage | RGB | Alpha | Clamp |
+| --- | --- | --- | --- |
+| Sea0 | C0 | `A0 = P(1, rasterAlpha, TEX0.a)` | On |
+| Sea1 | `P(2, C0, C1)` per channel | `A1 = P(2, A0, TEX1.a)` | Off |
 
-The depth-correct order is:
+The final color and alpha use their low eight bits. Sea RGB therefore becomes
+**(203,200,248)** after wrapping; it must not saturate to white. With opaque
+raster alpha, `A0=TEX0.a`. In particular, samples (255,128) produce final alpha 0,
+while (255,255) produce 254. These overflow cases distinguish the source program
+from averaged or saturated alpha.
 
-1. Opaque river and ocean beds at their inward radial positions
-2. Existing opaque soil, cliffs and ground
-3. Translucent Sunshine surface and existing translucent foam
+The main comparison is **GEQUAL 235 XNOR GEQUAL 35**, accepting final alpha 0–34
+or 235–255. Blend factors are **SrcAlpha / One**. Clear endpoint mips still
+contribute no color because their output alpha is 0.
 
-Wind Waker continues its original ordering and optional storm-wave patch.
-The local storm overlay is suppressed in Sunshine mode to avoid alpha
-accumulation across two overlapping water surfaces.
+The near-wave overlay is a separate program from
+`TMapObjWave::initDraw`: stage 0 emits RGB 0 and the same clamped `A0`; stage 1
+emits `clamp(2*rasterRGB)` and `clamp(P(2,A0,TEX1.a))`. It uses
+**GEQUAL 85 OR LEQUAL 35** and **SrcAlpha / SrcColor** blending. The source
+raster color (200,200,255) becomes white after RGB clamping. Its per-vertex
+alpha is `floor(255 * (1 − max(abs(x−8),abs(z−8))/8))` on the bounded 16-cell
+patch, with 0 at/outside its border and 255 at its center.
 
-Only the first switch to Sunshine generates the mipmap and creates the wave
-TEV program. Subsequent A/B switches reuse the same GPU resources,
-reassigning the original water materials with **zero terrain rebuilds**.
-Ground material mipmap toggles remain independent of Sunshine mipmaps.
+Both surface programs use depth test LEQUAL and no depth writes. Their material
+declarations retain the source's CullNone, while AnimalTown's existing native
+policy still culls backfaces on all 3D polygons, as requested for the game. The
+outdoor camera sees the water's front faces. The effects own their two-reference
+comparison and blend factors; subsequent ordinary materials restore their own
+state. There is no extra TEX0 opacity stage. The game's shadow footer reads
+alpha through the eight-bit A input, preserving the sea's final wrap before
+comparison instead of clamping its signed-wide intermediate.
 
-### Verification
+## Original art and native textures
 
-- `dotnet run --project tests/AnimalTown.Checks -c Release -- --suites terrain`
-  validates mip packing, explicit LOD contrast, transparency, same-batch
-  cylinder depth, SaveCodec independence and the two state transitions.
-- `dotnet run --project tests/AnimalTown.RenderingChecks -c Release`
-  verifies the existing immutable geometry and draw-path contracts.
-- The existing `Water renderer PR validation` workflow compiles
-  `game/AnimalTown.GameCube` against the locked DolphinDotNet SDK.
-- On a complete, bootable local ISO, capture reproducible A/B screenshots:
+The five editable opaque grayscale PNGs in
+`assets/textures/environment/water/` remain the original AnimalTown art. Each
+surface source expands exactly 2× with nearest sampling, then rounds intensity
+to a multiple of 17. GX I4 supplies that decoded intensity as both RGB and alpha;
+there is no separate alpha gain curve.
+
+| Package | Source | Native levels | Payload |
+| --- | --- | --- | --- |
+| `sunshine-water.dndtex` | Independent 64/32/16/8/4 PNGs | 128/64/32/16/8 | 10,912 bytes |
+| `sunshine-wave.dndtex` | L1 PNG, resized separately | 128×256 through 8×16, five levels | 21,824 bytes |
+| `sunshine-distortion.dndtex` | L1 PNG, resized separately | 64/32/16/8 | 2,720 bytes |
+
+All packages use DNTX v2 and native I4 tiles (8×8, high nibble first). The main
+surface's clear/caustic/bright/fade/clear levels are independently authored;
+they are never generated from its blank base level. Near waves and distortion
+use ordinary filtered mip chains instead. Validation checks dimensions, payload
+sizes, clear surface endpoints and source contrast. The three required disc
+assets total **35,456 native image bytes**.
+
+The main and near-wave programs each bind their own resident image to both
+samplers. Main samplers use trilinear minification, linear magnification,
+repeat wrapping, LOD 0–4 and biases 0/−0.5. Near waves use LOD 0–4 and bias 0 on both
+samplers. Distortion uses LOD 0–3, repeat and bias 0; the captured scene uses
+clamp and linear filtering without mipmaps.
+
+At 30fps, the source 1200-frame BTK repeats every 40 seconds. For
+`u = (seconds mod 40)/40`, the main translation is
+`f(u) = −u³ + 1.5u² + 0.5u`, from its recorded Hermite tangents. With source
+UVs (s,t), zero rotation and center (0.5,0.5), the implemented transforms are:
+
+```text
+Sea0:       (5s + f,       4t + f + 0.5)
+Sea1:       (6s − 0.5,     4t + f + 0.5)
+Distortion: (5s,           4t + 3u + 0.5)
+```
+
+These omit only integer translations, which are identical under repeat
+wrapping. Basic mapping does not invert T. Near waves advance
+`(0.045*seconds) mod 1`, the source 0.0015 repeats per 30fps frame. Their current
+AnimalTown UV scales are (0.48,0.48) and (0.48,0.6), scrolling S and T respectively.
+The public demonstration's 5× BTK playback is deliberately not used.
+
+Only the first selection loads these packages and creates the small glint
+effects. Warm style switches reuse those images; UV animation does not
+regenerate or upload textures.
+The small two-sine near-wave mesh updates only over visible open sea, separately
+from immutable terrain. Ground mip controls remain independent of water mips;
+the existing Wind Waker warp and optional storm-wave paths remain available.
+
+## EFB refraction, seabed and draw order
+
+The separate `_ind` technique captures the main scene once, then projectively
+samples it on visible water. It does not render a mirrored camera. Capture is
+half the viewport width and height in RGB565: **153,600 bytes at 640×480**,
+bringing texture/capture image payload to **189,056 bytes** at that resolution,
+excluding object metadata and transient loading buffers. Resolution changes
+recreate the capture; no per-frame capture allocation is needed. The capture
+and its borrowing effect are released indoors or when Wind Waker is selected,
+and recreated on the next outdoor Sunshine selection without rereading images.
+
+Resident villager models release duplicated embedded texture payloads after
+the shared GX texture cache acquires them. The six default villagers recover
+2,641,856 bytes of MEM1 without reducing texture quality or animation data;
+this provides room for the capture instead of adding it at the old RAM limit.
+Preparation failure retires partial water resources and restores Wind Waker
+with a debug-menu message. See [resident model memory](resident-model-memory.md)
+for ownership, bounds and validation.
+
+The recorded indirect setup has one 8-bit stage, STU bias, coordinate scales 1:1,
+no indirect wrapping, no addPrevious and no originalLOD. Its matrix is
+`[0,0,0; 0,0.001,0.015]`, exponent 2. The direct stage outputs the displaced
+capture without blending, with LEQUAL depth test and no depth writes. The game
+swaps capture/distortion map and coordinate slots together to fit the SDK's
+screen-projection API while preserving those lookup roles. Terrain in front of
+water fails the depth test; the pass does not classify or redraw land.
+
+The seabed retains the merged dark-blue quads from the current town renderer.
+One untextured, unlit opaque material uses RGB (18,48,82), with white vertex
+colors and zero UVs; it requires no texture or bed TEV program. River/sea bed
+vertices are baked 40cm/75cm inward around the cylinder axis. Adjacent X-flat
+cells with matching depth and near/far heights share a row quad, while separate
+Z rows preserve the cylinder chords. An 8×4m flat patch uses four row quads
+instead of 32 cell quads.
+
+Archive kind 108 stores the compact bed geometry. Wind Waker skips those views;
+Sunshine rebinds them without rebuilding terrain or changing the existing
+256-view / 1MiB MEM1 cache budgets. All bed meshes use the normal terrain scroll
+transform, with no per-frame geometry update. Outdoor Sunshine draw order is:
+
+1. Opaque water beds, then land and cliffs.
+2. Thin blue body, main sea glints, nearby waves and shoreline foam.
+3. Remaining world objects and actors.
+4. End scene submission, capture once, resume the same camera and depth buffer,
+   then draw refraction on visible river/ocean geometry.
+5. Attention indicators, rain and HUD, outside the capture.
+
+## Dependencies and validation
+
+The game pins DolphinDotNet SDK/Core/GameCube/Assets **preview.326.1**, source
+`1b6bc6d35cae4471a615a0f377acd86658840e55`. [SDK PR 172](https://github.com/capz/DolphinDotNet/pull/172)
+provides complete stage RGB state, blend factors, the signed indirect matrix
+and projected `SceneCapture`. Hypercube remains at the published **preview.28.1**.
+Its exact SDK 315 dependency is explicitly overridden to runtime 326; the SDK
+preserves the original AddStage/capture ABI used by the compiled engine.
+Package resolution accepts only this reviewed combination, and NU1608 is
+suppressed only on the direct runtime reference. Compiler, runtime, Assets and
+Imaging use the same SDK revision; lockfiles record the actual package hashes.
+
+`tools/test-changes.ps1` checks the generated effect packages and independently
+evaluates all 65,536 alpha pairs, wrapping versus clamping, compare boundaries,
+color overflow, LOD state and refraction matrix. Native GX recording checks
+exercise the actual shadow/rim footer over all signed 11-bit alpha values and
+six mask intensities. Texture cooks validate all three packages from the
+checked-in PNGs. Managed/AOT/native-host results establish program and asset
+behavior; console appearance and frame time require emulator/hardware evidence.
+
+For a full bootable ISO, the existing focused Dolphin scenario is:
 
 ```sh
 python3 tools/iso-smoke.py <AnimalTown.iso> out/sunshine-ab --water-ab
 ```
 
-The script walks to a water view, captures original/sunshine/restored
-frames and the debug selector, records pixel differences in
-`water-ab-comparison.json`, and checks that Sunshine continues animating.
-It does not alter the saved game or modify a pixel of either source
-texture during rendering.
+It captures default/Sunshine/restored views and selector states, checks visible
+animation and writes `water-ab-comparison.json`. Physical GameCube validation
+remains separate from this emulator check. Release delivery remains a same-commit
+full ISO, NKit ISO and backend through the existing release workflow.
 
-**Differences from retail Sunshine:** this is a compact visual
-approximation of its mipmapped transparency and two scrolling passes.
-The SDK's current managed material does not expose Sunshine's
-two-sided alpha-comparison threshold; the effect uses standard GX
-alpha blending with authored per-mip alpha instead. Its bed is generated
-by re-projecting one existing mesh, not a detailed independent bathymetry.
-No physical GameCube frame-time or Dolphin screenshot comparison has
-yet been run for this PR. Verify depth ordering, nearshore visibility,
-shader output and draw-submit overhead before production rollout.
+Idle A interactions remain silent indoors and outdoors, including unsuccessful
+bug-net catches. Conversations, pickups, doors and successful tool interactions
+retain their feedback.
 
-## Follow-up fix: true layered water and silent idle interactions (PR #56)
+## Reference identities
 
-The original Sunshine prototype bound **one IA8 texture in both texture slots**
-and rendered one translucent pass. It could not produce two independent
-interference patterns, and its alpha control discarded the second tap's alpha.
-
-The corrected renderer uses, in order:
-
-1. The existing opaque underwater sand/cliff-soil texture, with archived river
-   and sea meshes inset 0.4m and 0.75m radially into the curved world.
-2. A separate transparent color film over the water meshes, retaining vertex
-   colors for water depth/season tint; depth test on, depth write off.
-3. A second **independent translucent sparkle pass** over the same geometry:
-   * TEX0 uses the 64x64 IA8 authored reflection/glint texture (five mips)
-     and its alpha provides the mask for the overlay.
-   * TEX1 uses a different 64x64 IA8 authored ripple texture
-     (five mips and its own periodic wave directions).
-   * Each slot has its own scrolling/rotating UVs and explicit trilinear
-     LinearMipmapLinear filtering and LOD bias. Mid-distance LODs are brighter
-     than near and distant LODs, so the effect changes naturally with distance.
-   * The pinned DolphinDotNet preview.315.1 supports DNEF v2, combining
-     independent TEX0/TEX1 RGB and a final TEX0 alpha. GX's single-reference
-     material cutoff retains strong glints (alpha > 0.54); the separate
-     translucent film below provides clear, softly tinted water everywhere.
-     SDK source has a newer v4 two-reference alpha API but that version is
-     not yet available in the locked published SDK/Hypercube package chain.
-4. The original bank foam continues to draw above the water.
-
-The two authored IA8 images total 21,824 native texture bytes. Sunshine mode
-adds one water-surface submission pass compared with the original mode but
-no new mesh/archive geometry or per-frame texture uploads. Wind Waker stays the
-default debug style, with its existing draw count, storm patch and materials.
-
-The alpha cutoff is deliberately calibrated to TEX0's authored glint mask:
-a higher cutoff would erase the sparkle layer, while a lower one would turn
-its highlights into a continuous cloudy overlay. The transparent base film,
-two independent RGB images, authored mip bands and UV interference are the
-working features in the currently pinned native SDK. Retail Sunshine's
-two-sided alpha comparison remains a future native SDK-package upgrade.
-
-**Interaction fix:** when A is pressed with no usable target, the player now
-does nothing, indoors or outside. Unsuccessful bug-net catches are also silent.
-Valid conversations, pickups, door operations and successful tool interactions
-retain their previous messages.
-
-CI checks validate authored mip packing, independent texture contents, the
-DNEF v2 TEX0/TEX1 stage selectors, calibrated glint cutoff and regression
-guards on the interaction handler. A visual comparison in Dolphin/real GameCube
-is still required to assess glint brightness and performance.
+- [Original water breakdown](https://blog.mecheye.net/2018/03/deconstructing-the-water-effect-in-super-mario-sunshine/).
+- Noclip source at `cc5abc92b5b087e50e219cfc498a3912e036cf5f`:
+  [demo and accelerated timing](https://github.com/magcius/noclip.website/blob/cc5abc92b5b087e50e219cfc498a3912e036cf5f/src/InteractiveExamples/SunshineWater.ts),
+  [material/BTK interpretation](https://github.com/magcius/noclip.website/blob/cc5abc92b5b087e50e219cfc498a3912e036cf5f/src/Common/JSYSTEM/J3D/J3DLoader.ts),
+  [scene/refraction ordering](https://github.com/magcius/noclip.website/blob/cc5abc92b5b087e50e219cfc498a3912e036cf5f/src/j3d/sms_scenes.ts).
+- Numeric `_umi`/`_ind` material and BTK records checked from the public Plaza
+  demo archive, SHA256 `cbc2969b1498249e6a69a5363e93a042b06dd528ae041db8cf16f701f462c03a`.
+  Only functional numbers informed this implementation; retail art is not shipped.
+- Sunshine decompilation at `840109f9cc7c2e5c0d213088ddc38d58f4e68b0d`:
+  [near-wave program](https://github.com/doldecomp/sms/blob/840109f9cc7c2e5c0d213088ddc38d58f4e68b0d/src/MoveBG/MapObjWave.cpp),
+  [capture format](https://github.com/doldecomp/sms/blob/840109f9cc7c2e5c0d213088ddc38d58f4e68b0d/src/MarioUtil/ScreenUtil.cpp),
+  [capture setup](https://github.com/doldecomp/sms/blob/840109f9cc7c2e5c0d213088ddc38d58f4e68b0d/src/System/MarDirectorSetupObjects.cpp),
+  [runtime capture binding/projection](https://github.com/doldecomp/sms/blob/840109f9cc7c2e5c0d213088ddc38d58f4e68b0d/src/Map/MapStaticObject.cpp).
+- [Dolphin's integer TEV implementation](https://github.com/dolphin-emu/dolphin/blob/master/Source/Core/VideoCommon/UberShaderPixel.cpp)
+  independently documents the rounding, input expansion and final byte handling.

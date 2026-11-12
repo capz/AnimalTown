@@ -2,6 +2,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include "../tools/native-shadow-union.h"
+#include "native-shadow-combiner.inc"
 static SuState *s;
 static const float rect[]={0,0,8,0,8,8,0,0,8,8,0,8};
 static const float bounds[]={1,1,7,7};
@@ -14,6 +15,7 @@ static int pixel(float x,float z){int p=su_find(s,(int)floorf(x/8),(int)floorf(z
 static int credits;
 static int allow_work(void *unused){(void)unused;return credits-->0;}
 int main(void){
+    native_shadow_combiner_checks();
     s=aligned_alloc(32,su_storage_bytes());CHECK(s!=NULL);CHECK(su_storage_bytes()<1792*1024);
     reset();caster(0,0,rect,6,bounds);su_prepare(s,SU_PAGES);CHECK(pixel(4,4)==SU_OPACITY);
     uint8_t original[SU_BYTES];int page=su_find(s,0,0);memcpy(original,s->pixels+page*SU_BYTES,SU_BYTES);
