@@ -91,7 +91,8 @@ internal sealed class TerrainRenderer
         waterMaterial.PrepareRoughOcean();
         // Sunlit translucent water is drawn once, not again through the storm
         // mesh, so its alpha never accumulates over the same surface.
-        oceanWaves.Prepare(state,waterMaterial.RoughOcean&&!waterMaterial.IsSunshine,cliffPreview,waterMaterial.Tint(1));
+        oceanWaves.Prepare(state,waterMaterial.RoughOcean||waterMaterial.IsSunshine,
+            cliffPreview,waterMaterial.Tint(1),waterMaterial.IsSunshine);
         int next=TerrainTiles.Season(month,SeasonOverride>=0?SeasonOverride:forced);bool changed=next!=season;
         if(changed){
             string name="floor-"+TerrainTiles.SeasonName(next);data=File.ReadAllBytes("dvd:/"+name+".bin");FloorStrips.Validate(data);
@@ -299,6 +300,13 @@ internal sealed class TerrainRenderer
     }
     private void DrawArchiveWater(Renderer renderer)
     {
+        // The original mode retains its exact draw count. Sunshine first lays
+        // a very thin tropical tint over the shared sandy bed, then its
+        // alpha-cutout caustic/reflection layer and the original shore foam.
+        if(waterMaterial.IsSunshine){
+            AddArchive(renderer,waterMaterial.SunshineBody,104);
+            AddArchive(renderer,waterMaterial.SunshineBody,107);
+        }
         AddArchive(renderer,waterMaterial.Surface,104);
         AddArchive(renderer,waterMaterial.OceanSurface,107);
         oceanWaves.Draw(renderer,waterMaterial.OceanSurface,ScrollTransform);
@@ -306,6 +314,12 @@ internal sealed class TerrainRenderer
     }
     private void DrawLegacyWater(Renderer renderer)
     {
+        if(waterMaterial.IsSunshine){
+            for(int i=0;i<stream.Count;i++)if(stream.Visible[i])Add(renderer,waterMaterial.SunshineBody,sections[i]!.Water.SurfaceMesh);
+            Flush(renderer,waterMaterial.SunshineBody);
+            for(int i=0;i<stream.Count;i++)if(stream.Visible[i])Add(renderer,waterMaterial.SunshineBody,sections[i]!.Water.OceanMesh);
+            Flush(renderer,waterMaterial.SunshineBody);
+        }
         NativeShadows.Scope(3);
         try{
             for(int i=0;i<stream.Count;i++)if(stream.Visible[i])Add(renderer,waterMaterial.Surface,sections[i]!.Water.SurfaceMesh);
