@@ -11,11 +11,19 @@ internal sealed class WaterMaterial : IDisposable
     private readonly TevMaterial water;
     private Texture2D? stormBase,whitecaps;
     private TevMaterial? storm;
-    private Texture2D? sunshineTexture;
+    private Texture2D? sunshineTexture,sunshineGlintTexture;
     private TevMaterial? sunshineLayer,sunshineBed;
+    // Color/depth film and alpha-tested glint interference are separately
+    // submitted. Neither pass modifies the stored water mesh or its tint.
+    private readonly Material sunshineFilm=new Material{
+        Blend=BlendMode.Alpha,DepthTest=true,DepthWrite=false,
+        Lighting=LightingMode.Unlit,Cull=CullMode.Back,
+        Color=new Color32(211,246,247,105)
+    };
     internal WaterRenderStyle Style=WaterRenderStyle.WindWaker;
     internal bool IsSunshine=>Style==WaterRenderStyle.Sunshine;
-    internal Material Surface=>IsSunshine&&sunshineLayer!=null?sunshineLayer.Material:water.Material;
+    internal Material Surface=>IsSunshine&&sunshineLayer!=null?sunshineFilm:water.Material;
+    internal Material SunshineGlints=>sunshineLayer?.Material??throw new InvalidOperationException("Sunshine glints were not prepared.");
     internal Material Bed=>sunshineBed?.Material??throw new InvalidOperationException("Sunshine bed material was not prepared.");
     internal bool RoughOcean;
     internal Material OceanSurface=>IsSunshine?Surface:RoughOcean?storm!.Material:Surface;
@@ -71,26 +79,42 @@ internal sealed class WaterMaterial : IDisposable
     {
         if(sunshineLayer!=null)return;
         if(seabedTexture==null)throw new ArgumentNullException(nameof(seabedTexture));
-        Texture2D? wave=null;
+        Texture2D? wave=null,reflection=null;
         TevMaterial? layer=null,bed=null;
         try{
-            wave=Texture2D.FromPackage(SunshineWater.TexturePackage(),linear:true);
-            var sparkle=new TevProgramBuilder();
-            sparkle.AddColor("Glint",new Color32(168,244,232));
-            sparkle.AddColor("Glint2",new Color32(232,255,248));
-            sparkle.AddStage(TevInput.Zero,TevInput.Zero,TevInput.Zero,TevInput.Raster);
-            sparkle.AddStage(TevInput.Previous,TevInput.Constant,TevInput.Texture,TevInput.Zero,colorSlot:0);
-            sparkle.AddStage(TevInput.Previous,TevInput.Constant,TevInput.SecondaryTexture,TevInput.Zero,colorSlot:1);
-            // Two independently scrolling taps of one authored-mip IA8 texture,
-            // with translucent GX alpha and no water depth write.
-            layer=new TevMaterialDefinition(sparkle).Create(wave,wave);
+            // TEX0 provides the sparse alpha-tested reflection mask; TEX1
+            // adds a separate, smoother scrolling water-ripple pattern.
+            wave=Texture2D.FromPackage(SunshineWater.GlintTexturePackage(),linear:true);
+            reflection=Texture2D.FromPackage(SunshineWater.TexturePackage(),linear:true);
+            // Both authored mip chains must reach GX's LOD sampler. The old
+            // material selected a linear base level, losing the reflection band.
+            wave.ConfigureSampler(TextureWrapMode.Repeat,TextureWrapMode.Repeat,
+                TextureMinFilter.LinearMipmapLinear,TextureMagFilter.Linear,SunshineWater.ReflectionLodBias);
+            reflection.ConfigureSampler(TextureWrapMode.Repeat,TextureWrapMode.Repeat,
+                TextureMinFilter.LinearMipmapLinear,TextureMagFilter.Linear,SunshineWater.RippleLodBias);
+            // The locked SDK supports two distinct RGB/UV stages (DNEF v2)
+            // but not yet v4's independent TEX1 alpha. An alpha cutoff on
+            // TEX0 masks this overlay, while the separate translucent film
+            // below remains visible everywhere. It preserves visual layering
+            // without an unpublished SDK dependency.
+            layer=SunshineGlintDefinition().Create(wave,reflection);
             layer.Material.Blend=BlendMode.Alpha;
             layer.Material.DepthWrite=false;
             layer.Material.DepthTest=true;
             layer.Material.Cull=CullMode.Back;
-            layer.Material.Color=new Color32(216,255,248,242);
-            layer.Material.Sampler=new SamplerState(TextureAddressMode.Repeat,TextureAddressMode.Repeat,TextureFilter.Linear);
-            layer.Material.SecondarySampler=layer.Material.Sampler;
+            layer.Material.AlphaCutoff=SunshineWater.GlintAlphaCutoff;
+            // Vertex color supplies the existing seasonal water tint. Keep
+            // raster alpha opaque so the primary glint-cutout texture's alpha
+            // remains the effective per-fragment cutoff input.
+            layer.Material.Color=new Color32(225,246,242,255);
+            layer.Material.Sampler=new SamplerState(
+                TextureMinFilter.LinearMipmapLinear,TextureMagFilter.Linear,
+                maxLod:SunshineWater.MipLevels-1,lodBias:SunshineWater.ReflectionLodBias,
+                u:TextureAddressMode.Repeat,v:TextureAddressMode.Repeat);
+            layer.Material.SecondarySampler=new SamplerState(
+                TextureMinFilter.LinearMipmapLinear,TextureMagFilter.Linear,
+                maxLod:SunshineWater.MipLevels-1,lodBias:SunshineWater.RippleLodBias,
+                u:TextureAddressMode.Repeat,v:TextureAddressMode.Repeat);
 
             var sand=new TevProgramBuilder();
             sand.AddColor("Sand",new Color32(239,225,189));
@@ -103,11 +127,23 @@ internal sealed class WaterMaterial : IDisposable
             bed.Material.Cull=CullMode.Back;
             bed.Material.Sampler=new SamplerState(TextureAddressMode.Repeat,TextureAddressMode.Repeat,TextureFilter.Linear);
 
-            sunshineTexture=wave;sunshineLayer=layer;sunshineBed=bed;
+            sunshineTexture=wave;sunshineGlintTexture=reflection;sunshineLayer=layer;sunshineBed=bed;
         }catch{
-            bed?.Dispose();layer?.Dispose();wave?.Dispose();
+            bed?.Dispose();layer?.Dispose();reflection?.Dispose();wave?.Dispose();
             throw;
         }
+    }
+    // DNEF v2 keeps the two independent animated RGB textures and a final
+    // TEX0 opacity resolve. The separate color film is the translucent base.
+    internal static TevMaterialDefinition SunshineGlintDefinition()
+    {
+        var p=new TevProgramBuilder();
+        p.AddColor("PrimaryLight",new Color32(212,247,245));
+        p.AddColor("SecondaryLight",new Color32(82,134,142));
+        p.AddStage(TevInput.Zero,TevInput.Zero,TevInput.Zero,TevInput.Raster);
+        p.AddStage(TevInput.Zero,TevInput.Constant,TevInput.Texture,TevInput.Previous,colorSlot:0);
+        p.AddStage(TevInput.Zero,TevInput.Constant,TevInput.SecondaryTexture,TevInput.Previous,colorSlot:1);
+        return new TevMaterialDefinition(p);
     }
     internal Color32 Tint(float depth)=>new Color32((byte)(Shallow.R+(Deep.R-Shallow.R)*depth),(byte)(Shallow.G+(Deep.G-Shallow.G)*depth),(byte)(Shallow.B+(Deep.B-Shallow.B)*depth));
     internal void SetTerrainTint(uint rgba)
@@ -123,8 +159,8 @@ internal sealed class WaterMaterial : IDisposable
         Foam.Color=new Color32(220,241,235,(byte)(70+14*Math.Sin(seconds*1.2)));
         Foam.TextureTransform=new UvTransform(new Vector2(WaterSurface.Scroll(seconds,.032f),WaterSurface.Scroll(seconds,-.058f)),new Vector2(1.10f,1.10f));
         if(IsSunshine&&sunshineLayer!=null){
-            // Distinct scroll vectors create Sunshine-style light interference.
-            // Both GX texgens sample the same small native mipmapped texture.
+            // Two independently authored images and UV transforms interfere
+            // without modifying either texture or terrain vertices.
             var water=sunshineLayer.Material;
             water.TextureTransform=new UvTransform(new Vector2(
                 WaterSurface.Scroll(seconds,.021f),WaterSurface.Scroll(seconds,.013f)),new Vector2(1,1));
@@ -137,7 +173,8 @@ internal sealed class WaterMaterial : IDisposable
         }
     }
     public void Dispose(){
-        sunshineBed?.Dispose();sunshineLayer?.Dispose();sunshineTexture?.Dispose();
+        sunshineBed?.Dispose();sunshineLayer?.Dispose();
+        sunshineGlintTexture?.Dispose();sunshineTexture?.Dispose();
         storm?.Dispose();water.Dispose();
         whitecaps?.Dispose();stormBase?.Dispose();distortion.Dispose();shoreFoam.Dispose();ripples.Dispose();
     }

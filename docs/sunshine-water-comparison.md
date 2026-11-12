@@ -118,3 +118,53 @@ by re-projecting one existing mesh, not a detailed independent bathymetry.
 No physical GameCube frame-time or Dolphin screenshot comparison has
 yet been run for this PR. Verify depth ordering, nearshore visibility,
 shader output and draw-submit overhead before production rollout.
+
+## Follow-up fix: true layered water and silent idle interactions (PR #56)
+
+The original Sunshine prototype bound **one IA8 texture in both texture slots**
+and rendered one translucent pass. It could not produce two independent
+interference patterns, and its alpha control discarded the second tap's alpha.
+
+The corrected renderer uses, in order:
+
+1. The existing opaque underwater sand/cliff-soil texture, with archived river
+   and sea meshes inset 0.4m and 0.75m radially into the curved world.
+2. A separate transparent color film over the water meshes, retaining vertex
+   colors for water depth/season tint; depth test on, depth write off.
+3. A second **independent translucent sparkle pass** over the same geometry:
+   * TEX0 uses the 64x64 IA8 authored reflection/glint texture (five mips)
+     and its alpha provides the mask for the overlay.
+   * TEX1 uses a different 64x64 IA8 authored ripple texture
+     (five mips and its own periodic wave directions).
+   * Each slot has its own scrolling/rotating UVs and explicit trilinear
+     LinearMipmapLinear filtering and LOD bias. Mid-distance LODs are brighter
+     than near and distant LODs, so the effect changes naturally with distance.
+   * The pinned DolphinDotNet preview.315.1 supports DNEF v2, combining
+     independent TEX0/TEX1 RGB and a final TEX0 alpha. GX's single-reference
+     material cutoff retains strong glints (alpha > 0.54); the separate
+     translucent film below provides clear, softly tinted water everywhere.
+     SDK source has a newer v4 two-reference alpha API but that version is
+     not yet available in the locked published SDK/Hypercube package chain.
+4. The original bank foam continues to draw above the water.
+
+The two authored IA8 images total 21,824 native texture bytes. Sunshine mode
+adds one water-surface submission pass compared with the original mode but
+no new mesh/archive geometry or per-frame texture uploads. Wind Waker stays the
+default debug style, with its existing draw count, storm patch and materials.
+
+The alpha cutoff is deliberately calibrated to TEX0's authored glint mask:
+a higher cutoff would erase the sparkle layer, while a lower one would turn
+its highlights into a continuous cloudy overlay. The transparent base film,
+two independent RGB images, authored mip bands and UV interference are the
+working features in the currently pinned native SDK. Retail Sunshine's
+two-sided alpha comparison remains a future native SDK-package upgrade.
+
+**Interaction fix:** when A is pressed with no usable target, the player now
+does nothing, indoors or outside. Unsuccessful bug-net catches are also silent.
+Valid conversations, pickups, door operations and successful tool interactions
+retain their previous messages.
+
+CI checks validate authored mip packing, independent texture contents, the
+DNEF v2 TEX0/TEX1 stage selectors, calibrated glint cutoff and regression
+guards on the interaction handler. A visual comparison in Dolphin/real GameCube
+is still required to assess glint brightness and performance.
