@@ -773,8 +773,11 @@ internal sealed class TownGame : IDisposable
         // including glints and actors, once; refract only visible water.
         // HUD, attention indicators and rain remain outside the capture.
         if(room==0&&terrain.RefractionVisible){
+            submissionAt=FrameProfile.SubmissionStart();
             renderer.End3D();terrain.CaptureWaterScene();
             renderer.Begin3D(camera);terrain.DrawRefraction(renderer);
+            FrameProfile.SubmissionEnd(0,submissionAt);
+            FrameProfile.End(4,phase);phase=FrameProfile.Start();
         }
         if(screen=="plot")
         {

@@ -77,10 +77,14 @@ raster color (200,200,255) becomes white after RGB clamping. Its per-vertex
 alpha is `floor(255 * (1 − max(abs(x−8),abs(z−8))/8))` on the bounded 16-cell
 patch, with 0 at/outside its border and 255 at its center.
 
-Both surface programs use depth test LEQUAL, no depth writes and no face
-culling, matching their source state. The effects own their two-reference
+Both surface programs use depth test LEQUAL and no depth writes. Their material
+declarations retain the source's CullNone, while AnimalTown's existing native
+policy still culls backfaces on all 3D polygons, as requested for the game. The
+outdoor camera sees the water's front faces. The effects own their two-reference
 comparison and blend factors; subsequent ordinary materials restore their own
-state. There is no extra TEX0 opacity stage.
+state. There is no extra TEX0 opacity stage. The game's shadow footer reads
+alpha through the eight-bit A input, preserving the sea's final wrap before
+comparison instead of clamping its signed-wide intermediate.
 
 ## Original art and native textures
 
