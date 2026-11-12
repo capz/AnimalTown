@@ -31,6 +31,7 @@ static class Program
             else if(args[0]=="art")Art();
             else if(args[0]=="dropped-item-import")DroppedItemAssets.Import(Root);
             else if(args[0]=="dropped-item-check")DroppedItemAssets.Check(Root);
+            else if(args[0]=="sunshine-water")SunshineWaterAssets.Build(Root);
             else if(args[0]=="splash-check")SplashAssets.Check(Root);
             else if(args[0]=="splash-import-engine")SplashAssets.ImportEngine(Root,args[2]);
             else if(args[0]=="terrain")RepeatFloorAssets.Build(Root);
