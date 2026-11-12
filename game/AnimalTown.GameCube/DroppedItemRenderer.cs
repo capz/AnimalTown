@@ -29,11 +29,12 @@ internal sealed class DroppedItemRenderer : IDisposable
     {
         for(int n=0;n<plan.Count;n++){
             int i=plan.Order[n],at=n*6;float x=plan.X[i],y=plan.Y[i],z=plan.Z[i],half=DroppedItemPlan.Size*.5f;
-            float topY=y+DroppedItemPlan.UpY*DroppedItemPlan.Size,topZ=z+DroppedItemPlan.UpZ*DroppedItemPlan.Size;
-            var a=new VertexPositionColorTexture(new Vector3(x-half,y,z),Color32.White,new Vector2(0,1));
-            var b=new VertexPositionColorTexture(new Vector3(x-half,topY,topZ),Color32.White,new Vector2(0,0));
-            var c=new VertexPositionColorTexture(new Vector3(x+half,topY,topZ),Color32.White,new Vector2(1,0));
-            var d=new VertexPositionColorTexture(new Vector3(x+half,y,z),Color32.White,new Vector2(1,1));
+            var facing=plan.Facing(i);float rx=facing.RightX*half,rz=facing.RightZ*half;
+            float topX=x+facing.UpX*DroppedItemPlan.Size,topY=y+facing.UpY*DroppedItemPlan.Size,topZ=z+facing.UpZ*DroppedItemPlan.Size;
+            var a=new VertexPositionColorTexture(new Vector3(x-rx,y,z-rz),Color32.White,new Vector2(0,1));
+            var b=new VertexPositionColorTexture(new Vector3(topX-rx,topY,topZ-rz),Color32.White,new Vector2(0,0));
+            var c=new VertexPositionColorTexture(new Vector3(topX+rx,topY,topZ+rz),Color32.White,new Vector2(1,0));
+            var d=new VertexPositionColorTexture(new Vector3(x+rx,y,z+rz),Color32.White,new Vector2(1,1));
             vertices[at]=a;vertices[at+1]=b;vertices[at+2]=c;vertices[at+3]=a;vertices[at+4]=c;vertices[at+5]=d;
         }
     }
