@@ -177,23 +177,23 @@ transform, with no per-frame geometry update. Outdoor Sunshine draw order is:
 
 ## Dependencies and validation
 
-The repository still pins DolphinDotNet **preview.318.1** and Hypercube
-**preview.28.1**. The new source requires unpublished SDK additions in
-[DolphinDotNet PR 172](https://github.com/capz/DolphinDotNet/pull/172): complete
-stage RGB state, blend factors, the signed indirect matrix and projected
-`SceneCapture`. A normal build against published 318 cannot compile these new
-calls. Publication, then an actual package/version-lock update, is required;
-no future package number is assumed here. [Hypercube PR 18](https://github.com/capz/hypercube-engine/pull/18)
-has merged; engine package availability must be checked when updating the pins.
+The game pins DolphinDotNet SDK/Core/GameCube/Assets **preview.326.1**, source
+`1b6bc6d35cae4471a615a0f377acd86658840e55`. [SDK PR 172](https://github.com/capz/DolphinDotNet/pull/172)
+provides complete stage RGB state, blend factors, the signed indirect matrix
+and projected `SceneCapture`. Hypercube remains at the published **preview.28.1**.
+Its exact SDK 315 dependency is explicitly overridden to runtime 326; the SDK
+preserves the original AddStage/capture ABI used by the compiled engine.
+Package resolution accepts only this reviewed combination, and NU1608 is
+suppressed only on the direct runtime reference. Compiler, runtime, Assets and
+Imaging use the same SDK revision; lockfiles record the actual package hashes.
 
-With the private SDK source, managed compilation and AOT generation passed,
-as did **196,629 water rendering checks**. Those checks inspect generated effect
-packages and independently evaluate all 65,536 alpha pairs, wrapping versus
-clamping, compare boundaries, color overflow, LOD state and refraction matrix.
-The domain terrain suite passed **2,594,599 checks**, and all three texture cooks
-passed using the checked-in PNGs. These host results establish program and
-asset behavior, not console appearance or frame time. Dolphin and physical
-GameCube validation of this implementation have not run.
+`tools/test-changes.ps1` checks the generated effect packages and independently
+evaluates all 65,536 alpha pairs, wrapping versus clamping, compare boundaries,
+color overflow, LOD state and refraction matrix. Native GX recording checks
+exercise the actual shadow/rim footer over all signed 11-bit alpha values and
+six mask intensities. Texture cooks validate all three packages from the
+checked-in PNGs. Managed/AOT/native-host results establish program and asset
+behavior; console appearance and frame time require emulator/hardware evidence.
 
 For a full bootable ISO, the existing focused Dolphin scenario is:
 
@@ -202,8 +202,8 @@ python3 tools/iso-smoke.py <AnimalTown.iso> out/sunshine-ab --water-ab
 ```
 
 It captures default/Sunshine/restored views and selector states, checks visible
-animation and writes `water-ab-comparison.json`. Run it after resolving the SDK
-dependency and building the updated ISO. Release delivery remains a same-commit
+animation and writes `water-ab-comparison.json`. Physical GameCube validation
+remains separate from this emulator check. Release delivery remains a same-commit
 full ISO, NKit ISO and backend through the existing release workflow.
 
 Idle A interactions remain silent indoors and outdoors, including unsuccessful

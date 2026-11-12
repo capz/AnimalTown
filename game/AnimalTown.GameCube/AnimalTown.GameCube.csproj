@@ -5,7 +5,7 @@
     <Compile Include="../../out/BuildInfo.cs" Condition="Exists('../../out/BuildInfo.cs')" />
     <ProjectReference Include="../../shared/AnimalTown.Domain/AnimalTown.Domain.csproj" />
     <PackageReference Include="Capz.Hypercube.GameCube" Version="[0.1.0-preview.28.1]" />
-    <!-- Verified additive SDK upgrade: Hypercube 28 was compiled against 315. -->
-    <PackageReference Include="DolphinDotNet.GameCube" Version="[0.1.0-preview.318.1]" NoWarn="NU1608" />
+    <!-- SDK 326 retains the SDK 315 ABI used by Hypercube 28. -->
+    <PackageReference Include="DolphinDotNet.GameCube" Version="[0.1.0-preview.326.1]" NoWarn="NU1608" />
   </ItemGroup>
 </Project>

@@ -3,7 +3,7 @@
   "isRoot": true,
   "tools": {
     "dolphindotnet.assets": {
-      "version": "0.1.0-preview.318.1",
+      "version": "0.1.0-preview.326.1",
       "commands": [
         "dnd-assets"
       ]
