@@ -60,6 +60,17 @@ internal sealed class TerrainArchive
         for(int i=0;i<views.Length;i++)views[i]=new View();
         Dolphin.Diagnostics.DebugOverlay.WriteLine("Terrain archive: "+NativeTerrain.Stat(5)+" ARAM bytes / "+Bytes+" MEM1 bytes / "+NativeTerrain.Stat(1)+" parts");
     }
+    internal bool SuspendForSave()
+    {
+        if(!Ready)return false;
+        for(int i=0;i<views.Length;i++)if(views[i]!=null&&views[i]!.Section>=0){
+            var v=views[i]!;if(NativeTerrain.Unbind(v.Handle)!=1)throw new InvalidOperationException("Terrain save unbind failed");v.Section=v.Entry=v.Kind=-1;
+        }
+        Array.Clear(bound,0,bound.Length);revision=-1;selection.Reset();
+        if(NativeTerrain.Cache(0)!=1)throw new InvalidOperationException("Terrain save cache release failed");return true;
+    }
+    internal void ResumeAfterSave()
+    {if(NativeTerrain.Cache(1)!=1)throw new InvalidOperationException("Terrain save cache restore failed");}
     internal void Prepare(float x,float z,CylinderRows rows)
     {
         if(!Ready)return;

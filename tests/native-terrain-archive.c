@@ -87,7 +87,19 @@ int main(void){
     assert(animaltown_terrain_bind(pool[16],16)==-2&&!memcmp(saved,find(pool[0],MESH)->data,sizeof(saved)));
     assert(animaltown_terrain_stat(0)==resident&&animaltown_terrain_stat(7)==TA_CACHE);
     assert(animaltown_terrain_unbind(pool[0])==1&&animaltown_terrain_bind(pool[16],16)==1);
+    assert(animaltown_terrain_cache(0)==-1); /* Never drop live GX aliases. */
     for(int i=0;i<17;i++)assert(dnd_draw_release(pool[i])==0);
+    resident=animaltown_terrain_stat(0);int aram=dnd_aram_stat(4);
+    assert(animaltown_terrain_cache(0)==1&&animaltown_terrain_stat(0)==resident-TA_CACHE&&dnd_aram_stat(4)==aram);
+    assert(animaltown_terrain_cache(0)==1&&animaltown_terrain_cache(1)==1&&animaltown_terrain_stat(0)==resident);
+    int restored=animaltown_terrain_view();assert(restored&&animaltown_terrain_bind(restored,0)==1);
+    assert(!memcmp(saved,find(restored,MESH)->data,sizeof(saved)));
+    active=true;assert(animaltown_terrain_cache(0)==-1);active=false;
+    assert(animaltown_terrain_cache(0)==-1&&animaltown_terrain_unbind(restored)==1);
+    assert(dnd_draw_release(restored)==0);
+    for(int cycle=0;cycle<32;cycle++)assert(animaltown_terrain_cache(0)==1&&animaltown_terrain_cache(1)==1);
+    assert(animaltown_terrain_stat(0)==resident&&dnd_aram_stat(4)==aram);
+
     assert(animaltown_terrain_reset(0)==1&&dnd_draw_live()==0&&dnd_aram_stat(4)==0);free(big);
-    free(v);free(ix);puts("Terrain archive: exact indexed/trimmed payloads retain UV/alpha; 10000 byte-exact ARAM view binds; no uploads/allocations; atomic cache exhaustion, reuse, guards and pinned parent lifetime passed");
+    free(v);free(ix);puts("Terrain archive: exact indexed/trimmed payloads retain UV/alpha; 10000 byte-exact ARAM view binds; no uploads/allocations; atomic cache exhaustion, save-cache suspension/resume, reuse, guards and pinned parent lifetime passed");
 }

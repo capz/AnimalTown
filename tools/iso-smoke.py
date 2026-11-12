@@ -473,7 +473,7 @@ def committed_card_sequence(path, expected_day=None, details=False):
         if len(payload)<32:raise ValueError('Short save record')
         magic,version,catalog,actual,sequence,seed,length=struct.unpack_from('<7I',payload)
         crc=struct.unpack_from('<I',payload,len(payload)-4)[0]
-        if magic!=0x50535441 or version not in (1,2,3,4) or actual!=kind or length!=len(payload) or zlib.crc32(payload[:-4])!=crc:
+        if magic!=0x50535441 or version not in (1,2,3,4,5) or actual!=kind or length!=len(payload) or zlib.crc32(payload[:-4])!=crc:
             raise ValueError('Invalid save record')
         return version,catalog,sequence,seed,crc
     best=0;best_day=None;best_details=None
@@ -496,33 +496,56 @@ def committed_card_sequence(path, expected_day=None, details=False):
                     if offset<32 or offset+length>len(data):raise ValueError('Truncated card container')
                     files[name]=bytes(data[offset:offset+length])
                 for bank in (0,1):
-                    names=[f'AT-{kind}{bank}' for kind in ('Town','Houses','Shops','Player')]
-                    commit_name=f'AT-Commit{bank}'
-                    if commit_name not in files:continue
-                    commit=files[commit_name];identity=record(commit,4)
-                    if identity[0]>=4:names.extend(f'AT-Villager{slot}-{bank}' for slot in (2,3,4))
-                    if len(commit)!=32+8*len(names) or not all(name in files for name in names):continue
-                    for kind,name in enumerate(names):
-                        part=files[name];part_identity=record(part,kind if kind<4 else kind+1)
-                        expected_length,expected_crc=struct.unpack_from('<II',commit,28+kind*8)
-                        if part_identity[:4]!=identity[:4] or len(part)!=expected_length or part_identity[4]!=expected_crc:
-                            raise ValueError('Mixed save generation')
-                    if identity[2]>best:
-                        best=identity[2];town=files[names[0]];best_day=struct.unpack_from('<i',town,40)[0]
-                        if identity[0]>=4:
-                            at=48
-                            for _ in range(2):at+=4+struct.unpack_from('<I',town,at)[0]*4
-                            terrain_hash=__import__('hashlib').sha256(town[48:at]).hexdigest()
-                            for _ in range(6):at+=8;at+=4+struct.unpack_from('<I',town,at)[0]*4;at+=8
-                            for _ in range(2):at+=4+struct.unpack_from('<I',town,at)[0]*24
-                            active=struct.unpack_from('<I',town,at)[0];profiles=[]
-                            for name in names[3:]:
-                                part=files[name];length=struct.unpack_from('<I',part,160)[0]
-                                label=''.join(chr(struct.unpack_from('<I',part,164+i*4)[0]) for i in range(length))
-                                profiles.append({'name':label,'created':struct.unpack_from('<I',part,28)[0],'wallet':struct.unpack_from('<I',part,40)[0],'species':struct.unpack_from('<I',part,44)[0]})
-                            plots=[dict(zip(('placed','x','z'),struct.unpack_from('<3i',files[names[1]],28+i*12))) for i in range(4)]
-                            profile_hashes=[__import__('hashlib').sha256(files[name][28:-4]).hexdigest() for name in names[3:]]
-                            best_details={'sequence':best,'active':active,'profiles':profiles,'profile_payload_sha256':profile_hashes,'plots':plots,'terrain_sha256':terrain_hash,'houses_sha256':__import__('hashlib').sha256(files[names[1]][28:-4]).hexdigest()}
+                    try:
+                        names=[f'AT-{kind}{bank}' for kind in ('Town','Houses','Shops','Player')]
+                        commit_name=f'AT-Commit{bank}'
+                        if commit_name not in files:continue
+                        commit=files[commit_name];identity=record(commit,4)
+                        if identity[0]>=4:names.extend(f'AT-Villager{slot}-{bank}' for slot in (2,3,4))
+                        runtime=None
+                        if identity[0]==5:
+                            if len(commit)!=192:continue
+                            bases=['AT-Town','AT-Houses','AT-Shops','AT-Player','AT-Villager2-','AT-Villager3-','AT-Villager4-','AT-Residents']
+                            names=[]
+                            for i,base in enumerate(bases):
+                                kind,copy,sequence,length,crc=struct.unpack_from('<5I',commit,28+i*20)
+                                if kind!=(i if i<4 else i+1) or copy>1 or sequence>identity[2]:raise ValueError('Invalid save reference')
+                                selected=None
+                                for candidate in (copy,1-copy):
+                                    name=base+str(candidate)
+                                    try:
+                                        part=files[name];pi=record(part,kind)
+                                        if pi[:4]!=(4,identity[1],sequence,identity[3]) or len(part)!=length or pi[4]!=crc:continue
+                                        selected=name;break
+                                    except (KeyError,ValueError,struct.error):continue
+                                if selected is None:raise ValueError('Missing exact referenced revision')
+                                if i==7:runtime=files[selected]
+                                else:names.append(selected)
+                            if len(runtime)!=300:raise ValueError('Invalid resident runtime size')
+                        else:
+                            if len(commit)!=32+8*len(names) or not all(name in files for name in names):continue
+                            for kind,name in enumerate(names):
+                                part=files[name];part_identity=record(part,kind if kind<4 else kind+1)
+                                expected_length,expected_crc=struct.unpack_from('<II',commit,28+kind*8)
+                                if part_identity[:4]!=identity[:4] or len(part)!=expected_length or part_identity[4]!=expected_crc:
+                                    raise ValueError('Mixed save generation')
+                        if identity[2]>best:
+                            best=identity[2];town=files[names[0]];best_day=struct.unpack_from('<i',town,40)[0]
+                            if identity[0]>=4:
+                                at=48
+                                for _ in range(2):at+=4+struct.unpack_from('<I',town,at)[0]*4
+                                terrain_hash=__import__('hashlib').sha256(town[48:at]).hexdigest()
+                                for _ in range(6):at+=8;at+=4+struct.unpack_from('<I',town,at)[0]*4;at+=8
+                                for _ in range(2):at+=4+struct.unpack_from('<I',town,at)[0]*24
+                                active=struct.unpack_from('<I',runtime,124)[0] if runtime is not None else struct.unpack_from('<I',town,at)[0];profiles=[]
+                                for name in names[3:]:
+                                    part=files[name];length=struct.unpack_from('<I',part,160)[0]
+                                    label=''.join(chr(struct.unpack_from('<I',part,164+i*4)[0]) for i in range(length))
+                                    profiles.append({'name':label,'created':struct.unpack_from('<I',part,28)[0],'wallet':struct.unpack_from('<I',part,40)[0],'species':struct.unpack_from('<I',part,44)[0]})
+                                plots=[dict(zip(('placed','x','z'),struct.unpack_from('<3i',files[names[1]],28+i*12))) for i in range(4)]
+                                profile_hashes=[__import__('hashlib').sha256(files[name][28:-4]).hexdigest() for name in names[3:]]
+                                best_details={'sequence':best,'active':active,'profiles':profiles,'profile_payload_sha256':profile_hashes,'plots':plots,'terrain_sha256':terrain_hash,'houses_sha256':__import__('hashlib').sha256(files[names[1]][28:-4]).hexdigest()}
+                    except (ValueError,KeyError,UnicodeError,struct.error):continue
             except (ValueError,UnicodeError,struct.error):continue
     if expected_day is not None and best_day!=expected_day:
         raise AssertionError(f'Explicit save did not retain the new rollover day: expected {expected_day}, got {best_day}')

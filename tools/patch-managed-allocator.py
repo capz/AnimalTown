@@ -96,6 +96,7 @@ extern int animaltown_mesh_recycle(int,DndArray*,int,DndArray*,int);
         'View':(0,'return animaltown_terrain_view();'),
         'Bind':(2,'return animaltown_terrain_bind((int){0},(int){1});'),
         'Unbind':(1,'return animaltown_terrain_unbind((int){0});'),
+        'Cache':(1,'return animaltown_terrain_cache((int){0});'),
         'Stat':(1,'return animaltown_terrain_stat((int){0});')}
     for method,(count,body) in archive.items():
         pattern=r'intptr_t (dnd_value_AnimalTown_GameCube_NativeTerrain_'+method+r'_[a-z0-9]+)\(([^)]*)\) \{.*?\n\}'
@@ -111,5 +112,16 @@ extern int animaltown_terrain_view(void);
 extern int animaltown_terrain_bind(int,int);
 extern int animaltown_terrain_unbind(int);
 extern int animaltown_terrain_stat(int);
+extern int animaltown_terrain_cache(int);
 '''+text
     generated.write_text(text)
+    # Persistence runs during blocking save/load screens. Keep these AOT
+    # functions compact and out of gameplay's O3 inlining budget: their text
+    # shares the same 24 MiB MEM1 as card buffers and the full GX cache.
+    persistence=r'(?m)^(intptr_t dnd_value_AnimalTown_Domain_AnimalTown_(?:SaveCodec|SplitSaveCodec|ProfileCodec|SaveRepository|IncrementalSaveCodec)_[^;\n]*\) \{)'
+    text,compact_count=re.subn(persistence,r'__attribute__((noinline,optimize("Os"))) \1',text)
+    assert compact_count>=30, 'Persistence AOT function boundaries changed'
+    for codec in ('SaveCodec','SplitSaveCodec','ProfileCodec','SaveRepository','IncrementalSaveCodec'):
+        assert re.search(r'__attribute__.*dnd_value_AnimalTown_Domain_AnimalTown_'+codec+r'_',text), 'Missing compact persistence codec: '+codec
+    generated.write_text(text)
+    print('Persistence: '+str(compact_count)+' cold AOT functions compiled for size; gameplay optimization retained')

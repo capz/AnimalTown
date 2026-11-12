@@ -285,22 +285,28 @@ internal sealed class TownGame : IDisposable
         if(damagedSave){saveStatus="Damaged saves preserved. Use another card.";return;}
         string previousScreen=screen;screen="saving";Draw();screen=previousScreen;
         uiShapes.Trim();
-        string phase="mount";
+        bool terrainSuspended=false;string phase="mount";
         try
         {
+            phase="terrain cache";terrainSuspended=terrain.SuspendForSave();phase="mount";
             if(card==null)card=MemoryCard.Mount(StorageDevice.MemoryCardSlotA,new MemoryCardIdentity("AMTE","01"));
             phase="encode";
             state.Facing=facingYaw;
             phase="save set";
-            new SaveRepository(new CardSaveStorage(card,banner,icon)).Save(state);
-            saveStatus="Saved / "+BuildInfo.Version;
+            var repository=new SaveRepository(new CardSaveStorage(card,banner,icon));repository.Save(state);
+            saveStatus=repository.LastWrittenRecords==0?"No changes to save.":"Saved / "+BuildInfo.Version;
+            DebugOverlay.WriteLine("SAVE: "+repository.LastWrittenRecords+" records / "+repository.LastWrittenBytes+" bytes");
         }
         catch(Exception error){
             // Built-in native exceptions may have no managed message. The
             // recovery screen must remain usable even after an allocation fails.
             string detail=error.Message??"Native save error (no message)";if(detail.Length>64)detail=detail.Substring(0,61)+"...";
             saveStatus="Save failed: "+detail;
-            DebugOverlay.WriteLine("SAVE ERROR: "+phase+" (code "+NativeCalendar.CardError()+"): "+detail);card?.Dispose();card=null;
+            DebugOverlay.WriteLine("SAVE ERROR: "+phase+" (code "+NativeCalendar.CardError()+"): "+detail);
+        }
+        finally{
+            try{card?.Dispose();}catch(Exception error){DebugOverlay.WriteLine("CARD CLOSE: "+(error.Message??"Native close error"));}
+            card=null;if(terrainSuspended)terrain.ResumeAfterSave();
         }
     }
     private void Say(string name,string text){dialogueVoice.Begin();voiceTick=0;returnToMenu=screen=="menu"&&(menuTab==SettingsTab||menuTab==TestingTab);if(returnToMenu){returnMenuTab=menuTab;returnMenuSelection=selected;}speaker=name;message=text;wrappedDialogue=dialogueText.Get(text);typeAt=0;screen="dialogue";}
