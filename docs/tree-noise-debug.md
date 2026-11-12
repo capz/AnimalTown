@@ -29,3 +29,7 @@ reusing the texture. Season changes reuse its strength/scale. All updates happen
 outside rendering passes. Unchanged settings cause no uploads, allocations or
 extra draw calls. Superseded textures/meshes are disposed, and town teardown
 releases the current resources.
+
+Before card I/O, the game releases optional cached UI geometry to make room for
+transaction buffers in MEM1. Pending shape work is cancelled and visible shapes
+rebuild on demand afterwards. This also applies to normal explicit town saves.

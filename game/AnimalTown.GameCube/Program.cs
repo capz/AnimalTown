@@ -284,6 +284,7 @@ internal sealed class TownGame : IDisposable
         if(screen!="menu"||menuTab!=SettingsTab||selected!=0)return;
         if(damagedSave){saveStatus="Damaged saves preserved. Use another card.";return;}
         string previousScreen=screen;screen="saving";Draw();screen=previousScreen;
+        uiShapes.Trim();
         string phase="mount";
         try
         {
@@ -299,7 +300,7 @@ internal sealed class TownGame : IDisposable
             // recovery screen must remain usable even after an allocation fails.
             string detail=error.Message??"Native save error (no message)";if(detail.Length>64)detail=detail.Substring(0,61)+"...";
             saveStatus="Save failed: "+detail;
-            DebugOverlay.WriteLine("SAVE ERROR: "+phase+" (code "+NativeCalendar.CardError()+"): "+detail);card=null;
+            DebugOverlay.WriteLine("SAVE ERROR: "+phase+" (code "+NativeCalendar.CardError()+"): "+detail);card?.Dispose();card=null;
         }
     }
     private void Say(string name,string text){dialogueVoice.Begin();voiceTick=0;returnToMenu=screen=="menu"&&(menuTab==SettingsTab||menuTab==TestingTab);if(returnToMenu){returnMenuTab=menuTab;returnMenuSelection=selected;}speaker=name;message=text;wrappedDialogue=dialogueText.Get(text);typeAt=0;screen="dialogue";}
@@ -494,9 +495,9 @@ internal sealed class TownGame : IDisposable
             case 24:renderDebug.CycleWaterStyle();break;
             case 25:debugConfig.Adjust(DevConfig.TreeNoiseStrength,1);break;
             case 26:debugConfig.Adjust(DevConfig.TreeNoiseScale,1);break;
-            case 27:card?.Dispose();card=null;DevConfigStorage.Save(debugConfig);Say("Tree noise",DevConfigStorage.Status);break;
+            case 27:uiShapes.Trim();card?.Dispose();card=null;DevConfigStorage.Save(debugConfig);Say("Tree noise",DevConfigStorage.Status);break;
             case 28:
-                card?.Dispose();card=null;
+                uiShapes.Trim();card?.Dispose();card=null;
                 var saved=DevConfigStorage.Load();
                 debugConfig.Values[DevConfig.TreeNoiseStrength]=saved.Values[DevConfig.TreeNoiseStrength];
                 debugConfig.Values[DevConfig.TreeNoiseScale]=saved.Values[DevConfig.TreeNoiseScale];

@@ -23,6 +23,13 @@ internal static class UiShapePlanChecks
         plan.Request(168,141,30,true);plan.BeginFrame("menu",0,false);
         check(!plan.HasWork&&plan.TakePending()==-1,"disabling batches cancels pending native creation");
 
+        var io=new UiShapePlan();io.BeginFrame("menu",6,true);
+        int resident=io.Request(550,350,30,true,true);io.TakePending();io.Complete(resident);io.Request(24,24,12,false);
+        io.BeginFrame("card-io",-1,false);io.Remove(resident);
+        check(!io.HasWork,"card I/O trimming cancels pending UI work before evicting resident geometry");
+        io.BeginFrame("menu",6,true);int rebuilt=io.Request(550,350,30,true,true);
+        check(io.PendingCount==1&&io.TakePending()==rebuilt,"the same visible panel is safely requested for rebuilding after card I/O");io.Complete(rebuilt);
+        check(io.Request(550,350,30,true,true)==rebuilt&&!io.HasWork,"rebuilt panels return to the allocation-free warm path");
         var collisions=new UiShapePlan();collisions.BeginFrame("menu",0,true);var ids=new int[64];
         for(int i=0;i<64;i++)ids[i]=collisions.Request(10+64*i,40,10,false);
         check(collisions.PendingCount==64,"colliding shape keys retain the bounded full capacity");
