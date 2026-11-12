@@ -1,9 +1,16 @@
 # Resident model memory
 
+The ARAM residency path uses complete SDK model packages for villagers and does
+not call `NativeModels.Retain`: compact packages disable snapshot/restore.
+Villagers are registered with `ModelResidency` instead. The compaction mechanism
+and measurements below describe the permanently resident policy; its 2.52 MiB
+saving must not be counted alongside ARAM paging. Static buildings still use
+their separate retention path. See [ARAM model residency](aram-model-residency.md).
+
 The six resident villagers previously kept their embedded texture payloads in
 the DNMD package after the renderer had acquired separate shared GX texture
 storage. Retaining both copies exhausted MEM1 when enabling the 150 KiB water
-capture. The game now compacts each model immediately after asynchronous load
+capture. The permanently resident policy compacts each model after asynchronous load
 completes and before creating its first instance.
 
 `NativeModels.Retain` keeps geometry, indices, skin bindings and animation tracks,

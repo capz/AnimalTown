@@ -86,9 +86,12 @@ extern int animaltown_mesh_recycle(int,DndArray*,int,DndArray*,int);
     text=re.sub(bridge,r'intptr_t \1(intptr_t a0) { int32_t token=0;if(!a0)return -1;memcpy(&token,(uint8_t*)a0+sizeof(DndObject),4);return animaltown_building_retain(token); }',text,flags=re.S)
     text='extern int animaltown_building_retain(int);\n'+text
     bridge=r'intptr_t (dnd_value_AnimalTown_GameCube_NativeModels_Retain_[a-z0-9]+)\(intptr_t a0\) \{.*?\n\}'
-    assert len(re.findall(bridge,text,re.S))==1, 'Pinned resident model retention bridge changed'
-    text=re.sub(bridge,r'intptr_t \1(intptr_t a0) { int32_t token=0;if(!a0)return -1;memcpy(&token,(uint8_t*)a0+sizeof(DndObject),4);return animaltown_model_retain(token); }',text,flags=re.S)
-    text='extern int animaltown_model_retain(int);\n'+text
+    # ARAM paging keeps full packages and trims this unused permanent-retention
+    # facade. Preserve strict validation when the facade is actually emitted.
+    if 'dnd_value_AnimalTown_GameCube_NativeModels_Retain_' in text:
+        assert len(re.findall(bridge,text,re.S))==1, 'Pinned resident model retention bridge changed'
+        text=re.sub(bridge,r'intptr_t \1(intptr_t a0) { int32_t token=0;if(!a0)return -1;memcpy(&token,(uint8_t*)a0+sizeof(DndObject),4);return animaltown_model_retain(token); }',text,flags=re.S)
+        text='extern int animaltown_model_retain(int);\n'+text
     generated.write_text(text)
     # Mesh.Token is an internal SDK field. Pin its actual generated getter
     # layout before exposing only the token to the game's archive bridge.
