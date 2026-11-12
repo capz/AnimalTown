@@ -58,7 +58,7 @@ Run the same copied regression card and ISO for each comparison:
 ```sh
 docker run --rm --init --shm-size=512m \
   --mount type=bind,src="$PWD",dst=/work -w /work animaltown-dolphin \
-  python3 tools/iso-smoke.py out/AnimalTown-VERSION.iso out/movement \
+  python3 tools/iso-smoke.py out/AnimalTown-VERSION.nkit.iso out/movement \
   --movement-profile --profile-seconds 8
 python3 tools/read-frame-profile.py out/movement/user/Dump/Frames/*.avi --check-movement
 ```

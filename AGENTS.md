@@ -13,9 +13,11 @@ temporary Actions artifacts. Use `tools/publish-release.ps1` after clean game an
 backend builds of the same commit. The main-branch release workflow does this
 automatically after its checks pass.
 
-Every console build must produce the full-size bootable ISO with game title,
-commit identity, disc banner and save banner/icon. Publish the full ISO and compact
-NKit ISO directly, without ZIP wrappers, alongside the
+Every console build must deliver only the compact bootable NKit ISO with game
+title, commit identity, disc banner and save banner/icon. Full-size source and
+round-trip ISOs are temporary conversion files and must be deleted after
+verification, including on failure. Publish the NKit ISO directly, without a ZIP
+wrapper, alongside the
 separate backend archive, revision manifest and SHA-256 checksums. Keep development
 builds marked as prereleases and report hardware validation honestly.
 

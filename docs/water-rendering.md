@@ -199,7 +199,7 @@ inspection. It never modifies terrain or saves. L+R+D-pad Up still opens the
 existing eight-piece cliff gallery.
 
 ```sh
-docker run --rm --init --shm-size=512m --mount "type=bind,src=$PWD,dst=/work" -w /work animaltown-dolphin python3 tools/iso-smoke.py out/AnimalTown-VERSION.iso out/river-coast-smoke --river-coast
+docker run --rm --init --shm-size=512m --mount "type=bind,src=$PWD,dst=/work" -w /work animaltown-dolphin python3 tools/iso-smoke.py out/AnimalTown-VERSION.nkit.iso out/river-coast-smoke --river-coast
 ```
 
 Inspect river.png, river-corner.png, bridge.png, coast-beach.png, estuary.png,

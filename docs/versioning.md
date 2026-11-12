@@ -91,12 +91,11 @@ uploaded asset hashes and idempotent publication remain enforced.
 The game display, disc metadata, archives and release tags use the same identity:
 
 ```text
-AnimalTown-0.11.12.iso
 AnimalTown-0.11.12.nkit.iso
 AnimalTown-server-0.11.12.zip
 v0.11.12
 
-AnimalTown-0.11.12+a1b2c3d4e5f6.iso
+AnimalTown-0.11.12+a1b2c3d4e5f6.nkit.iso
 AnimalTown-server-0.11.12+a1b2c3d4e5f6.zip
 v0.11.12+a1b2c3d4e5f6
 ```
