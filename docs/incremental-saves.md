@@ -68,6 +68,11 @@ Cold terrain baking uses a 96 KiB coalescer scratch buffer; the full rendering
 cache is allocated only after baking scratch meshes have retired. This reduces
 startup peak MEM1 use by 928 KiB without changing the gameplay cache budget.
 
+Native persistence functions are compiled for size with explicit function
+boundaries. This keeps save/load code out of gameplay inlining and preserves
+MEM1 for card buffers and the full terrain rendering cache. Gameplay keeps its
+normal optimization level.
+
 During the blocking in-game Save action, the renderer releases its rebuildable
 1 MiB GX terrain working cache before card mount/I/O. Immutable geometry stays
 in ARAM. The card is closed before restoring that cache; visible views rebind
