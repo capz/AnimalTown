@@ -7,7 +7,8 @@ public sealed class CliffShadowMap
     public const int TextureSize=512,TexelsPerMetre=2,Opacity=66;
     public const float SunX=.6f,SunZ=.4f;
     public readonly byte[] Chunk=new byte[32];
-    private readonly bool[] candidates=new bool[Town.Cells];
+    // One bit per cell; the candidate pass never needs counts or ordering.
+    private readonly uint[] candidates=new uint[(Town.Cells+31)/32];
     private Town town=null!;
     private int sourceCell,tile;
     private const int Columns=(Town.Width*TexelsPerMetre+2+7)/8,Rows=(Town.Height*TexelsPerMetre+2+3)/4;
@@ -25,7 +26,7 @@ public sealed class CliffShadowMap
                 int cell=sourceCell++,x=cell%Town.Width,z=cell/Town.Width;
                 if(TerrainElevation.Mode(town,x,z)==0&&!WaterTerrain.IsCoast(town.At(x,z)))continue;
                 // A two-metre cliff reaches at most 1.2m east and .8m south.
-                for(int dz=0;dz<=1;dz++)for(int dx=0;dx<=2;dx++)if(town.Inside(x+dx,z+dz))candidates[(z+dz)*Town.Width+x+dx]=true;
+                for(int dz=0;dz<=1;dz++)for(int dx=0;dx<=2;dx++)if(town.Inside(x+dx,z+dz))Mark((z+dz)*Town.Width+x+dx);
             }
             return false;
         }
@@ -34,7 +35,7 @@ public sealed class CliffShadowMap
             int at=tile++,tx=at%Columns,tz=at/Columns;
             bool wanted=false;
             for(int z=Math.Max(0,tz*2-1);z<=Math.Min(Town.Height-1,tz*2+1)&&!wanted;z++)
-                for(int x=Math.Max(0,tx*4-1);x<=Math.Min(Town.Width-1,tx*4+3);x++)if(candidates[z*Town.Width+x]){wanted=true;break;}
+                for(int x=Math.Max(0,tx*4-1);x<=Math.Min(Town.Width-1,tx*4+3);x++)if(Candidate(z*Town.Width+x)){wanted=true;break;}
             if(!wanted)continue;
             Array.Clear(Chunk,0,Chunk.Length);
             for(int y=0;y<4;y++)for(int x=0;x<8;x++){
@@ -50,6 +51,8 @@ public sealed class CliffShadowMap
         }
         return tile>=Columns*Rows;
     }
+    private void Mark(int cell)=>candidates[cell>>5]|=1u<<(cell&31);
+    private bool Candidate(int cell)=>(candidates[cell>>5]&(1u<<(cell&31)))!=0;
     public static bool Blocked(Town town,float x,float z)
     {
         if(x<0||z<0||x>=Town.Width||z>=Town.Height||town.At((int)x,(int)z)==(int)Terrain.Building)return false;

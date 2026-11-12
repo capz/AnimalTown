@@ -19,7 +19,8 @@ public sealed class VillagerNavigation
     public readonly Route[] Routes=new Route[6];
     public readonly bool[] Paused=new bool[6];
     private readonly ushort[] parent=new ushort[Town.Cells],queue=new ushort[Town.Cells];
-    private readonly bool[] trees=new bool[Town.Cells];
+    // One occupancy bit per cell; six agents share this exact obstacle map.
+    private readonly uint[] trees=new uint[(Town.Cells+31)/32];
     private readonly int[] localParent=new int[169],localQueue=new int[169];
     private GameState? state;private int worker=-1,front,back,start,tick,treeCount=-1,placedCount=-1,plotStamp;
     public int LastExpansions,LocalPlans;
@@ -33,8 +34,8 @@ public sealed class VillagerNavigation
         }
         tick++;LastExpansions=0;var town=game.Town;
         if(treeCount!=town.GroundCount||placedCount!=town.PlacedCount||plotStamp!=town.HouseZ*Town.Width+town.HouseX||tick%30==1){
-            Array.Clear(trees,0,trees.Length);for(int i=0;i<town.GroundCount;i++){var g=town.Ground[i];if(g.Kind==3&&town.Inside(g.X,g.Z))trees[g.Z*Town.Width+g.X]=true;}
-            for(int i=0;i<town.PlacedCount;i++){var p=town.Placed[i];if(p.Room!=0)continue;int w=Catalog.Items[p.Item].Width,h=Catalog.Items[p.Item].Height;if((p.Rotation&1)!=0){int swap=w;w=h;h=swap;}for(int z=p.Z;z<p.Z+h;z++)for(int x=p.X;x<p.X+w;x++)if(town.Inside(x,z))trees[z*Town.Width+x]=true;}
+            Array.Clear(trees,0,trees.Length);for(int i=0;i<town.GroundCount;i++){var g=town.Ground[i];if(g.Kind==3&&town.Inside(g.X,g.Z))MarkTree(g.Z*Town.Width+g.X);}
+            for(int i=0;i<town.PlacedCount;i++){var p=town.Placed[i];if(p.Room!=0)continue;int w=Catalog.Items[p.Item].Width,h=Catalog.Items[p.Item].Height;if((p.Rotation&1)!=0){int swap=w;w=h;h=swap;}for(int z=p.Z;z<p.Z+h;z++)for(int x=p.X;x<p.X+w;x++)if(town.Inside(x,z))MarkTree(z*Town.Width+x);}
             treeCount=town.GroundCount;placedCount=town.PlacedCount;plotStamp=town.HouseZ*Town.Width+town.HouseX;
         }
         if(worker>=0&&Paused[worker])worker=-1;
@@ -74,9 +75,10 @@ public sealed class VillagerNavigation
         if(TerrainElevation.Mode(town,ax,az)==0&&TerrainElevation.Mode(town,bx,bz)==0)return true;
         return TerrainElevation.Traverse(town,ax+.5f,az+.5f,bx+.5f,bz+.5f);
     }
+    private void MarkTree(int cell){trees[cell/32]|=1u<<(cell%32);}
     private bool Blocked(int x,int z,int agent,bool people)
     {
-        var town=state!.Town;if(!town.Walkable(x,z)||trees[z*Town.Width+x])return true;
+        var town=state!.Town;if(!town.Walkable(x,z))return true;int cell=z*Town.Width+x;if((trees[cell/32]&(1u<<(cell%32)))!=0)return true;
         if(state.HomeBlocks(x,z))return true;
         if(people){for(int i=0;i<6;i++)if(i!=agent){var v=town.Residents[i];if(v.Space==0&&Math.Abs(v.PosX-x-.5f)<.7f&&Math.Abs(v.PosZ-z-.5f)<.7f)return true;}
             if(state.Space==0&&Math.Abs(state.X-x-.5f)<.7f&&Math.Abs(state.Z-z-.5f)<.7f)return true;}

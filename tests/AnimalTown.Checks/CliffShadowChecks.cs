@@ -48,6 +48,24 @@ internal static class CliffShadowChecks
         check(!CliffShadowMap.Blocked(t,40.75f,41.25f)&&CliffShadowMap.Blocked(t,41.25f,41.25f),"coastal land and water halves keep independent receiver heights");
         Array.Fill(t.Tiles,(byte)Terrain.Grass);Bake();
         check(!map.HasCoverage&&packed.All(x=>x==0),"terrain removal rebuilds a completely clear mask");
+        long before=GC.GetAllocatedBytesForCurrentThread();var compact=new CliffShadowMap();
+        check(GC.GetAllocatedBytesForCurrentThread()-before<4096,"cliff candidates use a bounded bitmap rather than a town-sized byte grid");
+        GC.KeepAlive(compact);
+        // Compare rendered coverage with direct rays around both sides of a bit
+        // word, the first cell and the last rows/columns. The oracle bypasses
+        // candidate selection, so a lost bit would leave a visible mismatch.
+        var blocks=new[]{(0,0),(31,16),(32,42),(159,158),(158,159)};
+        foreach(var (x,z) in blocks)t.Elevation[z*Town.Width+x]=TerrainElevation.Block;
+        Bake();
+        foreach(var (bx,bz) in blocks){
+            for(int z=Math.Max(0,bz*2-2);z<Math.Min(Town.Height*2,bz*2+7);z++)for(int x=Math.Max(0,bx*2-2);x<Math.Min(Town.Width*2,bx*2+9);x++){
+                float wx=(x-.5f)/CliffShadowMap.TexelsPerMetre,wz=(z-.5f)/CliffShadowMap.TexelsPerMetre;int hits=0;
+                foreach(float dz in new[]{-.125f,.125f})foreach(float dx in new[]{-.125f,.125f})if(CliffShadowMap.Blocked(t,wx+dx,wz+dz))hits++;
+                check(Pixel(x,z)==hits*CliffShadowMap.Opacity/4,"bit-packed candidate selection retains exact edge and word-boundary mask bytes");
+            }
+        }
+        Array.Clear(t.Elevation);Bake();
+        check(!map.HasCoverage&&packed.All(x=>x==0),"reusing a candidate bitmap clears every word after terrain removal");
         check(!CliffShadowMap.Blocked(t,-.1f,1)&&!CliffShadowMap.Blocked(t,Town.Width,1),"outside-world sampling is safe");
     }
 }
