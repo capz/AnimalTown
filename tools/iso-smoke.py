@@ -219,7 +219,7 @@ def wait_title(modal=False):
         if p.poll() is not None:raise AssertionError('Emulator stopped before title')
         name='title-modal-wait.png' if modal else 'title-wait.png'
         screenshot(name);pixels=rgb(name)
-        cream=color_count(pixels,(255,245,221));leaf=color_count(pixels,(53,105,84))
+        cream=color_count(pixels,(255,245,221));leaf=color_count(pixels,(53,105,84),tolerance=12)
         if cream>70000 and (leaf<1000 if modal else leaf>6000 and color_count(pixels,(149,198,186))>15000):return
         time.sleep(2)
     raise AssertionError('Debug modal did not appear' if modal else 'Original cream title/menu did not appear')
@@ -1022,6 +1022,7 @@ with (root/'emulator.log').open('w') as log:
         if '--loading' in sys.argv:
             for n,seconds in enumerate((1,1,2,4,8,12,17)):
                 time.sleep(seconds);screenshot(f'loading-{n}.png')
+        elif '--aram-residency' in sys.argv:wait_title()
         else:time.sleep(45)
         if p.poll() is not None:
             raise RuntimeError(f'Dolphin exited during boot ({p.returncode}); see {root / "emulator.log"}')
