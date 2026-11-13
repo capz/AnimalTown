@@ -55,12 +55,22 @@ def start_display():
 def rgb(name):
     return subprocess.check_output(['ffmpeg','-v','error','-i',str(root/name),'-frames:v','1','-f','rawvideo','-pix_fmt','rgb24','-'])
 
+def fill_matches(pixel,color,tolerance=5):
+    # Default UI grain multiplies fill RGB by an I8 sample of 226..255;
+    # alpha/text stay unchanged. Compare hue along that brightness range,
+    # allowing a small margin for GX integer rounding and filtered samples.
+    peak=max(color)
+    if peak==0:return max(pixel)<=tolerance
+    scale=max(pixel)/peak
+    return .85<=scale<=1.02 and all(abs(pixel[c]-value*scale)<=tolerance
+        for c,value in enumerate(color))
+
 def color_count(pixels,color,tolerance=5):
-    return sum(all(abs(pixels[i+c]-value)<=tolerance for c,value in enumerate(color))
+    return sum(fill_matches(pixels[i:i+3],color,tolerance)
                for i in range(0,len(pixels),3))
 
 def region_color_count(pixels,color,left,top,right,bottom,tolerance=5):
-    return sum(all(abs(pixels[(y*800+x)*3+c]-value)<=tolerance for c,value in enumerate(color))
+    return sum(fill_matches(pixels[(y*800+x)*3:(y*800+x)*3+3],color,tolerance)
                for y in range(top,bottom) for x in range(left,right))
 
 def runtime_log_text():
@@ -834,8 +844,8 @@ def aram_residency_scenario():
         raise AssertionError('Separate dev config item did not persist terrain option '+str(expected))
     def title_terrain_row(name,pressed=press):
         pressed('D_DOWN');pressed('D_DOWN');pressed('A');wait_title(modal=True)
-        # The terrain-cache option is the final persisted setting.
-        pressed('D_UP');screenshot(name+'.png') # config index 29
+        # The appended session-only UI grain control follows persisted options.
+        pressed('D_UP');pressed('D_UP');screenshot(name+'.png') # config index 29
     def inspect(indoors=False):
         nonlocal building_inspections
         os.write(controller,b'PRESS L\nPRESS R\n');time.sleep(.2);press('A');os.write(controller,b'RELEASE L\nRELEASE R\n')
@@ -899,9 +909,9 @@ def aram_residency_scenario():
     baseline=len(logs());enter('aram-flag-off');guest('flag-off-indoor-steady',16)
     if 'ANIMALTOWN TERRAIN CACHE SUSPENDED' in logs()[baseline:]:raise AssertionError('Default-off terrain option suspended the cache')
     screenshot('aram-flag-off-indoor.png');leave('aram-flag-off-exited')
-    # Testing has 30 rows; Up wraps to terrain-cache row 29 after tree settings.
-    press('START');press('R');press('D_UP');screenshot('aram-game-row29-off.png');press('A')
-    report['ingame_saved_config']=config(True);screenshot('aram-game-row29-on.png');press('B')
+    # Testing has 31 rows; Up wraps to new row 30 after tree and UI grain rows.
+    press('START');press('R');press('D_UP');screenshot('aram-game-row30-off.png');press('A')
+    report['ingame_saved_config']=config(True);screenshot('aram-game-row30-on.png');press('B')
     cold=len(logs());enter('aram-flag-on');guest('flag-on-indoor-steady',6)
     suspended=wait_log(r'ANIMALTOWN TERRAIN CACHE SUSPENDED cache bytes (\d+) reclaimed bytes (\d+) archive bytes (\d+)',cold)
     if tuple(map(int,suspended.groups()[:2]))!=(0,1048576):raise AssertionError('Terrain cache did not physically release exactly 1 MiB')

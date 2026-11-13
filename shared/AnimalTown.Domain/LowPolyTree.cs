@@ -76,14 +76,21 @@ public sealed class LowPolyTree
     public const int DetailEdge=32,DetailBytes=1440;
     // One shared opaque GX I8 texture with a complete box-filtered mip chain.
     // A fixed toroidal grid supplies soft mottling, plus restrained fine grain.
-    public static byte[] DetailTexture(int strengthPercent=100)
+    // UI fills opt into independent uniform samples instead of the coarse grid.
+    // At the 30% UI default, darkening spans 0..29/255 (about 11%).
+    public static byte[] DetailTexture(int strengthPercent=100,bool uniform=false)
     {
         if(strengthPercent<0||strengthPercent>300)throw new ArgumentOutOfRangeException("strengthPercent");
         var result=new byte[32+DetailBytes];
         Write(result,0,0x58544e44);Write(result,4,2);Write(result,8,1);
         Write(result,12,DetailEdge);Write(result,16,DetailEdge);Write(result,20,DetailBytes);Write(result,24,6);
         var level=new byte[DetailEdge*DetailEdge];
+        int uniformRange=Math.Min(255,(95*strengthPercent+50)/100)+1;
         for(int y=0;y<DetailEdge;y++)for(int x=0;x<DetailEdge;x++){
+            if(uniform){
+                level[y*DetailEdge+x]=(byte)(255-GrainHash(x+17,y+31)%(uint)uniformRange);
+                continue;
+            }
             int gx=x/8,gy=y/8,fx=x%8,fy=y%8;
             int top=Grain(gx,gy)*(8-fx)+Grain((gx+1)%4,gy)*fx;
             int bottom=Grain(gx,(gy+1)%4)*(8-fx)+Grain((gx+1)%4,(gy+1)%4)*fx;
