@@ -61,16 +61,16 @@ internal static class DevConfigChecks
         TexturePixels.Validate(texture);
         check(texture.Length==1472&&TexturePixels.Int(texture,24)==6&&TexturePixels.Int(texture,8)==1,"uniform UI grain retains the 1440-byte opaque I8 mip budget");
         check(texture.SequenceEqual(LowPolyTree.DetailTexture(UiNoiseSettings.DefaultPercent,uniform:true)),"UI grain remains fixed across preparations");
-        var samples=new int[1024];var histogram=new int[34];double mean=0;
+        var samples=new int[1024];var histogram=new int[30];double mean=0;
         for(int y=0;y<32;y++)for(int x=0;x<32;x++){
             uint pixel=TexturePixels.Pixel(texture,x,y);int dark=255-(int)(pixel>>24);
-            check((pixel&255)==255&&dark>=0&&dark<=33,"default UI grain preserves alpha and the selected 13-percent maximum darkening");
+            check((pixel&255)==255&&dark>=0&&dark<=29,"default UI grain preserves alpha and the selected 11-percent maximum darkening");
             samples[y*32+x]=dark;histogram[dark]++;mean+=dark/1024.0;
         }
-        double expected=1024.0/34,chiSquared=0,variance=0;
+        double expected=1024.0/30,chiSquared=0,variance=0;
         foreach(int count in histogram)chiSquared+=(count-expected)*(count-expected)/expected;
         foreach(int value in samples)variance+=(value-mean)*(value-mean)/1024;
-        check(histogram.All(count=>count>0)&&Math.Abs(mean-16.5)<1&&chiSquared<65,"UI texels fill the uniform intensity range without the old central concentration");
+        check(histogram.All(count=>count>0)&&Math.Abs(mean-14.5)<1&&chiSquared<65,"UI texels fill the uniform intensity range without the old central concentration");
         // Include tile seams and the old coarse-grid spacing, not just a histogram:
         // spatially sorted uniform values would still produce visible clumps.
         foreach(var lag in new[]{(1,0),(0,1),(1,1),(8,0),(0,8)}){
@@ -90,7 +90,7 @@ internal static class DevConfigChecks
         }
         check(offset==texture.Length,"uniform mip payload contains no missing or extra blocks");
         check(LowPolyTree.DetailTexture(0,uniform:true).Skip(32).All(value=>value==255),"disabled uniform grain is an identity at every mip");
-        foreach(int strength in new[]{5,35,100,300}){
+        foreach(int strength in new[]{5,30,35,100,300}){
             byte[] level=LowPolyTree.DetailTexture(strength,uniform:true);TexturePixels.Validate(level);
             int darkest=255,brightest=0;
             for(int y=0;y<32;y++)for(int x=0;x<32;x++){int value=(int)(TexturePixels.Pixel(level,x,y)>>24);darkest=Math.Min(darkest,value);brightest=Math.Max(brightest,value);}

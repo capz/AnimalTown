@@ -9,13 +9,13 @@ matches can still occur. Tree noise is unchanged.
 
 **UI bubble noise** appears at the bottom of both Debug configuration and
 START → Debug / testing. Left/Right or A adjusts intensity in 5% steps from
-0–300%; Z restores the restrained 35% default. 0% uses the original flat fills.
+0–300%; Z restores the restrained 30% default. 0% uses the original flat fills.
 The value is session-only, surviving screen transitions but resetting when the
 application starts. It is absent from `dev_config` and every town save record;
 changing only this title option does not mark debug configuration dirty.
 
 The generated 32×32 I8 texture has six mips and 1,440 resident native bytes.
-At the 35% default, texels uniformly span intensities 222–255 (0–13% darkening).
+At the 30% default, texels uniformly span intensities 226–255 (about 0–11% darkening).
 The slider scales the sampled
 range, capped at 0–255 before sampling to avoid clipping or byte wrap at high
 settings. The existing box-filtered mip chain smooths grain under minification.

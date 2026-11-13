@@ -56,7 +56,7 @@ def rgb(name):
     return subprocess.check_output(['ffmpeg','-v','error','-i',str(root/name),'-frames:v','1','-f','rawvideo','-pix_fmt','rgb24','-'])
 
 def fill_matches(pixel,color,tolerance=5):
-    # Default UI grain multiplies fill RGB by an I8 sample of 222..255;
+    # Default UI grain multiplies fill RGB by an I8 sample of 226..255;
     # alpha/text stay unchanged. Compare hue along that brightness range,
     # allowing a small margin for GX integer rounding and filtered samples.
     peak=max(color)

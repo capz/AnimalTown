@@ -7,13 +7,13 @@ internal static class RenderDebugChecks
         var preview=new RenderDebugOptions();var state=new GameState(73);var before=SaveCodec.Encode(state);
         GroundMipChecks(check,preview);
         var config=new DevConfig();var configBefore=config.Encode();
-        UiNoiseSettings.Reset();check(UiNoiseSettings.Percent==35,"UI grain starts with restrained session-only intensity");
+        UiNoiseSettings.Reset();check(UiNoiseSettings.Percent==30,"UI grain starts with restrained session-only intensity");
         for(int n=0;n<100;n++)UiNoiseSettings.Adjust(-1);
         check(UiNoiseSettings.Percent==0,"UI grain can be disabled without wrapping");
         for(int n=0;n<100;n++)UiNoiseSettings.Adjust(1);
         check(UiNoiseSettings.Percent==300,"UI grain intensity remains bounded at 300 percent");
         check(configBefore.SequenceEqual(config.Encode())&&before.SequenceEqual(SaveCodec.Encode(state)),"UI grain intensity changes neither debug settings nor town save bytes");
-        UiNoiseSettings.Reset();check(UiNoiseSettings.Percent==35,"Z/reset returns UI grain to its default");
+        UiNoiseSettings.Reset();check(UiNoiseSettings.Percent==30,"Z/reset returns UI grain to its default");
         check(preview.WaterStyle==WaterRenderStyle.WindWaker,
             "render debug defaults to the original Wind Waker path");
         preview.CycleWaterStyle();

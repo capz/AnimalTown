@@ -41,7 +41,7 @@ public sealed class RenderDebugOptions
 // Process/session setting only: deliberately absent from DevConfig and town codecs.
 public static class UiNoiseSettings
 {
-    public const int DefaultPercent=35,MaximumPercent=300,Step=5;
+    public const int DefaultPercent=30,MaximumPercent=300,Step=5;
     public static int Percent {get;private set;}=DefaultPercent;
     public static void Adjust(int direction)=>Percent=Math.Max(0,Math.Min(MaximumPercent,Percent+(direction<0?-Step:Step)));
     public static void Reset()=>Percent=DefaultPercent;

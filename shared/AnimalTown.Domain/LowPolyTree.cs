@@ -77,7 +77,7 @@ public sealed class LowPolyTree
     // One shared opaque GX I8 texture with a complete box-filtered mip chain.
     // A fixed toroidal grid supplies soft mottling, plus restrained fine grain.
     // UI fills opt into independent uniform samples instead of the coarse grid.
-    // At the 35% UI default, darkening spans 0..33/255 (about 13%).
+    // At the 30% UI default, darkening spans 0..29/255 (about 11%).
     public static byte[] DetailTexture(int strengthPercent=100,bool uniform=false)
     {
         if(strengthPercent<0||strengthPercent>300)throw new ArgumentOutOfRangeException("strengthPercent");
