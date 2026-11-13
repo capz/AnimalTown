@@ -25,7 +25,7 @@ internal sealed class LoadingScreen : IDisposable
     private void Frame(string? error,UiFont? font)
     {
         DebugOverlay.PerformanceVisible=false;DebugOverlay.TextVisible=false;
-        var device=GraphicsDevice.Default;UiNoise.Prepare();device.BeginFrame(TitleBackdrop.Color);ui.Begin();background.Draw(ui);
+        var device=GraphicsDevice.Default;device.BeginFrame(TitleBackdrop.Color);ui.Begin();background.Draw(ui);
         Sprout(Clock.Timestamp);
         if(error!=null&&font!=null){TitleArt.Panel(ui,90,182,460,116);font.Draw(ui,error,112,209,TitleArt.Ink,.9f);}
         ui.End();device.EndFrame();

@@ -7,8 +7,7 @@ The title modal and in-game debug menu use the same approved label and default.
 Dev-config version three retains the current 40-byte record size. Published
 version-one and version-two records remain readable, preserve their settings,
 and initialize this new option to Off. The terrain value follows the two tree
-noise settings; session-only UI grain remains separate. Gameplay save formats
-are independent of this change.
+noise settings. Gameplay save formats are independent of this change.
 
 [Approved debug-menu mockup](concepts/aram-terrain-debug-mockup.png).
 

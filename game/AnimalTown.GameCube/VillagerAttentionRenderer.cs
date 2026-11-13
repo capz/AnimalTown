@@ -7,8 +7,6 @@ using Dolphin.Graphics;
 internal sealed class VillagerAttentionRenderer : IDisposable
 {
     private Mesh? mesh;
-    private Texture2D? noise;
-    private int preparedNoise=-1;
     private readonly float[] heights=new float[6],joint=new float[16];
     internal void Register(int species,ModelInstance instance)
     {
@@ -21,12 +19,9 @@ internal sealed class VillagerAttentionRenderer : IDisposable
     internal VillagerAttentionRenderer(){for(int i=0;i<poses.Length;i++)poses[i]=new Transform();}
     internal void Prepare(){
         if(mesh==null)mesh=Mesh.Create(BuildVertices());
-        int percent=UiNoiseSettings.Percent;if(preparedNoise==percent)return;
-        Texture2D? replacement=percent==0?null:Texture2D.FromPackage(LowPolyTree.DetailTexture(percent,uniform:true),true);
-        replacement?.ConfigureSampler(TextureWrapMode.Repeat,TextureWrapMode.Repeat,TextureMinFilter.LinearMipmapLinear,TextureMagFilter.Linear);
-        material.Texture=replacement;noise?.Dispose();noise=replacement;preparedNoise=percent;
+
     }
-    public void Dispose(){Array.Clear(meshes,0,meshes.Length);mesh?.Dispose();mesh=null;material.Texture=null;noise?.Dispose();noise=null;preparedNoise=-1;}
+    public void Dispose(){Array.Clear(meshes,0,meshes.Length);mesh?.Dispose();mesh=null;}
     internal static VertexPositionColorTexture[] BuildVertices()
     {
         var vertices=new VertexPositionColorTexture[132];int at=0;

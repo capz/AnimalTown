@@ -68,8 +68,6 @@ internal static class TextureAudit
         }
         byte[] treeDetail=LowPolyTree.DetailTexture();TexturePixels.Validate(treeDetail);
         records.Add(new{source="generated:tree-detail-noise-v1",sourceSha=Convert.ToHexString(SHA256.HashData(treeDetail)),width=TexturePixels.Width(treeDetail),height=TexturePixels.Height(treeDetail),format=TexturePixels.Int(treeDetail,8),levels=TexturePixels.Int(treeDetail,24),residentBytes=treeDetail.Length-32,policy="shared-all-tree-species-seasons-repeat-trilinear"});
-        byte[] uiGrain=LowPolyTree.DetailTexture(UiNoiseSettings.DefaultPercent,uniform:true);
-        records.Add(new{source="generated:ui-bubble-noise-v2",sourceSha=Convert.ToHexString(SHA256.HashData(uiGrain)),width=TexturePixels.Width(uiGrain),height=TexturePixels.Height(uiGrain),format=TexturePixels.Int(uiGrain,8),levels=TexturePixels.Int(uiGrain,24),residentBytes=uiGrain.Length-32,policy="shared-ui-uniform-position-repeat-rgb-only-session-intensity"});
         int expected=32+BuildingCatalog.Count*8*4;if(models!=expected)throw new InvalidDataException("Expected eight legacy models plus eight parts per building definition in four texture resolutions");
         string originals=Path.Combine(root,"out/floor-sources.json");if(File.Exists(originals))records.Add(new{floorSourceProvenance=JsonSerializer.Deserialize<JsonElement>(File.ReadAllText(originals))});
         File.WriteAllText(Path.Combine(root,"out/texture-audit.json"),JsonSerializer.Serialize(records,new JsonSerializerOptions{WriteIndented=true}));
