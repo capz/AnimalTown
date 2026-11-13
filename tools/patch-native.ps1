@@ -238,9 +238,8 @@ if($IsLinux){
     if($LASTEXITCODE){throw 'Face culling fixture failed'}
 }
 
-# Incoming libogc argv is a project bridge; keep packaged SDK sources unchanged.
-& python3 (Join-Path $Root 'tools/patch-launch-arguments.py') $nativeRoot
-if($LASTEXITCODE){throw 'Native launch arguments bridge patch failed'}
+# Exercise the SDK's outgoing libogc argv handoff. The game no longer reads
+# incoming loader arguments to choose an update image.
 if($IsLinux){
     foreach($fixture in @('launch-arguments','launch-handoff')){
         $check=Join-Path $Root "out/native-$fixture-check"

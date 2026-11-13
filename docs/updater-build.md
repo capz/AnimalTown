@@ -11,53 +11,55 @@ The normal game build packages this DOL. A separately installed SD copy remains
 a fallback for manually assembled older discs. For SD layout and HTTPS setup,
 see [the updater documentation](https://github.com/capz/AnimalTown.Updater).
 
-Update receives an explicit installation path; there is no required image
-filename or SD-root image location. Direct GC Loader boot does not expose the
-active image filename through the current documented API. On the computer that
-manages the card, provision its target mapping and HTTPS inputs:
+The updater scans the GC Loader volume recursively for stable AnimalTown ISO
+filenames, compares their major, minor and patch counters numerically, and uses
+the directory of the highest version. Hash-suffixed development images are
+ignored. The image header must identify AnimalTown and match the filename's
+version. Equal highest versions use the smallest canonical path under
+ASCII-case-insensitive ordinal comparison,
+so directory enumeration order cannot change the selected installation.
+This is an installation-selection policy: GC Loader does not expose
+which physical image booted the game. The selected highest stable image is the
+old installation retired after successful verification of the new download.
+
+Provision HTTPS inputs and an installed Swiss DOL on the computer that manages
+the card:
 
 ```sh
-python3 tools/provision.py /path/to/SD --image 'games/AnimalTown/My Town.nkit.iso' --roots /path/to/ca-bundle.pem --utc-offset-minutes 60
+python3 tools/provision.py /path/to/SD --swiss /path/to/swiss.dol --roots /path/to/ca-bundle.pem --utc-offset-minutes 60
 ```
 
-This is the updater repository's provisioning tool. It writes the canonical
-target URI to `gcloader:/animaltown-updater/image-path.txt`; `--image` is a host
-path relative to the SD root, or an absolute host path inside it. Settings stay
-at the SD root even when the selected image is in a subfolder. Maintain the
-mapping if the image moves. Native launch arguments or image-mount metadata can
-also supply a candidate; conflicting candidates/mapping stop the update.
+This is the updater repository's provisioning tool. Settings and the Swiss
+helper remain at the SD root in `animaltown-updater/`, even when game images
+are in subfolders. No `image-path.txt` mapping is required.
 
-Before handoff, the game mounts GC Loader storage and validates the selected
-image's GameCube header, `AMTE01` identity and exact running `BuildInfo.Version`.
-The mapping selects the installation to replace; matching headers do not prove
-which of several identical physical files the firmware opened. Missing or
-invalid path information leaves the title usable with an error and never
-falls back to a guessed filename.
+The game stages its embedded updater DOL directly from `dvd:/`; only older
+discs missing that file need the root SD fallback. The SDK passes three separate
+arguments: updater DOL path, `--animaltown-update=2`, and the running version.
+The updater is entirely resident before it releases the source disc and mounts
+the writable GC Loader volume. Its SDK remains pinned to
+`81d74a8a80e67ac7b4a0be3c269ea5506b8a9647`.
 
-The project-local native bridge passes four separate arguments: updater DOL
-path, `--animaltown-update=1`, the full validated `gcloader:/...` image path and
-the running version. The standalone updater revalidates that request. Its SDK
-remains pinned to `81d74a8a80e67ac7b4a0be3c269ea5506b8a9647`; the bridge is a
-project build hook, rather than an SDK revision change. The source-disc unmount
-fix from [updater PR #2](https://github.com/capz/AnimalTown.Updater/pull/2) is
-preserved before any image replacement.
+The new image keeps GitHub's published filename in the selected directory.
+Streaming, contiguous allocation and on-card verification complete before the
+selected old image is deleted. Other installations are retained. Swiss is
+staged and validated before deletion, and its SDK autoload handoff selects the
+new image after the updater returns successfully. Missing Swiss or an invalid
+download leaves the old image intact.
 
-The installed path receives a `.bak` backup and `.update` transaction marker;
-downloads use a sibling `.animaltown-update/` directory. After verified
-installation, **Power off/on** returns control to GC Loader firmware so it can
-reopen the replaced image. There is no automatic raw-DOL/disc handoff. Failure
-screens retain the stopped phase, last operation and available exception/path/
-native-result details, including empty-message exceptions. Physical GC Loader
-writes, BBA operation and firmware restart behavior still require hardware tests.
+Failure screens retain the stopped phase, last operation and available
+exception/path/native-result details, including empty-message exceptions.
+Physical GC Loader writes, BBA operation and Swiss relaunch still require
+hardware tests.
 
 The targeted Dolphin scenarios in `tools/iso-smoke.py` are `--title-menu`
 (animated background, debug edit/save, Start), `--title-load` (reuse the previous
 memory card to inspect restored config and Start), and `--title-update` (embedded
-verified updater handoff or a clear title error when no supported image mapping
-is available). Dolphin cannot establish physical GC Loader/media behavior.
+updater handoff without an image mapping). Dolphin cannot establish physical
+GC Loader/media behavior.
 
 The release tools archive includes the matching PC setup script as
 `provision-updater.py` and its guide as `updater-setup.md`. The script comes from
 the exact updater commit pinned into that game build. Run it against the mounted
-SD card, for example `python3 provision-updater.py /media/GCLOADER --image
-'games/AnimalTown/My Town.nkit.iso'`; the image name is an explicit selection.
+SD card, for example `python3 provision-updater.py /media/GCLOADER --swiss
+/path/to/swiss.dol`.

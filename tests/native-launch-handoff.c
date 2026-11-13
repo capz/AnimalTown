@@ -11,7 +11,7 @@
 #include "../tools/native-launch-arguments.h"
 
 enum { BASE=0x80004000u, ABI=BASE+64u, COMMAND=BASE+256u, TABLE=BASE+4608u };
-static const uint8_t arguments[]="dvd:/animal-town-updater.dol\0--installed-image\0gcloader:/Games/My AnimalTown \xc3\xa9.nkit.iso";
+static const uint8_t arguments[]="dvd:/animal-town-updater.dol\0--animaltown-update=2\0" "0.11.36+012345abcdef";
 static unsigned launches;
 static void word(uint8_t *p,uint32_t value)
 {p[0]=(uint8_t)(value>>24);p[1]=(uint8_t)(value>>16);p[2]=(uint8_t)(value>>8);p[3]=(uint8_t)value;}
@@ -41,6 +41,7 @@ void dnd_dol_platform_launch(DndDolPlan *plan,void *image,void *stub)
         while(cursor<plan->arguments_size&&plan->arguments[cursor])cursor++;
         cursor++;
     }
+    assert(argc==3);
     word(abi+12,argc);word(abi+16,TABLE);word(abi+20,TABLE+(argc+1)*4);
     AtLaunchMemory view={memory,BASE,sizeof(memory)};
     assert(at_launch_arguments_copy(&view,ABI,copied,sizeof(copied))==(int)sizeof(arguments));
