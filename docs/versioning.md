@@ -50,6 +50,11 @@ the reviewed PR into main; the existing workflow creates the tag and publishes
 the matching NKit ISO and backend after checks pass. No manual tag is needed.
 Numeric main builds publish as regular GitHub releases. Hash-suffixed PR builds
 remain prereleases, so GitHub's latest-release endpoint identifies the main channel.
+Every release includes `update.json`, a maximum 2 KiB document containing only
+the version and ISO name, URL, byte length and SHA-256. The updater can fetch
+`https://github.com/capz/AnimalTown/releases/latest/download/update.json` without
+loading release notes, author metadata or preview builds. The feed is included
+in release checksums and generated from the exact packaged ISO before publication.
 All new merges use the minor policy, including fixes and documentation. Major
 changes remain explicit. Historical configurations without `increment` keep
 their original patch-counting behavior, so older builds remain reproducible.

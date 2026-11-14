@@ -78,7 +78,10 @@ Copy-Item -LiteralPath (Join-Path $out 'disc/animal-town-updater.dol') -Destinat
 Copy-Item -LiteralPath (Join-Path $out 'updater-THIRD-PARTY-NOTICES.txt') -Destination (Join-Path $package 'updater-THIRD-PARTY-NOTICES.txt') -Force
 $updaterDol=Join-Path $package 'animal-town-updater.dol'
 $updaterNotice=Join-Path $package 'updater-THIRD-PARTY-NOTICES.txt'
-$checksums=foreach($file in @($nkit,$updaterDol,$updaterNotice,$serverZip,$toolsZip,$cliffsZip,$buildingsZip,(Join-Path $package 'BUILD.txt'),(Join-Path $package 'texture-audit.json'),(Join-Path $package 'validation-plan.json'),(Join-Path $package 'version.json'),(Join-Path $package 'nkit-validation.json'))){"$((Get-FileHash -LiteralPath $file -Algorithm SHA256).Hash.ToLowerInvariant())  $([IO.Path]::GetFileName($file))"}
+. (Join-Path $PSScriptRoot 'update-feed.ps1')
+$updateFeed=Join-Path $package 'update.json'
+Write-UpdateFeed -Iso $nkit -Version $version -Repository $Repository -Destination $updateFeed
+$checksums=foreach($file in @($nkit,$updateFeed,$updaterDol,$updaterNotice,$serverZip,$toolsZip,$cliffsZip,$buildingsZip,(Join-Path $package 'BUILD.txt'),(Join-Path $package 'texture-audit.json'),(Join-Path $package 'validation-plan.json'),(Join-Path $package 'version.json'),(Join-Path $package 'nkit-validation.json'))){"$((Get-FileHash -LiteralPath $file -Algorithm SHA256).Hash.ToLowerInvariant())  $([IO.Path]::GetFileName($file))"}
 [IO.File]::WriteAllText((Join-Path $package 'SHA256SUMS.txt'),($checksums -join "`n")+"`n")
 $notes=@"
 AnimalTown $version development build from commit $commit.
@@ -107,7 +110,7 @@ function InvokeGh([string[]]$Arguments){
     if($LASTEXITCODE -ne 0){throw "GitHub CLI failed: $($Arguments[0]) $($Arguments[1])"}
     return $result
 }
-$assets=@($nkit,$updaterDol,$updaterNotice,$serverZip,$toolsZip,$cliffsZip,$buildingsZip,(Join-Path $package 'BUILD.txt'),(Join-Path $package 'texture-audit.json'),(Join-Path $package 'validation-plan.json'),(Join-Path $package 'version.json'),(Join-Path $package 'nkit-validation.json'),(Join-Path $package 'SHA256SUMS.txt'))
+$assets=@($nkit,$updateFeed,$updaterDol,$updaterNotice,$serverZip,$toolsZip,$cliffsZip,$buildingsZip,(Join-Path $package 'BUILD.txt'),(Join-Path $package 'texture-audit.json'),(Join-Path $package 'validation-plan.json'),(Join-Path $package 'version.json'),(Join-Path $package 'nkit-validation.json'),(Join-Path $package 'SHA256SUMS.txt'))
 $existing=& $Gh release view $tag --repo $Repository --json isDraft,targetCommitish,assets 2>$null
 if($LASTEXITCODE -eq 0){
     $release=$existing | ConvertFrom-Json

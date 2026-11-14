@@ -140,3 +140,14 @@ Reject {Version} 'Minor overflow is rejected'
 $config.minor=11;$config.increment='unknown';Config
 Reject {Version} 'Unsupported increment policies fail closed'
 Write-Host "Versioning checks passed ($checks cases)."
+. (Join-Path $PSScriptRoot '../tools/update-feed.ps1')
+foreach($number in @('0.12.0','0.12.0+abcdef123456')){
+    $iso=Join-Path $repo "AnimalTown-$number.nkit.iso";$feed=Join-Path $repo 'update.json'
+    [IO.File]::WriteAllBytes($iso,[byte[]]::new(2048))
+    Write-UpdateFeed $iso $number 'capz/AnimalTown' $feed
+    $manifest=Get-Content $feed -Raw|ConvertFrom-Json
+    Assert ($manifest.tag_name -ceq "v$number" -and !$manifest.draft -and $manifest.assets.Count -eq 1) 'Feed identifies one exact published build'
+    Assert ($manifest.assets[0].size -eq 2048 -and $manifest.assets[0].digest -ceq ('sha256:'+(Get-FileHash $iso -Algorithm SHA256).Hash.ToLowerInvariant())) 'Feed binds actual ISO bytes'
+    Assert ((Get-Item $feed).Length -lt 2048 -and $manifest.assets[0].browser_download_url.Contains([Uri]::EscapeDataString("v$number"))) 'Feed stays bounded and encodes review identities'
+}
+Reject {Write-UpdateFeed $iso '0.12.0' 'capz/AnimalTown' $feed} 'Feed rejects version/basename disagreement'
