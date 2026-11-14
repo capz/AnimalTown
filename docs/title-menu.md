@@ -54,8 +54,10 @@ mapping or physical boot-image path is needed. Missing updater media leaves
 the title usable with an error.
 
 The standalone [updater repository](https://github.com/capz/AnimalTown.Updater)
-documents direct GC Loader SD setup, BBA networking and HTTPS provisioning. The
-updater owns stable-image discovery, release checking, streaming verification,
+documents direct GC Loader SD setup, BBA networking and embedded HTTPS trust.
+New images collect fresh entropy on the console and need no PC provisioning;
+the GameCube clock must be set accurately. The updater owns stable-image
+discovery, release checking, streaming verification,
 and retirement of the selected old image. The new image keeps its published
 filename in the selected directory. GC Loader's hardware mapping switches to
 the verified image, and its physical boot-header readback must match before

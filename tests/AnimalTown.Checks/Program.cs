@@ -194,6 +194,10 @@ uint identity=TexturePixels.Hash(alphaPackage);alphaPackage[32]^=1;Check(identit
 bool badTexture=false;try{TexturePixels.Validate(new byte[32]);}catch(InvalidOperationException){badTexture=true;}Check(badTexture,"invalid texture rejected before decoding");
 for(int kind=0;kind<3;kind++){
     var tree=LowPolyTree.Build(kind);Check(tree.Triangles>24&&tree.Triangles<=LowPolyTree.TriangleBudget,"generated tree triangle budget");float minY=10,maxY=-10;var parts=new int[4];
+    for(int i=0;i<tree.Triangles*9;i+=3){
+        float x=tree.Positions[i],y=tree.Positions[i+1]-LowPolyTree.VisibilityCenterY,z=tree.Positions[i+2];
+        Check(x*x+y*y+z*z<=LowPolyTree.VisibilityRadius*LowPolyTree.VisibilityRadius,"tight tree horizon bound contains every rendered vertex");
+    }
     for(int t=0;t<tree.Triangles;t++){
         Check(tree.Parts[t]<4,"tree material range");parts[tree.Parts[t]]++;int at=t*9;
         float ax=tree.Positions[at+3]-tree.Positions[at],ay=tree.Positions[at+4]-tree.Positions[at+1],az=tree.Positions[at+5]-tree.Positions[at+2],bx=tree.Positions[at+6]-tree.Positions[at],by=tree.Positions[at+7]-tree.Positions[at+1],bz=tree.Positions[at+8]-tree.Positions[at+2];

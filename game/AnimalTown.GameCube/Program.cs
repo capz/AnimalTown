@@ -428,9 +428,12 @@ internal sealed class TownGame : IDisposable
             phase="encode";
             state.Facing=facingYaw;
             phase="save set";
-            var repository=new SaveRepository(new CardSaveStorage(card,banner,icon));repository.Save(state);
+            long saveAt=Clock.Timestamp;
+            var reads=new SaveReadCache(new CardSaveStorage(card,banner,icon));
+            var repository=new SaveRepository(reads);repository.Save(state);
             saveStatus=repository.LastWrittenRecords==0?"No changes to save.":"Saved / "+BuildInfo.Version;
             DebugOverlay.WriteLine("SAVE: "+repository.LastWrittenRecords+" records / "+repository.LastWrittenBytes+" bytes");
+            DebugOverlay.WriteLine("SAVE I/O: "+((Clock.Timestamp-saveAt)/1000)+" ms / "+reads.PhysicalReads+" reads / "+reads.CacheHits+" cached reads");
         }
         catch(Exception error){
             // Built-in native exceptions may have no managed message. The
@@ -609,6 +612,7 @@ internal sealed class TownGame : IDisposable
     }
     private void TestingAction()
     {
+        uiShapes.Trim();
         switch(selected){
             case 0:FrameProfile.Enabled=!FrameProfile.Enabled;break;
             case 1:ToggleModelPath();break;
@@ -890,6 +894,7 @@ internal sealed class TownGame : IDisposable
         // use logical positions and can prepare while the landscape loads.
         if(room==0){trees.Prepare(terrain.RenderSeason,debugConfig.TreeNoiseStrengthPercent,debugConfig.TreeNoiseScalePercent);fences.Prepare(state);droppedItems.Prepare(state,cachedPlayerHeight);}
         if(weather.Raining(room)&&villagers.Doors.PlayerFade<1)rain.Prepare(state,(Clock.Timestamp-sessionStart)/1000000.0,cachedPlayerHeight);
+        else rain.Dispose();
         actorVisibility.Prepare(state,villagers.Doors,indoorCamera,waterInspection,cachedPlayerHeight);
         UpdateAnimationFrame();
         if(renderDebug.ForceAttention&&villagers.Doors.PlayerFade<1)attention.Prepare();
@@ -991,6 +996,13 @@ internal sealed class TownGame : IDisposable
         int building=1+buildingInspection++%6;
         BuildingWorld.Entrance(state,building,out float x,out float z);state.X=x+.85f;state.Z=z+.2f;facingYaw=(float)Math.PI;state.Facing=facingYaw;screen="world";waterInspection=0;cliffPreview=false;
     }
+    private bool TreeVisible(float x,float z,float scale)
+    {
+        var center=SurfacePoint(x,z,scale*LowPolyTree.VisibilityCenterY);
+        float radius=scale*LowPolyTree.VisibilityRadius+.025f;
+        return RenderView.Sphere(center.X,center.Y,center.Z,radius,state.X,state.Z,cachedPlayerHeight)&&
+            RenderView.AboveHorizon(center.Y,center.Z,radius,state.Z,cachedPlayerHeight);
+    }
     private void DrawTrees()
     {
         // Generated low-poly meshes share native geometry and indexed GX draws.
@@ -998,7 +1010,7 @@ internal sealed class TownGame : IDisposable
         for(int n=0;n<visibleTrees.Length;n++){visibleTrees[n]=-1;treeDistances[n]=float.MaxValue;}
         for(int i=0;i<state.Town.GroundCount;i++)
         {
-            var g=state.Town.Ground[i];if(!IsTree(g)||!Visible(g.X,g.Z,g.Kind==2?.75f:3))continue;
+            var g=state.Town.Ground[i];if(!IsTree(g)||!TreeVisible(g.X,g.Z,g.Kind==2?.75f:3))continue;
             float dx=g.X-state.X,dz=g.Z-state.Z,d=dx*dx+dz*dz;
             for(int n=0;n<visibleTrees.Length;n++)if(d<treeDistances[n])
             {for(int j=visibleTrees.Length-1;j>n;j--){visibleTrees[j]=visibleTrees[j-1];treeDistances[j]=treeDistances[j-1];}visibleTrees[n]=i;treeDistances[n]=d;break;}

@@ -18,13 +18,13 @@ internal sealed class WaterMaterial : IDisposable
     private Viewport captureSource;
     private TevMaterial? sunshineLayer,sunshineCloseWaves;
     internal Material CloseWaves=>sunshineCloseWaves?.Material??Surface;
-    // A very thin tropical-blue body under the specular cutout, so the seabed
-    // stays readable nearby while distant open water keeps its blue depth.
+    // A dark translucent body under the specular cutout gives the layered
+    // surface depth while keeping the seabed readable nearby.
     // This remains a shared material; no new terrain geometry or textures.
     private readonly Material sunshineBody=new Material{
         Blend=BlendMode.Alpha,DepthTest=true,DepthWrite=false,
         Lighting=LightingMode.Unlit,Cull=CullMode.Back,
-        Color=new Color32(90,189,215,48)
+        Color=new Color32(18,48,82,96)
     };
     internal Material SunshineBody=>sunshineBody;
     internal WaterRenderStyle Style=WaterRenderStyle.WindWaker;
@@ -117,6 +117,12 @@ internal sealed class WaterMaterial : IDisposable
     // and its 8 KiB of image data until rough weather is actually selected.
     internal void PrepareRoughOcean()
     {
+        if(!IsSunshine)ReleaseSunshine();
+        if(!RoughOcean||IsSunshine){
+            storm?.Dispose();storm=null;
+            whitecaps?.Dispose();whitecaps=null;stormBase?.Dispose();stormBase=null;
+            return;
+        }
         if(!RoughOcean||IsSunshine||storm!=null)return;
         Texture2D? first=null,second=null;TevMaterial? effect=null;
         try{

@@ -6,12 +6,13 @@ using Dolphin.Graphics;
 internal sealed class RainRenderer : System.IDisposable
 {
     private DynamicMesh? mesh;
-    private readonly VertexPositionColor[] vertices=new VertexPositionColor[DebugWeather.DropCount*6];
+    private VertexPositionColor[]? vertices;
     private readonly Transform pose=new Transform();
     private bool visible;
     private readonly Material material=new Material{Blend=BlendMode.Alpha,DepthWrite=false,Cull=CullMode.Back,Lighting=LightingMode.Unlit,Color=new Color32(195,222,236,155)};
     internal void Prepare(GameState state,double seconds,float eyeHeight)
     {
+        vertices??=new VertexPositionColor[DebugWeather.DropCount*6];
         visible=false;
         for(int i=0;i<DebugWeather.DropCount;i++){
             DebugWeather.Drop(i,state.X,state.Z,seconds,out float x,out float z,out float h);
@@ -27,5 +28,5 @@ internal sealed class RainRenderer : System.IDisposable
         if(mesh==null)mesh=DynamicMesh.Create(vertices);else mesh.SetVertices(vertices);
     }
     internal void Draw(Renderer renderer){if(visible&&mesh!=null)renderer.DrawMesh(mesh,material,pose);}
-    public void Dispose(){mesh?.Dispose();mesh=null;visible=false;}
+    public void Dispose(){mesh?.Dispose();mesh=null;vertices=null;visible=false;}
 }

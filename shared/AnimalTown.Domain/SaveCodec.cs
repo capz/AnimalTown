@@ -11,8 +11,13 @@ public static class SaveCodec
     { Put(b,ref at,s.Length);for(int i=0;i<s.Length;i++)Put(b,ref at,s[i]); }
     private static string Text(byte[] b,ref int at,int limit)
     { int n=Get(b,ref at);if(n<0||n>limit)throw new InvalidOperationException("Invalid text");var c=new char[n];for(int i=0;i<n;i++)c[i]=(char)Get(b,ref at);return new string(c); }
+    // IEEE CRC32, two nibble lookups per byte instead of eight bit branches.
+    // Only 64 bytes of lookup data; identical on-disk checksums for all schemas.
+    private static readonly uint[] crcNibbles={0,0x1db71064,0x3b6e20c8,0x26d930ac,
+        0x76dc4190,0x6b6b51f4,0x4db26158,0x5005713c,0xedb88320,0xf00f9344,
+        0xd6d6a3e8,0xcb61b38c,0x9b64c2b0,0x86d3d2d4,0xa00ae278,0xbdbdf21c};
     public static uint Crc(byte[] b,int start,int count)
-    { uint c=0xffffffff;for(int i=start;i<start+count;i++){c^=b[i];for(int j=0;j<8;j++)c=(c>>1)^((c&1)!=0?0xedb88320u:0);}return ~c; }
+    {uint c=0xffffffff;for(int i=start;i<start+count;i++){c^=b[i];c=(c>>4)^crcNibbles[c&15];c=(c>>4)^crcNibbles[c&15];}return ~c;}
     public static byte[] Encode(GameState s)=>EncodeCore(s,true);
     public static byte[] EncodeLegacy(GameState s)=>EncodeCore(s,false);
     internal static void RequireLegacyProfile(GameState s)

@@ -14,7 +14,9 @@ deleted only after the new image is verified, GC Loader's hardware mapping is
 switched to it and its physical boot-header readback matches. The Swiss launch
 helper is staged before this sequence. The updater recognizes supported official
 Swiss DOLs at the drive root by their contents, including renamed `boot.dol`
-files. HTTPS provisioning does not require copying or renaming that helper.
+files. New images embed HTTPS trust and obtain fresh entropy on the console;
+no PC provisioning or separate HTTPS files are required. Set the GameCube clock
+accurately.
 Swiss then autoloads the new image. No installation-path mapping is required.
 See [updater setup](updater-build.md); physical GC Loader writes and relaunch
 still require hardware validation.

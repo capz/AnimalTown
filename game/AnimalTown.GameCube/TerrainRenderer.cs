@@ -274,9 +274,10 @@ internal sealed class TerrainRenderer : IDisposable
     internal bool RoughOcean {get=>waterMaterial.RoughOcean;set=>waterMaterial.RoughOcean=value;}
     internal void Animate(double seconds)
     {
-        if(FreezeMotion)return;long at=FrameProfile.Start();
-        waterMaterial.Animate(seconds);oceanWaves.Update(seconds);clouds.Animate(seconds);
+        long at=FrameProfile.Start();
+        if(!FreezeMotion){waterMaterial.Animate(seconds);oceanWaves.Update(seconds);clouds.Animate(seconds);}
         for(int i=0;i<slots;i++)clouds.Apply(materials[i],baseTints[i],true);
+        clouds.ReleaseUnused(materials);
         FrameProfile.DetailEnd(3,at);
     }
     private void Add(Renderer renderer,Material material,Mesh? mesh)

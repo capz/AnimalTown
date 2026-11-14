@@ -65,7 +65,9 @@ internal sealed class BuildingRenderer : IDisposable
     {
         if(!BuildingWorld.Exists(state,building))return;int type=state.BuildingTypes[building];if(!Ready(type))return;
         BuildingWorld.Origin(state,building,out float x,out float z);float h=TerrainElevation.At(state.Town,x+1.5f,z+1.5f);var p=CylinderWorld.Surface(z,state.Z,h);
-        if(!RenderView.Sphere(x+1.5f,p.Y+1.6f,p.Z+1.5f,3.5f,state.X,state.Z,TerrainElevation.At(state.Town,state.X,state.Z)))return;
+        float eye=TerrainElevation.At(state.Town,state.X,state.Z);
+        if(!RenderView.Sphere(x+1.5f,p.Y+1.6f,p.Z+1.5f,3.5f,state.X,state.Z,eye)||
+           !RenderView.AboveHorizon(p.Y+1.6f,p.Z+1.5f,3.5f,state.Z,eye))return;
         var root=roots[building];root.LocalPosition=new Vector3(x,p.Y,p.Z);float a=(z-state.Z)/CylinderWorld.Radius*.5f;root.LocalRotation=new Quaternion((float)Math.Sin(a),0,0,(float)Math.Cos(a));root.LocalScale=new Vector3(1,1,1);
         if(doors.Openness(building)==0){Part(renderer,type,7,root,Vector3.Zero,new Vector3(1,1,1));return;}
         Part(renderer,type,0,root,Vector3.Zero,new Vector3(1,1,1));Part(renderer,type,1,root,new Vector3(BuildingWorld.Definition(state,building).HingeX,0,BuildingWorld.Definition(state,building).HingeZ),new Vector3(1,1,1),-doors.Openness(building)*1.4f);
@@ -77,6 +79,9 @@ internal sealed class BuildingRenderer : IDisposable
         int building=BuildingWorld.PlayerBuilding(state.ActiveProfile),type=state.BuildingTypes[building];
         if(!Ready(type))return;float x=plotX+2,z=plotZ+1;
         var p=CylinderWorld.Surface(z,state.Z,TerrainElevation.At(state.Town,x+1.5f,z+1.5f));
+        float eye=TerrainElevation.At(state.Town,state.X,state.Z);
+        if(!RenderView.Sphere(x+1.5f,p.Y+1.6f,p.Z+1.5f,3.5f,state.X,state.Z,eye)||
+           !RenderView.AboveHorizon(p.Y+1.6f,p.Z+1.5f,3.5f,state.Z,eye))return;
         var root=roots[building];root.LocalPosition=new Vector3(x,p.Y,p.Z);root.LocalScale=new Vector3(1,1,1);
         float a=(z-state.Z)/CylinderWorld.Radius*.5f;root.LocalRotation=new Quaternion((float)Math.Sin(a),0,0,(float)Math.Cos(a));
         Part(renderer,type,7,root,Vector3.Zero,new Vector3(1,1,1));

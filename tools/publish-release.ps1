@@ -42,6 +42,7 @@ Copy-Item -LiteralPath (Join-Path $Root 'docs/texture-repacker.md') -Destination
 Copy-Item -LiteralPath (Join-Path $Root 'docs/uv-editor-design.md') -Destination (Join-Path $toolsDirectory 'uv-editor-design.md') -Force
 Copy-Item -LiteralPath (Join-Path $out 'updater-provision.py') -Destination (Join-Path $toolsDirectory 'provision-updater.py') -Force
 Copy-Item -LiteralPath (Join-Path $out 'updater-setup.md') -Destination (Join-Path $toolsDirectory 'updater-setup.md') -Force
+Copy-Item -LiteralPath (Join-Path $out 'updater-THIRD-PARTY-NOTICES.txt') -Destination (Join-Path $toolsDirectory 'updater-THIRD-PARTY-NOTICES.txt') -Force
 $toolsZip=Join-Path $package "AnimalTown-tools-$version.zip"
 $cliffsZip=Join-Path $package "AnimalTown-cliff-kit-$version.zip"
 $buildingsZip=Join-Path $package "AnimalTown-building-kit-$version.zip"
@@ -74,8 +75,10 @@ Copy-Item -LiteralPath (Join-Path $out 'validation-plan.json') -Destination (Joi
 Copy-Item -LiteralPath (Join-Path $out 'version.json') -Destination (Join-Path $package 'version.json') -Force
 Copy-Item -LiteralPath $nkitValidation -Destination (Join-Path $package 'nkit-validation.json') -Force
 Copy-Item -LiteralPath (Join-Path $out 'disc/animal-town-updater.dol') -Destination (Join-Path $package 'animal-town-updater.dol') -Force
+Copy-Item -LiteralPath (Join-Path $out 'updater-THIRD-PARTY-NOTICES.txt') -Destination (Join-Path $package 'updater-THIRD-PARTY-NOTICES.txt') -Force
 $updaterDol=Join-Path $package 'animal-town-updater.dol'
-$checksums=foreach($file in @($nkit,$updaterDol,$serverZip,$toolsZip,$cliffsZip,$buildingsZip,(Join-Path $package 'BUILD.txt'),(Join-Path $package 'texture-audit.json'),(Join-Path $package 'validation-plan.json'),(Join-Path $package 'version.json'),(Join-Path $package 'nkit-validation.json'))){"$((Get-FileHash -LiteralPath $file -Algorithm SHA256).Hash.ToLowerInvariant())  $([IO.Path]::GetFileName($file))"}
+$updaterNotice=Join-Path $package 'updater-THIRD-PARTY-NOTICES.txt'
+$checksums=foreach($file in @($nkit,$updaterDol,$updaterNotice,$serverZip,$toolsZip,$cliffsZip,$buildingsZip,(Join-Path $package 'BUILD.txt'),(Join-Path $package 'texture-audit.json'),(Join-Path $package 'validation-plan.json'),(Join-Path $package 'version.json'),(Join-Path $package 'nkit-validation.json'))){"$((Get-FileHash -LiteralPath $file -Algorithm SHA256).Hash.ToLowerInvariant())  $([IO.Path]::GetFileName($file))"}
 [IO.File]::WriteAllText((Join-Path $package 'SHA256SUMS.txt'),($checksums -join "`n")+"`n")
 $notes=@"
 AnimalTown $version development build from commit $commit.
@@ -90,7 +93,7 @@ For GC Loader SD-card storage, download **AnimalTown-$version.nkit.iso** and cop
 
 The NKit ISO is the only disc image built for delivery and is published directly, without a ZIP wrapper. Full-size conversion and round-trip images are temporary and deleted after verification. The server is a separate **AnimalTown-server-$version.zip** archive and requires .NET 10 and PostgreSQL. It does not run on the console.
 
-**animal-town-updater.dol** is also embedded in the ISO for the title Update option. Keep a supported official normal Swiss DOL at the GC Loader drive root under any .dol filename; the updater identifies its contents and chooses the newest recognized revision. Provision HTTPS inputs with provision-updater.py; --swiss /path/to/swiss_r2119.dol optionally verifies and copies Swiss to the root. The updater scans GC Loader for the highest stable AnimalTown major.minor.patch ISO, ignoring hash-suffixed development builds. It downloads the new image into that directory using GitHub's filename, verifies it, switches GC Loader's hardware mapping and verifies the physical boot-header readback before deleting the selected old ISO. It then hands off to Swiss to launch the new image. No image-path.txt mapping is required. Physical storage, BBA and Swiss relaunch behavior remain unverified.
+**animal-town-updater.dol** is also embedded in the ISO for the title Update option. Keep a supported official normal Swiss DOL at the GC Loader drive root under any .dol filename; the updater identifies its contents and chooses the newest recognized revision. HTTPS uses embedded public CA trust and fresh on-console entropy; no PC provisioning, roots.pem, entropy.bin or UTC-offset file is required. Set the GameCube clock accurately; certificate validity must cover its full possible UTC range of local time plus or minus 14 hours. Health checks do not prove randomness; physical qualification of the on-console entropy source remains outstanding for this prerelease. updater-THIRD-PARTY-NOTICES.txt accompanies the updater in the ISO and tools archive and as a separate checksummed release asset. The optional provision-updater.py tool is for older images only. The updater scans GC Loader for the highest stable AnimalTown major.minor.patch ISO, ignoring hash-suffixed development builds. It downloads the new image into that directory using GitHub's filename, verifies it, switches GC Loader's hardware mapping and verifies the physical boot-header readback before deleting the selected old ISO. It then hands off to Swiss to launch the new image. No image-path.txt mapping is required. Physical storage, BBA and Swiss relaunch behavior remain unverified.
 
 version.json records the main major.minor.patch version, merged PR boundaries and source commit (branch builds append +hash). BUILD.txt records the version and game, engine and SDK revisions. validation-plan.json records the comparison base and selected checks. texture-audit.json records texture source identities, fingerprints and 256-pixel default residency and 128/256/512/1024 model variants. nkit-validation.json records the pinned converter, sizes, per-file hashes and round-trip verification. SHA256SUMS.txt covers the NKit image, the archives and manifests.
 
@@ -104,7 +107,7 @@ function InvokeGh([string[]]$Arguments){
     if($LASTEXITCODE -ne 0){throw "GitHub CLI failed: $($Arguments[0]) $($Arguments[1])"}
     return $result
 }
-$assets=@($nkit,$updaterDol,$serverZip,$toolsZip,$cliffsZip,$buildingsZip,(Join-Path $package 'BUILD.txt'),(Join-Path $package 'texture-audit.json'),(Join-Path $package 'validation-plan.json'),(Join-Path $package 'version.json'),(Join-Path $package 'nkit-validation.json'),(Join-Path $package 'SHA256SUMS.txt'))
+$assets=@($nkit,$updaterDol,$updaterNotice,$serverZip,$toolsZip,$cliffsZip,$buildingsZip,(Join-Path $package 'BUILD.txt'),(Join-Path $package 'texture-audit.json'),(Join-Path $package 'validation-plan.json'),(Join-Path $package 'version.json'),(Join-Path $package 'nkit-validation.json'),(Join-Path $package 'SHA256SUMS.txt'))
 $existing=& $Gh release view $tag --repo $Repository --json isDraft,targetCommitish,assets 2>$null
 if($LASTEXITCODE -eq 0){
     $release=$existing | ConvertFrom-Json
