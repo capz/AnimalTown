@@ -1,21 +1,22 @@
 # Incremental main and PR versions
 
-The frozen starting version is **0.11.10**, corresponding to main commit
-`9a4aad4ff05c307bcc7daf4e553269ac93027c03`. `version.json` stores this checkpoint.
-Major and minor stay fixed. Patch advances once for every PR merged to main,
+The frozen starting version is **0.11.38**, corresponding to main commit
+`7e3dd9599709f553d13d538a320a13f3d410e861`. `version.json` stores this checkpoint
+and `increment: minor`. Major stays fixed. Minor advances once and patch resets
+to zero for every PR merged to main,
 including documentation, features, bugfixes and reverts. Commit titles and the
 number of implementation commits have no effect.
 
 | Build | Version example |
 | --- | --- |
-| Current main baseline | `0.11.10` |
-| First PR merged after the checkpoint | `0.11.11` |
-| Next PR merged to main | `0.11.12` |
-| PR built while main is `0.11.12` | `0.11.12+a1b2c3d4e5f6` |
+| Current main baseline | `0.11.38` |
+| First PR merged after the checkpoint | `0.12.0` |
+| Next PR merged to main | `0.13.0` |
+| PR built while main is `0.13.0` | `0.13.0+a1b2c3d4e5f6` |
 
 PR versions use current main's numeric version plus `+` and the first 12 lowercase
 hexadecimal characters of the **actual feature-head commit**. They never predict
-the next patch, count feature commits, or use GitHub's synthetic test-merge hash.
+the next minor, count feature commits, or use GitHub's synthetic test-merge hash.
 A stale feature branch still uses the current main snapshot fetched for that build.
 Pushing more commits to a PR changes only its hash while main stays unchanged.
 Version configuration comes from the selected main commit, so editing it on a
@@ -32,17 +33,31 @@ The resolver uses GitHub's merged PR records for base `main`, then includes only
 integration boundaries on the selected main snapshot's first-parent history after
 the checkpoint. Each PR number is counted once. GitHub reports the merge commit,
 squash commit, or final rebased commit in `merge_commit_sha`; therefore normal,
-squash and multi-commit rebase merges all increment patch exactly once. See
+squash and multi-commit rebase merges all increment minor exactly once. See
 [GitHub's integration-boundary contract](https://docs.github.com/en/rest/pulls/pulls#get-a-pull-request).
 Unmerged PRs, PRs targeting another branch, baseline history, and integrations after
 the selected snapshot are excluded. Duplicate or invalid records are rejected.
 
-No counter commits are pushed by CI. Parallel branch jobs cannot consume patch
+No counter commits are pushed by CI. Parallel branch jobs cannot consume minor
 numbers, and retries do not increment anything. Main releases are numbered by
 merged history rather than successful build counts, timestamps, tags or job order.
 A failed release can be retried at the same number. Direct commits to main do not
 count as PRs and cannot publish over an existing numbered release; integrate
 changes through a PR. Missing history or API failures fail rather than guessing.
+
+The first merge under this policy publishes **0.12.0**. To make a release, merge
+the reviewed PR into main; the existing workflow creates the tag and publishes
+the matching NKit ISO and backend after checks pass. No manual tag is needed.
+Numeric main builds publish as regular GitHub releases. Hash-suffixed PR builds
+remain prereleases, so GitHub's latest-release endpoint identifies the main channel.
+Every release includes `update.json`, a maximum 2 KiB document containing only
+the version and ISO name, URL, byte length and SHA-256. The updater can fetch
+`https://github.com/capz/AnimalTown/releases/latest/download/update.json` without
+loading release notes, author metadata or preview builds. The feed is included
+in release checksums and generated from the exact packaged ISO before publication.
+All new merges use the minor policy, including fixes and documentation. Major
+changes remain explicit. Historical configurations without `increment` keep
+their original patch-counting behavior, so older builds remain reproducible.
 
 ## Main snapshots and local builds
 

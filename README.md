@@ -8,9 +8,9 @@ The product brief is [design-doc.md](design-doc.md).
 
 Build artifacts are delivered through [GitHub Releases](https://github.com/capz/AnimalTown/releases).
 Each PR merged to `main` builds and checks the console and backend, then
-publishes a version-tagged development prerelease. Versions use
-[`major.minor.patch`](docs/versioning.md): major/minor are frozen and every PR
-merged to main increments patch once. PR builds use the current main version
+publishes a numbered release. Versions use
+[`major.minor.patch`](docs/versioning.md): every PR merged to main increments
+minor once and resets patch to zero; major changes manually. PR prereleases use the current main version
 plus `+<12-character feature-branch commit hash>`. Rebuilding the same source/main
 snapshot keeps its version. For SD-card storage through Swiss/GC Loader,
 download `AnimalTown-VERSION.nkit.iso` and copy it directly to the card.

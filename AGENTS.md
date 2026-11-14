@@ -1,8 +1,9 @@
 # Build delivery
 
 Use incremental `major.minor.patch` main versions; see `docs/versioning.md`.
-The frozen baseline is `0.11.10`; each PR merged to main increments patch once,
-regardless of title, merge method or implementation commit count. Major/minor
+The frozen baseline is `0.11.38` at `7e3dd9599709f553d13d538a320a13f3d410e861`;
+each PR merged to main increments minor once and resets patch to zero,
+regardless of title, merge method or implementation commit count. Major
 and the baseline only change at the user's explicit request. PR builds use the
 current main numeric version plus `+<12-character feature-head hash>`. Preserve
 the same source/main snapshot for console, backend and release packaging.

@@ -2,6 +2,7 @@
   "schema": 2,
   "major": 0,
   "minor": 11,
-  "patch": 10,
-  "baseCommit": "9a4aad4ff05c307bcc7daf4e553269ac93027c03"
+  "patch": 38,
+  "increment": "minor",
+  "baseCommit": "7e3dd9599709f553d13d538a320a13f3d410e861"
 }

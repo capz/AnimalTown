@@ -126,4 +126,28 @@ Assert ((Get-BuildVersion $repo -BuildKind branch -MainRef main).version -ceq "0
 $config.patch=11;Config
 $updated=Get-BuildVersion $repo -BuildKind main -MainRef HEAD
 Assert ($updated.version -ceq '0.11.15' -and $script:apiCalls -eq 3) 'An explicit checkpoint configuration change invalidates cached history'
+# Explicit user-requested migration starts at the current numeric main identity.
+$config.baseCommit=FixtureGit @('rev-parse','HEAD');$config.minor=11;$config.patch=38;$config.increment='minor';Config
+Assert ((Version).version -ceq '0.11.38') 'New checkpoint preserves its numeric baseline before integrations'
+Commit 'Minor policy PR integration';$policyMerge=FixtureGit @('rev-parse','HEAD');$merges+=@{number=106;mergeCommit=$policyMerge}
+Assert ((Version).version -ceq '0.12.0') 'The policy PR advances minor and resets patch'
+Commit 'Next merged PR';$nextMerge=FixtureGit @('rev-parse','HEAD');$merges+=@{number=107;mergeCommit=$nextMerge}
+Assert ((Version).version -ceq '0.13.0') 'Every subsequent PR advances minor exactly once'
+Assert ((Version 'branch').version -ceq "0.13.0+$((Version).bb)") 'Review builds retain hash suffixes under the minor policy'
+Assert ((Version).version -ceq (Version).version) 'Retries do not consume another minor version'
+$config.minor=[int]::MaxValue;Config
+Reject {Version} 'Minor overflow is rejected'
+$config.minor=11;$config.increment='unknown';Config
+Reject {Version} 'Unsupported increment policies fail closed'
 Write-Host "Versioning checks passed ($checks cases)."
+. (Join-Path $PSScriptRoot '../tools/update-feed.ps1')
+foreach($number in @('0.12.0','0.12.0+abcdef123456')){
+    $iso=Join-Path $repo "AnimalTown-$number.nkit.iso";$feed=Join-Path $repo 'update.json'
+    [IO.File]::WriteAllBytes($iso,[byte[]]::new(2048))
+    Write-UpdateFeed $iso $number 'capz/AnimalTown' $feed
+    $manifest=Get-Content $feed -Raw|ConvertFrom-Json
+    Assert ($manifest.tag_name -ceq "v$number" -and !$manifest.draft -and $manifest.assets.Count -eq 1) 'Feed identifies one exact published build'
+    Assert ($manifest.assets[0].size -eq 2048 -and $manifest.assets[0].digest -ceq ('sha256:'+(Get-FileHash $iso -Algorithm SHA256).Hash.ToLowerInvariant())) 'Feed binds actual ISO bytes'
+    Assert ((Get-Item $feed).Length -lt 2048 -and $manifest.assets[0].browser_download_url.Contains([Uri]::EscapeDataString("v$number"))) 'Feed stays bounded and encodes review identities'
+}
+Reject {Write-UpdateFeed $iso '0.12.0' 'capz/AnimalTown' $feed} 'Feed rejects version/basename disagreement'
