@@ -59,7 +59,9 @@ updater owns stable-image discovery, release checking, streaming verification,
 and retirement of the selected old image. The new image keeps its published
 filename in the selected directory. GC Loader's hardware mapping switches to
 the verified image, and its physical boot-header readback must match before
-the selected old file is deleted. A staged Swiss helper autoloads the new image
+the selected old file is deleted. Swiss is discovered by verified contents among
+root-level DOLs, with the newest recognized official revision selected. A staged
+Swiss helper autoloads the new image
 after the updater exits successfully.
 Failures keep the stopped phase and operation visible with available exception,
 path and native-result details. See [packaging and setup](updater-build.md).

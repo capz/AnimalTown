@@ -12,8 +12,9 @@ GC Loader. Hash-suffixed development builds are ignored. The verified download
 keeps its published filename in that directory; the selected old image is
 deleted only after the new image is verified, GC Loader's hardware mapping is
 switched to it and its physical boot-header readback matches. The Swiss launch
-helper is staged before this sequence. Provision HTTPS inputs and that helper
-with `--swiss /path/to/swiss.dol`.
+helper is staged before this sequence. The updater recognizes supported official
+Swiss DOLs at the drive root by their contents, including renamed `boot.dol`
+files. HTTPS provisioning does not require copying or renaming that helper.
 Swiss then autoloads the new image. No installation-path mapping is required.
 See [updater setup](updater-build.md); physical GC Loader writes and relaunch
 still require hardware validation.

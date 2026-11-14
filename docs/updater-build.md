@@ -23,16 +23,23 @@ which physical image booted the game. The selected highest stable image is the
 old installation retired after the new download is verified and selected in
 GC Loader's hardware disc mapping.
 
-Provision HTTPS inputs and an installed Swiss DOL on the computer that manages
+Keep a supported official normal Swiss DOL at the GC Loader drive root, under
+its existing `.dol` filename. Provision HTTPS inputs on the computer that manages
 the card:
 
 ```sh
-python3 tools/provision.py /path/to/SD --swiss /path/to/swiss.dol --roots /path/to/ca-bundle.pem --utc-offset-minutes 60
+python3 tools/provision.py /path/to/SD --roots /path/to/ca-bundle.pem --utc-offset-minutes 60
 ```
 
-This is the updater repository's provisioning tool. Settings and the Swiss
-helper remain at the SD root in `animaltown-updater/`, even when game images
-are in subfolders. No `image-path.txt` mapping is required.
+This is the updater repository's provisioning tool. Settings remain in
+`animaltown-updater/`, even when game images are in subfolders. Swiss is discovered
+among root DOLs by verified file fingerprints, regardless of filename; generic
+DOL headers have no Swiss identifier. The newest recognized official revision
+wins. The old private helper path remains a validated compatibility fallback.
+The catalog includes 12 official normal releases, including r2119; custom/new
+builds need a catalog update. Optional `--swiss /path/to/swiss_r2119.dol` verifies
+and copies a supported DOL to the root as `swiss.dol`. No `image-path.txt` mapping
+is required.
 
 The game stages its embedded updater DOL directly from `dvd:/`; only older
 discs missing that file need the root SD fallback. The SDK passes three separate
@@ -72,5 +79,4 @@ GC Loader/media behavior.
 The release tools archive includes the matching PC setup script as
 `provision-updater.py` and its guide as `updater-setup.md`. The script comes from
 the exact updater commit pinned into that game build. Run it against the mounted
-SD card, for example `python3 provision-updater.py /media/GCLOADER --swiss
-/path/to/swiss.dol`.
+SD card, for example `python3 provision-updater.py /media/GCLOADER`.
