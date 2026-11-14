@@ -20,7 +20,8 @@ ASCII-case-insensitive ordinal comparison,
 so directory enumeration order cannot change the selected installation.
 This is an installation-selection policy: GC Loader does not expose
 which physical image booted the game. The selected highest stable image is the
-old installation retired after successful verification of the new download.
+old installation retired after the new download is verified and selected in
+GC Loader's hardware disc mapping.
 
 Provision HTTPS inputs and an installed Swiss DOL on the computer that manages
 the card:
@@ -38,14 +39,17 @@ discs missing that file need the root SD fallback. The SDK passes three separate
 arguments: updater DOL path, `--animaltown-update=2`, and the running version.
 The updater is entirely resident before it releases the source disc and mounts
 the writable GC Loader volume. Its SDK remains pinned to
-`81d74a8a80e67ac7b4a0be3c269ea5506b8a9647`.
+`178d6cdaa3c08134d2a22330659000592c9ff5b0` for verified physical image selection.
 
 The new image keeps GitHub's published filename in the selected directory.
-Streaming, contiguous allocation and on-card verification complete before the
-selected old image is deleted. Other installations are retained. Swiss is
-staged and validated before deletion, and its SDK autoload handoff selects the
-new image after the updater returns successfully. Missing Swiss or an invalid
-download leaves the old image intact.
+Streaming, contiguous allocation and on-card verification complete first. The
+SDK then switches GC Loader's hardware disc mapping to the new image and reads
+its complete boot header back through the physical DVD interface. Only after
+that comparison succeeds does the updater delete the selected old image.
+Other installations are retained. Swiss is staged and validated before this
+sequence, and its SDK autoload handoff boots the new image after the updater
+returns successfully. A missing helper, invalid download or failed mapping
+check preserves the old image.
 
 Failure screens retain the stopped phase, last operation and available
 exception/path/native-result details, including empty-message exceptions.

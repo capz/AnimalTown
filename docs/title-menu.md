@@ -57,8 +57,10 @@ The standalone [updater repository](https://github.com/capz/AnimalTown.Updater)
 documents direct GC Loader SD setup, BBA networking and HTTPS provisioning. The
 updater owns stable-image discovery, release checking, streaming verification,
 and retirement of the selected old image. The new image keeps its published
-filename in the selected directory. A staged Swiss helper autoloads it after
-the updater exits successfully.
+filename in the selected directory. GC Loader's hardware mapping switches to
+the verified image, and its physical boot-header readback must match before
+the selected old file is deleted. A staged Swiss helper autoloads the new image
+after the updater exits successfully.
 Failures keep the stopped phase and operation visible with available exception,
 path and native-result details. See [packaging and setup](updater-build.md).
 Memory-card town data is not modified by an update. Physical storage/network

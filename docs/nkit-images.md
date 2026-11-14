@@ -10,8 +10,10 @@ The title's Update option launches the standalone updater, which recursively
 selects the highest stable `AnimalTown-MAJOR.MINOR.PATCH.nkit.iso` or `.iso` on
 GC Loader. Hash-suffixed development builds are ignored. The verified download
 keeps its published filename in that directory; the selected old image is
-deleted only after the new image is verified and the Swiss launch helper is
-staged. Provision HTTPS inputs and that helper with `--swiss /path/to/swiss.dol`.
+deleted only after the new image is verified, GC Loader's hardware mapping is
+switched to it and its physical boot-header readback matches. The Swiss launch
+helper is staged before this sequence. Provision HTTPS inputs and that helper
+with `--swiss /path/to/swiss.dol`.
 Swiss then autoloads the new image. No installation-path mapping is required.
 See [updater setup](updater-build.md); physical GC Loader writes and relaunch
 still require hardware validation.
