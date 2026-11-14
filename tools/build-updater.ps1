@@ -20,6 +20,8 @@ if(!$source){
     }
 }
 if((& git -C $source rev-parse HEAD).Trim() -ne $lock.commit -or (& git -C $source status --porcelain --untracked-files=normal)){throw 'Updater source must be a clean checkout of the pinned commit'}
+$notice=Join-Path $source 'THIRD-PARTY-NOTICES.txt'
+if(!(Test-Path -LiteralPath $notice -PathType Leaf)){throw 'Pinned updater source must include THIRD-PARTY-NOTICES.txt'}
 $build=Join-Path $source 'out/release/build.json';$dol=Join-Path $source 'out/release/animal-town-updater.dol'
 $cached=$false
 if((Test-Path $build) -and (Test-Path $dol)){
@@ -38,8 +40,10 @@ $manifest=Get-Content $build -Raw|ConvertFrom-Json
 if($manifest.source -ne $lock.commit -or $manifest.dirty){throw 'Updater must be built cleanly from its pinned source'}
 New-Item -ItemType Directory -Force (Join-Path $root 'out/disc')|Out-Null
 Copy-Item -LiteralPath $dol -Destination (Join-Path $root 'out/disc/animal-town-updater.dol') -Force
+Copy-Item -LiteralPath $notice -Destination (Join-Path $root 'out/disc/updater-THIRD-PARTY-NOTICES.txt') -Force
+Copy-Item -LiteralPath $notice -Destination (Join-Path $root 'out/updater-THIRD-PARTY-NOTICES.txt') -Force
 Write-Host "Packaged animal-town-updater.dol ($($lock.commit))"
 
-# Ship the matching PC-side setup tool with the release tools archive.
+# Keep the matching legacy setup tool for older images that consume TLS files.
 Copy-Item -LiteralPath (Join-Path $source 'tools/provision.py') -Destination (Join-Path $root 'out/updater-provision.py') -Force
 Copy-Item -LiteralPath (Join-Path $source 'README.md') -Destination (Join-Path $root 'out/updater-setup.md') -Force
