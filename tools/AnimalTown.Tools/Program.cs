@@ -131,14 +131,15 @@ static class Program
         Directory.CreateDirectory(Path.GetDirectoryName(output)!);
         using(var f=new FileStream(output,FileMode.Create,FileAccess.ReadWrite))
         {
-            f.SetLength(capacity);var boot=new byte[0x2460];Text(boot,0,7,"AMTE01");Put(boot,0x1c,0xc2339f3d);Text(boot,0x20,0x3e0,"AnimalTown / "+commit);
+            // Fixed release identity at 0x20 remains before NKit's 0x200 area.
+            f.SetLength(capacity);var boot=new byte[0x2460];Text(boot,0,7,"AMTE01");Put(boot,0x1c,0xc2339f3d);Text(boot,0x20,0x1e0,"AnimalTown / "+commit);
             Put(boot,0x420,0x10000);Put(boot,0x424,(uint)fstAt);Put(boot,0x428,(uint)fst.Length);Put(boot,0x42c,(uint)fst.Length);Put(boot,0x458,0xffffffff);
             // BI2: conservative retail-compatible fields, US region, 24 MiB memory.
             Put(boot,0x440+4,0x1800000);Put(boot,0x440+0x18,1);Put(boot,0x440+0x1c,1);
             WriteAt(f,0,boot);WriteAt(f,SdkApploader.DiscOffset,app);WriteAt(f,0x10000,dol);WriteAt(f,fstAt,fst);
             for(int i=0;i<files.Length;i++){f.Position=offsets[i];using var input=File.OpenRead(files[i].path);input.CopyTo(f);}
         }
-        Verify(output);Console.WriteLine(output);
+        Verify(output,commit);Console.WriteLine(output);
     }
     static void ValidateDol(byte[] dol)
     {
@@ -155,10 +156,15 @@ static class Program
         if(!found)throw new InvalidDataException("DOL entry is not executable");
         uint bss=Read(dol,0xd8),length=Read(dol,0xdc);if(length>0&&(bss<0x80003100||(long)bss+length>0x81200000))throw new InvalidDataException("Invalid BSS");
     }
-    static void Verify(string path)
+    static void Verify(string path,string? expectedVersion=null)
     {
         using var f=File.OpenRead(path);byte[] h=new byte[0x2460];f.ReadExactly(h);
         if(f.Length!=1459978240||Read(h,0x1c)!=0xc2339f3d||Read(h,0x2450)!=0x81200000||Read(h,0x2454)==0)throw new InvalidDataException("Boot header invalid");
+        if(expectedVersion!=null){
+            int end=Array.IndexOf(h,(byte)0,0x20,0x1e0);
+            if(end<0||Encoding.ASCII.GetString(h,0x20,end-0x20)!="AnimalTown / "+expectedVersion)
+                throw new InvalidDataException("Embedded release version differs from the build identity");
+        }
         int dolAt=(int)Read(h,0x420),fstAt=(int)Read(h,0x424),length=(int)Read(h,0x428);if(length<12||length>1024*1024||fstAt<=dolAt)throw new InvalidDataException("FST location invalid");
         byte[] dol=new byte[fstAt-dolAt];f.Position=dolAt;f.ReadExactly(dol);ValidateDol(dol);
         byte[] fst=new byte[length];f.Position=fstAt;f.ReadExactly(fst);int count=(int)Read(fst,8);if(count<2||count>1024||count*12>length)throw new InvalidDataException("FST root invalid");
