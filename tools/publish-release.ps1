@@ -130,7 +130,9 @@ if($LASTEXITCODE -eq 0){
         return
     }
 }else{
-    InvokeGh @('release','create',$tag,'--repo',$Repository,'--target',$commit,'--title',"AnimalTown $version",'--notes-file',$notesPath,'--prerelease','--draft') | Out-Null
+    $createArguments=@('release','create',$tag,'--repo',$Repository,'--target',$commit,'--title',"AnimalTown $version",'--notes-file',$notesPath,'--draft')
+    if(!$identity.isMain){$createArguments+='--prerelease'}
+    InvokeGh $createArguments | Out-Null
 }
 InvokeGh (@('release','upload',$tag,'--repo',$Repository,'--clobber')+$assets) | Out-Null
 $remote=(InvokeGh @('release','view',$tag,'--repo',$Repository,'--json','assets') | ConvertFrom-Json).assets
@@ -140,5 +142,6 @@ foreach($asset in $assets){
     $expected='sha256:'+(Get-FileHash -LiteralPath $asset -Algorithm SHA256).Hash.ToLowerInvariant()
     if(!$uploaded -or $uploaded.size -ne $file.Length -or $uploaded.digest -ne $expected){throw "Uploaded asset verification failed: $($file.Name)"}
 }
-InvokeGh @('release','edit',$tag,'--repo',$Repository,'--draft=false') | Out-Null
+$preview=(!$identity.isMain).ToString().ToLowerInvariant()
+InvokeGh @('release','edit',$tag,'--repo',$Repository,'--draft=false',"--prerelease=$preview") | Out-Null
 Write-Host "Published: https://github.com/$Repository/releases/tag/$tag"

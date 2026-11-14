@@ -109,14 +109,20 @@ function Get-BuildVersion {
         if(!$numbers.Add([long]$merge.number) -or !$boundaries.Add($merge.mergeCommit)){throw 'Duplicate PR integration boundary'}
         $changes+=@{number=[long]$merge.number;commit=$merge.mergeCommit}
     }
-    [long]$patch=[long]$config.patch+$changes.Count
-    if($patch -gt [int]::MaxValue){throw 'Version counter exhausted'}
-    $baseVersion="$($config.major).$($config.minor).$patch"
+    $increment=if($config.PSObject.Properties.Name -contains 'increment'){$config.increment}else{'patch'}
+    if($increment -notin @('patch','minor')){throw 'Invalid version increment policy'}
+    [long]$minor=$config.minor;[long]$patch=$config.patch
+    if($increment -eq 'minor'){
+        $minor+=$changes.Count
+        if($changes.Count){$patch=0}
+    }else{$patch+=$changes.Count}
+    if($patch -gt [int]::MaxValue -or $minor -gt [int]::MaxValue){throw 'Version counter exhausted'}
+    $baseVersion="$($config.major).$minor.$patch"
     $bb=$commit.Substring(0,12)
     $isMain=$BuildKind -eq 'main'
     $version=if($isMain){$baseVersion}else{"$baseVersion+$bb"}
     $dirty=[bool](Invoke-VersionGit $Root @('status','--porcelain','--untracked-files=normal'))
-    [pscustomobject]@{schema=2;version=$version;tag="v$version";baseVersion=$baseVersion;major=$config.major;minor=$config.minor;patch=$patch;bb=$bb;commit=$commit;mainCommit=$mainCommit;policySource=$policySource;isMain=$isMain;dirty=$dirty;baseCommit=$config.baseCommit;changes=$changes;canPublish=(!$isMain -or $commit -ceq $config.baseCommit -or $commit -cin @($changes.commit))}
+    [pscustomobject]@{schema=2;version=$version;tag="v$version";baseVersion=$baseVersion;major=$config.major;minor=$minor;patch=$patch;increment=$increment;bb=$bb;commit=$commit;mainCommit=$mainCommit;policySource=$policySource;isMain=$isMain;dirty=$dirty;baseCommit=$config.baseCommit;changes=$changes;canPublish=(!$isMain -or $commit -ceq $config.baseCommit -or $commit -cin @($changes.commit))}
 }
 function Write-VersionMetadata {
     param($Version,[string]$Root)

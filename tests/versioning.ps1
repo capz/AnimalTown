@@ -126,4 +126,17 @@ Assert ((Get-BuildVersion $repo -BuildKind branch -MainRef main).version -ceq "0
 $config.patch=11;Config
 $updated=Get-BuildVersion $repo -BuildKind main -MainRef HEAD
 Assert ($updated.version -ceq '0.11.15' -and $script:apiCalls -eq 3) 'An explicit checkpoint configuration change invalidates cached history'
+# Explicit user-requested migration starts at the current numeric main identity.
+$config.baseCommit=FixtureGit @('rev-parse','HEAD');$config.minor=11;$config.patch=38;$config.increment='minor';Config
+Assert ((Version).version -ceq '0.11.38') 'New checkpoint preserves its numeric baseline before integrations'
+Commit 'Minor policy PR integration';$policyMerge=FixtureGit @('rev-parse','HEAD');$merges+=@{number=106;mergeCommit=$policyMerge}
+Assert ((Version).version -ceq '0.12.0') 'The policy PR advances minor and resets patch'
+Commit 'Next merged PR';$nextMerge=FixtureGit @('rev-parse','HEAD');$merges+=@{number=107;mergeCommit=$nextMerge}
+Assert ((Version).version -ceq '0.13.0') 'Every subsequent PR advances minor exactly once'
+Assert ((Version 'branch').version -ceq "0.13.0+$((Version).bb)") 'Review builds retain hash suffixes under the minor policy'
+Assert ((Version).version -ceq (Version).version) 'Retries do not consume another minor version'
+$config.minor=[int]::MaxValue;Config
+Reject {Version} 'Minor overflow is rejected'
+$config.minor=11;$config.increment='unknown';Config
+Reject {Version} 'Unsupported increment policies fail closed'
 Write-Host "Versioning checks passed ($checks cases)."
