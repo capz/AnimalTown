@@ -6,14 +6,18 @@ extension; do not convert it to GCZ or RVZ for the GameCube loader. Only one
 image is needed on the card. Physical direct GC Loader testing remains separate
 from Dolphin testing.
 
-The title's Update option supports the installed image's chosen filename and
-folder. For direct firmware boot, use the updater repository's provisioning tool
-with the host-side installed path, for example
-`--image 'games/AnimalTown/My Town.nkit.iso'`. It records the canonical target in
-the SD-root `animaltown-updater/image-path.txt`; the game checks its identity and
-current version before passing the exact path to the updater. Missing/conflicting
-path information stops Update. See [updater setup](updater-build.md). After a
-verified replacement, follow **Power off/on** and reopen the image in firmware.
+The title's Update option launches the standalone updater, which recursively
+selects the highest stable `AnimalTown-MAJOR.MINOR.PATCH.nkit.iso` or `.iso` on
+GC Loader. Hash-suffixed development builds are ignored. The verified download
+keeps its published filename in that directory; the selected old image is
+deleted only after the new image is verified, GC Loader's hardware mapping is
+switched to it and its physical boot-header readback matches. The Swiss launch
+helper is staged before this sequence. The updater recognizes supported official
+Swiss DOLs at the drive root by their contents, including renamed `boot.dol`
+files. HTTPS provisioning does not require copying or renaming that helper.
+Swiss then autoloads the new image. No installation-path mapping is required.
+See [updater setup](updater-build.md); physical GC Loader writes and relaunch
+still require hardware validation.
 
 NKit ISO removes unused disc padding and reorganizes file placement. The game
 files are preserved; this is not a ZIP that the console must decompress. A
