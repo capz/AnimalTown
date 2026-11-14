@@ -6,9 +6,9 @@ internal static class IncrementalSaveChecks
     {
         internal readonly Dictionary<string,byte[]> Files=new();
         internal readonly List<string> Names=new();
-        internal int CutAt,Mode,Bytes;
+        internal int CutAt,Mode,Bytes,Reads;
         internal string? CorruptAfterWrite;
-        public byte[] Read(string name){var a=(byte[])Files[name].Clone();if(name==CorruptAfterWrite&&Names.Contains(name)){a[32]^=1;uint crc=SaveCodec.Crc(a,0,a.Length-4);for(int i=0;i<4;i++)a[a.Length-4+i]=(byte)(crc>>(i*8));}return a;}
+        public byte[] Read(string name){Reads++;var a=(byte[])Files[name].Clone();if(name==CorruptAfterWrite&&Names.Contains(name)){a[32]^=1;uint crc=SaveCodec.Crc(a,0,a.Length-4);for(int i=0;i<4;i++)a[a.Length-4+i]=(byte)(crc>>(i*8));}return a;}
         public void Write(string name,byte[] bytes){Names.Add(name);Bytes+=bytes.Length;bool cut=Names.Count==CutAt;if(cut&&Mode==0)throw new IOException("Before write");Files[name]=cut&&Mode==1?bytes[..(bytes.Length/2)]:(byte[])bytes.Clone();if(cut)throw new IOException("Interrupted write");}
         internal Disk Copy(){var d=new Disk();foreach(var f in Files)d.Files[f.Key]=(byte[])f.Value.Clone();return d;}
         internal void Reset(){Names.Clear();Bytes=0;CutAt=0;CorruptAfterWrite=null;}
@@ -43,9 +43,16 @@ internal static class IncrementalSaveChecks
         var desired=SaveCodec.Decode(before);desired.Wallet+=5;desired.Town.Spending++;desired.Town.Residents[0].Dwell++;
         var measured=baseDisk.Copy();new SaveRepository(measured).Save(desired);int writes=measured.Names.Count,publication=measured.Names.FindIndex(n=>Kind(n,"AT-Commit"))+1;
         check(writes==8,"compound save writes only three changed pairs and two manifests");
+        var cachedDisk=baseDisk.Copy();var cachedCandidate=SaveCodec.Decode(before);
+        cachedCandidate.Wallet+=5;cachedCandidate.Town.Spending++;cachedCandidate.Town.Residents[0].Dwell++;
+        var cachedReads=new SaveReadCache(cachedDisk);new SaveRepository(cachedReads).Save(cachedCandidate);
+        check(cachedReads.CacheHits>0&&cachedDisk.Reads<measured.Reads,"transaction cache reduces physical reads without reducing writes");
+        check(cachedDisk.Names.SequenceEqual(measured.Names),"cache preserves write and publication ordering");
+        Same(desired,new SaveRepository(cachedDisk).Load()!,check,"cached transaction saves the identical snapshot");
+        Console.WriteLine("Save physical reads: "+measured.Reads+" -> "+cachedReads.PhysicalReads+" with "+cachedReads.CacheHits+" cache hits");
         for(int mode=0;mode<3;mode++)for(int cut=1;cut<=writes;cut++){
             var fault=baseDisk.Copy();fault.Mode=mode;fault.CutAt=cut;var candidate=SaveCodec.Decode(before);candidate.Wallet+=5;candidate.Town.Spending++;candidate.Town.Residents[0].Dwell++;
-            check(Fails(()=>new SaveRepository(fault).Save(candidate))&&candidate.Sequence==baseline.Sequence,"every interrupted update reports failure without changing the live sequence");
+            check(Fails(()=>new SaveRepository(new SaveReadCache(fault)).Save(candidate))&&candidate.Sequence==baseline.Sequence,"every interrupted cached update reports failure without changing the live sequence");
             var recovered=new SaveRepository(fault).Load();bool published=cut>publication||cut==publication&&mode==2;
             check(recovered!=null,"interruption always retains a complete committed snapshot");Same(recovered!,published?desired:baseline,check,"power cut never mixes component revisions");
             fault.CutAt=0;fault.Names.Clear();var retry=recovered!;new SaveRepository(fault).Save(retry);Same(retry,new SaveRepository(fault).Load()!,check,"a recovered save repairs redundancy without losing its snapshot");
@@ -63,7 +70,7 @@ internal static class IncrementalSaveChecks
             var frozen=SaveCodec.Encode(candidate);check(Fails(()=>new SaveRepository(disk).Save(candidate)),"full semantic validation rejects invalid player, NPC and terrain snapshots");check(frozen.SequenceEqual(SaveCodec.Encode(candidate)),"invalid snapshots leave live data/sequence unchanged");Same(baseline,new SaveRepository(disk).Load()!,check,"invalid writes never publish over the last valid snapshot");
         }
         var changed=baseDisk.Copy();var c=SaveCodec.Decode(before);c.Wallet++;changed.CorruptAfterWrite="AT-Player"+(1-ReferenceBank(changed,c.Sequence,3));
-        check(Fails(()=>new SaveRepository(changed).Save(c)),"changed record readback rejects altered content even with a recomputed CRC");Same(baseline,new SaveRepository(changed).Load()!,check,"readback failure preserves the previous publication");
+        check(Fails(()=>new SaveRepository(new SaveReadCache(changed)).Save(c)),"cached changed record readback rejects altered content even with a recomputed CRC");Same(baseline,new SaveRepository(changed).Load()!,check,"readback failure preserves the previous publication");
         // Import old combined and v3/v4 split saves without changing source data.
         foreach(int format in new[]{0,3,4}){
             var disk=new Disk();var old=Town();old.Sequence=7;

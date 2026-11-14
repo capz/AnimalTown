@@ -4,6 +4,13 @@ internal static class SplitSaveChecks
 {
     internal static void Run(Action<bool,string> check)
     {
+        check(SaveCodec.Crc(System.Text.Encoding.ASCII.GetBytes("123456789"),0,9)==0xcbf43926,"IEEE CRC32 published check vector");
+        var crcData=new byte[257];for(int i=0;i<crcData.Length;i++)crcData[i]=(byte)(i*73+19);
+        for(int start=0;start<crcData.Length;start++)for(int count=0;count<=crcData.Length-start;count++){
+            uint expected=0xffffffff;
+            for(int i=start;i<start+count;i++){expected^=crcData[i];for(int bit=0;bit<8;bit++)expected=(expected>>1)^((expected&1)!=0?0xedb88320u:0);}
+            check(SaveCodec.Crc(crcData,start,count)==~expected,"nibble CRC matches independent bitwise oracle for offset/length spans");
+        }
         var s=new GameState(7319){Sequence=42,Wallet=1234,Name="Juniper",Species=3,Palette=5,Roof=2,Savings=9876543210};s.MailCount=2;s.Mail[0]=4;s.Mail[1]=-3;
         s.Town.Residents[0].Name="Savedfox";s.Town.Residents[0].Friendship=73;s.Town.Residents[0].PosX=12.125f;s.Town.Stock[0]=1;s.Town.Stock[2]=0;s.Town.Spending=777;
         var parts=SplitSaveCodec.Encode(s);var restored=SplitSaveCodec.Decode(parts);

@@ -5,6 +5,7 @@ namespace AnimalTown;
 public sealed class LowPolyTree
 {
     public const int TriangleBudget=96;
+    public const float VisibilityCenterY=.505f,VisibilityRadius=.82f;
     public readonly float[] Positions=new float[TriangleBudget*9];
     public readonly float[] Uvs=new float[TriangleBudget*6];
     public readonly byte[] Parts=new byte[TriangleBudget];
