@@ -1,5 +1,16 @@
 # Packaging the updater
 
+Online version checks use the compact, maximum 2 KiB manifest at
+`https://github.com/capz/AnimalTown/releases/latest/download/update.json`.
+Regular numbered main releases publish it starting at `0.12.0`; PR builds remain
+prereleases and cannot replace that channel. The updater caps buffered metadata
+at 2 KiB before JSON decoding and parses once. Release notes and paginated release
+API responses are no longer downloaded. Exact tag/ISO URL/name/size/SHA-256
+checks and numeric no-downgrade behavior remain, including upgrades from
+`0.11.38` to `0.12.0`. Missing, malformed or oversized feeds stop before download
+or image replacement. The first `0.12.0` release introduces the feed; this newer
+updater pin introduces its consumption.
+
 AnimalTown pins the standalone updater source in `build/updater.lock.json`.
 `tools/build-updater.ps1` fetches that exact commit, verifies a clean checkout,
 runs the updater's DolphinDotNet build, and copies `animal-town-updater.dol` and
