@@ -39,7 +39,8 @@ discs missing that file need the root SD fallback. The SDK passes three separate
 arguments: updater DOL path, `--animaltown-update=2`, and the running version.
 The updater is entirely resident before it releases the source disc and mounts
 the writable GC Loader volume. Its SDK remains pinned to
-`178d6cdaa3c08134d2a22330659000592c9ff5b0` for verified physical image selection.
+`2f8e81650a6d23f2053da0118495b93866efb14e` for verified physical image selection
+and the exFAT traversal fix.
 
 The new image keeps GitHub's published filename in the selected directory.
 Streaming, contiguous allocation and on-card verification complete first. The
@@ -53,6 +54,12 @@ check preserves the old image.
 
 Failure screens retain the stopped phase, last operation and available
 exception/path/native-result details, including empty-message exceptions.
+The updater reports the current scan directory or candidate file. Its SDK
+rebuilds the matching FAT drivers with a 64-level exFAT path limit; the original
+10-level limit incorrectly reported deep paths as out-of-memory failures.
+Native exception messages now survive without allocating memory, and the updater
+keeps its 1 MiB managed heap. Real native AOT tests exercise the full updater and
+UI over wide, candidate-heavy and 30-level directory trees before native builds.
 Physical GC Loader writes, BBA operation and Swiss relaunch still require
 hardware tests.
 
