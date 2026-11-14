@@ -8,8 +8,16 @@ at 2 KiB before JSON decoding and parses once. Release notes and paginated relea
 API responses are no longer downloaded. Exact tag/ISO URL/name/size/SHA-256
 checks and numeric no-downgrade behavior remain, including upgrades from
 `0.11.38` to `0.12.0`. Missing, malformed or oversized feeds stop before download
-or image replacement. The first `0.12.0` release introduces the feed; this newer
-updater pin introduces its consumption.
+or image replacement. Release `0.12.0` introduced the feed; `0.13.0` introduced
+its consumption.
+
+If the selected installation is already current or newer than the feed, the
+updater revalidates the image and prepares Swiss autoload without physically
+remapping the disc or deleting files. This avoids the contiguous-only SDK remap
+for manually copied images that Swiss can normally map itself. FAT case aliases
+also count as unchanged. New-version replacements still require successful
+physical selection and boot-header readback before deleting the selected old
+ISO. A failure in that replacement path continues to retain both images.
 
 AnimalTown pins the standalone updater source in `build/updater.lock.json`.
 `tools/build-updater.ps1` fetches that exact commit, verifies a clean checkout,
