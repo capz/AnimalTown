@@ -373,13 +373,13 @@ internal sealed class TownGame : IDisposable
         }
         residencyBudgetUs=Math.Max(0,residencyBudgetUs-(int)(Clock.Timestamp-at));
         long modelAt=Clock.Timestamp;
-        bool allowDemotion=session.Draft==null&&terrain.ArchiveReady&&room!=0&&at-playerStillSince>=ModelResidency.IdleDelayUs&&
+        bool allowDemotion=session.Draft==null&&terrain.ArchiveReady&&(room==0||at-playerStillSince>=ModelResidency.IdleDelayUs)&&
             !villagers.Doors.Busy(0)&&requestedUv<0&&uvDebug==0&&waterInspection==0;
         modelResidency.Pump(at,allowDemotion,modelAt+Math.Max(0,residencyBudgetUs));
         residencyBudgetUs=Math.Max(0,residencyBudgetUs-(int)(Clock.Timestamp-modelAt));
         if(modelResidency.Failures!=residencyFailures){residencyFailures=modelResidency.Failures;TextureCache.TrimUnused();}
         if(requestedUv>=0&&modelResidency.AllReady){int next=requestedUv;requestedUv=-1;ApplyUv(next);}
-        modelSceneReady=modelResidency.ReadyForSpace(state,villagers.Doors,room);
+        modelSceneReady=room==0||modelResidency.ReadyForSpace(state,villagers.Doors,room);
         UpdatePortalReadiness();
         FrameProfile.Add(2,Clock.Timestamp-at);
     }
@@ -394,7 +394,7 @@ internal sealed class TownGame : IDisposable
         if(room!=0){BuildingWorld.InsideDoor(state,room,out float x,out float z);float dx=state.X-x,dz=state.Z-z;nearExit=dx*dx+dz*dz<1.1025f;}
         outdoorModelLookahead=room!=0&&(nearExit||now-playerStillSince<2000000);
         modelResidency.Require(state,villagers.Doors,now,uvDebug!=0||requestedUv>=0||waterInspection!=0,outdoorModelLookahead?0:-1);
-        modelSceneReady=modelResidency.ReadyForSpace(state,villagers.Doors,room);
+        modelSceneReady=room==0||modelResidency.ReadyForSpace(state,villagers.Doors,room);
         UpdatePortalReadiness();
     }
     private void UpdatePortalReadiness()
@@ -740,7 +740,7 @@ internal sealed class TownGame : IDisposable
     internal void Step(ControllerState pad)
     {
         if(resourcesReady)RefreshResidencyDemand(Clock.Timestamp);
-        if(!resourcesReady||!modelSceneReady||room==0&&!terrain.Ready){runningMinimap.Update(Clock.Timestamp,false,false);return;}
+        if(!resourcesReady||room==0&&!terrain.Ready){runningMinimap.Update(Clock.Timestamp,false,false);return;}
         bool running=false;float beforeX=state.X,beforeZ=state.Z;
         tick++;
         if(tick%30==0)townClock.Update(NativeCalendar.ReadClock());
@@ -851,7 +851,9 @@ internal sealed class TownGame : IDisposable
         bool mat=room!=0&&BuildingWorld.Definition(state,BuildingWorld.Building(room)).Floor==BuildingCatalog.Cottage.Floor;
         for(int actor=0;actor<BuildingWorld.Actors;actor++){
             if(BuildingWorld.Location(state,actor).Space.Value!=room||actor==0&&waterInspection!=0)continue;
-            var p=villagers.Doors.VisualLocation(state,actor);if(Visible(p.X,p.Z,1.8f))villagerShadows.Set(actor,room,p.X,p.Z,size,mat);
+            var p=villagers.Doors.VisualLocation(state,actor);
+            if(room==0&&actor!=0&&!ModelResidencyDemand.WithinOutdoorDistance(state,villagers.Doors,p.X,p.Z))continue;
+            if(Visible(p.X,p.Z,1.8f))villagerShadows.Set(actor,room,p.X,p.Z,size,mat);
         }
     }
     internal void Draw()
@@ -868,7 +870,7 @@ internal sealed class TownGame : IDisposable
         // tick. Resolve final drawable residency after the effective view changes.
         long residencyAt=FrameProfile.Start();
         modelResidency.Require(state,villagers.Doors,Clock.Timestamp,uvDebug!=0||requestedUv>=0||waterInspection!=0,outdoorModelLookahead?0:-1);
-        modelSceneReady=modelResidency.ReadyForSpace(state,villagers.Doors,room);
+        modelSceneReady=room==0||modelResidency.ReadyForSpace(state,villagers.Doors,room);
         FrameProfile.End(2,residencyAt);
         if(!modelSceneReady){modelResidency.WaitForScene();DrawLoading();return;}
         terrain.RoughOcean=weather.RoughOcean(room);terrain.SeasonOverride=renderDebug.SeasonOverride;
@@ -897,6 +899,7 @@ internal sealed class TownGame : IDisposable
         if(weather.Raining(room)&&villagers.Doors.PlayerFade<1)rain.Prepare(state,(Clock.Timestamp-sessionStart)/1000000.0,cachedPlayerHeight);
         else rain.Dispose();
         actorVisibility.Prepare(state,villagers.Doors,indoorCamera,waterInspection,cachedPlayerHeight);
+        for(int actor=1;actor<7;actor++)if(!modelResidency.Ready(actor-1))actorVisibility.Visible[actor]=false;
         UpdateAnimationFrame();
         if(renderDebug.ForceAttention&&villagers.Doors.PlayerFade<1)attention.Prepare();
         phase=FrameProfile.Start();uiShapes.Prepare(screen,screen=="menu"?menuTab:-1,batchedDrawing);if((batchedDrawing&&screen=="map")||(runningMinimap.Visible&&screen=="world"&&room==0))mapBackground.Prepare(state.Town);modelUsed=0;FrameProfile.End(8,phase);

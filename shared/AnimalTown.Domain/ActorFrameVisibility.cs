@@ -19,6 +19,7 @@ public sealed class ActorFrameVisibility
                 // limbs and all facing directions; retain edge intersections.
                 const float scale=1.8f,radius=scale*1.5f;
                 if(room==0){
+                    if(actor!=0&&!ModelResidencyDemand.WithinOutdoorDistance(state,doors,p.X,p.Z)){Visible[actor]=false;continue;}
                     var center=CylinderWorld.Surface(p.Z,state.Z,TerrainElevation.At(state.Town,p.X,p.Z)+scale*.5f);
                     visible=RenderView.Sphere(p.X,center.Y,center.Z,radius,state.X,state.Z,eyeHeight)&&RenderView.AboveHorizon(center.Y,center.Z,radius,state.Z,eyeHeight);
                 }else visible=interior.Sphere(p.X,scale*.5f,p.Z,radius,size);

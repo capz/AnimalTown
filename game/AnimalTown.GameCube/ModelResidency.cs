@@ -45,6 +45,7 @@ internal sealed class ModelResidency
     private CancellationTokenSource? cancellation;
     private int active=-1;
     private bool restoring,cancelRequested,hadBacking,stopped;
+    private bool outdoors;
     internal bool Enabled=true;
     internal int Demotions,Restores,Cancellations,Failures,BackingReleases;
     internal int WorkSteps,MaxAdvanceUs,MaxAdmissionUs,ReadinessWaits,PortalWaits;
@@ -66,6 +67,7 @@ internal sealed class ModelResidency
     internal void Require(GameState state,PortalSystem doors,long now,bool pinAll=false,int targetSpace=-1)
     {
         if(stopped)return;
+        outdoors=state.Space==0;
         demand.Prepare(state,doors,pinAll||!Enabled,targetSpace);
         bool otherUrgent=false;
         for(int i=0;i<models.Length;i++){
@@ -160,7 +162,7 @@ internal sealed class ModelResidency
     {
         int candidate=-1;
         for(int i=0;i<models.Length;i++)if(models[i]!=null&&!demand.Required[i]&&models[i]!.SupportsAramResidency&&Ready(i)&&now>=retryAt[i]&&
-            (startup?!startupAttempted[i]:now-lastRequired[i]>=IdleDelayUs&&now>=warmUntil[i])&&
+            (startup?!startupAttempted[i]:now-lastRequired[i]>=(outdoors?0:IdleDelayUs)&&now>=warmUntil[i])&&
             (candidate<0||lastRequired[i]<lastRequired[candidate]))candidate=i;
         return candidate;
     }

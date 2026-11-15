@@ -1,13 +1,14 @@
 namespace AnimalTown;
 
-// Residency follows shared species and spaces, not a camera's per-frame cull.
+// Residency follows shared species, spaces and a map-square distance.
 // The player and both sides of a doorway remain pinned until the crossing ends.
 public sealed class ModelResidencyDemand
 {
     public const int SpeciesCount=6;
-    // More than four seconds of maximum sprint travel, plus NPC motion. This
-    // expands restore demand only: outdoor camera culling never triggers eviction.
+    // Rendering has a conservative envelope; residency itself uses distance,
+    // independent of camera rotation and viewport culling.
     public const float OutdoorGuard=24;
+    public const float OutdoorDistance=Town.ScreenTileSize;
     public readonly bool[] Required=new bool[SpeciesCount];
     public int DestinationSpace {get;private set;}=-1;
     public void Prepare(GameState state,PortalSystem doors,bool pinAll=false,int targetSpace=-1)
@@ -22,11 +23,11 @@ public sealed class ModelResidencyDemand
         if(species==state.Species)return true;
         int actor=species+1;
         var resident=state.Town.Residents[species];
-        if(resident.Space==space&&(space!=0||OutdoorImminent(state,doors,resident.PosX,resident.PosZ)))return true;
+        if(resident.Space==space&&(space!=0||WithinOutdoorDistance(state,doors,resident.PosX,resident.PosZ)))return true;
         if(!doors.Busy(actor))return false;
         var transition=doors.Actors[actor];
-        return transition.Source.Space.Value==space&&(space!=0||OutdoorImminent(state,doors,transition.Source.X,transition.Source.Z))||
-            transition.Destination.Space.Value==space&&(space!=0||OutdoorImminent(state,doors,transition.Destination.X,transition.Destination.Z));
+        return transition.Source.Space.Value==space&&(space!=0||WithinOutdoorDistance(state,doors,transition.Source.X,transition.Source.Z))||
+            transition.Destination.Space.Value==space&&(space!=0||WithinOutdoorDistance(state,doors,transition.Destination.X,transition.Destination.Z));
     }
     // Lookahead may request an invisible actor without blocking simulation or
     // drawing. Only the original drawable envelope gates the current scene.
@@ -40,17 +41,28 @@ public sealed class ModelResidencyDemand
     }
     private static bool OutdoorImminent(GameState state,PortalSystem doors,float x,float z,float guard=OutdoorGuard)
     {
-        float focusX=state.X,focusZ=state.Z;
-        if(state.Space!=0){
-            int building=BuildingWorld.Building(state.Space);
-            if(!BuildingWorld.Exists(state,building))return true;
-            var crossing=doors.Actors[0];
-            if(doors.Busy(0)&&crossing.Destination.Space.IsTown){focusX=crossing.Destination.X;focusZ=crossing.Destination.Z;}
-            else{BuildingWorld.Entrance(state,building,out focusX,out focusZ);focusZ+=1;}
-        }
+        if(!WithinOutdoorDistance(state,doors,x,z))return false;
+        OutdoorFocus(state,doors,out float focusX,out float focusZ);
         float eyeHeight=TerrainElevation.At(state.Town,focusX,focusZ);
         var point=CylinderWorld.Surface(z,focusZ,TerrainElevation.At(state.Town,x,z)+.9f);
         return RenderView.Sphere(x,point.Y,point.Z,2.7f+guard,focusX,focusZ,eyeHeight)&&
             RenderView.AboveHorizon(point.Y,point.Z,2.7f+guard,focusZ,eyeHeight);
+    }
+    public static bool WithinOutdoorDistance(GameState state,PortalSystem doors,float x,float z)
+    {
+        OutdoorFocus(state,doors,out float focusX,out float focusZ);
+        float dx=x-focusX,dz=z-focusZ;
+        return dx*dx+dz*dz<OutdoorDistance*OutdoorDistance;
+    }
+    private static void OutdoorFocus(GameState state,PortalSystem doors,out float focusX,out float focusZ)
+    {
+        focusX=state.X;focusZ=state.Z;
+        if(state.Space!=0){
+            int building=BuildingWorld.Building(state.Space);
+            if(!BuildingWorld.Exists(state,building))return;
+            var crossing=doors.Actors[0];
+            if(doors.Busy(0)&&crossing.Destination.Space.IsTown){focusX=crossing.Destination.X;focusZ=crossing.Destination.Z;}
+            else{BuildingWorld.Entrance(state,building,out focusX,out focusZ);focusZ+=1;}
+        }
     }
 }

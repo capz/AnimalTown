@@ -203,6 +203,33 @@ internal static class ModelResidencyChecks
         check(!models[1].IsResident&&manager.ColdBytes==65536&&models[1].Starts==2,"canceled shutdown preserves the cold model's backing for normal disposal without restarting it");
 
         StartupChecks(check);
+        OutdoorJourneyChecks(check);
+    }
+    private static void OutdoorJourneyChecks(Action<bool,string> check)
+    {
+        Clock.Timestamp=0;Aram.Reset();
+        var state=new GameState(7319){HousePlaced=true,Species=0,X=120,Z=70};
+        var journey=new VillagerJourney();var manager=new ModelResidency();var models=new Model[6];
+        for(int i=0;i<6;i++){models[i]=new Model();manager.Register(i,models[i],0);}
+        bool movedCold=false,enteredCold=false,exitedCold=false;var visited=new bool[6];
+        for(int tick=0;tick<4000;tick++){
+            Clock.Timestamp+=33333;manager.Require(state,journey.Doors,Clock.Timestamp);Pump(manager,true);
+            var oldX=new float[6];var oldZ=new float[6];var oldSpace=new int[6];
+            for(int i=0;i<6;i++){var v=state.Town.Residents[i];oldX[i]=v.PosX;oldZ[i]=v.PosZ;oldSpace[i]=v.Space;journey.Doors.ResourcesReady[i+1]=!manager.Required(i)||manager.Ready(i);}
+            journey.Tick(state);
+            for(int i=1;i<6;i++)if(!models[i].IsResident){
+                var v=state.Town.Residents[i];movedCold|=oldX[i]!=v.PosX||oldZ[i]!=v.PosZ;
+                enteredCold|=oldSpace[i]==0&&v.Space!=0;visited[i]|=v.Space!=0;
+                exitedCold|=visited[i]&&oldSpace[i]!=0&&v.Space==0;
+                check(models[i].AnimationPosition==37,"cold villager logic never advances a native animation resource");
+            }
+        }
+        check(manager.Demotions>0&&models[0].IsResident,"outdoor paging keeps the player's shared model resident");
+        check(movedCold&&enteredCold&&exitedCold,"offloaded villagers keep moving, entering houses and returning outside");
+        var approaching=state.Town.Residents[1];approaching.Space=0;approaching.PosX=state.X-19;approaching.PosZ=state.Z;journey.Doors.Actors[2].Phase=DoorPhase.Idle;
+        manager.Require(state,journey.Doors,Clock.Timestamp);for(int i=0;i<100&&!manager.Ready(1);i++){Pump(manager);Clock.Timestamp+=33333;}
+        check(manager.Ready(1),"returning within one map square restores the existing shared model");
+        manager.Stop();
     }
     private static void StartupChecks(Action<bool,string> check)
     {
@@ -278,8 +305,11 @@ internal static class ModelResidencyChecks
 
         Clock.Timestamp=0;Aram.Reset();var fullState=new GameState(-634240096){HousePlaced=true,Species=0,Space=0,X=18.5f,Z=40.5f};var fullDoors=new PortalSystem();var full=new ModelResidency();var required=new Model[6];
         for(int i=0;i<6;i++){required[i]=new Model();full.Register(i,required[i],0);}
-        check(Startup(full,fullState,fullDoors,6)&&full.RequiredSpeciesCount==6&&required.All(x=>x.IsResident&&x.Starts==0),
-            "the actual starting plot reports all six guarded species and never evicts one to hide a full working-set limit");
+        FinishStartup(full,fullState,fullDoors,6);
+        var expected=new ModelResidencyDemand();expected.Prepare(fullState,fullDoors);
+        check(full.RequiredSpeciesCount==expected.Required.Count(x=>x)&&full.RequiredSpeciesCount<6,
+            "the starting plot loads its one-map-square cohort rather than pinning every distant villager");
+        for(int i=0;i<6;i++)check(required[i].IsResident==expected.Required[i],"startup preserves nearby species and offloads distant packages");
 
         Clock.Timestamp=0;Aram.Reset();var guardState=State();var guardDoors=new PortalSystem();var guard=new ModelResidency();
         guard.Register(0,new Model(),0);var permanent=new Model();permanent.RetainPermanently();guard.Register(1,permanent,0);
