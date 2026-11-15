@@ -376,7 +376,11 @@ def title_options():
     if not town:raise AssertionError('Options deletion needs a disposable saved-town fixture')
     # Create the independent debug record through the actual title UI.
     press('D_UP');press('A');wait_title(modal=True);press('D_RIGHT');press('B');wait_title()
-    debug=options_card_files().get('dev_config')
+    deadline=time.monotonic()+30;debug=None
+    while time.monotonic()<deadline:
+        debug=options_card_files().get('dev_config')
+        if debug:break
+        time.sleep(.5)
     if not debug:raise AssertionError('Could not prepare independent debug preferences')
     press('D_UP');press('A');time.sleep(2);screenshot('options-open.png')
     original=options_card_files().get('options');press('D_RIGHT');screenshot('options-draft-576p.png')
@@ -1226,7 +1230,9 @@ def close_display():
 atexit.register(close_display)
 screenshot('display-ready.png') # Prove an actual X11 capture before booting.
 with (root/'emulator.log').open('w') as log:
-    p=subprocess.Popen(['/usr/games/dolphin-emu-nogui','-u',str(user),'-e',str(disc),'-v','OGL'],env=env,stdout=log,stderr=subprocess.STDOUT)
+    command=['/usr/games/dolphin-emu-nogui','-u',str(user),'-e',str(disc),'-v','OGL']
+    if '--component-cable' in sys.argv:command+=['-C','SYSCONF.IPL.PGS=True']
+    p=subprocess.Popen(command,env=env,stdout=log,stderr=subprocess.STDOUT)
     try:
         if '--loading' in sys.argv:
             for n,seconds in enumerate((1,1,2,4,8,12,17)):
