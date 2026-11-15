@@ -1,7 +1,7 @@
 # Title menu and dev config
 
 Startup mounts the disc, reads its runtime defaults and the independent Slot A
-`dev_config` record, then runs the SDK/engine splash screens. `TitleScreen` owns
+`dev_config` and `options` records, applies saved video preferences, then runs the SDK/engine splash screens. `TitleScreen` owns
 only the original cream panel, tree emblem, wordmark, tagline, IPL menu font
 and a procedural 64×64 mint dot texture. The
 staggered dots repeat and drift diagonally at four pixels per second. It creates
@@ -29,8 +29,37 @@ After identity selection, the dot background and sprout cover staged game
 loading. See [shared town profiles](shared-town-profiles.md). A held confirmation button cannot accept the next game
 screen because the controller edge was consumed by the title.
 
-The title has exactly three options: Start, Update and Debug configuration.
+The title has four entries: Start, Update, Options and Debug configuration.
 Up/Down selects and A activates; START also activates the focused Start option.
+
+Options opens a cream modal with Video, Language and Data sections. Video offers
+480p/576p resolution and Yes/No widescreen choices, aligned on the right of each
+label. The underline marks the active output; Left/Right moves the candidate
+highlight and A applies and immediately saves it to Slot A. B closes the panel.
+Language currently shows a disabled Coming soon entry. New console preferences
+do not change boot timing until a progressive mode is explicitly selected.
+
+Video follows the SDK VideoMode sample: `GraphicsDevice.ConfigureDisplay` runs
+between frames, with an explicit progressive scan for resolution changes and
+Auto/Auto for aspect-only changes so they retain timing and framebuffers.
+Progressive requires a compatible cable and display. Rejected modes/allocation
+failures preserve the active output and are not saved. Startup falls back to
+boot output if a saved mode is unavailable; hold X during startup to bypass a
+saved video mode when changing TVs. There is no extra keep/revert step: A is the
+requested commit action. The independent 16-byte options record is versioned,
+checksummed and read back after writing. Save failures explicitly report that
+the applied settings are session-only. Widescreen updates both drawing cameras
+and their outdoor/interior culling frusta. The title's fixed composition uses
+display-correct Fit scaling, retaining readable proportions in either aspect.
+
+Data contains Delete town data. A opens a Slot A confirmation with Cancel focused;
+A on Cancel or B returns without writing. Select Delete and press A to erase all
+town records: both banks, all four player villagers, NPC villagers, and legacy
+migration copies. Options and dev config remain. A small verified deletion-intent
+record is published first and removed last; an interrupted operation blocks town
+loading until deletion is retried in Options. Deletion does not construct a town
+or load models. The options heading/font is released when the modal closes.
+
 Debug configuration opens a modal above the dimmed title. Inside it, Up/Down
 selects a paged setting; A or Left/Right changes it; Z resets the rim or
 mip-distance slider. B (or START) saves changed settings and closes the modal. The record's memory-card title is `dev config`. Its versioned,
@@ -45,6 +74,7 @@ paths, rim/shadows/cloud cover, cliff/water previews, runtime wait/clear flags,
 rain/rough ocean/season, villager attention, rim strength, ground mipmaps and
 distance, frozen landscape motion, mesh recreation and the legacy ground ring.
 Teleport/debug-location actions remain actions rather than stored settings.
+UI grain starts at 10% strength; tree grain remains unchanged.
 
 Update chainloads `dvd:/animal-town-updater.dol` when packaged, or falls back to
 `gcloader:/animal-town-updater.dol`. The embedded DOL is staged before the game
@@ -77,3 +107,9 @@ the game appears. `--title-config` checks the modal after reboot using a copied
 `OUTPUT/MemoryCardA.USA.raw`; `--title-update` captures the updater handoff.
 The checks wait for visible title/modal states around memory-card operations
 rather than assuming software emulation advances at wall-clock speed.
+`--title-options --component-cable` uses a disposable populated card to exercise
+480p/576p, immediate writes, aspect-only timing preservation, both cancellation
+paths and whole-town deletion. `--title-options-load --component-cable` checks
+the copied card after reboot; `--title-options-unsupported` verifies that rejected
+progressive output does not write settings. These checks do not establish
+physical TV/cable compatibility or power-loss behavior on a real card.

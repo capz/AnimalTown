@@ -9,7 +9,7 @@ public sealed class InteriorCamera
     private float target;private bool armed=true;
     private BuildingDefinition definition=BuildingCatalog.Cottage;
     private BuildingDefinition? cachedDefinition;
-    private float cachedAngle=float.NaN,cachedSize;
+    private float cachedAngle=float.NaN,cachedSize,cachedAspect;
     private readonly Hypercube.CameraFrustum frustum=new Hypercube.CameraFrustum(2,5.6f,6.8f,2,.7f,2,0,1,0,CylinderWorld.CameraFieldOfView,4f/3,.1f,64);
     public void Configure(BuildingDefinition value){definition=value;}
     public void Reset(){Quarter=0;Angle=target=0;armed=true;}
@@ -33,9 +33,9 @@ public sealed class InteriorCamera
     }
     public bool Sphere(float x,float y,float z,float radius,float size)
     {
-        if(cachedAngle!=Angle||cachedSize!=size||cachedDefinition!=definition){
-            frustum.Set(EyeX(size),EyeY(size),EyeZ(size),size*.5f,.7f,size*.5f,0,1,0,CylinderWorld.CameraFieldOfView,4f/3,.1f,64);
-            cachedAngle=Angle;cachedSize=size;cachedDefinition=definition;
+        if(cachedAngle!=Angle||cachedSize!=size||cachedDefinition!=definition||cachedAspect!=RenderView.AspectRatio){
+            frustum.Set(EyeX(size),EyeY(size),EyeZ(size),size*.5f,.7f,size*.5f,0,1,0,CylinderWorld.CameraFieldOfView,RenderView.AspectRatio,.1f,64);
+            cachedAngle=Angle;cachedSize=size;cachedDefinition=definition;cachedAspect=RenderView.AspectRatio;
         }
         return frustum.Sphere(x,y,z,radius+.025f);
     }

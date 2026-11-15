@@ -20,6 +20,8 @@ internal static class RenderingServiceChecks
         // Compare cached camera/horizon against the pre-migration equations,
         // including elevated focus and repeated switches between views.
         var random=new Random(481);
+        foreach(bool wide in new[]{false,true,false}){
+        RenderView.SetWidescreen(wide);
         for(int n=0;n<4000;n++){
             float fx=random.Next(-10,170),fz=random.Next(-10,170),height=n%3==0?0:n%3==1?2:-.5f;
             float x=fx+random.Next(-40,40),y=random.Next(-20,20),z=fz+random.Next(-40,40),radius=.2f+random.Next(0,30)*.1f;
@@ -33,5 +35,14 @@ internal static class RenderingServiceChecks
             bool horizon=CylinderWorld.Radius*CylinderWorld.Radius/er-along<=margin||(er-along)*sin-Math.Abs(across)*cos<=margin;
             check(RenderView.AboveHorizon(y,z,radius,fz,height)==horizon,"cached horizon preserves cylinder visibility");
         }
+        }
+        const float size=4;var roomCamera=new InteriorCamera();
+        float roomY=roomCamera.EyeY(size)-.7f,roomZ=roomCamera.EyeZ(size)-size*.5f;
+        float edge=size*.5f+(float)Math.Sqrt(roomY*roomY+roomZ*roomZ)*RenderView.TanY*(14f/9);
+        check(!roomCamera.Sphere(edge,.7f,size*.5f,0,size),"4:3 interior rejects a point outside its horizontal frustum");
+        RenderView.SetWidescreen(true);
+        check(roomCamera.Sphere(edge,.7f,size*.5f,0,size),"aspect changes invalidate the interior culling cache and retain newly visible room edges");
+        RenderView.SetWidescreen(false);
+        check(!roomCamera.Sphere(edge,.7f,size*.5f,0,size),"returning to 4:3 restores interior culling without moving the camera");
     }
 }

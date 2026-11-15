@@ -21,9 +21,10 @@ internal static class Program
         RuntimeOptions.Load();
         var config=DevConfigStorage.Load();
         DevConfigStorage.ApplyGlobal(config);
+        var options=UserOptionsStorage.Load();VideoOptions.Load(options);
         StartupSplash.Run();
         while(true){
-            if(!TitleScreen.Run(config))return 0;
+            if(!TitleScreen.Run(config,options))return 0;
             var session=TownSession.Load();LoadingScreen.Finish();
             if(!ProfilePicker.Run(session)){AnimalTown.GameCube.NativeTexturePages.Collect();continue;}
             if(session.Draft!=null&&!OnboardingFlow.Run(config,session)){
@@ -97,13 +98,13 @@ internal sealed class TownGame : IDisposable
     private float desiredPlayerSpeed=1.05f,appliedPlayerSpeed=1.05f;
     private readonly VillagerJourney villagers=new VillagerJourney();
     private readonly InteriorCamera indoorCamera=new InteriorCamera();
-    private readonly Camera indoorView=new Camera(CylinderWorld.CameraFieldOfView,4f/3,.1f,64);
+    private readonly Camera indoorView=new Camera(CylinderWorld.CameraFieldOfView,0,.1f,64);
     private readonly BuildingRenderer buildings;
     private int room {get=>state.Space;set=>state.Space=value;}
     private readonly bool[] villagersMoving=new bool[6];
     private readonly GraphicsDevice device=GraphicsDevice.Default;
     private readonly Renderer renderer=new Renderer(GraphicsDevice.Default,128);
-    private readonly Camera camera=new Camera(CylinderWorld.CameraFieldOfView,4f/3,CylinderWorld.Near,CylinderWorld.Far);
+    private readonly Camera camera=new Camera(CylinderWorld.CameraFieldOfView,0,CylinderWorld.Near,CylinderWorld.Far);
     private readonly Draw2D ui;
     private readonly UiFont font,headingFont,strongFont;
     private readonly CachedTexture itemIcons;

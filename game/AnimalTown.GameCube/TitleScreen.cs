@@ -10,25 +10,29 @@ using Dolphin.Timing;
 internal sealed class TitleScreen : IDisposable
 {
     private readonly GraphicsDevice device=GraphicsDevice.Default;
-    private readonly Draw2D ui=new Draw2D(GraphicsDevice.Default,new Draw2DOptions{Width=640,Height=480,VertexCapacity=8192,SpriteCapacity=128});
+    private readonly Draw2D ui=new Draw2D(GraphicsDevice.Default,new Draw2DOptions{Width=640,Height=480,ScaleMode=CanvasScaleMode.Fit,VertexCapacity=8192,SpriteCapacity=128});
     private readonly UiFont font=UiFont.LoadSystem();
     private readonly CachedTexture logo=TextureCache.Load("dvd:/wordmark.dndtex",true);
     private readonly TitleBackdrop background=new TitleBackdrop();
     private readonly MenuNavigation navigation=new MenuNavigation();
     private readonly DevConfig config;
+    private readonly UserOptions options;
+    private UiFont? optionsHeading;
     private readonly int[] rows=new int[DevConfig.Count-1];
-    private int selected,debugSelected;
-    private bool debugOpen,dirty;
+    private int selected,debugSelected,optionRow,optionChoice;
+    private bool debugOpen,dirty,optionsOpen,confirmDelete,deleteFocus,deleting;
+    private string optionsStatus="";
     private string status="";
-    private TitleScreen(DevConfig config)
-    {this.config=config;int at=0;for(int i=0;i<DevConfig.Count;i++)if(DevConfig.IsSetting(i))rows[at++]=i;rows[at]=DevConfig.Count;}
-    internal static bool Run(DevConfig config)
+    private TitleScreen(DevConfig config,UserOptions options)
+    {this.config=config;this.options=options;status=VideoOptions.Status;int at=0;for(int i=0;i<DevConfig.Count;i++)if(DevConfig.IsSetting(i))rows[at++]=i;rows[at]=DevConfig.Count;}
+    internal static bool Run(DevConfig config,UserOptions options)
     {
-        using var title=new TitleScreen(config);
+        using var title=new TitleScreen(config,options);
         DebugOverlay.WriteLine("ANIMALTOWN TITLE READY (town assets deferred)");
         while(true){
             title.Draw();RuntimeOptions.Wait();Controller.Update();var p=Controller.GetState(0);
-            int direction=title.navigation.Read(title.debugOpen?"dev-config":"title",0,p.Stick.X,p.Stick.Y,(int)p.PressedButtons,Clock.Timestamp,true);
+            int direction=title.navigation.Read(title.confirmDelete?"delete-town":title.optionsOpen?"title-options":title.debugOpen?"dev-config":"title",0,p.Stick.X,p.Stick.Y,(int)p.PressedButtons,Clock.Timestamp,true);
+            if(title.optionsOpen){title.OptionsInput(direction,p.A.WasPressed,p.B.WasPressed);continue;}
             if(title.debugOpen){
                 if(p.B.WasPressed||p.Start.WasPressed){title.Save();title.debugOpen=false;continue;}
                 if(direction==MenuNavigation.Up)title.debugSelected=(title.debugSelected+title.rows.Length-1)%title.rows.Length;
@@ -43,11 +47,16 @@ internal sealed class TitleScreen : IDisposable
                 }
                 continue;
             }
-            if(direction==MenuNavigation.Up)title.selected=(title.selected+2)%3;
-            if(direction==MenuNavigation.Down)title.selected=(title.selected+1)%3;
+            if(direction==MenuNavigation.Up)title.selected=(title.selected+3)%4;
+            if(direction==MenuNavigation.Down)title.selected=(title.selected+1)%4;
             if(!p.A.WasPressed&&!(p.Start.WasPressed&&title.selected==0))continue;
-            if(title.selected==2){title.debugOpen=true;continue;}
+            if(title.selected==3){title.debugOpen=true;continue;}
+            if(title.selected==2){
+                title.optionsHeading=UiFont.Load("gorditas-bold");title.optionsOpen=true;title.optionRow=0;title.ResetOptionChoice();
+                title.optionsStatus=VideoOptions.Status.Length>0?VideoOptions.Status:UserOptionsStorage.Status;continue;
+            }
             if(title.selected==0){
+                if(TownDataStorage.Pending()){title.status="Finish town deletion in Options before starting.";continue;}
                 DevConfigStorage.ApplyGlobal(config);LoadingScreen.Draw();
                 title.Save();return true;
             }
@@ -75,16 +84,89 @@ internal sealed class TitleScreen : IDisposable
         logo.Draw(ui,new RectF(0,0,logo.SourceWidth,logo.SourceHeight),new RectF(90,128,460,115),TitleArt.Ink);
         const string tagline="A little life, well rooted.";
         font.Draw(ui,tagline,(640-font.Measure(tagline))/2,236,TitleArt.Ink);
-        MenuRow(0,"Start",274);MenuRow(1,"Update",326);MenuRow(2,"Debug configuration",378);
-        if(debugOpen)DrawDebug();
+        MenuRow(0,"Start",265);MenuRow(1,"Update",307);MenuRow(2,"Options",349);MenuRow(3,"Debug configuration",391);
+        if(optionsOpen)DrawOptions();
+        else if(debugOpen)DrawDebug();
         else if(status.Length>0)font.Draw(ui,status,(640-font.Measure(status,.65f))/2,455,TitleArt.Ink,.65f);
         ui.End();device.EndFrame();
     }
     private void MenuRow(int index,string label,float y)
     {
         bool focus=index==selected;
-        TitleArt.Rounded(ui,167,y,306,44,22,focus?TitleArt.Leaf:new Color32(236,226,197));
-        font.Draw(ui,label,(640-font.Measure(label,1.05f))/2,y+10,focus?TitleArt.Cream:TitleArt.Ink,1.05f);
+        TitleArt.Rounded(ui,167,y,306,38,19,focus?TitleArt.Leaf:new Color32(236,226,197));
+        font.Draw(ui,label,(640-font.Measure(label))/2,y+8,focus?TitleArt.Cream:TitleArt.Ink);
+    }
+    private void ResetOptionChoice()
+    {optionChoice=optionRow==0?Math.Max(0,VideoOptions.ActiveResolution-1):device.Display.Widescreen?0:1;}
+    private void OptionsInput(int direction,bool activate,bool back)
+    {
+        if(confirmDelete){
+            if(back){confirmDelete=false;return;}
+            if(direction==MenuNavigation.Left||direction==MenuNavigation.Up)deleteFocus=false;
+            if(direction==MenuNavigation.Right||direction==MenuNavigation.Down)deleteFocus=true;
+            if(!activate)return;
+            if(deleteFocus){
+                deleting=true;Draw();
+                TownDataStorage.Delete();optionsStatus=TownDataStorage.Status;deleting=false;
+            }
+            confirmDelete=false;return;
+        }
+        if(back){optionsOpen=false;optionsHeading?.Release();optionsHeading=null;TextureCache.TrimUnused();return;}
+        if(direction==MenuNavigation.Up||direction==MenuNavigation.Down){
+            optionRow=(optionRow+(direction==MenuNavigation.Up?2:1))%3;ResetOptionChoice();
+        }
+        if(optionRow<2&&(direction==MenuNavigation.Left||direction==MenuNavigation.Right))optionChoice=1-optionChoice;
+        if(!activate)return;
+        if(optionRow==2){confirmDelete=true;deleteFocus=false;return;}
+        int resolution=optionRow==0?optionChoice+1:options.Resolution;
+        bool wide=optionRow==1?optionChoice==0:device.Display.Widescreen;
+        if(!VideoOptions.Apply(resolution,wide,optionRow==0)){optionsStatus=VideoOptions.Status;return;}
+        options.Resolution=resolution;options.Widescreen=wide;
+        UserOptionsStorage.Save(options);optionsStatus=UserOptionsStorage.Status;
+    }
+    private void DrawOptions()
+    {
+        ui.FillRectangle(new RectF(0,0,640,480),new Color32(25,44,36,155));
+        TitleArt.Panel(ui,64,38,512,406);
+        optionsHeading!.Draw(ui,"Options",90,61,TitleArt.Ink,1.1f);
+        font.Draw(ui,"Video",92,112,TitleArt.Leaf);
+        OptionRow(0,"Resolution","480p","576p",145,VideoOptions.ActiveResolution-1);
+        OptionRow(1,"Widescreen","Yes","No",188,device.Display.Widescreen?0:1);
+        font.Draw(ui,"Language",92,239,TitleArt.Leaf);
+        font.Draw(ui,"Coming soon",98,271,new Color32(128,135,112),.9f);
+        font.Draw(ui,"Data",92,314,TitleArt.Leaf);
+        TitleArt.Rounded(ui,86,344,468,36,16,optionRow==2?new Color32(232,202,168):new Color32(236,226,197));
+        font.Draw(ui,"Delete town data",98,351,TitleArt.Ink,.9f);
+        font.Draw(ui,optionsStatus,92,394,TitleArt.Ink,.65f);
+        font.Draw(ui,"Left / Right: choose    A: apply    B: back",92,421,TitleArt.Ink,.65f);
+        if(confirmDelete)DrawDeleteConfirmation();
+    }
+    private void OptionRow(int row,string label,string first,string second,float y,int active)
+    {
+        if(optionRow==row)TitleArt.Rounded(ui,86,y-7,468,38,16,new Color32(221,231,188));
+        font.Draw(ui,label,98,y,TitleArt.Ink,.9f);
+        float secondWidth=font.Measure(second,.9f),firstWidth=font.Measure(first,.9f);
+        float secondX=540-secondWidth,firstX=secondX-26-firstWidth;
+        OptionValue(row,0,first,firstX,y,firstWidth,active);
+        OptionValue(row,1,second,secondX,y,secondWidth,active);
+    }
+    private void OptionValue(int row,int value,string label,float x,float y,float width,int active)
+    {
+        if(optionRow==row&&optionChoice==value)TitleArt.Rounded(ui,x-7,y-5,width+14,30,10,new Color32(244,238,204));
+        font.Draw(ui,label,x,y,TitleArt.Ink,.9f);
+        if(active==value)ui.FillRectangle(new RectF(x,y+23,width,2),TitleArt.Leaf);
+    }
+    private void DrawDeleteConfirmation()
+    {
+        ui.FillRectangle(new RectF(0,0,640,480),new Color32(25,44,36,165));
+        TitleArt.Panel(ui,78,132,484,214);
+        optionsHeading!.Draw(ui,deleting?"Deleting town...":"Delete town data?",102,153,TitleArt.Ink,.95f);
+        font.Draw(ui,"Erase this town and ALL villagers\nfrom the memory card in Slot A?\nThis cannot be undone.",102,202,TitleArt.Ink,.83f);
+        if(deleting)return;
+        TitleArt.Rounded(ui,112,293,178,36,17,!deleteFocus?TitleArt.Leaf:new Color32(236,226,197));
+        TitleArt.Rounded(ui,350,293,178,36,17,deleteFocus?new Color32(162,69,55):new Color32(236,226,197));
+        font.Draw(ui,"Cancel",201-font.Measure("Cancel",.9f)/2,300,!deleteFocus?TitleArt.Cream:TitleArt.Ink,.9f);
+        font.Draw(ui,"Delete",439-font.Measure("Delete",.9f)/2,300,deleteFocus?TitleArt.Cream:TitleArt.Ink,.9f);
     }
     private void DrawDebug()
     {
@@ -128,5 +210,5 @@ internal sealed class TitleScreen : IDisposable
             default:return "discard terrain cache when indoors: "+toggle;
         }
     }
-    public void Dispose(){background.Dispose();TextureCache.Release(logo);font.Release();ui.Dispose();TextureCache.TrimUnused();}
+    public void Dispose(){optionsHeading?.Release();background.Dispose();TextureCache.Release(logo);font.Release();ui.Dispose();TextureCache.TrimUnused();}
 }
