@@ -19,6 +19,16 @@ hexadecimal characters of the **actual feature-head commit**. They never predict
 the next minor, count feature commits, or use GitHub's synthetic test-merge hash.
 A stale feature branch still uses the current main snapshot fetched for that build.
 Pushing more commits to a PR changes only its hash while main stays unchanged.
+The builder resolves this identity before assembling assets or the executable.
+The ISO contains a root `version.md` with exactly that version as ASCII bytes,
+without a BOM, Markdown decoration or newline. Disc validation requires it to
+match the frozen identity and boot title; NKit round-trip validation preserves
+its exact bytes. The updater reads this file from the launched disc before
+unmounting it, compares its numeric version to the compact online release feed,
+and downloads newer releases to GC Loader `/games/<published ISO basename>`.
+It does not scan installed ISOs to decide the running version or delete one by
+guessing its physical path. An already-current disc reports success and waits
+for B to exit instead of trying to rediscover a renamed image for autoload.
 Version configuration comes from the selected main commit, so editing it on a
 feature branch cannot alter that PR's numeric version. The one-time adoption PR
 uses its new schema-2 checkpoint while main still has the legacy schema.
