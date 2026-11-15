@@ -47,6 +47,12 @@ $generated="extern int animaltown_clock(void);`n"+$generated
 $errorPattern='intptr_t (dnd_value_AnimalTown_GameCube_NativeCalendar_CardError_[a-z0-9]+)\(void\) \{.*?\r?\n\}'
 if(([regex]::Matches($generated,$errorPattern,[Text.RegularExpressions.RegexOptions]::Singleline)).Count -ne 1){throw 'Pinned AOT card diagnostic signature changed'}
 $generated=[regex]::Replace($generated,$errorPattern,'intptr_t $1(void) { return (intptr_t)animaltown_card_debug; }',[Text.RegularExpressions.RegexOptions]::Singleline)
+foreach($diagnostic in @(@('CardMountError','animaltown_card_mount_error'),@('CardRecoveryError','animaltown_card_recovery_error'))){
+    $diagnosticPattern='intptr_t (dnd_value_AnimalTown_GameCube_NativeCalendar_'+$diagnostic[0]+'_[a-z0-9]+)\(void\) \{.*?\r?\n\}'
+    if(([regex]::Matches($generated,$diagnosticPattern,[Text.RegularExpressions.RegexOptions]::Singleline)).Count -ne 1){throw 'Pinned AOT card mount diagnostic signature changed'}
+    $generated=[regex]::Replace($generated,$diagnosticPattern,('intptr_t $1(void) { return (intptr_t)'+$diagnostic[1]+'; }'),[Text.RegularExpressions.RegexOptions]::Singleline)
+    $generated='extern int '+$diagnostic[1]+";`n"+$generated
+}
 $generated="extern int animaltown_calendar(void);`nextern int animaltown_card_debug;`n"+$generated
 [IO.File]::WriteAllText($generatedPath,$generated)
 $uvPattern='intptr_t (dnd_value_AnimalTown_GameCube_NativeRenderProbe_Uv_[a-z0-9]+)\(intptr_t (\w+)\) \{.*?\r?\n\}'
@@ -195,6 +201,10 @@ $generated="#include `"dnd_managed.h`"`nextern int animaltown_ipl_page(int,DndAr
 # artwork formats even though this temporary journal has no artwork.
 $cardPath=Join-Path $Root 'out/native/source/storage_gamecube.c'
 $cardSource=[IO.File]::ReadAllText($cardPath)
+$mountPattern='bool dnd_gc_card_mount\(int device, const char \*game, const char \*company\) \{.*?\r?\n\}'
+if(([regex]::Matches($cardSource,$mountPattern,[Text.RegularExpressions.RegexOptions]::Singleline)).Count -ne 1){throw 'Pinned SDK card mount changed'}
+$replacementMount=[IO.File]::ReadAllText((Join-Path $Root 'tools/native-card-mount.c.inc'))
+$cardSource=[regex]::Replace($cardSource,$mountPattern,[Text.RegularExpressions.MatchEvaluator]{param($match) $replacementMount},[Text.RegularExpressions.RegexOptions]::Singleline)
 $readPattern='int dnd_gc_card_read\(int device, const char \*name, void \*data, int capacity\) \{.*?\r?\n\}'
 if(([regex]::Matches($cardSource,$readPattern,[Text.RegularExpressions.RegexOptions]::Singleline)).Count -ne 1){throw 'Pinned SDK card reader changed'}
 $replacementReader=[IO.File]::ReadAllText((Join-Path $Root 'tools/native-card-read.c.inc'))

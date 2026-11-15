@@ -44,10 +44,10 @@ internal sealed class TownSession
             Draft.Commit(new SaveRepository(store),files,names);State=Draft.State;Draft.Dispose();Draft=null;Loaded=true;Status="Saved / "+BuildInfo.Version;return true;
         }catch(Exception error){
             string detail=error.Message??"Native save error (no message)";
-            DebugOverlay.WriteLine("ONBOARDING SAVE ERROR: "+phase+" (code "+NativeCalendar.CardError()+"): "+detail);
+            DebugOverlay.WriteLine("ONBOARDING SAVE ERROR: "+phase+" (code "+NativeCalendar.CardError()+", mount "+NativeCalendar.CardMountError()+", recovery "+NativeCalendar.CardRecoveryError()+"): "+detail);
             OnboardingSaveError=error.Message!=null&&(error.Message.StartsWith("The town on this card")||error.Message.StartsWith("This card already"))?
                 "Card changed. Return to the title and reload your town.":
-                "Save failed / "+phase+" / card "+NativeCalendar.CardError()+"\n"+(detail.Length<=70?detail:detail.Substring(0,67)+"...");
+                CardSaveError.Describe(phase,NativeCalendar.CardError(),NativeCalendar.CardMountError(),NativeCalendar.CardRecoveryError(),detail);
             // A successful commit remains successful if closing the card fails.
             // Never leave a review screen holding an already released draft.
             return Draft==null;

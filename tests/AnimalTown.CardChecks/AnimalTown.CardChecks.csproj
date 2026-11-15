@@ -3,5 +3,6 @@
   <ItemGroup>
     <ProjectReference Include="../../shared/AnimalTown.Domain/AnimalTown.Domain.csproj" />
     <Compile Include="../../game/AnimalTown.GameCube/CardSaveStorage.cs" Link="CardSaveStorage.cs" />
+    <Compile Include="../../game/AnimalTown.GameCube/CardSaveError.cs" Link="CardSaveError.cs" />
   </ItemGroup>
 </Project>
