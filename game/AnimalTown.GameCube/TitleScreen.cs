@@ -10,7 +10,9 @@ using Dolphin.Timing;
 internal sealed class TitleScreen : IDisposable
 {
     private readonly GraphicsDevice device=GraphicsDevice.Default;
-    private readonly Draw2D ui=new Draw2D(GraphicsDevice.Default,new Draw2DOptions{Width=640,Height=480,ScaleMode=CanvasScaleMode.Fit,VertexCapacity=8192,SpriteCapacity=128});
+    private readonly Draw2D ui=new Draw2D(GraphicsDevice.Default,new Draw2DOptions{VertexCapacity=8192,SpriteCapacity=128});
+    private readonly Camera2D composition=new Camera2D();
+    private float canvasMargin;
     private readonly UiFont font=UiFont.LoadSystem();
     private readonly CachedTexture logo=TextureCache.Load("dvd:/wordmark.dndtex",true);
     private readonly TitleBackdrop background=new TitleBackdrop();
@@ -79,7 +81,11 @@ internal sealed class TitleScreen : IDisposable
     private void Draw()
     {
         DebugOverlay.TextVisible=false;DebugOverlay.PerformanceVisible=false;
-        UiNoise.Prepare();device.BeginFrame(TitleBackdrop.Color);ui.Begin();background.Draw(ui);
+        UiNoise.Prepare();device.BeginFrame(TitleBackdrop.Color);ui.Begin();background.Draw(ui);ui.End();
+        // Reuse one batch for the full backdrop and centered composition. Scale
+        // height as Fit would, while retaining the full display for modal shade.
+        var size=ui.LogicalSize;composition.Zoom=size.Y/480;canvasMargin=(size.X/composition.Zoom-640)*.5f;
+        composition.Position=new Vector2(-canvasMargin,0);ui.Begin(composition);
         TitleArt.Panel(ui,70,52,500,392);TitleArt.BrandMark(ui,320,105);
         logo.Draw(ui,new RectF(0,0,logo.SourceWidth,logo.SourceHeight),new RectF(90,128,460,115),TitleArt.Ink);
         const string tagline="A little life, well rooted.";
@@ -90,6 +96,7 @@ internal sealed class TitleScreen : IDisposable
         else if(status.Length>0)font.Draw(ui,status,(640-font.Measure(status,.65f))/2,455,TitleArt.Ink,.65f);
         ui.End();device.EndFrame();
     }
+    private RectF ScreenBounds()=>new RectF(-canvasMargin,0,640+2*canvasMargin,480);
     private void MenuRow(int index,string label,float y)
     {
         bool focus=index==selected;
@@ -122,11 +129,14 @@ internal sealed class TitleScreen : IDisposable
         bool wide=optionRow==1?optionChoice==0:device.Display.Widescreen;
         if(!VideoOptions.Apply(resolution,wide,optionRow==0)){optionsStatus=VideoOptions.Status;return;}
         options.Resolution=resolution;options.Widescreen=wide;
+        // Present before physical-card I/O; mode switching holds output black
+        // until the first completed frame in the replacement mode.
+        optionsStatus="Saving to memory card in Slot A...";Draw();
         UserOptionsStorage.Save(options);optionsStatus=UserOptionsStorage.Status;
     }
     private void DrawOptions()
     {
-        ui.FillRectangle(new RectF(0,0,640,480),new Color32(25,44,36,155));
+        ui.FillRectangle(ScreenBounds(),new Color32(25,44,36,155));
         TitleArt.Panel(ui,64,38,512,406);
         optionsHeading!.Draw(ui,"Options",90,61,TitleArt.Ink,1.1f);
         font.Draw(ui,"Video",92,112,TitleArt.Leaf);
@@ -158,7 +168,7 @@ internal sealed class TitleScreen : IDisposable
     }
     private void DrawDeleteConfirmation()
     {
-        ui.FillRectangle(new RectF(0,0,640,480),new Color32(25,44,36,165));
+        ui.FillRectangle(ScreenBounds(),new Color32(25,44,36,165));
         TitleArt.Panel(ui,78,132,484,214);
         optionsHeading!.Draw(ui,deleting?"Deleting town...":"Delete town data?",102,153,TitleArt.Ink,.95f);
         font.Draw(ui,"Erase this town and ALL villagers\nfrom the memory card in Slot A?\nThis cannot be undone.",102,202,TitleArt.Ink,.83f);
@@ -170,7 +180,7 @@ internal sealed class TitleScreen : IDisposable
     }
     private void DrawDebug()
     {
-        ui.FillRectangle(new RectF(0,0,640,480),new Color32(25,44,36,150));
+        ui.FillRectangle(ScreenBounds(),new Color32(25,44,36,150));
         TitleArt.Panel(ui,66,44,508,392);
         font.Draw(ui,"Debug configuration",90,65,TitleArt.Ink,1.2f);
         int first=debugSelected/8*8;

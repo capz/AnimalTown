@@ -49,8 +49,9 @@ saved video mode when changing TVs. There is no extra keep/revert step: A is the
 requested commit action. The independent 16-byte options record is versioned,
 checksummed and read back after writing. Save failures explicitly report that
 the applied settings are session-only. Widescreen updates both drawing cameras
-and their outdoor/interior culling frusta. The title's fixed composition uses
-display-correct Fit scaling, retaining readable proportions in either aspect.
+and their outdoor/interior culling frusta. The title centers and fits its fixed
+composition in display-correct logical coordinates, retaining readable proportions
+in either aspect. The dot backdrop and modal shade cover the full display.
 
 Data contains Delete town data. A opens a Slot A confirmation with Cancel focused;
 A on Cancel or B returns without writing. Select Delete and press A to erase all
