@@ -8,7 +8,7 @@ internal static class ActorVisibilityChecks
         Array.Fill(state.Town.Tiles,(byte)Terrain.Grass);Array.Clear(state.Town.Elevation);
         var npc=state.Town.Residents[0];npc.Space=0;npc.PosX=80;npc.PosZ=80;
         view.Prepare(state,doors,camera,0,0);check(view.Visible[0]&&view.Visible[1],"nearby player and NPC are visible with the drawing camera");
-        clock.Step(1,0,true);npc.PosX=159;view.Prepare(state,doors,camera,0,0);
+        clock.Step(1,0,true);npc.PosX=0;view.Prepare(state,doors,camera,0,0);
         check(!view.Visible[1]&&clock.Consume(1,view.Visible[1])==0,"an actor moving outside the viewport before rendering cannot consume a native pose update");
         for(int n=0;n<900;n++){clock.Step(1,0,true);check(clock.Consume(1,view.Visible[1])==0,"hidden elapsed time is discarded every frame");}
         npc.PosX=80;view.Prepare(state,doors,camera,0,0);clock.Step(1,1,true);
@@ -27,9 +27,9 @@ internal static class ActorVisibilityChecks
         // Independent point/frustum oracle: any visible point in the existing
         // animated envelope must retain the actor at all viewport/horizon edges.
         int rejected=0,partial=0;
-        foreach(float focus in new[]{1f,80f,159f})foreach(float height in new[]{0f,2f}){
+        foreach(float focus in new[]{1f,80f,Town.Height-1f})foreach(float height in new[]{0f,2f}){
             state.X=80;state.Z=focus;
-            for(int z=0;z<160;z+=2)for(int x=0;x<160;x+=2){
+            for(int z=0;z<Town.Height;z+=2)for(int x=0;x<Town.Width;x+=2){
                 npc.PosX=x;npc.PosZ=z;view.Prepare(state,doors,camera,0,height);
                 if(!view.Visible[1])rejected++;
                 var center=CylinderWorld.Surface(z,focus,TerrainElevation.At(state.Town,x,z)+.9f);

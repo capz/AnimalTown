@@ -31,8 +31,8 @@ internal static class OnboardingChecks
         if(!s.PlaceHouse(10,60,false))throw new Exception("Onboarding fixture home");
         s.GardenTier=1;s.Pockets[1]=10;if(!s.Place(1,12,65,0,0))throw new Exception("Onboarding fixture furniture");
         s.SelectProfile(1);s.Name="Resume";s.Species=3;s.Wallet=922;s.Pockets[0]=12;s.Owned[12]=1;s.Town.Residents[0].Friendship=19;
-        s.SelectProfile(0);s.Town.AddGround(2,150,140,2,0);s.Town.SetTerrain(150,150,Terrain.Beach);
-        s.Town.Elevation[150*AnimalTown.Town.Width+148]=TerrainElevation.Block;return s;
+        s.SelectProfile(0);s.Town.AddGround(2,AnimalTown.Town.Width-10,AnimalTown.Town.Height-20,2,0);s.Town.SetTerrain(AnimalTown.Town.Width-10,AnimalTown.Town.Height-10,Terrain.Beach);
+        s.Town.Elevation[(AnimalTown.Town.Height-10)*AnimalTown.Town.Width+AnimalTown.Town.Width-12]=TerrainElevation.Block;return s;
     }
     private static OnboardingDraft Ready(GameState source,bool savedTown=true,int profile=2)
     {

@@ -27,7 +27,7 @@ internal static class DroppedItemChecks
         // Move the eye across the town, up ramps/cliffs, and past drops at the
         // left/right/frustum edges. The old fixed basis fails the lateral rays.
         town.GroundCount=9;
-        foreach(int focusX in new[]{8,64,120})foreach(int focusZ in new[]{24,64,120})foreach(float height in new[]{0f,.5f,2f}){
+        foreach(int focusX in new[]{8,64,Town.Width-8})foreach(int focusZ in new[]{24,64,Town.Height-8})foreach(float height in new[]{0f,.5f,2f}){
             for(int i=0;i<9;i++){var g=town.Ground[i];g.X=focusX+(i%3-1)*6;g.Z=focusZ-(i/3)*8;g.Kind=0;town.Elevation[g.Z*Town.Width+g.X]=(byte)(i%3);}
             town.NotifyTerrainChanged();plan.Prepare(town,focusX,focusZ,height);
             check(plan.Count>0,"eye-facing sweep retains visible drops across the town and raised terrain");

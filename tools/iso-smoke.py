@@ -728,7 +728,7 @@ def committed_card_sequence(path, expected_day=None, details=False):
                                     profiles.append({'name':label,'created':struct.unpack_from('<I',part,28)[0],'wallet':struct.unpack_from('<I',part,40)[0],'species':struct.unpack_from('<I',part,44)[0]})
                                 plots=[dict(zip(('placed','x','z'),struct.unpack_from('<3i',files[names[1]],28+i*12))) for i in range(4)]
                                 profile_hashes=[__import__('hashlib').sha256(files[name][28:-4]).hexdigest() for name in names[3:]]
-                                best_details={'sequence':best,'active':active,'profiles':profiles,'profile_payload_sha256':profile_hashes,'plots':plots,'terrain_sha256':terrain_hash,'houses_sha256':__import__('hashlib').sha256(files[names[1]][28:-4]).hexdigest()}
+                                best_details={'sequence':best,'dimensions':list(struct.unpack_from('<2I',town,28)),'active':active,'profiles':profiles,'profile_payload_sha256':profile_hashes,'plots':plots,'terrain_sha256':terrain_hash,'houses_sha256':__import__('hashlib').sha256(files[names[1]][28:-4]).hexdigest()}
                     except (ValueError,KeyError,UnicodeError,struct.error):continue
             except (ValueError,UnicodeError,struct.error):continue
     if expected_day is not None and best_day!=expected_day:
@@ -1357,6 +1357,27 @@ with (root/'emulator.log').open('w') as log:
                     os.write(controller,b'PRESS L\nPRESS R\n');time.sleep(.2);press('B');os.write(controller,b'RELEASE L\nRELEASE R\n')
             os.write(controller,b'PRESS L\nPRESS R\n');time.sleep(.2);press('B');os.write(controller,b'RELEASE L\nRELEASE R\n')
             press('X');screenshot('runtime-backpack.png');press('B');save_menu();time.sleep(12);screenshot('runtime-save.png')
+        elif '--compact-town' in sys.argv:
+            start_game(True,'compact-town')
+            before=committed_card_sequence(root/'MemoryCardA.USA.raw',details=True)
+            if not before or before['dimensions']!=[128,120]:raise AssertionError('New town did not save compact bounds')
+            press('Y');time.sleep(2);screenshot('compact-town-map.png');press('B')
+            # Inspect actual generated terrain, then walk up its natural ramp.
+            os.write(controller,b'PRESS L\nPRESS R\n');time.sleep(.2);press('START');os.write(controller,b'RELEASE L\nRELEASE R\n');time.sleep(3)
+            screenshot('compact-town-ramp-low.png')
+            os.write(controller,b'SET MAIN 0.5 0.9\n');time.sleep(1.7);os.write(controller,b'SET MAIN 0.5 0.5\n');time.sleep(2)
+            screenshot('compact-town-ramp-high.png')
+            save_menu();after=wait_saved_after(before);time.sleep(3);screenshot('compact-town-saved.png')
+            if after['dimensions']!=[128,120] or after['terrain_sha256']!=before['terrain_sha256']:raise AssertionError('Traversal/save changed compact terrain')
+            (root/'compact-town.json').write_text(json.dumps(after,indent=2)+'\n')
+        elif '--compact-town-resume' in sys.argv:
+            before=committed_card_sequence(root/'MemoryCardA.USA.raw',details=True)
+            if not before or before['dimensions']!=[128,120]:raise AssertionError('Compact reload requires a saved compact town')
+            start_game(False,'compact-resume');time.sleep(3);screenshot('compact-town-resumed.png')
+            press('Y');time.sleep(2);screenshot('compact-town-resumed-map.png');press('B')
+            after=committed_card_sequence(root/'MemoryCardA.USA.raw',details=True)
+            if after!=before:raise AssertionError('Loading compact town changed its saved generation')
+            (root/'compact-town.json').write_text(json.dumps(after,indent=2)+'\n')
         elif '--cliff-kit' in sys.argv:
             start_game('--new-town' in sys.argv,'cliff-kit')
             time.sleep(3);screenshot('cliff-normal.png')

@@ -7,7 +7,7 @@ internal static class TerrainStreamingChecks
         var cachedRows=new CylinderRows();
         RowVisibility(check,cachedRows);
         ArchiveVisibility(check,cachedRows);
-        foreach(float focus in new[]{.25f,40.25f,159.75f})for(int offset=-60;offset<=36;offset+=4){
+        foreach(float focus in new[]{.25f,40.25f,Town.Height-.25f})for(int offset=-60;offset<=36;offset+=4){
             int top=(int)Math.Floor(focus/4)*4+offset;var bounds=new TerrainSectionBounds(cachedRows,new CylinderMotion(focus),top,focus);
             foreach(float delta in new[]{-.249f,.249f})foreach(float eye in new[]{0f,2f})foreach(float height in new[]{-.5f,0,2.01f})for(int n=0;n<=8;n++){
                 var p=CylinderWorld.Surface(top+n*.5f,focus+delta,height);float y=p.Y-(eye-1),z=p.Z-delta;
@@ -87,7 +87,7 @@ internal static class TerrainStreamingChecks
             // A renderer hitch cannot disable controls or replace the entire
             // world with a loading panel once continuous travel has begun.
             for(int n=0;n<100;n++){px+=.1f;stream.Prepare(px,pz);check(stream.Presentable,"starved background work cannot pause established travel");}
-            stream.Prepare(140,140);check(!stream.Presentable,"a genuine cold teleport still prepares its destination safely");
+            stream.Prepare(Town.Width-1,Town.Height-1);check(!stream.Presentable,"a genuine cold teleport still prepares its destination safely");
             stream.Reset();check(!stream.Presentable,"changing towns explicitly starts initial preparation");
         }
         check(repairs*100<frames,"bounded visible repairs are exceptional, rather than the normal streaming budget");
@@ -101,8 +101,8 @@ internal static class TerrainStreamingChecks
             check(TerrainArchivePlan.Index(x,z)==i,"every immutable section has a unique reversible archive address");
             check(x%8==0&&z%8==0&&TerrainArchivePlan.Height==8,"each archived section fits one world shadow page");
         }
-        foreach(float x in new[]{0f,.249f,.501f,7.999f,20.25f,79.75f,159.999f,160f})
-        foreach(float z in new[]{0f,.249f,.501f,3.999f,20.25f,79.75f,159.999f,160f}){
+        foreach(float x in new[]{0f,.249f,.501f,7.999f,20.25f,79.75f,Town.Width-.001f,Town.Width})
+        foreach(float z in new[]{0f,.249f,.501f,3.999f,20.25f,79.75f,Town.Height-.001f,Town.Height}){
             expected.Reset();expected.Prepare(x,z);while(expected.BuildSlot>=0){expected.Complete();expected.Prepare(x,z);}
             view.Prepare(x,z,rows);Array.Clear(ids);maximum=Math.Max(maximum,view.Count);
             for(int n=0;n<view.Count;n++){check(!ids[view.Sections[n]],"immutable view contains no duplicate draw sections");ids[view.Sections[n]]=true;}
@@ -117,7 +117,7 @@ internal static class TerrainStreamingChecks
     private static void RowVisibility(Action<bool,string> check,CylinderRows rows)
     {
         int samples=0,extra=0;
-        foreach(float fx in new[]{.25f,20.25f,79.75f,159.75f})foreach(float fz in new[]{.25f,20.25f,79.75f,159.75f})
+        foreach(float fx in new[]{.25f,20.25f,79.75f,Town.Width-.25f})foreach(float fz in new[]{.25f,20.25f,79.75f,Town.Height-.25f})
         foreach(var lead in new[]{(0f,0f),(12f,0f),(-12f,0f),(0f,12f),(0f,-12f),(8.485282f,8.485282f),(-8.485282f,-8.485282f),(-8.485282f,8.485282f)}){
             var motion=new CylinderMotion(fz);var ahead=new CylinderMotion(fz+lead.Item2);
             for(int offset=-64;offset<=40;offset+=TerrainStream.Height){

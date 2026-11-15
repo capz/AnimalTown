@@ -5,9 +5,9 @@ internal static class MovementTerrainChecks
     internal static void Run(Action<bool,string> check)
     {
         var rows=new CylinderRows();
-        for(int focus=0;focus<=160;focus+=5){
+        for(int focus=0;focus<=Town.Height;focus+=5){
             var motion=new CylinderMotion(focus+.137f);
-            for(int z=-64;z<=224;z++)foreach(float h in new[]{-.5f,0,2}){
+            for(int z=-64;z<=Town.Height+64;z++)foreach(float h in new[]{-.5f,0,2}){
                 var stored=rows.At(z,h);motion.Point(stored.Y,stored.Z,out float y,out float worldZ);
                 var direct=CylinderWorld.Surface(z,focus+.137f,h);
                 check(Math.Abs(y-direct.Y)<.0001f&&Math.Abs(worldZ-direct.Z)<.0001f,"rigid terrain motion equals direct cylinder projection at every height");
@@ -18,7 +18,7 @@ internal static class MovementTerrainChecks
         }
         // Conservative patch bounds include caps that extend one cell past a
         // gallery origin's patch boundary, plus river/sea/raised-land heights.
-        for(int oz=-64;oz<=216;oz+=8){
+        for(int oz=-64;oz<=Town.Height+56;oz+=8){
             var center=rows.At(oz+4,1);
             for(int z=oz;z<=oz+9;z++)foreach(float h in new[]{-.5f,0,2}){
                 var p=rows.At(z,h);float dy=p.Y-center.Y,dz=p.Z-center.Z;

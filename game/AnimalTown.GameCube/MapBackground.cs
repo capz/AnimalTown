@@ -6,9 +6,10 @@ internal sealed class MapBackground : System.IDisposable
 {
     // Rivers are three fine cells wide. A five-cell stride can miss entire
     // segments; sample every two cells while retaining a single cached quad.
-    private const int Samples=(Town.Width+1)/2;
-    private const int TextureSize=Samples<=32?32:Samples<=64?64:128;
+    private const int SampleColumns=(Town.Width+1)/2,SampleRows=(Town.Height+1)/2;
+    private const int TextureSize=SampleColumns<=32&&SampleRows<=32?32:SampleColumns<=64&&SampleRows<=64?64:128;
     internal const float Size=280,Scale=Size/Town.Width;
+    internal const float MapHeight=Town.Height*Scale;
     internal const float MinimapLeft=482,MinimapTop=312,MinimapSize=138;
     internal const float MinimapRadius=30,MinimapBulge=9;
     // 40 corner segments, 40 side segments and the top/bottom edges.
@@ -55,13 +56,13 @@ internal sealed class MapBackground : System.IDisposable
     private void MinimapVertex(Vector2 p,ref int at)
     {
         minimapVertices[at++]=MinimapLeft+p.X;minimapVertices[at++]=MinimapTop+p.Y;
-        minimapVertices[at++]=(p.X+MinimapBulge)/(MinimapSize+2*MinimapBulge)*Samples/TextureSize;
-        minimapVertices[at++]=p.Y/MinimapSize*Samples/TextureSize;
+        minimapVertices[at++]=(p.X+MinimapBulge)/(MinimapSize+2*MinimapBulge)*SampleColumns/TextureSize;
+        minimapVertices[at++]=p.Y/MinimapSize*SampleRows/TextureSize;
     }
     internal void Prepare(Town current)
     {
         if(town==current&&version==current.TerrainVersion)return;
-        for(int z=0;z<Samples;z++)for(int x=0;x<Samples;x++){
+        for(int z=0;z<SampleRows;z++)for(int x=0;x<SampleColumns;x++){
             var c=TileColor(WaterSurface.IsWater(current,x*2+1,z*2+1)?(int)Terrain.Sea:current.At(x*2+1,z*2+1));int p=(z*TextureSize+x)*4;rgba[p]=c.R;rgba[p+1]=c.G;rgba[p+2]=c.B;rgba[p+3]=255;
         }
         if(texture==null){
@@ -72,8 +73,8 @@ internal sealed class MapBackground : System.IDisposable
         town=current;version=current.TerrainVersion;
     }
     internal static Color32 TileColor(int t)=>t==1||t==(int)Terrain.Sea?new Color32(75,154,187):t==2?new Color32(167,119,73):t==3?new Color32(229,209,150):t==4||WaterTerrain.IsCoast(t)?new Color32(130,127,92):t==5?new Color32(191,179,147):new Color32(119,168,88);
-    internal void Draw(Draw2D ui)=>Draw(ui,new RectF(160,115,Size,Size));
-    internal void Draw(Draw2D ui,RectF bounds)=>ui.DrawTexture(texture!,new RectF(0,0,Samples,Samples),bounds,Color32.White);
+    internal void Draw(Draw2D ui)=>Draw(ui,new RectF(160,115,Size,MapHeight));
+    internal void Draw(Draw2D ui,RectF bounds)=>ui.DrawTexture(texture!,new RectF(0,0,SampleColumns,SampleRows),bounds,Color32.White);
     internal void DrawMinimap(Draw2D ui)=>ui.DrawTexturedQuads(minimapTextures,minimapVertices,MinimapQuads,Color32.White);
     internal static Vector2 MinimapPosition(float x,float z)
     {

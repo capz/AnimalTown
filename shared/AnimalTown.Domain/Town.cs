@@ -20,8 +20,11 @@ public sealed class GroundItem
 }
 public sealed class Town
 {
-    public const int ScreenTiles=8,ScreenTileSize=20;
-    public const int Width=ScreenTiles*ScreenTileSize,Height=Width,Cells=Width*Height;
+    public const int ScreenTileSize=20;
+    // 15,360 fine cells: exactly 60% of the previous 160 x 160 town.
+    // The easternmost acre is partial; individual cells keep their world scale.
+    public const int Width=128,Height=120,Cells=Width*Height;
+    public const int ScreenColumns=(Width+ScreenTileSize-1)/ScreenTileSize,ScreenRows=(Height+ScreenTileSize-1)/ScreenTileSize;
     // Fine cells support furniture/plant footprints within each screen tile.
     public readonly byte[] Tiles;
     public readonly byte[] Elevation;

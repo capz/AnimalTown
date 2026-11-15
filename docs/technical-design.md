@@ -89,12 +89,13 @@ the resident budget instead of silently dropping limbs or animation channels.
 
 ## World and rolling presentation
 
-The authoritative world is a square **8×8 grid of screen-sized square tiles**.
-Each screen tile is 20×20 logical metres, giving a 160×160-metre square world.
+The authoritative world is **128×120 one-metre ground cells**, exactly 60% of
+the previous 160×160 area. Acre templates retain their 20×20-metre scale; the
+seventh acre column is partial and there are six rows.
 The fixed 4:3 camera is calibrated to a 20-metre horizontal span at the player's
 tangent plane. One-metre fine cells within these tiles support item footprints
 and collision; they are not additional screen-sized world tiles. Terrain uses
-25,600 bytes rather than an array of managed objects. A seeded integer generator lays down terrain, river, bridges,
+15,360 bytes rather than an array of managed objects. A seeded integer generator lays down terrain, river, bridges,
 cliff tier, plaza, store, hall, gate, campsite and six houses, then flood-fills
 walkability and checks that mandatory entrances connect. Logical collision and
 ownership always use flat tiles. Paths never cross water except bridges, and

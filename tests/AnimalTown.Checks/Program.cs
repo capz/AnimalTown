@@ -55,7 +55,7 @@ for(int seed=0;seed<20;seed++)
     Check(seen[28*Town.Width+32]&&seen[28*Town.Width+50]&&seen[10*Town.Width+36]&&seen[50*Town.Width+65],"mandatory areas connected");
     for(int i=0;i<6;i++)Check(seen[town.Residents[i].Z*Town.Width+town.Residents[i].X],"resident reachable");
 }
-Check(Town.ScreenTiles==8&&Town.Width==Town.Height&&Town.Width==8*Town.ScreenTileSize&&Town.Cells==25600,"8 x 8 square screen tiles");
+Check(Town.Width==128&&Town.Height==120&&Town.Cells==15360&&Town.ScreenColumns==7&&Town.ScreenRows==6,"compact rectangular town with partial eastern acre");
 double previousFocusDepth=-6*RenderView.ForwardY-8*RenderView.ForwardZ;
 double focusDepth=-CylinderWorld.CameraHeight*RenderView.ForwardY-CylinderWorld.CameraBack*RenderView.ForwardZ;
 Check(Math.Abs(focusDepth/previousFocusDepth-.9)<.00001,"closer camera shows ninety percent of the previous horizontal span at the player");
@@ -75,7 +75,7 @@ for(int i=-50;i<=50;i++)
     Check(Math.Abs(pose.UpY*pose.UpY+pose.UpZ*pose.UpZ-1)<.00001,"unit radial object normal");
     Check(Math.Abs((pose.Y+CylinderWorld.Radius)*pose.UpY+pose.Z*pose.UpZ-CylinderWorld.Radius)<.0001,"object down points toward cylinder axis");
 }
-game.X=Town.Width-5;game.Z=Town.Height-5;var wide=SaveCodec.Decode(SaveCodec.Encode(game));Check(wide.X==game.X&&wide.Z==game.Z,"full square world coordinates save");
+game.X=Town.Width-5;game.Z=Town.Height-5;var wide=SaveCodec.Decode(SaveCodec.Encode(game));Check(wide.X==game.X&&wide.Z==game.Z,"full rectangular world coordinates save");
 Check(game.Capacity==10,"starter backpack has ten slots");game.Wallet=5999;Check(!game.UpgradeBackpack()&&game.Capacity==10&&game.Wallet==5999,"backpack upgrade rejects insufficient funds atomically");
 game.Wallet=6000;Check(game.UpgradeBackpack()&&game.Capacity==20&&game.Wallet==0,"first backpack upgrade");
 game.Wallet=18000;Check(game.UpgradeBackpack()&&game.Capacity==30&&game.Wallet==0,"second backpack upgrade");Check(!game.UpgradeBackpack(),"backpack never exceeds thirty slots");
