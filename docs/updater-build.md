@@ -126,3 +126,10 @@ roughly 200/240 KiB/s. Native AOT tests cover worker context and progress during
 simulated frame waits, cancellation and errors; these are scheduling tests,
 not a physical BBA speed measurement. VSync, TLS/digest checks, contiguous
 publication and mapping/readback-before-delete remain enabled.
+
+During active transfer, the updater displays recent payload speed beside the
+transfer-stage label, updating every half second. It uses decimal `kb/s` below
+1 Mbit/s and `Mb/s` from 1 Mbit/s through the BBA link range: 200 kB/s displays
+as 1.6 Mb/s. Verification and errors hide the rate; a stalled sample shows zero.
+The sampler uses the existing progress counter and monotonic clock, with no
+extra network requests or per-frame rate formatting.
