@@ -14,7 +14,7 @@ internal static class ProfileChecks
     internal static void Run(Action<bool,string> check)
     {
         var s=new GameState(7319);Array.Fill(s.Town.Tiles,(byte)Terrain.Grass);Array.Clear(s.Town.Elevation);s.Town.GroundCount=0;
-        var tiles=s.Town.Tiles;var npc=s.Town.Residents[0];npc.Name="Fern";npc.PosX=120; npc.PosZ=120;
+        var tiles=s.Town.Tiles;var npc=s.Town.Residents[0];npc.Name="Fern";npc.PosX=Town.Width-8;npc.PosZ=Town.Height-8;
         for(int profile=0;profile<4;profile++){
             s.SelectProfile(profile);s.Name="Villager"+profile;s.Species=profile;s.Wallet=1000+profile;s.Savings=10000+profile;s.Debt=20000+profile;
             s.BackpackTier=profile%3;s.Pockets[0]=5+profile;s.Owned[5+profile]=1;s.MailCount=1;s.Mail[0]=-10-profile;s.Mail[127]=25;
@@ -26,7 +26,7 @@ internal static class ProfileChecks
             if(profile>0)check(!s.PlaceHouse(10,60,false),"new homes cannot overlap another villager's plot");
         }
         check(ReferenceEquals(tiles,s.Town.Tiles)&&s.Town.PlacedCount==8,"switching villagers preserves one shared terrain and furnishing set");
-        check(s.Town.Residents[0].PosX==120&&s.Town.Residents[0].Name=="Fern","NPC location and identity remain shared");
+        check(s.Town.Residents[0].PosX==Town.Width-8&&s.Town.Residents[0].PosZ==Town.Height-8&&s.Town.Residents[0].Name=="Fern","NPC location and identity remain shared");
         s.Town.Stock[0]=7;s.Town.StockCount=6;s.Wallet=10000;check(s.Buy(0),"shared shop purchase succeeds");
         s.SelectProfile(0);check(s.Town.Stock[0]==0,"another villager sees purchased shared shop stock");
         for(int p=0;p<4;p++){
@@ -70,7 +70,7 @@ internal static class ProfileChecks
             s.Pockets[0]=5+i;s.Owned[5+i]=1;s.Mail[0]=12;s.MailCount=1;s.PendingKind=1;s.PendingTier=2;s.PendingDay=100;
             s.Town.Residents[0].Friendship=20+i;
         }
-        s.SelectProfile(0);s.Town.AddGround(17,8,90,0,0);s.Town.AddGround(2,9,90,2,0);s.Town.SetTerrain(150,150,Terrain.Beach);return s;
+        s.SelectProfile(0);s.Town.AddGround(17,8,90,0,0);s.Town.AddGround(2,9,90,2,0);s.Town.SetTerrain(Town.Width-10,Town.Height-10,Terrain.Beach);return s;
     }
     private static void DeleteChecks(Action<bool,string> check)
     {

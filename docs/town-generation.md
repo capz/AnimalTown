@@ -17,8 +17,10 @@ are separate data, not interchangeable concepts.
 
 ## Implemented adaptation
 
-AnimalTown retains **8x8 screen acres, each 20x20 fine cells**, and its cylindrical
-display. `TownGenerator` implements this staged template approach for features the
+AnimalTown uses **128x120 fine cells**, exactly 60% of the previous 160x160 area,
+and retains its cylindrical display and 20x20-cell acre templates. The map has
+seven acre columns (the last is eight cells wide) and six rows. `TownGenerator`
+implements this staged template approach for features the
 current flat terrain system supports. It is not a binary port, original seed/RNG
 reproduction, or Nintendo's acre library. No Nintendo map/model/texture data ships.
 
@@ -27,7 +29,7 @@ reproduction, or Nintendo's acre library. No Nintendo map/model/texture data shi
    The path descends or moves sideways without revisiting acres. Authored straight,
    bent and horizontal variants retain three-cell-wide boundary sockets. Allowed
    continuations preserve the existing northwest service area.
-3. Assign two mandatory straight-river crossing acres, one in each map half.
+3. Assign two mandatory straight-river crossing acres in inland rows 1 and 3.
    Temporary crossing art is the existing repeating wooden floor, with real
    walkable collision and clear land approaches on both banks.
 4. Assign two or three pond templates to otherwise-flat inland acres, inset from
@@ -35,7 +37,7 @@ reproduction, or Nintendo's acre library. No Nintendo map/model/texture data shi
 5. Retain service entrances, resident-house anchors, plaza, camp and starter plot.
    These are required acre constraints in the current template set. Moving services
    requires data-driven entrance/render/save positions first.
-6. Populate 320 trees from an independent seeded stream. Trees avoid the starter
+6. Populate 192 trees from an independent seeded stream. Trees avoid the starter
    reserve, acre travel corridors, water, structures and neighbouring trees.
    Place two shells on actual beach cells away from the river mouth.
 

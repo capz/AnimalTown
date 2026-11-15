@@ -83,7 +83,7 @@ internal static class IncrementalSaveChecks
         var dense=Town();for(int i=0;i<dense.Town.Tiles.Length;i++)dense.Town.Tiles[i]=(byte)(i%2==0?Terrain.Grass:Terrain.Plaza);
         var denseDisk=new Disk();new SaveRepository(denseDisk).Save(dense);int townBytes=denseDisk.Files["AT-Town0"].Length;
         denseDisk.Reset();dense.Wallet++;new SaveRepository(denseDisk).Save(dense);Only(denseDisk,"AT-Player",check);
-        check(townBytes>64000&&denseDisk.Bytes<4096,"a player update leaves a large edited terrain record unwritten");Same(dense,new SaveRepository(denseDisk).Load()!,check,"large edited terrain survives small incremental saves");
+        check(townBytes>AnimalTown.Town.Cells*4&&denseDisk.Bytes<4096,"a player update leaves the worst-case edited terrain record unwritten");Same(dense,new SaveRepository(denseDisk).Load()!,check,"large edited terrain survives small incremental saves");
         var stale=baseDisk.Copy();var fresh=new SaveRepository(stale).Load()!;fresh.Wallet++;new SaveRepository(stale).Save(fresh);stale.Reset();
         check(Fails(()=>new SaveRepository(stale).Save(SaveCodec.Decode(before)))&&stale.Names.Count==0,"an older different snapshot cannot overwrite a newer save");
         check(new SaveRepository(new Disk()).Load()==null,"empty card does not invent a save");

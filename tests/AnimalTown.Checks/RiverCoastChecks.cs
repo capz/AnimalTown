@@ -59,7 +59,7 @@ internal static class RiverCoastChecks
         // progress, buildings and object records must survive both migrations.
         var old=new GameState(7319){Name="Estuary",Wallet=1234,Tutorial=4};
         for(int i=0;i<Town.Cells;i++)if(old.Town.Tiles[i]>7)old.Town.Tiles[i]=(byte)(old.Town.Tiles[i]==8?Terrain.Water:Terrain.Beach);
-        old.Town.SetTerrain(20,140,Terrain.Plaza);old.Town.SetTerrain(80,120,Terrain.Water);old.Town.SetTerrain(80,140,Terrain.Water);
+        old.Town.SetTerrain(20,Town.Height-20,Terrain.Plaza);old.Town.SetTerrain(80,WaterTerrain.SeaStart-2,Terrain.Water);old.Town.SetTerrain(80,WaterTerrain.SeaStart+2,Terrain.Water);
         var expected=(byte[])old.Town.Tiles.Clone();var elevation=(byte[])old.Town.Elevation.Clone();
         void Put(byte[] bytes,int at,int value){for(int i=0;i<4;i++)bytes[at+i]=(byte)(value>>(8*i));}
         var combined=SaveCodec.EncodeLegacy(old);Array.Resize(ref combined,combined.Length-BuildingSave.LegacyFieldCount*4);Put(combined,4,5);Put(combined,16,combined.Length);Put(combined,20,(int)SaveCodec.Crc(combined,24,combined.Length-24));
@@ -68,7 +68,7 @@ internal static class RiverCoastChecks
         var b=SplitSaveCodec.Decode(parts);
         foreach(var loaded in new[]{a,b}){
             for(int i=0;i<Town.Cells;i++)check(loaded.Town.Tiles[i]==(expected[i]==1&&i/Town.Width>=WaterTerrain.SeaStart?8:expected[i]),"legacy migration only relabels southern water, never regenerates terrain");
-            check(loaded.Town.At(80,120)==1&&loaded.Town.At(80,140)==8,"connected river remains river above authored mouth");
+            check(loaded.Town.At(80,WaterTerrain.SeaStart-2)==1&&loaded.Town.At(80,WaterTerrain.SeaStart+2)==8,"connected river remains river above authored mouth");
             check(loaded.Wallet==1234&&loaded.Tutorial==4&&loaded.Name=="Estuary"&&loaded.Town.GroundCount==old.Town.GroundCount&&loaded.Town.Elevation.SequenceEqual(elevation),"migration preserves progress, possessions and edited elevation");
             check(SaveCodec.Encode(loaded).SequenceEqual(SaveCodec.Encode(SaveCodec.Decode(SaveCodec.Encode(loaded)))),"migration becomes stable after first write");
         }

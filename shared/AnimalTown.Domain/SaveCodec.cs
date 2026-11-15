@@ -65,12 +65,12 @@ public static class SaveCodec
     {
         if(b.Length<160||b.Length>MaximumBytes)throw new InvalidOperationException("Invalid save size");int p=0;
         if(Get(b,ref p)!=0x41544f57)throw new InvalidOperationException("Invalid save magic");int version=Get(b,ref p);
-        if((version<1||version>8)||Get(b,ref p)!=Catalog.Version)throw new InvalidOperationException("Unsupported save version");
+        if((version<4||version>8)||Get(b,ref p)!=Catalog.Version)throw new InvalidOperationException("Unsupported save version");
         if(snapshot!=null&&version!=8)throw new InvalidOperationException("Readback requires current save format");
         int seq=Range(b,ref p,0,int.MaxValue);if(Get(b,ref p)!=b.Length||(uint)Get(b,ref p)!=Crc(b,24,b.Length-24))throw new InvalidOperationException("Save checksum failed");
-        int sourceWidth=version==1?80:400,sourceHeight=version==1?72:400;
-        if(version>=4){sourceWidth=Range(b,ref p,Town.Width,Town.Width);sourceHeight=Range(b,ref p,Town.Height,Town.Height);}
-        bool trimmed=sourceWidth>Town.Width||sourceHeight>Town.Height;
+        // Town dimensions must match exactly. Old larger towns are not cropped
+        // or regenerated; creating a smaller town requires deleting town data.
+        int sourceWidth=Range(b,ref p,Town.Width,Town.Width),sourceHeight=Range(b,ref p,Town.Height,Town.Height);
         int seed=Get(b,ref p);if(snapshot!=null&&seed!=snapshot.Seed)throw new InvalidOperationException("Readback snapshot seed mismatch");
         var s=snapshot==null?new GameState(seed):new GameState(seed,snapshot);if(snapshot==null)Array.Clear(s.Town.Elevation,0,s.Town.Elevation.Length);s.Sequence=seq;s.Town.Day=Get(b,ref p);s.Town.Month=Get(b,ref p);s.Wallet=Range(b,ref p,0,99999);
         uint low=(uint)Get(b,ref p);int high=Range(b,ref p,0,int.MaxValue);s.Savings=((long)high<<32)|low;
@@ -79,53 +79,32 @@ public static class SaveCodec
         s.Tutorial=Range(b,ref p,0,6);s.MetMask=Range(b,ref p,0,63);s.Jobs=Range(b,ref p,0,2);s.JobDay=Get(b,ref p);s.MailCount=Range(b,ref p,0,128);
         s.Roof=Range(b,ref p,0,11);s.Wall=Range(b,ref p,0,11);s.Fence=Range(b,ref p,0,5);s.Mailbox=Range(b,ref p,0,5);s.Exterior=Range(b,ref p,0,4);s.HousePlaced=Range(b,ref p,0,1)==1;
         s.X=Range(b,ref p,0,sourceWidth*1024-1)/1024f;s.Z=Range(b,ref p,0,sourceHeight*1024-1)/1024f;s.Town.HouseX=Range(b,ref p,1,sourceWidth-15);s.Town.HouseZ=Range(b,ref p,1,sourceHeight-13);s.Town.Spending=Range(b,ref p,0,int.MaxValue);s.Town.StockCount=Range(b,ref p,6,12);
-        if(version>=3)s.BackpackTier=Range(b,ref p,0,2);
+        s.BackpackTier=Range(b,ref p,0,2);
         s.Name=Text(b,ref p,16);s.Catchphrase=Text(b,ref p,32);
-        int pocketCount=version>=3?GameState.MaximumPockets:15;
-        for(int i=0;i<pocketCount;i++)s.Pockets[i]=Range(b,ref p,0,25);
-        // An old 15-slot save may contain items in slots 10..14. Grant the
-        // 20-slot tier on migration rather than lose or hide those items.
-        if(version<3)for(int i=10;i<15;i++)if(s.Pockets[i]!=0)s.BackpackTier=1;
+        for(int i=0;i<GameState.MaximumPockets;i++)s.Pockets[i]=Range(b,ref p,0,25);
         for(int i=s.Capacity;i<GameState.MaximumPockets;i++)if(s.Pockets[i]!=0)throw new InvalidOperationException("Locked backpack slot occupied");
         for(int i=0;i<64;i++)s.Owned[i]=Range(b,ref p,0,1);for(int i=0;i<s.MailCount;i++)s.Mail[i]=Range(b,ref p,-25,25);
-        if(version==1)
-        { for(int z=0;z<72;z++)for(int x=0;x<80;x++){if(p>=b.Length||b[p]>7)throw new InvalidOperationException("Terrain invalid");s.Town.Tiles[z*Town.Width+x]=b[p++];} }
-        else
         {
-            int sourceCells=sourceWidth*sourceHeight,runCount=Range(b,ref p,1,sourceCells),cell=0;
+            int runCount=Range(b,ref p,1,Town.Cells),cell=0;
             for(int i=0;i<runCount;i++){
                 int packed=Get(b,ref p),terrain=(int)((uint)packed>>24),length=packed&0xffffff;
-                if(terrain>(version>=6?(int)Terrain.CoastWest:7)||length==0||length>sourceCells-cell)throw new InvalidOperationException("Terrain run invalid");
-                // Consume the original row stride, copying only the retained
-                // rectangle. Never allocate the old 400 x 400 terrain buffer.
-                while(length>0){int z=cell/sourceWidth,x=cell%sourceWidth,n=Math.Min(length,sourceWidth-x);
-                    if(z<Town.Height&&x<Town.Width)for(int j=0;j<Math.Min(n,Town.Width-x);j++){
-                        int at=z*Town.Width+x+j;
-                        if(snapshot!=null){if(s.Town.Tiles[at]!=terrain)throw new InvalidOperationException("Readback terrain differs from snapshot");}
-                        else s.Town.Tiles[at]=(byte)terrain;
-                    }
-                    cell+=n;length-=n;}
+                if(terrain>(version>=6?(int)Terrain.CoastWest:7)||length==0||length>Town.Cells-cell)throw new InvalidOperationException("Terrain run invalid");
+                for(int j=0;j<length;j++,cell++){
+                    if(snapshot!=null){if(s.Town.Tiles[cell]!=terrain)throw new InvalidOperationException("Readback terrain differs from snapshot");}
+                    else s.Town.Tiles[cell]=(byte)terrain;
+                }
             }
-            if(cell!=sourceCells)throw new InvalidOperationException("Incomplete terrain");
+            if(cell!=Town.Cells)throw new InvalidOperationException("Incomplete terrain");
         }
         for(int i=0;i<12;i++)s.Town.Stock[i]=Range(b,ref p,0,25);
         for(int i=0;i<6;i++){var v=s.Town.Residents[i];v.X=Range(b,ref p,0,sourceWidth-1);v.Z=Range(b,ref p,0,sourceHeight-1);v.Friendship=Range(b,ref p,0,255);v.Request=Range(b,ref p,0,25);v.RequestDay=Get(b,ref p);v.Met=Range(b,ref p,0,1);}
         int groundCount=Range(b,ref p,0,512);s.Town.GroundCount=0;
         for(int i=0;i<groundCount;i++){
             var g=s.Town.Ground[s.Town.GroundCount];g.Item=Range(b,ref p,1,25);g.X=Range(b,ref p,0,sourceWidth-1);g.Z=Range(b,ref p,0,sourceHeight-1);g.Owner=Range(b,ref p,0,3);g.Day=Get(b,ref p);g.Kind=Range(b,ref p,0,4);
-            if(!s.Town.Inside(g.X,g.Z)){
-                if(g.Kind==3)continue;
-                // Keep possessions from the removed outskirts recoverable,
-                // with the original owner and a fresh Lost & Found window.
-                g.X=50;g.Z=29;g.Kind=4;g.Day=GroundItem.PendingRecoveryDay;
-            }
             s.Town.GroundCount++;
         }
-        int oldHouseX=s.Town.HouseX,oldHouseZ=s.Town.HouseZ;
-        if(trimmed)FitImportedHouse(s);
-        int houseDx=s.Town.HouseX-oldHouseX,houseDz=s.Town.HouseZ-oldHouseZ;
         int count=Range(b,ref p,0,256);s.Town.PlacedCount=0;
-        for(int i=0;i<count;i++){var q=s.Town.Placed[i];q.Item=Range(b,ref p,1,25);q.X=Get(b,ref p);q.Z=Get(b,ref p);q.Rotation=Range(b,ref p,0,3);q.Room=Range(b,ref p,0,version>=8?43:version>=7?25:4);q.Owner=Range(b,ref p,0,version>=8?9:version>=7?6:0);if(q.Room==0){q.X+=houseDx;q.Z+=houseDz;}s.Town.PlacedCount++;}
+        for(int i=0;i<count;i++){var q=s.Town.Placed[i];q.Item=Range(b,ref p,1,25);q.X=Get(b,ref p);q.Z=Get(b,ref p);q.Rotation=Range(b,ref p,0,3);q.Room=Range(b,ref p,0,version>=8?43:version>=7?25:4);q.Owner=Range(b,ref p,0,version>=8?9:version>=7?6:0);s.Town.PlacedCount++;}
         if(version>=5){
             Range(b,ref p,1,TownGenerator.Version);int elevationRuns=Range(b,ref p,1,Town.Cells),cell=0;
             for(int i=0;i<elevationRuns;i++){int packed=Get(b,ref p),mode=(int)((uint)packed>>24),length=packed&0xffffff;if(mode>TerrainElevation.MaximumMode||length==0||length>Town.Cells-cell)throw new InvalidOperationException("Invalid saved elevation");for(int j=0;j<length;j++){if(snapshot!=null){if(s.Town.Elevation[cell]!=mode)throw new InvalidOperationException("Readback elevation differs from snapshot");}else s.Town.Elevation[cell]=(byte)mode;cell++;}}
@@ -143,28 +122,8 @@ public static class SaveCodec
         int placedCount=s.Town.PlacedCount;s.Town.PlacedCount=0;
         for(int i=0;i<placedCount;i++){var q=s.Town.Placed[i];if(!s.CanPlace(q.Item,q.X,q.Z,q.Rotation,q.Room,q.Owner,true))throw new InvalidOperationException("Invalid placement");s.Town.PlacedCount++;}
         if(p!=b.Length)throw new InvalidOperationException("Trailing save bytes");
-        if(trimmed){
-            for(int i=0;i<6;i++){var v=s.Town.Residents[i];if(!s.Town.Inside(v.X,v.Z)){int cell=SafeImportedCell(s,10+i*11+(i==3?3:0),14);v.X=cell%Town.Width;v.Z=cell/Town.Width;}}
-            if(!s.CanWalk(s.X,s.Z,0)&&!s.MoveToHouseEntrance()){int cell=SafeImportedCell(s,18,38);s.X=cell%Town.Width+.5f;s.Z=cell/Town.Width+.5f;}
-        }
         if(version<5)for(int i=0;i<6;i++){s.Town.Residents[i].PosX=s.Town.Residents[i].X+.5f;s.Town.Residents[i].PosZ=s.Town.Residents[i].Z+.5f;}
         if(version<6)WaterTerrain.Migrate(s.Town);
         s.NormalizeBuildingLocations();s.CaptureProfile();s.Town.NotifyTerrainChanged();return s;
-    }
-    private static int SafeImportedCell(GameState s,int x,int z)
-    {
-        if(s.CanWalk(x+.5f,z+.5f,0))return z*Town.Width+x;
-        for(int cell=0;cell<Town.Cells;cell++)if(s.CanWalk(cell%Town.Width+.5f,cell/Town.Width+.5f,0))return cell;
-        throw new InvalidOperationException("Trimmed town has no safe arrival");
-    }
-    private static void FitImportedHouse(GameState s)
-    {
-        if(s.Town.HouseX+15<=Town.Width&&s.Town.HouseZ+13<=Town.Height)return;
-        if(!s.HousePlaced){s.Town.HouseX=12;s.Town.HouseZ=22;return;}
-        float x=s.X,z=s.Z;
-        bool moved=s.PlaceHouse(12,22,false);
-        for(int row=1;!moved&&row<=Town.Height-13;row++)for(int col=1;!moved&&col<=Town.Width-15;col++)moved=s.PlaceHouse(col,row,false);
-        if(!moved)throw new InvalidOperationException("Trimmed town has no valid home plot");
-        s.X=x;s.Z=z;
     }
 }

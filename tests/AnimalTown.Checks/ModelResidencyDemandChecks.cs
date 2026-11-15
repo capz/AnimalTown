@@ -21,7 +21,7 @@ internal static class ModelResidencyDemandChecks
 
         state.Space=16;BuildingWorld.Entrance(state,1,out float ex,out float ez);
         state.Town.Residents[1].Space=0;state.Town.Residents[1].PosX=ex+1;state.Town.Residents[1].PosZ=ez-2;
-        state.Town.Residents[2].Space=0;state.Town.Residents[2].PosX=ex<80?159:0;state.Town.Residents[2].PosZ=ez<80?159:0;
+        state.Town.Residents[2].Space=0;state.Town.Residents[2].PosX=ex<Town.Width/2?Town.Width-1:0;state.Town.Residents[2].PosZ=ez<Town.Height/2?Town.Height-1:0;
         demand.Prepare(state,doors,false,0);
         check(demand.Required[1]&&!demand.Required[2],"outdoor destination restoration includes a generous guard without fetching distant hidden species");
         state.Space=0;state.X=ex;state.Z=ez;
@@ -47,7 +47,7 @@ internal static class ModelResidencyDemandChecks
         state.Space=16;state.X=2;state.Z=2;BuildingWorld.Entrance(state,1,out ex,out ez);
         player=doors.Actors[0];player.Phase=DoorPhase.Waiting;player.Source=new ActorLocation(16,2,2,0);player.Destination=new ActorLocation(0,ex,ez+1,0);
         var edge=state.Town.Residents[1];edge.Space=0;bool distinguishesLanding=false;
-        for(float z=Math.Max(1,ez-45);z<Math.Min(159,ez+12);z+=.5f)for(float x=Math.Max(1,ex-30);x<Math.Min(159,ex+30);x+=.5f){
+        for(float z=Math.Max(1,ez-45);z<Math.Min(Town.Height-1,ez+12);z+=.5f)for(float x=Math.Max(1,ex-30);x<Math.Min(Town.Width-1,ex+30);x+=.5f){
             edge.PosX=x;edge.PosZ=z;
             bool indoor=ModelResidencyDemand.DrawableUsesSpace(state,doors,1,0);
             state.Space=0;state.X=ex;state.Z=ez+1;bool landing=ModelResidencyDemand.DrawableUsesSpace(state,doors,1,0);

@@ -12,15 +12,15 @@ internal static class TownGenerationPreview
         for(int n=0;n<count;n++){
             int current=unchecked(seed+n);var state=new GameState(current);var town=state.Town;using var image=new RasterImage(Town.Width*4,Town.Height*4);
             for(int z=0;z<Town.Height;z++)for(int x=0;x<Town.Width;x++){
-                var c=colors[town.At(x,z)];for(int dy=0;dy<4;dy++)for(int dx=0;dx<4;dx++)image[x*4+dx,z*4+dy]=x%20==0&&dx==0||z%20==0&&dy==0?new Rgba32((byte)(c.R*3/4),(byte)(c.G*3/4),(byte)(c.B*3/4),255):c;
+                int terrain=town.At(x,z);var c=colors[terrain==(int)Terrain.Sea?1:WaterTerrain.IsCoast(terrain)?4:terrain];for(int dy=0;dy<4;dy++)for(int dx=0;dx<4;dx++)image[x*4+dx,z*4+dy]=x%20==0&&dx==0||z%20==0&&dy==0?new Rgba32((byte)(c.R*3/4),(byte)(c.G*3/4),(byte)(c.B*3/4),255):c;
             }
             for(int i=0;i<town.GroundCount;i++){var g=town.Ground[i];if(g.Kind==3)for(int dy=1;dy<4;dy++)for(int dx=1;dx<4;dx++)image[g.X*4+dx,g.Z*4+dy]=new Rgba32(46,94,59,255);}
             // Starter plot outline and arrival marker, without changing terrain.
             for(int z=town.HouseZ;z<town.HouseZ+13;z++)for(int x=town.HouseX;x<town.HouseX+15;x++)if(x==town.HouseX||x==town.HouseX+14||z==town.HouseZ||z==town.HouseZ+12)image[x*4,z*4]=new Rgba32(255,245,221,255);
             for(int dy=0;dy<4;dy++)for(int dx=0;dx<4;dx++)image[(int)state.X*4+dx,(int)state.Z*4+dy]=new Rgba32(255,255,255,255);
             string path=Path.Combine(output,"town-"+current+".png");using(var file=File.Create(path))image.SaveAsPng(file);
-            int water=0,raised=0;for(int i=0;i<Town.Cells;i++){if(town.Tiles[i]==(byte)Terrain.Water)water++;if(town.Elevation[i]!=0)raised++;}
-            records.Add(new{seed=current,generatorVersion=TownGenerator.Version,screenTiles=Town.ScreenTiles,acreCells=Town.ScreenTileSize,terrainSha256=Convert.ToHexString(SHA256.HashData(town.Tiles)),elevationSha256=Convert.ToHexString(SHA256.HashData(town.Elevation)),waterCells=water,waterPercent=water*100.0/Town.Cells,raisedCells=raised,residentNames=town.Residents.Select(v=>v.Name).ToArray(),groundRecords=town.GroundCount,preview=Path.GetFileName(path)});
+            int water=0,raised=0;for(int i=0;i<Town.Cells;i++){if(WaterSurface.IsWater(town,i%Town.Width,i/Town.Width))water++;if(town.Elevation[i]!=0)raised++;}
+            records.Add(new{seed=current,generatorVersion=TownGenerator.Version,width=Town.Width,height=Town.Height,screenColumns=Town.ScreenColumns,screenRows=Town.ScreenRows,acreCells=Town.ScreenTileSize,terrainSha256=Convert.ToHexString(SHA256.HashData(town.Tiles)),elevationSha256=Convert.ToHexString(SHA256.HashData(town.Elevation)),waterCells=water,waterPercent=water*100.0/Town.Cells,raisedCells=raised,residentNames=town.Residents.Select(v=>v.Name).ToArray(),groundRecords=town.GroundCount,preview=Path.GetFileName(path)});
         }
         File.WriteAllText(Path.Combine(output,"generation-audit.json"),JsonSerializer.Serialize(records,new JsonSerializerOptions{WriteIndented=true}));Console.WriteLine("Generated "+count+" seeded town previews: "+output);
     }

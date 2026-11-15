@@ -10,8 +10,8 @@ internal static class GroundRingChecks
         plan.Prepare(19.1f,39.9f);check(plan.RowCount==0&&plan.ColumnCount==1,"eastward movement reassigns only the entering column");
         plan.Prepare(19.1f,40.1f);check(plan.RowCount==1&&plan.ColumnCount==0,"north/south movement reassigns only the entering row");
         plan.Prepare(-.1f,-.1f);check(plan.MinX==-33&&plan.MinZ==-37,"negative positions use floor rather than truncation");
-        plan.Prepare(159.9f,159.9f);check(plan.Reset,"teleport fully refills the ring");
-        plan.Prepare(159.9f,159.9f,true);check(plan.Reset,"terrain/material invalidation refills unchanged coordinates");
+        plan.Prepare(Town.Width-.1f,Town.Height-.1f);check(plan.Reset,"teleport fully refills the ring");
+        plan.Prepare(Town.Width-.1f,Town.Height-.1f,true);check(plan.Reset,"terrain/material invalidation refills unchanged coordinates");
         check(GroundRingPlan.VertexCount<=65535&&GroundRingPlan.IndexCount%3==0,"one allocation stays within GX index bounds");
         var random=new Random(382);int oldX=0,oldZ=0;plan.Prepare(.5f,.5f);
         for(int step=0;step<80;step++){

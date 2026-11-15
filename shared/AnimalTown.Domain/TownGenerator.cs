@@ -1,12 +1,14 @@
 namespace AnimalTown;
 
-// Acre-template generation adapted to our flat 8x8 town. The GameCube game's
+// Acre-template generation adapted to our town bounds. The GameCube game's
 // river tracing / required-feature / template-variant stages are retained;
 // Nintendo's acre data, 5x6 dimensions and elevation layouts are not imported.
 public static class TownGenerator
 {
-    public const int Version=4;
+    public const int Version=5;
     private const int N=1,E=2,S=4,W=8,Size=Town.ScreenTileSize;
+    private const int FullColumns=Town.Width/Size,InlandRows=(Town.Height-40)/Size;
+    public const int TreeCount=192;
     private static int Next(ref uint random,int limit)
     {random=unchecked(random*1664525u+1013904223u);return (int)((random>>8)%(uint)limit);}
     private static void Paint(Town town,int x,int z,Terrain value)
@@ -45,43 +47,46 @@ public static class TownGenerator
         uint random=unchecked((uint)town.Seed^0x9e3779b9u);
         for(int i=0;i<Town.Cells;i++)town.Tiles[i]=(byte)Terrain.Grass;
         // Flat shoreline templates, with identical edge heights and a choice
-        // of inward/outward shallow bays. Ocean occupies the southern two rows.
-        for(int column=0;column<Town.ScreenTiles;column++){
+        // of inward/outward shallow bays. Ocean retains its 32-cell depth.
+        for(int column=0;column<Town.ScreenColumns;column++){
             int bay=Next(ref random,3)-1;
             for(int local=0;local<Size;local++){
                 int x=column*Size+local,shore=Town.Height-40+bay*(local>=5&&local<15?2:0);
                 for(int z=shore;z<Town.Height;z++)Paint(town,x,z,z>=Town.Height-32?Terrain.Water:Terrain.Beach);
             }
         }
-        var gates=new byte[Town.ScreenTiles*Town.ScreenTiles];
-        int col=4+Next(ref random,3);
-        for(int row=0;row<Town.ScreenTiles;row++){
+        var gates=new byte[FullColumns*Town.ScreenRows];
+        int col=4+Next(ref random,FullColumns-4);
+        for(int row=0;row<Town.ScreenRows;row++){
             int minimum=row<3?4:1,target=col;
-            // Straight upper/lower bridge acres are mandatory. Other rows may
+            // Straight bridge acres at rows 1 and 3 stay inland. Other rows may
             // trace east or west before descending, with no northward cycles.
-            if(row!=0&&row!=3&&row!=5&&row!=6&&row!=7)target=Math.Max(minimum,Math.Min(6,col+Next(ref random,5)-2));
+            if(row!=0&&row!=1&&row!=InlandRows-1&&row<InlandRows)target=Math.Max(minimum,Math.Min(FullColumns-1,col+Next(ref random,5)-2));
             int direction=target>col?1:target<col?-1:0;
-            if(direction==0)gates[row*8+col]=(byte)(N|S);
+            if(direction==0)gates[row*FullColumns+col]=(byte)(N|S);
             else{
-                gates[row*8+col]=(byte)(N|(direction>0?E:W));
-                for(int next=col+direction;next!=target;next+=direction)gates[row*8+next]=(byte)(E|W);
-                gates[row*8+target]=(byte)((direction>0?W:E)|S);
+                gates[row*FullColumns+col]=(byte)(N|(direction>0?E:W));
+                for(int next=col+direction;next!=target;next+=direction)gates[row*FullColumns+next]=(byte)(E|W);
+                gates[row*FullColumns+target]=(byte)((direction>0?W:E)|S);
             }
             col=target;
         }
-        for(int row=0;row<8;row++)for(int column=0;column<8;column++){
-            int mask=gates[row*8+column];if(mask!=0)RiverAcre(town,column,row,mask,Next(ref random,3));
+        for(int row=0;row<Town.ScreenRows;row++)for(int column=0;column<FullColumns;column++){
+            int mask=gates[row*FullColumns+column];if(mask!=0)RiverAcre(town,column,row,mask,Next(ref random,3));
         }
         // Bridge features are assigned after river topology, as in the original
         // staged generator. Wood floor tiles are temporary art, with real collision.
-        for(int row=3;row<=5;row+=2)for(int column=0;column<8;column++)if(gates[row*8+column]==(N|S))
+        for(int row=1;row<InlandRows;row+=2)for(int column=0;column<FullColumns;column++)if(gates[row*FullColumns+column]==(N|S))
             for(int z=row*Size+9;z<=row*Size+11;z++)for(int x=column*Size+2;x<column*Size+18;x++)if(town.At(x,z)==(int)Terrain.Water)Paint(town,x,z,Terrain.Bridge);
         // Pond templates only occupy otherwise-flat, non-service inland acres.
-        int ponds=2+Next(ref random,2),placed=0,pondStart=Next(ref random,24);
-        for(int attempt=0;attempt<24&&placed<ponds;attempt++){
-            int candidate=(pondStart+attempt*5)%24,column=candidate%8,row=3+candidate/8,cell=row*8+column;
-            if(gates[cell]!=0||town.At(column*Size+10,row*Size+10)!=(int)Terrain.Grass)continue;
+        int ponds=2+Next(ref random,2),placed=0,pondStart=Next(ref random,FullColumns);
+        for(int attempt=0;attempt<FullColumns&&placed<ponds;attempt++){
+            int column=(pondStart+attempt)%FullColumns,row=InlandRows-1,cell=row*FullColumns+column;
+            if(gates[cell]!=0)continue;
             int rx=3+Next(ref random,3),rz=3+Next(ref random,2);
+            bool clear=true;
+            for(int dz=-rz-1;dz<=rz+1&&clear;dz++)for(int dx=-rx-1;dx<=rx+1;dx++)if(town.At(column*Size+10+dx,row*Size+10+dz)!=(int)Terrain.Grass||town.InReserve(column*Size+10+dx,row*Size+10+dz)){clear=false;break;}
+            if(!clear)continue;
             for(int dz=-rz;dz<=rz;dz++)for(int dx=-rx;dx<=rx;dx++)if(dx*dx*rz*rz+dz*dz*rx*rx<=rx*rx*rz*rz)Paint(town,column*Size+10+dx,row*Size+10+dz,Terrain.Water);
             placed++;
         }
@@ -93,7 +98,7 @@ public static class TownGenerator
     internal static void Populate(Town town)
     {
         uint random=unchecked((uint)town.Seed^0xa341316cu);
-        for(int attempt=0;attempt<4000&&town.GroundCount<320;attempt++){
+        for(int attempt=0;attempt<4000&&town.GroundCount<TreeCount;attempt++){
             int x=2+Next(ref random,Town.Width-4),z=17+Next(ref random,Town.Height-59);
             if(TerrainElevation.Mode(town,x,z)>1||town.At(x,z)!=(int)Terrain.Grass||town.InReserve(x,z)||x<80&&z<42)continue;
             // Leave acre travel sockets and bridge approaches clear. Trees also

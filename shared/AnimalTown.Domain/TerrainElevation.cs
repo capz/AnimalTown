@@ -61,10 +61,11 @@ public static class TerrainElevation
     {if(Math.Abs(d)<.000001f)return a>=min&&a<=max;float p=(min-a)/d,q=(max-a)/d;if(p>q){float v=p;p=q;q=v;}lo=Math.Max(lo,p);hi=Math.Min(hi,q);return lo<=hi;}
     public static void Generate(Town town)
     {
-        Array.Clear(town.Elevation,0,town.Elevation.Length);uint random=unchecked((uint)town.Seed^0xb5297a4du);int placed=0,start=(int)(random%24);
-        for(int n=0;n<24&&placed<3;n++){
-            int candidate=(start+n*5)%24,col=candidate%8,row=2+candidate/8;if(col<4&&row==2)continue;
-            int x=col*20+4,z=row*20+2;bool clear=true;
+        const int size=Town.ScreenTileSize,columns=Town.Width/size,candidates=columns*((Town.Height-40)/size-1);
+        Array.Clear(town.Elevation,0,town.Elevation.Length);uint random=unchecked((uint)town.Seed^0xb5297a4du);int placed=0,start=(int)(random%candidates);
+        for(int n=0;n<candidates&&placed<3;n++){
+            int candidate=(start+n*5)%candidates,col=candidate%columns,row=1+candidate/columns;if(col<4&&row<3)continue;
+            int x=col*size+4,z=row*size+2;bool clear=true;
             for(int dz=0;dz<16&&clear;dz++)for(int dx=0;dx<14;dx++)if(town.At(x+dx,z+dz)!=(int)Terrain.Grass||town.InReserve(x+dx,z+dz)){clear=false;break;}
             if(!clear)continue;
             for(int dz=0;dz<12;dz++)for(int dx=0;dx<12;dx++)town.Elevation[(z+dz)*Town.Width+x+dx]=Block;

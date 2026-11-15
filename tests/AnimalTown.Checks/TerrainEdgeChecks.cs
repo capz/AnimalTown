@@ -134,7 +134,7 @@ internal static class TerrainEdgeChecks
         check(updates-before<TerrainStream.Capacity,"stationary streaming settles without continuous rebuilding");
         before=updates;for(int n=0;n<10;n++)Tick(80.02f,80.02f);check(updates==before,"fractional movement reuses cached section geometry");
         stream.Reset();Tick(1,1);check(!stream.Ready,"cold teleport requires a covered loading transition rather than a terrain construction burst");
-        foreach(float x in new[]{.001f,159.999f})foreach(float z in new[]{.001f,159.999f}){stream.Reset();for(int n=0;n<TerrainStream.Capacity;n++)Tick(x,z);check(stream.Ready&&stream.MissingWanted==0,"streaming at every town boundary remains bounded and complete");}
+        foreach(float x in new[]{.001f,Town.Width-.001f})foreach(float z in new[]{.001f,Town.Height-.001f}){stream.Reset();for(int n=0;n<TerrainStream.Capacity;n++)Tick(x,z);check(stream.Ready&&stream.MissingWanted==0,"streaming at every town boundary remains bounded and complete");}
         var staged=new TerrainStream();var remaining=new int[TerrainStream.Capacity];
         void StagedFrame(float x,float z){
             staged.Prepare(x,z);
@@ -148,7 +148,7 @@ internal static class TerrainEdgeChecks
         for(int n=0;n<TerrainStream.Capacity*2;n++)StagedFrame(50,50);
         check(staged.Ready&&staged.MissingWanted==0,"staged uploads warm up without publishing partial terrain");
         for(int n=0;n<600;n++){StagedFrame(50+n*.1187f,50+n*.1187f);check(staged.Ready,"bounded row-stage throughput preserves visibility while running");}
-        staged.Reset();staged.Prepare(50,50);int active=staged.BuildSlot;staged.Hold();staged.Prepare(140,140);
+        staged.Reset();staged.Prepare(50,50);int active=staged.BuildSlot;staged.Hold();staged.Prepare(Town.Width-1,Town.Height-1);
         check(staged.BuildSlot!=active&&!staged.InProgress(active),"a camera jump cancels obsolete prefetch without blocking its new destination");staged.Complete();
         check(!staged.Ready,"finishing an obsolete section does not mark the new view ready");
         var state=new GameState(17);Array.Fill(state.Town.Tiles,(byte)Terrain.Grass);Array.Clear(state.Town.Elevation);
