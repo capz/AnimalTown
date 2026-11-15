@@ -851,6 +851,7 @@ internal sealed class TownGame : IDisposable
         bool mat=room!=0&&BuildingWorld.Definition(state,BuildingWorld.Building(room)).Floor==BuildingCatalog.Cottage.Floor;
         for(int actor=0;actor<BuildingWorld.Actors;actor++){
             if(BuildingWorld.Location(state,actor).Space.Value!=room||actor==0&&waterInspection!=0)continue;
+            if(actor!=0&&!modelResidency.Ready(actor-1))continue;
             var p=villagers.Doors.VisualLocation(state,actor);
             if(room==0&&actor!=0&&!ModelResidencyDemand.WithinOutdoorDistance(state,villagers.Doors,p.X,p.Z))continue;
             if(Visible(p.X,p.Z,1.8f))villagerShadows.Set(actor,room,p.X,p.Z,size,mat);
