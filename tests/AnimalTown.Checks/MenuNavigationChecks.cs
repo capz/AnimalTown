@@ -2,6 +2,17 @@ internal static class MenuNavigationChecks
 {
     internal static void Run(Action<bool,string> check)
     {
+        var secret=new DebugMenuGesture();
+        check(!secret.Read(true,false),"first Z press does not toggle debug access");
+        for(int frame=0;frame<120;frame++)check(!secret.Read(false,false),"holding/releasing Z never repeats a secret press");
+        check(!secret.Read(true,false)&&secret.Read(true,false),"three distinct consecutive Z edges toggle debug visibility");
+        check(!secret.Read(true,false)&&!secret.Read(true,false)&&secret.Read(true,false),"the next three Z presses can hide the same menus");
+        secret.Read(true,false);secret.Read(true,false);
+        check(!secret.Read(false,true)&&!secret.Read(true,false)&&!secret.Read(true,false),"an intervening action resets the partial three-press sequence");
+        check(!secret.Read(true,true)&&!secret.Read(true,false)&&!secret.Read(true,false)&&secret.Read(true,false),"Z chords and stick movement interrupt rather than complete the sequence");
+        long secretAt=GC.GetAllocatedBytesForCurrentThread();
+        for(int i=0;i<1000;i++)secret.Read(false,false);
+        check(GC.GetAllocatedBytesForCurrentThread()==secretAt,"idle debug gesture tracking allocates no per-frame objects");
         var nav=new MenuNavigation();
         int Read(float x=0,float y=0,int pressed=0,long now=0,string view="menu",int tab=5,bool active=true)=>nav.Read(view,tab,x,y,pressed,now,active);
         check(Read()==0,"neutral settings input does not navigate");

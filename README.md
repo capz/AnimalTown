@@ -71,7 +71,13 @@ Controls: stick or D-pad moves in eight directions, B run/cancel, A interact/con
 tool, Start settings; stick or D-pad selects and L/R changes menu tabs. Hold
 the stick to repeat a selection; recenter after opening a menu or changing tabs.
 Press Start and choose **Save now** in Settings to save. New towns, timed play, day rollover, travel, menus and debug actions never save automatically.
-Choose **Debug / testing menu** in Settings (or R to its tab) for rendering, lighting, runtime and preview options; these options last for this session.
+Debug menu entries are hidden by default. Press **Z three times in a row** on the
+title screen or in the game to toggle them; other buttons or stick movement
+restart the sequence. Visibility is saved to console preferences independently
+of town data and is shared by both screens. When visible, choose
+**Debug / testing menu** in Settings (or R to its tab) for rendering, lighting,
+runtime and preview options; those in-game options last for this session.
+Use **X** to reset a debug slider; Z remains available for the visibility toggle.
 Closing an explanation returns to the same selected menu row. Memory-card
 saves use Slot A, `AMTE/01`, [four split records in two banks](docs/split-saves.md), banner and icon. Missing-card
 play works; save errors are shown for retry.
