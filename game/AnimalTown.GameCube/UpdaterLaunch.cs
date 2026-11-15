@@ -3,12 +3,12 @@ using Dolphin.Storage;
 using Dolphin.IO;
 using File=System.IO.File;
 
-// Stage the standalone updater before it releases dvd:/ and scans GC Loader.
-// Image discovery and verified installation belong to the updater executable.
+// The resident updater reads dvd:/version.md before releasing the source disc,
+// then installs the published image in the GC Loader /games directory.
 internal static class UpdaterLaunch
 {
     internal static string Operation="load the updater";
-    internal const string Protocol="--animaltown-update=2";
+    internal const string Protocol="--animaltown-update=3";
     internal static void Request()
     {
         Operation="load the updater";
