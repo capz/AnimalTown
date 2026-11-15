@@ -10,6 +10,7 @@ source=script.read_text();sys.path.insert(0,str(script.parent))
 a=source.index("        elif '--stream-travel' in sys.argv:");b=source.index("        elif '--movement-profile' in sys.argv:",a)
 block=r'''        elif '--stream-travel' in sys.argv:
             import hashlib
+            set_debug_visibility(True)
             card=root/'MemoryCardA.USA.raw';original=hashlib.sha256(card.read_bytes()).hexdigest()
             press('A');time.sleep(5)
             def chord(button):
@@ -37,7 +38,7 @@ block=r'''        elif '--stream-travel' in sys.argv:
                 focus(20);ready(20,'rim-default-100-menu.png')
                 os.write(controller,b'SET MAIN 0 .5\n');time.sleep(8);os.write(controller,b'SET MAIN .5 .5\n');time.sleep(1);ready(20,'rim-zero-menu.png');press('B');time.sleep(2);screenshot('rim-zero-world.png')
                 focus(20);os.write(controller,b'SET MAIN 1 .5\n');time.sleep(16);os.write(controller,b'SET MAIN .5 .5\n');time.sleep(1);ready(20,'rim-200-menu.png');press('B');time.sleep(2);screenshot('rim-200-world.png')
-                focus(20);press('Z');ready(20,'rim-reset-100-menu.png');press('B');time.sleep(2);screenshot('rim-reset-100-world.png')
+                focus(20);press('X');ready(20,'rim-reset-100-menu.png');press('B');time.sleep(2);screenshot('rim-reset-100-world.png')
                 focus(19);press('A');ready(19,'attention-option-restored.png');press('B');time.sleep(2);building_view('attention-restored-off.png',True)
             else:
                 chord('START');time.sleep(3);screenshot('curve-default-ramp.png')

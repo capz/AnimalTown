@@ -6,7 +6,9 @@ logical movement distances, the camera lens/eye offsets, terrain collision and
 save layouts are unchanged. Ground, water, trees, actors, shadows and visibility
 all use the same shared cylinder projection and rigid scrolling transforms.
 
-Open **START → Settings → Debug / testing**. The last page adds:
+Press **Z three times consecutively** to show or hide the debug entries on both
+the title and in-game menus. Visibility defaults to hidden and is saved in
+console preferences. Then open **START → Settings → Debug / testing**. The last page adds:
 
 - **Season preview:** Auto → spring → summer → fall → winter → Auto. This affects
   outdoor floor/cliff material bindings, water tint and tree foliage. Auto returns
@@ -20,7 +22,7 @@ Open **START → Settings → Debug / testing**. The last page adds:
   Anchors are derived once from each rig's node heights; indoor camera rotation,
   doorway positions, viewport/horizon culling and opaque fades are respected.
 - **Rim intensity:** 0–200%, initially 100% (the previous shader strength).
-  Left/right adjust by 5%; A increases and Z resets to 100%. L/R still change
+  Left/right adjust by 5%; A increases and X resets to 100%. L/R still change
   tabs. The existing Actor rim lighting switch remains a separate enable control.
   At 0% the extra rim TEV stage and normal texture generation are disabled.
 - **SDK performance overlay:** Off by default. Toggles the built-in
@@ -33,7 +35,7 @@ Open **START → Settings → Debug / testing**. The last page adds:
   chain down to 4 pixels per shorter axis (256/128/64/32/16/8/4 for the shared
   outdoor texture). Off samples the original base level for comparison.
 - **Ground mip distance:** Auto by default; Left/Right select Auto or 1–10
-  individual one-metre ground squares, A increases, and Z restores Auto. The
+  individual one-metre ground squares, A increases, and X restores Auto. The
   number calibrates the first half-size mip at that many squares ahead of the
   player along the centreline of the lower cylinder. Larger values retain detail
   farther away. GX selects and blends levels per pixel from the projected
@@ -109,7 +111,7 @@ The published texture audit confirms seven CMPR ground levels at 43,712 bytes
 and the unchanged two-level, 10,240-byte soil policy.
 
 The published NKit image boots directly in Dolphin. The actual debug menu checks
-On/Off, Auto, 1 and 10 squares, Z reset and L shoulder tab navigation. An unchanged
+On/Off, Auto, 1 and 10 squares, X reset and L shoulder tab navigation. An unchanged
 foreground grass region has horizontal red-channel edge energy 11,642 in Auto,
 13,254 with mips Off, 13,132 at 1 square and 13,254 at 10 squares; reset restores
 11,642 exactly. These fixed-scene detail comparisons verify that the sampler

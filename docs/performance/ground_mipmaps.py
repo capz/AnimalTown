@@ -10,6 +10,7 @@ source=script.read_text();sys.path.insert(0,str(script.parent))
 a=source.index("        elif '--stream-travel' in sys.argv:");b=source.index("        elif '--movement-profile' in sys.argv:",a)
 block=r'''        elif '--stream-travel' in sys.argv:
             import hashlib
+            set_debug_visibility(True)
             card=root/'MemoryCardA.USA.raw';before=hashlib.sha256(card.read_bytes()).hexdigest()
             press('A');time.sleep(5)
             def chord(button):
@@ -21,7 +22,7 @@ block=r'''        elif '--stream-travel' in sys.argv:
             option(22);screenshot('mip-default-on-menu.png');press('A');screenshot('mip-off-menu.png');press('B');time.sleep(2);screenshot('mip-off-world.png')
             option(22);press('A');press('D_DOWN');screenshot('mip-default-auto-menu.png');press('A');screenshot('mip-one-menu.png');press('B');time.sleep(2);screenshot('mip-one-world.png')
             option(23);os.write(controller,b'SET MAIN 1 .5\n');time.sleep(5);os.write(controller,b'SET MAIN .5 .5\n');time.sleep(1);screenshot('mip-ten-menu.png');press('B');time.sleep(2);screenshot('mip-ten-world.png')
-            option(23);press('Z');screenshot('mip-reset-auto-menu.png');press('B');time.sleep(2);screenshot('mip-reset-auto-world.png')
+            option(23);press('X');screenshot('mip-reset-auto-menu.png');press('B');time.sleep(2);screenshot('mip-reset-auto-world.png')
             # L/R remain tab controls, separate from the numeric D-pad/stick.
             option(23);press('L');screenshot('mip-shoulder-settings.png');press('B')
             chord('Z');time.sleep(1);screenshot('mip-travel-start.png')

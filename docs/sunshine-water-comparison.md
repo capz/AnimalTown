@@ -19,7 +19,7 @@ No new screen, asset or menu layout. Use the existing option in
 │    Tree noise strength: 100%                  │
 │    Tree noise scale: 100%                     │
 │                                               │
-│  A / Left / Right: switch  ·  Z: Wind Waker    │
+│  A / Left / Right: switch  ·  X: Wind Waker    │
 │  Session options 19-27 / 29                   │
 └───────────────────────────────────────────────┘
 ```
