@@ -8,8 +8,16 @@ at 2 KiB before JSON decoding and parses once. Release notes and paginated relea
 API responses are no longer downloaded. Exact tag/ISO URL/name/size/SHA-256
 checks and numeric no-downgrade behavior remain, including upgrades from
 `0.11.38` to `0.12.0`. Missing, malformed or oversized feeds stop before download
-or image replacement. The first `0.12.0` release introduces the feed; this newer
-updater pin introduces its consumption.
+or image replacement. Release `0.12.0` introduced the feed; `0.13.0` introduced
+its consumption.
+
+If the selected installation is already current or newer than the feed, the
+updater revalidates the image and prepares Swiss autoload without physically
+remapping the disc or deleting files. This avoids the contiguous-only SDK remap
+for manually copied images that Swiss can normally map itself. FAT case aliases
+also count as unchanged. New-version replacements still require successful
+physical selection and boot-header readback before deleting the selected old
+ISO. A failure in that replacement path continues to retain both images.
 
 AnimalTown pins the standalone updater source in `build/updater.lock.json`.
 `tools/build-updater.ps1` fetches that exact commit, verifies a clean checkout,
@@ -26,11 +34,16 @@ The normal game build packages this DOL. A separately installed SD copy remains
 a fallback for manually assembled older discs. For SD layout and HTTPS details,
 see [the updater documentation](https://github.com/capz/AnimalTown.Updater).
 
-The updater scans the GC Loader volume recursively for stable AnimalTown ISO
-filenames, compares their major, minor and patch counters numerically, and uses
-the directory of the highest version. Hash-suffixed development images are
-ignored. The image header must identify AnimalTown and match the filename's
-version. Equal highest versions use the smallest canonical path under
+The updater scans the GC Loader volume recursively for `.iso` and `.gcm` images,
+including `.nkit.iso`. Their basenames can be changed: the existing embedded
+`AnimalTown / <version>` title at boot-header offset `0x20` is authoritative.
+The build verifies this title against its resolved release version, and NKit
+preserves it before its metadata area at `0x200`. The updater checks the AnimalTown
+disc ID and GameCube magic, compares embedded major, minor and patch counters
+numerically, and uses the actual directory and path of the highest stable version.
+Embedded development versions, foreign/truncated headers and updater/SDK staging
+paths are excluded. One 1,088-byte header buffer is reused throughout discovery.
+Equal highest versions use the smallest canonical path under
 ASCII-case-insensitive ordinal comparison,
 so directory enumeration order cannot change the selected installation.
 This is an installation-selection policy: GC Loader does not expose
@@ -72,6 +85,12 @@ Other installations are retained. Swiss is staged and validated before this
 sequence, and its SDK autoload handoff boots the new image after the updater
 returns successfully. A missing helper, invalid download or failed mapping
 check preserves the old image.
+
+The updater enables the SDK automatic-defragmentation policy for writable SD I/O
+inside a scope with a 64 KiB minimum file size, restoring the prior settings when
+it finishes or fails. Discovery remains read-only. Ordinary writes receive the
+SDK's best-effort cleanup; ISO downloads continue to require contiguous reservation
+and verified publication, rather than falling back to a fragmented image.
 
 Failure screens retain the stopped phase, last operation and available
 exception/path/native-result details, including empty-message exceptions.
