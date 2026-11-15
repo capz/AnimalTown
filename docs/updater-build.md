@@ -82,8 +82,11 @@ SDK then switches GC Loader's hardware disc mapping to the new image and reads
 its complete boot header back through the physical DVD interface. Only after
 that comparison succeeds does the updater delete the selected old image.
 Other installations are retained. Swiss is staged and validated before this
-sequence, and its SDK autoload handoff boots the new image after the updater
-returns successfully. A missing helper, invalid download or failed mapping
+sequence, and its Swiss handoff explicitly requests `AutoBoot=Yes`, `BS2Boot=No` and
+`Prefer Clean Boot=No` alongside `Autoload=<image>`, so it boots the new image
+without stopping at the game-information prompt after the updater returns
+successfully. The already-current path uses the same arguments. Swiss still
+loads the image; its startup/error UI and intentional B-button override remain. A missing helper, invalid download or failed mapping
 check preserves the old image.
 
 The updater enables the SDK automatic-defragmentation policy for writable SD I/O
@@ -114,3 +117,12 @@ The release tools archive includes the matching updater guide as
 both from the exact updater commit pinned into that game build. The script is
 for older images that still consume external HTTPS inputs; new images do not
 require it.
+
+The pinned updater now starts the update workflow on the SDK background
+executor and releases the managed gate during GPU/VSync waits. Async network
+I/O alone did not move its UI-captured continuations off the frame loop. The
+SDK HTTP stream caps each result at 4 KiB; one result per 50/60 Hz frame is
+roughly 200/240 KiB/s. Native AOT tests cover worker context and progress during
+simulated frame waits, cancellation and errors; these are scheduling tests,
+not a physical BBA speed measurement. VSync, TLS/digest checks, contiguous
+publication and mapping/readback-before-delete remain enabled.
