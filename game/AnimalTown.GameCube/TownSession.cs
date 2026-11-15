@@ -34,6 +34,7 @@ internal sealed class TownSession
             using var card=MemoryCard.Mount(StorageDevice.MemoryCardSlotA,new MemoryCardIdentity("AMTE","01"));
             bool files=false;var entries=card.GetEntries();var names=new string[entries.Length];
             for(int i=0;i<entries.Length;i++){names[i]=entries[i].Name;if(SplitSaveCodec.IsFile(names[i]))files=true;}
+            if(TownDataDeletion.Pending(names)){OnboardingSaveError="Finish town deletion in title Options first.";return false;}
             var store=new CardSaveStorage(card,File.ReadAllBytes("dvd:/savebanner.rgb5a3"),File.ReadAllBytes("dvd:/saveicon.rgb5a3"));
             Draft.Commit(new SaveRepository(store),files,names);State=Draft.State;Draft.Dispose();Draft=null;Loaded=true;Status="Saved / "+BuildInfo.Version;return true;
         }catch(Exception error){
@@ -58,9 +59,13 @@ internal sealed class TownSession
         GameState? state=null;bool damaged=false;string status="New town - no valid save";
         try{
             using var card=MemoryCard.Mount(StorageDevice.MemoryCardSlotA,new MemoryCardIdentity("AMTE","01"));
-            var entries=card.GetEntries();bool existing=false;for(int i=0;i<entries.Length;i++)if(SplitSaveCodec.IsFile(entries[i].Name))existing=true;
-            state=new SaveRepository(new CardSaveStorage(card,new byte[0],new byte[0])).Load();
-            if(state!=null)status="Save loaded";else if(existing){damaged=true;status="No complete save set. Backup card before recovery.";}
+            var entries=card.GetEntries();bool existing=false,pending=false;
+            for(int i=0;i<entries.Length;i++){if(SplitSaveCodec.IsFile(entries[i].Name))existing=true;if(entries[i].Name==TownDataDeletion.Marker)pending=true;}
+            if(pending){damaged=true;status="Finish town deletion in title Options.";}
+            else{
+                state=new SaveRepository(new CardSaveStorage(card,new byte[0],new byte[0])).Load();
+                if(state!=null)status="Save loaded";else if(existing){damaged=true;status="No complete save set. Backup card before recovery.";}
+            }
         }catch(Exception){status="Insert memory card in Slot A to save";}
         bool loaded=state!=null;
         if(state==null){long now=Clock.Timestamp;int date=NativeCalendar.Read();state=new GameState(unchecked((int)(now^(now>>32)^date*7919L)));state.Profiles[0].Created=false;}

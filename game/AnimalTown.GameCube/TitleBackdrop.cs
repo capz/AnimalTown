@@ -14,8 +14,9 @@ internal sealed class TitleBackdrop : IDisposable
     internal void Draw(Draw2D ui)
     {
         float uv=-(float)(Clock.Timestamp%16000000)/16000000;
-        Vertex(0,0,0,uv,uv);Vertex(4,640,0,uv+10,uv);Vertex(8,640,480,uv+10,uv+7.5f);
-        Vertex(12,0,0,uv,uv);Vertex(16,640,480,uv+10,uv+7.5f);Vertex(20,0,480,uv,uv+7.5f);
+        var size=ui.LogicalSize;float w=size.X,h=size.Y,u=uv+w/64,v=uv+h/64;
+        Vertex(0,0,0,uv,uv);Vertex(4,w,0,u,uv);Vertex(8,w,h,u,v);
+        Vertex(12,0,0,uv,uv);Vertex(16,w,h,u,v);Vertex(20,0,h,uv,v);
         ui.DrawTexturedQuads(textures,quad,1,Color32.White);
     }
     private void Vertex(int at,float x,float y,float u,float v){quad[at]=x;quad[at+1]=y;quad[at+2]=u;quad[at+3]=v;}

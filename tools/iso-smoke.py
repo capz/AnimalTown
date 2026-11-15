@@ -56,7 +56,7 @@ def rgb(name):
     return subprocess.check_output(['ffmpeg','-v','error','-i',str(root/name),'-frames:v','1','-f','rawvideo','-pix_fmt','rgb24','-'])
 
 def fill_matches(pixel,color,tolerance=5):
-    # Default UI grain multiplies fill RGB by an I8 sample of 226..255;
+    # Default UI grain multiplies fill RGB by an I8 sample of 245..255;
     # alpha/text stay unchanged. Compare hue along that brightness range,
     # allowing a small margin for GX integer rounding and filtered samples.
     peak=max(color)
@@ -284,13 +284,13 @@ def title_menu():
     mint=lambda pixels,i: all(abs(pixels[i+c]-value)<=5 for c,value in enumerate((149,198,186)))
     changed=sum(a[i:i+3]!=b[i:i+3] and (mint(a,i) or mint(b,i)) for i in range(0,len(a),3))
     if changed<100:raise AssertionError('Title background is not scrolling')
-    press('D_DOWN');press('D_DOWN');press('A');wait_title(modal=True);screenshot('title-debug-modal.png')
+    press('D_UP');press('A');wait_title(modal=True);screenshot('title-debug-modal.png')
     press('D_RIGHT');screenshot('title-debug-edited.png')
     # Exercise paging, wraparound and slider rows, then return to row zero.
     press('D_UP');screenshot('title-debug-last-page.png');press('D_DOWN')
     press('B');wait_title();screenshot('title-dev-config-saved.png')
     press('A');wait_title(modal=True);screenshot('title-debug-reopened.png');press('B');wait_title()
-    press('D_UP');press('D_UP')
+    press('D_DOWN')
     # Start opens the shared-town resident picker before game asset loading.
     press('A');wait_profiles('title-villager-picker.png')
     if creating:
@@ -324,6 +324,106 @@ def title_menu():
         press('A');wait_onboarding('review','title-onboarding-review.png');press('A')
         wait_saved_after(before);wait_onboarding('world','title-start-game.png')
     (root/'title-menu.txt').write_text(f'Diagonal dot pixels changed: {changed}\nOpened debug modal, edited and paged settings, saved/closed/reopened, then selected Start.\nThree loading frames contained no cream title/menu and an animated sprout; game then became visible.\n'+('Completed Name, Look, Home and explicit Save & begin.\n' if creating else ''))
+
+def options_card_files():
+    """Current committed directory/BAT only; freed sectors are not live files."""
+    import struct
+    path=root/'MemoryCardA.USA.raw'
+    if not path.exists():return {}
+    card=path.read_bytes();sector=8192
+    def word(at):return struct.unpack_from('>H',card,at)[0]
+    def valid(block,start,end,checksum):
+        values=struct.unpack('>'+str((end-start)//2)+'H',card[block*sector+start:block*sector+end])
+        a=sum(values)&65535;b=sum(v^65535 for v in values)&65535
+        return (0 if a==65535 else a,0 if b==65535 else b)==(word(block*sector+checksum),word(block*sector+checksum+2))
+    def newest(blocks,offset):
+        result=blocks[0]
+        for block in blocks[1:]:
+            if 0<((word(block*sector+offset)-word(result*sector+offset))&65535)<32768:result=block
+        return result
+    directories=[n for n in (1,2) if valid(n,0,0x1ffc,0x1ffc)]
+    bats=[n for n in (3,4) if valid(n,4,sector,0)]
+    if not directories or not bats:raise AssertionError('No valid card directory/BAT')
+    directory=newest(directories,0x1ffa);bat=newest(bats,4);result={}
+    for entry in range(127):
+        at=directory*sector+entry*64
+        if card[at:at+6]!=b'AMTE01':continue
+        name=card[at+8:at+40].split(b'\0',1)[0].decode('ascii')
+        block,count=word(at+54),word(at+56);seen=set();data=bytearray()
+        for _ in range(count):
+            if block<5 or block>=len(card)//sector or block in seen:raise AssertionError('Invalid current card chain')
+            seen.add(block);data.extend(card[block*sector:(block+1)*sector]);block=word(bat*sector+10+(block-5)*2)
+        if block!=65535 or data[:8]!=b'DNDSAVE1':raise AssertionError('Invalid current card save container')
+        length,offset=struct.unpack_from('>II',data,8)
+        if offset<32 or offset+length>len(data):raise AssertionError('Truncated current card save')
+        result[name]=bytes(data[offset:offset+length])
+    return result
+
+def wait_options_saved(resolution,wide):
+    import struct
+    deadline=time.monotonic()+45
+    while time.monotonic()<deadline:
+        payload=options_card_files().get('options')
+        if payload and payload[:6]==b'ATO\x01'+bytes((resolution,wide)):
+            checksum=2166136261
+            for value in payload[:12]:checksum=((checksum^value)*16777619)&0xffffffff
+            if len(payload)==16 and checksum==struct.unpack_from('<I',payload,12)[0]:return payload
+        check_runtime_failure();time.sleep(.5)
+    raise AssertionError('A did not persist the activated video setting')
+
+def title_options():
+    before=options_card_files();town={name:data for name,data in before.items() if name.startswith('AT-') or name.startswith('AnimalTown')}
+    if not town:raise AssertionError('Options deletion needs a disposable saved-town fixture')
+    # Create the independent debug record through the actual title UI.
+    press('D_UP');press('A');wait_title(modal=True);press('D_RIGHT');press('B');wait_title()
+    deadline=time.monotonic()+30;debug=None
+    while time.monotonic()<deadline:
+        debug=options_card_files().get('dev_config')
+        if debug:break
+        time.sleep(.5)
+    if not debug:raise AssertionError('Could not prepare independent debug preferences')
+    press('D_UP');press('A');time.sleep(2);screenshot('options-open.png')
+    original=options_card_files().get('options');press('D_RIGHT');screenshot('options-draft-576p.png')
+    if options_card_files().get('options')!=original:raise AssertionError('Navigation persisted an unapplied option')
+    press('D_LEFT');press('A');wait_options_saved(1,0);screenshot('options-480p.png')
+    press('D_RIGHT');press('A');wait_options_saved(2,0);screenshot('options-576p.png')
+    press('D_DOWN');press('D_LEFT');press('A');saved=wait_options_saved(2,1);screenshot('options-widescreen.png')
+    current=options_card_files()
+    if any(current.get(name)!=data for name,data in town.items()):raise AssertionError('Video selection changed town data')
+    press('D_DOWN');press('A');screenshot('options-delete-default.png');press('A')
+    if any(options_card_files().get(name)!=data for name,data in town.items()):raise AssertionError('Default Cancel deleted town data')
+    press('A');press('D_RIGHT');screenshot('options-delete-focused.png');press('B')
+    if any(options_card_files().get(name)!=data for name,data in town.items()):raise AssertionError('B cancellation deleted town data')
+    press('A');press('D_RIGHT');press('A')
+    deadline=time.monotonic()+90
+    while time.monotonic()<deadline:
+        current=options_card_files()
+        if not any(name.startswith('AT-') or name.startswith('AnimalTown') for name in current):break
+        check_runtime_failure();time.sleep(1)
+    else:raise AssertionError('Confirmed town deletion did not remove every record and its recovery marker')
+    if current.get('options')!=saved or current.get('dev_config')!=debug:raise AssertionError('Deletion changed video/debug preferences')
+    screenshot('options-deleted.png');press('B');wait_title();press('D_UP');press('D_UP');press('A');wait_profiles('options-empty-town.png')
+    if 'ANIMALTOWN GAME START' in runtime_log_text():raise AssertionError('Title options loaded town rendering assets')
+    (root/'title-options.json').write_text(json.dumps({'modes':[480,576],'wide_preserved_576_timing':'ANIMALTOWN VIDEO 2 1 output 640x576' in runtime_log_text(),
+        'activation_persisted_immediately':True,'draft_did_not_save':True,'default_cancel_preserved_town':True,'back_cancel_preserved_town':True,
+        'deleted_files':sorted(town),'remaining_files':sorted(current),'independent_preferences_preserved':True,'town_assets_deferred':True},indent=2))
+    if 'ANIMALTOWN VIDEO 2 1 output 640x576' not in runtime_log_text():raise AssertionError('Widescreen change failed to preserve actual 576p output')
+
+def title_options_load():
+    expected=wait_options_saved(2,1)
+    if 'ANIMALTOWN OPTIONS LOADED 2 1' not in runtime_log_text() or 'ANIMALTOWN VIDEO 2 1 output 640x576' not in runtime_log_text():
+        raise AssertionError('Startup did not restore saved progressive/widescreen settings')
+    press('D_DOWN');press('D_DOWN');press('A');time.sleep(2);screenshot('options-restored.png');press('B')
+    if options_card_files().get('options')!=expected:raise AssertionError('Opening/closing Options rewrote preferences')
+    press('D_UP');press('D_UP');press('A');wait_profiles('options-restored-empty-town.png')
+    if any(name.startswith('AT-') or name.startswith('AnimalTown') for name in options_card_files()):raise AssertionError('Deleted villagers returned after restart')
+    (root/'title-options-load.json').write_text(json.dumps({'persisted_resolution':576,'persisted_widescreen':True,'deleted_town_stayed_deleted':True}))
+
+def title_options_unsupported():
+    before=options_card_files();press('D_DOWN');press('D_DOWN');press('A');press('A');time.sleep(2);screenshot('options-unsupported.png')
+    if options_card_files()!=before:raise AssertionError('Unsupported progressive mode modified saved settings/town')
+    if 'ANIMALTOWN OPTIONS SAVED' in runtime_log_text():raise AssertionError('Rejected mode was persisted')
+    (root/'title-options-unsupported.json').write_text(json.dumps({'unsupported_mode_did_not_save':True}))
 
 def wait_profiles(name='profile-picker.png'):
     deadline=time.monotonic()+180
@@ -956,7 +1056,9 @@ def aram_residency_scenario():
     p.terminate();p.wait(timeout=10)
     frames=user/'Dump/Frames'
     if frames.exists():frames.rename(user/'Dump/Frames-residency')
-    p=subprocess.Popen(['/usr/games/dolphin-emu-nogui','-u',str(user),'-e',str(disc),'-v','OGL'],env=env,stdout=log,stderr=subprocess.STDOUT)
+    command=['/usr/games/dolphin-emu-nogui','-u',str(user),'-e',str(disc),'-v','OGL']
+    if '--component-cable' in sys.argv:command+=['-C','SYSCONF.IPL.PGS=True']
+    p=subprocess.Popen(command,env=env,stdout=log,stderr=subprocess.STDOUT)
     title_clock=AviGuestClock(frames,track_presentations=True)
     edge=lambda button:press_presented(button,title_clock)
     wait_title();wait_log(r'ANIMALTOWN DEV CONFIG LOADED')
@@ -1128,7 +1230,9 @@ def close_display():
 atexit.register(close_display)
 screenshot('display-ready.png') # Prove an actual X11 capture before booting.
 with (root/'emulator.log').open('w') as log:
-    p=subprocess.Popen(['/usr/games/dolphin-emu-nogui','-u',str(user),'-e',str(disc),'-v','OGL'],env=env,stdout=log,stderr=subprocess.STDOUT)
+    command=['/usr/games/dolphin-emu-nogui','-u',str(user),'-e',str(disc),'-v','OGL']
+    if '--component-cable' in sys.argv:command+=['-C','SYSCONF.IPL.PGS=True']
+    p=subprocess.Popen(command,env=env,stdout=log,stderr=subprocess.STDOUT)
     try:
         if '--loading' in sys.argv:
             for n,seconds in enumerate((1,1,2,4,8,12,17)):
@@ -1138,7 +1242,7 @@ with (root/'emulator.log').open('w') as log:
         if p.poll() is not None:
             raise RuntimeError(f'Dolphin exited during boot ({p.returncode}); see {root / "emulator.log"}')
         screenshot('screen.png')
-        if any(flag in sys.argv for flag in ('--title-menu','--title-load','--title-config','--title-update')):wait_title()
+        if any(flag in sys.argv for flag in ('--title-menu','--title-load','--title-config','--title-update','--title-options','--title-options-load','--title-options-unsupported')):wait_title()
         if '--onboarding' in sys.argv:
             onboarding()
         elif '--aram-residency' in sys.argv:
@@ -1152,11 +1256,14 @@ with (root/'emulator.log').open('w') as log:
         elif '--title-menu' in sys.argv:
             title_menu()
         elif '--title-config' in sys.argv:
-            press('D_DOWN');press('D_DOWN');press('A');wait_title(modal=True);screenshot('title-dev-config-loaded.png');press('B');wait_title();screenshot('title-modal-closed.png')
+            press('D_UP');press('A');wait_title(modal=True);screenshot('title-dev-config-loaded.png');press('B');wait_title();screenshot('title-modal-closed.png')
         elif '--title-load' in sys.argv:
-            press('D_DOWN');press('D_DOWN');press('A');wait_title(modal=True);screenshot('title-dev-config-loaded.png');press('B');wait_title();press('D_UP');press('D_UP');press('A');wait_profiles('title-loaded-villager-picker.png');press('A');time.sleep(180);screenshot('title-continued-game.png')
+            press('D_UP');press('A');wait_title(modal=True);screenshot('title-dev-config-loaded.png');press('B');wait_title();press('D_DOWN');press('A');wait_profiles('title-loaded-villager-picker.png');press('A');time.sleep(180);screenshot('title-continued-game.png')
         elif '--title-update' in sys.argv:
             press('D_DOWN');press('A');time.sleep(20);screenshot('title-updater.png')
+        elif '--title-options' in sys.argv:title_options()
+        elif '--title-options-load' in sys.argv:title_options_load()
+        elif '--title-options-unsupported' in sys.argv:title_options_unsupported()
         elif '--submission-seed' in sys.argv:
             start_game(True,'submission-seed')
             for _ in range(90):

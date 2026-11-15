@@ -6,8 +6,9 @@ public static class RenderView
     private static readonly float DirectionLength=(float)Math.Sqrt(CylinderWorld.CameraHeight*CylinderWorld.CameraHeight+(CylinderWorld.CameraBack+CylinderWorld.CameraAimAhead)*(CylinderWorld.CameraBack+CylinderWorld.CameraAimAhead));
     public static readonly float ForwardY=-CylinderWorld.CameraHeight/DirectionLength,ForwardZ=-(CylinderWorld.CameraBack+CylinderWorld.CameraAimAhead)/DirectionLength;
     public static readonly float TanY=(float)Math.Tan(CylinderWorld.CameraFieldOfView*Math.PI/360);
-    public static readonly float TanX=TanY*4/3;
-    private static readonly float SideNorm=(float)Math.Sqrt(1+TanX*TanX),TopNorm=(float)Math.Sqrt(1+TanY*TanY);
+    public static float AspectRatio {get;private set;}=4f/3;
+    public static float TanX {get;private set;}=TanY*4/3;
+    private static float SideNorm=(float)Math.Sqrt(1+TanX*TanX);
     private static float cachedX=float.NaN,cachedZ,cachedHeight;
     private static float eyeRadius,eyeY,eyeZ,horizonSin,horizonCos,horizonChord;
     private static readonly float terrainRadial=CylinderWorld.Radius+CylinderWorld.CameraHeight+2;
@@ -15,11 +16,16 @@ public static class RenderView
     private static readonly float terrainEyeY=terrainRadial/terrainEyeRadius,terrainEyeZ=CylinderWorld.CameraBack/terrainEyeRadius,terrainSin=CylinderWorld.Radius/terrainEyeRadius;
     private static readonly float terrainCos=(float)Math.Sqrt(1-terrainSin*terrainSin),terrainChord=CylinderWorld.Radius*CylinderWorld.Radius/terrainEyeRadius;
     private static readonly Hypercube.CameraFrustum frustum=new Hypercube.CameraFrustum(0,CylinderWorld.CameraHeight,CylinderWorld.CameraBack,0,0,-CylinderWorld.CameraAimAhead,0,1,0,CylinderWorld.CameraFieldOfView,4f/3,CylinderWorld.Near,CylinderWorld.Far);
+    public static void SetWidescreen(bool enabled)
+    {
+        float aspect=enabled?16f/9:4f/3;if(AspectRatio==aspect)return;
+        AspectRatio=aspect;TanX=TanY*aspect;SideNorm=(float)Math.Sqrt(1+TanX*TanX);cachedX=float.NaN;
+    }
     // Called once before a pass, with lazy validation for domain callers/tests.
     public static void Prepare(float focusX,float focusZ,float focusHeight=0)
     {
         if(cachedX==focusX&&cachedZ==focusZ&&cachedHeight==focusHeight)return;
-        frustum.Set(focusX,CylinderWorld.CameraHeight+focusHeight,focusZ+CylinderWorld.CameraBack,focusX,focusHeight,focusZ-CylinderWorld.CameraAimAhead,0,1,0,CylinderWorld.CameraFieldOfView,4f/3,CylinderWorld.Near,CylinderWorld.Far);
+        frustum.Set(focusX,CylinderWorld.CameraHeight+focusHeight,focusZ+CylinderWorld.CameraBack,focusX,focusHeight,focusZ-CylinderWorld.CameraAimAhead,0,1,0,CylinderWorld.CameraFieldOfView,AspectRatio,CylinderWorld.Near,CylinderWorld.Far);
         if(float.IsNaN(cachedX)||cachedHeight!=focusHeight){
             float radial=CylinderWorld.Radius+CylinderWorld.CameraHeight+focusHeight;
             eyeRadius=(float)Math.Sqrt(radial*radial+CylinderWorld.CameraBack*CylinderWorld.CameraBack);
