@@ -1,6 +1,7 @@
 using System;
 using System.IO;
 using AnimalTown;
+using Dolphin.Diagnostics;
 using Dolphin.Storage;
 using Dolphin.Timing;
 
@@ -30,16 +31,23 @@ internal sealed class TownSession
     {
         if(Draft==null)return false;
         if(Damaged){OnboardingSaveError="Incomplete save preserved. Back up the card before recovery.";return false;}
+        OnboardingSaveError="";string phase="mount";
         try{
             using var card=MemoryCard.Mount(StorageDevice.MemoryCardSlotA,new MemoryCardIdentity("AMTE","01"));
+            phase="directory";
             bool files=false;var entries=card.GetEntries();var names=new string[entries.Length];
             for(int i=0;i<entries.Length;i++){names[i]=entries[i].Name;if(SplitSaveCodec.IsFile(names[i]))files=true;}
             if(TownDataDeletion.Pending(names)){OnboardingSaveError="Finish town deletion in title Options first.";return false;}
+            phase="artwork";
             var store=new CardSaveStorage(card,File.ReadAllBytes("dvd:/savebanner.rgb5a3"),File.ReadAllBytes("dvd:/saveicon.rgb5a3"));
+            phase="save set";
             Draft.Commit(new SaveRepository(store),files,names);State=Draft.State;Draft.Dispose();Draft=null;Loaded=true;Status="Saved / "+BuildInfo.Version;return true;
         }catch(Exception error){
+            string detail=error.Message??"Native save error (no message)";
+            DebugOverlay.WriteLine("ONBOARDING SAVE ERROR: "+phase+" (code "+NativeCalendar.CardError()+"): "+detail);
             OnboardingSaveError=error.Message!=null&&(error.Message.StartsWith("The town on this card")||error.Message.StartsWith("This card already"))?
-                "Card changed. Return to the title and reload your town.":"Couldn't save. Check Slot A and try again.";
+                "Card changed. Return to the title and reload your town.":
+                "Save failed / "+phase+" / card "+NativeCalendar.CardError()+"\n"+(detail.Length<=70?detail:detail.Substring(0,67)+"...");
             // A successful commit remains successful if closing the card fails.
             // Never leave a review screen holding an already released draft.
             return Draft==null;

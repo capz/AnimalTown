@@ -4,6 +4,7 @@ function Assert($value,[string]$message){if(!$value){throw $message}}
 $p=Get-ValidationPlan -ChangedPaths @('docs/concepts/cliff-kit.png','README.md');Assert (!$p.release -and !$p.backend -and !$p.managed.Count) 'Art/docs should not trigger builds/tests'
 $p=Get-ValidationPlan -ChangedPaths @('game/AnimalTown.GameCube/MenuNavigation.cs');Assert (($p.managed -join ',') -eq 'menu' -and !$p.backend -and !$p.tooling.Count) 'Menu routing too broad'
 $p=Get-ValidationPlan -ChangedPaths @('tools/native-uv-debug.inc','tools/native-uv-topology.h');Assert (($p.native -join ',') -eq 'uv' -and !$p.managed.Count -and !$p.backend) 'UV native routing too broad'
+$p=Get-ValidationPlan -ChangedPaths @('tests/AnimalTown.CardChecks/Program.cs');Assert (($p.native -join ',') -eq 'card' -and ($p.managed -join ',') -eq 'saves' -and !$p.backend -and !$p.full) 'Card adapter fixtures must retain native and domain save checks'
 $p=Get-ValidationPlan -ChangedPaths @('server/AnimalTown.Server/Program.cs');Assert ($p.backend -and !$p.managed.Count -and !$p.native.Count) 'Backend should not run console unit suites'
 $p=Get-ValidationPlan -ChangedPaths @('assets/models/villagers/fox.glb');Assert ($p.release -and !$p.managed.Count -and !$p.backend) 'Model imports should use import/build audits'
 $p=Get-ValidationPlan -ChangedPaths @('assets/textures/environment/ground/test.png');Assert (($p.tooling -join ',') -eq 'terrain' -and ($p.managed -join ',') -eq 'core' -and !$p.backend) 'Ground routing incorrect'
@@ -55,4 +56,4 @@ foreach($path in @('shared/AnimalTown.Domain/BuildingPrompt.cs','tests/AnimalTow
     $p=Get-ValidationPlan -ChangedPaths @($path)
     Assert (($p.managed -join ',') -eq 'movement,life,saves,buildings' -and !$p.backend -and !$p.full -and !$p.rendering.Count) "Building entry routing must retain component coverage: $path"
 }
-Write-Host 'Validation routing checks passed (54 cases).'
+Write-Host 'Validation routing checks passed (55 cases).'

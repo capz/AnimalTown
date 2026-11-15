@@ -11,5 +11,11 @@ internal sealed class CardSaveStorage : ISaveStorage
     internal CardSaveStorage(MemoryCard card,byte[] banner,byte[] icon){this.card=card;this.banner=banner;this.icon=icon;}
     public byte[] Read(string name){LoadingScreen.Pulse();return card.ReadAllBytes(name);}
     public void Write(string name,byte[] bytes)
-    {card.WriteSave(name,bytes,new MemoryCardSaveOptions{Title="AnimalTown",Comment=saveComment,Banner=banner,Icon=icon});}
+    {
+        // Only the two town records need the browser artwork. Repeating its
+        // 8 KiB in every tiny component doubles their minimum card allocation
+        // and leaves less space for the SDK's durable replacement journal.
+        bool artwork=name=="AT-Town0"||name=="AT-Town1";
+        card.WriteSave(name,bytes,new MemoryCardSaveOptions{Title="AnimalTown",Comment=saveComment,Banner=artwork?banner:null,Icon=artwork?icon:null});
+    }
 }

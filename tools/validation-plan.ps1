@@ -80,7 +80,7 @@ function Get-ValidationPlan {
             foreach($s in $allManaged){Add-Managed $s};$backend=$true;continue
         }
         if($p -match '^(tools/native-uv|tests/native-uv)'){[void]$native.Add('uv');continue}
-        if($p -match '^(tools/native-card|tests/native-card)'){[void]$native.Add('card');Add-Managed 'saves';continue}
+        if($p -match '^(tools/native-card|tests/native-card|tests/AnimalTown.CardChecks/)'){[void]$native.Add('card');Add-Managed 'saves';continue}
         if($p -match '^(tools/native-texture|tests/native-texture)'){[void]$native.Add('texture');Add-Managed 'core';continue}
         if($p -match '^(tools/native-shadow|tests/native-shadow)'){[void]$native.Add('shadows');Add-Managed 'terrain';continue}
         if($p -match '^tests/native-dialogue') {[void]$native.Add('voices');Add-Managed 'dialogue';continue}

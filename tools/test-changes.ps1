@@ -9,6 +9,7 @@ if(@($plan.native | Where-Object {$_ -in @('texture','voices','patched')}).Count
 function Run([string]$file,[string[]]$arguments){& $file @arguments;if($LASTEXITCODE){throw "$file checks failed"}}
 if($plan.rendering.Count){Run dotnet @('run','--project','tests/AnimalTown.RenderingChecks','-c','Release','--','--suites',($plan.rendering -join ','))}
 if($plan.managed.Count){Run dotnet @('run','--project','tests/AnimalTown.Checks','-c','Release','--','--suites',($plan.managed -join ','))}
+if('card' -in $plan.native){Run dotnet @('run','--project','tests/AnimalTown.CardChecks','-c','Release')}
 if($plan.tooling.Count){
     Run dotnet @('build','tools/AnimalTown.Tools','-c','Release','-v','quiet')
     foreach($suite in $plan.tooling){Run dotnet @('run','--project','tools/AnimalTown.Tools','-c','Release','--no-build','--',($suite+'-check'),(Get-Location).Path)}

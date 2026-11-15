@@ -16,6 +16,7 @@ internal sealed class OnboardingUi : IDisposable
     private CachedTexture?[]? portraits;
     private string[]? files,labels,keys,counts;
     private string? cachedEntry;
+    private string reviewError="",reviewErrorTitle="",reviewErrorDetail="";
     private float entryScale;
     private bool disposed,counted;
     internal static int LiveViews {get;private set;}
@@ -141,7 +142,15 @@ internal sealed class OnboardingUi : IDisposable
         Text("Save & begin",269,362,1.04f,222,TitleArt.Cream);
         TitleArt.Rounded(ui!,422,355,131,40,20,Warm);Badge("B",443,375,10,TitleArt.Cream,TitleArt.Leaf);
         font!.Draw(ui!,"Review",461,364,TitleArt.Ink,.91f);
-        Text(saveError.Length>0?saveError:"Save your new villager, then enjoy your first day.",320,419,.69f,512,saveError.Length>0?Clay:TitleArt.Ink);
+        if(reviewError!=saveError){
+            reviewError=saveError;int split=saveError.IndexOf('\n');
+            reviewErrorTitle=split<0?saveError:saveError.Substring(0,split);
+            reviewErrorDetail=split<0?"":saveError.Substring(split+1);
+        }
+        if(reviewErrorDetail.Length>0){
+            Text(reviewErrorTitle,320,408,.69f,512,Clay);
+            Text(reviewErrorDetail,320,430,.69f,512,Clay);
+        }else Text(saveError.Length>0?saveError:"Save your new villager, then enjoy your first day.",320,419,.69f,512,saveError.Length>0?Clay:TitleArt.Ink);
         if(busy){
             ui!.FillRectangle(new RectF(0,0,640,480),new Color32(25,44,36,160));TitleArt.Panel(ui,84,150,472,182);
             Head("Saving your new villager",320,175,1.03f,416);
