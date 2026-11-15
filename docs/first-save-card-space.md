@@ -27,5 +27,32 @@ An unmodified development build `380dfaabcb58` (whose game/save source matches
 main `448652c`) passed the full native Dolphin onboarding scenario with a blank
 card: discard/back navigation, explicit first commit, completed profile/home,
 return to gameplay and no implicit gameplay save. The reporter's exact physical
-failure has not been reproduced; release version and physical versus emulated
-Slot A storage are still needed to distinguish another device/space fault.
+failure has not been reproduced. The reporter has since confirmed a physical
+Memory Card 251 in Slot A; whether Swiss card emulation is enabled is unknown.
+
+## Physical mount versus interrupted-save recovery
+
+The subsequent hardware screenshot reports `mount / card 2`. That positive `2`
+is the old `txn_write` operation marker, not libogc's `CARD_ERROR_WRONGDEVICE`
+(`-2`). It can also be stale from an earlier operation. The SDK mount entry point
+both mounts the device and replays an interrupted replacement journal, so the
+generic exception alone cannot distinguish a driver failure from recovery.
+
+The pinned native overlay now resets the operation marker for each fresh mount
+and retains two separate signed results: the exact libogc mount result and the
+recovery errno. Onboarding displays the failing operation, numeric result and a
+readable reason. For example, `CARD -3` means the driver did not detect a card;
+`recovery / error 28` means insufficient space to replay a pending save.
+
+A failed libogc directory/FAT verification can leave the card attached to the
+SDK-allocated workarea. The SDK previously freed that area without unmounting.
+The overlay now unmounts before freeing it, matching the SDK card manager's
+cleanup and allowing a later attempt to start detached. This is a defensive
+retry fix, not a confirmed explanation of the first hardware failure. Recovery
+failures retain their journal; no card is formatted and no recovery data is
+discarded by the cleanup.
+
+The native host fixture covers failed-but-attached mounts, exact driver and
+recovery results, cleanup order, allocation failure, slot ownership and retry.
+The source-linked UI fixture checks the corresponding error descriptions.
+Neither fixture qualifies physical Memory Card 251 operation through Swiss.

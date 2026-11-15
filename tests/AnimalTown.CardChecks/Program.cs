@@ -3,6 +3,13 @@ using Dolphin.Storage;
 
 int checks=0;
 void Check(bool pass,string why){checks++;if(!pass)throw new Exception(why);}
+Check(CardSaveError.Describe("mount",2,-3,0,"Memory card unavailable.").Contains("CARD -3\nNo memory card detected"),"a stale transaction marker cannot hide the driver's no-card result");
+Check(CardSaveError.Describe("mount",2,-2,0,"").Contains("did not identify a memory card"),"raw wrong-device -2 differs from the old positive stage 2");
+Check(CardSaveError.Describe("mount",2,-6,0,"").Contains("directory could not be verified. Data kept."),"broken directory is reported without prompting a format");
+Check(CardSaveError.Describe("mount",2,0,-28,"").Contains("recovery / error 28\nMore free blocks"),"mount-time journal recovery reports space failure separately");
+Check(CardSaveError.Describe("mount",2,0,-5,"").Contains("Pending save could not be recovered. Data kept."),"unreadable recovery retains the journal");
+Check(CardSaveError.Describe("mount",0,-2001,0,"").Contains("Not enough memory"),"workarea allocation failure differs from missing card");
+Check(CardSaveError.Describe("save set",2028,-3,0,"write failed")=="Save failed / save set / card 2028\nwrite failed","old mount diagnostics do not override a later write failure");
 OnboardingDraft NewVillager()
 {
     var source=new GameState(7319);source.Profiles[0].Created=false;

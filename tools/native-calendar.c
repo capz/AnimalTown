@@ -5,6 +5,8 @@ int animaltown_clock(void) {
     return local.tm_min|(local.tm_hour<<6)|(local.tm_mday<<11)|((local.tm_mon+1)<<16)|(local.tm_wday<<20);
 }
 int animaltown_card_debug=0;
+int animaltown_card_mount_error=0;
+int animaltown_card_recovery_error=0;
 int animaltown_calendar(void) {
     time_t now=time(0);
     struct tm calendar;
