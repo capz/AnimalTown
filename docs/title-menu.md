@@ -39,6 +39,12 @@ highlight and A applies and immediately saves it to Slot A. B closes the panel.
 Language currently shows a disabled Coming soon entry. New console preferences
 do not change boot timing until a progressive mode is explicitly selected.
 
+Typography targets TV viewing at 480-line render height: menu/option labels are
+about 26 pixels, section headings 28 pixels, and help/status text at least 22 pixels.
+Panels and the erase confirmation provide room for the larger text; long status
+messages wrap to two cached lines. Debug configuration uses six larger rows per
+page. The existing IPL body font and Gorditas title atlas are reused.
+
 Video follows the SDK VideoMode sample: `GraphicsDevice.ConfigureDisplay` runs
 between frames, with an explicit progressive scan for resolution changes and
 Auto/Auto for aspect-only changes so they retain timing and framebuffers.

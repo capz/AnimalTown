@@ -25,6 +25,10 @@ internal sealed class TitleScreen : IDisposable
     private bool debugOpen,dirty,optionsOpen,confirmDelete,deleteFocus,deleting;
     private string optionsStatus="";
     private string status="";
+    private const float BodyScale=1.2f,HelpScale=1;
+    private const int DebugPageSize=6;
+    private string statusSource="",statusLine1="",statusLine2="";
+    private float statusWidth;
     private TitleScreen(DevConfig config,UserOptions options)
     {this.config=config;this.options=options;status=VideoOptions.Status;int at=0;for(int i=0;i<DevConfig.Count;i++)if(DevConfig.IsSetting(i))rows[at++]=i;rows[at]=DevConfig.Count;}
     internal static bool Run(DevConfig config,UserOptions options)
@@ -86,14 +90,14 @@ internal sealed class TitleScreen : IDisposable
         // height as Fit would, while retaining the full display for modal shade.
         var size=ui.LogicalSize;composition.Zoom=size.Y/480;canvasMargin=(size.X/composition.Zoom-640)*.5f;
         composition.Position=new Vector2(-canvasMargin,0);ui.Begin(composition);
-        TitleArt.Panel(ui,70,52,500,392);TitleArt.BrandMark(ui,320,105);
-        logo.Draw(ui,new RectF(0,0,logo.SourceWidth,logo.SourceHeight),new RectF(90,128,460,115),TitleArt.Ink);
+        TitleArt.Panel(ui,50,24,540,432);TitleArt.BrandMark(ui,320,79);
+        logo.Draw(ui,new RectF(0,0,logo.SourceWidth,logo.SourceHeight),new RectF(90,102,460,115),TitleArt.Ink);
         const string tagline="A little life, well rooted.";
-        font.Draw(ui,tagline,(640-font.Measure(tagline))/2,236,TitleArt.Ink);
-        MenuRow(0,"Start",265);MenuRow(1,"Update",307);MenuRow(2,"Options",349);MenuRow(3,"Debug configuration",391);
+        font.Draw(ui,tagline,(640-font.Measure(tagline,1.1f))/2,212,TitleArt.Ink,1.1f);
+        MenuRow(0,"Start",244);MenuRow(1,"Update",286);MenuRow(2,"Options",328);MenuRow(3,"Debug configuration",370);
         if(optionsOpen)DrawOptions();
         else if(debugOpen)DrawDebug();
-        else if(status.Length>0)font.Draw(ui,status,(640-font.Measure(status,.65f))/2,455,TitleArt.Ink,.65f);
+        else if(status.Length>0)DrawStatus(status,70,410,500,true);
         ui.End();device.EndFrame();
     }
     private RectF ScreenBounds()=>new RectF(-canvasMargin,0,640+2*canvasMargin,480);
@@ -101,7 +105,7 @@ internal sealed class TitleScreen : IDisposable
     {
         bool focus=index==selected;
         TitleArt.Rounded(ui,167,y,306,38,19,focus?TitleArt.Leaf:new Color32(236,226,197));
-        font.Draw(ui,label,(640-font.Measure(label))/2,y+8,focus?TitleArt.Cream:TitleArt.Ink);
+        font.Draw(ui,label,(640-font.Measure(label,BodyScale))/2,y+5,focus?TitleArt.Cream:TitleArt.Ink,BodyScale);
     }
     private void ResetOptionChoice()
     {optionChoice=optionRow==0?Math.Max(0,VideoOptions.ActiveResolution-1):device.Display.Widescreen?0:1;}
@@ -137,63 +141,87 @@ internal sealed class TitleScreen : IDisposable
     private void DrawOptions()
     {
         ui.FillRectangle(ScreenBounds(),new Color32(25,44,36,155));
-        TitleArt.Panel(ui,64,38,512,406);
-        optionsHeading!.Draw(ui,"Options",90,61,TitleArt.Ink,1.1f);
-        font.Draw(ui,"Video",92,112,TitleArt.Leaf);
-        OptionRow(0,"Resolution","480p","576p",145,VideoOptions.ActiveResolution-1);
-        OptionRow(1,"Widescreen","Yes","No",188,device.Display.Widescreen?0:1);
-        font.Draw(ui,"Language",92,239,TitleArt.Leaf);
-        font.Draw(ui,"Coming soon",98,271,new Color32(128,135,112),.9f);
-        font.Draw(ui,"Data",92,314,TitleArt.Leaf);
-        TitleArt.Rounded(ui,86,344,468,36,16,optionRow==2?new Color32(232,202,168):new Color32(236,226,197));
-        font.Draw(ui,"Delete town data",98,351,TitleArt.Ink,.9f);
-        font.Draw(ui,optionsStatus,92,394,TitleArt.Ink,.65f);
-        font.Draw(ui,"Left / Right: choose    A: apply    B: back",92,421,TitleArt.Ink,.65f);
+        TitleArt.Panel(ui,44,24,552,432);
+        optionsHeading!.Draw(ui,"Options",74,40,TitleArt.Ink,1.4f);
+        font.Draw(ui,"Video",76,89,TitleArt.Leaf,1.25f);
+        OptionRow(0,"Resolution","480p","576p",127,VideoOptions.ActiveResolution-1);
+        OptionRow(1,"Widescreen","Yes","No",175,device.Display.Widescreen?0:1);
+        font.Draw(ui,"Language",76,225,TitleArt.Leaf,1.25f);
+        font.Draw(ui,"Coming soon",82,260,new Color32(128,135,112),BodyScale);
+        font.Draw(ui,"Data",76,300,TitleArt.Leaf,1.25f);
+        TitleArt.Rounded(ui,62,331,516,44,19,optionRow==2?new Color32(232,202,168):new Color32(236,226,197));
+        font.Draw(ui,"Delete town data",82,338,TitleArt.Ink,BodyScale);
+        DrawStatus(optionsStatus,74,383,492);
+        font.Draw(ui,"Left/Right: select   A: apply   B: back",74,431,TitleArt.Ink,HelpScale);
         if(confirmDelete)DrawDeleteConfirmation();
     }
     private void OptionRow(int row,string label,string first,string second,float y,int active)
     {
-        if(optionRow==row)TitleArt.Rounded(ui,86,y-7,468,38,16,new Color32(221,231,188));
-        font.Draw(ui,label,98,y,TitleArt.Ink,.9f);
-        float secondWidth=font.Measure(second,.9f),firstWidth=font.Measure(first,.9f);
-        float secondX=540-secondWidth,firstX=secondX-26-firstWidth;
+        if(optionRow==row)TitleArt.Rounded(ui,62,y-7,516,44,19,new Color32(221,231,188));
+        font.Draw(ui,label,82,y,TitleArt.Ink,BodyScale);
+        float secondWidth=font.Measure(second,BodyScale),firstWidth=font.Measure(first,BodyScale);
+        float secondX=558-secondWidth,firstX=secondX-30-firstWidth;
         OptionValue(row,0,first,firstX,y,firstWidth,active);
         OptionValue(row,1,second,secondX,y,secondWidth,active);
     }
     private void OptionValue(int row,int value,string label,float x,float y,float width,int active)
     {
-        if(optionRow==row&&optionChoice==value)TitleArt.Rounded(ui,x-7,y-5,width+14,30,10,new Color32(244,238,204));
-        font.Draw(ui,label,x,y,TitleArt.Ink,.9f);
-        if(active==value)ui.FillRectangle(new RectF(x,y+23,width,2),TitleArt.Leaf);
+        if(optionRow==row&&optionChoice==value)TitleArt.Rounded(ui,x-8,y-5,width+16,35,12,new Color32(244,238,204));
+        font.Draw(ui,label,x,y,TitleArt.Ink,BodyScale);
+        if(active==value)ui.FillRectangle(new RectF(x,y+28,width,3),TitleArt.Leaf);
     }
     private void DrawDeleteConfirmation()
     {
         ui.FillRectangle(ScreenBounds(),new Color32(25,44,36,165));
-        TitleArt.Panel(ui,78,132,484,214);
-        optionsHeading!.Draw(ui,deleting?"Deleting town...":"Delete town data?",102,153,TitleArt.Ink,.95f);
-        font.Draw(ui,"Erase this town and ALL villagers\nfrom the memory card in Slot A?\nThis cannot be undone.",102,202,TitleArt.Ink,.83f);
+        TitleArt.Panel(ui,44,108,552,268);
+        optionsHeading!.Draw(ui,deleting?"Deleting town...":"Delete town data?",76,132,TitleArt.Ink,1.25f);
+        font.Draw(ui,"Erase this town and ALL villagers\nfrom the memory card in Slot A?\nThis cannot be undone.",76,184,TitleArt.Ink,1.15f);
         if(deleting)return;
-        TitleArt.Rounded(ui,112,293,178,36,17,!deleteFocus?TitleArt.Leaf:new Color32(236,226,197));
-        TitleArt.Rounded(ui,350,293,178,36,17,deleteFocus?new Color32(162,69,55):new Color32(236,226,197));
-        font.Draw(ui,"Cancel",201-font.Measure("Cancel",.9f)/2,300,!deleteFocus?TitleArt.Cream:TitleArt.Ink,.9f);
-        font.Draw(ui,"Delete",439-font.Measure("Delete",.9f)/2,300,deleteFocus?TitleArt.Cream:TitleArt.Ink,.9f);
+        TitleArt.Rounded(ui,76,298,216,48,22,!deleteFocus?TitleArt.Leaf:new Color32(236,226,197));
+        TitleArt.Rounded(ui,348,298,216,48,22,deleteFocus?new Color32(162,69,55):new Color32(236,226,197));
+        font.Draw(ui,"Cancel",184-font.Measure("Cancel",BodyScale)/2,307,!deleteFocus?TitleArt.Cream:TitleArt.Ink,BodyScale);
+        font.Draw(ui,"Delete",456-font.Measure("Delete",BodyScale)/2,307,deleteFocus?TitleArt.Cream:TitleArt.Ink,BodyScale);
     }
     private void DrawDebug()
     {
         ui.FillRectangle(ScreenBounds(),new Color32(25,44,36,150));
-        TitleArt.Panel(ui,66,44,508,392);
-        font.Draw(ui,"Debug configuration",90,65,TitleArt.Ink,1.2f);
-        int first=debugSelected/8*8;
-        for(int i=first;i<Math.Min(rows.Length,first+8);i++){
-            float y=112+(i-first)*29;
-            if(i==debugSelected)TitleArt.Rounded(ui,83,y-2,474,27,13,new Color32(221,231,188));
-            font.Draw(ui,Label(rows[i]),96,y,TitleArt.Ink,.8f);
+        TitleArt.Panel(ui,44,24,552,432);
+        font.Draw(ui,"Debug configuration",74,45,TitleArt.Ink,1.4f);
+        int first=debugSelected/DebugPageSize*DebugPageSize;
+        for(int i=first;i<Math.Min(rows.Length,first+DebugPageSize);i++){
+            float y=124+(i-first)*36;
+            if(i==debugSelected)TitleArt.Rounded(ui,62,y-4,516,34,15,new Color32(221,231,188));
+            font.Draw(ui,Label(rows[i]),76,y,TitleArt.Ink,1.1f);
         }
-        string page=(first+1)+"-"+Math.Min(rows.Length,first+8)+" / "+rows.Length;
-        font.Draw(ui,page,518-font.Measure(page,.65f),88,TitleArt.Ink,.65f);
-        font.Draw(ui,"A / Left / Right: change    Z: reset slider",90,359,TitleArt.Ink,.7f);
-        font.Draw(ui,"B: save and close",90,386,TitleArt.Ink,.85f);
-        font.Draw(ui,rows[debugSelected]==DevConfig.Count?"Session only; resets on restart.":dirty?"Changes will be saved to dev config.":DevConfigStorage.Status,90,412,TitleArt.Ink,.65f);
+        string page=(first+1)+"-"+Math.Min(rows.Length,first+DebugPageSize)+" / "+rows.Length;
+        font.Draw(ui,page,558-font.Measure(page,HelpScale),90,TitleArt.Ink,HelpScale);
+        font.Draw(ui,"A / Left / Right: change",74,342,TitleArt.Ink,HelpScale);
+        font.Draw(ui,"Z: reset slider   B: save and close",74,371,TitleArt.Ink,HelpScale);
+        DrawStatus(rows[debugSelected]==DevConfig.Count?"Session only; resets on restart.":dirty?"Changes will be saved to dev config.":DevConfigStorage.Status,74,404,492);
+    }
+    // Reflow only when a message changes. Keep two readable lines instead of
+    // scaling small status/error text down to fit a TV-sized panel.
+    private void DrawStatus(string text,float x,float y,float width,bool centered=false)
+    {
+        if(statusSource!=text||statusWidth!=width){
+            statusSource=text;statusWidth=width;statusLine1=text;statusLine2="";
+            int count=FitText(text,width);
+            if(count<text.Length){
+                for(int i=count-1;i>0;i--)if(text[i]==' '){count=i;break;}
+                statusLine1=text.Substring(0,count);int start=count;while(start<text.Length&&text[start]==' ')start++;
+                string rest=text.Substring(start);int tail=FitText(rest,width);
+                statusLine2=tail<rest.Length?rest.Substring(0,FitText(rest,width-font.Measure("...",HelpScale)))+"...":rest;
+            }
+        }
+        if(centered&&statusLine2.Length==0)y+=12;
+        font.Draw(ui,statusLine1,centered?320-font.Measure(statusLine1,HelpScale)/2:x,y,TitleArt.Ink,HelpScale);
+        font.Draw(ui,statusLine2,centered?320-font.Measure(statusLine2,HelpScale)/2:x,y+24,TitleArt.Ink,HelpScale);
+    }
+    private int FitText(string text,float width)
+    {
+        int low=0,high=text.Length;
+        while(low<high){int count=(low+high+1)/2;if(font.Measure(text.Substring(0,count),HelpScale)<=width)low=count;else high=count-1;}
+        return low;
     }
     private string Label(int row)
     {
