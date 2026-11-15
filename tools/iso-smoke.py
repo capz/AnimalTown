@@ -270,6 +270,7 @@ def wait_title(modal=False):
     raise AssertionError('Debug modal did not appear' if modal else 'Original cream title/menu did not appear')
 
 def title_menu():
+    set_debug_visibility(True)
     before=committed_card_sequence(root/'MemoryCardA.USA.raw',details=True)
     active=before['active'] if before else 0
     creating=not before or not before['profiles'][active]['created']
@@ -359,17 +360,75 @@ def wait_options_saved(resolution,wide):
     deadline=time.monotonic()+45
     while time.monotonic()<deadline:
         payload=options_card_files().get('options')
-        if payload and payload[:6]==b'ATO\x01'+bytes((resolution,wide)):
+        if payload and len(payload)==16 and payload[:3]==b'ATO' and payload[3] in (1,2) and payload[4:6]==bytes((resolution,wide)):
             checksum=2166136261
             for value in payload[:12]:checksum=((checksum^value)*16777619)&0xffffffff
             if len(payload)==16 and checksum==struct.unpack_from('<I',payload,12)[0]:return payload
         check_runtime_failure();time.sleep(.5)
     raise AssertionError('A did not persist the activated video setting')
 
+def debug_visibility(require_record=False):
+    import struct
+    payload=options_card_files().get('options')
+    if not payload or len(payload)!=16 or payload[:3]!=b'ATO' or payload[3] not in (1,2):return None if require_record else False
+    checksum=2166136261
+    for value in payload[:12]:checksum=((checksum^value)*16777619)&0xffffffff
+    if checksum!=struct.unpack_from('<I',payload,12)[0]:return None if require_record else False
+    return payload[3]==2 and payload[6]==1
+
+def set_debug_visibility(visible):
+    if debug_visibility()==visible:return
+    for _ in range(3):press('Z')
+    deadline=time.monotonic()+45
+    while time.monotonic()<deadline:
+        check_runtime_failure()
+        if debug_visibility(True)==visible:return
+        time.sleep(.5)
+    raise AssertionError('Triple Z did not persist debug-menu visibility')
+
+def debug_visibility_scenario(reload=False):
+    wait_title()
+    if reload:
+        if not debug_visibility():raise AssertionError('Reload did not retain enabled debug visibility')
+        press('D_UP');press('A');wait_title(modal=True);screenshot('debug-restored-title-modal.png')
+        (root/'debug-visibility-load.json').write_text(json.dumps({'visibility_restored':True}))
+        return
+    if options_card_files():raise AssertionError('Default-visibility scenario needs a fresh disposable card')
+    screenshot('debug-default-title.png')
+    # Hidden title navigation wraps from Start to Options, rather than Debug.
+    press('D_UP');press('A');wait_title(modal=True);screenshot('debug-default-options.png');press('B');wait_title()
+    press('Z');press('Z');press('B');press('Z')
+    if debug_visibility():raise AssertionError('An interrupted Z sequence enabled debug access')
+    press('B');set_debug_visibility(True)
+    press('D_DOWN');press('A');wait_title(modal=True);screenshot('debug-unlocked-title-modal.png')
+    # Rim is configuration row 20, after two non-setting rows are omitted.
+    for _ in range(18):press('D_DOWN')
+    press('D_RIGHT');screenshot('debug-slider-before-hide.png')
+    set_debug_visibility(False);wait_title();screenshot('debug-hidden-title-again.png')
+    if card_dev_config(root/'MemoryCardA.USA.raw')['values'][20]!=105:raise AssertionError('Hiding debug menus reset the selected slider')
+    press('D_DOWN');start_game(True,'debug-visibility')
+    def focus(name,expected):
+        screenshot(name+'.png');pixels=rgb(name+'.png')
+        scores=[sum(fill_matches(pixels[(y*800+x)*3:(y*800+x)*3+3],(221,231,188))
+                    for y in range(131+i*24,151+i*24) for x in range(100,540,4)) for i in range(9)]
+        if max(scores)<100 or scores.index(max(scores))!=expected:raise AssertionError(name+' selected a hidden or unexpected menu row')
+    press('START')
+    for _ in range(5):press('D_DOWN')
+    focus('debug-hidden-settings-wrap',0)
+    press('R');screenshot('debug-hidden-tab-wrap-backpack.png');press('L');focus('debug-hidden-backpack-wrap-settings',0)
+    set_debug_visibility(True);press('R');focus('debug-enabled-game-menu',0)
+    set_debug_visibility(False);focus('debug-hiding-open-menu-returns-settings',0)
+    # Leave the flag enabled for a second invocation with --debug-visibility-load.
+    set_debug_visibility(True)
+    if not debug_visibility():raise AssertionError('In-game visibility was not persisted for next startup')
+    (root/'debug-visibility.json').write_text(json.dumps({'hidden_default':True,'interrupted_sequence_rejected':True,
+        'title_toggled':True,'hidden_tabs_skipped':True,'game_toggled':True,'open_debug_closed_safely':True,'persisted_enabled':True}))
+
 def title_options():
     before=options_card_files();town={name:data for name,data in before.items() if name.startswith('AT-') or name.startswith('AnimalTown')}
     if not town:raise AssertionError('Options deletion needs a disposable saved-town fixture')
-    # Create the independent debug record through the actual title UI.
+    # Create the independent debug record through the unlocked title UI.
+    set_debug_visibility(True)
     press('D_UP');press('A');wait_title(modal=True);press('D_RIGHT');press('B');wait_title()
     deadline=time.monotonic()+30;debug=None
     while time.monotonic()<deadline:
@@ -515,6 +574,7 @@ def delete_profile():
     (root/'profile-deletion.json').write_text(json.dumps({'slot':slot,'before':before,'after':after,'default_cancel':True,'back_cancel':True,'reloaded':True},indent=2))
 
 def submission_scenario():
+    set_debug_visibility(True)
     sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'docs/performance'))
     from avi_guest_clock import AviGuestClock
     clock=AviGuestClock(root/'user/Dump/Frames',track_presentations=True);segments=[]
@@ -731,6 +791,7 @@ def committed_card_sequence(path, expected_day=None, details=False):
     return best_details if details else best
 
 def testing_menu():
+    set_debug_visibility(True)
     def label(name,row):
         y=131+(row%9)*24
         for sample in range(90):
@@ -1004,6 +1065,7 @@ def aram_residency_scenario():
     baseline=len(logs());enter('aram-flag-off');guest('flag-off-indoor-steady',16)
     if 'ANIMALTOWN TERRAIN CACHE SUSPENDED' in logs()[baseline:]:raise AssertionError('Default-off terrain option suspended the cache')
     screenshot('aram-flag-off-indoor.png');leave('aram-flag-off-exited')
+    set_debug_visibility(True)
     # Testing has 31 rows; Up wraps to new row 30 after tree and UI grain rows.
     press('START');press('R');press('D_UP');screenshot('aram-game-row30-off.png');press('A')
     report['ingame_saved_config']=config(True);screenshot('aram-game-row30-on.png');press('B')
@@ -1127,6 +1189,7 @@ def item_navigation(action_count=3):
     if not all(passed for _,passed in results):raise AssertionError('Item action navigation failed; see item-navigation.txt')
 
 def settings_navigation():
+    set_debug_visibility(True)
     results=[]
     held_samples=[]
     def read_focus(name):
@@ -1241,6 +1304,8 @@ with (root/'emulator.log').open('w') as log:
         if any(flag in sys.argv for flag in ('--title-menu','--title-load','--title-config','--title-update','--title-options','--title-options-load','--title-options-unsupported')):wait_title()
         if '--onboarding' in sys.argv:
             onboarding()
+        elif '--debug-visibility' in sys.argv:debug_visibility_scenario()
+        elif '--debug-visibility-load' in sys.argv:debug_visibility_scenario(True)
         elif '--aram-residency' in sys.argv:
             aram_residency_scenario()
         elif '--profile-delete' in sys.argv:
@@ -1252,8 +1317,10 @@ with (root/'emulator.log').open('w') as log:
         elif '--title-menu' in sys.argv:
             title_menu()
         elif '--title-config' in sys.argv:
+            set_debug_visibility(True)
             press('D_UP');press('A');wait_title(modal=True);screenshot('title-dev-config-loaded.png');press('B');wait_title();screenshot('title-modal-closed.png')
         elif '--title-load' in sys.argv:
+            set_debug_visibility(True)
             press('D_UP');press('A');wait_title(modal=True);screenshot('title-dev-config-loaded.png');press('B');wait_title();press('D_DOWN');press('A');wait_profiles('title-loaded-villager-picker.png');press('A');time.sleep(180);screenshot('title-continued-game.png')
         elif '--title-update' in sys.argv:
             press('D_DOWN');press('A');time.sleep(20);screenshot('title-updater.png')
@@ -1385,6 +1452,7 @@ with (root/'emulator.log').open('w') as log:
         elif '--uv-debug' in sys.argv:
             press('A');time.sleep(3);screenshot('uv-normal.png')
             def setting(up,name):
+                set_debug_visibility(True)
                 press('START');press('R')
                 for _ in range(up):press('D_DOWN')
                 screenshot(name+'-setting.png');press('A');time.sleep(2);screenshot(name+'-enabled.png');press('B');time.sleep(3);screenshot(name+'.png')
@@ -1530,6 +1598,7 @@ with (root/'emulator.log').open('w') as log:
                 testing_rows=int(row_match.group(1)) if row_match else 30
                 if not 25<=testing_rows<=128:raise ValueError('Unexpected testing-menu row count')
                 def water_selector():
+                    set_debug_visibility(True)
                     press('START');press('R')
                     for _ in range(testing_rows-24):press('D_UP')
                 water_selector()

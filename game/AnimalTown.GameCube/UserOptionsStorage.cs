@@ -7,6 +7,7 @@ internal static class UserOptionsStorage
 {
     internal const string FileName="options";
     internal static string Status="";
+    internal static UserOptions Current {get;private set;}=new UserOptions();
     internal static UserOptions Load()
     {
         try{
@@ -14,10 +15,10 @@ internal static class UserOptionsStorage
             var archive=new CardArchive(card,new byte[0],new byte[0]);
             foreach(string name in archive.Names())if(name==FileName){
                 var options=UserOptions.Decode(archive.Read(FileName));
-                DebugOverlay.WriteLine("ANIMALTOWN OPTIONS LOADED "+options.Resolution+" "+(options.Widescreen?1:0));return options;
+                DebugOverlay.WriteLine("ANIMALTOWN OPTIONS LOADED "+options.Resolution+" "+(options.Widescreen?1:0));Current=options;return options;
             }
         }catch(Exception){Status="Options unavailable; using defaults.";}
-        return new UserOptions();
+        Current=new UserOptions();return Current;
     }
     internal static bool Save(UserOptions options)
     {

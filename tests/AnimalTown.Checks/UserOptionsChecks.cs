@@ -4,10 +4,10 @@ internal static class UserOptionsChecks
 {
     internal static void Run(Action<bool,string> check)
     {
-        var defaults=new UserOptions();check(defaults.Resolution==0&&!defaults.Widescreen,"new options preserve boot timing and 4:3");
-        for(int resolution=0;resolution<=2;resolution++)foreach(bool wide in new[]{false,true}){
-            var expected=new UserOptions{Resolution=resolution,Widescreen=wide};byte[] bytes=expected.Encode();
-            var actual=UserOptions.Decode(bytes);check(actual.Resolution==resolution&&actual.Widescreen==wide,"video preferences round trip independently");
+        var defaults=new UserOptions();check(defaults.Resolution==0&&!defaults.Widescreen&&!defaults.ShowDebugMenus,"new options preserve boot timing, 4:3 and hidden debug menus");
+        for(int resolution=0;resolution<=2;resolution++)foreach(bool wide in new[]{false,true})foreach(bool debug in new[]{false,true}){
+            var expected=new UserOptions{Resolution=resolution,Widescreen=wide,ShowDebugMenus=debug};byte[] bytes=expected.Encode();
+            var actual=UserOptions.Decode(bytes);check(actual.Resolution==resolution&&actual.Widescreen==wide&&actual.ShowDebugMenus==debug,"video and debug visibility preferences round trip independently");
             for(int i=0;i<bytes.Length;i++){
                 var damaged=(byte[])bytes.Clone();damaged[i]^=1;bool rejected=false;
                 try{UserOptions.Decode(damaged);}catch(IOException){rejected=true;}
@@ -19,6 +19,10 @@ internal static class UserOptionsChecks
         }
         bool invalid=false;try{new UserOptions{Resolution=3}.Encode();}catch(InvalidOperationException){invalid=true;}
         check(invalid,"unsupported output cannot be persisted");
+        byte[] legacy=Convert.FromHexString("41544f01020100000000000009c9faa2");
+        var migrated=UserOptions.Decode(legacy);
+        check(migrated.Resolution==2&&migrated.Widescreen&&!migrated.ShowDebugMenus,"v1 console preferences retain video settings and default to hidden debug menus");
+        check(migrated.Encode()[3]==2,"the next explicit settings save upgrades a legacy preference record");
         EraseChecks(check);
     }
     private sealed class Files : ITownDataFiles,ISaveStorage
@@ -40,7 +44,7 @@ internal static class UserOptionsChecks
         new SaveRepository(files).Save(town);
         files.Data["AnimalTown0"]=SaveCodec.Encode(town);files.Data["AnimalTown1"]=SaveCodec.Encode(town);
         for(int bank=0;bank<2;bank++)for(int kind=0;kind<9;kind++)files.Data.TryAdd(SplitSaveCodec.FileName(kind,bank),new byte[]{1,2,3});
-        files.Data["options"]=new UserOptions{Resolution=2,Widescreen=true}.Encode();
+        files.Data["options"]=new UserOptions{Resolution=2,Widescreen=true,ShowDebugMenus=true}.Encode();
         files.Data["dev_config"]=new DevConfig().Encode();files.Data["OtherGame"]=new byte[]{7,8,9};files.Mutations=0;return files;
     }
     private static void EraseChecks(Action<bool,string> check)
