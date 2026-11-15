@@ -34,7 +34,7 @@ internal static class ActorVisibilityChecks
                 if(!view.Visible[1])rejected++;
                 var center=CylinderWorld.Surface(z,focus,TerrainElevation.At(state.Town,x,z)+.9f);
                 bool centerVisible=RenderView.Sphere(x,center.Y,center.Z,0,80,focus,height)&&RenderView.AboveHorizon(center.Y,center.Z,0,focus,height);
-                if(centerVisible)check(view.Visible[1],"frustum-edge culling never removes a visible actor center");
+                if(centerVisible&&ModelResidencyDemand.WithinOutdoorDistance(state,doors,x,z))check(view.Visible[1],"frustum-edge culling retains actor centers inside the residency distance");
                 if(view.Visible[1]&&!centerVisible)partial++;
             }
         }

@@ -58,6 +58,12 @@ internal static class ModelResidencyDemandChecks
         }
         check(distinguishesLanding,"the destination fixture includes actors affected by the one-metre landing offset");
         player.Phase=DoorPhase.Idle;
+        state.Space=0;state.X=60;state.Z=60;
+        var distant=state.Town.Residents[1];distant.Space=0;
+        foreach(var offset in new[]{(19.99f,0f,true),(20f,0f,false),(20.01f,0f,false),(0f,20f,false),(14f,14f,true),(15f,15f,false),(-19f,0f,true),(0f,-19f,true)}){
+            distant.PosX=state.X+offset.Item1;distant.PosZ=state.Z+offset.Item2;
+            demand.Prepare(state,doors);check(demand.Required[1]==offset.Item3,"one map-square radial residency boundary is independent of camera direction");
+        }
         state.Space=0;state.X=80;state.Z=80;edge.PosX=80;edge.PosZ=80;
         var visual=doors.Actors[2];visual.Phase=DoorPhase.Crossing;visual.Building=1;visual.Tick=14;visual.Source=new ActorLocation(0,80,80,0);visual.Destination=new ActorLocation(16,2,2,0);
         var actual=doors.VisualLocation(state,2);state.X=actual.X;state.Z=actual.Z;

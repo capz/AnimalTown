@@ -16,10 +16,9 @@ selected species loads first and reserves its player instance immediately, so
 the player is not a final allocation competing with the complete NPC cohort.
 Between package admissions, startup can retire an already adopted species that
 is outside all demand. These bounded checkpoints skip only the ordinary idle
-and warm-grace timers; they retain the 24 m lookahead, drawable/doorway/player
+and warm-grace timers; they retain the 20 m map-square distance, doorway/player
 pins, debug inspection pins and ARAM limits, and drain before another disc load.
-The default outdoor camera can require all six species, in which case startup
-does not evict one to force the allocation to succeed.
+Nearby species load normally; distant species can already be cold at startup.
 
 The selected player's shared species is permanently pinned for the session.
 It therefore uses the existing resident-model compactor before either its NPC
@@ -45,11 +44,22 @@ are allocation and submission checks, not stock-console frame-time measurements.
 
 All instances of a model must be outside demand before it can be demoted. The
 player's selected species stays pinned, including its NPC's shared resource.
-Current-room species and doorway users remain pinned. Demotion only starts
-while the player is indoors, has not moved for five seconds, and no player
-doorway, UV inspection or water inspection is active. Each model also needs
-five seconds without demand and three seconds of warm grace after restoration.
-This avoids camera-driven eviction during ordinary outdoor travel.
+Outdoors, a species is required within 20 logical metres of the player (one
+20×20-cell map square, measured radially, excluding the exact 20 m boundary).
+The camera's view direction does not change residency demand. Distant models
+can demote while the player moves; restored models retain a three-second warm
+grace against boundary churn. Indoors, current-room species stay pinned and
+ordinary five-second idle/demand delays remain. Doorways and debug inspection
+retain their existing resource pins and transfer cancellation safeguards.
+
+Town simulation never depends on a model restore completing. Positions, routes,
+journeys, home visits and save data stay in MEM1 and tick while graphics are
+cold. Outdoor restore misses skip only that actor's draw and pose work until
+ready, without showing a loading screen or pausing other villagers. Actors and
+their shadows beyond 20 m are excluded together. Returning within that distance
+requests the original model/instances asynchronously; no villager is recreated.
+The selected player's species remains shared and pinned even if its NPC is far
+away. ARAM exhaustion leaves the affected model warm and retries later.
 
 The model backing budget is 4 MiB, including snapshots retained after restore.
 Admission checks the rounded package size against that budget, the global ARAM
