@@ -86,6 +86,7 @@ internal static class NKitImages
     }
     public static void Check()
     {
+        DiscVersionFile.Check();
         string root=Path.Combine(Path.GetTempPath(),"animaltown-nkit-check-"+Guid.NewGuid().ToString("N"));Directory.CreateDirectory(root);
         try{
             string full=Path.Combine(root,"source.iso"),small=Path.Combine(root,"small.nkit.iso"),report=Path.Combine(root,"report.json");
