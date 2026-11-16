@@ -44,6 +44,12 @@ internal static class TerrainLifeChecks
         bool blocked=false;for(int z=1;z<Town.Height-1&&!blocked;z++)for(int x=1;x<Town.Width-1;x++)if(TerrainElevation.Mode(state.Town,x,z)==1&&TerrainElevation.Mode(state.Town,x-1,z)==0){blocked=!TerrainElevation.Traverse(state.Town,x-.5f,z+.5f,x+.5f,z+.5f);break;}check(blocked,"vertical cube edges block traversal");
         state.Town.Residents[0].Name="Customfox";var loaded=SaveCodec.Decode(SaveCodec.Encode(state));check(loaded.Town.Elevation.SequenceEqual(state.Town.Elevation)&&loaded.Town.Residents[0].Name=="Customfox"&&loaded.Town.Residents[0].HomeX==state.Town.Residents[0].HomeX,"height, model-tied names and fixed homes persist");
         var clock=new TownClock();clock.Update(7|(23<<6)|(4<<11)|(11<<16)|(3<<20));check(clock.Time=="23:07"&&clock.Date=="4 Nov  Wed","system clock formatting");string previous=clock.Time;clock.Update(7|(23<<6)|(4<<11)|(11<<16)|(3<<20));check(object.ReferenceEquals(previous,clock.Time),"clock text retains cached strings within a minute");
+        check(clock.MonthDay=="November 4"&&clock.Weekday=="Wed","floating clock separates the full month/day and weekday");
+        string dateLabel=clock.MonthDay,weekdayLabel=clock.Weekday;
+        clock.Update(8|(23<<6)|(4<<11)|(11<<16)|(3<<20));
+        check(clock.Time=="23:08"&&object.ReferenceEquals(dateLabel,clock.MonthDay)&&object.ReferenceEquals(weekdayLabel,clock.Weekday),"minute changes reuse date and weekday labels");
+        clock.Update((30<<11)|(9<<16)|(4<<20));
+        check(clock.Time=="00:00"&&clock.MonthDay=="September 30"&&clock.Weekday=="Thu","midnight and long month labels retain the 24-hour format");
         var navigation=new VillagerNavigation();var originX=new float[6];var originZ=new float[6];var visited=new bool[6];var homeX=new int[6];int kinds=0;for(int i=0;i<6;i++){originX[i]=state.Town.Residents[i].PosX;originZ[i]=state.Town.Residents[i].PosZ;homeX[i]=state.Town.Residents[i].HomeX;}
         for(int tick=0;tick<6000;tick++){
             navigation.Tick(state);check(navigation.LastExpansions<=128,"global planning has fixed per-tick node budget");
