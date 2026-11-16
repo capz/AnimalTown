@@ -41,3 +41,9 @@ unrelated successful action is required for the clothing tutorial credit.
 `PocketMenuChecks` covers menus, full-pocket swaps, rejected actions, item
 conservation, selling/dropping, held-tool preservation, save compatibility,
 profile independence and allocation-free queries.
+
+The existing Dolphin `--resume --item-navigation` scenario uses a disposable
+outdoor fixture with the Work shirt in pocket zero. It follows the resident
+picker, checks the three-row popup's D-pad/stick navigation and wraparound, and
+uses the grain-aware highlight comparison. The backpack layout scenario reaches
+Quit with Up from the first row, regardless of the item's filtered row count.

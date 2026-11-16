@@ -1101,11 +1101,13 @@ def dialogue_cycles():
     save_menu();time.sleep(12);screenshot('dialogue-cycles-save.png')
 
 def item_navigation():
+    # Disposable fixture: outdoors with the Work shirt in pocket zero.
+    action_count=3 # Wear, Drop, Quit; the popup is no longer ten generic rows.
     results=[]
     def read(name):
         screenshot(name+'.png')
         pixels=subprocess.check_output(['ffmpeg','-v','error','-i',str(root/(name+'.png')),'-frames:v','1','-f','rawvideo','-pix_fmt','rgb24','-'])
-        scores=[sum(all(abs(pixels[(y*800+x)*3+c]-target)<=3 for c,target in enumerate((221,231,188))) for y in range(187+i*18,204+i*18) for x in range(200,330,2)) for i in range(10)]
+        scores=[sum(fill_matches(pixels[(y*800+x)*3:(y*800+x)*3+3],(221,231,188)) for y in range(187+i*18,204+i*18) for x in range(200,330,2)) for i in range(action_count)]
         return scores.index(max(scores)) if max(scores)>30 else -1
     def focus(name,expected):
         actual=read(name);results.append((name,actual==expected));print(f'{name}: expected {expected}, actual {actual}',flush=True)
@@ -1114,17 +1116,17 @@ def item_navigation():
     press('D_UP');focus('actions-dpad-up',0)
     # Dolphin allows one physical key to drive both mappings. Send both in the
     # same update, then release both, and require a visible navigation response.
-    os.write(controller,b'PRESS D_DOWN\nSET MAIN 0.5 0.1\n');time.sleep(.5)
+    os.write(controller,b'PRESS D_DOWN\nSET MAIN 0.5 0.1\n');time.sleep(.18)
     os.write(controller,b'RELEASE D_DOWN\nSET MAIN 0.5 0.5\n');time.sleep(2)
-    paired=read('actions-paired-input');results.append(('paired-input',paired in range(1,9)));print(f'paired input row: {paired}',flush=True)
+    paired=read('actions-paired-input');results.append(('paired-input',paired==1));print(f'paired input row: {paired}',flush=True)
     press('B');press('A');focus('actions-reopened',0)
     os.write(controller,b'SET MAIN 0.5 0.1\n');samples=[]
     try:
-        for n in range(6):time.sleep(.3);samples.append(read(f'actions-stick-{n}'))
+        for n,interval in enumerate((.07,.17,.29,.11,.23,.37)):time.sleep(interval);samples.append(read(f'actions-stick-{n}'))
     finally:os.write(controller,b'SET MAIN 0.5 0.5\n');time.sleep(2)
     results.append(('stick-progress',all(row>=0 for row in samples) and len(set(samples))>1));print(f'action stick rows: {samples}',flush=True)
     press('B');press('A');focus('actions-reset',0)
-    press('D_UP');focus('actions-wrap-up',9)
+    press('D_UP');focus('actions-wrap-up',action_count-1)
     press('D_DOWN');focus('actions-wrap-down',0)
     press('B');screenshot('actions-back.png')
     (root/'item-navigation.txt').write_text('\n'.join(f'{name}: {passed}' for name,passed in results)+f'\nPaired row: {paired}\nStick rows: {samples}\n')
@@ -1602,7 +1604,7 @@ with (root/'emulator.log').open('w') as log:
             press('X');time.sleep(1);screenshot('pockets.png');press('B')
             save_menu();time.sleep(12);screenshot('save.png')
         elif '--resume' in sys.argv:
-            press('A');time.sleep(2);screenshot('resume.png')
+            start_game(False,'resume');screenshot('resume.png')
             press('X');time.sleep(1);screenshot('resume-backpack.png')
             if '--town-map' in sys.argv:
                 press('B');press('Y');time.sleep(2);screenshot('town-map.png')
@@ -1622,7 +1624,7 @@ with (root/'emulator.log').open('w') as log:
                 for _ in range(2):press('D_RIGHT')
                 screenshot('backpack-selected-item.png')
                 press('A');screenshot('backpack-selected-actions.png')
-                for _ in range(9):press('D_DOWN')
+                press('D_UP') # Quit is last for every filtered item menu.
                 press('A');screenshot('backpack-quit.png')
             if '--item-navigation' in sys.argv:item_navigation()
             save_menu();time.sleep(12);screenshot('resume-save.png')
