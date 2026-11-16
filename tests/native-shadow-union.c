@@ -11,9 +11,29 @@ static int assertions;
 static void reset(void){su_init(s);memset(s->shapes,255,sizeof(s->shapes));su_begin(s,0,1,0);}
 static void caster(int i,int profile,const float *uv,int n,const float *b){su_mesh(s,i,n,profile,uv,b);su_active(s,i,1,4,4);}
 static void next(void){su_begin(s,0,1,0);}
-static int pixel(float x,float z){int p=su_find(s,(int)floorf(x/8),(int)floorf(z/8));CHECK(p>=0);int a=(int)((x-s->page[p].x*8)*SU_INNER/8+1),b=(int)((z-s->page[p].z*8)*SU_INNER/8+1);return s->pixels[p*SU_BYTES+su_offset(a,b)];}
+static int pixel(float x,float z){int p=su_find(s,(int)floorf(x/8),(int)floorf(z/8));CHECK(p>=0);int a=(int)((x-s->page[p].x*8)*SU_INNER/8+1),b=(int)((z-s->page[p].z*8)*SU_INNER/8+1);return su_shadow(s->pixels[p*SU_BYTES+su_offset(a,b)]);}
 static int credits;
 static int allow_work(void *unused){(void)unused;return credits-->0;}
+static void light_checks(void){
+    reset();float sources[]={8,8,3,255,8,8,3,255};
+    su_lights(s,sources,1);su_prepare(s,SU_PAGES);
+    CHECK(su_field_channel(s->coverage,8,8,1)>200&&su_field_channel(s->coverage,16,8,1)==0);
+    CHECK(su_field_sample(s->coverage,8,8)==0);
+    uint8_t *saved=malloc(SU_TERRAIN_BYTES);CHECK(saved!=NULL);memcpy(saved,s->coverage,SU_TERRAIN_BYTES);
+    su_lights(s,sources,2);su_prepare(s,SU_PAGES);CHECK(!memcmp(saved,s->coverage,SU_TERRAIN_BYTES));free(saved);
+    // Static lamps survive moving cloud/actor coverage, including page seams.
+    float uv[12];for(int i=0;i<6;i++){uv[i*2]=rect[i*2]+4;uv[i*2+1]=rect[i*2+1]+4;}
+    const float b[]={6,6,10,10};caster(32,4,uv,6,b);su_active(s,32,1,8,8);su_prepare(s,SU_PAGES);
+    int left=su_find(s,0,1),right=su_find(s,1,1);CHECK(left>=0&&right>=0);
+    for(int z=0;z<SU_SIDE;z++)for(int x=0;x<2;x++)CHECK((s->pixels[left*SU_BYTES+su_offset(SU_INNER+x,z)]>>4)==(s->pixels[right*SU_BYTES+su_offset(x,z)]>>4));
+    next();su_active(s,32,1,9,9);su_prepare(s,SU_PAGES);CHECK(su_field_channel(s->coverage,8,8,1)>200&&!s->light_dirty);
+    su_lights(s,sources,0);su_prepare(s,SU_PAGES);CHECK(su_field_channel(s->coverage,8,8,1)==0);
+    su_lights(s,sources,1);su_prepare(s,SU_PAGES);su_begin(s,16,1,4);caster(32,4,rect,6,bounds);su_prepare(s,SU_PAGES);
+    int page=su_find(s,0,0);CHECK(page>=0);for(int i=0;i<SU_BYTES;i++)CHECK(!(s->pixels[page*SU_BYTES+i]>>4));
+    for(int shade=0;shade<=SU_OPACITY;shade++)for(int light=0;light<=255;light++){
+        uint8_t packed=su_pack(shade,light);CHECK(abs(su_shadow(packed)-shade)<=2);CHECK(abs((packed>>4)*17-light)<=8);
+    }
+}
 static void cloud_checks(void){
     reset();
     for(int z=0;z<SU_CLOUD_SIDE;z++)for(int x=0;x<SU_CLOUD_SIDE;x++)s->clouds[su_cloud_offset(x,z)]=x<32?0:255;
@@ -23,16 +43,16 @@ static void cloud_checks(void){
     CHECK(su_field_sample(s->coverage,24,4)==SU_OPACITY);
     CHECK(su_cloud_sample(s,-8,4)==su_cloud_sample(s,24,4));
     CHECK(su_cloud_sample(s,24,4)==su_cloud_sample(s,56,36));
-    for(int i=0;i<SU_TERRAIN_BYTES;i++)s->terrain[i]=33;
+    for(int i=0;i<SU_TERRAIN_BYTES;i++)s->terrain[i]=su_pack(33,0);
     su_terrain_publish(s);caster(0,0,rect,6,bounds);caster(32,4,rect,6,bounds);su_prepare(s,SU_PAGES);
     CHECK(pixel(4,4)==SU_OPACITY); // Tree, villager and cliff union never adds.
     memset(s->shapes,0,sizeof(s->shapes));su_dirty(s,&s->caster[0]);next();su_prepare(s,SU_PAGES);
-    CHECK(pixel(4,4)==33);
+    CHECK(pixel(4,4)==su_shadow(su_pack(33,0)));
     su_cloud_motion(s,.5f,0);su_prepare(s,SU_PAGES);
     CHECK(pixel(4,4)==SU_OPACITY&&su_field_sample(s->coverage,4,4)==SU_OPACITY);
-    CHECK(su_field_sample(s->coverage,24,4)==33); // Vacated cloud restores the cliff base.
-    su_cloud_motion(s,0,0);credits=0;su_prepare_budget(s,0,allow_work,NULL);CHECK(pixel(4,4)==33);
-    su_prepare(s,SU_PAGES);CHECK(pixel(4,4)==33);
+    CHECK(su_field_sample(s->coverage,24,4)==su_shadow(su_pack(33,0))); // Vacated cloud restores the cliff base.
+    su_cloud_motion(s,0,0);credits=0;su_prepare_budget(s,0,allow_work,NULL);CHECK(pixel(4,4)==su_shadow(su_pack(33,0)));
+    su_prepare(s,SU_PAGES);CHECK(pixel(4,4)==su_shadow(su_pack(33,0)));
     for(int i=0;i<SU_TERRAIN_BYTES;i++)CHECK(s->coverage[i]<=SU_OPACITY);
     // A cloud crosses an 8 m page seam, including both filtering gutters.
     float uv[12];for(int i=0;i<6;i++){uv[i*2]=rect[i*2]+4;uv[i*2+1]=rect[i*2+1];}
@@ -46,6 +66,7 @@ static void cloud_checks(void){
 int main(void){
     native_shadow_combiner_checks();
     s=aligned_alloc(32,su_storage_bytes());CHECK(s!=NULL);CHECK(su_storage_bytes()<512*1024);
+    light_checks();
     CHECK(SU_PAGES*SU_BYTES*2+SU_TERRAIN_BYTES*2==384*1024);
     reset();caster(0,0,rect,6,bounds);su_prepare(s,SU_PAGES);CHECK(pixel(4,4)==SU_OPACITY);
     uint8_t original[SU_BYTES];int page=su_find(s,0,0);memcpy(original,s->pixels+page*SU_BYTES,SU_BYTES);
@@ -156,17 +177,17 @@ int main(void){
     /* Cliff coverage survives object movement, merges by maximum, and never
      * leaks into interiors. Global sampling is independent of page allocation. */
     reset();CHECK((uintptr_t)s->terrain%32==0);memset(s->shapes,0,sizeof(s->shapes));
-    for(int z=0;z<32;z++)for(int x=0;x<32;x++)s->terrain[su_terrain_offset(x,z)]=33;
+    for(int z=0;z<32;z++)for(int x=0;x<32;x++)s->terrain[su_terrain_offset(x,z)]=su_pack(33,0);
     CHECK(su_terrain_sample(s,4,4)==0);su_terrain_publish(s);
-    CHECK(su_terrain_sample(s,4,4)==33);CHECK(su_terrain_sample(s,80,80)==0);
+    CHECK(su_terrain_sample(s,4,4)==su_shadow(su_pack(33,0)));CHECK(su_terrain_sample(s,80,80)==0);
     CHECK(su_terrain_sample(s,-1,4)==0);
-    caster(0,0,rect,6,bounds);su_prepare(s,SU_PAGES);CHECK(pixel(4,4)==33);
+    caster(0,0,rect,6,bounds);su_prepare(s,SU_PAGES);CHECK(pixel(4,4)==su_shadow(su_pack(33,0)));
     memset(s->shapes,255,4096);su_dirty(s,&s->caster[0]);su_prepare(s,SU_PAGES);
     CHECK(pixel(4,4)==SU_OPACITY); /* max(33,66), never 99 */
-    memset(s->shapes,0,4096);su_dirty(s,&s->caster[0]);su_prepare(s,SU_PAGES);CHECK(pixel(4,4)==33);
+    memset(s->shapes,0,4096);su_dirty(s,&s->caster[0]);su_prepare(s,SU_PAGES);CHECK(pixel(4,4)==su_shadow(su_pack(33,0)));
     su_begin(s,16,1,4);caster(32,4,rect,6,bounds);su_prepare(s,SU_PAGES);
     CHECK(pixel(4,4)==0);
-    su_begin(s,0,1,0);su_prepare(s,SU_PAGES);CHECK(pixel(4,4)==33);
+    su_begin(s,0,1,0);su_prepare(s,SU_PAGES);CHECK(pixel(4,4)==su_shadow(su_pack(33,0)));
     /* A dirty moving circle may defer, but the already composed cliff/scenery
      * base remains a publishable local page. New static bases wait one cycle. */
     next();caster(32,4,rect,6,bounds);credits=1000;su_prepare_budget(s,1,allow_work,NULL);
@@ -174,7 +195,7 @@ int main(void){
     CHECK(terrain_page>=0&&!s->page[terrain_page].static_pending);
     next();su_active(s,32,1,5,5);credits=0;su_prepare_budget(s,1,allow_work,NULL);
     CHECK(s->page[terrain_page].dirty&&!s->page[terrain_page].static_dirty&&!s->page[terrain_page].static_pending);
-    CHECK(pixel(4,4)==33);
+    CHECK(pixel(4,4)==su_shadow(su_pack(33,0)));
     su_terrain_reset(s);CHECK(!s->terrain_ready&&su_terrain_sample(s,4,4)==0);
     su_prepare(s,SU_PAGES);CHECK(pixel(4,4)==0);
     cloud_checks();
