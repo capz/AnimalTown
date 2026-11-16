@@ -87,6 +87,22 @@ internal sealed class UiFont
     private float Factor=>metrics[8]/(float)metrics[4];
     internal float Measure(string text,float scale=1)
     { float x=0,max=0;for(int i=0;i<text.Length;i++){if(text[i]=='\n'){max=Math.Max(max,x);x=0;}else if(text[i]!='\r')x+=firmware!=null?firmware[8+((text[i]=='\t'?0:text[i]>=32&&text[i]<=126?text[i]-32:'?'-32))*5+4]*(text[i]=='\t'?4:1)*scale*22/firmware[1]:Get(16+Index(text[i])*8+6)*scale*Factor;}return Math.Max(max,x); }
+    // Bounds of the actual glyph quads, excluding advance/bearing padding.
+    internal RectF GlyphBounds(string text,float scale=1)
+    {
+        float f=firmware!=null?scale*22/firmware[1]:scale*Factor,pen=0,line=0;
+        float left=float.MaxValue,top=float.MaxValue,right=float.MinValue,bottom=float.MinValue;
+        for(int i=0;i<text.Length;i++){
+            char c=text[i];if(c=='\r')continue;if(c=='\n'){pen=0;line+=firmware!=null?firmware[4]:64;continue;}
+            int glyph=Index(c);
+            if(c!=' '&&c!='\t')for(int p=glyph*8;p<glyph*8+regionCounts[glyph];p++){
+                int at=p*8;float x=(pen+regionData[at])*f,y=(line+regionData[at+1])*f;
+                left=Math.Min(left,x);top=Math.Min(top,y);right=Math.Max(right,x+regionData[at+2]*f);bottom=Math.Max(bottom,y+regionData[at+3]*f);
+            }
+            pen+=firmware!=null&&c=='\t'?advances[0]*4:advances[glyph];
+        }
+        return left==float.MaxValue?new RectF(0,0,0,0):new RectF(left,top,right-left,bottom-top);
+    }
     internal void Draw(Draw2D ui,string text,float x,float y,Color32 color,float scale=1,float rotation=0,int visibleCharacters=-1)
     {
         int end=visibleCharacters<0?text.Length:Math.Min(visibleCharacters,text.Length);
