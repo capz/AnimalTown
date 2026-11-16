@@ -1,36 +1,14 @@
 using System;
-using Dolphin.Graphics;
-using Hypercube.GameCube;
+using AnimalTown;
 
-// Game weather policy; the engine owns the shared mask, effect and UV motion.
-internal sealed class CloudShadows : IDisposable
+// The native union paints this shared mask into the existing coverage maps.
+internal sealed class CloudShadows
 {
-    private CloudShadowLayer? layer;
-    private float cover=.5f;
-    private double seconds;
-    private bool prepared;
-    internal float Cover {get=>cover;set{if(cover!=value){cover=value;prepared=false;}}}
-    internal void Animate(double time){seconds=time;prepared=false;}
-    internal void Apply(Material material,Color32 tint,bool outdoors)
+    private readonly float[] offset=new float[2];
+    internal void Animate(double seconds)
     {
-        if(cover==0){
-            material.Effect=null;material.SecondaryTexture=null;
-            material.SecondaryTextureTransform=UvTransform.Identity;material.Color=tint;return;
-        }
-        // Keep sunlit gaps and soft edges inside the gameplay camera. A 128 m
-        // repeat made the mask read as uniform dimming across the visible town.
-        layer??=new CloudShadowLayer(2,32,new Vector2(.6f,.3f));
-        if(!prepared){layer.Cover=cover;layer.Animate(seconds);prepared=true;}
-        layer.Apply(material,tint,outdoors);
+        offset[0]=CloudShadowPattern.Offset(seconds,CloudShadowPattern.SpeedX);
+        offset[1]=CloudShadowPattern.Offset(seconds,CloudShadowPattern.SpeedZ);
+        if(NativeShadows.Cloud(offset)!=1)throw new InvalidOperationException("Cloud shadow motion failed");
     }
-    // Call after detaching every borrowing material, outside BeginFrame.
-    internal void ReleaseUnused(Material[] materials)
-    {
-        if(cover!=0||layer==null)return;
-        foreach(var material in materials)if(material!=null){
-            material.Effect=null;material.SecondaryTexture=null;material.SecondaryTextureTransform=UvTransform.Identity;
-        }
-        Dispose();
-    }
-    public void Dispose(){layer?.Dispose();layer=null;prepared=false;}
 }

@@ -77,7 +77,7 @@ attempts to save edited settings. In-game debug controls remain session controls
 the title's configuration is the saved startup configuration.
 
 Persisted startup options cover frame/profile overlays, model/UV/batch/text
-paths, rim/shadows/cloud cover, cliff/water previews, runtime wait/clear flags,
+paths, rim lighting, cliff/water previews, runtime wait/clear flags,
 rain/rough ocean/season, villager attention, rim strength, ground mipmaps and
 distance, frozen landscape motion, mesh recreation and the legacy ground ring.
 Teleport/debug-location actions remain actions rather than stored settings.

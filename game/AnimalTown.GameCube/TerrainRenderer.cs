@@ -27,7 +27,6 @@ internal sealed class TerrainRenderer : IDisposable
     private readonly CloudShadows clouds=new CloudShadows();
     private readonly ObjectShadows shadows;
     private readonly CliffShadows cliffs=new CliffShadows();
-    private readonly Color32[] baseTints=new Color32[FloorStrips.MaximumMaterials];
     private readonly Material[] materials=new Material[FloorStrips.MaximumMaterials];
     private readonly CachedTexture?[] textures=new CachedTexture?[FloorStrips.MaximumMaterials];
     private enum GroundLoad { Unloaded,Preview,Visible,Reading,Complete,Failed }
@@ -76,7 +75,6 @@ internal sealed class TerrainRenderer : IDisposable
     private bool appliedGroundMipmaps;
     private int appliedGroundMipDistance=-1;
     internal int RenderSeason=>season;
-    internal bool ObjectShadowsEnabled {get=>shadows.Enabled;set=>shadows.Enabled=value;}
     internal int GroundSlot(GameState state,int x,int z)=>FloorStrips.At(state,data,x,z,0);
     internal Material GroundMaterial(int slot)=>materials[slot];
     internal TerrainRenderer()
@@ -84,7 +82,7 @@ internal sealed class TerrainRenderer : IDisposable
         gallery=new TerrainWalls(soil);
         shadows=new ObjectShadows();
         var cfg=File.ReadAllBytes("dvd:/terrain.cfg");if(cfg.Length!=4)throw new IOException("Invalid floor season config");forced=FloorStrips.Read(cfg,0);if(forced< -1||forced>3)throw new IOException("Invalid floor season");
-        for(int i=0;i<materials.Length;i++)materials[i]=new Material{Cull=CullMode.Back,Lighting=LightingMode.Unlit,SecondarySampler=new SamplerState(TextureAddressMode.Repeat,TextureAddressMode.Repeat,TextureFilter.Linear)};
+        for(int i=0;i<materials.Length;i++)materials[i]=new Material{Cull=CullMode.Back,Lighting=LightingMode.Unlit};
         for(int i=0;i<poses.Length;i++)poses[i]=ScrollTransform;
     }
     public void Dispose()
@@ -103,7 +101,7 @@ internal sealed class TerrainRenderer : IDisposable
         Array.Clear(batch,0,batch.Length);batchCount=0;
         // Cloud/water effects borrow texture bindings, so retire them before
         // releasing the cache leases supplying their ground and seabed art.
-        clouds.Dispose();waterMaterial.Dispose();soil.Dispose();
+        waterMaterial.Dispose();soil.Dispose();
         for(int i=0;i<textures.Length;i++)if(textures[i]!=null){TextureCache.Release(textures[i]!);textures[i]=null;}
         for(int i=0;i<materials.Length;i++){materials[i].Texture=null;materials[i].SecondaryTexture=null;}
         data=new byte[0];cachedTown=null;stream.Reset();disposed=true;
@@ -135,7 +133,7 @@ internal sealed class TerrainRenderer : IDisposable
                     }
                 }
                 materials[i].Sampler=new SamplerState(neutral?TextureAddressMode.Repeat:TextureAddressMode.Clamp,neutral?TextureAddressMode.Repeat:TextureAddressMode.Clamp);
-                materials[i].Texture=textures[source]!.Pages[0];uint tint=FloorStrips.Tint(data,i);baseTints[i]=materials[i].Color=new Color32((byte)(tint>>24),(byte)(tint>>16),(byte)(tint>>8));
+                materials[i].Texture=textures[source]!.Pages[0];uint tint=FloorStrips.Tint(data,i);materials[i].Color=new Color32((byte)(tint>>24),(byte)(tint>>16),(byte)(tint>>8));
             }
             season=next;
             MaterialRevision++;
@@ -269,15 +267,12 @@ internal sealed class TerrainRenderer : IDisposable
         if(complete){at=FrameProfile.Start();stream.Complete();stream.Prepare(state.X,state.Z);FrameProfile.DetailEnd(0,at);}
         return true;
     }
-    internal void CycleCloudCover()=>clouds.Cover=clouds.Cover==.5f?0:clouds.Cover==0?1:.5f;
-    internal float CloudCover=>clouds.Cover;
+    internal void AnimateShadows(double seconds)=>clouds.Animate(seconds);
     internal bool RoughOcean {get=>waterMaterial.RoughOcean;set=>waterMaterial.RoughOcean=value;}
     internal void Animate(double seconds)
     {
         long at=FrameProfile.Start();
-        if(!FreezeMotion){waterMaterial.Animate(seconds);oceanWaves.Update(seconds);clouds.Animate(seconds);}
-        for(int i=0;i<slots;i++)clouds.Apply(materials[i],baseTints[i],true);
-        clouds.ReleaseUnused(materials);
+        if(!FreezeMotion){waterMaterial.Animate(seconds);oceanWaves.Update(seconds);}
         FrameProfile.DetailEnd(3,at);
     }
     private void Add(Renderer renderer,Material material,Mesh? mesh)

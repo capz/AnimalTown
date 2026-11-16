@@ -4,18 +4,18 @@ extern const uint8_t *animaltown_shadows_page(float,float,float*);
 static uint8_t town_shadow_empty[32*32] __attribute__((aligned(32)));
 static void town_shadow_apply(float x,float z,const float *world,const DndDrawEffect *effect,unsigned *bindings){
     int mode=animaltown_shadows_mode();if(!mode)return;
-    float origin[4];const uint8_t *pixels=animaltown_shadows_page(x,z,origin);
+    float origin[6];const uint8_t *pixels=animaltown_shadows_page(x,z,origin);
     static int empty_ready;if(!empty_ready){DCFlushRange(town_shadow_empty,sizeof(town_shadow_empty));empty_ready=1;}
-    GXTexObj tex;int side=(int)origin[3];GX_InitTexObj(&tex,(void*)(pixels?pixels:town_shadow_empty),(u16)side,(u16)side,GX_TF_I8,GX_CLAMP,GX_CLAMP,GX_FALSE);
+    GXTexObj tex;int width=(int)origin[3],height=(int)origin[5];GX_InitTexObj(&tex,(void*)(pixels?pixels:town_shadow_empty),(u16)width,(u16)height,GX_TF_I8,GX_CLAMP,GX_CLAMP,GX_FALSE);
     GX_InitTexObjLOD(&tex,GX_LINEAR,GX_LINEAR,0,0,0,GX_FALSE,GX_FALSE,GX_ANISO_1);GX_LoadTexObj(&tex,GX_TEXMAP2);(*bindings)++;
     int stage=effect?effect->count:1;
     GX_SetNumTevStages((u8)(stage+2));GX_SetNumTexGens(3);
     if(!effect)GX_SetTexCoordGen(GX_TEXCOORD1,GX_TG_MTX2x4,GX_TG_TEX0,GX_IDENTITY);
     GX_SetTexCoordScaleManually(GX_TEXCOORD2,GX_FALSE,1,1);GX_SetTexCoordBias(GX_TEXCOORD2,GX_FALSE,GX_FALSE);
-    float scale=(side-2.f)/(side*origin[2]);Mtx uv={{0}};
-    if(mode==2){for(int c=0;c<4;c++){uv[0][c]=world[c*4]*scale;uv[1][c]=world[c*4+2]*scale;}}
-    else{uv[0][0]=uv[1][1]=(mode==3?4:2)*scale;}
-    uv[0][3]+=1.f/side-origin[0]*scale;uv[1][3]+=1.f/side-origin[1]*scale;
+    float scaleX=(width-2.f)/(width*origin[2]),scaleZ=(height-2.f)/(height*origin[4]);Mtx uv={{0}};
+    if(mode==2){for(int c=0;c<4;c++){uv[0][c]=world[c*4]*scaleX;uv[1][c]=world[c*4+2]*scaleZ;}}
+    else{uv[0][0]=(mode==3?4:2)*scaleX;uv[1][1]=(mode==3?4:2)*scaleZ;}
+    uv[0][3]+=1.f/width-origin[0]*scaleX;uv[1][3]+=1.f/height-origin[1]*scaleZ;
     GX_LoadTexMtxImm(uv,GX_TEXMTX8,GX_MTX2x4);GX_SetTexCoordGen(GX_TEXCOORD2,GX_TG_MTX2x4,mode==2?GX_TG_POS:GX_TG_TEX0,GX_TEXMTX8);
     /* Texture intensity is already coverage*shared opacity. Raster alpha is
      * a receiver flag outdoors: caps=255, vertical lips/banks=0. */

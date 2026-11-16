@@ -1,63 +1,48 @@
 # Cloud shadows
 
-Ground, beach, bridge decks and world-aligned cliff tops/lips share a soft cloud
-mask in their existing material pass. One original 64 x 64 GX I8 texture uses
-4 KiB, uploaded once. The shader uses two texture units and four physical TEV
-stages (three RGB operations plus the SDK opacity stage):
+Clouds, cliffs, trees, buildings and villagers use the same coverage union and
+shadow tint: RGB (35,49,66), with peak opacity 66/255. Coverage combines by
+maximum, so a cloud passing over another shadow does not darken it twice.
+There is no separate cloud material, ambient tint, GPU cloud texture or TEV
+program. Existing receiving ground/cap/opaque-water draws sample the shared map
+and apply the existing two shadow stages once. Indoors retain their actor shadows
+without outdoor clouds or cliffs.
 
-1. Base texture multiplied by vertex/material tint.
-2. Interpolate white to CloudShade using the shared cloud mask.
-3. Multiply the base result by that shade.
+The original periodic 64×64 I8 cloud pattern occupies 4 KiB in the charged native
+buffer. It repeats every 32 logical metres and drifts at 0.6 / 0.3 m/s, independent
+of camera motion, terrain bending and landscape debug animation settings. The
+former 128 m repeat at 0.18 / 0.09 m/s made soft patches look like uniform dimming
+through the gameplay camera. Animation reuses a two-float managed array.
 
-There are no added draw calls, triangles, shadow maps, mesh invalidations or
-per-frame texture uploads. One effect is shared by all ground material slots.
-Animation changes only the secondary UV transform; the color uniform changes
-only when cloud cover changes. No managed objects are allocated by animation.
-This bounds rendering cost but does not establish a measured hardware frame-time
-improvement; physical GameCube timing remains unverified.
+The static cliff field and moving combined field each use 256×128 I8 (32 KiB).
+Together they occupy the same 64 KiB as the previous 256×256 cliff field, retaining
+one texel per metre and filtering gutters. The composite scales the cloud mask
+with bilinear sampling, takes the maximum with cliff coverage, and merges into
+existing 32×32 object/actor pages. Existing GPU bilinear filtering softens edges;
+there is no extra draw call, blur texture or caster/page slot.
 
-The mask repeats every 32 logical metres and drifts at 0.6 / 0.3 m/s. The former
-128 m repeat at 0.18 / 0.09 m/s spread each soft patch over most of the gameplay
-camera, making working clouds look like uniform dimming. The smaller repeat
-puts shaded patches and sunlit gaps in view together, with visible movement over
-seconds, using the same mask, filtering, contrast and memory. Ground
-UV0 is world XZ multiplied by 0.5, so secondary scale 2/32 maps the same mask onto
-all material variants and cliff tops. Camera motion, cylinder bending and terrain
-height never enter its coordinates. Texture translations wrap modulo one using
-double-precision elapsed time. Bilinear filtering and a periodic smooth mask
-avoid hard edges and texture seams.
+Drift is quantized to one eighth of a world metre, so the global field and affected
+pages refresh only when that phase changes, rather than every rendered frame.
+Vacated cloud coverage is restored from static data, avoiding trails. The global
+update is bounded; actor-page work retains its own deadline. The native allocation
+is 521,120 bytes in the host ABI, below 512 KiB, versus 517,024 before cloud
+integration. The old separate 4 KiB GPU cloud mask/effect is removed. These are
+allocation measurements, not whole-game MEM1 or hardware frame-time measurements.
 
-Cover ranges from zero to one, with a partly cloudy default of 0.5. Clear skies
-have no tint or patch contrast. Overcast skies use a uniform ground tint and no
-patch contrast; both endpoints bypass the cloud shader and second texture.
-Partly cloudy weather has up to about 17% patch darkening plus a restrained
-ambient tint. The renderer has no weather simulation yet: this is the shading
-control for a future weather system, not new persisted weather/progression data.
-L+R+D-pad Right cycles partial -> clear -> overcast -> partial for inspection.
+Cast shadows are always enabled. The title/session shadow and cloud-cover options,
+L+R+Z+Y lighting cycle and L+R+D-pad Right cloud cycle are removed. Old dev-config
+fields remain readable for card compatibility but cannot disable shadows. Rim
+lighting remains a separate lighting control.
 
-Indoor floors reset the effect, secondary texture/transform and base tint. Menus
-use their existing materials. Soil faces, water, foam, trees, characters and
-buildings retain their existing shading. Water already uses the SDK's two
-available texture slots for its independently scrolling layers; adding a third
-texture would require a separate SDK extension, so its effect is preserved.
+`tools/test-changes.ps1` covers cloud packing, repeat seams and scrolling, native
+maximum composition, drifting/restored coverage, shared intensity, page gutters,
+indoor isolation, bridge input validation, GPU dimensions/UVs and alpha retention.
+`tools/iso-smoke.py --cloud-shadows --dsp-hle` captures stationary clouds twenty
+seconds apart, menus, interiors and return outside. Its fresh-card save assertions
+still predate consolidated record storage; use a disposable existing saved town
+and the real resume UI for visual acceptance until that helper is migrated.
 
-## Verification
-
-`tools/test-changes.ps1` covers mask packing, periodicity, soft edges, cloud-cover
-endpoints and bounded/continuous scrolling over long and negative times. The
-Dolphin scenario uses a fresh card, captures stationary partial clouds twenty
-seconds apart, clear and overcast cover, restored partial cover, the menu, indoor floors and return outside:
-
-```sh
-docker run --rm --init --shm-size=512m --mount "type=bind,src=$PWD,dst=/work" -w /work animaltown-dolphin python3 tools/iso-smoke.py out/AnimalTown-VERSION.nkit.iso out/cloud-smoke --cloud-shadows
-```
-
-Inspect cloud-partial-a/b.png, cloud-clear.png, cloud-overcast.png,
-cloud-restored.png and cloud-menu.png. The same-commit prerelease workflow is
-explicitly enabled for feat/cloud-shadows and delivers ISO/server/tools/cliff kit,
-revision/version/validation manifests and SHA-256 checksums.
-
-For visual acceptance, compare partial and clear cover from the same stationary
-camera, then compare partial cover twenty seconds apart. Ground should contain
-both light and shaded areas, and those areas should move without moving the
-camera. A global brightness change alone does not establish visible clouds.
+For visual acceptance, keep the camera stationary: distinct light and shaded
+patches should move across the ground. Check cliff/ramp and actor overlaps for
+unchanged maximum darkness, and check interiors for absence of cloud motion.
+Physical GameCube visual quality and timing remain unverified.

@@ -2,7 +2,8 @@
 // is charged to the SDK's fixed native budget; no framebuffer copies or overlays.
 internal static class NativeShadows
 {
-    internal static int Init(byte[] atlas,byte[] circle)=>throw new System.PlatformNotSupportedException("Native shadow union bridge required");
+    internal static int Init(byte[] atlas,byte[] circle,byte[] clouds)=>throw new System.PlatformNotSupportedException("Native shadow union bridge required");
+    internal static int Cloud(float[] offset)=>throw new System.PlatformNotSupportedException("Native cloud shadow bridge required");
     internal static int Shutdown()=>throw new System.PlatformNotSupportedException("Native shadow union bridge required");
     internal static int Terrain(byte[] tile,int offset,int mode)=>throw new System.PlatformNotSupportedException("Native cliff shadow bridge required");
     internal static int Begin(int space,int enabled,int size)=>throw new System.PlatformNotSupportedException("Native shadow union bridge required");

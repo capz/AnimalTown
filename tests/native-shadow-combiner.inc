@@ -27,7 +27,8 @@ static AlphaCommand alpha_commands[16];
 static int alpha_command_count;
 static int shadow_page_side=SU_SIDE,shadow_page_missing;
 static int texture_width,texture_height,texture_min,texture_mag;
-static float shadow_uv_scale,shadow_uv_offset;
+static GXColor shadow_tint;
+static float shadow_uv_scale,shadow_uv_offset,shadow_uv_scale_z,shadow_uv_offset_z;
 static void DCFlushRange(void *data,size_t bytes){(void)data;(void)bytes;}
 static void GX_InitTexObj(GXTexObj *t,void *data,u16 w,u16 h,int format,int s,int v,int mip){
     (void)t;(void)data;(void)format;(void)s;(void)v;(void)mip;texture_width=w;texture_height=h;
@@ -45,7 +46,7 @@ static void GX_SetTexCoordGen2(int coord,int type,int source,int matrix,int norm
 static void GX_SetTexCoordScaleManually(int coord,int manual,int s,int t){(void)coord;(void)manual;(void)s;(void)t;}
 static void GX_SetTexCoordBias(int coord,int s,int t){(void)coord;(void)s;(void)t;}
 static void GX_LoadTexMtxImm(Mtx matrix,int slot,int type){
-    (void)type;if(slot==GX_TEXMTX8){shadow_uv_scale=matrix[0][0];shadow_uv_offset=matrix[0][3];}
+    (void)type;if(slot==GX_TEXMTX8){shadow_uv_scale=matrix[0][0];shadow_uv_offset=matrix[0][3];shadow_uv_scale_z=matrix[1][1];shadow_uv_offset_z=matrix[1][3];}
 }
 static void GX_SetTevDirect(u8 stage){assert(stage<16);}
 static void GX_SetTevSwapMode(u8 stage,int raster,int tex){assert(stage<16);(void)raster;(void)tex;}
@@ -55,7 +56,7 @@ static void GX_SetTevColorOp(u8 stage,int op,int bias,int scale,int clamp,int de
     assert(stage<16);(void)op;(void)bias;(void)scale;(void)clamp;(void)destination;
 }
 static void GX_SetTevKAlphaSel(u8 stage,int selection){assert(stage<16);(void)selection;}
-static void GX_SetTevKColor(int slot,GXColor color){(void)slot;(void)color;}
+static void GX_SetTevKColor(int slot,GXColor color){if(slot==GX_KCOLOR3)shadow_tint=color;}
 static void GX_SetTevKColorSel(u8 stage,int selection){assert(stage<16);(void)selection;}
 static void GX_SetTevAlphaIn(u8 stage,int a,int b,int c,int d){
     assert(stage<16);AlphaCommand *out=&alpha_commands[stage];
@@ -68,8 +69,8 @@ static void GX_SetTevAlphaOp(u8 stage,int op,int bias,int scale,int clamp,int de
 int animaltown_shadows_mode(void){return 3;}
 const uint8_t *animaltown_shadows_page(float x,float z,float *origin){
     static const uint8_t pixels[SU_TERRAIN_BYTES]={0};(void)x;(void)z;
-    origin[0]=origin[1]=0;origin[2]=shadow_page_side==SU_SIDE?8:(SU_TERRAIN_SIDE-2)/SU_TERRAIN_TEXELS_PER_METRE;
-    origin[3]=(float)shadow_page_side;return shadow_page_missing?NULL:pixels;
+    origin[0]=origin[1]=0;origin[2]=shadow_page_side==SU_SIDE?8:(SU_TERRAIN_WIDTH-2)/SU_TERRAIN_TEXELS_PER_METRE;
+    origin[3]=(float)shadow_page_side;origin[4]=shadow_page_side==SU_SIDE?8:(SU_TERRAIN_HEIGHT-2)/SU_TERRAIN_TEXELS_PER_METRE;origin[5]=shadow_page_side==SU_SIDE?SU_SIDE:SU_TERRAIN_HEIGHT;return shadow_page_missing?NULL:pixels;
 }
 #include "../tools/native-shadow-union-gx.inc"
 static void *batch_model,*batch_material;
@@ -111,11 +112,13 @@ static void native_shadow_combiner_checks(void){
     const DndDrawVertex triangle[]={{0,0,255},{1,0,255},{0,1,255}};
     unsigned bindings=0;town_shadow_ground(triangle,NULL,3,&material,&bindings);
     assert(alpha_command_count==4&&bindings==1);verify_alpha_footer(2);
+    assert(shadow_tint.r==35&&shadow_tint.g==49&&shadow_tint.b==66);
     assert(texture_width==32&&texture_height==32&&texture_min==GX_LINEAR&&texture_mag==GX_LINEAR);
     assert(fabsf(shadow_uv_scale-4.f*30/(32*8))<.000001f&&shadow_uv_offset==1.f/32);
-    shadow_page_side=SU_TERRAIN_SIDE;town_shadow_ground(triangle,NULL,3,&material,&bindings);
-    assert(texture_width==256&&texture_height==256);
-    assert(fabsf(shadow_uv_scale-4.f/256)<.000001f&&shadow_uv_offset==1.f/256);
+    shadow_page_side=SU_TERRAIN_WIDTH;town_shadow_ground(triangle,NULL,3,&material,&bindings);
+    assert(texture_width==256&&texture_height==128);
+    assert(fabsf(shadow_uv_scale-4.f*SU_TERRAIN_TEXELS_PER_METRE/256)<.000001f&&shadow_uv_offset==1.f/256);
+    assert(fabsf(shadow_uv_scale_z-4.f/128)<.000001f&&shadow_uv_offset_z==1.f/128);
     shadow_page_side=SU_SIDE;shadow_page_missing=1;town_shadow_ground(triangle,NULL,3,&material,&bindings);
     assert(texture_width==32&&texture_height==32&&sizeof(town_shadow_empty)==1024);
     shadow_page_missing=0;bindings=1;
