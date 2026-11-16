@@ -515,9 +515,9 @@ internal sealed class TownGame : IDisposable
         }
         if(screen=="item")
         {
-            int item=state.Pockets[slot],count=PocketMenu.Count(item,room);
-            selected=Math.Max(0,Math.Min(selected,count-1));
-            if(down)selected=(selected+1)%count;if(up)selected=(selected+count-1)%count;
+            int item=state.Pockets[slot],actionCount=PocketMenu.Count(item,room);
+            selected=Math.Max(0,Math.Min(selected,actionCount-1));
+            if(down)selected=(selected+1)%actionCount;if(up)selected=(selected+actionCount-1)%actionCount;
             if(p.R.WasPressed&&PocketMenu.HasAction(item,room,PocketAction.Place))rotation=(rotation+1)%4;
             if(Press(p))
             {
