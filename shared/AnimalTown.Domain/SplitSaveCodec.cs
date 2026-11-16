@@ -59,7 +59,7 @@ public static class SplitSaveCodec
         var w=new Writer(s,TownData,2048+4*(Runs(t.Tiles)+Runs(t.Elevation))+24*(t.GroundCount+t.PlacedCount));
         w.Int(Town.Width);w.Int(Town.Height);w.Int(TownGenerator.Version);w.Int(t.Day);w.Int(t.Month);w.Rle(t.Tiles);w.Rle(t.Elevation);
         for(int i=0;i<6;i++){var v=t.Residents[i];w.Int(v.X);w.Int(v.Z);w.Text(v.Name);w.Int((int)(v.PosX*1024));w.Int((int)(v.PosZ*1024));}
-        w.Int(t.GroundCount);for(int i=0;i<t.GroundCount;i++){var g=t.Ground[i];w.Int(g.Item);w.Int(g.X);w.Int(g.Z);w.Int(g.Owner);w.Int(g.Day);w.Int(g.Kind);}
+        w.Int(t.GroundCount);for(int i=0;i<t.GroundCount;i++){var g=t.Ground[i];w.Int(g.Item);w.Int(g.X);w.Int(g.Z);w.Int(g.Owner);w.Int(g.Day);w.Int(g.PackedKind);}
         w.Int(t.PlacedCount);for(int i=0;i<t.PlacedCount;i++){var p=t.Placed[i];w.Int(p.Item);w.Int(p.X);w.Int(p.Z);w.Int(p.Rotation);w.Int(p.Room);w.Int(p.Owner);}
         w.Int(s.ActiveProfile);for(int i=0;i<s.BuildingTypes.Length;i++)w.Int(s.BuildingTypes[i]);
         for(int i=0;i<6;i++){var v=t.Residents[i];w.Int(v.Space);w.Int(v.JourneyBuilding);w.Int(v.JourneyPhase);w.Int(v.Dwell);w.Int((int)(v.Yaw*1024));w.Int(v.JourneyNextX);w.Int(v.JourneyNextZ);}return w.Finish();
@@ -80,7 +80,7 @@ public static class SplitSaveCodec
         var w=new Writer(s,TownData,2048+4*(Runs(t.Tiles)+Runs(t.Elevation))+24*t.GroundCount,3);
         w.Int(Town.Width);w.Int(Town.Height);w.Int(TownGenerator.Version);w.Int(t.Day);w.Int(t.Month);w.Rle(t.Tiles);w.Rle(t.Elevation);
         for(int i=0;i<6;i++){var v=t.Residents[i];w.Int(v.X);w.Int(v.Z);w.Text(v.Name);w.Int((int)(v.PosX*1024));w.Int((int)(v.PosZ*1024));}
-        w.Int(t.GroundCount);for(int i=0;i<t.GroundCount;i++){var g=t.Ground[i];w.Int(g.Item);w.Int(g.X);w.Int(g.Z);w.Int(g.Owner);w.Int(g.Day);w.Int(g.Kind);}records[0]=w.Finish();
+        w.Int(t.GroundCount);for(int i=0;i<t.GroundCount;i++){var g=t.Ground[i];w.Int(g.Item);w.Int(g.X);w.Int(g.Z);w.Int(g.Owner);w.Int(g.Day);w.Int(g.PackedKind);}records[0]=w.Finish();
         w=new Writer(s,HousePositions,128,3);w.Int(s.HousePlaced?1:0);w.Int(t.HouseX);w.Int(t.HouseZ);for(int i=0;i<6;i++){w.Int(t.Residents[i].HomeX);w.Int(t.Residents[i].HomeZ);}records[1]=w.Finish();
         w=new Writer(s,ShopStates,128,3);w.Int(t.Spending);w.Int(t.StockCount);for(int i=0;i<12;i++)w.Int(t.Stock[i]);records[2]=w.Finish();
         w=new Writer(s,PlayerVillager,4096+24*t.PlacedCount,3);
@@ -99,7 +99,7 @@ public static class SplitSaveCodec
         var s=snapshot==null?new GameState(r.Seed):new GameState(r.Seed,snapshot);s.Sequence=r.Sequence;var t=s.Town;
         r.Range(Town.Width,Town.Width);r.Range(Town.Height,Town.Height);r.Range(1,TownGenerator.Version);t.Day=r.Int();t.Month=r.Int();r.Rle(t.Tiles,r.Version>=2?(int)Terrain.CoastWest:7,snapshot!=null);r.Rle(t.Elevation,TerrainElevation.MaximumMode,snapshot!=null);
         for(int i=0;i<6;i++){var v=t.Residents[i];v.X=r.Int();v.Z=r.Int();v.Name=r.Text(24);v.PosX=r.Int()/1024f;v.PosZ=r.Int()/1024f;}
-        t.GroundCount=r.Range(0,512);for(int i=0;i<t.GroundCount;i++){var g=t.Ground[i];g.Item=r.Int();g.X=r.Int();g.Z=r.Int();g.Owner=r.Int();g.Day=r.Int();g.Kind=r.Int();}r.End();
+        t.GroundCount=r.Range(0,512);for(int i=0;i<t.GroundCount;i++){var g=t.Ground[i];g.Item=r.Int();g.X=r.Int();g.Z=r.Int();g.Owner=r.Int();g.Day=r.Int();g.RestoreKind(r.Range(0,12));}r.End();
         r=new Reader(records[1],HousePositions);r.Match(root);s.HousePlaced=r.Range(0,1)==1;t.HouseX=r.Int();t.HouseZ=r.Int();for(int i=0;i<6;i++){t.Residents[i].HomeX=r.Int();t.Residents[i].HomeZ=r.Int();}r.End();
         r=new Reader(records[2],ShopStates);r.Match(root);t.Spending=r.Int();t.StockCount=r.Int();for(int i=0;i<12;i++)t.Stock[i]=r.Int();r.End();
         r=new Reader(records[3],PlayerVillager);r.Match(root);s.Wallet=r.Int();uint low=(uint)r.Int();int high=r.Int();s.Savings=((long)high<<32)|low;low=(uint)r.Int();high=r.Int();s.Debt=((long)high<<32)|low;
@@ -117,7 +117,7 @@ public static class SplitSaveCodec
         var s=snapshot==null?new GameState(r.Seed):new GameState(r.Seed,snapshot);s.Sequence=r.Sequence;var t=s.Town;
         r.Range(Town.Width,Town.Width);r.Range(Town.Height,Town.Height);r.Range(1,TownGenerator.Version);t.Day=r.Int();t.Month=r.Int();r.Rle(t.Tiles,(int)Terrain.CoastWest,snapshot!=null);r.Rle(t.Elevation,TerrainElevation.MaximumMode,snapshot!=null);
         for(int i=0;i<6;i++){var v=t.Residents[i];v.X=r.Int();v.Z=r.Int();v.Name=r.Text(24);v.PosX=r.Int()/1024f;v.PosZ=r.Int()/1024f;}
-        t.GroundCount=r.Range(0,512);for(int i=0;i<t.GroundCount;i++){var g=t.Ground[i];g.Item=r.Int();g.X=r.Int();g.Z=r.Int();g.Owner=r.Int();g.Day=r.Int();g.Kind=r.Int();}
+        t.GroundCount=r.Range(0,512);for(int i=0;i<t.GroundCount;i++){var g=t.Ground[i];g.Item=r.Int();g.X=r.Int();g.Z=r.Int();g.Owner=r.Int();g.Day=r.Int();g.RestoreKind(r.Range(0,12));}
         t.PlacedCount=r.Range(0,256);for(int i=0;i<t.PlacedCount;i++){var p=t.Placed[i];p.Item=r.Int();p.X=r.Int();p.Z=r.Int();p.Rotation=r.Int();p.Room=r.Int();p.Owner=r.Int();}
         int active=r.Range(0,3);for(int i=0;i<s.BuildingTypes.Length;i++)s.BuildingTypes[i]=(byte)r.Range(0,255);
         for(int i=0;i<6;i++){var v=t.Residents[i];v.Space=r.Range(0,43);v.JourneyBuilding=r.Range(-1,BuildingWorld.Count-1);v.JourneyPhase=r.Range(0,5);v.Dwell=r.Range(0,36000);v.Yaw=r.Range(-6434,6434)/1024f;v.JourneyNextX=r.Range(-1,Town.Width-1);v.JourneyNextZ=r.Range(-1,Town.Height-1);if(!BuildingWorld.ValidSpace(v.Space)||(v.JourneyNextX<0)!=(v.JourneyNextZ<0)||v.JourneyPhase==1&&v.JourneyBuilding<0)throw new InvalidOperationException("Invalid shared NPC journey");}r.End();
