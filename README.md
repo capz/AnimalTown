@@ -78,6 +78,9 @@ play works; save errors are shown for retry.
 
 Outdoor ground shares the supplied neutral repeating texture with configurable
 terrain/season tints: see [neutral ground](docs/neutral-ground.md).
+The [roads and paths design](docs/roads-and-paths-design.md) compares four visual
+approaches, existing-art trials and explicit texture-pruning budgets; it is a
+proposal awaiting visual approval.
 
 The [cliff kit](assets/models/terrain/cliffs/README.md) supplies eight low-poly
 GLBs, shared 128/256px soil textures and ground-material bindings. Hold L+R and
