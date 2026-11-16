@@ -1,0 +1,3 @@
+[submodule "vendor/card-store-sdk"]
+	path = vendor/card-store-sdk
+	url = https://github.com/capz/DolphinDotNet.git

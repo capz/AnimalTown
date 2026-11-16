@@ -17,6 +17,10 @@ if($IsLinux){
     }
 }
 $generated=[IO.File]::ReadAllText($generatedPath)
+$blockBridge='intptr_t (dnd_value_AnimalTown_GameCube_CardBlockBridge_Io_[a-z0-9]+)\(intptr_t (\w+), intptr_t (\w+), intptr_t (\w+), intptr_t (\w+), intptr_t (\w+), intptr_t (\w+)\) \{.*?\r?\n\}'
+if(([regex]::Matches($generated,$blockBridge,[Text.RegularExpressions.RegexOptions]::Singleline)).Count -ne 1){throw 'Card container bridge signature changed'}
+$generated=[regex]::Replace($generated,$blockBridge,'intptr_t $1(intptr_t $2,intptr_t $3,intptr_t $4,intptr_t $5,intptr_t $6,intptr_t $7) { return dnd_card_blocks_io((int)$2,(DndString*)$3,(int)$4,(int)$5,(int)$6,(DndArray*)$7); }',[Text.RegularExpressions.RegexOptions]::Singleline)
+$generated="#include `"dnd_storage.h`"`nextern int dnd_card_blocks_io(int,DndString*,int,int,int,DndArray*);`n"+$generated
 # A direct float-to-byte expression currently retains a floating SSA type in
 # the pinned compiler. On a byte[] that silently stores the low IEEE bits,
 # producing an invisible shadow mask. The byte-returning Opacity boundary must
@@ -205,6 +209,10 @@ $mountPattern='bool dnd_gc_card_mount\(int device, const char \*game, const char
 if(([regex]::Matches($cardSource,$mountPattern,[Text.RegularExpressions.RegexOptions]::Singleline)).Count -ne 1){throw 'Pinned SDK card mount changed'}
 $replacementMount=[IO.File]::ReadAllText((Join-Path $Root 'tools/native-card-mount.c.inc'))
 $cardSource=[regex]::Replace($cardSource,$mountPattern,[Text.RegularExpressions.MatchEvaluator]{param($match) $replacementMount},[Text.RegularExpressions.RegexOptions]::Singleline)
+$cardSource=$cardSource.Replace('bool dnd_gc_card_mount(',"#include `"dnd_card_blocks.inc`"`nbool dnd_gc_card_mount(")
+foreach($include in @('dnd_card_blocks.inc','dnd_card_blocks_bridge.inc')){
+    Copy-Item -LiteralPath (Join-Path $Root "vendor/card-store-sdk/include/$include") -Destination (Join-Path $nativeRoot "include/$include") -Force
+}
 $readPattern='int dnd_gc_card_read\(int device, const char \*name, void \*data, int capacity\) \{.*?\r?\n\}'
 if(([regex]::Matches($cardSource,$readPattern,[Text.RegularExpressions.RegexOptions]::Singleline)).Count -ne 1){throw 'Pinned SDK card reader changed'}
 $replacementReader=[IO.File]::ReadAllText((Join-Path $Root 'tools/native-card-read.c.inc'))
@@ -222,6 +230,8 @@ foreach($operation in @('txn_read','txn_write','txn_ready','txn_metadata')) {
 [IO.File]::WriteAllText($cardPath,$cardSource)
 $storagePath=Join-Path $Root 'out/native/source/storage.c'
 $storageSource="extern int animaltown_card_debug;`n"+[IO.File]::ReadAllText($storagePath)
+if(([regex]::Matches($storageSource,'bool dnd_card_mount\(')).Count -ne 1){throw 'Pinned card container native hook changed'}
+$storageSource=$storageSource.Replace('bool dnd_card_mount(',"#include `"dnd_card_blocks_bridge.inc`"`nbool dnd_card_mount(")
 $storageSource=$storageSource.Replace('fail(-rc, "Memory card write failed.");','{ animaltown_card_debug=animaltown_card_debug*1000-rc; fail(-rc, "Memory card write failed."); }')
 [IO.File]::WriteAllText($storagePath,$storageSource)
 & python3 (Join-Path $Root 'tools/patch-managed-allocator.py') $nativeRoot
