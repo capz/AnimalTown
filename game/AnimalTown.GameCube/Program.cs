@@ -153,13 +153,15 @@ internal sealed class TownGame : IDisposable
     private bool loaded,relocate,damagedSave;
     private bool indexedModels=true,batchedDrawing=true;
     private bool rimLighting=true;
+    private bool godMode=false; // TownGame lifetime only; never written to saves or DevConfig.
     private int uvDebug;
     private bool cliffPreview;
     private int waterInspection;
     private int buildingInspection;
-    private const int SettingsTab=5,TestingTab=6,TestingRows=29;
-    // Keep the remaining debug option IDs stable; 7/8 were shadow toggles.
-    private static int TestingOption(int row)=>row<7?row:row+2;
+    private const int SettingsTab=5,TestingTab=6,TestingRows=31;
+    // Stable option IDs: shadow slots 7/8 retired; terrain retention stays last.
+    private static readonly int[] testingOptions={0,1,2,3,4,5,6,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,31,32,30};
+    private static int TestingOption(int row)=>testingOptions[row];
     private static readonly string[] tabs={"Backpack","Jobs","Catalog","Home","Post office","Settings","Debug / testing"};
     private static readonly string[] itemActions={"Drop","Place (R rotates)","Plant","Eat","Wear","Equip","Bury","Open money bag","Read","Quit"};
     internal TownGame(DevConfig config,TownSession session)
@@ -449,7 +451,7 @@ internal sealed class TownGame : IDisposable
             card=null;if(terrainSuspended)terrain.ResumeAfterSave();
         }
     }
-    private void Say(string name,string text){dialogueVoice.Begin();voiceTick=0;returnToMenu=screen=="menu"&&(menuTab==SettingsTab||menuTab==TestingTab);if(returnToMenu){returnMenuTab=menuTab;returnMenuSelection=selected;}speaker=name;message=text;wrappedDialogue=dialogueText.Get(text);typeAt=0;screen="dialogue";}
+    private void Say(string name,string text){dialogueVoice.Begin();voiceTick=0;returnToMenu=screen=="menu"&&(menuTab==SettingsTab||menuTab==TestingTab||godMode&&menuTab==2);if(returnToMenu){returnMenuTab=menuTab;returnMenuSelection=selected;}speaker=name;message=text;wrappedDialogue=dialogueText.Get(text);typeAt=0;screen="dialogue";}
     private bool Press(ControllerState p)=>p.A.WasPressed;
     internal void Input(ControllerState p)
     {
@@ -498,7 +500,7 @@ internal sealed class TownGame : IDisposable
         { if(Press(p)||p.B.WasPressed){dialogueVoice.Stop();if(typeAt<message.Length)typeAt=message.Length;else{screen=returnToMenu?"menu":"world";if(returnToMenu){menuTab=returnMenuTab;selected=returnMenuSelection;}}}return; }
         if(screen=="plot")
         {
-            if(Press(p)){if(state.PlaceHouse((int)state.X-3,(int)state.Z-3,relocate))Say("Hearth","Your home is ready! Visit the store for your first job.");else Say("Hearth","This plot needs 15 x 13 clear land tiles.");}
+            if(Press(p)){if(state.PlaceHouse((int)state.X-3,(int)state.Z-3,relocate,godMode))Say("Hearth","Your home is ready! Visit the store for your first job.");else Say("Hearth","This plot needs 15 x 13 clear land tiles.");}
             if(p.B.WasPressed&&state.HousePlaced)screen="world";return;
         }
         if(screen=="world"&&villagers.Doors.Busy(0))return;
@@ -547,7 +549,7 @@ internal sealed class TownGame : IDisposable
         if(screen=="menu"&&(p.L.WasPressed||left)){menuTab=(menuTab+tabs.Length-1)%tabs.Length;selected=0;}
         if(!Press(p))return;
         if(screen=="sell"){Say("Hearth",state.Sell(selected)?"Thank you! Acorns added to your wallet.":"I cannot buy that, or your wallet is full.");return;}
-        if(screen=="shop"){Say("Hearth",state.Buy(selected)?"Thank you for shopping!":"You need enough acorns and a free pocket.");return;}
+        if(screen=="shop"){Say("Hearth",state.Buy(selected,godMode)?godMode?"Added to your pockets for free.":"Thank you for shopping!":godMode?"This item is sold out, or your pockets are full.":"You need enough acorns and a free pocket.");return;}
         if(screen=="store"){StoreAction();return;}
         if(screen=="post"){PostAction();return;}
         if(screen=="mail")
@@ -563,13 +565,13 @@ internal sealed class TownGame : IDisposable
     private int LostIndex(int n){for(int i=0;i<state.Town.GroundCount;i++)if(state.Town.Ground[i].Kind==4&&n--==0)return i;return -1;}
     private void StoreAction()
     {
-        if(selected==7){Say("Hearth",state.UpgradeBackpack()?"A bigger backpack! You can carry "+state.Capacity+" items now.":state.BackpackTier==2?"Your backpack already holds 30 items.":"The next backpack costs "+state.BackpackUpgradePrice+" acorns.");return;}
+        if(selected==7){Say("Hearth",state.UpgradeBackpack(godMode)?"A bigger backpack! You can carry "+state.Capacity+" items now.":state.BackpackTier==2?"Your backpack already holds 30 items.":"The next backpack costs "+state.BackpackUpgradePrice+" acorns.");return;}
         if(selected==0){screen="shop";selected=0;return;}
         if(selected==1){int i=state.Find(18);if(state.Tutorial==3&&i>=0){state.Pockets[i]=0;state.CreditTutorial(3);Say("Hearth","Good work! Write a letter at town hall.");return;}screen="sell";selected=0;return;}
         if(selected==2){Say("Hearth",TutorialText());return;}
-        if(selected==3){Say("Hearth",state.Expand(false,day)?"Your house expansion arrives after 06:00.":"Pay off your debt before expanding.");return;}
-        if(selected==4){Say("Hearth",state.Expand(true,day)?"Your garden expands after 06:00.":"Pay off your debt and meet the house tier first.");return;}
-        if(selected==5){int amount=(int)Math.Min(state.Debt,state.Wallet);Say("Hearth",state.Repay(amount)?"Thank you for your repayment!":"No repayment is possible.");return;}
+        if(selected==3){Say("Hearth",state.Expand(false,day,godMode)?"Your house expansion arrives after 06:00.":godMode?"No expansion is available yet.":"Pay off your debt before expanding.");return;}
+        if(selected==4){Say("Hearth",state.Expand(true,day,godMode)?"Your garden expands after 06:00.":godMode?"No garden expansion is available yet.":"Pay off your debt and meet the house tier first.");return;}
+        if(selected==5){Say("Hearth",RepayLoan()?"Thank you for your repayment!":"No repayment is possible.");return;}
         if(state.Tutorial<6){Say("Hearth",TutorialText());return;}
         if(state.Jobs>=2){Say("Hearth","All jobs are done for today.");return;}
         int fruit=state.Find(1);if(fruit>=0&&state.Wallet<=99199){state.Pockets[fruit]=0;state.Wallet+=800;state.Jobs++;Say("Hearth","A peach for our customer! Here are 800 acorns.");}else Say("Hearth","Today's job: bring a peach for a customer. Reward: 800. Make space in your wallet.");
@@ -580,7 +582,7 @@ internal sealed class TownGame : IDisposable
     {
         if(selected==0){Say("Fern",state.Deposit(Math.Min(1000,state.Wallet))?"Deposit complete.":"No acorns to deposit.");return;}
         if(selected==1){Say("Fern",state.Withdraw((int)Math.Min(1000,state.Savings))?"Withdrawal complete.":"No room in wallet, or insufficient savings.");return;}
-        if(selected==2){Say("Fern",state.Repay((int)Math.Min(state.Debt,state.Wallet))?"Loan repayment complete.":"No payment is possible.");return;}
+        if(selected==2){Say("Fern",RepayLoan()?"Loan repayment complete.":"No payment is possible.");return;}
         if(selected==3){screen="lost";selected=0;return;}
         if(selected==4){screen="mail";selected=0;return;}
         if(selected==5){if(state.Tutorial==4){state.CreditTutorial(4);if(state.MailCount<128)state.Mail[state.MailCount++]=-19;}Say("Fern","Your letter has been sent. A reply will arrive tomorrow.");return;}
@@ -590,7 +592,7 @@ internal sealed class TownGame : IDisposable
     {
         if(menuTab==0){slot=selected;screen="item";selected=0;return;}
         if(menuTab==1){Say("Jobs",selected==0?TutorialText():state.Town.Residents[selected-1].Name+": "+(state.Town.Residents[selected-1].Request==0?"No request":"Bring "+Catalog.Items[state.Town.Residents[selected-1].Request].Name));return;}
-        if(menuTab==2){Say("Catalog",state.Order(selected+1)?"Ordered! Check your mailbox after the next rollover.":"Only previously owned store items can be ordered.");return;}
+        if(menuTab==2){Say("Catalog",godMode?state.Receive(selected+1)?"Added to your pockets for free.":"Your pockets are full.":state.Order(selected+1)?"Ordered! Check your mailbox after the next rollover.":"Only previously owned store items can be ordered.");return;}
         if(menuTab==3)
         {
             if(selected==0){state.Roof=(state.Roof+1)%12;Say("Home","Roof palette selected.");}
@@ -598,8 +600,8 @@ internal sealed class TownGame : IDisposable
             if(selected==2){state.Fence=(state.Fence+1)%6;Say("Home","Fence style selected.");}
             if(selected==3){state.Mailbox=(state.Mailbox+1)%6;Say("Home","Mailbox selected.");}
             if(selected==4){if(room!=0){Say("Home","Step outside before relocating your home.");return;}relocate=true;screen="plot";}
-            if(selected==5){Say("Home",state.Expand(false,day)?"Construction ordered.":"Pay off your loan first.");}
-            if(selected==6){Say("Home",state.Expand(true,day)?"Garden construction ordered.":"Loan or house tier prevents this expansion.");}return;
+            if(selected==5){Say("Home",state.Expand(false,day,godMode)?"Construction ordered.":godMode?"No expansion is available yet.":"Pay off your loan first.");}
+            if(selected==6){Say("Home",state.Expand(true,day,godMode)?"Garden construction ordered.":godMode?"No garden expansion is available yet.":"Loan or house tier prevents this expansion.");}return;
         }
         if(menuTab==4){PostAction();return;}
         if(menuTab==TestingTab){TestingAction();return;}
@@ -610,10 +612,15 @@ internal sealed class TownGame : IDisposable
         else if(selected==3){Say("Calendar","Console RTC / day "+day+". New days begin at 06:00.");}
         else Say("Chat","Quick phrases and online chat are pending the companion transport.");
     }
+    private bool RepayLoan()=>state.Repay((int)Math.Min(state.Debt,godMode?int.MaxValue:state.Wallet),godMode);
     private void TestingAction()
     {
         uiShapes.Trim();
         switch(TestingOption(selected)){
+            case 31:godMode=!godMode;break;
+            case 32:
+                int added=state.GiveMoney(10000,godMode);
+                Say("God mode",!godMode?"Enable God mode to give yourself acorns.":added==0?"Your wallet is full.":"Added "+added+" acorns. Wallet: "+state.Wallet+".");break;
             case 0:FrameProfile.Enabled=!FrameProfile.Enabled;break;
             case 1:ToggleModelPath();break;
             case 2:case 3:
@@ -667,6 +674,8 @@ internal sealed class TownGame : IDisposable
     private string TestingLabel(int row)
     {
         switch(TestingOption(row)){
+            case 31:return "God mode: "+OnOff(godMode)+" (session)";
+            case 32:return godMode?"Give 10,000 acorns":"Give 10,000 acorns (God mode required)";
             case 0:return "Performance display: "+OnOff(FrameProfile.Enabled);
             case 1:return "Model drawing: "+(indexedModels?"GX indexed":"Direct comparison");
             case 2:return "UV island colors: "+OnOff((uvDebug&1)!=0);
@@ -1124,15 +1133,15 @@ internal sealed class TownGame : IDisposable
     }
     private string RowLabel(int i)
     {
-        if(screen=="shop"){int id=state.Town.Stock[i];return id==0?"Sold out":Catalog.Items[id].Name+" / "+Catalog.Items[id].Buy;}
+        if(screen=="shop"){int id=state.Town.Stock[i];return id==0?"Sold out":Catalog.Items[id].Name+(godMode?" / Free": " / "+Catalog.Items[id].Buy);}
         if(screen=="store"){string[] a={"Buy stock","Sell / return parcel","Part-time job","House expansion","Garden expansion","Repay loan","Daily job","Expand backpack"};return a[i];}
         if(screen=="post"||(screen=="menu"&&menuTab==4)){string[] a={"Deposit up to 1000","Withdraw up to 1000","Repay from wallet","Lost and Found","Mailbox","Write a letter","Visit / gate"};return a[i];}
         if(screen=="mail")return i>=state.MailCount?"No mail":state.Mail[i]<0?"Arrives tomorrow":Catalog.Items[state.Mail[i]].Name;
         if(screen=="lost"){int n=LostIndex(i);return n<0?"No lost items":Catalog.Items[state.Town.Ground[n].Item].Name;}
         if(menuTab==0)return (i+1)+". "+Catalog.Items[state.Pockets[i]].Name;
         if(menuTab==1)return i==0?"Tutorial / daily jobs":state.Town.Residents[i-1].Name+" / friendship "+state.Town.Residents[i-1].Friendship;
-        if(menuTab==2)return Catalog.Items[i+1].Name+(state.Owned[i+1]==0?" (not owned)":" / "+Catalog.Items[i+1].Buy);
-        if(menuTab==3){string[] a={"Roof palette","Exterior palette","Fence style","Mailbox","Relocate (50000)","Expand house","Expand garden"};return a[i];}
+        if(menuTab==2)return Catalog.Items[i+1].Name+(godMode?" / Free (instant)":state.Owned[i+1]==0?" (not owned)":" / "+Catalog.Items[i+1].Buy);
+        if(menuTab==3){string[] a={"Roof palette","Exterior palette","Fence style","Mailbox",godMode?"Relocate (free)":"Relocate (50000)","Expand house","Expand garden"};return a[i];}
         if(menuTab==TestingTab)return TestingLabel(i);
         string[] settings={"Save now","Controls","About / build identity","Calendar","Chat settings","Debug / testing menu"};return settings[i];
     }
