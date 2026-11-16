@@ -8,6 +8,61 @@ internal static class DroppedItemChecks
         var town=new Town(7319);Array.Fill(town.Tiles,(byte)Terrain.Grass);Array.Clear(town.Elevation);town.GroundCount=6;
         for(int i=0;i<6;i++){var g=town.Ground[i];g.X=29+i%3;g.Z=32+i;g.Kind=i<2?0:i-1;}
         var plan=new DroppedItemPlan();check(plan.Prepare(town,30,38,0)&&plan.Count==2,"only ordinary dropped items become sprites");
+        // Any giftable item is still generic until explicitly wrapped.
+        check(DroppedItemAppearance.For(1)==DroppedItemArt.Generic&&
+              DroppedItemAppearance.For(10)==DroppedItemArt.Generic&&
+              DroppedItemAppearance.For(17)==DroppedItemArt.Generic,
+              "giftable and ordinary items retain the generic marker");
+        check(DroppedItemAppearance.For(22)==DroppedItemArt.Money&&
+              DroppedItemAppearance.For(23)==DroppedItemArt.Money&&
+              DroppedItemAppearance.For(24)==DroppedItemArt.Money,
+              "all currency denominations use the acorn bag");
+        check(DroppedItemAppearance.For(5)==DroppedItemArt.Tool&&
+              DroppedItemAppearance.For(6)==DroppedItemArt.Tool&&
+              DroppedItemAppearance.For(7)==DroppedItemArt.Tool&&
+              DroppedItemAppearance.For(8)==DroppedItemArt.Tool&&
+              DroppedItemAppearance.For(9)==DroppedItemArt.Tool,
+              "all equipment uses the shovel sprite");
+        check(DroppedItemAppearance.For(4)==DroppedItemArt.Clothing,
+              "wearable items use the shirt");
+        check(DroppedItemAppearance.For(19)==DroppedItemArt.Quest&&
+              DroppedItemAppearance.For(20)==DroppedItemArt.Quest,
+              "quest letters and lost objects use the scroll");
+        check(DroppedItemAppearance.For(18)==DroppedItemArt.Present&&
+              DroppedItemAppearance.For(5,true)==DroppedItemArt.Present&&
+              DroppedItemAppearance.For(4,true)==DroppedItemArt.Present&&
+              DroppedItemAppearance.For(22,true)==DroppedItemArt.Present,
+              "present overrides all underlying item types only when wrapped");
+
+        var wrappedRecord=new GroundItem { Kind=0,Wrapped=true };
+        var restored=new GroundItem();restored.RestoreKind(wrappedRecord.PackedKind);
+        check(restored.Kind==0&&restored.Wrapped&&wrappedRecord.PackedKind==8,
+              "wrapped appearance round-trips through the existing ground kind integer");
+        restored.RestoreKind(4);
+        check(restored.Kind==4&&!restored.Wrapped,"legacy ground kind has no wrapped appearance");
+
+        town.Ground[0].Item=22;
+        check(plan.Prepare(town,30,38,0)&&plan.Art[0]==(byte)DroppedItemArt.Money,
+              "changing a dropped item without moving it selects the new texture");
+        town.Ground[0].Wrapped=true;
+        check(plan.Prepare(town,30,38,0)&&plan.Art[0]==(byte)DroppedItemArt.Present,
+              "wrapping a stationary item invalidates its retained sprite");
+        town.Ground[0].Wrapped=false;town.Ground[0].Item=5;
+        check(plan.Prepare(town,30,38,0)&&plan.Art[0]==(byte)DroppedItemArt.Tool,
+              "unwrapped tool returns to its underlying type");
+        check(DroppedItemRenderer.WriteVertices(plan,new VertexPositionColorTexture[12],DroppedItemArt.Tool)==1,
+              "texture batch writes only its selected category");
+        town.Ground[1].Item=4;
+        check(plan.Prepare(town,30,38,0)&&plan.Art[1]==(byte)DroppedItemArt.Clothing,
+              "second drop can independently use clothing art");
+        town.Ground[1].Item=19;
+        check(plan.Prepare(town,30,38,0)&&plan.Art[1]==(byte)DroppedItemArt.Quest,
+              "second drop can independently use quest art");
+        town.Ground[1].Item=18;
+        check(plan.Prepare(town,30,38,0)&&plan.Art[1]==(byte)DroppedItemArt.Present,
+              "an unwrapped parcel is still depicted as a present");
+        town.Ground[0].Item=1;town.Ground[1].Item=1;
+        plan.Prepare(town,30,38,0);
         long revision=plan.Revision;check(!plan.Prepare(town,30,38,0)&&revision==plan.Revision,"unchanged stationary drops reuse their GPU geometry");
         town.Ground[0].X++;check(plan.Prepare(town,30,38,0),"moving a drop invalidates its retained geometry");
         town.Ground[0].Kind=1;check(plan.Prepare(town,30,38,0)&&plan.Count==1,"burying a drop removes its billboard");
