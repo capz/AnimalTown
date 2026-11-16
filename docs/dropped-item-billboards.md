@@ -1,32 +1,50 @@
 # Dropped-item billboards
 
-Ordinary outdoor drops (`GroundItem.Kind == 0`) use the approved pinecone sprite
-on a 0.65m square. Each sprite turns in yaw and pitch towards the actual outdoor
-camera position, including off-centre views and changes in player/terrain height.
-The bottom edge stays level, avoiding rolling as the player walks past. Its bottom
-sits 3cm above the curved surface at the tile centre, using local terrain height.
-The sprite asset is [64×64 native RGB5A3](../assets/textures/items/README.md).
+Ordinary outdoor drops (`GroundItem.Kind == 0`) use six possible appearance
+textures. They share the existing **0.65m** square camera-facing billboard
+geometry, with a 3cm terrain-relative bottom offset. The actual outdoor camera
+position determines yaw and pitch (including off-centre and raised views); the
+bottom edge remains level as the player walks past.
 
-`DroppedItemPlan` culls by frustum and cylinder horizon and stably sorts visible
-sprites from back to front using preallocated merge-sort scratch space. Its
-snapshot tracks dropped coordinates, count, town identity, terrain revision and
-camera position/height. A stationary unchanged view skips geometry uploads.
-The culling sphere and alpha-sort depth use the centre of the rotated quad.
-Camera-facing axes are calculated only when geometry changes, with no extra
-per-drop native resources or frame allocations.
+| Appearance | Example |
+| --- | --- |
+| Generic fallback | Fruit, bugs, fish, furniture |
+| Acorn money bag | 1,000 / 10,000 / 50,000 acorns (IDs 22–24) |
+| Shovel | Fishing rod, bug net, shovel, watering can, axe |
+| Shirt | Any wearable item |
+| Scroll | Quest letter and lost umbrella |
+| Present | Parcel, or any ground item with `Wrapped == true` |
 
-`DroppedItemRenderer` uses Hypercube's bounded dynamic mesh buffer. All visible
-sprites share one texture/material and one draw, with two triangles per sprite;
-all 512 saved ground slots fit in the 3,072-vertex ceiling. Buffers grow only as
-needed. Native loading and vertex updates happen outside render passes.
+`ItemFlags.Gift` means *can be gifted* and never implies gift wrapping. The
+present appearance uses the parcel item or the explicit wrapped state, encoded
+in the high bit of the persisted `GroundItem.Kind` field. No new ground save
+fields, item IDs, or format-version changes are needed.
 
-Sprites draw after opaque terrain, actors, trees, structures and fences, with
-depth testing, alpha blending and depth writes disabled. Zero-alpha fragments
-are discarded. This preserves soft edges and occlusion without transparent
-rectangles hiding other drops. The native texture and mesh buffer are disposed
-with the town renderer. No saved world data or item interaction rules change.
+Each sprite is [64×64 GX RGB5A3 with seven native mip levels](../assets/textures/items/README.md).
+All source PNGs live next to the generic `dropped-item.png`; the existing asset
+cooker includes the native category packages in `out/disc` without PNG decoding
+in the game. Soft shadows are baked into the transparent images.
 
-Validation includes source/native alpha and colour round trips, all seven GX
-mip layouts and alpha coverage, flat/raised terrain, camera alignment and
-clockwise winding, culling, pickup/bury invalidation, 512-item sorting/capacity,
-and allocation-free plan updates while moving.
+`DroppedItemPlan` retains per-visible-drop appearance and invalidates geometry
+when the item identity or wrapped state changes. It culls using the frustum
+and cylinder horizon, stably sorts far-to-near using preallocated scratch,
+and avoids rebuilding when a camera/ground snapshot is unchanged.
+
+`DroppedItemRenderer` keeps the same bounded six-triangle billboard write
+path and native `DynamicMeshBuffer` system. Geometry is batched by texture,
+with depth ordering retained within each appearance batch. A category allocates
+its material, native texture, and retained mesh only when first visible.
+Native packages are held until the town renderer is disposed. Alpha blending,
+depth testing, alpha cutoff, and disabled depth writes preserve antialiased
+cutouts against scenery and other opaque objects. Different-category overlapping
+transparent drops are drawn in category order rather than one global alpha
+order; drops cannot occupy the same tile in the current game.
+
+Pickup, burials, inventory IDs, collision, and item interaction rules remain
+unchanged. A wrapped ground item retains its original item ID on pickup; the
+appearance flag is visual while on the ground.
+
+Validation covers source/native alpha and RGB round trips, all six package
+dimensions and mip layouts, per-item category selection, reclassification after
+ground changes, flat/raised terrain, camera alignment, sprite winding, culling,
+pickup/bury invalidation, 512-drop capacity, and allocation-free plan updates.
