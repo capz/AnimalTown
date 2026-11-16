@@ -977,7 +977,9 @@ internal sealed class TownGame : IDisposable
         if(room==0&&terrain.RefractionVisible){
             submissionAt=FrameProfile.SubmissionStart();
             renderer.End3D();terrain.CaptureWaterScene();
-            renderer.Begin3D(camera);terrain.DrawRefraction(renderer);
+            // The captured scene already includes the environment tint.
+            renderer.Begin3D(camera);NativeShadows.Environment(0xffffff);
+            try{terrain.DrawRefraction(renderer);}finally{NativeShadows.Environment(environmentTint);}
             FrameProfile.SubmissionEnd(0,submissionAt);
             FrameProfile.End(4,phase);phase=FrameProfile.Start();
         }
