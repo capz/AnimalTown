@@ -17,7 +17,9 @@ internal sealed class CloudShadows : IDisposable
             material.Effect=null;material.SecondaryTexture=null;
             material.SecondaryTextureTransform=UvTransform.Identity;material.Color=tint;return;
         }
-        layer??=new CloudShadowLayer(2,128,new Vector2(.18f,.09f));
+        // Keep sunlit gaps and soft edges inside the gameplay camera. A 128 m
+        // repeat made the mask read as uniform dimming across the visible town.
+        layer??=new CloudShadowLayer(2,32,new Vector2(.6f,.3f));
         if(!prepared){layer.Cover=cover;layer.Animate(seconds);prepared=true;}
         layer.Apply(material,tint,outdoors);
     }
