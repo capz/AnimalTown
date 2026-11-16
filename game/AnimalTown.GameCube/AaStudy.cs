@@ -32,10 +32,10 @@ internal static class AaStudy
             if(rows==null)rows=new int[Frames*Fields];
             var display=GraphicsDevice.Default.Display;
             int width=(int)display.OutputSize.X,height=(int)display.OutputSize.Y;
-            DebugOverlay.WriteLine("AASTUDY MODE "+profile+" "+names[profile]+" render "+(int)display.RenderSize.X+" "+(int)display.RenderSize.Y+" output "+width+" "+height+" aa "+(display.Antialiasing?1:0)+" rim "+percent+" xfb_bytes "+(width*height*4)+" native_bytes "+GraphicsDevice.Default.NativeBytes);
+            DebugOverlay.WriteLine("ANIMALTOWN AASTUDY MODE "+profile+" "+names[profile]+" render "+(int)display.RenderSize.X+" "+(int)display.RenderSize.Y+" output "+width+" "+height+" aa "+(display.Antialiasing?1:0)+" rim "+percent+" xfb_bytes "+(width*height*4)+" native_bytes "+GraphicsDevice.Default.NativeBytes);
         }else if(Active&&!recording){
             count=0;sequence++;recording=true;
-            DebugOverlay.WriteLine("AASTUDY BEGIN "+sequence+" "+profile);
+            DebugOverlay.WriteLine("ANIMALTOWN AASTUDY BEGIN "+sequence+" "+profile);
         }
         return true;
     }
@@ -47,11 +47,11 @@ internal static class AaStudy
         if(++count!=Frames)return;
         recording=false;
         // END precedes the log dump, so host timing excludes reporting costs.
-        DebugOverlay.WriteLine("AASTUDY END "+sequence+" "+profile+" "+count);
+        DebugOverlay.WriteLine("ANIMALTOWN AASTUDY END "+sequence+" "+profile+" "+count);
         for(int i=0;i<count;i++){
             at=i*Fields;
-            DebugOverlay.WriteLine("AASTUDY ROW "+sequence+" "+profile+" "+i+" "+rows[at]+" "+rows[at+1]+" "+rows[at+2]+" "+rows[at+3]+" "+rows[at+4]+" "+rows[at+5]);
+            DebugOverlay.WriteLine("ANIMALTOWN AASTUDY ROW "+sequence+" "+profile+" "+i+" "+rows[at]+" "+rows[at+1]+" "+rows[at+2]+" "+rows[at+3]+" "+rows[at+4]+" "+rows[at+5]);
         }
-        DebugOverlay.WriteLine("AASTUDY DONE "+sequence);
+        DebugOverlay.WriteLine("ANIMALTOWN AASTUDY DONE "+sequence);
     }
 }
