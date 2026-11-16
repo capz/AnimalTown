@@ -16,8 +16,12 @@ only when cloud cover changes. No managed objects are allocated by animation.
 This bounds rendering cost but does not establish a measured hardware frame-time
 improvement; physical GameCube timing remains unverified.
 
-The mask repeats every 128 logical metres and drifts at 0.18 / 0.09 m/s. Ground
-UV0 is world XZ multiplied by 0.5, so secondary scale 2/128 maps the same mask onto
+The mask repeats every 32 logical metres and drifts at 0.6 / 0.3 m/s. The former
+128 m repeat at 0.18 / 0.09 m/s spread each soft patch over most of the gameplay
+camera, making working clouds look like uniform dimming. The smaller repeat
+puts shaded patches and sunlit gaps in view together, with visible movement over
+seconds, using the same mask, filtering, contrast and memory. Ground
+UV0 is world XZ multiplied by 0.5, so secondary scale 2/32 maps the same mask onto
 all material variants and cliff tops. Camera motion, cylinder bending and terrain
 height never enter its coordinates. Texture translations wrap modulo one using
 double-precision elapsed time. Bilinear filtering and a periodic smooth mask
@@ -52,3 +56,8 @@ Inspect cloud-partial-a/b.png, cloud-clear.png, cloud-overcast.png,
 cloud-restored.png and cloud-menu.png. The same-commit prerelease workflow is
 explicitly enabled for feat/cloud-shadows and delivers ISO/server/tools/cliff kit,
 revision/version/validation manifests and SHA-256 checksums.
+
+For visual acceptance, compare partial and clear cover from the same stationary
+camera, then compare partial cover twenty seconds apart. Ground should contain
+both light and shaded areas, and those areas should move without moving the
+camera. A global brightness change alone does not establish visible clouds.
