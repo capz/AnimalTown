@@ -31,6 +31,7 @@ jobs:
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
           fetch-depth: 0
+          submodules: true
           persist-credentials: false
       - name: Pin current main history
         run: git fetch origin main
@@ -60,6 +61,7 @@ jobs:
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
           fetch-depth: 0
+          submodules: true
           persist-credentials: false
       - name: Pin current main history
         run: git fetch origin main

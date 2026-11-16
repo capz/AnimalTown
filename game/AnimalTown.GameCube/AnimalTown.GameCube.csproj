@@ -1,6 +1,7 @@
 <Project Sdk="DolphinDotNet.Sdk">
   <PropertyGroup><OutputType>Exe</OutputType></PropertyGroup>
   <ItemGroup>
+    <Compile Include="../../vendor/card-store-sdk/src/DolphinDotNet.Core/Dolphin/Storage/CardRecordStore.cs" Link="Sdk/CardRecordStore.cs" />
     <Compile Remove="BuildInfo.cs" Condition="Exists('../../out/BuildInfo.cs')" />
     <Compile Include="../../out/BuildInfo.cs" Condition="Exists('../../out/BuildInfo.cs')" />
     <ProjectReference Include="../../shared/AnimalTown.Domain/AnimalTown.Domain.csproj" />

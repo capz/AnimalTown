@@ -11,7 +11,7 @@ internal static class DevConfigStorage
         Status="Dev config defaults";
         try{
             using var card=MemoryCard.Mount(StorageDevice.MemoryCardSlotA,new MemoryCardIdentity("AMTE","01"));
-            var entries=card.GetEntries();for(int i=0;i<entries.Length;i++)if(entries[i].Name==FileName){var config=DevConfig.Decode(card.ReadAllBytes(FileName));Status="Dev config loaded";Dolphin.Diagnostics.DebugOverlay.WriteLine("ANIMALTOWN DEV CONFIG LOADED");return config;}
+            var archive=new CardArchive(card,new byte[0],new byte[0]);foreach(string name in archive.Names())if(name==FileName){var config=DevConfig.Decode(archive.Read(FileName));Status="Dev config loaded";Dolphin.Diagnostics.DebugOverlay.WriteLine("ANIMALTOWN DEV CONFIG LOADED");return config;}
         }catch(Exception){Status="Dev config unavailable; using defaults";}
         return new DevConfig(RuntimeOptions.Mode);
     }
@@ -19,7 +19,7 @@ internal static class DevConfigStorage
     {
         try{
             using var card=MemoryCard.Mount(StorageDevice.MemoryCardSlotA,new MemoryCardIdentity("AMTE","01"));
-            card.WriteSave(FileName,config.Encode(),new MemoryCardSaveOptions{Title="dev config",Comment="AnimalTown debug options"});
+            new CardArchive(card,new byte[0],new byte[0]).Write(FileName,config.Encode());
             Status="Dev config saved";Dolphin.Diagnostics.DebugOverlay.WriteLine("ANIMALTOWN DEV CONFIG SAVED");return true;
         }catch(Exception){Status="Could not save dev config. Check Slot A / free space.";return false;}
     }

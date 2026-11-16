@@ -10,12 +10,13 @@ function Run([string]$file,[string[]]$arguments){& $file @arguments;if($LASTEXIT
 if($plan.rendering.Count){Run dotnet @('run','--project','tests/AnimalTown.RenderingChecks','-c','Release','--','--suites',($plan.rendering -join ','))}
 if($plan.managed.Count){Run dotnet @('run','--project','tests/AnimalTown.Checks','-c','Release','--','--suites',($plan.managed -join ','))}
 if('card' -in $plan.native){Run dotnet @('run','--project','tests/AnimalTown.CardChecks','-c','Release')}
+if('card' -in $plan.native){Run dotnet @('run','--project','vendor/card-store-sdk/tests/CardRecordStoreTests','-c','Release')}
 if($plan.tooling.Count){
     Run dotnet @('build','tools/AnimalTown.Tools','-c','Release','-v','quiet')
     foreach($suite in $plan.tooling){Run dotnet @('run','--project','tools/AnimalTown.Tools','-c','Release','--no-build','--',($suite+'-check'),(Get-Location).Path)}
 }
 $commands=@{
-    card='cc -std=c11 -Wall -Wextra -Werror tests/native-card-read.c -o /tmp/animaltown-card-read && /tmp/animaltown-card-read && cc -std=c11 -Wall -Wextra -Werror tests/native-card-mount.c -o /tmp/animaltown-card-mount && /tmp/animaltown-card-mount'
+    card='cc -std=c11 -Wall -Wextra -Werror tests/native-card-read.c -o /tmp/animaltown-card-read && /tmp/animaltown-card-read && cc -std=c11 -Wall -Wextra -Werror tests/native-card-mount.c -o /tmp/animaltown-card-mount && /tmp/animaltown-card-mount && cc -std=c11 -Wall -Wextra -Werror -Ivendor/card-store-sdk/include vendor/card-store-sdk/tests/card_blocks_test.c -o /tmp/animaltown-card-blocks && /tmp/animaltown-card-blocks'
     uv='cc -std=c11 -Wall -Wextra -Werror tests/native-uv-topology.c -o /tmp/animaltown-uv-topology && /tmp/animaltown-uv-topology'
     texture='cc -std=c11 -Wall -Wextra -Werror -Iout/sdk-native/include tests/native-texture-pages.c -o /tmp/animaltown-texture-pages && /tmp/animaltown-texture-pages'
     voices='cc -std=c11 -Wall -Wextra -Werror -Iout/sdk-native/include tests/native-dialogue-voices.c out/sdk-native/source/audio.c -lm -o /tmp/animaltown-dialogue-voices && /tmp/animaltown-dialogue-voices'

@@ -4,5 +4,8 @@
     <ProjectReference Include="../../shared/AnimalTown.Domain/AnimalTown.Domain.csproj" />
     <Compile Include="../../game/AnimalTown.GameCube/CardSaveStorage.cs" Link="CardSaveStorage.cs" />
     <Compile Include="../../game/AnimalTown.GameCube/CardSaveError.cs" Link="CardSaveError.cs" />
+    <Compile Include="../../game/AnimalTown.GameCube/CardArchive.cs" Link="CardArchive.cs" />
+    <Compile Include="../../game/AnimalTown.GameCube/NativeCardBlocks.cs" Link="NativeCardBlocks.cs" />
+    <Compile Include="../../vendor/card-store-sdk/src/DolphinDotNet.Core/Dolphin/Storage/CardRecordStore.cs" Link="Sdk/CardRecordStore.cs" />
   </ItemGroup>
 </Project>
