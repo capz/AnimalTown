@@ -53,10 +53,11 @@ internal static class FrameProfile
         detail[10]=Math.Min(65535,native[2]);detail[11]=Math.Min(65535,native[3]);detail[12]=Math.Min(65535,native[4]);
         detail[13]=Math.Min(65535,Counters.BufferGrowths);detail[14]=Math.Min(65535,RecycledSections);detail[15]=0;
         for(int i=0;i<15;i++)detail[15]^=detail[i];
+        AaStudy.Record(current[12],current[10],current[11],current[1],Counters.DrawSubmissions,triangles);
     }
     internal static void Draw(Draw2D ui)
     {
-        if(!Enabled)return;long start=Clock.Timestamp;
+        if(!Enabled||AaStudy.Active)return;long start=Clock.Timestamp;
         ui.FillRectangle(new RectF(0,448,640,32),new Color32(16,16,16));
         for(int at=0;at<512;){int length=Hypercube.TelemetryRuns.Length(data,at);if(Hypercube.TelemetryRuns.Lit(data,at))ui.FillRectangle(new RectF(at%64*10,448+at/64*4,length*10,4),new Color32(240,240,240));at+=length;}
         ui.FillRectangle(new RectF(0,432,640,16),new Color32(16,16,16));
