@@ -12,6 +12,14 @@ static GXColor town_environment_tint(void){int rgb=animaltown_environment_color(
 static void town_environment_apply(const DndDrawEffect *effect,int stage){
     int slot=effect?effect->uniforms:0;if(slot>=4)return;
     if(animaltown_environment_color()==0xffffff)return;
+    /* Wide Sunshine RGB must reach its ordinary output clamp before entering
+     * an 8-bit TEV multiply input. Otherwise highlights wrap instead of tint. */
+    if(effect&&effect->count>0&&(effect->stages[effect->count-1].dest&128)&&!(effect->stages[effect->count-1].dest&64)){
+        GX_SetTevDirect((u8)stage);GX_SetTevSwapMode((u8)stage,GX_TEV_SWAP0,GX_TEV_SWAP0);
+        GX_SetTevOrder((u8)stage,GX_TEXCOORD_NULL,GX_TEXMAP_NULL,GX_COLOR_NULL);
+        GX_SetTevColorIn((u8)stage,GX_CC_ZERO,GX_CC_ZERO,GX_CC_ZERO,GX_CC_CPREV);
+        GX_SetTevColorOp((u8)stage,GX_TEV_ADD,GX_TB_ZERO,GX_CS_SCALE_1,GX_TRUE,GX_TEVPREV);town_alpha_pass(stage++);
+    }
     GX_SetNumTevStages((u8)(stage+1));GX_SetTevDirect((u8)stage);GX_SetTevSwapMode((u8)stage,GX_TEV_SWAP0,GX_TEV_SWAP0);
     GX_SetTevOrder((u8)stage,GX_TEXCOORD_NULL,GX_TEXMAP_NULL,GX_COLOR_NULL);
     GX_SetTevKColor((u8)slot,town_environment_tint());GX_SetTevKColorSel((u8)stage,GX_TEV_KCSEL_K0+slot);
