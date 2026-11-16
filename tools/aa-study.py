@@ -39,11 +39,9 @@ scene=r'''        elif '--lighting' in sys.argv:
                     time.sleep(.02)
                 raise AssertionError('AA study marker timed out: '+pattern)
             def chord(x):
-                os.write(controller,b'PRESS L\nPRESS R\n');time.sleep(.12)
                 os.write(controller,('PRESS '+('D_RIGHT' if x else 'D_LEFT')+'\n').encode())
             def release():
-                os.write(controller,b'RELEASE D_RIGHT\nRELEASE D_LEFT\n');time.sleep(.12)
-                os.write(controller,b'RELEASE L\nRELEASE R\n');time.sleep(.12)
+                os.write(controller,b'RELEASE D_RIGHT\nRELEASE D_LEFT\n');time.sleep(.5)
             def mode(expected):
                 offset=len(logtext());chord(1)
                 match,_=wait_pattern(r'AASTUDY MODE '+str(expected)+r' ([\w-]+) render (\d+) (\d+) output (\d+) (\d+) aa (\d+) rim (\d+) xfb_bytes (\d+) native_bytes (\d+)',offset)

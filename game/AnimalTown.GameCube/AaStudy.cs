@@ -5,7 +5,7 @@ using Dolphin.Graphics;
 using Dolphin.Input;
 
 // Research branch only. No startup/default/save setting is changed. Activate
-// with L+R+D-right; L+R+D-left records 240 frames without a telemetry overlay.
+// with D-right; D-left records 240 frames without a telemetry overlay.
 internal static class AaStudy
 {
     private const int Frames=240,Fields=6;
@@ -16,8 +16,7 @@ internal static class AaStudy
     internal static bool Active=>profile>=0;
     internal static bool Input(ControllerState pad,RenderDebugOptions options,ref bool rim)
     {
-        bool chord=pad.L.IsHeld&&pad.R.IsHeld;
-        int direction=chord&&pad.DPadRight.WasPressed?1:chord&&Active&&pad.DPadLeft.WasPressed?-1:0;
+        int direction=pad.DPadRight.WasPressed?1:Active&&pad.DPadLeft.WasPressed?-1:0;
         if(direction==0)return false;
         if(direction>0){
             if(recording)throw new InvalidOperationException("Wait for AA capture to finish");
