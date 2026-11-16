@@ -16,7 +16,16 @@ public sealed class Placement
 public sealed class GroundItem
 {
     public const int PendingRecoveryDay=int.MinValue;
+    private const int WrappedBit=8;
     public int Item,X,Z,Owner,Day,Kind; // 0 drop, 1 buried, 2 planted, 3 tree, 4 lost/found
+    // Independent of item identity: any ordinary dropped item may be gift-wrapped.
+    public bool Wrapped;
+    public int PackedKind=>Kind|(Wrapped?WrappedBit:0);
+    public void RestoreKind(int value)
+    {
+        if(value<0||value>12||(value&7)>4)throw new InvalidOperationException("Invalid ground item kind");
+        Kind=value&7;Wrapped=(value&WrappedBit)!=0;
+    }
 }
 public sealed class Town
 {
@@ -86,10 +95,10 @@ public sealed class Town
     }
     public int FindGround(int x,int z,int kind=-1)
     { for(int i=0;i<GroundCount;i++)if(Ground[i].X==x&&Ground[i].Z==z&&(kind<0||Ground[i].Kind==kind))return i;return -1; }
-    public bool AddGround(int item,int x,int z,int kind,int day)
+    public bool AddGround(int item,int x,int z,int kind,int day,bool wrapped=false)
     {
         if(GroundCount==Ground.Length||!Catalog.Valid(item)||!Walkable(x,z)||FindGround(x,z)>=0)return false;
-        var g=Ground[GroundCount++];g.Item=item;g.X=x;g.Z=z;g.Kind=kind;g.Day=day;g.Owner=ActiveProfile;NotifyCastersChanged();return true;
+        var g=Ground[GroundCount++];g.Item=item;g.X=x;g.Z=z;g.Kind=kind;g.Wrapped=wrapped;g.Day=day;g.Owner=ActiveProfile;NotifyCastersChanged();return true;
     }
     public void RemoveGround(int index)
     { var old=Ground[index];Ground[index]=Ground[--GroundCount];Ground[GroundCount]=old;NotifyCastersChanged(); }
