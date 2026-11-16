@@ -5,10 +5,7 @@ namespace AnimalTown;
 public static class CloudShadowPattern
 {
     public const int Size=64;
-    public const float WorldPeriod=128,SpeedX=.18f,SpeedZ=.09f;
-    public static byte Ambient(float cover)=>(byte)(255-24*Clamp(cover));
-    public static byte Shade(float cover){float c=Clamp(cover);return (byte)(255-44*4*c*(1-c));}
-    private static float Clamp(float x)=>float.IsNaN(x)?0:Math.Max(0,Math.Min(1,x));
+    public const float WorldPeriod=32,SpeedX=.6f,SpeedZ=.3f;
     public static float Offset(double seconds,float speed)=>(float)(seconds*speed/WorldPeriod-Math.Floor(seconds*speed/WorldPeriod));
     public static byte Sample(int x,int z)
     {

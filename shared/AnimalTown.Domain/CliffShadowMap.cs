@@ -4,7 +4,7 @@ namespace AnimalTown;
 // the game uploads only that 32-byte tile, then publishes the completed texture.
 public sealed class CliffShadowMap
 {
-    public const int TextureSize=256,TexelsPerMetre=1,Opacity=66;
+    public const int TextureSize=256,TextureHeight=128,TexelsPerMetre=1,Opacity=66;
     public const float SunX=.6f,SunZ=.4f;
     public readonly byte[] Chunk=new byte[32];
     private readonly bool[] candidates=new bool[Town.Cells];

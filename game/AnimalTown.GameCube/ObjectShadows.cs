@@ -28,7 +28,6 @@ internal sealed class ObjectShadows
     private int groundVersion=-1,terrainVersion=-1,houseHash,building=-1;
     private float focusX=float.NaN,focusZ;
     internal int Triangles {get;private set;}
-    internal bool Enabled=true;
     internal ObjectShadows()
     {
         for(int i=0;i<Capacity;i++)entries[i]=new Entry();
@@ -92,13 +91,13 @@ internal sealed class ObjectShadows
         Publish();
     }
     private void Publish(){for(int i=0;i<Capacity;i++){
-        var e=entries[i];int active=Enabled&&e.Key>=0&&e.Ready&&e.Count>0?1:0;
+        var e=entries[i];int active=e.Key>=0&&e.Ready&&e.Count>0?1:0;
         if(e.Published!=active){NativeShadows.Active(i,active,e.Center);e.Published=active;}
     }}
     // Called only while the terrain renderer's SAME deadline has time left.
     internal bool Advance()
     {
-        if(town==null||!Enabled)return false;
+        if(town==null)return false;
         if(building<0){
             for(int i=0;i<Capacity;i++)if(entries[i].Key>=0&&!entries[i].Ready){building=i;break;}
             if(building<0)return false;

@@ -24,7 +24,7 @@ internal static class CliffShadowChecks
             }
         }
         Block(TerrainElevation.Block);
-        var map=new CliffShadowMap();var packed=new byte[CliffShadowMap.TextureSize*CliffShadowMap.TextureSize];
+        var map=new CliffShadowMap();var packed=new byte[CliffShadowMap.TextureSize*CliffShadowMap.TextureHeight];
         void Bake(){
             Array.Clear(packed);map.Begin(t);int jobs=0;
             while(true){
@@ -38,7 +38,7 @@ internal static class CliffShadowChecks
         }
         byte Pixel(int x,int z)=>packed[((z/4)*(CliffShadowMap.TextureSize/8)+x/8)*32+z%4*8+x%8];
         Bake();
-        check(packed.Length==65536&&CliffShadowMap.TexelsPerMetre==1,"half-resolution cliff field retains one texel per logical metre");
+        check(packed.Length==32768&&CliffShadowMap.TexelsPerMetre==1,"rectangular cliff field retains one texel per logical metre and both filtering gutters");
         check(map.HasCoverage&&Pixel(43,42)==CliffShadowMap.Opacity,"packed mask contains the lower-ground cliff shadow at its original world location");
         check(Pixel(42,42)==0&&Pixel(40,42)==0,"packing leaves the upper cap and sun-facing ground clear");
         check(packed.Any(x=>x>0&&x<CliffShadowMap.Opacity),"area samples preserve softened partial cliff coverage");

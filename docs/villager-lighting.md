@@ -1,9 +1,9 @@
 # Villager rim and merged cast shadows
 
-All house, tree and character cast shadows share RGB (35,49,66) and opacity
+All cloud, cliff, house, tree and character cast shadows share RGB (35,49,66) and opacity
 66/255. Coverage combines with `max`, then the existing ground draw mixes its
 shaded colour with that tint once. Overlapping cores retain the same darkness;
-soft edges take the strongest coverage. Clouds remain a separate weather layer.
+soft edges take the strongest coverage.
 There are no independently blended cast-shadow overlays.
 
 GX has no MAX framebuffer blend equation. The game rasterizes the existing
@@ -21,8 +21,8 @@ and room keys prevent distant-region aliasing. Needed pages cannot be evicted.
 
 Each page retains a static union and a GPU-visible combined mask. Moving actors
 dirty old and new footprints, restore those pages from static coverage and merge
-current characters. Removing scenery dirties its old footprint. Unchanged,
-stationary coverage performs no rasterization or publication. Only modified
+current characters. Removing scenery dirties its old footprint. Cloud motion refreshes outdoor composites at sub-texel phase changes; unchanged
+actor/static coverage needs no new receiver geometry. Only modified
 1 KiB pages are flushed after the previous frame's normal present fence. No
 additional DrawDone is introduced.
 
@@ -33,13 +33,14 @@ a few frames to refresh, rather than making all affected raster jobs stall one
 frame. Triangle bounds reject work outside a small actor footprint before pixel
 tests, and the inner loops avoid library rounding/min/max calls.
 
-All cache storage, the 256x256 cliff field, profiles and receiver coordinates
-occupy one SDK-accounted native buffer below 512 KiB. The 160 static masks and
-160 combined masks use 320 KiB; the cliff field adds 64 KiB. Compared with the
-previous 64x64 pages and 512x512 cliff field, coverage storage drops by 1,152 KiB.
-Smaller support bitsets and scratch storage recover additional memory. A host
-layout measurement reports 517,024 bytes for the complete allocation, down from
-1,710,944 bytes; native device accounting remains the console authority.
+All cache storage, two 256x128 terrain fields, a 64x64 CPU cloud pattern, profiles
+and receiver coordinates occupy one SDK-accounted native buffer below 512 KiB.
+The 160 static and 160 combined masks use 320 KiB; static cliffs and the moving
+cloud/cliff composite together add 64 KiB. Compared with the previous 64x64 pages
+and 512x512 cliff field, coverage storage drops by 1,152 KiB. The host layout is
+521,120 bytes, versus 1,710,944 before the resolution reduction. The previous
+separate GPU cloud mask/effect is removed; native device accounting remains the
+console authority.
 The 16 MiB/512-handle limits remain unchanged. The
 previous 39 shadow mesh buffers/materials and native profile textures are
 removed. Managed staging is reused; there is no per-frame managed mask array or
@@ -55,8 +56,8 @@ matrix before walls/furniture render. Camera rotation needs no mask rebuilding.
 The smaller masks retain linear minification/magnification and their original
 world footprint. Filtering scales them during the existing draw; no full-size
 upsample allocation, extra blur texture or additional draw pass is introduced.
-Source tree/house/circle profiles retain their original resolution. Cloud shading
-is owned separately by the engine and retains its existing 64x64 mask.
+Source tree/house/circle profiles retain their original resolution. See
+[cloud-shadows.md](cloud-shadows.md) for bounded cloud composition and motion.
 
 Receivers still clip dry floor, ramps, beach toes and exact diagonal half-planes
 to connected support. Coverage unions across triangles before a conservative
@@ -89,6 +90,7 @@ moving/removing actors, stationary reuse, clipping guards, triangle/page seams,
 room separation and the 156-page worst case. Change routing and console/CI gates
 include them. `tools/iso-smoke.py --actor-shadows --dsp-hle` covers walking, NPCs,
 entry/exit, interior camera, ramps and cliffs. `--terrain-scroll --stream-stress`
-checks streaming peaks. Hold L+R+Z and press Y to cycle both/off/rim/shadows.
+checks streaming peaks. Cast shadows are always on; shadow/cloud debug toggles
+and their startup settings are retired.
 Animated outlines remain feasible with silhouette passes or baked pose masks.
 Physical GameCube results must be reported separately from emulator results.

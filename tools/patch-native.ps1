@@ -66,20 +66,21 @@ $generated="extern int animaltown_uv_mode(int);`n"+$generated
 [IO.File]::WriteAllText($generatedPath,$generated)
 # Pinned, game-owned coverage union bridge. All buffers use SDK resource
 # accounting; shader hooks shade existing ground geometry exactly once.
-$shadowArgs=@{Init=2;Shutdown=0;Terrain=3;Begin=3;Mesh=5;Active=3;Prepare=1;Scope=1;Stats=1}
+$shadowArgs=@{Init=3;Cloud=1;Shutdown=0;Terrain=3;Begin=3;Mesh=5;Active=3;Prepare=1;Scope=1;Stats=1}
 foreach($method in $shadowArgs.Keys){
     $n=$shadowArgs[$method];$argsPattern=if($n){((1..$n|ForEach-Object {'intptr_t (\w+)'}) -join ', ')}else{'void'}
     $p='intptr_t (dnd_value_AnimalTown_GameCube_NativeShadows_'+$method+'_[a-z0-9]+)\('+$argsPattern+'\) \{.*?\r?\n\}'
     if(([regex]::Matches($generated,$p,[Text.RegularExpressions.RegexOptions]::Singleline)).Count -ne 1){throw "Pinned shadow union bridge changed: $method"}
     $m=$method.ToLowerInvariant()
     $generated=[regex]::Replace($generated,$p,[Text.RegularExpressions.MatchEvaluator]{param($hit)
-        $a=@();for($i=0;$i -lt $n;$i++){$cast=if(($method -eq 'Init') -or ($method -eq 'Terrain' -and $i -eq 0) -or ($method -eq 'Mesh' -and $i -ge 3) -or ($method -eq 'Active' -and $i -eq 2)){'(DndArray*)'}else{'(int)'};$a+=$cast+$hit.Groups[$i+2].Value}
+        $a=@();for($i=0;$i -lt $n;$i++){$cast=if(($method -in @('Init','Cloud')) -or ($method -eq 'Terrain' -and $i -eq 0) -or ($method -eq 'Mesh' -and $i -ge 3) -or ($method -eq 'Active' -and $i -eq 2)){'(DndArray*)'}else{'(int)'};$a+=$cast+$hit.Groups[$i+2].Value}
         'intptr_t '+$hit.Groups[1].Value+'('+$(if($n){((0..($n-1)|ForEach-Object {'intptr_t '+$hit.Groups[$_+2].Value}) -join ', ')}else{'void'})+') { return animaltown_shadows_'+$m+'('+($a -join ',')+'); }'
     },[Text.RegularExpressions.RegexOptions]::Singleline)
 }
 $generated=@'
 #include "dnd_managed.h"
-extern int animaltown_shadows_init(DndArray*,DndArray*);
+extern int animaltown_shadows_init(DndArray*,DndArray*,DndArray*);
+extern int animaltown_shadows_cloud(DndArray*);
 extern int animaltown_shadows_shutdown(void);
 extern int animaltown_shadows_terrain(DndArray*,int,int);
 extern int animaltown_shadows_begin(int,int,int);

@@ -154,12 +154,14 @@ internal sealed class TownGame : IDisposable
     private float facingYaw=3.1415927f;
     private bool loaded,relocate,damagedSave;
     private bool indexedModels=true,batchedDrawing=true;
-    private int lighting=3;
+    private bool rimLighting=true;
     private int uvDebug;
     private bool cliffPreview;
     private int waterInspection;
     private int buildingInspection;
-    private const int SettingsTab=5,TestingTab=6,TestingRows=31;
+    private const int SettingsTab=5,TestingTab=6,TestingRows=29;
+    // Keep the remaining debug option IDs stable; 7/8 were shadow toggles.
+    private static int TestingOption(int row)=>row<7?row:row+2;
     private static readonly string[] tabs={"Backpack","Jobs","Catalog","Home","Post office","Settings","Debug / testing"};
     internal TownGame(DevConfig config,TownSession session)
     {
@@ -196,13 +198,12 @@ internal sealed class TownGame : IDisposable
         buildings=new BuildingRenderer(worldRoot);
         trees=new LowPolyTrees(worldRoot);terrain=new TerrainRenderer();villagerShadows=new VillagerShadows();
         DebugOverlay.WriteLine("ANIMALTOWN WORLD RENDERERS READY");
-        if(NativeShadows.Init(GroundShadow.Atlas(),VillagerShadowPatch.Texture())!=1)throw new InvalidOperationException("Shadow union native budget");
+        if(NativeShadows.Init(GroundShadow.Atlas(),VillagerShadowPatch.Texture(),CloudShadowPattern.Texture())!=1)throw new InvalidOperationException("Shadow union native budget");
         if(config.Values[1]==0)ToggleModelPath();
         if(config.Values[4]==0)ToggleBatching();
         UiFont.Batched=config.Values[4]!=0&&config.Values[5]!=0;
         uvDebug=config.Values[2]|config.Values[3]<<1;
-        lighting=config.Values[6]|config.Values[7]<<1;terrain.ObjectShadowsEnabled=(lighting&2)!=0;
-        float cover=config.Values[8]==0?0:config.Values[8]==1?1:.5f;while(terrain.CloudCover!=cover)terrain.CycleCloudCover();
+        rimLighting=config.Values[6]!=0;
         cliffPreview=config.Values[9]!=0;waterInspection=config.Values[10];
         weather.RainEnabled=config.Values[16]!=0;weather.RoughOceanWhenRaining=config.Values[17]!=0;
         for(int i=0;i<config.Values[18];i++)renderDebug.CycleSeason();
@@ -466,11 +467,9 @@ internal sealed class TownGame : IDisposable
         bool chord=p.L.IsHeld&&p.R.IsHeld;
         if(chord&&p.Z.IsHeld&&p.DPadDown.WasPressed){terrain.FreezeMotion=!terrain.FreezeMotion;return;}
         if(chord&&p.Z.IsHeld&&p.X.WasPressed){terrain.RecreateMeshes=!terrain.RecreateMeshes;return;}
-        if(chord&&p.Z.IsHeld&&p.Y.WasPressed){lighting=(lighting+1)&3;terrain.ObjectShadowsEnabled=(lighting&2)!=0;return;}
         if(chord&&p.A.WasPressed&&screen=="world"){InspectBuilding();return;}
         if(chord&&p.CStick.Y>.8f&&p.Z.WasPressed&&room==0){terrain.ToggleGroundRing();return;}
         if(chord&&p.B.WasPressed){RuntimeOptions.Cycle();return;}
-        if(chord&&p.DPadRight.WasPressed&&room==0){terrain.CycleCloudCover();return;}
         if(chord&&p.DPadUp.WasPressed&&room==0){cliffPreview=!cliffPreview;return;}
         if(chord&&p.DPadLeft.WasPressed&&room==0&&screen=="world"){waterInspection=(waterInspection+1)%6;return;}
         if(waterInspection!=0&&screen=="world"&&!p.Start.WasPressed){if(p.B.WasPressed)waterInspection=0;return;}
@@ -478,24 +477,24 @@ internal sealed class TownGame : IDisposable
         bool navigating=screen=="menu"||screen=="item"||screen=="sell"||screen=="shop"||screen=="store"||screen=="post"||screen=="mail"||screen=="lost";
         int direction=menuNavigation.Read(screen,screen=="menu"?menuTab:-1,p.Stick.X,p.Stick.Y,(int)p.PressedButtons,Clock.Timestamp,navigating&&!chord);
         bool up=direction==MenuNavigation.Up,down=direction==MenuNavigation.Down,left=direction==MenuNavigation.Left,right=direction==MenuNavigation.Right;
-        if(screen=="menu"&&menuTab==TestingTab&&selected==20&&!chord){
+        if(screen=="menu"&&menuTab==TestingTab&&TestingOption(selected)==20&&!chord){
             if(left||right){renderDebug.AdjustRim(right?1:-1);return;}
             if(p.X.WasPressed){renderDebug.ResetRim();return;}
         }
-        if(screen=="menu"&&menuTab==TestingTab&&selected==23&&!chord){
+        if(screen=="menu"&&menuTab==TestingTab&&TestingOption(selected)==23&&!chord){
             if(left||right){renderDebug.AdjustGroundMipDistance(right?1:-1);return;}
             if(p.X.WasPressed){renderDebug.ResetGroundMipDistance();return;}
         }
-        if(screen=="menu"&&menuTab==TestingTab&&selected==24&&!chord){
+        if(screen=="menu"&&menuTab==TestingTab&&TestingOption(selected)==24&&!chord){
             if(left||right){renderDebug.CycleWaterStyle();return;}
             if(p.X.WasPressed){renderDebug.ResetWaterStyle();return;}
         }
-        if(screen=="menu"&&menuTab==TestingTab&&selected==29&&!chord){
+        if(screen=="menu"&&menuTab==TestingTab&&TestingOption(selected)==29&&!chord){
             if(left||right){UiNoiseSettings.Adjust(right?1:-1);return;}
             if(p.X.WasPressed){UiNoiseSettings.Reset();return;}
         }
-        if(screen=="menu"&&menuTab==TestingTab&&(selected==25||selected==26)&&!chord){
-            int option=selected==25?DevConfig.TreeNoiseStrength:DevConfig.TreeNoiseScale;
+        if(screen=="menu"&&menuTab==TestingTab&&(TestingOption(selected)==25||TestingOption(selected)==26)&&!chord){
+            int option=TestingOption(selected)==25?DevConfig.TreeNoiseStrength:DevConfig.TreeNoiseScale;
             if(left||right){debugConfig.Adjust(option,right?1:-1);return;}
             if(p.X.WasPressed){debugConfig.Reset(option);return;}
         }
@@ -624,7 +623,7 @@ internal sealed class TownGame : IDisposable
     private void TestingAction()
     {
         uiShapes.Trim();
-        switch(selected){
+        switch(TestingOption(selected)){
             case 0:FrameProfile.Enabled=!FrameProfile.Enabled;break;
             case 1:ToggleModelPath();break;
             case 2:case 3:
@@ -633,9 +632,7 @@ internal sealed class TownGame : IDisposable
                 break;
             case 4:ToggleBatching();break;
             case 5:if(batchedDrawing)UiFont.Batched=!UiFont.Batched;break;
-            case 6:lighting^=1;break;
-            case 7:lighting^=2;terrain.ObjectShadowsEnabled=(lighting&2)!=0;break;
-            case 8:terrain.CycleCloudCover();break;
+            case 6:rimLighting=!rimLighting;break;
             case 9:if(room==0)cliffPreview=!cliffPreview;break;
             case 10:if(room==0)waterInspection=(waterInspection+1)%6;break;
             case 11:RuntimeOptions.Toggle(1);break;
@@ -679,16 +676,14 @@ internal sealed class TownGame : IDisposable
     private static string OnOff(bool value)=>value?"On":"Off";
     private string TestingLabel(int row)
     {
-        switch(row){
+        switch(TestingOption(row)){
             case 0:return "Performance display: "+OnOff(FrameProfile.Enabled);
             case 1:return "Model drawing: "+(indexedModels?"GX indexed":"Direct comparison");
             case 2:return "UV island colors: "+OnOff((uvDebug&1)!=0);
             case 3:return "UV island outlines: "+OnOff((uvDebug&2)!=0);
             case 4:return "Batched drawing: "+OnOff(batchedDrawing);
             case 5:return "Batched text: "+(batchedDrawing?OnOff(UiFont.Batched):"Requires batched drawing");
-            case 6:return "Actor rim lighting: "+OnOff((lighting&1)!=0);
-            case 7:return "Object / actor shadows: "+OnOff((lighting&2)!=0);
-            case 8:return "Cloud cover: "+(terrain.CloudCover==0?"Clear":terrain.CloudCover==1?"Overcast":"Partial");
+            case 6:return "Actor rim lighting: "+OnOff(rimLighting);
             case 9:return "Cliff preview: "+(room==0?OnOff(cliffPreview):"Outdoors only");
             case 10:return "Water inspection: "+(room!=0?"Outdoors only":waterInspection==0?"Off":waterInspection+" / 5");
             case 11:return "Frame pacing: "+((RuntimeOptions.Mode&1)!=0?"Uncapped":"Yield");
@@ -848,14 +843,14 @@ internal sealed class TownGame : IDisposable
         if(!actorVisibility.Visible[actor]){FrameProfile.CulledObjects++;return;}
         var location=actorVisibility.Locations[actor];float x=location.X,z=location.Z,scale=1.8f,facing=actor==0?facingYaw:location.Yaw;
         var pose=batchedDrawing?modelPoses[modelUsed++]:transform;pose.LocalPosition=SurfacePoint(x,z);pose.LocalScale=new Vector3(scale,scale,scale);pose.LocalRotation=SurfaceRotation(z,facing);
-        if(batchedDrawing){actorQueue.Submit(actors[actor],pose);}else{NativeRim.Enable((lighting&1)!=0?renderDebug.RimPercent:0);try{renderer.DrawModel(actors[actor],pose);}finally{NativeRim.Enable(0);}}
+        if(batchedDrawing){actorQueue.Submit(actors[actor],pose);}else{NativeRim.Enable(rimLighting?renderDebug.RimPercent:0);try{renderer.DrawModel(actors[actor],pose);}finally{NativeRim.Enable(0);}}
     }
     private void DrawActors()
-    {NativeRim.Enable((lighting&1)!=0?renderDebug.RimPercent:0);try{actorQueue.Execute(renderer);}finally{NativeRim.Enable(0);}}
+    {NativeRim.Enable(rimLighting?renderDebug.RimPercent:0);try{actorQueue.Execute(renderer);}finally{NativeRim.Enable(0);}}
     private void PrepareVillagerShadows()
     {
-        villagerShadows.Enabled=(lighting&2)!=0;villagerShadows.BeginFrame(state.Town);
-        NativeShadows.Begin(room,villagerShadows.Enabled?1:0,room==0?0:BuildingWorld.Size(state,room));if(!villagerShadows.Enabled)return;
+        villagerShadows.BeginFrame(state.Town);
+        NativeShadows.Begin(room,1,room==0?0:BuildingWorld.Size(state,room));
         int size=room==0?0:BuildingWorld.Size(state,room);
         bool mat=room!=0&&BuildingWorld.Definition(state,BuildingWorld.Building(room)).Floor==BuildingCatalog.Cottage.Floor;
         for(int actor=0;actor<BuildingWorld.Actors;actor++){
@@ -888,6 +883,7 @@ internal sealed class TownGame : IDisposable
         terrain.GroundMipmaps=renderDebug.GroundMipmaps;terrain.GroundMipDistance=renderDebug.GroundMipDistance;
         cachedPlayerHeight=PlayerHeight();if(room==0)RenderView.Prepare(state.X,state.Z,cachedPlayerHeight);
         if(room!=0)indoorCamera.Configure(BuildingWorld.Definition(state,BuildingWorld.Building(room)));
+        if(room==0)terrain.AnimateShadows((Clock.Timestamp-sessionStart)/1000000.0);
         long phase=FrameProfile.Start(),preparationDeadline=Clock.Timestamp+2000;PrepareVillagerShadows();
         long masksAt=FrameProfile.Start();villagerShadows.PrepareMasks(preparationDeadline);FrameProfile.DetailEnd(4,masksAt);
         if(room==0){
@@ -1135,7 +1131,7 @@ internal sealed class TownGame : IDisposable
         int total=screen=="menu"?TabCount():screen=="shop"?state.Town.StockCount:screen=="mail"?Math.Max(1,state.MailCount):screen=="lost"?Math.Max(1,LostCount()):screen=="store"?8:7;
         bool compact=screen=="menu"&&(menuTab==SettingsTab||menuTab==TestingTab);int page=compact?9:8,step=compact?24:29;float rowScale=compact?1.2f:1.4f;int first=selected/page*page;
         for(int i=first;i<Math.Min(total,first+page);i++){float y=131+(i-first)*step;if(i==selected){Rounded(57,y,520,step-2,(step-2)*.5f,new Color32(221,231,188));Strong("> "+RowLabel(i),68,y,ink,rowScale);}else Text("  "+RowLabel(i),68,y,ink,rowScale);}
-        Text(screen=="menu"&&menuTab==TestingTab&&(selected==25||selected==26||selected==29)?"Left/Right: adjust   A: increase   X: reset":screen=="menu"&&menuTab==TestingTab&&selected==20?"Left/Right: 5%   A: +5%   X: reset":screen=="menu"&&menuTab==TestingTab&&selected==23?"Left/Right: 1 square   A: +1   X: Auto":screen=="menu"&&menuTab==TestingTab&&selected==24?"A / Left/Right: switch   X: Wind Waker":"Stick / D-pad choose   L/R tabs   A select   B close",65,392,ink,1);
+        Text(screen=="menu"&&menuTab==TestingTab&&(TestingOption(selected)==25||TestingOption(selected)==26||TestingOption(selected)==29)?"Left/Right: adjust   A: increase   X: reset":screen=="menu"&&menuTab==TestingTab&&TestingOption(selected)==20?"Left/Right: 5%   A: +5%   X: reset":screen=="menu"&&menuTab==TestingTab&&TestingOption(selected)==23?"Left/Right: 1 square   A: +1   X: Auto":screen=="menu"&&menuTab==TestingTab&&TestingOption(selected)==24?"A / Left/Right: switch   X: Wind Waker":"Stick / D-pad choose   L/R tabs   A select   B close",65,392,ink,1);
         if(screen=="menu"&&menuTab==SettingsTab){
             Text("Manual saves only. Choose Save now to write the card.",65,331,ink,1);
             Text(saveStatusText.Get(saveStatus),65,357,ink,1);

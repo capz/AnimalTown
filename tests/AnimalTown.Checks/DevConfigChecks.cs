@@ -19,10 +19,11 @@ internal static class DevConfigChecks
         check(defaults.Values.SequenceEqual(restored.Values),"all dev options survive their own save record");
         check(!SplitSaveCodec.IsFile("dev_config"),"dev config cannot be counted as a damaged town save");
         check(!DevConfig.IsSetting(14)&&!DevConfig.IsSetting(15),"teleport actions are not startup configuration");
+        check(Enumerable.Range(0,DevConfig.Count).Count(DevConfig.IsSetting)==DevConfig.SettingCount,"title debug rows contain every remaining setting exactly once");
         encoded[10]^=1;bool rejected=false;try{DevConfig.Decode(encoded);}catch(IOException){rejected=true;}check(rejected,"damaged dev config rejected before application");
         var sliders=new DevConfig();for(int i=0;i<100;i++){sliders.Adjust(20,-1);sliders.Adjust(23,1);}
         check(sliders.Values[20]==0&&sliders.Values[23]==10,"dev sliders remain bounded");
-        sliders.Adjust(8,-1);check(sliders.Values[8]==1,"dev enums cycle in both directions");
+        sliders.Adjust(8,-1);sliders.Adjust(7,-1);check(sliders.Values[8]==2&&sliders.Values[7]==1&&!DevConfig.IsSetting(7)&&!DevConfig.IsSetting(8),"retired shadow toggles cannot be selected or adjusted");
         sliders.Values[20]=1;rejected=false;try{sliders.Encode();}catch(InvalidOperationException){rejected=true;}check(rejected,"invalid rim increments cannot create an un-restorable config");
         var original=DevConfig.Decode(Convert.FromBase64String("QVREAQEBAAABAQEBAgAAAAAAAAAAAAIAfQABBAAAAADlXYtQ"));
         check(original.Values[0]==1&&original.Values[20]==125&&original.Values[23]==4&&original.Values[18]==2,"v1 debug file keeps existing options during migration");
