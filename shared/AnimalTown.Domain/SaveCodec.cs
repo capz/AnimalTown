@@ -46,7 +46,7 @@ public static class SaveCodec
         Put(b,ref countAt,runs);
         for(int i=0;i<12;i++)Put(b,ref p,s.Town.Stock[i]);
         for(int i=0;i<6;i++){var v=s.Town.Residents[i];Put(b,ref p,v.X);Put(b,ref p,v.Z);Put(b,ref p,v.Friendship);Put(b,ref p,v.Request);Put(b,ref p,v.RequestDay);Put(b,ref p,v.Met);}
-        Put(b,ref p,s.Town.GroundCount);for(int i=0;i<s.Town.GroundCount;i++){var g=s.Town.Ground[i];Put(b,ref p,g.Item);Put(b,ref p,g.X);Put(b,ref p,g.Z);Put(b,ref p,g.Owner);Put(b,ref p,g.Day);Put(b,ref p,g.Kind);}
+        Put(b,ref p,s.Town.GroundCount);for(int i=0;i<s.Town.GroundCount;i++){var g=s.Town.Ground[i];Put(b,ref p,g.Item);Put(b,ref p,g.X);Put(b,ref p,g.Z);Put(b,ref p,g.Owner);Put(b,ref p,g.Day);Put(b,ref p,g.PackedKind);}
         Put(b,ref p,s.Town.PlacedCount);for(int i=0;i<s.Town.PlacedCount;i++){var q=s.Town.Placed[i];Put(b,ref p,q.Item);Put(b,ref p,q.X);Put(b,ref p,q.Z);Put(b,ref p,q.Rotation);Put(b,ref p,q.Room);Put(b,ref p,q.Owner);}
         Put(b,ref p,TownGenerator.Version);Put(b,ref p,elevationRuns);
         for(int i=0;i<Town.Cells;){byte mode=s.Town.Elevation[i];int length=1;while(i+length<Town.Cells&&s.Town.Elevation[i+length]==mode)length++;Put(b,ref p,(mode<<24)|length);i+=length;}
@@ -100,7 +100,7 @@ public static class SaveCodec
         for(int i=0;i<6;i++){var v=s.Town.Residents[i];v.X=Range(b,ref p,0,sourceWidth-1);v.Z=Range(b,ref p,0,sourceHeight-1);v.Friendship=Range(b,ref p,0,255);v.Request=Range(b,ref p,0,25);v.RequestDay=Get(b,ref p);v.Met=Range(b,ref p,0,1);}
         int groundCount=Range(b,ref p,0,512);s.Town.GroundCount=0;
         for(int i=0;i<groundCount;i++){
-            var g=s.Town.Ground[s.Town.GroundCount];g.Item=Range(b,ref p,1,25);g.X=Range(b,ref p,0,sourceWidth-1);g.Z=Range(b,ref p,0,sourceHeight-1);g.Owner=Range(b,ref p,0,3);g.Day=Get(b,ref p);g.Kind=Range(b,ref p,0,4);
+            var g=s.Town.Ground[s.Town.GroundCount];g.Item=Range(b,ref p,1,25);g.X=Range(b,ref p,0,sourceWidth-1);g.Z=Range(b,ref p,0,sourceHeight-1);g.Owner=Range(b,ref p,0,3);g.Day=Get(b,ref p);g.RestoreKind(Range(b,ref p,0,12));
             s.Town.GroundCount++;
         }
         int count=Range(b,ref p,0,256);s.Town.PlacedCount=0;
