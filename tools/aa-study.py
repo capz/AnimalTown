@@ -40,9 +40,9 @@ scene=r'''        elif '--lighting' in sys.argv:
                 raise AssertionError('AA study marker timed out: '+pattern)
             def chord(x):
                 os.write(controller,b'PRESS L\nPRESS R\n');time.sleep(.12)
-                os.write(controller,('SET C '+str(x)+' .5\n').encode())
+                os.write(controller,('PRESS '+('D_RIGHT' if x else 'D_LEFT')+'\n').encode())
             def release():
-                os.write(controller,b'SET C .5 .5\n');time.sleep(.12)
+                os.write(controller,b'RELEASE D_RIGHT\nRELEASE D_LEFT\n');time.sleep(.12)
                 os.write(controller,b'RELEASE L\nRELEASE R\n');time.sleep(.12)
             def mode(expected):
                 offset=len(logtext());chord(1)
