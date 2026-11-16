@@ -162,7 +162,7 @@ owner deadline. Ground objects outside gardens sweep to Lost & Found; original
 dropper retains exclusive claim for three days, recycle after seven days.
 Distinguish lost-quest age from Lost & Found retention age.
 
-Activities: shake fruit/money from trees; plant/water flowers; digging reveals
+Activities: shake fruit/money from trees; plant flowers; digging reveals
 fossils/clay chimes; rod and net perform bounded timing/range checks; axe obeys
 host permission; tools do not break. Interiors are separate small room scenes
 with tier-specific sizes and per-room placements. Exterior palette, fence,

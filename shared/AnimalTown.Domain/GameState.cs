@@ -159,12 +159,15 @@ public sealed partial class GameState
         // A cropped save may be months old. Start recovered possessions' full
         // retention window on the first calendar update, before catch-up expiry.
         for(int i=0;i<Town.GroundCount;i++)if(Town.Ground[i].Kind==4&&Town.Ground[i].Day==GroundItem.PendingRecoveryDay)Town.Ground[i].Day=Math.Max(day,Town.Day);
+        // Old same-day stock can contain the retired tool. Preserve every item ID
+        // in saves, but never offer a watering can as a new purchase.
+        for(int i=0;i<Town.StockCount;i++)if(Town.Stock[i]==Catalog.LegacyWateringCan)Town.Stock[i]=10+(Math.Max(Town.Day,0)%4+i)%4;
         if(day<=Town.Day)return;
         CaptureProfile();
         for(int p=0;p<ProfileCount;p++)if(Profiles[p].Created)Profiles[p].Rollover(day,month,Town.Month);
         RestoreProfile(ActiveProfile);Town.Month=month;Town.Day=day;
         Town.StockCount=Town.Spending>=100000?12:Town.Spending>=25000?9:6;
-        for(int i=0;i<Town.StockCount;i++)Town.Stock[i]=i<5?i+5:10+(day+i)%4;
+        for(int i=0;i<Town.StockCount;i++)Town.Stock[i]=i<Catalog.ToolCount?Catalog.ToolAt(i):10+(day+i)%4;
         for(int i=Town.GroundCount-1;i>=0;i--)
         {
             var g=Town.Ground[i];

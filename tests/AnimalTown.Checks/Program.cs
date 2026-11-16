@@ -10,7 +10,7 @@ var selected=args.Length==0?available:args[1].Split(',');
 foreach(string name in selected)if(!available.Contains(name))throw new ArgumentException("Unknown check suite: "+name);
 bool Wants(string name)=>selected.Contains(name);
 if(Wants("ui")){UiShapePlanChecks.Run(Check);}
-if(Wants("menu"))MenuNavigationChecks.Run(Check);
+if(Wants("menu")){MenuNavigationChecks.Run(Check);PocketMenuChecks.Run(Check);}
 if(Wants("trim"))TownTrimChecks.Run(Check);
 if(Wants("text"))WrappedTextChecks.Run(Check);
 if(Wants("terrain")){TerrainEdgeChecks.Run(Check);TerrainResidencyChecks.Run(Check);}

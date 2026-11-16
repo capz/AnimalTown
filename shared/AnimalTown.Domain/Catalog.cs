@@ -13,6 +13,9 @@ public sealed class ItemDef
 public static class Catalog
 {
     public const int Version=1;
+    public const int FishingRod=5,BugNet=6,Shovel=7,LegacyWateringCan=8,Axe=9;
+    public const int ToolCount=4;
+    private static readonly int[] tools={FishingRod,BugNet,Shovel,Axe};
     public static readonly ItemDef[] Items={
         new ItemDef(0,"Empty",0,0,0),
         new ItemDef(1,"Peach",400,100,ItemFlags.Sell|ItemFlags.Gift|ItemFlags.Eat|ItemFlags.Plant|ItemFlags.Bury),
@@ -22,7 +25,8 @@ public static class Catalog
         new ItemDef(5,"Fishing rod",500,125,ItemFlags.Sell|ItemFlags.Tool),
         new ItemDef(6,"Bug net",500,125,ItemFlags.Sell|ItemFlags.Tool),
         new ItemDef(7,"Shovel",500,125,ItemFlags.Sell|ItemFlags.Tool),
-        new ItemDef(8,"Watering can",500,125,ItemFlags.Sell|ItemFlags.Tool),
+        // Keep ID 8 readable/sellable for existing saves; it is not a GameCube tool.
+        new ItemDef(8,"Watering can",0,125,ItemFlags.Sell),
         new ItemDef(9,"Axe",500,125,ItemFlags.Sell|ItemFlags.Tool),
         new ItemDef(10,"Pine chair",1200,300,ItemFlags.Sell|ItemFlags.Gift|ItemFlags.Place|ItemFlags.Outdoor),
         new ItemDef(11,"Garden table",2400,600,ItemFlags.Sell|ItemFlags.Gift|ItemFlags.Place|ItemFlags.Outdoor,2,1),
@@ -41,6 +45,10 @@ public static class Catalog
         new ItemDef(24,"50000 acorns",50000,50000,ItemFlags.Bury),
         new ItemDef(25,"Reading lamp",1800,450,ItemFlags.Sell|ItemFlags.Gift|ItemFlags.Place)
     };
+    public static int ToolAt(int index)=>index>=0&&index<ToolCount?tools[index]:0;
+    public static int EntryCount=>Items.Length-2; // Empty and the retired watering can.
+    public static int EntryAt(int row)
+    {for(int id=1;id<Items.Length;id++)if(id!=LegacyWateringCan&&row--==0)return id;return 0;}
     public static bool Valid(int id)=>id>0&&id<Items.Length;
     public static bool Has(int id,ItemFlags flags)=>Valid(id)&&(Items[id].Flags&flags)==flags;
 }

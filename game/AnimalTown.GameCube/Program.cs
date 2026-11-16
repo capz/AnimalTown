@@ -147,7 +147,7 @@ internal sealed class TownGame : IDisposable
     private bool returnToMenu;
     private int returnMenuTab,returnMenuSelection;
     private int selected,slot,rotation,tick,day,month,menuTab,faceX,faceZ=-1,typeAt,voiceTick;
-    private int jobProgress,moveClip=-1;
+    private int moveClip=-1;
     private long sessionStart;
     private float facingYaw=3.1415927f;
     private bool loaded,relocate,damagedSave;
@@ -159,7 +159,6 @@ internal sealed class TownGame : IDisposable
     private int buildingInspection;
     private const int SettingsTab=5,TestingTab=6,TestingRows=31;
     private static readonly string[] tabs={"Backpack","Jobs","Catalog","Home","Post office","Settings","Debug / testing"};
-    private static readonly string[] itemActions={"Drop","Place (R rotates)","Plant","Eat","Wear","Equip","Bury","Open money bag","Read","Quit"};
     internal TownGame(DevConfig config,TownSession session)
     {
         this.session=session;releaseIntro=session.Draft==null;
@@ -516,20 +515,19 @@ internal sealed class TownGame : IDisposable
         }
         if(screen=="item")
         {
-            if(down)selected=(selected+1)%10;if(up)selected=(selected+9)%10;
-            if(p.R.WasPressed)rotation=(rotation+1)%4;
+            int item=state.Pockets[slot],count=PocketMenu.Count(item,room);
+            selected=Math.Max(0,Math.Min(selected,count-1));
+            if(down)selected=(selected+1)%count;if(up)selected=(selected+count-1)%count;
+            if(p.R.WasPressed&&PocketMenu.HasAction(item,room,PocketAction.Place))rotation=(rotation+1)%4;
             if(Press(p))
             {
-                if(room!=0&&(selected==0||selected==2||selected==6)){Say("Home","Drop, plant and bury outdoors. Choose Place for indoor furniture.");return;}
-                bool ok=false;int tx=(int)state.X+faceX,tz=(int)state.Z+faceZ;
-                if(selected==0)ok=state.Use(slot,0,tx,tz);if(selected==1)ok=state.Place(slot,tx,tz,rotation,room);
-                if(selected==2)ok=state.Use(slot,1,tx,tz);if(selected==3)ok=state.Use(slot,2,tx,tz);
-                if(selected==4)ok=state.Use(slot,3,tx,tz);if(selected==5)ok=state.Use(slot,4,tx,tz);
-                if(selected==6)ok=state.Use(slot,5,tx,tz);if(selected==7)ok=state.Use(slot,6,tx,tz);
-                if(selected==8&&state.Pockets[slot]==19){Say("Letter","Thank you for being a part of our town!");return;}
-                if(selected==9){screen="menu";selected=slot;return;}
+                PocketAction action=PocketMenu.At(item,room,selected);
+                if(action==PocketAction.Read){Say("Letter","Thank you for being a part of our town!");return;}
+                if(action==PocketAction.Quit){screen="menu";menuTab=0;selected=slot;return;}
+                int tx=(int)state.X+faceX,tz=(int)state.Z+faceZ;
+                bool ok=PocketMenu.Perform(state,slot,action,tx,tz,rotation,room);
                 if(ok&&state.Tutorial==0&&state.Shirt==4)state.CreditTutorial(0);
-                if(ok&&selected==2&&state.Tutorial==1)state.CreditTutorial(1);
+                if(ok&&action==PocketAction.Plant&&state.Tutorial==1)state.CreditTutorial(1);
                 Say("Backpack",ok?"Done!":"That action is not possible here.");
             }
             return;
@@ -557,7 +555,7 @@ internal sealed class TownGame : IDisposable
         { int index=LostIndex(selected);Say("Town hall",state.ClaimLost(index,state.ActiveProfile)?"Recovered!":"Your pockets are full, or the item is reserved.");return; }
         if(screen=="menu")MenuAction();
     }
-    private int TabCount()=>menuTab==0?state.Capacity:menuTab==1?7:menuTab==2?Catalog.Items.Length-1:menuTab==3?7:menuTab==4?7:menuTab==TestingTab?TestingRows:6;
+    private int TabCount()=>menuTab==0?state.Capacity:menuTab==1?7:menuTab==2?Catalog.EntryCount:menuTab==3?7:menuTab==4?7:menuTab==TestingTab?TestingRows:6;
     private void ToggleModelPath()
     {int next=indexedModels?0:1;if(NativeRenderProbe.Indexed(next)!=next)throw new InvalidOperationException("Model renderer switch failed");indexedModels=!indexedModels;}
     private int LostCount(){int c=0;for(int i=0;i<state.Town.GroundCount;i++)if(state.Town.Ground[i].Kind==4)c++;return c;}
@@ -591,7 +589,7 @@ internal sealed class TownGame : IDisposable
     {
         if(menuTab==0){slot=selected;screen="item";selected=0;return;}
         if(menuTab==1){Say("Jobs",selected==0?TutorialText():state.Town.Residents[selected-1].Name+": "+(state.Town.Residents[selected-1].Request==0?"No request":"Bring "+Catalog.Items[state.Town.Residents[selected-1].Request].Name));return;}
-        if(menuTab==2){Say("Catalog",state.Order(selected+1)?"Ordered! Check your mailbox after the next rollover.":"Only previously owned store items can be ordered.");return;}
+        if(menuTab==2){Say("Catalog",state.Order(Catalog.EntryAt(selected))?"Ordered! Check your mailbox after the next rollover.":"Only previously owned store items can be ordered.");return;}
         if(menuTab==3)
         {
             if(selected==0){state.Roof=(state.Roof+1)%12;Say("Home","Roof palette selected.");}
@@ -722,19 +720,18 @@ internal sealed class TownGame : IDisposable
         if(ground>=0)
         {
             var g=state.Town.Ground[ground];
-            if(g.Kind==3){if(state.Tool==9){g.Kind=0;g.Item=3;Say("Tree","A sapling for replanting.");}else if(state.Receive(1))Say("Tree","A ripe peach drops into your pockets!");return;}
-            if(g.Kind==1&&state.Tool==7&&state.Receive(g.Item)){state.Town.RemoveGround(ground);Say("Digging","You found something!");return;}
-            if(g.Kind==2&&state.Tool==8){jobProgress++;Say("Flowers","Watered with care.");return;}
+            if(g.Kind==3){if(state.Tool==Catalog.Axe){g.Kind=0;g.Item=3;Say("Tree","A sapling for replanting.");}else if(state.Receive(1))Say("Tree","A ripe peach drops into your pockets!");return;}
+            if(g.Kind==1&&state.Tool==Catalog.Shovel&&state.Receive(g.Item)){state.Town.RemoveGround(ground);Say("Digging","You found something!");return;}
         }
-        if(state.Tool==5&&(WaterSurface.IsWater(state.Town,tx,tz)||WaterSurface.IsWater(state.Town,tx+1,tz)))
+        if(state.Tool==Catalog.FishingRod&&(WaterSurface.IsWater(state.Town,tx,tz)||WaterSurface.IsWater(state.Town,tx+1,tz)))
         { Say("Fishing",state.Receive(14)?"A river fish!":"Your pockets are full.");return; }
-        if(state.Tool==6){
+        if(state.Tool==Catalog.BugNet){
             // Keep successful bug catches; misses are silent like all other
             // empty-space interactions.
             if(tick%3==0&&state.Receive(15))Say("Bug net","Caught a butterfly!");
             return;
         }
-        if(state.Tool==7&&state.Town.AddGround(16,tx,tz,1,day)){Say("Digging","A spot for something buried.");return;}
+        if(state.Tool==Catalog.Shovel&&state.Town.AddGround(16,tx,tz,1,day)){Say("Digging","A spot for something buried.");return;}
         // Nothing in reach. Do not interrupt movement with an idle dialogue.
     }
     internal void Step(ControllerState pad)
@@ -1135,7 +1132,7 @@ internal sealed class TownGame : IDisposable
         if(screen=="lost"){int n=LostIndex(i);return n<0?"No lost items":Catalog.Items[state.Town.Ground[n].Item].Name;}
         if(menuTab==0)return (i+1)+". "+Catalog.Items[state.Pockets[i]].Name;
         if(menuTab==1)return i==0?"Tutorial / daily jobs":state.Town.Residents[i-1].Name+" / friendship "+state.Town.Residents[i-1].Friendship;
-        if(menuTab==2)return Catalog.Items[i+1].Name+(state.Owned[i+1]==0?" (not owned)":" / "+Catalog.Items[i+1].Buy);
+        if(menuTab==2){int id=Catalog.EntryAt(i);return Catalog.Items[id].Name+(state.Owned[id]==0?" (not owned)":" / "+Catalog.Items[id].Buy);}
         if(menuTab==3){string[] a={"Roof palette","Exterior palette","Fence style","Mailbox","Relocate (50000)","Expand house","Expand garden"};return a[i];}
         if(menuTab==TestingTab)return TestingLabel(i);
         string[] settings={"Save now","Controls","About / build identity","Calendar","Chat settings","Debug / testing menu"};return settings[i];
@@ -1163,7 +1160,8 @@ internal sealed class TownGame : IDisposable
         // Follow the actual slot for both the title and action menu. Clamp the
         // panel (including bulges/shadow) above the HUD for all backpack sizes.
         float slotX=99+focus%5*58,slotY=144+focus/5*44;
-        float popWidth=actions?186:168,popHeight=actions?272:141;
+        int actionCount=PocketMenu.Count(state.Pockets[focus],room);
+        float popWidth=actions?186:168,popHeight=actions?92+actionCount*18:141;
         float popX=Math.Min(slotX+66,607-popWidth),popY=Math.Max(80,Math.Min(slotY-12,428-popHeight));
         float pointerY=Math.Max(popY+36,Math.Min(slotY+20,popY+popHeight-36));
         Panel(popX,popY,popWidth,popHeight);
@@ -1172,12 +1170,12 @@ internal sealed class TownGame : IDisposable
         Strong(itemTitleText.Get(item==0?"Empty pocket":Catalog.Items[item].Name),textX,popY+12,ink,1.3f);
         if(actions)
         {
-            for(int i=0;i<itemActions.Length;i++){
+            for(int i=0;i<actionCount;i++){
                 float y=popY+56+i*18;
                 if(i==selected)Rounded(popX+10,y-1,popWidth-20,18,9,new Color32(221,231,188));
-                Text((i==selected?"> ":"  ")+itemActions[i],textX,y,ink,1.05f);
+                Text((i==selected?"> ":"  ")+PocketMenu.Label(PocketMenu.At(item,room,i)),textX,y,ink,1.05f);
             }
-            Text("A select   B back",textX,popY+246,ink,1);
+            Text("A select   B back",textX,popY+popHeight-26,ink,1);
         }
         else if(item==0)Text("Room for\nsomething new.",textX,popY+67,ink,1.1f);
         else
