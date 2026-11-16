@@ -11,12 +11,13 @@ static int assertions;
 static void reset(void){su_init(s);memset(s->shapes,255,sizeof(s->shapes));su_begin(s,0,1,0);}
 static void caster(int i,int profile,const float *uv,int n,const float *b){su_mesh(s,i,n,profile,uv,b);su_active(s,i,1,4,4);}
 static void next(void){su_begin(s,0,1,0);}
-static int pixel(float x,float z){int p=su_find(s,(int)floorf(x/8),(int)floorf(z/8));CHECK(p>=0);int a=(int)((x-s->page[p].x*8)*62/8+1),b=(int)((z-s->page[p].z*8)*62/8+1);return s->pixels[p*SU_BYTES+su_offset(a,b)];}
+static int pixel(float x,float z){int p=su_find(s,(int)floorf(x/8),(int)floorf(z/8));CHECK(p>=0);int a=(int)((x-s->page[p].x*8)*SU_INNER/8+1),b=(int)((z-s->page[p].z*8)*SU_INNER/8+1);return s->pixels[p*SU_BYTES+su_offset(a,b)];}
 static int credits;
 static int allow_work(void *unused){(void)unused;return credits-->0;}
 int main(void){
     native_shadow_combiner_checks();
-    s=aligned_alloc(32,su_storage_bytes());CHECK(s!=NULL);CHECK(su_storage_bytes()<1792*1024);
+    s=aligned_alloc(32,su_storage_bytes());CHECK(s!=NULL);CHECK(su_storage_bytes()<512*1024);
+    CHECK(SU_PAGES*SU_BYTES*2+SU_TERRAIN_BYTES==384*1024);
     reset();caster(0,0,rect,6,bounds);su_prepare(s,SU_PAGES);CHECK(pixel(4,4)==SU_OPACITY);
     uint8_t original[SU_BYTES];int page=su_find(s,0,0);memcpy(original,s->pixels+page*SU_BYTES,SU_BYTES);
     for(int i=1;i<32;i++)caster(i,i%4,rect,6,bounds);
@@ -50,8 +51,15 @@ int main(void){
      * sample positions. Native placement never aliases distant world tiles. */
     reset();float across[12];for(int i=0;i<6;i++){across[i*2]=rect[i*2]+4;across[i*2+1]=rect[i*2+1];}
     const float ab[]={6,1,10,7};caster(0,0,across,6,ab);su_prepare(s,SU_PAGES);int left=su_find(s,0,0),right=su_find(s,1,0);CHECK(left>=0&&right>=0);
-    CHECK(s->pixels[left*SU_BYTES+su_offset(62,31)]==s->pixels[right*SU_BYTES+su_offset(0,31)]);
-    CHECK(s->pixels[left*SU_BYTES+su_offset(63,31)]==s->pixels[right*SU_BYTES+su_offset(1,31)]);
+    CHECK(s->pixels[left*SU_BYTES+su_offset(SU_INNER,SU_SIDE/2-1)]==s->pixels[right*SU_BYTES+su_offset(0,SU_SIDE/2-1)]);
+    CHECK(s->pixels[left*SU_BYTES+su_offset(SU_SIDE-1,SU_SIDE/2-1)]==s->pixels[right*SU_BYTES+su_offset(1,SU_SIDE/2-1)]);
+    /* A nonuniform source detects coordinate/stride mistakes hidden by a
+     * solid profile, across both duplicated gutter columns. */
+    for(int y=0;y<64;y++)for(int x=0;x<64;x++)s->shapes[y*64+x]=(uint8_t)(x+y);
+    su_dirty(s,&s->caster[0]);su_prepare(s,SU_PAGES);
+    for(int y=0;y<SU_SIDE;y++)for(int x=0;x<2;x++)
+        CHECK(abs((int)s->pixels[left*SU_BYTES+su_offset(SU_INNER+x,y)]-s->pixels[right*SU_BYTES+su_offset(x,y)])<=1);
+    memset(s->shapes,255,sizeof(s->shapes));su_dirty(s,&s->caster[0]);su_prepare(s,SU_PAGES);
     su_begin(s,3,1,4);su_prepare(s,SU_PAGES);CHECK(su_find(s,0,0)<0);su_begin(s,0,1,0);su_prepare(s,SU_PAGES);CHECK(pixel(7,4)==SU_OPACITY);
     /* Worst-case separated footprints: four pages each, 39 casters. */
     reset();for(int i=0;i<39;i++){
@@ -140,5 +148,6 @@ int main(void){
     CHECK(pixel(4,4)==33);
     su_terrain_reset(s);CHECK(!s->terrain_ready&&su_terrain_sample(s,4,4)==0);
     su_prepare(s,SU_PAGES);CHECK(pixel(4,4)==0);
+    printf("Shadow storage: %zu bytes total; %d-byte pages, %d-byte cliff field\n",su_storage_bytes(),SU_BYTES,SU_TERRAIN_BYTES);
     free(s);printf("Shadow union: %d checks; max overlap, soft edges, trails, clipping, seams, rooms and 156-page bound passed\n",assertions);return 0;
 }

@@ -44,6 +44,17 @@ int main(void){
     assert(animaltown_shadows_stats(10)==(int)su_storage_bytes());
     /* Repeated init does not allocate a second coverage cache. */
     assert(animaltown_shadows_init(atlas,circle)==1&&live==1);
+    float origin[4];assert(animaltown_shadows_begin(0,1,0)==1);
+    assert(animaltown_shadows_page(2,2,origin)==NULL&&origin[2]==8&&origin[3]==32);
+    DndArray *empty=pixels(0),*tile=pixels(32);memset(tile->data,33,32);
+    assert(animaltown_shadows_terrain(empty,0,0)==1);
+    assert(animaltown_shadows_terrain(tile,0,1)==1);
+    assert(animaltown_shadows_terrain(tile,SU_TERRAIN_BYTES-32,1)==1);
+    assert(animaltown_shadows_terrain(tile,SU_TERRAIN_BYTES,1)==0);
+    assert(animaltown_shadows_terrain(empty,0,2)==1);
+    assert(animaltown_shadows_page(2,2,origin)==shadows->terrain&&origin[2]==254&&origin[3]==256);
+    assert(su_terrain_sample(shadows,2,2)==33); /* One texel/m, including the gutter. */
+    free(empty);free(tile);
     shadows->caster[0].active=1;shadows->terrain_ready=1;
     active=1;assert(animaltown_shadows_shutdown()==0&&live==1&&shadows);active=0;
     release_error=1;assert(animaltown_shadows_shutdown()==0&&live==1&&shadows);release_error=0;

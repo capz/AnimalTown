@@ -5,7 +5,7 @@ Set-Location (Split-Path $PSScriptRoot -Parent)
 $plan=Get-Content out/validation-plan.json -Raw|ConvertFrom-Json
 if($PlanOnly){return}
 # Managed/backend/docs checks do not need a GameCube SDK restore or native copy.
-if(@($plan.native | Where-Object {$_ -in @('texture','voices','patched')}).Count){. ./tools/resolve-packages.ps1}
+if(@($plan.native | Where-Object {$_ -in @('texture','voices','shadows','patched')}).Count){. ./tools/resolve-packages.ps1}
 function Run([string]$file,[string[]]$arguments){& $file @arguments;if($LASTEXITCODE){throw "$file checks failed"}}
 if($plan.rendering.Count){Run dotnet @('run','--project','tests/AnimalTown.RenderingChecks','-c','Release','--','--suites',($plan.rendering -join ','))}
 if($plan.managed.Count){Run dotnet @('run','--project','tests/AnimalTown.Checks','-c','Release','--','--suites',($plan.managed -join ','))}

@@ -1,12 +1,12 @@
 /* Game ground shader hook. Independent of the villager rim scope. */
 extern int animaltown_shadows_mode(void);
 extern const uint8_t *animaltown_shadows_page(float,float,float*);
-static uint8_t town_shadow_empty[4096] __attribute__((aligned(32)));
+static uint8_t town_shadow_empty[32*32] __attribute__((aligned(32)));
 static void town_shadow_apply(float x,float z,const float *world,const DndDrawEffect *effect,unsigned *bindings){
     int mode=animaltown_shadows_mode();if(!mode)return;
     float origin[4];const uint8_t *pixels=animaltown_shadows_page(x,z,origin);
     static int empty_ready;if(!empty_ready){DCFlushRange(town_shadow_empty,sizeof(town_shadow_empty));empty_ready=1;}
-    GXTexObj tex;int side=pixels?(int)origin[3]:64;GX_InitTexObj(&tex,(void*)(pixels?pixels:town_shadow_empty),(u16)side,(u16)side,GX_TF_I8,GX_CLAMP,GX_CLAMP,GX_FALSE);
+    GXTexObj tex;int side=(int)origin[3];GX_InitTexObj(&tex,(void*)(pixels?pixels:town_shadow_empty),(u16)side,(u16)side,GX_TF_I8,GX_CLAMP,GX_CLAMP,GX_FALSE);
     GX_InitTexObjLOD(&tex,GX_LINEAR,GX_LINEAR,0,0,0,GX_FALSE,GX_FALSE,GX_ANISO_1);GX_LoadTexObj(&tex,GX_TEXMAP2);(*bindings)++;
     int stage=effect?effect->count:1;
     GX_SetNumTevStages((u8)(stage+2));GX_SetNumTexGens(3);
