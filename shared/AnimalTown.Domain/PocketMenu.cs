@@ -5,6 +5,10 @@ public enum PocketAction { Equip,Drop,Place,Plant,Eat,Wear,Bury,OpenMoneyBag,Rea
 // Stable actions are independent of the filtered row index. No per-frame lists.
 public static class PocketMenu
 {
+    // Presentation order is separate from action IDs. Reuse it for every popup;
+    // wearing clothing and equipping tools precede dropping them.
+    private static readonly PocketAction[] actions={PocketAction.Equip,PocketAction.Wear,PocketAction.Drop,
+        PocketAction.Place,PocketAction.Plant,PocketAction.Eat,PocketAction.Bury,PocketAction.OpenMoneyBag,PocketAction.Read,PocketAction.Quit};
     public static bool HasAction(int item,int room,PocketAction action)
     {
         if(action==PocketAction.Quit)return true;
@@ -20,11 +24,11 @@ public static class PocketMenu
         return action==PocketAction.Read&&item==19;
     }
     public static int Count(int item,int room)
-    {int count=0;for(int i=0;i<=(int)PocketAction.Quit;i++)if(HasAction(item,room,(PocketAction)i))count++;return count;}
+    {int count=0;for(int i=0;i<actions.Length;i++)if(HasAction(item,room,actions[i]))count++;return count;}
     public static PocketAction At(int item,int room,int row)
     {
         if(row<0)return PocketAction.Quit;
-        for(int i=0;i<=(int)PocketAction.Quit;i++)if(HasAction(item,room,(PocketAction)i)&&row--==0)return (PocketAction)i;
+        for(int i=0;i<actions.Length;i++)if(HasAction(item,room,actions[i])&&row--==0)return actions[i];
         return PocketAction.Quit;
     }
     public static string Label(PocketAction action)

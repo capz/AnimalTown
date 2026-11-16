@@ -526,7 +526,7 @@ internal sealed class TownGame : IDisposable
                 if(action==PocketAction.Quit){screen="menu";menuTab=0;selected=slot;return;}
                 int tx=(int)state.X+faceX,tz=(int)state.Z+faceZ;
                 bool ok=PocketMenu.Perform(state,slot,action,tx,tz,rotation,room);
-                if(ok&&state.Tutorial==0&&state.Shirt==4)state.CreditTutorial(0);
+                if(ok&&action==PocketAction.Wear&&state.Tutorial==0&&state.Shirt==Catalog.WorkShirt)state.CreditTutorial(0);
                 if(ok&&action==PocketAction.Plant&&state.Tutorial==1)state.CreditTutorial(1);
                 Say("Backpack",ok?"Done!":"That action is not possible here.");
             }

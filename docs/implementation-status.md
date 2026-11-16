@@ -32,6 +32,9 @@ the GDD. The technical baseline was committed/pushed first as `0064efd`.
   pocket actions. Watering cans are retired from new acquisition/equipment while
   retaining saved item IDs. See [the GameCube tool audit](gamecube-tools.md) for
   implemented behavior and missing mechanics, including golden tools.
+* A single Work shirt uses the GameCube-style clothing slot with Wear-first
+  context actions, item-preserving swaps and per-villager saves. Changing the
+  visible outfit is not implemented; see [the clothing audit](gamecube-clothing.md).
 * Indoor/outdoor footprint validation, placement ownership, rotating footprints,
   garden reservations and relocation, tier-dependent room size.
 * Native RTC bridge, 06:00 day rollover, stock and monthly interest rules,
