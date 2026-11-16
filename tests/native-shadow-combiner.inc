@@ -7,7 +7,7 @@ typedef unsigned short u16;
 typedef float Mtx[3][4];
 typedef struct { u8 r,g,b,a; } GXColor;
 typedef struct { int unused; } GXTexObj;
-typedef struct { int count,uniforms; } DndDrawEffect;
+typedef struct { int count,uniforms;struct {int dest;} stages[16]; } DndDrawEffect;
 typedef struct { const DndDrawEffect *effect; } DndDrawMaterial;
 typedef struct { float u,v; unsigned color; } DndDrawVertex;
 enum {
@@ -138,6 +138,8 @@ static void native_shadow_combiner_checks(void){
     GXColor original=konst_colors[1];town_environment_apply(&effect,2);
     assert(alpha_command_count==3&&konst_colors[2].r==255&&konst_colors[2].g==152&&konst_colors[2].b==96);
     assert(!memcmp(&original,&konst_colors[1],sizeof(original)));verify_alpha_footer(2);
+    effect.stages[1].dest=128;town_environment_apply(&effect,2);
+    assert(alpha_command_count==4);verify_alpha_footer(2);
     environment_test_rgb=0xffffff;
     puts("Shadow/rim GX: signed-wide alpha, low-byte wrap and exact sea cutout survive appended stages");
 }
