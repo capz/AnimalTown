@@ -1,5 +1,23 @@
 namespace AnimalTown;
 
+// Texture choice is a visual property, never a replacement item identity.
+// Giftable items are not automatically wrapped. A parcel is already wrapped;
+// wrapping any other item is recorded separately on its GroundItem.
+public enum DroppedItemArt : byte { Generic, Money, Tool, Clothing, Quest, Present, Count }
+
+public static class DroppedItemAppearance
+{
+    public static DroppedItemArt For(int item,bool wrapped=false)
+    {
+        if(wrapped||item==18)return DroppedItemArt.Present;
+        if(item is >=22 and <=24)return DroppedItemArt.Money;
+        if(Catalog.Has(item,ItemFlags.Tool))return DroppedItemArt.Tool;
+        if(Catalog.Has(item,ItemFlags.Wear))return DroppedItemArt.Clothing;
+        if(item is 19 or 20)return DroppedItemArt.Quest;
+        return DroppedItemArt.Generic;
+    }
+}
+
 // Eye-facing outdoor sprites, bounded by the saved town's ground capacity.
 // The snapshot avoids uploads while standing still; the sort reuses scratch space.
 public sealed class DroppedItemPlan
@@ -8,6 +26,7 @@ public sealed class DroppedItemPlan
     public const float Size=.65f,GroundOffset=.03f;
     public readonly float[] X=new float[Capacity],Y=new float[Capacity],Z=new float[Capacity],Depth=new float[Capacity];
     public readonly int[] Order=new int[Capacity];
+    public readonly byte[] Art=new byte[Capacity];
     private readonly int[] scratch=new int[Capacity],snapshot=new int[Capacity];
     private Town? previousTown;
     private int previousCount=-1,terrainVersion;
@@ -22,7 +41,7 @@ public sealed class DroppedItemPlan
     {
         bool changed=previousTown!=town||previousCount!=town.GroundCount||terrainVersion!=town.TerrainVersion||previousX!=focusX||previousZ!=focusZ||previousHeight!=eyeHeight;
         for(int i=0;i<town.GroundCount;i++){
-            var g=town.Ground[i];int value=g.Kind==0?1+g.X+g.Z*Town.Width:0;
+            var g=town.Ground[i];int value=g.Kind==0?1+g.X+g.Z*Town.Width+(g.Item+(g.Wrapped?Catalog.Items.Length:0))*Town.Cells:0;
             if(snapshot[i]!=value){snapshot[i]=value;changed=true;}
         }
         if(!changed)return false;
@@ -36,7 +55,7 @@ public sealed class DroppedItemPlan
             float cx=x+facing.UpX*Size*.5f,cy=y+facing.UpY*Size*.5f,cz=p.Z+facing.UpZ*Size*.5f;
             const float radius=Size*.71f;
             if(!RenderView.Sphere(cx,cy,cz,radius,focusX,focusZ,eyeHeight)||!RenderView.AboveHorizon(cy,cz,radius,focusZ,eyeHeight))continue;
-            X[Count]=x;Y[Count]=y;Z[Count]=p.Z;
+            X[Count]=x;Y[Count]=y;Z[Count]=p.Z;Art[Count]=(byte)DroppedItemAppearance.For(g.Item,g.Wrapped);
             Depth[Count]=(cy-(CylinderWorld.CameraHeight+eyeHeight))*RenderView.ForwardY+(cz-focusZ-CylinderWorld.CameraBack)*RenderView.ForwardZ;
             Order[Count]=Count;Count++;
         }
