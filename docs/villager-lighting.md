@@ -13,8 +13,8 @@ uses logical X/Z coordinates and the original soft tree/house/circle profiles.
 Indoor floor/mat triangle overlaps also combine by maximum. No skinned silhouette
 or EFB copy is needed.
 
-The fixed pool contains 160 pages. Each spans 8x8 metres with a 64x64 I8 mask,
-including filtering gutters (62 interior samples). Every caster footprint,
+The fixed pool contains 160 pages. Each spans 8x8 metres with a 32x32 I8 mask,
+including filtering gutters (30 interior samples). Every caster footprint,
 including gutters, fits within four pages; 39 casters need at most 156. Current
 rooms fit one page; larger catalog rooms enlarge its world span. Explicit world
 and room keys prevent distant-region aliasing. Needed pages cannot be evicted.
@@ -23,7 +23,7 @@ Each page retains a static union and a GPU-visible combined mask. Moving actors
 dirty old and new footprints, restore those pages from static coverage and merge
 current characters. Removing scenery dirties its old footprint. Unchanged,
 stationary coverage performs no rasterization or publication. Only modified
-4 KiB pages are flushed after the previous frame's normal present fence. No
+1 KiB pages are flushed after the previous frame's normal present fence. No
 additional DrawDone is introduced.
 
 At most one static page is rebuilt per frame. Pending static coverage retains
@@ -33,8 +33,14 @@ a few frames to refresh, rather than making all affected raster jobs stall one
 frame. Triangle bounds reject work outside a small actor footprint before pixel
 tests, and the inner loops avoid library rounding/min/max calls.
 
-All cache storage, profiles and receiver coordinates occupy one SDK-accounted
-native buffer below 1.5 MiB; the 16 MiB/512-handle limits remain unchanged. The
+All cache storage, the 256x256 cliff field, profiles and receiver coordinates
+occupy one SDK-accounted native buffer below 512 KiB. The 160 static masks and
+160 combined masks use 320 KiB; the cliff field adds 64 KiB. Compared with the
+previous 64x64 pages and 512x512 cliff field, coverage storage drops by 1,152 KiB.
+Smaller support bitsets and scratch storage recover additional memory. A host
+layout measurement reports 517,024 bytes for the complete allocation, down from
+1,710,944 bytes; native device accounting remains the console authority.
+The 16 MiB/512-handle limits remain unchanged. The
 previous 39 shadow mesh buffers/materials and native profile textures are
 removed. Managed staging is reused; there is no per-frame managed mask array or
 visible-ground reconstruction.
@@ -46,6 +52,11 @@ also handles cliff batches beginning with a lip. Top/lower caps receive shade.
 Opaque lip/bank vertices carry a zero receiver flag in alpha, preserving their
 ordinary RGB shading. Indoor floor models use position TexGen with their object
 matrix before walls/furniture render. Camera rotation needs no mask rebuilding.
+The smaller masks retain linear minification/magnification and their original
+world footprint. Filtering scales them during the existing draw; no full-size
+upsample allocation, extra blur texture or additional draw pass is introduced.
+Source tree/house/circle profiles retain their original resolution. Cloud shading
+is owned separately by the engine and retains its existing 64x64 mask.
 
 Receivers still clip dry floor, ramps, beach toes and exact diagonal half-planes
 to connected support. Coverage unions across triangles before a conservative

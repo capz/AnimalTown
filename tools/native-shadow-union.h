@@ -11,12 +11,15 @@
 #define SU_VERTICES 288
 #define SU_PAGES 160 /* 39 footprints, each smaller than a page: <=156 pages. */
 #define SU_LOOKUP 512 /* Power of two; at most 160 live entries. */
-#define SU_SIDE 64
-#define SU_BYTES 4096
+#define SU_SIDE 32
+#define SU_INNER (SU_SIDE-2) /* One filtering gutter on each edge. */
+#define SU_BYTES (SU_SIDE*SU_SIDE)
 #define SU_OPACITY 66
-#define SU_TERRAIN_SIDE 512
+#define SU_TERRAIN_SIDE 256
+#define SU_TERRAIN_TEXELS_PER_METRE 1.f
 #define SU_TERRAIN_BYTES (SU_TERRAIN_SIDE*SU_TERRAIN_SIDE)
-#define SU_SUPPORT_BYTES ((66*66+7)/8)
+#define SU_SUPPORT_SIDE (SU_SIDE+2) /* One erosion sample outside each gutter. */
+#define SU_SUPPORT_BYTES ((SU_SUPPORT_SIDE*SU_SUPPORT_SIDE+7)/8)
 #define SU_SUPPORT_PAGES 4
 typedef struct {
     int count,profile,space,active,requested;
@@ -60,7 +63,7 @@ static inline void su_terrain_reset(SuState *s){
 static inline void su_terrain_publish(SuState *s){s->terrain_ready=1;su_terrain_changed(s);}
 static inline uint8_t su_terrain_sample(const SuState *s,float x,float z){
     if(!s->terrain_ready)return 0;
-    float fx=x*2+.5f,fz=z*2+.5f;
+    float fx=x*SU_TERRAIN_TEXELS_PER_METRE+.5f,fz=z*SU_TERRAIN_TEXELS_PER_METRE+.5f;
     if(fx<0||fz<0||fx>=SU_TERRAIN_SIDE-1||fz>=SU_TERRAIN_SIDE-1)return 0;
     int ix=(int)fx,iz=(int)fz;float tx=fx-ix,tz=fz-iz;
     float a=s->terrain[su_terrain_offset(ix,iz)],b=s->terrain[su_terrain_offset(ix+1,iz)];
@@ -70,9 +73,9 @@ static inline uint8_t su_terrain_sample(const SuState *s,float x,float z){
 static inline void su_seed_terrain(const SuState *s,const SuPage *p,uint8_t *dest){
     memset(dest,0,SU_BYTES);
     if(p->space||!s->terrain_ready)return;
-    float step=s->span/62;
+    float step=s->span/SU_INNER;
     for(int y=0;y<SU_SIDE;y++)for(int x=0;x<SU_SIDE;x++)
-        dest[((y/4)*8+x/8)*32+y%4*8+x%8]=su_terrain_sample(s,p->x*s->span+(x-.5f)*step,p->z*s->span+(y-.5f)*step);
+        dest[((y/4)*(SU_SIDE/8)+x/8)*32+y%4*8+x%8]=su_terrain_sample(s,p->x*s->span+(x-.5f)*step,p->z*s->span+(y-.5f)*step);
 }
 static inline unsigned su_hash(int space,int x,int z){
     uint32_t h=(uint32_t)x*0x9e3779b1u^(uint32_t)z*0x85ebca6bu^(uint32_t)space*0xc2b2ae35u;
@@ -105,19 +108,19 @@ static inline int su_find_space(const SuState *s,int space,int x,int z){
     return -1;
 }
 static inline int su_find(const SuState *s,int x,int z){return su_find_space(s,s->space,x,z);}
-static inline int su_offset(int x,int y){return ((y/4)*8+x/8)*32+y%4*8+x%8;}
+static inline int su_offset(int x,int y){return ((y/4)*(SU_SIDE/8)+x/8)*32+y%4*8+x%8;}
 static inline int su_floor(float x){int i=(int)x;return i-(i>x);}
 static inline void su_bounds(const SuCaster *c,float b[4]){
     if(c->profile==4){b[0]=c->x+.12f-.55f;b[1]=c->z+.1f-.55f;b[2]=b[0]+1.1f;b[3]=b[1]+1.1f;}
     else memcpy(b,c->bounds,16);
 }
 static inline int su_intersects(const SuState *s,const SuPage *p,const float b[4]){
-    float pad=s->span/62, x=p->x*s->span,z=p->z*s->span;
+    float pad=s->span/SU_INNER, x=p->x*s->span,z=p->z*s->span;
     return b[0]<x+s->span+pad&&b[2]>x-pad&&b[1]<z+s->span+pad&&b[3]>z-pad;
 }
 static inline void su_dirty(SuState *s,const SuCaster *c){
     if(!c->count)return;
-    float b[4];su_bounds(c,b);float pad=s->span/62;
+    float b[4];su_bounds(c,b);float pad=s->span/SU_INNER;
     int l=su_floor((b[0]-pad)/s->span),r=su_floor((b[2]+pad)/s->span),t=su_floor((b[1]-pad)/s->span),bot=su_floor((b[3]+pad)/s->span);
     for(int z=t;z<=bot;z++)for(int x=l;x<=r;x++){
         int at=su_find_space(s,c->space,x,z);if(at<0||!su_intersects(s,&s->page[at],b))continue;
@@ -168,14 +171,14 @@ static inline int su_clamp(int x,int max){return x<0?0:x>max?max:x;}
 static inline int su_bit(const uint8_t *bits,int at){return (bits[at>>3]>>(at&7))&1;}
 static inline void su_support_build(SuState *s,const SuPage *p,const SuCaster *c,uint8_t *valid){
     memset(valid,0,SU_SUPPORT_BYTES);s->support_builds++;
-    float step=s->span/62,inv=62/s->span,ox=p->x*s->span-1.5f*step,oz=p->z*s->span-1.5f*step;
+    float step=s->span/SU_INNER,inv=SU_INNER/s->span,ox=p->x*s->span-1.5f*step,oz=p->z*s->span-1.5f*step;
     for(int i=0;i<c->count;i+=3){
         const float *v=c->uv+i*2;float minX=v[0],maxX=v[0],minZ=v[1],maxZ=v[1];
         for(int k=2;k<6;k+=2){if(v[k]<minX)minX=v[k];if(v[k]>maxX)maxX=v[k];if(v[k+1]<minZ)minZ=v[k+1];if(v[k+1]>maxZ)maxZ=v[k+1];}
-        if(maxX<ox||minX>ox+65*step||maxZ<oz||minZ>oz+65*step)continue;
-        int l=su_clamp((int)((minX-ox)*inv),65),r=su_clamp((int)((maxX-ox)*inv)+1,65);
-        int t=su_clamp((int)((minZ-oz)*inv),65),b=su_clamp((int)((maxZ-oz)*inv)+1,65);
-        for(int y=t;y<=b;y++)for(int x=l;x<=r;x++)if(su_inside(ox+x*step,oz+y*step,v)){int at=y*66+x;valid[at>>3]|=(uint8_t)(1u<<(at&7));}
+        if(maxX<ox||minX>ox+(SU_SUPPORT_SIDE-1)*step||maxZ<oz||minZ>oz+(SU_SUPPORT_SIDE-1)*step)continue;
+        int l=su_clamp((int)((minX-ox)*inv),SU_SUPPORT_SIDE-1),r=su_clamp((int)((maxX-ox)*inv)+1,SU_SUPPORT_SIDE-1);
+        int t=su_clamp((int)((minZ-oz)*inv),SU_SUPPORT_SIDE-1),b=su_clamp((int)((maxZ-oz)*inv)+1,SU_SUPPORT_SIDE-1);
+        for(int y=t;y<=b;y++)for(int x=l;x<=r;x++)if(su_inside(ox+x*step,oz+y*step,v)){int at=y*SU_SUPPORT_SIDE+x;valid[at>>3]|=(uint8_t)(1u<<(at&7));}
     }
 }
 static inline const uint8_t *su_support(SuState *s,const SuPage *p,const SuCaster *c,uint8_t *local){
@@ -192,14 +195,14 @@ static inline const uint8_t *su_support(SuState *s,const SuPage *p,const SuCaste
 static inline void su_raster(SuState *s,const SuPage *p,const SuCaster *c,uint8_t *dest){
     float bounds[4];su_bounds(c,bounds);if(!su_intersects(s,p,bounds))return;
     uint8_t local[SU_SUPPORT_BYTES];const uint8_t *valid=su_support(s,p,c,local);
-    float step=s->span/62,inv=62/s->span,ox=p->x*s->span-1.5f*step,oz=p->z*s->span-1.5f*step;
-    int l=su_clamp((int)((bounds[0]-ox)*inv)-1,65),r=su_clamp((int)((bounds[2]-ox)*inv)+2,65);
-    int t=su_clamp((int)((bounds[1]-oz)*inv)-1,65),b=su_clamp((int)((bounds[3]-oz)*inv)+2,65);
+    float step=s->span/SU_INNER,inv=SU_INNER/s->span,ox=p->x*s->span-1.5f*step,oz=p->z*s->span-1.5f*step;
+    int l=su_clamp((int)((bounds[0]-ox)*inv)-1,SU_SUPPORT_SIDE-1),r=su_clamp((int)((bounds[2]-ox)*inv)+2,SU_SUPPORT_SIDE-1);
+    int t=su_clamp((int)((bounds[1]-oz)*inv)-1,SU_SUPPORT_SIDE-1),b=su_clamp((int)((bounds[3]-oz)*inv)+2,SU_SUPPORT_SIDE-1);
     /* Coverage is cached in world-page coordinates, independently of the
      * moving circle. Erode the union, preserving room mats/internal seams. */
-    for(int y=t<1?1:t;y<=b&&y<65;y++)for(int x=l<1?1:l;x<=r&&x<65;x++){
-        int k=y*66+x;
-        if(!su_bit(valid,k)||!su_bit(valid,k-1)||!su_bit(valid,k+1)||!su_bit(valid,k-66)||!su_bit(valid,k-65)||!su_bit(valid,k-67)||!su_bit(valid,k+66)||!su_bit(valid,k+65)||!su_bit(valid,k+67))continue;
+    for(int y=t<1?1:t;y<=b&&y<SU_SUPPORT_SIDE-1;y++)for(int x=l<1?1:l;x<=r&&x<SU_SUPPORT_SIDE-1;x++){
+        int k=y*SU_SUPPORT_SIDE+x;
+        if(!su_bit(valid,k)||!su_bit(valid,k-1)||!su_bit(valid,k+1)||!su_bit(valid,k-SU_SUPPORT_SIDE)||!su_bit(valid,k-SU_SUPPORT_SIDE+1)||!su_bit(valid,k-SU_SUPPORT_SIDE-1)||!su_bit(valid,k+SU_SUPPORT_SIDE)||!su_bit(valid,k+SU_SUPPORT_SIDE+1)||!su_bit(valid,k+SU_SUPPORT_SIDE-1))continue;
         uint8_t alpha=su_sample(s,c,ox+x*step,oz+y*step);int at=su_offset(x-1,y-1);if(alpha>dest[at])dest[at]=alpha;
     }
 }
@@ -232,7 +235,7 @@ static inline void su_prepare_budget(SuState *s,int static_budget,SuCanWork can,
          * Bounded page ranges replace the pages-times-casters intersection scan. */
         for(int pass=0;pass<2;pass++)for(int j=0;j<SU_CASTERS;j++){
             SuCaster *c=&s->caster[j];if(!c->active||c->space!=s->space)continue;
-            float b[4];su_bounds(c,b);float pad=s->span/62;
+            float b[4];su_bounds(c,b);float pad=s->span/SU_INNER;
             int l=su_floor((b[0]-pad)/s->span),r=su_floor((b[2]+pad)/s->span),t=su_floor((b[1]-pad)/s->span),bot=su_floor((b[3]+pad)/s->span);
             for(int z=t;z<=bot;z++)for(int x=l;x<=r;x++){
                 int at=su_find(s,x,z);

@@ -43,6 +43,8 @@ function Get-ValidationPlan {
         }
         if($p -match '^tests/AnimalTown.Checks/Program.cs$'){$broad=$true;continue}
         if($p -match '^(shared/AnimalTown.Domain/WaterSurface|tests/AnimalTown.Checks/WaterSurfaceChecks)\.cs$') {Add-Managed 'terrain';continue}
+        if($p -match '^shared/AnimalTown.Domain/CliffShadowMap\.cs$'){Add-Managed 'terrain';[void]$native.Add('shadows');continue}
+        if($p -match '^tests/AnimalTown.Checks/CliffShadowChecks\.cs$'){Add-Managed 'terrain';continue}
         if($p -match '^(shared/AnimalTown.Domain/RiverBankGeometry|tests/AnimalTown.Checks/RiverBankChecks)\.cs$'){foreach($s in @('terrain','movement','life','generation')){Add-Managed $s};continue}
         if($p -match '(MenuNavigation|UiShapePlan|WrappedText|PlayerMovement|DialogueVoice|TownTrim|TerrainEdge|TownGeneration|TerrainLife|SplitSave)Checks\.cs$'){
             $names=@{MenuNavigation='menu';UiShapePlan='ui';WrappedText='text';PlayerMovement='movement';DialogueVoice='dialogue';TownTrim='trim';TerrainEdge='terrain';TownGeneration='generation';TerrainLife='life';SplitSave='saves'}
