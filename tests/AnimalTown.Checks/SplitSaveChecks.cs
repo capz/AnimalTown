@@ -13,8 +13,18 @@ internal static class SplitSaveChecks
         }
         var s=new GameState(7319){Sequence=42,Wallet=1234,Name="Juniper",Species=3,Palette=5,Roof=2,Savings=9876543210};s.MailCount=2;s.Mail[0]=4;s.Mail[1]=-3;
         s.Town.Residents[0].Name="Savedfox";s.Town.Residents[0].Friendship=73;s.Town.Residents[0].PosX=12.125f;s.Town.Stock[0]=1;s.Town.Stock[2]=0;s.Town.Spending=777;
+        s.Town.GroundCount=2;
+        var wrapped=s.Town.Ground[0];wrapped.Item=5;wrapped.X=30;wrapped.Z=40;wrapped.Kind=0;wrapped.Wrapped=true;
+        var plain=s.Town.Ground[1];plain.Item=4;plain.X=31;plain.Z=40;plain.Kind=0;
         var parts=SplitSaveCodec.Encode(s);var restored=SplitSaveCodec.Decode(parts);
         check(SaveCodec.Encode(s).SequenceEqual(SaveCodec.Encode(restored)),"all fields round-trip through shared records and four profiles");
+        check(restored.Town.GroundCount==2&&restored.Town.Ground[0].Wrapped&&restored.Town.Ground[0].Kind==0&&
+              restored.Town.Ground[0].Item==5&&!restored.Town.Ground[1].Wrapped,
+              "wrapped status persists through split save without changing item identity");
+        var legacyWrapped=SaveCodec.Decode(SaveCodec.Encode(s));
+        check(legacyWrapped.Town.Ground[0].Wrapped&&legacyWrapped.Town.Ground[0].Item==5&&
+              !legacyWrapped.Town.Ground[1].Wrapped,
+              "wrapped status also round-trips through the legacy-compatible binary save codec");
         var commit=SplitSaveCodec.EncodeCommit(s,parts);check(SplitSaveCodec.DecodeCommitted(commit,parts).Wallet==1234,"commit binds complete save set");
         long allocated=GC.GetAllocatedBytesForCurrentThread();SplitSaveCodec.VerifyCommitted(commit,parts);
         check(GC.GetAllocatedBytesForCurrentThread()-allocated<16384,"final commit verification fits a small allocation budget without reconstructing a town");
