@@ -61,7 +61,7 @@ int main(void){
     assert(animaltown_shadows_terrain(empty,0,2)==1);
     assert(animaltown_shadows_prepare(1000)==1);
     assert(animaltown_shadows_page(2,2,origin)==shadows->coverage&&origin[2]==254&&origin[3]==256&&origin[4]==126&&origin[5]==128);
-    assert(su_terrain_sample(shadows,2,2)==33); /* One texel/m, including the gutter. */
+    assert(su_terrain_sample(shadows,2,2)==su_shadow(su_pack(33,0))); /* One texel/m, including the gutter. */
     free(empty);free(tile);
     shadows->caster[0].active=1;shadows->terrain_ready=1;
     active=1;assert(animaltown_shadows_shutdown()==0&&live==1&&shadows);active=0;

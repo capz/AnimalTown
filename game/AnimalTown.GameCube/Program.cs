@@ -86,6 +86,7 @@ internal sealed class TownGame : IDisposable
     private int residencySpace=-1,residencyFailures;
     private long playerStillSince,spaceChangedAt;
     private readonly TownClock townClock=new TownClock();
+    private readonly TownLights townLights=new TownLights();
     private readonly DevConfig debugConfig;
     private readonly RenderDebugOptions renderDebug=new RenderDebugOptions();
     private readonly VillagerAttentionRenderer attention=new VillagerAttentionRenderer();
@@ -894,6 +895,9 @@ internal sealed class TownGame : IDisposable
         cachedPlayerHeight=PlayerHeight();if(room==0)RenderView.Prepare(state.X,state.Z,cachedPlayerHeight);
         if(room!=0)indoorCamera.Configure(BuildingWorld.Definition(state,BuildingWorld.Building(room)));
         if(room==0)terrain.AnimateShadows((Clock.Timestamp-sessionStart)/1000000.0);
+        int environmentTint=room==0?WorldLighting.Tint(townClock.MinuteOfDay):0xffffff;
+        int lampStrength=room==0?WorldLighting.Lamps(townClock.MinuteOfDay):0;
+        townLights.Prepare(state,lampStrength);
         long phase=FrameProfile.Start(),preparationDeadline=Clock.Timestamp+2000;PrepareVillagerShadows();
         long masksAt=FrameProfile.Start();villagerShadows.PrepareMasks(preparationDeadline);FrameProfile.DetailEnd(4,masksAt);
         if(room==0){
@@ -919,7 +923,8 @@ internal sealed class TownGame : IDisposable
         UpdateAnimationFrame();
         if(renderDebug.ForceAttention&&villagers.Doors.PlayerFade<1)attention.Prepare();
         phase=FrameProfile.Start();uiShapes.Prepare(screen,screen=="menu"?menuTab:-1,batchedDrawing);if((batchedDrawing&&screen=="map")||(runningMinimap.Visible&&screen=="world"&&room==0))mapBackground.Prepare(state.Town);modelUsed=0;FrameProfile.End(8,phase);
-        phase=FrameProfile.Start();UiNoise.Prepare();device.BeginFrame(room==0?(weather.Raining(room)?new Color32(112,143,151):new Color32(149,198,186)):new Color32(32,40,39));
+        phase=FrameProfile.Start();UiNoise.Prepare();device.BeginFrame(room==0?TownLights.Tint(weather.Raining(room)?new Color32(112,143,151):new Color32(149,198,186),environmentTint):new Color32(32,40,39));
+        NativeShadows.Environment(environmentTint);
         float eyeHeight=PlayerHeight();
         if(room==0)camera.LookAt(new Vector3(state.X,CylinderWorld.CameraHeight+eyeHeight,state.Z+CylinderWorld.CameraBack),new Vector3(state.X,eyeHeight,state.Z-CylinderWorld.CameraAimAhead),new Vector3(0,1,0));
         else{float size=BuildingWorld.Size(state,room);indoorView.LookAt(new Vector3(indoorCamera.EyeX(size),indoorCamera.EyeY(size),indoorCamera.EyeZ(size)),new Vector3(size*.5f,.7f,size*.5f),new Vector3(0,1,0));}
@@ -944,6 +949,7 @@ internal sealed class TownGame : IDisposable
             FrameProfile.SubmissionEnd(2,submissionAt);submissionAt=FrameProfile.SubmissionStart();
             fences.Draw(renderer,state,terrain.ScrollTransform,cachedPlayerHeight);FrameProfile.SubmissionEnd(3,submissionAt);
             groundAt=FrameProfile.Start();droppedItems.Draw(renderer);FrameProfile.End(3,groundAt);
+            DrawStreetLights(environmentTint,lampStrength);
         }
         if(room!=0){
             if(!indoorCamera.WallVisible(2)){
@@ -987,7 +993,7 @@ internal sealed class TownGame : IDisposable
         if(batchedDrawing)boxes.Flush();
         if(renderDebug.ForceAttention&&villagers.Doors.PlayerFade<1)attention.Draw(renderer,state,actorVisibility,indoorCamera,cachedPlayerHeight);
         submissionAt=FrameProfile.SubmissionStart();if(weather.Raining(room)&&villagers.Doors.PlayerFade<1)rain.Draw(renderer);FrameProfile.SubmissionEnd(4,submissionAt);
-        renderer.End3D();ui.Begin();submissionAt=FrameProfile.SubmissionStart();DrawHud();if(FrameProfile.Enabled)ui.Flush();FrameProfile.SubmissionEnd(5,submissionAt);FrameProfile.End(8,phase);FrameProfile.Draw(ui);
+        renderer.End3D();NativeShadows.Environment(0xffffff);ui.Begin();submissionAt=FrameProfile.SubmissionStart();DrawHud();if(FrameProfile.Enabled)ui.Flush();FrameProfile.SubmissionEnd(5,submissionAt);FrameProfile.End(8,phase);FrameProfile.Draw(ui);
         float fade=villagers.Doors.PlayerFade;if(fade>0)ui.FillRectangle(new RectF(0,0,640,480),new Color32(12,19,25,(byte)(fade*255)));
         phase=FrameProfile.Start();submissionAt=FrameProfile.SubmissionStart();ui.End();FrameProfile.SubmissionEnd(6,submissionAt);FrameProfile.End(8,phase);
         phase=FrameProfile.Start();device.EndFrame();FrameProfile.End(9,phase);
@@ -1000,6 +1006,27 @@ internal sealed class TownGame : IDisposable
         if(room==0){if(!terrain.Ready)drawingScene|=32768;if(terrain.MissingVisible>0)drawingScene|=16384;if(terrain.UrgentStages>0)drawingScene|=8192;}
         bool moved=!float.IsNaN(profiledX)&&(state.X!=profiledX||state.Z!=profiledZ);profiledX=state.X;profiledZ=state.Z;
         FrameProfile.Complete(GpuProfiler.Snapshot().Triangles,room==0?terrain.VisibleTriangles:0,room==0?terrain.RejectedQuads:0,drawingScene+RuntimeOptions.Mode*64,room==0?terrain.BuiltThisFrame:0,moved?(moveClip==1?2:1):0,room==0&&terrain.GroundRingActive,room==0&&terrain.GroundRingUploaded,NativeShadows.Stats(8)>0);
+    }
+    private void DrawStreetLights(int tint,int strength)
+    {
+        var metal=new Color32(51,74,65);
+        for(int i=0;i<townLights.Count;i++){
+            float x=townLights.X[i],z=townLights.Z[i],y=TerrainElevation.At(state.Town,x,z);
+            Box(x-.18f,y,z-.18f,.36f,.15f,.36f,metal);
+            Box(x-.06f,y+.15f,z-.06f,.12f,1.9f,.12f,metal);
+            Box(x-.25f,y+2.03f,z-.25f,.5f,.09f,.5f,metal);
+            Box(x-.29f,y+2.52f,z-.29f,.58f,.12f,.58f,metal);
+        }
+        if(batchedDrawing)boxes.Flush();
+        NativeShadows.Environment(0xffffff);
+        try{
+            var glass=new Color32((byte)(150+105*strength/255),(byte)(166+55*strength/255),(byte)(146-12*strength/255));
+            for(int i=0;i<townLights.Count;i++){
+                float x=townLights.X[i],z=townLights.Z[i],y=TerrainElevation.At(state.Town,x,z);
+                Box(x-.19f,y+2.12f,z-.19f,.38f,.4f,.38f,glass);
+            }
+            if(batchedDrawing)boxes.Flush();
+        }finally{NativeShadows.Environment(tint);}
     }
     private bool IsTree(GroundItem g)=>g.Kind==3||(g.Kind==2&&g.Item!=2);
     private void InspectTerrain()

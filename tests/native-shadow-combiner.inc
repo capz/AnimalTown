@@ -7,19 +7,19 @@ typedef unsigned short u16;
 typedef float Mtx[3][4];
 typedef struct { u8 r,g,b,a; } GXColor;
 typedef struct { int unused; } GXTexObj;
-typedef struct { int count; } DndDrawEffect;
+typedef struct { int count,uniforms; } DndDrawEffect;
 typedef struct { const DndDrawEffect *effect; } DndDrawMaterial;
 typedef struct { float u,v; unsigned color; } DndDrawVertex;
 enum {
-    GX_FALSE=0,GX_TRUE=1,GX_TF_I8=1,GX_CLAMP=0,GX_LINEAR=1,GX_ANISO_1=0,
+    GX_FALSE=0,GX_TRUE=1,GX_TF_I8=1,GX_TF_IA4=2,GX_CLAMP=0,GX_LINEAR=1,GX_ANISO_1=0,
     GX_TEXMAP2=2,GX_TEXCOORD1=1,GX_TEXCOORD2=2,GX_TEXCOORD_NULL=255,
     GX_TEXMAP_NULL=255,GX_COLOR_NULL=255,GX_COLOR0A0=4,
     GX_TG_MTX2x4=1,GX_TG_MTX3x4=0,GX_TG_TEX0=4,GX_TG_POS=0,GX_TG_NRM=1,
     GX_IDENTITY=60,GX_TEXMTX8=54,GX_TEXMTX9=57,GX_MTX2x4=1,GX_MTX3x4=0,
-    GX_DTTMTX0=64,GX_TEV_SWAP0=0,GX_TEV_ADD=0,GX_TB_ZERO=0,GX_CS_SCALE_1=0,
-    GX_TEVPREV=0,GX_TEVREG2=3,GX_TEV_KASEL_1=0,GX_KCOLOR3=3,
+    GX_DTTMTX0=64,GX_CH_RED=0,GX_CH_GREEN=1,GX_CH_BLUE=2,GX_TEV_SWAP1=1,GX_TEV_SWAP0=0,GX_TEV_ADD=0,GX_TB_ZERO=0,GX_CS_SCALE_1=0,
+    GX_TEVPREV=0,GX_TEVREG2=3,GX_TEV_KASEL_1=0,GX_KCOLOR3=3,GX_KCOLOR2=2,GX_KCOLOR1=1,GX_TEV_KASEL_K2_A=30,GX_TEV_KCSEL_K0=12,GX_TEV_KCSEL_K1=13,GX_TEV_KCSEL_K2=14,
     GX_TEV_KCSEL_K3=15,GX_CC_CPREV=0,GX_CC_A2=7,GX_CC_TEXC=8,
-    GX_CC_KONST=14,GX_CC_ZERO=15,GX_CA_APREV=0,GX_CA_TEXA=4,
+    GX_CC_KONST=14,GX_CC_ZERO=15,GX_CA_APREV=0,GX_CA_A2=3,GX_CA_TEXA=4,
     GX_CA_RASA=5,GX_CA_KONST=6,GX_CA_ZERO=7
 };
 typedef struct { int input[4],destination; } AlphaCommand;
@@ -27,11 +27,13 @@ static AlphaCommand alpha_commands[16];
 static int alpha_command_count;
 static int shadow_page_side=SU_SIDE,shadow_page_missing;
 static int texture_width,texture_height,texture_min,texture_mag;
+static int texture_format,environment_test_rgb=0xffffff;
+static GXColor konst_colors[4];
 static GXColor shadow_tint;
 static float shadow_uv_scale,shadow_uv_offset,shadow_uv_scale_z,shadow_uv_offset_z;
 static void DCFlushRange(void *data,size_t bytes){(void)data;(void)bytes;}
 static void GX_InitTexObj(GXTexObj *t,void *data,u16 w,u16 h,int format,int s,int v,int mip){
-    (void)t;(void)data;(void)format;(void)s;(void)v;(void)mip;texture_width=w;texture_height=h;
+    (void)t;(void)data;(void)s;(void)v;(void)mip;texture_width=w;texture_height=h;texture_format=format;
 }
 static void GX_InitTexObjLOD(GXTexObj *t,int min,int mag,float low,float high,float bias,int clamp,int edge,int aniso){
     (void)t;(void)low;(void)high;(void)bias;(void)clamp;(void)edge;(void)aniso;texture_min=min;texture_mag=mag;
@@ -48,6 +50,7 @@ static void GX_SetTexCoordBias(int coord,int s,int t){(void)coord;(void)s;(void)
 static void GX_LoadTexMtxImm(Mtx matrix,int slot,int type){
     (void)type;if(slot==GX_TEXMTX8){shadow_uv_scale=matrix[0][0];shadow_uv_offset=matrix[0][3];shadow_uv_scale_z=matrix[1][1];shadow_uv_offset_z=matrix[1][3];}
 }
+static void GX_SetTevSwapModeTable(int t,int r,int g,int b,int a){(void)t;(void)r;(void)g;(void)b;(void)a;}
 static void GX_SetTevDirect(u8 stage){assert(stage<16);}
 static void GX_SetTevSwapMode(u8 stage,int raster,int tex){assert(stage<16);(void)raster;(void)tex;}
 static void GX_SetTevOrder(u8 stage,int coord,int map,int raster){assert(stage<16);(void)coord;(void)map;(void)raster;}
@@ -56,7 +59,7 @@ static void GX_SetTevColorOp(u8 stage,int op,int bias,int scale,int clamp,int de
     assert(stage<16);(void)op;(void)bias;(void)scale;(void)clamp;(void)destination;
 }
 static void GX_SetTevKAlphaSel(u8 stage,int selection){assert(stage<16);(void)selection;}
-static void GX_SetTevKColor(int slot,GXColor color){if(slot==GX_KCOLOR3)shadow_tint=color;}
+static void GX_SetTevKColor(int slot,GXColor color){assert(slot>=0&&slot<4);konst_colors[slot]=color;if(slot==GX_KCOLOR3)shadow_tint=color;}
 static void GX_SetTevKColorSel(u8 stage,int selection){assert(stage<16);(void)selection;}
 static void GX_SetTevAlphaIn(u8 stage,int a,int b,int c,int d){
     assert(stage<16);AlphaCommand *out=&alpha_commands[stage];
@@ -66,6 +69,8 @@ static void GX_SetTevAlphaOp(u8 stage,int op,int bias,int scale,int clamp,int de
     assert(stage<16&&op==GX_TEV_ADD&&bias==GX_TB_ZERO&&scale==GX_CS_SCALE_1&&clamp==GX_TRUE);
     alpha_commands[stage].destination=destination;
 }
+int animaltown_environment_color(void){return environment_test_rgb;}
+int animaltown_light_strength(void){return 255;}
 int animaltown_shadows_mode(void){return 3;}
 const uint8_t *animaltown_shadows_page(float x,float z,float *origin){
     static const uint8_t pixels[SU_TERRAIN_BYTES]={0};(void)x;(void)z;
@@ -111,8 +116,10 @@ static void native_shadow_combiner_checks(void){
     DndDrawEffect effect={.count=2};DndDrawMaterial material={.effect=&effect};
     const DndDrawVertex triangle[]={{0,0,255},{1,0,255},{0,1,255}};
     unsigned bindings=0;town_shadow_ground(triangle,NULL,3,&material,&bindings);
-    assert(alpha_command_count==4&&bindings==1);verify_alpha_footer(2);
+    assert(alpha_command_count==6&&bindings==1);verify_alpha_footer(2);
     assert(shadow_tint.r==35&&shadow_tint.g==49&&shadow_tint.b==66);
+    assert(texture_format==GX_TF_IA4&&konst_colors[GX_KCOLOR2].a==SU_OPACITY);
+    assert(konst_colors[GX_KCOLOR1].r==220&&konst_colors[GX_KCOLOR1].g==158&&konst_colors[GX_KCOLOR1].b==74);
     assert(texture_width==32&&texture_height==32&&texture_min==GX_LINEAR&&texture_mag==GX_LINEAR);
     assert(fabsf(shadow_uv_scale-4.f*30/(32*8))<.000001f&&shadow_uv_offset==1.f/32);
     shadow_page_side=SU_TERRAIN_WIDTH;town_shadow_ground(triangle,NULL,3,&material,&bindings);
@@ -126,5 +133,11 @@ static void native_shadow_combiner_checks(void){
     const float normal[]={1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1};
     town_rim_apply(normal,&effect,false,&bindings);
     assert(alpha_command_count==3&&bindings==2);verify_alpha_footer(2);
+    // A water effect keeps its own constants; tint takes the first free slot.
+    environment_test_rgb=0xff9860;effect.uniforms=2;
+    GXColor original=konst_colors[1];town_environment_apply(&effect,2);
+    assert(alpha_command_count==3&&konst_colors[2].r==255&&konst_colors[2].g==152&&konst_colors[2].b==96);
+    assert(!memcmp(&original,&konst_colors[1],sizeof(original)));verify_alpha_footer(2);
+    environment_test_rgb=0xffffff;
     puts("Shadow/rim GX: signed-wide alpha, low-byte wrap and exact sea cutout survive appended stages");
 }

@@ -66,14 +66,14 @@ $generated="extern int animaltown_uv_mode(int);`n"+$generated
 [IO.File]::WriteAllText($generatedPath,$generated)
 # Pinned, game-owned coverage union bridge. All buffers use SDK resource
 # accounting; shader hooks shade existing ground geometry exactly once.
-$shadowArgs=@{Init=3;Cloud=1;Shutdown=0;Terrain=3;Begin=3;Mesh=5;Active=3;Prepare=1;Scope=1;Stats=1}
+$shadowArgs=@{Init=3;Cloud=1;Lights=3;Environment=1;Shutdown=0;Terrain=3;Begin=3;Mesh=5;Active=3;Prepare=1;Scope=1;Stats=1}
 foreach($method in $shadowArgs.Keys){
     $n=$shadowArgs[$method];$argsPattern=if($n){((1..$n|ForEach-Object {'intptr_t (\w+)'}) -join ', ')}else{'void'}
     $p='intptr_t (dnd_value_AnimalTown_GameCube_NativeShadows_'+$method+'_[a-z0-9]+)\('+$argsPattern+'\) \{.*?\r?\n\}'
     if(([regex]::Matches($generated,$p,[Text.RegularExpressions.RegexOptions]::Singleline)).Count -ne 1){throw "Pinned shadow union bridge changed: $method"}
     $m=$method.ToLowerInvariant()
     $generated=[regex]::Replace($generated,$p,[Text.RegularExpressions.MatchEvaluator]{param($hit)
-        $a=@();for($i=0;$i -lt $n;$i++){$cast=if(($method -in @('Init','Cloud')) -or ($method -eq 'Terrain' -and $i -eq 0) -or ($method -eq 'Mesh' -and $i -ge 3) -or ($method -eq 'Active' -and $i -eq 2)){'(DndArray*)'}else{'(int)'};$a+=$cast+$hit.Groups[$i+2].Value}
+        $a=@();for($i=0;$i -lt $n;$i++){$cast=if(($method -in @('Init','Cloud')) -or ($method -in @('Terrain','Lights') -and $i -eq 0) -or ($method -eq 'Mesh' -and $i -ge 3) -or ($method -eq 'Active' -and $i -eq 2)){'(DndArray*)'}else{'(int)'};$a+=$cast+$hit.Groups[$i+2].Value}
         'intptr_t '+$hit.Groups[1].Value+'('+$(if($n){((0..($n-1)|ForEach-Object {'intptr_t '+$hit.Groups[$_+2].Value}) -join ', ')}else{'void'})+') { return animaltown_shadows_'+$m+'('+($a -join ',')+'); }'
     },[Text.RegularExpressions.RegexOptions]::Singleline)
 }
@@ -81,6 +81,8 @@ $generated=@'
 #include "dnd_managed.h"
 extern int animaltown_shadows_init(DndArray*,DndArray*,DndArray*);
 extern int animaltown_shadows_cloud(DndArray*);
+extern int animaltown_shadows_lights(DndArray*,int,int);
+extern int animaltown_shadows_environment(int);
 extern int animaltown_shadows_shutdown(void);
 extern int animaltown_shadows_terrain(DndArray*,int,int);
 extern int animaltown_shadows_begin(int,int,int);
@@ -128,6 +130,10 @@ $modelGraphics=$modelGraphics.Replace('int dnd_model_state_cache(int enabled){',
 $shadowModelHook='    if(!reuse)dnd_draw_backend_tev(selected, mat->texture >= 0);'
 if(([regex]::Matches($modelGraphics,[regex]::Escape($shadowModelHook))).Count -ne 1){throw 'Pinned interior shadow hook changed'}
 $modelGraphics=$modelGraphics.Replace($shadowModelHook,$shadowModelHook+"`n    if(animaltown_shadows_mode()==2)town_shadow_apply(object[12]+2*object[0]+2*object[8],object[14]+2*object[2]+2*object[10],object,selected,&bindings);")
+# The rim stage is configured immediately after this material hook. Append
+# environment tint after it, preserving both the model's effect and rim stages.
+$environmentHook='    if(town_rim_enabled&&!effect)town_rim_apply(normal,selected,reuse,&bindings);'
+$modelGraphics=$modelGraphics.Replace($environmentHook,$environmentHook+"`n    if(animaltown_shadows_mode()!=2)town_environment_apply(selected,(selected?selected->count:1)+(town_rim_enabled&&!effect?1:0));")
 Copy-Item -LiteralPath (Join-Path $Root 'tools/native-rim.inc') -Destination (Join-Path $Root 'out/native/source/animaltown_rim.inc') -Force
 Copy-Item -LiteralPath (Join-Path $Root 'tools/native-rim-policy.h') -Destination (Join-Path $Root 'out/native/source/native-rim-policy.h') -Force
 if($IsLinux){

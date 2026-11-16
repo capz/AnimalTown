@@ -7,13 +7,22 @@
 static SuState *shadows;
 static int shadow_storage;
 extern void animaltown_shadows_model_reset(void);
+static int environment_rgb=0xffffff,light_strength;
+int animaltown_environment_color(void){return environment_rgb;}
+int animaltown_light_strength(void){return light_strength;}
+int animaltown_shadows_environment(int rgb){
+    if(rgb<0||rgb>0xffffff)return 0;
+    if(environment_rgb!=rgb){environment_rgb=rgb;dnd_draw_backend_invalidate_cache();animaltown_shadows_model_reset();}
+    return 1;
+}
+
 int animaltown_shadows_shutdown(void){
     if(dnd_device_active())return 0;
     if(!shadows)return 1;
     /* No frame may still sample the coverage pages. The resource release
      * waits for GX retirement before freeing the charged SDK buffer. */
     if(dnd_draw_release(shadow_storage)<0)return 0;
-    shadows=NULL;shadow_storage=0;
+    shadows=NULL;shadow_storage=0;environment_rgb=0xffffff;light_strength=0;
     dnd_draw_backend_invalidate_cache();animaltown_shadows_model_reset();return 1;
 }
 int animaltown_shadows_init(DndArray *atlas,DndArray *circle,DndArray *clouds){
@@ -36,6 +45,13 @@ int animaltown_shadows_cloud(DndArray *offset){
     if(!isfinite(p[0])||!isfinite(p[1])||p[0]<0||p[0]>=1||p[1]<0||p[1]>=1)return 0;
     su_cloud_motion(shadows,p[0],p[1]);return 1;
 }
+int animaltown_shadows_lights(DndArray *sources,int count,int strength){
+    if(!shadows||dnd_device_active()||!sources||sources->element_size!=4||count<0||count>SU_LIGHTS||sources->length<(unsigned)count*4||strength<0||strength>255)return 0;
+    const float *p=(const float*)sources->data;
+    for(int i=0;i<count*4;i++)if(!isfinite(p[i]))return 0;
+    for(int i=0;i<count;i++)if(p[i*4+2]<=0||p[i*4+2]>16||p[i*4+3]<0||p[i*4+3]>255)return 0;
+    su_lights(shadows,p,count);light_strength=strength;return 1;
+}
 /* Reset/32-byte tile write/publish all happen between frames. The old field is
  * hidden while baking; one final flush makes the complete mask visible. */
 int animaltown_shadows_terrain(DndArray *tile,int offset,int mode){
@@ -45,7 +61,8 @@ int animaltown_shadows_terrain(DndArray *tile,int offset,int mode){
         if(shadows->terrain_ready||tile->length!=32||offset<0||offset%32||offset>SU_TERRAIN_BYTES-32)return 0;
         const uint8_t *p=(const uint8_t*)tile->data;
         for(int i=0;i<32;i++)if(p[i]>SU_OPACITY)return 0;
-        memcpy(shadows->terrain+offset,p,32);return 1;
+        for(int i=0;i<32;i++)shadows->terrain[offset+i]=su_pack(p[i],0);
+        return 1;
     }
     if(mode==2){
         if(tile->length)return 0;
