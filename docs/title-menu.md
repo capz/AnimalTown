@@ -88,6 +88,18 @@ distance, frozen landscape motion, mesh recreation and the legacy ground ring.
 Teleport/debug-location actions remain actions rather than stored settings.
 UI grain starts at 10% strength; tree grain remains unchanged.
 
+God mode is available only in the in-game **Debug / testing** menu. It starts
+off for every town session and is never written to the town save or dev config.
+When enabled, **Give 10,000 acorns** credits the wallet up to its 99,999 limit,
+and Catalog entries immediately give any item, including unowned/non-store
+items, to a free pocket. Shop purchases, backpack upgrades, relocation and loan
+repayments waive their charges. House/garden construction can bypass an existing
+loan without adding new debt; existing debt is retained. Pocket capacity, plot
+validation, upgrade tiers and overnight construction timing still apply.
+Turning God mode off restores normal costs and Catalog ownership/delivery rules.
+Granted money, items and upgrades remain ordinary game data if manually saved;
+returning to the title or restarting always disables the mode itself.
+
 Update chainloads `dvd:/animal-town-updater.dol` when packaged, or falls back to
 `gcloader:/animal-town-updater.dol`. The embedded DOL is staged before the game
 touches GC Loader storage. The title passes the updater path, version-two
