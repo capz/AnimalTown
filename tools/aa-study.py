@@ -44,7 +44,7 @@ scene=r'''        elif '--lighting' in sys.argv:
                 os.write(controller,b'RELEASE D_RIGHT\nRELEASE D_LEFT\n');time.sleep(.5)
             def mode(expected):
                 offset=len(logtext());chord(1)
-                match,_=wait_pattern(r'AASTUDY MODE '+str(expected)+r' ([\w-]+) render (\d+) (\d+) output (\d+) (\d+) aa (\d+) rim (\d+) xfb_bytes (\d+) native_bytes (\d+)',offset)
+                match,_=wait_pattern(r'ANIMALTOWN AASTUDY MODE '+str(expected)+r' ([\w-]+) render (\d+) (\d+) output (\d+) (\d+) aa (\d+) rim (\d+) xfb_bytes (\d+) native_bytes (\d+)',offset)
                 release();time.sleep(4)
                 keys=['name','render_width','render_height','output_width','output_height','native_aa','rim_percent','xfb_bytes','sdk_native_bytes']
                 data=dict(zip(keys,[match[1]]+[int(match[i]) for i in range(2,10)]));data['profile']=expected
@@ -52,11 +52,11 @@ scene=r'''        elif '--lighting' in sys.argv:
             def measure(view,data):
                 # Every sample is produced by FrameProfile.Complete; no guessed FPS.
                 offset=len(logtext());chord(0)
-                begin,start_time=wait_pattern(r'AASTUDY BEGIN (\d+) '+str(data['profile']),offset)
+                begin,start_time=wait_pattern(r'ANIMALTOWN AASTUDY BEGIN (\d+) '+str(data['profile']),offset)
                 seq=int(begin[1]);release()
-                end,end_time=wait_pattern(r'AASTUDY END '+str(seq)+r' '+str(data['profile'])+r' (\d+)',offset)
-                wait_pattern(r'AASTUDY DONE '+str(seq),offset)
-                pattern=r'AASTUDY ROW '+str(seq)+r' '+str(data['profile'])+r' (\d+) (\d+) (\d+) (\d+) (\d+) (\d+) (\d+)'
+                end,end_time=wait_pattern(r'ANIMALTOWN AASTUDY END '+str(seq)+r' '+str(data['profile'])+r' (\d+)',offset)
+                wait_pattern(r'ANIMALTOWN AASTUDY DONE '+str(seq),offset)
+                pattern=r'ANIMALTOWN AASTUDY ROW '+str(seq)+r' '+str(data['profile'])+r' (\d+) (\d+) (\d+) (\d+) (\d+) (\d+) (\d+)'
                 rows=[[int(x) for x in row] for row in re.findall(pattern,logtext()[offset:])]
                 if len(rows)!=240 or [r[0] for r in rows]!=list(range(240)):raise AssertionError('Missing or duplicated AA samples')
                 times=[r[1] for r in rows[5:]]
