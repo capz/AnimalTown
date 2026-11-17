@@ -392,6 +392,13 @@ def title_logo():
         report['warm_artwork'][name]={'region':list(bounds),'pixels':warm,'minimum':minimum}
         if warm<minimum:raise AssertionError(name+' has no sufficiently visible full-colour acorn artwork')
 
+    def setup_header(name):
+        text=state()
+        traces=re.findall(r'ANIMALTOWN SETUP HEADER (picker|[012]) logo bytes (\d+)',text)
+        if not traces or int(traces[-1][1])!=0:raise AssertionError('Setup header retained title logo artwork')
+        report['screenshots'].append(name)
+        report.setdefault('setup_headers',{})[name]={'logo_bytes':int(traces[-1][1]),'stage':traces[-1][0]}
+
     def title(name,minimum_loads,rows=3,status=False):
         wait_title()
         expected={
@@ -436,12 +443,12 @@ def title_logo():
             press('A');wait_profiles('title-logo-normalize-picker.png');press('B')
         initial_loads=title('title-logo.png',1)
         press('A');wait_profiles('title-logo-picker.png')
-        artwork('title-logo-picker.png',compact=True,capture=False)
+        setup_header('title-logo-picker.png')
         press('B');title('title-logo-after-picker.png',initial_loads+1)
         press('A');wait_profiles('title-logo-picker-reopened.png')
-        artwork('title-logo-picker-reopened.png',compact=True,capture=False)
+        setup_header('title-logo-picker-reopened.png')
         press('A');wait_onboarding('name','title-logo-name.png')
-        artwork('title-logo-name.png',compact=True,capture=False)
+        setup_header('title-logo-name.png')
         press('B');wait_onboarding('exit','title-logo-discard.png')
         report['screenshots'].append('title-logo-discard.png');state()
         # D_RIGHT is the mapped pipe button, not the MAIN analog axis. Repeating
@@ -893,7 +900,7 @@ def options_card_files(path=None):
     directories=[n for n in (1,2) if valid(n,0,0x1ffc,0x1ffc)]
     bats=[n for n in (3,4) if valid(n,4,sector,0)]
     if not directories or not bats:raise AssertionError('No valid card directory/BAT')
-    directory=newest(directories,0x1ffa);bat=newest(bats,4);result={}
+    directory=newest(directories,0x1ffa);bat=newest(bats,4);result={};published=None
     for entry in range(127):
         at=directory*sector+entry*64
         if card[at:at+6]!=b'AMTE01':continue
@@ -906,16 +913,19 @@ def options_card_files(path=None):
         length,offset=struct.unpack_from('>II',data,8)
         if offset<32 or offset+length>len(data):raise AssertionError('Truncated current card save')
         payload=bytes(data[offset:offset+length])
-        if name=='AnimalTown' and data[16:24]==b'DNDREC01':
-            result.update((key,value) for key,value in archive_records(payload).items() if key!='AT-Archive')
+        if name in ('AnimalTown','AnimalTown2') and data[16:24]==b'DNDREC01':
+            records=archive_records(payload)
+            if records.get('AT-Archive') in (b'\x01',b'\x02') and (published is None or name=='AnimalTown2'):
+                published={key:value for key,value in records.items() if key!='AT-Archive'}
         else:result[name]=payload
-    return result
+    return published if published is not None else result
 
 def wait_options_saved(resolution,wide):
     import struct
     deadline=time.monotonic()+45
     while time.monotonic()<deadline:
-        payload=options_card_files().get('options')
+        try:payload=options_card_files().get('options')
+        except AssertionError:payload=None # First archive checkpoint may still be flushing.
         if payload and len(payload)==16 and payload[:3]==b'ATO' and payload[3] in (1,2) and payload[4:6]==bytes((resolution,wide)):
             checksum=2166136261
             for value in payload[:12]:checksum=((checksum^value)*16777619)&0xffffffff
@@ -925,7 +935,8 @@ def wait_options_saved(resolution,wide):
 
 def debug_visibility(require_record=False):
     import struct
-    payload=options_card_files().get('options')
+    try:payload=options_card_files().get('options')
+    except AssertionError:return None if require_record else False
     if not payload or len(payload)!=16 or payload[:3]!=b'ATO' or payload[3] not in (1,2):return None if require_record else False
     checksum=2166136261
     for value in payload[:12]:checksum=((checksum^value)*16777619)&0xffffffff
@@ -1280,7 +1291,7 @@ def committed_card_sequence(path, expected_day=None, details=False):
         if len(payload)<32:raise ValueError('Short save record')
         magic,version,catalog,actual,sequence,seed,length=struct.unpack_from('<7I',payload)
         crc=struct.unpack_from('<I',payload,len(payload)-4)[0]
-        if magic!=0x50535441 or version not in (1,2,3,4,5,6) or actual!=kind or length!=len(payload) or zlib.crc32(payload[:-4])!=crc:
+        if magic!=0x50535441 or version not in (1,2,3,4,5,6,7) or actual!=kind or length!=len(payload) or zlib.crc32(payload[:-4])!=crc:
             raise ValueError('Invalid save record')
         return version,catalog,sequence,seed,crc
     best=0;best_day=None;best_details=None
@@ -1292,7 +1303,7 @@ def committed_card_sequence(path, expected_day=None, details=False):
                     at=directory*sector+i*64
                     if card[at:at+6]!=b'AMTE01':continue
                     name=card[at+8:at+40].split(b'\0',1)[0].decode('ascii')
-                    if not name.startswith('AT-') and name!='AnimalTown':continue
+                    if not name.startswith('AT-') and name not in ('AnimalTown','AnimalTown2'):continue
                     block,count=be16(at+54),be16(at+56);seen=set();data=bytearray()
                     for _ in range(count):
                         if block<5 or block>=len(card)//sector or block in seen:raise ValueError('Invalid card chain')
@@ -1302,11 +1313,11 @@ def committed_card_sequence(path, expected_day=None, details=False):
                     length,offset=struct.unpack_from('>II',data,8)
                     if offset<32 or offset+length>len(data):raise ValueError('Truncated card container')
                     payload=bytes(data[offset:offset+length])
-                    if name=='AnimalTown':
+                    if name in ('AnimalTown','AnimalTown2'):
                         if data[16:24]!=b'DNDREC01' or offset!=16384:continue
                         try:records=archive_records(payload)
                         except AssertionError:raise ValueError('Unverified card archive')
-                        if records.get('AT-Archive') in (b'\x01',b'\x02'):archive=records
+                        if records.get('AT-Archive') in (b'\x01',b'\x02') and (name=='AnimalTown2' or archive is None):archive=records
                     else:files[name]=payload
                 if archive is not None:files=archive
                 for bank in (0,1):
@@ -1329,7 +1340,7 @@ def committed_card_sequence(path, expected_day=None, details=False):
                                     name=base+str(candidate)
                                     try:
                                         part=files[name];pi=record(part,kind)
-                                        if pi[0] not in ((4,6) if i==0 else (4,)) or pi[1:4]!=(identity[1],sequence,identity[3]) or len(part)!=length or pi[4]!=crc:continue
+                                        if pi[0] not in ((4,6,7) if i==0 else (4,)) or pi[1:4]!=(identity[1],sequence,identity[3]) or len(part)!=length or pi[4]!=crc:continue
                                         selected=name;break
                                     except (KeyError,ValueError,struct.error):continue
                                 if selected is None:raise ValueError('Missing exact referenced revision')
@@ -1341,7 +1352,7 @@ def committed_card_sequence(path, expected_day=None, details=False):
                             for kind,name in enumerate(names):
                                 part=files[name];part_identity=record(part,kind if kind<4 else kind+1)
                                 expected_length,expected_crc=struct.unpack_from('<II',commit,28+kind*8)
-                                if part_identity[0] not in ((4,6) if kind==0 else (identity[0],)) or part_identity[1:4]!=identity[1:4] or len(part)!=expected_length or part_identity[4]!=expected_crc:
+                                if part_identity[0] not in ((4,6,7) if kind==0 else (identity[0],)) or part_identity[1:4]!=identity[1:4] or len(part)!=expected_length or part_identity[4]!=expected_crc:
                                     raise ValueError('Mixed save generation')
                         if identity[2]>best:
                             best=identity[2];town=files[names[0]];best_day=struct.unpack_from('<i',town,40)[0]
@@ -1862,9 +1873,12 @@ if '--season' in sys.argv:
 if '--dsp-hle' in sys.argv:
     config=user/'Config'/'Dolphin.ini'
     config.write_text(config.read_text().replace('DSPHLE = False','DSPHLE = True'))
+# Full hashing observes sparse live I4/IA4 edits; sampled hashes can retain
+# an old mask even after GX texture-cache invalidation.
 (user/'Config'/'GFX.ini').write_text('''[Settings]
 InternalResolution = 1
 MSAA = 1
+SafeTextureCacheColorSamples = 0
 EFBScale = 1
 DumpFrames = True
 DumpFormat = avi

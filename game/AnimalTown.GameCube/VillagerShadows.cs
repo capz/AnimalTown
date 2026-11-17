@@ -64,6 +64,9 @@ internal sealed class VillagerShadows
     }
     internal void PrepareMasks(long deadline)
     {
+        // Build a bounded receiver slice before native mask work can consume
+        // the shared deadline. Walking across buckets must not starve clipping.
+        for(int i=0;i<8&&Clock.Timestamp<deadline;i++)if(!Advance())break;
         Publish();
         if(NativeShadows.Prepare((int)System.Math.Min(1000,System.Math.Max(0,deadline-Clock.Timestamp)))!=1)throw new System.InvalidOperationException("Shadow union page capacity");
     }

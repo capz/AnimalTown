@@ -37,6 +37,11 @@ internal sealed class TerrainArchive
     internal ulong GroundMask {get;private set;}
     internal int ViewCount {get;private set;}
     internal int Bytes=>NativeTerrain.Stat(0);
+    internal bool HasPaths(Town town)
+    {
+        for(int i=0;i<selection.Count;i++){int section=selection.Sections[i];if(town.Paths.Any(TerrainArchivePlan.X(section),TerrainArchivePlan.Z(section),TerrainStream.Width,TerrainArchivePlan.Height))return true;}
+        return false;
+    }
     private void ReleaseViews()
     {
         // Drop every view before freeing its parent pages. Archive reset rejects

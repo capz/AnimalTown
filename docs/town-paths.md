@@ -1,59 +1,101 @@
-# Town paths — approach B
+# Traffic-driven town paths
 
-New towns receive a deterministic pedestrian dirt network. A two-metre route
-connects the plaza, service areas, resident-home aprons and existing bridges
-where a safe full-width route exists. New player homes add a one-metre doorway
-spur. Trees, planting, buildings, water, beach edges, gardens and ramp traversal
-constrain routes. Unsafe connections remain unpainted and are counted explicitly.
-Old saves load an empty road layer; their landscape is never replanned on import.
-There is no road-editing menu in this delivery.
+Paths come from anonymous outdoor tile entries by the player and all six NPCs,
+including NPC journeys while the player is indoors. Standing still, movement
+within one tile, indoor movement, onboarding previews, spawn/portal relocations
+and debug-camera jumps add no visits. No actor IDs, individual routes or visit
+timestamps are retained.
 
-The original painted tile is `assets/textures/environment/paths/dirt-64.png`.
-It contains broad ochre wear and sparse pebbles, with no noise overlay. Asset
-cooking emits one 64×64 opaque CMPR texture with five mip levels through 4×4:
-2,752 native pixel bytes / 2,784 disc bytes. All seasons and shapes share it.
-The source PNG and decoded source pixels do not ship or stay resident.
+Each of the town's 15,360 metre tiles has one byte counter. Counts through 100
+are exact and never reduced. Before a counter can wrap, only excess above 100
+is halved with rounding up. This preserves the minimum and opacity milestones
+when traffic elsewhere is busy, while retaining bounded relative traffic above
+full opacity. Counts above 100 are not unlimited lifetime totals. The common
+movement path allocates nothing. Renormalization is one bounded 15,360-byte
+pass, only on overflow.
 
-Road identity lives in a separate 3,840-byte two-bit overlay. Terrain identities
-and collision/planting rules remain unchanged. Shared-town record v6 and combined
-save v9 add a versioned packed block protected by the existing checksums; v4/v8
-and older records import empty. Incremental manifests remain v5 and can reference
-old v4 or current v6 town components alongside unchanged v4 personal components.
-Onboarding owns its candidate road bytes, so cancelling a home choice cannot
-change the saved town or leave draft entrance spurs behind.
+Every 90 simulation ticks (three seconds at 30 Hz), dirty history is classified
+with a reused 256-bin, 512-byte histogram. Only visited, path-eligible grass/camp
+cells participate. Plaza, bridge and beach visits are stored but cannot paint
+those surfaces. High outliers exceed Q3 + 1.5 × IQR, using nearest-rank quartiles.
+They are excluded from the population used to select the busiest fifth and are
+then included as paths themselves. The inlier quota is rounded up. Cutoff ties
+retain existing selected tiles first, then use stable cell order, so ties do not
+paint the whole town or shuffle unchanged paths. Never-visited tiles do not get
+paths. A ranked tile, including an outlier, also needs at least **35 visits**
+before it can show a path. This gate does not change the percentile population:
+all visited eligible cells still participate in ranking. New towns have no
+preplanned network or automatic doorway spurs.
 
-One reserved material (slot 51 of the existing 52) batches road geometry into
-the immutable terrain archive. Straight strips still merge. Exposed flat corners
-replace their ground faces with a bevel and complementary grass triangle, so
-there is no coplanar decal or alpha overdraw. Ramps keep the exact original ground
-triangles. UVs remain world-aligned at one repeat per two metres and receiver
-alpha remains opaque for the shared shadow/light map. Cliff sides and river banks
-continue to use their underlying ground material.
+The existing 3,840-byte two-bit path layer remains the cached selection. It has
+its own revision; changing it never invalidates the terrain archive or shadow
+receiver geometry. Shared-town record v7 and combined v11 append a versioned
+15,360-byte traffic block covered by the existing checksums. Historical town
+v4/v6 and combined v4–v10 remain readable; they get zero traffic history and
+retain their saved selection until actual traffic triggers a classification;
+the renderer's minimum-visit gate hides selections lacking sufficient history.
+Incremental manifests remain v5 and can reference v4/v6/v7 shared town records
+alongside unchanged v4 personal records. Traffic only writes to the memory card
+through the existing explicit save flow, never on every step. The card archive reserves 34 physical blocks (previously
+18); a verified replacement migration needs 52 blocks temporarily. See
+[consolidated-card-save.md](consolidated-card-save.md).
 
-One central lease owns the path page. Selected/prefetched archive views drive
-demand; async disc jobs return bytes only and stale generations are discarded.
-Without demand, indoors, on town replacement and on disposal, material borrowers
-are cleared before explicit cache eviction after EndFrame. The indoor rule is
-independent of the terrain-cache debug option. Cold reads use a dirt-tinted shared
-ground fallback; a failed page does not remove the road mesh or retry every frame.
+## Rendering and cost
 
-## Reproducing measurements
+A native GX I4 mask holds one nearest-filtered texel per metre in a 128×128
+texture: 8,192 bytes, including eight padding rows outside world coverage. It is expanded directly
+from the packed selection and borrowed counter bytes into an SDK-charged native
+buffer, with no duplicate managed image or RGBA decode. It uploads only when
+selection or a selected cell's quantized opacity changes. Unselected traffic,
+visits within the same opacity step, and visits beyond full opacity cause no
+extra upload.
+Four padding bytes carry a publication serial so Dolphin's default sampled
+texture hashing detects even sparse edits, including after texture recreation.
+The serial adds four native state bytes, with no additional texture allocation.
+Point filtering keeps a selected tile from bleeding onto unvisited neighbours.
+Boundaries follow the selected metre cells; the old geometry corner bevels are
+replaced by the coverage mask.
 
-`dotnet run --project tests/AnimalTown.Checks -c Release -- --path-fixture OUTPUT`
-produces paired disposable snapshots of the same seed, trees, buildings, time,
-profiles and cameras, with only the path overlay changed. The existing
-`tools/profile-card-fixture.py` writes them onto separate emulator test cards.
-Never use a player's card for the study.
+The same I4 texels now carry traffic opacity: zero below 35 visits, 2/15
+(roughly 13%) at 35, 5/15 at 50, 9/15 at 70, and 15/15 at 100 or more.
+The ground shader already interpolates between normal grass and shared dirt
+using this mask. Fading adds no shader stages, textures, geometry or draw calls.
 
-The existing L+R+D-right research mode selects native 640×480, AA off, Fresnel at
-100%. L+R+D-left records 240 frames. Additional `PATH PROFILE` rows record
-instrumented CPU/submission work, preparation time, terrain submission time,
-allocator activity and GC work; memory rows report SDK native bytes, texture
-bytes, used ARAM, cache peak/reservation, DMA reads and bindings. All log dumps
-follow the capture END timestamp. Ordinary play allocates none of these arrays.
-Capture baseline and roads at matched stationary views, matched travel, indoors
-and far from the network; repeat in spring and winter. Disable AVI recording.
-Dolphin software rendering and emulated guest timings are not hardware timings.
+The original painted tile remains
+`assets/textures/environment/paths/dirt-64.png`: one 64×64 CMPR page with five mip
+levels through 4×4, 2,752 native pixel bytes / 2,784 disc bytes. It contains ochre
+wear and sparse pebbles, without a noise overlay. UVs remain world-aligned, with
+one repeat per two metres. Three extra GX TEV stages blend this shared page onto
+eligible existing ground draws, before the existing shadow/light stages.
+Receiver alpha keeps paths off cliff lips. No path triangles, decals, additional
+draw calls, full terrain rebuilds or per-frame texture uploads are needed.
+The added passes explicitly select the ground receiver channel and preserve the
+base material alpha through the later shadow/light stages.
 
-Measured results, before/after screenshots and reproduction instructions are in
-[the performance report](performance/town-paths/README.md).
+The mask and dirt page are demanded by selected archive sections. They are
+released indoors, outside path demand, on town replacement and on disposal,
+after clearing borrowed material bindings. Async disc jobs return bytes only;
+stale generations are ignored. While a page is loading or unavailable, its ground
+keeps rendering and no busy retry loop runs.
+Ground mip-band previews preserve the same path coverage using the diagnostic
+dirt palette. Its page and borrowed bindings retire with the dirt source, so
+debugging cannot keep path textures resident after demand ends.
+
+Additional retained CPU storage is 15,872 payload bytes for counters/histogram,
+plus object/array headers. Fading adds two four-byte revision fields (managed
+and native), with allocator alignment additional. The existing selection costs 3,840 bytes. Visible
+paths add an 8,192-byte native mask plus the shared 2,752-byte native dirt page
+(and the texture-cache metadata/package already used by that page). A 16-bit
+history would double counter storage; a path mesh/decal would need vertex/index
+buffers and extra submissions. The chosen mask spends a few texture/TEV stages
+to keep CPU geometry work, allocations and retained memory low.
+
+Host timings from the managed checks are diagnostic, not GameCube frame rates.
+The previous fixed-network performance report at
+[performance/town-paths/README.md](performance/town-paths/README.md) describes its
+pinned historical implementation and is not a measurement of this renderer.
+
+Dolphin's sampled texture hashing can miss sparse live I4 mask edits. The
+publication serial fixes that with the default cache, while full-hash captures
+(`SafeTextureCacheColorSamples = 0`) provide an independent check. Console mask
+uploads remain revision-gated; players need no emulator accuracy adjustment.

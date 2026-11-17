@@ -98,6 +98,7 @@ public sealed class PortalSystem
             float gx=x+(side==0?.8f:-.8f),dx=gx-p.X,dz=z-p.Z,distance=(float)Math.Sqrt(dx*dx+dz*dz);if(distance<.03f)return;
             float step=Math.Min(.05f,distance),nx=p.X+dx/distance*step,nz=p.Z+dz/distance*step;
             if(!BuildingWorld.Segment(s,p.Space.Value,p.X,p.Z,nx,nz,actor,true))continue;
+            if(p.Space.IsTown)s.Town.Traffic.Traverse(s.Town,p.X,p.Z,nx,nz);
             t.Source=new ActorLocation(p.Space.Value,nx,nz,PlayerMovement.Yaw(dx,dz));BuildingWorld.SetLocation(s,actor,t.Source);t.WaitMoving=true;return;
         }
     }

@@ -22,7 +22,7 @@ See [the app profile and release gates](docs/depot-release.md).
 The NKit ISO remains the only disc image delivered. See [NKit images](docs/nkit-images.md) for
 size savings and the exact round-trip/payload verification gates. Releases also
 contain separate .NET 10 server and compiled-tools ZIPs. All reports, checksums,
-banners, updater helpers and captures are inside `release/` in the Depot ZIP.
+banners, updater documentation and captures are inside `release/` in the Depot ZIP.
 The compact `update.json` release feed is also uploaded for existing updaters;
 all other downloads are ZIP or ISO files. Source and authoring kits are excluded;
 GitHub's automatic source ZIP/tar.gz links contain only this README. Clone the

@@ -12,6 +12,8 @@ internal static class PathFixture
     internal static void Write(string output)
     {
         var original=new GameState(3){Name="Ari",Tutorial=6};original.PlaceHouse(12,22,false);original.Rollover(21014,2027*12+7);
+        for(int z=14;z<=32;z++)for(int x=20;x<38;x++)if(TownPaths.Surface(original.Town,x,z))original.Town.Traffic.Visits[z*Town.Width+x]=(byte)(x<24?200:10);
+        original.Town.Traffic.Refresh(original.Town);
         var snapshot=SaveCodec.Encode(original);
         foreach(string scene in new[]{"village","plaza","remote","door","quiet"})foreach(bool roads in new[]{false,true}){
             var s=SaveCodec.Decode(snapshot);s.Space=0;

@@ -34,7 +34,7 @@ internal sealed class GroundMipMaterials : IDisposable
             for(int entry=0;entry<sources.Length;entry++)if(sources[entry]!=null){
                 bool used=originals[pathSlot].Texture==sources[entry];
                 for(int slot=0;slot<count&&!used;slot++)used=originals[slot].Texture==sources[entry];
-                if(!used){pages[entry]!.Dispose();pages[entry]=sources[entry]=null;}
+                if(!used)Retire(entry);
             }
             bool changed=appliedMip!=(mipmaps?1:0)||appliedDistance!=distance;
             Array.Clear(configured,0,configured.Length);
@@ -42,6 +42,13 @@ internal sealed class GroundMipMaterials : IDisposable
             // A resident painted-path page has its own sampler (trilinear,
             // bias zero). Its fallback aliases a floor already configured above.
             PrepareSlot(pathSlot,originals[pathSlot],false,true,0,changed);
+            // Path coverage uses the borrowed secondary binding even when the
+            // primary floor is replaced by its mip-level diagnostic palette.
+            for(int slot=0;slot<count;slot++)if(materials[slot]!=null){
+                var material=materials[slot]!;
+                material.SecondaryTexture=originals[slot].SecondaryTexture!=null?materials[pathSlot]?.Texture:null;
+                material.SecondarySampler=originals[slot].SecondarySampler;
+            }
             appliedMip=mipmaps?1:0;appliedDistance=distance;
         }
         var source=originals[0].Texture;
@@ -55,7 +62,7 @@ internal sealed class GroundMipMaterials : IDisposable
     private void PrepareSlot(int slot,Material original,bool ground,bool mipmaps,int distance,bool changed)
     {
         var source=original.Texture;
-        if(source==null){if(materials[slot]!=null)materials[slot]!.Texture=null;return;}
+        if(source==null){if(materials[slot]!=null){materials[slot]!.Texture=null;materials[slot]!.SecondaryTexture=null;}return;}
         int entry=-1,free=-1;
         for(int i=0;i<sources.Length;i++){
             if(sources[i]==source){entry=i;break;}
@@ -85,9 +92,24 @@ internal sealed class GroundMipMaterials : IDisposable
     }
     private void Clear()
     {
-        for(int slot=0;slot<materials.Length;slot++)if(materials[slot]!=null)materials[slot]!.Texture=null;
+        for(int slot=0;slot<materials.Length;slot++)if(materials[slot]!=null){materials[slot]!.Texture=null;materials[slot]!.SecondaryTexture=null;}
         for(int entry=0;entry<pages.Length;entry++){pages[entry]?.Dispose();pages[entry]=sources[entry]=null;}
         appliedMip=appliedDistance=-1;
+    }
+    internal void Forget(Texture2D? source)
+    {
+        if(source==null)return;
+        if(GraphicsDevice.Default.IsFrameActive)throw new InvalidOperationException("Retire ground mip bands between frames");
+        for(int entry=0;entry<sources.Length;entry++)if(sources[entry]==source)Retire(entry);
+    }
+    private void Retire(int entry)
+    {
+        var page=pages[entry];
+        for(int slot=0;slot<materials.Length;slot++)if(materials[slot]!=null){
+            if(materials[slot]!.Texture==page)materials[slot]!.Texture=null;
+            if(materials[slot]!.SecondaryTexture==page)materials[slot]!.SecondaryTexture=null;
+        }
+        pages[entry]=sources[entry]=null;page?.Dispose();
     }
     public void Dispose(){Clear();enabled=false;}
 }

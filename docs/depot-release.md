@@ -20,7 +20,8 @@ are excluded from the installed app by an explicit whitelist.
 
 The release uploads five files: the NKit ISO, this Depot ZIP, the server
 ZIP, the compiled-tools ZIP and the compact `update.json` feed. All supplementary reports, checksums, banners,
-updater DOL/notices and captures are stored under `release/` inside this ZIP.
+updater notices and captures are stored under `release/` inside this ZIP.
+The updater executable is retained only in the ISO.
 `release/manifest.json` binds each supplementary file's SHA-256 to the app's
 source commit and version; these files are never moved into `apps/animaltown/`.
 `release/SHA256SUMS.txt` covers the ISO, server/tools ZIPs and primary reports.
@@ -83,9 +84,11 @@ bootstrap through the published SDK's native AOT/host filesystem runtime; real S
 boot, save/reload and launcher handoff remain hardware qualification items.
 An ISO-mounted run must never be presented as proof of app-directory startup.
 
-The existing title Update action reports "Update this installation through
-Dolphin Depot." for the app, using the existing status area. It cannot launch
-the disc updater or modify ISO installations. The disc build keeps its updater.
+The Depot title omits the Update action and compacts its menu to Start /
+Options (plus Debug configuration when enabled). Its closed runtime whitelist
+already excludes the updater DOL and updater credentials. The defensive launch
+guard still refuses disc updates from an app installation. The ISO title keeps
+Start / Update / Options, and its disc includes the updater DOL.
 
 ## Build and validation
 
@@ -143,3 +146,9 @@ Optional catalog PNGs must be `banner.png` at 96x32, `screenshot0.png` through
 `screenshot2.png` at 640x480, and `hero.png` at 640x160. Use the actual submitted
 build for screenshots and do not treat gallery or ISO-only captures as proof
 of standalone app boot.
+
+The entire Depot ZIP excludes `animal-town-updater.dol`, including its optional
+`release/` reports. Both validators reject that report entry. Its only DOL is
+`apps/animaltown/default.dol`. The ISO embeds the updater and retains Update; the
+current updater discovers ISO assets through bounded GitHub release metadata,
+so it does not need a helper copy in the app ZIP.

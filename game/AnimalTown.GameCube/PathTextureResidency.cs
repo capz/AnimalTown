@@ -17,6 +17,7 @@ internal sealed class PathTextureResidency : IDisposable
     private readonly SamplerState sampler=new SamplerState(TextureAddressMode.Repeat,TextureAddressMode.Repeat);
     private bool wanted,failed;
     internal int Bytes=>texture?.Bytes??0;
+    internal Texture2D? Page=>texture?.Pages[0];
     internal int Reads {get;private set;}
     internal void Prepare(bool demand,Material material,Texture2D? fallback)
     {
