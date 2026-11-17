@@ -86,6 +86,8 @@ internal sealed class TownGame : IDisposable
     private int residencySpace=-1,residencyFailures;
     private long playerStillSince,spaceChangedAt;
     private readonly TownClock townClock=new TownClock();
+    private readonly FloatingClockHud clockHud;
+    private bool playerRunning;
     private readonly TownLights townLights=new TownLights();
     private readonly DevConfig debugConfig;
     private readonly RenderDebugOptions renderDebug=new RenderDebugOptions();
@@ -170,7 +172,7 @@ internal sealed class TownGame : IDisposable
     {
         this.session=session;releaseIntro=session.Draft==null;
         ui=new Draw2D(device,new Draw2DOptions{Width=640,Height=480,VertexCapacity=4096,SpriteCapacity=128});
-        font=UiFont.LoadSystem();strongFont=font;headingFont=UiFont.Load("gorditas-bold");cube=Cube();
+        font=UiFont.LoadSystem();strongFont=font;clockHud=new FloatingClockHud(font);headingFont=UiFont.Load("gorditas-bold");cube=Cube();
         boxes=new BoxBatch(renderer,cube);for(int i=0;i<modelPoses.Length;i++)modelPoses[i]=new Transform{Parent=worldRoot};
         LoadingScreen.Pulse();
         itemIcons=TextureCache.Load("dvd:/item-icons.dndtex",true);
@@ -266,7 +268,7 @@ internal sealed class TownGame : IDisposable
         if(unadopted!=null&&Array.IndexOf(models,unadopted)<0)unadopted.Dispose();
         for(int i=0;i<models.Length;i++){models[i]?.Dispose();models[i]=null!;}
         attention.Dispose();rain.Dispose();trees.Dispose();droppedItems.Dispose();buildings.Dispose();terrain.Dispose();fences.Dispose();
-        uiShapes.Dispose();mapBackground.Dispose();cube.Dispose();ui.Dispose();
+        clockHud.Dispose();uiShapes.Dispose();mapBackground.Dispose();cube.Dispose();ui.Dispose();
         font.Release();headingFont.Release();TextureCache.Release(itemIcons);card?.Dispose();card=null;
         NativeRim.Enable(0);NativeRenderProbe.Uv(0);
         if(NativeShadows.Shutdown()!=1)throw new InvalidOperationException("Shadow shutdown failed");
@@ -425,7 +427,7 @@ internal sealed class TownGame : IDisposable
         if(screen!="menu"||menuTab!=SettingsTab||selected!=0)return;
         if(damagedSave){saveStatus="Damaged saves preserved. Use another card.";return;}
         string previousScreen=screen;screen="saving";Draw();screen=previousScreen;
-        uiShapes.Trim();
+        clockHud.Trim();uiShapes.Trim();
         bool terrainSuspended=false;string phase="mount";
         try
         {
@@ -627,7 +629,7 @@ internal sealed class TownGame : IDisposable
     private bool RepayLoan()=>state.Repay((int)Math.Min(state.Debt,godMode?int.MaxValue:state.Wallet),godMode);
     private void TestingAction()
     {
-        uiShapes.Trim();
+        clockHud.Trim();uiShapes.Trim();
         switch(TestingOption(selected)){
             case 31:godMode=!godMode;break;
             case 32:
@@ -661,9 +663,9 @@ internal sealed class TownGame : IDisposable
             case 29:UiNoiseSettings.Adjust(1);break;
             case 25:debugConfig.Adjust(DevConfig.TreeNoiseStrength,1);break;
             case 26:debugConfig.Adjust(DevConfig.TreeNoiseScale,1);break;
-            case 27:uiShapes.Trim();card?.Dispose();card=null;DevConfigStorage.Save(debugConfig);Say("Tree noise",DevConfigStorage.Status);break;
+            case 27:clockHud.Trim();uiShapes.Trim();card?.Dispose();card=null;DevConfigStorage.Save(debugConfig);Say("Tree noise",DevConfigStorage.Status);break;
             case 28:
-                uiShapes.Trim();card?.Dispose();card=null;
+                clockHud.Trim();uiShapes.Trim();card?.Dispose();card=null;
                 var saved=DevConfigStorage.Load();
                 debugConfig.Values[DevConfig.TreeNoiseStrength]=saved.Values[DevConfig.TreeNoiseStrength];
                 debugConfig.Values[DevConfig.TreeNoiseScale]=saved.Values[DevConfig.TreeNoiseScale];
@@ -671,7 +673,7 @@ internal sealed class TownGame : IDisposable
             case 30:
                 renderDebug.DiscardTerrainCacheWhenIndoors=!renderDebug.DiscardTerrainCacheWhenIndoors;
                 debugConfig.Values[DevConfig.DiscardTerrainCacheWhenIndoorsIndex]=renderDebug.DiscardTerrainCacheWhenIndoors?1:0;
-                uiShapes.Trim();card?.Dispose();card=null;
+                clockHud.Trim();uiShapes.Trim();card?.Dispose();card=null;
                 if(!DevConfigStorage.Save(debugConfig)){saveStatus=DevConfigStorage.Status;Say("Dev config",saveStatus);}
                 break;
         }
@@ -755,7 +757,7 @@ internal sealed class TownGame : IDisposable
     internal void Step(ControllerState pad)
     {
         if(resourcesReady)RefreshResidencyDemand(Clock.Timestamp);
-        if(!resourcesReady||room==0&&!terrain.Ready){runningMinimap.Update(Clock.Timestamp,false,false);return;}
+        if(!resourcesReady||room==0&&!terrain.Ready){playerRunning=false;runningMinimap.Update(Clock.Timestamp,false,false);return;}
         bool running=false;float beforeX=state.X,beforeZ=state.Z;
         tick++;
         if(tick%30==0)townClock.Update(NativeCalendar.ReadClock());
@@ -788,6 +790,7 @@ internal sealed class TownGame : IDisposable
             if(room!=oldRoom){facingYaw=state.Facing;faceX=0;faceZ=room==0?1:-1;indoorCamera.Reset();}
         }
         runningMinimap.Update(Clock.Timestamp,running,screen=="world"&&room==0&&waterInspection==0&&!cliffPreview);
+        playerRunning=running;
         state.Facing=facingYaw;cachedPlayerHeight=PlayerHeight();if(room==0)RenderView.Prepare(state.X,state.Z,cachedPlayerHeight);
         animationClock.Step(0,moveClip,models[state.Species].Animations.Count>0);
         for(int i=1;i<7;i++){
@@ -903,7 +906,7 @@ internal sealed class TownGame : IDisposable
         if(room==0){
             terrain.Prepare(state,room,month,villagerShadows,preparationDeadline,cliffPreview);
             if(terrain.TakeWaterPreparationFailure(out string waterError)){
-                renderDebug.ResetWaterStyle();uiShapes.Trim();
+                renderDebug.ResetWaterStyle();clockHud.Trim();uiShapes.Trim();
                 DebugOverlay.WriteLine("SUNSHINE PREPARATION FAILED: "+waterError);
                 Say("Water rendering","Sunshine couldn't be prepared. Wind Waker restored.");
             }
@@ -922,7 +925,7 @@ internal sealed class TownGame : IDisposable
         for(int actor=1;actor<7;actor++)if(!modelResidency.Ready(actor-1))actorVisibility.Visible[actor]=false;
         UpdateAnimationFrame();
         if(renderDebug.ForceAttention&&villagers.Doors.PlayerFade<1)attention.Prepare();
-        phase=FrameProfile.Start();uiShapes.Prepare(screen,screen=="menu"?menuTab:-1,batchedDrawing);if((batchedDrawing&&screen=="map")||(runningMinimap.Visible&&screen=="world"&&room==0))mapBackground.Prepare(state.Town);modelUsed=0;FrameProfile.End(8,phase);
+        phase=FrameProfile.Start();if(!playerRunning&&(screen=="world"||screen=="plot"))clockHud.Prepare(townClock);uiShapes.Prepare(screen,screen=="menu"?menuTab:-1,batchedDrawing);if((batchedDrawing&&screen=="map")||(runningMinimap.Visible&&screen=="world"&&room==0))mapBackground.Prepare(state.Town);modelUsed=0;FrameProfile.End(8,phase);
         phase=FrameProfile.Start();UiNoise.Prepare();device.BeginFrame(room==0?TownLights.Tint(weather.Raining(room)?new Color32(112,143,151):new Color32(149,198,186),environmentTint):new Color32(32,40,39));
         NativeShadows.Environment(environmentTint);
         float eyeHeight=PlayerHeight();
@@ -1156,7 +1159,7 @@ internal sealed class TownGame : IDisposable
                 DoorPopover(label,action);
             }
         }
-        if(screen=="world"||screen=="plot"){Panel(20,371,170,61);Text(townClock.Date,32,380,ink,1.1f);Strong(townClock.Time,32,400,ink,1.6f);}
+        if(!playerRunning&&(screen=="world"||screen=="plot"))clockHud.Draw(ui);
         if(screen=="dialogue")
         { SpeechBubble();return; }
         if(screen=="map"){DrawMap();return;}
