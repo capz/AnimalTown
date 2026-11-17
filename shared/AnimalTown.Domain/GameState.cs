@@ -22,15 +22,17 @@ public sealed partial class GameState
     internal GameState(int seed,Town snapshot){Town=new Town(seed,snapshot);Pockets[0]=Catalog.WorkShirt;Pockets[1]=2;Pockets[2]=18;}
     public int FreeSlot(){for(int i=0;i<Capacity;i++)if(Pockets[i]==0)return i;return -1;}
     public int Find(int item){for(int i=0;i<Capacity;i++)if(Pockets[i]==item)return i;return -1;}
-    public bool UpgradeBackpack()
-    { int cost=BackpackUpgradePrice;if(cost==0||Wallet<cost)return false;Wallet-=cost;BackpackTier++;return true; }
+    public bool UpgradeBackpack(bool free=false)
+    { int cost=BackpackUpgradePrice;if(cost==0||!free&&Wallet<cost)return false;if(!free)Wallet-=cost;BackpackTier++;return true; }
+    public int GiveMoney(int amount,bool forTesting)
+    { if(!forTesting||amount<=0||Wallet>=99999)return 0;int added=Math.Min(amount,99999-Wallet);Wallet+=added;return added; }
     public bool Receive(int item)
     { int s=FreeSlot();if(s<0||!Catalog.Valid(item))return false;Pockets[s]=item;Owned[item]=1;return true; }
-    public bool Buy(int stock)
+    public bool Buy(int stock,bool free=false)
     {
         if(stock<0||stock>=Town.StockCount)return false;int id=Town.Stock[stock];
-        if(!Catalog.Valid(id)||Catalog.Items[id].Buy<=0||Wallet<Catalog.Items[id].Buy||!Receive(id))return false;
-        Wallet-=Catalog.Items[id].Buy;Town.Spending+=Catalog.Items[id].Buy;Town.Stock[stock]=0;return true;
+        if(!Catalog.Valid(id)||Catalog.Items[id].Buy<=0||!free&&Wallet<Catalog.Items[id].Buy||!Receive(id))return false;
+        if(!free)Wallet-=Catalog.Items[id].Buy;Town.Spending+=Catalog.Items[id].Buy;Town.Stock[stock]=0;return true;
     }
     public bool Sell(int slot)
     {
@@ -42,23 +44,23 @@ public sealed partial class GameState
     { if(amount<=0||amount>Wallet||Savings>long.MaxValue-amount)return false;Wallet-=amount;Savings+=amount;return true; }
     public bool Withdraw(int amount)
     { if(amount<=0||amount>Savings||amount>WalletLimit-Wallet)return false;Savings-=amount;Wallet+=amount;return true; }
-    public bool Repay(int amount)
-    { if(amount<=0||amount>Wallet||amount>Debt)return false;Wallet-=amount;Debt-=amount;return true; }
-    public bool Expand(bool garden,int day)
+    public bool Repay(int amount,bool free=false)
+    { if(amount<=0||!free&&amount>Wallet||amount>Debt)return false;if(!free)Wallet-=amount;Debt-=amount;return true; }
+    public bool Expand(bool garden,int day,bool free=false)
     {
-        if(!HousePlaced||Debt!=0||PendingKind!=0)return false;
+        if(!HousePlaced||!free&&Debt!=0||PendingKind!=0)return false;
         int next=(garden?GardenTier:HouseTier)+1;
         if(garden?(next>4||HouseTier<next):(next>5))return false;
-        Debt=garden?GardenPrices[next]:HousePrices[next];PendingKind=garden?2:1;PendingTier=next;PendingDay=day+1;return true;
+        if(!free)Debt=garden?GardenPrices[next]:HousePrices[next];PendingKind=garden?2:1;PendingTier=next;PendingDay=day+1;return true;
     }
-    public bool PlaceHouse(int x,int z,bool relocate)
+    public bool PlaceHouse(int x,int z,bool relocate,bool free=false)
     {
-        if(Space!=0||!Town.ValidPlot(x,z)||(relocate&&Wallet<50000))return false;
+        if(Space!=0||!Town.ValidPlot(x,z)||(relocate&&!free&&Wallet<50000))return false;
         for(int p=0;p<ProfileCount;p++)if(p!=ActiveProfile&&HomePlaced(p)&&x<HomeX(p)+15&&x+15>HomeX(p)&&z<HomeZ(p)+13&&z+13>HomeZ(p))return false;
         if(!HouseEntrance(x,z,out float arrivalX,out float arrivalZ))return false;
         int dx=x-Town.HouseX,dz=z-Town.HouseZ;
         for(int i=0;i<Town.PlacedCount;i++)if(Town.Placed[i].Room==0&&Town.Placed[i].Owner==PlayerOwner){Town.Placed[i].X+=dx;Town.Placed[i].Z+=dz;}
-        Town.HouseX=x;Town.HouseZ=z;HousePlaced=true;X=arrivalX;Z=arrivalZ;if(relocate)Wallet-=50000;return true;
+        Town.HouseX=x;Town.HouseZ=z;HousePlaced=true;X=arrivalX;Z=arrivalZ;if(relocate&&!free)Wallet-=50000;return true;
     }
     private bool HouseEntrance(int x,int z,out float arrivalX,out float arrivalZ)
     {
