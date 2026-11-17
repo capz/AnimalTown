@@ -545,7 +545,7 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
                 bool ok=PocketMenu.Perform(state,slot,action,tx,tz,rotation,room);
                 if(ok&&action==PocketAction.Wear&&state.Tutorial==0&&state.Shirt==Catalog.WorkShirt)state.CreditTutorial(0);
                 if(ok&&action==PocketAction.Plant&&state.Tutorial==1)state.CreditTutorial(1);
-                if(action==PocketAction.OpenMoneyBag){int amount=Catalog.MoneyValue(item);Say("Wallet",ok?amount+" acorns added. Wallet: "+state.Wallet+" / "+GameState.WalletLimit+".":"No room for "+amount+" acorns. Wallet limit: "+GameState.WalletLimit+".");}
+                if(action==PocketAction.OpenMoneyBag){int amount=Catalog.MoneyValue(item);Say("Wallet",ok?UiFont.Money(amount)+" added. Wallet: "+UiFont.Money(state.Wallet)+".":"No room for "+UiFont.Money(amount)+". Wallet limit: "+UiFont.Money(GameState.WalletLimit)+".");}
                 else Say("Backpack",ok?"Done!":"That action is not possible here.");
             }
             return;
@@ -581,7 +581,7 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
     private int LostIndex(int n){for(int i=0;i<state.Town.GroundCount;i++)if(state.Town.Ground[i].Kind==4&&n--==0)return i;return -1;}
     private void StoreAction()
     {
-        if(selected==7){Say("Hearth",state.UpgradeBackpack(godMode)?"A bigger backpack! You can carry "+state.Capacity+" items now.":state.BackpackTier==2?"Your backpack already holds 30 items.":"The next backpack costs "+state.BackpackUpgradePrice+" acorns.");return;}
+        if(selected==7){Say("Hearth",state.UpgradeBackpack(godMode)?"A bigger backpack! You can carry "+state.Capacity+" items now.":state.BackpackTier==2?"Your backpack already holds 30 items.":"The next backpack costs "+UiFont.Money(state.BackpackUpgradePrice)+".");return;}
         if(selected==0){screen="shop";selected=0;return;}
         if(selected==1){int i=state.Find(18);if(state.Tutorial==3&&i>=0){state.Pockets[i]=0;state.CreditTutorial(3);Say("Hearth","Good work! Write a letter at town hall.");return;}screen="sell";selected=0;return;}
         if(selected==2){Say("Hearth",TutorialText());return;}
@@ -590,10 +590,10 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
         if(selected==5){Say("Hearth",RepayLoan()?"Thank you for your repayment!":"No repayment is possible.");return;}
         if(state.Tutorial<6){Say("Hearth",TutorialText());return;}
         if(state.Jobs>=2){Say("Hearth","All jobs are done for today.");return;}
-        int fruit=state.Find(1);if(fruit>=0&&state.Wallet<=99199){state.Pockets[fruit]=0;state.Wallet+=800;state.Jobs++;Say("Hearth","A peach for our customer! Here are 800 acorns.");}else Say("Hearth","Today's job: bring a peach for a customer. Reward: 800. Make space in your wallet.");
+        int fruit=state.Find(1);if(fruit>=0&&state.Wallet<=99199){state.Pockets[fruit]=0;state.Wallet+=800;state.Jobs++;Say("Hearth","A peach for our customer! Here is "+UiFont.Money(800)+".");}else Say("Hearth","Today's job: bring a peach for a customer. Reward: "+UiFont.Money(800)+". Make space in your wallet.");
     }
     private string TutorialText()
-    { string[] text={"Welcome! Wear the work shirt in your pockets.","Plant your flower seed near the store.","Deliver the parcel to a villager.","Collect "+state.Town.Residents[4].Name+"'s parcel and return it to this counter.","Write a letter at town hall.","Introduce yourself to all six neighbours.","Your part-time job is complete. Your debt is 18,000 acorns."};return text[state.Tutorial]; }
+    { string[] text={"Welcome! Wear the work shirt in your pockets.","Plant your flower seed near the store.","Deliver the parcel to a villager.","Collect "+state.Town.Residents[4].Name+"'s parcel and return it to this counter.","Write a letter at town hall.","Introduce yourself to all six neighbours.","Your part-time job is complete. Your debt is "+UiFont.Money(18000)+"."};return text[state.Tutorial]; }
     private void PostAction()
     {
         if(selected==0){Say("Fern",state.Deposit(Math.Min(1000,state.Wallet))?"Deposit complete.":"No acorns to deposit.");return;}
@@ -642,7 +642,7 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
             case 31:godMode=!godMode;break;
             case 32:
                 int added=state.GiveMoney(10000,godMode);
-                Say("God mode",!godMode?"Enable God mode to give yourself acorns.":added==0?"Your wallet is full.":"Added "+added+" acorns. Wallet: "+state.Wallet+".");break;
+                Say("God mode",!godMode?"Enable God mode to give yourself acorns.":added==0?"Your wallet is full.":"Added "+UiFont.Money(added)+". Wallet: "+UiFont.Money(state.Wallet)+".");break;
             case 0:FrameProfile.Enabled=!FrameProfile.Enabled;break;
             case 1:ToggleModelPath();break;
             case 2:case 3:
@@ -697,7 +697,7 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
     {
         switch(TestingOption(row)){
             case 31:return "God mode: "+OnOff(godMode)+" (session)";
-            case 32:return godMode?"Give 10,000 acorns":"Give 10,000 acorns (God mode required)";
+            case 32:return "Give "+UiFont.Money(10000)+(godMode?"":" (God mode required)");
             case 33:return "Full-resolution AA: "+OnOff(VideoOptions.FullResolutionAa)+(VideoOptions.AaSaveFailed?" (not saved)":" (saved)");
             case 0:return "Performance display: "+OnOff(FrameProfile.Enabled);
             case 1:return "Model drawing: "+(indexedModels?"GX indexed":"Direct comparison");
@@ -1206,15 +1206,15 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
     }
     private string RowLabel(int i)
     {
-        if(screen=="shop"){int id=TownShop.CabinetItem(i);return Catalog.Items[id].Name+(godMode?" / Free": " / "+Catalog.Items[id].Buy);}
+        if(screen=="shop"){int id=TownShop.CabinetItem(i);return Catalog.Items[id].Name+(godMode?" / Free": " / "+UiFont.Money(Catalog.Items[id].Buy));}
         if(screen=="store"){string[] a={"Essentials cabinet","Sell / return parcel","Part-time job","House expansion","Garden expansion","Repay loan","Daily job","Expand backpack"};return a[i];}
-        if(screen=="post"||(screen=="menu"&&menuTab==4)){string[] a={"Deposit up to 1000","Withdraw up to 1000","Repay from wallet","Lost and Found","Mailbox","Write a letter","Visit / gate"};return a[i];}
+        if(screen=="post"||(screen=="menu"&&menuTab==4)){string[] a={"Deposit up to "+UiFont.Money(1000),"Withdraw up to "+UiFont.Money(1000),"Repay from wallet","Lost and Found","Mailbox","Write a letter","Visit / gate"};return a[i];}
         if(screen=="mail")return i>=state.MailCount?"No mail":state.Mail[i]<0?"Arrives tomorrow":Catalog.Items[state.Mail[i]].Name;
         if(screen=="lost"){int n=LostIndex(i);return n<0?"No lost items":Catalog.Items[state.Town.Ground[n].Item].Name;}
         if(menuTab==0)return (i+1)+". "+Catalog.Items[state.Pockets[i]].Name;
         if(menuTab==1)return i==0?"Tutorial / daily jobs":state.Town.Residents[i-1].Name+" / friendship "+state.Town.Residents[i-1].Friendship;
-        if(menuTab==2){int id=Catalog.EntryAt(i);return Catalog.Items[id].Name+(godMode?" / Free (instant)":state.Owned[id]==0?" (not owned)":" / "+Catalog.Items[id].Buy);}
-        if(menuTab==3){string[] a={"Roof palette","Exterior palette","Fence style","Mailbox",godMode?"Relocate (free)":"Relocate (50000)","Expand house","Expand garden"};return a[i];}
+        if(menuTab==2){int id=Catalog.EntryAt(i);return Catalog.Items[id].Name+(godMode?" / Free (instant)":state.Owned[id]==0?" (not owned)":" / "+UiFont.Money(Catalog.Items[id].Buy));}
+        if(menuTab==3){string[] a={"Roof palette","Exterior palette","Fence style","Mailbox",godMode?"Relocate (free)":"Relocate ("+UiFont.Money(50000)+")","Expand house","Expand garden"};return a[i];}
         if(menuTab==TestingTab)return TestingLabel(i);
         string[] settings={"Save now","Controls","About / build identity","Calendar","Chat settings","Debug / testing menu"};return settings[i];
     }
@@ -1239,9 +1239,8 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
         bool actions=screen=="item";int focus=actions?slot:selected;
         Rounded(198,57,82,50,24,new Color32(195,109,84));Rounded(210,66,58,28,14,new Color32(255,245,221));
         Bulged(70,73,350,height+7,32,new Color32(53,105,84));Panel(76,77,338,height);
-        Heading(screen=="sell"?"Sell from backpack":"Backpack",96,92,ink);
-        int filled=0;for(int i=0;i<state.Capacity;i++)if(state.Pockets[i]!=0)filled++;
-        if(screen!="sell"){Rounded(316,94,75,30,15,new Color32(232,183,86));Strong(filled+" / "+state.Capacity,328,98,ink,1.15f);}
+        Heading(screen=="sell"?"Sell items":"Backpack",96,92,ink);
+        Rounded(286,94,105,30,15,new Color32(232,183,86));Strong(UiFont.Money(state.Wallet),298,98,ink,1.15f);
         for(int i=0;i<state.Capacity;i++)
         {
             float x=99+i%5*58,y=144+i/5*44;
@@ -1252,7 +1251,6 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
             else Rounded(x+21,y+17,6,6,3,new Color32(188,195,166));
         }
         bool sellable=Catalog.Has(state.Pockets[focus],ItemFlags.Sell);
-        Text("Wallet: "+state.Wallet+" / "+GameState.WalletLimit,436,281,ink,.95f);
         if(state.BackpackTier<2){Text("Next pack: "+(state.Capacity+10)+" slots",436,325,ink,1);Text("Hearth's store",436,349,ink,1);}
         // Follow the actual slot for both the title and action menu. Clamp the
         // panel (including bulges/shadow) above the HUD for all backpack sizes.
@@ -1282,7 +1280,7 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
         else
         {
             int money=Catalog.MoneyValue(item);
-            Text(screen=="sell"?(sellable?"Sell: "+Catalog.Items[item].Sell+" acorns":"Not for sale"):money>0?"Value: "+money+" acorns":"One item",textX,popY+69,ink,1.05f);
+            Text(screen=="sell"?(sellable?"Sell: "+UiFont.Money(Catalog.Items[item].Sell):"Not for sale"):money>0?"Value: "+UiFont.Money(money):"One item",textX,popY+69,ink,1.05f);
             ButtonGlyph(screen=="sell"&&!sellable?"B":"A",textX,popY+102);
             Strong(screen=="sell"?(sellable?"Sell item":"Back"):"Item actions",textX+20,popY+101,ink,1.05f);
         }

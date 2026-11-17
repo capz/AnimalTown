@@ -66,9 +66,9 @@ internal sealed partial class TownGame
         Panel(45,75,550,350);Heading(screen=="shop-list"?"Choose an item to display":screen=="shop-price"?"Set your asking price":shopFixture<12?"Today's display":"Villager sale / "+(ShopSlot+1),68,91,ink);
         if(screen=="shop-price"){
             int item=shopReprice?state.Town.Shop.SaleItems[ShopSlot]:state.Pockets[shopPocket];
-            Text(Catalog.Items[item].Name,68,147,ink,1.5f);Strong(shopPrice.ToString("D5")+" acorns",68,201,ink,2);
+            Text(Catalog.Items[item].Name,68,147,ink,1.5f);Strong(UiFont.Currency+" "+shopPrice.ToString("D5"),68,201,ink,2);
             int step=1;for(int i=0;i<shopDigit;i++)step*=10;
-            Text("Adjust by "+step+" acorns",68,263,ink,1.25f);Text("Left/Right: digit   Up/Down: price",68,318,ink,1.1f);
+            Text("Adjust by "+UiFont.Money(step),68,263,ink,1.25f);Text("Left/Right: digit   Up/Down: price",68,318,ink,1.1f);
             Text("A: put on display   B: back",68,382,ink,1.2f);return true;
         }
         if(screen=="shop-list"){
@@ -81,7 +81,7 @@ internal sealed partial class TownGame
         int id=state.Town.Shop.Item(state,ShopKind,ShopSlot),price=state.Town.Shop.Price(state,ShopKind,ShopSlot);
         bool growing=shopFixture<12&&shopFixture>=state.Town.StockCount;
         Text(id==0?growing?"More stands open as the shop grows":shopFixture<12?"Sold out for today":"This stand is available":Catalog.Items[id].Name,68,151,ink,1.5f);
-        if(id!=0){Strong(price+" acorns",68,202,ink,1.5f);Text("In your wallet: "+state.Wallet,68,243,ink,1.2f);}
+        if(id!=0){Strong(UiFont.Money(price),68,202,ink,1.5f);Text("In your wallet: "+UiFont.Money(state.Wallet),68,243,ink,1.2f);}
         if(shopFixture>=12&&id!=0)Text("Seller: "+state.ProfileName(state.Town.Shop.SaleOwners[ShopSlot]),68,287,ink,1.2f);
         if(OwnListing){Text((selected==0?"> ":"  ")+"Change price",68,327,ink,1.2f);Text((selected==1?"> ":"  ")+"Take item back",68,355,ink,1.2f);}
         Text(OwnListing?"A: select   B: close":id!=0?"A: buy this item   B: close":growing?"Shop with us to unlock more stands.   B: close":shopFixture<12?"New displays arrive tomorrow.   B: close":"A: list an item for sale   B: close",68,392,ink,1.3f);
