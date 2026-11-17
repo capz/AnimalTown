@@ -234,7 +234,41 @@ static void water_shadow_color_checks(void){
     environment_test_rgb=0xffffff;point_test_gain=255;
     puts("Water shadow GX: both foam colors survive; noon/night RGB blends, cloud masks, lamp masks, alpha and free-register allocation passed");
 }
+static void path_blend_color_checks(void){
+    int page=1;DndDrawMaterial material={.secondary=&page};unsigned bindings=0;
+    const int ground[3]={94,135,57},dirt[3]={154,128,93};
+    path_test_ready=1;assert(town_paths_apply(&material,0,&bindings)==3&&bindings==1);
+    for(int level=0;level<16;level++)for(int receiver=0;receiver<=255;receiver+=255){
+        int registers[4][4]={{0}};
+        for(int channel=0;channel<3;channel++)registers[0][channel]=ground[channel];
+        registers[0][3]=173;
+        for(int stage=0;stage<3;stage++){
+            const ColorCommand *rgb=&color_commands[stage];int out[3];
+            for(int channel=0;channel<3;channel++){
+                int values[4];for(int i=0;i<4;i++)values[i]=rgb->input[i]==GX_CC_TEXC?dirt[channel]:water_color_operand(rgb->input[i],channel,registers,stage);
+                out[channel]=water_combine(values[0]&255,values[1]&255,values[2]&255,values[3]);
+            }
+            const AlphaCommand *alpha=&alpha_commands[stage];int values[4];
+            for(int i=0;i<4;i++){
+                int input=alpha->input[i];
+                if(input<=3)values[i]=registers[input][3];
+                else if(input==GX_CA_ZERO)values[i]=0;
+                else if(input==GX_CA_TEXA)values[i]=level*17;
+                else {assert(input==GX_CA_RASA);values[i]=receiver;}
+            }
+            int opacity=water_combine(values[0]&255,values[1]&255,values[2]&255,values[3]);
+            for(int channel=0;channel<3;channel++)registers[rgb->destination][channel]=out[channel];
+            registers[alpha->destination][3]=opacity;
+        }
+        int weight=water_combine(0,level*17,receiver,0);
+        for(int channel=0;channel<3;channel++)assert(registers[0][channel]==water_combine(ground[channel],dirt[channel],weight,0));
+        assert(registers[0][3]==173);
+    }
+    path_test_ready=0;
+    puts("Path blend GX: all 16 opacity levels interpolate ground/dirt, retain receiver exclusion and preserve ground alpha");
+}
 static void native_shadow_combiner_checks(void){
+    path_blend_color_checks();
     DndDrawEffect effect={.count=2};DndDrawMaterial material={.effect=&effect};
     const DndDrawVertex triangle[]={{0,0,255},{1,0,255},{0,1,255}};
     unsigned bindings=0;town_shadow_ground(triangle,NULL,3,&material,&bindings);

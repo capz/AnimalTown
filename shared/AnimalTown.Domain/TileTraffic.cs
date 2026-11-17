@@ -1,11 +1,13 @@
 namespace AnimalTown;
 
 // Anonymous outdoor tile entries, not frames spent standing on a tile. No
-// actor IDs, timestamps or individual routes are retained. Byte counts are
-// renormalized together on overflow so hot tiles cannot wrap or flatten out.
+// actor IDs, timestamps or individual routes are retained. Visibility milestones
+// are exact; only excess above full opacity is renormalized on overflow.
 public sealed class TileTraffic
 {
     public const int Bytes=Town.Cells,RefreshTicks=90;
+    // Keep the native I4 conversion in tools/native-path-mask.h in sync.
+    public const int MinimumVisits=35,FullOpacityVisits=100;
     public readonly byte[] Visits=new byte[Bytes];
     private readonly ushort[] histogram=new ushort[256];
     private bool dirty;
@@ -14,15 +16,20 @@ public sealed class TileTraffic
     public int HighOutliers {get;private set;}
     public int Cutoff {get;private set;}
     public int Normalizations {get;private set;}
+    public int OpacityRevision {get;private set;}
+    public static int OpacityLevel(int visits)=>visits<MinimumVisits?0:visits>=FullOpacityVisits?15:2+(visits-MinimumVisits)*13/(FullOpacityVisits-MinimumVisits);
     public void Enter(Town town,int x,int z)
     {
         if(!town.Walkable(x,z))return;
         int cell=z*Town.Width+x;
+        int before=Visits[cell];
         if(Visits[cell]==255){
-            for(int i=0;i<Visits.Length;i++)Visits[i]=(byte)((Visits[i]+1)/2);
+            for(int i=0;i<Visits.Length;i++)if(Visits[i]>FullOpacityVisits)
+                Visits[i]=(byte)(FullOpacityVisits+(Visits[i]-FullOpacityVisits+1)/2);
             Normalizations++;
         }
         Visits[cell]++;dirty=true;
+        if(town.Paths.At(x,z)!=0&&OpacityLevel(before)!=OpacityLevel(Visits[cell]))OpacityRevision++;
     }
     // Movement callers pass only successful steps, never spawn/portal/debug
     // relocations. DDA also records intermediate cells if a step spans a tile.
@@ -72,7 +79,7 @@ public sealed class TileTraffic
                     if(old&&keep>0){paint=true;keep--;}
                     else if(!old&&add>0){paint=true;add--;}
                 }
-                town.Paths.Set(i%Town.Width,i/Town.Width,paint?1:0);
+                town.Paths.Set(i%Town.Width,i/Town.Width,paint&&Visits[i]>=MinimumVisits?1:0);
             }
         }else town.Paths.Clear();
         // Paths have their own revision. A footstep never invalidates the
