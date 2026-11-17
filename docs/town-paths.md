@@ -30,7 +30,9 @@ v4/v6 and combined v4–v10 remain readable; they get zero traffic history and
 retain their saved road layer until actual traffic triggers a classification.
 Incremental manifests remain v5 and can reference v4/v6/v7 shared town records
 alongside unchanged v4 personal records. Traffic only writes to the memory card
-through the existing explicit save flow, never on every step.
+through the existing explicit save flow, never on every step. The card archive reserves 34 physical blocks (previously
+18); a verified replacement migration needs 52 blocks temporarily. See
+[consolidated-card-save.md](consolidated-card-save.md).
 
 ## Rendering and cost
 

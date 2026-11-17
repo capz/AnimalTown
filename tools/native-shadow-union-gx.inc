@@ -1,3 +1,4 @@
+#include <stdio.h>
 /* Game ground shader hook. Independent of the villager rim scope. */
 extern int animaltown_shadows_mode(void);
 extern const uint8_t *animaltown_path_mask(void);
@@ -13,6 +14,8 @@ static void town_alpha_pass(int stage){
  * world mask changes independently of the immutable terrain archive. */
 static int town_paths_apply(const DndDrawMaterial *mat,int stage,unsigned *bindings){
     const uint8_t *mask=animaltown_path_mask();
+    static unsigned traced;unsigned key=(mask?1u:0u)|(mat->secondary?2u:0u);
+    if(!(traced&(1u<<key))){traced|=1u<<key;printf("ANIMALTOWN PATH GX mask %d secondary %d color %08x\n",mask!=NULL,mat->secondary!=NULL,(unsigned)mat->color);}
     if(!mask||!mat->secondary)return stage;
     GXTexObj tex;GX_InitTexObj(&tex,(void*)mask,128,128,GX_TF_I4,GX_CLAMP,GX_CLAMP,GX_FALSE);
     GX_InitTexObjLOD(&tex,GX_NEAR,GX_NEAR,0,0,0,GX_FALSE,GX_FALSE,GX_ANISO_1);GX_LoadTexObj(&tex,GX_TEXMAP3);(*bindings)++;
@@ -106,7 +109,7 @@ static inline void town_shadow_apply(float x,float z,const float *world,const Dn
     town_shadow_apply_stage(x,z,world,effect,bindings,effect?effect->count:1);
 }
 static inline void town_shadow_ground(const DndDrawVertex *v,const uint16_t *ix,int count,const DndDrawMaterial *mat,unsigned *bindings){
-    int mode=animaltown_shadows_mode();if(mode!=1&&mode!=3){town_environment_apply(mat->effect,mat->effect?mat->effect->count:1);return;}if(count<3)return;
+    int mode=animaltown_shadows_mode();static unsigned modes;unsigned bit=1u<<(mode&3);if(!(modes&bit)){modes|=bit;printf("ANIMALTOWN GROUND GX scope %d\n",mode);}if(mode!=1&&mode!=3){town_environment_apply(mat->effect,mat->effect?mat->effect->count:1);return;}if(count<3)return;
     int a=0,b=1,c=2;
     for(int i=0;i+2<count;i+=3){a=ix?ix[i]:i;b=ix?ix[i+1]:i+1;c=ix?ix[i+2]:i+2;if(v[a].color&255u)break;}
     /* Every cached ground batch belongs to one 8x8m shadow page. A triangle's

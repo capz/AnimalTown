@@ -8,7 +8,7 @@ typedef float Mtx[3][4];
 typedef struct { u8 r,g,b,a; } GXColor;
 typedef struct { int unused; } GXTexObj;
 typedef struct { int count,uniforms;struct {int dest;} stages[16]; } DndDrawEffect;
-typedef struct { const DndDrawEffect *effect; const void *secondary; } DndDrawMaterial;
+typedef struct { const DndDrawEffect *effect; const void *secondary; unsigned color; } DndDrawMaterial;
 typedef struct { float u,v; unsigned color; } DndDrawVertex;
 enum {
     GX_FALSE=0,GX_TRUE=1,GX_TF_I4=0,GX_NEAR=0,GX_TEXMAP1=1,GX_TEXMAP3=3,GX_TEXCOORD3=3,GX_TEXMTX7=51,GX_TEVREG1=2,GX_CC_C1=4,GX_TF_I8=1,GX_TF_IA4=2,GX_CLAMP=0,GX_LINEAR=1,GX_ANISO_1=0,

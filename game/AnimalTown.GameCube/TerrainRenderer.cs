@@ -212,6 +212,7 @@ internal sealed class TerrainRenderer : IDisposable
         }
         PreparePaths(state);
     }
+    private bool pathWasReady;
     private static readonly byte[] noPaths=new byte[0];
     private void ClearPathBindings(){for(int i=0;i<slots;i++)materials[i].SecondaryTexture=null;}
     private ulong PathMaterials()
@@ -231,10 +232,12 @@ internal sealed class TerrainRenderer : IDisposable
         ClearPathBindings();paths.Prepare(demand,materials[TownPaths.Material],null);
         bool ready=demand&&paths.Page!=null;
         if(NativePaths.Prepare(state.Town.Paths.Packed,ready?1:0,state.Town.Paths.Revision)!=1)throw new InvalidOperationException("Path mask native budget");
-        if(ready){ulong mask=PathMaterials();for(int i=0;i<slots;i++)if((mask&(1UL<<i))!=0){materials[i].SecondaryTexture=paths.Page;materials[i].SecondarySampler=materials[TownPaths.Material].Sampler;}}
+        if(ready){ulong mask=PathMaterials();if(!pathWasReady)DebugOverlay.WriteLine("PATH BLEND READY slots "+mask+" cells "+state.Town.Paths.Count);for(int i=0;i<slots;i++)if((mask&(1UL<<i))!=0){materials[i].SecondaryTexture=paths.Page;materials[i].SecondarySampler=materials[TownPaths.Material].Sampler;}}
+        pathWasReady=ready;
     }
     internal void ReleasePaths()
     {
+        pathWasReady=false;
         ClearPathBindings();
         if(NativePaths.Prepare(noPaths,0,0)!=1)throw new InvalidOperationException("Path mask release failed");
         paths.Prepare(false,materials[TownPaths.Material],null);
