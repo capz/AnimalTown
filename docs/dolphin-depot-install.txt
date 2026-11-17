@@ -7,7 +7,9 @@ An AnimalTown ISO is not required and mounted discs are never used by this app.
 Use SD2SP2 or SD Gecko in Slot B, leaving Slot A for a GameCube memory card.
 GC Loader app content is implemented but requires physical qualification.
 Slot A SD Gecko is not supported by this profile: settings need memory card A.
-Launchers supplying a recognized executable path can relocate the folder.
+Launchers supplying a recognized physical-device path can relocate the folder.
+Generic launcher sd:/ paths use the fixed directory probes, since their physical
+adapter differs between launchers; the SDK's internal sd:/ root means SD2SP2.
 Without usable launch arguments, the fixed apps/animaltown directory is checked
 in this order: SD2SP2, Slot B SD Gecko, GC Loader. The first matching build wins.
 Do not mix files from different builds. Install/update the complete folder.

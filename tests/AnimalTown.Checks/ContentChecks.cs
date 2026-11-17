@@ -36,6 +36,7 @@ foreach(var pair in new[]{("sd2:/apps/a/default.dol","sd:/apps/a/"),("cardb:/app
 using(var stream=new MemoryStream(Encoding.ASCII.GetBytes(identity)))Check(ContentSelection.MatchesIdentity(stream,identity),"exact package identity is accepted");
 using(var stream=new MemoryStream(Encoding.ASCII.GetBytes(identity+"extra")))Check(!ContentSelection.MatchesIdentity(stream,identity),"extra identity bytes are rejected");
 using(var huge=new HugeStream())Check(!ContentSelection.MatchesIdentity(huge,identity)&&huge.Reads==0,"oversized identity is rejected before reading or allocating a file-sized buffer");
+Check(!ContentSelection.LauncherRoot("sd:/apps/animaltown/default.dol",out _,out _),"generic launcher sd:/ does not identify a physical adapter");
 Check(ContentPaths.Asset("wordmark.dndtex")=="dvd:/wordmark.dndtex","legacy host/default path remains disc compatible");
 ContentPaths.Select("cardb:/apps/animaltown/");
 Check(ContentPaths.Asset("wordmark.dndtex")=="cardb:/apps/animaltown/wordmark.dndtex"&&TexturePolicy.ModelPath("fox",TextureResolution.Size128)=="cardb:/apps/animaltown/fox-tex128.dndmodel","models and ordinary assets share the selected installation root");

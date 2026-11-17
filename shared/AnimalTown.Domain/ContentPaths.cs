@@ -11,7 +11,7 @@ public static class ContentPaths
     {
         if(selected)throw new InvalidOperationException("Content installation is already selected");
         if(value==null||value.Length>512||!value.EndsWith("/",StringComparison.Ordinal)||
-           value!="dvd:/"&&(!ContentSelection.LauncherRoot(value+"default.dol",out _,out string canonical)||canonical!=value))throw new ArgumentException("Invalid content root");
+           value!="dvd:/"&&!ContentSelection.IsCanonicalRoot(value))throw new ArgumentException("Invalid content root");
         root=value;selected=true;
     }
     public static string Asset(string filename)=>root+filename;
@@ -51,6 +51,10 @@ public sealed class ContentSelection
         for(int i=0;i<sentinels.Length;i++)if(!mounts.Exists(root+sentinels[i]))throw new InvalidOperationException("AnimalTown installation is incomplete: "+root+sentinels[i]);
     }
     public static bool LauncherRoot(string path,out ContentDevice device,out string root)
+        =>ParseRoot(path,false,out device,out root);
+    internal static bool IsCanonicalRoot(string path)
+        =>ParseRoot(path+"default.dol",true,out _,out string root)&&root==path;
+    private static bool ParseRoot(string path,bool canonical,out ContentDevice device,out string root)
     {
         device=ContentDevice.Disc;root="";
         if(path==null||path.Length==0)return false;
@@ -58,7 +62,9 @@ public sealed class ContentSelection
         string prefix=path.Substring(0,colon);
         if(prefix=="carda"||prefix=="sda")throw new InvalidOperationException("Use SD2SP2 or SD Gecko in Slot B; Slot A is used for memory-card settings.");
         if(prefix=="cardb"||prefix=="sdb")device=ContentDevice.SdSlotB;
-        else if(prefix=="sd"||prefix=="sd2"||prefix=="sd2sp2")device=ContentDevice.SdSerialPort2;
+        // Other loaders use generic sd:/ for different physical devices.
+        // It is only unambiguous after we select the SDK's own SP2 mount.
+        else if(prefix=="sd2"||prefix=="sd2sp2"||canonical&&prefix=="sd")device=ContentDevice.SdSerialPort2;
         else if(prefix=="gcloader"||prefix=="gcldr")device=ContentDevice.GcLoader;
         else return false;
         if(path.Length>512||!path.EndsWith(".dol",StringComparison.OrdinalIgnoreCase))throw new InvalidOperationException("Invalid AnimalTown launcher path");

@@ -30,8 +30,10 @@ are read. This is a build-mixing check, not a cryptographic trust mechanism.
 
 The app uses the SDK-owned `Dolphin.IO.LaunchContext` API. A recognized,
 validated executable path determines the installation directory. SDK mount
-names `cardb:/`, `sd:/` and `gcloader:/` are used internally; launcher aliases
-`sdb:/`, `sd2:/`, `sd2sp2:/` and `gcldr:/` normalize to those mounts. Paths
+names `cardb:/`, `sd:/` and `gcloader:/` are used internally; physical launcher
+aliases `sdb:/`, `sd2:/`, `sd2sp2:/` and `gcldr:/` normalize to those mounts.
+A launcher's generic `sd:/` does not identify an adapter and uses the fixed
+probe policy instead, so a Slot B install is not mistaken for SD2SP2. Paths
 containing traversal, controls, repeated separators or non-DOL filenames fail.
 A recognized path with missing/wrong assets fails without trying another copy.
 Unrecognized or absent launcher paths only probe `apps/animaltown/` in this
@@ -75,7 +77,7 @@ separate tool command and does not require successful ISO construction.
 suite for their respective components; build/policy changes retain full checks.
 Startup fixtures cover disc/app isolation, missing argv, device priority,
 relocated paths, malformed paths, stale/incomplete installations and bounded
-identity reads. Twelve production-bootstrap AOT cases also exercise the real
+identity reads. Fourteen production-bootstrap AOT cases also exercise the real
 SDK argument capture and synchronous/asynchronous filesystem reads, updater
 rejection and closed handles, with and without garbage-collection stress.
 Package fixtures cover clean extraction, exact paths/case,

@@ -28,7 +28,7 @@ def main():
             (app/'content.id').write_text(identity,encoding='ascii');(app/'runtime.cfg').write_bytes(b'\0')
             (app/'fox-tex128.dndmodel').write_bytes(bytes((41,42)))
         for stress in (False,True):
-            for case in range(6):
+            for case in range(7):
                 volume=work/f'volumes-{int(stress)}-{case}';volume.mkdir()
                 # Even a matching disc must never be mounted/borrowed by an app.
                 install(volume,'dvd','')
@@ -42,10 +42,12 @@ def main():
                     install(volume,'cardb',identity='wrong build');install(volume,'sd');args=['sdb:/apps/animaltown/default.dol','','reject']
                 elif case==4:
                     install(volume,'sd',complete=False);install(volume,'cardb');args=['host:/unknown/default.dol','','reject']
-                else:args=['host:/unknown/default.dol','','reject']
+                elif case==5:args=['host:/unknown/default.dol','','reject']
+                else:
+                    install(volume,'cardb');args=['sd:/apps/animaltown/default.dol','cardb:/apps/animaltown/']
                 env=os.environ.copy();env['DND_STORAGE_ROOT']=str(volume)
                 if stress:env['ANIMALTOWN_CONTENT_GC_STRESS']='1'
                 subprocess.run([str(binary),*args],env=env,check=True,timeout=30)
-    print('12 production bootstrap AOT cases passed, including GC stress; physical SD/launcher qualification remains pending')
+    print('14 production bootstrap AOT cases passed, including generic sd:/ ambiguity and GC stress; physical SD/launcher qualification remains pending')
 
 if __name__=='__main__':main()
