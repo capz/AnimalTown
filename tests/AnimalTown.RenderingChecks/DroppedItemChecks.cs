@@ -20,9 +20,9 @@ internal static class DroppedItemChecks
         check(DroppedItemAppearance.For(5)==DroppedItemArt.Tool&&
               DroppedItemAppearance.For(6)==DroppedItemArt.Tool&&
               DroppedItemAppearance.For(7)==DroppedItemArt.Tool&&
-              DroppedItemAppearance.For(8)==DroppedItemArt.Tool&&
               DroppedItemAppearance.For(9)==DroppedItemArt.Tool,
-              "all equipment uses the shovel sprite");
+              "all supported tools use the shovel sprite");
+        check(DroppedItemAppearance.For(Catalog.LegacyWateringCan)==DroppedItemArt.Generic,"retired watering can keeps the generic fallback");
         check(DroppedItemAppearance.For(4)==DroppedItemArt.Clothing,
               "wearable items use the shirt");
         check(DroppedItemAppearance.For(19)==DroppedItemArt.Quest&&
