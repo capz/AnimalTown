@@ -119,6 +119,13 @@ class BundleChecks(unittest.TestCase):
         for name in ('source.cs','model.glb','provision.py','source.tar.gz','source.zip'):
             with self.subTest(name=name):self.assertFalse(bundle.allowed(name))
 
+    def test_depot_excludes_updater_even_outside_runtime(self):
+        before=self.archive.read_bytes()
+        (self.reports/'animal-town-updater.dol').write_bytes(b'ISO-only helper')
+        with self.assertRaises(ValueError):self.attached()
+        self.assertEqual(before,self.archive.read_bytes())
+        self.assertFalse(bundle.allowed('animal-town-updater.dol'))
+
     def test_rejects_bad_paths_and_symlinks(self):
         for name in ('../outside','/absolute','scenarios/performance/../bad.txt','scenarios/performance/a\\b.txt','scenarios/performance/x:bad.txt'):
             with self.subTest(name=name):self.assertFalse(bundle.allowed(name))

@@ -171,7 +171,7 @@ internal static class DepotPackage
         if(appEntry.Length>1024*1024)throw new InvalidDataException("App manifest exceeds budget");
         using var appStream=appEntry.Open();using var app=JsonDocument.Parse(appStream);
         if(data.GetProperty("schema").GetInt32()!=1||data.GetProperty("commit").GetString()!=app.RootElement.GetProperty("Commit").GetString()||data.GetProperty("version").GetString()!=app.RootElement.GetProperty("Version").GetString())throw new InvalidDataException("Release report identity mismatch");
-        const string fixedNames="BUILD.txt|version.json|texture-audit.json|validation-plan.json|nkit-validation.json|opening.bnr|opening-pal.bnr|SHA256SUMS.txt|update.json|animal-town-updater.dol|updater-THIRD-PARTY-NOTICES.txt|release-notes.md|updater-setup.md|title-logo.png|title-logo-picker.png|title-logo-name.png|title-logo-return.png|title-logo-debug.png|title-logo-status.png|title-logo-report.json|title-logo-build.json|terrain-materials-report.json|terrain-materials-build.json";
+        const string fixedNames="BUILD.txt|version.json|texture-audit.json|validation-plan.json|nkit-validation.json|opening.bnr|opening-pal.bnr|SHA256SUMS.txt|update.json|updater-THIRD-PARTY-NOTICES.txt|release-notes.md|updater-setup.md|title-logo.png|title-logo-picker.png|title-logo-name.png|title-logo-return.png|title-logo-debug.png|title-logo-status.png|title-logo-report.json|title-logo-build.json|terrain-materials-report.json|terrain-materials-build.json";
         var seen=new HashSet<string>(StringComparer.Ordinal);
         foreach(var property in data.GetProperty("files").EnumerateObject()){
             string name=property.Name;

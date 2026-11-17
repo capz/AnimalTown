@@ -19,7 +19,7 @@ APP='apps/animaltown/'
 REPORT='release/'
 MANIFEST=REPORT+'manifest.json'
 FIXED={'BUILD.txt','version.json','texture-audit.json','validation-plan.json','nkit-validation.json',
-       'opening.bnr','opening-pal.bnr','SHA256SUMS.txt','update.json','animal-town-updater.dol',
+       'opening.bnr','opening-pal.bnr','SHA256SUMS.txt','update.json',
        'updater-THIRD-PARTY-NOTICES.txt','release-notes.md','updater-setup.md'}
 EVIDENCE={'title-logo.png','title-logo-picker.png','title-logo-name.png','title-logo-return.png',
           'title-logo-debug.png','title-logo-status.png','title-logo-report.json','title-logo-build.json',

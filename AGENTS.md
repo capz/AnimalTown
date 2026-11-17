@@ -23,7 +23,7 @@ boot without an AnimalTown disc. See `docs/depot-release.md`. Full-size source a
 round-trip ISOs are temporary conversion files and must be deleted after
 verification, including on failure. Publish the NKit ISO directly, without a ZIP
 wrapper, alongside the app, backend and compiled-tools ZIPs. Publish only ZIP and
-ISO assets. Put revision manifests, SHA-256 checksums, banners, updater helpers
+ISO assets. Put revision manifests, SHA-256 checksums, banners, updater documentation
 and validation captures under `release/` inside the single `-depot.zip`, outside
 the installed `apps/animaltown/` payload. Do not publish source or authoring kits;
 automatic GitHub source archives must remain README-only through export-ignore.
