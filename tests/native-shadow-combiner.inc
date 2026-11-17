@@ -257,8 +257,7 @@ static void native_shadow_combiner_checks(void){
     // A NULL raster channel in a path pass suppressed the following receiver
     // alpha on GX: the mask was uploaded but both paths and shadows vanished.
     // Pin the actual transport state confirmed by matched Dolphin A/B runs.
-    for(int stage=2;stage<5;stage++)assert(raster_orders[stage]==GX_COLOR0A0);
-    assert(raster_orders[5]==GX_COLOR0A0);
+    for(int stage=2;stage<8;stage++)assert(raster_orders[stage]==GX_COLOR0A0);
     path_test_ready=0;town_shadow_ground(triangle,NULL,3,&material,&bindings);
     assert(alpha_command_count==6);verify_alpha_footer(2);
     material.secondary=NULL;shadow_test_mode=3;bindings=1;
