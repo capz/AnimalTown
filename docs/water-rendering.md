@@ -135,7 +135,7 @@ without per-frame texture uploads or changes to archived terrain vertices.
 The old storm material and its two I8 images are created between frames only
 when rough weather is first selected. This avoids 8 KiB of unused native image
 data and obsolete effect work compared with keeping both the v2 fallback and
-new v3 material. Sunshine retains its existing independent material and seafloor.
+new v3 material. This is the sole water renderer.
 
 The optional rough geometry retains exactly the four travelling waves and edge
 fade. `WindWakerWaveGrid` caches spatial phases when the patch origin changes;
@@ -208,3 +208,12 @@ restored.png and river-coast-menu.png. Automated height, footprint, shore-adjace
 through `tools/test-changes.ps1`. Physical console testing remains outstanding.
 The handoff branch is explicitly enabled in the existing release workflow so its
 clean ISO/backend/tools/cliff-kit manifests and checksums publish as a prerelease.
+
+## Renderer resources
+
+Calm and rough water share the Wind Waker renderer. Rough-sea textures and the
+small dynamic wave patch are prepared only when needed. All ordinary water,
+river banks, bridge underpasses and shoreline foam use the immutable terrain
+archive. The renderer uses no separate seabed mesh or screen-space water capture.
+The previous alternative mode, its debug selector and authored texture packages
+have been removed. Existing saved debug settings and town formats are unchanged.

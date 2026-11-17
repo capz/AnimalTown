@@ -7,7 +7,6 @@ stop occupying draw slots sooner. Villagers, items, fences, attention bubbles,
 rain and projected shadows already use the shared horizon predicate. The bound
 must be entirely hidden before rejecting it, preserving visible roof/canopy tips.
 
-Switching away from Sunshine frees its textures, effects and EFB capture.
 Inactive storm effects/textures, disabled rain geometry/staging and disabled
 cloud masks/effects are released outside frames. Cloud material references are
 detached before releasing their resources, including dormant floor slots.
@@ -31,6 +30,3 @@ CRC32 checks now use two nibble-table lookups per byte instead of eight
 bit-by-bit branches, using a 64-byte table. Published IEEE vectors and every
 offset/length span of a patterned 257-byte buffer match the independent bitwise
 algorithm; existing save checksums and file layouts are unchanged.
-
-The Sunshine body pass now uses translucent dark blue beneath the specular and
-close-wave layers. Its source-alpha blending preserves the visible seabed.

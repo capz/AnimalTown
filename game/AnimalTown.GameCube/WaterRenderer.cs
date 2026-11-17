@@ -8,13 +8,13 @@ using Hypercube.GameCube;
 // same rigid transform as dry ground and banks. Waves only animate materials.
 internal sealed class WaterRenderer
 {
-    internal const int BedKind=108,PartKinds=109;
+    internal const int PartKinds=108;
     private readonly WaterMaterial material;
     internal WaterRenderer(WaterMaterial material){this.material=material;}
-    private VertexPositionColorTexture[] surface=new VertexPositionColorTexture[0],ocean=new VertexPositionColorTexture[0],foam=new VertexPositionColorTexture[0],bed=new VertexPositionColorTexture[0];
-    private DynamicMeshBuffer? surfaceMesh,oceanMesh,foamMesh,bedMesh;
+    private VertexPositionColorTexture[] surface=new VertexPositionColorTexture[0],ocean=new VertexPositionColorTexture[0],foam=new VertexPositionColorTexture[0];
+    private DynamicMeshBuffer? surfaceMesh,oceanMesh,foamMesh;
     private long revision;
-    private int surfaceCount,oceanCount,foamCount,bedCount;
+    private int surfaceCount,oceanCount,foamCount;
     private GameState state=null!;
     private readonly Color32[] cornerTint=new Color32[(TerrainStream.Width+1)*(TerrainStream.Height+1)];
     private readonly bool[] tintReady=new bool[(TerrainStream.Width+1)*(TerrainStream.Height+1)];
@@ -24,42 +24,19 @@ internal sealed class WaterRenderer
     private bool deepSea;
     private Color32 deepTint;
     internal int Triangles=>(surfaceCount+oceanCount+foamCount)/3;
-    internal int BedTriangles=>bedCount/3;
     internal Mesh? SurfaceMesh=>surfaceCount==0?null:surfaceMesh?.Mesh;
     internal Mesh? OceanMesh=>oceanCount==0?null:oceanMesh?.Mesh;
     internal Mesh? FoamMesh=>foamCount==0?null:foamMesh?.Mesh;
-    internal Mesh? BedMesh=>bedCount==0?null:bedMesh?.Mesh;
     private int cells;
     internal void Begin(GameState next,int left,int top,CylinderRows cache,bool deep)
     {
-        state=next;surfaceCount=oceanCount=foamCount=bedCount=cells=0;cachedRow=int.MinValue;rows=cache;deepSea=deep;deepTint=material.Tint(1);
+        state=next;surfaceCount=oceanCount=foamCount=cells=0;cachedRow=int.MinValue;rows=cache;deepSea=deep;deepTint=material.Tint(1);
         Array.Clear(tintReady,0,tintReady.Length);
         originX=left;originZ=top;
     }
     internal void AppendDeepRow(int z)
     {
         Quad(ref ocean,ref oceanCount,originX,z,originX,z,originX+TerrainStream.Width,z,originX+TerrainStream.Width,z+1,originX,z+1,false);
-        AppendBedRow(z);
-    }
-    internal void AppendBedRow(int z)
-    {
-        for(int x=originX;x<originX+TerrainStream.Width;){
-            int end=WaterSurface.BedRunEnd(state.Town,x,z,originX+TerrainStream.Width);
-            if(end==x){x++;continue;}
-            if(bedMesh==null)bedMesh=new DynamicMeshBuffer(TerrainStream.Width*TerrainStream.Height*6);
-            bed=GeometryStaging.Reserve(bedMesh,bed,bedCount,bedCount+6,FrameProfile.Counters);
-            float depth=WaterTerrain.IsSea(state.Town,x,z)?SunshineWater.SeaBedDepth:SunshineWater.RiverBedDepth;
-            float scale=SunshineWater.BedScale(depth),offset=SunshineWater.BedAxisOffset(depth);
-            var a=BedVertex(x,z,x,z,scale,offset);var b=BedVertex(x,z,end,z,scale,offset);
-            var c=BedVertex(x,z,end,z+1,scale,offset);var d=BedVertex(x,z,x,z+1,scale,offset);
-            bed[bedCount++]=a;bed[bedCount++]=b;bed[bedCount++]=c;
-            bed[bedCount++]=a;bed[bedCount++]=c;bed[bedCount++]=d;x=end;
-        }
-    }
-    private VertexPositionColorTexture BedVertex(int cx,int cz,float x,float z,float scale,float offset)
-    {
-        var p=Position(cz,x,z,WaterSurface.HeightAt(state.Town,cx,cz,x,z));
-        return new VertexPositionColorTexture(new Vector3(x,p.Y*scale+offset,p.Z*scale),Color32.White,Vector2.Zero);
     }
     internal void Append(FloorStrips strips)
     {
@@ -85,8 +62,6 @@ internal sealed class WaterRenderer
     internal void Finish()
     {
         revision++;
-        if(bedCount>0)bedMesh!.Commit(bedCount,revision,FrameProfile.Counters);
-        else if(bedMesh!=null){bedMesh.Dispose();bedMesh=null;bed=new VertexPositionColorTexture[0];}
         if(surfaceCount>0)surfaceMesh!.Commit(surfaceCount,revision,FrameProfile.Counters);
         else if(surfaceMesh!=null){surfaceMesh.Dispose();surfaceMesh=null;surface=new VertexPositionColorTexture[0];}
         if(oceanCount>0)oceanMesh!.Commit(oceanCount,revision,FrameProfile.Counters);
@@ -99,9 +74,8 @@ internal sealed class WaterRenderer
         TerrainSection.ArchivePart(section,104,SurfaceMesh,surfaceCount);
         TerrainSection.ArchivePart(section,105,FoamMesh,foamCount);
         TerrainSection.ArchivePart(section,107,OceanMesh,oceanCount);
-        TerrainSection.ArchivePart(section,BedKind,BedMesh,bedCount);
     }
-    internal void Dispose(){surfaceMesh?.Dispose();oceanMesh?.Dispose();foamMesh?.Dispose();bedMesh?.Dispose();surfaceMesh=oceanMesh=foamMesh=bedMesh=null;}
+    internal void Dispose(){surfaceMesh?.Dispose();oceanMesh?.Dispose();foamMesh?.Dispose();surfaceMesh=oceanMesh=foamMesh=null;}
     private void RiverFoam(int x,int z)
     {
         for(int side=0;side<4;side++)if(RiverBankGeometry.Foam(state.Town,x,z,side,out var a,out var b,out var c,out var d))

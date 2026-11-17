@@ -37,7 +37,7 @@ internal sealed class TerrainSection
         }
         if(row<TerrainStream.Height){
             if(phase==0){
-                strips.PrepareRegion(state,data,left,top+row,TerrainStream.Width,1);AppendGround(state,strips,owner);Water.Append(strips);Water.AppendBedRow(top+row);
+                strips.PrepareRegion(state,data,left,top+row,TerrainStream.Width,1);AppendGround(state,strips,owner);Water.Append(strips);
                 if(TerrainSectionPlan.Walls(state.Town,left,top+row))phase=1;else row++;
             }else{Walls.AppendRow(state,owner,left,top+row);phase=0;row++;}
             return false;

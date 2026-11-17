@@ -4,7 +4,6 @@ internal static class WaterSurfaceChecks
 {
     internal static void Run(Action<bool,string> check)
     {
-        BedRuns(check);
         RiverCoastChecks.Run(check);
         RiverBankChecks.Run(check);
         CloudShadowChecks.Run(check);
@@ -80,123 +79,6 @@ internal static class WaterSurfaceChecks
         long allocated=GC.GetAllocatedBytesForCurrentThread();
         for(int frame=0;frame<1000;frame++){grid.Prepare(128,135,frame*.016);grid.Height(8,8);}
         check(GC.GetAllocatedBytesForCurrentThread()==allocated,"warm rough-water sampling has no per-frame allocations");
-        // The visual effect is encoded in five *independent* grayscale images
-        // instead of a run-time procedural pattern or regular box mipmapping.
-        for(int level=0;level<SunshineWater.MipLevels;level++)
-            check(SunshineWater.AlphaForLuma(level,0)==0&&SunshineWater.AlphaForLuma(level,127)==119&&
-                  SunshineWater.AlphaForLuma(level,128)==136&&SunshineWater.AlphaForLuma(level,255)==255,
-                  "all I4 levels use the same nearest-nibble intensity/alpha expansion without bespoke opacity gains");
-        var artistLevels=new byte[SunshineWater.MipLevels][];
-        for(int level=0;level<SunshineWater.MipLevels;level++){
-            int size=SunshineWater.SourceEdge(level);
-            var pixels=artistLevels[level]=new byte[size*size];
-            for(int y=0;y<size;y++)for(int x=0;x<size;x++)
-                pixels[y*size+x]=(byte)(level switch{
-                    1=>70+(x*7+y*11)%170,
-                    2=>160+(x*3+y*5)%96,
-                    3=>20+(x+y)%30,
-                    _=>0
-                });
-        }
-        byte[] sunshine=SunshineWater.PackLevels(artistLevels);
-        SunshineWater.ValidatePackage(sunshine);
-        TexturePixels.Validate(sunshine);
-        check(TexturePixels.Int(sunshine,0)==0x58544e44&&TexturePixels.Int(sunshine,4)==2&&
-              TexturePixels.Int(sunshine,8)==0&&TexturePixels.Width(sunshine)==128&&TexturePixels.Height(sunshine)==128&&
-              TexturePixels.Int(sunshine,24)==SunshineWater.MipLevels&&
-              sunshine.Length==32+SunshineWater.PayloadBytes,
-              "Sunshine artist mips cook into the verified 128-square GX I4 DNTX v2 chain");
-        int sunshineAt=32;int[] meanBrightness=new int[SunshineWater.MipLevels];
-        for(int level=0;level<SunshineWater.MipLevels;level++){
-            int edge=SunshineWater.Edge(level),sourceEdge=SunshineWater.SourceEdge(level);
-            for(int by=0;by<edge;by+=8)for(int bx=0;bx<edge;bx+=8)
-                for(int y=by;y<by+8;y++)for(int x=bx;x<bx+8;x+=2){
-                    byte packed=sunshine[sunshineAt++];
-                    for(int part=0;part<2;part++){
-                        byte source=artistLevels[level][y/2*sourceEdge+(x+part)/2];
-                        int lum=(part==0?packed>>4:packed&15)*17;
-                        check(lum==((source+8)/17)*17&&lum==SunshineWater.AlphaForLuma(level,source),
-                            "I4 8x8 tiles store high nibble first, expand each authored pixel 2x and use equal decoded intensity/alpha");
-                        meanBrightness[level]+=lum;
-                    }
-                }
-            meanBrightness[level]/=edge*edge;
-        }
-        check(sunshineAt==sunshine.Length&&SunshineWater.PayloadBytes==10912,"native I4 chain has exactly the required five GX tile levels");
-        check(meanBrightness[0]==0&&meanBrightness[4]==0,
-            "base and farthest Sunshine mip levels draw no specular reflection");
-        check(meanBrightness[2]>meanBrightness[1]&&meanBrightness[1]>meanBrightness[3],
-            "authored third mip creates a bright middle-distance reflection band");
-        check(SunshineWater.LodBias==0&&SunshineWater.SecondaryLodBias==-.5f&&
-              SunshineWater.GlintLowReference==35&&SunshineWater.GlintHighReference==235&&
-              SunshineWater.NearLowReference==35&&SunshineWater.NearHighReference==85,
-              "surface uses the source LOD biases and exclusive low35 threshold; near waves have distinct inclusive35/high85 references");
-        var truncated=(byte[])sunshine.Clone();truncated[32+SunshineWater.PayloadBytes-1]++;
-        bool rejected=false;try{SunshineWater.ValidatePackage(truncated);}catch(InvalidOperationException){rejected=true;}
-        check(rejected,"Sunshine texture validation rejects nonclear final authored levels");
-        byte[] nearWave=SunshineWater.PackNearWave(artistLevels[1]),distortion=SunshineWater.PackDistortion(artistLevels[1]);
-        SunshineWater.ValidateNearWavePackage(nearWave);SunshineWater.ValidateDistortionPackage(distortion);
-        TexturePixels.Validate(nearWave);TexturePixels.Validate(distortion);
-        check(TexturePixels.Width(nearWave)==128&&TexturePixels.Height(nearWave)==256&&TexturePixels.Int(nearWave,24)==5&&nearWave.Length==32+21824,
-            "separate near-wave I4 package matches 128x256, five levels and 21824 native bytes");
-        check(TexturePixels.Width(distortion)==64&&TexturePixels.Height(distortion)==64&&TexturePixels.Int(distortion,24)==4&&distortion.Length==32+2720,
-            "separate displacement I4 package matches 64x64, four levels and 2720 native bytes");
-        foreach(var package in new[]{nearWave,distortion}){
-            int width=TexturePixels.Width(package),height=TexturePixels.Height(package);
-            for(int y=0;y<height;y++)for(int x=0;x<width;x++){
-                int lum=(int)(TexturePixels.Pixel(package,x,y)>>24);
-                byte source=artistLevels[1][y*32/height*32+x*32/width];
-                check(lum==((source+8)/17)*17,"near-wave and displacement bases reuse our independent caustic art with exact nearest expansion");
-            }
-        }
-        var checker=new byte[32*32];for(int y=0;y<32;y++)for(int x=0;x<32;x++)checker[y*32+x]=(byte)(((x+y)&1)*255);
-        byte[] filteredDistortion=SunshineWater.PackDistortion(checker),filteredNear=SunshineWater.PackNearWave(checker);
-        // The final displacement level averages 4x4 source samples; the near
-        // level averages 4x2. Both must reduce the checker to intensity136.
-        foreach(var package in new[]{filteredDistortion,filteredNear}){
-            int lastBytes=ReferenceEquals(package,filteredDistortion)?32:64;
-            for(int i=package.Length-lastBytes;i<package.Length;i++)
-                check(package[i]==0x88,"ordinary mips of the two independent overlay textures filter source detail before I4 quantization");
-        }
-        check(SunshineWater.SurfacePhase(0)==0&&SunshineWater.SurfacePhase(40)==0&&
-              Math.Abs(SunshineWater.SurfacePhase(10)-.203125f)<.0000001f&&SunshineWater.SurfacePhase(20)==.5f&&
-              Math.Abs(SunshineWater.SurfacePhase(30)-.796875f)<.0000001f,
-              "surface BTK reproduces the source Hermite tangents over a forty-second 30fps cycle");
-        check(SunshineWater.IndirectPhase(10)==.75f&&SunshineWater.IndirectPhase(20)==1.5f&&SunshineWater.IndirectPhase(40)==0&&
-              Math.Abs(SunshineWater.NearPhase(10)-.45f)<.0000001f,
-              "refraction scrolls three repeats per forty seconds and near waves advance .0015 repeats per 30fps frame");
-        foreach(double seconds in new[]{-3600.0,-1,1,3600,86400,1e8}){
-            check(SunshineWater.SurfacePhase(seconds)>=0&&SunshineWater.SurfacePhase(seconds)<1&&
-                  SunshineWater.IndirectPhase(seconds)>=0&&SunshineWater.IndirectPhase(seconds)<3&&
-                  SunshineWater.NearPhase(seconds)>=0&&SunshineWater.NearPhase(seconds)<1,
-                  "all source UV phases remain finite and bounded in long sessions or negative elapsed time");
-            check(Math.Abs(SunshineWater.SurfacePhase(seconds+40)-SunshineWater.SurfacePhase(seconds))<.000001f,
-                "surface animation repeats without changing the authored Hermite profile");
-        }
-        check(SunshineWater.Cells==16&&SunshineWater.VertexFade(8,8)==255&&SunshineWater.VertexFade(4,8)==127&&
-              SunshineWater.VertexFade(4,4)==127&&SunshineWater.VertexFade(0,8)==0&&SunshineWater.VertexFade(17,8)==0,
-              "near-wave vertex alpha fades linearly by max-axis distance around the player");
-        foreach(double time in new[]{0.0,1,3600,86400,1e8}){
-            float atEdge=SunshineWater.LocalWaveHeight(0,8,12,24,time);
-            float center=SunshineWater.LocalWaveHeight(8,8,12,24,time);
-            check(Math.Abs(atEdge-.047f)<.000001f&&center>.005f&&center<.09f,
-                "Sunshine two-wave patch fades at its rim and stays above static sea geometry");
-            check(Math.Abs(center-SunshineWater.LocalWaveHeight(8,8,12,24,time+.001))<.001f,
-                "Sunshine nearby geometry has continuous two-direction motion");
-        }
-        foreach(float depth in new[]{SunshineWater.RiverBedDepth,SunshineWater.SeaBedDepth}){
-            float scale=SunshineWater.BedScale(depth),offset=SunshineWater.BedAxisOffset(depth);
-            check(scale>0&&scale<1&&float.IsFinite(offset),"seabed uses a small finite inward cylinder transform");
-            for(int z=-50;z<=Town.Height+30;z+=5){
-                var surface=CylinderWorld.Surface(z,0,WaterSurface.Height);
-                var bottom=CylinderWorld.Surface(z,0,WaterSurface.Height-depth);
-                float y=surface.Y*scale+offset,projectedZ=surface.Z*scale;
-                check(Math.Abs(y-bottom.Y)<.0001f&&Math.Abs(projectedZ-bottom.Z)<.0001f,
-                    "reused water mesh lies at constant radial bed depth even over the cylinder horizon");
-            }
-        }
-        check(SunshineWater.SeaBedDepth>SunshineWater.RiverBedDepth,
-            "sea floor is deeper than the inland water floor");
         foreach(float speed in new[]{.012f,.025f,-.018f,.035f}){
             check(WaterSurface.Scroll(0,speed)==0,"animation starts at authored UVs");
             foreach(double time in new[]{1.0,59,3600,86400,1e8}){
@@ -219,54 +101,5 @@ internal static class WaterSurfaceChecks
         }
         check(cells>100&&cells<=WaterSurface.MaximumCells&&land==2,"visible open sea stays bounded and leaves bridge/land surfaces intact");
         strips.Prepare(state,1,data);check(strips.Count==1&&!strips.Water[0],"interior floors never inherit outdoor water");
-    }
-    private static void BedRuns(Action<bool,string> check)
-    {
-        var town=new Town(43);Array.Fill(town.Tiles,(byte)Terrain.Grass);Array.Clear(town.Elevation);
-        for(int z=40;z<44;z++)for(int x=40;x<48;x++)town.Tiles[z*Town.Width+x]=(byte)Terrain.Water;
-        int quads=0;for(int z=40;z<44;z++){
-            check(WaterSurface.BedRunEnd(town,40,z,48)==48,"flat 8m-wide waterbed uses one full row quad");quads++;
-        }
-        check(quads*2==8&&quads*8==32,"flat 8x4m bed needs eight triangles instead of 64");
-        town.Tiles[40*Town.Width+42]=(byte)Terrain.Bridge;
-        check(WaterSurface.BedRunEnd(town,40,40,48)==48,"bed spans a bridge without a seam or hidden material split");
-        town.Tiles[40*Town.Width+44]=(byte)Terrain.Grass;
-        check(WaterSurface.BedRunEnd(town,40,40,48)==44&&WaterSurface.BedRunEnd(town,44,40,48)==44,
-            "bed runs stop at dry holes and dry cells emit no geometry");
-        town.Tiles[40*Town.Width+44]=(byte)Terrain.Sea;
-        check(WaterSurface.BedRunEnd(town,40,40,48)==44,"inland and deeper ocean beds never merge across their depth change");
-        town.Elevation[40*Town.Width+42]=TerrainElevation.Block;
-        check(WaterSurface.BedRunEnd(town,40,40,48)==42,"raised water splits before a height discontinuity");
-        town.Elevation[40*Town.Width+40]=TerrainElevation.RampEast;
-        check(WaterSurface.BedRunEnd(town,40,40,48)==41,"X-sloped cells retain their original two triangles");
-        for(int x=40;x<48;x++){town.Tiles[40*Town.Width+x]=(byte)Terrain.Water;town.Elevation[40*Town.Width+x]=TerrainElevation.RampSouth;}
-        check(WaterSurface.BedRunEnd(town,40,40,48)==48,"identical Z-sloped height profiles merge without changing their plane");
-        int totalCells=0,totalQuads=0;
-        for(int seed=0;seed<12;seed++){
-            town=new Town(seed);
-            for(int z=-4;z<Town.Height+4;z++)for(int left=-8;left<=Town.Width;left+=8){
-                int covered=0;
-                for(int x=left;x<left+8;){
-                    int end=WaterSurface.BedRunEnd(town,x,z,left+8);
-                    if(end==x){check(!WaterSurface.HasBed(town,x,z),"only dry cells are skipped");x++;continue;}
-                    check(end>x&&end<=left+8,"bed run remains inside its immutable section");
-                    bool sea=WaterTerrain.IsSea(town,x,z);float near=WaterSurface.HeightAt(town,x,z,x,z),far=WaterSurface.HeightAt(town,x,z,x,z+1);
-                    for(int at=x;at<end;at++){
-                        check(WaterSurface.HasBed(town,at,z)&&WaterTerrain.IsSea(town,at,z)==sea,"merged beds cover water/bridge cells with one shared depth");
-                        if(end-x>1)check(WaterSurface.HeightAt(town,at,z,at,z)==near&&WaterSurface.HeightAt(town,at,z,at+1,z)==near&&
-                            WaterSurface.HeightAt(town,at,z,at,z+1)==far&&WaterSurface.HeightAt(town,at,z,at+1,z+1)==far,
-                            "every merged cell retains its original cylinder-row corner heights");
-                    }
-                    covered+=end-x;totalQuads++;x=end;
-                }
-                int expected=0;for(int x=left;x<left+8;x++)if(WaterSurface.HasBed(town,x,z))expected++;
-                check(covered==expected,"seeded waterbed coverage has no holes or overlaps");totalCells+=expected;
-            }
-        }
-        check(totalQuads*3<totalCells,"seed sweep reduces waterbed polygon count by more than two thirds");
-        long bytes=GC.GetAllocatedBytesForCurrentThread();
-        for(int n=0;n<10000;n++)WaterSurface.BedRunEnd(town,40,40,48);
-        check(GC.GetAllocatedBytesForCurrentThread()==bytes,"bed run selection allocates no temporary lists or per-cell objects");
-        Console.WriteLine("Waterbeds: "+totalCells+" cells -> "+totalQuads+" row quads across 12 town seeds");
     }
 }
