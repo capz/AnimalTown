@@ -122,6 +122,8 @@ internal sealed class TownGame : IDisposable
     private readonly BuildingPrompt buildingPrompt=new BuildingPrompt();
     private readonly WrappedText dialogueText=new WrappedText(41),itemTitleText=new WrappedText(14),saveStatusText=new WrappedText(48);
     private string wrappedDialogue="";
+    private int actionWidthItem=-1,actionWidthRoom=-1;
+    private float actionWidth;
     private readonly RenderQueue actorQueue=new RenderQueue(7,7);
     private readonly Transform[] modelPoses=new Transform[16];
     private readonly BoxBatch boxes;
@@ -1138,6 +1140,15 @@ internal sealed class TownGame : IDisposable
         if(menuTab==TestingTab)return TestingLabel(i);
         string[] settings={"Save now","Controls","About / build identity","Calendar","Chat settings","Debug / testing menu"};return settings[i];
     }
+    private float ItemActionWidth(int item,string title)
+    {
+        if(actionWidthItem==item&&actionWidthRoom==room)return actionWidth;
+        float widest=Math.Max(strongFont.Measure(title,1.3f/1.5f),font.Measure("A select   B back",1/1.5f));
+        int count=PocketMenu.Count(item,room);
+        for(int i=0;i<count;i++)widest=Math.Max(widest,font.Measure(PocketMenu.Label(PocketMenu.At(item,room,i)),1.05f/1.5f));
+        actionWidthItem=item;actionWidthRoom=room;
+        return actionWidth=(float)Math.Ceiling(widest)+32; // Same 16px padding on both sides.
+    }
     private void DrawBackpack()
     {
         var ink=new Color32(49,72,62);int rows=state.Capacity/5;float height=94+rows*44;
@@ -1163,20 +1174,21 @@ internal sealed class TownGame : IDisposable
         // Follow the actual slot for both the title and action menu. Clamp the
         // panel (including bulges/shadow) above the HUD for all backpack sizes.
         float slotX=99+focus%5*58,slotY=144+focus/5*44;
-        int actionCount=PocketMenu.Count(state.Pockets[focus],room);
-        float popWidth=actions?186:168,popHeight=actions?92+actionCount*18:141;
+        int item=state.Pockets[focus],actionCount=PocketMenu.Count(item,room);
+        string title=itemTitleText.Get(item==0?"Empty pocket":Catalog.Items[item].Name);
+        float popWidth=actions?ItemActionWidth(item,title):168,popHeight=actions?92+actionCount*18:141;
         float popX=Math.Min(slotX+66,607-popWidth),popY=Math.Max(80,Math.Min(slotY-12,428-popHeight));
         float pointerY=Math.Max(popY+36,Math.Min(slotY+20,popY+popHeight-36));
         Panel(popX,popY,popWidth,popHeight);
         ui.FillTriangle(new Vector2(popX+2,pointerY-12),new Vector2(popX+2,pointerY+12),new Vector2(slotX+52,slotY+20),new Color32(255,245,221));
-        int item=state.Pockets[focus];float textX=popX+16;
-        Strong(itemTitleText.Get(item==0?"Empty pocket":Catalog.Items[item].Name),textX,popY+12,ink,1.3f);
+        float textX=popX+16;
+        Strong(title,textX,popY+12,ink,1.3f);
         if(actions)
         {
             for(int i=0;i<actionCount;i++){
                 float y=popY+56+i*18;
                 if(i==selected)Rounded(popX+10,y-1,popWidth-20,18,9,new Color32(221,231,188));
-                Text((i==selected?"> ":"  ")+PocketMenu.Label(PocketMenu.At(item,room,i)),textX,y,ink,1.05f);
+                Text(PocketMenu.Label(PocketMenu.At(item,room,i)),textX,y,ink,1.05f);
             }
             Text("A select   B back",textX,popY+popHeight-26,ink,1);
         }
