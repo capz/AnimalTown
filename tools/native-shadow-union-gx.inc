@@ -97,7 +97,9 @@ static void town_shadow_apply_stage(float x,float z,const float *world,const Dnd
     GXColor tint=town_environment_tint();GX_SetTevKColor(GX_KCOLOR2,tint);GX_SetTevKColorSel((u8)stage,GX_TEV_KCSEL_K2);
     GX_SetTevColorIn((u8)stage,GX_CC_ZERO,GX_CC_CPREV,GX_CC_KONST,GX_CC_ZERO);
     GX_SetTevColorOp((u8)stage,GX_TEV_ADD,GX_TB_ZERO,GX_CS_SCALE_1,GX_TRUE,GX_TEVPREV);
-    GX_SetTevKAlphaSel((u8)stage,GX_TEV_KASEL_1);
+    /* Outdoors both packed-map reads gate on raster alpha. Only the indoor
+     * position projection uses a konst alpha input for an always-on receiver. */
+    if(mode==2)GX_SetTevKAlphaSel((u8)stage,GX_TEV_KASEL_1);
     GX_SetTevAlphaIn((u8)stage,GX_CA_ZERO,GX_CA_TEXA,mode==2?GX_CA_KONST:GX_CA_RASA,GX_CA_ZERO);
     GX_SetTevAlphaOp((u8)stage,GX_TEV_ADD,GX_TB_ZERO,GX_CS_SCALE_1,GX_TRUE,GX_TEVREG2);
     stage++;GX_SetTevDirect((u8)stage);GX_SetTevSwapMode((u8)stage,GX_TEV_SWAP0,GX_TEV_SWAP0);
@@ -113,7 +115,7 @@ static void town_shadow_apply_stage(float x,float z,const float *world,const Dnd
     GX_SetTevKColor(GX_KCOLOR3,(GXColor){35*tint.r/255,49*tint.g/255,66*tint.b/255,255});GX_SetTevKColorSel((u8)stage,GX_TEV_KCSEL_K3);
     GX_SetTevColorIn((u8)stage,GX_CC_CPREV,GX_CC_KONST,GX_CC_A2,GX_CC_ZERO);
     GX_SetTevColorOp((u8)stage,GX_TEV_ADD,GX_TB_ZERO,GX_CS_SCALE_1,GX_TRUE,GX_TEVPREV);
-    GX_SetTevKAlphaSel((u8)stage,GX_TEV_KASEL_1);
+    if(mode==2)GX_SetTevKAlphaSel((u8)stage,GX_TEV_KASEL_1);
     GX_SetTevAlphaIn((u8)stage,GX_CA_ZERO,GX_CA_TEXA,mode==2?GX_CA_KONST:GX_CA_RASA,GX_CA_ZERO);
     GX_SetTevAlphaOp((u8)stage,GX_TEV_ADD,GX_TB_ZERO,GX_CS_SCALE_1,GX_TRUE,GX_TEVREG2);
     stage++;GX_SetTevDirect((u8)stage);GX_SetTevSwapMode((u8)stage,GX_TEV_SWAP0,GX_TEV_SWAP0);

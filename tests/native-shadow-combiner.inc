@@ -17,7 +17,7 @@ enum {
     GX_TEXMAP_NULL=255,GX_COLOR_NULL=255,GX_COLOR0A0=4,
     GX_TG_MTX2x4=1,GX_TG_MTX3x4=0,GX_TG_TEX0=4,GX_TG_POS=0,GX_TG_NRM=1,
     GX_IDENTITY=60,GX_TEXMTX8=54,GX_TEXMTX9=57,GX_MTX2x4=1,GX_MTX3x4=0,
-    GX_DTTMTX0=64,GX_CH_RED=0,GX_CH_GREEN=1,GX_CH_BLUE=2,GX_TEV_SWAP1=1,GX_TEV_SWAP0=0,GX_TEV_ADD=0,GX_TB_ZERO=0,GX_CS_SCALE_1=0,
+    GX_DTTMTX0=64,GX_CH_RED=0,GX_CH_GREEN=1,GX_CH_BLUE=2,GX_CH_ALPHA=3,GX_TEV_SWAP1=1,GX_TEV_SWAP0=0,GX_TEV_ADD=0,GX_TB_ZERO=0,GX_CS_SCALE_1=0,
     GX_TEVPREV=0,GX_TEVREG0=1,GX_TEVREG1=2,GX_TEVREG2=3,GX_TEV_KASEL_1=0,GX_KCOLOR3=3,GX_KCOLOR2=2,GX_KCOLOR1=1,GX_TEV_KASEL_K2_A=30,GX_TEV_KCSEL_K0=12,GX_TEV_KCSEL_K1=13,GX_TEV_KCSEL_K2=14,
     GX_TEV_KCSEL_K3=15,GX_CC_CPREV=0,GX_CC_C0=2,GX_CC_C1=4,GX_CC_C2=6,GX_CC_A2=7,GX_CC_TEXC=8,
     GX_CC_RASC=10,GX_CC_ONE=12,GX_CC_KONST=14,GX_CC_ZERO=15,GX_CA_APREV=0,GX_CA_A2=3,GX_CA_TEXA=4,
@@ -25,11 +25,13 @@ enum {
 };
 typedef struct { int input[4],destination; } AlphaCommand;
 typedef struct { int input[4],destination,konst; } ColorCommand;
+typedef struct { int coord,map,channel,raster_swap,texture_swap,direct; } TevOrder;
 static AlphaCommand alpha_commands[16];
 static ColorCommand color_commands[16];
 static int alpha_selection[16];
-static int raster_orders[16];
-static int alpha_command_count;
+static TevOrder tev_orders[16];
+static int swap_alpha_channel[4]={GX_CH_ALPHA,GX_CH_ALPHA,GX_CH_ALPHA,GX_CH_ALPHA};
+static int alpha_command_count,texgens,packed_texgen_source,texture_loads,shadow_loads,tev_order_writes,kalpha_writes;
 static int shadow_page_side=SU_SIDE,shadow_page_missing;
 static int texture_width,texture_height,texture_min,texture_mag;
 static int texture_format,environment_test_rgb=0xffffff,point_test_gain=255;
@@ -44,10 +46,15 @@ static void GX_InitTexObj(GXTexObj *t,void *data,u16 w,u16 h,int format,int s,in
 static void GX_InitTexObjLOD(GXTexObj *t,int min,int mag,float low,float high,float bias,int clamp,int edge,int aniso){
     (void)t;(void)low;(void)high;(void)bias;(void)clamp;(void)edge;(void)aniso;texture_min=min;texture_mag=mag;
 }
-static void GX_LoadTexObj(GXTexObj *t,int map){(void)t;assert(map==GX_TEXMAP2||map==GX_TEXMAP3);}
+static void GX_LoadTexObj(GXTexObj *t,int map){
+    (void)t;assert(map==GX_TEXMAP2||map==GX_TEXMAP3);
+    texture_loads++;if(map==GX_TEXMAP2)shadow_loads++;
+}
 static void GX_SetNumTevStages(u8 count){assert(count<=16);alpha_command_count=count;}
-static void GX_SetNumTexGens(int count){assert(count==3||count==4);}
-static void GX_SetTexCoordGen(int coord,int type,int source,int matrix){(void)coord;(void)type;(void)source;(void)matrix;}
+static void GX_SetNumTexGens(int count){assert(count==3||count==4);texgens=count;}
+static void GX_SetTexCoordGen(int coord,int type,int source,int matrix){
+    (void)type;(void)matrix;if(coord==GX_TEXCOORD2)packed_texgen_source=source;
+}
 static void GX_SetTexCoordGen2(int coord,int type,int source,int matrix,int normalize,int post){
     (void)coord;(void)type;(void)source;(void)matrix;(void)normalize;(void)post;
 }
@@ -56,10 +63,17 @@ static void GX_SetTexCoordBias(int coord,int s,int t){(void)coord;(void)s;(void)
 static void GX_LoadTexMtxImm(Mtx matrix,int slot,int type){
     (void)type;if(slot==GX_TEXMTX8){shadow_uv_scale=matrix[0][0];shadow_uv_offset=matrix[0][3];shadow_uv_scale_z=matrix[1][1];shadow_uv_offset_z=matrix[1][3];}
 }
-static void GX_SetTevSwapModeTable(int t,int r,int g,int b,int a){(void)t;(void)r;(void)g;(void)b;(void)a;}
-static void GX_SetTevDirect(u8 stage){assert(stage<16);}
-static void GX_SetTevSwapMode(u8 stage,int raster,int tex){assert(stage<16);(void)raster;(void)tex;}
-static void GX_SetTevOrder(u8 stage,int coord,int map,int raster){assert(stage<16);(void)coord;(void)map;raster_orders[stage]=raster;}
+static void GX_SetTevSwapModeTable(int t,int r,int g,int b,int a){
+    assert(t>=0&&t<4&&r==GX_CH_RED&&g==GX_CH_GREEN&&b==GX_CH_BLUE);swap_alpha_channel[t]=a;
+}
+static void GX_SetTevDirect(u8 stage){assert(stage<16);tev_orders[stage].direct=1;}
+static void GX_SetTevSwapMode(u8 stage,int raster,int tex){
+    assert(stage<16);tev_orders[stage].raster_swap=raster;tev_orders[stage].texture_swap=tex;
+}
+static void GX_SetTevOrder(u8 stage,int coord,int map,int raster){
+    assert(stage<16);tev_orders[stage].coord=coord;tev_orders[stage].map=map;
+    tev_orders[stage].channel=raster;tev_order_writes++;
+}
 static void GX_SetTevColorIn(u8 stage,int a,int b,int c,int d){
     assert(stage<16);ColorCommand *out=&color_commands[stage];
     out->input[0]=a;out->input[1]=b;out->input[2]=c;out->input[3]=d;
@@ -68,7 +82,7 @@ static void GX_SetTevColorOp(u8 stage,int op,int bias,int scale,int clamp,int de
     assert(stage<16&&op==GX_TEV_ADD&&bias==GX_TB_ZERO&&scale==GX_CS_SCALE_1&&clamp==GX_TRUE);
     color_commands[stage].destination=destination;
 }
-static void GX_SetTevKAlphaSel(u8 stage,int selection){assert(stage<16);alpha_selection[stage]=selection;}
+static void GX_SetTevKAlphaSel(u8 stage,int selection){assert(stage<16);alpha_selection[stage]=selection;kalpha_writes++;}
 static void GX_SetTevKColor(int slot,GXColor color){assert(slot>=0&&slot<4);konst_colors[slot]=color;if(slot==GX_KCOLOR3)shadow_tint=color;}
 static void GX_SetTevColor(int slot,GXColor color){assert(slot>=0&&slot<4);tev_colors[slot]=color;}
 static void GX_SetTevKColorSel(u8 stage,int selection){assert(stage<16);color_commands[stage].konst=selection;}
@@ -147,6 +161,30 @@ static void verify_alpha_footer(int first){
         assert(actual==expected&&sea_cutout(actual)==sea_cutout(expected));
     }
 }
+static void reset_shadow_recording(void){
+    texgens=packed_texgen_source=texture_loads=shadow_loads=tev_order_writes=kalpha_writes=0;
+    memset(tev_orders,0,sizeof(tev_orders));
+    /* A preceding material can leave selectors in stages that use raster alpha. */
+    for(int stage=0;stage<16;stage++)alpha_selection[stage]=GX_TEV_KASEL_K2_A;
+}
+static void verify_shadow_orders(int first,int mode,int paths,unsigned bindings){
+    assert(alpha_command_count==first+4&&texgens==3+paths&&texture_loads==1+paths&&shadow_loads==1);
+    assert(bindings==(unsigned)(1+paths)&&tev_order_writes==4+3*paths);
+    assert(kalpha_writes==(mode==2?3:1)&&packed_texgen_source==(mode==2?GX_TG_POS:GX_TG_TEX0));
+    assert(swap_alpha_channel[GX_TEV_SWAP1]==GX_CH_RED);
+    for(int i=0;i<4;i++){
+        const TevOrder *order=&tev_orders[first+i];
+        assert(order->direct&&order->raster_swap==GX_TEV_SWAP0&&order->texture_swap==(i==0?GX_TEV_SWAP1:GX_TEV_SWAP0));
+        assert(order->coord==(i%2==0?GX_TEXCOORD2:GX_TEXCOORD_NULL));
+        assert(order->map==(i%2==0?GX_TEXMAP2:GX_TEXMAP_NULL));
+        assert(order->channel==(i<3?GX_COLOR0A0:GX_COLOR_NULL));
+        assert(color_commands[first+i].destination==GX_TEVPREV);
+        assert(alpha_commands[first+i].destination==(i==3?GX_TEVPREV:GX_TEVREG2));
+    }
+    int expected_kalpha=mode==2?GX_TEV_KASEL_1:GX_TEV_KASEL_K2_A;
+    assert(alpha_selection[first]==expected_kalpha&&alpha_selection[first+2]==expected_kalpha);
+    assert(alpha_selection[first+1]==GX_TEV_KASEL_K2_A);
+}
 static int water_combine(int a,int b,int c,int d){
     int weight=c+(c>>7),value=d+((a*(256-weight)+b*weight+128)>>8);
     return value<0?0:value>255?255:value;
@@ -159,12 +197,30 @@ static int water_color_operand(int source,int channel,const int registers[4][4],
     int slot=color_commands[stage].konst-GX_TEV_KCSEL_K0;assert(slot>=0&&slot<4);
     return color_channel(konst_colors[slot],channel);
 }
-static int water_alpha_operand(int source,const int registers[4][4],int stage,int shadow,int light){
+static int shadow_alpha_operand(int source,const int registers[4][4],int stage,int shadow,int light,int receiver){
     if(source<=3)return registers[source][3];
     if(source==GX_CA_ZERO)return 0;
-    if(source==GX_CA_TEXA){assert(stage==4||stage==6);return stage==4?shadow:light;}
+    if(source==GX_CA_TEXA){
+        assert(tev_orders[stage].map==GX_TEXMAP2);
+        return swap_alpha_channel[tev_orders[stage].texture_swap]==GX_CH_RED?shadow:light;
+    }
+    if(source==GX_CA_RASA)return receiver;
     if(source==GX_CA_KONST&&alpha_selection[stage]==GX_TEV_KASEL_K2_A)return konst_colors[2].a;
-    assert(source==GX_CA_RASA||source==GX_CA_KONST);return 255;
+    assert(source==GX_CA_KONST&&alpha_selection[stage]==GX_TEV_KASEL_1);return 255;
+}
+static void run_shadow_stages(int first,int registers[4][4],int shadow,int light,int receiver){
+    for(int stage=first;stage<alpha_command_count;stage++){
+        const ColorCommand *rgb=&color_commands[stage];int out[3];
+        for(int channel=0;channel<3;channel++){
+            int values[4];for(int i=0;i<4;i++)values[i]=water_color_operand(rgb->input[i],channel,registers,stage);
+            out[channel]=water_combine(values[0]&255,values[1]&255,values[2]&255,values[3]);
+        }
+        const AlphaCommand *alpha=&alpha_commands[stage];int values[4];
+        for(int i=0;i<4;i++)values[i]=shadow_alpha_operand(alpha->input[i],registers,stage,shadow,light,receiver);
+        int opacity=water_combine(values[0]&255,values[1]&255,values[2]&255,values[3]);
+        for(int channel=0;channel<3;channel++)registers[rgb->destination][channel]=out[channel];
+        registers[alpha->destination][3]=opacity;
+    }
 }
 static void recorded_water_pixel(int foam0,int foam1,int shadow,int light,int result[3]){
     const int tint[3]={75,154,187};int registers[4][4];
@@ -177,20 +233,26 @@ static void recorded_water_pixel(int foam0,int foam1,int shadow,int light,int re
         registers[0][channel]=water_combine(first,color_channel(konst_colors[1],channel),foam1,0);
     }
     registers[0][3]=173;
-    for(int stage=4;stage<alpha_command_count;stage++){
-        const ColorCommand *rgb=&color_commands[stage];int out[3];
-        for(int channel=0;channel<3;channel++){
-            int values[4];for(int i=0;i<4;i++)values[i]=water_color_operand(rgb->input[i],channel,registers,stage);
-            out[channel]=water_combine(values[0]&255,values[1]&255,values[2]&255,values[3]);
-        }
-        const AlphaCommand *alpha=&alpha_commands[stage];int values[4];
-        for(int i=0;i<4;i++)values[i]=water_alpha_operand(alpha->input[i],registers,stage,shadow,light);
-        int opacity=water_combine(values[0]&255,values[1]&255,values[2]&255,values[3]);
-        for(int channel=0;channel<3;channel++)registers[rgb->destination][channel]=out[channel];
-        registers[alpha->destination][3]=opacity;
-    }
+    run_shadow_stages(4,registers,shadow,light,255);
     assert(registers[0][3]==173);
     for(int channel=0;channel<3;channel++)result[channel]=registers[0][channel];
+}
+static void verify_shadow_colors(int first,int mode,int gain,int rgb){
+    const int dark[]={35,49,66},warm[]={220,158,74},previous[]={224,103,47};
+    for(int receiver=0;receiver<=255;receiver+=85)for(int texel=0;texel<=255;texel++){
+        int flag=mode==2?255:receiver,shadow=(texel&15)*17,light=(texel>>4)*17;
+        int opacity=water_combine(0,water_combine(0,shadow,flag,0),SU_OPACITY,0);
+        int illumination=water_combine(0,light,flag,0);
+        int registers[4][4]={{previous[0],previous[1],previous[2],300}};
+        run_shadow_stages(first,registers,shadow,light,receiver);
+        for(int c=0;c<3;c++){
+            int tint=(rgb>>(16-8*c))&255;
+            int color=water_combine(0,previous[c],tint,0);
+            color=water_combine(color,dark[c]*tint/255,opacity,0);
+            assert(registers[0][c]==water_combine(0,warm[c]*gain/255,illumination,color));
+        }
+        assert(registers[0][3]==44);
+    }
 }
 static void water_shadow_color_checks(void){
     DndDrawEffect water={.count=4,.uniforms=2};DndDrawMaterial material={.effect=&water};
@@ -212,8 +274,8 @@ static void water_shadow_color_checks(void){
         environment_test_rgb=night?0x607aa0:0xffffff;point_test_gain=night?255:0;
         memset(tev_colors,0,sizeof tev_colors);memset(color_commands,0,sizeof color_commands);
         konst_colors[0]=foam0;konst_colors[1]=foam1;
-        unsigned bindings=0;town_shadow_ground(triangle,NULL,3,&material,&bindings);
-        assert(alpha_command_count==8&&bindings==1);
+        unsigned bindings=0;reset_shadow_recording();town_shadow_ground(triangle,NULL,3,&material,&bindings);
+        verify_shadow_orders(4,3,0,bindings);
         assert(!memcmp(&konst_colors[0],&foam0,sizeof foam0)&&!memcmp(&konst_colors[1],&foam1,sizeof foam1));
         assert(tev_colors[GX_TEVREG0].r==220*point_test_gain/255&&tev_colors[GX_TEVREG0].a==0);
         assert(color_commands[7].input[1]==GX_CC_C0);
@@ -271,8 +333,10 @@ static void native_shadow_combiner_checks(void){
     path_blend_color_checks();
     DndDrawEffect effect={.count=2};DndDrawMaterial material={.effect=&effect};
     const DndDrawVertex triangle[]={{0,0,255},{1,0,255},{0,1,255}};
-    unsigned bindings=0;town_shadow_ground(triangle,NULL,3,&material,&bindings);
-    assert(alpha_command_count==6&&bindings==1);verify_alpha_footer(2);
+    const uint16_t indices[]={1,2,0};
+    const float normal[]={1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1};
+    unsigned bindings=0;reset_shadow_recording();town_shadow_ground(triangle,NULL,3,&material,&bindings);
+    verify_shadow_orders(2,3,0,bindings);verify_alpha_footer(2);verify_shadow_colors(2,3,255,0xffffff);
     assert(shadow_tint.r==35&&shadow_tint.g==49&&shadow_tint.b==66);
     assert(texture_format==GX_TF_IA4&&konst_colors[GX_KCOLOR2].a==SU_OPACITY);
     assert(konst_colors[GX_KCOLOR1].r==220&&konst_colors[GX_KCOLOR1].g==158&&konst_colors[GX_KCOLOR1].b==74);
@@ -286,16 +350,28 @@ static void native_shadow_combiner_checks(void){
     assert(texture_width==32&&texture_height==32&&sizeof(town_shadow_empty)==1024);
     shadow_page_missing=0;
     path_test_ready=1;shadow_test_mode=1;material.secondary=&effect;bindings=0;
-    town_shadow_ground(triangle,NULL,3,&material,&bindings);
-    assert(alpha_command_count==9&&bindings==2);verify_alpha_footer(2);
+    reset_shadow_recording();town_shadow_ground(triangle,indices,3,&material,&bindings);
+    verify_shadow_orders(5,1,1,bindings);verify_alpha_footer(2);
     // Retain the receiver channel throughout the added path passes and the
     // following shadow/light samples, independently of their RGB inputs.
-    for(int stage=2;stage<8;stage++)assert(raster_orders[stage]==GX_COLOR0A0);
+    for(int stage=2;stage<8;stage++)assert(tev_orders[stage].channel==GX_COLOR0A0);
     path_test_ready=0;town_shadow_ground(triangle,NULL,3,&material,&bindings);
     assert(alpha_command_count==6);verify_alpha_footer(2);
-    material.secondary=NULL;shadow_test_mode=3;bindings=1;
+    material.secondary=NULL;
+    for(int gain=0;gain<=255;gain++){
+        point_test_gain=gain;environment_test_rgb=0x596c91;bindings=0;
+        reset_shadow_recording();town_shadow_ground(triangle,gain%2?indices:NULL,3,&material,&bindings);
+        verify_shadow_orders(2,1,0,bindings);
+        assert(konst_colors[GX_KCOLOR1].r==220*gain/255&&konst_colors[GX_KCOLOR1].g==158*gain/255&&konst_colors[GX_KCOLOR1].b==74*gain/255);
+        if(gain==0||gain==128||gain==255)verify_shadow_colors(2,1,gain,environment_test_rgb);
+    }
+    /* Indoor position projection retains both always-on selectors and fits
+     * in the final four hardware stages after a 12-stage base effect. */
+    bindings=0;shadow_test_mode=2;environment_test_rgb=0xffffff;point_test_gain=255;effect.count=12;
+    reset_shadow_recording();town_shadow_apply(0,0,normal,&effect,&bindings);
+    verify_shadow_orders(12,2,0,bindings);verify_shadow_colors(12,2,255,environment_test_rgb);verify_alpha_footer(12);
+    effect.count=2;shadow_test_mode=3;bindings=1;
     assert(animaltown_rim_enable(100));
-    const float normal[]={1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1};
     town_rim_apply(normal,&effect,false,&bindings);
     assert(alpha_command_count==3&&bindings==2);verify_alpha_footer(2);
     // A water effect keeps its own constants; tint takes the first free slot.
@@ -329,6 +405,7 @@ static void native_shadow_combiner_checks(void){
     point_test_data[2]=6;town_points_prepare(normal,view);assert(recorded_points[0].color.r==210);
     point_test_scope=0;town_points_prepare(normal,view);town_point_channels(GX_SRC_REG,(GXColor){0,0,0,0});assert(point_channels==1);
     int previous=alpha_command_count;town_point_tev(1,7);assert(alpha_command_count==previous);
+    puts("Shadow GX: four stages, one IA4 binding, two packed sample orders and one outdoor konst-alpha write");
     puts("Shadow/rim GX: signed-wide alpha, low-byte wrap and exact sea cutout survive appended stages");
     puts("Model lights GX: scope/day gates, nearest two, view transform, diffuse attenuation and alpha preservation passed");
     water_shadow_color_checks();
