@@ -7,7 +7,7 @@ using Dolphin.Input;
 using Dolphin.Timing;
 
 // Private, one-shot ownership: never insert splash pixels into the gameplay LRU.
-internal sealed class StartupSplash : IDisposable
+internal sealed class StartupSplash : IDisposable,Hypercube.GameCube.IFrameScene
 {
     private readonly GraphicsDevice device=GraphicsDevice.Default;
     private readonly Draw2D ui;
@@ -25,7 +25,7 @@ internal sealed class StartupSplash : IDisposable
     {
         using(var splash=new StartupSplash()){
             // Splash ownership is independent of both title and town assets.
-            splash.device.BeginFrame(new Color32(0,0,0));splash.device.EndFrame();
+            splash.BlackFrame();
             splash.Load("dolphindotnet");
             var timing=new SplashTiming();
             while(!timing.Complete)splash.Frame(timing);
@@ -50,7 +50,7 @@ internal sealed class StartupSplash : IDisposable
     private static Texture2D LoadTexture(string path)=>Texture2D.FromPackage(File.ReadAllBytes(path),false);
 
     private void BlackFrame()
-    {device.BeginFrame(new Color32(0,0,0));device.EndFrame();}
+    {device.BeginFrame(new Color32(0,0,0));while(device.NextFramePart()){}device.EndFrame();}
 
     private void Frame(SplashTiming timing)
     {
@@ -58,14 +58,18 @@ internal sealed class StartupSplash : IDisposable
         Controller.Update(); // Consume splash input; it cannot open the title menu.
         // Clear the whole display, including the margins around the logo.
         // DolphinDotNet's black mark fades against white without a boxed border.
-        device.BeginFrame(whiteBackground?new Color32(255,255,255):new Color32(0,0,0));
+        frameAlpha=timing.Alpha;
+        Hypercube.GameCube.FrameRenderer.Draw(device,whiteBackground?new Color32(255,255,255):new Color32(0,0,0),this);
+        RuntimeOptions.Wait();timing.Advance(Clock.Timestamp-start);
+    }
+    private byte frameAlpha;
+    public void SubmitFramePart()
+    {
         ui.Begin();
         // Draw only the 384x256 content, excluding texture padding. Integer
         // centering and equal source/destination sizes give a 1:1 texel mapping.
-        ui.DrawTexture(texture!,new RectF(0,0,384,256),new RectF((device.Width-384)/2,(device.Height-256)/2,384,256),new Color32(255,255,255,timing.Alpha));
-        ui.End();device.EndFrame();
-        RuntimeOptions.Wait();
-        timing.Advance(Clock.Timestamp-start);
+        ui.DrawTexture(texture!,new RectF(0,0,384,256),new RectF((device.Width-384)/2,(device.Height-256)/2,384,256),new Color32(255,255,255,frameAlpha));
+        ui.End();
     }
 
     public void Dispose()

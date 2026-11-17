@@ -7,7 +7,7 @@ using Dolphin.Input;
 using Dolphin.Timing;
 
 // The title owns only UI resources. TownGame is constructed only after Start.
-internal sealed class TitleScreen : IDisposable
+internal sealed class TitleScreen : IDisposable,Hypercube.GameCube.IFrameScene
 {
     private readonly GraphicsDevice device=GraphicsDevice.Default;
     private readonly Draw2D ui=new Draw2D(GraphicsDevice.Default,new Draw2DOptions{VertexCapacity=8192,SpriteCapacity=128});
@@ -31,7 +31,7 @@ internal sealed class TitleScreen : IDisposable
     private string statusSource="",statusLine1="",statusLine2="";
     private float statusWidth;
     private TitleScreen(DevConfig config,UserOptions options)
-    {this.config=config;this.options=options;status=VideoOptions.Status;int at=0;for(int i=0;i<DevConfig.Count;i++)if(DevConfig.IsSetting(i))rows[at++]=i;rows[at]=DevConfig.Count;}
+    {this.config=config;this.options=options;status=VideoOptions.Status;int at=0;rows[at++]=0;rows[at++]=DevConfig.FullResolutionAaIndex;for(int i=1;i<DevConfig.Count;i++)if(DevConfig.IsSetting(i)&&i!=DevConfig.FullResolutionAaIndex)rows[at++]=i;rows[at]=DevConfig.Count;}
     internal static bool Run(DevConfig config,UserOptions options)
     {
         using var title=new TitleScreen(config,options);
@@ -51,6 +51,10 @@ internal sealed class TitleScreen : IDisposable
                 if(p.A.WasPressed||direction==MenuNavigation.Left||direction==MenuNavigation.Right||p.X.WasPressed){
                     int row=title.rows[title.debugSelected];
                     if(row==DevConfig.Count){if(p.X.WasPressed)UiNoiseSettings.Reset();else UiNoiseSettings.Adjust(direction==MenuNavigation.Left?-1:1);continue;}
+                    if(row==DevConfig.FullResolutionAaIndex){
+                        if(!p.X.WasPressed&&VideoOptions.ToggleFullResolutionAa(config)){title.dirty=true;title.Save();}
+                        title.status=VideoOptions.Status;continue;
+                    }
                     if(p.X.WasPressed&&DevConfig.IsSlider(row))config.Reset(row);
                     else if(!p.X.WasPressed)config.Adjust(row,direction==MenuNavigation.Left?-1:1);
                     else continue;
@@ -84,13 +88,17 @@ internal sealed class TitleScreen : IDisposable
     private void Save()
     {
         if(!dirty)return;
-        if(DevConfigStorage.Save(config))dirty=false;
+        if(DevConfigStorage.Save(config)){dirty=false;VideoOptions.AaSaveFailed=false;}else VideoOptions.AaSaveFailed=true;
         status=DevConfigStorage.Status;
     }
     private void Draw()
     {
+        UiNoise.Prepare();background.Prepare();Hypercube.GameCube.FrameRenderer.Draw(GraphicsDevice.Default,TitleBackdrop.Color,this);
+    }
+    public void SubmitFramePart()
+    {
         DebugOverlay.TextVisible=false;DebugOverlay.PerformanceVisible=false;
-        UiNoise.Prepare();device.BeginFrame(TitleBackdrop.Color);ui.Begin();background.Draw(ui);ui.End();
+        ui.Begin();background.Draw(ui);ui.End();
         // Reuse one batch for the full backdrop and centered composition. Scale
         // height as Fit would, while retaining the full display for modal shade.
         var size=ui.LogicalSize;composition.Zoom=size.Y/480;canvasMargin=(size.X/composition.Zoom-640)*.5f;
@@ -104,7 +112,7 @@ internal sealed class TitleScreen : IDisposable
         if(optionsOpen)DrawOptions();
         else if(debugOpen)DrawDebug();
         else if(status.Length>0)DrawStatus(status,70,410,500,true);
-        ui.End();device.EndFrame();
+        ui.End();
     }
     private RectF ScreenBounds()=>new RectF(-canvasMargin,0,640+2*canvasMargin,480);
     private void MenuRow(int index,string label,float y)
@@ -234,6 +242,7 @@ internal sealed class TitleScreen : IDisposable
         if(row==DevConfig.Count)return "UI bubble noise: "+UiNoiseSettings.Percent+"% (session)";
         int value=config.Values[row];string toggle=value==0?"Off":"On";
         switch(row){
+            case DevConfig.FullResolutionAaIndex:return "Full-resolution AA: "+(VideoOptions.FullResolutionAa?"On":"Off")+(VideoOptions.AaSaveFailed?" (not saved)":" (saved)");
             case 0:return "Performance display: "+toggle;
             case 1:return "Model drawing: "+(value==1?"GX indexed":"Direct comparison");
             case 2:return "UV island colors: "+toggle;case 3:return "UV island outlines: "+toggle;

@@ -4,36 +4,36 @@
     "net8.0": {
       "Capz.Hypercube.GameCube": {
         "type": "Direct",
-        "requested": "[0.1.0-preview.41.1, 0.1.0-preview.41.1]",
-        "resolved": "0.1.0-preview.41.1",
-        "contentHash": "kbGliwL4pBpz4qXplhFOxrF1SMMP4/T+qVk0bjOcuB/WGBh+Qh3GtIf/rm3rj2AKRd6ovuDR30jrsCf8EUzK7g==",
+        "requested": "[0.1.0-preview.45.1, 0.1.0-preview.45.1]",
+        "resolved": "0.1.0-preview.45.1",
+        "contentHash": "VB5hYJiRGK2YPNvsUGwvgOKq3nbPQt/yKsyfjUHMh84MquvOZsKP2Pa40MUrkEHbWSNAZL6I7hbcBGwFJ928vg==",
         "dependencies": {
-          "Capz.Hypercube.Core": "0.1.0-preview.41.1",
-          "DolphinDotNet.GameCube": "[0.1.0-preview.328.1]"
+          "Capz.Hypercube.Core": "0.1.0-preview.45.1",
+          "DolphinDotNet.GameCube": "[0.1.0-preview.372.1]"
         }
       },
       "Capz.Hypercube.Core": {
         "type": "Transitive",
-        "resolved": "0.1.0-preview.41.1",
-        "contentHash": "BmZ9PxuC7tl9vpyuFJJeVU4vnGLk+vdhzDy6vF/5X9iVa6TuO5wPrDsRFJC8/eGgzgtyek1fmHY9ziqQjyClxA=="
+        "resolved": "0.1.0-preview.45.1",
+        "contentHash": "Mk0rWSQks13VRD6ZtMnhi89Ur+yJKIPQoCE0g0fXmlQGIBvDZ+PVfcy6ZN3gsTYE8nPRvwpqAu9I7FEBd6tJuw=="
       },
       "DolphinDotNet.Core": {
         "type": "Transitive",
-        "resolved": "0.1.0-preview.328.1",
-        "contentHash": "lNDfidU3tvIlVZmM6k1qfKfa4cr9f9GmMrFRhmRfHJ4VKC/yk1Ap4vTtfYYeV47F64LP5hUdFyUfBYky+KtPMg=="
+        "resolved": "0.1.0-preview.372.1",
+        "contentHash": "GnRc09AdnuTZ+oorZ8bqp2eOihhRMicSFpY1lcvTFlGLTAOvXgoO0M+ExU7aymi7n1n6dx2RipbnPM2bOTq4xw=="
       },
       "DolphinDotNet.GameCube": {
         "type": "Transitive",
-        "resolved": "0.1.0-preview.328.1",
-        "contentHash": "b1yWy3kSCTI6Be+D2WYVC96+C2ctFtIqlqQTUmCCGXBNOf8qRgqvoCzhg/bkjR7IfGkLM9m0lkZ4HwEio3RAgg==",
+        "resolved": "0.1.0-preview.372.1",
+        "contentHash": "624UqYs5N2KX/2ffo+e0UvqXORJqXtk3WvTpAry6SmoEb4nKJ5Zfhp1muBQafarXq6ucOQmpdr2srJYNoNG06A==",
         "dependencies": {
-          "DolphinDotNet.Core": "0.1.0-preview.328.1"
+          "DolphinDotNet.Core": "0.1.0-preview.372.1"
         }
       },
       "animaltown.domain": {
         "type": "Project",
         "dependencies": {
-          "Capz.Hypercube.Core": "[0.1.0-preview.41.1, 0.1.0-preview.41.1]"
+          "Capz.Hypercube.Core": "[0.1.0-preview.45.1, 0.1.0-preview.45.1]"
         }
       }
     }

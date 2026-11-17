@@ -3,8 +3,8 @@ using System.IO;
 using Dolphin.Storage;
 using Dolphin.Timing;
 
-// Pinned SDK-owned record store; the bridge allows using its new block API
-// without requiring an unpublished replacement for the game's renderer SDK.
+// Game-specific adapter for the pinned SDK record store/block API. Preserve
+// incremental loading pulses and the town's browser artwork.
 internal sealed class NativeCardBlocks : ICardBlockStorage
 {
     private const string FileName="AnimalTown";

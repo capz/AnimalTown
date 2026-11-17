@@ -5,7 +5,7 @@ using Dolphin.Timing;
 
 // A small, independent loading surface: just the title's moving dots and a
 // hopping sprout. It is retired before gameplay needs its native memory.
-internal sealed class LoadingScreen : IDisposable
+internal sealed class LoadingScreen : IDisposable,Hypercube.GameCube.IFrameScene
 {
     private static LoadingScreen? current;
     private readonly Draw2D ui=new Draw2D(GraphicsDevice.Default,new Draw2DOptions{Width=640,Height=480,VertexCapacity=1024,SpriteCapacity=16});
@@ -22,13 +22,19 @@ internal sealed class LoadingScreen : IDisposable
         if(current==null)return;
         current.Dispose();current=null;
     }
+    private string? frameError;private UiFont? frameFont;private long frameNow;
     private void Frame(string? error,UiFont? font)
     {
+        frameError=error;frameFont=font;frameNow=Clock.Timestamp;
+        UiNoise.Prepare();background.Prepare();Hypercube.GameCube.FrameRenderer.Draw(GraphicsDevice.Default,TitleBackdrop.Color,this);
+    }
+    public void SubmitFramePart()
+    {
         DebugOverlay.PerformanceVisible=false;DebugOverlay.TextVisible=false;
-        var device=GraphicsDevice.Default;UiNoise.Prepare();device.BeginFrame(TitleBackdrop.Color);ui.Begin();background.Draw(ui);
-        Sprout(Clock.Timestamp);
+        string? error=frameError;UiFont? font=frameFont;ui.Begin();background.Draw(ui);
+        Sprout(frameNow);
         if(error!=null&&font!=null){TitleArt.Panel(ui,90,182,460,116);font.Draw(ui,error,112,209,TitleArt.Ink,.9f);}
-        ui.End();device.EndFrame();
+        ui.End();
     }
     private void Sprout(long now)
     {
