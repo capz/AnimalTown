@@ -6,7 +6,10 @@ public static class CloudShadowPattern
 {
     public const int Size=64;
     public const float WorldPeriod=32,SpeedX=.6f,SpeedZ=.3f;
-    public static float Offset(double seconds,float speed)=>(float)(seconds*speed/WorldPeriod-Math.Floor(seconds*speed/WorldPeriod));
+    public static float Period(int season)=>season==3?WorldPeriod*2:WorldPeriod;
+    public static float EdgeWidth(int season)=>season==1?64:255;
+    public static float Strength(int season)=>season==3?33:66;
+    public static float Offset(double seconds,float speed,float period=WorldPeriod)=>(float)(seconds*speed/period-Math.Floor(seconds*speed/period));
     public static byte Sample(int x,int z)
     {
         double u=(x%Size+Size)%Size*Math.PI*2/Size,v=(z%Size+Size)%Size*Math.PI*2/Size;

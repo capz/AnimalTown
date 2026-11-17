@@ -34,6 +34,36 @@ static void light_checks(void){
         uint8_t packed=su_pack(shade,light);CHECK(abs(su_shadow(packed)-shade)<=2);CHECK(abs((packed>>4)*17-light)<=8);
     }
 }
+static void seasonal_cloud_checks(void){
+    reset();s->cloud_ready=1;
+    for(int z=0;z<SU_CLOUD_SIDE;z++)for(int x=0;x<SU_CLOUD_SIDE;x++)s->clouds[su_cloud_offset(x,z)]=(uint8_t)(x*255/63);
+    uint8_t mask[SU_CLOUD_BYTES];memcpy(mask,s->clouds,sizeof(mask));
+    int base_middle=0,summer_middle=0,base_core=0,summer_core=0;
+    for(int x=0;x<512;x++){
+        float px=x/16.f;
+        su_cloud_style(s,32,255,66);int base=su_cloud_sample(s,px,4);
+        su_cloud_style(s,32,64,66);int summer=su_cloud_sample(s,px,4);
+        base_middle+=base>6&&base<60;summer_middle+=summer>6&&summer<60;
+        base_core+=base>=60;summer_core+=summer>=60;
+        su_cloud_style(s,64,255,33);int winter=su_cloud_sample(s,px*2,8);
+        CHECK(abs(winter*2-base)<=1&&winter<=33);
+        CHECK(su_cloud_sample(s,px*2-64,8)==winter);
+    }
+    CHECK(summer_middle*2<base_middle&&summer_core>base_core);
+    CHECK(!memcmp(mask,s->clouds,sizeof(mask))); // No second pattern or blurred texture.
+    su_cloud_motion(s,.25f,0);CHECK(s->cloud_x==128); // Same 16m drift in a 64m repeat.
+    su_prepare(s,SU_PAGES);CHECK(!s->cloud_dirty);
+    su_cloud_style(s,64,255,33);CHECK(!s->cloud_dirty); // Stable season needs no field rebuild.
+    su_cloud_style(s,32,64,66);CHECK(s->cloud_dirty);su_cloud_motion(s,.5f,0);CHECK(s->cloud_x==128);
+    su_prepare(s,SU_PAGES);CHECK(!s->cloud_dirty);
+    // Faint winter clouds cannot weaken cliff/actor coverage or static lamps.
+    su_cloud_style(s,64,255,33);su_cloud_motion(s,0,0);
+    for(int i=0;i<SU_TERRAIN_BYTES;i++)s->terrain[i]=su_pack(SU_OPACITY,0);
+    su_terrain_publish(s);float light[]={4,4,3,255};su_lights(s,light,1);caster(32,4,rect,6,bounds);su_prepare(s,SU_PAGES);
+    CHECK(pixel(4,4)==SU_OPACITY&&su_field_sample(s->coverage,24,4)==SU_OPACITY);
+    CHECK(su_field_channel(s->coverage,4,4,1)>200);
+    su_begin(s,16,1,4);caster(32,4,rect,6,bounds);su_prepare(s,SU_PAGES);CHECK(pixel(4,4)==SU_OPACITY&&pixel(1,1)==0);
+}
 static void cloud_checks(void){
     reset();
     for(int z=0;z<SU_CLOUD_SIDE;z++)for(int x=0;x<SU_CLOUD_SIDE;x++)s->clouds[su_cloud_offset(x,z)]=x<32?0:255;
@@ -199,6 +229,7 @@ int main(void){
     su_terrain_reset(s);CHECK(!s->terrain_ready&&su_terrain_sample(s,4,4)==0);
     su_prepare(s,SU_PAGES);CHECK(pixel(4,4)==0);
     cloud_checks();
+    seasonal_cloud_checks();
     printf("Shadow storage: %zu bytes total; %d-byte pages, two %d-byte terrain fields\n",su_storage_bytes(),SU_BYTES,SU_TERRAIN_BYTES);
     free(s);printf("Shadow union: %d checks; max overlap, soft edges, trails, clipping, seams, rooms and 156-page bound passed\n",assertions);return 0;
 }

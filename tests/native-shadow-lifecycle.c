@@ -41,12 +41,18 @@ int main(void){
     assert(animaltown_shadows_init(NULL,circle,cloud)==0&&!live);
     create_error=1;assert(animaltown_shadows_init(atlas,circle,cloud)==0&&!live);create_error=0;
     assert(animaltown_shadows_init(atlas,circle,cloud)==1&&live==1);
-    DndArray *offset=calloc(1,sizeof(*offset)+8);assert(offset);offset->length=2;offset->element_size=4;
+    DndArray *offset=calloc(1,sizeof(*offset)+20);assert(offset);offset->length=5;offset->element_size=4;
+    float *frame=(float*)offset->data;frame[2]=32;frame[3]=255;frame[4]=SU_OPACITY;
     assert(animaltown_shadows_cloud(offset)==1);
     ((float*)offset->data)[0]=NAN;assert(animaltown_shadows_cloud(offset)==0);
     ((float*)offset->data)[0]=1;assert(animaltown_shadows_cloud(offset)==0);
     ((float*)offset->data)[0]=.5f;active=1;assert(animaltown_shadows_cloud(offset)==0);active=0;
     assert(animaltown_shadows_cloud(offset)==1&&shadows->cloud_x==128);
+    frame[2]=NAN;assert(animaltown_shadows_cloud(offset)==0);frame[2]=64;
+    frame[3]=0;assert(animaltown_shadows_cloud(offset)==0);frame[3]=255;
+    frame[4]=SU_OPACITY+1;assert(animaltown_shadows_cloud(offset)==0);frame[4]=33;
+    assert(animaltown_shadows_cloud(offset)==1&&shadows->cloud_x==256&&shadows->cloud_scale==1);
+    offset->elements_are_references=1;assert(animaltown_shadows_cloud(offset)==0);offset->elements_are_references=0;
     offset->length=1;assert(animaltown_shadows_cloud(offset)==0);free(offset);
     assert(animaltown_shadows_stats(10)==(int)su_storage_bytes());
     /* Repeated init does not allocate a second coverage cache. */
