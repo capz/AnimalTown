@@ -4,11 +4,12 @@ namespace AnimalTown;
 // XYZ triangle streams use GX clockwise winding; parts are trunk/dark/mid/light.
 public sealed class LowPolyTree
 {
-    public const int TriangleBudget=96;
+    public const int KindCount=3,TriangleBudget=96;
     public const float VisibilityCenterY=.505f,VisibilityRadius=.82f;
     public readonly float[] Positions=new float[TriangleBudget*9];
     public readonly float[] Uvs=new float[TriangleBudget*6];
     public readonly byte[] Parts=new byte[TriangleBudget];
+    public readonly byte[] Ambient=new byte[TriangleBudget*3];
     public int Triangles;
     private readonly struct P
     {
@@ -17,7 +18,7 @@ public sealed class LowPolyTree
     }
     public static LowPolyTree Build(int kind)
     {
-        if(kind<0||kind>2)throw new ArgumentOutOfRangeException("kind");
+        if((uint)kind>=KindCount)throw new ArgumentOutOfRangeException("kind");
         var t=new LowPolyTree();t.Trunk(kind==1?.83f:.46f,kind==1?.055f:.075f);
         if(kind==0){t.Crown(-.16f,.66f,0,.27f,.25f,.27f);t.Crown(.16f,.70f,.03f,.27f,.25f,.27f);t.Crown(0,.81f,-.04f,.26f,.20f,.26f);}
         else if(kind==2){t.Cone(.22f,.73f,.34f);t.Cone(.43f,.89f,.27f);t.Cone(.65f,1,.19f);}
@@ -65,7 +66,9 @@ public sealed class LowPolyTree
         float shade=nx*.4f+ny*.8f+nz*.2f;
         if(Triangles>=TriangleBudget)throw new InvalidOperationException("Generated tree budget exceeded");
         Parts[Triangles]=(byte)(trunk?0:shade>.01f?3:shade< -.01f?1:2);
-        int triangle=Triangles++,at=triangle*9;Put(at,a);Put(at+3,c);Put(at+6,b);
+        float underside=trunk||ny>=0?0:-ny/(float)Math.Sqrt(nx*nx+ny*ny+nz*nz);
+        int triangle=Triangles++,at=triangle*9;
+        Put(at,a,trunk,underside);Put(at+3,c,trunk,underside);Put(at+6,b,trunk,underside);
         // Dominant face projection avoids collapsed UVs on vertical trunks
         // and horizontal foliage. Coordinates stay attached to each tree.
         int axis=Math.Abs(nx)>Math.Abs(ny)&&Math.Abs(nx)>Math.Abs(nz)?0:Math.Abs(ny)>Math.Abs(nz)?1:2;
@@ -117,5 +120,13 @@ public sealed class LowPolyTree
     private static uint GrainHash(int x,int y)
     {uint v=unchecked((uint)(x*374761393+y*668265263));v=(v^(v>>13))*1274126177u;return v^(v>>16);}
     private static void Write(byte[] b,int at,int n){for(int i=0;i<4;i++)b[at+i]=(byte)(n>>(i*8));}
-    private void Put(int at,P p){Positions[at]=p.X;Positions[at+1]=p.Y;Positions[at+2]=p.Z;}
+    private void Put(int at,P p,bool trunk,float underside)
+    {
+        Positions[at]=p.X;Positions[at+1]=p.Y;Positions[at+2]=p.Z;
+        // Shade the foot of the trunk and the canopy undersides nearest it.
+        // The factor depends only on the shared mesh's local geometry.
+        float occlusion=trunk?32*Math.Max(0,1-p.Y/.30f)
+            :underside*(20+14*Math.Max(0,1-(p.X*p.X+p.Z*p.Z)/.16f));
+        Ambient[at/3]=(byte)(255-(int)(occlusion+.5f));
+    }
 }
