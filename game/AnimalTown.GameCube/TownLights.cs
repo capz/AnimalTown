@@ -18,7 +18,8 @@ internal sealed class TownLights
     {
         int stamp=0;
         for(int i=0;i<BuildingWorld.Count;i++){BuildingWorld.Origin(state,i,out float x,out float z);stamp=unchecked(stamp*31+(int)x*397+(int)z+(BuildingWorld.Exists(state,i)?1:0));}
-        if(town!=state.Town||revision!=state.Town.TerrainVersion||groundRevision!=state.Town.ShadowVersion||layout!=stamp){
+        bool layoutChanged=town!=state.Town||revision!=state.Town.TerrainVersion||groundRevision!=state.Town.ShadowVersion||layout!=stamp;
+        if(layoutChanged){
             town=state.Town;revision=town.TerrainVersion;groundRevision=town.ShadowVersion;layout=stamp;sourceCount=Count=0;
             for(int i=0;i<BuildingWorld.Count;i++)if(BuildingWorld.Exists(state,i)){
                 BuildingWorld.Entrance(state,i,out float x,out float z);Add(x,z+.5f,2.8f,210,1.3f);
@@ -28,7 +29,7 @@ internal sealed class TownLights
             }
             DebugOverlay.WriteLine("ANIMALTOWN LIGHTS READY sources "+sourceCount+" street lamps "+Count+" map bytes "+(160*1024*2+256*128*2));
         }
-        if(NativeShadows.Lights(sources,sourceCount,strength)!=1)throw new InvalidOperationException("Static light map failed");
+        if(NativeShadows.Lights(layoutChanged?sources:null,layoutChanged?sourceCount:0,strength)!=1)throw new InvalidOperationException("Static light map failed");
         for(int i=0;i<sourceCount;i++){
             int s=i*4,p=i*5;float x=sources[s],z=sources[s+1];
             var pose=CylinderWorld.Surface(z,state.Z,TerrainElevation.At(state.Town,x,z)+heights[i]);

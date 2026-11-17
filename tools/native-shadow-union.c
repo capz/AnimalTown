@@ -64,11 +64,15 @@ int animaltown_shadows_cloud(DndArray *offset){
     su_cloud_motion(shadows,p[0],p[1]);return 1;
 }
 int animaltown_shadows_lights(DndArray *sources,int count,int strength){
-    if(!shadows||dnd_device_active()||!sources||sources->element_size!=4||count<0||count>SU_LIGHTS||sources->length<(unsigned)count*4||strength<0||strength>255)return 0;
-    const float *p=(const float*)sources->data;
-    for(int i=0;i<count*4;i++)if(!isfinite(p[i]))return 0;
-    for(int i=0;i<count;i++)if(p[i*4+2]<=0||p[i*4+2]>16||p[i*4+3]<0||p[i*4+3]>255)return 0;
-    su_lights(shadows,p,count);light_strength=strength;return 1;
+    if(!shadows||dnd_device_active()||strength<0||strength>255)return 0;
+    if(sources){
+        if(sources->elements_are_references||sources->element_size!=4||count<0||count>SU_LIGHTS||sources->length<(unsigned)count*4)return 0;
+        const float *p=(const float*)sources->data;
+        for(int i=0;i<count*4;i++)if(!isfinite(p[i]))return 0;
+        for(int i=0;i<count;i++)if(p[i*4+2]<=0||p[i*4+2]>16||p[i*4+3]<0||p[i*4+3]>255)return 0;
+        su_lights(shadows,p,count);
+    }else if(count)return 0;
+    light_strength=strength;return 1;
 }
 /* Reset/32-byte tile write/publish all happen between frames. The old field is
  * hidden while baking; one final flush makes the complete mask visible. */
