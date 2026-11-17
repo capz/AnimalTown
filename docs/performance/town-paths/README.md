@@ -78,7 +78,8 @@ winter both report the same 2,752-byte page.
 Other room assets can change the total native-byte counter; the pruning checks
 use source-specific path bytes. The captures show no retained second path page.
 The full frame samples, CPU counters, memory counters, asset hashes, DOL hashes
-and residency markers are in [measurements.json](measurements.json).
+and residency markers are in [measurements.json](measurements.json); per-frame
+raw samples are in [frames.csv](frames.csv).
 
 ## Screenshots
 
