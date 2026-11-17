@@ -1,7 +1,8 @@
 """Direct ISO boot: no separately selected DOL. Run inside animaltown-dolphin.
 
 --title-logo captures the title, picker and naming header, then discards back
-to the title. Use a disposable card with no committed town; no world is loaded.
+to the title. It also checks fitted normal/debug panels and expanded status
+feedback. Use a disposable card with no committed town; no world is loaded.
 The title-logo-report.json check covers committed town state, not card formatting
 or independent console/dev configuration writes.
 """
@@ -273,9 +274,70 @@ def wait_title(modal=False):
         name='title-modal-wait.png' if modal else 'title-wait.png'
         screenshot(name);pixels=rgb(name)
         cream=color_count(pixels,(255,245,221));leaf=color_count(pixels,(53,105,84),tolerance=12)
-        if cream>70000 and (leaf<1000 if modal else leaf>6000 and color_count(pixels,(149,198,186))>15000):return
+        # The fitted title panel has substantially less exposed cream than the
+        # full-size options/debug modal. Keep the existing modal gate intact.
+        if modal:
+            if cream>70000 and leaf<1000:return
+        elif cream>50000 and leaf>6000 and color_count(pixels,(149,198,186))>15000:return
         time.sleep(2)
-    raise AssertionError('Debug modal did not appear' if modal else 'Original cream title/menu did not appear')
+    raise AssertionError('Debug modal did not appear' if modal else 'Cream title/menu did not appear')
+
+def title_frame_geometry(pixels,panel,menu,rows,step,status,wide=False):
+    """Measure rendered panel, focused ribbon and glyph bounds, not just logs."""
+    def sample(color,region=(0,0,800,600),tolerance=5):
+        left,top,right,bottom=region
+        return [(x,y) for y in range(max(0,top),min(600,bottom))
+                for x in range(max(0,left),min(800,right))
+                if fill_matches(pixels[(y*800+x)*3:(y*800+x)*3+3],color,tolerance)]
+    def bounds(points,label):
+        if not points:raise AssertionError('No rendered '+label+' pixels')
+        return [min(x for x,y in points),min(y for x,y in points),
+                max(x for x,y in points)+1,max(y for x,y in points)+1]
+    def close(actual,expected,tolerance,label):
+        if any(abs(a-b)>tolerance for a,b in zip(actual,expected)):
+            raise AssertionError(label+' bounds '+str(actual)+' do not match '+str([round(v,2) for v in expected]))
+    viewport=bounds(sample((149,198,186)),'mint backdrop')
+    logical_width=480*(16/9 if wide else 4/3)
+    sx=(viewport[2]-viewport[0])/logical_width;sy=(viewport[3]-viewport[1])/480
+    margin=(logical_width-640)/2
+    def project(rect):
+        x,y,width,height=rect
+        return [viewport[0]+(x+margin)*sx,viewport[1]+y*sy,
+                viewport[0]+(x+margin+width)*sx,viewport[1]+(y+height)*sy]
+    cream=sample((255,245,221));actual_panel=bounds(cream,'cream panel')
+    # TitleArt adds a 9px side bulge; allow a few pixels for GX sampling and
+    # the viewport's partly covered outermost pixel, not a different panel.
+    expected_panel=project([panel[0]-9,panel[1],panel[2]+18,panel[3]])
+    close(actual_panel,expected_panel,8,'Title panel')
+    first_menu=project(menu)
+    focus=bounds(sample((53,105,84),(viewport[0],int(first_menu[1])-3,viewport[2],viewport[3]),12),'focused menu')
+    row=round(((focus[1]-viewport[1])/sy-menu[1])/step)
+    if not 0<=row<rows:raise AssertionError('Focused ribbon is outside the title menu rows')
+    expected_focus=project([menu[0],menu[1]+row*step,menu[2],menu[3]])
+    close(focus,expected_focus,4,'Focused menu')
+    # Exclude the rounded corners, where the panel behind the ribbon is also
+    # cream, so the measured box contains only the selected label's ink.
+    inset=max(2,int(22*sx))
+    label=bounds(sample((255,245,221),(focus[0]+inset,focus[1]+1,focus[2]-inset,focus[3]-1)),'selected label')
+    label_offset=[(label[i]+label[i+2]-focus[i]-focus[i+2])/2 for i in (0,1)]
+    if any(abs(value)>4 for value in label_offset):
+        raise AssertionError('Selected title label is not centered in its ribbon: '+str(label_offset))
+    result={'viewport':viewport,'cream_pixels':len(cream),'panel_bounds':actual_panel,
+            'expected_panel_bounds':[round(v,2) for v in expected_panel],
+            'focused_row':row,'focus_bounds':focus,'label_bounds':label,'label_center_offset':label_offset}
+    if status:
+        footer=project([140,410,360,46]);zone=project([110,406,420,62])
+        ink=sample((49,72,62),tuple(int(v) for v in zone));status_bounds=bounds(ink,'title status')
+        if (status_bounds[0]<footer[0]-4 or status_bounds[1]<footer[1]-4
+                or status_bounds[2]>footer[2]+4 or status_bounds[3]>footer[3]+4):
+            raise AssertionError('Title status escapes its bounded footer: '+str(status_bounds))
+        offset=[(status_bounds[i]+status_bounds[i+2]-footer[i]-footer[i+2])/2 for i in (0,1)]
+        if any(abs(value)>4 for value in offset):
+            raise AssertionError('Title status ink is not centered in its footer: '+str(offset))
+        occupied=sorted({y for x,y in ink})
+        bands=1+sum(b-a>3 for a,b in zip(occupied,occupied[1:]))
+        result.update(status_bounds=status_bounds,status_center_offset=offset,status_line_bands=bands)
+    return result
 
 def title_logo():
     """Exercise full-colour branding and title reloads without creating a town."""
@@ -290,7 +352,7 @@ def title_logo():
             'town_sequence_after':before['sequence'] if before else 0,
             'town_state_unchanged':True,'gameplay_started':False,
             'card_write_scope':'Committed town records only; initial card formatting and independent console/dev configuration writes are not asserted.',
-            'screenshots':[],'warm_artwork':{},'title_logo_traces':[]}
+            'screenshots':[],'warm_artwork':{},'title_logo_traces':[],'layouts':{}}
 
     def state():
         check_runtime_failure()
@@ -315,7 +377,7 @@ def title_logo():
         # Keep the compact sample above the warm heading strip and away from
         # portraits/leaf flourishes. A missing or green-tinted logo cannot pass
         # using unrelated cream panels, menu fills or character artwork.
-        bounds=(240,18,400,70) if compact else (100,20,540,205)
+        bounds=(240,18,400,70) if compact else (100,20,540,255)
         left,top,right,bottom=bounds
         warm=0
         for y in range(top,bottom):
@@ -327,23 +389,48 @@ def title_logo():
         report['warm_artwork'][name]={'region':list(bounds),'pixels':warm,'minimum':minimum}
         if warm<minimum:raise AssertionError(name+' has no sufficiently visible full-colour acorn artwork')
 
-    def title(name,minimum_loads):
+    def title(name,minimum_loads,rows=3,status=False):
         wait_title()
-        deadline=time.monotonic()+15
+        expected={
+            (3,False):([104,48,432,384],[140,73,360,180],[140,289,360,34]),
+            (4,False):([104,28,432,424],[140,52,360,180],[140,268,360,34]),
+            (3,True):([104,12,432,456],[140,49,360,180],[140,265,360,34]),
+            (4,True):([104,12,432,456],[140,28,360,180],[140,244,360,34])
+        }[(rows,status)]
+        pattern=r'ANIMALTOWN TITLE LAYOUT rows (\d+) status (\d+) panel ([\d,]+) logo ([\d,]+) menu ([\d,]+) step (\d+)'
+        deadline=time.monotonic()+20;failure='Missing matching title layout/load trace'
         while True:
             text=state()
             traces=[tuple(map(int,match)) for match in re.findall(r'ANIMALTOWN TITLE LOGO (\d+)x(\d+) bytes (\d+)',text)]
             report['title_logo_traces']=[{'width':w,'height':h,'bytes':size} for w,h,size in traces]
             if any(trace!=(512,256,262144) for trace in traces):
                 raise AssertionError('Title loaded unexpected logo dimensions or texture bytes')
-            if len(traces)>=minimum_loads:break
-            if time.monotonic()>deadline:raise AssertionError('Missing title-logo load/reload trace')
+            layouts=re.findall(pattern,text)
+            if len(traces)>=minimum_loads and layouts and tuple(map(int,layouts[-1][:2]))==(rows,int(status)):
+                trace=layouts[-1];rects=tuple([int(value) for value in rect.split(',')] for rect in trace[2:5])
+                if rects!=expected or int(trace[5])!=42:raise AssertionError('Title layout differs from the approved fitted geometry')
+                screenshot(name)
+                try:
+                    options=options_card_files().get('options')
+                    wide=bool(options and len(options)==16 and options[5])
+                    metrics=title_frame_geometry(rgb(name),rects[0],rects[2],rows,42,status,wide)
+                    report['layouts'][name]={'rows':rows,'status':bool(status),'panel':rects[0],
+                                             'logo':rects[1],'menu':rects[2],'step':42,**metrics}
+                    break
+                except AssertionError as error:failure=str(error)
+            if time.monotonic()>deadline:raise AssertionError(failure)
             time.sleep(.2)
-        artwork(name)
+        artwork(name,capture=False)
         return len(traces)
 
     try:
         if before:raise AssertionError('--title-logo requires a disposable card with no committed town')
+        original_debug=debug_visibility();report['initial_debug_visibility']=original_debug
+        if original_debug:
+            # Reusing a disposable card may retain console preferences. Clear
+            # only this toggle, then construct a fresh title without its toast.
+            set_debug_visibility(False);wait_title()
+            press('A');wait_profiles('title-logo-normalize-picker.png');press('B')
         initial_loads=title('title-logo.png',1)
         press('A');wait_profiles('title-logo-picker.png')
         artwork('title-logo-picker.png',compact=True,capture=False)
@@ -357,9 +444,28 @@ def title_logo():
         # D_RIGHT is the mapped pipe button, not the MAIN analog axis. Repeating
         # right only keeps Discard selected; A is a separate press/release edge.
         press('D_RIGHT');press('A')
-        final_loads=title('title-logo-return.png',initial_loads+2)
-        report['title_reloads_observed']=final_loads-initial_loads
+        loads=title('title-logo-after-onboarding.png',initial_loads+2)
         report['discarded_new_villager']=True
+        # Triple Z deliberately writes an independent console preference and
+        # supplies real status text. It never commits a town or loads gameplay.
+        set_debug_visibility(True)
+        title('title-logo-status.png',loads,rows=4,status=True)
+        press('A');wait_profiles('title-logo-debug-picker.png');press('B');wait_title()
+        press('D_UP') # Select the long Debug label, including its descenders.
+        loads=title('title-logo-debug.png',loads+1,rows=4)
+        press('A');wait_title(modal=True);screenshot('title-logo-debug-modal.png')
+        report['screenshots'].append('title-logo-debug-modal.png');state()
+        press('B');wait_title();press('D_DOWN') # Wrap back to Start.
+        set_debug_visibility(False)
+        title('title-logo-status-normal.png',loads,status=True)
+        press('A');wait_profiles('title-logo-normal-picker.png');press('B')
+        final_loads=title('title-logo-return.png',loads+1)
+        if original_debug:set_debug_visibility(True)
+        state()
+        report['title_reloads_observed']=final_loads-initial_loads
+        report['debug_modal_opened']=True
+        report['debug_visibility_restored']=debug_visibility()==original_debug
+        if not report['debug_visibility_restored']:raise AssertionError('Title check did not restore the debug visibility preference')
         report['passed']=True
     except Exception as error:
         report['error']=str(error)

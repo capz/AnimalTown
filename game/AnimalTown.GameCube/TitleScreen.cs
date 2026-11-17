@@ -26,8 +26,10 @@ internal sealed class TitleScreen : IDisposable,Hypercube.GameCube.IFrameScene
     private string optionsStatus="";
     private string status="";
     private const float BodyScale=1.2f,HelpScale=1;
+    private const int TitleColumnX=140,TitleColumnWidth=360,TitleRowHeight=34,TitleRowStep=42;
     private const int DebugPageSize=6;
     private int MenuCount=>options.ShowDebugMenus?4:3;
+    private int lastTitleLayout=-1;
     private string statusSource="",statusLine1="",statusLine2="";
     private float statusWidth;
     private TitleScreen(DevConfig config,UserOptions options)
@@ -104,23 +106,39 @@ internal sealed class TitleScreen : IDisposable,Hypercube.GameCube.IFrameScene
         // height as Fit would, while retaining the full display for modal shade.
         var size=ui.LogicalSize;composition.Zoom=size.Y/480;canvasMargin=(size.X/composition.Zoom-640)*.5f;
         composition.Position=new Vector2(-canvasMargin,0);ui.Begin(composition);
-        TitleArt.Panel(ui,50,24,540,432);
-        TitleArt.Logo(ui,logo,new RectF(90,28,460,180));
+        // Fit the approved logo and menu column with 36px side padding and
+        // 24-25px above/below. Status messages retain their own bounded footer.
+        bool showStatus=status.Length>0&&!optionsOpen&&!debugOpen;
+        int panelHeight=showStatus?456:MenuCount==3?384:424,panelY=(480-panelHeight)/2;
+        int contentOffset=(4-MenuCount)*21+(showStatus?0:24),logoY=28+contentOffset,menuY=244+contentOffset;
+        TitleArt.Panel(ui,104,panelY,432,panelHeight);
+        TitleArt.Logo(ui,logo,new RectF(TitleColumnX,logoY,TitleColumnWidth,180));
         const string tagline="A little life, well rooted.";
-        font.Draw(ui,tagline,(640-font.Measure(tagline,1.1f))/2,212,TitleArt.Ink,1.1f);
-        MenuRow(0,"Start",244);MenuRow(1,"Update",286);MenuRow(2,"Options",328);
-        if(options.ShowDebugMenus)MenuRow(3,"Debug configuration",370);
+        CenteredText(tagline,new RectF(TitleColumnX,212+contentOffset,TitleColumnWidth,26),TitleArt.Ink,1.1f);
+        MenuRow(0,"Start",menuY);MenuRow(1,"Update",menuY+TitleRowStep);MenuRow(2,"Options",menuY+TitleRowStep*2);
+        if(options.ShowDebugMenus)MenuRow(3,"Debug configuration",menuY+TitleRowStep*3);
+        int layout=MenuCount+(showStatus?8:0);
+        if(!optionsOpen&&!debugOpen&&layout!=lastTitleLayout){
+            lastTitleLayout=layout;
+            DebugOverlay.WriteLine("ANIMALTOWN TITLE LAYOUT rows "+MenuCount+" status "+(showStatus?1:0)+" panel 104,"+panelY+",432,"+panelHeight+" logo 140,"+logoY+",360,180 menu 140,"+menuY+",360,34 step 42");
+        }
         if(optionsOpen)DrawOptions();
         else if(debugOpen)DrawDebug();
-        else if(status.Length>0)DrawStatus(status,70,410,500,true);
+        else if(showStatus)DrawStatus(status,TitleColumnX,410,TitleColumnWidth,true);
         ui.End();
     }
     private RectF ScreenBounds()=>new RectF(-canvasMargin,0,640+2*canvasMargin,480);
     private void MenuRow(int index,string label,float y)
     {
         bool focus=index==selected;
-        TitleArt.Rounded(ui,167,y,306,38,19,focus?TitleArt.Leaf:new Color32(236,226,197));
-        font.Draw(ui,label,(640-font.Measure(label,BodyScale))/2,y+5,focus?TitleArt.Cream:TitleArt.Ink,BodyScale);
+        TitleArt.Rounded(ui,TitleColumnX,y,TitleColumnWidth,TitleRowHeight,17,focus?TitleArt.Leaf:new Color32(236,226,197));
+        CenteredText(label,new RectF(TitleColumnX,y,TitleColumnWidth,TitleRowHeight),focus?TitleArt.Cream:TitleArt.Ink,BodyScale);
+    }
+    private void CenteredText(string text,RectF bounds,Color32 color,float scale)
+    {
+        var ink=font.GlyphBounds(text,scale);
+        font.Draw(ui,text,bounds.X+(bounds.Width-ink.Width)*.5f-ink.X,
+            bounds.Y+(bounds.Height-ink.Height)*.5f-ink.Y,color,scale);
     }
     private void ResetOptionChoice()
     {optionChoice=optionRow==0?Math.Max(0,VideoOptions.ActiveResolution-1):device.Display.Widescreen?0:1;}
@@ -219,18 +237,30 @@ internal sealed class TitleScreen : IDisposable,Hypercube.GameCube.IFrameScene
     private void DrawStatus(string text,float x,float y,float width,bool centered=false)
     {
         if(statusSource!=text||statusWidth!=width){
-            statusSource=text;statusWidth=width;statusLine1=text;statusLine2="";
-            int count=FitText(text,width);
-            if(count<text.Length){
-                for(int i=count-1;i>0;i--)if(text[i]==' '){count=i;break;}
-                statusLine1=text.Substring(0,count);int start=count;while(start<text.Length&&text[start]==' ')start++;
-                string rest=text.Substring(start);int tail=FitText(rest,width);
+            statusSource=text;statusWidth=width;
+            // Exception text may contain line breaks. Bound physical lines as
+            // well as width so feedback always fits the two-line footer.
+            string message=text.Replace('\r',' ').Replace('\n',' ');
+            statusLine1=message;statusLine2="";
+            int count=FitText(message,width);
+            if(count<message.Length){
+                for(int i=count-1;i>0;i--)if(message[i]==' '){count=i;break;}
+                statusLine1=message.Substring(0,count);int start=count;while(start<message.Length&&message[start]==' ')start++;
+                string rest=message.Substring(start);int tail=FitText(rest,width);
                 statusLine2=tail<rest.Length?rest.Substring(0,FitText(rest,width-font.Measure("...",HelpScale)))+"...":rest;
             }
         }
-        if(centered&&statusLine2.Length==0)y+=12;
-        font.Draw(ui,statusLine1,centered?320-font.Measure(statusLine1,HelpScale)/2:x,y,TitleArt.Ink,HelpScale);
-        font.Draw(ui,statusLine2,centered?320-font.Measure(statusLine2,HelpScale)/2:x,y+24,TitleArt.Ink,HelpScale);
+        if(centered){
+            var first=font.GlyphBounds(statusLine1,HelpScale);var second=font.GlyphBounds(statusLine2,HelpScale);
+            float top=first.Y,bottom=first.Y+first.Height;
+            if(statusLine2.Length>0){top=Math.Min(top,24+second.Y);bottom=Math.Max(bottom,24+second.Y+second.Height);}
+            float originY=y+(46-(bottom-top))*.5f-top;
+            font.Draw(ui,statusLine1,x+(width-first.Width)*.5f-first.X,originY,TitleArt.Ink,HelpScale);
+            font.Draw(ui,statusLine2,x+(width-second.Width)*.5f-second.X,originY+24,TitleArt.Ink,HelpScale);
+        }else{
+            font.Draw(ui,statusLine1,x,y,TitleArt.Ink,HelpScale);
+            font.Draw(ui,statusLine2,x,y+24,TitleArt.Ink,HelpScale);
+        }
     }
     private int FitText(string text,float width)
     {

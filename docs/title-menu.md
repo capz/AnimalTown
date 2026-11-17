@@ -16,8 +16,17 @@ It uses eight 128×128 atlas pages (256 KiB, half the previous wordmark's
 residency), drawn with a white tint and preserved aspect ratio. The title fits
 it into a 360×180 area above the tagline; profile selection and onboarding share
 the same texture in a 128×64 header. The existing cream, mint and honey UI
-colors and menu positions remain in place. See the
+colors remain in place. See the
 [approved sources and native-format checks](../assets/textures/branding/README.md).
+
+The title logo and menu buttons share a centered 360-pixel column. The cream
+panel fits the visible content: 432×384 with three menu entries, or 432×424
+with Debug visible. The group is centered vertically, with 36 pixels of side
+padding and 24–25 pixels above and below. The 34-pixel menu pills have eight
+pixels between them, and their labels use actual glyph bounds for centering.
+Status messages expand the panel to 432×456 and move the group up to reserve
+a 360×46 footer. Status text keeps its existing size, wraps into at most two
+physical lines and retains 24 pixels of clearance from the bottom of the canvas.
 
 The disc's `opening.bnr` and memory-card banner use the separately approved
 96×32 Smalltown Forest artwork; the 32×32 save icon uses its single acorn.
@@ -158,6 +167,8 @@ For a focused logo check, run `tools/iso-smoke.py DISC OUTPUT --title-logo`.
 It captures the title, villager picker and naming screen from a real Dolphin
 run, cancels back to the title twice, and checks the native logo dimensions and
 resident bytes, visible artwork colors, unchanged committed town state and
-absence of gameplay startup or runtime asset errors. Release CI runs this
+absence of gameplay startup or runtime asset errors. It also checks the fitted
+panel with Debug hidden and visible, opens and closes the Debug modal, and
+captures the expanded panel used for status messages. Release CI runs this
 scenario when the branding, shared headers or capture path changes, and keeps
 the original screenshots with the release for PR review.
