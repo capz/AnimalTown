@@ -49,7 +49,7 @@ internal sealed class GroundMipMaterials : IDisposable
         int state=(enabled?1:0)|(mipmaps?2:0)|(distance<<2);
         if(state!=traceState||width!=traceWidth||height!=traceHeight||levels!=traceLevels){
             traceState=state;traceWidth=width;traceHeight=height;traceLevels=levels;
-            DebugOverlay.WriteLine("GROUND MIP BANDS enabled "+(enabled?1:0)+" mips "+(mipmaps?1:0)+" distance "+distance+" size "+width+"x"+height+" levels "+levels);
+            DebugOverlay.WriteLine("ANIMALTOWN GROUND MIP BANDS enabled "+(enabled?1:0)+" mips "+(mipmaps?1:0)+" distance "+distance+" size "+width+"x"+height+" levels "+levels);
         }
     }
     private void PrepareSlot(int slot,Material original,bool ground,bool mipmaps,int distance,bool changed)
