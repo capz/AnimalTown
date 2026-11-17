@@ -96,7 +96,7 @@ int main(void){
     assert(animaltown_terrain_append(0,55,plain,6)==2);
     assert(animaltown_terrain_complete(0)==1&&animaltown_terrain_info(0,0)==-1);
     assert(animaltown_terrain_append(1,104,plain,6)==3);
-    assert(animaltown_terrain_append(1,109,plain,6)==-1);
+    assert(animaltown_terrain_append(1,108,plain,6)==-1);
     assert(animaltown_terrain_append(1,107,plain,6)==4);
     assert(animaltown_terrain_complete(1)==1);
     assert(animaltown_terrain_info(0,0)==0&&animaltown_terrain_info(0,1)==2&&animaltown_terrain_info(0,2)==6);
@@ -175,12 +175,12 @@ int main(void){
     assert(animaltown_terrain_reset(1)==1);
     plain=dnd_mesh_create_range(v,12,NULL,0,2,0);assert(plain>0);
     assert(animaltown_terrain_append(0,104,plain,6)==1);
-    assert(animaltown_terrain_append(0,108,plain,6)==2);
-    assert(animaltown_terrain_append(0,108,plain,6)==3);
-    assert(animaltown_terrain_append(0,109,plain,6)==-1);
+    assert(animaltown_terrain_append(0,107,plain,6)==2);
+    assert(animaltown_terrain_append(0,107,plain,6)==3);
+    assert(animaltown_terrain_append(0,108,plain,6)==-1);
     assert(animaltown_terrain_complete(0)==1);
-    assert(animaltown_terrain_info(0,1)==2&&animaltown_terrain_kind(0)==104&&animaltown_terrain_kind(1)==108);
-    assert(animaltown_terrain_info(0,3)==4&&animaltown_terrain_info(0,2)==6);
+    assert(animaltown_terrain_info(0,1)==2&&animaltown_terrain_kind(0)==104&&animaltown_terrain_kind(1)==107);
+    assert(animaltown_terrain_info(0,3)==-1&&animaltown_terrain_info(0,2)==6);
     assert(dnd_draw_release(plain)==0&&animaltown_terrain_reset(0)==1);
     residency_checks(v,ix);free(v);free(ix);puts("Terrain archive: exact indexed/trimmed payloads retain UV/alpha; 10000 byte-exact ARAM view binds; no uploads/allocations; atomic cache exhaustion, save-cache suspension/resume, reuse, guards and pinned parent lifetime passed");
 

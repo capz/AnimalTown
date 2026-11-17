@@ -49,7 +49,7 @@ internal sealed class TerrainRenderer : IDisposable
     // A not-yet-baked landscape follows the existing initial loading path.
     // Only a previously built cold cache must be prefetched before door commit.
     internal bool PrepareOutdoorResidency(float x,float z,long deadline,bool refreshSelection=false)
-        =>legacy||archive==null||!archive.Ready||(!refreshSelection&&archive.Presentable)||archive.PrepareAsync(x,z,Rows,deadline,waterMaterial.IsSunshine);
+        =>legacy||archive==null||!archive.Ready||(!refreshSelection&&archive.Presentable)||archive.PrepareAsync(x,z,Rows,deadline);
     internal int LoadingRemaining=>legacy?stream.MissingWanted:archive?.Remaining??TerrainArchivePlan.Count;
     internal int LoadingTotal=>legacy?stream.WantedCount:TerrainArchivePlan.Count;
     internal int MissingVisible=>legacy?stream.MissingVisible:Ready?0:1;
@@ -72,7 +72,6 @@ internal sealed class TerrainRenderer : IDisposable
     internal int SeasonOverride=-1;
     internal bool GroundMipmaps=true;
     internal int GroundMipDistance;
-    internal WaterRenderStyle WaterStyle {get=>waterMaterial.Style;set=>waterMaterial.Style=value;}
     private bool appliedGroundMipmaps;
     private int appliedGroundMipDistance=-1;
     internal int RenderSeason=>season;
@@ -102,7 +101,7 @@ internal sealed class TerrainRenderer : IDisposable
         groundRing?.Dispose();groundRing=null;gallery.Dispose();oceanWaves.Dispose();
         Array.Clear(batch,0,batch.Length);batchCount=0;
         // Cloud/water effects borrow texture bindings, so retire them before
-        // releasing the cache leases supplying their ground and seabed art.
+        // releasing the cache leases supplying their ground art.
         materials[TownPaths.Material].Texture=null;paths.Dispose();
         waterMaterial.Dispose();soil.Dispose();
         for(int i=0;i<textures.Length;i++)if(textures[i]!=null){TextureCache.Release(textures[i]!);textures[i]=null;}
@@ -112,13 +111,10 @@ internal sealed class TerrainRenderer : IDisposable
     internal void Prepare(GameState state,int room,int month,VillagerShadows movingShadows,long deadline,bool cliffPreview=false)
     {
         BuiltThisFrame=UrgentStages=0;
-        if(waterMaterial.IsSunshine)waterMaterial.PrepareSunshine();
-        else waterMaterial.ReleaseCapture();
         waterMaterial.PrepareRoughOcean();
-        // Sunlit translucent water is drawn once, not again through the storm
-        // mesh, so its alpha never accumulates over the same surface.
-        oceanWaves.Prepare(state,waterMaterial.RoughOcean||waterMaterial.IsSunshine,
-            cliffPreview,waterMaterial.Tint(1),waterMaterial.IsSunshine);
+        // Only rough ocean needs the small dynamic wave patch.
+        oceanWaves.Prepare(state,waterMaterial.RoughOcean,
+            cliffPreview,waterMaterial.Tint(1));
         int next=TerrainTiles.Season(month,SeasonOverride>=0?SeasonOverride:forced);bool changed=next!=season;
         if(changed){
             string name="floor-"+TerrainTiles.SeasonName(next);data=File.ReadAllBytes("dvd:/"+name+".bin");FloorStrips.Validate(data);
@@ -181,7 +177,7 @@ internal sealed class TerrainRenderer : IDisposable
                 long bakeDeadline=Clock.Timestamp+12000;
                 for(int n=0;n<256&&!archive.Ready&&(n==0||Clock.Timestamp<bakeDeadline);n++){archive.Bake(state,this,staging,data);BuiltThisFrame++;}
             }
-            long at=FrameProfile.Start();archive.Prepare(state.X,state.Z,Rows,waterMaterial.IsSunshine);FrameProfile.DetailEnd(0,at);
+            long at=FrameProfile.Start();archive.Prepare(state.X,state.Z,Rows);FrameProfile.DetailEnd(0,at);
             shadows.Prepare(state);
             int work=0;while(work<8&&Clock.Timestamp<deadline){if(!movingShadows.Advance())break;work++;}
             while(work<8&&Clock.Timestamp<deadline){if(!shadows.Advance())break;work++;}
@@ -211,7 +207,7 @@ internal sealed class TerrainRenderer : IDisposable
         gallery.PrepareGallery(state,this,cliffPreview);
         VisibleTriangles=gallery.Triangles+oceanWaves.Triangles+(GroundRingActive?GroundRingPlan.IndexCount/3:0);RejectedQuads=0;visibleGroundMask=0;
         for(int i=0;i<stream.Count;i++)if(stream.Visible[i]){
-            var section=sections[i]!;VisibleTriangles+=section.Triangles+(waterMaterial.IsSunshine?section.Water.BedTriangles:0);
+            var section=sections[i]!;VisibleTriangles+=section.Triangles;
             visibleGroundMask|=section.GroundMask|section.Walls.GroundMask;
         }
         PreparePaths();
@@ -292,33 +288,15 @@ internal sealed class TerrainRenderer : IDisposable
     {if(batchCount==0)return;renderer.DrawMeshes(batch,poses,material,0,batchCount);batchCount=0;}
     private void AddArchive(Renderer renderer,Material material,int kind)
     {for(int i=archive!.First(kind);i>=0;i=archive.Next(i))Add(renderer,material,archive.Mesh(i));Flush(renderer,material);}
-    private void AddLegacyBed(Renderer renderer)
-    {
-        for(int i=0;i<stream.Count;i++)if(stream.Visible[i])Add(renderer,waterMaterial.Bed,sections[i]!.Water.BedMesh);
-        Flush(renderer,waterMaterial.Bed);
-    }
     private void DrawArchiveWater(Renderer renderer)
     {
-        // The original mode retains its exact draw count. Sunshine first lays
-        // a very thin tropical tint over the shared dark-blue bed, then its
-        // alpha-cutout caustic/reflection layer and the original shore foam.
-        if(waterMaterial.IsSunshine){
-            AddArchive(renderer,waterMaterial.SunshineBody,104);
-            AddArchive(renderer,waterMaterial.SunshineBody,107);
-        }
         AddArchive(renderer,waterMaterial.Surface,104);
         AddArchive(renderer,waterMaterial.OceanSurface,107);
-        oceanWaves.Draw(renderer,waterMaterial.IsSunshine?waterMaterial.CloseWaves:waterMaterial.OceanSurface,ScrollTransform);
+        oceanWaves.Draw(renderer,waterMaterial.OceanSurface,ScrollTransform);
         AddArchive(renderer,waterMaterial.Foam,105);
     }
     private void DrawLegacyWater(Renderer renderer)
     {
-        if(waterMaterial.IsSunshine){
-            for(int i=0;i<stream.Count;i++)if(stream.Visible[i])Add(renderer,waterMaterial.SunshineBody,sections[i]!.Water.SurfaceMesh);
-            Flush(renderer,waterMaterial.SunshineBody);
-            for(int i=0;i<stream.Count;i++)if(stream.Visible[i])Add(renderer,waterMaterial.SunshineBody,sections[i]!.Water.OceanMesh);
-            Flush(renderer,waterMaterial.SunshineBody);
-        }
         NativeShadows.Scope(3);
         try{
             for(int i=0;i<stream.Count;i++)if(stream.Visible[i])Add(renderer,waterMaterial.Surface,sections[i]!.Water.SurfaceMesh);
@@ -326,54 +304,24 @@ internal sealed class TerrainRenderer : IDisposable
         }finally{NativeShadows.Scope(0);}
         for(int i=0;i<stream.Count;i++)if(stream.Visible[i])Add(renderer,waterMaterial.OceanSurface,sections[i]!.Water.OceanMesh);
         Flush(renderer,waterMaterial.OceanSurface);
-        oceanWaves.Draw(renderer,waterMaterial.IsSunshine?waterMaterial.CloseWaves:waterMaterial.OceanSurface,ScrollTransform);
+        oceanWaves.Draw(renderer,waterMaterial.OceanSurface,ScrollTransform);
         for(int i=0;i<stream.Count;i++)if(stream.Visible[i])Add(renderer,waterMaterial.Foam,sections[i]!.Water.FoamMesh);
         Flush(renderer,waterMaterial.Foam);
-    }
-
-    internal bool RefractionVisible
-    {
-        get {
-            if(!waterMaterial.IsSunshine||!Ready)return false;
-            if(!legacy)return archive!.First(104)>=0||archive.First(107)>=0;
-            for(int i=0;i<stream.Count;i++)if(stream.Visible[i]&&
-                (sections[i]!.Water.SurfaceMesh!=null||sections[i]!.Water.OceanMesh!=null))return true;
-            return false;
-        }
-    }
-    internal void CaptureWaterScene()=>waterMaterial.CaptureScene();
-    internal void ReleaseWaterCapture()=>waterMaterial.ReleaseCapture();
-    internal bool TakeWaterPreparationFailure(out string error)=>waterMaterial.TakePreparationFailure(out error);
-    internal void DrawRefraction(Renderer renderer)
-    {
-        var material=waterMaterial.Refraction;
-        if(!legacy){AddArchive(renderer,material,104);AddArchive(renderer,material,107);return;}
-        for(int i=0;i<stream.Count;i++)if(stream.Visible[i])Add(renderer,material,sections[i]!.Water.SurfaceMesh);
-        Flush(renderer,material);
-        for(int i=0;i<stream.Count;i++)if(stream.Visible[i])Add(renderer,material,sections[i]!.Water.OceanMesh);
-        Flush(renderer,material);
     }
 
     internal void Draw(Renderer renderer,Transform parent,int room)
     {
         if(groundLoad==GroundLoad.Preview)groundLoad=GroundLoad.Visible;
-        bool sunshine=waterMaterial.IsSunshine;
         if(!legacy){
-            if(sunshine){
-                // Solid blue merged beds first, then land, translucent water
-                // and shoreline foam. All geometry uses the shared scroll.
-                AddArchive(renderer,waterMaterial.Bed,WaterRenderer.BedKind);
-            }else DrawArchiveWater(renderer);
+            DrawArchiveWater(renderer);
             AddArchive(renderer,soil.Material,106);
             NativeShadows.Scope(1);
             try{for(int slot=0;slot<slots;slot++)if((visibleGroundMask&(1UL<<slot))!=0)AddArchive(renderer,materials[slot],slot);if((visibleGroundMask&(1UL<<TownPaths.Material))!=0)AddArchive(renderer,materials[TownPaths.Material],TownPaths.Material);}
             finally{NativeShadows.Scope(0);}
             gallery.Draw(renderer,ScrollTransform,this);
-            if(sunshine)DrawArchiveWater(renderer);
             return;
         }
-        if(sunshine)AddLegacyBed(renderer);
-        else DrawLegacyWater(renderer);
+        DrawLegacyWater(renderer);
         for(int i=0;i<stream.Count;i++)if(stream.Visible[i])Add(renderer,soil.Material,sections[i]!.Walls.SoilMesh);
         Flush(renderer,soil.Material);
         NativeShadows.Scope(1);
@@ -391,6 +339,5 @@ internal sealed class TerrainRenderer : IDisposable
             }
         }finally{NativeShadows.Scope(0);}
         gallery.Draw(renderer,ScrollTransform,this);
-        if(sunshine)DrawLegacyWater(renderer);
     }
 }

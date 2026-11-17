@@ -43,7 +43,7 @@ internal sealed class TerrainRenderer
     internal readonly CylinderRows Rows=new CylinderRows();
     internal TerrainSection CreateSection()=>new TerrainSection();
 }
-internal static class WaterRenderer {internal const int BedKind=108,PartKinds=109;}
+internal static class WaterRenderer {internal const int PartKinds=108;}
 internal sealed class TerrainSection
 {
     internal void Begin(GameState state,int x,int z,CylinderRows rows){}
@@ -54,7 +54,7 @@ internal sealed class TerrainSection
 internal static class NativeTerrain
 {
     internal static int CacheBytes,AramBytes,CreatedViews,ReleasedViews,BindCalls,StepCalls,ResumeCalls;
-    internal static bool FailResume,FailStep,BedOnly;
+    internal static bool FailResume,FailStep,Empty;
     private static readonly int[] entries=new int[1024];
     private static int pending,entry,remaining,cancelRemaining;
     internal static int Reset(int sections)
@@ -88,17 +88,17 @@ internal static class NativeTerrain
     }
     internal static int Resume(){ResumeCalls++;if(FailResume)return -2;CacheBytes=1048576;return 1;}
     internal static int Cache(int enabled)=>enabled==1?Resume():Suspend();
-    internal static int Info(int section,int kind)=>kind==0?section*2:kind==1?2:kind==2?4:BedOnly?4:2;
-    internal static int Kind(int value)=>BedOnly||value%2==1?WaterRenderer.BedKind:(value/2)%4;
+    internal static int Info(int section,int kind)=>kind==0?section*2:kind==1?(Empty?0:2):kind==2?(Empty?0:4):-1;
+    internal static int Kind(int value)=>value%2==1?104:(value/2)%4;
     internal static int Stat(int kind)=>kind==0?CacheBytes+9216:kind==5?AramBytes:kind==8?CacheBytes:0;
 }
 internal static class TerrainResidencyChecks
 {
-    private static bool Finish(TerrainArchive archive,float x,float z,CylinderRows rows,bool drawBeds=true)
+    private static bool Finish(TerrainArchive archive,float x,float z,CylinderRows rows)
     {
         for(int i=0;i<4096;i++){
             int calls=NativeTerrain.StepCalls;
-            bool complete=archive.PrepareAsync(x,z,rows,Clock.Timestamp+1000,drawBeds);
+            bool complete=archive.PrepareAsync(x,z,rows,Clock.Timestamp+1000);
             if(NativeTerrain.StepCalls-calls>8)throw new InvalidOperationException("Unbounded terrain publication in one step.");
             if(complete)return true;
         }
@@ -113,12 +113,7 @@ internal static class TerrainResidencyChecks
         archive.Prepare(30,50,owner.Rows);
         check(archive.Presentable&&archive.ViewCount>0,"warm preparation publishes the original complete selection");
         int allViews=archive.ViewCount,allTriangles=archive.Triangles;
-        check(archive.First(WaterRenderer.BedKind)>=0,"sunshine selection includes the separately archived water bed");
-        archive.Prepare(30,50,owner.Rows,false);
-        check(archive.Presentable&&archive.ViewCount*2==allViews&&archive.Triangles*2==allTriangles&&archive.First(WaterRenderer.BedKind)==-1,
-            "ordinary water excludes bed aliases and bed triangle accounting");
-        archive.Prepare(30,50,owner.Rows,true);
-        check(archive.ViewCount==allViews&&archive.Triangles==allTriangles,"switching sunshine back restores the original bed selection");
+        check(archive.First(104)>=0,"ordinary water is included in terrain selection");
         var identity=archive.Mesh(0);int views=NativeTerrain.CreatedViews,aram=NativeTerrain.AramBytes,collections=AnimalTown.GameCube.NativeTexturePages.Collections;
         check(views==256&&archive.Suspend()&&archive.CacheSuspended&&!archive.Presentable,"suspension drops only the fixed cache and invalidates drawable state");
         check(NativeTerrain.CacheBytes==0&&NativeTerrain.AramBytes==aram&&archive.Ready&&archive.Suspend(),"suspension preserves the archive and is idempotent");
@@ -141,20 +136,20 @@ internal static class TerrainResidencyChecks
         check(AnimalTown.GameCube.NativeTexturePages.Collections==collections,"suspension and resumption introduce no collections");
         int suspensions=Dolphin.Diagnostics.DebugOverlay.TerrainSuspensions,restorations=Dolphin.Diagnostics.DebugOverlay.TerrainRestorations;
         check(archive.SuspendForSave()&&archive.CacheSuspended&&NativeTerrain.AramBytes==aram,"explicit saving releases a warm cache while preserving backing");
-        archive.ResumeAfterSave();archive.Prepare(30,50,owner.Rows,true);
-        check(archive.Presentable&&!archive.CacheSuspended&&archive.ViewCount==allViews,"save cleanup restores normal warm preparation and water beds");
+        archive.ResumeAfterSave();archive.Prepare(30,50,owner.Rows);
+        check(archive.Presentable&&!archive.CacheSuspended&&archive.ViewCount==allViews,"save cleanup restores normal warm preparation and ordinary water");
         check(Dolphin.Diagnostics.DebugOverlay.TerrainSuspensions==suspensions&&Dolphin.Diagnostics.DebugOverlay.TerrainRestorations==restorations,
             "save-only pressure relief does not masquerade as the debug terrain transition");
-        archive.Suspend();archive.PrepareAsync(30,50,owner.Rows,Clock.Timestamp+1000,true);
-        check(!archive.PrepareAsync(30,50,owner.Rows,Clock.Timestamp+1000,false),"changing bed style drains its partial prefetch first");
-        check(Finish(archive,30,50,owner.Rows,false)&&archive.ViewCount*2==allViews&&archive.First(WaterRenderer.BedKind)==-1,
-            "a style change during restoration removes all partially bound bed aliases");
-        archive.Suspend();archive.PrepareAsync(30,50,owner.Rows,Clock.Timestamp+1000,true);
+        archive.Suspend();archive.PrepareAsync(30,50,owner.Rows,Clock.Timestamp+1000);
+        check(!archive.PrepareAsync(38,58,owner.Rows,Clock.Timestamp+1000),"changing camera drains its partial prefetch first");
+        check(Finish(archive,38,58,owner.Rows)&&archive.ViewCount>0,
+            "a camera change during restoration publishes only the new selection");
+        archive.Suspend();archive.PrepareAsync(30,50,owner.Rows,Clock.Timestamp+1000);
         suspensions=Dolphin.Diagnostics.DebugOverlay.TerrainSuspensions;
         check(archive.SuspendForSave()&&archive.CacheSuspended,"explicit saving drains a partially restored cache before card I/O");
-        archive.ResumeAfterSave();archive.Prepare(30,50,owner.Rows,true);
+        archive.ResumeAfterSave();archive.Prepare(30,50,owner.Rows);
         check(archive.Presentable&&archive.ViewCount==allViews&&Dolphin.Diagnostics.DebugOverlay.TerrainSuspensions==suspensions,
-            "save interruption restores complete bed geometry without another debug suspension");
+            "save interruption restores complete geometry without another debug suspension");
         archive.Suspend();
         check(!archive.SuspendForSave(),"saving an already debug-cold cache does not claim ownership of resumption");
         archive.ResumeAfterSave();check(archive.CacheSuspended&&NativeTerrain.CacheBytes==0,"save cleanup does not resurrect a debug-cold cache");
@@ -172,12 +167,9 @@ internal static class TerrainResidencyChecks
         archive.Suspend();archive.PrepareAsync(30,50,owner.Rows,Clock.Timestamp+1000);
         check(!archive.TryDispose()&&NativeTerrain.ReleasedViews==0,"reset/disposal waits for the active cache owner");
         check(archive.TryDispose()&&NativeTerrain.ReleasedViews==views&&NativeTerrain.AramBytes==0,"disposal releases the archive and original view set after drainage");
-        NativeTerrain.BedOnly=true;archive.Reset();while(!archive.Ready)archive.Bake(state,owner,strips,data);
-        archive.Prepare(30,50,owner.Rows,false);
-        check(archive.Presentable&&archive.ViewCount==0&&archive.Triangles==0,"a completely filtered section has no drawable aliases");
-        archive.Prepare(30,50,owner.Rows,true);
-        check(archive.Presentable&&archive.ViewCount==allViews&&archive.Triangles==allTriangles,
-            "water style changes invalidate filtered sections even when they had no aliases");
-        archive.Dispose();NativeTerrain.BedOnly=false;
+        NativeTerrain.Empty=true;archive.Reset();while(!archive.Ready)archive.Bake(state,owner,strips,data);
+        archive.Prepare(30,50,owner.Rows);
+        check(archive.Presentable&&archive.ViewCount==0&&archive.Triangles==0,"empty sections become drawable without aliases");
+        archive.Dispose();NativeTerrain.Empty=false;
     }
 }

@@ -17,7 +17,7 @@ function Get-ValidationPlan {
     foreach($raw in $ChangedPaths){
         $p=$raw.Replace('\','/')
         $renderingForPath=if($p -match '^tests/AnimalTown.Checks/'){ @() }else{ $allRendering }
-        if($p -match '^(shared/AnimalTown.Domain/(SunshineWater|WindWakerWaterPattern|WindWakerWaveField|WindWakerWaveGrid)|game/AnimalTown.GameCube/WaterMaterial)\.cs$'){$renderingForPath=@('water')}
+        if($p -match '^(shared/AnimalTown.Domain/(WindWakerWaterPattern|WindWakerWaveField|WindWakerWaveGrid)|game/AnimalTown.GameCube/WaterMaterial)\.cs$'){$renderingForPath=@('water')}
         elseif($p -match '^(shared/AnimalTown.Domain/(WaterSurface|WaterDepthCache)|game/AnimalTown.GameCube/(WaterRenderer|LocalOceanWaves))\.cs$'){$renderingForPath=@('water','movement')}
         elseif($p -match '^shared/AnimalTown.Domain/(ActorFrameVisibility|AnimationFrameClock)\.cs$'){$renderingForPath=@('movement','visibility')}
         elseif($p -match '^(shared/AnimalTown.Domain/GroundRingPlan|game/AnimalTown.GameCube/GroundRingRenderer)\.cs$'){$renderingForPath=@('ground')}
@@ -35,7 +35,7 @@ function Get-ValidationPlan {
             $names=@{WaterEffect='water';RenderingService='services';MovementTerrain='movement';GroundRing='ground';TerrainIndex='index';ActorVisibility='visibility';AttentionGeometry='attention';DroppedItem='dropped-item'}
             [void]$rendering.Add($names[$Matches[1]]);continue
         }
-        if($p -match '^(shared/AnimalTown.Domain/(SunshineWater|WindWakerWaterPattern|WindWakerWaveField|WindWakerWaveGrid|WaterDepthCache|GroundRingPlan|ActorFrameVisibility|AnimationFrameClock)|game/AnimalTown.GameCube/(LocalOceanWaves|GroundRingRenderer|GeometryStaging|TerrainIndexBuffer|VillagerAttentionRenderer))\.cs$'){
+        if($p -match '^(shared/AnimalTown.Domain/(WindWakerWaterPattern|WindWakerWaveField|WindWakerWaveGrid|WaterDepthCache|GroundRingPlan|ActorFrameVisibility|AnimationFrameClock)|game/AnimalTown.GameCube/(LocalOceanWaves|GroundRingRenderer|GeometryStaging|TerrainIndexBuffer|VillagerAttentionRenderer))\.cs$'){
             Add-Managed 'terrain';Add-Managed 'core';continue
         }
         if($p -match '^(tools/native-terrain-(archive|recycle)\.inc|tests/native-terrain-(archive|recycle)\.c)$'){

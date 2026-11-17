@@ -1604,7 +1604,7 @@ with (root/'emulator.log').open('w') as log:
                     (root/'river-animation.txt').write_text(f'Water pixels: {wet}\nAnimated water pixels: {changed}\n')
                     if wet<1000 or changed<50:raise AssertionError('Expected visible animated lowered river')
             press('X');screenshot('river-coast-menu.png');press('B')
-        elif '--water' in sys.argv or '--water-ab' in sys.argv:
+        elif '--water' in sys.argv:
             # Fresh card: create a player, then use the clear starter reserve
             # to reach the western ocean boundary in any generated town.
             start_game(True,'water')
@@ -1628,55 +1628,6 @@ with (root/'emulator.log').open('w') as log:
             os.write(controller,b'SET MAIN 0.5 0.1\n');time.sleep(2)
             os.write(controller,b'SET MAIN 0.5 0.5\n');time.sleep(2);screenshot('water-camera.png')
             press('X');screenshot('water-menu.png');press('B');screenshot('water-return.png')
-            if '--water-ab' in sys.argv:
-                # Same camera and save, no scene/terrain regeneration. Water
-                # is visible row23; derive the row count so trailing settings
-                # do not silently select another option when wrapping upward.
-                import re
-                pad_source=Path(sys.modules['dolphin_pad'].__file__).resolve()
-                program=pad_source.parents[1]/'game/AnimalTown.GameCube/Program.cs'
-                try:row_match=re.search(r'\bTestingRows\s*=\s*(\d+)',program.read_text())
-                except OSError:row_match=None
-                testing_rows=int(row_match.group(1)) if row_match else 30
-                if not 25<=testing_rows<=128:raise ValueError('Unexpected testing-menu row count')
-                def water_selector():
-                    set_debug_visibility(True)
-                    press('START');press('R')
-                    for _ in range(testing_rows-23):press('D_UP')
-                water_selector()
-                screenshot('water-ab-selector-windwaker.png')
-                press('A');screenshot('water-ab-selector-sunshine.png')
-                press('B');time.sleep(3)
-                sun0=water_frame('water-sunshine-a')
-                time.sleep(7);sun1=water_frame('water-sunshine-b')
-                water_selector()
-                press('A');screenshot('water-ab-selector-restored.png')
-                press('B');time.sleep(3)
-                restored=water_frame('water-windwaker-restored')
-                for label,frame in [('Sunshine',sun0),('animated Sunshine',sun1),('restored Wind Waker',restored)]:
-                    if not onboarding_signature(frame,'world'):
-                        raise AssertionError(label+' did not return to gameplay; inspect style selectors and preparation feedback')
-                # These measurements are diagnostics, not an assertion that
-                # animated frames are pixel identical before/after switching.
-                changed_mode=changed_animation=0
-                for y in range(120,430):
-                    for x in range(20,300):
-                        i=(y*800+x)*3
-                        if first[i:i+3]!=sun0[i:i+3]:changed_mode+=1
-                        if sun0[i:i+3]!=sun1[i:i+3]:changed_animation+=1
-                (root/'water-ab-comparison.json').write_text(json.dumps({
-                    'comparison':'Wind Waker vs Sunshine, same camera and world',
-                    'water_style_rows':testing_rows,
-                    'changed_pixels_between_styles':changed_mode,
-                    'sunshine_animated_pixels':changed_animation,
-                    'restored_windwaker_frame':len(restored),
-                    'screenshots':['water-a.png','water-sunshine-a.png',
-                        'water-sunshine-b.png','water-windwaker-restored.png',
-                        'water-ab-selector-windwaker.png','water-ab-selector-sunshine.png',
-                        'water-ab-selector-restored.png']
-                },indent=2))
-                if changed_mode<500 or changed_animation<50:
-                    raise AssertionError('Sunshine renderer did not visibly differ/animate; inspect water-ab-comparison.json')
         elif '--terrain-edges' in sys.argv:
             press('A');time.sleep(2);screenshot('terrain-edge-start.png')
             directions=[(.5,0,3),(0,.5,2),(1,.5,4),(.5,0,2),(0,.5,2),(.5,1,2),(1,0,2),(0,1,2)]
