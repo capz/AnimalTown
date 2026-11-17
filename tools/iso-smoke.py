@@ -148,9 +148,13 @@ def onboarding_signature(pixels,stage):
         rendered=sum(max(pixels[(y*800+x)*3:(y*800+x)*3+3])>20
                      for y in range(0,480,2) for x in range(28,612,2))
         header=region_color_count(pixels,(255,245,221),160,25,480,67)
-        if stage=='home':return rendered>60000 and header>5000
+        # The shop's full-width interaction cue shares the top of the screen
+        # with the narrower plot-preview heading. Its left edge distinguishes
+        # a saved indoor game from an unfinished home-placement preview.
+        shop_hint=region_color_count(pixels,(255,245,221),50,35,125,62)>1000
+        if stage=='home':return rendered>60000 and header>5000 and not shop_hint
         # Gameplay has no bottom legend, and running hides the floating clock.
-        return rendered>60000 and header<5000
+        return rendered>60000 and (header<5000 or shop_hint)
     raise ValueError('Unknown onboarding stage: '+stage)
 
 def wait_onboarding(stage,name=None):
