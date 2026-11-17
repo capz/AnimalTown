@@ -33,12 +33,16 @@ internal static class BuildingChecks
         var p=s.Town.Placed[0];p.Item=10;p.X=1;p.Z=3;p.Room=1;p.Owner=0;s.Town.PlacedCount=1;
         var preserved=SaveCodec.Decode(SaveCodec.Encode(s));check(preserved.Town.PlacedCount==1&&preserved.Town.Placed[0].Z==3,"legacy doorway-overlapping possessions are retained on load");
         s.Town.PlacedCount=0;
-        var camera=new InteriorCamera();camera.Tick(1,false);int quarter=camera.Quarter;for(int i=0;i<20;i++)camera.Tick(1,false);check(quarter==1&&camera.Quarter==1,"held C-stick causes only one quarter-turn");camera.Tick(0,false);camera.Tick(-1,false);check(camera.Quarter==0,"C-stick must rearm before another turn");
+        var camera=new InteriorCamera();
+        check(camera.WallVisible(0)&&camera.WallVisible(1)&&camera.WallVisible(3)&&!camera.WallVisible(2),"default indoor view shows back and side walls but never the front wall");
+        camera.Tick(1,false);int quarter=camera.Quarter;for(int i=0;i<20;i++)camera.Tick(1,false);check(quarter==1&&camera.Quarter==1,"held C-stick causes only one quarter-turn");camera.Tick(0,false);camera.Tick(-1,false);check(camera.Quarter==0,"C-stick must rearm before another turn");
+        int[] frontWalls={1,0,3,2};
         for(int turn=0;turn<4;turn++){
             camera.Tick(0,false);camera.Tick(1,false);for(int i=0;i<40;i++)camera.Tick(0,false);
             camera.Movement(1,0,out float x,out float y);check(Math.Abs(x*x+y*y-1)<.00001f,"camera-relative movement preserves speed");
             check(camera.Sphere(2,1,2,1,4),"room occupants remain visible at every camera angle");
-            int count=0;for(int wall=0;wall<4;wall++)if(camera.WallVisible(wall))count++;check(count>=1&&count<=2,"camera-facing walls are cut away without transparent overdraw");
+            int count=0;for(int wall=0;wall<4;wall++)if(camera.WallVisible(wall))count++;
+            check(count==3&&!camera.WallVisible(frontWalls[turn]),"each cardinal view retains both side walls and the back while cutting away its front wall");
         }
         var journeyState=new GameState(931);journeyState.Space=16;journeyState.X=2;journeyState.Z=2;
         for(int i=0;i<6;i++){BuildingWorld.Entrance(journeyState,i+1,out float x,out float z);var v=journeyState.Town.Residents[i];v.PosX=x;v.PosZ=z;v.X=(int)x;v.Z=(int)z;v.JourneyBuilding=i+1;v.JourneyPhase=1;v.JourneyNextX=32;v.JourneyNextZ=28;}
