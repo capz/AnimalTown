@@ -12,14 +12,14 @@ typedef struct { const DndDrawEffect *effect; } DndDrawMaterial;
 typedef struct { float u,v; unsigned color; } DndDrawVertex;
 enum {
     GX_FALSE=0,GX_TRUE=1,GX_TF_I8=1,GX_TF_IA4=2,GX_CLAMP=0,GX_LINEAR=1,GX_ANISO_1=0,
-    GX_TEXMAP2=2,GX_TEXCOORD1=1,GX_TEXCOORD2=2,GX_TEXCOORD_NULL=255,
+    GX_TEXMAP0=0,GX_TEXCOORD0=0,GX_TEXMAP2=2,GX_TEXCOORD1=1,GX_TEXCOORD2=2,GX_TEXCOORD_NULL=255,
     GX_TEXMAP_NULL=255,GX_COLOR_NULL=255,GX_COLOR0A0=4,
     GX_TG_MTX2x4=1,GX_TG_MTX3x4=0,GX_TG_TEX0=4,GX_TG_POS=0,GX_TG_NRM=1,
     GX_IDENTITY=60,GX_TEXMTX8=54,GX_TEXMTX9=57,GX_MTX2x4=1,GX_MTX3x4=0,
     GX_DTTMTX0=64,GX_CH_RED=0,GX_CH_GREEN=1,GX_CH_BLUE=2,GX_TEV_SWAP1=1,GX_TEV_SWAP0=0,GX_TEV_ADD=0,GX_TB_ZERO=0,GX_CS_SCALE_1=0,
     GX_TEVPREV=0,GX_TEVREG2=3,GX_TEV_KASEL_1=0,GX_KCOLOR3=3,GX_KCOLOR2=2,GX_KCOLOR1=1,GX_TEV_KASEL_K2_A=30,GX_TEV_KCSEL_K0=12,GX_TEV_KCSEL_K1=13,GX_TEV_KCSEL_K2=14,
     GX_TEV_KCSEL_K3=15,GX_CC_CPREV=0,GX_CC_A2=7,GX_CC_TEXC=8,
-    GX_CC_KONST=14,GX_CC_ZERO=15,GX_CA_APREV=0,GX_CA_A2=3,GX_CA_TEXA=4,
+    GX_CC_RASC=10,GX_CC_ONE=12,GX_CC_KONST=14,GX_CC_ZERO=15,GX_CA_APREV=0,GX_CA_A2=3,GX_CA_TEXA=4,
     GX_CA_RASA=5,GX_CA_KONST=6,GX_CA_ZERO=7
 };
 typedef struct { int input[4],destination; } AlphaCommand;
@@ -27,7 +27,7 @@ static AlphaCommand alpha_commands[16];
 static int alpha_command_count;
 static int shadow_page_side=SU_SIDE,shadow_page_missing;
 static int texture_width,texture_height,texture_min,texture_mag;
-static int texture_format,environment_test_rgb=0xffffff;
+static int texture_format,environment_test_rgb=0xffffff,point_test_gain=255;
 static GXColor konst_colors[4];
 static GXColor shadow_tint;
 static float shadow_uv_scale,shadow_uv_offset,shadow_uv_scale_z,shadow_uv_offset_z;
@@ -70,7 +70,7 @@ static void GX_SetTevAlphaOp(u8 stage,int op,int bias,int scale,int clamp,int de
     alpha_commands[stage].destination=destination;
 }
 int animaltown_environment_color(void){return environment_test_rgb;}
-int animaltown_light_strength(void){return 255;}
+int animaltown_light_strength(void){return point_test_gain;}
 int animaltown_shadows_mode(void){return 3;}
 const uint8_t *animaltown_shadows_page(float x,float z,float *origin){
     static const uint8_t pixels[SU_TERRAIN_BYTES]={0};(void)x;(void)z;
@@ -83,6 +83,28 @@ static bool model_batch_vertex_ready;
 #define DND_MODEL_GX_TEST
 #include "../tools/native-rim.inc"
 #undef DND_MODEL_GX_TEST
+
+enum { GX_LIGHT6=64,GX_LIGHT7=128,GX_COLOR1A1=5,GX_COLOR1=1,GX_ALPHA1=3,
+       GX_ENABLE=1,GX_DISABLE=0,GX_SRC_REG=0,GX_SRC_VTX=1,GX_LIGHTNULL=0,GX_DF_CLAMP=2,GX_DF_NONE=0,GX_AF_SPOT=2,GX_AF_NONE=0 };
+typedef struct {float position[3],quadratic;GXColor color;} GXLightObj;
+static GXLightObj recorded_points[2];
+static int point_test_scope,point_test_count,point_channels,point_material_source;
+static float point_test_data[20];
+int animaltown_object_scope(void){return point_test_scope;}
+const float *animaltown_point_sources(int *count){*count=point_test_count;return point_test_data;}
+static void GX_InitLightPos(GXLightObj *l,float x,float y,float z){l->position[0]=x;l->position[1]=y;l->position[2]=z;}
+static void GX_InitLightColor(GXLightObj *l,GXColor color){l->color=color;}
+static void GX_InitLightAttn(GXLightObj *l,float a,float b,float c,float d,float e,float f){assert(a==1&&b==0&&c==0&&d==1&&e==0);l->quadratic=f;}
+static void GX_LoadLightObj(GXLightObj *l,unsigned id){assert(id==GX_LIGHT6||id==GX_LIGHT7);recorded_points[id==GX_LIGHT7]=*l;}
+static void GX_SetNumChans(int count){point_channels=count;}
+static void GX_SetChanAmbColor(int channel,GXColor color){assert(channel==GX_COLOR1A1&&color.r==0&&color.g==0&&color.b==0);}
+static void GX_SetChanMatColor(int channel,GXColor color){assert(channel==GX_COLOR1A1);(void)color;}
+static void GX_SetChanCtrl(int channel,int enabled,int ambient,int source,unsigned mask,int diffuse,int attenuation){
+    assert(ambient==GX_SRC_REG);point_material_source=source;
+    if(channel==GX_COLOR1)assert(enabled==GX_ENABLE&&mask&&diffuse==GX_DF_CLAMP&&attenuation==GX_AF_SPOT);
+    else assert(channel==GX_ALPHA1&&enabled==GX_DISABLE&&mask==GX_LIGHTNULL);
+}
+#include "../tools/native-point-lights-gx.inc"
 
 static int alpha_operand(int source,const int registers[4],int mask){
     if(source<=3)return registers[source];
@@ -141,5 +163,29 @@ static void native_shadow_combiner_checks(void){
     effect.stages[1].dest=128;town_environment_apply(&effect,2);
     assert(alpha_command_count==4);verify_alpha_footer(2);
     environment_test_rgb=0xffffff;
+    /* Scope/day gates, nearest-source ranking, eye-space transforms and
+     * hardware attenuation are independent of static ground coverage. */
+    float points[]={0,.55f,2,4,255, 0,.55f,4,4,210, 100,0,0,4,255};
+    memcpy(point_test_data,points,sizeof(points));point_test_count=3;
+    float view[16];memcpy(view,normal,sizeof(view));view[12]=3;view[13]=1;view[14]=-8;
+    town_points_prepare(normal,view);assert(!town_points_active());
+    point_test_scope=1;point_test_gain=0;town_points_prepare(normal,view);assert(!town_points_active());
+    point_test_gain=255;town_points_prepare(normal,view);assert(town_point_mask==(GX_LIGHT6|GX_LIGHT7));
+    assert(recorded_points[0].position[0]==3&&recorded_points[0].position[2]==-6);
+    assert(recorded_points[0].color.r==255&&recorded_points[0].color.g==190&&recorded_points[0].color.b==100);
+    assert(recorded_points[1].color.r==210&&fabsf(recorded_points[0].quadratic-.25f)<.000001f);
+    /* With the recorded distance attenuation, a front-facing point 2m away
+     * receives half the light; 4m receives a fifth. A backface receives none. */
+    float near=1/(1+recorded_points[0].quadratic*4),far=1/(1+recorded_points[0].quadratic*16);
+    assert(fabsf(near-.5f)<.000001f&&fabsf(far-.2f)<.000001f&&fmaxf(0,-1)*near==0);
+    town_point_channels(GX_SRC_REG,(GXColor){255,255,255,255});assert(point_channels==2&&point_material_source==GX_SRC_REG);
+    town_point_channels(GX_SRC_VTX,(GXColor){255,255,255,255});assert(point_channels==2&&point_material_source==GX_SRC_VTX);
+    town_point_tev(1,4);assert(alpha_command_count==5);verify_alpha_footer(4);
+    town_point_tev(0,4);verify_alpha_footer(4);
+    /* A point can move through the field without changing any light texels. */
+    point_test_data[2]=6;town_points_prepare(normal,view);assert(recorded_points[0].color.r==210);
+    point_test_scope=0;town_points_prepare(normal,view);town_point_channels(GX_SRC_REG,(GXColor){0,0,0,0});assert(point_channels==1);
+    int previous=alpha_command_count;town_point_tev(1,7);assert(alpha_command_count==previous);
     puts("Shadow/rim GX: signed-wide alpha, low-byte wrap and exact sea cutout survive appended stages");
+    puts("Model lights GX: scope/day gates, nearest two, view transform, diffuse attenuation and alpha preservation passed");
 }

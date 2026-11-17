@@ -42,6 +42,8 @@ typedef struct {
     uint8_t *terrain,*coverage;
     uint8_t clouds[SU_CLOUD_BYTES];
     float lights[SU_LIGHTS*4];
+    float points[SU_LIGHTS*5]; /* World-space position, radius, strength; never baked. */
+    int point_count,object_scope;
     int light_count,light_dirty;
     int terrain_ready,cloud_ready,cloud_dirty,cloud_x,cloud_z;
     SuSupport support[(SU_CASTERS-SU_STATIC)*SU_SUPPORT_PAGES];

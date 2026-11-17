@@ -66,14 +66,14 @@ $generated="extern int animaltown_uv_mode(int);`n"+$generated
 [IO.File]::WriteAllText($generatedPath,$generated)
 # Pinned, game-owned coverage union bridge. All buffers use SDK resource
 # accounting; shader hooks shade existing ground geometry exactly once.
-$shadowArgs=@{Init=3;Cloud=1;Lights=3;Environment=1;Shutdown=0;Terrain=3;Begin=3;Mesh=5;Active=3;Prepare=1;Scope=1;Stats=1}
+$shadowArgs=@{Init=3;Cloud=1;Lights=3;Points=2;Objects=1;Environment=1;Shutdown=0;Terrain=3;Begin=3;Mesh=5;Active=3;Prepare=1;Scope=1;Stats=1}
 foreach($method in $shadowArgs.Keys){
     $n=$shadowArgs[$method];$argsPattern=if($n){((1..$n|ForEach-Object {'intptr_t (\w+)'}) -join ', ')}else{'void'}
     $p='intptr_t (dnd_value_AnimalTown_GameCube_NativeShadows_'+$method+'_[a-z0-9]+)\('+$argsPattern+'\) \{.*?\r?\n\}'
     if(([regex]::Matches($generated,$p,[Text.RegularExpressions.RegexOptions]::Singleline)).Count -ne 1){throw "Pinned shadow union bridge changed: $method"}
     $m=$method.ToLowerInvariant()
     $generated=[regex]::Replace($generated,$p,[Text.RegularExpressions.MatchEvaluator]{param($hit)
-        $a=@();for($i=0;$i -lt $n;$i++){$cast=if(($method -in @('Init','Cloud')) -or ($method -in @('Terrain','Lights') -and $i -eq 0) -or ($method -eq 'Mesh' -and $i -ge 3) -or ($method -eq 'Active' -and $i -eq 2)){'(DndArray*)'}else{'(int)'};$a+=$cast+$hit.Groups[$i+2].Value}
+        $a=@();for($i=0;$i -lt $n;$i++){$cast=if(($method -in @('Init','Cloud')) -or ($method -in @('Terrain','Lights','Points') -and $i -eq 0) -or ($method -eq 'Mesh' -and $i -ge 3) -or ($method -eq 'Active' -and $i -eq 2)){'(DndArray*)'}else{'(int)'};$a+=$cast+$hit.Groups[$i+2].Value}
         'intptr_t '+$hit.Groups[1].Value+'('+$(if($n){((0..($n-1)|ForEach-Object {'intptr_t '+$hit.Groups[$_+2].Value}) -join ', ')}else{'void'})+') { return animaltown_shadows_'+$m+'('+($a -join ',')+'); }'
     },[Text.RegularExpressions.RegexOptions]::Singleline)
 }
@@ -82,6 +82,8 @@ $generated=@'
 extern int animaltown_shadows_init(DndArray*,DndArray*,DndArray*);
 extern int animaltown_shadows_cloud(DndArray*);
 extern int animaltown_shadows_lights(DndArray*,int,int);
+extern int animaltown_shadows_points(DndArray*,int);
+extern int animaltown_shadows_objects(int);
 extern int animaltown_shadows_environment(int);
 extern int animaltown_shadows_shutdown(void);
 extern int animaltown_shadows_terrain(DndArray*,int,int);
@@ -133,7 +135,39 @@ $modelGraphics=$modelGraphics.Replace($shadowModelHook,$shadowModelHook+"`n    i
 # The rim stage is configured immediately after this material hook. Append
 # environment tint after it, preserving both the model's effect and rim stages.
 $environmentHook='    if(town_rim_enabled&&!effect)town_rim_apply(normal,selected,reuse,&bindings);'
-$modelGraphics=$modelGraphics.Replace($environmentHook,$environmentHook+"`n    if(animaltown_shadows_mode()!=2)town_environment_apply(selected,(selected?selected->count:1)+(town_rim_enabled&&!effect?1:0));")
+$modelGraphics=$modelGraphics.Replace($environmentHook,$environmentHook+"`n    town_points_prepare(object,frame_view);`n    if(animaltown_shadows_mode()!=2){int next=town_environment_apply(selected,(selected?selected->count:1)+(town_rim_enabled&&!effect?1:0));town_point_tev(mat->texture>=0,next);}")
+# Local diffuse light uses channel 1 and the existing texture, preserving the
+# indexed model path and channel 0's ordinary ambient/headlight behavior.
+$modelGraphics=$modelGraphics.Replace('#include "dnd_indexed_model.inc"',"#include `"animaltown_point_lights_gx.inc`"`n#include `"dnd_indexed_model.inc`"")
+$pointHooks=@{
+    '    if(custom_scene||town_rim_enabled){'='    if(custom_scene||town_rim_enabled||town_points_active()){'
+    'if(town_rim_enabled||!(mat->mode&2)){Mtx n;'='if(town_rim_enabled||town_points_active()||!(mat->mode&2)){Mtx n;'
+    '    for (unsigned first = 0; first < mesh->indices;)'=@'
+    town_point_channels(GX_SRC_VTX,(GXColor){255,255,255,255});
+    if(town_points_active()){GX_SetVtxDesc(GX_VA_CLR1,GX_DIRECT);GX_SetVtxAttrFmt(GX_VTXFMT0,GX_VA_CLR1,GX_CLR_RGBA,GX_RGBA8,0);}
+    for (unsigned first = 0; first < mesh->indices;)
+'@
+    '        if(authored||town_rim_enabled||(custom_scene&&!(mat->mode&2)))GX_Normal3f32(v[3],v[4],v[5]);'=@'
+        if(town_points_active()){
+          float n[3];for(int r=0;r<3;r++)n[r]=normal[r*4]*v[3]+normal[r*4+1]*v[4]+normal[r*4+2]*v[5];
+          float length=sqrtf(n[0]*n[0]+n[1]*n[1]+n[2]*n[2]);float scale=length>0?1/length:0;
+          GX_Normal3f32(v[3]*scale,v[4]*scale,v[5]*scale);
+        }else if(authored||town_rim_enabled||(custom_scene&&!(mat->mode&2)))GX_Normal3f32(v[3],v[4],v[5]);
+'@
+    '        GX_Color4u8(color[0], color[1], color[2], color[3]);'=@'
+        GX_Color4u8(color[0], color[1], color[2], color[3]);
+        if(town_points_active()){
+          u8 reflectance[4];for(int c=0;c<4;c++)reflectance[c]=(u8)(fminf(1,fmaxf(0,dnd_model_f32(src+32+c*4)*mat->color[c]))*255);
+          GX_Color4u8(reflectance[0],reflectance[1],reflectance[2],reflectance[3]);
+        }
+'@
+}
+foreach($hook in $pointHooks.Keys){
+    if(([regex]::Matches($modelGraphics,[regex]::Escape($hook))).Count -ne 1){throw "Pinned model point lighting hook changed: $hook"}
+    $modelGraphics=$modelGraphics.Replace($hook,$pointHooks[$hook])
+}
+Copy-Item (Join-Path $Root 'tools/native-point-lights-gx.inc') (Join-Path $nativeRoot 'source/animaltown_point_lights_gx.inc') -Force
+Copy-Item (Join-Path $Root 'tools/native-point-lights.h') (Join-Path $nativeRoot 'source/native-point-lights.h') -Force
 Copy-Item -LiteralPath (Join-Path $Root 'tools/native-rim.inc') -Destination (Join-Path $Root 'out/native/source/animaltown_rim.inc') -Force
 Copy-Item -LiteralPath (Join-Path $Root 'tools/native-rim-policy.h') -Destination (Join-Path $Root 'out/native/source/native-rim-policy.h') -Force
 if($IsLinux){
@@ -144,6 +178,16 @@ if($IsLinux){
 }
 $indexedPath=Join-Path $Root 'out/native/include/dnd_indexed_model.inc'
 $indexed=[IO.File]::ReadAllText($indexedPath)
+$pointIndexedHooks=@{
+    '  bool lit=!(material->mode&2);'='  bool material_lit=!(material->mode&2),lit=material_lit||town_points_active();'
+    'GX_SetChanCtrl(GX_COLOR0,lit?GX_ENABLE:GX_DISABLE'='GX_SetChanCtrl(GX_COLOR0,material_lit?GX_ENABLE:GX_DISABLE'
+    'lit?GX_LIGHT0:GX_LIGHTNULL,lit?GX_DF_CLAMP:GX_DF_NONE'='material_lit?GX_LIGHT0:GX_LIGHTNULL,material_lit?GX_DF_CLAMP:GX_DF_NONE'
+    '  GX_ClearVtxDesc();if(!model_batch_active'="  town_point_channels(GX_SRC_REG,tint);`n  GX_ClearVtxDesc();if(!model_batch_active"
+}
+foreach($hook in $pointIndexedHooks.Keys){
+    if(([regex]::Matches($indexed,[regex]::Escape($hook))).Count -ne 1){throw "Pinned indexed point lighting hook changed: $hook"}
+    $indexed=$indexed.Replace($hook,$pointIndexedHooks[$hook])
+}
 foreach($hook in @('if(lit){GX_SetVtxDesc(GX_VA_NRM','if(lit)GX_Normal1x16(index);')){
     if(([regex]::Matches($indexed,[regex]::Escape($hook))).Count -ne 1){throw "Pinned indexed rim normals changed: $hook"}
     $indexed=$indexed.Replace($hook,$hook.Replace('if(lit)','if(lit||town_rim_enabled)'))
