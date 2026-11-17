@@ -55,11 +55,12 @@ int animaltown_shadows_init(DndArray *atlas,DndArray *circle,DndArray *clouds){
     return 1;
 }
 int animaltown_shadows_cloud(DndArray *offset){
-    if(!shadows||dnd_device_active()||!offset||offset->elements_are_references||offset->element_size!=4||offset->length!=5)return 0;
+    if(!shadows||dnd_device_active()||!offset||offset->elements_are_references||offset->element_size!=4||offset->length!=6)return 0;
     const float *p=(const float*)offset->data;
     if(!isfinite(p[0])||!isfinite(p[1])||p[0]<0||p[0]>=1||p[1]<0||p[1]>=1)return 0;
     if(!isfinite(p[2])||!isfinite(p[3])||!isfinite(p[4])||p[2]<8||p[2]>128||p[3]<1||p[3]>255||p[4]<0||p[4]>SU_OPACITY)return 0;
-    su_cloud_style(shadows,p[2],p[3],p[4]);
+    if(!isfinite(p[5])||p[5]<0||p[5]>=255)return 0;
+    su_cloud_style(shadows,p[2],p[3],p[4],p[5]);
     su_cloud_motion(shadows,p[0],p[1]);return 1;
 }
 int animaltown_shadows_lights(DndArray *sources,int count,int strength){
@@ -89,7 +90,7 @@ int animaltown_shadows_terrain(DndArray *tile,int offset,int mode){
 }
 int animaltown_shadows_begin(int space,int enabled,int size){if(!shadows)return 0;su_begin(shadows,space,enabled,size);return 1;}
 int animaltown_shadows_mesh(int slot,int count,int profile,DndArray *uv,DndArray *bounds){
-    if(!shadows||slot<0||slot>=SU_CASTERS||count<0||count>SU_VERTICES||count%3||profile<0||profile>4||!uv||uv->element_size!=4||uv->length<(unsigned)count*2||!bounds||bounds->element_size!=4||bounds->length!=4)return 0;
+    if(!shadows||slot<0||slot>=SU_CASTERS||count<0||count>SU_VERTICES||count%3||profile<0||profile>5||!uv||uv->element_size!=4||uv->length<(unsigned)count*2||!bounds||bounds->element_size!=4||bounds->length!=4)return 0;
     float *b=(float*)bounds->data;if(!isfinite(b[0])||!isfinite(b[1])||!isfinite(b[2])||!isfinite(b[3])||b[0]>=b[2]||b[1]>=b[3])return 0;
     for(int i=0;i<count*2;i++)if(!isfinite(((float*)uv->data)[i]))return 0;
     su_mesh(shadows,slot,count,profile,(float*)uv->data,b);return 1;

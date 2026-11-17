@@ -9,6 +9,8 @@ public static class CloudShadowPattern
     public static float Period(int season)=>season==3?WorldPeriod*2:WorldPeriod;
     public static float EdgeWidth(int season)=>season==1?64:255;
     public static float Strength(int season)=>season==3?33:66;
+    // Remove low-density cloud banks rather than merely fading their shadows.
+    public static float Cutoff(int season)=>season==1?176:season==2?0:96;
     public static float Offset(double seconds,float speed,float period=WorldPeriod)=>(float)(seconds*speed/period-Math.Floor(seconds*speed/period));
     public static byte Sample(int x,int z)
     {

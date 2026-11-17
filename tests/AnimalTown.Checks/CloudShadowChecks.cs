@@ -12,7 +12,16 @@ internal static class CloudShadowChecks
         }
         check(min<10&&max>245,"cloud mask has both sunlit and shaded patches");
         check(CloudShadowPattern.Period(3)==CloudShadowPattern.Period(1)*2&&CloudShadowPattern.Strength(3)==CloudShadowPattern.Strength(1)*.5f,"winter stretches the shared mask twice as wide at half summer strength");
-        check(CloudShadowPattern.EdgeWidth(1)<CloudShadowPattern.EdgeWidth(0)&&CloudShadowPattern.EdgeWidth(0)==CloudShadowPattern.EdgeWidth(2),"summer has the hardest edges while spring and autumn retain the original profile");
+        check(CloudShadowPattern.EdgeWidth(1)<CloudShadowPattern.EdgeWidth(0)&&CloudShadowPattern.EdgeWidth(0)==CloudShadowPattern.EdgeWidth(2),"summer retains the hardest cloud edges");
+        int[] covered=new int[4];
+        for(int season=0;season<4;season++)for(int z=0;z<64;z++)for(int x=0;x<64;x++){
+            float cutoff=CloudShadowPattern.Cutoff(season),value=(CloudShadowPattern.Sample(x,z)-cutoff)*255/(255-cutoff);
+            value=(value-127.5f)*255/CloudShadowPattern.EdgeWidth(season)+127.5f;
+            if(value>25.5f)covered[season]++;
+        }
+        check(covered[1]<covered[0]*.65&&covered[0]<covered[2]*.75,"summer clears substantially more ground than spring, and spring more than autumn");
+        check(covered[3]==covered[0],"winter and spring have equal cloud coverage despite winter's softer, fainter shadows");
+        check(CloudShadowPattern.Cutoff(2)==0,"autumn retains the original heavy cloud pattern");
         foreach(int season in new[]{0,1,2,3})foreach(double seconds in new[]{-1e8,-1,0,1,86400,1e8})foreach(float speed in new[]{CloudShadowPattern.SpeedX,CloudShadowPattern.SpeedZ}){
             float period=CloudShadowPattern.Period(season),a=CloudShadowPattern.Offset(seconds,speed,period),b=CloudShadowPattern.Offset(seconds+.01,speed,period);float delta=b-a;delta-=(float)Math.Round(delta);
             check(a>=0&&a<1&&Math.Abs(delta*period-speed*.01)<.00003,"seasonal cloud scaling preserves bounded scrolling and world-space wind speed");

@@ -14,6 +14,27 @@ static void next(void){su_begin(s,0,1,0);}
 static int pixel(float x,float z){int p=su_find(s,(int)floorf(x/8),(int)floorf(z/8));CHECK(p>=0);int a=(int)((x-s->page[p].x*8)*SU_INNER/8+1),b=(int)((z-s->page[p].z*8)*SU_INNER/8+1);return su_shadow(s->pixels[p*SU_BYTES+su_offset(a,b)]);}
 static int credits;
 static int allow_work(void *unused){(void)unused;return credits-->0;}
+static void post_shadow_checks(void){
+    reset();SuCaster post={.profile=5,.x=4,.z=4};
+    CHECK(su_sample(s,&post,4,4)==SU_OPACITY);
+    CHECK(su_sample(s,&post,4.5f,4.4f)==SU_OPACITY);
+    CHECK(su_sample(s,&post,5.032f,4.8256f)==SU_OPACITY);
+    CHECK(su_sample(s,&post,3.5f,3.6f)==0);
+    const float b[]={3.4f,3.4f,5.75f,5.55f},quad[]={3.4f,3.4f,5.75f,3.4f,5.75f,5.55f,3.4f,3.4f,5.75f,5.55f,3.4f,5.55f};
+    caster(0,5,quad,6,b);su_prepare(s,SU_PAGES);
+    CHECK(pixel(5,4.8f)>0&&pixel(3,4)==0);
+    CHECK(pixel(5.33f,4.8f)>0); // Padding protects the roof edge from receiver erosion.
+    const float half[]={0,0,8,0,0,8};su_mesh(s,0,3,5,half,b);su_prepare(s,SU_PAGES);
+    CHECK(pixel(5,4.8f)==0); // Roof projection cannot cross a clipped receiver edge.
+    su_mesh(s,0,6,5,quad,b);su_prepare(s,SU_PAGES);CHECK(pixel(5,4.8f)>0);
+    su_active(s,0,0,4,4);su_prepare(s,SU_PAGES);CHECK(pixel(5,4.8f)==0);
+    /* The post's projection crosses page boundaries without a filtering seam. */
+    reset();float uv[12],edge[]={7.42f,7.12f,9.12f,8.62f};
+    for(int i=0;i<6;i++){uv[i*2]=rect[i*2]+4;uv[i*2+1]=rect[i*2+1]+4;}
+    caster(0,5,uv,6,edge);su_active(s,0,1,7.7f,7.4f);su_prepare(s,SU_PAGES);
+    int left=su_find(s,0,1),right=su_find(s,1,1);CHECK(left>=0&&right>=0);
+    for(int z=0;z<SU_SIDE;z++)for(int x=0;x<2;x++)CHECK(s->pixels[left*SU_BYTES+su_offset(SU_INNER+x,z)]==s->pixels[right*SU_BYTES+su_offset(x,z)]);
+}
 static void light_checks(void){
     reset();float sources[]={8,8,3,255,8,8,3,255};
     su_lights(s,sources,1);su_prepare(s,SU_PAGES);
@@ -41,23 +62,36 @@ static void seasonal_cloud_checks(void){
     int base_middle=0,summer_middle=0,base_core=0,summer_core=0;
     for(int x=0;x<512;x++){
         float px=x/16.f;
-        su_cloud_style(s,32,255,66);int base=su_cloud_sample(s,px,4);
-        su_cloud_style(s,32,64,66);int summer=su_cloud_sample(s,px,4);
+        su_cloud_style(s,32,255,66,0);int base=su_cloud_sample(s,px,4);
+        su_cloud_style(s,32,64,66,0);int summer=su_cloud_sample(s,px,4);
         base_middle+=base>6&&base<60;summer_middle+=summer>6&&summer<60;
         base_core+=base>=60;summer_core+=summer>=60;
-        su_cloud_style(s,64,255,33);int winter=su_cloud_sample(s,px*2,8);
+        su_cloud_style(s,64,255,33,0);int winter=su_cloud_sample(s,px*2,8);
         CHECK(abs(winter*2-base)<=1&&winter<=33);
         CHECK(su_cloud_sample(s,px*2-64,8)==winter);
     }
     CHECK(summer_middle*2<base_middle&&summer_core>base_core);
     CHECK(!memcmp(mask,s->clouds,sizeof(mask))); // No second pattern or blurred texture.
+    int covered[4]={0};
+    const float periods[]={32,32,32,64},edges[]={255,64,255,255},strengths[]={66,66,66,33},cutoffs[]={96,176,0,96};
+    for(int season=0;season<4;season++)for(int x=0;x<512;x++){
+        su_cloud_style(s,periods[season],edges[season],strengths[season],cutoffs[season]);
+        covered[season]+=su_cloud_sample(s,x/512.f*periods[season],4.f*periods[season]/32)>strengths[season]*.1f;
+    }
+    CHECK(covered[1]<covered[0]&&covered[0]<covered[2]);
+    CHECK(abs(covered[0]-covered[3])<=2); // Equal footprint; winter opacity/scale remain independent.
+    CHECK(!memcmp(mask,s->clouds,sizeof(mask)));
+    su_prepare(s,SU_PAGES);CHECK(!s->cloud_dirty);
+    su_cloud_style(s,64,255,33,96);CHECK(!s->cloud_dirty);
+    su_cloud_style(s,64,255,33,0);CHECK(s->cloud_dirty); // A cutoff change invalidates coverage even with no wind.
+    su_cloud_style(s,64,255,33,0);
     su_cloud_motion(s,.25f,0);CHECK(s->cloud_x==128); // Same 16m drift in a 64m repeat.
     su_prepare(s,SU_PAGES);CHECK(!s->cloud_dirty);
-    su_cloud_style(s,64,255,33);CHECK(!s->cloud_dirty); // Stable season needs no field rebuild.
-    su_cloud_style(s,32,64,66);CHECK(s->cloud_dirty);su_cloud_motion(s,.5f,0);CHECK(s->cloud_x==128);
+    su_cloud_style(s,64,255,33,0);CHECK(!s->cloud_dirty); // Stable season needs no field rebuild.
+    su_cloud_style(s,32,64,66,0);CHECK(s->cloud_dirty);su_cloud_motion(s,.5f,0);CHECK(s->cloud_x==128);
     su_prepare(s,SU_PAGES);CHECK(!s->cloud_dirty);
     // Faint winter clouds cannot weaken cliff/actor coverage or static lamps.
-    su_cloud_style(s,64,255,33);su_cloud_motion(s,0,0);
+    su_cloud_style(s,64,255,33,0);su_cloud_motion(s,0,0);
     for(int i=0;i<SU_TERRAIN_BYTES;i++)s->terrain[i]=su_pack(SU_OPACITY,0);
     su_terrain_publish(s);float light[]={4,4,3,255};su_lights(s,light,1);caster(32,4,rect,6,bounds);su_prepare(s,SU_PAGES);
     CHECK(pixel(4,4)==SU_OPACITY&&su_field_sample(s->coverage,24,4)==SU_OPACITY);
@@ -96,6 +130,7 @@ static void cloud_checks(void){
 int main(void){
     native_shadow_combiner_checks();
     s=aligned_alloc(32,su_storage_bytes());CHECK(s!=NULL);CHECK(su_storage_bytes()<512*1024);
+    post_shadow_checks();
     light_checks();
     CHECK(SU_PAGES*SU_BYTES*2+SU_TERRAIN_BYTES*2==384*1024);
     reset();caster(0,0,rect,6,bounds);su_prepare(s,SU_PAGES);CHECK(pixel(4,4)==SU_OPACITY);

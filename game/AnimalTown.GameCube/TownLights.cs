@@ -11,15 +11,15 @@ internal sealed class TownLights
     internal readonly float[] X=new float[6],Z=new float[6];
     internal int Count {get;private set;}
     private Town? town;
-    private int revision=-1,layout=-1,sourceCount;
+    private int revision=-1,groundRevision=-1,layout=-1,sourceCount;
     private void Add(float x,float z,float radius,float strength,float height)
     {heights[sourceCount]=height;int at=sourceCount++*4;sources[at]=x;sources[at+1]=z;sources[at+2]=radius;sources[at+3]=strength;}
     internal void Prepare(GameState state,int strength)
     {
         int stamp=0;
         for(int i=0;i<BuildingWorld.Count;i++){BuildingWorld.Origin(state,i,out float x,out float z);stamp=unchecked(stamp*31+(int)x*397+(int)z+(BuildingWorld.Exists(state,i)?1:0));}
-        if(town!=state.Town||revision!=state.Town.TerrainVersion||layout!=stamp){
-            town=state.Town;revision=town.TerrainVersion;layout=stamp;sourceCount=Count=0;
+        if(town!=state.Town||revision!=state.Town.TerrainVersion||groundRevision!=state.Town.ShadowVersion||layout!=stamp){
+            town=state.Town;revision=town.TerrainVersion;groundRevision=town.ShadowVersion;layout=stamp;sourceCount=Count=0;
             for(int i=0;i<BuildingWorld.Count;i++)if(BuildingWorld.Exists(state,i)){
                 BuildingWorld.Entrance(state,i,out float x,out float z);Add(x,z+.5f,2.8f,210,1.3f);
                 if(WorldLighting.StreetLamp(state,i,out x,out z)){

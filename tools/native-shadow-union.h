@@ -46,7 +46,7 @@ typedef struct {
     int point_count,object_scope;
     int light_count,light_dirty;
     int terrain_ready,cloud_ready,cloud_dirty,cloud_x,cloud_z;
-    float cloud_scale,cloud_contrast,cloud_opacity;
+    float cloud_scale,cloud_contrast,cloud_opacity,cloud_bias;
     SuSupport support[(SU_CASTERS-SU_STATIC)*SU_SUPPORT_PAGES];
     uint8_t static_work[SU_BYTES];
     int static_page,static_caster,cursor,deferred,support_builds,support_hits;
@@ -138,13 +138,14 @@ static inline uint8_t su_cloud_sample(const SuState *s,float x,float z){
     float a=s->clouds[su_cloud_offset(ax,az)],b=s->clouds[su_cloud_offset(bx,az)];
     float c=s->clouds[su_cloud_offset(ax,bz)],d=s->clouds[su_cloud_offset(bx,bz)];
     float value=(a+(b-a)*tx)*(1-tz)+(c+(d-c)*tx)*tz;
-    if(s->cloud_contrast!=1){value=(value-127.5f)*s->cloud_contrast+127.5f;if(value<0)value=0;if(value>255)value=255;}
+    if(s->cloud_contrast!=1||s->cloud_bias!=0){value=value*s->cloud_contrast+s->cloud_bias;if(value<0)value=0;if(value>255)value=255;}
     return (uint8_t)(value*s->cloud_opacity+.5f);
 }
-static inline void su_cloud_style(SuState *s,float period,float edge,float strength){
-    float scale=SU_CLOUD_SIDE/period,contrast=255/edge,opacity=strength/255;
-    if(s->cloud_scale==scale&&s->cloud_contrast==contrast&&s->cloud_opacity==opacity)return;
-    s->cloud_scale=scale;s->cloud_contrast=contrast;s->cloud_opacity=opacity;s->cloud_dirty=1;
+static inline void su_cloud_style(SuState *s,float period,float edge,float strength,float cutoff){
+    float scale=SU_CLOUD_SIDE/period,edge_contrast=255/edge,contrast=edge_contrast*255/(255-cutoff),opacity=strength/255;
+    float bias=127.5f*(1-edge_contrast)-cutoff*contrast;
+    if(s->cloud_scale==scale&&s->cloud_contrast==contrast&&s->cloud_opacity==opacity&&s->cloud_bias==bias)return;
+    s->cloud_scale=scale;s->cloud_contrast=contrast;s->cloud_opacity=opacity;s->cloud_bias=bias;s->cloud_dirty=1;
 }
 static inline void su_cloud_motion(SuState *s,float x,float z){
     // One eighth of a world metre: bounded updates with sub-texel drift.
@@ -224,12 +225,27 @@ static inline void su_mesh(SuState *s,int slot,int count,int profile,const float
 }
 static inline void su_active(SuState *s,int slot,int active,float x,float z){
     SuCaster *c=&s->caster[slot];active=active&&c->count>0;
+    if(c->profile==5&&(c->x!=x||c->z!=z)){su_dirty(s,c);c->x=x;c->z=z;su_dirty(s,c);}
     if(slot>=SU_STATIC){
         c->requested=active;
         if(c->x!=x||c->z!=z){s->layout_dirty=1;su_dirty(s,c);c->x=x;c->z=z;su_dirty(s,c);}
     }else if(c->active!=active){s->layout_dirty=1;su_dirty(s,c);c->active=active;su_dirty(s,c);}
 }
+static inline float su_saturate(float x){return x<0?0:x>1?1:x;}
+/* The post's base, narrow pole and roof project from the same fixed NW light
+ * as the scenery profiles. Dimensions match DrawStreetLights, including the
+ * roof centre at 2.58m. No extra atlas or texture storage is required. */
+static inline uint8_t su_post_shadow(const SuCaster *c,float x,float z){
+    x-=c->x;z-=c->z;
+    float t=su_saturate((x+z*.8f)/1.64f),dx=x-t,dz=z-t*.8f;
+    float stem=su_saturate((.0121f-dx*dx-dz*dz)/.0096f);
+    float roof=fmaxf(fabsf(x-1.032f)-.29f,fabsf(z-.8256f)-.29f);
+    float base=fmaxf(fabsf(x-.03f)-.21f,fabsf(z-.024f)-.204f);
+    float alpha=fmaxf(stem,fmaxf(su_saturate(1-roof/.07f),su_saturate(1-base/.05f)));
+    return (uint8_t)(alpha*SU_OPACITY+.5f);
+}
 static inline uint8_t su_sample(const SuState *s,const SuCaster *c,float x,float z){
+    if(c->profile==5)return su_post_shadow(c,x,z);
     float b[4];su_bounds(c,b);float u=(x-b[0])/(b[2]-b[0]),v=(z-b[1])/(b[3]-b[1]);
     if(u<=0||u>=1||v<=0||v>=1)return 0;
     int side=c->profile==4?32:64;const uint8_t *a=s->shapes+(c->profile==4?4*4096:c->profile*4096);
