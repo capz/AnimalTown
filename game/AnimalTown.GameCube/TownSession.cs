@@ -35,7 +35,7 @@ internal sealed class TownSession
         try{
             using var card=MemoryCard.Mount(StorageDevice.MemoryCardSlotA,new MemoryCardIdentity("AMTE","01"));
             phase="artwork";
-            var store=new CardSaveStorage(card,File.ReadAllBytes("dvd:/savebanner.rgb5a3"),File.ReadAllBytes("dvd:/saveicon.rgb5a3"));
+            var store=new CardSaveStorage(card,File.ReadAllBytes(AnimalTown.ContentPaths.Asset("savebanner.rgb5a3")),File.ReadAllBytes(AnimalTown.ContentPaths.Asset("saveicon.rgb5a3")));
             phase="directory";
             bool files=false;var names=store.Names();
             for(int i=0;i<names.Length;i++)if(SplitSaveCodec.IsFile(names[i]))files=true;
@@ -58,7 +58,7 @@ internal sealed class TownSession
         if(!Loaded||Damaged||!State.Profiles[profile].Created)return false;
         try{
             using var card=MemoryCard.Mount(StorageDevice.MemoryCardSlotA,new MemoryCardIdentity("AMTE","01"));
-            var storage=new CardSaveStorage(card,File.ReadAllBytes("dvd:/savebanner.rgb5a3"),File.ReadAllBytes("dvd:/saveicon.rgb5a3"));
+            var storage=new CardSaveStorage(card,File.ReadAllBytes(AnimalTown.ContentPaths.Asset("savebanner.rgb5a3")),File.ReadAllBytes(AnimalTown.ContentPaths.Asset("saveicon.rgb5a3")));
             State=new SaveRepository(storage).DeleteProfile(State,profile);return true;
         }catch(Exception){return false;}
     }

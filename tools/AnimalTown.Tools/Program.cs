@@ -41,6 +41,12 @@ static class Program
             else if(args[0]=="terrain-check")TerrainChecks.Run(Root);
             else if(args[0]=="tree-audit")TreeRenderAudit.Run(Root,args[2]);
             else if(args[0]=="iso")Disc(args[2],args[3],args.Length>4?args[4]:null);
+            else if(args[0]=="banner")ReleaseMetadata(args[2]);
+            else if(args[0]=="content-identity")DepotPackage.Prepare(Root,args[2],args[3],args[4],int.Parse(args[5]),args[6]);
+            else if(args[0]=="depot-receipt")DepotPackage.Receipt(Root);
+            else if(args[0]=="depot")DepotPackage.Build(Root,args[2]);
+            else if(args[0]=="verify-depot")DepotPackage.Verify(Root,args[2]);
+            else if(args[0]=="depot-check")DepotPackage.Check();
             else if(args[0]=="verify")Verify(args[2]);
             else if(args[0]=="verify-nkit"){Verify(args[2]);NKitImages.Verify(args[2],args[3],args[4]);}
             else if(args[0]=="verify-nkit-output")NKitImages.VerifyOutput(args[2],args[3]);
@@ -114,9 +120,9 @@ static class Program
         BrandAssets.Build(Root);RepeatFloorAssets.Build(Root);PathAssets.Build(Root);TerrainCliffAssets.CookTexture(Root);DroppedItemAssets.Build(Root);
         byte[] image=Banner(96);File.WriteAllBytes(Path.Combine(dir,"savebanner.rgb5a3"),image);File.WriteAllBytes(Path.Combine(dir,"saveicon.rgb5a3"),Banner(32));
     }
-    static void Disc(string dolPath,string commit,string? output=null)
+    static void ReleaseMetadata(string commit)
     {
-        string disc=Path.Combine(Root,"out/disc");BuildingAssets.Cook(Root);Art();TextureAudit.Run(Root);
+        string disc=Path.Combine(Root,"out/disc");Directory.CreateDirectory(disc);Directory.CreateDirectory(Path.Combine(Root,"out/brand"));
         byte[] banner=Banner(96);
         // The current disc uses US BI2 metadata, so ship BNR1. Keep a versioned
         // six-language BNR2 alternate outside the disc for future PAL packaging.
@@ -124,6 +130,10 @@ static class Program
         File.WriteAllBytes(Path.Combine(Root,"out/brand/opening-pal.bnr"),DiscBannerFile.Create(banner,commit,pal:true));
         File.WriteAllText(Path.Combine(disc,"BUILD.txt"),DiscBannerFile.GameTitle+"\nBuild version: "+commit+"\n"+File.ReadAllText(Path.Combine(Root,"out/build-revisions.txt")));
         DiscVersionFile.Write(disc,commit);
+    }
+    static void Disc(string dolPath,string commit,string? output=null)
+    {
+        string disc=Path.Combine(Root,"out/disc");BuildingAssets.Cook(Root);Art();TextureAudit.Run(Root);ReleaseMetadata(commit);
         byte[] dol=File.ReadAllBytes(dolPath),app=File.ReadAllBytes(Path.Combine(Root,"out/native/apploader.img"));ValidateDol(dol);
         SdkApploader.Validate(app);
         if(!File.Exists(Path.Combine(disc,"sdk-apploader-LICENSE.txt")))throw new InvalidDataException("SDK apploader license missing; run tools/build-game.ps1");
@@ -149,7 +159,7 @@ static class Program
         }
         Verify(output,commit);Console.WriteLine(output);
     }
-    static void ValidateDol(byte[] dol)
+    internal static void ValidateDol(byte[] dol)
     {
         if(dol.Length<256)throw new InvalidDataException("DOL header missing");
         uint entry=Read(dol,0xe0);bool found=false;

@@ -62,6 +62,9 @@ $nkitInfo=Get-Content $nkitValidation -Raw|ConvertFrom-Json
 $openingSource=Join-Path $out 'disc/opening.bnr'
 $palSource=Join-Path $out 'brand/opening-pal.bnr'
 $bannerHashes=Get-ReleaseBannerHashes -Opening $openingSource -Pal $palSource -NKitInfo $nkitInfo -Version $version
+$depot=Join-Path $out "AnimalTown-$version-depot.zip"
+& dotnet run --project (Join-Path $Root 'tools/AnimalTown.Tools') -c Release --no-build -- verify-depot $Root $depot
+if($LASTEXITCODE -ne 0){throw 'Standalone app package validation failed'}
 $package=Join-Path $out "releases/$tag"
 New-Item -ItemType Directory -Force -Path $package | Out-Null
 $titleEvidenceAssets=@()
@@ -139,7 +142,7 @@ $updaterNotice=Join-Path $package 'updater-THIRD-PARTY-NOTICES.txt'
 . (Join-Path $PSScriptRoot 'update-feed.ps1')
 $updateFeed=Join-Path $package 'update.json'
 Write-UpdateFeed -Iso $nkit -Version $version -Repository $Repository -Destination $updateFeed
-$payloadAssets=@($nkit,$updateFeed,$updaterDol,$updaterNotice,$openingBnr,$palBnr,$serverZip,$toolsZip,$cliffsZip,$buildingsZip,(Join-Path $package 'BUILD.txt'),(Join-Path $package 'texture-audit.json'),(Join-Path $package 'validation-plan.json'),(Join-Path $package 'version.json'),(Join-Path $package 'nkit-validation.json'))+$titleEvidenceAssets
+$payloadAssets=@($nkit,$depot,$updateFeed,$updaterDol,$updaterNotice,$openingBnr,$palBnr,$serverZip,$toolsZip,$cliffsZip,$buildingsZip,(Join-Path $package 'BUILD.txt'),(Join-Path $package 'texture-audit.json'),(Join-Path $package 'validation-plan.json'),(Join-Path $package 'version.json'),(Join-Path $package 'nkit-validation.json'))+$titleEvidenceAssets
 $checksums=foreach($file in $payloadAssets){"$((Get-FileHash -LiteralPath $file -Algorithm SHA256).Hash.ToLowerInvariant())  $([IO.Path]::GetFileName($file))"}
 [IO.File]::WriteAllText((Join-Path $package 'SHA256SUMS.txt'),($checksums -join "`n")+"`n")
 $evidenceNotes=if($titleEvidenceAssets.Count){'The title-logo PNGs show the title, villager picker, name entry and return-to-title states captured from this exact release image. Debug and status-message captures are included when produced. title-logo-report.json records the capture checks; title-logo-build.json binds the evidence to the source commit, version and NKit SHA-256.'}else{''}
@@ -157,6 +160,8 @@ AnimalTown-cliff-kit-$version.zip contains eight low-poly cliff GLBs, shared 128
 **AnimalTown-tools-$version.zip** contains the offline texture/UV repacker and its guide. Requires .NET 8; run `dotnet AnimalTown.Tools.dll repack-textures . INPUT.glb OUTPUT.glb --size256` (or --size128/512/1024/Original). Exact flat colours share UV space; appearance checks reject excessive loss. Original game assets are not automatically repacked.
 
 For GC Loader SD-card storage, download **AnimalTown-$version.nkit.iso** and copy it directly onto the card. No extraction is needed. This build occupies $($nkitInfo.compactBytes) bytes instead of 1,459,978,240 bytes ($([Math]::Round($nkitInfo.savedPercent,2))% smaller). NKit compacts padding; the playable image preserves every game file, title, commit identity, disc banner and save banner/icon. The pipeline restores it to the original full ISO and verifies an exact SHA-256 match, plus the compact image's physical apploader, DOL and file payloads. Physical direct GC Loader testing remains outstanding.
+
+**AnimalTown-$version-depot.zip** is a standalone SD app with the playable game at apps/animaltown/default.dol, cooked assets, opening.bnr, save artwork and source/version/hash metadata. Extract its apps folder to the device root. No AnimalTown disc is required. Supported app content paths are SD2SP2 and Slot B SD Gecko with a memory card in Slot A; GC Loader content support requires physical qualification. Settings and saves retain AMTE/01 and the existing consolidated AnimalTown memory-card item. The app rejects the ISO updater and directs updates through Dolphin Depot; the NKit installation retains its updater. Hosted catalog inclusion remains pending redistribution permission and an install/boot test through the GC client on physical hardware; the registry draft is not a permission grant.
 
 The NKit ISO is the only disc image built for delivery and is published directly, without a ZIP wrapper. Full-size conversion and round-trip images are temporary and deleted after verification. The server is a separate **AnimalTown-server-$version.zip** archive and requires .NET 10 and PostgreSQL. It does not run on the console.
 

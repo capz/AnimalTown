@@ -8,16 +8,16 @@ $p=Get-ValidationPlan -ChangedPaths @('tests/AnimalTown.CardChecks/Program.cs');
 $p=Get-ValidationPlan -ChangedPaths @('server/AnimalTown.Server/Program.cs');Assert ($p.backend -and !$p.managed.Count -and !$p.native.Count) 'Backend should not run console unit suites'
 $p=Get-ValidationPlan -ChangedPaths @('assets/models/villagers/fox.glb');Assert ($p.release -and !$p.managed.Count -and !$p.backend) 'Model imports should use import/build audits'
 $p=Get-ValidationPlan -ChangedPaths @('assets/textures/environment/ground/test.png');Assert (($p.tooling -join ',') -eq 'terrain' -and ($p.managed -join ',') -eq 'core' -and !$p.backend) 'Ground routing incorrect'
-$p=Get-ValidationPlan -ChangedPaths @('shared/AnimalTown.Domain/GameState.cs');Assert ($p.backend -and $p.managed.Count -eq 12 -and !$p.tooling.Count) 'Shared gameplay must cover backend and all managed dependencies'
-$p=Get-ValidationPlan -ChangedPaths @('game/AnimalTown.GameCube/Program.cs');Assert ($p.managed.Count -eq 12 -and !$p.backend) 'Mixed game entry point needs managed coverage, not unrelated DB tests'
+$p=Get-ValidationPlan -ChangedPaths @('shared/AnimalTown.Domain/GameState.cs');Assert ($p.backend -and $p.managed.Count -eq 13 -and !$p.tooling.Count) 'Shared gameplay must cover backend and all managed dependencies'
+$p=Get-ValidationPlan -ChangedPaths @('game/AnimalTown.GameCube/Program.cs');Assert ($p.managed.Count -eq 13 -and !$p.backend) 'Mixed game entry point needs managed coverage, not unrelated DB tests'
 $p=Get-ValidationPlan -ChangedPaths @('tools/AnimalTown.Tools/TextureRepackerChecks.cs');Assert (($p.tooling -join ',') -eq 'repack' -and !$p.backend) 'Repacker routing incorrect'
-$p=Get-ValidationPlan -ChangedPaths @('shared/AnimalTown.Domain/NewDependency.cs');Assert ($p.managed.Count -eq 12 -and $p.backend) 'Unknown domain must be conservative'
-$p=Get-ValidationPlan -ChangedPaths @('new-production/file.xyz');Assert ($p.full -and $p.backend -and $p.native.Count -eq 7) 'Unknown production paths must fall back to all checks'
+$p=Get-ValidationPlan -ChangedPaths @('shared/AnimalTown.Domain/NewDependency.cs');Assert ($p.managed.Count -eq 13 -and $p.backend) 'Unknown domain must be conservative'
+$p=Get-ValidationPlan -ChangedPaths @('new-production/file.xyz');Assert ($p.full -and $p.backend -and $p.native.Count -eq 8) 'Unknown production paths must fall back to all checks'
 $p=Get-ValidationPlan -ChangedPaths @('tools/native-shadow-union.h','tests/native-shadow-union.c');Assert (($p.native -join ',') -eq 'shadows' -and ($p.managed -join ',') -eq 'terrain' -and !$p.backend) 'Shadow union must include the native rasterizer checks'
 $p=Get-ValidationPlan -ChangedPaths @('shared/AnimalTown.Domain/CliffShadowMap.cs');Assert (($p.native -join ',') -eq 'shadows' -and ($p.managed -join ',') -eq 'terrain' -and $p.rendering.Count -eq 8 -and !$p.backend -and !$p.full) 'Cliff-mask changes need managed/GX/native layout coverage without database checks'
 $p=Get-ValidationPlan -ChangedPaths @('tests/AnimalTown.Checks/CliffShadowChecks.cs');Assert (($p.managed -join ',') -eq 'terrain' -and !$p.native.Count -and !$p.rendering.Count -and !$p.backend -and !$p.full) 'Cliff-mask fixture-only edits need their managed terrain suite'
 $p=Get-ValidationPlan -ChangedPaths @('.github/workflows/build-release.yml');Assert ($p.full -and $p.policy) 'Workflow changes must exercise gates'
-$p=Get-ValidationPlan -Full;Assert ($p.full -and $p.release -and $p.managed.Count -eq 12 -and $p.tooling.Count -eq 5 -and 'nkit' -in $p.tooling) 'Manual full validation incomplete'
+$p=Get-ValidationPlan -Full;Assert ($p.full -and $p.release -and $p.managed.Count -eq 13 -and $p.tooling.Count -eq 6 -and 'nkit' -in $p.tooling -and 'depot' -in $p.tooling) 'Manual full validation incomplete'
 $p=Get-ValidationPlan -ChangedPaths @('game/AnimalTown.GameCube/MenuNavigation.cs','game/AnimalTown.GameCube/MenuNavigation.cs','game/AnimalTown.GameCube/WrappedText.cs');Assert (($p.managed -join ',') -eq 'menu,text') 'Union/deduplication incorrect'
 $p=Get-ValidationPlan -ChangedPaths @('shared/AnimalTown.Domain/WaterSurface.cs','tests/AnimalTown.Checks/WaterSurfaceChecks.cs');Assert (($p.managed -join ',') -eq 'terrain' -and !$p.backend) 'Water rules use terrain checks'
 $p=Get-ValidationPlan -ChangedPaths @('game/AnimalTown.GameCube/WaterMaterial.cs','game/AnimalTown.GameCube/WaterRenderer.cs');Assert (($p.managed -join ',') -eq 'terrain,core' -and !$p.backend) 'Water rendering needs terrain and core checks'
@@ -58,4 +58,10 @@ foreach($path in @('shared/AnimalTown.Domain/BuildingPrompt.cs','tests/AnimalTow
     $p=Get-ValidationPlan -ChangedPaths @($path)
     Assert (($p.managed -join ',') -eq 'movement,life,saves,buildings' -and !$p.backend -and !$p.full -and !$p.rendering.Count) "Building entry routing must retain component coverage: $path"
 }
-Write-Host 'Validation routing checks passed (57 cases).'
+foreach($path in @('shared/AnimalTown.Domain/ContentPaths.cs','game/AnimalTown.GameCube/ContentBootstrap.cs','tests/AnimalTown.Checks/ContentChecks.cs')){
+    $p=Get-ValidationPlan -ChangedPaths @($path)
+    Assert (($p.managed -join ',') -eq 'content' -and 'content' -in $p.native -and !$p.backend -and !$p.full) "Content startup routing must retain actual AOT/filesystem coverage: $path"
+}
+$p=Get-ValidationPlan -ChangedPaths @('tools/AnimalTown.Tools/DepotPackage.cs');Assert (($p.tooling -join ',') -eq 'depot' -and !$p.backend) 'Depot packaging must exercise archive validation'
+$p=Get-ValidationPlan -Full;Assert ('depot' -in $p.tooling -and 'content' -in $p.managed -and 'content' -in $p.native) 'Full checks must include standalone startup and packaging'
+Write-Host 'Validation routing checks passed (62 cases).'

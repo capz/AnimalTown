@@ -1,6 +1,7 @@
-param([string]$Root)
+param([string]$Root,[string]$NativeDirectory='out/native')
 $ErrorActionPreference='Stop'
-$nativeRoot=[IO.Path]::GetFullPath((Join-Path $Root 'out/native'))
+$nativeRoot=[IO.Path]::GetFullPath((Join-Path $Root $NativeDirectory))
+if(!$nativeRoot.StartsWith([IO.Path]::GetFullPath($Root).TrimEnd([IO.Path]::DirectorySeparatorChar)+[IO.Path]::DirectorySeparatorChar,[StringComparison]::Ordinal)){throw 'Native bundle must stay inside the workspace'}
 $generatedPath=Join-Path $nativeRoot 'source/generated_program.c'
 # Forward sparse acceptance markers before the SDK's overlay truncates them.
 & python3 (Join-Path $Root 'tools/patch-residency-trace.py') $nativeRoot
@@ -111,7 +112,7 @@ $meshHook='    if(!draw_state(texture,material,world,&state))return true;'
 if(([regex]::Matches($mesh,[regex]::Escape($meshHook))).Count -ne 1){throw 'Pinned indexed ground shadow hook changed'}
 $mesh=$mesh.Replace($meshHook,$meshHook+"`n    town_shadow_ground(vertices,indices,count,material,&state.bindings);")
 [IO.File]::WriteAllText($meshPath,$mesh)
-$modelGraphicsPath=Join-Path $Root 'out/native/source/model_graphics.c'
+$modelGraphicsPath=Join-Path $nativeRoot 'source/model_graphics.c'
 $modelGraphics=[IO.File]::ReadAllText($modelGraphicsPath)
 # Keep the game-owned rim hook pinned to the imported indexed model path. Fail
 # closed if a package upgrade changes a hook rather than silently CPU-expanding.
@@ -168,15 +169,15 @@ foreach($hook in $pointHooks.Keys){
 }
 Copy-Item (Join-Path $Root 'tools/native-point-lights-gx.inc') (Join-Path $nativeRoot 'source/animaltown_point_lights_gx.inc') -Force
 Copy-Item (Join-Path $Root 'tools/native-point-lights.h') (Join-Path $nativeRoot 'source/native-point-lights.h') -Force
-Copy-Item -LiteralPath (Join-Path $Root 'tools/native-rim.inc') -Destination (Join-Path $Root 'out/native/source/animaltown_rim.inc') -Force
-Copy-Item -LiteralPath (Join-Path $Root 'tools/native-rim-policy.h') -Destination (Join-Path $Root 'out/native/source/native-rim-policy.h') -Force
+Copy-Item -LiteralPath (Join-Path $Root 'tools/native-rim.inc') -Destination (Join-Path $nativeRoot 'source/animaltown_rim.inc') -Force
+Copy-Item -LiteralPath (Join-Path $Root 'tools/native-rim-policy.h') -Destination (Join-Path $nativeRoot 'source/native-rim-policy.h') -Force
 if($IsLinux){
     & cc -std=c11 -Wall -Wextra -Werror "-I$(Join-Path $Root 'tools')" (Join-Path $Root 'tests/native-rim-policy.c') -o (Join-Path $Root 'out/native-rim-policy-check')
     if($LASTEXITCODE){throw 'Native rim policy compilation failed'}
     & (Join-Path $Root 'out/native-rim-policy-check')
     if($LASTEXITCODE){throw 'Native rim policy fixture failed'}
 }
-$indexedPath=Join-Path $Root 'out/native/include/dnd_indexed_model.inc'
+$indexedPath=Join-Path $nativeRoot 'include/dnd_indexed_model.inc'
 $indexed=[IO.File]::ReadAllText($indexedPath)
 $pointIndexedHooks=@{
     '  bool lit=!(material->mode&2);'='  bool material_lit=!(material->mode&2),lit=material_lit||town_points_active();'
@@ -203,9 +204,9 @@ if(([regex]::Matches($modelGraphics,[regex]::Escape($drawSignature))).Count -ne 
 $modelGraphics=$modelGraphics.Replace($drawSignature,$drawSignature.Replace('draw_model_selected(','draw_model_selected_base('))
 $modelGraphics+="`n#include `"animaltown_uv_debug.inc`"`n"
 [IO.File]::WriteAllText($modelGraphicsPath,$modelGraphics)
-Copy-Item -LiteralPath (Join-Path $Root 'tools/native-uv-debug.inc') -Destination (Join-Path $Root 'out/native/source/animaltown_uv_debug.inc') -Force
-Copy-Item -LiteralPath (Join-Path $Root 'tools/native-uv-topology.h') -Destination (Join-Path $Root 'out/native/source/animaltown_uv_topology.h') -Force
-$entryPath=Join-Path $Root 'out/native/source/main.c'
+Copy-Item -LiteralPath (Join-Path $Root 'tools/native-uv-debug.inc') -Destination (Join-Path $nativeRoot 'source/animaltown_uv_debug.inc') -Force
+Copy-Item -LiteralPath (Join-Path $Root 'tools/native-uv-topology.h') -Destination (Join-Path $nativeRoot 'source/animaltown_uv_topology.h') -Force
+$entryPath=Join-Path $nativeRoot 'source/main.c'
 $entrySource=[IO.File]::ReadAllText($entryPath)
 foreach($signature in @('dnd_platform_init();','managed_heap_memory[DND_MANAGED_HEAP_BYTES]')){
     if(([regex]::Matches($entrySource,[regex]::Escape($signature))).Count -ne 1){throw "Pinned native entry signature changed: $signature"}
@@ -234,8 +235,8 @@ if($IsLinux){
     & $resourceCheck
     if($LASTEXITCODE){throw 'Native resource-slot fixture failed'}
 }
-Copy-Item -LiteralPath (Join-Path $Root 'tools/native-calendar.c') -Destination (Join-Path $Root 'out/native/source/animaltown_calendar.c') -Force
-Copy-Item -LiteralPath (Join-Path $Root 'tools/native-texture-pages.c') -Destination (Join-Path $Root 'out/native/source/animaltown_texture_pages.c') -Force
+Copy-Item -LiteralPath (Join-Path $Root 'tools/native-calendar.c') -Destination (Join-Path $nativeRoot 'source/animaltown_calendar.c') -Force
+Copy-Item -LiteralPath (Join-Path $Root 'tools/native-texture-pages.c') -Destination (Join-Path $nativeRoot 'source/animaltown_texture_pages.c') -Force
 $pagePattern='intptr_t (dnd_value_AnimalTown_GameCube_AnimalTown_GameCube_NativeTexturePages_IplPage_[a-z0-9]+)\(intptr_t (\w+), intptr_t (\w+), intptr_t (\w+)\) \{.*?\r?\n\}'
 if(([regex]::Matches($generated,$pagePattern,[Text.RegularExpressions.RegexOptions]::Singleline)).Count -ne 1){throw 'Native IPL page bridge signature changed'}
 $generated=[regex]::Replace($generated,$pagePattern,'intptr_t $1(intptr_t $2, intptr_t $3, intptr_t $4) { return animaltown_ipl_page((int)$2,(DndArray*)$3,(DndArray*)$4); }',[Text.RegularExpressions.RegexOptions]::Singleline)
@@ -254,7 +255,7 @@ $generated="#include `"dnd_managed.h`"`nextern int animaltown_ipl_page(int,DndAr
 # A new libogc directory entry has 0xff artwork fields. Clear those before
 # committing the transaction journal's ready flag; CARD_SetStatus validates
 # artwork formats even though this temporary journal has no artwork.
-$cardPath=Join-Path $Root 'out/native/source/storage_gamecube.c'
+$cardPath=Join-Path $nativeRoot 'source/storage_gamecube.c'
 $cardSource=[IO.File]::ReadAllText($cardPath)
 $mountPattern='bool dnd_gc_card_mount\(int device, const char \*game, const char \*company\) \{.*?\r?\n\}'
 if(([regex]::Matches($cardSource,$mountPattern,[Text.RegularExpressions.RegexOptions]::Singleline)).Count -ne 1){throw 'Pinned SDK card mount changed'}
@@ -275,7 +276,7 @@ foreach($operation in @('txn_read','txn_write','txn_ready','txn_metadata')) {
     $cardSource=[regex]::Replace($cardSource,$operationPattern,"`$0 animaltown_card_debug=$stage;")
 }
 [IO.File]::WriteAllText($cardPath,$cardSource)
-$storagePath=Join-Path $Root 'out/native/source/storage.c'
+$storagePath=Join-Path $nativeRoot 'source/storage.c'
 $storageSource="extern int animaltown_card_debug;`n"+[IO.File]::ReadAllText($storagePath)
 if(([regex]::Matches($storageSource,'bool dnd_card_mount\(')).Count -ne 1){throw 'Pinned card container native hook changed'}
 $storageSource=$storageSource.Replace('fail(-rc, "Memory card write failed.");','{ animaltown_card_debug=animaltown_card_debug*1000-rc; fail(-rc, "Memory card write failed."); }')

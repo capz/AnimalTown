@@ -1,1 +1,1 @@
-internal static class BuildInfo { internal const string Commit="development"; internal const string Version="development"; }
+internal static class BuildInfo { internal const string Commit="development"; internal const string Version="development"; internal const string ContentIdentity="ANIMALTOWN-CONTENT-1\ndevelopment\n"; }

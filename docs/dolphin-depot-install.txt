@@ -1,0 +1,27 @@
+Smalltown Forest (AnimalTown releases) - standalone SD app
+
+Extract the apps folder to your SD device root. Launch
+apps/animaltown/default.dol with its complete accompanying folder.
+An AnimalTown ISO is not required and mounted discs are never used by this app.
+
+Use SD2SP2 or SD Gecko in Slot B, leaving Slot A for a GameCube memory card.
+GC Loader app content is implemented but requires physical qualification.
+Slot A SD Gecko is not supported by this profile: settings need memory card A.
+Launchers supplying a recognized physical-device path can relocate the folder.
+Generic launcher sd:/ paths use the fixed directory probes, since their physical
+adapter differs between launchers; the SDK's internal sd:/ root means SD2SP2.
+Without usable launch arguments, the fixed apps/animaltown directory is checked
+in this order: SD2SP2, Slot B SD Gecko, GC Loader. The first matching build wins.
+Do not mix files from different builds. Install/update the complete folder.
+
+Town, playable villagers, options and debug preferences still use the existing
+AMTE/01 memory-card storage and consolidated AnimalTown save item in Slot A.
+SD assets are read-only; this profile does not add a different save destination.
+This app cannot run the ISO updater; update the app through Dolphin Depot or
+replace its complete folder manually. Disc installations retain their updater.
+
+See BUILD.txt, version.json, content.id and depot-package.json for this build's
+identity and hashes. See THIRD-PARTY-NOTICES.txt for dependency licenses and
+source references. Packaging does not establish permission for hosted catalog
+redistribution; the registry submission remains pending rights-holder approval
+and installation/boot testing through the GC client on physical hardware.

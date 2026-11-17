@@ -9,7 +9,7 @@ using Hypercube.GameCube;
 // return bytes only; native creation and retirement happen between frames.
 internal sealed class PathTextureResidency : IDisposable
 {
-    private const string FileName="dvd:/path-dirt.dndtex";
+    private readonly string FileName=ContentPaths.Asset("path-dirt.dndtex");
     private CachedTexture? texture;
     private Task<byte[]>? pending;
     private int generation,readingGeneration;

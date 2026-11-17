@@ -32,7 +32,7 @@ internal sealed class OnboardingUi : IDisposable
             if(stage<Name||stage>Review||(uint)species>=6)throw new ArgumentOutOfRangeException("stage/species");
             ui=new Draw2D(GraphicsDevice.Default,new Draw2DOptions{Width=640,Height=480,VertexCapacity=8192,SpriteCapacity=128});
             background=new TitleBackdrop();font=UiFont.LoadSystem();heading=UiFont.Load("gorditas-bold");
-            logo=TextureCache.Load("dvd:/wordmark.dndtex",true);
+            logo=TextureCache.Load(AnimalTown.ContentPaths.Asset("wordmark.dndtex"),true);
             portraits=new CachedTexture?[6];
             files=new[]{"fox","bunny","giraffe","cat","hamster","spaniel"};
             labels=new[]{"Fox","Bunny","Giraffe","Maine coon","Hamster","Spaniel"};
@@ -47,7 +47,7 @@ internal sealed class OnboardingUi : IDisposable
         }catch{Dispose();throw;}
     }
     private void LoadPortrait(int species)
-    {portraits![species]=TextureCache.Load("dvd:/picker-"+files![species]+".dndtex",true);}
+    {portraits![species]=TextureCache.Load(AnimalTown.ContentPaths.Asset("picker-"+files![species]+".dndtex"),true);}
     private void Begin(string title)
     {
         if(disposed)throw new ObjectDisposedException("OnboardingUi");

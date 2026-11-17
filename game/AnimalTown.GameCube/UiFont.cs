@@ -106,9 +106,9 @@ internal sealed class UiFont
     }
     internal static UiFont Load(string name)
     {
-        var metrics=File.ReadAllBytes("dvd:/"+name+".metrics");
+        var metrics=File.ReadAllBytes(AnimalTown.ContentPaths.Asset(name+".metrics"));
         if(metrics.Length!=784||metrics[0]!=65||metrics[1]!=84||metrics[2]!=70||metrics[3]!=50)throw new IOException("Invalid font metrics");
-        return new UiFont(TextureCache.Load("dvd:/"+name+".dndtex",true),metrics);
+        return new UiFont(TextureCache.Load(AnimalTown.ContentPaths.Asset(name+".dndtex"),true),metrics);
     }
     private int Index(char c)=>firmware!=null&&c=='\u00a4'?95:c>=32&&c<128?c-32:'?'-32;
     private int Get(int at)=>metrics[at]|metrics[at+1]<<8;

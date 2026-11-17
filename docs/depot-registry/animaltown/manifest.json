@@ -1,0 +1,47 @@
+{
+    "name": "Smalltown Forest",
+    "author": "Capz and AnimalTown contributors",
+    "description_short": "A rolling village life game for the GameCube",
+    "description_long": "Build a home, meet villagers and visit the town shop in a curved seasonal world. Standalone SD app; no AnimalTown disc required. Use SD2SP2 or Slot B SD Gecko for app files and a GameCube memory card in Slot A for settings and saves. Physical GC client installation and redistribution permission are still pending; this entry is a draft.",
+    "category": "games",
+    "platforms": [
+        "gamecube",
+        "dolphin"
+    ],
+    "peripherals": [
+        "controller",
+        "memory_card",
+        "sd_gecko",
+        "sd2sp2"
+    ],
+    "license": {
+        "spdx": "NOASSERTION",
+        "notes": "Draft only. Original AnimalTown code and bundled assets need rights-holder terms and explicit Depot hosting permission. SDK and engine are GPL-2.0-only; bundled fonts retain their license. NOASSERTION does not grant redistribution permission."
+    },
+    "source": {
+        "type": "github_release",
+        "repository": "capz/AnimalTown",
+        "asset_pattern": "AnimalTown-*-depot.zip",
+        "ignore_versions": [
+            "*+*",
+            "build-*",
+            "*.*.*.*"
+        ]
+    },
+    "treatments": [
+        {
+            "treatment": "archive.extract",
+            "arguments": [
+                "AnimalTown-*-depot.zip",
+                "extracted/"
+            ]
+        },
+        {
+            "treatment": "contents.move",
+            "arguments": [
+                "extracted/apps/animaltown/",
+                "apps/animaltown/"
+            ]
+        }
+    ]
+}

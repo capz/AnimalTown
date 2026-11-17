@@ -105,7 +105,7 @@ jobs:
           tags: ghcr.io/capz/animaltown-build:${{ steps.version.outputs.commit }}
           cache-from: type=gha
           cache-to: type=gha,mode=min
-      - name: Build NKit ISO/backend, run selected checks and package
+      - name: Build NKit ISO, standalone app and backend; run checks and package
         env:
           ANIMALTOWN_BUILD_IMAGE: ghcr.io/capz/animaltown-build@${{ steps.image.outputs.digest }}
         run: |
@@ -120,6 +120,8 @@ jobs:
           root=Path('out');version=json.loads((root/'version.json').read_text())['version']
           expected=f'AnimalTown-{version}.nkit.iso'
           assert sorted(p.name for p in root.glob('*.iso'))==[expected], 'Console build must retain only its NKit ISO'
+          depot=root/f'AnimalTown-{version}-depot.zip'
+          assert depot.is_file() and depot.stat().st_size>0, 'Standalone Depot runtime package is missing'
           assert not any((root/'disc-work').rglob('*.iso')), 'Temporary source ISO was not removed'
           assert not any((root/'nkit-work').rglob('*.iso')), 'Temporary round-trip ISO was not removed'
           PY
@@ -170,7 +172,7 @@ jobs:
             out/title-logo/*.txt
             out/title-logo/user/Logs/
           if-no-files-found: warn
-      - name: Publish NKit-only GitHub prerelease
+      - name: Publish NKit, standalone app and backend GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
           ANIMALTOWN_BUILD_IMAGE: ghcr.io/capz/animaltown-build@${{ steps.image.outputs.digest }}

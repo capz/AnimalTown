@@ -14,7 +14,7 @@ internal sealed class TitleScreen : IDisposable,Hypercube.GameCube.IFrameScene
     private readonly Camera2D composition=new Camera2D();
     private float canvasMargin;
     private readonly UiFont font=UiFont.LoadSystem();
-    private readonly CachedTexture logo=TextureCache.Load("dvd:/wordmark.dndtex",true);
+    private readonly CachedTexture logo=TextureCache.Load(AnimalTown.ContentPaths.Asset("wordmark.dndtex"),true);
     private readonly TitleBackdrop background=new TitleBackdrop();
     private readonly MenuNavigation navigation=new MenuNavigation();
     private readonly DevConfig config;

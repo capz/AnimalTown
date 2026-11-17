@@ -1,7 +1,7 @@
 # Pure path-to-check routing; conservative fallback for new production paths.
 function Get-ValidationPlan {
     param([string[]]$ChangedPaths=@(),[switch]$Full,[switch]$ForceRelease,[string]$Commit='',[string]$BaseRef='')
-    $allManaged=@('ui','menu','text','trim','terrain','movement','dialogue','generation','life','saves','buildings','core')
+    $allManaged=@('ui','menu','text','trim','terrain','movement','dialogue','generation','life','saves','buildings','core','content')
     $allRendering=@('water','services','movement','ground','index','visibility','attention','dropped-item')
     $rendering=[Collections.Generic.HashSet[string]]::new()
     $managed=[Collections.Generic.HashSet[string]]::new()
@@ -29,6 +29,9 @@ function Get-ValidationPlan {
         $release=$true
         if($p -match '^(build/|\.github/|Directory\.|.*\.sln$|.*\.csproj$|\.gitmodules$|vendor/|tools/(build-|publish-release|patch-native|.*validation|test-changes)|tests/validation-(plan|selection))'){$broad=$true;continue}
         if($p -match '^server/|^tests/(server-integration|AnimalTown.ServerChecks)'){$backend=$true;continue}
+        if($p -match '^(shared/AnimalTown.Domain/ContentPaths|game/AnimalTown.GameCube/ContentBootstrap|tests/AnimalTown.Checks/ContentChecks)\.cs$'){Add-Managed 'content';[void]$native.Add('content');continue}
+        if($p -match '^tests/(AnimalTown.ContentSmoke/|native-content-startup\.)'){Add-Managed 'content';[void]$native.Add('content');continue}
+        if($p -match '^tools/AnimalTown.Tools/DepotPackage(?:Checks)?\.cs$'){[void]$tooling.Add('depot');continue}
         if($p -match '^(shared/AnimalTown.Domain/DevConfig|game/AnimalTown.GameCube/DevConfigStorage|tests/AnimalTown.Checks/DevConfigChecks)\.cs$'){Add-Managed 'saves';Add-Managed 'menu';continue}
         if($p -match '^game/AnimalTown.GameCube/(TitleScreen|TitleArt|TitleBackdrop|LoadingScreen|ProfilePicker|TownSession)\.cs$'){Add-Managed 'ui';Add-Managed 'menu';Add-Managed 'saves';continue}
         if($p -match '^tests/AnimalTown.RenderingChecks/(WaterEffect|RenderingService|MovementTerrain|GroundRing|TerrainIndex|ActorVisibility|AttentionGeometry|DroppedItem)Checks\.cs$'){
@@ -107,7 +110,7 @@ function Get-ValidationPlan {
         if($p -match '^tools/(iso-smoke|path-study).py$'){[void]$native.Add('python');continue} # Scenarios are explicitly selected.
         $broad=$true
     }
-    if($broad){foreach($s in $allManaged){Add-Managed $s};foreach($s in @('terrain','repack','building','nkit','dropped-item')){[void]$tooling.Add($s)};foreach($s in @('uv','card','texture','voices','python','shadows','patched')){[void]$native.Add($s)};$backend=$true;$policy=$true}
+    if($broad){foreach($s in $allManaged){Add-Managed $s};foreach($s in @('terrain','repack','building','nkit','dropped-item','depot')){[void]$tooling.Add($s)};foreach($s in @('uv','card','texture','voices','python','shadows','patched','content')){[void]$native.Add($s)};$backend=$true;$policy=$true}
     if($broad){foreach($r in $allRendering){[void]$rendering.Add($r)}}
     [pscustomobject]@{schema=2;commit=$Commit;baseRef=$BaseRef;release=$release;full=$broad;managed=@($allManaged|Where-Object {$managed.Contains($_)});rendering=@($allRendering|Where-Object {$rendering.Contains($_)});tooling=@($tooling|Sort-Object);native=@($native|Sort-Object);backend=$backend;policy=$policy;paths=@($ChangedPaths|Sort-Object -Unique)}
 }

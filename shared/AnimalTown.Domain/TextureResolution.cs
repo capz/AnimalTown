@@ -12,5 +12,5 @@ public static class TexturePolicy
         return edge;
     }
     public static string ModelPath(string name,TextureResolution resolution=Default)
-    {int edge=Edge(resolution);return "dvd:/"+name+(edge==256?"":"-tex"+edge)+".dndmodel";}
+    {int edge=Edge(resolution);return ContentPaths.Root+name+(edge==256?"":"-tex"+edge)+".dndmodel";}
 }
