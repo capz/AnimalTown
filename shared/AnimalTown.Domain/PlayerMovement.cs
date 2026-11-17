@@ -5,7 +5,7 @@ namespace AnimalTown;
 public static class PlayerMovement
 {
     public const float WalkStep=.085f*1.05f,RunStep=.16f*1.05f,DeadZone=.18f;
-    public static bool Move(GameState state,int room,float stickX,float stickY,int buttons,bool run,out float headingX,out float headingZ)
+    public static bool Move(GameState state,int room,float stickX,float stickY,int buttons,bool run,out float headingX,out float headingZ,bool trackTraffic=true)
     {
         float dx=stickX,dz=-stickY,lengthSquared=dx*dx+dz*dz;
         if(lengthSquared<DeadZone*DeadZone){dx=((buttons&2)!=0?1:0)-((buttons&1)!=0?1:0);dz=((buttons&4)!=0?1:0)-((buttons&8)!=0?1:0);lengthSquared=dx*dx+dz*dz;}
@@ -15,6 +15,7 @@ public static class PlayerMovement
         float nx=oldX+dx*speed,nz=oldZ+dz*speed;
         if(state.CanWalk(nx,oldZ,room)&&(room==0||BuildingWorld.Segment(state,room,oldX,oldZ,nx,oldZ,0,true))&&(room!=0||TerrainElevation.Traverse(state.Town,oldX,oldZ,nx,oldZ)))state.X=nx;
         if(state.CanWalk(state.X,nz,room)&&(room==0||BuildingWorld.Segment(state,room,state.X,oldZ,state.X,nz,0,true))&&(room!=0||TerrainElevation.Traverse(state.Town,state.X,oldZ,state.X,nz)))state.Z=nz;
+        if(room==0&&trackTraffic){state.Town.Traffic.Traverse(state.Town,oldX,oldZ,state.X,oldZ);state.Town.Traffic.Traverse(state.Town,state.X,oldZ,state.X,state.Z);}
         headingX=state.X-oldX;headingZ=state.Z-oldZ;
         // Sliding follows actual travel. Fully blocked input still lets the
         // player face a tree/wall to interact with it.

@@ -60,9 +60,11 @@ bootstrap through the published SDK's native AOT/host filesystem runtime; real S
 boot, save/reload and launcher handoff remain hardware qualification items.
 An ISO-mounted run must never be presented as proof of app-directory startup.
 
-The existing title Update action reports "Update this installation through
-Dolphin Depot." for the app, using the existing status area. It cannot launch
-the disc updater or modify ISO installations. The disc build keeps its updater.
+The Depot title omits the Update action and compacts its menu to Start /
+Options (plus Debug configuration when enabled). Its closed runtime whitelist
+already excludes the updater DOL and updater credentials. The defensive launch
+guard still refuses disc updates from an app installation. The ISO title keeps
+Start / Update / Options, and its disc includes the updater DOL.
 
 ## Build and validation
 

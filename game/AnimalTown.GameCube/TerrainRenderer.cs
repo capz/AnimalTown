@@ -102,7 +102,7 @@ internal sealed class TerrainRenderer : IDisposable
         Array.Clear(batch,0,batch.Length);batchCount=0;
         // Cloud/water effects borrow texture bindings, so retire them before
         // releasing the cache leases supplying their ground art.
-        materials[TownPaths.Material].Texture=null;paths.Dispose();
+        ReleasePaths();materials[TownPaths.Material].Texture=null;paths.Dispose();
         waterMaterial.Dispose();soil.Dispose();
         for(int i=0;i<textures.Length;i++)if(textures[i]!=null){TextureCache.Release(textures[i]!);textures[i]=null;}
         for(int i=0;i<materials.Length;i++){materials[i].Texture=null;materials[i].SecondaryTexture=null;}
@@ -162,7 +162,7 @@ internal sealed class TerrainRenderer : IDisposable
             for(int i=0;i<sections.Length;i++){sections[i]?.Dispose();sections[i]=null;}
             stream.Reset();legacy=nextLegacy;
             if(!legacy){archive=new TerrainArchive();archive.Reset();}
-            if(cachedTown!=state.Town)paths.Prepare(false,materials[TownPaths.Material],null);
+            if(cachedTown!=state.Town)ReleasePaths();
             cachedTown=state.Town;cachedTerrainVersion=state.Town.TerrainVersion;
             resetting=false;
         }
@@ -183,7 +183,7 @@ internal sealed class TerrainRenderer : IDisposable
             while(work<8&&Clock.Timestamp<deadline){if(!shadows.Advance())break;work++;}
             gallery.PrepareGallery(state,this,cliffPreview);
             VisibleTriangles=gallery.Triangles+archive.Triangles+oceanWaves.Triangles;visibleGroundMask=archive.GroundMask;RejectedQuads=0;
-            PreparePaths();
+            PreparePaths(state);
             return;
         }
         int steps=0;long selectAt=FrameProfile.Start();stream.Prepare(state.X,state.Z);
@@ -210,10 +210,35 @@ internal sealed class TerrainRenderer : IDisposable
             var section=sections[i]!;VisibleTriangles+=section.Triangles;
             visibleGroundMask|=section.GroundMask|section.Walls.GroundMask;
         }
-        PreparePaths();
+        PreparePaths(state);
     }
-    private void PreparePaths()=>paths.Prepare((visibleGroundMask&(1UL<<TownPaths.Material))!=0,materials[TownPaths.Material],textures[0]?.Pages[0]);
-    internal void ReleasePaths()=>paths.Prepare(false,materials[TownPaths.Material],null);
+    private static readonly byte[] noPaths=new byte[0];
+    private void ClearPathBindings(){for(int i=0;i<slots;i++)materials[i].SecondaryTexture=null;}
+    private ulong PathMaterials()
+    {
+        ulong mask=0;
+        for(int surface=0;surface<TerrainTiles.SurfaceCount;surface++){
+            bool eligible=surface==TerrainTiles.Grass||surface==TerrainTiles.Dirt;
+            for(int i=0;i<FloorStrips.Read(data,280)&&!eligible;i++){int p=FloorStrips.Records+i*28;int required=FloorStrips.Read(data,p+4);if(FloorStrips.Read(data,p)==surface&&(required==TerrainTiles.Grass||required==TerrainTiles.Dirt))eligible=true;}
+            if(eligible){int at=20+surface*20;for(int v=0;v<FloorStrips.Read(data,at);v++)mask|=1UL<<FloorStrips.Read(data,at+4+v*4);}
+        }
+        return mask;
+    }
+    private void PreparePaths(GameState state)
+    {
+        bool demand=!legacy?archive!.HasPaths(state.Town):false;
+        if(legacy)for(int i=0;i<stream.Count&&!demand;i++)if(stream.Visible[i]&&state.Town.Paths.Any(stream.X[i],stream.Z[i],TerrainStream.Width,TerrainStream.Height))demand=true;
+        ClearPathBindings();paths.Prepare(demand,materials[TownPaths.Material],null);
+        bool ready=demand&&paths.Page!=null;
+        if(NativePaths.Prepare(state.Town.Paths.Packed,ready?1:0,state.Town.Paths.Revision)!=1)throw new InvalidOperationException("Path mask native budget");
+        if(ready){ulong mask=PathMaterials();for(int i=0;i<slots;i++)if((mask&(1UL<<i))!=0){materials[i].SecondaryTexture=paths.Page;materials[i].SecondarySampler=materials[TownPaths.Material].Sampler;}}
+    }
+    internal void ReleasePaths()
+    {
+        ClearPathBindings();
+        if(NativePaths.Prepare(noPaths,0,0)!=1)throw new InvalidOperationException("Path mask release failed");
+        paths.Prepare(false,materials[TownPaths.Material],null);
+    }
     private bool AdvanceGroundTexture()
     {
         // Draw marks the first preview frame. Its EndFrame has retired before

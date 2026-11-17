@@ -66,7 +66,7 @@ static inline int su_terrain_offset(int x,int y){return ((y/4)*(SU_TERRAIN_WIDTH
 static inline void su_terrain_changed(SuState *s){
     s->cloud_dirty=1;
     for(int i=0;i<SU_PAGES;i++)if(s->page[i].used&&s->page[i].space==0){
-        s->page[i].static_dirty=s->page[i].dirty=1;
+        s->page[i].static_dirty=1;s->page[i].dirty|=1;
         s->page[i].base_blank=0;s->page[i].version=++s->serial;
     }
     if(s->static_page>=0&&s->page[s->static_page].space==0)s->static_page=-1;
@@ -177,7 +177,7 @@ static inline void su_cloud_prepare(SuState *s){
         uint8_t b=x<=SU_WORLD_WIDTH+1?su_cloud_sample(s,(x-.5f)/SU_TERRAIN_TEXELS_PER_METRE,(y-.5f)/SU_TERRAIN_TEXELS_PER_METRE):0;
         s->coverage[at]=su_pack(a>b?a:b,(s->terrain[at]>>4)*17);
     }
-    for(int i=0;i<SU_PAGES;i++)if(s->page[i].used&&!s->page[i].space)s->page[i].dirty=1;
+    for(int i=0;i<SU_PAGES;i++)if(s->page[i].used&&!s->page[i].space)s->page[i].dirty|=1;
     s->cloud_dirty=0;
 }
 static inline void su_page_clouds(const SuState *s,const SuPage *p,uint8_t *dest){
@@ -204,7 +204,7 @@ static inline void su_dirty(SuState *s,const SuCaster *c){
     int l=su_floor((b[0]-pad)/s->span),r=su_floor((b[2]+pad)/s->span),t=su_floor((b[1]-pad)/s->span),bot=su_floor((b[3]+pad)/s->span);
     for(int z=t;z<=bot;z++)for(int x=l;x<=r;x++){
         int at=su_find_space(s,c->space,x,z);if(at<0||!su_intersects(s,&s->page[at],b))continue;
-        s->page[at].dirty=1;if(c->profile!=4){s->page[at].static_dirty=1;s->page[at].base_blank=0;s->page[at].version=++s->serial;}
+        s->page[at].dirty|=c->profile==4?2:1;if(c->profile!=4){s->page[at].static_dirty=1;s->page[at].base_blank=0;s->page[at].version=++s->serial;}
     }
 }
 static inline void su_begin(SuState *s,int space,int enabled,int size){
@@ -312,7 +312,7 @@ static inline void su_static_work(SuState *s,int static_budget,SuCanWork can,voi
             if(s->static_caster<SU_STATIC){
                 SuCaster *c=&s->caster[s->static_caster++];if(c->active&&c->space==s->space){su_raster(s,p,c,s->static_work);s->static_rasters++;}
             }else{
-                memcpy(s->base+s->static_page*SU_BYTES,s->static_work,SU_BYTES);p->static_dirty=0;p->base_blank=0;p->blank=0;p->dirty=1;p->static_pending=1;s->static_page=-1;static_budget--;
+                memcpy(s->base+s->static_page*SU_BYTES,s->static_work,SU_BYTES);p->static_dirty=0;p->base_blank=0;p->blank=0;p->dirty|=1;p->static_pending=1;s->static_page=-1;static_budget--;
                 if(!can&&static_budget>0)for(int i=0;i<SU_PAGES;i++)if(s->page[i].used&&s->page[i].needed&&s->page[i].space==s->space&&s->page[i].static_dirty){s->static_page=i;s->static_caster=0;s->static_version=s->page[i].version;su_seed_terrain(s,&s->page[i],s->static_work);break;}
             }
         }
@@ -338,9 +338,9 @@ static inline void su_prepare_budget(SuState *s,int static_budget,SuCanWork can,
                 if(at<0&&pass){
                     for(int i=0;i<SU_PAGES;i++)if(!s->page[i].needed){at=i;break;}
                     if(at<0){s->overflow++;continue;}
-                    su_unindex(s,at);s->page[at]=(SuPage){.used=1,.x=x,.z=z,.space=s->space,.needed=1,.static_dirty=1,.dirty=1,.base_blank=1,.version=++s->serial};su_index(s,at);
+                    su_unindex(s,at);s->page[at]=(SuPage){.used=1,.x=x,.z=z,.space=s->space,.needed=1,.static_dirty=1,.dirty=3,.base_blank=1,.version=++s->serial};su_index(s,at);
                     /* Never expose an evicted tile while static work waits. */
-                    memset(s->base+at*SU_BYTES,0,SU_BYTES);
+                    memset(s->base+at*SU_BYTES,0,SU_BYTES);memset(s->pixels+at*SU_BYTES,0,SU_BYTES);
                 }else if(at>=0)s->page[at].needed=1;
             }
         }
@@ -350,7 +350,7 @@ static inline void su_prepare_budget(SuState *s,int static_budget,SuCanWork can,
      * so deleted/moved scenery cannot linger while its replacement waits. */
     for(int i=0;i<SU_PAGES;i++){
         SuPage *p=&s->page[i];if(!p->used||p->space!=s->space)continue;
-        if(p->static_dirty&&!p->base_blank){memset(s->base+i*SU_BYTES,0,SU_BYTES);p->base_blank=1;p->blank=0;p->dirty=1;}
+        if(p->static_dirty&&!p->base_blank){memset(s->base+i*SU_BYTES,0,SU_BYTES);p->base_blank=1;p->blank=0;p->dirty|=2;}
     }
     if(s->static_page>=0){SuPage *p=&s->page[s->static_page];
         if(!p->used||!p->needed||p->space!=s->space||p->version!=s->static_version)s->static_page=-1;
@@ -365,10 +365,10 @@ static inline void su_prepare_budget(SuState *s,int static_budget,SuCanWork can,
             continue;
         }
         if(!p->dirty)continue;
-        if(!su_can_work(can,context)){
-            /* Erase old moving coverage rather than showing a trail. Keep the
-             * page pending; round-robin scheduling gives every page a turn. */
-            if(!p->blank||s->cloud_ready){memcpy(dest,base,SU_BYTES);su_page_clouds(s,p,dest);p->blank=1;p->static_pending=0;p->publish=1;s->changed++;}
+        if(!(p->dirty&2)&&!su_can_work(can,context)){
+            /* Cloud/static refresh may wait. Keep the last complete page;
+             * erasing it here made walking contact shadows blink. Actor moves,
+             * removals and newly allocated pages always publish this frame. */
             s->deferred++;continue;
         }
         memcpy(dest,base,SU_BYTES);

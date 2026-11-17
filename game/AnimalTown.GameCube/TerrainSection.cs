@@ -12,7 +12,6 @@ internal sealed class TerrainSection
 
     internal readonly TerrainWalls Walls;
     internal readonly WaterRenderer Water;
-    private readonly float[] pathX=new float[8],pathZ=new float[8];
     private long revision;
     private int left,top,row,phase,kind;
     private CylinderRows rows=null!;
@@ -74,7 +73,6 @@ internal sealed class TerrainSection
         for(int n=0;n<strips.Count;n++){
             if(strips.Water[n]||GroundRingPlan.Uses(state.Town,strips.X0[n],strips.Z0[n],strips.Material[n],owner.SharedFlatMaterial))continue;
             int slot=strips.Material[n],z=strips.Z0[n];
-            if(slot==TownPaths.Material&&strips.X1[n]==strips.X0[n]+1){int corners=PathShape.Corners(state.Town,strips.X0[n],z);if(corners!=0){AppendPath(state,owner,strips.X0[n],z,corners);continue;}}
             Triangles+=2;
             var buffer=Buffer(slot);
             var a=rows.At(z);var b=rows.At(z+1);
@@ -93,29 +91,6 @@ internal sealed class TerrainSection
                 if(buffers[slot]==null)buffers[slot]=new TerrainIndexBuffer();
             }
         return buffers[slot]!;
-    }
-    private void AppendPath(GameState state,TerrainRenderer owner,int x,int z,int corners)
-    {
-        int count=PathShape.Polygon(corners,pathX,pathZ);var road=Buffer(TownPaths.Material);
-        var p00=Elevated(state,x,z,x,z,rows.At(z));var p10=Elevated(state,x,z,x+1,z,rows.At(z));
-        var p11=Elevated(state,x,z,x+1,z+1,rows.At(z+1));var p01=Elevated(state,x,z,x,z+1,rows.At(z+1));
-        VertexPositionNormalColorTexture Point(float dx,float dz){
-            float yy=dx>=dz?p00.Y+(p10.Y-p00.Y)*dx+(p11.Y-p10.Y)*dz:p00.Y+(p11.Y-p01.Y)*dx+(p01.Y-p00.Y)*dz;
-            float zz=dx>=dz?p00.Z+(p10.Z-p00.Z)*dx+(p11.Z-p10.Z)*dz:p00.Z+(p11.Z-p01.Z)*dx+(p01.Z-p00.Z)*dz;
-            return new VertexPositionNormalColorTexture(new Vector3(x+dx,yy,zz),new Vector3(0,1,0),Color32.White,new Vector2((x+dx)*.5f,(z+dz)*.5f));
-        }
-        var first=Point(pathX[0],pathZ[0]);
-        for(int i=1;i<count-1;i++)road.Triangle(first,Point(pathX[i],pathZ[i]),Point(pathX[i+1],pathZ[i+1]),FrameProfile.Counters);
-        Triangles+=count-2;
-        var grass=Buffer(owner.BaseGroundSlot(state,x,z));
-        for(int c=0;c<4;c++)if((corners&(1<<c))!=0){
-            float cx=c==1||c==2?1:0,cz=c>=2?1:0;
-            var a=Point(cx,cz);
-            var b=Point(cx+(cx==0?PathShape.Bevel:-PathShape.Bevel),cz);
-            var d=Point(cx,cz+(cz==0?PathShape.Bevel:-PathShape.Bevel));
-            if(c==0||c==2)grass.Triangle(a,b,d,FrameProfile.Counters);else grass.Triangle(a,d,b,FrameProfile.Counters);
-            Triangles++;
-        }
     }
     private static VertexPositionNormalColorTexture Vertex(float x,CylinderPose p,float u,float v,Color32 tint)=>new VertexPositionNormalColorTexture(new Vector3(x,p.Y,p.Z),new Vector3(0,1,0),tint,new Vector2(u,v));
     private static CylinderPose Elevated(GameState state,int cx,int cz,float x,float z,CylinderPose p)

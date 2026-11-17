@@ -122,6 +122,7 @@ public sealed class VillagerNavigation
             }return;
         }
         if(!TerrainElevation.Traverse(state.Town,v.PosX,v.PosZ,nx,nz)){r.Index=r.Length;r.LocalIndex=r.LocalLength;r.Wait=30;return;}
+        state.Town.Traffic.Traverse(state.Town,v.PosX,v.PosZ,nx,nz);
         v.PosX=nx;v.PosZ=nz;v.X=(int)nx;v.Z=(int)nz;v.Yaw=PlayerMovement.Yaw(dx,dz);r.Moving=true;r.Stuck=0;
     }
 }

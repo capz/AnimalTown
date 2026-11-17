@@ -31,13 +31,13 @@ internal static class IncrementalSaveCodec
     internal static void Reference(Manifest m,int part,int bank,byte[] bytes)
     {
         var r=new SplitSaveCodec.Reader(bytes,SplitSaveCodec.RecordKind(part));
-        if((r.Version!=4&&!(part==0&&r.Version==6))||r.Seed!=m.Seed||r.Sequence>m.Sequence)throw new InvalidOperationException("Invalid reusable save record");
+        if((r.Version!=4&&!(part==0&&(r.Version==6||r.Version==7)))||r.Seed!=m.Seed||r.Sequence>m.Sequence)throw new InvalidOperationException("Invalid reusable save record");
         m.Banks[part]=bank;m.Sequences[part]=r.Sequence;m.Lengths[part]=bytes.Length;m.Checksums[part]=SaveCodec.Crc(bytes,0,bytes.Length-4);
     }
     internal static void Verify(Manifest m,int part,byte[] bytes)
     {
         var r=new SplitSaveCodec.Reader(bytes,SplitSaveCodec.RecordKind(part));
-        if((r.Version!=4&&!(part==0&&r.Version==6))||r.Seed!=m.Seed||r.Sequence!=m.Sequences[part]||bytes.Length!=m.Lengths[part]||SaveCodec.Crc(bytes,0,bytes.Length-4)!=m.Checksums[part])throw new InvalidOperationException("Save reference mismatch");
+        if((r.Version!=4&&!(part==0&&(r.Version==6||r.Version==7)))||r.Seed!=m.Seed||r.Sequence!=m.Sequences[part]||bytes.Length!=m.Lengths[part]||SaveCodec.Crc(bytes,0,bytes.Length-4)!=m.Checksums[part])throw new InvalidOperationException("Save reference mismatch");
     }
     internal static bool SamePayload(byte[] a,byte[] b)
     {
@@ -64,7 +64,7 @@ internal static class IncrementalSaveCodec
     private static int[] RuntimeOffsets(byte[] bytes)
     {
         var r=new SplitSaveCodec.Reader(bytes,SplitSaveCodec.TownData);
-        if(r.Version!=4&&r.Version!=6)throw new InvalidOperationException("Invalid incremental town projection");
+        if(r.Version!=4&&r.Version!=6&&r.Version!=7)throw new InvalidOperationException("Invalid incremental town projection");
         var positions=new int[RuntimeFields];int at=0;
         r.Range(Town.Width,Town.Width);r.Range(Town.Height,Town.Height);r.Range(1,TownGenerator.Version);r.Int();r.Int();r.SkipTerrain();r.SkipTerrain();
         for(int i=0;i<6;i++){
@@ -75,7 +75,7 @@ internal static class IncrementalSaveCodec
         n=r.Range(0,256);for(int i=0;i<n*6;i++)r.Int();
         positions[at++]=r.Offset;r.Int();for(int i=0;i<BuildingWorld.Count;i++)r.Int();
         for(int i=0;i<42;i++){positions[at++]=r.Offset;r.Int();}
-        if(r.Version>=6)r.Paths(new TownPaths());r.End();return positions;
+        if(r.Version>=6)r.Paths(new TownPaths());if(r.Version>=7)r.Traffic(null);r.End();return positions;
     }
     internal static byte[][] Restore(Manifest m,byte[][] wire)
     {

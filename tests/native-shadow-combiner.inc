@@ -8,10 +8,10 @@ typedef float Mtx[3][4];
 typedef struct { u8 r,g,b,a; } GXColor;
 typedef struct { int unused; } GXTexObj;
 typedef struct { int count,uniforms;struct {int dest;} stages[16]; } DndDrawEffect;
-typedef struct { const DndDrawEffect *effect; } DndDrawMaterial;
+typedef struct { const DndDrawEffect *effect; const void *secondary; } DndDrawMaterial;
 typedef struct { float u,v; unsigned color; } DndDrawVertex;
 enum {
-    GX_FALSE=0,GX_TRUE=1,GX_TF_I8=1,GX_TF_IA4=2,GX_CLAMP=0,GX_LINEAR=1,GX_ANISO_1=0,
+    GX_FALSE=0,GX_TRUE=1,GX_TF_I4=0,GX_NEAR=0,GX_TEXMAP1=1,GX_TEXMAP3=3,GX_TEXCOORD3=3,GX_TEXMTX7=51,GX_TEVREG1=2,GX_CC_C1=4,GX_TF_I8=1,GX_TF_IA4=2,GX_CLAMP=0,GX_LINEAR=1,GX_ANISO_1=0,
     GX_TEXMAP0=0,GX_TEXCOORD0=0,GX_TEXMAP2=2,GX_TEXCOORD1=1,GX_TEXCOORD2=2,GX_TEXCOORD_NULL=255,
     GX_TEXMAP_NULL=255,GX_COLOR_NULL=255,GX_COLOR0A0=4,
     GX_TG_MTX2x4=1,GX_TG_MTX3x4=0,GX_TG_TEX0=4,GX_TG_POS=0,GX_TG_NRM=1,
@@ -38,9 +38,9 @@ static void GX_InitTexObj(GXTexObj *t,void *data,u16 w,u16 h,int format,int s,in
 static void GX_InitTexObjLOD(GXTexObj *t,int min,int mag,float low,float high,float bias,int clamp,int edge,int aniso){
     (void)t;(void)low;(void)high;(void)bias;(void)clamp;(void)edge;(void)aniso;texture_min=min;texture_mag=mag;
 }
-static void GX_LoadTexObj(GXTexObj *t,int map){(void)t;assert(map==GX_TEXMAP2);}
+static void GX_LoadTexObj(GXTexObj *t,int map){(void)t;assert(map==GX_TEXMAP2||map==GX_TEXMAP3);}
 static void GX_SetNumTevStages(u8 count){assert(count<=16);alpha_command_count=count;}
-static void GX_SetNumTexGens(int count){assert(count==3);}
+static void GX_SetNumTexGens(int count){assert(count==3||count==4);}
 static void GX_SetTexCoordGen(int coord,int type,int source,int matrix){(void)coord;(void)type;(void)source;(void)matrix;}
 static void GX_SetTexCoordGen2(int coord,int type,int source,int matrix,int normalize,int post){
     (void)coord;(void)type;(void)source;(void)matrix;(void)normalize;(void)post;
@@ -71,7 +71,9 @@ static void GX_SetTevAlphaOp(u8 stage,int op,int bias,int scale,int clamp,int de
 }
 int animaltown_environment_color(void){return environment_test_rgb;}
 int animaltown_light_strength(void){return point_test_gain;}
-int animaltown_shadows_mode(void){return 3;}
+static int path_test_ready,shadow_test_mode=3;
+const uint8_t *animaltown_path_mask(void){static const uint8_t image[8192]={0};return path_test_ready?image:NULL;}
+int animaltown_shadows_mode(void){return shadow_test_mode;}
 const uint8_t *animaltown_shadows_page(float x,float z,float *origin){
     static const uint8_t pixels[SU_TERRAIN_BYTES]={0};(void)x;(void)z;
     origin[0]=origin[1]=0;origin[2]=shadow_page_side==SU_SIDE?8:(SU_TERRAIN_WIDTH-2)/SU_TERRAIN_TEXELS_PER_METRE;
@@ -150,7 +152,13 @@ static void native_shadow_combiner_checks(void){
     assert(fabsf(shadow_uv_scale_z-4.f/128)<.000001f&&shadow_uv_offset_z==1.f/128);
     shadow_page_side=SU_SIDE;shadow_page_missing=1;town_shadow_ground(triangle,NULL,3,&material,&bindings);
     assert(texture_width==32&&texture_height==32&&sizeof(town_shadow_empty)==1024);
-    shadow_page_missing=0;bindings=1;
+    shadow_page_missing=0;
+    path_test_ready=1;shadow_test_mode=1;material.secondary=&effect;bindings=0;
+    town_shadow_ground(triangle,NULL,3,&material,&bindings);
+    assert(alpha_command_count==9&&bindings==2);verify_alpha_footer(2);
+    path_test_ready=0;town_shadow_ground(triangle,NULL,3,&material,&bindings);
+    assert(alpha_command_count==6);verify_alpha_footer(2);
+    material.secondary=NULL;shadow_test_mode=3;bindings=1;
     assert(animaltown_rim_enable(100));
     const float normal[]={1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1};
     town_rim_apply(normal,&effect,false,&bindings);
