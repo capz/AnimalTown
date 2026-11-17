@@ -163,6 +163,15 @@ function InvokeGh([string[]]$Arguments){
     if($LASTEXITCODE -ne 0){throw "GitHub CLI failed: $($Arguments[0]) $($Arguments[1])"}
     return $result
 }
+function Read-ReleaseMetadata([string]$Tag){
+    # A draft may not have a Git tag yet. Resolve its REST URL through gh's
+    # draft-aware lookup; /releases/tags/TAG is only reliable after publication.
+    $apiUrl=(InvokeGh @('release','view',$Tag,'--repo',$Repository,'--json','apiUrl','--jq','.apiUrl')) -join ''
+    if($apiUrl -cnotmatch ('^https://api\.github\.com/repos/'+[regex]::Escape($Repository)+'/releases/[1-9][0-9]*$')){throw 'Invalid release API URL'}
+    $metadata=(InvokeGh @('api',$apiUrl)) -join "`n"
+    if([Text.Encoding]::UTF8.GetByteCount($metadata) -gt 32768){throw 'Release metadata exceeds updater 32 KiB budget'}
+    return $metadata
+}
 $existing=& $Gh release view $tag --repo $Repository --json isDraft,targetCommitish,assets 2>$null
 if($LASTEXITCODE -eq 0){
     $release=$existing | ConvertFrom-Json
@@ -208,8 +217,7 @@ if($LASTEXITCODE -eq 0){
     InvokeGh $createArguments | Out-Null
 }
 InvokeGh (@('release','upload',$tag,'--repo',$Repository,'--clobber')+$assets) | Out-Null
-$metadata=(InvokeGh @('api',"repos/$Repository/releases/tags/$([Uri]::EscapeDataString($tag))")) -join "`n"
-if([Text.Encoding]::UTF8.GetByteCount($metadata) -gt 32768){throw 'Release metadata exceeds updater 32 KiB budget'}
+$metadata=Read-ReleaseMetadata $tag
 $remote=($metadata | ConvertFrom-Json).assets
 if($remote.Count -ne $assets.Count){throw 'Release must contain exactly the four binary ZIP/ISO assets'}
 foreach($asset in $assets){
