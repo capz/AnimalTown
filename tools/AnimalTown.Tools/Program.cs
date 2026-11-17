@@ -188,7 +188,7 @@ static class Program
                 byte[] version=new byte[size];f.Position=offset;f.ReadExactly(version);DiscVersionFile.Verify(version,discVersion);
             }
         }
-        foreach(string n in new[]{"opening.bnr","BUILD.txt","version.md","runtime.cfg","savebanner.rgb5a3","saveicon.rgb5a3","gorditas-bold.dndtex","gorditas-bold.metrics","wordmark.dndtex","item-icons.dndtex","cat.dndmodel","fox.dndmodel","bunny.dndmodel","giraffe.dndmodel","hamster.dndmodel","spaniel.dndmodel","building.dndmodel"})if(!seen.Contains(n))throw new InvalidDataException("Missing "+n);
+        foreach(string n in new[]{"opening.bnr","BUILD.txt","version.md","runtime.cfg","savebanner.rgb5a3","saveicon.rgb5a3","gorditas-bold.dndtex","gorditas-bold.metrics","wordmark.dndtex","item-icons.dndtex","dropped-item.dndtex","dropped-money.dndtex","dropped-tool.dndtex","dropped-clothing.dndtex","dropped-quest.dndtex","dropped-present.dndtex","cat.dndmodel","fox.dndmodel","bunny.dndmodel","giraffe.dndmodel","hamster.dndmodel","spaniel.dndmodel","building.dndmodel"})if(!seen.Contains(n))throw new InvalidDataException("Missing "+n);
         if(seen.Contains("deciduous.dndmodel")||seen.Contains("palm.dndmodel")||seen.Contains("pine.dndmodel"))throw new InvalidDataException("Retired high-poly trees must not ship");
         if(!seen.Contains("tent.dndmodel"))throw new InvalidDataException("Missing supplied tent model");
         foreach(string season in new[]{"spring","summer","fall","winter"})foreach(string extension in new[]{"bin","dndtex"})if(!seen.Contains(extension=="bin"?"floor-"+season+".bin":"floor-"+season+(seen.Contains("floor-outdoor-neutral.dndtex")?"-1.dndtex":"-0.dndtex")))throw new InvalidDataException("Missing seasonal terrain asset");
