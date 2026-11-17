@@ -34,7 +34,9 @@ static class Program
             else if(args[0]=="sunshine-water")SunshineWaterAssets.Build(Root);
             else if(args[0]=="splash-check")SplashAssets.Check(Root);
             else if(args[0]=="splash-import-engine")SplashAssets.ImportEngine(Root,args[2]);
-            else if(args[0]=="terrain")RepeatFloorAssets.Build(Root);
+            else if(args[0]=="path-import")PathAssets.Import(Root,args[2]);
+            else if(args[0]=="path-assets"||args[0]=="path-check")PathAssets.Build(Root);
+            else if(args[0]=="terrain"){RepeatFloorAssets.Build(Root);PathAssets.Build(Root);}
             else if(args[0]=="terrain-check")TerrainChecks.Run(Root);
             else if(args[0]=="tree-audit")TreeRenderAudit.Run(Root,args[2]);
             else if(args[0]=="iso")Disc(args[2],args[3],args.Length>4?args[4]:null);
@@ -106,7 +108,7 @@ static class Program
     static void Art()
     {
         string dir=Path.Combine(Root,"out/disc");Directory.CreateDirectory(dir);
-        BrandAssets.Build(Root);RepeatFloorAssets.Build(Root);TerrainCliffAssets.CookTexture(Root);DroppedItemAssets.Build(Root);SunshineWaterAssets.Build(Root);
+        BrandAssets.Build(Root);RepeatFloorAssets.Build(Root);PathAssets.Build(Root);TerrainCliffAssets.CookTexture(Root);DroppedItemAssets.Build(Root);SunshineWaterAssets.Build(Root);
         byte[] image=Banner(96);File.WriteAllBytes(Path.Combine(dir,"savebanner.rgb5a3"),image);File.WriteAllBytes(Path.Combine(dir,"saveicon.rgb5a3"),Banner(32));
     }
     static void Disc(string dolPath,string commit,string? output=null)
@@ -198,6 +200,7 @@ static class Program
             var d=AnimalTown.BuildingCatalog.Get(type);foreach(string model in new[]{d.Exterior,d.Door,d.Floor,d.North,d.East,d.South,d.West})
                 if(!seen.Contains(model+"-tex128.dndmodel"))throw new InvalidDataException("Missing building model "+model);
         }
+        if(!seen.Contains(PathAssets.DiscName))throw new InvalidDataException("Missing painted path texture");
         if(!seen.Contains("cliff-soil.dndtex"))throw new InvalidDataException("Missing shared cliff soil texture");
         foreach(string waterAsset in new[]{SunshineWaterAssets.DiscName,"sunshine-wave.dndtex","sunshine-distortion.dndtex"})
             if(!seen.Contains(waterAsset))throw new InvalidDataException("Missing authored Sunshine water asset: "+waterAsset);

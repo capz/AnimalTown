@@ -6,8 +6,8 @@ using Hypercube;
 // a cliff, wet-sand tint or UV/normal seam keeps independent vertices.
 internal sealed class TerrainIndexBuffer
 {
-    internal const int MaximumVertices=AnimalTown.TerrainStream.Width*AnimalTown.TerrainStream.Height*4;
-    internal const int MaximumIndices=AnimalTown.TerrainStream.Width*AnimalTown.TerrainStream.Height*6;
+    internal const int MaximumVertices=AnimalTown.TerrainStream.Width*AnimalTown.TerrainStream.Height*12;
+    internal const int MaximumIndices=AnimalTown.TerrainStream.Width*AnimalTown.TerrainStream.Height*30;
     internal VertexPositionNormalColorTexture[] Vertices=new VertexPositionNormalColorTexture[0];
     internal ushort[] Indices=new ushort[0];
     internal int VertexCount {get;private set;}
@@ -19,6 +19,13 @@ internal sealed class TerrainIndexBuffer
         if(Indices.Length<IndexCount+6){int size=Math.Min(MaximumIndices,Math.Max(6,Indices.Length*2));var next=new ushort[size];Array.Copy(Indices,next,IndexCount);Indices=next;Grew(counters);}
         ushort ia=Vertex(a,counters),ib=Vertex(b,counters),ic=Vertex(c,counters),id=Vertex(d,counters);
         Indices[IndexCount++]=ia;Indices[IndexCount++]=ib;Indices[IndexCount++]=ic;Indices[IndexCount++]=ia;Indices[IndexCount++]=ic;Indices[IndexCount++]=id;
+    }
+    internal void Triangle(VertexPositionNormalColorTexture a,VertexPositionNormalColorTexture b,VertexPositionNormalColorTexture c,RenderCounters? counters=null)
+    {
+        if(IndexCount>MaximumIndices-3)throw new InvalidOperationException("Terrain section index budget exceeded");
+        if(Indices.Length<IndexCount+3){int size=Math.Min(MaximumIndices,Math.Max(6,Indices.Length*2));var next=new ushort[size];Array.Copy(Indices,next,IndexCount);Indices=next;Grew(counters);}
+        ushort ia=Vertex(a,counters),ib=Vertex(b,counters),ic=Vertex(c,counters);
+        Indices[IndexCount++]=ia;Indices[IndexCount++]=ib;Indices[IndexCount++]=ic;
     }
     private ushort Vertex(VertexPositionNormalColorTexture value,RenderCounters? counters)
     {

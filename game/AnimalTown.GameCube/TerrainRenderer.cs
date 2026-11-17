@@ -11,6 +11,7 @@ using Hypercube.GameCube;
 // The old rolling builder remains available only for explicit profiler controls.
 internal sealed class TerrainRenderer : IDisposable
 {
+    private readonly PathTextureResidency paths=new PathTextureResidency();
     private TerrainArchive? archive;
     private bool legacy=false; // Default: immutable ARAM archive and fixed MEM1 views.
     internal bool SuspendForSave()=>!legacy&&archive!=null&&archive.SuspendForSave();
@@ -75,7 +76,8 @@ internal sealed class TerrainRenderer : IDisposable
     private bool appliedGroundMipmaps;
     private int appliedGroundMipDistance=-1;
     internal int RenderSeason=>season;
-    internal int GroundSlot(GameState state,int x,int z)=>FloorStrips.At(state,data,x,z,0);
+    internal int BaseGroundSlot(GameState state,int x,int z)=>FloorStrips.BaseAt(state,data,x,z,0);
+    internal int GroundSlot(GameState state,int x,int z)=>FloorStrips.BaseAt(state,data,x,z,0);
     internal Material GroundMaterial(int slot)=>materials[slot];
     internal TerrainRenderer()
     {
@@ -101,6 +103,7 @@ internal sealed class TerrainRenderer : IDisposable
         Array.Clear(batch,0,batch.Length);batchCount=0;
         // Cloud/water effects borrow texture bindings, so retire them before
         // releasing the cache leases supplying their ground and seabed art.
+        materials[TownPaths.Material].Texture=null;paths.Dispose();
         waterMaterial.Dispose();soil.Dispose();
         for(int i=0;i<textures.Length;i++)if(textures[i]!=null){TextureCache.Release(textures[i]!);textures[i]=null;}
         for(int i=0;i<materials.Length;i++){materials[i].Texture=null;materials[i].SecondaryTexture=null;}
@@ -119,8 +122,8 @@ internal sealed class TerrainRenderer : IDisposable
         int next=TerrainTiles.Season(month,SeasonOverride>=0?SeasonOverride:forced);bool changed=next!=season;
         if(changed){
             string name="floor-"+TerrainTiles.SeasonName(next);data=File.ReadAllBytes("dvd:/"+name+".bin");FloorStrips.Validate(data);
-            for(int i=0;i<textures.Length;i++)if(textures[i]!=null){TextureCache.Release(textures[i]!);textures[i]=null;materials[i].Texture=null;}
-            slots=FloorStrips.Read(data,12);
+            for(int i=0;i<textures.Length;i++)if(textures[i]!=null){materials[TownPaths.Material].Texture=null;TextureCache.Release(textures[i]!);textures[i]=null;materials[i].Texture=null;}
+            slots=FloorStrips.Read(data,12);if(slots>TownPaths.Material)throw new InvalidOperationException("Path material slot overlaps floor metadata");
             if(FloorStrips.Read(data,4)==2)waterMaterial.SetTerrainTint(FloorStrips.Tint(data,FloorStrips.Read(data,24+TerrainTiles.Water*20)));
             for(int i=0;i<slots;i++){
                 int source=FloorStrips.TextureSlot(data,i);bool neutral=FloorStrips.Read(data,4)==2&&source==0;
@@ -163,6 +166,7 @@ internal sealed class TerrainRenderer : IDisposable
             for(int i=0;i<sections.Length;i++){sections[i]?.Dispose();sections[i]=null;}
             stream.Reset();legacy=nextLegacy;
             if(!legacy){archive=new TerrainArchive();archive.Reset();}
+            if(cachedTown!=state.Town)paths.Prepare(false,materials[TownPaths.Material],null);
             cachedTown=state.Town;cachedTerrainVersion=state.Town.TerrainVersion;
             resetting=false;
         }
@@ -183,6 +187,7 @@ internal sealed class TerrainRenderer : IDisposable
             while(work<8&&Clock.Timestamp<deadline){if(!shadows.Advance())break;work++;}
             gallery.PrepareGallery(state,this,cliffPreview);
             VisibleTriangles=gallery.Triangles+archive.Triangles+oceanWaves.Triangles;visibleGroundMask=archive.GroundMask;RejectedQuads=0;
+            PreparePaths();
             return;
         }
         int steps=0;long selectAt=FrameProfile.Start();stream.Prepare(state.X,state.Z);
@@ -209,7 +214,10 @@ internal sealed class TerrainRenderer : IDisposable
             var section=sections[i]!;VisibleTriangles+=section.Triangles+(waterMaterial.IsSunshine?section.Water.BedTriangles:0);
             visibleGroundMask|=section.GroundMask|section.Walls.GroundMask;
         }
+        PreparePaths();
     }
+    private void PreparePaths()=>paths.Prepare((visibleGroundMask&(1UL<<TownPaths.Material))!=0,materials[TownPaths.Material],textures[0]?.Pages[0]);
+    internal void ReleasePaths()=>paths.Prepare(false,materials[TownPaths.Material],null);
     private bool AdvanceGroundTexture()
     {
         // Draw marks the first preview frame. Its EndFrame has retired before
@@ -235,7 +243,7 @@ internal sealed class TerrainRenderer : IDisposable
         var preview=textures[0]!;
         int previewBytes=preview.Bytes;
         for(int i=0;i<slots;i++)if(FloorStrips.TextureSlot(data,i)==0)materials[i].Texture=full.Pages[0];
-        textures[0]=full;
+        textures[0]=full;if(paths.Bytes==0)materials[TownPaths.Material].Texture=full.Pages[0];
         groundLoad=GroundLoad.Complete;
         int before=GraphicsDevice.Default.NativeBytes;
         TextureCache.Release(preview,evict:true);
@@ -358,7 +366,7 @@ internal sealed class TerrainRenderer : IDisposable
             }else DrawArchiveWater(renderer);
             AddArchive(renderer,soil.Material,106);
             NativeShadows.Scope(1);
-            try{for(int slot=0;slot<slots;slot++)if((visibleGroundMask&(1UL<<slot))!=0)AddArchive(renderer,materials[slot],slot);}
+            try{for(int slot=0;slot<slots;slot++)if((visibleGroundMask&(1UL<<slot))!=0)AddArchive(renderer,materials[slot],slot);if((visibleGroundMask&(1UL<<TownPaths.Material))!=0)AddArchive(renderer,materials[TownPaths.Material],TownPaths.Material);}
             finally{NativeShadows.Scope(0);}
             gallery.Draw(renderer,ScrollTransform,this);
             if(sunshine)DrawArchiveWater(renderer);
@@ -371,7 +379,8 @@ internal sealed class TerrainRenderer : IDisposable
         NativeShadows.Scope(1);
         try{
             if(GroundRingActive)groundRing!.Draw(renderer,materials[SharedFlatMaterial],ScrollTransform);
-            for(int slot=0;slot<slots;slot++){
+            for(int drawSlot=0;drawSlot<=slots;drawSlot++){
+                int slot=drawSlot==slots?TownPaths.Material:drawSlot;
                 ulong mask=1UL<<slot;if((visibleGroundMask&mask)==0)continue;
                 for(int i=0;i<stream.Count;i++)if(stream.Visible[i]){
                     var section=sections[i]!;

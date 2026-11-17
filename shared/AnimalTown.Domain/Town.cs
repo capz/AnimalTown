@@ -37,6 +37,7 @@ public sealed class Town
     // Fine cells support furniture/plant footprints within each screen tile.
     public readonly byte[] Tiles;
     public readonly byte[] Elevation;
+    public readonly TownPaths Paths;
     public int TerrainVersion {get;private set;}
     public int ShadowVersion {get;private set;}
     public void NotifyCastersChanged(){ShadowVersion++;}
@@ -56,7 +57,7 @@ public sealed class Town
     // to it. Other mutable records remain private to this validation town.
     internal Town(int seed,Town? snapshot)
     {
-        Seed=seed;Tiles=snapshot==null?new byte[Cells]:snapshot.Tiles;Elevation=snapshot==null?new byte[Cells]:snapshot.Elevation;
+        Seed=seed;Tiles=snapshot==null?new byte[Cells]:snapshot.Tiles;Elevation=snapshot==null?new byte[Cells]:snapshot.Elevation;Paths=new TownPaths();if(snapshot!=null)Array.Copy(snapshot.Paths.Packed,Paths.Packed,TownPaths.PackedBytes);
         string[] phrases={"tails up","little leaf","sky high","soft paws","dig deep","good cheer"};
         for(int i=0;i<6;i++){
             int x=10+i*11+(i==3?3:0);string name=VillagerNames.Generate(seed,i);
@@ -83,6 +84,7 @@ public sealed class Town
         for(int i=0;i<6;i++)Building(Residents[i].HomeX,Residents[i].HomeZ,3,3);
         TerrainElevation.Generate(this);
         TownGenerator.Populate(this);
+        TownPathPlanner.Generate(this);
         NotifyTerrainChanged();
     }
     private void Building(int x,int z,int w,int h)
@@ -90,7 +92,7 @@ public sealed class Town
     public bool InReserve(int x,int z)=>x>=HouseX&&x<HouseX+15&&z>=HouseZ&&z<HouseZ+13;
     public bool ValidPlot(int x,int z)
     {
-        for(int j=0;j<13;j++)for(int i=0;i<15;i++)if(At(x+i,z+j)!=0||TerrainElevation.Mode(this,x+i,z+j)!=0)return false;
+        for(int j=0;j<13;j++)for(int i=0;i<15;i++)if(At(x+i,z+j)!=0||TerrainElevation.Mode(this,x+i,z+j)!=0||(x!=HouseX||z!=HouseZ)&&Paths.At(x+i,z+j)!=0)return false;
         return true;
     }
     public int FindGround(int x,int z,int kind=-1)

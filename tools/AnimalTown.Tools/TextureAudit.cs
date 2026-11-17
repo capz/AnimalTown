@@ -47,9 +47,10 @@ internal static class TextureAudit
                 if(width!=512||height!=256||TexturePixels.Int(bytes,8)!=4||bytes.Length!=32+SplashAssets.Bytes)throw new InvalidDataException("Splash texture exceeds one-shot RGB565 budget");
                 records.Add(new{source="dvd:/"+Path.GetFileName(path),sourceSha=Convert.ToHexString(SHA256.HashData(bytes)),width,height,contentWidth=384,contentHeight=256,residentBytes=SplashAssets.Bytes,policy="private-one-shot-no-cache"});continue;
             }
-            if(Path.GetFileName(path).StartsWith("floor-",StringComparison.Ordinal)||Path.GetFileName(path)=="cliff-soil.dndtex"){
+            if(Path.GetFileName(path).StartsWith("floor-",StringComparison.Ordinal)||Path.GetFileName(path)=="cliff-soil.dndtex"||Path.GetFileName(path)==PathAssets.DiscName){
                 bool ground=Path.GetFileName(path)!="cliff-soil.dndtex";
                 string policy=Path.GetFileName(path) switch {
+                    PathAssets.DiscName=>"path64-full-mips-repeat-demand-evict-v1",
                     NeutralFloorAssets.FullTexture=>"floor256-full-mips-repeat-tinted-v6",
                     NeutralFloorAssets.PreviewTexture=>"floor64-full-mips-repeat-tinted-preview-v1",
                     "cliff-soil.dndtex"=>"cliff-soil-mip2-repeat-clamp-v1",

@@ -53,7 +53,9 @@ internal static class FrameProfile
         detail[10]=Math.Min(65535,native[2]);detail[11]=Math.Min(65535,native[3]);detail[12]=Math.Min(65535,native[4]);
         detail[13]=Math.Min(65535,Counters.BufferGrowths);detail[14]=Math.Min(65535,RecycledSections);detail[15]=0;
         for(int i=0;i<15;i++)detail[15]^=detail[i];
+        int pathIndex=AaStudy.CaptureIndex;PathProfile.Record(pathIndex,current,native);
         AaStudy.Record(current[12],current[10],current[11],current[1],Counters.DrawSubmissions,triangles);
+        PathProfile.Flush(pathIndex);
     }
     internal static void Draw(Draw2D ui)
     {
