@@ -1338,7 +1338,7 @@ def committed_card_sequence(path, expected_day=None, details=False):
                                     name=base+str(candidate)
                                     try:
                                         part=files[name];pi=record(part,kind)
-                                        if pi[0] not in ((4,6) if i==0 else (4,)) or pi[1:4]!=(identity[1],sequence,identity[3]) or len(part)!=length or pi[4]!=crc:continue
+                                        if pi[0] not in ((4,6,7) if i==0 else (4,)) or pi[1:4]!=(identity[1],sequence,identity[3]) or len(part)!=length or pi[4]!=crc:continue
                                         selected=name;break
                                     except (KeyError,ValueError,struct.error):continue
                                 if selected is None:raise ValueError('Missing exact referenced revision')
@@ -1350,7 +1350,7 @@ def committed_card_sequence(path, expected_day=None, details=False):
                             for kind,name in enumerate(names):
                                 part=files[name];part_identity=record(part,kind if kind<4 else kind+1)
                                 expected_length,expected_crc=struct.unpack_from('<II',commit,28+kind*8)
-                                if part_identity[0] not in ((4,6) if kind==0 else (identity[0],)) or part_identity[1:4]!=identity[1:4] or len(part)!=expected_length or part_identity[4]!=expected_crc:
+                                if part_identity[0] not in ((4,6,7) if kind==0 else (identity[0],)) or part_identity[1:4]!=identity[1:4] or len(part)!=expected_length or part_identity[4]!=expected_crc:
                                     raise ValueError('Mixed save generation')
                         if identity[2]>best:
                             best=identity[2];town=files[names[0]];best_day=struct.unpack_from('<i',town,40)[0]
