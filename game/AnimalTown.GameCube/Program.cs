@@ -454,6 +454,14 @@ internal sealed class TownGame : IDisposable
     internal void Input(ControllerState p)
     {
         if(!resourcesReady||!modelSceneReady||room==0&&!terrain.Ready){if(loadingFailed&&session.Draft!=null&&p.B.WasPressed)ExitToTitle=true;return;}
+        if(DebugMenuSettings.Read(p)){
+            if(!DebugMenuSettings.Visible){
+                if(menuTab==TestingTab){menuTab=SettingsTab;selected=0;}
+                if(returnToMenu&&returnMenuTab==TestingTab){returnMenuTab=SettingsTab;returnMenuSelection=0;}
+                if(menuTab==SettingsTab)selected=Math.Min(selected,4);
+            }
+            saveStatus=UserOptionsStorage.Status;return;
+        }
         if(session.Draft!=null){OnboardingInput(p);return;}
         bool chord=p.L.IsHeld&&p.R.IsHeld;
         if(chord&&p.Z.IsHeld&&p.DPadDown.WasPressed){terrain.FreezeMotion=!terrain.FreezeMotion;return;}
@@ -472,24 +480,24 @@ internal sealed class TownGame : IDisposable
         bool up=direction==MenuNavigation.Up,down=direction==MenuNavigation.Down,left=direction==MenuNavigation.Left,right=direction==MenuNavigation.Right;
         if(screen=="menu"&&menuTab==TestingTab&&selected==20&&!chord){
             if(left||right){renderDebug.AdjustRim(right?1:-1);return;}
-            if(p.Z.WasPressed){renderDebug.ResetRim();return;}
+            if(p.X.WasPressed){renderDebug.ResetRim();return;}
         }
         if(screen=="menu"&&menuTab==TestingTab&&selected==23&&!chord){
             if(left||right){renderDebug.AdjustGroundMipDistance(right?1:-1);return;}
-            if(p.Z.WasPressed){renderDebug.ResetGroundMipDistance();return;}
+            if(p.X.WasPressed){renderDebug.ResetGroundMipDistance();return;}
         }
         if(screen=="menu"&&menuTab==TestingTab&&selected==24&&!chord){
             if(left||right){renderDebug.CycleWaterStyle();return;}
-            if(p.Z.WasPressed){renderDebug.ResetWaterStyle();return;}
+            if(p.X.WasPressed){renderDebug.ResetWaterStyle();return;}
         }
         if(screen=="menu"&&menuTab==TestingTab&&selected==29&&!chord){
             if(left||right){UiNoiseSettings.Adjust(right?1:-1);return;}
-            if(p.Z.WasPressed){UiNoiseSettings.Reset();return;}
+            if(p.X.WasPressed){UiNoiseSettings.Reset();return;}
         }
         if(screen=="menu"&&menuTab==TestingTab&&(selected==25||selected==26)&&!chord){
             int option=selected==25?DevConfig.TreeNoiseStrength:DevConfig.TreeNoiseScale;
             if(left||right){debugConfig.Adjust(option,right?1:-1);return;}
-            if(p.Z.WasPressed){debugConfig.Reset(option);return;}
+            if(p.X.WasPressed){debugConfig.Reset(option);return;}
         }
         if(p.L.IsHeld&&p.R.IsHeld&&p.Z.WasPressed){FrameProfile.Enabled=!FrameProfile.Enabled;return;}
         if(p.L.IsHeld&&p.R.IsHeld&&p.Y.WasPressed){ToggleModelPath();return;}
@@ -540,13 +548,13 @@ internal sealed class TownGame : IDisposable
         {
             if(down)selected=(selected+5)%state.Capacity;if(up)selected=(selected+state.Capacity-5)%state.Capacity;
             if(right)selected=(selected+1)%state.Capacity;if(left)selected=(selected+state.Capacity-1)%state.Capacity;
-            if(screen=="menu"&&p.R.WasPressed){menuTab=1;selected=0;return;}if(screen=="menu"&&p.L.WasPressed){menuTab=tabs.Length-1;selected=0;return;}
+            if(screen=="menu"&&p.R.WasPressed){menuTab=1;selected=0;return;}if(screen=="menu"&&p.L.WasPressed){menuTab=MenuTabCount-1;selected=0;return;}
             if(Press(p)&&state.Pockets[selected]!=0){if(screen=="sell"){if(Catalog.Has(state.Pockets[selected],ItemFlags.Sell))Say("Hearth",state.Sell(selected)?"Thank you! Acorns added to your wallet.":"Your wallet is full.");}else{slot=selected;screen="item";selected=0;}}return;
         }
         int count=screen=="shop"?state.Town.StockCount:screen=="post"?7:screen=="store"?8:screen=="mail"?Math.Max(1,state.MailCount):screen=="lost"?Math.Max(1,LostCount()):TabCount();
         if(down)selected=(selected+1)%count;if(up)selected=(selected+count-1)%count;
-        if(screen=="menu"&&(p.R.WasPressed||right)){menuTab=(menuTab+1)%tabs.Length;selected=0;}
-        if(screen=="menu"&&(p.L.WasPressed||left)){menuTab=(menuTab+tabs.Length-1)%tabs.Length;selected=0;}
+        if(screen=="menu"&&(p.R.WasPressed||right)){menuTab=(menuTab+1)%MenuTabCount;selected=0;}
+        if(screen=="menu"&&(p.L.WasPressed||left)){menuTab=(menuTab+MenuTabCount-1)%MenuTabCount;selected=0;}
         if(!Press(p))return;
         if(screen=="sell"){Say("Hearth",state.Sell(selected)?"Thank you! Acorns added to your wallet.":"I cannot buy that, or your wallet is full.");return;}
         if(screen=="shop"){Say("Hearth",state.Buy(selected)?"Thank you for shopping!":"You need enough acorns and a free pocket.");return;}
@@ -558,7 +566,8 @@ internal sealed class TownGame : IDisposable
         { int index=LostIndex(selected);Say("Town hall",state.ClaimLost(index,state.ActiveProfile)?"Recovered!":"Your pockets are full, or the item is reserved.");return; }
         if(screen=="menu")MenuAction();
     }
-    private int TabCount()=>menuTab==0?state.Capacity:menuTab==1?7:menuTab==2?Catalog.EntryCount:menuTab==3?7:menuTab==4?7:menuTab==TestingTab?TestingRows:6;
+    private int MenuTabCount=>DebugMenuSettings.Visible?tabs.Length:tabs.Length-1;
+    private int TabCount()=>menuTab==0?state.Capacity:menuTab==1?7:menuTab==2?Catalog.EntryCount:menuTab==3?7:menuTab==4?7:menuTab==TestingTab?TestingRows:DebugMenuSettings.Visible?6:5;
     private void ToggleModelPath()
     {int next=indexedModels?0:1;if(NativeRenderProbe.Indexed(next)!=next)throw new InvalidOperationException("Model renderer switch failed");indexedModels=!indexedModels;}
     private int LostCount(){int c=0;for(int i=0;i<state.Town.GroundCount;i++)if(state.Town.Ground[i].Kind==4)c++;return c;}
@@ -606,7 +615,7 @@ internal sealed class TownGame : IDisposable
         if(menuTab==4){PostAction();return;}
         if(menuTab==TestingTab){TestingAction();return;}
         if(menuTab!=SettingsTab)return;
-        if(selected==5){menuTab=TestingTab;selected=0;return;}
+        if(selected==5&&DebugMenuSettings.Visible){menuTab=TestingTab;selected=0;return;}
         if(selected==0){SaveFromMenu();}else if(selected==1){Say("Controls","Stick / D-pad: walk / menus. L/R: tabs. B: run / back. A: interact / select. X: backpack. Y: map. Z: tool. START: settings. Choose Save now to save.");}
         else if(selected==2)Say("About","AnimalTown / "+BuildInfo.Version+" / hypercube-engine. Original homebrew for Nintendo GameCube.");
         else if(selected==3){Say("Calendar","Console RTC / day "+day+". New days begin at 06:00.");}
@@ -1126,7 +1135,7 @@ internal sealed class TownGame : IDisposable
         int total=screen=="menu"?TabCount():screen=="shop"?state.Town.StockCount:screen=="mail"?Math.Max(1,state.MailCount):screen=="lost"?Math.Max(1,LostCount()):screen=="store"?8:7;
         bool compact=screen=="menu"&&(menuTab==SettingsTab||menuTab==TestingTab);int page=compact?9:8,step=compact?24:29;float rowScale=compact?1.2f:1.4f;int first=selected/page*page;
         for(int i=first;i<Math.Min(total,first+page);i++){float y=131+(i-first)*step;if(i==selected){Rounded(57,y,520,step-2,(step-2)*.5f,new Color32(221,231,188));Strong("> "+RowLabel(i),68,y,ink,rowScale);}else Text("  "+RowLabel(i),68,y,ink,rowScale);}
-        Text(screen=="menu"&&menuTab==TestingTab&&(selected==25||selected==26||selected==29)?"Left/Right: adjust   A: increase   Z: reset":screen=="menu"&&menuTab==TestingTab&&selected==20?"Left/Right: 5%   A: +5%   Z: reset":screen=="menu"&&menuTab==TestingTab&&selected==23?"Left/Right: 1 square   A: +1   Z: Auto":screen=="menu"&&menuTab==TestingTab&&selected==24?"A / Left/Right: switch   Z: Wind Waker":"Stick / D-pad choose   L/R tabs   A select   B close",65,392,ink,1);
+        Text(screen=="menu"&&menuTab==TestingTab&&(selected==25||selected==26||selected==29)?"Left/Right: adjust   A: increase   X: reset":screen=="menu"&&menuTab==TestingTab&&selected==20?"Left/Right: 5%   A: +5%   X: reset":screen=="menu"&&menuTab==TestingTab&&selected==23?"Left/Right: 1 square   A: +1   X: Auto":screen=="menu"&&menuTab==TestingTab&&selected==24?"A / Left/Right: switch   X: Wind Waker":"Stick / D-pad choose   L/R tabs   A select   B close",65,392,ink,1);
         if(screen=="menu"&&menuTab==SettingsTab){
             Text("Manual saves only. Choose Save now to write the card.",65,331,ink,1);
             Text(saveStatusText.Get(saveStatus),65,357,ink,1);

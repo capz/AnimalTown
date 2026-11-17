@@ -1,13 +1,14 @@
 # Tree-noise debug controls
 
-The title screen's **Debug configuration** includes:
+Press Z three times to show the normally hidden debug menu. The title screen's
+**Debug configuration** includes:
 
 - **Tree noise strength:** 0–300%, in 10% steps. 100% keeps the approved look;
   0% removes the texture and shows the original vertex colours.
 - **Tree noise scale:** 25–400%, in 25% steps. Larger percentages make the
   features larger, with fewer repeats across a tree; 100% is the original scale.
 
-Use A to increase, Left/Right to adjust, and Z to reset either control to 100%.
+Use A to increase, Left/Right to adjust, and X to reset either control to 100%.
 B saves title-screen changes in the existing `dev_config` card file.
 
 During play, open **START → Debug / testing** for the same controls. Changes

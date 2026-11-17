@@ -27,6 +27,7 @@ internal sealed class TitleScreen : IDisposable
     private string status="";
     private const float BodyScale=1.2f,HelpScale=1;
     private const int DebugPageSize=6;
+    private int MenuCount=>options.ShowDebugMenus?4:3;
     private string statusSource="",statusLine1="",statusLine2="";
     private float statusWidth;
     private TitleScreen(DevConfig config,UserOptions options)
@@ -37,26 +38,30 @@ internal sealed class TitleScreen : IDisposable
         DebugOverlay.WriteLine("ANIMALTOWN TITLE READY (town assets deferred)");
         while(true){
             title.Draw();RuntimeOptions.Wait();Controller.Update();var p=Controller.GetState(0);
+            if(DebugMenuSettings.Read(p)){
+                if(!options.ShowDebugMenus){title.Save();title.debugOpen=false;title.selected=Math.Min(title.selected,title.MenuCount-1);}
+                title.status=UserOptionsStorage.Status;continue;
+            }
             int direction=title.navigation.Read(title.confirmDelete?"delete-town":title.optionsOpen?"title-options":title.debugOpen?"dev-config":"title",0,p.Stick.X,p.Stick.Y,(int)p.PressedButtons,Clock.Timestamp,true);
             if(title.optionsOpen){title.OptionsInput(direction,p.A.WasPressed,p.B.WasPressed);continue;}
             if(title.debugOpen){
                 if(p.B.WasPressed||p.Start.WasPressed){title.Save();title.debugOpen=false;continue;}
                 if(direction==MenuNavigation.Up)title.debugSelected=(title.debugSelected+title.rows.Length-1)%title.rows.Length;
                 if(direction==MenuNavigation.Down)title.debugSelected=(title.debugSelected+1)%title.rows.Length;
-                if(p.A.WasPressed||direction==MenuNavigation.Left||direction==MenuNavigation.Right||p.Z.WasPressed){
+                if(p.A.WasPressed||direction==MenuNavigation.Left||direction==MenuNavigation.Right||p.X.WasPressed){
                     int row=title.rows[title.debugSelected];
-                    if(row==DevConfig.Count){if(p.Z.WasPressed)UiNoiseSettings.Reset();else UiNoiseSettings.Adjust(direction==MenuNavigation.Left?-1:1);continue;}
-                    if(p.Z.WasPressed&&DevConfig.IsSlider(row))config.Reset(row);
-                    else if(!p.Z.WasPressed)config.Adjust(row,direction==MenuNavigation.Left?-1:1);
+                    if(row==DevConfig.Count){if(p.X.WasPressed)UiNoiseSettings.Reset();else UiNoiseSettings.Adjust(direction==MenuNavigation.Left?-1:1);continue;}
+                    if(p.X.WasPressed&&DevConfig.IsSlider(row))config.Reset(row);
+                    else if(!p.X.WasPressed)config.Adjust(row,direction==MenuNavigation.Left?-1:1);
                     else continue;
                     title.dirty=true;DevConfigStorage.ApplyGlobal(config);
                 }
                 continue;
             }
-            if(direction==MenuNavigation.Up)title.selected=(title.selected+3)%4;
-            if(direction==MenuNavigation.Down)title.selected=(title.selected+1)%4;
+            if(direction==MenuNavigation.Up)title.selected=(title.selected+title.MenuCount-1)%title.MenuCount;
+            if(direction==MenuNavigation.Down)title.selected=(title.selected+1)%title.MenuCount;
             if(!p.A.WasPressed&&!(p.Start.WasPressed&&title.selected==0))continue;
-            if(title.selected==3){title.debugOpen=true;continue;}
+            if(title.selected==3&&options.ShowDebugMenus){title.debugOpen=true;continue;}
             if(title.selected==2){
                 title.optionsHeading=UiFont.Load("gorditas-bold");title.optionsOpen=true;title.optionRow=0;title.ResetOptionChoice();
                 title.optionsStatus=VideoOptions.Status.Length>0?VideoOptions.Status:UserOptionsStorage.Status;continue;
@@ -94,7 +99,8 @@ internal sealed class TitleScreen : IDisposable
         logo.Draw(ui,new RectF(0,0,logo.SourceWidth,logo.SourceHeight),new RectF(90,102,460,115),TitleArt.Ink);
         const string tagline="A little life, well rooted.";
         font.Draw(ui,tagline,(640-font.Measure(tagline,1.1f))/2,212,TitleArt.Ink,1.1f);
-        MenuRow(0,"Start",244);MenuRow(1,"Update",286);MenuRow(2,"Options",328);MenuRow(3,"Debug configuration",370);
+        MenuRow(0,"Start",244);MenuRow(1,"Update",286);MenuRow(2,"Options",328);
+        if(options.ShowDebugMenus)MenuRow(3,"Debug configuration",370);
         if(optionsOpen)DrawOptions();
         else if(debugOpen)DrawDebug();
         else if(status.Length>0)DrawStatus(status,70,410,500,true);
@@ -196,7 +202,7 @@ internal sealed class TitleScreen : IDisposable
         string page=(first+1)+"-"+Math.Min(rows.Length,first+DebugPageSize)+" / "+rows.Length;
         font.Draw(ui,page,558-font.Measure(page,HelpScale),90,TitleArt.Ink,HelpScale);
         font.Draw(ui,"A / Left / Right: change",74,342,TitleArt.Ink,HelpScale);
-        font.Draw(ui,"Z: reset slider   B: save and close",74,371,TitleArt.Ink,HelpScale);
+        font.Draw(ui,"X: reset slider   B: save and close",74,371,TitleArt.Ink,HelpScale);
         DrawStatus(rows[debugSelected]==DevConfig.Count?"Session only; resets on restart.":dirty?"Changes will be saved to dev config.":DevConfigStorage.Status,74,404,492);
     }
     // Reflow only when a message changes. Keep two readable lines instead of

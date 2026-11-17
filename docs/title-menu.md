@@ -29,7 +29,12 @@ After identity selection, the dot background and sprout cover staged game
 loading. See [shared town profiles](shared-town-profiles.md). A held confirmation button cannot accept the next game
 screen because the controller edge was consumed by the title.
 
-The title has four entries: Start, Update, Options and Debug configuration.
+The title normally has three entries: Start, Update and Options. Press Z three
+times consecutively to toggle Debug configuration and the in-game debug entry/tab.
+The visibility flag is stored in console preferences, defaults to hidden for new
+or v1 records, and survives restart and town deletion. Other inputs interrupt the
+sequence; holding Z does not repeat it. Hiding an open debug panel closes it and
+preserves its settings, while navigation skips hidden rows and tabs.
 Up/Down selects and A activates; START also activates the focused Start option.
 
 Options opens a cream modal with Video, Language and Data sections. Video offers
@@ -68,7 +73,7 @@ loading until deletion is retried in Options. Deletion does not construct a town
 or load models. The options heading/font is released when the modal closes.
 
 Debug configuration opens a modal above the dimmed title. Inside it, Up/Down
-selects a paged setting; A or Left/Right changes it; Z resets the rim or
+selects a paged setting; A or Left/Right changes it; X resets the rim or
 mip-distance slider. B (or START) saves changed settings and closes the modal. The record's memory-card title is `dev config`. Its versioned,
 checksummed payload is separate from the town commit set and never increments a
 town sequence. Missing/corrupt/unavailable settings use the disc defaults and

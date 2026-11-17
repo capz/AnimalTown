@@ -12,7 +12,7 @@ def region(data,box):
     return b''.join(data[(y*800+left)*3:(y*800+right)*3] for y in range(top,bottom))
 auto=pixels('mip-default-auto-menu');one=pixels('mip-one-menu');ten=pixels('mip-ten-menu');reset=pixels('mip-reset-auto-menu')
 label=(90,251,410,273)
-if region(auto,label)!=region(reset,label):raise AssertionError('Z did not restore the default Auto label')
+if region(auto,label)!=region(reset,label):raise AssertionError('X did not restore the default Auto label')
 if len({region(p,label) for p in (auto,one,ten)})!=3:raise AssertionError('Numeric mip labels did not change')
 if region(pixels('mip-default-on-menu'),(90,227,350,249))==region(pixels('mip-off-menu'),(90,227,350,249)):raise AssertionError('Ground mip enable label did not change')
 def marker(stem):

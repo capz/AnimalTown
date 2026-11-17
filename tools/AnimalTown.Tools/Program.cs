@@ -116,6 +116,7 @@ static class Program
         Text(bnr,0x1820,32,"AnimalTown");Text(bnr,0x1840,32,"AnimalTown contributors");Text(bnr,0x1860,64,"AnimalTown / "+commit);Text(bnr,0x18a0,64,"AnimalTown contributors");Text(bnr,0x18e0,128,"A rolling village life game. Version "+commit);
         File.WriteAllBytes(Path.Combine(disc,"opening.bnr"),bnr);
         File.WriteAllText(Path.Combine(disc,"BUILD.txt"),"AnimalTown\nBuild version: "+commit+"\n"+File.ReadAllText(Path.Combine(Root,"out/build-revisions.txt")));
+        DiscVersionFile.Write(disc,commit);
         byte[] dol=File.ReadAllBytes(dolPath),app=File.ReadAllBytes(Path.Combine(Root,"out/native/apploader.img"));ValidateDol(dol);
         SdkApploader.Validate(app);
         if(!File.Exists(Path.Combine(disc,"sdk-apploader-LICENSE.txt")))throw new InvalidDataException("SDK apploader license missing; run tools/build-game.ps1");
@@ -165,6 +166,12 @@ static class Program
             if(end<0||Encoding.ASCII.GetString(h,0x20,end-0x20)!="AnimalTown / "+expectedVersion)
                 throw new InvalidDataException("Embedded release version differs from the build identity");
         }
+        int titleEnd=Array.IndexOf(h,(byte)0,0x20,0x1e0);
+        if(titleEnd<0)throw new InvalidDataException("Disc title is not terminated");
+        string title=Encoding.ASCII.GetString(h,0x20,titleEnd-0x20);
+        const string titlePrefix="AnimalTown / ";
+        if(!title.StartsWith(titlePrefix,StringComparison.Ordinal))throw new InvalidDataException("Disc release identity missing");
+        string discVersion=expectedVersion??title.Substring(titlePrefix.Length);
         int dolAt=(int)Read(h,0x420),fstAt=(int)Read(h,0x424),length=(int)Read(h,0x428);if(length<12||length>1024*1024||fstAt<=dolAt)throw new InvalidDataException("FST location invalid");
         byte[] dol=new byte[fstAt-dolAt];f.Position=dolAt;f.ReadExactly(dol);ValidateDol(dol);
         byte[] fst=new byte[length];f.Position=fstAt;f.ReadExactly(fst);int count=(int)Read(fst,8);if(count<2||count>1024||count*12>length)throw new InvalidDataException("FST root invalid");
@@ -176,8 +183,12 @@ static class Program
             if(!seen.Add(n)||offset%32768!=0||offset<previous||(long)offset+size>f.Length)throw new InvalidDataException("FST range invalid");previous=offset+size;
             if(n=="buildings.bin"){byte[] descriptor=new byte[size];f.Position=offset;f.ReadExactly(descriptor);AnimalTown.BuildingCatalog.Configure(descriptor);}
             if(n=="opening.bnr"){byte[] b=new byte[size];f.Position=offset;f.ReadExactly(b);if(b.Length!=6496||Encoding.ASCII.GetString(b,0,4)!="BNR1")throw new InvalidDataException("Banner invalid");}
+            if(n=="version.md"){
+                if(size>64)throw new InvalidDataException("ISO version.md exceeds its 64-byte limit");
+                byte[] version=new byte[size];f.Position=offset;f.ReadExactly(version);DiscVersionFile.Verify(version,discVersion);
+            }
         }
-        foreach(string n in new[]{"opening.bnr","BUILD.txt","runtime.cfg","savebanner.rgb5a3","saveicon.rgb5a3","gorditas-bold.dndtex","gorditas-bold.metrics","wordmark.dndtex","item-icons.dndtex","cat.dndmodel","fox.dndmodel","bunny.dndmodel","giraffe.dndmodel","hamster.dndmodel","spaniel.dndmodel","building.dndmodel"})if(!seen.Contains(n))throw new InvalidDataException("Missing "+n);
+        foreach(string n in new[]{"opening.bnr","BUILD.txt","version.md","runtime.cfg","savebanner.rgb5a3","saveicon.rgb5a3","gorditas-bold.dndtex","gorditas-bold.metrics","wordmark.dndtex","item-icons.dndtex","cat.dndmodel","fox.dndmodel","bunny.dndmodel","giraffe.dndmodel","hamster.dndmodel","spaniel.dndmodel","building.dndmodel"})if(!seen.Contains(n))throw new InvalidDataException("Missing "+n);
         if(seen.Contains("deciduous.dndmodel")||seen.Contains("palm.dndmodel")||seen.Contains("pine.dndmodel"))throw new InvalidDataException("Retired high-poly trees must not ship");
         if(!seen.Contains("tent.dndmodel"))throw new InvalidDataException("Missing supplied tent model");
         foreach(string season in new[]{"spring","summer","fall","winter"})foreach(string extension in new[]{"bin","dndtex"})if(!seen.Contains(extension=="bin"?"floor-"+season+".bin":"floor-"+season+(seen.Contains("floor-outdoor-neutral.dndtex")?"-1.dndtex":"-0.dndtex")))throw new InvalidDataException("Missing seasonal terrain asset");

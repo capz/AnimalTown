@@ -1,5 +1,19 @@
 using System;
 
+// Count press edges, not held frames. Neutral/release frames preserve a run;
+// any other input breaks it. Completing a run starts a fresh three-press run.
+internal sealed class DebugMenuGesture
+{
+    private int presses;
+    internal bool Read(bool zPressed,bool otherInput)
+    {
+        if(otherInput){presses=0;return false;}
+        if(!zPressed)return false;
+        if(++presses<3)return false;
+        presses=0;return true;
+    }
+}
+
 // Allocation-free menu directions, shared by the D-pad and main stick.
 internal sealed class MenuNavigation
 {
