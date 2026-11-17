@@ -1,0 +1,315 @@
+{
+  "scope": "Offline encoding of existing artwork; no in-game roads or hardware measurements.",
+  "method": "Pillow RGBA center crop, BOX reduction; production FloorTexture.Encode full chain to 4x4. Neutral remap matches NeutralFloorAssets; RGB MSE is base-level only.",
+  "pillow_version": "12.3.0",
+  "dotnet_sdk": "8.0.426",
+  "encoder_sources": {
+    "shared/AnimalTown.Domain/FloorTexture.cs": "83b9a04ed6d7ebc81edf1565e9892b664f82059697d6612298c7f8d7baab1b64",
+    "shared/AnimalTown.Domain/TexturePixels.cs": "92ac059c18c74b19d540b51444534758ec6a605e523e1240ee43c296c920b011",
+    "shared/AnimalTown.Domain/TextureResolution.cs": "b7bdec3210619b2388fee9f119e7d315d2dd3cac30e2c61d04c236f7916272ed"
+  },
+  "inputs": [
+    {
+      "id": "current-neutral-256",
+      "source": "assets/textures/environment/ground/outdoor-floor-neutral.png",
+      "source_sha256": "b592a7ad7bac80b7fc240ff81f4a17412963e5e92ab89958b06a3498da959481",
+      "crop_xyxy": null,
+      "edge": 256,
+      "neutral_brightness_remap": true
+    },
+    {
+      "id": "stone_pavement-spring-64",
+      "source": "assets/textures/environment/transitions/stone_pavement/atlases/spring_stone_pavement_9slice.png",
+      "source_sha256": "3e487d7db79205af88f5f631fdf5e7b0d3d81d11aef2cbc404f90256f200f17e",
+      "crop_xyxy": [
+        256,
+        256,
+        512,
+        512
+      ],
+      "edge": 64,
+      "neutral_brightness_remap": false
+    },
+    {
+      "id": "stone_pavement-spring-128",
+      "source": "assets/textures/environment/transitions/stone_pavement/atlases/spring_stone_pavement_9slice.png",
+      "source_sha256": "3e487d7db79205af88f5f631fdf5e7b0d3d81d11aef2cbc404f90256f200f17e",
+      "crop_xyxy": [
+        256,
+        256,
+        512,
+        512
+      ],
+      "edge": 128,
+      "neutral_brightness_remap": false
+    },
+    {
+      "id": "stone_pavement-fall-64",
+      "source": "assets/textures/environment/transitions/stone_pavement/atlases/fall_stone_pavement_9slice.png",
+      "source_sha256": "1feba73166491793290fb46123b33bb4867dc047b8f6e9dee159e599d16c0fb1",
+      "crop_xyxy": [
+        256,
+        256,
+        512,
+        512
+      ],
+      "edge": 64,
+      "neutral_brightness_remap": false
+    },
+    {
+      "id": "stone_pavement-fall-128",
+      "source": "assets/textures/environment/transitions/stone_pavement/atlases/fall_stone_pavement_9slice.png",
+      "source_sha256": "1feba73166491793290fb46123b33bb4867dc047b8f6e9dee159e599d16c0fb1",
+      "crop_xyxy": [
+        256,
+        256,
+        512,
+        512
+      ],
+      "edge": 128,
+      "neutral_brightness_remap": false
+    },
+    {
+      "id": "stone_pavement-winter-64",
+      "source": "assets/textures/environment/transitions/stone_pavement/atlases/winter_stone_pavement_9slice.png",
+      "source_sha256": "8b661b4aa9b0edd39f5359223534541c109bd1f5bdaba878cc1bc8f657450f89",
+      "crop_xyxy": [
+        256,
+        256,
+        512,
+        512
+      ],
+      "edge": 64,
+      "neutral_brightness_remap": false
+    },
+    {
+      "id": "stone_pavement-winter-128",
+      "source": "assets/textures/environment/transitions/stone_pavement/atlases/winter_stone_pavement_9slice.png",
+      "source_sha256": "8b661b4aa9b0edd39f5359223534541c109bd1f5bdaba878cc1bc8f657450f89",
+      "crop_xyxy": [
+        256,
+        256,
+        512,
+        512
+      ],
+      "edge": 128,
+      "neutral_brightness_remap": false
+    },
+    {
+      "id": "terracotta-spring-64",
+      "source": "assets/textures/environment/transitions/terracotta/atlases/spring_terracotta_9slice.png",
+      "source_sha256": "c574f52087884a051e860134b86707ec320d186be201578530834894b8cff8d4",
+      "crop_xyxy": [
+        256,
+        256,
+        512,
+        512
+      ],
+      "edge": 64,
+      "neutral_brightness_remap": false
+    },
+    {
+      "id": "terracotta-spring-128",
+      "source": "assets/textures/environment/transitions/terracotta/atlases/spring_terracotta_9slice.png",
+      "source_sha256": "c574f52087884a051e860134b86707ec320d186be201578530834894b8cff8d4",
+      "crop_xyxy": [
+        256,
+        256,
+        512,
+        512
+      ],
+      "edge": 128,
+      "neutral_brightness_remap": false
+    },
+    {
+      "id": "terracotta-fall-64",
+      "source": "assets/textures/environment/transitions/terracotta/atlases/fall_terracotta_9slice.png",
+      "source_sha256": "1ea70eecae658e108af96c88262a083dfe299fcc3a0b40411de46af445c671c2",
+      "crop_xyxy": [
+        256,
+        256,
+        512,
+        512
+      ],
+      "edge": 64,
+      "neutral_brightness_remap": false
+    },
+    {
+      "id": "terracotta-fall-128",
+      "source": "assets/textures/environment/transitions/terracotta/atlases/fall_terracotta_9slice.png",
+      "source_sha256": "1ea70eecae658e108af96c88262a083dfe299fcc3a0b40411de46af445c671c2",
+      "crop_xyxy": [
+        256,
+        256,
+        512,
+        512
+      ],
+      "edge": 128,
+      "neutral_brightness_remap": false
+    },
+    {
+      "id": "terracotta-winter-64",
+      "source": "assets/textures/environment/transitions/terracotta/atlases/winter_terracotta_9slice.png",
+      "source_sha256": "fc364c30d1c8d9293610c897d92ba5ebc81f7df66dc57627c96709e247a20919",
+      "crop_xyxy": [
+        256,
+        256,
+        512,
+        512
+      ],
+      "edge": 64,
+      "neutral_brightness_remap": false
+    },
+    {
+      "id": "terracotta-winter-128",
+      "source": "assets/textures/environment/transitions/terracotta/atlases/winter_terracotta_9slice.png",
+      "source_sha256": "fc364c30d1c8d9293610c897d92ba5ebc81f7df66dc57627c96709e247a20919",
+      "crop_xyxy": [
+        256,
+        256,
+        512,
+        512
+      ],
+      "edge": 128,
+      "neutral_brightness_remap": false
+    }
+  ],
+  "results": [
+    {
+      "id": "current-neutral-256",
+      "format": "CMPR",
+      "mip_levels": 7,
+      "resident_pixel_bytes": 43712,
+      "package_bytes": 43744,
+      "base_level_rgb_mse_per_channel": 10.942718505859375,
+      "package_sha256": "3bc0f5bc9bc6e2bf18ac28e1d1d6775e8cb6239b2dd913eccaafc39911164b95"
+    },
+    {
+      "id": "stone_pavement-spring-64",
+      "format": "CMPR",
+      "mip_levels": 5,
+      "resident_pixel_bytes": 2752,
+      "package_bytes": 2784,
+      "base_level_rgb_mse_per_channel": 31.385091145833332,
+      "package_sha256": "b8aae862c7512e1763cf7438f337349ab3a3131ee705285bbf3a8bde29179cda"
+    },
+    {
+      "id": "stone_pavement-spring-128",
+      "format": "CMPR",
+      "mip_levels": 6,
+      "resident_pixel_bytes": 10944,
+      "package_bytes": 10976,
+      "base_level_rgb_mse_per_channel": 27.223917643229168,
+      "package_sha256": "3fbb58726659ec3508a57e10c415e1a0e501f33ff34cc99d27eb7daae56522df"
+    },
+    {
+      "id": "stone_pavement-fall-64",
+      "format": "CMPR",
+      "mip_levels": 5,
+      "resident_pixel_bytes": 2752,
+      "package_bytes": 2784,
+      "base_level_rgb_mse_per_channel": 35.796793619791664,
+      "package_sha256": "ed318dbaa2cca85fbb516f9e53640bb1d8d5463fb5f29ad956b145527537ec8b"
+    },
+    {
+      "id": "stone_pavement-fall-128",
+      "format": "CMPR",
+      "mip_levels": 6,
+      "resident_pixel_bytes": 10944,
+      "package_bytes": 10976,
+      "base_level_rgb_mse_per_channel": 30.478474934895832,
+      "package_sha256": "54606c09ed368a9e88421e43f877ebbf5db35a009c6f6cdc3b2c5db13c63104c"
+    },
+    {
+      "id": "stone_pavement-winter-64",
+      "format": "CMPR",
+      "mip_levels": 5,
+      "resident_pixel_bytes": 2752,
+      "package_bytes": 2784,
+      "base_level_rgb_mse_per_channel": 38.827555338541664,
+      "package_sha256": "18ef4c2e2e79e76b1abfc25bbc574ea400fdd24c68411576afc5bab0573a3078"
+    },
+    {
+      "id": "stone_pavement-winter-128",
+      "format": "CMPR",
+      "mip_levels": 6,
+      "resident_pixel_bytes": 10944,
+      "package_bytes": 10976,
+      "base_level_rgb_mse_per_channel": 31.722432454427082,
+      "package_sha256": "010758e6186e4c866ae074547b2ba72245ed8c662f2eb6bb48182c3d227d3798"
+    },
+    {
+      "id": "terracotta-spring-64",
+      "format": "CMPR",
+      "mip_levels": 5,
+      "resident_pixel_bytes": 2752,
+      "package_bytes": 2784,
+      "base_level_rgb_mse_per_channel": 22.839762369791668,
+      "package_sha256": "267f2775c41f150125a80ec0c1b13e6ef0e035f2911bb38d19a3e6de3a7644c9"
+    },
+    {
+      "id": "terracotta-spring-128",
+      "format": "CMPR",
+      "mip_levels": 6,
+      "resident_pixel_bytes": 10944,
+      "package_bytes": 10976,
+      "base_level_rgb_mse_per_channel": 18.65667724609375,
+      "package_sha256": "d042bdad2d934e9fcac89368573ef48ad9510fdfea176908f557a22673d04ddd"
+    },
+    {
+      "id": "terracotta-fall-64",
+      "format": "CMPR",
+      "mip_levels": 5,
+      "resident_pixel_bytes": 2752,
+      "package_bytes": 2784,
+      "base_level_rgb_mse_per_channel": 25.902913411458332,
+      "package_sha256": "6836b7f50ea0c644d37b97142d0b3671bb48de57d61170281ebe597f6bec6e4c"
+    },
+    {
+      "id": "terracotta-fall-128",
+      "format": "CMPR",
+      "mip_levels": 6,
+      "resident_pixel_bytes": 10944,
+      "package_bytes": 10976,
+      "base_level_rgb_mse_per_channel": 19.897745768229168,
+      "package_sha256": "0046ba52110be2c14a5fd3ee740f8b09047402965f644c982f57e987e3b5a7f2"
+    },
+    {
+      "id": "terracotta-winter-64",
+      "format": "CMPR",
+      "mip_levels": 5,
+      "resident_pixel_bytes": 2752,
+      "package_bytes": 2784,
+      "base_level_rgb_mse_per_channel": 26.880289713541668,
+      "package_sha256": "f0ebe242646e5b0f0d2e6028b9c1838695a5188efc1f6f0fdc48012070b7b251"
+    },
+    {
+      "id": "terracotta-winter-128",
+      "format": "CMPR",
+      "mip_levels": 6,
+      "resident_pixel_bytes": 10944,
+      "package_bytes": 10976,
+      "base_level_rgb_mse_per_channel": 20.5462646484375,
+      "package_sha256": "1f0eac94ae670ba615e33929270b5bfeedd04ac318cccda02eabe844aa0dfcbb"
+    }
+  ],
+  "layout_bounds": {
+    "64": {
+      "CMPR": 2752,
+      "RGB565": 10912
+    },
+    "128": {
+      "CMPR": 10944,
+      "RGB565": 43680
+    },
+    "256": {
+      "CMPR": 43712,
+      "RGB565": 174752
+    }
+  },
+  "limitations": [
+    "Crops are not validated as seamless tiles or approved road art.",
+    "Sizes exclude native object metadata, leases, geometry and transient decode arrays.",
+    "No runtime pruning, frame-time, shadow, snow or physical-console validation."
+  ]
+}
