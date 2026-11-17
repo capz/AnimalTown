@@ -46,6 +46,7 @@ typedef struct {
     int point_count,object_scope;
     int light_count,light_dirty;
     int terrain_ready,cloud_ready,cloud_dirty,cloud_x,cloud_z;
+    float cloud_scale,cloud_contrast,cloud_opacity;
     SuSupport support[(SU_CASTERS-SU_STATIC)*SU_SUPPORT_PAGES];
     uint8_t static_work[SU_BYTES];
     int static_page,static_caster,cursor,deferred,support_builds,support_hits;
@@ -57,6 +58,7 @@ typedef struct {
 static inline size_t su_storage_bytes(void){return ((sizeof(SuState)+31)&~(size_t)31)+SU_PAGES*SU_BYTES*2+SU_TERRAIN_BYTES*2;}
 static inline void su_init(SuState *s){
     memset(s,0,su_storage_bytes());s->span=8;s->static_page=-1;
+    s->cloud_scale=SU_CLOUD_SIDE/SU_CLOUD_PERIOD;s->cloud_contrast=1;s->cloud_opacity=SU_OPACITY/255.f;
     s->base=(uint8_t*)s+((sizeof(SuState)+31)&~(size_t)31);s->pixels=s->base+SU_PAGES*SU_BYTES;s->terrain=s->pixels+SU_PAGES*SU_BYTES;s->coverage=s->terrain+SU_TERRAIN_BYTES;
 }
 /* One terrain texture, shared by every section; no extra caster/page slots. */
@@ -129,17 +131,25 @@ static inline int su_floor(float x){int i=(int)x;return i-(i>x);}
 static inline int su_cloud_offset(int x,int z){return ((z/4)*(SU_CLOUD_SIDE/8)+x/8)*32+z%4*8+x%8;}
 static inline uint8_t su_cloud_sample(const SuState *s,float x,float z){
     if(!s->cloud_ready)return 0;
-    float fx=x*(SU_CLOUD_SIDE/SU_CLOUD_PERIOD)+s->cloud_x*.25f-.5f;
-    float fz=z*(SU_CLOUD_SIDE/SU_CLOUD_PERIOD)+s->cloud_z*.25f-.5f;
+    float fx=(x+s->cloud_x*.125f)*s->cloud_scale-.5f;
+    float fz=(z+s->cloud_z*.125f)*s->cloud_scale-.5f;
     int ix=su_floor(fx),iz=su_floor(fz);float tx=fx-ix,tz=fz-iz;
     int ax=ix&(SU_CLOUD_SIDE-1),bx=(ix+1)&(SU_CLOUD_SIDE-1),az=iz&(SU_CLOUD_SIDE-1),bz=(iz+1)&(SU_CLOUD_SIDE-1);
     float a=s->clouds[su_cloud_offset(ax,az)],b=s->clouds[su_cloud_offset(bx,az)];
     float c=s->clouds[su_cloud_offset(ax,bz)],d=s->clouds[su_cloud_offset(bx,bz)];
-    return (uint8_t)(((a+(b-a)*tx)*(1-tz)+(c+(d-c)*tx)*tz)*SU_OPACITY/255+.5f);
+    float value=(a+(b-a)*tx)*(1-tz)+(c+(d-c)*tx)*tz;
+    if(s->cloud_contrast!=1){value=(value-127.5f)*s->cloud_contrast+127.5f;if(value<0)value=0;if(value>255)value=255;}
+    return (uint8_t)(value*s->cloud_opacity+.5f);
+}
+static inline void su_cloud_style(SuState *s,float period,float edge,float strength){
+    float scale=SU_CLOUD_SIDE/period,contrast=255/edge,opacity=strength/255;
+    if(s->cloud_scale==scale&&s->cloud_contrast==contrast&&s->cloud_opacity==opacity)return;
+    s->cloud_scale=scale;s->cloud_contrast=contrast;s->cloud_opacity=opacity;s->cloud_dirty=1;
 }
 static inline void su_cloud_motion(SuState *s,float x,float z){
     // One eighth of a world metre: bounded updates with sub-texel drift.
-    int px=(int)(x*256),pz=(int)(z*256);
+    float units=SU_CLOUD_SIDE*8/s->cloud_scale;
+    int px=(int)(x*units),pz=(int)(z*units);
     if(px!=s->cloud_x||pz!=s->cloud_z){s->cloud_x=px;s->cloud_z=pz;s->cloud_dirty=1;}
 }
 static inline void su_lights(SuState *s,const float *sources,int count){

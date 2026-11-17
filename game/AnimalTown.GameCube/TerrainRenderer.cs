@@ -267,7 +267,7 @@ internal sealed class TerrainRenderer : IDisposable
         if(complete){at=FrameProfile.Start();stream.Complete();stream.Prepare(state.X,state.Z);FrameProfile.DetailEnd(0,at);}
         return true;
     }
-    internal void AnimateShadows(double seconds)=>clouds.Animate(seconds);
+    internal void AnimateShadows(double seconds,int month)=>clouds.Animate(seconds,TerrainTiles.Season(month,SeasonOverride>=0?SeasonOverride:forced));
     internal bool RoughOcean {get=>waterMaterial.RoughOcean;set=>waterMaterial.RoughOcean=value;}
     internal void Animate(double seconds)
     {

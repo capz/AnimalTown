@@ -1,7 +1,8 @@
 # Cloud shadows
 
 Clouds, cliffs, trees, buildings and villagers use the same coverage union and
-shadow tint: RGB (35,49,66), with peak opacity 66/255. Coverage combines by
+shadow tint: RGB (35,49,66), with maximum opacity 66/255. Winter clouds use a
+lower peak of 33/255; other casters retain their existing intensity. Coverage combines by
 maximum, so a cloud passing over another shadow does not darken it twice.
 There is no separate cloud material, ambient tint, GPU cloud texture or TEV
 program. Existing receiving ground/cap/opaque-water draws sample the shared map
@@ -9,10 +10,21 @@ and apply the existing two shadow stages once. Indoors retain their actor shadow
 without outdoor clouds or cliffs.
 
 The original periodic 64×64 I8 cloud pattern occupies 4 KiB in the charged native
-buffer. It repeats every 32 logical metres and drifts at 0.6 / 0.3 m/s, independent
+buffer. Spring/autumn retain the original 32-metre repeat and contrast. Summer
+compresses the mask's transition range from 255 to 64 levels, giving stronger
+dark cores and the hardest edges while retaining the shared 66/255 maximum.
+Winter stretches the same mask to a 64-metre repeat and halves its opacity:
+transitions span twice the world distance without a blur texture.
+Drift remains 0.6 / 0.3 m/s in every season, independent
 of camera motion, terrain bending and landscape debug animation settings. The
 former 128 m repeat at 0.18 / 0.09 m/s made soft patches look like uniform dimming
-through the gameplay camera. Animation reuses a two-float managed array.
+through the gameplay camera. Animation reuses one five-float managed array:
+normalized drift, repeat distance, edge width and opacity. The calendar season,
+season preview and forced terrain-season setting all use the same selection.
+Season changes dirty the existing cloud composite; no pattern is regenerated,
+and static lamp/cliff data is retained. Three native parameters fit existing
+allocation padding, keeping the current host buffer at 522,016 bytes. Managed
+staging grows by 12 bytes; no per-frame allocation, texture or draw is added.
 
 The static cliff field and moving combined field each use 256×128 I8 (32 KiB).
 Together they occupy the same 64 KiB as the previous 256×256 cliff field, retaining
@@ -25,8 +37,8 @@ Drift is quantized to one eighth of a world metre, so the global field and affec
 pages refresh only when that phase changes, rather than every rendered frame.
 Vacated cloud coverage is restored from static data, avoiding trails. The global
 update is bounded; actor-page work retains its own deadline. The native allocation
-is 521,120 bytes in the host ABI, below 512 KiB, versus 517,024 before cloud
-integration. The old separate 4 KiB GPU cloud mask/effect is removed. These are
+is 522,016 bytes in the host ABI, below 512 KiB, including local-light staging.
+The old separate 4 KiB GPU cloud mask/effect is removed. These are
 allocation measurements, not whole-game MEM1 or hardware frame-time measurements.
 
 Cast shadows are always enabled. The title/session shadow and cloud-cover options,

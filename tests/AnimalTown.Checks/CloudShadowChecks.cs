@@ -11,9 +11,11 @@ internal static class CloudShadowChecks
             check(Math.Abs(v-CloudShadowPattern.Sample(px+1,pz))<65&&Math.Abs(v-CloudShadowPattern.Sample(px,pz+1))<65,"cloud edges remain soft including repeat seams");
         }
         check(min<10&&max>245,"cloud mask has both sunlit and shaded patches");
-        foreach(double seconds in new[]{-1e8,-1,0,1,86400,1e8})foreach(float speed in new[]{CloudShadowPattern.SpeedX,CloudShadowPattern.SpeedZ}){
-            float a=CloudShadowPattern.Offset(seconds,speed),b=CloudShadowPattern.Offset(seconds+.01,speed);float delta=b-a;delta-=(float)Math.Round(delta);
-            check(a>=0&&a<1&&Math.Abs(delta-speed*.01/CloudShadowPattern.WorldPeriod)<.000001,"cloud scrolling is bounded and continuous across long/negative sessions");
+        check(CloudShadowPattern.Period(3)==CloudShadowPattern.Period(1)*2&&CloudShadowPattern.Strength(3)==CloudShadowPattern.Strength(1)*.5f,"winter stretches the shared mask twice as wide at half summer strength");
+        check(CloudShadowPattern.EdgeWidth(1)<CloudShadowPattern.EdgeWidth(0)&&CloudShadowPattern.EdgeWidth(0)==CloudShadowPattern.EdgeWidth(2),"summer has the hardest edges while spring and autumn retain the original profile");
+        foreach(int season in new[]{0,1,2,3})foreach(double seconds in new[]{-1e8,-1,0,1,86400,1e8})foreach(float speed in new[]{CloudShadowPattern.SpeedX,CloudShadowPattern.SpeedZ}){
+            float period=CloudShadowPattern.Period(season),a=CloudShadowPattern.Offset(seconds,speed,period),b=CloudShadowPattern.Offset(seconds+.01,speed,period);float delta=b-a;delta-=(float)Math.Round(delta);
+            check(a>=0&&a<1&&Math.Abs(delta*period-speed*.01)<.00003,"seasonal cloud scaling preserves bounded scrolling and world-space wind speed");
         }
     }
 }

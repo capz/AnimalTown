@@ -897,7 +897,7 @@ internal sealed class TownGame : IDisposable
         terrain.GroundMipmaps=renderDebug.GroundMipmaps;terrain.GroundMipDistance=renderDebug.GroundMipDistance;
         cachedPlayerHeight=PlayerHeight();if(room==0)RenderView.Prepare(state.X,state.Z,cachedPlayerHeight);
         if(room!=0)indoorCamera.Configure(BuildingWorld.Definition(state,BuildingWorld.Building(room)));
-        if(room==0)terrain.AnimateShadows((Clock.Timestamp-sessionStart)/1000000.0);
+        if(room==0)terrain.AnimateShadows((Clock.Timestamp-sessionStart)/1000000.0,month);
         int environmentTint=room==0?WorldLighting.Tint(townClock.MinuteOfDay):0xffffff;
         int lampStrength=room==0?WorldLighting.Lamps(townClock.MinuteOfDay):0;
         townLights.Prepare(state,lampStrength);
