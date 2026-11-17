@@ -14,6 +14,8 @@ $p=Get-ValidationPlan -ChangedPaths @('tools/AnimalTown.Tools/TextureRepackerChe
 $p=Get-ValidationPlan -ChangedPaths @('shared/AnimalTown.Domain/NewDependency.cs');Assert ($p.managed.Count -eq 12 -and $p.backend) 'Unknown domain must be conservative'
 $p=Get-ValidationPlan -ChangedPaths @('new-production/file.xyz');Assert ($p.full -and $p.backend -and $p.native.Count -eq 7) 'Unknown production paths must fall back to all checks'
 $p=Get-ValidationPlan -ChangedPaths @('tools/native-shadow-union.h','tests/native-shadow-union.c');Assert (($p.native -join ',') -eq 'shadows' -and ($p.managed -join ',') -eq 'terrain' -and !$p.backend) 'Shadow union must include the native rasterizer checks'
+$p=Get-ValidationPlan -ChangedPaths @('shared/AnimalTown.Domain/CliffShadowMap.cs');Assert (($p.native -join ',') -eq 'shadows' -and ($p.managed -join ',') -eq 'terrain' -and $p.rendering.Count -eq 8 -and !$p.backend -and !$p.full) 'Cliff-mask changes need managed/GX/native layout coverage without database checks'
+$p=Get-ValidationPlan -ChangedPaths @('tests/AnimalTown.Checks/CliffShadowChecks.cs');Assert (($p.managed -join ',') -eq 'terrain' -and !$p.native.Count -and !$p.rendering.Count -and !$p.backend -and !$p.full) 'Cliff-mask fixture-only edits need their managed terrain suite'
 $p=Get-ValidationPlan -ChangedPaths @('.github/workflows/build-release.yml');Assert ($p.full -and $p.policy) 'Workflow changes must exercise gates'
 $p=Get-ValidationPlan -Full;Assert ($p.full -and $p.release -and $p.managed.Count -eq 12 -and $p.tooling.Count -eq 5 -and 'nkit' -in $p.tooling) 'Manual full validation incomplete'
 $p=Get-ValidationPlan -ChangedPaths @('game/AnimalTown.GameCube/MenuNavigation.cs','game/AnimalTown.GameCube/MenuNavigation.cs','game/AnimalTown.GameCube/WrappedText.cs');Assert (($p.managed -join ',') -eq 'menu,text') 'Union/deduplication incorrect'
@@ -56,4 +58,4 @@ foreach($path in @('shared/AnimalTown.Domain/BuildingPrompt.cs','tests/AnimalTow
     $p=Get-ValidationPlan -ChangedPaths @($path)
     Assert (($p.managed -join ',') -eq 'movement,life,saves,buildings' -and !$p.backend -and !$p.full -and !$p.rendering.Count) "Building entry routing must retain component coverage: $path"
 }
-Write-Host 'Validation routing checks passed (55 cases).'
+Write-Host 'Validation routing checks passed (57 cases).'

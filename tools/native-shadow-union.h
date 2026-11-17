@@ -11,12 +11,20 @@
 #define SU_VERTICES 288
 #define SU_PAGES 160 /* 39 footprints, each smaller than a page: <=156 pages. */
 #define SU_LOOKUP 512 /* Power of two; at most 160 live entries. */
-#define SU_SIDE 64
-#define SU_BYTES 4096
+#define SU_SIDE 32
+#define SU_INNER (SU_SIDE-2) /* One filtering gutter on each edge. */
+#define SU_BYTES (SU_SIDE*SU_SIDE)
 #define SU_OPACITY 66
-#define SU_TERRAIN_SIDE 512
-#define SU_TERRAIN_BYTES (SU_TERRAIN_SIDE*SU_TERRAIN_SIDE)
-#define SU_SUPPORT_BYTES ((66*66+7)/8)
+#define SU_TERRAIN_WIDTH 256
+#define SU_TERRAIN_HEIGHT 128
+#define SU_TERRAIN_TEXELS_PER_METRE 1.f
+#define SU_TERRAIN_BYTES (SU_TERRAIN_WIDTH*SU_TERRAIN_HEIGHT)
+#define SU_CLOUD_SIDE 64
+#define SU_CLOUD_BYTES (SU_CLOUD_SIDE*SU_CLOUD_SIDE)
+#define SU_CLOUD_PERIOD 32.f
+#define SU_WORLD_WIDTH 128 /* Must match Town.Width; the remaining columns are padding. */
+#define SU_SUPPORT_SIDE (SU_SIDE+2) /* One erosion sample outside each gutter. */
+#define SU_SUPPORT_BYTES ((SU_SUPPORT_SIDE*SU_SUPPORT_SIDE+7)/8)
 #define SU_SUPPORT_PAGES 4
 typedef struct {
     int count,profile,space,active,requested;
@@ -30,8 +38,9 @@ typedef struct {
     SuCaster caster[SU_CASTERS]; SuPage page[SU_PAGES];
     uint16_t lookup[SU_LOOKUP];
     uint8_t shapes[4*4096+1024];
-    uint8_t *terrain;
-    int terrain_ready;
+    uint8_t *terrain,*coverage;
+    uint8_t clouds[SU_CLOUD_BYTES];
+    int terrain_ready,cloud_ready,cloud_dirty,cloud_x,cloud_z;
     SuSupport support[(SU_CASTERS-SU_STATIC)*SU_SUPPORT_PAGES];
     uint8_t static_work[SU_BYTES];
     int static_page,static_caster,cursor,deferred,support_builds,support_hits;
@@ -40,14 +49,15 @@ typedef struct {
     int space,enabled,scope,overflow,changed,static_rasters,dynamic_rasters,layout_dirty;
     float span;
 } SuState;
-static inline size_t su_storage_bytes(void){return ((sizeof(SuState)+31)&~(size_t)31)+SU_PAGES*SU_BYTES*2+SU_TERRAIN_BYTES;}
+static inline size_t su_storage_bytes(void){return ((sizeof(SuState)+31)&~(size_t)31)+SU_PAGES*SU_BYTES*2+SU_TERRAIN_BYTES*2;}
 static inline void su_init(SuState *s){
     memset(s,0,su_storage_bytes());s->span=8;s->static_page=-1;
-    s->base=(uint8_t*)s+((sizeof(SuState)+31)&~(size_t)31);s->pixels=s->base+SU_PAGES*SU_BYTES;s->terrain=s->pixels+SU_PAGES*SU_BYTES;
+    s->base=(uint8_t*)s+((sizeof(SuState)+31)&~(size_t)31);s->pixels=s->base+SU_PAGES*SU_BYTES;s->terrain=s->pixels+SU_PAGES*SU_BYTES;s->coverage=s->terrain+SU_TERRAIN_BYTES;
 }
 /* One terrain texture, shared by every section; no extra caster/page slots. */
-static inline int su_terrain_offset(int x,int y){return ((y/4)*(SU_TERRAIN_SIDE/8)+x/8)*32+y%4*8+x%8;}
+static inline int su_terrain_offset(int x,int y){return ((y/4)*(SU_TERRAIN_WIDTH/8)+x/8)*32+y%4*8+x%8;}
 static inline void su_terrain_changed(SuState *s){
+    s->cloud_dirty=1;
     for(int i=0;i<SU_PAGES;i++)if(s->page[i].used&&s->page[i].space==0){
         s->page[i].static_dirty=s->page[i].dirty=1;
         s->page[i].base_blank=0;s->page[i].version=++s->serial;
@@ -58,21 +68,21 @@ static inline void su_terrain_reset(SuState *s){
     s->terrain_ready=0;memset(s->terrain,0,SU_TERRAIN_BYTES);su_terrain_changed(s);
 }
 static inline void su_terrain_publish(SuState *s){s->terrain_ready=1;su_terrain_changed(s);}
-static inline uint8_t su_terrain_sample(const SuState *s,float x,float z){
-    if(!s->terrain_ready)return 0;
-    float fx=x*2+.5f,fz=z*2+.5f;
-    if(fx<0||fz<0||fx>=SU_TERRAIN_SIDE-1||fz>=SU_TERRAIN_SIDE-1)return 0;
+static inline uint8_t su_field_sample(const uint8_t *field,float x,float z){
+    float fx=x*SU_TERRAIN_TEXELS_PER_METRE+.5f,fz=z*SU_TERRAIN_TEXELS_PER_METRE+.5f;
+    if(fx<0||fz<0||fx>=SU_TERRAIN_WIDTH-1||fz>=SU_TERRAIN_HEIGHT-1)return 0;
     int ix=(int)fx,iz=(int)fz;float tx=fx-ix,tz=fz-iz;
-    float a=s->terrain[su_terrain_offset(ix,iz)],b=s->terrain[su_terrain_offset(ix+1,iz)];
-    float c=s->terrain[su_terrain_offset(ix,iz+1)],d=s->terrain[su_terrain_offset(ix+1,iz+1)];
+    float a=field[su_terrain_offset(ix,iz)],b=field[su_terrain_offset(ix+1,iz)];
+    float c=field[su_terrain_offset(ix,iz+1)],d=field[su_terrain_offset(ix+1,iz+1)];
     return (uint8_t)((a+(b-a)*tx)*(1-tz)+(c+(d-c)*tx)*tz+.5f);
 }
+static inline uint8_t su_terrain_sample(const SuState *s,float x,float z){return s->terrain_ready?su_field_sample(s->terrain,x,z):0;}
 static inline void su_seed_terrain(const SuState *s,const SuPage *p,uint8_t *dest){
     memset(dest,0,SU_BYTES);
     if(p->space||!s->terrain_ready)return;
-    float step=s->span/62;
+    float step=s->span/SU_INNER;
     for(int y=0;y<SU_SIDE;y++)for(int x=0;x<SU_SIDE;x++)
-        dest[((y/4)*8+x/8)*32+y%4*8+x%8]=su_terrain_sample(s,p->x*s->span+(x-.5f)*step,p->z*s->span+(y-.5f)*step);
+        dest[((y/4)*(SU_SIDE/8)+x/8)*32+y%4*8+x%8]=su_terrain_sample(s,p->x*s->span+(x-.5f)*step,p->z*s->span+(y-.5f)*step);
 }
 static inline unsigned su_hash(int space,int x,int z){
     uint32_t h=(uint32_t)x*0x9e3779b1u^(uint32_t)z*0x85ebca6bu^(uint32_t)space*0xc2b2ae35u;
@@ -105,19 +115,54 @@ static inline int su_find_space(const SuState *s,int space,int x,int z){
     return -1;
 }
 static inline int su_find(const SuState *s,int x,int z){return su_find_space(s,s->space,x,z);}
-static inline int su_offset(int x,int y){return ((y/4)*8+x/8)*32+y%4*8+x%8;}
+static inline int su_offset(int x,int y){return ((y/4)*(SU_SIDE/8)+x/8)*32+y%4*8+x%8;}
 static inline int su_floor(float x){int i=(int)x;return i-(i>x);}
+static inline int su_cloud_offset(int x,int z){return ((z/4)*(SU_CLOUD_SIDE/8)+x/8)*32+z%4*8+x%8;}
+static inline uint8_t su_cloud_sample(const SuState *s,float x,float z){
+    if(!s->cloud_ready)return 0;
+    float fx=x*(SU_CLOUD_SIDE/SU_CLOUD_PERIOD)+s->cloud_x*.25f-.5f;
+    float fz=z*(SU_CLOUD_SIDE/SU_CLOUD_PERIOD)+s->cloud_z*.25f-.5f;
+    int ix=su_floor(fx),iz=su_floor(fz);float tx=fx-ix,tz=fz-iz;
+    int ax=ix&(SU_CLOUD_SIDE-1),bx=(ix+1)&(SU_CLOUD_SIDE-1),az=iz&(SU_CLOUD_SIDE-1),bz=(iz+1)&(SU_CLOUD_SIDE-1);
+    float a=s->clouds[su_cloud_offset(ax,az)],b=s->clouds[su_cloud_offset(bx,az)];
+    float c=s->clouds[su_cloud_offset(ax,bz)],d=s->clouds[su_cloud_offset(bx,bz)];
+    return (uint8_t)(((a+(b-a)*tx)*(1-tz)+(c+(d-c)*tx)*tz)*SU_OPACITY/255+.5f);
+}
+static inline void su_cloud_motion(SuState *s,float x,float z){
+    // One eighth of a world metre: bounded updates with sub-texel drift.
+    int px=(int)(x*256),pz=(int)(z*256);
+    if(px!=s->cloud_x||pz!=s->cloud_z){s->cloud_x=px;s->cloud_z=pz;s->cloud_dirty=1;}
+}
+static inline void su_cloud_prepare(SuState *s){
+    if(!s->cloud_dirty)return;
+    for(int y=0;y<SU_TERRAIN_HEIGHT;y++)for(int x=0;x<SU_TERRAIN_WIDTH;x++){
+        int at=su_terrain_offset(x,y);uint8_t a=s->terrain_ready?s->terrain[at]:0;
+        uint8_t b=x<=SU_WORLD_WIDTH+1?su_cloud_sample(s,(x-.5f)/SU_TERRAIN_TEXELS_PER_METRE,(y-.5f)/SU_TERRAIN_TEXELS_PER_METRE):0;
+        s->coverage[at]=a>b?a:b;
+    }
+    for(int i=0;i<SU_PAGES;i++)if(s->page[i].used&&!s->page[i].space)s->page[i].dirty=1;
+    s->cloud_dirty=0;
+}
+static inline void su_page_clouds(const SuState *s,const SuPage *p,uint8_t *dest){
+    if(p->space||!s->cloud_ready)return;
+    float step=s->span/SU_INNER;
+    for(int y=0;y<SU_SIDE;y++)for(int x=0;x<SU_SIDE;x++){
+        int at=su_offset(x,y);
+        uint8_t a=su_field_sample(s->coverage,p->x*s->span+(x-.5f)*step,p->z*s->span+(y-.5f)*step);
+        if(a>dest[at])dest[at]=a;
+    }
+}
 static inline void su_bounds(const SuCaster *c,float b[4]){
     if(c->profile==4){b[0]=c->x+.12f-.55f;b[1]=c->z+.1f-.55f;b[2]=b[0]+1.1f;b[3]=b[1]+1.1f;}
     else memcpy(b,c->bounds,16);
 }
 static inline int su_intersects(const SuState *s,const SuPage *p,const float b[4]){
-    float pad=s->span/62, x=p->x*s->span,z=p->z*s->span;
+    float pad=s->span/SU_INNER, x=p->x*s->span,z=p->z*s->span;
     return b[0]<x+s->span+pad&&b[2]>x-pad&&b[1]<z+s->span+pad&&b[3]>z-pad;
 }
 static inline void su_dirty(SuState *s,const SuCaster *c){
     if(!c->count)return;
-    float b[4];su_bounds(c,b);float pad=s->span/62;
+    float b[4];su_bounds(c,b);float pad=s->span/SU_INNER;
     int l=su_floor((b[0]-pad)/s->span),r=su_floor((b[2]+pad)/s->span),t=su_floor((b[1]-pad)/s->span),bot=su_floor((b[3]+pad)/s->span);
     for(int z=t;z<=bot;z++)for(int x=l;x<=r;x++){
         int at=su_find_space(s,c->space,x,z);if(at<0||!su_intersects(s,&s->page[at],b))continue;
@@ -168,14 +213,14 @@ static inline int su_clamp(int x,int max){return x<0?0:x>max?max:x;}
 static inline int su_bit(const uint8_t *bits,int at){return (bits[at>>3]>>(at&7))&1;}
 static inline void su_support_build(SuState *s,const SuPage *p,const SuCaster *c,uint8_t *valid){
     memset(valid,0,SU_SUPPORT_BYTES);s->support_builds++;
-    float step=s->span/62,inv=62/s->span,ox=p->x*s->span-1.5f*step,oz=p->z*s->span-1.5f*step;
+    float step=s->span/SU_INNER,inv=SU_INNER/s->span,ox=p->x*s->span-1.5f*step,oz=p->z*s->span-1.5f*step;
     for(int i=0;i<c->count;i+=3){
         const float *v=c->uv+i*2;float minX=v[0],maxX=v[0],minZ=v[1],maxZ=v[1];
         for(int k=2;k<6;k+=2){if(v[k]<minX)minX=v[k];if(v[k]>maxX)maxX=v[k];if(v[k+1]<minZ)minZ=v[k+1];if(v[k+1]>maxZ)maxZ=v[k+1];}
-        if(maxX<ox||minX>ox+65*step||maxZ<oz||minZ>oz+65*step)continue;
-        int l=su_clamp((int)((minX-ox)*inv),65),r=su_clamp((int)((maxX-ox)*inv)+1,65);
-        int t=su_clamp((int)((minZ-oz)*inv),65),b=su_clamp((int)((maxZ-oz)*inv)+1,65);
-        for(int y=t;y<=b;y++)for(int x=l;x<=r;x++)if(su_inside(ox+x*step,oz+y*step,v)){int at=y*66+x;valid[at>>3]|=(uint8_t)(1u<<(at&7));}
+        if(maxX<ox||minX>ox+(SU_SUPPORT_SIDE-1)*step||maxZ<oz||minZ>oz+(SU_SUPPORT_SIDE-1)*step)continue;
+        int l=su_clamp((int)((minX-ox)*inv),SU_SUPPORT_SIDE-1),r=su_clamp((int)((maxX-ox)*inv)+1,SU_SUPPORT_SIDE-1);
+        int t=su_clamp((int)((minZ-oz)*inv),SU_SUPPORT_SIDE-1),b=su_clamp((int)((maxZ-oz)*inv)+1,SU_SUPPORT_SIDE-1);
+        for(int y=t;y<=b;y++)for(int x=l;x<=r;x++)if(su_inside(ox+x*step,oz+y*step,v)){int at=y*SU_SUPPORT_SIDE+x;valid[at>>3]|=(uint8_t)(1u<<(at&7));}
     }
 }
 static inline const uint8_t *su_support(SuState *s,const SuPage *p,const SuCaster *c,uint8_t *local){
@@ -192,14 +237,14 @@ static inline const uint8_t *su_support(SuState *s,const SuPage *p,const SuCaste
 static inline void su_raster(SuState *s,const SuPage *p,const SuCaster *c,uint8_t *dest){
     float bounds[4];su_bounds(c,bounds);if(!su_intersects(s,p,bounds))return;
     uint8_t local[SU_SUPPORT_BYTES];const uint8_t *valid=su_support(s,p,c,local);
-    float step=s->span/62,inv=62/s->span,ox=p->x*s->span-1.5f*step,oz=p->z*s->span-1.5f*step;
-    int l=su_clamp((int)((bounds[0]-ox)*inv)-1,65),r=su_clamp((int)((bounds[2]-ox)*inv)+2,65);
-    int t=su_clamp((int)((bounds[1]-oz)*inv)-1,65),b=su_clamp((int)((bounds[3]-oz)*inv)+2,65);
+    float step=s->span/SU_INNER,inv=SU_INNER/s->span,ox=p->x*s->span-1.5f*step,oz=p->z*s->span-1.5f*step;
+    int l=su_clamp((int)((bounds[0]-ox)*inv)-1,SU_SUPPORT_SIDE-1),r=su_clamp((int)((bounds[2]-ox)*inv)+2,SU_SUPPORT_SIDE-1);
+    int t=su_clamp((int)((bounds[1]-oz)*inv)-1,SU_SUPPORT_SIDE-1),b=su_clamp((int)((bounds[3]-oz)*inv)+2,SU_SUPPORT_SIDE-1);
     /* Coverage is cached in world-page coordinates, independently of the
      * moving circle. Erode the union, preserving room mats/internal seams. */
-    for(int y=t<1?1:t;y<=b&&y<65;y++)for(int x=l<1?1:l;x<=r&&x<65;x++){
-        int k=y*66+x;
-        if(!su_bit(valid,k)||!su_bit(valid,k-1)||!su_bit(valid,k+1)||!su_bit(valid,k-66)||!su_bit(valid,k-65)||!su_bit(valid,k-67)||!su_bit(valid,k+66)||!su_bit(valid,k+65)||!su_bit(valid,k+67))continue;
+    for(int y=t<1?1:t;y<=b&&y<SU_SUPPORT_SIDE-1;y++)for(int x=l<1?1:l;x<=r&&x<SU_SUPPORT_SIDE-1;x++){
+        int k=y*SU_SUPPORT_SIDE+x;
+        if(!su_bit(valid,k)||!su_bit(valid,k-1)||!su_bit(valid,k+1)||!su_bit(valid,k-SU_SUPPORT_SIDE)||!su_bit(valid,k-SU_SUPPORT_SIDE+1)||!su_bit(valid,k-SU_SUPPORT_SIDE-1)||!su_bit(valid,k+SU_SUPPORT_SIDE)||!su_bit(valid,k+SU_SUPPORT_SIDE+1)||!su_bit(valid,k+SU_SUPPORT_SIDE-1))continue;
         uint8_t alpha=su_sample(s,c,ox+x*step,oz+y*step);int at=su_offset(x-1,y-1);if(alpha>dest[at])dest[at]=alpha;
     }
 }
@@ -221,6 +266,7 @@ static inline void su_static_work(SuState *s,int static_budget,SuCanWork can,voi
     }
 }
 static inline void su_prepare_budget(SuState *s,int static_budget,SuCanWork can,void *context){
+    su_cloud_prepare(s);
     s->changed=s->static_rasters=s->dynamic_rasters=s->support_builds=s->support_hits=s->deferred=0;
     for(int i=SU_STATIC;i<SU_CASTERS;i++){
         SuCaster *c=&s->caster[i];if(c->active!=c->requested){s->layout_dirty=1;su_dirty(s,c);c->active=c->requested;su_dirty(s,c);}
@@ -232,7 +278,7 @@ static inline void su_prepare_budget(SuState *s,int static_budget,SuCanWork can,
          * Bounded page ranges replace the pages-times-casters intersection scan. */
         for(int pass=0;pass<2;pass++)for(int j=0;j<SU_CASTERS;j++){
             SuCaster *c=&s->caster[j];if(!c->active||c->space!=s->space)continue;
-            float b[4];su_bounds(c,b);float pad=s->span/62;
+            float b[4];su_bounds(c,b);float pad=s->span/SU_INNER;
             int l=su_floor((b[0]-pad)/s->span),r=su_floor((b[2]+pad)/s->span),t=su_floor((b[1]-pad)/s->span),bot=su_floor((b[3]+pad)/s->span);
             for(int z=t;z<=bot;z++)for(int x=l;x<=r;x++){
                 int at=su_find(s,x,z);
@@ -269,11 +315,12 @@ static inline void su_prepare_budget(SuState *s,int static_budget,SuCanWork can,
         if(!su_can_work(can,context)){
             /* Erase old moving coverage rather than showing a trail. Keep the
              * page pending; round-robin scheduling gives every page a turn. */
-            if(!p->blank){memcpy(dest,base,SU_BYTES);p->blank=1;p->static_pending=0;p->publish=1;s->changed++;}
+            if(!p->blank||s->cloud_ready){memcpy(dest,base,SU_BYTES);su_page_clouds(s,p,dest);p->blank=1;p->static_pending=0;p->publish=1;s->changed++;}
             s->deferred++;continue;
         }
         memcpy(dest,base,SU_BYTES);
         for(int j=SU_STATIC;j<SU_CASTERS;j++){SuCaster *c=&s->caster[j];if(c->active&&c->space==s->space){su_raster(s,p,c,dest);s->dynamic_rasters++;}}
+        su_page_clouds(s,p,dest);
         p->dirty=0;p->blank=0;p->static_pending=0;p->publish=1;s->changed++;s->cursor=(i+1)%SU_PAGES;
     }
     if(can)su_static_work(s,static_budget,can,context);

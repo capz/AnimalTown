@@ -4,6 +4,7 @@ namespace AnimalTown;
 public sealed class DevConfig
 {
     public const int Count=30,TreeNoiseStrength=27,TreeNoiseScale=28,DiscardTerrainCacheWhenIndoorsIndex=29;
+    public const int SettingCount=Count-4;
     public readonly int[] Values=new int[Count];
     public DevConfig(int runtimeMode=0)
     {
@@ -14,7 +15,8 @@ public sealed class DevConfig
     }
     public int TreeNoiseStrengthPercent=>Values[TreeNoiseStrength]*10;
     public int TreeNoiseScalePercent=>(Values[TreeNoiseScale]+1)*25;
-    public static bool IsSetting(int row)=>row>=0&&row<Count&&row!=14&&row!=15;
+    // Retain retired shadow fields 7/8 in the card format, but never apply them.
+    public static bool IsSetting(int row)=>row>=0&&row<Count&&row!=7&&row!=8&&row!=14&&row!=15;
     public static bool IsSlider(int row)=>row==20||row==23||row==TreeNoiseStrength||row==TreeNoiseScale;
     public static int Maximum(int row)=>row==TreeNoiseStrength?30:row==TreeNoiseScale?15:row==8?2:row==10?5:row==18?4:row==20?200:row==23?10:row==14||row==15?0:1;
     public void Reset(int row){if(IsSlider(row))Values[row]=row==20?100:row==TreeNoiseStrength?10:row==TreeNoiseScale?3:0;}

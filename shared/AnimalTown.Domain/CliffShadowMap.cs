@@ -4,7 +4,7 @@ namespace AnimalTown;
 // the game uploads only that 32-byte tile, then publishes the completed texture.
 public sealed class CliffShadowMap
 {
-    public const int TextureSize=512,TexelsPerMetre=2,Opacity=66;
+    public const int TextureSize=256,TextureHeight=128,TexelsPerMetre=1,Opacity=66;
     public const float SunX=.6f,SunZ=.4f;
     public readonly byte[] Chunk=new byte[32];
     private readonly bool[] candidates=new bool[Town.Cells];
@@ -33,15 +33,16 @@ public sealed class CliffShadowMap
         while(tile<limit){
             int at=tile++,tx=at%Columns,tz=at/Columns;
             bool wanted=false;
-            for(int z=Math.Max(0,tz*2-1);z<=Math.Min(Town.Height-1,tz*2+1)&&!wanted;z++)
-                for(int x=Math.Max(0,tx*4-1);x<=Math.Min(Town.Width-1,tx*4+3);x++)if(candidates[z*Town.Width+x]){wanted=true;break;}
+            for(int z=Math.Max(0,(tz*4-1)/TexelsPerMetre);z<=Math.Min(Town.Height-1,(tz*4+3)/TexelsPerMetre)&&!wanted;z++)
+                for(int x=Math.Max(0,(tx*8-1)/TexelsPerMetre);x<=Math.Min(Town.Width-1,(tx*8+7)/TexelsPerMetre);x++)if(candidates[z*Town.Width+x]){wanted=true;break;}
             if(!wanted)continue;
             Array.Clear(Chunk,0,Chunk.Length);
             for(int y=0;y<4;y++)for(int x=0;x<8;x++){
                 float wx=(tx*8+x-.5f)/TexelsPerMetre,wz=(tz*4+y-.5f)/TexelsPerMetre;
                 int hits=0;
+                float sampleOffset=.25f/TexelsPerMetre;
                 for(int sy=0;sy<2;sy++)for(int sx=0;sx<2;sx++)
-                    if(Blocked(town,wx+(sx==0?-.125f:.125f),wz+(sy==0?-.125f:.125f)))hits++;
+                    if(Blocked(town,wx+(sx==0?-sampleOffset:sampleOffset),wz+(sy==0?-sampleOffset:sampleOffset)))hits++;
                 byte alpha=(byte)(hits*Opacity/4);Chunk[y*8+x]=alpha;
                 if(alpha!=0)ChunkReady=HasCoverage=true;
             }
@@ -56,7 +57,7 @@ public sealed class CliffShadowMap
         float receiver=GroundSurface.HeightAt(town,(int)x,(int)z,x,z);
         if(receiver>=TerrainElevation.Height-.02f)return false;
         // Sample toward the same fixed north-west sunlight as scenery shadows.
-        // Sixteen height samples bound work and resolve below the texture's .5m pitch.
+        // Sixteen height samples bound work and resolve below the texture's 1m pitch.
         for(int i=0;i<16;i++){
             float rise=(i+.5f)*((TerrainElevation.Height-receiver)/16);
             float px=x-SunX*rise,pz=z-SunZ*rise;

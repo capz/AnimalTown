@@ -20,7 +20,7 @@ internal sealed class TitleScreen : IDisposable
     private readonly DevConfig config;
     private readonly UserOptions options;
     private UiFont? optionsHeading;
-    private readonly int[] rows=new int[DevConfig.Count-1];
+    private readonly int[] rows=new int[DevConfig.SettingCount+1];
     private int selected,debugSelected,optionRow,optionChoice;
     private bool debugOpen,dirty,optionsOpen,confirmDelete,deleteFocus,deleting;
     private string optionsStatus="";
@@ -238,8 +238,7 @@ internal sealed class TitleScreen : IDisposable
             case 1:return "Model drawing: "+(value==1?"GX indexed":"Direct comparison");
             case 2:return "UV island colors: "+toggle;case 3:return "UV island outlines: "+toggle;
             case 4:return "Batched drawing: "+toggle;case 5:return "Batched text: "+toggle;
-            case 6:return "Actor rim lighting: "+toggle;case 7:return "Object / actor shadows: "+toggle;
-            case 8:return "Cloud cover: "+(value==0?"Clear":value==1?"Overcast":"Partial");
+            case 6:return "Actor rim lighting: "+toggle;
             case 9:return "Cliff preview: "+toggle;case 10:return "Water inspection: "+value+" / 5";
             case 11:return "Frame pacing: "+(value==0?"Yield":"Uncapped");case 12:return "Productive waits: "+toggle;case 13:return "Reuse frame clear: "+toggle;
             case 16:return "Rain preview: "+toggle;case 17:return "Rough ocean in rain: "+toggle;

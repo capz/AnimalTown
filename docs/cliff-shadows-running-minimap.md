@@ -7,12 +7,16 @@ coastal cliffs. Upper caps do not shadow themselves. Opaque water receives the
 terrain projection while retaining its two scrolling TEV layers; foam and
 vertical soil faces retain their existing rendering.
 
-A world-aligned 512×512 GX I8 mask uses two texels per metre and a one-pixel
+A world-aligned 256×128 GX I8 mask uses one texel per metre and a one-pixel
 gutter. Baking runs in bounded tile jobs on terrain revision changes, including
-during asset loading. Each upload is one 32-byte tile; one final texture flush
-publishes the completed field. Old coverage is hidden immediately on edits.
-The native shadow allocation grows by a fixed 256 KiB and remains below
-1.75 MiB; no additional caster slots, mask pages or per-cliff draw calls are
+during asset loading. Each upload is one 32-byte tile; the complete cliff source is published
+into the shared moving composite. Old coverage is hidden immediately on edits.
+The static field occupies 32 KiB; a second 32 KiB field merges moving clouds
+by maximum coverage. Together they retain the previous 64 KiB field budget inside the native shadow allocation, which remains
+below 512 KiB including the local object/actor masks and support data. Each texel
+retains four area samples scaled to its one-metre footprint, and GPU bilinear
+filtering softens the field over the same town coordinates. No additional caster
+slots, mask pages or per-cliff draw calls are
 created. Local scenery/character pages merge the field by maximum coverage, so
 overlapping shadows do not repeatedly darken the same ground. Steady movement
 does not rebake it.

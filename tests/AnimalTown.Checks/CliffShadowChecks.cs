@@ -24,7 +24,7 @@ internal static class CliffShadowChecks
             }
         }
         Block(TerrainElevation.Block);
-        var map=new CliffShadowMap();var packed=new byte[CliffShadowMap.TextureSize*CliffShadowMap.TextureSize];
+        var map=new CliffShadowMap();var packed=new byte[CliffShadowMap.TextureSize*CliffShadowMap.TextureHeight];
         void Bake(){
             Array.Clear(packed);map.Begin(t);int jobs=0;
             while(true){
@@ -38,8 +38,10 @@ internal static class CliffShadowChecks
         }
         byte Pixel(int x,int z)=>packed[((z/4)*(CliffShadowMap.TextureSize/8)+x/8)*32+z%4*8+x%8];
         Bake();
-        check(map.HasCoverage&&Pixel(85,83)==CliffShadowMap.Opacity,"packed mask contains the lower-ground cliff shadow");
-        check(Pixel(83,83)==0&&Pixel(79,83)==0,"packing leaves the upper cap and sun-facing ground clear");
+        check(packed.Length==32768&&CliffShadowMap.TexelsPerMetre==1,"rectangular cliff field retains one texel per logical metre and both filtering gutters");
+        check(map.HasCoverage&&Pixel(43,42)==CliffShadowMap.Opacity,"packed mask contains the lower-ground cliff shadow at its original world location");
+        check(Pixel(42,42)==0&&Pixel(40,42)==0,"packing leaves the upper cap and sun-facing ground clear");
+        check(packed.Any(x=>x>0&&x<CliffShadowMap.Opacity),"area samples preserve softened partial cliff coverage");
         foreach(byte alpha in packed)check(alpha<=CliffShadowMap.Opacity,"terrain coverage cannot exceed shared shadow opacity");
         t.Tiles[41*Town.Width+42]=(byte)Terrain.Sea;
         check(CliffShadowMap.Blocked(t,42.25f,41.25f),"opaque water can receive the cliff projection");
@@ -48,6 +50,9 @@ internal static class CliffShadowChecks
         check(!CliffShadowMap.Blocked(t,40.75f,41.25f)&&CliffShadowMap.Blocked(t,41.25f,41.25f),"coastal land and water halves keep independent receiver heights");
         Array.Fill(t.Tiles,(byte)Terrain.Grass);Bake();
         check(!map.HasCoverage&&packed.All(x=>x==0),"terrain removal rebuilds a completely clear mask");
+        for(int z=Town.Height-4;z<Town.Height-2;z++)for(int x=Town.Width-3;x<Town.Width-1;x++)t.Elevation[z*Town.Width+x]=TerrainElevation.Block;
+        Bake();
+        check(map.HasCoverage&&Pixel(Town.Width,Town.Height-2)>0,"coarse tile candidate selection retains shadows at the far town boundary");
         check(!CliffShadowMap.Blocked(t,-.1f,1)&&!CliffShadowMap.Blocked(t,Town.Width,1),"outside-world sampling is safe");
     }
 }

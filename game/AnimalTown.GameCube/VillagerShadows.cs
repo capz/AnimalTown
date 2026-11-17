@@ -20,7 +20,6 @@ internal sealed class VillagerShadows
     private Town? town;
     private int building=-1,jobRevision,cursor=1;
     private VillagerShadowPatch job;
-    internal bool Enabled=true;
     internal VillagerShadows()
     {
         for(int i=0;i<entries.Length;i++)entries[i]=new Entry();
@@ -40,7 +39,7 @@ internal sealed class VillagerShadows
     private bool Dirty(int i)=>entries[i].Active&&(!entries[i].Ready||!entries[i].Built.SameRegion(entries[i].Wanted));
     internal bool Advance()
     {
-        if(!Enabled||town==null)return false;
+        if(town==null)return false;
         if(building>=0&&(!entries[building].Active||entries[building].Revision!=jobRevision))building=-1;
         if(building<0){
             if(Dirty(0))building=0;
@@ -59,7 +58,7 @@ internal sealed class VillagerShadows
     {
         if(town==null)return;
         for(int i=0;i<entries.Length;i++){
-            var e=entries[i];bool active=Enabled&&e.Active&&e.Ready&&e.Count>0&&e.Built.Covers(town,e.Wanted,e.Flat);
+            var e=entries[i];bool active=e.Active&&e.Ready&&e.Count>0&&e.Built.Covers(town,e.Wanted,e.Flat);
             NativeShadows.Active(i+ObjectShadows.Capacity,active?1:0,e.Center);
         }
     }

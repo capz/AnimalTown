@@ -617,12 +617,12 @@ def submission_scenario():
         segment('travel-'+str(n),profile_seconds);os.write(controller,b'SET MAIN .5 .5\nRELEASE B\n')
     press('X');segment('backpack',profile_seconds);press('B')
     press('Y');segment('map',5);press('B')
-    # Session-only weather toggle through the visible debug menu (row 16).
+    # Session-only rain toggle (option 16, visible row 14 after shadow removal).
     press('START');press('R')
-    for _ in range(16):press('D_DOWN')
+    for _ in range(14):press('D_DOWN')
     press('A');press('B');segment('rain',profile_seconds)
     press('START');press('R')
-    for _ in range(16):press('D_DOWN')
+    for _ in range(14):press('D_DOWN')
     press('A');press('B')
     # Existing inspector selects the same NPC cottage in both builds.
     os.write(controller,b'PRESS L\nPRESS R\n');time.sleep(.2);press('A');os.write(controller,b'RELEASE L\nRELEASE R\n')
@@ -820,17 +820,17 @@ def testing_menu():
     for _ in range(5):press('D_DOWN')
     label('testing-settings-debug-entry',5);press('A')
     manual_only='--manual-save-only' in sys.argv
-    for row in range(1 if manual_only else 14):
+    for row in range(1 if manual_only else 12):
         original=label(f'testing-row-{row}-before',row)
         press('A');changed=label(f'testing-row-{row}-after',row)
         if original==changed:raise AssertionError(f'Testing row {row} did not change its displayed state')
-        # Restore the initial setting, including the three/six-state previews.
-        for step in range(2 if row==8 else 5 if row==10 else 1):
+        # Restore the initial setting, including the six-state water preview.
+        for step in range(5 if row==8 else 1):
             press('A');label(f'testing-row-{row}-restore-{step}',row)
-        if row==10:
+        if row==8:
             # A water preview must allow Start to reopen the menu while active.
             press('A');label('testing-water-active',row);press('B');time.sleep(15);press('START');press('R')
-            for _ in range(10):press('D_DOWN')
+            for _ in range(8):press('D_DOWN')
             label('testing-water-menu-return',row)
             for step in range(5):
                 press('A');label(f'testing-water-off-{step}',row)
@@ -865,7 +865,7 @@ def testing_menu():
         committed_card_sequence(card,expected_day=expected_day)
     saved=card_digest();press('B');press('START');press('B');time.sleep(5)
     if card_digest()!=saved:raise AssertionError('Closing/reopening Settings wrote another save')
-    (root/'testing-menu.txt').write_text('Completed onboarding with explicit Save & begin; Settings never saved automatically.\nVisible Settings entry opened Debug / testing.\n'+('Performance display toggled/restored.\n' if manual_only else 'All 14 debug toggles changed state and were restored; water preview allowed menu re-entry.\n')+f'{wait_seconds}s idle play preserved the card bytes.\n'+'Only Save now committed the next generation of records and their matching checksummed commit.\nReopening Settings left the saved generation unchanged.\n')
+    (root/'testing-menu.txt').write_text('Completed onboarding with explicit Save & begin; Settings never saved automatically.\nVisible Settings entry opened Debug / testing.\n'+('Performance display toggled/restored.\n' if manual_only else 'All 12 debug toggles changed state and were restored; water preview allowed menu re-entry.\n')+f'{wait_seconds}s idle play preserved the card bytes.\n'+'Only Save now committed the next generation of records and their matching checksummed commit.\nReopening Settings left the saved generation unchanged.\n')
 
 def building_view(name, indoors):
     screenshot(name)
@@ -1066,7 +1066,7 @@ def aram_residency_scenario():
     if 'ANIMALTOWN TERRAIN CACHE SUSPENDED' in logs()[baseline:]:raise AssertionError('Default-off terrain option suspended the cache')
     screenshot('aram-flag-off-indoor.png');leave('aram-flag-off-exited')
     set_debug_visibility(True)
-    # Testing has 31 rows; Up wraps to new row 30 after tree and UI grain rows.
+    # Up wraps to the final terrain-cache setting after tree and UI grain rows.
     press('START');press('R');press('D_UP');screenshot('aram-game-row30-off.png');press('A')
     report['ingame_saved_config']=config(True);screenshot('aram-game-row30-on.png');press('B')
     cold=len(logs());enter('aram-flag-on');guest('flag-on-indoor-steady',6)
@@ -1482,11 +1482,6 @@ with (root/'emulator.log').open('w') as log:
         elif '--cloud-shadows' in sys.argv:
             start_game(True)
             time.sleep(2);screenshot('cloud-partial-a.png');time.sleep(20);screenshot('cloud-partial-b.png')
-            def cloud_cover():
-                os.write(controller,b'PRESS L\nPRESS R\n');time.sleep(.2);press('D_RIGHT');os.write(controller,b'RELEASE L\nRELEASE R\n');time.sleep(2)
-            cloud_cover();screenshot('cloud-clear.png')
-            cloud_cover();screenshot('cloud-overcast.png')
-            cloud_cover();screenshot('cloud-restored.png')
             press('X');screenshot('cloud-menu.png');press('B')
             press('A');time.sleep(2);screenshot('cloud-indoor-a.png');time.sleep(8);screenshot('cloud-indoor-b.png')
             press('A');time.sleep(2);screenshot('cloud-exterior-return.png')
@@ -1519,12 +1514,9 @@ with (root/'emulator.log').open('w') as log:
         elif '--lighting' in sys.argv:
             start_game(True)
             os.write(controller,b'PRESS L\nPRESS R\n');time.sleep(.2);press('A');os.write(controller,b'RELEASE L\nRELEASE R\n');time.sleep(15)
-            # Z enables telemetry; while held, Y cycles both/off/rim/shadows.
-            os.write(controller,b'PRESS L\nPRESS R\nPRESS Z\n');time.sleep(1)
-            time.sleep(profile_seconds);building_view('lighting-both.png',False)
-            for name in ['off','rim','shadows','restored']:
-                press('Y');time.sleep(profile_seconds);screenshot('lighting-'+name+'.png')
-            os.write(controller,b'RELEASE Z\nRELEASE L\nRELEASE R\n')
+            # Cast shadows are always on; capture their motion and receivers.
+            time.sleep(profile_seconds);building_view('lighting-standing.png',False)
+            time.sleep(20);screenshot('lighting-cloud-drift.png')
             press('A');time.sleep(5);building_view('lighting-interior.png',True)
             os.write(controller,b'SET C 0.9 0.5\n');time.sleep(2);os.write(controller,b'SET C 0.5 0.5\n');time.sleep(1);screenshot('lighting-indoor-camera.png')
             press('L');time.sleep(1);press('A');time.sleep(7);building_view('lighting-exited.png',False)
@@ -1588,7 +1580,7 @@ with (root/'emulator.log').open('w') as log:
             press('X');screenshot('water-menu.png');press('B');screenshot('water-return.png')
             if '--water-ab' in sys.argv:
                 # Same camera and save, no scene/terrain regeneration. Water
-                # is row24; derive the row count so later trailing settings
+                # is visible row22; derive the row count so trailing settings
                 # do not silently select another option when wrapping upward.
                 import re
                 pad_source=Path(sys.modules['dolphin_pad'].__file__).resolve()
@@ -1600,7 +1592,7 @@ with (root/'emulator.log').open('w') as log:
                 def water_selector():
                     set_debug_visibility(True)
                     press('START');press('R')
-                    for _ in range(testing_rows-24):press('D_UP')
+                    for _ in range(testing_rows-22):press('D_UP')
                 water_selector()
                 screenshot('water-ab-selector-windwaker.png')
                 press('A');screenshot('water-ab-selector-sunshine.png')
