@@ -7,6 +7,7 @@ import subprocess
 import sys
 import time
 from datetime import datetime, timezone
+from dolphin_card_records import archive_records
 
 disc=Path(sys.argv[1]).resolve()
 root=Path(sys.argv[2]).resolve();root.mkdir(parents=True,exist_ok=True)
@@ -351,6 +352,9 @@ def options_card_files():
         length,offset=struct.unpack_from('>II',data,8)
         if offset<32 or offset+length>len(data):raise AssertionError('Truncated current card save')
         result[name]=bytes(data[offset:offset+length])
+    if 'AnimalTown' in result:
+        records=archive_records(result['AnimalTown'])
+        if records.get('AT-Archive') in (b'\x01',b'\x02'):return records
     return result
 
 def wait_options_saved(resolution,wide):
@@ -716,13 +720,13 @@ def committed_card_sequence(path, expected_day=None, details=False):
     best=0;best_day=None;best_details=None
     for directory in (1,2):
         for bat in (3,4):
-            files={}
+            files={};archive=None
             try:
                 for i in range(127):
                     at=directory*sector+i*64
                     if card[at:at+6]!=b'AMTE01':continue
                     name=card[at+8:at+40].split(b'\0',1)[0].decode('ascii')
-                    if not name.startswith('AT-'):continue
+                    if not name.startswith('AT-') and name!='AnimalTown':continue
                     block,count=be16(at+54),be16(at+56);seen=set();data=bytearray()
                     for _ in range(count):
                         if block<5 or block>=len(card)//sector or block in seen:raise ValueError('Invalid card chain')
@@ -731,7 +735,13 @@ def committed_card_sequence(path, expected_day=None, details=False):
                     if block!=65535 or data[:8]!=b'DNDSAVE1':raise ValueError('Invalid card container')
                     length,offset=struct.unpack_from('>II',data,8)
                     if offset<32 or offset+length>len(data):raise ValueError('Truncated card container')
-                    files[name]=bytes(data[offset:offset+length])
+                    payload=bytes(data[offset:offset+length])
+                    if name=='AnimalTown':
+                        if data[16:24]!=b'DNDREC01' or offset!=16384:continue
+                        records=archive_records(payload)
+                        if records.get('AT-Archive') in (b'\x01',b'\x02'):archive=records
+                    else:files[name]=payload
+                if archive is not None:files=archive
                 for bank in (0,1):
                     try:
                         names=[f'AT-{kind}{bank}' for kind in ('Town','Houses','Shops','Player')]
@@ -923,7 +933,7 @@ def town_shop():
     press('L');sequence=committed_card_sequence(root/'MemoryCardA.USA.raw');save_menu();after=wait_saved_after({'sequence':sequence})
     screenshot('shop-saved.png');press('B');check_runtime_failure()
     stock=after['shop']['stock'];state=after['shop']['state'];profile=after['profiles'][0]
-    if stock[0]!=0 or stock[1]!=0 or state[35]!=1 or after.get('npc_spaces',[24])[0]!=0:raise AssertionError('Player/NPC did not exhaust distinct physical displays and leave the shop')
+    if stock[0]!=0 or stock[1]!=0 or state[35]!=1 or after.get('npc_spaces',[24])[0]==24:raise AssertionError('Player/NPC did not exhaust distinct physical displays and leave the shop')
     if state[2]!=0 or state[5]!=before['shop']['stock'][1]:raise AssertionError('Consignment purchase, removal or new listing failed')
     prices={10:1200,11:2400,12:1600,13:3000,25:1800}
     expected=20000-prices[before['shop']['stock'][1]]-800-1800

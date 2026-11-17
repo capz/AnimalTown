@@ -79,18 +79,19 @@ internal sealed partial class TownGame
             Text("A: choose   B: back   One item per stand",68,382,ink,1.1f);return true;
         }
         int id=state.Town.Shop.Item(state,ShopKind,ShopSlot),price=state.Town.Shop.Price(state,ShopKind,ShopSlot);
-        Text(id==0?shopFixture<12?"Sold out for today":"This stand is available":Catalog.Items[id].Name,68,151,ink,1.6f);
+        bool growing=shopFixture<12&&shopFixture>=state.Town.StockCount;
+        Text(id==0?growing?"More stands open as the shop grows":shopFixture<12?"Sold out for today":"This stand is available":Catalog.Items[id].Name,68,151,ink,1.5f);
         if(id!=0){Strong(price+" acorns",68,202,ink,1.5f);Text("In your wallet: "+state.Wallet,68,243,ink,1.2f);}
         if(shopFixture>=12&&id!=0)Text("Seller: "+state.ProfileName(state.Town.Shop.SaleOwners[ShopSlot]),68,287,ink,1.2f);
         if(OwnListing){Text((selected==0?"> ":"  ")+"Change price",68,327,ink,1.2f);Text((selected==1?"> ":"  ")+"Take item back",68,355,ink,1.2f);}
-        Text(OwnListing?"A: select   B: close":id!=0?"A: buy this item   B: close":shopFixture<12?"New displays arrive tomorrow.   B: close":"A: list an item for sale   B: close",68,392,ink,1.1f);
+        Text(OwnListing?"A: select   B: close":id!=0?"A: buy this item   B: close":growing?"Shop with us to unlock more stands.   B: close":shopFixture<12?"New displays arrive tomorrow.   B: close":"A: list an item for sale   B: close",68,392,ink,1.3f);
         return true;
     }
     private void DrawShopHint(Color32 ink)
     {
-        int fixture=ShopLayout.Near(state.X,state.Z);if(fixture<0||villagers.Doors.Busy(0))return;
+        int fixture=ShopLayout.Near(state.X,state.Z);if(fixture<0||villagers.Doors.Busy(0)||villagers.Doors.Nearby(state,0,facingYaw)>=0)return;
         if(fixture!=shopHintFixture){shopHintFixture=fixture;shopHint="A  "+(fixture==ShopLayout.Cabinet?"Essentials / unlimited stock":fixture==ShopLayout.Counter?"Service counter":fixture<12?"Daily display "+(fixture+1):"Villager sale "+(fixture-11));}
-        Panel(38,303,564,48);Strong(shopHint,57,316,ink,1.3f);
+        Panel(38,26,564,48);Strong(shopHint,57,39,ink,1.4f);
     }
     private void DrawShopStock()
     {
