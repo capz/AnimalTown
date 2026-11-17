@@ -10,7 +10,7 @@ public sealed class VillagerProfile
     public float X=18,Z=38,Facing;
     public string Name="Newcomer",Catchphrase="hello there";
     public readonly int[] Pockets=new int[30],Owned=new int[64],Mail=new int[128],Relationships=new int[24];
-    public VillagerProfile(){Pockets[0]=4;Pockets[1]=2;Pockets[2]=18;}
+    public VillagerProfile(){Pockets[0]=Catalog.WorkShirt;Pockets[1]=2;Pockets[2]=18;}
     internal void Capture(GameState s)
     {
         BackpackTier=s.BackpackTier;

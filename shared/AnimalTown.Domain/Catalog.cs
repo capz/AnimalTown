@@ -13,6 +13,7 @@ public sealed class ItemDef
 public static class Catalog
 {
     public const int Version=1;
+    public const int WorkShirt=4;
     public const int FishingRod=5,BugNet=6,Shovel=7,LegacyWateringCan=8,Axe=9;
     public const int ToolCount=4;
     private static readonly int[] tools={FishingRod,BugNet,Shovel,Axe};
@@ -21,7 +22,7 @@ public static class Catalog
         new ItemDef(1,"Peach",400,100,ItemFlags.Sell|ItemFlags.Gift|ItemFlags.Eat|ItemFlags.Plant|ItemFlags.Bury),
         new ItemDef(2,"Wildflower",80,20,ItemFlags.Sell|ItemFlags.Gift|ItemFlags.Plant),
         new ItemDef(3,"Pine sapling",240,60,ItemFlags.Sell|ItemFlags.Gift|ItemFlags.Plant),
-        new ItemDef(4,"Work shirt",200,50,ItemFlags.Sell|ItemFlags.Gift|ItemFlags.Wear),
+        new ItemDef(WorkShirt,"Work shirt",200,50,ItemFlags.Sell|ItemFlags.Gift|ItemFlags.Wear),
         new ItemDef(5,"Fishing rod",500,125,ItemFlags.Sell|ItemFlags.Tool),
         new ItemDef(6,"Bug net",500,125,ItemFlags.Sell|ItemFlags.Tool),
         new ItemDef(7,"Shovel",500,125,ItemFlags.Sell|ItemFlags.Tool),

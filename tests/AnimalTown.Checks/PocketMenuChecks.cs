@@ -28,7 +28,8 @@ internal static class PocketMenuChecks
         }
         Menu(1,0,PocketAction.Drop,PocketAction.Plant,PocketAction.Eat,PocketAction.Bury,PocketAction.Quit);
         Menu(1,1,PocketAction.Eat,PocketAction.Quit);
-        Menu(4,0,PocketAction.Drop,PocketAction.Wear,PocketAction.Quit);
+        Menu(Catalog.WorkShirt,0,PocketAction.Wear,PocketAction.Drop,PocketAction.Quit);
+        Menu(Catalog.WorkShirt,1,PocketAction.Wear,PocketAction.Quit);
         Menu(10,0,PocketAction.Drop,PocketAction.Place,PocketAction.Quit);
         Menu(25,0,PocketAction.Drop,PocketAction.Quit);
         Menu(25,1,PocketAction.Place,PocketAction.Quit);
@@ -38,7 +39,7 @@ internal static class PocketMenuChecks
         Menu(20,0,PocketAction.Drop,PocketAction.Quit); // Lost umbrella is a quest item.
         Menu(Catalog.LegacyWateringCan,0,PocketAction.Drop,PocketAction.Quit);
         var actions=new GameState(73);actions.Pockets[0]=4;
-        check(PocketMenu.Perform(actions,0,PocketMenu.At(4,0,1),30,40,0,0)&&actions.Shirt==4,"filtered Wear row still equips the tutorial shirt");
+        check(PocketMenu.Perform(actions,0,PocketMenu.At(Catalog.WorkShirt,0,0),30,40,0,0)&&actions.Shirt==Catalog.WorkShirt,"first clothing row wears the tutorial shirt");
         actions.Pockets[0]=1;actions.Town.SetTerrain(30,40,Terrain.Grass);
         check(PocketMenu.Perform(actions,0,PocketMenu.At(1,0,1),30,40,0,0)&&actions.Pockets[0]==0,"filtered Plant row still plants fruit");
         actions.Pockets[0]=22;actions.Wallet=100;
@@ -66,5 +67,40 @@ internal static class PocketMenuChecks
             check(PocketMenu.Perform(restored,1,PocketAction.Equip,0,0,0,0)&&restored.Tool==Catalog.Axe&&restored.Pockets[1]==8,"legacy held item is preserved when replacing it with a supported tool");
             check(restored.Sell(0)&&restored.Wallet==125,"legacy watering can remains sellable");
         }
+        Clothing(check);
+    }
+    private static void Clothing(Action<bool,string> check)
+    {
+        check(Enumerable.Range(1,Catalog.Items.Length-1).Where(id=>Catalog.Has(id,ItemFlags.Wear)).SequenceEqual(new[]{Catalog.WorkShirt}),"the implemented clothing catalog contains the single GameCube-style shirt");
+        foreach(int room in new[]{0,1}){
+            var s=new GameState(73);s.Tool=Catalog.Shovel;s.BackpackTier=2;Array.Fill(s.Pockets,Catalog.WorkShirt);
+            int slot=s.Capacity-1;
+            check(PocketMenu.Label(PocketMenu.At(Catalog.WorkShirt,room,0))=="Wear","clothing always opens with Wear selected");
+            check(PocketMenu.Perform(s,slot,PocketMenu.At(Catalog.WorkShirt,room,0),30,40,0,room)&&s.Shirt==Catalog.WorkShirt&&s.Pockets[slot]==0&&s.Tool==Catalog.Shovel,"wearing works with full pockets, retains the held tool and leaves no phantom default-shirt item");
+            s.Pockets[slot]=Catalog.WorkShirt;
+            int copies=s.Pockets.Count(id=>id==Catalog.WorkShirt)+1;
+            check(PocketMenu.Perform(s,slot,PocketAction.Wear,30,40,0,room)&&s.Pockets.Count(id=>id==Catalog.WorkShirt)+1==copies&&s.Pockets[slot]==Catalog.WorkShirt,"wearing another copy swaps back the previously worn shirt even with full pockets");
+            var before=SaveCodec.Encode(s);
+            foreach(var forbidden in new[]{PocketAction.Equip,PocketAction.Place,PocketAction.Plant,PocketAction.Eat,PocketAction.Bury,PocketAction.OpenMoneyBag,PocketAction.Read})
+                check(!PocketMenu.Perform(s,slot,forbidden,30,40,0,room),"clothing rejects unrelated action "+forbidden);
+            check(before.SequenceEqual(SaveCodec.Encode(s)),"rejected clothing actions preserve all saved state");
+            foreach(var restored in new[]{SaveCodec.Decode(before),SplitSaveCodec.Decode(SplitSaveCodec.Encode(s)),SplitSaveCodec.Decode(SplitSaveCodec.EncodeLegacy(s))})
+                check(restored.Shirt==Catalog.WorkShirt&&restored.Pockets.SequenceEqual(s.Pockets)&&restored.Tool==Catalog.Shovel,"worn and pocket clothing survive single and split/profile save formats");
+            if(room==0)check(PocketMenu.Perform(s,slot,PocketMenu.At(Catalog.WorkShirt,room,1),30,40,0,room)&&s.Pockets[slot]==0&&s.Shirt==Catalog.WorkShirt&&s.Town.Ground[s.Town.GroundCount-1].Item==Catalog.WorkShirt,"Drop removes only the selected pocket shirt, leaving the worn shirt intact");
+            else check(!PocketMenu.Perform(s,slot,PocketAction.Drop,30,40,0,room)&&s.Pockets[slot]==Catalog.WorkShirt,"indoor clothing cannot leak into the outdoor drop list");
+            s.Pockets[slot]=Catalog.WorkShirt;
+            check(s.Sell(slot)&&s.Shirt==Catalog.WorkShirt&&s.Wallet==Catalog.Items[Catalog.WorkShirt].Sell,"selling pocket clothing preserves the worn shirt");
+        }
+        var profiles=new GameState(73);
+        check(PocketMenu.Perform(profiles,0,PocketAction.Wear,0,0,0,0),"first villager can wear their starter shirt");
+        profiles.SelectProfile(1);
+        check(profiles.Shirt==0&&profiles.Pockets[0]==Catalog.WorkShirt,"new villager retains an independent default outfit and starter shirt");
+        profiles.SelectProfile(0);
+        check(profiles.Shirt==Catalog.WorkShirt&&profiles.Pockets[0]==0,"returning to the first villager restores their worn shirt");
+        var saved=SplitSaveCodec.Decode(SplitSaveCodec.Encode(profiles));saved.SelectProfile(1);
+        check(saved.Shirt==0&&saved.Pockets[0]==Catalog.WorkShirt,"saving the town does not copy clothing between villagers");
+        long allocated=GC.GetAllocatedBytesForCurrentThread();int rows=0;
+        for(int i=0;i<1000;i++){rows+=PocketMenu.Count(Catalog.WorkShirt,0);rows+=(int)PocketMenu.At(Catalog.WorkShirt,0,i%3);}
+        check(GC.GetAllocatedBytesForCurrentThread()==allocated&&rows>0,"clothing menu queries allocate no per-frame lists");
     }
 }
