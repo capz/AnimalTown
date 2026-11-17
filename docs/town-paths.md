@@ -52,10 +52,8 @@ one repeat per two metres. Three extra GX TEV stages blend this shared page onto
 eligible existing ground draws, before the existing shadow/light stages.
 Receiver alpha keeps paths off cliff lips. No path triangles, decals, additional
 draw calls, full terrain rebuilds or per-frame texture uploads are needed.
-The three added passes retain the ground raster channel, including passes that
-only forward colour. Using `COLOR_NULL` there suppressed later receiver-alpha
-reads on GX, hiding the paths and subsequent shadows; matched Dolphin captures
-verified the retained-channel configuration.
+The added passes explicitly select the ground receiver channel and preserve the
+base material alpha through the later shadow/light stages.
 
 The mask and dirt page are demanded by selected archive sections. They are
 released indoors, outside path demand, on town replacement and on disposal,
@@ -75,3 +73,9 @@ Host timings from the managed checks are diagnostic, not GameCube frame rates.
 The previous fixed-network performance report at
 [performance/town-paths/README.md](performance/town-paths/README.md) describes its
 pinned historical implementation and is not a measurement of this renderer.
+
+Dolphin validation uses `SafeTextureCacheColorSamples = 0`. Its default sampled
+texture hashing can miss sparse live I4 mask edits and retain an earlier image
+until reload, even though the game flushed and invalidated the texture cache.
+Full hashing verified paths appearing during walking without reloading. This is
+an emulator test setting; console mask uploads remain revision-gated.
