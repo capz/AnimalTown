@@ -123,7 +123,7 @@ internal sealed class TownGame : IDisposable
     private readonly WrappedText dialogueText=new WrappedText(41),itemTitleText=new WrappedText(14),saveStatusText=new WrappedText(48);
     private string wrappedDialogue="";
     private int actionWidthItem=-1,actionWidthRoom=-1;
-    private float actionWidth;
+    private float actionWidth,actionRotateOffset;
     private readonly RenderQueue actorQueue=new RenderQueue(7,7);
     private readonly Transform[] modelPoses=new Transform[16];
     private readonly BoxBatch boxes;
@@ -1026,6 +1026,14 @@ internal sealed class TownGame : IDisposable
     private void Text(string text,float x,float y,Color32 c,float scale=1.5f,int visibleCharacters=-1)=>font.Draw(ui,text,x,y,c,scale/1.5f,0,visibleCharacters);
     private void Strong(string text,float x,float y,Color32 c,float scale=1.5f)=>strongFont.Draw(ui,text,x,y,c,scale/1.5f);
     private void Heading(string text,float x,float y,Color32 c,float scale=1)=>headingFont.Draw(ui,text,x,y,c,scale,(float)Math.Sin(tick*.018f+x*.01f)*1.8f);
+    private void ButtonGlyph(string key,float x,float y)
+    {
+        bool shoulder=key=="R";float width=shoulder?20:14,radius=shoulder?4:7;
+        Color32 fill=key=="A"?new Color32(53,139,101):key=="B"?new Color32(205,71,69):new Color32(118,129,130);
+        Rounded(x-1,y-1,width+2,16,radius+1,new Color32(49,72,62));
+        Rounded(x,y,width,14,radius,fill);
+        Strong(key,x+(width-strongFont.Measure(key,1/1.5f))*.5f,y-.25f,Color32.White,1);
+    }
     private void DoorPopover(string label,bool action)
     {
         const float normalScale=1.05f;
@@ -1095,7 +1103,6 @@ internal sealed class TownGame : IDisposable
             Text(profileNativeLabel,420,408,ink,.55f);
             Text(profileShadowLabel,420,419,ink,.55f);
         }
-        Rounded(20,440,420,29,14.5f,new Color32(48,76,57,210));Text("A interact   X backpack   Y map",32,451,Color32.White,1.3f);
         if(screen=="world"&&room!=0){Panel(205,371,410,61);Text("C-stick turn view / L recenter",220,380,ink,.95f);Text(buildingPrompt.Name(state,BuildingWorld.Building(room)),220,402,ink,1.1f);}
         if(screen=="world"){
             int door=villagers.Doors.Nearby(state,0,facingYaw);
@@ -1140,18 +1147,24 @@ internal sealed class TownGame : IDisposable
         if(menuTab==TestingTab)return TestingLabel(i);
         string[] settings={"Save now","Controls","About / build identity","Calendar","Chat settings","Debug / testing menu"};return settings[i];
     }
+    private static string ItemActionLabel(PocketAction action)=>action==PocketAction.Place?"Place":PocketMenu.Label(action);
     private float ItemActionWidth(int item,string title)
     {
         if(actionWidthItem==item&&actionWidthRoom==room)return actionWidth;
-        float widest=Math.Max(strongFont.Measure(title,1.3f/1.5f),font.Measure("A select   B back",1/1.5f));
+        float widest=strongFont.Measure(title,1.3f/1.5f);actionRotateOffset=0;
         int count=PocketMenu.Count(item,room);
-        for(int i=0;i<count;i++)widest=Math.Max(widest,font.Measure(PocketMenu.Label(PocketMenu.At(item,room,i)),1.05f/1.5f));
+        for(int i=0;i<count;i++){
+            PocketAction action=PocketMenu.At(item,room,i);
+            float width=20+font.Measure(ItemActionLabel(action),1.05f/1.5f);
+            if(action==PocketAction.Place){actionRotateOffset=width+10;width=actionRotateOffset+26+font.Measure("Rotate",.9f/1.5f);}
+            widest=Math.Max(widest,width);
+        }
         actionWidthItem=item;actionWidthRoom=room;
         return actionWidth=(float)Math.Ceiling(widest)+32; // Same 16px padding on both sides.
     }
     private void DrawBackpack()
     {
-        var ink=new Color32(49,72,62);int rows=state.Capacity/5;float height=94+rows*44;
+        var ink=new Color32(49,72,62);int rows=state.Capacity/5;float height=78+rows*44;
         bool actions=screen=="item";int focus=actions?slot:selected;
         Rounded(198,57,82,50,24,new Color32(195,109,84));Rounded(210,66,58,28,14,new Color32(255,245,221));
         Bulged(70,73,350,height+7,32,new Color32(53,105,84));Panel(76,77,338,height);
@@ -1168,7 +1181,6 @@ internal sealed class TownGame : IDisposable
             else Rounded(x+21,y+17,6,6,3,new Color32(188,195,166));
         }
         bool sellable=Catalog.Has(state.Pockets[focus],ItemFlags.Sell);
-        Text(screen=="sell"?(sellable?"Stick / D-pad choose   A sell   B back":"Stick / D-pad choose   B back"):"Stick / D-pad choose   A actions   L/R tabs",90,77+height-26,ink,.85f);
         Text("Wallet: "+state.Wallet+" / "+GameState.WalletLimit,436,281,ink,.95f);
         if(state.BackpackTier<2){Text("Next pack: "+(state.Capacity+10)+" slots",436,325,ink,1);Text("Hearth's store",436,349,ink,1);}
         // Follow the actual slot for both the title and action menu. Clamp the
@@ -1176,7 +1188,7 @@ internal sealed class TownGame : IDisposable
         float slotX=99+focus%5*58,slotY=144+focus/5*44;
         int item=state.Pockets[focus],actionCount=PocketMenu.Count(item,room);
         string title=itemTitleText.Get(item==0?"Empty pocket":Catalog.Items[item].Name);
-        float popWidth=actions?ItemActionWidth(item,title):168,popHeight=actions?92+actionCount*18:141;
+        float popWidth=actions?ItemActionWidth(item,title):168,popHeight=actions?72+actionCount*18:141;
         float popX=Math.Min(slotX+66,607-popWidth),popY=Math.Max(80,Math.Min(slotY-12,428-popHeight));
         float pointerY=Math.Max(popY+36,Math.Min(slotY+20,popY+popHeight-36));
         Panel(popX,popY,popWidth,popHeight);
@@ -1187,17 +1199,21 @@ internal sealed class TownGame : IDisposable
         {
             for(int i=0;i<actionCount;i++){
                 float y=popY+56+i*18;
+                PocketAction action=PocketMenu.At(item,room,i);
                 if(i==selected)Rounded(popX+10,y-1,popWidth-20,18,9,new Color32(221,231,188));
-                Text(PocketMenu.Label(PocketMenu.At(item,room,i)),textX,y,ink,1.05f);
+                if(action==PocketAction.Quit)ButtonGlyph("B",textX,y+1);
+                else if(i==selected)ButtonGlyph("A",textX,y+1);
+                Text(ItemActionLabel(action),textX+20,y,ink,1.05f);
+                if(action==PocketAction.Place){ButtonGlyph("R",textX+actionRotateOffset,y+1);Text("Rotate",textX+actionRotateOffset+26,y+1,ink,.9f);}
             }
-            Text("A select   B back",textX,popY+popHeight-26,ink,1);
         }
         else if(item==0)Text("Room for\nsomething new.",textX,popY+67,ink,1.1f);
         else
         {
             int money=Catalog.MoneyValue(item);
             Text(screen=="sell"?(sellable?"Sell: "+Catalog.Items[item].Sell+" acorns":"Not for sale"):money>0?"Value: "+money+" acorns":"One item",textX,popY+69,ink,1.05f);
-            Strong(screen=="sell"?(sellable?"A  Sell item":"B  Back"):"A  Item actions",textX,popY+101,ink,1.05f);
+            ButtonGlyph(screen=="sell"&&!sellable?"B":"A",textX,popY+102);
+            Strong(screen=="sell"?(sellable?"Sell item":"Back"):"Item actions",textX+20,popY+101,ink,1.05f);
         }
     }
     private void DrawMinimap()
