@@ -33,7 +33,14 @@ internal sealed class TitleScreen : IDisposable,Hypercube.GameCube.IFrameScene
     private string statusSource="",statusLine1="",statusLine2="";
     private float statusWidth;
     private TitleScreen(DevConfig config,UserOptions options)
-    {this.config=config;this.options=options;status=VideoOptions.Status;int at=0;rows[at++]=0;rows[at++]=DevConfig.FullResolutionAaIndex;for(int i=1;i<DevConfig.Count;i++)if(DevConfig.IsSetting(i)&&i!=DevConfig.FullResolutionAaIndex)rows[at++]=i;rows[at]=DevConfig.Count;}
+    {
+        this.config=config;this.options=options;status=VideoOptions.Status;
+        int at=0;rows[at++]=0;rows[at++]=DevConfig.FullResolutionAaIndex;
+        for(int i=1;i<DevConfig.Count;i++)if(DevConfig.IsSetting(i)&&i!=DevConfig.FullResolutionAaIndex&&i!=DevConfig.GroundMipBandsIndex){
+            rows[at++]=i;if(i==23)rows[at++]=DevConfig.GroundMipBandsIndex;
+        }
+        rows[at]=DevConfig.Count;
+    }
     internal static bool Run(DevConfig config,UserOptions options)
     {
         using var title=new TitleScreen(config,options);
@@ -286,6 +293,7 @@ internal sealed class TitleScreen : IDisposable,Hypercube.GameCube.IFrameScene
             case 19:return "Villager attention bubbles: "+toggle;case 20:return "Rim intensity: "+value+"%";
             case 21:return "SDK performance overlay: "+toggle;case 22:return "Ground mipmaps: "+toggle;
             case 23:return "Ground mip distance: "+(value==0?"Auto":value+" squares");
+            case DevConfig.GroundMipBandsIndex:return "Ground mip bands: "+toggle;
             case 24:return "Freeze landscape motion: "+toggle;case 25:return "Recreate terrain meshes: "+toggle;
             case 26:return "Legacy ground ring: "+toggle;
             case DevConfig.TreeNoiseStrength:return "Tree noise strength: "+config.TreeNoiseStrengthPercent+"%";

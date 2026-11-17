@@ -6,6 +6,7 @@ internal static class RenderDebugChecks
     {
         var preview=new RenderDebugOptions();var state=new GameState(73);var before=SaveCodec.Encode(state);
         GroundMipChecks(check,preview);
+        GroundMipPaletteChecks(check);
         var config=new DevConfig();var configBefore=config.Encode();
         UiNoiseSettings.Reset();check(UiNoiseSettings.Percent==10,"UI grain starts at ten percent");
         for(int n=0;n<100;n++)UiNoiseSettings.Adjust(-1);
@@ -83,5 +84,39 @@ internal static class RenderDebugChecks
     {
         var result=new byte[32+payload.Length];int[] header={0x58544e44,1,format,w,h,payload.Length,0,0};
         for(int i=0;i<header.Length;i++)for(int b=0;b<4;b++)result[i*4+b]=(byte)(header[i]>>(b*8));Array.Copy(payload,0,result,32,payload.Length);return result;
+    }
+    private static void GroundMipPaletteChecks(Action<bool,string> check)
+    {
+        foreach(var shape in new[]{(256,256,7),(64,64,5),(128,64,5),(4,4,1),(256,256,1)}){
+            var texture=GroundMipPalette.Texture(shape.Item1,shape.Item2,shape.Item3);
+            TexturePixels.Validate(texture);
+            check(TexturePixels.Width(texture)==shape.Item1&&TexturePixels.Height(texture)==shape.Item2&&TexturePixels.Int(texture,24)==shape.Item3,
+                "mip bands preserve the real texture dimensions and mip count, including the preview and rectangular pages");
+            uint hash=TexturePixels.Hash(texture);
+            for(int level=0;level<shape.Item3;level++){
+                var tail=FloorTexture.ExtractMipTail(texture,level);TexturePixels.Validate(tail);
+                uint expected=GroundMipPalette.Color(level);
+                bool solid=true;
+                for(int y=0;y<TexturePixels.Height(tail);y++)for(int x=0;x<TexturePixels.Width(tail);x++)
+                    solid&=TexturePixels.Pixel(tail,x,y)==expected;
+                check(solid&&(expected&255)==255,"every diagnostic mip is one distinct opaque native colour, including GX tile edges");
+                if(level>0)check(expected!=GroundMipPalette.Color(level-1),"adjacent mip levels remain distinguishable for trilinear transition bands");
+            }
+            check(TexturePixels.Hash(texture)==hash,"diagnostic inspection never mutates its source package");
+        }
+        check(GroundMipPalette.Texture(256,256,7).Length==32+43712&&GroundMipPalette.Texture(64,64,5).Length==32+2752,
+            "solid-colour diagnostic chains retain the bounded CMPR full and preview budgets");
+        foreach(var shape in new[]{(0,64,1),(2,64,1),(63,64,1),(512,64,1),(64,64,0),(64,64,6),(256,256,8)}){
+            bool rejected=false;try{GroundMipPalette.Texture(shape.Item1,shape.Item2,shape.Item3);}catch(ArgumentOutOfRangeException){rejected=true;}
+            check(rejected,"invalid diagnostic shapes cannot change the GX mip footprint or read beyond their chain");
+        }
+        foreach(int level in new[]{-1,GroundMipPalette.Levels}){
+            bool rejected=false;try{GroundMipPalette.Color(level);}catch(ArgumentOutOfRangeException){rejected=true;}
+            check(rejected,"legend requests remain within the native diagnostic palette");
+        }
+        GroundMipPalette.Color(0);
+        long allocated=GC.GetAllocatedBytesForCurrentThread();
+        for(int n=0;n<1000;n++)GroundMipPalette.Color(n%GroundMipPalette.Levels);
+        check(GC.GetAllocatedBytesForCurrentThread()==allocated,"drawing the mip palette legend allocates no per-frame data");
     }
 }

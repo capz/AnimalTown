@@ -12,6 +12,7 @@ using Hypercube.GameCube;
 internal sealed class TerrainRenderer : IDisposable
 {
     private readonly PathTextureResidency paths=new PathTextureResidency();
+    private readonly GroundMipMaterials mipBands=new GroundMipMaterials();
     private TerrainArchive? archive;
     private bool legacy=false; // Default: immutable ARAM archive and fixed MEM1 views.
     internal bool SuspendForSave()=>!legacy&&archive!=null&&archive.SuspendForSave();
@@ -72,12 +73,13 @@ internal sealed class TerrainRenderer : IDisposable
     internal int SeasonOverride=-1;
     internal bool GroundMipmaps=true;
     internal int GroundMipDistance;
+    internal bool ShowGroundMipBands {get=>mipBands.Enabled;set=>mipBands.Enabled=value;}
     private bool appliedGroundMipmaps;
     private int appliedGroundMipDistance=-1;
     internal int RenderSeason=>season;
     internal int BaseGroundSlot(GameState state,int x,int z)=>FloorStrips.BaseAt(state,data,x,z,0);
     internal int GroundSlot(GameState state,int x,int z)=>FloorStrips.BaseAt(state,data,x,z,0);
-    internal Material GroundMaterial(int slot)=>materials[slot];
+    internal Material GroundMaterial(int slot)=>mipBands.Select(slot,materials[slot]);
     internal TerrainRenderer()
     {
         gallery=new TerrainWalls(soil);
@@ -102,7 +104,7 @@ internal sealed class TerrainRenderer : IDisposable
         Array.Clear(batch,0,batch.Length);batchCount=0;
         // Cloud/water effects borrow texture bindings, so retire them before
         // releasing the cache leases supplying their ground art.
-        materials[TownPaths.Material].Texture=null;paths.Dispose();
+        materials[TownPaths.Material].Texture=null;paths.Dispose();mipBands.Dispose();
         waterMaterial.Dispose();soil.Dispose();
         for(int i=0;i<textures.Length;i++)if(textures[i]!=null){TextureCache.Release(textures[i]!);textures[i]=null;}
         for(int i=0;i<materials.Length;i++){materials[i].Texture=null;materials[i].SecondaryTexture=null;}
@@ -212,7 +214,11 @@ internal sealed class TerrainRenderer : IDisposable
         }
         PreparePaths();
     }
-    private void PreparePaths()=>paths.Prepare((visibleGroundMask&(1UL<<TownPaths.Material))!=0,materials[TownPaths.Material],textures[0]?.Pages[0]);
+    private void PreparePaths()
+    {
+        paths.Prepare((visibleGroundMask&(1UL<<TownPaths.Material))!=0,materials[TownPaths.Material],textures[0]?.Pages[0]);
+        mipBands.Prepare(materials,slots,TownPaths.Material,GroundMipmaps,GroundMipDistance);
+    }
     internal void ReleasePaths()=>paths.Prepare(false,materials[TownPaths.Material],null);
     private bool AdvanceGroundTexture()
     {
@@ -316,7 +322,7 @@ internal sealed class TerrainRenderer : IDisposable
             DrawArchiveWater(renderer);
             AddArchive(renderer,soil.Material,106);
             NativeShadows.Scope(1);
-            try{for(int slot=0;slot<slots;slot++)if((visibleGroundMask&(1UL<<slot))!=0)AddArchive(renderer,materials[slot],slot);if((visibleGroundMask&(1UL<<TownPaths.Material))!=0)AddArchive(renderer,materials[TownPaths.Material],TownPaths.Material);}
+            try{for(int slot=0;slot<slots;slot++)if((visibleGroundMask&(1UL<<slot))!=0)AddArchive(renderer,GroundMaterial(slot),slot);if((visibleGroundMask&(1UL<<TownPaths.Material))!=0)AddArchive(renderer,GroundMaterial(TownPaths.Material),TownPaths.Material);}
             finally{NativeShadows.Scope(0);}
             gallery.Draw(renderer,ScrollTransform,this);
             return;
@@ -326,16 +332,17 @@ internal sealed class TerrainRenderer : IDisposable
         Flush(renderer,soil.Material);
         NativeShadows.Scope(1);
         try{
-            if(GroundRingActive)groundRing!.Draw(renderer,materials[SharedFlatMaterial],ScrollTransform);
+            if(GroundRingActive)groundRing!.Draw(renderer,GroundMaterial(SharedFlatMaterial),ScrollTransform);
             for(int drawSlot=0;drawSlot<=slots;drawSlot++){
                 int slot=drawSlot==slots?TownPaths.Material:drawSlot;
                 ulong mask=1UL<<slot;if((visibleGroundMask&mask)==0)continue;
+                var material=GroundMaterial(slot);
                 for(int i=0;i<stream.Count;i++)if(stream.Visible[i]){
                     var section=sections[i]!;
-                    if((section.GroundMask&mask)!=0)Add(renderer,materials[slot],section.GroundMesh(slot));
-                    if((section.Walls.GroundMask&mask)!=0)Add(renderer,materials[slot],section.Walls.GroundMesh(slot));
+                    if((section.GroundMask&mask)!=0)Add(renderer,material,section.GroundMesh(slot));
+                    if((section.Walls.GroundMask&mask)!=0)Add(renderer,material,section.Walls.GroundMesh(slot));
                 }
-                Flush(renderer,materials[slot]);
+                Flush(renderer,material);
             }
         }finally{NativeShadows.Scope(0);}
         gallery.Draw(renderer,ScrollTransform,this);

@@ -89,6 +89,32 @@ if(Test-Path -LiteralPath $titleEvidenceBuild -PathType Leaf){
         $titleEvidenceAssets+=$destination
     }
 }
+$terrainEvidenceAssets=@()
+$terrainEvidenceRoot=Join-Path $out 'terrain-materials'
+$terrainEvidenceBuild=Join-Path $terrainEvidenceRoot 'terrain-materials-build.json'
+if(Test-Path -LiteralPath $terrainEvidenceBuild -PathType Leaf){
+    $evidence=Get-Content -LiteralPath $terrainEvidenceBuild -Raw|ConvertFrom-Json
+    if($evidence.schema -ne 1 -or $evidence.commit -cne $commit -or $evidence.version -cne $version -or
+       $evidence.tag -cne $tag -or $evidence.isoName -cne [IO.Path]::GetFileName($nkit) -or
+       $evidence.isoSha256 -cne $nkitInfo.compactSha256){
+        throw 'Terrain-material evidence must match the release commit, version and verified NKit image'
+    }
+    $report=Get-Content -LiteralPath (Join-Path $terrainEvidenceRoot 'terrain-materials-report.json') -Raw|ConvertFrom-Json
+    if($report.scenario -cne 'terrain-materials' -or $report.passed -ne $true){throw 'Terrain-material capture must pass before publication'}
+    $screenshots=@($report.screenshots)
+    foreach($name in @('terrain-materials-normal.png','terrain-materials-mips-auto.png','terrain-materials-menu-on.png')){
+        if($name -cnotin $screenshots){throw "Missing required terrain-material capture: $name"}
+    }
+    if(@($screenshots|Select-Object -Unique).Count -ne $screenshots.Count){throw 'Duplicate terrain-material capture names'}
+    foreach($name in $screenshots){if($name -cnotmatch '^terrain-materials-[a-z0-9-]+\.png$'){throw 'Invalid terrain-material capture filename'}}
+    foreach($name in $screenshots+@('terrain-materials-report.json','terrain-materials-build.json')){
+        $source=Get-Item -LiteralPath (Join-Path $terrainEvidenceRoot $name)
+        if($source.PSIsContainer -or $source.Length -le 0){throw "Missing or empty terrain-material evidence: $name"}
+        $destination=Join-Path $package $name
+        Copy-Item -LiteralPath $source.FullName -Destination $destination -Force
+        $terrainEvidenceAssets+=$destination
+    }
+}
 $serverZip=Join-Path $package "AnimalTown-server-$version.zip"
 $toolsDirectory=Join-Path $out 'tools-published'
 & dotnet publish (Join-Path $Root 'tools/AnimalTown.Tools') -c Release --no-self-contained -o $toolsDirectory -v quiet
@@ -142,16 +168,19 @@ $updaterNotice=Join-Path $package 'updater-THIRD-PARTY-NOTICES.txt'
 . (Join-Path $PSScriptRoot 'update-feed.ps1')
 $updateFeed=Join-Path $package 'update.json'
 Write-UpdateFeed -Iso $nkit -Version $version -Repository $Repository -Destination $updateFeed
-$payloadAssets=@($nkit,$depot,$updateFeed,$updaterDol,$updaterNotice,$openingBnr,$palBnr,$serverZip,$toolsZip,$cliffsZip,$buildingsZip,(Join-Path $package 'BUILD.txt'),(Join-Path $package 'texture-audit.json'),(Join-Path $package 'validation-plan.json'),(Join-Path $package 'version.json'),(Join-Path $package 'nkit-validation.json'))+$titleEvidenceAssets
+$payloadAssets=@($nkit,$depot,$updateFeed,$updaterDol,$updaterNotice,$openingBnr,$palBnr,$serverZip,$toolsZip,$cliffsZip,$buildingsZip,(Join-Path $package 'BUILD.txt'),(Join-Path $package 'texture-audit.json'),(Join-Path $package 'validation-plan.json'),(Join-Path $package 'version.json'),(Join-Path $package 'nkit-validation.json'))+$titleEvidenceAssets+$terrainEvidenceAssets
 $checksums=foreach($file in $payloadAssets){"$((Get-FileHash -LiteralPath $file -Algorithm SHA256).Hash.ToLowerInvariant())  $([IO.Path]::GetFileName($file))"}
 [IO.File]::WriteAllText((Join-Path $package 'SHA256SUMS.txt'),($checksums -join "`n")+"`n")
 $evidenceNotes=if($titleEvidenceAssets.Count){'The title-logo PNGs show the title, villager picker, name entry and return-to-title states captured from this exact release image. Debug and status-message captures are included when produced. title-logo-report.json records the capture checks; title-logo-build.json binds the evidence to the source commit, version and NKit SHA-256.'}else{''}
+$terrainEvidenceNotes=if($terrainEvidenceAssets.Count){'The terrain-materials PNGs show actual GX mip-level bands, distance-bias comparisons, and river/coast water animation from this release image. The report compares moving crests with a frozen-water control. terrain-materials-build.json binds the evidence to the source commit, version and NKit SHA-256; SHA256SUMS.txt covers each capture.'}else{''}
 $notes=@"
 AnimalTown $version development build from commit $commit.
 
 **opening.bnr** is the Smalltown Forest BNR1 banner embedded in this release's disc. **opening-pal.bnr** is the matching BNR2 alternative for PAL packaging, with English text in all six language slots. Both contain the same 96x32 artwork and current version/commit identity. The game and banner display Smalltown Forest; the legacy AnimalTown boot-header identity and package filenames remain compatible with the updater. These standalone banners are provided for distribution packaging; GC Loader users only need the NKit ISO.
 
 $evidenceNotes
+
+$terrainEvidenceNotes
 
 AnimalTown-building-kit-$version.zip contains the original cottage and town shop kits, hinged doors, cutaway interior parts, palettes, definitions and authoring guides. The shop has a central daily-stock island, 3/5/7 wall sale stands by shop tier, an unlimited essentials cabinet and a service counter. NPCs can buy a display item and leave; player-sale proceeds go to the seller's savings. A at doormats enters/exits; C-stick turns the indoor camera, L recentres. Console online guest transport remains unavailable; atomic guest purchases are supported by the backend. Physical GameCube testing remains outstanding.
 
