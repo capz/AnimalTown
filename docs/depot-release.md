@@ -20,7 +20,8 @@ are excluded from the installed app by an explicit whitelist.
 
 The release uploads five files: the NKit ISO, this Depot ZIP, the server
 ZIP, the compiled-tools ZIP and the compact `update.json` feed. All supplementary reports, checksums, banners,
-updater DOL/notices and captures are stored under `release/` inside this ZIP.
+updater notices and captures are stored under `release/` inside this ZIP.
+The updater executable is retained only in the ISO.
 `release/manifest.json` binds each supplementary file's SHA-256 to the app's
 source commit and version; these files are never moved into `apps/animaltown/`.
 `release/SHA256SUMS.txt` covers the ISO, server/tools ZIPs and primary reports.
