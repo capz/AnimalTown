@@ -16,7 +16,6 @@ internal sealed class ProfilePickerUi : IDisposable,Hypercube.GameCube.IFrameSce
     private readonly string[] labels=new string[4];
     private readonly int[] species=new int[4];
     private UiFont? font,heading;
-    private CachedTexture? logo;
     internal int Selected;
     internal const int Confirm=1,Busy=2,Failure=3;
     internal int Modal;
@@ -27,9 +26,10 @@ internal sealed class ProfilePickerUi : IDisposable,Hypercube.GameCube.IFrameSce
     internal ProfilePickerUi(GameState state,bool savedTown)
     {
         try{
-            font=UiFont.LoadSystem();heading=UiFont.Load("gorditas-bold");logo=TextureCache.Load(AnimalTown.ContentPaths.Asset("wordmark.dndtex"),true);
+            font=UiFont.LoadSystem();heading=UiFont.Load("gorditas-bold");
             Selected=state.ActiveProfile;
             Refresh(state,savedTown);
+            Dolphin.Diagnostics.DebugOverlay.WriteLine("ANIMALTOWN SETUP HEADER picker logo bytes "+TextureCache.SourceBytesContaining(ContentPaths.Asset("wordmark.dndtex")));
         }catch{Dispose();throw;}
     }
     internal void Refresh(GameState state,bool savedTown)
@@ -67,12 +67,11 @@ internal sealed class ProfilePickerUi : IDisposable,Hypercube.GameCube.IFrameSce
     {
         var device=GraphicsDevice.Default;ui.Begin();background.Draw(ui);
         TitleArt.Panel(ui,36,18,568,440);
-        TitleArt.Logo(ui,logo!,new RectF(186,20,268,64));
-        Leaves(186,65);Leaves(454,65);
-        TitleArt.Rounded(ui,174,84,292,37,18,Warm);
+        Leaves(186,62);Leaves(454,62);
+        TitleArt.Rounded(ui,174,42,292,37,18,Warm);
         const string welcome="Welcome back!";
-        heading!.Draw(ui,welcome,320-heading.Measure(welcome,1.18f)*.5f,86,TitleArt.Ink,1.18f);
-        for(int i=0;i<3;i++){TitleArt.Ellipse(ui,146+i*9,102,2,2,Honey);TitleArt.Ellipse(ui,476+i*9,102,2,2,Honey);}
+        heading!.Draw(ui,welcome,320-heading.Measure(welcome,1.18f)*.5f,44,TitleArt.Ink,1.18f);
+        for(int i=0;i<3;i++){TitleArt.Ellipse(ui,146+i*9,60,2,2,Honey);TitleArt.Ellipse(ui,476+i*9,60,2,2,Honey);}
         Vignette();
         Center("Who is visiting today?",440,154,1,248);
         Center("Choose your villager to continue",440,192,.76f,248);
@@ -188,6 +187,6 @@ internal sealed class ProfilePickerUi : IDisposable,Hypercube.GameCube.IFrameSce
     public void Dispose()
     {
         for(int i=0;i<portraits.Length;i++)if(portraits[i]!=null)TextureCache.Release(portraits[i]!);
-        if(logo!=null)TextureCache.Release(logo);heading?.Release();font?.Release();background.Dispose();ui.Dispose();TextureCache.TrimUnused();
+        heading?.Release();font?.Release();background.Dispose();ui.Dispose();TextureCache.TrimUnused();
     }
 }

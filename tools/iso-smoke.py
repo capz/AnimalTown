@@ -392,6 +392,13 @@ def title_logo():
         report['warm_artwork'][name]={'region':list(bounds),'pixels':warm,'minimum':minimum}
         if warm<minimum:raise AssertionError(name+' has no sufficiently visible full-colour acorn artwork')
 
+    def setup_header(name):
+        text=state()
+        traces=re.findall(r'ANIMALTOWN SETUP HEADER (picker|[012]) logo bytes (\d+)',text)
+        if not traces or int(traces[-1][1])!=0:raise AssertionError('Setup header retained title logo artwork')
+        report['screenshots'].append(name)
+        report.setdefault('setup_headers',{})[name]={'logo_bytes':int(traces[-1][1]),'stage':traces[-1][0]}
+
     def title(name,minimum_loads,rows=3,status=False):
         wait_title()
         expected={
@@ -436,12 +443,12 @@ def title_logo():
             press('A');wait_profiles('title-logo-normalize-picker.png');press('B')
         initial_loads=title('title-logo.png',1)
         press('A');wait_profiles('title-logo-picker.png')
-        artwork('title-logo-picker.png',compact=True,capture=False)
+        setup_header('title-logo-picker.png')
         press('B');title('title-logo-after-picker.png',initial_loads+1)
         press('A');wait_profiles('title-logo-picker-reopened.png')
-        artwork('title-logo-picker-reopened.png',compact=True,capture=False)
+        setup_header('title-logo-picker-reopened.png')
         press('A');wait_onboarding('name','title-logo-name.png')
-        artwork('title-logo-name.png',compact=True,capture=False)
+        setup_header('title-logo-name.png')
         press('B');wait_onboarding('exit','title-logo-discard.png')
         report['screenshots'].append('title-logo-discard.png');state()
         # D_RIGHT is the mapped pipe button, not the MAIN analog axis. Repeating
@@ -1280,7 +1287,7 @@ def committed_card_sequence(path, expected_day=None, details=False):
         if len(payload)<32:raise ValueError('Short save record')
         magic,version,catalog,actual,sequence,seed,length=struct.unpack_from('<7I',payload)
         crc=struct.unpack_from('<I',payload,len(payload)-4)[0]
-        if magic!=0x50535441 or version not in (1,2,3,4,5,6) or actual!=kind or length!=len(payload) or zlib.crc32(payload[:-4])!=crc:
+        if magic!=0x50535441 or version not in (1,2,3,4,5,6,7) or actual!=kind or length!=len(payload) or zlib.crc32(payload[:-4])!=crc:
             raise ValueError('Invalid save record')
         return version,catalog,sequence,seed,crc
     best=0;best_day=None;best_details=None

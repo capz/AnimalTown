@@ -34,10 +34,10 @@ public static class SaveCodec
         s.CaptureProfile();
         int terrainRuns=1;for(int i=1;i<Town.Cells;i++)if(s.Town.Tiles[i]!=s.Town.Tiles[i-1])terrainRuns++;
         int elevationRuns=1;for(int i=1;i<Town.Cells;i++)if(s.Town.Elevation[i]!=s.Town.Elevation[i-1])elevationRuns++;
-        int capacity=(profiles?10408+TownPaths.PackedBytes:4096)+elevationRuns*4+(s.Name.Length+s.Catchphrase.Length)*4+s.MailCount*4+s.Town.GroundCount*24+s.Town.PlacedCount*24+terrainRuns*4;
+        int capacity=(profiles?10416+TownPaths.PackedBytes+TileTraffic.Bytes:4096)+elevationRuns*4+(s.Name.Length+s.Catchphrase.Length)*4+s.MailCount*4+s.Town.GroundCount*24+s.Town.PlacedCount*24+terrainRuns*4;
         if(capacity>MaximumBytes)throw new InvalidOperationException("Save exceeds format budget");
         // Allocate from actual encoded content, not the 1-MiB format ceiling.
-        var b=new byte[capacity];int p=0;Put(b,ref p,0x41544f57);Put(b,ref p,profiles?10:7);Put(b,ref p,Catalog.Version);Put(b,ref p,s.Sequence);
+        var b=new byte[capacity];int p=0;Put(b,ref p,0x41544f57);Put(b,ref p,profiles?11:7);Put(b,ref p,Catalog.Version);Put(b,ref p,s.Sequence);
         Put(b,ref p,0);Put(b,ref p,0);
         Put(b,ref p,Town.Width);Put(b,ref p,Town.Height);
         int[] f={s.Town.Seed,s.Town.Day,s.Town.Month,s.Wallet,(int)s.Savings,(int)(s.Savings>>32),(int)s.Debt,(int)(s.Debt>>32),s.Species,s.Palette,s.Tool,s.Shirt,s.HouseTier,s.GardenTier,s.PendingKind,s.PendingTier,s.PendingDay,s.Tutorial,s.MetMask,s.Jobs,s.JobDay,s.MailCount,s.Roof,s.Wall,s.Fence,s.Mailbox,s.Exterior,s.HousePlaced?1:0,(int)(s.X*1024),(int)(s.Z*1024),s.Town.HouseX,s.Town.HouseZ,s.Town.Spending,s.Town.StockCount};
@@ -58,6 +58,7 @@ public static class SaveCodec
         if(profiles){Put(b,ref p,s.ActiveProfile);for(int i=0;i<GameState.ProfileCount;i++){var data=ProfileCodec.Encode(s,i);Put(b,ref p,data.Length);Array.Copy(data,0,b,p,data.Length);p+=data.Length;}}
         if(profiles){s.Town.Paths.Validate();Put(b,ref p,1);Put(b,ref p,TownPaths.PackedBytes);Array.Copy(s.Town.Paths.Packed,0,b,p,TownPaths.PackedBytes);p+=TownPaths.PackedBytes;}
         if(profiles){var shop=s.Town.Shop.Encode();Put(b,ref p,shop.Length);for(int i=0;i<shop.Length;i++)Put(b,ref p,shop[i]);}
+        if(profiles){Put(b,ref p,1);Put(b,ref p,TileTraffic.Bytes);Array.Copy(s.Town.Traffic.Visits,0,b,p,TileTraffic.Bytes);p+=TileTraffic.Bytes;}
         int h=16;Put(b,ref h,p);Put(b,ref h,(int)Crc(b,24,p-24));var result=new byte[p];Array.Copy(b,result,p);return result;
     }
     private static int Range(byte[] b,ref int p,int min,int max)
@@ -70,8 +71,8 @@ public static class SaveCodec
     {
         if(b.Length<160||b.Length>MaximumBytes)throw new InvalidOperationException("Invalid save size");int p=0;
         if(Get(b,ref p)!=0x41544f57)throw new InvalidOperationException("Invalid save magic");int version=Get(b,ref p);
-        if((version<4||version>10)||Get(b,ref p)!=Catalog.Version)throw new InvalidOperationException("Unsupported save version");
-        if(snapshot!=null&&version!=10)throw new InvalidOperationException("Readback requires current save format");
+        if((version<4||version>11)||Get(b,ref p)!=Catalog.Version)throw new InvalidOperationException("Unsupported save version");
+        if(snapshot!=null&&version!=11)throw new InvalidOperationException("Readback requires current save format");
         int seq=Range(b,ref p,0,int.MaxValue);if(Get(b,ref p)!=b.Length||(uint)Get(b,ref p)!=Crc(b,24,b.Length-24))throw new InvalidOperationException("Save checksum failed");
         // Town dimensions must match exactly. Old larger towns are not cropped
         // or regenerated; creating a smaller town requires deleting town data.
@@ -135,6 +136,10 @@ public static class SaveCodec
         }else if(snapshot==null)s.Town.Paths.Clear();
         if(version>=10||extension==154){int length=version>=10?Range(b,ref p,154,154):154;var shop=new int[length];for(int i=0;i<length;i++)shop[i]=Get(b,ref p);s.Town.Shop.Decode(shop);}
         else UpgradeShop(s);
+        if(version>=11){
+            Range(b,ref p,1,1);Range(b,ref p,TileTraffic.Bytes,TileTraffic.Bytes);if(p>b.Length-TileTraffic.Bytes)throw new InvalidOperationException("Truncated tile traffic");
+            for(int i=0;i<TileTraffic.Bytes;i++){if(snapshot!=null){if(s.Town.Traffic.Visits[i]!=b[p+i])throw new InvalidOperationException("Readback traffic differs from snapshot");}else s.Town.Traffic.Visits[i]=b[p+i];}p+=TileTraffic.Bytes;
+        }
         int placedCount=s.Town.PlacedCount;s.Town.PlacedCount=0;
         for(int i=0;i<placedCount;i++){var q=s.Town.Placed[i];if(!s.CanPlace(q.Item,q.X,q.Z,q.Rotation,q.Room,q.Owner,true))throw new InvalidOperationException("Invalid placement");s.Town.PlacedCount++;}
         if(p!=b.Length)throw new InvalidOperationException("Trailing save bytes");
