@@ -9,6 +9,7 @@ static int town_water_scene;
 static unsigned town_water_frame,town_water_next;
 static unsigned town_water_tev,town_water_indirect,town_water_texgens;
 static unsigned town_water_coord[2],town_water_map[2],town_water_matrix[2];
+static unsigned town_water_kcolor[2];
 static float town_water_uv[2][6];
 static const DndDrawTexture *town_water_primary,*town_water_secondary;
 static unsigned town_water_strength;
@@ -42,6 +43,10 @@ static void town_water_set_coord(unsigned coord,unsigned type,unsigned source,un
     GX_SetTexCoordGen(coord,type,source,matrix);
     if(coord==GX_TEXCOORD0||coord==GX_TEXCOORD1)town_water_matrix[coord==GX_TEXCOORD1]=matrix;
 }
+static void town_water_set_kcolor(unsigned slot,GXColor color){
+    GX_SetTevKColor(slot,color);
+    if(slot<2)town_water_kcolor[slot]=(unsigned)color.r<<24|(unsigned)color.g<<16|(unsigned)color.b<<8|color.a;
+}
 static int town_water_fixed(float value){
     /* Invalid matrices remain visible without undefined float-to-int casts. */
     return isfinite(value)&&fabsf(value)<2000?(int)lroundf(value*1000000.f):-2147483647;
@@ -53,12 +58,12 @@ static void town_water_begin(unsigned primitive,unsigned format,unsigned count){
         char line[512];
         snprintf(line,sizeof line,
             "ANIMALTOWN WATER DRAW scene=%d frame=%u tev=%u indirect=%u strength=%u tex0=%dx%d tex1=%dx%d "
-            "uv0=%d,%d,%d,%d,%d,%d uv1=%d,%d,%d,%d,%d,%d layers=%u:%u,%u:%u texgens=%u matrices=%u,%u",
+            "uv0=%d,%d,%d,%d,%d,%d uv1=%d,%d,%d,%d,%d,%d layers=%u:%u,%u:%u texgens=%u matrices=%u,%u k0=%08x k1=%08x",
             town_water_scene,town_water_frame,town_water_tev,town_water_indirect,town_water_strength,
             a?a->width:0,a?a->height:0,b?b->width:0,b?b->height:0,
             town_water_fixed(u[0]),town_water_fixed(u[1]),town_water_fixed(u[2]),town_water_fixed(u[3]),town_water_fixed(u[4]),town_water_fixed(u[5]),
             town_water_fixed(v[0]),town_water_fixed(v[1]),town_water_fixed(v[2]),town_water_fixed(v[3]),town_water_fixed(v[4]),town_water_fixed(v[5]),
-            town_water_coord[0],town_water_map[0],town_water_coord[1],town_water_map[1],town_water_texgens,town_water_matrix[0],town_water_matrix[1]);
+            town_water_coord[0],town_water_map[0],town_water_coord[1],town_water_map[1],town_water_texgens,town_water_matrix[0],town_water_matrix[1],town_water_kcolor[0],town_water_kcolor[1]);
         dnd_console_write_line(line);
         town_water_next=town_water_frame+30;
     }
@@ -72,6 +77,7 @@ static void town_water_begin(unsigned primitive,unsigned format,unsigned count){
 #undef GX_SetNumTexGens
 #undef GX_SetTevOrder
 #undef GX_SetTexCoordGen
+#undef GX_SetTevKColor
 #undef GX_Begin
 #define GX_LoadTexMtxImm town_water_load_matrix
 #define GX_SetNumTevStages town_water_set_tev
@@ -79,4 +85,5 @@ static void town_water_begin(unsigned primitive,unsigned format,unsigned count){
 #define GX_SetNumTexGens town_water_set_texgens
 #define GX_SetTevOrder town_water_set_order
 #define GX_SetTexCoordGen town_water_set_coord
+#define GX_SetTevKColor town_water_set_kcolor
 #define GX_Begin town_water_begin

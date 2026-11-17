@@ -169,6 +169,24 @@ separation of near-field wave heights from texture-based distant water;
 these masks and numbers are an original AnimalTown approximation, not copied
 Nintendo textures or a bit-identical GameCube pipeline.
 
+### Legacy river shadow composition
+
+The optional **Recreate terrain meshes** and **Ground ring comparison** debug
+paths also apply the shared cloud/shadow/light footer to river water. That footer
+previously reused GX constant K1 for lamp color, replacing the second foam layer's
+pale highlight with black at noon or lamp gold at night. This affected blending
+in those legacy comparison paths; it did not stop their UV matrices.
+
+The footer now preserves both foam constants K0/K1, keeps environment/shadow
+colors in K2/K3, and places lamp RGB in an unused regular TEV color register.
+Selection excludes every authored RGB read and destination, including packed
+destinations, so the water program cannot overwrite the lamp before the appended
+stages execute. The initial alpha stays zero; shadow/light alpha calculations use
+their independent channels. WaterWarp uses only PREV and therefore leaves REG0
+available. The change adds no texture, render pass or TEV stage. Ordinary materials
+with zero or one constant keep their existing footer. This supports WaterWarp's
+two-constant composition; other layouts retain the existing footer policy.
+
 ## Verification
 
 `./tools/test-changes.ps1` selects the terrain/core checks for water files. The
@@ -197,20 +215,25 @@ against the calm ocean baseline.
 
 For combined mip and water acceptance, use `--terrain-materials`. Its fixed river
 and coast views compare interior crest/chromaticity changes, freeze landscape
-motion as a control, and resume it. Sampling waits for observed rendered frames
-and UV displacement rather than a fixed host delay. This avoids counting moving
+motion as a control, and resume it. It also toggles the existing **Recreate terrain
+meshes** shortcut (L+R+Z+X), repeats the river controls, and restores the archived
+path. Sampling waits for observed rendered frames and UV displacement rather
+than a fixed host delay. This avoids counting moving
 cloud shadows or a slow emulator's wall-clock delay as proof of texture animation.
 
 During the existing water inspection tour, `NativeWaterProbe` emits
 `ANIMALTOWN WATER DRAW` at the first actual water primitive and every 30 rendered
 frames thereafter. The read-only wrappers forward GX commands unchanged and
 record the actual loaded primary/secondary UV matrices, selected matrix IDs,
-foam stage texture-coordinate/map bindings, TEV/indirect stage counts and resolved
-texture sizes. Matrix coefficients are signed integers scaled by 1,000,000 in
+foam stage texture-coordinate/map bindings, TEV/indirect stage counts, resolved
+texture sizes and the final K0/K1 RGBA constants (`c4e4deff` / `e5f5edff`). Matrix
+coefficients are signed integers scaled by 1,000,000 in
 `m00,m01,m10,m11,offsetU,offsetV` order. The probe stays silent outside inspection.
 The patched-native suite runs a recording transport fixture that verifies call
 forwarding, draw gating, cadence, scene reset and frozen matrix reporting. A
-native trace proves submission state; the associated Dolphin screenshots and
+recording shadow fixture also checks both foam colors and the resulting RGB/alpha
+over noon/night environment, cloud and lamp masks, plus register read/write
+exclusion. A native trace proves submission state; the associated Dolphin screenshots and
 pixel comparisons establish the visible result.
 
 ## River/coast inspection

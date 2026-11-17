@@ -6,10 +6,13 @@
 #include "dnd_draw.h"
 
 typedef float Mtx[3][4];
+typedef struct { unsigned char r,g,b,a; } GXColor;
 enum { GX_TEXMTX0=30,GX_TEXMTX1=33,GX_TEXCOORD0=0,GX_TEXCOORD1=1 };
 static unsigned matrix_calls,tev_calls,indirect_calls,texgen_calls,order_calls,coord_calls,begin_calls;
 static unsigned last_slot,last_type,last_tev,last_indirect,last_texgens,last_order[4],last_coord[4],last_begin[3];
 static Mtx forwarded_matrix;
+static GXColor forwarded_kcolor;
+static unsigned kcolor_calls,last_kcolor_slot;
 static char reported[512];
 static unsigned reports;
 static void GX_LoadTexMtxImm(Mtx matrix,unsigned slot,unsigned type){
@@ -29,6 +32,7 @@ static void record_texcoord(unsigned coord,unsigned type,unsigned source,unsigne
 static void GX_Begin(unsigned primitive,unsigned format,unsigned count){
     begin_calls++;last_begin[0]=primitive;last_begin[1]=format;last_begin[2]=count;
 }
+static void GX_SetTevKColor(unsigned slot,GXColor color){kcolor_calls++;last_kcolor_slot=slot;forwarded_kcolor=color;}
 void dnd_console_write_line(const char *line){
     assert(strlen(line)<sizeof reported);strcpy(reported,line);reports++;
 }
@@ -40,6 +44,7 @@ static void bind(const DndDrawTexture *texture,const DndDrawMaterial *material,M
     GX_SetNumTevStages(4);GX_SetNumIndStages(1);GX_SetNumTexGens(2);
     GX_SetTevOrder(1,0,0,4);GX_SetTevOrder(2,1,0,4);
     GX_SetTexCoordGen(0,1,4,GX_TEXMTX0);GX_SetTexCoordGen(1,1,5,GX_TEXMTX1);
+    GX_SetTevKColor(0,(GXColor){196,228,222,255});GX_SetTevKColor(1,(GXColor){229,245,237,255});
 }
 static void begin(void){GX_Begin(144,0,6);}
 
@@ -58,10 +63,11 @@ int main(void){
     assert(last_order[0]==2&&last_order[1]==1&&last_order[2]==0&&last_order[3]==4);
     assert(last_coord[0]==1&&last_coord[1]==1&&last_coord[2]==5&&last_coord[3]==33);
     assert(last_begin[0]==144&&last_begin[1]==0&&last_begin[2]==6);
+    assert(kcolor_calls==2&&last_kcolor_slot==1&&forwarded_kcolor.r==229&&forwarded_kcolor.g==245&&forwarded_kcolor.b==237&&forwarded_kcolor.a==255);
 
     assert(animaltown_water_probe_enable(1)==1);bind(&texture,&material,primary,secondary);
     assert(!reports);begin();assert(reports==1);
-    assert(!strcmp(reported,"ANIMALTOWN WATER DRAW scene=1 frame=1 tev=4 indirect=1 strength=76 tex0=64x64 tex1=64x64 uv0=1350000,0,0,1350000,200000,300000 uv1=1000000,0,0,1000000,400000,500000 layers=0:0,1:0 texgens=2 matrices=30,33"));
+    assert(!strcmp(reported,"ANIMALTOWN WATER DRAW scene=1 frame=1 tev=4 indirect=1 strength=76 tex0=64x64 tex1=64x64 uv0=1350000,0,0,1350000,200000,300000 uv1=1000000,0,0,1000000,400000,500000 layers=0:0,1:0 texgens=2 matrices=30,33 k0=c4e4deff k1=e5f5edff"));
     /* More meshes, then 29 frames of frozen matrices, do not flood the log. */
     for(int mesh=0;mesh<20;mesh++)begin();
     for(int frame=0;frame<29;frame++){animaltown_water_probe_enable(1);town_water_select(&texture,&material);begin();}
@@ -77,9 +83,15 @@ int main(void){
     assert(strstr(reported,"uv0=1350000,125000,-250000,1350000,700000,300000"));
     assert(town_water_fixed(NAN)==-2147483647&&town_water_fixed(INFINITY)==-2147483647);
 
+    /* Observe the actual final K-color write, including a footer regression. */
+    animaltown_water_probe_enable(3);bind(&texture,&material,primary,secondary);
+    GX_SetTevKColor(1,(GXColor){0,0,0,255});GX_SetTevKColor(2,(GXColor){4,5,6,7});begin();
+    assert(reports==4&&strstr(reported,"k0=c4e4deff k1=000000ff"));
+    assert(last_kcolor_slot==2&&forwarded_kcolor.r==4&&forwarded_kcolor.a==7);
+
     /* A missing effect and inspection exit cannot produce false draw proof. */
-    animaltown_water_probe_enable(2);material.effect=NULL;town_water_select(&texture,&material);begin();assert(reports==3);
-    animaltown_water_probe_enable(0);material.effect=&effect;bind(&texture,&material,primary,secondary);begin();assert(reports==3);
-    puts("Water probe: exact GX forwarding, actual-draw gating, matrix order, frozen values, bounded cadence and scene reset passed");
+    animaltown_water_probe_enable(2);material.effect=NULL;town_water_select(&texture,&material);begin();assert(reports==4);
+    animaltown_water_probe_enable(0);material.effect=&effect;bind(&texture,&material,primary,secondary);begin();assert(reports==4);
+    puts("Water probe: exact GX forwarding, actual-draw gating, matrix order, frozen values, final foam constants, bounded cadence and scene reset passed");
     return 0;
 }

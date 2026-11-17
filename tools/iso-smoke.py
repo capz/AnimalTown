@@ -522,11 +522,17 @@ def terrain_mip_pixels(pixels):
     return {'level_pixels':counts,'classified_pixels':total,
             'mean_level':level_sum/max(1,total),'fit_rgb_rms':(error_sum/max(1,total))**.5}
 
-def water_material_pixels(first,second):
+def water_material_pixels(first,second,shadowed=False):
     """Measure moving crest colour/edges, with shoreline and HUD excluded."""
     def wet(data,x,y):
         r,g,b=data[(y*800+x)*3:(y*800+x)*3+3]
         return g>85 and b>85 and g>r+8 and b>r+8
+    origin=(35,49,66) if shadowed else (0,0,0);cache={}
+    def chromaticity(pixel):
+        if pixel not in cache:
+            total=max(1,sum(pixel)-sum(origin))
+            cache[pixel]=tuple((pixel[c]-origin[c])/total for c in range(3))
+        return cache[pixel]
     samples=chroma=edge_flips=0
     for y in range(60,308,2):
         for x in range(38,604,2):
@@ -535,19 +541,27 @@ def water_material_pixels(first,second):
             neighbours=((x,y),(x-3,y),(x+3,y),(x,y-3),(x,y+3))
             if not all(wet(data,px,py) for data in (first,second) for px,py in neighbours):continue
             at=(y*800+x)*3;a=first[at:at+3];b=second[at:at+3]
-            sa=max(1,sum(a));sb=max(1,sum(b));samples+=1
+            ca=chromaticity(a);cb=chromaticity(b);samples+=1
             # Default archived water has no cloud-shadow shader stages; the
             # native probe below checks that actual 4..6-stage/2-texgen path.
-            # Compare crest colour and edges against the frozen UV control.
-            if max(abs(a[c]/sa-b[c]/sb) for c in range(3))>.018:chroma+=1
+            # Legacy river water has the same affine shadow blend as ground:
+            # normalizing RGB-S cancels that blend. Its spatial colour edges
+            # also use this normalization so moving clouds cannot prove waves.
+            if max(abs(ca[c]-cb[c]) for c in range(3))>.018:chroma+=1
             for dx,dy in ((3,0),(0,3)):
                 offset=((y+dy)*800+x+dx)*3
-                da=sum(first[offset:offset+3])-sum(a)
-                db=sum(second[offset:offset+3])-sum(b)
-                if abs(da)>=24 and abs(db)>=24 and da*db<0:
+                if shadowed:
+                    na=chromaticity(first[offset:offset+3]);nb=chromaticity(second[offset:offset+3])
+                    flip=any(abs(na[c]-ca[c])>=.018 and abs(nb[c]-cb[c])>=.018
+                             and (na[c]-ca[c])*(nb[c]-cb[c])<0 for c in range(3))
+                else:
+                    da=sum(first[offset:offset+3])-sum(a);db=sum(second[offset:offset+3])-sum(b)
+                    flip=abs(da)>=24 and abs(db)>=24 and da*db<0
+                if flip:
                     edge_flips+=1;break
     return {'interior_samples':samples,'changed_chromaticity_samples':chroma,
-            'crest_edge_sign_changes':edge_flips,'region':[38,60,604,308]}
+            'crest_edge_sign_changes':edge_flips,'region':[38,60,604,308],
+            'shadow_invariant':shadowed,'edge_measure':'chromaticity' if shadowed else 'intensity'}
 
 def terrain_materials():
     """Observe real menu controls, native sampler output and water motion."""
@@ -571,8 +585,8 @@ def terrain_materials():
         alive();filename=prefix+name+'.png';screenshot(filename)
         if filename not in report['screenshots']:report['screenshots'].append(filename)
         return rgb(filename)
-    def chord(button,freeze=False):
-        buttons=['L','R']+(['Z'] if freeze else [])+[button]
+    def chord(button,with_z=False):
+        buttons=['L','R']+(['Z'] if with_z else [])+[button]
         # One pipe update presents the complete chord to the guest. In
         # particular, Z must not first toggle the unrelated frame profiler.
         os.write(controller,(''.join('PRESS '+value+'\n' for value in buttons)).encode())
@@ -626,8 +640,9 @@ def terrain_materials():
             raise AssertionError('Disabling mipmaps did not collapse diagnostic terrain to level zero')
     water_pattern=(r'ANIMALTOWN WATER DRAW scene=(\d+) frame=(\d+) tev=(\d+) indirect=(\d+) strength=(\d+) '
                    r'tex0=(\d+)x(\d+) tex1=(\d+)x(\d+) uv0=([-\d,]+) uv1=([-\d,]+) '
-                   r'layers=(\d+):(\d+),(\d+):(\d+) texgens=(\d+) matrices=(\d+),(\d+)')
-    def water_probe(scene):
+                   r'layers=(\d+):(\d+),(\d+):(\d+) texgens=(\d+) matrices=(\d+),(\d+) '
+                   r'k0=([0-9a-f]{8}) k1=([0-9a-f]{8})')
+    def water_probe(scene,legacy=False):
         matches=re.findall(water_pattern,runtime_log_text())
         if not matches or int(matches[-1][0])!=scene:return None
         fields=matches[-1]
@@ -636,39 +651,49 @@ def terrain_materials():
                'tex0':[int(fields[5]),int(fields[6])],'tex1':[int(fields[7]),int(fields[8])],
                'uv0':list(map(int,fields[9].split(','))),'uv1':list(map(int,fields[10].split(','))),
                'layers':[[int(fields[11]),int(fields[12])],[int(fields[13]),int(fields[14])]],
-               'texgens':int(fields[15]),'matrices':[int(fields[16]),int(fields[17])]}
-        if (not 4<=state['tev_stages']<=6 or state['indirect_stages']!=1 or state['strength']<=0
+               'texgens':int(fields[15]),'matrices':[int(fields[16]),int(fields[17])],
+               'foam_constants':[fields[18],fields[19]]}
+        archived=4<=state['tev_stages']<=6 and state['texgens']==2
+        shaded=state['tev_stages']==8 and state['texgens']==3
+        if (not (archived or shaded) or state['indirect_stages']!=1 or state['strength']<=0
                 or state['tex0']!=[64,64] or state['tex1']!=[64,64]
-                or state['layers']!=[[0,0],[1,0]] or state['texgens']!=2 or state['matrices']!=[30,33]):
+                or state['layers']!=[[0,0],[1,0]] or state['matrices']!=[30,33]):
             raise AssertionError('Actual GX water draw lost its blend/indirect/UV bindings: '+str(state))
+        # Switching terrain paths rebuilds asynchronously. Ignore the last
+        # valid draw from the previous path until the requested one appears.
+        if shaded!=legacy:return None
+        state['material_path']='legacy' if shaded else 'archived'
+        if state['foam_constants']!=['c4e4deff','e5f5edff']:
+            raise AssertionError('Actual GX water draw overwrote a foam colour constant: '+str(state))
         for key,scale in (('uv0',1350000),('uv1',1000000)):
             matrix=state[key]
             if len(matrix)!=6 or any(abs(actual-expected)>3 for actual,expected in zip(matrix[:4],(scale,0,0,scale))):
                 raise AssertionError('Actual GX water UV matrix has the wrong scale: '+str(state))
         return state
-    def water_wait(scene,predicate):
+    def water_wait(scene,predicate,legacy=False):
         deadline=time.monotonic()+180
         while time.monotonic()<deadline:
-            alive();state=water_probe(scene)
+            alive();state=water_probe(scene,legacy)
             if state and predicate(state):return state
             time.sleep(.2)
-        raise AssertionError('No matching actual GX water draw/progression for scene '+str(scene))
+        raise AssertionError('No matching actual GX water draw/progression for scene '+str(scene)
+                             +' ('+('legacy' if legacy else 'archived')+')')
     def uv_progress(before,after):
         return [[min(abs(after[key][at]-before[key][at])%1000000,
                      1000000-abs(after[key][at]-before[key][at])%1000000)
                  for at in (4,5)] for key in ('uv0','uv1')]
-    def water_pair(name,scene,moving=True,frames=60):
-        previous=water_probe(scene);after=previous['frame'] if previous else -1
-        start=water_wait(scene,lambda state:state['frame']>after)
+    def water_pair(name,scene,moving=True,frames=60,legacy=False):
+        previous=water_probe(scene,legacy);after=previous['frame'] if previous else -1
+        start=water_wait(scene,lambda state:state['frame']>after,legacy)
         first=capture(name+'-a')
         def advanced(state):
             if state['frame']<start['frame']+frames:return False
             if not moving:return True
             return all(max(layer)>=40000 for layer in uv_progress(start,state))
-        end=water_wait(scene,advanced);second=capture(name+'-b')
+        end=water_wait(scene,advanced,legacy);second=capture(name+'-b')
         if not moving and any(start[key]!=end[key] for key in ('uv0','uv1')):
             raise AssertionError('Freezing landscape motion did not stop actual water UV matrices')
-        metrics=water_material_pixels(first,second)
+        metrics=water_material_pixels(first,second,shadowed=legacy)
         visual_assert(metrics['interior_samples']>=250,'No sufficient water interior in '+name)
         metrics.update(native_start=start,native_end=end,rendered_frames=end['frame']-start['frame'],
                        uv_translation_delta=uv_progress(start,end),motion_expected=moving)
@@ -708,14 +733,34 @@ def terrain_materials():
         # restores logical coordinates after every draw, keeping pairs fixed.
         chord('D_LEFT');wait_onboarding('world',prefix+'river-ready.png');time.sleep(3)
         animated=water_pair('water-river',1)
-        chord('D_DOWN',freeze=True);time.sleep(2)
+        chord('D_DOWN',with_z=True);time.sleep(2)
         frozen=water_pair('water-river-frozen',1,moving=False,frames=animated['rendered_frames'])
-        chord('D_DOWN',freeze=True);time.sleep(2);resumed=water_pair('water-river-resumed',1)
+        chord('D_DOWN',with_z=True);time.sleep(2);resumed=water_pair('water-river-resumed',1)
         report['water']['river']={'animated':animated,'frozen_control':frozen,'resumed':resumed}
         for name,metrics in (('river animation',animated),('resumed river animation',resumed)):
             visual_assert(metrics['changed_chromaticity_samples']>=max(35,frozen['changed_chromaticity_samples']*3)
                           and metrics['crest_edge_sign_changes']>=15,
                           name+' is not visibly stronger than the frozen water control')
+        # The legacy river path adds the shadow/light footer that used to
+        # overwrite WaterWarp's second foam colour. RecreateMeshes is a
+        # session-only chord, not the unrelated in-game tree-noise menu row.
+        chord('X',with_z=True);wait_onboarding('world',prefix+'legacy-river-ready.png')
+        legacy_animated=water_pair('water-river-legacy',1,legacy=True)
+        chord('D_DOWN',with_z=True);time.sleep(2)
+        legacy_frozen=water_pair('water-river-legacy-frozen',1,moving=False,
+                                 frames=legacy_animated['rendered_frames'],legacy=True)
+        chord('D_DOWN',with_z=True);time.sleep(2)
+        legacy_resumed=water_pair('water-river-legacy-resumed',1,legacy=True)
+        report['water']['legacy_river']={'animated':legacy_animated,'frozen_control':legacy_frozen,
+                                         'resumed':legacy_resumed,'switch_control':'L+R+Z+X'}
+        for name,metrics in (('legacy river animation',legacy_animated),('resumed legacy river animation',legacy_resumed)):
+            visual_assert(metrics['changed_chromaticity_samples']>=max(35,legacy_frozen['changed_chromaticity_samples']*3)
+                          and metrics['crest_edge_sign_changes']>=15,
+                          name+' is not visibly stronger than the frozen water control')
+        last_legacy=legacy_resumed['native_end']['frame']
+        chord('X',with_z=True);wait_onboarding('world',prefix+'archive-river-restored.png')
+        report['water']['legacy_river']['archived_restored']=water_wait(1,lambda state:state['frame']>last_legacy)
+        capture('water-river-archive-restored')
         for _ in range(3):chord('D_LEFT')
         wait_onboarding('world',prefix+'coast-ready.png');time.sleep(3)
         coast=water_pair('water-coast',4);report['water']['coast']=coast
@@ -730,7 +775,14 @@ def terrain_materials():
         if report['visual_failures']:raise AssertionError('; '.join(report['visual_failures']))
         report['passed']=True
     except Exception as error:
-        report['error']=str(error);raise
+        report['error']=str(error)
+        # Retain the actual frame even if the first native probe is missing
+        # or invalid, distinguishing absent water from failed animation.
+        try:
+            filename=prefix+'failure.png';screenshot(filename)
+            if filename not in report['screenshots']:report['screenshots'].append(filename)
+        except Exception:pass
+        raise
     finally:
         (root/(prefix+'runtime.log')).write_text(runtime_log_text())
         (root/(prefix+'report.json')).write_text(json.dumps(report,indent=2)+'\n')
