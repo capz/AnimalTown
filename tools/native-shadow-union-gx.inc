@@ -1,4 +1,3 @@
-#include <stdio.h>
 /* Game ground shader hook. Independent of the villager rim scope. */
 extern int animaltown_shadows_mode(void);
 extern const uint8_t *animaltown_path_mask(void);
@@ -14,8 +13,6 @@ static void town_alpha_pass(int stage){
  * world mask changes independently of the immutable terrain archive. */
 static int town_paths_apply(const DndDrawMaterial *mat,int stage,unsigned *bindings){
     const uint8_t *mask=animaltown_path_mask();
-    static unsigned traced;unsigned key=(mask?1u:0u)|(mat->secondary?2u:0u);
-    if(!(traced&(1u<<key))){traced|=1u<<key;printf("ANIMALTOWN PATH GX mask %d secondary %d color %08x\n",mask!=NULL,mat->secondary!=NULL,(unsigned)mat->color);}
     if(!mask||!mat->secondary)return stage;
     GXTexObj tex;GX_InitTexObj(&tex,(void*)mask,128,128,GX_TF_I4,GX_CLAMP,GX_CLAMP,GX_FALSE);
     GX_InitTexObjLOD(&tex,GX_NEAR,GX_NEAR,0,0,0,GX_FALSE,GX_FALSE,GX_ANISO_1);GX_LoadTexObj(&tex,GX_TEXMAP3);(*bindings)++;
@@ -24,7 +21,9 @@ static int town_paths_apply(const DndDrawMaterial *mat,int stage,unsigned *bindi
     GX_LoadTexMtxImm(uv,GX_TEXMTX7,GX_MTX2x4);GX_SetTexCoordGen(GX_TEXCOORD3,GX_TG_MTX2x4,GX_TG_TEX0,GX_TEXMTX7);
     GX_SetTexCoordScaleManually(GX_TEXCOORD3,GX_FALSE,1,1);GX_SetTexCoordBias(GX_TEXCOORD3,GX_FALSE,GX_FALSE);
     GX_SetTevDirect((u8)stage);GX_SetTevSwapMode((u8)stage,GX_TEV_SWAP0,GX_TEV_SWAP0);
-    GX_SetTevOrder((u8)stage,GX_TEXCOORD1,GX_TEXMAP1,GX_COLOR_NULL);
+    /* Keep the receiver channel alive through every added pass. A NULL
+     * raster channel here makes the later mask/shadow RASA read zero on GX. */
+    GX_SetTevOrder((u8)stage,GX_TEXCOORD1,GX_TEXMAP1,GX_COLOR0A0);
     GX_SetTevColorIn((u8)stage,GX_CC_ZERO,GX_CC_ZERO,GX_CC_ZERO,GX_CC_TEXC);
     GX_SetTevColorOp((u8)stage,GX_TEV_ADD,GX_TB_ZERO,GX_CS_SCALE_1,GX_TRUE,GX_TEVREG1);town_alpha_pass(stage++);
     GX_SetTevSwapModeTable(GX_TEV_SWAP1,GX_CH_RED,GX_CH_GREEN,GX_CH_BLUE,GX_CH_RED);
@@ -35,7 +34,7 @@ static int town_paths_apply(const DndDrawMaterial *mat,int stage,unsigned *bindi
     GX_SetTevAlphaIn((u8)stage,GX_CA_ZERO,GX_CA_TEXA,GX_CA_RASA,GX_CA_ZERO);
     GX_SetTevAlphaOp((u8)stage,GX_TEV_ADD,GX_TB_ZERO,GX_CS_SCALE_1,GX_TRUE,GX_TEVREG2);stage++;
     GX_SetTevDirect((u8)stage);GX_SetTevSwapMode((u8)stage,GX_TEV_SWAP0,GX_TEV_SWAP0);
-    GX_SetTevOrder((u8)stage,GX_TEXCOORD_NULL,GX_TEXMAP_NULL,GX_COLOR_NULL);
+    GX_SetTevOrder((u8)stage,GX_TEXCOORD_NULL,GX_TEXMAP_NULL,GX_COLOR0A0);
     GX_SetTevColorIn((u8)stage,GX_CC_CPREV,GX_CC_C1,GX_CC_A2,GX_CC_ZERO);
     GX_SetTevColorOp((u8)stage,GX_TEV_ADD,GX_TB_ZERO,GX_CS_SCALE_1,GX_TRUE,GX_TEVPREV);town_alpha_pass(stage++);
     return stage;
@@ -130,7 +129,7 @@ static inline void town_shadow_apply(float x,float z,const float *world,const Dn
     town_shadow_apply_stage(x,z,world,effect,bindings,effect?effect->count:1);
 }
 static inline void town_shadow_ground(const DndDrawVertex *v,const uint16_t *ix,int count,const DndDrawMaterial *mat,unsigned *bindings){
-    int mode=animaltown_shadows_mode();static unsigned modes;unsigned bit=1u<<(mode&3);if(!(modes&bit)){modes|=bit;printf("ANIMALTOWN GROUND GX scope %d\n",mode);}if(mode!=1&&mode!=3){town_environment_apply(mat->effect,mat->effect?mat->effect->count:1);return;}if(count<3)return;
+    int mode=animaltown_shadows_mode();if(mode!=1&&mode!=3){town_environment_apply(mat->effect,mat->effect?mat->effect->count:1);return;}if(count<3)return;
     int a=0,b=1,c=2;
     for(int i=0;i+2<count;i+=3){a=ix?ix[i]:i;b=ix?ix[i+1]:i+1;c=ix?ix[i+2]:i+2;if(v[a].color&255u)break;}
     /* Every cached ground batch belongs to one 8x8m shadow page. A triangle's
