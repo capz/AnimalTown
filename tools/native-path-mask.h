@@ -6,8 +6,10 @@
 #define PATH_HEIGHT 120
 #define PATH_PACKED (PATH_SIDE*PATH_HEIGHT/4)
 #define PATH_BYTES (PATH_SIDE*PATH_SIDE/2)
+#define PATH_STAMP (PATH_SIDE*PATH_HEIGHT/2)
 /* GX I4, one nearest-filtered texel per metre. No RGBA decode, per-cell
- * geometry or duplicate managed image. The final eight rows stay empty. */
+ * geometry or duplicate managed image. Padding has no world coverage; its
+ * first four bytes carry a publication stamp for sampled texture caches. */
 static inline int path_offset(int x,int z){return ((z/8)*(PATH_SIDE/8)+x/8)*32+(z%8)*4+(x%8)/2;}
 static inline void path_expand(uint8_t *image,const uint8_t *packed){
     memset(image,0,PATH_BYTES);

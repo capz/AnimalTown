@@ -37,9 +37,12 @@ through the existing explicit save flow, never on every step. The card archive r
 ## Rendering and cost
 
 A native GX I4 mask holds one nearest-filtered texel per metre in a 128×128
-texture: 8,192 bytes, including eight empty padding rows. It is expanded directly
+texture: 8,192 bytes, including eight padding rows outside world coverage. It is expanded directly
 from the packed selection into an SDK-charged native buffer, with no duplicate
 managed image or RGBA decode. It uploads only when the path revision changes.
+Four padding bytes carry a publication serial so sampled texture caches can
+observe even sparse edits, including after texture recreation. The serial adds
+four native state bytes, with no additional texture allocation.
 Point filtering keeps a selected tile from bleeding onto unvisited neighbours.
 Boundaries follow the selected metre cells; the old geometry corner bevels are
 replaced by the coverage mask.
@@ -74,8 +77,9 @@ The previous fixed-network performance report at
 [performance/town-paths/README.md](performance/town-paths/README.md) describes its
 pinned historical implementation and is not a measurement of this renderer.
 
-Dolphin validation uses `SafeTextureCacheColorSamples = 0`. Its default sampled
-texture hashing can miss sparse live I4 mask edits and retain an earlier image
-until reload, even though the game flushed and invalidated the texture cache.
-Full hashing verified paths appearing during walking without reloading. This is
-an emulator test setting; console mask uploads remain revision-gated.
+Dolphin's sampled texture hashing can miss sparse live I4 mask edits. Full-hash
+captures (`SafeTextureCacheColorSamples = 0`) verified paths appearing during
+walking. The native publication-stamp test covers a sparse edit missed by the
+sampled probes and texture recreation at the same revision. Its default-cache
+Dolphin retest and integration with the newest main branch are pending because
+the execution environment disconnected during the final rebase.
