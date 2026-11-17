@@ -108,7 +108,7 @@ internal static class DepotPackageChecks
             foreach(string name in new[]{"terrain-materials.png","terrain-materials-Frame.png","terrain-materials-frame.PNG","terrain-materials-unlisted.json","terrain-materials-source.cs","terrain-materials-frame.png/source.py","scenarios/terrain-materials/frame.png"})UnsupportedReport(name);
             Mutated("release/BUILD.txt",Encoding.UTF8.GetBytes("corrupt report"));
             Mutated("release/terrain-materials-mips-auto.png",Encoding.UTF8.GetBytes("corrupt capture"));
-            Mutated("release/source.cs");Mutated("release/scenarios/performance/source.py");
+            Mutated("release/animal-town-updater.dol");Mutated("release/source.cs");Mutated("release/scenarios/performance/source.py");
             Mutated("release/scenarios/performance/../bad.txt");Mutated("release/scenarios/performance/link.txt",attributes:unchecked((int)0xa1ff0000));
             Mutated("release/manifest.json",JsonSerializer.SerializeToUtf8Bytes(new{schema=1,commit=new string('b',40),version,files=reportManifest.files}));
             Mutated("release/manifest.json",JsonSerializer.SerializeToUtf8Bytes(new{schema=1,commit,version="1.2.4",files=reportManifest.files}));
