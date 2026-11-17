@@ -119,6 +119,25 @@ function Get-VersionPullRequests {param([string]$Root);$script:apiCalls++;return
 $c=Get-BuildVersion $repo -BuildKind branch -MainRef main -Refresh
 $cached=Get-BuildVersion $repo -BuildKind branch -MainRef main
 Assert ($script:apiCalls -eq 1 -and $cached.version -ceq $c.version) 'Matching snapshots reuse cached PR history offline'
+# Depot retains version.json exactly. Replay publication in fresh processes:
+# matching values must also retain the bytes produced by the console build.
+Write-VersionMetadata $c $repo
+$metadata=Join-Path $repo 'out/version.json'
+$metadataHash=(Get-FileHash -LiteralPath $metadata -Algorithm SHA256).Hash
+$rewrite=Join-Path $repo 'out/rewrite-version.ps1'
+[IO.File]::WriteAllText($rewrite,@'
+param([string]$VersionScript,[string]$Root)
+$ErrorActionPreference='Stop'
+. $VersionScript
+Write-VersionMetadata (Get-BuildVersion $Root -BuildKind branch -MainRef main) $Root
+'@)
+$versionScript=(Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '../tools/version.ps1')).Path
+$pwsh=Join-Path $PSHOME $(if($IsWindows){'pwsh.exe'}else{'pwsh'})
+for($attempt=0;$attempt -lt 8;$attempt++){
+    & $pwsh -NoLogo -NoProfile -File $rewrite -VersionScript $versionScript -Root $repo
+    Assert ($LASTEXITCODE -eq 0) 'Fresh publication process resolves the pinned identity offline'
+    Assert ((Get-FileHash -LiteralPath $metadata -Algorithm SHA256).Hash -ceq $metadataHash) 'Fresh publication process preserves byte-exact packaged version metadata'
+}
 $null=FixtureGit @('switch','main');Commit 'Another integrated PR';$last=FixtureGit @('rev-parse','HEAD');$merges+=@{number=105;mergeCommit=$last}
 $d=Get-BuildVersion $repo -BuildKind main -MainRef HEAD
 Assert ($d.version -ceq '0.11.14' -and $script:apiCalls -eq 2) 'An advanced main snapshot invalidates cached history'
