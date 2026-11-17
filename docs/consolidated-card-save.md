@@ -1,6 +1,6 @@
 # One AnimalTown memory-card item
 
-AnimalTown now stores its logical save records inside one physical `AnimalTown`
+AnimalTown now stores its logical save records inside one physical `AnimalTown` (or migrated `AnimalTown2`)
 file with one banner and icon. Town records, player records, manifests, options,
 debug configuration and deletion intent keep their existing independent schemas.
 The explicit-save policy and game-level reference-manifest publication protocol
@@ -13,14 +13,14 @@ engine dependency versions. Its native adapter/bridge are included by the guarde
 native patch, rather than implementing a second record engine in AnimalTown.
 Initialize the submodule with `git submodule update --init vendor/card-store-sdk`.
 
-The file reserves 18 standard 8 KiB card blocks: two for browser metadata and
-artwork, two independent checkpoint sectors, and fourteen data sectors. Small
+The file reserves 34 standard 8 KiB card blocks: two for browser metadata and
+artwork, two independent checkpoint sectors, and thirty data sectors. Small
 logical records share sectors. A new generated Emi/Fox town with both save banks
-uses this single 18-block allocation, including recovery capacity. Settings/debug
+uses this single 34-block allocation, including recovery capacity. Settings/debug
 records use that same reservation. This fixed-size allocation is not guaranteed
 to fit every future edited town: exhaustion retains the last verified save and
 reports an error; growing it requires a separately verified copy. A settings-only
-card also reserves these 18 blocks so that adding the first town can use the same
+card also reserves these 34 blocks so that adding the first town can use the same
 container. File-count consolidation is not a promise of lower usage for every
 possible card layout.
 
@@ -35,7 +35,7 @@ needed for normal journal or backup data.
 ## Existing cards
 
 Reads retain the old multi-file format until the first explicit write. Migration
-requires the old files **plus 18 free blocks and one directory entry**. It refuses
+requires the old files **plus 34 free blocks and one directory entry**. It refuses
 an incomplete source town instead of guessing. It copies all recognized records,
 reads them back, verifies that the decoded town matches, and publishes a durable
 migration marker before deleting any source file. Cleanup interruption resumes
@@ -63,3 +63,14 @@ and missing-character visibility/creation capacity flow are still design work;
 this implementation provides their record storage, not those UI/routing features.
 Physical Memory Card 251/Swiss, real flash power interruption and native console
 rendering remain unqualified until tested on the corresponding hardware/build.
+
+Traffic history requires a 32-block record payload plus two artwork blocks (34
+physical blocks total). Existing 16-block payload containers are read without
+modification. Their first write creates `AnimalTown2`, copies and verifies all
+records, verifies the full town snapshot, and publishes its migration marker
+before deleting `AnimalTown`. This requires 52 physical blocks temporarily for
+the old and replacement containers together. A cut before publication retains
+the old source; a cut after publication loads the verified replacement and
+resumes cleanup. Lack of workspace leaves the original save intact. Repeated
+changing traffic saves and interrupted copy/cleanup are covered by the host
+card adapter checks. Physical-card timing and power-loss tests remain separate.
