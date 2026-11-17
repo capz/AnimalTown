@@ -922,7 +922,8 @@ def wait_options_saved(resolution,wide):
     import struct
     deadline=time.monotonic()+45
     while time.monotonic()<deadline:
-        payload=options_card_files().get('options')
+        try:payload=options_card_files().get('options')
+        except AssertionError:payload=None # First archive checkpoint may still be flushing.
         if payload and len(payload)==16 and payload[:3]==b'ATO' and payload[3] in (1,2) and payload[4:6]==bytes((resolution,wide)):
             checksum=2166136261
             for value in payload[:12]:checksum=((checksum^value)*16777619)&0xffffffff
@@ -932,7 +933,8 @@ def wait_options_saved(resolution,wide):
 
 def debug_visibility(require_record=False):
     import struct
-    payload=options_card_files().get('options')
+    try:payload=options_card_files().get('options')
+    except AssertionError:return None if require_record else False
     if not payload or len(payload)!=16 or payload[:3]!=b'ATO' or payload[3] not in (1,2):return None if require_record else False
     checksum=2166136261
     for value in payload[:12]:checksum=((checksum^value)*16777619)&0xffffffff
