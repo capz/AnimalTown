@@ -54,11 +54,16 @@ with `dotnet run --project tools/AnimalTown.Tools -- shop-generate ROOT`.
 `ShopLayout` supplies model stand positions, fixture collision, interaction
 approaches and NPC destinations. Host tools cook the same bounded definition
 used by other buildings. Static parts share the existing indexed retention path,
-64px runtime palette policy and 768 KiB combined building ceiling. Products are
+64px cottage / 32px flat shop palette policy and 768 KiB combined building ceiling. Products are
 small batched instances of the existing cube mesh, with category placeholders
 for non-furniture consignment; there is no model/texture allocation per product.
 Room meshes stay within the existing 600-triangle per-part and 800-triangle
 exterior limits. Actors/stock outside the indoor camera are culled.
+The host native fixture charges both complete retained kits at 686,848 bytes
+against the unchanged 786,432-byte ceiling (host pointers are wider than the
+console's). Every part also passes its 256 KiB load/compaction budget. The
+independent unpatched SDK loader check validates packages separately; the
+retained check enforces the actual aggregate runtime ceiling.
 
 The extra shop record is 154 explicit 32-bit words (616 bytes). Full saves use
 schema 9; split and incremental saves append a bounded extension to the existing

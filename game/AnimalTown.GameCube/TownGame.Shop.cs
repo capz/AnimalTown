@@ -7,6 +7,8 @@ internal sealed partial class TownGame
 {
     private int shopFixture,shopRevision,shopPocket,shopPrice,shopDigit=2,shopInspection;
     private bool shopReprice;
+    private int shopHintFixture=-1;
+    private string shopHint="";
     private bool ShopScreen=>screen=="shop-display"||screen=="shop-list"||screen=="shop-price";
     private ShopSource ShopKind=>shopFixture<12?ShopSource.Display:ShopSource.Consignment;
     private int ShopSlot=>shopFixture<12?shopFixture:shopFixture-12;
@@ -87,8 +89,8 @@ internal sealed partial class TownGame
     private void DrawShopHint(Color32 ink)
     {
         int fixture=ShopLayout.Near(state.X,state.Z);if(fixture<0||villagers.Doors.Busy(0))return;
-        string label=fixture==ShopLayout.Cabinet?"Essentials / unlimited stock":fixture==ShopLayout.Counter?"Service counter":fixture<12?"Daily display "+(fixture+1):"Villager sale "+(fixture-11);
-        Panel(38,303,564,48);Strong("A  "+label,57,316,ink,1.3f);
+        if(fixture!=shopHintFixture){shopHintFixture=fixture;shopHint="A  "+(fixture==ShopLayout.Cabinet?"Essentials / unlimited stock":fixture==ShopLayout.Counter?"Service counter":fixture<12?"Daily display "+(fixture+1):"Villager sale "+(fixture-11));}
+        Panel(38,303,564,48);Strong(shopHint,57,316,ink,1.3f);
     }
     private void DrawShopStock()
     {

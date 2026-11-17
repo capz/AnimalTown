@@ -39,7 +39,15 @@ internal static class BuildingAssets
         Write(Path.Combine(exterior,"door.glb"),door,png);Write(Path.Combine(interior,"door.glb"),door,png);
         var floor=new MeshData();floor.Box(0,-.08f,0,4,.08f,4,5);floor.Box(1.55f,.003f,3.3f,.9f,.01f,.65f,1);
         // Interior source frame is 4m; the shared renderer scales X/Z to 8m.
-        for(int i=0;i<20;i++){ShopLayout.Bounds(i,out float x,out float z,out float w,out float d,out float h);floor.Box(x/2,0,z/2,w/2,h,d/2,i<12?2:1);float ax=x/2-.02f,az=z/2-.02f,bx=(x+w)/2+.02f,bz=(z+d)/2+.02f;floor.Quad(new(ax,h+.002f,az),new(ax,h+.002f,bz),new(bx,h+.002f,bz),new(bx,h+.002f,az),7);}
+        for(int i=0;i<20;i++){
+            ShopLayout.Bounds(i,out float x,out float z,out float w,out float d,out float h);x/=2;z/=2;w/=2;d/=2;int swatch=i<12?2:1;
+            // No underside or covered top: keep only four sides and the visible cap.
+            floor.Quad(new(x,0,z),new(x,h,z),new(x+w,h,z),new(x+w,0,z),swatch);
+            floor.Quad(new(x,0,z+d),new(x+w,0,z+d),new(x+w,h,z+d),new(x,h,z+d),swatch);
+            floor.Quad(new(x,0,z),new(x,0,z+d),new(x,h,z+d),new(x,h,z),swatch);
+            floor.Quad(new(x+w,0,z),new(x+w,h,z),new(x+w,h,z+d),new(x+w,0,z+d),swatch);
+            floor.Quad(new(x-.02f,h,z-.02f),new(x-.02f,h,z+d+.02f),new(x+w+.02f,h,z+d+.02f),new(x+w+.02f,h,z-.02f),7);
+        }
         ShopLayout.Bounds(ShopLayout.Cabinet,out float cx,out float cz,out float cw,out float cd,out float ch);
         floor.Box(cx/2,0,cz/2,cw/2,ch,.06f,1);
         for(int i=0;i<4;i++)floor.Box(cx/2,i*.48f,cz/2,cw/2,.06f,cd/2,2);
