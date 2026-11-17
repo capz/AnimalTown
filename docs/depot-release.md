@@ -143,3 +143,9 @@ Optional catalog PNGs must be `banner.png` at 96x32, `screenshot0.png` through
 `screenshot2.png` at 640x480, and `hero.png` at 640x160. Use the actual submitted
 build for screenshots and do not treat gallery or ISO-only captures as proof
 of standalone app boot.
+
+The entire Depot ZIP excludes `animal-town-updater.dol`, including its optional
+`release/` reports. Both validators reject that report entry. Its only DOL is
+`apps/animaltown/default.dol`. The ISO embeds the updater and retains Update; the
+current updater discovers ISO assets through bounded GitHub release metadata,
+so it does not need a helper copy in the app ZIP.

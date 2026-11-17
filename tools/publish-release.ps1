@@ -138,7 +138,7 @@ Copy-Item -LiteralPath $palSource -Destination $palBnr -Force
 foreach($name in @('texture-audit.json','validation-plan.json','version.json','nkit-validation.json','updater-setup.md','updater-THIRD-PARTY-NOTICES.txt')){
     Copy-Item -LiteralPath (Join-Path $out $name) -Destination (Join-Path $reports $name) -Force
 }
-Copy-Item -LiteralPath (Join-Path $out 'disc/animal-town-updater.dol') -Destination (Join-Path $reports 'animal-town-updater.dol') -Force
+# The updater executable belongs to the ISO only; Depot has no Update action.
 . (Join-Path $PSScriptRoot 'update-feed.ps1')
 $updateFeed=Join-Path $reports 'update.json'
 Write-UpdateFeed -Iso $nkit -Version $version -Repository $Repository -Destination $updateFeed
@@ -147,7 +147,7 @@ Write-UpdateFeed -Iso $nkit -Version $version -Repository $Repository -Destinati
 $notes=@"
 AnimalTown $version from $commit.
 
-Downloads: NKit ISO for GC Loader; Depot ZIP for the standalone SD app; separate server and offline tools ZIPs. Reports, checksums, banners, updater helper and available captures are inside the Depot ZIP's release/ directory.
+Downloads: NKit ISO for GC Loader; Depot ZIP for the standalone SD app; separate server and offline tools ZIPs. Reports, checksums, banners and available captures are inside the Depot ZIP's release/ directory.
 
 The ISO updater now reads bounded GitHub release metadata. Older installed updater builds need one manual ISO upgrade because loose update.json assets are no longer published. Saves remain compatible.
 

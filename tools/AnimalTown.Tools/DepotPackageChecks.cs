@@ -78,7 +78,7 @@ internal static class DepotPackageChecks
             }
             DepotPackage.Verify(root,zip);Check(true,"release reports remain outside the installed runtime whitelist");
             Mutated("release/BUILD.txt",Encoding.UTF8.GetBytes("corrupt report"));
-            Mutated("release/source.cs");Mutated("release/scenarios/performance/source.py");
+            Mutated("release/animal-town-updater.dol");Mutated("release/source.cs");Mutated("release/scenarios/performance/source.py");
             Mutated("release/scenarios/performance/../bad.txt");Mutated("release/scenarios/performance/link.txt",attributes:unchecked((int)0xa1ff0000));
             Mutated("release/manifest.json",JsonSerializer.SerializeToUtf8Bytes(new{schema=1,commit=new string('b',40),version,files=reportManifest.files}));
             Mutated("release/manifest.json",new byte[1024*1024+1]);
