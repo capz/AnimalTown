@@ -1,0 +1,66 @@
+{
+  "schema": 1,
+  "game_commit": "9b660396a601846f5e43c64b09be01200f6583e1",
+  "main_snapshot": "d9bc5ab10529268efc79c37bf87f86523d282d06",
+  "version": "0.52.0+9b660396a601",
+  "renderer": "Dolphin OpenGL / llvmpipe",
+  "hardware_timing": false,
+  "configuration": "640x480 progressive, AA off, rim 100%, DSP HLE, spring noon",
+  "safe_texture_cache_color_samples": 0,
+  "traffic": {
+    "save_sequence": 2,
+    "visited_cells": 103,
+    "selected_path_cells": 31,
+    "maximum_relative_count": 10,
+    "terrain_rebuilds_during_walk": 0
+  },
+  "profile": {
+    "frames": 240,
+    "guest_fps": 58.69130869130869,
+    "host_wall_fps": 48.618772025570344,
+    "frame_ms_p50": 16.683,
+    "frame_ms_p95": 16.685,
+    "cpu_ms_mean": 6.031548936170213,
+    "cpu_ms_p95": 13.691,
+    "managed_allocations_total": 5,
+    "gc_collections": 0
+  },
+  "payload_bytes": {
+    "traffic_counters": 15360,
+    "reused_histogram": 512,
+    "existing_packed_selection": 3840,
+    "native_i4_mask": 8192,
+    "existing_shared_dirt_cmpr_mips": 2752,
+    "native_publication_serial_added_after_capture": 4,
+    "shadow_union_unchanged": 522016
+  },
+  "accounted_graphics_bytes": {
+    "native_resources": 2917988,
+    "texture_cache": 1039776,
+    "terrain_archive_aram": 2828704,
+    "terrain_cache_peak": 261120,
+    "terrain_cache_reserved": 1048576
+  },
+  "physical_card": {
+    "previous_blocks": 18,
+    "resident_blocks": 34,
+    "migration_peak_old_plus_new_blocks": 52,
+    "verified_latest_entries": [
+      {
+        "name": "AnimalTown2",
+        "blocks": 34
+      }
+    ]
+  },
+  "latest_native_fix": {
+    "commit": "ddc57ae6068ee7b4cb272dd6b94fe5709baf0f5a",
+    "description": "Four padding bytes carry a publication serial so sparse sampled hashes can detect each update and texture recreation.",
+    "validation": "Native C regression passed before environment loss; full default-cache Dolphin retest pending."
+  },
+  "limitations": [
+    "Guest timing and host wall FPS are diagnostics, not physical GameCube results.",
+    "Native graphics resources and texture-cache bytes overlap; do not sum them as total system RAM.",
+    "Object/array headers and explicit-save encoding/validation temporaries are additional.",
+    "The raw 240-frame trace and live path screenshots remain in /workspace/scratch/traffic-paths/safe-verified; upload is pending environment recovery."
+  ]
+}
