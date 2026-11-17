@@ -84,7 +84,8 @@ static void town_shadow_apply_stage(float x,float z,const float *world,const Dnd
     GX_SetTevAlphaIn((u8)stage,GX_CA_ZERO,GX_CA_TEXA,mode==2?GX_CA_KONST:GX_CA_RASA,GX_CA_ZERO);
     GX_SetTevAlphaOp((u8)stage,GX_TEV_ADD,GX_TB_ZERO,GX_CS_SCALE_1,GX_TRUE,GX_TEVREG2);
     stage++;GX_SetTevDirect((u8)stage);GX_SetTevSwapMode((u8)stage,GX_TEV_SWAP0,GX_TEV_SWAP0);
-    GX_SetTevOrder((u8)stage,GX_TEXCOORD_NULL,GX_TEXMAP_NULL,GX_COLOR_NULL);
+    /* The following light sample also consumes receiver alpha. */
+    GX_SetTevOrder((u8)stage,GX_TEXCOORD_NULL,GX_TEXMAP_NULL,GX_COLOR0A0);
     GX_SetTevColorIn((u8)stage,GX_CC_ZERO,GX_CC_ZERO,GX_CC_ZERO,GX_CC_CPREV);
     GX_SetTevColorOp((u8)stage,GX_TEV_ADD,GX_TB_ZERO,GX_CS_SCALE_1,GX_TRUE,GX_TEVPREV);
     GX_SetTevKAlphaSel((u8)stage,GX_TEV_KASEL_K2_A);
