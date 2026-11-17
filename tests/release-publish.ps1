@@ -2,7 +2,7 @@ $ErrorActionPreference='Stop'
 $tokens=$null;$errors=$null
 $ast=[Management.Automation.Language.Parser]::ParseFile((Join-Path $PSScriptRoot '../tools/publish-release.ps1'),[ref]$tokens,[ref]$errors)
 if($errors){throw 'Publisher syntax is invalid'}
-foreach($name in @('InvokeGh','Read-ReleaseMetadata','Assert-BinaryArchive','Assert-ReleaseVersionMetadata')){
+foreach($name in @('InvokeGh','Read-ReleaseMetadata','Assert-BinaryArchive','Assert-ReleaseVersionMetadata','Assert-ReleaseAsset','Assert-ReleaseAssetSet')){
     $function=$ast.Find({param($node) $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq $name},$true)
     . ([scriptblock]::Create($function.Extent.Text))
 }
@@ -18,6 +18,18 @@ function Invoke-MockGh {
 $checks=0
 function Assert($condition,[string]$message){$script:checks++;if(!$condition){throw $message}}
 function Reject([scriptblock]$action,[string]$message){$refused=$false;try{& $action}catch{$refused=$true};Assert $refused $message}
+$names=@('AnimalTown-1.2.3.nkit.iso','AnimalTown-1.2.3-depot.zip','AnimalTown-server-1.2.3.zip','AnimalTown-tools-1.2.3.zip','update.json')
+function Release([string[]]$Names){return [pscustomobject]@{assets=@($Names | ForEach-Object {[pscustomobject]@{name=$_}})}}
+Assert-ReleaseAssetSet (Release $names) $names
+Assert-ReleaseAssetSet (Release $names[0..3]) $names -AllowMissingUpdateFeed
+Reject {Assert-ReleaseAssetSet (Release $names[0..3]) $names} 'New releases must include the compact update feed'
+Reject {Assert-ReleaseAssetSet (Release $names[1..4]) $names -AllowMissingUpdateFeed} 'Feed restoration must not excuse a missing ISO'
+Reject {Assert-ReleaseAssetSet (Release ($names+@('version.json'))) $names} 'Other loose JSON remains forbidden'
+Reject {Assert-ReleaseAssetSet (Release ($names+@('update.json'))) $names} 'Duplicate update feeds must fail'
+foreach($path in @('/release/update.json','AnimalTown-1.2.3.nkit.iso')){Assert-ReleaseAsset $path}
+foreach($path in @('version.json','UPDATE.JSON','source.tar.gz','animal-town-updater.dol')){
+    Reject {Assert-ReleaseAsset $path} 'The compact update feed is the only non-ZIP/ISO release asset'
+}
 Assert ((Read-ReleaseMetadata 'v1.2.3+abcdef123456') -ceq $response) 'Draft metadata was not returned'
 Assert ($calls[0] -ceq 'release|view|v1.2.3+abcdef123456|--repo|capz/AnimalTown|--json|apiUrl|--jq|.apiUrl') 'Draft must use gh draft-aware lookup'
 Assert ($calls[1] -ceq 'api|https://api.github.com/repos/capz/AnimalTown/releases/12345') 'Draft must use its numeric REST URL, not a nonexistent tag endpoint'
@@ -55,4 +67,4 @@ try{
         Remove-Item -LiteralPath $zip
     }
 }finally{Remove-Item -LiteralPath $directory -Recurse -Force}
-Write-Host "$checks release publisher checks passed: frozen build identity, draft lookup, response budget and source exclusion"
+Write-Host "$checks release publisher checks passed: compact-feed asset policy, frozen build identity, draft lookup, response budget and source exclusion"

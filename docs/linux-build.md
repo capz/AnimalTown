@@ -49,7 +49,8 @@ The default `all` target:
 5. Prepares a direct NKit ISO download, `AnimalTown-VERSION-depot.zip`, separate backend
    ZIP and compiled-tools ZIP. Revisions, SHA-256 checksums, banners, updater
    helpers and captures are bundled under `release/` in the Depot ZIP. Only
-   ZIP/ISO files are uploaded; no source kits. Disc images have no ZIP wrappers.
+   ZIP/ISO files and the compact `update.json` feed are uploaded; no source kits.
+   Disc images have no ZIP wrappers.
 
 Outputs remain under the mounted checkout's `out/`. CI then publishes these
 packages to GitHub Releases. The source SHA tag identifies the image; `BUILD.txt`
