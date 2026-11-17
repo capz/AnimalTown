@@ -26,8 +26,9 @@ estuary height step was removed when sea level was unified with rivers.
 This is stylized, static terrain water rather than a physical flow simulation.
 
 The surface has two triangles per visible cell, with world-coordinate UVs (one
-base repeat per four metres). No vertices move for waves. Geometry updates only
-when terrain, camera focus, room or season invalidates the terrain cache.
+base repeat per four metres). Calm water uses immutable archived geometry;
+camera motion selects archived mesh views, while animation changes only the
+shared material's UV matrices. Terrain or season changes can rebuild the archive.
 
 ## Saves and generation
 
@@ -46,25 +47,28 @@ New-town generator version 4 authors the sea boundary and half-section headlands
 ## Material and patterns
 
 The pinned DolphinDotNet SDK supports two textures, separate UV matrices and GX
-TEV programs directly; no native patch or engine submodule change is needed.
+TEV programs directly. The game uses its `WaterWarp` preset for calm water.
 
-`WaterSurface.Texture` creates two original neutral 64x64 GX I8 patterns once at
-startup: broad low-contrast modulation and connected irregular foam/crest weights. Each
-uses 4 KiB, for 8 KiB resident texture data total, without mipmaps. Both repeat
-periodically in two dimensions and use linear filtering. Existing artist source
+Calm water creates one original neutral 64x64 GX I8 foam/crest mask (4 KiB) and
+one 64x64 RGB565 signed displacement map (8 KiB), without mipmaps. Both repeat
+periodically in two dimensions and use linear filtering. The two foam layers
+sample the same I8 image through independent UV matrices. Existing artist source
 images and nine-slice atlases are preserved. No runtime image decoding or texture
-uploads occur during animation.
+uploads occur during animation. The optional storm material lazily creates two
+additional I8 images, for another 8 KiB only while rough water is active.
 
 The RGB program is:
 
-1. `base = vertexTint * baseTexture`.
-2. `result = lerp(base, Highlight, rippleIntensity)`.
-3. The SDK's required two-texture final stage preserves RGB and primary opacity.
+1. Start with the depth-dependent vertex tint.
+2. Blend toward the first pale foam color using the first displaced I8 sample.
+3. Blend toward the second pale foam color using the independently scrolling
+   second sample of the same I8 image.
+4. Preserve RGB and resolve primary texture opacity in the SDK's final stage.
 
-This is three physical TEV stages and two texture units. The ripple map stores
-its blend weight in intensity, with an implicit alpha of 255: surface blending is
+This is four physical TEV stages, two texture units and one indirect GX stage.
+The ripple map stores its RGB blend weight in intensity. Surface blending is
 `Opaque`, depth testing/writing stay enabled, and alpha cutoff is zero. Using I8
-keeps the simple SDK combiner API sufficient without custom texture-alpha stages.
+keeps the SDK combiner API sufficient without custom texture-alpha stages.
 The current target is GameCube GX; there is no separate renderer backend needing
 a shader fallback.
 
@@ -150,12 +154,13 @@ play. Terrain levels, collision and save formats remain unchanged.
 
 - Calm river / ocean: no geometry changes and no per-frame image uploads;
   material UV/opacity updates only.
-- Shoreline: one shared 8 KiB IA8 mask in addition to the existing I8 maps.
+- Shoreline: one shared 8 KiB IA8 mask, bringing ordinary water texture data to
+  20 KiB including the foam and indirect maps.
 - Rough sea opt-in: 289 vertices and 512 triangles; one small dynamic
   vertex upload and draw per frame while a pure deep-sea patch is active.
-- DNEF v3 on a compatible SDK: two textures (foam + indirect mask), three
+- DNEF v3 on the pinned SDK: two textures (foam + indirect mask), three
   authored TEV stages plus a base-alpha stage, and one indirect GX stage.
-  On the currently pinned SDK this path is automatically disabled.
+  This is the active calm-water path; there is no automatic fallback gate.
 
 The normal world remains one batched opaque surface, one sea pass and
 an optional shoreline pass using existing archive-bound mesh views.
@@ -163,6 +168,24 @@ The original `d_a_sea.cpp` source in `zeldaret/tww` informed the
 separation of near-field wave heights from texture-based distant water;
 these masks and numbers are an original AnimalTown approximation, not copied
 Nintendo textures or a bit-identical GameCube pipeline.
+
+### Legacy river shadow composition
+
+The optional **Recreate terrain meshes** and **Ground ring comparison** debug
+paths also apply the shared cloud/shadow/light footer to river water. That footer
+previously reused GX constant K1 for lamp color, replacing the second foam layer's
+pale highlight with black at noon or lamp gold at night. This affected blending
+in those legacy comparison paths; it did not stop their UV matrices.
+
+The footer now preserves both foam constants K0/K1, keeps environment/shadow
+colors in K2/K3, and places lamp RGB in an unused regular TEV color register.
+Selection excludes every authored RGB read and destination, including packed
+destinations, so the water program cannot overwrite the lamp before the appended
+stages execute. The initial alpha stays zero; shadow/light alpha calculations use
+their independent channels. WaterWarp uses only PREV and therefore leaves REG0
+available. The change adds no texture, render pass or TEV stage. Ordinary materials
+with zero or one constant keep their existing footer. This supports WaterWarp's
+two-constant composition; other layouts retain the existing footer policy.
 
 ## Verification
 
@@ -189,6 +212,29 @@ GameCube appearance/performance remains unverified. The existing Dolphin
 water smoke test does not automatically enable rainy-ocean wave mode; inspect
 that mode separately with the in-game debug weather setting and measure it
 against the calm ocean baseline.
+
+For combined mip and water acceptance, use `--terrain-materials`. Its fixed river
+and coast views compare interior crest/chromaticity changes, freeze landscape
+motion as a control, and resume it. It also toggles the existing **Recreate terrain
+meshes** shortcut (L+R+Z+X), repeats the river controls, and restores the archived
+path. Sampling waits for observed rendered frames and UV displacement rather
+than a fixed host delay. This avoids counting moving
+cloud shadows or a slow emulator's wall-clock delay as proof of texture animation.
+
+During the existing water inspection tour, `NativeWaterProbe` emits
+`ANIMALTOWN WATER DRAW` at the first actual water primitive and every 30 rendered
+frames thereafter. The read-only wrappers forward GX commands unchanged and
+record the actual loaded primary/secondary UV matrices, selected matrix IDs,
+foam stage texture-coordinate/map bindings, TEV/indirect stage counts, resolved
+texture sizes and the final K0/K1 RGBA constants (`c4e4deff` / `e5f5edff`). Matrix
+coefficients are signed integers scaled by 1,000,000 in
+`m00,m01,m10,m11,offsetU,offsetV` order. The probe stays silent outside inspection.
+The patched-native suite runs a recording transport fixture that verifies call
+forwarding, draw gating, cadence, scene reset and frozen matrix reporting. A
+recording shadow fixture also checks both foam colors and the resulting RGB/alpha
+over noon/night environment, cloud and lamp masks, plus register read/write
+exclusion. A native trace proves submission state; the associated Dolphin screenshots and
+pixel comparisons establish the visible result.
 
 ## River/coast inspection
 

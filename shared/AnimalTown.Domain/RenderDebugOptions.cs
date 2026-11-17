@@ -9,6 +9,7 @@ public sealed class RenderDebugOptions
     public int RimPercent {get;private set;}=DefaultRimPercent;
     public const int MaximumGroundMipDistance=10;
     public bool GroundMipmaps=true;
+    public bool ShowGroundMipBands;
     public bool DiscardTerrainCacheWhenIndoors;
     public int GroundMipDistance {get;private set;} // 0 = automatic GX footprint.
     public static float AttentionHeight(float highestJoint)=>float.IsFinite(highestJoint)?Math.Max(2.35f,Math.Min(5,highestJoint*1.8f+.7f)):3.6f;

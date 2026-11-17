@@ -62,17 +62,48 @@ internal static class DepotPackageChecks
             Mutated("apps/animaltown/link",attributes:unchecked((int)0xa1ff0000));
             Mutated("apps/animaltown/opening.bnr",new byte[6496]);Mutated("apps/animaltown/depot-package.json",Encoding.ASCII.GetBytes("{}"));
             string runtimeZip=zip;zip=Path.Combine(root,"with-reports.zip");File.Copy(runtimeZip,zip);
-            byte[] report=Encoding.UTF8.GetBytes("release build report");
-            var reportManifest=new{schema=1,commit,version,files=new Dictionary<string,string>{{"BUILD.txt",Convert.ToHexString(SHA256.HashData(report)).ToLowerInvariant()}}};
+            var reportFiles=new Dictionary<string,byte[]>{
+                {"BUILD.txt",Encoding.UTF8.GetBytes("release build report")},
+                {"terrain-materials-mips-auto.png",new byte[]{137,80,78,71,13,10,26,10}},
+                {"terrain-materials-water-river-legacy-frozen-b.png",new byte[]{137,80,78,71,13,10,26,10,1}},
+                {"terrain-materials-report.json",JsonSerializer.SerializeToUtf8Bytes(new{scenario="terrain-materials",passed=true})},
+                {"terrain-materials-build.json",JsonSerializer.SerializeToUtf8Bytes(new{commit,version})}
+            };
+            var reportHashes=new SortedDictionary<string,string>(StringComparer.Ordinal);
+            foreach(var pair in reportFiles)reportHashes.Add(pair.Key,Convert.ToHexString(SHA256.HashData(pair.Value)).ToLowerInvariant());
+            var reportManifest=new{schema=1,commit,version,files=reportHashes};
             using(var archive=ZipFile.Open(zip,ZipArchiveMode.Update)){
-                using(var output=archive.CreateEntry("release/BUILD.txt").Open())output.Write(report);
+                foreach(var pair in reportFiles){using var output=archive.CreateEntry("release/"+pair.Key).Open();output.Write(pair.Value);}
                 using(var output=archive.CreateEntry("release/manifest.json").Open())output.Write(JsonSerializer.SerializeToUtf8Bytes(reportManifest));
             }
-            DepotPackage.Verify(root,zip);Check(true,"release reports remain outside the installed runtime whitelist");
+            DepotPackage.Verify(root,zip);Check(true,"terrain PNGs and exact build/report JSON names pass the release report whitelist");
+            using(var original=ZipFile.OpenRead(runtimeZip))using(var bundled=ZipFile.OpenRead(zip)){
+                Check(original.Entries.Select(e=>e.FullName).Order(StringComparer.Ordinal).SequenceEqual(bundled.Entries.Where(e=>e.FullName.StartsWith("apps/animaltown/",StringComparison.Ordinal)).Select(e=>e.FullName).Order(StringComparer.Ordinal)),"release evidence does not add installed app files");
+                foreach(var entry in original.Entries){
+                    using var before=entry.Open();using var after=bundled.GetEntry(entry.FullName)!.Open();
+                    Check(SHA256.HashData(before).SequenceEqual(SHA256.HashData(after)),"release evidence preserves runtime entry bytes: "+entry.FullName);
+                }
+            }
+            // Supply a correct hash and manifest entry, so these failures test
+            // the report allowlist rather than merely an untracked ZIP entry.
+            void UnsupportedReport(string name){
+                string changed=Path.Combine(root,"bad-report.zip");File.Copy(zip,changed,true);
+                byte[] bytes=Encoding.UTF8.GetBytes("not authorized supplementary content");
+                var hashes=new SortedDictionary<string,string>(reportHashes,StringComparer.Ordinal){[name]=Convert.ToHexString(SHA256.HashData(bytes)).ToLowerInvariant()};
+                using(var archive=ZipFile.Open(changed,ZipArchiveMode.Update)){
+                    using(var output=archive.CreateEntry("release/"+name).Open())output.Write(bytes);
+                    archive.GetEntry("release/manifest.json")!.Delete();
+                    using var manifestOutput=archive.CreateEntry("release/manifest.json").Open();manifestOutput.Write(JsonSerializer.SerializeToUtf8Bytes(new{schema=1,commit,version,files=hashes}));
+                }
+                Reject(()=>DepotPackage.Verify(root,changed),"reject manifested unsupported report: "+name);
+            }
+            foreach(string name in new[]{"terrain-materials.png","terrain-materials-Frame.png","terrain-materials-frame.PNG","terrain-materials-unlisted.json","terrain-materials-source.cs","terrain-materials-frame.png/source.py","scenarios/terrain-materials/frame.png"})UnsupportedReport(name);
             Mutated("release/BUILD.txt",Encoding.UTF8.GetBytes("corrupt report"));
+            Mutated("release/terrain-materials-mips-auto.png",Encoding.UTF8.GetBytes("corrupt capture"));
             Mutated("release/source.cs");Mutated("release/scenarios/performance/source.py");
             Mutated("release/scenarios/performance/../bad.txt");Mutated("release/scenarios/performance/link.txt",attributes:unchecked((int)0xa1ff0000));
             Mutated("release/manifest.json",JsonSerializer.SerializeToUtf8Bytes(new{schema=1,commit=new string('b',40),version,files=reportManifest.files}));
+            Mutated("release/manifest.json",JsonSerializer.SerializeToUtf8Bytes(new{schema=1,commit,version="1.2.4",files=reportManifest.files}));
             Mutated("release/manifest.json",new byte[1024*1024+1]);
             zip=runtimeZip;
             string changedDol=Path.Combine(native,"Game.dol");dol[256]=1;File.WriteAllBytes(changedDol,dol);

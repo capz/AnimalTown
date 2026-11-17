@@ -109,6 +109,7 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=min
       - name: Build NKit ISO, standalone app and backend; run checks and package
+        id: packages
         env:
           ANIMALTOWN_BUILD_IMAGE: ghcr.io/capz/animaltown-build@${{ steps.image.outputs.digest }}
         run: |
@@ -174,6 +175,56 @@ jobs:
             out/title-logo/*.log
             out/title-logo/*.txt
             out/title-logo/user/Logs/
+          if-no-files-found: warn
+      - name: Select terrain-material capture
+        id: terrain_materials
+        # Collect independent rendering evidence even if the title check failed.
+        # Both checks remain required: publishing still uses the success gate.
+        if: ${{ !cancelled() && steps.packages.outcome == 'success' }}
+        run: |
+          python3 - <<'PY'
+          import json, os, re
+          from pathlib import Path
+          plan=json.loads(Path('out/validation-plan.json').read_text())
+          relevant=re.compile(r'^(game/AnimalTown.GameCube/(Water[^/]*|NativeWaterProbe|TerrainRenderer|TerrainSection|GroundMip[^/]*|Program)\.cs$|shared/AnimalTown.Domain/(GroundMip[^/]*|RenderDebugOptions|DevConfig|Water[^/]*|WindWaker[^/]*)\.cs$|tools/(iso-smoke\.py|publish-release\.ps1|patch-native\.ps1|patch-water-probe\.py|native-water-probe\.inc|native-shadow-union-gx\.inc)$|build/Dockerfile\.dolphin$|\.github/workflows/releases\.yml$)')
+          needed=any(relevant.search(path) for path in plan['paths']) or (plan['full'] and not plan['paths'])
+          with open(os.environ['GITHUB_OUTPUT'],'a') as output:
+              output.write(f'needed={str(needed).lower()}\n')
+          PY
+      - name: Capture terrain mip bands and water animation in Dolphin
+        if: ${{ !cancelled() && steps.packages.outcome == 'success' && steps.terrain_materials.outputs.needed == 'true' }}
+        timeout-minutes: 25
+        env:
+          BUILD_VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          mkdir -p out/terrain-materials
+          docker build -t animaltown-terrain-capture -f build/Dockerfile.dolphin build
+          docker run --rm --init --shm-size=512m --user "$(id -u):$(id -g)" \
+            --mount "type=bind,src=$PWD,dst=/work" -w /work \
+            animaltown-terrain-capture python3 tools/iso-smoke.py \
+            "out/AnimalTown-$BUILD_VERSION.nkit.iso" out/terrain-materials --terrain-materials --season spring --dsp-hle
+          python3 - <<'PY'
+          import hashlib, json
+          from pathlib import Path
+          identity=json.loads(Path('out/version.json').read_text())
+          disc=Path('out')/f"AnimalTown-{identity['version']}.nkit.iso"
+          with disc.open('rb') as source:
+              digest=hashlib.file_digest(source,'sha256').hexdigest()
+          evidence={'schema':1,'commit':identity['commit'],'version':identity['version'],
+                    'tag':identity['tag'],'isoName':disc.name,'isoSha256':digest}
+          Path('out/terrain-materials/terrain-materials-build.json').write_text(json.dumps(evidence,indent=2)+'\n')
+          PY
+      - name: Keep terrain-material capture diagnostics
+        if: always() && steps.terrain_materials.outputs.needed == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: terrain-materials-${{ steps.version.outputs.commit }}
+          path: |
+            out/terrain-materials/*.png
+            out/terrain-materials/*.json
+            out/terrain-materials/*.log
+            out/terrain-materials/*.txt
+            out/terrain-materials/user/Logs/
           if-no-files-found: warn
       - name: Publish NKit, standalone app and backend GitHub release
         env:

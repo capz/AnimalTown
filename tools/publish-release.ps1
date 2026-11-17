@@ -117,6 +117,32 @@ if(Test-Path -LiteralPath $titleEvidenceBuild -PathType Leaf){
         $titleEvidenceAssets+=$destination
     }
 }
+$terrainEvidenceAssets=@()
+$terrainEvidenceRoot=Join-Path $out 'terrain-materials'
+$terrainEvidenceBuild=Join-Path $terrainEvidenceRoot 'terrain-materials-build.json'
+if(Test-Path -LiteralPath $terrainEvidenceBuild -PathType Leaf){
+    $evidence=Get-Content -LiteralPath $terrainEvidenceBuild -Raw|ConvertFrom-Json
+    if($evidence.schema -ne 1 -or $evidence.commit -cne $commit -or $evidence.version -cne $version -or
+       $evidence.tag -cne $tag -or $evidence.isoName -cne [IO.Path]::GetFileName($nkit) -or
+       $evidence.isoSha256 -cne $nkitInfo.compactSha256){
+        throw 'Terrain-material evidence must match the release commit, version and verified NKit image'
+    }
+    $report=Get-Content -LiteralPath (Join-Path $terrainEvidenceRoot 'terrain-materials-report.json') -Raw|ConvertFrom-Json
+    if($report.scenario -cne 'terrain-materials' -or $report.passed -ne $true){throw 'Terrain-material capture must pass before publication'}
+    $screenshots=@($report.screenshots)
+    foreach($name in @('terrain-materials-normal.png','terrain-materials-mips-auto.png','terrain-materials-menu-on.png')){
+        if($name -cnotin $screenshots){throw "Missing required terrain-material capture: $name"}
+    }
+    if(@($screenshots|Select-Object -Unique).Count -ne $screenshots.Count){throw 'Duplicate terrain-material capture names'}
+    foreach($name in $screenshots){if($name -cnotmatch '^terrain-materials-[a-z0-9-]+\.png$'){throw 'Invalid terrain-material capture filename'}}
+    foreach($name in $screenshots+@('terrain-materials-report.json','terrain-materials-build.json')){
+        $source=Get-Item -LiteralPath (Join-Path $terrainEvidenceRoot $name)
+        if($source.PSIsContainer -or $source.Length -le 0){throw "Missing or empty terrain-material evidence: $name"}
+        $destination=Join-Path $reports $name
+        Copy-Item -LiteralPath $source.FullName -Destination $destination -Force
+        $terrainEvidenceAssets+=$destination
+    }
+}
 $serverZip=Join-Path $package "AnimalTown-server-$version.zip"
 $toolsDirectory=Join-Path $out 'tools-published-binaries'
 if(Test-Path -LiteralPath $toolsDirectory){Remove-Item -LiteralPath $toolsDirectory -Recurse -Force}

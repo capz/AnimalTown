@@ -108,8 +108,12 @@ the title's configuration is the saved startup configuration.
 
 Persisted startup options cover frame/profile overlays, model/UV/batch/text
 paths, rim lighting, cliff/water previews, runtime wait/clear flags,
-rain/rough ocean/season, villager attention, rim strength, ground mipmaps and
-distance, frozen landscape motion, mesh recreation and the legacy ground ring.
+rain/rough ocean/season, villager attention, rim strength, ground mipmaps,
+distance and mip-level bands, frozen landscape motion, mesh recreation and the legacy ground ring.
+The mip-band switch sits beside the other ground controls and defaults off.
+Dev-config version 5 uses the final reserved byte in the existing 40-byte record;
+versions 1–4 still load with the new diagnostic disabled and retain strict checks
+on their historical padding and checksum.
 Teleport/debug-location actions remain actions rather than stored settings.
 UI grain starts at 10% strength; tree grain remains unchanged.
 

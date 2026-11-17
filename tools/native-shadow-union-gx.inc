@@ -27,6 +27,23 @@ static int town_environment_apply(const DndDrawEffect *effect,int stage){
     GX_SetTevColorOp((u8)stage,GX_TEV_ADD,GX_TB_ZERO,GX_CS_SCALE_1,GX_TRUE,GX_TEVPREV);town_alpha_pass(stage);
     return stage+1;
 }
+static int town_shadow_lamp_register(const DndDrawEffect *effect){
+    /* WaterWarp owns K0/K1; environment and shadow occupy K2/K3. Its authored
+     * stages use only PREV, leaving a regular RGB register for the lamp color.
+     * Check reads as well as writes so an effect's zero-initialized input is
+     * never repurposed. RGB and alpha registers are independent; the preload
+     * below preserves the backend's initial alpha zero. Other layouts retain
+     * the existing footer policy, not a claim of general effect composition. */
+    if(!effect||effect->uniforms!=2)return 0;
+    unsigned used=1;
+    for(int i=0;i<effect->count;i++){
+        const DndTevStage *s=&effect->stages[i];used|=1u<<(s->dest&3);
+        const u8 inputs[]={s->a,s->b,s->c,s->d};
+        for(int j=0;j<4;j++)if(inputs[j]>=GX_CC_C0&&inputs[j]<=GX_CC_C2&&!(inputs[j]&1))used|=1u<<(inputs[j]/2);
+    }
+    for(int reg=GX_TEVREG0;reg<=GX_TEVREG2;reg++)if(!(used&(1u<<reg)))return reg;
+    return 0;
+}
 static void town_shadow_apply(float x,float z,const float *world,const DndDrawEffect *effect,unsigned *bindings){
     int mode=animaltown_shadows_mode();if(!mode)return;
     float origin[6];const uint8_t *pixels=animaltown_shadows_page(x,z,origin);
@@ -70,8 +87,12 @@ static void town_shadow_apply(float x,float z,const float *world,const DndDrawEf
     GX_SetTevAlphaOp((u8)stage,GX_TEV_ADD,GX_TB_ZERO,GX_CS_SCALE_1,GX_TRUE,GX_TEVREG2);
     stage++;GX_SetTevDirect((u8)stage);GX_SetTevSwapMode((u8)stage,GX_TEV_SWAP0,GX_TEV_SWAP0);
     GX_SetTevOrder((u8)stage,GX_TEXCOORD_NULL,GX_TEXMAP_NULL,GX_COLOR_NULL);
-    int strength=animaltown_light_strength();GX_SetTevKColor(GX_KCOLOR1,(GXColor){220*strength/255,158*strength/255,74*strength/255,255});GX_SetTevKColorSel((u8)stage,GX_TEV_KCSEL_K1);
-    GX_SetTevColorIn((u8)stage,GX_CC_ZERO,GX_CC_KONST,GX_CC_A2,GX_CC_CPREV);
+    int strength=animaltown_light_strength(),lamp_register=town_shadow_lamp_register(effect);
+    GXColor lamp={220*strength/255,158*strength/255,74*strength/255,0};
+    int lamp_input=GX_CC_KONST;
+    if(lamp_register){GX_SetTevColor((u8)lamp_register,lamp);lamp_input=GX_CC_C0+2*(lamp_register-GX_TEVREG0);}
+    else{lamp.a=255;GX_SetTevKColor(GX_KCOLOR1,lamp);GX_SetTevKColorSel((u8)stage,GX_TEV_KCSEL_K1);}
+    GX_SetTevColorIn((u8)stage,GX_CC_ZERO,lamp_input,GX_CC_A2,GX_CC_CPREV);
     GX_SetTevColorOp((u8)stage,GX_TEV_ADD,GX_TB_ZERO,GX_CS_SCALE_1,GX_TRUE,GX_TEVPREV);town_alpha_pass(stage);
 }
 static inline void town_shadow_ground(const DndDrawVertex *v,const uint16_t *ix,int count,const DndDrawMaterial *mat,unsigned *bindings){

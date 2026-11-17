@@ -44,6 +44,19 @@ console preferences. Then open **START → Settings → Debug / testing**. The l
   their actual position. Auto restores unbiased hardware selection. The
   ten-square limit keeps the reference inside GX's LOD-bias range for the
   current 256px ground and camera.
+- **Ground mip bands:** Off by default, directly below Ground mip distance.
+  Replaces only the ground texture samples with a distinct color at every mip
+  level. A small key shows levels 0–6: green, yellow, orange, rose, purple, blue,
+  and light gray. For the normal 256px floor these represent 256/128/64/32/16/8/4px.
+  Mixed colors show GX's actual trilinear transition between levels. The view
+  uses the original geometry, UVs, dimensions, mip count and distance bias, so
+  transitions follow terraces, ramps and the curved horizon rather than an
+  estimated distance ring. Ground mipmaps Off shows only the base-level color.
+  A separately resident painted-path texture retains its existing independent
+  trilinear, zero-bias policy; its floor fallback follows the ground sampler.
+  The key is shown only while this diagnostic is active outdoors. In-game
+  changes are session-only; the title's Debug configuration can save a startup
+  preference.
 
 All rendering previews are session-only. They never write saves automatically and
 are not serialized by Save now. The attention icon uses one reusable 44-triangle
@@ -51,14 +64,20 @@ mesh and six transforms; no icon animation or per-frame particle allocation is
 introduced. Its mesh is prepared between frames on first enable. Rim intensity
 changes only the TEV constant color, with one immutable shared lookup texture;
 no geometry or texture is regenerated when changing the percentage.
-Ground mip options change only the sampler between frames, once per setting or
-season load. They introduce no terrain rebuilds, UV edits, extra draws or pixel
+The ordinary ground mip toggle/distance options change only the sampler between
+frames, once per setting or season load. They introduce no terrain rebuilds, UV edits, extra draws or pixel
 uploads during movement. Floor/cap/lip materials share the same mip texture and
 retain independent saved tints/bindings. The cloud texture and merged shadow
 coverage use their existing independent coordinates and filtering. Water,
 building interiors, actors, UI and soil keep their previous texture policies.
 The default shared 256px CMPR ground payload grows from 40,960 to 43,712 bytes;
 the terrain ARAM reservation and MEM1 geometry cache budgets are unchanged.
+The optional color-band diagnostic creates one separate CMPR chain per distinct
+resident ground texture between frames (43,712 bytes for the normal 256px chain).
+Material aliases share that chain. Preview upgrades and season changes retire
+obsolete diagnostic pages; switching the view off frees them. Original artwork,
+texture-cache leases and archived geometry remain intact, and steady movement
+does not regenerate textures or allocate new materials.
 
 Initial outdoor terrain binds `dvd:/floor-outdoor-neutral-64.dndtex`, which
 has a 64×64 base and four smaller mip levels, with 2,752 bytes of GX payload.

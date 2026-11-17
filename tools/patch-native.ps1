@@ -335,3 +335,13 @@ if($IsLinux){
     & $uiNoiseGxCheck
     if($LASTEXITCODE){throw 'UI grain GX checks failed'}
 }
+
+& python3 (Join-Path $Root 'tools/patch-water-probe.py') $nativeRoot
+if($LASTEXITCODE){throw 'Pinned water draw probe patch failed'}
+if($IsLinux){
+    $waterProbeCheck=Join-Path $Root 'out/native-water-probe-check'
+    & cc -std=c11 -Wall -Wextra -Werror "-I$(Join-Path $nativeRoot 'include')" (Join-Path $Root 'tests/native-water-probe.c') -lm -o $waterProbeCheck
+    if($LASTEXITCODE){throw 'Water probe forwarding fixture compilation failed'}
+    & $waterProbeCheck
+    if($LASTEXITCODE){throw 'Water probe forwarding fixture failed'}
+}

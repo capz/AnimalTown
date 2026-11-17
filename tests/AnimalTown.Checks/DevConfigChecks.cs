@@ -12,6 +12,7 @@ internal static class DevConfigChecks
         var on=new DevConfig();on.Values[DevConfig.FullResolutionAaIndex]=1;
         check(DevConfig.Decode(on.Encode()).Values[DevConfig.FullResolutionAaIndex]==1,"AA preference survives restart without changing the record size");
         var defaults=new DevConfig(7);check(defaults.RuntimeMode==7,"dev defaults preserve disc runtime profile");
+        check(defaults.Values[DevConfig.GroundMipBandsIndex]==0,"terrain mip bands are opt-in");
         check(defaults.Values[DevConfig.DiscardTerrainCacheWhenIndoorsIndex]==0,"indoor terrain cache discard is opt-in");
         // A record written before the terrain option existed. Keep accepting
         // the original checksum and preserve the previous startup options.
@@ -23,7 +24,7 @@ internal static class DevConfigChecks
         check(previous.Values[DevConfig.DiscardTerrainCacheWhenIndoorsIndex]==0,"version-two files leave the new terrain option off");
         for(int row=0;row<DevConfig.Count;row++)if(DevConfig.IsSetting(row))defaults.Adjust(row,1);
         var encoded=defaults.Encode();var restored=DevConfig.Decode(encoded);
-        check(encoded[3]==4&&restored.Values[DevConfig.DiscardTerrainCacheWhenIndoorsIndex]==1,"new terrain toggle persists in version-four dev config");
+        check(encoded[3]==5&&restored.Values[DevConfig.DiscardTerrainCacheWhenIndoorsIndex]==1&&restored.Values[DevConfig.GroundMipBandsIndex]==1,"terrain debug toggles persist in version-five dev config");
         check(defaults.Values.SequenceEqual(restored.Values),"all dev options survive their own save record");
         check(!SplitSaveCodec.IsFile("dev_config"),"dev config cannot be counted as a damaged town save");
         check(!DevConfig.IsSetting(14)&&!DevConfig.IsSetting(15),"teleport actions are not startup configuration");
@@ -41,7 +42,7 @@ internal static class DevConfigChecks
         check(noise.TreeNoiseStrengthPercent==0&&noise.TreeNoiseScalePercent==400,"tree strength and scale clamp rather than wrapping");
         for(int i=0;i<100;i++){noise.Adjust(DevConfig.TreeNoiseStrength,1);noise.Adjust(DevConfig.TreeNoiseScale,-1);}
         check(noise.TreeNoiseStrengthPercent==300&&noise.TreeNoiseScalePercent==25,"tree sliders cover their full supported ranges");
-        var savedNoise=noise.Encode();check(savedNoise.Length==40&&savedNoise[3]==4,"extended debug settings have a versioned checksummed 40-byte record");
+        var savedNoise=noise.Encode();check(savedNoise.Length==40&&savedNoise[3]==5,"extended debug settings have a versioned checksummed 40-byte record");
         var loadedNoise=DevConfig.Decode(savedNoise);check(loadedNoise.TreeNoiseStrengthPercent==300&&loadedNoise.TreeNoiseScalePercent==25,"both tree settings restore independently after a save");
         noise.Reset(DevConfig.TreeNoiseStrength);noise.Reset(DevConfig.TreeNoiseScale);check(noise.TreeNoiseStrengthPercent==100&&noise.TreeNoiseScalePercent==100,"Z/reset restores the original appearance");
         savedNoise[32]^=1;rejected=false;try{DevConfig.Decode(savedNoise);}catch(IOException){rejected=true;}check(rejected,"the new scale byte is protected by the checksum");
@@ -62,10 +63,15 @@ internal static class DevConfigChecks
         rejected=false;try{DevConfig.Decode(reserved);}catch(IOException){rejected=true;}check(rejected,"v2 padding cannot enable the new terrain option");
         var current=new DevConfig().Encode();current[3]=3;current[34]=1;Rehash(current,36);
         rejected=false;try{DevConfig.Decode(current);}catch(IOException){rejected=true;}check(rejected,"v3 retains strict zero padding");
-        var v4=new DevConfig().Encode();v4[35]=1;Rehash(v4,36);
+        var v4=new DevConfig().Encode();v4[3]=4;v4[35]=1;Rehash(v4,36);
         rejected=false;try{DevConfig.Decode(v4);}catch(IOException){rejected=true;}check(rejected,"v4 retains strict zero padding after the AA byte");
+        v4[35]=0;v4[34]=1;Rehash(v4,36);
+        var fromV4=DevConfig.Decode(v4);
+        check(fromV4.Values[DevConfig.FullResolutionAaIndex]==1&&fromV4.Values[DevConfig.GroundMipBandsIndex]==0,"v4 preserves AA and defaults the new mip diagnostic off");
         v4[35]=0;v4[34]=2;Rehash(v4,36);
         rejected=false;try{DevConfig.Decode(v4);}catch(IOException){rejected=true;}check(rejected,"AA setting rejects unsupported modes even with a valid checksum");
+        var v5=new DevConfig().Encode();v5[35]=2;Rehash(v5,36);
+        rejected=false;try{DevConfig.Decode(v5);}catch(IOException){rejected=true;}check(rejected,"mip band toggle rejects unsupported modes with a valid checksum");
         rejected=false;try{DevConfig.Decode(new byte[8]);}catch(IOException){rejected=true;}check(rejected,"truncated dev config rejected");
     }
     private static void UniformUiGrain(Action<bool,string> check)

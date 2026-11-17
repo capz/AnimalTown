@@ -60,6 +60,56 @@ class BundleChecks(unittest.TestCase):
         self.assertEqual(before,self.archive.read_bytes())
         _,reports=self.verify();self.assertEqual(len(reports['files']),5)
 
+    def test_terrain_capture_roundtrip_preserves_all_37_frames_and_runtime(self):
+        self.attached()
+        with zipfile.ZipFile(self.archive) as archive:app_manifest=archive.read(bundle.APP+'depot-package.json')
+        # Match the accepted scenario's controls, mip comparisons and water
+        # moving/frozen/resumed pairs, including its legacy rendering path.
+        names=['normal','menu-off','menu-on','mips-auto','distance-auto','distance-one',
+               'mips-one','distance-one-return','distance-ten','mips-ten','distance-ten-return',
+               'distance-reset','mips-reset','mipmaps-on','mipmaps-off','mips-disabled',
+               'mipmaps-off-return','menu-on-return','menu-restored','restored']
+        names += ['water-'+view+'-'+frame for view in ('river','river-frozen','river-resumed',
+                  'river-legacy','river-legacy-frozen','river-legacy-resumed','coast') for frame in ('a','b')]
+        names += ['water-river-archive-restored','water-menu','water-menu-return']
+        screenshots=['terrain-materials-'+name+'.png' for name in names]
+        self.assertEqual(len(screenshots),37)
+        files={name:('capture '+name).encode() for name in screenshots}
+        files['terrain-materials-report.json']=json.dumps({'scenario':'terrain-materials',
+            'passed':True,'screenshots':screenshots}).encode()
+        files['terrain-materials-build.json']=json.dumps({'schema':1,'commit':'a'*40,'version':'1.2.3',
+            'tag':'v1.2.3','isoName':'AnimalTown-1.2.3.nkit.iso','isoSha256':'b'*64}).encode()
+        evidence=self.root/'terrain';evidence.mkdir()
+        for name,data in files.items():(evidence/name).write_bytes(data)
+        bundle.attach(self.archive,evidence)
+        _,reports=self.verify()
+        self.assertEqual(set(reports['files']),set(files)|{'BUILD.txt','version.json'})
+        with zipfile.ZipFile(self.archive) as archive:
+            self.assertEqual(archive.read(bundle.APP+'depot-package.json'),app_manifest)
+            for name,data in self.runtime.items():self.assertEqual(archive.read(bundle.APP+name),data)
+            for name,data in files.items():self.assertEqual(archive.read(bundle.REPORT+name),data)
+        out=self.root/'extracted';bundle.extract(self.archive,out)
+        for name,data in files.items():self.assertEqual((out/name).read_bytes(),data)
+        before=self.archive.read_bytes();bundle.attach(self.archive,evidence)
+        self.assertEqual(self.archive.read_bytes(),before)
+
+    def test_terrain_evidence_namespace_rejects_extra_types_and_paths(self):
+        for name in ('terrain-materials-extra.json','terrain-materials-runtime.log','terrain-materials-source.py',
+                     'terrain-materials-game.dol','terrain-materials-source.zip','terrain-materials-normal.PNG',
+                     'Terrain-materials-normal.png','terrain-materials-normal.png.cs',
+                     'nested/terrain-materials-normal.png','terrain-materials/normal.png',
+                     'scenarios/terrain-materials/frame.png'):
+            with self.subTest(name=name):self.assertFalse(bundle.allowed(name))
+
+    def test_corrupt_terrain_evidence_rejected(self):
+        for name in ('terrain-materials-mips-auto.png','terrain-materials-report.json','terrain-materials-build.json'):
+            (self.reports/name).write_bytes(b'verified evidence')
+        self.attached();original=self.archive
+        for name in ('terrain-materials-mips-auto.png','terrain-materials-report.json','terrain-materials-build.json'):
+            with self.subTest(name=name):
+                self.archive=original;self.mutate(bundle.REPORT+name,b'changed evidence')
+                with self.assertRaises(ValueError):self.verify()
+
     def test_invalid_input_leaves_original_intact(self):
         before=self.archive.read_bytes();(self.reports/'source.cs').write_text('source')
         with self.assertRaises(ValueError):self.attached()
