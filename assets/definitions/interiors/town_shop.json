@@ -1,0 +1,222 @@
+{
+  "version": 1,
+  "id": "town_shop",
+  "size": 8,
+  "units": "metres",
+  "up": "\u002BY",
+  "walls": [
+    "north",
+    "east",
+    "south",
+    "west"
+  ],
+  "door": {
+    "center": [
+      4,
+      0,
+      8
+    ],
+    "arrival": [
+      4,
+      0,
+      7.35
+    ]
+  },
+  "camera": {
+    "pitch": "fixed",
+    "quarterTurns": true,
+    "heightScale": 0.7,
+    "heightOffset": 2.8,
+    "backScale": 0.9,
+    "backOffset": 1.2
+  },
+  "activities": [
+    [
+      4,
+      6.8
+    ]
+  ],
+  "fixtures": [
+    {
+      "x": 1.5,
+      "z": 1.8,
+      "width": 0.6,
+      "depth": 0.6,
+      "height": 0.45,
+      "kind": 0
+    },
+    {
+      "x": 2.9,
+      "z": 1.8,
+      "width": 0.6,
+      "depth": 0.6,
+      "height": 0.45,
+      "kind": 0
+    },
+    {
+      "x": 4.3,
+      "z": 1.8,
+      "width": 0.6,
+      "depth": 0.6,
+      "height": 0.45,
+      "kind": 0
+    },
+    {
+      "x": 5.7,
+      "z": 1.8,
+      "width": 0.6,
+      "depth": 0.6,
+      "height": 0.45,
+      "kind": 0
+    },
+    {
+      "x": 1.5,
+      "z": 3.5,
+      "width": 0.6,
+      "depth": 0.6,
+      "height": 0.45,
+      "kind": 0
+    },
+    {
+      "x": 2.9,
+      "z": 3.5,
+      "width": 0.6,
+      "depth": 0.6,
+      "height": 0.45,
+      "kind": 0
+    },
+    {
+      "x": 4.3,
+      "z": 3.5,
+      "width": 0.6,
+      "depth": 0.6,
+      "height": 0.45,
+      "kind": 0
+    },
+    {
+      "x": 5.7,
+      "z": 3.5,
+      "width": 0.6,
+      "depth": 0.6,
+      "height": 0.45,
+      "kind": 0
+    },
+    {
+      "x": 1.5,
+      "z": 5.2,
+      "width": 0.6,
+      "depth": 0.6,
+      "height": 0.45,
+      "kind": 0
+    },
+    {
+      "x": 2.9,
+      "z": 5.2,
+      "width": 0.6,
+      "depth": 0.6,
+      "height": 0.45,
+      "kind": 0
+    },
+    {
+      "x": 4.3,
+      "z": 5.2,
+      "width": 0.6,
+      "depth": 0.6,
+      "height": 0.45,
+      "kind": 0
+    },
+    {
+      "x": 5.7,
+      "z": 5.2,
+      "width": 0.6,
+      "depth": 0.6,
+      "height": 0.45,
+      "kind": 0
+    },
+    {
+      "x": 0.15,
+      "z": 1.1,
+      "width": 0.6,
+      "depth": 0.6,
+      "height": 0.45,
+      "kind": 0
+    },
+    {
+      "x": 0.15,
+      "z": 2.45,
+      "width": 0.6,
+      "depth": 0.6,
+      "height": 0.45,
+      "kind": 0
+    },
+    {
+      "x": 0.15,
+      "z": 3.8000002,
+      "width": 0.6,
+      "depth": 0.6,
+      "height": 0.45,
+      "kind": 0
+    },
+    {
+      "x": 0.15,
+      "z": 5.15,
+      "width": 0.6,
+      "depth": 0.6,
+      "height": 0.45,
+      "kind": 0
+    },
+    {
+      "x": 7.25,
+      "z": 1.1,
+      "width": 0.6,
+      "depth": 0.6,
+      "height": 0.45,
+      "kind": 0
+    },
+    {
+      "x": 7.25,
+      "z": 2.45,
+      "width": 0.6,
+      "depth": 0.6,
+      "height": 0.45,
+      "kind": 0
+    },
+    {
+      "x": 7.25,
+      "z": 3.8000002,
+      "width": 0.6,
+      "depth": 0.6,
+      "height": 0.45,
+      "kind": 0
+    },
+    {
+      "x": 7.25,
+      "z": 5.15,
+      "width": 0.6,
+      "depth": 0.6,
+      "height": 0.45,
+      "kind": 0
+    },
+    {
+      "x": 0.2,
+      "z": 0.1,
+      "width": 1.5,
+      "depth": 0.6,
+      "height": 1.6,
+      "kind": 0
+    },
+    {
+      "x": 3,
+      "z": 0.1,
+      "width": 3.5,
+      "depth": 0.7,
+      "height": 0.9,
+      "kind": 0
+    }
+  ],
+  "floor": "assets/models/interiors/town_shop/floor.glb",
+  "north": "assets/models/interiors/town_shop/north.glb",
+  "east": "assets/models/interiors/town_shop/east.glb",
+  "south": "assets/models/interiors/town_shop/south.glb",
+  "west": "assets/models/interiors/town_shop/west.glb"
+}

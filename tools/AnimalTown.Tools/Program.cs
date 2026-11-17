@@ -19,6 +19,7 @@ static class Program
             if(args.Length<2)throw new ArgumentException("repack-textures ROOT INPUT.glb OUTPUT.glb --size128|--size256|--size512|--size1024|--sizeOriginal [--max-rmse N]; or repack-check ROOT");
             Root=Path.GetFullPath(args[1]);
             if(args[0]=="buildings-generate")BuildingAssets.Generate(Root);
+            else if(args[0]=="shop-generate")BuildingAssets.GenerateShop(Root);
             else if(args[0]=="buildings")BuildingAssets.Cook(Root);
             else if(args[0]=="building-native"||args[0]=="model-native")NativeModelWinding.ConvertFile(args[2]);
             else if(args[0]=="building-check")BuildingAssets.Check(Root);

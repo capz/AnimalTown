@@ -74,12 +74,54 @@ try {
     Request POST "/v1/grants/$($grant.id)/claim" @{} $b.token | Out-Null
     Request POST "/v1/grants/$($grant.id)/claim" @{} $b.token | Out-Null
     Assert ((Request GET '/v1/grants' $null $b.token).Body.Count -eq 0) 'Grant retry duplicated item'
+    dotnet tests/AnimalTown.ServerChecks/bin/Release/net10.0/AnimalTown.ServerChecks.dll seed-shop $a.id $b.id
+    if($LASTEXITCODE){throw 'Shop fixture failed'}
+    $path="/v1/towns/$($a.id)/shop"
+    $shop=(Request GET $path $null $b.token).Body
+    Assert ($shop.display.Count -eq 6 -and $shop.cabinet.Count -eq 8 -and $shop.consignment.Count -eq 8) 'Town shop layout missing'
+    $sale=@{id=[Guid]::NewGuid().ToString();kind='list';source='consignment';slot=0;revision=$shop.revision;pocket=0;price=1200}
+    Assert ((Request POST "$path/ops" $sale $b.token).Status -eq 403) 'Guest stocked a local-villager stand'
+    Assert ((Request POST "$path/ops" $sale $a.token).Status -eq 200) 'Local shop listing failed'
+    $shop=(Request GET $path $null $b.token).Body
+    $buy=@{id=[Guid]::NewGuid().ToString();kind='buy';source='consignment';slot=0;revision=$shop.revision}
+    $bought=Request POST "$path/ops" $buy $b.token
+    Assert ($bought.Status -eq 200 -and $bought.Body.wallet -eq 8800) 'Guest could not buy from actual town consignment'
+    Assert ((Request POST "$path/ops" $buy $b.token).Body.wallet -eq 8800) 'Town shop retry charged twice'
+    Assert ((Request GET '/v1/me' $null $a.token).Body.savings -eq 1210) 'Town shop credited the wrong seller'
+    $buy.slot=1;Assert ((Request POST "$path/ops" $buy $b.token).Status -eq 409) 'Shop idempotency key reused for a different stand'
+    $shop=(Request GET $path $null $b.token).Body
+    # Two funded customers race for the same finite physical display.
+    $http=[System.Net.Http.HttpClient]::new()
+    try {
+        $pending=@()
+        foreach($actor in @($a,$b)){
+            $body=@{id=[Guid]::NewGuid().ToString();kind='buy';source='display';slot=0;revision=$shop.revision}|ConvertTo-Json -Compress
+            $request=[System.Net.Http.HttpRequestMessage]::new([System.Net.Http.HttpMethod]::Post,"$api$path/ops")
+            $request.Headers.Authorization=[System.Net.Http.Headers.AuthenticationHeaderValue]::new('Bearer',$actor.token)
+            $request.Content=[System.Net.Http.StringContent]::new($body,[Text.Encoding]::UTF8,'application/json')
+            $pending+=@{Request=$request;Task=$http.SendAsync($request)}
+        }
+        $codes=@($pending|ForEach-Object{[int]$_.Task.GetAwaiter().GetResult().StatusCode}|Sort-Object)
+        Assert ($codes[0] -eq 200 -and $codes[1] -eq 409) 'Concurrent display purchases did not have exactly one winner'
+        foreach($entry in $pending){$entry.Task.Result.Dispose();$entry.Request.Dispose()}
+    }finally{$http.Dispose()}
+    $shop=(Request GET $path $null $b.token).Body
+    Assert ($shop.display[0].item -eq 0) 'Sold display remained stocked'
+    $before=(Request GET '/v1/me' $null $b.token).Body
+    foreach($attempt in 1..2){
+        $cabinet=@{id=[Guid]::NewGuid().ToString();kind='buy';source='cabinet';slot=1;revision=$shop.revision}
+        Assert ((Request POST "$path/ops" $cabinet $b.token).Status -eq 200) 'Unlimited cabinet exhausted'
+    }
+    $after=(Request GET '/v1/me' $null $b.token).Body
+    Assert ($after.wallet -eq $before.wallet-160 -and @($after.pockets|Where-Object{$_ -eq 2}).Count -eq 2) 'Cabinet repeated purchase did not deliver and charge exactly twice'
+    Assert ((Request POST "$path/ops" @{id=[Guid]::NewGuid().ToString();kind='buy';source='cabinet';slot=10;revision=$shop.revision} $b.token).Status -eq 409) 'Cabinet sold nonessential goods'
     Request POST "/v1/blocks/$($b.id)" @{} $a.token | Out-Null
+    Assert ((Request GET $path $null $b.token).Status -eq 403) 'Blocked guest accessed town shop'
     Assert ((Request POST '/v1/visits' @{host=$a.id} $b.token).Status -eq 403) 'Blocked visitor accepted'
     Assert ((Request POST '/v1/auth/token' @{name='LegacySplit';password='test-password-long'} $null).Status -eq 200) 'Migrated login failed'
     dotnet tests/AnimalTown.ServerChecks/bin/Release/net10.0/AnimalTown.ServerChecks.dll verify
     if($LASTEXITCODE){throw 'Backend split storage or migration failed'}
-    Write-Host 'Server integration checks passed: authentication, ownership, idempotency, rollback, friendship, blocking, escrow, purchase and grants.'
+    Write-Host 'Server integration checks passed: authentication, ownership, idempotency, rollback, friendship, blocking, escrow, grants and atomic guest town-shop purchases.'
 }
 finally {
     $env:ANIMALTOWN_TEST_CONNECTION=$oldTestConnection

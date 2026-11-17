@@ -12,6 +12,53 @@ internal static class BuildingAssets
     // camera/submission convention requires clockwise faces; convert only the
     // newly imported package, preserving author pivots, normals and source art.
     internal static void Native(string path)=>NativeModelWinding.ConvertFile(path);
+    internal static void GenerateShop(string root)
+    {
+        string exterior=Path.Combine(root,"assets/models/buildings/town_shop"),interior=Path.Combine(root,"assets/models/interiors/town_shop"),textures=Path.Combine(root,"assets/textures/buildings/town_shop");
+        Directory.CreateDirectory(exterior);Directory.CreateDirectory(interior);Directory.CreateDirectory(textures);
+        using var atlas=new SKBitmap(128,128);
+        SKColor[] palette={new(233,215,170),new(52,124,107),new(130,82,49),new(104,111,106),new(250,218,128),new(190,151,103),new(155,199,193),new(246,236,204),new(66,72,58),new(178,77,52),new(213,163,88),new(224,211,166),new(255,247,222),new(102,144,86),new(66,109,117),new(160,110,81)};
+        for(int y=0;y<128;y++)for(int x=0;x<128;x++){var c=palette[y/32*4+x/32];atlas.SetPixel(x,y,c);}
+        byte[] png;using(var image=SKImage.FromBitmap(atlas))using(var encoded=image.Encode(SKEncodedImageFormat.Png,100))png=encoded.ToArray();
+        File.WriteAllBytes(Path.Combine(textures,"shop-atlas.png"),png);
+        var body=new MeshData();
+        body.Box(0,0,0,3,2.35f,.12f,0);body.Box(0,0,0,.12f,2.35f,3,0);body.Box(2.88f,0,0,.12f,2.35f,3,0);
+        body.Box(0,0,2.88f,.95f,2.35f,.12f,0);body.Box(2.05f,0,2.88f,.95f,2.35f,.12f,0);body.Box(.95f,2.15f,2.88f,1.1f,.2f,.12f,0);
+        body.Box(-.05f,-.08f,-.05f,3.1f,.1f,3.1f,3);body.Box(1,.01f,3.12f,1,.03f,.7f,9);
+        // A striped canopy, large shop windows and an acorn plaque distinguish it from homes.
+        for(int i=0;i<6;i++){body.Box(-.12f+i*.54f,2.2f,2.8f,.54f,.12f,.48f,(i&1)==0?1:7);body.Box(-.12f+i*.54f,2.06f,3.2f,.54f,.14f,.06f,(i&1)==0?1:7);}
+        body.Box(.12f,.55f,3.01f,.7f,1.2f,.04f,2);body.Box(.18f,.62f,3.055f,.58f,1.05f,.01f,6);
+        body.Box(2.18f,.55f,3.01f,.7f,1.2f,.04f,2);body.Box(2.24f,.62f,3.055f,.58f,1.05f,.01f,6);
+        body.Box(.92f,2.42f,2.92f,1.16f,.52f,.12f,2);body.Box(1,2.47f,3.05f,1,.42f,.02f,7);
+        body.Box(1.36f,2.5f,3.08f,.28f,.21f,.02f,10);body.Box(1.32f,2.71f,3.08f,.36f,.08f,.02f,2);
+        body.Quad(new(-.17f,2.4f,-.17f),new(-.17f,2.4f,3.17f),new(1.5f,3.2f,3.17f),new(1.5f,3.2f,-.17f),1);
+        body.Quad(new(1.5f,3.2f,-.17f),new(1.5f,3.2f,3.17f),new(3.17f,2.4f,3.17f),new(3.17f,2.4f,-.17f),1);
+        body.Triangle(new(0,2.4f,0),new(1.5f,3.2f,0),new(3,2.4f,0),0);body.Triangle(new(3,2.4f,3),new(1.5f,3.2f,3),new(0,2.4f,3),0);
+        Write(Path.Combine(exterior,"exterior.glb"),body,png);
+        var door=new MeshData();door.Box(0,0,0,1.1f,2.15f,.08f,1);door.Box(.12f,.72f,.085f,.86f,1.26f,.01f,6);door.Box(.92f,.85f,.1f,.07f,.1f,.04f,4);
+        Write(Path.Combine(exterior,"door.glb"),door,png);Write(Path.Combine(interior,"door.glb"),door,png);
+        var floor=new MeshData();floor.Box(0,-.08f,0,4,.08f,4,5);floor.Box(1.55f,.003f,3.3f,.9f,.01f,.65f,1);
+        // Interior source frame is 4m; the shared renderer scales X/Z to 8m.
+        for(int i=0;i<20;i++){ShopLayout.Bounds(i,out float x,out float z,out float w,out float d,out float h);floor.Box(x/2,0,z/2,w/2,h,d/2,i<12?2:1);float ax=x/2-.02f,az=z/2-.02f,bx=(x+w)/2+.02f,bz=(z+d)/2+.02f;floor.Quad(new(ax,h+.002f,az),new(ax,h+.002f,bz),new(bx,h+.002f,bz),new(bx,h+.002f,az),7);}
+        ShopLayout.Bounds(ShopLayout.Cabinet,out float cx,out float cz,out float cw,out float cd,out float ch);
+        floor.Box(cx/2,0,cz/2,cw/2,ch,.06f,1);
+        for(int i=0;i<4;i++)floor.Box(cx/2,i*.48f,cz/2,cw/2,.06f,cd/2,2);
+        // Coloured stock boxes make the unlimited catalogue cabinet visible without extra textures.
+        for(int i=0;i<6;i++)floor.Box(cx/2+.05f+(i%3)*.22f,.12f+(i/3)*.48f,cz/2+.07f,.15f,.25f,.18f,i%2==0?13:10);
+        ShopLayout.Bounds(ShopLayout.Counter,out cx,out cz,out cw,out cd,out ch);floor.Box(cx/2,0,cz/2,cw/2,ch,cd/2,2);floor.Box(cx/2-.02f,ch,cz/2-.02f,cw/2+.04f,.06f,cd/2+.04f,7);
+        floor.Box(2.6f,ch+.06f,.12f,.3f,.22f,.2f,1);floor.Box(2.62f,ch+.28f,.12f,.26f,.05f,.13f,8);
+        Write(Path.Combine(interior,"floor.glb"),floor,png);
+        for(int wall=0;wall<4;wall++){
+            var mesh=new MeshData();if(wall==0){mesh.Box(0,0,-.12f,4,2.8f,.12f,7);mesh.Box(0,1.95f,.005f,4,.22f,.04f,1);}
+            if(wall==1)mesh.Box(4,0,0,.12f,2.8f,4,7);if(wall==3)mesh.Box(-.12f,0,0,.12f,2.8f,4,7);
+            if(wall==2){mesh.Box(0,0,4,1.45f,2.8f,.12f,7);mesh.Box(2.55f,0,4,1.45f,2.8f,.12f,7);mesh.Box(1.45f,2.15f,4,1.1f,.65f,.12f,7);}
+            Write(Path.Combine(interior,new[]{"north","east","south","west"}[wall]+".glb"),mesh,png);
+        }
+        File.WriteAllText(Path.Combine(root,"assets/definitions/buildings/town_shop.json"),JsonSerializer.Serialize(new{version=1,type=1,id="town_shop",prefix="shop",interior="town_shop",footprint=new[]{3,3},hinge=new[]{.95,0,3.02},approach=new[]{1.5,0,3.5},exterior="assets/models/buildings/town_shop/exterior.glb",door="assets/models/buildings/town_shop/door.glb"},JsonOptions));
+        var fixtures=Enumerable.Range(0,ShopLayout.FixtureCount).Select(i=>{ShopLayout.Bounds(i,out float x,out float z,out float w,out float d,out float h);return new{x,z,width=w,depth=d,height=h,kind=0};}).ToArray();
+        File.WriteAllText(Path.Combine(root,"assets/definitions/interiors/town_shop.json"),JsonSerializer.Serialize(new{version=1,id="town_shop",size=8,units="metres",up="+Y",walls=new[]{"north","east","south","west"},door=new{center=new[]{4,0,8},arrival=new[]{4,0,7.35}},camera=new{pitch="fixed",quarterTurns=true,heightScale=.7,heightOffset=2.8,backScale=.9,backOffset=1.2},activities=new[]{new[]{4.0,6.8}},fixtures,floor="assets/models/interiors/town_shop/floor.glb",north="assets/models/interiors/town_shop/north.glb",east="assets/models/interiors/town_shop/east.glb",south="assets/models/interiors/town_shop/south.glb",west="assets/models/interiors/town_shop/west.glb"},JsonOptions));
+        Cook(root);
+    }
     internal static void Generate(string root)
     {
         string exterior=Path.Combine(root,"assets/models/buildings/cottage_small"),interior=Path.Combine(root,"assets/models/interiors/cottage_small"),textures=Path.Combine(root,"assets/textures/buildings/cottage_small");
@@ -54,7 +101,7 @@ internal static class BuildingAssets
             float inset=size-r.GetProperty("door").GetProperty("arrival")[2].GetSingle();writer.Write((int)(inset*1024));
             var camera=r.GetProperty("camera");foreach(string field in new[]{"heightScale","heightOffset","backScale","backOffset"})writer.Write((int)(camera.GetProperty(field).GetSingle()*1024));
             var activities=r.GetProperty("activities");writer.Write(activities.GetArrayLength());foreach(var activity in activities.EnumerateArray()){writer.Write((int)(activity[0].GetSingle()*1024));writer.Write((int)(activity[1].GetSingle()*1024));}
-            var fixtures=r.GetProperty("fixtures");if(fixtures.GetArrayLength()>16)throw new InvalidDataException("Interior fixture budget");writer.Write(fixtures.GetArrayLength());
+            var fixtures=r.GetProperty("fixtures");if(fixtures.GetArrayLength()>BuildingCatalog.MaximumFixtures)throw new InvalidDataException("Interior fixture budget");writer.Write(fixtures.GetArrayLength());
             foreach(var fixture in fixtures.EnumerateArray()){
                 float x=fixture.GetProperty("x").GetSingle(),z=fixture.GetProperty("z").GetSingle(),w=fixture.GetProperty("width").GetSingle(),d=fixture.GetProperty("depth").GetSingle(),h=fixture.GetProperty("height").GetSingle();int kind=fixture.GetProperty("kind").GetInt32();
                 if(!float.IsFinite(x+z+w+d+h)||x<0||z<0||w<=0||d<=0||h<=0||h>3||x+w>size||z+d>size||kind<0||kind>2||BuildingWorld.DoorClearance(size,x,z,w,d))throw new InvalidDataException("Invalid fixture or blocked exit");
@@ -70,7 +117,12 @@ internal static class BuildingAssets
             MergeClosed(Path.Combine(root,b.GetProperty("exterior").GetString()!),Path.Combine(root,b.GetProperty("door").GetString()!),Path.Combine(root,closed),b.GetProperty("hinge")[0].GetSingle(),b.GetProperty("hinge")[2].GetSingle());
             imports.Add(prefix+"-exterior-closed",closed);
         }
-        Directory.CreateDirectory(Path.Combine(root,"out/disc"));byte[] bytes=stream.ToArray();BuildingCatalog.Configure(bytes);File.WriteAllBytes(Path.Combine(root,"out/disc/buildings.bin"),bytes);File.WriteAllText(Path.Combine(root,"out/building-assets.json"),JsonSerializer.Serialize(imports,JsonOptions));Console.WriteLine($"Building catalog: {files.Length} definitions, {imports.Count} shared model parts, {bytes.Length} descriptor bytes");
+        Directory.CreateDirectory(Path.Combine(root,"out/disc"));byte[] bytes=stream.ToArray();BuildingCatalog.Configure(bytes);
+        if(BuildingCatalog.Count>1&&BuildingCatalog.Get(1).Id=="town_shop"){
+            var actual=BuildingCatalog.Get(1);var expected=ShopLayout.Fixtures();
+            if(actual.InteriorSize!=8||actual.Fixtures.Length!=expected.Length||actual.Fixtures.Where((f,i)=>Math.Abs(f-expected[i])>1f/1024).Any())throw new InvalidDataException("Shop fixtures must match shared model/collision/interaction layout");
+        }
+        File.WriteAllBytes(Path.Combine(root,"out/disc/buildings.bin"),bytes);File.WriteAllText(Path.Combine(root,"out/building-assets.json"),JsonSerializer.Serialize(imports,JsonOptions));Console.WriteLine($"Building catalog: {files.Length} definitions, {imports.Count} shared model parts, {bytes.Length} descriptor bytes");
         void Text(string value){ValidateName(value);byte[] data=Encoding.ASCII.GetBytes(value);writer.Write(data.Length);writer.Write(data);}
     }
     internal static void Check(string root)

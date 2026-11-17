@@ -9,7 +9,7 @@ internal static class ProfileFixture
         public byte[] Read(string name)=>Files[name];
         public void Write(string name,byte[] data)=>Files[name]=(byte[])data.Clone();
     }
-    internal static void Write(string output,bool money=false)
+    internal static void Write(string output,bool money=false,bool shop=false)
     {
         Directory.CreateDirectory(output);var s=new GameState(7319);s.Rollover(21014,2027*12+7);
         string[] names={"Ari","Bram","Cleo","Dune"};
@@ -22,6 +22,14 @@ internal static class ProfileFixture
         }
         s.SelectProfile(0);s.Space=0;s.MoveToHouseEntrance();
         if(money){s.Pockets[0]=Catalog.Acorns1000;s.Pockets[1]=Catalog.Acorns10000;s.Pockets[2]=Catalog.LegacyAcorns50000;s.Wallet=GameState.WalletLimit-1000;for(int id=22;id<=24;id++)s.Owned[id]=1;}
+        if(shop){
+            s.SelectProfile(1);s.Pockets[0]=25;if(!s.Town.Shop.List(s,0,0,1800))throw new Exception("Shop guest-seller fixture failed");
+            s.SelectProfile(0);Array.Clear(s.Pockets);s.Wallet=20000;s.Pockets[0]=11;
+            if(!s.Town.Shop.List(s,1,0,2500))throw new Exception("Shop seller fixture failed");
+            s.Space=0;BuildingWorld.Entrance(s,7,out s.X,out s.Z);s.Facing=(float)Math.PI;
+            for(int i=0;i<6;i++)s.Town.Residents[i].Dwell=36000;
+            var npc=s.Town.Residents[0];npc.Space=TownShop.Room;npc.PosX=4;npc.PosZ=7;npc.JourneyPhase=2;npc.Dwell=0;
+        }
         var disk=new Storage();var repository=new SaveRepository(disk);repository.Save(s);repository.Save(s);
         foreach(var file in disk.Files)File.WriteAllBytes(Path.Combine(output,file.Key),file.Value);
         File.WriteAllText(Path.Combine(output,"fixture.json"),JsonSerializer.Serialize(new{seed=s.Town.Seed,sequence=s.Sequence,names,files=disk.Files.Keys},new JsonSerializerOptions{WriteIndented=true}));

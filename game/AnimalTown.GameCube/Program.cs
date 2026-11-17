@@ -72,7 +72,7 @@ internal static class Program
     }
 }
 
-internal sealed class TownGame : IDisposable
+internal sealed partial class TownGame : IDisposable
 {
     private GameState state;
     private readonly TownSession session;
@@ -474,13 +474,14 @@ internal sealed class TownGame : IDisposable
         if(chord&&p.Z.IsHeld&&p.DPadDown.WasPressed){terrain.FreezeMotion=!terrain.FreezeMotion;return;}
         if(chord&&p.Z.IsHeld&&p.X.WasPressed){terrain.RecreateMeshes=!terrain.RecreateMeshes;return;}
         if(chord&&p.A.WasPressed&&screen=="world"){InspectBuilding();return;}
+        if(chord&&p.DPadRight.WasPressed&&screen=="world"){InspectShop();return;}
         if(chord&&p.CStick.Y>.8f&&p.Z.WasPressed&&room==0){terrain.ToggleGroundRing();return;}
         if(chord&&p.B.WasPressed){RuntimeOptions.Cycle();return;}
         if(chord&&p.DPadUp.WasPressed&&room==0){cliffPreview=!cliffPreview;return;}
         if(chord&&p.DPadLeft.WasPressed&&room==0&&screen=="world"){waterInspection=(waterInspection+1)%6;return;}
         if(waterInspection!=0&&screen=="world"&&!p.Start.WasPressed){if(p.B.WasPressed)waterInspection=0;return;}
         if(chord&&p.Start.WasPressed){InspectTerrain();return;}
-        bool navigating=screen=="menu"||screen=="item"||screen=="sell"||screen=="shop"||screen=="store"||screen=="post"||screen=="mail"||screen=="lost";
+        bool navigating=screen=="menu"||screen=="item"||screen=="sell"||screen=="shop"||screen=="store"||screen=="post"||screen=="mail"||screen=="lost"||ShopScreen;
         int direction=menuNavigation.Read(screen,screen=="menu"?menuTab:-1,p.Stick.X,p.Stick.Y,(int)p.PressedButtons,Clock.Timestamp,navigating&&!chord);
         bool up=direction==MenuNavigation.Up,down=direction==MenuNavigation.Down,left=direction==MenuNavigation.Left,right=direction==MenuNavigation.Right;
         if(screen=="menu"&&menuTab==TestingTab&&TestingOption(selected)==20&&!chord){
@@ -509,6 +510,7 @@ internal sealed class TownGame : IDisposable
         if(p.L.IsHeld&&p.R.IsHeld&&p.DPadDown.WasPressed){if(batchedDrawing)UiFont.Batched=!UiFont.Batched;return;}
         if(p.L.IsHeld&&p.R.IsHeld&&p.X.WasPressed){ToggleBatching();return;}
         if(p.L.IsHeld&&p.R.IsHeld)return;
+        if(ShopInput(p,direction))return;
         if(screen=="dialogue")
         { if(Press(p)||p.B.WasPressed){dialogueVoice.Stop();if(typeAt<message.Length)typeAt=message.Length;else{screen=returnToMenu?"menu":"world";if(returnToMenu){menuTab=returnMenuTab;selected=returnMenuSelection;}}}return; }
         if(screen=="plot")
@@ -556,13 +558,13 @@ internal sealed class TownGame : IDisposable
             if(screen=="menu"&&p.R.WasPressed){menuTab=1;selected=0;return;}if(screen=="menu"&&p.L.WasPressed){menuTab=MenuTabCount-1;selected=0;return;}
             if(Press(p)&&state.Pockets[selected]!=0){if(screen=="sell"){if(Catalog.Has(state.Pockets[selected],ItemFlags.Sell))Say("Hearth",state.Sell(selected)?"Thank you! Acorns added to your wallet.":"Your wallet is full.");}else{slot=selected;screen="item";selected=0;}}return;
         }
-        int count=screen=="shop"?state.Town.StockCount:screen=="post"?7:screen=="store"?8:screen=="mail"?Math.Max(1,state.MailCount):screen=="lost"?Math.Max(1,LostCount()):TabCount();
+        int count=screen=="shop"?TownShop.CabinetCount:screen=="post"?7:screen=="store"?8:screen=="mail"?Math.Max(1,state.MailCount):screen=="lost"?Math.Max(1,LostCount()):TabCount();
         if(down)selected=(selected+1)%count;if(up)selected=(selected+count-1)%count;
         if(screen=="menu"&&(p.R.WasPressed||right)){menuTab=(menuTab+1)%MenuTabCount;selected=0;}
         if(screen=="menu"&&(p.L.WasPressed||left)){menuTab=(menuTab+MenuTabCount-1)%MenuTabCount;selected=0;}
         if(!Press(p))return;
         if(screen=="sell"){Say("Hearth",state.Sell(selected)?"Thank you! Acorns added to your wallet.":"I cannot buy that, or your wallet is full.");return;}
-        if(screen=="shop"){Say("Hearth",state.Buy(selected,godMode)?godMode?"Added to your pockets for free.":"Thank you for shopping!":godMode?"This item is sold out, or your pockets are full.":"You need enough acorns and a free pocket.");return;}
+        if(screen=="shop"){Say("Hearth",state.BuyCabinet(selected,godMode)?"Thank you! Cabinet essentials are always in stock.":"You need enough acorns and a free pocket.");return;}
         if(screen=="store"){StoreAction();return;}
         if(screen=="post"){PostAction();return;}
         if(screen=="mail")
@@ -728,8 +730,9 @@ internal sealed class TownGame : IDisposable
         int door=villagers.Doors.Nearby(state,0,facingYaw);
         if(door>=0){if(!buildings.Ready(state.BuildingTypes[door])){Say("Home","This home is unavailable right now.");return;}if(!villagers.Doors.Request(state,0,door))Say("Door","Please wait for the doorway to clear.");return;}
         if(room!=0){
+            if(room==TownShop.Room&&OpenShopFixture())return;
             for(int i=0;i<6;i++){var v=state.Town.Residents[i];if(v.Space==room&&Math.Abs(v.PosX-state.X)<2&&Math.Abs(v.PosZ-state.Z)<2){Say(v.Name,state.Talk(i));return;}}
-            if(room==24){screen="store";selected=0;return;}if(room==25){screen="post";selected=0;return;}
+            if(room==25){screen="post";selected=0;return;}
             // No nearby villager or usable doorway: A does nothing.
             return;
         }
@@ -783,7 +786,8 @@ internal sealed class TownGame : IDisposable
             }
             else if(moveClip>=0)moveClip=-1;
         }
-        if(screen=="world"){
+        bool simulateJourneys=screen=="world"||ShopScreen||screen=="shop"||screen=="store"||screen=="sell";
+        if(simulateJourneys){
             RefreshResidencyDemand(Clock.Timestamp);
             if(villagers.Doors.Busy(0)&&!villagers.Doors.ResourcesReady[0])modelResidency.WaitForPortal();
             int oldRoom=room;villagers.Tick(state);
@@ -794,7 +798,7 @@ internal sealed class TownGame : IDisposable
         state.Facing=facingYaw;cachedPlayerHeight=PlayerHeight();if(room==0)RenderView.Prepare(state.X,state.Z,cachedPlayerHeight);
         animationClock.Step(0,moveClip,models[state.Species].Animations.Count>0);
         for(int i=1;i<7;i++){
-            var v=state.Town.Residents[i-1];bool moving=v.Space==room&&screen=="world"&&villagers.Moving[i-1];
+            var v=state.Town.Residents[i-1];bool moving=v.Space==room&&simulateJourneys&&villagers.Moving[i-1];
             if(moving!=villagersMoving[i-1]){
                 villagersMoving[i-1]=moving;animationClock.Reset(i);animationClock.Step(i,moving?0:-1,false);restartClips[i]=moving;
             }
@@ -964,11 +968,12 @@ internal sealed class TownGame : IDisposable
                 Box(size*.5f-.63f*scale,2.15f,size,1.26f*scale,.08f,.08f,new Color32(133,80,48));
             }
             for(int i=1;i<BuildingWorld.Actors;i++)ModelAt(i);
-            for(int i=0;i<16;i++)if(BuildingWorld.Fixture(state,room,i,out float fx,out float fz,out float fw,out float fd,out float fh)){
+            for(int i=0;i<BuildingWorld.FixtureCount(state,room);i++)if(BuildingWorld.Fixture(state,room,i,out float fx,out float fz,out float fw,out float fd,out float fh)){
                 int kind=BuildingWorld.FixtureKind(state,room,i);if(kind==0)continue;
                 Box(fx,0,fz,fw,fh,fd,kind==1?new Color32(176,119,81):new Color32(127,85,58));
                 if(kind==1){Box(fx+.06f,fh,fz+.06f,fw-.12f,.12f,fd-.12f,new Color32(106,155,144));Box(fx+.1f,fh+.12f,fz+.1f,fw-.2f,.1f,.35f,new Color32(245,231,199));}
             }
+            if(room==TownShop.Room)DrawShopStock();
         }
         for(int i=0;i<state.Town.PlacedCount;i++){var q=state.Town.Placed[i];if(q.Room==room)Box(q.X,0,q.Z,.7f,.7f,.7f,new Color32(176,119,81));}
         if(batchedDrawing)boxes.Flush();
@@ -1162,6 +1167,8 @@ internal sealed class TownGame : IDisposable
             }
         }
         if(!playerRunning&&(screen=="world"||screen=="plot"))clockHud.Draw(ui);
+        if(room==TownShop.Room&&screen=="world")DrawShopHint(ink);
+        if(DrawShopPanel(ink))return;
         if(screen=="dialogue")
         { SpeechBubble();return; }
         if(screen=="map"){DrawMap();return;}
@@ -1170,9 +1177,9 @@ internal sealed class TownGame : IDisposable
         { Panel(115,181,410,132);Heading("Saving your town",142,199,ink);Text("Please keep the memory\ncard inserted.",142,245,ink,1.25f);return; }
         if(screen=="world"){if(room==0&&runningMinimap.Visible)DrawMinimap();if(waterInspection!=0)Text("Water inspection "+waterInspection+" / L+R+Left cycles",42,320,ink);if(cliffPreview)Text("Cliff kit preview / L+R+Up closes",42,343,ink);return;}
         if((screen=="menu"&&menuTab==0)||screen=="sell"||screen=="item"){DrawBackpack();return;}
-        Panel(45,75,550,350);string title=screen=="menu"?tabs[menuTab]:screen=="shop"?"Store stock":screen=="store"?"Hearth's store":screen=="post"?"Town hall":screen=="mail"?"Mailbox":"Lost and Found";
+        Panel(45,75,550,350);string title=screen=="menu"?tabs[menuTab]:screen=="shop"?"Essentials / always in stock":screen=="store"?"Hearth's store":screen=="post"?"Town hall":screen=="mail"?"Mailbox":"Lost and Found";
         Heading(title,68,91,ink);
-        int total=screen=="menu"?TabCount():screen=="shop"?state.Town.StockCount:screen=="mail"?Math.Max(1,state.MailCount):screen=="lost"?Math.Max(1,LostCount()):screen=="store"?8:7;
+        int total=screen=="menu"?TabCount():screen=="shop"?TownShop.CabinetCount:screen=="mail"?Math.Max(1,state.MailCount):screen=="lost"?Math.Max(1,LostCount()):screen=="store"?8:7;
         bool compact=screen=="menu"&&(menuTab==SettingsTab||menuTab==TestingTab);int page=compact?9:8,step=compact?24:29;float rowScale=compact?1.2f:1.4f;int first=selected/page*page;
         for(int i=first;i<Math.Min(total,first+page);i++){float y=131+(i-first)*step;if(i==selected){Rounded(57,y,520,step-2,(step-2)*.5f,new Color32(221,231,188));Strong("> "+RowLabel(i),68,y,ink,rowScale);}else Text("  "+RowLabel(i),68,y,ink,rowScale);}
         Text(screen=="menu"&&menuTab==TestingTab&&(TestingOption(selected)==25||TestingOption(selected)==26||TestingOption(selected)==29)?"Left/Right: adjust   A: increase   X: reset":screen=="menu"&&menuTab==TestingTab&&TestingOption(selected)==20?"Left/Right: 5%   A: +5%   X: reset":screen=="menu"&&menuTab==TestingTab&&TestingOption(selected)==23?"Left/Right: 1 square   A: +1   X: Auto":screen=="menu"&&menuTab==TestingTab&&TestingOption(selected)==24?"A / Left/Right: switch   X: Wind Waker":"Stick / D-pad choose   L/R tabs   A select   B close",65,392,ink,1);
@@ -1184,8 +1191,8 @@ internal sealed class TownGame : IDisposable
     }
     private string RowLabel(int i)
     {
-        if(screen=="shop"){int id=state.Town.Stock[i];return id==0?"Sold out":Catalog.Items[id].Name+(godMode?" / Free": " / "+Catalog.Items[id].Buy);}
-        if(screen=="store"){string[] a={"Buy stock","Sell / return parcel","Part-time job","House expansion","Garden expansion","Repay loan","Daily job","Expand backpack"};return a[i];}
+        if(screen=="shop"){int id=TownShop.CabinetItem(i);return Catalog.Items[id].Name+(godMode?" / Free": " / "+Catalog.Items[id].Buy);}
+        if(screen=="store"){string[] a={"Essentials cabinet","Sell / return parcel","Part-time job","House expansion","Garden expansion","Repay loan","Daily job","Expand backpack"};return a[i];}
         if(screen=="post"||(screen=="menu"&&menuTab==4)){string[] a={"Deposit up to 1000","Withdraw up to 1000","Repay from wallet","Lost and Found","Mailbox","Write a letter","Visit / gate"};return a[i];}
         if(screen=="mail")return i>=state.MailCount?"No mail":state.Mail[i]<0?"Arrives tomorrow":Catalog.Items[state.Mail[i]].Name;
         if(screen=="lost"){int n=LostIndex(i);return n<0?"No lost items":Catalog.Items[state.Town.Ground[n].Item].Name;}

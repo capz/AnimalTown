@@ -1,6 +1,6 @@
 using AnimalTown;
 
-if(args.Length==2&&(args[0]=="--profile-fixture"||args[0]=="--money-fixture")){ProfileFixture.Write(args[1],args[0]=="--money-fixture");return;}
+if(args.Length==2&&(args[0]=="--profile-fixture"||args[0]=="--money-fixture"||args[0]=="--shop-fixture")){ProfileFixture.Write(args[1],args[0]=="--money-fixture",args[0]=="--shop-fixture");return;}
 
 int checks=0;
 void Check(bool value,string message){checks++;if(!value)throw new Exception(message);}
@@ -42,7 +42,7 @@ game.Savings=0;Check(game.Deposit(1000)&&game.Withdraw(1000),"banking");
 game.Pockets[0]=22;Check(!game.Use(0,6,0,0)&&game.Pockets[0]==22,"money bag overflow atomic");
 game.Wallet=1000;Check(game.Use(0,6,0,0)&&game.Wallet==2000,"money bag consumed");
 for(int i=0;i<game.Capacity;i++)game.Pockets[i]=1;
-game.Wallet=1000;int stock=game.Town.Stock[0];Check(!game.Buy(0)&&game.Wallet==1000&&game.Town.Stock[0]==stock,"full pockets purchase atomic");
+game.Wallet=5000;int stock=game.Town.Stock[0];Check(!game.Buy(0)&&game.Wallet==5000&&game.Town.Stock[0]==stock,"full pockets purchase atomic");
 game.Pockets[0]=0;Check(game.Buy(0),"stock purchase");
 Check(!game.Buy(0),"sold stock cannot buy twice");
 game.Debt=0;Check(game.Expand(false,100),"expansion order");game.Rollover(100,100);Check(game.HouseTier==0,"not early");game.Rollover(101,100);Check(game.HouseTier==1&&game.PendingKind==0,"overnight construction");

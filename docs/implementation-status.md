@@ -41,6 +41,10 @@ the GDD. The technical baseline was committed/pushed first as `0064efd`.
   for supported GameCube denominations and remaining economy features.
 * Indoor/outdoor footprint validation, placement ownership, rotating footprints,
   garden reservations and relocation, tier-dependent room size.
+* Dedicated low-poly town shop with finite physical displays, unlimited essential
+  cabinet, eight local-player consignment stands and persistent NPC shopping.
+  Shared purchase rules and atomic backend guest purchases are implemented;
+  console guest transport remains unavailable. See [town shop](town-shop.md).
 * Native RTC bridge, 06:00 day rollover, stock and monthly interest rules,
   dropped-item sweep and Lost & Found owner/retention checks.
 * Schema 4 binary saves record the 8×8 world dimensions; old towns crop to the

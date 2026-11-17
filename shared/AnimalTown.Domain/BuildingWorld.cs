@@ -26,9 +26,10 @@ public sealed class BuildingDefinition
 }
 public static class BuildingCatalog
 {
-    public const int MaximumDefinitions=4;
+    public const int MaximumDefinitions=4,MaximumFixtures=32;
     public static readonly BuildingDefinition Cottage=new BuildingDefinition("cottage_small",4,"cottage-exterior","cottage-door","cottage-floor","cottage-north","cottage-east","cottage-south","cottage-west");
-    private static BuildingDefinition[] definitions={Cottage};
+    public static readonly BuildingDefinition Shop=new BuildingDefinition("town_shop",8,"shop-exterior","shop-door","shop-floor","shop-north","shop-east","shop-south","shop-west",fixtures:ShopLayout.Fixtures(),activities:new float[]{4,6.8f});
+    private static BuildingDefinition[] definitions={Cottage,Shop};
     public static int Count=>definitions.Length;
     public static BuildingDefinition Get(int id)=>id>=0&&id<definitions.Length?definitions[id]:Cottage;
     public static bool Available(int id)=>id>=0&&id<definitions.Length;
@@ -42,7 +43,7 @@ public static class BuildingCatalog
         var next=new BuildingDefinition[count];for(int i=0;i<count;i++){string id=Text();int size=Int();if(size<4||size>16)throw new InvalidOperationException("Interior size budget");float hx=Int()/1024f,hz=Int()/1024f,dx=Int()/1024f,dz=Int()/1024f;float inset=Int()/1024f,ch=Int()/1024f,cho=Int()/1024f,cb=Int()/1024f,cbo=Int()/1024f;
             if(inset<.3f||inset>1||ch<.4f||ch>1.2f||cho<1||cho>4||cb<.6f||cb>1.5f||cbo<.5f||cbo>3)throw new InvalidOperationException("Interior camera/socket bounds");
             int activitiesCount=Int();if(activitiesCount<1||activitiesCount>8)throw new InvalidOperationException("Activity budget");var activities=new float[activitiesCount*2];for(int k=0;k<activities.Length;k++){activities[k]=Int()/1024f;if(activities[k]<BuildingWorld.Radius||activities[k]>size-BuildingWorld.Radius)throw new InvalidOperationException("Activity outside room");}
-            int countFixtures=Int();if(countFixtures<0||countFixtures>16||hx<0||hx>3||hz<2.8f||hz>3.3f||dx<.55f||dx>2.45f||dz<3.25f||dz>4)throw new InvalidOperationException("Building socket bounds");
+            int countFixtures=Int();if(countFixtures<0||countFixtures>MaximumFixtures||hx<0||hx>3||hz<2.8f||hz>3.3f||dx<.55f||dx>2.45f||dz<3.25f||dz>4)throw new InvalidOperationException("Building socket bounds");
             var fixtures=new float[countFixtures*6];for(int f=0;f<fixtures.Length;f++){fixtures[f]=Int()/1024f;if(fixtures[f]<0||fixtures[f]>16)throw new InvalidOperationException("Fixture bounds");}
             for(int f=0;f<fixtures.Length;f+=6)if(fixtures[f+2]<=0||fixtures[f+3]<=0||fixtures[f+4]<=0||fixtures[f+4]>3||fixtures[f]+fixtures[f+2]>size||fixtures[f+1]+fixtures[f+3]>size||fixtures[f+5]>2||fixtures[f+5]!=(int)fixtures[f+5]||BuildingWorld.DoorClearance(size,fixtures[f],fixtures[f+1],fixtures[f+2],fixtures[f+3]))throw new InvalidOperationException("Invalid fixture layout");
             next[i]=new BuildingDefinition(id,size,Text(),Text(),Text(),Text(),Text(),Text(),Text(),hx,hz,dx,dz,fixtures,inset,ch,cho,cb,cbo,activities);for(int j=0;j<i;j++)if(next[j].Id==id)throw new InvalidOperationException("Duplicate building ID");}
@@ -95,18 +96,19 @@ public static class BuildingWorld
     // rooms preserve legacy furnishing; neighbours have a bed and writing desk.
     public static bool Fixture(GameState s,int space,int index,out float x,out float z,out float w,out float d,out float height)
     {
-        x=z=w=d=height=0;if(space<16||space>21)return false;
+        x=z=w=d=height=0;if((space<16||space>21)&&space!=TownShop.Room)return false;
         var data=Definition(s,Building(space)).Fixtures;int at=index*6;if(at<0||at+5>=data.Length)return false;
         x=data[at];z=data[at+1];w=data[at+2];d=data[at+3];height=data[at+4];return true;
     }
     public static int FixtureKind(GameState s,int space,int index)=>(int)Definition(s,Building(space)).Fixtures[index*6+5];
+    public static int FixtureCount(GameState s,int space)=>(space>=16&&space<=21||space==TownShop.Room)?Definition(s,Building(space)).Fixtures.Length/6:0;
     public static bool CanStand(GameState s,int space,float x,float z,int actor=-1,bool people=false)
     {
         if(!Available(s,space))return false;
         if(space==0){if(!s.CanWalk(x,z,0))return false;}
         else{
             int size=Size(s,space);if(!(x>=Radius&&z>=Radius&&x<size-Radius&&z<size-Radius))return false;
-            for(int i=0;i<16;i++)if(Fixture(s,space,i,out float fx,out float fz,out float fw,out float fd,out float _)&&Overlaps(x,z,fx,fz,fw,fd))return false;
+            int fixtures=FixtureCount(s,space);for(int i=0;i<fixtures;i++)if(Fixture(s,space,i,out float fx,out float fz,out float fw,out float fd,out float _)&&Overlaps(x,z,fx,fz,fw,fd))return false;
             for(int i=0;i<s.Town.PlacedCount;i++){var p=s.Town.Placed[i];if(p.Room!=space)continue;Footprint(p,out int w,out int d);if(Overlaps(x,z,p.X,p.Z,w,d))return false;}
         }
         if(people)for(int i=0;i<Actors;i++)if(i!=actor){var p=Location(s,i);if(p.Space.Value==space&&Math.Abs(p.X-x)<Radius*2&&Math.Abs(p.Z-z)<Radius*2)return false;}

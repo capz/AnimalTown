@@ -35,6 +35,10 @@ still require A and run through the same validation and animation.
 
 ## Assets and replacement workflow
 
+The town shop uses stable type 1 and its own exterior, fixtures and stocked
+interior. See [town shop](town-shop.md) for purchases, player sales, NPC shopping
+and its asset layout. The cottage below remains the reusable house kit.
+
 ```
 assets/definitions/buildings/cottage_small.json
 assets/definitions/interiors/cottage_small.json

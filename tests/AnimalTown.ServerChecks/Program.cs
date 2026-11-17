@@ -12,6 +12,17 @@ if(args[0]=="seed-legacy"){
     byte[] salt=RandomNumberGenerator.GetBytes(16);byte[] password=Rfc2898DeriveBytes.Pbkdf2("test-password-long",salt,210000,HashAlgorithmName.SHA256,32);
     await using var insert=new NpgsqlCommand("INSERT INTO players(id,name,salt,password,state,revision) VALUES($1,$2,$3,$4,$5,17)",c);
     insert.Parameters.AddWithValue(id);insert.Parameters.AddWithValue(original.Name);insert.Parameters.AddWithValue(salt);insert.Parameters.AddWithValue(password);insert.Parameters.AddWithValue(SaveCodec.EncodeLegacy(original));await insert.ExecuteNonQueryAsync();
+}else if(args[0]=="seed-shop"){
+    for(int actor=1;actor<=2;actor++){
+        Guid player=Guid.Parse(args[actor]);byte[][] parts=new byte[7][];
+        await using(var read=new NpgsqlCommand("SELECT town_data,house_positions,shop_states,player_villager,player_villager2,player_villager3,player_villager4 FROM players WHERE id=$1",c)){
+            read.Parameters.AddWithValue(player);await using var r=await read.ExecuteReaderAsync();if(!await r.ReadAsync())throw new Exception("Shop test actor missing");for(int i=0;i<7;i++)parts[i]=r.GetFieldValue<byte[]>(i);
+        }
+        var state=SplitSaveCodec.Decode(parts);state.Wallet=10000;Array.Clear(state.Pockets);if(actor==1)state.Pockets[0]=10;state.Sequence++;
+        parts=SplitSaveCodec.Encode(state);
+        await using var write=new NpgsqlCommand("UPDATE players SET town_data=$2,house_positions=$3,shop_states=$4,player_villager=$5,player_villager2=$6,player_villager3=$7,player_villager4=$8,revision=revision+1 WHERE id=$1",c);
+        write.Parameters.AddWithValue(player);foreach(var part in parts)write.Parameters.AddWithValue(part);await write.ExecuteNonQueryAsync();
+    }
 }else{
     await using(var cmd=new NpgsqlCommand("SELECT state,town_data,house_positions,shop_states,player_villager,player_villager2,player_villager3,player_villager4,revision FROM players WHERE id=$1",c)){
         cmd.Parameters.AddWithValue(id);await using var r=await cmd.ExecuteReaderAsync();if(!await r.ReadAsync()||!r.IsDBNull(0)||r.GetInt64(8)!=17)throw new Exception("Migration lost row or changed revision");

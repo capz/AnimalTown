@@ -24,6 +24,9 @@ public static class SaveCodec
     {
         if(s.ActiveProfile!=0||!s.Profiles[0].Created)throw new InvalidOperationException("Legacy export requires the original single player");
         for(int i=1;i<GameState.ProfileCount;i++)if(s.Profiles[i].Created)throw new InvalidOperationException("Legacy export cannot discard villager profiles");
+        for(int i=0;i<TownShop.SaleCount;i++)if(s.Town.Shop.SaleItems[i]!=0)throw new InvalidOperationException("Legacy export cannot discard shop listings");
+        for(int i=0;i<6;i++)if(s.Town.Shop.NpcCount[i]!=0)throw new InvalidOperationException("Legacy export cannot discard NPC purchases");
+        for(int i=0;i<GameState.ProfileCount;i++)if(s.Town.Shop.Proceeds[i]!=0)throw new InvalidOperationException("Legacy export cannot discard shop earnings");
     }
     private static byte[] EncodeCore(GameState s,bool profiles)
     {
@@ -31,10 +34,10 @@ public static class SaveCodec
         s.CaptureProfile();
         int terrainRuns=1;for(int i=1;i<Town.Cells;i++)if(s.Town.Tiles[i]!=s.Town.Tiles[i-1])terrainRuns++;
         int elevationRuns=1;for(int i=1;i<Town.Cells;i++)if(s.Town.Elevation[i]!=s.Town.Elevation[i-1])elevationRuns++;
-        int capacity=(profiles?9728:4096)+elevationRuns*4+(s.Name.Length+s.Catchphrase.Length)*4+s.MailCount*4+s.Town.GroundCount*24+s.Town.PlacedCount*24+terrainRuns*4;
+        int capacity=(profiles?10400:4096)+elevationRuns*4+(s.Name.Length+s.Catchphrase.Length)*4+s.MailCount*4+s.Town.GroundCount*24+s.Town.PlacedCount*24+terrainRuns*4;
         if(capacity>MaximumBytes)throw new InvalidOperationException("Save exceeds format budget");
         // Allocate from actual encoded content, not the 1-MiB format ceiling.
-        var b=new byte[capacity];int p=0;Put(b,ref p,0x41544f57);Put(b,ref p,profiles?8:7);Put(b,ref p,Catalog.Version);Put(b,ref p,s.Sequence);
+        var b=new byte[capacity];int p=0;Put(b,ref p,0x41544f57);Put(b,ref p,profiles?9:7);Put(b,ref p,Catalog.Version);Put(b,ref p,s.Sequence);
         Put(b,ref p,0);Put(b,ref p,0);
         Put(b,ref p,Town.Width);Put(b,ref p,Town.Height);
         int[] f={s.Town.Seed,s.Town.Day,s.Town.Month,s.Wallet,(int)s.Savings,(int)(s.Savings>>32),(int)s.Debt,(int)(s.Debt>>32),s.Species,s.Palette,s.Tool,s.Shirt,s.HouseTier,s.GardenTier,s.PendingKind,s.PendingTier,s.PendingDay,s.Tutorial,s.MetMask,s.Jobs,s.JobDay,s.MailCount,s.Roof,s.Wall,s.Fence,s.Mailbox,s.Exterior,s.HousePlaced?1:0,(int)(s.X*1024),(int)(s.Z*1024),s.Town.HouseX,s.Town.HouseZ,s.Town.Spending,s.Town.StockCount};
@@ -53,6 +56,7 @@ public static class SaveCodec
         for(int i=0;i<6;i++){var v=s.Town.Residents[i];Text(b,ref p,v.Name);Put(b,ref p,v.HomeX);Put(b,ref p,v.HomeZ);Put(b,ref p,(int)(v.PosX*1024));Put(b,ref p,(int)(v.PosZ*1024));}
         var buildingFields=profiles?BuildingSave.Encode(s):BuildingSave.EncodeLegacy(s);for(int i=0;i<buildingFields.Length;i++)Put(b,ref p,buildingFields[i]);
         if(profiles){Put(b,ref p,s.ActiveProfile);for(int i=0;i<GameState.ProfileCount;i++){var data=ProfileCodec.Encode(s,i);Put(b,ref p,data.Length);Array.Copy(data,0,b,p,data.Length);p+=data.Length;}}
+        if(profiles){var shop=s.Town.Shop.Encode();Put(b,ref p,shop.Length);for(int i=0;i<shop.Length;i++)Put(b,ref p,shop[i]);}
         int h=16;Put(b,ref h,p);Put(b,ref h,(int)Crc(b,24,p-24));var result=new byte[p];Array.Copy(b,result,p);return result;
     }
     private static int Range(byte[] b,ref int p,int min,int max)
@@ -65,8 +69,8 @@ public static class SaveCodec
     {
         if(b.Length<160||b.Length>MaximumBytes)throw new InvalidOperationException("Invalid save size");int p=0;
         if(Get(b,ref p)!=0x41544f57)throw new InvalidOperationException("Invalid save magic");int version=Get(b,ref p);
-        if((version<4||version>8)||Get(b,ref p)!=Catalog.Version)throw new InvalidOperationException("Unsupported save version");
-        if(snapshot!=null&&version!=8)throw new InvalidOperationException("Readback requires current save format");
+        if((version<4||version>9)||Get(b,ref p)!=Catalog.Version)throw new InvalidOperationException("Unsupported save version");
+        if(snapshot!=null&&version!=9)throw new InvalidOperationException("Readback requires current save format");
         int seq=Range(b,ref p,0,int.MaxValue);if(Get(b,ref p)!=b.Length||(uint)Get(b,ref p)!=Crc(b,24,b.Length-24))throw new InvalidOperationException("Save checksum failed");
         // Town dimensions must match exactly. Old larger towns are not cropped
         // or regenerated; creating a smaller town requires deleting town data.
@@ -118,6 +122,8 @@ public static class SaveCodec
             body.Created=s.Profiles[active].Created;
             if(!ProfileCodec.Same(body,s.Profiles[active]))throw new InvalidOperationException("Selected profile differs from active state");s.RestoreProfile(active);
         }else s.CaptureProfile();
+        if(version>=9){int length=Range(b,ref p,154,154);var shop=new int[length];for(int i=0;i<length;i++)shop[i]=Get(b,ref p);s.Town.Shop.Decode(shop);}
+        else UpgradeShop(s);
         for(int a=0;a<GameState.ProfileCount;a++)if(s.HomePlaced(a))for(int c=a+1;c<GameState.ProfileCount;c++)if(s.HomePlaced(c)&&s.HomeX(a)<s.HomeX(c)+15&&s.HomeX(a)+15>s.HomeX(c)&&s.HomeZ(a)<s.HomeZ(c)+13&&s.HomeZ(a)+13>s.HomeZ(c))throw new InvalidOperationException("Overlapping player home plots");
         int placedCount=s.Town.PlacedCount;s.Town.PlacedCount=0;
         for(int i=0;i<placedCount;i++){var q=s.Town.Placed[i];if(!s.CanPlace(q.Item,q.X,q.Z,q.Rotation,q.Room,q.Owner,true))throw new InvalidOperationException("Invalid placement");s.Town.PlacedCount++;}
@@ -125,5 +131,11 @@ public static class SaveCodec
         if(version<5)for(int i=0;i<6;i++){s.Town.Residents[i].PosX=s.Town.Residents[i].X+.5f;s.Town.Residents[i].PosZ=s.Town.Residents[i].Z+.5f;}
         if(version<6)WaterTerrain.Migrate(s.Town);
         s.NormalizeBuildingLocations();s.CaptureProfile();s.Town.NotifyTerrainChanged();return s;
+    }
+    internal static void UpgradeShop(GameState s)
+    {
+        if(s.BuildingTypes[7]==0)s.BuildingTypes[7]=1;
+        // Keep empty (already sold) slots empty. Move essentials to the cabinet.
+        for(int i=0;i<s.Town.StockCount;i++)if(s.Town.Stock[i]!=0&&s.Town.Stock[i]<10)s.Town.Stock[i]=10+(Math.Max(s.Town.Day,0)+i)%4;
     }
 }
