@@ -8,6 +8,7 @@ using Hypercube.GameCube;
 internal sealed class ObjectShadows
 {
     internal const int Capacity=32;
+    private const int LampKeys=512+BuildingWorld.Count;
     private sealed class Entry
     {
         internal int Key=-1,Version,Published=-1;
@@ -17,9 +18,9 @@ internal sealed class ObjectShadows
         internal int Count;
     }
     private readonly Entry[] entries=new Entry[Capacity];
-    private readonly ShadowCaster[] casters=new ShadowCaster[512+BuildingWorld.Count];
-    private readonly float[] radialY=new float[512+BuildingWorld.Count],radialZ=new float[512+BuildingWorld.Count];
-    private readonly bool[] exists=new bool[512+BuildingWorld.Count];
+    private readonly ShadowCaster[] casters=new ShadowCaster[512+BuildingWorld.Count*2];
+    private readonly float[] radialY=new float[512+BuildingWorld.Count*2],radialZ=new float[512+BuildingWorld.Count*2];
+    private readonly bool[] exists=new bool[512+BuildingWorld.Count*2];
     private readonly int[] selected=new int[Capacity];
     private readonly float[] distances=new float[Capacity];
     private readonly GroundShadow staging=new GroundShadow();
@@ -58,6 +59,9 @@ internal sealed class ObjectShadows
             for(int i=0;i<BuildingWorld.Count;i++)if(BuildingWorld.Exists(state,i)){
                 BuildingWorld.Origin(state,i,out float x,out float z);x+=1.5f;z+=1.5f;
                 int key=512+i;SetCaster(key,new ShadowCaster(x,z,3,3,TerrainElevation.At(t,x,z)));
+                // Leave one mask texel around the silhouette for receiver erosion.
+                if(WorldLighting.StreetLamp(state,i,out x,out z))
+                    SetCaster(LampKeys+i,new ShadowCaster(x,z,TerrainElevation.At(t,x,z),x-.6f,z-.6f,x+1.75f,z+1.55f));
             }
             for(int i=0;i<Capacity;i++){
                 var e=entries[i];if(e.Key<0)continue;
@@ -73,7 +77,7 @@ internal sealed class ObjectShadows
             float py=scroll.Cos*radialY[key]-scroll.Sin*radialZ[key]+scroll.Y,pz=scroll.Sin*radialY[key]+scroll.Cos*radialZ[key]+scroll.Z;
             float radius=(c.Right-c.Left+c.Bottom-c.Top)*.5f;
             if(!RenderView.Sphere(cx,py,pz,radius,state.X,state.Z,eye)||!RenderView.AboveHorizon(py,pz,radius,state.Z,eye))continue;
-            float d=(cx-fx)*(cx-fx)+(cz-fz)*(cz-fz)-(c.Profile==3?10000:0);int at=count;
+            float d=(cx-fx)*(cx-fx)+(cz-fz)*(cz-fz)-(c.Profile==3?10000:key>=LampKeys?5000:0);int at=count;
             if(at==Capacity){if(d>=distances[Capacity-1])continue;at--;}
             else count++;
             while(at>0&&d<distances[at-1]){if(at<Capacity){selected[at]=selected[at-1];distances[at]=distances[at-1];}at--;}
@@ -113,7 +117,8 @@ internal sealed class ObjectShadows
     {
         var e=entries[building];e.Count=count;
         e.Bounds[0]=e.Caster.Left;e.Bounds[1]=e.Caster.Top;e.Bounds[2]=e.Caster.Right;e.Bounds[3]=e.Caster.Bottom;
-        if(NativeShadows.Mesh(building,e.Count,e.Caster.Profile,staging.Uvs,e.Bounds)!=1)throw new InvalidOperationException("Invalid scenery shadow coverage");
+        e.Center[0]=e.Caster.X;e.Center[1]=e.Caster.Z;
+        if(NativeShadows.Mesh(building,e.Count,e.Key>=LampKeys?5:e.Caster.Profile,staging.Uvs,e.Bounds)!=1)throw new InvalidOperationException("Invalid scenery shadow coverage");
         NativeShadows.Active(building,e.Count>0?1:0,e.Center);
         e.Published=e.Count>0?1:0;e.Ready=true;building=-1;
     }

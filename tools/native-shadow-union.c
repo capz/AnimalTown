@@ -89,7 +89,7 @@ int animaltown_shadows_terrain(DndArray *tile,int offset,int mode){
 }
 int animaltown_shadows_begin(int space,int enabled,int size){if(!shadows)return 0;su_begin(shadows,space,enabled,size);return 1;}
 int animaltown_shadows_mesh(int slot,int count,int profile,DndArray *uv,DndArray *bounds){
-    if(!shadows||slot<0||slot>=SU_CASTERS||count<0||count>SU_VERTICES||count%3||profile<0||profile>4||!uv||uv->element_size!=4||uv->length<(unsigned)count*2||!bounds||bounds->element_size!=4||bounds->length!=4)return 0;
+    if(!shadows||slot<0||slot>=SU_CASTERS||count<0||count>SU_VERTICES||count%3||profile<0||profile>5||!uv||uv->element_size!=4||uv->length<(unsigned)count*2||!bounds||bounds->element_size!=4||bounds->length!=4)return 0;
     float *b=(float*)bounds->data;if(!isfinite(b[0])||!isfinite(b[1])||!isfinite(b[2])||!isfinite(b[3])||b[0]>=b[2]||b[1]>=b[3])return 0;
     for(int i=0;i<count*2;i++)if(!isfinite(((float*)uv->data)[i]))return 0;
     su_mesh(shadows,slot,count,profile,(float*)uv->data,b);return 1;

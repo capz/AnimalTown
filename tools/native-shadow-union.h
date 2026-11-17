@@ -224,12 +224,27 @@ static inline void su_mesh(SuState *s,int slot,int count,int profile,const float
 }
 static inline void su_active(SuState *s,int slot,int active,float x,float z){
     SuCaster *c=&s->caster[slot];active=active&&c->count>0;
+    if(c->profile==5&&(c->x!=x||c->z!=z)){su_dirty(s,c);c->x=x;c->z=z;su_dirty(s,c);}
     if(slot>=SU_STATIC){
         c->requested=active;
         if(c->x!=x||c->z!=z){s->layout_dirty=1;su_dirty(s,c);c->x=x;c->z=z;su_dirty(s,c);}
     }else if(c->active!=active){s->layout_dirty=1;su_dirty(s,c);c->active=active;su_dirty(s,c);}
 }
+static inline float su_saturate(float x){return x<0?0:x>1?1:x;}
+/* The post's base, narrow pole and roof project from the same fixed NW light
+ * as the scenery profiles. Dimensions match DrawStreetLights, including the
+ * roof centre at 2.58m. No extra atlas or texture storage is required. */
+static inline uint8_t su_post_shadow(const SuCaster *c,float x,float z){
+    x-=c->x;z-=c->z;
+    float t=su_saturate((x+z*.8f)/1.64f),dx=x-t,dz=z-t*.8f;
+    float stem=su_saturate((.0121f-dx*dx-dz*dz)/.0096f);
+    float roof=fmaxf(fabsf(x-1.032f)-.29f,fabsf(z-.8256f)-.29f);
+    float base=fmaxf(fabsf(x-.03f)-.21f,fabsf(z-.024f)-.204f);
+    float alpha=fmaxf(stem,fmaxf(su_saturate(1-roof/.07f),su_saturate(1-base/.05f)));
+    return (uint8_t)(alpha*SU_OPACITY+.5f);
+}
 static inline uint8_t su_sample(const SuState *s,const SuCaster *c,float x,float z){
+    if(c->profile==5)return su_post_shadow(c,x,z);
     float b[4];su_bounds(c,b);float u=(x-b[0])/(b[2]-b[0]),v=(z-b[1])/(b[3]-b[1]);
     if(u<=0||u>=1||v<=0||v>=1)return 0;
     int side=c->profile==4?32:64;const uint8_t *a=s->shapes+(c->profile==4?4*4096:c->profile*4096);
