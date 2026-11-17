@@ -140,14 +140,15 @@ internal static class DepotPackage
             }
             string app=At(stage,Prefix);var id=ReadIdentity(app);VerifyBuild(root,id);
             var manifest=JsonSerializer.Deserialize<PackageManifest>(ReadSmall(At(app,Manifest),1024*1024))??throw new InvalidDataException("Missing package manifest");
-            if(manifest.Schema!=1||manifest.Profile!="sd-app"||manifest.Commit!=id.Commit||manifest.Version!=id.Version||manifest.SourceDigest!=id.SourceDigest||manifest.RuntimeProfile!=id.RuntimeProfile)throw new InvalidDataException("Depot manifest identity mismatch");
+            if(manifest.Schema!=1||manifest.Profile!="sd-app"||manifest.Commit!=id.Commit||manifest.Version!=id.Version||manifest.SourceDigest!=id.SourceDigest||manifest.RuntimeProfile!=id.RuntimeProfile||manifest.Files==null)throw new InvalidDataException("Depot manifest identity mismatch");
             string[] expected=Payload(app);
             if(!expected.SequenceEqual(manifest.Files.Keys.Order(StringComparer.Ordinal))||!expected.Append(Manifest).Order(StringComparer.Ordinal).SequenceEqual(Directory.GetFiles(app).Select(Path.GetFileName).Order(StringComparer.Ordinal)))throw new InvalidDataException("Depot archive differs from the runtime whitelist");
             foreach(string name in expected)if(Hash(At(app,name))!=manifest.Files[name])throw new InvalidDataException("Depot payload checksum mismatch: "+name);
             if(Hash(At(app,"default.dol"))!=Hash(At(root,"out/native-depot/Game.dol")))throw new InvalidDataException("Depot executable is not this app build");
             Program.ValidateDol(File.ReadAllBytes(At(app,"default.dol")));
             byte[] banner=File.ReadAllBytes(At(app,"opening.bnr"));
-            if(banner.Length!=6496||!banner.AsSpan(0,4).SequenceEqual("BNR1"u8))throw new InvalidDataException("Depot banner must be 6496-byte BNR1");
+            DiscBannerFile.Verify(banner,id.Version);
+            if(Hash(At(app,"opening.bnr"))!=Hash(At(root,"out/disc/opening.bnr")))throw new InvalidDataException("Depot banner differs from the disc build");
             if(new FileInfo(At(app,"savebanner.rgb5a3")).Length!=96*32*2||new FileInfo(At(app,"saveicon.rgb5a3")).Length!=32*32*2)throw new InvalidDataException("Depot save artwork is invalid");
             DiscVersionFile.Verify(File.ReadAllBytes(At(app,"version.md")),id.Version);
             if(!File.ReadAllBytes(At(app,"runtime.cfg")).SequenceEqual(new[]{(byte)id.RuntimeProfile}))throw new InvalidDataException("Depot runtime profile differs from build");

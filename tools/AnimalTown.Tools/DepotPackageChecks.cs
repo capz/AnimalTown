@@ -38,7 +38,7 @@ internal static class DepotPackageChecks
                 if(name is "default.dol" or "content.id" or "version.json"||name=="buildings.bin"||name.EndsWith(".bin",StringComparison.Ordinal))continue;
                 string directory=name.EndsWith("-LICENSE.txt",StringComparison.Ordinal)||name is "THIRD-PARTY-NOTICES.txt" or "DEPOT-README.txt"?notices:disc;
                 byte[] bytes=name=="opening.bnr"?new byte[6496]:name=="savebanner.rgb5a3"?new byte[6144]:name=="saveicon.rgb5a3"?new byte[2048]:Encoding.ASCII.GetBytes(name=="version.md"?version:name);
-                if(name=="opening.bnr")"BNR1"u8.CopyTo(bytes);if(name=="runtime.cfg")bytes=new byte[]{3};
+                if(name=="opening.bnr")bytes=DiscBannerFile.Create(new byte[6144],version);if(name=="runtime.cfg")bytes=new byte[]{3};
                 File.WriteAllBytes(Path.Combine(directory,name),bytes);
             }
             foreach(string unwanted in new[]{"animal-town-updater.dol","roots.pem","entropy.bin","sunshine-water.dndtex","source.glb","other.DOL"})File.WriteAllText(Path.Combine(disc,unwanted),"must not ship");

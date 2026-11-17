@@ -5,6 +5,9 @@ Every console build emits both `AnimalTown-VERSION.nkit.iso` and
 version, runtime profile and cooked assets as the separately built backend.
 The existing merged-PR minor counter is unchanged. NKit remains a raw release
 asset; it is never wrapped in a ZIP. Full-size conversion ISOs remain temporary.
+The display name and approved banner artwork follow main's Smalltown Forest
+branding. The AnimalTown repository, package filenames, install slug and save
+identity remain unchanged.
 
 The additional ZIP installs directly as `apps/animaltown/`, with the real game
 at `default.dol`, `opening.bnr`, save artwork, cooked content, notices,

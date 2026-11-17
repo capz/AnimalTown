@@ -1,4 +1,4 @@
-AnimalTown - standalone SD app
+Smalltown Forest (AnimalTown releases) - standalone SD app
 
 Extract the apps folder to your SD device root. Launch
 apps/animaltown/default.dol with its complete accompanying folder.
