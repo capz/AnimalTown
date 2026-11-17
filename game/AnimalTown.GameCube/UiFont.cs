@@ -5,6 +5,10 @@ using Dolphin.Graphics;
 // Proportional bitmap text: host-baked Gorditas headings and native IPL body text.
 internal sealed class UiFont
 {
+    // The IPL atlas has one unused cell after its 95 printable ASCII glyphs.
+    // Keep currency in that cell so it shares the normal text batches and tint.
+    internal const string Currency="\u00a4";
+    internal static string Money(long amount)=>Currency+" "+amount;
     private readonly CachedTexture texture;
     private readonly byte[] metrics;
     private readonly int[]? firmware;
@@ -28,7 +32,14 @@ internal sealed class UiFont
     {
         for(int i=0;i<96;i++){
             int first=i*8;
-            if(firmware!=null){int n=i<95?i:'?'-32;advances[i]=firmware[8+n*5+4];int m=8+n*5;regionCounts[i]=firmware[m+2]>0?1:0;Region(first,texture.Pages[n/16],n%4*32+firmware[m],n%16/4*32+firmware[m+1],firmware[m+2],firmware[m+3],firmware[m],firmware[m+1]);continue;}
+            if(firmware!=null){
+                if(i==95){
+                    float size=firmware[1]*.8f;advances[i]=size+firmware[1]*.1f;regionCounts[i]=1;
+                    Region(first,texture.Pages[5],96,96,32,32,0,firmware[1]*.08f);
+                    regionData[first*8+2]=regionData[first*8+3]=size;continue;
+                }
+                int m=8+i*5;advances[i]=firmware[m+4];regionCounts[i]=firmware[m+2]>0?1:0;Region(first,texture.Pages[i/16],i%4*32+firmware[m],i%16/4*32+firmware[m+1],firmware[m+2],firmware[m+3],firmware[m],firmware[m+1]);continue;
+            }
             int at=16+i*8,x=Get(at),y=Get(at+2),w=Get(at+4);advances[i]=Get(at+6);
             int firstX=x/128,firstY=y/128,lastX=(x+w+127)/128,lastY=(y+64+127)/128,used=0;
             if((lastX-firstX)*(lastY-firstY)>8)throw new IOException("Glyph exceeds bounded page layout");
@@ -63,12 +74,13 @@ internal sealed class UiFont
     internal void Release()=>TextureCache.Release(texture);
     internal static UiFont LoadSystem()
     {
-        const string key="firmware:IPL/ascii-paged-v2";var cached=TextureCache.Find(key,true);if(cached!=null)return new UiFont(cached);
+        const string key="firmware:IPL/ascii-acorn-paged-v3";var cached=TextureCache.Find(key,true);if(cached!=null)return new UiFont(cached);
         var pixels=new byte[128*128*2];var info=new int[8+95*5];
         var result=new CachedTexture{Source=key,Atlas=true,SourceWidth=512,SourceHeight=256,Pages=new Texture2D[6],FontMetrics=info};
         try{
             for(int i=0;i<6;i++){
                 if(AnimalTown.GameCube.NativeTexturePages.IplPage(i,pixels,info)!=1)throw new IOException("Firmware font extraction failed");
+                if(i==5)AddCurrency(pixels);
                 result.SourceHash=(result.SourceHash^AnimalTown.TexturePixels.Hash(pixels))*16777619;
                 var page=Texture2D.CreateNative(128,128,NativeTextureFormat.Ia8,true);result.Pages[i]=page;page.ReplaceNative(pixels);
             }
@@ -76,17 +88,33 @@ internal sealed class UiFont
         finally{AnimalTown.GameCube.NativeTexturePages.IplPage(-1,pixels,info);}
         return new UiFont(TextureCache.Store(result));
     }
+    private static void AddCurrency(byte[] pixels)
+    {
+        // White silhouette with alpha coverage only: cap overhang, tapered nut,
+        // short bent stem. Rasterize once into the unused 32px IA8 atlas cell.
+        for(int y=0;y<32;y++)for(int x=0;x<32;x++){
+            int covered=0;
+            for(int sy=0;sy<4;sy++)for(int sx=0;sx<4;sx++){
+                float px=x+(sx+.5f)/4,py=y+(sy+.5f)/4;
+                float bx=(px-16)/8.7f,by=(py-18)/12.5f,cx=(px-16)/12,cy=(py-15)/8;
+                float stem=18.5f-(py-3)*.28f;
+                if((py>=14&&bx*bx+by*by<=1)||(py>=7&&py<=15&&cx*cx+cy*cy<=1)||(py>=3&&py<=9&&px>=stem-1.6f&&px<=stem+1.6f))covered++;
+            }
+            int xx=x+96,yy=y+96,at=((yy/4)*32+xx/4)*32+(yy%4*4+xx%4)*2;
+            pixels[at]=(byte)((covered*255+8)/16);pixels[at+1]=255;
+        }
+    }
     internal static UiFont Load(string name)
     {
         var metrics=File.ReadAllBytes("dvd:/"+name+".metrics");
         if(metrics.Length!=784||metrics[0]!=65||metrics[1]!=84||metrics[2]!=70||metrics[3]!=50)throw new IOException("Invalid font metrics");
         return new UiFont(TextureCache.Load("dvd:/"+name+".dndtex",true),metrics);
     }
-    private int Index(char c)=>c>=32&&c<128?c-32:'?'-32;
+    private int Index(char c)=>firmware!=null&&c=='\u00a4'?95:c>=32&&c<128?c-32:'?'-32;
     private int Get(int at)=>metrics[at]|metrics[at+1]<<8;
     private float Factor=>metrics[8]/(float)metrics[4];
     internal float Measure(string text,float scale=1)
-    { float x=0,max=0;for(int i=0;i<text.Length;i++){if(text[i]=='\n'){max=Math.Max(max,x);x=0;}else if(text[i]!='\r')x+=firmware!=null?firmware[8+((text[i]=='\t'?0:text[i]>=32&&text[i]<=126?text[i]-32:'?'-32))*5+4]*(text[i]=='\t'?4:1)*scale*22/firmware[1]:Get(16+Index(text[i])*8+6)*scale*Factor;}return Math.Max(max,x); }
+    { float x=0,max=0,f=firmware!=null?scale*22/firmware[1]:scale*Factor;for(int i=0;i<text.Length;i++){if(text[i]=='\n'){max=Math.Max(max,x);x=0;}else if(text[i]!='\r')x+=(firmware!=null&&text[i]=='\t'?advances[0]*4:advances[Index(text[i])])*f;}return Math.Max(max,x); }
     // Bounds of the actual glyph quads, excluding advance/bearing padding.
     internal RectF GlyphBounds(string text,float scale=1)
     {
@@ -146,9 +174,10 @@ internal sealed class UiFont
     {
         if(firmware!=null){
             float f=scale*22/firmware[1],pen=x;
-            for(int i=0;i<end;i++){char ch=text[i];if(ch=='\r')continue;if(ch=='\n'){pen=x;y+=firmware[4]*f;continue;}int index=ch>=32&&ch<=126?ch-32:'?'-32;
-                if(ch!=' '&&ch!='\t')ui.DrawTexture(texture.Pages[index/16],new RectF(index%4*32,index%16/4*32,firmware[0],firmware[1]),new RectF(pen,y,firmware[0]*f,firmware[1]*f),color);
-                pen+=firmware[8+(ch=='\t'?0:index)*5+4]*(ch=='\t'?4:1)*f;
+            for(int i=0;i<end;i++){char ch=text[i];if(ch=='\r')continue;if(ch=='\n'){pen=x;y+=firmware[4]*f;continue;}int index=Index(ch);
+                if(index==95){float size=firmware[1]*.8f*f;ui.DrawTexture(texture.Pages[5],new RectF(96,96,32,32),new RectF(pen,y+firmware[1]*.08f*f,size,size),color);}
+                else if(ch!=' '&&ch!='\t')ui.DrawTexture(texture.Pages[index/16],new RectF(index%4*32,index%16/4*32,firmware[0],firmware[1]),new RectF(pen,y,firmware[0]*f,firmware[1]*f),color);
+                pen+=(ch=='\t'?advances[0]*4:advances[index])*f;
             }return;
         }
         float cursor=x,pivotX=x+Measure(text,scale)*.5f,pivotY=y+16*scale;scale*=Factor;
