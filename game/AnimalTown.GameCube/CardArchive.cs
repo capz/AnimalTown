@@ -55,8 +55,8 @@ internal sealed class CardArchive
         for(int i=0;i<entries.Length;i++){if(SplitSaveCodec.IsFile(entries[i].Name))town=true;if(entries[i].Name==TownDataDeletion.Marker)pending=true;}
         byte[]? snapshot=!published&&town&&!pending?Snapshot(new Legacy(card)):null;
         if(store==null){
-            var artBanner=banner.Length>0?banner:File.ReadAllBytes("dvd:/savebanner.rgb5a3");
-            var artIcon=icon.Length>0?icon:File.ReadAllBytes("dvd:/saveicon.rgb5a3");
+            var artBanner=banner.Length>0?banner:File.ReadAllBytes(AnimalTown.ContentPaths.Asset("savebanner.rgb5a3"));
+            var artIcon=icon.Length>0?icon:File.ReadAllBytes(AnimalTown.ContentPaths.Asset("saveicon.rgb5a3"));
             store=new CardRecordStore(new NativeCardBlocks(device,true,artBanner,artIcon),true);
         }
         if(!published){

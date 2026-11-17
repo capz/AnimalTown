@@ -24,8 +24,9 @@ still require hardware validation.
 NKit ISO removes unused disc padding and reorganizes file placement. The game
 files are preserved; this is not a ZIP that the console must decompress. A
 production sample shrank from 1,459,978,240 to 88,160,256 bytes (93.96% less SD
-space). Sizes vary with build contents. The NKit ISO is the sole console image
-published, directly without a ZIP wrapper, so no extraction is needed.
+space). Sizes vary with build contents. The NKit ISO is the sole disc image
+published, directly without a ZIP wrapper, so no extraction is needed. Releases
+also provide a separate standalone SD app ZIP; see [Depot releases](depot-release.md).
 
 Full-size source and round-trip ISOs exist only in temporary conversion
 directories. Both are deleted on success or failure; the full-size source is

@@ -14,7 +14,12 @@ minor once and resets patch to zero; major changes manually. PR prereleases use 
 plus `+<12-character feature-branch commit hash>`. Rebuilding the same source/main
 snapshot keeps its version. For SD-card storage through Swiss/GC Loader,
 download `AnimalTown-VERSION.nkit.iso` and copy it directly to the card.
-The NKit ISO is the only console image built for delivery. See [NKit images](docs/nkit-images.md) for
+Standalone SD installs use `AnimalTown-VERSION-depot.zip`; extract its `apps`
+folder to the device root and launch `apps/animaltown/default.dol`. No AnimalTown
+ISO is needed. Use SD2SP2 or Slot B SD Gecko with a memory card in Slot A;
+physical device/launcher qualification and hosted Depot permission remain pending.
+See [the app profile and release gates](docs/depot-release.md).
+The NKit ISO remains the only disc image delivered. See [NKit images](docs/nkit-images.md) for
 size savings and the exact round-trip/payload verification gates. Releases also
 contain the separate .NET 10 server ZIP, `BUILD.txt` with engine/SDK revisions,
 `version.json`, `nkit-validation.json` and `SHA256SUMS.txt`. Development status
@@ -23,7 +28,7 @@ and physical hardware validation are recorded in the release notes.
 To publish a locally verified build, use a clean checkout, run both build commands
 below, then run `./tools/publish-release.ps1` with an authenticated GitHub CLI.
 `-PackageOnly` prepares the NKit image, archives and manifests without publishing. The publisher rejects dirty
-or mismatched console/backend revisions, verifies the NKit image and its conversion report, uploads into
+or mismatched console/backend/app revisions, verifies the NKit image, its conversion report and a clean app extraction, uploads into
 a draft, checks uploaded asset hashes, and only then publishes the prerelease.
 The workflow can also be rerun from GitHub Actions using **Build and release**.
 
@@ -48,10 +53,12 @@ dotnet tool restore
 ./tools/build-game.ps1
 ```
 
-A successful console build produces only `out/AnimalTown-<version>.nkit.iso`,
+A successful console build produces `out/AnimalTown-<version>.nkit.iso` and
+`out/AnimalTown-<version>-depot.zip`,
 with bootable homebrew apploader, DOL, assets, opening.bnr, save artwork and
 BUILD.txt. Full-size source and round-trip images are temporary conversion files
-and are deleted after verification. Boot the NKit ISO directly in Dolphin/GCLoader/Swiss.
+and are deleted after verification. Boot the NKit ISO directly in Dolphin/GCLoader/Swiss,
+or launch the extracted app DOL from its complete SD installation.
 Physical hardware validation remains outstanding. Rebuilds can use
 `-SkipAssets` only when converted assets already exist for the same sources.
 Dirty source is marked in all build identities. Generated assets/ISOs stay out

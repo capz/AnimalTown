@@ -18,11 +18,6 @@
         "resolved": "4.155.0",
         "contentHash": "Z5GYcFdUNn+LwWDCcyOqLuhF9bvtCW+HChDwnH+1mwHSbyowIO+JwOzckzxROh/MXbjPdZxnbkMnCXbIUhe80w=="
       },
-      "Capz.Hypercube.Core": {
-        "type": "Transitive",
-        "resolved": "0.1.0-preview.45.1",
-        "contentHash": "Mk0rWSQks13VRD6ZtMnhi89Ur+yJKIPQoCE0g0fXmlQGIBvDZ+PVfcy6ZN3gsTYE8nPRvwpqAu9I7FEBd6tJuw=="
-      },
       "SkiaSharp.NativeAssets.macOS": {
         "type": "Transitive",
         "resolved": "4.155.0",
@@ -36,7 +31,7 @@
       "animaltown.domain": {
         "type": "Project",
         "dependencies": {
-          "Capz.Hypercube.Core": "[0.1.0-preview.45.1, 0.1.0-preview.45.1]"
+          "Capz.Hypercube.Core": "[0.1.0-preview.48.1, 0.1.0-preview.48.1]"
         }
       }
     }

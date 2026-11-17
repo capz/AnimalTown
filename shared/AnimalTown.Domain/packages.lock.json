@@ -1,13 +1,6 @@
 {
   "version": 1,
   "dependencies": {
-    "net8.0": {
-      "Capz.Hypercube.Core": {
-        "type": "Direct",
-        "requested": "[0.1.0-preview.45.1, 0.1.0-preview.45.1]",
-        "resolved": "0.1.0-preview.45.1",
-        "contentHash": "Mk0rWSQks13VRD6ZtMnhi89Ur+yJKIPQoCE0g0fXmlQGIBvDZ+PVfcy6ZN3gsTYE8nPRvwpqAu9I7FEBd6tJuw=="
-      }
-    }
+    "net8.0": {}
   }
 }

@@ -27,7 +27,7 @@ internal sealed class ProfilePickerUi : IDisposable,Hypercube.GameCube.IFrameSce
     internal ProfilePickerUi(GameState state,bool savedTown)
     {
         try{
-            font=UiFont.LoadSystem();heading=UiFont.Load("gorditas-bold");logo=TextureCache.Load("dvd:/wordmark.dndtex",true);
+            font=UiFont.LoadSystem();heading=UiFont.Load("gorditas-bold");logo=TextureCache.Load(AnimalTown.ContentPaths.Asset("wordmark.dndtex"),true);
             Selected=state.ActiveProfile;
             Refresh(state,savedTown);
         }catch{Dispose();throw;}
@@ -41,7 +41,7 @@ internal sealed class ProfilePickerUi : IDisposable,Hypercube.GameCube.IFrameSce
                 labels[i]=CardLabel(names[i]);
                 species[i]=occupied?(i==state.ActiveProfile?state.Species:state.Profiles[i].Species):-1;
                 if(species[i]>=0){used[species[i]]=true;if(portraits[species[i]]==null)
-                    portraits[species[i]]=TextureCache.Load("dvd:/picker-"+Species[species[i]]+".dndtex",true);}
+                    portraits[species[i]]=TextureCache.Load(AnimalTown.ContentPaths.Asset("picker-"+Species[species[i]]+".dndtex"),true);}
         }
         for(int i=0;i<portraits.Length;i++)if(!used[i]&&portraits[i]!=null){TextureCache.Release(portraits[i]!,true);portraits[i]=null;}
     }

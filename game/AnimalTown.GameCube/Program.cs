@@ -17,7 +17,7 @@ internal static class Program
     {
         DebugOverlay.PerformanceVisible=false;
         DebugOverlay.WriteLine("AnimalTown "+BuildInfo.Version);
-        if(!Storage.MountDisc())throw new IOException("AnimalTown game disc not found");
+        ContentBootstrap.Initialize();
         RuntimeOptions.Load();
         var config=DevConfigStorage.Load();
         DevConfigStorage.ApplyGlobal(config);
@@ -175,10 +175,10 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
         font=UiFont.LoadSystem();strongFont=font;clockHud=new FloatingClockHud(font);headingFont=UiFont.Load("gorditas-bold");cube=Cube();
         boxes=new BoxBatch(renderer,cube);for(int i=0;i<modelPoses.Length;i++)modelPoses[i]=new Transform{Parent=worldRoot};
         LoadingScreen.Pulse();
-        itemIcons=TextureCache.Load("dvd:/item-icons.dndtex",true);
+        itemIcons=TextureCache.Load(ContentPaths.Asset("item-icons.dndtex"),true);
         LoadingScreen.Pulse();
         transform.Parent=worldRoot;identity.Parent=worldRoot;
-        banner=File.ReadAllBytes("dvd:/savebanner.rgb5a3");icon=File.ReadAllBytes("dvd:/saveicon.rgb5a3");
+        banner=File.ReadAllBytes(ContentPaths.Asset("savebanner.rgb5a3"));icon=File.ReadAllBytes(ContentPaths.Asset("saveicon.rgb5a3"));
         DebugOverlay.WriteLine("ANIMALTOWN GAME UI READY");
         var pcm=new byte[512];for(int i=0;i<pcm.Length;i++)pcm[i]=(byte)(128+(i%24<12?25:-25)*(pcm.Length-i)/pcm.Length);
         DebugOverlay.WriteLine("ANIMALTOWN GAME AUDIO BEGIN");
@@ -188,7 +188,7 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
         ReadCalendar();
         debugConfig=config;
         state=session.State;loaded=session.Loaded;damagedSave=session.Damaged;saveStatus=session.Status;day=Math.Max(day,state.Town.Day);month=Math.Max(month,state.Town.Month);
-        BuildingCatalog.Configure(File.ReadAllBytes("dvd:/buildings.bin"));
+        BuildingCatalog.Configure(File.ReadAllBytes(ContentPaths.Asset("buildings.bin")));
         LoadingScreen.Pulse();
         screen=session.Draft!=null?"plot":"world";
         if(session.Draft!=null&&!session.PreviewStarted){
@@ -249,8 +249,8 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
         LoadingScreen.Finish();
         TextureCache.TrimUnused();AnimalTown.GameCube.NativeTexturePages.Collect();
         if(session.Draft!=null||OnboardingUi.LiveViews!=0||
-           TextureCache.SourceBytesContaining("dvd:/picker-")!=0||
-           TextureCache.SourceBytesContaining("dvd:/wordmark.dndtex")!=0)
+           TextureCache.SourceBytesContaining(ContentPaths.Asset("picker-"))!=0||
+           TextureCache.SourceBytesContaining(ContentPaths.Asset("wordmark.dndtex"))!=0)
             throw new InvalidOperationException("Onboarding resources survived gameplay transition");
         releaseIntro=false;
         DebugOverlay.WriteLine("ANIMALTOWN ONBOARDING RELEASED native bytes "+device.NativeBytes);

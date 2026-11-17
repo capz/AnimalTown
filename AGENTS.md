@@ -14,11 +14,15 @@ temporary Actions artifacts. Use `tools/publish-release.ps1` after clean game an
 backend builds of the same commit. The main-branch release workflow does this
 automatically after its checks pass.
 
-Every console build must deliver only the compact bootable NKit ISO with game
-title, commit identity, disc banner and save banner/icon. Full-size source and
+Every console build must deliver the compact bootable NKit ISO and the
+standalone `AnimalTown-VERSION-depot.zip` SD app, built from the same source,
+version and cooked assets. Both retain title, commit identity, launcher/disc
+banner and memory-card save artwork. The app ZIP must contain the real
+`apps/animaltown/default.dol` and a validated, explicit runtime payload; it must
+boot without an AnimalTown disc. See `docs/depot-release.md`. Full-size source and
 round-trip ISOs are temporary conversion files and must be deleted after
 verification, including on failure. Publish the NKit ISO directly, without a ZIP
-wrapper, alongside the
+wrapper, alongside the app ZIP and
 separate backend archive, revision manifest and SHA-256 checksums. Keep development
 builds marked as prereleases and report hardware validation honestly.
 

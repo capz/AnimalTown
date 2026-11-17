@@ -1,0 +1,9 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup><OutputType>Exe</OutputType><DefineConstants>$(DefineConstants);ANIMALTOWN_DEPOT</DefineConstants></PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../shared/AnimalTown.Domain/AnimalTown.Domain.csproj" />
+    <PackageReference Include="DolphinDotNet.GameCube" Version="[0.1.0-preview.374.1]" />
+    <Compile Include="../../game/AnimalTown.GameCube/ContentBootstrap.cs" Link="ContentBootstrap.cs" />
+    <Compile Include="../../game/AnimalTown.GameCube/UpdaterLaunch.cs" Link="UpdaterLaunch.cs" />
+  </ItemGroup>
+</Project>

@@ -41,7 +41,7 @@ internal sealed class StartupSplash : IDisposable,Hypercube.GameCube.IFrameScene
     {
         // Previous EndFrame completed GX_DrawDone. No frame/pass is active here.
         texture?.Dispose();texture=null;
-        texture=LoadTexture("dvd:/splash-"+name+".dndtex");
+        texture=LoadTexture(AnimalTown.ContentPaths.Asset("splash-"+name+".dndtex"));
         whiteBackground=name=="dolphindotnet";
         NativeTexturePages.Collect();
         DebugOverlay.WriteLine("ANIMALTOWN SPLASH "+name+" native bytes "+texture.NativeBytes);

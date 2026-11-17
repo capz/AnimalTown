@@ -37,7 +37,7 @@ internal sealed class DroppedItemRenderer : IDisposable
     private void LoadTexture(int index)
     {
         if(textures[index]!=null)return;
-        var texture=Texture2D.FromPackage(File.ReadAllBytes("dvd:/"+NativeNames[index]+".dndtex"),true);
+        var texture=Texture2D.FromPackage(File.ReadAllBytes(AnimalTown.ContentPaths.Asset(NativeNames[index]+".dndtex")),true);
         texture.ConfigureSampler(TextureWrapMode.Clamp,TextureWrapMode.Clamp,
             TextureMinFilter.LinearMipmapLinear,TextureMagFilter.Linear);
         textures[index]=texture;materials[index].Texture=texture;

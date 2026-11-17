@@ -10,7 +10,7 @@ if(args.Length==2&&args[0]=="--path-fixture"){PathFixture.Write(args[1]);return;
 
 int checks=0;
 void Check(bool value,string message){checks++;if(!value)throw new Exception(message);}
-string[] available={"ui","menu","text","trim","terrain","movement","dialogue","generation","life","saves","buildings","core"};
+string[] available={"ui","menu","text","trim","terrain","movement","dialogue","generation","life","saves","buildings","core","content"};
 if(args.Length!=0&&(args.Length!=2||args[0]!="--suites"))throw new ArgumentException("Use --suites name,name or omit for all checks");
 var selected=args.Length==0?available:args[1].Split(',');
 foreach(string name in selected)if(!available.Contains(name))throw new ArgumentException("Unknown check suite: "+name);
@@ -26,7 +26,7 @@ if(Wants("generation")){TownGenerationChecks.Run(Check);PathChecks.Run(Check);}
 if(Wants("life"))TerrainLifeChecks.Run(Check);
 if(Wants("saves")){SplitSaveChecks.Run(Check);DevConfigChecks.Run(Check);UserOptionsChecks.Run(Check);ProfileChecks.Run(Check);}
 if(Wants("buildings")){BuildingChecks.Run(Check);ModelResidencyDemandChecks.Run(Check);ModelResidencyChecks.Run(Check);}
-if(!Wants("core")){Console.WriteLine(checks+" checks passed; suites: "+string.Join(",",selected));return;}
+if(!Wants("core")){if(Wants("content"))ContentChecks.Run(Check);Console.WriteLine(checks+" checks passed; suites: "+string.Join(",",selected));return;}
 GodModeChecks.Run(Check);
 WorldLightingChecks.Run(Check);
 var terrainEdit=new GameState(74);int terrainVersion=terrainEdit.Town.TerrainVersion;
@@ -262,5 +262,6 @@ for(int row=0;row<TerrainTiles.GroundRows;row++){
     for(int x=floorCenterX-half;x<floorCenterX+half;x++)if(RenderView.Sphere(x+.5f,(a.Y+b.Y)*.5f,(a.Z+b.Z)*.5f,TerrainTiles.GroundVisibilityRadius,floorGame.X,floorGame.Z)){fineCells++;int hits=0;for(int n=0;n<strips.Count;n++)if(strips.Z0[n]==z&&x>=strips.X0[n]&&x<strips.X1[n])hits++;Check(hits==1,"merged floor coverage has no holes or overlapping cells");}
 }
 Check(fineCells==coveredCells,"merged floor exactly covers the visible fine-cell set");strips.Prepare(floorGame,1,floorMeta);Check(strips.Count==1&&strips.Material[0]==7&&strips.X1[0]==4&&strips.Z1[0]==4,"indoor repeating floor is one flat quad");
+if(Wants("content"))ContentChecks.Run(Check);
 Console.WriteLine(checks+" gameplay/render/texture checks passed");
 Console.WriteLine("Textured cylinder: "+TerrainTiles.GroundVertexCount/3+" triangles");

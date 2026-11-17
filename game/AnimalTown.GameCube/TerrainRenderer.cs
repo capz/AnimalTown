@@ -82,7 +82,7 @@ internal sealed class TerrainRenderer : IDisposable
     {
         gallery=new TerrainWalls(soil);
         shadows=new ObjectShadows();
-        var cfg=File.ReadAllBytes("dvd:/terrain.cfg");if(cfg.Length!=4)throw new IOException("Invalid floor season config");forced=FloorStrips.Read(cfg,0);if(forced< -1||forced>3)throw new IOException("Invalid floor season");
+        var cfg=File.ReadAllBytes(ContentPaths.Asset("terrain.cfg"));if(cfg.Length!=4)throw new IOException("Invalid floor season config");forced=FloorStrips.Read(cfg,0);if(forced< -1||forced>3)throw new IOException("Invalid floor season");
         for(int i=0;i<materials.Length;i++)materials[i]=new Material{Cull=CullMode.Back,Lighting=LightingMode.Unlit};
         for(int i=0;i<poses.Length;i++)poses[i]=ScrollTransform;
     }
@@ -117,7 +117,7 @@ internal sealed class TerrainRenderer : IDisposable
             cliffPreview,waterMaterial.Tint(1));
         int next=TerrainTiles.Season(month,SeasonOverride>=0?SeasonOverride:forced);bool changed=next!=season;
         if(changed){
-            string name="floor-"+TerrainTiles.SeasonName(next);data=File.ReadAllBytes("dvd:/"+name+".bin");FloorStrips.Validate(data);
+            string name="floor-"+TerrainTiles.SeasonName(next);data=File.ReadAllBytes(ContentPaths.Asset(name+".bin"));FloorStrips.Validate(data);
             for(int i=0;i<textures.Length;i++)if(textures[i]!=null){materials[TownPaths.Material].Texture=null;TextureCache.Release(textures[i]!);textures[i]=null;materials[i].Texture=null;}
             slots=FloorStrips.Read(data,12);if(slots>TownPaths.Material)throw new InvalidOperationException("Path material slot overlaps floor metadata");
             if(FloorStrips.Read(data,4)==2)waterMaterial.SetTerrainTint(FloorStrips.Tint(data,FloorStrips.Read(data,24+TerrainTiles.Water*20)));
@@ -125,7 +125,7 @@ internal sealed class TerrainRenderer : IDisposable
                 int source=FloorStrips.TextureSlot(data,i);bool neutral=FloorStrips.Read(data,4)==2&&source==0;
                 if(textures[source]==null){
                     bool preview=neutral&&groundLoad!=GroundLoad.Complete;
-                    textures[source]=TextureCache.LoadFloor(preview?"dvd:/floor-outdoor-neutral-64.dndtex":neutral?"dvd:/floor-outdoor-neutral.dndtex":"dvd:/"+name+"-"+source+".dndtex",repeat:neutral,fullMipChain:true);
+                    textures[source]=TextureCache.LoadFloor(ContentPaths.Asset(preview?"floor-outdoor-neutral-64.dndtex":neutral?"floor-outdoor-neutral.dndtex":name+"-"+source+".dndtex"),repeat:neutral,fullMipChain:true);
                     if(preview&&groundLoad==GroundLoad.Unloaded){
                         groundLoad=GroundLoad.Preview;
                         DebugOverlay.WriteLine("GROUND PREVIEW 64 bytes "+textures[source]!.Bytes);
@@ -220,7 +220,7 @@ internal sealed class TerrainRenderer : IDisposable
         // this next Prepare, so even immediately completed reads show the preview.
         if(groundLoad==GroundLoad.Visible){
             try{
-                pendingGround=Dolphin.IO.File.ReadAllBytesAsync("dvd:/floor-outdoor-neutral.dndtex");
+                pendingGround=Dolphin.IO.File.ReadAllBytesAsync(ContentPaths.Asset("floor-outdoor-neutral.dndtex"));
                 groundLoad=GroundLoad.Reading;
                 DebugOverlay.WriteLine("GROUND PREVIEW PRESENTED read full");
             }catch(Exception error){GroundTextureFailed(error);}
@@ -233,7 +233,7 @@ internal sealed class TerrainRenderer : IDisposable
             TexturePixels.Validate(source);
             if(TexturePixels.Width(source)!=FloorTexture.Maximum||TexturePixels.Height(source)!=FloorTexture.Maximum)
                 throw new InvalidDataException("Full ground texture must be 256x256");
-            full=TextureCache.LoadFloor("dvd:/floor-outdoor-neutral.dndtex",repeat:true,fullMipChain:true,source:source);
+            full=TextureCache.LoadFloor(ContentPaths.Asset("floor-outdoor-neutral.dndtex"),repeat:true,fullMipChain:true,source:source);
         }catch(Exception error){GroundTextureFailed(error);return false;}
         pendingGround=null;
         var preview=textures[0]!;

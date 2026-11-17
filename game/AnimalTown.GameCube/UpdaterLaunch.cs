@@ -11,6 +11,10 @@ internal static class UpdaterLaunch
     internal const string Protocol="--animaltown-update=3";
     internal static void Request()
     {
+#if ANIMALTOWN_DEPOT
+        throw new IOException("Update this installation through Dolphin Depot.");
+#else
+        if(!ContentBootstrap.DiscInstallation)throw new IOException("Update this installation through Dolphin Depot.");
         Operation="load the updater";
         string path="dvd:/animal-town-updater.dol";
         if(!File.Exists(path)){
@@ -26,5 +30,6 @@ internal static class UpdaterLaunch
         // No physical ISO path can be inferred from the logical dvd:/ mount.
         updater.SetArguments(path,Protocol,BuildInfo.Version);
         DolLauncher.RequestLaunch(updater);
+#endif
     }
 }

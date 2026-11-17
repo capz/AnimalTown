@@ -182,6 +182,6 @@ internal sealed class TerrainSoil : IDisposable
 {
     internal readonly Material Material=new Material{Cull=CullMode.Back,Lighting=LightingMode.Unlit};
     private CachedTexture? texture;
-    internal void Prepare(){if(texture!=null)return;texture=TextureCache.LoadFloor("dvd:/cliff-soil.dndtex",repeat:true,repeatV:false);Material.Texture=texture.Pages[0];}
+    internal void Prepare(){if(texture!=null)return;texture=TextureCache.LoadFloor(AnimalTown.ContentPaths.Asset("cliff-soil.dndtex"),repeat:true,repeatV:false);Material.Texture=texture.Pages[0];}
     public void Dispose(){Material.Texture=null;if(texture!=null){TextureCache.Release(texture);texture=null;}}
 }
