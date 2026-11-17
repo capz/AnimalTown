@@ -55,11 +55,12 @@ int animaltown_shadows_init(DndArray *atlas,DndArray *circle,DndArray *clouds){
     return 1;
 }
 int animaltown_shadows_cloud(DndArray *offset){
-    if(!shadows||dnd_device_active()||!offset||offset->elements_are_references||offset->element_size!=4||offset->length!=5)return 0;
+    if(!shadows||dnd_device_active()||!offset||offset->elements_are_references||offset->element_size!=4||offset->length!=6)return 0;
     const float *p=(const float*)offset->data;
     if(!isfinite(p[0])||!isfinite(p[1])||p[0]<0||p[0]>=1||p[1]<0||p[1]>=1)return 0;
     if(!isfinite(p[2])||!isfinite(p[3])||!isfinite(p[4])||p[2]<8||p[2]>128||p[3]<1||p[3]>255||p[4]<0||p[4]>SU_OPACITY)return 0;
-    su_cloud_style(shadows,p[2],p[3],p[4]);
+    if(!isfinite(p[5])||p[5]<0||p[5]>=255)return 0;
+    su_cloud_style(shadows,p[2],p[3],p[4],p[5]);
     su_cloud_motion(shadows,p[0],p[1]);return 1;
 }
 int animaltown_shadows_lights(DndArray *sources,int count,int strength){

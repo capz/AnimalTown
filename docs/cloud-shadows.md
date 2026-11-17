@@ -10,21 +10,28 @@ and apply the existing two shadow stages once. Indoors retain their actor shadow
 without outdoor clouds or cliffs.
 
 The original periodic 64×64 I8 cloud pattern occupies 4 KiB in the charged native
-buffer. Spring/autumn retain the original 32-metre repeat and contrast. Summer
-compresses the mask's transition range from 255 to 64 levels, giving stronger
-dark cores and the hardest edges while retaining the shared 66/255 maximum.
-Winter stretches the same mask to a 64-metre repeat and halves its opacity:
-transitions span twice the world distance without a blur texture.
+buffer. Autumn retains the original heavy cloud coverage, 32-metre repeat and
+contrast. Spring removes density levels below 96 and remaps the remaining
+96–255 range; summer removes levels below 176 before applying its narrower
+64-level transition. This opens more clear ground instead of merely fading the
+same cloud footprint. On the shared mask, coverage above 10% of peak is about
+69% in autumn, 47% in spring/winter and 26% in summer, before terrain sampling.
+Summer retains the hardest edges and the shared 66/255 maximum. Winter uses
+the same density cutoff as spring, stretches the mask to a 64-metre repeat and
+halves its opacity: transitions span twice the world distance without a blur
+texture. Its proportional coverage matches spring despite the larger clouds.
 Drift remains 0.6 / 0.3 m/s in every season, independent
 of camera motion, terrain bending and landscape debug animation settings. The
 former 128 m repeat at 0.18 / 0.09 m/s made soft patches look like uniform dimming
-through the gameplay camera. Animation reuses one five-float managed array:
-normalized drift, repeat distance, edge width and opacity. The calendar season,
+through the gameplay camera. Animation reuses one six-float managed array:
+normalized drift, repeat distance, edge width, opacity and density cutoff. The calendar season,
 season preview and forced terrain-season setting all use the same selection.
 Season changes dirty the existing cloud composite; no pattern is regenerated,
-and static lamp/cliff data is retained. Three native parameters fit existing
+and static lamp/cliff data is retained. The native style parameters fit existing
 allocation padding, keeping the current host buffer at 522,016 bytes. Managed
-staging grows by 12 bytes; no per-frame allocation, texture or draw is added.
+staging uses six floats (24 bytes); no per-frame allocation, texture or draw is
+added. The cutoff/contrast are combined once on a style change, so each sampled
+texel still needs only one contrast multiply and bias add.
 
 The static cliff field and moving combined field each use 256×128 I8 (32 KiB).
 Together they occupy the same 64 KiB as the previous 256×256 cliff field, retaining

@@ -46,7 +46,7 @@ typedef struct {
     int point_count,object_scope;
     int light_count,light_dirty;
     int terrain_ready,cloud_ready,cloud_dirty,cloud_x,cloud_z;
-    float cloud_scale,cloud_contrast,cloud_opacity;
+    float cloud_scale,cloud_contrast,cloud_opacity,cloud_bias;
     SuSupport support[(SU_CASTERS-SU_STATIC)*SU_SUPPORT_PAGES];
     uint8_t static_work[SU_BYTES];
     int static_page,static_caster,cursor,deferred,support_builds,support_hits;
@@ -138,13 +138,14 @@ static inline uint8_t su_cloud_sample(const SuState *s,float x,float z){
     float a=s->clouds[su_cloud_offset(ax,az)],b=s->clouds[su_cloud_offset(bx,az)];
     float c=s->clouds[su_cloud_offset(ax,bz)],d=s->clouds[su_cloud_offset(bx,bz)];
     float value=(a+(b-a)*tx)*(1-tz)+(c+(d-c)*tx)*tz;
-    if(s->cloud_contrast!=1){value=(value-127.5f)*s->cloud_contrast+127.5f;if(value<0)value=0;if(value>255)value=255;}
+    if(s->cloud_contrast!=1||s->cloud_bias!=0){value=value*s->cloud_contrast+s->cloud_bias;if(value<0)value=0;if(value>255)value=255;}
     return (uint8_t)(value*s->cloud_opacity+.5f);
 }
-static inline void su_cloud_style(SuState *s,float period,float edge,float strength){
-    float scale=SU_CLOUD_SIDE/period,contrast=255/edge,opacity=strength/255;
-    if(s->cloud_scale==scale&&s->cloud_contrast==contrast&&s->cloud_opacity==opacity)return;
-    s->cloud_scale=scale;s->cloud_contrast=contrast;s->cloud_opacity=opacity;s->cloud_dirty=1;
+static inline void su_cloud_style(SuState *s,float period,float edge,float strength,float cutoff){
+    float scale=SU_CLOUD_SIDE/period,edge_contrast=255/edge,contrast=edge_contrast*255/(255-cutoff),opacity=strength/255;
+    float bias=127.5f*(1-edge_contrast)-cutoff*contrast;
+    if(s->cloud_scale==scale&&s->cloud_contrast==contrast&&s->cloud_opacity==opacity&&s->cloud_bias==bias)return;
+    s->cloud_scale=scale;s->cloud_contrast=contrast;s->cloud_opacity=opacity;s->cloud_bias=bias;s->cloud_dirty=1;
 }
 static inline void su_cloud_motion(SuState *s,float x,float z){
     // One eighth of a world metre: bounded updates with sub-texel drift.
