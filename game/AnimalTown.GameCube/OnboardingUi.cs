@@ -51,7 +51,7 @@ internal sealed class OnboardingUi : IDisposable
     private void Begin(string title)
     {
         if(disposed)throw new ObjectDisposedException("OnboardingUi");
-        UiNoise.Prepare();GraphicsDevice.Default.BeginFrame(TitleBackdrop.Color);ui!.Begin();background!.Draw(ui);
+        ui!.Begin();background!.Draw(ui);
         TitleArt.Panel(ui,36,18,568,440);
         TitleArt.Rounded(ui,312,27,16,17,8,TitleArt.Leaf);TitleArt.Rounded(ui,317,34,6,11,3,TitleArt.Cream);
         TitleArt.Rounded(ui,309,21,8,5,2,Honey);TitleArt.Rounded(ui,323,21,8,5,2,Honey);
@@ -62,7 +62,7 @@ internal sealed class OnboardingUi : IDisposable
         TitleArt.Rounded(ui,320-width*.5f,84,width,37,18,Warm);
         Head(title,320,86,1.08f,width-24);
     }
-    private void End(){ui!.End();GraphicsDevice.Default.EndFrame();}
+    private void End(){ui!.End();}
     private void Text(string text,float center,float y,float scale,float width,Color32 color)
     {
         float measured=font!.Measure(text);if(measured>0)scale=Math.Min(scale,width/measured);
@@ -77,6 +77,8 @@ internal sealed class OnboardingUi : IDisposable
     internal void DrawName(string entry,int key,bool exitPrompt=false,bool discardSelected=false,string message="")
     {
         if(keys==null||counts==null)throw new InvalidOperationException("Name surface was not prepared");
+        UiNoise.Prepare();background!.Prepare();GraphicsDevice.Default.BeginFrame(TitleBackdrop.Color);
+        do{
         Begin("Welcome, new neighbor");
         portraits![5]!.Draw(ui!,new RectF(32,0,192,190),new RectF(74,128,136,135),Color32.White);
         Rays(203,145,.7f);
@@ -104,11 +106,15 @@ internal sealed class OnboardingUi : IDisposable
         Footer();Button("A","Type",103);Button("X","Erase",233);Button("START","Done",365);Button("B","Back",486);
         if(exitPrompt)DrawExit(discardSelected);
         End();
+        }while(GraphicsDevice.Default.NextFramePart());
+        GraphicsDevice.Default.EndFrame();
     }
 
     internal void DrawLook(string name,int species,bool exitPrompt=false,bool discardSelected=false)
     {
         if((uint)species>=6||portraits?[species]==null)throw new InvalidOperationException("Look surface was not prepared");
+        UiNoise.Prepare();background!.Prepare();GraphicsDevice.Default.BeginFrame(TitleBackdrop.Color);
+        do{
         Begin("Find your look");
         Vignette(species,207,188);
         TitleArt.Rounded(ui!,347,139,230,32,16,TitleArt.Leaf);Text(name,462,144,.87f,210,TitleArt.Cream);
@@ -127,11 +133,15 @@ internal sealed class OnboardingUi : IDisposable
         Footer();Button("A","Choose",205);Button("B","Back",374);
         if(exitPrompt)DrawExit(discardSelected);
         End();
+        }while(GraphicsDevice.Default.NextFramePart());
+        GraphicsDevice.Default.EndFrame();
     }
 
     internal void DrawReview(GameState state,string saveError,bool busy)
     {
         if((uint)state.Species>=6||portraits?[state.Species]==null)throw new InvalidOperationException("Review surface was not prepared");
+        UiNoise.Prepare();background!.Prepare();GraphicsDevice.Default.BeginFrame(TitleBackdrop.Color);
+        do{
         Begin("Ready to put down roots?");
         Vignette(state.Species,207,190);
         SummaryIcon(347,153,0);Text(state.Name,457,145,1.0f,192,TitleArt.Ink);Rule(335,180,230);
@@ -158,6 +168,8 @@ internal sealed class OnboardingUi : IDisposable
             Text("Checking your save...",320,275,.76f,416,TitleArt.Ink);
         }
         End();
+        }while(GraphicsDevice.Default.NextFramePart());
+        GraphicsDevice.Default.EndFrame();
     }
     private void DrawExit(bool discardSelected)
     {

@@ -4,7 +4,7 @@ using Dolphin.Graphics;
 
 // Portraits are baked from the game's original models. No town, skeleton,
 // animation or offscreen render target is loaded to choose a resident.
-internal sealed class ProfilePickerUi : IDisposable
+internal sealed class ProfilePickerUi : IDisposable,Hypercube.GameCube.IFrameScene
 {
     private static readonly string[] Species={"fox","bunny","giraffe","cat","hamster","spaniel"};
     private static readonly string[] DeleteActions={"Cancel","Delete"};
@@ -61,7 +61,11 @@ internal sealed class ProfilePickerUi : IDisposable
     }
     internal void Draw()
     {
-        var device=GraphicsDevice.Default;UiNoise.Prepare();device.BeginFrame(TitleBackdrop.Color);ui.Begin();background.Draw(ui);
+        UiNoise.Prepare();background.Prepare();Hypercube.GameCube.FrameRenderer.Draw(GraphicsDevice.Default,TitleBackdrop.Color,this);
+    }
+    public void SubmitFramePart()
+    {
+        var device=GraphicsDevice.Default;ui.Begin();background.Draw(ui);
         TitleArt.Panel(ui,36,18,568,440);
         TitleArt.Rounded(ui,312,27,16,17,8,TitleArt.Leaf);TitleArt.Rounded(ui,317,34,6,11,3,TitleArt.Cream);
         TitleArt.Rounded(ui,309,21,8,5,2,Honey);TitleArt.Rounded(ui,323,21,8,5,2,Honey);
@@ -86,7 +90,7 @@ internal sealed class ProfilePickerUi : IDisposable
         else{Button("A","Select",205);Button("B","Back",374);}
         if(Status.Length>0)Center(Status,320,397,.58f,500);
         if(Modal!=0)DrawDeletion();
-        ui.End();device.EndFrame();
+        ui.End();
     }
     private void DrawDeletion()
     {

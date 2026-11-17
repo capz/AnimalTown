@@ -7,7 +7,6 @@ import subprocess
 import sys
 import time
 from datetime import datetime, timezone
-from dolphin_card_records import archive_records
 
 disc=Path(sys.argv[1]).resolve()
 root=Path(sys.argv[2]).resolve();root.mkdir(parents=True,exist_ok=True)
@@ -320,10 +319,45 @@ def title_menu():
         wait_saved_after(before);wait_onboarding('world','title-start-game.png')
     (root/'title-menu.txt').write_text(f'Diagonal dot pixels changed: {changed}\nOpened debug modal, edited and paged settings, saved/closed/reopened, then selected Start.\nThree loading frames contained no cream title/menu and an animated sprout; game then became visible.\n'+('Completed Name, Look, Home and explicit Save & begin.\n' if creating else ''))
 
-def options_card_files():
+def archive_records(payload):
+    """Read the SDK's verified DTR1 checkpoints from a consolidated card item."""
+    import struct
+    block=8192
+    def hash_bytes(data):
+        h=2166136261
+        for value in data:h=((h^value)*16777619)&0xffffffff
+        return h
+    if len(payload)%block or not 6<=len(payload)//block<=256:raise AssertionError('Invalid archive size')
+    candidates=[]
+    for bank in (0,1):
+        root=payload[bank*block:(bank+1)*block]
+        magic,version,sequence,blocks=struct.unpack_from('<4I',root)
+        if magic!=0x31525444 or version!=1 or not 1<=sequence<=0x7fffffff or blocks!=len(payload)//block or hash_bytes(root[:-4])!=struct.unpack_from('<I',root,block-4)[0]:continue
+        records={};ranges=[]
+        try:
+            for i in range(64):
+                at=32+i*48
+                if root[at]==0:continue
+                raw=root[at:at+32];end=raw.find(b'\0')
+                if not 1<=end<=31 or any(c<32 or c>126 for c in raw[:end]):raise ValueError('Invalid record name')
+                name=raw[:end].decode('ascii')
+                if name in records:raise ValueError('Duplicate record')
+                page,offset,length,checksum=struct.unpack_from('<4I',root,at+32)
+                if not 2<=page<blocks or offset>=block or length>(blocks-page)*block-offset:raise ValueError('Invalid record extent')
+                start=page*block+offset;stop=start+max(1,length)
+                if any(start<b and a<stop for a,b in ranges):raise ValueError('Overlapping records')
+                value=payload[start:start+length]
+                if hash_bytes(value)!=checksum:raise ValueError('Damaged record')
+                ranges.append((start,stop));records[name]=value
+            candidates.append((sequence,records))
+        except (ValueError,struct.error):continue
+    if not candidates:raise AssertionError('No verified archive checkpoint')
+    return max(candidates,key=lambda c:c[0])[1]
+
+def options_card_files(path=None):
     """Current committed directory/BAT only; freed sectors are not live files."""
     import struct
-    path=root/'MemoryCardA.USA.raw'
+    if path is None:path=root/'MemoryCardA.USA.raw'
     if not path.exists():return {}
     card=path.read_bytes();sector=8192
     def word(at):return struct.unpack_from('>H',card,at)[0]
@@ -351,10 +385,10 @@ def options_card_files():
         if block!=65535 or data[:8]!=b'DNDSAVE1':raise AssertionError('Invalid current card save container')
         length,offset=struct.unpack_from('>II',data,8)
         if offset<32 or offset+length>len(data):raise AssertionError('Truncated current card save')
-        result[name]=bytes(data[offset:offset+length])
-    if 'AnimalTown' in result:
-        records=archive_records(result['AnimalTown'])
-        if records.get('AT-Archive') in (b'\x01',b'\x02'):return records
+        payload=bytes(data[offset:offset+length])
+        if name=='AnimalTown' and data[16:24]==b'DNDREC01':
+            result.update((key,value) for key,value in archive_records(payload).items() if key!='AT-Archive')
+        else:result[name]=payload
     return result
 
 def wait_options_saved(resolution,wide):
@@ -738,7 +772,8 @@ def committed_card_sequence(path, expected_day=None, details=False):
                     payload=bytes(data[offset:offset+length])
                     if name=='AnimalTown':
                         if data[16:24]!=b'DNDREC01' or offset!=16384:continue
-                        records=archive_records(payload)
+                        try:records=archive_records(payload)
+                        except AssertionError:raise ValueError('Unverified card archive')
                         if records.get('AT-Archive') in (b'\x01',b'\x02'):archive=records
                     else:files[name]=payload
                 if archive is not None:files=archive
@@ -836,20 +871,22 @@ def testing_menu():
     label('testing-settings-debug-entry',5);press('A')
     manual_only='--manual-save-only' in sys.argv
     for row in range(1 if manual_only else 12):
-        original=label(f'testing-row-{row}-before',row)
-        press('A');changed=label(f'testing-row-{row}-after',row)
+        menu_row=row if row==0 else row+1 # Skip the explicitly saved AA preference.
+        original=label(f'testing-row-{row}-before',menu_row)
+        press('A');changed=label(f'testing-row-{row}-after',menu_row)
         if original==changed:raise AssertionError(f'Testing row {row} did not change its displayed state')
         # Restore the initial setting, including the six-state water preview.
         for step in range(5 if row==8 else 1):
-            press('A');label(f'testing-row-{row}-restore-{step}',row)
+            press('A');label(f'testing-row-{row}-restore-{step}',menu_row)
         if row==8:
             # A water preview must allow Start to reopen the menu while active.
-            press('A');label('testing-water-active',row);press('B');time.sleep(15);press('START');press('R')
-            for _ in range(8):press('D_DOWN')
-            label('testing-water-menu-return',row)
+            press('A');label('testing-water-active',menu_row);press('B');time.sleep(15);press('START');press('R')
+            for _ in range(9):press('D_DOWN')
+            label('testing-water-menu-return',menu_row)
             for step in range(5):
-                press('A');label(f'testing-water-off-{step}',row)
+                press('A');label(f'testing-water-off-{step}',menu_row)
         press('D_DOWN')
+        if row==0:press('D_DOWN')
     if card_digest()!=before:raise AssertionError('Debug actions wrote to the memory card')
     press('B')
     wait_seconds=int(sys.argv[sys.argv.index('--manual-save-wait')+1]) if '--manual-save-wait' in sys.argv else 0
@@ -943,43 +980,19 @@ def town_shop():
     (root/'shop-validation.json').write_text(json.dumps({'before':before,'after':after,'native_shop_ui':True,'cabinet_repeat_buys':2,'npc_bought_and_left':True,'camera_quarter_turns':3},indent=2)+'\n')
 
 def card_dev_config(path):
-    """Decode the independent, checksummed dev_config item in a raw GC card."""
+    """Decode the checksummed named record, including consolidated card storage."""
     import struct
     if not path.exists():return None
-    card=path.read_bytes();sector=8192;candidates=[]
-    if len(card)%sector:raise AssertionError('Truncated emulator memory card')
-    def be16(at):return struct.unpack_from('>H',card,at)[0]
-    for directory in (1,2):
-        for bat in (3,4):
-            try:
-                for entry in range(127):
-                    at=directory*sector+entry*64
-                    if card[at:at+6]!=b'AMTE01' or card[at+8:at+40].split(b'\0',1)[0]!=b'dev_config':continue
-                    block,count=be16(at+54),be16(at+56);seen=set();data=bytearray()
-                    for _ in range(count):
-                        if block<5 or block>=len(card)//sector or block in seen:raise ValueError('Invalid card chain')
-                        seen.add(block);data.extend(card[block*sector:(block+1)*sector]);block=be16(bat*sector+10+(block-5)*2)
-                    if block!=65535 or data[:8]!=b'DNDSAVE1':continue
-                    length,offset=struct.unpack_from('>II',data,8)
-                    if length not in (36,40) or offset<32 or offset+length>len(data):continue
-                    payload=bytes(data[offset:offset+length])
-                    if payload[:3]!=b'ATD' or payload[3] not in (1,2,3):continue
-                    checksum_at=32 if payload[3]==1 else 36
-                    count=27 if payload[3]==1 else 29 if payload[3]==2 else 30
-                    if length!=checksum_at+4 or any(payload[4+count:checksum_at]):continue
-                    checksum=2166136261
-                    for value in payload[:checksum_at]:checksum=((checksum^value)*16777619)&0xffffffff
-                    if checksum!=struct.unpack_from('<I',payload,checksum_at)[0]:continue
-                    candidates.append((be16(directory*sector+0x1ffa),payload))
-            except (ValueError,struct.error):continue
-    if not candidates:return None
-    # Compare the redundant directory update counters modulo 16 bits.
-    newest=candidates[0]
-    for candidate in candidates[1:]:
-        if 0<((candidate[0]-newest[0])&65535)<32768:newest=candidate
-    payload=newest[1]
-    count=27 if payload[3]==1 else 29 if payload[3]==2 else 30
-    return {'version':payload[3],'values':list(payload[4:4+count]),'discard_terrain_cache_when_indoors':payload[3]==3 and payload[33]==1}
+    try:payload=options_card_files(path).get('dev_config')
+    except AssertionError:return None
+    if not payload or len(payload)<4 or payload[:3]!=b'ATD' or payload[3] not in (1,2,3,4):return None
+    version=payload[3];checksum_at=32 if version==1 else 36
+    count={1:27,2:29,3:30,4:31}[version]
+    if len(payload)!=checksum_at+4 or any(payload[4+count:checksum_at]):return None
+    checksum=2166136261
+    for value in payload[:checksum_at]:checksum=((checksum^value)*16777619)&0xffffffff
+    if checksum!=struct.unpack_from('<I',payload,checksum_at)[0]:return None
+    return {'version':version,'values':list(payload[4:4+count]),'discard_terrain_cache_when_indoors':version>=3 and payload[33]==1,'full_resolution_aa':version>=4 and payload[34]==1}
 
 def aram_model_cycles(text,after):
     """Match real retire/restore pairs in the current town session only."""
@@ -1265,9 +1278,9 @@ def settings_navigation():
     press('R');focus('testing-entry',0)
     press('A');focus('testing-performance-on',0)
     press('A');focus('testing-performance-off',0)
-    press('D_DOWN');focus('testing-model-row',1)
-    press('A');focus('testing-model-direct',1)
-    press('A');focus('testing-model-indexed',1)
+    press('D_DOWN');press('D_DOWN');focus('testing-model-row',2)
+    press('A');focus('testing-model-direct',2)
+    press('A');focus('testing-model-indexed',2)
     press('L');focus('settings-tab-return',0)
     press('B');screenshot('settings-close.png')
     press('X');press('L');press('L');focus('settings-backpack-entry',0)
@@ -1567,6 +1580,38 @@ with (root/'emulator.log').open('w') as log:
             os.write(controller,b'SET MAIN .28 .5\n');time.sleep(1);os.write(controller,b'SET MAIN .5 .5\n');time.sleep(2);screenshot('actor-shadow-cliff-edge.png')
             press('X');screenshot('actor-shadow-menu.png');press('B')
             os.write(controller,b'PRESS L\nPRESS R\n');time.sleep(.2);press('D_LEFT');os.write(controller,b'RELEASE L\nRELEASE R\n');time.sleep(15);screenshot('actor-shadow-water.png')
+        elif '--full-resolution-aa' in sys.argv:
+            set_debug_visibility(True);start_game(False,'aa-off');time.sleep(10)
+            card=root/'MemoryCardA.USA.raw';before=committed_card_sequence(card,details=True)
+            initial=card_dev_config(card)
+            if initial and initial['full_resolution_aa']:raise AssertionError('Use a card with AA initially off')
+            def selector(name):
+                press('START');press('R');press('D_DOWN');screenshot(name+'.png')
+            def saved_aa(expected):
+                deadline=time.monotonic()+60
+                while time.monotonic()<deadline:
+                    value=card_dev_config(card)
+                    if value and value['full_resolution_aa']==expected:return value
+                    check_runtime_failure();time.sleep(.2)
+                raise AssertionError('AA preference was not saved')
+            screenshot('aa-world-off.png');selector('aa-menu-off')
+            press('A');on=saved_aa(True);time.sleep(3);screenshot('aa-menu-on.png')
+            press('B');time.sleep(10);screenshot('aa-world-on.png')
+            # Restart the emulator so splash, title and profile picker must also
+            # honor the saved AA mode; no in-process state can make this pass.
+            p.terminate()
+            try:p.wait(timeout=10)
+            except subprocess.TimeoutExpired:p.kill();p.wait()
+            restart_offset=len(runtime_log_text())
+            p=subprocess.Popen(command,env=env,stdout=log,stderr=subprocess.STDOUT)
+            start_game(False,'aa-restored');time.sleep(10);selector('aa-menu-restored')
+            if 'ANIMALTOWN AA 1 render 640 480 parts 2' not in runtime_log_text()[restart_offset:]:raise AssertionError('Saved AA was not applied at startup')
+            if not saved_aa(True)['full_resolution_aa']:raise AssertionError('AA did not survive restart')
+            press('A');off=saved_aa(False);time.sleep(3);screenshot('aa-menu-restored-off.png')
+            press('B');time.sleep(5);screenshot('aa-world-restored-off.png')
+            if committed_card_sequence(card,details=True)!=before:raise AssertionError('AA setting changed the town save')
+            check_runtime_failure()
+            (root/'aa-option.json').write_text(json.dumps({'defaultOff':True,'savedOn':on,'restoredAfterRestart':True,'savedOff':off,'townUnchanged':True,'hostMsaa':1,'hardwareTiming':False},indent=2)+'\n')
         elif '--lighting' in sys.argv:
             start_game(True)
             os.write(controller,b'PRESS L\nPRESS R\n');time.sleep(.2);press('A');os.write(controller,b'RELEASE L\nRELEASE R\n');time.sleep(15)
@@ -1636,7 +1681,7 @@ with (root/'emulator.log').open('w') as log:
             press('X');screenshot('water-menu.png');press('B');screenshot('water-return.png')
             if '--water-ab' in sys.argv:
                 # Same camera and save, no scene/terrain regeneration. Water
-                # is visible row22; derive the row count so trailing settings
+                # is visible row23; derive the row count so trailing settings
                 # do not silently select another option when wrapping upward.
                 import re
                 pad_source=Path(sys.modules['dolphin_pad'].__file__).resolve()
@@ -1648,7 +1693,7 @@ with (root/'emulator.log').open('w') as log:
                 def water_selector():
                     set_debug_visibility(True)
                     press('START');press('R')
-                    for _ in range(testing_rows-22):press('D_UP')
+                    for _ in range(testing_rows-23):press('D_UP')
                 water_selector()
                 screenshot('water-ab-selector-windwaker.png')
                 press('A');screenshot('water-ab-selector-sunshine.png')
