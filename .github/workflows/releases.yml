@@ -123,6 +123,53 @@ jobs:
           assert not any((root/'disc-work').rglob('*.iso')), 'Temporary source ISO was not removed'
           assert not any((root/'nkit-work').rglob('*.iso')), 'Temporary round-trip ISO was not removed'
           PY
+      - name: Select focused title-logo capture
+        id: title_logo
+        run: |
+          python3 - <<'PY'
+          import json, os, re
+          from pathlib import Path
+          plan=json.loads(Path('out/validation-plan.json').read_text())
+          relevant=re.compile(r'^(assets/textures/branding/|game/AnimalTown.GameCube/(TitleScreen|TitleArt|ProfilePickerUi|OnboardingUi|TextureCache)\.cs$|shared/AnimalTown.Domain/TexturePixels\.cs$|tools/AnimalTown.Tools/(Brand[^/]*|DiscBannerFile|TextureAudit)\.cs$|tools/(iso-smoke\.py|dolphin_pad\.py|publish-release\.ps1)$|build/Dockerfile\.dolphin$|\.github/workflows/releases\.yml$)')
+          needed=any(relevant.search(path) for path in plan['paths']) or (plan['full'] and not plan['paths'])
+          with open(os.environ['GITHUB_OUTPUT'],'a') as output:
+              output.write(f'needed={str(needed).lower()}\n')
+          PY
+      - name: Capture and verify title branding in Dolphin
+        if: steps.title_logo.outputs.needed == 'true'
+        timeout-minutes: 15
+        env:
+          BUILD_VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          mkdir -p out/title-logo
+          docker build -t animaltown-title-capture -f build/Dockerfile.dolphin build
+          docker run --rm --init --shm-size=512m --user "$(id -u):$(id -g)" \
+            --mount "type=bind,src=$PWD,dst=/work" -w /work \
+            animaltown-title-capture python3 tools/iso-smoke.py \
+            "out/AnimalTown-$BUILD_VERSION.nkit.iso" out/title-logo --title-logo
+          python3 - <<'PY'
+          import hashlib, json
+          from pathlib import Path
+          identity=json.loads(Path('out/version.json').read_text())
+          disc=Path('out')/f"AnimalTown-{identity['version']}.nkit.iso"
+          with disc.open('rb') as source:
+              digest=hashlib.file_digest(source,'sha256').hexdigest()
+          evidence={'schema':1,'commit':identity['commit'],'version':identity['version'],
+                    'tag':identity['tag'],'isoName':disc.name,'isoSha256':digest}
+          Path('out/title-logo/title-logo-build.json').write_text(json.dumps(evidence,indent=2)+'\n')
+          PY
+      - name: Keep title-logo capture diagnostics
+        if: always() && steps.title_logo.outputs.needed == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: title-logo-${{ steps.version.outputs.commit }}
+          path: |
+            out/title-logo/*.png
+            out/title-logo/*.json
+            out/title-logo/*.log
+            out/title-logo/*.txt
+            out/title-logo/user/Logs/
+          if-no-files-found: warn
       - name: Publish NKit-only GitHub prerelease
         env:
           GH_TOKEN: ${{ github.token }}

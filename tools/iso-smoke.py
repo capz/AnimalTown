@@ -1,4 +1,10 @@
-"""Direct ISO boot: no separately selected DOL. Run inside animaltown-dolphin."""
+"""Direct ISO boot: no separately selected DOL. Run inside animaltown-dolphin.
+
+--title-logo captures the title, picker and naming header, then discards back
+to the title. Use a disposable card with no committed town; no world is loaded.
+The title-logo-report.json check covers committed town state, not card formatting
+or independent console/dev configuration writes.
+"""
 import os
 import atexit
 import json
@@ -270,6 +276,97 @@ def wait_title(modal=False):
         if cream>70000 and (leaf<1000 if modal else leaf>6000 and color_count(pixels,(149,198,186))>15000):return
         time.sleep(2)
     raise AssertionError('Debug modal did not appear' if modal else 'Original cream title/menu did not appear')
+
+def title_logo():
+    """Exercise full-colour branding and title reloads without creating a town."""
+    import re
+    card=root/'MemoryCardA.USA.raw'
+    # An absent card returns 0, while an initialized empty card returns None.
+    # Both represent the same uncommitted town state.
+    before=committed_card_sequence(card,details=True) or None
+    report={'scenario':'title-logo','disc':disc.name,'passed':False,
+            'committed_town_before':before,'committed_town_after':before,
+            'town_sequence_before':before['sequence'] if before else 0,
+            'town_sequence_after':before['sequence'] if before else 0,
+            'town_state_unchanged':True,'gameplay_started':False,
+            'card_write_scope':'Committed town records only; initial card formatting and independent console/dev configuration writes are not asserted.',
+            'screenshots':[],'warm_artwork':{},'title_logo_traces':[]}
+
+    def state():
+        check_runtime_failure()
+        text=runtime_log_text()
+        failures=[line for line in text.splitlines()
+                  if re.search(r'\bunhandled(?: managed)? exception\b|\bfatal error\b',line,re.IGNORECASE)]
+        if failures:raise AssertionError('Branding runtime failure: '+failures[0])
+        if p.poll() is not None:raise AssertionError('Emulator stopped during title-logo check')
+        report['gameplay_started']='ANIMALTOWN GAME START' in text
+        if report['gameplay_started']:raise AssertionError('Title-logo check unexpectedly constructed the town')
+        after=committed_card_sequence(card,details=True) or None
+        report['committed_town_after']=after
+        report['town_sequence_after']=after['sequence'] if after else 0
+        report['town_state_unchanged']=after==before
+        if after!=before:raise AssertionError('Branding navigation/discard changed committed town state')
+        return text
+
+    def artwork(name,compact=False,capture=True):
+        state()
+        if capture:screenshot(name)
+        pixels=rgb(name)
+        # Keep the compact sample above the warm heading strip and away from
+        # portraits/leaf flourishes. A missing or green-tinted logo cannot pass
+        # using unrelated cream panels, menu fills or character artwork.
+        bounds=(240,18,400,70) if compact else (100,20,540,205)
+        left,top,right,bottom=bounds
+        warm=0
+        for y in range(top,bottom):
+            for x in range(left,right):
+                red,green,blue=pixels[(y*800+x)*3:(y*800+x)*3+3]
+                warm+=red>=105 and red-green>=12 and green-blue>=10 and red-blue>=40
+        minimum=120 if compact else 1200
+        report['screenshots'].append(name)
+        report['warm_artwork'][name]={'region':list(bounds),'pixels':warm,'minimum':minimum}
+        if warm<minimum:raise AssertionError(name+' has no sufficiently visible full-colour acorn artwork')
+
+    def title(name,minimum_loads):
+        wait_title()
+        deadline=time.monotonic()+15
+        while True:
+            text=state()
+            traces=[tuple(map(int,match)) for match in re.findall(r'ANIMALTOWN TITLE LOGO (\d+)x(\d+) bytes (\d+)',text)]
+            report['title_logo_traces']=[{'width':w,'height':h,'bytes':size} for w,h,size in traces]
+            if any(trace!=(512,256,262144) for trace in traces):
+                raise AssertionError('Title loaded unexpected logo dimensions or texture bytes')
+            if len(traces)>=minimum_loads:break
+            if time.monotonic()>deadline:raise AssertionError('Missing title-logo load/reload trace')
+            time.sleep(.2)
+        artwork(name)
+        return len(traces)
+
+    try:
+        if before:raise AssertionError('--title-logo requires a disposable card with no committed town')
+        initial_loads=title('title-logo.png',1)
+        press('A');wait_profiles('title-logo-picker.png')
+        artwork('title-logo-picker.png',compact=True,capture=False)
+        press('B');title('title-logo-after-picker.png',initial_loads+1)
+        press('A');wait_profiles('title-logo-picker-reopened.png')
+        artwork('title-logo-picker-reopened.png',compact=True,capture=False)
+        press('A');wait_onboarding('name','title-logo-name.png')
+        artwork('title-logo-name.png',compact=True,capture=False)
+        press('B');wait_onboarding('exit','title-logo-discard.png')
+        report['screenshots'].append('title-logo-discard.png');state()
+        # D_RIGHT is the mapped pipe button, not the MAIN analog axis. Repeating
+        # right only keeps Discard selected; A is a separate press/release edge.
+        press('D_RIGHT');press('A')
+        final_loads=title('title-logo-return.png',initial_loads+2)
+        report['title_reloads_observed']=final_loads-initial_loads
+        report['discarded_new_villager']=True
+        report['passed']=True
+    except Exception as error:
+        report['error']=str(error)
+        raise
+    finally:
+        (root/'title-logo-runtime.log').write_text(runtime_log_text())
+        (root/'title-logo-report.json').write_text(json.dumps(report,indent=2)+'\n')
 
 def title_menu():
     set_debug_visibility(True)
@@ -1366,7 +1463,7 @@ with (root/'emulator.log').open('w') as log:
         if '--loading' in sys.argv:
             for n,seconds in enumerate((1,1,2,4,8,12,17)):
                 time.sleep(seconds);screenshot(f'loading-{n}.png')
-        elif '--aram-residency' in sys.argv:wait_title()
+        elif '--aram-residency' in sys.argv or '--title-logo' in sys.argv:wait_title()
         else:time.sleep(45)
         if p.poll() is not None:
             raise RuntimeError(f'Dolphin exited during boot ({p.returncode}); see {root / "emulator.log"}')
@@ -1384,6 +1481,8 @@ with (root/'emulator.log').open('w') as log:
             profile_cards()
         elif '--shared-profiles' in sys.argv:
             shared_profiles()
+        elif '--title-logo' in sys.argv:
+            title_logo()
         elif '--title-menu' in sys.argv:
             title_menu()
         elif '--title-config' in sys.argv:

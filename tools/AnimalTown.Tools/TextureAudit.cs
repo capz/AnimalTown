@@ -56,7 +56,20 @@ internal static class TextureAudit
                     policy="dropped-item-rgb5a3-alpha-weighted-mips-clamp-trilinear"
                 });continue;
             }
-            bool atlas=Path.GetFileName(path) is "gorditas-bold.dndtex" or "wordmark.dndtex" or "item-icons.dndtex";
+            if(Path.GetFileName(path)==BrandTextureAssets.DiscName){
+                if(width!=BrandTextureAssets.Width||height!=BrandTextureAssets.Height||TexturePixels.Int(bytes,8)!=5||
+                   TexturePixels.Int(bytes,24)!=0||TexturePixels.Int(bytes,28)!=0||bytes.Length!=32+BrandTextureAssets.PixelBytes)
+                    throw new InvalidDataException("Title logo violates its 512x256 RGB5A3 atlas budget");
+                records.Add(new{
+                    source="dvd:/"+BrandTextureAssets.DiscName,
+                    sourceSha=Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(Path.Combine(root,"assets/textures/branding/smalltown-forest-logo.png")))),
+                    width,height,format=5,levels=1,pageWidth=128,pageHeight=128,pages=8,
+                    residentBytes=BrandTextureAssets.PixelBytes,
+                    payloadSha=Convert.ToHexString(SHA256.HashData(bytes)),
+                    policy="shared-title-logo-rgb5a3-aspect-fit-release-before-gameplay"
+                });continue;
+            }
+            bool atlas=Path.GetFileName(path) is "gorditas-bold.dndtex" or "item-icons.dndtex";
             records.Add(new{source="dvd:/"+Path.GetFileName(path),sourceSha=Convert.ToHexString(SHA256.HashData(bytes)),width,height,
                 pageWidth=atlas?Math.Min(128,width):TexturePixels.FitWidth(width,height),pageHeight=atlas?Math.Min(128,height):TexturePixels.FitHeight(width,height),
                 pages=atlas?((width+127)/128)*((height+127)/128):1});

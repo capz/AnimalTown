@@ -8,27 +8,9 @@ using SkiaSharp;
 // rasterizer or desktop drawing dependency is linked into the game.
 internal static class BrandAssets
 {
-    private static readonly SKColor Paper=new(255,245,221),Moss=new(53,105,84),Ink=new(49,72,62),Clay=new(195,109,84),Honey=new(232,183,86),Mist=new(149,198,186);
     private static SKTypeface Title(string root)=>SKTypeface.FromFile(Path.Combine(root,"assets/fonts/gorditas/Gorditas-Bold.ttf"))??throw new Exception("Gorditas font missing");
     private static void SavePng(SKBitmap bitmap,string path)
     { using var image=SKImage.FromBitmap(bitmap);using var data=image.Encode(SKEncodedImageFormat.Png,100);File.WriteAllBytes(path,data.ToArray()); }
-    private static void Type(SKCanvas c,string text,float x,float baseline,SKTypeface face,float size,SKColor color)
-    { using var font=new SKFont(face,size);using var paint=new SKPaint{Color=color,IsAntialias=true};c.DrawText(text,x,baseline,SKTextAlign.Left,font,paint); }
-    private static void Capsule(SKCanvas c,SKRect rect,float radius,SKColor color)
-    { using var paint=new SKPaint{Color=color,IsAntialias=true};c.DrawRoundRect(rect,radius,radius,paint); }
-    private static void Mark(SKCanvas c,float x,float y,float scale)
-    {
-        c.Save();c.Translate(x,y);c.Scale(scale);
-        // A small welcoming doorway, resting on two curved meadow lines.
-        Capsule(c,new SKRect(-21,-14,21,23),15,Moss);
-        Capsule(c,new SKRect(-8,1,8,27),8,Paper);
-        using var paint=new SKPaint{Color=Honey,IsAntialias=true};
-        c.Save();c.RotateDegrees(-32);c.DrawOval(new SKRect(-20,-36,-2,-23),paint);c.Restore();
-        c.Save();c.RotateDegrees(32);c.DrawOval(new SKRect(2,-36,20,-23),paint);c.Restore();
-        paint.Color=Clay;paint.Style=SKPaintStyle.Stroke;paint.StrokeWidth=3;paint.StrokeCap=SKStrokeCap.Round;
-        using var builder=new SKPathBuilder();builder.MoveTo(-34,30);builder.QuadTo(0,18,34,30);using var path=builder.Detach();c.DrawPath(path,paint);
-        c.Restore();
-    }
     public static void Build(string root)
     {
         Directory.CreateDirectory(Path.Combine(root,"out/brand"));Directory.CreateDirectory(Path.Combine(root,"out/disc"));
@@ -38,10 +20,8 @@ internal static class BrandAssets
         SplashAssets.Check(root);
         Font(root,"gorditas-bold",title,24);
         foreach(string obsolete in new[]{"fredoka-medium.dndtex","fredoka-medium.metrics","fredoka-semibold.dndtex","fredoka-semibold.metrics","Fredoka-OFL.txt"})File.Delete(Path.Combine(root,"out/disc",obsolete));
-        using(var wordmark=new SKBitmap(1024,256,SKColorType.Rgba8888,SKAlphaType.Unpremul))
-        {wordmark.Erase(SKColors.Transparent);using var wc=new SKCanvas(wordmark);using var wf=new SKFont(title,128);Type(wc,"AnimalTown",(1024-wf.MeasureText("AnimalTown"))/2,175,title,128,SKColors.White);SavePng(wordmark,Path.Combine(root,"out/brand/wordmark.png"));Texture(root,"wordmark",wordmark);}
+        BrandTextureAssets.Check(root);
         File.Copy(Path.Combine(root,"assets/fonts/gorditas/OFL.txt"),Path.Combine(root,"out/disc/Gorditas-OFL.txt"),true);
-        using var banner=DrawBanner(root,96);SavePng(banner,Path.Combine(root,"out/brand/disc-banner.png"));
     }
     private static void Font(string root,string name,SKTypeface face,float size)
     {
@@ -89,19 +69,5 @@ internal static class BrandAssets
         int p=32;for(int ty=0;ty<bitmap.Height;ty+=4)for(int tx=0;tx<bitmap.Width;tx+=4)for(int y=ty;y<ty+4;y++)for(int x=tx;x<tx+4;x++){package[p++]=bitmap.GetPixel(x,y).Alpha;package[p++]=255;}
         File.WriteAllBytes(Path.Combine(root,"out/disc/"+name+".dndtex"),package);
     }
-    private static SKBitmap DrawBanner(string root,int width)
-    {
-        var bitmap=new SKBitmap(width,32);using var c=new SKCanvas(bitmap);c.Clear(Paper);
-        Capsule(c,new SKRect(-8,20,width+8,50),18,Mist);
-        if(width==32){Mark(c,16,16,.45f);return bitmap;}
-        using var title=Title(root);using var font=new SKFont(title,14);float textWidth=font.MeasureText("AnimalTown");Type(c,"AnimalTown",(width-textWidth)/2,20,title,14,Ink);
-        using var paint=new SKPaint{Color=Honey,IsAntialias=true};c.DrawCircle(7,7,2,paint);c.DrawCircle(width-7,7,2,paint);return bitmap;
-    }
-    public static byte[] Banner(string root,int width)
-    {
-        using var bitmap=DrawBanner(root,width);var bytes=new byte[width*32*2];int at=0;
-        for(int ty=0;ty<32;ty+=4)for(int tx=0;tx<width;tx+=4)for(int y=ty;y<ty+4;y++)for(int x=tx;x<tx+4;x++)
-        {var c=bitmap.GetPixel(x,y);ushort p=(ushort)(0x8000|((c.Red>>3)<<10)|((c.Green>>3)<<5)|(c.Blue>>3));bytes[at++]=(byte)(p>>8);bytes[at++]=(byte)p;}
-        return bytes;
-    }
+    public static byte[] Banner(string root,int width)=>BrandTextureAssets.Banner(root,width);
 }
