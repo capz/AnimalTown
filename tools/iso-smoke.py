@@ -900,7 +900,7 @@ def options_card_files(path=None):
     directories=[n for n in (1,2) if valid(n,0,0x1ffc,0x1ffc)]
     bats=[n for n in (3,4) if valid(n,4,sector,0)]
     if not directories or not bats:raise AssertionError('No valid card directory/BAT')
-    directory=newest(directories,0x1ffa);bat=newest(bats,4);result={}
+    directory=newest(directories,0x1ffa);bat=newest(bats,4);result={};published=None
     for entry in range(127):
         at=directory*sector+entry*64
         if card[at:at+6]!=b'AMTE01':continue
@@ -913,10 +913,12 @@ def options_card_files(path=None):
         length,offset=struct.unpack_from('>II',data,8)
         if offset<32 or offset+length>len(data):raise AssertionError('Truncated current card save')
         payload=bytes(data[offset:offset+length])
-        if name=='AnimalTown' and data[16:24]==b'DNDREC01':
-            result.update((key,value) for key,value in archive_records(payload).items() if key!='AT-Archive')
+        if name in ('AnimalTown','AnimalTown2') and data[16:24]==b'DNDREC01':
+            records=archive_records(payload)
+            if records.get('AT-Archive') in (b'\x01',b'\x02') and (published is None or name=='AnimalTown2'):
+                published={key:value for key,value in records.items() if key!='AT-Archive'}
         else:result[name]=payload
-    return result
+    return published if published is not None else result
 
 def wait_options_saved(resolution,wide):
     import struct
@@ -1301,7 +1303,7 @@ def committed_card_sequence(path, expected_day=None, details=False):
                     at=directory*sector+i*64
                     if card[at:at+6]!=b'AMTE01':continue
                     name=card[at+8:at+40].split(b'\0',1)[0].decode('ascii')
-                    if not name.startswith('AT-') and name!='AnimalTown':continue
+                    if not name.startswith('AT-') and name not in ('AnimalTown','AnimalTown2'):continue
                     block,count=be16(at+54),be16(at+56);seen=set();data=bytearray()
                     for _ in range(count):
                         if block<5 or block>=len(card)//sector or block in seen:raise ValueError('Invalid card chain')
@@ -1311,11 +1313,11 @@ def committed_card_sequence(path, expected_day=None, details=False):
                     length,offset=struct.unpack_from('>II',data,8)
                     if offset<32 or offset+length>len(data):raise ValueError('Truncated card container')
                     payload=bytes(data[offset:offset+length])
-                    if name=='AnimalTown':
+                    if name in ('AnimalTown','AnimalTown2'):
                         if data[16:24]!=b'DNDREC01' or offset!=16384:continue
                         try:records=archive_records(payload)
                         except AssertionError:raise ValueError('Unverified card archive')
-                        if records.get('AT-Archive') in (b'\x01',b'\x02'):archive=records
+                        if records.get('AT-Archive') in (b'\x01',b'\x02') and (name=='AnimalTown2' or archive is None):archive=records
                     else:files[name]=payload
                 if archive is not None:files=archive
                 for bank in (0,1):

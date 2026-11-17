@@ -17,19 +17,20 @@ namespace Dolphin.Storage
     {
         internal static MemoryCard Current=null!;
         internal MemoryCard(){Current=this;}
-        internal byte[][]? RecordPages;
-        internal int RecordIdentity,FailBlockWrite=-1,FailDelete=-1;
+        internal readonly Dictionary<string,byte[][]> RecordPages=new();
+        internal readonly Dictionary<string,int> RecordIdentities=new();
+        internal int FailBlockWrite=-1,FailDelete=-1;
         internal readonly Dictionary<string,byte[]> Files=new();
         internal readonly Dictionary<string,MemoryCardSaveOptions> Metadata=new();
         private readonly Dictionary<string,int> blocks=new();
-        internal int Capacity=24,Used,Peak,Writes;
+        internal int Capacity=80,Used,Peak,Writes;
         public MemoryCardEntry[] GetEntries()=>Files.Keys.Select(name=>new MemoryCardEntry{Name=name}).ToArray();
-        public void Delete(string name){if(FailDelete--==0)throw new IOException("Card removed during cleanup");Files.Remove(name);Metadata.Remove(name);if(blocks.Remove(name,out int n))Used-=n;}
+        public void Delete(string name){if(FailDelete--==0)throw new IOException("Card removed during cleanup");Files.Remove(name);Metadata.Remove(name);RecordPages.Remove(name);RecordIdentities.Remove(name);if(blocks.Remove(name,out int n))Used-=n;}
         internal int CreateRecords(string name,int count,int identity,byte[] header)
         {
             if(Files.ContainsKey(name))return -17;
             if(Used+count+2>Capacity)return -28;
-            RecordIdentity=identity;RecordPages=new byte[count][];for(int i=0;i<count;i++)RecordPages[i]=new byte[8192];
+            RecordIdentities[name]=identity;var pages=new byte[count][];for(int i=0;i<count;i++)pages[i]=new byte[8192];RecordPages[name]=pages;
             Files[name]=Array.Empty<byte>();blocks[name]=count+2;Used+=count+2;Peak=Math.Max(Peak,Used);
             var banner=new byte[6144];var icon=new byte[2048];Array.Copy(header,96,banner,0,6144);Array.Copy(header,6240,icon,0,2048);
             Metadata[name]=new MemoryCardSaveOptions{Title="AnimalTown",Comment="Town, villagers and options",Banner=banner,Icon=icon};return 0;
@@ -57,12 +58,12 @@ internal static class CardBlockBridge
     {
         if(device!=4)throw new InvalidOperationException("Host fixture uses Slot A");
         var card=MemoryCard.Current;
-        if(op==0)return card.RecordPages?.Length??0;
+        if(op==0)return card.RecordPages.TryGetValue(name,out var existing)?existing.Length:0;
         if(op==3)return card.CreateRecords(name,block,identity,bytes);
-        if(op==4)return card.RecordIdentity;
-        if(identity!=card.RecordIdentity||card.RecordPages==null)return -19;
-        if(op==1){Array.Copy(card.RecordPages[block],bytes,8192);return 0;}
-        card.Writes++;if(card.FailBlockWrite--==0){Array.Copy(bytes,card.RecordPages[block],4096);throw new IOException("Interrupted block write");}
-        Array.Copy(bytes,card.RecordPages[block],8192);return 0;
+        if(op==4)return card.RecordIdentities[name];
+        if(!card.RecordPages.TryGetValue(name,out var pages)||identity!=card.RecordIdentities[name])return -19;
+        if(op==1){Array.Copy(pages[block],bytes,8192);return 0;}
+        card.Writes++;if(card.FailBlockWrite--==0){Array.Copy(bytes,pages[block],4096);throw new IOException("Interrupted block write");}
+        Array.Copy(bytes,pages[block],8192);return 0;
     }
 }

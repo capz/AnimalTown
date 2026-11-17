@@ -7,20 +7,21 @@ using Dolphin.Timing;
 // incremental loading pulses and the town's browser artwork.
 internal sealed class NativeCardBlocks : ICardBlockStorage
 {
-    private const string FileName="AnimalTown";
+    internal const int ReservedBlocks=32;
+    private readonly string FileName;
     private readonly int device,identity;
     private static readonly byte[] Empty=new byte[0];
     public int Blocks {get;}
-    internal NativeCardBlocks(int device,bool create,byte[] banner,byte[] icon)
+    internal NativeCardBlocks(int device,bool create,byte[] banner,byte[] icon,string fileName="AnimalTown")
     {
-        this.device=device;int count=Check(CardBlockBridge.Io(device,FileName,0,0,0,Empty));
+        this.device=device;FileName=fileName;int count=Check(CardBlockBridge.Io(device,FileName,0,0,0,Empty));
         if(count==0){
             if(!create)throw new FileNotFoundException("AnimalTown container not found");
             if(banner.Length!=6144||icon.Length!=2048)throw new IOException("Save artwork is unavailable");
             var header=new byte[16384];Text(header,32,"AnimalTown");Text(header,64,"Town, villagers and options");
             Array.Copy(banner,0,header,96,banner.Length);Array.Copy(icon,0,header,6240,icon.Length);
             int id=(int)(Clock.Timestamp&0x7fffffff);if(id==0)id=1;
-            Check(CardBlockBridge.Io(device,FileName,3,16,id,header));count=16;
+            Check(CardBlockBridge.Io(device,FileName,3,ReservedBlocks,id,header));count=ReservedBlocks;
         }
         Blocks=count;identity=Check(CardBlockBridge.Io(device,FileName,4,0,0,Empty));
     }
