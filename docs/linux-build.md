@@ -47,7 +47,9 @@ The default `all` target:
    source and round-trip images are temporary and removed after verification.
 4. Independently publishes the .NET 10 backend and exercises it against PostgreSQL.
 5. Prepares a direct NKit ISO download, `AnimalTown-VERSION-depot.zip`, separate backend
-   ZIP, revisions and SHA-256 checksums. Disc images have no ZIP wrappers.
+   ZIP and compiled-tools ZIP. Revisions, SHA-256 checksums, banners, updater
+   helpers and captures are bundled under `release/` in the Depot ZIP. Only
+   ZIP/ISO files are uploaded; no source kits. Disc images have no ZIP wrappers.
 
 Outputs remain under the mounted checkout's `out/`. CI then publishes these
 packages to GitHub Releases. The source SHA tag identifies the image; `BUILD.txt`

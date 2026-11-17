@@ -10,6 +10,8 @@ concurrency:
   cancel-in-progress: true
 jobs:
   compare:
+    outputs:
+      tag: ${{ steps.version.outputs.tag }}
     runs-on: ubuntu-24.04
     timeout-minutes: 40
     env:
@@ -71,6 +73,7 @@ jobs:
             test "$attempt" != 50
             sleep 15
           done
+          python3 tools/release-bundle.py extract out/performance-release/AnimalTown-*-depot.zip out/performance-release --repository "$GITHUB_REPOSITORY" --tag "$RELEASE_TAG"
           python3 - <<'PY'
           from pathlib import Path
           import hashlib,json,os,zipfile
@@ -190,6 +193,18 @@ jobs:
               lines.append(h.hexdigest()+'  '+p.name)
           (root/'performance-SHA256SUMS.txt').write_text('\n'.join(lines)+'\n')
           PY
-          if gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
-            gh release upload "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" out/performance-evidence/* --clobber
-          fi
+      - name: Keep evidence for bundle publication
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: performance-evidence
+          path: out/performance-evidence/*
+          if-no-files-found: error
+  publish:
+    if: always() && !cancelled() && needs.compare.outputs.tag != ''
+    needs: compare
+    uses: ./.github/workflows/publish-evidence.yml
+    with:
+      tag: ${{ needs.compare.outputs.tag }}
+      artifact: performance-evidence
+      namespace: performance

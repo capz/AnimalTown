@@ -60,8 +60,10 @@ a successful round trip: a reversible container alone does not prove bootability
 `nkit-validation.json` records converter provenance, both sizes/hashes, the
 round-trip result and per-file hashes. Packaging verifies that the complete NKit
 image and every file still match that report, without rebuilding or expanding it.
-`SHA256SUMS.txt` covers only the NKit image, the other release archives and the
-reports. Publication proceeds only after verification. No game/save schema
+`release/SHA256SUMS.txt` inside the Depot ZIP covers the NKit image, server/tools
+ZIPs and primary reports. GitHub's asset digest covers the containing Depot ZIP;
+it cannot include its own checksum. All supplementary release output stays in
+the Depot ZIP. Publication proceeds only after verification. No game/save schema
 changes are needed.
 
 For a local console build:

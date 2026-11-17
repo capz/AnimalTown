@@ -1,0 +1,5 @@
+# Releases contain compiled binaries. GitHub keeps automatic source archive
+# links, but their contents intentionally contain only the project README.
+# Clone the repository to obtain the complete source and submodules.
+* export-ignore
+/README.md -export-ignore
