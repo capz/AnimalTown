@@ -74,7 +74,11 @@ if(Test-Path -LiteralPath $titleEvidenceBuild -PathType Leaf){
        $evidence.isoSha256 -cne $nkitInfo.compactSha256){
         throw 'Title-logo evidence must match the release commit, version and verified NKit image'
     }
-    foreach($name in @('title-logo.png','title-logo-picker.png','title-logo-name.png','title-logo-return.png','title-logo-report.json','title-logo-build.json')){
+    $evidenceNames=@('title-logo.png','title-logo-picker.png','title-logo-name.png','title-logo-return.png','title-logo-report.json','title-logo-build.json')
+    foreach($name in @('title-logo-debug.png','title-logo-status.png')){
+        if(Test-Path -LiteralPath (Join-Path $titleEvidenceRoot $name) -PathType Leaf){$evidenceNames+=$name}
+    }
+    foreach($name in $evidenceNames){
         $source=Get-Item -LiteralPath (Join-Path $titleEvidenceRoot $name)
         if($source.PSIsContainer -or $source.Length -le 0){throw "Missing or empty title-logo evidence: $name"}
         $destination=Join-Path $package $name
@@ -138,7 +142,7 @@ Write-UpdateFeed -Iso $nkit -Version $version -Repository $Repository -Destinati
 $payloadAssets=@($nkit,$updateFeed,$updaterDol,$updaterNotice,$openingBnr,$palBnr,$serverZip,$toolsZip,$cliffsZip,$buildingsZip,(Join-Path $package 'BUILD.txt'),(Join-Path $package 'texture-audit.json'),(Join-Path $package 'validation-plan.json'),(Join-Path $package 'version.json'),(Join-Path $package 'nkit-validation.json'))+$titleEvidenceAssets
 $checksums=foreach($file in $payloadAssets){"$((Get-FileHash -LiteralPath $file -Algorithm SHA256).Hash.ToLowerInvariant())  $([IO.Path]::GetFileName($file))"}
 [IO.File]::WriteAllText((Join-Path $package 'SHA256SUMS.txt'),($checksums -join "`n")+"`n")
-$evidenceNotes=if($titleEvidenceAssets.Count){'The title-logo PNGs show the title, villager picker, name entry and return-to-title states captured from this exact release image. title-logo-report.json records the capture checks; title-logo-build.json binds the evidence to the source commit, version and NKit SHA-256.'}else{''}
+$evidenceNotes=if($titleEvidenceAssets.Count){'The title-logo PNGs show the title, villager picker, name entry and return-to-title states captured from this exact release image. Debug and status-message captures are included when produced. title-logo-report.json records the capture checks; title-logo-build.json binds the evidence to the source commit, version and NKit SHA-256.'}else{''}
 $notes=@"
 AnimalTown $version development build from commit $commit.
 
