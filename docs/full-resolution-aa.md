@@ -15,8 +15,6 @@ Hypercube's FrameRenderer replays prepared drawing. Simulation, animation,
 visibility, shadow masks, rain and texture residency prepare once per frame.
 World/HUD drawing repeats, with bounded batch cursors reset for each part.
 Splash, title, loading, profile picker and onboarding also support all parts.
-Sunshine water captures each resident band into its existing half-size RGB565
-capture; it does not allocate another full-screen texture.
 
 The two 640×480 scanout buffers remain 1,200 KiB, and switches between ordinary
 640×480 and full AA reuse that pair. Texture and shadow-map budgets are unchanged.
@@ -37,6 +35,6 @@ The implemented menu (Dolphin, host MSAA disabled; layout and persistence proof)
 
 Validation used a real bootable test ISO: Off → On, emulator restart with On
 restored at 640×480/two passes, then Off saved again. The complete town generation
-and payload hashes were unchanged. Three-wall interiors and visible Sunshine
-refraction also rendered with AA enabled. SDK fixtures independently check all
+and payload hashes were unchanged. Three-wall interiors also rendered with AA
+enabled. SDK fixtures independently check all
 480 rows, the band join, capture alignment, framebuffer canaries and buffer reuse.

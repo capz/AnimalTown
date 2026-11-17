@@ -12,7 +12,7 @@ static GXColor town_environment_tint(void){int rgb=animaltown_environment_color(
 static int town_environment_apply(const DndDrawEffect *effect,int stage){
     int slot=effect?effect->uniforms:0;if(slot>=4)return stage;
     if(animaltown_environment_color()==0xffffff)return stage;
-    /* Wide Sunshine RGB must reach its ordinary output clamp before entering
+    /* Wide TEV RGB must reach its ordinary output clamp before entering
      * an 8-bit TEV multiply input. Otherwise highlights wrap instead of tint. */
     if(effect&&effect->count>0&&(effect->stages[effect->count-1].dest&128)&&!(effect->stages[effect->count-1].dest&64)){
         GX_SetTevDirect((u8)stage);GX_SetTevSwapMode((u8)stage,GX_TEV_SWAP0,GX_TEV_SWAP0);

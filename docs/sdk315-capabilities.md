@@ -6,14 +6,14 @@ AnimalTown pins DolphinDotNet SDK/Core/GameCube/Assets 0.1.0-preview.326.1
 The game and rendering-check runtime locks and offline asset-tool manifest
 advance together. Hypercube 28 was compiled against SDK 315; direct runtime 326
 references select the compatible SDK upgrade, and package resolution accepts only
-this reviewed version combination. See [water integration](sunshine-water-comparison.md).
+this reviewed version combination. See [water integration](water-rendering.md).
 NuGet.org remains the configured package source; local source references and
 validation-only packages are excluded from the delivered build.
 
 The SDK provides complete signed RGB/alpha TEV arithmetic, blend factors,
-custom indirect matrices and per-object screen projection for the reference
-water material. RGB565 scene capture reuses the indexed water geometry without
-another world render. Original AddStage and SceneCapture constructor signatures
+custom indirect matrices, per-object screen projection and RGB565 scene capture.
+AnimalTown uses the indirect water-warp material; scene capture is available to
+other SDK consumers. Original AddStage and SceneCapture constructor signatures
 remain available to compiled engine consumers.
 
 The SDK emits and validates the complete apploader image as part of the native

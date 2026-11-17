@@ -8,9 +8,6 @@ public sealed class RenderDebugOptions
     public bool ForceAttention;
     public int RimPercent {get;private set;}=DefaultRimPercent;
     public const int MaximumGroundMipDistance=10;
-    public WaterRenderStyle WaterStyle {get;private set;}=WaterRenderStyle.WindWaker;
-    public void CycleWaterStyle()=>WaterStyle=WaterStyle==WaterRenderStyle.WindWaker?WaterRenderStyle.Sunshine:WaterRenderStyle.WindWaker;
-    public void ResetWaterStyle()=>WaterStyle=WaterRenderStyle.WindWaker;
     public bool GroundMipmaps=true;
     public bool DiscardTerrainCacheWhenIndoors;
     public int GroundMipDistance {get;private set;} // 0 = automatic GX footprint.

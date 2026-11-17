@@ -12,7 +12,7 @@ internal sealed class LocalOceanWaves : IDisposable
     private CylinderRows? rows;
     private WindWakerWaveGrid? waves;
     private DynamicMesh? mesh;
-    private bool active,sunshine;
+    private bool active;
     private int x0,z0;
     private Color32 tint;
     internal bool Active=>active;
@@ -30,7 +30,7 @@ internal sealed class LocalOceanWaves : IDisposable
             indices[at++]=(ushort)a;indices[at++]=(ushort)(b+1);indices[at]=(ushort)b;
         }
     }
-    internal void Prepare(GameState state,bool rough,bool gallery,Color32 color,bool sunshineStyle=false)
+    internal void Prepare(GameState state,bool rough,bool gallery,Color32 color)
     {
         active=false;
         if(!rough||gallery||state.Z<WaterTerrain.SeaStart-22)return;
@@ -43,12 +43,12 @@ internal sealed class LocalOceanWaves : IDisposable
         for(int z=z0;z<z0+WindWakerWaveField.Extent;z++)
             for(int x=x0;x<x0+WindWakerWaveField.Extent;x++)
                 if(!WaterTerrain.IsSea(state.Town,x,z))return;
-        tint=color;sunshine=sunshineStyle;active=true;
+        tint=color;active=true;
     }
     internal void Update(double seconds)
     {
         if(!active)return;
-        PrepareBuffers();if(!sunshine)waves!.Prepare(x0,z0,seconds);
+        PrepareBuffers();waves!.Prepare(x0,z0,seconds);
         const int width=WindWakerWaveField.Cells+1;
         for(int z=0;z<width;z++)
         {
@@ -57,10 +57,9 @@ internal sealed class LocalOceanWaves : IDisposable
             for(int x=0;x<width;x++)
             {
                 float worldX=x0+x*WindWakerWaveField.CellSize;
-                float y=sunshine?SunshineWater.LocalWaveHeight(x,z,worldX,worldZ,seconds):waves!.Height(x,z);
+                float y=waves!.Height(x,z);
                 var position=new Vector3(worldX,chord.Y+chord.UpY*y,chord.Z+chord.UpZ*y);
-                var color=sunshine?new Color32(255,255,255,SunshineWater.VertexFade(x,z)):tint;
-                vertices![z*width+x]=new VertexPositionColorTexture(position,color,
+                vertices![z*width+x]=new VertexPositionColorTexture(position,tint,
                     new Vector2(worldX*WaterSurface.UvScale,worldZ*WaterSurface.UvScale));
             }
         }

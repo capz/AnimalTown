@@ -163,9 +163,9 @@ internal sealed class TownGame : IDisposable,Hypercube.GameCube.IFrameScene
     private bool cliffPreview;
     private int waterInspection;
     private int buildingInspection;
-    private const int SettingsTab=5,TestingTab=6,TestingRows=32;
-    // Stable option IDs: shadow slots 7/8 retired; terrain retention stays last.
-    private static readonly int[] testingOptions={0,33,1,2,3,4,5,6,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,31,32,30};
+    private const int SettingsTab=5,TestingTab=6,TestingRows=31;
+    // Stable option IDs: shadow slots 7/8 and water-style slot 24 retired.
+    private static readonly int[] testingOptions={0,33,1,2,3,4,5,6,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,25,26,27,28,29,31,32,30};
     private static int TestingOption(int row)=>testingOptions[row];
     private static readonly string[] tabs={"Backpack","Jobs","Catalog","Home","Post office","Settings","Debug / testing"};
     internal TownGame(DevConfig config,TownSession session)
@@ -348,7 +348,6 @@ internal sealed class TownGame : IDisposable,Hypercube.GameCube.IFrameScene
         // Bake even for an indoor save: its first exit must reuse the completed
         // archive rather than overlap scratch geometry with resident villagers.
         terrain.RoughOcean=weather.RoughOcean(0);terrain.SeasonOverride=renderDebug.SeasonOverride;
-        terrain.WaterStyle=renderDebug.WaterStyle;
         terrain.GroundMipmaps=renderDebug.GroundMipmaps;terrain.GroundMipDistance=renderDebug.GroundMipDistance;
         // Indoor actors have height zero; this selects the outdoor town cache.
         RenderView.Prepare(state.X,state.Z,TerrainElevation.At(state.Town,state.X,state.Z));
@@ -490,10 +489,6 @@ internal sealed class TownGame : IDisposable,Hypercube.GameCube.IFrameScene
         if(screen=="menu"&&menuTab==TestingTab&&TestingOption(selected)==23&&!chord){
             if(left||right){renderDebug.AdjustGroundMipDistance(right?1:-1);return;}
             if(p.X.WasPressed){renderDebug.ResetGroundMipDistance();return;}
-        }
-        if(screen=="menu"&&menuTab==TestingTab&&TestingOption(selected)==24&&!chord){
-            if(left||right){renderDebug.CycleWaterStyle();return;}
-            if(p.X.WasPressed){renderDebug.ResetWaterStyle();return;}
         }
         if(screen=="menu"&&menuTab==TestingTab&&TestingOption(selected)==29&&!chord){
             if(left||right){UiNoiseSettings.Adjust(right?1:-1);return;}
@@ -665,7 +660,6 @@ internal sealed class TownGame : IDisposable,Hypercube.GameCube.IFrameScene
             case 21:DebugOverlay.PerformanceVisible=!DebugOverlay.PerformanceVisible;break;
             case 22:renderDebug.GroundMipmaps=!renderDebug.GroundMipmaps;break;
             case 23:renderDebug.AdjustGroundMipDistance(1);break;
-            case 24:renderDebug.CycleWaterStyle();break;
             case 29:UiNoiseSettings.Adjust(1);break;
             case 25:debugConfig.Adjust(DevConfig.TreeNoiseStrength,1);break;
             case 26:debugConfig.Adjust(DevConfig.TreeNoiseScale,1);break;
@@ -719,7 +713,6 @@ internal sealed class TownGame : IDisposable,Hypercube.GameCube.IFrameScene
             case 21:return "SDK performance overlay: "+OnOff(DebugOverlay.PerformanceVisible);
             case 22:return "Ground mipmaps: "+OnOff(renderDebug.GroundMipmaps);
             case 23:return "Ground mip distance: "+(renderDebug.GroundMipDistance==0?"Auto":renderDebug.GroundMipDistance+(renderDebug.GroundMipDistance==1?" square":" squares"));
-            case 24:return "Water rendering: "+(renderDebug.WaterStyle==WaterRenderStyle.WindWaker?"Wind Waker":"Sunshine");
             case 25:return "Tree noise strength: "+debugConfig.TreeNoiseStrengthPercent+"%";
             case 26:return "Tree noise scale: "+debugConfig.TreeNoiseScalePercent+"%";
             case 27:return "Save tree noise settings";
@@ -900,7 +893,6 @@ internal sealed class TownGame : IDisposable,Hypercube.GameCube.IFrameScene
         FrameProfile.End(2,residencyAt);
         if(!modelSceneReady){modelResidency.WaitForScene();DrawLoading();return;}
         terrain.RoughOcean=weather.RoughOcean(room);terrain.SeasonOverride=renderDebug.SeasonOverride;
-        terrain.WaterStyle=renderDebug.WaterStyle;
         terrain.GroundMipmaps=renderDebug.GroundMipmaps;terrain.GroundMipDistance=renderDebug.GroundMipDistance;
         cachedPlayerHeight=PlayerHeight();if(room==0)RenderView.Prepare(state.X,state.Z,cachedPlayerHeight);
         if(room!=0)indoorCamera.Configure(BuildingWorld.Definition(state,BuildingWorld.Building(room)));
@@ -912,14 +904,9 @@ internal sealed class TownGame : IDisposable,Hypercube.GameCube.IFrameScene
         long masksAt=FrameProfile.Start();villagerShadows.PrepareMasks(preparationDeadline);FrameProfile.DetailEnd(4,masksAt);
         if(room==0){
             terrain.Prepare(state,room,month,villagerShadows,preparationDeadline,cliffPreview);
-            if(terrain.TakeWaterPreparationFailure(out string waterError)){
-                renderDebug.ResetWaterStyle();clockHud.Trim();uiShapes.Trim();
-                DebugOverlay.WriteLine("SUNSHINE PREPARATION FAILED: "+waterError);
-                Say("Water rendering","Sunshine couldn't be prepared. Wind Waker restored.");
-            }
             terrain.Animate((Clock.Timestamp-sessionStart)/1000000.0);
         }
-        else{terrain.ReleaseWaterCapture();terrain.ReleasePaths();int steps=0;while(steps<8&&Clock.Timestamp<preparationDeadline){if(!villagerShadows.Advance())break;steps++;}}
+        else{terrain.ReleasePaths();int steps=0;while(steps<8&&Clock.Timestamp<preparationDeadline){if(!villagerShadows.Advance())break;steps++;}}
         FrameProfile.End(2,phase);
         if(room==0&&!terrain.Ready){DrawLoading(landscape:true);return;}
         LoadingScreen.Finish();
@@ -990,18 +977,6 @@ internal sealed class TownGame : IDisposable,Hypercube.GameCube.IFrameScene
         ModelAt(0);
         if(batchedDrawing)DrawActors();
         FrameProfile.End(5,phase);phase=FrameProfile.Start();
-        // Original seaindirect ordering: capture the complete main scene,
-        // including glints and actors, once; refract only visible water.
-        // HUD, attention indicators and rain remain outside the capture.
-        if(room==0&&terrain.RefractionVisible){
-            submissionAt=FrameProfile.SubmissionStart();
-            renderer.End3D();terrain.CaptureWaterScene();
-            // The captured scene already includes the environment tint.
-            renderer.Begin3D(camera);NativeShadows.Environment(0xffffff);
-            try{terrain.DrawRefraction(renderer);}finally{NativeShadows.Environment(environmentTint);}
-            FrameProfile.SubmissionEnd(0,submissionAt);
-            FrameProfile.End(4,phase);phase=FrameProfile.Start();
-        }
         if(screen=="plot")
         {
             int x=(int)state.X-3,z=(int)state.Z-(session.Draft!=null?6:3);

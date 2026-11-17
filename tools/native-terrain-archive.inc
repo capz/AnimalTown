@@ -6,7 +6,7 @@
 #define TA_SECTIONS 4096
 #define TA_PARTS 16384
 #define TA_STAGE 65536
-#define TA_KINDS 109
+#define TA_KINDS 108
 #define TA_PAGE_PARTS (TA_KINDS*2)
 #define TA_BYTES (8*1024*1024)
 #define TA_CACHE (1024*1024)
@@ -171,12 +171,6 @@ int animaltown_terrain_complete(int section){
 }
 int animaltown_terrain_info(int section,int kind){
     if(!ta_sealed||section<0||section>=ta_sections)return -1;
-    if(kind==3){
-        int count=0;for(int i=ta_first[section];i<ta_first[section+1];i++){
-            const TaPart *part=ta_part(i);if(part->kind==108)count+=(part->indices?part->indices:part->vertices)/3;
-        }
-        return count;
-    }
     return kind==0?ta_first[section]:kind==1?ta_first[section+1]-ta_first[section]:kind==2?ta_triangles[section]:-1;
 }
 int animaltown_terrain_kind(int entry){TaPart *p=ta_part(entry);return ta_sealed&&p?p->kind:-1;}
