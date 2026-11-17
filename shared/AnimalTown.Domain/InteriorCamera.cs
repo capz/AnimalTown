@@ -29,7 +29,9 @@ public sealed class InteriorCamera
     public bool WallVisible(int wall)
     {
         float dot=wall==0?-(float)Math.Cos(Angle):wall==1?(float)Math.Sin(Angle):wall==2?(float)Math.Cos(Angle):-(float)Math.Sin(Angle);
-        return dot<-.05f;
+        // Keep edge-on side walls in cardinal views; only cut away the front.
+        // During a turn, hide both near walls rather than blocking the room.
+        return dot<.05f;
     }
     public bool Sphere(float x,float y,float z,float radius,float size)
     {

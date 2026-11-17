@@ -15,7 +15,9 @@ opposite-direction arrivals have separate landing points and queue safely.
 
 C-stick left/right turns the indoor view by 90 degrees. Release the stick before
 another turn. L recentres it. Movement uses the current interpolated camera basis.
-Camera-facing walls are hidden; interiors have no ceiling. Visibility uses the
+Each cardinal view shows the back and both side walls, with the front wall
+hidden. During turns, camera-facing walls are cut away to keep the room clear.
+Interiors have no ceiling. Visibility uses the
 indoor camera, not the outdoor cylinder's fixed frustum. Outdoors retains its
 existing camera and curvature.
 
