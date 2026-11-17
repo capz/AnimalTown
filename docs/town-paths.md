@@ -55,4 +55,5 @@ Capture baseline and roads at matched stationary views, matched travel, indoors
 and far from the network; repeat in spring and winter. Disable AVI recording.
 Dolphin software rendering and emulated guest timings are not hardware timings.
 
-Measured results and screenshots will be recorded in `docs/performance/town-paths/`.
+Measured results, before/after screenshots and reproduction instructions are in
+[the performance report](performance/town-paths/README.md).

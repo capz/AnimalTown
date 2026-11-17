@@ -104,7 +104,7 @@ function Get-ValidationPlan {
             else{foreach($s in $allManaged){Add-Managed $s}}
             continue
         }
-        if($p -match '^tools/iso-smoke.py$'){[void]$native.Add('python');continue} # Scenarios are explicitly selected.
+        if($p -match '^tools/(iso-smoke|path-study).py$'){[void]$native.Add('python');continue} # Scenarios are explicitly selected.
         $broad=$true
     }
     if($broad){foreach($s in $allManaged){Add-Managed $s};foreach($s in @('terrain','repack','building','nkit','dropped-item')){[void]$tooling.Add($s)};foreach($s in @('uv','card','texture','voices','python','shadows','patched')){[void]$native.Add($s)};$backend=$true;$policy=$true}
