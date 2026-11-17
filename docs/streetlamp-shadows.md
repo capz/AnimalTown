@@ -1,5 +1,8 @@
 # Street lamp post shadows
 
+See the [native test captures](screenshots/seasonal-shadows/README.md) for the
+post shadow on the dirt path in the four-season review.
+
 Street lamp posts participate in the existing scenery shadow union. Their
 base, narrow pole and roof have a small analytic silhouette projected from the
 same fixed northwest light as the other scenery. Roof dimensions and height

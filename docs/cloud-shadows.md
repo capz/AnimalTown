@@ -1,5 +1,8 @@
 # Cloud shadows
 
+See the [native seasonal test captures](screenshots/seasonal-shadows/README.md)
+for the four-season comparison, raw screenshots and capture provenance.
+
 Clouds, cliffs, trees, buildings and villagers use the same coverage union and
 shadow tint: RGB (35,49,66), with maximum opacity 66/255. Winter clouds use a
 lower peak of 33/255; other casters retain their existing intensity. Coverage combines by
