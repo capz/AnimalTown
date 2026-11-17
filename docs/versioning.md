@@ -62,12 +62,13 @@ Numeric main builds publish as regular GitHub releases. Hash-suffixed PR builds
 remain prereleases, so GitHub's latest-release endpoint identifies the main channel.
 The updater reads `/repos/capz/AnimalTown/releases/latest` with a 32 KiB response
 cap and validates the exact numeric version, ISO filename, repository URL and
-GitHub SHA-256 digest. Releases have four ZIP/ISO assets and notes of at most
+GitHub SHA-256 digest. Releases have four ZIP/ISO assets plus `update.json` and notes of at most
 1 KiB; the publisher checks the full API response budget before publication.
 Metadata, checksums, banners and captures live inside `release/` in the Depot
-ZIP. The old compact `update.json` is archived there, not uploaded separately.
-Older updater builds need one manual ISO upgrade after this change; saves are
-unaffected. GitHub's automatic source archives are README-only through
+ZIP. The compact `update.json` is uploaded separately in its original format for
+older updater builds and archived byte-for-byte in that ZIP. It contains only
+`tag_name`, `draft` and one ISO asset's name, download URL, size and SHA-256
+digest, with a 2 KiB cap. Saves are unaffected. GitHub's automatic source archives are README-only through
 `export-ignore`; use Git for source.
 All new merges use the minor policy, including fixes and documentation. Major
 changes remain explicit. Historical configurations without `increment` keep

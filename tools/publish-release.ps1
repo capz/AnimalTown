@@ -19,6 +19,20 @@ function Assert-BinaryArchive([string]$Path){
         }
     }finally{$archive.Dispose()}
 }
+function Assert-ReleaseAsset([string]$Path){
+    if([IO.Path]::GetFileName($Path) -ceq 'update.json'){return}
+    if([IO.Path]::GetExtension($Path) -cnotin @('.zip','.iso')){throw "Forbidden release asset: $Path"}
+    if($Path.EndsWith('.zip')){Assert-BinaryArchive $Path}
+}
+function Assert-ReleaseAssetSet($Release,[string[]]$Names,[switch]$AllowMissingUpdateFeed){
+    $actual=@($Release.assets | ForEach-Object name)
+    if(@($actual | Select-Object -Unique).Count -ne $actual.Count -or @($actual | Where-Object {$_ -cnotin $Names}).Count){
+        throw 'Published release contains unexpected or duplicate assets'
+    }
+    foreach($name in $Names){
+        if($name -cnotin $actual -and !($AllowMissingUpdateFeed -and $name -ceq 'update.json')){throw "Published release is missing $name"}
+    }
+}
 function Assert-ReleaseVersionMetadata($Identity,[string]$Path){
     $saved=Get-Content -LiteralPath $Path -Raw | ConvertFrom-Json
     foreach($property in $Identity.PSObject.Properties){
@@ -175,7 +189,7 @@ AnimalTown $version from $commit.
 
 Downloads: NKit ISO for GC Loader; Depot ZIP for the standalone SD app; separate server and offline tools ZIPs. Reports, checksums, banners and available captures are inside the Depot ZIP's release/ directory.
 
-The ISO updater now reads bounded GitHub release metadata. Older installed updater builds need one manual ISO upgrade because loose update.json assets are no longer published. Saves remain compatible.
+update.json provides the compact release feed for older installed updaters. The current ISO updater also reads bounded GitHub release metadata. Saves remain compatible.
 
 Source and authoring kits are excluded from release archives. Clone the repository for source. Physical GameCube qualification remains outstanding.
 "@
@@ -189,11 +203,8 @@ $checksums=foreach($file in $checksumFiles){"$((Get-FileHash -LiteralPath $file 
 $bundle=Join-Path $PSScriptRoot 'release-bundle.py'
 Run python3 @($bundle,'attach',$depot,$reports)
 Run dotnet @('run','--project',(Join-Path $Root 'tools/AnimalTown.Tools'),'-c','Release','--no-build','--','verify-depot',$Root,$depot)
-$assets=@($nkit,$depot,$serverZip,$toolsZip)
-foreach($asset in $assets){
-    if([IO.Path]::GetExtension($asset) -cnotin @('.zip','.iso')){throw "Forbidden release asset: $asset"}
-    if($asset.EndsWith('.zip')){Assert-BinaryArchive $asset}
-}
+$assets=@($nkit,$depot,$serverZip,$toolsZip,$updateFeed)
+foreach($asset in $assets){Assert-ReleaseAsset $asset}
 if($PackageOnly){Write-Host "Release package: $package";Write-Host "Disc image: $nkit";return}
 function InvokeGh([string[]]$Arguments){
     $result=& $Gh @Arguments
@@ -223,7 +234,9 @@ if($LASTEXITCODE -eq 0){
         $tagCommit=InvokeGh @('api',"repos/$Repository/commits/$tag",'--jq','.sha')
         if($tagCommit -ne $commit){throw 'Release tag points to another commit'}
         $names=@($assets | ForEach-Object {[IO.Path]::GetFileName($_)})
-        if($release.assets.Count -ne $assets.Count -or @($release.assets | Where-Object {$_.name -cnotin $names}).Count){throw 'Published release asset set differs from the ZIP/ISO policy'}
+        # Releases published during the ZIP/ISO-only interval may lack the feed.
+        # Validate their original bytes before adding only that missing asset.
+        Assert-ReleaseAssetSet $release $names -AllowMissingUpdateFeed
         # Optional evidence may have extended the published Depot ZIP since the
         # primary build. Verify it and all original reports without discarding it.
         $remoteDepot=Join-Path $package 'published-depot.zip'
@@ -232,6 +245,8 @@ if($LASTEXITCODE -eq 0){
         $remoteReports=Join-Path $package 'published-reports'
         Run python3 @($bundle,'extract',$remoteDepot,$remoteReports)
         $publishedSums=Get-Content -LiteralPath (Join-Path $remoteReports 'SHA256SUMS.txt') -Raw
+        $publishedFeed=Join-Path $remoteReports 'update.json'
+        if((Get-FileHash -LiteralPath $publishedFeed).Hash -cne (Get-FileHash -LiteralPath $updateFeed).Hash){throw 'Published update feed differs from the verified ISO'}
         foreach($asset in $assets){
             $name=[IO.Path]::GetFileName($asset)
             # Fresh ZIP timestamps/captures may differ on a rerun. Check the
@@ -243,7 +258,17 @@ if($LASTEXITCODE -eq 0){
                 $digest=$entry.Groups[1].Value
             }
             $uploaded=@($release.assets | Where-Object name -CEQ $name)
+            if($asset -eq $updateFeed -and !$uploaded.Count){continue}
             if($uploaded.Count -ne 1 -or $uploaded[0].size -le 0 -or $uploaded[0].digest -cne 'sha256:'+$digest){throw "Published checksum mismatch: $name"}
+        }
+        if(!@($release.assets | Where-Object name -CEQ 'update.json').Count){
+            InvokeGh @('release','upload',$tag,'--repo',$Repository,$publishedFeed) | Out-Null
+            $release=Read-ReleaseMetadata $tag | ConvertFrom-Json
+            Assert-ReleaseAssetSet $release $names
+            $uploaded=@($release.assets | Where-Object name -CEQ 'update.json')
+            $file=Get-Item -LiteralPath $publishedFeed
+            $digest='sha256:'+(Get-FileHash -LiteralPath $publishedFeed).Hash.ToLowerInvariant()
+            if($uploaded.Count -ne 1 -or $uploaded[0].size -ne $file.Length -or $uploaded[0].digest -cne $digest){throw 'Restored update feed verification failed'}
         }
         Write-Host "Release already published: https://github.com/$Repository/releases/tag/$tag"
         return
@@ -256,7 +281,7 @@ if($LASTEXITCODE -eq 0){
 InvokeGh (@('release','upload',$tag,'--repo',$Repository,'--clobber')+$assets) | Out-Null
 $metadata=Read-ReleaseMetadata $tag
 $remote=($metadata | ConvertFrom-Json).assets
-if($remote.Count -ne $assets.Count){throw 'Release must contain exactly the four binary ZIP/ISO assets'}
+Assert-ReleaseAssetSet ($metadata | ConvertFrom-Json) @($assets | ForEach-Object {[IO.Path]::GetFileName($_)})
 foreach($asset in $assets){
     $file=Get-Item -LiteralPath $asset
     $uploaded=@($remote | Where-Object name -CEQ $file.Name)

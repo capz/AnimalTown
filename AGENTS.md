@@ -22,8 +22,9 @@ banner and memory-card save artwork. The app ZIP must contain the real
 boot without an AnimalTown disc. See `docs/depot-release.md`. Full-size source and
 round-trip ISOs are temporary conversion files and must be deleted after
 verification, including on failure. Publish the NKit ISO directly, without a ZIP
-wrapper, alongside the app, backend and compiled-tools ZIPs. Publish only ZIP and
-ISO assets. Put revision manifests, SHA-256 checksums, banners, updater documentation
+wrapper, alongside the app, backend and compiled-tools ZIPs and the compact
+`update.json` release feed. Other assets must be ZIP or ISO files. Put revision
+manifests, SHA-256 checksums, banners, updater documentation
 and validation captures under `release/` inside the single `-depot.zip`, outside
 the installed `apps/animaltown/` payload. Do not publish source or authoring kits;
 automatic GitHub source archives must remain README-only through export-ignore.
