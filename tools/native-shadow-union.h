@@ -157,15 +157,35 @@ static inline void su_lights(SuState *s,const float *sources,int count){
     if(s->light_count==count&&!memcmp(s->lights,sources,(size_t)count*16))return;
     s->light_count=count;memcpy(s->lights,sources,(size_t)count*16);s->light_dirty=s->cloud_dirty=1;
 }
+static inline int su_clamp(int x,int max){return x<0?0:x>max?max:x;}
 static inline void su_bake_lights(SuState *s){
     if(!s->light_dirty)return;
-    for(int z=0;z<SU_TERRAIN_HEIGHT;z++)for(int x=0;x<SU_TERRAIN_WIDTH;x++){
-        float px=(x-.5f)/SU_TERRAIN_TEXELS_PER_METRE,pz=(z-.5f)/SU_TERRAIN_TEXELS_PER_METRE,light=0;
-        for(int n=0;n<s->light_count;n++){
-            const float *p=s->lights+n*4;float dx=px-p[0],dz=pz-p[1],r=1-(dx*dx+dz*dz)/(p[2]*p[2]);
-            if(r>0){float strength=r*r*p[3];if(strength>light)light=strength;}
+    for(int i=0;i<SU_TERRAIN_BYTES;i++)s->terrain[i]&=15;
+    for(int n=0;n<s->light_count;n++){
+        const float *p=s->lights+n*4;
+        float radius=p[2],radius_squared=radius*radius;
+        /* Sample x is at (x-.5)/scale. Expand both bounds by one texel
+         * for rounding, then clip before converting even far-off sources. */
+        float left=(p[0]-radius)*SU_TERRAIN_TEXELS_PER_METRE-.5f;
+        float right=(p[0]+radius)*SU_TERRAIN_TEXELS_PER_METRE+1.5f;
+        float top=(p[1]-radius)*SU_TERRAIN_TEXELS_PER_METRE-.5f;
+        float bottom=(p[1]+radius)*SU_TERRAIN_TEXELS_PER_METRE+1.5f;
+        if(right<0||bottom<0||left>SU_TERRAIN_WIDTH-1||top>SU_TERRAIN_HEIGHT-1)continue;
+        int first_x=(int)fmaxf(left,0),last_x=(int)fminf(right,SU_TERRAIN_WIDTH-1);
+        int first_z=(int)fmaxf(top,0),last_z=(int)fminf(bottom,SU_TERRAIN_HEIGHT-1);
+        for(int z=first_z;z<=last_z;z++){
+            float dz=(z-.5f)/SU_TERRAIN_TEXELS_PER_METRE-p[1];
+            for(int x=first_x;x<=last_x;x++){
+                float dx=(x-.5f)/SU_TERRAIN_TEXELS_PER_METRE-p[0];
+                float r=1-(dx*dx+dz*dz)/radius_squared;
+                if(r>0){
+                    float strength=r*r*p[3];
+                    int light=su_clamp((int)((strength+8)/17),15);
+                    uint8_t *texel=s->terrain+su_terrain_offset(x,z);
+                    if(light>(*texel>>4))*texel=(*texel&15)|(light<<4);
+                }
+            }
         }
-        int at=su_terrain_offset(x,z);s->terrain[at]=(s->terrain[at]&15)|((int)((light+8)/17)<<4);
     }
     s->light_dirty=0;s->cloud_dirty=1;
 }
@@ -262,7 +282,6 @@ static inline int su_inside(float x,float z,const float *v){
     float c=(v[0]-v[4])*(z-v[5])-(v[1]-v[5])*(x-v[4]);
     return (a>=-.000001f&&b>=-.000001f&&c>=-.000001f)||(a<=.000001f&&b<=.000001f&&c<=.000001f);
 }
-static inline int su_clamp(int x,int max){return x<0?0:x>max?max:x;}
 static inline int su_bit(const uint8_t *bits,int at){return (bits[at>>3]>>(at&7))&1;}
 static inline void su_support_build(SuState *s,const SuPage *p,const SuCaster *c,uint8_t *valid){
     memset(valid,0,SU_SUPPORT_BYTES);s->support_builds++;

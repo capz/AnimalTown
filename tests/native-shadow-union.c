@@ -1,6 +1,9 @@
+#define _POSIX_C_SOURCE 200809L
 #include <assert.h>
+#include <float.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <time.h>
 #include "../tools/native-shadow-union.h"
 #include "native-shadow-combiner.inc"
 static SuState *s;
@@ -14,6 +17,110 @@ static void next(void){su_begin(s,0,1,0);}
 static int pixel(float x,float z){int p=su_find(s,(int)floorf(x/8),(int)floorf(z/8));CHECK(p>=0);int a=(int)((x-s->page[p].x*8)*SU_INNER/8+1),b=(int)((z-s->page[p].z*8)*SU_INNER/8+1);return su_shadow(s->pixels[p*SU_BYTES+su_offset(a,b)]);}
 static int credits;
 static int allow_work(void *unused){(void)unused;return credits-->0;}
+
+/* Original texel-first bake, retained as an independent byte oracle. */
+static void legacy_bake_lights(SuState *state){
+    if(!state->light_dirty)return;
+    for(int z=0;z<SU_TERRAIN_HEIGHT;z++)for(int x=0;x<SU_TERRAIN_WIDTH;x++){
+        float px=(x-.5f)/SU_TERRAIN_TEXELS_PER_METRE,pz=(z-.5f)/SU_TERRAIN_TEXELS_PER_METRE,light=0;
+        for(int n=0;n<state->light_count;n++){
+            const float *p=state->lights+n*4;
+            float dx=px-p[0],dz=pz-p[1],r=1-(dx*dx+dz*dz)/(p[2]*p[2]);
+            if(r>0){float strength=r*r*p[3];if(strength>light)light=strength;}
+        }
+        int at=su_terrain_offset(x,z);
+        state->terrain[at]=(state->terrain[at]&15)|((int)((light+8)/17)<<4);
+    }
+    state->light_dirty=0;state->cloud_dirty=1;
+}
+
+static float light_random(uint32_t *seed){
+    *seed=*seed*1664525u+1013904223u;
+    return (*seed>>8)/16777216.f;
+}
+
+static void compare_light_fields(SuState *reference,const float *sources,int count){
+    su_lights(s,sources,count);
+    su_lights(reference,sources,count);
+    legacy_bake_lights(reference);
+    su_cloud_prepare(reference);
+    su_cloud_prepare(s);
+    CHECK(!memcmp(s->terrain,reference->terrain,SU_TERRAIN_BYTES));
+    CHECK(!memcmp(s->coverage,reference->coverage,SU_TERRAIN_BYTES));
+}
+
+static void light_equivalence_checks(void){
+    reset();
+    SuState *reference=aligned_alloc(32,su_storage_bytes());CHECK(reference!=NULL);
+    su_init(reference);
+    uint32_t seed=0xcafe114u;
+    for(int i=0;i<SU_TERRAIN_BYTES;i++)s->terrain[i]=reference->terrain[i]=(uint8_t)(light_random(&seed)*256);
+    for(int i=0;i<SU_CLOUD_BYTES;i++)s->clouds[i]=reference->clouds[i]=(uint8_t)(light_random(&seed)*256);
+    s->cloud_ready=reference->cloud_ready=1;
+    su_terrain_publish(s);su_terrain_publish(reference);
+    const float edges[]={-.5f,-.5f,.1f,255, 255.5f,127.5f,3,210, 127.5f,7.5f,16,255,
+                         127.5f,7.5f,3,210, 127.5f,7.5f,2,0, -18,4,16,255,
+                         FLT_MAX,-FLT_MAX,16,255, 4.5f,4.5f,FLT_MIN,255, 4.5f,4.5f,1,9};
+    compare_light_fields(reference,edges,0);
+    compare_light_fields(reference,edges,1);
+    CHECK(s->terrain[su_terrain_offset(0,0)]>>4==15);
+    compare_light_fields(reference,edges,(int)(sizeof(edges)/sizeof(edges[0])/4));
+    for(int trial=0;trial<48;trial++){
+        float sources[SU_LIGHTS*4];
+        int count=trial%3==0?SU_LIGHTS:trial%3==1?1:0;
+        for(int n=0;n<count;n++){
+            float *p=sources+4*n;
+            p[0]=light_random(&seed)*(SU_TERRAIN_WIDTH+32)-16;
+            p[1]=light_random(&seed)*(SU_TERRAIN_HEIGHT+32)-16;
+            p[2]=.1f+light_random(&seed)*15.9f;
+            p[3]=light_random(&seed)*255;
+        }
+        su_cloud_motion(s,trial/48.f,.25f);su_cloud_motion(reference,trial/48.f,.25f);
+        compare_light_fields(reference,sources,count);
+    }
+    /* Republish cliff geometry with an unchanged source list. */
+    compare_light_fields(reference,edges,1);
+    su_terrain_reset(s);su_terrain_reset(reference);
+    s->terrain[0]=reference->terrain[0]=su_pack(SU_OPACITY,0);
+    su_terrain_publish(s);su_terrain_publish(reference);
+    compare_light_fields(reference,edges,1);
+    CHECK(s->terrain[0]==255);
+    compare_light_fields(reference,edges,0);
+    CHECK(s->terrain[0]==15);
+    free(reference);
+}
+
+static double light_bake_time(void (*bake)(SuState *),int iterations){
+    struct timespec start,end;
+    assert(!clock_gettime(CLOCK_MONOTONIC,&start));
+    for(int i=0;i<iterations;i++){
+        s->light_dirty=1;
+        bake(s);
+    }
+    assert(!clock_gettime(CLOCK_MONOTONIC,&end));
+    return ((end.tv_sec-start.tv_sec)*1e6+(end.tv_nsec-start.tv_nsec)*1e-3)/iterations;
+}
+
+static void light_bake_benchmark(void){
+    float sources[SU_LIGHTS*4];
+    for(int n=0;n<SU_LIGHTS;n++){
+        sources[n*4]=4.25f+(n%6)*19;
+        sources[n*4+1]=7.75f+(n/6)*27;
+        sources[n*4+2]=n%2?2.7f:2.8f;
+        sources[n*4+3]=n%2?255:210;
+    }
+    const int counts[]={0,1,SU_LIGHTS},iterations=1000;
+    for(int i=0;i<3;i++){
+        int count=counts[i];
+        su_lights(s,sources,count);
+        double old=light_bake_time(legacy_bake_lights,iterations);
+        uint8_t expected[SU_TERRAIN_BYTES];memcpy(expected,s->terrain,sizeof(expected));
+        double bounded=light_bake_time(su_bake_lights,iterations);
+        assert(!memcmp(expected,s->terrain,sizeof(expected)));
+        printf("Forced bake, %2d sources (%d iterations): legacy %.3f us, bounded %.3f us\n",count,iterations,old,bounded);
+    }
+}
+
 static void post_shadow_checks(void){
     reset();SuCaster post={.profile=5,.x=4,.z=4};
     CHECK(su_sample(s,&post,4,4)==SU_OPACITY);
@@ -127,11 +234,13 @@ static void cloud_checks(void){
     su_begin(s,9,1,8);memset(s->shapes,255,sizeof(s->shapes));caster(32,4,rect,6,bounds);su_prepare(s,SU_PAGES);
     CHECK(pixel(4,4)==SU_OPACITY&&pixel(1,1)==0); // Indoor actors work; outdoor clouds/cliffs never leak in.
 }
-int main(void){
-    native_shadow_combiner_checks();
+int main(int argc,char **argv){
     s=aligned_alloc(32,su_storage_bytes());CHECK(s!=NULL);CHECK(su_storage_bytes()<512*1024);
+    if(argc==2&&!strcmp(argv[1],"--benchmark")){reset();light_bake_benchmark();free(s);return 0;}
+    native_shadow_combiner_checks();
     post_shadow_checks();
     light_checks();
+    light_equivalence_checks();
     CHECK(SU_PAGES*SU_BYTES*2+SU_TERRAIN_BYTES*2==384*1024);
     reset();caster(0,0,rect,6,bounds);su_prepare(s,SU_PAGES);CHECK(pixel(4,4)==SU_OPACITY);
     uint8_t original[SU_BYTES];int page=su_find(s,0,0);memcpy(original,s->pixels+page*SU_BYTES,SU_BYTES);
