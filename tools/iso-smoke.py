@@ -1873,9 +1873,12 @@ if '--season' in sys.argv:
 if '--dsp-hle' in sys.argv:
     config=user/'Config'/'Dolphin.ini'
     config.write_text(config.read_text().replace('DSPHLE = False','DSPHLE = True'))
+# Full hashing observes sparse live I4/IA4 edits; sampled hashes can retain
+# an old mask even after GX texture-cache invalidation.
 (user/'Config'/'GFX.ini').write_text('''[Settings]
 InternalResolution = 1
 MSAA = 1
+SafeTextureCacheColorSamples = 0
 EFBScale = 1
 DumpFrames = True
 DumpFormat = avi

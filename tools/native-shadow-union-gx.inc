@@ -21,8 +21,8 @@ static int town_paths_apply(const DndDrawMaterial *mat,int stage,unsigned *bindi
     GX_LoadTexMtxImm(uv,GX_TEXMTX7,GX_MTX2x4);GX_SetTexCoordGen(GX_TEXCOORD3,GX_TG_MTX2x4,GX_TG_TEX0,GX_TEXMTX7);
     GX_SetTexCoordScaleManually(GX_TEXCOORD3,GX_FALSE,1,1);GX_SetTexCoordBias(GX_TEXCOORD3,GX_FALSE,GX_FALSE);
     GX_SetTevDirect((u8)stage);GX_SetTevSwapMode((u8)stage,GX_TEV_SWAP0,GX_TEV_SWAP0);
-    /* Keep the receiver channel alive through every added pass. A NULL
-     * raster channel here makes the later mask/shadow RASA read zero on GX. */
+    /* Select the receiver channel consistently across added passes; the
+     * mask and following shadow stages consume its alpha. */
     GX_SetTevOrder((u8)stage,GX_TEXCOORD1,GX_TEXMAP1,GX_COLOR0A0);
     GX_SetTevColorIn((u8)stage,GX_CC_ZERO,GX_CC_ZERO,GX_CC_ZERO,GX_CC_TEXC);
     GX_SetTevColorOp((u8)stage,GX_TEV_ADD,GX_TB_ZERO,GX_CS_SCALE_1,GX_TRUE,GX_TEVREG1);town_alpha_pass(stage++);
