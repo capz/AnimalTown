@@ -83,5 +83,5 @@ is `tools/iso-smoke.py ISO OUTPUT --shop --dsp-hle --season summer`, using a
 disposable card from `--shop-fixture` and `tools/profile-card-fixture.py`.
 It exercises the actual native shop, purchases, cabinet, listing/price/removal,
 NPC shopping, camera and explicit save. `--shop-load` checks the saved result
-after reboot. L+R+Right inspects the shop entrance outdoors, then cycles its
+after reboot. L+R+C-stick down+A inspects the shop entrance outdoors, then cycles its
 interaction sockets indoors. Physical GameCube testing remains outstanding.

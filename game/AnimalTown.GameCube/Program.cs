@@ -473,8 +473,8 @@ internal sealed partial class TownGame : IDisposable
         if(AaStudy.Input(p,renderDebug,ref rimLighting))return;
         if(chord&&p.Z.IsHeld&&p.DPadDown.WasPressed){terrain.FreezeMotion=!terrain.FreezeMotion;return;}
         if(chord&&p.Z.IsHeld&&p.X.WasPressed){terrain.RecreateMeshes=!terrain.RecreateMeshes;return;}
+        if(chord&&p.A.WasPressed&&p.CStick.Y<-.8f&&screen=="world"){InspectShop();return;}
         if(chord&&p.A.WasPressed&&screen=="world"){InspectBuilding();return;}
-        if(chord&&p.DPadRight.WasPressed&&screen=="world"){InspectShop();return;}
         if(chord&&p.CStick.Y>.8f&&p.Z.WasPressed&&room==0){terrain.ToggleGroundRing();return;}
         if(chord&&p.B.WasPressed){RuntimeOptions.Cycle();return;}
         if(chord&&p.DPadUp.WasPressed&&room==0){cliffPreview=!cliffPreview;return;}

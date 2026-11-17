@@ -785,6 +785,7 @@ def committed_card_sequence(path, expected_day=None, details=False):
                                 plots=[dict(zip(('placed','x','z'),struct.unpack_from('<3i',files[names[1]],28+i*12))) for i in range(4)]
                                 profile_hashes=[__import__('hashlib').sha256(files[name][28:-4]).hexdigest() for name in names[3:]]
                                 best_details={'sequence':best,'dimensions':list(struct.unpack_from('<2I',town,28)),'active':active,'profiles':profiles,'profile_payload_sha256':profile_hashes,'plots':plots,'terrain_sha256':terrain_hash,'houses_sha256':__import__('hashlib').sha256(files[names[1]][28:-4]).hexdigest()}
+                                if runtime is not None:best_details['npc_spaces']=[struct.unpack_from('<i',runtime,128+i*28)[0] for i in range(6)]
                                 shop=files[names[2]]
                                 if len(shop)==708 and struct.unpack_from('<I',shop,84)[0]==154:
                                     best_details['shop']={'stock':list(struct.unpack_from('<12i',shop,36)), 'state':list(struct.unpack_from('<154i',shop,88))}
@@ -901,7 +902,7 @@ def town_shop():
     if not before or 'shop' not in before:raise AssertionError('Shop scenario requires the disposable --shop-fixture card')
     start_game(False,'shop')
     def inspect():
-        os.write(controller,b'PRESS L\nPRESS R\n');time.sleep(.2);press('D_RIGHT');os.write(controller,b'RELEASE L\nRELEASE R\n');time.sleep(1)
+        os.write(controller,b'SET C .5 0\nPRESS L\nPRESS R\n');time.sleep(.2);press('A');os.write(controller,b'RELEASE L\nRELEASE R\nSET C .5 .5\n');time.sleep(1)
         check_runtime_failure()
     def close_speech():press('B');press('B')
     inspect();screenshot('shop-exterior.png');press('A');time.sleep(8);check_runtime_failure();screenshot('shop-interior.png')
@@ -922,7 +923,7 @@ def town_shop():
     press('L');sequence=committed_card_sequence(root/'MemoryCardA.USA.raw');save_menu();after=wait_saved_after({'sequence':sequence})
     screenshot('shop-saved.png');press('B');check_runtime_failure()
     stock=after['shop']['stock'];state=after['shop']['state'];profile=after['profiles'][0]
-    if stock[0]!=0 or stock[1]!=0 or state[35]!=1:raise AssertionError('Player/NPC did not exhaust distinct physical displays')
+    if stock[0]!=0 or stock[1]!=0 or state[35]!=1 or after.get('npc_spaces',[24])[0]!=0:raise AssertionError('Player/NPC did not exhaust distinct physical displays and leave the shop')
     if state[2]!=0 or state[5]!=before['shop']['stock'][1]:raise AssertionError('Consignment purchase, removal or new listing failed')
     prices={10:1200,11:2400,12:1600,13:3000,25:1800}
     expected=20000-prices[before['shop']['stock'][1]]-800-1800
