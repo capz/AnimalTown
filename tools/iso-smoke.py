@@ -149,15 +149,10 @@ def onboarding_signature(pixels,stage):
                      for y in range(0,480,2) for x in range(28,612,2))
         header=region_color_count(pixels,(255,245,221),160,25,480,67)
         if stage=='home':return rendered>60000 and header>5000
-        # Gameplay's translucent green control strip and cream date/time
-        # panel are absent from the placement/review/loading screens.
-        controls=sum(35<=pixels[(y*800+x)*3]<=105
-                     and 60<=pixels[(y*800+x)*3+1]<=130
-                     and pixels[(y*800+x)*3+1]>pixels[(y*800+x)*3]+5
-                     and pixels[(y*800+x)*3+1]>pixels[(y*800+x)*3+2]+5
-                     for y in range(442,467) for x in range(65,415))
+        # The cream date/time panel distinguishes gameplay from placement,
+        # review and loading. Gameplay no longer has a bottom button legend.
         date=region_color_count(pixels,(255,245,221),60,378,180,427)
-        return rendered>60000 and header<5000 and controls>3000 and date>2500
+        return rendered>60000 and header<5000 and date>2500
     raise ValueError('Unknown onboarding stage: '+stage)
 
 def wait_onboarding(stage,name=None):
