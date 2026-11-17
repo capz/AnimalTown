@@ -478,29 +478,49 @@ def title_logo():
         (root/'title-logo-report.json').write_text(json.dumps(report,indent=2)+'\n')
 
 def terrain_mip_pixels(pixels):
-    """Classify diagnostic mip hues while allowing normal lighting/shadows."""
-    # GroundMipPalette's RGB565 levels, expanded to RGB8. A normal material
-    # and a frozen animation control are captured separately; these colours
-    # alone are never used as proof that the renderer applied a setting.
-    palette=((65,214,98),(255,230,65),(255,141,49),(238,72,90),
-             (172,101,238),(49,174,238),(238,238,238))
-    counts=[0]*len(palette)
+    """Fit adjacent mip colours through the actual daytime shadow shader."""
+    # GroundMipPalette's CMPR endpoints use RGB565 bit replication in GX.
+    words=(0x46AC,0xFF28,0xFC66,0xEA4B,0xAB3D,0x357D,0xEF7D)
+    palette=tuple(((((v>>11)&31)<<3)|(((v>>11)&31)>>2),
+                   (((v>>5)&63)<<2)|(((v>>5)&63)>>4),
+                   ((v&31)<<3)|((v&31)>>2)) for v in words)
+    # native-shadow-union-gx.inc blends toward S=(35,49,66), with at most
+    # 66/255 shadow alpha. Scaling colours about RGB zero is not invariant:
+    # a moving cloud changed the old Auto/reset mean despite identical bands.
+    # At the scenario's fixed noon, environment tint is white and lamps are off.
+    # Fit P-S = a*(C0-S) + b*(C1-C0), where 1-66/255 <= a <= 1,
+    # 0 <= b <= a and b/a is the trilinear fraction between adjacent levels.
+    shadow=(35,49,66);segments=[]
+    for first,second in zip(palette,palette[1:]):
+        a=tuple(c-s for c,s in zip(first,shadow));d=tuple(e-c for c,e in zip(first,second))
+        aa=sum(c*c for c in a);dd=sum(c*c for c in d);ad=sum(c*e for c,e in zip(a,d))
+        segments.append((a,d,aa,dd,ad,aa*dd-ad*ad))
+    counts=[0]*len(palette);level_sum=error_sum=0;cache={}
     for y in range(44,430,2):
         for x in range(40,602,2):
             # Exclude the diagnostic legend and the ordinary floating clock.
             if (x>=350 and y<132) or (x<212 and y>=340):continue
-            pixel=pixels[(y*800+x)*3:(y*800+x)*3+3];peak=max(pixel)
-            if peak<45:continue
-            best=-1;error=12.0
-            for level,color in enumerate(palette):
-                scale=peak/max(color)
-                if not .25<=scale<=1.06:continue
-                difference=max(abs(pixel[channel]-color[channel]*scale) for channel in range(3))
-                if difference<error:best=level;error=difference
-            if best>=0:counts[best]+=4
+            pixel=pixels[(y*800+x)*3:(y*800+x)*3+3]
+            if pixel not in cache:
+                q=tuple(c-s for c,s in zip(pixel,shadow));best=None;error=9.0
+                for level,(a,d,aa,dd,ad,det) in enumerate(segments):
+                    qa=sum(c*e for c,e in zip(q,a));qd=sum(c*e for c,e in zip(q,d))
+                    scale=(qa*dd-qd*ad)/det;blend=(qd*aa-qa*ad)/det
+                    # Small coefficient margins and a 3-RGB vector residual
+                    # accommodate GX's integer interpolation/rounding only.
+                    if not 1-66/255-.015<=scale<=1.015:continue
+                    fraction=blend/scale
+                    if not -.015<=fraction<=1.015:continue
+                    difference=sum((q[c]-scale*a[c]-blend*d[c])**2 for c in range(3))
+                    if difference<error:best=level+min(1,max(0,fraction));error=difference
+                cache[pixel]=(best,error)
+            level,error=cache[pixel]
+            if level is not None:
+                counts[int(level+.5)]+=4;level_sum+=level*4;error_sum+=error*4
     total=sum(counts)
+    # The histogram rounds to the nearest mip; the mean retains blends.
     return {'level_pixels':counts,'classified_pixels':total,
-            'mean_level':sum(level*count for level,count in enumerate(counts))/max(1,total)}
+            'mean_level':level_sum/max(1,total),'fit_rgb_rms':(error_sum/max(1,total))**.5}
 
 def water_material_pixels(first,second):
     """Measure moving crest colour/edges, with shoreline and HUD excluded."""
@@ -516,7 +536,9 @@ def water_material_pixels(first,second):
             if not all(wet(data,px,py) for data in (first,second) for px,py in neighbours):continue
             at=(y*800+x)*3;a=first[at:at+3];b=second[at:at+3]
             sa=max(1,sum(a));sb=max(1,sum(b));samples+=1
-            # Multiplicative moving cloud shadows preserve chromaticity.
+            # Default archived water has no cloud-shadow shader stages; the
+            # native probe below checks that actual 4..6-stage/2-texgen path.
+            # Compare crest colour and edges against the frozen UV control.
             if max(abs(a[c]/sa-b[c]/sb) for c in range(3))>.018:chroma+=1
             for dx,dy in ((3,0),(0,3)):
                 offset=((y+dy)*800+x+dx)*3
@@ -532,8 +554,14 @@ def terrain_materials():
     import re
     card=root/'MemoryCardA.USA.raw'
     report={'scenario':'terrain-materials','disc':disc.name,'passed':False,
-            'screenshots':[],'mip_states':{},'water':{},'physical_hardware':False}
+            'screenshots':[],'mip_states':{},'water':{},'visual_failures':[],
+            'physical_hardware':False}
     prefix='terrain-materials-'
+    def visual_assert(condition,message):
+        # Independent image failures must not hide later restoration/water
+        # evidence. Native state, menu navigation and runtime failures remain
+        # immediate errors; no visual failure can produce a passing report.
+        if not condition:report['visual_failures'].append(message)
     def alive():
         check_runtime_failure()
         if p.poll() is not None:raise AssertionError('Emulator stopped during terrain material capture')
@@ -573,16 +601,22 @@ def terrain_materials():
         return {'enabled':bool(enabled),'mipmaps':bool(mips),'distance':distance,
                 'width':values[3],'height':values[4],'levels':values[5]}
     def mip_frame(name,enabled,mips,distance,check=None):
-        deadline=time.monotonic()+90;failure='No matching applied ground-mip state'
+        deadline=time.monotonic()+90;failure='No matching applied ground-mip state';last=None
         while time.monotonic()<deadline:
             alive();state=applied(enabled,mips,distance)
             if state:
-                pixels=capture(name);metrics=terrain_mip_pixels(pixels)
+                pixels=capture(name)
+                if not onboarding_signature(pixels,'world'):
+                    failure='World frame not visible after ground-mip change';time.sleep(.5);continue
+                metrics=terrain_mip_pixels(pixels);last=metrics
+                report['mip_states'][name]={**state,**metrics}
                 try:
                     if check:check(metrics)
-                    report['mip_states'][name]={**state,**metrics};return metrics
+                    return metrics
                 except AssertionError as error:failure=str(error)
             time.sleep(.5)
+        if last is not None:
+            visual_assert(False,name+': '+failure);return last
         raise AssertionError(failure)
     def visible_bands(metrics):
         if metrics['classified_pixels']<6000 or sum(count>250 for count in metrics['level_pixels'])<2:
@@ -635,7 +669,7 @@ def terrain_materials():
         if not moving and any(start[key]!=end[key] for key in ('uv0','uv1')):
             raise AssertionError('Freezing landscape motion did not stop actual water UV matrices')
         metrics=water_material_pixels(first,second)
-        if metrics['interior_samples']<250:raise AssertionError('No sufficient water interior in '+name)
+        visual_assert(metrics['interior_samples']>=250,'No sufficient water interior in '+name)
         metrics.update(native_start=start,native_end=end,rendered_frames=end['frame']-start['frame'],
                        uv_translation_delta=uv_progress(start,end),motion_expected=moving)
         return metrics
@@ -655,11 +689,11 @@ def terrain_materials():
         for _ in range(9):press('D_RIGHT')
         ten_label=menu_frame('distance-ten',22);press('B');ten=mip_frame('mips-ten',1,1,10)
         if len({auto_label,one_label,ten_label})!=3:raise AssertionError('Distance control did not display Auto,1,10 distinctly')
-        if one['mean_level']<=ten['mean_level']+.1:raise AssertionError('Increasing mip distance did not retain a visibly finer sampled mip level')
+        visual_assert(one['mean_level']>ten['mean_level']+.1,'Increasing mip distance did not retain a visibly finer sampled mip level')
         menu(22,'distance-ten-return');press('X');reset_label=menu_frame('distance-reset',22)
         if reset_label!=auto_label:raise AssertionError('X did not restore the Auto distance label')
         press('B');reset=mip_frame('mips-reset',1,1,0,visible_bands)
-        if abs(reset['mean_level']-automatic['mean_level'])>.25:raise AssertionError('Auto reset did not restore the diagnostic mip distribution')
+        visual_assert(abs(reset['mean_level']-automatic['mean_level'])<=.25,'Auto reset did not restore the diagnostic mip distribution')
         menu(21,'mipmaps-on');press('A');menu_frame('mipmaps-off',21);press('B')
         mip_frame('mips-disabled',1,0,0,base_only)
         menu(21,'mipmaps-off-return');press('A');press('D_DOWN');press('D_DOWN')
@@ -679,19 +713,21 @@ def terrain_materials():
         chord('D_DOWN',freeze=True);time.sleep(2);resumed=water_pair('water-river-resumed',1)
         report['water']['river']={'animated':animated,'frozen_control':frozen,'resumed':resumed}
         for name,metrics in (('river animation',animated),('resumed river animation',resumed)):
-            if metrics['changed_chromaticity_samples']<max(35,frozen['changed_chromaticity_samples']*3) or metrics['crest_edge_sign_changes']<15:
-                raise AssertionError(name+' is not visibly stronger than the frozen water control')
+            visual_assert(metrics['changed_chromaticity_samples']>=max(35,frozen['changed_chromaticity_samples']*3)
+                          and metrics['crest_edge_sign_changes']>=15,
+                          name+' is not visibly stronger than the frozen water control')
         for _ in range(3):chord('D_LEFT')
         wait_onboarding('world',prefix+'coast-ready.png');time.sleep(3)
         coast=water_pair('water-coast',4);report['water']['coast']=coast
-        if coast['changed_chromaticity_samples']<35 or coast['crest_edge_sign_changes']<15:
-            raise AssertionError('Coastal water has no visibly moving crest pattern')
+        visual_assert(coast['changed_chromaticity_samples']>=35 and coast['crest_edge_sign_changes']>=15,
+                      'Coastal water has no visibly moving crest pattern')
         menu(23,'water-menu');press('B');capture('water-menu-return');press('B')
         alive();report['committed_town_after']=committed_card_sequence(card,details=True)
         report['card_unchanged']=card_digest()==before
         report['town_unchanged']=report['committed_town_after']==town_before
         if not report['card_unchanged'] or not report['town_unchanged']:
             raise AssertionError('Session-only rendering controls changed saved card data')
+        if report['visual_failures']:raise AssertionError('; '.join(report['visual_failures']))
         report['passed']=True
     except Exception as error:
         report['error']=str(error);raise
