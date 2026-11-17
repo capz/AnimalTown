@@ -63,6 +63,9 @@ released indoors, outside path demand, on town replacement and on disposal,
 after clearing borrowed material bindings. Async disc jobs return bytes only;
 stale generations are ignored. While a page is loading or unavailable, its ground
 keeps rendering and no busy retry loop runs.
+Ground mip-band previews preserve the same path coverage using the diagnostic
+dirt palette. Its page and borrowed bindings retire with the dirt source, so
+debugging cannot keep path textures resident after demand ends.
 
 Additional retained CPU storage is 15,872 payload bytes for counters/histogram,
 plus object/array headers. The existing selection costs 3,840 bytes. Visible
