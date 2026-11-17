@@ -3,6 +3,7 @@
 #include "animaltown_path_mask.h"
 #endif
 static int path_storage,path_revision;
+static uint32_t path_publication;
 static uint8_t *path_pixels;
 const uint8_t *animaltown_path_mask(void){return path_pixels;}
 int animaltown_paths_prepare(DndArray *packed,int enabled,int revision){
@@ -20,6 +21,11 @@ int animaltown_paths_prepare(DndArray *packed,int enabled,int revision){
     }
     if(fresh||path_revision!=revision){
         path_expand(path_pixels,(const uint8_t*)packed->data);path_revision=revision;
+        /* Dolphin's default sampled hash can miss changed sparse I4 texels.
+         * This sampled word is outside the 120 world rows. Advance even on a
+         * fresh allocation with the same revision/address; no second texture. */
+        uint32_t stamp=++path_publication;
+        memcpy(path_pixels+PATH_STAMP,&stamp,sizeof stamp);
         dnd_draw_backend_flush(path_pixels,PATH_BYTES,0);dnd_draw_backend_publish_texture();
     }
     return 1;
