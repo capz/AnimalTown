@@ -1,0 +1,45 @@
+name: Append evidence to the Depot bundle
+on:
+  workflow_call:
+    inputs:
+      tag:
+        required: true
+        type: string
+      artifact:
+        required: true
+        type: string
+      namespace:
+        required: true
+        type: string
+permissions:
+  contents: write
+jobs:
+  publish:
+    runs-on: ubuntu-24.04
+    # Only the short read/append/upload transaction holds the shared lock.
+    concurrency:
+      group: depot-evidence-${{ inputs.tag }}
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@v4
+        with:
+          name: ${{ inputs.artifact }}
+          path: out/evidence
+      - name: Extend the existing canonical ZIP
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ inputs.tag }}
+          NAMESPACE: ${{ inputs.namespace }}
+        run: |
+          set -euo pipefail
+          mkdir -p out/published
+          gh release download "$TAG" --repo "$GITHUB_REPOSITORY" --dir out/published --pattern 'AnimalTown-*-depot.zip'
+          bundles=(out/published/AnimalTown-*-depot.zip)
+          test "${#bundles[@]}" = 1
+          python3 tools/release-bundle.py extract "${bundles[0]}" out/original-reports --repository "$GITHUB_REPOSITORY" --tag "$TAG"
+          python3 tools/release-bundle.py attach "${bundles[0]}" out/evidence --namespace "$NAMESPACE"
+          gh release upload "$TAG" --repo "$GITHUB_REPOSITORY" "${bundles[0]}" --clobber
+          python3 tools/release-bundle.py extract "${bundles[0]}" out/verified-reports --repository "$GITHUB_REPOSITORY" --tag "$TAG"

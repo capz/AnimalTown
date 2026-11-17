@@ -41,6 +41,9 @@ jobs:
           ./tests/versioning.ps1
           ./tests/validation-plan.ps1
           ./tests/validation-selection.ps1
+          ./tests/release-publish.ps1
+      - name: Check release bundle and source archive policy
+        run: python3 tests/release-bundle.py
       - name: Resolve main version and actual source identity
         shell: pwsh
         env:

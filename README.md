@@ -21,9 +21,12 @@ physical device/launcher qualification and hosted Depot permission remain pendin
 See [the app profile and release gates](docs/depot-release.md).
 The NKit ISO remains the only disc image delivered. See [NKit images](docs/nkit-images.md) for
 size savings and the exact round-trip/payload verification gates. Releases also
-contain the separate .NET 10 server ZIP, `BUILD.txt` with engine/SDK revisions,
-`version.json`, `nkit-validation.json` and `SHA256SUMS.txt`. Development status
-and physical hardware validation are recorded in the release notes.
+contain separate .NET 10 server and compiled-tools ZIPs. All reports, checksums,
+banners, updater helpers and captures are inside `release/` in the Depot ZIP.
+Only ZIP and ISO files are uploaded. Source and authoring kits are excluded;
+GitHub's automatic source ZIP/tar.gz links contain only this README. Clone the
+repository for source. Development status and physical hardware validation are
+recorded in the release notes.
 
 To publish a locally verified build, use a clean checkout, run both build commands
 below, then run `./tools/publish-release.ps1` with an authenticated GitHub CLI.

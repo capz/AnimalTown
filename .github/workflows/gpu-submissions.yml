@@ -10,6 +10,8 @@ concurrency:
   cancel-in-progress: true
 jobs:
   compare:
+    outputs:
+      tag: ${{ steps.version.outputs.tag }}
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     env:
@@ -45,10 +47,11 @@ jobs:
           mkdir -p out/submit-base out/submit-candidate
           gh release download v0.11.10.9a4aad4ff05c --repo "$GITHUB_REPOSITORY" --dir out/submit-base --pattern 'AnimalTown-0.11.10.9a4aad4ff05c.iso' --pattern SHA256SUMS.txt --pattern version.json
           for attempt in $(seq 1 100); do
-            if [ "$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json isDraft --jq .isDraft 2>/dev/null)" = false ] && gh release download "$TAG" --repo "$GITHUB_REPOSITORY" --dir out/submit-candidate --clobber --pattern 'AnimalTown-*.nkit.iso' --pattern 'AnimalTown-server-*.zip' --pattern SHA256SUMS.txt --pattern version.json --pattern BUILD.txt; then break; fi
+            if [ "$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json isDraft --jq .isDraft 2>/dev/null)" = false ] && gh release download "$TAG" --repo "$GITHUB_REPOSITORY" --dir out/submit-candidate --clobber --pattern 'AnimalTown-*.nkit.iso' --pattern 'AnimalTown-server-*.zip' --pattern 'AnimalTown-*-depot.zip'; then break; fi
             test "$attempt" != 100
             sleep 15
           done
+          python3 tools/release-bundle.py extract out/submit-candidate/AnimalTown-*-depot.zip out/submit-candidate --repository "$GITHUB_REPOSITORY" --tag "$TAG"
           python3 - <<'PYTHON'
           import hashlib,json,os,zipfile
           from pathlib import Path
@@ -63,7 +66,7 @@ jobs:
                   with iso.open('rb') as f: header=f.read(0x214)
                   assert header[0x200:0x208]==b'NKIT v01' and int.from_bytes(header[0x210:0x214],'big')==1459978240
               for p in root.iterdir():
-                  if p.name=='SHA256SUMS.txt':continue
+                  if not p.is_file() or p.name=='SHA256SUMS.txt' or p.name.endswith('-depot.zip'):continue
                   expected=next(line.split()[0] for line in (root/'SHA256SUMS.txt').read_text().splitlines() if line.split()[-1].lstrip('*')==p.name)
                   digest=hashlib.sha256()
                   with p.open('rb') as f:
@@ -108,4 +111,18 @@ jobs:
           for p in Path('out/submit-fixture').glob('*.json'):shutil.copy2(p,root/('gpu-submit-'+p.name))
           (root/'gpu-submit-SHA256SUMS.txt').write_text('\n'.join(hashlib.sha256(p.read_bytes()).hexdigest()+'  '+p.name for p in sorted(root.iterdir()))+'\n')
           PYTHON
-          if [ -n "$TAG" ] && gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then gh release upload "$TAG" --repo "$GITHUB_REPOSITORY" out/submit-evidence/* --clobber; fi
+      - name: Keep evidence for bundle publication
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gpu-submit-evidence
+          path: out/submit-evidence/*
+          if-no-files-found: error
+  publish:
+    if: always() && !cancelled() && needs.compare.outputs.tag != ''
+    needs: compare
+    uses: ./.github/workflows/publish-evidence.yml
+    with:
+      tag: ${{ needs.compare.outputs.tag }}
+      artifact: gpu-submit-evidence
+      namespace: gpu-submit

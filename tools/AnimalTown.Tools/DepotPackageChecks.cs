@@ -1,5 +1,6 @@
 using System.Buffers.Binary;
 using System.IO.Compression;
+using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using AnimalTown;
@@ -60,6 +61,20 @@ internal static class DepotPackageChecks
             Mutated("apps/animaltown/other.dol");Mutated("apps/animaltown/wordmark.dndtex");Mutated("apps/animaltown/version.md",Encoding.ASCII.GetBytes("1.2.4"));
             Mutated("apps/animaltown/link",attributes:unchecked((int)0xa1ff0000));
             Mutated("apps/animaltown/opening.bnr",new byte[6496]);Mutated("apps/animaltown/depot-package.json",Encoding.ASCII.GetBytes("{}"));
+            string runtimeZip=zip;zip=Path.Combine(root,"with-reports.zip");File.Copy(runtimeZip,zip);
+            byte[] report=Encoding.UTF8.GetBytes("release build report");
+            var reportManifest=new{schema=1,commit,version,files=new Dictionary<string,string>{{"BUILD.txt",Convert.ToHexString(SHA256.HashData(report)).ToLowerInvariant()}}};
+            using(var archive=ZipFile.Open(zip,ZipArchiveMode.Update)){
+                using(var output=archive.CreateEntry("release/BUILD.txt").Open())output.Write(report);
+                using(var output=archive.CreateEntry("release/manifest.json").Open())output.Write(JsonSerializer.SerializeToUtf8Bytes(reportManifest));
+            }
+            DepotPackage.Verify(root,zip);Check(true,"release reports remain outside the installed runtime whitelist");
+            Mutated("release/BUILD.txt",Encoding.UTF8.GetBytes("corrupt report"));
+            Mutated("release/source.cs");Mutated("release/scenarios/performance/source.py");
+            Mutated("release/scenarios/performance/../bad.txt");Mutated("release/scenarios/performance/link.txt",attributes:unchecked((int)0xa1ff0000));
+            Mutated("release/manifest.json",JsonSerializer.SerializeToUtf8Bytes(new{schema=1,commit=new string('b',40),version,files=reportManifest.files}));
+            Mutated("release/manifest.json",new byte[1024*1024+1]);
+            zip=runtimeZip;
             string changedDol=Path.Combine(native,"Game.dol");dol[256]=1;File.WriteAllBytes(changedDol,dol);
             Reject(()=>DepotPackage.Verify(root,zip),"stale app build receipt rejects another executable");
             Console.WriteLine($"{checks} Depot package checks passed: clean extraction, strict paths/case, closed payload, source identity and corruption rejection");

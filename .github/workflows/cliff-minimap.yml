@@ -10,6 +10,8 @@ concurrency:
   cancel-in-progress: true
 jobs:
   dolphin:
+    outputs:
+      tag: ${{ steps.version.outputs.tag }}
     runs-on: ubuntu-24.04
     timeout-minutes: 35
     env:
@@ -37,10 +39,11 @@ jobs:
         run: |
           mkdir -p out/hud-release
           for attempt in $(seq 1 70); do
-            if [ "$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json isDraft --jq .isDraft 2>/dev/null)" = false ] && gh release download "$TAG" --repo "$GITHUB_REPOSITORY" --dir out/hud-release --clobber --pattern "AnimalTown-$VERSION.nkit.iso" --pattern version.json --pattern SHA256SUMS.txt; then break; fi
+            if [ "$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json isDraft --jq .isDraft 2>/dev/null)" = false ] && gh release download "$TAG" --repo "$GITHUB_REPOSITORY" --dir out/hud-release --clobber --pattern "AnimalTown-$VERSION.nkit.iso" --pattern "AnimalTown-$VERSION-depot.zip"; then break; fi
             test "$attempt" != 70
             sleep 15
           done
+          python3 tools/release-bundle.py extract out/hud-release/AnimalTown-*-depot.zip out/hud-release --repository "$GITHUB_REPOSITORY" --tag "$TAG"
           python3 - <<'PY'
           import os,json,hashlib
           from pathlib import Path
@@ -74,4 +77,18 @@ jobs:
           lines=[hashlib.sha256(p.read_bytes()).hexdigest()+'  '+p.name for p in sorted(root.iterdir())]
           (root/'cliff-hud-SHA256SUMS.txt').write_text('\n'.join(lines)+'\n')
           PY
-          if [ -n "$TAG" ] && gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then gh release upload "$TAG" --repo "$GITHUB_REPOSITORY" out/hud-evidence/* --clobber; fi
+      - name: Keep evidence for bundle publication
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cliff-hud-evidence
+          path: out/hud-evidence/*
+          if-no-files-found: error
+  publish:
+    if: always() && !cancelled() && needs.dolphin.outputs.tag != ''
+    needs: dolphin
+    uses: ./.github/workflows/publish-evidence.yml
+    with:
+      tag: ${{ needs.dolphin.outputs.tag }}
+      artifact: cliff-hud-evidence
+      namespace: cliff-hud
