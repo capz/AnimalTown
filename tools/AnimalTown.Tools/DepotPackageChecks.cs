@@ -49,6 +49,14 @@ internal static class DepotPackageChecks
                 Check(archive.Entries.Count(e=>e.FullName.EndsWith(".dol",StringComparison.OrdinalIgnoreCase))==1,"exactly one playable executable");
                 Check(!archive.Entries.Any(e=>e.FullName.Contains("updater",StringComparison.Ordinal)||e.FullName.Contains("sunshine",StringComparison.Ordinal)||e.FullName.EndsWith(".pem",StringComparison.Ordinal)),"credentials, updater and retired assets are excluded");
             }
+            // Fresh PowerShell processes can serialize hashtable properties in
+            // another order. Equal snapshots remain equal; new fields do not.
+            string versionFile=Path.Combine(root,"out/version.json");
+            File.WriteAllText(versionFile,JsonSerializer.Serialize(new{version,commit}));
+            DepotPackage.Verify(root,zip);Check(true,"version metadata object order does not change the source snapshot");
+            File.WriteAllText(versionFile,JsonSerializer.Serialize(new{commit,version,mainCommit="another snapshot"}));
+            Reject(()=>DepotPackage.Verify(root,zip),"version snapshot differences are still rejected");
+            File.WriteAllText(versionFile,JsonSerializer.Serialize(new{commit,version}));
             void Mutated(string entry,byte[]? bytes=null,int? attributes=null){
                 string changed=Path.Combine(root,"bad.zip");File.Copy(zip,changed,true);
                 using(var archive=ZipFile.Open(changed,ZipArchiveMode.Update)){

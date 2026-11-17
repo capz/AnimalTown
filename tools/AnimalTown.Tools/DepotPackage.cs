@@ -157,7 +157,7 @@ internal static class DepotPackage
             DiscVersionFile.Verify(File.ReadAllBytes(At(app,"version.md")),id.Version);
             if(!File.ReadAllBytes(At(app,"runtime.cfg")).SequenceEqual(new[]{(byte)id.RuntimeProfile}))throw new InvalidDataException("Depot runtime profile differs from build");
             if(ReadSmall(At(app,"BUILD.txt"),65536)!=File.ReadAllText(At(root,"out/disc/BUILD.txt")))throw new InvalidDataException("Depot BUILD.txt differs from console build");
-            if(ReadSmall(At(app,"version.json"),65536)!=File.ReadAllText(At(root,"out/version.json")))throw new InvalidDataException("Depot version metadata differs from release");
+            if(!System.Text.Json.Nodes.JsonNode.DeepEquals(System.Text.Json.Nodes.JsonNode.Parse(ReadSmall(At(app,"version.json"),65536)),System.Text.Json.Nodes.JsonNode.Parse(ReadSmall(At(root,"out/version.json"),65536))))throw new InvalidDataException("Depot version metadata differs from release");
             Console.WriteLine("Verified clean Depot extraction, closed payload, exact source/version, DOL, BNR1, save artwork and per-file SHA-256");
         }finally{Directory.Delete(stage,true);}
     }
