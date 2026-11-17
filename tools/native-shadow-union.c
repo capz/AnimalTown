@@ -10,6 +10,21 @@ extern void animaltown_shadows_model_reset(void);
 static int environment_rgb=0xffffff,light_strength;
 int animaltown_environment_color(void){return environment_rgb;}
 int animaltown_light_strength(void){return light_strength;}
+int animaltown_object_scope(void){return shadows?shadows->object_scope:0;}
+const float *animaltown_point_sources(int *count){*count=shadows?shadows->point_count:0;return shadows?shadows->points:NULL;}
+int animaltown_shadows_objects(int scope){
+    if(!shadows||scope<0||scope>2)return 0;
+    if(shadows->object_scope!=scope){shadows->object_scope=scope;dnd_draw_backend_invalidate_cache();animaltown_shadows_model_reset();}
+    return 1;
+}
+int animaltown_shadows_points(DndArray *sources,int count){
+    if(!shadows||dnd_device_active()||!sources||sources->element_size!=4||sources->elements_are_references||count<0||count>SU_LIGHTS||sources->length<(unsigned)count*5)return 0;
+    const float *p=(const float*)sources->data;
+    for(int i=0;i<count*5;i++)if(!isfinite(p[i]))return 0;
+    for(int i=0;i<count;i++)if(p[i*5+3]<=0||p[i*5+3]>32||p[i*5+4]<0||p[i*5+4]>255)return 0;
+    /* Camera curvature changes these positions, never shadow/ground texels. */
+    memcpy(shadows->points,p,(size_t)count*5*sizeof(float));shadows->point_count=count;return 1;
+}
 int animaltown_shadows_environment(int rgb){
     if(rgb<0||rgb>0xffffff)return 0;
     if(environment_rgb!=rgb){environment_rgb=rgb;dnd_draw_backend_invalidate_cache();animaltown_shadows_model_reset();}
