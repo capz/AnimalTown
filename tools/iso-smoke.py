@@ -935,12 +935,24 @@ def debug_visibility(require_record=False):
 def set_debug_visibility(visible):
     if debug_visibility()==visible:return
     for _ in range(3):press('Z')
-    deadline=time.monotonic()+45
+    deadline=time.monotonic()+45;pending=None
     while time.monotonic()<deadline:
         check_runtime_failure()
-        if debug_visibility(True)==visible:return
+        try:
+            saved=debug_visibility(True)
+        except AssertionError as error:
+            # The first save publishes the consolidated card file before its
+            # first DTR1 checkpoint. Only this expected in-flight state is
+            # retryable, and only after we requested a save. A later read must
+            # still verify the checkpoint and options checksum/value in full.
+            if str(error)!='No verified archive checkpoint':raise
+            pending=error
+        else:
+            pending=None
+            if saved==visible:return
         time.sleep(.5)
-    raise AssertionError('Triple Z did not persist debug-menu visibility')
+    raise AssertionError('Triple Z did not persist debug-menu visibility'
+                         +('; archive checkpoint remained unverified' if pending else '')) from pending
 
 def debug_visibility_scenario(reload=False):
     wait_title()

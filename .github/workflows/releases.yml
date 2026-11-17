@@ -106,6 +106,7 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=min
       - name: Build NKit ISO, standalone app and backend; run checks and package
+        id: packages
         env:
           ANIMALTOWN_BUILD_IMAGE: ghcr.io/capz/animaltown-build@${{ steps.image.outputs.digest }}
         run: |
@@ -174,6 +175,9 @@ jobs:
           if-no-files-found: warn
       - name: Select terrain-material capture
         id: terrain_materials
+        # Collect independent rendering evidence even if the title check failed.
+        # Both checks remain required: publishing still uses the success gate.
+        if: ${{ !cancelled() && steps.packages.outcome == 'success' }}
         run: |
           python3 - <<'PY'
           import json, os, re
@@ -185,7 +189,7 @@ jobs:
               output.write(f'needed={str(needed).lower()}\n')
           PY
       - name: Capture terrain mip bands and water animation in Dolphin
-        if: steps.terrain_materials.outputs.needed == 'true'
+        if: ${{ !cancelled() && steps.packages.outcome == 'success' && steps.terrain_materials.outputs.needed == 'true' }}
         timeout-minutes: 25
         env:
           BUILD_VERSION: ${{ steps.version.outputs.version }}
