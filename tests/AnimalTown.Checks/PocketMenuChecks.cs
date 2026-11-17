@@ -34,7 +34,7 @@ internal static class PocketMenuChecks
         Menu(25,0,PocketAction.Drop,PocketAction.Quit);
         Menu(25,1,PocketAction.Place,PocketAction.Quit);
         Menu(19,0,PocketAction.Drop,PocketAction.Read,PocketAction.Quit);
-        Menu(22,0,PocketAction.Drop,PocketAction.Bury,PocketAction.OpenMoneyBag,PocketAction.Quit);
+        Menu(Catalog.Acorns1000,0,PocketAction.OpenMoneyBag,PocketAction.Drop,PocketAction.Bury,PocketAction.Quit);
         foreach(int id in new[]{0,-1,Catalog.Items.Length})Menu(id,0,PocketAction.Quit);
         Menu(20,0,PocketAction.Drop,PocketAction.Quit); // Lost umbrella is a quest item.
         Menu(Catalog.LegacyWateringCan,0,PocketAction.Drop,PocketAction.Quit);
@@ -47,7 +47,7 @@ internal static class PocketMenuChecks
         check(!PocketMenu.Perform(actions,-1,PocketAction.Equip,0,0,0,0)&&!PocketMenu.Perform(actions,actions.Capacity,PocketAction.Equip,0,0,0,0),"invalid pocket slots are rejected");
 
         int[] entries=Enumerable.Range(0,Catalog.EntryCount).Select(Catalog.EntryAt).ToArray();
-        check(entries.SequenceEqual(Enumerable.Range(1,Catalog.Items.Length-1).Where(id=>id!=Catalog.LegacyWateringCan)),"catalog skips only the retired watering can without shifting item identities");
+        check(entries.SequenceEqual(Enumerable.Range(1,Catalog.Items.Length-1).Where(id=>id!=Catalog.LegacyWateringCan&&id!=22&&id!=23&&id!=24)),"catalog skips currency and the retired watering can without shifting item identities");
         check(Catalog.EntryAt(7)==Catalog.Axe&&Catalog.EntryAt(-1)==0&&Catalog.EntryAt(Catalog.EntryCount)==0,"catalog row lookup stays bounded across the retired ID gap");
         foreach(int spending in new[]{0,25000,100000}){
             var shop=new GameState(73);shop.Town.Spending=spending;shop.Rollover(100,100);
@@ -68,6 +68,7 @@ internal static class PocketMenuChecks
             check(restored.Sell(0)&&restored.Wallet==125,"legacy watering can remains sellable");
         }
         Clothing(check);
+        Money(check);
     }
     private static void Clothing(Action<bool,string> check)
     {
@@ -102,5 +103,58 @@ internal static class PocketMenuChecks
         long allocated=GC.GetAllocatedBytesForCurrentThread();int rows=0;
         for(int i=0;i<1000;i++){rows+=PocketMenu.Count(Catalog.WorkShirt,0);rows+=(int)PocketMenu.At(Catalog.WorkShirt,0,i%3);}
         check(GC.GetAllocatedBytesForCurrentThread()==allocated&&rows>0,"clothing menu queries allocate no per-frame lists");
+    }
+    private static void Money(Action<bool,string> check)
+    {
+        int[] bags={Catalog.Acorns1000,Catalog.Acorns10000,Catalog.LegacyAcorns50000};
+        int[] values={1000,10000,50000};
+        check(Enumerable.Range(1,Catalog.Items.Length-1).Where(id=>Catalog.Has(id,ItemFlags.Money)).SequenceEqual(bags),"only money items expose wallet actions");
+        foreach(int id in new[]{0,-1,Catalog.Items.Length,Catalog.WorkShirt,Catalog.Shovel})check(Catalog.MoneyValue(id)==0,"non-money items have no redeemable value");
+        for(int i=0;i<bags.Length;i++)foreach(int room in new[]{0,1}){
+            int id=bags[i],value=values[i];
+            PocketAction[] expected=room!=0?new[]{PocketAction.OpenMoneyBag,PocketAction.Quit}:id==Catalog.LegacyAcorns50000?
+                new[]{PocketAction.OpenMoneyBag,PocketAction.Drop,PocketAction.Quit}:new[]{PocketAction.OpenMoneyBag,PocketAction.Drop,PocketAction.Bury,PocketAction.Quit};
+            check(Enumerable.Range(0,PocketMenu.Count(id,room)).Select(row=>PocketMenu.At(id,room,row)).SequenceEqual(expected),"money menus offer only supported actions in the current room");
+            check(PocketMenu.Label(PocketMenu.At(id,room,0))=="Put in wallet"&&Catalog.MoneyValue(id)==value,"money opens on its wallet action and retains its exact denomination");
+            var s=new GameState(73){BackpackTier=2,Tool=Catalog.Shovel,Shirt=Catalog.WorkShirt,Wallet=GameState.WalletLimit-value};
+            Array.Fill(s.Pockets,1);int slot=s.Capacity-1;s.Pockets[0]=id;s.Pockets[slot]=id;
+            check(PocketMenu.Perform(s,slot,PocketMenu.At(id,room,0),30,40,0,room)&&s.Wallet==GameState.WalletLimit&&s.Pockets[slot]==0&&s.Pockets[0]==id&&s.Tool==Catalog.Shovel&&s.Shirt==Catalog.WorkShirt,"full-pocket redemption credits exactly one bag, allows an exact wallet fill and preserves equipment");
+            check(!PocketMenu.Perform(s,slot,PocketAction.OpenMoneyBag,30,40,0,room)&&s.Wallet==GameState.WalletLimit,"a consumed money bag cannot credit twice");
+            s.Pockets[slot]=id;s.Wallet=GameState.WalletLimit-value+1;
+            byte[] before=SaveCodec.Encode(s);
+            check(!PocketMenu.Perform(s,slot,PocketAction.OpenMoneyBag,30,40,0,room)&&before.SequenceEqual(SaveCodec.Encode(s)),"one-acorn overflow rejects the complete bag without losing money or items");
+            foreach(var forbidden in new[]{PocketAction.Equip,PocketAction.Wear,PocketAction.Place,PocketAction.Plant,PocketAction.Eat,PocketAction.Read})
+                check(!PocketMenu.Perform(s,slot,forbidden,30,40,0,room),"money rejects unrelated action "+forbidden);
+            if(room!=0)check(!PocketMenu.Perform(s,slot,PocketAction.Drop,30,40,0,room)&&!PocketMenu.Perform(s,slot,PocketAction.Bury,30,40,0,room),"indoor money cannot leak to outdoor ground records");
+            check(before.SequenceEqual(SaveCodec.Encode(s)),"rejected currency actions are atomic");
+            s.Owned[id]=1;s.Town.StockCount=6;s.Town.Stock[0]=id;
+            before=SaveCodec.Encode(s);
+            check(Catalog.Items[id].Buy==0&&Catalog.Items[id].Sell==0&&!s.Buy(0)&&!s.Order(id)&&!s.Sell(slot)&&before.SequenceEqual(SaveCodec.Encode(s)),"currency cannot be purchased, catalog-ordered or sold even with old owned/stock data");
+            foreach(var restored in new[]{SaveCodec.Decode(before),SplitSaveCodec.Decode(SplitSaveCodec.Encode(s)),SplitSaveCodec.Decode(SplitSaveCodec.EncodeLegacy(s))}){
+                check(restored.Wallet==s.Wallet&&restored.Pockets.SequenceEqual(s.Pockets),"currency bags and wallet survive single and split/profile save formats");
+                restored.Wallet=0;
+                check(PocketMenu.Perform(restored,slot,PocketAction.OpenMoneyBag,0,0,0,room)&&restored.Wallet==value,"loaded bags redeem their full original value, including legacy 50000");
+            }
+            var ground=new GameState(73){Wallet=17};ground.Town.GroundCount=0;ground.Town.SetTerrain(30,40,Terrain.Grass);ground.Pockets[0]=id;
+            check(PocketMenu.Perform(ground,0,PocketAction.Drop,30,40,0,0)&&ground.Wallet==17&&ground.Pickup(30,40)&&ground.Find(id)>=0&&ground.Wallet==17,"dropping and picking up a bag preserves its value independently of the wallet");
+            ground.Pockets[0]=id;ground.Town.SetTerrain(31,40,Terrain.Grass);
+            bool bury=PocketMenu.Perform(ground,0,PocketAction.Bury,31,40,0,0);
+            check(id==Catalog.LegacyAcorns50000?!bury&&ground.Pockets[0]==id:bury&&ground.Pockets[0]==0&&ground.Town.Ground[ground.Town.GroundCount-1].Item==id&&ground.Town.Ground[ground.Town.GroundCount-1].Kind==1,"only supported GameCube bags can create new buried money");
+        }
+        check(Catalog.EntryAt(Catalog.EntryCount-1)==25&&Catalog.EntryAt(Catalog.EntryCount)==0,"catalog indices remain correct after all currency rows are removed");
+        var profiles=new GameState(73){Wallet=17};profiles.Pockets[0]=Catalog.Acorns1000;
+        check(PocketMenu.Perform(profiles,0,PocketAction.OpenMoneyBag,0,0,0,0)&&profiles.Wallet==1017,"first villager redeems their own bag");
+        profiles.SelectProfile(1);profiles.Wallet=23;profiles.Pockets[0]=Catalog.Acorns10000;profiles.SelectProfile(0);
+        var saved=SplitSaveCodec.Decode(SplitSaveCodec.Encode(profiles));
+        check(saved.Wallet==1017&&saved.Pockets[0]==0,"first villager's wallet and consumed bag persist");saved.SelectProfile(1);
+        check(saved.Wallet==23&&saved.Pockets[0]==Catalog.Acorns10000,"wallets and money bags remain independent between villagers");
+        var legacy=new GameState(73);legacy.Town.GroundCount=0;
+        check(legacy.Town.AddGround(Catalog.LegacyAcorns50000,30,40,1,0),"construct an older save with a buried 50000 bag");
+        foreach(var restored in new[]{SaveCodec.Decode(SaveCodec.Encode(legacy)),SplitSaveCodec.Decode(SplitSaveCodec.Encode(legacy)),SplitSaveCodec.Decode(SplitSaveCodec.EncodeLegacy(legacy))}){
+            int index=restored.Town.FindGround(30,40,1);
+            check(index>=0&&restored.Town.Ground[index].Item==Catalog.LegacyAcorns50000,"old buried 50000 bags remain readable after new burial is retired");
+            int item=restored.Town.Ground[index].Item;
+            check(restored.Receive(item)&&restored.Use(restored.Find(item),6,0,0)&&restored.Wallet==50000,"recovered legacy money retains all 50000 acorns");
+        }
     }
 }

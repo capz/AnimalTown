@@ -528,7 +528,8 @@ internal sealed class TownGame : IDisposable
                 bool ok=PocketMenu.Perform(state,slot,action,tx,tz,rotation,room);
                 if(ok&&action==PocketAction.Wear&&state.Tutorial==0&&state.Shirt==Catalog.WorkShirt)state.CreditTutorial(0);
                 if(ok&&action==PocketAction.Plant&&state.Tutorial==1)state.CreditTutorial(1);
-                Say("Backpack",ok?"Done!":"That action is not possible here.");
+                if(action==PocketAction.OpenMoneyBag){int amount=Catalog.MoneyValue(item);Say("Wallet",ok?amount+" acorns added. Wallet: "+state.Wallet+" / "+GameState.WalletLimit+".":"No room for "+amount+" acorns. Wallet limit: "+GameState.WalletLimit+".");}
+                else Say("Backpack",ok?"Done!":"That action is not possible here.");
             }
             return;
         }
@@ -538,7 +539,7 @@ internal sealed class TownGame : IDisposable
             if(down)selected=(selected+5)%state.Capacity;if(up)selected=(selected+state.Capacity-5)%state.Capacity;
             if(right)selected=(selected+1)%state.Capacity;if(left)selected=(selected+state.Capacity-1)%state.Capacity;
             if(screen=="menu"&&p.R.WasPressed){menuTab=1;selected=0;return;}if(screen=="menu"&&p.L.WasPressed){menuTab=tabs.Length-1;selected=0;return;}
-            if(Press(p)&&state.Pockets[selected]!=0){if(screen=="sell")Say("Hearth",state.Sell(selected)?"Thank you! Acorns added to your wallet.":"I cannot buy that, or your wallet is full.");else{slot=selected;screen="item";selected=0;}}return;
+            if(Press(p)&&state.Pockets[selected]!=0){if(screen=="sell"){if(Catalog.Has(state.Pockets[selected],ItemFlags.Sell))Say("Hearth",state.Sell(selected)?"Thank you! Acorns added to your wallet.":"Your wallet is full.");}else{slot=selected;screen="item";selected=0;}}return;
         }
         int count=screen=="shop"?state.Town.StockCount:screen=="post"?7:screen=="store"?8:screen=="mail"?Math.Max(1,state.MailCount):screen=="lost"?Math.Max(1,LostCount()):TabCount();
         if(down)selected=(selected+1)%count;if(up)selected=(selected+count-1)%count;
@@ -1155,7 +1156,9 @@ internal sealed class TownGame : IDisposable
             if(id!=0)itemIcons.Draw(ui,new RectF(id%8*64,id/8*64,64,64),new RectF(x+5,y+1,38,38),Color32.White);
             else Rounded(x+21,y+17,6,6,3,new Color32(188,195,166));
         }
-        Text("Stick / D-pad choose   A actions   L/R tabs",90,77+height-26,ink,.85f);
+        bool sellable=Catalog.Has(state.Pockets[focus],ItemFlags.Sell);
+        Text(screen=="sell"?(sellable?"Stick / D-pad choose   A sell   B back":"Stick / D-pad choose   B back"):"Stick / D-pad choose   A actions   L/R tabs",90,77+height-26,ink,.85f);
+        Text("Wallet: "+state.Wallet+" / "+GameState.WalletLimit,436,281,ink,.95f);
         if(state.BackpackTier<2){Text("Next pack: "+(state.Capacity+10)+" slots",436,325,ink,1);Text("Hearth's store",436,349,ink,1);}
         // Follow the actual slot for both the title and action menu. Clamp the
         // panel (including bulges/shadow) above the HUD for all backpack sizes.
@@ -1180,8 +1183,9 @@ internal sealed class TownGame : IDisposable
         else if(item==0)Text("Room for\nsomething new.",textX,popY+67,ink,1.1f);
         else
         {
-            Text(screen=="sell"?"Sell: "+Catalog.Items[item].Sell+" acorns":"One item",textX,popY+69,ink,1.05f);
-            Strong(screen=="sell"?"A  Sell item":"A  Item actions",textX,popY+101,ink,1.05f);
+            int money=Catalog.MoneyValue(item);
+            Text(screen=="sell"?(sellable?"Sell: "+Catalog.Items[item].Sell+" acorns":"Not for sale"):money>0?"Value: "+money+" acorns":"One item",textX,popY+69,ink,1.05f);
+            Strong(screen=="sell"?(sellable?"A  Sell item":"B  Back"):"A  Item actions",textX,popY+101,ink,1.05f);
         }
     }
     private void DrawMinimap()
