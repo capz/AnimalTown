@@ -14,8 +14,10 @@ internal static class AaStudy
     private static int[]? rows;
     private static readonly string[] names={"480-rim100","480-rim0","480-rim50","480-aa-rim0","480-aa-rim100","240-rim100","240-aa-rim100"};
     internal static bool Active=>profile>=0;
+    internal static void Reset(){profile=-1;recording=false;count=0;}
     internal static bool Input(ControllerState pad,RenderDebugOptions options,ref bool rim)
     {
+        if(VideoOptions.FullResolutionAa)return false;
         if(!pad.L.IsHeld||!pad.R.IsHeld)return false;
         int direction=pad.DPadRight.WasPressed?1:Active&&pad.DPadLeft.WasPressed?-1:0;
         if(direction==0)return false;

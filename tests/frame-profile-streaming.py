@@ -71,3 +71,28 @@ assert extra['gc_collections']==120 and extra['free_block_searches']==240
 assert extra['texture_operations']==0 and extra['shadow_page_updates']==360
 assert extra['mesh_updates']['p50']==3 and extra['generation_ms']['p50']==.2
 print('Frame telemetry: normal travel, bounded repairs, loading interruption and missing-terrain rejection passed')
+
+# The smoke reader must follow the consolidated SDK archive, including fallback
+# from an interrupted/corrupt newest checkpoint, rather than read freed sectors.
+import struct
+module=ast.parse(Path('tools/iso-smoke.py').read_text())
+namespace={}
+exec(compile(ast.Module(body=[n for n in module.body if isinstance(n,ast.FunctionDef) and n.name=='archive_records'],type_ignores=[]),'<archive reader>','exec'),namespace)
+def fnv(data):
+    value=2166136261
+    for byte in data:value=((value^byte)*16777619)&0xffffffff
+    return value
+image=bytearray(6*8192)
+for bank,value in enumerate((b'old',b'new')):
+    page=bank+2;image[page*8192:page*8192+len(value)]=value
+    root=bytearray(8192);struct.pack_into('<4I',root,0,0x31525444,1,bank+1,6)
+    root[32:39]=b'options';struct.pack_into('<4I',root,64,page,0,len(value),fnv(value))
+    struct.pack_into('<I',root,8188,fnv(root[:-4]));image[bank*8192:(bank+1)*8192]=root
+assert namespace['archive_records'](image)=={'options':b'new'}
+image[3*8192]^=1
+assert namespace['archive_records'](image)=={'options':b'old'}
+image[8188]^=1
+try:namespace['archive_records'](image)
+except AssertionError:pass
+else:raise AssertionError('Unverified archive was accepted')
+print('Card smoke reader: named records, newest checkpoint, CRC fallback and rejection passed')

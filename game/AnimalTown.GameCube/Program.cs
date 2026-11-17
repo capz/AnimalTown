@@ -21,7 +21,7 @@ internal static class Program
         RuntimeOptions.Load();
         var config=DevConfigStorage.Load();
         DevConfigStorage.ApplyGlobal(config);
-        var options=UserOptionsStorage.Load();VideoOptions.Load(options);
+        var options=UserOptionsStorage.Load();VideoOptions.Load(options,config);
         StartupSplash.Run();
         while(true){
             if(!TitleScreen.Run(config,options))return 0;
@@ -72,7 +72,7 @@ internal static class Program
     }
 }
 
-internal sealed class TownGame : IDisposable
+internal sealed class TownGame : IDisposable,Hypercube.GameCube.IFrameScene
 {
     private GameState state;
     private readonly TownSession session;
@@ -163,9 +163,9 @@ internal sealed class TownGame : IDisposable
     private bool cliffPreview;
     private int waterInspection;
     private int buildingInspection;
-    private const int SettingsTab=5,TestingTab=6,TestingRows=31;
+    private const int SettingsTab=5,TestingTab=6,TestingRows=32;
     // Stable option IDs: shadow slots 7/8 retired; terrain retention stays last.
-    private static readonly int[] testingOptions={0,1,2,3,4,5,6,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,31,32,30};
+    private static readonly int[] testingOptions={0,33,1,2,3,4,5,6,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,31,32,30};
     private static int TestingOption(int row)=>testingOptions[row];
     private static readonly string[] tabs={"Backpack","Jobs","Catalog","Home","Post office","Settings","Debug / testing"};
     internal TownGame(DevConfig config,TownSession session)
@@ -631,6 +631,12 @@ internal sealed class TownGame : IDisposable
     {
         clockHud.Trim();uiShapes.Trim();
         switch(TestingOption(selected)){
+            case 33:
+                if(!VideoOptions.ToggleFullResolutionAa(debugConfig)){Say("Full-resolution AA",VideoOptions.Status);break;}
+                card?.Dispose();card=null;
+                VideoOptions.AaSaveFailed=!DevConfigStorage.Save(debugConfig);
+                if(VideoOptions.AaSaveFailed)Say("Dev config",DevConfigStorage.Status);
+                break;
             case 31:godMode=!godMode;break;
             case 32:
                 int added=state.GiveMoney(10000,godMode);
@@ -638,7 +644,7 @@ internal sealed class TownGame : IDisposable
             case 0:FrameProfile.Enabled=!FrameProfile.Enabled;break;
             case 1:ToggleModelPath();break;
             case 2:case 3:
-                int next=uvDebug^(selected==2?1:2);
+                int next=uvDebug^(TestingOption(selected)==2?1:2);
                 if(modelResidency.AllReady)ApplyUv(next);else requestedUv=next;
                 break;
             case 4:ToggleBatching();break;
@@ -690,6 +696,7 @@ internal sealed class TownGame : IDisposable
         switch(TestingOption(row)){
             case 31:return "God mode: "+OnOff(godMode)+" (session)";
             case 32:return godMode?"Give 10,000 acorns":"Give 10,000 acorns (God mode required)";
+            case 33:return "Full-resolution AA: "+OnOff(VideoOptions.FullResolutionAa)+(VideoOptions.AaSaveFailed?" (not saved)":" (saved)");
             case 0:return "Performance display: "+OnOff(FrameProfile.Enabled);
             case 1:return "Model drawing: "+(indexedModels?"GX indexed":"Direct comparison");
             case 2:return "UV island colors: "+OnOff((uvDebug&1)!=0);
@@ -926,7 +933,14 @@ internal sealed class TownGame : IDisposable
         UpdateAnimationFrame();
         if(renderDebug.ForceAttention&&villagers.Doors.PlayerFade<1)attention.Prepare();
         phase=FrameProfile.Start();if(!playerRunning&&(screen=="world"||screen=="plot"))clockHud.Prepare(townClock);uiShapes.Prepare(screen,screen=="menu"?menuTab:-1,batchedDrawing);if((batchedDrawing&&screen=="map")||(runningMinimap.Visible&&screen=="world"&&room==0))mapBackground.Prepare(state.Town);modelUsed=0;FrameProfile.End(8,phase);
-        phase=FrameProfile.Start();UiNoise.Prepare();device.BeginFrame(room==0?TownLights.Tint(weather.Raining(room)?new Color32(112,143,151):new Color32(149,198,186),environmentTint):new Color32(32,40,39));
+        UiNoise.Prepare();preparedSubmitMicroseconds=0;preparedEnvironmentTint=environmentTint;preparedLampStrength=lampStrength;
+        phase=FrameProfile.Start();Hypercube.GameCube.FrameRenderer.Draw(device,room==0?TownLights.Tint(weather.Raining(room)?new Color32(112,143,151):new Color32(149,198,186),environmentTint):new Color32(32,40,39),this);FrameProfile.End(9,phase+preparedSubmitMicroseconds);
+    }
+    private int preparedEnvironmentTint,preparedLampStrength;private long preparedSubmitMicroseconds;
+    public void SubmitFramePart()
+    {
+        int environmentTint=preparedEnvironmentTint,lampStrength=preparedLampStrength;
+        modelUsed=0;long submitAt=FrameProfile.Start(),phase=submitAt;
         NativeShadows.Environment(environmentTint);
         float eyeHeight=PlayerHeight();
         if(room==0)camera.LookAt(new Vector3(state.X,CylinderWorld.CameraHeight+eyeHeight,state.Z+CylinderWorld.CameraBack),new Vector3(state.X,eyeHeight,state.Z-CylinderWorld.CameraAimAhead),new Vector3(0,1,0));
@@ -1003,7 +1017,8 @@ internal sealed class TownGame : IDisposable
         renderer.End3D();NativeShadows.Environment(0xffffff);ui.Begin();submissionAt=FrameProfile.SubmissionStart();DrawHud();if(FrameProfile.Enabled)ui.Flush();FrameProfile.SubmissionEnd(5,submissionAt);FrameProfile.End(8,phase);FrameProfile.Draw(ui);
         float fade=villagers.Doors.PlayerFade;if(fade>0)ui.FillRectangle(new RectF(0,0,640,480),new Color32(12,19,25,(byte)(fade*255)));
         phase=FrameProfile.Start();submissionAt=FrameProfile.SubmissionStart();ui.End();FrameProfile.SubmissionEnd(6,submissionAt);FrameProfile.End(8,phase);
-        phase=FrameProfile.Start();device.EndFrame();FrameProfile.End(9,phase);
+        if(FrameProfile.Enabled)preparedSubmitMicroseconds+=Clock.Timestamp-submitAt;
+
     }
     internal void RecordFrame()
     {
@@ -1175,12 +1190,12 @@ internal sealed class TownGame : IDisposable
         int total=screen=="menu"?TabCount():screen=="shop"?state.Town.StockCount:screen=="mail"?Math.Max(1,state.MailCount):screen=="lost"?Math.Max(1,LostCount()):screen=="store"?8:7;
         bool compact=screen=="menu"&&(menuTab==SettingsTab||menuTab==TestingTab);int page=compact?9:8,step=compact?24:29;float rowScale=compact?1.2f:1.4f;int first=selected/page*page;
         for(int i=first;i<Math.Min(total,first+page);i++){float y=131+(i-first)*step;if(i==selected){Rounded(57,y,520,step-2,(step-2)*.5f,new Color32(221,231,188));Strong("> "+RowLabel(i),68,y,ink,rowScale);}else Text("  "+RowLabel(i),68,y,ink,rowScale);}
-        Text(screen=="menu"&&menuTab==TestingTab&&(TestingOption(selected)==25||TestingOption(selected)==26||TestingOption(selected)==29)?"Left/Right: adjust   A: increase   X: reset":screen=="menu"&&menuTab==TestingTab&&TestingOption(selected)==20?"Left/Right: 5%   A: +5%   X: reset":screen=="menu"&&menuTab==TestingTab&&TestingOption(selected)==23?"Left/Right: 1 square   A: +1   X: Auto":screen=="menu"&&menuTab==TestingTab&&TestingOption(selected)==24?"A / Left/Right: switch   X: Wind Waker":"Stick / D-pad choose   L/R tabs   A select   B close",65,392,ink,1);
+        Text(screen=="menu"&&menuTab==TestingTab&&(TestingOption(selected)==25||TestingOption(selected)==26||TestingOption(selected)==29)?"Left/Right: adjust   A: increase   X: reset":screen=="menu"&&menuTab==TestingTab&&TestingOption(selected)==20?"Left/Right: 5%   A: +5%   X: reset":screen=="menu"&&menuTab==TestingTab&&TestingOption(selected)==23?"Left/Right: 1 square   A: +1   X: Auto":screen=="menu"&&menuTab==TestingTab&&TestingOption(selected)==24?"A / Left/Right: switch   X: Wind Waker":screen=="menu"&&menuTab==TestingTab&&TestingOption(selected)==33?"A: toggle and save   B: close":"Stick / D-pad choose   L/R tabs   A select   B close",65,392,ink,1);
         if(screen=="menu"&&menuTab==SettingsTab){
             Text("Manual saves only. Choose Save now to write the card.",65,331,ink,1);
             Text(saveStatusText.Get(saveStatus),65,357,ink,1);
         }
-        if(screen=="menu"&&menuTab==TestingTab)Text("Session options "+(first+1)+"-"+Math.Min(total,first+page)+" / "+total,65,357,ink,1);
+        if(screen=="menu"&&menuTab==TestingTab)Text("Debug options "+(first+1)+"-"+Math.Min(total,first+page)+" / "+total,65,357,ink,1);
     }
     private string RowLabel(int i)
     {

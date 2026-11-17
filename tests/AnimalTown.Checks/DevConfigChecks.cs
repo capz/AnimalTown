@@ -3,6 +3,14 @@ internal static class DevConfigChecks
 {
     internal static void Run(Action<bool,string> check)
     {
+        check(new DevConfig().Values[DevConfig.FullResolutionAaIndex]==0,"full-resolution AA defaults off");
+        var oldV3=new DevConfig();oldV3.Values[DevConfig.FullResolutionAaIndex]=0;
+        byte[] v3=oldV3.Encode();v3[3]=3;uint checksum=2166136261;
+        for(int i=0;i<36;i++)checksum=unchecked((checksum^v3[i])*16777619);
+        for(int i=0;i<4;i++)v3[36+i]=(byte)(checksum>>(i*8));
+        check(DevConfig.Decode(v3).Values[DevConfig.FullResolutionAaIndex]==0,"version-three settings migrate with AA off");
+        var on=new DevConfig();on.Values[DevConfig.FullResolutionAaIndex]=1;
+        check(DevConfig.Decode(on.Encode()).Values[DevConfig.FullResolutionAaIndex]==1,"AA preference survives restart without changing the record size");
         var defaults=new DevConfig(7);check(defaults.RuntimeMode==7,"dev defaults preserve disc runtime profile");
         check(defaults.Values[DevConfig.DiscardTerrainCacheWhenIndoorsIndex]==0,"indoor terrain cache discard is opt-in");
         // A record written before the terrain option existed. Keep accepting
@@ -15,7 +23,7 @@ internal static class DevConfigChecks
         check(previous.Values[DevConfig.DiscardTerrainCacheWhenIndoorsIndex]==0,"version-two files leave the new terrain option off");
         for(int row=0;row<DevConfig.Count;row++)if(DevConfig.IsSetting(row))defaults.Adjust(row,1);
         var encoded=defaults.Encode();var restored=DevConfig.Decode(encoded);
-        check(encoded[3]==3&&restored.Values[DevConfig.DiscardTerrainCacheWhenIndoorsIndex]==1,"new terrain toggle persists in version-three dev config");
+        check(encoded[3]==4&&restored.Values[DevConfig.DiscardTerrainCacheWhenIndoorsIndex]==1,"new terrain toggle persists in version-four dev config");
         check(defaults.Values.SequenceEqual(restored.Values),"all dev options survive their own save record");
         check(!SplitSaveCodec.IsFile("dev_config"),"dev config cannot be counted as a damaged town save");
         check(!DevConfig.IsSetting(14)&&!DevConfig.IsSetting(15),"teleport actions are not startup configuration");
@@ -33,7 +41,7 @@ internal static class DevConfigChecks
         check(noise.TreeNoiseStrengthPercent==0&&noise.TreeNoiseScalePercent==400,"tree strength and scale clamp rather than wrapping");
         for(int i=0;i<100;i++){noise.Adjust(DevConfig.TreeNoiseStrength,1);noise.Adjust(DevConfig.TreeNoiseScale,-1);}
         check(noise.TreeNoiseStrengthPercent==300&&noise.TreeNoiseScalePercent==25,"tree sliders cover their full supported ranges");
-        var savedNoise=noise.Encode();check(savedNoise.Length==40&&savedNoise[3]==3,"extended debug settings have a versioned checksummed 40-byte record");
+        var savedNoise=noise.Encode();check(savedNoise.Length==40&&savedNoise[3]==4,"extended debug settings have a versioned checksummed 40-byte record");
         var loadedNoise=DevConfig.Decode(savedNoise);check(loadedNoise.TreeNoiseStrengthPercent==300&&loadedNoise.TreeNoiseScalePercent==25,"both tree settings restore independently after a save");
         noise.Reset(DevConfig.TreeNoiseStrength);noise.Reset(DevConfig.TreeNoiseScale);check(noise.TreeNoiseStrengthPercent==100&&noise.TreeNoiseScalePercent==100,"Z/reset restores the original appearance");
         savedNoise[32]^=1;rejected=false;try{DevConfig.Decode(savedNoise);}catch(IOException){rejected=true;}check(rejected,"the new scale byte is protected by the checksum");
@@ -52,8 +60,12 @@ internal static class DevConfigChecks
         void Rehash(byte[] data,int end){uint h=2166136261;for(int i=0;i<end;i++)h=unchecked((h^data[i])*16777619);for(int i=0;i<4;i++)data[end+i]=(byte)(h>>(i*8));}
         var reserved=Convert.FromHexString("4154440200010000010101010200000000000000000000006400010000000016070000003360CDB9");reserved[33]=1;Rehash(reserved,36);
         rejected=false;try{DevConfig.Decode(reserved);}catch(IOException){rejected=true;}check(rejected,"v2 padding cannot enable the new terrain option");
-        var current=new DevConfig().Encode();current[34]=1;Rehash(current,36);
+        var current=new DevConfig().Encode();current[3]=3;current[34]=1;Rehash(current,36);
         rejected=false;try{DevConfig.Decode(current);}catch(IOException){rejected=true;}check(rejected,"v3 retains strict zero padding");
+        var v4=new DevConfig().Encode();v4[35]=1;Rehash(v4,36);
+        rejected=false;try{DevConfig.Decode(v4);}catch(IOException){rejected=true;}check(rejected,"v4 retains strict zero padding after the AA byte");
+        v4[35]=0;v4[34]=2;Rehash(v4,36);
+        rejected=false;try{DevConfig.Decode(v4);}catch(IOException){rejected=true;}check(rejected,"AA setting rejects unsupported modes even with a valid checksum");
         rejected=false;try{DevConfig.Decode(new byte[8]);}catch(IOException){rejected=true;}check(rejected,"truncated dev config rejected");
     }
     private static void UniformUiGrain(Action<bool,string> check)

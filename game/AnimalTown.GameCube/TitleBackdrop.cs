@@ -11,9 +11,11 @@ internal sealed class TitleBackdrop : IDisposable
     private readonly Texture2D[] textures=new Texture2D[1];
     private readonly float[] quad=new float[24];
     internal TitleBackdrop(){textures[0]=dots;}
+    private float preparedUv;
+    internal void Prepare()=>preparedUv=-(float)(Clock.Timestamp%16000000)/16000000;
     internal void Draw(Draw2D ui)
     {
-        float uv=-(float)(Clock.Timestamp%16000000)/16000000;
+        float uv=preparedUv;
         var size=ui.LogicalSize;float w=size.X,h=size.Y,u=uv+w/64,v=uv+h/64;
         Vertex(0,0,0,uv,uv);Vertex(4,w,0,u,uv);Vertex(8,w,h,u,v);
         Vertex(12,0,0,uv,uv);Vertex(16,w,h,u,v);Vertex(20,0,h,uv,v);
