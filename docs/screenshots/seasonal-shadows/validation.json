@@ -1,0 +1,101 @@
+{
+  "source_commit": "9d3b24c6b9a5d1604c0454ce3e9c1792c62c4366",
+  "ci": "https://github.com/capz/AnimalTown/actions/runs/44089068462",
+  "release": "https://github.com/capz/AnimalTown/releases/tag/v0.46.0%2B9d3b24c6b9a5",
+  "iso": {
+    "name": "AnimalTown-0.46.0+9d3b24c6b9a5.nkit.iso",
+    "bytes": 94144512,
+    "sha256": "159ac6e42edc0667e72e0c1bf7890893da4992f1f5c2969f0b638e430ac4ee33"
+  },
+  "backend_sha256": "8749ad1532f7b897d8961cd39a0b5e6a2d2ef2473f972e18cb2a1e7b3078e868",
+  "capture": {
+    "emulator": "Dolphin 2503",
+    "backend": "OpenGL / software Mesa",
+    "transport": "Xvfb / native X11 framebuffer capture",
+    "window": [
+      800,
+      600
+    ],
+    "scene": "same disposable saved town, player (8.5, 26.8), post (9.7, 25.4), noon RTC",
+    "processing": "Native PNGs copied unchanged. Comparison sheet may crop black window margins; no rescaling or scene edits.",
+    "native_code_or_ram_modified": false,
+    "physical_hardware_tested": false,
+    "dsp_hle": true
+  },
+  "seasons": {
+    "spring": {
+      "month": 4,
+      "mask_coverage_above_tenth_of_peak": 0.4677734375,
+      "png_sha256": "8856a29317085a665e3d3661cc22e089fbf7f63b077c9d8f6e83be87f3e02a94",
+      "rtc_year": 2028,
+      "native_style": {
+        "method": "read-only live MEM1 inspection",
+        "expected_season": "spring",
+        "rtc_year": 2028,
+        "observed_parameters": [
+          2.0,
+          1.603773593902588,
+          0.25882354378700256,
+          -153.96226501464844
+        ]
+      },
+      "capture": "spring.png"
+    },
+    "summer": {
+      "month": 7,
+      "mask_coverage_above_tenth_of_peak": 0.25732421875,
+      "png_sha256": "f1d9d2f08931ac4d893d735571c186ccf0c9eaa181ea46da0fefa975707bb629",
+      "rtc_year": 2027,
+      "capture": "summer.png"
+    },
+    "fall": {
+      "month": 10,
+      "mask_coverage_above_tenth_of_peak": 0.685791015625,
+      "png_sha256": "21ef2879e5f554f5e86797493f0cd5eed222d51e18ca03caab83b434635f647b",
+      "rtc_year": 2027,
+      "capture": "fall.png"
+    },
+    "winter": {
+      "month": 1,
+      "mask_coverage_above_tenth_of_peak": 0.4677734375,
+      "png_sha256": "451c8aa30bea888f0af1d409775f70e0924f796b700fa22bc8479c2c31fc89be",
+      "rtc_year": 2028,
+      "native_style": {
+        "method": "read-only live MEM1 inspection",
+        "expected_season": "winter",
+        "rtc_year": 2028,
+        "observed_parameters": [
+          1.0,
+          1.603773593902588,
+          0.12941177189350128,
+          -153.96226501464844
+        ]
+      },
+      "capture": "winter.png"
+    }
+  },
+  "coverage_note": "Fractions refer to the shared 64x64 pattern after seasonal cutoff/edge shaping, not a percentage measured from these camera screenshots. Seasonal ground palettes also differ.",
+  "validation": {
+    "native_union_checks": 71523,
+    "managed_checks": 2332680,
+    "rendering_checks": 323891,
+    "shadow_host_bytes": 522016,
+    "asan_ubsan": "passed",
+    "release_ci_including_backend": "passed"
+  },
+  "fixture_calendar_note": "The saved fixture month is August 2027. Spring/winter use 2028 RTC dates so startup calendar rollback protection cannot clamp them to summer. Native cloud style was confirmed with read-only guest-state inspection. Summer/fall 2027 captures select their correct seasons.",
+  "merge_commit": "d63cb48f603ce670a231628763011732cc301d81",
+  "schema": 1,
+  "implementation_pr": "https://github.com/capz/AnimalTown/pull/104",
+  "comparison": {
+    "file": "comparison.png",
+    "sha256": "c825953256e0ed5518052854b13f20db7db4cbefd6dc4e43ca314c87cd1b1296",
+    "crop_from_each_raw_png": [
+      28,
+      0,
+      612,
+      480
+    ],
+    "resized": false
+  }
+}
