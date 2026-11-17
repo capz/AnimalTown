@@ -30,7 +30,7 @@ public static class SplitSaveCodec
         {
             bytes=source;if(bytes.Length<32||bytes.Length>SaveCodec.MaximumBytes)throw new InvalidOperationException("Invalid save record size");
             if(Int()!=0x50535441)throw new InvalidOperationException("Wrong save record magic");Version=Int();
-            if((Version<1||Version>5)||Int()!=Catalog.Version||Int()!=kind)throw new InvalidOperationException("Wrong save record type or version");
+            if((Version<1||Version>6||Version==6&&kind!=TownData)||Int()!=Catalog.Version||Int()!=kind)throw new InvalidOperationException("Wrong save record type or version");
             Sequence=Range(0,int.MaxValue);Seed=Int();if(Int()!=bytes.Length)throw new InvalidOperationException("Save record length mismatch");
             int crc=0;for(int i=0;i<4;i++)crc|=bytes[bytes.Length-4+i]<<(i*8);
             if((uint)crc!=SaveCodec.Crc(bytes,0,bytes.Length-4))throw new InvalidOperationException("Save record checksum failed");
@@ -44,7 +44,13 @@ public static class SplitSaveCodec
         internal bool HasMore=>at<bytes.Length-4;
         internal void SkipText(int limit){int n=Range(0,limit);for(int i=0;i<n;i++)Range(0,65535);}
         internal void SkipTerrain(){int n=Range(1,Town.Width*Town.Height);for(int i=0;i<n;i++)Int();}
-        internal void Match(Reader other){if(Version!=other.Version||Seed!=other.Seed||Sequence!=other.Sequence)throw new InvalidOperationException("Mixed save generations");}
+        internal void Match(Reader other){if(Version!=other.Version&&!(Version==6&&other.Version==4||Version==4&&other.Version==6)||Seed!=other.Seed||Sequence!=other.Sequence)throw new InvalidOperationException("Mixed save generations");}
+        internal void Paths(TownPaths paths,bool compare=false)
+        {
+            Range(1,1);Range(TownPaths.PackedBytes,TownPaths.PackedBytes);
+            for(int i=0;i<TownPaths.PackedBytes;i+=4){int value=Int();for(int j=0;j<4;j++){byte b=(byte)((uint)value>>(j*8));if(compare){if(paths.Packed[i+j]!=b)throw new InvalidOperationException("Readback paths differ from snapshot");}else paths.Packed[i+j]=b;}}
+            paths.Validate();
+        }
         internal void End(){if(at!=bytes.Length-4)throw new InvalidOperationException("Trailing save record data");}
     }
     private static int Runs(byte[] a){int n=1;for(int i=1;i<a.Length;i++)if(a[i]!=a[i-1])n++;return n;}
@@ -57,13 +63,14 @@ public static class SplitSaveCodec
     {
         var t=s.Town;
         if(part==0){
-        var w=new Writer(s,TownData,2048+4*(Runs(t.Tiles)+Runs(t.Elevation))+24*(t.GroundCount+t.PlacedCount));
+        var w=new Writer(s,TownData,2056+TownPaths.PackedBytes+4*(Runs(t.Tiles)+Runs(t.Elevation))+24*(t.GroundCount+t.PlacedCount),6);
         w.Int(Town.Width);w.Int(Town.Height);w.Int(TownGenerator.Version);w.Int(t.Day);w.Int(t.Month);w.Rle(t.Tiles);w.Rle(t.Elevation);
         for(int i=0;i<6;i++){var v=t.Residents[i];w.Int(v.X);w.Int(v.Z);w.Text(v.Name);w.Int((int)(v.PosX*1024));w.Int((int)(v.PosZ*1024));}
         w.Int(t.GroundCount);for(int i=0;i<t.GroundCount;i++){var g=t.Ground[i];w.Int(g.Item);w.Int(g.X);w.Int(g.Z);w.Int(g.Owner);w.Int(g.Day);w.Int(g.PackedKind);}
         w.Int(t.PlacedCount);for(int i=0;i<t.PlacedCount;i++){var p=t.Placed[i];w.Int(p.Item);w.Int(p.X);w.Int(p.Z);w.Int(p.Rotation);w.Int(p.Room);w.Int(p.Owner);}
         w.Int(s.ActiveProfile);for(int i=0;i<s.BuildingTypes.Length;i++)w.Int(s.BuildingTypes[i]);
-        for(int i=0;i<6;i++){var v=t.Residents[i];w.Int(v.Space);w.Int(v.JourneyBuilding);w.Int(v.JourneyPhase);w.Int(v.Dwell);w.Int((int)(v.Yaw*1024));w.Int(v.JourneyNextX);w.Int(v.JourneyNextZ);}return w.Finish();
+        for(int i=0;i<6;i++){var v=t.Residents[i];w.Int(v.Space);w.Int(v.JourneyBuilding);w.Int(v.JourneyPhase);w.Int(v.Dwell);w.Int((int)(v.Yaw*1024));w.Int(v.JourneyNextX);w.Int(v.JourneyNextZ);}
+        t.Paths.Validate();w.Int(1);w.Int(TownPaths.PackedBytes);for(int i=0;i<TownPaths.PackedBytes;i+=4)w.Int(t.Paths.Packed[i]|t.Paths.Packed[i+1]<<8|t.Paths.Packed[i+2]<<16|t.Paths.Packed[i+3]<<24);return w.Finish();
         }
         if(part==1){
         var w=new Writer(s,HousePositions,256);for(int i=0;i<GameState.ProfileCount;i++){w.Int(s.HomePlaced(i)?1:0);w.Int(s.HomeX(i));w.Int(s.HomeZ(i));}for(int i=0;i<6;i++){w.Int(t.Residents[i].HomeX);w.Int(t.Residents[i].HomeZ);}return w.Finish();
@@ -97,7 +104,7 @@ public static class SplitSaveCodec
     {
         if(records.Length==PartCount)return DecodeProfiles(records,snapshot);if(records.Length!=4)throw new InvalidOperationException("Incomplete save set");var r=new Reader(records[0],TownData);var root=r;
         if(snapshot!=null&&(r.Version!=4||r.Seed!=snapshot.Seed))throw new InvalidOperationException("Readback snapshot identity mismatch");
-        var s=snapshot==null?new GameState(r.Seed):new GameState(r.Seed,snapshot);s.Sequence=r.Sequence;var t=s.Town;
+        var s=snapshot==null?new GameState(r.Seed):new GameState(r.Seed,snapshot);s.Sequence=r.Sequence;var t=s.Town;if(snapshot==null)t.Paths.Clear();
         r.Range(Town.Width,Town.Width);r.Range(Town.Height,Town.Height);r.Range(1,TownGenerator.Version);t.Day=r.Int();t.Month=r.Int();r.Rle(t.Tiles,r.Version>=2?(int)Terrain.CoastWest:7,snapshot!=null);r.Rle(t.Elevation,TerrainElevation.MaximumMode,snapshot!=null);
         for(int i=0;i<6;i++){var v=t.Residents[i];v.X=r.Int();v.Z=r.Int();v.Name=r.Text(24);v.PosX=r.Int()/1024f;v.PosZ=r.Int()/1024f;}
         t.GroundCount=r.Range(0,512);for(int i=0;i<t.GroundCount;i++){var g=t.Ground[i];g.Item=r.Int();g.X=r.Int();g.Z=r.Int();g.Owner=r.Int();g.Day=r.Int();g.RestoreKind(r.Range(0,12));}r.End();
@@ -115,14 +122,14 @@ public static class SplitSaveCodec
     }
     private static GameState DecodeProfiles(byte[][] records,Town? snapshot)
     {
-        var r=new Reader(records[0],TownData);if(r.Version!=4)throw new InvalidOperationException("Invalid shared town schema");var root=r;
-        var s=snapshot==null?new GameState(r.Seed):new GameState(r.Seed,snapshot);s.Sequence=r.Sequence;var t=s.Town;
+        var r=new Reader(records[0],TownData);if(r.Version!=4&&r.Version!=6)throw new InvalidOperationException("Invalid shared town schema");var root=r;
+        var s=snapshot==null?new GameState(r.Seed):new GameState(r.Seed,snapshot);s.Sequence=r.Sequence;var t=s.Town;if(snapshot==null)t.Paths.Clear();
         r.Range(Town.Width,Town.Width);r.Range(Town.Height,Town.Height);r.Range(1,TownGenerator.Version);t.Day=r.Int();t.Month=r.Int();r.Rle(t.Tiles,(int)Terrain.CoastWest,snapshot!=null);r.Rle(t.Elevation,TerrainElevation.MaximumMode,snapshot!=null);
         for(int i=0;i<6;i++){var v=t.Residents[i];v.X=r.Int();v.Z=r.Int();v.Name=r.Text(24);v.PosX=r.Int()/1024f;v.PosZ=r.Int()/1024f;}
         t.GroundCount=r.Range(0,512);for(int i=0;i<t.GroundCount;i++){var g=t.Ground[i];g.Item=r.Int();g.X=r.Int();g.Z=r.Int();g.Owner=r.Int();g.Day=r.Int();g.RestoreKind(r.Range(0,12));}
         t.PlacedCount=r.Range(0,256);for(int i=0;i<t.PlacedCount;i++){var p=t.Placed[i];p.Item=r.Int();p.X=r.Int();p.Z=r.Int();p.Rotation=r.Int();p.Room=r.Int();p.Owner=r.Int();}
         int active=r.Range(0,3);for(int i=0;i<s.BuildingTypes.Length;i++)s.BuildingTypes[i]=(byte)r.Range(0,255);
-        for(int i=0;i<6;i++){var v=t.Residents[i];v.Space=r.Range(0,43);v.JourneyBuilding=r.Range(-1,BuildingWorld.Count-1);v.JourneyPhase=r.Range(0,5);v.Dwell=r.Range(0,36000);v.Yaw=r.Range(-6434,6434)/1024f;v.JourneyNextX=r.Range(-1,Town.Width-1);v.JourneyNextZ=r.Range(-1,Town.Height-1);if(!BuildingWorld.ValidSpace(v.Space)||(v.JourneyNextX<0)!=(v.JourneyNextZ<0)||v.JourneyPhase==1&&v.JourneyBuilding<0)throw new InvalidOperationException("Invalid shared NPC journey");}r.End();
+        for(int i=0;i<6;i++){var v=t.Residents[i];v.Space=r.Range(0,43);v.JourneyBuilding=r.Range(-1,BuildingWorld.Count-1);v.JourneyPhase=r.Range(0,5);v.Dwell=r.Range(0,36000);v.Yaw=r.Range(-6434,6434)/1024f;v.JourneyNextX=r.Range(-1,Town.Width-1);v.JourneyNextZ=r.Range(-1,Town.Height-1);if(!BuildingWorld.ValidSpace(v.Space)||(v.JourneyNextX<0)!=(v.JourneyNextZ<0)||v.JourneyPhase==1&&v.JourneyBuilding<0)throw new InvalidOperationException("Invalid shared NPC journey");}if(r.Version>=6)r.Paths(t.Paths,snapshot!=null);else if(snapshot!=null&&t.Paths.Count!=0)throw new InvalidOperationException("Legacy snapshot contains paths");r.End();
         for(int i=0;i<GameState.ProfileCount;i++)s.Profiles[i]=ProfileCodec.Decode(s,i,records[3+i]);
         r=new Reader(records[1],HousePositions);r.Match(root);for(int i=0;i<GameState.ProfileCount;i++){var p=s.Profiles[i];if(r.Range(0,1)!=(p.HousePlaced?1:0)||r.Int()!=p.HouseX||r.Int()!=p.HouseZ)throw new InvalidOperationException("Profile plot differs from shared houses");}for(int i=0;i<6;i++){t.Residents[i].HomeX=r.Int();t.Residents[i].HomeZ=r.Int();}r.End();
         r=new Reader(records[2],ShopStates);r.Match(root);t.Spending=r.Int();t.StockCount=r.Int();for(int i=0;i<12;i++)t.Stock[i]=r.Int();

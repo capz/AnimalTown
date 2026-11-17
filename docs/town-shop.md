@@ -84,7 +84,8 @@ retained check enforces the actual aggregate runtime ceiling.
 
 The extra shop record remains 154 explicit 32-bit words (616 bytes), including
 the original eight listing cells so older excess items can be reclaimed. Full saves use
-schema 9; split and incremental saves append a bounded extension to the existing
+schema 10 with town paths and shop state; both published version-9 variants
+(paths-only on main and shop-only in prereleases) remain readable. Split and incremental saves append a bounded extension to the existing
 checksummed shop record, without adding a memory-card item. Older saves without
 the extension keep their terrain, possessions and sold slots. The old cottage
 shop becomes the new shop, and remaining essential stock moves to decor displays.

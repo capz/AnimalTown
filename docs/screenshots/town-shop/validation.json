@@ -1,0 +1,86 @@
+{
+  "source_commit": "6b00dcfccae0d86ae16f8c464afc0f113012db7e",
+  "release_tag": "v0.43.0+6b00dcfccae0",
+  "emulator": "Dolphin",
+  "physical_hardware_tested": false,
+  "cases": [
+    {
+      "tier": 0,
+      "sale_slots": 3,
+      "capture": "tier-0.png",
+      "native_shop_ui": true,
+      "npc_bought_and_left": true,
+      "cabinet_repeat_buys": 2,
+      "camera_quarter_turns": 3,
+      "saved_sequence": 2,
+      "wallet": 14400,
+      "seller_savings": 6900,
+      "remaining_daily_stock": [
+        0,
+        0,
+        10,
+        11,
+        12,
+        13,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "tier": 1,
+      "sale_slots": 5,
+      "capture": "tier-1.png",
+      "native_shop_ui": true,
+      "npc_bought_and_left": true,
+      "cabinet_repeat_buys": 2,
+      "camera_quarter_turns": 3,
+      "saved_sequence": 2,
+      "wallet": 14400,
+      "seller_savings": 6900,
+      "remaining_daily_stock": [
+        0,
+        0,
+        10,
+        11,
+        12,
+        13,
+        10,
+        11,
+        12,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "tier": 2,
+      "sale_slots": 7,
+      "capture": "tier-2.png",
+      "native_shop_ui": true,
+      "npc_bought_and_left": true,
+      "cabinet_repeat_buys": 2,
+      "camera_quarter_turns": 3,
+      "saved_sequence": 2,
+      "wallet": 14400,
+      "seller_savings": 6900,
+      "remaining_daily_stock": [
+        0,
+        0,
+        10,
+        11,
+        12,
+        13,
+        10,
+        11,
+        12,
+        13,
+        10,
+        11
+      ]
+    }
+  ]
+}

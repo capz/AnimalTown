@@ -43,6 +43,9 @@ function Get-ValidationPlan {
         }
         if($p -match '^tests/AnimalTown.Checks/Program.cs$'){$broad=$true;continue}
         if($p -match '^(shared/AnimalTown.Domain/WaterSurface|tests/AnimalTown.Checks/WaterSurfaceChecks)\.cs$') {Add-Managed 'terrain';continue}
+        if($p -match '^(shared/AnimalTown.Domain/(TownPaths|PathShape)|tests/AnimalTown.Checks/PathChecks)\.cs$'){foreach($s in @('terrain','generation','saves','core')){Add-Managed $s};continue}
+        if($p -match '^game/AnimalTown.GameCube/(PathTextureResidency|PathProfile)\.cs$'){Add-Managed 'terrain';[void]$native.Add('patched');continue}
+        if($p -match '^tools/AnimalTown.Tools/PathAssets\.cs$|^assets/textures/environment/paths/'){[void]$tooling.Add('path');continue}
         if($p -match '^shared/AnimalTown.Domain/CliffShadowMap\.cs$'){Add-Managed 'terrain';[void]$native.Add('shadows');continue}
         if($p -match '^tests/AnimalTown.Checks/CliffShadowChecks\.cs$'){Add-Managed 'terrain';continue}
         if($p -match '^(shared/AnimalTown.Domain/RiverBankGeometry|tests/AnimalTown.Checks/RiverBankChecks)\.cs$'){foreach($s in @('terrain','movement','life','generation')){Add-Managed $s};continue}
@@ -101,7 +104,7 @@ function Get-ValidationPlan {
             else{foreach($s in $allManaged){Add-Managed $s}}
             continue
         }
-        if($p -match '^tools/iso-smoke.py$'){[void]$native.Add('python');continue} # Scenarios are explicitly selected.
+        if($p -match '^tools/(iso-smoke|path-study).py$'){[void]$native.Add('python');continue} # Scenarios are explicitly selected.
         $broad=$true
     }
     if($broad){foreach($s in $allManaged){Add-Managed $s};foreach($s in @('terrain','repack','building','nkit','dropped-item')){[void]$tooling.Add($s)};foreach($s in @('uv','card','texture','voices','python','shadows','patched')){[void]$native.Add($s)};$backend=$true;$policy=$true}

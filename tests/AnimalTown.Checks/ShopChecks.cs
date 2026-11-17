@@ -4,6 +4,14 @@ internal static class ShopChecks
 {
     internal static void Run(Action<bool,string> check)
     {
+        // Independent fixtures emitted by the two actual v9 codecs before
+        // merging them; no relabelled current-format bytes.
+        var archivedShop=SaveCodec.Decode(File.ReadAllBytes(Path.Combine(AppContext.BaseDirectory,"Fixtures/town-shop-v9.bin")));
+        var archivedPaths=SaveCodec.Decode(File.ReadAllBytes(Path.Combine(AppContext.BaseDirectory,"Fixtures/town-paths-v9.bin")));
+        check(archivedShop.Wallet==12345&&archivedShop.Town.Paths.Count==0&&archivedShop.Town.Shop.SaleItems[0]==10&&archivedShop.Town.Shop.SaleItems[7]==11&&archivedShop.Town.Shop.Proceeds[1]==987&&archivedShop.Town.Shop.NpcCount[0]==1,"shop-only v9 preserves listings, overflow, earnings and NPC purchases without inventing paths");
+        check(archivedPaths.Wallet==12345&&archivedPaths.Town.Paths.Count>100&&archivedPaths.BuildingTypes[7]==1&&archivedPaths.Town.Shop.SaleItems.All(id=>id==0),"main's paths-only v9 preserves roads and initializes the new shop");
+        archivedPaths.Pockets[0]=10;check(archivedPaths.Town.Shop.List(archivedPaths,0,0,1234),"path-save upgrade accepts a shop listing");
+        foreach(var migrated in new[]{SaveCodec.Decode(SaveCodec.Encode(archivedPaths)),SplitSaveCodec.Decode(SplitSaveCodec.Encode(archivedPaths))})check(migrated.Town.Paths.Packed.SequenceEqual(archivedPaths.Town.Paths.Packed)&&migrated.Town.Shop.SaleItems[0]==10&&migrated.Town.Shop.SalePrices[0]==1234,"both paths and shop state survive the combined save formats");
         var s=new GameState(204){Wallet=99999};s.Rollover(100,100);Array.Clear(s.Pockets);
         var shop=s.Town.Shop;
         check(s.BuildingTypes[7]==1&&BuildingWorld.Size(s,TownShop.Room)==8,"shop has its own reusable building definition");

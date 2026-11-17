@@ -141,5 +141,14 @@ extern int animaltown_terrain_cache(int);
     assert compact_count>=30, 'Persistence AOT function boundaries changed'
     for codec in ('SaveCodec','SplitSaveCodec','ProfileCodec','SaveRepository','IncrementalSaveCodec'):
         assert re.search(r'__attribute__.*dnd_value_AnimalTown_Domain_AnimalTown_'+codec+r'_',text), 'Missing compact persistence codec: '+codec
+    # Path routing/tessellation runs at generation or terrain bake, not during
+    # normal travel. Compact its AOT text instead of spending scarce MEM1 on O3
+    # unrolling. The residency pump and drawing retain gameplay optimization.
+    paths=r'(?m)^(intptr_t dnd_value_(?:AnimalTown_Domain_AnimalTown_(?:TownPaths|TownPathPlanner|PathShape)_|AnimalTown_GameCube_(?:TerrainSection__?AppendPath_|PathProfile_))[^;\n]*\) \{)'
+    text,path_count=re.subn(paths,r'__attribute__((noinline,optimize("Os"))) \1',text)
+    # The script also patches older fixture programs without the path feature.
+    if 'dnd_type_AnimalTown_TownPaths' in text:
+        assert path_count>=12, 'Cold path AOT boundaries changed'
+        print('Paths: '+str(path_count)+' cold AOT functions compiled for size; residency/drawing retain O3')
     generated.write_text(text)
     print('Persistence: '+str(compact_count)+' cold AOT functions compiled for size; gameplay optimization retained')

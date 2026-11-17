@@ -5,7 +5,7 @@ using System.Security.Cryptography;
 var connection=Environment.GetEnvironmentVariable("ANIMALTOWN_TEST_CONNECTION")??throw new Exception("Test database required");
 await using var c=new NpgsqlConnection(connection);await c.OpenAsync();
 var id=Guid.Parse("a8f3ab2e-f33d-4830-b01e-ef9a4fe25a32");
-var original=new GameState(7319){Name="LegacySplit",Sequence=11,Wallet=1234,Palette=4,Savings=56789};original.Town.Residents[0].Name="Legacyfox";
+var original=new GameState(7319){Name="LegacySplit",Sequence=11,Wallet=1234,Palette=4,Savings=56789};original.Town.Residents[0].Name="Legacyfox";original.Town.Paths.Clear();
 if(args[0]=="seed-legacy"){
     // Reproduce the pre-split schema, before the server runs its migration.
     await using(var cmd=new NpgsqlCommand("CREATE TABLE IF NOT EXISTS players (id uuid PRIMARY KEY,name varchar(16) NOT NULL UNIQUE,salt bytea NOT NULL,password bytea NOT NULL,state bytea NOT NULL,revision bigint NOT NULL DEFAULT 0,chat_restricted boolean NOT NULL DEFAULT false)",c))await cmd.ExecuteNonQueryAsync();

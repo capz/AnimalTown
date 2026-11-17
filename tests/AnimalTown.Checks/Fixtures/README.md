@@ -13,3 +13,14 @@ Both have exactly 128 trees within the retained 160 x 160-cell rectangle.
 These fixtures verify actual old-format compatibility independently of the new
 encoder. Tests also derive v2 and original 80 x 72 v1 wire layouts and check
 corruption, run bounds, crop stride, relocation and stable v4 round trips.
+
+# Independent version-9 save fixtures
+
+`town-shop-v9.bin` was emitted by the actual codec at
+`6b00dcfccae0d86ae16f8c464afc0f113012db7e`; `town-paths-v9.bin` was emitted by
+main's codec at `a310cb8` before merging the two schemas. Both use seed 7319,
+day 21014, month `2027 * 12 + 7`, name Archive and wallet 12,345.
+The shop fixture also has a 1,234-acorn chair listing in slot 0, a 2,500-acorn
+table in the old slot 7, 987 acorns owed to absent profile 1 and an NPC purchase
+from display 0. The paths fixture retains its original generated road overlay.
+These are actual old-format bytes, never current saves with relabelled versions.

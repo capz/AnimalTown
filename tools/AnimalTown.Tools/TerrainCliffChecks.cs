@@ -64,7 +64,7 @@ internal static class TerrainCliffChecks
         }
         Check(TerrainCliffBinding.PreviewLowNeighbor(town,60,60,0,0)==-1,"preview leaves unrelated ground untouched");
         int border=TerrainCliffBinding.Neighbor(town,4,-2,-2,true);Check(border>=0&&border<Town.Cells,"world-edge fallback remains bounded");
-        var state=new GameState(7319){X=60,Z=60};Array.Clear(state.Town.Elevation);Array.Clear(state.Town.Tiles);
+        var state=new GameState(7319){X=60,Z=60};Array.Clear(state.Town.Elevation);Array.Clear(state.Town.Tiles);state.Town.Paths.Clear();
         TerrainCliffBinding.PreviewOrigin(60,60,4,out int previewX,out int previewZ);
         state.Town.Tiles[(previewZ-1)*Town.Width+previewX+1]=(byte)Terrain.Beach;
         byte[] metadata=new byte[FloorStrips.Records];Put(0,0x32525441);Put(4,1);Put(8,TerrainTiles.SurfaceCount);Put(12,TerrainTiles.SurfaceCount);Put(16,FloorTexture.Maximum);

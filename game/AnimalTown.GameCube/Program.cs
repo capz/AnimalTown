@@ -924,7 +924,7 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
             }
             terrain.Animate((Clock.Timestamp-sessionStart)/1000000.0);
         }
-        else{terrain.ReleaseWaterCapture();int steps=0;while(steps<8&&Clock.Timestamp<preparationDeadline){if(!villagerShadows.Advance())break;steps++;}}
+        else{terrain.ReleaseWaterCapture();terrain.ReleasePaths();int steps=0;while(steps<8&&Clock.Timestamp<preparationDeadline){if(!villagerShadows.Advance())break;steps++;}}
         FrameProfile.End(2,phase);
         if(room==0&&!terrain.Ready){DrawLoading(landscape:true);return;}
         LoadingScreen.Finish();
@@ -1251,13 +1251,15 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
             if(id!=0)itemIcons.Draw(ui,new RectF(id%8*64,id/8*64,64,64),new RectF(x+5,y+1,38,38),Color32.White);
             else Rounded(x+21,y+17,6,6,3,new Color32(188,195,166));
         }
-        bool sellable=Catalog.Has(state.Pockets[focus],ItemFlags.Sell);
         if(state.BackpackTier<2){Text("Next pack: "+(state.Capacity+10)+" slots",436,325,ink,1);Text("Hearth's store",436,349,ink,1);}
+        int item=state.Pockets[focus];
+        if(item==0)return;
+        bool sellable=Catalog.Has(item,ItemFlags.Sell);
         // Follow the actual slot for both the title and action menu. Clamp the
         // panel (including bulges/shadow) above the HUD for all backpack sizes.
         float slotX=99+focus%5*58,slotY=144+focus/5*44;
-        int item=state.Pockets[focus],actionCount=PocketMenu.Count(item,room);
-        string title=itemTitleText.Get(item==0?"Empty pocket":Catalog.Items[item].Name);
+        int actionCount=PocketMenu.Count(item,room);
+        string title=itemTitleText.Get(Catalog.Items[item].Name);
         float popWidth=actions?ItemActionWidth(item,title):168,popHeight=actions?72+actionCount*18:141;
         float popX=Math.Min(slotX+66,607-popWidth),popY=Math.Max(80,Math.Min(slotY-12,428-popHeight));
         float pointerY=Math.Max(popY+36,Math.Min(slotY+20,popY+popHeight-36));
@@ -1277,7 +1279,6 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
                 if(action==PocketAction.Place){ButtonGlyph("R",textX+actionRotateOffset,y+1);Text("Rotate",textX+actionRotateOffset+26,y+1,ink,.9f);}
             }
         }
-        else if(item==0)Text("Room for\nsomething new.",textX,popY+67,ink,1.1f);
         else
         {
             int money=Catalog.MoneyValue(item);

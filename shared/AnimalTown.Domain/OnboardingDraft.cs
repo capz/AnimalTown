@@ -5,6 +5,7 @@ namespace AnimalTown;
 // Dispose drops the baseline and candidate references before ordinary gameplay.
 public sealed class OnboardingDraft : IDisposable
 {
+    private Town? sourceTerrain;
     private byte[]? baseline;
     private byte[]? attempted;
     private GameState? state;
@@ -20,7 +21,7 @@ public sealed class OnboardingDraft : IDisposable
         if((uint)profile>=GameState.ProfileCount)throw new ArgumentOutOfRangeException(nameof(profile));
         if(source.HomePlaced(profile))throw new InvalidOperationException("This villager already has a home");
         Profile=profile;IsNewProfile=!source.Profiles[profile].Created;this.savedTown=savedTown;sourceSequence=source.Sequence;
-        baseline=SaveCodec.Encode(source);
+        sourceTerrain=source.Town;baseline=SaveCodec.Encode(source);
         state=SaveCodec.ValidateSnapshot(baseline,source.Town);
         state.SelectProfile(profile);state.Space=0;
         if(!state.CanWalk(state.X,state.Z,0))for(int cell=0;cell<Town.Cells;cell++){
@@ -61,7 +62,7 @@ public sealed class OnboardingDraft : IDisposable
                 reason="Choose dry land away from the water.";return false;
             }
             if(TerrainElevation.Mode(s.Town,x+dx,z+dz)!=0){reason="Choose flat, level ground.";return false;}
-            if(kind!=(int)Terrain.Grass){reason="Find clear grass with room for a garden.";return false;}
+            if(kind!=(int)Terrain.Grass||s.Town.Paths.At(x+dx,z+dz)!=0){reason="Find clear grass with room for a garden.";return false;}
         }
         int blockedDoors=0;
         for(int i=0;i<s.Town.GroundCount;i++){
@@ -80,12 +81,12 @@ public sealed class OnboardingDraft : IDisposable
         State.Space=0;return State.PlaceHouse(x,z,false);
     }
     public void ClearHome()
-    {EnsureEditable();State.HousePlaced=false;State.Space=0;}
+    {EnsureEditable();State.HousePlaced=false;State.Space=0;Array.Copy(sourceTerrain!.Paths.Packed,State.Town.Paths.Packed,TownPaths.PackedBytes);State.Town.NotifyTerrainChanged();}
 
     // Returns a fresh mutable source graph for discard. No Generate call or
     // duplicate terrain arrays are required, and draft-only home/name edits vanish.
     public GameState Restore()
-    {if(baseline==null)throw new ObjectDisposedException(nameof(OnboardingDraft));return SaveCodec.ValidateSnapshot(baseline,State.Town);}
+    {if(baseline==null)throw new ObjectDisposedException(nameof(OnboardingDraft));return SaveCodec.ValidateSnapshot(baseline,sourceTerrain!);}
 
     public void Commit(SaveRepository repository,bool hasTownFiles,string[]? townFiles=null)
     {
@@ -129,5 +130,5 @@ public sealed class OnboardingDraft : IDisposable
     {if(a.Length!=b.Length)return false;for(int i=0;i<a.Length;i++)if(a[i]!=b[i])return false;return true;}
     private void EnsureEditable()
     {if(state==null)throw new ObjectDisposedException(nameof(OnboardingDraft));if(committed)throw new InvalidOperationException("Onboarding is already saved");}
-    public void Dispose(){baseline=null;attempted=null;state=null;}
+    public void Dispose(){sourceTerrain=null;baseline=null;attempted=null;state=null;}
 }
