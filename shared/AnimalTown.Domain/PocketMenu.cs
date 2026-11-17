@@ -6,9 +6,9 @@ public enum PocketAction { Equip,Drop,Place,Plant,Eat,Wear,Bury,OpenMoneyBag,Rea
 public static class PocketMenu
 {
     // Presentation order is separate from action IDs. Reuse it for every popup;
-    // wearing clothing and equipping tools precede dropping them.
-    private static readonly PocketAction[] actions={PocketAction.Equip,PocketAction.Wear,PocketAction.Drop,
-        PocketAction.Place,PocketAction.Plant,PocketAction.Eat,PocketAction.Bury,PocketAction.OpenMoneyBag,PocketAction.Read,PocketAction.Quit};
+    // primary item actions precede dropping them.
+    private static readonly PocketAction[] actions={PocketAction.Equip,PocketAction.Wear,PocketAction.OpenMoneyBag,PocketAction.Drop,
+        PocketAction.Place,PocketAction.Plant,PocketAction.Eat,PocketAction.Bury,PocketAction.Read,PocketAction.Quit};
     public static bool HasAction(int item,int room,PocketAction action)
     {
         if(action==PocketAction.Quit)return true;
@@ -20,7 +20,7 @@ public static class PocketMenu
         if(action==PocketAction.Eat)return Catalog.Has(item,ItemFlags.Eat);
         if(action==PocketAction.Wear)return Catalog.Has(item,ItemFlags.Wear);
         if(action==PocketAction.Bury)return room==0&&Catalog.Has(item,ItemFlags.Bury);
-        if(action==PocketAction.OpenMoneyBag)return item>=22&&item<=24;
+        if(action==PocketAction.OpenMoneyBag)return Catalog.Has(item,ItemFlags.Money);
         return action==PocketAction.Read&&item==19;
     }
     public static int Count(int item,int room)
@@ -40,7 +40,7 @@ public static class PocketMenu
         if(action==PocketAction.Eat)return "Eat";
         if(action==PocketAction.Wear)return "Wear";
         if(action==PocketAction.Bury)return "Bury";
-        if(action==PocketAction.OpenMoneyBag)return "Open money bag";
+        if(action==PocketAction.OpenMoneyBag)return "Put in wallet";
         if(action==PocketAction.Read)return "Read";
         return "Quit";
     }

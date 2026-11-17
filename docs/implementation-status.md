@@ -35,6 +35,10 @@ the GDD. The technical baseline was committed/pushed first as `0064efd`.
 * A single Work shirt uses the GameCube-style clothing slot with Wear-first
   context actions, item-preserving swaps and per-villager saves. Changing the
   visible outfit is not implemented; see [the clothing audit](gamecube-clothing.md).
+* Money bags use Put in wallet first, dedicated face values, atomic wallet-cap
+  checks and currency-specific actions. Catalog/order/sell paths exclude them;
+  old 50,000 bags retain their full value. See [the money audit](gamecube-money.md)
+  for supported GameCube denominations and remaining economy features.
 * Indoor/outdoor footprint validation, placement ownership, rotating footprints,
   garden reservations and relocation, tier-dependent room size.
 * Native RTC bridge, 06:00 day rollover, stock and monthly interest rules,

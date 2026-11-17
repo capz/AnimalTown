@@ -4,6 +4,7 @@ public sealed partial class GameState
 {
     public readonly Town Town;
     public const int MaximumPockets=30;
+    public const int WalletLimit=99999;
     public readonly int[] Pockets=new int[MaximumPockets],Owned=new int[64],Mail=new int[128];
     public int BackpackTier;
     public int Capacity=>(BackpackTier+1)*10;
@@ -34,13 +35,13 @@ public sealed partial class GameState
     public bool Sell(int slot)
     {
         if(slot<0||slot>=Capacity)return false;int id=Pockets[slot];
-        if(!Catalog.Has(id,ItemFlags.Sell)||Catalog.Items[id].Sell>99999-Wallet)return false;
+        if(!Catalog.Has(id,ItemFlags.Sell)||Catalog.Items[id].Sell>WalletLimit-Wallet)return false;
         Wallet+=Catalog.Items[id].Sell;Pockets[slot]=0;return true;
     }
     public bool Deposit(int amount)
     { if(amount<=0||amount>Wallet||Savings>long.MaxValue-amount)return false;Wallet-=amount;Savings+=amount;return true; }
     public bool Withdraw(int amount)
-    { if(amount<=0||amount>Savings||amount>99999-Wallet)return false;Savings-=amount;Wallet+=amount;return true; }
+    { if(amount<=0||amount>Savings||amount>WalletLimit-Wallet)return false;Savings-=amount;Wallet+=amount;return true; }
     public bool Repay(int amount)
     { if(amount<=0||amount>Wallet||amount>Debt)return false;Wallet-=amount;Debt-=amount;return true; }
     public bool Expand(bool garden,int day)
@@ -116,7 +117,7 @@ public sealed partial class GameState
         else if(action==3){if(!Catalog.Has(id,ItemFlags.Wear))return false;Pockets[slot]=Shirt;Shirt=id;return true;}
         else if(action==4){if(!Catalog.Has(id,ItemFlags.Tool))return false;Pockets[slot]=Tool;Tool=id;return true;}
         else if(action==5){if(!Catalog.Has(id,ItemFlags.Bury)||Town.At(x,z)!=0||!Town.AddGround(id,x,z,1,Town.Day))return false;}
-        else if(action==6){if(id<22||id>24||Catalog.Items[id].Buy>99999-Wallet)return false;Wallet+=Catalog.Items[id].Buy;}
+        else if(action==6){int amount=Catalog.MoneyValue(id);if(amount<=0||amount>WalletLimit-Wallet)return false;Wallet+=amount;}
         else return false;
         Pockets[slot]=0;return true;
     }

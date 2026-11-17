@@ -1,6 +1,6 @@
 using AnimalTown;
 
-if(args.Length==2&&args[0]=="--profile-fixture"){ProfileFixture.Write(args[1]);return;}
+if(args.Length==2&&(args[0]=="--profile-fixture"||args[0]=="--money-fixture")){ProfileFixture.Write(args[1],args[0]=="--money-fixture");return;}
 
 int checks=0;
 void Check(bool value,string message){checks++;if(!value)throw new Exception(message);}

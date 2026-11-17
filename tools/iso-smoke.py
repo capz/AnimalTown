@@ -1100,9 +1100,8 @@ def dialogue_cycles():
     (root/'dialogue-cycles.json').write_text(json.dumps(results,indent=2)+'\n')
     save_menu();time.sleep(12);screenshot('dialogue-cycles-save.png')
 
-def item_navigation():
-    # Disposable fixture: outdoors with the Work shirt in pocket zero.
-    action_count=3 # Wear, Drop, Quit; the popup is no longer ten generic rows.
+def item_navigation(action_count=3):
+    # Disposable fixture, pocket zero: Work shirt (3 rows) or 1000 acorns (4).
     results=[]
     def read(name):
         screenshot(name+'.png')
@@ -1627,6 +1626,13 @@ with (root/'emulator.log').open('w') as log:
                 press('D_UP') # Quit is last for every filtered item menu.
                 press('A');screenshot('backpack-quit.png')
             if '--item-navigation' in sys.argv:item_navigation()
+            if '--money-navigation' in sys.argv:
+                item_navigation(4)
+                # Money fixture starts at 98,999: the 1,000 bag exactly fills
+                # the wallet, then the 10,000 bag must remain after refusal.
+                press('A');press('A');time.sleep(4);screenshot('money-wallet-filled.png');press('B');press('B');press('X')
+                press('D_RIGHT');press('A');press('A');time.sleep(4);screenshot('money-wallet-overflow.png');press('B');press('B');press('X');press('D_RIGHT')
+                screenshot('money-overflow-bag-retained.png')
             save_menu();time.sleep(12);screenshot('resume-save.png')
             if '--split-save' in sys.argv:
                 press('B');time.sleep(5);save_menu();time.sleep(12);screenshot('split-save-second.png')
