@@ -1,0 +1,627 @@
+{
+  "measured_commit": "3baaccb4c2b63845e23d5cb425239964447136e2",
+  "hardware": false,
+  "renderer": "Dolphin OpenGL / llvmpipe; 640x480; native AA off; Fresnel 100%; runtime profile 0",
+  "frames_per_capture": 240,
+  "discarded_initial_frames": 5,
+  "fixture_seed": 3,
+  "cases": {
+    "village-baseline-spring": {
+      "renderer": "Dolphin OpenGL / llvmpipe",
+      "hardware_timing": false,
+      "samples": [
+        {
+          "name": "stationary",
+          "moving": false,
+          "frames": 240,
+          "guest_fps": 55.23883981512148,
+          "host_fps": 58.245925991906184,
+          "frame_ms_p50": 16.683,
+          "frame_ms_p95": 33.366,
+          "cpu_ms_mean": 5.393212765957447,
+          "cpu_ms_p95": 17.048,
+          "terrain_submit_ms_mean": 0.2007191489361702,
+          "gpu_wait_ms_mean": 0.003136170212765958,
+          "vi_wait_ms_mean": 12.383038297872341,
+          "draws_mean": 96.27659574468085,
+          "triangles_mean": 4267.0,
+          "allocations_total": 39,
+          "gc_collections": 0,
+          "memory": {
+            "native_bytes": 2911580,
+            "texture_bytes": 1037024,
+            "path_bytes": 0,
+            "used_aram_bytes": 4272256,
+            "geometry_cache_peak_bytes": 157696,
+            "geometry_cache_reserved_bytes": 1048576,
+            "dma_reads": 68,
+            "bindings": 68
+          }
+        },
+        {
+          "name": "travel",
+          "moving": true,
+          "frames": 240,
+          "guest_fps": 56.35480795240681,
+          "host_fps": 57.553484550918085,
+          "frame_ms_p50": 16.683,
+          "frame_ms_p95": 33.366,
+          "cpu_ms_mean": 8.271570212765956,
+          "cpu_ms_p95": 17.838,
+          "terrain_submit_ms_mean": 0.31754042553191486,
+          "gpu_wait_ms_mean": 0.003059574468085106,
+          "vi_wait_ms_mean": 9.114612765957446,
+          "draws_mean": 95.11489361702128,
+          "triangles_mean": 5392.0893617021275,
+          "allocations_total": 22,
+          "gc_collections": 0,
+          "memory": {
+            "native_bytes": 2911580,
+            "texture_bytes": 1037024,
+            "path_bytes": 0,
+            "used_aram_bytes": 4272256,
+            "geometry_cache_peak_bytes": 164864,
+            "geometry_cache_reserved_bytes": 1048576,
+            "dma_reads": 81,
+            "bindings": 81
+          }
+        }
+      ],
+      "log_sha256": "27d95ef930d5fd39106eedf950f6da6cef988d1f396f899b71483e7fa0856c34"
+    },
+    "village-roads-spring": {
+      "renderer": "Dolphin OpenGL / llvmpipe",
+      "hardware_timing": false,
+      "samples": [
+        {
+          "name": "stationary",
+          "moving": false,
+          "frames": 240,
+          "guest_fps": 55.2495540067917,
+          "host_fps": 57.16060123610637,
+          "frame_ms_p50": 16.683,
+          "frame_ms_p95": 33.366,
+          "cpu_ms_mean": 5.965157446808511,
+          "cpu_ms_p95": 17.11,
+          "terrain_submit_ms_mean": 0.2378340425531915,
+          "gpu_wait_ms_mean": 0.0030680851063829787,
+          "vi_wait_ms_mean": 11.805685106382978,
+          "draws_mean": 101.49787234042553,
+          "triangles_mean": 4771.7148936170215,
+          "allocations_total": 21,
+          "gc_collections": 0,
+          "memory": {
+            "native_bytes": 2914332,
+            "texture_bytes": 1039776,
+            "path_bytes": 2752,
+            "used_aram_bytes": 4289216,
+            "geometry_cache_peak_bytes": 164864,
+            "geometry_cache_reserved_bytes": 1048576,
+            "dma_reads": 73,
+            "bindings": 73
+          }
+        },
+        {
+          "name": "travel",
+          "moving": true,
+          "frames": 240,
+          "guest_fps": 56.78678158378092,
+          "host_fps": 55.90878077449395,
+          "frame_ms_p50": 16.683,
+          "frame_ms_p95": 33.366,
+          "cpu_ms_mean": 8.993434042553192,
+          "cpu_ms_p95": 18.108,
+          "terrain_submit_ms_mean": 0.4155531914893617,
+          "gpu_wait_ms_mean": 0.0031106382978723403,
+          "vi_wait_ms_mean": 8.251102127659575,
+          "draws_mean": 101.0595744680851,
+          "triangles_mean": 6606.144680851064,
+          "allocations_total": 27,
+          "gc_collections": 0,
+          "memory": {
+            "native_bytes": 2914332,
+            "texture_bytes": 1039776,
+            "path_bytes": 2752,
+            "used_aram_bytes": 4289216,
+            "geometry_cache_peak_bytes": 172032,
+            "geometry_cache_reserved_bytes": 1048576,
+            "dma_reads": 87,
+            "bindings": 87
+          }
+        }
+      ],
+      "log_sha256": "f30f109f38fc368dff2e7665a0e08a1265d3503f168d1ecbc7600c2f4536035d"
+    },
+    "village-baseline-winter": {
+      "renderer": "Dolphin OpenGL / llvmpipe",
+      "hardware_timing": false,
+      "samples": [
+        {
+          "name": "stationary",
+          "moving": false,
+          "frames": 240,
+          "guest_fps": 55.23872295594394,
+          "host_fps": 47.20453200752364,
+          "frame_ms_p50": 16.683,
+          "frame_ms_p95": 33.366,
+          "cpu_ms_mean": 5.624736170212766,
+          "cpu_ms_p95": 17.046,
+          "terrain_submit_ms_mean": 0.21136595744680853,
+          "gpu_wait_ms_mean": 0.003097872340425532,
+          "vi_wait_ms_mean": 12.15151914893617,
+          "draws_mean": 96.34042553191489,
+          "triangles_mean": 4410.744680851064,
+          "allocations_total": 21,
+          "gc_collections": 0,
+          "memory": {
+            "native_bytes": 2911580,
+            "texture_bytes": 1037024,
+            "path_bytes": 0,
+            "used_aram_bytes": 4272256,
+            "geometry_cache_peak_bytes": 157696,
+            "geometry_cache_reserved_bytes": 1048576,
+            "dma_reads": 68,
+            "bindings": 68
+          }
+        },
+        {
+          "name": "travel",
+          "moving": true,
+          "frames": 240,
+          "guest_fps": 56.79752817157397,
+          "host_fps": 53.483160631674444,
+          "frame_ms_p50": 16.683,
+          "frame_ms_p95": 33.365,
+          "cpu_ms_mean": 8.444961702127658,
+          "cpu_ms_p95": 17.188,
+          "terrain_submit_ms_mean": 0.3444212765957447,
+          "gpu_wait_ms_mean": 0.003072340425531915,
+          "vi_wait_ms_mean": 8.801548936170214,
+          "draws_mean": 95.28085106382979,
+          "triangles_mean": 5723.28085106383,
+          "allocations_total": 22,
+          "gc_collections": 0,
+          "memory": {
+            "native_bytes": 2911580,
+            "texture_bytes": 1037024,
+            "path_bytes": 0,
+            "used_aram_bytes": 4272256,
+            "geometry_cache_peak_bytes": 164864,
+            "geometry_cache_reserved_bytes": 1048576,
+            "dma_reads": 81,
+            "bindings": 81
+          }
+        }
+      ],
+      "log_sha256": "357b17f3fff8b8ffa8eb3cbc2d5fa4d210cd15353473a6bc5048311c7a3db6f5"
+    },
+    "village-roads-winter": {
+      "renderer": "Dolphin OpenGL / llvmpipe",
+      "hardware_timing": false,
+      "samples": [
+        {
+          "name": "stationary",
+          "moving": false,
+          "frames": 240,
+          "guest_fps": 55.23873594027259,
+          "host_fps": 51.895365122455104,
+          "frame_ms_p50": 16.683,
+          "frame_ms_p95": 33.362,
+          "cpu_ms_mean": 5.548421276595745,
+          "cpu_ms_p95": 17.183,
+          "terrain_submit_ms_mean": 0.20062553191489363,
+          "gpu_wait_ms_mean": 0.003093617021276596,
+          "vi_wait_ms_mean": 12.227404255319149,
+          "draws_mean": 101.3063829787234,
+          "triangles_mean": 4327.0,
+          "allocations_total": 39,
+          "gc_collections": 0,
+          "memory": {
+            "native_bytes": 2914332,
+            "texture_bytes": 1039776,
+            "path_bytes": 2752,
+            "used_aram_bytes": 4289216,
+            "geometry_cache_peak_bytes": 164864,
+            "geometry_cache_reserved_bytes": 1048576,
+            "dma_reads": 73,
+            "bindings": 73
+          }
+        },
+        {
+          "name": "travel",
+          "moving": true,
+          "frames": 240,
+          "guest_fps": 57.49349406067741,
+          "host_fps": 42.802101800065635,
+          "frame_ms_p50": 16.684,
+          "frame_ms_p95": 16.698,
+          "cpu_ms_mean": 7.899876595744681,
+          "cpu_ms_p95": 15.508,
+          "terrain_submit_ms_mean": 0.2828,
+          "gpu_wait_ms_mean": 0.003097872340425532,
+          "vi_wait_ms_mean": 9.135191489361702,
+          "draws_mean": 100.06382978723404,
+          "triangles_mean": 5029.327659574468,
+          "allocations_total": 22,
+          "gc_collections": 0,
+          "memory": {
+            "native_bytes": 2914332,
+            "texture_bytes": 1039776,
+            "path_bytes": 2752,
+            "used_aram_bytes": 4289216,
+            "geometry_cache_peak_bytes": 172032,
+            "geometry_cache_reserved_bytes": 1048576,
+            "dma_reads": 87,
+            "bindings": 87
+          }
+        }
+      ],
+      "log_sha256": "45c1cd8ac502c9127fbe8abca2181351bfe5f4cd2c92526f0f691a4ba5132c6e"
+    },
+    "plaza-baseline-spring": {
+      "renderer": "Dolphin OpenGL / llvmpipe",
+      "hardware_timing": false,
+      "samples": [
+        {
+          "name": "stationary",
+          "moving": false,
+          "frames": 240,
+          "guest_fps": 55.24952802796802,
+          "host_fps": 56.983432355508214,
+          "frame_ms_p50": 16.683,
+          "frame_ms_p95": 33.366,
+          "cpu_ms_mean": 6.825421276595745,
+          "cpu_ms_p95": 19.271,
+          "terrain_submit_ms_mean": 0.24885531914893616,
+          "gpu_wait_ms_mean": 0.003127659574468085,
+          "vi_wait_ms_mean": 10.945536170212767,
+          "draws_mean": 123.04255319148936,
+          "triangles_mean": 5900.7744680851065,
+          "allocations_total": 50,
+          "gc_collections": 0,
+          "memory": {
+            "native_bytes": 2911580,
+            "texture_bytes": 1037024,
+            "path_bytes": 0,
+            "used_aram_bytes": 4272256,
+            "geometry_cache_peak_bytes": 182272,
+            "geometry_cache_reserved_bytes": 1048576,
+            "dma_reads": 86,
+            "bindings": 86
+          }
+        }
+      ],
+      "log_sha256": "160bc01fec5cc35a7b71b9abe96230b75e8c72e1a51c449f135f470ac534b1b6"
+    },
+    "plaza-roads-spring": {
+      "renderer": "Dolphin OpenGL / llvmpipe",
+      "hardware_timing": false,
+      "samples": [
+        {
+          "name": "stationary",
+          "moving": false,
+          "frames": 240,
+          "guest_fps": 55.01254403051862,
+          "host_fps": 57.40281150136754,
+          "frame_ms_p50": 16.683,
+          "frame_ms_p95": 33.367,
+          "cpu_ms_mean": 6.547795744680851,
+          "cpu_ms_p95": 19.324,
+          "terrain_submit_ms_mean": 0.20069361702127658,
+          "gpu_wait_ms_mean": 0.003119148936170213,
+          "vi_wait_ms_mean": 11.305272340425532,
+          "draws_mean": 135.41702127659573,
+          "triangles_mean": 5472.0,
+          "allocations_total": 26,
+          "gc_collections": 0,
+          "memory": {
+            "native_bytes": 2914332,
+            "texture_bytes": 1039776,
+            "path_bytes": 2752,
+            "used_aram_bytes": 4289216,
+            "geometry_cache_peak_bytes": 201728,
+            "geometry_cache_reserved_bytes": 1048576,
+            "dma_reads": 99,
+            "bindings": 99
+          }
+        }
+      ],
+      "log_sha256": "f587f3ce827e7d60b6288de8b4eafc16d2645320aee98a08f46e964c71a6732b"
+    },
+    "quiet-baseline-spring": {
+      "renderer": "Dolphin OpenGL / llvmpipe",
+      "hardware_timing": false,
+      "samples": [
+        {
+          "name": "stationary",
+          "moving": false,
+          "frames": 240,
+          "guest_fps": 55.23887876829053,
+          "host_fps": 57.47736506159782,
+          "frame_ms_p50": 16.684,
+          "frame_ms_p95": 33.366,
+          "cpu_ms_mean": 4.779902127659574,
+          "cpu_ms_p95": 16.815,
+          "terrain_submit_ms_mean": 0.20062978723404257,
+          "gpu_wait_ms_mean": 0.0030851063829787236,
+          "vi_wait_ms_mean": 13.002910638297871,
+          "draws_mean": 96.0,
+          "triangles_mean": 4267.0,
+          "allocations_total": 5,
+          "gc_collections": 0,
+          "memory": {
+            "native_bytes": 2911580,
+            "texture_bytes": 1037024,
+            "path_bytes": 0,
+            "used_aram_bytes": 4272256,
+            "geometry_cache_peak_bytes": 157696,
+            "geometry_cache_reserved_bytes": 1048576,
+            "dma_reads": 68,
+            "bindings": 68
+          }
+        },
+        {
+          "name": "travel",
+          "moving": true,
+          "frames": 240,
+          "guest_fps": 57.72916081698308,
+          "host_fps": 60.327297548340596,
+          "frame_ms_p50": 16.683,
+          "frame_ms_p95": 16.685,
+          "cpu_ms_mean": 6.684761702127659,
+          "cpu_ms_p95": 14.358,
+          "terrain_submit_ms_mean": 0.20251063829787233,
+          "gpu_wait_ms_mean": 0.003076595744680851,
+          "vi_wait_ms_mean": 10.29091914893617,
+          "draws_mean": 94.02553191489362,
+          "triangles_mean": 4034.131914893617,
+          "allocations_total": 5,
+          "gc_collections": 0,
+          "memory": {
+            "native_bytes": 2911580,
+            "texture_bytes": 1037024,
+            "path_bytes": 0,
+            "used_aram_bytes": 4272256,
+            "geometry_cache_peak_bytes": 164864,
+            "geometry_cache_reserved_bytes": 1048576,
+            "dma_reads": 81,
+            "bindings": 81
+          }
+        }
+      ],
+      "log_sha256": "802f3c88f6638237b632e7568c7ef96f82d4135ceac0cf330f0d8be4ace08ce5"
+    },
+    "quiet-roads-spring": {
+      "renderer": "Dolphin OpenGL / llvmpipe",
+      "hardware_timing": false,
+      "samples": [
+        {
+          "name": "stationary",
+          "moving": false,
+          "frames": 240,
+          "guest_fps": 55.23887876829053,
+          "host_fps": 55.926578679672666,
+          "frame_ms_p50": 16.683,
+          "frame_ms_p95": 33.367,
+          "cpu_ms_mean": 4.843944680851064,
+          "cpu_ms_p95": 16.88,
+          "terrain_submit_ms_mean": 0.2007148936170213,
+          "gpu_wait_ms_mean": 0.003148936170212766,
+          "vi_wait_ms_mean": 12.938055319148937,
+          "draws_mean": 101.0,
+          "triangles_mean": 4315.0,
+          "allocations_total": 5,
+          "gc_collections": 0,
+          "memory": {
+            "native_bytes": 2914332,
+            "texture_bytes": 1039776,
+            "path_bytes": 2752,
+            "used_aram_bytes": 4289216,
+            "geometry_cache_peak_bytes": 164864,
+            "geometry_cache_reserved_bytes": 1048576,
+            "dma_reads": 73,
+            "bindings": 73
+          }
+        },
+        {
+          "name": "travel",
+          "moving": true,
+          "frames": 240,
+          "guest_fps": 57.259813357374334,
+          "host_fps": 55.99430032147301,
+          "frame_ms_p50": 16.683,
+          "frame_ms_p95": 16.685,
+          "cpu_ms_mean": 6.749808510638298,
+          "cpu_ms_p95": 14.445,
+          "terrain_submit_ms_mean": 0.20259574468085106,
+          "gpu_wait_ms_mean": 0.003102127659574468,
+          "vi_wait_ms_mean": 10.36663404255319,
+          "draws_mean": 99.22127659574468,
+          "triangles_mean": 4075.6255319148936,
+          "allocations_total": 5,
+          "gc_collections": 0,
+          "memory": {
+            "native_bytes": 2914332,
+            "texture_bytes": 1039776,
+            "path_bytes": 2752,
+            "used_aram_bytes": 4289216,
+            "geometry_cache_peak_bytes": 172032,
+            "geometry_cache_reserved_bytes": 1048576,
+            "dma_reads": 87,
+            "bindings": 87
+          }
+        }
+      ],
+      "log_sha256": "510432fb675a1f77cd4c241c062d5f4efd6b52c2e59311b308c9937673375766"
+    },
+    "door-roads-spring": {
+      "renderer": "Dolphin OpenGL / llvmpipe",
+      "hardware_timing": false,
+      "samples": [
+        {
+          "name": "stationary",
+          "moving": false,
+          "frames": 240,
+          "guest_fps": 55.0230546599025,
+          "host_fps": 54.4585809546954,
+          "frame_ms_p50": 16.683,
+          "frame_ms_p95": 33.366,
+          "cpu_ms_mean": 6.678459574468086,
+          "cpu_ms_p95": 17.247,
+          "terrain_submit_ms_mean": 0.2847659574468085,
+          "gpu_wait_ms_mean": 0.0030340425531914894,
+          "vi_wait_ms_mean": 11.16836170212766,
+          "draws_mean": 141.77872340425532,
+          "triangles_mean": 6617.391489361702,
+          "allocations_total": 21,
+          "gc_collections": 0,
+          "memory": {
+            "native_bytes": 2927724,
+            "texture_bytes": 1039776,
+            "path_bytes": 2752,
+            "used_aram_bytes": 4289216,
+            "geometry_cache_peak_bytes": 227328,
+            "geometry_cache_reserved_bytes": 1048576,
+            "dma_reads": 95,
+            "bindings": 95
+          }
+        },
+        {
+          "name": "indoors",
+          "moving": false,
+          "frames": 240,
+          "guest_fps": 59.9525736874532,
+          "host_fps": 62.70857104249248,
+          "frame_ms_p50": 16.683,
+          "frame_ms_p95": 16.696,
+          "cpu_ms_mean": 2.567114893617021,
+          "cpu_ms_p95": 4.174,
+          "terrain_submit_ms_mean": 0.17934893617021277,
+          "gpu_wait_ms_mean": 0.003106382978723404,
+          "vi_wait_ms_mean": 13.888106382978723,
+          "draws_mean": 48.0,
+          "triangles_mean": 2658.0,
+          "allocations_total": 17,
+          "gc_collections": 0,
+          "memory": {
+            "native_bytes": 2934908,
+            "texture_bytes": 1037024,
+            "path_bytes": 0,
+            "used_aram_bytes": 4289216,
+            "geometry_cache_peak_bytes": 227328,
+            "geometry_cache_reserved_bytes": 1048576,
+            "dma_reads": 95,
+            "bindings": 95
+          }
+        },
+        {
+          "name": "returned",
+          "moving": false,
+          "frames": 240,
+          "guest_fps": 55.23887876829053,
+          "host_fps": 58.51278160987694,
+          "frame_ms_p50": 16.683,
+          "frame_ms_p95": 33.367,
+          "cpu_ms_mean": 5.935923404255319,
+          "cpu_ms_p95": 16.777,
+          "terrain_submit_ms_mean": 0.3354468085106383,
+          "gpu_wait_ms_mean": 0.0030553191489361706,
+          "vi_wait_ms_mean": 11.825829787234042,
+          "draws_mean": 134.0,
+          "triangles_mean": 6997.0,
+          "allocations_total": 5,
+          "gc_collections": 0,
+          "memory": {
+            "native_bytes": 2937692,
+            "texture_bytes": 1039808,
+            "path_bytes": 2752,
+            "used_aram_bytes": 4289216,
+            "geometry_cache_peak_bytes": 227328,
+            "geometry_cache_reserved_bytes": 1048576,
+            "dma_reads": 95,
+            "bindings": 95
+          }
+        }
+      ],
+      "log_sha256": "afaf08dce5f425d90b5e7a40ada0c26b7925d0e750d8e324ffacd917c35a2e5b"
+    },
+    "remote-roads-spring": {
+      "renderer": "Dolphin OpenGL / llvmpipe",
+      "hardware_timing": false,
+      "samples": [
+        {
+          "name": "stationary",
+          "moving": false,
+          "frames": 240,
+          "guest_fps": 54.80898718122743,
+          "host_fps": 49.80571324598546,
+          "frame_ms_p50": 16.683,
+          "frame_ms_p95": 33.367,
+          "cpu_ms_mean": 8.55583829787234,
+          "cpu_ms_p95": 22.157,
+          "terrain_submit_ms_mean": 0.20436595744680852,
+          "gpu_wait_ms_mean": 0.0030893617021276595,
+          "vi_wait_ms_mean": 9.351008510638298,
+          "draws_mean": 152.0,
+          "triangles_mean": 7036.0,
+          "allocations_total": 5,
+          "gc_collections": 0,
+          "memory": {
+            "native_bytes": 2911580,
+            "texture_bytes": 1037024,
+            "path_bytes": 0,
+            "used_aram_bytes": 4289216,
+            "geometry_cache_peak_bytes": 315392,
+            "geometry_cache_reserved_bytes": 1048576,
+            "dma_reads": 101,
+            "bindings": 101
+          }
+        }
+      ],
+      "log_sha256": "2fa1c8c62744ec8d783ac80e0478c74a61fbc5f127dab167335e99a2bd702bbd"
+    }
+  },
+  "asset": {
+    "source": "assets/textures/environment/paths/dirt-64.png",
+    "sourceSha": "D8AD116622D57C43AB77D6CC0319988EFDB4AA804379A0DE391F4419C495BF2A",
+    "disc": "path-dirt.dndtex",
+    "width": 64,
+    "height": 64,
+    "pixelBytes": 2752,
+    "packageBytes": 2784,
+    "sha": "2415EAD0698F6822E622ED207A87D3DBCD454A2BD8E9F7534466B16D1C5BBD26",
+    "runtimeNoise": false
+  },
+  "executable": {
+    "before": {
+      "file_bytes": 6755488,
+      "text_data_bytes": 6755232,
+      "bss_bytes": 5098600,
+      "loaded_mem1_bytes": 11853832,
+      "sha256": "fe8ef268f43f44a33308416eac5f6fed3cfc89764e71c368b84917e42fc44fa1"
+    },
+    "after": {
+      "file_bytes": 6872576,
+      "text_data_bytes": 6872320,
+      "bss_bytes": 5098568,
+      "loaded_mem1_bytes": 11970888,
+      "sha256": "3a0b3d3d90045345b9f79e4b5ac4695d143cc392507d729120f18fa62b601ab0"
+    }
+  },
+  "residency_events": [
+    "PATH PAGE READY bytes 2752 reads 1",
+    "PATH PAGE EVICTED bytes 2752",
+    "PATH PAGE READY bytes 2752 reads 2"
+  ],
+  "remote_fixture": {
+    "seed": 3,
+    "roads": true,
+    "x": 4.5,
+    "z": 86.5,
+    "cells": 358,
+    "unconnected": 1,
+    "terrainSha": "5E2FAD97AC88FDFD92A354036DCBF9D443AEE9E987B8366408B4C47637ADE552",
+    "pathsSha": "0EB906256BDCA88463A296BCB19DBAE88BC9319837DDEB4D5F9C0E91A5D12CF7"
+  },
+  "raw_frames_csv": "frames.csv"
+}

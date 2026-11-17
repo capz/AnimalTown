@@ -73,7 +73,7 @@ internal static class IncrementalSaveChecks
         check(Fails(()=>new SaveRepository(new SaveReadCache(changed)).Save(c)),"cached changed record readback rejects altered content even with a recomputed CRC");Same(baseline,new SaveRepository(changed).Load()!,check,"readback failure preserves the previous publication");
         // Import old combined and v3/v4 split saves without changing source data.
         foreach(int format in new[]{0,3,4}){
-            var disk=new Disk();var old=Town();old.Sequence=7;
+            var disk=new Disk();var old=Town();old.Sequence=7;if(format==3)old.Town.Paths.Clear();
             if(format==0)disk.Files["AnimalTown1"]=SaveCodec.Encode(old);
             else{var p=format==3?SplitSaveCodec.EncodeLegacy(old):SplitSaveCodec.Encode(old);for(int i=0;i<p.Length;i++)disk.Files[SplitSaveCodec.FileName(SplitSaveCodec.RecordKind(i),1)]=p[i];disk.Files["AT-Commit1"]=SplitSaveCodec.EncodeCommit(old,p);}
             var loaded=new SaveRepository(disk).Load()!;Same(old,loaded,check,"old save remains readable before migration");var preserved=format==0?(byte[])disk.Files["AnimalTown1"].Clone():null;

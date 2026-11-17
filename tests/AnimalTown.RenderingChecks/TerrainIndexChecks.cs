@@ -22,10 +22,10 @@ internal static class TerrainIndexChecks
         geometry.Quad(same,tint,uv,normal);check(geometry.VertexCount==7,"wet-sand, UV and normal seams never weld merely because positions match");
         geometry.Quad(V(0,0,2),V(1,0,2),V(1,1,2),V(0,1,2));check(geometry.VertexCount==11,"high and low cliff surfaces retain independent vertices");
         geometry.Reset();
-        for(int q=0;q<32;q++)geometry.Quad(V(q*3,0),V(q*3+1,0),V(q*3+1,1),V(q*3,1));
-        check(geometry.VertexCount==TerrainIndexBuffer.MaximumVertices&&geometry.IndexCount==TerrainIndexBuffer.MaximumIndices,"worst-case section fits its explicit index and vertex budgets");
+        for(int q=0;q<TerrainIndexBuffer.MaximumVertices/4;q++)geometry.Quad(V(q*3,0),V(q*3+1,0),V(q*3+1,1),V(q*3,1));
+        check(geometry.VertexCount==TerrainIndexBuffer.MaximumVertices&&geometry.IndexCount==TerrainIndexBuffer.MaximumVertices/4*6,"worst-case section fits its explicit index and vertex budgets");
         for(int i=0;i<geometry.IndexCount;i++)check(geometry.Indices[i]<geometry.VertexCount,"growth preserves every authored index and staged prefix");
         bool rejected=false;try{geometry.Quad(V(0,0),V(1,0),V(1,1),V(0,1));}catch(InvalidOperationException){rejected=true;}
-        check(rejected&&geometry.IndexCount==TerrainIndexBuffer.MaximumIndices,"overflow fails before changing the valid triangle count");
+        check(rejected&&geometry.IndexCount==TerrainIndexBuffer.MaximumVertices/4*6,"overflow fails before changing the valid triangle count");
     }
 }

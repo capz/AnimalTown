@@ -60,7 +60,7 @@ public sealed partial class GameState
         if(!HouseEntrance(x,z,out float arrivalX,out float arrivalZ))return false;
         int dx=x-Town.HouseX,dz=z-Town.HouseZ;
         for(int i=0;i<Town.PlacedCount;i++)if(Town.Placed[i].Room==0&&Town.Placed[i].Owner==PlayerOwner){Town.Placed[i].X+=dx;Town.Placed[i].Z+=dz;}
-        Town.HouseX=x;Town.HouseZ=z;HousePlaced=true;X=arrivalX;Z=arrivalZ;if(relocate&&!free)Wallet-=50000;return true;
+        Town.HouseX=x;Town.HouseZ=z;HousePlaced=true;X=arrivalX;Z=arrivalZ;if(relocate&&!free)Wallet-=50000;TownPathPlanner.ConnectHome(this);return true;
     }
     private bool HouseEntrance(int x,int z,out float arrivalX,out float arrivalZ)
     {
