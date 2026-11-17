@@ -15,6 +15,7 @@
 #define SU_INNER (SU_SIDE-2) /* One filtering gutter on each edge. */
 #define SU_BYTES (SU_SIDE*SU_SIDE)
 #define SU_OPACITY 66
+#define SU_LIGHTS 24
 #define SU_TERRAIN_WIDTH 256
 #define SU_TERRAIN_HEIGHT 128
 #define SU_TERRAIN_TEXELS_PER_METRE 1.f
@@ -40,6 +41,8 @@ typedef struct {
     uint8_t shapes[4*4096+1024];
     uint8_t *terrain,*coverage;
     uint8_t clouds[SU_CLOUD_BYTES];
+    float lights[SU_LIGHTS*4];
+    int light_count,light_dirty;
     int terrain_ready,cloud_ready,cloud_dirty,cloud_x,cloud_z;
     SuSupport support[(SU_CASTERS-SU_STATIC)*SU_SUPPORT_PAGES];
     uint8_t static_work[SU_BYTES];
@@ -64,25 +67,29 @@ static inline void su_terrain_changed(SuState *s){
     }
     if(s->static_page>=0&&s->page[s->static_page].space==0)s->static_page=-1;
 }
+static inline uint8_t su_shadow(uint8_t value){return (uint8_t)(((value&15)*SU_OPACITY+7)/15);}
+static inline uint8_t su_pack(int shadow,int light){return (uint8_t)(((light+8)/17)*16+(shadow*15+SU_OPACITY/2)/SU_OPACITY);}
 static inline void su_terrain_reset(SuState *s){
     s->terrain_ready=0;memset(s->terrain,0,SU_TERRAIN_BYTES);su_terrain_changed(s);
 }
-static inline void su_terrain_publish(SuState *s){s->terrain_ready=1;su_terrain_changed(s);}
-static inline uint8_t su_field_sample(const uint8_t *field,float x,float z){
+static inline void su_terrain_publish(SuState *s){s->terrain_ready=1;s->light_dirty=1;su_terrain_changed(s);}
+static inline uint8_t su_field_channel(const uint8_t *field,float x,float z,int light){
     float fx=x*SU_TERRAIN_TEXELS_PER_METRE+.5f,fz=z*SU_TERRAIN_TEXELS_PER_METRE+.5f;
     if(fx<0||fz<0||fx>=SU_TERRAIN_WIDTH-1||fz>=SU_TERRAIN_HEIGHT-1)return 0;
     int ix=(int)fx,iz=(int)fz;float tx=fx-ix,tz=fz-iz;
-    float a=field[su_terrain_offset(ix,iz)],b=field[su_terrain_offset(ix+1,iz)];
-    float c=field[su_terrain_offset(ix,iz+1)],d=field[su_terrain_offset(ix+1,iz+1)];
+    uint8_t av=field[su_terrain_offset(ix,iz)],bv=field[su_terrain_offset(ix+1,iz)],cv=field[su_terrain_offset(ix,iz+1)],dv=field[su_terrain_offset(ix+1,iz+1)];
+    float a=light?(av>>4)*17:su_shadow(av),b=light?(bv>>4)*17:su_shadow(bv);
+    float c=light?(cv>>4)*17:su_shadow(cv),d=light?(dv>>4)*17:su_shadow(dv);
     return (uint8_t)((a+(b-a)*tx)*(1-tz)+(c+(d-c)*tx)*tz+.5f);
 }
+static inline uint8_t su_field_sample(const uint8_t *field,float x,float z){return su_field_channel(field,x,z,0);}
 static inline uint8_t su_terrain_sample(const SuState *s,float x,float z){return s->terrain_ready?su_field_sample(s->terrain,x,z):0;}
 static inline void su_seed_terrain(const SuState *s,const SuPage *p,uint8_t *dest){
     memset(dest,0,SU_BYTES);
     if(p->space||!s->terrain_ready)return;
     float step=s->span/SU_INNER;
     for(int y=0;y<SU_SIDE;y++)for(int x=0;x<SU_SIDE;x++)
-        dest[((y/4)*(SU_SIDE/8)+x/8)*32+y%4*8+x%8]=su_terrain_sample(s,p->x*s->span+(x-.5f)*step,p->z*s->span+(y-.5f)*step);
+        dest[((y/4)*(SU_SIDE/8)+x/8)*32+y%4*8+x%8]=su_pack(su_terrain_sample(s,p->x*s->span+(x-.5f)*step,p->z*s->span+(y-.5f)*step),0);
 }
 static inline unsigned su_hash(int space,int x,int z){
     uint32_t h=(uint32_t)x*0x9e3779b1u^(uint32_t)z*0x85ebca6bu^(uint32_t)space*0xc2b2ae35u;
@@ -133,23 +140,41 @@ static inline void su_cloud_motion(SuState *s,float x,float z){
     int px=(int)(x*256),pz=(int)(z*256);
     if(px!=s->cloud_x||pz!=s->cloud_z){s->cloud_x=px;s->cloud_z=pz;s->cloud_dirty=1;}
 }
+static inline void su_lights(SuState *s,const float *sources,int count){
+    if(s->light_count==count&&!memcmp(s->lights,sources,(size_t)count*16))return;
+    s->light_count=count;memcpy(s->lights,sources,(size_t)count*16);s->light_dirty=s->cloud_dirty=1;
+}
+static inline void su_bake_lights(SuState *s){
+    if(!s->light_dirty)return;
+    for(int z=0;z<SU_TERRAIN_HEIGHT;z++)for(int x=0;x<SU_TERRAIN_WIDTH;x++){
+        float px=(x-.5f)/SU_TERRAIN_TEXELS_PER_METRE,pz=(z-.5f)/SU_TERRAIN_TEXELS_PER_METRE,light=0;
+        for(int n=0;n<s->light_count;n++){
+            const float *p=s->lights+n*4;float dx=px-p[0],dz=pz-p[1],r=1-(dx*dx+dz*dz)/(p[2]*p[2]);
+            if(r>0){float strength=r*r*p[3];if(strength>light)light=strength;}
+        }
+        int at=su_terrain_offset(x,z);s->terrain[at]=(s->terrain[at]&15)|((int)((light+8)/17)<<4);
+    }
+    s->light_dirty=0;s->cloud_dirty=1;
+}
 static inline void su_cloud_prepare(SuState *s){
+    su_bake_lights(s);
     if(!s->cloud_dirty)return;
     for(int y=0;y<SU_TERRAIN_HEIGHT;y++)for(int x=0;x<SU_TERRAIN_WIDTH;x++){
-        int at=su_terrain_offset(x,y);uint8_t a=s->terrain_ready?s->terrain[at]:0;
+        int at=su_terrain_offset(x,y);uint8_t a=s->terrain_ready?su_shadow(s->terrain[at]):0;
         uint8_t b=x<=SU_WORLD_WIDTH+1?su_cloud_sample(s,(x-.5f)/SU_TERRAIN_TEXELS_PER_METRE,(y-.5f)/SU_TERRAIN_TEXELS_PER_METRE):0;
-        s->coverage[at]=a>b?a:b;
+        s->coverage[at]=su_pack(a>b?a:b,(s->terrain[at]>>4)*17);
     }
     for(int i=0;i<SU_PAGES;i++)if(s->page[i].used&&!s->page[i].space)s->page[i].dirty=1;
     s->cloud_dirty=0;
 }
 static inline void su_page_clouds(const SuState *s,const SuPage *p,uint8_t *dest){
-    if(p->space||!s->cloud_ready)return;
+    if(p->space)return;
     float step=s->span/SU_INNER;
     for(int y=0;y<SU_SIDE;y++)for(int x=0;x<SU_SIDE;x++){
         int at=su_offset(x,y);
-        uint8_t a=su_field_sample(s->coverage,p->x*s->span+(x-.5f)*step,p->z*s->span+(y-.5f)*step);
-        if(a>dest[at])dest[at]=a;
+        float px=p->x*s->span+(x-.5f)*step,pz=p->z*s->span+(y-.5f)*step;
+        uint8_t a=su_field_sample(s->coverage,px,pz),b=su_shadow(dest[at]);
+        dest[at]=su_pack(a>b?a:b,su_field_channel(s->coverage,px,pz,1));
     }
 }
 static inline void su_bounds(const SuCaster *c,float b[4]){
@@ -245,7 +270,7 @@ static inline void su_raster(SuState *s,const SuPage *p,const SuCaster *c,uint8_
     for(int y=t<1?1:t;y<=b&&y<SU_SUPPORT_SIDE-1;y++)for(int x=l<1?1:l;x<=r&&x<SU_SUPPORT_SIDE-1;x++){
         int k=y*SU_SUPPORT_SIDE+x;
         if(!su_bit(valid,k)||!su_bit(valid,k-1)||!su_bit(valid,k+1)||!su_bit(valid,k-SU_SUPPORT_SIDE)||!su_bit(valid,k-SU_SUPPORT_SIDE+1)||!su_bit(valid,k-SU_SUPPORT_SIDE-1)||!su_bit(valid,k+SU_SUPPORT_SIDE)||!su_bit(valid,k+SU_SUPPORT_SIDE+1)||!su_bit(valid,k+SU_SUPPORT_SIDE-1))continue;
-        uint8_t alpha=su_sample(s,c,ox+x*step,oz+y*step);int at=su_offset(x-1,y-1);if(alpha>dest[at])dest[at]=alpha;
+        uint8_t alpha=su_sample(s,c,ox+x*step,oz+y*step);int at=su_offset(x-1,y-1);if(alpha>su_shadow(dest[at]))dest[at]=su_pack(alpha,(dest[at]>>4)*17);
     }
 }
 static inline int su_can_work(SuCanWork can,void *context){return !can||can(context);}
