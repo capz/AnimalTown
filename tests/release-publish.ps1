@@ -2,7 +2,7 @@ $ErrorActionPreference='Stop'
 $tokens=$null;$errors=$null
 $ast=[Management.Automation.Language.Parser]::ParseFile((Join-Path $PSScriptRoot '../tools/publish-release.ps1'),[ref]$tokens,[ref]$errors)
 if($errors){throw 'Publisher syntax is invalid'}
-foreach($name in @('InvokeGh','Read-ReleaseMetadata','Assert-BinaryArchive')){
+foreach($name in @('InvokeGh','Read-ReleaseMetadata','Assert-BinaryArchive','Assert-ReleaseVersionMetadata')){
     $function=$ast.Find({param($node) $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq $name},$true)
     . ([scriptblock]::Create($function.Extent.Text))
 }
@@ -30,6 +30,22 @@ $response=[string][char]0xE9;$response=$response*16385;Reject {Read-ReleaseMetad
 $directory=Join-Path ([IO.Path]::GetTempPath()) ('release-publish-'+[guid]::NewGuid().ToString('N'))
 New-Item -ItemType Directory $directory | Out-Null
 try{
+    $identity=[pscustomobject]@{schema=2;version='1.2.3';commit=('a'*40);mainCommit=('b'*40);dirty=$false;changes=@([pscustomobject]@{number=112;commit=('c'*40)})}
+    $versionPath=Join-Path $directory 'version.json'
+    # Equivalent JSON with a different key order must be verified, never rewritten.
+    $saved=@{changes=@(@{commit=('c'*40);number=112});dirty=$false;mainCommit=('b'*40);commit=('a'*40);version='1.2.3';schema=2}
+    [IO.File]::WriteAllText($versionPath,($saved | ConvertTo-Json -Depth 5)+"`n`n")
+    $original=(Get-FileHash -LiteralPath $versionPath).Hash
+    Assert-ReleaseVersionMetadata $identity $versionPath
+    Assert ((Get-FileHash -LiteralPath $versionPath).Hash -ceq $original) 'Publication must retain embedded version metadata byte-for-byte'
+    foreach($field in @('commit','mainCommit','version','dirty')){
+        $changed=$saved.Clone();$changed[$field]=if($field -eq 'dirty'){$true}else{'wrong'}
+        [IO.File]::WriteAllText($versionPath,($changed | ConvertTo-Json -Depth 5))
+        Reject {Assert-ReleaseVersionMetadata $identity $versionPath} "Stale built identity must fail: $field"
+    }
+    $changed=$saved.Clone();$changed.changes=@(@{number=113;commit=('d'*40)})
+    [IO.File]::WriteAllText($versionPath,($changed | ConvertTo-Json -Depth 5))
+    Reject {Assert-ReleaseVersionMetadata $identity $versionPath} 'Changed integration history must fail'
     foreach($name in @('program.dll','source.cs','provision.py','model.glb','source.tar.gz','source.zip')){
         $zip=Join-Path $directory 'fixture.zip'
         $archive=[IO.Compression.ZipFile]::Open($zip,[IO.Compression.ZipArchiveMode]::Create)
@@ -39,4 +55,4 @@ try{
         Remove-Item -LiteralPath $zip
     }
 }finally{Remove-Item -LiteralPath $directory -Recurse -Force}
-Write-Host "$checks release publisher checks passed: draft lookup, exact API origin, response budget and source exclusion"
+Write-Host "$checks release publisher checks passed: frozen build identity, draft lookup, response budget and source exclusion"

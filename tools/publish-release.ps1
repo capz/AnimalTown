@@ -19,6 +19,17 @@ function Assert-BinaryArchive([string]$Path){
         }
     }finally{$archive.Dispose()}
 }
+function Assert-ReleaseVersionMetadata($Identity,[string]$Path){
+    $saved=Get-Content -LiteralPath $Path -Raw | ConvertFrom-Json
+    foreach($property in $Identity.PSObject.Properties){
+        if($property.Name -ne 'changes' -and $saved.($property.Name) -cne $property.Value){throw "Built version metadata differs: $($property.Name)"}
+    }
+    if(@($saved.changes).Count -ne @($Identity.changes).Count){throw 'Built version merge history differs'}
+    for($i=0;$i -lt @($Identity.changes).Count;$i++){
+        if($saved.changes[$i].number -ne $Identity.changes[$i].number -or $saved.changes[$i].commit -cne $Identity.changes[$i].commit){throw 'Built version integration boundary differs'}
+    }
+    # Preserve the exact bytes already embedded in the ISO and app ZIP.
+}
 function Get-ReleaseBannerHashes([string]$Opening,[string]$Pal,[object]$NKitInfo,[string]$Version){
     $openingBytes=[IO.File]::ReadAllBytes($Opening)
     $palBytes=[IO.File]::ReadAllBytes($Pal)
@@ -53,7 +64,7 @@ if(& git -C $Root status --porcelain --untracked-files=normal){throw 'Release pa
 . (Join-Path $PSScriptRoot 'version.ps1')
 $identity=Get-BuildVersion $Root
 if(!$identity.canPublish){throw 'Main releases must end at a merged PR boundary; direct main commits do not advance the patch'}
-Write-VersionMetadata $identity $Root
+Assert-ReleaseVersionMetadata $identity (Join-Path $Root 'out/version.json')
 $version=$identity.version
 $versionPattern=[regex]::Escape($version)
 $validation=Get-Content (Join-Path $Root 'out/validation-plan.json') -Raw|ConvertFrom-Json
