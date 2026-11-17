@@ -7,6 +7,7 @@ using File=System.IO.File;
 // then installs the published image in the GC Loader /games directory.
 internal static class UpdaterLaunch
 {
+    internal static bool Available=>ContentBootstrap.DiscInstallation;
     internal static string Operation="load the updater";
     internal const string Protocol="--animaltown-update=3";
     internal static void Request()

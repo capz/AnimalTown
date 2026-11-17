@@ -12,7 +12,6 @@ internal sealed class OnboardingUi : IDisposable
     private Draw2D? ui;
     private TitleBackdrop? background;
     private UiFont? font,heading;
-    private CachedTexture? logo;
     private CachedTexture?[]? portraits;
     private string[]? files,labels,keys,counts;
     private string? cachedEntry;
@@ -32,7 +31,7 @@ internal sealed class OnboardingUi : IDisposable
             if(stage<Name||stage>Review||(uint)species>=6)throw new ArgumentOutOfRangeException("stage/species");
             ui=new Draw2D(GraphicsDevice.Default,new Draw2DOptions{Width=640,Height=480,VertexCapacity=8192,SpriteCapacity=128});
             background=new TitleBackdrop();font=UiFont.LoadSystem();heading=UiFont.Load("gorditas-bold");
-            logo=TextureCache.Load(AnimalTown.ContentPaths.Asset("wordmark.dndtex"),true);
+
             portraits=new CachedTexture?[6];
             files=new[]{"fox","bunny","giraffe","cat","hamster","spaniel"};
             labels=new[]{"Fox","Bunny","Giraffe","Maine coon","Hamster","Spaniel"};
@@ -43,6 +42,7 @@ internal sealed class OnboardingUi : IDisposable
                 for(int i=0;i<17;i++)counts[i]=i+" / 16";
             }else if(stage==Look){for(int i=0;i<6;i++)LoadPortrait(i);}
             else LoadPortrait(species);
+            Dolphin.Diagnostics.DebugOverlay.WriteLine("ANIMALTOWN SETUP HEADER "+stage+" logo bytes "+TextureCache.SourceBytesContaining(ContentPaths.Asset("wordmark.dndtex")));
             LiveViews++;counted=true;
         }catch{Dispose();throw;}
     }
@@ -53,11 +53,10 @@ internal sealed class OnboardingUi : IDisposable
         if(disposed)throw new ObjectDisposedException("OnboardingUi");
         ui!.Begin();background!.Draw(ui);
         TitleArt.Panel(ui,36,18,568,440);
-        TitleArt.Logo(ui,logo!,new RectF(186,20,268,64));
-        Leaves(186,65);Leaves(454,65);
+        Leaves(186,62);Leaves(454,62);
         float width=Math.Min(506,heading!.Measure(title,1.08f)+40);
-        TitleArt.Rounded(ui,320-width*.5f,84,width,37,18,Warm);
-        Head(title,320,86,1.08f,width-24);
+        TitleArt.Rounded(ui,320-width*.5f,42,width,37,18,Warm);
+        Head(title,320,44,1.08f,width-24);
     }
     private void End(){ui!.End();}
     private void Text(string text,float center,float y,float scale,float width,Color32 color)
@@ -238,7 +237,7 @@ internal sealed class OnboardingUi : IDisposable
         if(disposed)return;disposed=true;
         if(counted){LiveViews--;counted=false;}
         if(portraits!=null)for(int i=0;i<portraits.Length;i++)if(portraits[i]!=null){TextureCache.Release(portraits[i]!);portraits[i]=null;}
-        if(logo!=null)TextureCache.Release(logo);logo=null;
+
         heading?.Release();heading=null;font?.Release();font=null;
         background?.Dispose();background=null;ui?.Dispose();ui=null;
         portraits=null;files=null;labels=null;keys=null;counts=null;cachedEntry=null;

@@ -28,7 +28,9 @@ internal sealed class TitleScreen : IDisposable,Hypercube.GameCube.IFrameScene
     private const float BodyScale=1.2f,HelpScale=1;
     private const int TitleColumnX=140,TitleColumnWidth=360,TitleRowHeight=34,TitleRowStep=42;
     private const int DebugPageSize=6;
-    private int MenuCount=>options.ShowDebugMenus?4:3;
+    private int OptionsIndex=>UpdaterLaunch.Available?2:1;
+    private int DebugIndex=>OptionsIndex+1;
+    private int MenuCount=>DebugIndex+(options.ShowDebugMenus?1:0);
     private int lastTitleLayout=-1;
     private string statusSource="",statusLine1="",statusLine2="";
     private float statusWidth;
@@ -68,8 +70,8 @@ internal sealed class TitleScreen : IDisposable,Hypercube.GameCube.IFrameScene
             if(direction==MenuNavigation.Up)title.selected=(title.selected+title.MenuCount-1)%title.MenuCount;
             if(direction==MenuNavigation.Down)title.selected=(title.selected+1)%title.MenuCount;
             if(!p.A.WasPressed&&!(p.Start.WasPressed&&title.selected==0))continue;
-            if(title.selected==3&&options.ShowDebugMenus){title.debugOpen=true;continue;}
-            if(title.selected==2){
+            if(title.selected==title.DebugIndex&&options.ShowDebugMenus){title.debugOpen=true;continue;}
+            if(title.selected==title.OptionsIndex){
                 title.optionsHeading=UiFont.Load("gorditas-bold");title.optionsOpen=true;title.optionRow=0;title.ResetOptionChoice();
                 title.optionsStatus=VideoOptions.Status.Length>0?VideoOptions.Status:UserOptionsStorage.Status;continue;
             }
@@ -78,6 +80,7 @@ internal sealed class TitleScreen : IDisposable,Hypercube.GameCube.IFrameScene
                 DevConfigStorage.ApplyGlobal(config);LoadingScreen.Draw();
                 title.Save();return true;
             }
+            if(!UpdaterLaunch.Available)continue;
             title.Save();
             try{
                 title.status="Starting updater...";title.Draw();
@@ -109,14 +112,16 @@ internal sealed class TitleScreen : IDisposable,Hypercube.GameCube.IFrameScene
         // Fit the approved logo and menu column with 36px side padding and
         // 24-25px above/below. Status messages retain their own bounded footer.
         bool showStatus=status.Length>0&&!optionsOpen&&!debugOpen;
-        int panelHeight=showStatus?456:MenuCount==3?384:424,panelY=(480-panelHeight)/2;
+        int panelHeight=showStatus?456:264+MenuCount*40,panelY=(480-panelHeight)/2;
         int contentOffset=(4-MenuCount)*21+(showStatus?0:24),logoY=28+contentOffset,menuY=244+contentOffset;
         TitleArt.Panel(ui,104,panelY,432,panelHeight);
         TitleArt.Logo(ui,logo,new RectF(TitleColumnX,logoY,TitleColumnWidth,180));
         const string tagline="A little life, well rooted.";
         CenteredText(tagline,new RectF(TitleColumnX,212+contentOffset,TitleColumnWidth,26),TitleArt.Ink,1.1f);
-        MenuRow(0,"Start",menuY);MenuRow(1,"Update",menuY+TitleRowStep);MenuRow(2,"Options",menuY+TitleRowStep*2);
-        if(options.ShowDebugMenus)MenuRow(3,"Debug configuration",menuY+TitleRowStep*3);
+        MenuRow(0,"Start",menuY);
+        if(UpdaterLaunch.Available)MenuRow(1,"Update",menuY+TitleRowStep);
+        MenuRow(OptionsIndex,"Options",menuY+TitleRowStep*OptionsIndex);
+        if(options.ShowDebugMenus)MenuRow(DebugIndex,"Debug configuration",menuY+TitleRowStep*DebugIndex);
         int layout=MenuCount+(showStatus?8:0);
         if(!optionsOpen&&!debugOpen&&layout!=lastTitleLayout){
             lastTitleLayout=layout;

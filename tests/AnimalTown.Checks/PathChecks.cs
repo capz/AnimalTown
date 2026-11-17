@@ -8,45 +8,62 @@ internal static class PathChecks
         public byte[] Read(string name)=>Files[name];
         public void Write(string name,byte[] bytes)=>Files[name]=(byte[])bytes.Clone();
     }
+    private static GameState Flat()
+    {
+        var s=new GameState(3);Array.Fill(s.Town.Tiles,(byte)Terrain.Grass);Array.Clear(s.Town.Elevation);
+        s.Town.GroundCount=s.Town.PlacedCount=0;s.HousePlaced=false;s.Town.Paths.Clear();return s;
+    }
     internal static void Run(Action<bool,string> check)
     {
-        int min=int.MaxValue,max=0,unconnected=0;long elapsed=0,allocated=0;
-        for(int seed=0;seed<24;seed++){
-            var t=new Town(seed);var terrain=(byte[])t.Tiles.Clone();var trees=t.Ground.Take(t.GroundCount).Select(g=>(g.X,g.Z,g.Kind)).ToArray();
-            var expected=(byte[])t.Paths.Packed.Clone();long before=GC.GetAllocatedBytesForCurrentThread();var watch=System.Diagnostics.Stopwatch.StartNew();TownPathPlanner.Generate(t);watch.Stop();elapsed+=watch.ElapsedTicks;allocated+=GC.GetAllocatedBytesForCurrentThread()-before;
-            check(expected.SequenceEqual(t.Paths.Packed)&&terrain.SequenceEqual(t.Tiles),"path routing is deterministic and never changes terrain");
-            check(t.Paths.Packed.Length==3840&&t.Paths.Count>100,"new towns use the bounded two-bit overlay and get a road network");
-            min=Math.Min(min,t.Paths.Count);max=Math.Max(max,t.Paths.Count);unconnected+=t.Paths.Unconnected;
-            for(int z=0;z<Town.Height;z++)for(int x=0;x<Town.Width;x++)if(t.Paths.At(x,z)!=0){
-                check(TownPaths.Surface(t,x,z)&&t.Walkable(x,z)&&!t.InReserve(x,z),"roads preserve water, buildings, beaches and the starter garden");
-                check(!trees.Any(g=>(g.Kind==2||g.Kind==3)&&Math.Abs(g.X-x)<=1&&Math.Abs(g.Z-z)<=1),"the full road width clears existing trees and planted items");
-                bool wide=false;for(int dz=-1;dz<=0;dz++)for(int dx=-1;dx<=0;dx++)if(t.Paths.At(x+dx,z+dz)!=0&&t.Paths.At(x+dx+1,z+dz)!=0&&t.Paths.At(x+dx,z+dz+1)!=0&&t.Paths.At(x+dx+1,z+dz+1)!=0)wide=true;
-                // Plaza/bridge cells retain their own material within the lane.
-                if(!wide)wide=t.At(x-1,z)==(int)Terrain.Plaza||t.At(x+1,z)==(int)Terrain.Plaza||t.At(x,z-1)==(int)Terrain.Plaza||t.At(x,z+1)==(int)Terrain.Plaza||t.At(x-1,z)==(int)Terrain.Bridge||t.At(x+1,z)==(int)Terrain.Bridge||t.At(x,z-1)==(int)Terrain.Bridge||t.At(x,z+1)==(int)Terrain.Bridge;
-                check(wide,"main paths have a full two-metre footprint including turns");
-            }
-        }
-        var px=new float[8];var pz=new float[8];
-        for(int mask=0;mask<16;mask++){
-            int n=PathShape.Polygon(mask,px,pz);double area=0;
-            for(int i=0;i<n;i++){int next=(i+1)%n;area+=px[i]*pz[next]-pz[i]*px[next];check(px[i]>=0&&px[i]<=1&&pz[i]>=0&&pz[i]<=1,"path polygon remains inside its cell");}
-            int cut=System.Numerics.BitOperations.PopCount((uint)mask);
-            check(Math.Abs(area*.5+cut*PathShape.Bevel*PathShape.Bevel*.5-1)<.000001,"road and grass corner triangles partition the ground without gaps or overlap");
-        }
-        var s=new GameState(3);s.Tutorial=6;s.Rollover(21014,2027*12+7);var bytes=SaveCodec.Encode(s);
-        check(BitConverter.ToInt32(bytes,4)==10&&s.Town.Paths.Packed.SequenceEqual(SaveCodec.Decode(bytes).Town.Paths.Packed),"whole-town v10 preserves roads alongside shop state");
-        var parts=SplitSaveCodec.Encode(s);check(SplitSaveCodec.ReadVersion(parts[0])==6&&s.Town.Paths.Packed.SequenceEqual(SplitSaveCodec.Decode(parts).Town.Paths.Packed),"split town v6 preserves roads");
-        var storage=new Storage();var repository=new SaveRepository(storage);repository.Save(s);
-        s.Town.Paths.Set(32,40,s.Town.Paths.At(32,40)==0?1:0);s.Town.NotifyTerrainChanged();repository.Save(s);
-        check(s.Town.Paths.Packed.SequenceEqual(new SaveRepository(storage).Load()!.Town.Paths.Packed),"incremental publication includes edited path content");
-        // An actual old schema, not current bytes relabelled with an old version.
-        var old=parts[0][..^(TownPaths.PackedBytes+8)];Put(old,4,4);Put(old,24,old.Length);Crc(old);parts[0]=old;
-        check(SplitSaveCodec.Decode(parts).Town.Paths.Count==0,"v4 shared towns load an empty overlay without replanning");
-        var pathArchive=File.ReadAllBytes(Path.Combine(AppContext.BaseDirectory,"Fixtures/town-paths-v9.bin"));
-        old=pathArchive[..^(TownPaths.PackedBytes+8)];Put(old,4,8);Put(old,16,old.Length);Put(old,20,(int)SaveCodec.Crc(old,24,old.Length-24));
-        check(SaveCodec.Decode(old).Town.Paths.Count==0,"v8 combined towns load an empty overlay without replanning");
-        var broken=SplitSaveCodec.Encode(s);broken[0][^5]=255;Crc(broken[0]);bool rejected=false;try{SplitSaveCodec.Decode(broken);}catch(InvalidOperationException){rejected=true;}check(rejected,"unsupported style bits are rejected even with a valid checksum");
-        Console.WriteLine($"Paths: 24 seeds, {min}..{max} painted cells, {unconnected} explicitly unconnected anchors; planner mean {elapsed*1000.0/System.Diagnostics.Stopwatch.Frequency/24:F2}ms host / {allocated/24} temporary managed bytes; 3840 retained bytes");
+        var s=Flat();var t=s.Town;
+        check(t.Paths.Count==0&&t.Traffic.Visits.Length==15360,"new towns have no invented traffic or preplanned paths");
+        for(int i=0;i<100;i++)t.Traffic.Visits[40*Town.Width+i]=(byte)(i+1);
+        t.Traffic.Refresh(t);
+        check(t.Paths.Count==20&&t.Traffic.Cutoff==81&&t.Traffic.HighOutliers==0,"the busiest fifth is ranked by visited eligible tiles, not a fraction of the largest count");
+        for(int i=0;i<100;i++)check(t.Paths.At(i,40)==(i>=80?1:0),"ranked selection follows anonymous traffic");
+        t.Traffic.Visits[40*Town.Width+99]=250;t.Traffic.Refresh(t);
+        check(t.Traffic.HighOutliers==1&&t.Traffic.Cutoff==80&&t.Paths.Count==21&&t.Paths.At(99,40)==1,"high Tukey outliers do not distort the quota and are still paths");
+        s=Flat();t=s.Town;for(int i=0;i<20;i++)t.Traffic.Visits[40*Town.Width+i]=5;t.Traffic.Visits[40*Town.Width+100]=200;
+        t.Paths.Set(18,40,1);t.Paths.Set(19,40,1);t.Traffic.Refresh(t);
+        check(t.Paths.Count==5&&t.Paths.At(18,40)==1&&t.Paths.At(19,40)==1&&t.Paths.At(100,40)==1,"ties retain established tiles without selecting every equal count");
+        var selected=(byte[])t.Paths.Packed.Clone();int revision=t.Paths.Revision;t.Traffic.Refresh(t);
+        check(selected.SequenceEqual(t.Paths.Packed)&&revision==t.Paths.Revision,"unchanged traffic preserves ties and the render revision");
+        t.Tiles[40*Town.Width+100]=(byte)Terrain.Plaza;t.Traffic.Refresh(t);
+        check(t.Paths.Count==4&&t.Paths.At(100,40)==0&&t.Traffic.Visits[40*Town.Width+100]==200,"plaza traffic is retained but not ranked or painted");
+        s=Flat();t=s.Town;t.Traffic.Traverse(t,5.1f,40.2f,8.2f,40.2f);
+        check(t.Traffic.Visits[40*Town.Width+5]==0&&t.Traffic.Visits[40*Town.Width+6]==1&&t.Traffic.Visits[40*Town.Width+7]==1&&t.Traffic.Visits[40*Town.Width+8]==1,"all entered cells are recorded, not the departure cell");
+        t.Traffic.Traverse(t,8.2f,40.2f,8.9f,40.8f);check(t.Traffic.Visits[40*Town.Width+8]==1,"standing and walking within a tile add no visits");
+        t.Traffic.Traverse(t,8.2f,40.2f,5.2f,40.2f);check(t.Traffic.Visits[40*Town.Width+5]==1&&t.Traffic.Visits[40*Town.Width+6]==2,"re-entering a tile counts again");
+        t.Traffic.Traverse(t,10.5f,10.5f,12.5f,12.5f);check(t.Traffic.Visits[11*Town.Width+11]==1&&t.Traffic.Visits[12*Town.Width+12]==1&&t.Traffic.Visits[10*Town.Width+11]==0,"diagonal corner touches do not count as traversed area");
+        t.Traffic.Traverse(t,float.NaN,3,4,5);t.Traffic.Enter(t,-1,0);t.Traffic.Enter(t,10000,10000);
+        t.Tiles[12*Town.Width+12]=(byte)Terrain.Water;t.Traffic.Enter(t,12,12);check(t.Traffic.Visits[12*Town.Width+12]==1,"invalid coordinates and water never acquire visits");
+        t.Traffic.Visits[40*Town.Width+5]=255;t.Traffic.Visits[40*Town.Width+6]=200;t.Traffic.Enter(t,5,40);
+        check(t.Traffic.Normalizations==1&&t.Traffic.Visits[40*Town.Width+5]==129&&t.Traffic.Visits[40*Town.Width+6]==100&&t.Traffic.Visits[1]==0,"overflow rescales all counters instead of wrapping or permanently saturating");
+        s=Flat();t=s.Town;s.X=40.98f;s.Z=45.5f;PlayerMovement.Move(s,0,1,0,0,false,out _,out _);
+        check(t.Traffic.Visits[45*Town.Width+41]==1,"player movement records normal outdoor entry");
+        s.X=41.98f;PlayerMovement.Move(s,16,1,0,0,false,out _,out _);check(t.Traffic.Visits[45*Town.Width+42]==0,"indoor movement adds no town traffic");
+        s.X=42.98f;PlayerMovement.Move(s,0,1,0,0,false,out _,out _,false);check(t.Traffic.Visits[45*Town.Width+43]==0,"onboarding previews suppress traffic");
+        var nav=new VillagerNavigation();nav.Tick(s);nav.Target(0,20,14);for(int i=0;i<600;i++)nav.Tick(s);
+        check(t.Traffic.Visits[14*Town.Width+15]>0,"NPC movement uses the same anonymous history");
+        s=Flat();t=s.Town;int version=t.TerrainVersion;t.Traffic.Enter(t,20,40);
+        for(int i=0;i<TileTraffic.RefreshTicks-1;i++)t.Traffic.Tick(t);check(t.Paths.Count==0,"classification is batched");t.Traffic.Tick(t);
+        check(t.Paths.Count==1&&t.TerrainVersion==version,"forming paths does not invalidate terrain or shadow geometry");
+        for(int i=0;i<100;i++)t.Traffic.Refresh(t);
+        long allocated=GC.GetAllocatedBytesForCurrentThread(),started=System.Diagnostics.Stopwatch.GetTimestamp();
+        for(int i=0;i<10000;i++)t.Traffic.Traverse(t,20.5f,40.5f,21.5f,40.5f);
+        double traversalMs=(System.Diagnostics.Stopwatch.GetTimestamp()-started)*1000.0/System.Diagnostics.Stopwatch.Frequency;
+        started=System.Diagnostics.Stopwatch.GetTimestamp();for(int i=0;i<100;i++)t.Traffic.Refresh(t);
+        double selectionMs=(System.Diagnostics.Stopwatch.GetTimestamp()-started)*1000.0/System.Diagnostics.Stopwatch.Frequency/100;
+        check(GC.GetAllocatedBytesForCurrentThread()==allocated,"warm entry, normalization and classification allocate no managed objects");
+        var bytes=SaveCodec.Encode(s);check(BitConverter.ToInt32(bytes,4)==11&&t.Traffic.Visits.SequenceEqual(SaveCodec.Decode(bytes).Town.Traffic.Visits),"combined v11 preserves traffic");
+        var parts=SplitSaveCodec.Encode(s);check(SplitSaveCodec.ReadVersion(parts[0])==7&&t.Traffic.Visits.SequenceEqual(SplitSaveCodec.Decode(parts).Town.Traffic.Visits),"split town v7 preserves traffic");
+        var storage=new Storage();var repository=new SaveRepository(storage);repository.Save(s);t.Traffic.Enter(t,22,40);repository.Save(s);
+        check(t.Traffic.Visits.SequenceEqual(new SaveRepository(storage).Load()!.Town.Traffic.Visits),"incremental saves include traffic before the next classification");
+        var old=parts[0][..^(TileTraffic.Bytes+8+4)];Array.Resize(ref old,old.Length+4);Put(old,4,6);Put(old,24,old.Length);Crc(old);parts[0]=old;
+        var legacy=SplitSaveCodec.Decode(parts);check(legacy.Town.Traffic.Visits.All(v=>v==0)&&legacy.Town.Paths.Packed.SequenceEqual(t.Paths.Packed),"old shared towns retain roads without fabricated visits");
+        old=bytes[..^(TileTraffic.Bytes+8)];Put(old,4,10);Put(old,16,old.Length);Put(old,20,(int)SaveCodec.Crc(old,24,old.Length-24));check(SaveCodec.Decode(old).Town.Traffic.Visits.All(v=>v==0),"combined v10 remains readable");
+        var broken=SplitSaveCodec.Encode(s);broken[0][^(TileTraffic.Bytes+13)]=255;Crc(broken[0]);bool rejected=false;try{SplitSaveCodec.Decode(broken);}catch(InvalidOperationException){rejected=true;}check(rejected,"invalid saved path styles remain rejected");
+        Console.WriteLine($"Traffic paths: 15360 counter + 512 histogram + 3840 existing path bytes; 8192 native mask bytes on demand; 10000 entries {traversalMs:F2}ms host, classification {selectionMs:F3}ms host; no warm allocations");
     }
     private static void Put(byte[] b,int at,int value){for(int i=0;i<4;i++)b[at+i]=(byte)((uint)value>>(8*i));}
     private static void Crc(byte[] b)=>Put(b,b.Length-4,(int)SaveCodec.Crc(b,0,b.Length-4));

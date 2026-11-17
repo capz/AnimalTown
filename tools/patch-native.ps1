@@ -96,6 +96,13 @@ extern int animaltown_shadows_scope(int);
 extern int animaltown_shadows_stats(int);
 '@+"`n"+$generated
 [IO.File]::WriteAllText($generatedPath,$generated)
+$pathPattern='intptr_t (dnd_value_AnimalTown_GameCube_NativePaths_Prepare_[a-z0-9]+)\(intptr_t ([a-zA-Z0-9_]+), intptr_t ([a-zA-Z0-9_]+), intptr_t ([a-zA-Z0-9_]+)\) \{.*?\r?\n\}'
+if(([regex]::Matches($generated,$pathPattern,[Text.RegularExpressions.RegexOptions]::Singleline)).Count -ne 1){throw 'Native path mask bridge signature changed'}
+$generated=[regex]::Replace($generated,$pathPattern,'intptr_t $1(intptr_t $2, intptr_t $3, intptr_t $4) { return animaltown_paths_prepare((DndArray*)$2,(int)$3,(int)$4); }',[Text.RegularExpressions.RegexOptions]::Singleline)
+$generated="#include `"dnd_managed.h`"`nextern int animaltown_paths_prepare(DndArray*,int,int);`n"+$generated
+[IO.File]::WriteAllText($generatedPath,$generated)
+Copy-Item (Join-Path $Root 'tools/native-path-mask.c') (Join-Path $nativeRoot 'source/animaltown_path_mask.c') -Force
+Copy-Item (Join-Path $Root 'tools/native-path-mask.h') (Join-Path $nativeRoot 'include/animaltown_path_mask.h') -Force
 Copy-Item (Join-Path $Root 'tools/native-shadow-union.c') (Join-Path $nativeRoot 'source/animaltown_shadow_union.c') -Force
 Copy-Item (Join-Path $Root 'tools/native-shadow-union.h') (Join-Path $nativeRoot 'include/animaltown_shadow_union.h') -Force
 Copy-Item (Join-Path $Root 'tools/native-shadow-union-gx.inc') (Join-Path $nativeRoot 'source/animaltown_shadow_union_gx.inc') -Force

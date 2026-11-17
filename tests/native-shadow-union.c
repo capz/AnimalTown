@@ -115,7 +115,7 @@ static void cloud_checks(void){
     su_cloud_motion(s,.5f,0);su_prepare(s,SU_PAGES);
     CHECK(pixel(4,4)==SU_OPACITY&&su_field_sample(s->coverage,4,4)==SU_OPACITY);
     CHECK(su_field_sample(s->coverage,24,4)==su_shadow(su_pack(33,0))); // Vacated cloud restores the cliff base.
-    su_cloud_motion(s,0,0);credits=0;su_prepare_budget(s,0,allow_work,NULL);CHECK(pixel(4,4)==su_shadow(su_pack(33,0)));
+    su_cloud_motion(s,0,0);credits=0;su_prepare_budget(s,0,allow_work,NULL);CHECK(pixel(4,4)==SU_OPACITY); // Only the cloud refresh waits; the last complete page stays visible.
     su_prepare(s,SU_PAGES);CHECK(pixel(4,4)==su_shadow(su_pack(33,0)));
     for(int i=0;i<SU_TERRAIN_BYTES;i++)CHECK(s->coverage[i]<=SU_OPACITY);
     // A cloud crosses an 8 m page seam, including both filtering gutters.
@@ -216,11 +216,11 @@ int main(void){
     CHECK(s->support_builds==0&&s->support_hits>0);
     su_mesh(s,32,3,4,half,all);su_active(s,32,1,6,6);su_prepare(s,SU_PAGES);
     CHECK(s->support_builds>0);CHECK(pixel(6,6)==0);
-    /* An exhausted deadline removes the old moving footprint, retains the
-     * job, and can finish it on a later frame without trails. */
+    /* Moving contact pages cannot blink when the optional field budget is
+     * exhausted: current coverage publishes, and the old footprint clears. */
     reset();caster(32,4,rect,6,bounds);su_prepare(s,SU_PAGES);CHECK(pixel(4,4)==SU_OPACITY);
     next();su_active(s,32,1,6,6);credits=0;su_prepare_budget(s,1,allow_work,NULL);
-    CHECK(s->deferred>0);CHECK(pixel(4,4)==0);CHECK(pixel(6,6)==0);
+    CHECK(pixel(4,4)==0);CHECK(pixel(6,6)==SU_OPACITY);
     credits=1000;su_prepare_budget(s,1,allow_work,NULL);CHECK(pixel(6,6)==SU_OPACITY);CHECK(pixel(4,4)==0);
     /* Static composition yields between casters. Invalidating a paused job
      * discards its scratch union, so a removed tree cannot reappear. */
@@ -253,16 +253,30 @@ int main(void){
     su_begin(s,16,1,4);caster(32,4,rect,6,bounds);su_prepare(s,SU_PAGES);
     CHECK(pixel(4,4)==0);
     su_begin(s,0,1,0);su_prepare(s,SU_PAGES);CHECK(pixel(4,4)==su_shadow(su_pack(33,0)));
-    /* A dirty moving circle may defer, but the already composed cliff/scenery
-     * base remains a publishable local page. New static bases wait one cycle. */
+    /* Contact updates retain the cliff base even when optional work waits. */
+    memset(s->shapes+4*4096,255,1024);
     next();caster(32,4,rect,6,bounds);credits=1000;su_prepare_budget(s,1,allow_work,NULL);
     int terrain_page=su_find(s,0,0);
     CHECK(terrain_page>=0&&!s->page[terrain_page].static_pending);
     next();su_active(s,32,1,5,5);credits=0;su_prepare_budget(s,1,allow_work,NULL);
-    CHECK(s->page[terrain_page].dirty&&!s->page[terrain_page].static_dirty&&!s->page[terrain_page].static_pending);
+    CHECK(!s->page[terrain_page].dirty&&!s->page[terrain_page].static_dirty&&!s->page[terrain_page].static_pending);
+    CHECK(pixel(5,5)==SU_OPACITY);
     CHECK(pixel(4,4)==su_shadow(su_pack(33,0)));
     su_terrain_reset(s);CHECK(!s->terrain_ready&&su_terrain_sample(s,4,4)==0);
     su_prepare(s,SU_PAGES);CHECK(pixel(4,4)==0);
+    /* Continuous walking across page seams must retain contact coverage even
+     * with zero optional-work credits and moving cloud-field invalidations. */
+    reset();int old_bucket=-100;
+    for(int frame=0;frame<180;frame++){
+        float x=7.4f+frame*.04f,z=4.f;int bucket=(int)floorf(x/2)*2-2;
+        next();
+        if(bucket!=old_bucket){
+            float uv[]={bucket,2,bucket+6,2,bucket+6,8,bucket,2,bucket+6,8,bucket,8};
+            float b[]={bucket,2,bucket+6,8};su_mesh(s,32,6,4,uv,b);old_bucket=bucket;
+        }
+        su_active(s,32,1,x,z);s->cloud_dirty=1;credits=0;su_prepare_budget(s,0,allow_work,NULL);
+        CHECK(pixel(x+.12f,z+.1f)>0);CHECK(!s->overflow);
+    }
     cloud_checks();
     seasonal_cloud_checks();
     printf("Shadow storage: %zu bytes total; %d-byte pages, two %d-byte terrain fields\n",su_storage_bytes(),SU_BYTES,SU_TERRAIN_BYTES);
