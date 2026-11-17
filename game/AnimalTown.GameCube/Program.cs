@@ -467,6 +467,7 @@ internal sealed class TownGame : IDisposable
         }
         if(session.Draft!=null){OnboardingInput(p);return;}
         bool chord=p.L.IsHeld&&p.R.IsHeld;
+        if(AaStudy.Input(p,renderDebug,ref rimLighting))return;
         if(chord&&p.Z.IsHeld&&p.DPadDown.WasPressed){terrain.FreezeMotion=!terrain.FreezeMotion;return;}
         if(chord&&p.Z.IsHeld&&p.X.WasPressed){terrain.RecreateMeshes=!terrain.RecreateMeshes;return;}
         if(chord&&p.A.WasPressed&&screen=="world"){InspectBuilding();return;}
@@ -1111,7 +1112,7 @@ internal sealed class TownGame : IDisposable
             Text("Your home and garden need 15 x 13 clear tiles.",48,402,ink,1);
             Text("Stick move   A choose spot   B back",48,430,ink,1.05f);return;
         }
-        if(FrameProfile.Enabled){
+        if(FrameProfile.Enabled&&!AaStudy.Active){
             if(++profileLabelFrames>=30){profileLabelFrames=0;profileNativeLabel="Native: "+NativeShadows.Stats(9)+" slots / "+NativeShadows.Stats(10)/1024+" KiB";profileShadowLabel=(room==0&&terrain.GroundRingActive?"Ring / ":"")+"Shadows: "+NativeShadows.Stats(0)+" pages / "+NativeShadows.Stats(2)+" updated";}
             Text(indexedModels?(batchedDrawing?"GX indexed / batched":"GX indexed / baseline"):(batchedDrawing?"Direct / batched":"Direct / baseline"),420,397,ink,.8f);
             Text(profileNativeLabel,420,408,ink,.55f);
