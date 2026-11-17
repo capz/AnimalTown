@@ -9,9 +9,11 @@ internal static class ProfileFixture
         public byte[] Read(string name)=>Files[name];
         public void Write(string name,byte[] data)=>Files[name]=(byte[])data.Clone();
     }
-    internal static void Write(string output,bool money=false,bool shop=false)
+    internal static void Write(string output,bool money=false,bool shop=false,int shopTier=0)
     {
-        Directory.CreateDirectory(output);var s=new GameState(7319);s.Rollover(21014,2027*12+7);
+        Directory.CreateDirectory(output);var s=new GameState(7319);
+        if(shop)s.Town.Spending=shopTier==2?100000:shopTier==1?25000:0;
+        s.Rollover(21014,2027*12+7);
         string[] names={"Ari","Bram","Cleo","Dune"};
         for(int slot=0;slot<4;slot++){
             s.SelectProfile(slot);s.Name=names[slot];s.Species=slot;s.Wallet=1001+slot*100;s.Savings=5000+slot*100;s.HouseTier=1;
@@ -28,7 +30,7 @@ internal static class ProfileFixture
             if(!s.Town.Shop.List(s,1,0,2500))throw new Exception("Shop seller fixture failed");
             s.Space=0;BuildingWorld.Entrance(s,7,out s.X,out s.Z);s.Facing=(float)Math.PI;
             for(int i=0;i<6;i++)s.Town.Residents[i].Dwell=36000;
-            var npc=s.Town.Residents[0];npc.Space=TownShop.Room;npc.PosX=4;npc.PosZ=7;npc.JourneyPhase=2;npc.Dwell=0;
+            var npc=s.Town.Residents[0];npc.Space=TownShop.Room;npc.PosX=4;npc.PosZ=7;npc.JourneyPhase=2;npc.Dwell=1;s.Town.Shop.NpcTarget[0]=0;
         }
         var disk=new Storage();var repository=new SaveRepository(disk);repository.Save(s);repository.Save(s);
         foreach(var file in disk.Files)File.WriteAllBytes(Path.Combine(output,file.Key),file.Value);

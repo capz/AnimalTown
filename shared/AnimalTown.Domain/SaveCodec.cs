@@ -24,7 +24,7 @@ public static class SaveCodec
     {
         if(s.ActiveProfile!=0||!s.Profiles[0].Created)throw new InvalidOperationException("Legacy export requires the original single player");
         for(int i=1;i<GameState.ProfileCount;i++)if(s.Profiles[i].Created)throw new InvalidOperationException("Legacy export cannot discard villager profiles");
-        for(int i=0;i<TownShop.SaleCount;i++)if(s.Town.Shop.SaleItems[i]!=0)throw new InvalidOperationException("Legacy export cannot discard shop listings");
+        for(int i=0;i<TownShop.StoredSaleCount;i++)if(s.Town.Shop.SaleItems[i]!=0)throw new InvalidOperationException("Legacy export cannot discard shop listings");
         for(int i=0;i<6;i++)if(s.Town.Shop.NpcCount[i]!=0)throw new InvalidOperationException("Legacy export cannot discard NPC purchases");
         for(int i=0;i<GameState.ProfileCount;i++)if(s.Town.Shop.Proceeds[i]!=0)throw new InvalidOperationException("Legacy export cannot discard shop earnings");
     }

@@ -101,7 +101,7 @@ public static class BuildingWorld
         x=data[at];z=data[at+1];w=data[at+2];d=data[at+3];height=data[at+4];return true;
     }
     public static int FixtureKind(GameState s,int space,int index)=>(int)Definition(s,Building(space)).Fixtures[index*6+5];
-    public static int FixtureCount(GameState s,int space)=>(space>=16&&space<=21||space==TownShop.Room)?Definition(s,Building(space)).Fixtures.Length/6:0;
+    public static int FixtureCount(GameState s,int space)=>space==TownShop.Room?3+TownShop.SaleSlots(s):space>=16&&space<=21?Definition(s,Building(space)).Fixtures.Length/6:0;
     public static bool CanStand(GameState s,int space,float x,float z,int actor=-1,bool people=false)
     {
         if(!Available(s,space))return false;

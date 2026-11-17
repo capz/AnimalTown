@@ -1,5 +1,9 @@
 using AnimalTown;
 
+if(args.Length==4&&args[0]=="--shop-fixture"&&args[2]=="--tier"){
+    int tier=int.Parse(args[3]);if(tier<0||tier>2)throw new ArgumentException("Shop fixture tier must be 0, 1 or 2");
+    ProfileFixture.Write(args[1],shop:true,shopTier:tier);return;
+}
 if(args.Length==2&&(args[0]=="--profile-fixture"||args[0]=="--money-fixture"||args[0]=="--shop-fixture")){ProfileFixture.Write(args[1],args[0]=="--money-fixture",args[0]=="--shop-fixture");return;}
 
 int checks=0;

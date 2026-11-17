@@ -87,7 +87,7 @@ $checksums=foreach($file in @($nkit,$updateFeed,$updaterDol,$updaterNotice,$serv
 $notes=@"
 AnimalTown $version development build from commit $commit.
 
-AnimalTown-building-kit-$version.zip contains the original cottage and town shop kits, hinged doors, cutaway interior parts, palettes, definitions and authoring guides. The shop has finite daily displays, eight local-villager consignment stands, an unlimited essentials cabinet and a service counter. NPCs can buy a display item and leave; player-sale proceeds go to the seller's savings. A at doormats enters/exits; C-stick turns the indoor camera, L recentres. Console online guest transport remains unavailable; atomic guest purchases are supported by the backend. Physical GameCube testing remains outstanding.
+AnimalTown-building-kit-$version.zip contains the original cottage and town shop kits, hinged doors, cutaway interior parts, palettes, definitions and authoring guides. The shop has a central daily-stock island, 3/5/7 wall sale stands by shop tier, an unlimited essentials cabinet and a service counter. NPCs can buy a display item and leave; player-sale proceeds go to the seller's savings. A at doormats enters/exits; C-stick turns the indoor camera, L recentres. Console online guest transport remains unavailable; atomic guest purchases are supported by the backend. Physical GameCube testing remains outstanding.
 
 AnimalTown-cliff-kit-$version.zip contains eight low-poly cliff GLBs, shared 128/256px soil textures and the ground-material binding guide. The game reuses its existing floor texture and tint for cliff tops/lips. L+R+D-pad Up toggles a rendering-only eight-piece inspection gallery.
 

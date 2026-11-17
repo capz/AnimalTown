@@ -78,7 +78,9 @@ try {
     if($LASTEXITCODE){throw 'Shop fixture failed'}
     $path="/v1/towns/$($a.id)/shop"
     $shop=(Request GET $path $null $b.token).Body
-    Assert ($shop.display.Count -eq 6 -and $shop.cabinet.Count -eq 8 -and $shop.consignment.Count -eq 8) 'Town shop layout missing'
+    Assert ($shop.display.Count -eq 6 -and $shop.cabinet.Count -eq 8 -and $shop.consignment.Count -eq 3) 'Small town shop must expose exactly three villager sale slots'
+    $locked=@{id=[Guid]::NewGuid().ToString();kind='list';source='consignment';slot=3;revision=$shop.revision;pocket=0;price=1200}
+    Assert ((Request POST "$path/ops" $locked $a.token).Status -eq 409) 'Small shop allowed a fourth villager sale listing'
     $sale=@{id=[Guid]::NewGuid().ToString();kind='list';source='consignment';slot=0;revision=$shop.revision;pocket=0;price=1200}
     Assert ((Request POST "$path/ops" $sale $b.token).Status -eq 403) 'Guest stocked a local-villager stand'
     Assert ((Request POST "$path/ops" $sale $a.token).Status -eq 200) 'Local shop listing failed'

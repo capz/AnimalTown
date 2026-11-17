@@ -42,13 +42,39 @@ internal static class ShopChecks
             check(copy.Town.Shop.Encode().SequenceEqual(shop.Encode())&&copy.Town.Stock.SequenceEqual(s.Town.Stock)&&copy.Savings==s.Savings,"shop stock, NPC possessions and proceeds round trip in both save formats");
         bool rejected=false;try{SaveCodec.EncodeLegacy(s);}catch(InvalidOperationException){rejected=true;}check(rejected,"legacy export cannot silently lose purchased NPC items");
         s.Rollover(101,100);check(s.Town.Stock.Take(s.Town.StockCount).All(id=>id>=10)&&shop.NpcWallet[0]==Math.Min(20000,npcMoney+500),"next day replenishes daily stock and bounded NPC shopping budget");
-        // Every stand must be reachable on the actual half-metre NPC navigation grid.
-        for(int fixture=0;fixture<ShopLayout.FixtureCount;fixture++){
-            var room=new GameState(206){Space=TownShop.Room,X=7.7f,Z=7.7f};var v=room.Town.Residents[0];v.Space=TownShop.Room;v.PosX=4;v.PosZ=7;
-            ShopLayout.Approach(fixture,out float x,out float z);check(BuildingWorld.CanStand(room,TownShop.Room,x,z),"shop interaction point clears fixture collision");
-            var nav=new InteriorNavigation();for(int tick=0;tick<800&&!nav.Arrived(1);tick++){nav.BeginTick();nav.Tick(room,1,x,z);check(nav.LastExpansions<=128&&BuildingWorld.CanStand(room,TownShop.Room,v.PosX,v.PosZ),"shop routes respect collision and search budget");}
-            check(nav.Arrived(1),"NPC reaches shop fixture "+fixture);
+        // Slot limits, physical stands, guest rules and routes use the same tier.
+        for(int tier=0;tier<3;tier++){
+            var room=new GameState(206){Space=TownShop.Room,X=7.7f,Z=7.7f};room.Town.Spending=tier==0?24999:tier==1?25000:100000;room.Rollover(100,100);
+            int count=3+tier*2;check(TownShop.SaleSlots(room)==count&&room.Town.StockCount==6+tier*3,"shop tiers expose exactly three, five and seven sale stands");
+            check(BuildingWorld.FixtureCount(room,TownShop.Room)==count+3&&!BuildingWorld.CanStand(room,TownShop.Room,4,4),"one solid central island and only the active wall stands collide");
+            for(int slot=0;slot<TownShop.StoredSaleCount;slot++){
+                room.Pockets[0]=10;bool listed=room.Town.Shop.List(room,slot,0,500);
+                check(listed==(slot<count)&&room.Pockets[0]==(listed?0:10),"tier sale limit applies atomically to real item listings");
+                if(slot<TownShop.SaleCount){ShopLayout.Bounds(12+slot,out float x,out float z,out float w,out float d,out _);check(BuildingWorld.CanStand(room,TownShop.Room,x+w*.5f,z+d*.5f)==(slot>=count),"locked stands have no invisible collision");}
+            }
+            room.Town.Shop.SaleItems[count]=10;room.Town.Shop.SalePrices[count]=500;room.Town.Shop.SaleOwners[count]=room.ActiveProfile;
+            guest.Wallet=99999;Array.Clear(guest.Pockets);int guestMoney=guest.Wallet;
+            check(!room.Town.Shop.Buy(room,guest,ShopSource.Consignment,count)&&!room.Town.Shop.BuyNpc(room,0,ShopSource.Consignment,count)&&!room.Town.Shop.Reprice(room,count,1)&&guest.Wallet==guestMoney,"guests and NPCs cannot buy or manage stored overflow listings");
+            check(room.Town.Shop.StoredListingCount(room)==1&&room.Town.Shop.StoredListing(room,0)==count,"old excess listing is reclaimable without adding a sale stand");
+            Array.Fill(room.Pockets,1,0,room.Capacity);check(!room.Town.Shop.Remove(room,count)&&room.Town.Shop.SaleItems[count]==10,"reclaiming with full pockets preserves stored stock");room.Pockets[0]=0;
+            foreach(var copy in new[]{SaveCodec.Decode(SaveCodec.Encode(room)),SplitSaveCodec.Decode(SplitSaveCodec.Encode(room))})check(TownShop.SaleSlots(copy)==count&&copy.Town.Shop.SaleItems[count]==10&&copy.Town.Shop.Encode().Length==154,"tiers and stored overflow survive both save formats without a schema/budget change");
+            check(room.Town.Shop.Remove(room,count)&&room.Pockets[0]==10&&room.Town.Shop.StoredListingCount(room)==0,"stored item can be reclaimed once by its owner");
+            int active=room.Town.StockCount+count+2;var inspected=new HashSet<int>();
+            for(int i=0;i<active;i++)check(inspected.Add(ShopLayout.Inspect(room,i))&&ShopLayout.Active(room,ShopLayout.Inspect(room,i)),"fixture inspection visits each active display exactly once");
+            check(ShopLayout.Inspect(room,active)==0,"fixture inspection wraps without visiting locked slots");
+            for(int fixture=0;fixture<ShopLayout.FixtureCount;fixture++){
+                if(!ShopLayout.Active(room,fixture))continue;
+                var v=room.Town.Residents[0];v.Space=TownShop.Room;v.PosX=4;v.PosZ=7;
+                ShopLayout.Approach(fixture,out float x,out float z);check(BuildingWorld.CanStand(room,TownShop.Room,x,z)&&ShopLayout.Near(room,x,z)==fixture,"shop interaction point clears collision and selects its own fixture");
+                var nav=new InteriorNavigation();for(int tick=0;tick<800&&!nav.Arrived(1);tick++){nav.BeginTick();nav.Tick(room,1,x,z);check(nav.LastExpansions<=128&&BuildingWorld.CanStand(room,TownShop.Room,v.PosX,v.PosZ),"shop routes respect collision and search budget");}
+                check(nav.Arrived(1),"NPC reaches shop fixture "+fixture+" in tier "+tier);
+            }
         }
+        var growth=new GameState(209);growth.Rollover(100,100);growth.Town.Spending=100000;
+        growth.Space=TownShop.Room;growth.X=.5f;growth.Z=4.7f;
+        check(TownShop.SaleSlots(growth)==3&&BuildingWorld.CanStand(growth,TownShop.Room,growth.X,growth.Z),"spending does not spawn wall colliders during the shopping day");growth.Rollover(101,100);check(TownShop.SaleSlots(growth)==7&&BuildingWorld.CanStand(growth,TownShop.Room,growth.X,growth.Z),"overnight upgrades unlock stands and move any overlapping actor to clear floor");
+        growth.Space=TownShop.Room;growth.X=growth.Z=4;growth.Town.Residents[0].Space=TownShop.Room;growth.Town.Residents[0].PosX=growth.Town.Residents[0].PosZ=4;
+        foreach(var copy in new[]{SaveCodec.Decode(SaveCodec.Encode(growth)),SplitSaveCodec.Decode(SplitSaveCodec.Encode(growth))})check(BuildingWorld.CanStand(copy,TownShop.Room,copy.X,copy.Z)&&BuildingWorld.CanStand(copy,TownShop.Room,copy.Town.Residents[0].PosX,copy.Town.Residents[0].PosZ),"loading a previous shop layout moves actors out of the new solid island");
         var journey=new GameState(207){Space=TownShop.Room,X=7.7f,Z=7.7f};journey.Rollover(100,100);
         var shopper=journey.Town.Residents[0];shopper.Space=TownShop.Room;shopper.PosX=4;shopper.PosZ=7;shopper.JourneyPhase=2;
         var journeys=new VillagerJourney();bool left=false;for(int tick=0;tick<1600;tick++){journeys.Tick(journey);if(shopper.Space==0){left=true;break;}}

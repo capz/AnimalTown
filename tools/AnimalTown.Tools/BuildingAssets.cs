@@ -39,15 +39,12 @@ internal static class BuildingAssets
         Write(Path.Combine(exterior,"door.glb"),door,png);Write(Path.Combine(interior,"door.glb"),door,png);
         var floor=new MeshData();floor.Box(0,-.08f,0,4,.08f,4,5);floor.Box(1.55f,.003f,3.3f,.9f,.01f,.65f,1);
         // Interior source frame is 4m; the shared renderer scales X/Z to 8m.
-        for(int i=0;i<20;i++){
-            ShopLayout.Bounds(i,out float x,out float z,out float w,out float d,out float h);x/=2;z/=2;w/=2;d/=2;int swatch=i<12?2:1;
-            // No underside or covered top: keep only four sides and the visible cap.
-            floor.Quad(new(x,0,z),new(x,h,z),new(x+w,h,z),new(x+w,0,z),swatch);
-            floor.Quad(new(x,0,z+d),new(x+w,0,z+d),new(x+w,h,z+d),new(x,h,z+d),swatch);
-            floor.Quad(new(x,0,z),new(x,0,z+d),new(x,h,z+d),new(x,h,z),swatch);
-            floor.Quad(new(x+w,0,z),new(x+w,h,z),new(x+w,h,z+d),new(x+w,0,z+d),swatch);
-            floor.Quad(new(x-.02f,h,z-.02f),new(x-.02f,h,z+d+.02f),new(x+w+.02f,h,z+d+.02f),new(x+w+.02f,h,z-.02f),7);
-        }
+        // One shared island replaces twelve separate pedestals. Tiered wall
+        // stands use the existing native box batch, so smaller shops have no
+        // invisible colliders or unused stands baked into their floor model.
+        ShopLayout.Island(out float ix,out float iz,out float iw,out float id,out float ih);
+        floor.Box(ix/2,0,iz/2,iw/2,ih-.05f,id/2,2);
+        floor.Box(ix/2,ih-.05f,iz/2,iw/2,.05f,id/2,7);
         ShopLayout.Bounds(ShopLayout.Cabinet,out float cx,out float cz,out float cw,out float cd,out float ch);
         floor.Box(cx/2,0,cz/2,cw/2,ch,.06f,1);
         for(int i=0;i<4;i++)floor.Box(cx/2,i*.48f,cz/2,cw/2,.06f,cd/2,2);
@@ -63,7 +60,7 @@ internal static class BuildingAssets
             Write(Path.Combine(interior,new[]{"north","east","south","west"}[wall]+".glb"),mesh,png);
         }
         File.WriteAllText(Path.Combine(root,"assets/definitions/buildings/town_shop.json"),JsonSerializer.Serialize(new{version=1,type=1,id="town_shop",prefix="shop",interior="town_shop",footprint=new[]{3,3},hinge=new[]{.95,0,3.02},approach=new[]{1.5,0,3.5},exterior="assets/models/buildings/town_shop/exterior.glb",door="assets/models/buildings/town_shop/door.glb"},JsonOptions));
-        var fixtures=Enumerable.Range(0,ShopLayout.FixtureCount).Select(i=>{ShopLayout.Bounds(i,out float x,out float z,out float w,out float d,out float h);return new{x,z,width=w,depth=d,height=h,kind=0};}).ToArray();
+        var fixtures=Enumerable.Range(0,ShopLayout.CollisionCount).Select(i=>{ShopLayout.CollisionBounds(i,out float x,out float z,out float w,out float d,out float h);return new{x,z,width=w,depth=d,height=h,kind=0};}).ToArray();
         File.WriteAllText(Path.Combine(root,"assets/definitions/interiors/town_shop.json"),JsonSerializer.Serialize(new{version=1,id="town_shop",size=8,units="metres",up="+Y",walls=new[]{"north","east","south","west"},door=new{center=new[]{4,0,8},arrival=new[]{4,0,7.35}},camera=new{pitch="fixed",quarterTurns=true,heightScale=.7,heightOffset=2.8,backScale=.9,backOffset=1.2},activities=new[]{new[]{4.0,6.8}},fixtures,floor="assets/models/interiors/town_shop/floor.glb",north="assets/models/interiors/town_shop/north.glb",east="assets/models/interiors/town_shop/east.glb",south="assets/models/interiors/town_shop/south.glb",west="assets/models/interiors/town_shop/west.glb"},JsonOptions));
         Cook(root);
     }

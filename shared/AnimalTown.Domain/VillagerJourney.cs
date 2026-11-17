@@ -25,7 +25,7 @@ public sealed class VillagerJourney
                     if(v.Space==TownShop.Room){
                         if(v.Dwell==0)s.Town.Shop.NpcTarget[i]=s.Town.Shop.ChooseNpcDisplay(s,i);
                         int target=s.Town.Shop.NpcTarget[i];
-                        if(target<0){v.JourneyPhase=4;Indoors.Reset(actor);continue;}
+                        if(target<0||target>=TownShop.DisplayCount+TownShop.SaleCount||!ShopLayout.Active(s,target)){v.JourneyPhase=4;Indoors.Reset(actor);continue;}
                         ShopLayout.Approach(target,out gx,out gz);
                     }
                     if(!BuildingWorld.CanStand(s,v.Space,gx,gz)){gx=BuildingWorld.Size(s,v.Space)*.5f;gz=2;}

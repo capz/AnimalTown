@@ -951,6 +951,8 @@ def town_shop():
     """Use --shop-fixture records on a disposable card; real UI and native meshes."""
     before=committed_card_sequence(root/'MemoryCardA.USA.raw',details=True)
     if not before or 'shop' not in before:raise AssertionError('Shop scenario requires the disposable --shop-fixture card')
+    displays=sum(item!=0 for item in before['shop']['stock'])
+    sales=3 if displays==6 else 5 if displays==9 else 7
     start_game(False,'shop')
     def inspect():
         os.write(controller,b'SET C .5 0\nPRESS L\nPRESS R\n');time.sleep(.2);press('A');os.write(controller,b'RELEASE L\nRELEASE R\nSET C .5 .5\n');time.sleep(1)
@@ -960,11 +962,11 @@ def town_shop():
     inspect();inspect();press('A');screenshot('shop-finite-price.png');press('A');close_speech()
     press('A');screenshot('shop-sold-out.png');press('B')
     # Fixture inspection uses the same collision-clear approach sockets as NPCs.
-    for _ in range(19):inspect()
+    for _ in range(displays+sales-1):inspect()
     press('A');screenshot('shop-cabinet.png');press('A');close_speech()
     press('A');press('A');close_speech()
     inspect();press('A');screenshot('shop-counter.png');press('B')
-    for _ in range(13):inspect()
+    for _ in range(displays+1):inspect()
     press('A');screenshot('shop-consignment.png');press('A');close_speech()
     inspect();press('A');press('A');press('D_UP');screenshot('shop-asking-price.png');press('A');close_speech()
     press('A');press('D_DOWN');press('A');close_speech()

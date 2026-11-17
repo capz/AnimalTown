@@ -166,6 +166,7 @@ public sealed partial class GameState
         CaptureProfile();
         for(int p=0;p<ProfileCount;p++)if(Profiles[p].Created)Profiles[p].Rollover(day,month,Town.Month);
         RestoreProfile(ActiveProfile);Town.Month=month;Town.Day=day;
+        int saleSlots=TownShop.SaleSlots(this);
         Town.StockCount=Town.Spending>=100000?12:Town.Spending>=25000?9:6;
         for(int i=0;i<Town.StockCount;i++)Town.Stock[i]=10+(day+i)%4;
         Town.Shop.NewDay();
@@ -177,6 +178,7 @@ public sealed partial class GameState
             else if(g.Kind==2&&g.Item!=2&&day-g.Day>=3){g.Kind=3;Town.NotifyCastersChanged();}
         }
         Town.AddGround(16,8+day%20,45,1,day);Town.AddGround(12,55+day%15,42,1,day);
+        if(saleSlots!=TownShop.SaleSlots(this))NormalizeBuildingLocations();
     }
     public bool ClaimLost(int index,int actor)
     {

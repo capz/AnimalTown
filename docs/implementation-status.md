@@ -42,7 +42,7 @@ the GDD. The technical baseline was committed/pushed first as `0064efd`.
 * Indoor/outdoor footprint validation, placement ownership, rotating footprints,
   garden reservations and relocation, tier-dependent room size.
 * Dedicated low-poly town shop with finite physical displays, unlimited essential
-  cabinet, eight local-player consignment stands and persistent NPC shopping.
+  cabinet, 3/5/7 local-player sale stands along the walls, a central stock island and persistent NPC shopping.
   Shared purchase rules and atomic backend guest purchases are implemented;
   console guest transport remains unavailable. See [town shop](town-shop.md).
 * Native RTC bridge, 06:00 day rollover, stock and monthly interest rules,

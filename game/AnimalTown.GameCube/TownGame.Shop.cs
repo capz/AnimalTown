@@ -9,7 +9,9 @@ internal sealed partial class TownGame
     private bool shopReprice;
     private int shopHintFixture=-1;
     private string shopHint="";
-    private bool ShopScreen=>screen=="shop-display"||screen=="shop-list"||screen=="shop-price";
+    private bool ShopScreen=>screen=="shop-display"||screen=="shop-list"||screen=="shop-price"||screen=="shop-stored";
+    private int StoredShopCount=>state.Town.Shop.StoredListingCount(state);
+    private int StoreMenuCount=>StoredShopCount>0?9:8;
     private ShopSource ShopKind=>shopFixture<12?ShopSource.Display:ShopSource.Consignment;
     private int ShopSlot=>shopFixture<12?shopFixture:shopFixture-12;
     private bool OwnListing=>shopFixture>=12&&state.Town.Shop.SaleItems[ShopSlot]!=0&&state.Town.Shop.SaleOwners[ShopSlot]==state.ActiveProfile;
@@ -17,12 +19,12 @@ internal sealed partial class TownGame
     {
         if(villagers.Doors.Busy(0))return;
         if(room==0){BuildingWorld.Entrance(state,7,out state.X,out state.Z);facingYaw=(float)Math.PI;shopInspection=0;}
-        else if(room==TownShop.Room){ShopLayout.Approach(shopInspection++%ShopLayout.FixtureCount,out state.X,out state.Z);facingYaw=(float)Math.PI;}
+        else if(room==TownShop.Room){ShopLayout.Approach(ShopLayout.Inspect(state,shopInspection++),out state.X,out state.Z);facingYaw=(float)Math.PI;}
         state.Facing=facingYaw;screen="world";waterInspection=0;cliffPreview=false;
     }
     private bool OpenShopFixture()
     {
-        int fixture=ShopLayout.Near(state.X,state.Z);if(fixture<0)return false;
+        int fixture=ShopLayout.Near(state,state.X,state.Z);if(fixture<0)return false;
         selected=0;
         if(fixture==ShopLayout.Counter){screen="store";return true;}
         if(fixture==ShopLayout.Cabinet){screen="shop";return true;}
@@ -32,6 +34,16 @@ internal sealed partial class TownGame
     {
         if(!ShopScreen)return false;
         bool up=direction==MenuNavigation.Up,down=direction==MenuNavigation.Down;
+        if(screen=="shop-stored"){
+            int count=StoredShopCount;
+            if(p.B.WasPressed){screen="store";selected=0;return true;}
+            if(count>0){
+                selected=Math.Clamp(selected,0,count-1);
+                if(up)selected=(selected+count-1)%count;if(down)selected=(selected+1)%count;
+                if(p.A.WasPressed)Say("Hearth",state.Town.Shop.Remove(state,state.Town.Shop.StoredListing(state,selected))?"Your stored item is back in your pockets.":"Make a free pocket before reclaiming this item.");
+            }
+            return true;
+        }
         if(p.B.WasPressed){screen=screen=="shop-price"&&!shopReprice?"shop-list":screen=="shop-list"||screen=="shop-price"?"shop-display":"world";selected=0;return true;}
         if(screen=="shop-price"){
             if(direction==MenuNavigation.Left)shopDigit=Math.Min(4,shopDigit+1);
@@ -63,6 +75,17 @@ internal sealed partial class TownGame
     private bool DrawShopPanel(Color32 ink)
     {
         if(!ShopScreen)return false;
+        if(screen=="shop-stored"){
+            Panel(45,75,550,350);Heading("Reclaim stored sale items",68,91,ink);
+            Text("These items are kept safely behind the counter.",68,137,ink,1.2f);
+            int count=StoredShopCount;
+            for(int i=0;i<count;i++){
+                int slot=state.Town.Shop.StoredListing(state,i),item=state.Town.Shop.SaleItems[slot];float y=183+i*36;
+                if(selected==i)Rounded(57,y,520,32,16,new Color32(221,231,188));
+                Text((selected==i?"> ":"  ")+Catalog.Items[item].Name,68,y,ink,1.3f);
+            }
+            Text(count==0?"No stored items.   B: back":"A: take item back   B: back",68,392,ink,1.3f);return true;
+        }
         Panel(45,75,550,350);Heading(screen=="shop-list"?"Choose an item to display":screen=="shop-price"?"Set your asking price":shopFixture<12?"Today's display":"Villager sale / "+(ShopSlot+1),68,91,ink);
         if(screen=="shop-price"){
             int item=shopReprice?state.Town.Shop.SaleItems[ShopSlot]:state.Pockets[shopPocket];
@@ -89,17 +112,21 @@ internal sealed partial class TownGame
     }
     private void DrawShopHint(Color32 ink)
     {
-        int fixture=ShopLayout.Near(state.X,state.Z);if(fixture<0||villagers.Doors.Busy(0)||villagers.Doors.Nearby(state,0,facingYaw)>=0)return;
+        int fixture=ShopLayout.Near(state,state.X,state.Z);if(fixture<0||villagers.Doors.Busy(0)||villagers.Doors.Nearby(state,0,facingYaw)>=0)return;
         if(fixture!=shopHintFixture){shopHintFixture=fixture;shopHint="A  "+(fixture==ShopLayout.Cabinet?"Essentials / unlimited stock":fixture==ShopLayout.Counter?"Service counter":fixture<12?"Daily display "+(fixture+1):"Villager sale "+(fixture-11));}
         Panel(38,26,564,48);Strong(shopHint,57,39,ink,1.4f);
     }
     private void DrawShopStock()
     {
-        for(int i=0;i<20;i++){
+        for(int i=0;i<TownShop.DisplayCount+TownShop.SaleCount;i++){
+            if(!ShopLayout.Active(state,i))continue;
             ShopLayout.Bounds(i,out float x,out float z,out float w,out float d,out float h);x+=w*.5f;z+=d*.5f;
-            if(!indoorCamera.Sphere(x,h+.4f,z,.65f,8))continue;
+            if(!indoorCamera.Sphere(x,h*.5f+.35f,z,.9f,8))continue;
+            if(i>=TownShop.DisplayCount){
+                Box(x-w*.5f,0,z-d*.5f,w,h-.05f,d,new Color32(52,124,107));
+                Box(x-w*.5f,h-.05f,z-d*.5f,w,.05f,d,new Color32(246,236,204));
+            }
             int id=state.Town.Shop.Item(state,i<12?ShopSource.Display:ShopSource.Consignment,i<12?i:i-12);
-            if(i<12&&i>=state.Town.StockCount)continue;
             if(id==0){Box(x-.13f,h+.01f,z-.08f,.26f,.03f,.16f,i<12?new Color32(174,72,56):new Color32(90,147,111));continue;}
             var wood=new Color32(163,111,65);var cream=new Color32(243,219,158);
             if(id==10){Box(x-.2f,h+.2f,z-.19f,.4f,.08f,.38f,wood);Box(x-.2f,h+.28f,z-.19f,.4f,.38f,.07f,wood);for(int k=0;k<4;k++)Box(x-.18f+(k%2)*.29f,h,z-.17f+(k/2)*.27f,.07f,.2f,.07f,wood);}

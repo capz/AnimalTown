@@ -15,7 +15,8 @@ sealed partial class GameDatabase
             revision=shop.Revision,
             display=Enumerable.Range(0,s.Town.StockCount).Select(i=>new{slot=i,item=s.Town.Stock[i],price=shop.Price(s,ShopSource.Display,i)}).ToArray(),
             cabinet=Enumerable.Range(0,TownShop.CabinetCount).Select(i=>new{slot=i,item=TownShop.CabinetItem(i),price=shop.Price(s,ShopSource.Cabinet,i)}).ToArray(),
-            consignment=Enumerable.Range(0,TownShop.SaleCount).Select(i=>new{slot=i,item=shop.SaleItems[i],price=shop.SalePrices[i],seller=shop.SaleOwners[i]}).ToArray()
+            consignment=Enumerable.Range(0,TownShop.SaleSlots(s)).Select(i=>new{slot=i,item=shop.SaleItems[i],price=shop.SalePrices[i],seller=shop.SaleOwners[i]}).ToArray(),
+            storedConsignment=player==host?Enumerable.Range(TownShop.SaleSlots(s),TownShop.StoredSaleCount-TownShop.SaleSlots(s)).Where(i=>shop.SaleItems[i]!=0&&shop.SaleOwners[i]==s.ActiveProfile).Select(i=>new{slot=i,item=shop.SaleItems[i]}).ToArray():null
         };
         await t.CommitAsync();return result;
     }
