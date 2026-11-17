@@ -9,9 +9,9 @@ static void town_alpha_pass(int stage){
     GX_SetTevAlphaOp((u8)stage,GX_TEV_ADD,GX_TB_ZERO,GX_CS_SCALE_1,GX_TRUE,GX_TEVPREV);
 }
 static GXColor town_environment_tint(void){int rgb=animaltown_environment_color();return (GXColor){rgb>>16,(rgb>>8)&255,rgb&255,66};}
-static void town_environment_apply(const DndDrawEffect *effect,int stage){
-    int slot=effect?effect->uniforms:0;if(slot>=4)return;
-    if(animaltown_environment_color()==0xffffff)return;
+static int town_environment_apply(const DndDrawEffect *effect,int stage){
+    int slot=effect?effect->uniforms:0;if(slot>=4)return stage;
+    if(animaltown_environment_color()==0xffffff)return stage;
     /* Wide Sunshine RGB must reach its ordinary output clamp before entering
      * an 8-bit TEV multiply input. Otherwise highlights wrap instead of tint. */
     if(effect&&effect->count>0&&(effect->stages[effect->count-1].dest&128)&&!(effect->stages[effect->count-1].dest&64)){
@@ -25,6 +25,7 @@ static void town_environment_apply(const DndDrawEffect *effect,int stage){
     GX_SetTevKColor((u8)slot,town_environment_tint());GX_SetTevKColorSel((u8)stage,GX_TEV_KCSEL_K0+slot);
     GX_SetTevColorIn((u8)stage,GX_CC_ZERO,GX_CC_CPREV,GX_CC_KONST,GX_CC_ZERO);
     GX_SetTevColorOp((u8)stage,GX_TEV_ADD,GX_TB_ZERO,GX_CS_SCALE_1,GX_TRUE,GX_TEVPREV);town_alpha_pass(stage);
+    return stage+1;
 }
 static void town_shadow_apply(float x,float z,const float *world,const DndDrawEffect *effect,unsigned *bindings){
     int mode=animaltown_shadows_mode();if(!mode)return;

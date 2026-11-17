@@ -847,10 +847,10 @@ internal sealed class TownGame : IDisposable
         if(!actorVisibility.Visible[actor]){FrameProfile.CulledObjects++;return;}
         var location=actorVisibility.Locations[actor];float x=location.X,z=location.Z,scale=1.8f,facing=actor==0?facingYaw:location.Yaw;
         var pose=batchedDrawing?modelPoses[modelUsed++]:transform;pose.LocalPosition=SurfacePoint(x,z);pose.LocalScale=new Vector3(scale,scale,scale);pose.LocalRotation=SurfaceRotation(z,facing);
-        if(batchedDrawing){actorQueue.Submit(actors[actor],pose);}else{NativeRim.Enable(rimLighting?renderDebug.RimPercent:0);try{renderer.DrawModel(actors[actor],pose);}finally{NativeRim.Enable(0);}}
+        if(batchedDrawing){actorQueue.Submit(actors[actor],pose);}else{NativeRim.Enable(rimLighting?renderDebug.RimPercent:0);NativeShadows.Objects(room==0?1:0);try{renderer.DrawModel(actors[actor],pose);}finally{NativeShadows.Objects(0);NativeRim.Enable(0);}}
     }
     private void DrawActors()
-    {NativeRim.Enable(rimLighting?renderDebug.RimPercent:0);try{actorQueue.Execute(renderer);}finally{NativeRim.Enable(0);}}
+    {NativeRim.Enable(rimLighting?renderDebug.RimPercent:0);NativeShadows.Objects(room==0?1:0);try{actorQueue.Execute(renderer);}finally{NativeShadows.Objects(0);NativeRim.Enable(0);}}
     private void PrepareVillagerShadows()
     {
         villagerShadows.BeginFrame(state.Town);
@@ -938,7 +938,9 @@ internal sealed class TownGame : IDisposable
             }
             if(batchedDrawing)boxes.Flush();FrameProfile.End(3,groundAt);
             submissionAt=FrameProfile.SubmissionStart();
-            for(int building=0;building<BuildingWorld.Count;building++)buildings.Exterior(renderer,state,building,villagers.Doors);
+            NativeShadows.Objects(2);
+            try{for(int building=0;building<BuildingWorld.Count;building++)buildings.Exterior(renderer,state,building,villagers.Doors);}
+            finally{NativeShadows.Objects(0);}
             FrameProfile.SubmissionEnd(2,submissionAt);submissionAt=FrameProfile.SubmissionStart();
             fences.Draw(renderer,state,terrain.ScrollTransform,cachedPlayerHeight);FrameProfile.SubmissionEnd(3,submissionAt);
             groundAt=FrameProfile.Start();droppedItems.Draw(renderer);FrameProfile.End(3,groundAt);

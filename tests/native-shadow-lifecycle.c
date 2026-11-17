@@ -62,6 +62,23 @@ int main(void){
     assert(animaltown_shadows_prepare(1000)==1);
     assert(animaltown_shadows_page(2,2,origin)==shadows->coverage&&origin[2]==254&&origin[3]==256&&origin[4]==126&&origin[5]==128);
     assert(su_terrain_sample(shadows,2,2)==su_shadow(su_pack(33,0))); /* One texel/m, including the gutter. */
+    /* Moving model lights must never dirty or rewrite the baked ground field. */
+    DndArray *points=calloc(1,sizeof(*points)+20);assert(points);points->length=5;points->element_size=4;
+    float *p=(float*)points->data;p[0]=2;p[1]=2.3f;p[2]=3;p[3]=4.5f;p[4]=255;
+    uint8_t saved[SU_TERRAIN_BYTES];memcpy(saved,shadows->coverage,sizeof(saved));
+    assert(animaltown_shadows_points(points,1)==1&&shadows->point_count==1);
+    p[0]=5;assert(animaltown_shadows_points(points,1)==1&&!shadows->cloud_dirty&&!shadows->light_dirty);
+    assert(!memcmp(saved,shadows->coverage,sizeof(saved)));
+    int count;assert(animaltown_point_sources(&count)==shadows->points&&count==1);
+    active=1;assert(animaltown_shadows_points(points,1)==0);active=0;
+    p[3]=0;assert(animaltown_shadows_points(points,1)==0);p[3]=4.5f;
+    p[0]=NAN;assert(animaltown_shadows_points(points,1)==0);p[0]=5;
+    points->length=4;assert(animaltown_shadows_points(points,1)==0);points->length=5;
+    points->elements_are_references=1;assert(animaltown_shadows_points(points,1)==0);points->elements_are_references=0;
+    assert(animaltown_shadows_objects(3)==0&&animaltown_object_scope()==0);
+    assert(animaltown_shadows_objects(2)==1&&animaltown_object_scope()==2);
+    assert(animaltown_shadows_objects(0)==1&&animaltown_object_scope()==0);
+    reset_count=invalidations=0;free(points);
     free(empty);free(tile);
     shadows->caster[0].active=1;shadows->terrain_ready=1;
     active=1;assert(animaltown_shadows_shutdown()==0&&live==1&&shadows);active=0;
@@ -73,7 +90,7 @@ int main(void){
     /* A fresh session cannot inherit a discarded world's static coverage. */
     assert(animaltown_shadows_init(atlas,circle,cloud)==1&&live==1);
     for(int i=0;i<SU_CASTERS;i++)assert(!shadows->caster[i].active);
-    assert(!shadows->terrain_ready&&shadows->shapes[0]==255);
+    assert(!shadows->terrain_ready&&shadows->shapes[0]==255&&!shadows->point_count&&!shadows->object_scope);
     assert(animaltown_shadows_shutdown()==1&&!live&&reset_count==2);
     free(atlas);free(circle);free(cloud);
     puts("Shadow bridge lifecycle: charged buffers released, safe retries and clean town reconstruction passed");
