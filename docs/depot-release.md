@@ -18,8 +18,8 @@ publication. GitHub's asset SHA-256 digest covers the app ZIP. Backend binaries,
 host tools, authoring assets, retired Sunshine textures and updater/credentials
 are excluded from the installed app by an explicit whitelist.
 
-The release uploads exactly four files: the NKit ISO, this Depot ZIP, the server
-ZIP and the compiled-tools ZIP. All supplementary reports, checksums, banners,
+The release uploads five files: the NKit ISO, this Depot ZIP, the server
+ZIP, the compiled-tools ZIP and the compact `update.json` feed. All supplementary reports, checksums, banners,
 updater DOL/notices and captures are stored under `release/` inside this ZIP.
 `release/manifest.json` binds each supplementary file's SHA-256 to the app's
 source commit and version; these files are never moved into `apps/animaltown/`.
@@ -35,9 +35,11 @@ archives README-only. Obtain complete source through Git instead.
 
 Release notes are capped at 1 KiB and the full GitHub release response is checked
 against the updater's 32 KiB metadata limit before publication. The updater reads
-the stable GitHub release API directly; no loose `update.json` is uploaded. Older
-updaters require one manual ISO upgrade after this layout change. Saves are
-unaffected. An archived `release/update.json` remains available for diagnostics.
+the stable GitHub release API directly. Older updaters can continue using the
+standalone `update.json`, which retains its original compact format and 2 KiB
+limit: `tag_name`, `draft` and one ISO asset's `name`, `browser_download_url`,
+`size` and `digest`. Its exact bytes are also archived as `release/update.json`.
+Saves are unaffected.
 
 ## Startup and storage
 
