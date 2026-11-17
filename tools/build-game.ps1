@@ -108,7 +108,7 @@ if($validation.managed.Count){Run dotnet @('run','--project','tests/AnimalTown.C
 if('card' -in $validation.native){Run dotnet @('run','--project','tests/AnimalTown.CardChecks','-c','Release')}
 if('card' -in $validation.native){Run dotnet @('run','--project','vendor/card-store-sdk/tests/CardRecordStoreTests','-c','Release')}
 if('content' -in $validation.native){
-    Run dotnet @('build','tests/AnimalTown.ContentSmoke','-c','Release','--locked-mode','-v','quiet')
+    Run dotnet @('build','tests/AnimalTown.ContentSmoke','-c','Release','-p:RestoreLockedMode=true','-v','quiet')
     Run dotnet @("$sdkRoot/tools/compiler/DolphinDotNet.Compiler.dll",'--aot','tests/AnimalTown.ContentSmoke/bin/Release/net8.0/AnimalTown.ContentSmoke.dll','out/content-startup.c')
     RunNative '.' 'python3' @('tests/native-content-startup.py')
 }
