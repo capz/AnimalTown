@@ -129,14 +129,18 @@ internal static class DepotPackage
         try{
             using(var zip=ZipFile.OpenRead(archive)){
                 var names=new HashSet<string>(StringComparer.OrdinalIgnoreCase);long total=0;
-                if(zip.Entries.Count<2||zip.Entries.Count>2048)throw new InvalidDataException("Invalid Depot file count");
+                if(zip.Entries.Count<2||zip.Entries.Count>4096)throw new InvalidDataException("Invalid Depot file count");
                 foreach(var entry in zip.Entries){
                     string name=entry.FullName;
-                    if(!name.StartsWith(Prefix,StringComparison.Ordinal)||name.Length==Prefix.Length||name.Substring(Prefix.Length).IndexOfAny(new[]{'/','\\',':'})>=0||name.Substring(Prefix.Length) is "." or ".."||name.Any(c=>c<' '||c>126)||!names.Add(name)||((entry.ExternalAttributes>>16)&0xf000)==0xa000)
+                    bool report=name.StartsWith("release/",StringComparison.Ordinal);
+                    if((!report&&(!name.StartsWith(Prefix,StringComparison.Ordinal)||name.Length==Prefix.Length||name.Substring(Prefix.Length).IndexOfAny(new[]{'/','\\',':'})>=0||name.Substring(Prefix.Length) is "." or ".."))||name.Any(c=>c<' '||c>126)||name.Contains('\\')||name.Contains(':')||name.Split('/').Any(p=>p is "" or "." or "..")||!names.Add(name)||((entry.ExternalAttributes>>16)&0xf000)==0xa000)
                         throw new InvalidDataException("Unsafe, duplicate or incorrectly cased Depot archive path: "+name);
-                    total=checked(total+entry.Length);if(total>512L*1024*1024)throw new InvalidDataException("Depot payload exceeds budget");
+                    total=checked(total+entry.Length);if(total>2L*1024*1024*1024)throw new InvalidDataException("Depot payload exceeds budget");
                 }
-                zip.ExtractToDirectory(stage);
+                VerifyReports(zip);
+                foreach(var entry in zip.Entries.Where(e=>e.FullName.StartsWith(Prefix,StringComparison.Ordinal))){
+                    string target=At(stage,entry.FullName);Directory.CreateDirectory(Path.GetDirectoryName(target)!);entry.ExtractToFile(target);
+                }
             }
             string app=At(stage,Prefix);var id=ReadIdentity(app);VerifyBuild(root,id);
             var manifest=JsonSerializer.Deserialize<PackageManifest>(ReadSmall(At(app,Manifest),1024*1024))??throw new InvalidDataException("Missing package manifest");
@@ -156,6 +160,27 @@ internal static class DepotPackage
             if(ReadSmall(At(app,"version.json"),65536)!=File.ReadAllText(At(root,"out/version.json")))throw new InvalidDataException("Depot version metadata differs from release");
             Console.WriteLine("Verified clean Depot extraction, closed payload, exact source/version, DOL, BNR1, save artwork and per-file SHA-256");
         }finally{Directory.Delete(stage,true);}
+    }
+    private static void VerifyReports(ZipArchive archive)
+    {
+        var reports=archive.Entries.Where(e=>e.FullName.StartsWith("release/",StringComparison.Ordinal)).ToArray();if(reports.Length==0)return;
+        var manifest=archive.GetEntry("release/manifest.json")??throw new InvalidDataException("Missing release report manifest");
+        if(manifest.Length>1024*1024)throw new InvalidDataException("Release report manifest exceeds budget");
+        using var stream=manifest.Open();using var json=JsonDocument.Parse(stream);var data=json.RootElement;
+        var appEntry=archive.GetEntry(Prefix+Manifest)??throw new InvalidDataException("Missing app manifest");
+        if(appEntry.Length>1024*1024)throw new InvalidDataException("App manifest exceeds budget");
+        using var appStream=appEntry.Open();using var app=JsonDocument.Parse(appStream);
+        if(data.GetProperty("schema").GetInt32()!=1||data.GetProperty("commit").GetString()!=app.RootElement.GetProperty("Commit").GetString()||data.GetProperty("version").GetString()!=app.RootElement.GetProperty("Version").GetString())throw new InvalidDataException("Release report identity mismatch");
+        const string fixedNames="BUILD.txt|version.json|texture-audit.json|validation-plan.json|nkit-validation.json|opening.bnr|opening-pal.bnr|SHA256SUMS.txt|update.json|animal-town-updater.dol|updater-THIRD-PARTY-NOTICES.txt|release-notes.md|updater-setup.md|title-logo.png|title-logo-picker.png|title-logo-name.png|title-logo-return.png|title-logo-debug.png|title-logo-status.png|title-logo-report.json|title-logo-build.json|terrain-materials-report.json|terrain-materials-build.json";
+        var seen=new HashSet<string>(StringComparer.Ordinal);
+        foreach(var property in data.GetProperty("files").EnumerateObject()){
+            string name=property.Name;
+            bool allowed=fixedNames.Split('|').Contains(name)||Regex.IsMatch(name,@"\Aterrain-materials-[a-z0-9-]+\.png\z")||Regex.IsMatch(name,@"\Ascenarios/(cliff-hud|gpu-submit|performance)/[^/\\:]+\.(png|json|txt|log|avi)\z");
+            if(!allowed||!seen.Add(name))throw new InvalidDataException("Source or unsupported release report: "+name);
+            var entry=archive.GetEntry("release/"+name)??throw new InvalidDataException("Missing release report: "+name);
+            using var input=entry.Open();if(Convert.ToHexString(SHA256.HashData(input)).ToLowerInvariant()!=property.Value.GetString())throw new InvalidDataException("Release report checksum mismatch: "+name);
+        }
+        if(seen.Count+1!=reports.Length)throw new InvalidDataException("Unexpected release report file");
     }
     internal static void Check()=>DepotPackageChecks.Run();
 }

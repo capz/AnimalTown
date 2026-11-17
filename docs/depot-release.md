@@ -12,11 +12,32 @@ identity remain unchanged.
 The additional ZIP installs directly as `apps/animaltown/`, with the real game
 at `default.dol`, `opening.bnr`, save artwork, cooked content, notices,
 `BUILD.txt`, `version.md`, `version.json`, `content.id` and
-`depot-package.json`. There is no extra archive directory. The latter records
+`depot-package.json`. There is no extra wrapper directory. The latter records
 the complete file list and SHA-256 hashes. A clean extraction is checked before
-publication. The release checksums and uploaded-asset verification include the
-app ZIP. Backend binaries, host tools, authoring assets, retired Sunshine
-textures and the ISO updater/credentials are excluded by an explicit whitelist.
+publication. GitHub's asset SHA-256 digest covers the app ZIP. Backend binaries,
+host tools, authoring assets, retired Sunshine textures and updater/credentials
+are excluded from the installed app by an explicit whitelist.
+
+The release uploads exactly four files: the NKit ISO, this Depot ZIP, the server
+ZIP and the compiled-tools ZIP. All supplementary reports, checksums, banners,
+updater DOL/notices and captures are stored under `release/` inside this ZIP.
+`release/manifest.json` binds each supplementary file's SHA-256 to the app's
+source commit and version; these files are never moved into `apps/animaltown/`.
+`release/SHA256SUMS.txt` covers the ISO, server/tools ZIPs and primary reports.
+It excludes itself and the containing Depot ZIP to avoid circular hashes.
+Use GitHub's asset digest for the containing ZIP. `tools/release-bundle.py`
+verifies and extracts reports; optional evidence workflows append their captures
+under `release/scenarios/` while retaining the original app and reports.
+
+Source/authoring kits and Python source tools are not release assets. GitHub
+always displays automatic source ZIP/tar.gz links; `.gitattributes` makes those
+archives README-only. Obtain complete source through Git instead.
+
+Release notes are capped at 1 KiB and the full GitHub release response is checked
+against the updater's 32 KiB metadata limit before publication. The updater reads
+the stable GitHub release API directly; no loose `update.json` is uploaded. Older
+updaters require one manual ISO upgrade after this layout change. Saves are
+unaffected. An archived `release/update.json` remains available for diagnostics.
 
 ## Startup and storage
 

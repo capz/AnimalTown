@@ -154,6 +154,18 @@ Commit 'Next merged PR';$nextMerge=FixtureGit @('rev-parse','HEAD');$merges+=@{n
 Assert ((Version).version -ceq '0.13.0') 'Every subsequent PR advances minor exactly once'
 Assert ((Version 'branch').version -ceq "0.13.0+$((Version).bb)") 'Review builds retain hash suffixes under the minor policy'
 Assert ((Version).version -ceq (Version).version) 'Retries do not consume another minor version'
+$mergesFile=Join-Path $repo 'out/determinism-merges.json'
+[IO.File]::WriteAllText($mergesFile,($merges|ConvertTo-Json -Depth 5))
+$versionScript=(Resolve-Path (Join-Path $PSScriptRoot '../tools/version.ps1')).Path
+function Quote-Literal([string]$text){return "'"+$text.Replace("'","''")+"'"}
+$command='. '+(Quote-Literal $versionScript)+'; Get-BuildVersion '+(Quote-Literal $repo)+' -BuildKind main -MainRef HEAD -MergedPullRequests @(Get-Content -LiteralPath '+(Quote-Literal $mergesFile)+' -Raw | ConvertFrom-Json) | ConvertTo-Json -Depth 5 -Compress'
+$encoded=[Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($command))
+$serializations=foreach($attempt in 1..12){
+    $result=& (Join-Path $PSHOME 'pwsh') -NoLogo -NoProfile -EncodedCommand $encoded
+    if($LASTEXITCODE){throw 'Cross-process version fixture failed'}
+    $result -join "`n"
+}
+Assert (@($serializations | Sort-Object -Unique).Count -eq 1) 'Identical source/main snapshots must serialize identically across independent PowerShell processes'
 $config.minor=[int]::MaxValue;Config
 Reject {Version} 'Minor overflow is rejected'
 $config.minor=11;$config.increment='unknown';Config

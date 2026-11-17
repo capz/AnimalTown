@@ -107,9 +107,9 @@ function Get-BuildVersion {
         if($merge.mergeCommit -cnotmatch '^[0-9a-f]{40}$' -or $merge.number -notmatch '^[1-9]\d*$'){throw 'Invalid merged PR history'}
         if($merge.mergeCommit -cnotin $history){continue} # Exclude future, other-base and baseline PRs.
         if(!$numbers.Add([long]$merge.number) -or !$boundaries.Add($merge.mergeCommit)){throw 'Duplicate PR integration boundary'}
-        # Build and publish run in separate PowerShell processes. Hashtable
-        # enumeration is process-dependent, but packaged metadata is byte-exact.
-        $changes+=[ordered]@{number=[long]$merge.number;commit=$merge.mergeCommit}
+        # Preserve byte-stable metadata when the same source/main snapshot is
+        # resolved in separate PowerShell processes; plain hashtables vary.
+        $changes+=[pscustomobject]@{number=[long]$merge.number;commit=$merge.mergeCommit}
     }
     $increment=if($config.PSObject.Properties.Name -contains 'increment'){$config.increment}else{'patch'}
     if($increment -notin @('patch','minor')){throw 'Invalid version increment policy'}

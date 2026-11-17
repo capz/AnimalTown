@@ -1,0 +1,1889 @@
+{
+  "scenario": "terrain-materials",
+  "disc": "AnimalTown-0.51.0+388d8677dede.nkit.iso",
+  "passed": true,
+  "screenshots": [
+    "terrain-materials-normal.png",
+    "terrain-materials-menu-off.png",
+    "terrain-materials-menu-on.png",
+    "terrain-materials-mips-auto.png",
+    "terrain-materials-distance-auto.png",
+    "terrain-materials-distance-one.png",
+    "terrain-materials-mips-one.png",
+    "terrain-materials-distance-one-return.png",
+    "terrain-materials-distance-ten.png",
+    "terrain-materials-mips-ten.png",
+    "terrain-materials-distance-ten-return.png",
+    "terrain-materials-distance-reset.png",
+    "terrain-materials-mips-reset.png",
+    "terrain-materials-mipmaps-on.png",
+    "terrain-materials-mipmaps-off.png",
+    "terrain-materials-mips-disabled.png",
+    "terrain-materials-mipmaps-off-return.png",
+    "terrain-materials-menu-on-return.png",
+    "terrain-materials-menu-restored.png",
+    "terrain-materials-restored.png",
+    "terrain-materials-water-river-a.png",
+    "terrain-materials-water-river-b.png",
+    "terrain-materials-water-river-frozen-a.png",
+    "terrain-materials-water-river-frozen-b.png",
+    "terrain-materials-water-river-resumed-a.png",
+    "terrain-materials-water-river-resumed-b.png",
+    "terrain-materials-water-river-legacy-a.png",
+    "terrain-materials-water-river-legacy-b.png",
+    "terrain-materials-water-river-legacy-frozen-a.png",
+    "terrain-materials-water-river-legacy-frozen-b.png",
+    "terrain-materials-water-river-legacy-resumed-a.png",
+    "terrain-materials-water-river-legacy-resumed-b.png",
+    "terrain-materials-water-river-archive-restored.png",
+    "terrain-materials-water-coast-a.png",
+    "terrain-materials-water-coast-b.png",
+    "terrain-materials-water-menu.png",
+    "terrain-materials-water-menu-return.png"
+  ],
+  "mip_states": {
+    "normal": {
+      "enabled": false,
+      "mipmaps": true,
+      "distance": 0,
+      "width": 256,
+      "height": 256,
+      "levels": 7,
+      "level_pixels": [
+        236,
+        0,
+        4,
+        0,
+        0,
+        0,
+        0
+      ],
+      "classified_pixels": 240,
+      "mean_level": 0.3917787619425458,
+      "fit_rgb_rms": 2.2447668195531425
+    },
+    "mips-auto": {
+      "enabled": true,
+      "mipmaps": true,
+      "distance": 0,
+      "width": 256,
+      "height": 256,
+      "levels": 7,
+      "level_pixels": [
+        0,
+        59748,
+        59172,
+        17196,
+        6520,
+        2152,
+        536
+      ],
+      "classified_pixels": 145324,
+      "mean_level": 1.8562559963531033,
+      "fit_rgb_rms": 0.35786535829958105
+    },
+    "mips-one": {
+      "enabled": true,
+      "mipmaps": true,
+      "distance": 1,
+      "width": 256,
+      "height": 256,
+      "levels": 7,
+      "level_pixels": [
+        83572,
+        44812,
+        10752,
+        4936,
+        1100,
+        136,
+        140
+      ],
+      "classified_pixels": 145448,
+      "mean_level": 0.6434276055125292,
+      "fit_rgb_rms": 0.294866725336711
+    },
+    "mips-ten": {
+      "enabled": true,
+      "mipmaps": true,
+      "distance": 10,
+      "width": 256,
+      "height": 256,
+      "levels": 7,
+      "level_pixels": [
+        141628,
+        3184,
+        488,
+        136,
+        0,
+        0,
+        0
+      ],
+      "classified_pixels": 145436,
+      "mean_level": 0.033848835154689505,
+      "fit_rgb_rms": 0.2992518671003321
+    },
+    "mips-reset": {
+      "enabled": true,
+      "mipmaps": true,
+      "distance": 0,
+      "width": 256,
+      "height": 256,
+      "levels": 7,
+      "level_pixels": [
+        0,
+        59728,
+        59216,
+        17192,
+        6516,
+        2152,
+        536
+      ],
+      "classified_pixels": 145340,
+      "mean_level": 1.8571984600707319,
+      "fit_rgb_rms": 0.34602769876531153
+    },
+    "mips-disabled": {
+      "enabled": true,
+      "mipmaps": false,
+      "distance": 0,
+      "width": 256,
+      "height": 256,
+      "levels": 7,
+      "level_pixels": [
+        145384,
+        0,
+        4,
+        0,
+        0,
+        0,
+        0
+      ],
+      "classified_pixels": 145388,
+      "mean_level": 0.0010732963287774435,
+      "fit_rgb_rms": 0.3108094516881245
+    },
+    "restored": {
+      "enabled": false,
+      "mipmaps": true,
+      "distance": 0,
+      "width": 256,
+      "height": 256,
+      "levels": 7,
+      "level_pixels": [
+        664,
+        0,
+        4,
+        0,
+        0,
+        0,
+        0
+      ],
+      "classified_pixels": 668,
+      "mean_level": 0.37199540759918787,
+      "fit_rgb_rms": 1.1289275267871104
+    }
+  },
+  "water": {
+    "river": {
+      "animated": {
+        "interior_samples": 8612,
+        "changed_chromaticity_samples": 2519,
+        "crest_edge_sign_changes": 755,
+        "region": [
+          38,
+          60,
+          604,
+          308
+        ],
+        "shadow_invariant": false,
+        "edge_measure": "intensity",
+        "native_start": {
+          "scene": 1,
+          "frame": 331,
+          "tev_stages": 4,
+          "indirect_stages": 1,
+          "strength": 76,
+          "tex0": [
+            64,
+            64
+          ],
+          "tex1": [
+            64,
+            64
+          ],
+          "uv0": [
+            1350000,
+            0,
+            0,
+            1350000,
+            200074,
+            388746
+          ],
+          "uv1": [
+            1000000,
+            0,
+            0,
+            1000000,
+            533284,
+            277675
+          ],
+          "layers": [
+            [
+              0,
+              0
+            ],
+            [
+              1,
+              0
+            ]
+          ],
+          "texgens": 2,
+          "matrices": [
+            30,
+            33
+          ],
+          "foam_constants": [
+            "c4e4deff",
+            "e5f5edff"
+          ],
+          "material_path": "archived"
+        },
+        "native_end": {
+          "scene": 1,
+          "frame": 451,
+          "tev_stages": 4,
+          "indirect_stages": 1,
+          "strength": 76,
+          "tex0": [
+            64,
+            64
+          ],
+          "tex1": [
+            64,
+            64
+          ],
+          "uv0": [
+            1350000,
+            0,
+            0,
+            1350000,
+            164033,
+            458825
+          ],
+          "uv1": [
+            1000000,
+            0,
+            0,
+            1000000,
+            557311,
+            327732
+          ],
+          "layers": [
+            [
+              0,
+              0
+            ],
+            [
+              1,
+              0
+            ]
+          ],
+          "texgens": 2,
+          "matrices": [
+            30,
+            33
+          ],
+          "foam_constants": [
+            "c4e4deff",
+            "e5f5edff"
+          ],
+          "material_path": "archived"
+        },
+        "rendered_frames": 120,
+        "uv_translation_delta": [
+          [
+            36041,
+            70079
+          ],
+          [
+            24027,
+            50057
+          ]
+        ],
+        "motion_expected": true
+      },
+      "frozen_control": {
+        "interior_samples": 8615,
+        "changed_chromaticity_samples": 0,
+        "crest_edge_sign_changes": 0,
+        "region": [
+          38,
+          60,
+          604,
+          308
+        ],
+        "shadow_invariant": false,
+        "edge_measure": "intensity",
+        "native_start": {
+          "scene": 1,
+          "frame": 721,
+          "tev_stages": 4,
+          "indirect_stages": 1,
+          "strength": 76,
+          "tex0": [
+            64,
+            64
+          ],
+          "tex1": [
+            64,
+            64
+          ],
+          "uv0": [
+            1350000,
+            0,
+            0,
+            1350000,
+            156070,
+            474308
+          ],
+          "uv1": [
+            1000000,
+            0,
+            0,
+            1000000,
+            562620,
+            338792
+          ],
+          "layers": [
+            [
+              0,
+              0
+            ],
+            [
+              1,
+              0
+            ]
+          ],
+          "texgens": 2,
+          "matrices": [
+            30,
+            33
+          ],
+          "foam_constants": [
+            "c4e4deff",
+            "e5f5edff"
+          ],
+          "material_path": "archived"
+        },
+        "native_end": {
+          "scene": 1,
+          "frame": 841,
+          "tev_stages": 4,
+          "indirect_stages": 1,
+          "strength": 76,
+          "tex0": [
+            64,
+            64
+          ],
+          "tex1": [
+            64,
+            64
+          ],
+          "uv0": [
+            1350000,
+            0,
+            0,
+            1350000,
+            156070,
+            474308
+          ],
+          "uv1": [
+            1000000,
+            0,
+            0,
+            1000000,
+            562620,
+            338792
+          ],
+          "layers": [
+            [
+              0,
+              0
+            ],
+            [
+              1,
+              0
+            ]
+          ],
+          "texgens": 2,
+          "matrices": [
+            30,
+            33
+          ],
+          "foam_constants": [
+            "c4e4deff",
+            "e5f5edff"
+          ],
+          "material_path": "archived"
+        },
+        "rendered_frames": 120,
+        "uv_translation_delta": [
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ]
+        ],
+        "motion_expected": false
+      },
+      "resumed": {
+        "interior_samples": 8617,
+        "changed_chromaticity_samples": 2636,
+        "crest_edge_sign_changes": 840,
+        "region": [
+          38,
+          60,
+          604,
+          308
+        ],
+        "shadow_invariant": false,
+        "edge_measure": "intensity",
+        "native_start": {
+          "scene": 1,
+          "frame": 1111,
+          "tev_stages": 4,
+          "indirect_stages": 1,
+          "strength": 76,
+          "tex0": [
+            64,
+            64
+          ],
+          "tex1": [
+            64,
+            64
+          ],
+          "uv0": [
+            1350000,
+            0,
+            0,
+            1350000,
+            965851,
+            844178
+          ],
+          "uv1": [
+            1000000,
+            0,
+            0,
+            1000000,
+            689433,
+            602985
+          ],
+          "layers": [
+            [
+              0,
+              0
+            ],
+            [
+              1,
+              0
+            ]
+          ],
+          "texgens": 2,
+          "matrices": [
+            30,
+            33
+          ],
+          "foam_constants": [
+            "c4e4deff",
+            "e5f5edff"
+          ],
+          "material_path": "archived"
+        },
+        "native_end": {
+          "scene": 1,
+          "frame": 1231,
+          "tev_stages": 4,
+          "indirect_stages": 1,
+          "strength": 76,
+          "tex0": [
+            64,
+            64
+          ],
+          "tex1": [
+            64,
+            64
+          ],
+          "uv0": [
+            1350000,
+            0,
+            0,
+            1350000,
+            929815,
+            914248
+          ],
+          "uv1": [
+            1000000,
+            0,
+            0,
+            1000000,
+            713457,
+            653035
+          ],
+          "layers": [
+            [
+              0,
+              0
+            ],
+            [
+              1,
+              0
+            ]
+          ],
+          "texgens": 2,
+          "matrices": [
+            30,
+            33
+          ],
+          "foam_constants": [
+            "c4e4deff",
+            "e5f5edff"
+          ],
+          "material_path": "archived"
+        },
+        "rendered_frames": 120,
+        "uv_translation_delta": [
+          [
+            36036,
+            70070
+          ],
+          [
+            24024,
+            50050
+          ]
+        ],
+        "motion_expected": true
+      }
+    },
+    "legacy_river": {
+      "animated": {
+        "interior_samples": 8613,
+        "changed_chromaticity_samples": 3101,
+        "crest_edge_sign_changes": 1062,
+        "region": [
+          38,
+          60,
+          604,
+          308
+        ],
+        "shadow_invariant": true,
+        "edge_measure": "chromaticity",
+        "native_start": {
+          "scene": 1,
+          "frame": 1538,
+          "tev_stages": 8,
+          "indirect_stages": 1,
+          "strength": 76,
+          "tex0": [
+            64,
+            64
+          ],
+          "tex1": [
+            64,
+            64
+          ],
+          "uv0": [
+            1350000,
+            0,
+            0,
+            1350000,
+            837593,
+            93570
+          ],
+          "uv1": [
+            1000000,
+            0,
+            0,
+            1000000,
+            774938,
+            781121
+          ],
+          "layers": [
+            [
+              0,
+              0
+            ],
+            [
+              1,
+              0
+            ]
+          ],
+          "texgens": 3,
+          "matrices": [
+            30,
+            33
+          ],
+          "foam_constants": [
+            "c4e4deff",
+            "e5f5edff"
+          ],
+          "material_path": "legacy"
+        },
+        "native_end": {
+          "scene": 1,
+          "frame": 1658,
+          "tev_stages": 8,
+          "indirect_stages": 1,
+          "strength": 76,
+          "tex0": [
+            64,
+            64
+          ],
+          "tex1": [
+            64,
+            64
+          ],
+          "uv0": [
+            1350000,
+            0,
+            0,
+            1350000,
+            801585,
+            163585
+          ],
+          "uv1": [
+            1000000,
+            0,
+            0,
+            1000000,
+            798943,
+            831132
+          ],
+          "layers": [
+            [
+              0,
+              0
+            ],
+            [
+              1,
+              0
+            ]
+          ],
+          "texgens": 3,
+          "matrices": [
+            30,
+            33
+          ],
+          "foam_constants": [
+            "c4e4deff",
+            "e5f5edff"
+          ],
+          "material_path": "legacy"
+        },
+        "rendered_frames": 120,
+        "uv_translation_delta": [
+          [
+            36008,
+            70015
+          ],
+          [
+            24005,
+            50011
+          ]
+        ],
+        "motion_expected": true
+      },
+      "frozen_control": {
+        "interior_samples": 8618,
+        "changed_chromaticity_samples": 0,
+        "crest_edge_sign_changes": 0,
+        "region": [
+          38,
+          60,
+          604,
+          308
+        ],
+        "shadow_invariant": true,
+        "edge_measure": "chromaticity",
+        "native_start": {
+          "scene": 1,
+          "frame": 1928,
+          "tev_stages": 8,
+          "indirect_stages": 1,
+          "strength": 76,
+          "tex0": [
+            64,
+            64
+          ],
+          "tex1": [
+            64,
+            64
+          ],
+          "uv0": [
+            1350000,
+            0,
+            0,
+            1350000,
+            794378,
+            177599
+          ],
+          "uv1": [
+            1000000,
+            0,
+            0,
+            1000000,
+            803748,
+            841142
+          ],
+          "layers": [
+            [
+              0,
+              0
+            ],
+            [
+              1,
+              0
+            ]
+          ],
+          "texgens": 3,
+          "matrices": [
+            30,
+            33
+          ],
+          "foam_constants": [
+            "c4e4deff",
+            "e5f5edff"
+          ],
+          "material_path": "legacy"
+        },
+        "native_end": {
+          "scene": 1,
+          "frame": 2048,
+          "tev_stages": 8,
+          "indirect_stages": 1,
+          "strength": 76,
+          "tex0": [
+            64,
+            64
+          ],
+          "tex1": [
+            64,
+            64
+          ],
+          "uv0": [
+            1350000,
+            0,
+            0,
+            1350000,
+            794378,
+            177599
+          ],
+          "uv1": [
+            1000000,
+            0,
+            0,
+            1000000,
+            803748,
+            841142
+          ],
+          "layers": [
+            [
+              0,
+              0
+            ],
+            [
+              1,
+              0
+            ]
+          ],
+          "texgens": 3,
+          "matrices": [
+            30,
+            33
+          ],
+          "foam_constants": [
+            "c4e4deff",
+            "e5f5edff"
+          ],
+          "material_path": "legacy"
+        },
+        "rendered_frames": 120,
+        "uv_translation_delta": [
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ]
+        ],
+        "motion_expected": false
+      },
+      "resumed": {
+        "interior_samples": 8614,
+        "changed_chromaticity_samples": 3046,
+        "crest_edge_sign_changes": 1080,
+        "region": [
+          38,
+          60,
+          604,
+          308
+        ],
+        "shadow_invariant": true,
+        "edge_measure": "chromaticity",
+        "native_start": {
+          "scene": 1,
+          "frame": 2288,
+          "tev_stages": 8,
+          "indirect_stages": 1,
+          "strength": 76,
+          "tex0": [
+            64,
+            64
+          ],
+          "tex1": [
+            64,
+            64
+          ],
+          "uv0": [
+            1350000,
+            0,
+            0,
+            1350000,
+            612196,
+            531841
+          ],
+          "uv1": [
+            1000000,
+            0,
+            0,
+            1000000,
+            925203,
+            94172
+          ],
+          "layers": [
+            [
+              0,
+              0
+            ],
+            [
+              1,
+              0
+            ]
+          ],
+          "texgens": 3,
+          "matrices": [
+            30,
+            33
+          ],
+          "foam_constants": [
+            "c4e4deff",
+            "e5f5edff"
+          ],
+          "material_path": "legacy"
+        },
+        "native_end": {
+          "scene": 1,
+          "frame": 2408,
+          "tev_stages": 8,
+          "indirect_stages": 1,
+          "strength": 76,
+          "tex0": [
+            64,
+            64
+          ],
+          "tex1": [
+            64,
+            64
+          ],
+          "uv0": [
+            1350000,
+            0,
+            0,
+            1350000,
+            576360,
+            601523
+          ],
+          "uv1": [
+            1000000,
+            0,
+            0,
+            1000000,
+            949093,
+            143945
+          ],
+          "layers": [
+            [
+              0,
+              0
+            ],
+            [
+              1,
+              0
+            ]
+          ],
+          "texgens": 3,
+          "matrices": [
+            30,
+            33
+          ],
+          "foam_constants": [
+            "c4e4deff",
+            "e5f5edff"
+          ],
+          "material_path": "legacy"
+        },
+        "rendered_frames": 120,
+        "uv_translation_delta": [
+          [
+            35836,
+            69682
+          ],
+          [
+            23890,
+            49773
+          ]
+        ],
+        "motion_expected": true
+      },
+      "switch_control": "L+R+Z+X",
+      "archived_restored": {
+        "scene": 1,
+        "frame": 2673,
+        "tev_stages": 4,
+        "indirect_stages": 1,
+        "strength": 76,
+        "tex0": [
+          64,
+          64
+        ],
+        "tex1": [
+          64,
+          64
+        ],
+        "uv0": [
+          1350000,
+          0,
+          0,
+          1350000,
+          492883,
+          763840
+        ],
+        "uv1": [
+          1000000,
+          0,
+          0,
+          1000000,
+          4745,
+          259886
+        ],
+        "layers": [
+          [
+            0,
+            0
+          ],
+          [
+            1,
+            0
+          ]
+        ],
+        "texgens": 2,
+        "matrices": [
+          30,
+          33
+        ],
+        "foam_constants": [
+          "c4e4deff",
+          "e5f5edff"
+        ],
+        "material_path": "archived"
+      }
+    },
+    "coast": {
+      "interior_samples": 24012,
+      "changed_chromaticity_samples": 12244,
+      "crest_edge_sign_changes": 4242,
+      "region": [
+        38,
+        60,
+        604,
+        308
+      ],
+      "shadow_invariant": false,
+      "edge_measure": "intensity",
+      "native_start": {
+        "scene": 4,
+        "frame": 211,
+        "tev_stages": 4,
+        "indirect_stages": 1,
+        "strength": 76,
+        "tex0": [
+          64,
+          64
+        ],
+        "tex1": [
+          64,
+          64
+        ],
+        "uv0": [
+          1350000,
+          0,
+          0,
+          1350000,
+          304989,
+          129188
+        ],
+        "uv1": [
+          1000000,
+          0,
+          0,
+          1000000,
+          130007,
+          520849
+        ],
+        "layers": [
+          [
+            0,
+            0
+          ],
+          [
+            1,
+            0
+          ]
+        ],
+        "texgens": 2,
+        "matrices": [
+          30,
+          33
+        ],
+        "foam_constants": [
+          "c4e4deff",
+          "e5f5edff"
+        ],
+        "material_path": "archived"
+      },
+      "native_end": {
+        "scene": 4,
+        "frame": 271,
+        "tev_stages": 4,
+        "indirect_stages": 1,
+        "strength": 76,
+        "tex0": [
+          64,
+          64
+        ],
+        "tex1": [
+          64,
+          64
+        ],
+        "uv0": [
+          1350000,
+          0,
+          0,
+          1350000,
+          270344,
+          196555
+        ],
+        "uv1": [
+          1000000,
+          0,
+          0,
+          1000000,
+          153104,
+          568968
+        ],
+        "layers": [
+          [
+            0,
+            0
+          ],
+          [
+            1,
+            0
+          ]
+        ],
+        "texgens": 2,
+        "matrices": [
+          30,
+          33
+        ],
+        "foam_constants": [
+          "c4e4deff",
+          "e5f5edff"
+        ],
+        "material_path": "archived"
+      },
+      "rendered_frames": 60,
+      "uv_translation_delta": [
+        [
+          34645,
+          67367
+        ],
+        [
+          23097,
+          48119
+        ]
+      ],
+      "motion_expected": true
+    }
+  },
+  "visual_failures": [],
+  "physical_hardware": false,
+  "committed_town_before": {
+    "sequence": 1,
+    "dimensions": [
+      128,
+      120
+    ],
+    "active": 0,
+    "profiles": [
+      {
+        "name": "A",
+        "created": 1,
+        "wallet": 0,
+        "species": 0,
+        "savings": 0,
+        "pockets": [
+          4,
+          2,
+          18,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      {
+        "name": "Newcomer",
+        "created": 0,
+        "wallet": 0,
+        "species": 0,
+        "savings": 0,
+        "pockets": [
+          4,
+          2,
+          18,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      {
+        "name": "Newcomer",
+        "created": 0,
+        "wallet": 0,
+        "species": 0,
+        "savings": 0,
+        "pockets": [
+          4,
+          2,
+          18,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      {
+        "name": "Newcomer",
+        "created": 0,
+        "wallet": 0,
+        "species": 0,
+        "savings": 0,
+        "pockets": [
+          4,
+          2,
+          18,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ]
+      }
+    ],
+    "profile_payload_sha256": [
+      "2fcbccc05d8e5cc7fcf9bb4958c618d7046787742ae832044092975d7fa5c8e9",
+      "a0d30b75f6f2363c2fc7d16519fdf19fe52acbe0fa1f53e644e354e0a8485abf",
+      "a0d30b75f6f2363c2fc7d16519fdf19fe52acbe0fa1f53e644e354e0a8485abf",
+      "a0d30b75f6f2363c2fc7d16519fdf19fe52acbe0fa1f53e644e354e0a8485abf"
+    ],
+    "plots": [
+      {
+        "placed": 1,
+        "x": 14,
+        "z": 35
+      },
+      {
+        "placed": 0,
+        "x": 12,
+        "z": 22
+      },
+      {
+        "placed": 0,
+        "x": 12,
+        "z": 22
+      },
+      {
+        "placed": 0,
+        "x": 12,
+        "z": 22
+      }
+    ],
+    "terrain_sha256": "2d5628a86d2f637e917cdbe9420e47e7550eb8eb1edac246852d37244712f1a7",
+    "houses_sha256": "2ac7093f1269e6375aeded823b1de3eb5337e105d900513c97d73c2ae4e6f350",
+    "npc_spaces": [
+      0,
+      0,
+      0,
+      0,
+      0,
+      0
+    ],
+    "shop": {
+      "stock": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "state": [
+        827344979,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        6000,
+        0,
+        -1,
+        -1,
+        6000,
+        0,
+        -1,
+        -1,
+        6000,
+        0,
+        -1,
+        -1,
+        6000,
+        0,
+        -1,
+        -1,
+        6000,
+        0,
+        -1,
+        -1,
+        6000,
+        0,
+        -1,
+        -1,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    }
+  },
+  "committed_town_after": {
+    "sequence": 1,
+    "dimensions": [
+      128,
+      120
+    ],
+    "active": 0,
+    "profiles": [
+      {
+        "name": "A",
+        "created": 1,
+        "wallet": 0,
+        "species": 0,
+        "savings": 0,
+        "pockets": [
+          4,
+          2,
+          18,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      {
+        "name": "Newcomer",
+        "created": 0,
+        "wallet": 0,
+        "species": 0,
+        "savings": 0,
+        "pockets": [
+          4,
+          2,
+          18,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      {
+        "name": "Newcomer",
+        "created": 0,
+        "wallet": 0,
+        "species": 0,
+        "savings": 0,
+        "pockets": [
+          4,
+          2,
+          18,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      {
+        "name": "Newcomer",
+        "created": 0,
+        "wallet": 0,
+        "species": 0,
+        "savings": 0,
+        "pockets": [
+          4,
+          2,
+          18,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ]
+      }
+    ],
+    "profile_payload_sha256": [
+      "2fcbccc05d8e5cc7fcf9bb4958c618d7046787742ae832044092975d7fa5c8e9",
+      "a0d30b75f6f2363c2fc7d16519fdf19fe52acbe0fa1f53e644e354e0a8485abf",
+      "a0d30b75f6f2363c2fc7d16519fdf19fe52acbe0fa1f53e644e354e0a8485abf",
+      "a0d30b75f6f2363c2fc7d16519fdf19fe52acbe0fa1f53e644e354e0a8485abf"
+    ],
+    "plots": [
+      {
+        "placed": 1,
+        "x": 14,
+        "z": 35
+      },
+      {
+        "placed": 0,
+        "x": 12,
+        "z": 22
+      },
+      {
+        "placed": 0,
+        "x": 12,
+        "z": 22
+      },
+      {
+        "placed": 0,
+        "x": 12,
+        "z": 22
+      }
+    ],
+    "terrain_sha256": "2d5628a86d2f637e917cdbe9420e47e7550eb8eb1edac246852d37244712f1a7",
+    "houses_sha256": "2ac7093f1269e6375aeded823b1de3eb5337e105d900513c97d73c2ae4e6f350",
+    "npc_spaces": [
+      0,
+      0,
+      0,
+      0,
+      0,
+      0
+    ],
+    "shop": {
+      "stock": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "state": [
+        827344979,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        6000,
+        0,
+        -1,
+        -1,
+        6000,
+        0,
+        -1,
+        -1,
+        6000,
+        0,
+        -1,
+        -1,
+        6000,
+        0,
+        -1,
+        -1,
+        6000,
+        0,
+        -1,
+        -1,
+        6000,
+        0,
+        -1,
+        -1,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    }
+  },
+  "card_unchanged": true,
+  "town_unchanged": true
+}
