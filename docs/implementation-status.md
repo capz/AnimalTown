@@ -28,6 +28,10 @@ the GDD. The technical baseline was committed/pushed first as `0064efd`.
   backpack icon grid (10/20/30 slots), selected-item popovers, shop capacity
   upgrades and context actions, map, store buying/selling, banking, loans and tier
   rules, catalog deliveries, simple tutorial objectives and villager fetch jobs.
+* Basic fishing rod, net, shovel and axe interactions with capability-filtered
+  pocket actions. Watering cans are retired from new acquisition/equipment while
+  retaining saved item IDs. See [the GameCube tool audit](gamecube-tools.md) for
+  implemented behavior and missing mechanics, including golden tools.
 * Indoor/outdoor footprint validation, placement ownership, rotating footprints,
   garden reservations and relocation, tier-dependent room size.
 * Native RTC bridge, 06:00 day rollover, stock and monthly interest rules,
@@ -79,8 +83,9 @@ unverified. Model normalization uses bind bounds; animated extremities need QA.
   tents and moderation restrictions still need endpoints and integration.
 * Full resident schedules/pathfinding, personality dialogue, all six request
   types, lost-object quests and proper tutorial objective verification.
-* Fishing/net timing games, fruit-regrowth limits, watering/growth state, weeds,
-  slingshot, seasonal palettes, weather, soundscape and accessibility.
+* Fishing/net timing games, complete digging/chopping mechanics, golden tools,
+  fruit-regrowth limits, growth state, weeds, seasonal palettes, weather,
+  soundscape and accessibility.
 * Distinct indoor rooms/stairways for upper floor/basement/annex, full furniture
   visuals/editor, delayed paid exterior customization, mailbox/stall interactions
   and clay-chime rhythms. Current exterior menus are immediate palette values;
