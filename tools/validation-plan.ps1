@@ -43,6 +43,9 @@ function Get-ValidationPlan {
         }
         if($p -match '^tests/AnimalTown.Checks/Program.cs$'){$broad=$true;continue}
         if($p -match '^(shared/AnimalTown.Domain/WaterSurface|tests/AnimalTown.Checks/WaterSurfaceChecks)\.cs$') {Add-Managed 'terrain';continue}
+        if($p -match '^(shared/AnimalTown.Domain/(TownPaths|PathShape)|tests/AnimalTown.Checks/PathChecks)\.cs$'){foreach($s in @('terrain','generation','saves','core')){Add-Managed $s};continue}
+        if($p -match '^game/AnimalTown.GameCube/(PathTextureResidency|PathProfile)\.cs$'){Add-Managed 'terrain';[void]$native.Add('patched');continue}
+        if($p -match '^tools/AnimalTown.Tools/PathAssets\.cs$|^assets/textures/environment/paths/'){[void]$tooling.Add('path');continue}
         if($p -match '^shared/AnimalTown.Domain/CliffShadowMap\.cs$'){Add-Managed 'terrain';[void]$native.Add('shadows');continue}
         if($p -match '^tests/AnimalTown.Checks/CliffShadowChecks\.cs$'){Add-Managed 'terrain';continue}
         if($p -match '^(shared/AnimalTown.Domain/RiverBankGeometry|tests/AnimalTown.Checks/RiverBankChecks)\.cs$'){foreach($s in @('terrain','movement','life','generation')){Add-Managed $s};continue}

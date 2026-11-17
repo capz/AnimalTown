@@ -12,6 +12,7 @@ internal sealed class TerrainSection
 
     internal readonly TerrainWalls Walls;
     internal readonly WaterRenderer Water;
+    private readonly float[] pathX=new float[8],pathZ=new float[8];
     private long revision;
     private int left,top,row,phase,kind;
     private CylinderRows rows=null!;
@@ -31,12 +32,12 @@ internal sealed class TerrainSection
         if(kind!=TerrainSectionPlan.Detailed&&row<TerrainStream.Height){
             int z=top+row++;
             if(kind==TerrainSectionPlan.DeepSea)Water.AppendDeepRow(z);
-            else{strips.PrepareRegion(state,data,left,z,TerrainStream.Width,1);AppendGround(state,strips,owner.SharedFlatMaterial);}
+            else{strips.PrepareRegion(state,data,left,z,TerrainStream.Width,1);AppendGround(state,strips,owner);}
             return false;
         }
         if(row<TerrainStream.Height){
             if(phase==0){
-                strips.PrepareRegion(state,data,left,top+row,TerrainStream.Width,1);AppendGround(state,strips,owner.SharedFlatMaterial);Water.Append(strips);Water.AppendBedRow(top+row);
+                strips.PrepareRegion(state,data,left,top+row,TerrainStream.Width,1);AppendGround(state,strips,owner);Water.Append(strips);Water.AppendBedRow(top+row);
                 if(TerrainSectionPlan.Walls(state.Town,left,top+row))phase=1;else row++;
             }else{Walls.AppendRow(state,owner,left,top+row);phase=0;row++;}
             return false;
@@ -68,23 +69,52 @@ internal sealed class TerrainSection
         for(int i=0;i<meshes.Length;i++){meshes[i]?.Dispose();meshes[i]=null;buffers[i]=null;}
         Water.Dispose();Walls.Dispose();
     }
-    private void AppendGround(GameState state,FloorStrips strips,int sharedFlatMaterial)
+    private void AppendGround(GameState state,FloorStrips strips,TerrainRenderer owner)
     {
         for(int n=0;n<strips.Count;n++){
-            if(strips.Water[n]||GroundRingPlan.Uses(state.Town,strips.X0[n],strips.Z0[n],strips.Material[n],sharedFlatMaterial))continue;
-            Triangles+=2;int slot=strips.Material[n],z=strips.Z0[n];
-            if(meshes[slot]==null){
-                if(buffers[slot]==null)for(int old=0;old<buffers.Length;old++)if(buffers[old]!=null&&buffers[old]!.IndexCount==0){meshes[slot]=meshes[old];buffers[slot]=buffers[old];meshes[old]=null;buffers[old]=null;break;}
-                if(meshes[slot]==null)meshes[slot]=new TerrainMeshCache();
-                if(buffers[slot]==null)buffers[slot]=new TerrainIndexBuffer();
-            }
-            var buffer=buffers[slot]!;
+            if(strips.Water[n]||GroundRingPlan.Uses(state.Town,strips.X0[n],strips.Z0[n],strips.Material[n],owner.SharedFlatMaterial))continue;
+            int slot=strips.Material[n],z=strips.Z0[n];
+            if(slot==TownPaths.Material&&strips.X1[n]==strips.X0[n]+1){int corners=PathShape.Corners(state.Town,strips.X0[n],z);if(corners!=0){AppendPath(state,owner,strips.X0[n],z,corners);continue;}}
+            Triangles+=2;
+            var buffer=Buffer(slot);
             var a=rows.At(z);var b=rows.At(z+1);
             float x0=strips.X0[n],x1=strips.X1[n],u0=x0*.5f,u1=x1*.5f,v0=z*.5f,v1=(z+1)*.5f;
             var p0=Elevated(state,(int)x0,z,x0,z,a);var p1=Elevated(state,(int)x0,z,x1,z,a);var p2=Elevated(state,(int)x0,z,x1,z+1,b);var p3=Elevated(state,(int)x0,z,x0,z+1,b);
             bool wet=state.Town.At((int)x0,z)==(int)Terrain.Beach&&(WaterTerrain.IsSea(state.Town,(int)x0-1,z)||WaterTerrain.IsSea(state.Town,(int)x0+1,z)||WaterTerrain.IsSea(state.Town,(int)x0,z-1)||WaterTerrain.IsSea(state.Town,(int)x0,z+1));
             var tint=wet?new Color32(205,199,181):Color32.White;
             buffer.Quad(Vertex(x0,p0,u0,v0,tint),Vertex(x1,p1,u1,v0,tint),Vertex(x1,p2,u1,v1,tint),Vertex(x0,p3,u0,v1,tint),FrameProfile.Counters);
+        }
+    }
+    private TerrainIndexBuffer Buffer(int slot)
+    {
+        if(meshes[slot]==null){
+                if(buffers[slot]==null)for(int old=0;old<buffers.Length;old++)if(buffers[old]!=null&&buffers[old]!.IndexCount==0){meshes[slot]=meshes[old];buffers[slot]=buffers[old];meshes[old]=null;buffers[old]=null;break;}
+                if(meshes[slot]==null)meshes[slot]=new TerrainMeshCache();
+                if(buffers[slot]==null)buffers[slot]=new TerrainIndexBuffer();
+            }
+        return buffers[slot]!;
+    }
+    private void AppendPath(GameState state,TerrainRenderer owner,int x,int z,int corners)
+    {
+        int count=PathShape.Polygon(corners,pathX,pathZ);var road=Buffer(TownPaths.Material);
+        var p00=Elevated(state,x,z,x,z,rows.At(z));var p10=Elevated(state,x,z,x+1,z,rows.At(z));
+        var p11=Elevated(state,x,z,x+1,z+1,rows.At(z+1));var p01=Elevated(state,x,z,x,z+1,rows.At(z+1));
+        VertexPositionNormalColorTexture Point(float dx,float dz){
+            float yy=dx>=dz?p00.Y+(p10.Y-p00.Y)*dx+(p11.Y-p10.Y)*dz:p00.Y+(p11.Y-p01.Y)*dx+(p01.Y-p00.Y)*dz;
+            float zz=dx>=dz?p00.Z+(p10.Z-p00.Z)*dx+(p11.Z-p10.Z)*dz:p00.Z+(p11.Z-p01.Z)*dx+(p01.Z-p00.Z)*dz;
+            return new VertexPositionNormalColorTexture(new Vector3(x+dx,yy,zz),new Vector3(0,1,0),Color32.White,new Vector2((x+dx)*.5f,(z+dz)*.5f));
+        }
+        var first=Point(pathX[0],pathZ[0]);
+        for(int i=1;i<count-1;i++)road.Triangle(first,Point(pathX[i],pathZ[i]),Point(pathX[i+1],pathZ[i+1]),FrameProfile.Counters);
+        Triangles+=count-2;
+        var grass=Buffer(owner.BaseGroundSlot(state,x,z));
+        for(int c=0;c<4;c++)if((corners&(1<<c))!=0){
+            float cx=c==1||c==2?1:0,cz=c>=2?1:0;
+            var a=Point(cx,cz);
+            var b=Point(cx+(cx==0?PathShape.Bevel:-PathShape.Bevel),cz);
+            var d=Point(cx,cz+(cz==0?PathShape.Bevel:-PathShape.Bevel));
+            if(c==0||c==2)grass.Triangle(a,b,d,FrameProfile.Counters);else grass.Triangle(a,d,b,FrameProfile.Counters);
+            Triangles++;
         }
     }
     private static VertexPositionNormalColorTexture Vertex(float x,CylinderPose p,float u,float v,Color32 tint)=>new VertexPositionNormalColorTexture(new Vector3(x,p.Y,p.Z),new Vector3(0,1,0),tint,new Vector2(u,v));

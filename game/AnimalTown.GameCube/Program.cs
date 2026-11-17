@@ -919,7 +919,7 @@ internal sealed class TownGame : IDisposable,Hypercube.GameCube.IFrameScene
             }
             terrain.Animate((Clock.Timestamp-sessionStart)/1000000.0);
         }
-        else{terrain.ReleaseWaterCapture();int steps=0;while(steps<8&&Clock.Timestamp<preparationDeadline){if(!villagerShadows.Advance())break;steps++;}}
+        else{terrain.ReleaseWaterCapture();terrain.ReleasePaths();int steps=0;while(steps<8&&Clock.Timestamp<preparationDeadline){if(!villagerShadows.Advance())break;steps++;}}
         FrameProfile.End(2,phase);
         if(room==0&&!terrain.Ready){DrawLoading(landscape:true);return;}
         LoadingScreen.Finish();

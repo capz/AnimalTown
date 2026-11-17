@@ -24,6 +24,8 @@ public sealed class FloorStrips
         for(int i=0;i<patches;i++){int p=Records+i*28,s=Read(data,p),required=Read(data,p+4),x=Read(data,p+8),z=Read(data,p+12),w=Read(data,p+16),h=Read(data,p+20),border=Read(data,p+24);if(s<0||s>=TerrainTiles.SurfaceCount||required<0||required>8||x<0||z<0||border<1||w<=border*2||h<=border*2||x>Town.Width-w||z>Town.Height-h)throw new InvalidOperationException("Floor patch exceeds world");}
     }
     public static int At(GameState state,byte[] data,int x,int z,int room)
+        =>room==0&&TownPaths.Painted(state.Town,x,z)?TownPaths.Material:BaseAt(state,data,x,z,room);
+    public static int BaseAt(GameState state,byte[] data,int x,int z,int room)
     {
         int surface=room==0?TerrainTiles.Surface(state.Town.At(x,z)):TerrainTiles.Floor;
         if(room==0)for(int i=0;i<Read(data,280);i++){int p=Records+i*28;if(Read(data,p+4)==surface&&x>=Read(data,p+8)&&z>=Read(data,p+12)&&x<Read(data,p+8)+Read(data,p+16)&&z<Read(data,p+12)+Read(data,p+20)){surface=Read(data,p);break;}}
@@ -58,7 +60,7 @@ public sealed class FloorStrips
                         next=(neighbor<0?At(state,data,x,z,room):At(state,data,neighbor%Town.Width,neighbor/Town.Width,room))+(mode+(WaterSurface.IsWater(state.Town,x,z)?8:0))*MaximumMaterials;
                     }else RejectedQuads++;
                 }
-                if(next==key&&key>=0&&((key/MaximumMaterials)%8>=2&&x%2==0||state.Town.At(x-1,z)==(int)Terrain.Beach||state.Town.At(x,z)==(int)Terrain.Beach)){Add(start,x,z,z+1,key);start=x;}
+                if(next==key&&key>=0&&(PathShape.Corners(state.Town,x-1,z)!=0||PathShape.Corners(state.Town,x,z)!=0||(key/MaximumMaterials)%8>=2&&x%2==0||state.Town.At(x-1,z)==(int)Terrain.Beach||state.Town.At(x,z)==(int)Terrain.Beach)){Add(start,x,z,z+1,key);start=x;}
                 if(next!=key){if(key>=0)Add(start,x,z,z+1,key);start=x;key=next;}
             }
         }
@@ -74,7 +76,7 @@ public sealed class FloorStrips
                     if(WaterTerrain.IsCoast(state.Town.At(x,z))&&!water)mode=1;
                     if(mode<TerrainElevation.CornerUpLeft||water)next=At(state,data,x,z,0)+(mode+(water?8:0))*MaximumMaterials;
                 }
-                if(next==key&&key>=0&&((key/MaximumMaterials)%8>=2&&x%2==0||state.Town.At(x-1,z)==(int)Terrain.Beach||state.Town.At(x,z)==(int)Terrain.Beach)){Add(start,x,z,z+1,key);start=x;}
+                if(next==key&&key>=0&&(PathShape.Corners(state.Town,x-1,z)!=0||PathShape.Corners(state.Town,x,z)!=0||(key/MaximumMaterials)%8>=2&&x%2==0||state.Town.At(x-1,z)==(int)Terrain.Beach||state.Town.At(x,z)==(int)Terrain.Beach)){Add(start,x,z,z+1,key);start=x;}
                 if(next!=key){if(key>=0)Add(start,x,z,z+1,key);start=x;key=next;}
             }
         }
@@ -97,7 +99,7 @@ public sealed class FloorStrips
                         next=(neighbor<0?At(state,data,x,z,0):At(state,data,neighbor%Town.Width,neighbor/Town.Width,0))+(mode+(water?8:0))*MaximumMaterials;
                     }
                 }
-                if(next==key&&key>=0&&((key/MaximumMaterials)%8>=2&&x%2==0||state.Town.At(x-1,z)==(int)Terrain.Beach||state.Town.At(x,z)==(int)Terrain.Beach)){Add(start,x,z,z+1,key);start=x;}
+                if(next==key&&key>=0&&(PathShape.Corners(state.Town,x-1,z)!=0||PathShape.Corners(state.Town,x,z)!=0||(key/MaximumMaterials)%8>=2&&x%2==0||state.Town.At(x-1,z)==(int)Terrain.Beach||state.Town.At(x,z)==(int)Terrain.Beach)){Add(start,x,z,z+1,key);start=x;}
                 if(next!=key){if(key>=0)Add(start,x,z,z+1,key);start=x;key=next;}
             }
         }

@@ -95,7 +95,8 @@ internal static class OnboardingChecks
         check(repo.Load()!.Profiles[2].Created==false&&disk.Writes==writes,"name, appearance and home choices remain unsaved until Save and begin");
         draft.Commit(repo,true);var saved=repo.Load()!;var after=SplitSaveCodec.Encode(saved);var s=draft.State;
         check(saved.ActiveProfile==2&&saved.Name=="Alex"&&saved.Species==5&&saved.HousePlaced&&saved.Town.HouseX==60&&saved.Town.HouseZ==80,"explicit commit verifies and reloads the selected resident and home");
-        check(disk.Writes==writes+8&&s.Sequence==source.Sequence+1,"onboarding publishes one complete verified save transaction");
+        int pathWrites=source.Town.Paths.Packed.SequenceEqual(s.Town.Paths.Packed)?0:2;
+        check(disk.Writes==writes+8+pathWrites&&s.Sequence==source.Sequence+1,"onboarding publishes one complete verified save transaction");
         check(SaveCodec.Encode(source).SequenceEqual(baseline),"committing a draft never mutates the original source graph");
         for(int profile=0;profile<4;profile++)if(profile!=2){source.Sequence=saved.Sequence;var sameSequence=SplitSaveCodec.Encode(source);check(sameSequence[3+profile].SequenceEqual(after[3+profile]),"joining a town preserves every other profile record byte for byte");}
         check(saved.Town.Tiles.SequenceEqual(source.Town.Tiles)&&saved.Town.Elevation.SequenceEqual(source.Town.Elevation)&&saved.Town.GroundCount==source.Town.GroundCount&&saved.Town.PlacedCount==source.Town.PlacedCount,"onboarding preserves edited land, plants and existing furnishings");

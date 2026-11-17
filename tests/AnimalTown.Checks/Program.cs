@@ -2,6 +2,8 @@ using AnimalTown;
 
 if(args.Length==2&&(args[0]=="--profile-fixture"||args[0]=="--money-fixture")){ProfileFixture.Write(args[1],args[0]=="--money-fixture");return;}
 
+if(args.Length==2&&args[0]=="--path-fixture"){PathFixture.Write(args[1]);return;}
+
 int checks=0;
 void Check(bool value,string message){checks++;if(!value)throw new Exception(message);}
 string[] available={"ui","menu","text","trim","terrain","movement","dialogue","generation","life","saves","buildings","core"};
@@ -16,7 +18,7 @@ if(Wants("text"))WrappedTextChecks.Run(Check);
 if(Wants("terrain")){TerrainEdgeChecks.Run(Check);TerrainResidencyChecks.Run(Check);}
 if(Wants("movement"))PlayerMovementChecks.Run(Check);
 if(Wants("dialogue"))DialogueVoiceChecks.Run(Check);
-if(Wants("generation"))TownGenerationChecks.Run(Check);
+if(Wants("generation")){TownGenerationChecks.Run(Check);PathChecks.Run(Check);}
 if(Wants("life"))TerrainLifeChecks.Run(Check);
 if(Wants("saves")){SplitSaveChecks.Run(Check);DevConfigChecks.Run(Check);UserOptionsChecks.Run(Check);ProfileChecks.Run(Check);}
 if(Wants("buildings")){BuildingChecks.Run(Check);ModelResidencyDemandChecks.Run(Check);ModelResidencyChecks.Run(Check);}
