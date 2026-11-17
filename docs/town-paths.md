@@ -52,6 +52,10 @@ one repeat per two metres. Three extra GX TEV stages blend this shared page onto
 eligible existing ground draws, before the existing shadow/light stages.
 Receiver alpha keeps paths off cliff lips. No path triangles, decals, additional
 draw calls, full terrain rebuilds or per-frame texture uploads are needed.
+The three added passes retain the ground raster channel, including passes that
+only forward colour. Using `COLOR_NULL` there suppressed later receiver-alpha
+reads on GX, hiding the paths and subsequent shadows; matched Dolphin captures
+verified the retained-channel configuration.
 
 The mask and dirt page are demanded by selected archive sections. They are
 released indoors, outside path demand, on town replacement and on disposal,

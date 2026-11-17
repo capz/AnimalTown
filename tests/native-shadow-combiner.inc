@@ -8,7 +8,7 @@ typedef float Mtx[3][4];
 typedef struct { u8 r,g,b,a; } GXColor;
 typedef struct { int unused; } GXTexObj;
 typedef struct { int count,uniforms;struct {int dest;} stages[16]; } DndDrawEffect;
-typedef struct { const DndDrawEffect *effect; const void *secondary; unsigned color; } DndDrawMaterial;
+typedef struct { const DndDrawEffect *effect; const void *secondary; } DndDrawMaterial;
 typedef struct { float u,v; unsigned color; } DndDrawVertex;
 enum {
     GX_FALSE=0,GX_TRUE=1,GX_TF_I4=0,GX_NEAR=0,GX_TEXMAP1=1,GX_TEXMAP3=3,GX_TEXCOORD3=3,GX_TEXMTX7=51,GX_TEVREG1=2,GX_CC_C1=4,GX_TF_I8=1,GX_TF_IA4=2,GX_CLAMP=0,GX_LINEAR=1,GX_ANISO_1=0,
@@ -24,6 +24,7 @@ enum {
 };
 typedef struct { int input[4],destination; } AlphaCommand;
 static AlphaCommand alpha_commands[16];
+static int raster_orders[16];
 static int alpha_command_count;
 static int shadow_page_side=SU_SIDE,shadow_page_missing;
 static int texture_width,texture_height,texture_min,texture_mag;
@@ -53,7 +54,7 @@ static void GX_LoadTexMtxImm(Mtx matrix,int slot,int type){
 static void GX_SetTevSwapModeTable(int t,int r,int g,int b,int a){(void)t;(void)r;(void)g;(void)b;(void)a;}
 static void GX_SetTevDirect(u8 stage){assert(stage<16);}
 static void GX_SetTevSwapMode(u8 stage,int raster,int tex){assert(stage<16);(void)raster;(void)tex;}
-static void GX_SetTevOrder(u8 stage,int coord,int map,int raster){assert(stage<16);(void)coord;(void)map;(void)raster;}
+static void GX_SetTevOrder(u8 stage,int coord,int map,int raster){assert(stage<16);(void)coord;(void)map;raster_orders[stage]=raster;}
 static void GX_SetTevColorIn(u8 stage,int a,int b,int c,int d){assert(stage<16);(void)a;(void)b;(void)c;(void)d;}
 static void GX_SetTevColorOp(u8 stage,int op,int bias,int scale,int clamp,int destination){
     assert(stage<16);(void)op;(void)bias;(void)scale;(void)clamp;(void)destination;
@@ -156,6 +157,11 @@ static void native_shadow_combiner_checks(void){
     path_test_ready=1;shadow_test_mode=1;material.secondary=&effect;bindings=0;
     town_shadow_ground(triangle,NULL,3,&material,&bindings);
     assert(alpha_command_count==9&&bindings==2);verify_alpha_footer(2);
+    // A NULL raster channel in a path pass suppressed the following receiver
+    // alpha on GX: the mask was uploaded but both paths and shadows vanished.
+    // Pin the actual transport state confirmed by matched Dolphin A/B runs.
+    for(int stage=2;stage<5;stage++)assert(raster_orders[stage]==GX_COLOR0A0);
+    assert(raster_orders[5]==GX_COLOR0A0);
     path_test_ready=0;town_shadow_ground(triangle,NULL,3,&material,&bindings);
     assert(alpha_command_count==6);verify_alpha_footer(2);
     material.secondary=NULL;shadow_test_mode=3;bindings=1;
