@@ -41,6 +41,7 @@ public static class SplitSaveCodec
         internal void Rle(byte[] target,int max,bool compare=false)
         {int runs=Range(1,target.Length),cell=0;for(int i=0;i<runs;i++){int packed=Int(),mode=(int)((uint)packed>>24),n=packed&0xffffff;if(mode>max||n==0||n>target.Length-cell)throw new InvalidOperationException("Invalid save terrain run");for(int j=0;j<n;j++){if(compare){if(target[cell]!=mode)throw new InvalidOperationException("Save terrain differs from snapshot");}else target[cell]=(byte)mode;cell++;}}if(cell!=target.Length)throw new InvalidOperationException("Incomplete save terrain");}
         internal int Offset=>at;
+        internal bool HasMore=>at<bytes.Length-4;
         internal void SkipText(int limit){int n=Range(0,limit);for(int i=0;i<n;i++)Range(0,65535);}
         internal void SkipTerrain(){int n=Range(1,Town.Width*Town.Height);for(int i=0;i<n;i++)Int();}
         internal void Match(Reader other){if(Version!=other.Version&&!(Version==6&&other.Version==4||Version==4&&other.Version==6)||Seed!=other.Seed||Sequence!=other.Sequence)throw new InvalidOperationException("Mixed save generations");}
@@ -75,7 +76,7 @@ public static class SplitSaveCodec
         var w=new Writer(s,HousePositions,256);for(int i=0;i<GameState.ProfileCount;i++){w.Int(s.HomePlaced(i)?1:0);w.Int(s.HomeX(i));w.Int(s.HomeZ(i));}for(int i=0;i<6;i++){w.Int(t.Residents[i].HomeX);w.Int(t.Residents[i].HomeZ);}return w.Finish();
         }
         if(part==2){
-        var w=new Writer(s,ShopStates,128);w.Int(t.Spending);w.Int(t.StockCount);for(int i=0;i<12;i++)w.Int(t.Stock[i]);return w.Finish();
+        var w=new Writer(s,ShopStates,768);w.Int(t.Spending);w.Int(t.StockCount);for(int i=0;i<12;i++)w.Int(t.Stock[i]);var shop=t.Shop.Encode();w.Int(shop.Length);for(int i=0;i<shop.Length;i++)w.Int(shop[i]);return w.Finish();
         }
         if(part<3||part>=PartCount)throw new ArgumentOutOfRangeException(nameof(part));
         return ProfileCodec.Encode(s,part-3);
@@ -116,6 +117,7 @@ public static class SplitSaveCodec
         t.PlacedCount=r.Range(0,256);for(int i=0;i<t.PlacedCount;i++){var p=t.Placed[i];p.Item=r.Int();p.X=r.Int();p.Z=r.Int();p.Rotation=r.Int();p.Room=r.Int();p.Owner=r.Int();}if(root.Version>=3){var fields=new int[BuildingSave.LegacyFieldCount];for(int i=0;i<fields.Length;i++)fields[i]=r.Int();BuildingSave.Decode(s,fields);}r.End();
         // Reuse all legacy range, placement and catalog validation before use.
         if(root.Version<2)WaterTerrain.Migrate(t);
+        SaveCodec.UpgradeShop(s);
         return snapshot==null?SaveCodec.Decode(SaveCodec.Encode(s)):SaveCodec.ValidateSnapshot(SaveCodec.Encode(s),snapshot);
     }
     private static GameState DecodeProfiles(byte[][] records,Town? snapshot)
@@ -130,7 +132,9 @@ public static class SplitSaveCodec
         for(int i=0;i<6;i++){var v=t.Residents[i];v.Space=r.Range(0,43);v.JourneyBuilding=r.Range(-1,BuildingWorld.Count-1);v.JourneyPhase=r.Range(0,5);v.Dwell=r.Range(0,36000);v.Yaw=r.Range(-6434,6434)/1024f;v.JourneyNextX=r.Range(-1,Town.Width-1);v.JourneyNextZ=r.Range(-1,Town.Height-1);if(!BuildingWorld.ValidSpace(v.Space)||(v.JourneyNextX<0)!=(v.JourneyNextZ<0)||v.JourneyPhase==1&&v.JourneyBuilding<0)throw new InvalidOperationException("Invalid shared NPC journey");}if(r.Version>=6)r.Paths(t.Paths,snapshot!=null);else if(snapshot!=null&&t.Paths.Count!=0)throw new InvalidOperationException("Legacy snapshot contains paths");r.End();
         for(int i=0;i<GameState.ProfileCount;i++)s.Profiles[i]=ProfileCodec.Decode(s,i,records[3+i]);
         r=new Reader(records[1],HousePositions);r.Match(root);for(int i=0;i<GameState.ProfileCount;i++){var p=s.Profiles[i];if(r.Range(0,1)!=(p.HousePlaced?1:0)||r.Int()!=p.HouseX||r.Int()!=p.HouseZ)throw new InvalidOperationException("Profile plot differs from shared houses");}for(int i=0;i<6;i++){t.Residents[i].HomeX=r.Int();t.Residents[i].HomeZ=r.Int();}r.End();
-        r=new Reader(records[2],ShopStates);r.Match(root);t.Spending=r.Int();t.StockCount=r.Int();for(int i=0;i<12;i++)t.Stock[i]=r.Int();r.End();s.RestoreProfile(active);
+        r=new Reader(records[2],ShopStates);r.Match(root);t.Spending=r.Int();t.StockCount=r.Int();for(int i=0;i<12;i++)t.Stock[i]=r.Int();
+        if(r.HasMore){int length=r.Range(154,154);var shop=new int[length];for(int i=0;i<length;i++)shop[i]=r.Int();t.Shop.Decode(shop);}else SaveCodec.UpgradeShop(s);
+        r.End();s.RestoreProfile(active);
         return snapshot==null?SaveCodec.Decode(SaveCodec.Encode(s)):SaveCodec.ValidateSnapshot(SaveCodec.Encode(s),snapshot);
     }
     public static byte[] EncodeCommit(GameState s,byte[][] records)

@@ -49,6 +49,7 @@ public sealed class Town
     public readonly GroundItem[] Ground=new GroundItem[512];
     public readonly Placement[] Placed=new Placement[256];
     public readonly int[] Stock=new int[12];
+    public readonly TownShop Shop=new TownShop();
     public int Seed,Day=-1,Month=-1,GroundCount,PlacedCount,Spending,StockCount=6;
     public int HouseX=12,HouseZ=22;
     public int ActiveProfile {get;internal set;}

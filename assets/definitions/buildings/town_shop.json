@@ -1,0 +1,23 @@
+{
+  "version": 1,
+  "type": 1,
+  "id": "town_shop",
+  "prefix": "shop",
+  "interior": "town_shop",
+  "footprint": [
+    3,
+    3
+  ],
+  "hinge": [
+    0.95,
+    0,
+    3.02
+  ],
+  "approach": [
+    1.5,
+    0,
+    3.5
+  ],
+  "exterior": "assets/models/buildings/town_shop/exterior.glb",
+  "door": "assets/models/buildings/town_shop/door.glb"
+}

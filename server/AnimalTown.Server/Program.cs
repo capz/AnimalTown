@@ -36,6 +36,8 @@ app.MapPost("/v1/auth/token",async(Credentials c)=>await db.Login(c));
 app.MapGet("/v1/me",(Delegate)(async(HttpContext c)=>await db.Profile(Me(c))));
 app.MapGet("/v1/inventory",(Delegate)(async(HttpContext c)=>await db.Profile(Me(c))));
 app.MapPost("/v1/inventory/ops",async(HttpContext c,InventoryOp op)=>await db.Apply(Me(c),op));
+app.MapGet("/v1/towns/{host:guid}/shop",async(HttpContext c,Guid host)=>await db.Shop(Me(c),host));
+app.MapPost("/v1/towns/{host:guid}/shop/ops",async(HttpContext c,Guid host,TownShopOp op)=>await db.ShopOperation(Me(c),host,op));
 app.MapGet("/v1/towns/{id:guid}",async(HttpContext c,Guid id)=>
 {
     if(Me(c)!=id)throw new GameError(403,"owner-only");var state=await db.State(id);c.Response.Headers.ETag="\""+state.Revision+"\"";return Results.Bytes(SaveCodec.Encode(state.State),"application/octet-stream");
@@ -64,12 +66,13 @@ app.Run();
 
 record Credentials(string Name,string Password);
 record InventoryOp(Guid Id,string Kind,int Amount=0,int Slot=0,int Item=0);
+record TownShopOp(Guid Id,string Kind,string Source,int Slot,int Revision,int Pocket=0,int Price=0);
 record VisitRequest(Guid Host);
 record ListingRequest(Guid Id,int Slot,int Price);
 record ReportRequest(Guid Reported,string[] Lines);
 sealed class GameError(int status,string message):Exception(message){public int Status=>status;}
 
-sealed class GameDatabase(NpgsqlDataSource source)
+sealed partial class GameDatabase(NpgsqlDataSource source)
 {
     public async Task Initialize()
     {

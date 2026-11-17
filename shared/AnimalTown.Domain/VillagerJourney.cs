@@ -22,11 +22,20 @@ public sealed class VillagerJourney
                 if(v.JourneyPhase<2){v.JourneyPhase=2;v.Dwell=0;}
                 if(v.JourneyPhase==2){
                     var points=BuildingWorld.Definition(s,BuildingWorld.Building(v.Space)).Activities;int spot=i%(points.Length/2)*2;float gx=points[spot],gz=points[spot+1];
+                    if(v.Space==TownShop.Room){
+                        if(v.Dwell==0)s.Town.Shop.NpcTarget[i]=s.Town.Shop.ChooseNpcDisplay(s,i);
+                        int target=s.Town.Shop.NpcTarget[i];
+                        if(target<0||target>=TownShop.DisplayCount+TownShop.SaleCount||!ShopLayout.Active(s,target)){v.JourneyPhase=4;Indoors.Reset(actor);continue;}
+                        ShopLayout.Approach(target,out gx,out gz);
+                    }
                     if(!BuildingWorld.CanStand(s,v.Space,gx,gz)){gx=BuildingWorld.Size(s,v.Space)*.5f;gz=2;}
                     if(++v.Dwell>600||!BuildingWorld.CanStand(s,v.Space,gx,gz)){v.JourneyPhase=4;v.Dwell=0;Indoors.Reset(actor);continue;}
                     Moving[i]=Indoors.Tick(s,actor,gx,gz);
                     if(Indoors.Arrived(actor)){v.JourneyPhase=3;v.Dwell=120+i*19;}
-                }else if(v.JourneyPhase==3){if(v.Dwell>0)v.Dwell--;else{v.JourneyPhase=4;Indoors.Reset(actor);}}
+                }else if(v.JourneyPhase==3){
+                    if(v.Space==TownShop.Room&&v.Dwell==60){int target=s.Town.Shop.NpcTarget[i];if(target>=0)s.Town.Shop.BuyNpc(s,i,target<12?ShopSource.Display:ShopSource.Consignment,target<12?target:target-12);s.Town.Shop.NpcTarget[i]=-1;}
+                    if(v.Dwell>0)v.Dwell--;else{v.JourneyPhase=4;Indoors.Reset(actor);}
+                }
                 else{BuildingWorld.InsideDoor(s,v.Space,out float x,out float z);
                     if(Math.Abs(v.PosX-x)<.6f&&Math.Abs(v.PosZ-z)<.7f){Doors.Request(s,actor,BuildingWorld.Building(v.Space));continue;}
                     if(!BuildingWorld.CanStand(s,v.Space,x,z)){z-=.5f;if(!BuildingWorld.CanStand(s,v.Space,x,z)){x+=.5f;}}
@@ -48,7 +57,7 @@ public sealed class VillagerJourney
                 Moving[i]=Outdoors.Routes[i].Moving;
                 if(v.Dwell>0){v.Dwell--;continue;}
                 // Stagger initial visits, then alternate own home and neighbours.
-                int b=tick<900?i+1:1+(i+(tick/900)%6)%6;v.JourneyNextX=Outdoors.Routes[i].GoalX;v.JourneyNextZ=Outdoors.Routes[i].GoalZ;v.JourneyBuilding=b;v.JourneyPhase=1;v.Dwell=0;
+                int b=tick<900?i+1:(tick/900+i)%3==0?7:1+(i+(tick/900)%6)%6;v.JourneyNextX=Outdoors.Routes[i].GoalX;v.JourneyNextZ=Outdoors.Routes[i].GoalZ;v.JourneyBuilding=b;v.JourneyPhase=1;v.Dwell=0;
                 BuildingWorld.Entrance(s,b,out float x,out float z);Outdoors.Target(i,(int)x,(int)z);
             }else{
                 int b=v.JourneyBuilding;v.Dwell=Outdoors.Routes[i].Moving?0:v.Dwell+1;if(v.Dwell>900||!BuildingWorld.Exists(s,b)){v.JourneyPhase=5;v.Dwell=0;continue;}

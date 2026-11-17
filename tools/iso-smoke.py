@@ -148,9 +148,13 @@ def onboarding_signature(pixels,stage):
         rendered=sum(max(pixels[(y*800+x)*3:(y*800+x)*3+3])>20
                      for y in range(0,480,2) for x in range(28,612,2))
         header=region_color_count(pixels,(255,245,221),160,25,480,67)
-        if stage=='home':return rendered>60000 and header>5000
+        # The shop's full-width interaction cue shares the top of the screen
+        # with the narrower plot-preview heading. Its left edge distinguishes
+        # a saved indoor game from an unfinished home-placement preview.
+        shop_hint=region_color_count(pixels,(255,245,221),50,35,125,62)>1000
+        if stage=='home':return rendered>60000 and header>5000 and not shop_hint
         # Gameplay has no bottom legend, and running hides the floating clock.
-        return rendered>60000 and header<5000
+        return rendered>60000 and (header<5000 or shop_hint)
     raise ValueError('Unknown onboarding stage: '+stage)
 
 def wait_onboarding(stage,name=None):
@@ -754,7 +758,7 @@ def committed_card_sequence(path, expected_day=None, details=False):
     best=0;best_day=None;best_details=None
     for directory in (1,2):
         for bat in (3,4):
-            files={}
+            files={};archive=None
             try:
                 for i in range(127):
                     at=directory*sector+i*64
@@ -770,10 +774,13 @@ def committed_card_sequence(path, expected_day=None, details=False):
                     length,offset=struct.unpack_from('>II',data,8)
                     if offset<32 or offset+length>len(data):raise ValueError('Truncated card container')
                     payload=bytes(data[offset:offset+length])
-                    if name=='AnimalTown' and data[16:24]==b'DNDREC01':
-                        try:files.update(archive_records(payload))
+                    if name=='AnimalTown':
+                        if data[16:24]!=b'DNDREC01' or offset!=16384:continue
+                        try:records=archive_records(payload)
                         except AssertionError:raise ValueError('Unverified card archive')
+                        if records.get('AT-Archive') in (b'\x01',b'\x02'):archive=records
                     else:files[name]=payload
+                if archive is not None:files=archive
                 for bank in (0,1):
                     try:
                         names=[f'AT-{kind}{bank}' for kind in ('Town','Houses','Shops','Player')]
@@ -820,10 +827,17 @@ def committed_card_sequence(path, expected_day=None, details=False):
                                 for name in names[3:]:
                                     part=files[name];length=struct.unpack_from('<I',part,160)[0]
                                     label=''.join(chr(struct.unpack_from('<I',part,164+i*4)[0]) for i in range(length))
-                                    profiles.append({'name':label,'created':struct.unpack_from('<I',part,28)[0],'wallet':struct.unpack_from('<I',part,40)[0],'species':struct.unpack_from('<I',part,44)[0]})
+                                    pocket_at=164+length*4
+                                    pocket_at+=4+struct.unpack_from('<I',part,pocket_at)[0]*4
+                                    profiles.append({'name':label,'created':struct.unpack_from('<I',part,28)[0],'wallet':struct.unpack_from('<I',part,40)[0],'species':struct.unpack_from('<I',part,44)[0],
+                                                     'savings':struct.unpack_from('<q',part,132)[0],'pockets':list(struct.unpack_from('<30i',part,pocket_at))})
                                 plots=[dict(zip(('placed','x','z'),struct.unpack_from('<3i',files[names[1]],28+i*12))) for i in range(4)]
                                 profile_hashes=[__import__('hashlib').sha256(files[name][28:-4]).hexdigest() for name in names[3:]]
                                 best_details={'sequence':best,'dimensions':list(struct.unpack_from('<2I',town,28)),'active':active,'profiles':profiles,'profile_payload_sha256':profile_hashes,'plots':plots,'terrain_sha256':terrain_hash,'houses_sha256':__import__('hashlib').sha256(files[names[1]][28:-4]).hexdigest()}
+                                if runtime is not None:best_details['npc_spaces']=[struct.unpack_from('<i',runtime,128+i*28)[0] for i in range(6)]
+                                shop=files[names[2]]
+                                if len(shop)==708 and struct.unpack_from('<I',shop,84)[0]==154:
+                                    best_details['shop']={'stock':list(struct.unpack_from('<12i',shop,36)), 'state':list(struct.unpack_from('<154i',shop,88))}
                     except (ValueError,KeyError,UnicodeError,struct.error):continue
             except (ValueError,UnicodeError,struct.error):continue
     if expected_day is not None and best_day!=expected_day:
@@ -932,6 +946,44 @@ def building_save():
         if p.poll() is not None:raise RuntimeError('Game exited while saving indoors')
         time.sleep(2)
     raise AssertionError('Indoor save did not return to settings within the bounded wait')
+
+def town_shop():
+    """Use --shop-fixture records on a disposable card; real UI and native meshes."""
+    before=committed_card_sequence(root/'MemoryCardA.USA.raw',details=True)
+    if not before or 'shop' not in before:raise AssertionError('Shop scenario requires the disposable --shop-fixture card')
+    displays=sum(item!=0 for item in before['shop']['stock'])
+    sales=3 if displays==6 else 5 if displays==9 else 7
+    start_game(False,'shop')
+    def inspect():
+        os.write(controller,b'SET C .5 0\nPRESS L\nPRESS R\n');time.sleep(.2);press('A');os.write(controller,b'RELEASE L\nRELEASE R\nSET C .5 .5\n');time.sleep(1)
+        check_runtime_failure()
+    def close_speech():press('B');press('B')
+    inspect();screenshot('shop-exterior.png');press('A');time.sleep(8);check_runtime_failure();screenshot('shop-interior.png')
+    inspect();inspect();press('A');screenshot('shop-finite-price.png');press('A');close_speech()
+    press('A');screenshot('shop-sold-out.png');press('B')
+    # Fixture inspection uses the same collision-clear approach sockets as NPCs.
+    for _ in range(displays+sales-1):inspect()
+    press('A');screenshot('shop-cabinet.png');press('A');close_speech()
+    press('A');press('A');close_speech()
+    inspect();press('A');screenshot('shop-counter.png');press('B')
+    for _ in range(displays+1):inspect()
+    press('A');screenshot('shop-consignment.png');press('A');close_speech()
+    inspect();press('A');press('A');press('D_UP');screenshot('shop-asking-price.png');press('A');close_speech()
+    press('A');press('D_DOWN');press('A');close_speech()
+    press('A');press('A');screenshot('shop-list-item.png');press('A');press('A');close_speech()
+    for view in range(3):
+        os.write(controller,b'SET C .9 .5\n');time.sleep(2);os.write(controller,b'SET C .5 .5\n');time.sleep(1);screenshot(f'shop-camera-{view}.png')
+    press('L');sequence=committed_card_sequence(root/'MemoryCardA.USA.raw');save_menu();after=wait_saved_after({'sequence':sequence})
+    screenshot('shop-saved.png');press('B');check_runtime_failure()
+    stock=after['shop']['stock'];state=after['shop']['state'];profile=after['profiles'][0]
+    if stock[0]!=0 or stock[1]!=0 or state[35]!=1 or after.get('npc_spaces',[24])[0]==24:raise AssertionError('Player/NPC did not exhaust distinct physical displays and leave the shop')
+    if state[2]!=0 or state[5]!=before['shop']['stock'][1]:raise AssertionError('Consignment purchase, removal or new listing failed')
+    prices={10:1200,11:2400,12:1600,13:3000,25:1800}
+    expected=20000-prices[before['shop']['stock'][1]]-800-1800
+    if profile['wallet']!=expected or profile['pockets'].count(1)!=2 or 25 not in profile['pockets'] or 11 not in profile['pockets']:
+        raise AssertionError('Native purchases did not preserve exact wallet and inventory outcomes')
+    if after['profiles'][1]['savings']!=before['profiles'][1]['savings']+1800:raise AssertionError('Inactive seller did not receive native consignment proceeds')
+    (root/'shop-validation.json').write_text(json.dumps({'before':before,'after':after,'native_shop_ui':True,'cabinet_repeat_buys':2,'npc_bought_and_left':True,'camera_quarter_turns':3},indent=2)+'\n')
 
 def card_dev_config(path):
     """Decode the checksummed named record, including consolidated card storage."""
@@ -1360,6 +1412,11 @@ with (root/'emulator.log').open('w') as log:
             testing_menu()
         elif '--building-reload' in sys.argv:
             press('A');time.sleep(5);building_view('building-reloaded-interior.png',True)
+        elif '--shop' in sys.argv:town_shop()
+        elif '--shop-load' in sys.argv:
+            start_game(False,'shop-reload');check_runtime_failure();screenshot('shop-reloaded.png')
+            after=committed_card_sequence(root/'MemoryCardA.USA.raw',details=True)
+            if after['shop']['stock'][1]!=0 or after['shop']['state'][35]!=1:raise AssertionError('Reload lost shop depletion or NPC purchase')
         elif '--buildings' in sys.argv:
             os.write(controller,b'PRESS L\nPRESS R\n');time.sleep(.2);press('A');os.write(controller,b'RELEASE L\nRELEASE R\n')
             time.sleep(3);building_view('building-exterior.png',False)

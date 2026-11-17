@@ -113,13 +113,14 @@ public sealed partial class GameState
             for(int i=0;i<ProfileCount;i++)if(Profiles[i].Created)throw new InvalidOperationException("Active villager is empty");
         }
         ActiveProfile=profile;Town.ActiveProfile=profile;Profiles[profile].Restore(this);
+        Town.Shop.ClaimProceeds(this,profile);
     }
     // Mutate only a private candidate; SaveRepository publishes the deletion.
     // Loose items/plants and edited terrain are shared world state, not a home.
     public void DeleteProfile(int profile)
     {
         if((uint)profile>=ProfileCount||!Profiles[profile].Created)throw new InvalidOperationException("Villager does not exist");
-        CaptureProfile();int owner=profile==0?0:profile+6,building=BuildingWorld.PlayerBuilding(profile);
+        CaptureProfile();Town.Shop.DeleteSeller(profile);int owner=profile==0?0:profile+6,building=BuildingWorld.PlayerBuilding(profile);
         BuildingWorld.Entrance(this,building,out float outsideX,out float outsideZ);
         int active=ActiveProfile,kept=0;
         for(int i=0;i<Town.PlacedCount;i++){

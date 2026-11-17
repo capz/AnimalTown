@@ -18,8 +18,8 @@ public sealed partial class GameState
     public static readonly int[] HousePrices={18000,120000,320000,650000,980000,1600000};
     public static readonly int[] GardenPrices={0,40000,150000,400000,900000};
     public static readonly int[] GardenWidths={7,9,11,13,15},GardenHeights={5,7,9,11,13};
-    public GameState(int seed){Town=new Town(seed);Pockets[0]=Catalog.WorkShirt;Pockets[1]=2;Pockets[2]=18;}
-    internal GameState(int seed,Town snapshot){Town=new Town(seed,snapshot);Pockets[0]=Catalog.WorkShirt;Pockets[1]=2;Pockets[2]=18;}
+    public GameState(int seed){Town=new Town(seed);BuildingTypes[7]=1;Pockets[0]=Catalog.WorkShirt;Pockets[1]=2;Pockets[2]=18;}
+    internal GameState(int seed,Town snapshot){Town=new Town(seed,snapshot);BuildingTypes[7]=1;Pockets[0]=Catalog.WorkShirt;Pockets[1]=2;Pockets[2]=18;}
     public int FreeSlot(){for(int i=0;i<Capacity;i++)if(Pockets[i]==0)return i;return -1;}
     public int Find(int item){for(int i=0;i<Capacity;i++)if(Pockets[i]==item)return i;return -1;}
     public bool UpgradeBackpack(bool free=false)
@@ -29,11 +29,8 @@ public sealed partial class GameState
     public bool Receive(int item)
     { int s=FreeSlot();if(s<0||!Catalog.Valid(item))return false;Pockets[s]=item;Owned[item]=1;return true; }
     public bool Buy(int stock,bool free=false)
-    {
-        if(stock<0||stock>=Town.StockCount)return false;int id=Town.Stock[stock];
-        if(!Catalog.Valid(id)||Catalog.Items[id].Buy<=0||!free&&Wallet<Catalog.Items[id].Buy||!Receive(id))return false;
-        if(!free)Wallet-=Catalog.Items[id].Buy;Town.Spending+=Catalog.Items[id].Buy;Town.Stock[stock]=0;return true;
-    }
+        =>Town.Shop.Buy(this,this,ShopSource.Display,stock,free:free);
+    public bool BuyCabinet(int slot,bool free=false)=>Town.Shop.Buy(this,this,ShopSource.Cabinet,slot,free:free);
     public bool Sell(int slot)
     {
         if(slot<0||slot>=Capacity)return false;int id=Pockets[slot];
@@ -169,8 +166,10 @@ public sealed partial class GameState
         CaptureProfile();
         for(int p=0;p<ProfileCount;p++)if(Profiles[p].Created)Profiles[p].Rollover(day,month,Town.Month);
         RestoreProfile(ActiveProfile);Town.Month=month;Town.Day=day;
+        int saleSlots=TownShop.SaleSlots(this);
         Town.StockCount=Town.Spending>=100000?12:Town.Spending>=25000?9:6;
-        for(int i=0;i<Town.StockCount;i++)Town.Stock[i]=i<Catalog.ToolCount?Catalog.ToolAt(i):10+(day+i)%4;
+        for(int i=0;i<Town.StockCount;i++)Town.Stock[i]=10+(day+i)%4;
+        Town.Shop.NewDay();
         for(int i=Town.GroundCount-1;i>=0;i--)
         {
             var g=Town.Ground[i];
@@ -179,6 +178,7 @@ public sealed partial class GameState
             else if(g.Kind==2&&g.Item!=2&&day-g.Day>=3){g.Kind=3;Town.NotifyCastersChanged();}
         }
         Town.AddGround(16,8+day%20,45,1,day);Town.AddGround(12,55+day%15,42,1,day);
+        if(saleSlots!=TownShop.SaleSlots(this))NormalizeBuildingLocations();
     }
     public bool ClaimLost(int index,int actor)
     {

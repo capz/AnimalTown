@@ -34,7 +34,7 @@ internal static class PathChecks
             check(Math.Abs(area*.5+cut*PathShape.Bevel*PathShape.Bevel*.5-1)<.000001,"road and grass corner triangles partition the ground without gaps or overlap");
         }
         var s=new GameState(3);s.Tutorial=6;s.Rollover(21014,2027*12+7);var bytes=SaveCodec.Encode(s);
-        check(s.Town.Paths.Packed.SequenceEqual(SaveCodec.Decode(bytes).Town.Paths.Packed),"whole-town v9 preserves roads");
+        check(BitConverter.ToInt32(bytes,4)==10&&s.Town.Paths.Packed.SequenceEqual(SaveCodec.Decode(bytes).Town.Paths.Packed),"whole-town v10 preserves roads alongside shop state");
         var parts=SplitSaveCodec.Encode(s);check(SplitSaveCodec.ReadVersion(parts[0])==6&&s.Town.Paths.Packed.SequenceEqual(SplitSaveCodec.Decode(parts).Town.Paths.Packed),"split town v6 preserves roads");
         var storage=new Storage();var repository=new SaveRepository(storage);repository.Save(s);
         s.Town.Paths.Set(32,40,s.Town.Paths.At(32,40)==0?1:0);s.Town.NotifyTerrainChanged();repository.Save(s);
@@ -42,7 +42,8 @@ internal static class PathChecks
         // An actual old schema, not current bytes relabelled with an old version.
         var old=parts[0][..^(TownPaths.PackedBytes+8)];Put(old,4,4);Put(old,24,old.Length);Crc(old);parts[0]=old;
         check(SplitSaveCodec.Decode(parts).Town.Paths.Count==0,"v4 shared towns load an empty overlay without replanning");
-        old=bytes[..^(TownPaths.PackedBytes+8)];Put(old,4,8);Put(old,16,old.Length);Put(old,20,(int)SaveCodec.Crc(old,24,old.Length-24));
+        var pathArchive=File.ReadAllBytes(Path.Combine(AppContext.BaseDirectory,"Fixtures/town-paths-v9.bin"));
+        old=pathArchive[..^(TownPaths.PackedBytes+8)];Put(old,4,8);Put(old,16,old.Length);Put(old,20,(int)SaveCodec.Crc(old,24,old.Length-24));
         check(SaveCodec.Decode(old).Town.Paths.Count==0,"v8 combined towns load an empty overlay without replanning");
         var broken=SplitSaveCodec.Encode(s);broken[0][^5]=255;Crc(broken[0]);bool rejected=false;try{SplitSaveCodec.Decode(broken);}catch(InvalidOperationException){rejected=true;}check(rejected,"unsupported style bits are rejected even with a valid checksum");
         Console.WriteLine($"Paths: 24 seeds, {min}..{max} painted cells, {unconnected} explicitly unconnected anchors; planner mean {elapsed*1000.0/System.Diagnostics.Stopwatch.Frequency/24:F2}ms host / {allocated/24} temporary managed bytes; 3840 retained bytes");

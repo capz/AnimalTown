@@ -51,7 +51,7 @@ internal static class PocketMenuChecks
         check(Catalog.EntryAt(7)==Catalog.Axe&&Catalog.EntryAt(-1)==0&&Catalog.EntryAt(Catalog.EntryCount)==0,"catalog row lookup stays bounded across the retired ID gap");
         foreach(int spending in new[]{0,25000,100000}){
             var shop=new GameState(73);shop.Town.Spending=spending;shop.Rollover(100,100);
-            check(shop.Town.StockCount==(spending==0?6:spending==25000?9:12)&&shop.Town.Stock.Take(4).SequenceEqual(tools)&&!shop.Town.Stock.Take(shop.Town.StockCount).Contains(Catalog.LegacyWateringCan),"all store tiers stock only GameCube tools");
+            check(shop.Town.StockCount==(spending==0?6:spending==25000?9:12)&&shop.Town.Stock.Take(shop.Town.StockCount).All(id=>id>=10)&&tools.All(id=>Enumerable.Range(0,TownShop.CabinetCount).Any(i=>TownShop.CabinetItem(i)==id)),"all store tiers have finite decor displays and unlimited GameCube tools in the cabinet");
             shop.Town.Stock[2]=Catalog.LegacyWateringCan;shop.Wallet=5000;shop.Owned[Catalog.LegacyWateringCan]=1;
             check(!shop.Buy(2)&&!shop.Order(Catalog.LegacyWateringCan)&&shop.Wallet==5000&&shop.MailCount==0,"retired watering can cannot be bought or ordered from old data");
             shop.Rollover(100,100);
