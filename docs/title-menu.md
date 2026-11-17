@@ -2,13 +2,29 @@
 
 Startup mounts the disc, reads its runtime defaults and the independent Slot A
 `dev_config` and `options` records, applies saved video preferences, then runs the SDK/engine splash screens. `TitleScreen` owns
-only the original cream panel, tree emblem, wordmark, tagline, IPL menu font
+only the original cream panel, approved Smalltown Forest logo, tagline, IPL menu font
 and a procedural 64×64 mint dot texture. The
 staggered dots repeat and drift diagonally at four pixels per second. It creates
 no town, terrain, model, building or audio resources. Exiting the title trims
 released splash/title texture pages immediately, then collects their managed
 staging data before constructing the game; native model/terrain allocations do
 not share the texture cache's budget.
+
+The full-color logo includes the single right-hand acorn. Its 512×256 RGB5A3
+texture replaces the generated monochrome wordmark and separate tree emblem.
+It uses eight 128×128 atlas pages (256 KiB, half the previous wordmark's
+residency), drawn with a white tint and preserved aspect ratio. The title fits
+it into a 360×180 area above the tagline; profile selection and onboarding share
+the same texture in a 128×64 header. The existing cream, mint and honey UI
+colors and menu positions remain in place. See the
+[approved sources and native-format checks](../assets/textures/branding/README.md).
+
+The disc's `opening.bnr` and memory-card banner use the separately approved
+96×32 Smalltown Forest artwork; the 32×32 save icon uses its single acorn.
+BNR text is generated with the current version and commit. The US disc ships
+BNR1, with a six-slot English BNR2 alternate available for PAL packaging.
+The boot-header title and disc/save identifiers retain their existing
+AnimalTown values for compatibility with the pinned updater and existing saves.
 
 Start immediately removes the panel, logo and menu. Only the moving dot
 background and a small hopping, blinking sprout in the bottom-right remain while
@@ -137,3 +153,11 @@ paths and whole-town deletion. `--title-options-load --component-cable` checks
 the copied card after reboot; `--title-options-unsupported` verifies that rejected
 progressive output does not write settings. These checks do not establish
 physical TV/cable compatibility or power-loss behavior on a real card.
+
+For a focused logo check, run `tools/iso-smoke.py DISC OUTPUT --title-logo`.
+It captures the title, villager picker and naming screen from a real Dolphin
+run, cancels back to the title twice, and checks the native logo dimensions and
+resident bytes, visible artwork colors, unchanged committed town state and
+absence of gameplay startup or runtime asset errors. Release CI runs this
+scenario when the branding, shared headers or capture path changes, and keeps
+the original screenshots with the release for PR review.

@@ -30,6 +30,7 @@ static class Program
             else if(args[0]=="audit")Audit();
             else if(args[0]=="prepare")Prepare(args[2],args[3]);
             else if(args[0]=="art")Art();
+            else if(args[0]=="brand-check"){BrandTextureAssets.Check(Root);DiscBannerFile.Check();}
             else if(args[0]=="dropped-item-import")DroppedItemAssets.Import(Root);
             else if(args[0]=="dropped-item-check")DroppedItemAssets.Check(Root);
             else if(args[0]=="splash-check")SplashAssets.Check(Root);
@@ -43,7 +44,7 @@ static class Program
             else if(args[0]=="verify")Verify(args[2]);
             else if(args[0]=="verify-nkit"){Verify(args[2]);NKitImages.Verify(args[2],args[3],args[4]);}
             else if(args[0]=="verify-nkit-output")NKitImages.VerifyOutput(args[2],args[3]);
-            else if(args[0]=="nkit-check"){SdkApploader.Check();NKitImages.Check();}
+            else if(args[0]=="nkit-check"){SdkApploader.Check();DiscBannerFile.Check();NKitImages.Check();}
             else throw new ArgumentException("repack-textures|repack-check|audit|art|iso|verify|tree-audit ROOT [PATH] [COMMIT]");
             return 0;
         }
@@ -116,10 +117,12 @@ static class Program
     static void Disc(string dolPath,string commit,string? output=null)
     {
         string disc=Path.Combine(Root,"out/disc");BuildingAssets.Cook(Root);Art();TextureAudit.Run(Root);
-        var bnr=new byte[6496];Encoding.ASCII.GetBytes("BNR1").CopyTo(bnr,0);Banner(96).CopyTo(bnr,32);
-        Text(bnr,0x1820,32,"AnimalTown");Text(bnr,0x1840,32,"AnimalTown contributors");Text(bnr,0x1860,64,"AnimalTown / "+commit);Text(bnr,0x18a0,64,"AnimalTown contributors");Text(bnr,0x18e0,128,"A rolling village life game. Version "+commit);
-        File.WriteAllBytes(Path.Combine(disc,"opening.bnr"),bnr);
-        File.WriteAllText(Path.Combine(disc,"BUILD.txt"),"AnimalTown\nBuild version: "+commit+"\n"+File.ReadAllText(Path.Combine(Root,"out/build-revisions.txt")));
+        byte[] banner=Banner(96);
+        // The current disc uses US BI2 metadata, so ship BNR1. Keep a versioned
+        // six-language BNR2 alternate outside the disc for future PAL packaging.
+        File.WriteAllBytes(Path.Combine(disc,"opening.bnr"),DiscBannerFile.Create(banner,commit));
+        File.WriteAllBytes(Path.Combine(Root,"out/brand/opening-pal.bnr"),DiscBannerFile.Create(banner,commit,pal:true));
+        File.WriteAllText(Path.Combine(disc,"BUILD.txt"),DiscBannerFile.GameTitle+"\nBuild version: "+commit+"\n"+File.ReadAllText(Path.Combine(Root,"out/build-revisions.txt")));
         DiscVersionFile.Write(disc,commit);
         byte[] dol=File.ReadAllBytes(dolPath),app=File.ReadAllBytes(Path.Combine(Root,"out/native/apploader.img"));ValidateDol(dol);
         SdkApploader.Validate(app);
@@ -137,7 +140,7 @@ static class Program
         using(var f=new FileStream(output,FileMode.Create,FileAccess.ReadWrite))
         {
             // Fixed release identity at 0x20 remains before NKit's 0x200 area.
-            f.SetLength(capacity);var boot=new byte[0x2460];Text(boot,0,7,"AMTE01");Put(boot,0x1c,0xc2339f3d);Text(boot,0x20,0x1e0,"AnimalTown / "+commit);
+            f.SetLength(capacity);var boot=new byte[0x2460];Text(boot,0,7,"AMTE01");Put(boot,0x1c,0xc2339f3d);Text(boot,0x20,0x1e0,DiscBannerFile.BootTitle(commit));
             Put(boot,0x420,0x10000);Put(boot,0x424,(uint)fstAt);Put(boot,0x428,(uint)fst.Length);Put(boot,0x42c,(uint)fst.Length);Put(boot,0x458,0xffffffff);
             // BI2: conservative retail-compatible fields, US region, 24 MiB memory.
             Put(boot,0x440+4,0x1800000);Put(boot,0x440+0x18,1);Put(boot,0x440+0x1c,1);
@@ -167,13 +170,13 @@ static class Program
         if(f.Length!=1459978240||Read(h,0x1c)!=0xc2339f3d||Read(h,0x2450)!=0x81200000||Read(h,0x2454)==0)throw new InvalidDataException("Boot header invalid");
         if(expectedVersion!=null){
             int end=Array.IndexOf(h,(byte)0,0x20,0x1e0);
-            if(end<0||Encoding.ASCII.GetString(h,0x20,end-0x20)!="AnimalTown / "+expectedVersion)
+            if(end<0||Encoding.ASCII.GetString(h,0x20,end-0x20)!=DiscBannerFile.BootTitle(expectedVersion))
                 throw new InvalidDataException("Embedded release version differs from the build identity");
         }
         int titleEnd=Array.IndexOf(h,(byte)0,0x20,0x1e0);
         if(titleEnd<0)throw new InvalidDataException("Disc title is not terminated");
         string title=Encoding.ASCII.GetString(h,0x20,titleEnd-0x20);
-        const string titlePrefix="AnimalTown / ";
+        const string titlePrefix=DiscBannerFile.BootTitlePrefix;
         if(!title.StartsWith(titlePrefix,StringComparison.Ordinal))throw new InvalidDataException("Disc release identity missing");
         string discVersion=expectedVersion??title.Substring(titlePrefix.Length);
         int dolAt=(int)Read(h,0x420),fstAt=(int)Read(h,0x424),length=(int)Read(h,0x428);if(length<12||length>1024*1024||fstAt<=dolAt)throw new InvalidDataException("FST location invalid");
@@ -186,7 +189,7 @@ static class Program
             string n=Encoding.ASCII.GetString(fst,name,end-name);uint offset=Read(fst,i*12+4),size=Read(fst,i*12+8);
             if(!seen.Add(n)||offset%32768!=0||offset<previous||(long)offset+size>f.Length)throw new InvalidDataException("FST range invalid");previous=offset+size;
             if(n=="buildings.bin"){byte[] descriptor=new byte[size];f.Position=offset;f.ReadExactly(descriptor);AnimalTown.BuildingCatalog.Configure(descriptor);}
-            if(n=="opening.bnr"){byte[] b=new byte[size];f.Position=offset;f.ReadExactly(b);if(b.Length!=6496||Encoding.ASCII.GetString(b,0,4)!="BNR1")throw new InvalidDataException("Banner invalid");}
+            if(n=="opening.bnr"){byte[] b=new byte[size];f.Position=offset;f.ReadExactly(b);DiscBannerFile.Verify(b,discVersion);}
             if(n=="version.md"){
                 if(size>64)throw new InvalidDataException("ISO version.md exceeds its 64-byte limit");
                 byte[] version=new byte[size];f.Position=offset;f.ReadExactly(version);DiscVersionFile.Verify(version,discVersion);

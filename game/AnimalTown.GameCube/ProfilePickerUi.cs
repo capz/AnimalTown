@@ -67,10 +67,7 @@ internal sealed class ProfilePickerUi : IDisposable,Hypercube.GameCube.IFrameSce
     {
         var device=GraphicsDevice.Default;ui.Begin();background.Draw(ui);
         TitleArt.Panel(ui,36,18,568,440);
-        TitleArt.Rounded(ui,312,27,16,17,8,TitleArt.Leaf);TitleArt.Rounded(ui,317,34,6,11,3,TitleArt.Cream);
-        TitleArt.Rounded(ui,309,21,8,5,2,Honey);TitleArt.Rounded(ui,323,21,8,5,2,Honey);
-        TitleArt.Rounded(ui,306,45,28,2,1,new Color32(195,109,84));
-        logo!.Draw(ui,new RectF(0,0,logo.SourceWidth,logo.SourceHeight),new RectF(186,30,268,67),TitleArt.Ink);
+        TitleArt.Logo(ui,logo!,new RectF(186,20,268,64));
         Leaves(186,65);Leaves(454,65);
         TitleArt.Rounded(ui,174,84,292,37,18,Warm);
         const string welcome="Welcome back!";

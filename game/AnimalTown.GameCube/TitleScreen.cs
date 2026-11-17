@@ -36,6 +36,7 @@ internal sealed class TitleScreen : IDisposable,Hypercube.GameCube.IFrameScene
     {
         using var title=new TitleScreen(config,options);
         DebugOverlay.WriteLine("ANIMALTOWN TITLE READY (town assets deferred)");
+        DebugOverlay.WriteLine("ANIMALTOWN TITLE LOGO "+title.logo.SourceWidth+"x"+title.logo.SourceHeight+" bytes "+title.logo.Bytes);
         while(true){
             title.Draw();RuntimeOptions.Wait();Controller.Update();var p=Controller.GetState(0);
             if(DebugMenuSettings.Read(p)){
@@ -103,8 +104,8 @@ internal sealed class TitleScreen : IDisposable,Hypercube.GameCube.IFrameScene
         // height as Fit would, while retaining the full display for modal shade.
         var size=ui.LogicalSize;composition.Zoom=size.Y/480;canvasMargin=(size.X/composition.Zoom-640)*.5f;
         composition.Position=new Vector2(-canvasMargin,0);ui.Begin(composition);
-        TitleArt.Panel(ui,50,24,540,432);TitleArt.BrandMark(ui,320,79);
-        logo.Draw(ui,new RectF(0,0,logo.SourceWidth,logo.SourceHeight),new RectF(90,102,460,115),TitleArt.Ink);
+        TitleArt.Panel(ui,50,24,540,432);
+        TitleArt.Logo(ui,logo,new RectF(90,28,460,180));
         const string tagline="A little life, well rooted.";
         font.Draw(ui,tagline,(640-font.Measure(tagline,1.1f))/2,212,TitleArt.Ink,1.1f);
         MenuRow(0,"Start",244);MenuRow(1,"Update",286);MenuRow(2,"Options",328);

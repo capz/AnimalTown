@@ -1,0 +1,51 @@
+{
+  "title": "Smalltown Forest",
+  "artist": "Approved generated artwork, selected by Capz",
+  "sources": [
+    {
+      "file": "smalltown-forest-logo.png",
+      "sha256": "e4679b82ebe532d39f4e5d7e9b357f51c80dbcce4883f2ff2f06c8e814f5259d"
+    },
+    {
+      "file": "disc-banner.png",
+      "sha256": "da96f138e850ab71f535eca460ae1d845f80157f3d54e23403f92c5f97d6938b"
+    }
+  ],
+  "logo": {
+    "sourceWidth": 1774,
+    "sourceHeight": 887,
+    "transparentNoiseThreshold": 8,
+    "contentBounds": [
+      72,
+      75,
+      1633,
+      759
+    ],
+    "textureWidth": 512,
+    "textureHeight": 256,
+    "transparentPadding": 2,
+    "nativeFormat": "GX_TF_RGB5A3",
+    "nativeBytes": 262144,
+    "discFile": "wordmark.dndtex"
+  },
+  "banner": {
+    "width": 96,
+    "height": 32,
+    "nativeFormat": "GX_TF_RGB5A3 opaque RGB555",
+    "nativeBytes": 6144,
+    "sourcePreserved": true
+  },
+  "saveIcon": {
+    "width": 32,
+    "height": 32,
+    "source": "single right-hand acorn clipped from approved full logo",
+    "nativeFormat": "GX_TF_RGB5A3 opaque RGB555",
+    "nativeBytes": 2048,
+    "background": [
+      255,
+      245,
+      221
+    ]
+  },
+  "formatDecision": "CI8 and TLUT packages are not accepted by the current TexturePixels decoder or atlas upload path. RGB5A3 retains color and smooth 3-bit alpha at two bytes per texel; CMPR would reduce the silhouette to one-bit alpha."
+}
