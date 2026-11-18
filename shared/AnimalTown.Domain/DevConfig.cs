@@ -4,26 +4,25 @@ namespace AnimalTown;
 public sealed class DevConfig
 {
     public const int Count=32,FullResolutionAaIndex=30,GroundMipBandsIndex=31,TreeNoiseStrength=27,TreeNoiseScale=28,DiscardTerrainCacheWhenIndoorsIndex=29;
-    public const int SettingCount=Count-4;
+    public const int SettingCount=Count-13;
     public readonly int[] Values=new int[Count];
-    public DevConfig(int runtimeMode=0)
+    public DevConfig(int runtimeMode=4)
     {
         Values[1]=Values[4]=Values[5]=Values[6]=Values[7]=Values[22]=1;
         Values[8]=2;Values[18]=0;Values[20]=100;
         Values[TreeNoiseStrength]=10;Values[TreeNoiseScale]=3;
         Values[11]=runtimeMode&1;Values[12]=(runtimeMode>>1)&1;Values[13]=(runtimeMode>>2)&1;
     }
-    public int TreeNoiseStrengthPercent=>Values[TreeNoiseStrength]*10;
-    public int TreeNoiseScalePercent=>(Values[TreeNoiseScale]+1)*25;
-    // Retain retired shadow fields 7/8 in the card format, but never apply them.
-    public static bool IsSetting(int row)=>row>=0&&row<Count&&row!=7&&row!=8&&row!=14&&row!=15;
-    public static bool IsSlider(int row)=>row==20||row==23||row==TreeNoiseStrength||row==TreeNoiseScale;
+    // Retired fields keep their historic value ranges for old cards.
+    public static bool IsSetting(int row)=>row>=0&&row<Count&&row!=1&&row!=4&&row!=5&&row!=6&&
+        row!=7&&row!=8&&row!=9&&row!=10&&row!=14&&row!=15&&row!=20&&row!=TreeNoiseStrength&&row!=TreeNoiseScale;
+    public static bool IsSlider(int row)=>row==23;
     public static int Maximum(int row)=>row==TreeNoiseStrength?30:row==TreeNoiseScale?15:row==8?2:row==10?5:row==18?4:row==20?200:row==23?10:row==14||row==15?0:1;
-    public void Reset(int row){if(IsSlider(row))Values[row]=row==20?100:row==TreeNoiseStrength?10:row==TreeNoiseScale?3:0;}
+    public void Reset(int row){if(IsSlider(row))Values[row]=0;}
     public void Adjust(int row,int direction)
     {
         if(!IsSetting(row))return;
-        int step=row==20?5:1,max=Maximum(row),next=Values[row]+(direction<0?-step:step);
+        int max=Maximum(row),next=Values[row]+(direction<0?-1:1);
         Values[row]=IsSlider(row)?Math.Max(0,Math.Min(max,next)):(next+max+1)%(max+1);
     }
     public int RuntimeMode=>Values[11]|Values[12]<<1|Values[13]<<2;

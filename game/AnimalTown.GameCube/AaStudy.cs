@@ -12,11 +12,11 @@ internal static class AaStudy
     private static int profile=-1,sequence,count;
     private static bool recording;
     private static int[]? rows;
-    private static readonly string[] names={"480-rim100","480-rim0","480-rim50","480-aa-rim0","480-aa-rim100","240-rim100","240-aa-rim100"};
+    private static readonly string[] names={"480-rim100","480-aa-rim100","240-rim100","240-aa-rim100"};
     internal static bool Active=>profile>=0;
     internal static int CaptureIndex=>recording?count:-1;
     internal static void Reset(){profile=-1;recording=false;count=0;}
-    internal static bool Input(ControllerState pad,RenderDebugOptions options,ref bool rim)
+    internal static bool Input(ControllerState pad)
     {
         if(VideoOptions.FullResolutionAa)return false;
         if(!pad.L.IsHeld||!pad.R.IsHeld)return false;
@@ -25,13 +25,12 @@ internal static class AaStudy
         if(direction>0){
             if(recording)throw new InvalidOperationException("Wait for AA capture to finish");
             profile=(profile+1)%names.Length;
-            bool low=profile>=5,aa=profile==3||profile==4||profile==6;
-            int percent=profile==1||profile==3?0:profile==2?50:100;
+            bool low=profile>=2,aa=(profile&1)!=0;
+            const int percent=RenderDebugOptions.DefaultRimPercent;
             GraphicsDevice.Default.ConfigureDisplay(new DisplayOptions{
                 Resolution=low?GraphicsResolution.R320x240:GraphicsResolution.R640x480,
                 Scan=ScanMode.Progressive,Antialiasing=aa,Widescreen=false});
-            RenderView.SetWidescreen(false);rim=percent>0;
-            while(options.RimPercent!=percent)options.AdjustRim(options.RimPercent<percent?1:-1);
+            RenderView.SetWidescreen(false);
             FrameProfile.Enabled=true;
             if(rows==null)rows=new int[Frames*Fields];
             var display=GraphicsDevice.Default.Display;

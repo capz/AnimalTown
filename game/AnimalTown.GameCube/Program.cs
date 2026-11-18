@@ -18,6 +18,8 @@ internal static class Program
         DebugOverlay.PerformanceVisible=false;
         DebugOverlay.WriteLine("AnimalTown "+BuildInfo.Version);
         ContentBootstrap.Initialize();
+        if(NativeRenderProbe.Indexed(1)!=1||NativeRenderProbe.Batch(1)!=1)
+            throw new InvalidOperationException("GX indexed and batched rendering required");
         RuntimeOptions.Load();
         SaveCards.Initialize();
         var config=DevConfigStorage.Load();
@@ -156,16 +158,15 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
     private long sessionStart;
     private float facingYaw=3.1415927f;
     private bool loaded,relocate,damagedSave;
-    private bool indexedModels=true,batchedDrawing=true;
-    private bool rimLighting=true;
+    private static readonly bool batchedDrawing=true;
     private bool godMode=false; // TownGame lifetime only; never written to saves or DevConfig.
     private int uvDebug;
     private bool cliffPreview;
     private int waterInspection;
     private int buildingInspection;
-    private const int SettingsTab=5,TestingTab=6,TestingRows=32;
-    // Stable option IDs: shadow slots 7/8 and water-style slot 24 retired.
-    private static readonly int[] testingOptions={0,33,1,2,3,4,5,6,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,34,25,26,27,28,29,31,32,30};
+    private const int SettingsTab=5,TestingTab=6;
+    // Stable IDs keep hidden/retired controls out of both debug menus.
+    private static readonly int[] testingOptions={0,33,2,3,11,12,13,16,17,35,18,19,21,22,23,34,31,32,30};
     private static readonly string[] groundMipLabels={"0","1","2","3","4","5","6"};
     private static int TestingOption(int row)=>testingOptions[row];
     private static readonly string[] tabs={"Backpack","Jobs","Catalog","Home","Post office","Settings","Debug / testing"};
@@ -205,16 +206,11 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
         trees=new LowPolyTrees(worldRoot);terrain=new TerrainRenderer();villagerShadows=new VillagerShadows();
         DebugOverlay.WriteLine("ANIMALTOWN WORLD RENDERERS READY");
         if(NativeShadows.Init(GroundShadow.Atlas(),VillagerShadowPatch.Texture(),CloudShadowPattern.Texture())!=1)throw new InvalidOperationException("Shadow union native budget");
-        if(config.Values[1]==0)ToggleModelPath();
-        if(config.Values[4]==0)ToggleBatching();
-        UiFont.Batched=config.Values[4]!=0&&config.Values[5]!=0;
+        UiFont.Batched=true;
         uvDebug=config.Values[2]|config.Values[3]<<1;
-        rimLighting=config.Values[6]!=0;
-        cliffPreview=config.Values[9]!=0;waterInspection=config.Values[10];
         weather.RainEnabled=config.Values[16]!=0;weather.RoughOceanWhenRaining=config.Values[17]!=0;
         for(int i=0;i<config.Values[18];i++)renderDebug.CycleSeason();
         renderDebug.ForceAttention=config.Values[19]!=0;
-        while(renderDebug.RimPercent!=config.Values[20])renderDebug.AdjustRim(config.Values[20]>renderDebug.RimPercent?1:-1);
         renderDebug.GroundMipmaps=config.Values[22]!=0;for(int i=0;i<config.Values[23];i++)renderDebug.AdjustGroundMipDistance(1);
         renderDebug.ShowGroundMipBands=config.Values[DevConfig.GroundMipBandsIndex]!=0;
         terrain.FreezeMotion=config.Values[24]!=0;terrain.RecreateMeshes=config.Values[25]!=0;if(config.Values[26]!=0)terrain.ToggleGroundRing();
@@ -349,7 +345,7 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
     {
         // Bake even for an indoor save: its first exit must reuse the completed
         // archive rather than overlap scratch geometry with resident villagers.
-        terrain.RoughOcean=weather.RoughOcean(0);terrain.SeasonOverride=renderDebug.SeasonOverride;
+        UpdateWeather();terrain.RoughOcean=weather.RoughOcean(0);terrain.SeasonOverride=renderDebug.SeasonOverride;
         terrain.GroundMipmaps=renderDebug.GroundMipmaps;terrain.GroundMipDistance=renderDebug.GroundMipDistance;terrain.ShowGroundMipBands=renderDebug.ShowGroundMipBands;
         // Indoor actors have height zero; this selects the outdoor town cache.
         RenderView.Prepare(state.X,state.Z,TerrainElevation.At(state.Town,state.X,state.Z));
@@ -472,9 +468,10 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
         }
         if(session.Draft!=null){OnboardingInput(p);return;}
         bool chord=p.L.IsHeld&&p.R.IsHeld;
-        if(AaStudy.Input(p,renderDebug,ref rimLighting))return;
+        if(AaStudy.Input(p))return;
         if(chord&&p.Z.IsHeld&&p.DPadDown.WasPressed){terrain.FreezeMotion=!terrain.FreezeMotion;return;}
         if(chord&&p.Z.IsHeld&&p.X.WasPressed){terrain.RecreateMeshes=!terrain.RecreateMeshes;return;}
+        // These scene shortcuts are used by the automated emulator captures.
         if(chord&&p.A.WasPressed&&p.CStick.Y<-.8f&&screen=="world"){InspectShop();return;}
         if(chord&&p.A.WasPressed&&screen=="world"){InspectBuilding();return;}
         if(chord&&p.CStick.Y>.8f&&p.Z.WasPressed&&room==0){terrain.ToggleGroundRing();return;}
@@ -486,27 +483,11 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
         bool navigating=screen=="menu"||screen=="item"||screen=="sell"||screen=="shop"||screen=="store"||screen=="post"||screen=="mail"||screen=="lost"||ShopScreen;
         int direction=menuNavigation.Read(screen,screen=="menu"?menuTab:-1,p.Stick.X,p.Stick.Y,(int)p.PressedButtons,Clock.Timestamp,navigating&&!chord);
         bool up=direction==MenuNavigation.Up,down=direction==MenuNavigation.Down,left=direction==MenuNavigation.Left,right=direction==MenuNavigation.Right;
-        if(screen=="menu"&&menuTab==TestingTab&&TestingOption(selected)==20&&!chord){
-            if(left||right){renderDebug.AdjustRim(right?1:-1);return;}
-            if(p.X.WasPressed){renderDebug.ResetRim();return;}
-        }
         if(screen=="menu"&&menuTab==TestingTab&&TestingOption(selected)==23&&!chord){
             if(left||right){renderDebug.AdjustGroundMipDistance(right?1:-1);return;}
             if(p.X.WasPressed){renderDebug.ResetGroundMipDistance();return;}
         }
-        if(screen=="menu"&&menuTab==TestingTab&&TestingOption(selected)==29&&!chord){
-            if(left||right){UiNoiseSettings.Adjust(right?1:-1);return;}
-            if(p.X.WasPressed){UiNoiseSettings.Reset();return;}
-        }
-        if(screen=="menu"&&menuTab==TestingTab&&(TestingOption(selected)==25||TestingOption(selected)==26)&&!chord){
-            int option=TestingOption(selected)==25?DevConfig.TreeNoiseStrength:DevConfig.TreeNoiseScale;
-            if(left||right){debugConfig.Adjust(option,right?1:-1);return;}
-            if(p.X.WasPressed){debugConfig.Reset(option);return;}
-        }
         if(p.L.IsHeld&&p.R.IsHeld&&p.Z.WasPressed){FrameProfile.Enabled=!FrameProfile.Enabled;return;}
-        if(p.L.IsHeld&&p.R.IsHeld&&p.Y.WasPressed){ToggleModelPath();return;}
-        if(p.L.IsHeld&&p.R.IsHeld&&p.DPadDown.WasPressed){if(batchedDrawing)UiFont.Batched=!UiFont.Batched;return;}
-        if(p.L.IsHeld&&p.R.IsHeld&&p.X.WasPressed){ToggleBatching();return;}
         if(p.L.IsHeld&&p.R.IsHeld)return;
         if(ShopInput(p,direction))return;
         if(screen=="dialogue")
@@ -571,10 +552,9 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
         { int index=LostIndex(selected);Say("Town hall",state.ClaimLost(index,state.ActiveProfile)?"Recovered!":"Your pockets are full, or the item is reserved.");return; }
         if(screen=="menu")MenuAction();
     }
+    private void UpdateWeather()=>weather.Update(state.Town.Seed,weatherDay,townClock.MinuteOfDay,terrain.SeasonAt(month,renderDebug.SeasonOverride));
     private int MenuTabCount=>DebugMenuSettings.Visible?tabs.Length:tabs.Length-1;
-    private int TabCount()=>menuTab==0?state.Capacity:menuTab==1?7:menuTab==2?Catalog.EntryCount:menuTab==3?7:menuTab==4?7:menuTab==TestingTab?TestingRows:DebugMenuSettings.Visible?6:5;
-    private void ToggleModelPath()
-    {int next=indexedModels?0:1;if(NativeRenderProbe.Indexed(next)!=next)throw new InvalidOperationException("Model renderer switch failed");indexedModels=!indexedModels;}
+    private int TabCount()=>menuTab==0?state.Capacity:menuTab==1?7:menuTab==2?Catalog.EntryCount:menuTab==3?7:menuTab==4?7:menuTab==TestingTab?testingOptions.Length:DebugMenuSettings.Visible?6:5;
     private int LostCount(){int c=0;for(int i=0;i<state.Town.GroundCount;i++)if(state.Town.Ground[i].Kind==4)c++;return c;}
     private int LostIndex(int n){for(int i=0;i<state.Town.GroundCount;i++)if(state.Town.Ground[i].Kind==4&&n--==0)return i;return -1;}
     private void StoreAction()
@@ -643,40 +623,22 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
                 int added=state.GiveMoney(10000,godMode);
                 Say("God mode",!godMode?"Enable God mode to give yourself acorns.":added==0?"Your wallet is full.":"Added "+UiFont.Money(added)+". Wallet: "+UiFont.Money(state.Wallet)+".");break;
             case 0:FrameProfile.Enabled=!FrameProfile.Enabled;break;
-            case 1:ToggleModelPath();break;
             case 2:case 3:
                 int next=uvDebug^(TestingOption(selected)==2?1:2);
                 if(modelResidency.AllReady)ApplyUv(next);else requestedUv=next;
                 break;
-            case 4:ToggleBatching();break;
-            case 5:if(batchedDrawing)UiFont.Batched=!UiFont.Batched;break;
-            case 6:rimLighting=!rimLighting;break;
-            case 9:if(room==0)cliffPreview=!cliffPreview;break;
-            case 10:if(room==0)waterInspection=(waterInspection+1)%6;break;
             case 11:RuntimeOptions.Toggle(1);break;
             case 12:RuntimeOptions.Toggle(2);break;
             case 13:RuntimeOptions.Toggle(4);break;
-            case 14:if(room==0){waterInspection=0;InspectTerrain();}break;
-            case 15:waterInspection=0;InspectBuilding();screen="world";break;
             case 16:weather.RainEnabled=!weather.RainEnabled;break;
+            case 35:weather.SnowEnabled=!weather.SnowEnabled;break;
             case 17:weather.RoughOceanWhenRaining=!weather.RoughOceanWhenRaining;break;
             case 18:renderDebug.CycleSeason();break;
             case 19:renderDebug.ForceAttention=!renderDebug.ForceAttention;break;
-            case 20:renderDebug.AdjustRim(1);break;
             case 21:DebugOverlay.PerformanceVisible=!DebugOverlay.PerformanceVisible;break;
             case 22:renderDebug.GroundMipmaps=!renderDebug.GroundMipmaps;break;
             case 23:renderDebug.AdjustGroundMipDistance(1);break;
             case 34:renderDebug.ShowGroundMipBands=!renderDebug.ShowGroundMipBands;break;
-            case 29:UiNoiseSettings.Adjust(1);break;
-            case 25:debugConfig.Adjust(DevConfig.TreeNoiseStrength,1);break;
-            case 26:debugConfig.Adjust(DevConfig.TreeNoiseScale,1);break;
-            case 27:clockHud.Trim();uiShapes.Trim();card?.Dispose();card=null;DevConfigStorage.Save(debugConfig);Say("Tree noise",DevConfigStorage.Status);break;
-            case 28:
-                clockHud.Trim();uiShapes.Trim();card?.Dispose();card=null;
-                var saved=DevConfigStorage.Load();
-                debugConfig.Values[DevConfig.TreeNoiseStrength]=saved.Values[DevConfig.TreeNoiseStrength];
-                debugConfig.Values[DevConfig.TreeNoiseScale]=saved.Values[DevConfig.TreeNoiseScale];
-                Say("Tree noise",DevConfigStorage.Status);break;
             case 30:
                 renderDebug.DiscardTerrainCacheWhenIndoors=!renderDebug.DiscardTerrainCacheWhenIndoors;
                 debugConfig.Values[DevConfig.DiscardTerrainCacheWhenIndoorsIndex]=renderDebug.DiscardTerrainCacheWhenIndoors?1:0;
@@ -684,12 +646,6 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
                 if(!DevConfigStorage.Save(debugConfig)){saveStatus=DevConfigStorage.Status;Say("Dev config",saveStatus);}
                 break;
         }
-    }
-    private void ToggleBatching()
-    {
-        int next=batchedDrawing?0:1;
-        if(NativeRenderProbe.Batch(next)!=next)throw new InvalidOperationException("Batch switch failed");
-        batchedDrawing=next!=0;UiFont.Batched=batchedDrawing;
     }
     private static string OnOff(bool value)=>value?"On":"Off";
     private string TestingLabel(int row)
@@ -699,33 +655,20 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
             case 32:return "Give "+UiFont.Money(10000)+(godMode?"":" (God mode required)");
             case 33:return "Full-resolution AA: "+OnOff(VideoOptions.FullResolutionAa)+(VideoOptions.AaSaveFailed?" (not saved)":" (saved)");
             case 0:return "Performance display: "+OnOff(FrameProfile.Enabled);
-            case 1:return "Model drawing: "+(indexedModels?"GX indexed":"Direct comparison");
             case 2:return "UV island colors: "+OnOff((uvDebug&1)!=0);
             case 3:return "UV island outlines: "+OnOff((uvDebug&2)!=0);
-            case 4:return "Batched drawing: "+OnOff(batchedDrawing);
-            case 5:return "Batched text: "+(batchedDrawing?OnOff(UiFont.Batched):"Requires batched drawing");
-            case 6:return "Actor rim lighting: "+OnOff(rimLighting);
-            case 9:return "Cliff preview: "+(room==0?OnOff(cliffPreview):"Outdoors only");
-            case 10:return "Water inspection: "+(room!=0?"Outdoors only":waterInspection==0?"Off":waterInspection+" / 5");
             case 11:return "Frame pacing: "+((RuntimeOptions.Mode&1)!=0?"Uncapped":"Yield");
             case 12:return "Productive waits: "+OnOff((RuntimeOptions.Mode&2)!=0);
-            case 13:return "Reuse frame clear: "+OnOff((RuntimeOptions.Mode&4)!=0);
-            case 14:return room==0?"Go to test ramp":"Test ramp: outdoors only";
-            case 15:return room==0?"Go to next test building":"Go to indoor doorway";
+            case 13:return "Trust frame clear: "+OnOff((RuntimeOptions.Mode&4)!=0);
             case 16:return "Rain preview: "+OnOff(weather.RainEnabled);
+            case 35:return "Winter snowfall: "+OnOff(weather.SnowEnabled)+" (session)";
             case 17:return "Rough ocean in rain: "+OnOff(weather.RoughOceanWhenRaining);
             case 18:return "Season preview: "+(renderDebug.SeasonOverride<0?"Auto":TerrainTiles.SeasonName(renderDebug.SeasonOverride));
             case 19:return "Villager attention bubbles: "+OnOff(renderDebug.ForceAttention);
-            case 20:return "Rim intensity: "+renderDebug.RimPercent+"%";
             case 21:return "SDK performance overlay: "+OnOff(DebugOverlay.PerformanceVisible);
             case 22:return "Ground mipmaps: "+OnOff(renderDebug.GroundMipmaps);
             case 23:return "Ground mip distance: "+(renderDebug.GroundMipDistance==0?"Auto":renderDebug.GroundMipDistance+(renderDebug.GroundMipDistance==1?" square":" squares"));
             case 34:return "Ground mip bands: "+OnOff(renderDebug.ShowGroundMipBands);
-            case 25:return "Tree noise strength: "+debugConfig.TreeNoiseStrengthPercent+"%";
-            case 26:return "Tree noise scale: "+debugConfig.TreeNoiseScalePercent+"%";
-            case 27:return "Save tree noise settings";
-            case 28:return "Restore saved tree noise";
-            case 29:return "UI bubble noise: "+UiNoiseSettings.Percent+"% (session)";
             default:return "discard terrain cache when indoors: "+OnOff(renderDebug.DiscardTerrainCacheWhenIndoors);
         }
     }
@@ -817,10 +760,10 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
         if(!actorVisibility.Visible[actor]){FrameProfile.CulledObjects++;return;}
         var location=actorVisibility.Locations[actor];float x=location.X,z=location.Z,scale=1.8f,facing=actor==0?facingYaw:location.Yaw;
         var pose=batchedDrawing?modelPoses[modelUsed++]:transform;pose.LocalPosition=SurfacePoint(x,z);pose.LocalScale=new Vector3(scale,scale,scale);pose.LocalRotation=SurfaceRotation(z,facing);
-        if(batchedDrawing){actorQueue.Submit(actors[actor],pose);}else{NativeRim.Enable(rimLighting?renderDebug.RimPercent:0);NativeShadows.Objects(room==0?1:0);try{renderer.DrawModel(actors[actor],pose);}finally{NativeShadows.Objects(0);NativeRim.Enable(0);}}
+        if(batchedDrawing){actorQueue.Submit(actors[actor],pose);}else{NativeRim.Enable(RenderDebugOptions.DefaultRimPercent);NativeShadows.Objects(room==0?1:0);try{renderer.DrawModel(actors[actor],pose);}finally{NativeShadows.Objects(0);NativeRim.Enable(0);}}
     }
     private void DrawActors()
-    {NativeRim.Enable(rimLighting?renderDebug.RimPercent:0);NativeShadows.Objects(room==0?1:0);try{actorQueue.Execute(renderer);}finally{NativeShadows.Objects(0);NativeRim.Enable(0);}}
+    {NativeRim.Enable(RenderDebugOptions.DefaultRimPercent);NativeShadows.Objects(room==0?1:0);try{actorQueue.Execute(renderer);}finally{NativeShadows.Objects(0);NativeRim.Enable(0);}}
     private void PrepareVillagerShadows()
     {
         villagerShadows.BeginFrame(state.Town);
@@ -852,7 +795,7 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
         modelSceneReady=room==0||modelResidency.ReadyForSpace(state,villagers.Doors,room);
         FrameProfile.End(2,residencyAt);
         if(!modelSceneReady){modelResidency.WaitForScene();DrawLoading();return;}
-        terrain.RoughOcean=weather.RoughOcean(room);terrain.SeasonOverride=renderDebug.SeasonOverride;
+        UpdateWeather();terrain.RoughOcean=weather.RoughOcean(room);terrain.SeasonOverride=renderDebug.SeasonOverride;
         terrain.GroundMipmaps=renderDebug.GroundMipmaps;terrain.GroundMipDistance=renderDebug.GroundMipDistance;terrain.ShowGroundMipBands=renderDebug.ShowGroundMipBands;
         cachedPlayerHeight=PlayerHeight();if(room==0)RenderView.Prepare(state.X,state.Z,cachedPlayerHeight);
         if(room!=0)indoorCamera.Configure(BuildingWorld.Definition(state,BuildingWorld.Building(room)));
@@ -873,8 +816,8 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
         LoadingScreen.Finish();
         // Only a drawable scene may evaluate native poses. Shadow receivers
         // use logical positions and can prepare while the landscape loads.
-        if(room==0){trees.Prepare(terrain.RenderSeason,debugConfig.TreeNoiseStrengthPercent,debugConfig.TreeNoiseScalePercent);fences.Prepare(state);droppedItems.Prepare(state,cachedPlayerHeight);}
-        if(weather.Raining(room)&&villagers.Doors.PlayerFade<1)rain.Prepare(state,(Clock.Timestamp-sessionStart)/1000000.0,cachedPlayerHeight);
+        if(room==0){trees.Prepare(terrain.RenderSeason);fences.Prepare(state);droppedItems.Prepare(state,cachedPlayerHeight);}
+        if((weather.Raining(room)||weather.Snowing(room))&&villagers.Doors.PlayerFade<1)rain.Prepare(state,(Clock.Timestamp-sessionStart)/1000000.0,cachedPlayerHeight,weather.Snowing(room));
         else rain.Dispose();
         actorVisibility.Prepare(state,villagers.Doors,indoorCamera,waterInspection,cachedPlayerHeight);
         for(int actor=1;actor<7;actor++)if(!modelResidency.Ready(actor-1))actorVisibility.Visible[actor]=false;
@@ -954,7 +897,7 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
         }
         if(batchedDrawing)boxes.Flush();
         if(renderDebug.ForceAttention&&villagers.Doors.PlayerFade<1)attention.Draw(renderer,state,actorVisibility,indoorCamera,cachedPlayerHeight);
-        submissionAt=FrameProfile.SubmissionStart();if(weather.Raining(room)&&villagers.Doors.PlayerFade<1)rain.Draw(renderer);FrameProfile.SubmissionEnd(4,submissionAt);
+        submissionAt=FrameProfile.SubmissionStart();if((weather.Raining(room)||weather.Snowing(room))&&villagers.Doors.PlayerFade<1)rain.Draw(renderer);FrameProfile.SubmissionEnd(4,submissionAt);
         renderer.End3D();NativeShadows.Environment(0xffffff,preparedShadowStrength);ui.Begin();submissionAt=FrameProfile.SubmissionStart();DrawHud();if(FrameProfile.Enabled)ui.Flush();FrameProfile.SubmissionEnd(5,submissionAt);FrameProfile.End(8,phase);FrameProfile.Draw(ui);
         float fade=villagers.Doors.PlayerFade;if(fade>0)ui.FillRectangle(new RectF(0,0,640,480),new Color32(12,19,25,(byte)(fade*255)));
         phase=FrameProfile.Start();submissionAt=FrameProfile.SubmissionStart();ui.End();FrameProfile.SubmissionEnd(6,submissionAt);FrameProfile.End(8,phase);
@@ -964,7 +907,7 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
     internal void RecordFrame()
     {
         if(!resourcesReady||!FrameProfile.Enabled)return;
-        int scene=screen=="map"?10:screen=="menu"&&menuTab==0?(indexedModels?1:7):room!=0?2:screen=="world"?(indexedModels?0:6):3;
+        int scene=screen=="map"?10:screen=="menu"&&menuTab==0?1:room!=0?2:screen=="world"?0:3;
         int drawingScene=batchedDrawing?(UiFont.Batched?scene:scene+32):scene+16;
         if(room==0){if(!terrain.Ready)drawingScene|=32768;if(terrain.MissingVisible>0)drawingScene|=16384;if(terrain.UrgentStages>0)drawingScene|=8192;}
         bool moved=!float.IsNaN(profiledX)&&(state.X!=profiledX||state.Z!=profiledZ);profiledX=state.X;profiledZ=state.Z;
@@ -1087,7 +1030,7 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
             ui.FillRectangle(new RectF(x,57,20,12),new Color32((byte)(rgba>>24),(byte)(rgba>>16),(byte)(rgba>>8)));
             Text(groundMipLabels[level],x+7,70,ink,.9f);
         }
-        Text("0 finest / mixed = transition",400,94,ink,.75f);
+        Text("Pink line = detail switch",400,94,ink,.75f);
     }
     private void DrawHud()
     {
@@ -1103,7 +1046,7 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
         }
         if(FrameProfile.Enabled&&!AaStudy.Active){
             if(++profileLabelFrames>=30){profileLabelFrames=0;profileNativeLabel="Native: "+NativeShadows.Stats(9)+" slots / "+NativeShadows.Stats(10)/1024+" KiB";profileShadowLabel=(room==0&&terrain.GroundRingActive?"Ring / ":"")+"Shadows: "+NativeShadows.Stats(0)+" pages / "+NativeShadows.Stats(2)+" updated";}
-            Text(indexedModels?(batchedDrawing?"GX indexed / batched":"GX indexed / baseline"):(batchedDrawing?"Direct / batched":"Direct / baseline"),420,397,ink,.8f);
+            Text("GX indexed / batched",420,397,ink,.8f);
             Text(profileNativeLabel,420,408,ink,.55f);
             Text(profileShadowLabel,420,419,ink,.55f);
         }
@@ -1125,14 +1068,16 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
         if(screen=="plot"){Panel(55,370,530,55);Text("Choose a 15 x 13 plot. A: confirm",70,385,ink);return;}
         if(screen=="saving")
         { Panel(115,181,410,132);Heading("Saving your town",142,199,ink);Text("Please keep the memory\ncard inserted.",142,245,ink,1.25f);return; }
-        if(screen=="world"){if(room==0&&runningMinimap.Visible)DrawMinimap();if(waterInspection!=0)Text("Water inspection "+waterInspection+" / L+R+Left cycles",42,320,ink);if(cliffPreview)Text("Cliff kit preview / L+R+Up closes",42,343,ink);if(room==0&&renderDebug.ShowGroundMipBands)DrawGroundMipLegend(ink);return;}
+        if(screen=="world"){if(room==0&&runningMinimap.Visible)DrawMinimap();if(room==0&&renderDebug.ShowGroundMipBands)DrawGroundMipLegend(ink);return;}
         if((screen=="menu"&&menuTab==0)||screen=="sell"||screen=="item"){DrawBackpack();return;}
         Panel(45,75,550,350);string title=screen=="menu"?tabs[menuTab]:screen=="shop"?"Essentials / always in stock":screen=="store"?"Hearth's store":screen=="post"?"Town hall":screen=="mail"?"Mailbox":"Lost and Found";
         Heading(title,68,91,ink);
         int total=screen=="menu"?TabCount():screen=="shop"?TownShop.CabinetCount:screen=="mail"?Math.Max(1,state.MailCount):screen=="lost"?Math.Max(1,LostCount()):screen=="store"?StoreMenuCount:7;
         bool compact=screen=="menu"&&(menuTab==SettingsTab||menuTab==TestingTab);int page=compact?9:8,step=compact?24:29;float rowScale=compact?1.2f:1.4f;int first=selected/page*page;
         for(int i=first;i<Math.Min(total,first+page);i++){float y=131+(i-first)*step;if(i==selected){Rounded(57,y,520,step-2,(step-2)*.5f,new Color32(221,231,188));Strong("> "+RowLabel(i),68,y,ink,rowScale);}else Text("  "+RowLabel(i),68,y,ink,rowScale);}
-        Text(screen=="menu"&&menuTab==TestingTab&&(TestingOption(selected)==25||TestingOption(selected)==26||TestingOption(selected)==29)?"Left/Right: adjust   A: increase   X: reset":screen=="menu"&&menuTab==TestingTab&&TestingOption(selected)==20?"Left/Right: 5%   A: +5%   X: reset":screen=="menu"&&menuTab==TestingTab&&TestingOption(selected)==23?"Left/Right: 1 square   A: +1   X: Auto":screen=="menu"&&menuTab==TestingTab&&TestingOption(selected)==34?"A: toggle   Mixed colors show mip transitions":screen=="menu"&&menuTab==TestingTab&&TestingOption(selected)==24?"A / Left/Right: switch   X: Wind Waker":screen=="menu"&&menuTab==TestingTab&&TestingOption(selected)==33?"A: toggle and save   B: close":"Stick / D-pad choose   L/R tabs   A select   B close",65,392,ink,1);
+        Text(screen=="menu"&&menuTab==TestingTab&&TestingOption(selected)==23?"Left/Right: 1 square   A: +1   X: Auto":
+            screen=="menu"&&menuTab==TestingTab&&TestingOption(selected)==34?"A: toggle   Pink line marks the mip switch":
+            screen=="menu"&&menuTab==TestingTab&&TestingOption(selected)==33?"A: toggle and save   B: close":"Stick / D-pad choose   L/R tabs   A select   B close",65,392,ink,1);
         if(screen=="menu"&&menuTab==SettingsTab){
             Text("Manual saves only. Choose Save now to write the card.",65,331,ink,1);
             Text(saveStatusText.Get(saveStatus),65,357,ink,1);

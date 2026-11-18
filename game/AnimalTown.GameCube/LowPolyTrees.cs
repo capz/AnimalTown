@@ -11,7 +11,7 @@ internal sealed class LowPolyTrees : IDisposable
     private readonly VertexPositionColorTexture[][] streams=new VertexPositionColorTexture[LowPolyTree.KindCount][];
     private readonly Material material=new Material{Cull=CullMode.Back,Lighting=LightingMode.Unlit,Color=Color32.White};
     private Texture2D? detail;
-    private int preparedSeason=-1,preparedStrength=-1,preparedScale=-1;
+    private int preparedSeason=-1;
     private readonly Transform[] poses=new Transform[Capacity],batchTransforms=new Transform[Capacity];
     private readonly Mesh[] batchMeshes=new Mesh[Capacity];
     private readonly int[] kinds=new int[Capacity];
@@ -25,28 +25,23 @@ internal sealed class LowPolyTrees : IDisposable
         Array.Clear(batchMeshes,0,batchMeshes.Length);
         for(int i=0;i<geometry.Length;i++){geometry[i]?.Dispose();geometry[i]=null!;streams[i]=null!;}
         material.Texture=null;detail?.Dispose();detail=null;
-        preparedSeason=preparedStrength=preparedScale=-1;
+        preparedSeason=-1;
     }
-    internal void Prepare(int season,int strengthPercent=100,int scalePercent=100)
+    internal void Prepare(int season)
     {
-        if(strengthPercent<0||strengthPercent>300||scalePercent<25||scalePercent>400)throw new ArgumentOutOfRangeException();
-        if(preparedStrength!=strengthPercent){
-            Texture2D? replacement=null;
-            if(strengthPercent>0){
-                replacement=Texture2D.FromPackage(LowPolyTree.DetailTexture(strengthPercent),true);
-                replacement.ConfigureSampler(TextureWrapMode.Repeat,TextureWrapMode.Repeat,TextureMinFilter.LinearMipmapLinear,TextureMagFilter.Linear);
-            }
-            material.Texture=replacement;detail?.Dispose();detail=replacement;preparedStrength=strengthPercent;
+        if(detail==null){
+            detail=Texture2D.FromPackage(LowPolyTree.DetailTexture(),true);
+            detail.ConfigureSampler(TextureWrapMode.Repeat,TextureWrapMode.Repeat,TextureMinFilter.LinearMipmapLinear,TextureMagFilter.Linear);
+            material.Texture=detail;
         }
-        if(preparedSeason==season&&preparedScale==scalePercent)return;
-        float uvScale=100f/scalePercent;
+        if(preparedSeason==season)return;
         for(int kind=0;kind<geometry.Length;kind++){
             var tree=LowPolyTree.Build(kind);
             var vertices=streams[kind];if(vertices==null){vertices=new VertexPositionColorTexture[tree.Triangles*3];streams[kind]=vertices;}
-            WriteVertices(tree,kind,season,uvScale,vertices);
+            WriteVertices(tree,kind,season,1,vertices);
             if(geometry[kind]==null)geometry[kind]=DynamicMesh.Create(vertices);else geometry[kind].SetVertices(vertices);
         }
-        preparedSeason=season;preparedScale=scalePercent;
+        preparedSeason=season;
     }
     internal static void WriteVertices(LowPolyTree tree,int kind,int season,float uvScale,VertexPositionColorTexture[] vertices)
     {

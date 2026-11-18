@@ -31,7 +31,7 @@ internal sealed class PathTextureResidency : IDisposable
                 if(wanted&&readingGeneration==generation){
                     TexturePixels.Validate(bytes);
                     if(TexturePixels.Width(bytes)!=64||TexturePixels.Height(bytes)!=64||bytes.Length>12*1024+32)throw new InvalidOperationException("Invalid painted path page");
-                    texture=TextureCache.LoadFloor(FileName,repeat:true,fullMipChain:true,source:bytes);
+                    texture=TextureCache.LoadFloor(FileName,repeat:true,source:bytes);
                     DebugOverlay.WriteLine("PATH PAGE READY bytes "+texture.Bytes+" reads "+Reads);
                 }
             }catch(Exception error){if(wanted&&readingGeneration==generation){failed=true;DebugOverlay.WriteLine("PATH PAGE FAILED using dirt tint: "+error.Message);}}
