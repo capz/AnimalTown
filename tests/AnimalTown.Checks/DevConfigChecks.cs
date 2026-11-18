@@ -20,7 +20,7 @@ internal static class DevConfigChecks
         check(legacy.Values[1]==1&&legacy.Values[8]==2&&legacy.Values[20]==100&&legacy.Values[22]==1,"version-one dev config remains readable");
         check(legacy.Values[DevConfig.DiscardTerrainCacheWhenIndoorsIndex]==0,"legacy saves keep terrain cache retention enabled");
         var previous=DevConfig.Decode(Convert.FromHexString("4154440200010000010101010200000000000000000000006400010000000016070000003360CDB9"));
-        check(previous.TreeNoiseStrengthPercent==220&&previous.TreeNoiseScalePercent==200,"published version-two tree settings remain readable");
+        check(previous.Values[DevConfig.TreeNoiseStrength]==22&&previous.Values[DevConfig.TreeNoiseScale]==7,"published version-two tree settings remain readable");
         check(previous.Values[DevConfig.DiscardTerrainCacheWhenIndoorsIndex]==0,"version-two files leave the new terrain option off");
         for(int row=0;row<DevConfig.Count;row++)if(DevConfig.IsSetting(row))defaults.Adjust(row,1);
         var encoded=defaults.Encode();var restored=DevConfig.Decode(encoded);
@@ -31,23 +31,18 @@ internal static class DevConfigChecks
         check(Enumerable.Range(0,DevConfig.Count).Count(DevConfig.IsSetting)==DevConfig.SettingCount,"title debug rows contain every remaining setting exactly once");
         encoded[10]^=1;bool rejected=false;try{DevConfig.Decode(encoded);}catch(IOException){rejected=true;}check(rejected,"damaged dev config rejected before application");
         var sliders=new DevConfig();for(int i=0;i<100;i++){sliders.Adjust(20,-1);sliders.Adjust(23,1);}
-        check(sliders.Values[20]==0&&sliders.Values[23]==10,"dev sliders remain bounded");
+        check(sliders.Values[20]==100&&sliders.Values[23]==10,"dev sliders remain bounded");
         sliders.Adjust(8,-1);sliders.Adjust(7,-1);check(sliders.Values[8]==2&&sliders.Values[7]==1&&!DevConfig.IsSetting(7)&&!DevConfig.IsSetting(8),"retired shadow toggles cannot be selected or adjusted");
         sliders.Values[20]=1;rejected=false;try{sliders.Encode();}catch(InvalidOperationException){rejected=true;}check(rejected,"invalid rim increments cannot create an un-restorable config");
         var original=DevConfig.Decode(Convert.FromBase64String("QVREAQEBAAABAQEBAgAAAAAAAAAAAAIAfQABBAAAAADlXYtQ"));
         check(original.Values[0]==1&&original.Values[20]==125&&original.Values[23]==4&&original.Values[18]==2,"v1 debug file keeps existing options during migration");
-        check(original.TreeNoiseStrengthPercent==100&&original.TreeNoiseScalePercent==100,"v1 debug files adopt the current tree appearance");
-        var noise=new DevConfig();check(noise.TreeNoiseStrengthPercent==100&&noise.TreeNoiseScalePercent==100,"new defaults match the original tree appearance");
-        for(int i=0;i<100;i++){noise.Adjust(DevConfig.TreeNoiseStrength,-1);noise.Adjust(DevConfig.TreeNoiseScale,1);}
-        check(noise.TreeNoiseStrengthPercent==0&&noise.TreeNoiseScalePercent==400,"tree strength and scale clamp rather than wrapping");
-        for(int i=0;i<100;i++){noise.Adjust(DevConfig.TreeNoiseStrength,1);noise.Adjust(DevConfig.TreeNoiseScale,-1);}
-        check(noise.TreeNoiseStrengthPercent==300&&noise.TreeNoiseScalePercent==25,"tree sliders cover their full supported ranges");
-        var savedNoise=noise.Encode();check(savedNoise.Length==40&&savedNoise[3]==5,"extended debug settings have a versioned checksummed 40-byte record");
-        var loadedNoise=DevConfig.Decode(savedNoise);check(loadedNoise.TreeNoiseStrengthPercent==300&&loadedNoise.TreeNoiseScalePercent==25,"both tree settings restore independently after a save");
-        noise.Reset(DevConfig.TreeNoiseStrength);noise.Reset(DevConfig.TreeNoiseScale);check(noise.TreeNoiseStrengthPercent==100&&noise.TreeNoiseScalePercent==100,"Z/reset restores the original appearance");
-        savedNoise[32]^=1;rejected=false;try{DevConfig.Decode(savedNoise);}catch(IOException){rejected=true;}check(rejected,"the new scale byte is protected by the checksum");
-        noise.Values[DevConfig.TreeNoiseStrength]=31;rejected=false;try{noise.Encode();}catch(InvalidOperationException){rejected=true;}check(rejected,"unsupported strength cannot be saved");
-        noise.Values[DevConfig.TreeNoiseStrength]=10;noise.Values[DevConfig.TreeNoiseScale]=16;rejected=false;try{noise.Encode();}catch(InvalidOperationException){rejected=true;}check(rejected,"unsupported scale cannot be saved");
+        var fixedDefaults=new DevConfig();
+        check(fixedDefaults.RuntimeMode==4,"productive waits default off and trust frame clear defaults on");
+        foreach(int option in new[]{1,4,5,6,9,10,14,15,20,27,28}){
+            int beforeOption=fixedDefaults.Values[option];
+            fixedDefaults.Adjust(option,1);fixedDefaults.Reset(option);
+            check(!DevConfig.IsSetting(option)&&fixedDefaults.Values[option]==beforeOption,"retired settings cannot be selected or changed");
+        }
         byte[] off=LowPolyTree.DetailTexture(0),normal=LowPolyTree.DetailTexture(),strong=LowPolyTree.DetailTexture(300);
         TexturePixels.Validate(off);TexturePixels.Validate(strong);
         check(off.Skip(32).All(v=>v==255),"zero strength is an identity modulation at every mip level");

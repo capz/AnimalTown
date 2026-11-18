@@ -1,12 +1,12 @@
 namespace AnimalTown;
 
 // A separate constant-colour image at each native mip lets GX reveal the LOD
-// it actually samples. Dimensions/levels match the real floor; no distance
-// estimate or nearest-mip switch replaces the normal trilinear sampler.
+// transition at LOD 0.5. The diagnostic sampler interpolates across the same
+// LOD at which the ordinary nearest-mip sampler switches.
 public static class GroundMipPalette
 {
-    public const int Levels=7;
-    private static readonly int[] colors={0x46ac,0xff28,0xfc66,0xea4b,0xab3d,0x357d,0xef7d};
+    public const int Levels=2;
+    private static readonly int[] colors={0x46ac,0xff28};
     public static uint Color(int level)
     {
         if((uint)level>=Levels)throw new ArgumentOutOfRangeException(nameof(level));

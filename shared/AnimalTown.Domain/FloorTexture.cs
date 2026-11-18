@@ -14,9 +14,16 @@ public static class FloorTexture
         // Cooked ground chains are already in GX layout, including the authored
         // base and its filtered levels. Upload them without another lossy pass.
         int sourceFormat=TexturePixels.Int(source,8);
-        if(fullMipChain&&w==sw&&h==sh&&TexturePixels.Int(source,4)==2&&(sourceFormat==14||sourceFormat==4)){
-            int bytes=MipLayout(w,h,sourceFormat,GroundMipLevels,out int levels);
-            if(TexturePixels.Int(source,24)==levels&&source.Length==32+bytes)return source;
+        if(w==sw&&h==sh&&TexturePixels.Int(source,4)==2&&(sourceFormat==14||sourceFormat==4)){
+            int requested=fullMipChain?GroundMipLevels:MaximumMipLevels;
+            int bytes=MipLayout(w,h,sourceFormat,requested,out int levels);
+            int sourceLevels=TexturePixels.Int(source,24);
+            if(sourceLevels>=levels){
+                if(sourceLevels==levels&&source.Length==32+bytes)return source;
+                var payload=new byte[bytes];
+                Array.Copy(source,32,payload,0,bytes);
+                return Package(payload,w,h,sourceFormat,levels);
+            }
         }
         var rgba=new byte[w*h*4];TexturePixels.Resample(source,0,0,sw,sh,rgba,w,h);
         return Encode(rgba,w,h,fullMipChain);

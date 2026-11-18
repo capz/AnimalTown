@@ -4,6 +4,20 @@ internal static class DebugWeatherChecks
 {
     internal static void Run(Action<bool,string> check)
     {
+        foreach(var policy in new[]{(Season:2,Days:1,Showers:4),(Season:1,Days:3,Showers:1),(Season:0,Days:3,Showers:2),(Season:3,Days:1,Showers:0)}){
+            int minutes=0,starts=0;bool previous=false;
+            for(int t=0;t<policy.Days*1440;t++){
+                bool rain=DebugWeather.ScheduledRain(30,t/1440,t%1440,policy.Season);
+                if(rain){minutes++;if(!previous)starts++;}
+                previous=rain;
+            }
+            check(starts==policy.Showers&&minutes==policy.Showers*35,"weather meets each seasonal cadence and exact shower length");
+        }
+        check(Enumerable.Range(0,1440).Any(t=>DebugWeather.ScheduledRain(30,12,t,2)!=DebugWeather.ScheduledRain(31,12,t,2)),"town seeds vary shower starts");
+        var snow=new DebugWeather();snow.Update(30,0,0,3);
+        check(snow.Snowing(0)&&!snow.Snowing(1)&&!snow.Raining(0),"winter snowfall is outdoors only");
+        snow.SnowEnabled=false;
+        check(!snow.Snowing(0)&&new DebugWeather().SnowEnabled,"snowfall toggle is session-only");
         var weather=new DebugWeather();
         check(!weather.Raining(0)&&!weather.RoughOcean(0),"new sessions never enable weather previews");
         weather.RoughOceanWhenRaining=true;

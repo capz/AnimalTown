@@ -20,7 +20,7 @@ internal sealed partial class TitleScreen : IDisposable,Hypercube.GameCube.IFram
     private readonly DevConfig config;
     private readonly UserOptions options;
     private UiFont? optionsHeading;
-    private readonly int[] rows=new int[DevConfig.SettingCount+1];
+    private readonly int[] rows=new int[DevConfig.SettingCount];
     private int selected,debugSelected,optionRow,optionChoice;
     private bool debugOpen,dirty,optionsOpen,confirmDelete,deleteFocus,deleting;
     private string optionsStatus="";
@@ -41,7 +41,6 @@ internal sealed partial class TitleScreen : IDisposable,Hypercube.GameCube.IFram
         for(int i=1;i<DevConfig.Count;i++)if(DevConfig.IsSetting(i)&&i!=DevConfig.FullResolutionAaIndex&&i!=DevConfig.GroundMipBandsIndex){
             rows[at++]=i;if(i==23)rows[at++]=DevConfig.GroundMipBandsIndex;
         }
-        rows[at]=DevConfig.Count;
     }
     internal static bool Run(DevConfig config,UserOptions options)
     {
@@ -67,7 +66,6 @@ internal sealed partial class TitleScreen : IDisposable,Hypercube.GameCube.IFram
                 if(direction==MenuNavigation.Down)title.debugSelected=(title.debugSelected+1)%title.rows.Length;
                 if(p.A.WasPressed||direction==MenuNavigation.Left||direction==MenuNavigation.Right||p.X.WasPressed){
                     int row=title.rows[title.debugSelected];
-                    if(row==DevConfig.Count){if(p.X.WasPressed)UiNoiseSettings.Reset();else UiNoiseSettings.Adjust(direction==MenuNavigation.Left?-1:1);continue;}
                     if(row==DevConfig.FullResolutionAaIndex){
                         if(!p.X.WasPressed&&VideoOptions.ToggleFullResolutionAa(config)){title.dirty=true;title.Save();}
                         title.status=VideoOptions.Status;continue;
@@ -286,27 +284,20 @@ internal sealed partial class TitleScreen : IDisposable,Hypercube.GameCube.IFram
     }
     private string Label(int row)
     {
-        if(row==DevConfig.Count)return "UI bubble noise: "+UiNoiseSettings.Percent+"% (session)";
         int value=config.Values[row];string toggle=value==0?"Off":"On";
         switch(row){
             case DevConfig.FullResolutionAaIndex:return "Full-resolution AA: "+(VideoOptions.FullResolutionAa?"On":"Off")+(VideoOptions.AaSaveFailed?" (not saved)":" (saved)");
             case 0:return "Performance display: "+toggle;
-            case 1:return "Model drawing: "+(value==1?"GX indexed":"Direct comparison");
             case 2:return "UV island colors: "+toggle;case 3:return "UV island outlines: "+toggle;
-            case 4:return "Batched drawing: "+toggle;case 5:return "Batched text: "+toggle;
-            case 6:return "Actor rim lighting: "+toggle;
-            case 9:return "Cliff preview: "+toggle;case 10:return "Water inspection: "+value+" / 5";
-            case 11:return "Frame pacing: "+(value==0?"Yield":"Uncapped");case 12:return "Productive waits: "+toggle;case 13:return "Reuse frame clear: "+toggle;
+            case 11:return "Frame pacing: "+(value==0?"Yield":"Uncapped");case 12:return "Productive waits: "+toggle;case 13:return "Trust frame clear: "+toggle;
             case 16:return "Rain preview: "+toggle;case 17:return "Rough ocean in rain: "+toggle;
             case 18:return "Season preview: "+(value==0?"Auto":TerrainTiles.SeasonName(value-1));
-            case 19:return "Villager attention bubbles: "+toggle;case 20:return "Rim intensity: "+value+"%";
+            case 19:return "Villager attention bubbles: "+toggle;
             case 21:return "SDK performance overlay: "+toggle;case 22:return "Ground mipmaps: "+toggle;
             case 23:return "Ground mip distance: "+(value==0?"Auto":value+" squares");
             case DevConfig.GroundMipBandsIndex:return "Ground mip bands: "+toggle;
             case 24:return "Freeze landscape motion: "+toggle;case 25:return "Recreate terrain meshes: "+toggle;
             case 26:return "Legacy ground ring: "+toggle;
-            case DevConfig.TreeNoiseStrength:return "Tree noise strength: "+config.TreeNoiseStrengthPercent+"%";
-            case DevConfig.TreeNoiseScale:return "Tree noise scale: "+config.TreeNoiseScalePercent+"%";
             default:return "discard terrain cache when indoors: "+toggle;
         }
     }

@@ -59,6 +59,18 @@ internal static class PathChecks
         for(int i=0;i<5;i++)t.Traffic.Enter(t,21,40);
         t.Traffic.Visits[40*Town.Width+20]=100;t.Traffic.Enter(t,20,40);
         check(t.Traffic.OpacityRevision==opacityRevision,"unselected traffic and full-opacity traffic do not dirty the mask");
+        s=Flat();t=s.Town;var snow=t.Traffic.Snow;
+        int snowCell=40*Town.Width+6,shift=(snowCell%4)*2;
+        t.Traffic.Traverse(t,5.8f,40.2f,6.2f,40.2f);
+        check(snow.Revision==0,"nonwinter travel leaves snow untouched");
+        snow.SetWinter(true);
+        for(int visit=1;visit<=4;visit++){
+            t.Traffic.Traverse(t,5.8f,40.2f,6.2f,40.2f);
+            t.Traffic.Traverse(t,6.2f,40.2f,6.6f,40.5f);
+            check(((snow.Packed[snowCell/4]>>shift)&3)==Math.Min(3,visit),"snow advances on tile entry and caps after three visits");
+        }
+        snow.SetWinter(false);snow.SetWinter(true);
+        check(snow.Packed.All(v=>v==0),"a new winter starts with fresh snow");
         s=Flat();t=s.Town;t.Traffic.Traverse(t,5.1f,40.2f,8.2f,40.2f);
         check(t.Traffic.Visits[40*Town.Width+5]==0&&t.Traffic.Visits[40*Town.Width+6]==1&&t.Traffic.Visits[40*Town.Width+7]==1&&t.Traffic.Visits[40*Town.Width+8]==1,"all entered cells are recorded, not the departure cell");
         t.Traffic.Traverse(t,8.2f,40.2f,8.9f,40.8f);check(t.Traffic.Visits[40*Town.Width+8]==1,"standing and walking within a tile add no visits");

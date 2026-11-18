@@ -7,15 +7,8 @@ internal static class RenderDebugChecks
         var preview=new RenderDebugOptions();var state=new GameState(73);var before=SaveCodec.Encode(state);
         GroundMipChecks(check,preview);
         GroundMipPaletteChecks(check);
-        var config=new DevConfig();var configBefore=config.Encode();
-        UiNoiseSettings.Reset();check(UiNoiseSettings.Percent==10,"UI grain starts at ten percent");
-        for(int n=0;n<100;n++)UiNoiseSettings.Adjust(-1);
-        check(UiNoiseSettings.Percent==0,"UI grain can be disabled without wrapping");
-        for(int n=0;n<100;n++)UiNoiseSettings.Adjust(1);
-        check(UiNoiseSettings.Percent==300,"UI grain intensity remains bounded at 300 percent");
-        check(configBefore.SequenceEqual(config.Encode())&&before.SequenceEqual(SaveCodec.Encode(state)),"UI grain intensity changes neither debug settings nor town save bytes");
-        UiNoiseSettings.Reset();check(UiNoiseSettings.Percent==10,"Z/reset returns UI grain to ten percent");
-        check(preview.SeasonOverride==-1&&!preview.ForceAttention&&preview.RimPercent==100,"render previews start automatic, with attention off and original rim strength");
+        check(UiNoiseSettings.DefaultPercent==10&&RenderDebugOptions.DefaultRimPercent==100,"UI grain and villager rim strength are fixed");
+        check(preview.SeasonOverride==-1&&!preview.ForceAttention,"render previews start automatic with attention off");
         for(int month=-24;month<36;month++){
             check(preview.EffectiveSeason(month)==TerrainTiles.Season(month),"automatic preview follows the existing calendar and negative-month wrapping");
             for(int season=0;season<4;season++){
@@ -25,12 +18,7 @@ internal static class RenderDebugChecks
             }
             preview.CycleSeason();check(preview.SeasonOverride==-1,"cycling winter restores automatic season selection");
         }
-        for(int n=0;n<100;n++)preview.AdjustRim(-1);
-        check(preview.RimPercent==0,"repeated decreases clamp at zero rather than wrapping");
-        for(int n=0;n<40;n++){preview.AdjustRim(1);check(preview.RimPercent==(n+1)*5,"rim intensity supports precise five-percent steps");}
-        preview.AdjustRim(1);check(preview.RimPercent==200,"maximum intensity remains bounded");
-        preview.ResetRim();check(preview.RimPercent==100,"reset restores the original TEV contribution");
-        preview.ForceAttention=true;preview.CycleSeason();preview.AdjustRim(1);preview.GroundMipmaps=false;preview.AdjustGroundMipDistance(1);
+        preview.ForceAttention=true;preview.CycleSeason();preview.GroundMipmaps=false;preview.AdjustGroundMipDistance(1);
         check(before.SequenceEqual(SaveCodec.Encode(state)),"render previews never change serialized player, calendar, requests or terrain state");
         check(RenderDebugOptions.AttentionHeight(1.7f)>RenderDebugOptions.AttentionHeight(1)&&RenderDebugOptions.AttentionHeight(float.NaN)==3.6f,"attention anchor follows rig height and has a finite missing-rig fallback");
         float previousRadius=360f/6.28318530718f;
@@ -39,7 +27,7 @@ internal static class RenderDebugChecks
         float previousY=previousRadius*((float)Math.Cos(12/previousRadius)-1);
         check(p.Y<previousY&&p.Z>0,"stronger curvature bends downward while preserving logical north/south orientation");
         long allocated=GC.GetAllocatedBytesForCurrentThread();
-        for(int n=0;n<1000;n++){preview.AdjustRim(1);preview.AdjustRim(-1);preview.CycleSeason();preview.EffectiveSeason(n);preview.AdjustGroundMipDistance(1);preview.ResetGroundMipDistance();RenderDebugOptions.GroundMipBias(256,256,n%11);}
+        for(int n=0;n<1000;n++){preview.CycleSeason();preview.EffectiveSeason(n);preview.AdjustGroundMipDistance(1);preview.ResetGroundMipDistance();RenderDebugOptions.GroundMipBias(256,256,n%11);}
         check(GC.GetAllocatedBytesForCurrentThread()==allocated,"preview adjustments allocate no managed frame data");
     }
     private static void GroundMipChecks(Action<bool,string> check,RenderDebugOptions preview)
@@ -58,9 +46,11 @@ internal static class RenderDebugChecks
             // the centreline calibration, rather than repeating its Jacobian.
             double Project(float z){var p=CylinderWorld.Surface(z,0);double dy=p.Y-CylinderWorld.CameraHeight,dz=p.Z-CylinderWorld.CameraBack;return 240/RenderView.TanY*(dy*-RenderView.ForwardZ+dz*RenderView.ForwardY)/(dy*RenderView.ForwardY+dz*RenderView.ForwardZ);}
             double pixelsPerMetre=Math.Abs((Project(-d+.01f)-Project(-d-.01f))/.02);
-            check(Math.Abs(Math.Log2(128/pixelsPerMetre)+bias-1)<.01,"mip 1 reference follows the projected cylinder at the selected ground-square distance");
+            double expected=Math.Clamp(.5-Math.Log2(128/pixelsPerMetre),-4,3.99);
+            check(Math.Abs(expected-bias)<.01,"the mip switch follows the projected cylinder within the GX bias range");
         }
-        check(RenderDebugOptions.GroundMipBias(256,256,0)==0&&RenderDebugOptions.GroundMipBias(256,256,int.MinValue)==0&&RenderDebugOptions.GroundMipBias(256,256,int.MaxValue)==previous,"Auto and extreme reference inputs remain bounded");
+        float auto=RenderDebugOptions.GroundMipBias(256,256,4);
+        check(RenderDebugOptions.GroundMipBias(256,256,0)==auto&&RenderDebugOptions.GroundMipBias(256,256,int.MinValue)==auto&&RenderDebugOptions.GroundMipBias(256,256,int.MaxValue)==previous,"Auto and extreme reference inputs remain bounded");
         var rgba=new byte[256*256*4];for(int i=0;i<256*256;i++){byte v=(byte)(i%2*255);rgba[i*4]=rgba[i*4+1]=rgba[i*4+2]=v;rgba[i*4+3]=255;}
         var source=Package(TexturePixels.Encode(rgba,256,256,4),256,256,4);uint hash=TexturePixels.Hash(source);
         var full=FloorTexture.Prepare(source,fullMipChain:true);
@@ -78,7 +68,9 @@ internal static class RenderDebugChecks
         check(TexturePixels.Int(narrow,24)==5,"rectangular ground chain stops when its shorter axis reaches four pixels");
         var tiny=new byte[4*4*4];for(int i=3;i<tiny.Length;i+=4)tiny[i]=255;
         check(TexturePixels.Int(FloorTexture.Prepare(Package(TexturePixels.Encode(tiny,4,4,4),4,4,4),fullMipChain:true),24)==1,"minimum ground texture retains a single valid level");
-        check(TexturePixels.Int(FloorTexture.Prepare(source),24)==2,"soil and other existing two-level callers retain their policy");
+        var resident=FloorTexture.Prepare(full);
+        check(TexturePixels.Int(resident,24)==2&&resident.Length==32+40960,"only the full and half detail levels are resident");
+        check(resident.Skip(32).SequenceEqual(full.Skip(32).Take(40960)),"the resident ground retains its exact cooked top and half-size pixels");
     }
     private static byte[] Package(byte[] payload,int w,int h,int format)
     {
@@ -87,7 +79,7 @@ internal static class RenderDebugChecks
     }
     private static void GroundMipPaletteChecks(Action<bool,string> check)
     {
-        foreach(var shape in new[]{(256,256,7),(64,64,5),(128,64,5),(4,4,1),(256,256,1)}){
+        foreach(var shape in new[]{(256,256,2),(64,64,2),(128,64,2),(4,4,1),(256,256,1)}){
             var texture=GroundMipPalette.Texture(shape.Item1,shape.Item2,shape.Item3);
             TexturePixels.Validate(texture);
             check(TexturePixels.Width(texture)==shape.Item1&&TexturePixels.Height(texture)==shape.Item2&&TexturePixels.Int(texture,24)==shape.Item3,
@@ -104,8 +96,8 @@ internal static class RenderDebugChecks
             }
             check(TexturePixels.Hash(texture)==hash,"diagnostic inspection never mutates its source package");
         }
-        check(GroundMipPalette.Texture(256,256,7).Length==32+43712&&GroundMipPalette.Texture(64,64,5).Length==32+2752,
-            "solid-colour diagnostic chains retain the bounded CMPR full and preview budgets");
+        check(GroundMipPalette.Texture(256,256,2).Length==32+40960&&GroundMipPalette.Texture(64,64,2).Length==32+2560,
+            "two-level diagnostic chains retain the bounded CMPR full and preview budgets");
         foreach(var shape in new[]{(0,64,1),(2,64,1),(63,64,1),(512,64,1),(64,64,0),(64,64,6),(256,256,8)}){
             bool rejected=false;try{GroundMipPalette.Texture(shape.Item1,shape.Item2,shape.Item3);}catch(ArgumentOutOfRangeException){rejected=true;}
             check(rejected,"invalid diagnostic shapes cannot change the GX mip footprint or read beyond their chain");

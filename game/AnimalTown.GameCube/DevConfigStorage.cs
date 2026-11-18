@@ -29,6 +29,6 @@ internal static class DevConfigStorage
     {
         RuntimeOptions.Apply(config.RuntimeMode);FrameProfile.Enabled=config.Values[0]!=0;
         Dolphin.Diagnostics.DebugOverlay.PerformanceVisible=config.Values[21]!=0;
-        UiFont.Batched=config.Values[4]!=0&&config.Values[5]!=0;
+        UiFont.Batched=true;
     }
 }

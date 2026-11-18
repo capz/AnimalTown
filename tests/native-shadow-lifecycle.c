@@ -1,5 +1,4 @@
-/* Exercise the actual native bridge with a charged, single-owner SDK buffer.
- * Draft cancellation must release it and leave the next town's casters empty. */
+/* Exercise charged shadow and snow storage, including session teardown. */
 #include <assert.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -7,21 +6,30 @@
 #include "dnd_timing.h"
 #include "../tools/native-shadow-union.h"
 
-static void *allocation;
+static void *allocations[2];
+static int allocation_bytes[2];
 static int allocated,live,active,release_error,create_error,reset_count,invalidations;
 static int field_flushes,page_flushes,snow_flushes,texture_publications;
 bool dnd_device_active(void){return active!=0;}
 int dnd_buffer_create(int bytes,int alignment){
-    assert(!live&&alignment==32);
+    assert(live<2&&alignment==32);
     if(create_error)return 0;
-    allocation=aligned_alloc((size_t)alignment,(size_t)bytes);assert(allocation);
-    allocated=bytes;live=1;return 101;
+    int slot=allocations[0]?1:0;
+    allocations[slot]=aligned_alloc((size_t)alignment,(size_t)bytes);assert(allocations[slot]);
+    memset(allocations[slot],0,(size_t)bytes);
+    allocation_bytes[slot]=bytes;allocated+=bytes;live++;
+    return 101+slot;
 }
-uint64_t dnd_buffer_address(int token,int offset){assert(token==101&&offset==0&&live);return (uintptr_t)allocation;}
+uint64_t dnd_buffer_address(int token,int offset){
+    assert(token>=101&&token<=102&&offset==0&&allocations[token-101]);
+    return (uintptr_t)allocations[token-101];
+}
 int dnd_draw_release(int token){
-    assert(token==101&&live&&!active);
+    assert(token>=101&&token<=102&&allocations[token-101]&&!active);
     if(release_error)return -1;
-    free(allocation);allocation=NULL;allocated=live=0;return 0;
+    int slot=token-101;
+    free(allocations[slot]);allocations[slot]=NULL;allocated-=allocation_bytes[slot];live--;
+    return 0;
 }
 int dnd_draw_live(void){return live;}
 int dnd_draw_total_bytes(void){return allocated;}
@@ -29,7 +37,7 @@ void dnd_draw_backend_flush(void *data,int bytes,int invalidate){
     assert(data&&!invalidate);
     if(bytes==SU_TERRAIN_BYTES)field_flushes++;
     else if(bytes==SU_BYTES)page_flushes++;
-    else{assert(bytes==2*SU_BYTES||bytes==2*SU_TERRAIN_BYTES);snow_flushes++;}
+    else{assert(bytes==32||bytes==SU_SNOW_BYTES);snow_flushes++;}
 }
 void dnd_draw_backend_publish_texture(void){texture_publications++;}
 void dnd_draw_backend_invalidate_cache(void){invalidations++;}
@@ -102,108 +110,45 @@ static void light_gain_checks(void){
     puts("Shadow bridge lighting: 256 gain values, room transitions and one layout change passed");
 }
 
-/* Town.Height in the managed domain. Treat every tile as a snow receiver
- * here to exercise the full field, including where a real town has water. */
-enum { TOWN_HEIGHT=120, PAGE_SPAN=8, PAGE_COLUMNS=SU_WORLD_WIDTH/PAGE_SPAN,
-       PAGE_ROWS=TOWN_HEIGHT/PAGE_SPAN, TOWN_PAGES=PAGE_COLUMNS*PAGE_ROWS };
-
-static unsigned rgb565_depth(const uint8_t *rgb,const uint8_t *ia4,int x,int z,int width){
-    int offset=su_rgb565_offset(x,z,width);
-    unsigned texel=((unsigned)rgb[offset]<<8)|rgb[offset+1];
-    unsigned source=width==SU_SIDE?ia4[su_offset(x,z)]:ia4[su_terrain_offset(x,z)];
-    assert((texel>>11)==((source&15)*31+7)/15);
-    assert((texel&31)==((source>>4)*31+7)/15);
-    return (texel>>5)&63;
+static uint8_t snow_sample(int x,int z){
+    return snow_pixels[((z/4+1)*SU_SNOW_BLOCKS+x/8)*32+z%4*8+x%8];
 }
-
-static void scan_town(bool *seen,int expected_detailed){
-    int detailed=0;
-    assert(animaltown_shadows_scope(4)==4);
-    for(int pz=0;pz<PAGE_ROWS;pz++)for(int px=0;px<PAGE_COLUMNS;px++){
-        float origin[6];
-        const uint8_t *rgb=animaltown_shadows_page(px*PAGE_SPAN+4,pz*PAGE_SPAN+4,origin);
-        assert(rgb);
-        if(origin[3]==SU_SIDE){
-            int slot=su_find(shadows,px,pz);
-            assert(slot>=0&&rgb==snow_pixels+2*slot*SU_BYTES);
-            const uint8_t *ia4=shadows->pixels+slot*SU_BYTES;
-            assert(origin[0]==px*PAGE_SPAN&&origin[1]==pz*PAGE_SPAN);
-            for(int z=0;z<SU_SIDE;z++)for(int x=0;x<SU_SIDE;x++){
-                float local_x=(x-.5f)*PAGE_SPAN/SU_INNER;
-                float local_z=(z-.5f)*PAGE_SPAN/SU_INNER;
-                /* Pages share an exact 8 m repeat. Use local coordinates
-                 * to avoid world-coordinate rounding at quantization ties. */
-                assert(rgb565_depth(rgb,ia4,x,z,SU_SIDE)==su_snow_depth(local_x,local_z));
-            }
-            detailed++;
-            seen[pz*PAGE_COLUMNS+px]=true;
-        }else{
-            assert(rgb==snow_coverage()&&origin[3]==SU_TERRAIN_WIDTH&&origin[5]==SU_TERRAIN_HEIGHT);
-            for(int z=pz*PAGE_SPAN;z<(pz+1)*PAGE_SPAN;z++)for(int x=px*PAGE_SPAN;x<(px+1)*PAGE_SPAN;x++)
-                assert(rgb565_depth(rgb,shadows->coverage,x+1,z+1,SU_TERRAIN_WIDTH)==su_snow_depth(x+.5f,z+.5f));
-        }
-    }
-    assert(detailed==expected_detailed);
-}
-
 static void town_snow_checks(void){
-    enum { JUNCTION_COLUMNS=PAGE_COLUMNS/2, JUNCTIONS=JUNCTION_COLUMNS*((PAGE_ROWS+1)/2) };
-    bool seen[TOWN_PAGES]={false};
-    DndArray *uv=pixels(12*sizeof(float)),*bounds=pixels(4*sizeof(float)),*center=pixels(2*sizeof(float));
-    DndArray *lamps=pixels(8*sizeof(float));
-    uv->element_size=bounds->element_size=center->element_size=sizeof(float);
-    uv->length=12;bounds->length=4;center->length=2;
-    /* The preceding gain fixture deliberately keeps an actor shadow alive. */
-    ((float*)center->data)[0]=((float*)center->data)[1]=0;
-    for(int slot=0;slot<SU_CASTERS;slot++)assert(animaltown_shadows_active(slot,0,center)==1);
-    lamps->element_size=sizeof(float);lamps->length=8;
-    const float sources[]={6.5f,4.5f,4,255,118.5f,116.5f,4,255};
-    memcpy(lamps->data,sources,sizeof(sources));
-    assert(animaltown_shadows_lights(lamps,2,255)==1);
-    free(lamps);
-    assert(animaltown_shadows_prepare(1000)==1);
-    assert(su_field_channel(shadows->coverage,6.5f,4.5f,1)==255);
-    assert(su_field_channel(shadows->coverage,118.5f,116.5f,1)==255);
-    const float square[]={-1,-1,1,-1,1,1,-1,-1,1,1,-1,1};
-    const int reserved=animaltown_shadows_stats(10);
-    scan_town(seen,0);
-    for(int first=0;first<JUNCTIONS;first+=SU_CASTERS){
-        assert(animaltown_shadows_begin(0,1,0)==1);
-        int count=JUNCTIONS-first;
-        if(count>SU_CASTERS)count=SU_CASTERS;
-        for(int slot=0;slot<SU_CASTERS;slot++){
-            int junction=first+slot;
-            float x=PAGE_SPAN*(2*(junction%JUNCTION_COLUMNS)+1);
-            float z=PAGE_SPAN*(2*(junction/JUNCTION_COLUMNS)+1);
-            float b[]={x-1,z-1,x+1,z+1},c[]={x,z},verts[12];
-            for(int i=0;i<12;i++)verts[i]=square[i]+c[i%2];
-            memcpy(uv->data,verts,sizeof(verts));
-            memcpy(bounds->data,b,sizeof(b));
-            memcpy(center->data,c,sizeof(c));
-            assert(animaltown_shadows_mesh(slot,slot<count?6:0,slot<SU_STATIC?0:4,uv,bounds)==1);
-            assert(animaltown_shadows_active(slot,slot<count,center)==1);
-        }
-        /* Let the normal one-static-page-per-frame bridge publish every page.
-         * The fixture clock gives deterministic time to the raster work. */
-        for(int frame=0;frame<=count*4;frame++){
-            assert(animaltown_shadows_prepare(1000)==1);
-            assert(animaltown_shadows_stats(9)==1&&animaltown_shadows_stats(10)==reserved);
-        }
-        assert(animaltown_shadows_stats(0)==count*4);
-        scan_town(seen,first==0?count*4:TOWN_PAGES-first*4);
-        if(first==0){
-            float origin[6];
-            assert(animaltown_shadows_scope(5)==5);
-            assert(animaltown_shadows_page(4,4,origin)==snow_coverage());
-            assert(origin[3]==SU_TERRAIN_WIDTH&&origin[5]==SU_TERRAIN_HEIGHT);
-        }
-    }
-    for(int page=0;page<TOWN_PAGES;page++)assert(seen[page]);
-    free(uv);free(bounds);free(center);
-    printf("Town snow: all %d cells verified on fallback, all %d regions visited with detail, %d detailed pages at peak\n",
-           SU_WORLD_WIDTH*TOWN_HEIGHT,TOWN_PAGES,SU_CASTERS*4);
-    printf("Town snow memory: %zu bytes IA4 baseline, %d bytes charged in one buffer (+%d), %zu bytes of static depth templates\n",
-           su_storage_bytes(),reserved,SU_SNOW_BYTES,sizeof(snow_page_depth)+sizeof(snow_field_depth));
+    DndArray *visits=pixels(SU_SNOW_PACKED);
+    uint8_t *field=(uint8_t*)visits->data;
+    memset(field,0,SU_SNOW_PACKED);
+    assert(animaltown_shadows_snow(visits,0,1)==1&&!animaltown_snow_mask()&&live==1);
+    int x=7,z=41,cell=z*SU_WORLD_WIDTH+x,shift=(cell%4)*2;
+    field[cell/4]=(uint8_t)(1<<shift);
+    create_error=1;assert(animaltown_shadows_snow(visits,1,1)==0&&!snow_pixels);create_error=0;
+    assert(animaltown_shadows_snow(visits,1,1)==1&&live==2);
+    assert(snow_sample(x*4+1,z*4+1)>0&&snow_sample(x*4+1,z*4+1)<191);
+    assert(snow_sample((x-2)*4,z*4)==0&&snow_sample((x+2)*4,z*4)==0);
+    int before=snow_flushes;
+    assert(animaltown_shadows_snow(visits,1,1)==1&&snow_flushes==before);
+    field[cell/4]=(uint8_t)(2<<shift);
+    assert(animaltown_shadows_snow(visits,2,1)==1&&snow_flushes-before<=13);
+    assert(snow_sample(x*4+1,z*4+1)>=191&&snow_sample(x*4,z*4)<191);
+    field[cell/4]=(uint8_t)(3<<shift);
+    assert(animaltown_shadows_snow(visits,3,1)==1);
+    for(int j=0;j<4;j++)for(int i=0;i<4;i++)assert(snow_sample(x*4+i,z*4+j)==255);
+    assert(snow_sample((x+1)*4,z*4+1)>0&&snow_sample((x+1)*4,z*4+1)<191);
+    assert(snow_sample((x+1)*4+1,z*4+1)==0);
+
+    // An entirely travelled town has one bounded, continuous coverage field.
+    memset(field,255,SU_SNOW_PACKED);
+    assert(animaltown_shadows_snow(visits,4,1)==1);
+    for(int row=0;row<SU_SNOW_HEIGHT*4;row++)for(int column=0;column<SU_SNOW_SIDE;column++)
+        assert(snow_sample(column,row)==255);
+    int reserved=animaltown_shadows_stats(10);
+    assert(reserved==(int)su_storage_bytes()+SU_SNOW_BYTES);
+    memset(field,0,SU_SNOW_PACKED);
+    assert(animaltown_shadows_snow(visits,5,1)==1&&snow_sample(x*4+1,z*4+1)==0);
+    release_error=1;assert(animaltown_shadows_snow(visits,5,0)==0&&live==2);release_error=0;
+    assert(animaltown_shadows_snow(visits,5,0)==1&&!animaltown_snow_mask()&&live==1);
+    free(visits);
+    printf("Town snow: %d cells, three wear levels, %d charged bytes in winter; ordinary shadows use %zu bytes\n",
+           SU_WORLD_WIDTH*SU_SNOW_HEIGHT,reserved,su_storage_bytes());
 }
 
 int main(void){
@@ -228,7 +173,7 @@ int main(void){
     assert(animaltown_shadows_cloud(offset)==1&&shadows->cloud_x==256&&shadows->cloud_scale==1);
     offset->elements_are_references=1;assert(animaltown_shadows_cloud(offset)==0);offset->elements_are_references=0;
     offset->length=5;assert(animaltown_shadows_cloud(offset)==0);free(offset);
-    assert(animaltown_shadows_stats(10)==(int)su_storage_bytes()+SU_SNOW_BYTES);
+    assert(animaltown_shadows_stats(10)==(int)su_storage_bytes());
     /* Repeated init does not allocate a second coverage cache. */
     assert(animaltown_shadows_init(atlas,circle,cloud)==1&&live==1);
     float origin[6];assert(animaltown_shadows_begin(0,1,0)==1);
@@ -242,14 +187,7 @@ int main(void){
     assert(animaltown_shadows_prepare(1000)==1);
     assert(animaltown_shadows_page(2,2,origin)==shadows->coverage&&origin[2]==254&&origin[3]==256&&origin[4]==126&&origin[5]==128);
     assert(animaltown_shadows_scope(4)==4);
-    const uint8_t *rgb=animaltown_shadows_page(2,2,origin);
-    assert(rgb==snow_coverage());
-    int x=6,z=5,at=su_rgb565_offset(x,z,SU_TERRAIN_WIDTH);
-    unsigned texel=(unsigned)rgb[at]*256+rgb[at+1];
-    unsigned ia4=shadows->coverage[su_terrain_offset(x,z)];
-    assert((texel>>11)==((ia4&15)*31+7)/15);
-    assert((texel&31)==((ia4>>4)*31+7)/15);
-    assert(((texel>>5)&63)==su_snow_depth(x-.5f,z-.5f)&&((texel>>5)&63)>0);
+    assert(animaltown_shadows_page(2,2,origin)==shadows->coverage);
     assert(animaltown_shadows_scope(1)==1);
     assert(su_terrain_sample(shadows,2,2)==su_shadow(su_pack(33,0))); /* One texel/m, including the gutter. */
     light_gain_checks();

@@ -8,18 +8,18 @@ internal static class UiNoise
     private static int prepared=-1,depth;
     internal static void Prepare()
     {
-        int percent=UiNoiseSettings.Percent;if(prepared==percent)return;
+        int percent=UiNoiseSettings.DefaultPercent;if(prepared==percent)return;
         if(NativePrepare(percent==0?null:LowPolyTree.DetailTexture(percent,uniform:true))!=0)throw new InvalidOperationException("UI noise texture preparation failed");
         prepared=percent;
     }
     internal static void Begin()
     {
-        if(depth==0&&UiNoiseSettings.Percent>0&&NativeScope(1)!=0)throw new InvalidOperationException("UI noise scope failed");
+        if(depth==0&&UiNoiseSettings.DefaultPercent>0&&NativeScope(1)!=0)throw new InvalidOperationException("UI noise scope failed");
         depth++;
     }
     internal static void End()
     {
-        if(depth==1&&UiNoiseSettings.Percent>0&&NativeScope(0)!=0)throw new InvalidOperationException("UI noise scope restoration failed");
+        if(depth==1&&UiNoiseSettings.DefaultPercent>0&&NativeScope(0)!=0)throw new InvalidOperationException("UI noise scope restoration failed");
         depth--;
     }
     internal static int NativePrepare(byte[]? package)=>throw new PlatformNotSupportedException("UI noise native bridge required");

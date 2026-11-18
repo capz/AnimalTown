@@ -80,11 +80,12 @@ internal sealed class TerrainRenderer : IDisposable
     private bool appliedGroundMipmaps;
     private int appliedGroundMipDistance=-1;
     internal int RenderSeason=>season;
+    internal int SeasonAt(int month,int preview)=>TerrainTiles.Season(month,preview>=0?preview:forced);
     internal int BaseGroundSlot(GameState state,int x,int z)=>FloorStrips.BaseAt(state,data,x,z,0);
     internal int GroundSlot(GameState state,int x,int z)=>FloorStrips.BaseAt(state,data,x,z,0);
     internal Material GroundMaterial(int slot)=>mipBands.Select(slot,materials[slot]);
     internal bool SnowMaterial(int slot)=>(snowGroundMask&(1UL<<slot))!=0;
-    internal static bool SnowTile(Town town,int x,int z)=>town.Inside(x,z)&&town.At(x,z)==(int)Terrain.Grass&&TerrainElevation.Mode(town,x,z)<=TerrainElevation.Block;
+    internal static bool SnowTile(Town town,int x,int z)=>SnowWear.Covers(town,x,z);
     internal TerrainRenderer()
     {
         gallery=new TerrainWalls(soil);
@@ -128,7 +129,7 @@ internal sealed class TerrainRenderer : IDisposable
         // Only rough ocean needs the small dynamic wave patch.
         oceanWaves.Prepare(state,waterMaterial.RoughOcean,
             cliffPreview,waterMaterial.Tint(1));
-        int next=TerrainTiles.Season(month,SeasonOverride>=0?SeasonOverride:forced);bool changed=next!=season;
+        int next=SeasonAt(month,SeasonOverride);bool changed=next!=season;
         if(changed){
             string name="floor-"+TerrainTiles.SeasonName(next);data=File.ReadAllBytes(ContentPaths.Asset(name+".bin"));FloorStrips.Validate(data);
             for(int i=0;i<textures.Length;i++)if(textures[i]!=null){materials[TownPaths.Material].Texture=null;TextureCache.Release(textures[i]!);textures[i]=null;materials[i].Texture=null;}
@@ -138,7 +139,7 @@ internal sealed class TerrainRenderer : IDisposable
                 int source=FloorStrips.TextureSlot(data,i);bool neutral=FloorStrips.Read(data,4)==2&&source==0;
                 if(textures[source]==null){
                     bool preview=neutral&&groundLoad!=GroundLoad.Complete;
-                    textures[source]=TextureCache.LoadFloor(ContentPaths.Asset(preview?"floor-outdoor-neutral-64.dndtex":neutral?"floor-outdoor-neutral.dndtex":name+"-"+source+".dndtex"),repeat:neutral,fullMipChain:true);
+                    textures[source]=TextureCache.LoadFloor(ContentPaths.Asset(preview?"floor-outdoor-neutral-64.dndtex":neutral?"floor-outdoor-neutral.dndtex":name+"-"+source+".dndtex"),repeat:neutral);
                     if(preview&&groundLoad==GroundLoad.Unloaded){
                         groundLoad=GroundLoad.Preview;
                         DebugOverlay.WriteLine("GROUND PREVIEW 64 bytes "+textures[source]!.Bytes);
@@ -157,6 +158,9 @@ internal sealed class TerrainRenderer : IDisposable
             season=next;
             MaterialRevision++;
         }
+        var snow=state.Town.Traffic.Snow;
+        snow.SetWinter(season==3);
+        if(NativeShadows.Snow(snow.Packed,snow.Revision,snow.Winter?1:0)!=1)throw new InvalidOperationException("Snow mask native budget");
         bool upgraded=AdvanceGroundTexture();
         // The completed task and package arrays are out of the upgrade frame.
         if(upgraded)AnimalTown.GameCube.NativeTexturePages.Collect();
@@ -165,7 +169,7 @@ internal sealed class TerrainRenderer : IDisposable
                 var texture=textures[source]!.Pages[0];
                 var wrap=FloorStrips.Read(data,4)==2&&source==0?TextureWrapMode.Repeat:TextureWrapMode.Mirror;
                 bool mip=GroundMipmaps&&texture.MipLevels>1;
-                texture.ConfigureSampler(wrap,wrap,mip?TextureMinFilter.LinearMipmapLinear:TextureMinFilter.Linear,TextureMagFilter.Linear,mip?RenderDebugOptions.GroundMipBias(texture.Width,texture.Height,GroundMipDistance):0);
+                texture.ConfigureSampler(wrap,wrap,mip?TextureMinFilter.LinearMipmapNearest:TextureMinFilter.Linear,TextureMagFilter.Linear,mip?RenderDebugOptions.GroundMipBias(texture.Width,texture.Height,GroundMipDistance):0);
             }
             appliedGroundMipmaps=GroundMipmaps;appliedGroundMipDistance=GroundMipDistance;
         }
@@ -283,7 +287,7 @@ internal sealed class TerrainRenderer : IDisposable
             TexturePixels.Validate(source);
             if(TexturePixels.Width(source)!=FloorTexture.Maximum||TexturePixels.Height(source)!=FloorTexture.Maximum)
                 throw new InvalidDataException("Full ground texture must be 256x256");
-            full=TextureCache.LoadFloor(ContentPaths.Asset("floor-outdoor-neutral.dndtex"),repeat:true,fullMipChain:true,source:source);
+            full=TextureCache.LoadFloor(ContentPaths.Asset("floor-outdoor-neutral.dndtex"),repeat:true,source:source);
         }catch(Exception error){GroundTextureFailed(error);return false;}
         pendingGround=null;
         var preview=textures[0]!;
@@ -390,15 +394,15 @@ internal sealed class TerrainRenderer : IDisposable
             DrawArchiveWater(renderer);
             AddArchive(renderer,soil.Material,106);
         }
-        NativeShadows.Scope(1);
+        NativeShadows.Scope(mipBands.Enabled?6:1);
         try{
             if(GroundRingActive)groundRing!.Draw(renderer,GroundMaterial(SharedFlatMaterial),ScrollTransform);
             DrawGround(renderer,false);
-            if((visibleGroundMask&snowGroundMask)!=0){
+            if(!mipBands.Enabled&&(visibleGroundMask&snowGroundMask)!=0){
                 NativeShadows.Scope(4);
                 DrawGround(renderer,true);
             }
-            if(GroundRingActive&&SnowMaterial(SharedFlatMaterial)){
+            if(!mipBands.Enabled&&GroundRingActive&&SnowMaterial(SharedFlatMaterial)){
                 NativeShadows.Scope(5); // The ring spans multiple detailed shadow pages.
                 groundRing!.Draw(renderer,GroundMaterial(SharedFlatMaterial),snowTransform);
             }

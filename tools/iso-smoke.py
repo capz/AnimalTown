@@ -511,7 +511,7 @@ def title_logo():
 def terrain_mip_pixels(pixels):
     """Fit adjacent mip colours through the actual daytime shadow shader."""
     # GroundMipPalette's CMPR endpoints use RGB565 bit replication in GX.
-    words=(0x46AC,0xFF28,0xFC66,0xEA4B,0xAB3D,0x357D,0xEF7D)
+    words=(0x46AC,0xFF28)
     palette=tuple(((((v>>11)&31)<<3)|(((v>>11)&31)>>2),
                    (((v>>5)&63)<<2)|(((v>>5)&63)>>4),
                    ((v&31)<<3)|((v&31)>>2)) for v in words)
@@ -526,12 +526,16 @@ def terrain_mip_pixels(pixels):
         a=tuple(c-s for c,s in zip(first,shadow));d=tuple(e-c for c,e in zip(first,second))
         aa=sum(c*c for c in a);dd=sum(c*c for c in d);ad=sum(c*e for c,e in zip(a,d))
         segments.append((a,d,aa,dd,ad,aa*dd-ad*ad))
-    counts=[0]*len(palette);level_sum=error_sum=0;cache={}
+    counts=[0]*len(palette);level_sum=error_sum=line_pixels=0;cache={}
     for y in range(44,430,2):
         for x in range(40,602,2):
             # Exclude the diagnostic legend and the ordinary floating clock.
             if (x>=350 and y<132) or (x<212 and y>=340):continue
             pixel=pixels[(y*800+x)*3:(y*800+x)*3+3]
+            r,g,b=pixel
+            if r>140 and b>125 and r-g>20 and b-g>8:
+                line_pixels+=4
+                continue
             if pixel not in cache:
                 q=tuple(c-s for c,s in zip(pixel,shadow));best=None;error=9.0
                 for level,(a,d,aa,dd,ad,det) in enumerate(segments):
@@ -550,7 +554,7 @@ def terrain_mip_pixels(pixels):
                 counts[int(level+.5)]+=4;level_sum+=level*4;error_sum+=error*4
     total=sum(counts)
     # The histogram rounds to the nearest mip; the mean retains blends.
-    return {'level_pixels':counts,'classified_pixels':total,
+    return {'level_pixels':counts,'classified_pixels':total,'line_pixels':line_pixels,
             'mean_level':level_sum/max(1,total),'fit_rgb_rms':(error_sum/max(1,total))**.5}
 
 def water_material_pixels(first,second,shadowed=False):
@@ -634,15 +638,15 @@ def terrain_materials():
         raise AssertionError('Debug menu did not focus row '+str(row))
     def menu(row,name):
         press('START');press('R')
-        direction='D_DOWN' if row<=16 else 'D_UP'
-        for _ in range(row if row<=16 else 32-row):press(direction)
+        direction='D_DOWN' if row<=9 else 'D_UP'
+        for _ in range(row if row<=9 else 19-row):press(direction)
         return menu_frame(name,row)
     def applied(enabled,mips,distance):
         matches=re.findall(r'GROUND MIP BANDS enabled (\d) mips (\d) distance (\d+) size (\d+)x(\d+) levels (\d+)',runtime_log_text())
         if not matches:return None
         values=tuple(map(int,matches[-1]))
         if values[:3]!=(enabled,mips,distance) or values[3:5]!=(256,256):return None
-        if values[5]!=7:raise AssertionError('Unexpected diagnostic ground mip chain: '+str(values))
+        if values[5]!=2:raise AssertionError('Unexpected diagnostic ground mip chain: '+str(values))
         return {'enabled':bool(enabled),'mipmaps':bool(mips),'distance':distance,
                 'width':values[3],'height':values[4],'levels':values[5]}
     def mip_frame(name,enabled,mips,distance,check=None):
@@ -665,7 +669,8 @@ def terrain_materials():
         raise AssertionError(failure)
     def visible_bands(metrics):
         if metrics['classified_pixels']<6000 or sum(count>250 for count in metrics['level_pixels'])<2:
-            raise AssertionError('Actual terrain does not show multiple diagnostic mip bands')
+            raise AssertionError('Actual terrain does not show both detail levels')
+        if metrics['line_pixels']<32:raise AssertionError('No visible line at the mip switch')
     def base_only(metrics):
         if metrics['classified_pixels']<6000 or metrics['level_pixels'][0]<metrics['classified_pixels']*.88:
             raise AssertionError('Disabling mipmaps did not collapse diagnostic terrain to level zero')
@@ -736,24 +741,24 @@ def terrain_materials():
         report['committed_town_before']=town_before
         chord('START');wait_onboarding('world',prefix+'ramp-ready.png')
         normal=mip_frame('normal',0,1,0)
-        off_label=menu(23,'menu-off');press('A');on_label=menu_frame('menu-on',23)
+        off_label=menu(15,'menu-off');press('A');on_label=menu_frame('menu-on',15)
         if on_label==off_label:raise AssertionError('Ground mip bands menu label did not change')
         press('B');automatic=mip_frame('mips-auto',1,1,0,visible_bands)
-        auto_label=menu(22,'distance-auto');press('D_RIGHT');one_label=menu_frame('distance-one',22)
+        auto_label=menu(14,'distance-auto');press('D_RIGHT');one_label=menu_frame('distance-one',14)
         press('B');one=mip_frame('mips-one',1,1,1)
-        menu(22,'distance-one-return')
+        menu(14,'distance-one-return')
         for _ in range(9):press('D_RIGHT')
-        ten_label=menu_frame('distance-ten',22);press('B');ten=mip_frame('mips-ten',1,1,10)
+        ten_label=menu_frame('distance-ten',14);press('B');ten=mip_frame('mips-ten',1,1,10)
         if len({auto_label,one_label,ten_label})!=3:raise AssertionError('Distance control did not display Auto,1,10 distinctly')
         visual_assert(one['mean_level']>ten['mean_level']+.1,'Increasing mip distance did not retain a visibly finer sampled mip level')
-        menu(22,'distance-ten-return');press('X');reset_label=menu_frame('distance-reset',22)
+        menu(14,'distance-ten-return');press('X');reset_label=menu_frame('distance-reset',14)
         if reset_label!=auto_label:raise AssertionError('X did not restore the Auto distance label')
         press('B');reset=mip_frame('mips-reset',1,1,0,visible_bands)
         visual_assert(abs(reset['mean_level']-automatic['mean_level'])<=.25,'Auto reset did not restore the diagnostic mip distribution')
-        menu(21,'mipmaps-on');press('A');menu_frame('mipmaps-off',21);press('B')
+        menu(13,'mipmaps-on');press('A');menu_frame('mipmaps-off',13);press('B')
         mip_frame('mips-disabled',1,0,0,base_only)
-        menu(21,'mipmaps-off-return');press('A');press('D_DOWN');press('D_DOWN')
-        menu_frame('menu-on-return',23);press('A');restored_label=menu_frame('menu-restored',23)
+        menu(13,'mipmaps-off-return');press('A');press('D_DOWN');press('D_DOWN')
+        menu_frame('menu-on-return',15);press('A');restored_label=menu_frame('menu-restored',15)
         if restored_label!=off_label:raise AssertionError('Ground mip bands did not return to Off')
         press('B')
         def restored_art(metrics):
@@ -797,7 +802,7 @@ def terrain_materials():
         coast=water_pair('water-coast',4);report['water']['coast']=coast
         visual_assert(coast['changed_chromaticity_samples']>=35 and coast['crest_edge_sign_changes']>=15,
                       'Coastal water has no visibly moving crest pattern')
-        menu(23,'water-menu');press('B');capture('water-menu-return');press('B')
+        menu(15,'water-menu');press('B');capture('water-menu-return');press('B')
         alive();report['committed_town_after']=committed_card_sequence(card,details=True)
         report['card_unchanged']=card_digest()==before
         report['town_unchanged']=report['committed_town_after']==town_before
@@ -1004,11 +1009,11 @@ def debug_visibility_scenario(reload=False):
     if debug_visibility():raise AssertionError('An interrupted Z sequence enabled debug access')
     press('B');set_debug_visibility(True)
     press('D_DOWN');press('A');wait_title(modal=True);screenshot('debug-unlocked-title-modal.png')
-    # Rim is configuration row 20, after two non-setting rows are omitted.
-    for _ in range(18):press('D_DOWN')
+    # Ground mip distance remains a persisted title debug slider.
+    for _ in range(13):press('D_DOWN')
     press('D_RIGHT');screenshot('debug-slider-before-hide.png')
     set_debug_visibility(False);wait_title();screenshot('debug-hidden-title-again.png')
-    if card_dev_config(root/'MemoryCardA.USA.raw')['values'][20]!=105:raise AssertionError('Hiding debug menus reset the selected slider')
+    if card_dev_config(root/'MemoryCardA.USA.raw')['values'][23]!=1:raise AssertionError('Hiding debug menus reset the selected slider')
     press('D_DOWN');start_game(True,'debug-visibility')
     def focus(name,expected):
         screenshot(name+'.png');pixels=rgb(name+'.png')
@@ -1285,10 +1290,10 @@ def submission_scenario():
     press('Y');segment('map',5);press('B')
     # Session-only rain toggle (option 16, visible row 14 after shadow removal).
     press('START');press('R')
-    for _ in range(14):press('D_DOWN')
+    for _ in range(7):press('D_DOWN')
     press('A');press('B');segment('rain',profile_seconds)
     press('START');press('R')
-    for _ in range(14):press('D_DOWN')
+    for _ in range(7):press('D_DOWN')
     press('A');press('B')
     # Existing inspector selects the same NPC cottage in both builds.
     os.write(controller,b'PRESS L\nPRESS R\n');time.sleep(.2);press('A');os.write(controller,b'RELEASE L\nRELEASE R\n')
@@ -1500,23 +1505,16 @@ def testing_menu():
     for _ in range(5):press('D_DOWN')
     label('testing-settings-debug-entry',5);press('A')
     manual_only='--manual-save-only' in sys.argv
-    for row in range(1 if manual_only else 12):
-        menu_row=row if row==0 else row+1 # Skip the explicitly saved AA preference.
-        original=label(f'testing-row-{row}-before',menu_row)
-        press('A');changed=label(f'testing-row-{row}-after',menu_row)
+    previous=0
+    # Skip the saved AA preference and cover the session snowfall control.
+    for row in ([0] if manual_only else [0,*range(2,10)]):
+        for _ in range(row-previous):press('D_DOWN')
+        original=label(f'testing-row-{row}-before',row)
+        press('A');changed=label(f'testing-row-{row}-after',row)
         if original==changed:raise AssertionError(f'Testing row {row} did not change its displayed state')
-        # Restore the initial setting, including the six-state water preview.
-        for step in range(5 if row==8 else 1):
-            press('A');label(f'testing-row-{row}-restore-{step}',menu_row)
-        if row==8:
-            # A water preview must allow Start to reopen the menu while active.
-            press('A');label('testing-water-active',menu_row);press('B');time.sleep(15);press('START');press('R')
-            for _ in range(9):press('D_DOWN')
-            label('testing-water-menu-return',menu_row)
-            for step in range(5):
-                press('A');label(f'testing-water-off-{step}',menu_row)
-        press('D_DOWN')
-        if row==0:press('D_DOWN')
+        press('A');restored=label(f'testing-row-{row}-restore',row)
+        if original!=restored:raise AssertionError(f'Testing row {row} did not restore its initial state')
+        previous=row
     if card_digest()!=before:raise AssertionError('Debug actions wrote to the memory card')
     press('B')
     wait_seconds=int(sys.argv[sys.argv.index('--manual-save-wait')+1]) if '--manual-save-wait' in sys.argv else 0
@@ -1910,9 +1908,9 @@ def settings_navigation():
     press('R');focus('testing-entry',0)
     press('A');focus('testing-performance-on',0)
     press('A');focus('testing-performance-off',0)
-    press('D_DOWN');press('D_DOWN');focus('testing-model-row',2)
-    press('A');focus('testing-model-direct',2)
-    press('A');focus('testing-model-indexed',2)
+    press('D_DOWN');press('D_DOWN');focus('testing-uv-row',2)
+    press('A');focus('testing-uv-colors-on',2)
+    press('A');focus('testing-uv-colors-off',2)
     press('L');focus('settings-tab-return',0)
     press('B');screenshot('settings-close.png')
     press('X');press('L');press('L');focus('settings-backpack-entry',0)

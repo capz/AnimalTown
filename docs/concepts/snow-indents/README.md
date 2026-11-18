@@ -8,26 +8,23 @@ terraces. Roads, water, white building pads, ramps, cliff lips and interiors
 use their usual surfaces. Select **Winter** in **Season preview** to see the
 effect year-round in a console build.
 
-The renderer draws the original floor, then draws the same indexed grass
-meshes again with a radial offset from the curved world's axis. The raised
-pass uses vertex alpha to select eligible triangles, so a shared grass tint
-can't cover building pads. GX shades the white top from two offset green
-samples and drops pixels where the center sample reaches three-quarters
-compression. The opening shows the textured floor at its original height.
-The rim is shaded on the raised surface. The prototype stamps fixed
-flat-bottomed depressions every eight metres and does not write footsteps
-or change collision. The image comes from a standalone GameCube scene
-using the production GX code and Animal Town's ground texture.
+The renderer draws the textured floor and then reuses the indexed grass
+mesh for the white layer. Tile entries use the same movement path as road
+traffic. On the first visit the snow dents, the second exposes its center,
+and the third clears the tile up to the shaded rim. Standing and movement
+within a tile add no visits. The wear lasts for the town session and resets
+when the season leaves winter.
 
-The overlay adds one submission of visible grass meshes each winter frame.
-It runs eight TEV stages with an RGB565 page and samples the same texture
-for the rim, cutout, cast shadows and lamps. When traffic paths are present,
-a ninth stage reuses their existing I4 mask to open the snow over every
-nonzero path-opacity level. It uses a sixth texgen and adds no path texture
-copy. Path traffic can change without rebaking the snow geometry. Flat tiles
-retain the ordinary ground pass underneath. The raised pass reuses the
-RGB565 storage counted below and adds no second mesh cache. Winter baking can split a mixed grass and building-pad
-strip at the tile boundary. Full-game GPU frame time remains unmeasured.
+The depth field is a demand-allocated I8 texture with four texels per
+metre, independent of the shadow page cache. A tile entry updates its GX
+blocks and those touched by the rim. Snow receives the same IA4 shadow and
+lamp textures as ordinary ground. The raised winter pass adds one visible
+grass submission and one depth binding on worn snow. Ground collision
+continues to use the original surface.
+
+The image is from the earlier standalone raised-layer experiment. Its
+fixed impressions demonstrate the same cutout and shading used by the
+interactive layer.
 
 The original [flat relief comparison](comparison.png) predates the raised
 layer and shows both page resolutions. Its CPU preview can be regenerated
@@ -101,29 +98,10 @@ day. Replacing the published IA4 copies would reduce the additional storage to
 ## Whole-town memory test
 
 The [native lifecycle fixture](../../../tests/native-shadow-lifecycle.c)
-exercises a synthetic 128×120 town with every tile eligible for snow. It
-checks all 15,360 cells in the fallback texture, then drives the normal
-page allocator with two sets of caster placements. All 240 town regions
-are sampled at detailed resolution over the two passes. Detail peaks at
-156 simultaneous pages. Each scan checks the packed depth, cast-shadow
-and lamp channels, including detailed page gutters.
-
-| Shadow memory | Bytes | KiB |
-| --- | ---: | ---: |
-| IA4 baseline | 522,016 | 509.78 |
-| Additional RGB565 detailed slots, including spare slots | 327,680 | 320 |
-| Additional RGB565 fallback | 65,536 | 64 |
-| Experimental charged allocation | 915,232 | 893.78 |
-| Static snow depth templates | 1,088 | 1.06 |
-| Experimental total including templates | 916,320 | 894.84 |
-
-The x86-64 host fixture and the standalone GameCube PowerPC fixture in
-Dolphin both passed. The shadow buffer was the same size at cold start,
-at peak detail residency and after page replacement. Shutdown returned
-the allocation counter to zero. Dolphin's GDB stub confirmed fixture
-completion and the byte counts in guest memory. The fixture uses the
-production shadow code and a test allocator. It measures the charged
-buffer and static templates, excluding allocator bookkeeping, other
-game systems and GX texture cache. Dolphin ran with the Null graphics
-backend. A full-game MEM1 profile and visual acceptance still require
-an Animal Town build.
+checks the individual wear levels, sparse uploads and every cell in a
+fully travelled 128×120 town. The 512×512 I8 field accounts for 256 KiB
+when active. The ordinary shadow cache uses 522,016 bytes. Together they
+charge 784,160 bytes to the native allocator. The field is released on a
+season change or session teardown. A static 3,840-byte snapshot and a
+managed 3,840-byte wear array store the packed visits. Full-game frame
+timings have not been measured.

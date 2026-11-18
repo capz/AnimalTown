@@ -1,4 +1,4 @@
-param([switch]$SkipAssets,[switch]$NativeInProcess,[string]$ValidationPlan='',[ValidateRange(0,7)][int]$RuntimeProfile=0)
+param([switch]$SkipAssets,[switch]$NativeInProcess,[string]$ValidationPlan='',[ValidateRange(0,7)][int]$RuntimeProfile=4)
 $ErrorActionPreference = 'Stop'
 Set-Location (Split-Path $PSScriptRoot -Parent)
 function Run([string]$File, [string[]]$Arguments) {

@@ -83,7 +83,8 @@ enum {
     GX_CC_RASC=10,GX_CC_ONE=12,GX_CC_KONST=14,GX_CC_ZERO=15,GX_CA_APREV=0,GX_CA_A2=3,GX_CA_TEXA=4,
     GX_CA_RASA=5,GX_CA_KONST=6,GX_CA_ZERO=7,
     GX_TEV_COMP_A8_GT=14,GX_TEV_COMP_A8_EQ=15,GX_TEV_KASEL_3_4=2,GX_EQUAL=2,GX_ALWAYS=7,GX_AOP_AND=0,
-    GX_TEXCOORD5=5,GX_TEXMTX5=45
+    GX_TEXCOORD5=5,GX_TEXCOORD6=6,GX_TEXMAP4=4,GX_TEXMTX4=42,GX_TEXMTX5=45,
+    GX_CA_A0=1,GX_CC_A0=3,GX_KCOLOR0=0,GX_TEV_KASEL_K0_A=28,GX_TEV_KASEL_K0_G=20
 };
 typedef struct { int input[4],destination,op,konst; } AlphaCommand;
 typedef struct { int input[4],destination,konst; } ColorCommand;
@@ -111,11 +112,11 @@ static void GX_InitTexObjLOD(GXTexObj *t,int min,int mag,float low,float high,fl
     (void)t;(void)low;(void)high;(void)bias;(void)clamp;(void)edge;(void)aniso;texture_min=min;texture_mag=mag;
 }
 static void GX_LoadTexObj(GXTexObj *t,int map){
-    (void)t;assert(map==GX_TEXMAP2||map==GX_TEXMAP3);
+    (void)t;assert(map==GX_TEXMAP2||map==GX_TEXMAP3||map==GX_TEXMAP4);
     texture_loads++;if(map==GX_TEXMAP2)shadow_loads++;
 }
 static void GX_SetNumTevStages(u8 count){assert(count<=16);alpha_command_count=count;}
-static void GX_SetNumTexGens(int count){assert(count>=3&&count<=6);texgens=count;}
+static void GX_SetNumTexGens(int count){assert(count>=3&&count<=7);texgens=count;}
 static void GX_SetTexCoordGen(int coord,int type,int source,int matrix){
     (void)type;(void)matrix;if(coord==GX_TEXCOORD2)packed_texgen_source=source;
 }
@@ -165,7 +166,8 @@ static void GX_SetTevAlphaOp(u8 stage,int op,int bias,int scale,int clamp,int de
 int animaltown_environment_color(void){return environment_test_rgb;}
 int animaltown_light_strength(void){return point_test_gain;}
 int animaltown_shadow_strength(void){return shadow_test_gain;}
-static int path_test_ready,shadow_test_mode=3;
+static int snow_test_ready,path_test_ready,shadow_test_mode=3;
+const uint8_t *animaltown_snow_mask(void){static const uint8_t image[SU_SNOW_BYTES]={0};return snow_test_ready?image:NULL;}
 const uint8_t *animaltown_path_mask(void){static const uint8_t image[8192]={0};return path_test_ready?image:NULL;}
 int animaltown_shadows_mode(void){return shadow_test_mode;}
 const uint8_t *animaltown_shadows_page(float x,float z,float *origin){
@@ -456,9 +458,10 @@ static void native_shadow_combiner_checks(void){
     town_shadow_ground(triangle,NULL,3,&material,&bindings);
     assert(texture_format==GX_TF_IA4&&texgens==3&&alpha_command_count==5);
     assert(footer_alpha_for_raster(0,0,0,254)==alpha_compare);
-    shadow_page_missing=0;
+    shadow_page_missing=0;snow_test_ready=1;
     town_shadow_ground(triangle,NULL,3,&material,&bindings);
-    assert(texture_format==GX_TF_RGB565&&texgens==5&&alpha_command_count==8);
+    assert(texture_format==GX_TF_I8&&texgens==7&&alpha_command_count==8);
+    assert(tev_orders[7].map==GX_TEXMAP4&&tev_orders[7].coord==GX_TEXCOORD6);
     assert(fabsf(shadow_uv_scale-2.f*30/(32*8))<.000001f);
     assert(alpha_compare==254);
     assert(footer_alpha_for_raster(0,0,190,254)==alpha_compare);
@@ -468,7 +471,7 @@ static void native_shadow_combiner_checks(void){
     assert(footer_alpha_for_raster(0,0,0,0)!=alpha_compare);
     path_test_ready=1;bindings=0;
     reset_shadow_recording();town_shadow_ground(triangle,NULL,3,&material,&bindings);
-    assert(alpha_command_count==9&&texgens==6&&bindings==2);
+    assert(alpha_command_count==9&&texgens==7&&bindings==3);
     assert(tev_orders[8].map==GX_TEXMAP3&&tev_orders[8].coord==GX_TEXCOORD5);
     for(int gain=0;gain<=255;gain+=51){
         shadow_test_gain=gain;town_shadow_ground(triangle,NULL,3,&material,&bindings);
@@ -479,7 +482,14 @@ static void native_shadow_combiner_checks(void){
             assert(footer_alpha_for_raster(0,0,255,254)==0);
         }
     }
-    path_test_ready=path_test_alpha=0;shadow_test_gain=255;
+    snow_test_ready=path_test_ready=path_test_alpha=0;shadow_test_gain=255;
+    shadow_test_mode=6;bindings=0;
+    reset_shadow_recording();town_shadow_ground(triangle,NULL,3,&material,&bindings);
+    assert(alpha_command_count==9&&texgens==3&&bindings==1);
+    assert(tev_orders[2].map==GX_TEXMAP0&&tev_orders[3].map==GX_TEXMAP0);
+    assert(alpha_commands[2].konst==GX_TEV_KASEL_K0_A&&alpha_commands[3].konst==GX_TEV_KASEL_K0_G);
+    assert(konst_colors[GX_KCOLOR0].a==148&&konst_colors[GX_KCOLOR0].g==172);
+    verify_alpha_footer(2);
     shadow_test_mode=3;bindings=1;
     assert(animaltown_rim_enable(100));
     town_rim_apply(normal,&effect,false,&bindings);

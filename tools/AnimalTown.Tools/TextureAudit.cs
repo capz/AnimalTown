@@ -34,15 +34,14 @@ internal static class TextureAudit
                 records.Add(new{source="dvd:/"+Path.GetFileName(path),sourceSha=Convert.ToHexString(SHA256.HashData(bytes)),width,height,contentWidth=384,contentHeight=256,residentBytes=SplashAssets.Bytes,policy="private-one-shot-no-cache"});continue;
             }
             if(Path.GetFileName(path).StartsWith("floor-",StringComparison.Ordinal)||Path.GetFileName(path)=="cliff-soil.dndtex"||Path.GetFileName(path)==PathAssets.DiscName){
-                bool ground=Path.GetFileName(path)!="cliff-soil.dndtex";
                 string policy=Path.GetFileName(path) switch {
-                    PathAssets.DiscName=>"path64-full-mips-repeat-demand-evict-v1",
-                    NeutralFloorAssets.FullTexture=>"floor256-full-mips-repeat-tinted-v6",
-                    NeutralFloorAssets.PreviewTexture=>"floor64-full-mips-repeat-tinted-preview-v1",
+                    PathAssets.DiscName=>"path64-mip2-repeat-demand-evict-v2",
+                    NeutralFloorAssets.FullTexture=>"floor256-mip2-repeat-tinted-v7",
+                    NeutralFloorAssets.PreviewTexture=>"floor64-mip2-repeat-tinted-preview-v2",
                     "cliff-soil.dndtex"=>"cliff-soil-mip2-repeat-clamp-v1",
-                    _=>"floor256-full-mips-mirror-v6"
+                    _=>"floor256-mip2-mirror-v7"
                 };
-                byte[] native=FloorTexture.Prepare(bytes,fullMipChain:ground);records.Add(new{source="dvd:/"+Path.GetFileName(path),sourceSha=Convert.ToHexString(SHA256.HashData(bytes)),width,height,runtimeWidth=TexturePixels.Width(native),runtimeHeight=TexturePixels.Height(native),format=TexturePixels.Int(native,8),levels=TexturePixels.Int(native,24),residentBytes=native.Length-32,policy});continue;
+                byte[] native=FloorTexture.Prepare(bytes);records.Add(new{source="dvd:/"+Path.GetFileName(path),sourceSha=Convert.ToHexString(SHA256.HashData(bytes)),width,height,runtimeWidth=TexturePixels.Width(native),runtimeHeight=TexturePixels.Height(native),format=TexturePixels.Int(native,8),levels=TexturePixels.Int(native,24),residentBytes=native.Length-32,policy});continue;
             }
             if(Path.GetFileName(path).StartsWith("dropped-",StringComparison.Ordinal)){
                 string stem=Path.GetFileNameWithoutExtension(path);

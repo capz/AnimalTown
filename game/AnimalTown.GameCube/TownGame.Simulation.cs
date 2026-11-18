@@ -12,7 +12,7 @@ internal sealed partial class TownGame
         bool running=false;float beforeX=state.X,beforeZ=state.Z;
         moveClip=-1; // UI focus must not leave the player walking in place.
         tick++;
-        if(tick%30==0)townClock.Update(NativeCalendar.ReadClock());
+        if(tick%30==0)ReadWeatherClock(NativeCalendar.Read());
         if(tick%900==0&&session.Draft==null){ReadCalendar();state.Rollover(day,month);}
         if(screen=="dialogue"&&typeAt<message.Length){
             typeAt++;
@@ -56,6 +56,13 @@ internal sealed partial class TownGame
             animationClock.Step(i,animationClock.Clip(i),moving);
         }
     }
-    private void ReadCalendar(){int date=NativeCalendar.Read();day=date&0x1ffff;month=(int)((uint)date>>17);townClock.Update(NativeCalendar.ReadClock());}
+    private int weatherDay;
+    private void ReadWeatherClock(int date)
+    {
+        townClock.Update(NativeCalendar.ReadClock());
+        // Town rollover uses 06:00; rain follows the calendar day at midnight.
+        weatherDay=(date&0x1ffff)+(townClock.MinuteOfDay<360?1:0);
+    }
+    private void ReadCalendar(){int date=NativeCalendar.Read();day=date&0x1ffff;month=(int)((uint)date>>17);ReadWeatherClock(date);}
     private float PlayerHeight()=>room==0?TerrainElevation.At(state.Town,state.X,state.Z):0;
 }
