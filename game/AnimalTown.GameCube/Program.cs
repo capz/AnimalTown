@@ -856,7 +856,8 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
         terrain.GroundMipmaps=renderDebug.GroundMipmaps;terrain.GroundMipDistance=renderDebug.GroundMipDistance;terrain.ShowGroundMipBands=renderDebug.ShowGroundMipBands;
         cachedPlayerHeight=PlayerHeight();if(room==0)RenderView.Prepare(state.X,state.Z,cachedPlayerHeight);
         if(room!=0)indoorCamera.Configure(BuildingWorld.Definition(state,BuildingWorld.Building(room)));
-        if(room==0)terrain.AnimateShadows((Clock.Timestamp-sessionStart)/1000000.0,month);
+        int sunlight=room==0?WorldLighting.Sunlight(townClock.MinuteOfDay):255;
+        if(room==0)terrain.AnimateShadows((Clock.Timestamp-sessionStart)/1000000.0,month,sunlight);
         int environmentTint=room==0?WorldLighting.Tint(townClock.MinuteOfDay):0xffffff;
         int lampStrength=room==0?WorldLighting.Lamps(townClock.MinuteOfDay):0;
         townLights.Prepare(state,lampStrength);
@@ -880,15 +881,19 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
         UpdateAnimationFrame();
         if(renderDebug.ForceAttention&&villagers.Doors.PlayerFade<1)attention.Prepare();
         phase=FrameProfile.Start();if(!playerRunning&&(screen=="world"||screen=="plot"))clockHud.Prepare(townClock);uiShapes.Prepare(screen,screen=="menu"?menuTab:-1,batchedDrawing);if((batchedDrawing&&screen=="map")||(runningMinimap.Visible&&screen=="world"&&room==0))mapBackground.Prepare(state.Town);modelUsed=0;FrameProfile.End(8,phase);
-        UiNoise.Prepare();preparedSubmitMicroseconds=0;preparedEnvironmentTint=environmentTint;preparedLampStrength=lampStrength;
+        UiNoise.Prepare();preparedSubmitMicroseconds=0;preparedEnvironmentTint=environmentTint;preparedLampStrength=lampStrength;preparedShadowStrength=sunlight;
         phase=FrameProfile.Start();Hypercube.GameCube.FrameRenderer.Draw(device,room==0?TownLights.Tint(weather.Raining(room)?new Color32(112,143,151):new Color32(149,198,186),environmentTint):new Color32(32,40,39),this);FrameProfile.End(9,phase+preparedSubmitMicroseconds);
     }
-    private int preparedEnvironmentTint,preparedLampStrength;private long preparedSubmitMicroseconds;
+    private int preparedEnvironmentTint,preparedLampStrength,preparedShadowStrength,tracedLightingMinute=-1;private long preparedSubmitMicroseconds;
     public void SubmitFramePart()
     {
         int environmentTint=preparedEnvironmentTint,lampStrength=preparedLampStrength;
         modelUsed=0;long submitAt=FrameProfile.Start(),phase=submitAt;
-        NativeShadows.Environment(environmentTint);
+        NativeShadows.Environment(environmentTint,preparedShadowStrength);
+        if(room==0&&tracedLightingMinute!=townClock.MinuteOfDay){
+            tracedLightingMinute=townClock.MinuteOfDay;
+            DebugOverlay.WriteLine("ANIMALTOWN DAYLIGHT minute "+tracedLightingMinute+" shadow "+NativeShadows.Stats(11)+" cloud "+NativeShadows.Stats(12)+" lamp "+NativeShadows.Stats(13)+" bytes "+NativeShadows.Stats(3));
+        }
         float eyeHeight=PlayerHeight();
         if(room==0)camera.LookAt(new Vector3(state.X,CylinderWorld.CameraHeight+eyeHeight,state.Z+CylinderWorld.CameraBack),new Vector3(state.X,eyeHeight,state.Z-CylinderWorld.CameraAimAhead),new Vector3(0,1,0));
         else{float size=BuildingWorld.Size(state,room);indoorView.LookAt(new Vector3(indoorCamera.EyeX(size),indoorCamera.EyeY(size),indoorCamera.EyeZ(size)),new Vector3(size*.5f,.7f,size*.5f),new Vector3(0,1,0));}
@@ -950,7 +955,7 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
         if(batchedDrawing)boxes.Flush();
         if(renderDebug.ForceAttention&&villagers.Doors.PlayerFade<1)attention.Draw(renderer,state,actorVisibility,indoorCamera,cachedPlayerHeight);
         submissionAt=FrameProfile.SubmissionStart();if(weather.Raining(room)&&villagers.Doors.PlayerFade<1)rain.Draw(renderer);FrameProfile.SubmissionEnd(4,submissionAt);
-        renderer.End3D();NativeShadows.Environment(0xffffff);ui.Begin();submissionAt=FrameProfile.SubmissionStart();DrawHud();if(FrameProfile.Enabled)ui.Flush();FrameProfile.SubmissionEnd(5,submissionAt);FrameProfile.End(8,phase);FrameProfile.Draw(ui);
+        renderer.End3D();NativeShadows.Environment(0xffffff,preparedShadowStrength);ui.Begin();submissionAt=FrameProfile.SubmissionStart();DrawHud();if(FrameProfile.Enabled)ui.Flush();FrameProfile.SubmissionEnd(5,submissionAt);FrameProfile.End(8,phase);FrameProfile.Draw(ui);
         float fade=villagers.Doors.PlayerFade;if(fade>0)ui.FillRectangle(new RectF(0,0,640,480),new Color32(12,19,25,(byte)(fade*255)));
         phase=FrameProfile.Start();submissionAt=FrameProfile.SubmissionStart();ui.End();FrameProfile.SubmissionEnd(6,submissionAt);FrameProfile.End(8,phase);
         if(FrameProfile.Enabled)preparedSubmitMicroseconds+=Clock.Timestamp-submitAt;
@@ -976,7 +981,7 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
             Box(x-.29f,y+2.52f,z-.29f,.58f,.12f,.58f,metal);
         }
         if(batchedDrawing)boxes.Flush();
-        NativeShadows.Environment(0xffffff);
+        NativeShadows.Environment(0xffffff,preparedShadowStrength);
         try{
             var glass=new Color32((byte)(150+105*strength/255),(byte)(166+55*strength/255),(byte)(146-12*strength/255));
             for(int i=0;i<townLights.Count;i++){
@@ -984,7 +989,7 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
                 Box(x-.19f,y+2.12f,z-.19f,.38f,.4f,.38f,glass);
             }
             if(batchedDrawing)boxes.Flush();
-        }finally{NativeShadows.Environment(tint);}
+        }finally{NativeShadows.Environment(tint,preparedShadowStrength);}
     }
     private bool IsTree(GroundItem g)=>TreeDrawBatch.IsTree(g);
     private void InspectTerrain()

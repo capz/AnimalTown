@@ -4,6 +4,7 @@ extern const uint8_t *animaltown_path_mask(void);
 extern const uint8_t *animaltown_shadows_page(float,float,float*);
 extern int animaltown_environment_color(void);
 extern int animaltown_light_strength(void);
+extern int animaltown_shadow_strength(void);
 static uint8_t town_shadow_empty[32*32] __attribute__((aligned(32)));
 static void town_alpha_pass(int stage){
     GX_SetTevAlphaIn((u8)stage,GX_CA_APREV,GX_CA_ZERO,GX_CA_ZERO,GX_CA_ZERO);
@@ -39,7 +40,10 @@ static int town_paths_apply(const DndDrawMaterial *mat,int stage,unsigned *bindi
     GX_SetTevColorOp((u8)stage,GX_TEV_ADD,GX_TB_ZERO,GX_CS_SCALE_1,GX_TRUE,GX_TEVPREV);town_alpha_pass(stage++);
     return stage;
 }
-static GXColor town_environment_tint(void){int rgb=animaltown_environment_color();return (GXColor){rgb>>16,(rgb>>8)&255,rgb&255,66};}
+static GXColor town_environment_tint(void){
+    int rgb=animaltown_environment_color(),alpha=(66*animaltown_shadow_strength()+127)/255;
+    return (GXColor){rgb>>16,(rgb>>8)&255,rgb&255,(u8)alpha};
+}
 static int town_environment_apply(const DndDrawEffect *effect,int stage){
     int slot=effect?effect->uniforms:0;if(slot>=4)return stage;
     if(animaltown_environment_color()==0xffffff)return stage;

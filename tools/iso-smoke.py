@@ -211,6 +211,30 @@ def start_game(new_town=False,prefix='start'):
         return finish_onboarding(prefix,before)
     return before,wait_onboarding('world',prefix+'-game.png')
 
+def daylight_clock():
+    """Check the real clock-to-native-lighting bridge and retain two outdoor frames."""
+    import re
+    requested=sys.argv[sys.argv.index('--daylight-clock')+1]
+    start_game(prefix='daylight-start')
+    def native_state():
+        text=runtime_log_text();text=text[text.rfind('ANIMALTOWN GAME START'):]
+        matches=re.findall(r'ANIMALTOWN DAYLIGHT minute (\d+) shadow (\d+) cloud (\d+) lamp (\d+) bytes (\d+)',text)
+        if not matches:raise AssertionError('No native lighting state was published for the drawable scene')
+        minute,shadow,cloud,lamp,storage=map(int,matches[-1])
+        if shadow+lamp!=255:raise AssertionError('Sun shadows and lamps are not complementary')
+        if not 0<storage<=512*1024:raise AssertionError('Shadow storage exceeded the existing budget')
+        if requested=='12:00':
+            if shadow!=255 or lamp!=0 or cloud<=0:raise AssertionError('Daytime clouds/shadows were not restored')
+        elif requested=='20:00':
+            if shadow!=0 or cloud!=0 or lamp!=255:raise AssertionError('Night must disable clouds/shadows and enable lamps')
+        elif requested in ('06:30','18:00'):
+            if not 0<shadow<255 or not 0<lamp<255 or cloud<=0:raise AssertionError('Dawn/dusk is missing its partial fade')
+        else:raise ValueError('Use 06:30, 12:00, 18:00 or 20:00 for daylight captures')
+        return {'minute':minute,'shadow':shadow,'cloud':cloud,'lamp':lamp,'shadow_storage_bytes':storage}
+    first=native_state();screenshot('daylight-a.png');time.sleep(20);check_runtime_failure()
+    second=native_state();screenshot('daylight-b.png')
+    (root/'daylight-report.json').write_text(json.dumps({'requested_clock':requested,'first':first,'second':second,'passed':True},indent=2)+'\n')
+
 def onboarding():
     before=committed_card_sequence(root/'MemoryCardA.USA.raw',details=True)
     slot=int(sys.argv[sys.argv.index('--profile-slot')+1]) if '--profile-slot' in sys.argv else next((i for i in range(4) if not before or not before['profiles'][i]['created']),-1)
@@ -1943,6 +1967,14 @@ if '--season' in sys.argv:
 if '--dsp-hle' in sys.argv:
     config=user/'Config'/'Dolphin.ini'
     config.write_text(config.read_text().replace('DSPHLE = False','DSPHLE = True'))
+if '--daylight-clock' in sys.argv:
+    import re
+    value=sys.argv[sys.argv.index('--daylight-clock')+1]
+    if value not in ('06:30','12:00','18:00','20:00'):raise ValueError('Unsupported daylight capture clock')
+    hour,minute=map(int,value.split(':'));rtc=int(datetime(2027,4,15,hour,minute,tzinfo=timezone.utc).timestamp())
+    config=user/'Config'/'Dolphin.ini';text=config.read_text()
+    text=re.sub(r'^(EnableCustomRTC|CustomRTCValue) = .*\n','',text,flags=re.MULTILINE)
+    config.write_text(text.replace('SkipIPL = True\n',f'SkipIPL = True\nEnableCustomRTC = True\nCustomRTCValue = {rtc}\n'))
 # Full hashing observes sparse live I4/IA4 edits; sampled hashes can retain
 # an old mask even after GX texture-cache invalidation.
 (user/'Config'/'GFX.ini').write_text('''[Settings]
@@ -1978,13 +2010,14 @@ with (root/'emulator.log').open('w') as log:
         if '--loading' in sys.argv:
             for n,seconds in enumerate((1,1,2,4,8,12,17)):
                 time.sleep(seconds);screenshot(f'loading-{n}.png')
-        elif any(flag in sys.argv for flag in ('--aram-residency','--title-logo','--terrain-materials','--save-cards')):wait_title()
+        elif any(flag in sys.argv for flag in ('--aram-residency','--title-logo','--terrain-materials','--save-cards','--daylight-clock')):wait_title()
         else:time.sleep(45)
         if p.poll() is not None:
             raise RuntimeError(f'Dolphin exited during boot ({p.returncode}); see {root / "emulator.log"}')
         screenshot('screen.png')
         if any(flag in sys.argv for flag in ('--title-menu','--title-load','--title-config','--title-update','--title-options','--title-options-load','--title-options-unsupported')):wait_title()
-        if '--save-cards' in sys.argv:memory_cards()
+        if '--daylight-clock' in sys.argv:daylight_clock()
+        elif '--save-cards' in sys.argv:memory_cards()
         elif '--onboarding' in sys.argv:
             onboarding()
         elif '--debug-visibility' in sys.argv:debug_visibility_scenario()
@@ -2238,7 +2271,7 @@ with (root/'emulator.log').open('w') as log:
         elif '--lighting' in sys.argv:
             start_game(True)
             os.write(controller,b'PRESS L\nPRESS R\n');time.sleep(.2);press('A');os.write(controller,b'RELEASE L\nRELEASE R\n');time.sleep(15)
-            # Cast shadows are always on; capture their motion and receivers.
+            # Cast shadows follow daylight; capture their motion and receivers.
             time.sleep(profile_seconds);building_view('lighting-standing.png',False)
             time.sleep(20);screenshot('lighting-cloud-drift.png')
             press('A');time.sleep(5);building_view('lighting-interior.png',True)

@@ -70,4 +70,9 @@ foreach($name in @('SaveCards','CardArchive','CardSaveStorage','CardSaveError','
     Assert ('card' -in $p.native -and 'saves' -in $p.managed -and !$p.backend -and !$p.full) "Card persistence changes must exercise the production adapter and slot-selection checks: $name"
 }
 $p=Get-ValidationPlan -ChangedPaths @('game/AnimalTown.GameCube/TitleScreen.Cards.cs');Assert (($p.managed -join ',') -eq 'ui,menu,saves') 'Card chooser changes need UI, menu and save coverage'
-Write-Host 'Validation routing checks passed (72 cases).'
+foreach($path in @('shared/AnimalTown.Domain/WorldLighting.cs','game/AnimalTown.GameCube/CloudShadows.cs','game/AnimalTown.GameCube/NativeShadows.cs','game/AnimalTown.GameCube/TownLights.cs','tests/AnimalTown.Checks/WorldLightingChecks.cs')){
+    $p=Get-ValidationPlan -ChangedPaths @($path)
+    Assert ('core' -in $p.managed -and 'shadows' -in $p.native -and !$p.backend -and !$p.full) "Lighting changes must cover clock policy and the actual GX shadow/light shader: $path"
+}
+$p=Get-ValidationPlan -ChangedPaths @('game/AnimalTown.GameCube/NativeShadows.cs');Assert ('patched' -in $p.native) 'Shadow bridge changes must exercise fresh AOT bindings'
+Write-Host 'Validation routing checks passed (78 cases).'

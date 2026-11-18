@@ -92,7 +92,7 @@ moving/removing actors, stationary reuse, clipping guards, triangle/page seams,
 room separation and the 156-page worst case. Change routing and console/CI gates
 include them. `tools/iso-smoke.py --actor-shadows --dsp-hle` covers walking, NPCs,
 entry/exit, interior camera, ramps and cliffs. `--terrain-scroll --stream-stress`
-checks streaming peaks. Cast shadows are always on; shadow/cloud debug toggles
-and their startup settings are retired.
+checks streaming peaks. Outdoor cast shadows follow the [daylight fade](cloud-shadows.md);
+shadow/cloud debug toggles and their startup settings are retired.
 Animated outlines remain feasible with silhouette passes or baked pose masks.
 Physical GameCube results must be reported separately from emulator results.

@@ -34,7 +34,7 @@ static int swap_alpha_channel[4]={GX_CH_ALPHA,GX_CH_ALPHA,GX_CH_ALPHA,GX_CH_ALPH
 static int alpha_command_count,texgens,packed_texgen_source,texture_loads,shadow_loads,tev_order_writes,kalpha_writes;
 static int shadow_page_side=SU_SIDE,shadow_page_missing;
 static int texture_width,texture_height,texture_min,texture_mag;
-static int texture_format,environment_test_rgb=0xffffff,point_test_gain=255;
+static int texture_format,environment_test_rgb=0xffffff,point_test_gain=255,shadow_test_gain=255;
 static GXColor konst_colors[4];
 static GXColor tev_colors[4];
 static GXColor shadow_tint;
@@ -96,6 +96,7 @@ static void GX_SetTevAlphaOp(u8 stage,int op,int bias,int scale,int clamp,int de
 }
 int animaltown_environment_color(void){return environment_test_rgb;}
 int animaltown_light_strength(void){return point_test_gain;}
+int animaltown_shadow_strength(void){return shadow_test_gain;}
 static int path_test_ready,shadow_test_mode=3;
 const uint8_t *animaltown_path_mask(void){static const uint8_t image[8192]={0};return path_test_ready?image:NULL;}
 int animaltown_shadows_mode(void){return shadow_test_mode;}
@@ -270,8 +271,8 @@ static void water_shadow_color_checks(void){
     water.uniforms=1;assert(town_shadow_lamp_register(&water)==0);
     water.uniforms=3;assert(town_shadow_lamp_register(&water)==0);water.uniforms=2;
 
-    for(int night=0;night<2;night++){
-        environment_test_rgb=night?0x607aa0:0xffffff;point_test_gain=night?255:0;
+    for(int night=0;night<2;night++)for(int gain=0;gain<=255;gain+=51){
+        environment_test_rgb=night?0x607aa0:0xffffff;shadow_test_gain=gain;point_test_gain=255-gain;
         memset(tev_colors,0,sizeof tev_colors);memset(color_commands,0,sizeof color_commands);
         konst_colors[0]=foam0;konst_colors[1]=foam1;
         unsigned bindings=0;reset_shadow_recording();town_shadow_ground(triangle,NULL,3,&material,&bindings);
@@ -287,14 +288,20 @@ static void water_shadow_color_checks(void){
                 int base=water_combine(tint[channel],color_channel(foam0,channel),first,0);
                 base=water_combine(base,color_channel(foam1,channel),second,0);
                 int shaded=water_combine(water_combine(0,base,env,0),shadow_tone[channel]*env/255,
-                                         water_combine(0,shadow,66,0),0);
+                                         water_combine(0,shadow,(SU_OPACITY*gain+127)/255,0),0);
                 int expected=water_combine(0,lamp_tone[channel]*point_test_gain/255,light,shaded);
                 assert(actual[channel]==expected);
             }
         }
+        if(!gain){
+            int clear[3],covered[3],lit[3];
+            recorded_water_pixel(85,170,0,0,clear);recorded_water_pixel(85,170,255,0,covered);recorded_water_pixel(85,170,255,255,lit);
+            assert(!memcmp(clear,covered,sizeof clear));
+            assert(lit[0]>covered[0]&&lit[1]>covered[1]&&lit[2]>covered[2]);
+        }
     }
-    environment_test_rgb=0xffffff;point_test_gain=255;
-    puts("Water shadow GX: both foam colors survive; noon/night RGB blends, cloud masks, lamp masks, alpha and free-register allocation passed");
+    environment_test_rgb=0xffffff;point_test_gain=shadow_test_gain=255;
+    puts("Water shadow GX: day/dusk/night fades, invisible night shadows, surviving lamps/foam, alpha and free-register allocation passed");
 }
 static void path_blend_color_checks(void){
     int page=1;DndDrawMaterial material={.secondary=&page};unsigned bindings=0;

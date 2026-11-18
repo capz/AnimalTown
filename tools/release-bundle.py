@@ -23,7 +23,7 @@ FIXED={'BUILD.txt','version.json','texture-audit.json','validation-plan.json','n
        'updater-THIRD-PARTY-NOTICES.txt','release-notes.md','updater-setup.md'}
 EVIDENCE={'title-logo.png','title-logo-picker.png','title-logo-name.png','title-logo-return.png',
           'title-logo-debug.png','title-logo-status.png','title-logo-report.json','title-logo-build.json',
-          'terrain-materials-report.json','terrain-materials-build.json'}
+          'terrain-materials-report.json','terrain-materials-build.json','daylight-build.json'}
 MAX_FILES=4096
 MAX_BYTES=2*1024**3
 
@@ -39,6 +39,7 @@ def allowed(name):
     # The publisher validates this scenario's reported captures and exact
     # source/ISO identity before attaching them. Keep its flat PNG namespace.
     if re.fullmatch(r'terrain-materials-[a-z0-9-]+\.png',name):return True
+    if re.fullmatch(r'daylight-(noon|dawn|dusk|night)-(a\.png|b\.png|report\.json)',name):return True
     parts=name.split('/')
     return len(parts)==3 and parts[0]=='scenarios' and parts[1] in ('cliff-hud','gpu-submit','performance') and Path(parts[2]).suffix in ('.png','.json','.txt','.log','.avi')
 

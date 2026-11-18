@@ -8,7 +8,7 @@ internal static class NativeShadows
     internal static int Lights(float[]? sources,int count,int strength)=>throw new System.PlatformNotSupportedException("Native light map bridge required");
     internal static int Points(float[] sources,int count)=>throw new System.PlatformNotSupportedException("Native model light bridge required");
     internal static int Objects(int scope)=>throw new System.PlatformNotSupportedException("Native model light scope required");
-    internal static int Environment(int rgb)=>throw new System.PlatformNotSupportedException("Native environment tint bridge required");
+    internal static int Environment(int rgb,int shadowStrength)=>throw new System.PlatformNotSupportedException("Native environment tint bridge required");
     internal static int Shutdown()=>throw new System.PlatformNotSupportedException("Native shadow union bridge required");
     internal static int Terrain(byte[] tile,int offset,int mode)=>throw new System.PlatformNotSupportedException("Native cliff shadow bridge required");
     internal static int Begin(int space,int enabled,int size)=>throw new System.PlatformNotSupportedException("Native shadow union bridge required");

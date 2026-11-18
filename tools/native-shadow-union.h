@@ -130,7 +130,7 @@ static inline int su_offset(int x,int y){return ((y/4)*(SU_SIDE/8)+x/8)*32+y%4*8
 static inline int su_floor(float x){int i=(int)x;return i-(i>x);}
 static inline int su_cloud_offset(int x,int z){return ((z/4)*(SU_CLOUD_SIDE/8)+x/8)*32+z%4*8+x%8;}
 static inline uint8_t su_cloud_sample(const SuState *s,float x,float z){
-    if(!s->cloud_ready)return 0;
+    if(!s->cloud_ready||s->cloud_opacity<=0)return 0;
     float fx=(x+s->cloud_x*.125f)*s->cloud_scale-.5f;
     float fz=(z+s->cloud_z*.125f)*s->cloud_scale-.5f;
     int ix=su_floor(fx),iz=su_floor(fz);float tx=fx-ix,tz=fz-iz;
@@ -148,6 +148,7 @@ static inline void su_cloud_style(SuState *s,float period,float edge,float stren
     s->cloud_scale=scale;s->cloud_contrast=contrast;s->cloud_opacity=opacity;s->cloud_bias=bias;s->cloud_dirty=1;
 }
 static inline void su_cloud_motion(SuState *s,float x,float z){
+    if(s->cloud_opacity<=0)return;
     // One eighth of a world metre: bounded updates with sub-texel drift.
     float units=SU_CLOUD_SIDE*8/s->cloud_scale;
     int px=(int)(x*units),pz=(int)(z*units);

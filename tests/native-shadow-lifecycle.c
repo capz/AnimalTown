@@ -154,6 +154,18 @@ int main(void){
     assert(animaltown_shadows_objects(3)==0&&animaltown_object_scope()==0);
     assert(animaltown_shadows_objects(2)==1&&animaltown_object_scope()==2);
     assert(animaltown_shadows_objects(0)==1&&animaltown_object_scope()==0);
+    assert(animaltown_shadows_environment(0x596c91,-1)==0&&animaltown_shadow_strength()==255);
+    assert(animaltown_shadows_environment(0x596c91,256)==0&&animaltown_environment_color()==0xffffff);
+    assert(animaltown_shadows_environment(-1,0)==0);
+    /* NULL updates gain only; a non-NULL empty list explicitly clears layout. */
+    assert(animaltown_shadows_lights(NULL,0,255)==1&&animaltown_light_strength()==255);
+    assert(shadows->light_count==1);
+    assert(animaltown_shadows_environment(0x596c91,0)==1&&animaltown_shadow_strength()==0);
+    assert(!memcmp(saved,shadows->coverage,sizeof saved)&&!shadows->cloud_dirty&&!shadows->light_dirty);
+    assert(animaltown_light_strength()==255); /* Disabling shadows must not disable lamps. */
+    int before=invalidations;
+    assert(animaltown_shadows_environment(0x596c91,0)==1&&invalidations==before);
+    assert(animaltown_shadows_environment(0x596c91,128)==1&&invalidations==before+1);
     reset_count=invalidations=0;free(points);
     free(empty);free(tile);
     shadows->caster[0].active=1;shadows->terrain_ready=1;
@@ -167,6 +179,7 @@ int main(void){
     assert(animaltown_shadows_init(atlas,circle,cloud)==1&&live==1);
     for(int i=0;i<SU_CASTERS;i++)assert(!shadows->caster[i].active);
     assert(!shadows->terrain_ready&&shadows->shapes[0]==255&&!shadows->point_count&&!shadows->object_scope);
+    assert(animaltown_shadow_strength()==255&&animaltown_light_strength()==0&&animaltown_environment_color()==0xffffff);
     assert(animaltown_shadows_shutdown()==1&&!live&&reset_count==2);
     free(atlas);free(circle);free(cloud);
     puts("Shadow bridge lifecycle: charged buffers released, safe retries and clean town reconstruction passed");

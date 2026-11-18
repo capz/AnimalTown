@@ -71,6 +71,27 @@ function Get-ReleaseBannerHashes([string]$Opening,[string]$Pal,[object]$NKitInfo
     }
     return [pscustomobject]@{opening=$openingHash;pal=(Get-FileHash -LiteralPath $Pal -Algorithm SHA256).Hash.ToLowerInvariant()}
 }
+function Copy-DaylightEvidence([string]$Source,[string]$Destination,[string]$Commit,[string]$Version,[string]$Tag,[string]$IsoName,[string]$IsoSha256){
+    $build=Join-Path $Source 'daylight-build.json'
+    if(!(Test-Path -LiteralPath $build -PathType Leaf)){return}
+    $evidence=Get-Content -LiteralPath $build -Raw|ConvertFrom-Json
+    if($evidence.schema -ne 1 -or $evidence.commit -cne $Commit -or $evidence.version -cne $Version -or
+       $evidence.tag -cne $Tag -or $evidence.isoName -cne $IsoName -or $evidence.isoSha256 -cne $IsoSha256){
+        throw 'Daylight evidence must match the release commit, version and verified NKit image'
+    }
+    $phases=[ordered]@{noon='12:00';dawn='06:30';dusk='18:00';night='20:00'}
+    foreach($phase in $phases.Keys){
+        $folder=Join-Path $Source $phase
+        $report=Get-Content -LiteralPath (Join-Path $folder 'daylight-report.json') -Raw|ConvertFrom-Json
+        if($report.passed -ne $true -or $report.requested_clock -cne $phases[$phase]){throw "Daylight capture did not pass: $phase"}
+        foreach($suffix in @('a.png','b.png','report.json')){
+            $file=Get-Item -LiteralPath (Join-Path $folder "daylight-$suffix")
+            if($file.PSIsContainer -or $file.Length -le 0){throw "Missing or empty daylight evidence: $phase/$suffix"}
+            Copy-Item -LiteralPath $file.FullName -Destination (Join-Path $Destination "daylight-$phase-$suffix") -Force
+        }
+    }
+    Copy-Item -LiteralPath $build -Destination (Join-Path $Destination 'daylight-build.json') -Force
+}
 $Root=(Resolve-Path -LiteralPath $Root).Path
 $commit=(& git -C $Root rev-parse HEAD).Trim()
 if($LASTEXITCODE -ne 0 -or $commit -notmatch '^[0-9a-f]{40}$'){throw 'Cannot determine source commit'}
@@ -157,6 +178,7 @@ if(Test-Path -LiteralPath $terrainEvidenceBuild -PathType Leaf){
         $terrainEvidenceAssets+=$destination
     }
 }
+Copy-DaylightEvidence (Join-Path $out 'daylight') $reports $commit $version $tag ([IO.Path]::GetFileName($nkit)) $nkitInfo.compactSha256
 $serverZip=Join-Path $package "AnimalTown-server-$version.zip"
 $toolsDirectory=Join-Path $out 'tools-published-binaries'
 if(Test-Path -LiteralPath $toolsDirectory){Remove-Item -LiteralPath $toolsDirectory -Recurse -Force}

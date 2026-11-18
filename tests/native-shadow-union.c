@@ -205,6 +205,27 @@ static void seasonal_cloud_checks(void){
     CHECK(su_field_channel(s->coverage,4,4,1)>200);
     su_begin(s,16,1,4);caster(32,4,rect,6,bounds);su_prepare(s,SU_PAGES);CHECK(pixel(4,4)==SU_OPACITY&&pixel(1,1)==0);
 }
+static void night_cloud_checks(void){
+    reset();s->cloud_ready=1;memset(s->clouds,255,sizeof s->clouds);
+    for(int i=0;i<SU_TERRAIN_BYTES;i++)s->terrain[i]=su_pack(33,0);
+    su_terrain_publish(s);float light[]={4,4,3,255};su_lights(s,light,1);
+    caster(32,4,rect,6,bounds);su_prepare(s,SU_PAGES);
+    CHECK(su_field_sample(s->coverage,24,4)==SU_OPACITY);
+    int light_before=su_field_channel(s->coverage,4,4,1);
+    su_cloud_style(s,32,255,0,0);su_prepare(s,SU_PAGES);
+    CHECK(su_cloud_sample(s,24,4)==0);
+    CHECK(su_field_sample(s->coverage,24,4)==su_shadow(su_pack(33,0)));
+    CHECK(su_field_channel(s->coverage,4,4,1)==light_before&&light_before>200);
+    // Once cleared, sleeping clouds do not dirty fields/pages as wind advances.
+    for(int frame=0;frame<1000;frame++){
+        su_cloud_motion(s,(frame%32)/32.f,(frame%16)/16.f);
+        CHECK(!s->cloud_dirty);su_prepare(s,SU_PAGES);CHECK(!s->changed);
+    }
+    su_cloud_style(s,64,255,33,96);su_cloud_motion(s,.75f,.5f);su_prepare(s,SU_PAGES);
+    CHECK(s->cloud_x==384&&s->cloud_z==256);
+    CHECK(su_cloud_sample(s,24,4)==33);
+    CHECK(su_field_channel(s->coverage,4,4,1)==light_before);
+}
 static void cloud_checks(void){
     reset();
     for(int z=0;z<SU_CLOUD_SIDE;z++)for(int x=0;x<SU_CLOUD_SIDE;x++)s->clouds[su_cloud_offset(x,z)]=x<32?0:255;
@@ -388,6 +409,7 @@ int main(int argc,char **argv){
     }
     cloud_checks();
     seasonal_cloud_checks();
+    night_cloud_checks();
     printf("Shadow storage: %zu bytes total; %d-byte pages, two %d-byte terrain fields\n",su_storage_bytes(),SU_BYTES,SU_TERRAIN_BYTES);
     free(s);printf("Shadow union: %d checks; max overlap, soft edges, trails, clipping, seams, rooms and 156-page bound passed\n",assertions);return 0;
 }

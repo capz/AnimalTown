@@ -52,10 +52,30 @@ is 522,016 bytes in the host ABI, below 512 KiB, including local-light staging.
 The old separate 4 KiB GPU cloud mask/effect is removed. These are
 allocation measurements, not whole-game MEM1 or hardware frame-time measurements.
 
-Cast shadows are always enabled. The title/session shadow and cloud-cover options,
+Outdoor cloud cover and cast shadows follow the console clock. Using the existing
+lamp schedule, they fade in from 05:30 to 07:30 and fade out from 17:00 to 19:30.
+They are completely absent from 19:30 until sunrise at 05:30; lamps follow the
+inverse fade and reach full strength overnight. The shared shader scales shadow
+opacity, so cliffs, scenery and villagers fade together without changing their
+coverage or rebuilding every shadow page as the clock advances. Static ground
+light pools and dynamic model lights keep their existing rendering paths.
+
+At full darkness, cloud coverage is removed once and wind stops dirtying the
+cloud field. Sunrise resumes the current wind position and season style beneath
+the same gradual shadow fade. Indoor contact shadows retain their room lighting.
+This adds no texture, render target or mask storage; the charged native shadow
+allocation remains 522,016 bytes in the host ABI. Clock gains are scalar state.
+
+The title/session shadow and cloud-cover options,
 L+R+Z+Y lighting cycle and L+R+D-pad Right cloud cycle are removed. Old dev-config
 fields remain readable for card compatibility but cannot disable shadows. Rim
 lighting remains a separate lighting control.
+
+Release CI captures 12:00, 06:30, 18:00 and 20:00 from the same ISO. Native
+shader/coverage tests check all fade levels, absence of night shadows, surviving
+lamps, quiescent sleeping clouds, sunrise restoration and unchanged alpha.
+Screenshots and reports are kept in the `daylight-COMMIT` Actions artifact and
+the Depot ZIP's `release/daylight-*` files, bound to the verified ISO hash.
 
 `tools/test-changes.ps1` covers cloud packing, repeat seams and scrolling, native
 maximum composition, drifting/restored coverage, shared intensity, page gutters,
