@@ -25,6 +25,7 @@ Assert-ReleaseAssetSet (Release $names[0..3]) $names -AllowMissingUpdateFeed
 Reject {Assert-ReleaseAssetSet (Release $names[0..3]) $names} 'New releases must include the compact update feed'
 Reject {Assert-ReleaseAssetSet (Release $names[1..4]) $names -AllowMissingUpdateFeed} 'Feed restoration must not excuse a missing ISO'
 Reject {Assert-ReleaseAssetSet (Release ($names+@('version.json'))) $names} 'Other loose JSON remains forbidden'
+Reject {Assert-ReleaseAssetSet (Release ($names+@('AnimalTown-cliff-kit-1.2.3.zip'))) $names} 'A separate cliff authoring kit must not enter the release asset set'
 Reject {Assert-ReleaseAssetSet (Release ($names+@('update.json'))) $names} 'Duplicate update feeds must fail'
 foreach($path in @('/release/update.json','AnimalTown-1.2.3.nkit.iso')){Assert-ReleaseAsset $path}
 foreach($path in @('version.json','UPDATE.JSON','source.tar.gz','animal-town-updater.dol')){

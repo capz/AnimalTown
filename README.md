@@ -162,15 +162,19 @@ Use `repack-textures . INPUT OUTPUT --size256` or `--sizeOriginal`.
 The [human-driven editor design](docs/uv-editor-design.md) describes the proposed
 interactive workflow; the current command-line tool supports rotated chart matches.
 
-The default maximum texture edge is 256 pixels. `TextureResolution.Size128`,
-`Size256`, `Size512` and `Size1024` select a maximum edge at load time; rectangular
-sources retain aspect ratio and smaller sources are never enlarged.
+General texture decoding defaults to a 256-pixel maximum edge.
+`TextureResolution.Size128`, `Size256`, `Size512` and `Size1024` select a maximum
+edge for standalone textures and non-villager models; rectangular sources retain
+aspect ratio and smaller sources are never enlarged.
 
-`ModelResources.Load("fox", TextureResolution.Size512)` selects a console-ready
-variant compiled from the original GLB. All four variants ship on disc, with base
-plus one half-size mip; only the selected variant is loaded. This avoids retaining
-or resizing full-resolution model atlases on the console. Default variants retain
-the original filenames; others use `-tex128`, `-tex512` or `-tex1024` suffixes.
+Player and NPC villagers load **128px** model textures by default. Villagers ship
+only `-tex128.dndmodel` and the optional 256px `.dndmodel`; 512/1024px requests
+are rejected before loading. `ModelResources.LoadAsync("fox")` selects the
+128px package; passing `TextureResolution.Size256` selects the optional 256px one.
+Both are cooked directly from the original GLB with base plus one half-size mip.
+Incremental and `-SkipAssets` builds remove stale oversized villager packages.
+Other model types retain their 128/256/512/1024 variants. No model texture is
+resized or upscaled on the console.
 
 `TextureCache.Load(path, false, TextureResolution.Size256)` and
 `TextureCache.LoadFloor(path, TextureResolution.Size256)` apply the same policy

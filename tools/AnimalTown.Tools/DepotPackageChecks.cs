@@ -43,11 +43,26 @@ internal static class DepotPackageChecks
                 File.WriteAllBytes(Path.Combine(directory,name),bytes);
             }
             foreach(string unwanted in new[]{"animal-town-updater.dol","roots.pem","entropy.bin","sunshine-water.dndtex","source.glb","other.DOL"})File.WriteAllText(Path.Combine(disc,unwanted),"must not ship");
+            foreach(string species in new[]{"fox","bunny","giraffe","cat","hamster","spaniel"})foreach(int edge in new[]{512,1024}){
+                string name=species+"-tex"+edge+".dndmodel";
+                File.WriteAllText(Path.Combine(disc,name),"stale oversized model");File.WriteAllText(Path.Combine(disc,name+".deps.json"),"stale cooking receipt");
+                Check(!DepotPackage.Payload(disc).Contains(name),"oversized villagers are outside the runtime whitelist: "+name);
+            }
+            string otherVariant=Path.Combine(disc,"building-tex1024.dndmodel"),otherHash=Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(otherVariant)));
+            Check(ModelVariants.Prune(root)==12&&ModelVariants.Prune(root)==0,"incremental/SkipAssets staging removes all twelve oversized villager packages and is idempotent");
+            Check(Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(otherVariant)))==otherHash,"villager pruning preserves other model variants byte-for-byte");
+            Check(File.Exists(Path.Combine(disc,"source.glb")),"pruning never deletes artist source files");
+            foreach(string species in new[]{"fox","bunny","giraffe","cat","hamster","spaniel"})foreach(int edge in new[]{512,1024})
+                Check(!File.Exists(Path.Combine(disc,species+"-tex"+edge+".dndmodel.deps.json")),"obsolete villager cooking receipts retire with their generated models");
             string zip=Path.Combine(root,"AnimalTown-1.2.3-depot.zip");DepotPackage.Build(root,zip);
             using(var archive=ZipFile.OpenRead(zip)){
                 Check(archive.Entries.All(e=>e.FullName.StartsWith("apps/animaltown/",StringComparison.Ordinal)),"exact installed app directory");
                 Check(archive.Entries.Count(e=>e.FullName.EndsWith(".dol",StringComparison.OrdinalIgnoreCase))==1,"exactly one playable executable");
                 Check(!archive.Entries.Any(e=>e.FullName.Contains("updater",StringComparison.Ordinal)||e.FullName.Contains("sunshine",StringComparison.Ordinal)||e.FullName.EndsWith(".pem",StringComparison.Ordinal)),"credentials, updater and retired assets are excluded");
+                foreach(string species in new[]{"fox","bunny","giraffe","cat","hamster","spaniel"}){
+                    Check(archive.GetEntry("apps/animaltown/"+species+"-tex128.dndmodel")!=null,"gameplay villager package is included: "+species);
+                    Check(!archive.Entries.Any(e=>e.FullName=="apps/animaltown/"+species+"-tex512.dndmodel"||e.FullName=="apps/animaltown/"+species+"-tex1024.dndmodel"),"oversized villager packages are excluded: "+species);
+                }
             }
             // Fresh PowerShell processes can serialize hashtable properties in
             // another order. Equal snapshots remain equal; new fields do not.
@@ -67,6 +82,7 @@ internal static class DepotPackageChecks
             }
             Mutated("../outside");Mutated("/apps/animaltown/default.dol");Mutated("Apps/animaltown/extra.txt");Mutated("apps/animaltown/DEFAULT.DOL");
             Mutated("apps/animaltown/other.dol");Mutated("apps/animaltown/wordmark.dndtex");Mutated("apps/animaltown/version.md",Encoding.ASCII.GetBytes("1.2.4"));
+            foreach(string species in new[]{"fox","bunny","giraffe","cat","hamster","spaniel"})foreach(int edge in new[]{512,1024})Mutated("apps/animaltown/"+species+"-tex"+edge+".dndmodel");
             Mutated("apps/animaltown/link",attributes:unchecked((int)0xa1ff0000));
             Mutated("apps/animaltown/opening.bnr",new byte[6496]);Mutated("apps/animaltown/depot-package.json",Encoding.ASCII.GetBytes("{}"));
             string runtimeZip=zip;zip=Path.Combine(root,"with-reports.zip");File.Copy(runtimeZip,zip);

@@ -195,8 +195,17 @@ foreach(var resolution in new[]{TextureResolution.Size128,TextureResolution.Size
     int edge=TexturePolicy.Edge(resolution);
     Check(TexturePixels.FitWidth(1024,512,resolution)==edge&&TexturePixels.FitHeight(1024,512,resolution)==edge/2,"selected texture limit preserves aspect");
     Check(TexturePixels.FitWidth(64,32,resolution)==64,"texture policy never upscales");
-    Check(TexturePolicy.ModelPath("fox",resolution)=="dvd:/fox"+(edge==256?"":"-tex"+edge)+".dndmodel","load selects original-derived variant");
+    Check(TexturePolicy.ModelPath("building",resolution)=="dvd:/building"+(edge==256?"":"-tex"+edge)+".dndmodel","non-villager model variants retain their resolution policy");
 }
+foreach(string species in new[]{"fox","bunny","giraffe","cat","hamster","spaniel"}){
+    Check(TexturePolicy.ModelPath(species)=="dvd:/"+species+"-tex128.dndmodel"&&TexturePolicy.DefaultForModel(species)==TextureResolution.Size128,"player and NPC species default to the 128px gameplay package");
+    Check(TexturePolicy.ModelPath(species,TextureResolution.Size256)=="dvd:/"+species+".dndmodel","256px remains an explicit supported villager option");
+    foreach(var resolution in new[]{TextureResolution.Size512,TextureResolution.Size1024}){
+        bool refused=false;try{TexturePolicy.ModelPath(species,resolution);}catch(ArgumentOutOfRangeException){refused=true;}
+        Check(refused,"high-resolution villager loads fail before opening or allocating a model");
+    }
+}
+Check(TexturePolicy.DefaultForModel("building")==TextureResolution.Size256,"the lower villager default does not lower other asset defaults");
 bool invalidResolution=false;try{TexturePolicy.Edge((TextureResolution)192);}catch(ArgumentOutOfRangeException){invalidResolution=true;}Check(invalidResolution,"invalid texture resolution rejected");
 uint identity=TexturePixels.Hash(alphaPackage);alphaPackage[32]^=1;Check(identity!=TexturePixels.Hash(alphaPackage),"source fingerprint notices changed original bytes");
 bool badTexture=false;try{TexturePixels.Validate(new byte[32]);}catch(InvalidOperationException){badTexture=true;}Check(badTexture,"invalid texture rejected before decoding");

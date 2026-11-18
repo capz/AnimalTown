@@ -73,7 +73,10 @@ internal static class DepotPackage
             var d=BuildingCatalog.Get(i);
             foreach(string name in new[]{d.Exterior,d.Exterior+"-closed",d.Door,d.Floor,d.North,d.East,d.South,d.West})models.Add(name);
         }
-        foreach(string model in models)foreach(string suffix in new[]{"-tex128","","-tex512","-tex1024"})files.Add(model+suffix+".dndmodel");
+        foreach(string model in models){
+            var limits=TexturePolicy.IsVillagerModel(model)?new[]{128,256}:new[]{128,256,512,1024};
+            foreach(int limit in limits)files.Add(model+(limit==256?"":"-tex"+limit)+".dndmodel");
+        }
         foreach(string season in new[]{"spring","summer","fall","winter"}){
             string name="floor-"+season;files.Add(name+".bin");byte[] data=File.ReadAllBytes(At(directory,name+".bin"));FloorStrips.Validate(data);
             bool shared=FloorStrips.Read(data,4)==2;

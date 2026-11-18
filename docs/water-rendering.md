@@ -252,8 +252,9 @@ Inspect river.png, river-corner.png, bridge.png, coast-beach.png, estuary.png,
 restored.png and river-coast-menu.png. Automated height, footprint, shore-adjacency,
 68-seed generation, combined/split round-trip and historical migration checks run
 through `tools/test-changes.ps1`. Physical console testing remains outstanding.
-The handoff branch is explicitly enabled in the existing release workflow so its
-clean ISO/backend/tools/cliff-kit manifests and checksums publish as a prerelease.
+The release workflow publishes the NKit ISO, Depot app, backend/tools ZIPs and
+compact update feed. Reports and checksums live inside the Depot ZIP; cliff
+authoring files remain in Git and are not a separate release ZIP.
 
 ## Renderer resources
 
