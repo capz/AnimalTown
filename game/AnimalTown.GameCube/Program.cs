@@ -552,7 +552,12 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
         { int index=LostIndex(selected);Say("Town hall",state.ClaimLost(index,state.ActiveProfile)?"Recovered!":"Your pockets are full, or the item is reserved.");return; }
         if(screen=="menu")MenuAction();
     }
-    private void UpdateWeather()=>weather.Update(state.Town.Seed,weatherDay,townClock.MinuteOfDay,terrain.SeasonAt(month,renderDebug.SeasonOverride));
+    private void UpdateWeather()
+    {
+        int season=terrain.SeasonAt(month,renderDebug.SeasonOverride);
+        weather.Update(state.Town.Seed,weatherDay,townClock.MinuteOfDay,season);
+        state.Town.Traffic.Snow.SetWinter(season==3);
+    }
     private int MenuTabCount=>DebugMenuSettings.Visible?tabs.Length:tabs.Length-1;
     private int TabCount()=>menuTab==0?state.Capacity:menuTab==1?7:menuTab==2?Catalog.EntryCount:menuTab==3?7:menuTab==4?7:menuTab==TestingTab?testingOptions.Length:DebugMenuSettings.Visible?6:5;
     private int LostCount(){int c=0;for(int i=0;i<state.Town.GroundCount;i++)if(state.Town.Ground[i].Kind==4)c++;return c;}

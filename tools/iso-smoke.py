@@ -1009,11 +1009,11 @@ def debug_visibility_scenario(reload=False):
     if debug_visibility():raise AssertionError('An interrupted Z sequence enabled debug access')
     press('B');set_debug_visibility(True)
     press('D_DOWN');press('A');wait_title(modal=True);screenshot('debug-unlocked-title-modal.png')
-    # Rim is configuration row 20, after two non-setting rows are omitted.
-    for _ in range(18):press('D_DOWN')
+    # Ground mip distance remains a persisted title debug slider.
+    for _ in range(13):press('D_DOWN')
     press('D_RIGHT');screenshot('debug-slider-before-hide.png')
     set_debug_visibility(False);wait_title();screenshot('debug-hidden-title-again.png')
-    if card_dev_config(root/'MemoryCardA.USA.raw')['values'][20]!=105:raise AssertionError('Hiding debug menus reset the selected slider')
+    if card_dev_config(root/'MemoryCardA.USA.raw')['values'][23]!=1:raise AssertionError('Hiding debug menus reset the selected slider')
     press('D_DOWN');start_game(True,'debug-visibility')
     def focus(name,expected):
         screenshot(name+'.png');pixels=rgb(name+'.png')
@@ -1290,10 +1290,10 @@ def submission_scenario():
     press('Y');segment('map',5);press('B')
     # Session-only rain toggle (option 16, visible row 14 after shadow removal).
     press('START');press('R')
-    for _ in range(14):press('D_DOWN')
+    for _ in range(7):press('D_DOWN')
     press('A');press('B');segment('rain',profile_seconds)
     press('START');press('R')
-    for _ in range(14):press('D_DOWN')
+    for _ in range(7):press('D_DOWN')
     press('A');press('B')
     # Existing inspector selects the same NPC cottage in both builds.
     os.write(controller,b'PRESS L\nPRESS R\n');time.sleep(.2);press('A');os.write(controller,b'RELEASE L\nRELEASE R\n')
@@ -1505,23 +1505,16 @@ def testing_menu():
     for _ in range(5):press('D_DOWN')
     label('testing-settings-debug-entry',5);press('A')
     manual_only='--manual-save-only' in sys.argv
-    for row in range(1 if manual_only else 12):
-        menu_row=row if row==0 else row+1 # Skip the explicitly saved AA preference.
-        original=label(f'testing-row-{row}-before',menu_row)
-        press('A');changed=label(f'testing-row-{row}-after',menu_row)
+    previous=0
+    # Skip the saved AA preference and cover the session snowfall control.
+    for row in ([0] if manual_only else [0,*range(2,10)]):
+        for _ in range(row-previous):press('D_DOWN')
+        original=label(f'testing-row-{row}-before',row)
+        press('A');changed=label(f'testing-row-{row}-after',row)
         if original==changed:raise AssertionError(f'Testing row {row} did not change its displayed state')
-        # Restore the initial setting, including the six-state water preview.
-        for step in range(5 if row==8 else 1):
-            press('A');label(f'testing-row-{row}-restore-{step}',menu_row)
-        if row==8:
-            # A water preview must allow Start to reopen the menu while active.
-            press('A');label('testing-water-active',menu_row);press('B');time.sleep(15);press('START');press('R')
-            for _ in range(9):press('D_DOWN')
-            label('testing-water-menu-return',menu_row)
-            for step in range(5):
-                press('A');label(f'testing-water-off-{step}',menu_row)
-        press('D_DOWN')
-        if row==0:press('D_DOWN')
+        press('A');restored=label(f'testing-row-{row}-restore',row)
+        if original!=restored:raise AssertionError(f'Testing row {row} did not restore its initial state')
+        previous=row
     if card_digest()!=before:raise AssertionError('Debug actions wrote to the memory card')
     press('B')
     wait_seconds=int(sys.argv[sys.argv.index('--manual-save-wait')+1]) if '--manual-save-wait' in sys.argv else 0
@@ -1915,9 +1908,9 @@ def settings_navigation():
     press('R');focus('testing-entry',0)
     press('A');focus('testing-performance-on',0)
     press('A');focus('testing-performance-off',0)
-    press('D_DOWN');press('D_DOWN');focus('testing-model-row',2)
-    press('A');focus('testing-model-direct',2)
-    press('A');focus('testing-model-indexed',2)
+    press('D_DOWN');press('D_DOWN');focus('testing-uv-row',2)
+    press('A');focus('testing-uv-colors-on',2)
+    press('A');focus('testing-uv-colors-off',2)
     press('L');focus('settings-tab-return',0)
     press('B');screenshot('settings-close.png')
     press('X');press('L');press('L');focus('settings-backpack-entry',0)
