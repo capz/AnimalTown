@@ -73,15 +73,34 @@ internal sealed class TerrainSection
         for(int n=0;n<strips.Count;n++){
             if(strips.Water[n]||GroundRingPlan.Uses(state.Town,strips.X0[n],strips.Z0[n],strips.Material[n],owner.SharedFlatMaterial))continue;
             int slot=strips.Material[n],z=strips.Z0[n];
-            Triangles+=2;
-            var buffer=Buffer(slot);
-            var a=rows.At(z);var b=rows.At(z+1);
-            float x0=strips.X0[n],x1=strips.X1[n],u0=x0*.5f,u1=x1*.5f,v0=z*.5f,v1=(z+1)*.5f;
-            var p0=Elevated(state,(int)x0,z,x0,z,a);var p1=Elevated(state,(int)x0,z,x1,z,a);var p2=Elevated(state,(int)x0,z,x1,z+1,b);var p3=Elevated(state,(int)x0,z,x0,z+1,b);
-            bool wet=state.Town.At((int)x0,z)==(int)Terrain.Beach&&(WaterTerrain.IsSea(state.Town,(int)x0-1,z)||WaterTerrain.IsSea(state.Town,(int)x0+1,z)||WaterTerrain.IsSea(state.Town,(int)x0,z-1)||WaterTerrain.IsSea(state.Town,(int)x0,z+1));
-            var tint=wet?new Color32(205,199,181):Color32.White;
-            buffer.Quad(Vertex(x0,p0,u0,v0,tint),Vertex(x1,p1,u1,v0,tint),Vertex(x1,p2,u1,v1,tint),Vertex(x0,p3,u0,v1,tint),FrameProfile.Counters);
+            int start=strips.X0[n],end=strips.X1[n];
+            if(!owner.SnowMaterial(slot)||strips.Elevation[n]>TerrainElevation.Block){
+                AppendGroundQuad(state,slot,start,end,z,false);
+                continue;
+            }
+            // Grass and white building pads can be merged into the same
+            // material strip. Split only where snow eligibility changes.
+            bool snow=TerrainRenderer.SnowTile(state.Town,start,z);
+            for(int x=start+1;x<end;x++){
+                bool next=TerrainRenderer.SnowTile(state.Town,x,z);
+                if(next==snow)continue;
+                AppendGroundQuad(state,slot,start,x,z,snow);
+                start=x;snow=next;
+            }
+            AppendGroundQuad(state,slot,start,end,z,snow);
         }
+    }
+    private void AppendGroundQuad(GameState state,int slot,int x0,int x1,int z,bool snow)
+    {
+        Triangles+=2;
+        var buffer=Buffer(slot);
+        var a=rows.At(z);var b=rows.At(z+1);
+        float u0=x0*.5f,u1=x1*.5f,v0=z*.5f,v1=(z+1)*.5f;
+        var p0=Elevated(state,x0,z,x0,z,a);var p1=Elevated(state,x0,z,x1,z,a);
+        var p2=Elevated(state,x0,z,x1,z+1,b);var p3=Elevated(state,x0,z,x0,z+1,b);
+        bool wet=state.Town.At(x0,z)==(int)Terrain.Beach&&(WaterTerrain.IsSea(state.Town,x0-1,z)||WaterTerrain.IsSea(state.Town,x0+1,z)||WaterTerrain.IsSea(state.Town,x0,z-1)||WaterTerrain.IsSea(state.Town,x0,z+1));
+        var tint=wet?new Color32(205,199,181):snow?TerrainRenderer.SnowReceiver:Color32.White;
+        buffer.Quad(Vertex(x0,p0,u0,v0,tint),Vertex(x1,p1,u1,v0,tint),Vertex(x1,p2,u1,v1,tint),Vertex(x0,p3,u0,v1,tint),FrameProfile.Counters);
     }
     private TerrainIndexBuffer Buffer(int slot)
     {
