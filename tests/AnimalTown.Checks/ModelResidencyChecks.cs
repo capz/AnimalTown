@@ -38,6 +38,7 @@ namespace Dolphin.Graphics
     // native ownership/polling instead of making every async call succeed inline.
     public sealed class Model
     {
+        public readonly List<int> Animations=new List<int>{0,1};
         public bool AutomaticResidencyProgress=true;
         public int ResidencyBytesPerStep,ResidencyWorkItemsPerStep;
         public int PackageBytes {get;set;}=65536;

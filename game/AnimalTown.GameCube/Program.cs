@@ -764,55 +764,6 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
         if(state.Tool==Catalog.Shovel&&state.Town.AddGround(16,tx,tz,1,day)){Say("Digging","A spot for something buried.");return;}
         // Nothing in reach. Do not interrupt movement with an idle dialogue.
     }
-    internal void Step(ControllerState pad)
-    {
-        if(resourcesReady)RefreshResidencyDemand(Clock.Timestamp);
-        if(!resourcesReady||room==0&&!terrain.Ready){playerRunning=false;runningMinimap.Update(Clock.Timestamp,false,false);return;}
-        bool running=false;float beforeX=state.X,beforeZ=state.Z;
-        tick++;
-        if(tick%30==0)townClock.Update(NativeCalendar.ReadClock());
-        if(tick%900==0&&session.Draft==null){ReadCalendar();state.Rollover(day,month);}
-        if(screen=="dialogue"&&typeAt<message.Length){
-            typeAt++;
-            if(typeAt==message.Length)dialogueVoice.Stop();
-            else if(++voiceTick%3==0&&dialogueVoice.Available&&!dialogueVoice.Pulse())DebugOverlay.WriteLine("Dialogue audio unavailable; continuing text");
-        }
-        if(screen=="world"||screen=="plot")
-        {
-            if(villagers.Doors.Busy(0))facingYaw=state.Facing;
-            float inputX=pad.Stick.X,inputY=pad.Stick.Y;
-            if(room!=0&&inputX*inputX+inputY*inputY<PlayerMovement.DeadZone*PlayerMovement.DeadZone){int held=(int)pad.HeldButtons;inputX=((held&2)!=0?1:0)-((held&1)!=0?1:0);inputY=((held&8)!=0?1:0)-((held&4)!=0?1:0);}
-            if(room!=0){indoorCamera.Configure(BuildingWorld.Definition(state,BuildingWorld.Building(room)));indoorCamera.Tick(pad.L.IsHeld&&pad.R.IsHeld?0:pad.CStick.X,pad.L.WasPressed&&!pad.R.IsHeld);indoorCamera.Movement(inputX,inputY,out inputX,out inputY);}
-            if(!villagers.Doors.Busy(0)&&!(pad.L.IsHeld&&pad.R.IsHeld)&&PlayerMovement.Move(state,room,inputX,inputY,room==0?(int)pad.HeldButtons:0,pad.B.IsHeld,out float dx,out float dz,session.Draft==null))
-            {
-                facingYaw=PlayerMovement.Yaw(dx,dz);PlayerMovement.Target(dx,dz,out faceX,out faceZ);
-                int clip=pad.B.IsHeld?1:0;moveClip=clip;running=clip==1&&(state.X!=beforeX||state.Z!=beforeZ);desiredPlayerSpeed=1.05f;
-            }
-            else if(villagers.Doors.Moving(0)){
-                moveClip=0;desiredPlayerSpeed=1;
-            }
-            else if(moveClip>=0)moveClip=-1;
-        }
-        bool simulateJourneys=screen=="world"||ShopScreen||screen=="shop"||screen=="store"||screen=="sell";
-        if(simulateJourneys){
-            RefreshResidencyDemand(Clock.Timestamp);
-            if(villagers.Doors.Busy(0)&&!villagers.Doors.ResourcesReady[0])modelResidency.WaitForPortal();
-            int oldRoom=room;villagers.Tick(state);
-            if(room!=oldRoom){facingYaw=state.Facing;faceX=0;faceZ=room==0?1:-1;indoorCamera.Reset();}
-        }
-        if(session.Draft==null)state.Town.Traffic.Tick(state.Town);
-        runningMinimap.Update(Clock.Timestamp,running,screen=="world"&&room==0&&waterInspection==0&&!cliffPreview);
-        playerRunning=running;
-        state.Facing=facingYaw;cachedPlayerHeight=PlayerHeight();if(room==0)RenderView.Prepare(state.X,state.Z,cachedPlayerHeight);
-        animationClock.Step(0,moveClip,models[state.Species].Animations.Count>0);
-        for(int i=1;i<7;i++){
-            var v=state.Town.Residents[i-1];bool moving=v.Space==room&&simulateJourneys&&villagers.Moving[i-1];
-            if(moving!=villagersMoving[i-1]){
-                villagersMoving[i-1]=moving;animationClock.Reset(i);animationClock.Step(i,moving?0:-1,false);restartClips[i]=moving;
-            }
-            animationClock.Step(i,animationClock.Clip(i),moving);
-        }
-    }
     private void UpdateAnimationFrame()
     {
         long start=FrameProfile.Start();
@@ -834,10 +785,8 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
         }
         FrameProfile.End(1,start);
     }
-    private void ReadCalendar(){int date=NativeCalendar.Read();day=date&0x1ffff;month=(int)((uint)date>>17);townClock.Update(NativeCalendar.ReadClock());}
     private Vector3 SurfacePoint(float x,float z,float height=0)
     { if(room!=0)return new Vector3(x,height,z);var p=CylinderWorld.Surface(z,state.Z,height+TerrainElevation.At(state.Town,x,z));return new Vector3(x,p.Y,p.Z); }
-    private float PlayerHeight()=>room==0?TerrainElevation.At(state.Town,state.X,state.Z):0;
     private Quaternion SurfaceRotation(float z,float yaw=0)
     {
         float halfPitch=room==0?(z-state.Z)/CylinderWorld.Radius*.5f:0;
