@@ -157,7 +157,9 @@ int main(void){
     assert(animaltown_shadows_environment(0x596c91,-1)==0&&animaltown_shadow_strength()==255);
     assert(animaltown_shadows_environment(0x596c91,256)==0&&animaltown_environment_color()==0xffffff);
     assert(animaltown_shadows_environment(-1,0)==0);
-    assert(animaltown_shadows_lights(points,0,255)==1&&animaltown_light_strength()==255);
+    /* NULL updates gain only; a non-NULL empty list explicitly clears layout. */
+    assert(animaltown_shadows_lights(NULL,0,255)==1&&animaltown_light_strength()==255);
+    assert(shadows->light_count==1);
     assert(animaltown_shadows_environment(0x596c91,0)==1&&animaltown_shadow_strength()==0);
     assert(!memcmp(saved,shadows->coverage,sizeof saved)&&!shadows->cloud_dirty&&!shadows->light_dirty);
     assert(animaltown_light_strength()==255); /* Disabling shadows must not disable lamps. */
