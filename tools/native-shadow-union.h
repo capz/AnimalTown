@@ -73,6 +73,39 @@ static inline void su_terrain_changed(SuState *s){
 }
 static inline uint8_t su_shadow(uint8_t value){return (uint8_t)(((value&15)*SU_OPACITY+7)/15);}
 static inline uint8_t su_pack(int shadow,int light){return (uint8_t)(((light+8)/17)*16+(shadow*15+SU_OPACITY/2)/SU_OPACITY);}
+/* Experimental snow is world-aligned and repeats every eight metres.
+ * Small steps and one broad hollow make both resolutions easy to compare. */
+static inline unsigned su_snow_depth(float x,float z){
+    static const float marks[][4]={
+        {2.1f,1.4f,.42f,.63f},{2.8f,2.5f,.42f,.63f},{2.3f,3.6f,.42f,.63f},
+        {3.f,4.7f,.42f,.63f},{2.5f,5.8f,.42f,.63f},{3.2f,6.9f,.42f,.63f},
+        {6.f,4.6f,1.55f,1.25f}
+    };
+    x-=8.f*floorf(x/8.f);z-=8.f*floorf(z/8.f);
+    float deepest=0;
+    for(size_t i=0;i<sizeof(marks)/sizeof(marks[0]);i++){
+        float dx=(x-marks[i][0])/marks[i][2],dz=(z-marks[i][1])/marks[i][3];
+        float depth=1.f-dx*dx-dz*dz;
+        if(depth>deepest)deepest=depth;
+    }
+    /* A flat, fully compressed center survives bilinear filtering. */
+    deepest=fminf(1.f,1.55f*deepest);
+    return (unsigned)(deepest*deepest*63.f+.5f);
+}
+static inline int su_rgb565_offset(int x,int z,int width){
+    return ((z/4)*(width/4)+x/4)*32+(z%4*4+x%4)*2;
+}
+static inline void su_snow_pack(uint8_t *dest,int width,int height,const uint8_t *ia4,
+                                const uint8_t *depth,int depth_width){
+    for(int z=0;z<height;z++)for(int x=0;x<width;x++){
+        unsigned packed=ia4[((z/4)*(width/8)+x/8)*32+z%4*8+x%8];
+        unsigned shadow=((packed&15)*31+7)/15, lamp=((packed>>4)*31+7)/15;
+        unsigned rgb=(shadow<<11)|(depth[(z%depth_width)*depth_width+x%depth_width]<<5)|lamp;
+        int offset=su_rgb565_offset(x,z,width);
+        dest[offset]=(uint8_t)(rgb>>8);
+        dest[offset+1]=(uint8_t)rgb;
+    }
+}
 static inline void su_terrain_reset(SuState *s){
     s->terrain_ready=0;memset(s->terrain,0,SU_TERRAIN_BYTES);su_terrain_changed(s);
 }

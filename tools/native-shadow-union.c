@@ -6,6 +6,10 @@
 #include "dnd_timing.h"
 static SuState *shadows;
 static int shadow_storage;
+#define SU_SNOW_BYTES (2*(SU_PAGES*SU_BYTES+SU_TERRAIN_BYTES))
+static uint8_t snow_page_depth[SU_BYTES],snow_field_depth[8*8];
+static uint8_t *snow_pixels;
+static uint8_t *snow_coverage(void){return snow_pixels+2*SU_PAGES*SU_BYTES;}
 extern void animaltown_shadows_model_reset(void);
 static int environment_rgb=0xffffff,light_strength,shadow_strength=255;
 int animaltown_environment_color(void){return environment_rgb;}
@@ -41,14 +45,19 @@ int animaltown_shadows_shutdown(void){
     /* No frame may still sample the coverage pages. The resource release
      * waits for GX retirement before freeing the charged SDK buffer. */
     if(dnd_draw_release(shadow_storage)<0)return 0;
-    shadows=NULL;shadow_storage=0;environment_rgb=0xffffff;light_strength=0;shadow_strength=255;
+    shadows=NULL;snow_pixels=NULL;shadow_storage=0;environment_rgb=0xffffff;light_strength=0;shadow_strength=255;
     dnd_draw_backend_invalidate_cache();animaltown_shadows_model_reset();return 1;
 }
 int animaltown_shadows_init(DndArray *atlas,DndArray *circle,DndArray *clouds){
     if(shadows)return 1;
     if(!atlas||!circle||!clouds||atlas->element_size!=1||circle->element_size!=1||clouds->element_size!=1||atlas->length!=32768||circle->length!=2048||clouds->length!=SU_CLOUD_BYTES)return 0;
-    shadow_storage=dnd_buffer_create((int)su_storage_bytes(),32);if(!shadow_storage)return 0;
+    shadow_storage=dnd_buffer_create((int)su_storage_bytes()+SU_SNOW_BYTES,32);if(!shadow_storage)return 0;
     shadows=(SuState*)(uintptr_t)dnd_buffer_address(shadow_storage,0);if(!shadows){dnd_draw_release(shadow_storage);return 0;}su_init(shadows);
+    snow_pixels=(uint8_t*)shadows+su_storage_bytes();
+    for(int z=0;z<SU_SIDE;z++)for(int x=0;x<SU_SIDE;x++)
+        snow_page_depth[z*SU_SIDE+x]=su_snow_depth((x-.5f)*8/SU_INNER,(z-.5f)*8/SU_INNER);
+    for(int z=0;z<8;z++)for(int x=0;x<8;x++)
+        snow_field_depth[z*8+x]=su_snow_depth(x-.5f,z-.5f);
     const uint8_t *a=(const uint8_t*)atlas->data,*c=(const uint8_t*)circle->data;
     for(int p=0;p<4;p++)for(int y=0;y<64;y++)for(int x=0;x<64;x++){
         int px=p%2*64+x,py=p/2*64+y,at=(((py/4)*32+px/4)*16+py%4*4+px%4)*2;
@@ -119,8 +128,22 @@ int animaltown_shadows_prepare(int microseconds){
     /* Present already fenced the previous frame. Flush only modified pages;
      * publication invalidates GX's texture cache without an extra DrawDone. */
     if(shadows->changed||field_changed){
-        if(field_changed)dnd_draw_backend_flush(shadows->coverage,SU_TERRAIN_BYTES,0);
-        for(int i=0;i<SU_PAGES;i++)if(shadows->page[i].publish){dnd_draw_backend_flush(shadows->pixels+i*SU_BYTES,SU_BYTES,0);shadows->page[i].publish=0;}
+        if(field_changed){
+            dnd_draw_backend_flush(shadows->coverage,SU_TERRAIN_BYTES,0);
+            su_snow_pack(snow_coverage(),SU_TERRAIN_WIDTH,SU_TERRAIN_HEIGHT,
+                         shadows->coverage,snow_field_depth,8);
+            dnd_draw_backend_flush(snow_coverage(),2*SU_TERRAIN_BYTES,0);
+        }
+        for(int i=0;i<SU_PAGES;i++)if(shadows->page[i].publish){
+            uint8_t *source=shadows->pixels+i*SU_BYTES;
+            dnd_draw_backend_flush(source,SU_BYTES,0);
+            if(!shadows->page[i].space){
+                uint8_t *dest=snow_pixels+2*i*SU_BYTES;
+                su_snow_pack(dest,SU_SIDE,SU_SIDE,source,snow_page_depth,SU_SIDE);
+                dnd_draw_backend_flush(dest,2*SU_BYTES,0);
+            }
+            shadows->page[i].publish=0;
+        }
         dnd_draw_backend_publish_texture();
     }
     return shadows->overflow?0:1;
@@ -129,19 +152,20 @@ int animaltown_shadows_scope(int mode){
     if(!shadows)return 0;
     shadows->scope=mode;dnd_draw_backend_invalidate_cache();animaltown_shadows_model_reset();return mode;
 }
-int animaltown_shadows_mode(void){return shadows&&shadows->enabled?shadows->scope:0;}
+int animaltown_shadows_mode(void){return shadows&&shadows->enabled?((shadows->scope==4||shadows->scope==5)&&shadows->space?1:shadows->scope):0;}
 const uint8_t *animaltown_shadows_page(float x,float z,float *origin){
     if(!shadows)return NULL;
     int px=(int)floorf(x/shadows->span),pz=(int)floorf(z/shadows->span),at=su_find(shadows,px,pz);
     origin[0]=px*shadows->span;origin[1]=pz*shadows->span;origin[2]=shadows->span;
     origin[3]=SU_SIDE;
     origin[4]=shadows->span;origin[5]=SU_SIDE;
-    if(shadows->scope!=3&&at>=0&&shadows->page[at].needed)
-        return shadows->pixels+at*SU_BYTES;
+    int snow=(shadows->scope==4||shadows->scope==5)&&shadows->space==0;
+    if(shadows->scope!=3&&shadows->scope!=5&&at>=0&&shadows->page[at].needed&&(!snow||(!shadows->page[at].static_dirty&&!shadows->page[at].static_pending)))
+        return snow?snow_pixels+2*at*SU_BYTES:shadows->pixels+at*SU_BYTES;
     if(shadows->space==0&&!shadows->cloud_dirty&&(shadows->terrain_ready||shadows->cloud_ready)){
         origin[0]=origin[1]=0;origin[2]=(SU_TERRAIN_WIDTH-2)/SU_TERRAIN_TEXELS_PER_METRE;origin[3]=SU_TERRAIN_WIDTH;
         origin[4]=(SU_TERRAIN_HEIGHT-2)/SU_TERRAIN_TEXELS_PER_METRE;origin[5]=SU_TERRAIN_HEIGHT;
-        return shadows->coverage;
+        return snow?snow_coverage():shadows->coverage;
     }
     return NULL;
 }

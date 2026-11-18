@@ -213,4 +213,5 @@ internal sealed class TerrainArchive
     internal int First(int kind)=>heads[kind];
     internal int Next(int index)=>links[index];
     internal Mesh Mesh(int index)=>views[index]!;
+    internal bool IsGroundStrip(int index)=>views[index]!.Kind<FloorStrips.MaximumMaterials;
 }

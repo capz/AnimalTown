@@ -13,12 +13,12 @@ internal sealed class GroundRingRenderer : IDisposable
     private DynamicMesh? mesh;
     internal int ResidentBytes=>vertices.Length*24+row.Length*24+GroundRingPlan.Rows*4+GroundRingPlan.Columns*4+(CylinderRows.Maximum-CylinderRows.Minimum+1)*20+(mesh?.NativeBytes??0);
     internal bool Uploaded {get;private set;}
-    internal void Prepare(GameState state,byte[] data,int material,bool invalidate)
+    internal void Prepare(GameState state,byte[] data,int material,bool invalidate,bool winter)
     {
         plan.Prepare(state.X,state.Z,invalidate);Uploaded=plan.RowCount>0||plan.ColumnCount>0;
         if(!Uploaded)return;
-        for(int n=0;n<plan.RowCount;n++)for(int x=plan.MinX;x<plan.MinX+GroundRingPlan.Columns;x++)Cell(state,data,x,plan.EnteringRows[n],material,rows);
-        if(!plan.Reset)for(int n=0;n<plan.ColumnCount;n++)for(int z=plan.MinZ;z<plan.MinZ+GroundRingPlan.Rows;z++)Cell(state,data,plan.EnteringColumns[n],z,material,rows);
+        for(int n=0;n<plan.RowCount;n++)for(int x=plan.MinX;x<plan.MinX+GroundRingPlan.Columns;x++)Cell(state,data,x,plan.EnteringRows[n],material,rows,winter);
+        if(!plan.Reset)for(int n=0;n<plan.ColumnCount;n++)for(int z=plan.MinZ;z<plan.MinZ+GroundRingPlan.Rows;z++)Cell(state,data,plan.EnteringColumns[n],z,material,rows,winter);
         if(mesh==null){
             var indices=new ushort[GroundRingPlan.IndexCount];
             for(int cell=0;cell<GroundRingPlan.Columns*GroundRingPlan.Rows;cell++){
@@ -34,7 +34,7 @@ internal sealed class GroundRingRenderer : IDisposable
             Array.Copy(vertices,at,row,0,row.Length);mesh.SetVertices(row,at,row.Length);
         }
     }
-    private void Cell(GameState state,byte[] data,int x,int z,int material,CylinderRows rows)
+    private void Cell(GameState state,byte[] data,int x,int z,int material,CylinderRows rows,bool winter)
     {
         int at=GroundRingPlan.Vertex(x,z),slot=FloorStrips.At(state,data,x,z,0);
         if(!GroundRingPlan.Uses(state.Town,x,z,slot,material)){
@@ -42,10 +42,11 @@ internal sealed class GroundRingRenderer : IDisposable
             for(int i=0;i<4;i++)vertices[at+i]=empty;return;
         }
         var a=rows.At(z);var b=rows.At(z+1);
-        vertices[at]=V(x,a,x*.5f,z*.5f);vertices[at+1]=V(x+1,a,(x+1)*.5f,z*.5f);
-        vertices[at+2]=V(x+1,b,(x+1)*.5f,(z+1)*.5f);vertices[at+3]=V(x,b,x*.5f,(z+1)*.5f);
+        var tint=winter&&TerrainRenderer.SnowTile(state.Town,x,z)?TerrainRenderer.SnowReceiver:Color32.White;
+        vertices[at]=V(x,a,x*.5f,z*.5f,tint);vertices[at+1]=V(x+1,a,(x+1)*.5f,z*.5f,tint);
+        vertices[at+2]=V(x+1,b,(x+1)*.5f,(z+1)*.5f,tint);vertices[at+3]=V(x,b,x*.5f,(z+1)*.5f,tint);
     }
-    private static VertexPositionColorTexture V(float x,CylinderPose p,float u,float v)=>new VertexPositionColorTexture(new Vector3(x,p.Y,p.Z),Color32.White,new Vector2(u,v));
+    private static VertexPositionColorTexture V(float x,CylinderPose p,float u,float v,Color32 tint)=>new VertexPositionColorTexture(new Vector3(x,p.Y,p.Z),tint,new Vector2(u,v));
     internal void Draw(Renderer renderer,Material material,Transform transform){if(mesh!=null)renderer.DrawMesh(mesh,material,transform);}
     public void Dispose(){mesh?.Dispose();mesh=null;}
 }
