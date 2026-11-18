@@ -2,13 +2,13 @@ using System;
 using AnimalTown;
 using Dolphin.Graphics;
 
-// Three shared meshes modulate seasonal vertex colors with one tiny opaque
+// Three shared meshes modulate season and local AO with one tiny opaque
 // mipmapped detail texture. No extra pass, per-instance texture or frame upload.
 internal sealed class LowPolyTrees : IDisposable
 {
     internal const int Capacity=TreeDrawBatch.Capacity;
-    private readonly DynamicMesh[] geometry=new DynamicMesh[3];
-    private readonly VertexPositionColorTexture[][] streams=new VertexPositionColorTexture[3][];
+    private readonly DynamicMesh[] geometry=new DynamicMesh[LowPolyTree.KindCount];
+    private readonly VertexPositionColorTexture[][] streams=new VertexPositionColorTexture[LowPolyTree.KindCount][];
     private readonly Material material=new Material{Cull=CullMode.Back,Lighting=LightingMode.Unlit,Color=Color32.White};
     private Texture2D? detail;
     private int preparedSeason=-1,preparedStrength=-1,preparedScale=-1;
@@ -40,27 +40,41 @@ internal sealed class LowPolyTrees : IDisposable
         }
         if(preparedSeason==season&&preparedScale==scalePercent)return;
         float uvScale=100f/scalePercent;
-        for(int kind=0;kind<3;kind++){
+        for(int kind=0;kind<geometry.Length;kind++){
             var tree=LowPolyTree.Build(kind);
-            Color32 leaf=kind==1?new Color32(61,139,77):kind==2?new Color32(50,111,69):season==2?new Color32(184,121,49):season==3?new Color32(124,158,143):new Color32(84,147,65);
-            var colors=new[]{new Color32(123,85,49),new Color32((byte)(leaf.R*3/4),(byte)(leaf.G*3/4),(byte)(leaf.B*3/4)),leaf,season==3&&kind!=1?new Color32(229,237,230):new Color32((byte)Math.Min(255,leaf.R+24),(byte)Math.Min(255,leaf.G+24),(byte)Math.Min(255,leaf.B+24))};
             var vertices=streams[kind];if(vertices==null){vertices=new VertexPositionColorTexture[tree.Triangles*3];streams[kind]=vertices;}
-            // Retain the old part/triangle order, including the same face colors.
-            int at=0;for(int part=0;part<4;part++)for(int t=0;t<tree.Triangles;t++)if(tree.Parts[t]==part)for(int v=0;v<3;v++){
-                int p=t*9+v*3;vertices[at++]=new VertexPositionColorTexture(new Vector3(tree.Positions[p],tree.Positions[p+1],tree.Positions[p+2]),colors[part],new Vector2(tree.Uvs[t*6+v*2]*uvScale,tree.Uvs[t*6+v*2+1]*uvScale));
-            }
+            WriteVertices(tree,kind,season,uvScale,vertices);
             if(geometry[kind]==null)geometry[kind]=DynamicMesh.Create(vertices);else geometry[kind].SetVertices(vertices);
         }
         preparedSeason=season;preparedScale=scalePercent;
+    }
+    internal static void WriteVertices(LowPolyTree tree,int kind,int season,float uvScale,VertexPositionColorTexture[] vertices)
+    {
+        Color32 leaf=kind==1?new Color32(61,139,77):kind==2?new Color32(50,111,69):season==2?new Color32(184,121,49):season==3?new Color32(124,158,143):new Color32(84,147,65);
+        var colors=new[]{new Color32(123,85,49),new Color32((byte)(leaf.R*3/4),(byte)(leaf.G*3/4),(byte)(leaf.B*3/4)),leaf,season==3&&kind!=1?new Color32(229,237,230):new Color32((byte)Math.Min(255,leaf.R+24),(byte)Math.Min(255,leaf.G+24),(byte)Math.Min(255,leaf.B+24))};
+        // Keep the original part/triangle order and multiply its palette in RGB only.
+        int at=0;
+        for(int part=0;part<4;part++)for(int t=0;t<tree.Triangles;t++)if(tree.Parts[t]==part)for(int v=0;v<3;v++){
+            int vertex=t*3+v,p=vertex*3,uv=vertex*2,ambient=tree.Ambient[vertex];
+            Color32 color=colors[part];
+            var rgb=new Color32((byte)((color.R*ambient+127)/255),(byte)((color.G*ambient+127)/255),(byte)((color.B*ambient+127)/255),color.A);
+            vertices[at++]=new VertexPositionColorTexture(new Vector3(tree.Positions[p],tree.Positions[p+1],tree.Positions[p+2]),rgb,new Vector2(tree.Uvs[uv]*uvScale,tree.Uvs[uv+1]*uvScale));
+        }
     }
     internal void Draw(Renderer renderer,Town town,int[] selected,int selectedCount,float focusZ)
     {
         if(preparedSeason<0)return;
         int count=0;
         for(int n=0;n<selectedCount;n++){var g=town.Ground[selected[n]];float scale=g.Kind==2?.75f:3;var p=CylinderWorld.Surface(g.Z,focusZ,TerrainElevation.At(town,g.X,g.Z));float angle=p.Pitch*.5f;var pose=poses[count];pose.LocalPosition=new Vector3(g.X,p.Y,p.Z);pose.LocalScale=new Vector3(scale,scale,scale);pose.LocalRotation=new Quaternion((float)Math.Sin(angle),0,0,(float)Math.Cos(angle));kinds[count++]=g.Item==3?2:g.Item==2?1:0;}
-        for(int kind=0;kind<3;kind++){
-            int used=0;for(int n=0;n<count;n++)if(kinds[n]==kind){batchMeshes[used]=geometry[kind];batchTransforms[used++]=poses[n];}
+        for(int kind=0;kind<geometry.Length;kind++){
+            int used=WriteBatch(geometry[kind],kind,kinds,poses,count,batchMeshes,batchTransforms);
             if(used>0)renderer.DrawMeshes(batchMeshes,batchTransforms,material,0,used);
         }
+    }
+    internal static int WriteBatch(Mesh geometry,int kind,int[] kinds,Transform[] poses,int count,Mesh[] meshes,Transform[] transforms)
+    {
+        int used=0;
+        for(int n=0;n<count;n++)if(kinds[n]==kind){meshes[used]=geometry;transforms[used++]=poses[n];}
+        return used;
     }
 }

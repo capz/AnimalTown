@@ -1,5 +1,8 @@
 # Texture residency, visibility and profiling
 
+The static-light bake, tree vertex shading and GX footer measurements include
+matched Dolphin captures and host benchmarks. [Static lighting profile](performance/static-lighting.md)
+
 See [tree-render-investigation.md](tree-render-investigation.md) for the exact
 retired-asset audit and released-ISO comparison: tree submission averages
 510.409 ms before and 0.385 ms after generated indexed trees. These are Dolphin
