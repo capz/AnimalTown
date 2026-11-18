@@ -38,6 +38,7 @@ namespace Dolphin.Graphics
     // native ownership/polling instead of making every async call succeed inline.
     public sealed class Model
     {
+        public readonly List<int> Animations=new List<int>{0,1};
         public bool AutomaticResidencyProgress=true;
         public int ResidencyBytesPerStep,ResidencyWorkItemsPerStep;
         public int PackageBytes {get;set;}=65536;
@@ -159,6 +160,23 @@ internal static class ModelResidencyChecks
         check(manager.PendingSpecies==2&&manager.Cancellations==1&&manager.Demotions==2,"visible demand preempts hidden prefetch and does not miscount a canceled restore as demotion");
         Drain(manager);check(manager.ReadyForSpace(state,doors,0),"foreground restoration completes before optional prefetch resumes");
 
+        manager=Setup(out models,out state,out doors);Pump(manager,true);Drain(manager);Pump(manager,true);Drain(manager);
+        state.Space=0;state.X=state.Z=80;
+        for(int species=1;species<=2;species++){
+            var arriving=state.Town.Residents[species];arriving.Space=0;bool placed=false;
+            for(int z=0;z<Town.Height&&!placed;z+=2)for(int x=0;x<Town.Width&&!placed;x+=2){
+                arriving.PosX=x;arriving.PosZ=z;
+                placed=ModelResidencyDemand.UsesSpace(state,doors,species,0)&&!ModelResidencyDemand.DrawableUsesSpace(state,doors,species,0)&&
+                    ModelResidencyDemand.ImminentUsesSpace(state,doors,species,0)==(species==2);
+            }
+            check(placed,"priority fixture includes distinct invisible outer and imminent prefetch bands");
+            if(species==1){manager.Require(state,doors,Clock.Timestamp);Pump(manager);}
+        }
+        check(manager.PendingSpecies==1,"outer-band work begins before a nearer arrival is known");
+        manager.Require(state,doors,Clock.Timestamp);Pump(manager);Pump(manager);
+        check(manager.PendingSpecies==2&&manager.Cancellations==1&&manager.ReadyForSpace(state,doors,0),"a nearer offscreen arrival preempts speculative work before either actor becomes visible");
+        Drain(manager);manager.Stop();
+
         manager=Setup(out models,out state,out doors);Pump(manager,true);
         state.Town.Residents[1].Space=1;manager.Require(state,doors,Clock.Timestamp);Drain(manager);
         check(manager.Ready(1)&&manager.Cancellations==1&&manager.Demotions==0,"new demand cancels a precommit demotion while preserving the resident original");
@@ -204,6 +222,7 @@ internal static class ModelResidencyChecks
 
         StartupChecks(check);
         OutdoorJourneyChecks(check);
+        ApproachChecks(check);
     }
     private static void OutdoorJourneyChecks(Action<bool,string> check)
     {
@@ -228,8 +247,40 @@ internal static class ModelResidencyChecks
         check(movedCold&&enteredCold&&exitedCold,"offloaded villagers keep moving, entering houses and returning outside");
         var approaching=state.Town.Residents[1];approaching.Space=0;approaching.PosX=state.X-19;approaching.PosZ=state.Z;journey.Doors.Actors[2].Phase=DoorPhase.Idle;
         manager.Require(state,journey.Doors,Clock.Timestamp);for(int i=0;i<100&&!manager.Ready(1);i++){Pump(manager);Clock.Timestamp+=33333;}
-        check(manager.Ready(1),"returning within one map square restores the existing shared model");
+        check(manager.Ready(1),"returning toward the viewport restores the existing shared model");
         manager.Stop();
+    }
+    private static void ApproachChecks(Action<bool,string> check)
+    {
+        // Five cold species share a slow transfer owner. Move at full run speed
+        // through both a viewport edge and the cylinder horizon. Each species
+        // must finish restoring before its first drawable frame, without waits.
+        foreach(bool fromHorizon in new[]{false,true})foreach(bool wide in new[]{false,true}){
+            var manager=Setup(out var models,out var state,out var doors);
+            for(int i=1;i<6;i++){Pump(manager,true);Drain(manager);}
+            check(models.Skip(1).All(m=>!m.IsResident),"approach fixture starts with five cold species");
+            RenderView.SetWidescreen(wide);Array.Clear(state.Town.Elevation);state.Space=0;
+            state.X=fromHorizon?80:10;state.Z=fromHorizon?110:80;
+            for(int i=1;i<6;i++){
+                models[i].PendingDmaPolls=8;models[i].ProgressSteps=45;models[i].WorkUs=300;
+                var v=state.Town.Residents[i];v.Space=0;v.PosX=fromHorizon?76+i:100+i;v.PosZ=fromHorizon?30:50;
+            }
+            var seen=new bool[6];int hiddenRestores=0;
+            for(int frame=0;frame<600;frame++){
+                Clock.Timestamp+=33333;
+                if(fromHorizon)state.Z-=PlayerMovement.RunStep;else state.X+=PlayerMovement.RunStep;
+                manager.Require(state,doors,Clock.Timestamp);Pump(manager,true);
+                for(int i=1;i<6;i++){
+                    bool visible=ModelResidencyDemand.DrawableUsesSpace(state,doors,i,0);
+                    if(visible){check(manager.Ready(i),"queued ARAM restores complete before the first visible frame at full running speed");seen[i]=true;}
+                    if(!visible&&manager.Ready(i)&&models[i].Starts>1)hiddenRestores|=1<<i;
+                }
+            }
+            check(seen.Skip(1).All(x=>x)&&hiddenRestores==62,"all five species preload while invisible and later enter the viewport");
+            check(manager.ReadinessWaits==0&&manager.PortalWaits==0,"outdoor prefetch does not freeze gameplay or wait for the transfer");
+            manager.Stop();
+        }
+        RenderView.SetWidescreen(false);
     }
     private static void StartupChecks(Action<bool,string> check)
     {
@@ -304,11 +355,12 @@ internal static class ModelResidencyChecks
         check(found&&Startup(pinned,pinnedState,pinnedDoors,5)&&protectedModel.Starts==0,"startup preserves invisible species inside the twenty-four metre prefetch guard");
 
         Clock.Timestamp=0;Aram.Reset();var fullState=new GameState(-634240096){HousePlaced=true,Species=0,Space=0,X=18.5f,Z=40.5f};var fullDoors=new PortalSystem();var full=new ModelResidency();var required=new Model[6];
+        fullState.Town.Residents[5].PosX=Town.Width-1;fullState.Town.Residents[5].PosZ=Town.Height-1;
         for(int i=0;i<6;i++){required[i]=new Model();full.Register(i,required[i],0);}
         FinishStartup(full,fullState,fullDoors,6);
         var expected=new ModelResidencyDemand();expected.Prepare(fullState,fullDoors);
         check(full.RequiredSpeciesCount==expected.Required.Count(x=>x)&&full.RequiredSpeciesCount<6,
-            "the starting plot loads its one-map-square cohort rather than pinning every distant villager");
+            "the starting plot preloads its expanded visible cohort while pruning distant villagers");
         for(int i=0;i<6;i++)check(required[i].IsResident==expected.Required[i],"startup preserves nearby species and offloads distant packages");
 
         Clock.Timestamp=0;Aram.Reset();var guardState=State();var guardDoors=new PortalSystem();var guard=new ModelResidency();

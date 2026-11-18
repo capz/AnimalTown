@@ -16,7 +16,7 @@ selected species loads first and reserves its player instance immediately, so
 the player is not a final allocation competing with the complete NPC cohort.
 Between package admissions, startup can retire an already adopted species that
 is outside all demand. These bounded checkpoints skip only the ordinary idle
-and warm-grace timers; they retain the 20 m map-square distance, doorway/player
+and warm-grace timers; they retain the expanded visible envelope, doorway/player
 pins, debug inspection pins and ARAM limits, and drain before another disc load.
 Nearby species load normally; distant species can already be cold at startup.
 
@@ -44,10 +44,11 @@ are allocation and submission checks, not stock-console frame-time measurements.
 
 All instances of a model must be outside demand before it can be demoted. The
 player's selected species stays pinned, including its NPC's shared resource.
-Outdoors, a species is required within 20 logical metres of the player (one
-20×20-cell map square, measured radially, excluding the exact 20 m boundary).
-The camera's view direction does not change residency demand. Distant models
-can demote while the player moves; restored models retain a three-second warm
+Outdoors, a species is required while its animated sphere intersects the camera
+frustum and cylinder horizon, expanded by a 24 m prefetch margin. The old radial
+20 m cutoff could exclude a visible head or stop prefetch until the actor had
+already entered view; it no longer participates in drawing or residency.
+Distant hidden models can demote while the player moves; restored models retain a three-second warm
 grace against boundary churn. Indoors, current-room species stay pinned and
 ordinary five-second idle/demand delays remain. Doorways and debug inspection
 retain their existing resource pins and transfer cancellation safeguards.
@@ -55,9 +56,9 @@ retain their existing resource pins and transfer cancellation safeguards.
 Town simulation never depends on a model restore completing. Positions, routes,
 journeys, home visits and save data stay in MEM1 and tick while graphics are
 cold. Outdoor restore misses skip only that actor's draw and pose work until
-ready, without showing a loading screen or pausing other villagers. Actors and
-their shadows beyond 20 m are excluded together. Returning within that distance
-requests the original model/instances asynchronously; no villager is recreated.
+ready, without showing a loading screen or pausing other villagers. Actor and
+shadow visibility follow the full frustum/horizon envelope. Approaching that
+envelope requests the original model/instances asynchronously; no villager is recreated.
 The selected player's species remains shared and pinned even if its NPC is far
 away. ARAM exhaustion leaves the affected model warm and retries later.
 
@@ -69,8 +70,10 @@ before the terrain's 8 MiB backing exists, preserving space for initial terrain
 baking as well as the separate audio/platform reservation.
 
 Only one model transition is owned at a time. Demanded models restore before
-optional stores; actual drawable/destination users precede speculative prefetch.
-Foreground demand cancels an unrelated hidden prefetch or an in-progress
+optional stores. Actual drawable/destination users come first, then hidden
+arrivals inside a 12 m margin, then the outer 24 m prefetch band. An imminent
+arrival can preempt speculative work before entering view. Foreground demand
+cancels an unrelated hidden prefetch or an in-progress
 demotion and drains its owner before another transition starts. If cancellation
 arrives after the SDK's irreversible retirement commit, the complete cold result
 is restored; no partially resident model becomes drawable.
@@ -89,11 +92,22 @@ from losing its progress owner while it still retains native or ARAM storage.
 
 Moving indoors, approaching its exit, and requesting a doorway trigger outdoor
 prefetch. The outdoor envelope expands the existing animated sphere by 24 m,
-giving more than four seconds of maximum player sprint distance. This envelope
+giving about four seconds at combined player/NPC travel speed for queued,
+frame-budgeted restoration. This envelope
 starts restoration; it does **not** block the current scene while a hidden actor
 is still cold. The original drawable envelope separately gates native animation
 and drawing. Entry/exit admission uses the exact outdoor destination coordinate,
 including the one-metre landing offset, and doorway visual interpolation.
+
+The transfer credit remains 1 ms per presented frame, with the same 8 KiB/32-work
+item grants, 4 MiB backing budget and three-second warm grace. The draw test has
+no artificial distance cutoff. Expanded prefetch can keep more existing species
+resident than the old 20 m radius; it adds no model copies or larger textures.
+Host checks move at full player running speed with five queued cold species,
+eight deferred DMA polls and 45 additional 300-microsecond work steps each.
+Every model finishes before its first visible frame through both side and
+horizon approaches, in 4:3 and widescreen. These injected-latency checks are not
+physical-console timing measurements.
 
 `PortalSystem.ResourcesReady` defaults true for existing callers. AnimalTown
 checks destination resources before a door opens and again before the atomic
@@ -105,8 +119,9 @@ intact and retries later; it cannot silently omit a visible model.
 Final draw readiness is recomputed after input and effective debug camera
 changes, even on frames without a simulation tick. UV inspection waits for the
 complete model set before invoking native topology code; water inspection pins
-all species. Unpredictable teleports use the existing loading surface until
-required models are ready. They do not call native model APIs on cold resources.
+all species. Indoor scene and doorway admission wait for their required models.
+Outdoor restore misses keep the world running and skip the affected actor until
+ready. Cold resources never receive native model API calls.
 
 ## Bounded work and evidence
 

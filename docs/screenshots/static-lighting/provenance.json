@@ -1,0 +1,156 @@
+{
+  "builder_image": "ghcr.io/capz/animaltown-build@sha256:fc02b09f83e0674439842e555d62aad991cfe9fc1dff090a86a8a995fc025b42",
+  "main_commit": "d9bc5ab10529268efc79c37bf87f86523d282d06",
+  "dolphin": "2503",
+  "backend": "OpenGL / Mesa software renderer",
+  "dsp_hle": true,
+  "capture": "Unmodified 800 x 600 X11 PNGs",
+  "fixture": {
+    "seed": 3,
+    "roads": true,
+    "x": 23.5,
+    "z": 16.5,
+    "cells": 358,
+    "unconnected": 1,
+    "terrainSha": "5E2FAD97AC88FDFD92A354036DCBF9D443AEE9E987B8366408B4C47637ADE552",
+    "pathsSha": "0EB906256BDCA88463A296BCB19DBAE88BC9319837DDEB4D5F9C0E91A5D12CF7"
+  },
+  "fixture_card_sha256": "eb512e47140eec0b29d0caa02d5d9342e58fbe0153769666ffb19e7cb220ffb2",
+  "profile_note": "240 AA study frames at the tree-lined ramp, 480p, no AA; tabulated times discard the first five frames.",
+  "builds": {
+    "before": {
+      "commit": "8aa130eb42481647dc9a618fe9302a61497811df",
+      "version": "0.52.0+8aa130eb4248",
+      "nkit_iso_sha256": "f3d1633cedacedeb85bb4a7f6e35187f27615198a77c1a34870cf68f753be224",
+      "profile": {
+        "file": "profile-before.json",
+        "sha256": "b0f081f529de1b9ce8a60ce33b5e483e03400845732600755ae7e66122507cec"
+      }
+    },
+    "after": {
+      "commit": "ac4ba55bc5c081a4361b86c5717b1b3a73e53664",
+      "version": "0.52.0+ac4ba55bc5c0",
+      "nkit_iso_sha256": "8a23410e9967a4d71a3ba5f6e628fe195b2a432da319921d7b58e782df672a5c",
+      "profile": {
+        "file": "profile-after.json",
+        "sha256": "3e245c01a1c8c6b8698d4a84b6b713be3e3cf4e1753b68dc6f4c3119887222e5"
+      }
+    }
+  },
+  "scenes": {
+    "spring": {
+      "guest_rtc_utc": "2028-04-15T06:30:00+00:00",
+      "before": {
+        "image": "spring-before.png",
+        "sha256": "0fcdd3dc466df90e4b3c2bd6c5ebe72ea88a260ae9c7129a0495e253170661cb",
+        "captured_utc": "2026-11-17T18:45:48.764795+00:00"
+      },
+      "after": {
+        "image": "spring-after.png",
+        "sha256": "284a859a01fc7f1e3515ea82434d24925896d93bfa56295342d064b079d13482",
+        "captured_utc": "2026-11-18T00:02:21.245884+00:00"
+      }
+    },
+    "summer": {
+      "guest_rtc_utc": "2027-07-15T12:00:00+00:00",
+      "before": {
+        "image": "summer-before.png",
+        "sha256": "1916d610ac8fc1508c53860767060a1d5f19d387bb6c294580a374aff8faf133",
+        "captured_utc": "2026-11-17T18:51:51.988527+00:00"
+      },
+      "after": {
+        "image": "summer-after.png",
+        "sha256": "9cb477c1cfc4112bff787568f7c6054f69d56b8ae35baeebc21df82e7bab1e08",
+        "captured_utc": "2026-11-18T00:02:20.242566+00:00"
+      }
+    },
+    "fall": {
+      "guest_rtc_utc": "2027-10-15T18:15:00+00:00",
+      "before": {
+        "image": "fall-before.png",
+        "sha256": "d317dd9482bed0b1fe7f820411df86313032010dc50a35cc3d7a9551848fda4a",
+        "captured_utc": "2026-11-17T18:47:23.900684+00:00"
+      },
+      "after": {
+        "image": "fall-after.png",
+        "sha256": "a380641e114b2c8de068de14106efa569df2040502d3aa104ebcf4f55a7adb43",
+        "captured_utc": "2026-11-18T00:03:58.537485+00:00"
+      }
+    },
+    "winter": {
+      "guest_rtc_utc": "2028-01-15T22:00:00+00:00",
+      "before": {
+        "image": "winter-before.png",
+        "sha256": "e8aa66aa84fabc80467a9edf9174b0235ddcfcf8dfe332a03bc3077c67e92154",
+        "captured_utc": "2026-11-17T18:49:07.192522+00:00"
+      },
+      "after": {
+        "image": "winter-after.png",
+        "sha256": "0667c57b69d00a64254dbebbdc841fb1b76e86491e444a7243f867f256cf2ff9",
+        "captured_utc": "2026-11-18T00:05:36.838683+00:00"
+      }
+    },
+    "lamp": {
+      "guest_rtc_utc": "2028-01-15T22:00:00+00:00",
+      "before": {
+        "image": "lamp-before.png",
+        "sha256": "02dbad8595847e81262638b8b88592714d0d81cc7d043f7f402cf218aafd89c5",
+        "captured_utc": "2026-11-17T18:48:56.503270+00:00"
+      },
+      "after": {
+        "image": "lamp-after.png",
+        "sha256": "a5417018b63dfe4b51aa6b76c0933d017c4958272af287fa7e9d31f78ab2d0c6",
+        "captured_utc": "2026-11-18T00:05:26.282009+00:00"
+      }
+    },
+    "interior": {
+      "guest_rtc_utc": "2027-07-15T12:00:00+00:00",
+      "before": {
+        "image": "interior-before.png",
+        "sha256": "b605e5d4fa40922f417e3d6ed400a8eccd275eaf0c7897beb528ba5de4ef0774",
+        "captured_utc": "2026-11-17T18:41:34.680501+00:00"
+      },
+      "after": {
+        "image": "interior-after.png",
+        "sha256": "b605e5d4fa40922f417e3d6ed400a8eccd275eaf0c7897beb528ba5de4ef0774",
+        "captured_utc": "2026-11-18T00:02:22.583730+00:00"
+      }
+    },
+    "coast": {
+      "guest_rtc_utc": "2027-07-15T12:00:00+00:00",
+      "before": {
+        "image": "coast-before.png",
+        "sha256": "7b7b7e039652564374b58bb4ad08367d18b1c8b09ce0f9076d212e6075d5f85c",
+        "captured_utc": "2026-11-17T18:42:28.405264+00:00"
+      },
+      "after": {
+        "image": "coast-after.png",
+        "sha256": "47ef2055498f82fbf9e2b4437650b826bf8170bfc94299835bda4439360acdfb",
+        "captured_utc": "2026-11-18T00:03:16.357825+00:00"
+      }
+    }
+  },
+  "integration": {
+    "commit": "16764bb2da0b758351e5de99ec163c5707f1cfb6",
+    "main_commit": "c98d3c0d1f2ced742f32db7d914e78fbcf3ef93a",
+    "version": "0.55.0+16764bb2da0b",
+    "nkit_iso_sha256": "c6ea5c08e2885d686612d8dccb51bdd32059bbb8ca80c9a9d1bb46fad89b22ab",
+    "depot_zip_sha256": "09ba5c50071160b0de5dd526763f00349e4a5bcfe780a77527c999458da696d7",
+    "scenes": {
+      "night": {
+        "route": "village-roads to tree-lined ramp",
+        "guest_rtc_utc": "2028-01-15T22:00:00+00:00",
+        "image": "integrated-night.png",
+        "sha256": "13c75ed18a1893e5b6ddf2bf8f42ef16dc96a6d6562c1dc4b2b22b3dc78dbc8a",
+        "captured_utc": "2026-11-18T00:27:39.552253+00:00"
+      },
+      "coast": {
+        "route": "tour",
+        "guest_rtc_utc": "2027-07-15T12:00:00+00:00",
+        "image": "integrated-coast.png",
+        "sha256": "2e01eef2959b707086a5d1de9d7d5b3f78e95d974d6dbd04bcd6302d49a1a478",
+        "captured_utc": "2026-11-18T00:28:39.587844+00:00"
+      }
+    }
+  }
+}

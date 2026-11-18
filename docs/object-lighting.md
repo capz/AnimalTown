@@ -13,11 +13,13 @@ Indexed positions, normals and skin buffers stay indexed. The direct fallback
 normalizes transformed normals and supplies unshaded reflectance separately from
 its ordinary headlight color. Scope changes invalidate imported material caches.
 
-Only outdoor actor and building model draws enable this pass. Terrain, trees,
-fences, dropped items, interiors and lamp meshes keep their existing shading.
-Ground pools remain baked into the existing shadow map: per-frame point updates
-never dirty or rewrite its coverage. This is local diffuse illumination, without
-new occlusion or dynamic cast-shadow maps.
+Only outdoor actor and building model draws enable this pass. Ground pools use
+a separate layout in the existing packed IA4 shadow map. `TownLights` sends
+that layout after a town, building or terrain revision, and sends clock gain
+on its own while the layout is stable. A dirty bake clears the light nibble and
+samples each source's bounded rectangle. Ground sampling retains maximum
+coverage across overlaps, and the four-stage GX footer applies the clock's
+warm gain to that coverage.
 
 Costs: no new textures, render targets, meshes, draw calls or per-frame arrays.
 The shared native buffer grows by 480 bytes on the host layout, from 521,536 to
@@ -30,5 +32,10 @@ at most 24 entries per mesh, and sources beyond four radii are ignored.
 The recording GX fixture checks scope/day gating, nearest-source selection,
 eye-space positions, attenuation and preserved alpha. The native lifecycle
 fixture checks invalid inputs, release/reinitialization and byte-identical ground
-coverage after point movement. Console compilation and nighttime emulator
-captures exercise the actual indexed/direct model paths.
+coverage after point movement. It also verifies a full lamp-gain sweep without
+rebaking or publishing a ground mask.
+
+Generated trees use local ambient occlusion at trunk feet and canopy undersides.
+Their three shared meshes multiply the existing seasonal palette in vertex RGB
+when preparing geometry. The same material samples the mipmapped detail texture
+and passes through vertex alpha. [Timings and Dolphin captures](performance/static-lighting.md)

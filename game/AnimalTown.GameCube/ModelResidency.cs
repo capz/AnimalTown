@@ -38,7 +38,9 @@ internal sealed class ModelResidency
     private readonly Model?[] models=new Model?[ModelResidencyDemand.SpeciesCount];
     private readonly long[] lastRequired=new long[ModelResidencyDemand.SpeciesCount],warmUntil=new long[ModelResidencyDemand.SpeciesCount],retryAt=new long[ModelResidencyDemand.SpeciesCount];
     private readonly ModelResidencyDemand demand=new ModelResidencyDemand();
-    private readonly bool[] urgent=new bool[ModelResidencyDemand.SpeciesCount];
+    // Visible / imminent / outer prefetch. Keep the earliest arrival ahead of
+    // speculative work when several species need the single ARAM transfer owner.
+    private readonly byte[] priority=new byte[ModelResidencyDemand.SpeciesCount];
     private readonly bool[] startupAttempted=new bool[ModelResidencyDemand.SpeciesCount];
     private int startupCheckpoint=-1;
     private Task? pending;
@@ -69,15 +71,20 @@ internal sealed class ModelResidency
         if(stopped)return;
         outdoors=state.Space==0;
         demand.Prepare(state,doors,pinAll||!Enabled,targetSpace);
-        bool otherUrgent=false;
+        byte otherPriority=3;
         for(int i=0;i<models.Length;i++){
             if(demand.Required[i])lastRequired[i]=now;
-            bool ready=Ready(i);
-            urgent[i]=!ready&&(ModelResidencyDemand.DrawableUsesSpace(state,doors,i,state.Space)||
-                demand.DestinationSpace>=0&&ModelResidencyDemand.DrawableUsesSpace(state,doors,i,demand.DestinationSpace));
-            if(i!=active&&urgent[i])otherUrgent=true;
+            priority[i]=3;
+            if(demand.Required[i]&&!Ready(i)){
+                bool visible=ModelResidencyDemand.DrawableUsesSpace(state,doors,i,state.Space)||
+                    demand.DestinationSpace>=0&&ModelResidencyDemand.DrawableUsesSpace(state,doors,i,demand.DestinationSpace);
+                bool imminent=visible||ModelResidencyDemand.ImminentUsesSpace(state,doors,i,state.Space)||
+                    demand.DestinationSpace>=0&&ModelResidencyDemand.ImminentUsesSpace(state,doors,i,demand.DestinationSpace);
+                priority[i]=(byte)(visible?0:imminent?1:2);
+                if(i!=active&&priority[i]<otherPriority)otherPriority=priority[i];
+            }
         }
-        if(active>=0&&!cancelRequested&&(!restoring&&demand.Required[active]||restoring&&!urgent[active]&&otherUrgent)){
+        if(active>=0&&!cancelRequested&&(!restoring&&demand.Required[active]||restoring&&otherPriority<priority[active])){
             cancelRequested=true;Cancellations++;cancellation!.Cancel();
         }
     }
@@ -148,7 +155,7 @@ internal sealed class ModelResidency
     {
         // Demand always precedes optional demotion, including a disable request.
         bool missing=false;
-        for(int priority=0;priority<2;priority++)for(int i=0;i<models.Length;i++)if(models[i]!=null&&demand.Required[i]&&!Ready(i)&&urgent[i]==(priority==0)){
+        for(int rank=0;rank<3;rank++)for(int i=0;i<models.Length;i++)if(models[i]!=null&&demand.Required[i]&&!Ready(i)&&priority[i]==rank){
             missing=true;
             if(now>=retryAt[i]&&!models[i]!.IsTransitioning){Start(i,true,now);return true;}
         }

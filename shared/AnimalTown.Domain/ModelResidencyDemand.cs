@@ -1,14 +1,15 @@
 namespace AnimalTown;
 
-// Residency follows shared species, spaces and a map-square distance.
+// Residency follows shared species, spaces and an expanded drawable envelope.
 // The player and both sides of a doorway remain pinned until the crossing ends.
 public sealed class ModelResidencyDemand
 {
     public const int SpeciesCount=6;
-    // Rendering has a conservative envelope; residency itself uses distance,
-    // independent of camera rotation and viewport culling.
+    // 24 metres gives about four seconds at combined player/NPC running speed.
+    // This is extra distance beyond the visible silhouette, including horizon
+    // and viewport edges, for queued, frame-budgeted ARAM restoration.
     public const float OutdoorGuard=24;
-    public const float OutdoorDistance=Town.ScreenTileSize;
+    public const float ImminentGuard=12;
     public readonly bool[] Required=new bool[SpeciesCount];
     public int DestinationSpace {get;private set;}=-1;
     public void Prepare(GameState state,PortalSystem doors,bool pinAll=false,int targetSpace=-1)
@@ -19,18 +20,22 @@ public sealed class ModelResidencyDemand
                 DestinationSpace>=0&&UsesSpace(state,doors,species,DestinationSpace);
     }
     public static bool UsesSpace(GameState state,PortalSystem doors,int species,int space)
+        =>UsesSpace(state,doors,species,space,OutdoorGuard);
+    public static bool ImminentUsesSpace(GameState state,PortalSystem doors,int species,int space)
+        =>UsesSpace(state,doors,species,space,ImminentGuard);
+    private static bool UsesSpace(GameState state,PortalSystem doors,int species,int space,float guard)
     {
         if(species==state.Species)return true;
         int actor=species+1;
         var resident=state.Town.Residents[species];
-        if(resident.Space==space&&(space!=0||WithinOutdoorDistance(state,doors,resident.PosX,resident.PosZ)))return true;
+        if(resident.Space==space&&(space!=0||OutdoorImminent(state,doors,resident.PosX,resident.PosZ,guard)))return true;
         if(!doors.Busy(actor))return false;
         var transition=doors.Actors[actor];
-        return transition.Source.Space.Value==space&&(space!=0||WithinOutdoorDistance(state,doors,transition.Source.X,transition.Source.Z))||
-            transition.Destination.Space.Value==space&&(space!=0||WithinOutdoorDistance(state,doors,transition.Destination.X,transition.Destination.Z));
+        return transition.Source.Space.Value==space&&(space!=0||OutdoorImminent(state,doors,transition.Source.X,transition.Source.Z,guard))||
+            transition.Destination.Space.Value==space&&(space!=0||OutdoorImminent(state,doors,transition.Destination.X,transition.Destination.Z,guard));
     }
     // Lookahead may request an invisible actor without blocking simulation or
-    // drawing. Only the original drawable envelope gates the current scene.
+    // drawing. Only the actual drawable envelope gates the current scene.
     public static bool DrawableUsesSpace(GameState state,PortalSystem doors,int species,int space)
     {
         if(species==state.Species)return true;
@@ -39,20 +44,13 @@ public sealed class ModelResidencyDemand
         var location=doors.VisualLocation(state,species+1);
         return OutdoorImminent(state,doors,location.X,location.Z,0);
     }
-    private static bool OutdoorImminent(GameState state,PortalSystem doors,float x,float z,float guard=OutdoorGuard)
+    private static bool OutdoorImminent(GameState state,PortalSystem doors,float x,float z,float guard)
     {
-        if(!WithinOutdoorDistance(state,doors,x,z))return false;
         OutdoorFocus(state,doors,out float focusX,out float focusZ);
         float eyeHeight=TerrainElevation.At(state.Town,focusX,focusZ);
         var point=CylinderWorld.Surface(z,focusZ,TerrainElevation.At(state.Town,x,z)+.9f);
         return RenderView.Sphere(x,point.Y,point.Z,2.7f+guard,focusX,focusZ,eyeHeight)&&
             RenderView.AboveHorizon(point.Y,point.Z,2.7f+guard,focusZ,eyeHeight);
-    }
-    public static bool WithinOutdoorDistance(GameState state,PortalSystem doors,float x,float z)
-    {
-        OutdoorFocus(state,doors,out float focusX,out float focusZ);
-        float dx=x-focusX,dz=z-focusZ;
-        return dx*dx+dz*dz<OutdoorDistance*OutdoorDistance;
     }
     private static void OutdoorFocus(GameState state,PortalSystem doors,out float focusX,out float focusZ)
     {

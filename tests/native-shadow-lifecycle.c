@@ -9,6 +9,7 @@
 
 static void *allocation;
 static int allocated,live,active,release_error,create_error,reset_count,invalidations;
+static int field_flushes,page_flushes,texture_publications;
 bool dnd_device_active(void){return active!=0;}
 int dnd_buffer_create(int bytes,int alignment){
     assert(!live&&alignment==32);
@@ -24,8 +25,12 @@ int dnd_draw_release(int token){
 }
 int dnd_draw_live(void){return live;}
 int dnd_draw_total_bytes(void){return allocated;}
-void dnd_draw_backend_flush(void *data,int bytes,int invalidate){(void)data;(void)bytes;(void)invalidate;}
-void dnd_draw_backend_publish_texture(void){}
+void dnd_draw_backend_flush(void *data,int bytes,int invalidate){
+    assert(data&&!invalidate);
+    if(bytes==SU_TERRAIN_BYTES)field_flushes++;
+    else{assert(bytes==SU_BYTES);page_flushes++;}
+}
+void dnd_draw_backend_publish_texture(void){texture_publications++;}
 void dnd_draw_backend_invalidate_cache(void){invalidations++;}
 void animaltown_shadows_model_reset(void){reset_count++;}
 int64_t dnd_timing_now(void){return 0;}
@@ -35,6 +40,67 @@ static DndArray *pixels(int count){
     DndArray *a=calloc(1,sizeof(*a)+(size_t)count);assert(a);
     a->length=(uint32_t)count;a->element_size=1;memset(a->data,255,(size_t)count);return a;
 }
+
+static void light_gain_checks(void){
+    const float quad[]={0,0,8,0,8,8,0,0,8,8,0,8},bounds[]={1,1,7,7};
+    DndArray *sources=calloc(1,sizeof(*sources)+4*sizeof(float));assert(sources);
+    sources->length=4;sources->element_size=sizeof(float);
+    float *light=(float*)sources->data;
+    light[0]=4.5f;light[1]=4.5f;light[2]=2.8f;light[3]=255;
+    assert(animaltown_shadows_lights(sources,1,255)==1);
+    su_mesh(shadows,SU_STATIC,6,4,quad,bounds);su_active(shadows,SU_STATIC,1,4,4);
+    assert(animaltown_shadows_prepare(1000)==1&&animaltown_shadows_prepare(1000)==1);
+    int page=su_find(shadows,0,0);assert(page>=0);
+    uint8_t terrain[SU_TERRAIN_BYTES],coverage[SU_TERRAIN_BYTES],actor_page[SU_BYTES];
+    memcpy(terrain,shadows->terrain,sizeof(terrain));
+    memcpy(coverage,shadows->coverage,sizeof(coverage));
+    memcpy(actor_page,shadows->pixels+page*SU_BYTES,sizeof(actor_page));
+    assert(su_field_channel(coverage,4.5f,4.5f,1)==255);
+    unsigned serial=shadows->serial;
+    int fields=field_flushes,pages=page_flushes,publications=texture_publications;
+    for(int gain=0;gain<=255;gain++){
+        assert(animaltown_shadows_begin(0,1,0)==1);su_active(shadows,SU_STATIC,1,4,4);
+        assert(animaltown_shadows_lights(sources,1,gain)==1);
+        assert(animaltown_shadows_lights(NULL,0,gain)==1&&animaltown_light_strength()==gain);
+        assert(!shadows->light_dirty&&!shadows->cloud_dirty&&!shadows->page[page].dirty);
+        assert(animaltown_shadows_prepare(1000)==1&&shadows->serial==serial);
+        assert(!shadows->changed&&!shadows->static_rasters&&!shadows->dynamic_rasters);
+        assert(field_flushes==fields&&page_flushes==pages&&texture_publications==publications);
+        assert(!memcmp(terrain,shadows->terrain,sizeof(terrain))&&!memcmp(coverage,shadows->coverage,sizeof(coverage)));
+        assert(!memcmp(actor_page,shadows->pixels+page*SU_BYTES,sizeof(actor_page)));
+    }
+    assert(animaltown_shadows_lights(NULL,1,0)==0&&animaltown_shadows_lights(NULL,0,256)==0);
+    active=1;assert(animaltown_shadows_lights(NULL,0,0)==0);active=0;
+    assert(animaltown_light_strength()==255);
+
+    /* A room can rebuild its own actor page while keeping the outdoor layout. */
+    assert(animaltown_shadows_begin(8,1,4)==1);
+    su_mesh(shadows,SU_STATIC,6,4,quad,bounds);su_active(shadows,SU_STATIC,1,4,4);
+    assert(animaltown_shadows_lights(NULL,0,0)==1);
+    assert(animaltown_shadows_prepare(1000)==1&&animaltown_shadows_prepare(1000)==1);
+    int indoor=su_find(shadows,0,0);assert(indoor>=0);
+    for(int i=0;i<SU_BYTES;i++)assert(!(shadows->pixels[indoor*SU_BYTES+i]>>4));
+    assert(animaltown_shadows_begin(0,1,0)==1);
+    su_mesh(shadows,SU_STATIC,6,4,quad,bounds);su_active(shadows,SU_STATIC,1,4,4);
+    assert(animaltown_shadows_lights(NULL,0,255)==1);
+    assert(animaltown_shadows_prepare(1000)==1&&animaltown_shadows_prepare(1000)==1);
+    assert(field_flushes==fields&&!memcmp(terrain,shadows->terrain,sizeof(terrain))&&!memcmp(coverage,shadows->coverage,sizeof(coverage)));
+
+    /* A moved source refreshes coverage exactly once and preserves the actor shadow. */
+    light[0]=14.5f;publications=texture_publications;
+    assert(animaltown_shadows_lights(sources,1,255)==1&&shadows->light_dirty&&shadows->cloud_dirty);
+    assert(animaltown_shadows_prepare(1000)==1&&!shadows->light_dirty&&!shadows->cloud_dirty);
+    assert(field_flushes==fields+1&&texture_publications==publications+1);
+    assert(su_field_channel(shadows->coverage,4.5f,4.5f,1)==0);
+    assert(su_field_channel(shadows->coverage,14.5f,4.5f,1)==255);
+    page=su_find(shadows,0,0);assert(page>=0);
+    for(int i=0;i<SU_BYTES;i++)assert((shadows->pixels[page*SU_BYTES+i]&15)==(actor_page[i]&15));
+    assert(animaltown_shadows_lights(sources,1,128)==1&&animaltown_shadows_prepare(1000)==1);
+    assert(field_flushes==fields+1&&texture_publications==publications+1);
+    free(sources);
+    puts("Shadow bridge lighting: 256 gain values, room transitions and one layout change passed");
+}
+
 int main(void){
     DndArray *atlas=pixels(32768),*circle=pixels(2048),*cloud=pixels(SU_CLOUD_BYTES);memset(cloud->data,0,SU_CLOUD_BYTES);
     assert(animaltown_shadows_shutdown()==1&&!live);
@@ -71,6 +137,7 @@ int main(void){
     assert(animaltown_shadows_prepare(1000)==1);
     assert(animaltown_shadows_page(2,2,origin)==shadows->coverage&&origin[2]==254&&origin[3]==256&&origin[4]==126&&origin[5]==128);
     assert(su_terrain_sample(shadows,2,2)==su_shadow(su_pack(33,0))); /* One texel/m, including the gutter. */
+    light_gain_checks();
     /* Moving model lights must never dirty or rewrite the baked ground field. */
     DndArray *points=calloc(1,sizeof(*points)+20);assert(points);points->length=5;points->element_size=4;
     float *p=(float*)points->data;p[0]=2;p[1]=2.3f;p[2]=3;p[3]=4.5f;p[4]=255;

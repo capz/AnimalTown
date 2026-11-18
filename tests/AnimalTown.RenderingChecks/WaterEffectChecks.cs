@@ -23,7 +23,7 @@ internal static class WaterEffectChecks
         if(dir==null)throw new Exception("Could not locate TownGame interaction source");
         string source=File.ReadAllText(Path.Combine(dir.FullName,filename));
         int start=source.IndexOf("private void Interact()",StringComparison.Ordinal);
-        int end=source.IndexOf("internal void Step(",start,StringComparison.Ordinal);
+        int end=source.IndexOf("private void UpdateAnimationFrame(",start,StringComparison.Ordinal);
         check(start>=0&&end>start,"GameCube player interaction handler is still available");
         string action=source.Substring(start,end-start);
         check(!action.Contains("A quiet moment")&&!action.Contains("A at the doorway to leave"),
