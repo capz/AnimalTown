@@ -2,7 +2,7 @@
 
 ![Raised white snow and its textured openings rendered in Dolphin](raised-layer.png)
 
-In the experimental branch, regular winter grass gets a solid white layer
+Regular winter grass gets a solid white layer
 about 20 cm above the original tile. That includes level grass on upper
 terraces. Roads, water, white building pads, ramps, cliff lips and interiors
 use their usual surfaces. Select **Winter** in **Season preview** to see the
@@ -21,9 +21,12 @@ using the production GX code and Animal Town's ground texture.
 
 The overlay adds one submission of visible grass meshes each winter frame.
 It runs eight TEV stages with an RGB565 page and samples the same texture
-for the rim, cutout, cast shadows and lamps. Flat tiles retain the five-stage
-ordinary ground pass underneath. The overlay needs no new texture storage
-or second mesh cache. Winter baking can split a mixed grass and building-pad
+for the rim, cutout, cast shadows and lamps. When traffic paths are present,
+a ninth stage reuses their existing I4 mask to open the snow over every
+nonzero path-opacity level. It uses a sixth texgen and adds no path texture
+copy. Path traffic can change without rebaking the snow geometry. Flat tiles
+retain the ordinary ground pass underneath. The raised pass reuses the
+RGB565 storage counted below and adds no second mesh cache. Winter baking can split a mixed grass and building-pad
 strip at the tile boundary. Full-game GPU frame time remains unmeasured.
 
 The original [flat relief comparison](comparison.png) predates the raised
