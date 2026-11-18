@@ -8,9 +8,9 @@ shadow tint: RGB (35,49,66), with maximum opacity 66/255. Winter clouds use a
 lower peak of 33/255; other casters retain their existing intensity. Coverage combines by
 maximum, so a cloud passing over another shadow does not darken it twice.
 There is no separate cloud material, ambient tint, GPU cloud texture or TEV
-program. Existing receiving ground/cap/opaque-water draws sample the shared map
-and apply the existing two shadow stages once. Indoors retain their actor shadows
-without outdoor clouds or cliffs.
+program. Receiving ground, caps and opaque water sample the shared map in their
+four-stage TEV footer. Indoors retain their actor shadows without outdoor clouds
+or cliffs.
 
 The original periodic 64×64 I8 cloud pattern occupies 4 KiB in the charged native
 buffer. Autumn retains the original heavy cloud coverage, 32-metre repeat and
@@ -36,9 +36,10 @@ staging uses six floats (24 bytes); no per-frame allocation, texture or draw is
 added. The cutoff/contrast are combined once on a style change, so each sampled
 texel still needs only one contrast multiply and bias add.
 
-The static cliff field and moving combined field each use 256×128 I8 (32 KiB).
-Together they occupy the same 64 KiB as the previous 256×256 cliff field, retaining
-one texel per metre and filtering gutters. The composite scales the cloud mask
+The static terrain field and moving composite each use 256×128 IA4 (32 KiB).
+The low nibble holds shadow coverage and the high nibble holds lamp coverage.
+Together they occupy 64 KiB, with one texel per metre and filtering gutters.
+The composite scales the cloud mask
 with bilinear sampling, takes the maximum with cliff coverage, and merges into
 existing 32×32 object/actor pages. Existing GPU bilinear filtering softens edges;
 there is no extra draw call, blur texture or caster/page slot.
