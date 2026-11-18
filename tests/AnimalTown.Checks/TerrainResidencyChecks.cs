@@ -40,6 +40,7 @@ namespace AnimalTown.GameCube
 internal static class FrameProfile {internal static int RecycledSections;}
 internal sealed class TerrainRenderer
 {
+    internal bool Ready=true;
     internal readonly CylinderRows Rows=new CylinderRows();
     internal TerrainSection CreateSection()=>new TerrainSection();
 }

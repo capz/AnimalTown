@@ -6,7 +6,7 @@ using Dolphin.Graphics;
 // mipmapped detail texture. No extra pass, per-instance texture or frame upload.
 internal sealed class LowPolyTrees : IDisposable
 {
-    internal const int Capacity=32;
+    internal const int Capacity=TreeDrawBatch.Capacity;
     private readonly DynamicMesh[] geometry=new DynamicMesh[3];
     private readonly VertexPositionColorTexture[][] streams=new VertexPositionColorTexture[3][];
     private readonly Material material=new Material{Cull=CullMode.Back,Lighting=LightingMode.Unlit,Color=Color32.White};
@@ -53,11 +53,11 @@ internal sealed class LowPolyTrees : IDisposable
         }
         preparedSeason=season;preparedScale=scalePercent;
     }
-    internal void Draw(Renderer renderer,Town town,int[] selected,float focusZ)
+    internal void Draw(Renderer renderer,Town town,int[] selected,int selectedCount,float focusZ)
     {
         if(preparedSeason<0)return;
         int count=0;
-        for(int n=0;n<selected.Length;n++)if(selected[n]>=0){var g=town.Ground[selected[n]];float scale=g.Kind==2?.75f:3;var p=CylinderWorld.Surface(g.Z,focusZ,TerrainElevation.At(town,g.X,g.Z));float angle=p.Pitch*.5f;var pose=poses[count];pose.LocalPosition=new Vector3(g.X,p.Y,p.Z);pose.LocalScale=new Vector3(scale,scale,scale);pose.LocalRotation=new Quaternion((float)Math.Sin(angle),0,0,(float)Math.Cos(angle));kinds[count++]=g.Item==3?2:g.Item==2?1:0;}
+        for(int n=0;n<selectedCount;n++){var g=town.Ground[selected[n]];float scale=g.Kind==2?.75f:3;var p=CylinderWorld.Surface(g.Z,focusZ,TerrainElevation.At(town,g.X,g.Z));float angle=p.Pitch*.5f;var pose=poses[count];pose.LocalPosition=new Vector3(g.X,p.Y,p.Z);pose.LocalScale=new Vector3(scale,scale,scale);pose.LocalRotation=new Quaternion((float)Math.Sin(angle),0,0,(float)Math.Cos(angle));kinds[count++]=g.Item==3?2:g.Item==2?1:0;}
         for(int kind=0;kind<3;kind++){
             int used=0;for(int n=0;n<count;n++)if(kinds[n]==kind){batchMeshes[used]=geometry[kind];batchTransforms[used++]=poses[n];}
             if(used>0)renderer.DrawMeshes(batchMeshes,batchTransforms,material,0,used);

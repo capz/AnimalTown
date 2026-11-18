@@ -8,5 +8,12 @@
   <ItemGroup><Compile Include="../../game/AnimalTown.GameCube/DialogueVoice.cs" Link="DialogueVoice.cs" /></ItemGroup>
   <ItemGroup><Compile Include="../../game/AnimalTown.GameCube/TerrainArchive.cs" Link="TerrainArchive.cs" /></ItemGroup>
   <ItemGroup><Compile Include="../../game/AnimalTown.GameCube/ModelResidency.cs" Link="ModelResidency.cs" /></ItemGroup>
+  <ItemGroup>
+    <Compile Include="../../game/AnimalTown.GameCube/TownGame.Simulation.cs" Link="TownGame.Simulation.cs" />
+    <Compile Include="../../vendor/card-store-sdk/src/DolphinDotNet.GameCube/Dolphin/Input/ControllerState.cs" Link="Input/ControllerState.cs" />
+    <Compile Include="../../vendor/card-store-sdk/src/DolphinDotNet.GameCube/Dolphin/Input/ControllerButton.cs" Link="Input/ControllerButton.cs" />
+    <Compile Include="../../vendor/card-store-sdk/src/DolphinDotNet.GameCube/Dolphin/Input/ButtonState.cs" Link="Input/ButtonState.cs" />
+    <Compile Include="../../vendor/card-store-sdk/src/DolphinDotNet.GameCube/Dolphin/Input/StickState.cs" Link="Input/StickState.cs" />
+  </ItemGroup>
   <ItemGroup><None Update="Fixtures/*.bin" CopyToOutputDirectory="PreserveNewest" /></ItemGroup>
 </Project>
