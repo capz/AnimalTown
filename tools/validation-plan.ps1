@@ -33,6 +33,12 @@ function Get-ValidationPlan {
         if($p -match '^tests/(AnimalTown.ContentSmoke/|native-content-startup\.)'){Add-Managed 'content';[void]$native.Add('content');continue}
         if($p -match '^tools/AnimalTown.Tools/DepotPackage(?:Checks)?\.cs$'){[void]$tooling.Add('depot');continue}
         if($p -match '^(tools|tests)/release-bundle\.py$'){[void]$native.Add('python');continue}
+        if($p -match '^game/AnimalTown.GameCube/(SaveCards|CardArchive|CardSaveStorage|CardSaveError|TownDataStorage|UserOptionsStorage|DevConfigStorage|TownSession|TitleScreen\.Cards)\.cs$'){
+            Add-Managed 'saves';[void]$native.Add('card')
+            if($p -match '(DevConfigStorage|TownSession|TitleScreen\.Cards)'){Add-Managed 'menu'}
+            if($p -match '(TownSession|TitleScreen\.Cards)'){Add-Managed 'ui'}
+            continue
+        }
         if($p -match '^(shared/AnimalTown.Domain/DevConfig|game/AnimalTown.GameCube/DevConfigStorage|tests/AnimalTown.Checks/DevConfigChecks)\.cs$'){Add-Managed 'saves';Add-Managed 'menu';continue}
         if($p -match '^game/AnimalTown.GameCube/(TitleScreen|TitleArt|TitleBackdrop|LoadingScreen|ProfilePicker|TownSession)\.cs$'){Add-Managed 'ui';Add-Managed 'menu';Add-Managed 'saves';continue}
         if($p -match '^tests/AnimalTown.RenderingChecks/(WaterEffect|RenderingService|MovementTerrain|GroundRing|TerrainIndex|ActorVisibility|AttentionGeometry|DroppedItem)Checks\.cs$'){

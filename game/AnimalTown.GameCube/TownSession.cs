@@ -30,12 +30,16 @@ internal sealed class TownSession
     internal bool SaveOnboarding()
     {
         if(Draft==null)return false;
+        if(!SaveCards.Enabled){
+            Draft.BeginWithoutSaving();State=Draft.State;Draft.Dispose();Draft=null;
+            Status="Playing without saving";DebugOverlay.WriteLine("ANIMALTOWN ONBOARDING TEMPORARY");return true;
+        }
         if(Damaged){OnboardingSaveError="Incomplete save preserved. Back up the card before recovery.";return false;}
         OnboardingSaveError="";string phase="mount";
         try{
-            using var card=MemoryCard.Mount(StorageDevice.MemoryCardSlotA,new MemoryCardIdentity("AMTE","01"));
+            using var card=SaveCards.Mount();
             phase="artwork";
-            var store=new CardSaveStorage(card,File.ReadAllBytes(AnimalTown.ContentPaths.Asset("savebanner.rgb5a3")),File.ReadAllBytes(AnimalTown.ContentPaths.Asset("saveicon.rgb5a3")));
+            var store=new CardSaveStorage(card,File.ReadAllBytes(AnimalTown.ContentPaths.Asset("savebanner.rgb5a3")),File.ReadAllBytes(AnimalTown.ContentPaths.Asset("saveicon.rgb5a3")),SaveCards.Device);
             phase="directory";
             bool files=false;var names=store.Names();
             for(int i=0;i<names.Length;i++)if(SplitSaveCodec.IsFile(names[i]))files=true;
@@ -47,7 +51,7 @@ internal sealed class TownSession
             DebugOverlay.WriteLine("ONBOARDING SAVE ERROR: "+phase+" (code "+NativeCalendar.CardError()+", mount "+NativeCalendar.CardMountError()+", recovery "+NativeCalendar.CardRecoveryError()+"): "+detail);
             OnboardingSaveError=error.Message!=null&&(error.Message.StartsWith("The town on this card")||error.Message.StartsWith("This card already"))?
                 "Card changed. Return to the title and reload your town.":
-                CardSaveError.Describe(phase,NativeCalendar.CardError(),NativeCalendar.CardMountError(),NativeCalendar.CardRecoveryError(),detail);
+                CardSaveError.Describe(phase,NativeCalendar.CardError(),NativeCalendar.CardMountError(),NativeCalendar.CardRecoveryError(),detail,SaveCards.Slot);
             // A successful commit remains successful if closing the card fails.
             // Never leave a review screen holding an already released draft.
             return Draft==null;
@@ -55,26 +59,26 @@ internal sealed class TownSession
     }
     internal bool DeleteProfile(int profile)
     {
-        if(!Loaded||Damaged||!State.Profiles[profile].Created)return false;
+        if(!SaveCards.Enabled||!Loaded||Damaged||!State.Profiles[profile].Created)return false;
         try{
-            using var card=MemoryCard.Mount(StorageDevice.MemoryCardSlotA,new MemoryCardIdentity("AMTE","01"));
-            var storage=new CardSaveStorage(card,File.ReadAllBytes(AnimalTown.ContentPaths.Asset("savebanner.rgb5a3")),File.ReadAllBytes(AnimalTown.ContentPaths.Asset("saveicon.rgb5a3")));
+            using var card=SaveCards.Mount();
+            var storage=new CardSaveStorage(card,File.ReadAllBytes(AnimalTown.ContentPaths.Asset("savebanner.rgb5a3")),File.ReadAllBytes(AnimalTown.ContentPaths.Asset("saveicon.rgb5a3")),SaveCards.Device);
             State=new SaveRepository(storage).DeleteProfile(State,profile);return true;
         }catch(Exception){return false;}
     }
     internal static TownSession Load()
     {
-        GameState? state=null;bool damaged=false;string status="New town - no valid save";
-        try{
-            using var card=MemoryCard.Mount(StorageDevice.MemoryCardSlotA,new MemoryCardIdentity("AMTE","01"));
-            var store=new CardSaveStorage(card,new byte[0],new byte[0]);var names=store.Names();bool existing=false,pending=false;
+        GameState? state=null;bool damaged=false;string status=SaveCards.Enabled?"New town - no valid save":"Playing without saving";
+        if(SaveCards.Enabled)try{
+            using var card=SaveCards.Mount();
+            var store=new CardSaveStorage(card,new byte[0],new byte[0],SaveCards.Device);var names=store.Names();bool existing=false,pending=false;
             for(int i=0;i<names.Length;i++){if(SplitSaveCodec.IsFile(names[i]))existing=true;if(names[i]==TownDataDeletion.Marker)pending=true;}
             if(pending){damaged=true;status="Finish town deletion in title Options.";}
             else{
                 state=new SaveRepository(store).Load();
                 if(state!=null)status="Save loaded";else if(existing){damaged=true;status="No complete save set. Backup card before recovery.";}
             }
-        }catch(Exception){status="Insert memory card in Slot A to save";}
+        }catch(Exception){damaged=true;status="Could not read "+SaveCards.Slot+". Return to title to recheck.";}
         bool loaded=state!=null;
         if(state==null){long now=Clock.Timestamp;int date=NativeCalendar.Read();state=new GameState(unchecked((int)(now^(now>>32)^date*7919L)));state.Profiles[0].Created=false;}
         return new TownSession(state,loaded,damaged,status);

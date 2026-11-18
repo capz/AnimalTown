@@ -19,6 +19,7 @@ internal static class Program
         DebugOverlay.WriteLine("AnimalTown "+BuildInfo.Version);
         ContentBootstrap.Initialize();
         RuntimeOptions.Load();
+        SaveCards.Initialize();
         var config=DevConfigStorage.Load();
         DevConfigStorage.ApplyGlobal(config);
         var options=UserOptionsStorage.Load();VideoOptions.Load(options,config);
@@ -426,6 +427,7 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
     private void SaveFromMenu()
     {
         if(screen!="menu"||menuTab!=SettingsTab||selected!=0)return;
+        if(!SaveCards.Enabled){saveStatus="Saving is disabled for this session. Restart to choose a card.";return;}
         if(damagedSave){saveStatus="Damaged saves preserved. Use another card.";return;}
         string previousScreen=screen;screen="saving";Draw();screen=previousScreen;
         clockHud.Trim();uiShapes.Trim();
@@ -433,12 +435,12 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
         try
         {
             phase="terrain cache";terrainSuspended=terrain.SuspendForSave();phase="mount";
-            if(card==null)card=MemoryCard.Mount(StorageDevice.MemoryCardSlotA,new MemoryCardIdentity("AMTE","01"));
+            if(card==null)card=SaveCards.Mount();
             phase="encode";
             state.Facing=facingYaw;
             phase="save set";
             long saveAt=Clock.Timestamp;
-            var reads=new SaveReadCache(new CardSaveStorage(card,banner,icon));
+            var reads=new SaveReadCache(new CardSaveStorage(card,banner,icon,SaveCards.Device));
             var repository=new SaveRepository(reads);repository.Save(state);
             saveStatus=repository.LastWrittenRecords==0?"No changes to save.":"Saved / "+BuildInfo.Version;
             DebugOverlay.WriteLine("SAVE: "+repository.LastWrittenRecords+" records / "+repository.LastWrittenBytes+" bytes");

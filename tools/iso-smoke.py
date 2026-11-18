@@ -180,12 +180,12 @@ def wait_onboarding(stage,name=None):
         time.sleep(1)
     raise AssertionError('Onboarding did not reach '+stage+'; inspect '+name)
 
-def wait_saved_after(before):
+def wait_saved_after(before,card=None):
     deadline=time.monotonic()+240
     sequence=before['sequence'] if before else 0
     while time.monotonic()<deadline:
         check_runtime_failure()
-        after=committed_card_sequence(root/'MemoryCardA.USA.raw',details=True)
+        after=committed_card_sequence(card or root/'MemoryCardA.USA.raw',details=True)
         if after and after['sequence']>sequence:return after
         if p.poll() is not None:raise AssertionError('Emulator stopped during explicit onboarding save')
         time.sleep(1)
@@ -1062,13 +1062,76 @@ def wait_profiles(name='profile-picker.png'):
     deadline=time.monotonic()+180
     while time.monotonic()<deadline:
         check_runtime_failure()
+        # All normal scenarios confirm the default card choice explicitly.
+        # The dedicated card scenarios drive and verify the chooser themselves.
+        text=runtime_log_text()
+        chooser=text.rfind('ANIMALTOWN SAVE CARD CHOOSER')
+        chosen=max(text.rfind('ANIMALTOWN SAVE CARD SELECTED'),text.rfind('ANIMALTOWN SAVE CARD NONE'))
+        if chooser>chosen:
+            if '--save-cards' in sys.argv:raise AssertionError('Card scenario reached picker without confirming its card choice')
+            screenshot('default-memory-card.png');press('A');continue
         screenshot(name);pixels=rgb(name)
-        count=sum(all(abs(pixels[(y*800+x)*3+c]-value)<=5 for c,value in enumerate((53,105,84))) for y in range(160,365) for x in range(120,165))
-        cards=color_count(pixels,(107,151,90))>3000 and color_count(pixels,(255,183,64))>150
-        if (count>150 or cards) and color_count(pixels,(255,245,221))>70000:return
+        # Four green name pills identify the resident picker. Honey accents
+        # are small and can vary with portrait/viewport rasterization.
+        cards=color_count(pixels,(107,151,90))>3000
+        if cards and color_count(pixels,(255,245,221))>70000:return
         if p.poll() is not None:raise AssertionError('Emulator stopped before villager picker')
         time.sleep(1)
     raise AssertionError('Villager picker did not appear')
+
+def memory_cards():
+    """Real slot selection, retained choice and optional saving on disposable cards."""
+    import hashlib
+    import re
+    mode=sys.argv[sys.argv.index('--save-cards')+1]
+    if mode not in ('slot-b','choose-b','without-saving','no-card'):raise ValueError('Unknown card scenario')
+    paths=[root/'MemoryCardA.USA.raw',root/'MemoryCardB.USA.raw']
+    def digests():return [hashlib.sha256(path.read_bytes()).hexdigest() if path.exists() else None for path in paths]
+    def chooser(expected,start=0,name='memory-card-choice.png'):
+        deadline=time.monotonic()+90
+        while time.monotonic()<deadline:
+            check_runtime_failure();text=runtime_log_text()[start:]
+            matches=re.findall(r'ANIMALTOWN SAVE CARD CHOOSER default (\d+)',text)
+            if matches:
+                if int(matches[-1])!=expected:raise AssertionError('Unexpected default memory card choice: '+matches[-1])
+                screenshot(name);return
+            if p.poll() is not None:raise AssertionError('Emulator stopped before card chooser')
+            time.sleep(.5)
+        raise AssertionError('Memory-card chooser did not appear')
+    wait_title();before=digests();start=len(runtime_log_text());press('A')
+    chooser(1 if mode=='slot-b' else 2 if mode=='no-card' else 0,start)
+    press('X');screenshot('memory-card-rechecked.png')
+    if digests()!=before:raise AssertionError('Opening/rechecking the card chooser changed a card')
+    if mode=='choose-b':press('D_DOWN')
+    if mode=='without-saving':press('D_UP')
+    chosen=2 if mode in ('without-saving','no-card') else 1
+    press('A');wait_profiles('memory-card-picker.png')
+    # Returning from the resident picker must preserve the confirmed destination.
+    press('B');wait_title();start=len(runtime_log_text());press('A')
+    chooser(chosen,start,'memory-card-remembered.png');press('A');wait_profiles('memory-card-picker-return.png')
+    report={'scenario':mode,'default':1 if mode=='slot-b' else 2 if mode=='no-card' else 0,
+            'remembered_choice':chosen,'discovery_read_only':True,'passed':False}
+    if mode in ('slot-b','without-saving'):
+        press('A');wait_onboarding('name','memory-card-name.png');press('A');press('START')
+        wait_onboarding('look','memory-card-look.png');press('A')
+        wait_onboarding('home','memory-card-home.png');press('A')
+        wait_onboarding('review','memory-card-review.png');press('A')
+        if mode=='slot-b':
+            after=wait_saved_after(None,paths[1]);report['saved_sequence']=after['sequence']
+            if committed_card_sequence(paths[0]):raise AssertionError('Slot B town was saved to Slot A')
+        wait_onboarding('world','memory-card-world.png')
+        save_menu();screenshot('memory-card-save-menu.png')
+        if mode=='without-saving':
+            # This normally persists independent user options, even in menus.
+            for _ in range(3):press('Z')
+            if 'ANIMALTOWN DEBUG MENUS VISIBLE 1' not in runtime_log_text():raise AssertionError('Temporary-mode preference action did not run')
+            if 'ANIMALTOWN ONBOARDING TEMPORARY' not in runtime_log_text():raise AssertionError('Temporary onboarding did not finish')
+            if digests()!=before:raise AssertionError('Playing without saving modified a memory card')
+            report['card_bytes_unchanged']=True
+        elif digests()[0]!=before[0]:raise AssertionError('Slot B play modified Slot A')
+    elif digests()!=before:raise AssertionError('Choosing a slot created a save before onboarding')
+    report['passed']=True
+    (root/'memory-card-report.json').write_text(json.dumps(report,indent=2)+'\n')
 
 def profile_cards():
     before=committed_card_sequence(root/'MemoryCardA.USA.raw',details=True)
@@ -1854,6 +1917,7 @@ SkipIPL = True
 SlotA = 1
 SlotB = 255
 MemcardAPath = '''+str(root/'MemoryCardA.USA.raw')+'''
+MemcardBPath = '''+str(root/'MemoryCardB.USA.raw')+'''
 [Display]
 RenderToMain = False
 RenderWindowWidth = 640
@@ -1864,6 +1928,12 @@ EnableJIT = True
 ConfirmStop = False
 UsePanicHandlers = False
 ''')
+if '--save-cards' in sys.argv:
+    mode=sys.argv[sys.argv.index('--save-cards')+1]
+    config=user/'Config'/'Dolphin.ini';text=config.read_text()
+    if mode in ('slot-b','no-card'):text=text.replace('SlotA = 1','SlotA = 255')
+    if mode!='no-card':text=text.replace('SlotB = 255','SlotB = 1')
+    config.write_text(text)
 if '--season' in sys.argv:
     season=sys.argv[sys.argv.index('--season')+1]
     month={'spring':4,'summer':7,'fall':10,'winter':1}[season]
@@ -1908,13 +1978,14 @@ with (root/'emulator.log').open('w') as log:
         if '--loading' in sys.argv:
             for n,seconds in enumerate((1,1,2,4,8,12,17)):
                 time.sleep(seconds);screenshot(f'loading-{n}.png')
-        elif '--aram-residency' in sys.argv or '--title-logo' in sys.argv or '--terrain-materials' in sys.argv:wait_title()
+        elif any(flag in sys.argv for flag in ('--aram-residency','--title-logo','--terrain-materials','--save-cards')):wait_title()
         else:time.sleep(45)
         if p.poll() is not None:
             raise RuntimeError(f'Dolphin exited during boot ({p.returncode}); see {root / "emulator.log"}')
         screenshot('screen.png')
         if any(flag in sys.argv for flag in ('--title-menu','--title-load','--title-config','--title-update','--title-options','--title-options-load','--title-options-unsupported')):wait_title()
-        if '--onboarding' in sys.argv:
+        if '--save-cards' in sys.argv:memory_cards()
+        elif '--onboarding' in sys.argv:
             onboarding()
         elif '--debug-visibility' in sys.argv:debug_visibility_scenario()
         elif '--debug-visibility-load' in sys.argv:debug_visibility_scenario(True)

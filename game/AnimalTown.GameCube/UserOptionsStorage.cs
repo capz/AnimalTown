@@ -10,9 +10,10 @@ internal static class UserOptionsStorage
     internal static UserOptions Current {get;private set;}=new UserOptions();
     internal static UserOptions Load()
     {
+        if(!SaveCards.Enabled){Current=new UserOptions();return Current;}
         try{
-            using var card=MemoryCard.Mount(StorageDevice.MemoryCardSlotA,new MemoryCardIdentity("AMTE","01"));
-            var archive=new CardArchive(card,new byte[0],new byte[0]);
+            using var card=SaveCards.Mount();
+            var archive=new CardArchive(card,new byte[0],new byte[0],SaveCards.Device);
             foreach(string name in archive.Names())if(name==FileName){
                 var options=UserOptions.Decode(archive.Read(FileName));
                 DebugOverlay.WriteLine("ANIMALTOWN OPTIONS LOADED "+options.Resolution+" "+(options.Widescreen?1:0));Current=options;return options;
@@ -22,15 +23,16 @@ internal static class UserOptionsStorage
     }
     internal static bool Save(UserOptions options)
     {
+        if(!SaveCards.Enabled){Status="Applied for this session. Saving is disabled.";return false;}
         try{
-            using var card=MemoryCard.Mount(StorageDevice.MemoryCardSlotA,new MemoryCardIdentity("AMTE","01"));
+            using var card=SaveCards.Mount();
             byte[] bytes=options.Encode();
-            var archive=new CardArchive(card,new byte[0],new byte[0]);archive.Write(FileName,bytes);
+            var archive=new CardArchive(card,new byte[0],new byte[0],SaveCards.Device);archive.Write(FileName,bytes);
             var readback=archive.Read(FileName);
             if(readback.Length!=bytes.Length)throw new InvalidOperationException("Options readback failed");
             for(int i=0;i<bytes.Length;i++)if(readback[i]!=bytes[i])throw new InvalidOperationException("Options readback failed");
-            Status="Saved to memory card in Slot A.";
+            Status="Saved to memory card in "+SaveCards.Slot+".";
             DebugOverlay.WriteLine("ANIMALTOWN OPTIONS SAVED "+options.Resolution+" "+(options.Widescreen?1:0));return true;
-        }catch(Exception){Status="Applied for this session. Could not save to Slot A.";return false;}
+        }catch(Exception){Status="Applied for this session. Could not save to "+SaveCards.Slot+".";return false;}
     }
 }

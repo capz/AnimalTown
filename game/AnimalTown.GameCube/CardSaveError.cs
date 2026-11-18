@@ -1,13 +1,13 @@
 internal static class CardSaveError
 {
-    internal static string Describe(string phase,int operation,int mount,int recovery,string detail)
+    internal static string Describe(string phase,int operation,int mount,int recovery,string detail,string slot="Slot A")
     {
         if(phase=="mount"&&mount!=0){
             string reason=mount switch{
-                -1=>"Slot A is busy. Wait, then retry.",
-                -2=>"Slot A did not identify a memory card.",
-                -3=>"No memory card detected in Slot A.",
-                -5=>"Card read failed. Check Slot A and retry.",
+                -1=>slot+" is busy. Wait, then retry.",
+                -2=>slot+" did not identify a memory card.",
+                -3=>"No memory card detected in "+slot+".",
+                -5=>"Card read failed. Check "+slot+" and retry.",
                 -6=>"Card directory could not be verified. Data kept.",
                 -13=>"Card encoding is unsupported. Data kept.",
                 -2001=>"Not enough memory to open the card.",

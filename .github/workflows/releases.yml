@@ -226,6 +226,45 @@ jobs:
             out/terrain-materials/*.txt
             out/terrain-materials/user/Logs/
           if-no-files-found: warn
+      - name: Select focused memory-card capture
+        id: save_cards
+        run: |
+          python3 - <<'PY'
+          import json, os, re
+          from pathlib import Path
+          plan=json.loads(Path('out/validation-plan.json').read_text())
+          relevant=re.compile(r'^(game/AnimalTown.GameCube/(SaveCards|CardArchive|CardSaveStorage|TownDataStorage|TownSession|UserOptionsStorage|DevConfigStorage|TitleScreen(?:\.Cards)?|OnboardingFlow|OnboardingUi|Program)\.cs$|shared/AnimalTown.Domain/OnboardingDraft\.cs$|tests/AnimalTown.CardChecks/|tools/iso-smoke\.py$|\.github/workflows/releases\.yml$)')
+          needed=any(relevant.search(path) for path in plan['paths']) or (plan['full'] and not plan['paths'])
+          with open(os.environ['GITHUB_OUTPUT'],'a') as output:
+              output.write(f'needed={str(needed).lower()}\n')
+          PY
+      - name: Verify memory-card selection and temporary play in Dolphin
+        if: steps.save_cards.outputs.needed == 'true'
+        timeout-minutes: 20
+        env:
+          BUILD_VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          docker build -t animaltown-card-capture -f build/Dockerfile.dolphin build
+          for scenario in slot-b choose-b without-saving no-card; do
+            mkdir -p "out/memory-cards/$scenario"
+            docker run --rm --init --shm-size=512m --user "$(id -u):$(id -g)" \
+              --mount "type=bind,src=$PWD,dst=/work" -w /work \
+              animaltown-card-capture python3 tools/iso-smoke.py \
+              "out/AnimalTown-$BUILD_VERSION.nkit.iso" "out/memory-cards/$scenario" \
+              --save-cards "$scenario" --season spring --dsp-hle
+          done
+      - name: Keep memory-card capture diagnostics
+        if: always() && steps.save_cards.outputs.needed == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: memory-cards-${{ steps.version.outputs.commit }}
+          path: |
+            out/memory-cards/*/*.png
+            out/memory-cards/*/*.json
+            out/memory-cards/*/*.log
+            out/memory-cards/*/*.txt
+            out/memory-cards/*/user/Logs/
+          if-no-files-found: warn
       - name: Publish NKit, standalone app and backend GitHub release
         env:
           GH_TOKEN: ${{ github.token }}

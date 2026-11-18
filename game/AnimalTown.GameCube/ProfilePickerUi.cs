@@ -98,14 +98,14 @@ internal sealed class ProfilePickerUi : IDisposable,Hypercube.GameCube.IFrameSce
         if(Modal==Failure){
             Center("Couldn't verify every save operation.",320,198,.78f,416);
             Center("The last complete save will load.",320,224,.78f,416);
-            Center("Check Slot A, then return to the title.",320,250,.78f,416);
+            Center("Check "+SaveCards.Slot+", then return to the title.",320,250,.78f,416);
             TitleArt.Rounded(ui,179,309,282,38,19,TitleArt.Leaf);
             font!.Draw(ui,"Return to title",320-font.Measure("Return to title",.95f)*.5f,317,TitleArt.Cream,.95f);
             return;
         }
         Center(names[Selected],320,180,1.05f,416);
         if(Modal==Busy){
-            Center("Keep the memory card in Slot A.",320,229,.88f,416);
+            Center("Keep the memory card in "+SaveCards.Slot+".",320,229,.88f,416);
             Center("Updating and checking the town's saves.",320,261,.75f,416);return;
         }
         Center("Removes their home, furniture and progress.",320,214,.75f,416);
