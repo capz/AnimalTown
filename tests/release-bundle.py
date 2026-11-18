@@ -93,6 +93,25 @@ class BundleChecks(unittest.TestCase):
         before=self.archive.read_bytes();bundle.attach(self.archive,evidence)
         self.assertEqual(self.archive.read_bytes(),before)
 
+    def test_daylight_roundtrip_keeps_all_phases_and_runtime(self):
+        files={'daylight-build.json':b'{"schema":1}'}
+        for phase in ('noon','dawn','dusk','night'):
+            for suffix in ('a.png','b.png','report.json'):files['daylight-'+phase+'-'+suffix]=('capture '+phase+suffix).encode()
+        for name,data in files.items():(self.reports/name).write_bytes(data)
+        self.attached();_,reports=self.verify()
+        self.assertTrue(set(files).issubset(reports['files']))
+        out=self.root/'daylight';bundle.extract(self.archive,out)
+        for name,data in files.items():self.assertEqual((out/name).read_bytes(),data)
+        with zipfile.ZipFile(self.archive) as archive:
+            for name,data in self.runtime.items():self.assertEqual(archive.read(bundle.APP+name),data)
+        self.mutate(bundle.REPORT+'daylight-night-a.png',b'corrupt capture')
+        with self.assertRaises(ValueError):self.verify()
+
+    def test_daylight_namespace_rejects_extra_types_and_paths(self):
+        for name in ('daylight-noon.py','daylight-noon-a.PNG','daylight-Night-a.png','daylight-midnight-a.png',
+                     'daylight-night-extra.json','daylight-night-extra.png','daylight-build.json/source.py','daylight/night-a.png'):
+            with self.subTest(name=name):self.assertFalse(bundle.allowed(name))
+
     def test_terrain_evidence_namespace_rejects_extra_types_and_paths(self):
         for name in ('terrain-materials-extra.json','terrain-materials-runtime.log','terrain-materials-source.py',
                      'terrain-materials-game.dol','terrain-materials-source.zip','terrain-materials-normal.PNG',

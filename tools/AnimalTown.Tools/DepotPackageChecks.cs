@@ -93,6 +93,11 @@ internal static class DepotPackageChecks
                 {"terrain-materials-report.json",JsonSerializer.SerializeToUtf8Bytes(new{scenario="terrain-materials",passed=true})},
                 {"terrain-materials-build.json",JsonSerializer.SerializeToUtf8Bytes(new{commit,version})}
             };
+            reportFiles.Add("daylight-build.json",JsonSerializer.SerializeToUtf8Bytes(new{commit,version}));
+            foreach(string phase in new[]{"noon","dawn","dusk","night"}){
+                reportFiles.Add("daylight-"+phase+"-report.json",JsonSerializer.SerializeToUtf8Bytes(new{passed=true}));
+                foreach(string shot in new[]{"a","b"})reportFiles.Add("daylight-"+phase+"-"+shot+".png",new byte[]{137,80,78,71,13,10,26,10});
+            }
             var reportHashes=new SortedDictionary<string,string>(StringComparer.Ordinal);
             foreach(var pair in reportFiles)reportHashes.Add(pair.Key,Convert.ToHexString(SHA256.HashData(pair.Value)).ToLowerInvariant());
             var reportManifest=new{schema=1,commit,version,files=reportHashes};
@@ -122,8 +127,10 @@ internal static class DepotPackageChecks
                 Reject(()=>DepotPackage.Verify(root,changed),"reject manifested unsupported report: "+name);
             }
             foreach(string name in new[]{"terrain-materials.png","terrain-materials-Frame.png","terrain-materials-frame.PNG","terrain-materials-unlisted.json","terrain-materials-source.cs","terrain-materials-frame.png/source.py","scenarios/terrain-materials/frame.png"})UnsupportedReport(name);
+            foreach(string name in new[]{"daylight-noon.py","daylight-noon-a.PNG","daylight-Night-a.png","daylight-midnight-a.png","daylight-night-extra.json","daylight-night-extra.png","daylight-build.json/source.py","daylight/night-a.png"})UnsupportedReport(name);
             Mutated("release/BUILD.txt",Encoding.UTF8.GetBytes("corrupt report"));
             Mutated("release/terrain-materials-mips-auto.png",Encoding.UTF8.GetBytes("corrupt capture"));
+            Mutated("release/daylight-night-a.png",Encoding.UTF8.GetBytes("corrupt night capture"));
             Mutated("release/animal-town-updater.dol");Mutated("release/source.cs");Mutated("release/scenarios/performance/source.py");
             Mutated("release/scenarios/performance/../bad.txt");Mutated("release/scenarios/performance/link.txt",attributes:unchecked((int)0xa1ff0000));
             Mutated("release/manifest.json",JsonSerializer.SerializeToUtf8Bytes(new{schema=1,commit=new string('b',40),version,files=reportManifest.files}));
