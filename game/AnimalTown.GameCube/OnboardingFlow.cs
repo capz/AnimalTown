@@ -44,7 +44,7 @@ internal static class OnboardingFlow
                 state.X=x+3.5f;state.Z=z+6.5f;return false;
             }
             if(p.A.WasPressed){
-                view.DrawReview(state,"",true);
+                if(SaveCards.Enabled)view.DrawReview(state,"",true);
                 if(session.SaveOnboarding())return true;
                 error=session.OnboardingSaveError;
             }

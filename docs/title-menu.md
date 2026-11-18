@@ -1,7 +1,8 @@
 # Title menu and dev config
 
-Startup mounts the disc, reads its runtime defaults and the independent Slot A
-`dev_config` and `options` records, applies saved video preferences, then runs the SDK/engine splash screens. `TitleScreen` owns
+Startup mounts the disc, reads its runtime defaults, discovers the first usable
+memory card (A, then B), and reads that card's independent `dev_config` and
+`options` records. It applies saved video preferences, then runs the SDK/engine splash screens. `TitleScreen` owns
 only the original cream panel, approved Smalltown Forest logo, tagline, IPL menu font
 and a procedural 64×64 mint dot texture. The
 staggered dots repeat and drift diagonally at four pixels per second. It creates
@@ -35,7 +36,9 @@ BNR1, with a six-slot English BNR2 alternate available for PAL packaging.
 The boot-header title and disc/save identifiers retain their existing
 AnimalTown values for compatibility with the pinned updater and existing saves.
 
-Start immediately removes the panel, logo and menu. Only the moving dot
+Start opens the approved [memory-card chooser](memory-cards.md), reusing the
+paper panel, IPL font and Gorditas heading without a logo. Confirming a usable
+slot or temporary play removes the panel and menu. Only the moving dot
 background and a small hopping, blinking sprout in the bottom-right remain while
 assets and the landscape load. No world, loading panel or debug overlays are
 drawn during this transition. The animation uses simple UI geometry and retires

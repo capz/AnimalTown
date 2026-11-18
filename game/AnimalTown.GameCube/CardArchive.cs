@@ -17,7 +17,7 @@ internal sealed class CardArchive
     private string container=Container;
     private bool expansionNeeded;
     private CardRecordStore? expansionTarget;
-    internal CardArchive(MemoryCard card,byte[] banner,byte[] icon,int device=4)
+    internal CardArchive(MemoryCard card,byte[] banner,byte[] icon,int device)
     {
         this.card=card;this.banner=banner;this.icon=icon;this.device=device;
         var entries=card.GetEntries();bool old=false;

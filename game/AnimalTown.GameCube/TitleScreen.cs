@@ -7,7 +7,7 @@ using Dolphin.Input;
 using Dolphin.Timing;
 
 // The title owns only UI resources. TownGame is constructed only after Start.
-internal sealed class TitleScreen : IDisposable,Hypercube.GameCube.IFrameScene
+internal sealed partial class TitleScreen : IDisposable,Hypercube.GameCube.IFrameScene
 {
     private readonly GraphicsDevice device=GraphicsDevice.Default;
     private readonly Draw2D ui=new Draw2D(GraphicsDevice.Default,new Draw2DOptions{VertexCapacity=8192,SpriteCapacity=128});
@@ -50,11 +50,16 @@ internal sealed class TitleScreen : IDisposable,Hypercube.GameCube.IFrameScene
         DebugOverlay.WriteLine("ANIMALTOWN TITLE LOGO "+title.logo.SourceWidth+"x"+title.logo.SourceHeight+" bytes "+title.logo.Bytes);
         while(true){
             title.Draw();RuntimeOptions.Wait();Controller.Update();var p=Controller.GetState(0);
-            if(DebugMenuSettings.Read(p)){
+            if(!title.cardOpen&&DebugMenuSettings.Read(p)){
                 if(!options.ShowDebugMenus){title.Save();title.debugOpen=false;title.selected=Math.Min(title.selected,title.MenuCount-1);}
                 title.status=UserOptionsStorage.Status;continue;
             }
-            int direction=title.navigation.Read(title.confirmDelete?"delete-town":title.optionsOpen?"title-options":title.debugOpen?"dev-config":"title",0,p.Stick.X,p.Stick.Y,(int)p.PressedButtons,Clock.Timestamp,true);
+            int direction=title.navigation.Read(title.cardOpen?"save-card":title.confirmDelete?"delete-town":title.optionsOpen?"title-options":title.debugOpen?"dev-config":"title",0,p.Stick.X,p.Stick.Y,(int)p.PressedButtons,Clock.Timestamp,true);
+            if(title.cardOpen){
+                if(!title.CardInput(direction,p.A.WasPressed||p.Start.WasPressed,p.B.WasPressed,p.X.WasPressed))continue;
+                if(TownDataStorage.Pending()){title.status="Finish town deletion in Options before starting.";continue;}
+                DevConfigStorage.ApplyGlobal(config);LoadingScreen.Draw();title.Save();return true;
+            }
             if(title.optionsOpen){title.OptionsInput(direction,p.A.WasPressed,p.B.WasPressed);continue;}
             if(title.debugOpen){
                 if(p.B.WasPressed||p.Start.WasPressed){title.Save();title.debugOpen=false;continue;}
@@ -83,9 +88,7 @@ internal sealed class TitleScreen : IDisposable,Hypercube.GameCube.IFrameScene
                 title.optionsStatus=VideoOptions.Status.Length>0?VideoOptions.Status:UserOptionsStorage.Status;continue;
             }
             if(title.selected==0){
-                if(TownDataStorage.Pending()){title.status="Finish town deletion in Options before starting.";continue;}
-                DevConfigStorage.ApplyGlobal(config);LoadingScreen.Draw();
-                title.Save();return true;
+                title.OpenCards();continue;
             }
             if(!UpdaterLaunch.Available)continue;
             title.Save();
@@ -116,9 +119,10 @@ internal sealed class TitleScreen : IDisposable,Hypercube.GameCube.IFrameScene
         // height as Fit would, while retaining the full display for modal shade.
         var size=ui.LogicalSize;composition.Zoom=size.Y/480;canvasMargin=(size.X/composition.Zoom-640)*.5f;
         composition.Position=new Vector2(-canvasMargin,0);ui.Begin(composition);
+        if(cardOpen){DrawCards();ui.End();return;}
         // Fit the approved logo and menu column with 36px side padding and
         // 24-25px above/below. Status messages retain their own bounded footer.
-        bool showStatus=status.Length>0&&!optionsOpen&&!debugOpen;
+        bool showStatus=status.Length>0&&!optionsOpen&&!debugOpen&&!cardOpen;
         int panelHeight=showStatus?456:264+MenuCount*40,panelY=(480-panelHeight)/2;
         int contentOffset=(4-MenuCount)*21+(showStatus?0:24),logoY=28+contentOffset,menuY=244+contentOffset;
         TitleArt.Panel(ui,104,panelY,432,panelHeight);
@@ -130,7 +134,7 @@ internal sealed class TitleScreen : IDisposable,Hypercube.GameCube.IFrameScene
         MenuRow(OptionsIndex,"Options",menuY+TitleRowStep*OptionsIndex);
         if(options.ShowDebugMenus)MenuRow(DebugIndex,"Debug configuration",menuY+TitleRowStep*DebugIndex);
         int layout=MenuCount+(showStatus?8:0);
-        if(!optionsOpen&&!debugOpen&&layout!=lastTitleLayout){
+        if(!optionsOpen&&!debugOpen&&!cardOpen&&layout!=lastTitleLayout){
             lastTitleLayout=layout;
             DebugOverlay.WriteLine("ANIMALTOWN TITLE LAYOUT rows "+MenuCount+" status "+(showStatus?1:0)+" panel 104,"+panelY+",432,"+panelHeight+" logo 140,"+logoY+",360,180 menu 140,"+menuY+",360,34 step 42");
         }
@@ -173,14 +177,14 @@ internal sealed class TitleScreen : IDisposable,Hypercube.GameCube.IFrameScene
         }
         if(optionRow<2&&(direction==MenuNavigation.Left||direction==MenuNavigation.Right))optionChoice=1-optionChoice;
         if(!activate)return;
-        if(optionRow==2){confirmDelete=true;deleteFocus=false;return;}
+        if(optionRow==2){if(!SaveCards.Enabled){optionsStatus="Select a memory card from Start before deleting town data.";return;}confirmDelete=true;deleteFocus=false;return;}
         int resolution=optionRow==0?optionChoice+1:options.Resolution;
         bool wide=optionRow==1?optionChoice==0:device.Display.Widescreen;
         if(!VideoOptions.Apply(resolution,wide,optionRow==0)){optionsStatus=VideoOptions.Status;return;}
         options.Resolution=resolution;options.Widescreen=wide;
         // Present before physical-card I/O; mode switching holds output black
         // until the first completed frame in the replacement mode.
-        optionsStatus="Saving to memory card in Slot A...";Draw();
+        optionsStatus=SaveCards.Enabled?"Saving to memory card in "+SaveCards.Slot+"...":"Applying for this session...";Draw();
         UserOptionsStorage.Save(options);optionsStatus=UserOptionsStorage.Status;
     }
     private void DrawOptions()
@@ -220,7 +224,7 @@ internal sealed class TitleScreen : IDisposable,Hypercube.GameCube.IFrameScene
         ui.FillRectangle(ScreenBounds(),new Color32(25,44,36,165));
         TitleArt.Panel(ui,44,108,552,268);
         optionsHeading!.Draw(ui,deleting?"Deleting town...":"Delete town data?",76,132,TitleArt.Ink,1.25f);
-        font.Draw(ui,"Erase this town and ALL villagers\nfrom the memory card in Slot A?\nThis cannot be undone.",76,184,TitleArt.Ink,1.15f);
+        font.Draw(ui,"Erase this town and ALL villagers\nfrom the memory card in "+SaveCards.Slot+"?\nThis cannot be undone.",76,184,TitleArt.Ink,1.15f);
         if(deleting)return;
         TitleArt.Rounded(ui,76,298,216,48,22,!deleteFocus?TitleArt.Leaf:new Color32(236,226,197));
         TitleArt.Rounded(ui,348,298,216,48,22,deleteFocus?new Color32(162,69,55):new Color32(236,226,197));
@@ -306,5 +310,5 @@ internal sealed class TitleScreen : IDisposable,Hypercube.GameCube.IFrameScene
             default:return "discard terrain cache when indoors: "+toggle;
         }
     }
-    public void Dispose(){optionsHeading?.Release();background.Dispose();TextureCache.Release(logo);font.Release();ui.Dispose();TextureCache.TrimUnused();}
+    public void Dispose(){cardHeading?.Release();optionsHeading?.Release();background.Dispose();TextureCache.Release(logo);font.Release();ui.Dispose();TextureCache.TrimUnused();}
 }

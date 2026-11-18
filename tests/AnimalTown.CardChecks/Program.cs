@@ -19,7 +19,7 @@ OnboardingDraft NewVillager()
     if(!placed)throw new Exception("Generated town needs a home");return draft;
 }
 var banner=new byte[6144];var icon=new byte[2048];
-var card=new MemoryCard();var adapter=new CardSaveStorage(card,banner,icon);var repository=new SaveRepository(adapter);
+var card=new MemoryCard();var adapter=new CardSaveStorage(card,banner,icon,4);var repository=new SaveRepository(adapter);
 using(var draft=NewVillager()){
     draft.Commit(repository,false,new string[0]);
     var loaded=repository.Load()!;
@@ -35,11 +35,11 @@ using(var draft=NewVillager()){
     for(int save=1;save<=12;save++){
         loaded.Town.Traffic.Visits[100]=(byte)save;
         repository.Save(loaded);
-        Check(new SaveRepository(new CardSaveStorage(card,banner,icon)).Load()!.Town.Traffic.Visits[100]==save,"changing traffic survives repeated saves without exhausting recovery space");
+        Check(new SaveRepository(new CardSaveStorage(card,banner,icon,4)).Load()!.Town.Traffic.Visits[100]==save,"changing traffic survives repeated saves without exhausting recovery space");
     }
     Console.WriteLine("Generated first town: "+card.Used+" resident blocks / "+card.Peak+" peak including internal recovery space.");
 }
-card=new MemoryCard{Capacity=10};adapter=new CardSaveStorage(card,banner,icon);repository=new SaveRepository(adapter);
+card=new MemoryCard{Capacity=10};adapter=new CardSaveStorage(card,banner,icon,4);repository=new SaveRepository(adapter);
 using(var draft=NewVillager()){
     bool failed=false;try{draft.Commit(repository,false,new string[0]);}catch(IOException){failed=true;}
     Check(failed&&draft.State.Sequence==0&&draft.State.Name=="Emi"&&draft.State.HousePlaced,"out-of-space leaves the onboarding draft intact");
@@ -55,32 +55,32 @@ card.WriteSave("options",new byte[]{4,5},new MemoryCardSaveOptions());
 card.WriteSave("dev_config",new byte[]{6,7},new MemoryCardSaveOptions());
 card.WriteSave("Unrelated",new byte[]{8},new MemoryCardSaveOptions());
 int oldCount=card.Files.Count;
-var migrating=new CardArchive(card,banner,icon);
+var migrating=new CardArchive(card,banner,icon,4);
 Check(card.Files.Count==oldCount,"opening an old layout does not migrate or save");
 card.FailDelete=1;bool interrupted=false;
 try{migrating.Write("options",new byte[]{9});}catch(IOException){interrupted=true;}
 Check(interrupted&&card.Files.ContainsKey("AnimalTown"),"interrupted cleanup keeps the verified destination");
-Check(new SaveRepository(new CardSaveStorage(card,banner,icon)).Load()!.Name=="Emi","published migration is loadable before cleanup finishes");
-var recovered=new CardArchive(card,banner,icon);recovered.Write("options",new byte[]{9});
+Check(new SaveRepository(new CardSaveStorage(card,banner,icon,4)).Load()!.Name=="Emi","published migration is loadable before cleanup finishes");
+var recovered=new CardArchive(card,banner,icon,4);recovered.Write("options",new byte[]{9});
 Check(card.Files.Count==2&&card.Files.ContainsKey("Unrelated"),"cleanup resumes and preserves unrelated files");
 Check(recovered.Read("dev_config").SequenceEqual(new byte[]{6,7})&&recovered.Read("options")[0]==9,"debug and options remain independent records");
 TownDataDeletion.Erase(new ArchiveFiles(recovered));
-Check(new SaveRepository(new CardSaveStorage(card,banner,icon)).Load()==null,"logical town deletion removes every fallback bank");
+Check(new SaveRepository(new CardSaveStorage(card,banner,icon,4)).Load()==null,"logical town deletion removes every fallback bank");
 Check(recovered.Read("options")[0]==9&&recovered.Read("dev_config")[0]==6,"town deletion retains preferences and debug data");
 // Exhausted physical space must preserve every old directory item.
 card=new MemoryCard{Capacity=80};using(var draft=NewVillager())draft.Commit(new SaveRepository(new OldFiles(card)),false,new string[0]);
 oldCount=card.Files.Count;card.Capacity=card.Used;bool noSpace=false;
-try{new CardArchive(card,banner,icon).Write("options",new byte[]{1});}catch(IOException){noSpace=true;}
+try{new CardArchive(card,banner,icon,4).Write("options",new byte[]{1});}catch(IOException){noSpace=true;}
 Check(noSpace&&card.Files.Count==oldCount&&new SaveRepository(new OldFiles(card)).Load()!.Name=="Emi","migration without workspace leaves all source files intact");
 card=new MemoryCard{Capacity=80};using(var draft=NewVillager())draft.Commit(new SaveRepository(new OldFiles(card)),false,new string[0]);
 oldCount=card.Files.Count;card.FailBlockWrite=2;bool copyCut=false;
-try{new CardArchive(card,banner,icon).Write("options",new byte[]{3});}catch(IOException){copyCut=true;}
+try{new CardArchive(card,banner,icon,4).Write("options",new byte[]{3});}catch(IOException){copyCut=true;}
 Check(copyCut&&card.Files.Count==oldCount+1&&new SaveRepository(new OldFiles(card)).Load()!.Name=="Emi","a cut before migration publication retains every old file");
-var resumed=new CardArchive(card,banner,icon);resumed.Write("options",new byte[]{3});
-Check(card.Files.Count==1&&new SaveRepository(new CardSaveStorage(card,banner,icon)).Load()!.Name=="Emi","partial copy resumes and consolidates only after verification");
-card=new MemoryCard();var preferences=new CardArchive(card,banner,icon);preferences.Write("options",new byte[]{5});preferences.Write("dev_config",new byte[]{7});
-using(var draft=NewVillager())draft.Commit(new SaveRepository(new CardSaveStorage(card,banner,icon)),false,new string[0]);
-var all=new CardArchive(card,banner,icon);
+var resumed=new CardArchive(card,banner,icon,4);resumed.Write("options",new byte[]{3});
+Check(card.Files.Count==1&&new SaveRepository(new CardSaveStorage(card,banner,icon,4)).Load()!.Name=="Emi","partial copy resumes and consolidates only after verification");
+card=new MemoryCard();var preferences=new CardArchive(card,banner,icon,4);preferences.Write("options",new byte[]{5});preferences.Write("dev_config",new byte[]{7});
+using(var draft=NewVillager())draft.Commit(new SaveRepository(new CardSaveStorage(card,banner,icon,4)),false,new string[0]);
+var all=new CardArchive(card,banner,icon,4);
 Check(card.Files.Count==1&&all.Read("options")[0]==5&&all.Read("dev_config")[0]==7,"a preferences-first card adds the town to the same item without losing settings");
 // Existing 16-block archives grow by verified replacement, with the source
 // intact until the new archive's publication marker is durable.
@@ -93,26 +93,27 @@ MemoryCard OldArchive()
     records.Write("options",new byte[]{5});records.Write("dev_config",new byte[]{7});records.Write("AT-Archive",new byte[]{2});
     return result;
 }
-card=OldArchive();var oldArchive=new CardArchive(card,banner,icon);
-Check(card.Used==18&&card.Files.Count==1&&new SaveRepository(new CardSaveStorage(card,banner,icon)).Load()!.Name=="Emi","reading a small archive leaves it untouched");
+card=OldArchive();var oldArchive=new CardArchive(card,banner,icon,4);
+Check(card.Used==18&&card.Files.Count==1&&new SaveRepository(new CardSaveStorage(card,banner,icon,4)).Load()!.Name=="Emi","reading a small archive leaves it untouched");
 oldArchive.Write("options",new byte[]{8});
 Check(card.Files.Count==1&&card.Files.ContainsKey("AnimalTown2")&&card.Used==34&&card.Peak==52,"expansion publishes a replacement before removing the old browser item");
-Check(oldArchive.Read("options")[0]==8&&oldArchive.Read("dev_config")[0]==7&&new SaveRepository(new CardSaveStorage(card,banner,icon)).Load()!.Name=="Emi","expansion preserves the complete town and independent preferences");
+Check(oldArchive.Read("options")[0]==8&&oldArchive.Read("dev_config")[0]==7&&new SaveRepository(new CardSaveStorage(card,banner,icon,4)).Load()!.Name=="Emi","expansion preserves the complete town and independent preferences");
 card=OldArchive();card.FailBlockWrite=3;bool expandCut=false;
-try{new CardArchive(card,banner,icon).Write("options",new byte[]{8});}catch(IOException){expandCut=true;}
-Check(expandCut&&card.Files.ContainsKey("AnimalTown")&&new SaveRepository(new CardSaveStorage(card,banner,icon)).Load()!.Name=="Emi","a torn expansion copy retains the old authoritative save");
-new CardArchive(card,banner,icon).Write("options",new byte[]{8});
-Check(card.Files.Count==1&&card.Files.ContainsKey("AnimalTown2")&&new CardArchive(card,banner,icon).Read("options")[0]==8,"an interrupted expansion resumes safely");
+try{new CardArchive(card,banner,icon,4).Write("options",new byte[]{8});}catch(IOException){expandCut=true;}
+Check(expandCut&&card.Files.ContainsKey("AnimalTown")&&new SaveRepository(new CardSaveStorage(card,banner,icon,4)).Load()!.Name=="Emi","a torn expansion copy retains the old authoritative save");
+new CardArchive(card,banner,icon,4).Write("options",new byte[]{8});
+Check(card.Files.Count==1&&card.Files.ContainsKey("AnimalTown2")&&new CardArchive(card,banner,icon,4).Read("options")[0]==8,"an interrupted expansion resumes safely");
 card=OldArchive();card.FailDelete=0;bool cleanupCut=false;
-try{new CardArchive(card,banner,icon).Write("options",new byte[]{8});}catch(IOException){cleanupCut=true;}
-Check(cleanupCut&&card.Files.Count==2&&new SaveRepository(new CardSaveStorage(card,banner,icon)).Load()!.Name=="Emi","published expanded archive loads while source cleanup is interrupted");
-new CardArchive(card,banner,icon).Write("options",new byte[]{8});
+try{new CardArchive(card,banner,icon,4).Write("options",new byte[]{8});}catch(IOException){cleanupCut=true;}
+Check(cleanupCut&&card.Files.Count==2&&new SaveRepository(new CardSaveStorage(card,banner,icon,4)).Load()!.Name=="Emi","published expanded archive loads while source cleanup is interrupted");
+new CardArchive(card,banner,icon,4).Write("options",new byte[]{8});
 Check(card.Files.Count==1&&card.Used==34,"expanded cleanup resumes after reopening");
 card=OldArchive();card.Capacity=51;bool growthFull=false;
-try{new CardArchive(card,banner,icon).Write("options",new byte[]{8});}catch(IOException){growthFull=true;}
-Check(growthFull&&card.Files.Count==1&&new CardArchive(card,banner,icon).Read("options")[0]==5,"insufficient migration workspace retains the complete original");
-card.Capacity=52;new CardArchive(card,banner,icon).Write("options",new byte[]{8});
+try{new CardArchive(card,banner,icon,4).Write("options",new byte[]{8});}catch(IOException){growthFull=true;}
+Check(growthFull&&card.Files.Count==1&&new CardArchive(card,banner,icon,4).Read("options")[0]==5,"insufficient migration workspace retains the complete original");
+card.Capacity=52;new CardArchive(card,banner,icon,4).Write("options",new byte[]{8});
 Check(card.Files.Count==1&&card.Used==34,"expansion retries after freeing exactly the required workspace");
+CardSelectionChecks.Run(Check);
 Console.WriteLine(checks+" card adapter checks passed: consolidated save/reload, no-op save, capacity, migration interruption/retry, independent records and deletion; host model, not hardware.");
 sealed class OldFiles(MemoryCard card) : ISaveStorage
 {

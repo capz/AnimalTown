@@ -4,19 +4,35 @@ using Dolphin.Storage;
 
 internal static class BuildInfo {internal const string Version="0.20.0",Commit="0123456789ab";}
 internal static class LoadingScreen {internal static void Pulse(){}}
+internal static class NativeCalendar
+{internal static int Read()=>1118;internal static int CardError()=>0;internal static int CardMountError()=>-3;internal static int CardRecoveryError()=>0;}
+internal static class RuntimeOptions {internal static int Mode;internal static void Apply(int mode){Mode=mode;}}
+internal static class FrameProfile {internal static bool Enabled;}
+internal static class UiFont {internal static bool Batched;}
+namespace Dolphin.Diagnostics {internal static class DebugOverlay {internal static bool PerformanceVisible;internal static void WriteLine(string text){}}}
 
 namespace Dolphin.Storage
 {
-    internal sealed class MemoryCardEntry {public string Name="";}
+    internal enum StorageDevice {SdSlotA,SdSlotB,SdSerialPort2,DvdDrive,MemoryCardSlotA,MemoryCardSlotB,GcLoader}
+    internal sealed class MemoryCardIdentity {internal MemoryCardIdentity(string game,string company){}}
+    internal sealed class MemoryCardEntry {public string Name="";public int Length;}
     internal sealed class MemoryCardSaveOptions
     {
         public string Title="",Comment="";
         public byte[]? Banner,Icon;
     }
-    internal sealed class MemoryCard
+    internal sealed class MemoryCard : IDisposable
     {
         internal static MemoryCard Current=null!;
-        internal MemoryCard(){Current=this;}
+        internal static readonly Dictionary<int,MemoryCard> Slots=new();
+        internal static int Mounts;
+        internal readonly int Device;
+        internal int MountError,DirectoryFree=127;
+        internal string GameCode="AMTE",CompanyCode="01";
+        internal MemoryCard(int device=4){Device=device;Slots[device]=this;Current=this;}
+        internal static MemoryCard Mount(StorageDevice device,MemoryCardIdentity identity)
+        {Mounts++;if(!Slots.TryGetValue((int)device,out var card)||card.MountError<0)throw new IOException("No card");return card;}
+        public void Dispose(){}
         internal readonly Dictionary<string,byte[][]> RecordPages=new();
         internal readonly Dictionary<string,int> RecordIdentities=new();
         internal int FailBlockWrite=-1,FailDelete=-1;
@@ -24,7 +40,7 @@ namespace Dolphin.Storage
         internal readonly Dictionary<string,MemoryCardSaveOptions> Metadata=new();
         private readonly Dictionary<string,int> blocks=new();
         internal int Capacity=80,Used,Peak,Writes;
-        public MemoryCardEntry[] GetEntries()=>Files.Keys.Select(name=>new MemoryCardEntry{Name=name}).ToArray();
+        public MemoryCardEntry[] GetEntries()=>Files.Keys.Select(name=>new MemoryCardEntry{Name=name,Length=blocks[name]*8192}).ToArray();
         public void Delete(string name){if(FailDelete--==0)throw new IOException("Card removed during cleanup");Files.Remove(name);Metadata.Remove(name);RecordPages.Remove(name);RecordIdentities.Remove(name);if(blocks.Remove(name,out int n))Used-=n;}
         internal int CreateRecords(string name,int count,int identity,byte[] header)
         {
@@ -49,6 +65,28 @@ namespace Dolphin.Storage
             Files[name]=(byte[])data.Clone();Metadata[name]=options;
         }
     }
+    internal sealed class ManagedCardSave
+    {
+        internal string Filename="",GameCode="",CompanyCode="";internal int Blocks;
+    }
+    internal sealed class MemoryCardManager : IDisposable
+    {
+        private readonly MemoryCard? card;
+        private MemoryCardManager(MemoryCard? card){this.card=card;}
+        internal static MemoryCardManager Open(StorageDevice device)
+        {
+            if(!MemoryCard.Slots.TryGetValue((int)device,out var card)||card.MountError==-3)throw new IOException("No memory card in this slot.");
+            return new(card);
+        }
+        internal bool IsReady=>card!=null&&card.MountError==0;
+        internal int MountResult=>card?.MountError??-3;
+        internal int FreeBlocks=>card!.Capacity-card.Used;
+        internal int FreeEntries=>Math.Max(0,card!.DirectoryFree-card.Files.Count);
+        internal int Count=>card!.Files.Count;
+        internal ManagedCardSave[] ReadPage(int start,int maximum)=>card!.GetEntries().Skip(start).Take(maximum)
+            .Select(e=>new ManagedCardSave{Filename=e.Name,GameCode=card.GameCode,CompanyCode=card.CompanyCode,Blocks=e.Length/8192}).ToArray();
+        public void Dispose(){}
+    }
 }
 
 namespace Dolphin.Timing {internal static class Clock {internal static long Timestamp=>1234;}}
@@ -56,8 +94,7 @@ internal static class CardBlockBridge
 {
     internal static int Io(int device,string name,int op,int block,int identity,byte[] bytes)
     {
-        if(device!=4)throw new InvalidOperationException("Host fixture uses Slot A");
-        var card=MemoryCard.Current;
+        if(!MemoryCard.Slots.TryGetValue(device,out var card))throw new IOException("Card removed");
         if(op==0)return card.RecordPages.TryGetValue(name,out var existing)?existing.Length:0;
         if(op==3)return card.CreateRecords(name,block,identity,bytes);
         if(op==4)return card.RecordIdentities[name];

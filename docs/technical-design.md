@@ -224,6 +224,10 @@ written last after readback. All headers/checksums must match one generation;
 load the newest complete bank. Backend storage uses matching separate columns
 and transactional migration. See [split-saves.md](split-saves.md) for ownership,
 recovery rules, card-space overhead and legacy import behavior.
+The [memory-card chooser](memory-cards.md) defaults to the first usable card,
+checks physical blocks and directory capacity without creating files, and keeps
+one selected device for all town and preference operations. Temporary play
+bypasses card access and completes onboarding in memory.
 Schema 4 records the current 160×160 fine-cell dimensions. Older 400×400
 schema 2/3 terrain is cropped by original row stride, preserving the northwest
 160×160 region. Outlying trees are removed, other ground items move to Lost &

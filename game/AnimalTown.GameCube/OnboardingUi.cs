@@ -145,7 +145,7 @@ internal sealed class OnboardingUi : IDisposable
         SummaryIcon(347,241,2);Text("Your new home",457,233,.93f,192,TitleArt.Ink);Rule(335,268,230);
         Text("Your town and neighbors are kept.",320,301,.88f,510,TitleArt.Ink);Divider(331);
         TitleArt.Rounded(ui!,108,350,287,49,24,TitleArt.Leaf);Badge("A",139,374,13,TitleArt.Cream,TitleArt.Leaf);
-        Text("Save & begin",269,362,1.04f,222,TitleArt.Cream);
+        Text(SaveCards.Enabled?"Save & begin":"Start playing",269,362,1.04f,222,TitleArt.Cream);
         TitleArt.Rounded(ui!,422,355,131,40,20,Warm);Badge("B",443,375,10,TitleArt.Cream,TitleArt.Leaf);
         font!.Draw(ui!,"Review",461,364,TitleArt.Ink,.91f);
         if(reviewError!=saveError){
@@ -156,11 +156,11 @@ internal sealed class OnboardingUi : IDisposable
         if(reviewErrorDetail.Length>0){
             Text(reviewErrorTitle,320,408,.69f,512,Clay);
             Text(reviewErrorDetail,320,430,.69f,512,Clay);
-        }else Text(saveError.Length>0?saveError:"Save your new villager, then enjoy your first day.",320,419,.69f,512,saveError.Length>0?Clay:TitleArt.Ink);
+        }else Text(saveError.Length>0?saveError:SaveCards.Enabled?"Save your new villager, then enjoy your first day.":"Playing without saving. Progress lasts until you leave.",320,419,.69f,512,saveError.Length>0?Clay:TitleArt.Ink);
         if(busy){
             ui!.FillRectangle(new RectF(0,0,640,480),new Color32(25,44,36,160));TitleArt.Panel(ui,84,150,472,182);
             Head("Saving your new villager",320,175,1.03f,416);
-            Text("Keep the memory card in Slot A.",320,231,.9f,416,TitleArt.Ink);
+            Text("Keep the memory card in "+SaveCards.Slot+".",320,231,.9f,416,TitleArt.Ink);
             Text("Checking your save...",320,275,.76f,416,TitleArt.Ink);
         }
         End();

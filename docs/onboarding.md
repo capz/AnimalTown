@@ -45,12 +45,20 @@ a committed bank, retry requires an authoritative directory listing and exact
 byte matches for every existing town file against this draft's previous attempt;
 foreign, torn or unreadable records are refused. That temporary attempted
 snapshot is also released on commit/discard. Save failure retains the
-choices and shows a retry message; gameplay begins only after a verified commit.
+choices and shows a retry message; with saving enabled, gameplay begins only after a verified commit.
 After that first explicit save, the normal **Settings → Save now** action remains
 the way to save subsequent progress. Gameplay does not add an automatic save.
 
 Other residents' personal records, home plots, possessions, progression and the
 shared terrain are preserved. No new save schema is required for this flow.
+
+If **Play without saving** was chosen at Start, onboarding creates a temporary
+town. The review action says **Start playing** and warns that progress lasts
+until leaving. It validates the same name, appearance and home requirements,
+then releases the draft without opening a card, publishing records or advancing
+the save sequence. **Save now**, option/debug persistence and deletion cannot
+write to either card in this mode. Restart to select a card for a
+new session; temporary progress is not transferred to it.
 
 ## Resource lifetime
 

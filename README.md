@@ -16,7 +16,8 @@ snapshot keeps its version. For SD-card storage through Swiss/GC Loader,
 download `AnimalTown-VERSION.nkit.iso` and copy it directly to the card.
 Standalone SD installs use `AnimalTown-VERSION-depot.zip`; extract its `apps`
 folder to the device root and launch `apps/animaltown/default.dol`. No AnimalTown
-ISO is needed. Use SD2SP2 or Slot B SD Gecko with a memory card in Slot A;
+ISO is needed. Use SD2SP2 with a memory card in either slot, or Slot B SD Gecko
+with a memory card in Slot A;
 physical device/launcher qualification and hosted Depot permission remain pending.
 See [the app profile and release gates](docs/depot-release.md).
 The NKit ISO remains the only disc image delivered. See [NKit images](docs/nkit-images.md) for
@@ -75,6 +76,8 @@ See [town size and save migration](docs/town-size.md).
 
 Empty villager cards open [four-step onboarding](docs/onboarding.md): enter a name,
 choose a portrait, preview the actual cottage/home plot, then **Save & begin**.
+Choosing **Play without saving** at Start makes the last action **Start playing**
+and keeps a temporary town in memory instead.
 Choices stay in a discardable draft until that explicit save. Introductory
 portraits, wordmark, UI buffers and draft data are released before gameplay.
 
@@ -90,8 +93,11 @@ of town data and is shared by both screens. When visible, choose
 runtime and preview options; those in-game options last for this session.
 Use **X** to reset a debug slider; Z remains available for the visibility toggle.
 Closing an explanation returns to the same selected menu row. Memory-card
-saves use Slot A, `AMTE/01`, [four split records in two banks](docs/split-saves.md), banner and icon. Missing-card
-play works; save errors are shown for retry.
+saves use the [selected memory-card slot](docs/memory-cards.md), `AMTE/01`,
+[split records in two banks](docs/split-saves.md), banner and icon. Start defaults
+to the first usable card (A, then B); the confirmed slot is used for town data,
+options and debug settings until restart. New archives need 34 free blocks.
+Missing-card play works through **Play without saving**; save errors stay available for retry.
 
 Outdoor ground shares the supplied neutral repeating texture with configurable
 terrain/season tints: see [neutral ground](docs/neutral-ground.md).

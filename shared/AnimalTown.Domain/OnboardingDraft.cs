@@ -91,10 +91,7 @@ public sealed class OnboardingDraft : IDisposable
     public void Commit(SaveRepository repository,bool hasTownFiles,string[]? townFiles=null)
     {
         if(committed)return;
-        var s=State;
-        if(s.ActiveProfile!=Profile||!s.Profiles[Profile].Created)throw new InvalidOperationException("The selected villager has changed");
-        if(!ValidName(s.Name)||(uint)s.Species>=6)throw new InvalidOperationException("Choose a name and look first");
-        if(!s.HousePlaced)throw new InvalidOperationException("Choose a home before saving");
+        ValidateCandidate();var s=State;
         var actual=repository.Load();
         if(actual!=null&&actual.Sequence>sourceSequence&&MatchesCandidate(actual)){
             repository.Save(actual);s.Sequence=actual.Sequence;committed=true;return;
@@ -106,6 +103,17 @@ public sealed class OnboardingDraft : IDisposable
         }
         if(!savedTown)attempted=CaptureAttempt(s);
         repository.Save(s);committed=true;
+    }
+    // Finish a temporary resident without publishing a save or incrementing its
+    // sequence. The caller retains State before releasing the private draft.
+    public void BeginWithoutSaving()
+    {if(committed)return;ValidateCandidate();committed=true;}
+    private void ValidateCandidate()
+    {
+        var s=State;
+        if(s.ActiveProfile!=Profile||!s.Profiles[Profile].Created)throw new InvalidOperationException("The selected villager has changed");
+        if(!ValidName(s.Name)||(uint)s.Species>=6)throw new InvalidOperationException("Choose a name and look first");
+        if(!s.HousePlaced)throw new InvalidOperationException("Choose a home before saving");
     }
     // A fresh town has no older bank to fall back to. After an interrupted
     // first save, only exact records from this draft's own previous attempt
