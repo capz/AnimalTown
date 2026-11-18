@@ -13,7 +13,7 @@ public sealed class InteriorNavigation
     public void BeginTick(){LastExpansions=0;}
     public void Reset(int actor){var r=routes[actor];r.Space=r.Goal=-1;r.Count=r.Index=0;r.Arrived=false;if(worker==actor)worker=-1;}
     public bool Arrived(int actor)=>routes[actor].Arrived;
-    public bool Tick(GameState s,int actor,float goalX,float goalZ)
+    public bool Tick(GameState s,int actor,float goalX,float goalZ,PortalSystem? doors=null)
     {
         var p=BuildingWorld.Location(s,actor);var r=routes[actor];if(p.Space.IsTown){Reset(actor);return false;}
         int n=BuildingWorld.Size(s,p.Space.Value)*2,gx=Math.Min(n-1,Math.Max(0,(int)(goalX*2))),gz=Math.Min(n-1,Math.Max(0,(int)(goalZ*2))),goal=gz*n+gx;
@@ -29,8 +29,8 @@ public sealed class InteriorNavigation
         }
         int cell=r.Path[r.Index];float tx=cell%n*.5f+.25f,tz=cell/n*.5f+.25f;dx=tx-p.X;dz=tz-p.Z;float length=(float)Math.Sqrt(dx*dx+dz*dz);
         if(length<.035f){r.Index++;return false;}float step=Math.Min(.04f,length),nx=p.X+dx/length*step,nz=p.Z+dz/length*step;
-        if(!BuildingWorld.Segment(s,p.Space.Value,p.X,p.Z,nx,nz,actor,true)){r.Count=r.Index=0;r.Wait=15+actor;return false;}
-        BuildingWorld.SetLocation(s,actor,new ActorLocation(p.Space.Value,nx,nz,PlayerMovement.Yaw(dx,dz)));return true;
+        if(!BuildingWorld.MoveVillager(s,actor,nx,nz,PlayerMovement.Yaw(dx,dz),doors)){r.Count=r.Index=0;r.Wait=15+actor;return false;}
+        return true;
     }
     private void Search(GameState s,int actor)
     {
@@ -45,7 +45,8 @@ public sealed class InteriorNavigation
                 int nx=x+(d==0?-1:d==1?1:0),nz=z+(d==2?-1:d==3?1:0);if(nx<0||nz<0||nx>=cells||nz>=cells)continue;int next=nz*cells+nx;if(parents[next]!=0)continue;
                 var actorPosition=BuildingWorld.Location(s,actor);
                 float ax=cell==start?actorPosition.X:x*.5f+.25f,az=cell==start?actorPosition.Z:z*.5f+.25f;
-                if(!BuildingWorld.Segment(s,space,ax,az,nx*.5f+.25f,nz*.5f+.25f,actor,true))continue;
+                float tx=nx*.5f+.25f,tz=nz*.5f+.25f;
+                if(BuildingWorld.ActorOverlap(BuildingWorld.Location(s,0),space,tx,tz)||!BuildingWorld.Segment(s,space,ax,az,tx,tz))continue;
                 parents[next]=(ushort)(cell+1);queue[back++]=(ushort)next;
             }
         }
