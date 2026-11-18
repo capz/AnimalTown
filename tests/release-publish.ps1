@@ -2,7 +2,7 @@ $ErrorActionPreference='Stop'
 $tokens=$null;$errors=$null
 $ast=[Management.Automation.Language.Parser]::ParseFile((Join-Path $PSScriptRoot '../tools/publish-release.ps1'),[ref]$tokens,[ref]$errors)
 if($errors){throw 'Publisher syntax is invalid'}
-foreach($name in @('InvokeGh','Read-ReleaseMetadata','Assert-BinaryArchive','Assert-ReleaseVersionMetadata','Assert-ReleaseAsset','Assert-ReleaseAssetSet')){
+foreach($name in @('InvokeGh','Read-ReleaseMetadata','Assert-BinaryArchive','Assert-ReleaseVersionMetadata','Assert-ReleaseAsset','Assert-ReleaseAssetSet','Copy-DaylightEvidence')){
     $function=$ast.Find({param($node) $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq $name},$true)
     . ([scriptblock]::Create($function.Extent.Text))
 }
@@ -67,5 +67,23 @@ try{
         else{Reject {Assert-BinaryArchive $zip} "Source file must fail: $name"}
         Remove-Item -LiteralPath $zip
     }
+    $capture=Join-Path $directory 'daylight';$reports=Join-Path $directory 'reports'
+    New-Item -ItemType Directory -Path $capture,$reports|Out-Null
+    Copy-DaylightEvidence $capture $reports ('a'*40) '1.2.3' 'v1.2.3' 'AnimalTown-1.2.3.nkit.iso' ('b'*64)
+    Assert (@(Get-ChildItem $reports).Count -eq 0) 'Unselected daylight captures remain optional'
+    $evidence=@{schema=1;commit=('a'*40);version='1.2.3';tag='v1.2.3';isoName='AnimalTown-1.2.3.nkit.iso';isoSha256=('b'*64)}
+    $build=Join-Path $capture 'daylight-build.json';$evidence|ConvertTo-Json|Set-Content $build
+    foreach($entry in ([ordered]@{noon='12:00';dawn='06:30';dusk='18:00';night='20:00'}).GetEnumerator()){
+        $folder=Join-Path $capture $entry.Key;New-Item -ItemType Directory -Path $folder|Out-Null
+        @{passed=$true;requested_clock=$entry.Value}|ConvertTo-Json|Set-Content (Join-Path $folder 'daylight-report.json')
+        foreach($shot in @('a','b')){[IO.File]::WriteAllBytes((Join-Path $folder "daylight-$shot.png"),[byte[]]@(137,80,78,71,13,10,26,10))}
+    }
+    Copy-DaylightEvidence $capture $reports ('a'*40) '1.2.3' 'v1.2.3' 'AnimalTown-1.2.3.nkit.iso' ('b'*64)
+    Assert (@(Get-ChildItem $reports).Count -eq 13) 'All four phase reports/screenshots and their source identity are included in release reports'
+    Reject {Copy-DaylightEvidence $capture $reports ('a'*40) '1.2.3' 'v1.2.3' 'AnimalTown-1.2.3.nkit.iso' ('c'*64)} 'Captures from another ISO must not ship'
+    @{passed=$false;requested_clock='20:00'}|ConvertTo-Json|Set-Content (Join-Path $capture 'night/daylight-report.json')
+    Reject {Copy-DaylightEvidence $capture $reports ('a'*40) '1.2.3' 'v1.2.3' 'AnimalTown-1.2.3.nkit.iso' ('b'*64)} 'Failed night captures must not ship'
+    @{passed=$true;requested_clock='12:00'}|ConvertTo-Json|Set-Content (Join-Path $capture 'night/daylight-report.json')
+    Reject {Copy-DaylightEvidence $capture $reports ('a'*40) '1.2.3' 'v1.2.3' 'AnimalTown-1.2.3.nkit.iso' ('b'*64)} 'A mislabeled phase must not ship'
 }finally{Remove-Item -LiteralPath $directory -Recurse -Force}
 Write-Host "$checks release publisher checks passed: compact-feed asset policy, frozen build identity, draft lookup, response budget and source exclusion"

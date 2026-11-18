@@ -7,9 +7,10 @@
 static SuState *shadows;
 static int shadow_storage;
 extern void animaltown_shadows_model_reset(void);
-static int environment_rgb=0xffffff,light_strength;
+static int environment_rgb=0xffffff,light_strength,shadow_strength=255;
 int animaltown_environment_color(void){return environment_rgb;}
 int animaltown_light_strength(void){return light_strength;}
+int animaltown_shadow_strength(void){return shadow_strength;}
 int animaltown_object_scope(void){return shadows?shadows->object_scope:0;}
 const float *animaltown_point_sources(int *count){*count=shadows?shadows->point_count:0;return shadows?shadows->points:NULL;}
 int animaltown_shadows_objects(int scope){
@@ -25,9 +26,12 @@ int animaltown_shadows_points(DndArray *sources,int count){
     /* Camera curvature changes these positions, never shadow/ground texels. */
     memcpy(shadows->points,p,(size_t)count*5*sizeof(float));shadows->point_count=count;return 1;
 }
-int animaltown_shadows_environment(int rgb){
-    if(rgb<0||rgb>0xffffff)return 0;
-    if(environment_rgb!=rgb){environment_rgb=rgb;dnd_draw_backend_invalidate_cache();animaltown_shadows_model_reset();}
+int animaltown_shadows_environment(int rgb,int strength){
+    if(rgb<0||rgb>0xffffff||strength<0||strength>255)return 0;
+    if(environment_rgb!=rgb||shadow_strength!=strength){
+        environment_rgb=rgb;shadow_strength=strength;
+        dnd_draw_backend_invalidate_cache();animaltown_shadows_model_reset();
+    }
     return 1;
 }
 
@@ -37,7 +41,7 @@ int animaltown_shadows_shutdown(void){
     /* No frame may still sample the coverage pages. The resource release
      * waits for GX retirement before freeing the charged SDK buffer. */
     if(dnd_draw_release(shadow_storage)<0)return 0;
-    shadows=NULL;shadow_storage=0;environment_rgb=0xffffff;light_strength=0;
+    shadows=NULL;shadow_storage=0;environment_rgb=0xffffff;light_strength=0;shadow_strength=255;
     dnd_draw_backend_invalidate_cache();animaltown_shadows_model_reset();return 1;
 }
 int animaltown_shadows_init(DndArray *atlas,DndArray *circle,DndArray *clouds){
@@ -142,5 +146,8 @@ int animaltown_shadows_stats(int kind){
     if(kind==0){int n=0;for(int i=0;i<SU_PAGES;i++)n+=shadows->page[i].needed;return n;}
     if(kind==9)return dnd_draw_live();
     if(kind==10)return dnd_draw_total_bytes();
+    if(kind==11)return shadow_strength;
+    if(kind==12)return (int)(shadows->cloud_opacity*255+.5f);
+    if(kind==13)return light_strength;
     return kind==1?shadows->overflow:kind==2?shadows->changed:kind==3?(int)su_storage_bytes():kind==4?shadows->static_rasters:kind==5?shadows->dynamic_rasters:kind==6?shadows->support_builds:kind==7?shadows->support_hits:shadows->deferred;
 }

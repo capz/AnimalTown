@@ -27,6 +27,9 @@ public static class WorldLighting
         if(minute<1020)return 0;
         return (minute-1020)*255/150;
     }
+    // Share the existing dawn (05:30-07:30) and dusk (17:00-19:30)
+    // transitions. At full darkness no outdoor sun/cloud shadows remain.
+    public static int Sunlight(int minute)=>255-Lamps(minute);
     // One original lamp beside each player home and the two public buildings.
     public static bool StreetLamp(GameState state,int building,out float x,out float z)
     {

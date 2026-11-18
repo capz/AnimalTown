@@ -33,6 +33,11 @@ function Get-ValidationPlan {
         if($p -match '^tests/(AnimalTown.ContentSmoke/|native-content-startup\.)'){Add-Managed 'content';[void]$native.Add('content');continue}
         if($p -match '^tools/AnimalTown.Tools/DepotPackage(?:Checks)?\.cs$'){[void]$tooling.Add('depot');continue}
         if($p -match '^(tools|tests)/release-bundle\.py$'){[void]$native.Add('python');continue}
+        if($p -match '^(shared/AnimalTown.Domain/WorldLighting|game/AnimalTown.GameCube/(CloudShadows|NativeShadows|TownLights)|tests/AnimalTown.Checks/WorldLightingChecks)\.cs$'){
+            Add-Managed 'core';[void]$native.Add('shadows')
+            if($p -match '/NativeShadows\.cs$'){[void]$native.Add('patched')}
+            continue
+        }
         if($p -match '^game/AnimalTown.GameCube/(SaveCards|CardArchive|CardSaveStorage|CardSaveError|TownDataStorage|UserOptionsStorage|DevConfigStorage|TownSession|TitleScreen\.Cards)\.cs$'){
             Add-Managed 'saves';[void]$native.Add('card')
             if($p -match '(DevConfigStorage|TownSession|TitleScreen\.Cards)'){Add-Managed 'menu'}

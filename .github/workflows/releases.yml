@@ -265,6 +265,57 @@ jobs:
             out/memory-cards/*/*.txt
             out/memory-cards/*/user/Logs/
           if-no-files-found: warn
+      - name: Select daylight transition captures
+        id: daylight
+        run: |
+          python3 - <<'PY'
+          import json, os, re
+          from pathlib import Path
+          plan=json.loads(Path('out/validation-plan.json').read_text())
+          relevant=re.compile(r'^(shared/AnimalTown.Domain/WorldLighting\.cs$|game/AnimalTown.GameCube/(CloudShadows|NativeShadows|TownLights|TerrainRenderer|Program)\.cs$|tools/(native-shadow-union[^/]*|patch-native\.ps1|iso-smoke\.py|publish-release\.ps1)$|\.github/workflows/releases\.yml$)')
+          needed=any(relevant.search(path) for path in plan['paths']) or (plan['full'] and not plan['paths'])
+          with open(os.environ['GITHUB_OUTPUT'],'a') as output:
+              output.write(f'needed={str(needed).lower()}\n')
+          PY
+      - name: Verify day, dawn, dusk and night lighting in Dolphin
+        if: steps.daylight.outputs.needed == 'true'
+        timeout-minutes: 20
+        env:
+          BUILD_VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          docker build -t animaltown-daylight-capture -f build/Dockerfile.dolphin build
+          for phase in noon dawn dusk night; do
+            case "$phase" in noon) capture_clock=12:00 ;; dawn) capture_clock=06:30 ;; dusk) capture_clock=18:00 ;; night) capture_clock=20:00 ;; esac
+            mkdir -p "out/daylight/$phase"
+            if [ "$phase" != noon ]; then cp out/daylight/noon/MemoryCardA.USA.raw "out/daylight/$phase/MemoryCardA.USA.raw"; fi
+            docker run --rm --init --shm-size=512m --user "$(id -u):$(id -g)" \
+              --mount "type=bind,src=$PWD,dst=/work" -w /work \
+              animaltown-daylight-capture python3 tools/iso-smoke.py \
+              "out/AnimalTown-$BUILD_VERSION.nkit.iso" "out/daylight/$phase" \
+              --daylight-clock "$capture_clock" --season spring --dsp-hle
+          done
+          python3 - <<'PY'
+          import hashlib, json
+          from pathlib import Path
+          identity=json.loads(Path('out/version.json').read_text())
+          disc=Path('out')/f"AnimalTown-{identity['version']}.nkit.iso"
+          with disc.open('rb') as source: digest=hashlib.file_digest(source,'sha256').hexdigest()
+          evidence={'schema':1,'commit':identity['commit'],'version':identity['version'],
+                    'tag':identity['tag'],'isoName':disc.name,'isoSha256':digest}
+          Path('out/daylight/daylight-build.json').write_text(json.dumps(evidence,indent=2)+'\n')
+          PY
+      - name: Keep daylight transition diagnostics
+        if: always() && steps.daylight.outputs.needed == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: daylight-${{ steps.version.outputs.commit }}
+          path: |
+            out/daylight/*.json
+            out/daylight/*/*.png
+            out/daylight/*/*.json
+            out/daylight/*/*.log
+            out/daylight/*/user/Logs/
+          if-no-files-found: warn
       - name: Publish NKit, standalone app and backend GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
