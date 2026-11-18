@@ -111,7 +111,7 @@ public static class BuildingWorld
             int fixtures=FixtureCount(s,space);for(int i=0;i<fixtures;i++)if(Fixture(s,space,i,out float fx,out float fz,out float fw,out float fd,out float _)&&Overlaps(x,z,fx,fz,fw,fd))return false;
             for(int i=0;i<s.Town.PlacedCount;i++){var p=s.Town.Placed[i];if(p.Room!=space)continue;Footprint(p,out int w,out int d);if(Overlaps(x,z,p.X,p.Z,w,d))return false;}
         }
-        if(people)for(int i=0;i<Actors;i++)if(i!=actor){var p=Location(s,i);if(p.Space.Value==space&&Math.Abs(p.X-x)<Radius*2&&Math.Abs(p.Z-z)<Radius*2)return false;}
+        if(people)for(int i=0;i<Actors;i++)if(i!=actor&&ActorOverlap(Location(s,i),space,x,z))return false;
         return true;
     }
     private static bool Overlaps(float x,float z,float bx,float bz,float w,float d)=>x>bx-Radius&&x<bx+w+Radius&&z>bz-Radius&&z<bz+d+Radius;
@@ -122,5 +122,41 @@ public static class BuildingWorld
         int steps=1+(int)(Math.Max(Math.Abs(bx-ax),Math.Abs(bz-az))/.1f);if(steps>256)return false;
         for(int i=1;i<=steps;i++)if(!CanStand(s,space,ax+(bx-ax)*i/steps,az+(bz-az)*i/steps,actor,people))return false;
         return space!=0||TerrainElevation.Traverse(s.Town,ax,az,bx,bz);
+    }
+    internal static bool ActorOverlap(ActorLocation p,int space,float x,float z)
+        =>p.Space.Value==space&&Math.Abs(p.X-x)<Radius*2&&Math.Abs(p.Z-z)<Radius*2;
+
+    internal static bool MoveVillager(GameState s,int actor,float x,float z,float yaw,PortalSystem? doors)
+    {
+        var p=Location(s,actor);int space=p.Space.Value;
+        if(!Segment(s,space,p.X,p.Z,x,z)||Contact(Location(s,0),p,x,z))return false;
+        int blocker=-1;
+        for(int i=1;i<Actors;i++){
+            if(i==actor||!Contact(Location(s,i),p,x,z))continue;
+            if(blocker>=0||doors?.Busy(i)==true)return false;
+            blocker=i;
+        }
+        if(blocker>=0){
+            var other=Location(s,blocker);
+            float dx=x-p.X,dz=z-p.Z;
+            bool alongX=Math.Abs(dx)>=Math.Abs(dz);
+            float pushX=alongX?x+(dx<0?-1:1)*(Radius*2+.001f):other.X;
+            float pushZ=alongX?other.Z:z+(dz<0?-1:1)*(Radius*2+.001f);
+            // Keep shoves bounded by the moving villager's step, even when
+            // starting from overlapping positions saved by an older build.
+            if(Math.Abs(pushX-other.X)+Math.Abs(pushZ-other.Z)>Math.Abs(dx)+Math.Abs(dz)+.002f
+                ||!Segment(s,space,other.X,other.Z,pushX,pushZ,blocker,true))return false;
+            SetLocation(s,blocker,new ActorLocation(space,pushX,pushZ,other.Yaw));
+        }
+        SetLocation(s,actor,new ActorLocation(space,x,z,yaw));
+        return true;
+    }
+    private static bool Contact(ActorLocation other,ActorLocation origin,float x,float z)
+    {
+        if(!ActorOverlap(other,origin.Space.Value,x,z))return false;
+        if(!ActorOverlap(other,origin.Space.Value,origin.X,origin.Z))return true;
+        // Old saves can start with overlapping actors. Allow them to separate.
+        float ax=origin.X-other.X,az=origin.Z-other.Z,bx=x-other.X,bz=z-other.Z;
+        return bx*bx+bz*bz<=ax*ax+az*az;
     }
 }

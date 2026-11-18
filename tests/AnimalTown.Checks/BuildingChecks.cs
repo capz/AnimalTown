@@ -4,6 +4,7 @@ internal static class BuildingChecks
     internal static void Run(Action<bool,string> check)
     {
         BuildingEntryChecks.Run(check);
+        CrowdsAndPickups(check);
         ShopChecks.Run(check);
         var s=new GameState(204);s.HousePlaced=true;
         check(BuildingWorld.Space(0)==1&&BuildingWorld.Space(1)==16&&BuildingWorld.Space(6)==21&&BuildingWorld.Space(7)==24&&BuildingWorld.Space(8)==25,"stable distinct building spaces");
@@ -76,5 +77,56 @@ internal static class BuildingChecks
         var migration=SaveCodec.EncodeLegacy(s);int extension=BuildingSave.LegacyFieldCount*4;Array.Resize(ref migration,migration.Length-extension);migration[4]=6;Write(migration,16,migration.Length);Write(migration,20,(int)SaveCodec.Crc(migration,24,migration.Length-24));var migrated=SaveCodec.Decode(migration);check(migrated.Space==0&&migrated.Town.Residents.All(v=>v.Space==0),"v6 saves migrate actors outdoors without inventing room state");
         var wrong=BuildingSave.Encode(s);wrong[0]=15;bool rejected=false;try{BuildingSave.Decode(s,wrong);}catch(InvalidOperationException){rejected=true;}check(rejected,"unknown saved space rejected");
         static void Write(byte[] b,int at,int value){for(int i=0;i<4;i++)b[at+i]=(byte)((uint)value>>(i*8));}
+    }
+
+    private static void CrowdsAndPickups(Action<bool,string> check)
+    {
+        var s=new GameState(567);
+        Array.Fill(s.Town.Tiles,(byte)Terrain.Grass);Array.Clear(s.Town.Elevation);
+        s.Town.GroundCount=0;s.X=64.5f;s.Z=60.5f;
+        check(s.Town.AddGround(10,64,61,0,0)&&s.Pickup(64,61)&&s.Find(10)>=0,"pickup still puts the item in the backpack");
+        var drop=s.Town.Ground[0];
+        float dx=drop.X+.5f-s.X,dz=drop.Z+.5f-s.Z;
+        check(s.Town.GroundCount==1&&dx*dx+dz*dz>=3600&&s.Town.FindGround(64,61)<0&&s.CanWalk(drop.X+.5f,drop.Z+.5f,0),
+            "replacement appears on eligible ground at least three map tiles from the player");
+        Array.Fill(s.Pockets,10);
+        check(!s.Pickup(drop.X,drop.Z)&&s.Town.GroundCount==1,"full backpacks do not move the ground item");
+
+        BuildingWorld.Entrance(s,1,out float ex,out float ez);
+        var doors=new PortalSystem();var a=s.Town.Residents[0];var b=s.Town.Residents[1];
+        a.PosX=b.PosX=ex;a.PosZ=b.PosZ=ez;
+        doors.ResourcesReady[1]=false;
+        check(doors.Request(s,1,1)&&doors.Request(s,2,1)&&a.Space==16&&b.Space==16&&doors.Owner(1)<0,
+            "NPCs enter an unobserved house immediately without reserving the door or rendering resources");
+        foreach(var resident in new[]{a,b})
+            check(BuildingWorld.CanStand(s,16,resident.PosX,resident.PosZ,people:false)&&
+                !BuildingWorld.DoorClearance(4,resident.PosX,resident.PosZ,.22f,.22f),"scattered occupants stay off fixtures and out of the doorway");
+        check(BuildingWorld.CanStand(s,16,a.PosX,a.PosZ,1,true),"scattered occupants have separate positions");
+
+        s.Space=16;BuildingWorld.InsideDoor(s,16,out s.X,out s.Z);
+        a.Space=b.Space=0;a.PosX=b.PosX=ex;a.PosZ=ez;b.PosZ=ez+1;
+        check(doors.Request(s,0,1),"player can request an exit with NPCs in the approach");
+        for(int i=0;i<PortalSystem.Duration;i++)doors.Tick(s);
+        check(s.Space==0&&Math.Abs(s.X-ex)<.001f&&Math.Abs(a.PosX-ex)>=.44f&&Math.Abs(b.PosX-ex)>=.44f,
+            "player exit clears both the exterior doorway and the landing");
+
+        s.Space=16;a.PosX=32.5f;a.PosZ=b.PosZ=40.5f;b.PosX=33;
+        var nav=new VillagerNavigation();
+        Array.Fill(nav.Paused,true);nav.Tick(s);nav.Paused[0]=false;
+        var route=nav.Routes[0];route.Path[0]=40*Town.Width+34;route.Length=1;route.Wait=0;
+        for(int tick=0;tick<7;tick++)nav.Tick(s);
+        check(a.PosX>32.6f&&b.PosX>33.05f&&b.PosX-a.PosX>=.44f,
+            "outdoor villagers can push an idle villager without occupying the same space");
+
+        s.Space=0;a.Space=b.Space=16;a.PosX=1.25f;b.PosX=1.75f;a.PosZ=b.PosZ=2.75f;
+        var indoors=new InteriorNavigation();
+        for(int tick=0;tick<40;tick++){indoors.BeginTick();indoors.Tick(s,1,3.25f,2.75f);}
+        check(a.PosX>1.5f&&b.PosX>1.9f&&BuildingWorld.CanStand(s,16,b.PosX,b.PosZ,2,true),
+            "indoor villagers can push an idle villager along clear floor");
+
+        Array.Clear(s.Pockets);
+        Array.Fill(s.Town.Tiles,(byte)Terrain.Sea);
+        check(s.Pickup(drop.X,drop.Z)&&s.Town.GroundCount==0,
+            "pickup succeeds without placing a nearby replacement when there is no eligible ground");
     }
 }

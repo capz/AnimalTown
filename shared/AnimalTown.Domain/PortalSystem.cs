@@ -19,6 +19,7 @@ public sealed class PortalSystem
     // Existing callers keep their original behavior until a residency owner gates it.
     public readonly bool[] ResourcesReady={true,true,true,true,true,true,true};
     private readonly int[] owners=new int[BuildingWorld.Count];
+    private uint visitSequence;
     public PortalSystem(){for(int i=0;i<Actors.Length;i++)Actors[i]=new Transition();for(int i=0;i<owners.Length;i++)owners[i]=-1;}
     public bool Busy(int actor)=>Actors[actor].Phase!=DoorPhase.Idle;
     public int Owner(int building)=>owners[building];
@@ -27,9 +28,32 @@ public sealed class PortalSystem
         if(actor<0||actor>=Actors.Length||!BuildingWorld.Exists(s,building))return false;
         var t=Actors[actor];if(Busy(actor)||t.Cooldown>0||!BuildingCatalog.Available(s.BuildingTypes[building])||!Ready[s.BuildingTypes[building]])return false;
         var p=BuildingWorld.Location(s,actor);int destination;
-        if(p.Space.IsTown){destination=BuildingWorld.Space(building);if(!ExteriorReach(s,actor,building,p,out _))return false;BuildingWorld.InsideDoor(s,destination,out float x,out float z);t.Destination=new ActorLocation(destination,x,z-.7f,(float)Math.PI);}
+        if(p.Space.IsTown){
+            destination=BuildingWorld.Space(building);
+            if(!ExteriorReach(s,actor,building,p,out _))return false;
+            if(actor!=0&&BuildingWorld.Role(building)==BuildingRole.House&&BuildingWorld.Building(s.Space)!=building)
+                return EnterUnobservedHome(s,actor,destination);
+            BuildingWorld.InsideDoor(s,destination,out float x,out float z);
+            t.Destination=new ActorLocation(destination,x,z-.7f,(float)Math.PI);
+        }
         else{if(BuildingWorld.Building(p.Space.Value)!=building)return false;BuildingWorld.InsideDoor(s,p.Space.Value,out float x,out float z);if(Distance(p.X,p.Z,x,z)>DoorRadius)return false;BuildingWorld.Entrance(s,building,out x,out z);t.Destination=new ActorLocation(0,x,z+1f,0);}
         t.Source=new ActorLocation(p.Space.Value,p.X,p.Z,p.Space.IsTown?(float)Math.PI:0);BuildingWorld.SetLocation(s,actor,t.Source);t.Building=building;BuildingWorld.Origin(s,building,out t.OriginX,out t.OriginZ);t.Type=s.BuildingTypes[building];t.Tick=t.Wait=0;t.Committed=false;t.Phase=DoorPhase.Waiting;return true;
+    }
+    private bool EnterUnobservedHome(GameState s,int actor,int space)
+    {
+        int size=BuildingWorld.Size(s,space),side=size*2,cells=side*side;
+        uint seed=unchecked((uint)s.Town.Seed+(++visitSequence)*2246822519u+(uint)actor*3266489917u);
+        int cell=(int)((seed^(seed>>16))%(uint)cells);
+        for(int scanned=0;scanned<cells;scanned++){
+            float x=cell%side*.5f+.25f,z=cell/side*.5f+.25f;
+            if(++cell==cells)cell=0;
+            if(BuildingWorld.DoorClearance(size,x-BuildingWorld.Radius,z-BuildingWorld.Radius,BuildingWorld.Radius*2,BuildingWorld.Radius*2)
+                ||!BuildingWorld.CanStand(s,space,x,z,actor,true))continue;
+            BuildingWorld.SetLocation(s,actor,new ActorLocation(space,x,z,(seed&255)*(.024543693f)));
+            var villager=s.Town.Residents[actor-1];villager.JourneyPhase=3;villager.Dwell=120+(actor-1)*19;
+            return true;
+        }
+        return false;
     }
     // Both the prompt and the actual request use the same approach test.
     private static bool ExteriorReach(GameState s,int actor,int building,ActorLocation p,out float distance)
@@ -63,6 +87,10 @@ public sealed class PortalSystem
             if(t.Phase==DoorPhase.Waiting){
                 if(++t.Wait>MaximumWait){Cancel(actor);continue;}
                 if(!ResourcesReady[actor])continue;
+                if(actor==0&&t.Destination.Space.IsTown){
+                    if(!ClearPlayerExit(s,t))continue;
+                    if(owners[t.Building]>0)Cancel(owners[t.Building]);
+                }
                 if(owners[t.Building]>=0){StepAside(s,actor,t);continue;}
                 // Entry and exit landings must both be available before opening.
                 if(!BuildingWorld.CanStand(s,t.Destination.Space.Value,t.Destination.X,t.Destination.Z,actor,true))continue;
@@ -70,7 +98,8 @@ public sealed class PortalSystem
                 t.Source=new ActorLocation(t.Source.Space.Value,t.Source.X,t.Source.Z,t.Source.Space.IsTown?(float)Math.PI:0);BuildingWorld.SetLocation(s,actor,t.Source);
             }
             if(++t.Tick==CommitTick){
-                if(!ResourcesReady[actor]||!CorridorClear(s,actor,t)||!BuildingWorld.CanStand(s,t.Destination.Space.Value,t.Destination.X,t.Destination.Z,actor,true)){
+                if(!ResourcesReady[actor]||(actor==0&&t.Destination.Space.IsTown?!ClearPlayerExit(s,t):!CorridorClear(s,actor,t))
+                    ||!BuildingWorld.CanStand(s,t.Destination.Space.Value,t.Destination.X,t.Destination.Z,actor,true)){
                     t.Tick--;if(++t.Wait>MaximumWait)Cancel(actor);continue;
                 }
                 BuildingWorld.SetLocation(s,actor,t.Destination);t.Committed=true;
@@ -81,6 +110,26 @@ public sealed class PortalSystem
     }
     public bool Moving(int actor)
     {var t=Actors[actor];return t.WaitMoving||Busy(actor)&&t.Phase!=DoorPhase.Waiting&&t.Tick>=8&&t.Tick<28;}
+    private bool ClearPlayerExit(GameState s,Transition t)
+    {
+        float x=t.Destination.X,z=t.Destination.Z;
+        if(!BuildingWorld.CanStand(s,0,x,z))return false;
+        const float width=BuildingWorld.Radius*2;
+        for(int actor=1;actor<Actors.Length;actor++){
+            var p=BuildingWorld.Location(s,actor);
+            if(!p.Space.IsTown||Math.Abs(p.X-x)>=width||p.Z<=z-2||p.Z>=z+width)continue;
+            bool moved=false;
+            for(int i=0;i<6&&!moved;i++){
+                float nx=x+(i%2==0?1:-1)*(width+.08f+i/2*.35f);
+                if(!BuildingWorld.Segment(s,0,p.X,p.Z,nx,p.Z)||!BuildingWorld.CanStand(s,0,nx,p.Z,actor,true))continue;
+                BuildingWorld.SetLocation(s,actor,new ActorLocation(0,nx,p.Z,p.Yaw));
+                if(Busy(actor))Cancel(actor);
+                moved=true;
+            }
+            if(!moved)return false;
+        }
+        return true;
+    }
     private static bool CorridorClear(GameState s,int actor,Transition t)
     {
         float x,z;

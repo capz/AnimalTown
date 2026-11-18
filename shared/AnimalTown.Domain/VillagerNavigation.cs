@@ -25,7 +25,7 @@ public sealed class VillagerNavigation
     public int LastExpansions,LocalPlans;
     public VillagerNavigation(){for(int i=0;i<6;i++)Routes[i]=new Route();}
     private static int Next(Route r,int maximum){r.Random=unchecked(r.Random*1664525u+1013904223u);return (int)((r.Random>>8)%(uint)maximum);}
-    public void Tick(GameState game)
+    public void Tick(GameState game,PortalSystem? doors=null)
     {
         if(state!=game){
             state=game;worker=-1;tick=0;treeCount=-1;for(int i=0;i<6;i++){var r=Routes[i];r.Length=r.LocalLength=0;r.Replan=false;r.Stuck=0;r.Wait=i*15;r.InitialGoal=i;r.Random=unchecked((uint)game.Town.Seed+(uint)(i+1)*747796405u);}
@@ -42,7 +42,7 @@ public sealed class VillagerNavigation
         for(int i=0;i<6;i++){
             var r=Routes[i];r.Moving=false;if(Paused[i]||town.Residents[i].Space!=0)continue;if(r.Wait>0){r.Wait--;continue;}
             if(r.Index>=r.Length&&r.LocalIndex>=r.LocalLength){if(worker<0){if(!r.Replan)Goal(i);r.Replan=false;Begin(i);}continue;}
-            if(town.Residents[i].Space==0)Walk(i);
+            Walk(i,doors);
         }
     }
     public void Target(int agent,int x,int z)
@@ -104,15 +104,15 @@ public sealed class VillagerNavigation
             int x=cell%13,z=cell/13;for(int d=0;d<4;d++){int nx=x+(d==0?-1:d==1?1:0),nz=z+(d==2?-1:d==3?1:0);if(nx<0||nz<0||nx>=13||nz>=13)continue;int next=nz*13+nx;if(localParent[next]>=0||!Step(originX+x,originZ+z,originX+nx,originZ+nz,true,agent))continue;localParent[next]=cell;localQueue[b++]=next;}
         }return false;
     }
-    private void Walk(int agent)
+    private void Walk(int agent,PortalSystem? doors)
     {
         var r=Routes[agent];var v=state!.Town.Residents[agent];bool local=r.LocalIndex<r.LocalLength;int cell=local?r.Detour[r.LocalIndex]:r.Path[r.Index];float tx=cell%Town.Width+.5f,tz=cell/Town.Width+.5f,dx=tx-v.PosX,dz=tz-v.PosZ,distance=(float)Math.Sqrt(dx*dx+dz*dz);
-        if(distance<.045f){v.PosX=tx;v.PosZ=tz;if(local){r.LocalIndex++;if(r.LocalIndex==r.LocalLength)r.Index=r.Resume;}else r.Index++;if(r.Index>=r.Length){r.Wait=90+Next(r,180);r.Length=r.Index=0;}v.X=(int)v.PosX;v.Z=(int)v.PosZ;return;}
-        float step=Math.Min(.04f,distance),nx=v.PosX+dx/distance*step,nz=v.PosZ+dz/distance*step;
+        bool arrived=distance<.045f;
+        float fraction=arrived?1:.04f/distance,oldX=v.PosX,oldZ=v.PosZ,nx=oldX+dx*fraction,nz=oldZ+dz*fraction;
         // Deviation planning is triggered only by the next 1.2 metres, never by
-        // a tree/building several acres away. Moving crowds are resampled here.
-        float look=Math.Min(1.2f,distance);int lx=(int)(v.PosX+dx/distance*look),lz=(int)(v.PosZ+dz/distance*look);
-        if(Blocked(lx,lz,agent,true)||Blocked((int)nx,(int)nz,agent,true)){
+        // a tree/building several acres away. NPCs are resolved at contact.
+        float look=distance>1.2f?1.2f/distance:1;int lx=(int)(oldX+dx*look),lz=(int)(oldZ+dz*look);
+        if(Blocked(lx,lz,agent,false)||!BuildingWorld.MoveVillager(state!,agent+1,nx,nz,arrived?v.Yaw:PlayerMovement.Yaw(dx,dz),doors)){
             if(!Detour(agent)){
                 int learned=0;for(int z=(int)v.PosZ-6;z<=(int)v.PosZ+6;z++)for(int x=(int)v.PosX-6;x<=(int)v.PosX+6;x++)if(Ground(x,z)&&Blocked(x,z,agent,false)){
                     int known=z*Town.Width+x;uint bit=1u<<(known%32);if((r.Observed[known/32]&bit)==0){r.Observed[known/32]|=bit;learned++;}
@@ -121,8 +121,8 @@ public sealed class VillagerNavigation
                 else{r.Wait=15+agent*3;if(++r.Stuck>8){r.Index=r.Length;r.LocalIndex=r.LocalLength;r.Wait=30;}}
             }return;
         }
-        if(!TerrainElevation.Traverse(state.Town,v.PosX,v.PosZ,nx,nz)){r.Index=r.Length;r.LocalIndex=r.LocalLength;r.Wait=30;return;}
-        state.Town.Traffic.Traverse(state.Town,v.PosX,v.PosZ,nx,nz);
-        v.PosX=nx;v.PosZ=nz;v.X=(int)nx;v.Z=(int)nz;v.Yaw=PlayerMovement.Yaw(dx,dz);r.Moving=true;r.Stuck=0;
+        state.Town.Traffic.Traverse(state.Town,oldX,oldZ,nx,nz);
+        if(arrived){if(local){r.LocalIndex++;if(r.LocalIndex==r.LocalLength)r.Index=r.Resume;}else r.Index++;if(r.Index>=r.Length){r.Wait=90+Next(r,180);r.Length=r.Index=0;}}
+        r.Moving=nx!=oldX||nz!=oldZ;r.Stuck=0;
     }
 }

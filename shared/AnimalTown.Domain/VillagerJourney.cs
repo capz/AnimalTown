@@ -13,7 +13,7 @@ public sealed class VillagerJourney
     {
         if(current!=s){current=s;tick=0;for(int i=0;i<6;i++)if(s.Town.Residents[i].JourneyPhase==0&&s.Town.Residents[i].Dwell==0)s.Town.Residents[i].Dwell=90+i*45;}
         for(int i=0;i<6;i++)Outdoors.Paused[i]=Doors.Busy(i+1)||s.Town.Residents[i].Space!=0;
-        Outdoors.Tick(s);Indoors.BeginTick();Doors.Tick(s);tick++;
+        Outdoors.Tick(s,Doors);Indoors.BeginTick();Doors.Tick(s);tick++;
         for(int i=0;i<6;i++){
             int actor=i+1;var v=s.Town.Residents[i];Moving[i]=false;
             if(Doors.Busy(actor)){Outdoors.Stop(i);Moving[i]=Doors.Moving(actor);continue;}
@@ -30,7 +30,7 @@ public sealed class VillagerJourney
                     }
                     if(!BuildingWorld.CanStand(s,v.Space,gx,gz)){gx=BuildingWorld.Size(s,v.Space)*.5f;gz=2;}
                     if(++v.Dwell>600||!BuildingWorld.CanStand(s,v.Space,gx,gz)){v.JourneyPhase=4;v.Dwell=0;Indoors.Reset(actor);continue;}
-                    Moving[i]=Indoors.Tick(s,actor,gx,gz);
+                    Moving[i]=Indoors.Tick(s,actor,gx,gz,Doors);
                     if(Indoors.Arrived(actor)){v.JourneyPhase=3;v.Dwell=120+i*19;}
                 }else if(v.JourneyPhase==3){
                     if(v.Space==TownShop.Room&&v.Dwell==60){int target=s.Town.Shop.NpcTarget[i];if(target>=0)s.Town.Shop.BuyNpc(s,i,target<12?ShopSource.Display:ShopSource.Consignment,target<12?target:target-12);s.Town.Shop.NpcTarget[i]=-1;}
@@ -39,7 +39,7 @@ public sealed class VillagerJourney
                 else{BuildingWorld.InsideDoor(s,v.Space,out float x,out float z);
                     if(Math.Abs(v.PosX-x)<.6f&&Math.Abs(v.PosZ-z)<.7f){Doors.Request(s,actor,BuildingWorld.Building(v.Space));continue;}
                     if(!BuildingWorld.CanStand(s,v.Space,x,z)){z-=.5f;if(!BuildingWorld.CanStand(s,v.Space,x,z)){x+=.5f;}}
-                    Moving[i]=Indoors.Tick(s,actor,x,z);
+                    Moving[i]=Indoors.Tick(s,actor,x,z,Doors);
                 }
                 continue;
             }

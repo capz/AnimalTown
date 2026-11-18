@@ -122,7 +122,27 @@ public sealed partial class GameState
     }
     public bool Pickup(int x,int z)
     {
-        int i=Town.FindGround(x,z,0);if(i<0||!Receive(Town.Ground[i].Item))return false;Town.RemoveGround(i);return true;
+        int index=Town.FindGround(x,z,0);
+        if(index<0||!Receive(Town.Ground[index].Item))return false;
+        var item=Town.Ground[index];
+        const int distance=3*Town.ScreenTileSize;
+        uint seed=unchecked((uint)Town.Seed*1664525u+(uint)(z*Town.Width+x)*2246822519u+(uint)Town.Day*3266489917u);
+        int cell=(int)((seed^(seed>>16))%Town.Cells);
+        for(int scanned=0;scanned<Town.Cells;scanned++){
+            int tx=cell%Town.Width,tz=cell/Town.Width;
+            // Coprime to the town's cell count, so the scan spreads across
+            // rows and still visits every cell if suitable ground is scarce.
+            cell=(cell+109)%Town.Cells;
+            float dx=tx+.5f-X,dz=tz+.5f-Z;
+            if(dx*dx+dz*dz<distance*distance||tx/Town.ScreenTileSize==x/Town.ScreenTileSize&&tz/Town.ScreenTileSize==z/Town.ScreenTileSize)continue;
+            if(item.Item==17&&Town.At(tx,tz)!=(int)Terrain.Beach)continue;
+            if(AnyGardenContains(tx,tz)||!CanWalk(tx+.5f,tz+.5f,0)||Town.FindGround(tx,tz)>=0)continue;
+            item.X=tx;item.Z=tz;item.Day=Town.Day;item.Wrapped=false;
+            Town.NotifyCastersChanged();
+            return true;
+        }
+        Town.RemoveGround(index);
+        return true;
     }
     public void CreditTutorial(int step)
     { if(Tutorial==step&&HousePlaced){Tutorial++;Debt=Math.Max(0,Debt-1000);} }
