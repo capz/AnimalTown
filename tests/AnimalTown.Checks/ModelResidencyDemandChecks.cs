@@ -60,10 +60,20 @@ internal static class ModelResidencyDemandChecks
         player.Phase=DoorPhase.Idle;
         state.Space=0;state.X=60;state.Z=60;
         var distant=state.Town.Residents[1];distant.Space=0;
-        foreach(var offset in new[]{(19.99f,0f,true),(20f,0f,false),(20.01f,0f,false),(0f,20f,false),(14f,14f,true),(15f,15f,false),(-19f,0f,true),(0f,-19f,true)}){
-            distant.PosX=state.X+offset.Item1;distant.PosZ=state.Z+offset.Item2;
-            demand.Prepare(state,doors);check(demand.Required[1]==offset.Item3,"one map-square radial residency boundary is independent of camera direction");
+        int beyondOldLimit=0,prefetchOnly=0;
+        for(int dz=-65;dz<=65;dz+=2)for(int dx=-65;dx<=65;dx+=2){
+            distant.PosX=state.X+dx;distant.PosZ=state.Z+dz;
+            float height=TerrainElevation.At(state.Town,state.X,state.Z);
+            visibility.Prepare(state,doors,camera,0,height);demand.Prepare(state,doors);
+            bool drawable=ModelResidencyDemand.DrawableUsesSpace(state,doors,1,0);
+            check(drawable==visibility.Visible[2],"model readiness and drawing share the entire viewport and horizon envelope");
+            check(!drawable||demand.Required[1],"every visible silhouette stays resident regardless of ground distance");
+            if(drawable&&dx*dx+dz*dz>Town.ScreenTileSize*Town.ScreenTileSize)beyondOldLimit++;
+            if(demand.Required[1]&&!drawable)prefetchOnly++;
         }
+        check(beyondOldLimit>0&&prefetchOnly>0,"visible actors beyond twenty metres and hidden ARAM prefetch are both exercised");
+        distant.PosX=state.X+100;distant.PosZ=state.Z+100;demand.Prepare(state,doors);
+        check(!demand.Required[1],"the expanded visible envelope still prunes distant species");
         state.Space=0;state.X=80;state.Z=80;edge.PosX=80;edge.PosZ=80;
         var visual=doors.Actors[2];visual.Phase=DoorPhase.Crossing;visual.Building=1;visual.Tick=14;visual.Source=new ActorLocation(0,80,80,0);visual.Destination=new ActorLocation(16,2,2,0);
         var actual=doors.VisualLocation(state,2);state.X=actual.X;state.Z=actual.Z;

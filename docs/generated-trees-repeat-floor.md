@@ -8,12 +8,19 @@ superseding the earlier supplied-tree-only restriction.
 The game generates three meshes: deciduous (84 triangles), palm
 (68 triangles), and pine (60 triangles). Four uniform-color parts provide a
 trunk and flat canopy shading. Geometry is shared across placements and uses
-the SDK's unlit GX path. Up to 32 visible trees are submitted in
-material groups through DrawMeshes; this is shared geometry and batched CPU
+the SDK's unlit GX path. Every visible tree is submitted in material groups
+through DrawMeshes, reusing batches of 32 transform slots. The batch size is
+not a visibility limit: dense forests flush and reuse those slots without
+dropping distant canopy tips. This is shared geometry and batched CPU
 submission, not hardware instancing. Saplings reuse the same meshes at smaller
 scale. Trees retain their planting/collision data, world parent and radial pose.
 Deciduous colors follow seasons; palms and pines stay green, with winter snow
 color on suitable upper faces.
+
+The three meshes and 32 transform slots remain fixed in memory; the former
+32-float distance-sorting array is removed. Views containing more than 32 trees
+submit additional bounded batches and triangles instead of dropping visible
+trees. Selection is a linear scan rather than a nearest-tree insertion sort.
 
 All three species, including trunks and saplings, multiply their existing
 seasonal vertex colors by one generated 32×32 I8 noise texture in the same

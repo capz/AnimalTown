@@ -4,6 +4,7 @@ internal static class ActorVisibilityChecks
 {
     internal static void Run(Action<bool,string> check)
     {
+        TreeDrawBatchChecks.Run(check);
         var state=new GameState(17){X=80,Z=80};var doors=new PortalSystem();var camera=new InteriorCamera();var view=new ActorFrameVisibility();var clock=new AnimationFrameClock(7);
         Array.Fill(state.Town.Tiles,(byte)Terrain.Grass);Array.Clear(state.Town.Elevation);
         var npc=state.Town.Residents[0];npc.Space=0;npc.PosX=80;npc.PosZ=80;
@@ -34,7 +35,7 @@ internal static class ActorVisibilityChecks
                 if(!view.Visible[1])rejected++;
                 var center=CylinderWorld.Surface(z,focus,TerrainElevation.At(state.Town,x,z)+.9f);
                 bool centerVisible=RenderView.Sphere(x,center.Y,center.Z,0,80,focus,height)&&RenderView.AboveHorizon(center.Y,center.Z,0,focus,height);
-                if(centerVisible&&ModelResidencyDemand.WithinOutdoorDistance(state,doors,x,z))check(view.Visible[1],"frustum-edge culling retains actor centers inside the residency distance");
+                if(centerVisible)check(view.Visible[1],"frustum and horizon culling retain visible actor centers without a distance cutoff");
                 if(view.Visible[1]&&!centerVisible)partial++;
             }
         }

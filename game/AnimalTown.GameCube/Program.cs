@@ -116,7 +116,6 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
     private readonly TerrainRenderer terrain;
     private readonly VillagerShadows villagerShadows;
     private readonly int[] visibleTrees=new int[LowPolyTrees.Capacity];
-    private readonly float[] treeDistances=new float[LowPolyTrees.Capacity];
     private readonly LowPolyTrees trees;
     private readonly DroppedItemRenderer droppedItems=new DroppedItemRenderer();
     private readonly UiShapes uiShapes=new UiShapes();
@@ -832,7 +831,6 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
             if(BuildingWorld.Location(state,actor).Space.Value!=room||actor==0&&waterInspection!=0)continue;
             if(actor!=0&&!modelResidency.Ready(actor-1))continue;
             var p=villagers.Doors.VisualLocation(state,actor);
-            if(room==0&&actor!=0&&!ModelResidencyDemand.WithinOutdoorDistance(state,villagers.Doors,p.X,p.Z))continue;
             if(Visible(p.X,p.Z,1.8f))villagerShadows.Set(actor,room,p.X,p.Z,size,mat);
         }
     }
@@ -988,7 +986,7 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
             if(batchedDrawing)boxes.Flush();
         }finally{NativeShadows.Environment(tint);}
     }
-    private bool IsTree(GroundItem g)=>g.Kind==3||(g.Kind==2&&g.Item!=2);
+    private bool IsTree(GroundItem g)=>TreeDrawBatch.IsTree(g);
     private void InspectTerrain()
     {
         if(room!=0)return;
@@ -1003,27 +1001,15 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
         int building=1+buildingInspection++%6;
         BuildingWorld.Entrance(state,building,out float x,out float z);state.X=x+.85f;state.Z=z+.2f;facingYaw=(float)Math.PI;state.Facing=facingYaw;screen="world";waterInspection=0;cliffPreview=false;
     }
-    private bool TreeVisible(float x,float z,float scale)
-    {
-        var center=SurfacePoint(x,z,scale*LowPolyTree.VisibilityCenterY);
-        float radius=scale*LowPolyTree.VisibilityRadius+.025f;
-        return RenderView.Sphere(center.X,center.Y,center.Z,radius,state.X,state.Z,cachedPlayerHeight)&&
-            RenderView.AboveHorizon(center.Y,center.Z,radius,state.Z,cachedPlayerHeight);
-    }
     private void DrawTrees()
     {
-        // Generated low-poly meshes share native geometry and indexed GX draws.
-        long selectionAt=FrameProfile.Start();
-        for(int n=0;n<visibleTrees.Length;n++){visibleTrees[n]=-1;treeDistances[n]=float.MaxValue;}
-        for(int i=0;i<state.Town.GroundCount;i++)
-        {
-            var g=state.Town.Ground[i];if(!IsTree(g)||!TreeVisible(g.X,g.Z,g.Kind==2?.75f:3))continue;
-            float dx=g.X-state.X,dz=g.Z-state.Z,d=dx*dx+dz*dz;
-            for(int n=0;n<visibleTrees.Length;n++)if(d<treeDistances[n])
-            {for(int j=visibleTrees.Length-1;j>n;j--){visibleTrees[j]=visibleTrees[j-1];treeDistances[j]=treeDistances[j-1];}visibleTrees[n]=i;treeDistances[n]=d;break;}
+        int cursor=0;
+        while(cursor<state.Town.GroundCount){
+            long selectionAt=FrameProfile.Start();
+            int count=TreeDrawBatch.Fill(state.Town,state.X,state.Z,cachedPlayerHeight,visibleTrees,ref cursor);
+            FrameProfile.End(15,selectionAt);
+            if(count>0)trees.Draw(renderer,state.Town,visibleTrees,count,state.Z);
         }
-        FrameProfile.End(15,selectionAt);
-        trees.Draw(renderer,state.Town,visibleTrees,state.Z);
     }
     private void Text(string text,float x,float y,Color32 c,float scale=1.5f,int visibleCharacters=-1)=>font.Draw(ui,text,x,y,c,scale/1.5f,0,visibleCharacters);
     private void Strong(string text,float x,float y,Color32 c,float scale=1.5f)=>strongFont.Draw(ui,text,x,y,c,scale/1.5f);
