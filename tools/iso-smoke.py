@@ -1071,7 +1071,9 @@ def wait_profiles(name='profile-picker.png'):
             if '--save-cards' in sys.argv:raise AssertionError('Card scenario reached picker without confirming its card choice')
             screenshot('default-memory-card.png');press('A');continue
         screenshot(name);pixels=rgb(name)
-        cards=color_count(pixels,(107,151,90))>3000 and color_count(pixels,(255,183,64))>150
+        # Four green name pills identify the resident picker. Honey accents
+        # are small and can vary with portrait/viewport rasterization.
+        cards=color_count(pixels,(107,151,90))>3000
         if cards and color_count(pixels,(255,245,221))>70000:return
         if p.poll() is not None:raise AssertionError('Emulator stopped before villager picker')
         time.sleep(1)

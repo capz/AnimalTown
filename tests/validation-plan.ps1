@@ -65,4 +65,9 @@ foreach($path in @('shared/AnimalTown.Domain/ContentPaths.cs','game/AnimalTown.G
 }
 $p=Get-ValidationPlan -ChangedPaths @('tools/AnimalTown.Tools/DepotPackage.cs');Assert (($p.tooling -join ',') -eq 'depot' -and !$p.backend) 'Depot packaging must exercise archive validation'
 $p=Get-ValidationPlan -Full;Assert ('depot' -in $p.tooling -and 'content' -in $p.managed -and 'content' -in $p.native) 'Full checks must include standalone startup and packaging'
-Write-Host 'Validation routing checks passed (62 cases).'
+foreach($name in @('SaveCards','CardArchive','CardSaveStorage','CardSaveError','TownDataStorage','UserOptionsStorage','DevConfigStorage','TownSession','TitleScreen.Cards')){
+    $p=Get-ValidationPlan -ChangedPaths @("game/AnimalTown.GameCube/$name.cs")
+    Assert ('card' -in $p.native -and 'saves' -in $p.managed -and !$p.backend -and !$p.full) "Card persistence changes must exercise the production adapter and slot-selection checks: $name"
+}
+$p=Get-ValidationPlan -ChangedPaths @('game/AnimalTown.GameCube/TitleScreen.Cards.cs');Assert (($p.managed -join ',') -eq 'ui,menu,saves') 'Card chooser changes need UI, menu and save coverage'
+Write-Host 'Validation routing checks passed (72 cases).'
