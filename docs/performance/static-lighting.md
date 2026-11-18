@@ -1,7 +1,7 @@
 # Static lighting and shadow performance
 
-The reference build is `8aa130eb4248` and the implementation build is
-`ac4ba55bc5c0`. Both use main `d9bc5ab10529`, DolphinDotNet SDK
+The matched reference build is `8aa130eb4248` and the matched implementation
+build is `ac4ba55bc5c0`. Both use main `d9bc5ab10529`, DolphinDotNet SDK
 `0.1.0-preview.374.1` and the same pinned Linux GameCube build image. The
 published reference ISO matched the SHA-256 recorded in its Depot bundle before
 capture. [Reference release](https://github.com/capz/AnimalTown/releases/tag/v0.52.0%2B8aa130eb4248)
@@ -59,8 +59,8 @@ expanded vertex submission path.
 
 ## GX submission
 
-Both versions use four appended TEV stages, three texture coordinate generators,
-one IA4 binding and two IA4 sample orders. This gives five total stages for
+Both measured versions use four appended TEV stages, three texture coordinate
+generators, one IA4 binding and two IA4 sample orders. This gives five total stages for
 the regular ground material and eight for the four-stage water effect. The
 recording fixture measures outdoor constant-alpha selector calls falling from
 three to one. The pinned
@@ -98,8 +98,8 @@ updating during the captures.
 | Managed allocations in the sampled frames | 0 | 0 |
 
 The frame timings have overlapping ranges, and GX completion wait measures
-outstanding work at the fence. Physical GameCube GPU duration and SD launcher boot remain hardware
-validation items. [Reference samples](../screenshots/static-lighting/profile-before.json)
+outstanding work at the fence. Physical GameCube GPU duration and SD launcher
+boot remain hardware validation items. [Reference samples](../screenshots/static-lighting/profile-before.json)
 [Implementation samples](../screenshots/static-lighting/profile-after.json)
 
 | Captured view | Guest RTC at boot | Reference | Implementation |
@@ -131,5 +131,28 @@ identify each pair. [Capture provenance](../screenshots/static-lighting/provenan
 | `pwsh ./tools/build-linux.ps1 -Target game` | Patched AOT native sources, disc DOL, independently compiled Depot DOL, strict app payload verification, and the 139-file NKit round trip passed. |
 | `pwsh ./tools/build-linux.ps1 -Target package` | Local same-commit game, tools and backend packaging passed. |
 
-PR #114 uses the local results. Its GitHub Actions run was skipped at the
+## Integration with current main
+
+The follow-up build `0.55.0+16764bb2da0b` incorporates main `c98d3c0d1f2c`.
+The recording fixture verifies the same four-stage IA4 footer with main's
+separate I4 road mask and the WaterWarp lamp register. It exercises the
+outdoor receiver flags, room projection and gain sweep alongside the existing
+road and water color regressions. The shadow cache measures 522,016 bytes.
+
+The integrated build passed 72,176 native union checks, shadow lifecycle and
+GX checks, 2,314,401 gameplay checks, 329,009 rendering checks, and PostgreSQL
+integration. The pinned GameCube toolchain built both the disc and standalone
+SD executables and verified the 139-file NKit round trip. Local package
+verification covered the game, Depot, tools and backend artifacts from this
+same revision. `tools/build-game.ps1 -SkipAssets -NativeInProcess` reused the
+cooked models because their locked inputs matched the first build.
+
+Dolphin 2503 booted the integrated image with the same disposable card. The
+winter run reached the night lamp pool and tree-lined ramp. The summer run
+entered the cottage, walked the ramp, and reached the river, bridge and coast.
+[Winter capture](../screenshots/static-lighting/integrated-night.png)
+[Coast capture](../screenshots/static-lighting/integrated-coast.png)
+
+The linked lighting PR uses local validation. GitHub Actions was skipped at the
 maintainer's request because the workflow automatically publishes a prerelease.
+[Draft implementation PR](https://github.com/capz/AnimalTown/pull/116)

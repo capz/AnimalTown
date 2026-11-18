@@ -24,7 +24,7 @@
       "nkit_iso_sha256": "f3d1633cedacedeb85bb4a7f6e35187f27615198a77c1a34870cf68f753be224",
       "profile": {
         "file": "profile-before.json",
-        "sha256": "ece38780d1101fc3642c3fd362ebf090f27bec303694bd0368155c5b4c5d26ef"
+        "sha256": "b0f081f529de1b9ce8a60ce33b5e483e03400845732600755ae7e66122507cec"
       }
     },
     "after": {
@@ -33,7 +33,7 @@
       "nkit_iso_sha256": "8a23410e9967a4d71a3ba5f6e628fe195b2a432da319921d7b58e782df672a5c",
       "profile": {
         "file": "profile-after.json",
-        "sha256": "36ad817427689efca98479784e088ec4b82bf2476b8ec29741e3170fc35a3ef1"
+        "sha256": "3e245c01a1c8c6b8698d4a84b6b713be3e3cf4e1753b68dc6f4c3119887222e5"
       }
     }
   },
@@ -127,6 +127,29 @@
         "image": "coast-after.png",
         "sha256": "47ef2055498f82fbf9e2b4437650b826bf8170bfc94299835bda4439360acdfb",
         "captured_utc": "2026-11-18T00:03:16.357825+00:00"
+      }
+    }
+  },
+  "integration": {
+    "commit": "16764bb2da0b758351e5de99ec163c5707f1cfb6",
+    "main_commit": "c98d3c0d1f2ced742f32db7d914e78fbcf3ef93a",
+    "version": "0.55.0+16764bb2da0b",
+    "nkit_iso_sha256": "c6ea5c08e2885d686612d8dccb51bdd32059bbb8ca80c9a9d1bb46fad89b22ab",
+    "depot_zip_sha256": "09ba5c50071160b0de5dd526763f00349e4a5bcfe780a77527c999458da696d7",
+    "scenes": {
+      "night": {
+        "route": "village-roads to tree-lined ramp",
+        "guest_rtc_utc": "2028-01-15T22:00:00+00:00",
+        "image": "integrated-night.png",
+        "sha256": "13c75ed18a1893e5b6ddf2bf8f42ef16dc96a6d6562c1dc4b2b22b3dc78dbc8a",
+        "captured_utc": "2026-11-18T00:27:39.552253+00:00"
+      },
+      "coast": {
+        "route": "tour",
+        "guest_rtc_utc": "2027-07-15T12:00:00+00:00",
+        "image": "integrated-coast.png",
+        "sha256": "2e01eef2959b707086a5d1de9d7d5b3f78e95d974d6dbd04bcd6302d49a1a478",
+        "captured_utc": "2026-11-18T00:28:39.587844+00:00"
       }
     }
   }
