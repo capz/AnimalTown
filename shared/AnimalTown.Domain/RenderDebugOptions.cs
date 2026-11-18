@@ -10,7 +10,7 @@ public sealed class RenderDebugOptions
     public bool GroundMipmaps=true;
     public bool ShowGroundMipBands;
     public bool DiscardTerrainCacheWhenIndoors;
-    public int GroundMipDistance {get;private set;} // 0 = automatic GX footprint.
+    public int GroundMipDistance {get;private set;} // 0 = default GX calibration.
     public static float AttentionHeight(float highestJoint)=>float.IsFinite(highestJoint)?Math.Max(2.35f,Math.Min(5,highestJoint*1.8f+.7f)):3.6f;
     public void CycleSeason()=>SeasonOverride=SeasonOverride==3?-1:SeasonOverride+1;
     public void AdjustGroundMipDistance(int direction)=>GroundMipDistance=Math.Max(0,Math.Min(MaximumGroundMipDistance,GroundMipDistance+(direction<0?-1:1)));
@@ -21,8 +21,9 @@ public sealed class RenderDebugOptions
     // UV0 repeats every two metres. Recalculated only after a setting/load change.
     public static float GroundMipBias(int width,int height,int squares)
     {
-        if(squares<=0)return 0;
-        int distance=Math.Min(MaximumGroundMipDistance,squares);
+        // At the unadjusted GX bias the 256px floor already uses half detail
+        // at the player. Keep the default transition a few tiles ahead.
+        int distance=squares<=0?4:Math.Min(MaximumGroundMipDistance,squares);
         var p=CylinderWorld.Surface(-distance,0);
         float y=p.Y-CylinderWorld.CameraHeight,z=p.Z-CylinderWorld.CameraBack;
         float depth=y*RenderView.ForwardY+z*RenderView.ForwardZ;

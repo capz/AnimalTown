@@ -46,9 +46,11 @@ internal static class RenderDebugChecks
             // the centreline calibration, rather than repeating its Jacobian.
             double Project(float z){var p=CylinderWorld.Surface(z,0);double dy=p.Y-CylinderWorld.CameraHeight,dz=p.Z-CylinderWorld.CameraBack;return 240/RenderView.TanY*(dy*-RenderView.ForwardZ+dz*RenderView.ForwardY)/(dy*RenderView.ForwardY+dz*RenderView.ForwardZ);}
             double pixelsPerMetre=Math.Abs((Project(-d+.01f)-Project(-d-.01f))/.02);
-            check(Math.Abs(Math.Log2(128/pixelsPerMetre)+bias-.5)<.01,"the mip switch follows the projected cylinder at the selected ground-square distance");
+            double expected=Math.Clamp(.5-Math.Log2(128/pixelsPerMetre),-4,3.99);
+            check(Math.Abs(expected-bias)<.01,"the mip switch follows the projected cylinder within the GX bias range");
         }
-        check(RenderDebugOptions.GroundMipBias(256,256,0)==0&&RenderDebugOptions.GroundMipBias(256,256,int.MinValue)==0&&RenderDebugOptions.GroundMipBias(256,256,int.MaxValue)==previous,"Auto and extreme reference inputs remain bounded");
+        float auto=RenderDebugOptions.GroundMipBias(256,256,4);
+        check(RenderDebugOptions.GroundMipBias(256,256,0)==auto&&RenderDebugOptions.GroundMipBias(256,256,int.MinValue)==auto&&RenderDebugOptions.GroundMipBias(256,256,int.MaxValue)==previous,"Auto and extreme reference inputs remain bounded");
         var rgba=new byte[256*256*4];for(int i=0;i<256*256;i++){byte v=(byte)(i%2*255);rgba[i*4]=rgba[i*4+1]=rgba[i*4+2]=v;rgba[i*4+3]=255;}
         var source=Package(TexturePixels.Encode(rgba,256,256,4),256,256,4);uint hash=TexturePixels.Hash(source);
         var full=FloorTexture.Prepare(source,fullMipChain:true);
