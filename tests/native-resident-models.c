@@ -171,7 +171,10 @@ int main(int argc, char **argv) {
         assert(dnd_model_stat(retained, 6) == cached_bytes);
         same_payload(a, b);
         unsigned texture_bytes = 0;
-        for (unsigned i = 0; i < b->textures; i++)texture_bytes += b->texture[i].size;
+        for (unsigned i = 0; i < b->textures; i++) {
+            assert(b->texture[i].width <= 128 && b->texture[i].height <= 128);
+            texture_bytes += b->texture[i].size;
+        }
         unsigned saved = original_bytes - b->bytes;
         assert(texture_bytes && saved >= texture_bytes);
         saved_total += saved;texture_total += texture_bytes;
@@ -206,7 +209,7 @@ int main(int argc, char **argv) {
         assert(dnd_model_live_handles() == 0);
         printf("Resident model %s: %u bytes recovered; %u original texture bytes retained once\n", argv[file], saved, texture_bytes);
     }
-    assert(texture_total == 2621440 && saved_total >= texture_total);
-    printf("Resident villagers: %zu MEM1 bytes recovered; geometry, skins, clips, evaluated poses, shared textures and disposal unchanged\n", saved_total);
+    assert(texture_total == 655360 && saved_total >= texture_total);
+    printf("128px resident villagers: %zu MEM1 bytes recovered; geometry, skins, clips, evaluated poses, shared textures and disposal unchanged\n", saved_total);
     return 0;
 }

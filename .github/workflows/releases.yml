@@ -136,7 +136,7 @@ jobs:
           import json, os, re
           from pathlib import Path
           plan=json.loads(Path('out/validation-plan.json').read_text())
-          relevant=re.compile(r'^(assets/textures/branding/|game/AnimalTown.GameCube/(TitleScreen|TitleArt|ProfilePickerUi|OnboardingUi|TextureCache)\.cs$|shared/AnimalTown.Domain/TexturePixels\.cs$|tools/AnimalTown.Tools/(Brand[^/]*|DiscBannerFile|TextureAudit)\.cs$|tools/(iso-smoke\.py|dolphin_pad\.py|publish-release\.ps1)$|build/Dockerfile\.dolphin$|\.github/workflows/releases\.yml$)')
+          relevant=re.compile(r'^(assets/textures/branding/|game/AnimalTown.GameCube/(TitleScreen|TitleArt|ProfilePickerUi|OnboardingUi|TextureCache|ModelResources)\.cs$|shared/AnimalTown.Domain/(TexturePixels|TextureResolution)\.cs$|tools/AnimalTown.Tools/(Brand[^/]*|DiscBannerFile|TextureAudit)\.cs$|tools/(iso-smoke\.py|dolphin_pad\.py|publish-release\.ps1)$|build/Dockerfile\.dolphin$|\.github/workflows/releases\.yml$)')
           needed=any(relevant.search(path) for path in plan['paths']) or (plan['full'] and not plan['paths'])
           with open(os.environ['GITHUB_OUTPUT'],'a') as output:
               output.write(f'needed={str(needed).lower()}\n')
@@ -186,7 +186,7 @@ jobs:
           import json, os, re
           from pathlib import Path
           plan=json.loads(Path('out/validation-plan.json').read_text())
-          relevant=re.compile(r'^(game/AnimalTown.GameCube/(Water[^/]*|NativeWaterProbe|TerrainRenderer|TerrainSection|GroundMip[^/]*|Program)\.cs$|shared/AnimalTown.Domain/(GroundMip[^/]*|RenderDebugOptions|DevConfig|Water[^/]*|WindWaker[^/]*)\.cs$|tools/(iso-smoke\.py|publish-release\.ps1|patch-native\.ps1|patch-water-probe\.py|native-water-probe\.inc|native-shadow-union-gx\.inc)$|build/Dockerfile\.dolphin$|\.github/workflows/releases\.yml$)')
+          relevant=re.compile(r'^(game/AnimalTown.GameCube/(Water[^/]*|NativeWaterProbe|TerrainRenderer|TerrainSection|GroundMip[^/]*|Program|ModelResources)\.cs$|shared/AnimalTown.Domain/(GroundMip[^/]*|RenderDebugOptions|DevConfig|TextureResolution|Water[^/]*|WindWaker[^/]*)\.cs$|tools/(iso-smoke\.py|publish-release\.ps1|patch-native\.ps1|patch-water-probe\.py|native-water-probe\.inc|native-shadow-union-gx\.inc)$|build/Dockerfile\.dolphin$|\.github/workflows/releases\.yml$)')
           needed=any(relevant.search(path) for path in plan['paths']) or (plan['full'] and not plan['paths'])
           with open(os.environ['GITHUB_OUTPUT'],'a') as output:
               output.write(f'needed={str(needed).lower()}\n')

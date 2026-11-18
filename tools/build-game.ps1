@@ -33,6 +33,7 @@ if('depot' -in $validation.tooling){Run dotnet @('run','--project','tools/Animal
 Run dotnet @('run','--project','tools/AnimalTown.Tools','-c','Release','--no-build','--','buildings',$projectRoot)
 Run dotnet @('tool','restore')
 Run dotnet @('run','--project','tools/AnimalTown.Tools','-c','Release','--no-build','--','audit',$projectRoot)
+Run dotnet @('run','--project','tools/AnimalTown.Tools','-c','Release','--no-build','--','prune-model-variants',$projectRoot)
 if (!$SkipAssets) {
     $assetMap = [ordered]@{
         fox='villagers/Meshy_AI_Rigged_Fox_All_Animations.glb'
@@ -64,7 +65,8 @@ if (!$SkipAssets) {
         }else{
             Run dotnet @('run','--project','tools/AnimalTown.Tools','-c','Release','--no-build','--','prepare',$projectRoot,"assets/models/$($assetMap[$name])","out/prepared/$name.glb")
         }
-        foreach($textureEdge in @(128,256,512,1024)){
+        $textureEdges=if($assetMap[$name].StartsWith('villagers/')){@(128,256)}else{@(128,256,512,1024)}
+        foreach($textureEdge in $textureEdges){
         $suffix=if($textureEdge -eq 256){''}else{"-tex$textureEdge"}
         # DNMD retains its package and charges a decoded RGBA8 copy of each
         # texture per model, even when the native texture cache shares pixels.
@@ -125,7 +127,7 @@ Run dotnet @('build','game/AnimalTown.GameCube','-c','Release','--no-restore','-
 Run dotnet @("$sdkRoot/tools/compiler/DolphinDotNet.Compiler.dll",'--bundle','game/AnimalTown.GameCube/bin/Release/net8.0/AnimalTown.GameCube.dll','out/native')
 & (Join-Path $PSScriptRoot 'patch-native.ps1') -Root $projectRoot
 RunNative '.' 'sh' (@('-c','cc -DANIMALTOWN_RETAIN_BUILDINGS -std=c11 -Wall -Wextra -Werror -ffunction-sections -fdata-sections -Iout/native/include tests/native-building-assets.c out/native/source/model.c out/native/source/model_animation.c out/native/source/verified_copy.c out/native/source/aram.c -Wl,--gc-sections -lm -o /tmp/animaltown-building-retained && /tmp/animaltown-building-retained "$@"','building-retained')+$buildingNativeParts)
-$residentNativeModels=@(@('fox','bunny','giraffe','cat','hamster','spaniel')|ForEach-Object{"out/disc/$($_).dndmodel"})
+$residentNativeModels=@(@('fox','bunny','giraffe','cat','hamster','spaniel')|ForEach-Object{"out/disc/$($_)-tex128.dndmodel"})
 RunNative '.' 'sh' (@('-c','cc -std=c11 -Wall -Wextra -Werror -ffunction-sections -fdata-sections -Iout/native/include tests/native-resident-models.c out/native/source/model.c out/native/source/model_animation.c out/native/source/verified_copy.c out/native/source/aram.c -Wl,--gc-sections -lm -o /tmp/animaltown-resident-models && /tmp/animaltown-resident-models "$@"','resident-models')+$residentNativeModels)
 function CompileNative([string]$Directory,[string]$Target){
 $nativeOutput=[IO.Path]::GetFullPath((Join-Path $projectRoot $Directory))

@@ -29,6 +29,7 @@ static class Program
             else if(args[0]=="repack-check")TextureRepackerChecks.Run(Root);
             else if(args[0]=="audit")Audit();
             else if(args[0]=="prepare")Prepare(args[2],args[3]);
+            else if(args[0]=="prune-model-variants")ModelVariants.Prune(Root);
             else if(args[0]=="art")Art();
             else if(args[0]=="brand-check"){BrandTextureAssets.Check(Root);DiscBannerFile.Check();}
             else if(args[0]=="dropped-item-import")DroppedItemAssets.Import(Root);
@@ -115,6 +116,7 @@ static class Program
     static void Art()
     {
         string dir=Path.Combine(Root,"out/disc");Directory.CreateDirectory(dir);
+        ModelVariants.Prune(Root);
         // Reused/SkipAssets output must not carry retired textures into a disc.
         foreach(string retired in new[]{"sunshine-water.dndtex","sunshine-wave.dndtex","sunshine-distortion.dndtex"})File.Delete(Path.Combine(dir,retired));
         BrandAssets.Build(Root);RepeatFloorAssets.Build(Root);PathAssets.Build(Root);TerrainCliffAssets.CookTexture(Root);DroppedItemAssets.Build(Root);
@@ -206,6 +208,10 @@ static class Program
             }
         }
         foreach(string n in new[]{"opening.bnr","BUILD.txt","version.md","runtime.cfg","savebanner.rgb5a3","saveicon.rgb5a3","gorditas-bold.dndtex","gorditas-bold.metrics","wordmark.dndtex","item-icons.dndtex","dropped-item.dndtex","dropped-money.dndtex","dropped-tool.dndtex","dropped-clothing.dndtex","dropped-quest.dndtex","dropped-present.dndtex","cat.dndmodel","fox.dndmodel","bunny.dndmodel","giraffe.dndmodel","hamster.dndmodel","spaniel.dndmodel","building.dndmodel"})if(!seen.Contains(n))throw new InvalidDataException("Missing "+n);
+        foreach(string model in new[]{"fox","bunny","giraffe","cat","hamster","spaniel"}){
+            if(!seen.Contains(model+"-tex128.dndmodel"))throw new InvalidDataException("Missing gameplay villager model "+model);
+            foreach(int edge in new[]{512,1024})if(seen.Contains(model+"-tex"+edge+".dndmodel"))throw new InvalidDataException("Oversized villager model must not ship: "+model);
+        }
         if(seen.Contains("deciduous.dndmodel")||seen.Contains("palm.dndmodel")||seen.Contains("pine.dndmodel"))throw new InvalidDataException("Retired high-poly trees must not ship");
         if(!seen.Contains("tent.dndmodel"))throw new InvalidDataException("Missing supplied tent model");
         foreach(string season in new[]{"spring","summer","fall","winter"})foreach(string extension in new[]{"bin","dndtex"})if(!seen.Contains(extension=="bin"?"floor-"+season+".bin":"floor-"+season+(seen.Contains("floor-outdoor-neutral.dndtex")?"-1.dndtex":"-0.dndtex")))throw new InvalidDataException("Missing seasonal terrain asset");
