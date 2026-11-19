@@ -419,24 +419,25 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
     }
     // Gameplay saves require this explicit menu action. The profile picker's
     // separately confirmed Delete action also commits, via TownSession.
-    private void SaveFromMenu()
+    private void SaveFromMenu(bool quit=false)
     {
-        if(screen!="menu"||menuTab!=SettingsTab||selected!=0)return;
         if(!SaveCards.Enabled){saveStatus="Saving is disabled for this session. Restart to choose a card.";return;}
         if(damagedSave){saveStatus="Damaged saves preserved. Use another card.";return;}
+        long started=Clock.Timestamp, mountAt=started, saveAt=started;
         string previousScreen=screen;screen="saving";Draw();screen=previousScreen;
         clockHud.Trim();uiShapes.Trim();
-        bool terrainSuspended=false;string phase="mount";
+        bool terrainSuspended=false,saved=false;string phase="terrain cache";
         try
         {
-            phase="terrain cache";terrainSuspended=terrain.SuspendForSave();phase="mount";
+            terrainSuspended=terrain.SuspendForSave();
+            phase="mount";mountAt=Clock.Timestamp;
             if(card==null)card=SaveCards.Mount();
-            phase="encode";
             state.Facing=facingYaw;
             phase="save set";
-            long saveAt=Clock.Timestamp;
+            saveAt=Clock.Timestamp;
             var reads=new SaveReadCache(new CardSaveStorage(card,banner,icon,SaveCards.Device));
             var repository=new SaveRepository(reads);repository.Save(state);
+            saved=true;
             saveStatus=repository.LastWrittenRecords==0?"No changes to save.":"Saved / "+BuildInfo.Version;
             DebugOverlay.WriteLine("SAVE: "+repository.LastWrittenRecords+" records / "+repository.LastWrittenBytes+" bytes");
             DebugOverlay.WriteLine("SAVE I/O: "+((Clock.Timestamp-saveAt)/1000)+" ms / "+reads.PhysicalReads+" reads / "+reads.CacheHits+" cached reads");
@@ -449,8 +450,16 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
             DebugOverlay.WriteLine("SAVE ERROR: "+phase+" (code "+NativeCalendar.CardError()+"): "+detail);
         }
         finally{
-            try{card?.Dispose();}catch(Exception error){DebugOverlay.WriteLine("CARD CLOSE: "+(error.Message??"Native close error"));}
-            card=null;if(terrainSuspended)terrain.ResumeAfterSave();
+            long closeAt=Clock.Timestamp;
+            try{card?.Dispose();}catch(Exception error){
+                saved=false;saveStatus="Could not close the memory card. Try saving again.";
+                DebugOverlay.WriteLine("CARD CLOSE: "+(error.Message??"Native close error"));
+            }
+            card=null;
+            long resumeAt=Clock.Timestamp;
+            ExitToTitle=quit&&saved;
+            if(terrainSuspended&&!ExitToTitle)terrain.ResumeAfterSave();
+            if(saved)DebugOverlay.WriteLine("SAVE TOTAL: "+((Clock.Timestamp-started)/1000)+" ms / prepare "+((mountAt-started)/1000)+" / mount "+((saveAt-mountAt)/1000)+" / save "+((closeAt-saveAt)/1000)+" / close "+((resumeAt-closeAt)/1000)+" / restore "+((Clock.Timestamp-resumeAt)/1000)+" / quit "+(quit?1:0));
         }
     }
     private void Say(string name,string text){dialogueVoice.Begin();voiceTick=0;returnToMenu=screen=="menu"&&(menuTab==SettingsTab||menuTab==TestingTab||godMode&&menuTab==2);if(returnToMenu){returnMenuTab=menuTab;returnMenuSelection=selected;}speaker=name;message=text;wrappedDialogue=dialogueText.Get(text);typeAt=0;screen="dialogue";}
@@ -462,7 +471,7 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
             if(!DebugMenuSettings.Visible){
                 if(menuTab==TestingTab){menuTab=SettingsTab;selected=0;}
                 if(returnToMenu&&returnMenuTab==TestingTab){returnMenuTab=SettingsTab;returnMenuSelection=0;}
-                if(menuTab==SettingsTab)selected=Math.Min(selected,4);
+                if(menuTab==SettingsTab)selected=Math.Min(selected,5);
             }
             saveStatus=UserOptionsStorage.Status;return;
         }
@@ -480,7 +489,7 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
         if(chord&&p.DPadLeft.WasPressed&&room==0&&screen=="world"){waterInspection=(waterInspection+1)%6;return;}
         if(waterInspection!=0&&screen=="world"&&!p.Start.WasPressed){if(p.B.WasPressed)waterInspection=0;return;}
         if(chord&&p.Start.WasPressed){InspectTerrain();return;}
-        bool navigating=screen=="menu"||screen=="item"||screen=="sell"||screen=="shop"||screen=="store"||screen=="post"||screen=="mail"||screen=="lost"||ShopScreen;
+        bool navigating=screen=="save-quit"||screen=="menu"||screen=="item"||screen=="sell"||screen=="shop"||screen=="store"||screen=="post"||screen=="mail"||screen=="lost"||ShopScreen;
         int direction=menuNavigation.Read(screen,screen=="menu"?menuTab:-1,p.Stick.X,p.Stick.Y,(int)p.PressedButtons,Clock.Timestamp,navigating&&!chord);
         bool up=direction==MenuNavigation.Up,down=direction==MenuNavigation.Down,left=direction==MenuNavigation.Left,right=direction==MenuNavigation.Right;
         if(screen=="menu"&&menuTab==TestingTab&&TestingOption(selected)==23&&!chord){
@@ -489,6 +498,16 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
         }
         if(p.L.IsHeld&&p.R.IsHeld&&p.Z.WasPressed){FrameProfile.Enabled=!FrameProfile.Enabled;return;}
         if(p.L.IsHeld&&p.R.IsHeld)return;
+        if(screen=="save-quit"){
+            if(p.B.WasPressed||p.Start.WasPressed){screen="menu";selected=1;return;}
+            if(up||down)selected=1-selected;
+            if(Press(p)){
+                bool quit=selected==1;
+                screen="menu";selected=1;
+                if(quit)SaveFromMenu(quit:true);
+            }
+            return;
+        }
         if(ShopInput(p,direction))return;
         if(screen=="dialogue")
         { if(Press(p)||p.B.WasPressed){dialogueVoice.Stop();if(typeAt<message.Length)typeAt=message.Length;else{screen=returnToMenu?"menu":"world";if(returnToMenu){menuTab=returnMenuTab;selected=returnMenuSelection;}}}return; }
@@ -559,7 +578,7 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
         state.Town.Traffic.Snow.SetWinter(season==3);
     }
     private int MenuTabCount=>DebugMenuSettings.Visible?tabs.Length:tabs.Length-1;
-    private int TabCount()=>menuTab==0?state.Capacity:menuTab==1?7:menuTab==2?Catalog.EntryCount:menuTab==3?7:menuTab==4?7:menuTab==TestingTab?testingOptions.Length:DebugMenuSettings.Visible?6:5;
+    private int TabCount()=>menuTab==0?state.Capacity:menuTab==1?7:menuTab==2?Catalog.EntryCount:menuTab==3?7:menuTab==4?7:menuTab==TestingTab?testingOptions.Length:DebugMenuSettings.Visible?7:6;
     private int LostCount(){int c=0;for(int i=0;i<state.Town.GroundCount;i++)if(state.Town.Ground[i].Kind==4)c++;return c;}
     private int LostIndex(int n){for(int i=0;i<state.Town.GroundCount;i++)if(state.Town.Ground[i].Kind==4&&n--==0)return i;return -1;}
     private void StoreAction()
@@ -606,10 +625,12 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
         if(menuTab==4){PostAction();return;}
         if(menuTab==TestingTab){TestingAction();return;}
         if(menuTab!=SettingsTab)return;
-        if(selected==5&&DebugMenuSettings.Visible){menuTab=TestingTab;selected=0;return;}
-        if(selected==0){SaveFromMenu();}else if(selected==1){Say("Controls","Stick / D-pad: walk / menus. L/R: tabs. B: run / back. A: interact / select. X: backpack. Y: map. Z: tool. START: settings. Choose Save now to save.");}
-        else if(selected==2)Say("About","AnimalTown / "+BuildInfo.Version+" / hypercube-engine. Original homebrew for Nintendo GameCube.");
-        else if(selected==3){Say("Calendar","Console RTC / day "+day+". New days begin at 06:00.");}
+        if(selected==6&&DebugMenuSettings.Visible){menuTab=TestingTab;selected=0;return;}
+        if(selected==0){SaveFromMenu();}
+        else if(selected==1){screen="save-quit";selected=0;}
+        else if(selected==2){Say("Controls","Stick / D-pad: walk / menus. L/R: tabs. B: run / back. A: interact / select. X: backpack. Y: map. Z: tool. START: settings. Choose Save Now to save.");}
+        else if(selected==3)Say("About","AnimalTown / "+BuildInfo.Version+" / hypercube-engine. Original homebrew for Nintendo GameCube.");
+        else if(selected==4){Say("Calendar","Console RTC / day "+day+". New days begin at 06:00.");}
         else Say("Chat","Quick phrases and online chat are pending the companion transport.");
     }
     private bool RepayLoan()=>state.Repay((int)Math.Min(state.Debt,godMode?int.MaxValue:state.Wallet),godMode);
@@ -1073,6 +1094,20 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
         if(screen=="plot"){Panel(55,370,530,55);Text("Choose a 15 x 13 plot. A: confirm",70,385,ink);return;}
         if(screen=="saving")
         { Panel(115,181,410,132);Heading("Saving your town",142,199,ink);Text("Please keep the memory\ncard inserted.",142,245,ink,1.25f);return; }
+        if(screen=="save-quit"){
+            ui.FillRectangle(new RectF(0,0,640,480),new Color32(19,37,24,96));
+            Panel(99,130,442,212);
+            Heading("Save & Quit?",127,152,ink);
+            Text("Save your progress and return to the title screen.",127,190,ink,1.2f);
+            for(int i=0;i<2;i++){
+                float y=233+i*27;
+                string label=i==0?"Keep playing":"Save & Quit";
+                if(selected==i){Rounded(115,y,410,25,12,new Color32(221,231,188));Strong("> "+label,127,y,ink,1.2f);}
+                else Text("  "+label,127,y,ink,1.2f);
+            }
+            Text("A select   B back",127,314,ink,1);
+            return;
+        }
         if(screen=="world"){if(room==0&&runningMinimap.Visible)DrawMinimap();if(room==0&&renderDebug.ShowGroundMipBands)DrawGroundMipLegend(ink);return;}
         if((screen=="menu"&&menuTab==0)||screen=="sell"||screen=="item"){DrawBackpack();return;}
         Panel(45,75,550,350);string title=screen=="menu"?tabs[menuTab]:screen=="shop"?"Essentials / always in stock":screen=="store"?"Hearth's store":screen=="post"?"Town hall":screen=="mail"?"Mailbox":"Lost and Found";
@@ -1084,7 +1119,7 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
             screen=="menu"&&menuTab==TestingTab&&TestingOption(selected)==34?"A: toggle   Pink line marks the mip switch":
             screen=="menu"&&menuTab==TestingTab&&TestingOption(selected)==33?"A: toggle and save   B: close":"Stick / D-pad choose   L/R tabs   A select   B close",65,392,ink,1);
         if(screen=="menu"&&menuTab==SettingsTab){
-            Text("Manual saves only. Choose Save now to write the card.",65,331,ink,1);
+            Text("Manual saves only.",65,331,ink,1);
             Text(saveStatusText.Get(saveStatus),65,357,ink,1);
         }
         if(screen=="menu"&&menuTab==TestingTab)Text("Debug options "+(first+1)+"-"+Math.Min(total,first+page)+" / "+total,65,357,ink,1);
@@ -1101,7 +1136,7 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
         if(menuTab==2){int id=Catalog.EntryAt(i);return Catalog.Items[id].Name+(godMode?" / Free (instant)":state.Owned[id]==0?" (not owned)":" / "+UiFont.Money(Catalog.Items[id].Buy));}
         if(menuTab==3){string[] a={"Roof palette","Exterior palette","Fence style","Mailbox",godMode?"Relocate (free)":"Relocate ("+UiFont.Money(50000)+")","Expand house","Expand garden"};return a[i];}
         if(menuTab==TestingTab)return TestingLabel(i);
-        string[] settings={"Save now","Controls","About / build identity","Calendar","Chat settings","Debug / testing menu"};return settings[i];
+        string[] settings={"Save Now","Save & Quit","Controls","About / build identity","Calendar","Chat settings","Debug / testing menu"};return settings[i];
     }
     private static string ItemActionLabel(PocketAction action)=>action==PocketAction.Place?"Place":PocketMenu.Label(action);
     private float ItemActionWidth(int item,string title)

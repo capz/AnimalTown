@@ -1371,6 +1371,37 @@ def cliff_minimap():
 def save_menu():
     press('START');press('A')
 
+def save_and_quit():
+    import re
+    card=root/'MemoryCardA.USA.raw'
+    before,_=start_game(prefix='quit-initial')
+    title_marker='ANIMALTOWN TITLE READY'
+    title_count=runtime_log_text().count(title_marker)
+    press('D_DOWN')
+    original=card.read_bytes()
+    press('START');press('D_DOWN');press('A')
+    screenshot('quit-confirm.png')
+    press('A') # Keep playing is focused by default.
+    if runtime_log_text().count(title_marker)!=title_count or card.read_bytes()!=original:
+        raise AssertionError('Cancelling Save & Quit changed the card or left town')
+    press('A');press('B') # Reopen confirmation, then back out.
+    if card.read_bytes()!=original:raise AssertionError('Backing out of Save & Quit wrote to the card')
+    press('A');press('D_DOWN');press('A')
+    after=wait_saved_after(before)
+    deadline=time.monotonic()+180
+    while runtime_log_text().count(title_marker)<=title_count:
+        check_runtime_failure()
+        if time.monotonic()>=deadline:raise AssertionError('The saved session did not return to title')
+        time.sleep(1)
+    wait_title();screenshot('quit-title.png')
+    reloaded,_=start_game(prefix='quit-reload')
+    if reloaded!=after:raise AssertionError('Starting again did not preserve the committed save')
+    log=runtime_log_text()
+    if not re.search(r'SAVE TOTAL: [^\r\n]* / quit 1',log):
+        raise AssertionError('Missing verified Save & Quit timing')
+    (root/'save-and-quit.json').write_text(json.dumps({'before':before['sequence'],'saved':after['sequence'],
+        'cancel_untouched':True,'returned_to_title':True,'restarted_game':True},indent=2)+'\n')
+
 def committed_card_sequence(path, expected_day=None, details=False):
     """Read a complete generation from either redundant directory/BAT pair."""
     import struct
@@ -1502,8 +1533,8 @@ def testing_menu():
     if card_digest()!=before:raise AssertionError('Opening Settings wrote to the memory card')
     press('START');screenshot('testing-settings-no-save.png')
     # Enter through the visible Settings action, without a hidden shortcut.
-    for _ in range(5):press('D_DOWN')
-    label('testing-settings-debug-entry',5);press('A')
+    for _ in range(6):press('D_DOWN')
+    label('testing-settings-debug-entry',6);press('A')
     manual_only='--manual-save-only' in sys.argv
     previous=0
     # Skip the saved AA preference and cover the session snowfall control.
@@ -1901,10 +1932,10 @@ def settings_navigation():
     focus('settings-initial',0)
     stick(.1);focus('settings-stick-down',1)
     press('D_DOWN');focus('settings-dpad-down',2)
-    press('A');screenshot('settings-about.png');press('B');press('B');focus('settings-about-return',2)
-    press('D_UP');focus('settings-dpad-up',1)
-    press('A');screenshot('settings-controls.png');press('B');press('B');focus('settings-controls-return',1)
-    press('D_UP');press('D_UP');focus('settings-wrap',5)
+    press('D_DOWN');press('A');screenshot('settings-about.png');press('B');press('B');focus('settings-about-return',3)
+    press('D_UP');focus('settings-dpad-up',2)
+    press('A');screenshot('settings-controls.png');press('B');press('B');focus('settings-controls-return',2)
+    press('D_UP');press('D_UP');press('D_UP');focus('settings-wrap',6)
     press('R');focus('testing-entry',0)
     press('A');focus('testing-performance-on',0)
     press('A');focus('testing-performance-off',0)
@@ -2008,7 +2039,7 @@ with (root/'emulator.log').open('w') as log:
         if '--loading' in sys.argv:
             for n,seconds in enumerate((1,1,2,4,8,12,17)):
                 time.sleep(seconds);screenshot(f'loading-{n}.png')
-        elif any(flag in sys.argv for flag in ('--aram-residency','--title-logo','--terrain-materials','--save-cards','--daylight-clock')):wait_title()
+        elif any(flag in sys.argv for flag in ('--aram-residency','--title-logo','--terrain-materials','--save-cards','--save-and-quit','--daylight-clock')):wait_title()
         else:time.sleep(45)
         if p.poll() is not None:
             raise RuntimeError(f'Dolphin exited during boot ({p.returncode}); see {root / "emulator.log"}')
@@ -2016,6 +2047,7 @@ with (root/'emulator.log').open('w') as log:
         if any(flag in sys.argv for flag in ('--title-menu','--title-load','--title-config','--title-update','--title-options','--title-options-load','--title-options-unsupported')):wait_title()
         if '--daylight-clock' in sys.argv:daylight_clock()
         elif '--save-cards' in sys.argv:memory_cards()
+        elif '--save-and-quit' in sys.argv:save_and_quit()
         elif '--onboarding' in sys.argv:
             onboarding()
         elif '--debug-visibility' in sys.argv:debug_visibility_scenario()

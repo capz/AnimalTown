@@ -74,6 +74,16 @@ During the blocking in-game Save action, the renderer releases its rebuildable
 in ARAM. The card is closed before restoring that cache; visible views rebind
 on the next frame without rebuilding or regenerating the town.
 
+Start opens Settings, with **Save Now** and **Save & Quit**. Keep playing is
+focused when the quit confirmation opens. A successful Save & Quit closes the
+card and releases the town session before returning to the title. The terrain
+cache stays suspended during teardown. Save errors leave the player in the
+current session.
+
+The `SAVE TOTAL` diagnostic breaks down the blocking save action into
+preparation, mount, repository I/O, close and cache restore. A quit save is
+marked with `quit 1` and ends before session teardown.
+
 ## Validation
 
 The save suite covers exact no-ops, individual component edits, large edited
