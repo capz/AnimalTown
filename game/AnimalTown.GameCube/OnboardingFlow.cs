@@ -37,17 +37,33 @@ internal static class OnboardingFlow
     private static bool Review(TownSession session)
     {
         var state=session.State;using var view=new OnboardingUi(OnboardingUi.Review,state.Species);string error="";
+        bool daylightShortcut=!session.Loaded&&!session.Damaged;
         while(true){
-            view.DrawReview(state,error,false);RuntimeOptions.Wait();Controller.Update();var p=Controller.GetState(0);
+            view.DrawReview(state,error,false,daylightShortcut);RuntimeOptions.Wait();Controller.Update();var p=Controller.GetState(0);
+            if(daylightShortcut&&p.X.WasPressed){EditDaylight(view,state.Town);continue;}
             if(p.B.WasPressed){
                 int x=state.Town.HouseX,z=state.Town.HouseZ;session.Draft!.ClearHome();
                 state.X=x+3.5f;state.Z=z+6.5f;return false;
             }
             if(p.A.WasPressed){
-                if(SaveCards.Enabled)view.DrawReview(state,"",true);
+                if(SaveCards.Enabled)view.DrawReview(state,"",true,daylightShortcut);
                 if(session.SaveOnboarding())return true;
                 error=session.OnboardingSaveError;
             }
+        }
+    }
+    private static void EditDaylight(OnboardingUi view,Town town)
+    {
+        var menu=new DaylightLocationMenu();menu.Open(town.DaylightLocation);
+        var navigation=new MenuNavigation();var clock=new TownClock();long nextRead=Clock.Timestamp;
+        while(true){
+            long now=Clock.Timestamp;
+            if(now>=nextRead){clock.Update(NativeCalendar.ReadClock());nextRead=now+1000000;}
+            menu.Prepare(clock);view.DrawDaylightLocation(menu);
+            RuntimeOptions.Wait();Controller.Update();var p=Controller.GetState(0);
+            if(p.B.WasPressed)return;
+            menu.Move(navigation.Read(DaylightLocationMenu.Screen,0,p.Stick.X,p.Stick.Y,(int)p.PressedButtons,Clock.Timestamp,true));
+            if(p.A.WasPressed){town.DaylightLocation=menu.Location;return;}
         }
     }
     internal static bool Identity(TownSession session,bool lookFirst=false)

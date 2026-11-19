@@ -52,13 +52,26 @@ is 522,016 bytes in the host ABI, below 512 KiB, including local-light staging.
 The old separate 4 KiB GPU cloud mask/effect is removed. These are
 allocation measurements, not whole-game MEM1 or hardware frame-time measurements.
 
-Outdoor cloud cover and cast shadows follow the console clock. Using the existing
-lamp schedule, they fade in from 05:30 to 07:30 and fade out from 17:00 to 19:30.
-They are completely absent from 19:30 until sunrise at 05:30; lamps follow the
-inverse fade and reach full strength overnight. The shared shader scales shadow
+Outdoor cloud cover and cast shadows follow the console clock. The Classic
+schedule fades them in from 05:30 to 07:30 and out from 17:00 to 19:30. Lamps
+follow the inverse fade and reach full strength overnight. The shared shader scales shadow
 opacity, so cliffs, scenery and villagers fade together without changing their
 coverage or rebuilding every shadow page as the clock advances. Static ground
 light pools and dynamic model lights keep their existing rendering paths.
+
+**Start → Settings → Daylight location** chooses the schedule for the whole
+town. By location uses the selected city's coordinates and date-specific UTC
+offset while offline, so set the GameCube clock to that city's local time.
+The panel previews sunrise and sunset for the console date. Apply updates the
+current session and the normal Save actions keep the shared choice.
+
+The game samples a single local clock snapshot. It interpolates the solar terms
+at neighboring UTC midnights and updates tint, lamp strength and shadow opacity
+on minute changes. The lighting curve follows solar elevation through civil
+twilight and the apparent horizon, including at polar locations with no crossing.
+The game calendar still rolls over at 06:00 local. The city table is compiled from
+IANA tzdb 2026f for the console RTC's 2000–2099 range. Regenerate the table with
+`tools/generate-daylight-zones.py` and a compiled IANA zoneinfo directory.
 
 At full darkness, cloud coverage is removed once and wind stops dirtying the
 cloud field. Sunrise resumes the current wind position and season style beneath

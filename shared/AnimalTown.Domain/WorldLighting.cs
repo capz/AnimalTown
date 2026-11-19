@@ -1,14 +1,40 @@
 namespace AnimalTown;
 
-// Fixed clock keyframes; no textures, save fields, or per-frame allocations.
+public readonly struct OutdoorLighting
+{
+    public readonly int Tint,Sunlight,Lamps;
+    internal OutdoorLighting(int tint,int sunlight,int lamps){Tint=tint;Sunlight=sunlight;Lamps=lamps;}
+}
+
 public static class WorldLighting
 {
+    // Geometric elevation thresholds expressed as sines. See USNO rise/set
+    // definitions for the apparent horizon (-0.8333 degrees) and civil twilight.
+    internal const double HorizonSine=-.01454389765158;
+    private const double CivilTwilightSine=-.10452846326765,FullDaySine=.13917310096007;
+    private const int NightTint=0x596c91,DawnTint=0xffac71,DayTint=0xffffff;
     private static int Blend(int a,int b,float t)=>(int)(a+(b-a)*t+.5f);
+    private static int BlendTint(int a,int b,float t)=>Blend(a>>16,b>>16,t)<<16|Blend(a>>8&255,b>>8&255,t)<<8|Blend(a&255,b&255,t);
     private static int Between(int a,int b,int minute,int start,int end)
     {
         float t=(minute-start)/(float)(end-start);t=t*t*(3-2*t);
-        return Blend(a>>16,b>>16,t)<<16|Blend(a>>8&255,b>>8&255,t)<<8|Blend(a&255,b&255,t);
+        return BlendTint(a,b,t);
     }
+    private static float Fade(double height,double low,double high)
+    {
+        float t=(float)Math.Max(0,Math.Min(1,(height-low)/(high-low)));
+        return t*t*(3-2*t);
+    }
+    internal static OutdoorLighting FromSolarElevation(double height)
+    {
+        int tint=height<HorizonSine?BlendTint(NightTint,DawnTint,Fade(height,CivilTwilightSine,HorizonSine)):
+            BlendTint(DawnTint,DayTint,Fade(height,HorizonSine,FullDaySine));
+        int sunlight=Blend(0,255,Fade(height,HorizonSine,FullDaySine));
+        int lamps=Blend(255,0,Fade(height,CivilTwilightSine,FullDaySine));
+        return new OutdoorLighting(tint,sunlight,lamps);
+    }
+    internal static OutdoorLighting Classic(int minute)
+    {int lamps=Lamps(minute);return new OutdoorLighting(Tint(minute),255-lamps,lamps);}
     public static int Tint(int minute)
     {
         minute=(minute%1440+1440)%1440;

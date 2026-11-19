@@ -31,10 +31,15 @@ internal static class IncrementalSaveChecks
         d.Reset();s.Town.Residents[0].PosX+=.25f;s.Town.Residents[0].Dwell=99;repo.Save(s);Only(d,"AT-Residents",check);check(d.Files["AT-Town1"].SequenceEqual(terrain),"NPC wandering/timers do not dirty static town data");
         d.Reset();s.Town.Stock[0]=s.Town.Stock[0]==0?1:0;repo.Save(s);Only(d,"AT-Shops",check);
         d.Reset();s.Town.Tiles[0]=(byte)Terrain.Plaza;s.Town.NotifyTerrainChanged();repo.Save(s);Only(d,"AT-Town",check);Same(s,repo.Load()!,check,"terrain edits survive incremental reference reconstruction");
+        check(repo.Load()!.Town.DaylightLocation==0,"an old town starts with the Classic daylight schedule");
+        d.Reset();s.Town.DaylightLocation=1;repo.Save(s);Only(d,"AT-Town",check);
+        check(repo.Load()!.Town.DaylightLocation==1,"the location persists in the shared town card record");
+        check(SaveCodec.Decode(SaveCodec.Encode(s)).Town.DaylightLocation==1&&SplitSaveCodec.Decode(SplitSaveCodec.Encode(s)).Town.DaylightLocation==1,"combined and server snapshot codecs preserve the same location");
         d.Reset();s.Town.Residents[0].HomeX++;repo.Save(s);Only(d,"AT-Houses",check);
         // Reload/recreate the repository: tracking must not depend on a long-lived
         // in-memory dirty set, and inactive residents retain their own records.
         s=repo.Load()!;s.SelectProfile(1);s.Name="Milo";d.Reset();new SaveRepository(d).Save(s);Same(s,new SaveRepository(d).Load()!,check,"new profile and active selection round-trip without regenerating the town");
+        check(new SaveRepository(d).Load()!.Town.DaylightLocation==1,"switching residents keeps the shared daylight location");
         s.SelectProfile(0);d.Reset();new SaveRepository(d).Save(s);Only(d,"AT-Residents",check);
         var before=SaveCodec.Encode(s);var same=new SaveRepository(d).Load()!;d.Reset();new SaveRepository(d).Save(same);check(d.Names.Count==0,"a freshly loaded snapshot does not rewrite records");
         // A failed write at every real phase must leave a complete old/new
@@ -87,6 +92,8 @@ internal static class IncrementalSaveChecks
         var stale=baseDisk.Copy();var fresh=new SaveRepository(stale).Load()!;fresh.Wallet++;new SaveRepository(stale).Save(fresh);stale.Reset();
         check(Fails(()=>new SaveRepository(stale).Save(SaveCodec.Decode(before)))&&stale.Names.Count==0,"an older different snapshot cannot overwrite a newer save");
         check(new SaveRepository(new Disk()).Load()==null,"empty card does not invent a save");
+        var classic=new SaveRepository(d).Load()!;classic.Town.DaylightLocation=0;d.Reset();new SaveRepository(d).Save(classic);Only(d,"AT-Town",check);
+        check(new SaveRepository(d).Load()!.Town.DaylightLocation==0,"switching back to Classic is saved and reloaded");
         Console.WriteLine("Incremental saves: exact component writes/no-op, static town vs NPC runtime, mirrored references, corruption, power cuts, retries and migration passed");
     }
     private static int ReferenceBank(Disk d,int sequence,int part)
