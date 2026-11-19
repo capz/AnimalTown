@@ -9,6 +9,11 @@ current main numeric version plus `+<12-character feature-head hash>`. Preserve
 the same source/main snapshot for console, backend and release packaging.
 Conventional PR titles remain useful descriptions but never determine versions.
 
+After implementing a user request, append a `requestSummaries` entry to
+`version.json` with a unique ID and exactly four lines. Use the first line
+for the short player-facing change. The release combines the first lines of
+that version's new entries into the updater summary.
+
 Publish build artifacts in GitHub Releases, not only as local output paths or
 temporary Actions artifacts. Use `tools/publish-release.ps1` after clean game and
 backend builds of the same commit. The main-branch release workflow does this

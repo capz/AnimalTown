@@ -74,6 +74,21 @@ All new merges use the minor policy, including fixes and documentation. Major
 changes remain explicit. Historical configurations without `increment` keep
 their original patch-counting behavior, so older builds remain reproducible.
 
+## Release summaries
+
+Append one entry to `requestSummaries` in `version.json` for each implemented
+request. Give it a unique lowercase ID and four printable text lines. Make the
+first line a player-facing sentence of up to 96 characters. The other three
+lines can describe behavior, scope, or compatibility in up to 140 characters each.
+
+For a branch build, the publisher includes IDs that aren't in its pinned main
+snapshot. A main release compares the current and previous merged PR boundaries.
+`out/version.json` keeps the four-line entries for the resulting version and the
+combined `summary`. The publisher places that single paragraph under **What's new**
+in the GitHub release notes. It fits within 220 characters. Longer collections
+name the remaining count, and all their details are available in the Depot ZIP's
+`release/version.json`. Historical versions without new entries omit the section.
+
 ## Main snapshots and local builds
 
 The exact source and main commits are recorded separately in `out/version.json`.

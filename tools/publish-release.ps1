@@ -36,13 +36,39 @@ function Assert-ReleaseAssetSet($Release,[string[]]$Names,[switch]$AllowMissingU
 function Assert-ReleaseVersionMetadata($Identity,[string]$Path){
     $saved=Get-Content -LiteralPath $Path -Raw | ConvertFrom-Json
     foreach($property in $Identity.PSObject.Properties){
-        if($property.Name -ne 'changes' -and $saved.($property.Name) -cne $property.Value){throw "Built version metadata differs: $($property.Name)"}
+        if($property.Name -notin @('changes','requestSummaries') -and $saved.($property.Name) -cne $property.Value){throw "Built version metadata differs: $($property.Name)"}
     }
     if(@($saved.changes).Count -ne @($Identity.changes).Count){throw 'Built version merge history differs'}
     for($i=0;$i -lt @($Identity.changes).Count;$i++){
         if($saved.changes[$i].number -ne $Identity.changes[$i].number -or $saved.changes[$i].commit -cne $Identity.changes[$i].commit){throw 'Built version integration boundary differs'}
     }
+    if($null -ne $Identity.requestSummaries){
+        if($saved.requestSummaries -isnot [array] -or $saved.requestSummaries.Count -ne $Identity.requestSummaries.Count){
+            throw 'Built version request summaries differ'
+        }
+        for($i=0;$i -lt $Identity.requestSummaries.Count;$i++){
+            $source=$Identity.requestSummaries[$i];$built=$saved.requestSummaries[$i]
+            if($built.id -cne $source.id -or $built.lines -isnot [array] -or $built.lines.Count -ne 4){throw 'Built version request summary differs'}
+            for($line=0;$line -lt 4;$line++){
+                if($built.lines[$line] -cne $source.lines[$line]){throw 'Built version request summary differs'}
+            }
+        }
+    }
     # Preserve the exact bytes already embedded in the ISO and app ZIP.
+}
+function Get-ReleaseNotes($Identity){
+    $summarySection=if($Identity.summary){"## What's new`n`n$($Identity.summary)`n`n"}else{''}
+    $notes=@"
+AnimalTown $($Identity.version) from $($Identity.commit).
+
+${summarySection}Downloads: NKit ISO for GC Loader; Depot ZIP for the standalone SD app; separate server and offline tools ZIPs. Reports, checksums, banners and available captures are inside the Depot ZIP's release/ directory.
+
+update.json provides the compact release feed for older installed updaters. The current ISO updater also reads bounded GitHub release metadata. Saves remain compatible.
+
+Source and authoring kits are excluded from release archives. Clone the repository for source. Physical GameCube qualification remains outstanding.
+"@
+    if([Text.Encoding]::UTF8.GetByteCount($notes) -gt 1024){throw 'Release notes exceed updater metadata budget'}
+    return $notes
 }
 function Get-ReleaseBannerHashes([string]$Opening,[string]$Pal,[object]$NKitInfo,[string]$Version){
     $openingBytes=[IO.File]::ReadAllBytes($Opening)
@@ -206,18 +232,8 @@ $updateFeed=Join-Path $reports 'update.json'
 Write-UpdateFeed -Iso $nkit -Version $version -Repository $Repository -Destination $updateFeed
 # Keep GitHub's full release response within the updater's 32 KiB budget.
 # Detailed reports and optional emulator captures live in the Depot ZIP.
-$notes=@"
-AnimalTown $version from $commit.
-
-Downloads: NKit ISO for GC Loader; Depot ZIP for the standalone SD app; separate server and offline tools ZIPs. Reports, checksums, banners and available captures are inside the Depot ZIP's release/ directory.
-
-update.json provides the compact release feed for older installed updaters. The current ISO updater also reads bounded GitHub release metadata. Saves remain compatible.
-
-Source and authoring kits are excluded from release archives. Clone the repository for source. Physical GameCube qualification remains outstanding.
-"@
-if([Text.Encoding]::UTF8.GetByteCount($notes) -gt 1024){throw 'Release notes exceed updater metadata budget'}
 $notesPath=Join-Path $reports 'release-notes.md'
-[IO.File]::WriteAllText($notesPath,$notes)
+[IO.File]::WriteAllText($notesPath,(Get-ReleaseNotes $identity))
 # The containing Depot ZIP cannot hash itself. GitHub's asset digest covers it.
 $checksumFiles=@($nkit,$serverZip,$toolsZip)+@(Get-ChildItem -LiteralPath $reports -File | ForEach-Object FullName)
 $checksums=foreach($file in $checksumFiles){"$((Get-FileHash -LiteralPath $file -Algorithm SHA256).Hash.ToLowerInvariant())  $([IO.Path]::GetFileName($file))"}

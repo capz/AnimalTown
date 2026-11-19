@@ -170,7 +170,56 @@ $config.minor=[int]::MaxValue;Config
 Reject {Version} 'Minor overflow is rejected'
 $config.minor=11;$config.increment='unknown';Config
 Reject {Version} 'Unsupported increment policies fail closed'
-Write-Host "Versioning checks passed ($checks cases)."
+
+# Two user requests in one PR make one release paragraph. Notes already on
+# main keep their original version, even if a stale branch still carries them.
+$null=FixtureGit @('restore','--','version.json')
+$null=FixtureGit @('switch','-c','notes-main',$nextMerge)
+$old=Version 'main' 'notes-main'
+Assert ($old.summary -ceq '' -and $old.requestSummaries.Count -eq 0) 'Old versions load with no summary'
+function RequestNote([string]$id,[string]$first){
+    [pscustomobject]@{id=$id;lines=@($first,'Scope of the change.','Behavior for players.','Compatibility detail.')}
+}
+$null=FixtureGit @('switch','-c','notes-feature')
+$notesConfig=Get-Content (Join-Path $repo 'version.json') -Raw|ConvertFrom-Json -AsHashtable
+$first=RequestNote 'sun-position' 'See local sunrise and sunset.'
+$second=RequestNote 'forest-leaves' 'Kick up leaves while walking'
+$notesConfig.requestSummaries=@($first,$second)
+function Commit-Requests {
+    [IO.File]::WriteAllText((Join-Path $repo 'version.json'),($notesConfig|ConvertTo-Json -Depth 5)+"`n")
+    $null=FixtureGit @('add','version.json');Commit 'Record request notes'
+}
+Commit-Requests
+$preview=Version 'branch' 'notes-main'
+Assert ($preview.baseVersion -ceq $old.version -and $preview.requestSummaries.Count -eq 2 -and $preview.summary -ceq 'See local sunrise and sunset. Kick up leaves while walking.') 'Branch release combines each new request without changing its counter'
+Assert ($preview.requestSummaries[0].lines.Count -eq 4 -and $preview.requestSummaries[1].lines.Count -eq 4) 'Generated metadata retains the four source lines for each request'
+$null=FixtureGit @('switch','notes-main')
+$null=FixtureGit @('-c','commit.gpgsign=false','merge','--no-ff','notes-feature','-m','Integrate two requests')
+$introduced=FixtureGit @('rev-parse','HEAD');$merges+=@{number=108;mergeCommit=$introduced}
+$published=Version 'main' 'notes-main'
+Assert ($published.version -ceq '0.14.0' -and $published.summary -ceq $preview.summary) 'The merged version carries the same summary'
+$null=FixtureGit @('switch','notes-feature')
+Assert ((Version 'branch' 'notes-main').summary -ceq '') 'A branch does not repeat summaries already integrated on main'
+$null=FixtureGit @('switch','notes-main')
+$notesConfig.requestSummaries+=@(RequestNote 'save-quit' 'Save and return to the title screen.')
+Commit-Requests
+$following=FixtureGit @('rev-parse','HEAD');$merges+=@{number=109;mergeCommit=$following}
+$published=Version 'main' 'notes-main'
+Assert ($published.version -ceq '0.15.0' -and $published.requestSummaries.Count -eq 1 -and $published.summary -ceq 'Save and return to the title screen.') 'Each numbered release includes only its own requests'
+$many=@(1..4|ForEach-Object {RequestNote "long-$_" (('A'*88)+'.')})
+$short=Get-ReleaseSummary $many
+Assert ($short.Length -le 220 -and $short.EndsWith('Plus 2 other changes.') -and $many.Count -eq 4) 'Long collections keep complete sentences and record the omitted count'
+$null=FixtureGit @('switch','-c','bad-request-notes')
+$notesConfig.requestSummaries=@([pscustomobject]@{id='incomplete';lines=@('Only one line.')})
+Commit-Requests
+Reject {Version 'branch' 'notes-main'} 'Every request needs exactly four source lines'
+$notesConfig.requestSummaries=@($first,$first)
+Commit-Requests
+Reject {Version 'branch' 'notes-main'} 'A summary ID cannot be repeated'
+$notesConfig.requestSummaries=@(RequestNote 'bad-line' "First line`nSecond line.")
+Commit-Requests
+Reject {Version 'branch' 'notes-main'} 'Control characters cannot reach the updater summary'
+
 . (Join-Path $PSScriptRoot '../tools/update-feed.ps1')
 foreach($number in @('0.12.0','0.12.0+abcdef123456')){
     $iso=Join-Path $repo "AnimalTown-$number.nkit.iso";$feed=Join-Path $repo 'update.json'
@@ -182,3 +231,4 @@ foreach($number in @('0.12.0','0.12.0+abcdef123456')){
     Assert ((Get-Item $feed).Length -lt 2048 -and $manifest.assets[0].browser_download_url.Contains([Uri]::EscapeDataString("v$number"))) 'Feed stays bounded and encodes review identities'
 }
 Reject {Write-UpdateFeed $iso '0.12.0' 'capz/AnimalTown' $feed} 'Feed rejects version/basename disagreement'
+Write-Host "Versioning checks passed ($checks cases)."

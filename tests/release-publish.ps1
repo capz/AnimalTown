@@ -2,7 +2,7 @@ $ErrorActionPreference='Stop'
 $tokens=$null;$errors=$null
 $ast=[Management.Automation.Language.Parser]::ParseFile((Join-Path $PSScriptRoot '../tools/publish-release.ps1'),[ref]$tokens,[ref]$errors)
 if($errors){throw 'Publisher syntax is invalid'}
-foreach($name in @('InvokeGh','Read-ReleaseMetadata','Assert-BinaryArchive','Assert-ReleaseVersionMetadata','Assert-ReleaseAsset','Assert-ReleaseAssetSet','Copy-DaylightEvidence')){
+foreach($name in @('InvokeGh','Read-ReleaseMetadata','Assert-BinaryArchive','Assert-ReleaseVersionMetadata','Assert-ReleaseAsset','Assert-ReleaseAssetSet','Copy-DaylightEvidence','Get-ReleaseNotes')){
     $function=$ast.Find({param($node) $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq $name},$true)
     . ([scriptblock]::Create($function.Extent.Text))
 }
@@ -59,6 +59,18 @@ try{
     $changed=$saved.Clone();$changed.changes=@(@{number=113;commit=('d'*40)})
     [IO.File]::WriteAllText($versionPath,($changed | ConvertTo-Json -Depth 5))
     Reject {Assert-ReleaseVersionMetadata $identity $versionPath} 'Changed integration history must fail'
+    $identity|Add-Member -NotePropertyName summary -NotePropertyValue 'See the latest changes.'
+    $identity|Add-Member -NotePropertyName requestSummaries -NotePropertyValue @([pscustomobject]@{id='latest';lines=@($identity.summary,'First detail.','Second detail.','Third detail.')})
+    $saved.summary=$identity.summary;$saved.requestSummaries=@([ordered]@{lines=$identity.requestSummaries[0].lines;id='latest'})
+    [IO.File]::WriteAllText($versionPath,($saved | ConvertTo-Json -Depth 5))
+    Assert-ReleaseVersionMetadata $identity $versionPath
+    $saved.requestSummaries[0].lines=@($identity.summary,'Different detail.','Second detail.','Third detail.')
+    [IO.File]::WriteAllText($versionPath,($saved | ConvertTo-Json -Depth 5))
+    Reject {Assert-ReleaseVersionMetadata $identity $versionPath} 'Changed request details must fail publication'
+    $notes=Get-ReleaseNotes $identity
+    Assert ($notes.Contains("## What's new`n`nSee the latest changes.`n`n") -and [Text.Encoding]::UTF8.GetByteCount($notes) -le 1024) 'Release notes carry the bounded updater section'
+    $identity.summary=''
+    Assert (!(Get-ReleaseNotes $identity).Contains("## What's new")) 'Older identities omit an empty updater section'
     foreach($name in @('program.dll','source.cs','provision.py','model.glb','source.tar.gz','source.zip')){
         $zip=Join-Path $directory 'fixture.zip'
         $archive=[IO.Compression.ZipFile]::Open($zip,[IO.Compression.ZipArchiveMode]::Create)
@@ -86,4 +98,4 @@ try{
     @{passed=$true;requested_clock='12:00'}|ConvertTo-Json|Set-Content (Join-Path $capture 'night/daylight-report.json')
     Reject {Copy-DaylightEvidence $capture $reports ('a'*40) '1.2.3' 'v1.2.3' 'AnimalTown-1.2.3.nkit.iso' ('b'*64)} 'A mislabeled phase must not ship'
 }finally{Remove-Item -LiteralPath $directory -Recurse -Force}
-Write-Host "$checks release publisher checks passed: compact-feed asset policy, frozen build identity, draft lookup, response budget and source exclusion"
+Write-Host "$checks release publisher checks passed: compact-feed asset policy, frozen build identity, summaries, draft lookup, response budget and source exclusion"
