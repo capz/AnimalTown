@@ -10,10 +10,11 @@ effect year-round in a console build.
 
 The renderer draws the textured floor and then reuses the indexed grass
 mesh for the white layer. Tile entries use the same movement path as road
-traffic. On the first visit the snow dents, the second exposes its center,
-and the third clears the tile up to the shaded rim. Standing and movement
-within a tile add no visits. The wear lasts for the town session and resets
-when the season leaves winter.
+traffic. The first visit makes a small dent and the second widens it while
+keeping the surface white. The third visit exposes a small patch of ground
+at the center, the fourth widens the opening, and the fifth clears the tile
+up to its shaded rim. Standing and movement within a tile add no visits.
+The wear lasts for the town session and resets when the season leaves winter.
 
 The depth field is a demand-allocated I8 texture with four texels per
 metre, independent of the shadow page cache. A tile entry updates its GX
@@ -102,6 +103,6 @@ checks the individual wear levels, sparse uploads and every cell in a
 fully travelled 128×120 town. The 512×512 I8 field accounts for 256 KiB
 when active. The ordinary shadow cache uses 522,016 bytes. Together they
 charge 784,160 bytes to the native allocator. The field is released on a
-season change or session teardown. A static 3,840-byte snapshot and a
-managed 3,840-byte wear array store the packed visits. Full-game frame
+season change or session teardown. A static 7,680-byte snapshot and a
+managed 7,680-byte wear array store the packed visits. Full-game frame
 timings have not been measured.

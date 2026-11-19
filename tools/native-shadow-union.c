@@ -25,14 +25,11 @@ int animaltown_shadows_snow(DndArray *visits,int revision,int winter){
     const uint8_t *next=(const uint8_t*)visits->data;
     uint64_t dirty[SU_SNOW_HEIGHT+1]={0};
     int changed=0;
-    for(int z=0;z<SU_SNOW_HEIGHT;z++)for(int group=0;group<SU_WORLD_WIDTH/4;group++){
-        int at=z*(SU_WORLD_WIDTH/4)+group;
+    for(int z=0;z<SU_SNOW_HEIGHT;z++)for(int x=0;x<SU_SNOW_BLOCKS;x++){
+        int at=z*SU_SNOW_BLOCKS+x;
         if(snow_visits[at]==next[at])continue;
-        /* A compressed tile can shade pixels across its boundary. Mark the
-         * changed two-block group plus the bordering GX blocks. */
-        uint64_t blocks=UINT64_C(3)<<(group*2);
-        if(group>0)blocks|=UINT64_C(1)<<(group*2-1);
-        if(group+1<SU_WORLD_WIDTH/4)blocks|=UINT64_C(1)<<(group*2+2);
+        /* Each packed byte maps to one block. Include neighbors for the rim. */
+        uint64_t block=UINT64_C(1)<<x,blocks=block|(block<<1)|(block>>1);
         dirty[z]|=blocks;dirty[z+1]|=blocks;
         if(z>0)dirty[z-1]|=blocks;
         changed=1;
