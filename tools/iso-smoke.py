@@ -8,6 +8,9 @@ or independent console/dev configuration writes.
 
 --terrain-materials creates a disposable town and checks actual GX mip-band
 sampling plus animated/frozen water captures. Its debug changes are session-only.
+
+--daylight-location uses an empty card to verify the first-town shortcut,
+local lighting, explicit saves and the shared location after a title reload.
 """
 import os
 import atexit
@@ -210,6 +213,55 @@ def start_game(new_town=False,prefix='start'):
     if new_town or not before or not before['profiles'][active]['created']:
         return finish_onboarding(prefix,before)
     return before,wait_onboarding('world',prefix+'-game.png')
+
+def daylight_location():
+    import re
+    card=root/'MemoryCardA.USA.raw'
+    if committed_card_sequence(card):raise AssertionError('Daylight location needs a fresh card')
+
+    def panel(name,selected):
+        deadline=time.monotonic()+60
+        y=165+selected*35
+        while time.monotonic()<deadline:
+            check_runtime_failure()
+            screenshot(name);pixels=rgb(name)
+            if region_color_count(pixels,(221,231,188),130,y+3,510,y+24)>1500:return
+            time.sleep(.5)
+        raise AssertionError('Daylight location did not show the requested focus: '+name)
+
+    def next_city():
+        press('D_DOWN');press('D_DOWN');press('D_RIGHT')
+
+    def open_settings():
+        press('START');press('D_UP');press('A')
+
+    wait_title();press('A');wait_profiles('daylight-picker.png');press('A')
+    wait_onboarding('name');press('A');press('START')
+    wait_onboarding('look');press('A');wait_onboarding('home');press('A')
+    wait_onboarding('review','daylight-review-shortcut.png');original=card_digest()
+    press('X');panel('daylight-classic.png',0);press('D_RIGHT')
+    press('D_DOWN');press('D_DOWN');panel('daylight-first-town.png',2)
+    press('A');wait_onboarding('review')
+    if card_digest()!=original:raise AssertionError('Applying a daylight location wrote the card')
+    press('A');first=wait_saved_after(None);wait_onboarding('world','daylight-town-dusk.png')
+    if first['daylight_location']!=1:raise AssertionError('Save & begin did not retain Amsterdam')
+    matches=re.findall(r'ANIMALTOWN DAYLIGHT minute (\d+) shadow (\d+) cloud (\d+) lamp (\d+)',runtime_log_text())
+    if not matches or tuple(map(int,matches[-1][1:]))!=(0,0,255):
+        raise AssertionError('Amsterdam night did not reach the native daylight gains')
+
+    original=card_digest();open_settings();panel('daylight-in-settings.png',0)
+    next_city();panel('daylight-london-preview.png',2);press('B')
+    press('A');panel('daylight-after-cancel.png',0)
+    next_city();press('A')
+    if card_digest()!=original:raise AssertionError('Editing the location bypassed the normal save actions')
+    press('START');press('D_DOWN');press('A');press('D_DOWN');press('A')
+    after=wait_saved_after(first)
+    if after['daylight_location']!=2:raise AssertionError('Save & Quit did not retain London')
+    reloaded,_=start_game(prefix='daylight-reload')
+    if reloaded!=after:raise AssertionError('Location reload changed the committed town')
+    open_settings();press('D_DOWN');press('D_DOWN');panel('daylight-reloaded-city.png',2)
+    (root/'daylight-location.json').write_text(json.dumps({'first_city':'Amsterdam','reloaded_city':'London',
+        'preview_date':'2026-11-19','applied_without_writes':True,'native_shadows':0,'native_lamps':255},indent=2)+'\n')
 
 def daylight_clock():
     """Check the real clock-to-native-lighting bridge and retain two outdoor frames."""
@@ -1021,7 +1073,7 @@ def debug_visibility_scenario(reload=False):
                     for y in range(131+i*24,151+i*24) for x in range(100,540,4)) for i in range(9)]
         if max(scores)<100 or scores.index(max(scores))!=expected:raise AssertionError(name+' selected a hidden or unexpected menu row')
     press('START')
-    for _ in range(5):press('D_DOWN')
+    for _ in range(7):press('D_DOWN')
     focus('debug-hidden-settings-wrap',0)
     press('R');screenshot('debug-hidden-tab-wrap-backpack.png');press('L');focus('debug-hidden-backpack-wrap-settings',0)
     set_debug_visibility(True);press('R');focus('debug-enabled-game-menu',0)
@@ -1434,7 +1486,7 @@ def committed_card_sequence(path, expected_day=None, details=False):
         if len(payload)<32:raise ValueError('Short save record')
         magic,version,catalog,actual,sequence,seed,length=struct.unpack_from('<7I',payload)
         crc=struct.unpack_from('<I',payload,len(payload)-4)[0]
-        if magic!=0x50535441 or version not in (1,2,3,4,5,6,7) or actual!=kind or length!=len(payload) or zlib.crc32(payload[:-4])!=crc:
+        if magic!=0x50535441 or version not in (1,2,3,4,5,6,7,8) or (version==8 and kind!=0) or actual!=kind or length!=len(payload) or zlib.crc32(payload[:-4])!=crc:
             raise ValueError('Invalid save record')
         return version,catalog,sequence,seed,crc
     best=0;best_day=None;best_details=None
@@ -1483,7 +1535,7 @@ def committed_card_sequence(path, expected_day=None, details=False):
                                     name=base+str(candidate)
                                     try:
                                         part=files[name];pi=record(part,kind)
-                                        if pi[0] not in ((4,6,7) if i==0 else (4,)) or pi[1:4]!=(identity[1],sequence,identity[3]) or len(part)!=length or pi[4]!=crc:continue
+                                        if pi[0] not in ((4,6,7,8) if i==0 else (4,)) or pi[1:4]!=(identity[1],sequence,identity[3]) or len(part)!=length or pi[4]!=crc:continue
                                         selected=name;break
                                     except (KeyError,ValueError,struct.error):continue
                                 if selected is None:raise ValueError('Missing exact referenced revision')
@@ -1495,7 +1547,7 @@ def committed_card_sequence(path, expected_day=None, details=False):
                             for kind,name in enumerate(names):
                                 part=files[name];part_identity=record(part,kind if kind<4 else kind+1)
                                 expected_length,expected_crc=struct.unpack_from('<II',commit,28+kind*8)
-                                if part_identity[0] not in ((4,6,7) if kind==0 else (identity[0],)) or part_identity[1:4]!=identity[1:4] or len(part)!=expected_length or part_identity[4]!=expected_crc:
+                                if part_identity[0] not in ((4,6,7,8) if kind==0 else (identity[0],)) or part_identity[1:4]!=identity[1:4] or len(part)!=expected_length or part_identity[4]!=expected_crc:
                                     raise ValueError('Mixed save generation')
                         if identity[2]>best:
                             best=identity[2];town=files[names[0]];best_day=struct.unpack_from('<i',town,40)[0]
@@ -1516,6 +1568,7 @@ def committed_card_sequence(path, expected_day=None, details=False):
                                 plots=[dict(zip(('placed','x','z'),struct.unpack_from('<3i',files[names[1]],28+i*12))) for i in range(4)]
                                 profile_hashes=[__import__('hashlib').sha256(files[name][28:-4]).hexdigest() for name in names[3:]]
                                 best_details={'sequence':best,'dimensions':list(struct.unpack_from('<2I',town,28)),'active':active,'profiles':profiles,'profile_payload_sha256':profile_hashes,'plots':plots,'terrain_sha256':terrain_hash,'houses_sha256':__import__('hashlib').sha256(files[names[1]][28:-4]).hexdigest()}
+                                best_details['daylight_location']=struct.unpack_from('<I',town,len(town)-8)[0] if struct.unpack_from('<I',town,4)[0]==8 else 0
                                 if runtime is not None:best_details['npc_spaces']=[struct.unpack_from('<i',runtime,128+i*28)[0] for i in range(6)]
                                 shop=files[names[2]]
                                 if len(shop)==708 and struct.unpack_from('<I',shop,84)[0]==154:
@@ -1553,8 +1606,8 @@ def testing_menu():
     if card_digest()!=before:raise AssertionError('Opening Settings wrote to the memory card')
     press('START');screenshot('testing-settings-no-save.png')
     # Enter through the visible Settings action, without a hidden shortcut.
-    for _ in range(6):press('D_DOWN')
-    label('testing-settings-debug-entry',6);press('A')
+    for _ in range(7):press('D_DOWN')
+    label('testing-settings-debug-entry',7);press('A')
     manual_only='--manual-save-only' in sys.argv
     previous=0
     # Skip the saved AA preference and cover the session snowfall control.
@@ -1955,7 +2008,7 @@ def settings_navigation():
     press('D_DOWN');press('A');screenshot('settings-about.png');press('B');press('B');focus('settings-about-return',3)
     press('D_UP');focus('settings-dpad-up',2)
     press('A');screenshot('settings-controls.png');press('B');press('B');focus('settings-controls-return',2)
-    press('D_UP');press('D_UP');press('D_UP');focus('settings-wrap',6)
+    press('D_UP');press('D_UP');press('D_UP');focus('settings-wrap',7)
     press('R');focus('testing-entry',0)
     press('A');focus('testing-performance-on',0)
     press('A');focus('testing-performance-off',0)
@@ -2016,11 +2069,15 @@ if '--season' in sys.argv:
 if '--dsp-hle' in sys.argv:
     config=user/'Config'/'Dolphin.ini'
     config.write_text(config.read_text().replace('DSPHLE = False','DSPHLE = True'))
-if '--daylight-clock' in sys.argv:
+if '--daylight-location' in sys.argv or '--daylight-clock' in sys.argv:
     import re
-    value=sys.argv[sys.argv.index('--daylight-clock')+1]
-    if value not in ('06:30','12:00','18:00','20:00'):raise ValueError('Unsupported daylight capture clock')
-    hour,minute=map(int,value.split(':'));rtc=int(datetime(2027,4,15,hour,minute,tzinfo=timezone.utc).timestamp())
+    if '--daylight-location' in sys.argv:
+        when=datetime(2026,11,19,17,30,tzinfo=timezone.utc)
+    else:
+        value=sys.argv[sys.argv.index('--daylight-clock')+1]
+        if value not in ('06:30','12:00','18:00','20:00'):raise ValueError('Unsupported daylight capture clock')
+        hour,minute=map(int,value.split(':'));when=datetime(2027,4,15,hour,minute,tzinfo=timezone.utc)
+    rtc=int(when.timestamp())
     config=user/'Config'/'Dolphin.ini';text=config.read_text()
     text=re.sub(r'^(EnableCustomRTC|CustomRTCValue) = .*\n','',text,flags=re.MULTILINE)
     config.write_text(text.replace('SkipIPL = True\n',f'SkipIPL = True\nEnableCustomRTC = True\nCustomRTCValue = {rtc}\n'))
@@ -2059,13 +2116,14 @@ with (root/'emulator.log').open('w') as log:
         if '--loading' in sys.argv:
             for n,seconds in enumerate((1,1,2,4,8,12,17)):
                 time.sleep(seconds);screenshot(f'loading-{n}.png')
-        elif any(flag in sys.argv for flag in ('--aram-residency','--title-logo','--terrain-materials','--save-cards','--save-and-quit','--daylight-clock')):wait_title()
+        elif any(flag in sys.argv for flag in ('--aram-residency','--title-logo','--terrain-materials','--save-cards','--save-and-quit','--daylight-clock','--daylight-location')):wait_title()
         else:time.sleep(45)
         if p.poll() is not None:
             raise RuntimeError(f'Dolphin exited during boot ({p.returncode}); see {root / "emulator.log"}')
         screenshot('screen.png')
         if any(flag in sys.argv for flag in ('--title-menu','--title-load','--title-config','--title-update','--title-options','--title-options-load','--title-options-unsupported')):wait_title()
-        if '--daylight-clock' in sys.argv:daylight_clock()
+        if '--daylight-location' in sys.argv:daylight_location()
+        elif '--daylight-clock' in sys.argv:daylight_clock()
         elif '--save-cards' in sys.argv:memory_cards()
         elif '--save-and-quit' in sys.argv:save_and_quit()
         elif '--onboarding' in sys.argv:
