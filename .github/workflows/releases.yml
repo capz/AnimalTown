@@ -138,8 +138,9 @@ jobs:
           plan=json.loads(Path('out/validation-plan.json').read_text())
           relevant=re.compile(r'^(assets/textures/branding/|game/AnimalTown.GameCube/(TitleScreen|TitleArt|ProfilePickerUi|OnboardingUi|TextureCache|ModelResources)\.cs$|shared/AnimalTown.Domain/(TexturePixels|TextureResolution)\.cs$|tools/AnimalTown.Tools/(Brand[^/]*|DiscBannerFile|TextureAudit)\.cs$|tools/(iso-smoke\.py|dolphin_pad\.py|publish-release\.ps1)$|build/Dockerfile\.dolphin$|\.github/workflows/releases\.yml$)')
           needed=any(relevant.search(path) for path in plan['paths']) or (plan['full'] and not plan['paths'])
+          save_quit='game/AnimalTown.GameCube/Program.cs' in plan['paths']
           with open(os.environ['GITHUB_OUTPUT'],'a') as output:
-              output.write(f'needed={str(needed).lower()}\n')
+              output.write(f'needed={str(needed or save_quit).lower()}\nsave_quit={str(save_quit).lower()}\n')
           PY
       - name: Capture and verify title branding in Dolphin
         if: steps.title_logo.outputs.needed == 'true'
@@ -175,6 +176,28 @@ jobs:
             out/title-logo/*.log
             out/title-logo/*.txt
             out/title-logo/user/Logs/
+          if-no-files-found: warn
+      - name: Verify Save & Quit and reloading the town in Dolphin
+        if: steps.title_logo.outputs.save_quit == 'true'
+        timeout-minutes: 12
+        env:
+          BUILD_VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          mkdir -p out/save-and-quit
+          docker run --rm --init --shm-size=512m --user "$(id -u):$(id -g)" \
+            --mount "type=bind,src=$PWD,dst=/work" -w /work \
+            animaltown-title-capture python3 tools/iso-smoke.py \
+            "out/AnimalTown-$BUILD_VERSION.nkit.iso" out/save-and-quit --save-and-quit
+      - name: Keep Save & Quit diagnostics
+        if: always() && steps.title_logo.outputs.save_quit == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: save-and-quit-${{ steps.version.outputs.commit }}
+          path: |
+            out/save-and-quit/*.json
+            out/save-and-quit/*.png
+            out/save-and-quit/*.log
+            out/save-and-quit/user/Logs/
           if-no-files-found: warn
       - name: Select terrain-material capture
         id: terrain_materials
