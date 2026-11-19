@@ -21,79 +21,40 @@ console preferences. Then open **START → Settings → Debug / testing**. The l
   dialogue or journeys. A shared depth-tested 3D billboard lets scenery hide it.
   Anchors are derived once from each rig's node heights; indoor camera rotation,
   doorway positions, viewport/horizon culling and opaque fades are respected.
-- **Rim intensity:** 0–200%, initially 100% (the previous shader strength).
-  Left/right adjust by 5%; A increases and X resets to 100%. L/R still change
-  tabs. The existing Actor rim lighting switch remains a separate enable control.
-  At 0% the extra rim TEV stage and normal texture generation are disabled.
-- **SDK performance overlay:** Off by default. Toggles the built-in
-  `Dolphin.Diagnostics.DebugOverlay.PerformanceVisible` panel used by SDK examples,
-  with live FPS/frame time, triangles, main/ARAM memory and available network
-  diagnostics. It is independent from the existing Performance display option
-  used for AnimalTown frame-capture telemetry. The native panel occupies the
-  bottom-left corner; hide it when recording the encoded frame-capture bars.
-- **Ground mipmaps:** On by default. Uses trilinear filtering and a complete
-  chain down to 4 pixels per shorter axis (256/128/64/32/16/8/4 for the shared
-  outdoor texture). Off samples the original base level for comparison.
-- **Ground mip distance:** Auto by default; Left/Right select Auto or 1–10
-  individual one-metre ground squares, A increases, and X restores Auto. The
-  number calibrates the first half-size mip at that many squares ahead of the
-  player along the centreline of the lower cylinder. Larger values retain detail
-  farther away. GX selects and blends levels per pixel from the projected
-  footprint, so these are smooth reference distances, not exact rings or evenly
-  spaced bands; terrace heights, surface angle and the section chords affect
-  their actual position. Auto restores unbiased hardware selection. The
-  ten-square limit keeps the reference inside GX's LOD-bias range for the
-  current 256px ground and camera.
-- **Ground mip bands:** Off by default, directly below Ground mip distance.
-  Replaces only the ground texture samples with a distinct color at every mip
-  level. A small key shows levels 0–6: green, yellow, orange, rose, purple, blue,
-  and light gray. For the normal 256px floor these represent 256/128/64/32/16/8/4px.
-  Mixed colors show GX's actual trilinear transition between levels. The view
-  uses the original geometry, UVs, dimensions, mip count and distance bias, so
-  transitions follow terraces, ramps and the curved horizon rather than an
-  estimated distance ring. Ground mipmaps Off shows only the base-level color.
-  A separately resident painted-path texture retains its existing independent
-  trilinear, zero-bias policy; its floor fallback follows the ground sampler.
-  The key is shown only while this diagnostic is active outdoors. In-game
-  changes are session-only; the title's Debug configuration can save a startup
-  preference.
+- **SDK performance overlay** shows the SDK panel with FPS, frame time,
+  triangles, and main and ARAM memory. It starts off each time the game boots
+  and can be toggled from the title or town debug menu. **Performance display**
+  controls the separate frame-capture telemetry.
+- **Ground mipmaps** uses full and half resolution. Turn it off to sample full
+  resolution at every distance.
+- **Ground mip switch** starts at four tiles from the player. Left and Right
+  select a radius of 1–24 tiles, and X restores the default. The distance follows
+  the town grid across slopes and terraces.
+- **Ground mip bands** shows full resolution in green and half resolution in
+  yellow. The pink line marks the same radius used by the texture sampler.
+- **World rim** blends white onto outdoor terrain as its surface turns away
+  from the camera. The overlay is transparent when facing the camera head-on
+  and reaches 70% opacity at a grazing angle. It starts off for each town session.
+- **Obstructed object edges** draws cyan mesh edges where nearer surfaces block
+  submitted objects. The renderer uses the completed depth buffer and existing
+  visibility checks.
+- **Tile visit edges** connects neighboring visited tile centers. Each end takes
+  its own color from the traffic count. Blue means 1–9 visits, green 10–34,
+  orange 35–99, and red 100 or more. Both tiles must have visits to show a line.
 
-All rendering previews are session-only. They never write saves automatically and
-are not serialized by Save now. The attention icon uses one reusable 44-triangle
-mesh and six transforms; no icon animation or per-frame particle allocation is
-introduced. Its mesh is prepared between frames on first enable. Rim intensity
-changes only the TEV constant color, with one immutable shared lookup texture;
-no geometry or texture is regenerated when changing the percentage.
-The ordinary ground mip toggle/distance options change only the sampler between
-frames, once per setting or season load. They introduce no terrain rebuilds, UV edits, extra draws or pixel
-uploads during movement. Floor/cap/lip materials share the same mip texture and
-retain independent saved tints/bindings. The cloud texture and merged shadow
-coverage use their existing independent coordinates and filtering. Water,
-building interiors, actors, UI and soil keep their previous texture policies.
-The default shared 256px CMPR ground payload grows from 40,960 to 43,712 bytes;
-the terrain ARAM reservation and MEM1 geometry cache budgets are unchanged.
-The optional color-band diagnostic creates one separate CMPR chain per distinct
-resident ground texture between frames (43,712 bytes for the normal 256px chain).
-Material aliases share that chain. Preview upgrades and season changes retire
-obsolete diagnostic pages; switching the view off frees them. Original artwork,
-texture-cache leases and archived geometry remain intact, and steady movement
-does not regenerate textures or allocate new materials.
+The town toggles and distance changes apply to the active session. The title
+menu can save initial preferences for Ground mipmaps, Ground mip switch, and
+Ground mip bands.
 
-Initial outdoor terrain binds `dvd:/floor-outdoor-neutral-64.dndtex`, which
-has a 64×64 base and four smaller mip levels, with 2,752 bytes of GX payload.
-Once a terrain frame has presented that texture, the loader starts reading
-`dvd:/floor-outdoor-neutral.dndtex` asynchronously. The next completed load
-uploads the 256×256 texture between frames, rebinds every shared ground
-material, and immediately evicts the smaller texture. This includes terrain
-caps and lips, which draw through the same materials. The full texture retains
-the contiguous mip levels GX uses for distance filtering.
+Ground uses a shared 16 KiB GX distance mask and samples the two levels from
+one texture allocation. The 256px CMPR ground payload is 40,960 bytes. The mip
+bands overlay creates a palette texture of the same size while enabled. The
+world rim and obstructed edges add separate drawing passes when enabled.
+Moving the cutoff follows the player without rebuilding terrain sections.
 
-The swap applies the current ground mip toggle and distance setting without
-rebuilding terrain geometry. Season changes share the current texture while the
-initial read is pending and reuse the full texture after success. If the read
-or upload fails, rendering continues with the smaller texture. Hidden diagnostic
-messages record preview presentation, full upload, and native bytes before and
-after the preview is freed.
+The first outdoor frame uses the 64px preview. The renderer loads the full
+256px texture asynchronously, switches between frames and evicts the preview.
+Both textures use the same two-level layout and switch distance.
 
 ## Optimized defaults
 
@@ -118,7 +79,7 @@ near a quarter turn and cannot robustly identify a row chord at this curvature.
 
 ## Ground mipmap delivery
 
-Current game: `ec3b83a1f8159aec789d5053187c33219c188584`.
+Earlier ground mipmap capture from `ec3b83a1f8159aec789d5053187c33219c188584`.
 [Release 0.11.8.ec3b83a1f815](https://github.com/capz/AnimalTown/releases/tag/v0.11.8.ec3b83a1f815)
 contains the full 1,459,978,240-byte bootable ISO, direct 88,619,008-byte NKit ISO
 and matching clean backend. Downloaded checksums and clean identities match;

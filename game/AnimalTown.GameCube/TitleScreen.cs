@@ -73,7 +73,8 @@ internal sealed partial class TitleScreen : IDisposable,Hypercube.GameCube.IFram
                     if(p.X.WasPressed&&DevConfig.IsSlider(row))config.Reset(row);
                     else if(!p.X.WasPressed)config.Adjust(row,direction==MenuNavigation.Left?-1:1);
                     else continue;
-                    title.dirty=true;DevConfigStorage.ApplyGlobal(config);
+                    if(row!=DevConfig.SdkPerformanceIndex)title.dirty=true;
+                    DevConfigStorage.ApplyGlobal(config);
                 }
                 continue;
             }
@@ -244,7 +245,7 @@ internal sealed partial class TitleScreen : IDisposable,Hypercube.GameCube.IFram
         font.Draw(ui,page,558-font.Measure(page,HelpScale),90,TitleArt.Ink,HelpScale);
         font.Draw(ui,"A / Left / Right: change",74,342,TitleArt.Ink,HelpScale);
         font.Draw(ui,"X: reset slider   B: save and close",74,371,TitleArt.Ink,HelpScale);
-        DrawStatus(rows[debugSelected]==DevConfig.Count?"Session only; resets on restart.":dirty?"Changes will be saved to dev config.":DevConfigStorage.Status,74,404,492);
+        DrawStatus(rows[debugSelected]==DevConfig.SdkPerformanceIndex?"Session only. Resets on restart.":dirty?"Changes will be saved to dev config.":DevConfigStorage.Status,74,404,492);
     }
     // Reflow only when a message changes. Keep two readable lines instead of
     // scaling small status/error text down to fit a TV-sized panel.
@@ -293,8 +294,9 @@ internal sealed partial class TitleScreen : IDisposable,Hypercube.GameCube.IFram
             case 16:return "Rain preview: "+toggle;case 17:return "Rough ocean in rain: "+toggle;
             case 18:return "Season preview: "+(value==0?"Auto":TerrainTiles.SeasonName(value-1));
             case 19:return "Villager attention bubbles: "+toggle;
-            case 21:return "SDK performance overlay: "+toggle;case 22:return "Ground mipmaps: "+toggle;
-            case 23:return "Ground mip distance: "+(value==0?"Auto":value+" squares");
+            case DevConfig.SdkPerformanceIndex:return "SDK performance overlay: "+(config.SdkPerformanceOverlay?"On":"Off");
+            case 22:return "Ground mipmaps: "+toggle;
+            case 23:return "Ground mip switch: "+RenderDebugOptions.GroundMipDistanceLabel(value);
             case DevConfig.GroundMipBandsIndex:return "Ground mip bands: "+toggle;
             case 24:return "Freeze landscape motion: "+toggle;case 25:return "Recreate terrain meshes: "+toggle;
             case 26:return "Legacy ground ring: "+toggle;

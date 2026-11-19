@@ -19,6 +19,7 @@ internal static class RenderDebugChecks
             preview.CycleSeason();check(preview.SeasonOverride==-1,"cycling winter restores automatic season selection");
         }
         preview.ForceAttention=true;preview.CycleSeason();preview.GroundMipmaps=false;preview.AdjustGroundMipDistance(1);
+        preview.ShowWorldRim=preview.ShowObstructedEdges=preview.ShowVisitEdges=true;
         check(before.SequenceEqual(SaveCodec.Encode(state)),"render previews never change serialized player, calendar, requests or terrain state");
         check(RenderDebugOptions.AttentionHeight(1.7f)>RenderDebugOptions.AttentionHeight(1)&&RenderDebugOptions.AttentionHeight(float.NaN)==3.6f,"attention anchor follows rig height and has a finite missing-rig fallback");
         float previousRadius=360f/6.28318530718f;
@@ -27,30 +28,27 @@ internal static class RenderDebugChecks
         float previousY=previousRadius*((float)Math.Cos(12/previousRadius)-1);
         check(p.Y<previousY&&p.Z>0,"stronger curvature bends downward while preserving logical north/south orientation");
         long allocated=GC.GetAllocatedBytesForCurrentThread();
-        for(int n=0;n<1000;n++){preview.CycleSeason();preview.EffectiveSeason(n);preview.AdjustGroundMipDistance(1);preview.ResetGroundMipDistance();RenderDebugOptions.GroundMipBias(256,256,n%11);}
+        for(int n=0;n<1000;n++){preview.CycleSeason();preview.EffectiveSeason(n);preview.AdjustGroundMipDistance(1);preview.ResetGroundMipDistance();_ = preview.GroundMipRadius;}
         check(GC.GetAllocatedBytesForCurrentThread()==allocated,"preview adjustments allocate no managed frame data");
     }
     private static void GroundMipChecks(Action<bool,string> check,RenderDebugOptions preview)
     {
-        check(preview.GroundMipmaps&&preview.GroundMipDistance==0,"ground mipmaps default to enabled with automatic footprint selection");
+        check(preview.GroundMipmaps&&preview.GroundMipDistance==0&&preview.GroundMipRadius==4,"ground mipmaps start with a four-tile switch radius");
         for(int n=0;n<100;n++)preview.AdjustGroundMipDistance(-1);
         check(preview.GroundMipDistance==0,"ground mip distance cannot become negative");
         for(int n=0;n<100;n++)preview.AdjustGroundMipDistance(1);
-        check(preview.GroundMipDistance==10,"reference distance clamps before the grazing horizon and GX bias limit");
-        preview.ResetGroundMipDistance();check(preview.GroundMipDistance==0,"ground mip distance reset returns to Auto");
-        float previous=1;
-        for(int d=1;d<=10;d++){
-            float bias=RenderDebugOptions.GroundMipBias(256,256,d);
-            check(float.IsFinite(bias)&&bias>=-4&&bias<=3.99f&&bias<previous,"farther mip references postpone detail reduction with valid monotonic GX bias");previous=bias;
-            // Independent finite difference of vertical screen projection tests
-            // the centreline calibration, rather than repeating its Jacobian.
-            double Project(float z){var p=CylinderWorld.Surface(z,0);double dy=p.Y-CylinderWorld.CameraHeight,dz=p.Z-CylinderWorld.CameraBack;return 240/RenderView.TanY*(dy*-RenderView.ForwardZ+dz*RenderView.ForwardY)/(dy*RenderView.ForwardY+dz*RenderView.ForwardZ);}
-            double pixelsPerMetre=Math.Abs((Project(-d+.01f)-Project(-d-.01f))/.02);
-            double expected=Math.Clamp(.5-Math.Log2(128/pixelsPerMetre),-4,3.99);
-            check(Math.Abs(expected-bias)<.01,"the mip switch follows the projected cylinder within the GX bias range");
+        check(preview.GroundMipRadius==24,"mip radius caps at the largest slider value");
+        preview.ResetGroundMipDistance();check(preview.GroundMipRadius==4,"ground mip distance reset restores four tiles");
+        for(int distance=1;distance<=RenderDebugOptions.MaximumGroundMipDistance;distance++){
+            preview.AdjustGroundMipDistance(1);
+            check(preview.GroundMipRadius==distance,"the selected distance is the actual radius in town tiles");
         }
-        float auto=RenderDebugOptions.GroundMipBias(256,256,4);
-        check(RenderDebugOptions.GroundMipBias(256,256,0)==auto&&RenderDebugOptions.GroundMipBias(256,256,int.MinValue)==auto&&RenderDebugOptions.GroundMipBias(256,256,int.MaxValue)==previous,"Auto and extreme reference inputs remain bounded");
+        preview.ResetGroundMipDistance();
+        check(!preview.ShowWorldRim&&!preview.ShowObstructedEdges&&!preview.ShowVisitEdges,"world diagnostics are opt-in");
+        for(int i=0;i<256;i++){
+            int expected=i==0?0:i<10?1:i<35?2:i<100?3:4;
+            check(TileTraffic.VisitEdgeLevel(i)==expected,"the visit overlay shares the path opacity milestones");
+        }
         var rgba=new byte[256*256*4];for(int i=0;i<256*256;i++){byte v=(byte)(i%2*255);rgba[i*4]=rgba[i*4+1]=rgba[i*4+2]=v;rgba[i*4+3]=255;}
         var source=Package(TexturePixels.Encode(rgba,256,256,4),256,256,4);uint hash=TexturePixels.Hash(source);
         var full=FloorTexture.Prepare(source,fullMipChain:true);

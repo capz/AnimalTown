@@ -638,8 +638,8 @@ def terrain_materials():
         raise AssertionError('Debug menu did not focus row '+str(row))
     def menu(row,name):
         press('START');press('R')
-        direction='D_DOWN' if row<=9 else 'D_UP'
-        for _ in range(row if row<=9 else 19-row):press(direction)
+        direction='D_DOWN' if row<=11 else 'D_UP'
+        for _ in range(min(row,22-row)):press(direction)
         return menu_frame(name,row)
     def applied(enabled,mips,distance):
         matches=re.findall(r'GROUND MIP BANDS enabled (\d) mips (\d) distance (\d+) size (\d+)x(\d+) levels (\d+)',runtime_log_text())
@@ -749,10 +749,10 @@ def terrain_materials():
         menu(14,'distance-one-return')
         for _ in range(9):press('D_RIGHT')
         ten_label=menu_frame('distance-ten',14);press('B');ten=mip_frame('mips-ten',1,1,10)
-        if len({auto_label,one_label,ten_label})!=3:raise AssertionError('Distance control did not display Auto,1,10 distinctly')
+        if len({auto_label,one_label,ten_label})!=3:raise AssertionError('Distance control did not display default, 1 and 10 distinctly')
         visual_assert(one['mean_level']>ten['mean_level']+.1,'Increasing mip distance did not retain a visibly finer sampled mip level')
         menu(14,'distance-ten-return');press('X');reset_label=menu_frame('distance-reset',14)
-        if reset_label!=auto_label:raise AssertionError('X did not restore the Auto distance label')
+        if reset_label!=auto_label:raise AssertionError('X did not restore the default distance label')
         press('B');reset=mip_frame('mips-reset',1,1,0,visible_bands)
         visual_assert(abs(reset['mean_level']-automatic['mean_level'])<=.25,'Auto reset did not restore the diagnostic mip distribution')
         menu(13,'mipmaps-on');press('A');menu_frame('mipmaps-off',13);press('B')
@@ -1506,8 +1506,8 @@ def testing_menu():
     label('testing-settings-debug-entry',5);press('A')
     manual_only='--manual-save-only' in sys.argv
     previous=0
-    # Skip the saved AA preference and cover the session snowfall control.
-    for row in ([0] if manual_only else [0,*range(2,10)]):
+    # Include the session weather, SDK overlay, and world diagnostics.
+    for row in ([0] if manual_only else [0,*range(2,10),12,16,17,18]):
         for _ in range(row-previous):press('D_DOWN')
         original=label(f'testing-row-{row}-before',row)
         press('A');changed=label(f'testing-row-{row}-after',row)

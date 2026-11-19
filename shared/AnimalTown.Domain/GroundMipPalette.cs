@@ -1,8 +1,7 @@
 namespace AnimalTown;
 
-// A separate constant-colour image at each native mip lets GX reveal the LOD
-// transition at LOD 0.5. The diagnostic sampler interpolates across the same
-// LOD at which the ordinary nearest-mip sampler switches.
+// Each level has a constant color so the distance-based GX sampler can mark
+// which part of the ground uses full detail and which uses half detail.
 public static class GroundMipPalette
 {
     public const int Levels=2;
