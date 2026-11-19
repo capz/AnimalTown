@@ -15,7 +15,7 @@ to gameplay.
 | Welcome and name | Stick/D-pad moves around the 10×4 keyboard. A types; X erases; START accepts. Names allow 1–16 letters, digits, spaces and `. ! ?`; a blank/space-only name cannot continue. Letters after the first character of a word are lower case. B opens the exit confirmation. |
 | Find your look | Stick/D-pad cycles Fox, Bunny, Giraffe, Maine coon, Hamster and Spaniel. A/START accepts. B returns to the name keyboard with the entered name intact. The six cards and larger preview use the original model-derived portraits. |
 | Find your little corner | Stick/D-pad moves through the real outdoor town with the proposed cottage and its 15×13 home/garden boundary. Green indicates a valid plot; red and Hearth's explanation describe an invalid one. A chooses a valid spot. B returns to look selection, where B can also return to the name. |
-| Ready to put down roots? | Name, species and home appear together. A activates **Save & begin**. B **Review** returns to the home preview without saving; earlier choices remain editable through the back path. |
+| Ready to put down roots? | Name, species and home appear together. A activates **Save & begin**. B **Review** returns to the home preview without saving. When founding a town, X opens its optional **Daylight location** settings. |
 
 The home preview uses the ordinary resident cottage model and materials, with an
 opaque, bounded border around the garden reserve. It shares the gameplay world

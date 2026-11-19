@@ -133,7 +133,7 @@ internal sealed class OnboardingUi : IDisposable
         GraphicsDevice.Default.EndFrame();
     }
 
-    internal void DrawReview(GameState state,string saveError,bool busy)
+    internal void DrawReview(GameState state,string saveError,bool busy,bool daylightShortcut)
     {
         if((uint)state.Species>=6||portraits?[state.Species]==null)throw new InvalidOperationException("Review surface was not prepared");
         UiNoise.Prepare();background!.Prepare();GraphicsDevice.Default.BeginFrame(TitleBackdrop.Color);
@@ -143,7 +143,11 @@ internal sealed class OnboardingUi : IDisposable
         SummaryIcon(347,153,0);Text(state.Name,457,145,1.0f,192,TitleArt.Ink);Rule(335,180,230);
         SummaryIcon(347,197,1);Text(labels![state.Species],457,189,.98f,192,TitleArt.Ink);Rule(335,224,230);
         SummaryIcon(347,241,2);Text("Your new home",457,233,.93f,192,TitleArt.Ink);Rule(335,268,230);
-        Text("Your town and neighbors are kept.",320,301,.88f,510,TitleArt.Ink);Divider(331);
+        if(daylightShortcut){
+            Badge("X",239,310,11,TitleArt.Leaf,TitleArt.Cream);
+            font!.Draw(ui!,"Daylight location",259,300,TitleArt.Ink,.88f);
+        }else Text("Your town and neighbors are kept.",320,301,.88f,510,TitleArt.Ink);
+        Divider(331);
         TitleArt.Rounded(ui!,108,350,287,49,24,TitleArt.Leaf);Badge("A",139,374,13,TitleArt.Cream,TitleArt.Leaf);
         Text(SaveCards.Enabled?"Save & begin":"Start playing",269,362,1.04f,222,TitleArt.Cream);
         TitleArt.Rounded(ui!,422,355,131,40,20,Warm);Badge("B",443,375,10,TitleArt.Cream,TitleArt.Leaf);
@@ -164,6 +168,16 @@ internal sealed class OnboardingUi : IDisposable
             Text("Checking your save...",320,275,.76f,416,TitleArt.Ink);
         }
         End();
+        }while(GraphicsDevice.Default.NextFramePart());
+        GraphicsDevice.Default.EndFrame();
+    }
+    internal void DrawDaylightLocation(DaylightLocationMenu menu)
+    {
+        UiNoise.Prepare();background!.Prepare();GraphicsDevice.Default.BeginFrame(TitleBackdrop.Color);
+        do{
+            ui!.Begin();background.Draw(ui);
+            menu.Draw(ui,font!,heading!);
+            ui.End();
         }while(GraphicsDevice.Default.NextFramePart());
         GraphicsDevice.Default.EndFrame();
     }

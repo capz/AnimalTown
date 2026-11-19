@@ -1,8 +1,10 @@
 /* SPDX-License-Identifier: MIT. libc uses the console RTC, without a network. */
 #include <time.h>
 int animaltown_clock(void) {
-    time_t now=time(0);struct tm local;localtime_r(&now,&local);
-    return local.tm_min|(local.tm_hour<<6)|(local.tm_mday<<11)|((local.tm_mon+1)<<16)|(local.tm_wday<<20);
+    time_t now=time(0);struct tm local;
+    if(!localtime_r(&now,&local)||local.tm_year<100||local.tm_year>199)
+        return (1<<11)|(1<<16)|(6<<20); /* 2000-01-01 00:00, Saturday */
+    return local.tm_min|(local.tm_hour<<6)|(local.tm_mday<<11)|((local.tm_mon+1)<<16)|(local.tm_wday<<20)|((local.tm_year-100)<<23);
 }
 int animaltown_card_debug=0;
 int animaltown_card_mount_error=0;

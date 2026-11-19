@@ -3,7 +3,7 @@ using Dolphin.Input;
 
 internal static class WorldSimulationChecks
 {
-    private static readonly string[] overlays={"menu","item","map","dialogue","post","mail","lost","shop","store","sell","shop-display","shop-list","shop-price","shop-stored","plot"};
+    private static readonly string[] overlays={"menu","item","map","dialogue","post","mail","lost","shop","store","sell","shop-display","shop-list","shop-price","shop-stored","plot","daylight-location"};
     internal static void Run(Action<bool,string> check)
     {
         // Every overlay must produce the same live town as leaving it on screen
@@ -23,7 +23,7 @@ internal static class WorldSimulationChecks
             check(entered==63&&left==63,overlay+" allows all six villagers to enter and leave homes");
             check(animated,overlay+" advances walking animation in the player's room");
             check(menu.state.Town.Traffic.Visits.SequenceEqual(world.state.Town.Traffic.Visits),overlay+" records the same anonymous traffic as the world");
-            check(menu.state.Town.Day==10&&menu.townClock.MinuteOfDay==750,overlay+" advances calendar and clock");
+            check(menu.state.Town.Day==11118&&menu.townClock.MinuteOfDay==750,overlay+" advances calendar and clock");
         }
         // Held navigation and run buttons belong to the UI, indoors and out.
         var navigation=new ControllerState(1,(int)(ControllerButton.B|ControllerButton.DPadRight),0,0,new StickState(1,1),new StickState(1,0),0,0);

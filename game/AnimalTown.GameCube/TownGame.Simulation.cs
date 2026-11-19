@@ -5,6 +5,7 @@ using Dolphin.Timing;
 
 internal sealed partial class TownGame
 {
+    private readonly TownDaylight daylight=new TownDaylight();
     partial void RecordFallFootstep(float beforeX,float beforeZ,bool running);
 
     internal void Step(ControllerState pad)
@@ -14,8 +15,8 @@ internal sealed partial class TownGame
         bool running=false;float beforeX=state.X,beforeZ=state.Z;
         moveClip=-1; // UI focus must not leave the player walking in place.
         tick++;
-        if(tick%30==0)ReadWeatherClock(NativeCalendar.Read());
-        if(tick%900==0&&session.Draft==null){ReadCalendar();state.Rollover(day,month);}
+        if(tick%30==0)ReadWeatherClock();
+        if(tick%900==0&&session.Draft==null){ReadCalendarDate();state.Rollover(day,month);}
         if(screen=="dialogue"&&typeAt<message.Length){
             typeAt++;
             if(typeAt==message.Length)dialogueVoice.Stop();
@@ -60,12 +61,18 @@ internal sealed partial class TownGame
         }
     }
     private int weatherDay;
-    private void ReadWeatherClock(int date)
+    private void ReadWeatherClock()
     {
         townClock.Update(NativeCalendar.ReadClock());
-        // Town rollover uses 06:00; rain follows the calendar day at midnight.
-        weatherDay=(date&0x1ffff)+(townClock.MinuteOfDay<360?1:0);
+        weatherDay=10957+townClock.CivilDay; // Local days since 1970, for weather.
+        daylight.Update(state.Town.DaylightLocation,townClock,Clock.Timestamp);
     }
-    private void ReadCalendar(){int date=NativeCalendar.Read();day=date&0x1ffff;month=(int)((uint)date>>17);ReadWeatherClock(date);}
+    private void ReadCalendarDate()
+    {
+        // Town rollover is still 06:00, independent of sunrise and of UTC.
+        day=weatherDay-(townClock.MinuteOfDay<360?1:0);
+        month=townClock.CalendarMonth;
+    }
+    private void ReadCalendar(){ReadWeatherClock();ReadCalendarDate();}
     private float PlayerHeight()=>room==0?TerrainElevation.At(state.Town,state.X,state.Z):0;
 }

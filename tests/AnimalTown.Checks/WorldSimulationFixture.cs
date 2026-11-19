@@ -9,8 +9,7 @@ internal sealed class TownSession
 }
 internal static class NativeCalendar
 {
-    internal static int Date=10|(6<<17),Time=30|(12<<6)|(10<<11)|(6<<16)|(3<<20);
-    internal static int Read()=>Date;
+    internal static int Time=30|(12<<6)|(10<<11)|(6<<16)|(6<<20);
     internal static int ReadClock()=>Time;
 }
 internal sealed partial class TownGame

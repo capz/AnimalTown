@@ -53,6 +53,16 @@ public sealed class Town
     public readonly TownShop Shop=new TownShop();
     public int Seed,Day=-1,Month=-1,GroundCount,PlacedCount,Spending,StockCount=6;
     public int HouseX=12,HouseZ=22;
+    private int daylightLocation;
+    public int DaylightLocation
+    {
+        get=>daylightLocation;
+        set
+        {
+            if((uint)value>DaylightLocations.Count)throw new ArgumentOutOfRangeException(nameof(value));
+            daylightLocation=value;
+        }
+    }
     public int ActiveProfile {get;internal set;}
     public Town(int seed):this(seed,null){}
     // Save readback validates terrain against the live snapshot without writing

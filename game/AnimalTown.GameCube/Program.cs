@@ -125,6 +125,7 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
     private readonly MapBackground mapBackground=new MapBackground();
     private readonly RunningMinimap runningMinimap=new RunningMinimap();
     private readonly MenuNavigation menuNavigation=new MenuNavigation();
+    private readonly DaylightLocationMenu daylightMenu=new DaylightLocationMenu();
     private readonly BuildingPrompt buildingPrompt=new BuildingPrompt();
     private readonly WrappedText dialogueText=new WrappedText(41),itemTitleText=new WrappedText(14),saveStatusText=new WrappedText(48);
     private string wrappedDialogue="";
@@ -165,7 +166,7 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
     private bool cliffPreview;
     private int waterInspection;
     private int buildingInspection;
-    private const int SettingsTab=5,TestingTab=6;
+    private const int SettingsTab=5,TestingTab=6,DaylightSettingsRow=6;
     // Stable IDs keep hidden/retired controls out of both debug menus.
     private static readonly int[] testingOptions={0,33,2,3,11,12,13,16,17,35,18,19,21,22,23,34,31,32,30};
     private static readonly string[] groundMipLabels={"0","1","2","3","4","5","6"};
@@ -477,7 +478,7 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
             if(!DebugMenuSettings.Visible){
                 if(menuTab==TestingTab){menuTab=SettingsTab;selected=0;}
                 if(returnToMenu&&returnMenuTab==TestingTab){returnMenuTab=SettingsTab;returnMenuSelection=0;}
-                if(menuTab==SettingsTab)selected=Math.Min(selected,5);
+                if(menuTab==SettingsTab)selected=Math.Min(selected,DaylightSettingsRow);
             }
             saveStatus=UserOptionsStorage.Status;return;
         }
@@ -495,7 +496,7 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
         if(chord&&p.DPadLeft.WasPressed&&room==0&&screen=="world"){waterInspection=(waterInspection+1)%6;return;}
         if(waterInspection!=0&&screen=="world"&&!p.Start.WasPressed){if(p.B.WasPressed)waterInspection=0;return;}
         if(chord&&p.Start.WasPressed){InspectTerrain();return;}
-        bool navigating=screen=="save-quit"||screen=="menu"||screen=="item"||screen=="sell"||screen=="shop"||screen=="store"||screen=="post"||screen=="mail"||screen=="lost"||ShopScreen;
+        bool navigating=screen==DaylightLocationMenu.Screen||screen=="save-quit"||screen=="menu"||screen=="item"||screen=="sell"||screen=="shop"||screen=="store"||screen=="post"||screen=="mail"||screen=="lost"||ShopScreen;
         int direction=menuNavigation.Read(screen,screen=="menu"?menuTab:-1,p.Stick.X,p.Stick.Y,(int)p.PressedButtons,Clock.Timestamp,navigating&&!chord);
         bool up=direction==MenuNavigation.Up,down=direction==MenuNavigation.Down,left=direction==MenuNavigation.Left,right=direction==MenuNavigation.Right;
         if(screen=="menu"&&menuTab==TestingTab&&TestingOption(selected)==23&&!chord){
@@ -504,6 +505,16 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
         }
         if(p.L.IsHeld&&p.R.IsHeld&&p.Z.WasPressed){FrameProfile.Enabled=!FrameProfile.Enabled;return;}
         if(p.L.IsHeld&&p.R.IsHeld)return;
+        if(screen==DaylightLocationMenu.Screen){
+            if(p.B.WasPressed||p.Start.WasPressed){screen="menu";return;}
+            daylightMenu.Move(direction);
+            if(Press(p)){
+                state.Town.DaylightLocation=daylightMenu.Location;
+                daylight.Update(state.Town.DaylightLocation,townClock,Clock.Timestamp);
+                screen="menu";
+            }
+            return;
+        }
         if(screen=="save-quit"){
             if(p.B.WasPressed||p.Start.WasPressed){screen="menu";selected=1;return;}
             if(up||down)selected=1-selected;
@@ -597,7 +608,7 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
         else fallLeaves.Prepare(state.Z,LeafSeconds(),tint);
     }
     private int MenuTabCount=>DebugMenuSettings.Visible?tabs.Length:tabs.Length-1;
-    private int TabCount()=>menuTab==0?state.Capacity:menuTab==1?7:menuTab==2?Catalog.EntryCount:menuTab==3?7:menuTab==4?7:menuTab==TestingTab?testingOptions.Length:DebugMenuSettings.Visible?7:6;
+    private int TabCount()=>menuTab==0?state.Capacity:menuTab==1?7:menuTab==2?Catalog.EntryCount:menuTab==3?7:menuTab==4?7:menuTab==TestingTab?testingOptions.Length:DaylightSettingsRow+(DebugMenuSettings.Visible?2:1);
     private int LostCount(){int c=0;for(int i=0;i<state.Town.GroundCount;i++)if(state.Town.Ground[i].Kind==4)c++;return c;}
     private int LostIndex(int n){for(int i=0;i<state.Town.GroundCount;i++)if(state.Town.Ground[i].Kind==4&&n--==0)return i;return -1;}
     private void StoreAction()
@@ -644,7 +655,8 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
         if(menuTab==4){PostAction();return;}
         if(menuTab==TestingTab){TestingAction();return;}
         if(menuTab!=SettingsTab)return;
-        if(selected==6&&DebugMenuSettings.Visible){menuTab=TestingTab;selected=0;return;}
+        if(selected==DaylightSettingsRow+1&&DebugMenuSettings.Visible){menuTab=TestingTab;selected=0;return;}
+        if(selected==DaylightSettingsRow){daylightMenu.Open(state.Town.DaylightLocation);screen=DaylightLocationMenu.Screen;return;}
         if(selected==0){SaveFromMenu();}
         else if(selected==1){screen="save-quit";selected=0;}
         else if(selected==2){Say("Controls","Stick / D-pad: walk / menus. L/R: tabs. B: run / back. A: interact / select. X: backpack. Y: map. Z: tool. START: settings. Choose Save Now to save.");}
@@ -844,10 +856,12 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
         terrain.GroundMipmaps=renderDebug.GroundMipmaps;terrain.GroundMipDistance=renderDebug.GroundMipDistance;terrain.ShowGroundMipBands=renderDebug.ShowGroundMipBands;
         cachedPlayerHeight=PlayerHeight();if(room==0)RenderView.Prepare(state.X,state.Z,cachedPlayerHeight);
         if(room!=0)indoorCamera.Configure(BuildingWorld.Definition(state,BuildingWorld.Building(room)));
-        int sunlight=room==0?WorldLighting.Sunlight(townClock.MinuteOfDay):255;
+        var lighting=daylight.Lighting;
+        if(screen==DaylightLocationMenu.Screen)daylightMenu.Prepare(townClock);
+        int sunlight=room==0?lighting.Sunlight:255;
         if(room==0)terrain.AnimateShadows((Clock.Timestamp-sessionStart)/1000000.0,month,sunlight);
-        int environmentTint=room==0?WorldLighting.Tint(townClock.MinuteOfDay):0xffffff;
-        int lampStrength=room==0?WorldLighting.Lamps(townClock.MinuteOfDay):0;
+        int environmentTint=room==0?lighting.Tint:0xffffff;
+        int lampStrength=room==0?lighting.Lamps:0;
         townLights.Prepare(state,lampStrength);
         long phase=FrameProfile.Start(),preparationDeadline=Clock.Timestamp+2000;PrepareVillagerShadows();
         long masksAt=FrameProfile.Start();villagerShadows.PrepareMasks(preparationDeadline);FrameProfile.DetailEnd(4,masksAt);
@@ -1131,6 +1145,7 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
             Text("A select   B back",127,314,ink,1);
             return;
         }
+        if(screen==DaylightLocationMenu.Screen){daylightMenu.Draw(ui,font,headingFont,batchedDrawing?uiShapes:null);return;}
         if(screen=="world"){if(room==0&&runningMinimap.Visible)DrawMinimap();if(room==0&&renderDebug.ShowGroundMipBands)DrawGroundMipLegend(ink);return;}
         if((screen=="menu"&&menuTab==0)||screen=="sell"||screen=="item"){DrawBackpack();return;}
         Panel(45,75,550,350);string title=screen=="menu"?tabs[menuTab]:screen=="shop"?"Essentials / always in stock":screen=="store"?"Hearth's store":screen=="post"?"Town hall":screen=="mail"?"Mailbox":"Lost and Found";
@@ -1159,7 +1174,7 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
         if(menuTab==2){int id=Catalog.EntryAt(i);return Catalog.Items[id].Name+(godMode?" / Free (instant)":state.Owned[id]==0?" (not owned)":" / "+UiFont.Money(Catalog.Items[id].Buy));}
         if(menuTab==3){string[] a={"Roof palette","Exterior palette","Fence style","Mailbox",godMode?"Relocate (free)":"Relocate ("+UiFont.Money(50000)+")","Expand house","Expand garden"};return a[i];}
         if(menuTab==TestingTab)return TestingLabel(i);
-        string[] settings={"Save Now","Save & Quit","Controls","About / build identity","Calendar","Chat settings","Debug / testing menu"};return settings[i];
+        string[] settings={"Save Now","Save & Quit","Controls","About / build identity","Calendar","Chat settings","Daylight location","Debug / testing menu"};return settings[i];
     }
     private static string ItemActionLabel(PocketAction action)=>action==PocketAction.Place?"Place":PocketMenu.Label(action);
     private float ItemActionWidth(int item,string title)
