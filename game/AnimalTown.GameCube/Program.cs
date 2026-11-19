@@ -189,9 +189,10 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
         syllable=Sound.FromPcm8(pcm,16000);syllable.Volume=.12f;dialogueVoice=new DialogueVoice(syllable);
         DebugOverlay.WriteLine("ANIMALTOWN GAME AUDIO READY");
         sessionStart=Clock.Timestamp;
+        state=session.State;
         ReadCalendar();
         debugConfig=config;
-        state=session.State;loaded=session.Loaded;damagedSave=session.Damaged;saveStatus=session.Status;day=Math.Max(day,state.Town.Day);month=Math.Max(month,state.Town.Month);
+        loaded=session.Loaded;damagedSave=session.Damaged;saveStatus=session.Status;day=Math.Max(day,state.Town.Day);month=Math.Max(month,state.Town.Month);
         BuildingCatalog.Configure(File.ReadAllBytes(ContentPaths.Asset("buildings.bin")));
         LoadingScreen.Pulse();
         screen=session.Draft!=null?"plot":"world";
