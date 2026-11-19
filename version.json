@@ -14,6 +14,15 @@
         "The release combines the new requests into one brief summary.",
         "The published release includes the summary alongside its downloads."
       ]
+    },
+    {
+      "id": "updater-download-eta",
+      "lines": [
+        "See how much time is left on your update download.",
+        "The updater shows the estimated time beneath the progress bar.",
+        "The countdown follows recent transfer speed and clears on a stall.",
+        "The screen reports verification and restart once the download finishes."
+      ]
     }
   ]
 }
