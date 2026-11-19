@@ -459,7 +459,12 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
             long resumeAt=Clock.Timestamp;
             ExitToTitle=quit&&saved;
             if(terrainSuspended&&!ExitToTitle)terrain.ResumeAfterSave();
-            if(saved)DebugOverlay.WriteLine("SAVE TOTAL: "+((Clock.Timestamp-started)/1000)+" ms / prepare "+((mountAt-started)/1000)+" / mount "+((saveAt-mountAt)/1000)+" / save "+((closeAt-saveAt)/1000)+" / close "+((resumeAt-closeAt)/1000)+" / restore "+((Clock.Timestamp-resumeAt)/1000)+" / quit "+(quit?1:0));
+            if(saved){
+                long finished=Clock.Timestamp;
+                DebugOverlay.WriteLine("ANIMALTOWN SAVE TOTAL: "+((finished-started)/1000)+" ms / prepare "+((mountAt-started)/1000)
+                    +" / mount "+((saveAt-mountAt)/1000)+" / save "+((closeAt-saveAt)/1000)
+                    +" / close "+((resumeAt-closeAt)/1000)+" / restore "+((finished-resumeAt)/1000)+" / quit "+(quit?1:0));
+            }
         }
     }
     private void Say(string name,string text){dialogueVoice.Begin();voiceTick=0;returnToMenu=screen=="menu"&&(menuTab==SettingsTab||menuTab==TestingTab||godMode&&menuTab==2);if(returnToMenu){returnMenuTab=menuTab;returnMenuSelection=selected;}speaker=name;message=text;wrappedDialogue=dialogueText.Get(text);typeAt=0;screen="dialogue";}

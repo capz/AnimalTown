@@ -1396,11 +1396,21 @@ def save_and_quit():
     wait_title();screenshot('quit-title.png')
     reloaded,_=start_game(prefix='quit-reload')
     if reloaded!=after:raise AssertionError('Starting again did not preserve the committed save')
-    log=runtime_log_text()
-    if not re.search(r'SAVE TOTAL: [^\r\n]* / quit 1',log):
-        raise AssertionError('Missing verified Save & Quit timing')
+    quit_timing=re.search(r'ANIMALTOWN SAVE TOTAL: ([^\r\n]* / quit 1)',runtime_log_text())
+    if not quit_timing:raise AssertionError('Missing verified Save & Quit timing')
+    press('D_DOWN');save_menu()
+    saved_again=wait_saved_after(reloaded)
+    deadline=time.monotonic()+90
+    while True:
+        now_timing=re.search(r'ANIMALTOWN SAVE TOTAL: ([^\r\n]* / quit 0)',runtime_log_text())
+        if now_timing:break
+        check_runtime_failure()
+        if time.monotonic()>=deadline:raise AssertionError('Missing verified Save Now timing')
+        time.sleep(1)
+    screenshot('save-now.png')
     (root/'save-and-quit.json').write_text(json.dumps({'before':before['sequence'],'saved':after['sequence'],
-        'cancel_untouched':True,'returned_to_title':True,'restarted_game':True},indent=2)+'\n')
+        'cancel_untouched':True,'returned_to_title':True,'restarted_game':True,
+        'quit_timing':quit_timing[1],'save_now_sequence':saved_again['sequence'],'save_now_timing':now_timing[1]},indent=2)+'\n')
 
 def committed_card_sequence(path, expected_day=None, details=False):
     """Read a complete generation from either redundant directory/BAT pair."""
