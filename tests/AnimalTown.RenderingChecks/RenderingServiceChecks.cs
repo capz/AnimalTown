@@ -7,6 +7,7 @@ internal static class RenderingServiceChecks
     internal static void Run(Action<bool,string> check)
     {
         TreeRenderingChecks.Run(check);
+        FallLeafWakeChecks.Run(check);
         var mesh=new DynamicMeshBuffer(192);
         var vertices=mesh.Reserve(6);
         // Simulate a rebuild prefix longer than the last committed Count (zero).

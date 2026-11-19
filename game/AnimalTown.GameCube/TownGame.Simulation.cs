@@ -5,6 +5,8 @@ using Dolphin.Timing;
 
 internal sealed partial class TownGame
 {
+    partial void RecordFallFootstep(float beforeX,float beforeZ,bool running);
+
     internal void Step(ControllerState pad)
     {
         if(resourcesReady)RefreshResidencyDemand(Clock.Timestamp);
@@ -28,6 +30,7 @@ internal sealed partial class TownGame
             {
                 facingYaw=PlayerMovement.Yaw(dx,dz);PlayerMovement.Target(dx,dz,out faceX,out faceZ);
                 int clip=pad.B.IsHeld?1:0;moveClip=clip;running=clip==1&&(state.X!=beforeX||state.Z!=beforeZ);desiredPlayerSpeed=1.05f;
+                RecordFallFootstep(beforeX,beforeZ,running);
             }
         }
         // Menus own player input, never the live town simulation. Only the
