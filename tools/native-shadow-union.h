@@ -76,13 +76,26 @@ static inline uint8_t su_pack(int shadow,int light){return (uint8_t)(((light+8)/
 /* 4 texels/metre. GX I8 blocks cover two town cells by one. */
 #define SU_SNOW_SIDE (4*SU_WORLD_WIDTH)
 #define SU_SNOW_HEIGHT 120
-#define SU_SNOW_PACKED (SU_WORLD_WIDTH*SU_SNOW_HEIGHT/4)
 #define SU_SNOW_BYTES (SU_SNOW_SIDE*SU_SNOW_SIDE)
 #define SU_SNOW_BLOCKS (SU_WORLD_WIDTH/2)
+#define SU_SNOW_PACKED (SU_SNOW_BLOCKS*SU_SNOW_HEIGHT)
+#define SU_SNOW_MAX_VISITS 5
 static inline int su_snow_visits(const uint8_t *packed,int x,int z){
     if((unsigned)x>=SU_WORLD_WIDTH||(unsigned)z>=SU_SNOW_HEIGHT)return 0;
     int cell=z*SU_WORLD_WIDTH+x;
-    return (packed[cell/4]>>((cell%4)*2))&3;
+    return (packed[cell/2]>>((cell%2)*4))&15;
+}
+static inline float su_snow_stamp(int visits,float x,float z){
+    if(visits>=SU_SNOW_MAX_VISITS){
+        float edge=fmaxf(fabsf(x),fabsf(z))-.5f;
+        return 1.f-fmaxf(0.f,edge)*4.f;
+    }
+    float ellipse=x*x*5.f+z*z*3.f;
+    if(visits==1)return .58f*(1.f-ellipse);
+    float wide_dent=.58f*(1.f-ellipse*.64f);
+    if(visits==2)return wide_dent; // Widen the first dent below the snow cutout threshold.
+    if(visits==3)return fmaxf(wide_dent,1.25f*(1.f-ellipse));
+    return 1.32f*(1.f-ellipse*.5f);
 }
 static inline uint8_t su_snow_depth(const uint8_t *packed,int x,int z){
     int cx=x/4,cz=z/4;
@@ -90,15 +103,7 @@ static inline uint8_t su_snow_depth(const uint8_t *packed,int x,int z){
     for(int dz=-1;dz<=1;dz++)for(int dx=-1;dx<=1;dx++){
         int visits=su_snow_visits(packed,cx+dx,cz+dz);
         if(!visits)continue;
-        float px=fx-dx,pz=fz-dz,stamp;
-        if(visits==3){
-            float edge=fmaxf(fabsf(px),fabsf(pz))-.5f;
-            stamp=1.f-fmaxf(0.f,edge)*4.f;
-        }else{
-            float shape=1.f-px*px*5.f-pz*pz*3.f;
-            stamp=shape*(visits==1?.58f:1.25f);
-        }
-        depth=fmaxf(depth,stamp);
+        depth=fmaxf(depth,su_snow_stamp(visits,fx-dx,fz-dz));
     }
     return (uint8_t)(fminf(1.f,depth)*255.f+.5f);
 }
