@@ -36,9 +36,10 @@ BNR1, with a six-slot English BNR2 alternate available for PAL packaging.
 The boot-header title and disc/save identifiers retain their existing
 AnimalTown values for compatibility with the pinned updater and existing saves.
 
-Start opens the approved [memory-card chooser](memory-cards.md), reusing the
-paper panel, IPL font and Gorditas heading without a logo. Confirming a usable
-slot or temporary play removes the panel and menu. Only the moving dot
+Start selects an unambiguous memory card automatically. When a choice is
+needed, it opens the approved [memory-card chooser](memory-cards.md), reusing
+the paper panel, IPL font and Gorditas heading without a logo. After card
+selection or confirmation of temporary play, only the moving dot
 background and a small hopping, blinking sprout in the bottom-right remain while
 assets and the landscape load. No world, loading panel or debug overlays are
 drawn during this transition. The animation uses simple UI geometry and retires

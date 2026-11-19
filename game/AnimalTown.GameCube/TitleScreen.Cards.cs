@@ -9,11 +9,18 @@ internal sealed partial class TitleScreen
     private UiFont? cardHeading;
     private SaveCardInfo? cardA,cardB;
     private string cardMessage="";
-    private void OpenCards()
+    private bool ChooseStartCard()
     {
-        cardHeading=UiFont.Load("gorditas-bold");cardOpen=true;cardMessage="Checking memory cards...";Draw();
-        RefreshCards();cardChoice=SaveCards.DefaultChoice(cardA!,cardB!);
+        RefreshCards();
+        if(SaveCards.TryAutoSelect(cardA!,cardB!)){
+            cardA=cardB=null;
+            DebugOverlay.WriteLine("ANIMALTOWN SAVE CARD AUTO "+SaveCards.Device);
+            DebugOverlay.WriteLine("ANIMALTOWN SAVE CARD SELECTED "+SaveCards.Device);
+            return true;
+        }
+        cardHeading=UiFont.Load("gorditas-bold");cardOpen=true;cardChoice=SaveCards.DefaultChoice(cardA!,cardB!);
         DebugOverlay.WriteLine("ANIMALTOWN SAVE CARD CHOOSER default "+cardChoice);
+        return false;
     }
     private void RefreshCards()
     {

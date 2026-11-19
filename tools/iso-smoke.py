@@ -1091,8 +1091,8 @@ def wait_profiles(name='profile-picker.png'):
     deadline=time.monotonic()+180
     while time.monotonic()<deadline:
         check_runtime_failure()
-        # All normal scenarios confirm the default card choice explicitly.
-        # The dedicated card scenarios drive and verify the chooser themselves.
+        # Normal scenarios accept the default if card selection needs a dialog.
+        # Dedicated card scenarios drive and verify the chooser themselves.
         text=runtime_log_text()
         chooser=text.rfind('ANIMALTOWN SAVE CARD CHOOSER')
         chosen=max(text.rfind('ANIMALTOWN SAVE CARD SELECTED'),text.rfind('ANIMALTOWN SAVE CARD NONE'))
@@ -1128,17 +1128,27 @@ def memory_cards():
             time.sleep(.5)
         raise AssertionError('Memory-card chooser did not appear')
     wait_title();before=digests();start=len(runtime_log_text());press('A')
-    chooser(1 if mode=='slot-b' else 2 if mode=='no-card' else 0,start)
-    press('X');screenshot('memory-card-rechecked.png')
-    if digests()!=before:raise AssertionError('Opening/rechecking the card chooser changed a card')
-    if mode=='choose-b':press('D_DOWN')
-    if mode=='without-saving':press('D_UP')
     chosen=2 if mode in ('without-saving','no-card') else 1
-    press('A');wait_profiles('memory-card-picker.png')
+    default=1 if mode=='slot-b' else 2 if mode=='no-card' else 0
+    def enter_picker(start,name,remembered=False):
+        if mode=='slot-b':
+            wait_profiles(name)
+            log=runtime_log_text()[start:]
+            if 'ANIMALTOWN SAVE CARD AUTO 5' not in log or 'ANIMALTOWN SAVE CARD CHOOSER' in log:
+                raise AssertionError('A sole Slot B card should open the picker directly')
+            return
+        chooser(chosen if remembered else default,start)
+        if not remembered:
+            press('X');screenshot('memory-card-rechecked.png')
+            if digests()!=before:raise AssertionError('Opening/rechecking the card chooser changed a card')
+            if mode=='choose-b':press('D_DOWN')
+            if mode=='without-saving':press('D_UP')
+        press('A');wait_profiles(name)
+    enter_picker(start,'memory-card-picker.png')
     # Returning from the resident picker must preserve the confirmed destination.
     press('B');wait_title();start=len(runtime_log_text());press('A')
-    chooser(chosen,start,'memory-card-remembered.png');press('A');wait_profiles('memory-card-picker-return.png')
-    report={'scenario':mode,'default':1 if mode=='slot-b' else 2 if mode=='no-card' else 0,
+    enter_picker(start,'memory-card-picker-return.png',remembered=True)
+    report={'scenario':mode,'default':default,'auto_selected':mode=='slot-b',
             'remembered_choice':chosen,'discovery_read_only':True,'passed':False}
     if mode in ('slot-b','without-saving'):
         press('A');wait_onboarding('name','memory-card-name.png');press('A');press('START')

@@ -1,11 +1,15 @@
 # Memory-card selection
 
-At boot, inspect Slot A and then Slot B and use the first usable memory card for
-loading console/debug preferences. Start opens a compact chooser before loading
-any town. Its default is that card, or **Play without saving** if neither works.
-The player can select the other usable card, recheck after inserting a card with
-X, or return to the title with B. Reopening the chooser retains a confirmed
-choice until the process restarts.
+At boot, the first usable memory card supplies console/debug preferences.
+Start selects the sole usable card if the other slot is empty. With two cards,
+it selects the one with AnimalTown save data if exactly one has a town.
+Settings-only archives do not count as town data.
+
+Start opens the chooser when both cards have towns, both are empty, neither
+is present, or no destination can be safely selected. The player can select a
+usable card, recheck after inserting a card with X, or return to the title
+with B. Reopening the chooser retains a confirmed choice until the process
+restarts.
 
 The approved layout reuses the cream paper panel, leaf-green selection, IPL body
 and Gorditas heading, with no logo or new textures:
@@ -43,10 +47,11 @@ The review button says **Start playing**, with a short unsaved-progress notice.
 The chooser also warns that this is a temporary town. There is no automatic
 transfer of temporary progress when choosing a card for a later session.
 
-Probing runs at boot, when opening the chooser, on X, and when confirming a
-slot. It uses bounded 16-entry pages from the SDK's read-only card manager; no
-card polling or new per-frame I/O occurs. The chooser uses the title renderer
-and short-lived font lease, released before resident selection/gameplay.
+Probing runs at boot, on Start, on X, and when confirming a slot. It uses
+bounded 16-entry pages from the SDK's read-only card manager. If two cards
+are present, archive record names distinguish towns from preferences without
+loading or changing a town. The chooser uses the title renderer and releases
+its font lease before resident selection.
 
 Host card-adapter tests cover both slots, exact block/directory capacity,
 existing archives, foreign ownership, retained selection, Slot B loading and
