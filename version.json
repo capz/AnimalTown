@@ -4,5 +4,16 @@
   "minor": 11,
   "patch": 38,
   "increment": "minor",
-  "baseCommit": "7e3dd9599709f553d13d538a320a13f3d410e861"
+  "baseCommit": "7e3dd9599709f553d13d538a320a13f3d410e861",
+  "requestSummaries": [
+    {
+      "id": "updater-release-summary",
+      "lines": [
+        "See what's new in each AnimalTown update.",
+        "The version file records four lines for each request.",
+        "The release combines the new requests into one brief summary.",
+        "The published release includes the summary alongside its downloads."
+      ]
+    }
+  ]
 }

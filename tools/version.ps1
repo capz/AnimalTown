@@ -49,6 +49,46 @@ function Get-VersionPullRequests {
         if($pulls.Count -lt 100){break}
     }
 }
+function Read-VersionRequests([string]$Root,[string]$Commit){
+    # The version file predates request notes, and some historical commits
+    # have no version file. Both serve as empty comparison snapshots.
+    if(!(Invoke-VersionGit $Root @('ls-tree',$Commit,'--','version.json'))){return}
+    $source=Invoke-VersionGit $Root @('show',"${Commit}:version.json") | ConvertFrom-Json
+    if($null -eq $source.PSObject.Properties['requestSummaries']){return}
+    if($source.requestSummaries -isnot [array]){throw 'requestSummaries must be an array'}
+    $ids=[Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)
+    foreach($request in $source.requestSummaries){
+        if($request.id -isnot [string] -or $request.id -cnotmatch '\A[a-z0-9]+(?:-[a-z0-9]+)*\z' -or
+           $request.id.Length -gt 80 -or !$ids.Add($request.id)){throw 'Each request summary needs a unique lowercase ID'}
+        if($request.lines -isnot [array] -or $request.lines.Count -ne 4){throw "Request $($request.id) must have exactly four summary lines"}
+        for($i=0;$i -lt 4;$i++){
+            $line=$request.lines[$i]
+            $limit=if($i -eq 0){96}else{140}
+            if($line -isnot [string] -or $line.Length -gt $limit -or $line -cne $line.Trim() -or $line -cnotmatch '\A[ -~]+\z'){
+                throw "Request $($request.id) needs short, printable summary lines"
+            }
+        }
+        [pscustomobject]@{id=$request.id;lines=@($request.lines)}
+    }
+}
+function Get-ReleaseSummary($Requests){
+    $headlines=@(foreach($request in $Requests){
+        $line=$request.lines[0]
+        if($line -notmatch '[.!?]$'){$line+='.'}
+        $line
+    })
+    $summary=$headlines -join ' '
+    if($summary.Length -le 220){return $summary}
+    $summary=$headlines[0]
+    for($i=1;$i -lt $headlines.Count;$i++){
+        $remaining=$headlines.Count-$i
+        $tail=if($remaining -eq 1){' Plus 1 other change.'}else{" Plus $remaining other changes."}
+        $next="$summary $($headlines[$i])"
+        if($next.Length+$tail.Length -gt 220){return $summary+$tail}
+        $summary=$next
+    }
+    return $summary
+}
 function Get-BuildVersion {
     param(
         [string]$Root=(Split-Path $PSScriptRoot -Parent),
@@ -123,8 +163,22 @@ function Get-BuildVersion {
     $bb=$commit.Substring(0,12)
     $isMain=$BuildKind -eq 'main'
     $version=if($isMain){$baseVersion}else{"$baseVersion+$bb"}
+    $notesCommit=$commit;$previousNotesCommit=$mainCommit
+    if($isMain){
+        # rev-list is newest first. The previous version is the previous PR
+        # boundary, even when a rebase integrated several implementation commits.
+        $integrations=@($history | Where-Object {$boundaries.Contains($_)})
+        $notesCommit=if($integrations.Count){$integrations[0]}else{$config.baseCommit}
+        $previousNotesCommit=if($integrations.Count -gt 1){$integrations[1]}else{$config.baseCommit}
+    }
+    $requests=@()
+    if($notesCommit -cne $previousNotesCommit){
+        $known=[Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)
+        foreach($request in (Read-VersionRequests $Root $previousNotesCommit)){$null=$known.Add($request.id)}
+        $requests=@(Read-VersionRequests $Root $notesCommit | Where-Object {!$known.Contains($_.id)})
+    }
     $dirty=[bool](Invoke-VersionGit $Root @('status','--porcelain','--untracked-files=normal'))
-    [pscustomobject]@{schema=2;version=$version;tag="v$version";baseVersion=$baseVersion;major=$config.major;minor=$minor;patch=$patch;increment=$increment;bb=$bb;commit=$commit;mainCommit=$mainCommit;policySource=$policySource;isMain=$isMain;dirty=$dirty;baseCommit=$config.baseCommit;changes=$changes;canPublish=(!$isMain -or $commit -ceq $config.baseCommit -or $commit -cin @($changes.commit))}
+    [pscustomobject]@{schema=2;version=$version;tag="v$version";baseVersion=$baseVersion;major=$config.major;minor=$minor;patch=$patch;increment=$increment;bb=$bb;commit=$commit;mainCommit=$mainCommit;policySource=$policySource;isMain=$isMain;dirty=$dirty;baseCommit=$config.baseCommit;changes=$changes;requestSummaries=$requests;summary=(Get-ReleaseSummary $requests);canPublish=(!$isMain -or $commit -ceq $config.baseCommit -or $commit -cin @($changes.commit))}
 }
 function Write-VersionMetadata {
     param($Version,[string]$Root)
