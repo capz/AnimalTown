@@ -7,11 +7,14 @@ internal static class CardSelectionChecks
     {
         MemoryCard.Slots.Clear();SaveCards.Initialize();
         check(!SaveCards.Enabled&&SaveCards.DefaultChoice(SaveCards.Inspect(4),SaveCards.Inspect(5))==2,"no cards defaults to play without saving");
+        check(!AutoSelect(),"no cards opens the chooser");
         check(SaveCards.Inspect(4).Status=="No memory card","a native no-card mount exception has a clear unavailable-row label");
         var b=new MemoryCard(5);SaveCards.Initialize();
         check(SaveCards.Device==5,"a sole Slot B card is selected before loading preferences");
+        check(AutoSelect()&&SaveCards.Device==5,"Start skips the chooser for a single usable Slot B card");
         var a=new MemoryCard();SaveCards.Initialize();
         check(SaveCards.Device==4,"two usable cards default to Slot A");
+        check(!AutoSelect(),"the chooser stays available for two empty cards");
         a.Capacity=33;SaveCards.Initialize();
         check(SaveCards.Device==5&&!SaveCards.Inspect(4).CanSave,"a full first card falls through to a usable second card");
         a.Capacity=34;check(SaveCards.Inspect(4).CanSave,"exactly 34 free blocks is sufficient for a new archive");
@@ -19,8 +22,13 @@ internal static class CardSelectionChecks
         a.MountError=-6;check(!SaveCards.Inspect(4).CanSave&&a.Writes==0,"damaged cards are never formatted or written by a probe");a.MountError=0;
         a.Capacity=80;
         var banner=new byte[6144];var icon=new byte[2048];
+        var bStorage=new CardSaveStorage(b,banner,icon,5);
+        bStorage.Write("options",new byte[]{0});
+        check(!AutoSelect(),"a settings-only archive is not a town save");
         using(var draft=Draft("Aster"))draft.Commit(new SaveRepository(new CardSaveStorage(a,banner,icon,4)),false,new string[0]);
+        check(AutoSelect()&&SaveCards.Device==4,"a town archive wins over a settings-only archive");
         using(var draft=Draft("Birch"))draft.Commit(new SaveRepository(new CardSaveStorage(b,banner,icon,5)),false,new string[0]);
+        check(!AutoSelect(),"two towns open the chooser");
         a.Capacity=a.Used;a.DirectoryFree=a.Files.Count;
         int writesA=a.Writes,writesB=b.Writes,mounts=MemoryCard.Mounts;
         check(SaveCards.Inspect(4).CanSave,"an existing current archive needs no free blocks or directory entries for later saves");
@@ -39,6 +47,8 @@ internal static class CardSelectionChecks
         check(a.Writes==writesA&&new SaveRepository(new CardSaveStorage(a,banner,icon,4)).Load()!.Name=="Aster","Slot B writes leave Slot A town and settings untouched");
         check(TownDataStorage.Delete()&&!TownSession.Load().Loaded&&a.Writes==writesA,"title town deletion uses Slot B without touching Slot A");
         check(UserOptionsStorage.Load().Widescreen&&DevConfigStorage.Load().Values[DevConfig.FullResolutionAaIndex]==1,"selected-slot town deletion retains that card's preferences");
+        check(AutoSelect()&&SaveCards.Device==4,"one town wins even after Slot B was explicitly selected");
+        SaveCards.Select(SaveCards.Inspect(5));
         MemoryCard.Slots.Remove(5);bool removed=false;
         try{using var missing=SaveCards.Mount();}catch(IOException){removed=true;}
         check(removed&&SaveCards.Device==5&&a.Writes==writesA,"removing Slot B never redirects a save to Slot A");
@@ -53,8 +63,13 @@ internal static class CardSelectionChecks
         check(CardSaveError.Describe("mount",0,-3,0,"","Slot B").Contains("Slot B"),"save failure instructions name the selected slot");
         var small=new MemoryCard();small.CreateRecords("AnimalTown",16,1234,new byte[16384]);small.Capacity=small.Used+33;
         check(!SaveCards.Inspect(4).CanSave,"a smaller legacy archive still needs 34 blocks for safe expansion");
+        var empty=new MemoryCard();
+        var legacy=new MemoryCard(5);
+        legacy.WriteSave("AnimalTown0",SaveCodec.Encode(new GameState(719)),new MemoryCardSaveOptions());
+        check(AutoSelect()&&SaveCards.Device==5&&empty.Writes==0,"a legacy town also takes priority over an empty card");
         Console.WriteLine("Card selection: A/B discovery and capacity, retained choice, Slot B town/settings/deletion, removal without fallback and temporary onboarding passed.");
     }
+    private static bool AutoSelect()=>SaveCards.TryAutoSelect(SaveCards.Inspect(4),SaveCards.Inspect(5));
     private static OnboardingDraft Draft(string name)
     {
         var source=new GameState(7319);source.Profiles[0].Created=false;

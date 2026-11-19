@@ -56,8 +56,8 @@ internal sealed partial class TitleScreen : IDisposable,Hypercube.GameCube.IFram
             int direction=title.navigation.Read(title.cardOpen?"save-card":title.confirmDelete?"delete-town":title.optionsOpen?"title-options":title.debugOpen?"dev-config":"title",0,p.Stick.X,p.Stick.Y,(int)p.PressedButtons,Clock.Timestamp,true);
             if(title.cardOpen){
                 if(!title.CardInput(direction,p.A.WasPressed||p.Start.WasPressed,p.B.WasPressed,p.X.WasPressed))continue;
-                if(TownDataStorage.Pending()){title.status="Finish town deletion in Options before starting.";continue;}
-                DevConfigStorage.ApplyGlobal(config);LoadingScreen.Draw();title.Save();return true;
+                if(title.StartTown())return true;
+                continue;
             }
             if(title.optionsOpen){title.OptionsInput(direction,p.A.WasPressed,p.B.WasPressed);continue;}
             if(title.debugOpen){
@@ -86,7 +86,8 @@ internal sealed partial class TitleScreen : IDisposable,Hypercube.GameCube.IFram
                 title.optionsStatus=VideoOptions.Status.Length>0?VideoOptions.Status:UserOptionsStorage.Status;continue;
             }
             if(title.selected==0){
-                title.OpenCards();continue;
+                if(title.ChooseStartCard()&&title.StartTown())return true;
+                continue;
             }
             if(!UpdaterLaunch.Available)continue;
             title.Save();
@@ -98,6 +99,11 @@ internal sealed partial class TitleScreen : IDisposable,Hypercube.GameCube.IFram
                 if(title.status.Length==0)title.status="Update failed: "+UpdaterLaunch.Operation+".";
             }
         }
+    }
+    private bool StartTown()
+    {
+        if(TownDataStorage.Pending()){status="Finish town deletion in Options before starting.";return false;}
+        DevConfigStorage.ApplyGlobal(config);LoadingScreen.Draw();Save();return true;
     }
     private void Save()
     {
