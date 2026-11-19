@@ -60,15 +60,16 @@ internal static class PathChecks
         t.Traffic.Visits[40*Town.Width+20]=100;t.Traffic.Enter(t,20,40);
         check(t.Traffic.OpacityRevision==opacityRevision,"unselected traffic and full-opacity traffic do not dirty the mask");
         s=Flat();t=s.Town;var snow=t.Traffic.Snow;
-        int snowCell=40*Town.Width+6,shift=(snowCell%4)*2;
         t.Traffic.Traverse(t,5.8f,40.2f,6.2f,40.2f);
         check(snow.Revision==0,"nonwinter travel leaves snow untouched");
         snow.SetWinter(true);
-        for(int visit=1;visit<=4;visit++){
+        t.Traffic.Enter(t,7,40);
+        for(int visit=1;visit<=6;visit++){
             t.Traffic.Traverse(t,5.8f,40.2f,6.2f,40.2f);
             t.Traffic.Traverse(t,6.2f,40.2f,6.6f,40.5f);
-            check(((snow.Packed[snowCell/4]>>shift)&3)==Math.Min(3,visit),"snow advances on tile entry and caps after three visits");
+            check(snow.VisitCount(6,40)==Math.Min(5,visit)&&snow.VisitCount(7,40)==1,"five snow visits saturate without changing the neighboring tile");
         }
+        check(snow.Revision==6,"fully worn snow and movement within a tile leave the mask revision unchanged");
         snow.SetWinter(false);snow.SetWinter(true);
         check(snow.Packed.All(v=>v==0),"a new winter starts with fresh snow");
         s=Flat();t=s.Town;t.Traffic.Traverse(t,5.1f,40.2f,8.2f,40.2f);
