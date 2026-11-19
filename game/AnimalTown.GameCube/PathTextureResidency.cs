@@ -43,7 +43,7 @@ internal sealed class PathTextureResidency : IDisposable
         material.Texture=texture?.Pages[0]??fallback;
         material.Color=texture==null?new Color32(154,128,93):Color32.White;
         material.Sampler=sampler;
-        if(texture!=null&&bound!=texture.Pages[0]){var page=texture.Pages[0];page.ConfigureSampler(TextureWrapMode.Repeat,TextureWrapMode.Repeat,TextureMinFilter.LinearMipmapLinear,TextureMagFilter.Linear,0);}
+        if(texture!=null&&bound!=texture.Pages[0]){var page=texture.Pages[0];page.ConfigureSampler(TextureWrapMode.Repeat,TextureWrapMode.Repeat,TextureMinFilter.Linear,TextureMagFilter.Linear,0);}
         bound=texture?.Pages[0];
     }
     public void Dispose()

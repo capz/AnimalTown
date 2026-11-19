@@ -107,21 +107,46 @@ Copy-Item (Join-Path $Root 'tools/native-path-mask.h') (Join-Path $nativeRoot 'i
 Copy-Item (Join-Path $Root 'tools/native-shadow-union.c') (Join-Path $nativeRoot 'source/animaltown_shadow_union.c') -Force
 Copy-Item (Join-Path $Root 'tools/native-shadow-union.h') (Join-Path $nativeRoot 'include/animaltown_shadow_union.h') -Force
 Copy-Item (Join-Path $Root 'tools/native-shadow-union-gx.inc') (Join-Path $nativeRoot 'source/animaltown_shadow_union_gx.inc') -Force
+Copy-Item (Join-Path $Root 'tools/native-world-diagnostics.inc') (Join-Path $nativeRoot 'source/animaltown_world_diagnostics.inc') -Force
+foreach($method in @('View','PrepareEdges','EdgePass')){
+    $count=if($method -eq 'View'){4}else{1}
+    $argsPattern=((1..$count|ForEach-Object {'intptr_t (\w+)'}) -join ', ')
+    $pattern='intptr_t (dnd_value_AnimalTown_GameCube_NativeWorldDiagnostics_'+$method+'_[a-z0-9]+)\('+$argsPattern+'\) \{.*?\r?\n\}'
+    if(([regex]::Matches($generated,$pattern,[Text.RegularExpressions.RegexOptions]::Singleline)).Count -ne 1){throw "Native world diagnostic bridge changed: $method"}
+    $native='animaltown_diagnostics_'+$method.ToLowerInvariant()
+    $types=((1..$count|ForEach-Object {'int'}) -join ',')
+    $generated=[regex]::Replace($generated,$pattern,[Text.RegularExpressions.MatchEvaluator]{param($hit)
+        $args=2..($count+1)|ForEach-Object {$hit.Groups[$_].Value}
+        'intptr_t '+$hit.Groups[1].Value+'('+((@($args)|ForEach-Object {'intptr_t '+$_}) -join ',')+') { return '+$native+'('+((@($args)|ForEach-Object {'(int)'+$_}) -join ',')+'); }'
+    },[Text.RegularExpressions.RegexOptions]::Singleline)
+    $generated="extern int $native($types);`n"+$generated
+}
+[IO.File]::WriteAllText($generatedPath,$generated)
 $gxPath=Join-Path $nativeRoot 'source/graphics_gx.c';$gx=[IO.File]::ReadAllText($gxPath)
 $gxSignature='void dnd_draw_backend_vertices(const DndDrawVertex *v,int count,int primitive,const DndDrawTexture *texture,const DndDrawMaterial *material,const float *world) {'
 if(([regex]::Matches($gx,[regex]::Escape($gxSignature))).Count -ne 1){throw 'Pinned shadow ground scope changed'}
-$gx=$gx.Replace($gxSignature,"#include `"animaltown_shadow_union_gx.inc`"`n"+$gxSignature)
+$gx=$gx.Replace($gxSignature,"#include `"animaltown_shadow_union_gx.inc`"`nextern void animaltown_shadows_model_reset(void);`n#include `"animaltown_world_diagnostics.inc`"`n"+$gxSignature)
 $gxHook='    if(!draw_state(texture,material,world,&state))return;'
 if(([regex]::Matches($gx,[regex]::Escape($gxHook))).Count -ne 1){throw 'Pinned direct ground shadow hook changed'}
-$gx=$gx.Replace($gxHook,$gxHook+"`n    town_shadow_ground(v,NULL,count,material,&state.bindings);")
+$gx=$gx.Replace($gxHook,$gxHook+"`n    town_shadow_ground(v,NULL,count,texture,material,&state.bindings);`n    if(town_debug_collecting&&primitive==GX_TRIANGLES&&!(material->flags&27))animaltown_diagnostics_capture(v,sizeof(*v),NULL,0,count,&state.modelview[0][0],town_debug_mirrored(world),1);")
+$directEnd="    GX_End();`n}`n#include `"dnd_indexed_mesh.inc`""
+if(([regex]::Matches($gx,[regex]::Escape($directEnd))).Count -ne 1){throw 'Pinned direct diagnostic geometry hook changed'}
+$gx=$gx.Replace($directEnd,"    GX_End();`n    if(primitive==GX_TRIANGLES)town_debug_overlay(v,NULL,count,state.modelview);`n}`n#include `"dnd_indexed_mesh.inc`"")
 [IO.File]::WriteAllText($gxPath,$gx)
 $meshPath=Join-Path $nativeRoot 'include/dnd_indexed_mesh.inc';$mesh=[IO.File]::ReadAllText($meshPath)
 $meshHook='    if(!draw_state(texture,material,world,&state))return true;'
 if(([regex]::Matches($mesh,[regex]::Escape($meshHook))).Count -ne 1){throw 'Pinned indexed ground shadow hook changed'}
-$mesh=$mesh.Replace($meshHook,$meshHook+"`n    town_shadow_ground(vertices,indices,count,material,&state.bindings);")
+$mesh=$mesh.Replace($meshHook,$meshHook+"`n    town_shadow_ground(vertices,indices,count,texture,material,&state.bindings);`n    if(town_debug_collecting&&!(material->flags&27))animaltown_diagnostics_capture(vertices,sizeof(*vertices),indices,indices?2:0,count,&state.modelview[0][0],town_debug_mirrored(world),0);")
+$indexedEnd='    /* Preserve material state across indexed draws.'
+if(([regex]::Matches($mesh,[regex]::Escape($indexedEnd))).Count -ne 1){throw 'Pinned indexed diagnostic geometry hook changed'}
+$mesh=$mesh.Replace($indexedEnd,"    town_debug_overlay(vertices,indices,count,state.modelview);`n"+$indexedEnd)
 [IO.File]::WriteAllText($meshPath,$mesh)
 $modelGraphicsPath=Join-Path $nativeRoot 'source/model_graphics.c'
 $modelGraphics=[IO.File]::ReadAllText($modelGraphicsPath)
+$modelEdgeHook='    GX_SetCullMode(mat->two          ? GX_CULL_NONE'
+if(([regex]::Matches($modelGraphics,[regex]::Escape($modelEdgeHook))).Count -ne 1){throw 'Pinned obstructed model edge hook changed'}
+$modelGraphics=$modelGraphics.Replace($modelEdgeHook,"    if(!translucent)animaltown_diagnostics_capture(mesh->skin>=0?(const void*)in->vertices[mi]:(const void*)mesh->data,mesh->skin>=0?24:80,mesh->index,4,mesh->indices,&matrix[0][0],determinant<0,0);`n"+$modelEdgeHook)
+$modelGraphics="extern void animaltown_diagnostics_capture(const void*,unsigned,const void*,unsigned,unsigned,const float*,int,int);`n"+$modelGraphics
 # Keep the game-owned rim hook pinned to the imported indexed model path. Fail
 # closed if a package upgrade changes a hook rather than silently CPU-expanding.
 $rimHooks=@{

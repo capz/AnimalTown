@@ -77,8 +77,6 @@ internal sealed class TerrainRenderer : IDisposable
     internal bool GroundMipmaps=true;
     internal int GroundMipDistance;
     internal bool ShowGroundMipBands {get=>mipBands.Enabled;set=>mipBands.Enabled=value;}
-    private bool appliedGroundMipmaps;
-    private int appliedGroundMipDistance=-1;
     internal int RenderSeason=>season;
     internal int SeasonAt(int month,int preview)=>TerrainTiles.Season(month,preview>=0?preview:forced);
     internal int BaseGroundSlot(GameState state,int x,int z)=>FloorStrips.BaseAt(state,data,x,z,0);
@@ -164,14 +162,12 @@ internal sealed class TerrainRenderer : IDisposable
         bool upgraded=AdvanceGroundTexture();
         // The completed task and package arrays are out of the upgrade frame.
         if(upgraded)AnimalTown.GameCube.NativeTexturePages.Collect();
-        if(changed||upgraded||appliedGroundMipmaps!=GroundMipmaps||appliedGroundMipDistance!=GroundMipDistance){
+        if(changed||upgraded){
             for(int source=0;source<textures.Length;source++)if(textures[source]!=null){
                 var texture=textures[source]!.Pages[0];
                 var wrap=FloorStrips.Read(data,4)==2&&source==0?TextureWrapMode.Repeat:TextureWrapMode.Mirror;
-                bool mip=GroundMipmaps&&texture.MipLevels>1;
-                texture.ConfigureSampler(wrap,wrap,mip?TextureMinFilter.LinearMipmapNearest:TextureMinFilter.Linear,TextureMagFilter.Linear,mip?RenderDebugOptions.GroundMipBias(texture.Width,texture.Height,GroundMipDistance):0);
+                texture.ConfigureSampler(wrap,wrap,TextureMinFilter.Linear,TextureMagFilter.Linear,0);
             }
-            appliedGroundMipmaps=GroundMipmaps;appliedGroundMipDistance=GroundMipDistance;
         }
         int flat=GroundRingRequested&&!cliffPreview&&FloorStrips.Read(data,4)==2?FloorStrips.Read(data,24):-1;
         if(flat>=0&&FloorStrips.TextureSlot(data,flat)!=0)flat=-1;

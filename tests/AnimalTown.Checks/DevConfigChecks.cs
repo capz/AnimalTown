@@ -26,12 +26,13 @@ internal static class DevConfigChecks
         var encoded=defaults.Encode();var restored=DevConfig.Decode(encoded);
         check(encoded[3]==5&&restored.Values[DevConfig.DiscardTerrainCacheWhenIndoorsIndex]==1&&restored.Values[DevConfig.GroundMipBandsIndex]==1,"terrain debug toggles persist in version-five dev config");
         check(defaults.Values.SequenceEqual(restored.Values),"all dev options survive their own save record");
+        check(defaults.SdkPerformanceOverlay&&!restored.SdkPerformanceOverlay&&encoded[4+DevConfig.SdkPerformanceIndex]==0,"SDK overlay never enters a newly saved record");
         check(!SplitSaveCodec.IsFile("dev_config"),"dev config cannot be counted as a damaged town save");
         check(!DevConfig.IsSetting(14)&&!DevConfig.IsSetting(15),"teleport actions are not startup configuration");
         check(Enumerable.Range(0,DevConfig.Count).Count(DevConfig.IsSetting)==DevConfig.SettingCount,"title debug rows contain every remaining setting exactly once");
         encoded[10]^=1;bool rejected=false;try{DevConfig.Decode(encoded);}catch(IOException){rejected=true;}check(rejected,"damaged dev config rejected before application");
         var sliders=new DevConfig();for(int i=0;i<100;i++){sliders.Adjust(20,-1);sliders.Adjust(23,1);}
-        check(sliders.Values[20]==100&&sliders.Values[23]==10,"dev sliders remain bounded");
+        check(sliders.Values[20]==100&&sliders.Values[23]==RenderDebugOptions.MaximumGroundMipDistance,"dev sliders remain bounded");
         sliders.Adjust(8,-1);sliders.Adjust(7,-1);check(sliders.Values[8]==2&&sliders.Values[7]==1&&!DevConfig.IsSetting(7)&&!DevConfig.IsSetting(8),"retired shadow toggles cannot be selected or adjusted");
         sliders.Values[20]=1;rejected=false;try{sliders.Encode();}catch(InvalidOperationException){rejected=true;}check(rejected,"invalid rim increments cannot create an un-restorable config");
         var original=DevConfig.Decode(Convert.FromBase64String("QVREAQEBAAABAQEBAgAAAAAAAAAAAAIAfQABBAAAAADlXYtQ"));
@@ -54,6 +55,8 @@ internal static class DevConfigChecks
         UniformUiGrain(check);
         // Valid checksums cannot turn reserved legacy bytes into new settings.
         void Rehash(byte[] data,int end){uint h=2166136261;for(int i=0;i<end;i++)h=unchecked((h^data[i])*16777619);for(int i=0;i<4;i++)data[end+i]=(byte)(h>>(i*8));}
+        var sdkOn=new DevConfig().Encode();sdkOn[4+DevConfig.SdkPerformanceIndex]=1;Rehash(sdkOn,36);
+        check(!DevConfig.Decode(sdkOn).SdkPerformanceOverlay,"old cards cannot enable the SDK overlay at process start");
         var reserved=Convert.FromHexString("4154440200010000010101010200000000000000000000006400010000000016070000003360CDB9");reserved[33]=1;Rehash(reserved,36);
         rejected=false;try{DevConfig.Decode(reserved);}catch(IOException){rejected=true;}check(rejected,"v2 padding cannot enable the new terrain option");
         var current=new DevConfig().Encode();current[3]=3;current[34]=1;Rehash(current,36);

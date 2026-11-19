@@ -19,6 +19,7 @@ public sealed class TileTraffic
     public int Normalizations {get;private set;}
     public int OpacityRevision {get;private set;}
     public static int OpacityLevel(int visits)=>visits<MinimumVisits?0:visits>=FullOpacityVisits?15:2+(visits-MinimumVisits)*13/(FullOpacityVisits-MinimumVisits);
+    public static int VisitEdgeLevel(int visits)=>visits<=0?0:visits<10?1:visits<MinimumVisits?2:visits<FullOpacityVisits?3:4;
     public void Enter(Town town,int x,int z)
     {
         if(!town.Walkable(x,z))return;

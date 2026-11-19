@@ -28,7 +28,7 @@ internal static class DevConfigStorage
     internal static void ApplyGlobal(DevConfig config)
     {
         RuntimeOptions.Apply(config.RuntimeMode);FrameProfile.Enabled=config.Values[0]!=0;
-        Dolphin.Diagnostics.DebugOverlay.PerformanceVisible=config.Values[21]!=0;
+        Dolphin.Diagnostics.DebugOverlay.PerformanceVisible=config.SdkPerformanceOverlay;
         UiFont.Batched=true;
     }
 }

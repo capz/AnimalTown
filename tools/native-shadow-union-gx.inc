@@ -5,6 +5,7 @@ extern const uint8_t *animaltown_shadows_page(float,float,float*);
 extern int animaltown_environment_color(void);
 extern int animaltown_light_strength(void);
 extern int animaltown_shadow_strength(void);
+extern float animaltown_mip_x,animaltown_mip_z,animaltown_mip_radius;
 static uint8_t town_shadow_empty[32*32] __attribute__((aligned(32)));
 static void town_alpha_pass(int stage){
     GX_SetTevAlphaIn((u8)stage,GX_CA_APREV,GX_CA_ZERO,GX_CA_ZERO,GX_CA_ZERO);
@@ -12,7 +13,7 @@ static void town_alpha_pass(int stage){
 }
 /* Blend the shared dirt page on existing ground triangles. A compact I4
  * world mask changes independently of the immutable terrain archive. */
-static int town_paths_apply(const DndDrawMaterial *mat,int stage,unsigned *bindings){
+static int town_paths_apply(const DndDrawMaterial *mat,int stage,int half,unsigned *bindings){
     const uint8_t *mask=animaltown_path_mask();
     if(!mask||!mat->secondary)return stage;
     GXTexObj tex;GX_InitTexObj(&tex,(void*)mask,128,128,GX_TF_I4,GX_CLAMP,GX_CLAMP,GX_FALSE);
@@ -27,6 +28,12 @@ static int town_paths_apply(const DndDrawMaterial *mat,int stage,unsigned *bindi
     GX_SetTevOrder((u8)stage,GX_TEXCOORD1,GX_TEXMAP1,GX_COLOR0A0);
     GX_SetTevColorIn((u8)stage,GX_CC_ZERO,GX_CC_ZERO,GX_CC_ZERO,GX_CC_TEXC);
     GX_SetTevColorOp((u8)stage,GX_TEV_ADD,GX_TB_ZERO,GX_CS_SCALE_1,GX_TRUE,GX_TEVREG1);town_alpha_pass(stage++);
+    if(half){
+        GX_SetTevDirect((u8)stage);GX_SetTevSwapMode((u8)stage,GX_TEV_SWAP0,GX_TEV_SWAP0);
+        GX_SetTevOrder((u8)stage,GX_TEXCOORD6,GX_TEXMAP6,GX_COLOR_NULL);
+        GX_SetTevColorIn((u8)stage,GX_CC_C1,GX_CC_TEXC,GX_CC_C0,GX_CC_ZERO);
+        GX_SetTevColorOp((u8)stage,GX_TEV_ADD,GX_TB_ZERO,GX_CS_SCALE_1,GX_TRUE,GX_TEVREG1);town_alpha_pass(stage++);
+    }
     GX_SetTevSwapModeTable(GX_TEV_SWAP1,GX_CH_RED,GX_CH_GREEN,GX_CH_BLUE,GX_CH_RED);
     GX_SetTevDirect((u8)stage);GX_SetTevSwapMode((u8)stage,GX_TEV_SWAP0,GX_TEV_SWAP1);
     GX_SetTevOrder((u8)stage,GX_TEXCOORD3,GX_TEXMAP3,GX_COLOR0A0);
@@ -215,17 +222,75 @@ static void town_shadow_apply_stage(float x,float z,const float *world,const Dnd
 static inline void town_shadow_apply(float x,float z,const float *world,const DndDrawEffect *effect,unsigned *bindings){
     town_shadow_apply_stage(x,z,world,effect,bindings,effect?effect->count:1);
 }
-/* Trilinear midpoint samples bracket the real nearest-mip cutoff. */
-static int town_mip_line(int stage){
-    GX_SetTevKColor(GX_KCOLOR0,(GXColor){255,172,255,148});
+/* The map stores signed distance from a unit circle. One file-backed
+ * texture supplies both mip levels. GX reads its half-size tail in place. */
+enum { TOWN_MIP_SIDE=128,TOWN_MIP_THRESHOLD=160 };
+static uint8_t town_mip_mask[TOWN_MIP_SIDE*TOWN_MIP_SIDE] __attribute__((aligned(32)));
+static void town_mip_bind_mask(int coord,unsigned *bindings){
+    static int ready;
+    if(!ready){
+        for(int z=0;z<TOWN_MIP_SIDE;z++)for(int x=0;x<TOWN_MIP_SIDE;x++){
+            float dx=x+.5f-TOWN_MIP_SIDE/2,dz=z+.5f-TOWN_MIP_SIDE/2;
+            float distance=sqrtf(dx*dx+dz*dz)-TOWN_MIP_SIDE/4;
+            unsigned offset=((z/4)*(TOWN_MIP_SIDE/8)+x/8)*32+(z%4)*8+x%8;
+            town_mip_mask[offset]=(uint8_t)fmaxf(0,fminf(255,TOWN_MIP_THRESHOLD+distance*24));
+        }
+        DCFlushRange(town_mip_mask,sizeof(town_mip_mask));ready=1;
+    }
+    GXTexObj tex;
+    GX_InitTexObj(&tex,town_mip_mask,TOWN_MIP_SIDE,TOWN_MIP_SIDE,GX_TF_I8,GX_CLAMP,GX_CLAMP,GX_FALSE);
+    GX_InitTexObjLOD(&tex,GX_LINEAR,GX_LINEAR,0,0,0,GX_FALSE,GX_FALSE,GX_ANISO_1);
+    GX_LoadTexObj(&tex,GX_TEXMAP4);(*bindings)++;
+    float scale=.25f/animaltown_mip_radius;
+    Mtx uv={{0}};
+    uv[0][0]=uv[1][1]=2*scale; /* Ground UV repeats every two tiles. */
+    uv[0][3]=.5f-animaltown_mip_x*scale;uv[1][3]=.5f-animaltown_mip_z*scale;
+    GX_LoadTexMtxImm(uv,GX_TEXMTX6,GX_MTX2x4);
+    GX_SetTexCoordGen((u16)coord,GX_TG_MTX2x4,GX_TG_TEX0,GX_TEXMTX6);
+    GX_SetTexCoordScaleManually((u8)coord,GX_FALSE,1,1);GX_SetTexCoordBias((u8)coord,GX_FALSE,GX_FALSE);
+}
+static int town_mip_bind_half(const DndDrawTexture *source,int map,int coord,unsigned *bindings){
+    if(!source||source->levels<2||source->width<2||source->height<2)return 0;
+    unsigned offset=GX_GetTexBufferSize(source->width,source->height,source->format,GX_FALSE,0);
+    unsigned bytes=GX_GetTexBufferSize(source->width/2,source->height/2,source->format,GX_FALSE,0);
+    if(offset>source->bytes||bytes>source->bytes-offset)return 0;
+    GXTexObj tex;
+    GX_InitTexObj(&tex,(uint8_t*)source->data+offset,source->width/2,source->height/2,source->format,
+        source->sampler_set?source->wrap_s:GX_CLAMP,source->sampler_set?source->wrap_t:GX_CLAMP,GX_FALSE);
+    GX_InitTexObjLOD(&tex,GX_LINEAR,GX_LINEAR,0,0,0,GX_FALSE,GX_FALSE,GX_ANISO_1);
+    GX_LoadTexObj(&tex,(u8)map);(*bindings)++;
+    GX_SetTexCoordGen((u16)coord,GX_TG_MTX2x4,GX_TG_TEX0,GX_IDENTITY);
+    GX_SetTexCoordScaleManually((u8)coord,GX_FALSE,1,1);GX_SetTexCoordBias((u8)coord,GX_FALSE,GX_FALSE);
+    return 1;
+}
+static int town_mip_select(int stage,int coord,int half){
+    GX_SetTevKColor(GX_KCOLOR0,(GXColor){255,172,255,TOWN_MIP_THRESHOLD});
+    GX_SetTevDirect((u8)stage);GX_SetTevSwapMode((u8)stage,GX_TEV_SWAP0,GX_TEV_SWAP0);
+    GX_SetTevOrder((u8)stage,coord,GX_TEXMAP4,GX_COLOR_NULL);
+    GX_SetTevKColorSel((u8)stage,GX_TEV_KCSEL_K0_A);
+    GX_SetTevColorIn((u8)stage,GX_CC_TEXC,GX_CC_KONST,GX_CC_ONE,GX_CC_ZERO);
+    GX_SetTevColorOp((u8)stage,GX_TEV_COMP_R8_GT,GX_TB_ZERO,GX_CS_SCALE_1,GX_TRUE,GX_TEVREG0);town_alpha_pass(stage++);
+    GX_SetTevDirect((u8)stage);GX_SetTevSwapMode((u8)stage,GX_TEV_SWAP0,GX_TEV_SWAP0);
+    GX_SetTevOrder((u8)stage,half,GX_TEXMAP5,GX_COLOR0A0);
+    GX_SetTevColorIn((u8)stage,GX_CC_ZERO,GX_CC_TEXC,GX_CC_RASC,GX_CC_ZERO);
+    GX_SetTevColorOp((u8)stage,GX_TEV_ADD,GX_TB_ZERO,GX_CS_SCALE_1,GX_TRUE,GX_TEVREG1);town_alpha_pass(stage++);
+    GX_SetTevDirect((u8)stage);GX_SetTevSwapMode((u8)stage,GX_TEV_SWAP0,GX_TEV_SWAP0);
+    GX_SetTevOrder((u8)stage,GX_TEXCOORD_NULL,GX_TEXMAP_NULL,GX_COLOR_NULL);
+    GX_SetTevColorIn((u8)stage,GX_CC_CPREV,GX_CC_C1,GX_CC_C0,GX_CC_ZERO);
+    GX_SetTevColorOp((u8)stage,GX_TEV_ADD,GX_TB_ZERO,GX_CS_SCALE_1,GX_TRUE,GX_TEVPREV);town_alpha_pass(stage++);
+    return stage;
+}
+/* Both sides of the pink line sample the same distance field as the switch. */
+static int town_mip_line(int stage,int coord){
+    GX_SetTevColor(GX_TEVREG1,(GXColor){0,0,0,148});
     GX_SetTevSwapModeTable(GX_TEV_SWAP1,GX_CH_RED,GX_CH_GREEN,GX_CH_BLUE,GX_CH_RED);
     for(int side=0;side<2;side++,stage++){
         GX_SetTevDirect((u8)stage);GX_SetTevSwapMode((u8)stage,GX_TEV_SWAP0,GX_TEV_SWAP1);
-        GX_SetTevOrder((u8)stage,GX_TEXCOORD0,GX_TEXMAP0,side?GX_COLOR_NULL:GX_COLOR0A0);
+        GX_SetTevOrder((u8)stage,coord,GX_TEXMAP4,side?GX_COLOR_NULL:GX_COLOR0A0);
         GX_SetTevColorIn((u8)stage,GX_CC_ZERO,GX_CC_ZERO,GX_CC_ZERO,GX_CC_CPREV);
         GX_SetTevColorOp((u8)stage,GX_TEV_ADD,GX_TB_ZERO,GX_CS_SCALE_1,GX_TRUE,GX_TEVPREV);
-        GX_SetTevKAlphaSel((u8)stage,side?GX_TEV_KASEL_K0_G:GX_TEV_KASEL_K0_A);
-        GX_SetTevAlphaIn((u8)stage,side?GX_CA_KONST:GX_CA_TEXA,side?GX_CA_TEXA:GX_CA_KONST,side?GX_CA_A0:GX_CA_RASA,GX_CA_ZERO);
+        if(side)GX_SetTevKAlphaSel((u8)stage,GX_TEV_KASEL_K0_G);
+        GX_SetTevAlphaIn((u8)stage,side?GX_CA_KONST:GX_CA_TEXA,side?GX_CA_TEXA:GX_CA_A1,side?GX_CA_A0:GX_CA_RASA,GX_CA_ZERO);
         GX_SetTevAlphaOp((u8)stage,GX_TEV_COMP_A8_GT,GX_TB_ZERO,GX_CS_SCALE_1,GX_TRUE,GX_TEVREG0);
     }
     GX_SetTevDirect((u8)stage);GX_SetTevSwapMode((u8)stage,GX_TEV_SWAP0,GX_TEV_SWAP0);
@@ -236,7 +301,7 @@ static int town_mip_line(int stage){
     town_alpha_pass(stage);
     return stage+1;
 }
-static inline void town_shadow_ground(const DndDrawVertex *v,const uint16_t *ix,int count,const DndDrawMaterial *mat,unsigned *bindings){
+static inline void town_shadow_ground(const DndDrawVertex *v,const uint16_t *ix,int count,const DndDrawTexture *texture,const DndDrawMaterial *mat,unsigned *bindings){
     int mode=animaltown_shadows_mode();if(mode!=1&&mode!=3&&mode!=4&&mode!=5&&mode!=6){town_environment_apply(mat->effect,mat->effect?mat->effect->count:1);return;}if(count<3)return;
     int a=0,b=1,c=2;
     for(int i=0;i+2<count;i+=3){a=ix?ix[i]:i;b=ix?ix[i+1]:i+1;c=ix?ix[i+2]:i+2;if(v[a].color&255u)break;}
@@ -244,7 +309,16 @@ static inline void town_shadow_ground(const DndDrawVertex *v,const uint16_t *ix,
      * interior identifies its 8m page even when a vertex lies on its border. */
     float factor=(mode==3?4.f:2.f)/3;
     int stage=mat->effect?mat->effect->count:1;
-    if(mode==1)stage=town_paths_apply(mat,stage,bindings);
-    if(mode==6)stage=town_mip_line(stage);
+    int paths=mode==1&&mat->secondary&&animaltown_path_mask(),gens=0;
+    int coord=paths?GX_TEXCOORD4:GX_TEXCOORD3,half=paths?GX_TEXCOORD5:GX_TEXCOORD4,path_half=0;
+    if((mode==1||mode==6)&&animaltown_mip_radius>0&&town_mip_bind_half(texture,GX_TEXMAP5,half,bindings)){
+        town_mip_bind_mask(coord,bindings);
+        stage=town_mip_select(stage,coord,half);
+        if(paths)path_half=town_mip_bind_half(mat->secondary,GX_TEXMAP6,GX_TEXCOORD6,bindings);
+        if(mode==6)stage=town_mip_line(stage,coord);
+        gens=path_half?7:half+1;
+    }
+    if(paths)stage=town_paths_apply(mat,stage,path_half,bindings);
     town_shadow_apply_stage((v[a].u+v[b].u+v[c].u)*factor,(v[a].v+v[b].v+v[c].v)*factor,NULL,mat->effect,bindings,stage);
+    if(gens)GX_SetNumTexGens((u8)gens);
 }

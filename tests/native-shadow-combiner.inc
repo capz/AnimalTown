@@ -9,6 +9,7 @@ typedef struct { u8 r,g,b,a; } GXColor;
 typedef struct { int unused; } GXTexObj;
 typedef struct { u8 a,b,c,d,op,dest,konst,reserved; } DndTevStage;
 typedef struct { int count,uniforms;DndTevStage stages[16]; } DndDrawEffect;
+typedef struct { const void *data; unsigned bytes; int width,height,format,levels,sampler_set,wrap_s,wrap_t; } DndDrawTexture;
 typedef struct { const DndDrawEffect *effect; const void *secondary; } DndDrawMaterial;
 typedef struct { float u,v; unsigned color; } DndDrawVertex;
 enum {
@@ -83,8 +84,9 @@ enum {
     GX_CC_RASC=10,GX_CC_ONE=12,GX_CC_KONST=14,GX_CC_ZERO=15,GX_CA_APREV=0,GX_CA_A2=3,GX_CA_TEXA=4,
     GX_CA_RASA=5,GX_CA_KONST=6,GX_CA_ZERO=7,
     GX_TEV_COMP_A8_GT=14,GX_TEV_COMP_A8_EQ=15,GX_TEV_KASEL_3_4=2,GX_EQUAL=2,GX_ALWAYS=7,GX_AOP_AND=0,
-    GX_TEXCOORD5=5,GX_TEXCOORD6=6,GX_TEXMAP4=4,GX_TEXMTX4=42,GX_TEXMTX5=45,
-    GX_CA_A0=1,GX_CC_A0=3,GX_KCOLOR0=0,GX_TEV_KASEL_K0_A=28,GX_TEV_KASEL_K0_G=20
+    GX_TEXCOORD5=5,GX_TEXCOORD6=6,GX_TEXMAP4=4,GX_TEXMAP5=5,GX_TEXMAP6=6,GX_TEXMTX4=42,GX_TEXMTX5=45,
+    GX_CA_A0=1,GX_CA_A1=2,GX_CC_A0=3,GX_KCOLOR0=0,GX_TEV_KASEL_K0_A=28,GX_TEV_KASEL_K0_G=20,
+    GX_TEV_KCSEL_K0_A=28,GX_TEV_COMP_R8_GT=8
 };
 typedef struct { int input[4],destination,op,konst; } AlphaCommand;
 typedef struct { int input[4],destination,konst; } ColorCommand;
@@ -104,7 +106,11 @@ static GXColor konst_colors[4];
 static GXColor tev_colors[4];
 static GXColor shadow_tint;
 static float shadow_uv_scale,shadow_uv_offset,shadow_uv_scale_z,shadow_uv_offset_z;
+float animaltown_mip_x,animaltown_mip_z,animaltown_mip_radius;
 static void DCFlushRange(void *data,size_t bytes){(void)data;(void)bytes;}
+static unsigned GX_GetTexBufferSize(int w,int h,int format,int mip,int level){
+    assert(format==GX_TF_RGB565&&!mip&&!level);return w*h*2;
+}
 static void GX_InitTexObj(GXTexObj *t,void *data,u16 w,u16 h,int format,int s,int v,int mip){
     (void)t;(void)data;(void)s;(void)v;(void)mip;texture_width=w;texture_height=h;texture_format=format;
 }
@@ -112,7 +118,7 @@ static void GX_InitTexObjLOD(GXTexObj *t,int min,int mag,float low,float high,fl
     (void)t;(void)low;(void)high;(void)bias;(void)clamp;(void)edge;(void)aniso;texture_min=min;texture_mag=mag;
 }
 static void GX_LoadTexObj(GXTexObj *t,int map){
-    (void)t;assert(map==GX_TEXMAP2||map==GX_TEXMAP3||map==GX_TEXMAP4);
+    (void)t;assert(map>=GX_TEXMAP2&&map<=GX_TEXMAP6);
     texture_loads++;if(map==GX_TEXMAP2)shadow_loads++;
 }
 static void GX_SetNumTevStages(u8 count){assert(count<=16);alpha_command_count=count;}
@@ -144,7 +150,7 @@ static void GX_SetTevColorIn(u8 stage,int a,int b,int c,int d){
     out->input[0]=a;out->input[1]=b;out->input[2]=c;out->input[3]=d;
 }
 static void GX_SetTevColorOp(u8 stage,int op,int bias,int scale,int clamp,int destination){
-    assert(stage<16&&(op==GX_TEV_ADD||op==GX_TEV_SUB)&&bias==GX_TB_ZERO&&(scale==GX_CS_SCALE_1||scale==GX_CS_DIVIDE_2)&&(clamp==GX_TRUE||clamp==GX_FALSE));
+    assert(stage<16&&(op==GX_TEV_ADD||op==GX_TEV_SUB||op==GX_TEV_COMP_R8_GT)&&bias==GX_TB_ZERO&&(scale==GX_CS_SCALE_1||scale==GX_CS_DIVIDE_2)&&(clamp==GX_TRUE||clamp==GX_FALSE));
     color_commands[stage].destination=destination;
 }
 static void GX_SetAlphaCompare(int a,int threshold,int combine,int b,int ref){
@@ -350,7 +356,7 @@ static void water_shadow_color_checks(void){
         environment_test_rgb=night?0x607aa0:0xffffff;shadow_test_gain=gain;point_test_gain=255-gain;
         memset(tev_colors,0,sizeof tev_colors);memset(color_commands,0,sizeof color_commands);
         konst_colors[0]=foam0;konst_colors[1]=foam1;
-        unsigned bindings=0;reset_shadow_recording();town_shadow_ground(triangle,NULL,3,&material,&bindings);
+        unsigned bindings=0;reset_shadow_recording();town_shadow_ground(triangle,NULL,3,NULL,&material,&bindings);
         verify_shadow_orders(4,3,0,bindings);
         assert(!memcmp(&konst_colors[0],&foam0,sizeof foam0)&&!memcmp(&konst_colors[1],&foam1,sizeof foam1));
         assert(tev_colors[GX_TEVREG0].r==220*point_test_gain/255&&tev_colors[GX_TEVREG0].a==0);
@@ -381,7 +387,7 @@ static void water_shadow_color_checks(void){
 static void path_blend_color_checks(void){
     int page=1;DndDrawMaterial material={.secondary=&page};unsigned bindings=0;
     const int ground[3]={94,135,57},dirt[3]={154,128,93};
-    path_test_ready=1;assert(town_paths_apply(&material,0,&bindings)==3&&bindings==1);
+    path_test_ready=1;assert(town_paths_apply(&material,0,0,&bindings)==3&&bindings==1);
     for(int level=0;level<16;level++)for(int receiver=0;receiver<=255;receiver+=255){
         int registers[4][4]={{0}};
         for(int channel=0;channel<3;channel++)registers[0][channel]=ground[channel];
@@ -417,32 +423,32 @@ static void native_shadow_combiner_checks(void){
     const DndDrawVertex triangle[]={{0,0,255},{1,0,255},{0,1,255}};
     const uint16_t indices[]={1,2,0};
     const float normal[]={1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1};
-    unsigned bindings=0;reset_shadow_recording();town_shadow_ground(triangle,NULL,3,&material,&bindings);
+    unsigned bindings=0;reset_shadow_recording();town_shadow_ground(triangle,NULL,3,NULL,&material,&bindings);
     verify_shadow_orders(2,3,0,bindings);verify_alpha_footer(2);verify_shadow_colors(2,3,255,0xffffff);
     assert(shadow_tint.r==35&&shadow_tint.g==49&&shadow_tint.b==66);
     assert(texture_format==GX_TF_IA4&&konst_colors[GX_KCOLOR2].a==SU_OPACITY);
     assert(konst_colors[GX_KCOLOR1].r==220&&konst_colors[GX_KCOLOR1].g==158&&konst_colors[GX_KCOLOR1].b==74);
     assert(texture_width==32&&texture_height==32&&texture_min==GX_LINEAR&&texture_mag==GX_LINEAR);
     assert(fabsf(shadow_uv_scale-4.f*30/(32*8))<.000001f&&shadow_uv_offset==1.f/32);
-    shadow_page_side=SU_TERRAIN_WIDTH;town_shadow_ground(triangle,NULL,3,&material,&bindings);
+    shadow_page_side=SU_TERRAIN_WIDTH;town_shadow_ground(triangle,NULL,3,NULL,&material,&bindings);
     assert(texture_width==256&&texture_height==128);
     assert(fabsf(shadow_uv_scale-4.f*SU_TERRAIN_TEXELS_PER_METRE/256)<.000001f&&shadow_uv_offset==1.f/256);
     assert(fabsf(shadow_uv_scale_z-4.f/128)<.000001f&&shadow_uv_offset_z==1.f/128);
-    shadow_page_side=SU_SIDE;shadow_page_missing=1;town_shadow_ground(triangle,NULL,3,&material,&bindings);
+    shadow_page_side=SU_SIDE;shadow_page_missing=1;town_shadow_ground(triangle,NULL,3,NULL,&material,&bindings);
     assert(texture_width==32&&texture_height==32&&sizeof(town_shadow_empty)==1024);
     shadow_page_missing=0;
     path_test_ready=1;shadow_test_mode=1;material.secondary=&effect;bindings=0;
-    reset_shadow_recording();town_shadow_ground(triangle,indices,3,&material,&bindings);
+    reset_shadow_recording();town_shadow_ground(triangle,indices,3,NULL,&material,&bindings);
     verify_shadow_orders(5,1,1,bindings);verify_alpha_footer(2);
     // Retain the receiver channel throughout the added path passes and the
     // following shadow/light samples, independently of their RGB inputs.
     for(int stage=2;stage<8;stage++)assert(tev_orders[stage].channel==GX_COLOR0A0);
-    path_test_ready=0;town_shadow_ground(triangle,NULL,3,&material,&bindings);
+    path_test_ready=0;town_shadow_ground(triangle,NULL,3,NULL,&material,&bindings);
     assert(alpha_command_count==6);verify_alpha_footer(2);
     material.secondary=NULL;
     for(int gain=0;gain<=255;gain++){
         point_test_gain=gain;environment_test_rgb=0x596c91;bindings=0;
-        reset_shadow_recording();town_shadow_ground(triangle,gain%2?indices:NULL,3,&material,&bindings);
+        reset_shadow_recording();town_shadow_ground(triangle,gain%2?indices:NULL,3,NULL,&material,&bindings);
         verify_shadow_orders(2,1,0,bindings);
         assert(konst_colors[GX_KCOLOR1].r==220*gain/255&&konst_colors[GX_KCOLOR1].g==158*gain/255&&konst_colors[GX_KCOLOR1].b==74*gain/255);
         if(gain==0||gain==128||gain==255)verify_shadow_colors(2,1,gain,environment_test_rgb);
@@ -455,11 +461,11 @@ static void native_shadow_combiner_checks(void){
     effect.count=2;shadow_test_mode=3;bindings=1;
     shadow_page_missing=1;
     shadow_test_mode=4;
-    town_shadow_ground(triangle,NULL,3,&material,&bindings);
+    town_shadow_ground(triangle,NULL,3,NULL,&material,&bindings);
     assert(texture_format==GX_TF_IA4&&texgens==3&&alpha_command_count==5);
     assert(footer_alpha_for_raster(0,0,0,254)==alpha_compare);
     shadow_page_missing=0;snow_test_ready=1;
-    town_shadow_ground(triangle,NULL,3,&material,&bindings);
+    town_shadow_ground(triangle,NULL,3,NULL,&material,&bindings);
     assert(texture_format==GX_TF_I8&&texgens==7&&alpha_command_count==8);
     assert(tev_orders[7].map==GX_TEXMAP4&&tev_orders[7].coord==GX_TEXCOORD6);
     assert(fabsf(shadow_uv_scale-2.f*30/(32*8))<.000001f);
@@ -470,11 +476,11 @@ static void native_shadow_combiner_checks(void){
     assert(footer_alpha_for_raster(0,0,0,255)!=alpha_compare);
     assert(footer_alpha_for_raster(0,0,0,0)!=alpha_compare);
     path_test_ready=1;bindings=0;
-    reset_shadow_recording();town_shadow_ground(triangle,NULL,3,&material,&bindings);
+    reset_shadow_recording();town_shadow_ground(triangle,NULL,3,NULL,&material,&bindings);
     assert(alpha_command_count==9&&texgens==7&&bindings==3);
     assert(tev_orders[8].map==GX_TEXMAP3&&tev_orders[8].coord==GX_TEXCOORD5);
     for(int gain=0;gain<=255;gain+=51){
-        shadow_test_gain=gain;town_shadow_ground(triangle,NULL,3,&material,&bindings);
+        shadow_test_gain=gain;town_shadow_ground(triangle,NULL,3,NULL,&material,&bindings);
         assert(konst_colors[GX_KCOLOR2].a==(66*gain+127)/255);
         for(int level=0;level<16;level++){
             path_test_alpha=level*17;
@@ -484,12 +490,23 @@ static void native_shadow_combiner_checks(void){
     }
     snow_test_ready=path_test_ready=path_test_alpha=0;shadow_test_gain=255;
     shadow_test_mode=6;bindings=0;
-    reset_shadow_recording();town_shadow_ground(triangle,NULL,3,&material,&bindings);
-    assert(alpha_command_count==9&&texgens==3&&bindings==1);
-    assert(tev_orders[2].map==GX_TEXMAP0&&tev_orders[3].map==GX_TEXMAP0);
-    assert(alpha_commands[2].konst==GX_TEV_KASEL_K0_A&&alpha_commands[3].konst==GX_TEV_KASEL_K0_G);
-    assert(konst_colors[GX_KCOLOR0].a==148&&konst_colors[GX_KCOLOR0].g==172);
-    verify_alpha_footer(2);
+    reset_shadow_recording();town_shadow_ground(triangle,NULL,3,NULL,&material,&bindings);
+    assert(alpha_command_count==6&&texgens==3&&bindings==1);
+    static const uint8_t ground_pixels[2560]={0};
+    const DndDrawTexture ground={.data=ground_pixels,.bytes=sizeof ground_pixels,.width=32,.height=32,.format=GX_TF_RGB565,.levels=2};
+    animaltown_mip_x=12.5f;animaltown_mip_z=40.25f;animaltown_mip_radius=4;
+    material.effect=NULL;bindings=0;
+    reset_shadow_recording();town_shadow_ground(triangle,NULL,3,&ground,&material,&bindings);
+    assert(alpha_command_count==11&&texgens==5&&bindings==3);
+    assert(tev_orders[1].map==GX_TEXMAP4&&tev_orders[2].map==GX_TEXMAP5&&tev_orders[2].coord==GX_TEXCOORD4);
+    assert(tev_orders[4].map==GX_TEXMAP4&&tev_orders[5].map==GX_TEXMAP4);
+    assert(alpha_commands[4].input[1]==GX_CA_A1&&alpha_commands[5].konst==GX_TEV_KASEL_K0_G);
+    assert(tev_colors[GX_TEVREG1].a==148&&konst_colors[GX_KCOLOR0].a==160&&konst_colors[GX_KCOLOR0].g==172);
+    material.secondary=&ground;path_test_ready=1;shadow_test_mode=1;bindings=0;
+    reset_shadow_recording();town_shadow_ground(triangle,NULL,3,&ground,&material,&bindings);
+    assert(alpha_command_count==12&&texgens==7&&bindings==5);
+    assert(tev_orders[5].map==GX_TEXMAP6&&tev_orders[5].coord==GX_TEXCOORD6);
+    animaltown_mip_radius=0;path_test_ready=0;material.secondary=NULL;material.effect=&effect;
     shadow_test_mode=3;bindings=1;
     assert(animaltown_rim_enable(100));
     town_rim_apply(normal,&effect,false,&bindings);

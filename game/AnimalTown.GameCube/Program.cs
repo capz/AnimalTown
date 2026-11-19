@@ -98,6 +98,7 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
     private readonly DebugWeather weather=new DebugWeather();
     private readonly FallLeafWake fallLeaves=new FallLeafWake();
     private readonly RainRenderer rain=new RainRenderer();
+    private readonly VisitEdgeRenderer visitEdges=new VisitEdgeRenderer();
     private readonly ActorFrameVisibility actorVisibility=new ActorFrameVisibility();
     private readonly AnimationFrameClock animationClock=new AnimationFrameClock(7);
     private readonly bool[] restartClips=new bool[7];
@@ -168,8 +169,8 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
     private int buildingInspection;
     private const int SettingsTab=5,TestingTab=6,DaylightSettingsRow=6;
     // Stable IDs keep hidden/retired controls out of both debug menus.
-    private static readonly int[] testingOptions={0,33,2,3,11,12,13,16,17,35,18,19,21,22,23,34,31,32,30};
-    private static readonly string[] groundMipLabels={"0","1","2","3","4","5","6"};
+    private static readonly int[] testingOptions={0,33,2,3,11,12,13,16,17,35,18,19,21,22,23,34,36,37,38,31,32,30};
+    private static readonly string[] groundMipLabels={"0","1"};
     private static int TestingOption(int row)=>testingOptions[row];
     private static readonly string[] tabs={"Backpack","Jobs","Catalog","Home","Post office","Settings","Debug / testing"};
     internal TownGame(DevConfig config,TownSession session)
@@ -272,6 +273,7 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
         clockHud.Dispose();uiShapes.Dispose();mapBackground.Dispose();cube.Dispose();ui.Dispose();
         font.Release();headingFont.Release();TextureCache.Release(itemIcons);card?.Dispose();card=null;
         NativeRim.Enable(0);NativeRenderProbe.Uv(0);
+        NativeWorldDiagnostics.PrepareEdges(0);
         if(NativeShadows.Shutdown()!=1)throw new InvalidOperationException("Shadow shutdown failed");
         TextureCache.TrimUnused();
     }
@@ -693,10 +695,16 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
             case 17:weather.RoughOceanWhenRaining=!weather.RoughOceanWhenRaining;break;
             case 18:renderDebug.CycleSeason();break;
             case 19:renderDebug.ForceAttention=!renderDebug.ForceAttention;break;
-            case 21:DebugOverlay.PerformanceVisible=!DebugOverlay.PerformanceVisible;break;
+            case DevConfig.SdkPerformanceIndex:
+                debugConfig.Adjust(DevConfig.SdkPerformanceIndex,1);
+                DebugOverlay.PerformanceVisible=debugConfig.SdkPerformanceOverlay;
+                break;
             case 22:renderDebug.GroundMipmaps=!renderDebug.GroundMipmaps;break;
             case 23:renderDebug.AdjustGroundMipDistance(1);break;
             case 34:renderDebug.ShowGroundMipBands=!renderDebug.ShowGroundMipBands;break;
+            case 36:renderDebug.ShowWorldRim=!renderDebug.ShowWorldRim;break;
+            case 37:renderDebug.ShowObstructedEdges=!renderDebug.ShowObstructedEdges;break;
+            case 38:renderDebug.ShowVisitEdges=!renderDebug.ShowVisitEdges;break;
             case 30:
                 renderDebug.DiscardTerrainCacheWhenIndoors=!renderDebug.DiscardTerrainCacheWhenIndoors;
                 debugConfig.Values[DevConfig.DiscardTerrainCacheWhenIndoorsIndex]=renderDebug.DiscardTerrainCacheWhenIndoors?1:0;
@@ -723,10 +731,13 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
             case 17:return "Rough ocean in rain: "+OnOff(weather.RoughOceanWhenRaining);
             case 18:return "Season preview: "+(renderDebug.SeasonOverride<0?"Auto":TerrainTiles.SeasonName(renderDebug.SeasonOverride));
             case 19:return "Villager attention bubbles: "+OnOff(renderDebug.ForceAttention);
-            case 21:return "SDK performance overlay: "+OnOff(DebugOverlay.PerformanceVisible);
+            case DevConfig.SdkPerformanceIndex:return "SDK performance overlay: "+OnOff(DebugOverlay.PerformanceVisible)+" (session)";
             case 22:return "Ground mipmaps: "+OnOff(renderDebug.GroundMipmaps);
-            case 23:return "Ground mip distance: "+(renderDebug.GroundMipDistance==0?"Auto":renderDebug.GroundMipDistance+(renderDebug.GroundMipDistance==1?" square":" squares"));
+            case 23:return "Ground mip switch: "+RenderDebugOptions.GroundMipDistanceLabel(renderDebug.GroundMipDistance);
             case 34:return "Ground mip bands: "+OnOff(renderDebug.ShowGroundMipBands);
+            case 36:return "World rim: "+OnOff(renderDebug.ShowWorldRim)+" (session)";
+            case 37:return "Obstructed object edges: "+OnOff(renderDebug.ShowObstructedEdges);
+            case 38:return "Tile visit edges: "+OnOff(renderDebug.ShowVisitEdges);
             default:return "discard terrain cache when indoors: "+OnOff(renderDebug.DiscardTerrainCacheWhenIndoors);
         }
     }
@@ -874,6 +885,12 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
         FrameProfile.End(2,phase);
         if(room==0&&!terrain.Ready){DrawLoading(landscape:true);return;}
         LoadingScreen.Finish();
+        NativeWorldDiagnostics.View((int)(state.X*1024),(int)(state.Z*1024),renderDebug.GroundMipmaps?renderDebug.GroundMipRadius:0,room==0&&renderDebug.ShowWorldRim?1:0);
+        if(NativeWorldDiagnostics.PrepareEdges(renderDebug.ShowObstructedEdges?1:0)!=1){
+            renderDebug.ShowObstructedEdges=false;
+            DebugOverlay.WriteLine("Obstructed object edges require available graphics memory");
+        }
+        visitEdges.Prepare(renderDebug.ShowVisitEdges);
         // Only a drawable scene may evaluate native poses. Shadow receivers
         // use logical positions and can prepare while the landscape loads.
         if(room==0){trees.Prepare(terrain.RenderSeason);fences.Prepare(state);droppedItems.Prepare(state,cachedPlayerHeight);}
@@ -904,6 +921,7 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
         renderer.Begin3D(room==0?camera:indoorView);buildings.Begin(villagers.Doors);FrameProfile.End(4,phase);
         phase=FrameProfile.Start();int submissionAt=FrameProfile.SubmissionStart();if(room==0){terrain.Draw(renderer,terrain.ScrollTransform,room);}else buildings.Interior(renderer,state,worldRoot,indoorCamera,villagers.Doors);
         FrameProfile.SubmissionEnd(0,submissionAt);FrameProfile.End(4,phase);phase=FrameProfile.Start();
+        if(renderDebug.ShowObstructedEdges)NativeWorldDiagnostics.EdgePass(1);
         if(room==0)
         {
             for(int i=1;i<BuildingWorld.Actors;i++)ModelAt(i);
@@ -957,6 +975,8 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
             if(session.Draft!=null)buildings.PreviewHome(renderer,state,x,z);
         }
         if(batchedDrawing)boxes.Flush();
+        if(renderDebug.ShowObstructedEdges)NativeWorldDiagnostics.EdgePass(0);
+        if(room==0&&renderDebug.ShowVisitEdges)visitEdges.Draw(renderer,identity,state,terrain.RenderSeason==3&&!renderDebug.ShowGroundMipBands);
         if(renderDebug.ForceAttention&&villagers.Doors.PlayerFade<1)attention.Draw(renderer,state,actorVisibility,indoorCamera,cachedPlayerHeight);
         submissionAt=FrameProfile.SubmissionStart();
         fallLeaves.Draw(renderer);
@@ -1094,7 +1114,7 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
             ui.FillRectangle(new RectF(x,57,20,12),new Color32((byte)(rgba>>24),(byte)(rgba>>16),(byte)(rgba>>8)));
             Text(groundMipLabels[level],x+7,70,ink,.9f);
         }
-        Text("Pink line = detail switch",400,94,ink,.75f);
+        Text(renderDebug.GroundMipmaps?"Pink line: "+renderDebug.GroundMipRadius+" tiles from player":"Mipmaps disabled",400,94,ink,.75f);
     }
     private void DrawHud()
     {
