@@ -37,6 +37,8 @@ internal static class FallLeafWakeChecks
             float left=vertices[i].TextureCoordinate.X,right=vertices[i+2].TextureCoordinate.X;
             narrow|=right<.5f;lobed|=left>.5f;
             check((left-.5f)*(right-.5f)>0,"each leaf samples just one atlas silhouette");
+            Vector3 a=vertices[i].Position,b=vertices[i+1].Position,c=vertices[i+2].Position,d=vertices[i+3].Position;
+            check(CameraArea(a,b,c)<0&&CameraArea(a,c,d)<0,"both leaf triangles face the camera through GX backface culling");
         }
         check(narrow&&lobed,"the wake uses both silhouettes");
         long start=GC.GetAllocatedBytesForCurrentThread();
@@ -46,4 +48,8 @@ internal static class FallLeafWakeChecks
         }
         check(GC.GetAllocatedBytesForCurrentThread()==start,"warmed leaf movement and staging allocate nothing per frame");
     }
+
+    private static float CameraArea(Vector3 a,Vector3 b,Vector3 c)
+        =>(b.X-a.X)*CameraUp(c,a)-(c.X-a.X)*CameraUp(b,a);
+    private static float CameraUp(Vector3 p,Vector3 origin)=>.8f*(p.Y-origin.Y)-.6f*(p.Z-origin.Z);
 }

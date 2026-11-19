@@ -16,7 +16,7 @@ internal sealed class FallLeafWake : IDisposable
     private VertexPositionColorTexture[]? vertices;
     private DynamicMesh? mesh;
     private readonly Material material=new Material{
-        Lighting=LightingMode.Unlit,Blend=BlendMode.Alpha,Cull=CullMode.None,
+        Lighting=LightingMode.Unlit,Blend=BlendMode.Alpha,Cull=CullMode.Back,
         DepthTest=true,DepthWrite=false,AlphaCutoff=1f/255
     };
     private readonly Transform identity=new Transform();
@@ -109,10 +109,11 @@ internal sealed class FallLeafWake : IDisposable
         int cell=(int)((seed>>11)&1)*16;
         float u0=(cell+.5f)/32,u1=(cell+15.5f)/32;
         const float v0=.5f/16,v1=15.5f/16;
-        target[at]=new VertexPositionColorTexture(new Vector3(x-rx+ux,p.Y+(.8f*(uu-ru)),p.Z-(.6f*(uu-ru))),color,new Vector2(u0,v0));
-        target[at+1]=new VertexPositionColorTexture(new Vector3(x-rx-ux,p.Y-(.8f*(uu+ru)),p.Z+(.6f*(uu+ru))),color,new Vector2(u0,v1));
-        target[at+2]=new VertexPositionColorTexture(new Vector3(x+rx-ux,p.Y+(.8f*(ru-uu)),p.Z-(.6f*(ru-uu))),color,new Vector2(u1,v1));
-        target[at+3]=new VertexPositionColorTexture(new Vector3(x+rx+ux,p.Y+(.8f*(ru+uu)),p.Z-(.6f*(ru+uu))),color,new Vector2(u1,v0));
+        // Clockwise in the camera plane, like the dropped-item billboards.
+        target[at]=new VertexPositionColorTexture(new Vector3(x-rx-ux,p.Y-.8f*(uu+ru),p.Z+.6f*(uu+ru)),color,new Vector2(u0,v1));
+        target[at+1]=new VertexPositionColorTexture(new Vector3(x-rx+ux,p.Y+.8f*(uu-ru),p.Z-.6f*(uu-ru)),color,new Vector2(u0,v0));
+        target[at+2]=new VertexPositionColorTexture(new Vector3(x+rx+ux,p.Y+.8f*(ru+uu),p.Z-.6f*(ru+uu)),color,new Vector2(u1,v0));
+        target[at+3]=new VertexPositionColorTexture(new Vector3(x+rx-ux,p.Y+.8f*(ru-uu),p.Z-.6f*(ru-uu)),color,new Vector2(u1,v1));
     }
 
     internal void Prepare(float focusZ,float seconds,int environmentTint)
