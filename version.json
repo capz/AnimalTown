@@ -79,6 +79,15 @@
       ]
     },
     {
+      "id": "debug-season-time-preview",
+      "lines": [
+        "Choose a season or time of day to preview in the debug menu.",
+        "Left and Right browse season choices and A loads the selected season.",
+        "The time preview holds weather and outdoor lighting at the selected time.",
+        "Panel titles stay still."
+      ]
+    },
+    {
       "id": "player-chat-and-debug-attend",
       "lines": [
         "Chat as your villager using the controller keyboard.",

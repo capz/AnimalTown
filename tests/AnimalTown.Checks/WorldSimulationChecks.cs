@@ -50,6 +50,12 @@ internal static class WorldSimulationChecks
         var typing=new TownGame(JourneyState()){screen="dialogue",message="Hello neighbour"};
         for(int i=0;i<30;i++)typing.Step(default);
         check(typing.typeAt==typing.message.Length,"dialogue text continues alongside world ticks");
+        var clockPreview=new TownGame(JourneyState()){screen="menu",tick=899};
+        clockPreview.renderDebug.AdjustTime(1,1425);
+        clockPreview.renderDebug.ApplyTime();
+        clockPreview.Step(default);
+        check(clockPreview.renderDebug.TimeOverride==0&&clockPreview.townClock.MinuteOfDay==750&&clockPreview.state.Town.Day==11118,
+            "previewing midnight does not roll the saved town back to yesterday");
         var loading=new TownGame(JourneyState()){resourcesReady=false};
         loading.Step(default);check(loading.tick==0&&loading.state.Town.Residents[0].Space==0,"unloaded assets still gate initial simulation");
         loading.resourcesReady=true;loading.state.Space=0;loading.terrain.Ready=false;
@@ -61,7 +67,8 @@ internal static class WorldSimulationChecks
             check(BuildingSave.Encode(preview.state).SequenceEqual(before),"onboarding preview keeps its uncommitted town frozen");
         }
         var winter=new TownGame(new GameState(931){Space=16,X=2,Z=2}){screen="menu"};
-        for(int i=0;i<4;i++)winter.renderDebug.CycleSeason();
+        winter.renderDebug.AdjustSeason(-1);
+        winter.renderDebug.ApplySeason();
         winter.Step(default);
         var town=winter.state.Town;
         const int snowX=100,snowZ=80;

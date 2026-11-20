@@ -743,6 +743,8 @@ def terrain_materials():
             'screenshots':[],'mip_states':{},'water':{},'visual_failures':[],
             'physical_hardware':False}
     prefix='terrain-materials-'
+    option_count=23
+    mipmaps_row,distance_row,bands_row=14,15,16
     def visual_assert(condition,message):
         # Independent image failures must not hide later restoration/water
         # evidence. Native state, menu navigation and runtime failures remain
@@ -775,8 +777,8 @@ def terrain_materials():
         raise AssertionError('Debug menu did not focus row '+str(row))
     def menu(row,name):
         press('START');press('R')
-        direction='D_DOWN' if row<=11 else 'D_UP'
-        for _ in range(min(row,22-row)):press(direction)
+        direction='D_DOWN' if row<=option_count//2 else 'D_UP'
+        for _ in range(min(row,option_count-row)):press(direction)
         return menu_frame(name,row)
     def applied(enabled,mips,distance):
         matches=re.findall(r'GROUND MIP BANDS enabled (\d) mips (\d) distance (\d+) size (\d+)x(\d+) levels (\d+)',runtime_log_text())
@@ -878,24 +880,24 @@ def terrain_materials():
         report['committed_town_before']=town_before
         chord('START');wait_onboarding('world',prefix+'ramp-ready.png')
         normal=mip_frame('normal',0,1,0)
-        off_label=menu(15,'menu-off');press('A');on_label=menu_frame('menu-on',15)
+        off_label=menu(bands_row,'menu-off');press('A');on_label=menu_frame('menu-on',bands_row)
         if on_label==off_label:raise AssertionError('Ground mip bands menu label did not change')
         press('B');automatic=mip_frame('mips-auto',1,1,0,visible_bands)
-        auto_label=menu(14,'distance-auto');press('D_RIGHT');one_label=menu_frame('distance-one',14)
+        auto_label=menu(distance_row,'distance-auto');press('D_RIGHT');one_label=menu_frame('distance-one',distance_row)
         press('B');one=mip_frame('mips-one',1,1,1)
-        menu(14,'distance-one-return')
+        menu(distance_row,'distance-one-return')
         for _ in range(9):press('D_RIGHT')
-        ten_label=menu_frame('distance-ten',14);press('B');ten=mip_frame('mips-ten',1,1,10)
+        ten_label=menu_frame('distance-ten',distance_row);press('B');ten=mip_frame('mips-ten',1,1,10)
         if len({auto_label,one_label,ten_label})!=3:raise AssertionError('Distance control did not display default, 1 and 10 distinctly')
         visual_assert(one['mean_level']>ten['mean_level']+.1,'Increasing mip distance did not retain a visibly finer sampled mip level')
-        menu(14,'distance-ten-return');press('X');reset_label=menu_frame('distance-reset',14)
+        menu(distance_row,'distance-ten-return');press('X');reset_label=menu_frame('distance-reset',distance_row)
         if reset_label!=auto_label:raise AssertionError('X did not restore the default distance label')
         press('B');reset=mip_frame('mips-reset',1,1,0,visible_bands)
         visual_assert(abs(reset['mean_level']-automatic['mean_level'])<=.25,'Auto reset did not restore the diagnostic mip distribution')
-        menu(13,'mipmaps-on');press('A');menu_frame('mipmaps-off',13);press('B')
+        menu(mipmaps_row,'mipmaps-on');press('A');menu_frame('mipmaps-off',mipmaps_row);press('B')
         mip_frame('mips-disabled',1,0,0,base_only)
-        menu(13,'mipmaps-off-return');press('A');press('D_DOWN');press('D_DOWN')
-        menu_frame('menu-on-return',15);press('A');restored_label=menu_frame('menu-restored',15)
+        menu(mipmaps_row,'mipmaps-off-return');press('A');press('D_DOWN');press('D_DOWN')
+        menu_frame('menu-on-return',bands_row);press('A');restored_label=menu_frame('menu-restored',bands_row)
         if restored_label!=off_label:raise AssertionError('Ground mip bands did not return to Off')
         press('B')
         def restored_art(metrics):
@@ -939,7 +941,7 @@ def terrain_materials():
         coast=water_pair('water-coast',4);report['water']['coast']=coast
         visual_assert(coast['changed_chromaticity_samples']>=35 and coast['crest_edge_sign_changes']>=15,
                       'Coastal water has no visibly moving crest pattern')
-        menu(15,'water-menu');press('B');capture('water-menu-return');press('B')
+        menu(bands_row,'water-menu');press('B');capture('water-menu-return');press('B')
         alive();report['committed_town_after']=committed_card_sequence(card,details=True)
         report['card_unchanged']=card_digest()==before
         report['town_unchanged']=report['committed_town_after']==town_before
@@ -1702,10 +1704,23 @@ def testing_menu():
     label('testing-settings-debug-entry',7);press('A')
     manual_only='--manual-save-only' in sys.argv
     previous=0
-    # Include the session weather, SDK overlay, and world diagnostics.
-    for row in ([0] if manual_only else [0,*range(2,10),12,16,17,18]):
+    # Include session weather, the staged previews, SDK overlay, and diagnostics.
+    for row in ([0] if manual_only else [0,*range(2,12),13,17,18,19]):
         for _ in range(row-previous):press('D_DOWN')
         original=label(f'testing-row-{row}-before',row)
+        if row in (10,11):
+            press('D_LEFT' if row==10 else 'D_RIGHT')
+            pending=label(f'testing-row-{row}-pending',row)
+            press('A');applied=label(f'testing-row-{row}-applied',row)
+            if original==pending or pending==applied:
+                raise AssertionError(f'Preview row {row} did not distinguish pending and active choices')
+            press('D_RIGHT' if row==10 else 'X')
+            restoring=label(f'testing-row-{row}-restoring',row)
+            press('A');restored=label(f'testing-row-{row}-restore',row)
+            if restoring==restored or original!=restored:
+                raise AssertionError(f'Preview row {row} did not restore its original choice')
+            previous=row
+            continue
         press('A');changed=label(f'testing-row-{row}-after',row)
         if original==changed:raise AssertionError(f'Testing row {row} did not change its displayed state')
         press('A');restored=label(f'testing-row-{row}-restore',row)
@@ -1741,7 +1756,7 @@ def testing_menu():
         committed_card_sequence(card,expected_day=expected_day)
     saved=card_digest();press('B');press('START');press('B');time.sleep(5)
     if card_digest()!=saved:raise AssertionError('Closing/reopening Settings wrote another save')
-    (root/'testing-menu.txt').write_text('Completed onboarding with explicit Save & begin; Settings never saved automatically.\nVisible Settings entry opened Debug / testing.\n'+('Performance display toggled/restored.\n' if manual_only else 'All 12 debug toggles changed state and were restored; water preview allowed menu re-entry.\n')+f'{wait_seconds}s idle play preserved the card bytes.\n'+'Only Save now committed the next generation of records and their matching checksummed commit.\nReopening Settings left the saved generation unchanged.\n')
+    (root/'testing-menu.txt').write_text('Completed onboarding with explicit Save & begin; Settings never saved automatically.\nVisible Settings entry opened Debug / testing.\n'+('Performance display toggled/restored.\n' if manual_only else 'Debug toggles and staged season/time previews were applied and restored.\n')+f'{wait_seconds}s idle play preserved the card bytes.\n'+'Only Save now committed the next generation of records and their matching checksummed commit.\nReopening Settings left the saved generation unchanged.\n')
 
 def building_view(name, indoors):
     screenshot(name)

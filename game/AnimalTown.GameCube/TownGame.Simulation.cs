@@ -74,17 +74,19 @@ internal sealed partial class TownGame
         }
     }
     private int weatherDay;
+    private int EnvironmentMinute=>renderDebug.EffectiveMinute(townClock.MinuteOfDay);
+    private void UpdateDaylight()=>daylight.Update(state.Town.DaylightLocation,townClock,Clock.Timestamp,renderDebug.TimeOverride);
     private void UpdateWeather()
     {
         int season=terrain.SeasonAt(month,renderDebug.SeasonOverride);
-        weather.Update(state.Town.Seed,weatherDay,townClock.MinuteOfDay,season);
+        weather.Update(state.Town.Seed,weatherDay,EnvironmentMinute,season);
         state.Town.Traffic.Snow.SetWinter(season==3);
     }
     private void ReadWeatherClock()
     {
         townClock.Update(NativeCalendar.ReadClock());
         weatherDay=10957+townClock.CivilDay; // Local days since 1970, for weather.
-        daylight.Update(state.Town.DaylightLocation,townClock,Clock.Timestamp);
+        UpdateDaylight();
     }
     private void ReadCalendarDate()
     {

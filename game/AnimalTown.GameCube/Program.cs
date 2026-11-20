@@ -168,7 +168,8 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
     private int buildingInspection;
     private const int SettingsTab=5,TestingTab=6,DaylightSettingsRow=6;
     // Stable IDs keep hidden/retired controls out of both debug menus.
-    private static readonly int[] testingOptions={0,33,2,3,11,12,13,16,17,35,18,19,21,22,23,34,36,37,38,31,32,30};
+    private const int SeasonPreviewOption=18,TimePreviewOption=39;
+    private static readonly int[] testingOptions={0,33,2,3,11,12,13,16,17,35,SeasonPreviewOption,TimePreviewOption,19,21,22,23,34,36,37,38,31,32,30};
     private static readonly string[] groundMipLabels={"0","1"};
     private static int TestingOption(int row)=>testingOptions[row];
     private static readonly string[] tabs={"Backpack","Jobs","Catalog","Home","Post office","Settings","Debug / testing"};
@@ -212,7 +213,7 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
         UiFont.Batched=true;
         uvDebug=config.Values[2]|config.Values[3]<<1;
         weather.RainEnabled=config.Values[16]!=0;weather.RoughOceanWhenRaining=config.Values[17]!=0;
-        for(int i=0;i<config.Values[18];i++)renderDebug.CycleSeason();
+        renderDebug.SetSeason(config.Values[SeasonPreviewOption]-1);
         renderDebug.ForceAttention=config.Values[19]!=0;
         renderDebug.GroundMipmaps=config.Values[22]!=0;for(int i=0;i<config.Values[23];i++)renderDebug.AdjustGroundMipDistance(1);
         renderDebug.ShowGroundMipBands=config.Values[DevConfig.GroundMipBandsIndex]!=0;
@@ -503,6 +504,16 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
         bool navigating=screen==DaylightLocationMenu.Screen||screen=="save-quit"||screen=="menu"||screen=="item"||screen=="sell"||screen=="shop"||screen=="store"||screen=="post"||screen=="mail"||screen=="lost"||ShopScreen;
         int direction=menuNavigation.Read(screen,screen=="menu"?menuTab:-1,p.Stick.X,p.Stick.Y,(int)p.PressedButtons,Clock.Timestamp,navigating&&!chord);
         bool up=direction==MenuNavigation.Up,down=direction==MenuNavigation.Down,left=direction==MenuNavigation.Left,right=direction==MenuNavigation.Right;
+        bool seasonFocused=TestingFocused(SeasonPreviewOption),timeFocused=TestingFocused(TimePreviewOption);
+        if(!seasonFocused)renderDebug.CancelSeasonSelection();
+        if(!timeFocused)renderDebug.CancelTimeSelection();
+        if(!chord){
+            if(seasonFocused&&(left||right)){renderDebug.AdjustSeason(right?1:-1);return;}
+            if(timeFocused){
+                if(left||right){renderDebug.AdjustTime(right?1:-1,townClock.MinuteOfDay);return;}
+                if(p.X.WasPressed){renderDebug.SelectLiveTime();return;}
+            }
+        }
         if(screen=="menu"&&menuTab==TestingTab&&TestingOption(selected)==23&&!chord){
             if(left||right){renderDebug.AdjustGroundMipDistance(right?1:-1);return;}
             if(p.X.WasPressed){renderDebug.ResetGroundMipDistance();return;}
@@ -514,7 +525,7 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
             daylightMenu.Move(direction);
             if(Press(p)){
                 state.Town.DaylightLocation=daylightMenu.Location;
-                daylight.Update(state.Town.DaylightLocation,townClock,Clock.Timestamp);
+                UpdateDaylight();
                 screen="menu";
             }
             return;
@@ -694,7 +705,8 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
             case 16:weather.RainEnabled=!weather.RainEnabled;break;
             case 35:weather.SnowEnabled=!weather.SnowEnabled;break;
             case 17:weather.RoughOceanWhenRaining=!weather.RoughOceanWhenRaining;break;
-            case 18:renderDebug.CycleSeason();break;
+            case SeasonPreviewOption:renderDebug.ApplySeason();break;
+            case TimePreviewOption:renderDebug.ApplyTime();UpdateDaylight();break;
             case 19:renderDebug.ForceAttention=!renderDebug.ForceAttention;break;
             case DevConfig.SdkPerformanceIndex:
                 debugConfig.Adjust(DevConfig.SdkPerformanceIndex,1);
@@ -715,6 +727,9 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
         }
     }
     private static string OnOff(bool value)=>value?"On":"Off";
+    private bool TestingFocused(int option)=>screen=="menu"&&menuTab==TestingTab&&TestingOption(selected)==option;
+    private static string PreviewSeasonName(int season)=>season<0?"Auto":TerrainTiles.SeasonName(season);
+    private static string PreviewTimeName(int minute)=>minute<0?"Live":TownClock.FormatTime(minute);
     private string TestingLabel(int row)
     {
         switch(TestingOption(row)){
@@ -730,7 +745,12 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
             case 16:return "Rain preview: "+OnOff(weather.RainEnabled);
             case 35:return "Winter snowfall: "+OnOff(weather.SnowEnabled)+" (session)";
             case 17:return "Rough ocean in rain: "+OnOff(weather.RoughOceanWhenRaining);
-            case 18:return "Season preview: "+(renderDebug.SeasonOverride<0?"Auto":TerrainTiles.SeasonName(renderDebug.SeasonOverride));
+            case SeasonPreviewOption:
+                string season=PreviewSeasonName(renderDebug.SeasonOverride);
+                return "Season preview: "+(row==selected?"< "+PreviewSeasonName(renderDebug.SeasonSelection)+" >   Active: "+season:season);
+            case TimePreviewOption:
+                string time=PreviewTimeName(renderDebug.TimeOverride);
+                return "Time preview: "+(row==selected?"< "+PreviewTimeName(renderDebug.TimeSelection)+" >   Active: "+time:time);
             case 19:return "Villager attention bubbles: "+OnOff(renderDebug.ForceAttention);
             case DevConfig.SdkPerformanceIndex:return "SDK performance overlay: "+OnOff(DebugOverlay.PerformanceVisible)+" (session)";
             case 22:return "Ground mipmaps: "+OnOff(renderDebug.GroundMipmaps);
@@ -912,8 +932,8 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
         int environmentTint=preparedEnvironmentTint,lampStrength=preparedLampStrength;
         modelUsed=0;long submitAt=FrameProfile.Start(),phase=submitAt;
         NativeShadows.Environment(environmentTint,preparedShadowStrength);
-        if(room==0&&tracedLightingMinute!=townClock.MinuteOfDay){
-            tracedLightingMinute=townClock.MinuteOfDay;
+        if(room==0&&tracedLightingMinute!=EnvironmentMinute){
+            tracedLightingMinute=EnvironmentMinute;
             DebugOverlay.WriteLine("ANIMALTOWN DAYLIGHT minute "+tracedLightingMinute+" shadow "+NativeShadows.Stats(11)+" cloud "+NativeShadows.Stats(12)+" lamp "+NativeShadows.Stats(13)+" bytes "+NativeShadows.Stats(3));
         }
         float eyeHeight=PlayerHeight();
@@ -1046,7 +1066,7 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
     }
     private void Text(string text,float x,float y,Color32 c,float scale=1.5f,int visibleCharacters=-1)=>font.Draw(ui,text,x,y,c,scale/1.5f,0,visibleCharacters);
     private void Strong(string text,float x,float y,Color32 c,float scale=1.5f)=>strongFont.Draw(ui,text,x,y,c,scale/1.5f);
-    private void Heading(string text,float x,float y,Color32 c,float scale=1)=>headingFont.Draw(ui,text,x,y,c,scale,(float)Math.Sin(tick*.018f+x*.01f)*1.8f);
+    private void Heading(string text,float x,float y,Color32 c,float scale=1)=>headingFont.Draw(ui,text,x,y,c,scale);
     private void ButtonGlyph(string key,float x,float y)
     {
         bool shoulder=key=="R";float width=shoulder?20:14,radius=shoulder?4:7;
@@ -1178,7 +1198,9 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
         int total=screen=="menu"?TabCount():screen=="shop"?TownShop.CabinetCount:screen=="mail"?Math.Max(1,state.MailCount):screen=="lost"?Math.Max(1,LostCount()):screen=="store"?StoreMenuCount:7;
         bool compact=screen=="menu"&&(menuTab==SettingsTab||menuTab==TestingTab);int page=compact?9:8,step=compact?24:29;float rowScale=compact?1.2f:1.4f;int first=selected/page*page;
         for(int i=first;i<Math.Min(total,first+page);i++){float y=131+(i-first)*step;if(i==selected){Rounded(57,y,520,step-2,(step-2)*.5f,new Color32(221,231,188));Strong("> "+RowLabel(i),68,y,ink,rowScale);}else Text("  "+RowLabel(i),68,y,ink,rowScale);}
-        Text(screen=="menu"&&menuTab==TestingTab&&TestingOption(selected)==23?"Left/Right: 1 square   A: +1   X: Auto":
+        Text(TestingFocused(SeasonPreviewOption)?"Left/Right: choose   A: apply   B: close":
+            TestingFocused(TimePreviewOption)?"Left/Right: 15 min   A: apply   X: select Live   B: close":
+            screen=="menu"&&menuTab==TestingTab&&TestingOption(selected)==23?"Left/Right: 1 square   A: +1   X: Auto":
             screen=="menu"&&menuTab==TestingTab&&TestingOption(selected)==34?"A: toggle   Pink line marks the mip switch":
             screen=="menu"&&menuTab==TestingTab&&TestingOption(selected)==33?"A: toggle and save   B: close":"Stick / D-pad choose   L/R tabs   A select   B close",65,392,ink,1);
         if(screen=="menu"&&menuTab==SettingsTab){

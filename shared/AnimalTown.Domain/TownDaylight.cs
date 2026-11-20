@@ -11,25 +11,29 @@ public sealed class TownDaylight
 {
     private int previousLocation=-1,previousLocalMinute,previousUtcMinute;
     private long previousTimestamp;
+    private bool previousPreview;
     private SolarCurve curve;
     public OutdoorLighting Lighting {get;private set;}=WorldLighting.Classic(0);
 
-    public void Update(int location,TownClock clock,long timestamp)
+    public void Update(int location,TownClock clock,long timestamp,int previewMinute=-1)
     {
-        int localMinute=clock.CivilDay*1440+clock.MinuteOfDay;
+        bool preview=previewMinute>=0;
+        int minute=preview?previewMinute:clock.MinuteOfDay;
+        int localMinute=clock.CivilDay*1440+minute;
         bool sameLocation=location==previousLocation;
-        if(sameLocation&&localMinute==previousLocalMinute)return;
-        if(location==0)Lighting=WorldLighting.Classic(clock.MinuteOfDay);
+        if(sameLocation&&localMinute==previousLocalMinute&&previousPreview==preview)return;
+        if(location==0)Lighting=WorldLighting.Classic(minute);
         else{
             var preset=DaylightLocations.Get(location);
             if(!sameLocation)curve=new SolarCurve(preset);
-            int expectedUtc=sameLocation?previousUtcMinute+(int)((timestamp-previousTimestamp+30000000)/60000000):int.MinValue;
+            int expectedUtc=sameLocation&&!preview&&!previousPreview?previousUtcMinute+(int)((timestamp-previousTimestamp+30000000)/60000000):int.MinValue;
             previousUtcMinute=preset.Zone.ToUtc(localMinute,expectedUtc);
             Lighting=WorldLighting.FromSolarElevation(curve.ElevationSine(previousUtcMinute));
         }
         previousLocation=location;
         previousLocalMinute=localMinute;
         previousTimestamp=timestamp;
+        previousPreview=preview;
     }
 
     public static DaylightTimes Times(int location,int civilDay)
