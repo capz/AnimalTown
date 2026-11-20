@@ -10,6 +10,7 @@ internal static class ProfilePicker
 {
     internal static bool Run(TownSession session)
     {
+        if(session.State.Visiting)return true;
         bool performance=DebugOverlay.PerformanceVisible,text=DebugOverlay.TextVisible;
         try{
             using var view=new ProfilePickerUi(session.State,session.Loaded);var navigation=new MenuNavigation();
@@ -30,12 +31,14 @@ internal static class ProfilePicker
                     }
                     continue;
                 }
+                if(pad.X.WasPressed&&(session.State.Town.Jobs.Trip.Pending||session.State.Town.Jobs.NpcMove.Pending)){if(OfflineTravelRecovery.Run(session))return true;view.Status="Trip kept. Choose another resident, or X to recover.";continue;}
+                if(pad.Z.WasPressed&&session.State.ProfileLocked(view.Selected)){view.Status="Recover this villager’s trip before deleting.";continue;}
                 if(pad.Z.WasPressed&&view.Occupied&&session.Loaded&&!session.Damaged){view.DeleteFocus=false;view.Modal=ProfilePickerUi.Confirm;view.Status="";continue;}
                 if(direction==MenuNavigation.Left||direction==MenuNavigation.Up)view.Selected=(view.Selected+3)%4;
                 if(direction==MenuNavigation.Right||direction==MenuNavigation.Down)view.Selected=(view.Selected+1)%4;
                 if(direction!=0)view.Status="";
                 if(pad.B.WasPressed)return false;
-                if(pad.A.WasPressed||pad.Start.WasPressed){session.SelectProfile(view.Selected);return true;}
+                if(pad.A.WasPressed||pad.Start.WasPressed){if(session.State.ProfileLocked(view.Selected)){if(OfflineTravelRecovery.Run(session))return true;view.Status="Away · X: recover with both cards";continue;}session.SelectProfile(view.Selected);return true;}
             }
         }finally{DebugOverlay.PerformanceVisible=performance;DebugOverlay.TextVisible=text;}
     }

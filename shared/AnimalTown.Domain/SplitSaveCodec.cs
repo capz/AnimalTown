@@ -21,17 +21,19 @@ public static class SplitSaveCodec
         internal void Int(int n){if(at>bytes.Length-4)throw new InvalidOperationException("Save record exceeds budget");for(int i=0;i<4;i++)bytes[at++]=(byte)((uint)n>>(i*8));}
         internal void Text(string s){Int(s.Length);for(int i=0;i<s.Length;i++)Int(s[i]);}
         internal void Rle(byte[] source){Int(Runs(source));for(int i=0;i<source.Length;){int n=1;while(i+n<source.Length&&source[i+n]==source[i])n++;Int((source[i]<<24)|n);i+=n;}}
-        internal byte[] Finish(){int length=at+4;for(int i=0;i<4;i++)bytes[24+i]=(byte)(length>>(i*8));Int((int)SaveCodec.Crc(bytes,0,at));var result=new byte[at];Array.Copy(bytes,result,at);return result;}
+        internal void JobLedger(Jobs.OfflineJobLedger ledger){int words=ledger.WordCount;Int(words);ledger.WriteTo(bytes,at);at+=words*4;}
+        internal byte[] Finish(){int length=at+4;for(int i=0;i<4;i++)bytes[24+i]=(byte)(length>>(i*8));Int((int)SaveCodec.Crc(bytes,0,at));if(at==bytes.Length)return bytes;var result=new byte[at];Array.Copy(bytes,result,at);return result;}
     }
     internal sealed class Reader
     {
         private readonly byte[] bytes;private int at;
-        internal readonly int Sequence,Seed,Version;
+        internal readonly int Sequence,Seed,Version,CatalogVersion;
         internal Reader(byte[] source,int kind)
         {
             bytes=source;if(bytes.Length<32||bytes.Length>SaveCodec.MaximumBytes)throw new InvalidOperationException("Invalid save record size");
             if(Int()!=0x50535441)throw new InvalidOperationException("Wrong save record magic");Version=Int();
-            if((Version<1||Version>10||Version>=6&&kind!=TownData)||Int()!=Catalog.Version||Int()!=kind)throw new InvalidOperationException("Wrong save record type or version");
+            CatalogVersion=Int();
+            if((Version<1||Version>10||Version>=6&&kind!=TownData)||!Catalog.SupportsVersion(CatalogVersion)||Int()!=kind)throw new InvalidOperationException("Wrong save record type or version");
             Sequence=Range(0,int.MaxValue);Seed=Int();if(Int()!=bytes.Length)throw new InvalidOperationException("Save record length mismatch");
             int crc=0;for(int i=0;i<4;i++)crc|=bytes[bytes.Length-4+i]<<(i*8);
             if((uint)crc!=SaveCodec.Crc(bytes,0,bytes.Length-4))throw new InvalidOperationException("Save record checksum failed");
@@ -41,6 +43,7 @@ public static class SplitSaveCodec
         internal string Text(int limit){int n=Range(0,limit);var c=new char[n];for(int i=0;i<n;i++)c[i]=(char)Range(0,65535);return new string(c);}
         internal void Rle(byte[] target,int max,bool compare=false)
         {int runs=Range(1,target.Length),cell=0;for(int i=0;i<runs;i++){int packed=Int(),mode=(int)((uint)packed>>24),n=packed&0xffffff;if(mode>max||n==0||n>target.Length-cell)throw new InvalidOperationException("Invalid save terrain run");for(int j=0;j<n;j++){if(compare){if(target[cell]!=mode)throw new InvalidOperationException("Save terrain differs from snapshot");}else target[cell]=(byte)mode;cell++;}}if(cell!=target.Length)throw new InvalidOperationException("Incomplete save terrain");}
+        internal void SkipWords(int count){if(count<0||count>(bytes.Length-4-at)/4)throw new InvalidOperationException("Truncated ledger");at+=count*4;}
         internal int Offset=>at;
         internal bool HasMore=>at<bytes.Length-4;
         internal void SkipText(int limit){int n=Range(0,limit);for(int i=0;i<n;i++)Range(0,65535);}
@@ -76,6 +79,8 @@ public static class SplitSaveCodec
         for(int i=0;i<records.Length;i++)records[i]=EncodePart(s,i);return records;
     }
     internal static byte[] EncodePart(GameState s,int part)
+    {int guest=s.SuspendVisitor();try{return EncodeResidentPart(s,part);}finally{s.ResumeVisitor(guest);}}
+    private static byte[] EncodeResidentPart(GameState s,int part)
     {
         var t=s.Town;
         if(part==0){
@@ -100,7 +105,9 @@ public static class SplitSaveCodec
         var w=new Writer(s,HousePositions,256);for(int i=0;i<GameState.ProfileCount;i++){w.Int(s.HomePlaced(i)?1:0);w.Int(s.HomeX(i));w.Int(s.HomeZ(i));}for(int i=0;i<6;i++){w.Int(t.Residents[i].HomeX);w.Int(t.Residents[i].HomeZ);}return w.Finish();
         }
         if(part==2){
-        var w=new Writer(s,ShopStates,768);w.Int(t.Spending);w.Int(t.StockCount);for(int i=0;i<12;i++)w.Int(t.Stock[i]);var shop=t.Shop.Encode();w.Int(shop.Length);for(int i=0;i<shop.Length;i++)w.Int(shop[i]);return w.Finish();
+        int ledgerWords=t.Jobs.Initialized?t.Jobs.WordCount:0;
+        var w=new Writer(s,ShopStates,ledgerWords==0?708:712+ledgerWords*4);w.Int(t.Spending);w.Int(t.StockCount);for(int i=0;i<12;i++)w.Int(t.Stock[i]);var shop=t.Shop.Encode();w.Int(shop.Length);for(int i=0;i<shop.Length;i++)w.Int(shop[i]);
+        if(ledgerWords!=0)w.JobLedger(t.Jobs);return w.Finish();
         }
         if(part<3||part>=PartCount)throw new ArgumentOutOfRangeException(nameof(part));
         return ProfileCodec.Encode(s,part-3);
@@ -164,7 +171,8 @@ public static class SplitSaveCodec
         r=new Reader(records[1],HousePositions);r.Match(root);for(int i=0;i<GameState.ProfileCount;i++){var p=s.Profiles[i];if(r.Range(0,1)!=(p.HousePlaced?1:0)||r.Int()!=p.HouseX||r.Int()!=p.HouseZ)throw new InvalidOperationException("Profile plot differs from shared houses");}for(int i=0;i<6;i++){t.Residents[i].HomeX=r.Int();t.Residents[i].HomeZ=r.Int();}r.End();
         r=new Reader(records[2],ShopStates);r.Match(root);t.Spending=r.Int();t.StockCount=r.Int();for(int i=0;i<12;i++)t.Stock[i]=r.Int();
         if(r.HasMore){int length=r.Range(154,154);var shop=new int[length];for(int i=0;i<length;i++)shop[i]=r.Int();t.Shop.Decode(shop);}else SaveCodec.UpgradeShop(s);
-        r.End();s.RestoreProfile(active);
+        if(r.HasMore){int count=r.Range(7,Jobs.OfflineJobLedger.MaximumWords);if(count>(records[2].Length-r.Offset-4)/4)throw new InvalidOperationException("Truncated economic job ledger");t.Jobs.Decode(records[2],r.Offset,count);r.SkipWords(count);}
+        r.End();s.RestoreProfile(active);s.MigrateJobTutorial(root.CatalogVersion);
         return snapshot==null?SaveCodec.Decode(SaveCodec.Encode(s)):SaveCodec.ValidateSnapshot(SaveCodec.Encode(s),snapshot);
     }
     public static byte[] EncodeCommit(GameState s,byte[][] records)

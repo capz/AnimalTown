@@ -13,6 +13,8 @@ This plan expands its short roadmap and makes offline travel and NPC migration
 required for the final twelve-template milestone. Internet services and
 simultaneous network multiplayer are separate work.
 
+Implementation and qualification evidence is tracked in [the delivery report](villager-jobs-offline-implementation.md).
+
 ## Scope and parity
 
 NPC villagers request work, give and receive parcels, borrow and refer property,

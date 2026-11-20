@@ -33,7 +33,7 @@ internal static class Program
             if(session.Draft!=null&&!OnboardingFlow.Run(config,session)){
                 session.DiscardDraft();AnimalTown.GameCube.NativeTexturePages.Collect();continue;
             }
-            RunSession(config,session);
+            while(RunSession(config,session)==TownGame.TravelRestart){}
             // RunSession and all its rendering locals have unwound before the
             // draft is restored and the native collector reclaims managed roots.
             session.DiscardDraft();LoadingScreen.Finish();TextureCache.TrimUnused();
@@ -62,6 +62,7 @@ internal static class Program
                 FrameProfile.Begin();game.AdvanceResidency();long simulation=FrameProfile.Start();
                 long now=Clock.Timestamp;accumulator+=(now-previous)/1000000.0;previous=now;if(accumulator>.1334)accumulator=.1334;
                 Controller.Update();var pad=Controller.GetState(0);game.Input(pad);
+                if(game.TravelRestartRequested)return TownGame.TravelRestart;
                 if(game.ExitToTitle)return OnboardingFlow.ToTitle;
                 if(game.NextSetup!=0)return game.NextSetup;
                 // Setup and preview scopes have returned before gameplay starts.
@@ -204,6 +205,7 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
         }
         facingYaw=state.Facing;
         if(session.Draft==null)state.Rollover(day,month);
+        InitializeJobs();
         if(room==0&&state.HousePlaced&&!state.CanWalk(state.X,state.Z,0))state.MoveToHouseEntrance();
         DebugOverlay.WriteLine("ANIMALTOWN WORLD RENDERERS BEGIN");
         buildings=new BuildingRenderer(worldRoot);
@@ -269,7 +271,7 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
         for(int i=0;i<actors.Length;i++){actors[i]?.Dispose();actors[i]=null!;}
         if(unadopted!=null&&Array.IndexOf(models,unadopted)<0)unadopted.Dispose();
         for(int i=0;i<models.Length;i++){models[i]?.Dispose();models[i]=null!;}
-        attention.Dispose();rain.Dispose();foliage.Dispose();trees.Dispose();droppedItems.Dispose();buildings.Dispose();terrain.Dispose();fences.Dispose();
+        jobScene.Dispose();attention.Dispose();rain.Dispose();foliage.Dispose();trees.Dispose();droppedItems.Dispose();buildings.Dispose();terrain.Dispose();fences.Dispose();
         clockHud.Dispose();uiShapes.Dispose();mapBackground.Dispose();cube.Dispose();ui.Dispose();
         font.Release();headingFont.Release();TextureCache.Release(itemIcons);card?.Dispose();card=null;
         NativeRim.Enable(0);NativeRenderProbe.Uv(0);
@@ -319,7 +321,7 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
                 var model=loadingModel.GetAwaiter().GetResult();models[species]=model;
                 ModelStartup.RetainSelected(state.Species,species,model);
                 modelResidency.Register(species,model,Clock.Timestamp);
-                actors[species+1]=model.CreateInstance(512*1024);attention.Register(species,actors[species+1]);if(model.TryGetAnimation("Walking",out var clip))animationClock.Step(species+1,0,false);
+                for(int npc=0;npc<6;npc++)if(state.ResidentSpecies(npc)==species){actors[npc+1]=model.CreateInstance(512*1024);attention.Register(npc,actors[npc+1]);if(model.TryGetAnimation("Walking",out var clip))animationClock.Step(npc+1,0,false);}
                 var player=ModelStartup.ReservePlayer(state.Species,species,model);
                 if(player!=null){
                     actors[0]=player;moveClip=-1;animationClock.Reset(0);appliedClips[0]=-2;
@@ -414,7 +416,7 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
             var crossing=doors.Actors[actor];
             if(actor==0)doors.ResourcesReady[actor]=modelResidency.ReadyForSpace(state,doors,crossing.Destination.Space.Value)&&
                 modelResidency.ReadyForSpace(state,doors,room)&&(!crossing.Destination.Space.IsTown||terrainExitReady);
-            else doors.ResourcesReady[actor]=!modelResidency.Required(actor-1)||modelResidency.Ready(actor-1);
+            else doors.ResourcesReady[actor]=!modelResidency.Required(state.ResidentSpecies(actor-1))||modelResidency.Ready(state.ResidentSpecies(actor-1));
         }
     }
     private void ApplyUv(int next)
@@ -424,10 +426,10 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
     }
     // Gameplay saves require this explicit menu action. The profile picker's
     // separately confirmed Delete action also commits, via TownSession.
-    private void SaveFromMenu(bool quit=false)
+    private bool SaveFromMenu(bool quit=false)
     {
-        if(!SaveCards.Enabled){saveStatus="Saving is disabled for this session. Restart to choose a card.";return;}
-        if(damagedSave){saveStatus="Damaged saves preserved. Use another card.";return;}
+        if(!SaveCards.Enabled){saveStatus="Saving is disabled for this session. Restart to choose a card.";return false;}
+        if(damagedSave){saveStatus="Damaged saves preserved. Use another card.";return false;}
         long started=Clock.Timestamp, mountAt=started, saveAt=started;
         string previousScreen=screen;screen="saving";Draw();screen=previousScreen;
         clockHud.Trim();uiShapes.Trim();
@@ -471,8 +473,9 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
                     +" / close "+((resumeAt-closeAt)/1000)+" / restore "+((finished-resumeAt)/1000)+" / quit "+(quit?1:0));
             }
         }
+        return saved;
     }
-    private void Say(string name,string text){ClearChatPresentation();dialogueVoice.Begin();voiceTick=0;returnToMenu=screen=="menu"&&(menuTab==SettingsTab||menuTab==TestingTab||godMode&&menuTab==2);if(returnToMenu){returnMenuTab=menuTab;returnMenuSelection=selected;}speaker=name;message=text;wrappedDialogue=dialogueText.Get(text);typeAt=0;screen="dialogue";}
+    private void Say(string name,string text){ClearChatPresentation();if(!jobWritingDialogue)ResetJobConversation();dialogueVoice.Begin();voiceTick=0;returnToMenu=screen=="menu"&&(menuTab==SettingsTab||menuTab==TestingTab||godMode&&menuTab==2);if(returnToMenu){returnMenuTab=menuTab;returnMenuSelection=selected;}speaker=name;message=text;wrappedDialogue=dialogueText.Get(text);typeAt=0;screen="dialogue";}
     private bool Press(ControllerState p)=>p.A.WasPressed;
     internal void Input(ControllerState p)
     {
@@ -488,6 +491,7 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
         }
         if(session.Draft!=null){OnboardingInput(p);return;}
         if(screen==ChatEntry.Screen){ChatInput(p);return;}
+        if(TravelInput(p)||MailUiInput(p)||JobInput(p))return;
         bool chord=p.L.IsHeld&&p.R.IsHeld;
         if(AaStudy.Input(p))return;
         if(chord&&p.Z.IsHeld&&p.DPadDown.WasPressed){terrain.FreezeMotion=!terrain.FreezeMotion;return;}
@@ -599,7 +603,7 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
         if(screen=="store"){StoreAction();return;}
         if(screen=="post"){PostAction();return;}
         if(screen=="mail")
-        { if(selected<state.MailCount&&state.Mail[selected]>0&&state.Receive(state.Mail[selected])){for(int i=selected;i<state.MailCount-1;i++)state.Mail[i]=state.Mail[i+1];state.MailCount--;Say("Mailbox","Delivery collected.");}return; }
+        { if(selected<state.MailCount&&state.Mail[selected]>0&&state.Receive(state.Mail[selected])){if(JobsLive)state.ResidentJobs.RemoveMailboxSlot(selected);else{for(int i=selected;i<state.MailCount-1;i++)state.Mail[i]=state.Mail[i+1];state.MailCount--;}Say("Mailbox","Delivery collected.");}return; }
         if(screen=="lost")
         { int index=LostIndex(selected);Say("Town hall",state.ClaimLost(index,state.ActiveProfile)?"Recovered!":"Your pockets are full, or the item is reserved.");return; }
         if(screen=="menu")MenuAction();
@@ -623,7 +627,7 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
         foliage.Prepare(state.Z,seconds,tint);
     }
     private int MenuTabCount=>DebugMenuSettings.Visible?tabs.Length:tabs.Length-1;
-    private int TabCount()=>menuTab==0?state.Capacity:menuTab==1?7:menuTab==2?Catalog.EntryCount:menuTab==3?7:menuTab==4?7:menuTab==TestingTab?testingOptions.Length:DaylightSettingsRow+(DebugMenuSettings.Visible?2:1);
+    private int TabCount()=>menuTab==0?state.Capacity:menuTab==1?(JobsLive?1:7):menuTab==2?Catalog.EntryCount:menuTab==3?7:menuTab==4?7:menuTab==TestingTab?testingOptions.Length:DaylightSettingsRow+(DebugMenuSettings.Visible?2:1);
     private int LostCount(){int c=0;for(int i=0;i<state.Town.GroundCount;i++)if(state.Town.Ground[i].Kind==4)c++;return c;}
     private int LostIndex(int n){for(int i=0;i<state.Town.GroundCount;i++)if(state.Town.Ground[i].Kind==4&&n--==0)return i;return -1;}
     private void StoreAction()
@@ -631,17 +635,18 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
         if(selected==8&&StoredShopCount>0){screen="shop-stored";selected=0;return;}
         if(selected==7){Say("Hearth",state.UpgradeBackpack(godMode)?"A bigger backpack! You can carry "+state.Capacity+" items now.":state.BackpackTier==2?"Your backpack already holds 30 items.":"The next backpack costs "+UiFont.Money(state.BackpackUpgradePrice)+".");return;}
         if(selected==0){screen="shop";selected=0;return;}
-        if(selected==1){int i=state.Find(18);if(state.Tutorial==3&&i>=0){state.Pockets[i]=0;state.CreditTutorial(3);Say("Hearth","Good work! Write a letter at town hall.");return;}screen="sell";selected=0;return;}
+        if(selected==1&&JobsLive&&state.Tutorial==3){Say("Hearth",state.ResidentJobs.OpeningReturn()?"Good work! Use this paper to write a letter at town hall.":"Collect the parcel from "+state.Town.Residents[4].Name+" first.");return;}
+        if(selected==1){int i=state.Find(18);if(state.Tutorial==3&&i>=0){state.Pockets[i]=0;state.CreditTutorial(3);state.Receive(Catalog.WritingPaper);Say("Hearth","Good work! Use this paper to write a letter at town hall.");return;}screen="sell";selected=0;return;}
         if(selected==2){Say("Hearth",TutorialText());return;}
         if(selected==3){Say("Hearth",state.Expand(false,day,godMode)?"Your house expansion arrives after 06:00.":godMode?"No expansion is available yet.":"Pay off your debt before expanding.");return;}
         if(selected==4){Say("Hearth",state.Expand(true,day,godMode)?"Your garden expands after 06:00.":godMode?"No garden expansion is available yet.":"Pay off your debt and meet the house tier first.");return;}
         if(selected==5){Say("Hearth",RepayLoan()?"Thank you for your repayment!":"No repayment is possible.");return;}
-        if(state.Tutorial<6){Say("Hearth",TutorialText());return;}
+        if(state.Tutorial<7){Say("Hearth",TutorialText());return;}
         if(state.Jobs>=2){Say("Hearth","All jobs are done for today.");return;}
         int fruit=state.Find(1);if(fruit>=0&&state.Wallet<=99199){state.Pockets[fruit]=0;state.Wallet+=800;state.Jobs++;Say("Hearth","A peach for our customer! Here is "+UiFont.Money(800)+".");}else Say("Hearth","Today's job: bring a peach for a customer. Reward: "+UiFont.Money(800)+". Make space in your wallet.");
     }
     private string TutorialText()
-    { string[] text={"Welcome! Wear the work shirt in your pockets.","Plant your flower seed near the store.","Deliver the parcel to a villager.","Collect "+state.Town.Residents[4].Name+"'s parcel and return it to this counter.","Write a letter at town hall.","Introduce yourself to all six neighbours.","Your part-time job is complete. Your debt is "+UiFont.Money(18000)+"."};return text[state.Tutorial]; }
+    { string[] text={"Welcome! Wear the work shirt in your pockets.","Plant your flower seed near the store.","Deliver the parcel to a villager.","Collect "+state.Town.Residents[4].Name+"'s parcel and return it to this counter.","Write a letter at town hall.","Introduce yourself to all six neighbours.","Post a message on the notice board beside town hall.","Your part-time job is complete. Your debt is "+UiFont.Money(18000)+"."};return text[state.Tutorial]; }
     private void PostAction()
     {
         if(selected==0){Say("Fern",state.Deposit(Math.Min(1000,state.Wallet))?"Deposit complete.":"No acorns to deposit.");return;}
@@ -649,14 +654,18 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
         if(selected==2){Say("Fern",RepayLoan()?"Loan repayment complete.":"No payment is possible.");return;}
         if(selected==3){screen="lost";selected=0;return;}
         if(selected==4){screen="mail";selected=0;return;}
+        if(selected==5&&JobsLive){OpenLetterComposer();return;}
         if(selected==5){if(state.Tutorial==4){state.CreditTutorial(4);if(state.MailCount<128)state.Mail[state.MailCount++]=-19;}Say("Fern","Your letter has been sent. A reply will arrive tomorrow.");return;}
+        if(JobsLive){OpenTravel();return;}
         Say("Gate","Online visits require a Broadband Adapter and paired companion. Online transport is not yet available in this build.");
     }
     private void MenuAction()
     {
         if(menuTab==0){slot=selected;screen="item";selected=0;return;}
-        if(menuTab==1){Say("Jobs",selected==0?TutorialText():state.Town.Residents[selected-1].Name+": "+(state.Town.Residents[selected-1].Request==0?"No request":"Bring "+Catalog.Items[state.Town.Residents[selected-1].Request].Name));return;}
+        if(menuTab==1){if(JobsLive){jobNpc=-1;OpenJobLog();return;}Say("Jobs",selected==0?TutorialText():state.Town.Residents[selected-1].Name+": "+(state.Town.Residents[selected-1].Request==0?"No request":"Bring "+Catalog.Items[state.Town.Residents[selected-1].Request].Name));return;}
+        if(menuTab==2&&state.Visiting){Say("Catalog","Place catalogue orders when you return home.");return;}
         if(menuTab==2){Say("Catalog",godMode?state.Receive(Catalog.EntryAt(selected))?"Added to your pockets for free.":"Your pockets are full.":state.Order(Catalog.EntryAt(selected))?"Ordered! Check your mailbox after the next rollover.":"Only previously owned store items can be ordered.");return;}
+        if(menuTab==3&&state.Visiting){Say("Home","Your home is waiting in your own town.");return;}
         if(menuTab==3)
         {
             if(selected==0){state.Roof=(state.Roof+1)%12;Say("Home","Roof palette selected.");}
@@ -764,25 +773,28 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
     }
     private void Interact()
     {
+        if(JobsLive&&room==0&&Math.Abs(state.X-43)<2&&Math.Abs(state.Z-13)<2){screen="notice-board";noticeSelection=0;return;}
         int x=(int)state.X,z=(int)state.Z,tx=x+faceX,tz=z+faceZ;
         if(villagers.Doors.Busy(0))return;
         int door=villagers.Doors.Nearby(state,0,facingYaw);
         if(door>=0){if(!buildings.Ready(state.BuildingTypes[door])){Say("Home","This home is unavailable right now.");return;}if(!villagers.Doors.Request(state,0,door))Say("Door","Please wait for the doorway to clear.");return;}
         if(room!=0){
             if(room==TownShop.Room&&OpenShopFixture())return;
-            for(int i=0;i<6;i++){var v=state.Town.Residents[i];if(v.Space==room&&Math.Abs(v.PosX-state.X)<2&&Math.Abs(v.PosZ-state.Z)<2){Say(v.Name,state.Talk(i));return;}}
+            for(int i=0;i<6;i++){var v=state.Town.Residents[i];if(v.Space==room&&Math.Abs(v.PosX-state.X)<2&&Math.Abs(v.PosZ-state.Z)<2){if(!TryJobConversation(i))Say(v.Name,state.Talk(i));return;}}
             if(room==25){screen="post";selected=0;return;}
             // No nearby villager or usable doorway: A does nothing.
             return;
         }
+        if(x>=32&&x<=40&&z<=12&&JobsLive){OpenTravel();return;}
         if(x>=32&&x<=40&&z<=12){Say("Gate","The gate awaits a Broadband Adapter and companion connection.");return;}
-        for(int i=0;i<6;i++){var v=state.Town.Residents[i];if(v.Space==0&&Math.Abs(v.PosX-state.X)<2.8f&&Math.Abs(v.PosZ-state.Z)<2.8f){Say(v.Name,state.Talk(i));return;}}
+        for(int i=0;i<6;i++){var v=state.Town.Residents[i];if(v.Space==0&&Math.Abs(v.PosX-state.X)<2.8f&&Math.Abs(v.PosZ-state.Z)<2.8f){if(!TryJobConversation(i))Say(v.Name,state.Talk(i));return;}}
+        if(JobsLive&&state.Tool==Catalog.Shovel)for(int i=0;i<AnimalTown.Jobs.OfflineJobLedger.WorldCapacity;i++){var o=state.Town.Jobs.WorldObject(i);float dx=o.X-state.X,dz=o.Z-state.Z;if(o.Kind==AnimalTown.Jobs.JobWorldKind.Snowman&&dx*dx+dz*dz<2.25f){state.ResidentJobs.DestroyWorldObject(i);Say("Snow","The snowman crumbles back into the snow.");return;}}
         if(state.Pickup(tx,tz)||state.Pickup(x,z)){Say("Backpack","Picked up!");return;}
         int ground=state.Town.FindGround(tx,tz);
         if(ground>=0)
         {
             var g=state.Town.Ground[ground];
-            if(g.Kind==3){if(state.Tool==Catalog.Axe){g.Kind=0;g.Item=3;Say("Tree","A sapling for replanting.");}else if(state.Receive(1))Say("Tree","A ripe peach drops into your pockets!");return;}
+            if(g.Kind==3){if(state.Tool==Catalog.Axe){g.Kind=0;g.Item=3;Say("Tree","A sapling for replanting.");}else{int fruit=Catalog.Has(g.Item,ItemFlags.Fruit)?g.Item:JobsLive?state.Town.Jobs.NativeFruit:1;if(state.Receive(fruit))Say("Tree","A ripe "+Catalog.Items[fruit].Name+" drops into your pockets!");}return;}
             if(g.Kind==1&&state.Tool==Catalog.Shovel&&state.Receive(g.Item)){state.Town.RemoveGround(ground);Say("Digging","You found something!");return;}
         }
         if(state.Tool==Catalog.FishingRod&&(WaterSurface.IsWater(state.Town,tx,tz)||WaterSurface.IsWater(state.Town,tx+1,tz)))
@@ -807,7 +819,7 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
             int clip=animationClock.Clip(i);
             if(restartClips[i]||appliedClips[i]!=clip){
                 restartClips[i]=false;
-                string name=clip==1?"Running":"Walking";int model=i==0?state.Species:i-1;
+                string name=clip==1?"Running":"Walking";int model=i==0?state.Species:state.ResidentSpecies(i-1);
                 if(clip<0)actors[i].Animator.Stop();
                 else if(models[model].TryGetAnimation(name,out var _)){actors[i].Animator.Play(name,true);actors[i].Animator.SetSpeed(i==0?desiredPlayerSpeed:1);if(i==0)appliedPlayerSpeed=desiredPlayerSpeed;}
                 appliedClips[i]=clip;
@@ -862,7 +874,7 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
         bool mat=room!=0&&BuildingWorld.Definition(state,BuildingWorld.Building(room)).Floor==BuildingCatalog.Cottage.Floor;
         for(int actor=0;actor<BuildingWorld.Actors;actor++){
             if(BuildingWorld.Location(state,actor).Space.Value!=room||actor==0&&waterInspection!=0)continue;
-            if(actor!=0&&!modelResidency.Ready(actor-1))continue;
+            if(actor!=0&&!modelResidency.Ready(state.ResidentSpecies(actor-1)))continue;
             var p=villagers.Doors.VisualLocation(state,actor);
             if(Visible(p.X,p.Z,1.8f))villagerShadows.Set(actor,room,p.X,p.Z,size,mat);
         }
@@ -919,7 +931,7 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
         else rain.Dispose();
         PrepareFoliage(environmentTint);
         actorVisibility.Prepare(state,villagers.Doors,indoorCamera,waterInspection,cachedPlayerHeight);
-        for(int actor=1;actor<7;actor++)if(!modelResidency.Ready(actor-1))actorVisibility.Visible[actor]=false;
+        for(int actor=1;actor<7;actor++)if(!modelResidency.Ready(state.ResidentSpecies(actor-1)))actorVisibility.Visible[actor]=false;
         UpdateAnimationFrame();
         if((renderDebug.ForceAttention||attendingVillager>=0)&&villagers.Doors.PlayerFade<1)attention.Prepare();
         phase=FrameProfile.Start();if(!playerRunning&&(screen=="world"||screen=="plot"))clockHud.Prepare(townClock);uiShapes.Prepare(screen,screen=="menu"?menuTab:-1,batchedDrawing);if((batchedDrawing&&screen=="map")||(runningMinimap.Visible&&screen=="world"&&room==0))mapBackground.Prepare(state.Town);modelUsed=0;FrameProfile.End(8,phase);
@@ -939,6 +951,7 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
         float eyeHeight=PlayerHeight();
         if(room==0)camera.LookAt(new Vector3(state.X,CylinderWorld.CameraHeight+eyeHeight,state.Z+CylinderWorld.CameraBack),new Vector3(state.X,eyeHeight,state.Z-CylinderWorld.CameraAimAhead),new Vector3(0,1,0));
         else{float size=BuildingWorld.Size(state,room);indoorView.LookAt(new Vector3(indoorCamera.EyeX(size),indoorCamera.EyeY(size),indoorCamera.EyeZ(size)),new Vector3(size*.5f,.7f,size*.5f),new Vector3(0,1,0));}
+        if(JobsLive)jobScene.Prepare();
         renderer.Begin3D(room==0?camera:indoorView);buildings.Begin(villagers.Doors);FrameProfile.End(4,phase);
         phase=FrameProfile.Start();int submissionAt=FrameProfile.SubmissionStart();if(room==0){terrain.Draw(renderer,terrain.ScrollTransform,room);}else buildings.Interior(renderer,state,worldRoot,indoorCamera,villagers.Doors);
         FrameProfile.SubmissionEnd(0,submissionAt);FrameProfile.End(4,phase);phase=FrameProfile.Start();
@@ -947,6 +960,7 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
         {
             for(int i=1;i<BuildingWorld.Actors;i++)ModelAt(i);
             if(batchedDrawing)DrawActors();
+            for(int i=1;i<BuildingWorld.Actors;i++)DrawJobOutfit(i);
             FrameProfile.End(5,phase);phase=FrameProfile.Start();submissionAt=FrameProfile.SubmissionStart();DrawTrees();FrameProfile.SubmissionEnd(1,submissionAt);FrameProfile.End(6,phase);phase=FrameProfile.Start();
             long groundAt=FrameProfile.Start();
             for(int i=0;i<state.Town.GroundCount;i++)
@@ -963,9 +977,10 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
             FrameProfile.SubmissionEnd(2,submissionAt);submissionAt=FrameProfile.SubmissionStart();
             fences.Draw(renderer,state,terrain.ScrollTransform,cachedPlayerHeight);FrameProfile.SubmissionEnd(3,submissionAt);
             groundAt=FrameProfile.Start();droppedItems.Draw(renderer);FrameProfile.End(3,groundAt);
-            DrawStreetLights(environmentTint,lampStrength);
+            DrawStreetLights(environmentTint,lampStrength);DrawJobObjects();
         }
         if(room!=0){
+            DrawJobRoomCoverings();
             if(!indoorCamera.WallVisible(2)){
                 float size=BuildingWorld.Size(state,room),scale=size/4;
                 Box(size*.5f-.63f*scale,0,size,.08f,2.23f,.08f,new Color32(133,80,48));
@@ -985,6 +1000,7 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
         FrameProfile.End(7,phase);phase=FrameProfile.Start();
         ModelAt(0);
         if(batchedDrawing)DrawActors();
+        DrawJobOutfit(0);if(room!=0)for(int i=1;i<BuildingWorld.Actors;i++)DrawJobOutfit(i);
         FrameProfile.End(5,phase);phase=FrameProfile.Start();
         if(screen=="plot")
         {
@@ -1170,6 +1186,7 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
         if(!playerRunning&&(screen=="world"||screen=="plot"))clockHud.Draw(ui);
         if(room==TownShop.Room&&screen=="world")DrawShopHint(ink);
         if(DrawShopPanel(ink))return;
+        if(DrawTravelUi(ink)||DrawMailUi(ink)||DrawJobUi(ink))return;
         if(screen=="dialogue")
         { SpeechBubble();return; }
         if(screen=="map"){DrawMap();return;}
@@ -1217,6 +1234,7 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
         if(screen=="mail")return i>=state.MailCount?"No mail":state.Mail[i]<0?"Arrives tomorrow":Catalog.Items[state.Mail[i]].Name;
         if(screen=="lost"){int n=LostIndex(i);return n<0?"No lost items":Catalog.Items[state.Town.Ground[n].Item].Name;}
         if(menuTab==0)return (i+1)+". "+Catalog.Items[state.Pockets[i]].Name;
+        if(menuTab==1&&JobsLive)return "View errands and waiting rewards";
         if(menuTab==1)return i==0?"Tutorial / daily jobs":state.Town.Residents[i-1].Name+" / friendship "+state.Town.Residents[i-1].Friendship;
         if(menuTab==2){int id=Catalog.EntryAt(i);return Catalog.Items[id].Name+(godMode?" / Free (instant)":state.Owned[id]==0?" (not owned)":" / "+UiFont.Money(Catalog.Items[id].Buy));}
         if(menuTab==3){string[] a={"Roof palette","Exterior palette","Fence style","Mailbox",godMode?"Relocate (free)":"Relocate ("+UiFont.Money(50000)+")","Expand house","Expand garden"};return a[i];}
@@ -1252,8 +1270,7 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
             if(i==focus)Rounded(x-3,y-3,54,46,16,new Color32(232,183,86));
             Rounded(x,y,48,40,13,i==focus?new Color32(255,251,238):new Color32(231,228,202));
             int id=state.Pockets[i];
-            int icon=id==Catalog.CherrySapling?Catalog.PineSapling:id;
-            if(icon!=0)itemIcons.Draw(ui,new RectF(icon%8*64,icon/8*64,64,64),new RectF(x+5,y+1,38,38),Color32.White);
+            if(id!=0){int visual=Catalog.IconId(id);itemIcons.Draw(ui,new RectF(visual%8*64,visual/8*64,64,64),new RectF(x+5,y+1,38,38),Color32.White);}
             else Rounded(x+21,y+17,6,6,3,new Color32(188,195,166));
         }
         if(state.BackpackTier<2){Text("Next pack: "+(state.Capacity+10)+" slots",436,325,ink,1);Text("Hearth's store",436,349,ink,1);}
@@ -1263,8 +1280,8 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
         // Follow the actual slot for both the title and action menu. Clamp the
         // panel (including bulges/shadow) above the HUD for all backpack sizes.
         float slotX=99+focus%5*58,slotY=144+focus/5*44;
-        int actionCount=PocketMenu.Count(item,room);
-        string title=itemTitleText.Get(Catalog.Items[item].Name);
+        bool bound=state.IsJobItem(focus);int actionCount=bound?2:PocketMenu.Count(item,room);
+        string title=itemTitleText.Get(BackpackJobTitle(focus,item));
         float popWidth=actions?ItemActionWidth(item,title):168,popHeight=actions?72+actionCount*18:141;
         float popX=Math.Min(slotX+66,607-popWidth),popY=Math.Max(80,Math.Min(slotY-12,428-popHeight));
         float pointerY=Math.Max(popY+36,Math.Min(slotY+20,popY+popHeight-36));
@@ -1276,11 +1293,11 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
         {
             for(int i=0;i<actionCount;i++){
                 float y=popY+56+i*18;
-                PocketAction action=PocketMenu.At(item,room,i);
+                PocketAction action=bound?(i==0?PocketAction.Read:PocketAction.Quit):PocketMenu.At(item,room,i);
                 if(i==selected)Rounded(popX+10,y-1,popWidth-20,18,9,new Color32(221,231,188));
                 if(action==PocketAction.Quit)ButtonGlyph("B",textX,y+1);
                 else if(i==selected)ButtonGlyph("A",textX,y+1);
-                Text(ItemActionLabel(action),textX+20,y,ink,1.05f);
+                Text(bound?(i==0?"Details":"Close"):ItemActionLabel(action),textX+20,y,ink,1.05f);
                 if(action==PocketAction.Place){ButtonGlyph("R",textX+actionRotateOffset,y+1);Text("Rotate",textX+actionRotateOffset+26,y+1,ink,.9f);}
             }
         }

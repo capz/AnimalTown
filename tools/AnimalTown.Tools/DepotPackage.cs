@@ -63,7 +63,7 @@ internal static class DepotPackage
             "default.dol","opening.bnr","BUILD.txt","version.md","version.json","content.id","runtime.cfg","terrain.cfg","buildings.bin",
             "savebanner.rgb5a3","saveicon.rgb5a3","gorditas-bold.dndtex","gorditas-bold.metrics","Gorditas-OFL.txt","wordmark.dndtex","item-icons.dndtex",
             "splash-dolphindotnet.dndtex","splash-hypercube-engine.dndtex","cliff-soil.dndtex",PathAssets.DiscName,
-            "THIRD-PARTY-NOTICES.txt","DolphinDotNet-LICENSE.txt","Hypercube-LICENSE.txt","Ryu-LICENSE.txt","ufbx-LICENSE.txt","DEPOT-README.txt"
+            "THIRD-PARTY-NOTICES.txt","DolphinDotNet-LICENSE.txt","Hypercube-LICENSE.txt","Ryu-LICENSE.txt","ufbx-LICENSE.txt","Unicode-LICENSE.txt","DEPOT-README.txt"
         };
         foreach(string name in DroppedItemAssets.Names)files.Add(name+".dndtex");
         var models=new SortedSet<string>(new[]{"fox","bunny","giraffe","cat","hamster","spaniel","building","tent"},StringComparer.Ordinal);

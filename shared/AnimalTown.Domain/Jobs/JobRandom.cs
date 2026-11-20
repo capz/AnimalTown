@@ -53,7 +53,7 @@ public static class JobSelection
         else if(m<500)rate=m+100;
         else if(m<600)rate=(6*m+3000)/10;
         else rate=(12*m+6600000)/10000;
-        return (int)Math.Min(JobRulesV1.MoneyRateCap,rate);
+        return (int)(rate>JobRulesV1.MoneyRateCap?JobRulesV1.MoneyRateCap:rate);
     }
     public static int RollMoney(IJobRandom random,int baseAmount,int moneyPower=JobRulesV1.DefaultMoneyPower)
     {

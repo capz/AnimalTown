@@ -51,6 +51,7 @@ internal static class SaveCards
         }catch(Exception){return TownPresence.Unknown;}
     }
     private static bool IsTownRecord(string name)=>SplitSaveCodec.IsFile(name)||name==TownDataDeletion.Marker;
+    internal static void SelectVerifiedDevice(int device){if(device!=4&&device!=5)throw new ArgumentOutOfRangeException(nameof(device));Device=device;Chosen=true;}
     internal static void WithoutSaving(){Device=-1;Chosen=true;}
     internal static MemoryCard Mount()
     {

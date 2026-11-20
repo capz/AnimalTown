@@ -72,7 +72,7 @@ internal static class PocketMenuChecks
     }
     private static void Clothing(Action<bool,string> check)
     {
-        check(Enumerable.Range(1,Catalog.Items.Length-1).Where(id=>Catalog.Has(id,ItemFlags.Wear)).SequenceEqual(new[]{Catalog.WorkShirt}),"the implemented clothing catalog contains the single GameCube-style shirt");
+        check(Enumerable.Range(1,Catalog.Items.Length-1).Where(id=>Catalog.Has(id,ItemFlags.Wear)).SequenceEqual(new[]{Catalog.WorkShirt,Catalog.StripedShirt,Catalog.LeafShirt,Catalog.LinenShirt,Catalog.BerryShirt,Catalog.SkyShirt}),"the clothing catalog retains the work shirt and reusable resident reward shirts");
         foreach(int room in new[]{0,1}){
             var s=new GameState(73);s.Tool=Catalog.Shovel;s.BackpackTier=2;Array.Fill(s.Pockets,Catalog.WorkShirt);
             int slot=s.Capacity-1;

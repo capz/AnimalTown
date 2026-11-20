@@ -114,6 +114,19 @@ Check(growthFull&&card.Files.Count==1&&new CardArchive(card,banner,icon,4).Read(
 card.Capacity=52;new CardArchive(card,banner,icon,4).Write("options",new byte[]{8});
 Check(card.Files.Count==1&&card.Used==34,"expansion retries after freeing exactly the required workspace");
 CardSelectionChecks.Run(Check);
+// Text mail grows the same browser item beyond the old 256-block ceiling.
+card=new MemoryCard{Capacity=2043};var mailArchive=new CardArchive(card,banner,icon,4);mailArchive.Write("options",new byte[]{7});
+var longMail=new byte[2200000];for(int i=0;i<longMail.Length;i++)longMail[i]=(byte)(i*13);
+mailArchive.Write("AT-Shops0",longMail);
+Check(card.Files.Count==1&&card.Used>258&&new CardArchive(card,banner,icon,4).Read("AT-Shops0").SequenceEqual(longMail),"large mail archives grow beyond 256 blocks while retaining one browser item");
+Check(new CardArchive(card,banner,icon,4).Read("options")[0]==7,"mail growth preserves preferences");
+// Metadata intent uses checkpoint space, so growth also works with no free
+// data page in the existing backing file.
+card=new MemoryCard{Capacity=2043};var packed=new TownCardRecords(new NativeCardBlocks(4,true,banner,icon),true);packed.SetArchiveMarker(2,0,0);
+packed.Write("full",new byte[28*8192]);packed.Write("tail",new byte[2*8192]);
+Check(packed.AvailableBlocks==0,"growth fixture fills every data page");
+new CardArchive(card,banner,icon,4).Write("options",new byte[]{9});
+Check(new CardArchive(card,banner,icon,4).Read("full").Length==28*8192,"a completely full container can publish growth without a free data page");
 Console.WriteLine(checks+" card adapter checks passed: consolidated save/reload, no-op save, capacity, migration interruption/retry, independent records and deletion; host model, not hardware.");
 sealed class OldFiles(MemoryCard card) : ISaveStorage
 {

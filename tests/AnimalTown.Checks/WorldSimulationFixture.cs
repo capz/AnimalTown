@@ -11,6 +11,8 @@ internal static class NativeCalendar
 {
     internal static int Time=30|(12<<6)|(10<<11)|(6<<16)|(6<<20);
     internal static int ReadClock()=>Time;
+    internal static int Second;
+    internal static int ReadSecond()=>Second;
 }
 internal sealed partial class TownGame
 {

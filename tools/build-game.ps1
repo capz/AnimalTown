@@ -182,6 +182,8 @@ Copy-Item -LiteralPath (Join-Path $sdkRoot 'tools/compiler/native/include/ryu/LI
 Copy-Item -LiteralPath (Join-Path $sdkRoot 'tools/compiler/native/vendor/ufbx/LICENSE') -Destination (Join-Path $notices 'ufbx-LICENSE.txt') -Force
 Copy-Item -LiteralPath (Join-Path $projectRoot 'docs/dolphin-depot-install.txt') -Destination (Join-Path $notices 'DEPOT-README.txt') -Force
 $thirdParty="DolphinDotNet: $sdkCommit`nHypercube: $engineCommit`nBoth declare GPL-2.0-only; full texts accompany this package.`nCorresponding dependency sources: https://github.com/capz/DolphinDotNet and https://github.com/capz/hypercube-engine at the commits above.`nRyu floating-point conversion: Boost Software License 1.0, Ryu-LICENSE.txt.`nGorditas font: SIL Open Font License 1.1, Gorditas-OFL.txt.`nGame sources and asset provenance: https://github.com/capz/AnimalTown/tree/$gameFullCommit`nOriginal AnimalTown code/assets have no blanket redistribution permission established by this packaging feature. See docs/depot-release.md in that source revision. A NOASSERTION catalog draft is not permission to redistribute.`n"
+Copy-Item -LiteralPath (Join-Path $projectRoot 'assets/definitions/jobs/UNICODE-LICENSE.txt') -Destination (Join-Path $notices 'Unicode-LICENSE.txt') -Force
+$thirdParty+="Unicode normalization and category data: Unicode 14.0.0, Unicode-LICENSE.txt.`n"
 $thirdParty+="ufbx model importer: see ufbx-LICENSE.txt.`n"
 [IO.File]::WriteAllText((Join-Path $notices 'THIRD-PARTY-NOTICES.txt'),$thirdParty)
 $depot=Join-Path $projectRoot "out/AnimalTown-$gameVersion-depot.zip"

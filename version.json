@@ -104,6 +104,15 @@
         "If it snows while you're away, your town's snow is smooth when you return.",
         "All villagers share the same snowfall and snow dents, and paths are unaffected."
       ]
+    },
+    {
+      "id": "offline-resident-jobs-20261120",
+      "lines": [
+        "Add resident errands, real letters and two-card town travel.",
+        "Keep offers, unique parcels, progress and earned rewards across sessions.",
+        "Connect physical world favors, outfits, room rewards and opening employment.",
+        "Preserve four resident profiles with a separate visitor and recoverable card handoffs."
+      ]
     }
   ]
 }

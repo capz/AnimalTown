@@ -48,6 +48,8 @@ internal static class IncrementalSaveCodec
         return true;
     }
     internal static byte[] Encode(GameState s,int part)
+    {int guest=s.SuspendVisitor();try{return EncodeResidentPart(s,part);}finally{s.ResumeVisitor(guest);}}
+    private static byte[] EncodeResidentPart(GameState s,int part)
     {
         if(part==Count-1){
             var w=new SplitSaveCodec.Writer(s,Residents,320+4*(Jobs.TownJobState.EncodedWordCount+1));

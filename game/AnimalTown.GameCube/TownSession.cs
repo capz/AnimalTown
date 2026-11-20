@@ -16,8 +16,10 @@ internal sealed class TownSession
     internal readonly bool Damaged;
     internal string Status {get;private set;}
     private TownSession(GameState state,bool loaded,bool damaged,string status){State=state;Loaded=loaded;Damaged=damaged;Status=status;}
+    internal void AdoptTravel(GameState state){State=state;Loaded=true;Status="Trip saved / "+BuildInfo.Version;}
     internal void SelectProfile(int profile)
     {
+        if(State.ProfileLocked(profile))throw new InvalidOperationException("This villager is away.");
         if(!State.Profiles[profile].Created||!State.HomePlaced(profile)){
             Draft=new OnboardingDraft(State,profile,Loaded);State=Draft.State;
         }else State.SelectProfile(profile);

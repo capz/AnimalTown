@@ -7,6 +7,7 @@ internal static class VillagerJobSaveChecks
     private static bool Fails(Action operation){try{operation();return false;}catch(InvalidOperationException){return true;}catch(ArgumentException){return true;}}
     internal static void Run(Action<bool,string> check)
     {
+        VillagerJobIdentityChecks.Run(check);
         var state=new GameState(-99);var old=SaveCodec.Encode(state);
         check(old[4]==11&&SaveCodec.Decode(old).Town.JobState.IsPristine,"old combined saves migrate to fresh job state without changing RNG");
         var oldParts=SplitSaveCodec.Encode(state);

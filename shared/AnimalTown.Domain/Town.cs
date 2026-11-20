@@ -40,6 +40,7 @@ public sealed class Town
     public readonly TownPaths Paths;
     public readonly TileTraffic Traffic=new TileTraffic();
     public readonly Jobs.TownJobState JobState;
+    public readonly Jobs.OfflineJobLedger Jobs=new Jobs.OfflineJobLedger();
     public int TerrainVersion {get;private set;}
     public int ShadowVersion {get;private set;}
     public void NotifyCastersChanged(){ShadowVersion++;}
