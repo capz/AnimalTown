@@ -51,7 +51,7 @@ def start_display():
     read_fd,write_fd=os.pipe();server=None
     try:
         with (root/'xvfb.log').open('w') as log:
-            server=subprocess.Popen(['Xvfb','-displayfd',str(write_fd),'-nocursor','-screen','0','800x600x24'],pass_fds=(write_fd,),stdout=log,stderr=subprocess.STDOUT)
+            server=subprocess.Popen(['Xvfb','-displayfd',str(write_fd),'-noreset','-nocursor','-screen','0','800x600x24'],pass_fds=(write_fd,),stdout=log,stderr=subprocess.STDOUT)
         os.close(write_fd);write_fd=-1
         if not select.select([read_fd],[],[],30)[0]:raise RuntimeError('Xvfb did not report a ready display; inspect xvfb.log')
         number=os.read(read_fd,32).decode().strip()

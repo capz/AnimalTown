@@ -100,13 +100,14 @@ def run(context):
             guest(min(2,(v['length']-v['typed'])/30+.1))
         raise AssertionError('Dialogue stopped revealing text')
     def talk(npc=0):
-        for _ in range(4):
+        for _ in range(8):
             approach(npc);v=view();n=v['npcs'][npc];dx=v['x']-n[1]/1024;dz=v['z']-n[2]/1024;d=math.hypot(dx,dz)
             # Look away from a shared doorway so A addresses the villager
             # instead of taking the higher-priority door interaction.
             if d>.05:move(dx/d,dz/d,.04)
             press('A');v=dialogue()
             if v['screen']=='dialogue' and v['npc']==npc:return
+            if v['screen']=='dialogue':close();continue
             if v['screen']!='world':break
         raise AssertionError('Conversation did not reach the intended NPC: '+str(v))
     def close():press('B');guest(.25)

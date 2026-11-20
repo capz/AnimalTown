@@ -11,18 +11,18 @@ internal static class JobFixture
     internal static void Write(string output,string mode)
     {
         if(mode=="room"){
-            Write(output,"mail");var disk=ReadFixture(output);var repo=new SaveRepository(disk);var room=repo.Load()!;
+            Write(output,"mail");var roomDisk=ReadFixture(output);var repo=new SaveRepository(roomDisk);var room=repo.Load()!;
             room.Space=1;room.X=3;room.Z=4;room.BackpackTier=1;room.Shirt=Catalog.StripedShirt;Array.Clear(room.Pockets);room.Pockets[0]=Catalog.OakFloor;room.Pockets[1]=Catalog.LeafWallpaper;Array.Clear(room.Town.Jobs.Offers);repo.Save(room);
-            foreach(var file in disk.Files)File.WriteAllBytes(Path.Combine(output,file.Key),file.Value);return;
+            foreach(var file in roomDisk.Files)File.WriteAllBytes(Path.Combine(output,file.Key),file.Value);return;
         }
         if(mode=="moving"||mode=="recovery"){
-            CrossTown(output,"foreign");var home=ReadFixture(output);var destination=ReadFixture(output+"-destination");
+            CrossTown(output,"foreign");var home=ReadFixture(output);var destinationDisk=ReadFixture(output+"-destination");
             if(mode=="recovery"){
                 var repository=new SaveRepository(home);var state=repository.Load()!;
-                try{new OfflineTownTravel(repository,new SaveRepository(new FailWrites(destination))).Depart(0,state.Town.Jobs.Watermark);}catch(IOException){}
+                try{new OfflineTownTravel(repository,new SaveRepository(new FailWrites(destinationDisk))).Depart(0,state.Town.Jobs.Watermark);}catch(IOException){}
                 state=repository.Load()!;if(!state.ProfileLocked(0)||!state.Town.Jobs.Trip.Pending)throw new Exception("Recovery fixture requires a genuinely committed source lock");
             }
-            foreach(var file in home.Files)File.WriteAllBytes(Path.Combine(output,file.Key),file.Value);foreach(var file in destination.Files)File.WriteAllBytes(Path.Combine(output+"-destination",file.Key),file.Value);return;
+            foreach(var file in home.Files)File.WriteAllBytes(Path.Combine(output,file.Key),file.Value);foreach(var file in destinationDisk.Files)File.WriteAllBytes(Path.Combine(output+"-destination",file.Key),file.Value);return;
         }
         if(mode=="foreign"||mode=="moved"){CrossTown(output,mode);return;}
         bool baseline=mode=="baseline",winter=mode=="snowman",destination=mode=="destination";long now=JobCalendar.At(2027,winter?1:7,15,mode=="letter"?7:12,mode=="letter"?58:0);var s=new GameState(destination?7320:7319){Name="Ari",Tutorial=baseline?6:7,HouseTier=1};s.Town.DaylightLocation=1;
