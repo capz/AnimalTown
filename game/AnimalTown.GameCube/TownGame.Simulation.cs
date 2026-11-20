@@ -48,6 +48,13 @@ internal sealed partial class TownGame
             if(villagers.Doors.Moving(0)){moveClip=0;desiredPlayerSpeed=1;}
         }
         if(simulateWorld)state.Town.Traffic.Tick(state.Town);
+        if(simulateWorld){
+            // The town always runs behind overlays. Only the job cooldown's
+            // separate active clock excludes menus, dialogue and loading.
+            var jobs=state.Town.JobState;
+            if(room==0&&!villagers.Doors.Busy(0))jobs.ObserveOutdoorAcre(state.ActiveProfile,(int)state.X/Town.ScreenTileSize+(int)state.Z/Town.ScreenTileSize*Town.ScreenColumns);
+            if(screen=="world"&&!villagers.Doors.Busy(0))jobs.Advance(AnimalTown.Jobs.JobRulesV1.ActiveTicksPerSecond/30);
+        }
         runningMinimap.Update(Clock.Timestamp,running,screen=="world"&&room==0&&waterInspection==0&&!cliffPreview);
         playerRunning=running;
         state.Facing=facingYaw;cachedPlayerHeight=PlayerHeight();if(room==0)RenderView.Prepare(state.X,state.Z,cachedPlayerHeight);

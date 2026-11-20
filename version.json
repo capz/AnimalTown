@@ -23,6 +23,24 @@
         "The countdown follows recent transfer speed and clears on a stall.",
         "The screen reports verification and restart once the download finishes."
       ]
+    },
+    {
+      "id": "villager-jobs-foundation-v1",
+      "lines": [
+        "Lay the groundwork for richer villager errands.",
+        "Job rules, randomness and cooldown state now have a saved foundation.",
+        "The town keeps running while menus pause only the job cooldown clock.",
+        "Playable offers, objectives and rewards will follow in later changes."
+      ]
+    },
+    {
+      "id": "offline-villager-jobs-delivery-plan",
+      "lines": [
+        "Document the plan for the complete offline villager errand system.",
+        "Fourteen phases cover all twelve job types and four player profiles.",
+        "The roadmap includes real mail, rewards and memory-card town travel.",
+        "Each phase defines completion checks and resource validation."
+      ]
     }
   ]
 }

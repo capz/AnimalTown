@@ -120,7 +120,7 @@ public sealed partial class GameState
     public void DeleteProfile(int profile)
     {
         if((uint)profile>=ProfileCount||!Profiles[profile].Created)throw new InvalidOperationException("Villager does not exist");
-        CaptureProfile();Town.Shop.DeleteSeller(profile);int owner=profile==0?0:profile+6,building=BuildingWorld.PlayerBuilding(profile);
+        CaptureProfile();Town.Shop.DeleteSeller(profile);Town.JobState.ForgetProfileLocation(profile);int owner=profile==0?0:profile+6,building=BuildingWorld.PlayerBuilding(profile);
         BuildingWorld.Entrance(this,building,out float outsideX,out float outsideZ);
         int active=ActiveProfile,kept=0;
         for(int i=0;i<Town.PlacedCount;i++){

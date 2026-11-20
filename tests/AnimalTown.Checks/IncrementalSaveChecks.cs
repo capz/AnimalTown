@@ -94,7 +94,32 @@ internal static class IncrementalSaveChecks
         check(new SaveRepository(new Disk()).Load()==null,"empty card does not invent a save");
         var classic=new SaveRepository(d).Load()!;classic.Town.DaylightLocation=0;d.Reset();new SaveRepository(d).Save(classic);Only(d,"AT-Town",check);
         check(new SaveRepository(d).Load()!.Town.DaylightLocation==0,"switching back to Classic is saved and reloaded");
+        JobTransactions(check);
         Console.WriteLine("Incremental saves: exact component writes/no-op, static town vs NPC runtime, mirrored references, corruption, power cuts, retries and migration passed");
+    }
+    private static void JobTransactions(Action<bool,string> check)
+    {
+        var baseline=Town();var jobs=baseline.Town.JobState;
+        jobs.ObserveOutdoorAcre(0,0);jobs.Resident(0).StartNoJobCooldown();jobs.Resident(0).ConversationCompleted();
+        var disk=new Disk();new SaveRepository(disk).Save(baseline);disk.Reset();
+        var clockOnly=SaveCodec.Decode(SaveCodec.Encode(baseline));clockOnly.Town.JobState.Advance(100);
+        new SaveRepository(disk).Save(clockOnly);Only(disk,"AT-Residents",check);
+        check(disk.Bytes==1312,"a cooldown checkpoint writes two 464-byte NPC records and two 192-byte manifests, without terrain");
+        var before=SaveCodec.Encode(clockOnly);var baseDisk=disk.Copy();
+        void Change(GameState s){s.Wallet+=11;s.Town.JobState.Advance(234);s.Town.JobState.Offers.NextInt(17);s.Town.JobState.Rewards.NextInt(100);}
+        var desired=SaveCodec.Decode(before);Change(desired);var measured=baseDisk.Copy();measured.Reset();new SaveRepository(measured).Save(desired);
+        int writes=measured.Names.Count,publication=measured.Names.FindIndex(n=>Kind(n,"AT-Commit"))+1;
+        check(writes==6&&!measured.Names.Any(n=>Kind(n,"AT-Town")),"wallet and job RNG/counters share one transaction while the town record is reused");
+        for(int mode=0;mode<3;mode++)for(int cut=1;cut<=writes;cut++){
+            var fault=baseDisk.Copy();fault.Reset();fault.Mode=mode;fault.CutAt=cut;var candidate=SaveCodec.Decode(before);Change(candidate);
+            check(Fails(()=>new SaveRepository(new SaveReadCache(fault)).Save(candidate)),"interrupted job checkpoint reports failure");
+            var recovered=new SaveRepository(fault).Load();bool published=cut>publication||cut==publication&&mode==2;
+            check(recovered!=null,"interrupted job checkpoint retains a complete committed save");
+            Same(recovered!,published?desired:clockOnly,check,"all interruption phases recover either the old wallet/RNG/clock or the new wallet/RNG/clock, never a mix");
+            fault.CutAt=0;new SaveRepository(fault).Save(candidate);
+            Same(desired,new SaveRepository(fault).Load()!,check,"retrying an interrupted job checkpoint preserves the exact RNG and economic revision");
+        }
+        Console.WriteLine("Job clock save: 164-byte extension; 1,312 physical bytes/checkpoint; zero terrain rewrites; all 18 write interruptions recovered atomically");
     }
     private static int ReferenceBank(Disk d,int sequence,int part)
     {var b=d.Files["AT-Commit0"];int at=28+part*20+4;return b[at]|b[at+1]<<8|b[at+2]<<16|b[at+3]<<24;}
