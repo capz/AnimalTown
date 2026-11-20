@@ -32,6 +32,15 @@
         "The town keeps running while menus pause only the job cooldown clock.",
         "Playable offers, objectives and rewards will follow in later changes."
       ]
+    },
+    {
+      "id": "offline-villager-jobs-delivery-plan",
+      "lines": [
+        "Document the plan for the complete offline villager errand system.",
+        "Fourteen phases cover all twelve job types and four player profiles.",
+        "The roadmap includes real mail, rewards and memory-card town travel.",
+        "Each phase defines completion checks and resource validation."
+      ]
     }
   ]
 }

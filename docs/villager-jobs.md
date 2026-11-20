@@ -27,7 +27,7 @@ The existing tutorial and shop-owner work remain separate systems.
 | Ball and snowman | No qualifying physical ball-collision or snowman-combination events | Add small world-object adapters with stable IDs and attributable, persisted events. Visual snow alone cannot satisfy a snowman objective. |
 | Flowers | Planted ground items and town cells | Provide acre plantable-cell and seedling/mature counts; snapshot baseline at acceptance, check net live count at reporting. |
 | Mail | A bounded item-ID mailbox and tutorial letter placeholder | Implement real composed text, addressed delivery events and reply content before enabling letter jobs. Verify NFC, Unicode scalars and classification on the console compiler; ASCII-only grading is insufficient. |
-| Online/travel | Server accounts, visits and transactions exist | These do not establish a console job/parcel transfer or remembered NPC destination. Keep both remote templates gated until real travel adapters can transfer ownership atomically; build no new networking platform for them. |
+| Offline travel | Server services exist; console town travel does not | Complete memory-card town visits and real NPC migration for foreign/moved deliveries. Keep both gated until actual transfer support is ready; no internet service is required. |
 
 The six-resident roster, upgradeable pockets, four profiles and 0–255 relationship
 range are existing host requirements that supersede the spec's fallback limits.
@@ -79,45 +79,17 @@ menu or dialogue text in this PR, so there is no UI change awaiting approval.
 
 ## Next implementation slices
 
-1. **Identity, ledger and inventory transactions.** Persist town/NPC/player/item
-   identities and monotonic IDs; bounded per-profile delivery/retrieval records;
-   one offer per player/requester; one shared favor per NPC/subtype; and 128 reward
-   obligation slots. Reserve job, obligation and parcel capacity atomically.
-   Include cleanup on profile deletion, unknown-rule migration and corrupt
-   binding quarantine. No accepted job may exist without its reservation.
-2. **Offers and personal jobs.** Add authoritative conversation sessions,
-   revisions and bounded command receipts. Roll one candidate before filtering,
-   persist the complete offer, and preserve it on capacity failures. Implement
-   clothing/property delivery and retrieval's saved borrower decisions, exact
-   bound parcels, stage deadlines and timeout/abandon cleanup. Permanent NPC
-   removal differs from sleep or an unloaded model. Remote definitions remain
-   present but their real-travel capability requirements stay false.
-3. **Rewards and time reconciliation.** Earned entitlements outlive job occupancy.
-   Freeze category, concrete item/currency/reply and clothing snapshots exactly
-   once. Partial wallet credits retain a durable remainder. Item rewards can use
-   the slot just freed by turn-in. Apply dated-second expiry strictly at
-   `now > due`, process timestamped events in chronological/priority order before
-   the final watermark, and shift live times on a backwards clock change.
-   Never store an unbounded receipt/event-ID set or write the card every tick.
-4. **All local favors and mail.** Connect fruit/fish/insect selectors, ball
-   collision, snowman construction/destruction, flower counts and delivered
-   letters to actual host actions. Test all seasonal start/end boundaries,
-   cross-player claims, exact evidence identity and NPC home-acre moves. Implement
-   Unicode mail scoring and frozen replies. Ordinary completed favors retain
-   occupancy until **original deadline + three days**; letter occupancy ends on
-   reply insertion or its original deadline and its earned reply remains owed.
-5. **Approved presentation and console verification.** Present Ask for work,
-   stable offer/Accept/Decline, delivery/report/reward options and job log using
-   the existing paper panels, IPL text, dialogue voices and item art. Produce a
-   mockup for approval before changing those screens. Connect completed sessions
-   once, preserve handoff/reward access when patience blocks casual conversation,
-   and replace the legacy request loop only once all ten local templates have
-   real completion hooks. Keep tutorial wages/debt work separate. Capture actual
-   console/emulator scenarios, performance and save-reload/clock/capacity cases.
+The [full offline implementation plan](villager-jobs-offline-plan.md) defines
+fourteen remaining phases, their dependencies, real-engine acceptance gates,
+resource budgets and final completion criteria. It supersedes this report's
+initial five-step outline.
 
-No build flag should advertise the full job feature until those slices meet the
-supplied specification's definition of done. The steps above are implementation
-boundaries, not permission gates for independent domain work.
+Its first milestone completes all ten local templates. The final offline
+milestone additionally requires actual memory-card visits, NPC migration and
+both cross-town delivery types, followed by four-profile integration and console
+qualification. No networking platform is a dependency of those offline errands.
+Until travel exists the two definitions remain capability-gated; leaving them
+disabled permanently does not meet the complete offline plan.
 
 ## Cost and validation
 
