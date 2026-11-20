@@ -61,7 +61,7 @@ foreach($path in @('shared/AnimalTown.Domain/BuildingPrompt.cs','tests/AnimalTow
     $p=Get-ValidationPlan -ChangedPaths @($path)
     Assert (($p.managed -join ',') -eq 'movement,life,saves,buildings' -and !$p.backend -and !$p.full -and !$p.rendering.Count) "Building entry routing must retain component coverage: $path"
 }
-foreach($path in @('shared/AnimalTown.Domain/ContentPaths.cs','game/AnimalTown.GameCube/ContentBootstrap.cs','tests/AnimalTown.Checks/ContentChecks.cs')){
+foreach($path in @('shared/AnimalTown.Domain/ContentPaths.cs','shared/AnimalTown.Domain/ContentIdentity.cs','game/AnimalTown.GameCube/ContentBootstrap.cs','tests/AnimalTown.Checks/ContentChecks.cs')){
     $p=Get-ValidationPlan -ChangedPaths @($path)
     Assert (($p.managed -join ',') -eq 'content' -and 'content' -in $p.native -and !$p.backend -and !$p.full) "Content startup routing must retain actual AOT/filesystem coverage: $path"
 }
@@ -77,4 +77,4 @@ foreach($path in @('shared/AnimalTown.Domain/WorldLighting.cs','game/AnimalTown.
     Assert ('core' -in $p.managed -and 'shadows' -in $p.native -and !$p.backend -and !$p.full) "Lighting changes must cover clock policy and the actual GX shadow/light shader: $path"
 }
 $p=Get-ValidationPlan -ChangedPaths @('game/AnimalTown.GameCube/NativeShadows.cs');Assert ('patched' -in $p.native) 'Shadow bridge changes must exercise fresh AOT bindings'
-Write-Host 'Validation routing checks passed (78 cases).'
+Write-Host 'Validation routing checks passed (79 cases).'

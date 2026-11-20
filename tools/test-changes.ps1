@@ -26,8 +26,11 @@ $commands=@{
     shadows='cc -std=c11 -Wall -Wextra -Werror -Iout/sdk-native/include tests/native-path-mask.c -o /tmp/animaltown-path-mask && /tmp/animaltown-path-mask && cc -std=c11 -Wall -Wextra -Werror tests/native-shadow-union.c -lm -o /tmp/animaltown-shadow-union && /tmp/animaltown-shadow-union && cc -std=c11 -Wall -Wextra -Werror -Iout/sdk-native/include tests/native-shadow-lifecycle.c -lm -o /tmp/animaltown-shadow-lifecycle && /tmp/animaltown-shadow-lifecycle'
 }
 if('content' -in $plan.native){
-    Run dotnet @('build','tests/AnimalTown.ContentSmoke','-c','Release','-p:RestoreLockedMode=true','-v','quiet')
-    Run dotnet @("$sdkRoot/tools/compiler/DolphinDotNet.Compiler.dll",'--aot','tests/AnimalTown.ContentSmoke/bin/Release/net8.0/AnimalTown.ContentSmoke.dll','out/content-startup.c')
+    foreach($contentSmokeProfile in @('depot','disc')){
+        $isDepotSmoke=($contentSmokeProfile -eq 'depot').ToString().ToLowerInvariant()
+        Run dotnet @('build','tests/AnimalTown.ContentSmoke','-c','Release',"-p:DepotProfile=$isDepotSmoke",'-p:RestoreLockedMode=true','-v','quiet')
+        Run dotnet @("$sdkRoot/tools/compiler/DolphinDotNet.Compiler.dll",'--aot',"tests/AnimalTown.ContentSmoke/bin/Release/$contentSmokeProfile/net8.0/AnimalTown.ContentSmoke.dll","out/content-startup-$contentSmokeProfile.c")
+    }
 }
 if('jobs' -in $plan.native){
     Run dotnet @('build','tests/AnimalTown.JobSmoke','-c','Release','-p:RestoreLockedMode=true','-v','quiet')

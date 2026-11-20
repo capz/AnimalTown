@@ -1,9 +1,19 @@
 <Project Sdk="Microsoft.NET.Sdk">
-  <PropertyGroup><OutputType>Exe</OutputType><DefineConstants>$(DefineConstants);ANIMALTOWN_DEPOT</DefineConstants></PropertyGroup>
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <DepotProfile Condition="'$(DepotProfile)' == ''">true</DepotProfile>
+    <ContentSmokeProfile Condition="'$(DepotProfile)' == 'true'">depot</ContentSmokeProfile>
+    <ContentSmokeProfile Condition="'$(DepotProfile)' != 'true'">disc</ContentSmokeProfile>
+    <OutputPath>bin/$(Configuration)/$(ContentSmokeProfile)/</OutputPath>
+    <IntermediateOutputPath>obj/$(Configuration)/$(ContentSmokeProfile)/</IntermediateOutputPath>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(DepotProfile)' == 'true'"><DefineConstants>$(DefineConstants);ANIMALTOWN_DEPOT</DefineConstants></PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="../../shared/AnimalTown.Domain/AnimalTown.Domain.csproj" />
-    <PackageReference Include="DolphinDotNet.GameCube" Version="[0.1.0-preview.374.1]" />
+    <PackageReference Include="DolphinDotNet.GameCube" Version="[0.1.0-preview.376.1]" />
     <Compile Include="../../game/AnimalTown.GameCube/ContentBootstrap.cs" Link="ContentBootstrap.cs" />
     <Compile Include="../../game/AnimalTown.GameCube/UpdaterLaunch.cs" Link="UpdaterLaunch.cs" />
+    <Compile Include="../../game/AnimalTown.GameCube/RuntimeOptions.cs" Link="RuntimeOptions.cs" />
+    <Compile Include="../../game/AnimalTown.GameCube/NativeFrame.cs" Link="NativeFrame.cs" />
   </ItemGroup>
 </Project>

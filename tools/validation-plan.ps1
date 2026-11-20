@@ -32,7 +32,7 @@ function Get-ValidationPlan {
         if($p -match '^shared/AnimalTown.Domain/(Jobs/|GameState\.Jobs\.cs$)|^tests/(AnimalTown.JobSmoke/|native-jobs\.)|^tests/AnimalTown.Checks/(OfflineJob|JobLetter|JobMail|JobTravel|JobWorld|VillagerJobIdentity)Checks\.cs$|^tools/generate-job-unicode\.py$'){
             Add-Managed 'life';Add-Managed 'saves';[void]$native.Add('jobs');$backend=$true;continue
         }
-        if($p -match '^(shared/AnimalTown.Domain/ContentPaths|game/AnimalTown.GameCube/ContentBootstrap|tests/AnimalTown.Checks/ContentChecks)\.cs$'){Add-Managed 'content';[void]$native.Add('content');continue}
+        if($p -match '^(shared/AnimalTown.Domain/Content(?:Paths|Identity)|game/AnimalTown.GameCube/ContentBootstrap|tests/AnimalTown.Checks/ContentChecks)\.cs$'){Add-Managed 'content';[void]$native.Add('content');continue}
         if($p -match '^tests/(AnimalTown.ContentSmoke/|native-content-startup\.)'){Add-Managed 'content';[void]$native.Add('content');continue}
         if($p -match '^(shared/AnimalTown.Domain/TownChat|game/AnimalTown.GameCube/TownGame\.Chat|tests/AnimalTown.Checks/TownChatChecks)\.cs$'){
             Add-Managed 'menu';Add-Managed 'text';Add-Managed 'dialogue';continue
