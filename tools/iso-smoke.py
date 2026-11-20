@@ -263,12 +263,15 @@ def player_chat():
     def send(actor):
         count=len(events());tap('START');frames(4)
         if len(events())!=count+1 or int(events()[-1][0])!=actor:raise AssertionError('Chat routed to the wrong speaker')
-        pages=int(events()[-1][1]);tap('A');return pages
+        # One glyph is revealed per game frame. An unconditional A press can
+        # close short messages that have already finished typing. Let even a
+        # maximum-length page finish before capturing or advancing it.
+        pages=int(events()[-1][1]);frames(125);return pages
 
     def close_speech(pages):
         for index in range(pages):
+            if index:frames(125)
             tap('A')
-            if index+1<pages:tap('A')
 
     try:
         open_chat();capture('chat-keyboard.png');type_text('hello neighbours!')
