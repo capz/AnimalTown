@@ -96,7 +96,7 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
     private readonly RenderDebugOptions renderDebug=new RenderDebugOptions();
     private readonly VillagerAttentionRenderer attention=new VillagerAttentionRenderer();
     private readonly DebugWeather weather=new DebugWeather();
-    private readonly FallLeafWake fallLeaves=new FallLeafWake();
+    private readonly FallLeafWake foliage=new FallLeafWake();
     private readonly RainRenderer rain=new RainRenderer();
     private readonly VisitEdgeRenderer visitEdges=new VisitEdgeRenderer();
     private readonly ActorFrameVisibility actorVisibility=new ActorFrameVisibility();
@@ -269,7 +269,7 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
         for(int i=0;i<actors.Length;i++){actors[i]?.Dispose();actors[i]=null!;}
         if(unadopted!=null&&Array.IndexOf(models,unadopted)<0)unadopted.Dispose();
         for(int i=0;i<models.Length;i++){models[i]?.Dispose();models[i]=null!;}
-        attention.Dispose();rain.Dispose();fallLeaves.Dispose();trees.Dispose();droppedItems.Dispose();buildings.Dispose();terrain.Dispose();fences.Dispose();
+        attention.Dispose();rain.Dispose();foliage.Dispose();trees.Dispose();droppedItems.Dispose();buildings.Dispose();terrain.Dispose();fences.Dispose();
         clockHud.Dispose();uiShapes.Dispose();mapBackground.Dispose();cube.Dispose();ui.Dispose();
         font.Release();headingFont.Release();TextureCache.Release(itemIcons);card?.Dispose();card=null;
         NativeRim.Enable(0);NativeRenderProbe.Uv(0);
@@ -597,18 +597,23 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
         weather.Update(state.Town.Seed,weatherDay,townClock.MinuteOfDay,season);
         state.Town.Traffic.Snow.SetWinter(season==3);
     }
-    private bool FallLeafScene(int season)=>room==0&&season==2&&session.Draft==null&&waterInspection==0&&!cliffPreview;
-    private float LeafSeconds()=>(Clock.Timestamp-sessionStart)*.000001f;
+    private bool FoliageScene=>room==0&&session.Draft==null&&waterInspection==0&&!cliffPreview;
+    private float FoliageSeconds()=>(Clock.Timestamp-sessionStart)*.000001f;
     partial void RecordFallFootstep(float beforeX,float beforeZ,bool running)
     {
-        if(screen=="world"&&FallLeafScene(terrain.SeasonAt(month,renderDebug.SeasonOverride)))
-            fallLeaves.TrackStep(state.Town,beforeX,beforeZ,state.X,state.Z,LeafSeconds(),running);
+        if(screen=="world"&&FoliageScene&&terrain.SeasonAt(month,renderDebug.SeasonOverride)==2)
+            foliage.TrackStep(state.Town,beforeX,beforeZ,state.X,state.Z,FoliageSeconds(),running);
     }
-    private void PrepareFallLeaves(int tint)
+    private void PrepareFoliage(int tint)
     {
-        if(!FallLeafScene(terrain.RenderSeason))fallLeaves.Dispose();
-        else if(villagers.Doors.Busy(0))fallLeaves.Clear();
-        else fallLeaves.Prepare(state.Z,LeafSeconds(),tint);
+        int season=terrain.RenderSeason;
+        bool bloom=season==0&&townClock.CherryBlossomsBloom;
+        if(!FoliageScene||(!bloom&&season!=2)){foliage.Dispose();return;}
+        if(villagers.Doors.Busy(0)){foliage.Clear();return;}
+        float seconds=FoliageSeconds();
+        if(bloom)foliage.TrackPetals(state.Town,state.X,state.Z,cachedPlayerHeight,seconds);
+        else foliage.SetPetalMode(false);
+        foliage.Prepare(state.Z,seconds,tint);
     }
     private int MenuTabCount=>DebugMenuSettings.Visible?tabs.Length:tabs.Length-1;
     private int TabCount()=>menuTab==0?state.Capacity:menuTab==1?7:menuTab==2?Catalog.EntryCount:menuTab==3?7:menuTab==4?7:menuTab==TestingTab?testingOptions.Length:DaylightSettingsRow+(DebugMenuSettings.Visible?2:1);
@@ -896,7 +901,7 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
         if(room==0){trees.Prepare(terrain.RenderSeason,townClock.CherryBlossomsBloom);fences.Prepare(state);droppedItems.Prepare(state,cachedPlayerHeight);}
         if((weather.Raining(room)||weather.Snowing(room))&&villagers.Doors.PlayerFade<1)rain.Prepare(state,(Clock.Timestamp-sessionStart)/1000000.0,cachedPlayerHeight,weather.Snowing(room));
         else rain.Dispose();
-        PrepareFallLeaves(environmentTint);
+        PrepareFoliage(environmentTint);
         actorVisibility.Prepare(state,villagers.Doors,indoorCamera,waterInspection,cachedPlayerHeight);
         for(int actor=1;actor<7;actor++)if(!modelResidency.Ready(actor-1))actorVisibility.Visible[actor]=false;
         UpdateAnimationFrame();
@@ -979,7 +984,7 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
         if(room==0&&renderDebug.ShowVisitEdges)visitEdges.Draw(renderer,identity,state,terrain.RenderSeason==3&&!renderDebug.ShowGroundMipBands);
         if(renderDebug.ForceAttention&&villagers.Doors.PlayerFade<1)attention.Draw(renderer,state,actorVisibility,indoorCamera,cachedPlayerHeight);
         submissionAt=FrameProfile.SubmissionStart();
-        fallLeaves.Draw(renderer);
+        foliage.Draw(renderer);
         if((weather.Raining(room)||weather.Snowing(room))&&villagers.Doors.PlayerFade<1)rain.Draw(renderer);
         FrameProfile.SubmissionEnd(4,submissionAt);
         renderer.End3D();NativeShadows.Environment(0xffffff,preparedShadowStrength);ui.Begin();submissionAt=FrameProfile.SubmissionStart();DrawHud();if(FrameProfile.Enabled)ui.Flush();FrameProfile.SubmissionEnd(5,submissionAt);FrameProfile.End(8,phase);FrameProfile.Draw(ui);

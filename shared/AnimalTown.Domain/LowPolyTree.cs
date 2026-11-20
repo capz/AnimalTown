@@ -23,12 +23,12 @@ public sealed class LowPolyTree
         if(kind==0){
             t.Crown(-.16f,.66f,0,.27f,.25f,.27f);
             t.Crown(.16f,.70f,.03f,.27f,.25f,.27f);
-            t.Crown(0,.87f,-.04f,.26f,.20f,.26f);
+            t.Crown(0,.91f,-.04f,.26f,.20f,.26f);
         }
         else if(kind==Cherry){
             t.Crown(-.23f,.62f,0,.29f,.21f,.27f);
             t.Crown(.23f,.65f,.04f,.29f,.21f,.27f);
-            t.Crown(0,.72f,-.06f,.29f,.19f,.26f);
+            t.Crown(0,.64f,-.015f,.29f,.28f,.26f);
         }
         else if(kind==2){t.Cone(.22f,.73f,.34f);t.Cone(.43f,.89f,.27f);t.Cone(.65f,1,.19f);}
         else{

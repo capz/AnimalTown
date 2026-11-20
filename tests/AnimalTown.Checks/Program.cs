@@ -224,7 +224,7 @@ for(int kind=0;kind<3;kind++){
         Check(float.IsFinite(au)&&float.IsFinite(av)&&float.IsFinite(bu)&&float.IsFinite(bv)&&Math.Abs(au*bv-av*bu)>1e-8f,"every tree face has finite noncollapsed detail UVs");
         for(int v=0;v<3;v++){float y=tree.Positions[at+v*3+1];minY=Math.Min(minY,y);maxY=Math.Max(maxY,y);}
     }
-    Check(minY==0&&(kind==0?maxY is >1.03f and <=1.05f:maxY is >.9f and <=1.01f),"tree ground pivot and species height");
+    Check(minY==0&&(kind==0?maxY is >1.07f and <=1.09f:maxY is >.9f and <=1.01f),"tree ground pivot and species height");
     for(int part=0;part<4;part++)Check(parts[part]>0,"every generated material has geometry");
     Console.WriteLine("Generated tree "+kind+": "+tree.Triangles+" triangles");
 }

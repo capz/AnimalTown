@@ -55,9 +55,18 @@
       "id": "taller-deciduous-canopy",
       "lines": [
         "Regular deciduous trees have slightly taller canopies.",
-        "The top cluster sits 18 cm higher on a mature tree.",
+        "The top cluster sits higher on a mature tree.",
         "The taller silhouette makes these trees easier to tell apart from cherry blossoms.",
         "The shared tree mesh still uses 84 triangles."
+      ]
+    },
+    {
+      "id": "cherry-petal-fall",
+      "lines": [
+        "Blooming cherry blossoms now shed little pink petals.",
+        "Petals occasionally flutter down from nearby mature trees.",
+        "Cherry canopies extend down over the top of the trunk.",
+        "Regular deciduous canopies reach a little higher."
       ]
     }
   ]
