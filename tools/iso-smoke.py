@@ -246,6 +246,18 @@ def player_chat():
     def capture(name):
         frames(3);screenshot(name);report['screenshots'].append(name)
 
+    def wait_speech():
+        # Presentations and simulation ticks need not run at the same rate.
+        # Observe the actual IPL cue: only "Show all" extends into this tail;
+        # a completed page says "Next" or "Close". Also require the panel so
+        # leaving dialogue cannot silently satisfy the ready condition.
+        deadline=time.monotonic()+90
+        while time.monotonic()<deadline:
+            frames(2);screenshot('chat-page-wait.png');pixels=rgb('chat-page-wait.png')
+            if region_color_count(pixels,(255,245,221),80,340,540,425)<26000:raise AssertionError('Speech panel closed before its page was read')
+            if region_color_count(pixels,(49,72,62),540,435,555,466)<2:return
+        raise AssertionError('Speech did not finish typing')
+
     def open_chat():
         nonlocal selected_key
         count=runtime_log_text().count('ANIMALTOWN CHAT OPEN');tap('R');selected_key=0
@@ -263,14 +275,11 @@ def player_chat():
     def send(actor):
         count=len(events());tap('START');frames(4)
         if len(events())!=count+1 or int(events()[-1][0])!=actor:raise AssertionError('Chat routed to the wrong speaker')
-        # One glyph is revealed per game frame. An unconditional A press can
-        # close short messages that have already finished typing. Let even a
-        # maximum-length page finish before capturing or advancing it.
-        pages=int(events()[-1][1]);frames(125);return pages
+        pages=int(events()[-1][1]);wait_speech();return pages
 
     def close_speech(pages):
         for index in range(pages):
-            if index:frames(125)
+            if index:wait_speech()
             tap('A')
 
     try:
@@ -295,7 +304,12 @@ def player_chat():
         capture('chat-long-message.png');close_speech(pages)
         tap('START')
         for _ in range(5):tap('D_DOWN')
-        tap('A');capture('chat-from-settings.png');tap('B');capture('chat-cancel-to-settings.png');tap('B')
+        count=runtime_log_text().count('ANIMALTOWN CHAT OPEN');tap('A')
+        if runtime_log_text().count('ANIMALTOWN CHAT OPEN')<=count:raise AssertionError('Settings did not open chat')
+        capture('chat-from-settings.png');tap('B');capture('chat-cancel-to-settings.png')
+        count=runtime_log_text().count('ANIMALTOWN CHAT OPEN');tap('A')
+        if runtime_log_text().count('ANIMALTOWN CHAT OPEN')<=count:raise AssertionError('Cancel did not restore the selected Settings entry')
+        tap('B');tap('B')
         if committed_card_sequence(root/'MemoryCardA.USA.raw',details=True)!=initial:raise AssertionError('Chat altered committed town or player data')
         report['events']=events();report['town_unchanged']=True;report['passed']=True
     finally:
