@@ -3,6 +3,7 @@ $ErrorActionPreference='Stop'
 function Assert($value,[string]$message){if(!$value){throw $message}}
 $p=Get-ValidationPlan -ChangedPaths @('docs/concepts/cliff-kit.png','README.md');Assert (!$p.release -and !$p.backend -and !$p.managed.Count) 'Art/docs should not trigger builds/tests'
 $p=Get-ValidationPlan -ChangedPaths @('game/AnimalTown.GameCube/MenuNavigation.cs');Assert (($p.managed -join ',') -eq 'menu' -and !$p.backend -and !$p.tooling.Count) 'Menu routing too broad'
+$p=Get-ValidationPlan -ChangedPaths @('shared/AnimalTown.Domain/TownChat.cs','game/AnimalTown.GameCube/TownGame.Chat.cs','tests/AnimalTown.Checks/TownChatChecks.cs');Assert (($p.managed -join ',') -eq 'menu,text,dialogue' -and !$p.backend -and !$p.full) 'Local chat needs bounded input, layout and command checks'
 $p=Get-ValidationPlan -ChangedPaths @('tools/native-uv-debug.inc','tools/native-uv-topology.h');Assert (($p.native -join ',') -eq 'uv' -and !$p.managed.Count -and !$p.backend) 'UV native routing too broad'
 $p=Get-ValidationPlan -ChangedPaths @('tests/AnimalTown.CardChecks/Program.cs');Assert (($p.native -join ',') -eq 'card' -and ($p.managed -join ',') -eq 'saves' -and !$p.backend -and !$p.full) 'Card adapter fixtures must retain native and domain save checks'
 $p=Get-ValidationPlan -ChangedPaths @('server/AnimalTown.Server/Program.cs');Assert ($p.backend -and !$p.managed.Count -and !$p.native.Count) 'Backend should not run console unit suites'

@@ -261,7 +261,7 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
     {
         if(disposed)return;
         if(device.IsFrameActive)throw new InvalidOperationException("Dispose the town after EndFrame");
-        disposed=true;LoadingScreen.Finish();
+        disposed=true;LoadingScreen.Finish();ReleaseChatEntry();ClearChatPresentation();
         dialogueVoice.Stop();syllable.Dispose();
         Model? unadopted=null;
         if(loadingModel!=null){try{unadopted=loadingModel.GetAwaiter().GetResult();}catch(Exception){if(!loadingModel.IsCompleted)throw;}loadingModel=null;}
@@ -472,13 +472,14 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
             }
         }
     }
-    private void Say(string name,string text){dialogueVoice.Begin();voiceTick=0;returnToMenu=screen=="menu"&&(menuTab==SettingsTab||menuTab==TestingTab||godMode&&menuTab==2);if(returnToMenu){returnMenuTab=menuTab;returnMenuSelection=selected;}speaker=name;message=text;wrappedDialogue=dialogueText.Get(text);typeAt=0;screen="dialogue";}
+    private void Say(string name,string text){ClearChatPresentation();dialogueVoice.Begin();voiceTick=0;returnToMenu=screen=="menu"&&(menuTab==SettingsTab||menuTab==TestingTab||godMode&&menuTab==2);if(returnToMenu){returnMenuTab=menuTab;returnMenuSelection=selected;}speaker=name;message=text;wrappedDialogue=dialogueText.Get(text);typeAt=0;screen="dialogue";}
     private bool Press(ControllerState p)=>p.A.WasPressed;
     internal void Input(ControllerState p)
     {
         if(!resourcesReady||!modelSceneReady||room==0&&!terrain.Ready){if(loadingFailed&&session.Draft!=null&&p.B.WasPressed)ExitToTitle=true;return;}
         if(DebugMenuSettings.Read(p)){
             if(!DebugMenuSettings.Visible){
+                ClearChatAttention();
                 if(menuTab==TestingTab){menuTab=SettingsTab;selected=0;}
                 if(returnToMenu&&returnMenuTab==TestingTab){returnMenuTab=SettingsTab;returnMenuSelection=0;}
                 if(menuTab==SettingsTab)selected=Math.Min(selected,DaylightSettingsRow);
@@ -486,6 +487,7 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
             saveStatus=UserOptionsStorage.Status;return;
         }
         if(session.Draft!=null){OnboardingInput(p);return;}
+        if(screen==ChatEntry.Screen){ChatInput(p);return;}
         bool chord=p.L.IsHeld&&p.R.IsHeld;
         if(AaStudy.Input(p))return;
         if(chord&&p.Z.IsHeld&&p.DPadDown.WasPressed){terrain.FreezeMotion=!terrain.FreezeMotion;return;}
@@ -540,13 +542,14 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
         }
         if(ShopInput(p,direction))return;
         if(screen=="dialogue")
-        { if(Press(p)||p.B.WasPressed){dialogueVoice.Stop();if(typeAt<message.Length)typeAt=message.Length;else{screen=returnToMenu?"menu":"world";if(returnToMenu){menuTab=returnMenuTab;selected=returnMenuSelection;}}}return; }
+        { if(Press(p)||p.B.WasPressed){dialogueVoice.Stop();if(typeAt<message.Length)typeAt=message.Length;else if(!NextChatPage()){ClearChatPresentation();screen=returnToMenu?"menu":"world";if(returnToMenu){menuTab=returnMenuTab;selected=returnMenuSelection;}}}return; }
         if(screen=="plot")
         {
             if(Press(p)){if(state.PlaceHouse((int)state.X-3,(int)state.Z-3,relocate,godMode))Say("Hearth","Your home is ready! Visit the store for your first job.");else Say("Hearth","This plot needs 15 x 13 clear land tiles.");}
             if(p.B.WasPressed&&state.HousePlaced)screen="world";return;
         }
         if(screen=="world"&&villagers.Doors.Busy(0))return;
+        if(screen=="world"&&p.R.WasPressed){OpenChat();return;}
         if(p.Start.WasPressed){screen="menu";menuTab=SettingsTab;selected=0;return;}
         if(p.Y.WasPressed){screen=screen=="map"?"world":"map";return;}
         if(p.B.WasPressed&&screen=="item"){screen="menu";menuTab=0;selected=slot;return;}
@@ -671,10 +674,10 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
         if(selected==DaylightSettingsRow){daylightMenu.Open(state.Town.DaylightLocation);screen=DaylightLocationMenu.Screen;return;}
         if(selected==0){SaveFromMenu();}
         else if(selected==1){screen="save-quit";selected=0;}
-        else if(selected==2){Say("Controls","Stick / D-pad: walk / menus. L/R: tabs. B: run / back. A: interact / select. X: backpack. Y: map. Z: tool. START: settings. Choose Save Now to save.");}
+        else if(selected==2){Say("Controls","Stick / D-pad: walk / menus. L/R: tabs. R: chat while playing. B: run / back. A: interact / select. X: backpack. Y: map. Z: tool. START: settings. Choose Save Now to save.");}
         else if(selected==3)Say("About","AnimalTown / "+BuildInfo.Version+" / hypercube-engine. Original homebrew for Nintendo GameCube.");
         else if(selected==4){Say("Calendar","Console RTC / day "+day+". New days begin at 06:00.");}
-        else Say("Chat","Quick phrases and online chat are pending the companion transport.");
+        else OpenChat();
     }
     private bool RepayLoan()=>state.Repay((int)Math.Min(state.Debt,godMode?int.MaxValue:state.Wallet),godMode);
     private void TestingAction()
@@ -918,7 +921,7 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
         actorVisibility.Prepare(state,villagers.Doors,indoorCamera,waterInspection,cachedPlayerHeight);
         for(int actor=1;actor<7;actor++)if(!modelResidency.Ready(actor-1))actorVisibility.Visible[actor]=false;
         UpdateAnimationFrame();
-        if(renderDebug.ForceAttention&&villagers.Doors.PlayerFade<1)attention.Prepare();
+        if((renderDebug.ForceAttention||attendingVillager>=0)&&villagers.Doors.PlayerFade<1)attention.Prepare();
         phase=FrameProfile.Start();if(!playerRunning&&(screen=="world"||screen=="plot"))clockHud.Prepare(townClock);uiShapes.Prepare(screen,screen=="menu"?menuTab:-1,batchedDrawing);if((batchedDrawing&&screen=="map")||(runningMinimap.Visible&&screen=="world"&&room==0))mapBackground.Prepare(state.Town);modelUsed=0;FrameProfile.End(8,phase);
         UiNoise.Prepare();preparedSubmitMicroseconds=0;preparedEnvironmentTint=environmentTint;preparedLampStrength=lampStrength;preparedShadowStrength=sunlight;
         phase=FrameProfile.Start();Hypercube.GameCube.FrameRenderer.Draw(device,room==0?TownLights.Tint(weather.Raining(room)?new Color32(112,143,151):new Color32(149,198,186),environmentTint):new Color32(32,40,39),this);FrameProfile.End(9,phase+preparedSubmitMicroseconds);
@@ -995,7 +998,7 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
         if(batchedDrawing)boxes.Flush();
         if(renderDebug.ShowObstructedEdges)NativeWorldDiagnostics.EdgePass(0);
         if(room==0&&renderDebug.ShowVisitEdges)visitEdges.Draw(renderer,identity,state,terrain.RenderSeason==3&&!renderDebug.ShowGroundMipBands);
-        if(renderDebug.ForceAttention&&villagers.Doors.PlayerFade<1)attention.Draw(renderer,state,actorVisibility,indoorCamera,cachedPlayerHeight);
+        if((renderDebug.ForceAttention||attendingVillager>=0)&&villagers.Doors.PlayerFade<1)attention.Draw(renderer,state,actorVisibility,indoorCamera,cachedPlayerHeight,renderDebug.ForceAttention,attendingVillager);
         submissionAt=FrameProfile.SubmissionStart();
         foliage.Draw(renderer);
         if((weather.Raining(room)||weather.Snowing(room))&&villagers.Doors.PlayerFade<1)rain.Draw(renderer);
@@ -1119,8 +1122,10 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
         Rounded(36,329,576,108,30,new Color32(48,65,58,130));
         Rounded(32,324,576,108,30,new Color32(255,245,221));
         UiNoise.Begin();ui.FillTriangle(new Vector2(112,428),new Vector2(142,428),new Vector2(118,446),new Color32(255,245,221));UiNoise.End();
-        Rounded(48,299,180,38,19,new Color32(53,105,84));
+        float nameWidth=Math.Max(180,Math.Min(504,strongFont.Measure(speaker,1.35f/1.5f)+28));
+        Rounded(48,299,nameWidth,38,19,new Color32(53,105,84));
         Strong(speaker,62,306,new Color32(255,245,221),1.35f);Text(wrappedDialogue,57,344,new Color32(49,72,62),1.4f,typeAt);
+        if(chatSpeech!=null){ButtonGlyph("A",500,448);Text(typeAt<message.Length?"Show all":chatPage+1<chatSpeech.Count?"Next":"Close",522,444,new Color32(49,72,62),1.1f);}
     }
     private static string Letter(char c)=>new string(new[]{c});
     private void DrawGroundMipLegend(Color32 ink)
@@ -1137,6 +1142,7 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
     private void DrawHud()
     {
         var ink=new Color32(49,72,62);
+        if(screen==ChatEntry.Screen){DrawChat(ink);return;}
         if(screen=="plot"&&session.Draft!=null){
             session.Draft.CanPlaceHome((int)state.X-3,(int)state.Z-6,out string reason);
             Panel(150,24,340,42);Heading("Find your little corner",168,31,ink,1.05f);
@@ -1215,7 +1221,7 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
         if(menuTab==2){int id=Catalog.EntryAt(i);return Catalog.Items[id].Name+(godMode?" / Free (instant)":state.Owned[id]==0?" (not owned)":" / "+UiFont.Money(Catalog.Items[id].Buy));}
         if(menuTab==3){string[] a={"Roof palette","Exterior palette","Fence style","Mailbox",godMode?"Relocate (free)":"Relocate ("+UiFont.Money(50000)+")","Expand house","Expand garden"};return a[i];}
         if(menuTab==TestingTab)return TestingLabel(i);
-        string[] settings={"Save Now","Save & Quit","Controls","About / build identity","Calendar","Chat settings","Daylight location","Debug / testing menu"};return settings[i];
+        string[] settings={"Save Now","Save & Quit","Controls","About / build identity","Calendar","Chat","Daylight location","Debug / testing menu"};return settings[i];
     }
     private static string ItemActionLabel(PocketAction action)=>action==PocketAction.Place?"Place":PocketMenu.Label(action);
     private float ItemActionWidth(int item,string title)

@@ -3,6 +3,11 @@ internal static class AttentionGeometryChecks
     internal static void Run(Action<bool,string> check)
     {
         var vertices=VillagerAttentionRenderer.BuildVertices();
+        for(int target=0;target<6;target++)for(int actor=0;actor<=7;actor++){
+            check(VillagerAttentionRenderer.Selected(actor,false,target)==(actor==target+1),"an attention command selects only its NPC, never the player");
+            check(VillagerAttentionRenderer.Selected(actor,true,target)==(actor>0&&actor<7),"the preview still includes all six NPCs");
+        }
+        check(!VillagerAttentionRenderer.Selected(1,false,-1),"cleared attention submits no extra icon");
         check(vertices.Length==132,"all six villagers reuse a bounded 44-triangle attention icon");
         bool translucent=false,opaque=false;
         for(int i=0;i<vertices.Length;i+=3){

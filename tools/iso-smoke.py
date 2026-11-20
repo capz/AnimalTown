@@ -11,6 +11,9 @@ sampling plus animated/frozen water captures. Its debug changes are session-only
 
 --daylight-location uses an empty card to verify the first-town shortcut,
 local lighting, explicit saves and the shared location after a title reload.
+
+--player-chat uses a disposable --chat-fixture card to exercise the controller
+keyboard, normal player speech, live debug gating and one resident attention cue.
 """
 import os
 import atexit
@@ -213,6 +216,85 @@ def start_game(new_town=False,prefix='start'):
     if new_town or not before or not before['profiles'][active]['created']:
         return finish_onboarding(prefix,before)
     return before,wait_onboarding('world',prefix+'-game.png')
+
+def player_chat():
+    import re
+    sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'docs/performance'))
+    from avi_guest_clock import AviGuestClock
+    clock=AviGuestClock(user/'Dump/Frames',track_presentations=True)
+    before=committed_card_sequence(root/'MemoryCardA.USA.raw',details=True)
+    if not before:raise AssertionError('Use a disposable --chat-fixture card')
+    start_game(prefix='chat-start');set_debug_visibility(False)
+    initial=committed_card_sequence(root/'MemoryCardA.USA.raw',details=True)
+    report={'scenario':'player-chat','disc':disc.name,'passed':False,'screenshots':[],'events':[]}
+    selected_key=0
+
+    def frames(count):
+        clock.frames();target=len(clock.presentations)+count;deadline=time.monotonic()+90
+        while len(clock.presentations)<target:
+            check_runtime_failure()
+            if p.poll() is not None:raise AssertionError('Emulator stopped during player chat')
+            if time.monotonic()>deadline:raise AssertionError('Chat stopped presenting frames')
+            time.sleep(.03);clock.frames()
+
+    def tap(button):
+        os.write(controller,f'PRESS {button}\n'.encode());frames(3)
+        os.write(controller,f'RELEASE {button}\n'.encode());frames(3)
+
+    def events():return re.findall(r'ANIMALTOWN CHAT SPEECH actor (\d+) pages (\d+)',runtime_log_text())
+
+    def capture(name):
+        frames(3);screenshot(name);report['screenshots'].append(name)
+
+    def open_chat():
+        nonlocal selected_key
+        count=runtime_log_text().count('ANIMALTOWN CHAT OPEN');tap('R');selected_key=0
+        if runtime_log_text().count('ANIMALTOWN CHAT OPEN')<=count:raise AssertionError('R did not open chat')
+
+    def type_text(text):
+        nonlocal selected_key
+        keys="qwertyuiopasdfghjkl'zxcvbnm,./0123456789 !?-:;()@+"
+        for character in text:
+            target=keys.index(character);row,col=divmod(selected_key,10);tr,tc=divmod(target,10)
+            while row!=tr:tap('D_DOWN');row=(row+1)%5
+            while col!=tc:tap('D_RIGHT');col=(col+1)%10
+            tap('A');selected_key=target
+
+    def send(actor):
+        count=len(events());tap('START');frames(4)
+        if len(events())!=count+1 or int(events()[-1][0])!=actor:raise AssertionError('Chat routed to the wrong speaker')
+        pages=int(events()[-1][1]);tap('A');return pages
+
+    def close_speech(pages):
+        for index in range(pages):
+            tap('A')
+            if index+1<pages:tap('A')
+
+    try:
+        open_chat();capture('chat-keyboard.png');type_text('hello neighbours!')
+        pages=send(0);capture('chat-player-speech.png');close_speech(pages)
+        open_chat();type_text('/attend rowan hello')
+        pages=send(0);capture('chat-command-disabled.png');close_speech(pages)
+        set_debug_visibility(True)
+        open_chat();type_text('/attend nobody hello')
+        count=len(events());tap('START')
+        if len(events())!=count or 'ANIMALTOWN CHAT INVALID' not in runtime_log_text():raise AssertionError('Invalid command was spoken')
+        capture('chat-invalid-command.png')
+        for _ in range(len('/attend nobody hello')):tap('X')
+        type_text('/attend rowan hello');pages=send(1);capture('chat-rowan-attention.png');close_speech(pages)
+        # Changing the flag while typing cannot retain command rights.
+        open_chat();type_text('/attend rowan hello');set_debug_visibility(False)
+        pages=send(0);capture('chat-command-disabled-mid-entry.png');close_speech(pages)
+        open_chat();type_text('w'*120);pages=send(0)
+        if pages<2:raise AssertionError('Long speech did not paginate')
+        capture('chat-long-message.png');close_speech(pages)
+        tap('START')
+        for _ in range(5):tap('D_DOWN')
+        tap('A');capture('chat-from-settings.png');tap('B');capture('chat-cancel-to-settings.png');tap('B')
+        if committed_card_sequence(root/'MemoryCardA.USA.raw',details=True)!=initial:raise AssertionError('Chat altered committed town or player data')
+        report['events']=events();report['town_unchanged']=True;report['passed']=True
+    finally:
+        (root/'chat-report.json').write_text(json.dumps(report,indent=2)+'\n')
 
 def daylight_location():
     import re
@@ -2116,7 +2198,7 @@ DumpCodec = ffv1
 [Hacks]
 EFBToTextureEnable = False
 ''')
-if '--profile' in sys.argv or '--interaction-profile' in sys.argv or '--runtime-profile' in sys.argv or '--terrain-scroll' in sys.argv or '--lighting' in sys.argv or '--actor-shadows' in sys.argv or '--movement-profile' in sys.argv or '--stream-travel' in sys.argv or '--submissions' in sys.argv or '--aram-residency' in sys.argv:
+if '--profile' in sys.argv or '--interaction-profile' in sys.argv or '--runtime-profile' in sys.argv or '--terrain-scroll' in sys.argv or '--lighting' in sys.argv or '--actor-shadows' in sys.argv or '--movement-profile' in sys.argv or '--stream-travel' in sys.argv or '--submissions' in sys.argv or '--aram-residency' in sys.argv or '--player-chat' in sys.argv:
     config=user/'Config'/'Dolphin.ini'
     config.write_text(config.read_text()+'\n[Movie]\nDumpFrames = True\nDumpFramesSilent = True\n')
     config=user/'Config'/'GFX.ini'
@@ -2138,13 +2220,14 @@ with (root/'emulator.log').open('w') as log:
         if '--loading' in sys.argv:
             for n,seconds in enumerate((1,1,2,4,8,12,17)):
                 time.sleep(seconds);screenshot(f'loading-{n}.png')
-        elif any(flag in sys.argv for flag in ('--aram-residency','--title-logo','--terrain-materials','--save-cards','--save-and-quit','--daylight-clock','--daylight-location')):wait_title()
+        elif any(flag in sys.argv for flag in ('--aram-residency','--title-logo','--terrain-materials','--save-cards','--save-and-quit','--daylight-clock','--daylight-location','--player-chat')):wait_title()
         else:time.sleep(45)
         if p.poll() is not None:
             raise RuntimeError(f'Dolphin exited during boot ({p.returncode}); see {root / "emulator.log"}')
         screenshot('screen.png')
         if any(flag in sys.argv for flag in ('--title-menu','--title-load','--title-config','--title-update','--title-options','--title-options-load','--title-options-unsupported')):wait_title()
-        if '--daylight-location' in sys.argv:daylight_location()
+        if '--player-chat' in sys.argv:player_chat()
+        elif '--daylight-location' in sys.argv:daylight_location()
         elif '--daylight-clock' in sys.argv:daylight_clock()
         elif '--save-cards' in sys.argv:memory_cards()
         elif '--save-and-quit' in sys.argv:save_and_quit()

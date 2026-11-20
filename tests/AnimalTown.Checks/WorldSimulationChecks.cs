@@ -3,7 +3,7 @@ using Dolphin.Input;
 
 internal static class WorldSimulationChecks
 {
-    private static readonly string[] overlays={"menu","item","map","dialogue","post","mail","lost","shop","store","sell","shop-display","shop-list","shop-price","shop-stored","plot","daylight-location"};
+    private static readonly string[] overlays={"menu","item","map","dialogue",ChatEntry.Screen,"post","mail","lost","shop","store","sell","shop-display","shop-list","shop-price","shop-stored","plot","daylight-location"};
     internal static void Run(Action<bool,string> check)
     {
         // Every overlay must produce the same live town as leaving it on screen
