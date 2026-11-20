@@ -558,7 +558,7 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
             if(p.B.WasPressed&&state.HousePlaced)screen="world";return;
         }
         if(screen=="world"&&villagers.Doors.Busy(0))return;
-        if(screen=="world"&&p.R.WasPressed){OpenChat();return;}
+        if(screen=="world"&&!chord&&p.R.WasPressed){OpenChat();return;}
         if(p.Start.WasPressed){screen="menu";menuTab=SettingsTab;selected=0;return;}
         if(p.Y.WasPressed){screen=screen=="map"?"world":"map";return;}
         if(p.B.WasPressed&&screen=="item"){screen="menu";menuTab=0;selected=slot;return;}
