@@ -116,7 +116,7 @@ def save_record(version,kind,sequence,body):
     data=struct.pack('<7I',0x50535441,version,1,kind,sequence,42,32+len(body))+body
     return data+struct.pack('<I',crc32(data))
 
-def generation(bank, town_version, runtime_words):
+def generation(bank, town_version, runtime_words, job_clock=None, clock_marker=0x43424f4a):
     sequence=bank+1
     town=struct.pack('<5I',96,160,1,23,0)+bytes(148)
     if town_version>=10:town+=struct.pack('<5I',4,100,0,2,(0xbbff<<16)|3)
@@ -124,6 +124,7 @@ def generation(bank, town_version, runtime_words):
     if town_version>=9:town+=bytes(164)
     runtime=bytes(268)
     if runtime_words:runtime+=struct.pack('<I',runtime_words)+bytes(160)
+    if job_clock is not None:runtime+=struct.pack('<Iq',clock_marker,job_clock)
     bases=('AT-Town','AT-Houses','AT-Shops','AT-Player','AT-Villager2-','AT-Villager3-','AT-Villager4-','AT-Residents')
     bodies=(town,bytes(48),bytes(56),*(bytes(268) for _ in range(4)),runtime)
     files={};references=[]
@@ -162,6 +163,12 @@ with TemporaryDirectory() as fixture:
     assert current['sequence']==2 and current['daylight_location']==13
     write_card(card,old|generation(1,9,39))
     assert namespace['committed_card_sequence'](card)==1
+    for clock in (-(1<<63),0,1800000000):
+        write_card(card,old|generation(1,9,40,clock))
+        assert namespace['committed_card_sequence'](card)==2
+    for clock,marker in ((1<<62,0x43424f4a),(0,0)):
+        write_card(card,old|generation(1,9,40,clock,marker))
+        assert namespace['committed_card_sequence'](card)==1
 print('Card smoke reader: v9 job-clock and v10 snow generations, daylight offset and malformed-extension fallback passed')
 
 # Xvfb's number and newline arrive in separate writes. A short read must not

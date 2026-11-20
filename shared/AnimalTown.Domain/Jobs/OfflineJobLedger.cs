@@ -6,7 +6,7 @@ public sealed partial class OfflineJobLedger
 {
     public const int OwnerCount=GameState.ProfileCount+1,Visitor=GameState.ProfileCount;
     public const int MaximumWords=1024*1024;
-    internal const int Magic=0x32424f4a,Schema=11;
+    internal const int Magic=0x32424f4a,Schema=12;
     public ulong TownId {get;private set;}
     private ulong nextSerial=1;
     private OfflineJobLedger? readbackMemo;
@@ -36,31 +36,35 @@ public sealed partial class OfflineJobLedger
     internal void ForgetPlayer(int profile){players[profile]=default;Revision++;}
     internal void SetOutfit(int resident,int definition){outfits[resident]=definition;}
     internal int WordCount{get{var sizing=new JobWireWriter();Write(sizing);if(sizing.Count>MaximumWords)throw new InvalidOperationException("Job ledger exceeds its bound");return sizing.Count;}}
-    internal void WriteTo(byte[] bytes,int offset)=>Write(new JobWireWriter(bytes,offset));
+    internal void WriteTo(byte[] bytes,int offset,bool runtimeProjection=false)=>Write(new JobWireWriter(bytes,offset),runtimeProjection);
     internal int[] Encode()
     {
         var sizing=new JobWireWriter();Write(sizing);
         if(sizing.Count>MaximumWords)throw new InvalidOperationException("Job ledger exceeds its bounded format");
         var words=new int[sizing.Count];Write(new JobWireWriter(words));return words;
     }
-    private void Write(JobWireWriter w)
+    private void Write(JobWireWriter w,bool runtimeProjection=false)
     {
-        w.Int(Magic);w.Int(Schema);w.ULong(TownId);w.ULong(nextSerial);w.Int(Revision);
+        w.Int(Magic);w.Int(Schema);w.Int(runtimeProjection?1:0);w.ULong(TownId);w.ULong(nextSerial);w.Int(Revision);
         for(int i=0;i<players.Length;i++)w.Key(players[i]);
         for(int i=0;i<npcs.Length;i++){w.Key(npcs[i]);w.Int(outfits[i]);}
-        WriteRecords(w);
+        WriteRecords(w,runtimeProjection);
         WriteMail(w);WriteWorld(w);WriteTravel(w);WriteNpcMove(w);WriteOpening(w);WriteRecovery(w);
     }
     internal void Decode(int[] words)=>Decode(new JobWireReader(words));
-    internal void Decode(byte[] bytes,int offset,int words,OfflineJobLedger? memo=null){readbackMemo=memo;try{Decode(new JobWireReader(bytes,offset,words));}finally{readbackMemo=null;}}
-    private void Decode(JobWireReader r)
+    internal void Decode(byte[] bytes,int offset,int words,OfflineJobLedger? memo=null,bool hasRuntimeClock=false,long runtimeClock=0){readbackMemo=memo;try{Decode(new JobWireReader(bytes,offset,words),hasRuntimeClock,runtimeClock);}finally{readbackMemo=null;}}
+    private void Decode(JobWireReader r,bool hasRuntimeClock=false,long runtimeClock=0)
     {
         if(r.Int()!=Magic)throw new InvalidOperationException("Unsupported offline job ledger");int version=r.Range(7,Schema);
+        bool projected=version>=12&&r.Range(0,1)==1;
+        if(projected!=hasRuntimeClock)throw new InvalidOperationException("Job clock projection requires its committed runtime record");
         TownId=r.ULong();nextSerial=r.ULong();Revision=r.Range(0,int.MaxValue);
         if(TownId==0||nextSerial<7)throw new InvalidOperationException("Invalid saved town identity");
         for(int i=0;i<players.Length;i++)players[i]=r.Key();
         for(int i=0;i<npcs.Length;i++){npcs[i]=r.Key(false);outfits[i]=r.Range(0,Catalog.Items.Length-1);}
-        EnsureRecords();ReadRecords(r,version);ReadMail(r);ReadWorld(r);ReadTravel(r);ReadNpcMove(r,version<8);ReadOpening(r);if(version>=10)ReadRecovery(r);r.End();ValidateIdentities();ValidateEconomicIdentities();
+        EnsureRecords();ReadRecords(r,version);
+        if(projected){if(Watermark!=long.MinValue)throw new InvalidOperationException("Noncanonical economic clock projection");Watermark=runtimeClock;}
+        ReadMail(r);ReadWorld(r);ReadTravel(r);ReadNpcMove(r,version<8);ReadOpening(r);if(version>=10)ReadRecovery(r);r.End();ValidateIdentities();ValidateEconomicIdentities();
     }
     private void ValidateIdentities()
     {

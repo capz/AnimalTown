@@ -185,6 +185,44 @@ def run(context):
             save('first-checkpoint');move(1,0,.25);save('next-checkpoint')
     elif mode=='checkpoint':
         move(1,0,.25);save()
+    elif mode=='retrieval-multi':
+        import shutil
+        accept();reloaded=False
+        for stage in range(8):
+            before=next(j for j in view()['jobs'] if j[1]==4)
+            if before[2]==3:break
+            target=before[4];handoff(npc=target)
+            after=next(j for j in view()['jobs'] if j[1]==4)
+            if after[2]==3:break
+            if after[4]==target:
+                shot('full-pockets');press('X');press('A');press('A');dialogue();close();close();handoff(npc=target)
+            elif not reloaded:
+                save('midstage-saved');shutil.copytree(c.root/'records',c.root/'records-mid',dirs_exist_ok=True)
+                press('START');press('D_DOWN');press('A');press('D_DOWN');press('A');c.wait_title();shot('midstage-title')
+                c.start_game(False,'jobs-multi-reload');wait_log('ANIMALTOWN READY ');shot('midstage-reloaded');reloaded=True
+        else:raise AssertionError('Retrieval did not reach its return stage')
+        if not reloaded:raise AssertionError('Multi-borrower fixture did not take a referral')
+        handoff();save()
+    elif mode=='destroy-snowman':
+        body=next(o for o in view()['objects'].values() if o[0]==3);go(body[1]/1024,body[2]/1024+1,.1);press('Z');press('A');dialogue();shot('destroyed');close()
+        if any(o[0]==3 for o in view()['objects'].values()):raise AssertionError('The actual shovel action did not destroy the snowman')
+        save()
+    elif mode=='owed':
+        save('owed-saved');press('START');press('D_DOWN');press('A');press('D_DOWN');press('A');c.wait_title();shot('owed-title')
+        c.start_game(False,'jobs-owed-reload');wait_log('ANIMALTOWN READY ');shot('owed-reloaded')
+        if view()['room']!=0:raise AssertionError('Owed fixture must begin outdoors')
+        go(50.5,29.5,.1);move(0,-1,.04);press('A');guest(1);go(.5,3.25,.1);press('A');shot('bank-deposit');press('A');dialogue();close()
+        go(2,3.35,.08);move(0,1,.04);press('A');guest(1);handoff(npc=1);shot('owed-collected');save()
+    elif mode=='letter-full':
+        accept();go(.5,3.25,.1);press('A')
+        for _ in range(5):press('D_DOWN')
+        press('A');shot('recipient');press('A');type_text('Hello!');shot('composed');press('START');press('D_DOWN');press('A');dialogue();close()
+        guest(130);handoff();shot('mailbox-full-retry');go(.5,3.25,.1);press('A')
+        for _ in range(4):press('D_DOWN')
+        press('A');press('A');shot('discard-old-letter');press('Y');press('D_DOWN');press('A');close();close()
+        handoff();shot('reply-retried');go(.5,3.25,.1);press('A')
+        for _ in range(4):press('D_DOWN')
+        press('A');press('D_UP');shot('reply-mailbox');press('A');shot('reply');press('X');close();close();save()
     elif mode=='mail':
         # Fixture starts beside the front door of the resident's own house.
         press('A');guest(1)

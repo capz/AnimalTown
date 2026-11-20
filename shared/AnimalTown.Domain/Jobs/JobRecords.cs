@@ -96,10 +96,10 @@ public sealed partial class OfflineJobLedger
     }
     internal void RememberRelation(int profile,JobIdentity npc,int friendship,int met)
     {int at=RelationSlot(profile,npc,true);if(at<0)throw new InvalidOperationException("Villager relationship history is full");Relations[at].Friendship=friendship;Relations[at].Met=met;}
-    private void WriteRecords(JobWireWriter w)
+    private void WriteRecords(JobWireWriter w,bool runtimeProjection=false)
     {
         w.Int(NativeFruit);for(int i=0;i<6;i++){w.Int(FurnitureCacheItems[i]);w.Int(FurnitureCacheVersions[i]);}
-        w.Long(Watermark);for(int i=0;i<EventSequences.Length;i++)w.ULong(EventSequences[i]);
+        w.Long(runtimeProjection?long.MinValue:Watermark);for(int i=0;i<EventSequences.Length;i++)w.ULong(EventSequences[i]);
         w.Key(LastMovedNpc);w.ULong(LastMovedTown);
         for(int p=0;p<OwnerCount;p++){w.Key(ForeignNpcs[p]);w.ULong(ForeignTowns[p]);w.ULong(Receipts[p].Sequence);w.ULong(Receipts[p].Fingerprint);w.Int((int)Receipts[p].Outcome.Result);w.Key(Receipts[p].Outcome.Job);w.Int(Receipts[p].Outcome.Amount);w.Int(Receipts[p].Outcome.Item);}
         int count=0;for(int i=0;i<Jobs.Length;i++)if(Jobs[i].Occupying)count++;w.Int(count);

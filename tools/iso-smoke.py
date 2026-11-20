@@ -1116,7 +1116,8 @@ def options_card_files(path=None):
         if offset<32 or offset+length>len(data):raise AssertionError('Truncated current card save')
         payload=bytes(data[offset:offset+length])
         if name in ('AnimalTown','AnimalTown2') and data[16:24]==b'DNDREC01':
-            records,phase,epoch=archive_records(payload,True)
+            try:records,phase,epoch=archive_records(payload,True)
+            except AssertionError:continue # Incomplete initial creation keeps the legacy source files authoritative.
             if phase in (1,2,3) and (published is None or (epoch,name=='AnimalTown2')>published[:2]):
                 published=(epoch,name=='AnimalTown2',{key:value for key,value in records.items() if key!='AT-Archive'})
         else:result[name]=payload
@@ -1634,7 +1635,7 @@ def committed_card_sequence(path, expected_day=None, details=False):
                     if name in ('AnimalTown','AnimalTown2'):
                         if data[16:24]!=b'DNDREC01' or offset!=16384:continue
                         try:records,phase,epoch=archive_records(payload,True)
-                        except AssertionError:raise ValueError('Unverified card archive')
+                        except AssertionError:continue # A cut during initial zero filling leaves the complete legacy town intact.
                         if phase in (1,2,3) and (archive is None or (epoch,name=='AnimalTown2')>archive[:2]):archive=(epoch,name=='AnimalTown2',records)
                     else:files[name]=payload
                 if archive is not None:files=archive[2]
@@ -1666,8 +1667,13 @@ def committed_card_sequence(path, expected_day=None, details=False):
                                 else:names.append(selected)
                             town_version=struct.unpack_from('<I',files[names[0]],4)[0]
                             expected_runtime=300+(job_extension_bytes if town_version>=9 else 0)
-                            if len(runtime)!=expected_runtime or (town_version>=9 and struct.unpack_from('<I',runtime,296)[0]!=40):
+                            has_job_clock=town_version>=9 and len(runtime)==expected_runtime+12
+                            if (len(runtime)!=expected_runtime and not has_job_clock) or (town_version>=9 and struct.unpack_from('<I',runtime,296)[0]!=40):
                                 raise ValueError('Invalid resident runtime extension')
+                            if has_job_clock:
+                                marker,clock=struct.unpack_from('<Iq',runtime,expected_runtime-4)
+                                if marker!=0x43424f4a or clock!=-(1<<63) and not -11676096000<=clock<13569465600:
+                                    raise ValueError('Invalid offline job clock')
                         else:
                             if len(commit)!=32+8*len(names) or not all(name in files for name in names):continue
                             for kind,name in enumerate(names):

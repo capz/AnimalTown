@@ -13,7 +13,7 @@ public static class SplitSaveCodec
     {
         var r=new Reader(bytes,ShopStates);if(r.Version!=4)throw new InvalidOperationException("Unsupported travel economic record");
         r.Range(0,int.MaxValue);r.Range(6,12);r.SkipWords(12);r.Range(154,154);r.SkipWords(154);
-        r.Range(7,Jobs.OfflineJobLedger.MaximumWords);if(r.Int()!=Jobs.OfflineJobLedger.Magic)throw new InvalidOperationException("Missing saved job identity");r.Range(7,Jobs.OfflineJobLedger.Schema);
+        r.Range(7,Jobs.OfflineJobLedger.MaximumWords);if(r.Int()!=Jobs.OfflineJobLedger.Magic)throw new InvalidOperationException("Missing saved job identity");int schema=r.Range(7,Jobs.OfflineJobLedger.Schema);if(schema>=12)r.Range(0,1);
         uint lo=unchecked((uint)r.Int()),hi=unchecked((uint)r.Int());return lo|((ulong)hi<<32);
     }
     public static string FileName(int kind,int bank)
@@ -28,7 +28,7 @@ public static class SplitSaveCodec
         internal void Int(int n){if(at>bytes.Length-4)throw new InvalidOperationException("Save record exceeds budget");for(int i=0;i<4;i++)bytes[at++]=(byte)((uint)n>>(i*8));}
         internal void Text(string s){Int(s.Length);for(int i=0;i<s.Length;i++)Int(s[i]);}
         internal void Rle(byte[] source){Int(Runs(source));for(int i=0;i<source.Length;){int n=1;while(i+n<source.Length&&source[i+n]==source[i])n++;Int((source[i]<<24)|n);i+=n;}}
-        internal void JobLedger(Jobs.OfflineJobLedger ledger){int words=ledger.WordCount;Int(words);ledger.WriteTo(bytes,at);at+=words*4;}
+        internal void JobLedger(Jobs.OfflineJobLedger ledger,bool runtimeProjection=false){int words=ledger.WordCount;Int(words);ledger.WriteTo(bytes,at,runtimeProjection);at+=words*4;}
         internal byte[] Finish(){int length=at+4;for(int i=0;i<4;i++)bytes[24+i]=(byte)(length>>(i*8));Int((int)SaveCodec.Crc(bytes,0,at));if(at==bytes.Length)return bytes;var result=new byte[at];Array.Copy(bytes,result,at);return result;}
     }
     internal sealed class Reader
@@ -85,9 +85,9 @@ public static class SplitSaveCodec
         s.CaptureProfile();var records=new byte[PartCount][];
         for(int i=0;i<records.Length;i++)records[i]=EncodePart(s,i);return records;
     }
-    internal static byte[] EncodePart(GameState s,int part)
-    {int guest=s.SuspendVisitor();try{return EncodeResidentPart(s,part);}finally{s.ResumeVisitor(guest);}}
-    private static byte[] EncodeResidentPart(GameState s,int part)
+    internal static byte[] EncodePart(GameState s,int part,bool runtimeProjection=false)
+    {int guest=s.SuspendVisitor();try{return EncodeResidentPart(s,part,runtimeProjection);}finally{s.ResumeVisitor(guest);}}
+    private static byte[] EncodeResidentPart(GameState s,int part,bool runtimeProjection)
     {
         var t=s.Town;
         if(part==0){
@@ -114,7 +114,7 @@ public static class SplitSaveCodec
         if(part==2){
         int ledgerWords=t.Jobs.Initialized?t.Jobs.WordCount:0;
         var w=new Writer(s,ShopStates,ledgerWords==0?708:712+ledgerWords*4);w.Int(t.Spending);w.Int(t.StockCount);for(int i=0;i<12;i++)w.Int(t.Stock[i]);var shop=t.Shop.Encode();w.Int(shop.Length);for(int i=0;i<shop.Length;i++)w.Int(shop[i]);
-        if(ledgerWords!=0)w.JobLedger(t.Jobs);return w.Finish();
+        if(ledgerWords!=0)w.JobLedger(t.Jobs,runtimeProjection);return w.Finish();
         }
         if(part<3||part>=PartCount)throw new ArgumentOutOfRangeException(nameof(part));
         return ProfileCodec.Encode(s,part-3);
@@ -138,9 +138,9 @@ public static class SplitSaveCodec
     }
     public static GameState Decode(byte[][] records)
     {return Decode(records,null);}
-    internal static GameState Decode(byte[][] records,Town? snapshot,Jobs.OfflineJobLedger? textMemo=null,int referencedEconomySequence=-1)
+    internal static GameState Decode(byte[][] records,Town? snapshot,Jobs.OfflineJobLedger? textMemo=null,int referencedEconomySequence=-1,bool hasRuntimeClock=false,long runtimeClock=0)
     {
-        if(records.Length==PartCount)return DecodeProfiles(records,snapshot,textMemo,referencedEconomySequence);if(records.Length!=4)throw new InvalidOperationException("Incomplete save set");var r=new Reader(records[0],TownData);var root=r;
+        if(records.Length==PartCount)return DecodeProfiles(records,snapshot,textMemo,referencedEconomySequence,hasRuntimeClock,runtimeClock);if(records.Length!=4)throw new InvalidOperationException("Incomplete save set");var r=new Reader(records[0],TownData);var root=r;
         if(snapshot!=null&&(r.Version!=4||r.Seed!=snapshot.Seed))throw new InvalidOperationException("Readback snapshot identity mismatch");
         var s=snapshot==null?new GameState(r.Seed):new GameState(r.Seed,snapshot);s.Sequence=r.Sequence;var t=s.Town;if(snapshot==null)t.Paths.Clear();
         r.Range(Town.Width,Town.Width);r.Range(Town.Height,Town.Height);r.Range(1,TownGenerator.Version);t.Day=r.Int();t.Month=r.Int();r.Rle(t.Tiles,r.Version>=2?(int)Terrain.CoastWest:7,snapshot!=null);r.Rle(t.Elevation,TerrainElevation.MaximumMode,snapshot!=null);
@@ -158,7 +158,7 @@ public static class SplitSaveCodec
         SaveCodec.UpgradeShop(s);
         return snapshot==null?SaveCodec.Decode(SaveCodec.Encode(s)):SaveCodec.ValidateSnapshot(SaveCodec.Encode(s),snapshot);
     }
-    private static GameState DecodeProfiles(byte[][] records,Town? snapshot,Jobs.OfflineJobLedger? textMemo,int referencedEconomySequence)
+    private static GameState DecodeProfiles(byte[][] records,Town? snapshot,Jobs.OfflineJobLedger? textMemo,int referencedEconomySequence,bool hasRuntimeClock,long runtimeClock)
     {
         var r=new Reader(records[0],TownData);if(!IsProfileTownVersion(r.Version))throw new InvalidOperationException("Invalid shared town schema");var root=r;
         var s=snapshot==null?new GameState(r.Seed):new GameState(r.Seed,snapshot);s.Sequence=r.Sequence;var t=s.Town;if(snapshot==null)t.Paths.Clear();
@@ -178,7 +178,7 @@ public static class SplitSaveCodec
         r=new Reader(records[1],HousePositions);r.Match(root);for(int i=0;i<GameState.ProfileCount;i++){var p=s.Profiles[i];if(r.Range(0,1)!=(p.HousePlaced?1:0)||r.Int()!=p.HouseX||r.Int()!=p.HouseZ)throw new InvalidOperationException("Profile plot differs from shared houses");}for(int i=0;i<6;i++){t.Residents[i].HomeX=r.Int();t.Residents[i].HomeZ=r.Int();}r.End();
         r=new Reader(records[2],ShopStates);if(referencedEconomySequence<0)r.Match(root);else if(r.Sequence!=referencedEconomySequence||r.Seed!=root.Seed)throw new InvalidOperationException("Mixed economic reference");t.Spending=r.Int();t.StockCount=r.Int();for(int i=0;i<12;i++)t.Stock[i]=r.Int();
         if(r.HasMore){int length=r.Range(154,154);var shop=new int[length];for(int i=0;i<length;i++)shop[i]=r.Int();t.Shop.Decode(shop);}else SaveCodec.UpgradeShop(s);
-        if(r.HasMore){int count=r.Range(7,Jobs.OfflineJobLedger.MaximumWords);if(count>(records[2].Length-r.Offset-4)/4)throw new InvalidOperationException("Truncated economic job ledger");t.Jobs.Decode(records[2],r.Offset,count,snapshot?.Jobs??textMemo);r.SkipWords(count);}
+        if(r.HasMore){int count=r.Range(7,Jobs.OfflineJobLedger.MaximumWords);if(count>(records[2].Length-r.Offset-4)/4)throw new InvalidOperationException("Truncated economic job ledger");t.Jobs.Decode(records[2],r.Offset,count,snapshot?.Jobs??textMemo,hasRuntimeClock,runtimeClock);r.SkipWords(count);}
         r.End();s.RestoreProfile(active);s.MigrateJobTutorial(root.CatalogVersion);
         return SaveStateValidation.Finish(s);
     }

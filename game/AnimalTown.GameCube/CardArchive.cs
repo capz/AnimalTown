@@ -15,21 +15,29 @@ internal sealed class CardArchive
     private readonly GameState? textReuse;
     private TownCardRecords? store;
     private string container=Container;
+    private bool unverifiedLegacyTarget;
     private int phase,epoch,growBlocks;
     internal CardArchive(MemoryCard card,byte[] banner,byte[] icon,int device,GameState? textReuse=null)
     {
         this.card=card;this.banner=banner;this.icon=icon;this.device=device;this.textReuse=textReuse;
-        var entries=card.GetEntries();
+        var entries=card.GetEntries();bool legacy=false;foreach(var entry in entries)legacy|=SplitSaveCodec.IsFile(entry.Name);
         // A source growth intent also permits recovery of a target whose
         // initial zero filling was interrupted before it had a checkpoint.
         for(int pass=0;pass<2;pass++)for(int i=0;i<entries.Length;i++){
             string name=entries[i].Name;if(name!=Container&&name!=Expanded)continue;
             try{
-                var candidate=new TownCardRecords(new NativeCardBlocks(device,false,banner,icon,name),true);
+                var candidate=new TownCardRecords(new NativeCardBlocks(device,false,banner,icon,name),!legacy);
                 ReadMarker(candidate,out int p,out int e,out int growth);
                 if(p>0&&(store==null||phase==0||e>epoch||e==0&&epoch==0&&name==Expanded)){store=candidate;container=name;phase=p;epoch=e;growBlocks=growth;}
                 else if(store==null&&name==Container){store=candidate;container=name;}
-            }catch(IOException){if(pass==1&&(store==null||phase!=3||name==container))throw;}
+            }catch(IOException){
+                // Creation can stop midway through zero filling, before either
+                // root exists. The legacy files remain the read authority; a
+                // later write must validate that complete town before replacing
+                // this temporary target. Opening the card makes no writes.
+                if(legacy&&name==Container&&store==null){unverifiedLegacyTarget=true;continue;}
+                if(pass==1&&(store==null||phase!=3||name==container))throw;
+            }
         }
         if(store==null)foreach(var entry in entries)if(entry.Name==Expanded)throw new IOException("Unpublished expanded archive has no source; data kept");
     }
@@ -113,6 +121,7 @@ internal sealed class CardArchive
         var entries=card.GetEntries();bool town=false,pending=false;
         foreach(var entry in entries){town|=SplitSaveCodec.IsFile(entry.Name);pending|=entry.Name==TownDataDeletion.Marker;}
         if(town&&!pending&&new SaveRepository(new Legacy(card)).Load(textReuse)==null)throw new IOException("Existing save is incomplete; original files kept");
+        if(unverifiedLegacyTarget){card.Delete(Container);unverifiedLegacyTarget=false;store=null;container=Container;}
         // SDK directory lengths describe logical DNDSAVE1 payloads. Leave
         // two maximum-record copies for copy-on-write without reading bodies.
         long capacityBytes=2L*8192,largest=0;

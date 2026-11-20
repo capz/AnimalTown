@@ -142,6 +142,18 @@ void VerifyMaximum(MemoryCard source){
     for(int p=0;p<4;p++){loaded!.SelectProfile(p);loaded.ResidentJobs.Enable(loaded.Town.Jobs.TownId,mailNow);Check(loaded.MailCount==128&&loaded.ResidentJobs.ReadLetter(127)==fullBody,"all four full Unicode mailboxes survive legacy conversion");}
 }
 VerifyMaximum(card);
+card=legacyMaximum.Copy();var interruptedCreation=new NativeCardBlocks(4,true,banner,icon,"AnimalTown",1024);
+for(int page=600;page<1024;page++)Array.Fill(card.RecordPages["AnimalTown"][page],(byte)255);
+int creationWrites=card.Writes;
+VerifyMaximum(card);
+Check(card.Writes==creationWrites&&card.Files.Count==legacyMaximum.Files.Count+1,"opening a target interrupted during zero filling reads the intact legacy town without writing");
+new CardArchive(card,banner,icon,4,largeState).Write("options",new byte[]{3});VerifyMaximum(card);
+Check(card.Files.Count==1,"initial creation interrupted before either root is replaced only after the complete legacy town is validated");
+card=legacyMaximum.Copy();_ =new NativeCardBlocks(4,true,banner,icon,"AnimalTown",1024);
+foreach(string name in card.Files.Keys.Where(n=>n.StartsWith("AT-Commit")).ToArray())card.Delete(name);
+int incompleteFiles=card.Files.Count;bool refusedIncomplete=false;
+try{new CardArchive(card,banner,icon,4,largeState).Write("options",new byte[]{3});}catch(IOException){refusedIncomplete=true;}
+Check(refusedIncomplete&&card.Files.Count==incompleteFiles&&card.Files.ContainsKey("AnimalTown"),"an unverified archive is never replaced when the remaining legacy town is incomplete");
 card=legacyMaximum.Copy();_ =new TownCardRecords(new NativeCardBlocks(4,true,banner,icon),true);
 new CardArchive(card,banner,icon,4,largeState).Write("options",new byte[]{3});VerifyMaximum(card);
 Check(card.Files.Count==1&&card.Used>258,"an unpublished undersized legacy copy is replaced while all original records remain authoritative");

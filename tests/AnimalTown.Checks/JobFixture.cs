@@ -10,6 +10,32 @@ internal static class JobFixture
     {internal readonly Dictionary<string,byte[]> Files=new();public byte[] Read(string name)=>Files.TryGetValue(name,out var b)?(byte[])b.Clone():throw new IOException();public void Write(string name,byte[] bytes)=>Files[name]=(byte[])bytes.Clone();}
     internal static void Write(string output,string mode)
     {
+        if(mode is "retrieval-multi" or "letter-full" or "owed"){
+            Write(output,mode=="retrieval-multi"?"retrieval":mode=="letter-full"?"letter":"delivery");
+            var retryDisk=ReadFixture(output);var retryRepository=new SaveRepository(retryDisk);var state=retryRepository.Load()!;var ledger=state.Town.Jobs;
+            if(mode=="retrieval-multi"){
+                state.Town.JobState.Offers.Restore(0);for(int i=0;i<state.Capacity;i++)state.Pockets[i]=1;
+            }else if(mode=="letter-full"){
+                ledger.EnsureMail();
+                for(int i=0;i<128;i++){
+                    var letter=new JobMailRecord{Id=ledger.Allocate(),Owner=ledger.Player(0),Sender=ledger.Npc(1),Recipient=ledger.Player(0),State=JobMailState.Inbox,SentAt=ledger.Watermark-86400,DueAt=ledger.Watermark};
+                    ledger.StoreBody(ref letter,JobTextBody.Pack("An earlier letter.",18));ledger.Mail[i]=letter;state.Mail[i]=JobContent.Letter;
+                }
+                state.MailCount=128;
+            }else{
+                var service=state.ResidentJobs;service.Enable(ledger.TownId,ledger.Watermark);uint seed=0;
+                while(JobSelection.RollReward(new JobRandom(seed),JobTemplate.DeliveryClothing)!=JobRewardCategory.Currency)seed++;
+                state.Town.JobState.Rewards.Restore(seed);state.Wallet=GameState.WalletLimit;
+                state.X=state.Town.Residents[0].PosX;state.Z=state.Town.Residents[0].PosZ;service.BeginConversation(0,out _);
+                var offer=ledger.Offer(0,0);var accepted=service.Execute(service.Command(JobCommandKind.Accept,offer.Id,offer.Revision));
+                if(accepted.Result!=JobResult.Ok)throw new Exception("Owed fixture acceptance");service.EndConversation();
+                var job=ledger.Job(ledger.FindJob(accepted.Job));int target=ledger.FindNpc(job.Target);state.X=state.Town.Residents[target].PosX+1;state.Z=state.Town.Residents[target].PosZ;
+                service.BeginConversation(target,out _);service.Execute(service.Command(JobCommandKind.Handoff,job.Id,job.Revision));service.EndConversation();
+                var reward=ledger.Rewards[ledger.FindReward(job.Obligation)];
+                if(reward.State!=JobRewardState.Owed||reward.Currency!=197)throw new Exception("Expected the deterministic earned currency obligation");
+            }
+            retryRepository.Save(state);foreach(var file in retryDisk.Files)File.WriteAllBytes(Path.Combine(output,file.Key),file.Value);return;
+        }
         if(mode=="room"){
             Write(output,"mail");var roomDisk=ReadFixture(output);var repo=new SaveRepository(roomDisk);var room=repo.Load()!;
             room.Space=1;room.X=3;room.Z=4;room.BackpackTier=1;room.Shirt=Catalog.StripedShirt;Array.Clear(room.Pockets);room.Pockets[0]=Catalog.OakFloor;room.Pockets[1]=Catalog.LeafWallpaper;Array.Clear(room.Town.Jobs.Offers);repo.Save(room);
@@ -83,7 +109,7 @@ internal static class JobFixture
         var disk=new Disk();foreach(string file in Directory.GetFiles(directory))disk.Files[Path.GetFileName(file)]=File.ReadAllBytes(file);
         var s=new SaveRepository(disk).Load()??throw new Exception("Controller run produced no committed town");var l=s.Town.Jobs;
         var jobs=Enumerable.Range(0,OfflineJobLedger.JobCapacity).Select(l.Job).Where(j=>j.Occupying).ToArray();
-        JobTemplate? expected=mode switch{"delivery"=>JobTemplate.DeliveryClothing,"property"=>JobTemplate.DeliveryProperty,"retrieval"=>JobTemplate.RetrievalBorrowed,"foreign"=>JobTemplate.DeliveryForeign,"moved"=>JobTemplate.DeliveryMoved,"fruit"=>JobTemplate.FavorFruit,"fish"=>JobTemplate.FavorFish,"insect"=>JobTemplate.FavorInsect,"flowers"=>JobTemplate.FavorFlowers,"ball"=>JobTemplate.FavorBall,"snowman"=>JobTemplate.FavorSnowman,"letter"=>JobTemplate.FavorLetter,_=>null};
+        JobTemplate? expected=mode switch{"delivery" or "owed"=>JobTemplate.DeliveryClothing,"property"=>JobTemplate.DeliveryProperty,"retrieval" or "retrieval-multi"=>JobTemplate.RetrievalBorrowed,"foreign"=>JobTemplate.DeliveryForeign,"moved"=>JobTemplate.DeliveryMoved,"fruit"=>JobTemplate.FavorFruit,"fish"=>JobTemplate.FavorFish,"insect"=>JobTemplate.FavorInsect,"flowers"=>JobTemplate.FavorFlowers,"ball"=>JobTemplate.FavorBall,"snowman" or "destroy-snowman"=>JobTemplate.FavorSnowman,"letter" or "letter-full"=>JobTemplate.FavorLetter,_=>null};
         bool completed=Enumerable.Range(0,OfflineJobLedger.TerminalCapacity).Any(i=>l.Terminal(i).Reason==JobEndReason.Success&&(!expected.HasValue||l.Terminal(i).Template==expected.Value))||jobs.Any(j=>j.Status==JobStatus.CompletedRetained&&(!expected.HasValue||j.Template==expected.Value));
         GameState? other=null;
         if(mode=="foreign"||mode=="moved"||mode=="moving"||mode=="recovery"){
@@ -92,7 +118,14 @@ internal static class JobFixture
             if(verify&&(s.Visiting||other.Visiting||s.ProfileLocked(0)||l.Trip.Pending||other.Town.Jobs.Trip.Pending))throw new Exception("Both town cards must finish without an active or duplicated traveller");
         }
         if(verify&&expected.HasValue&&!completed)throw new Exception("Controller run has not completed its expected errand: "+mode);
-        if(verify&&mode=="maximum-mail"&&(Enumerable.Range(0,4).Any(p=>s.Profiles[p].MailCount!=128)||Enumerable.Range(0,512).Any(i=>l.Mail[i].State!=JobMailState.Inbox||JobTextBody.Unpack(l.Mail[i].Body!,l.Mail[i].BodyOffset,l.Mail[i].BodyWords).Length!=2000)))throw new Exception("Maximum Unicode mail did not survive the actual card checkpoint");
+        if(verify&&mode=="maximum-mail"&&(s.Sequence<2||Enumerable.Range(0,4).Any(p=>s.Profiles[p].MailCount!=128)||Enumerable.Range(0,512).Any(i=>l.Mail[i].State!=JobMailState.Inbox||JobTextBody.Unpack(l.Mail[i].Body!,l.Mail[i].BodyOffset,l.Mail[i].BodyWords)!=string.Concat(Enumerable.Repeat("\U0001f642",1000)))))throw new Exception("Maximum Unicode mail did not survive the actual card checkpoint");
+        if(verify&&mode=="retrieval-multi"){
+            var mid=new SaveRepository(ReadFixture(Path.Combine(directory,"..","records-mid"))).Load()??throw new Exception("No saved mid-chain checkpoint");
+            if(!Enumerable.Range(0,OfflineJobLedger.JobCapacity).Any(i=>mid.Town.Jobs.Job(i).Template==JobTemplate.RetrievalBorrowed&&mid.Town.Jobs.Job(i).Borrowers>1))throw new Exception("No actual borrower referral was saved and reloaded");
+        }
+        if(verify&&mode=="destroy-snowman"&&l.World.Any(o=>o.Kind==JobWorldKind.Snowman))throw new Exception("Shovel destruction did not survive the actual card checkpoint");
+        if(verify&&mode=="owed"&&(s.Wallet!=99196||l.Rewards.Any(r=>r.State==JobRewardState.Owed)||Enumerable.Range(0,s.Capacity).Any(s.IsJobItem)))throw new Exception("Reloaded earned payment was not collected exactly once");
+        if(verify&&mode=="letter-full"&&(s.MailCount!=128||!l.Mail.Any(m=>m.State==JobMailState.Inbox&&m.Sender==l.Npc(0)&&m.Read&&m.Gift==0)))throw new Exception("The full-mailbox reply was not retried, read and collected");
         if(verify&&mode=="room"&&(l.HomeFloor(0)!=Catalog.OakFloor||l.HomeWall(0)!=Catalog.LeafWallpaper))throw new Exception("Room coverings were not applied and saved");
         if(verify&&mode=="recovery"&&(s.Visiting||s.ProfileLocked(0)||l.Trip.Pending))throw new Exception("Recovered traveller did not return home safely");
         if(verify&&mode=="moving"&&(other==null||l.NpcMove.Pending||other.Town.Jobs.NpcMove.Pending||l.Npc(1).Town!=other.Town.Jobs.TownId||other.Town.Jobs.Npc(0).Town!=l.TownId||l.Species(1)!=0||other.Town.Jobs.Species(0)!=1))throw new Exception("The confirmed NPC pair did not exchange identities and species on both cards");

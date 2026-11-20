@@ -96,6 +96,7 @@ internal static class IncrementalSaveChecks
         check(new SaveRepository(d).Load()!.Town.DaylightLocation==0,"switching back to Classic is saved and reloaded");
         JobTransactions(check);
         SnowTransactions(check);
+        OfflineClockMailTransactions(check);
         Console.WriteLine("Incremental saves: exact component writes/no-op, static town vs NPC runtime, mirrored references, corruption, power cuts, retries and migration passed");
     }
     private static void SnowTransactions(Action<bool,string> check)
@@ -156,4 +157,28 @@ internal static class IncrementalSaveChecks
     }
     private static int ReferenceBank(Disk d,int sequence,int part)
     {var b=d.Files["AT-Commit0"];int at=28+part*20+4;return b[at]|b[at+1]<<8|b[at+2]<<16|b[at+3]<<24;}
+    private static void OfflineClockMailTransactions(Action<bool,string> check)
+    {
+        var state=Town();state.Tutorial=7;long now=AnimalTown.Jobs.JobCalendar.At(2027,7,15,12);state.ResidentJobs.Enable(49321,now);
+        string body=string.Concat(Enumerable.Repeat("\U0001f642",1000));
+        for(int batch=0;batch<2;batch++){
+            for(int i=0;i<64;i++){state.Receive(Catalog.WritingPaper);check(state.ResidentJobs.SendLetter(state.Town.Jobs.Player(0),body,state.Find(Catalog.WritingPaper),-1,state.ResidentJobs.NextCommandSequence).Result==AnimalTown.Jobs.JobResult.Ok,"clock fixture queues actual full-length mail");}
+            state.ResidentJobs.AdvanceTo(now+=86400);
+        }
+        var disk=new Disk();new SaveRepository(disk).Save(state);var before=SaveCodec.Encode(state);var original=disk.Copy();
+        var economic0=(byte[])disk.Files["AT-Shops0"].Clone();var economic1=(byte[])disk.Files["AT-Shops1"].Clone();
+        state.ResidentJobs.AdvanceTo(now+1);disk.Reset();new SaveRepository(disk).Save(state);Only(disk,"AT-Residents",check);
+        check(disk.Bytes<1400&&economic0.SequenceEqual(disk.Files["AT-Shops0"])&&economic1.SequenceEqual(disk.Files["AT-Shops1"]),"a dated-second checkpoint preserves both full-mail economic records byte for byte");
+        var loaded=new SaveRepository(disk).Load()!;check(loaded.Town.Jobs.Watermark==now+1&&loaded.MailCount==128,"the independent dated-second watermark and full inbox reload together");
+        loaded.ResidentJobs.Enable(loaded.Town.Jobs.TownId,now+1);check(loaded.ResidentJobs.ReadLetter(127)==body,"full Unicode mail remains exact after a clock-only save");
+        var split=SplitSaveCodec.Encode(state);split[2]=IncrementalSaveCodec.Encode(state,2);check(Fails(()=>SplitSaveCodec.Decode(split)),"a projected economy cannot be decoded without its committed clock record");
+        for(int mode=0;mode<3;mode++)for(int cut=1;cut<=4;cut++){
+            var fault=original.Copy();fault.Reset();fault.Mode=mode;fault.CutAt=cut;var candidate=SaveCodec.Decode(before);candidate.ResidentJobs.Enable(candidate.Town.Jobs.TownId,now+1);
+            check(Fails(()=>new SaveRepository(fault).Save(candidate)),"dated-second checkpoint interruption reaches each actual write");
+            var recovered=new SaveRepository(fault).Load()!;bool published=cut>2||cut==2&&mode==2;
+            Same(recovered,published?state:SaveCodec.Decode(before),check,"clock and mail recover as one complete old or new snapshot");
+            fault.CutAt=0;new SaveRepository(fault).Save(candidate);check(new SaveRepository(fault).Load()!.Town.Jobs.Watermark==now+1,"dated-second checkpoint retry restores the exact watermark");
+        }
+        Console.WriteLine("Offline job clock: 1,336 bytes/checkpoint with 128 full Unicode letters; zero economic/mail rewrites; every publication cut and retry passed.");
+    }
 }

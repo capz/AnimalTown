@@ -84,7 +84,7 @@ internal sealed partial class TownSession
                 state=new SaveRepository(store).Load();
                 if(state!=null)status="Save loaded";else if(existing){damaged=true;status="No complete save set. Backup card before recovery.";}
             }
-        }catch(Exception){damaged=true;status="Could not read "+SaveCards.Slot+". Return to title to recheck.";}
+        }catch(Exception error){DebugOverlay.WriteLine("TOWN LOAD ERROR: "+error.Message);damaged=true;status="Could not read "+SaveCards.Slot+". Return to title to recheck.";}
         bool loaded=state!=null;
         if(state==null){long now=Clock.Timestamp;int date=NativeCalendar.Read();state=new GameState(unchecked((int)(now^(now>>32)^date*7919L)));state.Profiles[0].Created=false;}
         return new TownSession(state,loaded,damaged,status);

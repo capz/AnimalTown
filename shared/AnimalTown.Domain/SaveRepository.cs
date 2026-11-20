@@ -51,7 +51,8 @@ public sealed class SaveRepository
     private GameState DecodeReference(byte[] commit,int bank,Town? snapshot=null,Jobs.OfflineJobLedger? textMemo=null)
     {
         var m=IncrementalSaveCodec.Read(commit,bank);
-        return SplitSaveCodec.Decode(IncrementalSaveCodec.Restore(m,ReadReferenced(m)),snapshot,textMemo,m.Sequences[2]);
+        var parts=IncrementalSaveCodec.Restore(m,ReadReferenced(m),out bool hasClock,out long clock);
+        return SplitSaveCodec.Decode(parts,snapshot,textMemo,m.Sequences[2],hasClock,clock);
     }
     public GameState? Load()=>Load(null);
     public void VerifyRevision(GameState expected)
