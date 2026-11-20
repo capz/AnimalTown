@@ -8,14 +8,15 @@ all use the same shared cylinder projection and rigid scrolling transforms.
 
 Press **Z three times consecutively** to show or hide the debug entries on both
 the title and in-game menus. Visibility defaults to hidden and is saved in
-console preferences. Then open **START → Settings → Debug / testing**. The last page adds:
+console preferences. Then open **START → Settings → Debug / testing**.
 
-- **Season preview:** Auto → spring → summer → fall → winter → Auto. This affects
-  outdoor floor/cliff material bindings, water tint and tree foliage. Auto returns
-  to the calendar/build configuration. Calendar progression, NPC requests and
-  saved terrain/material IDs are untouched. Each explicit season change loads
-  its existing assets and rebuilds the cold archive once, behind the loading UI;
-  ordinary movement continues reusing the archive afterward.
+- **Season preview:** Left and Right browse Auto, spring, summer, fall and winter.
+  A applies the choice. An applied change updates outdoor floor/cliff materials,
+  water tint and foliage, and rebuilds the cold archive behind the loading UI.
+  Auto uses the calendar/build configuration.
+- **Time preview:** Left and Right browse in 15-minute steps. A holds that time for
+  weather and outdoor lighting on the current date. X selects Live and A restores
+  the console clock. Town rollover, the calendar and saves continue using real time.
 - **Villager attention bubbles:** Off by default. Forces a visual exclamation
   chat bubble above NPCs in the current room/view, without changing requests,
   dialogue or journeys. A shared depth-tested 3D billboard lets scenery hide it.

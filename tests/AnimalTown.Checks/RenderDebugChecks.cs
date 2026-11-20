@@ -12,13 +12,22 @@ internal static class RenderDebugChecks
         for(int month=-24;month<36;month++){
             check(preview.EffectiveSeason(month)==TerrainTiles.Season(month),"automatic preview follows the existing calendar and negative-month wrapping");
             for(int season=0;season<4;season++){
-                preview.CycleSeason();
+                int previous=preview.SeasonOverride;
+                preview.AdjustSeason(1);
+                check(preview.SeasonSelection==season&&preview.SeasonOverride==previous,"browsing a season does not apply it");
+                preview.ApplySeason();
                 check(preview.SeasonOverride==season&&preview.EffectiveSeason(month)==season,"every forced season overrides the calendar independently");
                 check(preview.EffectiveSeason(month,3-season)==season,"debug choice overrides a fixed build season too");
             }
-            preview.CycleSeason();check(preview.SeasonOverride==-1,"cycling winter restores automatic season selection");
+            preview.AdjustSeason(1);preview.ApplySeason();
+            check(preview.SeasonOverride==-1,"applying Auto restores automatic season selection");
         }
-        preview.ForceAttention=true;preview.CycleSeason();preview.GroundMipmaps=false;preview.AdjustGroundMipDistance(1);
+        preview.AdjustSeason(-1);
+        check(preview.SeasonSelection==3&&preview.SeasonOverride==-1,"browsing left from Auto wraps to Winter");
+        preview.CancelSeasonSelection();
+        check(preview.SeasonSelection==-1,"leaving Season discards the pending choice");
+        TimePreviewChecks(check,preview);
+        preview.ForceAttention=true;preview.SetSeason(0);preview.GroundMipmaps=false;preview.AdjustGroundMipDistance(1);
         preview.ShowWorldRim=preview.ShowObstructedEdges=preview.ShowVisitEdges=true;
         check(before.SequenceEqual(SaveCodec.Encode(state)),"render previews never change serialized player, calendar, requests or terrain state");
         check(RenderDebugOptions.AttentionHeight(1.7f)>RenderDebugOptions.AttentionHeight(1)&&RenderDebugOptions.AttentionHeight(float.NaN)==3.6f,"attention anchor follows rig height and has a finite missing-rig fallback");
@@ -28,8 +37,36 @@ internal static class RenderDebugChecks
         float previousY=previousRadius*((float)Math.Cos(12/previousRadius)-1);
         check(p.Y<previousY&&p.Z>0,"stronger curvature bends downward while preserving logical north/south orientation");
         long allocated=GC.GetAllocatedBytesForCurrentThread();
-        for(int n=0;n<1000;n++){preview.CycleSeason();preview.EffectiveSeason(n);preview.AdjustGroundMipDistance(1);preview.ResetGroundMipDistance();_ = preview.GroundMipRadius;}
+        for(int n=0;n<1000;n++){preview.AdjustSeason(1);preview.ApplySeason();preview.EffectiveSeason(n);preview.AdjustTime(1,n);preview.ApplyTime();preview.AdjustGroundMipDistance(1);preview.ResetGroundMipDistance();_ = preview.GroundMipRadius;}
         check(GC.GetAllocatedBytesForCurrentThread()==allocated,"preview adjustments allocate no managed frame data");
+    }
+    private static void TimePreviewChecks(Action<bool,string> check,RenderDebugOptions preview)
+    {
+        preview.AdjustTime(1,23*60+57);
+        check(preview.TimeSelection==0&&preview.EffectiveMinute(23*60+57)==23*60+57,"pending time wraps to midnight without replacing the live clock");
+        preview.AdjustTime(-1,0);
+        check(preview.TimeSelection==23*60+45,"preview browsing wraps backward to the prior quarter hour");
+        preview.ApplyTime();
+        check(preview.EffectiveMinute(300)==1425&&TownClock.FormatTime(0)=="00:00","applied time stays frozen as the real clock advances");
+        preview.SelectLiveTime();
+        check(preview.TimeSelection==-1&&preview.EffectiveMinute(300)==1425,"selecting Live waits for apply");
+        preview.CancelTimeSelection();
+        check(preview.TimeSelection==1425,"leaving Time discards the pending choice");
+        preview.SelectLiveTime();preview.ApplyTime();
+        check(preview.EffectiveMinute(300)==300,"applying Live returns to the system clock");
+        preview.AdjustTime(-1,8*60+29);
+        check(preview.TimeSelection==8*60+15,"browsing from Live picks the previous real-clock quarter hour");
+        preview.CancelTimeSelection();
+        const int seed=73,day=20111,fall=2;
+        int rainy=Enumerable.Range(0,96).Select(n=>n*15).First(m=>DebugWeather.ScheduledRain(seed,day,m,fall));
+        int dry=Enumerable.Range(0,96).Select(n=>n*15).First(m=>!DebugWeather.ScheduledRain(seed,day,m,fall));
+        var weather=new DebugWeather();
+        preview.AdjustTime(1,(rainy+1425)%1440);
+        weather.Update(seed,day,preview.EffectiveMinute(dry),fall);
+        check(!weather.Raining(0),"browsing a time leaves real-time weather active");
+        preview.ApplyTime();
+        weather.Update(seed,day,preview.EffectiveMinute(dry),fall);
+        check(weather.Raining(0),"applying a time previews scheduled weather on the same civil date");
     }
     private static void GroundMipChecks(Action<bool,string> check,RenderDebugOptions preview)
     {

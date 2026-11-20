@@ -77,6 +77,15 @@
         "The pattern uses the trees' existing noise.",
         "The effect uses the shared tree mesh and texture."
       ]
+    },
+    {
+      "id": "debug-season-time-preview",
+      "lines": [
+        "Choose a season or time of day to preview in the debug menu.",
+        "Left and Right browse season choices and A loads the selected season.",
+        "The time preview holds weather and outdoor lighting at the selected time.",
+        "Panel titles stay still."
+      ]
     }
   ]
 }
