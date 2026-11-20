@@ -80,12 +80,14 @@ static inline uint8_t su_pack(int shadow,int light){return (uint8_t)(((light+8)/
 #define SU_SNOW_BLOCKS (SU_WORLD_WIDTH/2)
 #define SU_SNOW_PACKED (SU_SNOW_BLOCKS*SU_SNOW_HEIGHT)
 #define SU_SNOW_MAX_VISITS 5
-static inline int su_snow_visits(const uint8_t *packed,int x,int z){
+#define SU_SNOW_STEPS_PER_VISIT 3
+static inline int su_snow_wear(const uint8_t *packed,int x,int z){
     if((unsigned)x>=SU_WORLD_WIDTH||(unsigned)z>=SU_SNOW_HEIGHT)return 0;
     int cell=z*SU_WORLD_WIDTH+x;
     return (packed[cell/2]>>((cell%2)*4))&15;
 }
 static inline float su_snow_stamp(int visits,float x,float z){
+    if(!visits)return 0;
     if(visits>=SU_SNOW_MAX_VISITS){
         float edge=fmaxf(fabsf(x),fabsf(z))-.5f;
         return 1.f-fmaxf(0.f,edge)*4.f;
@@ -97,13 +99,23 @@ static inline float su_snow_stamp(int visits,float x,float z){
     if(visits==3)return fmaxf(wide_dent,1.25f*(1.f-ellipse));
     return 1.32f*(1.f-ellipse*.5f);
 }
+static inline float su_snow_recovering_stamp(int wear,float x,float z){
+    int visits=wear/SU_SNOW_STEPS_PER_VISIT,step=wear%SU_SNOW_STEPS_PER_VISIT;
+    float a=su_snow_stamp(visits,x,z);
+    if(!step)return a;
+    // Interpolate the two visible depths so the cutout and shaded rim
+    // recede together between the original visit stages.
+    a=fmaxf(0.f,fminf(1.f,a));
+    float b=fmaxf(0.f,fminf(1.f,su_snow_stamp(visits+1,x,z)));
+    return a+(b-a)*(step*(1.f/SU_SNOW_STEPS_PER_VISIT));
+}
 static inline uint8_t su_snow_depth(const uint8_t *packed,int x,int z){
     int cx=x/4,cz=z/4;
     float fx=(x%4+.5f)*.25f-.5f,fz=(z%4+.5f)*.25f-.5f,depth=0;
     for(int dz=-1;dz<=1;dz++)for(int dx=-1;dx<=1;dx++){
-        int visits=su_snow_visits(packed,cx+dx,cz+dz);
-        if(!visits)continue;
-        depth=fmaxf(depth,su_snow_stamp(visits,fx-dx,fz-dz));
+        int wear=su_snow_wear(packed,cx+dx,cz+dz);
+        if(!wear)continue;
+        depth=fmaxf(depth,su_snow_recovering_stamp(wear,fx-dx,fz-dz));
     }
     return (uint8_t)(fminf(1.f,depth)*255.f+.5f);
 }

@@ -6,6 +6,7 @@ using Dolphin.Timing;
 internal sealed partial class TownGame
 {
     private readonly TownDaylight daylight=new TownDaylight();
+    private readonly DebugWeather weather=new DebugWeather();
     partial void RecordFallFootstep(float beforeX,float beforeZ,bool running);
 
     internal void Step(ControllerState pad)
@@ -14,9 +15,15 @@ internal sealed partial class TownGame
         if(!resourcesReady||room==0&&!terrain.Ready){playerRunning=false;runningMinimap.Update(Clock.Timestamp,false,false);return;}
         bool running=false;float beforeX=state.X,beforeZ=state.Z;
         moveClip=-1; // UI focus must not leave the player walking in place.
+        bool simulateWorld=session.Draft==null;
         tick++;
         if(tick%30==0)ReadWeatherClock();
-        if(tick%900==0&&session.Draft==null){ReadCalendarDate();state.Rollover(day,month);}
+        if(tick%900==0&&simulateWorld){ReadCalendarDate();state.Rollover(day,month);}
+        if(simulateWorld){
+            UpdateWeather();
+            // Outdoor snowfall continues while the player is inside.
+            state.Town.Traffic.Snow.TickSnowfall(weather.Snowing(0));
+        }
         if(screen=="dialogue"&&typeAt<message.Length){
             typeAt++;
             if(typeAt==message.Length)dialogueVoice.Stop();
@@ -27,7 +34,7 @@ internal sealed partial class TownGame
             float inputX=pad.Stick.X,inputY=pad.Stick.Y;
             if(room!=0&&inputX*inputX+inputY*inputY<PlayerMovement.DeadZone*PlayerMovement.DeadZone){int held=(int)pad.HeldButtons;inputX=((held&2)!=0?1:0)-((held&1)!=0?1:0);inputY=((held&8)!=0?1:0)-((held&4)!=0?1:0);}
             if(room!=0){indoorCamera.Configure(BuildingWorld.Definition(state,BuildingWorld.Building(room)));indoorCamera.Tick(pad.L.IsHeld&&pad.R.IsHeld?0:pad.CStick.X,pad.L.WasPressed&&!pad.R.IsHeld);indoorCamera.Movement(inputX,inputY,out inputX,out inputY);}
-            if(!villagers.Doors.Busy(0)&&!(pad.L.IsHeld&&pad.R.IsHeld)&&PlayerMovement.Move(state,room,inputX,inputY,room==0?(int)pad.HeldButtons:0,pad.B.IsHeld,out float dx,out float dz,session.Draft==null))
+            if(!villagers.Doors.Busy(0)&&!(pad.L.IsHeld&&pad.R.IsHeld)&&PlayerMovement.Move(state,room,inputX,inputY,room==0?(int)pad.HeldButtons:0,pad.B.IsHeld,out float dx,out float dz,simulateWorld))
             {
                 facingYaw=PlayerMovement.Yaw(dx,dz);PlayerMovement.Target(dx,dz,out faceX,out faceZ);
                 int clip=pad.B.IsHeld?1:0;moveClip=clip;running=clip==1&&(state.X!=beforeX||state.Z!=beforeZ);desiredPlayerSpeed=1.05f;
@@ -36,7 +43,6 @@ internal sealed partial class TownGame
         }
         // Menus own player input, never the live town simulation. Only the
         // uncommitted onboarding preview stays frozen.
-        bool simulateWorld=session.Draft==null;
         if(simulateWorld){
             RefreshResidencyDemand(Clock.Timestamp);
             if(villagers.Doors.Busy(0)&&!villagers.Doors.ResourcesReady[0])modelResidency.WaitForPortal();
@@ -68,6 +74,12 @@ internal sealed partial class TownGame
         }
     }
     private int weatherDay;
+    private void UpdateWeather()
+    {
+        int season=terrain.SeasonAt(month,renderDebug.SeasonOverride);
+        weather.Update(state.Town.Seed,weatherDay,townClock.MinuteOfDay,season);
+        state.Town.Traffic.Snow.SetWinter(season==3);
+    }
     private void ReadWeatherClock()
     {
         townClock.Update(NativeCalendar.ReadClock());
