@@ -39,6 +39,7 @@ public sealed class Town
     public readonly byte[] Elevation;
     public readonly TownPaths Paths;
     public readonly TileTraffic Traffic=new TileTraffic();
+    public readonly Jobs.TownJobState JobState;
     public int TerrainVersion {get;private set;}
     public int ShadowVersion {get;private set;}
     public void NotifyCastersChanged(){ShadowVersion++;}
@@ -69,7 +70,7 @@ public sealed class Town
     // to it. Other mutable records remain private to this validation town.
     internal Town(int seed,Town? snapshot)
     {
-        Seed=seed;Tiles=snapshot==null?new byte[Cells]:snapshot.Tiles;Elevation=snapshot==null?new byte[Cells]:snapshot.Elevation;Paths=new TownPaths();if(snapshot!=null){Array.Copy(snapshot.Paths.Packed,Paths.Packed,TownPaths.PackedBytes);Array.Copy(snapshot.Traffic.Visits,Traffic.Visits,TileTraffic.Bytes);}
+        Seed=seed;JobState=new Jobs.TownJobState(seed);Tiles=snapshot==null?new byte[Cells]:snapshot.Tiles;Elevation=snapshot==null?new byte[Cells]:snapshot.Elevation;Paths=new TownPaths();if(snapshot!=null){Array.Copy(snapshot.Paths.Packed,Paths.Packed,TownPaths.PackedBytes);Array.Copy(snapshot.Traffic.Visits,Traffic.Visits,TileTraffic.Bytes);}
         string[] phrases={"tails up","little leaf","sky high","soft paws","dig deep","good cheer"};
         for(int i=0;i<6;i++){
             int x=10+i*11+(i==3?3:0);string name=VillagerNames.Generate(seed,i);

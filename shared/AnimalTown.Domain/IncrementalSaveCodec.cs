@@ -50,10 +50,11 @@ internal static class IncrementalSaveCodec
     internal static byte[] Encode(GameState s,int part)
     {
         if(part==Count-1){
-            var w=new SplitSaveCodec.Writer(s,Residents,320);
+            var w=new SplitSaveCodec.Writer(s,Residents,320+4*(Jobs.TownJobState.EncodedWordCount+1));
             for(int i=0;i<6;i++){var v=s.Town.Residents[i];w.Int(v.X);w.Int(v.Z);w.Int((int)(v.PosX*1024));w.Int((int)(v.PosZ*1024));}
             w.Int(s.ActiveProfile);
             for(int i=0;i<6;i++){var v=s.Town.Residents[i];w.Int(v.Space);w.Int(v.JourneyBuilding);w.Int(v.JourneyPhase);w.Int(v.Dwell);w.Int((int)(v.Yaw*1024));w.Int(v.JourneyNextX);w.Int(v.JourneyNextZ);}
+            if(!s.Town.JobState.IsPristine){var jobs=s.Town.JobState.Encode();w.Int(jobs.Length);for(int i=0;i<jobs.Length;i++)w.Int(jobs[i]);}
             return w.Finish();
         }
         var bytes=SplitSaveCodec.EncodePart(s,part);
@@ -66,7 +67,7 @@ internal static class IncrementalSaveCodec
     {
         var r=new SplitSaveCodec.Reader(bytes,SplitSaveCodec.TownData);
         if(!SplitSaveCodec.IsProfileTownVersion(r.Version))throw new InvalidOperationException("Invalid incremental town projection");
-        var positions=new int[RuntimeFields];int at=0;
+        var positions=new int[RuntimeFields+(r.Version>=9?Jobs.TownJobState.EncodedWordCount+1:0)];int at=0;
         r.Range(Town.Width,Town.Width);r.Range(Town.Height,Town.Height);r.Range(1,TownGenerator.Version);r.Int();r.Int();r.SkipTerrain();r.SkipTerrain();
         for(int i=0;i<6;i++){
             positions[at++]=r.Offset;r.Int();positions[at++]=r.Offset;r.Int();r.SkipText(24);
@@ -78,7 +79,11 @@ internal static class IncrementalSaveCodec
         for(int i=0;i<42;i++){positions[at++]=r.Offset;r.Int();}
         if(r.Version>=6)r.Paths(new TownPaths());
         if(r.Version>=7)r.Traffic(null);
-        if(r.Version>=8)r.Range(1,DaylightLocations.Count);
+        if(r.Version>=8)r.Range(r.Version>=9?0:1,DaylightLocations.Count);
+        // Like NPC positions, the entire job extension belongs to AT-Residents.
+        // Its static projection is zero; full semantic validation runs after
+        // restoring all words from the same committed reference manifest.
+        if(r.Version>=9)for(int i=0;i<=Jobs.TownJobState.EncodedWordCount;i++){positions[at++]=r.Offset;r.Int();}
         r.End();return positions;
     }
     internal static byte[][] Restore(Manifest m,byte[][] wire)
