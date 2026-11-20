@@ -72,6 +72,7 @@ internal static class PathChecks
         check(snow.Revision==6,"fully worn snow and movement within a tile leave the mask revision unchanged");
         snow.SetWinter(false);snow.SetWinter(true);
         check(snow.Packed.All(v=>v==0),"a new winter starts with fresh snow");
+        SnowfallRecovery(check,Flat().Town);
         s=Flat();t=s.Town;t.Traffic.Traverse(t,5.1f,40.2f,8.2f,40.2f);
         check(t.Traffic.Visits[40*Town.Width+5]==0&&t.Traffic.Visits[40*Town.Width+6]==1&&t.Traffic.Visits[40*Town.Width+7]==1&&t.Traffic.Visits[40*Town.Width+8]==1,"all entered cells are recorded, not the departure cell");
         t.Traffic.Traverse(t,8.2f,40.2f,8.9f,40.8f);check(t.Traffic.Visits[40*Town.Width+8]==1,"standing and walking within a tile add no visits");
@@ -109,6 +110,57 @@ internal static class PathChecks
         old=bytes[..^(TileTraffic.Bytes+8)];Put(old,4,10);Put(old,16,old.Length);Put(old,20,(int)SaveCodec.Crc(old,24,old.Length-24));check(SaveCodec.Decode(old).Town.Traffic.Visits.All(v=>v==0),"combined v10 remains readable");
         var broken=SplitSaveCodec.Encode(s);broken[0][^(TileTraffic.Bytes+13)]=255;Crc(broken[0]);bool rejected=false;try{SplitSaveCodec.Decode(broken);}catch(InvalidOperationException){rejected=true;}check(rejected,"invalid saved path styles remain rejected");
         Console.WriteLine($"Traffic paths: 15360 counter + 512 histogram + 3840 existing path bytes; 8192 native mask bytes on demand; 10000 entries {traversalMs:F2}ms host, classification {selectionMs:F3}ms host; no warm allocations");
+    }
+    private static void SnowfallRecovery(Action<bool,string> check,Town town)
+    {
+        var weather=new DebugWeather();
+        weather.Update(town.Seed,0,0,3);
+        var snow=town.Traffic.Snow;
+        snow.SetWinter(true);
+        town.Traffic.Visits[40*Town.Width+20]=TileTraffic.FullOpacityVisits;
+        town.Paths.Set(20,40,1);
+        for(int i=0;i<SnowWear.MaxVisits;i++)town.Traffic.Enter(town,6,40);
+        town.Traffic.Enter(town,7,40);
+        byte[] traffic=town.Traffic.Visits.ToArray(),paths=town.Paths.Packed.ToArray();
+        int pathRevision=town.Paths.Revision,opacityRevision=town.Traffic.OpacityRevision;
+        int revision=snow.Revision,cell=40*Town.Width+6;
+        byte startingWear=snow.Packed[cell/2];
+        void SnowSeconds(int seconds)
+        {
+            for(int i=0;i<seconds*30;i++)snow.TickSnowfall(weather.Snowing(0));
+        }
+        SnowSeconds(39);
+        for(int i=0;i<29;i++)snow.TickSnowfall(weather.Snowing(0));
+        check(snow.Revision==revision,"recovery publishes only when the visible depth changes");
+        weather.SnowEnabled=false;
+        SnowSeconds(600);
+        check(snow.Packed[cell/2]==startingWear&&snow.Revision==revision,"disabled snowfall pauses recovery without catch-up");
+        weather.SnowEnabled=true;weather.RainEnabled=true;
+        SnowSeconds(600);
+        check(snow.Revision==revision,"rain does not refill winter dents");
+        weather.RainEnabled=false;
+        snow.TickSnowfall(weather.Snowing(0));
+        check(snow.Packed[cell/2]==startingWear-1&&snow.Revision==revision+1,"resumed snowfall preserves the partial second and reduces wear by one substep");
+        SnowSeconds(280);
+        check(snow.CenterCovered(6,40),"the ground closes over before the dent finishes smoothing");
+        SnowSeconds(279);
+        check((snow.Packed[cell/2]&15)!=0&&(snow.Packed[cell/2]>>4)!=0,"both shallow and deep dents remain at nine minutes fifty-nine seconds");
+        SnowSeconds(1);
+        check(snow.Packed.All(v=>v==0),"dents of different depths finish after ten minutes of active snowfall");
+        check(traffic.SequenceEqual(town.Traffic.Visits)&&paths.SequenceEqual(town.Paths.Packed)&&
+              town.Paths.Revision==pathRevision&&town.Traffic.OpacityRevision==opacityRevision,"snowfall recovery leaves path counts, coverage and revisions intact");
+
+        for(int i=0;i<SnowWear.MaxVisits;i++)town.Traffic.Enter(town,6,40);
+        SnowSeconds(39);
+        town.Traffic.Enter(town,6,40);
+        SnowSeconds(1);
+        check(snow.VisitCount(6,40)==SnowWear.MaxVisits,"a fresh visit restarts even fully worn snow");
+        SnowSeconds(299);
+        town.Traffic.Enter(town,7,40);
+        SnowSeconds(300);
+        check((snow.Packed[cell/2]&15)==0&&(snow.Packed[cell/2]>>4)>0,"each tile uses time since its own last entry");
+        SnowSeconds(300);
+        check(snow.Packed.All(v=>v==0),"the later tile also finishes at ten minutes");
     }
     private static void Put(byte[] b,int at,int value){for(int i=0;i<4;i++)b[at+i]=(byte)((uint)value>>(8*i));}
     private static void Crc(byte[] b)=>Put(b,b.Length-4,(int)SaveCodec.Crc(b,0,b.Length-4));

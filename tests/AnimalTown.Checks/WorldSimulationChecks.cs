@@ -60,6 +60,19 @@ internal static class WorldSimulationChecks
             for(int i=0;i<120;i++)preview.Step(default);
             check(BuildingSave.Encode(preview.state).SequenceEqual(before),"onboarding preview keeps its uncommitted town frozen");
         }
+        var winter=new TownGame(new GameState(931){Space=16,X=2,Z=2}){screen="menu"};
+        for(int i=0;i<4;i++)winter.renderDebug.CycleSeason();
+        winter.Step(default);
+        var town=winter.state.Town;
+        const int snowX=100,snowZ=80;
+        town.Tiles[snowZ*Town.Width+snowX]=(byte)Terrain.Grass;town.Elevation[snowZ*Town.Width+snowX]=0;
+        for(int i=0;i<SnowWear.MaxVisits;i++)town.Traffic.Enter(town,snowX,snowZ);
+        winter.SetSnowfall(false);
+        for(int i=0;i<1200;i++)winter.Step(default);
+        check(town.Traffic.Snow.VisitCount(snowX,snowZ)==SnowWear.MaxVisits,"the live simulation pauses recovery when the snowfall toggle is off");
+        winter.SetSnowfall(true);
+        for(int i=0;i<1200;i++)winter.Step(default);
+        check(town.Traffic.Snow.VisitCount(snowX,snowZ)==SnowWear.MaxVisits-1,"outdoor snowfall refills dents while the player is indoors");
         Console.WriteLine("Live world simulation behind gameplay overlays checks passed");
     }
     private static GameState JourneyState()

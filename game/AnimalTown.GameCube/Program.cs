@@ -95,7 +95,6 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
     private readonly DevConfig debugConfig;
     private readonly RenderDebugOptions renderDebug=new RenderDebugOptions();
     private readonly VillagerAttentionRenderer attention=new VillagerAttentionRenderer();
-    private readonly DebugWeather weather=new DebugWeather();
     private readonly FallLeafWake foliage=new FallLeafWake();
     private readonly RainRenderer rain=new RainRenderer();
     private readonly VisitEdgeRenderer visitEdges=new VisitEdgeRenderer();
@@ -590,12 +589,6 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
         if(screen=="lost")
         { int index=LostIndex(selected);Say("Town hall",state.ClaimLost(index,state.ActiveProfile)?"Recovered!":"Your pockets are full, or the item is reserved.");return; }
         if(screen=="menu")MenuAction();
-    }
-    private void UpdateWeather()
-    {
-        int season=terrain.SeasonAt(month,renderDebug.SeasonOverride);
-        weather.Update(state.Town.Seed,weatherDay,townClock.MinuteOfDay,season);
-        state.Town.Traffic.Snow.SetWinter(season==3);
     }
     private bool FoliageScene=>room==0&&session.Draft==null&&waterInspection==0&&!cliffPreview;
     private float FoliageSeconds()=>(Clock.Timestamp-sessionStart)*.000001f;
