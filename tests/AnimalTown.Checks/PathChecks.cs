@@ -114,7 +114,7 @@ internal static class PathChecks
     private static void SnowfallRecovery(Action<bool,string> check,Town town)
     {
         var weather=new DebugWeather();
-        weather.Update(town.Seed,0,0,3);
+        weather.Update(town.Seed,0,DebugWeatherChecks.SnowStart(town.Seed,0),3);
         var snow=town.Traffic.Snow;
         snow.SetWinter(true);
         town.Traffic.Visits[40*Town.Width+20]=TileTraffic.FullOpacityVisits;

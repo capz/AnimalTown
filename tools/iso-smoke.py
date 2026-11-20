@@ -1583,7 +1583,7 @@ def committed_card_sequence(path, expected_day=None, details=False):
     import zlib
     if not path.exists():return 0
     card=path.read_bytes();sector=8192
-    town_versions=(4,6,7,8,9)
+    town_versions=(4,6,7,8,9,10)
     job_extension_bytes=4*(40+1) # TownJobState words plus the encoded word count.
     if len(card)%sector:raise AssertionError('Truncated emulator memory card')
     def be16(at):return struct.unpack_from('>H',card,at)[0]
@@ -1591,7 +1591,7 @@ def committed_card_sequence(path, expected_day=None, details=False):
         if len(payload)<32:raise ValueError('Short save record')
         magic,version,catalog,actual,sequence,seed,length=struct.unpack_from('<7I',payload)
         crc=struct.unpack_from('<I',payload,len(payload)-4)[0]
-        if magic!=0x50535441 or version not in (1,2,3,4,5,6,7,8,9) or (version>=6 and kind!=0) or actual!=kind or length!=len(payload) or zlib.crc32(payload[:-4])!=crc:
+        if magic!=0x50535441 or version<1 or version>10 or (version>=6 and kind!=0) or actual!=kind or length!=len(payload) or zlib.crc32(payload[:-4])!=crc:
             raise ValueError('Invalid save record')
         return version,catalog,sequence,seed,crc
     best=0;best_day=None;best_details=None
@@ -1647,8 +1647,8 @@ def committed_card_sequence(path, expected_day=None, details=False):
                                 if i==7:runtime=files[selected]
                                 else:names.append(selected)
                             town_version=struct.unpack_from('<I',files[names[0]],4)[0]
-                            expected_runtime=300+(job_extension_bytes if town_version==9 else 0)
-                            if len(runtime)!=expected_runtime or (town_version==9 and struct.unpack_from('<I',runtime,296)[0]!=40):
+                            expected_runtime=300+(job_extension_bytes if town_version>=9 else 0)
+                            if len(runtime)!=expected_runtime or (town_version>=9 and struct.unpack_from('<I',runtime,296)[0]!=40):
                                 raise ValueError('Invalid resident runtime extension')
                         else:
                             if len(commit)!=32+8*len(names) or not all(name in files for name in names):continue
@@ -1677,7 +1677,7 @@ def committed_card_sequence(path, expected_day=None, details=False):
                                 profile_hashes=[__import__('hashlib').sha256(files[name][28:-4]).hexdigest() for name in names[3:]]
                                 best_details={'sequence':best,'dimensions':list(struct.unpack_from('<2I',town,28)),'active':active,'profiles':profiles,'profile_payload_sha256':profile_hashes,'plots':plots,'terrain_sha256':terrain_hash,'houses_sha256':__import__('hashlib').sha256(files[names[1]][28:-4]).hexdigest()}
                                 town_version=struct.unpack_from('<I',town,4)[0]
-                                daylight_offset=len(town)-8-(job_extension_bytes if town_version==9 else 0)
+                                daylight_offset=len(town)-8-(job_extension_bytes if town_version>=9 else 0)
                                 best_details['daylight_location']=struct.unpack_from('<I',town,daylight_offset)[0] if town_version>=8 else 0
                                 if runtime is not None:best_details['npc_spaces']=[struct.unpack_from('<i',runtime,128+i*28)[0] for i in range(6)]
                                 shop=files[names[2]]

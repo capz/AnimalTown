@@ -54,7 +54,7 @@ internal static class IncrementalSaveCodec
             for(int i=0;i<6;i++){var v=s.Town.Residents[i];w.Int(v.X);w.Int(v.Z);w.Int((int)(v.PosX*1024));w.Int((int)(v.PosZ*1024));}
             w.Int(s.ActiveProfile);
             for(int i=0;i<6;i++){var v=s.Town.Residents[i];w.Int(v.Space);w.Int(v.JourneyBuilding);w.Int(v.JourneyPhase);w.Int(v.Dwell);w.Int((int)(v.Yaw*1024));w.Int(v.JourneyNextX);w.Int(v.JourneyNextZ);}
-            if(!s.Town.JobState.IsPristine){var jobs=s.Town.JobState.Encode();w.Int(jobs.Length);for(int i=0;i<jobs.Length;i++)w.Int(jobs[i]);}
+            if(!s.Town.JobState.IsPristine||s.Town.Traffic.Snow.HasCheckpoint){var jobs=s.Town.JobState.Encode();w.Int(jobs.Length);for(int i=0;i<jobs.Length;i++)w.Int(jobs[i]);}
             return w.Finish();
         }
         var bytes=SplitSaveCodec.EncodePart(s,part);
@@ -79,6 +79,7 @@ internal static class IncrementalSaveCodec
         for(int i=0;i<42;i++){positions[at++]=r.Offset;r.Int();}
         if(r.Version>=6)r.Paths(new TownPaths());
         if(r.Version>=7)r.Traffic(null);
+        if(r.Version>=10)r.SnowCheckpoint(null);
         if(r.Version>=8)r.Range(r.Version>=9?0:1,DaylightLocations.Count);
         // Like NPC positions, the entire job extension belongs to AT-Residents.
         // Its static projection is zero; full semantic validation runs after

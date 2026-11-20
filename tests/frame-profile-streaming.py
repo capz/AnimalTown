@@ -111,8 +111,9 @@ def save_record(version,kind,sequence,body):
 def generation(bank, town_version, runtime_words):
     sequence=bank+1
     town=struct.pack('<5I',96,160,1,23,0)+bytes(148)
+    if town_version>=10:town+=struct.pack('<5I',4,100,0,2,(0xbbff<<16)|3)
     if town_version>=8:town+=struct.pack('<I',13)
-    if town_version==9:town+=bytes(164)
+    if town_version>=9:town+=bytes(164)
     runtime=bytes(268)
     if runtime_words:runtime+=struct.pack('<I',runtime_words)+bytes(160)
     bases=('AT-Town','AT-Houses','AT-Shops','AT-Player','AT-Villager2-','AT-Villager3-','AT-Villager4-','AT-Residents')
@@ -148,6 +149,9 @@ with TemporaryDirectory() as fixture:
     write_card(card,old|generation(1,9,40))
     current=namespace['committed_card_sequence'](card,expected_day=23,details=True)
     assert current['sequence']==2 and current['daylight_location']==13
+    write_card(card,old|generation(1,10,40))
+    current=namespace['committed_card_sequence'](card,expected_day=23,details=True)
+    assert current['sequence']==2 and current['daylight_location']==13
     write_card(card,old|generation(1,9,39))
     assert namespace['committed_card_sequence'](card)==1
-print('Card smoke reader: v9 job-clock generation, daylight offset and malformed-extension fallback passed')
+print('Card smoke reader: v9 job-clock and v10 snow generations, daylight offset and malformed-extension fallback passed')

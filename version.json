@@ -95,6 +95,15 @@
         "With debug menus visible, /attend name text makes that neighbour call out.",
         "Long messages wrap into pages; ordinary chat shows your own name."
       ]
+    },
+    {
+      "id": "daily-winter-snowfall",
+      "lines": [
+        "Snow rolls in once a day in winter, at a random time for each town.",
+        "Each snowfall lasts from 30 minutes to three hours.",
+        "If it snows while you're away, your town's snow is smooth when you return.",
+        "All villagers share the same snowfall and snow dents, and paths are unaffected."
+      ]
     }
   ]
 }
