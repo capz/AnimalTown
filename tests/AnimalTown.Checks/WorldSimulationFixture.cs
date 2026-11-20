@@ -19,6 +19,7 @@ internal sealed partial class TownGame
     internal readonly VillagerJourney villagers=new VillagerJourney();
     internal readonly InteriorCamera indoorCamera=new InteriorCamera();
     internal readonly TownClock townClock=new TownClock();
+    internal readonly RenderDebugOptions renderDebug=new RenderDebugOptions();
     internal readonly AnimationFrameClock animationClock=new AnimationFrameClock(7);
     internal readonly RunningMinimap runningMinimap=new RunningMinimap();
     internal readonly TerrainRenderer terrain=new TerrainRenderer();
@@ -38,4 +39,5 @@ internal sealed partial class TownGame
         for(int i=0;i<models.Length;i++)models[i]=new Model();
     }
     private void RefreshResidencyDemand(long now){ResidencyRefreshes++;}
+    internal void SetSnowfall(bool enabled)=>weather.SnowEnabled=enabled;
 }

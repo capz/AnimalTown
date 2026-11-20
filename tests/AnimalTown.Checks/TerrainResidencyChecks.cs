@@ -43,6 +43,7 @@ internal sealed class TerrainRenderer
     internal bool Ready=true;
     internal readonly CylinderRows Rows=new CylinderRows();
     internal TerrainSection CreateSection()=>new TerrainSection();
+    internal int SeasonAt(int month,int preview)=>TerrainTiles.Season(month,preview);
 }
 internal static class WaterRenderer {internal const int PartKinds=108;}
 internal sealed class TerrainSection
