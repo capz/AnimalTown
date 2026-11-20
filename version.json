@@ -50,6 +50,15 @@
         "New towns grow cherry trees among their other deciduous trees.",
         "Buy cherry blossom saplings from the essentials cabinet."
       ]
+    },
+    {
+      "id": "taller-deciduous-canopy",
+      "lines": [
+        "Regular deciduous trees have slightly taller canopies.",
+        "The top cluster sits 18 cm higher on a mature tree.",
+        "The taller silhouette makes these trees easier to tell apart from cherry blossoms.",
+        "The shared tree mesh still uses 84 triangles."
+      ]
     }
   ]
 }

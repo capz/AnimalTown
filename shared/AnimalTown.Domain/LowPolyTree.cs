@@ -20,7 +20,11 @@ public sealed class LowPolyTree
     {
         if((uint)kind>=KindCount)throw new ArgumentOutOfRangeException("kind");
         var t=new LowPolyTree();t.Trunk(kind==1?.83f:.46f,kind==1?.055f:.075f);
-        if(kind==0){t.Crown(-.16f,.66f,0,.27f,.25f,.27f);t.Crown(.16f,.70f,.03f,.27f,.25f,.27f);t.Crown(0,.81f,-.04f,.26f,.20f,.26f);}
+        if(kind==0){
+            t.Crown(-.16f,.66f,0,.27f,.25f,.27f);
+            t.Crown(.16f,.70f,.03f,.27f,.25f,.27f);
+            t.Crown(0,.87f,-.04f,.26f,.20f,.26f);
+        }
         else if(kind==Cherry){
             t.Crown(-.23f,.62f,0,.29f,.21f,.27f);
             t.Crown(.23f,.65f,.04f,.29f,.21f,.27f);
