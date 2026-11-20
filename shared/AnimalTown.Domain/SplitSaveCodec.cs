@@ -10,8 +10,16 @@ public static class SplitSaveCodec
     public static int RecordKind(int part)=>part<4?part:part+1;
     public static int ReadVersion(byte[] bytes)=>new Reader(bytes,TownData).Version;
     internal static ulong EconomicTownIdentity(byte[] bytes)
+    {return EconomicTownIdentity(new Reader(bytes,ShopStates));}
+    internal const int EconomicIdentityPrefixBytes=732;
+    internal static ulong EconomicTownIdentityPrefix(byte[] prefix,int sequence,int seed,int length)
     {
-        var r=new Reader(bytes,ShopStates);if(r.Version!=4)throw new InvalidOperationException("Unsupported travel economic record");
+        if(prefix.Length!=EconomicIdentityPrefixBytes||length<prefix.Length)throw new InvalidOperationException("Invalid verified economic prefix");
+        var r=new Reader(prefix,ShopStates,length);if(r.Sequence!=sequence||r.Seed!=seed)throw new InvalidOperationException("Mixed economic prefix reference");return EconomicTownIdentity(r);
+    }
+    private static ulong EconomicTownIdentity(Reader r)
+    {
+        if(r.Version!=4)throw new InvalidOperationException("Unsupported travel economic record");
         r.Range(0,int.MaxValue);r.Range(6,12);r.SkipWords(12);r.Range(154,154);r.SkipWords(154);
         r.Range(7,Jobs.OfflineJobLedger.MaximumWords);if(r.Int()!=Jobs.OfflineJobLedger.Magic)throw new InvalidOperationException("Missing saved job identity");int schema=r.Range(7,Jobs.OfflineJobLedger.Schema);if(schema>=12)r.Range(0,1);
         uint lo=unchecked((uint)r.Int()),hi=unchecked((uint)r.Int());return lo|((ulong)hi<<32);
@@ -35,15 +43,14 @@ public static class SplitSaveCodec
     {
         private readonly byte[] bytes;private int at;
         internal readonly int Sequence,Seed,Version,CatalogVersion;
-        internal Reader(byte[] source,int kind)
+        internal Reader(byte[] source,int kind,int verifiedLength=0)
         {
             bytes=source;if(bytes.Length<32||bytes.Length>SaveCodec.MaximumBytes)throw new InvalidOperationException("Invalid save record size");
             if(Int()!=0x50535441)throw new InvalidOperationException("Wrong save record magic");Version=Int();
             CatalogVersion=Int();
             if((Version<1||Version>10||Version>=6&&kind!=TownData)||!Catalog.SupportsVersion(CatalogVersion)||Int()!=kind)throw new InvalidOperationException("Wrong save record type or version");
-            Sequence=Range(0,int.MaxValue);Seed=Int();if(Int()!=bytes.Length)throw new InvalidOperationException("Save record length mismatch");
-            int crc=0;for(int i=0;i<4;i++)crc|=bytes[bytes.Length-4+i]<<(i*8);
-            if((uint)crc!=SaveCodec.Crc(bytes,0,bytes.Length-4))throw new InvalidOperationException("Save record checksum failed");
+            Sequence=Range(0,int.MaxValue);Seed=Int();if(Int()!=(verifiedLength==0?bytes.Length:verifiedLength))throw new InvalidOperationException("Save record length mismatch");
+            if(verifiedLength==0){int crc=0;for(int i=0;i<4;i++)crc|=bytes[bytes.Length-4+i]<<(i*8);if((uint)crc!=SaveCodec.Crc(bytes,0,bytes.Length-4))throw new InvalidOperationException("Save record checksum failed");}
         }
         internal int Int(){if(at>bytes.Length-8)throw new InvalidOperationException("Truncated save record");int n=0;for(int i=0;i<4;i++)n|=bytes[at++]<<(i*8);return n;}
         internal int Range(int min,int max){int n=Int();if(n<min||n>max)throw new InvalidOperationException("Save record value outside range");return n;}

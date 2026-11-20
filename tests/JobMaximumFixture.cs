@@ -20,7 +20,7 @@ internal static class JobMaximumFixture
         for(int i=0;i<48;i++)l.Offers[i]=new VillagerJobOffer{Id=l.Allocate(),Owner=new JobIdentity(90000,(ulong)(i/6+1)),Requester=l.Npc(i%6),Target=l.Npc((i+1)%6),Template=JobTemplate.DeliveryProperty,Item=Catalog.Notebook,Revision=1,CreatedAt=now};
         for(int i=0;i<64;i++){
             var id=l.Allocate();bool npc=rewards<OfflineJobLedger.RewardCapacity;var reservation=npc?l.Allocate():default;
-            var m=new JobMailRecord{Id=id,Owner=l.Player(0),Sender=l.Player(0),Recipient=npc?l.Npc(0):l.Player(1),Reservation=reservation,State=JobMailState.Queued,SentAt=now,DueAt=now+86400};l.StoreBody(ref m,JobTextBody.Pack(body,1000));l.Mail[OfflineJobLedger.InboxCount+i]=m;
+            var m=new JobMailRecord{Id=id,Owner=l.Player(0),Sender=l.Player(0),Recipient=npc?l.Npc(0):l.Player(1),Reservation=reservation,State=JobMailState.Queued,SentAt=now,DueAt=now+86400};l.StoreBody(ref m,JobTextBody.Pack(body,1000));l.Mail.Set(OfflineJobLedger.InboxCount+i,m);
             if(npc)l.Rewards[rewards++]=new VillagerJobReward{Id=reservation,Job=id,Owner=l.Player(0),Giver=l.Npc(0),State=JobRewardState.Reserved};
         }
         for(int i=0;i<8;i++)l.Notices[i]=new TownNotice{Id=l.Allocate(),Author=l.Player(0),At=now,Text=body};

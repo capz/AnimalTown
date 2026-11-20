@@ -96,12 +96,18 @@ internal sealed class TownCardRecords
     private static readonly uint[] crcNibbles={0,0x1db71064,0x3b6e20c8,0x26d930ac,0x76dc4190,0x6b6b51f4,0x4db26158,0x5005713c,0xedb88320,0xf00f9344,0xd6d6a3e8,0xcb61b38c,0x9b64c2b0,0x86d3d2d4,0xa00ae278,0xbdbdf21c};
     internal int Length(string name)
     {Alive();Key(name);int index=Find(name);if(index<0)throw new FileNotFoundException(name);return Get(root,At(index)+40);}
-    internal bool Matches(string name,byte[]? expected,int sequence,int length,uint checksum,bool ignoreSequence)
+    internal byte[] ReadVerifiedPrefix(string name,int count,int sequence,int length,uint checksum)
+    {
+        if(count<0||count>8192||count>length)throw new IOException("Invalid card prefix size");var prefix=new byte[count];
+        if(!Matches(name,null,sequence,length,checksum,false,prefix))throw new IOException("Card prefix reference differs");return prefix;
+    }
+    internal bool Matches(string name,byte[]? expected,int sequence,int length,uint checksum,bool ignoreSequence,byte[]? prefix=null)
     {
         Alive();Key(name);int index=Find(name);if(index<0)return false;int record=At(index),actualLength=Get(root,record+40);if(actualLength!=length||expected!=null&&expected.Length!=length)return false;
         int page=Get(root,record+32),offset=Get(root,record+36),done=0,actualSequence=0;uint hash=2166136261,crc=0xffffffff,storedCrc=0;bool same=true;
         while(done<length){storage.Read(page++,scratch);int count=Math.Min(length-done,BlockBytes-offset);
             for(int i=0;i<count;i++){int pos=done+i;byte b=scratch[offset+i];hash=unchecked((hash^b)*16777619u);
+                if(prefix!=null&&pos<prefix.Length)prefix[pos]=b;
                 if(pos<length-4){crc^=b;crc=(crc>>4)^crcNibbles[crc&15];crc=(crc>>4)^crcNibbles[crc&15];}else storedCrc|=(uint)b<<((pos-(length-4))*8);
                 if(pos>=16&&pos<20)actualSequence|=b<<((pos-16)*8);
                 if(expected!=null&&!(ignoreSequence&&(pos>=16&&pos<20||pos>=length-4))&&b!=expected[pos])same=false;
@@ -113,6 +119,38 @@ internal sealed class TownCardRecords
     }
     private void Protect(byte[] index,bool[] used)
     {for(int i=0;i<MaximumRecords;i++){int at=At(i);if(index[at]==0)continue;int page=Get(index,at+32),n=Math.Max(1,(Get(index,at+36)+Get(index,at+40)+BlockBytes-1)/BlockBytes);for(int p=0;p<n;p++)used[page+p]=true;}}
+    private static int FreeRun(bool[] used,int pages)
+    {int run=0;for(int p=2;p<used.Length;p++){run=used[p]?0:run+1;if(run==pages)return p-pages+1;}return -1;}
+    private bool Relocation(bool[] used,int needed,out int source,out int target,out int pages)
+    {
+        source=target=pages=0;var after=new bool[used.Length];
+        for(int i=0;i<MaximumRecords;i++){
+            int at=At(i);if(root[at]==0)continue;int start=Get(root,at+32),count=1;bool valid=true;
+            for(int j=0;j<MaximumRecords;j++)if(root[At(j)]!=0){int p=Get(root,At(j)+32),n=Math.Max(1,(Get(root,At(j)+36)+Get(root,At(j)+40)+BlockBytes-1)/BlockBytes);if(p==start){if(j<i){valid=false;break;}count=Math.Max(count,n);}}
+            if(!valid)continue;
+            // Packed neighbours with the same first page move together. Refuse
+            // unusual externally authored extents sharing only a trailing page.
+            for(int j=0;j<MaximumRecords&&valid;j++)if(root[At(j)]!=0){int p=Get(root,At(j)+32),n=Math.Max(1,(Get(root,At(j)+36)+Get(root,At(j)+40)+BlockBytes-1)/BlockBytes);if(p!=start&&p<start+count&&start<p+n)valid=false;}
+            if(!valid)continue;
+            for(int gap=2;gap<used.Length;){
+                if(used[gap]){gap++;continue;}int end=gap;while(end<used.Length&&!used[end])end++;
+                if(end-gap>=count)for(int side=0;side<2;side++){
+                    int destination=side==0?gap:end-count;Array.Copy(used,after,used.Length);
+                    for(int p=0;p<count;p++){after[start+p]=false;after[destination+p]=true;}
+                    if(FreeRun(after,needed)>=0){source=start;target=destination;pages=count;return true;}
+                }
+                gap=end;
+            }
+        }
+        return false;
+    }
+    private void Relocate(int source,int target,int pages)
+    {
+        var verified=new byte[BlockBytes];
+        for(int p=0;p<pages;p++){storage.Read(source+p,scratch);storage.Write(target+p,scratch);storage.Read(target+p,verified);Match(scratch,verified);}
+        var next=(byte[])root.Clone();for(int i=0;i<MaximumRecords;i++)if(next[At(i)]!=0&&Get(next,At(i)+32)==source)Put(next,At(i)+32,target);
+        Publish(next);Publish((byte[])root.Clone());
+    }
     private void Publish(byte[] next)
     {
         if(Get(root,8)==int.MaxValue)throw new IOException("Card checkpoint sequence exhausted");
@@ -127,10 +165,22 @@ internal sealed class TownCardRecords
         if(bytes.Length>(storage.Blocks-4)*BlockBytes)throw new IOException("Card container has insufficient reserved space");
         int index=Find(name);if(index<0)for(int i=0;i<MaximumRecords;i++)if(root[At(i)]==0){index=i;break;}
         if(index<0)throw new IOException("Card record directory is full");
-        var next=(byte[])root.Clone();var used=new bool[storage.Blocks];used[0]=used[1]=true;Protect(root,used);Protect(previous,used);
-        int pages=Math.Max(1,(bytes.Length+BlockBytes-1)/BlockBytes),page=-1,run=0;
-        for(int p=2;p<used.Length;p++){run=used[p]?0:run+1;if(run==pages){page=p-pages+1;break;}}
+        var used=new bool[storage.Blocks];used[0]=used[1]=true;Protect(root,used);Protect(previous,used);
+        int pages=Math.Max(1,(bytes.Length+BlockBytes-1)/BlockBytes),page=FreeRun(used,pages);
+        if(page<0){
+            // Publish the verified current directory unchanged before retiring
+            // pages referenced only by its older checkpoint. Both durable roots
+            // then describe the same complete records; none of their live pages
+            // can be reused. This avoids unnecessary growth after large rewrites.
+            Array.Clear(used,0,used.Length);used[0]=used[1]=true;Protect(root,used);page=FreeRun(used,pages);
+            bool move=false;int source=0,target=0,count=0;if(page<0)move=Relocation(used,pages,out source,out target,out count);
+            if(page>=0||move)try{
+                Publish((byte[])root.Clone());
+                if(move){Relocate(source,target,count);Array.Clear(used,0,used.Length);used[0]=used[1]=true;Protect(root,used);page=FreeRun(used,pages);}
+            }catch{faulted=true;throw;}
+        }
         if(page<0)throw new IOException("Card container has insufficient reserved space");
+        var next=(byte[])root.Clone();
         int group=-1;
         // Pack small records into one new page, copying every live neighbor.
         // Both old checkpoints stay untouched until the new root is verified.

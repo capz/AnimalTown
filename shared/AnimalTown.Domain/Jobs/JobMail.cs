@@ -14,14 +14,14 @@ public struct JobMailRecord
 public sealed partial class OfflineJobLedger
 {
     public const int MailboxCapacity=128,InboxCount=GameState.ProfileCount*MailboxCapacity,OutboxCapacity=64;
-    private static readonly JobMailRecord[] emptyMail=new JobMailRecord[0];
-    internal JobMailRecord[] Mail=emptyMail;
+    private static readonly JobMailSlots emptyMail=new JobMailSlots(0);
+    internal JobMailSlots Mail=emptyMail;
     // Short messages share 2 KB slabs. Larger bodies own their exact packed
-    // array (at most 4 KB including legacy UTF-8). Even adversarial discards
+    // array (at most 2,632 bytes after lossless scalar compaction). Even adversarial discards
     // cannot leave one tiny letter pinning a 16 KB or megabyte-sized arena.
     private const int BodySlabWords=512;
     private int[]? mailBodyArena;private int mailBodyUsed;
-    internal void EnsureMail(){if(Mail.Length==0)Mail=new JobMailRecord[InboxCount+OutboxCapacity];}
+    internal void EnsureMail(){if(Mail.Length==0)Mail=new JobMailSlots(InboxCount+OutboxCapacity);}
     public JobMailRecord Letter(int profile,int slot)
     {if((uint)profile>=GameState.ProfileCount||(uint)slot>=MailboxCapacity||Mail.Length==0)return default;return Mail[profile*MailboxCapacity+slot];}
     internal void StoreBody(ref JobMailRecord mail,int[] words)
@@ -46,7 +46,15 @@ public sealed partial class OfflineJobLedger
             var m=new JobMailRecord{Id=r.Key(false),Owner=r.Key(false),Sender=r.Key(false),Recipient=r.Key(false),Reservation=r.Key(),State=(JobMailState)r.Range(1,2),Gift=r.Range(0,Catalog.Items.Length-1),ReplyText=r.Range(0,255),Read=r.Range(0,1)==1,Reply=r.Range(0,1)==1,SentAt=r.Long(),DueAt=r.Long(),Body=null};
             var prior=ReadbackBody(at,m.Id);m.Body=r.Block(1001,prior.Body,prior.BodyOffset,prior.BodyWords,out m.BodyOffset,out m.BodyWords);
             if((m.State==JobMailState.Inbox)!=(at<InboxCount)||m.DueAt<m.SentAt||!m.Reply&&m.Body==null)throw new InvalidOperationException("Invalid saved letter envelope");
-            if(m.Body!=null){JobTextBody.Validate(m.Body,m.BodyOffset,m.BodyWords);if(m.Body!=prior.Body)StoreBody(ref m,m.Body); }Mail[at]=m;
+            if(m.Body!=null){
+                JobTextBody.Validate(m.Body,m.BodyOffset,m.BodyWords);
+                if(m.Body!=prior.Body){
+                    var compact=JobTextBody.Compact(m.Body);bool same=prior.Body!=null&&prior.BodyWords==compact.Length;
+                    for(int i=0;same&&i<compact.Length;i++)if(compact[i]!=prior.Body![prior.BodyOffset+i])same=false;
+                    if(same){m.Body=prior.Body;m.BodyOffset=prior.BodyOffset;m.BodyWords=prior.BodyWords;}
+                    else StoreBody(ref m,compact);
+                }
+            }Mail.Set(at,m);
         }
     }
 }

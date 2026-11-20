@@ -34,7 +34,7 @@ public sealed partial class VillagerJobService
         // For original letters ReplyText 16..27 caches the immutable v1 grade.
         // Replies use ordinary text IDs; older queued letters keep zero and
         // take the legacy grading path once, at delivery.
-        long due=NextPost(Now);var envelope=new JobMailRecord{Id=id,Owner=sender,Sender=sender,Recipient=recipient,Reservation=reservation,State=JobMailState.Queued,Gift=gift,ReplyText=16+grade.Rank,SentAt=Now,DueAt=due,Body=null};ledger.StoreBody(ref envelope,packed);ledger.Mail[slot]=envelope;
+        long due=NextPost(Now);var envelope=new JobMailRecord{Id=id,Owner=sender,Sender=sender,Recipient=recipient,Reservation=reservation,State=JobMailState.Queued,Gift=gift,ReplyText=16+grade.Rank,SentAt=Now,DueAt=due,Body=null};ledger.StoreBody(ref envelope,packed);ledger.Mail.Set(slot,envelope);
         if(reward>=0)ledger.Rewards[reward]=new VillagerJobReward{Id=reservation,Job=id,Owner=sender,Giver=recipient,State=JobRewardState.Reserved};
         state.Pockets[paperPocket]=0;if(giftPocket>=0)state.Pockets[giftPocket]=0;
         return CommitMail(sequence,fingerprint,new JobOutcome(JobResult.Ok,id));
@@ -61,7 +61,7 @@ public sealed partial class VillagerJobService
                 if(reservation>=0){var r=ledger.Rewards[reservation];r.State=JobRewardState.Owed;r.IsReply=true;r.AutomaticReply=true;r.Item=message.Gift;r.ReplyText=255;r.ReplyAt=eventAt;r.ResolvedAt=eventAt;ledger.Rewards[reservation]=r;}
                 delivered=true;
             }
-            if(delivered){ledger.Mail[next]=default;ledger.EventSequences[0]++;ledger.Revision++;}ledger.Watermark=eventAt;
+            if(delivered){ledger.Mail.Set(next,default);ledger.EventSequences[0]++;ledger.Revision++;}ledger.Watermark=eventAt;
         }
         Now=now;
         for(int i=0;i<ledger.Rewards.Length;i++){var r=ledger.Rewards[i];if(r.State==JobRewardState.Owed&&r.IsReply&&r.AutomaticReply&&r.ReplyAt<=now){int owner=ledger.FindPlayer(r.Owner);if(owner>=0)InsertReply(i,owner);}}
@@ -102,7 +102,7 @@ public sealed partial class VillagerJobService
         int count=profile==state.ActiveProfile?state.MailCount:state.ProfileAt(profile).MailCount;
         if(count>=OfflineJobLedger.MailboxCapacity)return false;
         message.State=JobMailState.Inbox;message.Owner=ledger.Player(profile);message.DueAt=Now;
-        ledger.Mail[profile*OfflineJobLedger.MailboxCapacity+count]=message;
+        ledger.Mail.Set(profile*OfflineJobLedger.MailboxCapacity+count,message);
         if(profile==state.ActiveProfile){state.Mail[state.MailCount++]=JobContent.Letter;}else state.ProfileAt(profile).Mail[state.ProfileAt(profile).MailCount++]=JobContent.Letter;
         return true;
     }
@@ -120,14 +120,14 @@ public sealed partial class VillagerJobService
     {var reward=ledger.Rewards[rewardSlot];if(reward.AutomaticReply&&Now<reward.ReplyAt)return new JobOutcome(JobResult.NotReady,reward.Job);return InsertReply(rewardSlot,state.ActiveProfile);}
     partial void ShiftScheduledMail(long delta)
     {
-        for(int i=0;i<ledger.Mail.Length;i++)if(ledger.Mail[i].State==JobMailState.Queued){ledger.Mail[i].SentAt+=delta;ledger.Mail[i].DueAt+=delta;}
+        for(int i=0;i<ledger.Mail.Length;i++){var message=ledger.Mail[i];if(message.State==JobMailState.Queued){message.SentAt+=delta;message.DueAt+=delta;ledger.Mail.Set(i,message);}}
         for(int i=0;i<ledger.Rewards.Length;i++)if(ledger.Rewards[i].State==JobRewardState.Owed&&ledger.Rewards[i].IsReply)ledger.Rewards[i].ReplyAt+=delta;
     }
     public string ReadLetter(int slot)
     {
         if((uint)slot>=state.MailCount)return "";var message=ledger.Letter(state.ActiveProfile,slot);
         if(message.State!=JobMailState.Inbox)return "Thank you for being a part of our town!";
-        if(!message.Read){ledger.Mail[state.ActiveProfile*OfflineJobLedger.MailboxCapacity+slot].Read=true;ledger.Revision++;}
+        if(!message.Read){message.Read=true;ledger.Mail.Set(state.ActiveProfile*OfflineJobLedger.MailboxCapacity+slot,message);ledger.Revision++;}
         if(message.Reply)return ReplyBody(message.ReplyText);
         string body=JobTextBody.Unpack(message.Body!,message.BodyOffset,message.BodyWords);return body;
     }
@@ -145,7 +145,7 @@ public sealed partial class VillagerJobService
         if(MailReceipt(sequence,fingerprint,out var prior))return prior;
         if(letter.State!=JobMailState.Inbox||letter.Owner!=ledger.Player(state.ActiveProfile)||letter.Gift==0)return CommitMail(sequence,fingerprint,new JobOutcome(JobResult.WrongItem));
         if(!state.Receive(letter.Gift))return CommitMail(sequence,fingerprint,new JobOutcome(JobResult.FullPockets));
-        int gift=letter.Gift;ledger.Mail[state.ActiveProfile*OfflineJobLedger.MailboxCapacity+slot].Gift=0;
+        int gift=letter.Gift;letter.Gift=0;ledger.Mail.Set(state.ActiveProfile*OfflineJobLedger.MailboxCapacity+slot,letter);
         return CommitMail(sequence,fingerprint,new JobOutcome(JobResult.Ok,letter.Id,item:gift));
     }
     public JobOutcome DiscardLetter(int slot,bool discardPresent,ulong sequence)
@@ -160,6 +160,6 @@ public sealed partial class VillagerJobService
     {
         if((uint)slot>=state.MailCount)return;int last=--state.MailCount,first=state.ActiveProfile*OfflineJobLedger.MailboxCapacity;
         state.Mail[slot]=state.Mail[last];state.Mail[last]=0;
-        if(ledger.Mail.Length!=0){ledger.Mail[first+slot]=ledger.Mail[first+last];ledger.Mail[first+last]=default;}
+        if(ledger.Mail.Length!=0){ledger.Mail.Set(first+slot,ledger.Mail[first+last]);ledger.Mail.Set(first+last,default);}
     }
 }

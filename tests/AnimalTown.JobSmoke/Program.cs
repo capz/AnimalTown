@@ -12,12 +12,12 @@ internal sealed class Draws : IJobRandom
 internal static class Program
 {
     private static void Require(bool value,string message){if(!value)throw new InvalidOperationException(message);}
-    private static int Main(){JobMemory.ReclaimTemporaryText=ReclaimText;CoreBudget();NativeJobBlocks.Report(0);Console.WriteLine("Native normal jobs");NormalJobs();NativeJobBlocks.Report(1);Console.WriteLine("Native travel");TravelJobs();NativeJobBlocks.Report(2);Console.WriteLine("Native capacity");Capacity();NativeJobBlocks.Report(3);Console.WriteLine("Native full-card travel");FullCardTravel();NativeJobBlocks.Report(4);MaximumEconomy();NativeJobBlocks.Report(5);return 0;}
+    private static int Main(){JobMemory.ReclaimTemporaryText=ReclaimText;CoreBudget();NativeJobBlocks.Report(0);Console.WriteLine("Native normal jobs");NormalJobs();NativeJobBlocks.Report(1);Console.WriteLine("Native travel");TravelJobs();NativeJobBlocks.Report(2);Console.WriteLine("Native capacity");Capacity();NativeJobBlocks.Report(3);Console.WriteLine("Native full-card travel");FullCardTravel();NativeJobBlocks.Report(4);MaximumEconomy();NativeJobBlocks.Report(5);MaximumEconomyTravel();NativeJobBlocks.Report(6);return 0;}
     private static void CoreBudget()
     {
         int before=NativeJobBlocks.Report(10);var ledger=new OfflineJobLedger();ledger.Initialize(98765);for(int p=0;p<OfflineJobLedger.OwnerCount;p++)ledger.EnsurePlayer(p);
         int after=NativeJobBlocks.Report(11);Require(ledger.Initialized&&ledger.Player(4).IsValid&&after-before<72*1024,"bounded native resident core, excluding text and travel snapshots");Console.WriteLine("Native core bytes: "+(after-before));
-        ledger.EnsureMail();int envelopes=NativeJobBlocks.Report(12);Require(ledger.Mail.Length==576&&envelopes-after<96*1024,"bounded lazy mail envelopes, excluding message bodies");Console.WriteLine("Native mail envelope bytes: "+(envelopes-after));
+        ledger.EnsureMail();ledger.Mail.ReserveAll();int envelopes=NativeJobBlocks.Report(12);Require(ledger.Mail.Length==576&&envelopes-after<96*1024,"bounded lazy mail envelopes, excluding message bodies");Console.WriteLine("Native mail envelope bytes: "+(envelopes-after));
     }
     private static void ReclaimText()=>NativeJobBlocks.Collect();
     private static void NormalJobs()
@@ -27,6 +27,9 @@ internal static class Program
         Require(JobSelection.RollMoney(new Draws(new[]{2000}),1000,600)==8360,"64-bit money arithmetic");
         Require(JobLetterGrader.TryGrade("Cafe\u0301!",false,out var grade)&&grade.NormalizedBody=="Caf\u00e9!"&&grade.Rank==3,"native Unicode normalization and grading");
         Require(JobLetterGrader.TryNormalize("\u1100\u1161\u11a8",out string hangul,out int scalars)&&hangul=="\uac01"&&scalars==1,"native algorithmic Hangul normalization");
+        var distinct=new char[2000];for(int i=0;i<1000;i++){int pair=i*997;distinct[i*2]=(char)(0xd800+(pair>>10));distinct[i*2+1]=(char)(0xdc00+(pair&1023));}
+        string distinctBody=new string(distinct);var scalarBits=JobTextBody.Pack(distinctBody,1000);JobTextBody.Validate(scalarBits);
+        Require(scalarBits.Length==658&&JobTextBody.Unpack(scalarBits)==distinctBody,"native 21-bit scalar shifts and word boundaries");
         var s=new GameState(713);
         var service=new VillagerJobService(s,new Draws(new[]{1,0,3,0,0}),new Draws(new[]{0,1,0,0}));
         long now=JobCalendar.At(2026,6,10,12);service.Enable(0xf0123456789abcdeUL,now);
@@ -60,11 +63,12 @@ internal static class Program
         public void Read(int block,byte[] bytes){if(NativeJobBlocks.Io(card,1,block,bytes)<0)throw new InvalidOperationException("Native card read");}
         public void Write(int block,byte[] bytes){if(NativeJobBlocks.Io(card,2,block,bytes)<0)throw new InvalidOperationException("Native card write");}
     }
-    private sealed class Card : ISaveStorage,ISaveSnapshotStorage
+    private sealed class Card : ISaveStorage,ISaveSnapshotStorage,ISaveVerifiedPrefixStorage
     {
         private readonly TownCardRecords records;
         internal Card(int card,bool reset=false){records=new TownCardRecords(new CardBlocks(card,reset),true);}
         public byte[] Read(string name)=>records.Read(name);
+        public byte[] ReadVerifiedPrefix(string name,int count,int sequence,int length,uint checksum)=>records.ReadVerifiedPrefix(name,count,sequence,length,checksum);
         public void Write(string name,byte[] bytes)=>records.Write(name,bytes);
         public bool Matches(string name,byte[]? expected,int sequence,int length,uint checksum,bool ignoreSequence)=>records.Matches(name,expected,sequence,length,checksum,ignoreSequence);
     }
@@ -84,12 +88,12 @@ internal static class Program
         }
         Console.WriteLine("Native mailbox populated");var bytes=SaveCodec.Encode(s);Console.WriteLine("Native mailbox encoded");var copy=SaveCodec.Decode(bytes);Console.WriteLine("Native mailbox decoded");copy.ResidentJobs.Enable(copy.Town.Jobs.TownId,now);Require(copy.MailCount==128&&copy.ResidentJobs.ReadLetter(127)==body,"native maximum Unicode mailbox roundtrip");
     }
-    private static void BuildFullCard(int card)
+    private static void BuildFullCard(int card,bool maximum=false)
     {
         var state=new GameState(730+card){Tutorial=7};for(int p=1;p<4;p++)state.SelectProfile(p);state.SelectProfile(0);state.Tutorial=7;
         long now=JobCalendar.At(2026,6,10,12);state.ResidentJobs.Enable((ulong)(20000+card),now);var chars=new char[2000];for(int i=0;i<1000;i++){chars[i*2]='\ud83d';chars[i*2+1]=(char)(0xde00+card);}string body=new string(chars);
         for(int p=0;p<4;p++)for(int batch=0;batch<2;batch++){for(int n=0;n<64;n++){state.Receive(Catalog.WritingPaper);Require(state.ResidentJobs.SendLetter(state.Town.Jobs.Player(p),body,state.Find(Catalog.WritingPaper),-1,state.ResidentJobs.NextCommandSequence).Result==JobResult.Ok,"native maximum-card send");}now+=86400;state.ResidentJobs.AdvanceTo(now);}
-        new SaveRepository(new Card(card,true)).Save(state);
+        if(maximum)JobMaximumFixture.Fill(state,body);new SaveRepository(new Card(card,true)).Save(state);
     }
     private static void FullCardTravel()
     {
@@ -99,6 +103,33 @@ internal static class Program
     private static void MaximumEconomy()
     {
         Console.WriteLine("Native simultaneous maximum economy");BuildFullCard(0);var repo=new SaveRepository(new Card(0));var s=repo.Load()!;string body=s.ResidentJobs.ReadLetter(0);JobMaximumFixture.Fill(s,body);repo.Save(s);var copy=repo.Load(s)!;Require(copy.Town.Jobs.Reward(127).State!=JobRewardState.Empty&&copy.Town.Jobs.Job(79).Occupying&&copy.Town.Jobs.Offers[47].Id.IsValid,"native full mail, personal/shared jobs, offers, obligations and outbox coexist");
+    }
+    private static void RejectFullRewardDestination()
+    {
+        var trip=new OfflineTownTravel(new SaveRepository(new Card(0)),new SaveRepository(new Card(1)));
+        bool rejected=false;try{trip.Depart(0,JobCalendar.At(2026,6,18,12));}catch(InvalidOperationException e){rejected=e.Message=="Collect destination rewards before travelling";}
+        Require(rejected,"a maximum town with no reward space must reject travel cleanly before locking either profile");
+    }
+    private static void MakeVisitorRewardSpace()
+    {
+        var repo=new SaveRepository(new Card(1));var state=repo.Load()!;var ledger=state.Town.Jobs;int free=26;
+        for(int i=OfflineJobLedger.InboxCount;i<ledger.Mail.Length&&free>0;i++){
+            var mail=ledger.Mail[i];int reward=ledger.FindReward(mail.Reservation);if(reward<0)continue;
+            ledger.Rewards[reward]=default;mail.Reservation=default;mail.Recipient=ledger.Player(1);ledger.Mail.Set(i,mail);free--;
+        }
+        Require(free==0,"maximum fixture must free exactly the visitor's portable reward requirement");repo.Save(state);
+    }
+    private static void TravelMaximumCards()
+    {
+        var ar=new SaveRepository(new Card(0));var br=new SaveRepository(new Card(1));var live=ar.Load()!;
+        Require(!live.ProfileLocked(0),"capacity refusal retains the unlocked home profile");long now=live.Town.Jobs.Watermark;
+        var trip=new OfflineTownTravel(ar,br,live);var guest=trip.Depart(0,now);
+        Require(guest.Visiting&&guest.Town.Jobs.Job(99).Occupying&&guest.Town.Jobs.Reward(127).State!=JobRewardState.Empty,"all five personal partitions and the reward pool coexist during a maximum-mail trip");
+        br.Save(guest);var home=trip.Return(now+60);Require(!home.Visiting&&home.MailCount==128&&home.Town.Jobs.Job(19).Occupying,"maximum economy returns every personal job and all home mail");
+    }
+    private static void MaximumEconomyTravel()
+    {
+        Console.WriteLine("Native two maximum economies and the full visitor partition");BuildFullCard(0,true);Console.WriteLine("Native maximum home saved");BuildFullCard(1,true);Console.WriteLine("Native maximum destination saved");RejectFullRewardDestination();Console.WriteLine("Native full-reward capacity refusal passed");MakeVisitorRewardSpace();Console.WriteLine("Native maximum destination has visitor reward space");TravelMaximumCards();
     }
 
 }

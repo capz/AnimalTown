@@ -3,7 +3,7 @@ namespace AnimalTown;
 // One exclusive card transaction only. Never reuse across saves or mounts.
 // A write invalidates BEFORE touching storage, including when it throws: its
 // first verification read must always go to the physical card.
-public sealed class SaveReadCache : ISaveStorage,ISaveSnapshotStorage
+public sealed class SaveReadCache : ISaveStorage,ISaveSnapshotStorage,ISaveVerifiedPrefixStorage
 {
     private readonly ISaveStorage storage;
     private readonly string?[] names=new string?[24];
@@ -27,6 +27,14 @@ public sealed class SaveReadCache : ISaveStorage,ISaveSnapshotStorage
     }
     public bool Matches(string name,byte[]? expected,int sequence,int length,uint checksum,bool ignoreSequence)
     {if(storage is ISaveSnapshotStorage verified){PhysicalReads++;return verified.Matches(name,expected,sequence,length,checksum,ignoreSequence);}var actual=Read(name);if(actual.Length!=length)return false;if(sequence>=0){int seq=0;for(int i=0;i<4;i++)seq|=actual[16+i]<<(i*8);if(seq!=sequence||SaveCodec.Crc(actual,0,actual.Length-4)!=checksum)return false;}if(expected!=null)for(int i=0;i<actual.Length;i++)if(!(ignoreSequence&&(i>=16&&i<20||i>=actual.Length-4))&&actual[i]!=expected[i])return false;return true;}
+    public byte[] ReadVerifiedPrefix(string name,int count,int sequence,int length,uint checksum)
+    {
+        if(storage is ISaveVerifiedPrefixStorage verified){PhysicalReads++;return verified.ReadVerifiedPrefix(name,count,sequence,length,checksum);}
+        var bytes=Read(name);if(count<0||count>length||bytes.Length!=length||length<32)throw new InvalidOperationException("Invalid save prefix length");
+        int seq=0,crc=0;for(int i=0;i<4;i++){seq|=bytes[16+i]<<(i*8);crc|=bytes[length-4+i]<<(i*8);}
+        if(seq!=sequence||(uint)crc!=checksum||SaveCodec.Crc(bytes,0,length-4)!=checksum)throw new InvalidOperationException("Invalid save prefix reference");
+        var prefix=new byte[count];Array.Copy(bytes,prefix,count);return prefix;
+    }
     public void Write(string name,byte[] value)
     {
         for(int i=0;i<names.Length;i++)if(names[i]==name){bytes-=data[i]!.Length;data[i]=null;names[i]=null;}

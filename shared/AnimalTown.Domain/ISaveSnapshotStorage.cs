@@ -7,3 +7,10 @@ public interface ISaveSnapshotStorage
 {
     bool Matches(string name,byte[]? expected,int sequence,int length,uint checksum,bool ignoreSequence);
 }
+
+// Verify the complete referenced record while retaining only a small prefix.
+// Useful for card/town identity checks before a large transfer checkpoint.
+public interface ISaveVerifiedPrefixStorage
+{
+    byte[] ReadVerifiedPrefix(string name,int count,int sequence,int length,uint checksum);
+}

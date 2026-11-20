@@ -55,6 +55,15 @@ public sealed class SaveRepository
         return SplitSaveCodec.Decode(parts,snapshot,textMemo,m.Sequences[2],hasClock,clock);
     }
     public GameState? Load()=>Load(null);
+    private ulong ReferencedTownIdentity(IncrementalSaveCodec.Manifest manifest)
+    {
+        if(storage is not ISaveVerifiedPrefixStorage verified)return SplitSaveCodec.EconomicTownIdentity(ReadReference(manifest,2));
+        for(int copy=0;copy<2;copy++)try{
+            var prefix=verified.ReadVerifiedPrefix(SplitSaveCodec.FileName(2,manifest.Banks[2]^copy),SplitSaveCodec.EconomicIdentityPrefixBytes,manifest.Sequences[2],manifest.Lengths[2],manifest.Checksums[2]);
+            return SplitSaveCodec.EconomicTownIdentityPrefix(prefix,manifest.Sequences[2],manifest.Seed,manifest.Lengths[2]);
+        }catch(Exception){}
+        throw new InvalidOperationException("No valid copy of the referenced town identity");
+    }
     public void VerifyRevision(GameState expected)
     {
         var current=NewestManifest();
@@ -63,7 +72,7 @@ public sealed class SaveRepository
             // CRC/reference validation still covers the complete economic
             // record. Read only its fixed header/nonce; decoding every mailbox
             // and another private town is unnecessary for this identity check.
-            if(SplitSaveCodec.EconomicTownIdentity(ReadReference(current.References,2))!=expected.Town.Jobs.TownId)throw new InvalidOperationException("Travel town identity changed");
+            if(ReferencedTownIdentity(current.References)!=expected.Town.Jobs.TownId)throw new InvalidOperationException("Travel town identity changed");
             return;
         }
         var saved=Load(expected)??throw new InvalidOperationException("Travel card was removed or changed");

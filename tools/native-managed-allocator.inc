@@ -20,11 +20,23 @@ static void rebuild_free_list(DndManagedHeap *heap) {
 static DndObject *prepare_block(DndManagedHeap *heap,DndHeapBlock *b,const DndType *type,size_t bytes) {
     size_t original=b->size,minimum_tail=block_header_size()+align8(sizeof(DndObject)+8);
     if(original>=bytes+minimum_tail){
+        if(bytes>=262144u){
+            // Keep large transient arrays at the end of their hole. Small
+            // retained objects then occupy its prefix, so collecting the large
+            // array rejoins the remaining prefix instead of stranding a save
+            // buffer behind a tiny live object. Existing objects never move.
+            DndHeapBlock *allocated=(DndHeapBlock*)((uint8_t*)b+original-bytes);
+            memset(allocated,0,block_header_size());allocated->size=(uint32_t)bytes;allocated->next=b->next;
+            b->size=(uint32_t)(original-bytes-block_header_size());b->next=allocated;
+            if(heap->allocation_tail==b)heap->allocation_tail=allocated;
+            free_link(b,heap->free_list);heap->free_list=b;b=allocated;
+        }else{
         DndHeapBlock *tail=(DndHeapBlock*)((uint8_t*)b+block_header_size()+bytes);
         memset(tail,0,block_header_size());tail->size=(uint32_t)(original-bytes-block_header_size());tail->free=1;
         tail->next=b->next;b->next=tail;b->size=(uint32_t)bytes;
         if(heap->allocation_tail==b)heap->allocation_tail=tail;
         free_link(tail,heap->free_list);heap->free_list=tail;
+        }
     }
     b->free=b->marked=0;DndObject *object=block_object(b);memset(object,0,b->size);object->type=type;
     if(heap->used>town_frame_counters.heap_peak)town_frame_counters.heap_peak=(uint32_t)heap->used;
@@ -40,6 +52,10 @@ static DndObject *allocate_from_free(DndManagedHeap *heap,const DndType *type,si
         best=b;best_previous=previous;if(b->size==bytes)break;
     }
     if(!best)return NULL;
+    // Do not spend a save-sized hole on a small retained object when unused
+    // tail space can hold it. Otherwise a few envelope/checkpoint words can
+    // leave the next large record just larger than every remaining hole.
+    if(bytes<262144u&&best->size>=262144u&&block_header_size()+bytes<=heap->capacity-heap->used)return NULL;
     DndHeapBlock *next=free_next(best);if(best_previous)free_link(best_previous,next);else heap->free_list=next;
     return prepare_block(heap,best,type,bytes);
 }

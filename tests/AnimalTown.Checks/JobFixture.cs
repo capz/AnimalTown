@@ -10,6 +10,24 @@ internal static class JobFixture
     {internal readonly Dictionary<string,byte[]> Files=new();public byte[] Read(string name)=>Files.TryGetValue(name,out var b)?(byte[])b.Clone():throw new IOException();public void Write(string name,byte[] bytes)=>Files[name]=(byte[])bytes.Clone();}
     internal static void Write(string output,string mode)
     {
+        if(mode is "maximum-economy" or "maximum-economy-destination"){
+            bool otherTown=mode.EndsWith("-destination");Write(output,otherTown?"destination":"base-travel");
+            var fullDisk=ReadFixture(output);var fullRepository=new SaveRepository(fullDisk);var fullState=fullRepository.Load()!;var fullLedger=fullState.Town.Jobs;long fullNow=fullLedger.Watermark;
+            for(int p=1;p<4;p++){fullState.SelectProfile(p);fullState.Tutorial=7;}fullState.SelectProfile(0);fullState.EnsureJobIdentities(fullLedger.TownId);fullLedger.EnsureMail();
+            string fullMailBody=string.Concat(Enumerable.Repeat("\U0001f642",1000));
+            for(int p=0;p<4;p++)for(int n=0;n<128;n++){
+                var message=new JobMailRecord{Id=fullLedger.Allocate(),Owner=fullLedger.Player(p),Sender=fullLedger.Npc(0),Recipient=fullLedger.Player(p),State=JobMailState.Inbox,SentAt=fullNow-86400,DueAt=fullNow};
+                fullLedger.StoreBody(ref message,JobTextBody.Pack(fullMailBody,1000));fullLedger.Mail.Set(p*128+n,message);fullState.Profiles[p].Mail[n]=JobContent.Letter;fullState.Profiles[p].MailCount=128;
+            }
+            fullState.MailCount=128;Array.Fill(fullState.Mail,JobContent.Letter);JobMaximumFixture.Fill(fullState,fullMailBody);
+            if(otherTown){int free=26;for(int i=OfflineJobLedger.InboxCount;i<fullLedger.Mail.Length&&free>0;i++){var message=fullLedger.Mail[i];int reward=fullLedger.FindReward(message.Reservation);if(reward<0)continue;fullLedger.Rewards[reward]=default;message.Reservation=default;message.Recipient=fullLedger.Player(1);fullLedger.Mail.Set(i,message);free--;}if(free!=0)throw new Exception("Maximum destination needs visitor reward space");}
+            for(int z=9;z<24;z++)for(int x=28;x<43;x++){fullState.Town.Tiles[z*Town.Width+x]=(byte)Terrain.Grass;fullState.Town.Elevation[z*Town.Width+x]=0;}
+            for(int i=fullState.Town.GroundCount-1;i>=0;i--){var ground=fullState.Town.Ground[i];if(ground.X>=28&&ground.X<43&&ground.Z>=9&&ground.Z<24)fullState.Town.RemoveGround(i);}
+            fullState.Space=0;fullState.X=36.5f;fullState.Z=14.5f;fullState.Shirt=Catalog.StripedShirt;
+            for(int n=0;n<6;n++)fullLedger.SetOutfit(n,Catalog.BerryShirt);
+            var neighbour=fullState.Town.Residents[0];neighbour.Space=0;neighbour.PosX=36.5f;neighbour.PosZ=16;neighbour.X=36;neighbour.Z=16;neighbour.JourneyPhase=0;neighbour.JourneyBuilding=-1;neighbour.JourneyNextX=neighbour.JourneyNextZ=-1;neighbour.Dwell=36000;
+            fullRepository.Save(fullState);foreach(var file in fullDisk.Files)File.WriteAllBytes(Path.Combine(output,file.Key),file.Value);return;
+        }
         if(mode is "retrieval-multi" or "letter-full" or "owed"){
             Write(output,mode=="retrieval-multi"?"retrieval":mode=="letter-full"?"letter":"delivery");
             var retryDisk=ReadFixture(output);var retryRepository=new SaveRepository(retryDisk);var state=retryRepository.Load()!;var ledger=state.Town.Jobs;
@@ -19,7 +37,7 @@ internal static class JobFixture
                 ledger.EnsureMail();
                 for(int i=0;i<128;i++){
                     var letter=new JobMailRecord{Id=ledger.Allocate(),Owner=ledger.Player(0),Sender=ledger.Npc(1),Recipient=ledger.Player(0),State=JobMailState.Inbox,SentAt=ledger.Watermark-86400,DueAt=ledger.Watermark};
-                    ledger.StoreBody(ref letter,JobTextBody.Pack("An earlier letter.",18));ledger.Mail[i]=letter;state.Mail[i]=JobContent.Letter;
+                    ledger.StoreBody(ref letter,JobTextBody.Pack("An earlier letter.",18));ledger.Mail.Set(i,letter);state.Mail[i]=JobContent.Letter;
                 }
                 state.MailCount=128;
             }else{
@@ -76,7 +94,7 @@ internal static class JobFixture
             int profiles=mode=="maximum-mail"?4:1,count=mode=="maximum-mail"?128:1;
             for(int p=1;p<profiles;p++){s.SelectProfile(p);s.Tutorial=7;}s.SelectProfile(0);s.EnsureJobIdentities(l.TownId);
             for(int p=0;p<profiles;p++){
-                for(int i=0;i<count;i++){l.EnsureMail();var m=new JobMailRecord{Id=l.Allocate(),Owner=l.Player(p),Sender=l.Npc(0),Recipient=l.Player(p),State=JobMailState.Inbox,Gift=i==0?Catalog.LeafShirt:0,SentAt=now-86400,DueAt=now};l.StoreBody(ref m,JobTextBody.Pack(body,mode=="mail"?body.Length:1000));l.Mail[p*128+i]=m;s.Profiles[p].Mail[i]=JobContent.Letter;}
+                for(int i=0;i<count;i++){l.EnsureMail();var m=new JobMailRecord{Id=l.Allocate(),Owner=l.Player(p),Sender=l.Npc(0),Recipient=l.Player(p),State=JobMailState.Inbox,Gift=i==0?Catalog.LeafShirt:0,SentAt=now-86400,DueAt=now};l.StoreBody(ref m,JobTextBody.Pack(body,mode=="mail"?body.Length:1000));l.Mail.Set(p*128+i,m);s.Profiles[p].Mail[i]=JobContent.Letter;}
                 s.Profiles[p].MailCount=count;
             }
             s.MailCount=count;for(int i=0;i<count;i++)s.Mail[i]=JobContent.Letter;
@@ -112,20 +130,24 @@ internal static class JobFixture
         JobTemplate? expected=mode switch{"delivery" or "owed"=>JobTemplate.DeliveryClothing,"property"=>JobTemplate.DeliveryProperty,"retrieval" or "retrieval-multi"=>JobTemplate.RetrievalBorrowed,"foreign"=>JobTemplate.DeliveryForeign,"moved"=>JobTemplate.DeliveryMoved,"fruit"=>JobTemplate.FavorFruit,"fish"=>JobTemplate.FavorFish,"insect"=>JobTemplate.FavorInsect,"flowers"=>JobTemplate.FavorFlowers,"ball"=>JobTemplate.FavorBall,"snowman" or "destroy-snowman"=>JobTemplate.FavorSnowman,"letter" or "letter-full"=>JobTemplate.FavorLetter,_=>null};
         bool completed=Enumerable.Range(0,OfflineJobLedger.TerminalCapacity).Any(i=>l.Terminal(i).Reason==JobEndReason.Success&&(!expected.HasValue||l.Terminal(i).Template==expected.Value))||jobs.Any(j=>j.Status==JobStatus.CompletedRetained&&(!expected.HasValue||j.Template==expected.Value));
         GameState? other=null;
-        if(mode=="foreign"||mode=="moved"||mode=="moving"||mode=="recovery"){
+        if(mode=="foreign"||mode=="moved"||mode=="moving"||mode=="recovery"||mode=="maximum-economy"){
             other=new SaveRepository(ReadFixture(Path.Combine(directory,"..","records-b"))).Load()??throw new Exception("Controller run must export both actual town cards");
             if(expected.HasValue)completed|=Enumerable.Range(0,OfflineJobLedger.TerminalCapacity).Any(i=>other.Town.Jobs.Terminal(i).Owner==l.Player(0)&&other.Town.Jobs.Terminal(i).Template==expected.Value&&other.Town.Jobs.Terminal(i).Reason==JobEndReason.Success);
             if(verify&&(s.Visiting||other.Visiting||s.ProfileLocked(0)||l.Trip.Pending||other.Town.Jobs.Trip.Pending))throw new Exception("Both town cards must finish without an active or duplicated traveller");
         }
         if(verify&&expected.HasValue&&!completed)throw new Exception("Controller run has not completed its expected errand: "+mode);
-        if(verify&&mode=="maximum-mail"&&(s.Sequence<2||Enumerable.Range(0,4).Any(p=>s.Profiles[p].MailCount!=128)||Enumerable.Range(0,512).Any(i=>l.Mail[i].State!=JobMailState.Inbox||JobTextBody.Unpack(l.Mail[i].Body!,l.Mail[i].BodyOffset,l.Mail[i].BodyWords)!=string.Concat(Enumerable.Repeat("\U0001f642",1000)))))throw new Exception("Maximum Unicode mail did not survive the actual card checkpoint");
+        if(verify&&mode=="maximum-economy"){
+            var guest=new SaveRepository(ReadFixture(Path.Combine(directory,"..","records-guest"))).Load()??throw new Exception("Maximum transfer needs its actual committed visitor checkpoint");
+            if(!guest.Visiting||!guest.Town.Jobs.Job(99).Occupying||s.Town.Jobs.Trip.Phase!=OfflineTripPhase.Finished||!l.Job(19).Occupying||other==null||other.Town.Jobs.GuestProfile!=null)throw new Exception("The full visitor partition did not travel and return safely");
+        }
+        if(verify&&(mode=="maximum-mail"||mode=="maximum-economy")&&(s.Sequence<2||Enumerable.Range(0,4).Any(p=>s.Profiles[p].MailCount!=128)||Enumerable.Range(0,512).Any(i=>l.Mail[i].State!=JobMailState.Inbox||JobTextBody.Unpack(l.Mail[i].Body!,l.Mail[i].BodyOffset,l.Mail[i].BodyWords)!=string.Concat(Enumerable.Repeat("\U0001f642",1000)))))throw new Exception("Maximum Unicode mail did not survive the actual card checkpoint");
         if(verify&&mode=="retrieval-multi"){
             var mid=new SaveRepository(ReadFixture(Path.Combine(directory,"..","records-mid"))).Load()??throw new Exception("No saved mid-chain checkpoint");
             if(!Enumerable.Range(0,OfflineJobLedger.JobCapacity).Any(i=>mid.Town.Jobs.Job(i).Template==JobTemplate.RetrievalBorrowed&&mid.Town.Jobs.Job(i).Borrowers>1))throw new Exception("No actual borrower referral was saved and reloaded");
         }
         if(verify&&mode=="destroy-snowman"&&l.World.Any(o=>o.Kind==JobWorldKind.Snowman))throw new Exception("Shovel destruction did not survive the actual card checkpoint");
         if(verify&&mode=="owed"&&(s.Wallet!=99196||l.Rewards.Any(r=>r.State==JobRewardState.Owed)||Enumerable.Range(0,s.Capacity).Any(s.IsJobItem)))throw new Exception("Reloaded earned payment was not collected exactly once");
-        if(verify&&mode=="letter-full"&&(s.MailCount!=128||!l.Mail.Any(m=>m.State==JobMailState.Inbox&&m.Sender==l.Npc(0)&&m.Read&&m.Gift==0)))throw new Exception("The full-mailbox reply was not retried, read and collected");
+        if(verify&&mode=="letter-full"&&(s.MailCount!=128||!Enumerable.Range(0,l.Mail.Length).Any(i=>l.Mail[i].State==JobMailState.Inbox&&l.Mail[i].Sender==l.Npc(0)&&l.Mail[i].Read&&l.Mail[i].Gift==0)))throw new Exception("The full-mailbox reply was not retried, read and collected");
         if(verify&&mode=="room"&&(l.HomeFloor(0)!=Catalog.OakFloor||l.HomeWall(0)!=Catalog.LeafWallpaper))throw new Exception("Room coverings were not applied and saved");
         if(verify&&mode=="recovery"&&(s.Visiting||s.ProfileLocked(0)||l.Trip.Pending))throw new Exception("Recovered traveller did not return home safely");
         if(verify&&mode=="moving"&&(other==null||l.NpcMove.Pending||other.Town.Jobs.NpcMove.Pending||l.Npc(1).Town!=other.Town.Jobs.TownId||other.Town.Jobs.Npc(0).Town!=l.TownId||l.Species(1)!=0||other.Town.Jobs.Species(0)!=1))throw new Exception("The confirmed NPC pair did not exchange identities and species on both cards");

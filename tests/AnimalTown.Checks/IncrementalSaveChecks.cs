@@ -153,7 +153,7 @@ internal static class IncrementalSaveChecks
             fault.CutAt=0;new SaveRepository(fault).Save(candidate);
             Same(desired,new SaveRepository(fault).Load()!,check,"retrying an interrupted job checkpoint preserves the exact RNG and economic revision");
         }
-        Console.WriteLine("Job clock save: 164-byte extension; 1,312 physical bytes/checkpoint; zero terrain rewrites; all 18 write interruptions recovered atomically");
+        Console.WriteLine("Job clock save: 164-byte extension; 1,312 encoded bytes/checkpoint; zero terrain rewrites; all 18 write interruptions recovered atomically");
     }
     private static int ReferenceBank(Disk d,int sequence,int part)
     {var b=d.Files["AT-Commit0"];int at=28+part*20+4;return b[at]|b[at+1]<<8|b[at+2]<<16|b[at+3]<<24;}
@@ -179,6 +179,6 @@ internal static class IncrementalSaveChecks
             Same(recovered,published?state:SaveCodec.Decode(before),check,"clock and mail recover as one complete old or new snapshot");
             fault.CutAt=0;new SaveRepository(fault).Save(candidate);check(new SaveRepository(fault).Load()!.Town.Jobs.Watermark==now+1,"dated-second checkpoint retry restores the exact watermark");
         }
-        Console.WriteLine("Offline job clock: 1,336 bytes/checkpoint with 128 full Unicode letters; zero economic/mail rewrites; every publication cut and retry passed.");
+        Console.WriteLine("Offline job clock: 1,336 encoded bytes in four logical records/checkpoint with 128 full Unicode letters; zero economic/mail rewrites; every publication cut and retry passed.");
     }
 }

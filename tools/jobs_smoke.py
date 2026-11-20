@@ -38,7 +38,7 @@ def run(context):
     def shot(name):
         name='jobs-'+mode+'-'+name+'.png';c.screenshot(name);shots.append(name)
     def presentations(count):
-        clock.frames();target=len(clock.presentations)+count;deadline=time.monotonic()+90
+        clock.frames();target=len(clock.presentations)+count;deadline=time.monotonic()+(900 if mode.startswith('maximum-') else 90)
         while True:
             clock.frames()
             if len(clock.presentations)>=target:return
@@ -132,7 +132,10 @@ def run(context):
                 if view()['screen']=='world':break
                 press('B')
             else:raise AssertionError('Could not close the interaction before saving')
-        press('START');press('A');c.wait_saved_after(previous);shot(label);press('B');records()
+        offset=len(c.runtime_log_text());press('START');os.write(c.controller,b'PRESS A\n')
+        try:c.wait_saved_after(previous,timeout_seconds=900 if mode.startswith('maximum-') else 240)
+        finally:os.write(c.controller,b'RELEASE A\n')
+        wait_log('ANIMALTOWN SAVE TOTAL:',offset,900);presentations(4);shot(label);press('B');records()
     def travel():
         go(36.5,11.5,.1);press('A');presentations(4);shot('travel');press('A');press('D_DOWN');shot('travel-confirm')
         offset=len(c.runtime_log_text());press('A');wait_log('ANIMALTOWN READY ',offset,360);presentations(4);shot('arrived')
@@ -166,9 +169,10 @@ def run(context):
         if len(rows)!=240 or len(cpu)!=240:raise AssertionError('Incomplete frame/CPU measurement')
         memory=re.search(r'PATH PROFILE MEMORY native (\d+) texture (\d+) path (\d+) aram (\d+) cache_peak (\d+) cache_reserved (\d+) dma_reads (\d+) bindings (\d+)',text)
         managed=re.findall(r'ANIMALTOWN MEMORY managed_used (\d+) managed_peak (\d+) managed_capacity (\d+) collections (\d+)',c.runtime_log_text())
+        system=re.findall(r'ANIMALTOWN SYSTEM MEMORY mem1_used (\d+) mem1_total (\d+) arena_free (\d+) malloc_free (\d+) aram_used (\d+) aram_total (\d+)',c.runtime_log_text())
         pct=lambda values,q:sorted(values)[min(len(values)-1,math.ceil(len(values)*q)-1)]
         times=[r[1] for r in rows[5:]];cpus=[r[1] for r in cpu[5:]]
-        return {'hardware':False,'renderer':'Dolphin OpenGL / llvmpipe','frames':240,'host_fps_including_input':240/elapsed,'guest_fps':1e6*len(times)/sum(times),'frame_ms_p50':pct(times,.5)/1000,'frame_ms_p95':pct(times,.95)/1000,'cpu_ms_mean':sum(cpus)/len(cpus)/1000,'cpu_ms_p95':pct(cpus,.95)/1000,'allocations':sum(r[4] for r in cpu),'collections':sum(r[5] for r in cpu),'memory':dict(zip(('native_bytes','texture_bytes','path_bytes','aram_bytes','cache_peak_bytes','cache_reserved_bytes','dma_reads','bindings'),map(int,memory.groups()))) if memory else None,'managed':dict(zip(('used_extent_bytes','peak_extent_bytes','capacity_bytes','collections'),map(int,managed[-1]))) if managed else None,'raw_frames':rows,'raw_cpu':cpu}
+        return {'hardware':False,'renderer':'Dolphin OpenGL / llvmpipe','frames':240,'host_fps_including_input':240/elapsed,'guest_fps':1e6*len(times)/sum(times),'frame_ms_p50':pct(times,.5)/1000,'frame_ms_p95':pct(times,.95)/1000,'cpu_ms_mean':sum(cpus)/len(cpus)/1000,'cpu_ms_p95':pct(cpus,.95)/1000,'allocations':sum(r[4] for r in cpu),'collections':sum(r[5] for r in cpu),'memory':dict(zip(('native_bytes','texture_bytes','path_bytes','aram_bytes','cache_peak_bytes','cache_reserved_bytes','dma_reads','bindings'),map(int,memory.groups()))) if memory else None,'managed':dict(zip(('used_extent_bytes','peak_extent_bytes','capacity_bytes','collections'),map(int,managed[-1]))) if managed else None,'system_memory':dict(zip(('mem1_used_bytes','mem1_total_bytes','arena_free_bytes','malloc_free_bytes','aram_used_bytes','aram_total_bytes'),map(int,system[-1]))) if system else None,'raw_frames':rows,'raw_cpu':cpu}
     if mode=='template':
         c.wait_title()
         if not (c.root/'MemoryCardA.USA.raw').is_file():raise AssertionError('Dolphin did not format its disposable template')
@@ -178,9 +182,16 @@ def run(context):
     else:c.start_game(False,'jobs-'+mode)
     wait_log('ANIMALTOWN READY ');presentations(2);shot('world')
     report={'scenario':'offline-jobs','mode':mode,'screenshots':shots,'passed':False}
-    if mode in ('baseline','outfits-off','outfits-on','maximum-mail'):
+    if mode=='maximum-economy':
+        report['profile']=profile();shot('profiled');travel();shot('maximum-guest')
+        folder=c.root/'records-guest';folder.mkdir(exist_ok=True)
+        for name,data in c.options_card_files(c.root/'MemoryCardB.USA.raw').items():(folder/name).write_bytes(data)
+        travel();shot('maximum-returned');save()
+    elif mode in ('baseline','outfits-off','outfits-on','maximum-mail'):
         report['profile']=profile();shot('profiled')
-        if mode=='maximum-mail':save()
+        if mode=='maximum-mail':
+            save('first-maximum-checkpoint');press('START');press('D_DOWN');press('A');press('D_DOWN');press('A');c.wait_title();shot('maximum-title')
+            c.start_game(False,'jobs-maximum-reload');wait_log('ANIMALTOWN READY ');shot('maximum-reloaded');report['after_reload_profile']=profile();save('reopened-checkpoint')
         if '--jobs-checkpoints' in sys.argv:
             save('first-checkpoint');move(1,0,.25);save('next-checkpoint')
     elif mode=='checkpoint':
@@ -271,7 +282,7 @@ def run(context):
             press('A');shot('reply-mailbox');press('A');shot('reply');press('X');close();close()
         else:raise ValueError('Unsupported job smoke mode: '+mode)
         save()
-    if mode in ('foreign','moved','moving','recovery'):
+    if mode in ('foreign','moved','moving','recovery','maximum-economy'):
         folder=c.root/'records-b';folder.mkdir(exist_ok=True)
         for name,data in c.options_card_files(c.root/'MemoryCardB.USA.raw').items():(folder/name).write_bytes(data)
     alive();report['controls_completed']=True

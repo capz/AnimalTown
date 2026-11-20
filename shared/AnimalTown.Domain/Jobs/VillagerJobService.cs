@@ -137,8 +137,8 @@ public sealed partial class VillagerJobService
         for(int i=0;i<ledger.Rewards.Length;i++)if(ledger.Rewards[i].Owner==owner)ledger.Rewards[i]=default;
         for(int i=0;i<ledger.Mail.Length;i++){
             var m=ledger.Mail[i];if(m.State==JobMailState.Empty)continue;
-            if(m.Owner==owner){ledger.Mail[i]=default;continue;}
-            if(m.State==JobMailState.Queued&&m.Recipient==owner){m.Recipient=m.Sender;ledger.Mail[i]=m;}
+            if(m.Owner==owner){ledger.Mail.Set(i,default);continue;}
+            if(m.State==JobMailState.Queued&&m.Recipient==owner){m.Recipient=m.Sender;ledger.Mail.Set(i,m);}
         }
         for(int i=0;i<ledger.Offers.Length;i++)if(ledger.Offers[i].Owner==owner)ledger.Offers[i]=default;
         for(int i=0;i<GameState.MaximumPockets;i++)ledger.SetBinding(profile,i,default);

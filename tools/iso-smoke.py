@@ -199,8 +199,8 @@ def wait_onboarding(stage,name=None):
         time.sleep(1)
     raise AssertionError('Onboarding did not reach '+stage+'; inspect '+name)
 
-def wait_saved_after(before,card=None):
-    deadline=time.monotonic()+240
+def wait_saved_after(before,card=None,timeout_seconds=240):
+    deadline=time.monotonic()+timeout_seconds
     sequence=before['sequence'] if before else 0
     while time.monotonic()<deadline:
         check_runtime_failure()
@@ -1667,7 +1667,7 @@ def committed_card_sequence(path, expected_day=None, details=False):
                                 else:names.append(selected)
                             town_version=struct.unpack_from('<I',files[names[0]],4)[0]
                             expected_runtime=300+(job_extension_bytes if town_version>=9 else 0)
-                            has_job_clock=town_version>=9 and len(runtime)==expected_runtime+12
+                            has_job_clock=town_version>=7 and len(runtime)==expected_runtime+12
                             if (len(runtime)!=expected_runtime and not has_job_clock) or (town_version>=9 and struct.unpack_from('<I',runtime,296)[0]!=40):
                                 raise ValueError('Invalid resident runtime extension')
                             if has_job_clock:
@@ -2215,7 +2215,7 @@ if '--season' in sys.argv:
     rtc=int(datetime(2027,month,15,5,59,30,tzinfo=timezone.utc).timestamp()) if '--rtc-rollover' in sys.argv else int(datetime(2027,month,15,12,tzinfo=timezone.utc).timestamp())
     config=user/'Config'/'Dolphin.ini'
     config.write_text(config.read_text().replace('SkipIPL = True\n',f'SkipIPL = True\nEnableCustomRTC = True\nCustomRTCValue = {rtc}\n'))
-if '--jobs' in sys.argv and sys.argv[sys.argv.index('--jobs')+1]=='letter':
+if '--jobs' in sys.argv and sys.argv[sys.argv.index('--jobs')+1] in ('letter','letter-full'):
     import re
     rtc=int(datetime(2027,7,15,7,58,tzinfo=timezone.utc).timestamp());config=user/'Config'/'Dolphin.ini'
     text=re.sub(r'^(EnableCustomRTC|CustomRTCValue) = .*\n','',config.read_text(),flags=re.MULTILINE)

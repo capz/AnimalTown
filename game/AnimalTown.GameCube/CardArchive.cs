@@ -57,6 +57,12 @@ internal sealed class CardArchive
     internal string[] Names()
     {if(Published)return store!.Names();var entries=card.GetEntries();var names=new string[entries.Length];for(int i=0;i<entries.Length;i++)names[i]=entries[i].Name;return names;}
     internal byte[] Read(string name)=>Published?store!.Read(name):card.ReadAllBytes(name);
+    internal byte[] ReadVerifiedPrefix(string name,int count,int sequence,int length,uint checksum)
+    {
+        if(Published)return store!.ReadVerifiedPrefix(name,count,sequence,length,checksum);
+        var bytes=Read(name);if(count<0||count>8192||count>length||length<32||bytes.Length!=length||Number(bytes,16)!=sequence||(uint)Number(bytes,length-4)!=checksum||SaveCodec.Crc(bytes,0,length-4)!=checksum)throw new IOException("Legacy prefix reference differs");
+        var prefix=new byte[count];Array.Copy(bytes,prefix,count);return prefix;
+    }
     internal void Write(string name,byte[] bytes)
     {
         EnsureWritable();

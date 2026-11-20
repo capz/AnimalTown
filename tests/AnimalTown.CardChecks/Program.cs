@@ -30,6 +30,22 @@ using(var draft=NewVillager()){
         Check(record.Value.Title=="AnimalTown","container retains browser identity");
     }
     int writes=card.Writes;repository.Save(loaded);Check(card.Writes==writes,"an unchanged save does not rewrite records to change their presentation");
+    long jobNow=AnimalTown.Jobs.JobCalendar.At(2027,7,15,12);loaded.ResidentJobs.Enable(23495,jobNow);repository.Save(loaded);
+    writes=card.Writes;loaded.ResidentJobs.AdvanceTo(jobNow+1);repository.Save(loaded);
+    Console.WriteLine("Clock card writes: "+repository.LastWrittenRecords+" logical / "+repository.LastWrittenBytes+" encoded bytes / "+(card.Writes-writes)+" sectors");
+    Check(repository.LastWrittenRecords==4&&repository.LastWrittenBytes==1008&&card.Writes-writes==8,"a pristine job clock writes four logical records and eight verified 8 KiB sectors");
+    loaded.ObserveJobAcre(0);repository.Save(loaded);writes=card.Writes;loaded.ResidentJobs.AdvanceTo(jobNow+2);repository.Save(loaded);
+    Check(repository.LastWrittenRecords==4&&repository.LastWrittenBytes==1336&&card.Writes-writes==8,"an active job clock writes four logical records and eight verified 8 KiB sectors, without an economic rewrite");
+    var prefixMeter=new PrefixMeter(adapter);new SaveRepository(prefixMeter).VerifyRevision(loaded);
+    Check(prefixMeter.PrefixReads==1&&prefixMeter.EconomicReads==0,"travel verifies the entire economic checksum while retaining only a 732-byte identity prefix");
+    var badPrefix=card.Copy();var pages=badPrefix.RecordPages["AnimalTown"];var rootBytes=BitConverter.ToInt32(pages[0],8)>BitConverter.ToInt32(pages[1],8)?pages[0]:pages[1];
+    for(int i=0;i<64;i++){
+        int at=32+i*48;string record=System.Text.Encoding.ASCII.GetString(rootBytes,at,32).TrimEnd('\0');if(!record.StartsWith("AT-Shops"))continue;
+        int page=BitConverter.ToInt32(rootBytes,at+32),offset=BitConverter.ToInt32(rootBytes,at+36),length=BitConverter.ToInt32(rootBytes,at+40);int altered=offset+length-8;
+        pages[page+altered/8192][altered%8192]^=1;
+    }
+    bool prefixCorrupt=false;try{new SaveRepository(adapter).VerifyRevision(loaded);}catch(InvalidOperationException){prefixCorrupt=true;}
+    Check(prefixCorrupt,"a prefix read rejects corruption beyond the retained prefix in both referenced economic copies");MemoryCard.Slots[4]=card;MemoryCard.Current=card;
     // The extra town-history pages must fit on subsequent copy-on-write saves,
     // not only the first save into an empty container.
     for(int save=1;save<=12;save++){
@@ -114,6 +130,36 @@ Check(growthFull&&card.Files.Count==1&&new CardArchive(card,banner,icon,4).Read(
 card.Capacity=52;new CardArchive(card,banner,icon,4).Write("options",new byte[]{8});
 Check(card.Files.Count==1&&card.Used==34,"expansion retries after freeing exactly the required workspace");
 CardSelectionChecks.Run(Check);
+// Retire only the older record-store checkpoint, after publishing a second
+// verified copy of the unchanged current directory. No larger backing is needed.
+card=new MemoryCard();var compactRecords=new TownCardRecords(new NativeCardBlocks(4,true,banner,icon,"AnimalTown",6),true);
+var oldBody=Enumerable.Repeat((byte)2,8193).ToArray();var newBody=Enumerable.Repeat((byte)3,8193).ToArray();
+compactRecords.Write("large",oldBody);compactRecords.Write("large",oldBody);var compactBase=card.Copy();int compactWrites=card.Writes;
+MemoryCard.Slots[4]=card;MemoryCard.Current=card;
+compactRecords.Write("large",newBody);int retireWrites=card.Writes-compactWrites;
+Check(retireWrites==4&&compactRecords.Read("large").SequenceEqual(newBody)&&card.Files.Count==1,"obsolete-checkpoint pages are reused only after verified retirement, without growing the backing");
+for(int cut=0;cut<retireWrites;cut++){
+    card=compactBase.Copy();card.FailBlockWrite=cut;bool stopped=false;
+    try{new TownCardRecords(new NativeCardBlocks(4,false,banner,icon),true).Write("large",newBody);}catch(IOException){stopped=true;}
+    Check(stopped,"checkpoint retirement interruption reaches every sector write");card.FailBlockWrite=-1;
+    var reopened=new TownCardRecords(new NativeCardBlocks(4,false,banner,icon),true);var retiredBody=reopened.Read("large");
+    Check(retiredBody.SequenceEqual(oldBody)||retiredBody.SequenceEqual(newBody),"every retirement interruption retains one complete old or new payload");
+    reopened.Write("large",newBody);Check(reopened.Read("large").SequenceEqual(newBody),"retirement resumes idempotently after every interrupted sector");
+}
+card=new MemoryCard();var fragmented=new TownCardRecords(new NativeCardBlocks(4,true,banner,icon,"AnimalTown",10),true);
+fragmented.Write("gap",oldBody);fragmented.Write("a",oldBody);fragmented.Write("b",oldBody);fragmented.Write("b",oldBody);fragmented.Delete("gap");
+var fragmentedBase=card.Copy();MemoryCard.Slots[4]=card;MemoryCard.Current=card;
+var threePages=Enumerable.Repeat((byte)4,16385).ToArray();int relocationBefore=card.Writes;fragmented.Write("c",threePages);int relocationWrites=card.Writes-relocationBefore;
+Check(relocationWrites==9&&fragmented.Read("a").SequenceEqual(oldBody)&&fragmented.Read("b").SequenceEqual(oldBody)&&fragmented.Read("c").SequenceEqual(threePages),"streamed relocation joins fragmented free space without retaining a second large body");
+for(int cut=0;cut<relocationWrites;cut++){
+    card=fragmentedBase.Copy();card.FailBlockWrite=cut;bool stopped=false;
+    try{new TownCardRecords(new NativeCardBlocks(4,false,banner,icon),true).Write("c",threePages);}catch(IOException){stopped=true;}
+    Check(stopped,"streamed relocation interruption reaches every data and root publication sector");card.FailBlockWrite=-1;
+    var reopened=new TownCardRecords(new NativeCardBlocks(4,false,banner,icon),true);
+    Check(reopened.Read("a").SequenceEqual(oldBody)&&reopened.Read("b").SequenceEqual(oldBody),"both complete source records survive every interrupted relocation");
+    bool published=reopened.Names().Contains("c");if(!published)reopened.Write("c",threePages);
+    Check(reopened.Read("c").SequenceEqual(threePages)&&card.Files.Count==1,"relocation retries within its original backing after every interrupted sector");
+}
 // Text mail grows the same browser item beyond the old 256-block ceiling.
 card=new MemoryCard{Capacity=2043};var mailArchive=new CardArchive(card,banner,icon,4);mailArchive.Write("options",new byte[]{7});
 var longMail=new byte[2200000];for(int i=0;i<longMail.Length;i++)longMail[i]=(byte)(i*13);
@@ -187,6 +233,13 @@ card=growthBase;MemoryCard.Slots[4]=card;var streamRecords=new TownCardRecords(n
 Check(streamRecords.Matches("larger",large,-1,large.Length,0,false),"streamed readback accepts the complete saved record");large[100]=1;
 Check(!streamRecords.Matches("larger",large,-1,large.Length,0,false),"streamed readback detects a payload mismatch beyond its header");
 Console.WriteLine(checks+" card adapter checks passed: consolidated save/reload, no-op save, capacity, migration interruption/retry, independent records and deletion; host model, not hardware.");
+sealed class PrefixMeter(ISaveStorage inner) : ISaveStorage,ISaveVerifiedPrefixStorage
+{
+    internal int PrefixReads,EconomicReads;
+    public byte[] Read(string name){if(name.StartsWith("AT-Shops"))EconomicReads++;return inner.Read(name);}
+    public void Write(string name,byte[] bytes)=>inner.Write(name,bytes);
+    public byte[] ReadVerifiedPrefix(string name,int count,int sequence,int length,uint checksum){PrefixReads++;return ((ISaveVerifiedPrefixStorage)inner).ReadVerifiedPrefix(name,count,sequence,length,checksum);}
+}
 sealed class OldFiles(MemoryCard card) : ISaveStorage
 {
     public byte[] Read(string name)=>card.ReadAllBytes(name);

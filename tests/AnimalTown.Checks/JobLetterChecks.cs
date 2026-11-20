@@ -6,6 +6,7 @@ internal static class JobLetterChecks
     private static string Body(int length){var c=new char[length];for(int i=0;i<length;i++)c[i]=(char)('a'+i%26);return new string(c);}
     internal static void Run(Action<bool,string> check)
     {
+        JobTextBodyChecks.Run(check);
         check(JobLetterGrader.UnicodeVersion=="14.0.0"&&JobLetterGrader.UnicodeTableBytes==46344,"Unicode version and retained table bytes are explicit");
         foreach(int length in new[]{16,17,48,49})foreach(bool gift in new[]{false,true}){
             check(JobLetterGrader.TryGrade(Body(length),gift,out var grade)&&grade.Quality&&grade.FilteredLength==length&&grade.Rank==(length<17?3:length<49?4:5)+(gift?6:0)&&grade.Friendship==(gift?6:3),"length, quality and present produce exact reply rank and mail relationship effect");

@@ -23,7 +23,9 @@ int main(void) {
     dnd_gc_set_stress(getenv("ANIMALTOWN_JOB_GC_STRESS")!=NULL);
     intptr_t result=dnd_aot_entry(&heap);
     if(result||dnd_exception_pending()) {
-        fprintf(stderr,"Offline job AOT result=%ld heap=%zu/%zu collections=%zu exception=%s\n",(long)result,heap.used,heap.capacity,heap.collections,dnd_exception_message());return 1;
+        fprintf(stderr,"Offline job AOT result=%ld heap=%zu/%zu collections=%zu exception=%s\n",(long)result,heap.used,heap.capacity,heap.collections,dnd_exception_message());
+        DndException *error=(DndException*)dnd_exception_object();DndString *detail=error?dnd_exception_get_message(error):NULL;
+        if(detail){fputs("Detail: ",stderr);for(uint32_t i=0;i<detail->length;i++)fputc(detail->chars[i]<128?detail->chars[i]:'?',stderr);fputc('\n',stderr);}return 1;
     }
     puts("Production job AOT: RNG, 64-bit money, identity, offers, bindings, save/load, completion and replay passed");return 0;
 }
