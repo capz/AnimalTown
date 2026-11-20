@@ -67,7 +67,8 @@ internal static class WorldSimulationChecks
             check(BuildingSave.Encode(preview.state).SequenceEqual(before),"onboarding preview keeps its uncommitted town frozen");
         }
         var winter=new TownGame(new GameState(931){Space=16,X=2,Z=2}){screen="menu"};
-        for(int i=0;i<4;i++)winter.renderDebug.CycleSeason();
+        winter.renderDebug.AdjustSeason(-1);
+        winter.renderDebug.ApplySeason();
         winter.Step(default);
         var town=winter.state.Town;
         const int snowX=100,snowZ=80;
