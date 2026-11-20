@@ -1,0 +1,27 @@
+{
+  "schema": 1,
+  "scenario": "player-chat",
+  "passed": true,
+  "featureCommit": "181d2b11b08789845bcef5a38fc6c2ec05ae9517",
+  "scenarioCommit": "2704468d5ac9831ca4ca05e17d14c1cc45b5bebf",
+  "version": "0.76.0+181d2b11b087",
+  "isoName": "AnimalTown-0.76.0+181d2b11b087.nkit.iso",
+  "isoSha256": "aa5dcbafd4f4851875ecef6ef5846590f19d6452ff978d430beaeb46da500710",
+  "isoUrl": "https://github.com/capz/AnimalTown/releases/download/v0.76.0%2B181d2b11b087/AnimalTown-0.76.0%2B181d2b11b087.nkit.iso",
+  "renderer": "Dolphin software OpenGL, DSP HLE",
+  "capturedAt": "2026-11-20T18:14:24.433965+00:00",
+  "hardwareValidated": false,
+  "screenshots": {
+    "chat-keyboard.png": "a27fbf1ad27d41405f9cfc4ec00223b8f280aa218ae0fe91b2e88819cf576899",
+    "chat-player-speech.png": "5d86a444abc65000f0e6d3a4e66f19eac431917d47a7ccee8d6077805128cd50",
+    "chat-command-disabled.png": "192fb5fc19ebf3ed7c2dbfc8901b84f263c05f44da2814c0973a3c589657d025",
+    "chat-invalid-command.png": "bfabdf5ef000ec25f8e75066725b69e8bb237f488d40816ae3edd6eccbe9a407",
+    "chat-rowan-attention.png": "160f95a3cff9f8bd4fe84ea597f8261a8a8c05775702808b626981f2a8b074f3",
+    "chat-command-disabled-mid-entry.png": "8c10a20cb7b076d5ffd982b4f7195b63b84a1866ab0f9fae11a8572eab6ecae3",
+    "chat-long-draft.png": "0901e74573b68681e882c1b07ef638ce9d7b209e824fa72b8638a0a19aaec0cd",
+    "chat-long-message.png": "f58da58e90c8009465de251d560a7cdd4e67b88f4868a0c81778d9708c299b6a",
+    "chat-from-settings.png": "06fa2df1b5889a5c38b5ec3029a4537abf96b9d30978dd1ce2de836e0e41fe7c",
+    "chat-cancel-to-settings.png": "0cde5e7436003b3185e92fa5fbbb112a0d786789ae6efa8828c3e294dcdfbc8b"
+  },
+  "note": "Feature logic and shared attention/font code match the ISO source. The current branch also merges newer main season/time-preview changes and corrects only the test harness."
+}

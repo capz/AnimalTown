@@ -1,0 +1,40 @@
+{
+  "scenario": "player-chat",
+  "disc": "chat-preview.nkit.iso",
+  "passed": true,
+  "screenshots": [
+    "chat-keyboard.png",
+    "chat-player-speech.png",
+    "chat-command-disabled.png",
+    "chat-invalid-command.png",
+    "chat-rowan-attention.png",
+    "chat-command-disabled-mid-entry.png",
+    "chat-long-draft.png",
+    "chat-long-message.png",
+    "chat-from-settings.png",
+    "chat-cancel-to-settings.png"
+  ],
+  "events": [
+    [
+      "0",
+      "1"
+    ],
+    [
+      "0",
+      "1"
+    ],
+    [
+      "1",
+      "1"
+    ],
+    [
+      "0",
+      "1"
+    ],
+    [
+      "0",
+      "2"
+    ]
+  ],
+  "town_unchanged": true
+}
