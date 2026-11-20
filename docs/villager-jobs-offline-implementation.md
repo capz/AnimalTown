@@ -68,18 +68,29 @@ column. NPC availability remains in the independent runtime record. A clock
 checkpoint does not rewrite terrain or mail text.
 
 The core uses fixed arrays and three independent persisted RNG streams. Ordinary
-fixed-step work allocates no memory and performs no card I/O. UTF-8 message bodies
-are packed and decoded one at a time; no ICU dependency or decoded-string cache
+fixed-step work allocates no memory and performs no card I/O. Message bodies use
+packed UTF-8 or three-byte scalars, with shared 2 KB blocks for short letters and
+exact arrays for longer bodies. Discarding letters cannot pin a large text arena.
+The native adapter reclaims normalization temporaries before retaining text.
+There is no ICU dependency or decoded-string cache
 for every resident is retained. Unicode 14 normalization/classification tables
 contain 46,344 immutable data bytes, with the Unicode license packaged in Depot.
 
 Encoding/decoding economic data directly in bounded byte buffers avoids a full
 intermediate word-array copy of large mailboxes. Real 128-letter mailboxes for
 all four profiles, with 1,000 supplementary Unicode scalars per letter, are
-exercised by the capacity fixture. Normal towns retain their existing 32-block
+exercised by the capacity fixture. Incremental readback retains the immutable
+economic buffer and checks its referenced sequence without a duplicate copy.
+Large native allocations use 64 KB size classes so a slightly larger save can
+reuse its previous block. The console managed heap reserves 8 MiB; this is 4 MiB
+more than the previous build, needed for maximum mail and two-card validation.
+Native normal and forced-GC tests exercise both full towns and complete travel.
+Normal towns retain their existing 32-block
 backing reservation. Mail grows it when required; a CRC-protected root intent,
 verified alternate copy and epoch publication precede deleting the old backing
 file. Growth needs spare card workspace and preserves the old save on failure.
+All 89 physical block writes in the dynamic-growth fixture have been torn and
+retried, preserving the original records and ending with one backing item.
 
 The game-owned record-store extension preserves the pinned SDK's DNDREC01 wire
 format while extending its bounded backing-file ceiling to 2,048 blocks. Native

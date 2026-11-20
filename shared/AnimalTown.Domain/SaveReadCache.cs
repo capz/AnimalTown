@@ -3,7 +3,7 @@ namespace AnimalTown;
 // One exclusive card transaction only. Never reuse across saves or mounts.
 // A write invalidates BEFORE touching storage, including when it throws: its
 // first verification read must always go to the physical card.
-public sealed class SaveReadCache : ISaveStorage
+public sealed class SaveReadCache : ISaveStorage,ISaveSnapshotStorage
 {
     private readonly ISaveStorage storage;
     private readonly string?[] names=new string?[24];
@@ -25,6 +25,8 @@ public sealed class SaveReadCache : ISaveStorage
         }
         return value;
     }
+    public bool Matches(string name,byte[]? expected,int sequence,int length,uint checksum,bool ignoreSequence)
+    {if(storage is ISaveSnapshotStorage verified){PhysicalReads++;return verified.Matches(name,expected,sequence,length,checksum,ignoreSequence);}var actual=Read(name);if(actual.Length!=length)return false;if(sequence>=0){int seq=0;for(int i=0;i<4;i++)seq|=actual[16+i]<<(i*8);if(seq!=sequence||SaveCodec.Crc(actual,0,actual.Length-4)!=checksum)return false;}if(expected!=null)for(int i=0;i<actual.Length;i++)if(!(ignoreSequence&&(i>=16&&i<20||i>=actual.Length-4))&&actual[i]!=expected[i])return false;return true;}
     public void Write(string name,byte[] value)
     {
         for(int i=0;i<names.Length;i++)if(names[i]==name){bytes-=data[i]!.Length;data[i]=null;names[i]=null;}

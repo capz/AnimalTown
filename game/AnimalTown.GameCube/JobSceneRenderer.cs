@@ -33,7 +33,8 @@ internal sealed class JobSceneRenderer : IDisposable
         // Authored models share a one-metre body apart from the tall static set.
         float bottom=species==0?.28f:species==1?.2f:species==2?.43f:.43f;
         float width=species==0?.205f:species==1?.19f:species==2?.3f:.34f,height=species<2?.3f:.44f;
-        var offset=new Vector3(0,bottom*1.8f,0);pose.LocalPosition=new Vector3(position.X,position.Y+offset.Y,position.Z);pose.LocalRotation=rotation;pose.LocalScale=new Vector3(width*1.8f,height*1.8f,width*1.8f);
+        float up=bottom*1.8f,tx=-2*rotation.Z*up,tz=2*rotation.X*up;
+        pose.LocalPosition=new Vector3(position.X+rotation.W*tx+rotation.Y*tz,position.Y+up+rotation.Z*tx-rotation.X*tz,position.Z+rotation.W*tz-rotation.Y*tx);pose.LocalRotation=rotation;pose.LocalScale=new Vector3(width*1.8f,height*1.8f,width*1.8f);
         material.Color=item==Catalog.WorkShirt?new Color32(96,148,92):item==Catalog.StripedShirt?new Color32(94,143,185):item==Catalog.LeafShirt?new Color32(116,160,88):item==Catalog.LinenShirt?new Color32(212,198,155):item==Catalog.BerryShirt?new Color32(174,91,123):new Color32(112,177,195);renderer.DrawMesh(shirt,material,pose);
     }
 }

@@ -6,9 +6,10 @@ public sealed partial class OfflineJobLedger
 {
     public const int OwnerCount=GameState.ProfileCount+1,Visitor=GameState.ProfileCount;
     public const int MaximumWords=1024*1024;
-    private const int Magic=0x32424f4a,Schema=7;
+    private const int Magic=0x32424f4a,Schema=11;
     public ulong TownId {get;private set;}
     private ulong nextSerial=1;
+    private OfflineJobLedger? readbackMemo;
     public bool Initialized=>TownId!=0;
     public int Revision {get;internal set;}
     private readonly JobIdentity[] players=new JobIdentity[OwnerCount],npcs=new JobIdentity[TownJobState.ResidentCount];
@@ -48,18 +49,18 @@ public sealed partial class OfflineJobLedger
         for(int i=0;i<players.Length;i++)w.Key(players[i]);
         for(int i=0;i<npcs.Length;i++){w.Key(npcs[i]);w.Int(outfits[i]);}
         WriteRecords(w);
-        WriteMail(w);WriteWorld(w);WriteTravel(w);WriteNpcMove(w);WriteOpening(w);
+        WriteMail(w);WriteWorld(w);WriteTravel(w);WriteNpcMove(w);WriteOpening(w);WriteRecovery(w);
     }
     internal void Decode(int[] words)=>Decode(new JobWireReader(words));
-    internal void Decode(byte[] bytes,int offset,int words)=>Decode(new JobWireReader(bytes,offset,words));
+    internal void Decode(byte[] bytes,int offset,int words,OfflineJobLedger? memo=null){readbackMemo=memo;try{Decode(new JobWireReader(bytes,offset,words));}finally{readbackMemo=null;}}
     private void Decode(JobWireReader r)
     {
-        if(r.Int()!=Magic)throw new InvalidOperationException("Unsupported offline job ledger");int version=r.Range(Schema,Schema);
+        if(r.Int()!=Magic)throw new InvalidOperationException("Unsupported offline job ledger");int version=r.Range(7,Schema);
         TownId=r.ULong();nextSerial=r.ULong();Revision=r.Range(0,int.MaxValue);
         if(TownId==0||nextSerial<7)throw new InvalidOperationException("Invalid saved town identity");
         for(int i=0;i<players.Length;i++)players[i]=r.Key();
         for(int i=0;i<npcs.Length;i++){npcs[i]=r.Key(false);outfits[i]=r.Range(0,Catalog.Items.Length-1);}
-        EnsureRecords();if(version>=2)ReadRecords(r);if(version>=3)ReadMail(r);if(version>=4)ReadWorld(r);if(version>=5)ReadTravel(r);if(version>=6)ReadNpcMove(r);if(version>=7)ReadOpening(r);r.End();ValidateIdentities();ValidateEconomicIdentities();
+        EnsureRecords();ReadRecords(r,version);ReadMail(r);ReadWorld(r);ReadTravel(r);ReadNpcMove(r,version<8);ReadOpening(r);if(version>=10)ReadRecovery(r);r.End();ValidateIdentities();ValidateEconomicIdentities();
     }
     private void ValidateIdentities()
     {

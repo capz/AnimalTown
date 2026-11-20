@@ -12,7 +12,9 @@ internal sealed class Draws : IJobRandom
 internal static class Program
 {
     private static void Require(bool value,string message){if(!value)throw new InvalidOperationException(message);}
-    private static int Main()
+    private static int Main(){JobMemory.ReclaimTemporaryText=ReclaimText;NativeJobBlocks.Report(0);Console.WriteLine("Native normal jobs");NormalJobs();NativeJobBlocks.Report(1);Console.WriteLine("Native travel");TravelJobs();NativeJobBlocks.Report(2);Console.WriteLine("Native capacity");Capacity();NativeJobBlocks.Report(3);Console.WriteLine("Native full-card travel");FullCardTravel();NativeJobBlocks.Report(4);MaximumEconomy();NativeJobBlocks.Report(5);return 0;}
+    private static void ReclaimText()=>NativeJobBlocks.Collect();
+    private static void NormalJobs()
     {
         JobContent.Validate();var rng=new JobRandom(653637408);
         Require(rng.NextInt(int.MaxValue)==1012239698,"PPC-compatible unsigned rejection sampling");
@@ -44,6 +46,60 @@ internal static class Program
         var queuedCopy=SaveCodec.Decode(SaveCodec.Encode(s));Require(queuedCopy.Town.Jobs.TownId==s.Town.Jobs.TownId,"native queued mail save");
         service.AdvanceTo(now+3*86400);Require(s.MailCount==1&&service.ReadLetter(0).Length>0,"native actual mail delivery and reply");
         var taken=service.TakeMailPresent(0,service.NextCommandSequence);Require(taken.Item==4,"native reply attachment ownership");
-        return 0;
     }
+    private sealed class CardBlocks : Dolphin.Storage.ICardBlockStorage
+    {
+        private readonly int card;public int Blocks=>1024;
+        internal CardBlocks(int card,bool reset){this.card=card;if(reset)NativeJobBlocks.Io(card,0,Blocks,new byte[0]);}
+        public void Read(int block,byte[] bytes){if(NativeJobBlocks.Io(card,1,block,bytes)<0)throw new InvalidOperationException("Native card read");}
+        public void Write(int block,byte[] bytes){if(NativeJobBlocks.Io(card,2,block,bytes)<0)throw new InvalidOperationException("Native card write");}
+    }
+    private sealed class Card : ISaveStorage,ISaveSnapshotStorage
+    {
+        private readonly TownCardRecords records;
+        internal Card(int card,bool reset=false){records=new TownCardRecords(new CardBlocks(card,reset),true);}
+        public byte[] Read(string name)=>records.Read(name);
+        public void Write(string name,byte[] bytes)=>records.Write(name,bytes);
+        public bool Matches(string name,byte[]? expected,int sequence,int length,uint checksum,bool ignoreSequence)=>records.Matches(name,expected,sequence,length,checksum,ignoreSequence);
+    }
+    private static void TravelJobs()
+    {
+        long now=JobCalendar.At(2026,6,10,12);var a=new GameState(718){Tutorial=7};var b=new GameState(719){Tutorial=7};a.ResidentJobs.Enable(10001,now);b.ResidentJobs.Enable(10002,now);
+        var ar=new SaveRepository(new Card(0,true));var br=new SaveRepository(new Card(1,true));ar.Save(a);br.Save(b);var trip=new OfflineTownTravel(ar,br);var guest=trip.Depart(0,now);Require(guest.Visiting,"native separate visitor capsule");guest.Wallet=321;br.Save(guest);var home=trip.Return(now+60);Require(!home.Visiting&&home.Wallet==321&&!home.ProfileLocked(0),"native two-card departure and return");
+        trip.ExchangeResidents(1,4,now+120);Require(br.Load()!.Town.Jobs.Species(4)==1,"native actual NPC migration");
+    }
+    private static void Capacity()
+    {
+        var s=new GameState(720){Tutorial=7};for(int p=1;p<4;p++)s.SelectProfile(p);s.SelectProfile(0);long now=JobCalendar.At(2026,6,10,12);s.ResidentJobs.Enable(10003,now);
+        var chars=new char[2000];for(int i=0;i<1000;i++){chars[i*2]='\ud83d';chars[i*2+1]='\ude42';}string body=new string(chars);
+        for(int recipient=0;recipient<4;recipient++)for(int batch=0;batch<2;batch++){
+            for(int n=0;n<64;n++){s.Receive(Catalog.WritingPaper);Require(s.ResidentJobs.SendLetter(s.Town.Jobs.Player(recipient),body,s.Find(Catalog.WritingPaper),-1,s.ResidentJobs.NextCommandSequence).Result==JobResult.Ok,"native full mailbox send");}
+            now+=86400;s.ResidentJobs.AdvanceTo(now);
+        }
+        Console.WriteLine("Native mailbox populated");var bytes=SaveCodec.Encode(s);Console.WriteLine("Native mailbox encoded");var copy=SaveCodec.Decode(bytes);Console.WriteLine("Native mailbox decoded");copy.ResidentJobs.Enable(copy.Town.Jobs.TownId,now);Require(copy.MailCount==128&&copy.ResidentJobs.ReadLetter(127)==body,"native maximum Unicode mailbox roundtrip");
+    }
+    private static void BuildFullCard(int card)
+    {
+        var state=new GameState(730+card){Tutorial=7};for(int p=1;p<4;p++)state.SelectProfile(p);state.SelectProfile(0);state.Tutorial=7;
+        long now=JobCalendar.At(2026,6,10,12);state.ResidentJobs.Enable((ulong)(20000+card),now);var chars=new char[2000];for(int i=0;i<1000;i++){chars[i*2]='\ud83d';chars[i*2+1]=(char)(0xde00+card);}string body=new string(chars);
+        for(int p=0;p<4;p++)for(int batch=0;batch<2;batch++){for(int n=0;n<64;n++){state.Receive(Catalog.WritingPaper);Require(state.ResidentJobs.SendLetter(state.Town.Jobs.Player(p),body,state.Find(Catalog.WritingPaper),-1,state.ResidentJobs.NextCommandSequence).Result==JobResult.Ok,"native maximum-card send");}now+=86400;state.ResidentJobs.AdvanceTo(now);}
+        new SaveRepository(new Card(card,true)).Save(state);
+    }
+    private static void FullCardTravel()
+    {
+        BuildFullCard(0);BuildFullCard(1);var a=new SaveRepository(new Card(0));var b=new SaveRepository(new Card(1));var live=a.Load()!;long now=live.Town.Jobs.Watermark;
+        var trip=new OfflineTownTravel(a,b,live);var guest=trip.Depart(0,now);Require(guest.Visiting,"native maximum-mailbox departure");b.Save(guest);var returned=trip.Return(now+60);Require(returned.MailCount==128&&!returned.Visiting,"native maximum-mailbox return preserves all text");
+    }
+    private static void MaximumEconomy()
+    {
+        Console.WriteLine("Native simultaneous maximum economy");BuildFullCard(0);var repo=new SaveRepository(new Card(0));var s=repo.Load()!;string body=s.ResidentJobs.ReadLetter(0);JobMaximumFixture.Fill(s,body);repo.Save(s);var copy=repo.Load(s)!;Require(copy.Town.Jobs.Reward(127).State!=JobRewardState.Empty&&copy.Town.Jobs.Job(79).Occupying&&copy.Town.Jobs.Offers[47].Id.IsValid,"native full mail, personal/shared jobs, offers, obligations and outbox coexist");
+    }
+
+}
+
+internal static class NativeJobBlocks
+{
+    internal static int Report(int stage)=>throw new PlatformNotSupportedException("Native test measurement bridge required");
+    internal static int Collect()=>throw new PlatformNotSupportedException("Native test collection bridge required");
+    internal static int Io(int card,int op,int block,byte[] bytes)=>throw new PlatformNotSupportedException("Native test card bridge required");
 }

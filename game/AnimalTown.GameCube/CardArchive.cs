@@ -54,6 +54,8 @@ internal sealed class CardArchive
         try{store!.Write(name,bytes);}
         catch(IOException e){if(e.Message!="Card container has insufficient reserved space")throw;Grow(GrowthSize(bytes.Length));EnsureWritable();store!.Write(name,bytes);}
     }
+    internal bool Matches(string name,byte[]? expected,int sequence,int length,uint checksum,bool ignoreSequence)
+    {if(Published)return store!.Matches(name,expected,sequence,length,checksum,ignoreSequence);var actual=Read(name);if(actual.Length!=length)return false;if(sequence>=0&&(Number(actual,16)!=sequence||SaveCodec.Crc(actual,0,actual.Length-4)!=checksum))return false;for(int i=0;i<actual.Length&&expected!=null;i++)if(!(ignoreSequence&&(i>=16&&i<20||i>=actual.Length-4))&&actual[i]!=expected[i])return false;return true;}
     internal void Delete(string name){EnsureWritable();store!.Delete(name);}
     private static void Match(byte[] a,byte[] b)
     {if(a.Length!=b.Length)throw new IOException("Archive readback differs");for(int i=0;i<a.Length;i++)if(a[i]!=b[i])throw new IOException("Archive readback differs");}

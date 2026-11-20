@@ -32,9 +32,9 @@ internal static class JobMailChecks
         check(Do(resumed,JobCommandKind.LetterFollowup,owed.Job).Result==JobResult.FullMailbox,"owed exact reply survives save/load without another reward draw");
         resumed.DiscardLetter(0,false,resumed.NextCommandSequence);
         check(Do(resumed,JobCommandKind.LetterFollowup,owed.Job).Result==JobResult.Ok&&copy.MailCount==128&&copy.Town.Jobs.FindReward(owed.Job)<0,"explicit follow-up inserts one reply immediately into the newly free mailbox slot");
-        int letterSlot=127;var envelope=copy.Town.Jobs.Letter(1,letterSlot);check(envelope.Gift==26&&envelope.Reply&&resumed.ReadLetter(letterSlot).Length>0,"real reply envelope contains text and its frozen present");
+        int letterSlot=127;var envelope=copy.Town.Jobs.Letter(1,letterSlot);check(envelope.Gift==Catalog.Pear&&envelope.Reply&&resumed.ReadLetter(letterSlot).Length>0,"real reply envelope contains text and its frozen present");
         ulong takeSeq=resumed.NextCommandSequence;var taken=resumed.TakeMailPresent(letterSlot,takeSeq);resumed.TakeMailPresent(letterSlot,takeSeq);
-        check(taken.Item==Catalog.Pear&&copy.Pockets.Count(x=>x==26)==1&&copy.Town.Residents[0].Friendship==6,"mail attachment can be taken once, with no second quest friendship bonus");
+        check(taken.Item==Catalog.Pear&&copy.Pockets.Count(x=>x==Catalog.Pear)==1&&copy.Town.Residents[0].Friendship==6,"mail attachment can be taken once, with no second quest friendship bonus");
         service.EndConversation();s.SelectProfile(0);Speak(s,service,0);check(Do(service,JobCommandKind.Collect,owed.Job).Result==JobResult.AlreadyClaimed,"accepting profile cannot steal another sender's reply");
         LocalMail(check);NormalReplies(check);
         Console.WriteLine("Real offline mail: queued delivery, first sender, chronology, full mailbox, durable replies, attachments and local-player delivery passed");

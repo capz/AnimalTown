@@ -2,4 +2,6 @@
   <PropertyGroup><OutputType>Exe</OutputType></PropertyGroup>
   <ItemGroup><ProjectReference Include="../../shared/AnimalTown.Domain/AnimalTown.Domain.csproj" /></ItemGroup>
   <ItemGroup><PackageReference Include="DolphinDotNet.GameCube" Version="[0.1.0-preview.374.1]" /></ItemGroup>
+  <ItemGroup><Compile Include="../../game/AnimalTown.GameCube/TownCardRecords.cs" Link="TownCardRecords.cs" /></ItemGroup>
+  <ItemGroup><Compile Include="../JobMaximumFixture.cs" Link="JobMaximumFixture.cs" /></ItemGroup>
 </Project>

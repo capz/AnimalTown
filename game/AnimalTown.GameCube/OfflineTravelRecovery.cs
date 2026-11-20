@@ -13,9 +13,10 @@ internal sealed class OfflineTravelRecovery : IDisposable,Hypercube.GameCube.IFr
     private readonly TitleBackdrop backdrop=new TitleBackdrop();
     private readonly WrappedText wrap=new WrappedText(43);
     private string status="Insert both town cards, then press A to continue.";
-    internal static bool Run(TownSession session)
+    internal static bool Run(TownSession session,string initial="")
     {
         using var view=new OfflineTravelRecovery();
+        if(initial.Length!=0)view.status=initial;
         while(true){
             UiNoise.Prepare();view.backdrop.Prepare();Hypercube.GameCube.FrameRenderer.Draw(GraphicsDevice.Default,TitleBackdrop.Color,view);RuntimeOptions.Wait();Controller.Update();var p=Controller.GetState(0);
             if(p.B.WasPressed)return false;

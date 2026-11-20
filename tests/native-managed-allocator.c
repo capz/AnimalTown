@@ -44,5 +44,15 @@ int main(void){
     live[4]=(DndObject*)dnd_managed_array_new(&heap,32000,1);assert(live[4]);
     for(int i=0;i<8;i++)live[i]=NULL;
     dnd_gc_unregister_roots(&fragments);dnd_gc_collect(&heap,NULL);assert(!heap.used);
+    // A growing save can reuse the previous buffer with live data on both
+    // sides, rather than needing another megabyte-sized hole for a few bytes.
+    assert(dnd_gc_register_roots(&fragments,&liveRoots));
+    DndArray *old_save=dnd_managed_array_new(&heap,1600000,1);assert(old_save&&old_save->length==1600000);
+    live[0]=dnd_object_new(&heap,&type);assert(live[0]);
+    live[1]=(DndObject*)dnd_managed_array_new(&heap,(int)(heap.capacity-heap.used-256),1);assert(live[1]);
+    dnd_gc_collect(&heap,&liveRoots);
+    DndArray *grown=dnd_managed_array_new(&heap,1600300,1);assert(grown&&grown==old_save&&grown->length==1600300);
+    for(int i=0;i<8;i++)live[i]=NULL;
+    dnd_gc_unregister_roots(&fragments);dnd_gc_collect(&heap,NULL);assert(!heap.used);
     free(memory);puts("Managed allocator: 16000 live objects, zero live-block searches, rooted graph, holes/splits/coalescing, tail reclamation, 200 reuse cycles, GC stress and contiguous save-sized buffers passed");
 }

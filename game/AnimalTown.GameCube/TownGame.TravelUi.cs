@@ -35,14 +35,8 @@ internal sealed partial class TownGame
         if(!travelReady)return;
         if(!SaveFromMenu()){travelStatus=saveStatus;screen="travel-menu";return;}
         screen="travel-busy";
-        try{
-            card?.Dispose();card=null;
-            using var cards=new OfflineTravelCards(state,banner,icon);var result=cards.Execute(travelAction,state.ActiveProfile,travelFrom,travelTo,JobNow);cards.SelectResult(result);session.AdoptTravel(result);TravelRestartRequested=true;
-        }catch(Exception e){
-            // A write may already be durable. Do not resume this stale in-memory
-            // character or let it save over a prepared handoff.
-            travelReady=false;travelStatus=e.Message??"Trip interrupted. Keep both cards and recover from title.";screen="travel-recovery";
-        }
+        card?.Dispose();card=null;
+        session.QueueTravel(travelAction,state.ActiveProfile,travelFrom,travelTo,JobNow);TravelRestartRequested=true;
     }
     private bool TravelInput(ControllerState p)
     {

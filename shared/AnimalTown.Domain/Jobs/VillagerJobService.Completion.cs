@@ -54,7 +54,7 @@ public sealed partial class VillagerJobService
         int at=ledger.FindReward(job.Obligation);if(at<0)throw new InvalidOperationException("Accepted job has no reward reservation");
         var reward=ledger.Rewards[at];if(reward.State==JobRewardState.Owed)return reward;
         var category=JobSelection.RollReward(RewardRandom,job.Template,job.Borrowers);
-        reward.State=JobRewardState.Owed;reward.Owner=player;reward.Giver=giver;reward.ResolvedAt=Now;
+        reward.State=JobRewardState.Owed;reward.Owner=player;reward.Giver=giver;reward.ResolvedAt=Now;reward.Category=category;
         if(category==JobRewardCategory.Currency)reward.Currency=JobSelection.RollMoney(RewardRandom,JobRulesV1.MoneyBase(job.Template,job.Borrowers));
         else if(category==JobRewardCategory.WornClothing&&JobContent.Matches(oldOutfit,JobRewardCategory.Clothing))reward.Item=oldOutfit;
         else{
@@ -73,17 +73,18 @@ public sealed partial class VillagerJobService
     }
     private JobOutcome CommitSuccess(int at,VillagerJobRecord j,VillagerJobReward reward,JobIdentity claimant,JobIdentity giver)
     {
+        j.Claimant=claimant;RecordEnd(j,JobEndReason.Success);
         int rewardSlot=ledger.FindReward(j.Obligation);ledger.Rewards[rewardSlot]=reward;j.Claimant=claimant;j.CompletedAt=Now;j.Revision++;
         if(j.Shared){j.Status=JobStatus.CompletedRetained;j.RetainedUntil=j.OriginalDueAt+3*86400;}else j.Status=JobStatus.RewardOwed;
         ledger.Jobs[at]=j;Friendship(claimant,giver,3);return Collect(reward.Id,ledger.FindNpc(giver));
     }
-    private JobOutcome Collect(JobIdentity id,int npc)
+    private JobOutcome Collect(JobIdentity id,int npc,bool recovery=false)
     {
         int at=ledger.FindReward(id);if(at<0){int job=ledger.FindJob(id);if(job>=0)at=ledger.FindReward(ledger.Jobs[job].Obligation);}
         if(at<0)return new JobOutcome(JobResult.NotAvailable,id);var reward=ledger.Rewards[at];
         if(reward.State!=JobRewardState.Owed)return new JobOutcome(JobResult.NotReady,id);
         if(reward.Owner!=ledger.Player(state.ActiveProfile))return new JobOutcome(JobResult.AlreadyClaimed,id);
-        if(npc<0||reward.Giver!=ledger.Npc(npc))return new JobOutcome(JobResult.WrongNpc,id);
+        if(!recovery&&(npc<0||reward.Giver!=ledger.Npc(npc)))return new JobOutcome(JobResult.WrongNpc,id);
         if(reward.IsReply)return CollectReply(at);
         int credited=Math.Min(reward.Currency,GameState.WalletLimit-state.Wallet),item=0;
         if(reward.Item!=0){if(state.FreeSlot()<0)return new JobOutcome(JobResult.FullPockets,reward.Job,item:reward.Item);state.Receive(reward.Item);item=reward.Item;reward.Item=0;}

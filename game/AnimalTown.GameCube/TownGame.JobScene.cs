@@ -20,7 +20,8 @@ internal sealed partial class TownGame
     {
         if(!JobsLive||!actorVisibility.Visible[actor])return;
         var l=actorVisibility.Locations[actor];int item=actor==0?state.Shirt:state.Town.Jobs.Outfit(actor-1),species=actor==0?state.Species:state.ResidentSpecies(actor-1);
-        jobScene.Outfit(renderer,item,species,SurfacePoint(l.X,l.Z),SurfaceRotation(l.Z,actor==0?facingYaw:l.Yaw));
+        NativeShadows.Objects(room==0?1:0);
+        try{jobScene.Outfit(renderer,item,species,SurfacePoint(l.X,l.Z),SurfaceRotation(l.Z,actor==0?facingYaw:l.Yaw));}finally{NativeShadows.Objects(0);}
     }
     private void DrawJobRoomCoverings()
     {

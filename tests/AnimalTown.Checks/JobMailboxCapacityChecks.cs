@@ -16,10 +16,12 @@ internal static class JobMailboxCapacityChecks
             now+=86400;s.ResidentJobs.AdvanceTo(now);
         }
         for(int p=0;p<4;p++)check((p==s.ActiveProfile?s.MailCount:s.Profiles[p].MailCount)==128,"all four resident mailboxes retain 128 real letters");
-        var bytes=SaveCodec.Encode(s);check(bytes.Length<SaveCodec.MaximumBytes&&bytes.Length>2000000,"worst-case packed Unicode mail fits the explicit combined-save budget");
+        var bytes=SaveCodec.Encode(s);check(bytes.Length<SaveCodec.MaximumBytes&&bytes.Length>1500000,"worst-case packed Unicode mail fits the explicit combined-save budget");
         var loaded=SaveCodec.Decode(bytes);loaded.ResidentJobs.Enable(loaded.Town.Jobs.TownId,now);
         for(int p=0;p<4;p++){loaded.SelectProfile(p);check(loaded.ResidentJobs.ReadLetter(127)==body,"full Unicode bodies survive every resident profile and combined readback");}
         var split=SplitSaveCodec.Decode(SplitSaveCodec.Encode(s));split.ResidentJobs.Enable(split.Town.Jobs.TownId,now);check(split.ResidentJobs.ReadLetter(0)==body,"the economic record preserves maximum text without a temporary word-array copy");
+        JobMaximumFixture.Fill(s,body);var maximum=SaveCodec.Decode(SaveCodec.Encode(s));check(maximum.Town.Jobs.Job(79).Occupying&&maximum.Town.Jobs.Reward(127).State!=JobRewardState.Empty&&maximum.Town.Jobs.Offers[47].Id.IsValid,"full text mail coexists with every resident personal partition, shared favors, 48 offers, 128 obligations and 64 outgoing letters");
+        Console.WriteLine("Maximum occupied economy: "+SaveCodec.Encode(maximum).Length+" combined bytes.");
         Console.WriteLine($"Full mail storage: 512 real letters × 1,000 four-byte scalars; {bytes.Length:N0} combined bytes, Unicode tables {JobLetterGrader.UnicodeTableBytes:N0} bytes");
     }
 }

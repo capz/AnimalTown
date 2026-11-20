@@ -21,13 +21,21 @@ public sealed partial class OfflineJobLedger
     internal readonly ulong[] KnownNpcTowns=new ulong[32];
     internal readonly string[] KnownNpcNames=new string[32];
     public int Species(int npc)=>NpcSpecies[npc];
-    public ulong NpcTown(JobIdentity id){int local=FindNpc(id);if(local>=0)return TownId;for(int i=0;i<KnownNpcs.Length;i++)if(KnownNpcs[i]==id)return KnownNpcTowns[i];return 0;}
+    public ulong NpcTown(JobIdentity id){if(PermanentlyRemoved(id))return 0;int local=FindNpc(id);if(local>=0)return TownId;for(int i=0;i<KnownNpcs.Length;i++)if(KnownNpcs[i]==id)return KnownNpcTowns[i];return 0;}
     public string KnownName(JobIdentity id){for(int i=0;i<KnownNpcs.Length;i++)if(KnownNpcs[i]==id)return KnownNpcNames[i];return "the villager";}
     internal void RememberNpc(JobIdentity id,ulong town,string name)
     {
         int at=-1;for(int i=0;i<KnownNpcs.Length;i++){if(KnownNpcs[i]==id){at=i;break;}if(KnownNpcs[i].IsEmpty&&at<0)at=i;}
         if(at<0)throw new InvalidOperationException("Remembered town residents are full");KnownNpcs[at]=id;KnownNpcTowns[at]=town;KnownNpcNames[at]=name;if(LastMovedNpc==id)LastMovedTown=town;for(int p=0;p<OwnerCount;p++)if(ForeignNpcs[p]==id)ForeignTowns[p]=town;
     }
+    internal bool CanRememberNpcs(OfflineJobLedger roster)
+    {
+        int free=0,needed=0;for(int i=0;i<KnownNpcs.Length;i++)if(KnownNpcs[i].IsEmpty)free++;
+        for(int n=0;n<6;n++){bool found=false;for(int i=0;i<KnownNpcs.Length;i++)if(KnownNpcs[i]==roster.Npc(n)){found=true;break;}if(!found)needed++;}
+        return needed<=free;
+    }
+    internal bool CanRememberRelation(int profile,JobIdentity npc)
+    {if(RelationSlot(profile,npc,false)>=0)return true;int first=profile*RelationsPerPlayer;for(int i=first;i<first+RelationsPerPlayer;i++)if(Relations[i].Npc.IsEmpty)return true;return false;}
     private void WriteTravel(JobWireWriter w)
     {
         var t=Trip;w.Key(t.Id);w.Key(t.Player);w.ULong(t.Home);w.ULong(t.Destination);w.Int(t.HomeProfile);w.Int(t.ResidentAnchor);w.Int(t.HomeSide?1:0);w.Int((int)t.Phase);w.Int(ActiveVisitor?1:0);w.Int(GuestAcre);
@@ -55,18 +63,19 @@ public sealed partial class OfflineTownTravel : IOfflineJobTravel
 {
     private readonly SaveRepository first,second;
     private GameState? knownFirst,knownSecond;
-    public OfflineTownTravel(SaveRepository first,SaveRepository second){this.first=first;this.second=second;}
+    private readonly GameState? textReuse;
+    public OfflineTownTravel(SaveRepository first,SaveRepository second,GameState? textReuse=null){this.first=first;this.second=second;this.textReuse=textReuse;}
     public bool Reachable(ulong town,JobIdentity npc)
     {return knownFirst!=null&&knownFirst.Town.Jobs.TownId==town&&knownFirst.Town.Jobs.FindNpc(npc)>=0||knownSecond!=null&&knownSecond.Town.Jobs.TownId==town&&knownSecond.Town.Jobs.FindNpc(npc)>=0;}
     public void Inspect(out GameState home,out GameState destination)
     {
-        home=first.Load()??throw new InvalidOperationException("Home card has no complete town");destination=second.Load()??throw new InvalidOperationException("Destination card has no complete town");
+        home=first.Load(knownFirst??textReuse)??throw new InvalidOperationException("Home card has no complete town");destination=second.Load(knownSecond??textReuse)??throw new InvalidOperationException("Destination card has no complete town");
         if(!home.Town.Jobs.Initialized||!destination.Town.Jobs.Initialized)throw new InvalidOperationException("Open and save both towns in this version before travelling");
         if(home.Town.Jobs.TownId==destination.Town.Jobs.TownId)throw new InvalidOperationException("These saves are copies of the same town");knownFirst=home;knownSecond=destination;
     }
     private static void SaveChecked(SaveRepository repository,GameState candidate)
     {
-        var current=repository.Load()??throw new InvalidOperationException("Travel card was removed or changed");
+        var current=repository.Load(candidate)??throw new InvalidOperationException("Travel card was removed or changed");
         if(current.Town.Jobs.TownId!=candidate.Town.Jobs.TownId||current.Sequence!=candidate.Sequence)throw new InvalidOperationException("Travel card changed. Recheck both towns");repository.Save(candidate);
     }
     public GameState Depart(int profile,long now)
@@ -97,7 +106,7 @@ public sealed partial class OfflineTownTravel : IOfflineJobTravel
     public GameState Return(long now)
     {
         Inspect(out var home,out var dest);if(home.Town.Jobs.Trip.Id!=dest.Town.Jobs.Trip.Id||dest.Town.Jobs.Trip.Phase!=OfflineTripPhase.Active)throw new InvalidOperationException("No matching active trip");
-        dest.CaptureProfile();var t=dest.Town.Jobs.Trip;t.Phase=OfflineTripPhase.ReturnPrepared;dest.Town.Jobs.Trip=t;dest.Town.Jobs.ActiveVisitor=false;SaveChecked(second,dest);
+        CheckCapacity(dest,OfflineJobLedger.Visitor,home);dest.CaptureProfile();var t=dest.Town.Jobs.Trip;t.Phase=OfflineTripPhase.ReturnPrepared;dest.Town.Jobs.Trip=t;dest.Town.Jobs.ActiveVisitor=false;SaveChecked(second,dest);
         return FinishReturn(home,dest,now);
     }
     private GameState FinishReturn(GameState home,GameState dest,long now)
@@ -119,8 +128,10 @@ public sealed partial class OfflineTownTravel : IOfflineJobTravel
         for(int i=0;i<s.Rewards.Length;i++)if(PortableReward(s,s.Rewards[i],owner))needed++;
         for(int i=0;i<d.Rewards.Length;i++)if(d.Rewards[i].State==JobRewardState.Empty)free++;
         if(needed>free)throw new InvalidOperationException("Collect destination rewards before travelling");
-        int known=0;for(int i=0;i<d.KnownNpcs.Length;i++)if(d.KnownNpcs[i].IsEmpty)known++;
-        if(known<6)throw new InvalidOperationException("Town address book is full");
+        if(!s.CanRememberNpcs(d)||!d.CanRememberNpcs(s))throw new InvalidOperationException("Town address book is full");
+        int relations=0;for(int i=0;i<OfflineJobLedger.RelationsPerPlayer;i++)if(!s.Relations[profile*OfflineJobLedger.RelationsPerPlayer+i].Npc.IsEmpty)relations++;
+        for(int n=0;n<6;n++)if(s.RelationSlot(profile,d.Npc(n),false)<0)relations++;
+        if(relations>OfflineJobLedger.RelationsPerPlayer)throw new InvalidOperationException("Villager relationship history is full");
     }
     private static bool PortableReward(OfflineJobLedger ledger,VillagerJobReward r,JobIdentity owner)
     {if(r.State==JobRewardState.Empty||r.IsReply||r.Owner!=owner)return false;if(r.State==JobRewardState.Owed)return true;int j=ledger.FindJob(r.Job);return j>=0&&!ledger.Jobs[j].Shared;}

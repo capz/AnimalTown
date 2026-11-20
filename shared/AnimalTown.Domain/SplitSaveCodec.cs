@@ -131,9 +131,9 @@ public static class SplitSaveCodec
     }
     public static GameState Decode(byte[][] records)
     {return Decode(records,null);}
-    internal static GameState Decode(byte[][] records,Town? snapshot)
+    internal static GameState Decode(byte[][] records,Town? snapshot,Jobs.OfflineJobLedger? textMemo=null,int referencedEconomySequence=-1)
     {
-        if(records.Length==PartCount)return DecodeProfiles(records,snapshot);if(records.Length!=4)throw new InvalidOperationException("Incomplete save set");var r=new Reader(records[0],TownData);var root=r;
+        if(records.Length==PartCount)return DecodeProfiles(records,snapshot,textMemo,referencedEconomySequence);if(records.Length!=4)throw new InvalidOperationException("Incomplete save set");var r=new Reader(records[0],TownData);var root=r;
         if(snapshot!=null&&(r.Version!=4||r.Seed!=snapshot.Seed))throw new InvalidOperationException("Readback snapshot identity mismatch");
         var s=snapshot==null?new GameState(r.Seed):new GameState(r.Seed,snapshot);s.Sequence=r.Sequence;var t=s.Town;if(snapshot==null)t.Paths.Clear();
         r.Range(Town.Width,Town.Width);r.Range(Town.Height,Town.Height);r.Range(1,TownGenerator.Version);t.Day=r.Int();t.Month=r.Int();r.Rle(t.Tiles,r.Version>=2?(int)Terrain.CoastWest:7,snapshot!=null);r.Rle(t.Elevation,TerrainElevation.MaximumMode,snapshot!=null);
@@ -151,7 +151,7 @@ public static class SplitSaveCodec
         SaveCodec.UpgradeShop(s);
         return snapshot==null?SaveCodec.Decode(SaveCodec.Encode(s)):SaveCodec.ValidateSnapshot(SaveCodec.Encode(s),snapshot);
     }
-    private static GameState DecodeProfiles(byte[][] records,Town? snapshot)
+    private static GameState DecodeProfiles(byte[][] records,Town? snapshot,Jobs.OfflineJobLedger? textMemo,int referencedEconomySequence)
     {
         var r=new Reader(records[0],TownData);if(!IsProfileTownVersion(r.Version))throw new InvalidOperationException("Invalid shared town schema");var root=r;
         var s=snapshot==null?new GameState(r.Seed):new GameState(r.Seed,snapshot);s.Sequence=r.Sequence;var t=s.Town;if(snapshot==null)t.Paths.Clear();
@@ -169,11 +169,11 @@ public static class SplitSaveCodec
         r.End();
         for(int i=0;i<GameState.ProfileCount;i++)s.Profiles[i]=ProfileCodec.Decode(s,i,records[3+i]);
         r=new Reader(records[1],HousePositions);r.Match(root);for(int i=0;i<GameState.ProfileCount;i++){var p=s.Profiles[i];if(r.Range(0,1)!=(p.HousePlaced?1:0)||r.Int()!=p.HouseX||r.Int()!=p.HouseZ)throw new InvalidOperationException("Profile plot differs from shared houses");}for(int i=0;i<6;i++){t.Residents[i].HomeX=r.Int();t.Residents[i].HomeZ=r.Int();}r.End();
-        r=new Reader(records[2],ShopStates);r.Match(root);t.Spending=r.Int();t.StockCount=r.Int();for(int i=0;i<12;i++)t.Stock[i]=r.Int();
+        r=new Reader(records[2],ShopStates);if(referencedEconomySequence<0)r.Match(root);else if(r.Sequence!=referencedEconomySequence||r.Seed!=root.Seed)throw new InvalidOperationException("Mixed economic reference");t.Spending=r.Int();t.StockCount=r.Int();for(int i=0;i<12;i++)t.Stock[i]=r.Int();
         if(r.HasMore){int length=r.Range(154,154);var shop=new int[length];for(int i=0;i<length;i++)shop[i]=r.Int();t.Shop.Decode(shop);}else SaveCodec.UpgradeShop(s);
-        if(r.HasMore){int count=r.Range(7,Jobs.OfflineJobLedger.MaximumWords);if(count>(records[2].Length-r.Offset-4)/4)throw new InvalidOperationException("Truncated economic job ledger");t.Jobs.Decode(records[2],r.Offset,count);r.SkipWords(count);}
+        if(r.HasMore){int count=r.Range(7,Jobs.OfflineJobLedger.MaximumWords);if(count>(records[2].Length-r.Offset-4)/4)throw new InvalidOperationException("Truncated economic job ledger");t.Jobs.Decode(records[2],r.Offset,count,snapshot?.Jobs??textMemo);r.SkipWords(count);}
         r.End();s.RestoreProfile(active);s.MigrateJobTutorial(root.CatalogVersion);
-        return snapshot==null?SaveCodec.Decode(SaveCodec.Encode(s)):SaveCodec.ValidateSnapshot(SaveCodec.Encode(s),snapshot);
+        return SaveStateValidation.Finish(s);
     }
     public static byte[] EncodeCommit(GameState s,byte[][] records)
     {if(records.Length!=4&&records.Length!=PartCount)throw new InvalidOperationException("Incomplete save commit");var w=new Writer(s,Commit,128,records.Length==4?3:4);for(int i=0;i<records.Length;i++){var r=new Reader(records[i],RecordKind(i));if(r.Sequence!=s.Sequence||r.Seed!=s.Town.Seed)throw new InvalidOperationException("Mixed save commit");w.Int(records[i].Length);w.Int((int)SaveCodec.Crc(records[i],0,records[i].Length-4));}return w.Finish();}

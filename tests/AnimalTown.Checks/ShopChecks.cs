@@ -34,7 +34,7 @@ internal static class ShopChecks
         check(s.BuildingTypes[7]==1&&BuildingWorld.Size(s,TownShop.Room)==8,"shop has its own reusable building definition");
         for(int i=0;i<TownShop.CabinetCount;i++){
             int id=TownShop.CabinetItem(i);
-            check(Catalog.Has(id,ItemFlags.Tool)||Catalog.Has(id,ItemFlags.Plant)||id==Catalog.WorkShirt,"cabinet contains only plants, current tools and starter clothing");
+            check(Catalog.Has(id,ItemFlags.Tool)||Catalog.Has(id,ItemFlags.Plant)||Catalog.Has(id,ItemFlags.Stationery)||id==Catalog.WorkShirt,"cabinet contains plants, current tools, starter clothing and real writing paper");
             check(id!=Catalog.LegacyWateringCan&&!Catalog.Has(id,ItemFlags.Money)&&!Catalog.Has(id,ItemFlags.Place),"cabinet excludes retired tools, money and decor");
             for(int n=0;n<3;n++){Array.Clear(s.Pockets);check(s.BuyCabinet(i)&&s.Pockets[0]==id,"essentials cabinet can sell the same item repeatedly");}
         }

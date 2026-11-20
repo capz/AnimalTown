@@ -127,6 +127,20 @@ packed.Write("full",new byte[28*8192]);packed.Write("tail",new byte[2*8192]);
 Check(packed.AvailableBlocks==0,"growth fixture fills every data page");
 new CardArchive(card,banner,icon,4).Write("options",new byte[]{9});
 Check(new CardArchive(card,banner,icon,4).Read("full").Length==28*8192,"a completely full container can publish growth without a free data page");
+var growthBase=card.Copy();var baselineArchive=new CardArchive(growthBase,banner,icon,4);baselineArchive.Write("larger",new byte[50*8192]);
+int growthWrites=growthBase.Writes-card.Writes;
+for(int cut=0;cut<growthWrites;cut++){
+    var trial=card.Copy();trial.FailBlockWrite=cut;try{new CardArchive(trial,banner,icon,4).Write("larger",new byte[50*8192]);}catch(IOException){}
+    trial.FailBlockWrite=-1;var recoveredGrowth=new CardArchive(trial,banner,icon,4);
+    Check(recoveredGrowth.Read("full").Length==28*8192,"every torn dynamic-growth block retains the original complete record");
+    recoveredGrowth.Write("larger",new byte[50*8192]);Check(recoveredGrowth.Read("larger").Length==50*8192&&trial.Files.Count==1,"dynamic growth recovers every physical write without duplicate backing items");
+}
+Console.WriteLine("Dynamic growth: "+growthWrites+" physical block writes, each torn and retried.");
+// Streaming readback checks full bytes and the record-store checksum without
+// retaining a second megabyte-sized array.
+card=growthBase;MemoryCard.Slots[4]=card;var streamRecords=new TownCardRecords(new NativeCardBlocks(4,false,banner,icon,card.RecordPages.Single().Key,card.RecordPages.Single().Value.Length),true);var large=streamRecords.Read("larger");
+Check(streamRecords.Matches("larger",large,-1,large.Length,0,false),"streamed readback accepts the complete saved record");large[100]=1;
+Check(!streamRecords.Matches("larger",large,-1,large.Length,0,false),"streamed readback detects a payload mismatch beyond its header");
 Console.WriteLine(checks+" card adapter checks passed: consolidated save/reload, no-op save, capacity, migration interruption/retry, independent records and deletion; host model, not hardware.");
 sealed class OldFiles(MemoryCard card) : ISaveStorage
 {

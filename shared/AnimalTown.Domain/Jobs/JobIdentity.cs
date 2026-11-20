@@ -25,7 +25,7 @@ public enum JobResult
     FullPockets,FullJobs,FullRewards,FullMailbox,WrongItem,WrongNpc,AlreadyClaimed,
     NotReady,Expired,TravelUnavailable,InvalidContent,InvalidIdentity,ExistingJob,Retained,OfferInvalidated,FullOutbox,InvalidLetter,FullOffers,NoOffer
 }
-public enum JobCommandKind { Ask,Accept,Decline,Handoff,Report,Collect,Abandon,SupplyCancel,LetterFollowup,SendMail,TakePresent,DiscardMail,PostNotice }
+public enum JobCommandKind { Ask,Accept,Decline,Handoff,Report,Collect,Abandon,SupplyCancel,LetterFollowup,SendMail,TakePresent,DiscardMail,PostNotice,RecoverReward }
 public enum JobEventKind { MailDelivered,WorldObjectChanged,NpcMigrated,BallCollision,SnowmanCreated,SnowmanDestroyed }
 
 public readonly struct JobOutcome

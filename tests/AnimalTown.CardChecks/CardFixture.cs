@@ -40,6 +40,12 @@ namespace Dolphin.Storage
         internal readonly Dictionary<string,MemoryCardSaveOptions> Metadata=new();
         private readonly Dictionary<string,int> blocks=new();
         internal int Capacity=80,Used,Peak,Writes;
+        internal MemoryCard Copy()
+        {
+            var copy=new MemoryCard(Device){Capacity=Capacity,Used=Used,Peak=Peak,Writes=Writes,DirectoryFree=DirectoryFree};
+            foreach(var p in Files)copy.Files[p.Key]=(byte[])p.Value.Clone();foreach(var p in Metadata)copy.Metadata[p.Key]=p.Value;foreach(var p in blocks)copy.blocks[p.Key]=p.Value;
+            foreach(var p in RecordIdentities)copy.RecordIdentities[p.Key]=p.Value;foreach(var p in RecordPages)copy.RecordPages[p.Key]=p.Value.Select(b=>(byte[])b.Clone()).ToArray();return copy;
+        }
         public MemoryCardEntry[] GetEntries()=>Files.Keys.Select(name=>new MemoryCardEntry{Name=name,Length=blocks[name]*8192}).ToArray();
         public void Delete(string name){if(FailDelete--==0)throw new IOException("Card removed during cleanup");Files.Remove(name);Metadata.Remove(name);RecordPages.Remove(name);RecordIdentities.Remove(name);if(blocks.Remove(name,out int n))Used-=n;}
         internal int CreateRecords(string name,int count,int identity,byte[] header)

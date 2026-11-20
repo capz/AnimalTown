@@ -46,12 +46,22 @@ static DndObject *allocate(DndManagedHeap *heap,const DndType *type,size_t bytes
     if(!heap||!type)return NULL;
     if(bytes>SIZE_MAX-7u||bytes>UINT32_MAX-7u){dnd_exception_throw(DND_EXCEPTION_OUT_OF_MEMORY,"Managed allocation size overflow.");return NULL;}
     bytes=align8(bytes<sizeof(DndObject)?sizeof(DndObject):bytes);
+    size_t requested=bytes;
+    // Save/terrain buffers above 256 KB use 64 KB size classes. A few extra
+    // receipt words must not strand a recently freed 1.6 MB save block. Logical
+    // array/string lengths stay exact; padding is bounded below 64 KB.
+    if(bytes>=262144u&&bytes<=UINT32_MAX-65535u)bytes=(bytes+65535u)&~(size_t)65535u;
     if(gc_stress&&heap->blocks)dnd_gc_collect(heap,NULL);
     DndObject *reused=allocate_from_free(heap,type,bytes);if(reused)return reused;
     size_t total=block_header_size()+bytes;
     if(total>heap->capacity-heap->used){
         dnd_gc_collect(heap,NULL);reused=allocate_from_free(heap,type,bytes);if(reused)return reused;
-        if(total>heap->capacity-heap->used){dnd_exception_throw(DND_EXCEPTION_OUT_OF_MEMORY,"Managed heap exhausted.");return NULL;}
+        if(total>heap->capacity-heap->used){
+            // Size-class padding must never reject a payload that actually fits.
+            bytes=requested;total=block_header_size()+bytes;
+            reused=allocate_from_free(heap,type,bytes);if(reused)return reused;
+            if(total>heap->capacity-heap->used){dnd_exception_throw(DND_EXCEPTION_OUT_OF_MEMORY,"Managed heap exhausted.");return NULL;}
+        }
     }
     DndHeapBlock *b=(DndHeapBlock*)(heap->start+heap->used);memset(b,0,block_header_size());b->size=(uint32_t)bytes;
     if(heap->allocation_tail)((DndHeapBlock*)heap->allocation_tail)->next=b;else heap->blocks=b;

@@ -94,14 +94,17 @@ internal static class IncrementalSaveCodec
         if(wire.Length!=Count)throw new InvalidOperationException("Incomplete referenced save");
         var parts=new byte[SplitSaveCodec.PartCount][];
         for(int i=0;i<Count;i++)Verify(m,i,wire[i]);
-        for(int i=0;i<parts.Length;i++)parts[i]=(byte[])wire[i].Clone();
+        // The economy record can contain four full mailboxes. Its referenced
+        // sequence is checked separately by the private decoder; retain that
+        // immutable buffer rather than cloning it to change four header bytes.
+        for(int i=0;i<parts.Length;i++)parts[i]=i==2?wire[i]:(byte[])wire[i].Clone();
         var offsets=RuntimeOffsets(parts[0]);var runtime=new SplitSaveCodec.Reader(wire[Count-1],Residents);
         for(int i=0;i<offsets.Length;i++){
             int p=offsets[i];if(parts[0][p]!=0||parts[0][p+1]!=0||parts[0][p+2]!=0||parts[0][p+3]!=0)throw new InvalidOperationException("Noncanonical town projection");
             Put(parts[0],p,runtime.Int());
         }
         runtime.End();
-        for(int i=0;i<parts.Length;i++){Put(parts[i],16,m.Sequence);Checksum(parts[i]);}
+        for(int i=0;i<parts.Length;i++)if(i!=2){Put(parts[i],16,m.Sequence);Checksum(parts[i]);}
         return parts;
     }
     private static void Put(byte[] bytes,int at,int value){for(int i=0;i<4;i++)bytes[at+i]=(byte)((uint)value>>(8*i));}

@@ -13,11 +13,11 @@ public sealed class VillagerJourney
     {
         if(current!=s){current=s;tick=0;for(int i=0;i<6;i++)if(s.Town.Residents[i].JourneyPhase==0&&s.Town.Residents[i].Dwell==0)s.Town.Residents[i].Dwell=90+i*45;}
         int talking=s.Town.Jobs.Initialized?s.ResidentJobs.ConversationNpc:-1;
-        for(int i=0;i<6;i++)Outdoors.Paused[i]=Doors.Busy(i+1)||s.Town.Residents[i].Space!=0||i==talking;
+        for(int i=0;i<6;i++)Outdoors.Paused[i]=Doors.Busy(i+1)||s.Town.Residents[i].Space!=0||i==talking||s.Town.Jobs.NpcInTransit(i);
         Outdoors.Tick(s,Doors);Indoors.BeginTick();Doors.Tick(s);tick++;
         for(int i=0;i<6;i++){
             int actor=i+1;var v=s.Town.Residents[i];Moving[i]=false;
-            if(i==talking){Outdoors.Stop(i);continue;}
+            if(i==talking||s.Town.Jobs.NpcInTransit(i)){Outdoors.Stop(i);continue;}
             if(Doors.Busy(actor)){Outdoors.Stop(i);Moving[i]=Doors.Moving(actor);continue;}
             if(v.Space!=0){
                 Outdoors.Stop(i);

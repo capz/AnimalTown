@@ -15,6 +15,7 @@ internal static class Program
 {
     private static int Main()
     {
+        AnimalTown.Jobs.JobMemory.ReclaimTemporaryText=ReclaimJobText;
         DebugOverlay.PerformanceVisible=false;
         DebugOverlay.WriteLine("AnimalTown "+BuildInfo.Version);
         ContentBootstrap.Initialize();
@@ -33,13 +34,16 @@ internal static class Program
             if(session.Draft!=null&&!OnboardingFlow.Run(config,session)){
                 session.DiscardDraft();AnimalTown.GameCube.NativeTexturePages.Collect();continue;
             }
-            while(RunSession(config,session)==TownGame.TravelRestart){}
+            while(RunSession(config,session)==TownGame.TravelRestart){
+                if(!session.CompleteTravel()&&!OfflineTravelRecovery.Run(session,session.TravelError))break;
+            }
             // RunSession and all its rendering locals have unwound before the
             // draft is restored and the native collector reclaims managed roots.
             session.DiscardDraft();LoadingScreen.Finish();TextureCache.TrimUnused();
             AnimalTown.GameCube.NativeTexturePages.Collect();
         }
     }
+    private static void ReclaimJobText()=>AnimalTown.GameCube.NativeTexturePages.Collect();
     internal static int RunSession(DevConfig config,TownSession session)
     {
         LoadingScreen.Draw();TextureCache.TrimUnused();
@@ -204,8 +208,8 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
             DebugOverlay.WriteLine("ANIMALTOWN INITIAL PLOT READY");
         }
         facingYaw=state.Facing;
-        if(session.Draft==null)state.Rollover(day,month);
         InitializeJobs();
+        if(session.Draft==null)state.Rollover(day,month);
         if(room==0&&state.HousePlaced&&!state.CanWalk(state.X,state.Z,0))state.MoveToHouseEntrance();
         DebugOverlay.WriteLine("ANIMALTOWN WORLD RENDERERS BEGIN");
         buildings=new BuildingRenderer(worldRoot);

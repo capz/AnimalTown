@@ -14,6 +14,19 @@ public static class JobContent
     }
     public static int CountCategory(JobRewardCategory category,int exclude=0)
     {int count=0;for(int i=1;i<Catalog.Items.Length;i++)if(i!=exclude&&Matches(i,category))count++;return count;}
+    internal static JobRewardCategory CategoryOf(int item)
+    {for(int c=0;c<5;c++)if(Matches(item,(JobRewardCategory)c))return (JobRewardCategory)c;return JobRewardCategory.Currency;}
+    internal static void MigrateReward(ref VillagerJobReward reward)
+    {
+        if(reward.IsReply){if(reward.Item!=0&&!Catalog.Valid(reward.Item))throw new InvalidOperationException("Unsupported reply gift migration");return;}
+        if(reward.State!=JobRewardState.Owed||reward.Item==0||Matches(reward.Item,reward.Category))return;
+        if(reward.Category==JobRewardCategory.Currency)throw new InvalidOperationException("Currency reward has an item");
+        // Append-only IDs remain valid today. A retired item in a later catalog
+        // receives the first ordinary item in its frozen category, once, without
+        // advancing any RNG stream or changing the reward's economic identity.
+        for(int i=1;i<Catalog.Items.Length;i++)if(Matches(i,reward.Category)){if(reward.MigratedFromItem==0)reward.MigratedFromItem=reward.Item;reward.Item=i;return;}
+        throw new InvalidOperationException("Missing migrated job reward category");
+    }
     public static int PickCategory(IJobRandom random,JobRewardCategory category,int exclude=0)
     {
         int count=CountCategory(category,exclude);if(count==0)throw new InvalidOperationException("Empty enabled job reward category");

@@ -29,9 +29,9 @@ public sealed partial class VillagerJobService
         if(slot<0)return CommitMail(sequence,fingerprint,new JobOutcome(JobResult.FullOutbox));
         int reward=npc>=0?ledger.FreeReward():-1;if(npc>=0&&reward<0)return CommitMail(sequence,fingerprint,new JobOutcome(JobResult.FullRewards));
         if(!ledger.CanAllocate(npc>=0?2:1))return CommitMail(sequence,fingerprint,new JobOutcome(JobResult.InvalidIdentity));
-        var sizing=new JobWireWriter();sizing.Text(grade.NormalizedBody);var packed=new int[sizing.Count];new JobWireWriter(packed).Text(grade.NormalizedBody);
+        var packed=JobTextBody.Pack(grade.NormalizedBody,grade.ScalarCount);
         var sender=ledger.Player(state.ActiveProfile);var id=ledger.Allocate();var reservation=npc>=0?ledger.Allocate():default;
-        long due=NextPost(Now);ledger.Mail[slot]=new JobMailRecord{Id=id,Owner=sender,Sender=sender,Recipient=recipient,Reservation=reservation,State=JobMailState.Queued,Gift=gift,SentAt=Now,DueAt=due,Body=packed};
+        long due=NextPost(Now);var envelope=new JobMailRecord{Id=id,Owner=sender,Sender=sender,Recipient=recipient,Reservation=reservation,State=JobMailState.Queued,Gift=gift,SentAt=Now,DueAt=due,Body=null};ledger.StoreBody(ref envelope,packed);ledger.Mail[slot]=envelope;
         if(reward>=0)ledger.Rewards[reward]=new VillagerJobReward{Id=reservation,Job=id,Owner=sender,Giver=recipient,State=JobRewardState.Reserved};
         state.Pockets[paperPocket]=0;if(giftPocket>=0)state.Pockets[giftPocket]=0;
         return CommitMail(sequence,fingerprint,new JobOutcome(JobResult.Ok,id));
@@ -65,7 +65,7 @@ public sealed partial class VillagerJobService
     }
     private void DeliverNpcLetter(JobMailRecord message,int npc)
     {
-        var reader=new JobWireReader(message.Body!);string body=reader.Text(JobRulesV1.LetterMaximumScalars);reader.End();
+        string body=JobTextBody.Unpack(message.Body!,message.BodyOffset,message.BodyWords);
         if(!JobLetterGrader.TryGrade(body,message.Gift!=0,out var grade))throw new InvalidOperationException("Invalid queued letter body");
         int sender=ledger.FindPlayer(message.Sender);if(sender<0)return;
         Friendship(message.Sender,message.Recipient,grade.Friendship);
@@ -78,7 +78,7 @@ public sealed partial class VillagerJobService
         ledger.Rewards[reservation]=reward;
         if(qualifies){
             int extra=ledger.FindReward(message.Reservation);if(extra>=0&&extra!=reservation)ledger.Rewards[extra]=default;
-            j.Claimant=message.Sender;j.Evidence=message.Id;j.EvidenceAt=Now;j.CompletedAt=Now;j.Status=JobStatus.ReplyOwed;j.Revision++;ledger.Jobs[favor]=j;
+            j.Claimant=message.Sender;RecordEnd(j,JobEndReason.Success);j.Evidence=message.Id;j.EvidenceAt=Now;j.CompletedAt=Now;j.Status=JobStatus.ReplyOwed;j.Revision++;ledger.Jobs[favor]=j;
         }
     }
     private int ReplyPresent(int rank)
@@ -123,10 +123,11 @@ public sealed partial class VillagerJobService
         if(message.State!=JobMailState.Inbox)return "Thank you for being a part of our town!";
         ledger.Mail[state.ActiveProfile*OfflineJobLedger.MailboxCapacity+slot].Read=true;
         if(message.Reply)return ReplyBody(message.ReplyText);
-        var reader=new JobWireReader(message.Body!);string body=reader.Text(JobRulesV1.LetterMaximumScalars);reader.End();return body;
+        string body=JobTextBody.Unpack(message.Body!,message.BodyOffset,message.BodyWords);return body;
     }
     private static string ReplyBody(int key)
     {
+        if(key==254)return "Town hall recovered this present from a neighbour who has left. Your earned reward is enclosed. Thank you for helping our town.";
         if(key==255)return "Your letter could not reach its recipient. Your present is enclosed.";
         string[] replies={"Thank you for thinking of me. A little letter is always welcome.","Your note reached me! I hope we can chat again soon.","Thanks for your letter. It is good to hear from a neighbour.","Your thoughtful words brightened my day. I picked something for you.","What a lovely letter! Here is a little something for your home.","I enjoyed your letter. Perhaps this will make your room feel special.","Thank you for the present. I thought you might enjoy some fruit.","Your letter made me smile. I found something you might like to wear.","Thank you for writing and for your gift. This shirt is for you.","Your kind letter deserves a treat. Try this fruit from another town.","Your letter and present were wonderful! I chose something for your home.","I will treasure your letter. I hope this makes your home a little happier."};
         return replies[key<0||key>=replies.Length?0:key];

@@ -4,10 +4,10 @@ namespace AnimalTown;
 public static class SaveCodec
 {
     public const int MaximumBytes=4*1024*1024;
-    private static void Put(byte[] b,ref int at,int n){for(int i=0;i<4;i++)b[at++]=(byte)((uint)n>>(i*8));}
+    private static void Put(byte[]? b,ref int at,int n){if(b==null){at+=4;return;}for(int i=0;i<4;i++)b[at++]=(byte)((uint)n>>(i*8));}
     private static int Get(byte[] b,ref int at)
     { if(at>b.Length-4)throw new InvalidOperationException("Truncated save");int n=0;for(int i=0;i<4;i++)n|=b[at++]<<(8*i);return n; }
-    private static void Text(byte[] b,ref int at,string s)
+    private static void Text(byte[]? b,ref int at,string s)
     { Put(b,ref at,s.Length);for(int i=0;i<s.Length;i++)Put(b,ref at,s[i]); }
     private static string Text(byte[] b,ref int at,int limit)
     { int n=Get(b,ref at);if(n<0||n>limit)throw new InvalidOperationException("Invalid text");var c=new char[n];for(int i=0;i<n;i++)c[i]=(char)Get(b,ref at);return new string(c); }
@@ -42,13 +42,14 @@ public static class SaveCodec
         int elevationRuns=1;for(int i=1;i<Town.Cells;i++)if(s.Town.Elevation[i]!=s.Town.Elevation[i-1])elevationRuns++;
         int jobWords=profiles&&s.Town.Jobs.Initialized?s.Town.Jobs.WordCount:0;
         bool extensions=profiles&&(jobWords!=0||snow!=null);
-        int capacity=(profiles?10416+TownPaths.PackedBytes+TileTraffic.Bytes+4*(Jobs.TownJobState.EncodedWordCount+1):4096)+elevationRuns*4+(s.Name.Length+s.Catchphrase.Length)*4+s.MailCount*4+s.Town.GroundCount*24+s.Town.PlacedCount*24+terrainRuns*4;
-        if(extensions)capacity+=8+4*(jobWords+(snow?.Length??0));
-        if(capacity>MaximumBytes)throw new InvalidOperationException("Save exceeds format budget");
-        // v14/catalog 1 stored snowfall; v14/catalog 2 stored the job prerelease.
-        // v15 gives both extensions their own explicit (possibly empty) length.
         int version=extensions?15:profiles?(!s.Town.JobState.IsPristine?13:s.Town.DaylightLocation==0?11:12):7;
-        var b=new byte[capacity];int p=0;Put(b,ref p,0x41544f57);Put(b,ref p,version);Put(b,ref p,Catalog.Version);Put(b,ref p,s.Sequence);
+        var profileRecords=profiles?new byte[GameState.ProfileCount][]:null;
+        if(profileRecords!=null)for(int i=0;i<profileRecords.Length;i++)profileRecords[i]=ProfileCodec.Encode(s,i);
+        int exactLength=Write(null);if(exactLength>MaximumBytes)throw new InvalidOperationException("Save exceeds format budget");
+        var output=new byte[exactLength];if(Write(output)!=exactLength)throw new InvalidOperationException("Snapshot changed while encoding");return output;
+        int Write(byte[]? b)
+        {
+        int p=0;Put(b,ref p,0x41544f57);Put(b,ref p,version);Put(b,ref p,Catalog.Version);Put(b,ref p,s.Sequence);
         Put(b,ref p,0);Put(b,ref p,0);
         Put(b,ref p,Town.Width);Put(b,ref p,Town.Height);
         int[] f={s.Town.Seed,s.Town.Day,s.Town.Month,s.Wallet,(int)s.Savings,(int)(s.Savings>>32),(int)s.Debt,(int)(s.Debt>>32),s.Species,s.Palette,s.Tool,s.Shirt,s.HouseTier,s.GardenTier,s.PendingKind,s.PendingTier,s.PendingDay,s.Tutorial,s.MetMask,s.Jobs,s.JobDay,s.MailCount,s.Roof,s.Wall,s.Fence,s.Mailbox,s.Exterior,s.HousePlaced?1:0,(int)(s.X*1024),(int)(s.Z*1024),s.Town.HouseX,s.Town.HouseZ,s.Town.Spending,s.Town.StockCount};
@@ -66,17 +67,18 @@ public static class SaveCodec
         for(int i=0;i<Town.Cells;){byte mode=s.Town.Elevation[i];int length=1;while(i+length<Town.Cells&&s.Town.Elevation[i+length]==mode)length++;Put(b,ref p,(mode<<24)|length);i+=length;}
         for(int i=0;i<6;i++){var v=s.Town.Residents[i];Text(b,ref p,v.Name);Put(b,ref p,v.HomeX);Put(b,ref p,v.HomeZ);Put(b,ref p,(int)(v.PosX*1024));Put(b,ref p,(int)(v.PosZ*1024));}
         var buildingFields=profiles?BuildingSave.Encode(s):BuildingSave.EncodeLegacy(s);for(int i=0;i<buildingFields.Length;i++)Put(b,ref p,buildingFields[i]);
-        if(profiles){Put(b,ref p,s.ActiveProfile);for(int i=0;i<GameState.ProfileCount;i++){var data=ProfileCodec.Encode(s,i);Put(b,ref p,data.Length);Array.Copy(data,0,b,p,data.Length);p+=data.Length;}}
-        if(profiles){s.Town.Paths.Validate();Put(b,ref p,1);Put(b,ref p,TownPaths.PackedBytes);Array.Copy(s.Town.Paths.Packed,0,b,p,TownPaths.PackedBytes);p+=TownPaths.PackedBytes;}
+        if(profiles){Put(b,ref p,s.ActiveProfile);for(int i=0;i<GameState.ProfileCount;i++){var data=profileRecords![i];Put(b,ref p,data.Length);if(b!=null)Array.Copy(data,0,b,p,data.Length);p+=data.Length;}}
+        if(profiles){s.Town.Paths.Validate();Put(b,ref p,1);Put(b,ref p,TownPaths.PackedBytes);if(b!=null)Array.Copy(s.Town.Paths.Packed,0,b,p,TownPaths.PackedBytes);p+=TownPaths.PackedBytes;}
         if(profiles){var shop=s.Town.Shop.Encode();Put(b,ref p,shop.Length);for(int i=0;i<shop.Length;i++)Put(b,ref p,shop[i]);}
-        if(profiles){Put(b,ref p,1);Put(b,ref p,TileTraffic.Bytes);Array.Copy(s.Town.Traffic.Visits,0,b,p,TileTraffic.Bytes);p+=TileTraffic.Bytes;}
+        if(profiles){Put(b,ref p,1);Put(b,ref p,TileTraffic.Bytes);if(b!=null)Array.Copy(s.Town.Traffic.Visits,0,b,p,TileTraffic.Bytes);p+=TileTraffic.Bytes;}
         if(version>=12)Put(b,ref p,s.Town.DaylightLocation);
         if(version>=13){var jobs=s.Town.JobState.Encode();Put(b,ref p,jobs.Length);for(int i=0;i<jobs.Length;i++)Put(b,ref p,jobs[i]);}
         if(extensions){
             Put(b,ref p,snow?.Length??0);if(snow!=null)for(int i=0;i<snow.Length;i++)Put(b,ref p,snow[i]);
-            Put(b,ref p,jobWords);if(jobWords!=0){s.Town.Jobs.WriteTo(b,p);p+=jobWords*4;}
+            Put(b,ref p,jobWords);if(jobWords!=0){if(b!=null)s.Town.Jobs.WriteTo(b,p);p+=jobWords*4;}
         }
-        int h=16;Put(b,ref h,p);Put(b,ref h,(int)Crc(b,24,p-24));var result=new byte[p];Array.Copy(b,result,p);return result;
+        if(b!=null){int h=16;Put(b,ref h,p);Put(b,ref h,(int)Crc(b,24,p-24));}return p;
+        }
     }
     private static int Range(byte[] b,ref int p,int min,int max)
     { int n=Get(b,ref p);if(n<min||n>max)throw new InvalidOperationException("Save value outside range");return n; }
@@ -168,7 +170,7 @@ public static class SaveCodec
                 s.Town.Traffic.Snow.RestoreCheckpoint(snow);
             }
         }
-        if(version==14&&catalogVersion>=2||version>=15){int jobWords=Range(b,ref p,version>=15?0:7,Jobs.OfflineJobLedger.MaximumWords);if(jobWords!=0){if(jobWords<7||jobWords>(b.Length-p)/4)throw new InvalidOperationException("Truncated offline job ledger");s.Town.Jobs.Decode(b,p,jobWords);p+=jobWords*4;}}
+        if(version==14&&catalogVersion>=2||version>=15){int jobWords=Range(b,ref p,version>=15?0:7,Jobs.OfflineJobLedger.MaximumWords);if(jobWords!=0){if(jobWords<7||jobWords>(b.Length-p)/4)throw new InvalidOperationException("Truncated offline job ledger");s.Town.Jobs.Decode(b,p,jobWords,snapshot?.Jobs);p+=jobWords*4;}}
         int placedCount=s.Town.PlacedCount;s.Town.PlacedCount=0;
         for(int i=0;i<placedCount;i++){var q=s.Town.Placed[i];if(!s.CanPlace(q.Item,q.X,q.Z,q.Rotation,q.Room,q.Owner,true))throw new InvalidOperationException("Invalid placement");s.Town.PlacedCount++;}
         if(p!=b.Length)throw new InvalidOperationException("Trailing save bytes");

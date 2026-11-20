@@ -66,12 +66,12 @@ internal static class OfflineJobChecks
         int draws=offers.At;j=s.Town.Jobs.Job(s.Town.Jobs.FindJob(id));check(j.ChainDecision==2&&j.DueAt==noon+2*86400,"full pickup preserves its selected stop and original stage deadline");
         s.Pockets[9]=0;service.AdvanceTo(noon+100);Do(service,JobCommandKind.Handoff,id,j.Revision);j=s.Town.Jobs.Job(s.Town.Jobs.FindJob(id));
         check(offers.At==draws&&j.Status==JobStatus.Returning&&j.Target==j.Requester&&j.DueAt==noon+100+2*86400,"retry mints one bound object and refreshes the deadline only on committed pickup");
-        Speak(s,service,0);check(Do(service,JobCommandKind.Handoff,id,j.Revision).Result==JobResult.Ok&&s.Find(33)>=0,"one-borrower retrieval pays the stationery reward row");
+        Speak(s,service,0);check(Do(service,JobCommandKind.Handoff,id,j.Revision).Result==JobResult.Ok&&s.Find(Catalog.WritingPaper)>=0,"one-borrower retrieval pays the stationery reward row");
     }
     private static void Shared(Action<bool,string> check)
     {
         var s=new GameState(25);s.SelectProfile(1);s.SelectProfile(0);var service=Service(s,new Draws(1,2,0,0),new Draws(60,1000));
-        var id=Accept(s,service,0,check);var j=s.Town.Jobs.Job(s.Town.Jobs.FindJob(id));check(j.Template==JobTemplate.FavorFruit&&j.Item==26&&j.Owner.IsEmpty,"fruit offer freezes one exact nonnative fruit in a town-shared record");
+        var id=Accept(s,service,0,check);var j=s.Town.Jobs.Job(s.Town.Jobs.FindJob(id));check(j.Template==JobTemplate.FavorFruit&&j.Item==Catalog.Pear&&j.Owner.IsEmpty,"fruit offer freezes one exact nonnative fruit in a town-shared record");
         service.EndConversation();s.SelectProfile(1);s.Receive(j.Item);Speak(s,service,0);
         check(Do(service,JobCommandKind.Handoff,id,j.Revision,s.Find(j.Item)).Result==JobResult.Ok&&s.Wallet==500,"another eligible local profile can supply pre-owned fruit and claim its reward");
         j=s.Town.Jobs.Job(s.Town.Jobs.FindJob(id));check(j.Claimant==s.Town.Jobs.Player(1)&&j.RetainedUntil==j.OriginalDueAt+3*86400,"shared retention anchors to the original deadline rather than payment time");

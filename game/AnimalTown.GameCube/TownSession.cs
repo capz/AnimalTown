@@ -6,7 +6,7 @@ using Dolphin.Storage;
 using Dolphin.Timing;
 
 // Read the shared save before constructing any game renderer or town assets.
-internal sealed class TownSession
+internal sealed partial class TownSession
 {
     internal GameState State {get;private set;}
     internal OnboardingDraft? Draft {get;private set;}
@@ -15,6 +15,10 @@ internal sealed class TownSession
     internal bool Loaded {get;private set;}
     internal readonly bool Damaged;
     internal string Status {get;private set;}
+    private int travelAction,travelProfile,travelFrom,travelTo;private long travelAt;
+    internal string TravelError {get;private set;}="";
+    internal void QueueTravel(int action,int profile,int from,int to,long now)
+    {travelAction=action;travelProfile=profile;travelFrom=from;travelTo=to;travelAt=now;}
     private TownSession(GameState state,bool loaded,bool damaged,string status){State=state;Loaded=loaded;Damaged=damaged;Status=status;}
     internal void AdoptTravel(GameState state){State=state;Loaded=true;Status="Trip saved / "+BuildInfo.Version;}
     internal void SelectProfile(int profile)

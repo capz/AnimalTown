@@ -9,6 +9,7 @@ public sealed partial class VillagerJobService
     private JobConversation conversation;
     private ulong nextSession=1;
     private JobIdentity supplySelection;
+    private bool openingConversation;
     private readonly IJobRandom? offerOverride,rewardOverride;
     private IJobRandom OfferRandom=>offerOverride??state.Town.JobState.Offers;
     private IJobRandom RewardRandom=>rewardOverride??state.Town.JobState.Rewards;
@@ -24,20 +25,22 @@ public sealed partial class VillagerJobService
         if(migrating){for(int p=0;p<GameState.ProfileCount;p++)for(int n=0;n<6;n++)state.ProfileAt(p).Relationships[n*4+1]=0;for(int n=0;n<6;n++)state.Town.Residents[n].Request=0;}
         Enabled=true;AdvanceTo(now);RecoverBindings();RecoverOpeningParcel();
     }
-    public bool BeginConversation(int npc,out JobConversation context)
+    public bool BeginConversation(int npc,out JobConversation context)=>StartConversation(npc,false,out context);
+    public bool BeginOpeningConversation(int npc)=>state.Tutorial<7&&StartConversation(npc,true,out _);
+    private bool StartConversation(int npc,bool opening,out JobConversation context)
     {
         context=default;
         if(!Enabled||(uint)npc>=6||ledger.NpcInTransit(npc)||!InReach(npc))return false;
-        EndConversation();if(!state.Town.JobState.Resident(npc).CanStartConversation&&!HasActionable(npc))return false;
+        EndConversation();if(!opening&&!state.Town.JobState.Resident(npc).CanStartConversation&&!HasActionable(npc))return false;
         if(nextSession==ulong.MaxValue)nextSession=1;
-        conversation=new JobConversation(nextSession++,ledger.EnsurePlayer(state.ActiveProfile),ledger.Npc(npc));
+        openingConversation=opening;conversation=new JobConversation(nextSession++,ledger.EnsurePlayer(state.ActiveProfile),ledger.Npc(npc));
         state.MetMask|=1<<npc;state.Town.Residents[npc].Met=1;context=conversation;return true;
     }
     public void EndConversation()
     {
-        int npc=ConversationNpc;if(npc>=0)state.Town.JobState.Resident(npc).ConversationCompleted();conversation=default;supplySelection=default;
+        int npc=ConversationNpc;if(npc>=0&&!openingConversation)state.Town.JobState.Resident(npc).ConversationCompleted();conversation=default;supplySelection=default;openingConversation=false;
     }
-    public void InvalidateConversation(){conversation=default;supplySelection=default;}
+    public void InvalidateConversation(){conversation=default;supplySelection=default;openingConversation=false;}
     private bool InReach(int npc)
     {
         var v=state.Town.Residents[npc];if(v.Space!=state.Space)return false;
@@ -58,10 +61,11 @@ public sealed partial class VillagerJobService
         if(command.Sequence<receipt.Sequence)return new JobOutcome(JobResult.StaleCommand);
         int npc=ledger.FindNpc(command.Npc);
         JobOutcome outcome;
-        if(command.Kind!=JobCommandKind.Abandon&&(npc<0||conversation.Session==0||command.Session!=conversation.Session||command.Player!=conversation.Player||command.Npc!=conversation.Npc||!InReach(npc)))outcome=new JobOutcome(JobResult.InvalidContext);
+        if(command.Kind!=JobCommandKind.Abandon&&command.Kind!=JobCommandKind.RecoverReward&&(npc<0||conversation.Session==0||command.Session!=conversation.Session||command.Player!=conversation.Player||command.Npc!=conversation.Npc||!InReach(npc)))outcome=new JobOutcome(JobResult.InvalidContext);
         else{
             Reconcile(Now);
-            if(command.Kind==JobCommandKind.Ask)outcome=Ask(npc);
+            if(command.Kind==JobCommandKind.RecoverReward)outcome=CollectRemovedReward(command.Subject);
+            else if(command.Kind==JobCommandKind.Ask)outcome=Ask(npc);
             else if(command.Kind==JobCommandKind.Accept)outcome=Accept(npc,command.Subject,command.ExpectedRevision);
             else if(command.Kind==JobCommandKind.Decline)outcome=Decline(npc,command.Subject,command.ExpectedRevision);
             else if(command.Kind==JobCommandKind.Collect||command.Kind==JobCommandKind.LetterFollowup)outcome=Collect(command.Subject,npc);
@@ -100,11 +104,11 @@ public sealed partial class VillagerJobService
             var j=ledger.Jobs[i];if(!j.Occupying||j.Status==JobStatus.RewardOwed)continue;
             if(j.Template==JobTemplate.FavorFlowers&&j.Status!=JobStatus.CompletedRetained){int npc=ledger.FindNpc(j.Requester);if(npc<0||j.HomeAcre!=Acre(npc)){CancelJob(i);continue;}}
             bool season=!JobCalendar.Season(j.Template,now);
-            if(j.Status==JobStatus.CompletedRetained){if(now>=j.RetainedUntil||season)ledger.Jobs[i]=default;continue;}
-            if(j.Status==JobStatus.ReplyOwed){if(now>j.OriginalDueAt)ledger.Jobs[i]=default;continue;}
+            if(j.Status==JobStatus.CompletedRetained){if(now>=j.RetainedUntil||season){ledger.Jobs[i]=default;ledger.Revision++;}continue;}
+            if(j.Status==JobStatus.ReplyOwed){if(now>j.OriginalDueAt){ledger.Jobs[i]=default;ledger.Revision++;}continue;}
             if(now>j.DueAt||season){int penalty=0;
                 if(!season&&!j.Shared)penalty=j.Template==JobTemplate.RetrievalBorrowed?(j.Status==JobStatus.Returning?-2:0):j.Template==JobTemplate.DeliveryForeign||j.Template==JobTemplate.DeliveryMoved?-1:-5;
-                if(penalty!=0)Friendship(j.Owner,j.Requester,penalty);CancelJob(i);}
+                if(penalty!=0)Friendship(j.Owner,j.Requester,penalty);CancelJob(i,season?JobEndReason.SeasonClosed:JobEndReason.Expired);}
         }
     }
     private void Friendship(JobIdentity owner,JobIdentity npcId,int delta)
@@ -115,8 +119,9 @@ public sealed partial class VillagerJobService
         int value=Math.Max(0,Math.Min(255,current+delta));ledger.Relations[rel].Friendship=value;
         if(npc>=0){state.ProfileAt(profile).Relationships[npc*4]=value;if(profile==state.ActiveProfile)state.Town.Residents[npc].Friendship=value;}
     }
-    private void CancelJob(int at)
+    private void CancelJob(int at,JobEndReason reason=JobEndReason.WorldRemoved)
     {
+        RecordEnd(ledger.Jobs[at],reason);ledger.Revision++;
         var j=ledger.Jobs[at];if(!j.Binding.IsEmpty)RemoveBinding(j.Binding);
         int reward=ledger.FindReward(j.Obligation);if(reward>=0&&ledger.Rewards[reward].State==JobRewardState.Reserved)ledger.Rewards[reward]=default;
         ledger.Jobs[at]=default;
@@ -127,8 +132,8 @@ public sealed partial class VillagerJobService
     }
     internal void RemoveProfileData(int profile)
     {
-        if(!ledger.Initialized)return;var owner=ledger.Player(profile);
-        for(int i=0;i<ledger.Jobs.Length;i++){var j=ledger.Jobs[i];if(j.Occupying&&(j.Owner==owner||j.Claimant==owner&&j.Status!=JobStatus.CompletedRetained))CancelJob(i);}
+        if(!ledger.Initialized)return;var owner=ledger.Player(profile);if(owner.IsEmpty)return;
+        for(int i=0;i<ledger.Jobs.Length;i++){var j=ledger.Jobs[i];if(j.Occupying&&(j.Owner==owner||j.Claimant==owner&&j.Status!=JobStatus.CompletedRetained))CancelJob(i,JobEndReason.ProfileDeleted);}
         for(int i=0;i<ledger.Rewards.Length;i++)if(ledger.Rewards[i].Owner==owner)ledger.Rewards[i]=default;
         for(int i=0;i<ledger.Mail.Length;i++){
             var m=ledger.Mail[i];if(m.State==JobMailState.Empty)continue;
@@ -138,6 +143,7 @@ public sealed partial class VillagerJobService
         for(int i=0;i<ledger.Offers.Length;i++)if(ledger.Offers[i].Owner==owner)ledger.Offers[i]=default;
         for(int i=0;i<GameState.MaximumPockets;i++)ledger.SetBinding(profile,i,default);
         for(int i=0;i<OfflineJobLedger.RelationsPerPlayer;i++)ledger.Relations[profile*OfflineJobLedger.RelationsPerPlayer+i]=default;
+        for(int i=0;i<ledger.Terminals.Length;i++)if(ledger.Terminals[i].Owner==owner)ledger.Terminals[i]=default;
         ledger.OpeningParcels[profile]=default;ledger.HomeFloors[profile]=0;ledger.HomeWalls[profile]=0;ledger.Receipts[profile]=default;ledger.ForeignNpcs[profile]=default;ledger.ForeignTowns[profile]=0;InvalidateConversation();
     }
     public void RecoverBindings()
@@ -146,7 +152,7 @@ public sealed partial class VillagerJobService
         for(int i=0;i<ledger.Jobs.Length;i++)if(ledger.Jobs[i].Occupying&&!ledger.Jobs[i].Binding.IsEmpty){
             var j=ledger.Jobs[i];int owner=ledger.FindPlayer(j.Owner),matches=0,references=0;
             for(int p=0;p<OfflineJobLedger.OwnerCount;p++)for(int s=0;s<GameState.MaximumPockets;s++)if(ledger.Binding(p,s)==j.Binding){references++;int item=p==state.ActiveProfile?state.Pockets[s]:state.ProfileAt(p).Pockets[s];if(p==owner&&s<(state.ProfileAt(p).BackpackTier+1)*10&&item==JobContent.Parcel)matches++;}
-            if(matches!=1||references!=1)CancelJob(i);
+            if(matches!=1||references!=1)CancelJob(i,JobEndReason.BrokenBinding);
         }
         for(int p=0;p<OfflineJobLedger.OwnerCount;p++)for(int s=0;s<GameState.MaximumPockets;s++)if(ledger.HasBinding(p,s)){
             var binding=ledger.Binding(p,s);bool found=false;for(int i=0;i<ledger.Jobs.Length;i++)if(ledger.Jobs[i].Occupying&&ledger.Jobs[i].Binding==binding){found=true;break;}
@@ -155,7 +161,7 @@ public sealed partial class VillagerJobService
         }
     }
     private JobOutcome Abandon(JobIdentity id)
-    {int at=ledger.FindJob(id);if(at<0)return new JobOutcome(JobResult.NotAvailable);var j=ledger.Jobs[at];if(j.Shared||j.Owner!=ledger.Player(state.ActiveProfile)||j.Status==JobStatus.RewardOwed)return new JobOutcome(JobResult.NotAvailable);Friendship(j.Owner,j.Requester,-3);CancelJob(at);return new JobOutcome(JobResult.Ok,id);}
+    {int at=ledger.FindJob(id);if(at<0)return new JobOutcome(JobResult.NotAvailable);var j=ledger.Jobs[at];if(j.Shared||j.Owner!=ledger.Player(state.ActiveProfile)||j.Status==JobStatus.RewardOwed)return new JobOutcome(JobResult.NotAvailable);Friendship(j.Owner,j.Requester,-3);CancelJob(at,JobEndReason.Abandoned);return new JobOutcome(JobResult.Ok,id);}
     private JobOutcome CancelSupply(JobIdentity id,int npc)
     {int at=ledger.FindJob(id);if(at<0||supplySelection!=id)return new JobOutcome(JobResult.NotAvailable);var j=ledger.Jobs[at];supplySelection=default;if(j.Requester!=ledger.Npc(npc)||j.Template!=JobTemplate.FavorFish&&j.Template!=JobTemplate.FavorInsect)return new JobOutcome(JobResult.NotAvailable);Friendship(ledger.Player(state.ActiveProfile),j.Requester,-1);return new JobOutcome(JobResult.Ok,id);}
     public bool BeginSupplySelection(JobIdentity id)
