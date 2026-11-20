@@ -124,6 +124,17 @@ public sealed class LowPolyTree
         }
         return result;
     }
+    // Use the detail texture's coarse noise grid without the fine grain.
+    // Project in tree space so neighboring faces sample the same color patch.
+    public static float BlossomNoise(float x,float y,float z)
+    {
+        float u=(x+z*.65f)*4+2,v=(y-z*.45f)*4;
+        int gx=(int)Math.Floor(u),gy=(int)Math.Floor(v);
+        float fx=u-gx,fy=v-gy;
+        float top=Grain(gx&3,gy&3)*(1-fx)+Grain((gx+1)&3,gy&3)*fx;
+        float bottom=Grain(gx&3,(gy+1)&3)*(1-fx)+Grain((gx+1)&3,(gy+1)&3)*fx;
+        return (top*(1-fy)+bottom*fy)/23.5f-1;
+    }
     private static int Grain(int x,int y)
     {return (int)(GrainHash(x,y)%48);}
     private static uint GrainHash(int x,int y)

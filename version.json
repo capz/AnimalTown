@@ -68,6 +68,15 @@
         "Cherry canopies extend down over the top of the trunk.",
         "Regular deciduous canopies reach a little higher."
       ]
+    },
+    {
+      "id": "cherry-blossom-color-blend",
+      "lines": [
+        "Cherry blossoms blend base pink with lighter blush and darker rose.",
+        "Soft color patches follow the shapes of the canopy clusters.",
+        "The pattern uses the trees' existing noise.",
+        "The effect uses the shared tree mesh and texture."
+      ]
     }
   ]
 }

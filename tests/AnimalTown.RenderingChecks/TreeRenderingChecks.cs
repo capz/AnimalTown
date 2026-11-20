@@ -55,6 +55,18 @@ internal static class TreeRenderingChecks
             check(a.Position.Equals(b.Position)&&a.TextureCoordinate.Equals(b.TextureCoordinate),"bloom reuses cherry geometry and texture coordinates");
             check(i<24*3?a.Color.Packed==b.Color.Packed:b.Color.R>b.Color.G&&b.Color.B>b.Color.G,"only the canopy turns pink");
         }
+        int canopy=24*3,basePink=0,lightPink=0,darkPink=0;
+        int[] baseGreen={0,109,153,216};
+        for(int part=1;part<baseGreen.Length;part++)for(int t=0;t<cherry.Triangles;t++)if(cherry.Parts[t]==part){
+            for(int v=0;v<3;v++){
+                int original=(baseGreen[part]*cherry.Ambient[t*3+v]+127)/255;
+                int actual=blooming[canopy++].Color.G;
+                if(actual==original)basePink++;
+                else if(actual>original)lightPink++;
+                else darkPink++;
+            }
+        }
+        check(basePink>0&&lightPink>0&&darkPink>0,"coarse blossom noise blends the base pink with lighter and darker patches");
 
         int[] kinds={2,0,1,2,1,LowPolyTree.Cherry,0};
         var poses=kinds.Select(_=>new Transform()).ToArray();
