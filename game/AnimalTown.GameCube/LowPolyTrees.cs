@@ -2,7 +2,7 @@ using System;
 using AnimalTown;
 using Dolphin.Graphics;
 
-// Three shared meshes modulate season and local AO with one tiny opaque
+// Shared meshes modulate season and local AO with one tiny opaque
 // mipmapped detail texture. No extra pass, per-instance texture or frame upload.
 internal sealed class LowPolyTrees : IDisposable
 {
@@ -12,6 +12,7 @@ internal sealed class LowPolyTrees : IDisposable
     private readonly Material material=new Material{Cull=CullMode.Back,Lighting=LightingMode.Unlit,Color=Color32.White};
     private Texture2D? detail;
     private int preparedSeason=-1;
+    private bool preparedBloom;
     private readonly Transform[] poses=new Transform[Capacity],batchTransforms=new Transform[Capacity];
     private readonly Mesh[] batchMeshes=new Mesh[Capacity];
     private readonly int[] kinds=new int[Capacity];
@@ -21,32 +22,40 @@ internal sealed class LowPolyTrees : IDisposable
     }
     public void Dispose()
     {
-        // Batch entries borrow the three shared meshes; dispose each owner once.
+        // Batch entries borrow the shared meshes; dispose each owner once.
         Array.Clear(batchMeshes,0,batchMeshes.Length);
         for(int i=0;i<geometry.Length;i++){geometry[i]?.Dispose();geometry[i]=null!;streams[i]=null!;}
         material.Texture=null;detail?.Dispose();detail=null;
         preparedSeason=-1;
     }
-    internal void Prepare(int season)
+    internal void Prepare(int season,bool bloom)
     {
         if(detail==null){
             detail=Texture2D.FromPackage(LowPolyTree.DetailTexture(),true);
             detail.ConfigureSampler(TextureWrapMode.Repeat,TextureWrapMode.Repeat,TextureMinFilter.LinearMipmapLinear,TextureMagFilter.Linear);
             material.Texture=detail;
         }
-        if(preparedSeason==season)return;
+        bloom=bloom&&season==0;
+        if(preparedSeason==season&&preparedBloom==bloom)return;
         for(int kind=0;kind<geometry.Length;kind++){
+            if(preparedSeason==season&&kind!=LowPolyTree.Cherry)continue;
             var tree=LowPolyTree.Build(kind);
             var vertices=streams[kind];if(vertices==null){vertices=new VertexPositionColorTexture[tree.Triangles*3];streams[kind]=vertices;}
-            WriteVertices(tree,kind,season,1,vertices);
+            WriteVertices(tree,kind,season,1,vertices,bloom);
             if(geometry[kind]==null)geometry[kind]=DynamicMesh.Create(vertices);else geometry[kind].SetVertices(vertices);
         }
         preparedSeason=season;
+        preparedBloom=bloom;
     }
-    internal static void WriteVertices(LowPolyTree tree,int kind,int season,float uvScale,VertexPositionColorTexture[] vertices)
+    internal static void WriteVertices(LowPolyTree tree,int kind,int season,float uvScale,VertexPositionColorTexture[] vertices,bool bloom=false)
     {
         Color32 leaf=kind==1?new Color32(61,139,77):kind==2?new Color32(50,111,69):season==2?new Color32(184,121,49):season==3?new Color32(124,158,143):new Color32(84,147,65);
         var colors=new[]{new Color32(123,85,49),new Color32((byte)(leaf.R*3/4),(byte)(leaf.G*3/4),(byte)(leaf.B*3/4)),leaf,season==3&&kind!=1?new Color32(229,237,230):new Color32((byte)Math.Min(255,leaf.R+24),(byte)Math.Min(255,leaf.G+24),(byte)Math.Min(255,leaf.B+24))};
+        if(bloom&&kind==LowPolyTree.Cherry){
+            colors[1]=new Color32(190,109,141);
+            colors[2]=new Color32(231,153,180);
+            colors[3]=new Color32(255,216,227);
+        }
         // Keep the original part/triangle order and multiply its palette in RGB only.
         int at=0;
         for(int part=0;part<4;part++)for(int t=0;t<tree.Triangles;t++)if(tree.Parts[t]==part)for(int v=0;v<3;v++){
@@ -60,7 +69,7 @@ internal sealed class LowPolyTrees : IDisposable
     {
         if(preparedSeason<0)return;
         int count=0;
-        for(int n=0;n<selectedCount;n++){var g=town.Ground[selected[n]];float scale=g.Kind==2?.75f:3;var p=CylinderWorld.Surface(g.Z,focusZ,TerrainElevation.At(town,g.X,g.Z));float angle=p.Pitch*.5f;var pose=poses[count];pose.LocalPosition=new Vector3(g.X,p.Y,p.Z);pose.LocalScale=new Vector3(scale,scale,scale);pose.LocalRotation=new Quaternion((float)Math.Sin(angle),0,0,(float)Math.Cos(angle));kinds[count++]=g.Item==3?2:g.Item==2?1:0;}
+        for(int n=0;n<selectedCount;n++){var g=town.Ground[selected[n]];float scale=g.Kind==2?.75f:3;var p=CylinderWorld.Surface(g.Z,focusZ,TerrainElevation.At(town,g.X,g.Z));float angle=p.Pitch*.5f;var pose=poses[count];pose.LocalPosition=new Vector3(g.X,p.Y,p.Z);pose.LocalScale=new Vector3(scale,scale,scale);pose.LocalRotation=new Quaternion((float)Math.Sin(angle),0,0,(float)Math.Cos(angle));kinds[count++]=g.Item switch{Catalog.CherrySapling=>LowPolyTree.Cherry,Catalog.PineSapling=>2,2=>1,_=>0};}
         for(int kind=0;kind<geometry.Length;kind++){
             int used=WriteBatch(geometry[kind],kind,kinds,poses,count,batchMeshes,batchTransforms);
             if(used>0)renderer.DrawMeshes(batchMeshes,batchTransforms,material,0,used);

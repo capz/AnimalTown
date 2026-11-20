@@ -13,6 +13,23 @@ internal static class ShopChecks
         archivedPaths.Pockets[0]=10;check(archivedPaths.Town.Shop.List(archivedPaths,0,0,1234),"path-save upgrade accepts a shop listing");
         foreach(var migrated in new[]{SaveCodec.Decode(SaveCodec.Encode(archivedPaths)),SplitSaveCodec.Decode(SplitSaveCodec.Encode(archivedPaths))})check(migrated.Town.Paths.Packed.SequenceEqual(archivedPaths.Town.Paths.Packed)&&migrated.Town.Shop.SaleItems[0]==10&&migrated.Town.Shop.SalePrices[0]==1234,"both paths and shop state survive the combined save formats");
         var s=new GameState(204){Wallet=99999};s.Rollover(100,100);Array.Clear(s.Pockets);
+        var cherryTown=new GameState(204){Wallet=99999};cherryTown.Rollover(100,100);Array.Clear(cherryTown.Pockets);
+        int cherrySlot=Enumerable.Range(0,TownShop.CabinetCount).Single(i=>TownShop.CabinetItem(i)==Catalog.CherrySapling);
+        int plantingCell=Enumerable.Range(0,Town.Cells).First(i=>{
+            int x=i%Town.Width,z=i/Town.Width;
+            return cherryTown.Town.At(x,z)==(int)Terrain.Grass&&cherryTown.Town.Walkable(x,z)&&cherryTown.Town.FindGround(x,z)<0;
+        });
+        int px=plantingCell%Town.Width,pz=plantingCell/Town.Width;
+        check(cherryTown.BuyCabinet(cherrySlot)&&cherryTown.Use(0,1,px,pz)&&cherryTown.BuyCabinet(cherrySlot),
+            "the shop sells cherry saplings for planting and keeping in pockets");
+        foreach(var copy in new[]{SaveCodec.Decode(SaveCodec.Encode(cherryTown)),SplitSaveCodec.Decode(SplitSaveCodec.Encode(cherryTown))}){
+            int planted=copy.Town.FindGround(px,pz,2);
+            check(copy.Pockets[0]==Catalog.CherrySapling&&planted>=0&&copy.Town.Ground[planted].Item==Catalog.CherrySapling,
+                "both save formats retain planted and carried cherry saplings");
+            copy.Rollover(103,100);
+            int mature=copy.Town.FindGround(px,pz,3);
+            check(mature>=0&&copy.Town.Ground[mature].Item==Catalog.CherrySapling,"normal sapling growth retains the cherry species");
+        }
         var shop=s.Town.Shop;
         check(s.BuildingTypes[7]==1&&BuildingWorld.Size(s,TownShop.Room)==8,"shop has its own reusable building definition");
         for(int i=0;i<TownShop.CabinetCount;i++){

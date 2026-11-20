@@ -13,6 +13,15 @@ public sealed class TownClock
     public int MinuteOfDay {get;private set;}
     public int CivilDay {get;private set;} // Days since 2000-01-01, at local midnight.
     public int CalendarMonth {get;private set;} // Year * 12 + zero-based month, for saves.
+    public const int DayRolloverMinute=6*60;
+    public bool CherryBlossomsBloom
+    {
+        get
+        {
+            int day=(previous>>11&31)-(MinuteOfDay<DayRolloverMinute?1:0);
+            return CalendarMonth%12==2&&day>=1&&day<=10;
+        }
+    }
     public string DayMonth=>(previous>>11&31)+" "+fullMonths[(previous>>16&15)-1];
     public void Update(int packed)
     {

@@ -113,9 +113,9 @@ internal static class ProfileCodec
         p.Facing=r.Range(-6434,6434)/1024f;
         if(!BuildingWorld.ValidSpace(p.Space)||!p.Created&&p.HousePlaced)throw new InvalidOperationException("Invalid profile home/space");
         p.Name=r.Text(16);p.Catchphrase=r.Text(32);
-        for(int i=0;i<30;i++){p.Pockets[i]=r.Range(0,25);if(i>=(p.BackpackTier+1)*10&&p.Pockets[i]!=0)throw new InvalidOperationException("Locked profile pocket");}
-        for(int i=0;i<64;i++)p.Owned[i]=r.Range(0,1);for(int i=0;i<p.MailCount;i++)p.Mail[i]=r.Range(-25,25);
-        for(int i=0;i<6;i++){int at=i*4;p.Relationships[at]=r.Range(0,255);p.Relationships[at+1]=r.Range(0,25);p.Relationships[at+2]=r.Int();p.Relationships[at+3]=r.Range(0,1);}
+        for(int i=0;i<30;i++){p.Pockets[i]=r.Range(0,Catalog.Items.Length-1);if(i>=(p.BackpackTier+1)*10&&p.Pockets[i]!=0)throw new InvalidOperationException("Locked profile pocket");}
+        for(int i=0;i<64;i++)p.Owned[i]=r.Range(0,1);for(int i=0;i<p.MailCount;i++)p.Mail[i]=r.Range(1-Catalog.Items.Length,Catalog.Items.Length-1);
+        for(int i=0;i<6;i++){int at=i*4;p.Relationships[at]=r.Range(0,255);p.Relationships[at+1]=r.Range(0,Catalog.Items.Length-1);p.Relationships[at+2]=r.Int();p.Relationships[at+3]=r.Range(0,1);}
         return p;
     }
 }

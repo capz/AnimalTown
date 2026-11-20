@@ -92,9 +92,9 @@ public static class SaveCodec
         s.X=Range(b,ref p,0,sourceWidth*1024-1)/1024f;s.Z=Range(b,ref p,0,sourceHeight*1024-1)/1024f;s.Town.HouseX=Range(b,ref p,1,sourceWidth-15);s.Town.HouseZ=Range(b,ref p,1,sourceHeight-13);s.Town.Spending=Range(b,ref p,0,int.MaxValue);s.Town.StockCount=Range(b,ref p,6,12);
         s.BackpackTier=Range(b,ref p,0,2);
         s.Name=Text(b,ref p,16);s.Catchphrase=Text(b,ref p,32);
-        for(int i=0;i<GameState.MaximumPockets;i++)s.Pockets[i]=Range(b,ref p,0,25);
+        for(int i=0;i<GameState.MaximumPockets;i++)s.Pockets[i]=Range(b,ref p,0,Catalog.Items.Length-1);
         for(int i=s.Capacity;i<GameState.MaximumPockets;i++)if(s.Pockets[i]!=0)throw new InvalidOperationException("Locked backpack slot occupied");
-        for(int i=0;i<64;i++)s.Owned[i]=Range(b,ref p,0,1);for(int i=0;i<s.MailCount;i++)s.Mail[i]=Range(b,ref p,-25,25);
+        for(int i=0;i<64;i++)s.Owned[i]=Range(b,ref p,0,1);for(int i=0;i<s.MailCount;i++)s.Mail[i]=Range(b,ref p,1-Catalog.Items.Length,Catalog.Items.Length-1);
         {
             int runCount=Range(b,ref p,1,Town.Cells),cell=0;
             for(int i=0;i<runCount;i++){
@@ -107,11 +107,11 @@ public static class SaveCodec
             }
             if(cell!=Town.Cells)throw new InvalidOperationException("Incomplete terrain");
         }
-        for(int i=0;i<12;i++)s.Town.Stock[i]=Range(b,ref p,0,25);
-        for(int i=0;i<6;i++){var v=s.Town.Residents[i];v.X=Range(b,ref p,0,sourceWidth-1);v.Z=Range(b,ref p,0,sourceHeight-1);v.Friendship=Range(b,ref p,0,255);v.Request=Range(b,ref p,0,25);v.RequestDay=Get(b,ref p);v.Met=Range(b,ref p,0,1);}
+        for(int i=0;i<12;i++)s.Town.Stock[i]=Range(b,ref p,0,Catalog.Items.Length-1);
+        for(int i=0;i<6;i++){var v=s.Town.Residents[i];v.X=Range(b,ref p,0,sourceWidth-1);v.Z=Range(b,ref p,0,sourceHeight-1);v.Friendship=Range(b,ref p,0,255);v.Request=Range(b,ref p,0,Catalog.Items.Length-1);v.RequestDay=Get(b,ref p);v.Met=Range(b,ref p,0,1);}
         int groundCount=Range(b,ref p,0,512);s.Town.GroundCount=0;
         for(int i=0;i<groundCount;i++){
-            var g=s.Town.Ground[s.Town.GroundCount];g.Item=Range(b,ref p,1,25);g.X=Range(b,ref p,0,sourceWidth-1);g.Z=Range(b,ref p,0,sourceHeight-1);g.Owner=Range(b,ref p,0,3);g.Day=Get(b,ref p);g.RestoreKind(Range(b,ref p,0,12));
+            var g=s.Town.Ground[s.Town.GroundCount];g.Item=Range(b,ref p,1,Catalog.Items.Length-1);g.X=Range(b,ref p,0,sourceWidth-1);g.Z=Range(b,ref p,0,sourceHeight-1);g.Owner=Range(b,ref p,0,3);g.Day=Get(b,ref p);g.RestoreKind(Range(b,ref p,0,12));
             s.Town.GroundCount++;
         }
         int count=Range(b,ref p,0,256);s.Town.PlacedCount=0;

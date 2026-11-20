@@ -12,6 +12,8 @@ internal static class TownGenerationChecks
             Array.Clear(visited);Array.Clear(blocked);int trees=0;
             for(int i=0;i<town.GroundCount;i++){var g=town.Ground[i];check(town.Inside(g.X,g.Z),"generated ground records bounded");if(g.Kind==3){trees++;blocked[g.Z*Town.Width+g.X]=true;check(town.At(g.X,g.Z)==0&&!town.InReserve(g.X,g.Z),"trees avoid water, structures and starter reserve");}}
             check(trees==192&&town.GroundCount==194,"bounded deterministic vegetation population at sixty percent of the previous tree count");
+            int cherries=town.Ground.Take(town.GroundCount).Count(g=>g.Kind==3&&g.Item==Catalog.CherrySapling);
+            check(cherries>0&&cherries<trees/4,"each new town has a small share of cherry blossom trees");
             check(town.Elevation.Count(mode=>mode==TerrainElevation.RampNorth)==12,"three complete terraces retain their two-by-two ramps within compact bounds");
             int front=0,back=0;queue[back++]=38*Town.Width+18;visited[queue[0]]=true;
             while(front<back){int cell=queue[front++],x=cell%Town.Width,z=cell/Town.Width;

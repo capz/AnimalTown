@@ -14,6 +14,7 @@ public static class Catalog
 {
     public const int Version=1;
     public const int WorkShirt=4;
+    public const int PineSapling=3,CherrySapling=26;
     public const int Acorns1000=22,Acorns10000=23,LegacyAcorns50000=24;
     public const int FishingRod=5,BugNet=6,Shovel=7,LegacyWateringCan=8,Axe=9;
     public const int ToolCount=4;
@@ -22,7 +23,7 @@ public static class Catalog
         new ItemDef(0,"Empty",0,0,0),
         new ItemDef(1,"Peach",400,100,ItemFlags.Sell|ItemFlags.Gift|ItemFlags.Eat|ItemFlags.Plant|ItemFlags.Bury),
         new ItemDef(2,"Wildflower",80,20,ItemFlags.Sell|ItemFlags.Gift|ItemFlags.Plant),
-        new ItemDef(3,"Pine sapling",240,60,ItemFlags.Sell|ItemFlags.Gift|ItemFlags.Plant),
+        new ItemDef(PineSapling,"Pine sapling",240,60,ItemFlags.Sell|ItemFlags.Gift|ItemFlags.Plant),
         new ItemDef(WorkShirt,"Work shirt",200,50,ItemFlags.Sell|ItemFlags.Gift|ItemFlags.Wear),
         new ItemDef(5,"Fishing rod",500,125,ItemFlags.Sell|ItemFlags.Tool),
         new ItemDef(6,"Bug net",500,125,ItemFlags.Sell|ItemFlags.Tool),
@@ -46,7 +47,8 @@ public static class Catalog
         new ItemDef(Acorns10000,"10000 acorns",0,0,ItemFlags.Money|ItemFlags.Bury,moneyValue:10000),
         // Non-GameCube denomination: retain its full value for older saves.
         new ItemDef(LegacyAcorns50000,"50000 acorns",0,0,ItemFlags.Money,moneyValue:50000),
-        new ItemDef(25,"Reading lamp",1800,450,ItemFlags.Sell|ItemFlags.Gift|ItemFlags.Place)
+        new ItemDef(25,"Reading lamp",1800,450,ItemFlags.Sell|ItemFlags.Gift|ItemFlags.Place),
+        new ItemDef(CherrySapling,"Cherry blossom sapling",240,60,ItemFlags.Sell|ItemFlags.Gift|ItemFlags.Plant)
     };
     public static int ToolAt(int index)=>index>=0&&index<ToolCount?tools[index]:0;
     public static int MoneyValue(int id)=>Has(id,ItemFlags.Money)?Items[id].MoneyValue:0;
