@@ -77,6 +77,15 @@
         "The pattern uses the trees' existing noise.",
         "The effect uses the shared tree mesh and texture."
       ]
+    },
+    {
+      "id": "player-chat-and-debug-attend",
+      "lines": [
+        "Chat as your villager using the controller keyboard.",
+        "Open Chat in Settings or press R while playing.",
+        "With debug menus visible, /attend name text makes that neighbour call out.",
+        "Long messages wrap into pages; ordinary chat shows your own name."
+      ]
     }
   ]
 }

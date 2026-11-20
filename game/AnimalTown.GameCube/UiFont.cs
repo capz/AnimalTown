@@ -115,6 +115,7 @@ internal sealed class UiFont
     private float Factor=>metrics[8]/(float)metrics[4];
     internal float Measure(string text,float scale=1)
     { float x=0,max=0,f=firmware!=null?scale*22/firmware[1]:scale*Factor;for(int i=0;i<text.Length;i++){if(text[i]=='\n'){max=Math.Max(max,x);x=0;}else if(text[i]!='\r')x+=(firmware!=null&&text[i]=='\t'?advances[0]*4:advances[Index(text[i])])*f;}return Math.Max(max,x); }
+    internal float MeasureGlyph(char c)=>advances[Index(c)]*(firmware!=null?22f/firmware[1]:Factor);
     // Bounds of the actual glyph quads, excluding advance/bearing padding.
     internal RectF GlyphBounds(string text,float scale=1)
     {
