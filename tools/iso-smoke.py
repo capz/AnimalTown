@@ -2177,6 +2177,8 @@ EnableJIT = True
 ConfirmStop = False
 UsePanicHandlers = False
 ''')
+if '--jobs' in sys.argv and (root/'MemoryCardB.USA.raw').is_file():
+    config=user/'Config'/'Dolphin.ini';config.write_text(config.read_text().replace('SlotB = 255','SlotB = 1'))
 if '--save-cards' in sys.argv:
     mode=sys.argv[sys.argv.index('--save-cards')+1]
     config=user/'Config'/'Dolphin.ini';text=config.read_text()
@@ -2217,7 +2219,7 @@ DumpCodec = ffv1
 [Hacks]
 EFBToTextureEnable = False
 ''')
-if '--profile' in sys.argv or '--interaction-profile' in sys.argv or '--runtime-profile' in sys.argv or '--terrain-scroll' in sys.argv or '--lighting' in sys.argv or '--actor-shadows' in sys.argv or '--movement-profile' in sys.argv or '--stream-travel' in sys.argv or '--submissions' in sys.argv or '--aram-residency' in sys.argv or '--player-chat' in sys.argv:
+if '--profile' in sys.argv or '--interaction-profile' in sys.argv or '--runtime-profile' in sys.argv or '--terrain-scroll' in sys.argv or '--lighting' in sys.argv or '--actor-shadows' in sys.argv or '--movement-profile' in sys.argv or '--stream-travel' in sys.argv or '--submissions' in sys.argv or '--aram-residency' in sys.argv or '--player-chat' in sys.argv or '--jobs' in sys.argv:
     config=user/'Config'/'Dolphin.ini'
     config.write_text(config.read_text()+'\n[Movie]\nDumpFrames = True\nDumpFramesSilent = True\n')
     config=user/'Config'/'GFX.ini'
@@ -2239,13 +2241,16 @@ with (root/'emulator.log').open('w') as log:
         if '--loading' in sys.argv:
             for n,seconds in enumerate((1,1,2,4,8,12,17)):
                 time.sleep(seconds);screenshot(f'loading-{n}.png')
-        elif any(flag in sys.argv for flag in ('--aram-residency','--title-logo','--terrain-materials','--save-cards','--save-and-quit','--daylight-clock','--daylight-location','--player-chat')):wait_title()
+        elif any(flag in sys.argv for flag in ('--jobs','--aram-residency','--title-logo','--terrain-materials','--save-cards','--save-and-quit','--daylight-clock','--daylight-location','--player-chat')):wait_title()
         else:time.sleep(45)
         if p.poll() is not None:
             raise RuntimeError(f'Dolphin exited during boot ({p.returncode}); see {root / "emulator.log"}')
         screenshot('screen.png')
         if any(flag in sys.argv for flag in ('--title-menu','--title-load','--title-config','--title-update','--title-options','--title-options-load','--title-options-unsupported')):wait_title()
-        if '--player-chat' in sys.argv:player_chat()
+        if '--jobs' in sys.argv:
+            from jobs_smoke import run
+            run(globals())
+        elif '--player-chat' in sys.argv:player_chat()
         elif '--daylight-location' in sys.argv:daylight_location()
         elif '--daylight-clock' in sys.argv:daylight_clock()
         elif '--save-cards' in sys.argv:memory_cards()

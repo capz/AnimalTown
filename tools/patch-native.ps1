@@ -266,8 +266,8 @@ $makePath=Join-Path $nativeRoot 'Makefile'
 $makeSource=[IO.File]::ReadAllText($makePath)
 $heapSetting='DND_MANAGED_HEAP_BYTES ?= 262144'
 if(([regex]::Matches($makeSource,[regex]::Escape($heapSetting))).Count -ne 1){throw 'Pinned SDK managed heap setting changed'}
-# Maximum text mail plus two-card transfer readback is qualified at 8 MiB.
-$makeSource=$makeSource.Replace($heapSetting,'DND_MANAGED_HEAP_BYTES ?= 8388608')
+# Maximum text mail plus two-card transfer readback is qualified at 6 MiB.
+$makeSource=$makeSource.Replace($heapSetting,'DND_MANAGED_HEAP_BYTES ?= 6291456')
 [IO.File]::WriteAllText($makePath,$makeSource)
 [IO.File]::WriteAllText($entryPath,$entrySource)
 # Keep the SDK's 16 MiB byte budget; the wider terrain prefetch pool needs more

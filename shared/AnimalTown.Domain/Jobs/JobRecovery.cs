@@ -29,11 +29,11 @@ public sealed partial class OfflineJobLedger
 }
 public sealed partial class VillagerJobService
 {
-    internal void RecordEnd(VillagerJobRecord job,JobEndReason reason)
+    internal void RecordEnd(VillagerJobRecord job,JobEndReason reason,long at=long.MinValue)
     {
         var owner=job.Shared?(job.Claimant.IsEmpty?job.AcceptedBy:job.Claimant):job.Owner;
         for(int i=0;i<ledger.Terminals.Length;i++)if(ledger.Terminals[i].Job==job.Id)return;
-        ledger.Terminals[ledger.TerminalNext]=new JobTerminal{Job=job.Id,Owner=owner,Requester=job.Requester,Template=job.Template,Reason=reason,At=Now};ledger.TerminalNext=(ledger.TerminalNext+1)%ledger.Terminals.Length;
+        ledger.Terminals[ledger.TerminalNext]=new JobTerminal{Job=job.Id,Owner=owner,Requester=job.Requester,Template=job.Template,Reason=reason,At=at!=long.MinValue?at:Enabled?Now:ledger.Watermark};ledger.TerminalNext=(ledger.TerminalNext+1)%ledger.Terminals.Length;
     }
     // Content/migration adapter: a proven removal is distinct from an absent
     // card, sleep or an unloaded model. It never substitutes a new NPC identity.
@@ -43,12 +43,12 @@ public sealed partial class VillagerJobService
         var old=ledger.Npc(slot);int known=-1;
         for(int i=0;i<ledger.KnownNpcs.Length;i++){if(ledger.KnownNpcs[i]==old){known=i;break;}if(ledger.KnownNpcs[i].IsEmpty&&known<0)known=i;}
         if(known<0)return new JobOutcome(JobResult.FullJobs);
-        for(int p=0;p<OfflineJobLedger.OwnerCount;p++)if((p< GameState.ProfileCount?state.Profiles[p].Created:ledger.GuestProfile!=null)&&!ledger.CanRememberRelation(p,old))return new JobOutcome(JobResult.FullJobs);
+        for(int p=0;p<OfflineJobLedger.OwnerCount;p++)if((p<GameState.ProfileCount?state.Profiles[p].Created:ledger.GuestProfile!=null)&&!ledger.CanAdoptNpc(p,default,true))return new JobOutcome(JobResult.FullJobs);
         state.CaptureProfile();var replacement=ledger.Allocate();ledger.RememberNpc(old,ledger.TownId,state.Town.Residents[slot].Name);ledger.RemovedNpcs[known]=true;
         for(int i=0;i<ledger.Jobs.Length;i++){var j=ledger.Jobs[i];if(j.Occupying&&j.Status!=JobStatus.RewardOwed&&j.Status!=JobStatus.CompletedRetained&&j.Status!=JobStatus.ReplyOwed&&(j.Requester==old||j.Target==old))CancelJob(i,JobEndReason.WorldRemoved);}
         for(int i=0;i<ledger.Offers.Length;i++)if(ledger.Offers[i].Requester==old||ledger.Offers[i].Target==old)ledger.Offers[i]=default;
         for(int p=0;p<OfflineJobLedger.OwnerCount;p++){
-            if(p==OfflineJobLedger.Visitor&&ledger.GuestProfile==null||p<GameState.ProfileCount&&!state.Profiles[p].Created)continue;var profile=state.ProfileAt(p);ledger.RememberRelation(p,old,profile.Relationships[slot*4],profile.Relationships[slot*4+3]);profile.Relationships[slot*4]=profile.Relationships[slot*4+1]=profile.Relationships[slot*4+2]=profile.Relationships[slot*4+3]=0;profile.MetMask&=~(1<<slot);
+            if(p==OfflineJobLedger.Visitor&&ledger.GuestProfile==null||p<GameState.ProfileCount&&!state.Profiles[p].Created)continue;var profile=state.ProfileAt(p);ledger.RememberRelation(p,old,profile.Relationships[slot*4],profile.Relationships[slot*4+3]);ledger.RememberRelation(p,replacement,0,0);profile.Relationships[slot*4]=profile.Relationships[slot*4+1]=profile.Relationships[slot*4+2]=profile.Relationships[slot*4+3]=0;profile.MetMask&=~(1<<slot);
         }
         ledger.SetNpcIdentity(slot,replacement);ledger.SetOutfit(slot,outfit);ledger.NpcSpecies[slot]=species;ledger.FurnitureCacheItems[slot]=ledger.FurnitureCacheVersions[slot]=0;
         var resident=state.Town.Residents[slot];resident.Name=name;resident.Phrase=phrase;resident.PosX=resident.HomeX+1.5f;resident.PosZ=resident.HomeZ+4.5f;resident.X=(int)resident.PosX;resident.Z=(int)resident.PosZ;resident.Space=0;resident.JourneyPhase=0;resident.JourneyBuilding=-1;resident.JourneyNextX=resident.JourneyNextZ=-1;resident.Dwell=180;

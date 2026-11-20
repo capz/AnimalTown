@@ -82,7 +82,7 @@ all four profiles, with 1,000 supplementary Unicode scalars per letter, are
 exercised by the capacity fixture. Incremental readback retains the immutable
 economic buffer and checks its referenced sequence without a duplicate copy.
 Large native allocations use 64 KB size classes so a slightly larger save can
-reuse its previous block. The console managed heap reserves 8 MiB; this is 4 MiB
+reuse its previous block. The console managed heap reserves 6 MiB; this is 2 MiB
 more than the previous build, needed for maximum mail and two-card validation.
 Native normal and forced-GC tests exercise both full towns and complete travel.
 Normal towns retain their existing 32-block

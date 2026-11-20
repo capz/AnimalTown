@@ -1,3 +1,5 @@
+using System.Text;
+
 internal static class WrappedTextChecks
 {
     internal static void Run(Action<bool,string> check)
@@ -19,6 +21,14 @@ internal static class WrappedTextChecks
         check(same&&bytes==0,"ten thousand warm UI wrap requests allocate no managed bytes");
         check(warm.Get(messages[3])==Legacy(messages[3],41)&&warm.Get(messages[2])==original,"new messages invalidate the single cached value correctly");
         bool invalid=false;try{new WrappedText(0);}catch(ArgumentOutOfRangeException){invalid=true;}check(invalid,"invalid wrap width is rejected");
+        var pages=new TextPages(48);string full=string.Join("\n",Enumerable.Range(0,500).Select(i=>i.ToString()));pages.Set(full);
+        check(pages.Lines==500&&pages.Window(492,8)==string.Join("\n",Enumerable.Range(492,8)),"all newline-heavy mail remains reachable in an eight-line panel");
+        foreach(string body in new[]{new string('W',1000),string.Concat(Enumerable.Repeat("\U0001f642",1000)),"\U0001f642 hello "+string.Concat(Enumerable.Repeat("\U0001f642",100)),"one\r\ntwo\nthree"}){
+            pages.Set(body);string[] lines=pages.Window(0,pages.Lines).Split('\n');
+            check(lines.Length==pages.Lines&&lines.All(line=>line.EnumerateRunes().Count()<=48),"arbitrary Unicode words and explicit newlines fit the panel width");
+            for(int row=0;row<pages.Lines;row++)check(pages.Window(row,4).Split('\n').Length<=4,"every message and draft window fits its allocated line count");
+        }
+        pages.Set(full);before=GC.GetAllocatedBytesForCurrentThread();for(int i=0;i<10000;i++)pages.Set(full);check(GC.GetAllocatedBytesForCurrentThread()==before,"unchanged paged text allocates nothing while drawing");
     }
     private static string Legacy(string text,int columns){string result="";int col=0;foreach(char c in text){if(col>=columns&&c==' '){result+="\n";col=0;}else{result+=new string(new[]{c});col++;}}return result;}
 }

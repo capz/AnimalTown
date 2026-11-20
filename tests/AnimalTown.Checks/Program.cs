@@ -1,5 +1,6 @@
 using AnimalTown;
 if(args.Length==3&&args[0]=="--job-fixture"){JobFixture.Write(args[1],args[2]);return;}
+if(args.Length==3&&(args[0]=="--job-report"||args[0]=="--job-verify")){JobFixture.Report(args[1],args[2],args[0]=="--job-verify");return;}
 
 if(args.Length==4&&args[0]=="--shop-fixture"&&args[2]=="--tier"){
     int tier=int.Parse(args[3]);if(tier<0||tier>2)throw new ArgumentException("Shop fixture tier must be 0, 1 or 2");

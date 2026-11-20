@@ -9,6 +9,13 @@ public static class SplitSaveCodec
     internal static bool IsProfileTownVersion(int version)=>version==4||version>=6&&version<=10;
     public static int RecordKind(int part)=>part<4?part:part+1;
     public static int ReadVersion(byte[] bytes)=>new Reader(bytes,TownData).Version;
+    internal static ulong EconomicTownIdentity(byte[] bytes)
+    {
+        var r=new Reader(bytes,ShopStates);if(r.Version!=4)throw new InvalidOperationException("Unsupported travel economic record");
+        r.Range(0,int.MaxValue);r.Range(6,12);r.SkipWords(12);r.Range(154,154);r.SkipWords(154);
+        r.Range(7,Jobs.OfflineJobLedger.MaximumWords);if(r.Int()!=Jobs.OfflineJobLedger.Magic)throw new InvalidOperationException("Missing saved job identity");r.Range(7,Jobs.OfflineJobLedger.Schema);
+        uint lo=unchecked((uint)r.Int()),hi=unchecked((uint)r.Int());return lo|((ulong)hi<<32);
+    }
     public static string FileName(int kind,int bank)
     {string[] names={"AT-Town","AT-Houses","AT-Shops","AT-Player","AT-Commit","AT-Villager2-","AT-Villager3-","AT-Villager4-","AT-Residents"};return names[kind]+bank;}
     public static bool IsFile(string name)

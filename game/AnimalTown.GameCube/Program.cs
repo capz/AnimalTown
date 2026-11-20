@@ -777,7 +777,7 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
     }
     private void Interact()
     {
-        if(JobsLive&&room==0&&Math.Abs(state.X-43)<2&&Math.Abs(state.Z-13)<2){screen="notice-board";noticeSelection=0;return;}
+        if(JobsLive&&room==0&&Math.Abs(state.X-43)<2&&Math.Abs(state.Z-13)<2){OpenNoticeBoard();return;}
         int x=(int)state.X,z=(int)state.Z,tx=x+faceX,tz=z+faceZ;
         if(villagers.Doors.Busy(0))return;
         int door=villagers.Doors.Nearby(state,0,facingYaw);
@@ -939,6 +939,7 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
         UpdateAnimationFrame();
         if((renderDebug.ForceAttention||attendingVillager>=0)&&villagers.Doors.PlayerFade<1)attention.Prepare();
         phase=FrameProfile.Start();if(!playerRunning&&(screen=="world"||screen=="plot"))clockHud.Prepare(townClock);uiShapes.Prepare(screen,screen=="menu"?menuTab:-1,batchedDrawing);if((batchedDrawing&&screen=="map")||(runningMinimap.Visible&&screen=="world"&&room==0))mapBackground.Prepare(state.Town);modelUsed=0;FrameProfile.End(8,phase);
+        if(JobsLive)jobScene.Prepare();
         UiNoise.Prepare();preparedSubmitMicroseconds=0;preparedEnvironmentTint=environmentTint;preparedLampStrength=lampStrength;preparedShadowStrength=sunlight;
         phase=FrameProfile.Start();Hypercube.GameCube.FrameRenderer.Draw(device,room==0?TownLights.Tint(weather.Raining(room)?new Color32(112,143,151):new Color32(149,198,186),environmentTint):new Color32(32,40,39),this);FrameProfile.End(9,phase+preparedSubmitMicroseconds);
     }
@@ -955,7 +956,6 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
         float eyeHeight=PlayerHeight();
         if(room==0)camera.LookAt(new Vector3(state.X,CylinderWorld.CameraHeight+eyeHeight,state.Z+CylinderWorld.CameraBack),new Vector3(state.X,eyeHeight,state.Z-CylinderWorld.CameraAimAhead),new Vector3(0,1,0));
         else{float size=BuildingWorld.Size(state,room);indoorView.LookAt(new Vector3(indoorCamera.EyeX(size),indoorCamera.EyeY(size),indoorCamera.EyeZ(size)),new Vector3(size*.5f,.7f,size*.5f),new Vector3(0,1,0));}
-        if(JobsLive)jobScene.Prepare();
         renderer.Begin3D(room==0?camera:indoorView);buildings.Begin(villagers.Doors);FrameProfile.End(4,phase);
         phase=FrameProfile.Start();int submissionAt=FrameProfile.SubmissionStart();if(room==0){terrain.Draw(renderer,terrain.ScrollTransform,room);}else buildings.Interior(renderer,state,worldRoot,indoorCamera,villagers.Doors);
         FrameProfile.SubmissionEnd(0,submissionAt);FrameProfile.End(4,phase);phase=FrameProfile.Start();

@@ -31,7 +31,10 @@ public sealed partial class VillagerJobService
         if(!ledger.CanAllocate(npc>=0?2:1))return CommitMail(sequence,fingerprint,new JobOutcome(JobResult.InvalidIdentity));
         var packed=JobTextBody.Pack(grade.NormalizedBody,grade.ScalarCount);
         var sender=ledger.Player(state.ActiveProfile);var id=ledger.Allocate();var reservation=npc>=0?ledger.Allocate():default;
-        long due=NextPost(Now);var envelope=new JobMailRecord{Id=id,Owner=sender,Sender=sender,Recipient=recipient,Reservation=reservation,State=JobMailState.Queued,Gift=gift,SentAt=Now,DueAt=due,Body=null};ledger.StoreBody(ref envelope,packed);ledger.Mail[slot]=envelope;
+        // For original letters ReplyText 16..27 caches the immutable v1 grade.
+        // Replies use ordinary text IDs; older queued letters keep zero and
+        // take the legacy grading path once, at delivery.
+        long due=NextPost(Now);var envelope=new JobMailRecord{Id=id,Owner=sender,Sender=sender,Recipient=recipient,Reservation=reservation,State=JobMailState.Queued,Gift=gift,ReplyText=16+grade.Rank,SentAt=Now,DueAt=due,Body=null};ledger.StoreBody(ref envelope,packed);ledger.Mail[slot]=envelope;
         if(reward>=0)ledger.Rewards[reward]=new VillagerJobReward{Id=reservation,Job=id,Owner=sender,Giver=recipient,State=JobRewardState.Reserved};
         state.Pockets[paperPocket]=0;if(giftPocket>=0)state.Pockets[giftPocket]=0;
         return CommitMail(sequence,fingerprint,new JobOutcome(JobResult.Ok,id));
@@ -65,16 +68,19 @@ public sealed partial class VillagerJobService
     }
     private void DeliverNpcLetter(JobMailRecord message,int npc)
     {
-        string body=JobTextBody.Unpack(message.Body!,message.BodyOffset,message.BodyWords);
-        if(!JobLetterGrader.TryGrade(body,message.Gift!=0,out var grade))throw new InvalidOperationException("Invalid queued letter body");
+        int rank=message.ReplyText-16;
+        if(rank<0||rank>11||(rank>=6)!=(message.Gift!=0)){
+            string body=JobTextBody.Unpack(message.Body!,message.BodyOffset,message.BodyWords);
+            if(!JobLetterGrader.TryGrade(body,message.Gift!=0,out var grade))throw new InvalidOperationException("Invalid queued letter body");rank=grade.Rank;
+        }
         int sender=ledger.FindPlayer(message.Sender);if(sender<0)return;
-        Friendship(message.Sender,message.Recipient,grade.Friendship);
+        Friendship(message.Sender,message.Recipient,3-(rank%6>=3?0:5)+(message.Gift!=0?3:0));
         int favor=OfflineJobLedger.SharedStart+npc;var j=ledger.Jobs[favor];
         bool qualifies=sender<GameState.ProfileCount&&j.Occupying&&j.Template==JobTemplate.FavorLetter&&j.Status==JobStatus.Active&&Now>=j.AcceptedAt&&Now<=j.DueAt;
         int reservation=ledger.FindReward(qualifies?j.Obligation:message.Reservation);
         if(reservation<0)throw new InvalidOperationException("Delivered letter lost its reserved reply");
         var reward=ledger.Rewards[reservation];reward.Owner=message.Sender;reward.Giver=message.Recipient;reward.State=JobRewardState.Owed;reward.IsReply=true;reward.ResolvedAt=Now;
-        reward.ReplyRank=grade.Rank;reward.ReplyText=grade.Rank;reward.AutomaticReply=!qualifies;reward.ReplyAt=NextPost(Now);reward.Item=ReplyPresent(grade.Rank);
+        reward.ReplyRank=rank;reward.ReplyText=rank;reward.AutomaticReply=!qualifies;reward.ReplyAt=NextPost(Now);reward.Item=ReplyPresent(rank);
         ledger.Rewards[reservation]=reward;
         if(qualifies){
             int extra=ledger.FindReward(message.Reservation);if(extra>=0&&extra!=reservation)ledger.Rewards[extra]=default;

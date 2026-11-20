@@ -9,7 +9,7 @@ size_t job_heap_peak;
 int job_report(int stage,DndManagedHeap *heap){
     static clock_t started;clock_t now=clock();dnd_gc_collect(heap,NULL);
     printf("JOB RESOURCE stage=%d heap_peak=%zu heap_after_gc=%zu capacity=%zu host_cpu_ms=%.3f\n",stage,job_heap_peak,heap->used,heap->capacity,started?1000.0*(now-started)/CLOCKS_PER_SEC:0.0);
-    started=clock();job_heap_peak=heap->used;return 0;
+    started=clock();job_heap_peak=heap->used;return (int)heap->used;
 }
 void dnd_console_write_line(const char *text) { puts(text); }
 void dnd_console_write_managed_line(DndString *text) { if(text){for(uint32_t i=0;i<text->length;i++)putchar(text->chars[i]<128?(char)text->chars[i]:'?');putchar('\n');} }

@@ -39,8 +39,23 @@ internal static class JobRecoveryChecks
         check(service.Execute(service.Command(JobCommandKind.RecoverReward,migrated.Id)).Result==JobResult.FullMailbox&&loaded.Town.Jobs.Reward(0).Item==migrated.Item,"a full recovery mailbox preserves the frozen item obligation");
         loaded.MailCount=0;Array.Fill(loaded.Pockets,1);check(service.Execute(service.Command(JobCommandKind.RecoverReward,migrated.Id)).Result==JobResult.Ok&&loaded.MailCount==1&&loaded.Town.Jobs.Letter(0,0).Gift==migrated.Item,"permanently unreachable item rewards become an actual recovery letter even with full pockets");
         check(service.TakeMailPresent(0,service.NextCommandSequence).Result==JobResult.FullPockets,"the recovery present remains attached until a pocket is free");loaded.Pockets[0]=0;check(service.TakeMailPresent(0,service.NextCommandSequence).Item==migrated.Item&&loaded.Town.Jobs.Letter(0,0).Gift==0,"a recovered present can be collected exactly once");
-        AddressBooks(check,false);AddressBooks(check,true);
+        AddressBooks(check,false);AddressBooks(check,true);RevisionIdentity(check);ReplacementCapacity(check);
         Console.WriteLine("Permanent NPC removal, owed-reward recovery, terminal reasons, content migration and travel address-book preflight passed");
+    }
+    private static void RevisionIdentity(Action<bool,string> check)
+    {
+        var disk=new Disk();var repo=new SaveRepository(disk);var a=new GameState(917){Tutorial=7};a.ResidentJobs.Enable(917001,Now);repo.Save(a);var expected=repo.Load()!;repo.VerifyRevision(expected);
+        var other=new Disk();var b=new GameState(917){Tutorial=7};b.ResidentJobs.Enable(917002,Now);new SaveRepository(other).Save(b);disk.Files.Clear();foreach(var p in other.Files)disk.Files[p.Key]=(byte[])p.Value.Clone();
+        bool rejected=false;try{repo.VerifyRevision(expected);}catch(InvalidOperationException){rejected=true;}
+        check(rejected,"travel revision checks reject a replacement town with the same seed and sequence but another nonce");
+    }
+    private static void ReplacementCapacity(Action<bool,string> check)
+    {
+        var s=new GameState(918){Tutorial=7};s.ResidentJobs.Enable(918001,Now);var l=s.Town.Jobs;
+        for(int i=6;i<63;i++)l.Relations[i]=new JobRelation{Npc=new JobIdentity(8000,(ulong)i+1)};
+        check(s.ResidentJobs.ReplaceResident(0,"Last new neighbour","Hello",0,JobPersonality.Normal).Result==JobResult.Ok,"replacement reserves the arriving identity's final relationship slot");
+        check(SaveCodec.Decode(SaveCodec.Encode(s)).Town.Jobs.Npc(0)==l.Npc(0),"a replacement that fills relationship history remains saveable");
+        var old=l.Npc(0);check(s.ResidentJobs.ReplaceResident(0,"Overflow","Hello",0,JobPersonality.Normal).Result==JobResult.FullJobs&&l.Npc(0)==old,"a subsequent replacement refuses before mutating the town");
     }
     private static void AddressBooks(Action<bool,string> check,bool alreadyKnown)
     {

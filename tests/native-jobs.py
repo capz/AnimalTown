@@ -48,7 +48,7 @@ def main():
                         '-pthread','-I'+str(include),'-I'+str(SDK/'include'),str(source),str(ROOT/'tests/native-jobs.c'),
                         *(str(runtime) if s=='managed_runtime.c' else str(SDK/'source'/s) for s in sources),'-Wl,--gc-sections','-lm','-o',str(binary)],check=True)
         for stress in (False,True):
-            env=os.environ.copy();env.setdefault('ANIMALTOWN_JOB_HEAP_MIB','8')
+            env=os.environ.copy();env.setdefault('ANIMALTOWN_JOB_HEAP_MIB','6')
             if stress:env['ANIMALTOWN_JOB_GC_STRESS']='1'
             subprocess.run([str(binary)],env=env,check=True,timeout=60)
 

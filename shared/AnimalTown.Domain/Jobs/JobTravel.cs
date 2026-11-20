@@ -34,8 +34,14 @@ public sealed partial class OfflineJobLedger
         for(int n=0;n<6;n++){bool found=false;for(int i=0;i<KnownNpcs.Length;i++)if(KnownNpcs[i]==roster.Npc(n)){found=true;break;}if(!found)needed++;}
         return needed<=free;
     }
-    internal bool CanRememberRelation(int profile,JobIdentity npc)
-    {if(RelationSlot(profile,npc,false)>=0)return true;int first=profile*RelationsPerPlayer;for(int i=first;i<first+RelationsPerPlayer;i++)if(Relations[i].Npc.IsEmpty)return true;return false;}
+    internal bool CanAdoptNpc(int profile,JobIdentity arriving,bool newIdentity=false)
+    {
+        int free=0,needed=0,first=profile*RelationsPerPlayer;
+        for(int i=first;i<first+RelationsPerPlayer;i++)if(Relations[i].Npc.IsEmpty)free++;
+        for(int n=0;n<6;n++)if(RelationSlot(profile,Npc(n),false)<0)needed++;
+        if(newIdentity||FindNpc(arriving)<0&&RelationSlot(profile,arriving,false)<0)needed++;
+        return needed<=free;
+    }
     private void WriteTravel(JobWireWriter w)
     {
         var t=Trip;w.Key(t.Id);w.Key(t.Player);w.ULong(t.Home);w.ULong(t.Destination);w.Int(t.HomeProfile);w.Int(t.ResidentAnchor);w.Int(t.HomeSide?1:0);w.Int((int)t.Phase);w.Int(ActiveVisitor?1:0);w.Int(GuestAcre);
@@ -63,7 +69,7 @@ public sealed partial class OfflineTownTravel : IOfflineJobTravel
 {
     private readonly SaveRepository first,second;
     private GameState? knownFirst,knownSecond;
-    private readonly GameState? textReuse;
+    private GameState? textReuse;
     public OfflineTownTravel(SaveRepository first,SaveRepository second,GameState? textReuse=null){this.first=first;this.second=second;this.textReuse=textReuse;}
     public bool Reachable(ulong town,JobIdentity npc)
     {return knownFirst!=null&&knownFirst.Town.Jobs.TownId==town&&knownFirst.Town.Jobs.FindNpc(npc)>=0||knownSecond!=null&&knownSecond.Town.Jobs.TownId==town&&knownSecond.Town.Jobs.FindNpc(npc)>=0;}
@@ -73,14 +79,22 @@ public sealed partial class OfflineTownTravel : IOfflineJobTravel
         if(!home.Town.Jobs.Initialized||!destination.Town.Jobs.Initialized)throw new InvalidOperationException("Open and save both towns in this version before travelling");
         if(home.Town.Jobs.TownId==destination.Town.Jobs.TownId)throw new InvalidOperationException("These saves are copies of the same town");knownFirst=home;knownSecond=destination;
     }
+    private void TakeSnapshots(out GameState home,out GameState destination)
+    {
+        var a=knownFirst;var b=knownSecond;knownFirst=knownSecond=null;
+        if(a!=null&&b!=null){first.VerifyRevision(a);second.VerifyRevision(b);home=a;destination=b;}
+        else{Inspect(out home,out destination);knownFirst=knownSecond=null;}
+        textReuse=null;
+        // Mutations now own these private candidates. Failure leaves no cached
+        // speculative phase; another attempt must read the durable cards again.
+    }
     private static void SaveChecked(SaveRepository repository,GameState candidate)
     {
-        var current=repository.Load(candidate)??throw new InvalidOperationException("Travel card was removed or changed");
-        if(current.Town.Jobs.TownId!=candidate.Town.Jobs.TownId||current.Sequence!=candidate.Sequence)throw new InvalidOperationException("Travel card changed. Recheck both towns");repository.Save(candidate);
+        repository.VerifyRevision(candidate);repository.Save(candidate);
     }
     public GameState Depart(int profile,long now)
     {
-        Inspect(out var home,out var dest);var h=home.Town.Jobs;var d=dest.Town.Jobs;
+        TakeSnapshots(out var home,out var dest);var h=home.Town.Jobs;var d=dest.Town.Jobs;
         if((uint)profile>=GameState.ProfileCount||!home.Profiles[profile].Created||home.Profiles[profile].Tutorial<7||h.NpcMove.Pending||d.NpcMove.Pending||h.Trip.Pending||d.Trip.Pending||d.GuestProfile!=null||!h.CanAllocate(1))throw new InvalidOperationException("A town already has an unsettled trip");
         home.SelectProfile(profile);home.CaptureProfile();CheckCapacity(home,profile,dest);
         var t=new OfflineTrip{Id=h.Allocate(),Player=h.Player(profile),Home=h.TownId,Destination=d.TownId,HomeProfile=profile,ResidentAnchor=dest.ActiveProfile,HomeSide=true,Phase=OfflineTripPhase.Prepared};h.Trip=t;
@@ -88,7 +102,7 @@ public sealed partial class OfflineTownTravel : IOfflineJobTravel
         return Continue(home,dest,now);
     }
     public GameState Recover(long now)
-    {Inspect(out var home,out var dest);if(home.Town.Jobs.Trip.Phase==OfflineTripPhase.Finished&&home.Town.Jobs.Trip.Id==dest.Town.Jobs.Trip.Id&&dest.Town.Jobs.Trip.Phase==OfflineTripPhase.ReturnDecided){var t=dest.Town.Jobs.Trip;t.Phase=OfflineTripPhase.Finished;dest.Town.Jobs.Trip=t;SaveChecked(second,dest);home.RestoreProfile(home.Town.Jobs.Trip.HomeProfile);return home;}return Continue(home,dest,now);}
+    {TakeSnapshots(out var home,out var dest);if(home.Town.Jobs.Trip.Phase==OfflineTripPhase.Finished&&home.Town.Jobs.Trip.Id==dest.Town.Jobs.Trip.Id&&dest.Town.Jobs.Trip.Phase==OfflineTripPhase.ReturnDecided){var t=dest.Town.Jobs.Trip;t.Phase=OfflineTripPhase.Finished;dest.Town.Jobs.Trip=t;SaveChecked(second,dest);home.RestoreProfile(home.Town.Jobs.Trip.HomeProfile);knownFirst=home;knownSecond=dest;return home;}return Continue(home,dest,now);}
     private GameState Continue(GameState home,GameState dest,long now)
     {
         var h=home.Town.Jobs;var d=dest.Town.Jobs;var t=h.Trip;
@@ -101,11 +115,11 @@ public sealed partial class OfflineTownTravel : IOfflineJobTravel
         }
         if(h.Trip.Phase==OfflineTripPhase.Prepared){RemovePortable(home,h.Trip.HomeProfile);var decision=h.Trip;decision.Phase=OfflineTripPhase.Decided;h.Trip=decision;SaveChecked(first,home);}
         if(d.Trip.Phase==OfflineTripPhase.Prepared){var activation=d.Trip;activation.Phase=OfflineTripPhase.Active;d.Trip=activation;d.ActiveVisitor=true;SaveChecked(second,dest);}
-        dest.ActivateSavedVisitor();dest.ResidentJobs.Enable(d.TownId,now);dest.ResidentJobs.Travel=this;return dest;
+        dest.ActivateSavedVisitor();dest.ResidentJobs.Enable(d.TownId,now);dest.ResidentJobs.Travel=this;knownFirst=home;knownSecond=dest;return dest;
     }
     public GameState Return(long now)
     {
-        Inspect(out var home,out var dest);if(home.Town.Jobs.Trip.Id!=dest.Town.Jobs.Trip.Id||dest.Town.Jobs.Trip.Phase!=OfflineTripPhase.Active)throw new InvalidOperationException("No matching active trip");
+        TakeSnapshots(out var home,out var dest);if(home.Town.Jobs.Trip.Id!=dest.Town.Jobs.Trip.Id||dest.Town.Jobs.Trip.Phase!=OfflineTripPhase.Active)throw new InvalidOperationException("No matching active trip");
         CheckCapacity(dest,OfflineJobLedger.Visitor,home);dest.CaptureProfile();var t=dest.Town.Jobs.Trip;t.Phase=OfflineTripPhase.ReturnPrepared;dest.Town.Jobs.Trip=t;dest.Town.Jobs.ActiveVisitor=false;SaveChecked(second,dest);
         return FinishReturn(home,dest,now);
     }
@@ -120,7 +134,7 @@ public sealed partial class OfflineTownTravel : IOfflineJobTravel
         if(d.Trip.Phase!=OfflineTripPhase.ReturnDecided){RemovePortable(dest,OfflineJobLedger.Visitor);d.GuestProfile=null;d.ActiveVisitor=false;d.SetPlayerIdentity(OfflineJobLedger.Visitor,default);var t=d.Trip;t.Phase=OfflineTripPhase.ReturnDecided;d.Trip=t;dest.RestoreProfile(t.ResidentAnchor);SaveChecked(second,dest);}
         var done=h.Trip;done.Phase=OfflineTripPhase.Finished;h.Trip=done;home.RestoreProfile(done.HomeProfile);SaveChecked(first,home);
         done=d.Trip;done.Phase=OfflineTripPhase.Finished;d.Trip=done;SaveChecked(second,dest);
-        home.ResidentJobs.Enable(h.TownId,now);home.ResidentJobs.Travel=this;return home;
+        home.ResidentJobs.Enable(h.TownId,now);home.ResidentJobs.Travel=this;knownFirst=home;knownSecond=dest;return home;
     }
     private static void CheckCapacity(GameState source,int profile,GameState dest)
     {

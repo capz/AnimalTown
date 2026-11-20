@@ -36,8 +36,15 @@ internal static class JobMailChecks
         ulong takeSeq=resumed.NextCommandSequence;var taken=resumed.TakeMailPresent(letterSlot,takeSeq);resumed.TakeMailPresent(letterSlot,takeSeq);
         check(taken.Item==Catalog.Pear&&copy.Pockets.Count(x=>x==Catalog.Pear)==1&&copy.Town.Residents[0].Friendship==6,"mail attachment can be taken once, with no second quest friendship bonus");
         service.EndConversation();s.SelectProfile(0);Speak(s,service,0);check(Do(service,JobCommandKind.Collect,owed.Job).Result==JobResult.AlreadyClaimed,"accepting profile cannot steal another sender's reply");
-        LocalMail(check);NormalReplies(check);
+        LocalMail(check);NormalReplies(check);PostBatch(check);
         Console.WriteLine("Real offline mail: queued delivery, first sender, chronology, full mailbox, durable replies, attachments and local-player delivery passed");
+    }
+    private static void PostBatch(Action<bool,string> check)
+    {
+        var state=new GameState(931);var service=new VillagerJobService(state,new Draws(),new Draws());service.Enable(931001,start);string body=new string('a',1000);
+        for(int i=0;i<64;i++){state.Receive(Catalog.WritingPaper);check(service.SendLetter(state.Town.Jobs.Npc(0),body,state.Find(Catalog.WritingPaper),-1,service.NextCommandSequence).Result==JobResult.Ok,"maximum post batch queues actual full-length letters");}
+        long before=GC.GetAllocatedBytesForCurrentThread();service.AdvanceTo(start+86400);long allocated=GC.GetAllocatedBytesForCurrentThread()-before;
+        check(allocated==0,"a full scheduled post batch uses its saved grades without allocating or normalizing text again");
     }
     private static void LocalMail(Action<bool,string> check)
     {

@@ -78,10 +78,10 @@ internal static class JobTravelChecks
         new OfflineTownTravel(new SaveRepository(countA),new SaveRepository(countB)).Depart(0,now);int departureWrites=writes;
         for(int after=0;after<2;after++)for(int cut=1;cut<=departureWrites;cut++){
             var a=baseA.Copy();var b=baseB.Copy();int at=0;Action fail=()=>{if(++at==cut)throw new IOException("Power cut");};if(after==0)a.BeforeWrite=b.BeforeWrite=fail;else a.AfterWrite=b.AfterWrite=fail;
-            try{new OfflineTownTravel(new SaveRepository(a),new SaveRepository(b)).Depart(0,now);}catch(IOException){}
+            var coordinator=new OfflineTownTravel(new SaveRepository(a),new SaveRepository(b));try{coordinator.Depart(0,now);}catch(IOException){}
             a.BeforeWrite=b.BeforeWrite=a.AfterWrite=b.AfterWrite=null;var first=new SaveRepository(a);var second=new SaveRepository(b);var h=first.Load()!;var d=second.Load()!;
             check((h.ProfileLocked(0)?0:1)+(d.Visiting?1:0)<=1,"power cut never activates two copies of a traveller");
-            if(h.Town.Jobs.Trip.Pending){var guest=new OfflineTownTravel(first,second).Recover(now);check(guest.Visiting&&first.Load()!.ProfileLocked(0),"matching cards replay an interrupted departure");}
+            if(h.Town.Jobs.Trip.Pending){var guest=(cut%2==0?coordinator:new OfflineTownTravel(first,second)).Recover(now);check(guest.Visiting&&first.Load()!.ProfileLocked(0),"matching cards replay an interrupted departure, including reuse after a failed write");}
         }
         // Start from a committed visit and cut every return write on either card.
         var visitA=baseA.Copy();var visitB=baseB.Copy();new OfflineTownTravel(new SaveRepository(visitA),new SaveRepository(visitB)).Depart(0,now);

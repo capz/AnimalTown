@@ -12,7 +12,12 @@ internal sealed class Draws : IJobRandom
 internal static class Program
 {
     private static void Require(bool value,string message){if(!value)throw new InvalidOperationException(message);}
-    private static int Main(){JobMemory.ReclaimTemporaryText=ReclaimText;NativeJobBlocks.Report(0);Console.WriteLine("Native normal jobs");NormalJobs();NativeJobBlocks.Report(1);Console.WriteLine("Native travel");TravelJobs();NativeJobBlocks.Report(2);Console.WriteLine("Native capacity");Capacity();NativeJobBlocks.Report(3);Console.WriteLine("Native full-card travel");FullCardTravel();NativeJobBlocks.Report(4);MaximumEconomy();NativeJobBlocks.Report(5);return 0;}
+    private static int Main(){JobMemory.ReclaimTemporaryText=ReclaimText;CoreBudget();NativeJobBlocks.Report(0);Console.WriteLine("Native normal jobs");NormalJobs();NativeJobBlocks.Report(1);Console.WriteLine("Native travel");TravelJobs();NativeJobBlocks.Report(2);Console.WriteLine("Native capacity");Capacity();NativeJobBlocks.Report(3);Console.WriteLine("Native full-card travel");FullCardTravel();NativeJobBlocks.Report(4);MaximumEconomy();NativeJobBlocks.Report(5);return 0;}
+    private static void CoreBudget()
+    {
+        int before=NativeJobBlocks.Report(10);var ledger=new OfflineJobLedger();ledger.Initialize(98765);for(int p=0;p<OfflineJobLedger.OwnerCount;p++)ledger.EnsurePlayer(p);
+        int after=NativeJobBlocks.Report(11);Require(ledger.Initialized&&ledger.Player(4).IsValid&&after-before<128*1024,"bounded native resident core, excluding text and travel snapshots");Console.WriteLine("Native core bytes: "+(after-before));
+    }
     private static void ReclaimText()=>NativeJobBlocks.Collect();
     private static void NormalJobs()
     {

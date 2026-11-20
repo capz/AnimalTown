@@ -54,6 +54,20 @@ public sealed class SaveRepository
         return SplitSaveCodec.Decode(IncrementalSaveCodec.Restore(m,ReadReferenced(m)),snapshot,textMemo,m.Sequences[2]);
     }
     public GameState? Load()=>Load(null);
+    public void VerifyRevision(GameState expected)
+    {
+        var current=NewestManifest();
+        if(current?.References!=null){
+            if(current.Sequence!=expected.Sequence||current.Seed!=expected.Town.Seed)throw new InvalidOperationException("Travel card changed. Recheck both towns");
+            // CRC/reference validation still covers the complete economic
+            // record. Read only its fixed header/nonce; decoding every mailbox
+            // and another private town is unnecessary for this identity check.
+            if(SplitSaveCodec.EconomicTownIdentity(ReadReference(current.References,2))!=expected.Town.Jobs.TownId)throw new InvalidOperationException("Travel town identity changed");
+            return;
+        }
+        var saved=Load(expected)??throw new InvalidOperationException("Travel card was removed or changed");
+        if(saved.Sequence!=expected.Sequence||saved.Town.Jobs.TownId!=expected.Town.Jobs.TownId)throw new InvalidOperationException("Travel card changed. Recheck both towns");
+    }
     public GameState? Load(GameState? textReuse)
     {
         GameState? best=null;
@@ -175,7 +189,7 @@ public sealed class SaveRepository
     {
         if((uint)profile>=GameState.ProfileCount||!expected.Profiles[profile].Created)throw new InvalidOperationException("Villager does not exist");
         if(expected.Sequence==int.MaxValue)throw new InvalidOperationException("Save sequence exhausted");
-        var candidate=Load()??throw new InvalidOperationException("No complete saved town");
+        var candidate=Load(expected)??throw new InvalidOperationException("No complete saved town");
         // Refuse a removed/swapped card or a newer/different town. The displayed
         // snapshot remains untouched until both verified banks are committed.
         // Keep serialized comparisons in their own native GC frame, so their

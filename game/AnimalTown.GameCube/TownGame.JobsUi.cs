@@ -17,6 +17,8 @@ internal sealed partial class TownGame
     private readonly WrappedText jobDetailText=new WrappedText(43);
     private string jobDetail="";
     private bool JobsLive=>state.Town.Jobs.Initialized&&state.ResidentJobs.Enabled;
+    private bool NpcHasErrands()
+    {var result=state.ResidentJobs.BestInteraction(jobNpc).Result;return result!=JobResult.NoWork&&result!=JobResult.ExistingOffer;}
     private void InitializeJobs()
     {
         if(session.Draft!=null)return;
@@ -145,7 +147,7 @@ internal sealed partial class TownGame
     private void OpenJobSelector(VillagerJobRecord job)
     {
         if(!state.ResidentJobs.BeginSupplySelection(job.Id)){JobSay("That handoff isn't available right now.");return;}
-        jobRowsCount=0;jobSelected=0;
+        jobRowsCount=0;jobSelected=0;jobScroll=0;
         for(int i=0;i<state.Capacity;i++){int item=state.Pockets[i];if(state.IsJobItem(i))continue;bool eligible=job.Template==JobTemplate.FavorFruit?item==job.Item:job.Template==JobTemplate.FavorFish?Catalog.Has(item,ItemFlags.Fish):Catalog.Has(item,ItemFlags.Insect);if(eligible)jobPocketRows[jobRowsCount++]=i;}
         jobDetail=job.Template==JobTemplate.FavorFruit?"Choose the requested fruit.":"Choose an ordinary "+(job.Template==JobTemplate.FavorFish?"fish":"insect")+". Cancelling this handoff costs one friendship point.";
         screen="job-select";
@@ -171,7 +173,7 @@ internal sealed partial class TownGame
             if(typeAt<message.Length){if(Press(p)||p.B.WasPressed){dialogueVoice.Stop();typeAt=message.Length;}return true;}
             if(p.B.WasPressed){CloseJobDialogue();return true;}
             if(jobMode==3){if(Press(p))CloseJobDialogue();return true;}
-            int count=jobMode==2?2:state.ResidentJobs.BestInteraction(jobNpc).Result==JobResult.NoWork?3:4;
+            int count=jobMode==2?2:NpcHasErrands()?4:3;
             if(up)jobChoice=(jobChoice+count-1)%count;if(down)jobChoice=(jobChoice+1)%count;
             if(!Press(p))return true;
             if(jobMode==2){var result=state.ResidentJobs.Execute(state.ResidentJobs.Command(jobChoice==0?JobCommandKind.Accept:JobCommandKind.Decline,jobSubject,jobExpectedRevision));if(result.Result==JobResult.Ok&&jobChoice==0){int at=state.Town.Jobs.FindJob(result.Job);JobSay(at>=0?JobDescription(state.Town.Jobs.Job(at)):JobResultText(result));}else HandleJobOutcome(result);return true;}
@@ -208,7 +210,7 @@ internal sealed partial class TownGame
         if(!JobsLive)return false;
         if(screen=="dialogue"&&jobMode!=0){
             SpeechBubble();if(jobMode==3||typeAt<message.Length)return true;
-            bool offer=jobMode==2,existing=!offer&&state.ResidentJobs.BestInteraction(jobNpc).Result!=JobResult.NoWork;int count=offer?2:existing?4:3;
+            bool offer=jobMode==2,existing=!offer&&NpcHasErrands();int count=offer?2:existing?4:3;
             float height=24+count*27,y=300-height;Panel(360,y,238,height);
             for(int i=0;i<count;i++){string label=offer?(i==0?"I'll do it":"No thanks"):existing&&i==0?"My errands...":(i-(existing?1:0))==0?"Got any work?":(i-(existing?1:0))==1?"Let's chat":"See you";if(i==jobChoice)Rounded(370,y+10+i*27,218,25,12,new Color32(221,231,188));if(i==jobChoice)Text(">",378,y+12+i*27,ink,1.1f);Text(label,398,y+12+i*27,ink,1.1f);}return true;
         }
@@ -219,7 +221,8 @@ internal sealed partial class TownGame
         }
         Panel(45,65,550,360);Heading(screen=="job-select"?"Choose an item":"Errands",68,85,ink);
         if(screen=="job-select"){
-            for(int i=0;i<jobRowsCount;i++){float x=85+i%5*90,y=140+i/5*44;if(i==jobSelected)Rounded(x-3,y-3,70,44,14,new Color32(232,183,86));Rounded(x,y,64,38,12,new Color32(231,228,202));int icon=Catalog.IconId(state.Pockets[jobPocketRows[i]]);itemIcons.Draw(ui,new RectF(icon%8*64,icon/8*64,64,64),new RectF(x+13,y,38,38),Color32.White);}
+            int first=jobSelected/20*20;
+            for(int i=first;i<Math.Min(jobRowsCount,first+20);i++){float x=85+(i-first)%5*90,y=140+(i-first)/5*44;if(i==jobSelected)Rounded(x-3,y-3,70,44,14,new Color32(232,183,86));Rounded(x,y,64,38,12,new Color32(231,228,202));int icon=Catalog.IconId(state.Pockets[jobPocketRows[i]]);itemIcons.Draw(ui,new RectF(icon%8*64,icon/8*64,64,64),new RectF(x+13,y,38,38),Color32.White);}
             if(jobRowsCount==0)Text("You have no matching items in your pockets.",72,145,ink,1.1f);
             Text(jobDetailText.Get(jobDetail),72,332,ink,1.08f);return true;
         }

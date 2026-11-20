@@ -27,6 +27,7 @@ static DndObject *prepare_block(DndManagedHeap *heap,DndHeapBlock *b,const DndTy
         free_link(tail,heap->free_list);heap->free_list=tail;
     }
     b->free=b->marked=0;DndObject *object=block_object(b);memset(object,0,b->size);object->type=type;
+    if(heap->used>town_frame_counters.heap_peak)town_frame_counters.heap_peak=(uint32_t)heap->used;
     TOWN_COUNT(TOWN_ALLOCATIONS);return object;
 }
 static DndObject *allocate_from_free(DndManagedHeap *heap,const DndType *type,size_t bytes) {

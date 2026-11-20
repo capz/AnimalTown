@@ -6,7 +6,7 @@ public sealed partial class OfflineJobLedger
 {
     public const int OwnerCount=GameState.ProfileCount+1,Visitor=GameState.ProfileCount;
     public const int MaximumWords=1024*1024;
-    private const int Magic=0x32424f4a,Schema=11;
+    internal const int Magic=0x32424f4a,Schema=11;
     public ulong TownId {get;private set;}
     private ulong nextSerial=1;
     private OfflineJobLedger? readbackMemo;
