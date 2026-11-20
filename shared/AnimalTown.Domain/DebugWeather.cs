@@ -5,29 +5,41 @@ public sealed class DebugWeather
 {
     public bool RainEnabled,RoughOceanWhenRaining;
     public bool SnowEnabled=true;
-    private bool scheduledRain,winter;
-    public const int RainMinutes=35;
+    private bool scheduledRain,scheduledSnow;
+    private int snowStartMinute;
+    public const int RainMinutes=35,MinimumSnowMinutes=30,MaximumSnowMinutes=180;
+    private const int MinutesPerDay=1440,WinterSeason=3;
     public static bool ScheduledRain(int seed,int day,int minute,int season)
     {
         int interval=season==2?360:season==1?4320:season==0?2160:0;
         if(interval==0)return false;
-        long time=(long)day*1440+minute;
+        long time=(long)day*MinutesPerDay+minute;
         long slot=time/interval;
         int within=(int)(time%interval);
-        uint hash=unchecked((uint)slot*0x9e3779b9u+(uint)seed*0x85ebca6bu+(uint)season);
+        int start=(int)(ScheduleHash(seed,slot,season)%(uint)(interval-RainMinutes-9));
+        return within>=start&&within<start+RainMinutes;
+    }
+    private static uint ScheduleHash(int seed,long slot,int salt)
+    {
+        uint hash=unchecked((uint)slot*0x9e3779b9u+(uint)seed*0x85ebca6bu+(uint)salt);
         hash=unchecked((hash^(hash>>16))*0x7feb352du);
         hash=unchecked((hash^(hash>>15))*0x846ca68bu);
-        hash^=hash>>16;
-        int start=(int)(hash%(uint)(interval-RainMinutes-9));
-        return within>=start&&within<start+RainMinutes;
+        return hash^(hash>>16);
     }
     public void Update(int seed,int day,int minute,int season)
     {
-        winter=season==3;
         scheduledRain=ScheduledRain(seed,day,minute,season);
+        scheduledSnow=false;
+        if(season!=WinterSeason)return;
+        int duration=MinimumSnowMinutes+(int)(ScheduleHash(seed,day,WinterSeason)%(MaximumSnowMinutes-MinimumSnowMinutes+1));
+        // A clear final minute keeps consecutive days' snowfall windows distinct.
+        snowStartMinute=(int)(ScheduleHash(seed,day,WinterSeason+1)%(uint)(MinutesPerDay-duration));
+        scheduledSnow=minute>=snowStartMinute&&minute<snowStartMinute+duration;
     }
+    // Use the live clock for session checkpoints even when a preview holds the effects at another hour.
+    public int LatestSnowDay(int day,int liveMinute)=>liveMinute>=snowStartMinute?day:day-1;
     public bool Raining(int room)=>(RainEnabled||scheduledRain)&&room==0;
-    public bool Snowing(int room)=>winter&&SnowEnabled&&room==0&&!Raining(room);
+    public bool Snowing(int room)=>scheduledSnow&&SnowEnabled&&room==0&&!Raining(room);
     public bool RoughOcean(int room)=>Raining(room)&&RoughOceanWhenRaining;
     public const int DropCount=64;
     public static void Drop(int index,float focusX,float focusZ,double seconds,out float x,out float z,out float height,bool snow=false)

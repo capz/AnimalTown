@@ -14,8 +14,26 @@ internal static class DebugWeatherChecks
             check(starts==policy.Showers&&minutes==policy.Showers*35,"weather meets each seasonal cadence and exact shower length");
         }
         check(Enumerable.Range(0,1440).Any(t=>DebugWeather.ScheduledRain(30,12,t,2)!=DebugWeather.ScheduledRain(31,12,t,2)),"town seeds vary shower starts");
-        var snow=new DebugWeather();snow.Update(30,0,0,3);
+        var snow=new DebugWeather();
+        var startsByDay=new HashSet<int>();var durations=new HashSet<int>();
+        for(int day=0;day<32;day++){
+            int starts=0,minutes=0;bool previous=false;
+            for(int minute=0;minute<1440;minute++){
+                snow.Update(30,day,minute,3);
+                bool active=snow.Snowing(0);
+                if(active){minutes++;if(!previous){starts++;startsByDay.Add(minute);}}
+                previous=active;
+            }
+            check(starts==1&&!previous&&minutes>=30&&minutes<=180,"one separate winter snowfall per civil day lasts 30 to 180 minutes");
+            durations.Add(minutes);
+        }
+        int start=SnowStart(30,12);
+        check(startsByDay.Count>1&&durations.Count>1&&start!=SnowStart(31,12),"snowfall time and duration vary by date and towns can have different schedules");
+        snow.Update(30,12,start,2);
+        check(!snow.Snowing(0),"the winter snowfall window cannot run in fall");
+        snow.Update(30,12,start,3);
         check(snow.Snowing(0)&&!snow.Snowing(1)&&!snow.Raining(0),"winter snowfall is outdoors only");
+        check(snow.LatestSnowDay(12,start-1)==11&&snow.LatestSnowDay(12,start)==12,"the latest snow date changes exactly when today's window starts");
         snow.SnowEnabled=false;
         check(!snow.Snowing(0)&&new DebugWeather().SnowEnabled,"snowfall toggle is session-only");
         var weather=new DebugWeather();
@@ -48,5 +66,14 @@ internal static class DebugWeatherChecks
             if(sample>72)crests++;
         }
         check(crests>0&&crests<4096/4,"storm crests are stronger than calm ripples and leave open water visible");
+    }
+    internal static int SnowStart(int seed,int day)
+    {
+        var weather=new DebugWeather();
+        for(int minute=0;minute<1440;minute++){
+            weather.Update(seed,day,minute,3);
+            if(weather.Snowing(0))return minute;
+        }
+        throw new InvalidOperationException("Missing daily snowfall");
     }
 }
