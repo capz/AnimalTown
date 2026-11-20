@@ -197,3 +197,6 @@ NPC villagers visit homes and resume their journeys independently of the player'
 location. New exterior/interior models use validated definitions and shared door logic.
 
 The lightweight [title menu](docs/title-menu.md) defers town assets until Start, saves startup debug options in a separate **dev config** memory-card item, and launches the standalone updater through Update.
+
+The [updater cleanup and debug build proposal](docs/updater-cleanup-and-debug-builds.md)
+describes safe retirement of old images and selecting development builds in-game.

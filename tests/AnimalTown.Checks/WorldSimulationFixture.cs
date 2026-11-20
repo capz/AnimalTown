@@ -39,4 +39,5 @@ internal sealed partial class TownGame
         for(int i=0;i<models.Length;i++)models[i]=new Model();
     }
     private void RefreshResidencyDemand(long now){ResidencyRefreshes++;}
+    internal void SetSnowfall(bool enabled)=>weather.SnowEnabled=enabled;
 }
