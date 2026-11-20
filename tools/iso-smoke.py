@@ -288,7 +288,9 @@ def player_chat():
         # Changing the flag while typing cannot retain command rights.
         open_chat();type_text('/attend rowan hello');set_debug_visibility(False)
         pages=send(0);capture('chat-command-disabled-mid-entry.png');close_speech(pages)
-        open_chat();type_text('w'*120);pages=send(0)
+        # Wide uppercase glyphs force pagination with the real IPL metrics;
+        # 120 lowercase w glyphs can fit in the existing three-line panel.
+        open_chat();tap('L');type_text('w'*120);capture('chat-long-draft.png');pages=send(0)
         if pages<2:raise AssertionError('Long speech did not paginate')
         capture('chat-long-message.png');close_speech(pages)
         tap('START')
