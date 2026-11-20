@@ -12,10 +12,11 @@ internal sealed class CardArchive
     private readonly MemoryCard card;
     private readonly int device;
     private readonly byte[] banner,icon;
-    private readonly GameState? textReuse;
+    private GameState? textReuse;
     private TownCardRecords? store;
     private string container=Container;
     private bool unverifiedLegacyTarget;
+    internal void ReuseTextFrom(GameState state){textReuse=state;}
     private int phase,epoch,growBlocks;
     internal CardArchive(MemoryCard card,byte[] banner,byte[] icon,int device,GameState? textReuse=null)
     {

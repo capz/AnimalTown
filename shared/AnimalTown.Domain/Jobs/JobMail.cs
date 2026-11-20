@@ -38,11 +38,16 @@ public sealed partial class OfflineJobLedger
     }
     private JobMailRecord ReadbackBody(int slot,JobIdentity id)
     {if(readbackMemo==null)return default;if(slot<readbackMemo.Mail.Length&&readbackMemo.Mail[slot].Id==id)return readbackMemo.Mail[slot];for(int i=0;i<readbackMemo.Mail.Length;i++)if(readbackMemo.Mail[i].Id==id)return readbackMemo.Mail[i];return default;}
+    private static bool SameEnvelope(in JobMailRecord a,in JobMailRecord b)=>a.Id==b.Id&&a.Owner==b.Owner&&a.Sender==b.Sender&&a.Recipient==b.Recipient&&a.Reservation==b.Reservation&&a.State==b.State&&a.Gift==b.Gift&&a.ReplyText==b.ReplyText&&a.Read==b.Read&&a.Reply==b.Reply&&a.SentAt==b.SentAt&&a.DueAt==b.DueAt&&a.Body==b.Body&&a.BodyOffset==b.BodyOffset&&a.BodyWords==b.BodyWords;
     private void ReadMail(JobWireReader r)
     {
         int count=r.Range(0,InboxCount+OutboxCapacity);if(count>0)EnsureMail();
+        // Validate every envelope/body, but share identical metadata pages with
+        // the source snapshot. Either owner copies a page before changing it.
+        bool[]? seen=null;
+        if(count>0&&readbackMemo!=null&&readbackMemo.TownId==TownId&&readbackMemo.Mail.Length==Mail.Length){Mail=readbackMemo.Mail.Share();seen=new bool[Mail.Length];}
         for(int n=0;n<count;n++){
-            int at=r.Range(0,Mail.Length-1);if(Mail[at].State!=JobMailState.Empty)throw new InvalidOperationException("Duplicate saved letter slot");
+            int at=r.Range(0,Mail.Length-1);if(seen!=null?seen[at]:Mail[at].State!=JobMailState.Empty)throw new InvalidOperationException("Duplicate saved letter slot");if(seen!=null)seen[at]=true;
             var m=new JobMailRecord{Id=r.Key(false),Owner=r.Key(false),Sender=r.Key(false),Recipient=r.Key(false),Reservation=r.Key(),State=(JobMailState)r.Range(1,2),Gift=r.Range(0,Catalog.Items.Length-1),ReplyText=r.Range(0,255),Read=r.Range(0,1)==1,Reply=r.Range(0,1)==1,SentAt=r.Long(),DueAt=r.Long(),Body=null};
             var prior=ReadbackBody(at,m.Id);m.Body=r.Block(1001,prior.Body,prior.BodyOffset,prior.BodyWords,out m.BodyOffset,out m.BodyWords);
             if((m.State==JobMailState.Inbox)!=(at<InboxCount)||m.DueAt<m.SentAt||!m.Reply&&m.Body==null)throw new InvalidOperationException("Invalid saved letter envelope");
@@ -54,7 +59,8 @@ public sealed partial class OfflineJobLedger
                     if(same){m.Body=prior.Body;m.BodyOffset=prior.BodyOffset;m.BodyWords=prior.BodyWords;}
                     else StoreBody(ref m,compact);
                 }
-            }Mail.Set(at,m);
+            }if(seen==null||!SameEnvelope(m,Mail[at]))Mail.Set(at,m);
         }
+        if(seen!=null)for(int i=0;i<Mail.Length;i++)if(!seen[i]&&Mail[i].State!=JobMailState.Empty)Mail.Set(i,default);
     }
 }

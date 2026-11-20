@@ -183,7 +183,11 @@ for(int p=0;p<4;p++)for(int batch=0;batch<2;batch++){
 }
 card=new MemoryCard{Capacity=2043};new SaveRepository(new OldFiles(card)).Save(largeState);
 var legacyMaximum=card.Copy();MemoryCard.Slots[4]=card;MemoryCard.Current=card;int legacyWrites=card.Writes;
-var largeMigration=new CardArchive(card,banner,icon,4,largeState);largeMigration.Write("options",new byte[]{3});
+var largeMigration=new CardArchive(card,banner,icon,4,new GameState(1));largeMigration.ReuseTextFrom(largeState);
+int conversionCollections=0;var previousReclaim=AnimalTown.Jobs.JobMemory.ReclaimTemporaryText;
+try{AnimalTown.Jobs.JobMemory.ReclaimTemporaryText=()=>conversionCollections++;largeMigration.Write("options",new byte[]{3});}
+finally{AnimalTown.Jobs.JobMemory.ReclaimTemporaryText=previousReclaim;}
+Check(conversionCollections<64,"conversion reuses its own validated town bodies instead of retaining another 512-letter mailbox");
 Check(card.Files.Count==1&&card.Used>258,"maximum legacy town chooses adequate initial backing space");
 int migrationWrites=card.Writes-legacyWrites;
 void VerifyMaximum(MemoryCard source){

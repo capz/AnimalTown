@@ -30,6 +30,9 @@ internal static class Program
         var distinct=new char[2000];for(int i=0;i<1000;i++){int pair=i*997;distinct[i*2]=(char)(0xd800+(pair>>10));distinct[i*2+1]=(char)(0xdc00+(pair&1023));}
         string distinctBody=new string(distinct);var scalarBits=JobTextBody.Pack(distinctBody,1000);JobTextBody.Validate(scalarBits);
         Require(scalarBits.Length==658&&JobTextBody.Unpack(scalarBits)==distinctBody,"native 21-bit scalar shifts and word boundaries");
+        var slots=new JobMailSlots(576);slots.Set(575,new JobMailRecord{State=JobMailState.Queued,Gift=4});var sharedSlots=slots.Share();
+        var changed=slots[575];changed.Gift=25;slots.Set(575,changed);Require(sharedSlots[575].Gift==4,"native high-bit metadata page ownership isolates source writes");
+        var nestedSlots=sharedSlots.Share();sharedSlots.Set(575,default);Require(nestedSlots[575].State==JobMailState.Queued&&slots[575].Gift==25,"native nested page snapshots isolate clearing and preserve managed references");
         var s=new GameState(713);
         var service=new VillagerJobService(s,new Draws(new[]{1,0,3,0,0}),new Draws(new[]{0,1,0,0}));
         long now=JobCalendar.At(2026,6,10,12);service.Enable(0xf0123456789abcdeUL,now);
@@ -94,7 +97,14 @@ internal static class Program
         var state=new GameState(730+card){Tutorial=7};for(int p=1;p<4;p++)state.SelectProfile(p);state.SelectProfile(0);state.Tutorial=7;
         long now=JobCalendar.At(2026,6,10,12);state.ResidentJobs.Enable((ulong)(20000+card),now);var chars=new char[2000];for(int i=0;i<1000;i++){chars[i*2]='\ud83d';chars[i*2+1]=(char)(0xde00+card);}string body=new string(chars);
         for(int p=0;p<4;p++)for(int batch=0;batch<2;batch++){for(int n=0;n<64;n++){state.Receive(Catalog.WritingPaper);Require(state.ResidentJobs.SendLetter(state.Town.Jobs.Player(p),body,state.Find(Catalog.WritingPaper),-1,state.ResidentJobs.NextCommandSequence).Result==JobResult.Ok,"native maximum-card send");}now+=86400;state.ResidentJobs.AdvanceTo(now);}
-        if(maximum)JobMaximumFixture.Fill(state,body);new SaveRepository(new Card(card,true)).Save(state);
+        if(maximum){
+            JobMaximumFixture.Fill(state,body);
+            // Include the retained snow arrays and their encoded checkpoint in
+            // the capacity bound, even alongside every mailbox and job slot.
+            state.Town.Traffic.Snow.SetWinter(true);state.Town.Traffic.Snow.ObserveSnowDay((int)(now/86400),false);
+            for(int z=0;z<Town.Height;z++)for(int x=0;x<Town.Width;x++)state.Town.Traffic.Enter(state.Town,x,z);
+        }
+        new SaveRepository(new Card(card,true)).Save(state);
     }
     private static void FullCardTravel()
     {
