@@ -12,7 +12,7 @@ internal sealed class Draws : IJobRandom
 internal static class Program
 {
     private static void Require(bool value,string message){if(!value)throw new InvalidOperationException(message);}
-    private static int Main(){JobMemory.ReclaimTemporaryText=ReclaimText;CoreBudget();NativeJobBlocks.Report(0);Console.WriteLine("Native normal jobs");NormalJobs();NativeJobBlocks.Report(1);Console.WriteLine("Native travel");TravelJobs();NativeJobBlocks.Report(2);Console.WriteLine("Native capacity");Capacity();NativeJobBlocks.Report(3);Console.WriteLine("Native full-card travel");FullCardTravel();NativeJobBlocks.Report(4);MaximumEconomy();NativeJobBlocks.Report(5);MaximumEconomyTravel();NativeJobBlocks.Report(6);return 0;}
+    private static int Main(){JobMemory.ReclaimTemporaryText=ReclaimText;CoreBudget();NativeJobBlocks.Report(0);Console.WriteLine("Native normal jobs");NormalJobs();NativeJobBlocks.Report(1);Console.WriteLine("Native travel");TravelJobs();NativeJobBlocks.Report(2);Console.WriteLine("Native capacity");Capacity();NativeJobBlocks.Report(3);Console.WriteLine("Native full-card travel");FullCardTravel();NativeJobBlocks.Report(4);MaximumEconomy();NativeJobBlocks.Report(5);MaximumEconomyTravel();NativeJobBlocks.Report(6);ArchiveCopyBudget();NativeJobBlocks.Report(7);return 0;}
     private static void CoreBudget()
     {
         int before=NativeJobBlocks.Report(10);var ledger=new OfflineJobLedger();ledger.Initialize(98765);for(int p=0;p<OfflineJobLedger.OwnerCount;p++)ledger.EnsurePlayer(p);
@@ -68,6 +68,7 @@ internal static class Program
         private readonly TownCardRecords records;
         internal Card(int card,bool reset=false){records=new TownCardRecords(new CardBlocks(card,reset),true);}
         public byte[] Read(string name)=>records.Read(name);
+        internal string[] Names()=>records.Names();
         public byte[] ReadVerifiedPrefix(string name,int count,int sequence,int length,uint checksum)=>records.ReadVerifiedPrefix(name,count,sequence,length,checksum);
         public void Write(string name,byte[] bytes)=>records.Write(name,bytes);
         public bool Matches(string name,byte[]? expected,int sequence,int length,uint checksum,bool ignoreSequence)=>records.Matches(name,expected,sequence,length,checksum,ignoreSequence);
@@ -130,6 +131,19 @@ internal static class Program
     private static void MaximumEconomyTravel()
     {
         Console.WriteLine("Native two maximum economies and the full visitor partition");BuildFullCard(0,true);Console.WriteLine("Native maximum home saved");BuildFullCard(1,true);Console.WriteLine("Native maximum destination saved");RejectFullRewardDestination();Console.WriteLine("Native full-reward capacity refusal passed");MakeVisitorRewardSpace();Console.WriteLine("Native maximum destination has visitor reward space");TravelMaximumCards();
+    }
+    private static void ArchiveCopyBudget()
+    {
+        Console.WriteLine("Native maximum-mail archive copy beside a retained world");BuildFullCard(0);
+        var source=new Card(0);var live=new SaveRepository(source).Load()!;
+        var world=new byte[2*1024*1024];world[0]=31;world[world.Length-1]=79;
+        var target=new TownCardRecords(new CardBlocks(1,true),true);
+        for(int pass=0;pass<2;pass++)foreach(string name in source.Names())target.CopyFrom(source,name);
+        foreach(string name in source.Names())target.VerifyFrom(source,name);
+        var preview=new SaveRepository(source).ReadTravelPreview();
+        var otherPreview=new SaveRepository(new Card(1)).ReadTravelPreview();
+        Require(preview.TownId==live.Town.Jobs.TownId&&otherPreview.TownId==preview.TownId&&preview.NpcName(5)==live.Town.Residents[5].Name,"two verified travel previews retain metadata rather than decoding more full mailboxes beside the world");
+        Require(live.MailCount==128&&world[0]==31&&world[world.Length-1]==79,"archive copies keep the full live town and 2 MiB of world roots while holding only one encoded record");
     }
 
 }

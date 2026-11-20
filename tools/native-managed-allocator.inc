@@ -2,6 +2,9 @@
  * tracing; free blocks link through their unused payload. No per-block overhead
  * is added. Only collection coalesces blocks and rebuilds the free chain. */
 #include "native-frame-counters.h"
+#ifdef GEKKO
+#include <ogc/system.h>
+#endif
 static DndHeapBlock *free_next(DndHeapBlock *b) { DndHeapBlock *n;memcpy(&n,block_object(b),sizeof(n));return n; }
 static void free_link(DndHeapBlock *b,DndHeapBlock *n) { memcpy(block_object(b),&n,sizeof(n)); }
 static void rebuild_free_list(DndManagedHeap *heap) {
@@ -77,7 +80,14 @@ static DndObject *allocate(DndManagedHeap *heap,const DndType *type,size_t bytes
             // Size-class padding must never reject a payload that actually fits.
             bytes=requested;total=block_header_size()+bytes;
             reused=allocate_from_free(heap,type,bytes);if(reused)return reused;
-            if(total>heap->capacity-heap->used){dnd_exception_throw(DND_EXCEPTION_OUT_OF_MEMORY,"Managed heap exhausted.");return NULL;}
+            if(total>heap->capacity-heap->used){
+#ifdef GEKKO
+                size_t largest=0,free_bytes=heap->capacity-heap->used;
+                for(DndHeapBlock *hole=heap->free_list;hole;hole=free_next(hole)){free_bytes+=hole->size;if(hole->size>largest)largest=hole->size;}
+                SYS_Report("ANIMALTOWN MANAGED OOM request %u extent %u capacity %u free %u largest %u collections %u\n",(unsigned)bytes,(unsigned)heap->used,(unsigned)heap->capacity,(unsigned)free_bytes,(unsigned)largest,(unsigned)heap->collections);
+#endif
+                dnd_exception_throw(DND_EXCEPTION_OUT_OF_MEMORY,"Managed heap exhausted.");return NULL;
+            }
         }
     }
     DndHeapBlock *b=(DndHeapBlock*)(heap->start+heap->used);memset(b,0,block_header_size());b->size=(uint32_t)bytes;

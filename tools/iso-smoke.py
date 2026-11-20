@@ -121,7 +121,8 @@ def check_runtime_failure():
     # managed exception behind an unchanged loading frame.
     failures=[line for line in runtime_log_text().splitlines()
               if ('ANIMALTOWN SESSION FAILED' in line or 'ANIMALTOWN ASSET LOAD FAILED' in line
-                  or 'ANIMALTOWN BUILDING ASSET ERROR' in line or 'MANAGED MAIN: FAILED' in line)]
+                  or 'ANIMALTOWN BUILDING ASSET ERROR' in line or 'ANIMALTOWN MANAGED OOM' in line
+                  or 'MANAGED MAIN: FAILED' in line)]
     if failures:
         (root/'runtime-failure.txt').write_text('\n'.join(failures)+'\n')
         raise AssertionError('Game runtime failure: '+failures[0])

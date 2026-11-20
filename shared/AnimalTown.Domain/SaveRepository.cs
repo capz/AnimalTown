@@ -6,6 +6,18 @@ public interface ISaveStorage
     void Write(string name,byte[] bytes);
 }
 
+// Read-only card-picker metadata. A preview never owns another town, mailbox
+// or economic ledger; the transfer still loads and validates private snapshots.
+public sealed class SavedTownPreview
+{
+    public int Seed {get;}
+    public int Sequence {get;}
+    public ulong TownId {get;}
+    private readonly string[] names;
+    internal SavedTownPreview(int seed,int sequence,ulong townId,string[] names){Seed=seed;Sequence=sequence;TownId=townId;this.names=names;}
+    public string NpcName(int slot){if((uint)slot>=names.Length)throw new ArgumentOutOfRangeException(nameof(slot));return names[slot];}
+}
+
 // Reference manifests publish exact component revisions after readback.
 // Changed records use the other copy; existing references remain intact until
 // publication. Mirror repair follows publication, never overwriting its primary.
@@ -55,6 +67,26 @@ public sealed class SaveRepository
         return SplitSaveCodec.Decode(parts,snapshot,textMemo,m.Sequences[2],hasClock,clock);
     }
     public GameState? Load()=>Load(null);
+    public SavedTownPreview ReadTravelPreview()
+    {
+        SavedTownPreview? best=null;
+        for(int bank=0;bank<2;bank++)try{
+            var manifest=IncrementalSaveCodec.Read(storage.Read(SplitSaveCodec.FileName(SplitSaveCodec.Commit,bank)),bank);
+            if(best!=null&&manifest.Sequence<=best.Sequence)continue;
+            best=PreviewReference(manifest);
+        }catch(Exception){}
+        return best??throw new InvalidOperationException("Open and save both towns in this version before travelling");
+    }
+    private SavedTownPreview PreviewReference(IncrementalSaveCodec.Manifest manifest)
+    {
+        var names=SplitSaveCodec.PreviewNpcNames(ReadReference(manifest,0));
+        ulong identity=ReferencedTownIdentity(manifest);if(identity==0)throw new InvalidOperationException("Missing saved town identity");
+        for(int part=1;part<IncrementalSaveCodec.Count;part++)if(part!=2){
+            if(storage is ISaveSnapshotStorage)LargeReference(manifest,part,null,out _);
+            else ReadReference(manifest,part);
+        }
+        return new SavedTownPreview(manifest.Seed,manifest.Sequence,identity,names);
+    }
     private ulong ReferencedTownIdentity(IncrementalSaveCodec.Manifest manifest)
     {
         if(storage is not ISaveVerifiedPrefixStorage verified)return SplitSaveCodec.EconomicTownIdentity(ReadReference(manifest,2));

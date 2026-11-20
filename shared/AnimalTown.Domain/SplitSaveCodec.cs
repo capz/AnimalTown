@@ -9,6 +9,12 @@ public static class SplitSaveCodec
     internal static bool IsProfileTownVersion(int version)=>version==4||version>=6&&version<=10;
     public static int RecordKind(int part)=>part<4?part:part+1;
     public static int ReadVersion(byte[] bytes)=>new Reader(bytes,TownData).Version;
+    internal static string[] PreviewNpcNames(byte[] bytes)
+    {
+        var r=new Reader(bytes,TownData);if(!IsProfileTownVersion(r.Version))throw new InvalidOperationException("Unsupported travel town record");
+        r.Range(Town.Width,Town.Width);r.Range(Town.Height,Town.Height);r.Range(1,TownGenerator.Version);r.Int();r.Int();r.SkipTerrain();r.SkipTerrain();
+        var names=new string[6];for(int i=0;i<names.Length;i++){r.Int();r.Int();names[i]=r.Text(24);r.Int();r.Int();}return names;
+    }
     internal static ulong EconomicTownIdentity(byte[] bytes)
     {return EconomicTownIdentity(new Reader(bytes,ShopStates));}
     internal const int EconomicIdentityPrefixBytes=732;

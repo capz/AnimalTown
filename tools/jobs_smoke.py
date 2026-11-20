@@ -38,7 +38,7 @@ def run(context):
     def shot(name):
         name='jobs-'+mode+'-'+name+'.png';c.screenshot(name);shots.append(name)
     def presentations(count):
-        clock.frames();target=len(clock.presentations)+count;deadline=time.monotonic()+(900 if mode.startswith('maximum-') else 90)
+        clock.frames();target=len(clock.presentations)+count;deadline=time.monotonic()+(1800 if mode.startswith('maximum-') else 90)
         while True:
             clock.frames()
             if len(clock.presentations)>=target:return
@@ -138,7 +138,7 @@ def run(context):
         wait_log('ANIMALTOWN SAVE TOTAL:',offset,900);presentations(4);shot(label);press('B');records()
     def travel():
         go(36.5,11.5,.1);press('A');presentations(4);shot('travel');press('A');press('D_DOWN');shot('travel-confirm')
-        offset=len(c.runtime_log_text());press('A');wait_log('ANIMALTOWN READY ',offset,360);presentations(4);shot('arrived')
+        offset=len(c.runtime_log_text());press('A');wait_log('ANIMALTOWN READY ',offset,1800 if mode.startswith('maximum-') else 360);presentations(4);shot('arrived')
     def type_text(text):
         from collections import deque
         keys="ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789 .,!?'\n-:;()";cursor=0

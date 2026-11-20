@@ -72,14 +72,6 @@ internal sealed class CardArchive
     internal bool Matches(string name,byte[]? expected,int sequence,int length,uint checksum,bool ignoreSequence)
     {if(Published)return store!.Matches(name,expected,sequence,length,checksum,ignoreSequence);var actual=Read(name);if(actual.Length!=length)return false;if(sequence>=0&&(Number(actual,16)!=sequence||SaveCodec.Crc(actual,0,actual.Length-4)!=checksum))return false;for(int i=0;i<actual.Length&&expected!=null;i++)if(!(ignoreSequence&&(i>=16&&i<20||i>=actual.Length-4))&&actual[i]!=expected[i])return false;return true;}
     internal void Delete(string name){EnsureWritable();store!.Delete(name);}
-    private static void Match(byte[] a,byte[] b)
-    {if(a.Length!=b.Length)throw new IOException("Archive readback differs");for(int i=0;i<a.Length;i++)if(a[i]!=b[i])throw new IOException("Archive readback differs");}
-    private static void CopyRecord(TownCardRecords target,string name,byte[] bytes)
-    {
-        bool same=false;foreach(string existing in target.Names())if(existing==name){try{same=target.Matches(name,bytes,-1,bytes.Length,0,false);}catch(IOException){}break;}
-        if(!same)target.Write(name,bytes);
-        if(!target.Matches(name,bytes,-1,bytes.Length,0,false))throw new IOException("Archive readback differs");
-    }
     private int RecordLength(string name)=>store!.Length(name);
     private int GrowthSize(int incoming)
     {
@@ -109,7 +101,7 @@ internal sealed class CardArchive
             if(exists)card.Delete(targetName);
             target=new TownCardRecords(new NativeCardBlocks(device,true,artBanner,artIcon,targetName,blocks),true);
         }
-        foreach(string name in source.Names())if(name!=Marker)CopyRecord(target,name,source.Read(name));
+        foreach(string name in source.Names())if(name!=Marker)target.CopyFrom(source,name);
         target.SetArchiveMarker(1,epoch+1,0);ReadMarker(target,out int readPhase,out int readEpoch,out _);if(readPhase!=1||readEpoch!=epoch+1)throw new IOException("Expanded archive publication differs");
         store=target;container=targetName;phase=1;epoch++;growBlocks=0;Cleanup();
     }
@@ -143,8 +135,9 @@ internal sealed class CardArchive
         if(store==null){
             var b=banner.Length>0?banner:File.ReadAllBytes(ContentPaths.Asset("savebanner.rgb5a3"));var i=icon.Length>0?icon:File.ReadAllBytes(ContentPaths.Asset("saveicon.rgb5a3"));store=new TownCardRecords(new NativeCardBlocks(device,true,b,i,Container,blocks),true);
         }
+        var legacy=new Legacy(card);
         while(true){
-            try{foreach(var entry in entries)if(Known(entry.Name))CopyRecord(store,entry.Name,card.ReadAllBytes(entry.Name));break;}
+            try{foreach(var entry in entries)if(Known(entry.Name))store.CopyFrom(legacy,entry.Name);break;}
             catch(IOException e){
                 if(e.Message!="Card container has insufficient reserved space"||store.CapacityBlocks>=2048)throw;
                 // Fragmentation can exceed the initial logical-byte estimate.
@@ -158,12 +151,13 @@ internal sealed class CardArchive
     }
     private void Cleanup()
     {
-        foreach(var entry in card.GetEntries())if(Known(entry.Name)){var bytes=card.ReadAllBytes(entry.Name);if(!store!.Matches(entry.Name,bytes,-1,bytes.Length,0,false))throw new IOException("Archive readback differs");card.Delete(entry.Name);}
+        var legacy=new Legacy(card);
+        foreach(var entry in card.GetEntries())if(Known(entry.Name)){store!.VerifyFrom(legacy,entry.Name);card.Delete(entry.Name);}
         string other=container==Container?Expanded:Container;
         foreach(var entry in card.GetEntries())if(entry.Name==other){
             var old=new TownCardRecords(new NativeCardBlocks(device,false,banner,icon,other),true);ReadMarker(old,out _,out int oldEpoch,out _);
             if(oldEpoch>=epoch)throw new IOException("Conflicting archive generations kept");
-            foreach(string name in old.Names())if(name!=Marker){var bytes=old.Read(name);if(!store!.Matches(name,bytes,-1,bytes.Length,0,false))throw new IOException("Archive readback differs");}card.Delete(other);
+            foreach(string name in old.Names())if(name!=Marker)store!.VerifyFrom(old,name);card.Delete(other);
         }
         PublishMarker(2,epoch);
     }

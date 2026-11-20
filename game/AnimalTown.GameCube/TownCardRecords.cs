@@ -7,7 +7,7 @@ using Dolphin.Storage;
 /// <summary>One directory item, independently replaceable named records. Two
 /// checkpoints and copy-on-write data retain the previous committed version.
 /// The backing file must be exclusively owned for this instance's lifetime.</summary>
-internal sealed class TownCardRecords
+internal sealed class TownCardRecords : AnimalTown.ISaveStorage
 {
     public const int BlockBytes=8192,MaximumRecords=64;
     private const int Header=32,Stride=48,Magic=0x31525444;
@@ -16,6 +16,25 @@ internal sealed class TownCardRecords
     private readonly byte[] scratch=new byte[BlockBytes];
     private int bank;
     private bool faulted;
+    byte[] AnimalTown.ISaveStorage.Read(string name)=>Read(name);
+    void AnimalTown.ISaveStorage.Write(string name,byte[] bytes)=>Write(name,bytes);
+    // Keep the large read buffer in this one call frame. A buffer evaluated as
+    // an argument in the caller's loop can remain a conservative GC root while
+    // the next mirrored economy is read, even though the first copy is done.
+    internal void CopyFrom(AnimalTown.ISaveStorage source,string name)
+    {
+        AnimalTown.Jobs.JobMemory.ReclaimTemporaryText?.Invoke();
+        var bytes=source.Read(name);bool same=false;
+        foreach(string existing in Names())if(existing==name){try{same=Matches(name,bytes,-1,bytes.Length,0,false);}catch(IOException){}break;}
+        if(!same)Write(name,bytes);
+        if(!Matches(name,bytes,-1,bytes.Length,0,false))throw new IOException("Archive readback differs");
+    }
+    internal void VerifyFrom(AnimalTown.ISaveStorage source,string name)
+    {
+        AnimalTown.Jobs.JobMemory.ReclaimTemporaryText?.Invoke();
+        var bytes=source.Read(name);
+        if(!Matches(name,bytes,-1,bytes.Length,0,false))throw new IOException("Archive readback differs");
+    }
     private static int Get(byte[] b,int p)=>(int)((uint)b[p]|(uint)b[p+1]<<8|(uint)b[p+2]<<16|(uint)b[p+3]<<24);
     private static void Put(byte[] b,int p,int v){for(int i=0;i<4;i++)b[p+i]=(byte)((uint)v>>(8*i));}
     private static uint Hash(byte[] b,int offset,int count,uint h=2166136261){for(int i=0;i<count;i++)h=unchecked((h^b[offset+i])*16777619);return h;}

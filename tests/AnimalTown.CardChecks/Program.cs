@@ -38,6 +38,9 @@ using(var draft=NewVillager()){
     Check(repository.LastWrittenRecords==4&&repository.LastWrittenBytes==1336&&card.Writes-writes==8,"an active job clock writes four logical records and eight verified 8 KiB sectors, without an economic rewrite");
     var prefixMeter=new PrefixMeter(adapter);new SaveRepository(prefixMeter).VerifyRevision(loaded);
     Check(prefixMeter.PrefixReads==1&&prefixMeter.EconomicReads==0,"travel verifies the entire economic checksum while retaining only a 732-byte identity prefix");
+    prefixMeter.PrefixReads=prefixMeter.EconomicReads=0;var travelPreview=new SaveRepository(prefixMeter).ReadTravelPreview();
+    Check(travelPreview.TownId==loaded.Town.Jobs.TownId&&travelPreview.Sequence==loaded.Sequence&&travelPreview.Seed==loaded.Town.Seed&&Enumerable.Range(0,6).All(i=>travelPreview.NpcName(i)==loaded.Town.Residents[i].Name),"travel preview reads the committed town identity, revision and six NPC names without constructing another town");
+    Check(prefixMeter.PrefixReads==1&&prefixMeter.EconomicReads==0,"travel preview validates the full referenced economy while retaining only its small identity prefix");
     var badPrefix=card.Copy();var pages=badPrefix.RecordPages["AnimalTown"];var rootBytes=BitConverter.ToInt32(pages[0],8)>BitConverter.ToInt32(pages[1],8)?pages[0]:pages[1];
     for(int i=0;i<64;i++){
         int at=32+i*48;string record=System.Text.Encoding.ASCII.GetString(rootBytes,at,32).TrimEnd('\0');if(!record.StartsWith("AT-Shops"))continue;
@@ -45,7 +48,9 @@ using(var draft=NewVillager()){
         pages[page+altered/8192][altered%8192]^=1;
     }
     bool prefixCorrupt=false;try{new SaveRepository(adapter).VerifyRevision(loaded);}catch(InvalidOperationException){prefixCorrupt=true;}
-    Check(prefixCorrupt,"a prefix read rejects corruption beyond the retained prefix in both referenced economic copies");MemoryCard.Slots[4]=card;MemoryCard.Current=card;
+    Check(prefixCorrupt,"a prefix read rejects corruption beyond the retained prefix in both referenced economic copies");
+    bool previewCorrupt=false;try{new SaveRepository(adapter).ReadTravelPreview();}catch(InvalidOperationException){previewCorrupt=true;}
+    Check(previewCorrupt,"travel preview rejects full-record corruption beyond the retained identity prefix");MemoryCard.Slots[4]=card;MemoryCard.Current=card;
     // The extra town-history pages must fit on subsequent copy-on-write saves,
     // not only the first save into an empty container.
     for(int save=1;save<=12;save++){

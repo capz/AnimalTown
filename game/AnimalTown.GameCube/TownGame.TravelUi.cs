@@ -22,10 +22,10 @@ internal sealed partial class TownGame
         travelReady=false;
         try{
             card?.Dispose();card=null;
-            using var cards=new OfflineTravelCards(state,banner,icon);
-            travelHome=(cards.HomeDevice==4?"Slot A":"Slot B")+" · Town "+cards.Home.Town.Seed;
-            travelDestination=(cards.DestinationDevice==4?"Slot A":"Slot B")+" · Town "+cards.Destination.Town.Seed;
-            travelFromName=cards.Home.Town.Residents[travelFrom].Name;travelToName=cards.Destination.Town.Residents[travelTo].Name;
+            var cards=OfflineTravelCards.Preview(state,banner,icon);
+            travelHome=(cards.HomeDevice==4?"Slot A":"Slot B")+" · Town "+cards.Home.Seed;
+            travelDestination=(cards.DestinationDevice==4?"Slot A":"Slot B")+" · Town "+cards.Destination.Seed;
+            travelFromName=cards.Home.NpcName(travelFrom);travelToName=cards.Destination.NpcName(travelTo);
             travelStatus=travelAction==1?"Bring your pockets and errands home.":travelAction==2||travelAction==4?"Both towns match. Continue the recorded handoff.":"Your home villager stays away until you return.";
             travelReady=true;
         }catch(Exception e){travelStatus=e.Message??"Check both town cards and recheck.";}
