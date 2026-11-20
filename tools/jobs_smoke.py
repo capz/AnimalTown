@@ -75,7 +75,19 @@ def run(context):
     def approach(npc):
         for attempt in range(80):
             v=view();n=v['npcs'][npc]
-            if n[0]!=v['room']:raise AssertionError('NPC changed rooms during capture: '+str(n))
+            if n[0]!=v['room']:
+                if v['room']!=0:
+                    size=8 if v['room']==24 else 4
+                    go(size*.5,size-.65,.08);move(0,1,.04);press('A');guest(1)
+                else:
+                    space=n[0]
+                    if space==24:x,z=32.5,28.5
+                    elif space==25:x,z=50.5,28.5
+                    elif 16<=space<=21:
+                        owner=v['npcs'][space-16];x,z=owner[4]+1.5,owner[5]+3.5
+                    else:raise AssertionError('Unexpected NPC visit space '+str(space))
+                    go(x,z+1,.12);move(0,-1,.04);press('A');guest(1)
+                continue
             dx=n[1]/1024-v['x'];dz=n[2]/1024-v['z'];d=math.hypot(dx,dz)
             if d<1.35 and not n[3]:return
             if d<.1:guest(.2);continue
@@ -88,8 +100,15 @@ def run(context):
             guest(min(2,(v['length']-v['typed'])/30+.1))
         raise AssertionError('Dialogue stopped revealing text')
     def talk(npc=0):
-        approach(npc);press('A');v=dialogue()
-        if v['screen']!='dialogue' or v['npc']!=npc:raise AssertionError('Conversation did not reach the intended NPC: '+str(v))
+        for _ in range(4):
+            approach(npc);v=view();n=v['npcs'][npc];dx=v['x']-n[1]/1024;dz=v['z']-n[2]/1024;d=math.hypot(dx,dz)
+            # Look away from a shared doorway so A addresses the villager
+            # instead of taking the higher-priority door interaction.
+            if d>.05:move(dx/d,dz/d,.04)
+            press('A');v=dialogue()
+            if v['screen']=='dialogue' and v['npc']==npc:return
+            if v['screen']!='world':break
+        raise AssertionError('Conversation did not reach the intended NPC: '+str(v))
     def close():press('B');guest(.25)
     def accept():
         talk();shot('npc-choices');press('A');v=dialogue()
@@ -145,7 +164,10 @@ def run(context):
         c.wait_title()
         if not (c.root/'MemoryCardA.USA.raw').is_file():raise AssertionError('Dolphin did not format its disposable template')
         return
-    c.start_game(False,'jobs-'+mode);wait_log('ANIMALTOWN READY ');presentations(2);shot('world')
+    if mode=='recovery':
+        c.wait_title();press('A');c.wait_profiles('jobs-recovery-picker.png');shot('locked');press('X');presentations(8);shot('recheck');offset=len(c.runtime_log_text());press('A');wait_log('ANIMALTOWN READY ',offset,600)
+    else:c.start_game(False,'jobs-'+mode)
+    wait_log('ANIMALTOWN READY ');presentations(2);shot('world')
     report={'scenario':'offline-jobs','mode':mode,'screenshots':shots,'passed':False}
     if mode in ('baseline','outfits-off','outfits-on','maximum-mail'):
         report['profile']=profile();shot('profiled')
@@ -155,6 +177,14 @@ def run(context):
         press('A');guest(1)
         for _ in range(4):press('D_DOWN')
         press('A');shot('mailbox');press('A');guest(1);shot('letter');press('X');guest(1);shot('attachment');close();close();save()
+    elif mode=='room':
+        shot('before');press('X');press('A');press('A');dialogue();close();shot('floor')
+        press('X');press('D_RIGHT');press('A');press('A');dialogue();close();shot('walls');save()
+    elif mode=='moving':
+        go(36.5,11.5,.1);press('A');presentations(4);shot('travel');press('Y');press('D_DOWN');shot('moving');press('A');press('D_DOWN');shot('confirmation')
+        offset=len(c.runtime_log_text());press('A');wait_log('ANIMALTOWN READY ',offset,600);presentations(4);shot('moved');save()
+    elif mode=='recovery':
+        shot('recovered');travel();shot('returned');save()
     else:
         accept()
         if mode in ('delivery','property','retrieval'):
@@ -190,5 +220,8 @@ def run(context):
             press('A');shot('reply-mailbox');press('A');shot('reply');press('X');close();close()
         else:raise ValueError('Unsupported job smoke mode: '+mode)
         save()
+    if mode in ('foreign','moved','moving','recovery'):
+        folder=c.root/'records-b';folder.mkdir(exist_ok=True)
+        for name,data in c.options_card_files(c.root/'MemoryCardB.USA.raw').items():(folder/name).write_bytes(data)
     alive();report['controls_completed']=True
     (c.root/'jobs-report.json').write_text(json.dumps(report,indent=2)+'\n')

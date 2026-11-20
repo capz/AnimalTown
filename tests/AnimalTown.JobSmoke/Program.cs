@@ -17,6 +17,7 @@ internal static class Program
     {
         int before=NativeJobBlocks.Report(10);var ledger=new OfflineJobLedger();ledger.Initialize(98765);for(int p=0;p<OfflineJobLedger.OwnerCount;p++)ledger.EnsurePlayer(p);
         int after=NativeJobBlocks.Report(11);Require(ledger.Initialized&&ledger.Player(4).IsValid&&after-before<72*1024,"bounded native resident core, excluding text and travel snapshots");Console.WriteLine("Native core bytes: "+(after-before));
+        ledger.EnsureMail();int envelopes=NativeJobBlocks.Report(12);Require(ledger.Mail.Length==576&&envelopes-after<96*1024,"bounded lazy mail envelopes, excluding message bodies");Console.WriteLine("Native mail envelope bytes: "+(envelopes-after));
     }
     private static void ReclaimText()=>NativeJobBlocks.Collect();
     private static void NormalJobs()

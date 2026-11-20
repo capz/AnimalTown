@@ -148,6 +148,13 @@ extern int animaltown_terrain_cache(int);
     assert compact_count>=30, 'Persistence AOT function boundaries changed'
     for codec in ('SaveCodec','SplitSaveCodec','ProfileCodec','SaveRepository','IncrementalSaveCodec'):
         assert re.search(r'__attribute__.*dnd_value_AnimalTown_Domain_AnimalTown_'+codec+r'_',text), 'Missing compact persistence codec: '+codec
+    # Card, loading and explicit UI transactions share MEM1 with the winter
+    # coverage map and model packages. Their O3 copies/inlining can cost more
+    # RAM than the bounded job records. Keep free-play simulation/rendering,
+    # shared text primitives and physical-object drawing at O3.
+    console_cold=r'(?m)^(intptr_t dnd_value_AnimalTown_GameCube_(?:CardArchive|TownCardRecords|CardSaveStorage|SaveCards|ProfilePicker|ProfilePickerUi|OnboardingFlow|OnboardingUi|TownSession|OfflineTravelCards|OfflineTravelRecovery|DevConfigStorage|UserOptionsStorage|TitleScreen|TownGame_(?:InitializeJobs|JobNpcName|JobPlayerName|JobTitle|JobDescription|JobSay|ResetJobConversation|CloseJobDialogue|TryJobConversation|ShowJobOffer|JobInput|OpenJobLog|RefreshJobRows|OpenJobSelection|JobItemName|FindBoundJob|MailUiInput|OpenMail|RefreshMail|Compose|Send|ReadJobMail|TakeMail|DiscardMail|OpenNotice|RefreshNotice|OpenTravel|RefreshTravel|ExecuteTravel|TravelInput|SaveFromMenu)_)[^;\n]*\) \{)'
+    text,console_count=re.subn(console_cold,r'__attribute__((noinline,optimize("Os"))) \1',text)
+    assert console_count>=60, 'Cold console transaction boundaries changed'
     # Path routing/tessellation runs at generation or terrain bake, not during
     # normal travel. Compact its AOT text instead of spending scarce MEM1 on O3
     # unrolling. The residency pump and drawing retain gameplay optimization.
@@ -160,3 +167,4 @@ extern int animaltown_terrain_cache(int);
     generated.write_text(text)
     print('Persistence: '+str(compact_count)+' cold AOT functions compiled for size; gameplay optimization retained')
     print('Resident jobs: '+str(job_count)+' event/transaction functions compiled for size; physical world and availability retain O3')
+    print('Console transactions: '+str(console_count)+' card/loading/UI functions compiled for size; free-play simulation and rendering retain O3')

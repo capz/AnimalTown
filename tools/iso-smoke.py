@@ -56,7 +56,11 @@ def start_display():
         if not select.select([read_fd],[],[],30)[0]:raise RuntimeError('Xvfb did not report a ready display; inspect xvfb.log')
         number=os.read(read_fd,32).decode().strip()
         if not number.isdigit() or server.poll() is not None:raise RuntimeError('Xvfb failed to initialize; inspect xvfb.log')
-        return server,dict(os.environ,DISPLAY=':'+number,QT_QPA_PLATFORM='xcb')
+        environment=dict(os.environ,DISPLAY=':'+number,QT_QPA_PLATFORM='xcb')
+        # llvmpipe otherwise creates a worker per visible host CPU. Multiple
+        # disposable controller runs can exhaust the container's thread limit.
+        environment.setdefault('LP_NUM_THREADS','2')
+        return server,environment
     except BaseException:
         if server is not None:
             server.terminate()

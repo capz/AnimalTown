@@ -4,6 +4,10 @@
 #include "animaltown_shadow_union.h"
 #endif
 #include "dnd_timing.h"
+#ifdef GEKKO
+#include <ogc/system.h>
+#include <malloc.h>
+#endif
 static SuState *shadows;
 static int shadow_storage;
 static int snow_storage,snow_revision=-1;
@@ -37,7 +41,13 @@ int animaltown_shadows_snow(DndArray *visits,int revision,int winter){
     if(changed){
         if(!snow_storage){
             snow_storage=dnd_buffer_create(SU_SNOW_BYTES,32);
-            if(!snow_storage)return 0;
+            if(!snow_storage){
+#ifdef GEKKO
+                struct mallinfo memory=mallinfo();
+                SYS_Report("ANIMALTOWN SNOW ALLOCATION FAILED bytes %u arena_free %u malloc_free %u native_bytes %u\n",(unsigned)SU_SNOW_BYTES,(unsigned)SYS_GetArena1Size(),(unsigned)memory.fordblks,(unsigned)dnd_draw_total_bytes());
+#endif
+                return 0;
+            }
             snow_pixels=(uint8_t*)(uintptr_t)dnd_buffer_address(snow_storage,0);
             if(!snow_pixels){snow_release();return 0;}
             dnd_draw_backend_flush(snow_pixels,SU_SNOW_BYTES,0);

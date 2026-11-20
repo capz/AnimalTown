@@ -10,6 +10,20 @@ internal static class JobFixture
     {internal readonly Dictionary<string,byte[]> Files=new();public byte[] Read(string name)=>Files.TryGetValue(name,out var b)?(byte[])b.Clone():throw new IOException();public void Write(string name,byte[] bytes)=>Files[name]=(byte[])bytes.Clone();}
     internal static void Write(string output,string mode)
     {
+        if(mode=="room"){
+            Write(output,"mail");var disk=ReadFixture(output);var repo=new SaveRepository(disk);var room=repo.Load()!;
+            room.Space=1;room.X=3;room.Z=4;room.BackpackTier=1;room.Shirt=Catalog.StripedShirt;Array.Clear(room.Pockets);room.Pockets[0]=Catalog.OakFloor;room.Pockets[1]=Catalog.LeafWallpaper;Array.Clear(room.Town.Jobs.Offers);repo.Save(room);
+            foreach(var file in disk.Files)File.WriteAllBytes(Path.Combine(output,file.Key),file.Value);return;
+        }
+        if(mode=="moving"||mode=="recovery"){
+            CrossTown(output,"foreign");var home=ReadFixture(output);var destination=ReadFixture(output+"-destination");
+            if(mode=="recovery"){
+                var repository=new SaveRepository(home);var state=repository.Load()!;
+                try{new OfflineTownTravel(repository,new SaveRepository(new FailWrites(destination))).Depart(0,state.Town.Jobs.Watermark);}catch(IOException){}
+                state=repository.Load()!;if(!state.ProfileLocked(0)||!state.Town.Jobs.Trip.Pending)throw new Exception("Recovery fixture requires a genuinely committed source lock");
+            }
+            foreach(var file in home.Files)File.WriteAllBytes(Path.Combine(output,file.Key),file.Value);foreach(var file in destination.Files)File.WriteAllBytes(Path.Combine(output+"-destination",file.Key),file.Value);return;
+        }
         if(mode=="foreign"||mode=="moved"){CrossTown(output,mode);return;}
         bool baseline=mode=="baseline",winter=mode=="snowman",destination=mode=="destination";long now=JobCalendar.At(2027,winter?1:7,15,mode=="letter"?7:12,mode=="letter"?58:0);var s=new GameState(destination?7320:7319){Name="Ari",Tutorial=baseline?6:7,HouseTier=1};s.Town.DaylightLocation=1;
         s.Rollover((int)(now/86400),2027*12+(winter?1:7));s.Tutorial=baseline?6:7;if(!baseline)s.ResidentJobs.Enable(destination?0x41544a4f425332UL:0x41544a4f425331UL,now);
@@ -52,6 +66,8 @@ internal static class JobFixture
     {record[8]=1;record[9]=record[10]=record[11]=0;uint crc=SaveCodec.Crc(record,0,record.Length-4);for(int i=0;i<4;i++)record[record.Length-4+i]=(byte)(crc>>(8*i));}
     private static Disk ReadFixture(string directory)
     {var d=new Disk();foreach(string f in Directory.GetFiles(directory))if(SplitSaveCodec.IsFile(Path.GetFileName(f)))d.Files[Path.GetFileName(f)]=File.ReadAllBytes(f);return d;}
+    private sealed class FailWrites(ISaveStorage storage):ISaveStorage
+    {public byte[] Read(string name)=>storage.Read(name);public void Write(string name,byte[] bytes)=>throw new IOException("Intentional controller-qualification interruption before destination publication");}
     private static void CrossTown(string output,string mode)
     {
         Write(output,"base-travel");Write(output+"-destination","destination");var a=ReadFixture(output);var b=ReadFixture(output+"-destination");var ar=new SaveRepository(a);var br=new SaveRepository(b);long now=JobCalendar.At(2027,7,15,12);
@@ -67,8 +83,19 @@ internal static class JobFixture
         var disk=new Disk();foreach(string file in Directory.GetFiles(directory))disk.Files[Path.GetFileName(file)]=File.ReadAllBytes(file);
         var s=new SaveRepository(disk).Load()??throw new Exception("Controller run produced no committed town");var l=s.Town.Jobs;
         var jobs=Enumerable.Range(0,OfflineJobLedger.JobCapacity).Select(l.Job).Where(j=>j.Occupying).ToArray();
-        bool completed=Enumerable.Range(0,OfflineJobLedger.TerminalCapacity).Any(i=>l.Terminal(i).Reason==JobEndReason.Success)||jobs.Any(j=>j.Status==JobStatus.CompletedRetained);
-        if(verify&&mode!="mail"&&!mode.StartsWith("maximum")&&!mode.StartsWith("outfits")&&mode!="baseline"&&!completed)throw new Exception("Controller run has not completed its errand: "+mode);
+        JobTemplate? expected=mode switch{"delivery"=>JobTemplate.DeliveryClothing,"property"=>JobTemplate.DeliveryProperty,"retrieval"=>JobTemplate.RetrievalBorrowed,"foreign"=>JobTemplate.DeliveryForeign,"moved"=>JobTemplate.DeliveryMoved,"fruit"=>JobTemplate.FavorFruit,"fish"=>JobTemplate.FavorFish,"insect"=>JobTemplate.FavorInsect,"flowers"=>JobTemplate.FavorFlowers,"ball"=>JobTemplate.FavorBall,"snowman"=>JobTemplate.FavorSnowman,"letter"=>JobTemplate.FavorLetter,_=>null};
+        bool completed=Enumerable.Range(0,OfflineJobLedger.TerminalCapacity).Any(i=>l.Terminal(i).Reason==JobEndReason.Success&&(!expected.HasValue||l.Terminal(i).Template==expected.Value))||jobs.Any(j=>j.Status==JobStatus.CompletedRetained&&(!expected.HasValue||j.Template==expected.Value));
+        GameState? other=null;
+        if(mode=="foreign"||mode=="moved"||mode=="moving"||mode=="recovery"){
+            other=new SaveRepository(ReadFixture(Path.Combine(directory,"..","records-b"))).Load()??throw new Exception("Controller run must export both actual town cards");
+            if(expected.HasValue)completed|=Enumerable.Range(0,OfflineJobLedger.TerminalCapacity).Any(i=>other.Town.Jobs.Terminal(i).Owner==l.Player(0)&&other.Town.Jobs.Terminal(i).Template==expected.Value&&other.Town.Jobs.Terminal(i).Reason==JobEndReason.Success);
+            if(verify&&(s.Visiting||other.Visiting||s.ProfileLocked(0)||l.Trip.Pending||other.Town.Jobs.Trip.Pending))throw new Exception("Both town cards must finish without an active or duplicated traveller");
+        }
+        if(verify&&expected.HasValue&&!completed)throw new Exception("Controller run has not completed its expected errand: "+mode);
+        if(verify&&mode=="maximum-mail"&&(Enumerable.Range(0,4).Any(p=>s.Profiles[p].MailCount!=128)||Enumerable.Range(0,512).Any(i=>l.Mail[i].State!=JobMailState.Inbox||JobTextBody.Unpack(l.Mail[i].Body!,l.Mail[i].BodyOffset,l.Mail[i].BodyWords).Length!=2000)))throw new Exception("Maximum Unicode mail did not survive the actual card checkpoint");
+        if(verify&&mode=="room"&&(l.HomeFloor(0)!=Catalog.OakFloor||l.HomeWall(0)!=Catalog.LeafWallpaper))throw new Exception("Room coverings were not applied and saved");
+        if(verify&&mode=="recovery"&&(s.Visiting||s.ProfileLocked(0)||l.Trip.Pending))throw new Exception("Recovered traveller did not return home safely");
+        if(verify&&mode=="moving"&&(other==null||l.NpcMove.Pending||other.Town.Jobs.NpcMove.Pending||l.Npc(1).Town!=other.Town.Jobs.TownId||other.Town.Jobs.Npc(0).Town!=l.TownId||l.Species(1)!=0||other.Town.Jobs.Species(0)!=1))throw new Exception("The confirmed NPC pair did not exchange identities and species on both cards");
         if(verify&&mode=="delivery"&&l.Outfit(1)!=Catalog.BerryShirt)throw new Exception("Delivery did not change the actual recipient's clothing");
         if(verify&&mode=="mail"&&s.Find(Catalog.LeafShirt)<0)throw new Exception("The real mail attachment was not collected");
         var result=new{mode,passed=verify,sequence=s.Sequence,activeProfile=s.ActiveProfile,visiting=s.Visiting,position=new{s.X,s.Z,s.Space},wallet=s.Wallet,completed,mailCount=s.MailCount,pockets=s.Pockets,bindings=Enumerable.Range(0,s.Capacity).Where(s.IsJobItem),outfits=Enumerable.Range(0,6).Select(l.Outfit),jobs=jobs.Select(j=>new{template=j.Template.ToString(),status=j.Status.ToString(),target=l.FindNpc(j.Target),j.Item,j.FlowerBaseline,j.HomeAcre}),terminals=Enumerable.Range(0,16).Select(l.Terminal).Where(t=>!t.Job.IsEmpty).Select(t=>new{template=t.Template.ToString(),reason=t.Reason.ToString(),t.At})};
