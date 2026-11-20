@@ -50,7 +50,7 @@ digest has also been verified; a recognizable header alone cannot prove that.
 | Equal-version copies | Retain; defer duplicate-content removal |
 | Stable images above target | Retain |
 | Hash-bearing development images | Retain; hashes do not establish age |
-| Preview installation, including an intentional downgrade | Skip automatic cleanup entirely |
+| Preview installation | Skip automatic cleanup entirely |
 | Foreign/truncated/invalid images, unknown files, saves | Retain |
 | `.bak`, `.update`, SDK staging and updater recovery paths | Retain; separate recovery ownership |
 
@@ -147,16 +147,43 @@ Use `GET /repos/capz/AnimalTown/releases?per_page=1&page=N`. One release per
 request preserves the tested 32 KiB response budget and avoids buffering many
 release bodies/assets in the console heap. Browse lazily: at most eight inspected
 publications per load action, four visible build rows, and 24 retained build
-descriptors. Offer “Load more” even when an inspected window contains only stable
-or incompatible releases. An empty API page ends discovery. Display counts as
+descriptors. Offer “Load more” even when an inspected window contains only stable,
+lower-version, same-commit or incompatible releases. An empty API page ends discovery. Display counts as
 loaded results, never as a guaranteed total of all builds.
 
-Accept published, non-draft prereleases with a valid current `M.m.p+12hex`
+Show only published, non-draft prereleases with a valid current `M.m.p+12hex`
 identity or supported legacy `M.m.p.<12/40hex>` identity, plus one valid direct
-NKit ISO. Numeric versions remain stable even if an old publication has the
-prerelease flag. Skip unrelated releases and label incompatible/missing assets
-without making them installable. Preserve GitHub's publication order; do not
-sort commit hashes or imply that branch counters determine recency.
+NKit ISO, that satisfy **both** conditions:
+
+- The candidate's numeric `(major, minor, patch)` tuple is greater than or equal
+  to the running build's tuple, compared numerically in that order.
+- The candidate's trailing commit hash differs from the running build's commit.
+
+Numeric versions remain stable even if an old publication has the prerelease
+flag, so exclude them. Hide lower numeric versions and same-commit candidates
+entirely, including a same-commit candidate with a higher numeric version.
+Compare the suffix with the running version's suffix; for a stable running
+version without a suffix, use its generated `BuildInfo.Commit`. Normalize hex
+case and treat supported short/full hashes with a matching prefix as the same
+commit. An invalid or unavailable running commit blocks selection rather than
+guessing. Validate consistency between a running suffix and supplied commit.
+
+Use one shared eligibility predicate in the browser and updater, in addition to
+release/asset integrity checks. Skip unrelated releases and label
+incompatible/missing assets without making them installable. Preserve GitHub's
+publication order; the numeric tuple is an eligibility floor, not a claim about
+branch ancestry. Never sort or order commit hashes.
+
+For a running build `0.30.0+0123456789ab`:
+
+| Candidate | Listed/installable |
+| --- | --- |
+| `0.29.0+a1b2c3d4e5f6` | No: lower numeric version |
+| `0.30.0+0123456789ab` | No: same commit |
+| `0.31.0+0123456789ab` | No: same commit despite higher version |
+| `0.30.0+a1b2c3d4e5f6` | Yes: equal version, different commit |
+| `0.31.0+a1b2c3d4e5f6` | Yes: higher version, different commit |
+| `0.31.0` | No: stable release |
 
 Retain only release ID, exact tag/version, publication date, asset ID, size and
 digest, plus a short sanitized label. Free the JSON/body before the next request;
@@ -186,6 +213,7 @@ Add v4 alongside the existing v1-v3 readers. Proposed separate argv entries:
 <updater DOL path>
 --animaltown-update=4
 <running BuildInfo.Version>
+<running BuildInfo.Commit>
 preview
 <numeric release ID>
 <exact tag>
@@ -197,14 +225,17 @@ Validate exact argument count, scalar bounds and supported tag/hash syntax;
 the existing native bridge has a 4 KiB envelope. Pass identities, not arbitrary
 download URLs or filesystem targets. Updater independently fetches
 `/repos/capz/AnimalTown/releases/<release ID>`, checks the selected tag/asset
-ID/digest, requires a published development build, then derives the allowlisted
+ID/digest, requires a published development build, and rechecks the numeric
+version floor and different-commit predicate against the validated running
+identity before any download or mutation. Then derive the allowlisted
 repository/tag/asset URL from verified metadata. A removed release or changed
 asset fails explicitly, with no silent substitution of “latest.”
 
 Factor the existing install pipeline to accept a validated release target.
 Stable v3 keeps numeric no-downgrade semantics. Explicit preview v4 permits
-different branches and lower numeric versions after user confirmation; equal
-installed identities show “Current” and do not offer redundant installation.
+different branches only when the numeric version is at least the running version
+and the trailing commit hash differs. Confirmation cannot override either rule.
+Reject ineligible handoffs even when the browser has already filtered them.
 Both modes keep size, SHA-256, embedded identity, contiguous publication,
 collision protection, verified physical selection and Swiss autoload checks.
 Preview mode always disables automatic old-image cleanup.
@@ -213,8 +244,9 @@ Preview mode always disables automatic old-image cleanup.
 
 Selection opens a confirmation showing current and target versions, size and
 restart behavior. “Save & update” is the action; Back is the default focus.
-Explain that older builds may not read current saves. Do not migrate or rewrite
-save formats as part of switching versions.
+Explain that development builds may use incompatible saves, even at equal or
+higher numeric versions. Do not migrate or rewrite save formats as part of
+switching versions.
 
 Refactor `SaveFromMenu` to return a structured success result, including memory
 card close success. Its current `void` return and caught errors are insufficient
@@ -241,12 +273,12 @@ are illustrative. Use text labels as well as colour for status.
 ```text
 ╭──────────────────────────────────────────────────────╮
 │ Development builds                                   │
-│ Current: 0.30.0                                      │
+│ Current: 0.30.0+0123456789ab                           │
 │                                                      │
-│ > 0.30.0+a1b2c3d4e5f6       20 Nov      89 MiB        │
-│   0.30.0+112233aabbcc       19 Nov      88 MiB        │
-│   0.29.0+ffeeddccbbaa       18 Nov      88 MiB        │
-│   0.29.0+123456abcdef       18 Nov      87 MiB        │
+│ > 0.31.0+a1b2c3d4e5f6       20 Nov      89 MiB        │
+│   0.31.0+112233aabbcc       19 Nov      88 MiB        │
+│   0.30.0+ffeeddccbbaa       18 Nov      88 MiB        │
+│   0.30.0+123456abcdef       18 Nov      87 MiB        │
 │                                                      │
 │   Load more                                          │
 │ Published development builds / 4 loaded               │
@@ -255,10 +287,11 @@ are illustrative. Use text labels as well as colour for status.
 
 ╭──────────────────────────────────────────────────────╮
 │ Update to this build?                                │
-│ 0.30.0  ->  0.30.0+a1b2c3d4e5f6                      │
+│ From: 0.30.0+0123456789ab                             │
+│ To:   0.31.0+a1b2c3d4e5f6                             │
 │ Download: 89 MiB                                     │
 │ Your town will be saved. The game will restart.       │
-│ Older builds may not read newer saves.                │
+│ Development builds may use incompatible saves.        │
 │                                                      │
 │ > Back                                               │
 │   Save & update                                      │
@@ -266,7 +299,7 @@ are illustrative. Use text labels as well as colour for status.
 ╰──────────────────────────────────────────────────────╯
 ```
 
-Loading, empty, offline, rate-limited, save-error, current-build and Depot states
+Loading, no-eligible-builds, offline, rate-limited, save-error and Depot states
 use the same panel and readable action labels. Final implementation must measure
 the longest version/legacy identity with actual IPL metrics, wrap details and
 keep controller hints visible at 640x480. Review a rendered mockup using the
@@ -292,7 +325,7 @@ required by the supplied AGENTS instructions.
 | Cleanup policy | Mixed stable/preview versions; renamed ISO/GCMs; numeric ordering; equal/newer preservation; retained candidate; FAT aliases; staging exclusions |
 | Ordering/recovery | Download/hash/readback/helper failures delete nothing; cancellation; insufficient space; scan failure before deletion; changed candidate; receipt corruption; interruption between each delete; retry idempotence |
 | Native limits | Real SDK AOT at 1 MiB heap, wide/deep/candidate-heavy trees, bounded handles and allocation, responsive worker/UI and cursor-safe FAT deletion |
-| Catalog/selection | Current and legacy tags, numeric prerelease exclusion, paging/deduplication, response/asset caps, missing digest, literal/%2B URLs, 403/429, deleted/changed target and exact release/asset pinning |
+| Catalog/selection | Current and legacy tags; numeric prerelease exclusion; lower versions hidden; equal/higher versions require different commits; same commit excluded even with a higher version; stable-running commit fallback; hash case/prefix equality; browser/updater predicate parity; paging/deduplication; response/asset caps; missing digest; literal/%2B URLs; 403/429; deleted/changed target and exact release/asset pinning |
 | In-game lifecycle | Debug gating, Back/refresh navigation, save and close failures block launch, disabled-save/Depot behavior, resources unwind before argv handoff, title stable update remains intact |
 | Emulator visuals | Actual assets/fonts, safe area, long identities and every error/loading state; approval against the rendered mockup |
 | Hardware | GC Loader on FAT32 and exFAT, BBA HTTPS, renamed/fragmented existing copies, physical mapping/readback, Swiss autoload, removal/power interruption on disposable cards |
