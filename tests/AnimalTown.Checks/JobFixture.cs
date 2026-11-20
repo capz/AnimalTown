@@ -10,8 +10,9 @@ internal static class JobFixture
     {internal readonly Dictionary<string,byte[]> Files=new();public byte[] Read(string name)=>Files.TryGetValue(name,out var b)?(byte[])b.Clone():throw new IOException();public void Write(string name,byte[] bytes)=>Files[name]=(byte[])bytes.Clone();}
     internal static void Write(string output,string mode)
     {
-        bool baseline=mode=="baseline",winter=mode=="snowman";long now=JobCalendar.At(2027,winter?1:7,15,12);var s=new GameState(7319){Name="Ari",Tutorial=baseline?6:7,HouseTier=1};s.Town.DaylightLocation=1;
-        s.Rollover((int)(now/86400),2027*12+(winter?1:7));s.Tutorial=baseline?6:7;if(!baseline)s.ResidentJobs.Enable(0x41544a4f425331UL,now);
+        if(mode=="foreign"||mode=="moved"){CrossTown(output,mode);return;}
+        bool baseline=mode=="baseline",winter=mode=="snowman",destination=mode=="destination";long now=JobCalendar.At(2027,winter?1:7,15,mode=="letter"?7:12,mode=="letter"?58:0);var s=new GameState(destination?7320:7319){Name="Ari",Tutorial=baseline?6:7,HouseTier=1};s.Town.DaylightLocation=1;
+        s.Rollover((int)(now/86400),2027*12+(winter?1:7));s.Tutorial=baseline?6:7;if(!baseline)s.ResidentJobs.Enable(destination?0x41544a4f425332UL:0x41544a4f425331UL,now);
         bool placed=false;for(int z=20;z<Town.Height-13&&!placed;z++)for(int x=4;x<20&&!placed;x++)placed=s.PlaceHouse(x,z,false);if(!placed)throw new Exception("Job fixture requires a home plot");
         for(int z=28;z<52;z++)for(int x=20;x<54;x++){s.Town.Tiles[z*Town.Width+x]=(byte)Terrain.Grass;s.Town.Elevation[z*Town.Width+x]=0;}
         for(int i=s.Town.GroundCount-1;i>=0;i--){var g=s.Town.Ground[i];if(g.X>=20&&g.X<54&&g.Z>=28&&g.Z<52)s.Town.RemoveGround(i);}
@@ -19,12 +20,13 @@ internal static class JobFixture
         Array.Clear(s.Pockets);s.Pockets[0]=Catalog.WritingPaper;s.Pockets[1]=2;s.Pockets[2]=2;s.Pockets[3]=2;s.Pockets[4]=2;s.Pockets[5]=Catalog.Pear;s.Pockets[6]=14;s.Pockets[7]=15;s.Pockets[8]=Catalog.Shovel;
         if(baseline){s.Pockets[0]=Catalog.WorkShirt;s.Pockets[5]=1;}
         for(int n=0;n<6;n++){var v=s.Town.Residents[n];v.Space=0;v.PosX=n==0?30:n==1?35.5f:30+(n-2.5f)*2.2f;v.PosZ=n==0?40.8f:n==1?42.3f:35;v.X=(int)v.PosX;v.Z=(int)v.PosZ;v.Dwell=36000;v.JourneyPhase=0;v.JourneyBuilding=-1;v.JourneyNextX=v.JourneyNextZ=-1;v.Yaw=0;s.Town.Jobs.SetOutfit(n,mode=="outfits-on"?Catalog.BerryShirt:0);}
-        if(mode=="mail"){s.Space=25;s.X=5;s.Z=5;}
+        if(mode=="mail"){s.Space=25;s.X=2;s.Z=2;}
+        if(mode=="letter"){s.Space=25;s.X=2;s.Z=2;var n=s.Town.Residents[0];n.Space=25;n.PosX=2;n.PosZ=.8f;n.X=2;n.Z=0;n.JourneyPhase=3;n.JourneyBuilding=8;n.Dwell=36000;}
         s.Shirt=mode=="outfits-on"?Catalog.StripedShirt:0;
         if(mode=="retrieval")s.Town.JobState.Offers.Restore(1); // First referral draw stops the chain.
         if(mode=="flowers"||mode=="snowman"){s.Town.Residents[0].HomeX=21;s.Town.Residents[0].HomeZ=41;}
         var l=s.Town.Jobs;JobTemplate template=mode=="property"?JobTemplate.DeliveryProperty:mode=="retrieval"?JobTemplate.RetrievalBorrowed:mode=="fruit"?JobTemplate.FavorFruit:mode=="fish"?JobTemplate.FavorFish:mode=="insect"?JobTemplate.FavorInsect:mode=="flowers"?JobTemplate.FavorFlowers:mode=="ball"?JobTemplate.FavorBall:mode=="snowman"?JobTemplate.FavorSnowman:mode=="letter"?JobTemplate.FavorLetter:JobTemplate.DeliveryClothing;
-        if(!baseline&&!mode.StartsWith("outfits")&&mode!="mail"&&mode!="maximum-mail"){
+        if(!baseline&&!mode.StartsWith("outfits")&&mode!="mail"&&mode!="maximum-mail"&&mode!="base-travel"&&!destination){
             l.Offers[0]=new VillagerJobOffer{Id=l.Allocate(),Owner=l.Player(0),Requester=l.Npc(0),Target=template<=JobTemplate.DeliveryProperty||template==JobTemplate.RetrievalBorrowed?l.Npc(1):default,Template=template,Item=template==JobTemplate.FavorFruit?Catalog.Pear:template==JobTemplate.DeliveryClothing?Catalog.BerryShirt:template==JobTemplate.RetrievalBorrowed||template==JobTemplate.DeliveryProperty?Catalog.Notebook:0,Revision=1,CreatedAt=now};
             if(mode=="ball"){l.ObjectDay=(int)(now/86400);l.World[0]=new JobWorldObject{Id=l.Allocate(),Kind=JobWorldKind.Ball,X=30,Z=41.6f,Radius=.32f,Acre=2*Town.ScreenColumns+1,CreatedAt=now};}
             if(mode=="snowman"){l.ObjectDay=(int)(now/86400);for(int i=0;i<2;i++)l.World[i]=new JobWorldObject{Id=l.Allocate(),Builder=l.Player(0),Kind=JobWorldKind.Snowball,X=30,Z=42.5f+i*1.8f,Radius=.7f,CreatedAt=now,Acre=2*Town.ScreenColumns+1};}
@@ -32,7 +34,7 @@ internal static class JobFixture
         if(mode=="mail"||mode=="maximum-mail"){
             string body=mode=="mail"?"Dear Ari,\nThe town feels brighter with you here. Thank you for helping your neighbours!\nYour friend":string.Concat(Enumerable.Repeat("\U0001f642",1000));
             int profiles=mode=="maximum-mail"?4:1,count=mode=="maximum-mail"?128:1;
-            for(int p=1;p<profiles;p++){s.SelectProfile(p);s.Tutorial=7;}s.SelectProfile(0);
+            for(int p=1;p<profiles;p++){s.SelectProfile(p);s.Tutorial=7;}s.SelectProfile(0);s.EnsureJobIdentities(l.TownId);
             for(int p=0;p<profiles;p++){
                 for(int i=0;i<count;i++){l.EnsureMail();var m=new JobMailRecord{Id=l.Allocate(),Owner=l.Player(p),Sender=l.Npc(0),Recipient=l.Player(p),State=JobMailState.Inbox,Gift=i==0?Catalog.LeafShirt:0,SentAt=now-86400,DueAt=now};l.StoreBody(ref m,JobTextBody.Pack(body,mode=="mail"?body.Length:1000));l.Mail[p*128+i]=m;s.Profiles[p].Mail[i]=JobContent.Letter;}
                 s.Profiles[p].MailCount=count;
@@ -48,6 +50,18 @@ internal static class JobFixture
     }
     private static void CatalogOne(byte[] record)
     {record[8]=1;record[9]=record[10]=record[11]=0;uint crc=SaveCodec.Crc(record,0,record.Length-4);for(int i=0;i<4;i++)record[record.Length-4+i]=(byte)(crc>>(8*i));}
+    private static Disk ReadFixture(string directory)
+    {var d=new Disk();foreach(string f in Directory.GetFiles(directory))if(SplitSaveCodec.IsFile(Path.GetFileName(f)))d.Files[Path.GetFileName(f)]=File.ReadAllBytes(f);return d;}
+    private static void CrossTown(string output,string mode)
+    {
+        Write(output,"base-travel");Write(output+"-destination","destination");var a=ReadFixture(output);var b=ReadFixture(output+"-destination");var ar=new SaveRepository(a);var br=new SaveRepository(b);long now=JobCalendar.At(2027,7,15,12);
+        void Gate(GameState s){for(int z=9;z<24;z++)for(int x=28;x<43;x++){s.Town.Tiles[z*Town.Width+x]=(byte)Terrain.Grass;s.Town.Elevation[z*Town.Width+x]=0;}for(int i=s.Town.GroundCount-1;i>=0;i--){var g=s.Town.Ground[i];if(g.X>=28&&g.X<43&&g.Z>=9&&g.Z<24)s.Town.RemoveGround(i);}s.Space=0;s.X=36.5f;s.Z=14.5f;var n=s.Town.Residents[0];n.Space=0;n.PosX=36.5f;n.PosZ=16;n.X=36;n.Z=16;n.JourneyPhase=0;n.JourneyBuilding=-1;n.JourneyNextX=n.JourneyNextZ=-1;n.Dwell=36000;if(!s.CanWalk(s.X,s.Z,0))throw new Exception("Travel fixture gate must be reachable");}
+        var h=ar.Load()!;var d=br.Load()!;Gate(h);Gate(d);ar.Save(h);br.Save(d);var trip=new OfflineTownTravel(ar,br);trip.Depart(0,now);h=trip.Return(now);JobIdentity target=br.Load()!.Town.Jobs.Npc(0);
+        if(mode=="moved"){target=h.Town.Jobs.Npc(1);h=trip.ExchangeResidents(1,0,now);}
+        d=br.Load()!;Gate(h);Gate(d);var l=h.Town.Jobs;l.Offers[0]=new VillagerJobOffer{Id=l.Allocate(),Owner=l.Player(0),Requester=l.Npc(0),Target=target,Template=mode=="foreign"?JobTemplate.DeliveryForeign:JobTemplate.DeliveryMoved,Item=Catalog.Notebook,CreatedAt=now,Revision=1};ar.Save(h);br.Save(d);
+        foreach(var p in a.Files)File.WriteAllBytes(Path.Combine(output,p.Key),p.Value);foreach(var p in b.Files)File.WriteAllBytes(Path.Combine(output+"-destination",p.Key),p.Value);
+        Console.WriteLine("Actual previous visit"+(mode=="moved"?" and NPC move":"")+" prepared for two-card controller capture");
+    }
     internal static void Report(string directory,string mode,bool verify)
     {
         var disk=new Disk();foreach(string file in Directory.GetFiles(directory))disk.Files[Path.GetFileName(file)]=File.ReadAllBytes(file);

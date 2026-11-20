@@ -178,7 +178,7 @@ internal static class DepotPackage
         var seen=new HashSet<string>(StringComparer.Ordinal);
         foreach(var property in data.GetProperty("files").EnumerateObject()){
             string name=property.Name;
-            bool allowed=fixedNames.Split('|').Contains(name)||name=="daylight-build.json"||Regex.IsMatch(name,@"\Adaylight-(noon|dawn|dusk|night)-(a\.png|b\.png|report\.json)\z")||Regex.IsMatch(name,@"\Aterrain-materials-[a-z0-9-]+\.png\z")||Regex.IsMatch(name,@"\Ascenarios/(cliff-hud|gpu-submit|performance)/[^/\\:]+\.(png|json|txt|log|avi)\z");
+            bool allowed=fixedNames.Split('|').Contains(name)||name=="daylight-build.json"||Regex.IsMatch(name,@"\Adaylight-(noon|dawn|dusk|night)-(a\.png|b\.png|report\.json)\z")||Regex.IsMatch(name,@"\Aterrain-materials-[a-z0-9-]+\.png\z")||Regex.IsMatch(name,@"\Ascenarios/(cliff-hud|gpu-submit|performance|jobs)/[^/\\:]+\.(png|json|txt|log|avi)\z");
             if(!allowed||!seen.Add(name))throw new InvalidDataException("Source or unsupported release report: "+name);
             var entry=archive.GetEntry("release/"+name)??throw new InvalidDataException("Missing release report: "+name);
             using var input=entry.Open();if(Convert.ToHexString(SHA256.HashData(input)).ToLowerInvariant()!=property.Value.GetString())throw new InvalidDataException("Release report checksum mismatch: "+name);

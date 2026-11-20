@@ -11,5 +11,6 @@
     <Compile Include="../../game/AnimalTown.GameCube/LowPolyTrees.cs" Link="LowPolyTrees.cs" />
     <Compile Include="../../game/AnimalTown.GameCube/FallLeafWake.cs" Link="FallLeafWake.cs" />
     <Compile Include="../../game/AnimalTown.GameCube/FallLeafAtlas.cs" Link="FallLeafAtlas.cs" />
+    <Compile Include="../../game/AnimalTown.GameCube/JobSceneRenderer.cs" Link="JobSceneRenderer.cs" />
   </ItemGroup>
 </Project>

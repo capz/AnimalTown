@@ -2196,6 +2196,11 @@ if '--season' in sys.argv:
     rtc=int(datetime(2027,month,15,5,59,30,tzinfo=timezone.utc).timestamp()) if '--rtc-rollover' in sys.argv else int(datetime(2027,month,15,12,tzinfo=timezone.utc).timestamp())
     config=user/'Config'/'Dolphin.ini'
     config.write_text(config.read_text().replace('SkipIPL = True\n',f'SkipIPL = True\nEnableCustomRTC = True\nCustomRTCValue = {rtc}\n'))
+if '--jobs' in sys.argv and sys.argv[sys.argv.index('--jobs')+1]=='letter':
+    import re
+    rtc=int(datetime(2027,7,15,7,58,tzinfo=timezone.utc).timestamp());config=user/'Config'/'Dolphin.ini'
+    text=re.sub(r'^(EnableCustomRTC|CustomRTCValue) = .*\n','',config.read_text(),flags=re.MULTILINE)
+    config.write_text(text.replace('SkipIPL = True\n',f'SkipIPL = True\nEnableCustomRTC = True\nCustomRTCValue = {rtc}\n'))
 if '--dsp-hle' in sys.argv:
     config=user/'Config'/'Dolphin.ini'
     config.write_text(config.read_text().replace('DSPHLE = False','DSPHLE = True'))

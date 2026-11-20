@@ -48,10 +48,11 @@ def run(context):
     def press(button):
         os.write(c.controller,f'PRESS {button}\n'.encode());presentations(2)
         os.write(c.controller,f'RELEASE {button}\n'.encode());presentations(2)
-    def move(x,z,seconds):
+    def move(x,z,seconds,run=False):
         os.write(c.controller,f'SET MAIN {.5+x*.5} {.5-z*.5}\n'.encode())
+        if run:os.write(c.controller,b'PRESS B\n')
         try:guest(seconds)
-        finally:os.write(c.controller,b'SET MAIN .5 .5\n')
+        finally:os.write(c.controller,b'SET MAIN .5 .5\nRELEASE B\n')
         presentations(2)
     def chord(button):
         os.write(c.controller,b'PRESS L\nPRESS R\n');presentations(2);press(button);os.write(c.controller,b'RELEASE L\nRELEASE R\n');presentations(2)
@@ -69,7 +70,7 @@ def run(context):
         for _ in range(100):
             v=view();dx=x-v['x'];dz=z-v['z'];d=math.hypot(dx,dz)
             if d<tolerance:return v
-            move(dx/d,dz/d,min(.8,(d-tolerance*.5)/2.6775))
+            move(dx/d,dz/d,min(.8,(d-tolerance*.5)/5.04),True)
         raise AssertionError('Could not walk to '+str((x,z)))
     def approach(npc):
         for attempt in range(80):
@@ -78,7 +79,7 @@ def run(context):
             dx=n[1]/1024-v['x'];dz=n[2]/1024-v['z'];d=math.hypot(dx,dz)
             if d<1.35 and not n[3]:return
             if d<.1:guest(.2);continue
-            move(dx/d,dz/d,min(.8,max(.06,(d-1.1)/2.6775)))
+            move(dx/d,dz/d,min(.8,max(.035,(d-1.1)/5.04)),True)
         raise AssertionError('Could not reach moving NPC '+str(npc))
     def dialogue():
         for _ in range(12):
@@ -104,6 +105,22 @@ def run(context):
     def save():
         previous=c.committed_card_sequence(c.root/'MemoryCardA.USA.raw',details=True)
         c.save_menu();c.wait_saved_after(previous);shot('saved');press('B');records()
+    def travel():
+        go(36.5,11.5,.1);press('A');presentations(4);shot('travel');press('A');press('D_DOWN');shot('travel-confirm')
+        offset=len(c.runtime_log_text());press('A');wait_log('ANIMALTOWN READY ',offset,360);presentations(4);shot('arrived')
+    def type_text(text):
+        from collections import deque
+        keys="ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789 .,!?'\n-:;()";cursor=0
+        for char in text:
+            target=keys.index(char);queue=deque([(cursor,[])]);seen={cursor}
+            while queue:
+                at,route=queue.popleft()
+                if at==target:break
+                for label,step in (('D_LEFT',-1),('D_RIGHT',1),('D_UP',-10),('D_DOWN',10)):
+                    next_at=(at+len(keys)+step)%len(keys)
+                    if next_at not in seen:seen.add(next_at);queue.append((next_at,route+[label]))
+            for button in route:press(button)
+            press('A');cursor=target
     def profile():
         chord('D_RIGHT');wait_log(r'ANIMALTOWN AASTUDY MODE 0 480-rim100');guest(2)
         offset=len(c.runtime_log_text());started=time.monotonic();chord('D_LEFT')
@@ -125,6 +142,7 @@ def run(context):
     report={'scenario':'offline-jobs','mode':mode,'screenshots':shots,'passed':False}
     if mode in ('baseline','outfits-off','outfits-on','maximum-mail'):
         report['profile']=profile();shot('profiled')
+        if mode=='maximum-mail':save()
     elif mode=='mail':
         # Fixture starts beside the front door of the resident's own house.
         press('A');guest(1)
@@ -136,13 +154,17 @@ def run(context):
             press('X');shot('parcel');press('R');press('A');shot('jobs-log');close();close()
             handoff(npc=1)
             if mode=='retrieval':handoff()
+        elif mode in ('foreign','moved'):
+            travel();handoff();travel()
         elif mode in ('fruit','fish','insect'):handoff(True)
         elif mode=='ball':
             for _ in range(60):
                 v=view()
                 if any(j[1]==6 and j[2]==4 for j in v['jobs']):break
                 ball=next(o for o in v['objects'].values() if o[0]==1);n=v['npcs'][0];dx=n[1]/1024-ball[1]/1024;dz=n[2]/1024-ball[2]/1024;d=math.hypot(dx,dz)
-                go(ball[1]/1024-dx/d*.57,ball[2]/1024-dz/d*.57,.15);move(dx/d,dz/d,.6)
+                bx,bz=ball[1]/1024,ball[2]/1024;ux,uz=dx/d,dz/d
+                if (v['x']-bx)*ux+(v['z']-bz)*uz>0:go(bx-uz*1.5,bz+ux*1.5,.15)
+                go(bx-ux*.75,bz-uz*.75,.1);move(ux,uz,.6,True)
             shot('ball');handoff()
         elif mode=='snowman':go(30,41.5);move(0,1,1);shot('snowman');handoff()
         elif mode=='flowers':
@@ -152,6 +174,13 @@ def run(context):
                 for _ in range(pocket):press('D_RIGHT')
                 press('A');press('D_DOWN');press('A');guest(2);close();close();move(1,0,.38)
             shot('planted');handoff()
+        elif mode=='letter':
+            go(.5,3.25,.1);press('A')
+            for _ in range(5):press('D_DOWN')
+            press('A');shot('recipient');press('A');type_text('Hello!');shot('composed');press('START');press('D_DOWN');shot('send-confirm');press('A');dialogue();close()
+            guest(130);handoff();go(.5,3.25,.1);press('A')
+            for _ in range(4):press('D_DOWN')
+            press('A');shot('reply-mailbox');press('A');shot('reply');press('X');close();close()
         else:raise ValueError('Unsupported job smoke mode: '+mode)
         save()
     alive();report['controls_completed']=True

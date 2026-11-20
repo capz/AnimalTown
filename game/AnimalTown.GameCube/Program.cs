@@ -651,7 +651,7 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
         int fruit=state.Find(1);if(fruit>=0&&state.Wallet<=99199){state.Pockets[fruit]=0;state.Wallet+=800;state.Jobs++;Say("Hearth","A peach for our customer! Here is "+UiFont.Money(800)+".");}else Say("Hearth","Today's job: bring a peach for a customer. Reward: "+UiFont.Money(800)+". Make space in your wallet.");
     }
     private string TutorialText()
-    { string[] text={"Welcome! Wear the work shirt in your pockets.","Plant your flower seed near the store.","Deliver the parcel to a villager.","Collect "+state.Town.Residents[4].Name+"'s parcel and return it to this counter.","Write a letter at town hall.","Introduce yourself to all six neighbours.","Post a message on the notice board beside town hall.","Your part-time job is complete. Your debt is "+UiFont.Money(18000)+"."};return text[state.Tutorial]; }
+    { string[] text={"Welcome! Wear the work shirt in your pockets.","Plant your flower seed near the store.","Deliver the parcel to a villager.","Collect "+state.Town.Residents[4].Name+"'s parcel and return it to this counter.","Write a letter at town hall.","Introduce yourself to all six neighbours.","Post a message on the notice board near the town gate.","Your part-time job is complete. Your debt is "+UiFont.Money(18000)+"."};return text[state.Tutorial]; }
     private void PostAction()
     {
         if(selected==0){Say("Fern",state.Deposit(Math.Min(1000,state.Wallet))?"Deposit complete.":"No acorns to deposit.");return;}
@@ -1238,7 +1238,7 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
         if(screen=="shop"){int id=TownShop.CabinetItem(i);return Catalog.Items[id].Name+(godMode?" / Free": " / "+UiFont.Money(Catalog.Items[id].Buy));}
         if(screen=="store"){if(i==8)return "Reclaim stored sale items";string[] a={"Essentials cabinet","Sell / return parcel","Part-time job","House expansion","Garden expansion","Repay loan","Daily job","Expand backpack"};return a[i];}
         if(screen=="post"||(screen=="menu"&&menuTab==4)){string[] a={"Deposit up to "+UiFont.Money(1000),"Withdraw up to "+UiFont.Money(1000),"Repay from wallet","Lost and Found","Mailbox","Write a letter","Visit / gate"};return a[i];}
-        if(screen=="mail")return i>=state.MailCount?"No mail":state.Mail[i]<0?"Arrives tomorrow":Catalog.Items[state.Mail[i]].Name;
+        if(screen=="mail")return MailboxRow(i);
         if(screen=="lost"){int n=LostIndex(i);return n<0?"No lost items":Catalog.Items[state.Town.Ground[n].Item].Name;}
         if(menuTab==0)return (i+1)+". "+Catalog.Items[state.Pockets[i]].Name;
         if(menuTab==1&&JobsLive)return "View errands and waiting rewards";

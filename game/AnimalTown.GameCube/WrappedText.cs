@@ -36,13 +36,17 @@ internal sealed class TextPages
         for(int i=0;i<text.Length;i++){
             char c=text[i];if(c=='\r')continue;
             if(c=='\n'){result.Append(c);col=0;space=-1;Lines++;continue;}
-            if(col>=columns){
-                if(space>=0){result[space]='\n';col=0;for(int at=space+1;at<result.Length;at++){if(result[at]>='\ud800'&&result[at]<='\udbff'&&at+1<result.Length&&result[at+1]>='\udc00'&&result[at+1]<='\udfff')at++;col++;}}
+            // IPL has no supplementary-plane glyphs. Display one replacement
+            // per scalar while retaining the complete original saved body.
+            if(c>='\ud800'&&c<='\udbff'&&i+1<text.Length&&text[i+1]>='\udc00'&&text[i+1]<='\udfff'){c='?';i++;}
+            int width=c>=0x1100?2:1;
+            if(col+width>columns){
+                if(space>=0){result[space]='\n';col=0;for(int at=space+1;at<result.Length;at++)col+=result[at]>=0x1100?2:1;}
                 else{result.Append('\n');col=0;}
                 space=-1;Lines++;
             }
             if(c==' ')space=result.Length;
-            result.Append(c);if(c>='\ud800'&&c<='\udbff'&&i+1<text.Length&&text[i+1]>='\udc00'&&text[i+1]<='\udfff')result.Append(text[++i]);col++;
+            result.Append(c);col+=width;
         }
         source=text;wrapped=result.ToString();
     }

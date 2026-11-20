@@ -127,7 +127,7 @@ public sealed partial class VillagerJobService
     {
         if((uint)slot>=state.MailCount)return "";var message=ledger.Letter(state.ActiveProfile,slot);
         if(message.State!=JobMailState.Inbox)return "Thank you for being a part of our town!";
-        ledger.Mail[state.ActiveProfile*OfflineJobLedger.MailboxCapacity+slot].Read=true;
+        if(!message.Read){ledger.Mail[state.ActiveProfile*OfflineJobLedger.MailboxCapacity+slot].Read=true;ledger.Revision++;}
         if(message.Reply)return ReplyBody(message.ReplyText);
         string body=JobTextBody.Unpack(message.Body!,message.BodyOffset,message.BodyWords);return body;
     }

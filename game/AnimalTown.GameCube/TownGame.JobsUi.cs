@@ -93,7 +93,7 @@ internal sealed partial class TownGame
     }
     private string JobResultText(JobOutcome outcome)
     {
-        if(outcome.Result==JobResult.Ok&&outcome.Item==JobContent.Letter)return "Your recovered present is waiting in your mailbox.";
+        if(outcome.Result==JobResult.Ok&&outcome.Item==JobContent.Letter)return "Your letter is waiting in your mailbox.";
         switch(outcome.Result){
             case JobResult.FullPockets:return outcome.Item!=0?"Your pockets are full. I'll keep your "+Catalog.Items[outcome.Item].Name+" ready.":"Make a little room in your pockets. This errand will wait for you.";
             case JobResult.FullMailbox:return "Your mailbox is full. I'll keep the same reply ready for you.";
@@ -108,6 +108,17 @@ internal sealed partial class TownGame
             case JobResult.InvalidContext:return "Let's speak in person again before continuing.";
             case JobResult.Ok:return outcome.Amount>0?"Thank you! Here are "+UiFont.Money(outcome.Amount)+" for you.":outcome.Item!=0?"Thank you! Your "+Catalog.Items[outcome.Item].Name+" is ready.":"All taken care of. Thank you!";
             default:return "That errand is no longer available. Your belongings are safe.";
+        }
+    }
+    private string DeclinedJobText()
+    {
+        switch(state.Town.JobState.Resident(jobNpc).Personality){
+            case JobPersonality.Peppy:return "Aw, I was counting on you! I'll find another way.";
+            case JobPersonality.Lazy:return "Oh... okay. I guess it can wait a little longer.";
+            case JobPersonality.Jock:return "No worries. I'll tackle it another way!";
+            case JobPersonality.Cranky:return "Hmph. All right, I'll ask somebody else.";
+            case JobPersonality.Snooty:return "I see. I'll have to make other arrangements.";
+            default:return "All right. Thank you for letting me know.";
         }
     }
     private void HandleJobOutcome(JobOutcome outcome)
@@ -176,7 +187,7 @@ internal sealed partial class TownGame
             int count=jobMode==2?2:NpcHasErrands()?4:3;
             if(up)jobChoice=(jobChoice+count-1)%count;if(down)jobChoice=(jobChoice+1)%count;
             if(!Press(p))return true;
-            if(jobMode==2){var result=state.ResidentJobs.Execute(state.ResidentJobs.Command(jobChoice==0?JobCommandKind.Accept:JobCommandKind.Decline,jobSubject,jobExpectedRevision));if(result.Result==JobResult.Ok&&jobChoice==0){int at=state.Town.Jobs.FindJob(result.Job);JobSay(at>=0?JobDescription(state.Town.Jobs.Job(at)):JobResultText(result));}else HandleJobOutcome(result);return true;}
+            if(jobMode==2){var result=state.ResidentJobs.Execute(state.ResidentJobs.Command(jobChoice==0?JobCommandKind.Accept:JobCommandKind.Decline,jobSubject,jobExpectedRevision));if(result.Result==JobResult.Ok&&jobChoice==0){int at=state.Town.Jobs.FindJob(result.Job);JobSay(at>=0?JobDescription(state.Town.Jobs.Job(at)):JobResultText(result));}else if(result.Result==JobResult.Ok)JobSay(DeclinedJobText());else HandleJobOutcome(result);return true;}
             bool existing=count==4;int choice=jobChoice;
             if(existing&&choice==0){OpenJobLog(true);return true;}if(existing)choice--;
             if(choice==0)HandleJobOutcome(state.ResidentJobs.Execute(state.ResidentJobs.Command(JobCommandKind.Ask)));

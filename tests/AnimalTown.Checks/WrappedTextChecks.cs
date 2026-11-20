@@ -29,6 +29,8 @@ internal static class WrappedTextChecks
             for(int row=0;row<pages.Lines;row++)check(pages.Window(row,4).Split('\n').Length<=4,"every message and draft window fits its allocated line count");
         }
         pages.Set(full);before=GC.GetAllocatedBytesForCurrentThread();for(int i=0;i<10000;i++)pages.Set(full);check(GC.GetAllocatedBytesForCurrentThread()==before,"unchanged paged text allocates nothing while drawing");
+        pages.Set(string.Concat(Enumerable.Repeat("\U0001f642",1000)));check(pages.Window(0,pages.Lines).Count(c=>c=='?')==1000,"IPL displays one fallback per supplementary scalar without doubling the message width");
+        pages.Set(new string('\u3042',1000));check(pages.Window(0,pages.Lines).Split('\n').All(line=>line.Length<=24),"wide IPL glyphs remain within the same body panel");
     }
     private static string Legacy(string text,int columns){string result="";int col=0;foreach(char c in text){if(col>=columns&&c==' '){result+="\n";col=0;}else{result+=new string(new[]{c});col++;}}return result;}
 }

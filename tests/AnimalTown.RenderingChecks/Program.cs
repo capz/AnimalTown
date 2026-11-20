@@ -7,7 +7,7 @@ bool Wants(string name)=>selected.Contains(name);
 int count=0;
 void Check(bool passed,string message){count++;if(!passed)throw new Exception(message);}
 if(Wants("water"))WaterEffectChecks.Run(Check);
-if(Wants("services"))RenderingServiceChecks.Run(Check);
+if(Wants("services")){RenderingServiceChecks.Run(Check);JobSceneChecks.Run(Check);}
 if(Wants("movement"))MovementTerrainChecks.Run(Check);
 if(Wants("ground"))GroundRingChecks.Run(Check);
 if(Wants("index"))TerrainIndexChecks.Run(Check);

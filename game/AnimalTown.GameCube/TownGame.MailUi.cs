@@ -8,7 +8,9 @@ using Dolphin.Timing;
 internal sealed partial class TownGame
 {
     private const string LetterKeys="ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789 .,!?'\n-:;()";
-    private string letterDraft="",letterStatus="",letterBody="",letterPage="",letterPreview="",letterCount="0 / 1000";
+    private string letterDraft="",letterStatus="",letterBody="",letterPage="",letterPreview="",letterCount="0 / 1000",letterFrom="",noticeHeading="";
+    private readonly string?[] mailLabels=new string?[OfflineJobLedger.MailboxCapacity];
+    private int mailLabelsRevision=-1;
     private static readonly string[] LetterKeyLabels=MakeLetterKeys();
     private static string[] MakeLetterKeys(){var labels=new string[LetterKeys.Length];for(int i=0;i<labels.Length;i++)labels[i]=LetterKeys[i]=='\n'?"NL":LetterKeys[i]==' '?"_":LetterKeys.Substring(i,1);return labels;}
     private int letterCursor,letterRecipient,letterGift=-1,letterSlot,noticeSelection;
@@ -21,11 +23,20 @@ internal sealed partial class TownGame
     private string RecipientName(int row)=>row<6?state.Town.Residents[row].Name:state.Profiles[row-6].Name;
     private JobIdentity RecipientIdentity(int row)=>row<6?state.Town.Jobs.Npc(row):state.Town.Jobs.Player(row-6);
     private void OpenMailLetter(int row)
-    {letterSlot=row;letterBody=state.ResidentJobs.ReadLetter(row);letterStatus="";letterCursor=0;RefreshLetterPage();screen="letter-read";}
+    {letterSlot=row;letterBody=state.ResidentJobs.ReadLetter(row);var m=state.Town.Jobs.Letter(state.ActiveProfile,row);letterFrom="From "+MailSender(m.Sender);letterStatus="";letterCursor=0;RefreshLetterPage();screen="letter-read";}
+    private string MailSender(JobIdentity sender)=>state.Town.Jobs.FindPlayer(sender)>=0?JobPlayerName(sender):JobNpcName(sender);
+    private string MailboxRow(int row)
+    {
+        if(row>=state.MailCount)return "No mail";
+        if(!JobsLive)return state.Mail[row]<0?"Arrives tomorrow":Catalog.Items[state.Mail[row]].Name;
+        if(mailLabelsRevision!=state.Town.Jobs.Revision){Array.Clear(mailLabels,0,mailLabels.Length);mailLabelsRevision=state.Town.Jobs.Revision;}
+        if(mailLabels[row]==null){var m=state.Town.Jobs.Letter(state.ActiveProfile,row);mailLabels[row]=m.State==JobMailState.Inbox?MailSender(m.Sender)+(m.Read?" · Read":m.Reply?" · New reply":" · New letter")+(m.Gift!=0?" · Present":""):state.Mail[row]<0?"Arrives tomorrow":Catalog.Items[state.Mail[row]].Name;}
+        return mailLabels[row]!;
+    }
     private void OpenNoticeBoard()
     {screen="notice-board";noticeSelection=0;RefreshNotice();}
     private void RefreshNotice()
-    {var n=state.Town.Jobs.Notice(noticeSelection);letterBody=n.Id.IsEmpty?"Leave a message for your neighbours.":n.Text;letterCursor=0;RefreshLetterPage(11);}
+    {var n=state.Town.Jobs.Notice(noticeSelection);letterBody=n.Id.IsEmpty?"Leave a message for your neighbours.":n.Text;noticeHeading=n.Id.IsEmpty?"Nothing posted here yet.":JobPlayerName(n.Author)+" · "+JobCalendar.Display(n.At);letterCursor=0;RefreshLetterPage(11);}
     private bool MailUiInput(ControllerState p)
     {
         if(!JobsLive)return false;
@@ -96,7 +107,7 @@ internal sealed partial class TownGame
         if(!JobsLive||!screen.StartsWith("letter-")&&screen!="notice-board")return false;
         Panel(35,46,570,390);
         if(screen=="notice-board"){
-            Heading("Notice board",60,67,ink);var n=state.Town.Jobs.Notice(noticeSelection);Text(n.Id.IsEmpty?"Nothing posted here yet.":JobPlayerName(n.Author)+" · "+JobCalendar.Display(n.At),62,115,ink,1.1f);
+            Heading("Notice board",60,67,ink);Text(noticeHeading,62,115,ink,1.1f);
             Text(letterPage,62,151,ink,1.12f);Text("Up/Down: posts   Left/Right: scroll   X: write   B: close",60,399,ink,.9f);return true;
         }
         Heading(composingNotice?"A message for the town":screen=="letter-read"?"Your letter":"Write a letter",60,67,ink);
@@ -112,7 +123,7 @@ internal sealed partial class TownGame
             for(int i=0;i<2;i++){if(letterCursor==i)Rounded(57,237+i*35,522,31,14,new Color32(221,231,188));Text(i==0?"Keep editing / go back":discard||cancel?"Discard":"Send / post",75,241+i*35,ink,1.15f);}return true;
         }
         if(screen=="letter-read"){
-            var m=state.Town.Jobs.Letter(state.ActiveProfile,letterSlot);Text("From "+(state.Town.Jobs.FindPlayer(m.Sender)>=0?JobPlayerName(m.Sender):JobNpcName(m.Sender)),62,108,ink,1.2f);
+            var m=state.Town.Jobs.Letter(state.ActiveProfile,letterSlot);Text(letterFrom,62,108,ink,1.2f);
             Text(letterPage,62,145,ink,1.08f);Text(letterStatus,62,353,ink,1);
             Text(m.Gift!=0?"X: take present   Y: discard   B: back":"Up/Down: scroll   Y: discard   B: back",62,399,ink,1);return true;
         }

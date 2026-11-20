@@ -54,11 +54,11 @@ class BundleChecks(unittest.TestCase):
 
     def test_append_keeps_prior_scenarios_and_is_idempotent(self):
         self.attached();evidence=self.root/'evidence';evidence.mkdir();(evidence/'frame.png').write_bytes(b'image')
-        for namespace in ('cliff-hud','performance','gpu-submit'):
+        for namespace in ('cliff-hud','performance','gpu-submit','jobs'):
             bundle.attach(self.archive,evidence,namespace)
         before=self.archive.read_bytes();bundle.attach(self.archive,evidence,'cliff-hud')
         self.assertEqual(before,self.archive.read_bytes())
-        _,reports=self.verify();self.assertEqual(len(reports['files']),5)
+        _,reports=self.verify();self.assertEqual(len(reports['files']),6)
 
     def test_terrain_capture_roundtrip_preserves_all_37_frames_and_runtime(self):
         self.attached()
