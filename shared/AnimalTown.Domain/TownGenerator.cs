@@ -105,7 +105,11 @@ public static class TownGenerator
             // keep a one-cell clearance from water, structures and other trees.
             if(x%Size>=8&&x%Size<=12||z%Size>=8&&z%Size<=12)continue;
             bool clear=true;for(int dz=-1;dz<=1&&clear;dz++)for(int dx=-1;dx<=1;dx++)if(town.At(x+dx,z+dz)!=(int)Terrain.Grass||town.FindGround(x+dx,z+dz,3)>=0){clear=false;break;}
-            if(clear)town.AddGround(1+Next(ref random,3),x,z,3,0);
+            if(clear){
+                int item=1+Next(ref random,3);
+                if(item==1&&TerrainTiles.Variant(x,z,town.Seed,4)==0)item=Catalog.CherrySapling;
+                town.AddGround(item,x,z,3,0);
+            }
         }
         int shells=0,start=Next(ref random,Town.Width-4);
         for(int i=0;i<Town.Width-4&&shells<2;i++){

@@ -9,7 +9,7 @@ public sealed class TownShop
     // Keep the original eight serialized cells so older listings can be reclaimed.
     public const int StoredSaleCount=8;
     public static int SaleSlots(GameState host)=>host.Town.StockCount>=12?7:host.Town.StockCount>=9?5:3;
-    private static readonly int[] essentials={1,2,3,4,5,6,7,9};
+    private static readonly int[] essentials={1,2,Catalog.PineSapling,4,5,6,7,9,Catalog.CherrySapling};
     public static int CabinetCount=>essentials.Length;
     public static int CabinetItem(int index)=>(uint)index<essentials.Length?essentials[index]:0;
     public readonly int[] SaleItems=new int[StoredSaleCount],SalePrices=new int[StoredSaleCount],SaleOwners=new int[StoredSaleCount];

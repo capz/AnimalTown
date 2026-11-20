@@ -16,6 +16,13 @@ internal static class TownDaylightChecks
         check(clock.CivilDay==Day(2028,2,29)&&clock.CalendarMonth==2028*12+1&&clock.DayMonth=="29 February","RTC year makes leap-day solar and save dates agree");
         Clock(clock,2028,3,1,0,0);
         check(clock.CivilDay==Day(2028,3,1)&&clock.MinuteOfDay==0,"the civil clock advances across leap-day midnight");
+        foreach(var (month,day,hour,minute,bloom) in new[]{
+            (2,29,23,59,false),(3,1,5,59,false),(3,1,6,0,true),
+            (3,10,23,59,true),(3,11,5,59,true),(3,11,6,0,false),(4,1,6,0,false)
+        }){
+            Clock(clock,2028,month,day,hour,minute);
+            check(clock.CherryBlossomsBloom==bloom,"cherry blossoms follow the first ten 06:00 town days of spring");
+        }
 
         int amsterdam=Location("Amsterdam");
         var june=TownDaylight.Times(amsterdam,Day(2026,6,21));

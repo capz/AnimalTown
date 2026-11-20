@@ -41,6 +41,15 @@
         "The roadmap includes real mail, rewards and memory-card town travel.",
         "Each phase defines completion checks and resource validation."
       ]
+    },
+    {
+      "id": "cherry-blossom-trees",
+      "lines": [
+        "Cherry blossom trees bloom during the first ten days of spring.",
+        "Their wider, lower canopies distinguish them year-round.",
+        "New towns grow cherry trees among their other deciduous trees.",
+        "Buy cherry blossom saplings from the essentials cabinet."
+      ]
     }
   ]
 }

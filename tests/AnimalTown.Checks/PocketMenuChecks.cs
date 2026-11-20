@@ -141,7 +141,7 @@ internal static class PocketMenuChecks
             bool bury=PocketMenu.Perform(ground,0,PocketAction.Bury,31,40,0,0);
             check(id==Catalog.LegacyAcorns50000?!bury&&ground.Pockets[0]==id:bury&&ground.Pockets[0]==0&&ground.Town.Ground[ground.Town.GroundCount-1].Item==id&&ground.Town.Ground[ground.Town.GroundCount-1].Kind==1,"only supported GameCube bags can create new buried money");
         }
-        check(Catalog.EntryAt(Catalog.EntryCount-1)==25&&Catalog.EntryAt(Catalog.EntryCount)==0,"catalog indices remain correct after all currency rows are removed");
+        check(Catalog.EntryAt(Catalog.EntryCount-1)==Catalog.CherrySapling&&Catalog.EntryAt(Catalog.EntryCount)==0,"catalog indices remain correct after all currency rows are removed");
         var profiles=new GameState(73){Wallet=17};profiles.Pockets[0]=Catalog.Acorns1000;
         check(PocketMenu.Perform(profiles,0,PocketAction.OpenMoneyBag,0,0,0,0)&&profiles.Wallet==1017,"first villager redeems their own bag");
         profiles.SelectProfile(1);profiles.Wallet=23;profiles.Pockets[0]=Catalog.Acorns10000;profiles.SelectProfile(0);

@@ -7,8 +7,8 @@ internal static class TreeRenderingChecks
 
     internal static void Run(Action<bool,string> check)
     {
-        int[] triangles={84,68,60};
-        check(LowPolyTree.KindCount==triangles.Length,"trees retain three shared mesh kinds");
+        int[] triangles={84,68,60,84};
+        check(LowPolyTree.KindCount==triangles.Length,"each tree species has one shared mesh");
         for(int kind=0;kind<LowPolyTree.KindCount;kind++){
             var tree=LowPolyTree.Build(kind);
             var reference=LowPolyTree.Build(kind);
@@ -37,12 +37,26 @@ internal static class TreeRenderingChecks
                     if(season==0)spring[i]=vertex.Color.Packed;
                     changedPalette|=spring[i]!=vertex.Color.Packed;
                 }
-                check(shaded&&changedPalette==(season==2&&kind==0||season==3&&kind!=1),
+                check(shaded&&changedPalette==(season==2&&(kind==0||kind==LowPolyTree.Cherry)||season==3&&kind!=1),
                     "shading preserves the expected seasonal changes and evergreen palettes");
             }
         }
 
-        int[] kinds={2,0,1,2,1,0,0};
+        var cherry=LowPolyTree.Build(LowPolyTree.Cherry);
+        var deciduous=LowPolyTree.Build(0);
+        float Extent(LowPolyTree tree,int axis)=>Enumerable.Range(0,tree.Triangles*3).Max(i=>Math.Abs(tree.Positions[i*3+axis]));
+        check(Extent(cherry,0)>Extent(deciduous,0)&&Extent(cherry,1)<Extent(deciduous,1),"cherry canopies have a wider and lower silhouette");
+        var dormant=new VertexPositionColorTexture[cherry.Triangles*3];
+        var blooming=new VertexPositionColorTexture[dormant.Length];
+        LowPolyTrees.WriteVertices(cherry,LowPolyTree.Cherry,0,1,dormant);
+        LowPolyTrees.WriteVertices(cherry,LowPolyTree.Cherry,0,1,blooming,bloom:true);
+        for(int i=0;i<dormant.Length;i++){
+            var a=dormant[i];var b=blooming[i];
+            check(a.Position.Equals(b.Position)&&a.TextureCoordinate.Equals(b.TextureCoordinate),"bloom reuses cherry geometry and texture coordinates");
+            check(i<24*3?a.Color.Packed==b.Color.Packed:b.Color.R>b.Color.G&&b.Color.B>b.Color.G,"only the canopy turns pink");
+        }
+
+        int[] kinds={2,0,1,2,1,LowPolyTree.Cherry,0};
         var poses=kinds.Select(_=>new Transform()).ToArray();
         var meshes=new Mesh[kinds.Length];var transforms=new Transform[kinds.Length];
         int total=0;

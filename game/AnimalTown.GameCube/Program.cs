@@ -893,7 +893,7 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
         visitEdges.Prepare(renderDebug.ShowVisitEdges);
         // Only a drawable scene may evaluate native poses. Shadow receivers
         // use logical positions and can prepare while the landscape loads.
-        if(room==0){trees.Prepare(terrain.RenderSeason);fences.Prepare(state);droppedItems.Prepare(state,cachedPlayerHeight);}
+        if(room==0){trees.Prepare(terrain.RenderSeason,townClock.CherryBlossomsBloom);fences.Prepare(state);droppedItems.Prepare(state,cachedPlayerHeight);}
         if((weather.Raining(room)||weather.Snowing(room))&&villagers.Doors.PlayerFade<1)rain.Prepare(state,(Clock.Timestamp-sessionStart)/1000000.0,cachedPlayerHeight,weather.Snowing(room));
         else rain.Dispose();
         PrepareFallLeaves(environmentTint);
@@ -1226,7 +1226,8 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
             if(i==focus)Rounded(x-3,y-3,54,46,16,new Color32(232,183,86));
             Rounded(x,y,48,40,13,i==focus?new Color32(255,251,238):new Color32(231,228,202));
             int id=state.Pockets[i];
-            if(id!=0)itemIcons.Draw(ui,new RectF(id%8*64,id/8*64,64,64),new RectF(x+5,y+1,38,38),Color32.White);
+            int icon=id==Catalog.CherrySapling?Catalog.PineSapling:id;
+            if(icon!=0)itemIcons.Draw(ui,new RectF(icon%8*64,icon/8*64,64,64),new RectF(x+5,y+1,38,38),Color32.White);
             else Rounded(x+21,y+17,6,6,3,new Color32(188,195,166));
         }
         if(state.BackpackTier<2){Text("Next pack: "+(state.Capacity+10)+" slots",436,325,ink,1);Text("Hearth's store",436,349,ink,1);}

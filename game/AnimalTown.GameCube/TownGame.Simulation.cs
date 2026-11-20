@@ -77,7 +77,7 @@ internal sealed partial class TownGame
     private void ReadCalendarDate()
     {
         // Town rollover is still 06:00, independent of sunrise and of UTC.
-        day=weatherDay-(townClock.MinuteOfDay<360?1:0);
+        day=weatherDay-(townClock.MinuteOfDay<TownClock.DayRolloverMinute?1:0);
         month=townClock.CalendarMonth;
     }
     private void ReadCalendar(){ReadWeatherClock();ReadCalendarDate();}
