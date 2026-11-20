@@ -125,13 +125,14 @@ def run(context):
     def records():
         folder=c.root/'records';folder.mkdir(exist_ok=True)
         for name,data in c.options_card_files().items():(folder/name).write_bytes(data)
-    def save():
+    def save(label='saved'):
         previous=c.committed_card_sequence(c.root/'MemoryCardA.USA.raw',details=True)
-        for _ in range(6):
-            if view()['screen']=='world':break
-            press('B')
-        else:raise AssertionError('Could not close the interaction before saving')
-        press('START');press('A');c.wait_saved_after(previous);shot('saved');press('B');records()
+        if mode!='baseline':
+            for _ in range(6):
+                if view()['screen']=='world':break
+                press('B')
+            else:raise AssertionError('Could not close the interaction before saving')
+        press('START');press('A');c.wait_saved_after(previous);shot(label);press('B');records()
     def travel():
         go(36.5,11.5,.1);press('A');presentations(4);shot('travel');press('A');press('D_DOWN');shot('travel-confirm')
         offset=len(c.runtime_log_text());press('A');wait_log('ANIMALTOWN READY ',offset,360);presentations(4);shot('arrived')
@@ -149,6 +150,13 @@ def run(context):
             for button in route:press(button)
             press('A');cursor=target
     def profile():
+        if '--jobs-runtime' in sys.argv:
+            target=int(sys.argv[sys.argv.index('--jobs-runtime')+1])
+            if not 0<=target<=7:raise ValueError('Job runtime profile must be 0..7')
+            for _ in range(8):
+                if int(re.findall(r'ANIMALTOWN RUNTIME (\d+)',c.runtime_log_text())[-1])==target:break
+                chord('B')
+            else:raise AssertionError('Could not select the requested runtime profile')
         chord('D_RIGHT');wait_log(r'ANIMALTOWN AASTUDY MODE 0 480-rim100');guest(2)
         offset=len(c.runtime_log_text());started=time.monotonic();chord('D_LEFT')
         begin=wait_log(r'ANIMALTOWN AASTUDY BEGIN (\d+) 0',offset);sequence=int(begin[1]);wait_log(r'ANIMALTOWN AASTUDY END '+str(sequence)+r' 0 240',offset,300);elapsed=time.monotonic()-started;wait_log('PATH PROFILE DONE',offset)
@@ -173,6 +181,10 @@ def run(context):
     if mode in ('baseline','outfits-off','outfits-on','maximum-mail'):
         report['profile']=profile();shot('profiled')
         if mode=='maximum-mail':save()
+        if '--jobs-checkpoints' in sys.argv:
+            save('first-checkpoint');move(1,0,.25);save('next-checkpoint')
+    elif mode=='checkpoint':
+        move(1,0,.25);save()
     elif mode=='mail':
         # Fixture starts beside the front door of the resident's own house.
         press('A');guest(1)
@@ -206,7 +218,7 @@ def run(context):
             shot('ball');handoff()
         elif mode=='snowman':go(30,41.5);move(0,1,1);shot('snowman');handoff()
         elif mode=='flowers':
-            go(27,42.5,.15)
+            go(25,42.5,.15)
             for pocket in range(1,5):
                 move(0,-1,.025);press('X')
                 for _ in range(pocket):press('D_RIGHT')

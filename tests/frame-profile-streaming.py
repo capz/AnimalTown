@@ -163,3 +163,20 @@ with TemporaryDirectory() as fixture:
     write_card(card,old|generation(1,9,39))
     assert namespace['committed_card_sequence'](card)==1
 print('Card smoke reader: v9 job-clock and v10 snow generations, daylight offset and malformed-extension fallback passed')
+
+# Xvfb's number and newline arrive in separate writes. A short read must not
+# close the pipe before the child completes its readiness protocol.
+import os
+import subprocess
+from types import SimpleNamespace
+node=next(n for n in ast.parse(Path('tools/iso-smoke.py').read_text()).body if isinstance(n,ast.FunctionDef) and n.name=='start_display')
+with TemporaryDirectory() as fixture:
+    def split_display(arguments,**options):
+        fd=int(arguments[arguments.index('-displayfd')+1])
+        child='import os,time;fd='+str(fd)+';os.write(fd,b"17");time.sleep(.03);os.write(fd,b"\\n")'
+        return subprocess.Popen([sys.executable,'-c',child],**options)
+    scope={'root':Path(fixture),'os':os,'subprocess':SimpleNamespace(Popen=split_display,TimeoutExpired=subprocess.TimeoutExpired,STDOUT=subprocess.STDOUT)}
+    exec(compile(ast.Module([node],type_ignores=[]),'display-ready','exec'),scope)
+    server,environment=scope['start_display']()
+    assert environment['DISPLAY']==':17' and server.wait(timeout=5)==0
+print('Display readiness: split number/newline writes complete before pipe closure')

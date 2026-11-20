@@ -51,6 +51,7 @@ int main(void) {
   write_marker("ANIMALTOWN literal %s %n 100% complete");
   assert(!dnd_console_visible());
   write_marker("Terrain archive: 12345678 ARAM bytes / 1048576 MEM1 bytes / 16384 parts");
+  write_marker("MANAGED MAIN: FAILED");
   unsigned before = reports;
   for (int i = 0; i < ROWS + 3; i++)
     dnd_console_write_line("Frame vertices 6000 ANIMALTOWN suffix");

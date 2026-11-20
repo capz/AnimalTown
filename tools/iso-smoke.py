@@ -54,7 +54,16 @@ def start_display():
             server=subprocess.Popen(['Xvfb','-displayfd',str(write_fd),'-noreset','-nocursor','-screen','0','800x600x24'],pass_fds=(write_fd,),stdout=log,stderr=subprocess.STDOUT)
         os.close(write_fd);write_fd=-1
         if not select.select([read_fd],[],[],30)[0]:raise RuntimeError('Xvfb did not report a ready display; inspect xvfb.log')
-        number=os.read(read_fd,32).decode().strip()
+        # Xvfb writes the number and its newline separately. Do not close the
+        # pipe after a short first read: its newline write would receive EPIPE.
+        ready=b''
+        while b'\n' not in ready:
+            if not select.select([read_fd],[],[],30)[0]:raise RuntimeError('Xvfb readiness line did not finish')
+            part=os.read(read_fd,32)
+            if not part:raise RuntimeError('Xvfb closed its readiness pipe')
+            ready+=part
+            if len(ready)>32:raise RuntimeError('Invalid Xvfb readiness line')
+        number=ready.decode().strip()
         if not number.isdigit() or server.poll() is not None:raise RuntimeError('Xvfb failed to initialize; inspect xvfb.log')
         environment=dict(os.environ,DISPLAY=':'+number,QT_QPA_PLATFORM='xcb')
         # llvmpipe otherwise creates a worker per visible host CPU. Multiple
@@ -112,7 +121,7 @@ def check_runtime_failure():
     # managed exception behind an unchanged loading frame.
     failures=[line for line in runtime_log_text().splitlines()
               if ('ANIMALTOWN SESSION FAILED' in line or 'ANIMALTOWN ASSET LOAD FAILED' in line
-                  or 'ANIMALTOWN BUILDING ASSET ERROR' in line)]
+                  or 'ANIMALTOWN BUILDING ASSET ERROR' in line or 'MANAGED MAIN: FAILED' in line)]
     if failures:
         (root/'runtime-failure.txt').write_text('\n'.join(failures)+'\n')
         raise AssertionError('Game runtime failure: '+failures[0])

@@ -181,7 +181,7 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
     internal TownGame(DevConfig config,TownSession session)
     {
         this.session=session;releaseIntro=session.Draft==null;
-        ui=new Draw2D(device,new Draw2DOptions{Width=640,Height=480,VertexCapacity=4096,SpriteCapacity=128});
+        ui=new Draw2D(device,new Draw2DOptions{Width=640,Height=480,VertexCapacity=4096,SpriteCapacity=UiFont.BatchCapacity});
         font=UiFont.LoadSystem();strongFont=font;clockHud=new FloatingClockHud(font);headingFont=UiFont.Load("gorditas-bold");cube=Cube();
         boxes=new BoxBatch(renderer,cube);for(int i=0;i<modelPoses.Length;i++)modelPoses[i]=new Transform{Parent=worldRoot};
         LoadingScreen.Pulse();
@@ -446,7 +446,7 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
             state.Facing=facingYaw;
             phase="save set";
             saveAt=Clock.Timestamp;
-            var reads=new SaveReadCache(new CardSaveStorage(card,banner,icon,SaveCards.Device));
+            var reads=new SaveReadCache(new CardSaveStorage(card,banner,icon,SaveCards.Device,state));
             var repository=new SaveRepository(reads);repository.Save(state);
             saved=true;
             saveStatus=repository.LastWrittenRecords==0?"No changes to save.":"Saved / "+BuildInfo.Version;

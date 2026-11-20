@@ -94,6 +94,8 @@ internal sealed class TownCardRecords
         if((int)Hash(bytes,0,length)!=Get(root,at+44))throw new IOException("Card record checksum failed");return bytes;
     }
     private static readonly uint[] crcNibbles={0,0x1db71064,0x3b6e20c8,0x26d930ac,0x76dc4190,0x6b6b51f4,0x4db26158,0x5005713c,0xedb88320,0xf00f9344,0xd6d6a3e8,0xcb61b38c,0x9b64c2b0,0x86d3d2d4,0xa00ae278,0xbdbdf21c};
+    internal int Length(string name)
+    {Alive();Key(name);int index=Find(name);if(index<0)throw new FileNotFoundException(name);return Get(root,At(index)+40);}
     internal bool Matches(string name,byte[]? expected,int sequence,int length,uint checksum,bool ignoreSequence)
     {
         Alive();Key(name);int index=Find(name);if(index<0)return false;int record=At(index),actualLength=Get(root,record+40);if(actualLength!=length||expected!=null&&expected.Length!=length)return false;

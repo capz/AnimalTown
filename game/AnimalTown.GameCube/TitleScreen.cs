@@ -10,7 +10,7 @@ using Dolphin.Timing;
 internal sealed partial class TitleScreen : IDisposable,Hypercube.GameCube.IFrameScene
 {
     private readonly GraphicsDevice device=GraphicsDevice.Default;
-    private readonly Draw2D ui=new Draw2D(GraphicsDevice.Default,new Draw2DOptions{VertexCapacity=8192,SpriteCapacity=128});
+    private readonly Draw2D ui=new Draw2D(GraphicsDevice.Default,new Draw2DOptions{VertexCapacity=8192,SpriteCapacity=UiFont.BatchCapacity});
     private readonly Camera2D composition=new Camera2D();
     private float canvasMargin;
     private readonly UiFont font=UiFont.LoadSystem();

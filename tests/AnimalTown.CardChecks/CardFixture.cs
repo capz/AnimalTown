@@ -46,7 +46,10 @@ namespace Dolphin.Storage
             foreach(var p in Files)copy.Files[p.Key]=(byte[])p.Value.Clone();foreach(var p in Metadata)copy.Metadata[p.Key]=p.Value;foreach(var p in blocks)copy.blocks[p.Key]=p.Value;
             foreach(var p in RecordIdentities)copy.RecordIdentities[p.Key]=p.Value;foreach(var p in RecordPages)copy.RecordPages[p.Key]=p.Value.Select(b=>(byte[])b.Clone()).ToArray();return copy;
         }
-        public MemoryCardEntry[] GetEntries()=>Files.Keys.Select(name=>new MemoryCardEntry{Name=name,Length=blocks[name]*8192}).ToArray();
+        // The SDK's CardLength reads DNDSAVE1's logical payload length. The
+        // manager's Blocks field separately reports physical browser charges.
+        public MemoryCardEntry[] GetEntries()=>Files.Keys.Select(name=>new MemoryCardEntry{Name=name,Length=RecordPages.TryGetValue(name,out var pages)?pages.Length*8192:Files[name].Length}).ToArray();
+        internal int PhysicalBlocks(string name)=>blocks[name];
         public void Delete(string name){if(FailDelete--==0)throw new IOException("Card removed during cleanup");Files.Remove(name);Metadata.Remove(name);RecordPages.Remove(name);RecordIdentities.Remove(name);if(blocks.Remove(name,out int n))Used-=n;}
         internal int CreateRecords(string name,int count,int identity,byte[] header)
         {
@@ -90,7 +93,7 @@ namespace Dolphin.Storage
         internal int FreeEntries=>Math.Max(0,card!.DirectoryFree-card.Files.Count);
         internal int Count=>card!.Files.Count;
         internal ManagedCardSave[] ReadPage(int start,int maximum)=>card!.GetEntries().Skip(start).Take(maximum)
-            .Select(e=>new ManagedCardSave{Filename=e.Name,GameCode=card.GameCode,CompanyCode=card.CompanyCode,Blocks=e.Length/8192}).ToArray();
+            .Select(e=>new ManagedCardSave{Filename=e.Name,GameCode=card.GameCode,CompanyCode=card.CompanyCode,Blocks=card.PhysicalBlocks(e.Name)}).ToArray();
         public void Dispose(){}
     }
 }

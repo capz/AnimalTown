@@ -120,6 +120,39 @@ var longMail=new byte[2200000];for(int i=0;i<longMail.Length;i++)longMail[i]=(by
 mailArchive.Write("AT-Shops0",longMail);
 Check(card.Files.Count==1&&card.Used>258&&new CardArchive(card,banner,icon,4).Read("AT-Shops0").SequenceEqual(longMail),"large mail archives grow beyond 256 blocks while retaining one browser item");
 Check(new CardArchive(card,banner,icon,4).Read("options")[0]==7,"mail growth preserves preferences");
+// A maximum real legacy mailbox must consolidate without a 32-block
+// intermediate or two full encoded copies during readback.
+var largeState=new GameState(7461){Tutorial=7};
+for(int p=1;p<4;p++){largeState.SelectProfile(p);largeState.Tutorial=7;}largeState.SelectProfile(0);
+long mailNow=AnimalTown.Jobs.JobCalendar.At(2027,7,15,12);largeState.ResidentJobs.Enable(0x41544d41494cUL,mailNow);
+string fullBody=string.Concat(Enumerable.Repeat("\U0001f642",1000));
+for(int p=0;p<4;p++)for(int batch=0;batch<2;batch++){
+    for(int n=0;n<64;n++){largeState.Receive(Catalog.WritingPaper);Check(largeState.ResidentJobs.SendLetter(largeState.Town.Jobs.Player(p),fullBody,largeState.Find(Catalog.WritingPaper),-1,largeState.ResidentJobs.NextCommandSequence).Result==AnimalTown.Jobs.JobResult.Ok,"maximum legacy letter send");}
+    largeState.ResidentJobs.AdvanceTo(mailNow+=86400);
+}
+card=new MemoryCard{Capacity=2043};new SaveRepository(new OldFiles(card)).Save(largeState);
+var legacyMaximum=card.Copy();MemoryCard.Slots[4]=card;MemoryCard.Current=card;int legacyWrites=card.Writes;
+var largeMigration=new CardArchive(card,banner,icon,4,largeState);largeMigration.Write("options",new byte[]{3});
+Check(card.Files.Count==1&&card.Used>258,"maximum legacy town chooses adequate initial backing space");
+int migrationWrites=card.Writes-legacyWrites;
+void VerifyMaximum(MemoryCard source){
+    MemoryCard.Slots[4]=source;MemoryCard.Current=source;
+    var loaded=new SaveRepository(new CardSaveStorage(source,banner,icon,4,largeState)).Load(largeState)!;
+    Check(loaded!=null&&loaded.MailCount==128,"maximum migrated mailbox remains loadable");
+    for(int p=0;p<4;p++){loaded!.SelectProfile(p);loaded.ResidentJobs.Enable(loaded.Town.Jobs.TownId,mailNow);Check(loaded.MailCount==128&&loaded.ResidentJobs.ReadLetter(127)==fullBody,"all four full Unicode mailboxes survive legacy conversion");}
+}
+VerifyMaximum(card);
+card=legacyMaximum.Copy();_ =new TownCardRecords(new NativeCardBlocks(4,true,banner,icon),true);
+new CardArchive(card,banner,icon,4,largeState).Write("options",new byte[]{3});VerifyMaximum(card);
+Check(card.Files.Count==1&&card.Used>258,"an unpublished undersized legacy copy is replaced while all original records remain authoritative");
+foreach(int cut in new[]{0,migrationWrites/2,migrationWrites-1}){
+    card=legacyMaximum.Copy();card.FailBlockWrite=cut;bool stopped=false;
+    try{new CardArchive(card,banner,icon,4,largeState).Write("options",new byte[]{3});}catch(IOException){stopped=true;}
+    Check(stopped,"maximum legacy conversion interruption reached a physical write");
+    VerifyMaximum(card);card.FailBlockWrite=-1;new CardArchive(card,banner,icon,4,largeState).Write("options",new byte[]{3});VerifyMaximum(card);
+    Check(card.Files.Count==1,"maximum legacy conversion retries into one complete browser item");
+}
+Console.WriteLine("Maximum legacy mail: "+migrationWrites+" block writes; initial backing, streaming readback and interrupted retries passed.");
 // Metadata intent uses checkpoint space, so growth also works with no free
 // data page in the existing backing file.
 card=new MemoryCard{Capacity=2043};var packed=new TownCardRecords(new NativeCardBlocks(4,true,banner,icon),true);packed.SetArchiveMarker(2,0,0);

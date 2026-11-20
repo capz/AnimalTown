@@ -12,12 +12,13 @@ internal sealed class CardArchive
     private readonly MemoryCard card;
     private readonly int device;
     private readonly byte[] banner,icon;
+    private readonly GameState? textReuse;
     private TownCardRecords? store;
     private string container=Container;
     private int phase,epoch,growBlocks;
-    internal CardArchive(MemoryCard card,byte[] banner,byte[] icon,int device)
+    internal CardArchive(MemoryCard card,byte[] banner,byte[] icon,int device,GameState? textReuse=null)
     {
-        this.card=card;this.banner=banner;this.icon=icon;this.device=device;
+        this.card=card;this.banner=banner;this.icon=icon;this.device=device;this.textReuse=textReuse;
         var entries=card.GetEntries();
         // A source growth intent also permits recovery of a target whose
         // initial zero filling was interrupted before it had a checkpoint.
@@ -61,10 +62,11 @@ internal sealed class CardArchive
     {if(a.Length!=b.Length)throw new IOException("Archive readback differs");for(int i=0;i<a.Length;i++)if(a[i]!=b[i])throw new IOException("Archive readback differs");}
     private static void CopyRecord(TownCardRecords target,string name,byte[] bytes)
     {
-        bool same=false;foreach(string existing in target.Names())if(existing==name){try{Match(bytes,target.Read(name));same=true;}catch(IOException){}break;}
-        if(!same)target.Write(name,bytes);Match(bytes,target.Read(name));
+        bool same=false;foreach(string existing in target.Names())if(existing==name){try{same=target.Matches(name,bytes,-1,bytes.Length,0,false);}catch(IOException){}break;}
+        if(!same)target.Write(name,bytes);
+        if(!target.Matches(name,bytes,-1,bytes.Length,0,false))throw new IOException("Archive readback differs");
     }
-    private int RecordLength(string name)=>store!.Read(name).Length;
+    private int RecordLength(string name)=>store!.Length(name);
     private int GrowthSize(int incoming)
     {
         long total=16L*8192+2L*incoming;foreach(string name in store!.Names())total+=RecordLength(name);
@@ -110,19 +112,43 @@ internal sealed class CardArchive
         if(Published){if(phase==1)Cleanup();return;}
         var entries=card.GetEntries();bool town=false,pending=false;
         foreach(var entry in entries){town|=SplitSaveCodec.IsFile(entry.Name);pending|=entry.Name==TownDataDeletion.Marker;}
-        if(town&&!pending&&new SaveRepository(new Legacy(card)).Load()==null)throw new IOException("Existing save is incomplete; original files kept");
-        if(store==null){var b=banner.Length>0?banner:File.ReadAllBytes(ContentPaths.Asset("savebanner.rgb5a3"));var i=icon.Length>0?icon:File.ReadAllBytes(ContentPaths.Asset("saveicon.rgb5a3"));store=new TownCardRecords(new NativeCardBlocks(device,true,b,i),true);}
-        foreach(var entry in entries)if(Known(entry.Name))CopyRecord(store,entry.Name,card.ReadAllBytes(entry.Name));
+        if(town&&!pending&&new SaveRepository(new Legacy(card)).Load(textReuse)==null)throw new IOException("Existing save is incomplete; original files kept");
+        // SDK directory lengths describe logical DNDSAVE1 payloads. Leave
+        // two maximum-record copies for copy-on-write without reading bodies.
+        long capacityBytes=2L*8192,largest=0;
+        foreach(var entry in entries)if(Known(entry.Name)){capacityBytes+=entry.Length;largest=Math.Max(largest,entry.Length);}
+        capacityBytes+=largest*2;int blocks=NativeCardBlocks.ReservedBlocks;
+        while((long)blocks*8192<capacityBytes&&blocks<2048)blocks*=2;
+        if((long)blocks*8192<capacityBytes)throw new IOException("The town needs more card space. Existing saves are kept.");
+        if(store!=null&&store.CapacityBlocks<blocks){
+            // Nothing from this unpublished copy has authorized source-file
+            // deletion. A verified legacy town still owns every source byte.
+            card.Delete(container);store=null;container=Container;
+        }
+        if(store==null){
+            var b=banner.Length>0?banner:File.ReadAllBytes(ContentPaths.Asset("savebanner.rgb5a3"));var i=icon.Length>0?icon:File.ReadAllBytes(ContentPaths.Asset("saveicon.rgb5a3"));store=new TownCardRecords(new NativeCardBlocks(device,true,b,i,Container,blocks),true);
+        }
+        while(true){
+            try{foreach(var entry in entries)if(Known(entry.Name))CopyRecord(store,entry.Name,card.ReadAllBytes(entry.Name));break;}
+            catch(IOException e){
+                if(e.Message!="Card container has insufficient reserved space"||store.CapacityBlocks>=2048)throw;
+                // Fragmentation can exceed the initial logical-byte estimate.
+                // Only the unpublished target is replaced; legacy files are
+                // still complete and are verified again before publication.
+                int larger=store.CapacityBlocks*2;card.Delete(container);
+                store=new TownCardRecords(new NativeCardBlocks(device,true,banner.Length>0?banner:File.ReadAllBytes(ContentPaths.Asset("savebanner.rgb5a3")),icon.Length>0?icon:File.ReadAllBytes(ContentPaths.Asset("saveicon.rgb5a3")),container,larger),true);
+            }
+        }
         PublishMarker(1,epoch);Cleanup();
     }
     private void Cleanup()
     {
-        foreach(var entry in card.GetEntries())if(Known(entry.Name)){Match(card.ReadAllBytes(entry.Name),store!.Read(entry.Name));card.Delete(entry.Name);}
+        foreach(var entry in card.GetEntries())if(Known(entry.Name)){var bytes=card.ReadAllBytes(entry.Name);if(!store!.Matches(entry.Name,bytes,-1,bytes.Length,0,false))throw new IOException("Archive readback differs");card.Delete(entry.Name);}
         string other=container==Container?Expanded:Container;
         foreach(var entry in card.GetEntries())if(entry.Name==other){
             var old=new TownCardRecords(new NativeCardBlocks(device,false,banner,icon,other),true);ReadMarker(old,out _,out int oldEpoch,out _);
             if(oldEpoch>=epoch)throw new IOException("Conflicting archive generations kept");
-            foreach(string name in old.Names())if(name!=Marker)Match(old.Read(name),store!.Read(name));card.Delete(other);
+            foreach(string name in old.Names())if(name!=Marker){var bytes=old.Read(name);if(!store!.Matches(name,bytes,-1,bytes.Length,0,false))throw new IOException("Archive readback differs");}card.Delete(other);
         }
         PublishMarker(2,epoch);
     }

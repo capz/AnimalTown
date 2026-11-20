@@ -8,7 +8,7 @@ using Dolphin.Timing;
 internal sealed class LoadingScreen : IDisposable,Hypercube.GameCube.IFrameScene
 {
     private static LoadingScreen? current;
-    private readonly Draw2D ui=new Draw2D(GraphicsDevice.Default,new Draw2DOptions{Width=640,Height=480,VertexCapacity=1024,SpriteCapacity=16});
+    private readonly Draw2D ui=new Draw2D(GraphicsDevice.Default,new Draw2DOptions{Width=640,Height=480,VertexCapacity=1024,SpriteCapacity=UiFont.BatchCapacity});
     private readonly TitleBackdrop background=new TitleBackdrop();
     private readonly bool performance=DebugOverlay.PerformanceVisible,text=DebugOverlay.TextVisible;
     internal static void Draw(string? error=null,UiFont? font=null)
