@@ -45,7 +45,36 @@ internal static class FallLeafAtlas
             0b0000000100000000,
             0b0000000000000000
         });
-        var texture=Texture2D.CreateNative(Width,Height,NativeTextureFormat.Ia4,true);
+        return Upload(pixels,Width);
+    }
+
+    internal static Texture2D CreatePetal()
+    {
+        var pixels=new byte[CellSize*Height];
+        WriteLeaf(pixels,0,new ushort[]{
+            0b0000000000000000,
+            0b0000000000000000,
+            0b0000001101100000,
+            0b0000011111110000,
+            0b0000111111111000,
+            0b0000111111111000,
+            0b0000111111111000,
+            0b0000011111111000,
+            0b0000011111110000,
+            0b0000001111100000,
+            0b0000001111000000,
+            0b0000000110000000,
+            0b0000000100000000,
+            0b0000000000000000,
+            0b0000000000000000,
+            0b0000000000000000
+        },CellSize);
+        return Upload(pixels,CellSize);
+    }
+
+    private static Texture2D Upload(byte[] pixels,int width)
+    {
+        var texture=Texture2D.CreateNative(width,Height,NativeTextureFormat.Ia4,true);
         try{
             texture.ReplaceNative(pixels);
             texture.ConfigureSampler(TextureWrapMode.Clamp,TextureWrapMode.Clamp,TextureMinFilter.Linear,TextureMagFilter.Linear);
@@ -56,14 +85,14 @@ internal static class FallLeafAtlas
         }
     }
 
-    private static void WriteLeaf(byte[] pixels,int start,ushort[] rows)
+    private static void WriteLeaf(byte[] pixels,int start,ushort[] rows,int width=Width)
     {
         for(int y=0;y<CellSize;y++)for(int x=0;x<CellSize;x++){
             int column=start+x;
             // GX IA4 uses 8×4 tiles and stores alpha above intensity.
-            int address=((y/4)*(Width/8)+column/8)*32+(y%4)*8+column%8;
+            int address=((y/4)*(width/8)+column/8)*32+(y%4)*8+column%8;
             bool covered=(rows[y]&(0x8000>>x))!=0;
-            int vein=start==0?15-y:7;
+            int vein=width==CellSize?7:start==0?15-y:7;
             int intensity=x==vein?15:x>vein?13:12;
             // Keep intensity under the transparent border so linear filtering
             // carries the leaf tint to the edge without a dark outline.

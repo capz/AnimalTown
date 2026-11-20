@@ -5,7 +5,7 @@ using Dolphin.Graphics;
 internal sealed class FallLeafWake : IDisposable
 {
     internal const int Capacity=24;
-    private const float FootstepDistance=.72f,MaximumLifetime=.96f;
+    private const float FootstepDistance=.72f,LeafLifetime=.96f,PetalLifetime=3.3f,PetalRadius=18;
     private struct Leaf
     {
         internal float X,Y,Z,Vx,Vz,Born;
@@ -21,12 +21,13 @@ internal sealed class FallLeafWake : IDisposable
     };
     private readonly Transform identity=new Transform();
     private int newest,count,live,uploaded;
-    private bool leftFoot;
-    private float distance;
+    private bool leftFoot,petals;
+    private float distance,nextPetals;
     private uint random=2166136261u;
 
     internal void TrackStep(Town town,float oldX,float oldZ,float x,float z,float seconds,bool running)
     {
+        SetPetalMode(false);
         float dx=x-oldX,dz=z-oldZ,squared=dx*dx+dz*dz;
         if(squared==0)return;
         int ground=town.At((int)x,(int)z);
@@ -45,20 +46,60 @@ internal sealed class FallLeafWake : IDisposable
         float footX=x-dx*(distance+.12f)+dz*side;
         float footZ=z-dz*(distance+.12f)-dx*side;
         float height=TerrainElevation.At(town,footX,footZ);
-        var pool=leaves??=new Leaf[Capacity];
         int burst=running?4:3;
         for(int i=0;i<burst;i++){
             random=unchecked(random*1664525u+1013904223u);
             float fan=-.46f+i*.36f+Variation(random,8)*.15f;
             float back=.3f+Variation(random,16)*.36f;
-            pool[newest]=new Leaf{
+            Emit(new Leaf{
                 X=footX+dz*i*.027f,Z=footZ-dx*i*.027f,Y=height,
                 Vx=-dx*back+dz*fan+.32f,Vz=-dz*back-dx*fan,
                 Born=seconds,Variation=random
-            };
-            newest=(newest+1)%Capacity;
-            if(count<Capacity)count++;
+            });
         }
+    }
+
+    internal void TrackPetals(Town town,float focusX,float focusZ,float eyeHeight,float seconds)
+    {
+        SetPetalMode(true);
+        if(seconds<nextPetals||town.GroundCount==0)return;
+        random=unchecked(random*1664525u+1013904223u);
+        nextPetals=seconds+2.5f+Variation(random,8)*2;
+        int start=(int)(random%(uint)town.GroundCount);
+        // Look for one nearby, visible mature cherry per release interval.
+        for(int n=0;n<town.GroundCount;n++){
+            var tree=town.Ground[(start+n)%town.GroundCount];
+            if(tree.Kind!=3||tree.Item!=Catalog.CherrySapling)continue;
+            float dx=tree.X-focusX,dz=tree.Z-focusZ;
+            if(dx*dx+dz*dz>PetalRadius*PetalRadius||!TreeDrawBatch.Visible(town,tree,focusX,focusZ,eyeHeight))continue;
+            float ground=TerrainElevation.At(town,tree.X,tree.Z);
+            int burst=2+(int)((random>>12)&1);
+            for(int i=0;i<burst;i++){
+                random=unchecked(random*1664525u+1013904223u);
+                Emit(new Leaf{
+                    X=tree.X+(Variation(random,8)-.5f)*1.65f,
+                    Y=ground+1.65f+Variation(random,24)*.45f,
+                    Z=tree.Z+(Variation(random,16)-.5f)*1.1f,
+                    Vx=.13f+Variation(random,0)*.22f,Vz=(Variation(random,16)-.5f)*.24f,
+                    Born=seconds,Variation=random
+                });
+            }
+            return;
+        }
+    }
+
+    private void Emit(Leaf leaf)
+    {
+        (leaves??=new Leaf[Capacity])[newest]=leaf;
+        newest=(newest+1)%Capacity;
+        if(count<Capacity)count++;
+    }
+
+    internal void SetPetalMode(bool enabled)
+    {
+        if(petals==enabled)return;
+        Dispose();
+        petals=enabled;
     }
 
     // The native mesh keeps its index count. Compact the visible quads at the
@@ -67,14 +108,16 @@ internal sealed class FallLeafWake : IDisposable
     {
         if(leaves==null)return 0;
         int oldest=(newest-count+Capacity)%Capacity,written=0;
-        while(count>0&&seconds-leaves[oldest].Born>=MaximumLifetime){
+        float maximumLifetime=petals?PetalLifetime:LeafLifetime;
+        while(count>0&&seconds-leaves[oldest].Born>=maximumLifetime){
             oldest=(oldest+1)%Capacity;
             count--;
         }
         for(int i=0;i<count;i++){
             var leaf=leaves[(oldest+i)%Capacity];
             float age=seconds-leaf.Born;
-            float progress=age/(.64f+Variation(leaf.Variation,16)*.32f);
+            float variation=Variation(leaf.Variation,16);
+            float progress=age/(petals?2.4f+variation*.9f:.64f+variation*.32f);
             if(progress>=1)continue;
             WriteLeaf(target,written*4,leaf,focusZ,age,progress);
             written++;
@@ -89,25 +132,28 @@ internal sealed class FallLeafWake : IDisposable
         return triangle*(2-Math.Abs(triangle));
     }
 
-    private static void WriteLeaf(VertexPositionColorTexture[] target,int at,Leaf leaf,float focusZ,float age,float progress)
+    private void WriteLeaf(VertexPositionColorTexture[] target,int at,Leaf leaf,float focusZ,float age,float progress)
     {
         uint seed=leaf.Variation;
         float phase=Variation(seed,24),arc=4*progress*(1-progress);
-        float x=leaf.X+leaf.Vx*age+.12f*arc*Wave(age*1.6f+phase);
-        float z=leaf.Z+leaf.Vz*age,height=leaf.Y+.065f+arc*(.18f+.27f*phase);
+        float x=leaf.X+leaf.Vx*age+(petals?.19f:.12f*arc)*Wave(age*1.6f+phase);
+        float z=leaf.Z+leaf.Vz*age;
+        float height=petals?leaf.Y-1.45f*progress:leaf.Y+.065f+arc*(.18f+.27f*phase);
         var p=CylinderWorld.Surface(z,focusZ,height);
         // The outdoor camera's rise/back ratio is 3:4. Rotate in its plane,
         // narrowing the quad each time it rolls edge-on.
         float spin=phase+age*(.55f+phase*.8f);
         float half=.062f+.046f*Variation(seed,8);
+        if(petals)half*=.84f;
         float sine=Wave(spin),cosine=Wave(spin+.25f);
         float width=half*(.16f+.84f*Math.Abs(Wave(phase+age*2.5f)));
         float rx=cosine*width,ru=sine*width,ux=-sine*half,uu=cosine*half;
         byte alpha=(byte)(245*Math.Min(1,(1-progress)*3));
         int palette=(int)((seed>>5)%3);
         Color32 color=palette==0?new Color32(231,109,47,alpha):palette==1?new Color32(252,199,78,alpha):new Color32(204,77,51,alpha);
-        int cell=(int)((seed>>11)&1)*16;
-        float u0=(cell+.5f)/32,u1=(cell+15.5f)/32;
+        if(petals)color=palette==0?new Color32(250,168,200,alpha):palette==1?new Color32(255,216,231,alpha):new Color32(235,127,174,alpha);
+        int cell=petals?0:(int)((seed>>11)&1)*16,textureWidth=petals?16:32;
+        float u0=(cell+.5f)/textureWidth,u1=(cell+15.5f)/textureWidth;
         const float v0=.5f/16,v1=15.5f/16;
         // Clockwise in the camera plane, like the dropped-item billboards.
         target[at]=new VertexPositionColorTexture(new Vector3(x-rx-ux,p.Y-.8f*(uu+ru),p.Z+.6f*(uu+ru)),color,new Vector2(u0,v1));
@@ -131,7 +177,7 @@ internal sealed class FallLeafWake : IDisposable
                 indices[at]=(ushort)v;indices[at+1]=(ushort)(v+1);indices[at+2]=(ushort)(v+2);
                 indices[at+3]=(ushort)v;indices[at+4]=(ushort)(v+2);indices[at+5]=(ushort)(v+3);
             }
-            material.Texture=FallLeafAtlas.Create();
+            material.Texture=petals?FallLeafAtlas.CreatePetal():FallLeafAtlas.Create();
             mesh=DynamicMesh.Create(staging,indices);
         }else{
             if(live<uploaded)Array.Clear(staging,live*4,(uploaded-live)*4);
@@ -146,7 +192,7 @@ internal sealed class FallLeafWake : IDisposable
     }
     internal void Clear()
     {
-        newest=count=live=0;distance=0;leftFoot=false;
+        newest=count=live=0;distance=nextPetals=0;leftFoot=false;
     }
     public void Dispose()
     {

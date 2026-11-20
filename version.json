@@ -50,6 +50,33 @@
         "New towns grow cherry trees among their other deciduous trees.",
         "Buy cherry blossom saplings from the essentials cabinet."
       ]
+    },
+    {
+      "id": "taller-deciduous-canopy",
+      "lines": [
+        "Regular deciduous trees have slightly taller canopies.",
+        "The top cluster sits higher on a mature tree.",
+        "The taller silhouette makes these trees easier to tell apart from cherry blossoms.",
+        "The shared tree mesh still uses 84 triangles."
+      ]
+    },
+    {
+      "id": "cherry-petal-fall",
+      "lines": [
+        "Blooming cherry blossoms now shed little pink petals.",
+        "Petals occasionally flutter down from nearby mature trees.",
+        "Cherry canopies extend down over the top of the trunk.",
+        "Regular deciduous canopies reach a little higher."
+      ]
+    },
+    {
+      "id": "cherry-blossom-color-blend",
+      "lines": [
+        "Cherry blossoms blend base pink with lighter blush and darker rose.",
+        "Soft color patches follow the shapes of the canopy clusters.",
+        "The pattern uses the trees' existing noise.",
+        "The effect uses the shared tree mesh and texture."
+      ]
     }
   ]
 }

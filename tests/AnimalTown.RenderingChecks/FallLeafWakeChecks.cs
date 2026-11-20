@@ -47,6 +47,25 @@ internal static class FallLeafWakeChecks
             wake.WriteVertices(vertices,z,6+i*.03f);
         }
         check(GC.GetAllocatedBytesForCurrentThread()==start,"warmed leaf movement and staging allocate nothing per frame");
+
+        town.GroundCount=2;
+        town.Ground[0]=new GroundItem{X=(int)x,Z=(int)z-4,Kind=3,Item=1};
+        town.Ground[1]=new GroundItem{X=(int)x+2,Z=(int)z-4,Kind=2,Item=Catalog.CherrySapling};
+        wake.TrackPetals(town,x,z,0,20);
+        check(wake.WriteVertices(vertices,z,20)==0,"regular trees and cherry saplings emit no petals");
+        town.Ground[1].Kind=3;
+        wake.TrackPetals(town,x,z,0,25);
+        int burst=wake.WriteVertices(vertices,z,25);
+        check(burst is 2 or 3,"a visible mature cherry emits a small burst while the player stands still");
+        float startHeight=vertices[0].Position.Y;
+        var pink=vertices[0].Color;
+        check(pink.R>pink.B&&pink.B>pink.G,"petals are pink");
+        wake.TrackPetals(town,x,z,0,26);
+        check(wake.WriteVertices(vertices,z,26)==burst&&vertices[0].Position.Y<startHeight-.25f,"petals descend before another burst can start");
+        check(wake.WriteVertices(vertices,z,29)==0,"petals expire");
+        wake.TrackPetals(town,x,z,0,30);
+        wake.SetPetalMode(false);
+        check(wake.WriteVertices(vertices,z,30)==0,"season changes clear the shared effect buffer");
     }
 
     private static float CameraArea(Vector3 a,Vector3 b,Vector3 c)

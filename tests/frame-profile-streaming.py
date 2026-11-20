@@ -96,3 +96,58 @@ try:namespace['archive_records'](image)
 except AssertionError:pass
 else:raise AssertionError('Unverified archive was accepted')
 print('Card smoke reader: named records, newest checkpoint, CRC fallback and rejection passed')
+
+# The native job clock extends both the town projection and resident runtime.
+# A running town can therefore advance from a v7 save to v9 on Save & Quit.
+from tempfile import TemporaryDirectory
+from zlib import crc32
+reader=next(n for n in module.body if isinstance(n,ast.FunctionDef) and n.name=='committed_card_sequence')
+exec(compile(ast.Module(body=[reader],type_ignores=[]),'<town card reader>','exec'),namespace)
+
+def save_record(version,kind,sequence,body):
+    data=struct.pack('<7I',0x50535441,version,1,kind,sequence,42,32+len(body))+body
+    return data+struct.pack('<I',crc32(data))
+
+def generation(bank, town_version, runtime_words):
+    sequence=bank+1
+    town=struct.pack('<5I',96,160,1,23,0)+bytes(148)
+    if town_version>=8:town+=struct.pack('<I',13)
+    if town_version==9:town+=bytes(164)
+    runtime=bytes(268)
+    if runtime_words:runtime+=struct.pack('<I',runtime_words)+bytes(160)
+    bases=('AT-Town','AT-Houses','AT-Shops','AT-Player','AT-Villager2-','AT-Villager3-','AT-Villager4-','AT-Residents')
+    bodies=(town,bytes(48),bytes(56),*(bytes(268) for _ in range(4)),runtime)
+    files={};references=[]
+    for i,(base,body) in enumerate(zip(bases,bodies)):
+        kind=i if i<4 else i+1
+        part=save_record(town_version if i==0 else 4,kind,sequence,body)
+        files[base+str(bank)]=part
+        references.append(struct.pack('<5I',kind,bank,sequence,len(part),crc32(part[:-4])))
+    files[f'AT-Commit{bank}']=save_record(5,4,sequence,b''.join(references))
+    return files
+
+def write_card(path,files):
+    sector=8192
+    data=bytearray((5+len(files))*sector)
+    for i,(name,payload) in enumerate(files.items()):
+        block=i+5
+        entry=sector+i*64
+        data[entry:entry+6]=b'AMTE01'
+        data[entry+8:entry+8+len(name)]=name.encode()
+        struct.pack_into('>HH',data,entry+54,block,1)
+        struct.pack_into('>H',data,3*sector+10+i*2,0xffff)
+        offset=block*sector
+        data[offset:offset+8]=b'DNDSAVE1'
+        struct.pack_into('>II',data,offset+8,len(payload),32)
+        data[offset+32:offset+32+len(payload)]=payload
+    path.write_bytes(data)
+
+with TemporaryDirectory() as fixture:
+    card=Path(fixture)/'MemoryCardA.USA.raw'
+    old=generation(0,7,0)
+    write_card(card,old|generation(1,9,40))
+    current=namespace['committed_card_sequence'](card,expected_day=23,details=True)
+    assert current['sequence']==2 and current['daylight_location']==13
+    write_card(card,old|generation(1,9,39))
+    assert namespace['committed_card_sequence'](card)==1
+print('Card smoke reader: v9 job-clock generation, daylight offset and malformed-extension fallback passed')
