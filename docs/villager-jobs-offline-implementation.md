@@ -61,8 +61,14 @@ Play without saving retains the complete local job system in memory.
 
 ## Storage and memory architecture
 
-Combined saves use schema 14 and catalog 2. Earlier supported saves remain
-readable. The new economic ledger has its own strict schema and is stored in the
+Combined saves use schema 15 and catalog 2 when snow checkpoints or offline jobs
+are present. Independent length-prefixed fields retain either optional extension
+or both together. Published schema-14/catalog-1 snow saves and earlier
+schema-14/catalog-2 job previews retain their original decoding rules. Historical
+fixtures from both original commits verify migration and partial snow recovery.
+The split town record keeps schema 10 for snow, with the job clock still in the
+runtime record; clock-only and snow-only updates preserve the other records.
+The new economic ledger has its own strict schema and is stored in the
 existing small economy record, with no additional save-repository record or SQL
 column. NPC availability remains in the independent runtime record. A clock
 checkpoint does not rewrite terrain or mail text.
