@@ -38,6 +38,11 @@ public sealed class TownClock
             if(month>2)precedingMonths-=year%4==0?1:2;
             CivilDay=(year-2000)*365+(year-1997)/4+precedingMonths+day-1;
         }
-        Time=(hour<10?"0":"")+hour+":"+(minute<10?"0":"")+minute;
+        Time=FormatTime(MinuteOfDay);
+    }
+    public static string FormatTime(int minuteOfDay)
+    {
+        int hour=minuteOfDay/60,minute=minuteOfDay%60;
+        return (hour<10?"0":"")+hour+":"+(minute<10?"0":"")+minute;
     }
 }

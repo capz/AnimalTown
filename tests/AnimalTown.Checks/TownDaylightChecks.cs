@@ -59,6 +59,11 @@ internal static class TownDaylightChecks
         check(daylight.Lighting.Sunlight==0&&daylight.Lighting.Lamps is >0 and <255,"civil dawn fades lamps ahead of sunlight");
         Clock(clock,2026,6,21,6,30);daylight.Update(amsterdam,clock,9000000000);
         check(daylight.Lighting.Tint==0xffffff&&daylight.Lighting.Sunlight==255&&daylight.Lighting.Lamps==0,"established daylight reaches the original full sun lighting");
+        daylight.Update(amsterdam,clock,9000000001,0);
+        check(daylight.Lighting.Sunlight==0&&daylight.Lighting.Lamps==255&&clock.MinuteOfDay==390&&clock.CivilDay==Day(2026,6,21),
+            "time preview changes solar light on the real date without moving the clock");
+        daylight.Update(amsterdam,clock,9000000002);
+        check(daylight.Lighting.Sunlight==255&&daylight.Lighting.Lamps==0,"returning to Live restores solar daylight immediately");
         daylight.Update(0,clock,9000000000);
         check(daylight.Lighting.Sunlight==WorldLighting.Sunlight(390)&&daylight.Lighting.Tint==WorldLighting.Tint(390),"switching to Classic immediately restores the original schedule");
         Clock(clock,2026,6,21,0,0);daylight.Update(tromso,clock,9100000000);

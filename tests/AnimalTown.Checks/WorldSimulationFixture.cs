@@ -19,6 +19,7 @@ internal sealed partial class TownGame
     internal readonly VillagerJourney villagers=new VillagerJourney();
     internal readonly InteriorCamera indoorCamera=new InteriorCamera();
     internal readonly TownClock townClock=new TownClock();
+    internal readonly RenderDebugOptions renderDebug=new RenderDebugOptions();
     internal readonly AnimationFrameClock animationClock=new AnimationFrameClock(7);
     internal readonly RunningMinimap runningMinimap=new RunningMinimap();
     internal readonly TerrainRenderer terrain=new TerrainRenderer();

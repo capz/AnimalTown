@@ -1617,10 +1617,23 @@ def testing_menu():
     label('testing-settings-debug-entry',7);press('A')
     manual_only='--manual-save-only' in sys.argv
     previous=0
-    # Include the session weather, SDK overlay, and world diagnostics.
-    for row in ([0] if manual_only else [0,*range(2,10),12,16,17,18]):
+    # Include session weather, the staged previews, SDK overlay, and diagnostics.
+    for row in ([0] if manual_only else [0,*range(2,12),13,17,18,19]):
         for _ in range(row-previous):press('D_DOWN')
         original=label(f'testing-row-{row}-before',row)
+        if row in (10,11):
+            press('D_LEFT' if row==10 else 'D_RIGHT')
+            pending=label(f'testing-row-{row}-pending',row)
+            press('A');applied=label(f'testing-row-{row}-applied',row)
+            if original==pending or pending==applied:
+                raise AssertionError(f'Preview row {row} did not distinguish pending and active choices')
+            press('D_RIGHT' if row==10 else 'X')
+            restoring=label(f'testing-row-{row}-restoring',row)
+            press('A');restored=label(f'testing-row-{row}-restore',row)
+            if restoring==restored or original!=restored:
+                raise AssertionError(f'Preview row {row} did not restore its original choice')
+            previous=row
+            continue
         press('A');changed=label(f'testing-row-{row}-after',row)
         if original==changed:raise AssertionError(f'Testing row {row} did not change its displayed state')
         press('A');restored=label(f'testing-row-{row}-restore',row)
@@ -1656,7 +1669,7 @@ def testing_menu():
         committed_card_sequence(card,expected_day=expected_day)
     saved=card_digest();press('B');press('START');press('B');time.sleep(5)
     if card_digest()!=saved:raise AssertionError('Closing/reopening Settings wrote another save')
-    (root/'testing-menu.txt').write_text('Completed onboarding with explicit Save & begin; Settings never saved automatically.\nVisible Settings entry opened Debug / testing.\n'+('Performance display toggled/restored.\n' if manual_only else 'All 12 debug toggles changed state and were restored; water preview allowed menu re-entry.\n')+f'{wait_seconds}s idle play preserved the card bytes.\n'+'Only Save now committed the next generation of records and their matching checksummed commit.\nReopening Settings left the saved generation unchanged.\n')
+    (root/'testing-menu.txt').write_text('Completed onboarding with explicit Save & begin; Settings never saved automatically.\nVisible Settings entry opened Debug / testing.\n'+('Performance display toggled/restored.\n' if manual_only else 'Debug toggles and staged season/time previews were applied and restored.\n')+f'{wait_seconds}s idle play preserved the card bytes.\n'+'Only Save now committed the next generation of records and their matching checksummed commit.\nReopening Settings left the saved generation unchanged.\n')
 
 def building_view(name, indoors):
     screenshot(name)
