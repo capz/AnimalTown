@@ -9,7 +9,7 @@ internal static class ProfileFixture
         public byte[] Read(string name)=>Files[name];
         public void Write(string name,byte[] data)=>Files[name]=(byte[])data.Clone();
     }
-    internal static void Write(string output,bool money=false,bool shop=false,int shopTier=0)
+    internal static void Write(string output,bool money=false,bool shop=false,int shopTier=0,bool chat=false)
     {
         Directory.CreateDirectory(output);var s=new GameState(7319);
         if(shop)s.Town.Spending=shopTier==2?100000:shopTier==1?25000:0;
@@ -31,6 +31,11 @@ internal static class ProfileFixture
             s.Space=0;BuildingWorld.Entrance(s,7,out s.X,out s.Z);s.Facing=(float)Math.PI;
             for(int i=0;i<6;i++)s.Town.Residents[i].Dwell=36000;
             var npc=s.Town.Residents[0];npc.Space=TownShop.Room;npc.PosX=4;npc.PosZ=7;npc.JourneyPhase=2;npc.Dwell=1;s.Town.Shop.NpcTarget[0]=0;
+        }
+        if(chat){
+            s.Space=BuildingWorld.PlayerRoom(0);s.X=3;s.Z=5;s.Facing=(float)Math.PI;
+            var npc=s.Town.Residents[0];npc.Name="Rowan";npc.Space=s.Space;npc.PosX=4.5f;npc.PosZ=3.5f;npc.JourneyPhase=3;npc.Dwell=36000;
+            if(!BuildingWorld.CanStand(s,s.Space,s.X,s.Z)||!BuildingWorld.CanStand(s,s.Space,npc.PosX,npc.PosZ))throw new Exception("Chat fixture positions must be clear");
         }
         var disk=new Storage();var repository=new SaveRepository(disk);repository.Save(s);repository.Save(s);
         foreach(var file in disk.Files)File.WriteAllBytes(Path.Combine(output,file.Key),file.Value);

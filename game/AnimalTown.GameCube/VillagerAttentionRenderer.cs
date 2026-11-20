@@ -2,8 +2,8 @@ using System;
 using AnimalTown;
 using Dolphin.Graphics;
 
-// One shared billboard mesh, six fixed transforms. Debug-only visual attention;
-// dialogue, requests and NPC journeys are untouched. Normal depth/culling apply.
+// One shared billboard mesh, six fixed transforms. Explicit chat commands and
+// the debug preview reuse it without changing NPC journeys or model residency.
 internal sealed class VillagerAttentionRenderer : IDisposable
 {
     private Mesh? mesh;
@@ -44,11 +44,13 @@ internal sealed class VillagerAttentionRenderer : IDisposable
         if(at!=132)throw new InvalidOperationException("Attention icon exceeds its shared mesh budget");
         return vertices;
     }
-    internal void Draw(Renderer renderer,GameState state,ActorFrameVisibility view,InteriorCamera camera,float eyeHeight)
+    internal static bool Selected(int actor,bool allVillagers,int target)=>actor>0&&actor<BuildingWorld.Actors&&(allVillagers||actor==target+1);
+    internal void Draw(Renderer renderer,GameState state,ActorFrameVisibility view,InteriorCamera camera,float eyeHeight,bool allVillagers=true,int target=-1)
     {
         if(mesh==null)return;int count=0,room=state.Space;float angle=room==0?0:camera.Angle;
         var rotation=new Quaternion(0,(float)Math.Sin(angle*.5f),0,(float)Math.Cos(angle*.5f));
         for(int actor=1;actor<BuildingWorld.Actors;actor++){
+            if(!Selected(actor,allVillagers,target))continue;
             var location=view.Locations[actor];if(location.Space.Value!=room)continue;
             float x=location.X,y=heights[actor-1],z=location.Z;
             if(room==0){var p=CylinderWorld.Surface(z,state.Z,TerrainElevation.At(state.Town,x,z)+y);y=p.Y;z=p.Z;

@@ -31,6 +31,9 @@ function Get-ValidationPlan {
         if($p -match '^server/|^tests/(server-integration|AnimalTown.ServerChecks)'){$backend=$true;continue}
         if($p -match '^(shared/AnimalTown.Domain/ContentPaths|game/AnimalTown.GameCube/ContentBootstrap|tests/AnimalTown.Checks/ContentChecks)\.cs$'){Add-Managed 'content';[void]$native.Add('content');continue}
         if($p -match '^tests/(AnimalTown.ContentSmoke/|native-content-startup\.)'){Add-Managed 'content';[void]$native.Add('content');continue}
+        if($p -match '^(shared/AnimalTown.Domain/TownChat|game/AnimalTown.GameCube/TownGame\.Chat|tests/AnimalTown.Checks/TownChatChecks)\.cs$'){
+            Add-Managed 'menu';Add-Managed 'text';Add-Managed 'dialogue';continue
+        }
         if($p -match '^tools/AnimalTown.Tools/DepotPackage(?:Checks)?\.cs$'){[void]$tooling.Add('depot');continue}
         if($p -match '^(tools|tests)/release-bundle\.py$'){[void]$native.Add('python');continue}
         if($p -match '^(shared/AnimalTown.Domain/WorldLighting|game/AnimalTown.GameCube/(CloudShadows|NativeShadows|TownLights)|tests/AnimalTown.Checks/WorldLightingChecks)\.cs$'){
