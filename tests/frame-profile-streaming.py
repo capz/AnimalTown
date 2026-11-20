@@ -164,8 +164,9 @@ with TemporaryDirectory() as fixture:
     write_card(card,old|generation(1,9,39))
     assert namespace['committed_card_sequence'](card)==1
     for clock in (-(1<<63),0,1800000000):
-        write_card(card,old|generation(1,9,40,clock))
-        assert namespace['committed_card_sequence'](card)==2
+        for version in (9,10):
+            write_card(card,old|generation(1,version,40,clock))
+            assert namespace['committed_card_sequence'](card)==2
         for version in (7,8):
             write_card(card,old|generation(1,version,0,clock))
             assert namespace['committed_card_sequence'](card)==2

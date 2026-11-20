@@ -38,7 +38,6 @@ public static class SaveCodec
         if(!profiles)RequireLegacyProfile(s);
         s.CaptureProfile();
         var snow=profiles?s.Town.Traffic.Snow.EncodeCheckpoint():null;
-        int terrainRuns=1;for(int i=1;i<Town.Cells;i++)if(s.Town.Tiles[i]!=s.Town.Tiles[i-1])terrainRuns++;
         int elevationRuns=1;for(int i=1;i<Town.Cells;i++)if(s.Town.Elevation[i]!=s.Town.Elevation[i-1])elevationRuns++;
         int jobWords=profiles&&s.Town.Jobs.Initialized?s.Town.Jobs.WordCount:0;
         bool extensions=profiles&&(jobWords!=0||snow!=null);
@@ -162,7 +161,9 @@ public static class SaveCodec
         }
         if(version>=12)s.Town.DaylightLocation=Range(b,ref p,version>=13?0:1,DaylightLocations.Count);
         if(version>=13){Range(b,ref p,Jobs.TownJobState.EncodedWordCount,Jobs.TownJobState.EncodedWordCount);var jobs=new int[Jobs.TownJobState.EncodedWordCount];for(int i=0;i<jobs.Length;i++)jobs[i]=Get(b,ref p);s.Town.JobState.Restore(jobs);}
-        if(version==14&&catalogVersion==1||version>=15){
+        // The two schema-14 releases used different catalog versions. Keep
+        // both readable; schema 15 stores snow and jobs in separate sections.
+        if((version==14&&catalogVersion==1)||version>=15){
             int length=Range(b,ref p,version>=15?0:SnowWear.MinCheckpointWords,SnowWear.MaxCheckpointWords);
             if(length!=0){
                 if(length<SnowWear.MinCheckpointWords||length>(b.Length-p)/4)throw new InvalidOperationException("Truncated snow checkpoint");
@@ -170,7 +171,10 @@ public static class SaveCodec
                 s.Town.Traffic.Snow.RestoreCheckpoint(snow);
             }
         }
-        if(version==14&&catalogVersion>=2||version>=15){int jobWords=Range(b,ref p,version>=15?0:7,Jobs.OfflineJobLedger.MaximumWords);if(jobWords!=0){if(jobWords<7||jobWords>(b.Length-p)/4)throw new InvalidOperationException("Truncated offline job ledger");s.Town.Jobs.Decode(b,p,jobWords,snapshot?.Jobs);p+=jobWords*4;}}
+        if((version==14&&catalogVersion>=2)||version>=15){
+            int jobWords=Range(b,ref p,version>=15?0:7,Jobs.OfflineJobLedger.MaximumWords);
+            if(jobWords!=0){if(jobWords<7||jobWords>(b.Length-p)/4)throw new InvalidOperationException("Truncated offline job ledger");s.Town.Jobs.Decode(b,p,jobWords,snapshot?.Jobs);p+=jobWords*4;}
+        }
         int placedCount=s.Town.PlacedCount;s.Town.PlacedCount=0;
         for(int i=0;i<placedCount;i++){var q=s.Town.Placed[i];if(!s.CanPlace(q.Item,q.X,q.Z,q.Rotation,q.Room,q.Owner,true))throw new InvalidOperationException("Invalid placement");s.Town.PlacedCount++;}
         if(p!=b.Length)throw new InvalidOperationException("Trailing save bytes");
