@@ -31,7 +31,13 @@ internal static class JobFixture
         }
         if(mode=="mail"||mode=="maximum-mail"){
             string body=mode=="mail"?"Dear Ari,\nThe town feels brighter with you here. Thank you for helping your neighbours!\nYour friend":string.Concat(Enumerable.Repeat("\U0001f642",1000));
-            int count=mode=="maximum-mail"?128:1;for(int i=0;i<count;i++){l.EnsureMail();var m=new JobMailRecord{Id=l.Allocate(),Owner=l.Player(0),Sender=l.Npc(0),Recipient=l.Player(0),State=JobMailState.Inbox,Gift=i==0?Catalog.LeafShirt:0,SentAt=now-86400,DueAt=now};l.StoreBody(ref m,JobTextBody.Pack(body,mode=="mail"?body.Length:1000));l.Mail[i]=m;s.Mail[i]=JobContent.Letter;}s.MailCount=count;
+            int profiles=mode=="maximum-mail"?4:1,count=mode=="maximum-mail"?128:1;
+            for(int p=1;p<profiles;p++){s.SelectProfile(p);s.Tutorial=7;}s.SelectProfile(0);
+            for(int p=0;p<profiles;p++){
+                for(int i=0;i<count;i++){l.EnsureMail();var m=new JobMailRecord{Id=l.Allocate(),Owner=l.Player(p),Sender=l.Npc(0),Recipient=l.Player(p),State=JobMailState.Inbox,Gift=i==0?Catalog.LeafShirt:0,SentAt=now-86400,DueAt=now};l.StoreBody(ref m,JobTextBody.Pack(body,mode=="mail"?body.Length:1000));l.Mail[p*128+i]=m;s.Profiles[p].Mail[i]=JobContent.Letter;}
+                s.Profiles[p].MailCount=count;
+            }
+            s.MailCount=count;for(int i=0;i<count;i++)s.Mail[i]=JobContent.Letter;
         }
         var disk=new Disk();
         if(baseline){

@@ -494,9 +494,10 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
             saveStatus=UserOptionsStorage.Status;return;
         }
         if(session.Draft!=null){OnboardingInput(p);return;}
+        bool chord=p.L.IsHeld&&p.R.IsHeld;
+        if(chord&&p.Y.WasPressed){TraceJobView();return;}
         if(screen==ChatEntry.Screen){ChatInput(p);return;}
         if(TravelInput(p)||MailUiInput(p)||JobInput(p))return;
-        bool chord=p.L.IsHeld&&p.R.IsHeld;
         if(AaStudy.Input(p))return;
         if(chord&&p.Z.IsHeld&&p.DPadDown.WasPressed){terrain.FreezeMotion=!terrain.FreezeMotion;return;}
         if(chord&&p.Z.IsHeld&&p.X.WasPressed){terrain.RecreateMeshes=!terrain.RecreateMeshes;return;}
@@ -784,6 +785,7 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
         if(door>=0){if(!buildings.Ready(state.BuildingTypes[door])){Say("Home","This home is unavailable right now.");return;}if(!villagers.Doors.Request(state,0,door))Say("Door","Please wait for the doorway to clear.");return;}
         if(room!=0){
             if(room==TownShop.Room&&OpenShopFixture())return;
+            if(JobsLive){int near=ClosestResident();if(near>=0){TryJobConversation(near);return;}}
             for(int i=0;i<6;i++){var v=state.Town.Residents[i];if(v.Space==room&&Math.Abs(v.PosX-state.X)<2&&Math.Abs(v.PosZ-state.Z)<2){if(!TryJobConversation(i))Say(v.Name,state.Talk(i));return;}}
             if(room==25){screen="post";selected=0;return;}
             // No nearby villager or usable doorway: A does nothing.
@@ -791,6 +793,7 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
         }
         if(x>=32&&x<=40&&z<=12&&JobsLive){OpenTravel();return;}
         if(x>=32&&x<=40&&z<=12){Say("Gate","The gate awaits a Broadband Adapter and companion connection.");return;}
+        if(JobsLive){int near=ClosestResident();if(near>=0){TryJobConversation(near);return;}}
         for(int i=0;i<6;i++){var v=state.Town.Residents[i];if(v.Space==0&&Math.Abs(v.PosX-state.X)<2.8f&&Math.Abs(v.PosZ-state.Z)<2.8f){if(!TryJobConversation(i))Say(v.Name,state.Talk(i));return;}}
         if(JobsLive&&state.Tool==Catalog.Shovel)for(int i=0;i<AnimalTown.Jobs.OfflineJobLedger.WorldCapacity;i++){var o=state.Town.Jobs.WorldObject(i);float dx=o.X-state.X,dz=o.Z-state.Z;if(o.Kind==AnimalTown.Jobs.JobWorldKind.Snowman&&dx*dx+dz*dz<2.25f){state.ResidentJobs.DestroyWorldObject(i);Say("Snow","The snowman crumbles back into the snow.");return;}}
         if(state.Pickup(tx,tz)||state.Pickup(x,z)){Say("Backpack","Picked up!");return;}

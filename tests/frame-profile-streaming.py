@@ -89,6 +89,14 @@ for bank,value in enumerate((b'old',b'new')):
     root[32:39]=b'options';struct.pack_into('<4I',root,64,page,0,len(value),fnv(value))
     struct.pack_into('<I',root,8188,fnv(root[:-4]));image[bank*8192:(bank+1)*8192]=root
 assert namespace['archive_records'](image)=={'options':b'new'}
+# Root publication survives a completely full record directory and selects
+# the correct backing epoch during growth; old one-byte markers still work.
+root=bytearray(image[8192:16384]);struct.pack_into('<4I',root,16,0x32435241,7,64,3);struct.pack_into('<I',root,8188,fnv(root[:-4]));image[8192:16384]=root
+records,phase,epoch=namespace['archive_records'](image,True)
+assert records=={'options':b'new'} and (phase,epoch)==(3,7)
+root=bytearray(image[8192:16384]);struct.pack_into('<I',root,28,4);struct.pack_into('<I',root,8188,fnv(root[:-4]));image[8192:16384]=root
+assert namespace['archive_records'](image)=={'options':b'old'}
+struct.pack_into('<I',root,28,2);struct.pack_into('<I',root,8188,fnv(root[:-4]));image[8192:16384]=root
 image[3*8192]^=1
 assert namespace['archive_records'](image)=={'options':b'old'}
 image[8188]^=1

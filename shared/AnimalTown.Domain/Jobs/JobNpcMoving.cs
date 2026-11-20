@@ -43,7 +43,7 @@ public sealed partial class OfflineTownTravel
         TakeSnapshots(out var a,out var b);var x=a.Town.Jobs;var y=b.Town.Jobs;
         if((uint)homeSlot>=6||(uint)destinationSlot>=6||x.NpcMove.Pending||y.NpcMove.Pending||!x.CanAllocate(1))throw new InvalidOperationException("Finish the current villager move first");
         for(int p=0;p<GameState.ProfileCount;p++)if(a.Profiles[p].Created&&a.Profiles[p].Tutorial<7||b.Profiles[p].Created&&b.Profiles[p].Tutorial<7)throw new InvalidOperationException("Finish opening employment before moving neighbours");
-        if(!x.CanRememberNpcs(y)||!y.CanRememberNpcs(x))throw new InvalidOperationException("Town address book is full");
+        if(!x.CanRememberNpcPair(x.Npc(homeSlot),y.Npc(destinationSlot))||!y.CanRememberNpcPair(x.Npc(homeSlot),y.Npc(destinationSlot)))throw new InvalidOperationException("Town address book is full");
         for(int p=0;p<OfflineJobLedger.OwnerCount;p++)if((p<GameState.ProfileCount?a.Profiles[p].Created:x.GuestProfile!=null)&&!x.CanAdoptNpc(p,y.Npc(destinationSlot))||(p<GameState.ProfileCount?b.Profiles[p].Created:y.GuestProfile!=null)&&!y.CanAdoptNpc(p,x.Npc(homeSlot)))throw new InvalidOperationException("Villager relationship history is full");
         var m=new OfflineNpcMove{Id=x.Allocate(),FirstTown=x.TownId,SecondTown=y.TownId,FirstSlot=homeSlot,SecondSlot=destinationSlot,Phase=1,FirstSide=true,First=Moving(a,homeSlot),Second=Moving(b,destinationSlot)};x.NpcMove=m;SaveChecked(first,a);
         return ContinueMove(a,b,now,visiting);

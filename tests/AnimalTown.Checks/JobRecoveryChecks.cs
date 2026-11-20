@@ -39,7 +39,7 @@ internal static class JobRecoveryChecks
         check(service.Execute(service.Command(JobCommandKind.RecoverReward,migrated.Id)).Result==JobResult.FullMailbox&&loaded.Town.Jobs.Reward(0).Item==migrated.Item,"a full recovery mailbox preserves the frozen item obligation");
         loaded.MailCount=0;Array.Fill(loaded.Pockets,1);check(service.Execute(service.Command(JobCommandKind.RecoverReward,migrated.Id)).Result==JobResult.Ok&&loaded.MailCount==1&&loaded.Town.Jobs.Letter(0,0).Gift==migrated.Item,"permanently unreachable item rewards become an actual recovery letter even with full pockets");
         check(service.TakeMailPresent(0,service.NextCommandSequence).Result==JobResult.FullPockets,"the recovery present remains attached until a pocket is free");loaded.Pockets[0]=0;check(service.TakeMailPresent(0,service.NextCommandSequence).Item==migrated.Item&&loaded.Town.Jobs.Letter(0,0).Gift==0,"a recovered present can be collected exactly once");
-        AddressBooks(check,false);AddressBooks(check,true);RevisionIdentity(check);ReplacementCapacity(check);
+        AddressBooks(check,false);AddressBooks(check,true);RevisionIdentity(check);ReplacementCapacity(check);MovingAddressBook(check);
         Console.WriteLine("Permanent NPC removal, owed-reward recovery, terminal reasons, content migration and travel address-book preflight passed");
     }
     private static void RevisionIdentity(Action<bool,string> check)
@@ -48,6 +48,19 @@ internal static class JobRecoveryChecks
         var other=new Disk();var b=new GameState(917){Tutorial=7};b.ResidentJobs.Enable(917002,Now);new SaveRepository(other).Save(b);disk.Files.Clear();foreach(var p in other.Files)disk.Files[p.Key]=(byte[])p.Value.Clone();
         bool rejected=false;try{repo.VerifyRevision(expected);}catch(InvalidOperationException){rejected=true;}
         check(rejected,"travel revision checks reject a replacement town with the same seed and sequence but another nonce");
+    }
+    private static void MovingAddressBook(Action<bool,string> check)
+    {
+        for(int free=0;free<=2;free++){
+            var h=new GameState(919){Tutorial=7};var d=new GameState(920){Tutorial=7};h.ResidentJobs.Enable(919001,Now);d.ResidentJobs.Enable(920001,Now);
+            // Every destination neighbour is already known. The departing local
+            // neighbour still needs a new entry when their town changes.
+            for(int i=0;i<32-free;i++)h.Town.Jobs.RememberNpc(i<6?d.Town.Jobs.Npc(i):new JobIdentity(7001,(ulong)i+1),d.Town.Jobs.TownId,"Known neighbour");
+            var a=new SaveRepository(new Disk());var b=new SaveRepository(new Disk());a.Save(h);b.Save(d);bool rejected=false;
+            try{new OfflineTownTravel(a,b).ExchangeResidents(0,0,Now);}catch(InvalidOperationException){rejected=true;}
+            check(rejected==(free==0),"moving preflights the exact arriving and departing address-book entries");
+            check(!a.Load()!.Town.Jobs.NpcMove.Pending,"address-book limits never leave a newly started move locked");
+        }
     }
     private static void ReplacementCapacity(Action<bool,string> check)
     {

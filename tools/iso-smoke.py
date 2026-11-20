@@ -1030,7 +1030,7 @@ def title_menu():
         wait_saved_after(before);wait_onboarding('world','title-start-game.png')
     (root/'title-menu.txt').write_text(f'Diagonal dot pixels changed: {changed}\nOpened debug modal, edited and paged settings, saved/closed/reopened, then selected Start.\nThree loading frames contained no cream title/menu and an animated sprout; game then became visible.\n'+('Completed Name, Look, Home and explicit Save & begin.\n' if creating else ''))
 
-def archive_records(payload):
+def archive_records(payload,publication=False):
     """Read the SDK's verified DTR1 checkpoints from a consolidated card item."""
     import struct
     block=8192
@@ -1038,7 +1038,7 @@ def archive_records(payload):
         h=2166136261
         for value in data:h=((h^value)*16777619)&0xffffffff
         return h
-    if len(payload)%block or not 6<=len(payload)//block<=256:raise AssertionError('Invalid archive size')
+    if len(payload)%block or not 6<=len(payload)//block<=2048:raise AssertionError('Invalid archive size')
     candidates=[]
     for bank in (0,1):
         root=payload[bank*block:(bank+1)*block]
@@ -1060,10 +1060,15 @@ def archive_records(payload):
                 value=payload[start:start+length]
                 if hash_bytes(value)!=checksum:raise ValueError('Damaged record')
                 ranges.append((start,stop));records[name]=value
-            candidates.append((sequence,records))
+            phase=records.get('AT-Archive',b'\0')[0];epoch=0
+            if struct.unpack_from('<I',root,16)[0]==0x32435241:
+                epoch,growth,phase=struct.unpack_from('<3I',root,20)
+                if phase not in (1,2,3) or epoch>0x7fffffff or phase==3 and not 32<=growth<=2048:raise ValueError('Invalid archive publication')
+            candidates.append((sequence,records,phase,epoch))
         except (ValueError,struct.error):continue
     if not candidates:raise AssertionError('No verified archive checkpoint')
-    return max(candidates,key=lambda c:c[0])[1]
+    selected=max(candidates,key=lambda c:c[0])
+    return selected[1:] if publication else selected[1]
 
 def options_card_files(path=None):
     """Current committed directory/BAT only; freed sectors are not live files."""
@@ -1098,11 +1103,11 @@ def options_card_files(path=None):
         if offset<32 or offset+length>len(data):raise AssertionError('Truncated current card save')
         payload=bytes(data[offset:offset+length])
         if name in ('AnimalTown','AnimalTown2') and data[16:24]==b'DNDREC01':
-            records=archive_records(payload)
-            if records.get('AT-Archive') in (b'\x01',b'\x02') and (published is None or name=='AnimalTown2'):
-                published={key:value for key,value in records.items() if key!='AT-Archive'}
+            records,phase,epoch=archive_records(payload,True)
+            if phase in (1,2,3) and (published is None or (epoch,name=='AnimalTown2')>published[:2]):
+                published=(epoch,name=='AnimalTown2',{key:value for key,value in records.items() if key!='AT-Archive'})
         else:result[name]=payload
-    return published if published is not None else result
+    return published[2] if published is not None else result
 
 def wait_options_saved(resolution,wide):
     import struct
@@ -1615,11 +1620,11 @@ def committed_card_sequence(path, expected_day=None, details=False):
                     payload=bytes(data[offset:offset+length])
                     if name in ('AnimalTown','AnimalTown2'):
                         if data[16:24]!=b'DNDREC01' or offset!=16384:continue
-                        try:records=archive_records(payload)
+                        try:records,phase,epoch=archive_records(payload,True)
                         except AssertionError:raise ValueError('Unverified card archive')
-                        if records.get('AT-Archive') in (b'\x01',b'\x02') and (name=='AnimalTown2' or archive is None):archive=records
+                        if phase in (1,2,3) and (archive is None or (epoch,name=='AnimalTown2')>archive[:2]):archive=(epoch,name=='AnimalTown2',records)
                     else:files[name]=payload
-                if archive is not None:files=archive
+                if archive is not None:files=archive[2]
                 for bank in (0,1):
                     try:
                         names=[f'AT-{kind}{bank}' for kind in ('Town','Houses','Shops','Player')]

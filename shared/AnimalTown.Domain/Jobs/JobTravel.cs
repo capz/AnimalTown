@@ -34,6 +34,12 @@ public sealed partial class OfflineJobLedger
         for(int n=0;n<6;n++){bool found=false;for(int i=0;i<KnownNpcs.Length;i++)if(KnownNpcs[i]==roster.Npc(n)){found=true;break;}if(!found)needed++;}
         return needed<=free;
     }
+    internal bool CanRememberNpcPair(JobIdentity first,JobIdentity second)
+    {
+        int free=0;bool haveFirst=false,haveSecond=false;
+        for(int i=0;i<KnownNpcs.Length;i++){if(KnownNpcs[i].IsEmpty)free++;if(KnownNpcs[i]==first)haveFirst=true;if(KnownNpcs[i]==second)haveSecond=true;}
+        return (haveFirst?0:1)+(haveSecond||second==first?0:1)<=free;
+    }
     internal bool CanAdoptNpc(int profile,JobIdentity arriving,bool newIdentity=false)
     {
         int free=0,needed=0,first=profile*RelationsPerPlayer;
