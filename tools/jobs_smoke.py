@@ -46,8 +46,8 @@ def run(context):
             if time.monotonic()>deadline:raise AssertionError('Guest presentations stopped')
             time.sleep(.01)
     def press(button):
-        os.write(c.controller,f'PRESS {button}\n'.encode());presentations(2)
-        os.write(c.controller,f'RELEASE {button}\n'.encode());presentations(2)
+        os.write(c.controller,f'PRESS {button}\n'.encode());presentations(6)
+        os.write(c.controller,f'RELEASE {button}\n'.encode());presentations(4)
     def move(x,z,seconds,run=False):
         os.write(c.controller,f'SET MAIN {.5+x*.5} {.5-z*.5}\n'.encode())
         if run:os.write(c.controller,b'PRESS B\n')
@@ -97,14 +97,21 @@ def run(context):
         shot('offer');press('A');dialogue();shot('accepted');close()
     def handoff(selector=False,npc=0):
         talk(npc);press('A');presentations(4);shot('handoff-list');press('A');dialogue()
-        if selector:shot('contribution');press('A');dialogue()
+        if selector:
+            shot('contribution');press('A');v=dialogue()
+            if v['screen']=='job-select':press('A');v=dialogue()
+            if v['screen']=='job-select':raise AssertionError('Contribution input did not leave the selector')
         shot('result');close()
     def records():
         folder=c.root/'records';folder.mkdir(exist_ok=True)
         for name,data in c.options_card_files().items():(folder/name).write_bytes(data)
     def save():
         previous=c.committed_card_sequence(c.root/'MemoryCardA.USA.raw',details=True)
-        c.save_menu();c.wait_saved_after(previous);shot('saved');press('B');records()
+        for _ in range(6):
+            if view()['screen']=='world':break
+            press('B')
+        else:raise AssertionError('Could not close the interaction before saving')
+        press('START');press('A');c.wait_saved_after(previous);shot('saved');press('B');records()
     def travel():
         go(36.5,11.5,.1);press('A');presentations(4);shot('travel');press('A');press('D_DOWN');shot('travel-confirm')
         offset=len(c.runtime_log_text());press('A');wait_log('ANIMALTOWN READY ',offset,360);presentations(4);shot('arrived')
