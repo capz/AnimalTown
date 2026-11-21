@@ -109,8 +109,8 @@ print('Card smoke reader: named records, newest checkpoint, CRC fallback and rej
 # A running town can therefore advance from a v7 save to v9 on Save & Quit.
 from tempfile import TemporaryDirectory
 from zlib import crc32
-reader=next(n for n in module.body if isinstance(n,ast.FunctionDef) and n.name=='committed_card_sequence')
-exec(compile(ast.Module(body=[reader],type_ignores=[]),'<town card reader>','exec'),namespace)
+readers=[n for n in module.body if isinstance(n,ast.FunctionDef) and n.name in ('committed_card_sequence','options_card_files','villager_card_banks')]
+exec(compile(ast.Module(body=readers,type_ignores=[]),'<town card readers>','exec'),namespace)
 
 def save_record(version,kind,sequence,body):
     data=struct.pack('<7I',0x50535441,version,1,kind,sequence,42,32+len(body))+body
@@ -138,18 +138,27 @@ def generation(bank, town_version, runtime_words, job_clock=None, clock_marker=0
 
 def write_card(path,files):
     sector=8192
-    data=bytearray((5+len(files))*sector)
+    data=bytearray(5*sector)
     for i,(name,payload) in enumerate(files.items()):
-        block=i+5
+        archive=name in ('AnimalTown','AnimalTown2')
+        offset=16384 if archive else 32
+        count=(offset+len(payload)+sector-1)//sector
+        block=len(data)//sector
+        data.extend(bytes(count*sector))
         entry=sector+i*64
         data[entry:entry+6]=b'AMTE01'
         data[entry+8:entry+8+len(name)]=name.encode()
-        struct.pack_into('>HH',data,entry+54,block,1)
-        struct.pack_into('>H',data,3*sector+10+i*2,0xffff)
-        offset=block*sector
-        data[offset:offset+8]=b'DNDSAVE1'
-        struct.pack_into('>II',data,offset+8,len(payload),32)
-        data[offset+32:offset+32+len(payload)]=payload
+        struct.pack_into('>HH',data,entry+54,block,count)
+        for page in range(block,block+count):
+            struct.pack_into('>H',data,3*sector+10+(page-5)*2,page+1 if page<block+count-1 else 0xffff)
+        start=block*sector
+        struct.pack_into('>8sII',data,start,b'DNDSAVE1',len(payload),offset)
+        if archive:data[start+16:start+24]=b'DNDREC01'
+        data[start+offset:start+offset+len(payload)]=payload
+    for page,begin,end,checksum in ((1,0,0x1ffc,0x1ffc),(3,4,sector,0)):
+        words=struct.unpack_from('>'+str((end-begin)//2)+'H',data,page*sector+begin)
+        sums=(sum(words)&65535,sum(word^65535 for word in words)&65535)
+        struct.pack_into('>HH',data,page*sector+checksum,*(0 if value==65535 else value for value in sums))
     path.write_bytes(data)
 
 with TemporaryDirectory() as fixture:
@@ -173,6 +182,18 @@ with TemporaryDirectory() as fixture:
     for clock,marker in ((1<<62,0x43424f4a),(0,0)):
         write_card(card,old|generation(1,9,40,clock,marker))
         assert namespace['committed_card_sequence'](card)==1
+    # The job verifier needs the logical bank names from a mixed layout.
+    archive=bytearray(6*8192)
+    root=bytearray(8192)
+    struct.pack_into('<8I',root,0,0x31525444,1,1,6,0x32435241,7,0,2)
+    root[32:42]=b'AT-Player0'
+    struct.pack_into('<4I',root,64,2,0,8,fnv(b'archived'))
+    struct.pack_into('<I',root,8188,fnv(root[:-4]))
+    archive[:8192]=root
+    archive[2*8192:2*8192+8]=b'archived'
+    physical=struct.pack('<4sII',b'ATV1',3,4)+b'oldlive'
+    write_card(card,{'AnimalTown':archive,'AnimalTown-Villager1':physical,'AnimalTown-Video':b'video'})
+    assert namespace['options_card_files'](card)=={'AT-Player0':b'archived','AT-Player1':b'live','options':b'video'}
 print('Card smoke reader: v9 job-clock and v10 snow generations, daylight offset and malformed-extension fallback passed')
 
 # Xvfb's number and newline arrive in separate writes. A short read must not

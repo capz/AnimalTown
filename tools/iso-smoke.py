@@ -1126,7 +1126,7 @@ def options_card_files(path=None):
     directories=[n for n in (1,2) if valid(n,0,0x1ffc,0x1ffc)]
     bats=[n for n in (3,4) if valid(n,4,sector,0)]
     if not directories or not bats:raise AssertionError('No valid card directory/BAT')
-    directory=newest(directories,0x1ffa);bat=newest(bats,4);result={};published=None;dedicated={}
+    directory=newest(directories,0x1ffa);bat=newest(bats,4);result={};published=None;dedicated={};villagers={}
     for entry in range(127):
         at=directory*sector+entry*64
         if card[at:at+6]!=b'AMTE01':continue
@@ -1148,11 +1148,14 @@ def options_card_files(path=None):
         elif name in ('AnimalTown-Video','AnimalTown-Debug'):
             dedicated['options' if name=='AnimalTown-Video' else 'dev_config']=payload
             if count!=1:raise AssertionError('Settings entry must occupy one block')
+        elif name.startswith('AnimalTown-Villager'):
+            try:villagers.update(villager_card_banks(name,payload))
+            except ValueError:pass # A valid archived bank can still be authoritative.
         else:result[name]=payload
     if published is not None:
-        # The archive supersedes legacy loose records. New settings files and
-        # dedicated villagers coexist with it.
-        result={**{name:data for name,data in result.items() if name.startswith('AnimalTown-Villager')},**published[2]}
+        # Use the same logical bank names as the game repository. Archived
+        # copies stay authoritative until migration removes them.
+        result={**villagers,**published[2]}
     return {**result,**dedicated}
 
 
