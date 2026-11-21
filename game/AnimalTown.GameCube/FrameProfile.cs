@@ -99,6 +99,13 @@ internal static class FrameProfile
         for(int i=0;i<15;i++)detail[15]^=detail[i];
         uint interval=(uint)Math.Min(uint.MaxValue,Math.Max(0,current[12]));
         capture?.Record(sequence,interval,data,memory);
+        if(OverlayVisible)PrepareWire(now,interval);
+        int pathIndex=AaStudy.CaptureIndex;PathProfile.Record(pathIndex,current,native);
+        AaStudy.Record(current[12],current[10],current[11],current[1],Counters.DrawSubmissions,triangles);
+        PathProfile.Flush(pathIndex);
+    }
+    private static void PrepareWire(long now,uint interval)
+    {
         if(memoryPart==0&&memoryHold==0){Array.Copy(memory,memoryWire,memory.Length);memoryWireSequence=memorySequence;memoryWireAt=memoryAt;}
         memoryPacket[0]=0x414d;memoryPacket[1]=1;Pair(memoryPacket,2,session);Pair(memoryPacket,4,memoryWireSequence);memoryPacket[6]=memoryPart;
         for(int i=0;i<4;i++)Pair(memoryPacket,7+i*2,unchecked((uint)memoryWire[memoryPart*4+i]));
@@ -109,9 +116,6 @@ internal static class FrameProfile
         int crc=ProfileCapture.Crc(65535,data,32);crc=ProfileCapture.Crc(crc,detail,16);crc=ProfileCapture.Crc(crc,submissions,16);crc=ProfileCapture.Crc(crc,memoryPacket,16);
         identity[15]=ProfileCapture.Crc(crc,identity,15);
         if(++memoryHold==2){memoryHold=0;memoryPart=(memoryPart+1)%8;}
-        int pathIndex=AaStudy.CaptureIndex;PathProfile.Record(pathIndex,current,native);
-        AaStudy.Record(current[12],current[10],current[11],current[1],Counters.DrawSubmissions,triangles);
-        PathProfile.Flush(pathIndex);
     }
     internal static void Draw(Draw2D ui)
     {
