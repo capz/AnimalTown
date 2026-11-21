@@ -14,17 +14,16 @@ four player profiles remain separate records. An eighth record, `AT-Residents0/1
 stores NPC positions, headings, journey state/timers and the active profile.
 Ordinary NPC walking therefore changes only a 300-byte runtime record.
 
-A component update normally writes four files: its two copies and two 192-byte
+A component update normally writes four records: its two copies and two 192-byte
 reference manifests. Player-only and NPC-only regression fixtures write under
 4 KiB of record payload, including both manifests. A large, edited terrain record
 is left byte-for-byte untouched by player-only saves. NPC simulation can still
 make runtime data change between two menu saves; this is real saved content.
 
-These numbers measure record payload, not physical card traffic. Every file also
-has SDK artwork and block rounding, and transactional writes use temporary files.
-Initial saves and migrations write eight component pairs plus two manifests
-(18 files). They need enough free directory entries and card blocks, including
-transaction overhead. Existing combined migration files are retained unchanged.
+These numbers measure record payload. Physical card traffic includes artwork,
+block rounding and the SDK journal for villager file replacements. Initial saves
+publish eight component pairs and two manifests. The [memory-card layout](consolidated-card-save.md)
+describes how those records map to physical entries and how older layouts migrate.
 
 ## Publication and recovery
 

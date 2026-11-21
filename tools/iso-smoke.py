@@ -1126,11 +1126,12 @@ def options_card_files(path=None):
     directories=[n for n in (1,2) if valid(n,0,0x1ffc,0x1ffc)]
     bats=[n for n in (3,4) if valid(n,4,sector,0)]
     if not directories or not bats:raise AssertionError('No valid card directory/BAT')
-    directory=newest(directories,0x1ffa);bat=newest(bats,4);result={};published=None
+    directory=newest(directories,0x1ffa);bat=newest(bats,4);result={};published=None;dedicated={}
     for entry in range(127):
         at=directory*sector+entry*64
         if card[at:at+6]!=b'AMTE01':continue
         name=card[at+8:at+40].split(b'\0',1)[0].decode('ascii')
+        if name=='.__dnd_transaction':continue
         block,count=word(at+54),word(at+56);seen=set();data=bytearray()
         for _ in range(count):
             if block<5 or block>=len(card)//sector or block in seen:raise AssertionError('Invalid current card chain')
@@ -1144,8 +1145,16 @@ def options_card_files(path=None):
             except AssertionError:continue # Incomplete initial creation keeps the legacy source files authoritative.
             if phase in (1,2,3) and (published is None or (epoch,name=='AnimalTown2')>published[:2]):
                 published=(epoch,name=='AnimalTown2',{key:value for key,value in records.items() if key!='AT-Archive'})
+        elif name in ('AnimalTown-Video','AnimalTown-Debug'):
+            dedicated['options' if name=='AnimalTown-Video' else 'dev_config']=payload
+            if count!=1:raise AssertionError('Settings entry must occupy one block')
         else:result[name]=payload
-    return published[2] if published is not None else result
+    if published is not None:
+        # The archive supersedes legacy loose records. New settings files and
+        # dedicated villagers coexist with it.
+        result={**{name:data for name,data in result.items() if name.startswith('AnimalTown-Villager')},**published[2]}
+    return {**result,**dedicated}
+
 
 def wait_options_saved(resolution,wide):
     import struct
@@ -1621,6 +1630,19 @@ def save_and_quit():
         'cancel_untouched':True,'returned_to_title':True,'restarted_game':True,
         'quit_timing':quit_timing[1],'save_now_sequence':saved_again['sequence'],'save_now_timing':now_timing[1]},indent=2)+'\n')
 
+def villager_card_banks(name, payload):
+    import struct
+    bases = {'AnimalTown-Villager1': 'AT-Player',
+             **{f'AnimalTown-Villager{slot}': f'AT-Villager{slot}-' for slot in (2, 3, 4)}}
+    base = bases.get(name)
+    if base is None or len(payload) < 12 or payload[:4] != b'ATV1':
+        raise ValueError('Invalid villager card entry')
+    first, second = struct.unpack_from('<II', payload, 4)
+    if not first + second or max(first, second) > 8192 or len(payload) != 12 + first + second:
+        raise ValueError('Invalid villager card banks')
+    banks = (payload[12:12 + first], payload[12 + first:])
+    return {base + str(bank): data for bank, data in enumerate(banks) if data}
+
 def committed_card_sequence(path, expected_day=None, details=False):
     """Read a complete generation from either redundant directory/BAT pair."""
     import struct
@@ -1641,13 +1663,13 @@ def committed_card_sequence(path, expected_day=None, details=False):
     best=0;best_day=None;best_details=None
     for directory in (1,2):
         for bat in (3,4):
-            files={};archive=None
+            files={};villagers={};archive=None
             try:
                 for i in range(127):
                     at=directory*sector+i*64
                     if card[at:at+6]!=b'AMTE01':continue
                     name=card[at+8:at+40].split(b'\0',1)[0].decode('ascii')
-                    if not name.startswith('AT-') and name not in ('AnimalTown','AnimalTown2'):continue
+                    if not name.startswith(('AT-', 'AnimalTown-Villager')) and name not in ('AnimalTown','AnimalTown2'):continue
                     block,count=be16(at+54),be16(at+56);seen=set();data=bytearray()
                     for _ in range(count):
                         if block<5 or block>=len(card)//sector or block in seen:raise ValueError('Invalid card chain')
@@ -1662,8 +1684,12 @@ def committed_card_sequence(path, expected_day=None, details=False):
                         try:records,phase,epoch=archive_records(payload,True)
                         except AssertionError:continue # A cut during initial zero filling leaves the complete legacy town intact.
                         if phase in (1,2,3) and (archive is None or (epoch,name=='AnimalTown2')>archive[:2]):archive=(epoch,name=='AnimalTown2',records)
+                    elif name.startswith('AnimalTown-Villager'):
+                        try:villagers.update(villager_card_banks(name, payload))
+                        except ValueError:pass # An archived bank can still be authoritative.
                     else:files[name]=payload
-                if archive is not None:files=archive[2]
+                if archive is not None:files={**villagers, **archive[2]}
+
                 for bank in (0,1):
                     try:
                         names=[f'AT-{kind}{bank}' for kind in ('Town','Houses','Shops','Player')]

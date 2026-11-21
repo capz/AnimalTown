@@ -44,7 +44,7 @@ function Get-ValidationPlan {
             if($p -match '/NativeShadows\.cs$'){[void]$native.Add('patched')}
             continue
         }
-        if($p -match '^game/AnimalTown.GameCube/(SaveCards|CardArchive|CardSaveStorage|CardSaveError|TownDataStorage|UserOptionsStorage|DevConfigStorage|TownSession|TitleScreen\.Cards)\.cs$'){
+        if($p -match '^game/AnimalTown.GameCube/(SaveCards|CardArchive|VillagerCardFiles|CardSettingsStorage|CardSaveStorage|CardSaveError|TownDataStorage|UserOptionsStorage|DevConfigStorage|TownSession|TitleScreen\.Cards)\.cs$'){
             Add-Managed 'saves';[void]$native.Add('card')
             if($p -match '(DevConfigStorage|TownSession|TitleScreen\.Cards)'){Add-Managed 'menu'}
             if($p -match '(TownSession|TitleScreen\.Cards)'){Add-Managed 'ui'}

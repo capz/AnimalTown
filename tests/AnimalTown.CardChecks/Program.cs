@@ -24,9 +24,9 @@ using(var draft=NewVillager()){
     draft.Commit(repository,false,new string[0]);
     var loaded=repository.Load()!;
     Check(loaded.Name=="Emi"&&loaded.Species==0&&loaded.HousePlaced&&loaded.Profiles[0].Created,"a generated first villager saves and reloads with 40 free blocks");
-    Check(card.Files.Count==1&&card.Files.ContainsKey("AnimalTown")&&card.Used==34&&card.Peak==34,"one browser item contains both save banks and internal recovery space");
+    Check(card.Files.Count==2&&card.Files.ContainsKey("AnimalTown")&&card.Files.ContainsKey("AnimalTown-Villager1")&&card.Used==36&&card.Peak==39,"the town and first villager occupy separate browser entries and blocks");
     foreach(var record in card.Metadata){
-        Check(record.Key=="AnimalTown"&&record.Value.Banner!.SequenceEqual(banner)&&record.Value.Icon!.SequenceEqual(icon),"one shared banner/icon pair");
+        Check(record.Value.Banner!.SequenceEqual(banner)&&record.Value.Icon!.SequenceEqual(icon),"both entries retain card artwork");
         Check(record.Value.Title=="AnimalTown","container retains browser identity");
     }
     int writes=card.Writes;repository.Save(loaded);Check(card.Writes==writes,"an unchanged save does not rewrite records to change their presentation");
@@ -102,7 +102,7 @@ Check(card.Files.Count==1&&new SaveRepository(new CardSaveStorage(card,banner,ic
 card=new MemoryCard();var preferences=new CardArchive(card,banner,icon,4);preferences.Write("options",new byte[]{5});preferences.Write("dev_config",new byte[]{7});
 using(var draft=NewVillager())draft.Commit(new SaveRepository(new CardSaveStorage(card,banner,icon,4)),false,new string[0]);
 var all=new CardArchive(card,banner,icon,4);
-Check(card.Files.Count==1&&all.Read("options")[0]==5&&all.Read("dev_config")[0]==7,"a preferences-first card adds the town to the same item without losing settings");
+Check(card.Files.Count==2&&all.Read("options")[0]==5&&all.Read("dev_config")[0]==7,"a preferences-first card adds a separate villager without losing settings");
 // Existing 16-block archives grow by verified replacement, with the source
 // intact until the new archive's publication marker is durable.
 MemoryCard OldArchive()
@@ -134,6 +134,81 @@ try{new CardArchive(card,banner,icon,4).Write("options",new byte[]{8});}catch(IO
 Check(growthFull&&card.Files.Count==1&&new CardArchive(card,banner,icon,4).Read("options")[0]==5,"insufficient migration workspace retains the complete original");
 card.Capacity=52;new CardArchive(card,banner,icon,4).Write("options",new byte[]{8});
 Check(card.Files.Count==1&&card.Used==34,"expansion retries after freeing exactly the required workspace");
+// A no-op explicit save migrates existing archived profiles, including
+// inactive slots. Interrupt cleanup after the external file has been written.
+card=OldArchive();
+new CardArchive(card,banner,icon,4).Write("options",new byte[]{8});
+var legacyRecords=new CardRecordStore(new NativeCardBlocks(4,false,banner,icon,"AnimalTown2"),true);
+var legacyRepo=new SaveRepository(new RecordFiles(legacyRecords));
+var existing=legacyRepo.Load()!;
+for(int slot=1;slot<GameState.ProfileCount;slot++){
+    existing.SelectProfile(slot);existing.Name="Resident "+(slot+1);existing.Wallet=100+slot;
+}
+legacyRepo.Save(existing);
+var upgrade=new CardSaveStorage(card,banner,icon,4);
+var upgradeRepo=new SaveRepository(upgrade);
+existing=upgradeRepo.Load()!;
+Check(card.Files.Count==1&&existing.ProfileName(3)=="Resident 4","reading all archived villagers causes no writes");
+upgradeRepo.Save(existing);
+card.Capacity=38;
+bool splitFull=false;
+try{upgrade.UpdateVillagerFiles(existing);}catch(IOException){splitFull=true;}
+Check(splitFull&&card.Files.Count==1&&upgradeRepo.Load()!.ProfileName(3)=="Resident 4","a full card keeps archived profiles readable");
+card.Capacity=80;
+card.FailBlockWrite=0;
+bool splitCut=false;
+try{upgrade.UpdateVillagerFiles(existing);}catch(IOException){splitCut=true;}
+Check(splitCut&&card.Files.ContainsKey("AnimalTown-Villager1")&&new SaveRepository(new CardSaveStorage(card,banner,icon,4)).Load()!.ProfileName(3)=="Resident 4","interrupted separation retains a loadable town");
+upgrade=new CardSaveStorage(card,banner,icon,4);
+upgrade.UpdateVillagerFiles(existing);
+Check(card.Files.Count==5&&Enumerable.Range(0,4).All(i=>card.Files.ContainsKey(VillagerCardFiles.FileName(i))),"each occupied villager has exactly one physical entry");
+var sharedRecords=new CardRecordStore(new NativeCardBlocks(4,false,banner,icon,"AnimalTown2"),false);
+Check(!sharedRecords.Names().Any(n=>VillagerCardFiles.SlotForBank(n)>=0),"occupied villager banks have moved out of the shared archive");
+var other=(byte[])card.Files["AnimalTown-Villager1"].Clone();
+upgradeRepo=new SaveRepository(upgrade);
+existing=upgradeRepo.Load()!;
+existing.Wallet++;
+upgradeRepo.Save(existing);
+Check(card.Files["AnimalTown-Villager1"].SequenceEqual(other),"saving an active villager leaves another villager file byte-identical");
+card.Capacity=card.Used;
+existing=upgradeRepo.DeleteProfile(existing,3);
+card.FailDelete=0;
+bool releaseCut=false;
+try{upgrade.UpdateVillagerFiles(existing);}catch(IOException){releaseCut=true;}
+upgrade=new CardSaveStorage(card,banner,icon,4);
+Check(releaseCut&&card.Files.ContainsKey("AnimalTown-Villager4")&&!new SaveRepository(upgrade).Load()!.Profiles[3].Created,"an interrupted release cannot resurrect a committed deletion");
+upgrade.UpdateVillagerFiles(existing);
+Check(!card.Files.ContainsKey("AnimalTown-Villager4")&&!new SaveRepository(new CardSaveStorage(card,banner,icon,4)).Load()!.Profiles[3].Created,"deletion frees only the removed villager's entry on a full card and survives reload");
+TownDataDeletion.Erase(new ArchiveFiles(new CardArchive(card,banner,icon,4)));
+Check(card.Files.Count==1&&new SaveRepository(new CardSaveStorage(card,banner,icon,4)).Load()==null,"town deletion also removes the dedicated entries");
+// Existing settings remain readable until an explicit save can move them.
+card=OldArchive();
+var expectedVideo=new UserOptions{Resolution=2,Widescreen=true,ShowDebugMenus=true};
+var expectedDebug=new DevConfig();expectedDebug.Values[DevConfig.FullResolutionAaIndex]=1;
+new CardArchive(card,banner,icon,4).Write(UserOptionsStorage.FileName,expectedVideo.Encode());
+new CardArchive(card,banner,icon,4).Write(DevConfigStorage.FileName,expectedDebug.Encode());
+SaveCards.Initialize();
+Check(UserOptionsStorage.Load().Resolution==2&&DevConfigStorage.Load().Values[DevConfig.FullResolutionAaIndex]==1&&card.Files.Count==1,"loading archived settings is read-only");
+card.Capacity=card.Used+1;
+new CardSaveStorage(card,banner,icon,4).MigrateSettings();
+Check(card.Files.Count==1&&UserOptionsStorage.Load().Widescreen,"insufficient journal space preserves archived settings");
+card.Capacity=80;
+card.FailBlockWrite=0;
+new CardSaveStorage(card,banner,icon,4).MigrateSettings();
+Check(card.Files.ContainsKey(CardSettingsStorage.VideoFile)&&UserOptionsStorage.Load().ShowDebugMenus,"video copy survives interrupted archive cleanup");
+new CardSaveStorage(card,banner,icon,4).MigrateSettings();
+var settingsArchive=new CardRecordStore(new NativeCardBlocks(4,false,banner,icon,"AnimalTown2"),false);
+Check(!settingsArchive.Names().Contains(UserOptionsStorage.FileName)&&!settingsArchive.Names().Contains(DevConfigStorage.FileName),"the verified settings files supersede both archived copies");
+Check(card.Files.Count==3&&card.Used==36&&DevConfigStorage.Load().Values[DevConfig.FullResolutionAaIndex]==1,"both migrated files use one physical block each");
+// A loose legacy setting migrates on its own save, without creating a town.
+card=new MemoryCard();
+card.WriteSave(UserOptionsStorage.FileName,expectedVideo.Encode(),new MemoryCardSaveOptions());
+SaveCards.Initialize();
+Check(UserOptionsStorage.Load().Widescreen&&card.Files.ContainsKey(UserOptionsStorage.FileName),"loose video settings still load");
+Check(UserOptionsStorage.Save(expectedVideo)&&card.Files.Count==1&&card.Files.ContainsKey(CardSettingsStorage.VideoFile),"explicit settings save replaces the loose legacy entry");
+Check(card.CreateRecords("AnimalTown",32,1234,new byte[16384])==0,"damaged archive fixture creates an independent town entry");
+card.RecordPages["AnimalTown"][0][0]=255;
+Check(UserOptionsStorage.Load().Widescreen&&DevConfigStorage.Save(expectedDebug)&&DevConfigStorage.Load().Values[DevConfig.FullResolutionAaIndex]==1,"dedicated settings can load and save with a damaged town archive");
 CardSelectionChecks.Run(Check);
 // Retire only the older record-store checkpoint, after publishing a second
 // verified copy of the unchanged current directory. No larger backing is needed.
@@ -249,6 +324,7 @@ sealed class PrefixMeter(ISaveStorage inner) : ISaveStorage,ISaveVerifiedPrefixS
     public void Write(string name,byte[] bytes)=>inner.Write(name,bytes);
     public byte[] ReadVerifiedPrefix(string name,int count,int sequence,int length,uint checksum){PrefixReads++;return ((ISaveVerifiedPrefixStorage)inner).ReadVerifiedPrefix(name,count,sequence,length,checksum);}
 }
+
 sealed class OldFiles(MemoryCard card) : ISaveStorage
 {
     public byte[] Read(string name)=>card.ReadAllBytes(name);
