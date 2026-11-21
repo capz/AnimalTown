@@ -34,6 +34,11 @@ public static class SplitSaveCodec
     {string[] names={"AT-Town","AT-Houses","AT-Shops","AT-Player","AT-Commit","AT-Villager2-","AT-Villager3-","AT-Villager4-","AT-Residents"};return names[kind]+bank;}
     public static bool IsFile(string name)
     {for(int bank=0;bank<2;bank++)for(int kind=0;kind<9;kind++)if(name==FileName(kind,bank))return true;return name=="AnimalTown0"||name=="AnimalTown1";}
+    public static bool IsCreatedProfileRecord(int slot,byte[] bytes)
+    {
+        var r=new Reader(bytes,RecordKind(3+slot));
+        return r.Version<4||r.Range(0,1)==1;
+    }
     internal sealed class Writer
     {
         private readonly byte[] bytes;private int at;

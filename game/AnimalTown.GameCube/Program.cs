@@ -461,10 +461,13 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
             state.Facing=facingYaw;
             phase="save set";
             saveAt=Clock.Timestamp;
-            var reads=new SaveReadCache(new CardSaveStorage(card,banner,icon,SaveCards.Device,state));
+            var storage=new CardSaveStorage(card,banner,icon,SaveCards.Device,state);
+            var reads=new SaveReadCache(storage);
             var repository=new SaveRepository(reads);repository.Save(state);
+            bool movedVillagers=storage.UpdateVillagerFiles(state);
+            storage.MigrateSettings();
             saved=true;
-            saveStatus=repository.LastWrittenRecords==0?"No changes to save.":"Saved / "+BuildInfo.Version;
+            saveStatus=repository.LastWrittenRecords==0&&!movedVillagers?"No changes to save.":"Saved / "+BuildInfo.Version;
             DebugOverlay.WriteLine("SAVE: "+repository.LastWrittenRecords+" records / "+repository.LastWrittenBytes+" bytes");
             DebugOverlay.WriteLine("SAVE I/O: "+((Clock.Timestamp-saveAt)/1000)+" ms / "+reads.PhysicalReads+" reads / "+reads.CacheHits+" cached reads");
         }

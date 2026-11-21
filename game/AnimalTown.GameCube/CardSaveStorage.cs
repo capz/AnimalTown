@@ -6,6 +6,8 @@ internal sealed class CardSaveStorage : ISaveStorage,ISaveSnapshotStorage,ISaveV
     private readonly CardArchive archive;
     internal CardSaveStorage(MemoryCard card,byte[] banner,byte[] icon,int device,GameState? textReuse=null){archive=new CardArchive(card,banner,icon,device,textReuse);}
     internal string[] Names()=>archive.Names();
+    internal bool UpdateVillagerFiles(GameState state)=>archive.UpdateVillagerFiles(state);
+    internal void MigrateSettings()=>archive.MigrateSettings();
     internal void ReuseTextFrom(GameState state)=>archive.ReuseTextFrom(state);
     public void PrepareWrite()=>archive.PrepareWrite();
     public byte[] Read(string name)=>archive.Read(name);
