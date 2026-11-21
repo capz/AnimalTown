@@ -140,7 +140,8 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
     private readonly BuildingPrompt buildingPrompt=new BuildingPrompt();
     private readonly WrappedText dialogueText=new WrappedText(41),itemTitleText=new WrappedText(14),saveStatusText=new WrappedText(48);
     private string wrappedDialogue="";
-    private int actionWidthItem=-1,actionWidthRoom=-1;
+    private int actionWidthItem=-1,actionWidthRoom=-1,actionWidthCount=-1;
+    private string actionWidthTitle="";
     private float actionWidth,actionRotateOffset;
     private readonly RenderQueue actorQueue=new RenderQueue(7,7);
     private readonly Transform[] modelPoses=new Transform[16];
@@ -581,13 +582,14 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
         }
         if(screen=="item")
         {
-            int item=state.Pockets[slot],actionCount=PocketMenu.Count(item,room);
+            int item=state.Pockets[slot],actionCount=PocketMenu.Count(state,slot,room);
             selected=Math.Max(0,Math.Min(selected,actionCount-1));
             if(down)selected=(selected+1)%actionCount;if(up)selected=(selected+actionCount-1)%actionCount;
-            if(p.R.WasPressed&&PocketMenu.HasAction(item,room,PocketAction.Place))rotation=(rotation+1)%4;
+            if(p.R.WasPressed&&PocketMenu.HasAction(state,slot,room,PocketAction.Place))rotation=(rotation+1)%4;
             if(Press(p))
             {
-                PocketAction action=PocketMenu.At(item,room,selected);
+                PocketAction action=PocketMenu.At(state,slot,room,selected);
+                if(action==PocketAction.WriteLetter||action==PocketAction.AttachToLetter){OpenPocketLetter(action);return;}
                 if(action==PocketAction.Read){Say("Letter","Thank you for being a part of our town!");return;}
                 if(action==PocketAction.Quit){screen="menu";menuTab=0;selected=slot;return;}
                 int tx=(int)state.X+faceX,tz=(int)state.Z+faceZ;
@@ -1269,19 +1271,19 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
         if(menuTab==TestingTab)return TestingLabel(i);
         string[] settings={"Save Now","Save & Quit","Controls","About / build identity","Calendar","Chat","Daylight location","Debug / testing menu"};return settings[i];
     }
-    private static string ItemActionLabel(PocketAction action)=>action==PocketAction.Place?"Place":PocketMenu.Label(action);
-    private float ItemActionWidth(int item,string title)
+    private static string ItemActionLabel(PocketAction action,int item)=>action==PocketAction.Place?"Place":PocketMenu.Label(action,item);
+    private float ItemActionWidth(int item,string title,int focus)
     {
-        if(actionWidthItem==item&&actionWidthRoom==room)return actionWidth;
+        int count=PocketMenu.Count(state,focus,room);
+        if(actionWidthItem==item&&actionWidthRoom==room&&actionWidthCount==count&&actionWidthTitle==title)return actionWidth;
         float widest=strongFont.Measure(title,1.3f/1.5f);actionRotateOffset=0;
-        int count=PocketMenu.Count(item,room);
         for(int i=0;i<count;i++){
-            PocketAction action=PocketMenu.At(item,room,i);
-            float width=20+font.Measure(ItemActionLabel(action),1.05f/1.5f);
+            PocketAction action=PocketMenu.At(state,focus,room,i);
+            float width=20+font.Measure(ItemActionLabel(action,item),1.05f/1.5f);
             if(action==PocketAction.Place){actionRotateOffset=width+10;width=actionRotateOffset+26+font.Measure("Rotate",.9f/1.5f);}
             widest=Math.Max(widest,width);
         }
-        actionWidthItem=item;actionWidthRoom=room;
+        actionWidthItem=item;actionWidthRoom=room;actionWidthCount=count;actionWidthTitle=title;
         return actionWidth=(float)Math.Ceiling(widest)+32; // Same 16px padding on both sides.
     }
     private void DrawBackpack()
@@ -1308,9 +1310,9 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
         // Follow the actual slot for both the title and action menu. Clamp the
         // panel (including bulges/shadow) above the HUD for all backpack sizes.
         float slotX=99+focus%5*58,slotY=144+focus/5*44;
-        bool bound=state.IsJobItem(focus);int actionCount=bound?2:PocketMenu.Count(item,room);
+        bool bound=state.IsJobItem(focus);int actionCount=PocketMenu.Count(state,focus,room);
         string title=itemTitleText.Get(BackpackJobTitle(focus,item));
-        float popWidth=actions?ItemActionWidth(item,title):168,popHeight=actions?72+actionCount*18:141;
+        float popWidth=actions?ItemActionWidth(item,title,focus):168,popHeight=actions?72+actionCount*18:141;
         float popX=Math.Min(slotX+66,607-popWidth),popY=Math.Max(80,Math.Min(slotY-12,428-popHeight));
         float pointerY=Math.Max(popY+36,Math.Min(slotY+20,popY+popHeight-36));
         Panel(popX,popY,popWidth,popHeight);
@@ -1321,11 +1323,11 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
         {
             for(int i=0;i<actionCount;i++){
                 float y=popY+56+i*18;
-                PocketAction action=bound?(i==0?PocketAction.Read:PocketAction.Quit):PocketMenu.At(item,room,i);
+                PocketAction action=PocketMenu.At(state,focus,room,i);
                 if(i==selected)Rounded(popX+10,y-1,popWidth-20,18,9,new Color32(221,231,188));
                 if(action==PocketAction.Quit)ButtonGlyph("B",textX,y+1);
                 else if(i==selected)ButtonGlyph("A",textX,y+1);
-                Text(bound?(i==0?"Details":"Close"):ItemActionLabel(action),textX+20,y,ink,1.05f);
+                Text(bound?(i==0?"Details":"Close"):ItemActionLabel(action,item),textX+20,y,ink,1.05f);
                 if(action==PocketAction.Place){ButtonGlyph("R",textX+actionRotateOffset,y+1);Text("Rotate",textX+actionRotateOffset+26,y+1,ink,.9f);}
             }
         }
@@ -1358,6 +1360,12 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
     {
         Panel(65,65,510,365);Heading("Town map",85,79,new Color32(49,72,62));Text(Town.Width+" x "+Town.Height,310,83,new Color32(49,72,62),1.2f);
         const float left=160,top=115,scale=MapBackground.Scale;
+        var storeColor=new Color32(187,107,71);
+        var postOfficeColor=new Color32(132,96,155);
+        var helipadColor=new Color32(81,98,130);
+        var homeColor=new Color32(220,182,124,180);
+        var villagerHouseColor=new Color32(94,64,48);
+        var villagerColor=new Color32(153,76,103);
         if(batchedDrawing)mapBackground.Draw(ui);
         else for(int z=0;z<Town.Height;z+=5)for(int x=0;x<Town.Width;x+=5)
             ui.FillRectangle(new RectF(left+x*scale,top+z*scale,Math.Min(5,Town.Width-x)*scale,Math.Min(5,Town.Height-z)*scale),MapTileColor(Math.Min(x+2,Town.Width-1),Math.Min(z+2,Town.Height-1)));
@@ -1374,12 +1382,34 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
             if(i<Town.ScreenRows)Text((i+1).ToString(),445,top+offset+3,Color32.Black,.8f);
         }
         for(int i=0;i<state.Town.GroundCount;i++){var g=state.Town.Ground[i];if(g.Kind==3)ui.FillRectangle(new RectF(left+g.X*scale,top+g.Z*scale,2,2),new Color32(45,106,60));}
-        ui.FillRectangle(new RectF(left+32*scale,top+26*scale,4,4),new Color32(187,107,71));
-        ui.FillRectangle(new RectF(left+50*scale,top+26*scale,4,4),new Color32(132,96,155));
-        ui.FillRectangle(new RectF(left+36*scale,top+9*scale,4,4),new Color32(81,98,130));
-        for(int p=0;p<GameState.ProfileCount;p++)if(state.HomePlaced(p))ui.FillRectangle(new RectF(left+state.HomeX(p)*scale,top+state.HomeZ(p)*scale,GameState.GardenWidths[state.HomeGardenTier(p)]*scale,GameState.GardenHeights[state.HomeGardenTier(p)]*scale),new Color32(220,182,124,180));
-        for(int i=0;i<6;i++){var v=state.Town.Residents[i];ui.FillRectangle(new RectF(left+v.X*scale,top+v.Z*scale,3,3),new Color32(153,76,103));}
+        ui.FillRectangle(new RectF(left+32*scale,top+26*scale,4,4),storeColor);
+        ui.FillRectangle(new RectF(left+50*scale,top+26*scale,4,4),postOfficeColor);
+        ui.FillRectangle(new RectF(left+36*scale,top+9*scale,4,4),helipadColor);
+        for(int p=0;p<GameState.ProfileCount;p++)if(state.HomePlaced(p))ui.FillRectangle(new RectF(left+state.HomeX(p)*scale,top+state.HomeZ(p)*scale,GameState.GardenWidths[state.HomeGardenTier(p)]*scale,GameState.GardenHeights[state.HomeGardenTier(p)]*scale),homeColor);
+        foreach(var villager in state.Town.Residents)
+        {
+            ui.FillRectangle(new RectF(left+(villager.HomeX+1.5f)*scale-2,top+(villager.HomeZ+1.5f)*scale-2,4,4),villagerHouseColor);
+            ui.FillRectangle(new RectF(left+villager.X*scale,top+villager.Z*scale,3,3),villagerColor);
+        }
         float mapX=state.X,mapZ=state.Z;if(room!=0)BuildingWorld.Entrance(state,BuildingWorld.Building(room),out mapX,out mapZ);
         ui.FillRectangle(new RectF(left+mapX*scale,top+mapZ*scale,4,4),Color32.White);
+
+        var ink=new Color32(49,72,62);
+        Strong("Legend",464,126,ink,1.15f);
+        DrawMapLegendEntry("Villager houses",148,villagerHouseColor);
+        DrawMapLegendEntry("Player homes",168,homeColor);
+        DrawMapLegendEntry("Store",188,storeColor);
+        DrawMapLegendEntry("Post office",208,postOfficeColor);
+        DrawMapLegendEntry("Helipad",228,helipadColor);
+        DrawMapLegendEntry("Villagers",248,villagerColor);
+        DrawMapLegendEntry("You",268,Color32.White);
+    }
+
+    private void DrawMapLegendEntry(string label,float y,Color32 color)
+    {
+        var ink=new Color32(49,72,62);
+        ui.FillRectangle(new RectF(464,y+3,10,10),ink);
+        ui.FillRectangle(new RectF(465,y+4,8,8),color);
+        Text(label,479,y,ink,.95f);
     }
 }

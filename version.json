@@ -7,6 +7,15 @@
   "baseCommit": "7e3dd9599709f553d13d538a320a13f3d410e861",
   "requestSummaries": [
     {
+      "id": "complete-offline-item-actions",
+      "lines": [
+        "Write letters and attach presents straight from your backpack.",
+        "Both writing papers open the letter composer; eligible gifts can be attached.",
+        "Cancelling preserves your items and returns to the menu you started from.",
+        "Floor, wallpaper and furniture actions respect the current home context."
+      ]
+    },
+    {
       "id": "dol-relative-content-sdk-376",
       "lines": [
         "Load standalone game assets beside the launched DOL.",
@@ -130,6 +139,15 @@
         "Read older snowfall saves and earlier resident-job preview saves.",
         "Preserve parcels, profiles and partially recovered snow across reloads.",
         "Keep unchanged saves and independent snow or job-clock updates efficient."
+      ]
+    },
+    {
+      "id": "town-map-landmark-legend",
+      "lines": [
+        "Find villager houses, the store, and the helipad with the new town map legend.",
+        "Each villager house has a permanent marker on the map.",
+        "The legend distinguishes villager houses from moving villagers.",
+        "It also identifies player homes, the post office, and your current location."
       ]
     },
     {
