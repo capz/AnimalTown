@@ -1,8 +1,10 @@
-# One AnimalTown memory-card item
+# AnimalTown memory-card layout
 
-AnimalTown now stores its logical save records inside one physical `AnimalTown` (or migrated `AnimalTown2`)
-file with one banner and icon. Town records, player records, manifests, options,
-debug configuration and deletion intent keep their existing independent schemas.
+Shared town records, manifests and deletion intent live in `AnimalTown` or `AnimalTown2`. Each occupied playable slot has its own
+entry, `AnimalTown-Villager1` through `AnimalTown-Villager4`. The browser comment
+identifies the slot. Each entry includes its own banner and icon and holds both
+banks for that slot. Empty slots have only small records in the shared archive.
+Computer-controlled residents belong to the shared town.
 The explicit-save policy and game-level reference-manifest publication protocol
 remain in force. No town progress is saved just by opening the title screen.
 
@@ -13,18 +15,26 @@ engine dependency versions. Its native adapter/bridge are included by the guarde
 native patch, rather than implementing a second record engine in AnimalTown.
 Initialize the submodule with `git submodule update --init vendor/card-store-sdk`.
 
-The file reserves 34 standard 8 KiB card blocks: two for browser metadata and
+The shared archive reserves 34 standard 8 KiB card blocks: two for browser metadata and
 artwork, two independent checkpoint sectors, and thirty data sectors. Small
-logical records share sectors. A new generated Emi/Fox town with both save banks
-uses this single 34-block allocation, including recovery capacity. Settings/debug
-records use that same reservation. This fixed-size allocation is not guaranteed
-to fit every future edited town: exhaustion retains the last verified save and
-reports an error; growing it requires a separately verified copy. A settings-only
-card also reserves these 34 blocks so that adding the first town can use the same
-container. File-count consolidation is not a promise of lower usage for every
-possible card layout.
+logical records share sectors. A new town with one villager uses 36 blocks
+across two entries. The villager
+entry occupies two blocks. Its verified replacement journal can use three more
+blocks temporarily, so the first save needs 39 free blocks and three directory
+entries. The initial archive reservation covers normal recovery. Large towns
+and mailboxes can grow into a verified replacement archive when the card has
+room for both copies during migration.
 
-Each replacement writes unused sectors, reads them back, then writes and verifies
+Video and debug settings have separate one-block entries, `AnimalTown-Video`
+and `AnimalTown-Debug`. Each can save before a town exists. A first settings save
+needs three free blocks for the new entry and its temporary journal, or two
+free blocks to replace an existing one. Existing loose and archived settings
+remain readable. An explicit town save migrates both settings when space permits,
+and saving either settings screen moves that screen's data. The game verifies
+the dedicated file before removing any archived copy. A full card preserves
+the old settings for a later retry.
+
+Each shared archive update writes unused sectors, reads them back, then writes and verifies
 the older checkpoint. Neither checkpoint's live data is overwritten prematurely.
 Opening validates record checksums and falls back to the preceding complete
 checkpoint if necessary. After an ambiguous I/O failure reopen; the in-memory
@@ -32,9 +42,17 @@ allocator is no longer used. Updates stage individual sectors/records rather
 than allocating a whole-file replacement journal. No extra directory item is
 needed for normal journal or backup data.
 
+On the first explicit game save, archived villager banks are copied into their
+own entries and verified before the corresponding archive records are removed.
+An archived town with one villager needs five free blocks to migrate that slot.
+Each completed slot consumes two blocks. A full card leaves any remaining
+villagers readable in the shared archive until there is space to retry. The copy uses the SDK journal, and the loader resolves banks from
+either location after an interruption. Title-screen loading leaves the layout
+untouched.
+
 ## Existing cards
 
-Reads retain the old multi-file format until the first explicit write. Migration
+Reads also support the original loose bank files. Migration into an archive
 requires the old files **plus 34 free blocks and one directory entry**. It refuses
 an incomplete source town instead of guessing. It copies all recognized records,
 reads them back, verifies that the decoded town matches, and publishes a durable
@@ -44,10 +62,12 @@ Unrelated files stay untouched. An unreadable/different old file is preserved.
 Never remove existing files to create migration workspace. Use a backed-up card
 with enough space; this change does not relocate records to another physical card.
 
-Town deletion uses logical records and a durable deletion intent. It removes both
-game-level fallback banks while retaining options and debug configuration. Deleting
-the physical AnimalTown item from IPL/Swiss removes **everything on that card**
-inside this container. Native card copy/move likewise handles the complete item.
+In-game town deletion removes the shared save records and all villager entries
+while retaining options and debug configuration. In-game villager deletion
+writes and verifies both empty banks before reclaiming that slot's entry.
+For a complete backup in the GameCube card manager, copy the shared archive and
+all villager entries together. The town manifest requires its referenced banks
+to load a complete save.
 
 ## Validation and remaining scope
 
