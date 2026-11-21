@@ -50,6 +50,7 @@ internal static class FrameProfile
         previous=0;Status="Capture exported; counters active";
     }
     internal static void Checkpoint(int stage){if(!Enabled)return;checkpoint=stage;SampleMemory(true);capture?.Event(sequence,(uint)stage,(uint)Clock.Timestamp,(uint)memory[5]);}
+    internal static void PollMemory(){if(Enabled)SampleMemory();}
     internal static void TerrainState(bool enabled,int queued){warmTerrain=enabled;warmQueued=queued;}
     private static void SampleMemory(bool force=false)
     {

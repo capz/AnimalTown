@@ -26,7 +26,7 @@ internal sealed class LoadingScreen : IDisposable,Hypercube.GameCube.IFrameScene
     private void Frame(string? error,UiFont? font)
     {
         frameError=error;frameFont=font;frameNow=Clock.Timestamp;
-        UiNoise.Prepare();background.Prepare();Hypercube.GameCube.FrameRenderer.Draw(GraphicsDevice.Default,TitleBackdrop.Color,this);
+        UiNoise.Prepare();background.Prepare();Hypercube.GameCube.FrameRenderer.Draw(GraphicsDevice.Default,TitleBackdrop.Color,this);FrameProfile.PollMemory();
     }
     public void SubmitFramePart()
     {

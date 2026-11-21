@@ -114,7 +114,7 @@ internal sealed partial class TitleScreen : IDisposable,Hypercube.GameCube.IFram
     }
     private void Draw()
     {
-        UiNoise.Prepare();background.Prepare();Hypercube.GameCube.FrameRenderer.Draw(GraphicsDevice.Default,TitleBackdrop.Color,this);
+        UiNoise.Prepare();background.Prepare();Hypercube.GameCube.FrameRenderer.Draw(GraphicsDevice.Default,TitleBackdrop.Color,this);FrameProfile.PollMemory();
     }
     public void SubmitFramePart()
     {
