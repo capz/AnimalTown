@@ -136,9 +136,25 @@ def run(context):
         try:c.wait_saved_after(previous,timeout_seconds=900 if mode.startswith('maximum-') else 240)
         finally:os.write(c.controller,b'RELEASE A\n')
         wait_log('ANIMALTOWN SAVE TOTAL:',offset,900);presentations(4);shot(label);press('B');records()
-    def travel():
+    def travel(capture=None):
         go(36.5,11.5,.1);press('A');presentations(4);shot('travel');press('A');press('D_DOWN');shot('travel-confirm')
-        offset=len(c.runtime_log_text());press('A');wait_log('ANIMALTOWN READY ',offset,1800 if mode.startswith('maximum-') else 360);presentations(4);shot('arrived')
+        offset=len(c.runtime_log_text());press('A')
+        timeout=1800 if mode.startswith('maximum-') else 360
+        source=wait_log(r'ANIMALTOWN FLIGHT BOARD (-?\d+)',offset,timeout)
+        if capture:guest(.4);shot(capture+'-boarding')
+        direction=wait_log(r'ANIMALTOWN FLIGHT CRUISE (-?\d+)',offset,timeout)
+        if capture:presentations(3);shot(capture+'-cruise')
+        destination=wait_log(r'ANIMALTOWN FLIGHT DESTINATION (-?\d+)',offset,timeout)
+        wait_log('ANIMALTOWN READY ',offset,timeout)
+        wait_log('ANIMALTOWN FLIGHT LAND '+destination[1],offset,timeout)
+        if capture:guest(.8);shot(capture+'-landing')
+        wait_log('ANIMALTOWN FLIGHT ARRIVED '+destination[1],offset,timeout)
+        if capture:
+            present=view()
+            if present['screen']!='world' or present['room']!=0 or math.hypot(present['x']-36,present['z']-11.3)>.12:
+                raise AssertionError('Player did not regain control on the grass at the destination pad')
+            shot(capture+'-offloaded')
+        return dict(source=int(source[1]),destination=int(destination[1]),direction=int(direction[1]))
     def type_text(text):
         from collections import deque
         keys="ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789 .,!?'\n-:;()";cursor=0
@@ -195,7 +211,12 @@ def run(context):
     else:c.start_game(False,'jobs-'+mode)
     wait_log('ANIMALTOWN READY ');presentations(2);shot('world')
     report={'scenario':'offline-jobs','mode':mode,'screenshots':shots,'passed':False}
-    if mode=='maximum-economy':
+    if mode=='helipad':
+        outbound=travel('outbound');inbound=travel('inbound')
+        if outbound!={'source':7319,'destination':7320,'direction':1} or inbound!={'source':7320,'destination':7319,'direction':-1}:
+            raise AssertionError('The helipad did not complete a two-town round trip with opposite flight directions')
+        report['flights']=[outbound,inbound];save()
+    elif mode=='maximum-economy':
         report['profile']=profile();shot('profiled');travel();shot('maximum-guest')
         folder=c.root/'records-guest';folder.mkdir(exist_ok=True)
         for name,data in c.options_card_files(c.root/'MemoryCardB.USA.raw').items():(folder/name).write_bytes(data)
@@ -301,7 +322,7 @@ def run(context):
             press('A');shot('reply-mailbox');press('A');shot('reply');press('X');close();close()
         else:raise ValueError('Unsupported job smoke mode: '+mode)
         save()
-    if mode in ('foreign','moved','moving','recovery','maximum-economy','maximum-recovery','maximum-post-travel'):
+    if mode in ('foreign','moved','moving','recovery','helipad','maximum-economy','maximum-recovery','maximum-post-travel'):
         folder=c.root/'records-b';folder.mkdir(exist_ok=True)
         for name,data in c.options_card_files(c.root/'MemoryCardB.USA.raw').items():(folder/name).write_bytes(data)
     alive();report['controls_completed']=True

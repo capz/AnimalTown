@@ -94,7 +94,7 @@ public sealed class Town
         // reserve. Their placement constraints are part of this template set.
         for(int z=29;z<=35;z++)for(int x=30;x<=37;x++)Tiles[z*Width+x]=(byte)Terrain.Plaza;
         for(int z=47;z<56;z++)for(int x=62;x<71;x++)Tiles[z*Width+x]=(byte)Terrain.Camp;
-        Building(30,25,5,3);Building(48,25,5,3);Building(34,7,4,3);
+        Building(30,25,5,3);Building(48,25,5,3);Building(HelipadSite.X,HelipadSite.Z,HelipadSite.Width,HelipadSite.Depth);
         for(int i=0;i<6;i++)Building(Residents[i].HomeX,Residents[i].HomeZ,3,3);
         TerrainElevation.Generate(this);
         TownGenerator.Populate(this);
