@@ -3,7 +3,8 @@ namespace AnimalTown;
 public static class HelipadSite
 {
     public const int X=34,Z=7,Width=4,Depth=3;
-    public const float CenterX=X+Width*.5f,CenterZ=Z+Depth*.5f,DeckHeight=.19f;
+    // Keep the flat mesh just above the ground to avoid coplanar depth conflicts.
+    public const float CenterX=X+Width*.5f,CenterZ=Z+Depth*.5f,DeckHeight=.025f;
     public const float DoorX=CenterX-.18f,DoorZ=CenterZ+.62f,DoorHeight=DeckHeight+.44f;
     internal const float StepZ=Z+Depth+.16f;
     private static readonly float[] arrivalOffsets={0,-1,1,-2,2};
@@ -16,8 +17,7 @@ public static class HelipadSite
     public static bool TryArrival(GameState state,out float x,out float z)
     {
         if(Exists(state.Town)&&BuildingWorld.CanStand(state,0,DoorX,StepZ,0,true)){
-            // Keep the visible walk in front of the step on dry navigable ground.
-            // The final step onto the deck is a scripted motion.
+            // Keep the walk to the pad on dry navigable ground.
             for(int row=0;row<3;row++)foreach(float offset in arrivalOffsets){
                 x=CenterX+offset;z=Z+Depth+1.3f+row;
                 if(BuildingWorld.Segment(state,0,DoorX,StepZ,x,z,0,true))return true;
@@ -64,7 +64,7 @@ public sealed class HelipadFlight
     public void PlayerPose(float standX,float standZ,out float x,out float z,out float height,out float yaw)
     {
         float t=Phase==FlightPhase.Boarding?Ease(Progress(BoardTicks)):1-Ease(Progress(ExitTicks));
-        // Walk to the deck step, then climb the short step and cabin sill.
+        // Walk to the pad, then climb into the cabin.
         float approach=Math.Min(1,t/.55f),climb=Math.Max(0,(t-.55f)/.45f);
         x=Mix(standX,HelipadSite.DoorX,approach);
         z=Mix(Mix(standZ,HelipadSite.StepZ,approach),HelipadSite.DoorZ,climb);

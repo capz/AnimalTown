@@ -1,10 +1,11 @@
 using System;
 using System.Collections.Generic;
+using AnimalTown;
 using Dolphin.Graphics;
 
 // Opaque vertex colors on shared static geometry. Poses are the only things
 // that change once the pad and helicopter have been admitted to the scene.
-internal sealed class HelipadRenderer : IDisposable
+internal sealed partial class HelipadRenderer : IDisposable
 {
     private static readonly Color32 cream=new Color32(248,225,170),mint=new Color32(99,172,147),
         blue=new Color32(107,181,209),gold=new Color32(229,170,63),steel=new Color32(88,103,115),
@@ -25,20 +26,8 @@ internal sealed class HelipadRenderer : IDisposable
     {
         if(pad!=null)return;
         var g=new Geometry();
-        g.Box(-2,0,-1.5f,4,.16f,3,new Color32(133,73,47));
-        for(int i=0;i<10;i++){
-            int shade=i%3*6;
-            g.Box(-2,.16f,-1.5f+i*.3f,4,.03f,.292f,new Color32((byte)(181+shade),(byte)(102+shade),72));
-        }
-        g.Box(-.64f,0,1.5f,1.28f,.095f,.32f,new Color32(163,92,56));
-        for(int side=-1;side<=1;side+=2){
-            g.Box(side*.56f-.083f,.191f,-.79f,.166f,.005f,1.68f,ivory);
-            for(int end=-1;end<=1;end+=2){
-                g.Box(side*1.73f-.18f,.191f,end*1.27f-.04f,.36f,.005f,.08f,ivory);
-                g.Box(side*1.87f-.04f,.191f,end*1.13f-.15f,.08f,.005f,.3f,ivory);
-            }
-        }
-        g.Box(-.56f,.191f,-.025f,1.12f,.005f,.15f,ivory);
+        AddDeck(g);
+        // The windsock is beside the painted pad.
         g.Box(-2.62f,0,-1.34f,.07f,1.56f,.07f,new Color32(124,88,55));
         var red=new Color32(205,98,72);
         g.Box(-2.55f,1.34f,-1.43f,.18f,.2f,.24f,red);
@@ -138,6 +127,15 @@ internal sealed class HelipadRenderer : IDisposable
             vertices.Add(new VertexPositionColor(c,color));vertices.Add(new VertexPositionColor(d,color));
             indices.Add((ushort)n);indices.Add((ushort)(n+1));indices.Add((ushort)(n+2));
             indices.Add((ushort)n);indices.Add((ushort)(n+2));indices.Add((ushort)(n+3));
+        }
+        internal void DeckQuad(int left,int top,int right,int bottom,Color32 color)
+        {
+            const float height=HelipadSite.DeckHeight;
+            const float halfWidth=HelipadSite.Width*.5f,halfDepth=HelipadSite.Depth*.5f;
+            float x=left/100f-halfWidth,z=top/100f-halfDepth;
+            float endX=right/100f-halfWidth,endZ=bottom/100f-halfDepth;
+            Quad(new Vector3(x,height,z),new Vector3(endX,height,z),
+                new Vector3(endX,height,endZ),new Vector3(x,height,endZ),color);
         }
         internal void Box(float x,float y,float z,float width,float height,float depth,Color32 color)
         {
