@@ -4,7 +4,7 @@ Reuse the backpack's existing cream paper popup, green selection, Gorditas/IPL
 fonts, item icons and A/B/R glyphs. Keep its measured width and existing placement.
 The town continues to run behind it. No new artwork or persistent HUD is needed.
 
-## Proposed popup changes
+## Approved popup changes
 
 ```text
   Leaf writing paper          Pear                     Oak floor (your home)

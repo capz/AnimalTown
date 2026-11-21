@@ -250,6 +250,19 @@ def run(context):
         for _ in range(4):press('D_DOWN')
         press('A');press('D_UP');shot('reply-mailbox');press('A');shot('reply');press('X');close();close();save()
     elif mode=='mail':
+        # Exercise the actual backpack entry points before reading incoming mail.
+        # The final saved-record verifier checks exact paper/gift consumption.
+        press('X');press('A');shot('stationery-actions');press('A')
+        if view()['screen']!='letter-recipient':raise AssertionError('Stationery lacks its working Write a letter action')
+        shot('backpack-recipient');press('B')
+        if view()['screen']!='menu' or view()['selected']!=0:raise AssertionError('Recipient back lost the originating backpack slot')
+        press('A');press('A');press('A');press('Y');shot('eligible-presents')
+        press('B');press('B');press('D_DOWN');press('A')
+        if view()['screen']!='menu' or view()['selected']!=0:raise AssertionError('Discarding the draft did not return to the backpack')
+        press('B');press('X');press('D_DOWN');press('A');shot('gift-actions')
+        press('D_DOWN');press('A')
+        if view()['screen']!='letter-recipient':raise AssertionError('Gift lacks its working Attach to letter action')
+        press('A');type_text('Hello!');shot('backpack-present-draft');press('START');press('D_DOWN');press('A');dialogue();close()
         # Fixture starts beside the front door of the resident's own house.
         press('A');guest(1)
         for _ in range(4):press('D_DOWN')

@@ -7,6 +7,15 @@
   "baseCommit": "7e3dd9599709f553d13d538a320a13f3d410e861",
   "requestSummaries": [
     {
+      "id": "complete-offline-item-actions",
+      "lines": [
+        "Write letters and attach presents straight from your backpack.",
+        "Both writing papers open the letter composer; eligible gifts can be attached.",
+        "Cancelling preserves your items and returns to the menu you started from.",
+        "Floor, wallpaper and furniture actions respect the current home context."
+      ]
+    },
+    {
       "id": "dol-relative-content-sdk-376",
       "lines": [
         "Load standalone game assets beside the launched DOL.",
