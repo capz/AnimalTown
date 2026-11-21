@@ -1,0 +1,86 @@
+{
+  "scenario": "final-preparation-recovery",
+  "source": {
+    "sourceCommit": "0fa5c3190cc1369554ca560871640db3e811a3f5",
+    "sourceVersion": "0.80.0+0fa5c3190cc1",
+    "sourceDigest": "210096E3A0E5789A791F9CD57F62565DC74B3741CC63D4B582B26D3842E5B91E",
+    "image": "offline-jobs-0fa5-qualification.iso",
+    "imageSHA256": "bdbee2967466c19c1d7b04a110e8cdf2f8209ca163e5e0928e4f04768a0be621",
+    "nativeDolSHA256": "7bdc3190d99cfad9b06c70083cee067d4345ceb8bf51e6531d110abd377109a9",
+    "qualificationOnly": true,
+    "concurrentBuild": true,
+    "cpuTimingComparable": false,
+    "jobsHarnessSHA256": "ad704925eae955a4dc3afd85e289aaa9d2fb3a9db134da44c755849fd1af4cc1",
+    "fixtureOrigin": "Copies of the actual interrupted 112bd461f7fb maximum-economy pair. Home sequence4/Prepared/locked; destination legacy unchanged.",
+    "preservedOriginal": "final-112b-economy"
+  },
+  "controlsCompleted": false,
+  "savedStatePassed": true,
+  "saveTotalsMs": [
+    221394
+  ],
+  "nativeOom": true,
+  "screenshotTimesUtcEpochSeconds": {
+    "jobs-maximum-recovery-returned.png": 1795227420.0444138,
+    "jobs-maximum-recovery-arrived.png": 1795227419.7298198,
+    "jobs-maximum-recovery-travel-confirm.png": 1795225868.2382123,
+    "jobs-maximum-recovery-travel.png": 1795225867.0375578,
+    "jobs-maximum-recovery-recovered.png": 1795225732.392815,
+    "jobs-maximum-recovery-world.png": 1795225732.1093776,
+    "jobs-maximum-recovery-recheck.png": 1795224555.0606122,
+    "jobs-maximum-recovery-locked.png": 1795224552.5216925,
+    "jobs-recovery-picker.png": 1795224551.148938
+  },
+  "protocolCompleted": true,
+  "maximumLetterBodiesVerified": 1024,
+  "maxVisitorJobSlotVerified": 99,
+  "finishedTripAndBothUnlockedVerified": true,
+  "finalCheckpointPassed": false,
+  "failure": "Post-return save fragmentation, fixed and requalified in final-stream-post-travel",
+  "recoveryToWorldSeconds": 1177.0487654209137,
+  "returnToWorldSeconds": 1551.491607427597,
+  "cards": [
+    {
+      "file": "MemoryCardA.USA.raw",
+      "imageBytes": 16777216,
+      "physicalBlockBytes": 8192,
+      "directories": [
+        [
+          {
+            "game": "AMTE01",
+            "name": "AnimalTown",
+            "blocks": 1026
+          }
+        ],
+        [
+          {
+            "game": "AMTE01",
+            "name": "AnimalTown",
+            "blocks": 1026
+          }
+        ]
+      ]
+    },
+    {
+      "file": "MemoryCardB.USA.raw",
+      "imageBytes": 16777216,
+      "physicalBlockBytes": 8192,
+      "directories": [
+        [
+          {
+            "game": "AMTE01",
+            "name": "AnimalTown",
+            "blocks": 1026
+          }
+        ],
+        [
+          {
+            "game": "AMTE01",
+            "name": "AnimalTown",
+            "blocks": 1026
+          }
+        ]
+      ]
+    }
+  ]
+}

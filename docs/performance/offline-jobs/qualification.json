@@ -1,0 +1,265 @@
+{
+  "sourceCommit": "1d59404cb5aa45ef8e2f6e6d3370bf5499624548",
+  "command": "pwsh tools/test-changes.ps1 -BaseRef 90fbdd7967879f1256f77e43c47a77a1756d1354 -NativeInProcess",
+  "result": "passed",
+  "gameplayRenderTextureChecks": 4713196,
+  "renderingServiceChecks": 347358,
+  "cardAdapterChecks": 889,
+  "recordStoreChecks": 57856,
+  "legacyMailConversionPhysicalWriteCuts": 391,
+  "archiveGrowthPhysicalWriteCuts": 89,
+  "travelDepartureWrites": 16,
+  "travelReturnWrites": 20,
+  "nativeModes": [
+    "normal collection",
+    "forced collection"
+  ],
+  "nativeManagedCapacityBytes": 6291456,
+  "nativeCoreBytes": 68312,
+  "nativeMaximumEnvelopeBytes": 76296,
+  "maximumMailCombinedSaveBytes": 1447176,
+  "maximumEconomyCombinedSaveBytes": 1702736,
+  "unicodeImmutableTableBytes": 46344,
+  "maximumScalarBodyPayloadBytes": 2632,
+  "clockOnlyCheckpoint": {
+    "logicalRecords": 4,
+    "encodedBytes": 1336,
+    "physicalSectors": 8,
+    "physicalBytes": 65536,
+    "terrainRewritten": false,
+    "economyRewritten": false
+  },
+  "limits": [
+    "Native resource figures use x64 host layout, not a PPC retained-object count.",
+    "Runtime frames and card timings are Dolphin observations; physical GameCube and SD boot remain hardware qualification."
+  ],
+  "legacyCombinedSaveFixtures": {
+    "snowCatalog1": "3cf5461403da897764a57d73645dbef6c6fdd1171115c5e0589bcaa3723f1dd6",
+    "jobsCatalog2": "43da3f4ffa597d02b39b93914e402861bc789ffb5bb46848b252bdc13c302274"
+  },
+  "additionalSaveCompatibilityChecks": 36191,
+  "sourceNote": "Full routed checks passed on the working-tree source committed as 1d59404, including the exact-size reserved allocator, streamed atlas reader, scoped town lifetime, native filesystem seek/read and normal/forced collection. Backend used a fresh disposable database.",
+  "nativeImageBeforeUnwindRemoval": {
+    "sourceCommit": "112bd461f7fb0baa0068475aff72e4c09e883a10",
+    "textBytes": 7934592,
+    "dataBytes": 884416,
+    "bssBytes": 7228544,
+    "fileBytes": 8819264,
+    "sha256": "aa54e9a92c948e5a8170369f9833a3c53c9d1336fbcf94024317f02a8ee8c498",
+    "ehFrameBytes": 413988,
+    "nativeUnwindRuntimeSymbols": false
+  },
+  "nativeImageAfterUnwindRemoval": {
+    "sourceCommit": "cbbe8cf522e57a361b628d6a0f1c9dfa5b1fbdb0",
+    "textBytes": 7934592,
+    "dataBytes": 503584,
+    "bssBytes": 7228544,
+    "fileBytes": 8438432,
+    "sha256": "29a3c021b31412565e8f09baa21f24cdd9c6ce82bebd7d8bf606feb4645b2f75",
+    "loadedSectionBytes": 15666720,
+    "loadedBytesSaved": 380832
+  },
+  "freshCardCIScenarios": {
+    "passed": true,
+    "results": [
+      {
+        "mode": "delivery",
+        "passed": true
+      },
+      {
+        "mode": "mail",
+        "passed": true
+      }
+    ]
+  },
+  "additionalNativeMigrationRegression": {
+    "passed": true,
+    "normalCollection": true,
+    "forcedCollection": true,
+    "retainsFullValidationSnapshotDuringCopy": true,
+    "fullTownDecode": true,
+    "fixtureProgramSHA256": "5e9a5487c7cde653f6d63a7f40412fd15a2d2255c6bece3d6c86c38863f685ee",
+    "sourceNote": "Retains both inspected full towns during legacy validation; returns home, unwinds transfer frames and saves with sixty-four retained renderer-sized buffers.",
+    "postReturnWorldBufferBytes": 2097152
+  },
+  "priorSourceQualification": {
+    "sourceCommit": "0fa5c3190cc1369554ca560871640db3e811a3f5",
+    "command": "pwsh tools/test-changes.ps1 -BaseRef cbbe8cf522e57a361b628d6a0f1c9dfa5b1fbdb0 -NativeInProcess"
+  },
+  "nativeExtentResults": [
+    {
+      "mode": "normal collection",
+      "stages": [
+        {
+          "stage": 11,
+          "peakExtentBytes": 68376,
+          "afterGcExtentBytes": 68376,
+          "capacityBytes": 6291456,
+          "hostCpuMs": 0.032
+        },
+        {
+          "stage": 12,
+          "peakExtentBytes": 144672,
+          "afterGcExtentBytes": 144672,
+          "capacityBytes": 6291456,
+          "hostCpuMs": 0.038
+        },
+        {
+          "stage": 0,
+          "peakExtentBytes": 144840,
+          "afterGcExtentBytes": 696,
+          "capacityBytes": 6291456,
+          "hostCpuMs": 0.001
+        },
+        {
+          "stage": 1,
+          "peakExtentBytes": 993888,
+          "afterGcExtentBytes": 308056,
+          "capacityBytes": 6291456,
+          "hostCpuMs": 8.533
+        },
+        {
+          "stage": 2,
+          "peakExtentBytes": 4587328,
+          "afterGcExtentBytes": 440504,
+          "capacityBytes": 6291456,
+          "hostCpuMs": 181.703
+        },
+        {
+          "stage": 3,
+          "peakExtentBytes": 6291456,
+          "afterGcExtentBytes": 440504,
+          "capacityBytes": 6291456,
+          "hostCpuMs": 417.285
+        },
+        {
+          "stage": 4,
+          "peakExtentBytes": 6291456,
+          "afterGcExtentBytes": 440504,
+          "capacityBytes": 6291456,
+          "hostCpuMs": 4767.796
+        },
+        {
+          "stage": 5,
+          "peakExtentBytes": 6291456,
+          "afterGcExtentBytes": 440504,
+          "capacityBytes": 6291456,
+          "hostCpuMs": 1046.488
+        },
+        {
+          "stage": 6,
+          "peakExtentBytes": 6291456,
+          "afterGcExtentBytes": 440504,
+          "capacityBytes": 6291456,
+          "hostCpuMs": 6869.323
+        },
+        {
+          "stage": 7,
+          "peakExtentBytes": 6291456,
+          "afterGcExtentBytes": 440504,
+          "capacityBytes": 6291456,
+          "hostCpuMs": 909.551
+        }
+      ]
+    },
+    {
+      "mode": "forced collection",
+      "stages": [
+        {
+          "stage": 11,
+          "peakExtentBytes": 68376,
+          "afterGcExtentBytes": 68376,
+          "capacityBytes": 6291456,
+          "hostCpuMs": 0.11
+        },
+        {
+          "stage": 12,
+          "peakExtentBytes": 144672,
+          "afterGcExtentBytes": 144672,
+          "capacityBytes": 6291456,
+          "hostCpuMs": 0.715
+        },
+        {
+          "stage": 0,
+          "peakExtentBytes": 144840,
+          "afterGcExtentBytes": 696,
+          "capacityBytes": 6291456,
+          "hostCpuMs": 0.01
+        },
+        {
+          "stage": 1,
+          "peakExtentBytes": 967032,
+          "afterGcExtentBytes": 266680,
+          "capacityBytes": 6291456,
+          "hostCpuMs": 203.211
+        },
+        {
+          "stage": 2,
+          "peakExtentBytes": 1132184,
+          "afterGcExtentBytes": 435040,
+          "capacityBytes": 6291456,
+          "hostCpuMs": 5680.23
+        },
+        {
+          "stage": 3,
+          "peakExtentBytes": 6291456,
+          "afterGcExtentBytes": 435040,
+          "capacityBytes": 6291456,
+          "hostCpuMs": 589.123
+        },
+        {
+          "stage": 4,
+          "peakExtentBytes": 6291456,
+          "afterGcExtentBytes": 435040,
+          "capacityBytes": 6291456,
+          "hostCpuMs": 10499.306
+        },
+        {
+          "stage": 5,
+          "peakExtentBytes": 6291456,
+          "afterGcExtentBytes": 435040,
+          "capacityBytes": 6291456,
+          "hostCpuMs": 2148.552
+        },
+        {
+          "stage": 6,
+          "peakExtentBytes": 6291456,
+          "afterGcExtentBytes": 435040,
+          "capacityBytes": 6291456,
+          "hostCpuMs": 14807.156
+        },
+        {
+          "stage": 7,
+          "peakExtentBytes": 6291456,
+          "afterGcExtentBytes": 435040,
+          "capacityBytes": 6291456,
+          "hostCpuMs": 2084.139
+        }
+      ]
+    }
+  ],
+  "nativeExtentIsLiveUsage": false,
+  "evidenceInterpretation": "Controller completion uses controls_completed; independent jobs-state.json passed verifies committed game state. Original recovery controls failed at the final checkpoint and remain recorded as failed.",
+  "saveBufferReservedPayloadBytes": 1703936,
+  "maximumRecoveryProtocol": "final-preparation-recovery-timings.json",
+  "maximumReturnedTownCheckpoint": "final-stream-post-travel-timings.json",
+  "finalQuietResources": "resources-final.json",
+  "productionCandidateCI": {
+    "sourceCommit": "1d59404cb5aa45ef8e2f6e6d3370bf5499624548",
+    "passed": true,
+    "buildAndReleaseRun": 44862609405,
+    "waterValidationRun": 44862609330,
+    "release": "https://github.com/capz/AnimalTown/releases/tag/v0.80.0%2B1d59404cb5aa"
+  },
+  "titleReloadRegression": "maximum-title-reload-fragmentation-regression.json",
+  "streamedAtlasNativeFilesystemCases": 14,
+  "currentNativeImage": {
+    "sourceCommit": "1d59404cb5aa45ef8e2f6e6d3370bf5499624548",
+    "textBytes": 7963968,
+    "dataBytes": 503904,
+    "bssBytes": 7228564,
+    "loadedSectionBytes": 15696436,
+    "fileBytes": 8468128,
+    "sha256": "64bf145ad4299f2974ae9d3b69227825597e46493133558fa9849e67e574fb62"
+  }
+}

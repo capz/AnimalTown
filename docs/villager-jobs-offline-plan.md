@@ -13,7 +13,9 @@ This plan expands its short roadmap and makes offline travel and NPC migration
 required for the final twelve-template milestone. Internet services and
 simultaneous network multiplayer are separate work.
 
-Implementation and qualification evidence is tracked in [the delivery report](villager-jobs-offline-implementation.md).
+All fourteen phases are implemented in [PR 136](https://github.com/capz/AnimalTown/pull/136).
+The [delivery report](villager-jobs-offline-implementation.md) records verification,
+resource costs, captures and the remaining physical-hardware qualification.
 
 ## Scope and parity
 
@@ -67,10 +69,10 @@ planning update. These are the existing pieces to extend:
   extension projected into the incremental NPC runtime record.
 * Migration, malformed-data, probability, clock and interrupted-write checks.
 
-The current code does not issue complete offers, accept jobs, bind unique
-parcels, detect objectives or award job entitlements. The patience-completion API
-still needs a real conversation-session adapter. Existing simple requests remain
-active until the replacement passes its release gates.
+At that foundation baseline, the code did not issue complete offers, accept jobs,
+bind unique parcels, detect objectives or award job entitlements. The patience-completion API
+then needed a conversation-session adapter. The simple requests remained active
+until the complete replacement was integrated.
 
 ### Required template coverage
 

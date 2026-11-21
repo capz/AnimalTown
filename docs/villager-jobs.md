@@ -1,4 +1,9 @@
-# Villager jobs: implementation plan and first slice
+# Villager jobs: historical foundation and first slice
+
+This report describes [foundation PR 131](https://github.com/capz/AnimalTown/pull/131).
+For the complete offline implementation and current validation, see the
+[delivery report](villager-jobs-offline-implementation.md) and
+[full phased plan](villager-jobs-offline-plan.md).
 
 The best fit is a deterministic domain service inside `AnimalTown.Domain`, with
 thin adapters to the existing inventory, profiles, relationships, clock, world
@@ -7,7 +12,7 @@ or copy of the inventory. The supplied [v1 specification](specs/villager-jobs-v1
 is the behavioral contract, including its explicit engineering adaptations.
 The archived spec normalizes four Markdown hard breaks; its wording is preserved.
 
-This PR starts the implementation. It does **not** expose the new jobs in the
+The foundation PR started the implementation. It did **not** expose the new jobs in the
 game, replace the existing daily requests, or claim the specification's full
 definition of done. In particular, it cannot yet accept, complete or pay a job.
 The existing tutorial and shop-owner work remain separate systems.

@@ -1,0 +1,11 @@
+{
+  "passed": true,
+  "allFourMailboxes": 128,
+  "scalarsPerBody": 1000,
+  "lettersVerified": 512,
+  "postReloadPlayerX": 30.713867,
+  "convertedSource": "final-112b-max",
+  "saveQuitAndTitleReload": "final-112b-max-retry",
+  "coldReloadAndChangedCheckpoint": "final-112b-max-checkpoint",
+  "measurementFailures": "The first two long runs reached the actual reloaded world. Their secondary AA profiler respectively tried another mode or stayed disabled after title settings restoration; neither run is labelled an overall passing controller run. The final checkpoint uses ordinary movement and saving, followed by independent maximum-mail verification."
+}

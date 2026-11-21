@@ -1,0 +1,12 @@
+{
+  "sourceCommit": "112bd461f7fb0baa0068475aff72e4c09e883a10",
+  "sourceVersion": "0.80.0+112bd461f7fb",
+  "image": "offline-jobs-112b-official.nkit.iso",
+  "imageSHA256": "22e0228137d334382ed296f2831cb3e8e4e30fbe838ab8a36b3eedc5118fc785",
+  "nativeDolSHA256": "aa54e9a92c948e5a8170369f9833a3c53c9d1336fbcf94024317f02a8ee8c498",
+  "qualificationOnly": false,
+  "concurrentBuild": false,
+  "fixture": "outfits-winter",
+  "clock": "2027-01-15T21:00:00Z",
+  "harnessChange": "Reuse the active AA-off capture mode across captures; January town fixture prevents the intentional calendar rollback guard retaining summer terrain."
+}

@@ -1,0 +1,37 @@
+{
+  "sourceCommit": "0fa5c3190cc1369554ca560871640db3e811a3f5",
+  "sourceVersion": "0.80.0+0fa5c3190cc1",
+  "mainCommit": "48a0adcb79adc793b00a7647fd1caa190a0e8125",
+  "cleanGameBuild": true,
+  "cleanStandaloneBuild": true,
+  "cleanBackendBuild": true,
+  "packageValidationPassed": true,
+  "published": false,
+  "assets": [
+    {
+      "name": "AnimalTown-0.80.0+0fa5c3190cc1.nkit.iso",
+      "bytes": 43909120,
+      "sha256": "a5ab31e7ad4bea3c543485a654c51b16a6cf959c0557c33683ce9ab0ecd2c907"
+    },
+    {
+      "name": "AnimalTown-0.80.0+0fa5c3190cc1-depot.zip",
+      "bytes": 13886863,
+      "sha256": "f0d5ae86db00d235b92742ec0796402bcb6ed58ed1860363dc1612328f792f5d"
+    },
+    {
+      "name": "AnimalTown-server-0.80.0+0fa5c3190cc1.zip",
+      "bytes": 885983,
+      "sha256": "73f542d0aeac561a9e693954a8b47e8b9b8b23c897e7494f4124aebc1747d00f"
+    },
+    {
+      "name": "AnimalTown-tools-0.80.0+0fa5c3190cc1.zip",
+      "bytes": 154150497,
+      "sha256": "80e3edf6840a785532a1f3492ea1aa6b3cd021e2acc3de4035a3abc522607ed7"
+    },
+    {
+      "name": "update.json",
+      "bytes": 354,
+      "sha256": "2427603645432e7235c807b4d3f8ef744e7cbb5f8532c3998d4f64f0e073985b"
+    }
+  ]
+}

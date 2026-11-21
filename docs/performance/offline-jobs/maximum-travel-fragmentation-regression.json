@@ -1,0 +1,24 @@
+{
+  "sourceCommit": "0fa5c3190cc1369554ca560871640db3e811a3f5",
+  "sourceVersion": "0.80.0+0fa5c3190cc1",
+  "protocolCompleted": true,
+  "returnedStateStrictlyVerified": true,
+  "all1024FullBodiesVerified": true,
+  "finalCheckpointControlsPassed": false,
+  "failure": "Contiguous 1,669,744-byte economic buffer unavailable after world reload; 3,394,296 bytes free, largest 1,565,416.",
+  "heapCapacityBytes": 6291456,
+  "preservedOriginal": "final-preparation-recovery",
+  "followupCase": "final-reserve-post-travel",
+  "cards": {
+    "MemoryCardB.USA.raw": "dc51ab3c09815703ddb7578a3ad90c0813a73e475c144f509fa0867377f3e60f",
+    "MemoryCardA.USA.raw": "68080be790c1e632eb22e93a7a59285b77a1263523cce70f4827c6789f65f2cd"
+  },
+  "finalFollowup": {
+    "sourceCommit": "1d59404cb5aa45ef8e2f6e6d3370bf5499624548",
+    "case": "final-stream-post-travel",
+    "controllerSequencePassed": true,
+    "strictBothTownStatePassed": true,
+    "letterBodiesVerified": 1024,
+    "preservedActualVisitorCheckpointVerified": true
+  }
+}

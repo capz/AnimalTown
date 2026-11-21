@@ -1,0 +1,73 @@
+{
+  "mode": "insect",
+  "passed": true,
+  "sequence": 2,
+  "activeProfile": 0,
+  "visiting": false,
+  "position": {
+    "X": 29.70996,
+    "Z": 41.36035,
+    "Space": 0
+  },
+  "wallet": 0,
+  "completed": true,
+  "mailCount": 0,
+  "pockets": [
+    34,
+    2,
+    2,
+    2,
+    2,
+    27,
+    14,
+    11,
+    7,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+  ],
+  "bindings": [],
+  "outfits": [
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+  ],
+  "jobs": [
+    {
+      "template": "FavorInsect",
+      "status": "CompletedRetained",
+      "target": -1,
+      "Item": 0,
+      "FlowerBaseline": 0,
+      "HomeAcre": 0
+    }
+  ],
+  "terminals": [
+    {
+      "template": "FavorInsect",
+      "reason": "Success",
+      "At": 1815652854
+    }
+  ]
+}
