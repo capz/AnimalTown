@@ -5,23 +5,42 @@ internal static class RunningMinimapChecks
     internal static void Run(Action<bool,string> check)
     {
         var m=new RunningMinimap();
-        m.Update(0,true,true);m.Update(6000000,true,true);
-        check(!m.Visible,"minimap needs more than six continuous running seconds");
-        m.Update(6000001,true,true);check(m.Visible,"continuous running reveals minimap");
-        m.Update(7000000,false,true);m.Update(10999999,false,true);
-        check(m.Visible,"minimap remains throughout the four-second stopping grace");
-        m.Update(11000000,false,true);check(!m.Visible,"minimap hides four seconds after the first non-running update");
-        m.Update(12000000,true,true);m.Update(16000000,false,true);
-        m.Update(17000000,true,true);m.Update(22000000,true,true);
-        check(!m.Visible,"separate short running bursts do not accumulate");
-        m.Update(23000001,true,true);check(m.Visible,"a new uninterrupted streak can reveal the map");
-        m.Update(24000000,false,true);m.Update(26000000,true,true);m.Update(30000000,true,true);
-        check(m.Visible,"resuming during the grace period keeps the visible map");
-        m.Update(31000000,false,false);check(!m.Visible,"menus and interiors hide and reset the outdoor minimap");
-        m.Update(32000000,true,true);m.Update(38000000,true,true);check(!m.Visible,"returning outdoors requires a fresh full streak");
-        m.Update(38000001,true,true);check(m.Visible,"outdoor running resumes normal timing");
-        m.Update(100,true,true);check(!m.Visible,"a clock rollback starts a new streak without stale visibility");
-        m.Update(6000100,true,true);check(!m.Visible,"rollback streak also uses the strict six-second boundary");
-        m.Update(6000101,true,true);check(m.Visible,"clock rollback recovers");
+        m.Update(0,true,true);m.Update(1_999_999,true,true);
+        check(m.Opacity==0,"the minimap stays hidden before two continuous running seconds");
+        m.Update(2_000_000,true,true);m.Update(2_125_000,true,true);
+        check(m.Opacity==128,"the minimap fades in after two seconds of running");
+        m.Update(2_250_000,true,true);
+        check(m.Opacity==255,"the minimap reaches full opacity");
+        m.Update(3_000_000,false,true);m.Update(6_000_000,true,true);
+        check(m.Opacity==255,"resuming during the grace period keeps the minimap visible");
+        m.Update(7_000_000,false,true);m.Update(10_999_999,false,true);
+        check(m.Opacity==255,"the minimap remains fully visible throughout the stopping grace period");
+        m.Update(11_000_000,false,true);m.Update(11_125_000,false,true);
+        check(m.Opacity==128,"the minimap fades out after the four-second grace period");
+        m.Update(11_250_000,false,true);
+        check(m.Opacity==0,"the minimap finishes fading out");
+
+        m.Update(12_000_000,true,true);m.Update(13_000_000,false,true);
+        m.Update(14_000_000,true,true);m.Update(15_500_000,true,true);
+        check(m.Opacity==0,"separate short running bursts do not accumulate");
+        m.Update(16_000_000,true,true);m.Update(16_250_000,true,true);
+        m.Update(17_000_000,false,false);
+        check(m.Opacity==0,"leaving the outdoor HUD clears the minimap");
+        m.Update(18_000_000,true,true);m.Update(19_999_999,true,true);
+        check(m.Opacity==0,"returning outdoors requires a fresh streak");
+        m.Update(20_000_000,true,true);m.Update(20_250_000,true,true);
+        check(m.Opacity==255,"a fresh outdoor streak reveals the minimap");
+        m.Update(100,true,true);
+        check(m.Opacity==0,"a clock rollback clears stale visibility");
+
+        var clock=new HudFade();
+        clock.Update(0,true);clock.Update(250_000,true);
+        check(clock.Opacity==255,"the clock fades in when the player is stationary");
+        clock.Update(300_000,false);clock.Update(425_000,true);
+        check(clock.Opacity==128,"stopping partway through the clock fade keeps the current opacity");
+        clock.Update(487_500,true);
+        check(clock.Opacity==191,"the clock fades back in from the current opacity");
+        clock.Update(550_000,true);clock.Update(600_000,false);clock.Update(850_000,false);
+        check(clock.Opacity==0,"the clock fully fades out when the player keeps running");
     }
 }
