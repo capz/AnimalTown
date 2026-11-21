@@ -6,6 +6,7 @@
 TownFrameCounters town_frame_counters;
 static bool active;
 static int flushes;
+uint32_t animaltown_profile_clock(void){static uint32_t ticks;return ++ticks;}
 int dnd_raw_depth(void){return 0;}
 bool dnd_device_active(void){return active;}
 void dnd_draw_backend_wait(void){}
@@ -24,6 +25,7 @@ static void residency_checks(DndArray *vertices,DndArray *indices){
     assert(animaltown_terrain_append(0,104,source,0)==2);
     assert(animaltown_terrain_complete(0)==1&&dnd_draw_release(source)==0);
     int view=animaltown_terrain_view();assert(view&&animaltown_terrain_bind(view,0)==1);
+    assert(animaltown_terrain_stat(10)>0&&animaltown_terrain_stat(11)<TA_CACHE&&animaltown_terrain_stat(12)==1&&animaltown_terrain_stat(13)>0&&animaltown_terrain_stat(14)>0);
     int aram=dnd_aram_stat(1),payload=animaltown_terrain_stat(5),resident=dnd_draw_total_bytes();
     int metadata=animaltown_terrain_stat(0)-TA_CACHE;
     assert(animaltown_terrain_suspend()==-1); /* A live mesh alias prevents release. */

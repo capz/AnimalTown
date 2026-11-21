@@ -38,7 +38,9 @@ internal static class Program
     }
     private static void RunTown(DevConfig config)
     {
+        FrameProfile.Checkpoint(1);
         var session=TownSession.Load();LoadingScreen.Finish();
+        FrameProfile.Checkpoint(2);
         try{
             if(!ProfilePicker.Run(session))return;
             if(session.Draft!=null&&!OnboardingFlow.Run(config,session))return;
@@ -59,15 +61,15 @@ internal static class Program
         DebugOverlay.WriteLine("ANIMALTOWN ARAM INIT READY");
         LoadingScreen.Pulse();
         DebugOverlay.WriteLine("ANIMALTOWN GAME CONSTRUCT BEGIN");
-        using var game=new TownGame(config,session);
+        FrameProfile.Checkpoint(3);using var game=new TownGame(config,session);FrameProfile.Checkpoint(4);
         DebugOverlay.WriteLine("ANIMALTOWN GAME CONSTRUCT READY");
         AnimalTown.GameCube.NativeTexturePages.Collect();
         long previous=Clock.Timestamp;double accumulator=0;
         try{
             while(true)
             {
-                game.AdvanceLoading();
-                FrameProfile.Begin();game.AdvanceResidency();long simulation=FrameProfile.Start();
+                FrameProfile.Begin();long loading=FrameProfile.Start();game.AdvanceLoading();FrameProfile.End(2,loading);
+                game.AdvanceResidency();long simulation=FrameProfile.Start();
                 long now=Clock.Timestamp;accumulator+=(now-previous)/1000000.0;previous=now;if(accumulator>.1334)accumulator=.1334;
                 Controller.Update();var pad=Controller.GetState(0);game.Input(pad);
                 if(game.TravelRestartRequested)return TownGame.TravelRestart;
@@ -178,7 +180,8 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
     private const int SettingsTab=5,TestingTab=6,DaylightSettingsRow=6;
     // Stable IDs keep hidden/retired controls out of both debug menus.
     private const int SeasonPreviewOption=18,TimePreviewOption=39;
-    private static readonly int[] testingOptions={0,33,2,3,11,12,13,16,17,35,SeasonPreviewOption,TimePreviewOption,19,21,22,23,34,36,37,38,31,32,30};
+    private const int WarmTerrainOption=40,ProfilingModeOption=41,ExportProfileOption=42;
+    private static readonly int[] testingOptions={0,33,2,3,11,12,13,16,17,35,SeasonPreviewOption,TimePreviewOption,19,21,22,23,34,36,37,38,31,32,30,WarmTerrainOption,ProfilingModeOption,ExportProfileOption};
     private static readonly string[] groundMipLabels={"0","1"};
     private static int TestingOption(int row)=>testingOptions[row];
     private static readonly string[] tabs={"Backpack","Jobs","Catalog","Home","Post office","Settings","Debug / testing"};
@@ -229,6 +232,7 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
         renderDebug.ShowGroundMipBands=config.Values[DevConfig.GroundMipBandsIndex]!=0;
         terrain.FreezeMotion=config.Values[24]!=0;terrain.RecreateMeshes=config.Values[25]!=0;if(config.Values[26]!=0)terrain.ToggleGroundRing();
         renderDebug.DiscardTerrainCacheWhenIndoors=config.Values[DevConfig.DiscardTerrainCacheWhenIndoorsIndex]!=0;
+        terrain.WarmTerrainPrefetch=config.Values[DevConfig.WarmTerrainPrefetchIndex]!=0;
         NativeRim.Enable(0);
     }
     private void FindStartingPlot()
@@ -384,6 +388,7 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
         terrain.DiscardTerrainCacheWhenIndoors=renderDebug.DiscardTerrainCacheWhenIndoors;
         if(room==0||exiting||outdoorModelLookahead||!renderDebug.DiscardTerrainCacheWhenIndoors){
             float x=state.X,z=state.Z;
+            if(room==0&&waterInspection!=0){float savedX=state.X,savedZ=state.Z;try{WaterInspection.Focus(state,waterInspection);x=state.X;z=state.Z;}finally{state.X=savedX;state.Z=savedZ;}}
             if(room!=0){if(exiting){x=crossing.Destination.X;z=crossing.Destination.Z;}else BuildingWorld.Entrance(state,BuildingWorld.Building(room),out x,out z);}
             int allowance=Math.Min(500,Math.Max(0,residencyBudgetUs-(int)(Clock.Timestamp-at)));
             terrainExitReady=terrain.PrepareOutdoorResidency(x,z,Clock.Timestamp+allowance,room!=0);
@@ -531,7 +536,7 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
             if(left||right){renderDebug.AdjustGroundMipDistance(right?1:-1);return;}
             if(p.X.WasPressed){renderDebug.ResetGroundMipDistance();return;}
         }
-        if(p.L.IsHeld&&p.R.IsHeld&&p.Z.WasPressed){FrameProfile.Enabled=!FrameProfile.Enabled;return;}
+        if(p.L.IsHeld&&p.R.IsHeld&&p.Z.WasPressed){FrameProfile.Enabled=!FrameProfile.OverlayVisible;debugConfig.SelectProfilingMode(FrameProfile.Mode);return;}
         if(p.L.IsHeld&&p.R.IsHeld)return;
         if(screen==DaylightLocationMenu.Screen){
             if(p.B.WasPressed||p.Start.WasPressed){screen="menu";return;}
@@ -712,7 +717,15 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
             case 32:
                 int added=state.GiveMoney(10000,godMode);
                 Say("God mode",!godMode?"Enable God mode to give yourself acorns.":added==0?"Your wallet is full.":"Added "+UiFont.Money(added)+". Wallet: "+UiFont.Money(state.Wallet)+".");break;
-            case 0:FrameProfile.Enabled=!FrameProfile.Enabled;break;
+            case 0:FrameProfile.Enabled=!FrameProfile.OverlayVisible;debugConfig.SelectProfilingMode(FrameProfile.Mode);break;
+            case WarmTerrainOption:
+                terrain.WarmTerrainPrefetch=!terrain.WarmTerrainPrefetch;
+                debugConfig.Values[DevConfig.WarmTerrainPrefetchIndex]=terrain.WarmTerrainPrefetch?1:0;
+                card?.Dispose();card=null;
+                if(!DevConfigStorage.Save(debugConfig))Say("Dev config",DevConfigStorage.Status);
+                break;
+            case ProfilingModeOption:FrameProfile.SetMode((FrameProfile.Mode+1)%4);debugConfig.SelectProfilingMode(FrameProfile.Mode);if(FrameProfile.Status.StartsWith("Capture refused"))Say("Profiling",FrameProfile.Status);break;
+            case ExportProfileOption:FrameProfile.DumpCapture();debugConfig.SelectProfilingMode(FrameProfile.Mode);break;
             case 2:case 3:
                 int next=uvDebug^(TestingOption(selected)==2?1:2);
                 if(modelResidency.AllReady)ApplyUv(next);else requestedUv=next;
@@ -754,7 +767,10 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
             case 31:return "God mode: "+OnOff(godMode)+" (session)";
             case 32:return "Give "+UiFont.Money(10000)+(godMode?"":" (God mode required)");
             case 33:return "Full-resolution AA: "+OnOff(VideoOptions.FullResolutionAa)+(VideoOptions.AaSaveFailed?" (not saved)":" (saved)");
-            case 0:return "Performance display: "+OnOff(FrameProfile.Enabled);
+            case 0:return "Performance display: "+OnOff(FrameProfile.OverlayVisible);
+            case WarmTerrainOption:return "Warm terrain prefetch: "+OnOff(terrain.WarmTerrainPrefetch);
+            case ProfilingModeOption:return "Profiling: "+DevConfig.ProfilingLabel(FrameProfile.Mode)+" (session)";
+            case ExportProfileOption:return "Export profiling capture to debug log";
             case 2:return "UV island colors: "+OnOff((uvDebug&1)!=0);
             case 3:return "UV island outlines: "+OnOff((uvDebug&2)!=0);
             case 11:return "Frame pacing: "+((RuntimeOptions.Mode&1)!=0?"Uncapped":"Yield");
@@ -1030,7 +1046,7 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
         foliage.Draw(renderer);
         if((weather.Raining(room)||weather.Snowing(room))&&villagers.Doors.PlayerFade<1)rain.Draw(renderer);
         FrameProfile.SubmissionEnd(4,submissionAt);
-        renderer.End3D();NativeShadows.Environment(0xffffff,preparedShadowStrength);ui.Begin();submissionAt=FrameProfile.SubmissionStart();DrawHud();if(FrameProfile.Enabled)ui.Flush();FrameProfile.SubmissionEnd(5,submissionAt);FrameProfile.End(8,phase);FrameProfile.Draw(ui);
+        renderer.End3D();NativeShadows.Environment(0xffffff,preparedShadowStrength);ui.Begin();submissionAt=FrameProfile.SubmissionStart();DrawHud();if(FrameProfile.OverlayVisible)ui.Flush();FrameProfile.SubmissionEnd(5,submissionAt);FrameProfile.End(8,phase);FrameProfile.Draw(ui);
         float fade=villagers.Doors.PlayerFade;if(fade>0)ui.FillRectangle(new RectF(0,0,640,480),new Color32(12,19,25,(byte)(fade*255)));
         phase=FrameProfile.Start();submissionAt=FrameProfile.SubmissionStart();ui.End();FrameProfile.SubmissionEnd(6,submissionAt);FrameProfile.End(8,phase);
         if(FrameProfile.Enabled)preparedSubmitMicroseconds+=Clock.Timestamp-submitAt;
@@ -1038,7 +1054,8 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
     }
     internal void RecordFrame()
     {
-        if(!resourcesReady||!FrameProfile.Enabled)return;
+        if(!FrameProfile.Enabled)return;
+        FrameProfile.TerrainState(terrain.WarmTerrainPrefetch,terrain.WarmQueued);
         int scene=screen=="map"?10:screen=="menu"&&menuTab==0?1:room!=0?2:screen=="world"?0:3;
         int drawingScene=batchedDrawing?(UiFont.Batched?scene:scene+32):scene+16;
         if(room==0){if(!terrain.Ready)drawingScene|=32768;if(terrain.MissingVisible>0)drawingScene|=16384;if(terrain.UrgentStages>0)drawingScene|=8192;}
@@ -1179,7 +1196,7 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
             Text("Your home and garden need 15 x 13 clear tiles.",48,402,ink,1);
             Text("Stick move   A choose spot   B back",48,430,ink,1.05f);return;
         }
-        if(FrameProfile.Enabled&&!AaStudy.Active){
+        if(FrameProfile.OverlayVisible&&!AaStudy.Active){
             if(++profileLabelFrames>=30){profileLabelFrames=0;profileNativeLabel="Native: "+NativeShadows.Stats(9)+" slots / "+NativeShadows.Stats(10)/1024+" KiB";profileShadowLabel=(room==0&&terrain.GroundRingActive?"Ring / ":"")+"Shadows: "+NativeShadows.Stats(0)+" pages / "+NativeShadows.Stats(2)+" updated";}
             Text("GX indexed / batched",420,397,ink,.8f);
             Text(profileNativeLabel,420,408,ink,.55f);

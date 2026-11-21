@@ -342,14 +342,20 @@ $storageSource=$storageSource.Replace('fail(-rc, "Memory card write failed.");',
 & python3 (Join-Path $Root 'tools/patch-managed-allocator.py') $nativeRoot
 if($LASTEXITCODE){throw 'Pinned allocation/frame profiling patch failed'}
 if($IsLinux){
-    foreach($fixture in @('managed-allocator','terrain-recycle','terrain-archive')){
+    foreach($fixture in @('managed-allocator','terrain-recycle','terrain-archive','profile')){
         $check=Join-Path $Root "out/native-$fixture-check"
         [string[]]$extra=@()
         if($fixture -eq 'managed-allocator'){$extra=@((Join-Path $nativeRoot 'source/managed_runtime.c'))}
         if($fixture -eq 'terrain-archive'){$extra=@((Join-Path $nativeRoot 'source/aram.c'))}
+        if($fixture -eq 'profile'){$extra=@((Join-Path $nativeRoot 'source/animaltown_frame_counters.c'))}
         & cc -std=c11 -O2 -Wall -Wextra -Werror -ffunction-sections -fdata-sections "-I$(Join-Path $nativeRoot 'include')" "-I$(Join-Path $nativeRoot 'source')" (Join-Path $Root "tests/native-$fixture.c") @extra '-Wl,--gc-sections' -lm -o $check
         if($LASTEXITCODE){throw "Native $fixture compilation failed"}
-        & $check
+        if($fixture -eq 'profile'){
+            $profileDump=Join-Path $Root 'out/native-profile.log'
+            & $check | Set-Content -LiteralPath $profileDump
+            if($LASTEXITCODE){throw 'Native profiling fixture failed'}
+            & python3 (Join-Path $Root 'tools/read-profile-dump.py') $profileDump --platform unknown | Set-Content -LiteralPath (Join-Path $Root 'out/native-profile.json')
+        }else{& $check}
         if($LASTEXITCODE){throw "Native $fixture checks failed"}
     }
 }

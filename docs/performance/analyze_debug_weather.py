@@ -46,7 +46,7 @@ for name in ('dry','storm'):
     low=marker('weather-'+name+'-start.png');high=marker('weather-'+name+'-end.png')
     rows=[r for r in decoded['groups'][0] if low<=r[2]<=high]
     if high<=low or len(rows)!=high-low+1:raise ValueError('Incomplete weather interval')
-    details=[decoded['details'][r[2]] for r in rows]
+    details=[decoded['details'][decoded['frame_keys'][id(r)]] for r in rows]
     result={'from_frame':low,'to_frame':high,'frames':len(rows),
         'frame_interval_ms':stats([r[16]/10 for r in rows]),'terrain_prepare_ms':stats([r[6]/10 for r in rows]),
         'terrain_build_stages':sum(r[23]&255 for r in rows),
