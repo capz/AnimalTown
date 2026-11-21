@@ -69,18 +69,18 @@ internal static class JobFixture
             foreach(var file in home.Files)File.WriteAllBytes(Path.Combine(output,file.Key),file.Value);foreach(var file in destinationDisk.Files)File.WriteAllBytes(Path.Combine(output+"-destination",file.Key),file.Value);return;
         }
         if(mode=="foreign"||mode=="moved"){CrossTown(output,mode);return;}
-        bool baseline=mode=="baseline",winter=mode=="snowman",destination=mode=="destination";long now=JobCalendar.At(2027,winter?1:7,15,mode=="letter"?7:12,mode=="letter"?58:0);var s=new GameState(destination?7320:7319){Name="Ari",Tutorial=baseline?6:7,HouseTier=1};s.Town.DaylightLocation=1;
-        s.Rollover((int)(now/86400),2027*12+(winter?1:7));s.Tutorial=baseline?6:7;if(!baseline)s.ResidentJobs.Enable(destination?0x41544a4f425332UL:0x41544a4f425331UL,now);
+        bool baseline=mode=="baseline",winter=mode is "snowman" or "outfits-winter",dressed=mode is "outfits-on" or "outfits-winter",destination=mode=="destination";long now=JobCalendar.At(2027,winter?1:7,15,mode=="letter"?7:12,mode=="letter"?58:0);var s=new GameState(destination?7320:7319){Name="Ari",Tutorial=baseline?6:7,HouseTier=1};s.Town.DaylightLocation=1;
+        s.Rollover((int)(now/86400),2027*12+(winter?0:6));s.Tutorial=baseline?6:7;if(!baseline)s.ResidentJobs.Enable(destination?0x41544a4f425332UL:0x41544a4f425331UL,now);
         bool placed=false;for(int z=20;z<Town.Height-13&&!placed;z++)for(int x=4;x<20&&!placed;x++)placed=s.PlaceHouse(x,z,false);if(!placed)throw new Exception("Job fixture requires a home plot");
         for(int z=28;z<52;z++)for(int x=20;x<54;x++){s.Town.Tiles[z*Town.Width+x]=(byte)Terrain.Grass;s.Town.Elevation[z*Town.Width+x]=0;}
         for(int i=s.Town.GroundCount-1;i>=0;i--){var g=s.Town.Ground[i];if(g.X>=20&&g.X<54&&g.Z>=28&&g.Z<52)s.Town.RemoveGround(i);}
         s.Space=0;s.X=30;s.Z=42.3f;s.Facing=(float)Math.PI;
         Array.Clear(s.Pockets);s.Pockets[0]=Catalog.WritingPaper;s.Pockets[1]=2;s.Pockets[2]=2;s.Pockets[3]=2;s.Pockets[4]=2;s.Pockets[5]=Catalog.Pear;s.Pockets[6]=14;s.Pockets[7]=15;s.Pockets[8]=Catalog.Shovel;
         if(baseline){s.Pockets[0]=Catalog.WorkShirt;s.Pockets[5]=1;}
-        for(int n=0;n<6;n++){var v=s.Town.Residents[n];v.Space=0;v.PosX=n==0?30:n==1?35.5f:30+(n-2.5f)*2.2f;v.PosZ=n==0?40.8f:n==1?42.3f:35;v.X=(int)v.PosX;v.Z=(int)v.PosZ;v.Dwell=36000;v.JourneyPhase=0;v.JourneyBuilding=-1;v.JourneyNextX=v.JourneyNextZ=-1;v.Yaw=0;s.Town.Jobs.SetOutfit(n,mode=="outfits-on"?Catalog.BerryShirt:0);}
+        for(int n=0;n<6;n++){var v=s.Town.Residents[n];v.Space=0;v.PosX=n==0?30:n==1?35.5f:30+(n-2.5f)*2.2f;v.PosZ=n==0?40.8f:n==1?42.3f:35;v.X=(int)v.PosX;v.Z=(int)v.PosZ;v.Dwell=36000;v.JourneyPhase=0;v.JourneyBuilding=-1;v.JourneyNextX=v.JourneyNextZ=-1;v.Yaw=0;s.Town.Jobs.SetOutfit(n,dressed?Catalog.BerryShirt:0);}
         if(mode=="mail"){s.Space=25;s.X=2;s.Z=2;}
         if(mode=="letter"){s.Space=25;s.X=2;s.Z=2;var n=s.Town.Residents[0];n.Space=25;n.PosX=2;n.PosZ=.8f;n.X=2;n.Z=0;n.JourneyPhase=3;n.JourneyBuilding=8;n.Dwell=36000;}
-        s.Shirt=mode=="outfits-on"?Catalog.StripedShirt:0;
+        s.Shirt=dressed?Catalog.StripedShirt:0;
         if(mode=="retrieval")s.Town.JobState.Offers.Restore(1); // First referral draw stops the chain.
         if(mode=="flowers"||mode=="snowman"){s.Town.Residents[0].HomeX=21;s.Town.Residents[0].HomeZ=41;}
         var l=s.Town.Jobs;JobTemplate template=mode=="property"?JobTemplate.DeliveryProperty:mode=="retrieval"?JobTemplate.RetrievalBorrowed:mode=="fruit"?JobTemplate.FavorFruit:mode=="fish"?JobTemplate.FavorFish:mode=="insect"?JobTemplate.FavorInsect:mode=="flowers"?JobTemplate.FavorFlowers:mode=="ball"?JobTemplate.FavorBall:mode=="snowman"?JobTemplate.FavorSnowman:mode=="letter"?JobTemplate.FavorLetter:JobTemplate.DeliveryClothing;
@@ -152,6 +152,7 @@ internal static class JobFixture
         if(verify&&mode=="recovery"&&(s.Visiting||s.ProfileLocked(0)||l.Trip.Pending))throw new Exception("Recovered traveller did not return home safely");
         if(verify&&mode=="moving"&&(other==null||l.NpcMove.Pending||other.Town.Jobs.NpcMove.Pending||l.Npc(1).Town!=other.Town.Jobs.TownId||other.Town.Jobs.Npc(0).Town!=l.TownId||l.Species(1)!=0||other.Town.Jobs.Species(0)!=1))throw new Exception("The confirmed NPC pair did not exchange identities and species on both cards");
         if(verify&&mode=="delivery"&&l.Outfit(1)!=Catalog.BerryShirt)throw new Exception("Delivery did not change the actual recipient's clothing");
+        if(verify&&(mode=="outfits-on"||mode=="outfits-winter")&&(s.Shirt!=Catalog.StripedShirt||Enumerable.Range(0,6).Any(n=>l.Outfit(n)!=Catalog.BerryShirt)))throw new Exception("The player and all six species must retain their actual outfits");
         if(verify&&mode=="mail"&&s.Find(Catalog.LeafShirt)<0)throw new Exception("The real mail attachment was not collected");
         var result=new{mode,passed=verify,sequence=s.Sequence,activeProfile=s.ActiveProfile,visiting=s.Visiting,position=new{s.X,s.Z,s.Space},wallet=s.Wallet,completed,mailCount=s.MailCount,pockets=s.Pockets,bindings=Enumerable.Range(0,s.Capacity).Where(s.IsJobItem),outfits=Enumerable.Range(0,6).Select(l.Outfit),jobs=jobs.Select(j=>new{template=j.Template.ToString(),status=j.Status.ToString(),target=l.FindNpc(j.Target),j.Item,j.FlowerBaseline,j.HomeAcre}),terminals=Enumerable.Range(0,16).Select(l.Terminal).Where(t=>!t.Job.IsEmpty).Select(t=>new{template=t.Template.ToString(),reason=t.Reason.ToString(),t.At})};
         string json=JsonSerializer.Serialize(result,new JsonSerializerOptions{WriteIndented=true});Console.WriteLine(json);File.WriteAllText(Path.Combine(directory,"..","jobs-state.json"),json+"\n");

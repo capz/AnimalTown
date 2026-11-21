@@ -45,6 +45,7 @@ def main():
         runtime.write_text('#include <stdio.h>\nextern size_t job_heap_peak;\n'+code)
         binary=Path(temporary)/'jobs'
         subprocess.run(['cc','-std=c11','-D_DEFAULT_SOURCE','-O1','-ffunction-sections','-fdata-sections',
+                        '-fno-asynchronous-unwind-tables','-fno-unwind-tables',
                         '-pthread','-I'+str(include),'-I'+str(SDK/'include'),str(source),str(ROOT/'tests/native-jobs.c'),
                         *(str(runtime) if s=='managed_runtime.c' else str(SDK/'source'/s) for s in sources),'-Wl,--gc-sections','-lm','-o',str(binary)],check=True)
         for stress in (False,True):

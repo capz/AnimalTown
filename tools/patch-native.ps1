@@ -268,6 +268,13 @@ $heapSetting='DND_MANAGED_HEAP_BYTES ?= 262144'
 if(([regex]::Matches($makeSource,[regex]::Escape($heapSetting))).Count -ne 1){throw 'Pinned SDK managed heap setting changed'}
 # Maximum text mail plus two-card transfer readback is qualified at 6 MiB.
 $makeSource=$makeSource.Replace($heapSetting,'DND_MANAGED_HEAP_BYTES ?= 6291456')
+# Generated managed exceptions and GC use explicit runtime frames, not the C
+# unwinder. No linked native code calls _Unwind. Avoid loading hundreds of KiB
+# of unused C unwind tables beside the six-MiB heap; keep ordinary debug info.
+foreach($flags in @('CFLAGS += -O3 -flto -fno-strict-aliasing','LDFLAGS += -flto')){
+    if(([regex]::Matches($makeSource,[regex]::Escape($flags))).Count -ne 1){throw 'Pinned SDK native optimization flags changed'}
+    $makeSource=$makeSource.Replace($flags,$flags+' -fno-asynchronous-unwind-tables -fno-unwind-tables')
+}
 [IO.File]::WriteAllText($makePath,$makeSource)
 [IO.File]::WriteAllText($entryPath,$entrySource)
 # Keep the SDK's 16 MiB byte budget; the wider terrain prefetch pool needs more

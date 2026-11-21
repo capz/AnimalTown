@@ -160,7 +160,16 @@ def run(context):
                 if int(re.findall(r'ANIMALTOWN RUNTIME (\d+)',c.runtime_log_text())[-1])==target:break
                 chord('B')
             else:raise AssertionError('Could not select the requested runtime profile')
-        chord('D_RIGHT');wait_log(r'ANIMALTOWN AASTUDY MODE 0 480-rim100');guest(2)
+        # The study mode survives Save & Quit. A second D-right would select
+        # AA, allocate replacement display buffers and measure another mode.
+        # Only the first capture activates it, and its marker must be fresh.
+        modes=re.findall(r'ANIMALTOWN AASTUDY MODE (\d+) (\S+)',c.runtime_log_text())
+        if not modes:
+            offset=len(c.runtime_log_text());chord('D_RIGHT')
+            wait_log(r'ANIMALTOWN AASTUDY MODE 0 480-rim100',offset)
+        elif modes[-1]!=('0','480-rim100'):
+            raise AssertionError('The job capture is no longer in the requested AA-off mode')
+        guest(2)
         offset=len(c.runtime_log_text());started=time.monotonic();chord('D_LEFT')
         begin=wait_log(r'ANIMALTOWN AASTUDY BEGIN (\d+) 0',offset);sequence=int(begin[1]);wait_log(r'ANIMALTOWN AASTUDY END '+str(sequence)+r' 0 240',offset,300);elapsed=time.monotonic()-started;wait_log('PATH PROFILE DONE',offset)
         text=c.runtime_log_text()[offset:]
@@ -175,6 +184,10 @@ def run(context):
         return {'hardware':False,'renderer':'Dolphin OpenGL / llvmpipe','frames':240,'host_fps_including_input':240/elapsed,'guest_fps':1e6*len(times)/sum(times),'frame_ms_p50':pct(times,.5)/1000,'frame_ms_p95':pct(times,.95)/1000,'cpu_ms_mean':sum(cpus)/len(cpus)/1000,'cpu_ms_p95':pct(cpus,.95)/1000,'allocations':sum(r[4] for r in cpu),'collections':sum(r[5] for r in cpu),'memory':dict(zip(('native_bytes','texture_bytes','path_bytes','aram_bytes','cache_peak_bytes','cache_reserved_bytes','dma_reads','bindings'),map(int,memory.groups()))) if memory else None,'managed':dict(zip(('used_extent_bytes','peak_extent_bytes','capacity_bytes','collections'),map(int,managed[-1]))) if managed else None,'system_memory':dict(zip(('mem1_used_bytes','mem1_total_bytes','arena_free_bytes','malloc_free_bytes','aram_used_bytes','aram_total_bytes'),map(int,system[-1]))) if system else None,'raw_frames':rows,'raw_cpu':cpu}
     if mode=='template':
         c.wait_title()
+        # A read-only title boot can leave Dolphin's new formatted card only
+        # in memory. Persist a real console preference before using its raw
+        # header as a fixture template; profile-card-fixture rebuilds the files.
+        c.set_debug_visibility(True)
         if not (c.root/'MemoryCardA.USA.raw').is_file():raise AssertionError('Dolphin did not format its disposable template')
         return
     if mode=='recovery':
