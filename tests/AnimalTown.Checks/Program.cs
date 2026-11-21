@@ -31,6 +31,7 @@ if(Wants("saves")){SplitSaveChecks.Run(Check);DevConfigChecks.Run(Check);UserOpt
 if(Wants("buildings")){BuildingChecks.Run(Check);ModelResidencyDemandChecks.Run(Check);ModelResidencyChecks.Run(Check);}
 if(!Wants("core")){if(Wants("content"))ContentChecks.Run(Check);Console.WriteLine(checks+" checks passed; suites: "+string.Join(",",selected));return;}
 GodModeChecks.Run(Check);
+TextureAtlasStreamChecks.Run(Check);
 WorldLightingChecks.Run(Check);
 TownDaylightChecks.Run(Check);
 var terrainEdit=new GameState(74);int terrainVersion=terrainEdit.Town.TerrainVersion;

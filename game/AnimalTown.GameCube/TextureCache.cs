@@ -99,7 +99,30 @@ internal static class TextureCache
         var cached=Find(key,atlas);if(cached!=null)return cached;
         var loaded=LoadAndDecode(key,path,atlas,resolution);AnimalTown.GameCube.NativeTexturePages.Collect();return loaded;
     }
-    private static CachedTexture LoadAndDecode(string key,string path,bool atlas,TextureResolution resolution)=>Decode(key,File.ReadAllBytes(path),atlas,resolution);
+    private static CachedTexture LoadAndDecode(string key,string path,bool atlas,TextureResolution resolution)
+    {
+        if(!atlas)return Decode(key,File.ReadAllBytes(path),false,resolution);
+        using var stream=File.OpenRead(path);var source=new TextureAtlasStream(stream);
+        var entry=new CachedTexture{Source=key,SourceHash=source.SourceHash,SourceWidth=source.Width,SourceHeight=source.Height,Atlas=true,Pages=new Texture2D[source.Columns*source.Rows]};
+        try{
+            for(int y=0;y<source.Rows;y++)for(int x=0;x<source.Columns;x++){
+                entry.Pages[y*source.Columns+x]=UploadAtlasPage(source.ReadPage(x,y));
+                AnimalTown.GameCube.NativeTexturePages.Collect();
+            }
+        }catch{Dispose(entry);throw;}
+        return Store(entry);
+    }
+    private static Texture2D UploadAtlasPage(byte[] page)
+    {
+        int format=TexturePixels.Int(page,8);
+        // Keep the existing alpha/colour canonicalization and GPU formats.
+        // Only the source read is paged; the visible sampling stays identical.
+        if(format!=3&&format!=4&&format!=5)format=6;
+        int width=TexturePixels.Width(page),height=TexturePixels.Height(page);var rgba=new byte[width*height*4];
+        TexturePixels.Resample(page,0,0,width,height,rgba,width,height);
+        var pixels=TexturePixels.Encode(rgba,width,height,format);var texture=Texture2D.CreateNative(width,height,(NativeTextureFormat)format,true);
+        try{texture.ReplaceNative(pixels);return texture;}catch{texture.Dispose();throw;}
+    }
     internal static CachedTexture LoadFloor(string path,TextureResolution resolution=TexturePolicy.Default,bool repeat=false,bool repeatV=true,byte[]? source=null)
     {
         string key=BuildInfo.Commit+":"+path+":floor-mip2-v7:"+(repeat?(repeatV?"repeat:":"repeat-clamp:"):"mirror:")+TexturePolicy.Edge(resolution);

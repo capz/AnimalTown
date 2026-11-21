@@ -87,7 +87,7 @@ function Get-ValidationPlan {
         if($p -match '^shared/AnimalTown.Domain/(TerrainElevation|CylinderWorld|RenderView|TerrainTiles|FloorStrips|TerrainStream)\.cs$'){
             foreach($s in @('core','terrain','movement','generation','life')){Add-Managed $s};continue
         }
-        if($p -match '^shared/AnimalTown.Domain/(TexturePixels|TextureResolution|FloorTexture)\.cs$'){
+        if($p -match '^shared/AnimalTown.Domain/(TexturePixels|TextureAtlasStream|TextureResolution|FloorTexture)\.cs$'){
             Add-Managed 'core';[void]$tooling.Add('terrain');[void]$tooling.Add('repack');continue
         }
         if($p -match '^(shared/AnimalTown.Domain/(BuildingWorld|BuildingPrompt|BuildingState|BuildingSave|PortalSystem|InteriorNavigation|InteriorCamera|VillagerJourney)|tests/AnimalTown.Checks/(BuildingChecks|BuildingEntryChecks))\.cs$'){

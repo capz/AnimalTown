@@ -6,6 +6,7 @@ This exercises real SDK filesystem calls, not physical SD hardware or GX.
 from pathlib import Path
 import os
 import subprocess
+import struct
 import tempfile
 
 ROOT=Path(__file__).resolve().parents[1]
@@ -27,6 +28,9 @@ def main():
                 if complete or name!='saveicon.rgb5a3':(app/name).write_bytes(b'fixture')
             (app/'content.id').write_text(identity,encoding='ascii');(app/'runtime.cfg').write_bytes(b'\0')
             (app/'fox-tex128.dndmodel').write_bytes(bytes((41,42)))
+            atlas=bytearray(struct.pack('<8I',0x58544e44,1,3,512,512,524288,0,0))+bytearray([37])*524288
+            for row in range(64,96):atlas[32+(row*128+96)*32:32+(row*128+128)*32]=bytes([173])*1024
+            (app/'atlas.dndtex').write_bytes(atlas)
         for stress in (False,True):
             for case in range(7):
                 volume=work/f'volumes-{int(stress)}-{case}';volume.mkdir()

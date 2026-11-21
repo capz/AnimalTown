@@ -29,19 +29,23 @@ internal static class Program
         StartupSplash.Run();
         while(true){
             if(!TitleScreen.Run(config,options))return 0;
-            var session=TownSession.Load();LoadingScreen.Finish();
-            if(!ProfilePicker.Run(session)){AnimalTown.GameCube.NativeTexturePages.Collect();continue;}
-            if(session.Draft!=null&&!OnboardingFlow.Run(config,session)){
-                session.DiscardDraft();AnimalTown.GameCube.NativeTexturePages.Collect();continue;
-            }
+            RunTown(config);
+            // The entire prior town frame must unwind, including its session,
+            // before title resources or a second full mailbox are loaded.
+            LoadingScreen.Finish();TextureCache.TrimUnused();
+            AnimalTown.GameCube.NativeTexturePages.Collect();
+        }
+    }
+    private static void RunTown(DevConfig config)
+    {
+        var session=TownSession.Load();LoadingScreen.Finish();
+        try{
+            if(!ProfilePicker.Run(session))return;
+            if(session.Draft!=null&&!OnboardingFlow.Run(config,session))return;
             while(RunSession(config,session)==TownGame.TravelRestart){
                 if(!session.CompleteTravel()&&!OfflineTravelRecovery.Run(session,session.TravelError))break;
             }
-            // RunSession and all its rendering locals have unwound before the
-            // draft is restored and the native collector reclaims managed roots.
-            session.DiscardDraft();LoadingScreen.Finish();TextureCache.TrimUnused();
-            AnimalTown.GameCube.NativeTexturePages.Collect();
-        }
+        }finally{session.DiscardDraft();}
     }
     private static void ReclaimJobText()=>AnimalTown.GameCube.NativeTexturePages.Collect();
     internal static int RunSession(DevConfig config,TownSession session)
