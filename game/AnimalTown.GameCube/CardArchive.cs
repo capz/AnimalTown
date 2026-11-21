@@ -10,6 +10,7 @@ internal sealed class CardArchive
 {
     private const string Container="AnimalTown",Expanded="AnimalTown2",Marker="AT-Archive";
     private readonly MemoryCard card;
+    private readonly VillagerCardFiles villagers;
     private readonly int device;
     private readonly byte[] banner,icon;
     private GameState? textReuse;
@@ -22,6 +23,7 @@ internal sealed class CardArchive
     {
         this.card=card;this.banner=banner;this.icon=icon;this.device=device;this.textReuse=textReuse;
         var entries=card.GetEntries();bool legacy=false;foreach(var entry in entries)legacy|=SplitSaveCodec.IsFile(entry.Name);
+        villagers=new VillagerCardFiles(card,banner,icon,entries);
         // A source growth intent also permits recovery of a target whose
         // initial zero filling was interrupted before it had a checkpoint.
         for(int pass=0;pass<2;pass++)for(int i=0;i<entries.Length;i++){
@@ -56,8 +58,55 @@ internal sealed class CardArchive
     private static bool Known(string name)=>SplitSaveCodec.IsFile(name)||name==TownDataDeletion.Marker||name=="options"||name=="dev_config";
     private bool Published=>phase>0;
     internal string[] Names()
-    {if(Published)return store!.Names();var entries=card.GetEntries();var names=new string[entries.Length];for(int i=0;i<entries.Length;i++)names[i]=entries[i].Name;return names;}
-    internal byte[] Read(string name)=>Published?store!.Read(name):card.ReadAllBytes(name);
+    {
+        string[] shared;
+        if(Published)shared=store!.Names();
+        else{
+            var entries=card.GetEntries();
+            shared=new string[entries.Length];
+            for(int i=0;i<entries.Length;i++)shared[i]=entries[i].Name;
+        }
+        var names=new string[shared.Length+2*GameState.ProfileCount];
+        Array.Copy(shared,0,names,0,shared.Length);
+        int count=shared.Length;
+        for(int slot=0;slot<GameState.ProfileCount;slot++){
+            if(!villagers.Exists(slot))continue;
+            byte[][]? banks=null;
+            try{banks=villagers.Read(slot);}catch(Exception){}
+            for(int bank=0;bank<2;bank++){
+                // An unreadable file still counts as town data and can be
+                // removed by confirmed deletion. A missing bank is normal
+                // during the first save, and must not block onboarding retry.
+                if(banks!=null&&banks[bank].Length==0)continue;
+                string name=VillagerCardFiles.BankName(slot,bank);
+                bool listed=false;
+                for(int i=0;i<shared.Length;i++)if(shared[i]==name){listed=true;break;}
+                if(!listed)names[count++]=name;
+            }
+        }
+        var result=new string[count];
+        Array.Copy(names,0,result,0,count);
+        return result;
+    }
+
+    private bool Archived(string name)
+    {
+        foreach(string existing in store!.Names())if(existing==name)return true;
+        return false;
+    }
+
+    internal byte[] Read(string name)
+    {
+        if(!Published)return card.ReadAllBytes(name);
+        int slot=VillagerCardFiles.SlotForBank(name);
+        if(slot<0||Archived(name))return store!.Read(name);
+        int bank=name[name.Length-1]-'0';
+        if(!villagers.Exists(slot))throw new FileNotFoundException(name);
+        var bytes=villagers.Read(slot)[bank];
+        if(bytes.Length==0)throw new FileNotFoundException(name);
+        return bytes;
+    }
+
     internal void PrepareWrite()
     {
         bool migration=!Published||phase!=2;
@@ -72,15 +121,110 @@ internal sealed class CardArchive
         var bytes=Read(name);if(count<0||count>8192||count>length||length<32||bytes.Length!=length||Number(bytes,16)!=sequence||(uint)Number(bytes,length-4)!=checksum||SaveCodec.Crc(bytes,0,length-4)!=checksum)throw new IOException("Legacy prefix reference differs");
         var prefix=new byte[count];Array.Copy(bytes,prefix,count);return prefix;
     }
-    internal void Write(string name,byte[] bytes)
+    private void WriteShared(string name,byte[] bytes)
     {
-        EnsureWritable();
         try{store!.Write(name,bytes);}
         catch(IOException e){if(e.Message!="Card container has insufficient reserved space")throw;Grow(GrowthSize(bytes.Length));EnsureWritable();store!.Write(name,bytes);}
     }
+    internal void Write(string name,byte[] bytes)
+    {
+        EnsureWritable();
+        int slot=VillagerCardFiles.SlotForBank(name);
+        if(slot<0||!SplitSaveCodec.IsCreatedProfileRecord(slot,bytes)){
+            WriteShared(name,bytes);
+            return;
+        }
+        // Finish moving the old committed bytes before replacing either bank.
+        MoveArchivedBanks(slot);
+        var banks=villagers.Exists(slot)?villagers.Read(slot):new[]{new byte[0],new byte[0]};
+        banks[name[name.Length-1]-'0']=bytes;
+        villagers.Write(slot,banks);
+    }
+
+    private bool MoveArchivedBanks(int slot)
+    {
+        var first=VillagerCardFiles.BankName(slot,0);
+        var second=VillagerCardFiles.BankName(slot,1);
+        bool hasFirst=Archived(first),hasSecond=Archived(second);
+        if(!hasFirst&&!hasSecond)return false;
+        var banks=villagers.Exists(slot)?villagers.Read(slot):new[]{new byte[0],new byte[0]};
+        bool needsWrite=false;
+        for(int bank=0;bank<2;bank++){
+            if(!(bank==0?hasFirst:hasSecond))continue;
+            var bytes=store!.Read(bank==0?first:second);
+            needsWrite=!SameBytes(bytes,banks[bank])||needsWrite;
+            banks[bank]=bytes;
+        }
+        if(needsWrite)villagers.Write(slot,banks);
+        // A bank stays authoritative in the archive until its external copy
+        // has been verified. Either location yields the same committed bytes.
+        if(hasFirst)store!.Delete(first);
+        if(hasSecond)store!.Delete(second);
+        return true;
+    }
+
+    internal bool UpdateVillagerFiles(GameState state)
+    {
+        EnsureWritable();
+        bool changed=false;
+        for(int slot=0;slot<GameState.ProfileCount;slot++){
+            if(state.Profiles[slot].Created||!villagers.Exists(slot))continue;
+            // Both banks have been verified by the repository. Keep the
+            // empty-slot records for its manifests and release the browser entry.
+            byte[][]? banks=null;
+            for(int bank=0;bank<2;bank++){
+                string name=VillagerCardFiles.BankName(slot,bank);
+                if(Archived(name))continue;
+                banks??=villagers.Read(slot);
+                if(banks[bank].Length==0||SplitSaveCodec.IsCreatedProfileRecord(slot,banks[bank]))
+                    throw new IOException("Cannot release a card entry containing a villager");
+                WriteShared(name,banks[bank]);
+                Match(banks[bank],store!.Read(name));
+            }
+            villagers.Delete(slot);changed=true;
+        }
+        for(int slot=0;slot<GameState.ProfileCount;slot++)
+            if(state.Profiles[slot].Created)changed=MoveArchivedBanks(slot)||changed;
+        return changed;
+    }
+
+    internal void MigrateSettings()
+    {
+        // Settings migration can retry on a later save if the card is full.
+        CardSettingsStorage.TryMigrate(card,this,CardSettingsStorage.VideoFile,UserOptionsStorage.FileName);
+        CardSettingsStorage.TryMigrate(card,this,CardSettingsStorage.DebugFile,DevConfigStorage.FileName);
+    }
+
+    // Keep archived originals during the older archive-to-archive migration.
+    // Its cleanup compares those bytes against the source before retiring it.
+    internal byte[]? ReadArchivedSetting(string name)
+        =>phase==2&&Archived(name)?store!.Read(name):null;
+
+    internal void RemoveArchivedSetting(string name)
+    {
+        if(phase==2&&Archived(name))store!.Delete(name);
+    }
+
+    internal void Delete(string name)
+    {
+        EnsureWritable();
+        int slot=VillagerCardFiles.SlotForBank(name);
+        if(slot>=0)villagers.Delete(slot); // Used only by confirmed whole-town deletion.
+        store!.Delete(name);
+    }
+
+    private static bool SameBytes(byte[] a,byte[] b)
+    {
+        if(a.Length!=b.Length)return false;
+        for(int i=0;i<a.Length;i++)if(a[i]!=b[i])return false;
+        return true;
+    }
+    internal static void Match(byte[] a,byte[] b)
+    {
+        if(!SameBytes(a,b))throw new IOException("Card save readback differs");
+    }
     internal bool Matches(string name,byte[]? expected,int sequence,int length,uint checksum,bool ignoreSequence)
     {if(Published)return store!.Matches(name,expected,sequence,length,checksum,ignoreSequence);var actual=Read(name);if(actual.Length!=length)return false;if(sequence>=0&&(Number(actual,16)!=sequence||SaveCodec.Crc(actual,0,actual.Length-4)!=checksum))return false;for(int i=0;i<actual.Length&&expected!=null;i++)if(!(ignoreSequence&&(i>=16&&i<20||i>=actual.Length-4))&&actual[i]!=expected[i])return false;return true;}
-    internal void Delete(string name){EnsureWritable();store!.Delete(name);}
     private int RecordLength(string name)=>store!.Length(name);
     private int GrowthSize(int incoming)
     {

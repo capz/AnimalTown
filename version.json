@@ -158,6 +158,24 @@
         "Profiling offers counters, video telemetry and a small rolling capture.",
         "Memory ownership, peak usage and transfer waits are available for diagnosis."
       ]
+    },
+    {
+      "id": "separate-villager-card-files",
+      "lines": [
+        "Each playable villager gets a separate memory-card entry.",
+        "The entry is labeled by villager slot and uses its own card blocks.",
+        "An explicit save moves existing villagers out of the shared town entry.",
+        "Deleting a villager in the game frees that villager's entry."
+      ]
+    },
+    {
+      "id": "separate-debug-video-card-files",
+      "lines": [
+        "Video and debug settings each get a separate memory-card entry.",
+        "Each settings entry uses one block.",
+        "Existing settings move when you save them or save your town with enough free space.",
+        "Deleting a town in the game preserves both settings entries."
+      ]
     }
   ]
 }

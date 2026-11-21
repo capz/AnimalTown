@@ -71,7 +71,7 @@ namespace Dolphin.Storage
             int peak=Math.Max(Used,next)+journal;
             if(peak>Capacity)throw new IOException("Memory card full; journal and previous save preserved");
             Peak=Math.Max(Peak,peak);Used=next;blocks[name]=size;Writes++;
-            Files[name]=(byte[])data.Clone();Metadata[name]=options;
+            Files[name]=(byte[])data.Clone();Metadata[name]=new MemoryCardSaveOptions{Title=options.Title,Comment=options.Comment,Banner=options.Banner,Icon=options.Icon};
         }
     }
     internal sealed class ManagedCardSave
