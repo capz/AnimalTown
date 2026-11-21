@@ -82,7 +82,7 @@ public sealed class SaveRepository
         var names=SplitSaveCodec.PreviewNpcNames(ReadReference(manifest,0));
         ulong identity=ReferencedTownIdentity(manifest);if(identity==0)throw new InvalidOperationException("Missing saved town identity");
         for(int part=1;part<IncrementalSaveCodec.Count;part++)if(part!=2){
-            if(storage is ISaveSnapshotStorage)LargeReference(manifest,part,null,out _);
+            if(manifest.Lengths[part]>8192&&storage is ISaveSnapshotStorage)LargeReference(manifest,part,null,out _);
             else ReadReference(manifest,part);
         }
         return new SavedTownPreview(manifest.Seed,manifest.Sequence,identity,names);
