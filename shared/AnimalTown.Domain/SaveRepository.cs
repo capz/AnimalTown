@@ -139,6 +139,7 @@ public sealed class SaveRepository
             state.Sequence=current.Sequence;Save(state);return;
         }
         if(current!=null&&current.References==null)SplitSaveCodec.VerifyCommitted(current.Commit,ReadParts(current.Bank));
+        if(storage is ISaveWritePreparationStorage preparation)preparation.PrepareWrite();
         state.Sequence=previous==int.MaxValue?previous:previous+1;
         try{
             var m=new IncrementalSaveCodec.Manifest{Sequence=state.Sequence,Seed=state.Town.Seed,Bank=current==null?state.Sequence%2:1-current.Bank};

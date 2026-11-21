@@ -190,8 +190,8 @@ def run(context):
         c.set_debug_visibility(True)
         if not (c.root/'MemoryCardA.USA.raw').is_file():raise AssertionError('Dolphin did not format its disposable template')
         return
-    if mode=='recovery':
-        c.wait_title();press('A');c.wait_profiles('jobs-recovery-picker.png');shot('locked');press('X');presentations(8);shot('recheck');offset=len(c.runtime_log_text());press('A');wait_log('ANIMALTOWN READY ',offset,600)
+    if mode in ('recovery','maximum-recovery'):
+        c.wait_title();press('A');c.wait_profiles('jobs-recovery-picker.png');shot('locked');press('X');presentations(8);shot('recheck');offset=len(c.runtime_log_text());press('A');wait_log('ANIMALTOWN READY ',offset,1800 if mode.startswith('maximum-') else 600)
     else:c.start_game(False,'jobs-'+mode)
     wait_log('ANIMALTOWN READY ');presentations(2);shot('world')
     report={'scenario':'offline-jobs','mode':mode,'screenshots':shots,'passed':False}
@@ -204,7 +204,9 @@ def run(context):
         report['profile']=profile();shot('profiled')
         if mode=='maximum-mail':
             save('first-maximum-checkpoint');press('START');press('D_DOWN');press('A');press('D_DOWN');press('A');c.wait_title();shot('maximum-title')
-            c.start_game(False,'jobs-maximum-reload');wait_log('ANIMALTOWN READY ');shot('maximum-reloaded');report['after_reload_profile']=profile();save('reopened-checkpoint')
+            # The title restores saved profiling settings. Persistence needs
+            # a real reopened checkpoint; the first capture measured full mail.
+            c.start_game(False,'jobs-maximum-reload');wait_log('ANIMALTOWN READY ');shot('maximum-reloaded');save('reopened-checkpoint')
         if '--jobs-checkpoints' in sys.argv:
             save('first-checkpoint');move(1,0,.25);save('next-checkpoint')
     elif mode=='checkpoint':
@@ -258,8 +260,12 @@ def run(context):
     elif mode=='moving':
         go(36.5,11.5,.1);press('A');presentations(4);shot('travel');press('Y');press('D_DOWN');shot('moving');press('A');press('D_DOWN');shot('confirmation')
         offset=len(c.runtime_log_text());press('A');wait_log('ANIMALTOWN READY ',offset,600);presentations(4);shot('moved');save()
-    elif mode=='recovery':
-        shot('recovered');travel();shot('returned');save()
+    elif mode in ('recovery','maximum-recovery'):
+        shot('recovered')
+        if mode=='maximum-recovery':
+            folder=c.root/'records-guest';folder.mkdir(exist_ok=True)
+            for name,data in c.options_card_files(c.root/'MemoryCardB.USA.raw').items():(folder/name).write_bytes(data)
+        travel();shot('returned');save()
     else:
         accept()
         if mode in ('delivery','property','retrieval'):
@@ -295,7 +301,7 @@ def run(context):
             press('A');shot('reply-mailbox');press('A');shot('reply');press('X');close();close()
         else:raise ValueError('Unsupported job smoke mode: '+mode)
         save()
-    if mode in ('foreign','moved','moving','recovery','maximum-economy'):
+    if mode in ('foreign','moved','moving','recovery','maximum-economy','maximum-recovery'):
         folder=c.root/'records-b';folder.mkdir(exist_ok=True)
         for name,data in c.options_card_files(c.root/'MemoryCardB.USA.raw').items():(folder/name).write_bytes(data)
     alive();report['controls_completed']=True

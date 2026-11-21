@@ -130,17 +130,21 @@ internal static class JobFixture
         JobTemplate? expected=mode switch{"delivery" or "owed"=>JobTemplate.DeliveryClothing,"property"=>JobTemplate.DeliveryProperty,"retrieval" or "retrieval-multi"=>JobTemplate.RetrievalBorrowed,"foreign"=>JobTemplate.DeliveryForeign,"moved"=>JobTemplate.DeliveryMoved,"fruit"=>JobTemplate.FavorFruit,"fish"=>JobTemplate.FavorFish,"insect"=>JobTemplate.FavorInsect,"flowers"=>JobTemplate.FavorFlowers,"ball"=>JobTemplate.FavorBall,"snowman" or "destroy-snowman"=>JobTemplate.FavorSnowman,"letter" or "letter-full"=>JobTemplate.FavorLetter,_=>null};
         bool completed=Enumerable.Range(0,OfflineJobLedger.TerminalCapacity).Any(i=>l.Terminal(i).Reason==JobEndReason.Success&&(!expected.HasValue||l.Terminal(i).Template==expected.Value))||jobs.Any(j=>j.Status==JobStatus.CompletedRetained&&(!expected.HasValue||j.Template==expected.Value));
         GameState? other=null;
-        if(mode=="foreign"||mode=="moved"||mode=="moving"||mode=="recovery"||mode=="maximum-economy"){
+        if(mode=="foreign"||mode=="moved"||mode=="moving"||mode=="recovery"||mode=="maximum-economy"||mode=="maximum-recovery"){
             other=new SaveRepository(ReadFixture(Path.Combine(directory,"..","records-b"))).Load()??throw new Exception("Controller run must export both actual town cards");
             if(expected.HasValue)completed|=Enumerable.Range(0,OfflineJobLedger.TerminalCapacity).Any(i=>other.Town.Jobs.Terminal(i).Owner==l.Player(0)&&other.Town.Jobs.Terminal(i).Template==expected.Value&&other.Town.Jobs.Terminal(i).Reason==JobEndReason.Success);
             if(verify&&(s.Visiting||other.Visiting||s.ProfileLocked(0)||l.Trip.Pending||other.Town.Jobs.Trip.Pending))throw new Exception("Both town cards must finish without an active or duplicated traveller");
         }
         if(verify&&expected.HasValue&&!completed)throw new Exception("Controller run has not completed its expected errand: "+mode);
-        if(verify&&mode=="maximum-economy"){
+        if(verify&&(mode=="maximum-economy"||mode=="maximum-recovery")){
             var guest=new SaveRepository(ReadFixture(Path.Combine(directory,"..","records-guest"))).Load()??throw new Exception("Maximum transfer needs its actual committed visitor checkpoint");
             if(!guest.Visiting||!guest.Town.Jobs.Job(99).Occupying||s.Town.Jobs.Trip.Phase!=OfflineTripPhase.Finished||!l.Job(19).Occupying||other==null||other.Town.Jobs.GuestProfile!=null)throw new Exception("The full visitor partition did not travel and return safely");
         }
-        if(verify&&(mode=="maximum-mail"||mode=="maximum-economy")&&(s.Sequence<2||Enumerable.Range(0,4).Any(p=>s.Profiles[p].MailCount!=128)||Enumerable.Range(0,512).Any(i=>l.Mail[i].State!=JobMailState.Inbox||JobTextBody.Unpack(l.Mail[i].Body!,l.Mail[i].BodyOffset,l.Mail[i].BodyWords)!=string.Concat(Enumerable.Repeat("\U0001f642",1000)))))throw new Exception("Maximum Unicode mail did not survive the actual card checkpoint");
+        if(verify&&(mode=="maximum-mail"||mode=="maximum-economy"||mode=="maximum-recovery")){
+            string maximumBody=string.Concat(Enumerable.Repeat("\U0001f642",1000));
+            bool FullMail(GameState town)=>town.Sequence>=2&&Enumerable.Range(0,4).All(p=>town.Profiles[p].MailCount==128)&&Enumerable.Range(0,512).All(i=>{var m=town.Town.Jobs.Mail[i];return m.State==JobMailState.Inbox&&JobTextBody.Unpack(m.Body!,m.BodyOffset,m.BodyWords)==maximumBody;});
+            if(!FullMail(s)||other!=null&&!FullMail(other))throw new Exception("Maximum Unicode mail did not survive the actual card checkpoint in both towns");
+        }
         if(verify&&mode=="retrieval-multi"){
             var mid=new SaveRepository(ReadFixture(Path.Combine(directory,"..","records-mid"))).Load()??throw new Exception("No saved mid-chain checkpoint");
             if(!Enumerable.Range(0,OfflineJobLedger.JobCapacity).Any(i=>mid.Town.Jobs.Job(i).Template==JobTemplate.RetrievalBorrowed&&mid.Town.Jobs.Job(i).Borrowers>1))throw new Exception("No actual borrower referral was saved and reloaded");
@@ -154,7 +158,7 @@ internal static class JobFixture
         if(verify&&mode=="delivery"&&l.Outfit(1)!=Catalog.BerryShirt)throw new Exception("Delivery did not change the actual recipient's clothing");
         if(verify&&(mode=="outfits-on"||mode=="outfits-winter")&&(s.Shirt!=Catalog.StripedShirt||Enumerable.Range(0,6).Any(n=>l.Outfit(n)!=Catalog.BerryShirt)))throw new Exception("The player and all six species must retain their actual outfits");
         if(verify&&mode=="mail"&&s.Find(Catalog.LeafShirt)<0)throw new Exception("The real mail attachment was not collected");
-        var result=new{mode,passed=verify,sequence=s.Sequence,activeProfile=s.ActiveProfile,visiting=s.Visiting,position=new{s.X,s.Z,s.Space},wallet=s.Wallet,completed,mailCount=s.MailCount,pockets=s.Pockets,bindings=Enumerable.Range(0,s.Capacity).Where(s.IsJobItem),outfits=Enumerable.Range(0,6).Select(l.Outfit),jobs=jobs.Select(j=>new{template=j.Template.ToString(),status=j.Status.ToString(),target=l.FindNpc(j.Target),j.Item,j.FlowerBaseline,j.HomeAcre}),terminals=Enumerable.Range(0,16).Select(l.Terminal).Where(t=>!t.Job.IsEmpty).Select(t=>new{template=t.Template.ToString(),reason=t.Reason.ToString(),t.At})};
+        var result=new{mode,passed=verify,sequence=s.Sequence,tripPhase=l.Trip.Phase.ToString(),tripPending=l.Trip.Pending,profileLocked=s.ProfileLocked(0),activeProfile=s.ActiveProfile,visiting=s.Visiting,position=new{s.X,s.Z,s.Space},wallet=s.Wallet,completed,mailCount=s.MailCount,pockets=s.Pockets,bindings=Enumerable.Range(0,s.Capacity).Where(s.IsJobItem),outfits=Enumerable.Range(0,6).Select(l.Outfit),jobs=jobs.Select(j=>new{template=j.Template.ToString(),status=j.Status.ToString(),target=l.FindNpc(j.Target),j.Item,j.FlowerBaseline,j.HomeAcre}),terminals=Enumerable.Range(0,16).Select(l.Terminal).Where(t=>!t.Job.IsEmpty).Select(t=>new{template=t.Template.ToString(),reason=t.Reason.ToString(),t.At})};
         string json=JsonSerializer.Serialize(result,new JsonSerializerOptions{WriteIndented=true});Console.WriteLine(json);File.WriteAllText(Path.Combine(directory,"..","jobs-state.json"),json+"\n");
     }
 }

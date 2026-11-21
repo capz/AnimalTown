@@ -3,7 +3,7 @@ namespace AnimalTown;
 // One exclusive card transaction only. Never reuse across saves or mounts.
 // A write invalidates BEFORE touching storage, including when it throws: its
 // first verification read must always go to the physical card.
-public sealed class SaveReadCache : ISaveStorage,ISaveSnapshotStorage,ISaveVerifiedPrefixStorage
+public sealed class SaveReadCache : ISaveStorage,ISaveSnapshotStorage,ISaveVerifiedPrefixStorage,ISaveWritePreparationStorage
 {
     private readonly ISaveStorage storage;
     private readonly string?[] names=new string?[24];
@@ -12,6 +12,7 @@ public sealed class SaveReadCache : ISaveStorage,ISaveSnapshotStorage,ISaveVerif
     public int PhysicalReads {get;private set;}
     public int CacheHits {get;private set;}
     public SaveReadCache(ISaveStorage storage){this.storage=storage;}
+    public void PrepareWrite(){if(storage is ISaveWritePreparationStorage preparation)preparation.PrepareWrite();}
     public byte[] Read(string name)
     {
         for(int i=0;i<names.Length;i++)if(names[i]==name){CacheHits++;return data[i]!;}

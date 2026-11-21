@@ -14,3 +14,10 @@ public interface ISaveVerifiedPrefixStorage
 {
     byte[] ReadVerifiedPrefix(string name,int count,int sequence,int length,uint checksum);
 }
+
+// Finish verified legacy conversion before the caller retains a large newly
+// encoded record. Preparation preserves the existing logical records/revision.
+public interface ISaveWritePreparationStorage
+{
+    void PrepareWrite();
+}

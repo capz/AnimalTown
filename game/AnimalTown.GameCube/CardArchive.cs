@@ -58,6 +58,14 @@ internal sealed class CardArchive
     internal string[] Names()
     {if(Published)return store!.Names();var entries=card.GetEntries();var names=new string[entries.Length];for(int i=0;i<entries.Length;i++)names[i]=entries[i].Name;return names;}
     internal byte[] Read(string name)=>Published?store!.Read(name):card.ReadAllBytes(name);
+    internal void PrepareWrite()
+    {
+        bool migration=!Published||phase!=2;
+        EnsureWritable();
+        // EnsureWritable's legacy validation/copy frames have returned before
+        // the repository encodes another maximum-size economic record.
+        if(migration)AnimalTown.Jobs.JobMemory.ReclaimTemporaryText?.Invoke();
+    }
     internal byte[] ReadVerifiedPrefix(string name,int count,int sequence,int length,uint checksum)
     {
         if(Published)return store!.ReadVerifiedPrefix(name,count,sequence,length,checksum);

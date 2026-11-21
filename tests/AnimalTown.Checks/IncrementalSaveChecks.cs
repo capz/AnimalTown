@@ -13,6 +13,13 @@ internal static class IncrementalSaveChecks
         internal Disk Copy(){var d=new Disk();foreach(var f in Files)d.Files[f.Key]=(byte[])f.Value.Clone();return d;}
         internal void Reset(){Names.Clear();Bytes=0;CutAt=0;CorruptAfterWrite=null;}
     }
+    private sealed class PreparingDisk(Disk inner,Action preparation):ISaveStorage,ISaveWritePreparationStorage
+    {
+        internal int Preparations;private bool ready;
+        public byte[] Read(string name)=>inner.Read(name);
+        public void PrepareWrite(){Preparations++;preparation();ready=true;}
+        public void Write(string name,byte[] bytes){if(!ready)throw new IOException("Unprepared storage");inner.Write(name,bytes);}
+    }
     private static GameState Town(){var s=new GameState(7319){Name="Juniper",Wallet=1234};Array.Fill(s.Town.Tiles,(byte)Terrain.Grass);Array.Clear(s.Town.Elevation);s.Town.GroundCount=0;return s;}
     private static bool Fails(Action action){try{action();return false;}catch(Exception){return true;}}
     private static void Same(GameState a,GameState b,Action<bool,string> check,string label)=>check(SaveCodec.Encode(a).SequenceEqual(SaveCodec.Encode(b)),label);
@@ -21,6 +28,15 @@ internal static class IncrementalSaveChecks
     {check(disk.Names.Count==4&&disk.Names.Count(n=>Kind(n,kind))==2&&disk.Names.Count(n=>Kind(n,"AT-Commit"))==2,"only changed component and both reference heads are written: "+kind);}
     internal static void Run(Action<bool,string> check)
     {
+        var preparedState=Town();var preparedDisk=new Disk();int beforePreparation=preparedState.Sequence;
+        var preparedStorage=new PreparingDisk(preparedDisk,()=>check(preparedState.Sequence==beforePreparation&&preparedDisk.Names.Count==0,"storage preparation precedes revision changes and record writes"));
+        new SaveRepository(new SaveReadCache(preparedStorage)).Save(preparedState);
+        check(preparedStorage.Preparations==1&&new SaveRepository(preparedDisk).Load()!=null,"the exclusive read cache forwards storage preparation and publishes a complete save");
+        preparedDisk.Reset();int preparedSequence=preparedState.Sequence;
+        var failedPreparation=new PreparingDisk(preparedDisk,()=>throw new IOException("Interrupted conversion"));
+        check(Fails(()=>new SaveRepository(failedPreparation).Save(preparedState))&&preparedState.Sequence==preparedSequence&&preparedDisk.Names.Count==0,"an interrupted preparation preserves the live revision and all logical records");
+        var wrongTown=new GameState(7320);var guardedPreparation=new PreparingDisk(preparedDisk,()=>throw new Exception("Must not prepare a changed town"));
+        check(Fails(()=>new SaveRepository(guardedPreparation).Save(wrongTown))&&guardedPreparation.Preparations==0,"town identity is checked before storage preparation can write");
         var s=Town();var d=new Disk();var repo=new SaveRepository(d);repo.Save(s);
         check(d.Names.Count==18&&s.Sequence==1,"first save publishes eight component pairs and two complete manifests");Same(s,repo.Load()!,check,"initial reference save restores the exact logical snapshot");
         var original=d.Files.ToDictionary(f=>f.Key,f=>(byte[])f.Value.Clone());d.Reset();int seq=s.Sequence;
