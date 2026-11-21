@@ -110,8 +110,11 @@ if($validation.managed.Count){Run dotnet @('run','--project','tests/AnimalTown.C
 if('card' -in $validation.native){Run dotnet @('run','--project','tests/AnimalTown.CardChecks','-c','Release')}
 if('card' -in $validation.native){Run dotnet @('run','--project','vendor/card-store-sdk/tests/CardRecordStoreTests','-c','Release')}
 if('content' -in $validation.native){
-    Run dotnet @('build','tests/AnimalTown.ContentSmoke','-c','Release','-p:RestoreLockedMode=true','-v','quiet')
-    Run dotnet @("$sdkRoot/tools/compiler/DolphinDotNet.Compiler.dll",'--aot','tests/AnimalTown.ContentSmoke/bin/Release/net8.0/AnimalTown.ContentSmoke.dll','out/content-startup.c')
+    foreach($contentSmokeProfile in @('depot','disc')){
+        $isDepotSmoke=($contentSmokeProfile -eq 'depot').ToString().ToLowerInvariant()
+        Run dotnet @('build','tests/AnimalTown.ContentSmoke','-c','Release',"-p:DepotProfile=$isDepotSmoke",'-p:RestoreLockedMode=true','-v','quiet')
+        Run dotnet @("$sdkRoot/tools/compiler/DolphinDotNet.Compiler.dll",'--aot',"tests/AnimalTown.ContentSmoke/bin/Release/$contentSmokeProfile/net8.0/AnimalTown.ContentSmoke.dll","out/content-startup-$contentSmokeProfile.c")
+    }
     RunNative '.' 'python3' @('tests/native-content-startup.py')
 }
 if('card' -in $validation.native){RunNative '.' 'sh' @('-c','cc -std=c11 -Wall -Wextra -Werror tests/native-card-read.c -o /tmp/animaltown-card-read && /tmp/animaltown-card-read && cc -std=c11 -Wall -Wextra -Werror tests/native-card-mount.c -o /tmp/animaltown-card-mount && /tmp/animaltown-card-mount && cc -std=c11 -Wall -Wextra -Werror -Ivendor/card-store-sdk/include vendor/card-store-sdk/tests/card_blocks_test.c -o /tmp/animaltown-card-blocks && /tmp/animaltown-card-blocks')}

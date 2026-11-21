@@ -7,6 +7,15 @@
   "baseCommit": "7e3dd9599709f553d13d538a320a13f3d410e861",
   "requestSummaries": [
     {
+      "id": "dol-relative-content-sdk-376",
+      "lines": [
+        "Load standalone game assets beside the launched DOL.",
+        "The updated SDK resolves SD Gecko, SD2SP2 and GC Loader paths.",
+        "A moved app folder keeps its own matching assets for the whole session.",
+        "Disc startup and bounded discovery for missing launch paths are preserved."
+      ]
+    },
+    {
       "id": "updater-release-summary",
       "lines": [
         "See what's new in each AnimalTown update.",

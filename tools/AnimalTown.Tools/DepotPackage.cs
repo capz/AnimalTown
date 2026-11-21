@@ -14,7 +14,7 @@ internal static class DepotPackage
     private static readonly JsonSerializerOptions Json=new(){WriteIndented=true};
     private sealed record Identity(string Commit,string Version,string SourceDigest,int RuntimeProfile)
     {
-        public string Text=>ContentSelection.Identity(Commit,Version,SourceDigest,RuntimeProfile);
+        public string Text=>ContentIdentity.Create(Commit,Version,SourceDigest,RuntimeProfile);
     }
     private sealed record BuildReceipt(string Profile,string ContentIdentity,string DolSha256);
     private sealed record PackageManifest(int Schema,string Profile,string Commit,string Version,string SourceDigest,int RuntimeProfile,SortedDictionary<string,string> Files);

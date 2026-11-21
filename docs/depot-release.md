@@ -52,30 +52,59 @@ Both executables embed the expected commit/version/source-digest/profile
 identity. `content.id` must match before configuration, splash or other assets
 are read. This is a build-mixing check, not a cryptographic trust mechanism.
 
-The app uses the SDK-owned `Dolphin.IO.LaunchContext` API. A recognized,
-validated executable path determines the installation directory. SDK mount
-names `cardb:/`, `sd:/` and `gcloader:/` are used internally; physical launcher
-aliases `sdb:/`, `sd2:/`, `sd2sp2:/` and `gcldr:/` normalize to those mounts.
-A launcher's generic `sd:/` does not identify an adapter and uses the fixed
-probe policy instead, so a Slot B install is not mistaken for SD2SP2. Paths
-containing traversal, controls, repeated separators or non-DOL filenames fail.
-A recognized path with missing/wrong assets fails without trying another copy.
-Unrecognized or absent launcher paths only probe `apps/animaltown/` in this
-fixed order: SD2SP2, Slot B SD Gecko, GC Loader. The first complete matching
-build wins. A matching but incomplete package fails instead of borrowing files.
+The app uses `Dolphin.IO.LaunchContent` from DolphinDotNet SDK
+`0.1.0-preview.376.1`. The SDK captures the launcher path, resolves its device,
+preserves the directory containing the DOL, and owns any mounts it acquires.
+AnimalTown supplies its identity/payload validator and explicit fallback
+locations; it no longer maintains a second device-alias parser or mount loop.
+
+| Launcher prefix | Selected app volume |
+| --- | --- |
+| `carda:/`, `sda:/` | Slot A SD Gecko, canonical `carda:/` |
+| `cardb:/`, `sdb:/` | Slot B SD Gecko, canonical `cardb:/` |
+| `sd:/`, `sdc:/`, `sd2:/`, `sd2sp2:/` | SD2SP2, canonical `sd:/` |
+| `gcloader:/`, `gcldr:/` | GC Loader SD, canonical `gcloader:/` |
+| `dvd:/` | GC Loader SD for the standalone app's Swiss launch path |
+
+For example, `sdb:/games/My Town/default.dol` selects
+`cardb:/games/My Town/`. Configuration, models, textures and save artwork are
+all read from that same folder. Move the complete installed app directory,
+including `content.id` and `default.dol`, together. The SDK handles spaces and
+UTF-8 names and validates native filesystem path limits.
+
+The app explicitly sets `DvdSource=GcLoader`: a Swiss `dvd:/` DOL path never
+causes the app to borrow a physical/ODE disc. The disc executable separately
+uses an empty launch-path override and an explicit FST-disc fallback, so a
+Swiss ISO/NKit filename cannot redirect it to the image's containing directory.
+The Depot profile requires a DOL hint and loose sibling assets; it does not
+enable the SDK's optional companion-image mounting mode.
+
+Paths containing traversal, controls or repeated separators fail before mount
+discovery. A recognized path with missing/wrong assets fails without trying
+another copy. In particular, `sd:/` now authoritatively means SD2SP2; it no
+longer falls through to a Slot B installation. Missing, relative or unsupported
+launcher metadata only probes `apps/animaltown/` in this fixed order: SD2SP2,
+Slot B SD Gecko, GC Loader. A different build is skipped and its newly acquired
+mount released; a matching but incomplete package throws immediately. Slot A
+is supported when explicitly identified, but is not added to fallback probing.
 No working-directory assumptions, folder scans or per-load discovery occur.
 
+The successful `LaunchContent` session is retained for the process lifetime,
+including returns to the title and subsequent town sessions. It must not be
+disposed at the end of startup or while asynchronous reads are pending.
 The selected content root is immutable. Synchronous reads, asynchronous floor
 and model loads, texture/model cache keys, variant selection, cleanup probes
-and save artwork all use it. Payloads are read-only. Existing memory-card
-formats and settings remain unchanged: AMTE/01 and the consolidated AnimalTown
-save item in Slot A. The separate-card gameplay UI remains outside this change.
-Slot A SD Gecko
-is rejected because title options and debug preferences require memory card A.
-SD2SP2 plus memory card A and Slot B SD Gecko plus memory card A are the initial
-target configurations. GC Loader support is implemented but not physically
-qualified. Emulator results do not establish SD throughput or launcher behavior
-on hardware.
+and save artwork all use it. Existing path-based consumers retain their current
+API; a path string itself is not a generation-bound file handle. The retained
+mount must not be replaced during gameplay. Validation reads use the session's
+`OpenRead` and close their streams before accepting a candidate.
+
+Payloads are read-only. Existing memory-card formats and settings remain
+unchanged: AMTE/01 and the consolidated AnimalTown save item. The current save
+selector supports either memory-card slot or a session without saving. An SD
+Gecko in Slot A can therefore use a memory card in Slot B. These changes do
+not establish physical adapter, hot-plug or launcher qualification; emulator
+and host-fixture results do not establish SD throughput on hardware.
 
 The available Dolphin 2503 build does not emulate SD Gecko or SD2SP2. It can
 validate the native disc regression path, but cannot qualify standalone SD app
@@ -83,6 +112,11 @@ I/O. Startup/device policy is exercised with host mount fixtures and the product
 bootstrap through the published SDK's native AOT/host filesystem runtime; real SD app
 boot, save/reload and launcher handoff remain hardware qualification items.
 An ISO-mounted run must never be presented as proof of app-directory startup.
+Directly opening a DOL in Dolphin also does not expose its host PC directory
+as a GameCube filesystem. Assets must still be present on a volume supported
+and exposed by that Dolphin configuration, with suitable launch metadata or
+the documented fallback layout. The disc distribution remains the normal
+regression path in Dolphin configurations without the required SD adapter.
 
 The Depot title omits the Update action and compacts its menu to Start /
 Options (plus Debug configuration when enabled). Its closed runtime whitelist
@@ -103,9 +137,11 @@ separate tool command and does not require successful ISO construction.
 suite for their respective components; build/policy changes retain full checks.
 Startup fixtures cover disc/app isolation, missing argv, device priority,
 relocated paths, malformed paths, stale/incomplete installations and bounded
-identity reads. Fourteen production-bootstrap AOT cases also exercise the real
-SDK argument capture and synchronous/asynchronous filesystem reads, updater
-rejection and closed handles, with and without garbage-collection stress.
+identity reads. Production-bootstrap AOT cases exercise both compiled profiles,
+real SDK argument capture, synchronous/asynchronous filesystem reads after
+startup, updater policy and mount/stream cleanup, with and without
+garbage-collection stress. Their directory-backed device/FST fixture verifies
+application policy; it does not emulate the physical storage adapters.
 Package fixtures cover clean extraction, exact paths/case,
 duplicate executables, symlinks, corruption and stale native build receipts.
 
