@@ -1,11 +1,14 @@
 #include "dnd_managed.h"
 #include "dnd_async.h"
 #include "native-frame-counters.h"
+#include "dnd_draw.h"
+#include "dnd_aram.h"
 #include <string.h>
+#include <stdio.h>
 #ifdef GEKKO
 #include <ogc/system.h>
 #include <malloc.h>
-#include "dnd_aram.h"
+#include <ogc/lwp_watchdog.h>
 #endif
 TownFrameCounters town_frame_counters;
 static size_t last_collections;
@@ -28,3 +31,75 @@ void animaltown_frame_snapshot(DndArray *data,DndManagedHeap *heap){
     out[7]=(int32_t)(heap->collections-last_collections);
 }
 void animaltown_frame_service(void){dnd_async_service();}
+extern unsigned animaltown_model_memory(int peak);
+extern int animaltown_terrain_stat(int kind);
+static uint32_t physical_peak,graphics_peak;
+uint32_t animaltown_profile_clock(void){
+#ifdef GEKKO
+    return (uint32_t)ticks_to_microsecs(gettime());
+#else
+    return 0;
+#endif
+}
+void animaltown_frame_memory(DndArray *data,DndManagedHeap *heap){
+    if(!data||data->elements_are_references||data->element_size!=4||data->length<32)return;
+    uint32_t at=animaltown_profile_clock(),*out=(uint32_t*)data->data;
+    memset(out,0,32*sizeof(*out));out[0]=1;
+#ifdef GEKKO
+    struct mallinfo memory=mallinfo();uint32_t aram_used=0,aram_total=0;
+    out[1]=1;out[2]=SYS_GetPhysicalMem1Size();out[3]=SYS_GetArena1Size();out[4]=(uint32_t)memory.fordblks;
+    uint64_t free_bytes=(uint64_t)out[3]+out[4];out[5]=free_bytes<out[2]?out[2]-(uint32_t)free_bytes:0;
+    if(out[5]>physical_peak)physical_peak=out[5];
+    if(dnd_aram_memory_usage(&aram_used,&aram_total)){out[1]|=2;out[15]=aram_total;out[16]=aram_used;out[17]=(uint32_t)dnd_aram_stat(3);out[18]=(uint32_t)dnd_aram_stat(4);}
+#endif
+    out[6]=physical_peak;out[7]=(uint32_t)heap->used;out[8]=town_frame_counters.heap_peak;out[9]=(uint32_t)heap->capacity;out[10]=(uint32_t)heap->collections;
+    out[11]=(uint32_t)dnd_draw_total_bytes();if(out[11]>graphics_peak)graphics_peak=out[11];out[12]=graphics_peak;
+    out[13]=animaltown_model_memory(0);out[14]=animaltown_model_memory(1);
+    out[19]=(uint32_t)animaltown_terrain_stat(0);out[20]=(uint32_t)animaltown_terrain_stat(10);out[21]=(uint32_t)animaltown_terrain_stat(7);out[22]=(uint32_t)animaltown_terrain_stat(11);
+    out[23]=(uint32_t)animaltown_terrain_stat(5);out[24]=(uint32_t)animaltown_terrain_stat(12);out[25]=(uint32_t)animaltown_terrain_stat(13);out[26]=(uint32_t)animaltown_terrain_stat(6)-out[24];out[27]=(uint32_t)animaltown_terrain_stat(14);
+    out[28]=animaltown_profile_clock()-at;out[29]=at;
+    // Diagnostic residual, not a claim that all allocator ownership is known.
+    // The managed arena is counted once; terrain is a subset of draw bytes.
+    uint64_t known=(uint64_t)out[9]+out[11]+out[13];out[30]=out[5]>known?out[5]-(uint32_t)known:0;
+    out[31]=1; // model requests are tracked from boot; physical/draw peaks sampled
+}
+static unsigned profile_crc(unsigned crc,uint32_t word){
+    for(int octet=0;octet<4;octet++){crc^=((word>>(octet*8))&255u)<<8;for(int bit=0;bit<8;bit++)crc=crc&32768u?((crc<<1)^0x1021u)&65535u:(crc<<1)&65535u;}return crc;
+}
+void animaltown_frame_dump(DndArray *words,int count,DndArray *memory,uint32_t session,uint32_t total){
+    if(!words||words->elements_are_references||words->element_size!=4||words->length<4096||count<0||count>256||!memory||memory->elements_are_references||memory->element_size!=4||memory->length<32)return;
+#ifdef GEKKO
+#define PROFILE_PRINT SYS_Report
+#else
+#define PROFILE_PRINT printf
+#endif
+    PROFILE_PRINT("ANIMALTOWN PROFILE BEGIN 1 %08x %u %u\n",session,total,total>(uint32_t)count?total-(uint32_t)count:0);
+    uint32_t *data=(uint32_t*)words->data,*snapshot=(uint32_t*)memory->data;
+    for(int i=0;i<count;i++){
+        unsigned offset=((total-(uint32_t)count+(uint32_t)i)%256u)*16u,crc=65535;
+        PROFILE_PRINT("ANIMALTOWN PROFILE FRAME %08x",session);
+        for(int j=0;j<16;j++){uint32_t value=data[offset+(unsigned)j];crc=profile_crc(crc,value);PROFILE_PRINT(" %08x",value);}
+        PROFILE_PRINT(" %04x\n",crc);
+    }
+    PROFILE_PRINT("ANIMALTOWN PROFILE MEMORY %08x",session);unsigned crc=65535;
+    for(int i=0;i<32;i++){crc=profile_crc(crc,snapshot[i]);PROFILE_PRINT(" %08x",snapshot[i]);}
+    PROFILE_PRINT(" %04x\nANIMALTOWN PROFILE END %08x\n",crc,session);
+#undef PROFILE_PRINT
+}
+void animaltown_frame_dump_metrics(DndArray *histogram,DndArray *peaks,DndArray *events,int count,int dropped,uint32_t session){
+    if(!histogram||histogram->elements_are_references||histogram->element_size!=4||histogram->length<32||!peaks||peaks->elements_are_references||peaks->element_size!=4||peaks->length<16||!events||events->elements_are_references||events->element_size!=4||events->length<256||count<0||count>64)return;
+#ifdef GEKKO
+#define PROFILE_PRINT SYS_Report
+#else
+#define PROFILE_PRINT printf
+#endif
+    DndArray *arrays[3]={histogram,peaks,events};int lengths[3]={32,16,count*4};
+    const char *names[3]={"HISTOGRAM","PEAKS","EVENTS"};
+    for(int a=0;a<3;a++){
+        PROFILE_PRINT("ANIMALTOWN PROFILE %s %08x",names[a],session);unsigned crc=65535;
+        for(int i=0;i<lengths[a];i++){uint32_t value=((uint32_t*)arrays[a]->data)[i];crc=profile_crc(crc,value);PROFILE_PRINT(" %08x",value);}
+        PROFILE_PRINT(" %04x\n",crc);
+    }
+    PROFILE_PRINT("ANIMALTOWN PROFILE DROPPED_EVENTS %08x %d\n",session,dropped);
+#undef PROFILE_PRINT
+}

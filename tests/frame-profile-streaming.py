@@ -72,6 +72,47 @@ assert extra['texture_operations']==0 and extra['shadow_page_updates']==360
 assert extra['mesh_updates']['p50']==3 and extra['generation_ms']['p50']==.2
 print('Frame telemetry: normal travel, bounded repairs, loading interruption and missing-terrain rejection passed')
 
+# Protocol v6 attaches every band to a CRC-protected session/32-bit sequence.
+wire=runpy.run_path('tools/profile_wire.py')
+def paint(frame,words,y):
+    for bit in range(len(words)*16):
+        if words[bit//16]&(1<<(bit%16)):
+            at=((y+2+bit//64*4)*640+bit%64*10+5)*3
+            frame[at:at+3]=b'\xff\xff\xff'
+class V6Capture:
+    def __init__(self,samples):self.samples=iter(samples);self.stdout=self
+    def read(self,size):
+        try:session,sequence,corrupt=next(self.samples)
+        except StopIteration:return b''
+        main=[0]*32;main[:3]=[0x4154,6,sequence&65535];main[16]=333
+        for word in main[:31]:main[31]^=word
+        detail=[0]*16;detail[:3]=[0x4144,sequence&65535,session]
+        for word in detail[:15]:detail[15]^=word
+        batch=[0]*16;batch[:4]=[0x4153,1,sequence&65535,session]
+        for word in batch[:15]:batch[15]^=word
+        memory=[0]*16;memory[:7]=[0x414d,1,session,0,1,0,(sequence//2)%8]
+        memory[7]=memory[6]*4;memory[15]=wire['crc'](memory[:15])
+        identity=[0]*16;identity[:8]=[0x4149,1,session,0,sequence&65535,sequence>>16,33333,0];identity[9]=1
+        identity[15]=wire['crc'](main+detail+batch+memory+identity[:15])
+        if corrupt:batch[3]^=1
+        frame=bytearray(size)
+        for words,y in ((main,448),(detail,432),(batch,416),(identity,400),(memory,384)):paint(frame,words,y)
+        return bytes(frame)
+    def wait(self):return 0
+samples=[(7,seq,False) for seq in range(65530,65562)]+[(8,seq,False) for seq in range(65530,65562)]
+samples.extend(((8,65561,False),(8,65562,True),(8,65563,False)))
+output=StringIO()
+with patch.object(sys,'argv',['tools/read-frame-profile.py','hardware.avi','--platform','hardware','--storage','DVD','--video-mode','480p']),patch('subprocess.Popen',return_value=V6Capture(samples)),redirect_stdout(output):
+    runpy.run_path('tools/read-frame-profile.py',run_name='__main__')
+v6=json.loads(output.getvalue())
+assert v6['sessions']==[7,8] and v6['preparation_details']['frames']==65
+assert v6['repeated_video_samples']==1 and v6['invalid_v6_samples']==1 and v6['missing_sequence_samples']==1
+assert v6['scenarios']['world']['timings']['frame_interval']['p99']==33.333
+assert v6['scenarios']['world']['pass_draw_submissions']['terrain_or_interior']['p50']==8
+assert len(v6['memory_snapshots'])==2 and v6['platform']=='hardware' and 'console timebase' in v6['units']
+assert v6['excluded_transition_samples']==0 and not v6['legacy_identity_limitations']
+print('Telemetry v6: session identity, sequence wrap, raw intervals, cross-band CRC, memory assembly, repeats/gaps and hardware provenance passed')
+
 # The smoke reader must follow the consolidated SDK archive, including fallback
 # from an interrupted/corrupt newest checkpoint, rather than read freed sectors.
 import struct

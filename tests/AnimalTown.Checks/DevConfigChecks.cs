@@ -5,12 +5,12 @@ internal static class DevConfigChecks
     {
         check(new DevConfig().Values[DevConfig.FullResolutionAaIndex]==0,"full-resolution AA defaults off");
         var oldV3=new DevConfig();oldV3.Values[DevConfig.FullResolutionAaIndex]=0;
-        byte[] v3=oldV3.Encode();v3[3]=3;uint checksum=2166136261;
+        byte[] v3=oldV3.Encode().Take(40).ToArray();v3[3]=3;uint checksum=2166136261;
         for(int i=0;i<36;i++)checksum=unchecked((checksum^v3[i])*16777619);
         for(int i=0;i<4;i++)v3[36+i]=(byte)(checksum>>(i*8));
         check(DevConfig.Decode(v3).Values[DevConfig.FullResolutionAaIndex]==0,"version-three settings migrate with AA off");
         var on=new DevConfig();on.Values[DevConfig.FullResolutionAaIndex]=1;
-        check(DevConfig.Decode(on.Encode()).Values[DevConfig.FullResolutionAaIndex]==1,"AA preference survives restart without changing the record size");
+        check(DevConfig.Decode(on.Encode()).Values[DevConfig.FullResolutionAaIndex]==1,"AA preference survives restart");
         var defaults=new DevConfig(7);check(defaults.RuntimeMode==7,"dev defaults preserve disc runtime profile");
         check(defaults.Values[DevConfig.GroundMipBandsIndex]==0,"terrain mip bands are opt-in");
         check(defaults.Values[DevConfig.DiscardTerrainCacheWhenIndoorsIndex]==0,"indoor terrain cache discard is opt-in");
@@ -24,7 +24,9 @@ internal static class DevConfigChecks
         check(previous.Values[DevConfig.DiscardTerrainCacheWhenIndoorsIndex]==0,"version-two files leave the new terrain option off");
         for(int row=0;row<DevConfig.Count;row++)if(DevConfig.IsSetting(row))defaults.Adjust(row,1);
         var encoded=defaults.Encode();var restored=DevConfig.Decode(encoded);
-        check(encoded[3]==5&&restored.Values[DevConfig.DiscardTerrainCacheWhenIndoorsIndex]==1&&restored.Values[DevConfig.GroundMipBandsIndex]==1,"terrain debug toggles persist in version-five dev config");
+        check(encoded[3]==6&&encoded.Length==44&&restored.Values[DevConfig.DiscardTerrainCacheWhenIndoorsIndex]==1&&restored.Values[DevConfig.GroundMipBandsIndex]==1&&restored.Values[DevConfig.WarmTerrainPrefetchIndex]==1,"terrain debug toggles persist in version-six dev config");
+        check(new DevConfig().Values[DevConfig.WarmTerrainPrefetchIndex]==0&&legacy.Values[DevConfig.WarmTerrainPrefetchIndex]==0,"warm prefetch defaults off on new and migrated cards");
+        check(defaults.ProfilingMode==3&&restored.ProfilingMode==2&&encoded[4+DevConfig.ProfilingModeIndex]==0,"capture mode is session only; historic overlay preference still loads");
         check(defaults.Values.SequenceEqual(restored.Values),"all dev options survive their own save record");
         check(defaults.SdkPerformanceOverlay&&!restored.SdkPerformanceOverlay&&encoded[4+DevConfig.SdkPerformanceIndex]==0,"SDK overlay never enters a newly saved record");
         check(!SplitSaveCodec.IsFile("dev_config"),"dev config cannot be counted as a damaged town save");
@@ -55,21 +57,22 @@ internal static class DevConfigChecks
         UniformUiGrain(check);
         // Valid checksums cannot turn reserved legacy bytes into new settings.
         void Rehash(byte[] data,int end){uint h=2166136261;for(int i=0;i<end;i++)h=unchecked((h^data[i])*16777619);for(int i=0;i<4;i++)data[end+i]=(byte)(h>>(i*8));}
-        var sdkOn=new DevConfig().Encode();sdkOn[4+DevConfig.SdkPerformanceIndex]=1;Rehash(sdkOn,36);
+        var sdkOn=new DevConfig().Encode();sdkOn[4+DevConfig.SdkPerformanceIndex]=1;Rehash(sdkOn,40);
         check(!DevConfig.Decode(sdkOn).SdkPerformanceOverlay,"old cards cannot enable the SDK overlay at process start");
         var reserved=Convert.FromHexString("4154440200010000010101010200000000000000000000006400010000000016070000003360CDB9");reserved[33]=1;Rehash(reserved,36);
         rejected=false;try{DevConfig.Decode(reserved);}catch(IOException){rejected=true;}check(rejected,"v2 padding cannot enable the new terrain option");
-        var current=new DevConfig().Encode();current[3]=3;current[34]=1;Rehash(current,36);
+        var current=new DevConfig().Encode().Take(40).ToArray();current[3]=3;current[34]=1;Rehash(current,36);
         rejected=false;try{DevConfig.Decode(current);}catch(IOException){rejected=true;}check(rejected,"v3 retains strict zero padding");
-        var v4=new DevConfig().Encode();v4[3]=4;v4[35]=1;Rehash(v4,36);
+        var v4=new DevConfig().Encode().Take(40).ToArray();v4[3]=4;v4[35]=1;Rehash(v4,36);
         rejected=false;try{DevConfig.Decode(v4);}catch(IOException){rejected=true;}check(rejected,"v4 retains strict zero padding after the AA byte");
         v4[35]=0;v4[34]=1;Rehash(v4,36);
         var fromV4=DevConfig.Decode(v4);
         check(fromV4.Values[DevConfig.FullResolutionAaIndex]==1&&fromV4.Values[DevConfig.GroundMipBandsIndex]==0,"v4 preserves AA and defaults the new mip diagnostic off");
         v4[35]=0;v4[34]=2;Rehash(v4,36);
         rejected=false;try{DevConfig.Decode(v4);}catch(IOException){rejected=true;}check(rejected,"AA setting rejects unsupported modes even with a valid checksum");
-        var v5=new DevConfig().Encode();v5[35]=2;Rehash(v5,36);
+        var v5=new DevConfig().Encode().Take(40).ToArray();v5[3]=5;v5[35]=2;Rehash(v5,36);
         rejected=false;try{DevConfig.Decode(v5);}catch(IOException){rejected=true;}check(rejected,"mip band toggle rejects unsupported modes with a valid checksum");
+        v5[35]=1;Rehash(v5,36);check(DevConfig.Decode(v5).Values[DevConfig.WarmTerrainPrefetchIndex]==0,"published v5 settings migrate with prefetch off");
         rejected=false;try{DevConfig.Decode(new byte[8]);}catch(IOException){rejected=true;}check(rejected,"truncated dev config rejected");
     }
     private static void UniformUiGrain(Action<bool,string> check)

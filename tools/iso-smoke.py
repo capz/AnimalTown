@@ -1481,7 +1481,7 @@ def submission_scenario():
                         if pixels[((450+bit//64*4)*800+x)*3]>128:words[bit//16]|=1<<(bit%16)
                     checksum=0
                     for word in words[:31]:checksum^=word
-                    if words[0]==0x4154 and words[1]==5 and words[31]==checksum and words[30]==0:valid=True;break
+                    if words[0]==0x4154 and words[1] in (5,6) and words[31]==checksum and words[30]==0:valid=True;break
                 if valid:break
             if not valid:raise AssertionError('No valid gameplay telemetry after startup; inspect stationary screenshot')
     press('A');time.sleep(15)
@@ -1891,14 +1891,14 @@ def card_dev_config(path):
     if not path.exists():return None
     try:payload=options_card_files(path).get('dev_config')
     except AssertionError:return None
-    if not payload or len(payload)<4 or payload[:3]!=b'ATD' or payload[3] not in (1,2,3,4,5):return None
-    version=payload[3];checksum_at=32 if version==1 else 36
-    count={1:27,2:29,3:30,4:31,5:32}[version]
+    if not payload or len(payload)<4 or payload[:3]!=b'ATD' or payload[3] not in (1,2,3,4,5,6):return None
+    version=payload[3];checksum_at=32 if version==1 else 40 if version==6 else 36
+    count={1:27,2:29,3:30,4:31,5:32,6:34}[version]
     if len(payload)!=checksum_at+4 or any(payload[4+count:checksum_at]):return None
     checksum=2166136261
     for value in payload[:checksum_at]:checksum=((checksum^value)*16777619)&0xffffffff
     if checksum!=struct.unpack_from('<I',payload,checksum_at)[0]:return None
-    return {'version':version,'values':list(payload[4:4+count]),'discard_terrain_cache_when_indoors':version>=3 and payload[33]==1,'full_resolution_aa':version>=4 and payload[34]==1,'ground_mip_bands':version>=5 and payload[35]==1}
+    return {'version':version,'values':list(payload[4:4+count]),'discard_terrain_cache_when_indoors':version>=3 and payload[33]==1,'full_resolution_aa':version>=4 and payload[34]==1,'ground_mip_bands':version>=5 and payload[35]==1,'warm_terrain_prefetch':version>=6 and payload[36]==1}
 
 def aram_model_cycles(text,after):
     """Match real retire/restore pairs in the current town session only."""
@@ -2391,7 +2391,7 @@ with (root/'emulator.log').open('w') as log:
                         if word(0)!=0x4154:continue
                         values=[word(n) for n in range(32)];checksum=0
                         for value in values[:31]:checksum^=value
-                        if values[1]==5 and checksum==values[31]:return values[2]
+                        if values[1] in (5,6) and checksum==values[31]:return values[2]
                 raise AssertionError('No valid travel telemetry in '+name)
             previous=marker('travel-start.png')
             travel_report={'disc':str(disc),'freeze_textures':'--freeze-textures' in sys.argv,'recreate_terrain_meshes':'--recreate-terrain-meshes' in sys.argv,'seconds_per_direction':profile_seconds*2,'frame_counters':[previous]}

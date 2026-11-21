@@ -79,7 +79,7 @@ internal static class NativeTerrain
         if(FailStep){FailStep=false;pending=0;return -3;}
         if(pending==0){pending=token;entry=value;remaining=cancelRemaining=2;return 0;}
         if(pending!=token||entry!=value)throw new InvalidOperationException("Changed a pending destination without draining.");
-        if(--remaining>0)return 0;pending=0;return Bind(token,value);
+        if(--remaining>0)return 0;pending=0;entries[token]=value;return 1;
     }
     internal static int CancelBind(){if(pending==0)return 1;if(--cancelRemaining>0)return 0;pending=0;return 1;}
     internal static int Suspend()
@@ -169,6 +169,33 @@ internal static class TerrainResidencyChecks
         archive.Suspend();archive.PrepareAsync(30,50,owner.Rows,Clock.Timestamp+1000);
         check(!archive.TryDispose()&&NativeTerrain.ReleasedViews==0,"reset/disposal waits for the active cache owner");
         check(archive.TryDispose()&&NativeTerrain.ReleasedViews==views&&NativeTerrain.AramBytes==0,"disposal releases the archive and original view set after drainage");
+        archive.Reset();while(!archive.Ready)archive.Bake(state,owner,strips,data);
+        archive.Prepare(8,8,owner.Rows);archive.WarmPrefetch=true;
+        for(int i=0;i<256;i++)archive.PrepareAsync(8,8,owner.Rows,Clock.Timestamp+1000);
+        int sync=NativeTerrain.BindCalls,handles=NativeTerrain.CreatedViews,late=archive.WarmLateSelections;
+        bool routeReady=true,bounded=true;float px=8,pz=8;
+        for(int row=0;row<15;row++){
+            float targetZ=8+row*7;
+            while(pz<targetZ){pz=Math.Min(targetZ,pz+.125f);Tick();}
+            float targetX=(row&1)==0?Town.Width-8:8;
+            while(px!=targetX){px+=Math.Sign(targetX-px)*Math.Min(.125f,Math.Abs(targetX-px));Tick();}
+        }
+        void Tick(){
+            int calls=NativeTerrain.StepCalls;archive.PrepareAsync(px,pz,owner.Rows,Clock.Timestamp+500);
+            archive.Prepare(px,pz,owner.Rows);routeReady&=archive.Presentable;
+            archive.PrepareAsync(px,pz,owner.Rows,Clock.Timestamp+500);bounded&=NativeTerrain.StepCalls-calls<=16;
+        }
+        check(routeReady&&archive.WarmLateSelections==late,"prefetched full-town walking route has no missing/loading selections");
+        check(NativeTerrain.BindCalls==sync&&NativeTerrain.CreatedViews==handles&&bounded,"warm movement never enters synchronous binding or grows the view pool and respects both pump grants");
+        var expected=new TerrainArchiveView();expected.Prepare(px,pz,owner.Rows);
+        check(archive.ViewCount==expected.Count*2&&archive.Triangles==expected.Count*4,"prefetched geometry is excluded from drawable counts and preserves the camera selection");
+        long warmAllocated=GC.GetAllocatedBytesForCurrentThread();
+        for(int i=0;i<1000;i++){archive.Prepare(px,pz,owner.Rows);archive.PrepareAsync(px,pz,owner.Rows,Clock.Timestamp+500);}
+        check(GC.GetAllocatedBytesForCurrentThread()==warmAllocated,"stable prefetch pumping is allocation-free");
+        archive.PrepareAsync(30,30,owner.Rows,Clock.Timestamp+500);archive.WarmPrefetch=false;
+        for(int i=0;i<256&&archive.WarmActive;i++)archive.PrepareAsync(px,pz,owner.Rows,Clock.Timestamp+500);
+        check(!archive.WarmActive&&Finish(archive,px,pz,owner.Rows)&&archive.Presentable,"disabling prefetch drains its request, releases speculation and returns to the original path");
+        archive.Dispose();
         NativeTerrain.Empty=true;archive.Reset();while(!archive.Ready)archive.Bake(state,owner,strips,data);
         archive.Prepare(30,50,owner.Rows);
         check(archive.Presentable&&archive.ViewCount==0&&archive.Triangles==0,"empty sections become drawable without aliases");

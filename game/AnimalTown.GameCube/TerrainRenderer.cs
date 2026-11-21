@@ -48,12 +48,20 @@ internal sealed class TerrainRenderer : IDisposable
     internal bool CacheSuspended=>archive?.CacheSuspended??false;
     internal int CacheResidencyError=>archive?.ResidencyError??0;
     internal bool DiscardTerrainCacheWhenIndoors;
+    internal bool WarmTerrainPrefetch;
+    internal int WarmQueued=>archive?.WarmQueued??0;
+    internal int WarmLateSelections=>archive?.WarmLateSelections??0;
+    internal int WarmEvictions=>archive?.WarmEvictions??0;
     private bool resetting;
     internal bool SuspendOutdoorCache()=>!DiscardTerrainCacheWhenIndoors||legacy||archive==null||archive.Suspend();
     // A not-yet-baked landscape follows the existing initial loading path.
     // Only a previously built cold cache must be prefetched before door commit.
     internal bool PrepareOutdoorResidency(float x,float z,long deadline,bool refreshSelection=false)
-        =>legacy||archive==null||!archive.Ready||(!refreshSelection&&archive.Presentable)||archive.PrepareAsync(x,z,Rows,deadline);
+    {
+        if(legacy||archive==null||!archive.Ready)return true;
+        archive.WarmPrefetch=WarmTerrainPrefetch;
+        return (!WarmTerrainPrefetch&&!archive.WarmActive&&!refreshSelection&&archive.Presentable)||archive.PrepareAsync(x,z,Rows,deadline);
+    }
     internal int LoadingRemaining=>legacy?stream.MissingWanted:archive?.Remaining??TerrainArchivePlan.Count;
     internal int LoadingTotal=>legacy?stream.WantedCount:TerrainArchivePlan.Count;
     internal int MissingVisible=>legacy?stream.MissingVisible:Ready?0:1;
@@ -197,6 +205,7 @@ internal sealed class TerrainRenderer : IDisposable
                 long bakeDeadline=Clock.Timestamp+12000;
                 for(int n=0;n<256&&!archive.Ready&&(n==0||Clock.Timestamp<bakeDeadline);n++){archive.Bake(state,this,staging,data);BuiltThisFrame++;}
             }
+            archive.WarmPrefetch=WarmTerrainPrefetch;
             long at=FrameProfile.Start();archive.Prepare(state.X,state.Z,Rows);FrameProfile.DetailEnd(0,at);
             shadows.Prepare(state);
             int work=0;while(work<8&&Clock.Timestamp<deadline){if(!movingShadows.Advance())break;work++;}

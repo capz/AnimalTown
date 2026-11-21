@@ -7,7 +7,7 @@ using Dolphin.Timing;
 // Cold-load construction uses one scratch section; the full immutable archive
 // lives in ARAM, outside the small managed heap. At runtime the
 // fixed mesh pool draws a bounded MEM1 cache of the original bytes.
-internal sealed class TerrainArchive
+internal sealed partial class TerrainArchive
 {
     private sealed class View : Mesh
     {
@@ -55,13 +55,13 @@ internal sealed class TerrainArchive
         Dolphin.Diagnostics.DebugOverlay.WriteLine("ANIMALTOWN TERRAIN RESET BEGIN");
         int result=NativeTerrain.Reset(TerrainArchivePlan.Count);if(result!=1)throw new InvalidOperationException("Terrain archive initialization: "+result);
         Dolphin.Diagnostics.DebugOverlay.WriteLine("ANIMALTOWN TERRAIN RESET READY");
-        Array.Clear(bound,0,bound.Length);baked=half=0;building=collect=selecting=presentable=suspended=restoreMarkerPending=saveResumePending=false;revision=-1;selection.Reset();
+        warm=null;Array.Clear(bound,0,bound.Length);baked=half=0;building=collect=selecting=presentable=suspended=restoreMarkerPending=saveResumePending=false;revision=-1;selection.Reset();
     }
     internal bool TryDispose()
     {
         if(NativeTerrain.CancelBind()!=1)return false;
         ReleaseViews();if(NativeTerrain.Reset(0)!=1)throw new InvalidOperationException("Terrain archive disposal failed");
-        selecting=presentable=suspended=restoreMarkerPending=saveResumePending=false;return true;
+        warm=null;selecting=presentable=suspended=restoreMarkerPending=saveResumePending=false;return true;
     }
     internal void Dispose()
     {if(!TryDispose())throw new InvalidOperationException("Drain terrain residency before disposal");}
@@ -80,7 +80,7 @@ internal sealed class TerrainArchive
         }
         Array.Clear(bound,0,bound.Length);Array.Clear(visible,0,visible.Length);
         for(int i=0;i<heads.Length;i++)heads[i]=-1;
-        revision=-1;requestX=float.NaN;selecting=presentable=false;selection.Reset();
+        warm=null;revision=-1;requestX=float.NaN;selecting=presentable=false;selection.Reset();
         ViewCount=Triangles=0;GroundMask=0;retryAt=0;ResidencyError=0;
         int before=NativeTerrain.Stat(0);
         int result=NativeTerrain.Suspend();if(result<0)throw new InvalidOperationException("Terrain cache suspension failed: "+result);
@@ -131,12 +131,16 @@ internal sealed class TerrainArchive
     }
     internal void Prepare(float x,float z,CylinderRows rows)
     {
+        if(PrepareWarm(x,z,rows,false,0,out _))return;
         // Warm travel retains the existing demand-bind behavior. Cold resume
         // uses PrepareAsync, and never enters a synchronous DMA wait here.
         PrepareSelection(x,z,rows,selecting||CacheSuspended,long.MaxValue);
     }
     internal bool PrepareAsync(float x,float z,CylinderRows rows,long deadline)
-        =>PrepareSelection(x,z,rows,true,deadline);
+    {
+        if(PrepareWarm(x,z,rows,true,deadline,out bool ready))return ready;
+        return PrepareSelection(x,z,rows,true,deadline);
+    }
     private bool PrepareSelection(float x,float z,CylinderRows rows,bool asynchronous,long deadline)
     {
         if(!Ready)return false;
@@ -191,17 +195,7 @@ internal sealed class TerrainArchive
             view.Section=section;view.Entry=nextEntry;view.Kind=NativeTerrain.Kind(nextEntry);
             nextEntry++;freeView++;FrameProfile.RecycledSections++;
         }
-        Triangles=ViewCount=0;GroundMask=0;
-        for(int i=0;i<selection.Count;i++){
-            int section=selection.Sections[i];Triangles+=triangles[section];
-        }
-        for(int i=0;i<heads.Length;i++)heads[i]=-1;
-        for(int i=views.Length-1;i>=0;i--){
-            var view=views[i]!;if(view.Section<0)continue;
-            ViewCount++;if(view.Kind<104)GroundMask|=1UL<<(view.Kind%52);
-            int kind=view.Kind>=52&&view.Kind<104?view.Kind-52:view.Kind;
-            links[i]=heads[kind];heads[kind]=i;
-        }
+        Publish();
         revision=selection.Revision;selecting=false;presentable=true;ResidencyError=0;retryAt=0;
         if(restoreMarkerPending){
             restoreMarkerPending=false;
@@ -209,6 +203,20 @@ internal sealed class TerrainArchive
                 " archive bytes "+NativeTerrain.Stat(5));
         }
         return true;
+    }
+    private void Publish()
+    {
+        Triangles=ViewCount=0;GroundMask=0;
+        for(int i=0;i<selection.Count;i++){
+            int section=selection.Sections[i];Triangles+=triangles[section];
+        }
+        for(int i=0;i<heads.Length;i++)heads[i]=-1;
+        for(int i=views.Length-1;i>=0;i--){
+            var view=views[i]!;if(view.Section<0||!visible[view.Section])continue;
+            ViewCount++;if(view.Kind<104)GroundMask|=1UL<<(view.Kind%52);
+            int kind=view.Kind>=52&&view.Kind<104?view.Kind-52:view.Kind;
+            links[i]=heads[kind];heads[kind]=i;
+        }
     }
     internal int First(int kind)=>heads[kind];
     internal int Next(int index)=>links[index];

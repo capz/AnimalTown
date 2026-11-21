@@ -1,5 +1,10 @@
 # Streamed-town frame investigation — 2026-11-09
 
+For the current source/package audit and implementation roadmap, see
+[LOD, streaming, culling and hardware profiling](2026-11-21-optimization-design.md).
+The measurements below remain historical results for their recorded builds.
+Implementation: [bounded profiling and optional warm terrain prefetch](2026-11-21-profiling-prefetch.md).
+
 Latest follow-up: [stronger cylinder, seasons, attention and rim controls](../world-debug-controls.md).
 Previous: [actor visibility and global backface culling](2026-11-09-visibility-culling.md).
 Related: [opt-in debug rain and ocean validation](../debug-weather.md).
