@@ -35,7 +35,7 @@ internal sealed class LoadingScreen : IDisposable,Hypercube.GameCube.IFrameScene
     private void Frame(string? error,UiFont? font)
     {
         frameError=error;frameFont=font;frameNow=Clock.Timestamp;
-        UiNoise.Prepare();background.Prepare();Hypercube.GameCube.FrameRenderer.Draw(GraphicsDevice.Default,TitleBackdrop.Color,this);
+        UiNoise.Prepare();background.Prepare();Hypercube.GameCube.FrameRenderer.Draw(GraphicsDevice.Default,TitleBackdrop.Color,this);FrameProfile.PollMemory();
     }
     public void SubmitFramePart()
     {
@@ -43,6 +43,7 @@ internal sealed class LoadingScreen : IDisposable,Hypercube.GameCube.IFrameScene
         string? error=frameError;UiFont? font=frameFont;ui.Begin();background.Draw(ui);
         Sprout(frameNow);
         if(error!=null&&font!=null){TitleArt.Panel(ui,90,182,460,116);font.Draw(ui,error,112,209,TitleArt.Ink,.9f);}
+        FrameProfile.Draw(ui);
         ui.End();
     }
     private void Sprout(long now)

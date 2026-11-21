@@ -8,6 +8,7 @@
   <ItemGroup><Compile Include="../../game/AnimalTown.GameCube/TownGame.MailUi.cs" Link="TownGame.MailUi.cs" /></ItemGroup>
   <ItemGroup><Compile Include="../../game/AnimalTown.GameCube/DialogueVoice.cs" Link="DialogueVoice.cs" /></ItemGroup>
   <ItemGroup><Compile Include="../../game/AnimalTown.GameCube/TerrainArchive.cs" Link="TerrainArchive.cs" /></ItemGroup>
+  <ItemGroup><Compile Include="../../game/AnimalTown.GameCube/TerrainArchive.Warm.cs" Link="TerrainArchive.Warm.cs" /></ItemGroup>
   <ItemGroup><Compile Include="../../game/AnimalTown.GameCube/ModelResidency.cs" Link="ModelResidency.cs" /></ItemGroup>
   <ItemGroup>
     <Compile Include="../../game/AnimalTown.GameCube/TownGame.Simulation.cs" Link="TownGame.Simulation.cs" />

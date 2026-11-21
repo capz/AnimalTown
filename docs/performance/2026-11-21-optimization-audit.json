@@ -1,0 +1,376 @@
+{
+  "schema": 1,
+  "date": "2026-11-21",
+  "gameCommit": "f5cc386df683827899bfab62479488603a0ecc92",
+  "release": "https://github.com/capz/AnimalTown/releases/tag/v0.82.0",
+  "sdkVersion": "0.1.0-preview.376.1",
+  "hypercubeVersion": "0.1.0-preview.52.1",
+  "depot": {
+    "url": "https://github.com/capz/AnimalTown/releases/download/v0.82.0/AnimalTown-0.82.0-depot.zip",
+    "bytes": 13926094,
+    "sha256": "1aaac6259ffc1ee13dd0888d33e5a721bb3388b88806abddbf0deab6ad2d120b"
+  },
+  "measurementScope": "Static inspection of the published package, its texture audit and source; no fresh frame-time or on-hardware memory measurements",
+  "hardwareMeasured": false,
+  "town": {
+    "width": 128,
+    "height": 120,
+    "acreSize": 20,
+    "acreColumns": 7,
+    "acreRows": 6
+  },
+  "currentLimits": {
+    "terrainAramCapacityBytes": 8388608,
+    "terrainMem1CacheBytes": 1048576,
+    "terrainViewHandles": 256,
+    "modelAramBackingLimitBytes": 4194304,
+    "aramReserveBytes": 524288,
+    "aramReserveSlots": 8,
+    "audioPlatformReservationBytes": 2097152,
+    "residencySoftCpuBudgetUsPerPresentation": 1000,
+    "modelBytesPerAdvance": 8192,
+    "modelWorkItemsPerAdvance": 32,
+    "textureCacheLimitBytes": 4194304,
+    "buildingKitCeilingBytes": 786432,
+    "rainSnowDrops": 64,
+    "leafPetalPoolCapacity": 24
+  },
+  "defaultModels": [
+    {
+      "name": "fox",
+      "file": "fox-tex128.dndmodel",
+      "packageBytes": 332896,
+      "sha256": "5f3f8cb25469659d6684a43cddb9badc625141bb3e082a8fae720b73c4508899",
+      "vertices": 2183,
+      "triangles": 2064,
+      "textureCount": 1,
+      "texturePayloadBytes": 81920
+    },
+    {
+      "name": "bunny",
+      "file": "bunny-tex128.dndmodel",
+      "packageBytes": 376224,
+      "sha256": "dbcc6c99ec33f33b28827f92b48574db6cac9171f53dc568cca6a2f45fd8a7d3",
+      "vertices": 2410,
+      "triangles": 1575,
+      "textureCount": 2,
+      "texturePayloadBytes": 163840
+    },
+    {
+      "name": "giraffe",
+      "file": "giraffe-tex128.dndmodel",
+      "packageBytes": 245728,
+      "sha256": "5480e5a6551c10f4bbe3652ae6b9d00a028a75a15300425ba8d935eb5c04005a",
+      "vertices": 1741,
+      "triangles": 1572,
+      "textureCount": 1,
+      "texturePayloadBytes": 81920
+    },
+    {
+      "name": "cat",
+      "file": "cat-tex128.dndmodel",
+      "packageBytes": 410912,
+      "sha256": "ba843acb787eb23b7ba7f250800518af41ef14ecbb38ecbb979cb3fb6e473787",
+      "vertices": 2772,
+      "triangles": 1548,
+      "textureCount": 2,
+      "texturePayloadBytes": 163840
+    },
+    {
+      "name": "hamster",
+      "file": "hamster-tex128.dndmodel",
+      "packageBytes": 235744,
+      "sha256": "3f326799b042292c49632bbddbb49c234c49a5828c1bc851b54fe6b89030b2dd",
+      "vertices": 1624,
+      "triangles": 1562,
+      "textureCount": 1,
+      "texturePayloadBytes": 81920
+    },
+    {
+      "name": "spaniel",
+      "file": "spaniel-tex128.dndmodel",
+      "packageBytes": 244544,
+      "sha256": "14f091c18cd3df4bad2d840a4ff7936bd12251fa4029e058f1fdaf570d55dc6c",
+      "vertices": 1695,
+      "triangles": 1574,
+      "textureCount": 1,
+      "texturePayloadBytes": 81920
+    }
+  ],
+  "defaultModelTotals": {
+    "vertices": 12425,
+    "triangles": 9895,
+    "packageBytes": 1846048,
+    "textureCount": 8,
+    "texturePayloadBytesPerCompleteCopy": 655360,
+    "comparison256TexturePayloadBytesPerCompleteCopy": 2621440
+  },
+  "ground": [
+    {
+      "file": "floor-outdoor-neutral.dndtex",
+      "width": 256,
+      "height": 256,
+      "format": 14,
+      "storedMipLevels": 7,
+      "storedPixelBytes": 43712,
+      "uploadedMipLevelsUnderCurrentPolicy": 2,
+      "uploadedPixelBytesUnderCurrentPolicy": 40960,
+      "scope": "Published package and loader-policy audit; not a physical RAM reading"
+    },
+    {
+      "file": "floor-outdoor-neutral-64.dndtex",
+      "width": 64,
+      "height": 64,
+      "format": 14,
+      "storedMipLevels": 5,
+      "storedPixelBytes": 2752,
+      "uploadedMipLevelsUnderCurrentPolicy": 2,
+      "uploadedPixelBytesUnderCurrentPolicy": 2560,
+      "scope": "Published package and loader-policy audit; not a physical RAM reading"
+    }
+  ],
+  "assetPruningCandidates": {
+    "status": "Requires complete runtime/catalog/quality-option reachability proof before removal",
+    "uncompressedBytes": 24196544,
+    "downloadOrRamSavingMeasured": false,
+    "files": [
+      {
+        "file": "building-tex1024.dndmodel",
+        "uncompressedBytes": 6310912
+      },
+      {
+        "file": "building-tex128.dndmodel",
+        "uncompressedBytes": 1149952
+      },
+      {
+        "file": "building-tex512.dndmodel",
+        "uncompressedBytes": 2378752
+      },
+      {
+        "file": "building.dndmodel",
+        "uncompressedBytes": 1395712
+      },
+      {
+        "file": "cottage-door-tex1024.dndmodel",
+        "uncompressedBytes": 91520
+      },
+      {
+        "file": "cottage-door-tex512.dndmodel",
+        "uncompressedBytes": 91520
+      },
+      {
+        "file": "cottage-door.dndmodel",
+        "uncompressedBytes": 91520
+      },
+      {
+        "file": "cottage-east-tex1024.dndmodel",
+        "uncompressedBytes": 85472
+      },
+      {
+        "file": "cottage-east-tex512.dndmodel",
+        "uncompressedBytes": 85472
+      },
+      {
+        "file": "cottage-east.dndmodel",
+        "uncompressedBytes": 85472
+      },
+      {
+        "file": "cottage-exterior-closed-tex1024.dndmodel",
+        "uncompressedBytes": 138400
+      },
+      {
+        "file": "cottage-exterior-closed-tex512.dndmodel",
+        "uncompressedBytes": 138400
+      },
+      {
+        "file": "cottage-exterior-closed.dndmodel",
+        "uncompressedBytes": 138400
+      },
+      {
+        "file": "cottage-exterior-tex1024.dndmodel",
+        "uncompressedBytes": 129344
+      },
+      {
+        "file": "cottage-exterior-tex512.dndmodel",
+        "uncompressedBytes": 129344
+      },
+      {
+        "file": "cottage-exterior.dndmodel",
+        "uncompressedBytes": 129344
+      },
+      {
+        "file": "cottage-floor-tex1024.dndmodel",
+        "uncompressedBytes": 88512
+      },
+      {
+        "file": "cottage-floor-tex512.dndmodel",
+        "uncompressedBytes": 88512
+      },
+      {
+        "file": "cottage-floor.dndmodel",
+        "uncompressedBytes": 88512
+      },
+      {
+        "file": "cottage-north-tex1024.dndmodel",
+        "uncompressedBytes": 94560
+      },
+      {
+        "file": "cottage-north-tex512.dndmodel",
+        "uncompressedBytes": 94560
+      },
+      {
+        "file": "cottage-north.dndmodel",
+        "uncompressedBytes": 94560
+      },
+      {
+        "file": "cottage-south-tex1024.dndmodel",
+        "uncompressedBytes": 91520
+      },
+      {
+        "file": "cottage-south-tex512.dndmodel",
+        "uncompressedBytes": 91520
+      },
+      {
+        "file": "cottage-south.dndmodel",
+        "uncompressedBytes": 91520
+      },
+      {
+        "file": "cottage-west-tex1024.dndmodel",
+        "uncompressedBytes": 85472
+      },
+      {
+        "file": "cottage-west-tex512.dndmodel",
+        "uncompressedBytes": 85472
+      },
+      {
+        "file": "cottage-west.dndmodel",
+        "uncompressedBytes": 85472
+      },
+      {
+        "file": "shop-door-tex1024.dndmodel",
+        "uncompressedBytes": 91520
+      },
+      {
+        "file": "shop-door-tex512.dndmodel",
+        "uncompressedBytes": 91520
+      },
+      {
+        "file": "shop-door.dndmodel",
+        "uncompressedBytes": 91520
+      },
+      {
+        "file": "shop-east-tex1024.dndmodel",
+        "uncompressedBytes": 85472
+      },
+      {
+        "file": "shop-east-tex512.dndmodel",
+        "uncompressedBytes": 85472
+      },
+      {
+        "file": "shop-east.dndmodel",
+        "uncompressedBytes": 85472
+      },
+      {
+        "file": "shop-exterior-closed-tex1024.dndmodel",
+        "uncompressedBytes": 177728
+      },
+      {
+        "file": "shop-exterior-closed-tex512.dndmodel",
+        "uncompressedBytes": 177728
+      },
+      {
+        "file": "shop-exterior-closed.dndmodel",
+        "uncompressedBytes": 177728
+      },
+      {
+        "file": "shop-exterior-tex1024.dndmodel",
+        "uncompressedBytes": 168640
+      },
+      {
+        "file": "shop-exterior-tex512.dndmodel",
+        "uncompressedBytes": 168640
+      },
+      {
+        "file": "shop-exterior.dndmodel",
+        "uncompressedBytes": 168640
+      },
+      {
+        "file": "shop-floor-tex1024.dndmodel",
+        "uncompressedBytes": 139904
+      },
+      {
+        "file": "shop-floor-tex512.dndmodel",
+        "uncompressedBytes": 139904
+      },
+      {
+        "file": "shop-floor.dndmodel",
+        "uncompressedBytes": 139904
+      },
+      {
+        "file": "shop-north-tex1024.dndmodel",
+        "uncompressedBytes": 88512
+      },
+      {
+        "file": "shop-north-tex512.dndmodel",
+        "uncompressedBytes": 88512
+      },
+      {
+        "file": "shop-north.dndmodel",
+        "uncompressedBytes": 88512
+      },
+      {
+        "file": "shop-south-tex1024.dndmodel",
+        "uncompressedBytes": 91520
+      },
+      {
+        "file": "shop-south-tex512.dndmodel",
+        "uncompressedBytes": 91520
+      },
+      {
+        "file": "shop-south.dndmodel",
+        "uncompressedBytes": 91520
+      },
+      {
+        "file": "shop-west-tex1024.dndmodel",
+        "uncompressedBytes": 85472
+      },
+      {
+        "file": "shop-west-tex512.dndmodel",
+        "uncompressedBytes": 85472
+      },
+      {
+        "file": "shop-west.dndmodel",
+        "uncompressedBytes": 85472
+      },
+      {
+        "file": "tent-tex1024.dndmodel",
+        "uncompressedBytes": 5442208
+      },
+      {
+        "file": "tent-tex128.dndmodel",
+        "uncompressedBytes": 281248
+      },
+      {
+        "file": "tent-tex512.dndmodel",
+        "uncompressedBytes": 1510048
+      },
+      {
+        "file": "tent.dndmodel",
+        "uncompressedBytes": 527008
+      }
+    ]
+  },
+  "knownGaps": [
+    "Warm terrain cache miss can take a synchronous DMA bind outside the shared residency credit",
+    "Ground packages contain full mip chains while the current upload policy trims them to two levels",
+    "Detail/submission decoder tables use a 16-bit frame sequence without a session epoch",
+    "Ready-game frame telemetry alone does not capture cold-start allocation peaks",
+    "Hardware owner/high-water and complete-current-baseline qualification remain outstanding"
+  ],
+  "evidenceLimits": [
+    "Payload bytes are not live MEM1 totals; do not add shared copies or overlapping savings",
+    "Legacy residency documents describe an older 256px default and older SDK measurements",
+    "Current generic engine streamer is not the active AnimalTown terrain implementation",
+    "Source inspection identifies possible stall paths; it does not prove the cause of a current frame hitch"
+  ]
+}

@@ -40,7 +40,7 @@ low=marker('ground-fast-start.png');high=marker('ground-fast-end.png');decoder=P
 with contextlib.redirect_stdout(io.StringIO()):decoded=runpy.run_path(str(decoder))
 rows=[r for r in decoded['groups'][0] if low<r[2]<=high]
 if len(rows)!=high-low:raise ValueError('Incomplete movement interval')
-details=[decoded['details'][r[2]] for r in rows]
+details=[decoded['details'][decoded['frame_keys'][id(r)]] for r in rows]
 result={'frame_interval_ms':stats([r[16]/10 for r in rows]),'terrain_prepare_ms':stats([r[6]/10 for r in rows]),'frames':len(rows),'moving_frames':sum(bool(r[23]&4096) for r in rows),'terrain_stages':sum(r[23]&255 for r in rows),'loading_missing_recovery_frames':sum(bool(r[30]&(8192|16384|32768)) for r in rows),'mesh_creates':sum(d[10] for d in details),'mesh_updates':sum(d[11] for d in details),'mesh_releases':sum(d[12] for d in details),'texture_operations':sum(d[9]&255 for d in details),'shadow_page_updates':sum(d[9]>>8 for d in details),'gc_collections':sum(d[8]>>12 for d in details)}
 if result['moving_frames']<30:raise AssertionError('Route did not walk far enough')
 for key in ('terrain_stages','loading_missing_recovery_frames','mesh_creates','mesh_updates','mesh_releases'):

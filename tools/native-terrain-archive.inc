@@ -16,6 +16,8 @@ static int ta_meta[TA_PARTS/256],ta_first[TA_SECTIONS+1],ta_triangles[TA_SECTION
 static unsigned char ta_used[TA_CACHE/TA_BLOCK];
 static int ta_store,ta_cache,ta_stage,ta_meta_count,ta_bytes,ta_tail,ta_parts,ta_sections,ta_completed,ta_live,ta_peak;
 static unsigned ta_bindings,ta_reads;static bool ta_sealed;
+static uint32_t ta_sync_reads,ta_sync_us,ta_sync_bytes;
+extern uint32_t animaltown_profile_clock(void);
 /* Only cold-resume binds remain pending across calls. The broker owns the
  * cache/ARAM transfer holds; a separate view hold prevents handle reuse. */
 static int ta_request,ta_pending_view,ta_pending_entry=-1,ta_pending_block,ta_pending_blocks;
@@ -90,7 +92,7 @@ int animaltown_terrain_reset(int count){
     if(ta_store){if(dnd_aram_release(ta_store)||dnd_aram_dispose(ta_store))return -1;}
     memset(ta_first,0,sizeof(ta_first));memset(ta_triangles,0,sizeof(ta_triangles));memset(ta_used,0,sizeof(ta_used));
     ta_store=ta_stage=ta_cache=ta_meta_count=ta_bytes=ta_tail=ta_parts=ta_completed=ta_live=ta_peak=0;
-    ta_bindings=ta_reads=0;ta_sections=count;ta_sealed=false;
+    ta_bindings=ta_reads=ta_sync_reads=ta_sync_us=ta_sync_bytes=0;ta_sections=count;ta_sealed=false;
     if(!count)return 1;
     ta_store=dnd_aram_allocate(TA_BYTES);if(!ta_store)return -2;
     if(dnd_aram_retain(ta_store)){(void)dnd_aram_dispose(ta_store);ta_store=0;return -2;}
@@ -212,7 +214,10 @@ int animaltown_terrain_bind(int token,int index){
     if(r->terrain_entry==index+1)return 1;
     if(p->cache<0){
         int blocks=(ta_size(p)+TA_BLOCK-1)/TA_BLOCK,first=ta_free_block(blocks);if(first<0)return -2;
-        int rc=ta_dma(p->offset,ta_cache,first*TA_BLOCK,ta_size(p),0);if(rc!=1)return -3;
+        uint32_t started=animaltown_profile_clock();
+        int rc=ta_dma(p->offset,ta_cache,first*TA_BLOCK,ta_size(p),0);
+        ta_sync_us+=animaltown_profile_clock()-started;if(rc!=1)return -3;
+        ta_sync_reads++;ta_sync_bytes+=(uint32_t)ta_size(p);
         memset(ta_used+first,1,(size_t)blocks);p->cache=first;ta_live+=blocks*TA_BLOCK;if(ta_live>ta_peak)ta_peak=ta_live;ta_reads++;
     }
     return ta_bind_view(r,p,index);
@@ -248,4 +253,7 @@ int animaltown_terrain_bind_step(int token,int index){
      * This reentry can only take the pending branch; it never waits on DMA. */
     return animaltown_terrain_bind_step(token,index);
 }
-int animaltown_terrain_stat(int kind){return kind==0?ta_bytes:kind==1?ta_parts:kind==2?ta_meta_count:kind==3?ta_completed:kind==4?(int)ta_bindings:kind==5?ta_tail:kind==6?(int)ta_reads:kind==7?ta_peak:kind==8?(ta_cache?TA_CACHE:0):kind==9?(ta_request?1:0):-1;}
+int animaltown_terrain_stat(int kind){
+    if(kind==11){int largest=0,run=0;for(unsigned i=0;i<sizeof(ta_used);i++){run=ta_used[i]?0:run+TA_BLOCK;if(run>largest)largest=run;}return ta_cache?largest:0;}
+    return kind==0?ta_bytes:kind==1?ta_parts:kind==2?ta_meta_count:kind==3?ta_completed:kind==4?(int)ta_bindings:kind==5?ta_tail:kind==6?(int)ta_reads:kind==7?ta_peak:kind==8?(ta_cache?TA_CACHE:0):kind==9?(ta_request?1:0):kind==10?ta_live:kind==12?(int)ta_sync_reads:kind==13?(int)ta_sync_us:kind==14?(int)ta_sync_bytes:-1;
+}

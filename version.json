@@ -160,6 +160,15 @@
       ]
     },
     {
+      "id": "bounded-profiling-warm-prefetch-20261121",
+      "lines": [
+        "Compare optional terrain prefetch and record performance without the overlay.",
+        "A saved debug toggle enables bounded asynchronous terrain lookahead.",
+        "Profiling offers counters, video telemetry and a small rolling capture.",
+        "Memory ownership, peak usage and transfer waits are available for diagnosis."
+      ]
+    },
+    {
       "id": "separate-villager-card-files",
       "lines": [
         "Each playable villager gets a separate memory-card entry.",

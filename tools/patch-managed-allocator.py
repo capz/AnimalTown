@@ -27,6 +27,11 @@ model=model_source.read_text()
 anchor='/* Texture payloads are immutable and shared across independently loaded models.'
 assert model.count(anchor)==1, 'Pinned model retention anchor changed'
 model=model.replace(anchor,'#include "native-building-retained.inc"\n'+anchor)
+model=model.replace('void *dnd_model_alloc_uninitialized(', '#include "native-model-memory.inc"\nvoid *dnd_model_alloc_uninitialized(',1)
+assert model.count('  *used += total;')==1 and model.count('  *used -= p[0];')==1, 'Pinned model allocation accounting changed'
+model=model.replace('  *used += total;', '  *used += total;town_model_allocated(total);')
+model=model.replace('  *used -= p[0];', '  *used -= p[0];atomic_fetch_sub_explicit(&town_model_live,p[0],memory_order_relaxed);')
+shutil.copyfile(here/'native-model-memory.inc',root/'include/native-model-memory.inc')
 for name in ('dnd_model_copy','dnd_model_unload'):
     start=model.index('int '+name+'(')
     end=model.index('\n}',start)+2
@@ -65,6 +70,9 @@ if generated.exists():
         'Reset':(1,'animaltown_frame_reset((int){0},dnd_value_heap);return 0;'),
         'Snapshot':(1,'animaltown_frame_snapshot((DndArray*){0},dnd_value_heap);return 0;'),
         'Service':(0,'animaltown_frame_service();return 0;'),
+        'Memory':(1,'animaltown_frame_memory((DndArray*){0},dnd_value_heap);return 0;'),
+        'Dump':(5,'animaltown_frame_dump((DndArray*){0},(int){1},(DndArray*){2},(uint32_t){3},(uint32_t){4});return 0;'),
+        'DumpMetrics':(6,'animaltown_frame_dump_metrics((DndArray*){0},(DndArray*){1},(DndArray*){2},(int){3},(int){4},(uint32_t){5});return 0;'),
         'Create':(4,'return dnd_mesh_create_range((DndArray*){0},(int){1},(DndArray*){2},(int){3},2,0);'),
         'Recycle':(5,'return animaltown_mesh_recycle((int){0},(DndArray*){1},(int){2},(DndArray*){3},(int){4});')}
     for method,(count,body) in bodies.items():
@@ -76,6 +84,9 @@ if generated.exists():
 extern void animaltown_frame_reset(int,DndManagedHeap*);
 extern void animaltown_frame_snapshot(DndArray*,DndManagedHeap*);
 extern void animaltown_frame_service(void);
+extern void animaltown_frame_memory(DndArray*,DndManagedHeap*);
+extern void animaltown_frame_dump(DndArray*,int,DndArray*,uint32_t,uint32_t);
+extern void animaltown_frame_dump_metrics(DndArray*,DndArray*,DndArray*,int,int,uint32_t);
 extern int animaltown_mesh_recycle(int,DndArray*,int,DndArray*,int);
 '''+text
     generated.write_text(text)
