@@ -21,8 +21,9 @@ logical records share sectors. A new town with one villager uses 36 blocks
 across two entries. The villager
 entry occupies two blocks. Its verified replacement journal can use three more
 blocks temporarily, so the first save needs 39 free blocks and three directory
-entries. The archive's fixed reservation covers normal recovery and reports
-exhaustion if an edited town outgrows its available sectors.
+entries. The initial archive reservation covers normal recovery. Large towns
+and mailboxes can grow into a verified replacement archive when the card has
+room for both copies during migration.
 
 Video and debug settings have separate one-block entries, `AnimalTown-Video`
 and `AnimalTown-Debug`. Each can save before a town exists. A first settings save
