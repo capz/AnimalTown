@@ -3,6 +3,8 @@
   <ItemGroup>
     <ProjectReference Include="../../shared/AnimalTown.Domain/AnimalTown.Domain.csproj" />
     <Compile Include="../../game/AnimalTown.GameCube/CardSaveStorage.cs" Link="CardSaveStorage.cs" />
+    <Compile Include="../../game/AnimalTown.GameCube/VillagerCardFiles.cs" Link="VillagerCardFiles.cs" />
+    <Compile Include="../../game/AnimalTown.GameCube/CardSettingsStorage.cs" Link="CardSettingsStorage.cs" />
     <Compile Include="../../game/AnimalTown.GameCube/CardSaveError.cs" Link="CardSaveError.cs" />
     <Compile Include="../../game/AnimalTown.GameCube/TownCardRecords.cs" Link="TownCardRecords.cs" />
     <Compile Include="../../game/AnimalTown.GameCube/CardArchive.cs" Link="CardArchive.cs" />

@@ -30,7 +30,7 @@ ownership IDs remain unchanged.
 
 On-card schema 5 uses eight independently mirrored data records and two reference manifests. See [incremental saves](incremental-saves.md) for publication and recovery details:
 
-| Item | Bank 0 / bank 1 filenames |
+| Item | Bank 0 / bank 1 record names |
 | --- | --- |
 | Static shared town, NPC names, world objects and furnishings | `AT-Town0` / `AT-Town1` |
 | All home plots and NPC home anchors | `AT-Houses0` / `AT-Houses1` |
@@ -42,10 +42,10 @@ On-card schema 5 uses eight independently mirrored data records and two referenc
 | NPC positions/journeys and active profile | `AT-Residents0` / `AT-Residents1` |
 | Reference manifest | `AT-Commit0` / `AT-Commit1` |
 
-The trailing number selects a redundant copy, not a villager. A successful save
-maintains 18 directory entries, plus the separate `dev config` item and temporary
-SDK transaction files. Every file keeps AnimalTown's banner, icon and build
-identity; each is rounded to the card's block size.
+The trailing bank number identifies a redundant copy. Both banks for each
+occupied villager live in that slot's own physical card entry. The other records
+live in the shared archive. See [the memory-card layout](consolidated-card-save.md)
+for block use and migration.
 
 Only changed records and their reference manifests are written. NPC walking,
 journey timers and active-profile selection occupy a separate 300-byte runtime
