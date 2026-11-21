@@ -8,7 +8,20 @@ import json
 import math
 import subprocess
 import sys
+import argparse
+from pathlib import Path
 from collections import defaultdict
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from profile_wire import crc, u32, valid_identity, memory_report
+
+parser=argparse.ArgumentParser(description=__doc__)
+parser.add_argument('paths',nargs='+')
+parser.add_argument('--platform',choices=('dolphin','hardware','unknown'),default='unknown')
+parser.add_argument('--storage',default='unspecified')
+parser.add_argument('--video-mode',default='unspecified')
+parser.add_argument('--metadata',help='JSON provenance: commit, SDK, engine, artifact/fixture hashes and debug configuration')
+for flag in ('interaction-panels','check-movement','check-streaming'):parser.add_argument('--'+flag,action='store_true')
+args=parser.parse_args()
 
 names=['simulation','animation_skinning','terrain_prepare','frame_setup','terrain_submit',
        'actor_submit','tree_submit','props_submit','ui_submit','present_total',
@@ -18,8 +31,17 @@ seen=set()
 versions=set()
 details={}
 submissions={}
-paths=[path for path in sys.argv[1:] if path not in ('--interaction-panels','--check-movement','--check-streaming')]
-for path in paths:
+frame_keys={};intervals={};memory_parts={};sessions=set();last_sequences={};configurations=defaultdict(int);queued=[]
+repeated=missing=invalid_v6=0
+paths=args.paths
+def band(frame,y,count):
+    words=[0]*count
+    for bit in range(count*16):
+        at=((y+2+bit//64*4)*640+bit%64*10+5)*3
+        if frame[at]>128:words[bit//16]|=1<<(bit%16)
+    return words
+for path_index,path in enumerate(paths):
+    legacy_epoch=0;legacy_previous=None;last_legacy=None
     command=['ffmpeg','-v','error','-i',path,'-vf','scale=640:480:flags=neighbor',
              '-pix_fmt','rgb24','-f','rawvideo','-']
     process=subprocess.Popen(command,stdout=subprocess.PIPE)
@@ -27,13 +49,31 @@ for path in paths:
         frame=process.stdout.read(640*480*3)
         if not frame:break
         if len(frame)!=640*480*3:raise RuntimeError('Truncated raw frame')
-        values=[0]*32
-        for bit in range(512):
-            at=((450+bit//64*4)*640+bit%64*10+5)*3
-            if frame[at]>128:values[bit//16]|=1<<(bit%16)
+        values=band(frame,448,32)
         checksum=0
         for value in values[:31]:checksum^=value
-        if values[0]!=0x4154 or values[1] not in (1,2,3,4,5) or values[31]!=checksum:continue
+        if values[0]!=0x4154 or values[1] not in (1,2,3,4,5,6) or values[31]!=checksum:continue
+        extra=band(frame,432,16);batch=band(frame,416,16)
+        if values[1]==6:
+            ident=band(frame,400,16);mem=band(frame,384,16)
+            if not valid_identity(values,extra,batch,mem,ident):invalid_v6+=1;continue
+            session=u32(ident,2);seq=u32(ident,4);identity=(session,seq);sessions.add(session)
+            if identity in seen:repeated+=1;continue
+            seen.add(identity)
+            if session in last_sequences:
+                delta=(seq-last_sequences[session])&0xffffffff
+                if 1<delta<0x80000000:missing+=delta-1
+            last_sequences[session]=seq
+            intervals[identity]=u32(ident,6)/1000
+            configurations[(ident[8]&3,bool(ident[8]&256),bool(ident[13]&1))]+=1;queued.append(ident[12])
+            part=memory_parts.setdefault((session,u32(mem,4)),{})
+            part[mem[6]]=[u32(mem,7+i*2) for i in range(4)]
+        else:
+            wire=tuple(values)
+            if wire==last_legacy:repeated+=1;continue
+            last_legacy=wire
+            if legacy_previous is not None and values[2]<legacy_previous and legacy_previous-values[2]>32768:legacy_epoch+=1
+            legacy_previous=values[2];identity=('legacy',path_index,legacy_epoch,values[2])
         if '--interaction-panels' in sys.argv and values[30] in (2,3):
             # Old releases used "other" for all these panels. Classify their
             # distinct opaque panel coverage without modifying that ISO.
@@ -48,61 +88,62 @@ for path in paths:
                 values[30]=14 if ink>20 else 11
             elif cream(300,120) and cream(330,360):values[30]=12
             elif values[30]==3:continue
-        identity=tuple(values)
-        if identity in seen:continue
-        seen.add(identity)
+        frame_keys[id(values)]=identity
         versions.add(values[1])
         groups[2000 if values[30]&32768 else values[30]&8191].append(values)
-        extra=[0]*16
-        for bit in range(256):
-            at=((434+bit//64*4)*640+bit%64*10+5)*3
-            if frame[at]>128:extra[bit//16]|=1<<(bit%16)
         check=0
         for value in extra[:15]:check^=value
-        if extra[0]==0x4144 and extra[1]==values[2] and extra[15]==check:details[values[2]]=extra
-        batch=[0]*16
-        for bit in range(256):
-            at=((418+bit//64*4)*640+bit%64*10+5)*3
-            if frame[at]>128:batch[bit//16]|=1<<(bit%16)
+        if extra[0]==0x4144 and extra[1]==values[2] and extra[15]==check:details[identity]=extra
         check=0
         for value in batch[:15]:check^=value
-        if batch[0]==0x4153 and batch[1]==1 and batch[2]==values[2] and batch[15]==check:submissions[values[2]]=batch
+        if batch[0]==0x4153 and batch[1]==1 and batch[2]==values[2] and batch[15]==check:submissions[identity]=batch
     if process.wait()!=0:raise RuntimeError('ffmpeg failed')
 
 def stats(values):
     ordered=sorted(values)
     result={name:round(ordered[min(len(ordered)-1,math.ceil(q*len(ordered))-1)],3)
-            for name,q in [('p50',.5),('p95',.95),('max',1)]}
+            for name,q in [('p50',.5),('p95',.95),('p99',.99),('max',1)]}
     result['mean']=round(sum(values)/len(values),3)
     return result
-if versions.intersection((3,4,5)):
+if versions.intersection((3,4,5,6)):
     if len(versions)!=1:raise RuntimeError('Cannot mix phase/counter protocol versions')
     names[3]='ground_items';names[4]='frame_setup_terrain_submit';names[7]='structures_props';names[15]='tree_selection'
 # Distinguish actual camera/terrain rebuilds from cached world frames, using
 # measured work rather than assuming injected stick input always moves a player.
-def rebuilt(row):return (row[23]&255)!=0 if row[1]==5 else row[6]!=0
+def rebuilt(row):return (row[23]&255)!=0 if row[1]>=5 else row[6]!=0
 for source,cached,changed in ((0,4,5),(6,8,9),(16,20,21)):
-    groups[cached]=[r for r in groups.get(source,[])[5:] if not rebuilt(r)]
-    groups[changed]=[r for r in groups.get(source,[])[5:] if rebuilt(r)]
-if versions=={5}:
-    world=[r for r in groups.get(0,[]) if r[1]==5]
+    groups[cached]=[r for r in groups.get(source,[]) if not rebuilt(r)]
+    groups[changed]=[r for r in groups.get(source,[]) if rebuilt(r)]
+world=[]
+if versions in ({5},{6}):
+    # Runtime flags occupy bits 6..8 of the scene tag. Keep the separate
+    # reports, but qualify ordinary travel in every runtime configuration.
+    world=[r for scene,rows in groups.items() if scene<512 and scene%64 in (0,6,16,32) for r in rows if r[1]>=5]
     groups[1000]=[r for r in world if not r[23]&4096]
     groups[1001]=[r for r in world if r[23]&4096 and not r[23]&8192]
     groups[1002]=[r for r in world if r[23]&8192]
-report={'units':'milliseconds; guest clock, not physical hardware or GPU duration',
-        'capture_files':paths,'protocol_versions':sorted(versions),'landscape_loading_frames':len(groups.get(2000,[])),'scenarios':{}}
+provenance=json.loads(Path(args.metadata).read_text()) if args.metadata else {}
+report={'units':'milliseconds; '+('console timebase' if args.platform=='hardware' else 'guest clock' if args.platform=='dolphin' else 'platform unspecified')+'; CPU submission and blocking waits, not GPU execution duration',
+        'platform':args.platform,'storage':args.storage,'video_mode':args.video_mode,'provenance':provenance,
+        'capture_files':paths,'protocol_versions':sorted(versions),'sessions':sorted(sessions),
+        'repeated_video_samples':repeated,'missing_sequence_samples':missing,'invalid_v6_samples':invalid_v6,
+        'excluded_transition_samples':0,'legacy_identity_limitations':bool(versions-{6}),
+        'landscape_loading_frames':len(groups.get(2000,[])),'scenarios':{}}
+report['memory_snapshots']=[{'session':key[0],'sequence':key[1],**memory_report([v for part in range(8) for v in parts[part]])} for key,parts in memory_parts.items() if len(parts)==8]
+report['incomplete_memory_snapshots']=sum(len(parts)!=8 for parts in memory_parts.values())
+report['configurations']=[{'profiling_mode':key[0],'warm_terrain_prefetch':key[1],'full_resolution_aa':key[2],'frames':count} for key,count in configurations.items()]
+report['terrain_queued_sections']=stats(queued) if queued else None
+report['hardware_qualification_missing']=[name for name in ('commit','sdk','engine','artifact_sha256','fixture_sha256','debug_settings') if name not in provenance]
 for scene,rows in groups.items():
-    # Drop first five valid frames per scenario to reduce menu-transition effects.
-    if scene in (0,1,2,3,6,7,10,11,12,13,14,16,17,18,19,22,23,26,32,33,42):rows=rows[5:]
     if not rows:continue
     timings={}
     for i,name in enumerate(names):
-        values=[r[4+i]/(100 if r[1]==1 else 10) for r in rows]
+        values=[intervals[frame_keys[id(r)]] if i==12 and r[1]==6 else r[4+i]/(100 if r[1]==1 else 10) for r in rows]
         result=stats(values)
         clipped=[r[4+i]==65535 and (r[3]!=0 if r[1]==1 else bool(r[3]&(1<<i))) for r in rows]
         result['censored_samples']=sum(clipped)
         # If clipping affected a percentile, its reported value is a lower bound.
-        for key,q in [('p50',.5),('p95',.95),('max',1)]:
+        for key,q in [('p50',.5),('p95',.95),('p99',.99),('max',1)]:
             selected=sorted(zip(values,clipped))[min(len(rows)-1,math.ceil(q*len(rows))-1)]
             result[key+'_is_lower_bound']=selected[1]
         timings[name]=result
@@ -112,13 +153,13 @@ for scene,rows in groups.items():
         'terrain_repair_frames':sum(bool(r[30]&8192) for r in rows),
         'triangles':stats([r[20]+(r[21]<<16) for r in rows]),
         'terrain_triangles':stats([r[22] for r in rows]),
-        **({'terrain_patch_builds':stats([r[23]&255 for r in rows]),'shadow_deferred_frames':sum(bool(r[23]&2048) for r in rows),'animation_update_calls':stats([(r[23]>>8)&7 for r in rows]),'ground_ring_enabled':stats([int(bool(r[23]&16384)) for r in rows]),'ground_ring_uploads':stats([int(bool(r[23]&32768)) for r in rows])} if versions=={5} else {'rejected_terrain_quads':stats([r[23] for r in rows])}),
+        **({'terrain_patch_builds':stats([r[23]&255 for r in rows]),'shadow_deferred_frames':sum(bool(r[23]&2048) for r in rows),'animation_update_calls':stats([(r[23]>>8)&7 for r in rows]),'ground_ring_enabled':stats([int(bool(r[23]&16384)) for r in rows]),'ground_ring_uploads':stats([int(bool(r[23]&32768)) for r in rows])} if versions in ({5},{6}) else {'rejected_terrain_quads':stats([r[23] for r in rows])}),
         'texture_cache_kib':stats([r[25] for r in rows]),
         'culled_objects':stats([r[24] for r in rows]),
         'draw_submissions':stats([r[28] for r in rows]),
-        **({'pass_draw_submissions':{name:stats([submissions[r[2]][i] for r in rows if r[2] in submissions]) for i,name in enumerate(('terrain_or_interior','trees','buildings','fences','rain','ui_before_profiler','ui_final_flush'),3)}} if all(r[2] in submissions for r in rows) else {}),
+        **({'pass_draw_submissions':{name:stats([submissions[frame_keys[id(r)]][i] for r in rows if frame_keys[id(r)] in submissions]) for i,name in enumerate(('terrain_or_interior','trees','buildings','fences','rain','ui_before_profiler','ui_final_flush'),3)}} if all(frame_keys[id(r)] in submissions for r in rows) else {}),
         'texture_bindings':stats([r[29] for r in rows]),
-        **({'drawing_api_calls':stats([r[26] for r in rows]),'material_changes':stats([r[27] for r in rows])} if versions in ({4},{5}) else
+        **({'drawing_api_calls':stats([r[26] for r in rows]),'material_changes':stats([r[27] for r in rows])} if versions in ({4},{5},{6}) else
            {'texture_cache_hits_max':max(r[26] for r in rows),'texture_cache_misses_max':max(r[27] for r in rows)})}
 if details:
     rows=list(details.values())
@@ -131,14 +172,13 @@ if not report['scenarios']:raise RuntimeError('No valid AnimalTown telemetry fou
 print(json.dumps(report,indent=2))
 
 if '--check-streaming' in sys.argv:
-    if versions!={5}:raise RuntimeError('Streaming checks require telemetry v5')
+    if versions not in ({5},{6}):raise RuntimeError('Streaming checks require telemetry v5/v6')
     if report['landscape_loading_frames']:raise RuntimeError('Landscape loading interrupted travel')
-    world=report['scenarios'].get('world')
-    if not world or world['frames']<100:raise RuntimeError('Not enough world frames for streaming checks')
-    if world['missing_terrain_frames']:raise RuntimeError('Visible terrain was missing during travel')
+    if len(world)<100:raise RuntimeError('Not enough world frames for streaming checks')
+    if any(r[30]&16384 for r in world):raise RuntimeError('Visible terrain was missing during travel')
 
 if '--check-movement' in sys.argv:
-    if versions!={5}:raise RuntimeError('Movement checks require telemetry v5')
+    if versions not in ({5},{6}):raise RuntimeError('Movement checks require telemetry v5/v6')
     stationary=report['scenarios'].get('stationary')
     if stationary and stationary['terrain_patch_builds']['p50']!=0:raise RuntimeError('Terrain cache keeps rebuilding while stationary')
     for scenario in ('walking','running'):

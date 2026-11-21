@@ -7,7 +7,7 @@ internal static class LoadingScreen {internal static void Pulse(){}}
 internal static class NativeCalendar
 {internal static int Read()=>1118;internal static int CardError()=>0;internal static int CardMountError()=>-3;internal static int CardRecoveryError()=>0;}
 internal static class RuntimeOptions {internal static int Mode;internal static void Apply(int mode){Mode=mode;}}
-internal static class FrameProfile {internal static bool Enabled;}
+internal static class FrameProfile {internal static bool Enabled;internal static void SetMode(int mode){Enabled=mode!=0;}}
 internal static class UiFont {internal static bool Batched;}
 namespace Dolphin.Diagnostics {internal static class DebugOverlay {internal static bool PerformanceVisible;internal static void WriteLine(string text){}}}
 

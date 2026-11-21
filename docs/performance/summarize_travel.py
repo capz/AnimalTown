@@ -24,6 +24,7 @@ def stats(values):
     if not values:raise ValueError('No marked route samples')
     return {'median':round(values[(len(values)-1)//2],4),
             'p95':round(values[math.ceil(len(values)*.95)-1],4),
+            'p99':round(values[math.ceil(len(values)*.99)-1],4),
             'max':round(values[-1],4),'mean':round(sum(values)/len(values),4)}
 
 result={'disc':scenario['disc'],'actual_guest_seconds':scenario['actual_guest_seconds'],
@@ -48,7 +49,7 @@ else:
     with contextlib.redirect_stdout(io.StringIO()):decoded=runpy.run_path(str(decoder))
     rows=[r for r in decoded['groups'][0] if marks[0]<r[2]<=marks[-1]]
     if len(rows)<100 or len({r[2] for r in rows})!=len(rows):raise ValueError('Incomplete or wrapped native route')
-    details=[decoded['details'][r[2]] for r in rows if r[2] in decoded['details']]
+    details=[decoded['details'][decoded['frame_keys'][id(r)]] for r in rows if decoded['frame_keys'][id(r)] in decoded['details']]
     if len(details)!=len(rows):raise ValueError('Native detail bar missing from marked frames')
     result.update({'units':'guest milliseconds; internal counters have 0.1 ms resolution; profiling overhead remains',
                    'profiled_frames':len(rows),'frame_interval_ms':stats([r[16]/10 for r in rows]),
