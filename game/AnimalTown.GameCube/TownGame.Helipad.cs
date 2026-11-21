@@ -21,7 +21,9 @@ internal sealed partial class TownGame
     {
         var flight=session.Flight;
         if(!flight.Active)return false;
-        if(!terrain.Ready)return true;
+        // The terrain can be presentable while the destination player model
+        // is still cold. Cruise keeps rendering until ReleaseIntro admits it.
+        if(!resourcesReady||!terrain.Ready||flight.Phase==FlightPhase.Cruise)return true;
         var before=flight.Phase;
         flight.Tick();
         moveClip=flight.PlayerWalking?0:-1;

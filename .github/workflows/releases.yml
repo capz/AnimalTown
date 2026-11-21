@@ -346,7 +346,7 @@ jobs:
           import json, os, re
           from pathlib import Path
           plan=json.loads(Path('out/validation-plan.json').read_text())
-          relevant=re.compile(r'^(shared/AnimalTown.Domain/(Jobs/|GameState\.(Jobs|Travel)\.cs)|game/AnimalTown.GameCube/(TownGame\.(JobsUi|MailUi|JobScene|TravelUi)|JobSceneRenderer|WrappedText|OfflineTravelCards|TownCardRecords|CardArchive|Program)\.cs$|tools/(jobs_smoke|iso-smoke|profile-card-fixture)\.py$|tests/AnimalTown.Checks/JobFixture\.cs$|\.github/workflows/releases\.yml$)')
+          relevant=re.compile(r'^(shared/AnimalTown.Domain/(Jobs/|GameState\.(Jobs|Travel)\.cs|HelipadFlight\.cs)|game/AnimalTown.GameCube/(TownGame\.(JobsUi|MailUi|JobScene|TravelUi|Helipad)|TownSession\.Travel|HelipadCruise|HelipadRenderer|LoadingScreen|JobSceneRenderer|WrappedText|OfflineTravelCards|TownCardRecords|CardArchive|Program)\.cs$|tools/(jobs_smoke|iso-smoke|profile-card-fixture)\.py$|tests/AnimalTown.Checks/JobFixture\.cs$|\.github/workflows/releases\.yml$)')
           needed=any(relevant.search(path) for path in plan['paths']) or (plan['full'] and not plan['paths'])
           with open(os.environ['GITHUB_OUTPUT'],'a') as output:output.write(f'needed={str(needed).lower()}\n')
           PY
