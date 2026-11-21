@@ -67,7 +67,7 @@ foreach($path in @('shared/AnimalTown.Domain/ContentPaths.cs','shared/AnimalTown
 }
 $p=Get-ValidationPlan -ChangedPaths @('tools/AnimalTown.Tools/DepotPackage.cs');Assert (($p.tooling -join ',') -eq 'depot' -and !$p.backend) 'Depot packaging must exercise archive validation'
 $p=Get-ValidationPlan -Full;Assert ('depot' -in $p.tooling -and 'content' -in $p.managed -and 'content' -in $p.native) 'Full checks must include standalone startup and packaging'
-foreach($name in @('SaveCards','CardArchive','CardSaveStorage','CardSaveError','TownDataStorage','UserOptionsStorage','DevConfigStorage','TownSession','TitleScreen.Cards')){
+foreach($name in @('SaveCards','CardArchive','VillagerCardFiles','CardSettingsStorage','CardSaveStorage','CardSaveError','TownDataStorage','UserOptionsStorage','DevConfigStorage','TownSession','TitleScreen.Cards')){
     $p=Get-ValidationPlan -ChangedPaths @("game/AnimalTown.GameCube/$name.cs")
     Assert ('card' -in $p.native -and 'saves' -in $p.managed -and !$p.backend -and !$p.full) "Card persistence changes must exercise the production adapter and slot-selection checks: $name"
 }

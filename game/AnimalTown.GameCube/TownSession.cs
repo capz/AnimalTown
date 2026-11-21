@@ -51,7 +51,11 @@ internal sealed partial class TownSession
             for(int i=0;i<names.Length;i++)if(SplitSaveCodec.IsFile(names[i]))files=true;
             if(TownDataDeletion.Pending(names)){OnboardingSaveError="Finish town deletion in title Options first.";return false;}
             phase="save set";
-            Draft.Commit(new SaveRepository(store),files,names);State=Draft.State;Draft.Dispose();Draft=null;Loaded=true;Status="Saved / "+BuildInfo.Version;return true;
+            Draft.Commit(new SaveRepository(store),files,names);State=Draft.State;Draft.Dispose();Draft=null;Loaded=true;
+            try{store.UpdateVillagerFiles(State);}
+            catch(Exception error){DebugOverlay.WriteLine("VILLAGER CARD MIGRATION: "+error.Message);}
+            store.MigrateSettings();
+            Status="Saved / "+BuildInfo.Version;return true;
         }catch(Exception error){
             string detail=error.Message??"Native save error (no message)";
             DebugOverlay.WriteLine("ONBOARDING SAVE ERROR: "+phase+" (code "+NativeCalendar.CardError()+", mount "+NativeCalendar.CardMountError()+", recovery "+NativeCalendar.CardRecoveryError()+"): "+detail);
@@ -69,7 +73,10 @@ internal sealed partial class TownSession
         try{
             using var card=SaveCards.Mount();
             var storage=new CardSaveStorage(card,File.ReadAllBytes(AnimalTown.ContentPaths.Asset("savebanner.rgb5a3")),File.ReadAllBytes(AnimalTown.ContentPaths.Asset("saveicon.rgb5a3")),SaveCards.Device);
-            State=new SaveRepository(storage).DeleteProfile(State,profile);return true;
+            State=new SaveRepository(storage).DeleteProfile(State,profile);
+            try{storage.UpdateVillagerFiles(State);}
+            catch(Exception error){DebugOverlay.WriteLine("VILLAGER CARD CLEANUP: "+error.Message);}
+            return true;
         }catch(Exception){return false;}
     }
     internal static TownSession Load()
