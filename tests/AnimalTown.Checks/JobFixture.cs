@@ -78,7 +78,7 @@ internal static class JobFixture
         Array.Clear(s.Pockets);s.Pockets[0]=Catalog.WritingPaper;s.Pockets[1]=2;s.Pockets[2]=2;s.Pockets[3]=2;s.Pockets[4]=2;s.Pockets[5]=Catalog.Pear;s.Pockets[6]=14;s.Pockets[7]=15;s.Pockets[8]=Catalog.Shovel;
         if(baseline){s.Pockets[0]=Catalog.WorkShirt;s.Pockets[5]=1;}
         for(int n=0;n<6;n++){var v=s.Town.Residents[n];v.Space=0;v.PosX=n==0?30:n==1?35.5f:30+(n-2.5f)*2.2f;v.PosZ=n==0?40.8f:n==1?42.3f:35;v.X=(int)v.PosX;v.Z=(int)v.PosZ;v.Dwell=36000;v.JourneyPhase=0;v.JourneyBuilding=-1;v.JourneyNextX=v.JourneyNextZ=-1;v.Yaw=0;s.Town.Jobs.SetOutfit(n,dressed?Catalog.BerryShirt:0);}
-        if(mode=="mail"){s.Space=25;s.X=2;s.Z=2;}
+        if(mode=="mail"){s.Space=25;s.X=2;s.Z=2;s.Pockets[9]=Catalog.PlainWritingPaper;}
         if(mode=="letter"){s.Space=25;s.X=2;s.Z=2;var n=s.Town.Residents[0];n.Space=25;n.PosX=2;n.PosZ=.8f;n.X=2;n.Z=0;n.JourneyPhase=3;n.JourneyBuilding=8;n.Dwell=36000;}
         s.Shirt=dressed?Catalog.StripedShirt:0;
         if(mode=="retrieval")s.Town.JobState.Offers.Restore(1); // First referral draw stops the chain.
@@ -158,6 +158,9 @@ internal static class JobFixture
         if(verify&&mode=="delivery"&&l.Outfit(1)!=Catalog.BerryShirt)throw new Exception("Delivery did not change the actual recipient's clothing");
         if(verify&&(mode=="outfits-on"||mode=="outfits-winter")&&(s.Shirt!=Catalog.StripedShirt||Enumerable.Range(0,6).Any(n=>l.Outfit(n)!=Catalog.BerryShirt)))throw new Exception("The player and all six species must retain their actual outfits");
         if(verify&&mode=="mail"&&s.Find(Catalog.LeafShirt)<0)throw new Exception("The real mail attachment was not collected");
+        if(verify&&mode=="mail"&&(s.Pockets[0]!=Catalog.LeafShirt||s.Pockets[5]!=0||s.Pockets[9]!=Catalog.PlainWritingPaper||
+            !Enumerable.Range(OfflineJobLedger.InboxCount,OfflineJobLedger.OutboxCapacity).Any(i=>l.Mail[i].State==JobMailState.Queued&&l.Mail[i].Gift==Catalog.Pear&&l.Mail[i].Body!=null&&JobTextBody.Unpack(l.Mail[i].Body!,l.Mail[i].BodyOffset,l.Mail[i].BodyWords)=="Hello!")))
+            throw new Exception("Backpack mail controls did not preserve the spare stationery and queue the chosen gift");
         var result=new{mode,passed=verify,sequence=s.Sequence,tripPhase=l.Trip.Phase.ToString(),tripPending=l.Trip.Pending,profileLocked=s.ProfileLocked(0),activeProfile=s.ActiveProfile,visiting=s.Visiting,position=new{s.X,s.Z,s.Space},wallet=s.Wallet,completed,mailCount=s.MailCount,pockets=s.Pockets,bindings=Enumerable.Range(0,s.Capacity).Where(s.IsJobItem),outfits=Enumerable.Range(0,6).Select(l.Outfit),jobs=jobs.Select(j=>new{template=j.Template.ToString(),status=j.Status.ToString(),target=l.FindNpc(j.Target),j.Item,j.FlowerBaseline,j.HomeAcre}),terminals=Enumerable.Range(0,16).Select(l.Terminal).Where(t=>!t.Job.IsEmpty).Select(t=>new{template=t.Template.ToString(),reason=t.Reason.ToString(),t.At})};
         string json=JsonSerializer.Serialize(result,new JsonSerializerOptions{WriteIndented=true});Console.WriteLine(json);File.WriteAllText(Path.Combine(directory,"..","jobs-state.json"),json+"\n");
     }
