@@ -48,12 +48,35 @@ internal static class JobMailChecks
     }
     private static void LocalMail(Action<bool,string> check)
     {
+        GiftTypes(check);
         var s=new GameState(32);s.SelectProfile(1);s.SelectProfile(0);var service=new VillagerJobService(s);service.Enable(99,start);
         s.Receive(Catalog.WritingPaper);s.Receive(10);var recipient=s.Town.Jobs.Player(1);var sent=service.SendLetter(recipient,"Cafe\u0301!",s.Find(Catalog.WritingPaper),s.Find(10),service.NextCommandSequence);
         check(sent.Result==JobResult.Ok&&s.Find(10)<0,"player-addressed mail takes a normal present into the outbox");
         service.AdvanceTo(start+86400);s.SelectProfile(1);check(s.MailCount==1&&service.ReadLetter(0)=="Caf\u00e9!","another resident receives the actual normalized body");
         check(service.TakeMailPresent(0,service.NextCommandSequence).Item==10&&s.Find(10)>=0,"present ownership transfers to the addressed player");
         var raw=SaveCodec.Encode(s);check(SaveCodec.Encode(SaveCodec.Decode(raw)).SequenceEqual(raw),"packed UTF-8 mail and envelope bindings round-trip exactly");
+    }
+    private static void GiftTypes(Action<bool,string> check)
+    {
+        // Exercise every actual gift type through the real outbox/inbox path.
+        // In particular, a second stationery sheet is a valid present, while
+        // the sheet being written on must never double as its own attachment.
+        for(int item=1;item<Catalog.Items.Length;item++){
+            if(!Catalog.Has(item,ItemFlags.Gift)||item==JobContent.Letter)continue;
+            var s=new GameState(32){Tutorial=7};s.SelectProfile(1);s.SelectProfile(0);
+            var service=new VillagerJobService(s);service.Enable(99,start);
+            Array.Clear(s.Pockets);s.Pockets[0]=Catalog.WritingPaper;s.Pockets[1]=item;s.Pockets[2]=Catalog.WritingPaper;
+            var sent=service.SendLetter(s.Town.Jobs.Player(1),"A little present for you!",2,1,service.NextCommandSequence);
+            check(sent.Result==JobResult.Ok&&s.Pockets[0]==Catalog.WritingPaper&&s.Pockets[1]==0&&s.Pockets[2]==0,"sending consumes precisely the chosen paper and gift for item "+item);
+            service.AdvanceTo(start+86400);s.SelectProfile(1);
+            check(s.MailCount==1&&s.Town.Jobs.Letter(1,0).Gift==item,"every gift category arrives as its actual item, including stationery "+item);
+            check(service.TakeMailPresent(0,service.NextCommandSequence).Item==item&&s.Find(item)>=0,"every mail gift can be taken into pockets "+item);
+        }
+        var same=new GameState(32){Tutorial=7};same.SelectProfile(1);same.SelectProfile(0);
+        var post=new VillagerJobService(same);post.Enable(99,start);
+        Array.Clear(same.Pockets);same.Pockets[0]=Catalog.PlainWritingPaper;
+        var refused=post.SendLetter(same.Town.Jobs.Player(1),"A little present for you!",0,0,post.NextCommandSequence);
+        check(refused.Result==JobResult.WrongItem&&same.Pockets[0]==Catalog.PlainWritingPaper&&same.MailCount==0,"one sheet cannot be both the letter and its present; failure keeps the paper");
     }
     private static void NormalReplies(Action<bool,string> check)
     {

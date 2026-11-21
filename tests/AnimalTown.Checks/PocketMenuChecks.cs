@@ -69,6 +69,47 @@ internal static class PocketMenuChecks
         }
         Clothing(check);
         Money(check);
+        JobItems(check);
+    }
+    private static void JobItems(Action<bool,string> check)
+    {
+        var s=new GameState(73){Tutorial=7};s.ResidentJobs.Enable(123,AnimalTown.Jobs.JobCalendar.At(2027,7,15,12));
+        int[] gifts={1,2,3,4,10,11,12,14,15,16,17,18,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44};
+        foreach(int item in Enumerable.Range(1,Catalog.Items.Length-1)){
+            s.Pockets[0]=item;
+            check(PocketMenu.HasAction(s,0,0,PocketAction.WriteLetter)==(item==34||item==42),"both stationery variants and only stationery expose writing: "+item);
+            check(PocketMenu.HasAction(s,0,0,PocketAction.AttachToLetter)==gifts.Contains(item),"every supported gift category exposes attachment: "+item);
+            int count=PocketMenu.Count(s,0,0);
+            var rows=Enumerable.Range(0,count).Select(row=>PocketMenu.At(s,0,0,row)).ToArray();
+            check(rows.Length==rows.Distinct().Count()&&rows.Last()==PocketAction.Quit,"every catalog popup has unique actions and ends in Quit: "+item);
+            check(PocketMenu.At(s,0,0,-1)==PocketAction.Quit&&PocketMenu.At(s,0,0,count)==PocketAction.Quit,"context popup safely bounds row indices: "+item);
+        }
+        s.Pockets[0]=Catalog.PlainWritingPaper;s.Pockets[1]=Catalog.WritingPaper;
+        check(PocketMenu.At(s,0,0,0)==PocketAction.WriteLetter&&PocketMenu.WritingPaper(s,0)==1,"stationery defaults to writing, and attachment finds a separate sheet");
+        check(PocketMenu.CanAttach(s,0,1)&&!PocketMenu.CanAttach(s,1,1),"a spare sheet can be gifted but the letter's own paper cannot");
+        s.Town.Jobs.SetBinding(0,0,s.Town.Jobs.Allocate());
+        check(PocketMenu.Count(s,0,0)==2&&PocketMenu.At(s,0,0,0)==PocketAction.Read&&PocketMenu.At(s,0,0,1)==PocketAction.Quit,"protected items have only their existing Details/Close actions");
+        check(!PocketMenu.CanAttach(s,0)&&!PocketMenu.Perform(s,0,PocketAction.Drop,30,40,0,0)&&s.Pockets[0]==Catalog.PlainWritingPaper,"protected items cannot enter destructive or mail actions");
+        s.Town.Jobs.SetBinding(0,0,default);
+        var visitor=new GameState(73){Tutorial=7};visitor.ResidentJobs.Enable(124,AnimalTown.Jobs.JobCalendar.At(2027,7,15,12));
+        visitor.Town.Jobs.GuestProfile=new VillagerProfile{Created=true};visitor.RestoreProfile(AnimalTown.Jobs.OfflineJobLedger.Visitor);visitor.Pockets[0]=Catalog.WritingPaper;
+        check(!PocketMenu.HasAction(visitor,0,0,PocketAction.WriteLetter)&&!PocketMenu.HasAction(visitor,0,0,PocketAction.AttachToLetter),"town visits do not advertise unavailable mail commands");
+        s.Pockets[0]=Catalog.OakFloor;s.Pockets[1]=Catalog.LeafWallpaper;
+        foreach(int space in new[]{0,16,24,25,32}){
+            s.Space=space;
+            check(!PocketMenu.HasAction(s,0,space,PocketAction.Apply)&&!PocketMenu.HasAction(s,1,space,PocketAction.Apply),"floor/wall actions are absent outside the player's own home: "+space);
+            check(!PocketMenu.Perform(s,0,PocketAction.Apply,0,0,0,space)&&s.Pockets[0]==Catalog.OakFloor,"invalid floor action leaves its item untouched");
+        }
+        s.Space=1;
+        check(PocketMenu.Label(PocketAction.Apply,s.Pockets[0])=="Spread on floor"&&PocketMenu.Label(PocketAction.Apply,s.Pockets[1])=="Hang on wall","floor and wall actions describe their actual use");
+        check(PocketMenu.Perform(s,0,PocketAction.Apply,0,0,0,1)&&PocketMenu.Perform(s,1,PocketAction.Apply,0,0,0,1)&&s.Town.Jobs.HomeFloors[0]==Catalog.OakFloor&&s.Town.Jobs.HomeWalls[0]==Catalog.LeafWallpaper,"own-home actions apply both finish types");
+        s.Pockets[0]=Catalog.MeadowFloor;
+        check(PocketMenu.Perform(s,0,PocketAction.Apply,0,0,0,1)&&s.Pockets[0]==Catalog.OakFloor,"changing floors returns the old finish to the selected pocket");
+        s.Pockets[0]=10;s.Space=16;
+        check(!PocketMenu.HasAction(s,0,16,PocketAction.Place),"furniture does not offer placement in an NPC's home");
+        long allocated=GC.GetAllocatedBytesForCurrentThread();int sum=0;
+        for(int i=0;i<1000;i++){sum+=PocketMenu.Count(s,0,16);sum+=(int)PocketMenu.At(s,0,16,i%2);}
+        check(sum>0&&GC.GetAllocatedBytesForCurrentThread()==allocated,"job-aware item menus allocate no per-frame lists");
     }
     private static void Clothing(Action<bool,string> check)
     {
