@@ -200,9 +200,9 @@ def run(context):
         folder=c.root/'records-guest';folder.mkdir(exist_ok=True)
         for name,data in c.options_card_files(c.root/'MemoryCardB.USA.raw').items():(folder/name).write_bytes(data)
         travel();shot('maximum-returned');save()
-    elif mode in ('baseline','outfits-off','outfits-on','maximum-mail'):
+    elif mode in ('baseline','outfits-off','outfits-on','maximum-mail','maximum-post-travel'):
         report['profile']=profile();shot('profiled')
-        if mode=='maximum-mail':
+        if mode in ('maximum-mail','maximum-post-travel'):
             save('first-maximum-checkpoint');press('START');press('D_DOWN');press('A');press('D_DOWN');press('A');c.wait_title();shot('maximum-title')
             # The title restores saved profiling settings. Persistence needs
             # a real reopened checkpoint; the first capture measured full mail.
@@ -301,7 +301,7 @@ def run(context):
             press('A');shot('reply-mailbox');press('A');shot('reply');press('X');close();close()
         else:raise ValueError('Unsupported job smoke mode: '+mode)
         save()
-    if mode in ('foreign','moved','moving','recovery','maximum-economy','maximum-recovery'):
+    if mode in ('foreign','moved','moving','recovery','maximum-economy','maximum-recovery','maximum-post-travel'):
         folder=c.root/'records-b';folder.mkdir(exist_ok=True)
         for name,data in c.options_card_files(c.root/'MemoryCardB.USA.raw').items():(folder/name).write_bytes(data)
     alive();report['controls_completed']=True

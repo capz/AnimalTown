@@ -191,3 +191,21 @@ with TemporaryDirectory() as fixture:
     server,environment=scope['start_display']()
     assert environment['DISPLAY']==':17' and server.wait(timeout=5)==0
 print('Display readiness: split number/newline writes complete before pipe closure')
+
+# Restored ground art must survive moving affine shadows, while an unchanged
+# diagnostic mip must fail. Mere colour counts include ordinary green pixels.
+node=next(n for n in ast.parse(Path('tools/iso-smoke.py').read_text()).body if isinstance(n,ast.FunctionDef) and n.name=='terrain_restoration_pixels')
+scope={};exec(compile(ast.Module([node],type_ignores=[]),'terrain-restoration','exec'),scope)
+match=scope['terrain_restoration_pixels']
+shadow=(35,49,66);grass=(100,170,68)
+def solid(c):return bytes(c)*(800*600)
+def shade(c,alpha):return tuple(round((1-alpha)*v+alpha*s) for v,s in zip(c,shadow))
+reference=solid(grass)
+for alpha in (0,.08,.17,.259):
+    metrics=match(reference,solid(shade(grass,alpha)))
+    assert metrics['ground_samples']>1000 and metrics['matching_fraction']==1
+    assert match(solid(shade(grass,alpha)),reference)['matching_fraction']==1
+for diagnostic in ((66,214,99),(255,231,66)):
+    assert match(reference,solid(diagnostic))['matching_fraction']<.05
+assert match(solid((0,0,0)),reference)['ground_samples']==0
+print('Terrain restoration: moving shadows preserve original art; stale green/yellow mips and missing ground are rejected')

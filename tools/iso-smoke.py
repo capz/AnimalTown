@@ -724,6 +724,25 @@ def terrain_mip_pixels(pixels):
     return {'level_pixels':counts,'classified_pixels':total,'line_pixels':line_pixels,
             'mean_level':level_sum/max(1,total),'fit_rgb_rms':(error_sum/max(1,total))**.5}
 
+def terrain_restoration_pixels(reference,current):
+    """Compare fixed-noon ground art independent of moving shadow alpha."""
+    shadow=(35,49,66);samples=matched=0;cache={}
+    for y in range(140,338,2):
+        for x in range(40,602,2):
+            at=(y*800+x)*3;before=reference[at:at+3];after=current[at:at+3]
+            r,g,b=before
+            if g<=max(r+15,b+25,70):continue
+            key=before+after
+            if key not in cache:
+                a=tuple(v-s for v,s in zip(before,shadow));b=tuple(v-s for v,s in zip(after,shadow))
+                aa=sum(v*v for v in a);bb=sum(v*v for v in b);dot=sum(v*w for v,w in zip(a,b))
+                # P-S=(1-alpha)*(C-S); its direction survives every union
+                # shadow. GX rounding gets a small angular allowance. Stale
+                # diagnostic green/yellow has a different direction.
+                cache[key]=bool(aa and bb and dot>=0 and dot*dot>=.998*.998*aa*bb)
+            samples+=1;matched+=cache[key]
+    return {'ground_samples':samples,'matching_samples':matched,'matching_fraction':matched/max(1,samples),'minimum_cosine':.998}
+
 def water_material_pixels(first,second,shadowed=False):
     """Measure moving crest colour/edges, with shoreline and HUD excluded."""
     def wet(data,x,y):
@@ -909,7 +928,7 @@ def terrain_materials():
         before=card_digest();town_before=committed_card_sequence(card,details=True)
         report['committed_town_before']=town_before
         chord('START');wait_onboarding('world',prefix+'ramp-ready.png')
-        normal=mip_frame('normal',0,1,0)
+        normal=mip_frame('normal',0,1,0);normal_art=rgb(prefix+'normal.png')
         off_label=menu(bands_row,'menu-off');press('A');on_label=menu_frame('menu-on',bands_row)
         if on_label==off_label:raise AssertionError('Ground mip bands menu label did not change')
         press('B');automatic=mip_frame('mips-auto',1,1,0,visible_bands)
@@ -931,8 +950,12 @@ def terrain_materials():
         if restored_label!=off_label:raise AssertionError('Ground mip bands did not return to Off')
         press('B')
         def restored_art(metrics):
-            if metrics['classified_pixels']>max(normal['classified_pixels']*1.5,normal['classified_pixels']+500):
-                raise AssertionError('Diagnostic colours remained after Ground mip bands was disabled')
+            # Ordinary greens can fall inside the diagnostic palette fit as
+            # clouds move. Verify the original per-pixel art instead of a
+            # changing count of coincident colours; native Off is checked too.
+            match=terrain_restoration_pixels(normal_art,rgb(prefix+'restored.png'));metrics['art_match']=match
+            if match['ground_samples']<1000 or match['matching_fraction']<.95:
+                raise AssertionError('Original ground art did not return after Ground mip bands was disabled')
         mip_frame('restored',0,1,0,restored_art)
         # WaterInspection is a read-only camera tour; it hides the player and
         # restores logical coordinates after every draw, keeping pairs fixed.
@@ -1263,7 +1286,8 @@ def title_options_unsupported():
     (root/'title-options-unsupported.json').write_text(json.dumps({'unsupported_mode_did_not_save':True}))
 
 def wait_profiles(name='profile-picker.png'):
-    deadline=time.monotonic()+180
+    maximum='--jobs' in sys.argv and sys.argv[sys.argv.index('--jobs')+1].startswith('maximum-')
+    deadline=time.monotonic()+(600 if maximum else 180)
     while time.monotonic()<deadline:
         check_runtime_failure()
         # Normal scenarios accept the default if card selection needs a dialog.

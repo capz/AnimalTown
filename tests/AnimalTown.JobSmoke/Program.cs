@@ -80,12 +80,18 @@ internal static class Program
     // writes. Model that extra buffer with both maximum towns still resident.
     private sealed class PreparingCard : ISaveStorage,ISaveSnapshotStorage,ISaveVerifiedPrefixStorage,ISaveWritePreparationStorage
     {
-        private readonly Card inner;private bool pending=true;
+        private readonly Card inner;private bool pending=true;private GameState? memo;
         internal PreparingCard(int card){inner=new Card(card);}
+        internal void ReuseTextFrom(GameState state){memo=state;}
         public byte[] Read(string name)=>inner.Read(name);
         public byte[] ReadVerifiedPrefix(string name,int count,int sequence,int length,uint checksum)=>inner.ReadVerifiedPrefix(name,count,sequence,length,checksum);
         public bool Matches(string name,byte[]? expected,int sequence,int length,uint checksum,bool ignoreSequence)=>inner.Matches(name,expected,sequence,length,checksum,ignoreSequence);
-        private void ValidateMigration(){var bytes=inner.Read("AT-Shops0");Require(bytes.Length>1500000,"native legacy migration retains a maximum economic record");}
+        private void ValidateMigration()
+        {
+            var validated=new SaveRepository(inner).Load(memo);Require(validated!=null,"native legacy validation decodes the complete referenced town");
+            NativeJobBlocks.Collect();var bytes=inner.Read("AT-Shops0");
+            Require(bytes.Length>1500000&&validated!.MailCount==128,"native legacy copying retains its validated snapshot and a maximum economic record");
+        }
         public void PrepareWrite(){if(!pending)return;NativeJobBlocks.Collect();ValidateMigration();NativeJobBlocks.Collect();pending=false;}
         public void Write(string name,byte[] bytes){Require(!pending,"prepare legacy storage before encoding/writing a new record");inner.Write(name,bytes);}
     }
@@ -143,17 +149,26 @@ internal static class Program
         }
         Require(free==0,"maximum fixture must free exactly the visitor's portable reward requirement");repo.Save(state);
     }
-    private static void TravelMaximumCards()
+    private static GameState TravelMaximumCards()
     {
-        var ar=new SaveRepository(new PreparingCard(0));var br=new SaveRepository(new PreparingCard(1));var live=ar.Load()!;
+        var aCard=new PreparingCard(0);var bCard=new PreparingCard(1);var ar=new SaveRepository(aCard);var br=new SaveRepository(bCard);var live=ar.Load()!;
         Require(!live.ProfileLocked(0),"capacity refusal retains the unlocked home profile");long now=live.Town.Jobs.Watermark;
-        var trip=new OfflineTownTravel(ar,br,live);trip.Inspect(out var inspectedHome,out var inspectedDestination);var guest=trip.Depart(0,now);
+        var trip=new OfflineTownTravel(ar,br,live);trip.Inspect(out var inspectedHome,out var inspectedDestination);aCard.ReuseTextFrom(inspectedHome);bCard.ReuseTextFrom(inspectedDestination);var guest=trip.Depart(0,now);
         Require(guest.Visiting&&guest.Town.Jobs.Job(99).Occupying&&guest.Town.Jobs.Reward(127).State!=JobRewardState.Empty,"all five personal partitions and the reward pool coexist during a maximum-mail trip");
-        br.Save(guest);var home=trip.Return(now+60);Require(!home.Visiting&&home.MailCount==128&&home.Town.Jobs.Job(19).Occupying&&inspectedHome.Town.Jobs.TownId==home.Town.Jobs.TownId&&inspectedDestination.Town.Jobs.TownId==guest.Town.Jobs.TownId,"maximum economy returns every personal job and all home mail while adapter snapshots remain retained");
+        br.Save(guest);var home=trip.Return(now+60);Require(!home.Visiting&&home.MailCount==128&&home.Town.Jobs.Job(19).Occupying&&inspectedHome.Town.Jobs.TownId==home.Town.Jobs.TownId&&inspectedDestination.Town.Jobs.TownId==guest.Town.Jobs.TownId,"maximum economy returns every personal job and all home mail while adapter snapshots remain retained");return home;
     }
     private static void MaximumEconomyTravel()
     {
-        Console.WriteLine("Native two maximum economies and the full visitor partition");BuildFullCard(0,true);Console.WriteLine("Native maximum home saved");BuildFullCard(1,true);Console.WriteLine("Native maximum destination saved");RejectFullRewardDestination();Console.WriteLine("Native full-reward capacity refusal passed");MakeVisitorRewardSpace();Console.WriteLine("Native maximum destination has visitor reward space");TravelMaximumCards();
+        Console.WriteLine("Native two maximum economies and the full visitor partition");BuildFullCard(0,true);Console.WriteLine("Native maximum home saved");BuildFullCard(1,true);Console.WriteLine("Native maximum destination saved");RejectFullRewardDestination();Console.WriteLine("Native full-reward capacity refusal passed");MakeVisitorRewardSpace();Console.WriteLine("Native maximum destination has visitor reward space");var home=TravelMaximumCards();home.ResidentJobs.Travel=null;PostTravelWorldCheckpoint(home);
+    }
+    private static void PostTravelWorldCheckpoint(GameState home)
+    {
+        // A fresh game renderer exists again after the transfer's private
+        // two-town frames unwind. Keep its managed working set through save.
+        // The renderer owns many geometry/pose buffers, not one two-MiB array.
+        var world=new byte[64][];for(int i=0;i<world.Length;i++){world[i]=new byte[32768];world[i][0]=(byte)i;}
+        home.X+=.25f;new SaveRepository(new Card(0)).Save(home);
+        Require(home.MailCount==128&&!home.Visiting&&home.Town.Jobs.Job(19).Occupying&&world[0][0]==0&&world[63][0]==63,"post-travel checkpoint retains the full mailbox, personal jobs and two MiB of reloaded world buffers");
     }
     private static void ArchiveCopyBudget()
     {

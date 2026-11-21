@@ -130,17 +130,17 @@ internal static class JobFixture
         JobTemplate? expected=mode switch{"delivery" or "owed"=>JobTemplate.DeliveryClothing,"property"=>JobTemplate.DeliveryProperty,"retrieval" or "retrieval-multi"=>JobTemplate.RetrievalBorrowed,"foreign"=>JobTemplate.DeliveryForeign,"moved"=>JobTemplate.DeliveryMoved,"fruit"=>JobTemplate.FavorFruit,"fish"=>JobTemplate.FavorFish,"insect"=>JobTemplate.FavorInsect,"flowers"=>JobTemplate.FavorFlowers,"ball"=>JobTemplate.FavorBall,"snowman" or "destroy-snowman"=>JobTemplate.FavorSnowman,"letter" or "letter-full"=>JobTemplate.FavorLetter,_=>null};
         bool completed=Enumerable.Range(0,OfflineJobLedger.TerminalCapacity).Any(i=>l.Terminal(i).Reason==JobEndReason.Success&&(!expected.HasValue||l.Terminal(i).Template==expected.Value))||jobs.Any(j=>j.Status==JobStatus.CompletedRetained&&(!expected.HasValue||j.Template==expected.Value));
         GameState? other=null;
-        if(mode=="foreign"||mode=="moved"||mode=="moving"||mode=="recovery"||mode=="maximum-economy"||mode=="maximum-recovery"){
+        if(mode=="foreign"||mode=="moved"||mode=="moving"||mode=="recovery"||mode=="maximum-economy"||mode=="maximum-recovery"||mode=="maximum-post-travel"){
             other=new SaveRepository(ReadFixture(Path.Combine(directory,"..","records-b"))).Load()??throw new Exception("Controller run must export both actual town cards");
             if(expected.HasValue)completed|=Enumerable.Range(0,OfflineJobLedger.TerminalCapacity).Any(i=>other.Town.Jobs.Terminal(i).Owner==l.Player(0)&&other.Town.Jobs.Terminal(i).Template==expected.Value&&other.Town.Jobs.Terminal(i).Reason==JobEndReason.Success);
             if(verify&&(s.Visiting||other.Visiting||s.ProfileLocked(0)||l.Trip.Pending||other.Town.Jobs.Trip.Pending))throw new Exception("Both town cards must finish without an active or duplicated traveller");
         }
         if(verify&&expected.HasValue&&!completed)throw new Exception("Controller run has not completed its expected errand: "+mode);
-        if(verify&&(mode=="maximum-economy"||mode=="maximum-recovery")){
+        if(verify&&(mode=="maximum-economy"||mode=="maximum-recovery"||mode=="maximum-post-travel")){
             var guest=new SaveRepository(ReadFixture(Path.Combine(directory,"..","records-guest"))).Load()??throw new Exception("Maximum transfer needs its actual committed visitor checkpoint");
             if(!guest.Visiting||!guest.Town.Jobs.Job(99).Occupying||s.Town.Jobs.Trip.Phase!=OfflineTripPhase.Finished||!l.Job(19).Occupying||other==null||other.Town.Jobs.GuestProfile!=null)throw new Exception("The full visitor partition did not travel and return safely");
         }
-        if(verify&&(mode=="maximum-mail"||mode=="maximum-economy"||mode=="maximum-recovery")){
+        if(verify&&(mode=="maximum-mail"||mode=="maximum-economy"||mode=="maximum-recovery"||mode=="maximum-post-travel")){
             string maximumBody=string.Concat(Enumerable.Repeat("\U0001f642",1000));
             bool FullMail(GameState town)=>town.Sequence>=2&&Enumerable.Range(0,4).All(p=>town.Profiles[p].MailCount==128)&&Enumerable.Range(0,512).All(i=>{var m=town.Town.Jobs.Mail[i];return m.State==JobMailState.Inbox&&JobTextBody.Unpack(m.Body!,m.BodyOffset,m.BodyWords)==maximumBody;});
             if(!FullMail(s)||other!=null&&!FullMail(other))throw new Exception("Maximum Unicode mail did not survive the actual card checkpoint in both towns");
