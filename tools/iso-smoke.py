@@ -225,6 +225,15 @@ def finish_onboarding(prefix='new-villager',before=None):
 def start_game(new_town=False,prefix='start'):
     """Navigate Title and the resident picker before sending gameplay input."""
     before=committed_card_sequence(root/'MemoryCardA.USA.raw',details=True)
+    if '--warm-terrain' in sys.argv:
+        wait_title();set_debug_visibility(True);press('D_UP');press('A');wait_title(modal=True)
+        # The last two title settings are warm prefetch and session profiling.
+        press('D_UP');press('D_UP')
+        current=card_dev_config(root/'MemoryCardA.USA.raw')
+        if not current or not current['warm_terrain_prefetch']:press('A')
+        screenshot(prefix+'-warm-prefetch-setting.png');press('B');wait_title();press('D_DOWN')
+        saved=card_dev_config(root/'MemoryCardA.USA.raw')
+        if not saved or not saved['warm_terrain_prefetch']:raise AssertionError('Warm prefetch setting was not persisted')
     wait_title();press('A');wait_profiles(prefix+'-picker.png');press('A')
     active=before['active'] if before else 0
     if new_town or not before or not before['profiles'][active]['created']:

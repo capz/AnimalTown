@@ -31,7 +31,7 @@ seen=set()
 versions=set()
 details={}
 submissions={}
-frame_keys={};intervals={};memory_parts={};sessions=set();last_sequences={}
+frame_keys={};intervals={};memory_parts={};sessions=set();last_sequences={};configurations=defaultdict(int);queued=[]
 repeated=missing=invalid_v6=0
 paths=args.paths
 def band(frame,y,count):
@@ -65,6 +65,7 @@ for path_index,path in enumerate(paths):
                 if 1<delta<0x80000000:missing+=delta-1
             last_sequences[session]=seq
             intervals[identity]=u32(ident,6)/1000
+            configurations[(ident[8]&3,bool(ident[8]&256),bool(ident[13]&1))]+=1;queued.append(ident[12])
             part=memory_parts.setdefault((session,u32(mem,4)),{})
             part[mem[6]]=[u32(mem,7+i*2) for i in range(4)]
         else:
@@ -127,6 +128,8 @@ report={'units':'milliseconds; '+('console timebase' if args.platform=='hardware
         'landscape_loading_frames':len(groups.get(2000,[])),'scenarios':{}}
 report['memory_snapshots']=[{'session':key[0],'sequence':key[1],**memory_report([v for part in range(8) for v in parts[part]])} for key,parts in memory_parts.items() if len(parts)==8]
 report['incomplete_memory_snapshots']=sum(len(parts)!=8 for parts in memory_parts.values())
+report['configurations']=[{'profiling_mode':key[0],'warm_terrain_prefetch':key[1],'full_resolution_aa':key[2],'frames':count} for key,count in configurations.items()]
+report['terrain_queued_sections']=stats(queued) if queued else None
 report['hardware_qualification_missing']=[name for name in ('commit','sdk','engine','artifact_sha256','fixture_sha256','debug_settings') if name not in provenance]
 for scene,rows in groups.items():
     if not rows:continue
