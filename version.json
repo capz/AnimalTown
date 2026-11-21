@@ -131,6 +131,15 @@
         "Preserve parcels, profiles and partially recovered snow across reloads.",
         "Keep unchanged saves and independent snow or job-clock updates efficient."
       ]
+    },
+    {
+      "id": "helipad-two-card-flight",
+      "lines": [
+        "Take a helicopter from the north helipad to another town.",
+        "Board from the grass in front of the pad during a two-card visit.",
+        "Fly across the sky while the destination is loading.",
+        "Land beside the destination gate and walk straight into town."
+      ]
     }
   ]
 }

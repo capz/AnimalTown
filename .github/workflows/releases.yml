@@ -352,7 +352,7 @@ jobs:
           PY
       - name: Verify actual job controls and committed results in Dolphin
         if: steps.jobs_capture.outputs.needed == 'true'
-        timeout-minutes: 15
+        timeout-minutes: 25
         env:
           BUILD_VERSION: ${{ steps.version.outputs.version }}
           ANIMALTOWN_BUILD_IMAGE: ghcr.io/capz/animaltown-build@${{ steps.image.outputs.digest }}
@@ -363,11 +363,15 @@ jobs:
             --mount "type=bind,src=$PWD,dst=/work" -w /work \
             animaltown-job-capture python3 tools/iso-smoke.py \
             "out/AnimalTown-$BUILD_VERSION.nkit.iso" out/jobs/template --jobs template --season summer --dsp-hle --component-cable
-          for mode in delivery mail; do
+          for mode in delivery mail helipad; do
             docker compose -f build/compose.yml run --rm --no-deps builder \
               dotnet run --project tests/AnimalTown.Checks -c Release -- --job-fixture "out/job-fixtures/$mode" "$mode"
             python3 tools/profile-card-fixture.py out/jobs/template/MemoryCardA.USA.raw \
               "out/job-fixtures/$mode" "out/jobs/$mode/MemoryCardA.USA.raw"
+            if [ "$mode" = helipad ]; then
+              python3 tools/profile-card-fixture.py out/jobs/template/MemoryCardA.USA.raw \
+                out/job-fixtures/helipad-destination out/jobs/helipad/MemoryCardB.USA.raw
+            fi
             docker run --rm --init --shm-size=512m --user "$(id -u):$(id -g)" \
               --mount "type=bind,src=$PWD,dst=/work" -w /work \
               animaltown-job-capture python3 tools/iso-smoke.py \

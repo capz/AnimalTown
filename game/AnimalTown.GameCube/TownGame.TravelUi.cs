@@ -33,10 +33,14 @@ internal sealed partial class TownGame
     private void ExecuteTravel()
     {
         if(!travelReady)return;
+        bool fly=travelAction==0||travelAction==1;
+        float boardX=0,boardZ=0;
+        if(fly&&!HelipadSite.TryArrival(state,out boardX,out boardZ)){travelStatus="Clear the grass in front of the helipad before boarding.";screen="travel-menu";return;}
         if(!SaveFromMenu()){travelStatus=saveStatus;screen="travel-menu";return;}
-        screen="travel-busy";
         card?.Dispose();card=null;
-        session.QueueTravel(travelAction,state.ActiveProfile,travelFrom,travelTo,JobNow);TravelRestartRequested=true;
+        session.QueueTravel(travelAction,state.ActiveProfile,travelFrom,travelTo,JobNow);
+        if(fly){StartHelipadFlight(boardX,boardZ);return;}
+        screen="travel-busy";TravelRestartRequested=true;
     }
     private bool TravelInput(ControllerState p)
     {

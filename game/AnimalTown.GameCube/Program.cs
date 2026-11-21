@@ -43,6 +43,7 @@ internal static class Program
             if(!ProfilePicker.Run(session))return;
             if(session.Draft!=null&&!OnboardingFlow.Run(config,session))return;
             while(RunSession(config,session)==TownGame.TravelRestart){
+                if(session.Flight.Phase==FlightPhase.Cruise)LoadingScreen.BeginFlight(session.Flight.Direction);
                 if(!session.CompleteTravel()&&!OfflineTravelRecovery.Run(session,session.TravelError))break;
             }
         }finally{session.DiscardDraft();}
@@ -76,7 +77,11 @@ internal static class Program
                 // Setup and preview scopes have returned before gameplay starts.
                 // Their disposed views/snapshots cannot remain stack roots here.
                 game.ReleaseIntro();
-                while(accumulator>=1.0/30){game.Step(pad);accumulator-=1.0/30;}
+                while(accumulator>=1.0/30){
+                    if(!game.StepHelipadFlight())game.Step(pad);
+                    if(game.TravelRestartRequested)return TownGame.TravelRestart;
+                    accumulator-=1.0/30;
+                }
                 FrameProfile.End(0,simulation);game.Draw();game.AdvanceResidency(afterDraw:true);
                 long delay=FrameProfile.Start();RuntimeOptions.Wait();FrameProfile.End(13,delay);game.RecordFrame();
             }
@@ -258,6 +263,11 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
     internal void ReleaseIntro()
     {
         if(!releaseIntro||!resourcesReady||room==0&&!terrain.Ready)return;
+        if(session.Flight.Phase==FlightPhase.Cruise){
+            if(!LoadingScreen.FlightFinished())return;
+            session.Flight.Land();
+            DebugOverlay.WriteLine("ANIMALTOWN FLIGHT LAND "+state.Town.Seed);
+        }
         LoadingScreen.Finish();
         TextureCache.TrimUnused();AnimalTown.GameCube.NativeTexturePages.Collect();
         if(session.Draft!=null||OnboardingUi.LiveViews!=0||
@@ -279,7 +289,7 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
         for(int i=0;i<actors.Length;i++){actors[i]?.Dispose();actors[i]=null!;}
         if(unadopted!=null&&Array.IndexOf(models,unadopted)<0)unadopted.Dispose();
         for(int i=0;i<models.Length;i++){models[i]?.Dispose();models[i]=null!;}
-        jobScene.Dispose();attention.Dispose();rain.Dispose();foliage.Dispose();trees.Dispose();droppedItems.Dispose();buildings.Dispose();terrain.Dispose();fences.Dispose();
+        jobScene.Dispose();attention.Dispose();rain.Dispose();foliage.Dispose();trees.Dispose();droppedItems.Dispose();buildings.Dispose();terrain.Dispose();fences.Dispose();helipad.Dispose();
         clockHud.Dispose();uiShapes.Dispose();mapBackground.Dispose();cube.Dispose();ui.Dispose();
         font.Release();headingFont.Release();TextureCache.Release(itemIcons);card?.Dispose();card=null;
         NativeRim.Enable(0);NativeRenderProbe.Uv(0);
@@ -369,7 +379,7 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
     }
     private void DrawLoading(bool landscape=false)
     {
-        if(loadingFailed)LoadingScreen.Draw("Could not load town assets.\n"+(session.Draft!=null?"B: return to the title.":"Restart with a valid disc."),font);
+        if(loadingFailed)LoadingScreen.Draw("Could not load town assets.\n"+(session.Draft!=null||session.Flight.Active?"B: return to the title.":"Restart with a valid disc."),font);
         else LoadingScreen.Draw();
     }
     // Two opportunities per presented frame overlap DMA with drawing. The total
@@ -487,6 +497,7 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
     private bool Press(ControllerState p)=>p.A.WasPressed;
     internal void Input(ControllerState p)
     {
+        if(session.Flight.Active){if(loadingFailed&&p.B.WasPressed){session.Flight.Cancel();ExitToTitle=true;}return;}
         if(!resourcesReady||!modelSceneReady||room==0&&!terrain.Ready){if(loadingFailed&&session.Draft!=null&&p.B.WasPressed)ExitToTitle=true;return;}
         if(DebugMenuSettings.Read(p)){
             if(!DebugMenuSettings.Visible){
@@ -795,8 +806,8 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
             // No nearby villager or usable doorway: A does nothing.
             return;
         }
-        if(x>=32&&x<=40&&z<=12&&JobsLive){OpenTravel();return;}
-        if(x>=32&&x<=40&&z<=12){Say("Gate","The gate awaits a Broadband Adapter and companion connection.");return;}
+        if(HelipadSite.AtGate(x,z)&&JobsLive){OpenTravel();return;}
+        if(HelipadSite.AtGate(x,z)){Say("Gate","Complete your town introduction to visit another town.");return;}
         if(JobsLive){int near=ClosestResident();if(near>=0){TryJobConversation(near);return;}}
         for(int i=0;i<6;i++){var v=state.Town.Residents[i];if(v.Space==0&&Math.Abs(v.PosX-state.X)<2.8f&&Math.Abs(v.PosZ-state.Z)<2.8f){if(!TryJobConversation(i))Say(v.Name,state.Talk(i));return;}}
         if(JobsLive&&state.Tool==Catalog.Shovel)for(int i=0;i<AnimalTown.Jobs.OfflineJobLedger.WorldCapacity;i++){var o=state.Town.Jobs.WorldObject(i);float dx=o.X-state.X,dz=o.Z-state.Z;if(o.Kind==AnimalTown.Jobs.JobWorldKind.Snowman&&dx*dx+dz*dz<2.25f){state.ResidentJobs.DestroyWorldObject(i);Say("Snow","The snowman crumbles back into the snow.");return;}}
@@ -870,9 +881,11 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
     {var center=SurfacePoint(x,z,scale*.5f);float radius=scale*1.5f;return room!=0?indoorCamera.Sphere(x,scale*.5f,z,radius,BuildingWorld.Size(state,room)):RenderView.Sphere(center.X,center.Y,center.Z,radius,state.X,state.Z,cachedPlayerHeight)&&RenderView.AboveHorizon(center.Y,center.Z,radius,state.Z,cachedPlayerHeight);}
     private void ModelAt(int actor)
     {
+        if(actor==0&&session.Flight.PlayerOnboard)return;
         if(!actorVisibility.Visible[actor]){FrameProfile.CulledObjects++;return;}
-        var location=actorVisibility.Locations[actor];float x=location.X,z=location.Z,scale=1.8f,facing=actor==0?facingYaw:location.Yaw;
-        var pose=batchedDrawing?modelPoses[modelUsed++]:transform;pose.LocalPosition=SurfacePoint(x,z);pose.LocalScale=new Vector3(scale,scale,scale);pose.LocalRotation=SurfaceRotation(z,facing);
+        var location=actorVisibility.Locations[actor];float x=location.X,z=location.Z,scale=1.8f,facing=actor==0?facingYaw:location.Yaw,height=0;
+        if(actor==0&&session.Flight.PlayerWalking)session.Flight.PlayerPose(state.X,state.Z,out x,out z,out height,out facing);
+        var pose=batchedDrawing?modelPoses[modelUsed++]:transform;pose.LocalPosition=SurfacePoint(x,z,height);pose.LocalScale=new Vector3(scale,scale,scale);pose.LocalRotation=SurfaceRotation(z,facing);
         if(batchedDrawing){actorQueue.Submit(actors[actor],pose);}else{NativeRim.Enable(RenderDebugOptions.DefaultRimPercent);NativeShadows.Objects(room==0?1:0);try{renderer.DrawModel(actors[actor],pose);}finally{NativeShadows.Objects(0);NativeRim.Enable(0);}}
     }
     private void DrawActors()
@@ -884,15 +897,17 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
         int size=room==0?0:BuildingWorld.Size(state,room);
         bool mat=room!=0&&BuildingWorld.Definition(state,BuildingWorld.Building(room)).Floor==BuildingCatalog.Cottage.Floor;
         for(int actor=0;actor<BuildingWorld.Actors;actor++){
-            if(BuildingWorld.Location(state,actor).Space.Value!=room||actor==0&&waterInspection!=0)continue;
+            if(BuildingWorld.Location(state,actor).Space.Value!=room||actor==0&&(waterInspection!=0||session.Flight.PlayerOnboard))continue;
             if(actor!=0&&!modelResidency.Ready(state.ResidentSpecies(actor-1)))continue;
             var p=villagers.Doors.VisualLocation(state,actor);
-            if(Visible(p.X,p.Z,1.8f))villagerShadows.Set(actor,room,p.X,p.Z,size,mat);
+            float x=p.X,z=p.Z;
+            if(actor==0&&session.Flight.PlayerWalking)session.Flight.PlayerPose(state.X,state.Z,out x,out z,out _,out _);
+            if(Visible(x,z,1.8f))villagerShadows.Set(actor,room,x,z,size,mat);
         }
     }
     internal void Draw()
     {
-        if(!resourcesReady){DrawLoading();return;}
+        if(!resourcesReady||session.Flight.Phase==FlightPhase.Cruise){DrawLoading();return;}
         float x=state.X,z=state.Z;
         try{if(waterInspection!=0)WaterInspection.Focus(state,waterInspection);DrawScene();}
         finally{state.X=x;state.Z=z;}
@@ -938,6 +953,7 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
         // Only a drawable scene may evaluate native poses. Shadow receivers
         // use logical positions and can prepare while the landscape loads.
         if(room==0){trees.Prepare(terrain.RenderSeason,townClock.CherryBlossomsBloom);fences.Prepare(state);droppedItems.Prepare(state,cachedPlayerHeight);}
+        PrepareHelipad();
         if((weather.Raining(room)||weather.Snowing(room))&&villagers.Doors.PlayerFade<1)rain.Prepare(state,(Clock.Timestamp-sessionStart)/1000000.0,cachedPlayerHeight,weather.Snowing(room));
         else rain.Dispose();
         PrepareFoliage(environmentTint);
@@ -985,6 +1001,7 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
             NativeShadows.Objects(2);
             try{for(int building=0;building<BuildingWorld.Count;building++)buildings.Exterior(renderer,state,building,villagers.Doors);}
             finally{NativeShadows.Objects(0);}
+            DrawHelipad(environmentTint);
             FrameProfile.SubmissionEnd(2,submissionAt);submissionAt=FrameProfile.SubmissionStart();
             fences.Draw(renderer,state,terrain.ScrollTransform,cachedPlayerHeight);FrameProfile.SubmissionEnd(3,submissionAt);
             groundAt=FrameProfile.Start();droppedItems.Draw(renderer);FrameProfile.End(3,groundAt);
@@ -1011,7 +1028,7 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
         FrameProfile.End(7,phase);phase=FrameProfile.Start();
         ModelAt(0);
         if(batchedDrawing)DrawActors();
-        DrawJobOutfit(0);if(room!=0)for(int i=1;i<BuildingWorld.Actors;i++)DrawJobOutfit(i);
+        if(!session.Flight.Active)DrawJobOutfit(0);if(room!=0)for(int i=1;i<BuildingWorld.Actors;i++)DrawJobOutfit(i);
         FrameProfile.End(5,phase);phase=FrameProfile.Start();
         if(screen=="plot")
         {
@@ -1030,7 +1047,7 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
         foliage.Draw(renderer);
         if((weather.Raining(room)||weather.Snowing(room))&&villagers.Doors.PlayerFade<1)rain.Draw(renderer);
         FrameProfile.SubmissionEnd(4,submissionAt);
-        renderer.End3D();NativeShadows.Environment(0xffffff,preparedShadowStrength);ui.Begin();submissionAt=FrameProfile.SubmissionStart();DrawHud();if(FrameProfile.Enabled)ui.Flush();FrameProfile.SubmissionEnd(5,submissionAt);FrameProfile.End(8,phase);FrameProfile.Draw(ui);
+        renderer.End3D();NativeShadows.Environment(0xffffff,preparedShadowStrength);ui.Begin();submissionAt=FrameProfile.SubmissionStart();if(!session.Flight.Active)DrawHud();if(FrameProfile.Enabled)ui.Flush();FrameProfile.SubmissionEnd(5,submissionAt);FrameProfile.End(8,phase);FrameProfile.Draw(ui);
         float fade=villagers.Doors.PlayerFade;if(fade>0)ui.FillRectangle(new RectF(0,0,640,480),new Color32(12,19,25,(byte)(fade*255)));
         phase=FrameProfile.Start();submissionAt=FrameProfile.SubmissionStart();ui.End();FrameProfile.SubmissionEnd(6,submissionAt);FrameProfile.End(8,phase);
         if(FrameProfile.Enabled)preparedSubmitMicroseconds+=Clock.Timestamp-submitAt;
