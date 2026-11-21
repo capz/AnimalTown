@@ -138,9 +138,23 @@ extern int animaltown_terrain_cache(int);
     # shares the same 24 MiB MEM1 as card buffers and the full GX cache.
     persistence=r'(?m)^(intptr_t dnd_value_AnimalTown_Domain_AnimalTown_(?:SaveCodec|SplitSaveCodec|ProfileCodec|SaveRepository|IncrementalSaveCodec)_[^;\n]*\) \{)'
     text,compact_count=re.subn(persistence,r'__attribute__((noinline,optimize("Os"))) \1',text)
+    # Mail/transactions/dialogue run on explicit interactions or RTC events.
+    # Their generated value-copy code is large at O3. Keep the fixed-step
+    # availability clock, identity/RNG helpers and physical world loop optimized.
+    jobs=r'(?m)^(intptr_t dnd_value_AnimalTown_Domain_AnimalTown_Jobs_(?!(?:NpcJobAvailability|TownJobState|JobIdentity|JobRandom)_|VillagerJobService_(?:TickWorld|RecordWorldEvidence)_)[^;\n]*\) \{)'
+    text,job_count=re.subn(jobs,r'__attribute__((noinline,optimize("Os"))) \1',text)
+    if 'dnd_type_AnimalTown_Jobs_OfflineJobLedger' in text:
+        assert job_count>100, 'Missing compact resident-job service'
     assert compact_count>=30, 'Persistence AOT function boundaries changed'
     for codec in ('SaveCodec','SplitSaveCodec','ProfileCodec','SaveRepository','IncrementalSaveCodec'):
         assert re.search(r'__attribute__.*dnd_value_AnimalTown_Domain_AnimalTown_'+codec+r'_',text), 'Missing compact persistence codec: '+codec
+    # Card, loading and explicit UI transactions share MEM1 with the winter
+    # coverage map and model packages. Their O3 copies/inlining can cost more
+    # RAM than the bounded job records. Keep free-play simulation/rendering,
+    # shared text primitives and physical-object drawing at O3.
+    console_cold=r'(?m)^(intptr_t dnd_value_AnimalTown_GameCube_(?:CardArchive|TownCardRecords|CardSaveStorage|SaveCards|ProfilePicker|ProfilePickerUi|OnboardingFlow|OnboardingUi|TownSession|OfflineTravelCards|OfflineTravelRecovery|DevConfigStorage|UserOptionsStorage|TitleScreen|TownGame_(?:InitializeJobs|JobNpcName|JobPlayerName|JobTitle|JobDescription|JobSay|ResetJobConversation|CloseJobDialogue|TryJobConversation|ShowJobOffer|JobInput|OpenJobLog|RefreshJobRows|OpenJobSelection|JobItemName|FindBoundJob|DrawJobUi|DrawMailUi|DrawTravelUi|MailUiInput|OpenMail|RefreshMail|Compose|Send|ReadJobMail|TakeMail|DiscardMail|OpenNotice|RefreshNotice|OpenTravel|RefreshTravel|ExecuteTravel|TravelInput|SaveFromMenu)_)[^;\n]*\) \{)'
+    text,console_count=re.subn(console_cold,r'__attribute__((noinline,optimize("Os"))) \1',text)
+    assert console_count>=60, 'Cold console transaction boundaries changed'
     # Path routing/tessellation runs at generation or terrain bake, not during
     # normal travel. Compact its AOT text instead of spending scarce MEM1 on O3
     # unrolling. The residency pump and drawing retain gameplay optimization.
@@ -152,3 +166,5 @@ extern int animaltown_terrain_cache(int);
         print('Paths: '+str(path_count)+' cold AOT functions compiled for size; residency/drawing retain O3')
     generated.write_text(text)
     print('Persistence: '+str(compact_count)+' cold AOT functions compiled for size; gameplay optimization retained')
+    print('Resident jobs: '+str(job_count)+' event/transaction functions compiled for size; physical world and availability retain O3')
+    print('Console transactions: '+str(console_count)+' card/loading/UI functions compiled for size; free-play simulation and rendering retain O3')

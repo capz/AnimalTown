@@ -17,6 +17,19 @@ if($IsLinux){
         if($LASTEXITCODE){throw "Native residency trace $target fixture failed"}
     }
 }
+# Keep the existing DNDREC01 format while allowing a bounded large mail archive.
+$cardBlocks=Join-Path $nativeRoot 'include/dnd_card_blocks.inc'
+$cardSource=[IO.File]::ReadAllText($cardBlocks)
+if(([regex]::Matches($cardSource,'page>256|count>256')).Count -ne 2){throw 'Pinned card-container bounds changed'}
+$cardSource=$cardSource.Replace('page>256','page>2048').Replace('count>256','count>2048')
+[IO.File]::WriteAllText($cardBlocks,$cardSource)
+if($IsLinux){
+    $check=Join-Path $Root 'out/native-job-card-growth-check'
+    & cc -std=c11 -Wall -Wextra -Werror "-I$(Join-Path $nativeRoot 'include')" (Join-Path $Root 'tests/native-job-card-growth.c') -o $check
+    if($LASTEXITCODE){throw 'Extended card block bounds compilation failed'}
+    & $check
+    if($LASTEXITCODE){throw 'Extended card block bounds fixture failed'}
+}
 $generated=[IO.File]::ReadAllText($generatedPath)
 $blockBridge='intptr_t (dnd_value_AnimalTown_GameCube_CardBlockBridge_Io_[a-z0-9]+)\(intptr_t (\w+), intptr_t (\w+), intptr_t (\w+), intptr_t (\w+), intptr_t (\w+), intptr_t (\w+)\) \{.*?\r?\n\}'
 if(([regex]::Matches($generated,$blockBridge,[Text.RegularExpressions.RegexOptions]::Singleline)).Count -ne 1){throw 'Card container bridge signature changed'}
@@ -49,6 +62,10 @@ $clockPattern='intptr_t (dnd_value_AnimalTown_GameCube_NativeCalendar_ReadClock_
 if(([regex]::Matches($generated,$clockPattern,[Text.RegularExpressions.RegexOptions]::Singleline)).Count -ne 1){throw 'Native UI clock bridge signature changed'}
 $generated=[regex]::Replace($generated,$clockPattern,'intptr_t $1(void) { return (intptr_t)animaltown_clock(); }',[Text.RegularExpressions.RegexOptions]::Singleline)
 $generated="extern int animaltown_clock(void);`n"+$generated
+$secondPattern='intptr_t (dnd_value_AnimalTown_GameCube_NativeCalendar_ReadSecond_[a-z0-9]+)\(void\) \{.*?\r?\n\}'
+if(([regex]::Matches($generated,$secondPattern,[Text.RegularExpressions.RegexOptions]::Singleline)).Count -ne 1){throw 'Native dated-second clock bridge signature changed'}
+$generated=[regex]::Replace($generated,$secondPattern,'intptr_t $1(void) { return (intptr_t)animaltown_clock_second(); }',[Text.RegularExpressions.RegexOptions]::Singleline)
+$generated="extern int animaltown_clock_second(void);`n"+$generated
 $errorPattern='intptr_t (dnd_value_AnimalTown_GameCube_NativeCalendar_CardError_[a-z0-9]+)\(void\) \{.*?\r?\n\}'
 if(([regex]::Matches($generated,$errorPattern,[Text.RegularExpressions.RegexOptions]::Singleline)).Count -ne 1){throw 'Pinned AOT card diagnostic signature changed'}
 $generated=[regex]::Replace($generated,$errorPattern,'intptr_t $1(void) { return (intptr_t)animaltown_card_debug; }',[Text.RegularExpressions.RegexOptions]::Singleline)
@@ -249,7 +266,15 @@ $makePath=Join-Path $nativeRoot 'Makefile'
 $makeSource=[IO.File]::ReadAllText($makePath)
 $heapSetting='DND_MANAGED_HEAP_BYTES ?= 262144'
 if(([regex]::Matches($makeSource,[regex]::Escape($heapSetting))).Count -ne 1){throw 'Pinned SDK managed heap setting changed'}
-$makeSource=$makeSource.Replace($heapSetting,'DND_MANAGED_HEAP_BYTES ?= 4194304')
+# Maximum text mail plus two-card transfer readback is qualified at 6 MiB.
+$makeSource=$makeSource.Replace($heapSetting,'DND_MANAGED_HEAP_BYTES ?= 6291456')
+# Generated managed exceptions and GC use explicit runtime frames, not the C
+# unwinder. No linked native code calls _Unwind. Avoid loading hundreds of KiB
+# of unused C unwind tables beside the six-MiB heap; keep ordinary debug info.
+foreach($flags in @('CFLAGS += -O3 -flto -fno-strict-aliasing','LDFLAGS += -flto')){
+    if(([regex]::Matches($makeSource,[regex]::Escape($flags))).Count -ne 1){throw 'Pinned SDK native optimization flags changed'}
+    $makeSource=$makeSource.Replace($flags,$flags+' -fno-asynchronous-unwind-tables -fno-unwind-tables')
+}
 [IO.File]::WriteAllText($makePath,$makeSource)
 [IO.File]::WriteAllText($entryPath,$entrySource)
 # Keep the SDK's 16 MiB byte budget; the wider terrain prefetch pool needs more

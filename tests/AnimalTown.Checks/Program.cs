@@ -1,4 +1,6 @@
 using AnimalTown;
+if(args.Length==3&&args[0]=="--job-fixture"){JobFixture.Write(args[1],args[2]);return;}
+if(args.Length==3&&(args[0]=="--job-report"||args[0]=="--job-verify")){JobFixture.Report(args[1],args[2],args[0]=="--job-verify");return;}
 
 if(args.Length==4&&args[0]=="--shop-fixture"&&args[2]=="--tier"){
     int tier=int.Parse(args[3]);if(tier<0||tier>2)throw new ArgumentException("Shop fixture tier must be 0, 1 or 2");
@@ -25,10 +27,11 @@ if(Wants("movement"))PlayerMovementChecks.Run(Check);
 if(Wants("dialogue")){DialogueVoiceChecks.Run(Check);TownChatChecks.Run(Check);}
 if(Wants("generation")){TownGenerationChecks.Run(Check);PathChecks.Run(Check);}
 if(Wants("life"))TerrainLifeChecks.Run(Check);
-if(Wants("saves")){SplitSaveChecks.Run(Check);DevConfigChecks.Run(Check);UserOptionsChecks.Run(Check);ProfileChecks.Run(Check);}
+if(Wants("saves")){SplitSaveChecks.Run(Check);DevConfigChecks.Run(Check);UserOptionsChecks.Run(Check);ProfileChecks.Run(Check);SaveFormatCompatibilityChecks.Run(Check);}
 if(Wants("buildings")){BuildingChecks.Run(Check);ModelResidencyDemandChecks.Run(Check);ModelResidencyChecks.Run(Check);}
 if(!Wants("core")){if(Wants("content"))ContentChecks.Run(Check);Console.WriteLine(checks+" checks passed; suites: "+string.Join(",",selected));return;}
 GodModeChecks.Run(Check);
+TextureAtlasStreamChecks.Run(Check);
 WorldLightingChecks.Run(Check);
 TownDaylightChecks.Run(Check);
 var terrainEdit=new GameState(74);int terrainVersion=terrainEdit.Town.TerrainVersion;

@@ -41,7 +41,7 @@ def allowed(name):
     if re.fullmatch(r'terrain-materials-[a-z0-9-]+\.png',name):return True
     if re.fullmatch(r'daylight-(noon|dawn|dusk|night)-(a\.png|b\.png|report\.json)',name):return True
     parts=name.split('/')
-    return len(parts)==3 and parts[0]=='scenarios' and parts[1] in ('cliff-hud','gpu-submit','performance') and Path(parts[2]).suffix in ('.png','.json','.txt','.log','.avi')
+    return len(parts)==3 and parts[0]=='scenarios' and parts[1] in ('cliff-hud','gpu-submit','performance','jobs') and Path(parts[2]).suffix in ('.png','.json','.txt','.log','.avi')
 
 def inspect(archive, require_reports=True):
     entries=archive.infolist()
@@ -78,7 +78,7 @@ def inspect(archive, require_reports=True):
 
 def attach(archive_path, folder, namespace=''):
     archive_path=Path(archive_path);folder=Path(folder)
-    if namespace and namespace not in ('cliff-hud','gpu-submit','performance'):raise ValueError('Invalid evidence namespace')
+    if namespace and namespace not in ('cliff-hud','gpu-submit','performance','jobs'):raise ValueError('Invalid evidence namespace')
     additions={}
     for p in sorted(folder.rglob('*')):
         if p.is_symlink():raise ValueError('Symlink report input')

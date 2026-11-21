@@ -29,6 +29,9 @@ function Get-ValidationPlan {
         $release=$true
         if($p -match '^(build/|\.github/|Directory\.|.*\.sln$|.*\.csproj$|\.gitmodules$|vendor/|tools/(build-|publish-release|patch-native|.*validation|test-changes)|tests/validation-(plan|selection))'){$broad=$true;continue}
         if($p -match '^server/|^tests/(server-integration|AnimalTown.ServerChecks)'){$backend=$true;continue}
+        if($p -match '^shared/AnimalTown.Domain/(Jobs/|GameState\.Jobs\.cs$)|^tests/(AnimalTown.JobSmoke/|native-jobs\.)|^tests/AnimalTown.Checks/(OfflineJob|JobLetter|JobMail|JobTravel|JobWorld|VillagerJobIdentity)Checks\.cs$|^tools/generate-job-unicode\.py$'){
+            Add-Managed 'life';Add-Managed 'saves';[void]$native.Add('jobs');$backend=$true;continue
+        }
         if($p -match '^(shared/AnimalTown.Domain/ContentPaths|game/AnimalTown.GameCube/ContentBootstrap|tests/AnimalTown.Checks/ContentChecks)\.cs$'){Add-Managed 'content';[void]$native.Add('content');continue}
         if($p -match '^tests/(AnimalTown.ContentSmoke/|native-content-startup\.)'){Add-Managed 'content';[void]$native.Add('content');continue}
         if($p -match '^(shared/AnimalTown.Domain/TownChat|game/AnimalTown.GameCube/TownGame\.Chat|tests/AnimalTown.Checks/TownChatChecks)\.cs$'){
@@ -84,7 +87,7 @@ function Get-ValidationPlan {
         if($p -match '^shared/AnimalTown.Domain/(TerrainElevation|CylinderWorld|RenderView|TerrainTiles|FloorStrips|TerrainStream)\.cs$'){
             foreach($s in @('core','terrain','movement','generation','life')){Add-Managed $s};continue
         }
-        if($p -match '^shared/AnimalTown.Domain/(TexturePixels|TextureResolution|FloorTexture)\.cs$'){
+        if($p -match '^shared/AnimalTown.Domain/(TexturePixels|TextureAtlasStream|TextureResolution|FloorTexture)\.cs$'){
             Add-Managed 'core';[void]$tooling.Add('terrain');[void]$tooling.Add('repack');continue
         }
         if($p -match '^(shared/AnimalTown.Domain/(BuildingWorld|BuildingPrompt|BuildingState|BuildingSave|PortalSystem|InteriorNavigation|InteriorCamera|VillagerJourney)|tests/AnimalTown.Checks/(BuildingChecks|BuildingEntryChecks))\.cs$'){
@@ -125,7 +128,7 @@ function Get-ValidationPlan {
         if($p -match '^tools/(iso-smoke|path-study).py$'){[void]$native.Add('python');continue} # Scenarios are explicitly selected.
         $broad=$true
     }
-    if($broad){foreach($s in $allManaged){Add-Managed $s};foreach($s in @('terrain','repack','building','nkit','dropped-item','depot')){[void]$tooling.Add($s)};foreach($s in @('uv','card','texture','voices','python','shadows','patched','content')){[void]$native.Add($s)};$backend=$true;$policy=$true}
+    if($broad){foreach($s in $allManaged){Add-Managed $s};foreach($s in @('terrain','repack','building','nkit','dropped-item','depot')){[void]$tooling.Add($s)};foreach($s in @('uv','card','texture','voices','python','shadows','patched','content','jobs')){[void]$native.Add($s)};$backend=$true;$policy=$true}
     if($broad){foreach($r in $allRendering){[void]$rendering.Add($r)}}
     [pscustomobject]@{schema=2;commit=$Commit;baseRef=$BaseRef;release=$release;full=$broad;managed=@($allManaged|Where-Object {$managed.Contains($_)});rendering=@($allRendering|Where-Object {$rendering.Contains($_)});tooling=@($tooling|Sort-Object);native=@($native|Sort-Object);backend=$backend;policy=$policy;paths=@($ChangedPaths|Sort-Object -Unique)}
 }

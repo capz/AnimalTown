@@ -5,7 +5,7 @@ Set-Location (Split-Path $PSScriptRoot -Parent)
 $plan=Get-Content out/validation-plan.json -Raw|ConvertFrom-Json
 if($PlanOnly){return}
 # Managed/backend/docs checks do not need a GameCube SDK restore or native copy.
-if(@($plan.native | Where-Object {$_ -in @('texture','voices','shadows','patched','content')}).Count){. ./tools/resolve-packages.ps1}
+if(@($plan.native | Where-Object {$_ -in @('texture','voices','shadows','patched','content','jobs')}).Count){. ./tools/resolve-packages.ps1}
 function Run([string]$file,[string[]]$arguments){& $file @arguments;if($LASTEXITCODE){throw "$file checks failed"}}
 if($plan.rendering.Count){Run dotnet @('run','--project','tests/AnimalTown.RenderingChecks','-c','Release','--','--suites',($plan.rendering -join ','))}
 if($plan.managed.Count){Run dotnet @('run','--project','tests/AnimalTown.Checks','-c','Release','--','--suites',($plan.managed -join ','))}
@@ -16,6 +16,7 @@ if($plan.tooling.Count){
     foreach($suite in $plan.tooling){Run dotnet @('run','--project','tools/AnimalTown.Tools','-c','Release','--no-build','--',($suite+'-check'),(Get-Location).Path)}
 }
 $commands=@{
+    jobs='cc -std=c11 -D_DEFAULT_SOURCE -Wall -Wextra -Werror tests/native-job-calendar.c -o /tmp/animaltown-job-calendar && /tmp/animaltown-job-calendar && python3 tests/native-jobs.py'
     content='python3 tests/native-content-startup.py'
     card='cc -std=c11 -Wall -Wextra -Werror tests/native-card-read.c -o /tmp/animaltown-card-read && /tmp/animaltown-card-read && cc -std=c11 -Wall -Wextra -Werror tests/native-card-mount.c -o /tmp/animaltown-card-mount && /tmp/animaltown-card-mount && cc -std=c11 -Wall -Wextra -Werror -Ivendor/card-store-sdk/include vendor/card-store-sdk/tests/card_blocks_test.c -o /tmp/animaltown-card-blocks && /tmp/animaltown-card-blocks'
     uv='cc -std=c11 -Wall -Wextra -Werror tests/native-uv-topology.c -o /tmp/animaltown-uv-topology && /tmp/animaltown-uv-topology'
@@ -27,6 +28,10 @@ $commands=@{
 if('content' -in $plan.native){
     Run dotnet @('build','tests/AnimalTown.ContentSmoke','-c','Release','-p:RestoreLockedMode=true','-v','quiet')
     Run dotnet @("$sdkRoot/tools/compiler/DolphinDotNet.Compiler.dll",'--aot','tests/AnimalTown.ContentSmoke/bin/Release/net8.0/AnimalTown.ContentSmoke.dll','out/content-startup.c')
+}
+if('jobs' -in $plan.native){
+    Run dotnet @('build','tests/AnimalTown.JobSmoke','-c','Release','-p:RestoreLockedMode=true','-v','quiet')
+    Run dotnet @("$sdkRoot/tools/compiler/DolphinDotNet.Compiler.dll",'--aot','tests/AnimalTown.JobSmoke/bin/Release/net8.0/AnimalTown.JobSmoke.dll','out/job-smoke.c')
 }
 if('patched' -in $plan.native){
     # Generate fresh native sources so stale output cannot hide a patch regression.

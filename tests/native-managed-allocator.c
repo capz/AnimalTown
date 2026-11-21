@@ -44,5 +44,67 @@ int main(void){
     live[4]=(DndObject*)dnd_managed_array_new(&heap,32000,1);assert(live[4]);
     for(int i=0;i<8;i++)live[i]=NULL;
     dnd_gc_unregister_roots(&fragments);dnd_gc_collect(&heap,NULL);assert(!heap.used);
-    free(memory);puts("Managed allocator: 16000 live objects, zero live-block searches, rooted graph, holes/splits/coalescing, tail reclamation, 200 reuse cycles, GC stress and contiguous save-sized buffers passed");
+    // Preserve an existing large size class while smaller retained objects can
+    // still append into unused tail space.
+    assert(dnd_gc_register_roots(&fragments,&liveRoots));
+    DndArray *preserved=dnd_managed_array_new(&heap,1600000,1);assert(preserved);
+    live[0]=dnd_object_new(&heap,&type);assert(live[0]);
+    live[1]=(DndObject*)dnd_managed_array_new(&heap,2100000,1);assert(live[1]);
+    dnd_gc_collect(&heap,&liveRoots);size_t used_before_small=heap.used;
+    live[2]=(DndObject*)dnd_managed_array_new(&heap,4096,1);assert(live[2]&&(uint8_t*)live[2]>=heap.start+used_before_small);
+    live[3]=(DndObject*)dnd_managed_array_new(&heap,1600300,1);assert(live[3]==(DndObject*)preserved);
+    for(int i=0;i<8;i++)live[i]=NULL;
+    dnd_gc_unregister_roots(&fragments);dnd_gc_collect(&heap,NULL);assert(!heap.used);
+    // A transient array followed by a small retained allocation must leave a
+    // reusable large region when collected. Carving the array from the front
+    // strands two individually insufficient holes on either side of the node.
+    assert(dnd_gc_register_roots(&fragments,&liveRoots));
+    DndArray *region=dnd_managed_array_new(&heap,700000,1);assert(region);
+    live[0]=dnd_object_new(&heap,&type);assert(live[0]);
+    live[1]=(DndObject*)dnd_managed_array_new(&heap,(int)(heap.capacity-heap.used-256),1);assert(live[1]);
+    dnd_gc_collect(&heap,&liveRoots);
+    live[2]=(DndObject*)dnd_managed_array_new(&heap,300000,1);assert(live[2]&&(uintptr_t)live[2]>(uintptr_t)region);
+    live[3]=dnd_object_new(&heap,&type);assert(live[3]);((Node*)live[3])->value=91;
+    live[2]=NULL;dnd_gc_collect(&heap,&liveRoots);
+    live[4]=(DndObject*)dnd_managed_array_new(&heap,500000,1);assert(live[4]&&((Node*)live[3])->value==91);
+    for(int i=0;i<8;i++)live[i]=NULL;
+    dnd_gc_unregister_roots(&fragments);dnd_gc_collect(&heap,NULL);assert(!heap.used);
+    // A growing save can reuse the previous buffer with live data on both
+    // sides, rather than needing another megabyte-sized hole for a few bytes.
+    assert(dnd_gc_register_roots(&fragments,&liveRoots));
+    DndArray *old_save=dnd_managed_array_new(&heap,1600000,1);assert(old_save&&old_save->length==1600000);
+    live[0]=dnd_object_new(&heap,&type);assert(live[0]);
+    live[1]=(DndObject*)dnd_managed_array_new(&heap,(int)(heap.capacity-heap.used-256),1);assert(live[1]);
+    dnd_gc_collect(&heap,&liveRoots);
+    DndArray *grown=dnd_managed_array_new(&heap,1600300,1);assert(grown&&grown==old_save&&grown->length==1600300);
+    for(int i=0;i<8;i++)live[i]=NULL;
+    dnd_gc_unregister_roots(&fragments);dnd_gc_collect(&heap,NULL);assert(!heap.used);
+    free(memory);
+    // Recreate the post-travel failure: two model-load buffers consume part
+    // of a former save hole, then a small retained world object strands it.
+    // More than three MB becomes free, but first-fit/best-fit alone cannot
+    // reconstruct the 1.67-MB record region. Keep the real mailbox/world data.
+    memory=malloc(6*1024*1024);assert(memory);dnd_managed_heap_init(&heap,memory,6*1024*1024);
+    DndObject *retained[680]={0};DndObject **retained_slots[680];for(int i=0;i<680;i++)retained_slots[i]=&retained[i];
+    DndRootSet retained_roots;dnd_roots_init(&retained_roots,retained_slots,680);
+    for(int i=0;i<680;i++)assert(dnd_root_add(&retained_roots,&retained[i]));
+    DndGcRootRegistration retained_registration={0};assert(dnd_gc_register_roots(&retained_registration,&retained_roots));
+    for(int i=0;i<576;i++){retained[i]=(DndObject*)dnd_managed_array_new(&heap,2632,1);assert(retained[i]);((DndArray*)retained[i])->data[0]=(unsigned char)(i%251);}
+    assert(dnd_managed_array_new(&heap,1669744,1));
+    for(int i=576;i<672;i++){retained[i]=(DndObject*)dnd_managed_array_new(&heap,16384,1);assert(retained[i]);((DndArray*)retained[i])->data[0]=(unsigned char)(i%251);}
+    dnd_gc_collect(&heap,NULL);
+    retained[672]=(DndObject*)dnd_managed_array_new(&heap,600000,1);assert(retained[672]);
+    retained[673]=(DndObject*)dnd_managed_array_new(&heap,500000,1);assert(retained[673]);
+    retained[674]=(DndObject*)dnd_managed_array_new(&heap,1400000,1);assert(retained[674]);
+    retained[675]=(DndObject*)dnd_managed_array_new(&heap,100000,1);assert(retained[675]);
+    retained[672]=retained[673]=retained[674]=NULL;dnd_gc_collect(&heap,NULL);
+    for(int pass=0;pass<30;pass++){
+        DndArray *checkpoint=dnd_managed_array_new(&heap,1669744+pass*8,1);assert(checkpoint&&checkpoint->length==1669744u+(unsigned)pass*8);
+        checkpoint->data[0]=73;checkpoint->data[checkpoint->length-1]=91;
+        for(int i=0;i<672;i++)assert(((DndArray*)retained[i])->data[0]==(unsigned char)(i%251));
+        dnd_gc_collect(&heap,NULL);
+    }
+    for(int i=0;i<680;i++)retained[i]=NULL;
+    dnd_gc_unregister_roots(&retained_registration);dnd_gc_collect(&heap,NULL);assert(heap.used==0&&!heap.blocks&&!heap.free_list&&!heap.allocation_tail);
+    free(memory);puts("Managed allocator: 16000 live objects, zero live-block searches, rooted graph, holes/splits/coalescing, tail reclamation, 200 reuse cycles, GC stress and repeated post-travel save buffers beside retained mail/world data passed");
 }

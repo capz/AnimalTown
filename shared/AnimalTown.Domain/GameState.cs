@@ -33,7 +33,7 @@ public sealed partial class GameState
     public bool BuyCabinet(int slot,bool free=false)=>Town.Shop.Buy(this,this,ShopSource.Cabinet,slot,free:free);
     public bool Sell(int slot)
     {
-        if(slot<0||slot>=Capacity)return false;int id=Pockets[slot];
+        if(slot<0||slot>=Capacity||IsJobItem(slot))return false;int id=Pockets[slot];
         if(!Catalog.Has(id,ItemFlags.Sell)||Catalog.Items[id].Sell>WalletLimit-Wallet)return false;
         Wallet+=Catalog.Items[id].Sell;Pockets[slot]=0;return true;
     }
@@ -45,14 +45,14 @@ public sealed partial class GameState
     { if(amount<=0||!free&&amount>Wallet||amount>Debt)return false;if(!free)Wallet-=amount;Debt-=amount;return true; }
     public bool Expand(bool garden,int day,bool free=false)
     {
-        if(!HousePlaced||!free&&Debt!=0||PendingKind!=0)return false;
+        if(Visiting||!HousePlaced||!free&&Debt!=0||PendingKind!=0)return false;
         int next=(garden?GardenTier:HouseTier)+1;
         if(garden?(next>4||HouseTier<next):(next>5))return false;
         if(!free)Debt=garden?GardenPrices[next]:HousePrices[next];PendingKind=garden?2:1;PendingTier=next;PendingDay=day+1;return true;
     }
     public bool PlaceHouse(int x,int z,bool relocate,bool free=false)
     {
-        if(Space!=0||!Town.ValidPlot(x,z)||(relocate&&!free&&Wallet<50000))return false;
+        if(Visiting||Space!=0||!Town.ValidPlot(x,z)||(relocate&&!free&&Wallet<50000))return false;
         for(int p=0;p<ProfileCount;p++)if(p!=ActiveProfile&&HomePlaced(p)&&x<HomeX(p)+15&&x+15>HomeX(p)&&z<HomeZ(p)+13&&z+13>HomeZ(p))return false;
         if(!HouseEntrance(x,z,out float arrivalX,out float arrivalZ))return false;
         int dx=x-Town.HouseX,dz=z-Town.HouseZ;
@@ -104,18 +104,19 @@ public sealed partial class GameState
     }
     public bool Place(int slot,int x,int z,int rotation,int room)
     {
-        if(slot<0||slot>=Capacity||Town.PlacedCount==Town.Placed.Length||!CanPlace(Pockets[slot],x,z,rotation,room,0))return false;
+        if(slot<0||slot>=Capacity||IsJobItem(slot)||Town.PlacedCount==Town.Placed.Length||!CanPlace(Pockets[slot],x,z,rotation,room,0))return false;
         var p=Town.Placed[Town.PlacedCount++];p.Item=Pockets[slot];p.X=x;p.Z=z;p.Room=room;p.Rotation=rotation;p.Owner=PlayerOwner;Pockets[slot]=0;return true;
     }
     public bool Use(int slot,int action,int x,int z)
     {
-        if(slot<0||slot>=Capacity||!Catalog.Valid(Pockets[slot]))return false;int id=Pockets[slot];
+        if(slot<0||slot>=Capacity||IsJobItem(slot)||!Catalog.Valid(Pockets[slot]))return false;int id=Pockets[slot];
         if(action==0){if(!Town.AddGround(id,x,z,0,Town.Day))return false;}
         else if(action==1){if(!Catalog.Has(id,ItemFlags.Plant)||Town.At(x,z)!=0||!Town.AddGround(id,x,z,2,Town.Day))return false;}
         else if(action==2){if(!Catalog.Has(id,ItemFlags.Eat))return false;}
         else if(action==3){if(!Catalog.Has(id,ItemFlags.Wear))return false;Pockets[slot]=Shirt;Shirt=id;return true;}
         else if(action==4){if(!Catalog.Has(id,ItemFlags.Tool))return false;Pockets[slot]=Tool;Tool=id;return true;}
         else if(action==5){if(!Catalog.Has(id,ItemFlags.Bury)||Town.At(x,z)!=0||!Town.AddGround(id,x,z,1,Town.Day))return false;}
+        else if(action==7){if(!Town.Jobs.Initialized||BuildingWorld.RoomProfile(Space)!=ActiveProfile||!Catalog.Has(id,ItemFlags.Flooring)&&!Catalog.Has(id,ItemFlags.Wallpaper))return false;bool floor=Catalog.Has(id,ItemFlags.Flooring);int old=floor?Town.Jobs.HomeFloors[ActiveProfile]:Town.Jobs.HomeWalls[ActiveProfile];if(floor)Town.Jobs.HomeFloors[ActiveProfile]=id;else Town.Jobs.HomeWalls[ActiveProfile]=id;Pockets[slot]=old;Town.Jobs.Revision++;return true;}
         else if(action==6){int amount=Catalog.MoneyValue(id);if(amount<=0||amount>WalletLimit-Wallet)return false;Wallet+=amount;}
         else return false;
         Pockets[slot]=0;return true;
@@ -160,6 +161,12 @@ public sealed partial class GameState
     {
         if(index<0||index>=6)return "Hello!";var v=Town.Residents[index];
         MetMask|=1<<index;v.Met=1;
+        if(Town.Jobs.Initialized){
+            if(ResidentJobs.OpeningDelivery(index))return "My order! Please collect "+Town.Residents[4].Name+"’s parcel.";
+            if(Tutorial==3&&index==4)return ResidentJobs.OpeningPickup(index)?"Please take this parcel to the store.":"Make room for the store’s parcel first.";
+            if(Tutorial==5&&MetMask==63){CreditTutorial(5);return "Everyone knows you now! Leave a message on the notice board beside town hall.";}
+            return "A lovely day in our town, "+v.Phrase+".";
+        }
         if(Tutorial==2&&Find(18)>=0){Pockets[Find(18)]=0;CreditTutorial(2);return "My order! Please collect "+Town.Residents[4].Name+"'s parcel.";}
         if(Tutorial==3&&index==4&&Receive(18))return "Please take this parcel to the store.";
         if(Tutorial==5&&MetMask==63){CreditTutorial(5);return "You have met everyone. Welcome home!";}
@@ -171,7 +178,7 @@ public sealed partial class GameState
     }
     public bool Order(int id)
     {
-        if(!Catalog.Valid(id)||Owned[id]==0||Catalog.Items[id].Buy<=0||Wallet<Catalog.Items[id].Buy||MailCount>=Mail.Length)return false;
+        if(Visiting||!Catalog.Valid(id)||Owned[id]==0||Catalog.Items[id].Buy<=0||Wallet<Catalog.Items[id].Buy||MailCount>=Mail.Length)return false;
         Wallet-=Catalog.Items[id].Buy;Mail[MailCount++]=-id;return true;
     }
     public void Rollover(int day,int month)

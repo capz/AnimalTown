@@ -55,12 +55,13 @@ internal sealed partial class TownGame
             if(villagers.Doors.Moving(0)){moveClip=0;desiredPlayerSpeed=1;}
         }
         if(simulateWorld)state.Town.Traffic.Tick(state.Town);
+        if(simulateWorld&&state.Town.Jobs.Initialized&&state.ResidentJobs.Enabled)state.ResidentJobs.TickWorld(beforeX,beforeZ);
         if(simulateWorld){
             // The town always runs behind overlays. Only the job cooldown's
             // separate active clock excludes menus, dialogue and loading.
             var jobs=state.Town.JobState;
-            if(room==0&&!villagers.Doors.Busy(0))jobs.ObserveOutdoorAcre(state.ActiveProfile,(int)state.X/Town.ScreenTileSize+(int)state.Z/Town.ScreenTileSize*Town.ScreenColumns);
-            if(screen=="world"&&!villagers.Doors.Busy(0))jobs.Advance(AnimalTown.Jobs.JobRulesV1.ActiveTicksPerSecond/30);
+            if(room==0&&!villagers.Doors.Busy(0))state.ObserveJobAcre((int)state.X/Town.ScreenTileSize+(int)state.Z/Town.ScreenTileSize*Town.ScreenColumns);
+            if(screen=="world"&&!villagers.Doors.Busy(0))state.AdvanceJobClock(AnimalTown.Jobs.JobRulesV1.ActiveTicksPerSecond/30);
         }
         runningMinimap.Update(Clock.Timestamp,running,screen=="world"&&room==0&&waterInspection==0&&!cliffPreview);
         playerRunning=running;
@@ -86,11 +87,15 @@ internal sealed partial class TownGame
         if(snow.Winter)snow.ObserveSnowDay(weather.LatestSnowDay(weatherDay,townClock.MinuteOfDay),!snowSessionStarted);
         snowSessionStarted=true;
     }
+    private int jobClockSecond;
+    private long JobNow=>(long)weatherDay*86400+townClock.MinuteOfDay*60+jobClockSecond;
     private void ReadWeatherClock()
     {
         townClock.Update(NativeCalendar.ReadClock());
+        jobClockSecond=NativeCalendar.ReadSecond();
         weatherDay=10957+townClock.CivilDay; // Local days since 1970, for weather.
         UpdateDaylight();
+        if(state.Town.Jobs.Initialized&&state.ResidentJobs.Enabled)state.ResidentJobs.AdvanceTo(JobNow);
     }
     private void ReadCalendarDate()
     {

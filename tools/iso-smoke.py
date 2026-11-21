@@ -51,12 +51,25 @@ def start_display():
     read_fd,write_fd=os.pipe();server=None
     try:
         with (root/'xvfb.log').open('w') as log:
-            server=subprocess.Popen(['Xvfb','-displayfd',str(write_fd),'-nocursor','-screen','0','800x600x24'],pass_fds=(write_fd,),stdout=log,stderr=subprocess.STDOUT)
+            server=subprocess.Popen(['Xvfb','-displayfd',str(write_fd),'-noreset','-nocursor','-screen','0','800x600x24'],pass_fds=(write_fd,),stdout=log,stderr=subprocess.STDOUT)
         os.close(write_fd);write_fd=-1
         if not select.select([read_fd],[],[],30)[0]:raise RuntimeError('Xvfb did not report a ready display; inspect xvfb.log')
-        number=os.read(read_fd,32).decode().strip()
+        # Xvfb writes the number and its newline separately. Do not close the
+        # pipe after a short first read: its newline write would receive EPIPE.
+        ready=b''
+        while b'\n' not in ready:
+            if not select.select([read_fd],[],[],30)[0]:raise RuntimeError('Xvfb readiness line did not finish')
+            part=os.read(read_fd,32)
+            if not part:raise RuntimeError('Xvfb closed its readiness pipe')
+            ready+=part
+            if len(ready)>32:raise RuntimeError('Invalid Xvfb readiness line')
+        number=ready.decode().strip()
         if not number.isdigit() or server.poll() is not None:raise RuntimeError('Xvfb failed to initialize; inspect xvfb.log')
-        return server,dict(os.environ,DISPLAY=':'+number,QT_QPA_PLATFORM='xcb')
+        environment=dict(os.environ,DISPLAY=':'+number,QT_QPA_PLATFORM='xcb')
+        # llvmpipe otherwise creates a worker per visible host CPU. Multiple
+        # disposable controller runs can exhaust the container's thread limit.
+        environment.setdefault('LP_NUM_THREADS','2')
+        return server,environment
     except BaseException:
         if server is not None:
             server.terminate()
@@ -108,7 +121,8 @@ def check_runtime_failure():
     # managed exception behind an unchanged loading frame.
     failures=[line for line in runtime_log_text().splitlines()
               if ('ANIMALTOWN SESSION FAILED' in line or 'ANIMALTOWN ASSET LOAD FAILED' in line
-                  or 'ANIMALTOWN BUILDING ASSET ERROR' in line)]
+                  or 'ANIMALTOWN BUILDING ASSET ERROR' in line or 'ANIMALTOWN MANAGED OOM' in line
+                  or 'MANAGED MAIN: FAILED' in line)]
     if failures:
         (root/'runtime-failure.txt').write_text('\n'.join(failures)+'\n')
         raise AssertionError('Game runtime failure: '+failures[0])
@@ -186,8 +200,8 @@ def wait_onboarding(stage,name=None):
         time.sleep(1)
     raise AssertionError('Onboarding did not reach '+stage+'; inspect '+name)
 
-def wait_saved_after(before,card=None):
-    deadline=time.monotonic()+240
+def wait_saved_after(before,card=None,timeout_seconds=240):
+    deadline=time.monotonic()+timeout_seconds
     sequence=before['sequence'] if before else 0
     while time.monotonic()<deadline:
         check_runtime_failure()
@@ -710,6 +724,25 @@ def terrain_mip_pixels(pixels):
     return {'level_pixels':counts,'classified_pixels':total,'line_pixels':line_pixels,
             'mean_level':level_sum/max(1,total),'fit_rgb_rms':(error_sum/max(1,total))**.5}
 
+def terrain_restoration_pixels(reference,current):
+    """Compare fixed-noon ground art independent of moving shadow alpha."""
+    shadow=(35,49,66);samples=matched=0;cache={}
+    for y in range(140,338,2):
+        for x in range(40,602,2):
+            at=(y*800+x)*3;before=reference[at:at+3];after=current[at:at+3]
+            r,g,b=before
+            if g<=max(r+15,b+25,70):continue
+            key=before+after
+            if key not in cache:
+                a=tuple(v-s for v,s in zip(before,shadow));b=tuple(v-s for v,s in zip(after,shadow))
+                aa=sum(v*v for v in a);bb=sum(v*v for v in b);dot=sum(v*w for v,w in zip(a,b))
+                # P-S=(1-alpha)*(C-S); its direction survives every union
+                # shadow. GX rounding gets a small angular allowance. Stale
+                # diagnostic green/yellow has a different direction.
+                cache[key]=bool(aa and bb and dot>=0 and dot*dot>=.998*.998*aa*bb)
+            samples+=1;matched+=cache[key]
+    return {'ground_samples':samples,'matching_samples':matched,'matching_fraction':matched/max(1,samples),'minimum_cosine':.998}
+
 def water_material_pixels(first,second,shadowed=False):
     """Measure moving crest colour/edges, with shoreline and HUD excluded."""
     def wet(data,x,y):
@@ -895,7 +928,7 @@ def terrain_materials():
         before=card_digest();town_before=committed_card_sequence(card,details=True)
         report['committed_town_before']=town_before
         chord('START');wait_onboarding('world',prefix+'ramp-ready.png')
-        normal=mip_frame('normal',0,1,0)
+        normal=mip_frame('normal',0,1,0);normal_art=rgb(prefix+'normal.png')
         off_label=menu(bands_row,'menu-off');press('A');on_label=menu_frame('menu-on',bands_row)
         if on_label==off_label:raise AssertionError('Ground mip bands menu label did not change')
         press('B');automatic=mip_frame('mips-auto',1,1,0,visible_bands)
@@ -917,8 +950,12 @@ def terrain_materials():
         if restored_label!=off_label:raise AssertionError('Ground mip bands did not return to Off')
         press('B')
         def restored_art(metrics):
-            if metrics['classified_pixels']>max(normal['classified_pixels']*1.5,normal['classified_pixels']+500):
-                raise AssertionError('Diagnostic colours remained after Ground mip bands was disabled')
+            # Ordinary greens can fall inside the diagnostic palette fit as
+            # clouds move. Verify the original per-pixel art instead of a
+            # changing count of coincident colours; native Off is checked too.
+            match=terrain_restoration_pixels(normal_art,rgb(prefix+'restored.png'));metrics['art_match']=match
+            if match['ground_samples']<1000 or match['matching_fraction']<.95:
+                raise AssertionError('Original ground art did not return after Ground mip bands was disabled')
         mip_frame('restored',0,1,0,restored_art)
         # WaterInspection is a read-only camera tour; it hides the player and
         # restores logical coordinates after every draw, keeping pairs fixed.
@@ -1030,7 +1067,7 @@ def title_menu():
         wait_saved_after(before);wait_onboarding('world','title-start-game.png')
     (root/'title-menu.txt').write_text(f'Diagonal dot pixels changed: {changed}\nOpened debug modal, edited and paged settings, saved/closed/reopened, then selected Start.\nThree loading frames contained no cream title/menu and an animated sprout; game then became visible.\n'+('Completed Name, Look, Home and explicit Save & begin.\n' if creating else ''))
 
-def archive_records(payload):
+def archive_records(payload,publication=False):
     """Read the SDK's verified DTR1 checkpoints from a consolidated card item."""
     import struct
     block=8192
@@ -1038,7 +1075,7 @@ def archive_records(payload):
         h=2166136261
         for value in data:h=((h^value)*16777619)&0xffffffff
         return h
-    if len(payload)%block or not 6<=len(payload)//block<=256:raise AssertionError('Invalid archive size')
+    if len(payload)%block or not 6<=len(payload)//block<=2048:raise AssertionError('Invalid archive size')
     candidates=[]
     for bank in (0,1):
         root=payload[bank*block:(bank+1)*block]
@@ -1060,10 +1097,15 @@ def archive_records(payload):
                 value=payload[start:start+length]
                 if hash_bytes(value)!=checksum:raise ValueError('Damaged record')
                 ranges.append((start,stop));records[name]=value
-            candidates.append((sequence,records))
+            phase=records.get('AT-Archive',b'\0')[0];epoch=0
+            if struct.unpack_from('<I',root,16)[0]==0x32435241:
+                epoch,growth,phase=struct.unpack_from('<3I',root,20)
+                if phase not in (1,2,3) or epoch>0x7fffffff or phase==3 and not 32<=growth<=2048:raise ValueError('Invalid archive publication')
+            candidates.append((sequence,records,phase,epoch))
         except (ValueError,struct.error):continue
     if not candidates:raise AssertionError('No verified archive checkpoint')
-    return max(candidates,key=lambda c:c[0])[1]
+    selected=max(candidates,key=lambda c:c[0])
+    return selected[1:] if publication else selected[1]
 
 def options_card_files(path=None):
     """Current committed directory/BAT only; freed sectors are not live files."""
@@ -1098,11 +1140,12 @@ def options_card_files(path=None):
         if offset<32 or offset+length>len(data):raise AssertionError('Truncated current card save')
         payload=bytes(data[offset:offset+length])
         if name in ('AnimalTown','AnimalTown2') and data[16:24]==b'DNDREC01':
-            records=archive_records(payload)
-            if records.get('AT-Archive') in (b'\x01',b'\x02') and (published is None or name=='AnimalTown2'):
-                published={key:value for key,value in records.items() if key!='AT-Archive'}
+            try:records,phase,epoch=archive_records(payload,True)
+            except AssertionError:continue # Incomplete initial creation keeps the legacy source files authoritative.
+            if phase in (1,2,3) and (published is None or (epoch,name=='AnimalTown2')>published[:2]):
+                published=(epoch,name=='AnimalTown2',{key:value for key,value in records.items() if key!='AT-Archive'})
         else:result[name]=payload
-    return published if published is not None else result
+    return published[2] if published is not None else result
 
 def wait_options_saved(resolution,wide):
     import struct
@@ -1243,7 +1286,8 @@ def title_options_unsupported():
     (root/'title-options-unsupported.json').write_text(json.dumps({'unsupported_mode_did_not_save':True}))
 
 def wait_profiles(name='profile-picker.png'):
-    deadline=time.monotonic()+180
+    maximum='--jobs' in sys.argv and sys.argv[sys.argv.index('--jobs')+1].startswith('maximum-')
+    deadline=time.monotonic()+(600 if maximum else 180)
     while time.monotonic()<deadline:
         check_runtime_failure()
         # Normal scenarios accept the default if card selection needs a dialog.
@@ -1615,11 +1659,11 @@ def committed_card_sequence(path, expected_day=None, details=False):
                     payload=bytes(data[offset:offset+length])
                     if name in ('AnimalTown','AnimalTown2'):
                         if data[16:24]!=b'DNDREC01' or offset!=16384:continue
-                        try:records=archive_records(payload)
-                        except AssertionError:raise ValueError('Unverified card archive')
-                        if records.get('AT-Archive') in (b'\x01',b'\x02') and (name=='AnimalTown2' or archive is None):archive=records
+                        try:records,phase,epoch=archive_records(payload,True)
+                        except AssertionError:continue # A cut during initial zero filling leaves the complete legacy town intact.
+                        if phase in (1,2,3) and (archive is None or (epoch,name=='AnimalTown2')>archive[:2]):archive=(epoch,name=='AnimalTown2',records)
                     else:files[name]=payload
-                if archive is not None:files=archive
+                if archive is not None:files=archive[2]
                 for bank in (0,1):
                     try:
                         names=[f'AT-{kind}{bank}' for kind in ('Town','Houses','Shops','Player')]
@@ -1648,8 +1692,13 @@ def committed_card_sequence(path, expected_day=None, details=False):
                                 else:names.append(selected)
                             town_version=struct.unpack_from('<I',files[names[0]],4)[0]
                             expected_runtime=300+(job_extension_bytes if town_version>=9 else 0)
-                            if len(runtime)!=expected_runtime or (town_version>=9 and struct.unpack_from('<I',runtime,296)[0]!=40):
+                            has_job_clock=town_version>=7 and len(runtime)==expected_runtime+12
+                            if (len(runtime)!=expected_runtime and not has_job_clock) or (town_version>=9 and struct.unpack_from('<I',runtime,296)[0]!=40):
                                 raise ValueError('Invalid resident runtime extension')
+                            if has_job_clock:
+                                marker,clock=struct.unpack_from('<Iq',runtime,expected_runtime-4)
+                                if marker!=0x43424f4a or clock!=-(1<<63) and not -11676096000<=clock<13569465600:
+                                    raise ValueError('Invalid offline job clock')
                         else:
                             if len(commit)!=32+8*len(names) or not all(name in files for name in names):continue
                             for kind,name in enumerate(names):
@@ -2177,6 +2226,8 @@ EnableJIT = True
 ConfirmStop = False
 UsePanicHandlers = False
 ''')
+if '--jobs' in sys.argv and (root/'MemoryCardB.USA.raw').is_file():
+    config=user/'Config'/'Dolphin.ini';config.write_text(config.read_text().replace('SlotB = 255','SlotB = 1'))
 if '--save-cards' in sys.argv:
     mode=sys.argv[sys.argv.index('--save-cards')+1]
     config=user/'Config'/'Dolphin.ini';text=config.read_text()
@@ -2189,6 +2240,11 @@ if '--season' in sys.argv:
     rtc=int(datetime(2027,month,15,5,59,30,tzinfo=timezone.utc).timestamp()) if '--rtc-rollover' in sys.argv else int(datetime(2027,month,15,12,tzinfo=timezone.utc).timestamp())
     config=user/'Config'/'Dolphin.ini'
     config.write_text(config.read_text().replace('SkipIPL = True\n',f'SkipIPL = True\nEnableCustomRTC = True\nCustomRTCValue = {rtc}\n'))
+if '--jobs' in sys.argv and sys.argv[sys.argv.index('--jobs')+1] in ('letter','letter-full'):
+    import re
+    rtc=int(datetime(2027,7,15,7,58,tzinfo=timezone.utc).timestamp());config=user/'Config'/'Dolphin.ini'
+    text=re.sub(r'^(EnableCustomRTC|CustomRTCValue) = .*\n','',config.read_text(),flags=re.MULTILINE)
+    config.write_text(text.replace('SkipIPL = True\n',f'SkipIPL = True\nEnableCustomRTC = True\nCustomRTCValue = {rtc}\n'))
 if '--dsp-hle' in sys.argv:
     config=user/'Config'/'Dolphin.ini'
     config.write_text(config.read_text().replace('DSPHLE = False','DSPHLE = True'))
@@ -2217,7 +2273,7 @@ DumpCodec = ffv1
 [Hacks]
 EFBToTextureEnable = False
 ''')
-if '--profile' in sys.argv or '--interaction-profile' in sys.argv or '--runtime-profile' in sys.argv or '--terrain-scroll' in sys.argv or '--lighting' in sys.argv or '--actor-shadows' in sys.argv or '--movement-profile' in sys.argv or '--stream-travel' in sys.argv or '--submissions' in sys.argv or '--aram-residency' in sys.argv or '--player-chat' in sys.argv:
+if '--profile' in sys.argv or '--interaction-profile' in sys.argv or '--runtime-profile' in sys.argv or '--terrain-scroll' in sys.argv or '--lighting' in sys.argv or '--actor-shadows' in sys.argv or '--movement-profile' in sys.argv or '--stream-travel' in sys.argv or '--submissions' in sys.argv or '--aram-residency' in sys.argv or '--player-chat' in sys.argv or '--jobs' in sys.argv:
     config=user/'Config'/'Dolphin.ini'
     config.write_text(config.read_text()+'\n[Movie]\nDumpFrames = True\nDumpFramesSilent = True\n')
     config=user/'Config'/'GFX.ini'
@@ -2239,13 +2295,16 @@ with (root/'emulator.log').open('w') as log:
         if '--loading' in sys.argv:
             for n,seconds in enumerate((1,1,2,4,8,12,17)):
                 time.sleep(seconds);screenshot(f'loading-{n}.png')
-        elif any(flag in sys.argv for flag in ('--aram-residency','--title-logo','--terrain-materials','--save-cards','--save-and-quit','--daylight-clock','--daylight-location','--player-chat')):wait_title()
+        elif any(flag in sys.argv for flag in ('--jobs','--aram-residency','--title-logo','--terrain-materials','--save-cards','--save-and-quit','--daylight-clock','--daylight-location','--player-chat')):wait_title()
         else:time.sleep(45)
         if p.poll() is not None:
             raise RuntimeError(f'Dolphin exited during boot ({p.returncode}); see {root / "emulator.log"}')
         screenshot('screen.png')
         if any(flag in sys.argv for flag in ('--title-menu','--title-load','--title-config','--title-update','--title-options','--title-options-load','--title-options-unsupported')):wait_title()
-        if '--player-chat' in sys.argv:player_chat()
+        if '--jobs' in sys.argv:
+            from jobs_smoke import run
+            run(globals())
+        elif '--player-chat' in sys.argv:player_chat()
         elif '--daylight-location' in sys.argv:daylight_location()
         elif '--daylight-clock' in sys.argv:daylight_clock()
         elif '--save-cards' in sys.argv:memory_cards()

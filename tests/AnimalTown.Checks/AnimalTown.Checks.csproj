@@ -16,4 +16,5 @@
     <Compile Include="../../vendor/card-store-sdk/src/DolphinDotNet.GameCube/Dolphin/Input/StickState.cs" Link="Input/StickState.cs" />
   </ItemGroup>
   <ItemGroup><None Update="Fixtures/*.bin" CopyToOutputDirectory="PreserveNewest" /></ItemGroup>
+  <ItemGroup><Compile Include="../JobMaximumFixture.cs" Link="JobMaximumFixture.cs" /></ItemGroup>
 </Project>

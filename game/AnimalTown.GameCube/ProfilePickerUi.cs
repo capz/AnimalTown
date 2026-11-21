@@ -9,7 +9,7 @@ internal sealed class ProfilePickerUi : IDisposable,Hypercube.GameCube.IFrameSce
     private static readonly string[] Species={"fox","bunny","giraffe","cat","hamster","spaniel"};
     private static readonly string[] DeleteActions={"Cancel","Delete"};
     private static readonly Color32 Honey=new Color32(255,183,64),Warm=new Color32(245,226,186),Sage=new Color32(158,181,136);
-    private readonly Draw2D ui=new Draw2D(GraphicsDevice.Default,new Draw2DOptions{Width=640,Height=480,VertexCapacity=8192,SpriteCapacity=128});
+    private readonly Draw2D ui=new Draw2D(GraphicsDevice.Default,new Draw2DOptions{Width=640,Height=480,VertexCapacity=8192,SpriteCapacity=UiFont.BatchCapacity});
     private readonly TitleBackdrop background=new TitleBackdrop();
     private readonly CachedTexture?[] portraits=new CachedTexture?[6];
     private readonly string[] names=new string[4];

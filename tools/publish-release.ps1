@@ -118,6 +118,29 @@ function Copy-DaylightEvidence([string]$Source,[string]$Destination,[string]$Com
     }
     Copy-Item -LiteralPath $build -Destination (Join-Path $Destination 'daylight-build.json') -Force
 }
+function Copy-JobEvidence([string]$Source,[string]$Destination,[string]$Commit,[string]$Version,[string]$Tag,[string]$IsoName,[string]$IsoSha256){
+    $build=Join-Path $Source 'jobs-build.json'
+    if(!(Test-Path -LiteralPath $build -PathType Leaf)){return}
+    $evidence=Get-Content -LiteralPath $build -Raw|ConvertFrom-Json
+    if($evidence.schema -ne 1 -or $evidence.commit -cne $Commit -or $evidence.version -cne $Version -or
+       $evidence.tag -cne $Tag -or $evidence.isoName -cne $IsoName -or $evidence.isoSha256 -cne $IsoSha256){throw 'Job captures must match the release source, version and verified NKit image'}
+    $target=Join-Path $Destination 'scenarios/jobs';New-Item -ItemType Directory -Force -Path $target|Out-Null
+    foreach($mode in @('delivery','mail')){
+        $folder=Join-Path $Source $mode
+        $report=Get-Content -LiteralPath (Join-Path $folder 'jobs-report.json') -Raw|ConvertFrom-Json
+        $state=Get-Content -LiteralPath (Join-Path $folder 'jobs-state.json') -Raw|ConvertFrom-Json
+        if($report.scenario -cne 'offline-jobs' -or $report.mode -cne $mode -or $report.controls_completed -ne $true -or $state.mode -cne $mode -or $state.passed -ne $true){throw "Job controller/save verification did not pass: $mode"}
+        foreach($name in $report.screenshots){
+            if($name -cnotmatch "\Ajobs-$mode-[a-z0-9-]+\.png\z"){throw 'Invalid job screenshot name'}
+            $file=Get-Item -LiteralPath (Join-Path $folder $name)
+            if($file.PSIsContainer -or $file.Length -le 0){throw "Missing job screenshot: $name"}
+            Copy-Item -LiteralPath $file.FullName -Destination (Join-Path $target $name) -Force
+        }
+        Copy-Item -LiteralPath (Join-Path $folder 'jobs-report.json') -Destination (Join-Path $target "jobs-$mode-report.json") -Force
+        Copy-Item -LiteralPath (Join-Path $folder 'jobs-state.json') -Destination (Join-Path $target "jobs-$mode-state.json") -Force
+    }
+    Copy-Item -LiteralPath $build -Destination (Join-Path $target 'jobs-build.json') -Force
+}
 $Root=(Resolve-Path -LiteralPath $Root).Path
 $commit=(& git -C $Root rev-parse HEAD).Trim()
 if($LASTEXITCODE -ne 0 -or $commit -notmatch '^[0-9a-f]{40}$'){throw 'Cannot determine source commit'}
@@ -205,6 +228,7 @@ if(Test-Path -LiteralPath $terrainEvidenceBuild -PathType Leaf){
     }
 }
 Copy-DaylightEvidence (Join-Path $out 'daylight') $reports $commit $version $tag ([IO.Path]::GetFileName($nkit)) $nkitInfo.compactSha256
+Copy-JobEvidence (Join-Path $out 'jobs') $reports $commit $version $tag ([IO.Path]::GetFileName($nkit)) $nkitInfo.compactSha256
 $serverZip=Join-Path $package "AnimalTown-server-$version.zip"
 $toolsDirectory=Join-Path $out 'tools-published-binaries'
 if(Test-Path -LiteralPath $toolsDirectory){Remove-Item -LiteralPath $toolsDirectory -Recurse -Force}

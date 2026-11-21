@@ -49,6 +49,7 @@ public static class JobRulesV1
     public const int WorldInvalidationFriendship=0,FavorExpiryFriendship=0;
     public const int JitterMinimum=9000,JitterOutcomes=2001,MoneyRateCap=700;
     public const uint OfferSeedSalt=0x9e3779b9,RewardSeedSalt=0x85ebca6b,HouseSeedSalt=0xc2b2ae35;
+    public const bool RareClothingUsesOrdinaryPool=true,RareFurnitureUsesOrdinaryPool=true,RareCoveringsUseOrdinaryPool=true;
 
     private static readonly JobPersonalityRule[] personalities={
         new(4000,12,15),new(3000,10,13),new(4000,12,15),

@@ -3,11 +3,11 @@ namespace AnimalTown;
 // Explicit bounded wire format, independent of host endianness and reflection.
 public static class SaveCodec
 {
-    public const int MaximumBytes=1024*1024;
-    private static void Put(byte[] b,ref int at,int n){for(int i=0;i<4;i++)b[at++]=(byte)((uint)n>>(i*8));}
+    public const int MaximumBytes=4*1024*1024;
+    private static void Put(byte[]? b,ref int at,int n){if(b==null){at+=4;return;}for(int i=0;i<4;i++)b[at++]=(byte)((uint)n>>(i*8));}
     private static int Get(byte[] b,ref int at)
     { if(at>b.Length-4)throw new InvalidOperationException("Truncated save");int n=0;for(int i=0;i<4;i++)n|=b[at++]<<(8*i);return n; }
-    private static void Text(byte[] b,ref int at,string s)
+    private static void Text(byte[]? b,ref int at,string s)
     { Put(b,ref at,s.Length);for(int i=0;i<s.Length;i++)Put(b,ref at,s[i]); }
     private static string Text(byte[] b,ref int at,int limit)
     { int n=Get(b,ref at);if(n<0||n>limit)throw new InvalidOperationException("Invalid text");var c=new char[n];for(int i=0;i<n;i++)c[i]=(char)Get(b,ref at);return new string(c); }
@@ -18,13 +18,15 @@ public static class SaveCodec
         0xd6d6a3e8,0xcb61b38c,0x9b64c2b0,0x86d3d2d4,0xa00ae278,0xbdbdf21c};
     public static uint Crc(byte[] b,int start,int count)
     {uint c=0xffffffff;for(int i=start;i<start+count;i++){c^=b[i];c=(c>>4)^crcNibbles[c&15];c=(c>>4)^crcNibbles[c&15];}return ~c;}
-    public static byte[] Encode(GameState s)=>EncodeCore(s,true);
+    public static byte[] Encode(GameState s)
+    {int guest=s.SuspendVisitor();try{return EncodeCore(s,true);}finally{s.ResumeVisitor(guest);}}
     public static byte[] EncodeLegacy(GameState s)=>EncodeCore(s,false);
     internal static void RequireLegacyProfile(GameState s)
     {
         if(s.Town.DaylightLocation!=0)throw new InvalidOperationException("Legacy export cannot discard the daylight location");
         if(!s.Town.JobState.IsPristine)throw new InvalidOperationException("Legacy export cannot discard job availability or random streams");
         if(s.Town.Traffic.Snow.HasCheckpoint)throw new InvalidOperationException("Legacy export cannot discard snow dents");
+        if(s.Town.Jobs.Initialized)throw new InvalidOperationException("Legacy export cannot discard villager identities and jobs");
         if(s.ActiveProfile!=0||!s.Profiles[0].Created)throw new InvalidOperationException("Legacy export requires the original single player");
         for(int i=1;i<GameState.ProfileCount;i++)if(s.Profiles[i].Created)throw new InvalidOperationException("Legacy export cannot discard villager profiles");
         for(int i=0;i<TownShop.StoredSaleCount;i++)if(s.Town.Shop.SaleItems[i]!=0)throw new InvalidOperationException("Legacy export cannot discard shop listings");
@@ -36,14 +38,17 @@ public static class SaveCodec
         if(!profiles)RequireLegacyProfile(s);
         s.CaptureProfile();
         var snow=profiles?s.Town.Traffic.Snow.EncodeCheckpoint():null;
-        int terrainRuns=1;for(int i=1;i<Town.Cells;i++)if(s.Town.Tiles[i]!=s.Town.Tiles[i-1])terrainRuns++;
         int elevationRuns=1;for(int i=1;i<Town.Cells;i++)if(s.Town.Elevation[i]!=s.Town.Elevation[i-1])elevationRuns++;
-        int capacity=(profiles?10416+TownPaths.PackedBytes+TileTraffic.Bytes+4*(Jobs.TownJobState.EncodedWordCount+1):4096)+elevationRuns*4+(s.Name.Length+s.Catchphrase.Length)*4+s.MailCount*4+s.Town.GroundCount*24+s.Town.PlacedCount*24+terrainRuns*4;
-        if(snow!=null)capacity+=4*(snow.Length+1);
-        if(capacity>MaximumBytes)throw new InvalidOperationException("Save exceeds format budget");
-        // Allocate from actual encoded content, not the 1-MiB format ceiling.
-        int version=snow!=null?14:profiles?(!s.Town.JobState.IsPristine?13:s.Town.DaylightLocation==0?11:12):7;
-        var b=new byte[capacity];int p=0;Put(b,ref p,0x41544f57);Put(b,ref p,version);Put(b,ref p,Catalog.Version);Put(b,ref p,s.Sequence);
+        int jobWords=profiles&&s.Town.Jobs.Initialized?s.Town.Jobs.WordCount:0;
+        bool extensions=profiles&&(jobWords!=0||snow!=null);
+        int version=extensions?15:profiles?(!s.Town.JobState.IsPristine?13:s.Town.DaylightLocation==0?11:12):7;
+        var profileRecords=profiles?new byte[GameState.ProfileCount][]:null;
+        if(profileRecords!=null)for(int i=0;i<profileRecords.Length;i++)profileRecords[i]=ProfileCodec.Encode(s,i);
+        int exactLength=Write(null);if(exactLength>MaximumBytes)throw new InvalidOperationException("Save exceeds format budget");
+        var output=new byte[exactLength];if(Write(output)!=exactLength)throw new InvalidOperationException("Snapshot changed while encoding");return output;
+        int Write(byte[]? b)
+        {
+        int p=0;Put(b,ref p,0x41544f57);Put(b,ref p,version);Put(b,ref p,Catalog.Version);Put(b,ref p,s.Sequence);
         Put(b,ref p,0);Put(b,ref p,0);
         Put(b,ref p,Town.Width);Put(b,ref p,Town.Height);
         int[] f={s.Town.Seed,s.Town.Day,s.Town.Month,s.Wallet,(int)s.Savings,(int)(s.Savings>>32),(int)s.Debt,(int)(s.Debt>>32),s.Species,s.Palette,s.Tool,s.Shirt,s.HouseTier,s.GardenTier,s.PendingKind,s.PendingTier,s.PendingDay,s.Tutorial,s.MetMask,s.Jobs,s.JobDay,s.MailCount,s.Roof,s.Wall,s.Fence,s.Mailbox,s.Exterior,s.HousePlaced?1:0,(int)(s.X*1024),(int)(s.Z*1024),s.Town.HouseX,s.Town.HouseZ,s.Town.Spending,s.Town.StockCount};
@@ -61,14 +66,18 @@ public static class SaveCodec
         for(int i=0;i<Town.Cells;){byte mode=s.Town.Elevation[i];int length=1;while(i+length<Town.Cells&&s.Town.Elevation[i+length]==mode)length++;Put(b,ref p,(mode<<24)|length);i+=length;}
         for(int i=0;i<6;i++){var v=s.Town.Residents[i];Text(b,ref p,v.Name);Put(b,ref p,v.HomeX);Put(b,ref p,v.HomeZ);Put(b,ref p,(int)(v.PosX*1024));Put(b,ref p,(int)(v.PosZ*1024));}
         var buildingFields=profiles?BuildingSave.Encode(s):BuildingSave.EncodeLegacy(s);for(int i=0;i<buildingFields.Length;i++)Put(b,ref p,buildingFields[i]);
-        if(profiles){Put(b,ref p,s.ActiveProfile);for(int i=0;i<GameState.ProfileCount;i++){var data=ProfileCodec.Encode(s,i);Put(b,ref p,data.Length);Array.Copy(data,0,b,p,data.Length);p+=data.Length;}}
-        if(profiles){s.Town.Paths.Validate();Put(b,ref p,1);Put(b,ref p,TownPaths.PackedBytes);Array.Copy(s.Town.Paths.Packed,0,b,p,TownPaths.PackedBytes);p+=TownPaths.PackedBytes;}
+        if(profiles){Put(b,ref p,s.ActiveProfile);for(int i=0;i<GameState.ProfileCount;i++){var data=profileRecords![i];Put(b,ref p,data.Length);if(b!=null)Array.Copy(data,0,b,p,data.Length);p+=data.Length;}}
+        if(profiles){s.Town.Paths.Validate();Put(b,ref p,1);Put(b,ref p,TownPaths.PackedBytes);if(b!=null)Array.Copy(s.Town.Paths.Packed,0,b,p,TownPaths.PackedBytes);p+=TownPaths.PackedBytes;}
         if(profiles){var shop=s.Town.Shop.Encode();Put(b,ref p,shop.Length);for(int i=0;i<shop.Length;i++)Put(b,ref p,shop[i]);}
-        if(profiles){Put(b,ref p,1);Put(b,ref p,TileTraffic.Bytes);Array.Copy(s.Town.Traffic.Visits,0,b,p,TileTraffic.Bytes);p+=TileTraffic.Bytes;}
+        if(profiles){Put(b,ref p,1);Put(b,ref p,TileTraffic.Bytes);if(b!=null)Array.Copy(s.Town.Traffic.Visits,0,b,p,TileTraffic.Bytes);p+=TileTraffic.Bytes;}
         if(version>=12)Put(b,ref p,s.Town.DaylightLocation);
         if(version>=13){var jobs=s.Town.JobState.Encode();Put(b,ref p,jobs.Length);for(int i=0;i<jobs.Length;i++)Put(b,ref p,jobs[i]);}
-        if(snow!=null){Put(b,ref p,snow.Length);for(int i=0;i<snow.Length;i++)Put(b,ref p,snow[i]);}
-        int h=16;Put(b,ref h,p);Put(b,ref h,(int)Crc(b,24,p-24));var result=new byte[p];Array.Copy(b,result,p);return result;
+        if(extensions){
+            Put(b,ref p,snow?.Length??0);if(snow!=null)for(int i=0;i<snow.Length;i++)Put(b,ref p,snow[i]);
+            Put(b,ref p,jobWords);if(jobWords!=0){if(b!=null)s.Town.Jobs.WriteTo(b,p);p+=jobWords*4;}
+        }
+        if(b!=null){int h=16;Put(b,ref h,p);Put(b,ref h,(int)Crc(b,24,p-24));}return p;
+        }
     }
     private static int Range(byte[] b,ref int p,int min,int max)
     { int n=Get(b,ref p);if(n<min||n>max)throw new InvalidOperationException("Save value outside range");return n; }
@@ -80,7 +89,8 @@ public static class SaveCodec
     {
         if(b.Length<160||b.Length>MaximumBytes)throw new InvalidOperationException("Invalid save size");int p=0;
         if(Get(b,ref p)!=0x41544f57)throw new InvalidOperationException("Invalid save magic");int version=Get(b,ref p);
-        if((version<4||version>14)||Get(b,ref p)!=Catalog.Version)throw new InvalidOperationException("Unsupported save version");
+        int catalogVersion=Get(b,ref p);
+        if((version<4||version>15)||!Catalog.SupportsVersion(catalogVersion))throw new InvalidOperationException("Unsupported save version");
         if(snapshot!=null&&version<11)throw new InvalidOperationException("Readback requires current save format");
         int seq=Range(b,ref p,0,int.MaxValue);if(Get(b,ref p)!=b.Length||(uint)Get(b,ref p)!=Crc(b,24,b.Length-24))throw new InvalidOperationException("Save checksum failed");
         // Town dimensions must match exactly. Old larger towns are not cropped
@@ -90,8 +100,8 @@ public static class SaveCodec
         var s=snapshot==null?new GameState(seed):new GameState(seed,snapshot);if(snapshot==null)Array.Clear(s.Town.Elevation,0,s.Town.Elevation.Length);s.Sequence=seq;s.Town.Day=Get(b,ref p);s.Town.Month=Get(b,ref p);s.Wallet=Range(b,ref p,0,99999);
         uint low=(uint)Get(b,ref p);int high=Range(b,ref p,0,int.MaxValue);s.Savings=((long)high<<32)|low;
         low=(uint)Get(b,ref p);high=Range(b,ref p,0,0);s.Debt=((long)high<<32)|low;if(s.Debt>1600000)throw new InvalidOperationException("Debt invalid");
-        s.Species=Range(b,ref p,0,5);s.Palette=Range(b,ref p,0,7);s.Tool=Range(b,ref p,0,25);s.Shirt=Range(b,ref p,0,25);s.HouseTier=Range(b,ref p,0,5);s.GardenTier=Range(b,ref p,0,4);s.PendingKind=Range(b,ref p,0,2);s.PendingTier=Range(b,ref p,0,5);s.PendingDay=Get(b,ref p);
-        s.Tutorial=Range(b,ref p,0,6);s.MetMask=Range(b,ref p,0,63);s.Jobs=Range(b,ref p,0,2);s.JobDay=Get(b,ref p);s.MailCount=Range(b,ref p,0,128);
+        s.Species=Range(b,ref p,0,5);s.Palette=Range(b,ref p,0,7);s.Tool=Range(b,ref p,0,Catalog.Items.Length-1);s.Shirt=Range(b,ref p,0,Catalog.Items.Length-1);s.HouseTier=Range(b,ref p,0,5);s.GardenTier=Range(b,ref p,0,4);s.PendingKind=Range(b,ref p,0,2);s.PendingTier=Range(b,ref p,0,5);s.PendingDay=Get(b,ref p);
+        s.Tutorial=Range(b,ref p,0,7);s.MetMask=Range(b,ref p,0,63);s.Jobs=Range(b,ref p,0,2);s.JobDay=Get(b,ref p);s.MailCount=Range(b,ref p,0,128);
         s.Roof=Range(b,ref p,0,11);s.Wall=Range(b,ref p,0,11);s.Fence=Range(b,ref p,0,5);s.Mailbox=Range(b,ref p,0,5);s.Exterior=Range(b,ref p,0,4);s.HousePlaced=Range(b,ref p,0,1)==1;
         s.X=Range(b,ref p,0,sourceWidth*1024-1)/1024f;s.Z=Range(b,ref p,0,sourceHeight*1024-1)/1024f;s.Town.HouseX=Range(b,ref p,1,sourceWidth-15);s.Town.HouseZ=Range(b,ref p,1,sourceHeight-13);s.Town.Spending=Range(b,ref p,0,int.MaxValue);s.Town.StockCount=Range(b,ref p,6,12);
         s.BackpackTier=Range(b,ref p,0,2);
@@ -119,7 +129,7 @@ public static class SaveCodec
             s.Town.GroundCount++;
         }
         int count=Range(b,ref p,0,256);s.Town.PlacedCount=0;
-        for(int i=0;i<count;i++){var q=s.Town.Placed[i];q.Item=Range(b,ref p,1,25);q.X=Get(b,ref p);q.Z=Get(b,ref p);q.Rotation=Range(b,ref p,0,3);q.Room=Range(b,ref p,0,version>=8?43:version>=7?25:4);q.Owner=Range(b,ref p,0,version>=8?9:version>=7?6:0);s.Town.PlacedCount++;}
+        for(int i=0;i<count;i++){var q=s.Town.Placed[i];q.Item=Range(b,ref p,1,Catalog.Items.Length-1);q.X=Get(b,ref p);q.Z=Get(b,ref p);q.Rotation=Range(b,ref p,0,3);q.Room=Range(b,ref p,0,version>=8?43:version>=7?25:4);q.Owner=Range(b,ref p,0,version>=8?9:version>=7?6:0);s.Town.PlacedCount++;}
         if(version>=5){
             Range(b,ref p,1,TownGenerator.Version);int elevationRuns=Range(b,ref p,1,Town.Cells),cell=0;
             for(int i=0;i<elevationRuns;i++){int packed=Get(b,ref p),mode=(int)((uint)packed>>24),length=packed&0xffffff;if(mode>TerrainElevation.MaximumMode||length==0||length>Town.Cells-cell)throw new InvalidOperationException("Invalid saved elevation");for(int j=0;j<length;j++){if(snapshot!=null){if(s.Town.Elevation[cell]!=mode)throw new InvalidOperationException("Readback elevation differs from snapshot");}else s.Town.Elevation[cell]=(byte)mode;cell++;}}
@@ -151,18 +161,27 @@ public static class SaveCodec
         }
         if(version>=12)s.Town.DaylightLocation=Range(b,ref p,version>=13?0:1,DaylightLocations.Count);
         if(version>=13){Range(b,ref p,Jobs.TownJobState.EncodedWordCount,Jobs.TownJobState.EncodedWordCount);var jobs=new int[Jobs.TownJobState.EncodedWordCount];for(int i=0;i<jobs.Length;i++)jobs[i]=Get(b,ref p);s.Town.JobState.Restore(jobs);}
-        if(version>=14){
-            int length=Range(b,ref p,SnowWear.MinCheckpointWords,SnowWear.MaxCheckpointWords);
-            if(length>(b.Length-p)/4)throw new InvalidOperationException("Truncated snow checkpoint");
-            var snow=new int[length];for(int i=0;i<length;i++)snow[i]=Get(b,ref p);
-            s.Town.Traffic.Snow.RestoreCheckpoint(snow);
+        // The two schema-14 releases used different catalog versions. Keep
+        // both readable; schema 15 stores snow and jobs in separate sections.
+        if((version==14&&catalogVersion==1)||version>=15){
+            int length=Range(b,ref p,version>=15?0:SnowWear.MinCheckpointWords,SnowWear.MaxCheckpointWords);
+            if(length!=0){
+                if(length<SnowWear.MinCheckpointWords||length>(b.Length-p)/4)throw new InvalidOperationException("Truncated snow checkpoint");
+                var snow=new int[length];for(int i=0;i<length;i++)snow[i]=Get(b,ref p);
+                s.Town.Traffic.Snow.RestoreCheckpoint(snow);
+            }
+        }
+        if((version==14&&catalogVersion>=2)||version>=15){
+            int jobWords=Range(b,ref p,version>=15?0:7,Jobs.OfflineJobLedger.MaximumWords);
+            if(jobWords!=0){if(jobWords<7||jobWords>(b.Length-p)/4)throw new InvalidOperationException("Truncated offline job ledger");s.Town.Jobs.Decode(b,p,jobWords,snapshot?.Jobs);p+=jobWords*4;}
         }
         int placedCount=s.Town.PlacedCount;s.Town.PlacedCount=0;
         for(int i=0;i<placedCount;i++){var q=s.Town.Placed[i];if(!s.CanPlace(q.Item,q.X,q.Z,q.Rotation,q.Room,q.Owner,true))throw new InvalidOperationException("Invalid placement");s.Town.PlacedCount++;}
         if(p!=b.Length)throw new InvalidOperationException("Trailing save bytes");
         if(version<5)for(int i=0;i<6;i++){s.Town.Residents[i].PosX=s.Town.Residents[i].X+.5f;s.Town.Residents[i].PosZ=s.Town.Residents[i].Z+.5f;}
         if(version<6)WaterTerrain.Migrate(s.Town);
-        s.NormalizeBuildingLocations();s.CaptureProfile();s.Town.NotifyTerrainChanged();return s;
+        s.NormalizeBuildingLocations();s.CaptureProfile();s.Town.NotifyTerrainChanged();s.MigrateJobTutorial(catalogVersion);s.ActivateSavedVisitor();
+        return s;
     }
     internal static void UpgradeShop(GameState s)
     {

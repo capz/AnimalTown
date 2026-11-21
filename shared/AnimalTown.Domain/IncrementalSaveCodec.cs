@@ -4,7 +4,7 @@ namespace AnimalTown;
 // The normal seven-record snapshot remains unchanged for server/export callers.
 internal static class IncrementalSaveCodec
 {
-    internal const int Count=8,Residents=8,RuntimeFields=67;
+    internal const int Count=8,Residents=8,RuntimeFields=67,JobClockMarker=0x43424f4a;
     internal sealed class Manifest
     {
         internal int Sequence,Seed,Bank;
@@ -48,6 +48,8 @@ internal static class IncrementalSaveCodec
         return true;
     }
     internal static byte[] Encode(GameState s,int part)
+    {int guest=s.SuspendVisitor();try{return EncodeResidentPart(s,part);}finally{s.ResumeVisitor(guest);}}
+    private static byte[] EncodeResidentPart(GameState s,int part)
     {
         if(part==Count-1){
             var w=new SplitSaveCodec.Writer(s,Residents,320+4*(Jobs.TownJobState.EncodedWordCount+1));
@@ -55,9 +57,10 @@ internal static class IncrementalSaveCodec
             w.Int(s.ActiveProfile);
             for(int i=0;i<6;i++){var v=s.Town.Residents[i];w.Int(v.Space);w.Int(v.JourneyBuilding);w.Int(v.JourneyPhase);w.Int(v.Dwell);w.Int((int)(v.Yaw*1024));w.Int(v.JourneyNextX);w.Int(v.JourneyNextZ);}
             if(!s.Town.JobState.IsPristine||s.Town.Traffic.Snow.HasCheckpoint){var jobs=s.Town.JobState.Encode();w.Int(jobs.Length);for(int i=0;i<jobs.Length;i++)w.Int(jobs[i]);}
+            if(s.Town.Jobs.Initialized){long clock=s.Town.Jobs.Watermark;w.Int(JobClockMarker);w.Int((int)clock);w.Int((int)(clock>>32));}
             return w.Finish();
         }
-        var bytes=SplitSaveCodec.EncodePart(s,part);
+        var bytes=SplitSaveCodec.EncodePart(s,part,runtimeProjection:part==2);
         if(part==0){var offsets=RuntimeOffsets(bytes);for(int i=0;i<offsets.Length;i++)Put(bytes,offsets[i],0);Checksum(bytes);}
         return bytes;
     }
@@ -87,19 +90,28 @@ internal static class IncrementalSaveCodec
         if(r.Version>=9)for(int i=0;i<=Jobs.TownJobState.EncodedWordCount;i++){positions[at++]=r.Offset;r.Int();}
         r.End();return positions;
     }
-    internal static byte[][] Restore(Manifest m,byte[][] wire)
+    internal static byte[][] Restore(Manifest m,byte[][] wire,out bool hasRuntimeClock,out long runtimeClock)
     {
         if(wire.Length!=Count)throw new InvalidOperationException("Incomplete referenced save");
         var parts=new byte[SplitSaveCodec.PartCount][];
         for(int i=0;i<Count;i++)Verify(m,i,wire[i]);
-        for(int i=0;i<parts.Length;i++)parts[i]=(byte[])wire[i].Clone();
+        // The economy record can contain four full mailboxes. Its referenced
+        // sequence is checked separately by the private decoder; retain that
+        // immutable buffer rather than cloning it to change four header bytes.
+        for(int i=0;i<parts.Length;i++)parts[i]=i==2?wire[i]:(byte[])wire[i].Clone();
         var offsets=RuntimeOffsets(parts[0]);var runtime=new SplitSaveCodec.Reader(wire[Count-1],Residents);
         for(int i=0;i<offsets.Length;i++){
             int p=offsets[i];if(parts[0][p]!=0||parts[0][p+1]!=0||parts[0][p+2]!=0||parts[0][p+3]!=0)throw new InvalidOperationException("Noncanonical town projection");
             Put(parts[0],p,runtime.Int());
         }
+        hasRuntimeClock=runtime.HasMore;runtimeClock=long.MinValue;
+        if(hasRuntimeClock){
+            if(runtime.Int()!=JobClockMarker)throw new InvalidOperationException("Invalid job runtime clock marker");
+            uint lo=unchecked((uint)runtime.Int()),hi=unchecked((uint)runtime.Int());runtimeClock=unchecked((long)(lo|((ulong)hi<<32)));
+            if(runtimeClock!=long.MinValue&&(runtimeClock<Jobs.JobCalendar.At(1600,1,1)||runtimeClock>Jobs.JobCalendar.At(2399,12,31,23,59,59)))throw new InvalidOperationException("Invalid job runtime clock");
+        }
         runtime.End();
-        for(int i=0;i<parts.Length;i++){Put(parts[i],16,m.Sequence);Checksum(parts[i]);}
+        for(int i=0;i<parts.Length;i++)if(i!=2){Put(parts[i],16,m.Sequence);Checksum(parts[i]);}
         return parts;
     }
     private static void Put(byte[] bytes,int at,int value){for(int i=0;i<4;i++)bytes[at+i]=(byte)((uint)value>>(8*i));}

@@ -1,0 +1,73 @@
+{
+  "mode": "destroy-snowman",
+  "passed": true,
+  "sequence": 3,
+  "activeProfile": 0,
+  "visiting": false,
+  "position": {
+    "X": 29.955078,
+    "Z": 43.918945,
+    "Space": 0
+  },
+  "wallet": 0,
+  "completed": true,
+  "mailCount": 0,
+  "pockets": [
+    34,
+    2,
+    2,
+    2,
+    2,
+    27,
+    14,
+    15,
+    0,
+    35,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+  ],
+  "bindings": [],
+  "outfits": [
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+  ],
+  "jobs": [
+    {
+      "template": "FavorSnowman",
+      "status": "CompletedRetained",
+      "target": -1,
+      "Item": 0,
+      "FlowerBaseline": 0,
+      "HomeAcre": 0
+    }
+  ],
+  "terminals": [
+    {
+      "template": "FavorSnowman",
+      "reason": "Success",
+      "At": 1800014473
+    }
+  ]
+}

@@ -55,7 +55,7 @@ jobs:
     # Forks run the read-only policy checks; publishing uses same-repository code.
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-24.04
-    timeout-minutes: 60
+    timeout-minutes: 90
     defaults:
       run:
         shell: bash
@@ -338,6 +338,62 @@ jobs:
             out/daylight/*/*.json
             out/daylight/*/*.log
             out/daylight/*/user/Logs/
+          if-no-files-found: warn
+      - name: Select offline job controller captures
+        id: jobs_capture
+        run: |
+          python3 - <<'PY'
+          import json, os, re
+          from pathlib import Path
+          plan=json.loads(Path('out/validation-plan.json').read_text())
+          relevant=re.compile(r'^(shared/AnimalTown.Domain/(Jobs/|GameState\.(Jobs|Travel)\.cs)|game/AnimalTown.GameCube/(TownGame\.(JobsUi|MailUi|JobScene|TravelUi)|JobSceneRenderer|WrappedText|OfflineTravelCards|TownCardRecords|CardArchive|Program)\.cs$|tools/(jobs_smoke|iso-smoke|profile-card-fixture)\.py$|tests/AnimalTown.Checks/JobFixture\.cs$|\.github/workflows/releases\.yml$)')
+          needed=any(relevant.search(path) for path in plan['paths']) or (plan['full'] and not plan['paths'])
+          with open(os.environ['GITHUB_OUTPUT'],'a') as output:output.write(f'needed={str(needed).lower()}\n')
+          PY
+      - name: Verify actual job controls and committed results in Dolphin
+        if: steps.jobs_capture.outputs.needed == 'true'
+        timeout-minutes: 15
+        env:
+          BUILD_VERSION: ${{ steps.version.outputs.version }}
+          ANIMALTOWN_BUILD_IMAGE: ghcr.io/capz/animaltown-build@${{ steps.image.outputs.digest }}
+        run: |
+          docker build -t animaltown-job-capture -f build/Dockerfile.dolphin build
+          mkdir -p out/jobs/template
+          docker run --rm --init --shm-size=512m --user "$(id -u):$(id -g)" \
+            --mount "type=bind,src=$PWD,dst=/work" -w /work \
+            animaltown-job-capture python3 tools/iso-smoke.py \
+            "out/AnimalTown-$BUILD_VERSION.nkit.iso" out/jobs/template --jobs template --season summer --dsp-hle --component-cable
+          for mode in delivery mail; do
+            docker compose -f build/compose.yml run --rm --no-deps builder \
+              dotnet run --project tests/AnimalTown.Checks -c Release -- --job-fixture "out/job-fixtures/$mode" "$mode"
+            python3 tools/profile-card-fixture.py out/jobs/template/MemoryCardA.USA.raw \
+              "out/job-fixtures/$mode" "out/jobs/$mode/MemoryCardA.USA.raw"
+            docker run --rm --init --shm-size=512m --user "$(id -u):$(id -g)" \
+              --mount "type=bind,src=$PWD,dst=/work" -w /work \
+              animaltown-job-capture python3 tools/iso-smoke.py \
+              "out/AnimalTown-$BUILD_VERSION.nkit.iso" "out/jobs/$mode" --jobs "$mode" --season summer --dsp-hle --component-cable
+            docker compose -f build/compose.yml run --rm --no-deps builder \
+              dotnet run --project tests/AnimalTown.Checks -c Release -- --job-verify "out/jobs/$mode/records" "$mode"
+          done
+          python3 - <<'PY'
+          import hashlib, json
+          from pathlib import Path
+          identity=json.loads(Path('out/version.json').read_text());disc=Path('out')/f"AnimalTown-{identity['version']}.nkit.iso"
+          with disc.open('rb') as source:digest=hashlib.file_digest(source,'sha256').hexdigest()
+          evidence={'schema':1,'commit':identity['commit'],'version':identity['version'],'tag':identity['tag'],'isoName':disc.name,'isoSha256':digest}
+          Path('out/jobs/jobs-build.json').write_text(json.dumps(evidence,indent=2)+'\n')
+          PY
+      - name: Keep offline job controller diagnostics
+        if: always() && steps.jobs_capture.outputs.needed == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: offline-jobs-${{ steps.version.outputs.commit }}
+          path: |
+            out/jobs/*.json
+            out/jobs/*/*.json
+            out/jobs/*/*.png
+            out/jobs/*/*.log
+            out/jobs/*/user/Logs/
           if-no-files-found: warn
       - name: Publish NKit, standalone app and backend GitHub release
         env:

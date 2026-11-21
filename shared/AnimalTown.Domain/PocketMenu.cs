@@ -1,6 +1,6 @@
 namespace AnimalTown;
 
-public enum PocketAction { Equip,Drop,Place,Plant,Eat,Wear,Bury,OpenMoneyBag,Read,Quit }
+public enum PocketAction { Equip,Drop,Place,Plant,Eat,Wear,Bury,OpenMoneyBag,Read,Apply,Quit }
 
 // Stable actions are independent of the filtered row index. No per-frame lists.
 public static class PocketMenu
@@ -8,7 +8,7 @@ public static class PocketMenu
     // Presentation order is separate from action IDs. Reuse it for every popup;
     // primary item actions precede dropping them.
     private static readonly PocketAction[] actions={PocketAction.Equip,PocketAction.Wear,PocketAction.OpenMoneyBag,PocketAction.Drop,
-        PocketAction.Place,PocketAction.Plant,PocketAction.Eat,PocketAction.Bury,PocketAction.Read,PocketAction.Quit};
+        PocketAction.Place,PocketAction.Plant,PocketAction.Eat,PocketAction.Bury,PocketAction.Read,PocketAction.Apply,PocketAction.Quit};
     public static bool HasAction(int item,int room,PocketAction action)
     {
         if(action==PocketAction.Quit)return true;
@@ -18,6 +18,7 @@ public static class PocketMenu
         if(action==PocketAction.Place)return Catalog.Has(item,ItemFlags.Place)&&(room!=0||Catalog.Has(item,ItemFlags.Outdoor));
         if(action==PocketAction.Plant)return room==0&&Catalog.Has(item,ItemFlags.Plant);
         if(action==PocketAction.Eat)return Catalog.Has(item,ItemFlags.Eat);
+        if(action==PocketAction.Apply)return room!=0&&(Catalog.Has(item,ItemFlags.Flooring)||Catalog.Has(item,ItemFlags.Wallpaper));
         if(action==PocketAction.Wear)return Catalog.Has(item,ItemFlags.Wear);
         if(action==PocketAction.Bury)return room==0&&Catalog.Has(item,ItemFlags.Bury);
         if(action==PocketAction.OpenMoneyBag)return Catalog.Has(item,ItemFlags.Money);
@@ -42,11 +43,13 @@ public static class PocketMenu
         if(action==PocketAction.Bury)return "Bury";
         if(action==PocketAction.OpenMoneyBag)return "Put in wallet";
         if(action==PocketAction.Read)return "Read";
+        if(action==PocketAction.Apply)return "Use in this room";
         return "Quit";
     }
     public static bool Perform(GameState state,int slot,PocketAction action,int x,int z,int rotation,int room)
     {
         if(slot<0||slot>=state.Capacity||!HasAction(state.Pockets[slot],room,action))return false;
+        if(action==PocketAction.Apply)return state.Use(slot,7,x,z);
         if(action==PocketAction.Drop)return state.Use(slot,0,x,z);
         if(action==PocketAction.Place)return state.Place(slot,x,z,rotation,room);
         if(action==PocketAction.Plant)return state.Use(slot,1,x,z);

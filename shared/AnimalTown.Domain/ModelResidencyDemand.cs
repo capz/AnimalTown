@@ -26,23 +26,28 @@ public sealed class ModelResidencyDemand
     private static bool UsesSpace(GameState state,PortalSystem doors,int species,int space,float guard)
     {
         if(species==state.Species)return true;
-        int actor=species+1;
-        var resident=state.Town.Residents[species];
-        if(resident.Space==space&&(space!=0||OutdoorImminent(state,doors,resident.PosX,resident.PosZ,guard)))return true;
-        if(!doors.Busy(actor))return false;
-        var transition=doors.Actors[actor];
-        return transition.Source.Space.Value==space&&(space!=0||OutdoorImminent(state,doors,transition.Source.X,transition.Source.Z,guard))||
-            transition.Destination.Space.Value==space&&(space!=0||OutdoorImminent(state,doors,transition.Destination.X,transition.Destination.Z,guard));
+        for(int npc=0;npc<6;npc++){
+            if(state.ResidentSpecies(npc)!=species)continue;int actor=npc+1;
+            var resident=state.Town.Residents[npc];
+            if(resident.Space==space&&(space!=0||OutdoorImminent(state,doors,resident.PosX,resident.PosZ,guard)))return true;
+            if(!doors.Busy(actor))continue;
+            var transition=doors.Actors[actor];
+            if(transition.Source.Space.Value==space&&(space!=0||OutdoorImminent(state,doors,transition.Source.X,transition.Source.Z,guard))||
+                transition.Destination.Space.Value==space&&(space!=0||OutdoorImminent(state,doors,transition.Destination.X,transition.Destination.Z,guard)))return true;
+        }
+        return false;
     }
     // Lookahead may request an invisible actor without blocking simulation or
     // drawing. Only the actual drawable envelope gates the current scene.
     public static bool DrawableUsesSpace(GameState state,PortalSystem doors,int species,int space)
     {
         if(species==state.Species)return true;
-        if(state.Town.Residents[species].Space!=space)return false;
-        if(space!=0)return true;
-        var location=doors.VisualLocation(state,species+1);
-        return OutdoorImminent(state,doors,location.X,location.Z,0);
+        for(int npc=0;npc<6;npc++){
+            if(state.ResidentSpecies(npc)!=species||state.Town.Residents[npc].Space!=space)continue;
+            if(space!=0)return true;var location=doors.VisualLocation(state,npc+1);
+            if(OutdoorImminent(state,doors,location.X,location.Z,0))return true;
+        }
+        return false;
     }
     private static bool OutdoorImminent(GameState state,PortalSystem doors,float x,float z,float guard)
     {

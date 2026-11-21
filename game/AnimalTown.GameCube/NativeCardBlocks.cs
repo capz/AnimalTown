@@ -12,7 +12,7 @@ internal sealed class NativeCardBlocks : ICardBlockStorage
     private readonly int device,identity;
     private static readonly byte[] Empty=new byte[0];
     public int Blocks {get;}
-    internal NativeCardBlocks(int device,bool create,byte[] banner,byte[] icon,string fileName="AnimalTown")
+    internal NativeCardBlocks(int device,bool create,byte[] banner,byte[] icon,string fileName="AnimalTown",int reservedBlocks=ReservedBlocks)
     {
         this.device=device;FileName=fileName;int count=Check(CardBlockBridge.Io(device,FileName,0,0,0,Empty));
         if(count==0){
@@ -21,7 +21,7 @@ internal sealed class NativeCardBlocks : ICardBlockStorage
             var header=new byte[16384];Text(header,32,"AnimalTown");Text(header,64,"Town, villagers and options");
             Array.Copy(banner,0,header,96,banner.Length);Array.Copy(icon,0,header,6240,icon.Length);
             int id=(int)(Clock.Timestamp&0x7fffffff);if(id==0)id=1;
-            Check(CardBlockBridge.Io(device,FileName,3,ReservedBlocks,id,header));count=ReservedBlocks;
+            Check(CardBlockBridge.Io(device,FileName,3,reservedBlocks,id,header));count=reservedBlocks;
         }
         Blocks=count;identity=Check(CardBlockBridge.Io(device,FileName,4,0,0,Empty));
     }

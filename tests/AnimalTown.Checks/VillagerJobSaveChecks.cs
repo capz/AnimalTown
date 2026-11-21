@@ -7,6 +7,8 @@ internal static class VillagerJobSaveChecks
     private static bool Fails(Action operation){try{operation();return false;}catch(InvalidOperationException){return true;}catch(ArgumentException){return true;}}
     internal static void Run(Action<bool,string> check)
     {
+        VillagerJobIdentityChecks.Run(check);
+        SnowCompatibility(check);
         var state=new GameState(-99);var old=SaveCodec.Encode(state);
         check(old[4]==11&&SaveCodec.Decode(old).Town.JobState.IsPristine,"old combined saves migrate to fresh job state without changing RNG");
         var oldParts=SplitSaveCodec.Encode(state);
@@ -39,5 +41,18 @@ internal static class VillagerJobSaveChecks
         var profileState=new GameState(17);profileState.SelectProfile(1);profileState.Town.JobState.ObserveOutdoorAcre(1,8);profileState.DeleteProfile(1);
         check(profileState.Town.JobState.LastOutdoorAcre(1)==-1,"deleting a profile clears its old acre cursor");
         Console.WriteLine("Job-state legacy migration, bounded schemas, corruption, profile cleanup and exact RNG continuation checks passed");
+    }
+    private static void SnowCompatibility(Action<bool,string> check)
+    {
+        var snow=SaveCodec.Decode(File.ReadAllBytes("tests/fixtures/jobs/legacy-snow-v14-catalog1.bin"));
+        check(snow.Tutorial==7&&snow.Town.Traffic.Snow.Winter&&snow.Town.Traffic.Snow.Packed.Any(b=>b!=0),"the actual catalog-1 schema-14 snowfall save retains dents and migrates completed employment");
+        var jobs=SaveCodec.Decode(File.ReadAllBytes("tests/fixtures/jobs/legacy-jobs-v14-catalog2.bin"));
+        var letter=jobs.Town.Jobs.Letter(0,0);
+        check(jobs.Town.Jobs.TownId==23495&&jobs.MailCount==1&&JobTextBody.Unpack(letter.Body!,letter.BodyOffset,letter.BodyWords)=="Legacy café! 🙂","the actual catalog-2 schema-14 job save retains its namespace and Unicode letter");
+        long now=JobCalendar.At(2027,1,15,12);snow.ResidentJobs.Enable(23496,now);
+        var combined=SaveCodec.Encode(snow);var restored=SaveCodec.Decode(combined);
+        check(combined[4]==15&&restored.Town.Jobs.TownId==23496&&restored.Town.Traffic.Snow.Packed.SequenceEqual(snow.Town.Traffic.Snow.Packed),"schema 15 retains the snow checkpoint and economic job ledger together");
+        var parts=SplitSaveCodec.Encode(snow);restored=SplitSaveCodec.Decode(parts);
+        check(parts[0][4]==10&&restored.Town.Jobs.TownId==23496&&restored.Town.Traffic.Snow.Packed.SequenceEqual(snow.Town.Traffic.Snow.Packed),"schema-10 split towns retain snowfall alongside jobs in the independent economy record");
     }
 }

@@ -6,7 +6,7 @@ using Dolphin.Storage;
 using Dolphin.Timing;
 
 // Read the shared save before constructing any game renderer or town assets.
-internal sealed class TownSession
+internal sealed partial class TownSession
 {
     internal GameState State {get;private set;}
     internal OnboardingDraft? Draft {get;private set;}
@@ -15,9 +15,15 @@ internal sealed class TownSession
     internal bool Loaded {get;private set;}
     internal readonly bool Damaged;
     internal string Status {get;private set;}
+    private int travelAction,travelProfile,travelFrom,travelTo;private long travelAt;
+    internal string TravelError {get;private set;}="";
+    internal void QueueTravel(int action,int profile,int from,int to,long now)
+    {travelAction=action;travelProfile=profile;travelFrom=from;travelTo=to;travelAt=now;}
     private TownSession(GameState state,bool loaded,bool damaged,string status){State=state;Loaded=loaded;Damaged=damaged;Status=status;}
+    internal void AdoptTravel(GameState state){State=state;Loaded=true;Status="Trip saved / "+BuildInfo.Version;}
     internal void SelectProfile(int profile)
     {
+        if(State.ProfileLocked(profile))throw new InvalidOperationException("This villager is away.");
         if(!State.Profiles[profile].Created||!State.HomePlaced(profile)){
             Draft=new OnboardingDraft(State,profile,Loaded);State=Draft.State;
         }else State.SelectProfile(profile);
@@ -78,7 +84,7 @@ internal sealed class TownSession
                 state=new SaveRepository(store).Load();
                 if(state!=null)status="Save loaded";else if(existing){damaged=true;status="No complete save set. Backup card before recovery.";}
             }
-        }catch(Exception){damaged=true;status="Could not read "+SaveCards.Slot+". Return to title to recheck.";}
+        }catch(Exception error){DebugOverlay.WriteLine("TOWN LOAD ERROR: "+error.Message);damaged=true;status="Could not read "+SaveCards.Slot+". Return to title to recheck.";}
         bool loaded=state!=null;
         if(state==null){long now=Clock.Timestamp;int date=NativeCalendar.Read();state=new GameState(unchecked((int)(now^(now>>32)^date*7919L)));state.Profiles[0].Created=false;}
         return new TownSession(state,loaded,damaged,status);

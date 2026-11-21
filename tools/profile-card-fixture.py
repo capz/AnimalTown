@@ -25,7 +25,7 @@ def checksum(data,start,end):
 directory=bytearray(b'\xff'*sector);bat=bytearray(sector);cursor=5
 for index,path in enumerate(files):
     payload=path.read_bytes()
-    if payload[:4]!=b'ATSP' or not 32<=len(payload)<=1024*1024:raise ValueError('Invalid fixture record: '+path.name)
+    if payload[:4]!=b'ATSP' or not 32<=len(payload)<=4*1024*1024:raise ValueError('Invalid fixture record: '+path.name)
     data=bytearray(96);data[:8]=b'DNDSAVE1';struct.pack_into('>II',data,8,len(payload),96)
     data[32:42]=b'AnimalTown';comment=b'Shared town test fixture';data[64:64+len(comment)]=comment;data.extend(payload)
     count=(len(data)+sector-1)//sector;data.extend(bytes(count*sector-len(data)))

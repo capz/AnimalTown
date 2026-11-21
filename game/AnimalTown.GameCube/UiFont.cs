@@ -5,6 +5,7 @@ using Dolphin.Graphics;
 // Proportional bitmap text: host-baked Gorditas headings and native IPL body text.
 internal sealed class UiFont
 {
+    internal const int BatchCapacity=128;
     // The IPL atlas has one unused cell after its 95 printable ASCII glyphs.
     // Keep currency in that cell so it shares the normal text batches and tint.
     internal const string Currency="\u00a4";
@@ -21,8 +22,8 @@ internal sealed class UiFont
     private readonly int[] regionCounts=new int[96];
     private readonly string?[] layoutTexts=new string?[64];
     private readonly float[] layoutX=new float[64*128],layoutY=new float[64*128],layoutWidths=new float[64];
-    private readonly Texture2D[] quadTextures=new Texture2D[128];
-    private readonly float[] quadVertices=new float[128*24];
+    private readonly Texture2D[] quadTextures=new Texture2D[BatchCapacity];
+    private readonly float[] quadVertices=new float[BatchCapacity*24];
     private readonly int[] pages,order,layoutOrderCounts=new int[64];
     private readonly byte[] layoutOrder;
     private readonly float[] quadScratch;

@@ -1,0 +1,33 @@
+{
+  "failingSource": {
+    "sourceCommit": "112bd461f7fb0baa0068475aff72e4c09e883a10",
+    "sourceVersion": "0.80.0+112bd461f7fb",
+    "image": "offline-jobs-112b-official.nkit.iso",
+    "imageSHA256": "22e0228137d334382ed296f2831cb3e8e4e30fbe838ab8a36b3eedc5118fc785",
+    "nativeDolSHA256": "aa54e9a92c948e5a8170369f9833a3c53c9d1336fbcf94024317f02a8ee8c498",
+    "qualificationOnly": false,
+    "concurrentBuild": false,
+    "harnessChange": "Reuse the active AA-off capture mode across Save & Quit; do not cycle into another AA mode.",
+    "fixtureOrigin": "Fresh independent maximum-economy cards; no prior controller run.",
+    "cpuTimingComparable": false,
+    "qualificationPurpose": "Capacity and recovery; native build/validation may run concurrently. Use the quiet six-species cases for CPU/frame comparisons.",
+    "jobsHarnessSHA256": "cee99fa17df3c258f542688f46a9633baef2ca06019988af7fafca5d649485a8"
+  },
+  "fixCommit": "0fa5c3190cc1369554ca560871640db3e811a3f5",
+  "nativeHeapCapacityBytes": 6291456,
+  "failedAllocationBytes": 1666552,
+  "freeBytesAtFailure": 483272,
+  "largestFreeRegionBytesAtFailure": 273048,
+  "homeJournal": {
+    "sequence": 4,
+    "tripPhase": "Prepared",
+    "tripPending": true,
+    "profileLocked": true
+  },
+  "destination": "Legacy snapshot unchanged; migration validation overlapped newly encoded economic buffer.",
+  "preservedCards": {
+    "MemoryCardB.USA.raw": "b1dc0c12c49e952917736e723354033b9f0dc61c23113e8c4bcddceb9bc57e54",
+    "MemoryCardA.USA.raw": "c701c05809c4a38b01df880ed761107649b06a681d19271096bc986bcd2914ce"
+  },
+  "regression": "PreparingCard native test retains inspected towns and performs legacy validation before encoding. maximum-recovery controller mode uses independent copies of this exact interrupted pair."
+}

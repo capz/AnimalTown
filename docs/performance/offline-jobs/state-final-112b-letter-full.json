@@ -1,0 +1,64 @@
+{
+  "mode": "letter-full",
+  "passed": true,
+  "sequence": 3,
+  "activeProfile": 0,
+  "visiting": false,
+  "position": {
+    "X": 0.53515625,
+    "Z": 3.196289,
+    "Space": 25
+  },
+  "wallet": 0,
+  "completed": true,
+  "mailCount": 128,
+  "pockets": [
+    29,
+    2,
+    2,
+    2,
+    2,
+    27,
+    14,
+    15,
+    7,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+  ],
+  "bindings": [],
+  "outfits": [
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+  ],
+  "jobs": [],
+  "terminals": [
+    {
+      "template": "FavorLetter",
+      "reason": "Success",
+      "At": 1815638400
+    }
+  ]
+}

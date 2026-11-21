@@ -1,0 +1,24 @@
+{
+  "scenario": "offline-jobs",
+  "mode": "letter-full",
+  "screenshots": [
+    "jobs-letter-full-world.png",
+    "jobs-letter-full-npc-choices.png",
+    "jobs-letter-full-offer.png",
+    "jobs-letter-full-accepted.png",
+    "jobs-letter-full-recipient.png",
+    "jobs-letter-full-composed.png",
+    "jobs-letter-full-handoff-list.png",
+    "jobs-letter-full-result.png",
+    "jobs-letter-full-mailbox-full-retry.png",
+    "jobs-letter-full-discard-old-letter.png",
+    "jobs-letter-full-handoff-list.png",
+    "jobs-letter-full-result.png",
+    "jobs-letter-full-reply-retried.png",
+    "jobs-letter-full-reply-mailbox.png",
+    "jobs-letter-full-reply.png",
+    "jobs-letter-full-saved.png"
+  ],
+  "passed": false,
+  "controls_completed": true
+}

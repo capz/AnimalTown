@@ -1,0 +1,342 @@
+{
+  "hardware": false,
+  "renderer": "Dolphin 2503 OpenGL llvmpipe",
+  "runtimeProfile": 4,
+  "resolution": [
+    640,
+    480
+  ],
+  "antialiasing": false,
+  "frameSampleCount": 240,
+  "warmupFramesExcludedFromFrameAndCpuMeans": 5,
+  "comparability": "Timing cases were run sequentially with no other emulator or local compiler. Prior-main difference includes intervening main changes; no isolated causal estimate for the whole job implementation. One short sample per scene, no hardware guarantee. Returned-maximum-economy checkpoint uses a later RTC and moved player, so it is not a matched isolated CPU-cost comparison.",
+  "cases": [
+    {
+      "label": "Prior-main baseline",
+      "folder": "baseline-runtime4",
+      "source": {
+        "sourceCommit": "167054577fb13ab7fe7eee527380bf7de0175bda",
+        "sourceNote": "Previous-main baseline; intervening main changes are included in whole-build comparisons."
+      },
+      "profile": {
+        "hardware": false,
+        "renderer": "Dolphin OpenGL / llvmpipe",
+        "frames": 240,
+        "host_fps_including_input": 22.192861647799827,
+        "guest_fps": 57.027983024589496,
+        "frame_ms_p50": 16.683,
+        "frame_ms_p95": 16.685,
+        "cpu_ms_mean": 10.831995744680851,
+        "cpu_ms_p95": 16.174,
+        "allocations": 5,
+        "collections": 0,
+        "memory": {
+          "native_bytes": 2890252,
+          "texture_bytes": 1034272,
+          "path_bytes": 0,
+          "aram_bytes": 2811136,
+          "cache_peak_bytes": 153600,
+          "cache_reserved_bytes": 1048576,
+          "dma_reads": 85,
+          "bindings": 85
+        },
+        "managed": {
+          "used_extent_bytes": 2045920,
+          "peak_extent_bytes": 2047136,
+          "capacity_bytes": 4194304,
+          "collections": 17
+        }
+      },
+      "subsystems": {
+        "terrain_prepare_ms_mean": 4.077097872340426,
+        "actor_submit_ms_mean": 0.9678340425531915,
+        "animation_skin_ms_mean": 1.8703829787234043
+      },
+      "save_total_ms": [
+        28353,
+        8782
+      ]
+    },
+    {
+      "label": "Current, outfits off",
+      "folder": "final-stream-outfits-off",
+      "source": {
+        "image": "offline-jobs-stream-official.nkit.iso",
+        "imageSHA256": "dd63d997ff714de5f8e38483c13413dec72e39248c29f095b9a2cd35f05ad775",
+        "sourceCommit": "1d59404cb5aa45ef8e2f6e6d3370bf5499624548",
+        "qualificationOnly": false,
+        "concurrentBuild": false,
+        "nativeDolSHA256": "64bf145ad4299f2974ae9d3b69227825597e46493133558fa9849e67e574fb62",
+        "sourceVersion": "0.80.0+1d59404cb5aa",
+        "mainCommit": "48a0adcb79adc793b00a7647fd1caa190a0e8125",
+        "jobsHarnessSHA256": "8ec7523322f9a05d79004022ded6c862ab7b344366481982d8fd6f358f1a2371",
+        "isoHarnessSHA256": "6d4d48240b042c158e02a0fcce53e38abfeb1912ad3d63d98f589f9065bfabfe",
+        "saveVerifierSHA256": "61d7e8bbd95f5b4d2a4d60def52b93fba4232abdc8524030b11c90d6f4fcb1a9",
+        "cpuTimingComparable": true,
+        "otherEmulatorsAndLocalCompilationStopped": true,
+        "fixture": "outfits-off"
+      },
+      "profile": {
+        "hardware": false,
+        "renderer": "Dolphin OpenGL / llvmpipe",
+        "frames": 240,
+        "host_fps_including_input": 35.859783209390486,
+        "guest_fps": 55.89648446791304,
+        "frame_ms_p50": 16.683,
+        "frame_ms_p95": 33.367,
+        "cpu_ms_mean": 11.183544680851064,
+        "cpu_ms_p95": 22.306,
+        "allocations": 5,
+        "collections": 0,
+        "memory": {
+          "native_bytes": 2907532,
+          "texture_bytes": 1034272,
+          "path_bytes": 0,
+          "aram_bytes": 2811136,
+          "cache_peak_bytes": 153600,
+          "cache_reserved_bytes": 1048576,
+          "dma_reads": 85,
+          "bindings": 85
+        },
+        "managed": {
+          "used_extent_bytes": 2133144,
+          "peak_extent_bytes": 2134360,
+          "capacity_bytes": 6291456,
+          "collections": 69
+        },
+        "system_memory": {
+          "mem1_used_bytes": 24454968,
+          "mem1_total_bytes": 25165824,
+          "arena_free_bytes": 704512,
+          "malloc_free_bytes": 6344,
+          "aram_used_bytes": 10502144,
+          "aram_total_bytes": 16777216
+        }
+      },
+      "subsystems": {
+        "terrain_prepare_ms_mean": 4.096531914893617,
+        "actor_submit_ms_mean": 1.0049531914893617,
+        "animation_skin_ms_mean": 1.9314
+      },
+      "save_total_ms": []
+    },
+    {
+      "label": "Current, all outfits",
+      "folder": "final-stream-outfits",
+      "source": {
+        "image": "offline-jobs-stream-official.nkit.iso",
+        "imageSHA256": "dd63d997ff714de5f8e38483c13413dec72e39248c29f095b9a2cd35f05ad775",
+        "sourceCommit": "1d59404cb5aa45ef8e2f6e6d3370bf5499624548",
+        "qualificationOnly": false,
+        "concurrentBuild": false,
+        "nativeDolSHA256": "64bf145ad4299f2974ae9d3b69227825597e46493133558fa9849e67e574fb62",
+        "sourceVersion": "0.80.0+1d59404cb5aa",
+        "mainCommit": "48a0adcb79adc793b00a7647fd1caa190a0e8125",
+        "jobsHarnessSHA256": "8ec7523322f9a05d79004022ded6c862ab7b344366481982d8fd6f358f1a2371",
+        "isoHarnessSHA256": "6d4d48240b042c158e02a0fcce53e38abfeb1912ad3d63d98f589f9065bfabfe",
+        "saveVerifierSHA256": "61d7e8bbd95f5b4d2a4d60def52b93fba4232abdc8524030b11c90d6f4fcb1a9",
+        "cpuTimingComparable": true,
+        "otherEmulatorsAndLocalCompilationStopped": true,
+        "fixture": "outfits-on"
+      },
+      "profile": {
+        "hardware": false,
+        "renderer": "Dolphin OpenGL / llvmpipe",
+        "frames": 240,
+        "host_fps_including_input": 33.70601699945196,
+        "guest_fps": 54.17658847486448,
+        "frame_ms_p50": 16.683,
+        "frame_ms_p95": 33.367,
+        "cpu_ms_mean": 11.908846808510638,
+        "cpu_ms_p95": 22.886,
+        "allocations": 5,
+        "collections": 0,
+        "memory": {
+          "native_bytes": 2907532,
+          "texture_bytes": 1034272,
+          "path_bytes": 0,
+          "aram_bytes": 2811136,
+          "cache_peak_bytes": 153600,
+          "cache_reserved_bytes": 1048576,
+          "dma_reads": 85,
+          "bindings": 85
+        },
+        "managed": {
+          "used_extent_bytes": 2133144,
+          "peak_extent_bytes": 2134360,
+          "capacity_bytes": 6291456,
+          "collections": 69
+        },
+        "system_memory": {
+          "mem1_used_bytes": 24454968,
+          "mem1_total_bytes": 25165824,
+          "arena_free_bytes": 704512,
+          "malloc_free_bytes": 6344,
+          "aram_used_bytes": 10502144,
+          "aram_total_bytes": 16777216
+        }
+      },
+      "subsystems": {
+        "terrain_prepare_ms_mean": 4.188689361702128,
+        "actor_submit_ms_mean": 1.5495063829787235,
+        "animation_skin_ms_mean": 1.9772255319148935
+      },
+      "save_total_ms": [
+        31890,
+        10849
+      ]
+    },
+    {
+      "label": "Current, snowfall + outfits",
+      "folder": "final-stream-snowfall",
+      "source": {
+        "image": "offline-jobs-stream-official.nkit.iso",
+        "imageSHA256": "dd63d997ff714de5f8e38483c13413dec72e39248c29f095b9a2cd35f05ad775",
+        "sourceCommit": "1d59404cb5aa45ef8e2f6e6d3370bf5499624548",
+        "qualificationOnly": false,
+        "concurrentBuild": false,
+        "nativeDolSHA256": "64bf145ad4299f2974ae9d3b69227825597e46493133558fa9849e67e574fb62",
+        "sourceVersion": "0.80.0+1d59404cb5aa",
+        "mainCommit": "48a0adcb79adc793b00a7647fd1caa190a0e8125",
+        "jobsHarnessSHA256": "8ec7523322f9a05d79004022ded6c862ab7b344366481982d8fd6f358f1a2371",
+        "isoHarnessSHA256": "6d4d48240b042c158e02a0fcce53e38abfeb1912ad3d63d98f589f9065bfabfe",
+        "saveVerifierSHA256": "61d7e8bbd95f5b4d2a4d60def52b93fba4232abdc8524030b11c90d6f4fcb1a9",
+        "cpuTimingComparable": true,
+        "otherEmulatorsAndLocalCompilationStopped": true,
+        "fixture": "outfits-winter"
+      },
+      "profile": {
+        "hardware": false,
+        "renderer": "Dolphin OpenGL / llvmpipe",
+        "frames": 240,
+        "host_fps_including_input": 29.536281484605805,
+        "guest_fps": 54.17660096466625,
+        "frame_ms_p50": 16.683,
+        "frame_ms_p95": 33.367,
+        "cpu_ms_mean": 11.509289361702127,
+        "cpu_ms_p95": 16.556,
+        "allocations": 5,
+        "collections": 0,
+        "memory": {
+          "native_bytes": 3183500,
+          "texture_bytes": 1034272,
+          "path_bytes": 0,
+          "aram_bytes": 2818752,
+          "cache_peak_bytes": 163840,
+          "cache_reserved_bytes": 1048576,
+          "dma_reads": 89,
+          "bindings": 89
+        },
+        "managed": {
+          "used_extent_bytes": 2135696,
+          "peak_extent_bytes": 2136912,
+          "capacity_bytes": 6291456,
+          "collections": 69
+        },
+        "system_memory": {
+          "mem1_used_bytes": 24731064,
+          "mem1_total_bytes": 25165824,
+          "arena_free_bytes": 430080,
+          "malloc_free_bytes": 4680,
+          "aram_used_bytes": 10502144,
+          "aram_total_bytes": 16777216
+        }
+      },
+      "subsystems": {
+        "terrain_prepare_ms_mean": 2.654944680851064,
+        "actor_submit_ms_mean": 1.578668085106383,
+        "animation_skin_ms_mean": 1.9923276595744681
+      },
+      "save_total_ms": [
+        31886,
+        10406
+      ]
+    },
+    {
+      "label": "Current, returned maximum economy",
+      "folder": "final-stream-post-travel",
+      "source": {
+        "image": "offline-jobs-stream-official.nkit.iso",
+        "imageSHA256": "dd63d997ff714de5f8e38483c13413dec72e39248c29f095b9a2cd35f05ad775",
+        "sourceCommit": "1d59404cb5aa45ef8e2f6e6d3370bf5499624548",
+        "qualificationOnly": false,
+        "concurrentBuild": false,
+        "nativeDolSHA256": "64bf145ad4299f2974ae9d3b69227825597e46493133558fa9849e67e574fb62",
+        "sourceVersion": "0.80.0+1d59404cb5aa",
+        "mainCommit": "48a0adcb79adc793b00a7647fd1caa190a0e8125",
+        "jobsHarnessSHA256": "8ec7523322f9a05d79004022ded6c862ab7b344366481982d8fd6f358f1a2371",
+        "isoHarnessSHA256": "6d4d48240b042c158e02a0fcce53e38abfeb1912ad3d63d98f589f9065bfabfe",
+        "saveVerifierSHA256": "61d7e8bbd95f5b4d2a4d60def52b93fba4232abdc8524030b11c90d6f4fcb1a9",
+        "cpuTimingComparable": false,
+        "otherEmulatorsAndLocalCompilationStopped": true,
+        "fixture": "maximum-post-travel",
+        "fixtureOrigin": "Exact cards from the failed 90fbdd796787 title-reload regression, after two successful checkpoints. Their original maximum-capacity departure/return and visitor checkpoint ran on 0fa5c3190cc1.",
+        "guestCheckpointSourceCommit": "0fa5c3190cc1369554ca560871640db3e811a3f5"
+      },
+      "profile": {
+        "hardware": false,
+        "renderer": "Dolphin OpenGL / llvmpipe",
+        "frames": 240,
+        "host_fps_including_input": 32.40535086033179,
+        "guest_fps": 58.92494817112006,
+        "frame_ms_p50": 16.683,
+        "frame_ms_p95": 16.685,
+        "cpu_ms_mean": 5.106931914893617,
+        "cpu_ms_p95": 13.856,
+        "allocations": 13,
+        "collections": 0,
+        "memory": {
+          "native_bytes": 2907532,
+          "texture_bytes": 1034272,
+          "path_bytes": 0,
+          "aram_bytes": 2811136,
+          "cache_peak_bytes": 154624,
+          "cache_reserved_bytes": 1048576,
+          "dma_reads": 69,
+          "bindings": 69
+        },
+        "managed": {
+          "used_extent_bytes": 3782168,
+          "peak_extent_bytes": 6291456,
+          "capacity_bytes": 6291456,
+          "collections": 662
+        },
+        "system_memory": {
+          "mem1_used_bytes": 24454968,
+          "mem1_total_bytes": 25165824,
+          "arena_free_bytes": 704512,
+          "malloc_free_bytes": 6344,
+          "aram_used_bytes": 10502144,
+          "aram_total_bytes": 16777216
+        }
+      },
+      "subsystems": {
+        "terrain_prepare_ms_mean": 1.4328085106382977,
+        "actor_submit_ms_mean": 0.29454468085106383,
+        "animation_skin_ms_mean": 0.0056553191489361705
+      },
+      "save_total_ms": [
+        244419,
+        114402,
+        114399
+      ]
+    }
+  ],
+  "currentNativeImage": {
+    "sourceCommit": "1d59404cb5aa45ef8e2f6e6d3370bf5499624548",
+    "textBytes": 7963968,
+    "dataBytes": 503904,
+    "bssBytes": 7228564,
+    "loadedSectionBytes": 15696436,
+    "fileBytes": 8468128,
+    "sha256": "64bf145ad4299f2974ae9d3b69227825597e46493133558fa9849e67e574fb62"
+  },
+  "baselineNativeImage": {
+    "sourceCommit": "167054577fb13ab7fe7eee527380bf7de0175bda",
+    "textBytes": 6725568,
+    "dataBytes": 759232,
+    "bssBytes": 5131300,
+    "loadedSectionBytes": 12616100,
+    "fileBytes": 7485056
+  }
+}

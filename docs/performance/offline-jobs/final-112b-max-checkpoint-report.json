@@ -1,0 +1,10 @@
+{
+  "scenario": "offline-jobs",
+  "mode": "checkpoint",
+  "screenshots": [
+    "jobs-checkpoint-world.png",
+    "jobs-checkpoint-saved.png"
+  ],
+  "passed": false,
+  "controls_completed": true
+}

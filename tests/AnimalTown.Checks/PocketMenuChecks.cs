@@ -72,7 +72,7 @@ internal static class PocketMenuChecks
     }
     private static void Clothing(Action<bool,string> check)
     {
-        check(Enumerable.Range(1,Catalog.Items.Length-1).Where(id=>Catalog.Has(id,ItemFlags.Wear)).SequenceEqual(new[]{Catalog.WorkShirt}),"the implemented clothing catalog contains the single GameCube-style shirt");
+        check(Enumerable.Range(1,Catalog.Items.Length-1).Where(id=>Catalog.Has(id,ItemFlags.Wear)).SequenceEqual(new[]{Catalog.WorkShirt,Catalog.StripedShirt,Catalog.LeafShirt,Catalog.LinenShirt,Catalog.BerryShirt,Catalog.SkyShirt}),"the clothing catalog retains the work shirt and reusable resident reward shirts");
         foreach(int room in new[]{0,1}){
             var s=new GameState(73);s.Tool=Catalog.Shovel;s.BackpackTier=2;Array.Fill(s.Pockets,Catalog.WorkShirt);
             int slot=s.Capacity-1;
@@ -141,7 +141,7 @@ internal static class PocketMenuChecks
             bool bury=PocketMenu.Perform(ground,0,PocketAction.Bury,31,40,0,0);
             check(id==Catalog.LegacyAcorns50000?!bury&&ground.Pockets[0]==id:bury&&ground.Pockets[0]==0&&ground.Town.Ground[ground.Town.GroundCount-1].Item==id&&ground.Town.Ground[ground.Town.GroundCount-1].Kind==1,"only supported GameCube bags can create new buried money");
         }
-        check(Catalog.EntryAt(Catalog.EntryCount-1)==Catalog.CherrySapling&&Catalog.EntryAt(Catalog.EntryCount)==0,"catalog indices remain correct after all currency rows are removed");
+        check(Catalog.EntryAt(21)==Catalog.CherrySapling&&Catalog.EntryAt(Catalog.EntryCount-1)==Catalog.GlassesCase&&Catalog.EntryAt(Catalog.EntryCount)==0,"catalog indices retain the cherry sapling and new job content after currency rows are removed");
         var profiles=new GameState(73){Wallet=17};profiles.Pockets[0]=Catalog.Acorns1000;
         check(PocketMenu.Perform(profiles,0,PocketAction.OpenMoneyBag,0,0,0,0)&&profiles.Wallet==1017,"first villager redeems their own bag");
         profiles.SelectProfile(1);profiles.Wallet=23;profiles.Pockets[0]=Catalog.Acorns10000;profiles.SelectProfile(0);
