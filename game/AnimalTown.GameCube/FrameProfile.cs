@@ -27,7 +27,7 @@ internal static class FrameProfile
         bool starting=Mode==0;
         bool releasing=capture!=null;capture=null;Mode=mode;previous=0;
         if(releasing)AnimalTown.GameCube.NativeTexturePages.Collect();
-        if(starting){session=unchecked((uint)Clock.Timestamp+(session+1)*2654435761u);sequence=0;memoryAt=0;memoryPart=memoryHold=0;}
+        if(starting){session=unchecked((uint)Clock.Timestamp+(session+1)*2654435761u);sequence=0;memoryAt=0;memoryPart=memoryHold=0;Array.Clear(current,0,current.Length);Array.Clear(detailTime,0,detailTime.Length);Array.Clear(currentSubmissions,0,currentSubmissions.Length);}
         if(mode!=0){
             SampleMemory(true);
             if(mode==3){
@@ -69,9 +69,9 @@ internal static class FrameProfile
     private static long previous;
     internal static long Start()=>Enabled?Clock.Timestamp:0;
     internal static void Add(int slot,long microseconds){if(Enabled)current[slot]+=microseconds;}
-    internal static void End(int slot,long start){if(Enabled)current[slot]+=Clock.Timestamp-start;}
+    internal static void End(int slot,long start){if(Enabled&&start!=0)current[slot]+=Clock.Timestamp-start;}
     internal static void Begin(){Counters.Reset();AnimationUpdates=RecycledSections=0;NativeFrame.Reset(Enabled?1:0);if(!Enabled)return;SampleMemory();for(int i=0;i<16;i++){current[i]=0;currentSubmissions[i]=0;}for(int i=0;i<5;i++)detailTime[i]=0;CulledObjects=0;}
-    internal static void DetailEnd(int slot,long at){if(Enabled)detailTime[slot]+=Clock.Timestamp-at;}
+    internal static void DetailEnd(int slot,long at){if(Enabled&&at!=0)detailTime[slot]+=Clock.Timestamp-at;}
     internal static void Complete(int triangles,int terrainTriangles,int rejected,int scenario,int terrainBuilds,int movement,bool groundRing,bool groundUpload,bool shadowDeferred)
     {
         if(!Enabled)return;long now=Clock.Timestamp;current[12]=previous==0?0:now-previous;previous=now;

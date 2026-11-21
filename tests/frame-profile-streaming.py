@@ -70,6 +70,8 @@ assert extra['frames']==120 and extra['managed_allocations']['p50']==17
 assert extra['gc_collections']==120 and extra['free_block_searches']==240
 assert extra['texture_operations']==0 and extra['shadow_page_updates']==360
 assert extra['mesh_updates']['p50']==3 and extra['generation_ms']['p50']==.2
+runtime=decode({i:256 for i in range(1,121)})
+assert runtime['scenarios']['runtime_4_scene_0']['frames']==120
 print('Frame telemetry: normal travel, bounded repairs, loading interruption and missing-terrain rejection passed')
 
 # Protocol v6 attaches every band to a CRC-protected session/32-bit sequence.

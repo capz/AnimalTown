@@ -114,8 +114,11 @@ def rebuilt(row):return (row[23]&255)!=0 if row[1]>=5 else row[6]!=0
 for source,cached,changed in ((0,4,5),(6,8,9),(16,20,21)):
     groups[cached]=[r for r in groups.get(source,[]) if not rebuilt(r)]
     groups[changed]=[r for r in groups.get(source,[]) if rebuilt(r)]
+world=[]
 if versions in ({5},{6}):
-    world=[r for r in groups.get(0,[]) if r[1]>=5]
+    # Runtime flags occupy bits 6..8 of the scene tag. Keep the separate
+    # reports, but qualify ordinary travel in every runtime configuration.
+    world=[r for scene,rows in groups.items() if scene<512 and scene%64 in (0,6,16,32) for r in rows if r[1]>=5]
     groups[1000]=[r for r in world if not r[23]&4096]
     groups[1001]=[r for r in world if r[23]&4096 and not r[23]&8192]
     groups[1002]=[r for r in world if r[23]&8192]
@@ -171,9 +174,8 @@ print(json.dumps(report,indent=2))
 if '--check-streaming' in sys.argv:
     if versions not in ({5},{6}):raise RuntimeError('Streaming checks require telemetry v5/v6')
     if report['landscape_loading_frames']:raise RuntimeError('Landscape loading interrupted travel')
-    world=report['scenarios'].get('world')
-    if not world or world['frames']<100:raise RuntimeError('Not enough world frames for streaming checks')
-    if world['missing_terrain_frames']:raise RuntimeError('Visible terrain was missing during travel')
+    if len(world)<100:raise RuntimeError('Not enough world frames for streaming checks')
+    if any(r[30]&16384 for r in world):raise RuntimeError('Visible terrain was missing during travel')
 
 if '--check-movement' in sys.argv:
     if versions not in ({5},{6}):raise RuntimeError('Movement checks require telemetry v5/v6')
