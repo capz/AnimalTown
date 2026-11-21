@@ -19,7 +19,7 @@ parser.add_argument('--metadata',help='JSON provenance including artifact/fixtur
 args=parser.parse_args()
 sessions=[];active={};invalid=0
 for line in Path(args.log).read_text(errors='replace').splitlines():
-    match=re.search(r'ANIMALTOWN PROFILE (BEGIN|FRAME|MEMORY|HISTOGRAM|PEAKS|EVENTS|DROPPED_EVENTS|END) (.*)',line)
+    match=re.search(r'ANIMALTOWN PROFILE (BEGIN|FRAME|MEMORY|HISTOGRAM|PEAKS|EVENTS|EVENT|DROPPED_EVENTS|END) (.*)',line)
     if not match:continue
     kind,body=match.groups();fields=body.split()
     try:
@@ -52,6 +52,9 @@ for line in Path(args.log).read_text(errors='replace').splitlines():
         elif kind=='EVENTS':
             if len(words)%4 or len(words)>256:raise ValueError('Bad event length')
             current['checkpoints']=[dict(zip(('sequence','stage','clock_low32_us','mem1_used_bytes'),words[i:i+4])) for i in range(0,len(words),4)]
+        elif kind=='EVENT':
+            if len(words)!=4:raise ValueError('Bad event length')
+            current.setdefault('checkpoints',[]).append(dict(zip(('sequence','stage','clock_low32_us','mem1_used_bytes'),words)))
     except (ValueError,IndexError):invalid+=1
 
 def stats(values):

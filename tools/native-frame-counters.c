@@ -66,6 +66,19 @@ void animaltown_frame_memory(DndArray *data,DndManagedHeap *heap){
 static unsigned profile_crc(unsigned crc,uint32_t word){
     for(int octet=0;octet<4;octet++){crc^=((word>>(octet*8))&255u)<<8;for(int bit=0;bit<8;bit++)crc=crc&32768u?((crc<<1)^0x1021u)&65535u:(crc<<1)&65535u;}return crc;
 }
+static void profile_line(const char *kind,uint32_t session,const uint32_t *words,int count){
+    // One complete bounded log call: Dolphin may prefix each OSReport call,
+    // whereas USB Gecko is a byte stream. Never split a record across calls.
+    char line[384];int at=snprintf(line,sizeof(line),"ANIMALTOWN PROFILE %s %08x",kind,session);unsigned crc=65535;
+    if(count<0||count>32||at<0)return;
+    for(int i=0;i<count;i++){crc=profile_crc(crc,words[i]);at+=snprintf(line+at,sizeof(line)-(size_t)at," %08x",words[i]);}
+    (void)snprintf(line+at,sizeof(line)-(size_t)at," %04x\n",crc);
+#ifdef GEKKO
+    SYS_Report("%s",line);
+#else
+    printf("%s",line);
+#endif
+}
 void animaltown_frame_dump(DndArray *words,int count,DndArray *memory,uint32_t session,uint32_t total){
     if(!words||words->elements_are_references||words->element_size!=4||words->length<4096||count<0||count>256||!memory||memory->elements_are_references||memory->element_size!=4||memory->length<32)return;
 #ifdef GEKKO
@@ -76,14 +89,11 @@ void animaltown_frame_dump(DndArray *words,int count,DndArray *memory,uint32_t s
     PROFILE_PRINT("ANIMALTOWN PROFILE BEGIN 1 %08x %u %u\n",session,total,total>(uint32_t)count?total-(uint32_t)count:0);
     uint32_t *data=(uint32_t*)words->data,*snapshot=(uint32_t*)memory->data;
     for(int i=0;i<count;i++){
-        unsigned offset=((total-(uint32_t)count+(uint32_t)i)%256u)*16u,crc=65535;
-        PROFILE_PRINT("ANIMALTOWN PROFILE FRAME %08x",session);
-        for(int j=0;j<16;j++){uint32_t value=data[offset+(unsigned)j];crc=profile_crc(crc,value);PROFILE_PRINT(" %08x",value);}
-        PROFILE_PRINT(" %04x\n",crc);
+        unsigned offset=((total-(uint32_t)count+(uint32_t)i)%256u)*16u;
+        profile_line("FRAME",session,data+offset,16);
     }
-    PROFILE_PRINT("ANIMALTOWN PROFILE MEMORY %08x",session);unsigned crc=65535;
-    for(int i=0;i<32;i++){crc=profile_crc(crc,snapshot[i]);PROFILE_PRINT(" %08x",snapshot[i]);}
-    PROFILE_PRINT(" %04x\nANIMALTOWN PROFILE END %08x\n",crc,session);
+    profile_line("MEMORY",session,snapshot,32);
+    PROFILE_PRINT("ANIMALTOWN PROFILE END %08x\n",session);
 #undef PROFILE_PRINT
 }
 void animaltown_frame_dump_metrics(DndArray *histogram,DndArray *peaks,DndArray *events,int count,int dropped,uint32_t session){
@@ -93,13 +103,9 @@ void animaltown_frame_dump_metrics(DndArray *histogram,DndArray *peaks,DndArray 
 #else
 #define PROFILE_PRINT printf
 #endif
-    DndArray *arrays[3]={histogram,peaks,events};int lengths[3]={32,16,count*4};
-    const char *names[3]={"HISTOGRAM","PEAKS","EVENTS"};
-    for(int a=0;a<3;a++){
-        PROFILE_PRINT("ANIMALTOWN PROFILE %s %08x",names[a],session);unsigned crc=65535;
-        for(int i=0;i<lengths[a];i++){uint32_t value=((uint32_t*)arrays[a]->data)[i];crc=profile_crc(crc,value);PROFILE_PRINT(" %08x",value);}
-        PROFILE_PRINT(" %04x\n",crc);
-    }
+    profile_line("HISTOGRAM",session,(uint32_t*)histogram->data,32);
+    profile_line("PEAKS",session,(uint32_t*)peaks->data,16);
+    for(int i=0;i<count;i++)profile_line("EVENT",session,(uint32_t*)events->data+i*4,4);
     PROFILE_PRINT("ANIMALTOWN PROFILE DROPPED_EVENTS %08x %d\n",session,dropped);
 #undef PROFILE_PRINT
 }
