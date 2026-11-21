@@ -53,15 +53,23 @@ internal sealed class FloatingClockHud : IDisposable
             b.AddTriangle(outerA,outerB,innerB,color);b.AddTriangle(outerA,innerB,innerA,color);
         }
     }
-    private void Label(Draw2D ui,string text,float x,float y,float scale,float weight=.25f)
-    {font.Draw(ui,text,x+1,y+1,Shadow,scale);font.Draw(ui,text,x+weight,y,Color32.White,scale);font.Draw(ui,text,x,y,Color32.White,scale);}
-    internal void Draw(Draw2D ui)
+    private void Label(Draw2D ui,string text,float x,float y,float scale,Color32 white,Color32 shadow,float weight=.25f)
     {
-        Label(ui,time,Left-timeBounds.X,timeY-timeBounds.Y,TimeScale,.6f);
-        ui.FillRectangle(new RectF(Left+1,ruleY+1,width,1.5f),Shadow);
-        ui.FillRectangle(new RectF(Left,ruleY,width,1.5f),Color32.White);
-        Label(ui,date,Left-dateBounds.X,rowY+(rowHeight-dateBounds.Height)*.5f-dateBounds.Y,DateScale);
-        if(badge!=null)ui.DrawGeometry(badge,new Vector2(badgeX,rowY),Color32.White);
-        Label(ui,day,badgeX+6-dayBounds.X,rowY+(rowHeight-dayBounds.Height)*.5f-dayBounds.Y,DateScale);
+        font.Draw(ui,text,x+1,y+1,shadow,scale);
+        font.Draw(ui,text,x+weight,y,white,scale);
+        font.Draw(ui,text,x,y,white,scale);
+    }
+
+    internal void Draw(Draw2D ui,byte opacity)
+    {
+        var white=new Color32(255,255,255,opacity);
+        var shadow=Shadow;
+        shadow.A=(byte)(shadow.A*opacity/255);
+        Label(ui,time,Left-timeBounds.X,timeY-timeBounds.Y,TimeScale,white,shadow,.6f);
+        ui.FillRectangle(new RectF(Left+1,ruleY+1,width,1.5f),shadow);
+        ui.FillRectangle(new RectF(Left,ruleY,width,1.5f),white);
+        Label(ui,date,Left-dateBounds.X,rowY+(rowHeight-dateBounds.Height)*.5f-dateBounds.Y,DateScale,white,shadow);
+        if(badge!=null)ui.DrawGeometry(badge,new Vector2(badgeX,rowY),white);
+        Label(ui,day,badgeX+6-dayBounds.X,rowY+(rowHeight-dayBounds.Height)*.5f-dayBounds.Y,DateScale,white,shadow);
     }
 }

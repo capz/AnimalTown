@@ -167,6 +167,15 @@
         "Existing settings move when you save them or save your town with enough free space.",
         "Deleting a town in the game preserves both settings entries."
       ]
+    },
+    {
+      "id": "running-hud-fades",
+      "lines": [
+        "The minimap fades in after two seconds of running.",
+        "The minimap fades out after four seconds without running.",
+        "The date and time fade out when you run and return when you stop.",
+        "Each fade takes about a quarter of a second."
+      ]
     }
   ]
 }

@@ -99,6 +99,7 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
     private long playerStillSince,spaceChangedAt;
     private readonly TownClock townClock=new TownClock();
     private readonly FloatingClockHud clockHud;
+    private HudFade clockFade;
     private bool playerRunning;
     private readonly TownLights townLights=new TownLights();
     private readonly DevConfig debugConfig;
@@ -897,6 +898,8 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
     }
     internal void Draw()
     {
+        if(resourcesReady&&(screen=="world"||screen=="plot"))clockFade.Update(Clock.Timestamp,!playerRunning);
+        else clockFade=default;
         if(!resourcesReady){DrawLoading();return;}
         float x=state.X,z=state.Z;
         try{if(waterInspection!=0)WaterInspection.Focus(state,waterInspection);DrawScene();}
@@ -950,7 +953,12 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
         for(int actor=1;actor<7;actor++)if(!modelResidency.Ready(state.ResidentSpecies(actor-1)))actorVisibility.Visible[actor]=false;
         UpdateAnimationFrame();
         if((renderDebug.ForceAttention||attendingVillager>=0)&&villagers.Doors.PlayerFade<1)attention.Prepare();
-        phase=FrameProfile.Start();if(!playerRunning&&(screen=="world"||screen=="plot"))clockHud.Prepare(townClock);uiShapes.Prepare(screen,screen=="menu"?menuTab:-1,batchedDrawing);if((batchedDrawing&&screen=="map")||(runningMinimap.Visible&&screen=="world"&&room==0))mapBackground.Prepare(state.Town);modelUsed=0;FrameProfile.End(8,phase);
+        phase=FrameProfile.Start();
+        if(clockFade.Opacity>0)clockHud.Prepare(townClock);
+        uiShapes.Prepare(screen,screen=="menu"?menuTab:-1,batchedDrawing);
+        if((batchedDrawing&&screen=="map")||(runningMinimap.Opacity>0&&screen=="world"&&room==0))
+            mapBackground.Prepare(state.Town);
+        modelUsed=0;FrameProfile.End(8,phase);
         if(JobsLive)jobScene.Prepare();
         UiNoise.Prepare();preparedSubmitMicroseconds=0;preparedEnvironmentTint=environmentTint;preparedLampStrength=lampStrength;preparedShadowStrength=sunlight;
         phase=FrameProfile.Start();Hypercube.GameCube.FrameRenderer.Draw(device,room==0?TownLights.Tint(weather.Raining(room)?new Color32(112,143,151):new Color32(149,198,186),environmentTint):new Color32(32,40,39),this);FrameProfile.End(9,phase+preparedSubmitMicroseconds);
@@ -1199,7 +1207,7 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
                 DoorPopover(label,action);
             }
         }
-        if(!playerRunning&&(screen=="world"||screen=="plot"))clockHud.Draw(ui);
+        if(clockFade.Opacity>0)clockHud.Draw(ui,clockFade.Opacity);
         if(room==TownShop.Room&&screen=="world")DrawShopHint(ink);
         if(DrawShopPanel(ink))return;
         if(DrawTravelUi(ink)||DrawMailUi(ink)||DrawJobUi(ink))return;
@@ -1224,7 +1232,7 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
             return;
         }
         if(screen==DaylightLocationMenu.Screen){daylightMenu.Draw(ui,font,headingFont,batchedDrawing?uiShapes:null);return;}
-        if(screen=="world"){if(room==0&&runningMinimap.Visible)DrawMinimap();if(room==0&&renderDebug.ShowGroundMipBands)DrawGroundMipLegend(ink);return;}
+        if(screen=="world"){if(room==0&&runningMinimap.Opacity>0)DrawMinimap();if(room==0&&renderDebug.ShowGroundMipBands)DrawGroundMipLegend(ink);return;}
         if((screen=="menu"&&menuTab==0)||screen=="sell"||screen=="item"){DrawBackpack();return;}
         Panel(45,75,550,350);string title=screen=="menu"?tabs[menuTab]:screen=="shop"?"Essentials / always in stock":screen=="store"?"Hearth's store":screen=="post"?"Town hall":screen=="mail"?"Mailbox":"Lost and Found";
         Heading(title,68,91,ink);
@@ -1327,8 +1335,9 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
     }
     private void DrawMinimap()
     {
-        Bulged(MapBackground.MinimapLeft+4,MapBackground.MinimapTop+5,MapBackground.MinimapSize,MapBackground.MinimapSize,MapBackground.MinimapRadius,new Color32(49,72,62,130));
-        mapBackground.DrawMinimap(ui);
+        byte opacity=runningMinimap.Opacity;
+        Bulged(MapBackground.MinimapLeft+4,MapBackground.MinimapTop+5,MapBackground.MinimapSize,MapBackground.MinimapSize,MapBackground.MinimapRadius,new Color32(49,72,62,(byte)(130*opacity/255)));
+        mapBackground.DrawMinimap(ui,opacity);
         MinimapMarker(32,26,new Color32(187,107,71),3);
         MinimapMarker(50,26,new Color32(132,96,155),3);
         for(int p=0;p<GameState.ProfileCount;p++)if(state.HomePlaced(p))MinimapMarker(state.HomeX(p)+3,state.HomeZ(p)+3,new Color32(220,182,124),4);
@@ -1338,6 +1347,7 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
     private void MinimapMarker(float x,float z,Color32 color,float size)
     {
         var p=MapBackground.MinimapPosition(x,z);
+        color.A=runningMinimap.Opacity;
         ui.FillRectangle(new RectF(p.X-size*.5f,p.Y-size*.5f,size,size),color);
     }
     private Color32 MapTileColor(int x,int z)
