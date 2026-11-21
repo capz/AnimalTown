@@ -17,7 +17,7 @@ parser.add_argument('--storage',default='unspecified')
 parser.add_argument('--video-mode',default='unspecified')
 parser.add_argument('--metadata',help='JSON provenance including artifact/fixture hashes and debug configuration')
 args=parser.parse_args()
-sessions={};invalid=0
+sessions=[];active={};invalid=0
 for line in Path(args.log).read_text(errors='replace').splitlines():
     match=re.search(r'ANIMALTOWN PROFILE (BEGIN|FRAME|MEMORY|HISTOGRAM|PEAKS|EVENTS|DROPPED_EVENTS|END) (.*)',line)
     if not match:continue
@@ -26,11 +26,12 @@ for line in Path(args.log).read_text(errors='replace').splitlines():
         if kind=='BEGIN':
             schema=int(fields[0]);session=int(fields[1],16);total=int(fields[2]);overwritten=int(fields[3])
             if schema!=1:raise ValueError('Unknown schema')
-            sessions[session]={'session':session,'total_frames':total,'overwritten_frames':overwritten,'frames':[],'complete':False}
+            current={'session':session,'total_frames':total,'overwritten_frames':overwritten,'frames':[],'complete':False}
+            sessions.append(current);active[session]=current
             continue
         session=int(fields[0],16)
-        if session not in sessions:raise ValueError('Missing session header')
-        current=sessions[session]
+        if session not in active:raise ValueError('Missing session header')
+        current=active[session]
         if kind=='END':current['complete']=True;continue
         if kind=='DROPPED_EVENTS':current['dropped_events']=int(fields[1]);continue
         words=[int(value,16) for value in fields[1:-1]]
@@ -57,7 +58,7 @@ def stats(values):
     values=sorted(values)
     return {name:values[min(len(values)-1,math.ceil(q*len(values))-1)] for name,q in (('p50',.5),('p95',.95),('p99',.99),('max',1))}
 
-for current in sessions.values():
+for current in sessions:
     frames=current.pop('frames');current['retained_frames']=len(frames)
     current['missing_retained_frames']=max(0,min(256,current['total_frames'])-len(frames))
     if frames:
@@ -66,8 +67,9 @@ for current in sessions.values():
         current['retained_missing_terrain_frames']=sum(bool(frame[13]>>16&16384) for frame in frames)
         current['retained_loading_frames']=sum(bool(frame[13]>>16&32768) for frame in frames)
 if not sessions:raise RuntimeError('No profiling exports found')
+provenance=json.loads(Path(args.metadata).read_text()) if args.metadata else {}
 print(json.dumps({'schema':1,'platform':args.platform,'storage':args.storage,'video_mode':args.video_mode,
-                  'provenance':json.loads(Path(args.metadata).read_text()) if args.metadata else {},
-                  'invalid_records':invalid,'sessions':list(sessions.values()),
+                  'provenance':provenance,'hardware_qualification_missing':[name for name in ('commit','sdk','engine','artifact_sha256','fixture_sha256','debug_settings') if name not in provenance],
+                  'invalid_records':invalid,'sessions':sessions,
                   'units':'milliseconds; CPU timebase and blocking waits, not GPU execution duration',
                   'histogram_quantization':'log2 microseconds; exact percentile samples cover retained ring only'},indent=2))
