@@ -185,6 +185,15 @@
         "The helicopter now sits level with the pad when parked.",
         "A windsock still marks the landing area."
       ]
+    },
+    {
+      "id": "running-hud-fades",
+      "lines": [
+        "The minimap fades in after two seconds of running.",
+        "The minimap fades out after four seconds without running.",
+        "The date and time fade out when you run and return when you stop.",
+        "Each fade takes about a quarter of a second."
+      ]
     }
   ]
 }
