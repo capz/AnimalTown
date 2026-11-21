@@ -140,6 +140,15 @@
         "Preserve parcels, profiles and partially recovered snow across reloads.",
         "Keep unchanged saves and independent snow or job-clock updates efficient."
       ]
+    },
+    {
+      "id": "town-map-landmark-legend",
+      "lines": [
+        "Find villager houses, the store, and the helipad with the new town map legend.",
+        "Each villager house has a permanent marker on the map.",
+        "The legend distinguishes villager houses from moving villagers.",
+        "It also identifies player homes, the post office, and your current location."
+      ]
     }
   ]
 }

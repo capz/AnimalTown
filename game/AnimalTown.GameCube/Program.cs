@@ -1343,6 +1343,12 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
     {
         Panel(65,65,510,365);Heading("Town map",85,79,new Color32(49,72,62));Text(Town.Width+" x "+Town.Height,310,83,new Color32(49,72,62),1.2f);
         const float left=160,top=115,scale=MapBackground.Scale;
+        var storeColor=new Color32(187,107,71);
+        var postOfficeColor=new Color32(132,96,155);
+        var helipadColor=new Color32(81,98,130);
+        var homeColor=new Color32(220,182,124,180);
+        var villagerHouseColor=new Color32(94,64,48);
+        var villagerColor=new Color32(153,76,103);
         if(batchedDrawing)mapBackground.Draw(ui);
         else for(int z=0;z<Town.Height;z+=5)for(int x=0;x<Town.Width;x+=5)
             ui.FillRectangle(new RectF(left+x*scale,top+z*scale,Math.Min(5,Town.Width-x)*scale,Math.Min(5,Town.Height-z)*scale),MapTileColor(Math.Min(x+2,Town.Width-1),Math.Min(z+2,Town.Height-1)));
@@ -1359,12 +1365,34 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
             if(i<Town.ScreenRows)Text((i+1).ToString(),445,top+offset+3,Color32.Black,.8f);
         }
         for(int i=0;i<state.Town.GroundCount;i++){var g=state.Town.Ground[i];if(g.Kind==3)ui.FillRectangle(new RectF(left+g.X*scale,top+g.Z*scale,2,2),new Color32(45,106,60));}
-        ui.FillRectangle(new RectF(left+32*scale,top+26*scale,4,4),new Color32(187,107,71));
-        ui.FillRectangle(new RectF(left+50*scale,top+26*scale,4,4),new Color32(132,96,155));
-        ui.FillRectangle(new RectF(left+36*scale,top+9*scale,4,4),new Color32(81,98,130));
-        for(int p=0;p<GameState.ProfileCount;p++)if(state.HomePlaced(p))ui.FillRectangle(new RectF(left+state.HomeX(p)*scale,top+state.HomeZ(p)*scale,GameState.GardenWidths[state.HomeGardenTier(p)]*scale,GameState.GardenHeights[state.HomeGardenTier(p)]*scale),new Color32(220,182,124,180));
-        for(int i=0;i<6;i++){var v=state.Town.Residents[i];ui.FillRectangle(new RectF(left+v.X*scale,top+v.Z*scale,3,3),new Color32(153,76,103));}
+        ui.FillRectangle(new RectF(left+32*scale,top+26*scale,4,4),storeColor);
+        ui.FillRectangle(new RectF(left+50*scale,top+26*scale,4,4),postOfficeColor);
+        ui.FillRectangle(new RectF(left+36*scale,top+9*scale,4,4),helipadColor);
+        for(int p=0;p<GameState.ProfileCount;p++)if(state.HomePlaced(p))ui.FillRectangle(new RectF(left+state.HomeX(p)*scale,top+state.HomeZ(p)*scale,GameState.GardenWidths[state.HomeGardenTier(p)]*scale,GameState.GardenHeights[state.HomeGardenTier(p)]*scale),homeColor);
+        foreach(var villager in state.Town.Residents)
+        {
+            ui.FillRectangle(new RectF(left+(villager.HomeX+1.5f)*scale-2,top+(villager.HomeZ+1.5f)*scale-2,4,4),villagerHouseColor);
+            ui.FillRectangle(new RectF(left+villager.X*scale,top+villager.Z*scale,3,3),villagerColor);
+        }
         float mapX=state.X,mapZ=state.Z;if(room!=0)BuildingWorld.Entrance(state,BuildingWorld.Building(room),out mapX,out mapZ);
         ui.FillRectangle(new RectF(left+mapX*scale,top+mapZ*scale,4,4),Color32.White);
+
+        var ink=new Color32(49,72,62);
+        Strong("Legend",464,126,ink,1.15f);
+        DrawMapLegendEntry("Villager houses",148,villagerHouseColor);
+        DrawMapLegendEntry("Player homes",168,homeColor);
+        DrawMapLegendEntry("Store",188,storeColor);
+        DrawMapLegendEntry("Post office",208,postOfficeColor);
+        DrawMapLegendEntry("Helipad",228,helipadColor);
+        DrawMapLegendEntry("Villagers",248,villagerColor);
+        DrawMapLegendEntry("You",268,Color32.White);
+    }
+
+    private void DrawMapLegendEntry(string label,float y,Color32 color)
+    {
+        var ink=new Color32(49,72,62);
+        ui.FillRectangle(new RectF(464,y+3,10,10),ink);
+        ui.FillRectangle(new RectF(465,y+4,8,8),color);
+        Text(label,479,y,ink,.95f);
     }
 }
