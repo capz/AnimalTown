@@ -222,6 +222,13 @@ def finish_onboarding(prefix='new-villager',before=None):
     after=wait_saved_after(before);wait_onboarding('world',prefix+'-game.png')
     return after,loading
 
+def testing_menu_count():
+    import re
+    source=(Path(__file__).resolve().parents[1]/'game/AnimalTown.GameCube/Program.cs').read_text()
+    match=re.search(r'\btestingOptions\s*=\s*\{([^}]+)\}',source)
+    if not match:raise AssertionError('Cannot locate debug-menu option contract')
+    return len([entry for entry in match[1].split(',') if entry.strip()])
+
 def start_game(new_town=False,prefix='start'):
     """Navigate Title and the resident picker before sending gameplay input."""
     before=committed_card_sequence(root/'MemoryCardA.USA.raw',details=True)
@@ -801,7 +808,7 @@ def terrain_materials():
             'screenshots':[],'mip_states':{},'water':{},'visual_failures':[],
             'physical_hardware':False}
     prefix='terrain-materials-'
-    option_count=23
+    option_count=testing_menu_count()
     mipmaps_row,distance_row,bands_row=14,15,16
     def visual_assert(condition,message):
         # Independent image failures must not hide later restoration/water
