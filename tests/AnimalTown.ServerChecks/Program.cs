@@ -1,6 +1,8 @@
 using AnimalTown;
+using AnimalTown.Jobs;
 using Npgsql;
 using System.Security.Cryptography;
+using System.Text.Json;
 
 var connection=Environment.GetEnvironmentVariable("ANIMALTOWN_TEST_CONNECTION")??throw new Exception("Test database required");
 await using var c=new NpgsqlConnection(connection);await c.OpenAsync();
@@ -23,6 +25,34 @@ if(args[0]=="seed-legacy"){
         await using var write=new NpgsqlCommand("UPDATE players SET town_data=$2,house_positions=$3,shop_states=$4,player_villager=$5,player_villager2=$6,player_villager3=$7,player_villager4=$8,revision=revision+1 WHERE id=$1",c);
         write.Parameters.AddWithValue(player);foreach(var part in parts)write.Parameters.AddWithValue(part);await write.ExecuteNonQueryAsync();
     }
+}else if(args[0]=="seed-koban"){
+    var host=Guid.Parse(args[1]);var guest=Guid.Parse(args[2]);
+    var town=await FixtureState(host);var visitor=await FixtureState(guest);
+    town.SelectProfile(1);town.Name="LocalKoban";Array.Clear(town.Pockets);
+    int pocket=visitor.FreeSlot();if(pocket<0||!visitor.Receive(12))throw new Exception("No guest donation pocket");
+    var cells=new List<int>();
+    for(int cell=0;cell<Town.Cells&&cells.Count<3;cell++){
+        int x=cell%Town.Width,z=cell/Town.Width;
+        if(town.Town.At(x,z)==(int)Terrain.Grass&&!town.AnyGardenContains(x,z)&&
+            town.CanWalk(x+.5f,z+.5f,0)&&town.Town.FindGround(x,z)<0)cells.Add(cell);
+    }
+    if(cells.Count!=3||!town.Town.AddGround(11,cells[2]%Town.Width,cells[2]/Town.Width,4,town.Town.Day))throw new Exception("No custody fixture space");
+    await WriteFixture(host,town);await WriteFixture(guest,visitor);
+    Console.WriteLine(JsonSerializer.Serialize(new{pocket,x=cells[0]%Town.Width,z=cells[0]/Town.Width,moveX=cells[1]%Town.Width,moveZ=cells[1]/Town.Width}));
+}else if(args[0]=="fill-koban-pockets"){
+    var player=Guid.Parse(args[1]);var state=await FixtureState(player);
+    for(int i=0;i<state.Capacity;i++)state.Pockets[i]=1;
+    await WriteFixture(player,state);
+}else if(args[0]=="seed-deferred-custody"){
+    var player=Guid.Parse(args[1]);var state=await FixtureState(player);
+    const ulong townId=0xC0570D1001UL;long now=DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+    state.ResidentJobs.Enable(townId,now);var ledger=state.Town.Jobs;
+    int slot=ledger.FreeReward();if(slot<0)throw new Exception("No deferred custody fixture slot");
+    ledger.Rewards[slot]=new VillagerJobReward{
+        Id=ledger.Allocate(),Job=ledger.Allocate(),Owner=new JobIdentity(townId+1,1),Giver=ledger.Npc(0),
+        State=JobRewardState.Custody,Item=13,Category=JobRewardCategory.Furniture,ResolvedAt=now
+    };
+    await WriteFixture(player,state);
 }else{
     await using(var cmd=new NpgsqlCommand("SELECT state,town_data,house_positions,shop_states,player_villager,player_villager2,player_villager3,player_villager4,revision FROM players WHERE id=$1",c)){
         cmd.Parameters.AddWithValue(id);await using var r=await cmd.ExecuteReaderAsync();if(!await r.ReadAsync()||!r.IsDBNull(0)||r.GetInt64(8)!=17)throw new Exception("Migration lost row or changed revision");
@@ -46,4 +76,21 @@ if(args[0]=="seed-legacy"){
         if(restored.Profiles.Any(p=>p.Created)||!SaveCodec.Encode(empty).SequenceEqual(SaveCodec.Encode(restored)))throw new Exception("Backend resurrected a resident or changed the empty town");
     }
     Console.WriteLine("Backend split storage, exact legacy migration and last-resident deletion checks passed");
+}
+
+async Task<GameState> FixtureState(Guid player)
+{
+    await using var read=new NpgsqlCommand("SELECT town_data,house_positions,shop_states,player_villager,player_villager2,player_villager3,player_villager4 FROM players WHERE id=$1",c);
+    read.Parameters.AddWithValue(player);await using var r=await read.ExecuteReaderAsync();
+    if(!await r.ReadAsync())throw new Exception("Fixture actor missing");
+    var parts=new byte[7][];for(int i=0;i<parts.Length;i++)parts[i]=r.GetFieldValue<byte[]>(i);
+    return SplitSaveCodec.Decode(parts);
+}
+
+async Task WriteFixture(Guid player,GameState state)
+{
+    state.Sequence++;var parts=SplitSaveCodec.Encode(state);
+    await using var write=new NpgsqlCommand("UPDATE players SET town_data=$2,house_positions=$3,shop_states=$4,player_villager=$5,player_villager2=$6,player_villager3=$7,player_villager4=$8,revision=revision+1 WHERE id=$1",c);
+    write.Parameters.AddWithValue(player);foreach(var part in parts)write.Parameters.AddWithValue(part);
+    await write.ExecuteNonQueryAsync();
 }

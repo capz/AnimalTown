@@ -130,7 +130,7 @@ internal static class IncrementalSaveChecks
         var restored=repository.Load()!;
         Same(s,restored,check,"the card round-trips shared snow dents and their partial recovery");
         var split=SplitSaveCodec.Encode(s);
-        check(SplitSaveCodec.ReadVersion(split[0])==10&&SplitSaveCodec.Decode(split).Town.Traffic.Snow.Packed.SequenceEqual(snow.Packed),
+        check(SplitSaveCodec.ReadVersion(split[0])==11&&SplitSaveCodec.Decode(split).Town.Traffic.Snow.Packed.SequenceEqual(snow.Packed),
             "the split town schema retains its snow checkpoint");
         restored.SelectProfile(1);
         var shared=restored.Town.Traffic.Snow;

@@ -2,6 +2,7 @@ namespace AnimalTown;
 public static class BuildingSave
 {
     public const int LegacyFieldCount=2+9+6*7;
+    public const int ProfileBuildingCount=12,ProfileFieldCount=2+ProfileBuildingCount+6*7;
     public const int FieldCount=2+BuildingWorld.Count+6*7;
     public static int[] Encode(GameState s)
     {
@@ -14,10 +15,12 @@ public static class BuildingSave
     {var current=Encode(s);var fields=new int[LegacyFieldCount];Array.Copy(current,fields,11);Array.Copy(current,2+BuildingWorld.Count,fields,11,42);return fields;}
     public static void Decode(GameState s,int[] fields)
     {
-        if(fields.Length!=FieldCount&&fields.Length!=LegacyFieldCount)throw new InvalidOperationException("Invalid building save length");int at=0;
+        if(fields.Length!=FieldCount&&fields.Length!=ProfileFieldCount&&fields.Length!=LegacyFieldCount)throw new InvalidOperationException("Invalid building save length");int at=0;
         int Read(int lo,int hi){int value=fields[at++];if(value<lo||value>hi)throw new InvalidOperationException("Invalid saved building state");return value;}
         s.Space=Read(0,43);if(!BuildingWorld.ValidSpace(s.Space))throw new InvalidOperationException("Invalid player space");s.Facing=Read(-6434,6434)/1024f;
-        for(int i=0;i<(fields.Length==LegacyFieldCount?9:s.BuildingTypes.Length);i++)s.BuildingTypes[i]=(byte)Read(0,255);
+        int count=fields.Length==LegacyFieldCount?9:fields.Length==ProfileFieldCount?ProfileBuildingCount:BuildingWorld.Count;
+        for(int i=0;i<count;i++)s.BuildingTypes[i]=(byte)Read(0,255);
+        if(count<=KobanSite.Building)s.BuildingTypes[KobanSite.Building]=KobanSite.Definition;
         for(int i=0;i<6;i++){var v=s.Town.Residents[i];v.Space=Read(0,43);if(!BuildingWorld.ValidSpace(v.Space))throw new InvalidOperationException("Invalid villager space");v.JourneyBuilding=Read(-1,BuildingWorld.Count-1);v.JourneyPhase=Read(0,5);v.Dwell=Read(0,36000);v.Yaw=Read(-6434,6434)/1024f;v.JourneyNextX=Read(-1,Town.Width-1);v.JourneyNextZ=Read(-1,Town.Height-1);if((v.JourneyNextX<0)!=(v.JourneyNextZ<0))throw new InvalidOperationException("Partial journey waypoint");if(v.JourneyPhase==1&&v.JourneyBuilding<0)throw new InvalidOperationException("Missing journey destination");}
     }
 }

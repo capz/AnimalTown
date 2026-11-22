@@ -67,6 +67,7 @@ public sealed class OnboardingDraft : IDisposable
         int blockedDoors=0;
         for(int i=0;i<s.Town.GroundCount;i++){
             var item=s.Town.Ground[i];
+            if(item.Kind==4)continue;
             if(item.X>=x+2&&item.X<=x+4&&item.Z>=z+1&&item.Z<=z+3){
                 reason="Keep the house clear of plants and items.";return false;
             }

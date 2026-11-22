@@ -12,7 +12,7 @@ internal static class VillagerJobIdentityChecks
         for(int i=0;i<4;i++){s.SelectProfile(i);s.EnsureJobIdentities(s.Town.Jobs.TownId);var id=s.Town.Jobs.Player(i);check(id.IsValid&&!ids.Contains(id),"each player profile gets a unique identity");ids.Add(id);}
         check(s.Town.JobState.Offers.State==offers,"identity migration never consumes job RNG");
         var other=new GameState(17);other.EnsureJobIdentities(123);check(other.Town.Jobs.Npc(0)!=s.Town.Jobs.Npc(0),"identical terrain seeds do not identify the same town or villagers");
-        var raw=SaveCodec.Encode(s);check(raw[4]==15,"identity-bearing combined saves use schema 15 alongside the independent snow extension");
+        var raw=SaveCodec.Encode(s);check(raw[4]==16,"identity-bearing combined saves use schema 16 alongside independent snow and koban extensions");
         var copy=SaveCodec.Decode(raw);check(raw.SequenceEqual(SaveCodec.Encode(copy)),"all 64-bit identity bits and serial allocation state round-trip");
         var split=SplitSaveCodec.Encode(s);check(raw.SequenceEqual(SaveCodec.Encode(SplitSaveCodec.Decode(split))),"economic split record preserves identities through semantic readback");
         var commit=SplitSaveCodec.EncodeCommit(s,split);check(SplitSaveCodec.DecodeCommitted(commit,split).Town.Jobs.Player(3)==s.Town.Jobs.Player(3),"commit includes the identity extension");

@@ -21,7 +21,7 @@ public struct VillagerJobOffer
     public long CreatedAt;
     public bool Refused;
 }
-public enum JobRewardState { Empty,Reserved,Owed }
+public enum JobRewardState { Empty,Reserved,Owed,Custody }
 public struct VillagerJobReward
 {
     public JobIdentity Id,Job,Owner,Giver;
@@ -124,7 +124,15 @@ public sealed partial class OfflineJobLedger
             j.AcceptedAt=r.Long();j.StageAt=r.Long();j.OriginalDueAt=r.Long();j.DueAt=r.Long();j.CompletedAt=r.Long();j.RetainedUntil=r.Long();j.EvidenceAt=r.Long();for(int b=0;b<JobRulesV1.MaximumRecordedBorrowers;b++)j.SetBorrower(b,r.Key());
             if(j.Shared!=(i>=SharedStart)||!j.Shared&&!j.Owner.IsValid||j.StageAt<j.AcceptedAt||j.DueAt<j.StageAt||j.OriginalDueAt<j.AcceptedAt)throw new InvalidOperationException("Invalid saved job ownership or timeline");Jobs[i]=j;}
         count=r.Range(0,Offers.Length);for(int n=0;n<count;n++){int i=r.Range(0,Offers.Length-1);if(!Offers[i].Id.IsEmpty)throw new InvalidOperationException("Duplicate saved offer slot");Offers[i]=new VillagerJobOffer{Id=r.Key(false),Owner=r.Key(false),Requester=r.Key(false),Target=r.Key(),Template=(JobTemplate)r.Range(0,JobRulesV1.TemplateCount-1),Item=r.Range(0,Catalog.Items.Length-1),Revision=r.Range(1,int.MaxValue),CreatedAt=r.Long(),Refused=r.Range(0,1)==1};}
-        count=r.Range(0,Rewards.Length);for(int n=0;n<count;n++){int i=r.Range(0,Rewards.Length-1);if(Rewards[i].State!=JobRewardState.Empty)throw new InvalidOperationException("Duplicate saved reward slot");var reward=new VillagerJobReward{Id=r.Key(false),Job=r.Key(false),Owner=r.Key(),Giver=r.Key(false),State=(JobRewardState)r.Range(1,2),Item=r.Range(0,version>=11?int.MaxValue:Catalog.Items.Length-1),Currency=r.Range(0,int.MaxValue),ReplyRank=r.Range(0,11),ReplyText=r.Range(0,255),ResolvedAt=r.Long(),IsReply=r.Range(0,1)==1,ReplyAt=r.Long(),AutomaticReply=r.Range(0,1)==1};if(version>=11){reward.Category=(JobRewardCategory)r.Range(0,6);reward.MigratedFromItem=r.Range(0,int.MaxValue);}else reward.Category=JobContent.CategoryOf(reward.Item);JobContent.MigrateReward(ref reward);Rewards[i]=reward;}
+        count=r.Range(0,Rewards.Length);for(int n=0;n<count;n++){
+            int i=r.Range(0,Rewards.Length-1);if(Rewards[i].State!=JobRewardState.Empty)throw new InvalidOperationException("Duplicate saved reward slot");
+            var reward=new VillagerJobReward{Id=r.Key(false),Job=r.Key(false),Owner=r.Key(),Giver=r.Key(false),State=(JobRewardState)r.Range(1,version>=13?3:2),Item=r.Range(0,version>=11?int.MaxValue:Catalog.Items.Length-1),Currency=r.Range(0,int.MaxValue),ReplyRank=r.Range(0,11),ReplyText=r.Range(0,255),ResolvedAt=r.Long(),IsReply=r.Range(0,1)==1,ReplyAt=r.Long(),AutomaticReply=r.Range(0,1)==1};
+            if(version>=11){reward.Category=(JobRewardCategory)r.Range(0,6);reward.MigratedFromItem=r.Range(0,int.MaxValue);}else reward.Category=JobContent.CategoryOf(reward.Item);
+            if(reward.State==JobRewardState.Custody){
+                if(reward.Id.Town!=TownId||reward.Job.Town!=TownId||!reward.Owner.IsValid||reward.Item==0&&reward.Currency==0||reward.Item!=0&&!Catalog.Valid(reward.Item)||reward.IsReply||reward.AutomaticReply)throw new InvalidOperationException("Invalid deferred police custody");
+            }else JobContent.MigrateReward(ref reward);
+            Rewards[i]=reward;
+        }
         count=r.Range(0,Bindings.Length);for(int n=0;n<count;n++){int i=r.Range(0,Bindings.Length-1);if(!Bindings[i].IsEmpty)throw new InvalidOperationException("Duplicate saved parcel slot");Bindings[i]=r.Key(false);}
         count=r.Range(0,Relations.Length);for(int n=0;n<count;n++){int i=r.Range(0,Relations.Length-1);if(!Relations[i].Npc.IsEmpty)throw new InvalidOperationException("Duplicate saved relationship slot");Relations[i]=new JobRelation{Npc=r.Key(false),Friendship=r.Range(0,255),Met=r.Range(0,1)};}
     }

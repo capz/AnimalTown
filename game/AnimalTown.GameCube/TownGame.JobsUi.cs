@@ -132,7 +132,7 @@ internal sealed partial class TownGame
     {
         dialogueVoice.Stop();jobRowsCount=0;jobSelected=0;jobScroll=0;
         var book=state.Town.Jobs;var owner=book.Player(state.ActiveProfile);var npc=jobNpc>=0?book.Npc(jobNpc):default;
-        for(int i=0;i<OfflineJobLedger.RewardCapacity;i++){var r=book.Reward(i);if(r.State!=JobRewardState.Owed||r.Owner!=owner||npcOnly&&r.Giver!=npc)continue;jobRows[jobRowsCount]=1000+i;jobRowLabels[jobRowsCount++]=(r.IsReply?"Reply from ":"Reward from ")+JobNpcName(r.Giver);}
+        for(int i=0;i<OfflineJobLedger.RewardCapacity;i++){var r=book.Reward(i);if(r.State!=JobRewardState.Owed&&(r.State!=JobRewardState.Custody||r.Currency==0)||r.Owner!=owner||npcOnly&&r.Giver!=npc)continue;jobRows[jobRowsCount]=1000+i;jobRowLabels[jobRowsCount++]=(r.IsReply?"Reply from ":"Reward from ")+JobNpcName(r.Giver);}
         for(int i=0;i<OfflineJobLedger.JobCapacity;i++){var j=book.Job(i);if(!j.Occupying||!j.Shared&&j.Owner!=owner||npcOnly&&j.Requester!=npc&&j.Target!=npc)continue;
             if(j.Status==JobStatus.RewardOwed||j.Status==JobStatus.ReplyOwed)continue;
             jobRows[jobRowsCount]=i;jobRowLabels[jobRowsCount++]=JobTitle(j.Template)+(j.Status==JobStatus.ReadyToReport?" · Ready":" · "+JobNpcName(j.Shared?j.Requester:j.Target));}

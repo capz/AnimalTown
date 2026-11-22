@@ -58,6 +58,7 @@ public sealed partial class VillagerJobService
     {
         int at=ledger.FindReward(id);if(at<0)return new JobOutcome(JobResult.NotAvailable,id);var reward=ledger.Rewards[at];
         if(reward.Owner!=ledger.Player(state.ActiveProfile)||!ledger.PermanentlyRemoved(reward.Giver)||state.Space!=25)return new JobOutcome(JobResult.InvalidContext,id);
+        if(state.Visiting)return Collect(id,-1,true);
         bool mailed=false;
         if(!reward.IsReply&&reward.Item!=0){
             if(state.MailCount>=OfflineJobLedger.MailboxCapacity)return new JobOutcome(JobResult.FullMailbox,reward.Job);

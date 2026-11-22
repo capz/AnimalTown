@@ -28,11 +28,11 @@ internal static class WaterEffectChecks
         string action=source.Substring(start,end-start);
         check(!action.Contains("A quiet moment")&&!action.Contains("A at the doorway to leave"),
             "empty-space A press has no default outdoor or indoor chat bubble");
-        check(action.Contains("if(tick%3==0&&state.Receive(15))Say")&&
+        check(action.Contains("if(tick%3==0&&TownItemActions.Catch(state,15))Say")&&
               !action.Contains("No butterfly in reach"),
             "bug-net misses are silent without removing successful catches");
         check(action.Contains("Say(v.Name,state.Talk(i))")&&
-              action.Contains("Say(\"Backpack\",\"Picked up!\")"),
+              action.Contains("if(state.Pickup(tx,tz)||state.Pickup(x,z))")&&action.Contains("\"Picked up!\""),
             "genuine villager conversation and item-pickup feedback remain enabled");
     }
 }

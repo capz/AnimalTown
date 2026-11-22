@@ -1668,7 +1668,7 @@ def committed_card_sequence(path, expected_day=None, details=False):
     import zlib
     if not path.exists():return 0
     card=path.read_bytes();sector=8192
-    town_versions=(4,6,7,8,9,10)
+    town_versions=(4,6,7,8,9,10,11)
     job_extension_bytes=4*(40+1) # TownJobState words plus the encoded word count.
     if len(card)%sector:raise AssertionError('Truncated emulator memory card')
     def be16(at):return struct.unpack_from('>H',card,at)[0]
@@ -1676,9 +1676,76 @@ def committed_card_sequence(path, expected_day=None, details=False):
         if len(payload)<32:raise ValueError('Short save record')
         magic,version,catalog,actual,sequence,seed,length=struct.unpack_from('<7I',payload)
         crc=struct.unpack_from('<I',payload,len(payload)-4)[0]
-        if magic!=0x50535441 or version<1 or version>10 or (version>=6 and kind!=0) or actual!=kind or length!=len(payload) or zlib.crc32(payload[:-4])!=crc:
+        if magic!=0x50535441 or version<1 or version>11 or (version>=6 and kind!=0) or actual!=kind or length!=len(payload) or zlib.crc32(payload[:-4])!=crc:
             raise ValueError('Invalid save record')
         return version,catalog,sequence,seed,crc
+    def v11_daylight(town,at,ground_at,ground_count,placed_count,runtime):
+        # Split v11 has thirteen building types and appends police custody
+        # after the job state. Locate daylight from the bounded wire layout,
+        # never by subtracting a fixed suffix from the end of the record.
+        width,height=struct.unpack_from('<2I',town,28);cells=width*height;end=len(town)-4
+        if (width,height)!=(128,120) or ground_count>512 or placed_count>256:
+            raise ValueError('Invalid v11 town dimensions or item counts')
+        def words(count):
+            nonlocal at
+            if count<0 or at<28 or count>(end-at)//4:raise ValueError('Truncated v11 town extension')
+            result=struct.unpack_from('<'+str(count)+'i',town,at);at+=count*4
+            return result
+        active,*types=words(14)
+        if not 0<=active<=3 or any(not 0<=kind<=255 for kind in types):raise ValueError('Invalid v11 building state')
+        npc_runtime=words(42)
+        if runtime is not None and (active or any(npc_runtime)):raise ValueError('Noncanonical v11 town projection')
+        for size,paths in ((cells//4,True),(cells,False)):
+            marker,length=words(2)
+            if marker!=1 or length!=size or length>end-at:raise ValueError('Invalid v11 path or traffic extension')
+            if paths and any(value&0xaa for value in town[at:at+length]):raise ValueError('Invalid v11 path style')
+            at+=length
+        snow_count=words(1)[0]
+        if snow_count!=0 and not 4<=snow_count<=3+cells//2:raise ValueError('Invalid v11 snow checkpoint length')
+        snow=words(snow_count)
+        if snow:
+            day,ticks,tokens=snow[:3]
+            if day<0 or not 0<=ticks<30 or not 1<=tokens<=cells or snow_count!=3+(tokens+1)//2:
+                raise ValueError('Invalid v11 snow checkpoint header')
+            cell=0;has_wear=False
+            for i in range(tokens):
+                token=(snow[3+i//2]>>((i%2)*16))&65535
+                if cell>=cells or token==0:raise ValueError('Invalid v11 snow checkpoint tile')
+                if token&0x8000:
+                    run=token&0x7fff
+                    if run==0 or run>cells-cell:raise ValueError('Invalid v11 snow checkpoint run')
+                    cell+=run
+                else:
+                    if token>>4>=600 or token&15==0:raise ValueError('Invalid v11 snow checkpoint dent')
+                    cell+=1;has_wear=True
+            if cell!=cells or not has_wear:raise ValueError('Incomplete v11 snow checkpoint')
+        daylight=words(1)[0]
+        if not 0<=daylight<=26:raise ValueError('Invalid v11 daylight location')
+        jobs=words(41)
+        if (runtime is None and jobs[0]!=40) or (runtime is not None and any(jobs)):
+            raise ValueError('Invalid v11 job state projection')
+        x,z=words(2)
+        if (x,z)!=(-1,-1) and not (1<=x<=width-4 and 1<=z<=height-5):raise ValueError('Invalid v11 koban site')
+        count=words(1)[0]
+        if not 4<=count<=4+13*512:raise ValueError('Invalid v11 custody length')
+        recovery=words(count);magic,version,sequence,receipts=recovery[:4]
+        if magic!=0x3144464c or version!=1 or sequence<0 or not 0<=receipts<=512 or count!=4+13*receipts:
+            raise ValueError('Invalid v11 custody header')
+        indexes=set();ids=set()
+        for n in range(receipts):
+            index,recovery_id,source,item,x,z,kind,owner,day,rotation,room,wrapped,custody_owner=recovery[4+13*n:17+13*n]
+            if not 0<=index<ground_count or index in indexes or not 1<=recovery_id<=sequence or recovery_id in ids or source not in (0,1,2) or item<=0 or not (0<=x<width and 0<=z<height and 0<=custody_owner<4) or wrapped not in (0,1):
+                raise ValueError('Invalid v11 custody identity')
+            if source==1:
+                if kind!=-1 or not 0<=owner<=9 or not 0<=rotation<=3 or room not in (0,1,2,3,4,16,17,18,19,20,21,24,25,26,*range(32,44)) or wrapped:
+                    raise ValueError('Invalid v11 recovered placement')
+            elif not 0<=owner<4 or custody_owner!=owner or rotation or room or (source==0 and not 0<=kind<=3) or (source==2 and kind!=-1):
+                raise ValueError('Invalid v11 recovered ground item')
+            ground=struct.unpack_from('<6i',town,ground_at+index*24)
+            if ground!=(item,x,z,custody_owner,day,4+8*wrapped):raise ValueError('Changed v11 custody item')
+            indexes.add(index);ids.add(recovery_id)
+        if at!=end:raise ValueError('Trailing v11 town data')
+        return daylight
     best=0;best_day=None;best_details=None
     for directory in (1,2):
         for bat in (3,4):
@@ -1752,14 +1819,22 @@ def committed_card_sequence(path, expected_day=None, details=False):
                                 if part_identity[0] not in (town_versions if kind==0 else (identity[0],)) or part_identity[1:4]!=identity[1:4] or len(part)!=expected_length or part_identity[4]!=expected_crc:
                                     raise ValueError('Mixed save generation')
                         if identity[2]>best:
-                            best=identity[2];town=files[names[0]];best_day=struct.unpack_from('<i',town,40)[0]
+                            town=files[names[0]];town_day=struct.unpack_from('<i',town,40)[0];candidate_details=None
                             if identity[0]>=4:
                                 at=48
                                 for _ in range(2):at+=4+struct.unpack_from('<I',town,at)[0]*4
                                 terrain_hash=__import__('hashlib').sha256(town[48:at]).hexdigest()
                                 for _ in range(6):at+=8;at+=4+struct.unpack_from('<I',town,at)[0]*4;at+=8
-                                for _ in range(2):at+=4+struct.unpack_from('<I',town,at)[0]*24
+                                ground_count=struct.unpack_from('<I',town,at)[0];ground_at=at+4;at=ground_at+ground_count*24
+                                placed_count=struct.unpack_from('<I',town,at)[0];at+=4+placed_count*24
                                 active=struct.unpack_from('<I',runtime,124)[0] if runtime is not None else struct.unpack_from('<I',town,at)[0];profiles=[]
+                                town_version=struct.unpack_from('<I',town,4)[0]
+                                if town_version>=11:
+                                    if active>3:raise ValueError('Invalid v11 active resident')
+                                    daylight=v11_daylight(town,at,ground_at,ground_count,placed_count,runtime)
+                                else:
+                                    daylight_offset=len(town)-8-(job_extension_bytes if town_version>=9 else 0)
+                                    daylight=struct.unpack_from('<I',town,daylight_offset)[0] if town_version>=8 else 0
                                 for name in names[3:]:
                                     part=files[name];length=struct.unpack_from('<I',part,160)[0]
                                     label=''.join(chr(struct.unpack_from('<I',part,164+i*4)[0]) for i in range(length))
@@ -1769,14 +1844,14 @@ def committed_card_sequence(path, expected_day=None, details=False):
                                                      'savings':struct.unpack_from('<q',part,132)[0],'pockets':list(struct.unpack_from('<30i',part,pocket_at))})
                                 plots=[dict(zip(('placed','x','z'),struct.unpack_from('<3i',files[names[1]],28+i*12))) for i in range(4)]
                                 profile_hashes=[__import__('hashlib').sha256(files[name][28:-4]).hexdigest() for name in names[3:]]
-                                best_details={'sequence':best,'dimensions':list(struct.unpack_from('<2I',town,28)),'active':active,'profiles':profiles,'profile_payload_sha256':profile_hashes,'plots':plots,'terrain_sha256':terrain_hash,'houses_sha256':__import__('hashlib').sha256(files[names[1]][28:-4]).hexdigest()}
-                                town_version=struct.unpack_from('<I',town,4)[0]
-                                daylight_offset=len(town)-8-(job_extension_bytes if town_version>=9 else 0)
-                                best_details['daylight_location']=struct.unpack_from('<I',town,daylight_offset)[0] if town_version>=8 else 0
-                                if runtime is not None:best_details['npc_spaces']=[struct.unpack_from('<i',runtime,128+i*28)[0] for i in range(6)]
+                                candidate_details={'sequence':identity[2],'dimensions':list(struct.unpack_from('<2I',town,28)),'active':active,'profiles':profiles,'profile_payload_sha256':profile_hashes,'plots':plots,'terrain_sha256':terrain_hash,'houses_sha256':__import__('hashlib').sha256(files[names[1]][28:-4]).hexdigest(),'daylight_location':daylight}
+                                if runtime is not None:candidate_details['npc_spaces']=[struct.unpack_from('<i',runtime,128+i*28)[0] for i in range(6)]
                                 shop=files[names[2]]
                                 if len(shop)==708 and struct.unpack_from('<I',shop,84)[0]==154:
-                                    best_details['shop']={'stock':list(struct.unpack_from('<12i',shop,36)), 'state':list(struct.unpack_from('<154i',shop,88))}
+                                    candidate_details['shop']={'stock':list(struct.unpack_from('<12i',shop,36)), 'state':list(struct.unpack_from('<154i',shop,88))}
+                            # Malformed metadata must not promote an otherwise
+                            # checksummed newest generation over a valid fallback.
+                            best=identity[2];best_day=town_day;best_details=candidate_details
                     except (ValueError,KeyError,UnicodeError,struct.error):continue
             except (ValueError,UnicodeError,struct.error):continue
     if expected_day is not None and best_day!=expected_day:

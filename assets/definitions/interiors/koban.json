@@ -1,0 +1,82 @@
+{
+  "version": 1,
+  "id": "koban",
+  "size": 6,
+  "units": "metres",
+  "up": "+Y",
+  "walls": [
+    "north",
+    "east",
+    "south",
+    "west"
+  ],
+  "door": {
+    "center": [
+      3,
+      0,
+      6
+    ],
+    "arrival": [
+      3,
+      0,
+      5.35
+    ]
+  },
+  "camera": {
+    "pitch": "fixed",
+    "quarterTurns": true,
+    "heightScale": 0.7,
+    "heightOffset": 2.8,
+    "backScale": 0.9,
+    "backOffset": 1.2
+  },
+  "activities": [
+    [
+      1.45,
+      2.95
+    ],
+    [
+      4.65,
+      1.65
+    ]
+  ],
+  "fixtures": [
+    {
+      "x": 0.35,
+      "z": 1.45,
+      "width": 2.2,
+      "depth": 0.95,
+      "height": 1.12,
+      "kind": 0
+    },
+    {
+      "x": 3.65,
+      "z": 0.3,
+      "width": 2.0,
+      "depth": 0.8,
+      "height": 2.35,
+      "kind": 0
+    },
+    {
+      "x": 0.35,
+      "z": 0.3,
+      "width": 0.75,
+      "depth": 0.75,
+      "height": 1.35,
+      "kind": 0
+    },
+    {
+      "x": 4.9,
+      "z": 3.35,
+      "width": 0.7,
+      "depth": 1.25,
+      "height": 0.65,
+      "kind": 0
+    }
+  ],
+  "floor": "assets/models/interiors/koban/floor.glb",
+  "north": "assets/models/interiors/koban/north.glb",
+  "east": "assets/models/interiors/koban/east.glb",
+  "south": "assets/models/interiors/koban/south.glb",
+  "west": "assets/models/interiors/koban/west.glb"
+}
