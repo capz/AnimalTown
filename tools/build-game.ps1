@@ -64,7 +64,7 @@ if (!$SkipAssets) {
             Copy-Item -LiteralPath $buildingImports[$name] -Destination "out/prepared/$name.glb" -Force
         }else{
             $prepare=@('run','--project','tools/AnimalTown.Tools','-c','Release','--no-build','--','prepare',$projectRoot,"assets/models/$($assetMap[$name])","out/prepared/$name.glb")
-            if($assetMap[$name].StartsWith('villagers/')){$prepare+='--locomotion-only'}
+            if($assetMap[$name].StartsWith('villagers/')){$prepare+='--villager-runtime'}
             Run dotnet $prepare
         }
         $textureEdges=if($assetMap[$name].StartsWith('villagers/')){@(128,256)}else{@(128,256,512,1024)}
