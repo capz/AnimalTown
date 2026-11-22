@@ -12,6 +12,7 @@ public sealed partial class OfflineJobLedger
             if(!j.Shared&&j.Owner!=Player(i/PersonalPerPlayer)||j.Shared&&j.Requester!=Npc(i-SharedStart))throw new InvalidOperationException("Saved job occupies another villager's partition");
             int reward=FindReward(j.Obligation);if(j.Status!=JobStatus.CompletedRetained&&reward<0)throw new InvalidOperationException("Saved live job has no reserved reward");
             if(reward>=0&&Rewards[reward].Job!=j.Id)throw new InvalidOperationException("Saved reward belongs to another job");
+            if(reward>=0&&Rewards[reward].State==JobRewardState.Custody&&j.Status!=JobStatus.RewardOwed&&j.Status!=JobStatus.CompletedRetained&&j.Status!=JobStatus.ReplyOwed)throw new InvalidOperationException("Deferred custody cannot satisfy an unfinished job");
             if(j.Template==JobTemplate.RetrievalBorrowed){for(int a=0;a<j.Borrowers;a++){if(!j.Borrower(a).IsValid||j.Borrower(a)==j.Requester)throw new InvalidOperationException("Invalid saved borrower chain");for(int b=0;b<a;b++)if(j.Borrower(a)==j.Borrower(b))throw new InvalidOperationException("Repeated saved borrower");}}
         }
         for(int i=0;i<Offers.Length;i++)if(!Offers[i].Id.IsEmpty){Add(Offers[i].Id);for(int j=0;j<i;j++)if(!Offers[j].Id.IsEmpty&&Offers[i].Owner==Offers[j].Owner&&Offers[i].Requester==Offers[j].Requester)throw new InvalidOperationException("Duplicate saved offer owner");}

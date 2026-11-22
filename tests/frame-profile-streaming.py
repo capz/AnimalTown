@@ -163,24 +163,52 @@ def save_record(version,kind,sequence,body):
     data=struct.pack('<7I',0x50535441,version,1,kind,sequence,42,32+len(body))+body
     return data+struct.pack('<I',crc32(data))
 
-def generation(bank, town_version, runtime_words, job_clock=None, clock_marker=0x43424f4a):
+def v11_town_body(projected=True, snow=True, custody=True, site=(40,25)):
+    # Follow SplitSaveCodec.EncodeResidentPart: variable terrain/name/item
+    # sections, thirteen types, fixed overlays, then snow/daylight/jobs/custody.
+    body=bytearray(struct.pack('<5i',128,120,5,23,0));offsets={}
+    def append(key,words):
+        offsets[key]=len(body);body.extend(struct.pack('<'+str(len(words))+'I',*(word&0xffffffff for word in words)))
+    append('terrain',(1,15360,1,15360))
+    for npc in range(6):append('npc'+str(npc),(10+11*npc,14,3,ord('N'),ord('p'),ord('a')+npc,10240+11264*npc,14848))
+    append('ground',(1,10,20,30,2,22,12))
+    append('placed',(1,10,1,1,0,1,0))
+    types=[0]*13;types[7]=1;types[12]=2
+    append('buildings',(0 if projected else 2,*types))
+    append('npc_runtime',tuple([0]*42 if projected else [26,0,0,0,0,0,0]+[0]*35))
+    append('paths',(1,3840));body.extend(bytes(3840))
+    append('traffic',(1,15360));body.extend(bytes(15360))
+    append('snow',(4,100,0,2,(0xbbff<<16)|3) if snow else (0,))
+    append('daylight',(13,))
+    jobs=(40,0x31424f4a,1,6,1,2,3,-1,-1,-1,-1,*[word for npc in range(6) for word in (npc,0,0,0,1)])
+    append('jobs',tuple([0]*41) if projected else jobs)
+    append('site',site)
+    recovery=(0x3144464c,1,7,1,0,7,0,10,20,30,0,2,22,0,0,1,2) if custody else (0x3144464c,1,7,0)
+    append('recovery',(len(recovery),*recovery))
+    return bytes(body),offsets
+
+def generation(bank, town_version, runtime_words, job_clock=None, clock_marker=0x43424f4a, *, town_body=None, incremental=True, snow=True, custody=True, site=(40,25)):
     sequence=bank+1
     town=struct.pack('<5I',96,160,1,23,0)+bytes(148)
     if town_version>=10:town+=struct.pack('<5I',4,100,0,2,(0xbbff<<16)|3)
     if town_version>=8:town+=struct.pack('<I',13)
     if town_version>=9:town+=bytes(164)
-    runtime=bytes(268)
+    if town_version>=11:town=v11_town_body(incremental,snow,custody,site)[0]
+    if town_body is not None:town=town_body
+    runtime=bytearray(268)
+    if town_version>=11:struct.pack_into('<ii',runtime,96,2,26)
     if runtime_words:runtime+=struct.pack('<I',runtime_words)+bytes(160)
     if job_clock is not None:runtime+=struct.pack('<Iq',clock_marker,job_clock)
     bases=('AT-Town','AT-Houses','AT-Shops','AT-Player','AT-Villager2-','AT-Villager3-','AT-Villager4-','AT-Residents')
     bodies=(town,bytes(48),bytes(56),*(bytes(268) for _ in range(4)),runtime)
+    if not incremental:bases=bases[:-1];bodies=bodies[:-1]
     files={};references=[]
     for i,(base,body) in enumerate(zip(bases,bodies)):
         kind=i if i<4 else i+1
         part=save_record(town_version if i==0 else 4,kind,sequence,body)
         files[base+str(bank)]=part
-        references.append(struct.pack('<5I',kind,bank,sequence,len(part),crc32(part[:-4])))
-    files[f'AT-Commit{bank}']=save_record(5,4,sequence,b''.join(references))
+        references.append(struct.pack('<5I',kind,bank,sequence,len(part),crc32(part[:-4])) if incremental else struct.pack('<2I',len(part),crc32(part[:-4])))
+    files[f'AT-Commit{bank}']=save_record(5 if incremental else 4,4,sequence,b''.join(references))
     return files
 
 def write_card(path,files):
@@ -217,18 +245,52 @@ with TemporaryDirectory() as fixture:
     write_card(card,old|generation(1,10,40))
     current=namespace['committed_card_sequence'](card,expected_day=23,details=True)
     assert current['sequence']==2 and current['daylight_location']==13
+    for incremental in (True,False):
+        for snow in (True,False):
+            for custody in (True,False):
+                write_card(card,old|generation(1,11,40,incremental=incremental,snow=snow,custody=custody))
+                current=namespace['committed_card_sequence'](card,expected_day=23,details=True)
+                assert current['sequence']==2 and current['daylight_location']==13 and current['active']==2 and current['dimensions']==[128,120]
+                if incremental:assert current['npc_spaces']==[26,0,0,0,0,0]
+    write_card(card,old|generation(1,11,40,site=(-1,-1)))
+    assert namespace['committed_card_sequence'](card)==2
+    body,offsets=v11_town_body()
+    def changed(key,word,value):
+        bad=bytearray(body);struct.pack_into('<i',bad,offsets[key]+word*4,value);return bytes(bad)
+    malformed=[
+        changed('buildings',13,256),changed('paths',0,2),changed('paths',1,3836),
+        changed('traffic',1,15356),changed('snow',0,-1),changed('snow',0,3),changed('snow',0,7684),
+        changed('snow',2,30),changed('snow',3,15361),changed('snow',4,3),
+        changed('daylight',0,27),changed('jobs',0,40),changed('site',0,-1),changed('site',1,116),
+        changed('recovery',0,3),changed('recovery',0,6661),changed('recovery',1,0),changed('recovery',2,2),
+        changed('recovery',3,6),changed('recovery',4,2),changed('recovery',5,1),
+        changed('recovery',7,3),changed('recovery',13,23),changed('recovery',16,2),
+        body[:-4],body+bytes(4),body[:offsets['buildings']+13*4]+body[offsets['buildings']+14*4:]
+    ]
+    for bad in malformed:
+        # generation repairs the record CRC and manifest references: rejection
+        # must come from the malformed layout, not an unrelated checksum error.
+        bad=bytearray(bad);struct.pack_into('<i',bad,12,24)
+        newest=generation(1,11,40,town_body=bytes(bad))
+        write_card(card,old|newest)
+        fallback=namespace['committed_card_sequence'](card,expected_day=23,details=True)
+        assert fallback['sequence']==1 and fallback['daylight_location']==0
+        write_card(card,newest)
+        assert namespace['committed_card_sequence'](card)==0
+        assert namespace['committed_card_sequence'](card,details=True) is None
     write_card(card,old|generation(1,9,39))
     assert namespace['committed_card_sequence'](card)==1
     for clock in (-(1<<63),0,1800000000):
-        for version in (9,10):
+        for version in (9,10,11):
             write_card(card,old|generation(1,version,40,clock))
             assert namespace['committed_card_sequence'](card)==2
         for version in (7,8):
             write_card(card,old|generation(1,version,0,clock))
             assert namespace['committed_card_sequence'](card)==2
     for clock,marker in ((1<<62,0x43424f4a),(0,0)):
-        write_card(card,old|generation(1,9,40,clock,marker))
-        assert namespace['committed_card_sequence'](card)==1
+        for version in (9,11):
+            write_card(card,old|generation(1,version,40,clock,marker))
+            assert namespace['committed_card_sequence'](card)==1
     # The job verifier needs the logical bank names from a mixed layout.
     archive=bytearray(6*8192)
     root=bytearray(8192)
@@ -241,7 +303,7 @@ with TemporaryDirectory() as fixture:
     physical=struct.pack('<4sII',b'ATV1',3,4)+b'oldlive'
     write_card(card,{'AnimalTown':archive,'AnimalTown-Villager1':physical,'AnimalTown-Video':b'video'})
     assert namespace['options_card_files'](card)=={'AT-Player0':b'archived','AT-Player1':b'live','options':b'video'}
-print('Card smoke reader: v9 job-clock and v10 snow generations, daylight offset and malformed-extension fallback passed')
+print('Card smoke reader: v9 job-clock, v10 snow, v11 buildings/custody, daylight and malformed-generation fallback passed')
 
 # Xvfb's number and newline arrive in separate writes. A short read must not
 # close the pipe before the child completes its readiness protocol.

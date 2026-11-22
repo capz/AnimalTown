@@ -49,3 +49,25 @@ The split fixture is a test-only container: a little-endian 32-bit record count,
 followed by a little-endian 32-bit byte length and the original bytes for each
 of the seven records, in `SplitSaveCodec.Encode` order. None of the saved record
 bytes or headers were rewritten after the original codec generated them.
+
+## Pre-koban main fixtures
+
+These immutable files were generated with the unmodified domain source and
+`Capz.Hypercube.Core` 0.1.0-preview.52.1 from main commit
+`c052f325b5776f6071f9b8ffeeae47a3be0f137f`. They independently exercise the final
+twelve-building layout before the koban and recovery extension.
+
+| File | Original format | SHA-256 |
+| --- | --- | --- |
+| `pre-koban-main-v15.bin` | Combined v15 | `87a93b3bdd28a36c57e4a9a82dec6b0b353f47087e836dd81787f0843b0c3217` |
+| `pre-koban-main-split-v10.bin` | Town v10 and six original companion records | `3d27fb54519efd79c77da2dc7c2766f988353f8a410230cc0b347710888ec8b5` |
+
+Both use seed 2208 and sequence 23, Amber with 444 acorns and a placed house,
+and a second profile Milo with 222 acorns. The original job service was enabled
+with town identity 2222008 at `JobCalendar.At(2026,11,22,12)`. Item 10 is dropped
+at (40,25), item 11 is already in lost property at (41,25), and a path is painted
+at (41,26). Winter wear is initialized on snow day 100 with `MaxVisits` entries
+at (20,30). Amber is saved in room 16 at (2,2). These deliberate plot conflicts
+verify that migration selects a new service site without overwriting old items,
+paths or room identities. The split file uses the same test-only record
+container described above. Never regenerate these inputs with current codecs.

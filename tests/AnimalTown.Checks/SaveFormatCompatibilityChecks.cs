@@ -30,8 +30,8 @@ internal static class SaveFormatCompatibilityChecks
     {check(SaveCodec.Encode(expected).SequenceEqual(SaveCodec.Encode(actual)),label);}
     internal static void Run(Action<bool,string> check)
     {
-        Historical(check);Combined(check);Incremental(check);
-        Console.WriteLine("Historical snow/job v14 migration, combined v15, split v10 and incremental compatibility checks passed");
+        Historical(check);PreKoban(check);Combined(check);Incremental(check);
+        Console.WriteLine("Historical snow/job v14 and split-v10 migration, combined v16, split v11 and incremental compatibility checks passed");
     }
     private static void Historical(Action<bool,string> check)
     {
@@ -59,18 +59,35 @@ internal static class SaveFormatCompatibilityChecks
         check(stream.Position==stream.Length&&SplitSaveCodec.ReadVersion(records[0])==10,"historical split fixture retains its snow-v10 town record");
         Same(SaveCodec.Decode(snowBytes),SplitSaveCodec.Decode(records),check,"main's original split-v10 records restore the same complete snow snapshot as its monolithic save");
     }
+    private static void PreKoban(Action<bool,string> check)
+    {
+        var combined=Fixture("pre-koban-main-v15.bin","87a93b3bdd28a36c57e4a9a82dec6b0b353f47087e836dd81787f0843b0c3217");
+        var split=Fixture("pre-koban-main-split-v10.bin","3d27fb54519efd79c77da2dc7c2766f988353f8a410230cc0b347710888ec8b5");
+        using var stream=new MemoryStream(split);using var reader=new BinaryReader(stream);
+        int count=reader.ReadInt32();check(count==SplitSaveCodec.PartCount,"pre-koban fixture contains all original shared records");
+        var records=new byte[count][];for(int i=0;i<count;i++)records[i]=reader.ReadBytes(reader.ReadInt32());
+        check(stream.Position==stream.Length&&combined[4]==15&&SplitSaveCodec.ReadVersion(records[0])==10,"pre-koban fixtures retain the actual main v15 and split-v10 layouts");
+        var a=SaveCodec.Decode(combined);var b=SplitSaveCodec.Decode(records);
+        foreach(var s in new[]{a,b}){
+            int ground=s.Town.FindGround(40,25);
+            check(s.Sequence==23&&s.Name=="Amber"&&s.Wallet==444&&s.Profiles[1].Name=="Milo"&&s.Profiles[1].Wallet==222&&s.Space==16,"pre-koban main saves preserve resident profiles and the occupied original room");
+            check(s.Town.Jobs.TownId==2222008&&s.Town.Traffic.Snow.Packed.Any(v=>v!=0)&&s.Town.Paths.At(41,26)==1,"pre-koban migration preserves simultaneous jobs, snow and painted paths");
+            check(s.Town.Koban.Enabled&&!s.Town.Koban.Contains(40,25)&&ground>=0&&s.Town.Ground[ground].Item==10&&s.Town.LostAndFound.Count==1,"migration adds the koban without replacing the original item or pre-existing custody");
+        }
+        Same(a,b,check,"original combined-v15 and split-v10 sources migrate to identical current towns");
+    }
     private static void Combined(Action<bool,string> check)
     {
         var both=Jobs();AddSnow(both);
         foreach(var state in new[]{SaveCodec.Decode(SnowFixture()),Jobs(),both}){
             var bytes=SaveCodec.Encode(state);
-            check(BitConverter.ToInt32(bytes,4)==15&&BitConverter.ToInt32(bytes,8)==Catalog.Version,"new snow-only, job-only and combined saves use unambiguous schema 15");
-            Same(state,SaveCodec.Decode(bytes),check,"schema 15 preserves every field with either optional extension absent or both present");
+            check(BitConverter.ToInt32(bytes,4)==16&&BitConverter.ToInt32(bytes,8)==Catalog.Version,"new saves keep independent snow/job fields and the koban extension in schema 16");
+            Same(state,SaveCodec.Decode(bytes),check,"schema 16 preserves every field with either optional extension absent or both present");
             var broken=bytes[..^4];RepairCombinedHeader(broken);check(Fails(()=>SaveCodec.Decode(broken)),"a checksum-valid truncated optional extension is rejected");
-            broken=(byte[])bytes.Clone();Put(broken,4,16);check(Fails(()=>SaveCodec.Decode(broken)),"unknown future combined schemas are rejected");
+            broken=(byte[])bytes.Clone();Put(broken,4,17);check(Fails(()=>SaveCodec.Decode(broken)),"unknown future combined schemas are rejected");
         }
         var split=SplitSaveCodec.Encode(both);
-        check(SplitSaveCodec.ReadVersion(split[0])==10,"snow plus the economy ledger retains the existing split-v10 town layout");
+        check(SplitSaveCodec.ReadVersion(split[0])==11,"snow and the koban extension use split-v11 while the economy ledger remains independent");
         Same(both,SplitSaveCodec.DecodeCommitted(SplitSaveCodec.EncodeCommit(both,split),split),check,"combined snow and jobs survive a committed seven-record server snapshot");
         var sourceSnow=both.Town.Traffic.Snow;var checkpoint=sourceSnow.EncodeCheckpoint()!;
         byte[] packed=(byte[])sourceSnow.Packed.Clone();int revision=sourceSnow.Revision;

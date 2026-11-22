@@ -203,6 +203,15 @@
         "The date and time fade out when you run and return when you stop.",
         "Each fade takes about a quarter of a second."
       ]
+    },
+    {
+      "id": "enterable-koban-visitor-custody-20261122",
+      "lines": [
+        "Visit the new koban to collect lost property and restore visitor removals.",
+        "Visitors can add or change town items; removed items stay in the town's lost and found.",
+        "Only local human residents can collect property; shop purchases remain permanent.",
+        "Save migrations preserve old towns, and authenticated item operations protect custody."
+      ]
     }
   ]
 }

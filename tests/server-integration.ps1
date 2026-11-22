@@ -118,13 +118,126 @@ try {
     $after=(Request GET '/v1/me' $null $b.token).Body
     Assert ($after.wallet -eq $before.wallet-160 -and @($after.pockets|Where-Object{$_ -eq 2}).Count -eq 2) 'Cabinet repeated purchase did not deliver and charge exactly twice'
     Assert ((Request POST "$path/ops" @{id=[Guid]::NewGuid().ToString();kind='buy';source='cabinet';slot=10;revision=$shop.revision} $b.token).Status -eq 409) 'Cabinet sold nonessential goods'
+
+    # Start a new service lifetime with the same durable database and tokens.
+    # This also keeps the growing suites within the production per-IP rate budget.
+    Stop-Process -Id $process.Id;$process.WaitForExit()
+    $env:ConnectionStrings__Game=$DatabaseConnection
+    try{$process=Start-Process @launch}finally{$env:ConnectionStrings__Game=$oldConnection}
+    $ready=$false
+    for($i=0;$i -lt 40;$i++){try{if((Request GET '/health' $null $null).Status -eq 200){$ready=$true;break}}catch{};Start-Sleep -Milliseconds 250}
+    Assert $ready 'Server did not restart for custody checks'
+    $persisted=(Request GET '/v1/me' $null $b.token).Body
+    Assert ($persisted.wallet -eq $after.wallet -and ($persisted.pockets -join ',') -eq ($after.pockets -join ',')) 'Permanent shop purchases did not survive restart'
+    Assert ((Request GET $path $null $b.token).Body.display[0].item -eq 0) 'Restart restored purchased shop stock'
+
+    $seed=dotnet tests/AnimalTown.ServerChecks/bin/Release/net10.0/AnimalTown.ServerChecks.dll seed-koban $a.id $b.id
+    if($LASTEXITCODE){throw 'Koban fixture failed'}
+    $kobanSeed=$seed|ConvertFrom-Json
+    $itemPath="/v1/towns/$($a.id)/items"
+    $lostPath="/v1/towns/$($a.id)/lost-found"
+    $items=(Request GET $itemPath $null $b.token).Body
+    Assert ($null -ne $items.revision) 'Authorized visitor cannot inspect editable town items'
+    Assert ((Request GET $lostPath $null $b.token).Status -eq 403) 'Visitor could inspect private lost-and-found inventory'
+    $lost=(Request GET $lostPath $null $a.token).Body
+    Assert ($lost.resident -eq 1 -and $lost.entries.Count -ge 1) 'Custody did not bind to the active local human resident'
+    $spoof=@{id=[Guid]::NewGuid().ToString();kind='claim';source='lost-found';revision=$lost.revision;index=$lost.entries[0].index;actor=1;isResident=$true}
+    Assert ((Request POST "$itemPath/ops" $spoof $b.token).Status -eq 403) 'Visitor spoofed resident claim authorization'
+    Assert ((Request POST "$itemPath/ops" @{id=[Guid]::NewGuid().ToString();kind='pickup';source='ground';revision=$items.revision;index=0} $b.token).Status -eq 400) 'Visitor pickup acquisition was exposed'
+    $guestBefore=(Request GET '/v1/me' $null $b.token).Body
+    $add=@{id=[Guid]::NewGuid().ToString();kind='add';source='ground';revision=$items.revision;playerRevision=$guestBefore.revision;pocket=$kobanSeed.pocket;x=$kobanSeed.x;z=$kobanSeed.z;wrapped=$true}
+    $added=Request POST "$itemPath/ops" $add $b.token
+    Assert ($added.Status -eq 200) 'Authorized visitor could not add their own item'
+    Assert ((Request POST "$itemPath/ops" $add $b.token).Body.revision -eq $added.Body.revision) 'Retried addition mutated town twice'
+    $conflict=$add.Clone();$conflict.x=$kobanSeed.moveX;$conflict.z=$kobanSeed.moveZ
+    Assert ((Request POST "$itemPath/ops" $conflict $b.token).Status -eq 409) 'Item operation id was reused for different content'
+    $stalePocket=$conflict.Clone();$stalePocket.id=[Guid]::NewGuid().ToString();$stalePocket.revision=$added.Body.revision
+    Assert ((Request POST "$itemPath/ops" $stalePocket $b.token).Status -eq 409) 'Stale visitor pocket revision was accepted'
+    $items=(Request GET $itemPath $null $b.token).Body
+    $target=@($items.ground|Where-Object{$_.x -eq $kobanSeed.x -and $_.z -eq $kobanSeed.z})
+    Assert ($target.Count -eq 1 -and $target[0].item -eq 12 -and $target[0].wrapped) 'Visitor addition lost item identity or wrapping'
+    $move=@{id=[Guid]::NewGuid().ToString();kind='move';source='ground';revision=$items.revision;index=$target[0].index;x=$kobanSeed.moveX;z=$kobanSeed.moveZ}
+    $moved=Request POST "$itemPath/ops" $move $b.token
+    Assert ($moved.Status -eq 200) 'Visitor could not modify a town item'
+    $remove=@{id=[Guid]::NewGuid().ToString();kind='remove';source='ground';revision=$items.revision;index=$target[0].index}
+    Assert ((Request POST "$itemPath/ops" $remove $b.token).Status -eq 409) 'Stale town index revision was accepted'
+    $remove.revision=$moved.Body.revision
+    $removed=Request POST "$itemPath/ops" $remove $b.token
+    Assert ($removed.Status -eq 200) 'Visitor removal did not enter custody'
+    Assert ((Request POST "$itemPath/ops" $remove $b.token).Body.revision -eq $removed.Body.revision) 'Removal retry duplicated custody'
+    $lost=(Request GET $lostPath $null $a.token).Body
+    $recovery=@($lost.entries|Where-Object{$_.item -eq 12 -and $_.recoveryId -gt 0})
+    Assert ($recovery.Count -eq 1 -and $recovery[0].wrapped) 'Removal lost its unique recovery record or wrapping'
+    $restore=@{id=[Guid]::NewGuid().ToString();kind='restore';source='lost-found';revision=$lost.revision;recoveryId=$recovery[0].recoveryId}
+    Assert ((Request POST "$itemPath/ops" $restore $b.token).Status -eq 403) 'Visitor restored protected recovery'
+    $restored=Request POST "$itemPath/ops" $restore $a.token
+    Assert ($restored.Status -eq 200) 'Local resident could not restore a visitor removal'
+    Assert ((Request POST "$itemPath/ops" $restore $a.token).Body.revision -eq $restored.Body.revision) 'Restore retry duplicated the original world item'
+    $items=(Request GET $itemPath $null $b.token).Body
+    $target=@($items.ground|Where-Object{$_.x -eq $kobanSeed.moveX -and $_.z -eq $kobanSeed.moveZ})
+    Assert ($target.Count -eq 1 -and $target[0].item -eq 12 -and $target[0].wrapped) 'Restoration did not recover the exact moved item'
+    $remove=@{id=[Guid]::NewGuid().ToString();kind='remove';source='ground';revision=$items.revision;index=$target[0].index}
+    Assert ((Request POST "$itemPath/ops" $remove $b.token).Status -eq 200) 'Restored item could not return to custody'
+    $lost=(Request GET $lostPath $null $a.token).Body
+    $recovery=@($lost.entries|Where-Object{$_.item -eq 12 -and $_.recoveryId -gt 0})[0]
+    $guestAfter=(Request GET '/v1/me' $null $b.token).Body
+    $expectedPockets=@($guestBefore.pockets);$expectedPockets[$kobanSeed.pocket]=0
+    Assert ($guestAfter.wallet -eq $guestBefore.wallet -and ($guestAfter.pockets -join ',') -eq ($expectedPockets -join ',')) 'Visitor acquired a removed item or lost a permanent purchase'
+
+    $http=[System.Net.Http.HttpClient]::new()
+    try{
+        $pending=@()
+        foreach($attempt in 1..2){
+            $claim=@{id=[Guid]::NewGuid().ToString();kind='claim';source='lost-found';revision=$lost.revision;index=$recovery.index;actor=0}
+            $request=[System.Net.Http.HttpRequestMessage]::new([System.Net.Http.HttpMethod]::Post,"$api$itemPath/ops")
+            $request.Headers.Authorization=[System.Net.Http.Headers.AuthenticationHeaderValue]::new('Bearer',$a.token)
+            $request.Content=[System.Net.Http.StringContent]::new(($claim|ConvertTo-Json -Compress),[Text.Encoding]::UTF8,'application/json')
+            $pending+=@{Request=$request;Task=$http.SendAsync($request);Claim=$claim}
+        }
+        $codes=@($pending|ForEach-Object{[int]$_.Task.GetAwaiter().GetResult().StatusCode}|Sort-Object)
+        Assert ($codes[0] -eq 200 -and $codes[1] -eq 409) 'Concurrent custody claims did not have exactly one winner'
+        $winner=@($pending|Where-Object{[int]$_.Task.Result.StatusCode -eq 200})[0].Claim
+        Assert ((Request POST "$itemPath/ops" $winner $a.token).Status -eq 200) 'Successful custody claim could not replay its receipt'
+        foreach($entry in $pending){$entry.Task.Result.Dispose();$entry.Request.Dispose()}
+    }finally{$http.Dispose()}
+    $local=(Request GET '/v1/me' $null $a.token).Body
+    Assert ($local.name -eq 'LocalKoban' -and @($local.pockets|Where-Object{$_ -eq 12}).Count -eq 1) 'Claim credited an actor integer instead of the active local resident'
+    $lost=(Request GET $lostPath $null $a.token).Body
+    $restore.id=[Guid]::NewGuid().ToString();$restore.revision=$lost.revision;$restore.recoveryId=$recovery.recoveryId
+    Assert ((Request POST "$itemPath/ops" $restore $a.token).Status -eq 409) 'Claimed property was restored a second time'
+    dotnet tests/AnimalTown.ServerChecks/bin/Release/net10.0/AnimalTown.ServerChecks.dll seed-deferred-custody $a.id
+    if($LASTEXITCODE){throw 'Deferred custody fixture failed'}
+    $lost=(Request GET $lostPath $null $a.token).Body
+    $deferred=@($lost.entries|Where-Object{$_.index -ge 512})
+    Assert ($deferred.Count -eq 1 -and $deferred[0].item -eq 13 -and $deferred[0].recoveryId -eq 0 -and !$deferred[0].wrapped) 'Durable deferred custody was missing or exposed as a removable world item'
+    $deferredClaim=@{id=[Guid]::NewGuid().ToString();kind='claim';source='lost-found';revision=$lost.revision;index=$deferred[0].index}
+    Assert ((Request POST "$itemPath/ops" $deferredClaim $b.token).Status -eq 403) 'Visitor claimed a deferred town reward'
+    $claimed=Request POST "$itemPath/ops" $deferredClaim $a.token
+    Assert ($claimed.Status -eq 200 -and $claimed.Body.lostCount -eq ($lost.entries.Count-1)) 'Local resident could not claim deferred custody'
+    Assert ((Request POST "$itemPath/ops" $deferredClaim $a.token).Body.revision -eq $claimed.Body.revision) 'Deferred custody claim retry applied twice'
+    $local=(Request GET '/v1/me' $null $a.token).Body
+    Assert (@($local.pockets|Where-Object{$_ -eq 13}).Count -eq 1) 'Deferred custody did not reach the active local pockets exactly once'
+    $lost=(Request GET $lostPath $null $a.token).Body
+    Assert (@($lost.entries|Where-Object{$_.index -ge 512}).Count -eq 0) 'Claimed deferred custody remained available'
+    $deferredClaim.id=[Guid]::NewGuid().ToString();$deferredClaim.revision=$lost.revision
+    Assert ((Request POST "$itemPath/ops" $deferredClaim $a.token).Status -eq 409) 'A fresh operation claimed deferred custody twice'
+    dotnet tests/AnimalTown.ServerChecks/bin/Release/net10.0/AnimalTown.ServerChecks.dll fill-koban-pockets $a.id
+    if($LASTEXITCODE){throw 'Full custody pockets fixture failed'}
+    $lost=(Request GET $lostPath $null $a.token).Body
+    $full=@{id=[Guid]::NewGuid().ToString();kind='claim';source='lost-found';revision=$lost.revision;index=$lost.entries[0].index}
+    Assert ((Request POST "$itemPath/ops" $full $a.token).Status -eq 409) 'Full resident pockets accepted a custody claim'
+    $unchanged=(Request GET $lostPath $null $a.token).Body
+    Assert ($unchanged.revision -eq $lost.revision -and $unchanged.entries.Count -eq $lost.entries.Count) 'Rejected custody claim changed durable state'
     Request POST "/v1/blocks/$($b.id)" @{} $a.token | Out-Null
     Assert ((Request GET $path $null $b.token).Status -eq 403) 'Blocked guest accessed town shop'
+    Assert ((Request GET $itemPath $null $b.token).Status -eq 403) 'Blocked guest accessed town items'
+    $remove.id=[Guid]::NewGuid().ToString();$remove.revision=$unchanged.revision
+    Assert ((Request POST "$itemPath/ops" $remove $b.token).Status -eq 403) 'Blocked guest mutated town items'
     Assert ((Request POST '/v1/visits' @{host=$a.id} $b.token).Status -eq 403) 'Blocked visitor accepted'
     Assert ((Request POST '/v1/auth/token' @{name='LegacySplit';password='test-password-long'} $null).Status -eq 200) 'Migrated login failed'
     dotnet tests/AnimalTown.ServerChecks/bin/Release/net10.0/AnimalTown.ServerChecks.dll verify
     if($LASTEXITCODE){throw 'Backend split storage or migration failed'}
-    Write-Host 'Server integration checks passed: authentication, ownership, idempotency, rollback, friendship, blocking, escrow, grants and atomic guest town-shop purchases.'
+    Write-Host 'Server integration checks passed: authentication, ownership, idempotency, friendship, blocking, permanent purchases, visitor item permissions, custody, deferred rewards, restoration and concurrent local claims.'
 }
 finally {
     $env:ANIMALTOWN_TEST_CONNECTION=$oldTestConnection

@@ -101,15 +101,34 @@ internal static class PathChecks
         started=System.Diagnostics.Stopwatch.GetTimestamp();for(int i=0;i<100;i++)t.Traffic.Refresh(t);
         double selectionMs=(System.Diagnostics.Stopwatch.GetTimestamp()-started)*1000.0/System.Diagnostics.Stopwatch.Frequency/100;
         check(GC.GetAllocatedBytesForCurrentThread()==allocated,"warm entry, normalization and classification allocate no managed objects");
-        var bytes=SaveCodec.Encode(s);check(BitConverter.ToInt32(bytes,4)==11&&t.Traffic.Visits.SequenceEqual(SaveCodec.Decode(bytes).Town.Traffic.Visits),"combined v11 preserves traffic");
-        var parts=SplitSaveCodec.Encode(s);check(SplitSaveCodec.ReadVersion(parts[0])==7&&t.Traffic.Visits.SequenceEqual(SplitSaveCodec.Decode(parts).Town.Traffic.Visits),"split town v7 preserves traffic");
+        var bytes=SaveCodec.Encode(s);check(BitConverter.ToInt32(bytes,4)==16&&t.Traffic.Visits.SequenceEqual(SaveCodec.Decode(bytes).Town.Traffic.Visits),"combined v16 preserves traffic");
+        var parts=SplitSaveCodec.Encode(s);check(SplitSaveCodec.ReadVersion(parts[0])==11&&t.Traffic.Visits.SequenceEqual(SplitSaveCodec.Decode(parts).Town.Traffic.Visits),"split town v11 preserves traffic");
         var storage=new Storage();var repository=new SaveRepository(storage);repository.Save(s);t.Traffic.Enter(t,22,40);repository.Save(s);
         check(t.Traffic.Visits.SequenceEqual(new SaveRepository(storage).Load()!.Town.Traffic.Visits),"incremental saves include traffic before the next classification");
-        var old=parts[0][..^(TileTraffic.Bytes+8+4)];Array.Resize(ref old,old.Length+4);Put(old,4,6);Put(old,24,old.Length);Crc(old);parts[0]=old;
+        // Derive the old twelve-building, paths-only shape explicitly. New
+        // snow/jobs/koban tails are not part of either historical schema.
+        var reader=new SplitSaveCodec.Reader(parts[0],SplitSaveCodec.TownData);reader.SkipWords(5);reader.SkipTerrain();reader.SkipTerrain();
+        for(int i=0;i<6;i++){reader.SkipWords(2);reader.SkipText(24);reader.SkipWords(2);}
+        reader.SkipWords(reader.Range(0,512)*6);reader.SkipWords(reader.Range(0,256)*6);reader.Int();
+        int splitKoban=reader.Offset+BuildingSave.ProfileBuildingCount*4;reader.SkipWords(BuildingWorld.Count+42);reader.Paths(new TownPaths());
+        var old=WithoutKobanType(parts[0],reader.Offset+4,splitKoban);Put(old,4,6);Put(old,24,old.Length);Crc(old);parts[0]=old;
         var legacy=SplitSaveCodec.Decode(parts);check(legacy.Town.Traffic.Visits.All(v=>v==0)&&legacy.Town.Paths.Packed.SequenceEqual(t.Paths.Packed),"old shared towns retain roads without fabricated visits");
-        old=bytes[..^(TileTraffic.Bytes+8)];Put(old,4,10);Put(old,16,old.Length);Put(old,20,(int)SaveCodec.Crc(old,24,old.Length-24));check(SaveCodec.Decode(old).Town.Traffic.Visits.All(v=>v==0),"combined v10 remains readable");
-        var broken=SplitSaveCodec.Encode(s);broken[0][^(TileTraffic.Bytes+13)]=255;Crc(broken[0]);bool rejected=false;try{SplitSaveCodec.Decode(broken);}catch(InvalidOperationException){rejected=true;}check(rejected,"invalid saved path styles remain rejected");
+        int tailBytes=4*(7+AnimalTown.Jobs.TownJobState.EncodedWordCount+s.Town.LostAndFound.EncodedWordCount);
+        // tail words: daylight, job length/data, empty snow/ledger, site x/z,
+        // recovery length/data (the fixture has neither snow nor a job ledger).
+        old=WithoutKobanType(bytes,bytes.Length-tailBytes-TileTraffic.Bytes-8,CombinedBuildingOffset(bytes)+(2+BuildingSave.ProfileBuildingCount)*4);Put(old,4,10);Put(old,16,old.Length);Put(old,20,(int)SaveCodec.Crc(old,24,old.Length-24));check(SaveCodec.Decode(old).Town.Traffic.Visits.All(v=>v==0),"combined v10 remains readable");
+        var broken=SplitSaveCodec.Encode(s);broken[0][reader.Offset-1]=255;Crc(broken[0]);bool rejected=false;try{SplitSaveCodec.Decode(broken);}catch(InvalidOperationException){rejected=true;}check(rejected,"invalid saved path styles remain rejected");
         Console.WriteLine($"Traffic paths: 15360 counter + 512 histogram + 3840 existing path bytes; 8192 native mask bytes on demand; 10000 entries {traversalMs:F2}ms host, classification {selectionMs:F3}ms host; no warm allocations");
+    }
+    private static byte[] WithoutKobanType(byte[] source,int end,int offset)
+    {var result=new byte[end-4];Array.Copy(source,result,offset);Array.Copy(source,offset+4,result,offset,end-offset-4);return result;}
+    private static int CombinedBuildingOffset(byte[] bytes)
+    {
+        int at=32,mail=BitConverter.ToInt32(bytes,at+21*4);at+=35*4;
+        void Text(){int n=BitConverter.ToInt32(bytes,at);at+=4+n*4;}
+        void Records(int words){int n=BitConverter.ToInt32(bytes,at);at+=4+n*words*4;}
+        Text();Text();at+=(GameState.MaximumPockets+64+mail)*4;Records(1);at+=(12+6*6)*4;Records(6);Records(6);at+=4;Records(1);
+        for(int i=0;i<6;i++){Text();at+=16;}return at;
     }
     private static void SnowfallRecovery(Action<bool,string> check,Town town)
     {

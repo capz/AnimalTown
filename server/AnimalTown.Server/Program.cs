@@ -38,6 +38,9 @@ app.MapGet("/v1/inventory",(Delegate)(async(HttpContext c)=>await db.Profile(Me(
 app.MapPost("/v1/inventory/ops",async(HttpContext c,InventoryOp op)=>await db.Apply(Me(c),op));
 app.MapGet("/v1/towns/{host:guid}/shop",async(HttpContext c,Guid host)=>await db.Shop(Me(c),host));
 app.MapPost("/v1/towns/{host:guid}/shop/ops",async(HttpContext c,Guid host,TownShopOp op)=>await db.ShopOperation(Me(c),host,op));
+app.MapGet("/v1/towns/{host:guid}/items",async(HttpContext c,Guid host)=>await db.TownItems(Me(c),host));
+app.MapGet("/v1/towns/{host:guid}/lost-found",async(HttpContext c,Guid host)=>await db.LostFound(Me(c),host));
+app.MapPost("/v1/towns/{host:guid}/items/ops",async(HttpContext c,Guid host,TownItemOp op)=>await db.TownItemOperation(Me(c),host,op));
 app.MapGet("/v1/towns/{id:guid}",async(HttpContext c,Guid id)=>
 {
     if(Me(c)!=id)throw new GameError(403,"owner-only");var state=await db.State(id);c.Response.Headers.ETag="\""+state.Revision+"\"";return Results.Bytes(SaveCodec.Encode(state.State),"application/octet-stream");

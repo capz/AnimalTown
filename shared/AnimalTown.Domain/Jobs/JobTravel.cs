@@ -126,8 +126,20 @@ public sealed partial class OfflineTownTravel : IOfflineJobTravel
     public GameState Return(long now)
     {
         TakeSnapshots(out var home,out var dest);if(home.Town.Jobs.Trip.Id!=dest.Town.Jobs.Trip.Id||dest.Town.Jobs.Trip.Phase!=OfflineTripPhase.Active)throw new InvalidOperationException("No matching active trip");
-        CheckCapacity(dest,OfflineJobLedger.Visitor,home);dest.CaptureProfile();var t=dest.Town.Jobs.Trip;t.Phase=OfflineTripPhase.ReturnPrepared;dest.Town.Jobs.Trip=t;dest.Town.Jobs.ActiveVisitor=false;SaveChecked(second,dest);
+        SettleDestinationGifts(dest);CheckCapacity(dest,OfflineJobLedger.Visitor,home);dest.CaptureProfile();var t=dest.Town.Jobs.Trip;t.Phase=OfflineTripPhase.ReturnPrepared;dest.Town.Jobs.Trip=t;dest.Town.Jobs.ActiveVisitor=false;SaveChecked(second,dest);
         return FinishReturn(home,dest,now);
+    }
+    private static void SettleDestinationGifts(GameState destination)
+    {
+        var ledger=destination.Town.Jobs;var player=ledger.Player(OfflineJobLedger.Visitor);
+        // Return works on private snapshots. The complete settlement is saved
+        // with ReturnPrepared, before anything is copied onto the home card.
+        for(int i=0;i<ledger.Rewards.Length;i++){
+            var r=ledger.Rewards[i];if(r.State!=JobRewardState.Owed||r.Owner!=player||r.Item==0||r.Job.Town!=ledger.TownId)continue;
+            if(!destination.Town.LostAndFound.HoldVisitorReward(destination,i))throw new InvalidOperationException("The visitor reward could not enter police custody");
+            r=ledger.Rewards[i];
+            if(r.Item==0&&r.Currency==0){ledger.Rewards[i]=default;int job=ledger.FindJob(r.Job);if(job>=0&&(!ledger.Jobs[job].Shared||ledger.Jobs[job].Template==JobTemplate.FavorLetter))ledger.Jobs[job]=default;}
+        }
     }
     private GameState FinishReturn(GameState home,GameState dest,long now)
     {
@@ -144,17 +156,18 @@ public sealed partial class OfflineTownTravel : IOfflineJobTravel
     }
     private static void CheckCapacity(GameState source,int profile,GameState dest)
     {
-        int needed=0,free=0;var s=source.Town.Jobs;var d=dest.Town.Jobs;var owner=s.Player(profile);
-        for(int i=0;i<s.Rewards.Length;i++)if(PortableReward(s,s.Rewards[i],owner))needed++;
+        int needed=0,free=0,newIds=0;var s=source.Town.Jobs;var d=dest.Town.Jobs;var owner=s.Player(profile);
+        for(int i=0;i<s.Rewards.Length;i++)if(PortableReward(s,s.Rewards[i],owner)){needed++;if(s.Rewards[i].State==JobRewardState.Custody)newIds++;}
         for(int i=0;i<d.Rewards.Length;i++)if(d.Rewards[i].State==JobRewardState.Empty)free++;
         if(needed>free)throw new InvalidOperationException("Collect destination rewards before travelling");
+        if(newIds>0&&!d.CanAllocate(newIds))throw new InvalidOperationException("Home reward identity space is full");
         if(!s.CanRememberNpcs(d)||!d.CanRememberNpcs(s))throw new InvalidOperationException("Town address book is full");
         int relations=0;for(int i=0;i<OfflineJobLedger.RelationsPerPlayer;i++)if(!s.Relations[profile*OfflineJobLedger.RelationsPerPlayer+i].Npc.IsEmpty)relations++;
         for(int n=0;n<6;n++)if(s.RelationSlot(profile,d.Npc(n),false)<0)relations++;
         if(relations>OfflineJobLedger.RelationsPerPlayer)throw new InvalidOperationException("Villager relationship history is full");
     }
     private static bool PortableReward(OfflineJobLedger ledger,VillagerJobReward r,JobIdentity owner)
-    {if(r.State==JobRewardState.Empty||r.IsReply||r.Owner!=owner)return false;if(r.State==JobRewardState.Owed)return true;int j=ledger.FindJob(r.Job);return j>=0&&!ledger.Jobs[j].Shared;}
+    {if(r.State==JobRewardState.Empty||r.IsReply||r.Owner!=owner)return false;if(r.State==JobRewardState.Custody)return r.Currency>0;if(r.State==JobRewardState.Owed)return true;int j=ledger.FindJob(r.Job);return j>=0&&!ledger.Jobs[j].Shared;}
     private static void CopyPortable(GameState source,int from,GameState dest,int to)
     {
         source.CaptureProfile();var s=source.Town.Jobs;var d=dest.Town.Jobs;var owner=s.Player(from);int fromStart=from*OfflineJobLedger.PersonalPerPlayer,toStart=to*OfflineJobLedger.PersonalPerPlayer;
@@ -164,9 +177,21 @@ public sealed partial class OfflineTownTravel : IOfflineJobTravel
             var original=dest.Profiles[to];p.HousePlaced=original.HousePlaced;p.HouseX=original.HouseX;p.HouseZ=original.HouseZ;p.HouseTier=original.HouseTier;p.GardenTier=original.GardenTier;p.MailCount=original.MailCount;Array.Copy(original.Mail,p.Mail,p.Mail.Length);p.Space=0;p.X=original.X;p.Z=original.Z;dest.Profiles[to]=p;
         }
         d.SetPlayerIdentity(to,owner);
-        for(int i=0;i<OfflineJobLedger.PersonalPerPlayer;i++){if(d.Jobs[toStart+i].Occupying)throw new InvalidOperationException("Portable job partition is already occupied");d.Jobs[toStart+i]=s.Jobs[fromStart+i];}
+        for(int i=0;i<OfflineJobLedger.PersonalPerPlayer;i++){
+            if(d.Jobs[toStart+i].Occupying)throw new InvalidOperationException("Portable job partition is already occupied");
+            var job=s.Jobs[fromStart+i];int reward=s.FindReward(job.Obligation);
+            d.Jobs[toStart+i]=reward>=0&&s.Rewards[reward].State==JobRewardState.Custody?default:job;
+        }
         for(int i=0;i<GameState.MaximumPockets;i++)d.SetBinding(to,i,s.Binding(from,i));
-        for(int i=0;i<s.Rewards.Length;i++)if(PortableReward(s,s.Rewards[i],owner)){int slot=d.FreeReward();if(slot<0)throw new InvalidOperationException("Destination reward capacity changed");d.Rewards[slot]=s.Rewards[i];}
+        for(int i=0;i<s.Rewards.Length;i++)if(PortableReward(s,s.Rewards[i],owner)){
+            int slot=d.FreeReward();if(slot<0)throw new InvalidOperationException("Destination reward capacity changed");var reward=s.Rewards[i];
+            if(reward.State==JobRewardState.Custody){
+                // Only the unpaid money travels. A fresh identity prevents a
+                // later visit colliding with the retained town-owned item.
+                reward.Id=d.Allocate();reward.State=JobRewardState.Owed;reward.Item=0;reward.Category=JobRewardCategory.Currency;reward.IsReply=false;reward.AutomaticReply=false;
+            }
+            d.Rewards[slot]=reward;
+        }
         for(int i=0;i<OfflineJobLedger.RelationsPerPlayer;i++){var r=s.Relations[from*OfflineJobLedger.RelationsPerPlayer+i];if(!r.Npc.IsEmpty)d.RememberRelation(to,r.Npc,r.Friendship,r.Met);}
         d.Receipts[to]=s.Receipts[from];
         for(int n=0;n<6;n++){s.RememberNpc(d.Npc(n),d.TownId,dest.Town.Residents[n].Name);d.RememberNpc(s.Npc(n),s.TownId,source.Town.Residents[n].Name);}
@@ -181,7 +206,9 @@ public sealed partial class OfflineTownTravel : IOfflineJobTravel
     private static void RemovePortable(GameState state,int profile)
     {
         var l=state.Town.Jobs;var owner=l.Player(profile);
-        for(int i=0;i<l.Rewards.Length;i++)if(PortableReward(l,l.Rewards[i],owner))l.Rewards[i]=default;
+        for(int i=0;i<l.Rewards.Length;i++)if(PortableReward(l,l.Rewards[i],owner)){
+            var reward=l.Rewards[i];if(reward.State==JobRewardState.Custody){reward.Currency=0;l.Rewards[i]=reward.Item==0?default:reward;}else l.Rewards[i]=default;
+        }
         for(int i=0;i<OfflineJobLedger.PersonalPerPlayer;i++)l.Jobs[profile*OfflineJobLedger.PersonalPerPlayer+i]=default;
         for(int i=0;i<GameState.MaximumPockets;i++)l.SetBinding(profile,i,default);l.Revision++;
     }

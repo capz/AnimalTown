@@ -82,12 +82,20 @@ public sealed partial class VillagerJobService
     {
         int at=ledger.FindReward(id);if(at<0){int job=ledger.FindJob(id);if(job>=0)at=ledger.FindReward(ledger.Jobs[job].Obligation);}
         if(at<0)return new JobOutcome(JobResult.NotAvailable,id);var reward=ledger.Rewards[at];
-        if(reward.State!=JobRewardState.Owed)return new JobOutcome(JobResult.NotReady,id);
+        if(reward.State!=JobRewardState.Owed&&(reward.State!=JobRewardState.Custody||reward.Currency==0))return new JobOutcome(JobResult.NotReady,id);
         if(reward.Owner!=ledger.Player(state.ActiveProfile))return new JobOutcome(JobResult.AlreadyClaimed,id);
         if(!recovery&&(npc<0||reward.Giver!=ledger.Npc(npc)))return new JobOutcome(JobResult.WrongNpc,id);
+        // A home-issued travelling obligation belongs to the visitor. A new
+        // destination reward belongs in custody; unknown sources stay owed.
+        bool homeObligation=state.Visiting&&reward.Job.Town==ledger.Trip.Home;
+        if(state.Visiting&&reward.Item!=0&&reward.Job.Town!=ledger.TownId&&!homeObligation)return new JobOutcome(JobResult.NotAvailable,reward.Job);
         if(reward.IsReply)return CollectReply(at);
         int credited=Math.Min(reward.Currency,GameState.WalletLimit-state.Wallet),item=0;
-        if(reward.Item!=0){if(state.FreeSlot()<0)return new JobOutcome(JobResult.FullPockets,reward.Job,item:reward.Item);state.Receive(reward.Item);item=reward.Item;reward.Item=0;}
+        if(reward.Item!=0&&reward.State!=JobRewardState.Custody){
+            item=reward.Item;
+            if(state.Visiting&&!homeObligation){if(!state.Town.LostAndFound.HoldVisitorReward(state,at))return new JobOutcome(JobResult.NotAvailable,reward.Job);reward=ledger.Rewards[at];}
+            else{if(!state.Receive(reward.Item))return new JobOutcome(JobResult.FullPockets,reward.Job,item:reward.Item);reward.Item=0;}
+        }
         state.Wallet+=credited;reward.Currency-=credited;
         if(reward.Currency==0&&reward.Item==0){ledger.Rewards[at]=default;int job=ledger.FindJob(reward.Job);if(job>=0&&!ledger.Jobs[job].Shared)ledger.Jobs[job]=default;}
         else ledger.Rewards[at]=reward;

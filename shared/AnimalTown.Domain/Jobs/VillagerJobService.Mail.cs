@@ -109,6 +109,17 @@ public sealed partial class VillagerJobService
     private JobOutcome InsertReply(int rewardSlot,int profile)
     {
         var reward=ledger.Rewards[rewardSlot];int count=profile==state.ActiveProfile?state.MailCount:state.ProfileAt(profile).MailCount;
+        // The save format has four resident inboxes. A guest reply is settled
+        // directly into town custody rather than written over the outbox slots.
+        if(profile==OfflineJobLedger.Visitor){
+            if(!state.Visiting||reward.Job.Town!=ledger.TownId)return new JobOutcome(JobResult.NotAvailable,reward.Job);
+            int gift=reward.Item;
+            if(gift!=0&&!state.Town.LostAndFound.HoldVisitorReward(state,rewardSlot))return new JobOutcome(JobResult.NotAvailable,reward.Job);
+            reward=ledger.Rewards[rewardSlot];
+            if(reward.Item==0&&reward.Currency==0)ledger.Rewards[rewardSlot]=default;
+            int guestJob=ledger.FindJob(reward.Job);if(guestJob>=0&&ledger.Jobs[guestJob].Template==JobTemplate.FavorLetter)ledger.Jobs[guestJob]=default;
+            return new JobOutcome(JobResult.Ok,reward.Job,item:gift);
+        }
         if(count>=OfflineJobLedger.MailboxCapacity)return new JobOutcome(JobResult.FullMailbox,reward.Job);
         if(!ledger.CanAllocate(1))return new JobOutcome(JobResult.InvalidIdentity,reward.Job);
         ledger.EnsureMail();var letter=new JobMailRecord{Id=ledger.Allocate(),Owner=reward.Owner,Sender=reward.Giver,Recipient=reward.Owner,State=JobMailState.Inbox,Gift=reward.Item,ReplyText=reward.ReplyText,Reply=true,SentAt=reward.ResolvedAt,DueAt=Now};
@@ -140,7 +151,7 @@ public sealed partial class VillagerJobService
     }
     public JobOutcome TakeMailPresent(int slot,ulong sequence)
     {
-        if(!Enabled||(uint)slot>=state.MailCount)return new JobOutcome(JobResult.NotAvailable);
+        if(!Enabled||state.Visiting||(uint)slot>=state.MailCount)return new JobOutcome(JobResult.NotAvailable);
         var letter=ledger.Letter(state.ActiveProfile,slot);ulong fingerprint=MailFingerprint(JobCommandKind.TakePresent,letter.Id,0,0,"");
         if(MailReceipt(sequence,fingerprint,out var prior))return prior;
         if(letter.State!=JobMailState.Inbox||letter.Owner!=ledger.Player(state.ActiveProfile)||letter.Gift==0)return CommitMail(sequence,fingerprint,new JobOutcome(JobResult.WrongItem));
