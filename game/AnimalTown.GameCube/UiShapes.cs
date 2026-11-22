@@ -20,7 +20,18 @@ internal sealed class UiShapes : IDisposable
         if(plan.TakeOverflow())for(int n=0;n<8;n++){int oldest=plan.Oldest(true);if(oldest<0)break;Release(oldest);}
         for(int slot=plan.TakePending();slot>=0;slot=plan.TakePending()){
             while(bytes+(plan.Panels[slot]?20000:10000)>384*1024){int oldest=plan.Oldest();if(oldest<0)break;Release(oldest);}
-            var built=Build(plan.Widths[slot],plan.Heights[slot],plan.Radii[slot],plan.Bulges[slot],plan.Panels[slot]);
+            Geometry2D built;
+            try{built=Build(plan.Widths[slot],plan.Heights[slot],plan.Radii[slot],plan.Bulges[slot],plan.Panels[slot]);}
+            catch(Exception error){
+                // Failure-only evidence: keep the original exception and the
+                // renderer's existing admission policy unchanged.
+                Dolphin.Diagnostics.DebugOverlay.WriteLine("ANIMALTOWN UI SHAPE FAILED view "+view+" tab "+tab+" slot "+slot+" width "+plan.Widths[slot]+" height "+plan.Heights[slot]+" radius "+plan.Radii[slot]+" bulge "+plan.Bulges[slot]+" panel "+plan.Panels[slot]+" cached_bytes "+bytes+" error "+error.Message);
+                try{
+                    var memory=new int[32];NativeFrame.Memory(memory);
+                    Dolphin.Diagnostics.DebugOverlay.WriteLine("ANIMALTOWN UI SHAPE MEMORY flags "+memory[1]+" mem1_used "+memory[5]+" mem1_total "+memory[2]+" arena_free "+memory[3]+" malloc_free "+memory[4]+" managed_used "+memory[7]+" managed_capacity "+memory[9]+" graphics_bytes "+memory[11]+" model_bytes "+memory[13]);
+                }catch(Exception){/* Diagnostics must not replace the build failure. */}
+                throw;
+            }
             geometry[slot]=built;bytes+=built.NativeBytes;plan.Complete(slot);
         }
     }

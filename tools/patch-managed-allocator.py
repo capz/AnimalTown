@@ -17,7 +17,7 @@ assert text[start:end].count('rebuild_free_list(heap);')==1
 source.write_text(text[:start]+'#include "native-managed-allocator.inc"\n\n'+text[end:])
 
 here=Path(__file__).resolve().parent
-for name in ('native-managed-allocator.inc','native-frame-counters.h','native-terrain-mesh.inc','native-terrain-archive.inc'):
+for name in ('native-managed-allocator.inc','native-frame-counters.h','native-terrain-mesh.inc','native-terrain-archive.inc','native-mesh-diagnostics.inc'):
     shutil.copyfile(here/name,root/'include'/name)
 shutil.copyfile(here/'native-frame-counters.c',root/'source/animaltown_frame_counters.c')
 # Retain exact resident geometry/skin/animation while dropping source textures.
@@ -61,6 +61,40 @@ text=text.replace('dnd_draw_backend_flush(r->data,count,0);return 0;','dnd_draw_
 replace('dnd_draw_backend_flush(r->data,r->bytes,2);return 0;', 'dnd_draw_backend_flush(r->data,r->bytes,2);TOWN_COUNT(TOWN_TEXTURE_UPDATES);return 0;')
 replace('mesh_color(r);dnd_draw_backend_flush(r->data,r->bytes,0);dnd_draw_backend_mesh_changed();return 0;', 'mesh_color(r);dnd_draw_backend_flush(r->data,r->bytes,0);dnd_draw_backend_mesh_changed();TOWN_COUNT(TOWN_MESH_UPDATES);return 0;')
 replace('#include "dnd_mesh_streams.inc"','#include "native-terrain-mesh.inc"\n#include "native-terrain-archive.inc"\n#include "dnd_mesh_streams.inc"')
+# A failed Mesh token otherwise collapses invalid data, frame misuse and MEM1
+# exhaustion into one managed message. Keep each pinned guard and its result;
+# only the failing branches emit evidence (including the allocator's reason).
+replace('static DndDrawVertex staging[768];','static DndDrawVertex staging[768];\n#include "native-mesh-diagnostics.inc"')
+replace('if(dnd_raw_depth() || bytes<=0 || bytes>BUDGET-total_bytes || alignment<32 || alignment>4096 || (alignment&(alignment-1))) return 0;',
+'''if(dnd_raw_depth())return town_mesh_resource_failure(kind,"raw-scope",bytes);
+    if(bytes<=0)return town_mesh_resource_failure(kind,"allocation-size",bytes);
+    if(bytes>BUDGET-total_bytes)return town_mesh_resource_failure(kind,"draw-budget",bytes);
+    if(alignment<32 || alignment>4096 || (alignment&(alignment-1)))return town_mesh_resource_failure(kind,"alignment",bytes);''')
+replace('if(!base) return 0;', 'if(!base)return town_mesh_resource_failure(kind,"malloc",bytes);')
+start=text.index('static int create(int kind,int bytes,int alignment) {')
+end=text.index('\n}',start)
+body=text[start:end]
+assert body.count('    return 0;')==1, 'Pinned resource exhaustion hook changed'
+text=text[:start]+body.replace('    return 0;','    return town_mesh_resource_failure(kind,"resource-slots",bytes);')+text[end:]
+replace('if(dnd_device_active() || !a || n<1 || n>65535 || !array_range(a,0,n) || m<0 || (!indices && m) || !vertex_size(format)) return 0;',
+'''if(dnd_device_active())return town_mesh_failure("active-frame",n,m,format,-1);
+    if(!a || n<1 || n>65535 || !array_range(a,0,n))return town_mesh_failure("vertex-range",n,m,format,-1);
+    if(m<0 || (!indices && m))return town_mesh_failure("index-range-envelope",n,m,format,-1);
+    if(!vertex_size(format))return town_mesh_failure("vertex-format",n,m,format,-1);''')
+replace('if((m?m:n)%3 || m>3*65535 || (indices && (!array_range(indices,0,m)||indices->element_size!=2))) return 0;',
+'''if((m?m:n)%3 || m>3*65535)return town_mesh_failure("triangle-count",n,m,format,-1);
+    if(indices && (!array_range(indices,0,m)||indices->element_size!=2))return town_mesh_failure("index-layout",n,m,format,-1);''')
+replace('int token=create(MESH,n*(int)sizeof(DndDrawVertex)+m*2,32);Resource *r=find(token,MESH);if(!r)return 0;',
+'''int token=create(MESH,n*(int)sizeof(DndDrawVertex)+m*2,32);Resource *r=find(token,MESH);
+    if(!r)return town_mesh_failure("mesh-resource",n,m,format,n*(int)sizeof(DndDrawVertex)+m*2);''')
+replace('if(!vertices(a,0,n,format,(DndDrawVertex*)r->data)){release(r);return 0;}',
+'''if(!vertices(a,0,n,format,(DndDrawVertex*)r->data)){
+        release(r);return town_mesh_failure(a->element_size!=(uint32_t)vertex_size(format)?"vertex-layout":"non-finite-vertex",n,m,format,n*(int)sizeof(DndDrawVertex)+m*2);
+    }''')
+replace('if(m){memcpy(index,indices->data,(size_t)m*2);for(int i=0;i<m;i++)if(index[i]>=n){release(r);return 0;}}',
+'''if(m){memcpy(index,indices->data,(size_t)m*2);for(int i=0;i<m;i++)if(index[i]>=n){
+        release(r);return town_mesh_failure("index-out-of-range",n,m,format,n*(int)sizeof(DndDrawVertex)+m*2);
+    }}''')
 resource.write_text(text)
 
 generated=root/'source/generated_program.c'
