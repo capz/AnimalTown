@@ -82,6 +82,10 @@ if (!$SkipAssets) {
     }
 }
 $buildingNativeParts=@((Get-Content out/building-assets.json -Raw|ConvertFrom-Json -AsHashtable).Keys|Sort-Object|ForEach-Object{"out/disc/$($_)-tex128.dndmodel"})
+# Closed composites remain cooked comparison assets. Runtime reuses the seven
+# exterior/door/interior parts, so only those enter its retained memory budget.
+$buildingResidentParts=@($buildingNativeParts|Where-Object{$_ -notlike '*-exterior-closed-tex128.dndmodel'})
+RunNative '.' 'python3' @('tests/building-closed-equivalence.py','out/disc')
 RunNative '.' 'sh' (@('-c','cc -std=c11 -Wall -Wextra -Werror -ffunction-sections -fdata-sections -Iout/sdk-native/include tests/native-building-assets.c out/sdk-native/source/model.c out/sdk-native/source/model_animation.c out/sdk-native/source/verified_copy.c out/sdk-native/source/aram.c -Wl,--gc-sections -lm -o /tmp/animaltown-building-assets && /tmp/animaltown-building-assets "$@"','building-assets')+$buildingNativeParts)
 # Exercise the opt-in static retention patch with the real cooked parts after
 # AOT/native patching below; the pinned SDK test above remains independent.
@@ -129,7 +133,7 @@ if('shadows' -in $validation.native){RunNative '.' 'sh' @('-c','cc -std=c11 -Wal
 Run dotnet @('build','game/AnimalTown.GameCube','-c','Release','--no-restore','-v','quiet','-p:DepotProfile=false')
 Run dotnet @("$sdkRoot/tools/compiler/DolphinDotNet.Compiler.dll",'--bundle','game/AnimalTown.GameCube/bin/Release/net8.0/AnimalTown.GameCube.dll','out/native')
 & (Join-Path $PSScriptRoot 'patch-native.ps1') -Root $projectRoot
-RunNative '.' 'sh' (@('-c','cc -DANIMALTOWN_RETAIN_BUILDINGS -std=c11 -Wall -Wextra -Werror -ffunction-sections -fdata-sections -Iout/native/include tests/native-building-assets.c out/native/source/model.c out/native/source/model_animation.c out/native/source/verified_copy.c out/native/source/aram.c -Wl,--gc-sections -lm -o /tmp/animaltown-building-retained && /tmp/animaltown-building-retained "$@"','building-retained')+$buildingNativeParts)
+RunNative '.' 'sh' (@('-c','cc -DANIMALTOWN_RETAIN_BUILDINGS -std=c11 -Wall -Wextra -Werror -ffunction-sections -fdata-sections -Iout/native/include tests/native-building-assets.c out/native/source/model.c out/native/source/model_animation.c out/native/source/verified_copy.c out/native/source/aram.c -Wl,--gc-sections -lm -o /tmp/animaltown-building-retained && /tmp/animaltown-building-retained "$@"','building-retained')+$buildingResidentParts)
 $residentNativeModels=@(@('fox','bunny','giraffe','cat','hamster','spaniel')|ForEach-Object{"out/disc/$($_)-tex128.dndmodel"})
 RunNative '.' 'sh' (@('-c','cc -std=c11 -Wall -Wextra -Werror -ffunction-sections -fdata-sections -Iout/native/include tests/native-resident-models.c out/native/source/model.c out/native/source/model_animation.c out/native/source/verified_copy.c out/native/source/aram.c -Wl,--gc-sections -lm -o /tmp/animaltown-resident-models && /tmp/animaltown-resident-models "$@"','resident-models')+$residentNativeModels)
 function CompileNative([string]$Directory,[string]$Target){

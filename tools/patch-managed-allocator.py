@@ -65,17 +65,21 @@ replace('#include "dnd_mesh_streams.inc"','#include "native-terrain-mesh.inc"\n#
 # exhaustion into one managed message. Keep each pinned guard and its result;
 # only the failing branches emit evidence (including the allocator's reason).
 replace('static DndDrawVertex staging[768];','static DndDrawVertex staging[768];\n#include "native-mesh-diagnostics.inc"')
+replace('static int create(int kind,int bytes,int alignment) {',
+        'static int create(int kind,int bytes,int alignment) {\n    town_mesh_malloc_failed=0;')
 replace('if(dnd_raw_depth() || bytes<=0 || bytes>BUDGET-total_bytes || alignment<32 || alignment>4096 || (alignment&(alignment-1))) return 0;',
 '''if(dnd_raw_depth())return town_mesh_resource_failure(kind,"raw-scope",bytes);
     if(bytes<=0)return town_mesh_resource_failure(kind,"allocation-size",bytes);
     if(bytes>BUDGET-total_bytes)return town_mesh_resource_failure(kind,"draw-budget",bytes);
     if(alignment<32 || alignment>4096 || (alignment&(alignment-1)))return town_mesh_resource_failure(kind,"alignment",bytes);''')
-replace('if(!base) return 0;', 'if(!base)return town_mesh_resource_failure(kind,"malloc",bytes);')
+replace('if(!base) return 0;', 'if(!base){town_mesh_malloc_failed=kind==MESH;return town_mesh_resource_failure(kind,"malloc",bytes);}')
 start=text.index('static int create(int kind,int bytes,int alignment) {')
 end=text.index('\n}',start)
 body=text[start:end]
 assert body.count('    return 0;')==1, 'Pinned resource exhaustion hook changed'
 text=text[:start]+body.replace('    return 0;','    return town_mesh_resource_failure(kind,"resource-slots",bytes);')+text[end:]
+replace('int dnd_mesh_create_range(DndArray *a,int n,DndArray *indices,int m,int format,int dynamic) {',
+        'int dnd_mesh_create_range(DndArray *a,int n,DndArray *indices,int m,int format,int dynamic) {\n    town_mesh_malloc_failed=0;')
 replace('if(dnd_device_active() || !a || n<1 || n>65535 || !array_range(a,0,n) || m<0 || (!indices && m) || !vertex_size(format)) return 0;',
 '''if(dnd_device_active())return town_mesh_failure("active-frame",n,m,format,-1);
     if(!a || n<1 || n>65535 || !array_range(a,0,n))return town_mesh_failure("vertex-range",n,m,format,-1);
@@ -105,6 +109,7 @@ if generated.exists():
         'Snapshot':(1,'animaltown_frame_snapshot((DndArray*){0},dnd_value_heap);return 0;'),
         'Service':(0,'animaltown_frame_service();return 0;'),
         'Memory':(1,'animaltown_frame_memory((DndArray*){0},dnd_value_heap);return 0;'),
+        'TakeMeshAllocationFailure':(0,'dnd_async_require_application_thread();return animaltown_take_mesh_allocation_failure();'),
         'Dump':(5,'animaltown_frame_dump((DndArray*){0},(int){1},(DndArray*){2},(uint32_t){3},(uint32_t){4});return 0;'),
         'DumpMetrics':(6,'animaltown_frame_dump_metrics((DndArray*){0},(DndArray*){1},(DndArray*){2},(int){3},(int){4},(uint32_t){5});return 0;'),
         'Create':(4,'return dnd_mesh_create_range((DndArray*){0},(int){1},(DndArray*){2},(int){3},2,0);'),
@@ -115,10 +120,12 @@ if generated.exists():
         m=matches[0];args=re.findall(r'intptr_t (\w+)',m[2]);assert len(args)==count
         text=text[:m.start()]+'intptr_t '+m[1]+'('+m[2]+') { '+body.format(*args)+' }'+text[m.end():]
     text='''#include "dnd_draw.h"
+#include "dnd_async.h"
 extern void animaltown_frame_reset(int,DndManagedHeap*);
 extern void animaltown_frame_snapshot(DndArray*,DndManagedHeap*);
 extern void animaltown_frame_service(void);
 extern void animaltown_frame_memory(DndArray*,DndManagedHeap*);
+extern int animaltown_take_mesh_allocation_failure(void);
 extern void animaltown_frame_dump(DndArray*,int,DndArray*,uint32_t,uint32_t);
 extern void animaltown_frame_dump_metrics(DndArray*,DndArray*,DndArray*,int,int,uint32_t);
 extern int animaltown_mesh_recycle(int,DndArray*,int,DndArray*,int);

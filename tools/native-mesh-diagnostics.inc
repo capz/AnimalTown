@@ -4,6 +4,13 @@
 #ifdef DND_GAMECUBE_STORAGE
 #include <malloc.h>
 #endif
+/* Graphics creation belongs to the application executor. This consumed flag
+ * distinguishes one actual mesh malloc rejection from validation/budget errors.
+ * The generic mesh-resource diagnostic must not overwrite it. */
+static int town_mesh_malloc_failed;
+int animaltown_take_mesh_allocation_failure(void){
+    int failed=town_mesh_malloc_failed;town_mesh_malloc_failed=0;return failed;
+}
 static int town_mesh_failure(const char *reason,int vertices,int indices,int format,int bytes){
     int live=0;
     for(int i=0;i<SLOTS;i++)if(slots[i].kind)live++;

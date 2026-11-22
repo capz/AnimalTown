@@ -33,7 +33,7 @@ drawn 5 × 7 sign glyphs align to that 32px atlas grid.
 
 ## Geometry and material budget
 
-| Static part | Triangles | Source vertices | Indexed runtime vertices |
+| Static part | Triangles | Source vertices | Indexed vertices |
 | --- | ---: | ---: | ---: |
 | Exterior | 215 | 645 | 428 |
 | Door | 26 | 78 | 58 |
@@ -42,8 +42,8 @@ drawn 5 × 7 sign glyphs align to that 32px atlas grid.
 | East wall | 40 | 120 | 80 |
 | South wall and doorway | 40 | 120 | 72 |
 | West wall | 40 | 120 | 80 |
-| Closed exterior, derived by the existing cooker | 241 | 723 | 486 |
-| **Runtime kit total** | **862** | **2,586** | **1,725** |
+| **Seven resident parts** | **621** | **1,863** | **1,239** |
+| Closed exterior, cooked comparison asset only | 241 | 723 | 486 |
 
 The interior directory also contains a compatible copy of the door source; the
 runtime catalog reuses the exterior door. Each source part has one mesh, one
@@ -63,6 +63,26 @@ not use this step. `building-check` also covers UV/normal seams and signed zero:
 dotnet run --project tools/AnimalTown.Tools -c Release -- building-check .
 ```
 
+The renderer draws the same exterior and hinged door at every opening angle,
+including zero. It does not load the three derived closed exteriors. The cooked
+comparison assets remain available for `tests/building-closed-equivalence.py`,
+which verifies every expanded 80-byte vertex record after quantized hinge
+translation, plus the exact material and texture sections for all three kits:
+
+```sh
+python3 tests/building-closed-equivalence.py out/disc
+```
+
+Closing a door now retains the existing opening path's two submissions. Total
+triangles and authored materials stay unchanged; the extra door submission adds
+bounded draw and material-state work. Thirteen visible buildings need at most
+26 poses, or 28 with an additional preview, within the existing 32-pose array.
+At night, a separate door uses the same nearest-two-light selection anchor as
+the existing open-door path. That anchor includes the hinge translation and can
+select a different nearby light than the former combined closed model; the
+geometry equivalence check does not claim pixel-identical nighttime lighting.
+The onboarding preview is outside that building point-light scope.
+
 The exterior collision footprint stays 3 × 3m. Geometry bounds are approximately
 `[-0.1125, -0.015, -0.1125]` to `[3.1125, 3.54, 3.58]`, including the roof overhang
 and doorstep. The door is 1.1m wide, 2.15m tall and at most 0.13m deep, with its
@@ -71,9 +91,9 @@ and approach `(1.5, 0, 3.5)`.
 
 ### Measured native memory
 
-The production `tests/native-building-assets.c` loader checks passed for all
-24 cooked parts, both against the pinned SDK and with the existing
-`tools/native-building-retained.inc` path applied by
+The production `tests/native-building-assets.c` loader checks cover all
+24 cooked parts against the pinned SDK and the 21 resident parts with the
+existing `tools/native-building-retained.inc` path applied by
 `tools/patch-managed-allocator.py` to an isolated SDK copy. Cooking used
 `DolphinDotNet.Assets` 0.1.0-preview.376.1, the exact `build-game.ps1` 128-tier
 policy (cottage 64px, shop/koban 32px), two mip levels, compiled GX materials
@@ -81,12 +101,23 @@ and the existing clockwise winding conversion.
 
 | Retained kit | Budgeted native bytes |
 | --- | ---: |
-| Cottage, 8 parts | 290,784 |
-| Shop, 8 parts | 274,592 |
-| Koban, 8 parts | 201,088 |
-| **All resident building kits** | **766,464 (748.5 KiB)** |
+| Cottage, 7 parts | 225,216 |
+| Shop, 7 parts | 190,112 |
+| Koban, 7 parts | 152,736 |
+| **All resident building kits** | **568,064 (554.75 KiB)** |
 | Existing ceiling | 786,432 (768 KiB) |
-| **Remaining space** | **19,968 (19.5 KiB)** |
+| **Remaining model-budget space** | **218,368 (213.25 KiB)** |
+
+The previous eight-part kits charged 766,464 bytes. Removing their three closed
+models and instances removes 198,400 bytes of budget charges: 65,568 cottage,
+84,480 shop and 48,352 koban. Budget charges include shared textures, so that
+number is not the physical memory recovery. With all 24 parts simultaneously
+resident, releasing only the closed models/instances reduced the host's real
+tracked native allocations by 166,528 bytes. Their separately allocated model
+and instance structures add another 1,056 bytes on that 64-bit host, for
+167,584 bytes of released allocation requests. The remaining shared atlases stay
+resident. This measurement excludes libc bookkeeping; actual GameCube free
+memory remains a separate emulator/hardware measurement.
 
 These figures include one instance per part on a 64-bit host, whose wider
 pointers make the calculation conservative. All parts passed the unchanged
