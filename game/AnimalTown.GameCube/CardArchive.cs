@@ -11,6 +11,7 @@ internal sealed class CardArchive
     private const string Container="AnimalTown",Expanded="AnimalTown2",Marker="AT-Archive";
     private readonly MemoryCard card;
     private readonly VillagerCardFiles villagers;
+    private readonly bool preserveVillagerLayout;
     private readonly int device;
     private readonly byte[] banner,icon;
     private GameState? textReuse;
@@ -19,9 +20,9 @@ internal sealed class CardArchive
     private bool unverifiedLegacyTarget;
     internal void ReuseTextFrom(GameState state){textReuse=state;}
     private int phase,epoch,growBlocks;
-    internal CardArchive(MemoryCard card,byte[] banner,byte[] icon,int device,GameState? textReuse=null)
+    internal CardArchive(MemoryCard card,byte[] banner,byte[] icon,int device,GameState? textReuse=null,bool preserveVillagerLayout=false)
     {
-        this.card=card;this.banner=banner;this.icon=icon;this.device=device;this.textReuse=textReuse;
+        this.card=card;this.banner=banner;this.icon=icon;this.device=device;this.textReuse=textReuse;this.preserveVillagerLayout=preserveVillagerLayout;
         var entries=card.GetEntries();bool legacy=false;foreach(var entry in entries)legacy|=SplitSaveCodec.IsFile(entry.Name);
         villagers=new VillagerCardFiles(card,banner,icon,entries);
         // A source growth intent also permits recovery of a target whose
@@ -130,7 +131,7 @@ internal sealed class CardArchive
     {
         EnsureWritable();
         int slot=VillagerCardFiles.SlotForBank(name);
-        if(slot<0||!SplitSaveCodec.IsCreatedProfileRecord(slot,bytes)){
+        if(slot<0||preserveVillagerLayout&&!villagers.Exists(slot)||!SplitSaveCodec.IsCreatedProfileRecord(slot,bytes)){
             WriteShared(name,bytes);
             return;
         }

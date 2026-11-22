@@ -451,7 +451,7 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
     }
     // Gameplay saves require this explicit menu action. The profile picker's
     // separately confirmed Delete action also commits, via TownSession.
-    private bool SaveFromMenu(bool quit=false)
+    private bool SaveFromMenu(bool quit=false,bool travelCheckpoint=false)
     {
         if(!SaveCards.Enabled){saveStatus="Saving is disabled for this session. Restart to choose a card.";return false;}
         if(damagedSave){saveStatus="Damaged saves preserved. Use another card.";return false;}
@@ -467,11 +467,19 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
             state.Facing=facingYaw;
             phase="save set";
             saveAt=Clock.Timestamp;
-            var storage=new CardSaveStorage(card,banner,icon,SaveCards.Device,state);
+            var storage=new CardSaveStorage(card,banner,icon,SaveCards.Device,state,preserveVillagerLayout:travelCheckpoint);
             var reads=new SaveReadCache(storage);
-            var repository=new SaveRepository(reads);repository.Save(state);
-            bool movedVillagers=storage.UpdateVillagerFiles(state);
-            storage.MigrateSettings();
+            var repository=new SaveRepository(reads);
+            bool movedVillagers=false;
+            if(travelCheckpoint){
+                phase="travel checkpoint";
+                CardSaveStorage.SaveTravelCheckpoint(repository,state);
+            }else{
+                repository.Save(state);
+                phase="villager card layout";
+                movedVillagers=storage.UpdateVillagerFiles(state);
+                storage.MigrateSettings();
+            }
             saved=true;
             saveStatus=repository.LastWrittenRecords==0&&!movedVillagers?"No changes to save.":"Saved / "+BuildInfo.Version;
             DebugOverlay.WriteLine("SAVE: "+repository.LastWrittenRecords+" records / "+repository.LastWrittenBytes+" bytes");
@@ -481,7 +489,7 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
             // Built-in native exceptions may have no managed message. The
             // recovery screen must remain usable even after an allocation fails.
             string detail=error.Message??"Native save error (no message)";if(detail.Length>64)detail=detail.Substring(0,61)+"...";
-            saveStatus="Save failed: "+detail;
+            saveStatus=(travelCheckpoint?"Trip save failed: ":"Save failed: ")+detail;
             DebugOverlay.WriteLine("SAVE ERROR: "+phase+" (code "+NativeCalendar.CardError()+"): "+detail);
         }
         finally{

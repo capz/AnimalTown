@@ -209,6 +209,33 @@ Check(UserOptionsStorage.Save(expectedVideo)&&card.Files.Count==1&&card.Files.Co
 Check(card.CreateRecords("AnimalTown",32,1234,new byte[16384])==0,"damaged archive fixture creates an independent town entry");
 card.RecordPages["AnimalTown"][0][0]=255;
 Check(UserOptionsStorage.Load().Widescreen&&DevConfigStorage.Save(expectedDebug)&&DevConfigStorage.Load().Values[DevConfig.FullResolutionAaIndex]==1,"dedicated settings can load and save with a damaged town archive");
+// A trip checkpoint can commit on a full existing archive without trying
+// to migrate a villager whose inventory changed. It also rejects a card swap after preview.
+var travelHomeCard=new MemoryCard(4);
+var travelAwayCard=new MemoryCard(5);
+var travelHome=new GameState(8519);
+var travelAway=new GameState(8520);
+long checkpointTime=AnimalTown.Jobs.JobCalendar.At(2027,7,15,12);
+travelHome.ResidentJobs.Enable(123456,checkpointTime);
+travelAway.ResidentJobs.Enable(123457,checkpointTime);
+var travelHomeArchive=new TownCardRecords(new NativeCardBlocks(4,true,banner,icon),true);
+travelHomeArchive.SetArchiveMarker(2,0,0);
+new SaveRepository(travelHomeArchive).Save(travelHome);
+var travelAwayStore=new CardSaveStorage(travelAwayCard,banner,icon,5);
+var travelAwayRepository=new SaveRepository(travelAwayStore);
+travelAwayRepository.Save(travelAway);
+bool travelSwapRefused=false;
+int awayWrites=travelAwayCard.Writes;
+try{CardSaveStorage.SaveTravelCheckpoint(travelAwayRepository,travelHome);}
+catch(InvalidOperationException){travelSwapRefused=true;}
+Check(travelSwapRefused&&travelAwayCard.Writes==awayWrites,"a different town card is never written by a trip checkpoint");
+travelHomeCard.Capacity=travelHomeCard.Used;
+travelHome.ResidentJobs.AdvanceTo(checkpointTime+1);
+travelHome.Wallet++;
+var checkpointRepository=new SaveRepository(new CardSaveStorage(travelHomeCard,banner,icon,4,preserveVillagerLayout:true));
+CardSaveStorage.SaveTravelCheckpoint(checkpointRepository,travelHome);
+var travelReloaded=checkpointRepository.Load()!;
+Check(travelReloaded.Town.Jobs.Watermark==checkpointTime+1&&travelReloaded.Wallet==travelHome.Wallet&&travelHomeCard.Files.Count==1,"trip saves changed progress without migrating profiles or settings");
 CardSelectionChecks.Run(Check);
 // Retire only the older record-store checkpoint, after publishing a second
 // verified copy of the unchanged current directory. No larger backing is needed.
