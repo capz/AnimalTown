@@ -22,4 +22,5 @@ at ground level.
 
 Players and residents share these models. Gameplay selects the supplied
 `Walking` and `Running` clips through its existing movement animation logic.
-Additional supplied clips remain in the assets.
+Additional supplied clips remain in the assets. The existing picker portrait
+bake uses the updated source models and the same framing and lighting recipe.
