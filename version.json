@@ -232,6 +232,15 @@
       ]
     },
     {
+      "id": "animated-villager-models-november",
+      "lines": [
+        "Bunny, giraffe, hamster and Maine coon villagers have updated animated models.",
+        "The new models include walking and running animations.",
+        "Their textures fit within 128 by 128 pixels.",
+        "Existing saves keep the same villager species."
+      ]
+    },
+    {
       "id": "enterable-koban-visitor-custody-20261122",
       "lines": [
         "Visit the new koban to collect lost property and restore visitor removals.",
