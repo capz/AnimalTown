@@ -221,6 +221,15 @@
         "Optional card-layout cleanup runs during regular saves.",
         "Card errors identify the slot and operation that failed."
       ]
+    },
+    {
+      "id": "animated-villager-models-november",
+      "lines": [
+        "Bunny, giraffe, hamster and Maine coon villagers have updated animated models.",
+        "The new models include walking and running animations.",
+        "Their textures fit within 128 by 128 pixels.",
+        "Existing saves keep the same villager species."
+      ]
     }
   ]
 }
