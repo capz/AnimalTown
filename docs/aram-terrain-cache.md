@@ -53,6 +53,32 @@ release; a changed destination cancels the old bind before selecting another.
 Changing season, town or legacy terrain mode drains residency work before
 releasing the old archive and constructing the replacement.
 
+## Cold rebuild workspace
+
+Before the archive is sealed, no mesh view can bind its cache. The bake uses
+that existing 1 MiB allocation as temporary workspace: the first 64 KiB holds
+DMA input, the next 64 KiB holds coalesced output, and bounded merge descriptors
+follow at offset 128 KiB. A compile-time bound keeps all three regions inside
+the cache. Coalesced writes use the second region's DMA offset, preserving the
+first region until every source vertex and index has been copied.
+
+The bake owns one hold on the cache. Each DMA request completes and releases its
+own hold before the workspace is reused. Sealing drops only the bake hold;
+reset drops that hold before releasing the cache once. After sealing, the full
+cache is available to ordinary terrain views. The 8 MiB ARAM reservation, 1 MiB
+resident cache, geometry and texture quality are unchanged.
+
+This removes a separate 65,536-byte staging allocation from the loading peak.
+A [Dolphin rebuild](https://github.com/capz/AnimalTown/actions/runs/45050684467)
+admitted the archive and cache, then failed that staging allocation with
+134,856 aggregate free native bytes: free space alone
+did not provide a large enough contiguous block. Reusing the cache removes
+that allocation rather than relying on another heap placement. Reset failures
+still report the specific remaining allocation/hold boundary and resource
+counters before rollback.
+
+## Save and restore behavior
+
 Memory-card saves retain their existing temporary cache release. That blocking
 I/O boundary drains any owned terrain transfer before freeing the cache, then
 restores only the cache the save itself released. An already suspended indoor
@@ -84,6 +110,10 @@ while the overlay is hidden. Ordinary frame messages are excluded.
 
 The existing native terrain fixture additionally checks:
 
+- A bake succeeds when an allocator rejects the former separate staging
+  request; reset and sealing balance the shared cache hold without double
+  release. Two-section coalescing across a full 64 KiB source page preserves
+  input bytes, vertex attributes, indices and disjoint workspace bounds.
 - An exact 1 MiB drop in charged draw-resource bytes, unchanged ARAM allocation
   and payload lengths, and unchanged mesh-view identities.
 - Live-alias and active-frame guards, idempotent suspension/resumption, and

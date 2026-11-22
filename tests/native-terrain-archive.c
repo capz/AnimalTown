@@ -2,7 +2,18 @@
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
+
+/* Deny only the old standalone staging request, through the real allocator. */
+static size_t denied_resource_size;
+static int resource_allocations,denied_resource_allocations;
+static void *resource_malloc(size_t bytes){
+    resource_allocations++;
+    if(bytes==denied_resource_size){denied_resource_allocations++;return NULL;}
+    return malloc(bytes);
+}
+#define malloc resource_malloc
 #include "draw_resources.c"
+#undef malloc
 TownFrameCounters town_frame_counters;
 static bool active;
 static int flushes;
@@ -17,6 +28,62 @@ static int finish_bind(int view,int entry){
     return result;
 }
 static void finish_cancel(void){int result=0;for(int i=0;i<10000&&result==0;i++)result=animaltown_terrain_cancel_bind();assert(result==1);}
+static void shared_bake_checks(void){
+    assert(dnd_draw_live()==0);
+    denied_resource_size=TA_STAGE+31u;
+    assert(!dnd_buffer_create(TA_STAGE,32)&&denied_resource_allocations==1);
+    int allocations=resource_allocations;
+    assert(animaltown_terrain_reset(2)==1&&resource_allocations==allocations+1);
+    int cache=ta_cache;
+    assert(ta_stage==cache&&find(cache,BUFFER)->holds==1&&dnd_draw_live()==1&&ta_bytes==TA_CACHE);
+    assert(animaltown_terrain_reset(0)==1&&!find(cache,BUFFER)&&!ta_stage&&!ta_cache&&dnd_draw_live()==0&&dnd_aram_stat(4)==0);
+    assert(animaltown_terrain_reset(2)==1&&ta_stage==ta_cache&&find(ta_cache,BUFFER)->holds==1);
+
+    /* Two padded 32-KiB indexed parts exactly fill the input region. Distinct
+     * vertices expose an overlapping in-place merge or a wrong DMA offset. */
+    enum {VERTICES=900,INDICES=174};
+    DndArray *v=array(VERTICES,36),*ix=array(INDICES,2);
+    float *input=(float*)v->data;uint16_t *ids=(uint16_t*)ix->data;
+    for(int i=0;i<VERTICES;i++){input[i*9]=(float)i;input[i*9+7]=i*.25f;input[i*9+8]=i*.5f;((uint32_t*)v->data)[i*9+6]=i%2?0xffffff00:0xffffffff;}
+    for(int i=0;i<INDICES;i++)ids[i]=(uint16_t)(i*5);
+    int source=dnd_mesh_create_range(v,VERTICES,ix,INDICES,2,0);assert(source);
+    int vertex_bytes=VERTICES*(int)sizeof(DndDrawVertex),payload=vertex_bytes+INDICES*2;
+    assert(((payload+31)&~31)==TA_STAGE/2);
+    unsigned char *expected=calloc(1,TA_STAGE);assert(expected);
+    Resource *mesh=find(source,MESH);memcpy(expected,mesh->data,(size_t)payload);
+    assert(animaltown_terrain_append(0,3,source,0)==1);
+    DndDrawVertex *points=(DndDrawVertex*)mesh->data;
+    for(int i=0;i<VERTICES;i++){points[i].x+=1024;points[i].u=-points[i].u-1;}
+    memcpy(expected+TA_STAGE/2,mesh->data,(size_t)payload);
+    assert(animaltown_terrain_append(0,3,source,0)==2&&ta_tail==TA_STAGE);
+    Resource *workspace=find(ta_cache,BUFFER);memset(workspace->data,0xa5,TA_CACHE);
+    int live=dnd_draw_live(),bytes=dnd_draw_total_bytes();allocations=resource_allocations;
+    assert(animaltown_terrain_complete(0)==1&&ta_stage==ta_cache&&workspace->holds==1);
+    assert(dnd_draw_live()==live&&dnd_draw_total_bytes()==bytes&&resource_allocations==allocations);
+    assert(!memcmp(workspace->data,expected,TA_STAGE)); /* Input survives output and descriptor writes. */
+    assert(!memcmp(workspace->data+2*TA_STAGE,ta_part(0),sizeof(TaPart)));
+    assert(!memcmp(workspace->data+TA_STAGE,expected,(size_t)vertex_bytes));
+    assert(!memcmp(workspace->data+TA_STAGE+vertex_bytes,expected+TA_STAGE/2,(size_t)vertex_bytes));
+    for(int i=TA_STAGE+ta_size(ta_part(0));i<2*TA_STAGE;i++)assert(workspace->data[i]==0xa5);
+    for(int i=2*TA_STAGE+TA_PAGE_PARTS*(int)sizeof(TaPart);i<TA_CACHE;i++)assert(workspace->data[i]==0xa5);
+    int view=animaltown_terrain_view();assert(view&&animaltown_terrain_bind(view,0)==-1);
+    int plain=dnd_mesh_create_range(v,3,NULL,0,2,0);assert(plain);
+    assert(animaltown_terrain_append(1,104,plain,3)==2);
+    live=dnd_draw_live();bytes=dnd_draw_total_bytes();allocations=resource_allocations;
+    assert(animaltown_terrain_complete(1)==1&&!ta_stage&&workspace->holds==0);
+    assert(dnd_draw_live()==live&&dnd_draw_total_bytes()==bytes&&resource_allocations==allocations);
+    assert(animaltown_terrain_info(0,1)==1&&animaltown_terrain_info(1,1)==1);
+    assert(animaltown_terrain_bind(view,0)==1);mesh=find(view,MESH);
+    assert(mesh->vertices==2*VERTICES&&mesh->indices==2*INDICES);
+    assert(!memcmp(mesh->data,expected,(size_t)vertex_bytes)&&!memcmp(mesh->data+vertex_bytes,expected+TA_STAGE/2,(size_t)vertex_bytes));
+    uint16_t *merged=(uint16_t*)(mesh->data+2*vertex_bytes);
+    for(int i=0;i<INDICES;i++)assert(merged[i]==ids[i]&&merged[INDICES+i]==ids[i]+VERTICES);
+    assert(animaltown_terrain_bind(view,1)==1&&!memcmp(find(view,MESH)->data,find(plain,MESH)->data,3*sizeof(DndDrawVertex)));
+    assert(dnd_draw_release(view)==0&&dnd_draw_release(source)==0&&dnd_draw_release(plain)==0&&animaltown_terrain_reset(0)==1);
+    assert(!ta_stage&&!ta_cache&&dnd_draw_live()==0&&dnd_aram_stat(4)==0&&denied_resource_allocations==1);
+    denied_resource_size=0;free(expected);free(v);free(ix);
+    puts("Shared terrain bake: one cache allocation, exact 64-KiB coalescer input, disjoint scratch, byte-exact DMA output and lease cleanup passed");
+}
 static void residency_checks(DndArray *vertices,DndArray *indices){
     assert(dnd_draw_live()==0&&animaltown_terrain_reset(1)==1);
     int source=dnd_mesh_create_range(vertices,12,indices,12,2,0);assert(source);
@@ -86,11 +153,12 @@ static void residency_checks(DndArray *vertices,DndArray *indices){
 }
 int main(void){
     assert(dnd_aram_initialize(2*1024*1024));
+    shared_bake_checks();
     DndArray *v=array(12,36),*ix=array(12,2);float *p=(float*)v->data;uint16_t *ids=(uint16_t*)ix->data;
     for(int i=0;i<12;i++){p[i*9]=i;p[i*9+7]=4+i*.5f;((uint32_t*)v->data)[i*9+6]=i%2?0xffffff00:0xffffffff;ids[i]=(uint16_t)(i%6);}
     int indexed=dnd_mesh_create_range(v,12,ix,12,2,0),plain=dnd_mesh_create_range(v,12,NULL,0,2,0);
     assert(indexed>0&&plain>0&&animaltown_terrain_reset(2)==1);
-    assert(animaltown_terrain_stat(0)==1024*1024+64*1024); /* Original cold MEM1 budget. */
+    assert(animaltown_terrain_stat(0)==TA_CACHE&&ta_stage==ta_cache); /* Bake borrows the idle cache. */
     Resource *source=find(indexed,MESH);unsigned char expected[456];memcpy(expected,source->data,sizeof(expected));
     assert(animaltown_terrain_append(-1,0,indexed,0)==-1);
     assert(animaltown_terrain_append(1,0,indexed,0)==-1);
@@ -134,7 +202,7 @@ int main(void){
     assert(animaltown_terrain_append(0,107,plain,6)==4);
     int cold_resources=dnd_draw_live();
     assert(animaltown_terrain_complete(0)==1&&animaltown_terrain_info(0,1)==3&&animaltown_terrain_info(0,2)==12);
-    assert(dnd_draw_live()==cold_resources-1&&find(ta_cache,BUFFER)->holds==0); /* Coalescing allocates nothing; stage retires. */
+    assert(dnd_draw_live()==cold_resources&&!ta_stage&&find(ta_cache,BUFFER)->holds==0); /* Seal retires only the shared lease. */
     assert(animaltown_terrain_kind(0)==3&&animaltown_terrain_kind(1)==104&&animaltown_terrain_kind(2)==107);
     view=animaltown_terrain_view();assert(animaltown_terrain_bind(view,0)==1);r=find(view,MESH);
     assert(r->vertices==24&&r->indices==24&&!r->uniform_color);

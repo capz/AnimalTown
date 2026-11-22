@@ -119,6 +119,7 @@ internal sealed partial class TownGame
             if(change!=0)letterCursor=1-letterCursor;
             if(Press(p)){
                 if(letterCursor==0){screen="letter-compose";return true;}
+                letterEntry!.Status="";
                 int paper=letterPaper;
                 // A backpack action selects an actual sheet, never silently
                 // substitute the first paper found when the player sends.
@@ -145,7 +146,7 @@ internal sealed partial class TownGame
         if(!JobsLive||!screen.StartsWith("letter-")&&screen!="notice-board")return false;
         if(screen=="letter-compose"){
             var entry=letterEntry!;string error=entry.Status.Length!=0?entry.Status:letterStatus;
-            DrawTextEntry(entry,composingNotice?"A message for the town":"Write a letter",composingNotice?"Everyone can read this.":"To "+RecipientName(letterRecipient)+(letterGift>=0?" · Present attached":""),letterPreview,"What would you like to write?",error.Length!=0?error:"NL starts a new line. R adds a space.",error.Length!=0,ink,!composingNotice,1.03f);
+            DrawTextEntry(entry,composingNotice?"A message for the town":"Write a letter",composingNotice?"Everyone can read this.":"To "+RecipientName(letterRecipient)+(letterGift>=0?" - Present attached":""),letterPreview,"What would you like to write?",error.Length!=0?error:"NL starts a new line. R adds a space.",error.Length!=0,ink,!composingNotice,1.03f);
             return true;
         }
         Panel(35,46,570,390);
