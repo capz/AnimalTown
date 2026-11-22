@@ -20,7 +20,8 @@ within 128×128. GX renders the base color with the existing diffuse
 approximation. The importer normalizes model height and places the bind pose
 at ground level.
 
-Players and residents share these models. Gameplay selects the supplied
-`Walking` and `Running` clips through its existing movement animation logic.
-Additional supplied clips remain in the assets. The existing picker portrait
-bake uses the updated source models and the same framing and lighting recipe.
+Players and residents share these models. The GameCube build packs the
+`Walking` and `Running` clips used by the movement animation logic so all six
+species fit in memory outdoors. The source GLBs retain the other supplied
+clips. The picker portrait bake uses the updated source models and the same
+framing and lighting recipe.

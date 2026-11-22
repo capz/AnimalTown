@@ -28,7 +28,7 @@ static class Program
             else if(args[0]=="terrain-primitives")TerrainPrimitiveAssets.Build(Root,args.Length>2?int.Parse(args[2]):128);
             else if(args[0]=="repack-check")TextureRepackerChecks.Run(Root);
             else if(args[0]=="audit")Audit();
-            else if(args[0]=="prepare")Prepare(args[2],args[3]);
+            else if(args[0]=="prepare")Prepare(args[2],args[3],args.Length>4&&args[4]=="--locomotion-only");
             else if(args[0]=="prune-model-variants")ModelVariants.Prune(Root);
             else if(args[0]=="art")Art();
             else if(args[0]=="brand-check"){BrandTextureAssets.Check(Root);DiscBannerFile.Check();}
@@ -72,15 +72,20 @@ static class Program
         }
         Directory.CreateDirectory(Path.Combine(Root,"out"));File.WriteAllText(Path.Combine(Root,"out/asset-audit.json"),JsonSerializer.Serialize(entries,new JsonSerializerOptions{WriteIndented=true}));Console.WriteLine("Audited "+entries.Count+" GLBs");
     }
-    static void Prepare(string input,string output)
+    static void Prepare(string input,string output,bool locomotionOnly)
     {
         byte[] b=File.ReadAllBytes(input);int len=BitConverter.ToInt32(b,12);
         var j=JsonNode.Parse(b.AsSpan(20,len))!;
+        // The console only plays these two clips. Keep the imported runtime
+        // package small enough to admit all of the rigs in an outdoor town.
+        if(locomotionOnly&&j["animations"] is JsonArray animations)
+            for(int i=animations.Count-1;i>=0;i--)
+                if((string?)animations[i]?["name"] is not ("Running" or "Walking"))animations.RemoveAt(i);
         // Tangent-space normal mapping is not used by the chosen GX material path.
         foreach(var mesh in j["meshes"]!.AsArray())foreach(var p in mesh!["primitives"]!.AsArray())p!["attributes"]!.AsObject().Remove("TANGENT");
         foreach(var m in j["materials"]!.AsArray())m!.AsObject().Remove("normalTexture");
         // Normalize the actual node-transformed bind-pose bounds, preserving all
-        // existing animation tracks and skin inverse binds under a scene root.
+        // selected animation tracks and skin inverse binds under a scene root.
         var nodes=j["nodes"]!.AsArray();var minimum=new Vector3(float.PositiveInfinity);var maximum=new Vector3(float.NegativeInfinity);
         float[] Values(JsonNode? n,float[] fallback)=>n==null?fallback:n.AsArray().Select(v=>(float)v!).ToArray();
         Matrix4x4 Local(JsonNode n)
