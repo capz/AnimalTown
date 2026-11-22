@@ -16,6 +16,7 @@ internal sealed partial class TownGame
     private readonly MenuNavigation menuNavigation=new MenuNavigation();
     private readonly KeyboardFont font=new KeyboardFont();
     private readonly KeyboardFont strongFont=new KeyboardFont();
+    private readonly List<string> mailDrawText=new List<string>();
     private sealed class KeyboardFont {internal float Measure(string text,float scale)=>text.Length*8*scale;}
     private int slot,selected,menuTab,returnMenuTab,returnMenuSelection;
     private bool returnToMenu;
@@ -27,7 +28,7 @@ internal sealed partial class TownGame
     private void Say(string name,string text){message=text;screen="dialogue";}
     private void Panel(float x,float y,float w,float h){}
     private void Heading(string text,float x,float y,Color32 ink,float scale=1){}
-    private void Text(string text,float x,float y,Color32 ink,float scale=1){}
+    private void Text(string text,float x,float y,Color32 ink,float scale=1){mailDrawText.Add(text);}
     private void Strong(string text,float x,float y,Color32 ink,float scale=1){}
     private void Rounded(float x,float y,float w,float h,float radius,Color32 ink){}
     private void MailButton(ControllerButton button)
@@ -40,6 +41,7 @@ internal sealed partial class TownGame
     internal static void CheckMailControls(Action<bool,string> check)
     {
         CheckLetterKeyboard(check);
+        CheckLetterSendFailureStatus(check);
         var state=new GameState(32){Tutorial=7};state.SelectProfile(1);state.SelectProfile(0);
         state.ResidentJobs.Enable(99,JobCalendar.At(2027,7,15,12));Array.Clear(state.Pockets);
         state.Pockets[0]=Catalog.WritingPaper;state.Pockets[1]=Catalog.PlainWritingPaper;state.Pockets[2]=Catalog.Pear;
@@ -86,6 +88,37 @@ internal sealed partial class TownGame
         g.MailButton(ControllerButton.A);g.letterDraft="Hello there!";state.Pockets[1]=0;
         g.MailButton(ControllerButton.Start);g.MailButton(ControllerButton.DPadDown);g.MailButton(ControllerButton.A);
         check(g.screen=="letter-compose"&&state.Pockets[0]==Catalog.WritingPaper&&g.letterStatus.Contains("writing paper"),"send failure keeps the draft and never substitutes unselected paper");
+    }
+    private static void CheckLetterSendFailureStatus(Action<bool,string> check)
+    {
+        var state=new GameState(34){Tutorial=7};state.ResidentJobs.Enable(101,JobCalendar.At(2027,7,15,12));Array.Clear(state.Pockets);
+        state.Pockets[0]=Catalog.WritingPaper;state.Pockets[1]=Catalog.Pear;state.Pockets[2]=Catalog.PlainWritingPaper;
+        var g=new TownGame(state);g.OpenLetterComposer(paper:0,gift:1);g.MailButton(ControllerButton.A);
+        g.MailButton(ControllerButton.L);g.MailButton(ControllerButton.DPadRight);
+        var entry=g.letterEntry!;
+        while(entry.Text.Length<1000)g.MailButton(ControllerButton.A);
+        g.MailButton(ControllerButton.A);
+        string draft=g.letterDraft,warning=entry.Status;int[] pockets=(int[])state.Pockets.Clone();
+        check(warning.Length>0&&entry.Selected==1&&entry.Uppercase,"send-failure regression starts with a real character-cap warning and a chosen gift");
+        g.MailButton(ControllerButton.Start);g.MailButton(ControllerButton.A);
+        g.mailDrawText.Clear();g.DrawMailUi(Color32.White);
+        check(g.screen=="letter-compose"&&entry.Status==warning&&g.mailDrawText.Contains(warning),"keeping the capped draft does not clear its keyboard warning before any send attempt");
+
+        var ledger=state.Town.Jobs;ledger.EnsureMail();
+        for(int i=OfflineJobLedger.InboxCount;i<ledger.Mail.Length;i++)ledger.Mail.Set(i,new JobMailRecord{State=JobMailState.Queued});
+        g.MailButton(ControllerButton.Start);g.MailButton(ControllerButton.DPadDown);g.MailButton(ControllerButton.A);
+        check(g.screen=="letter-compose"&&g.letterStatus=="The outgoing post is full. Try after delivery.","the actual mail service rejects the capped draft when every outgoing slot is occupied");
+        g.mailDrawText.Clear();g.DrawMailUi(Color32.White);
+        check(g.screen=="letter-compose"&&g.mailDrawText.Contains("The outgoing post is full. Try after delivery.")&&!g.mailDrawText.Contains(warning),"a confirmed full-outbox failure replaces the stale cap warning in the actual letter drawing path");
+        check(ReferenceEquals(entry,g.letterEntry)&&entry.Text==draft&&g.letterDraft==draft&&entry.CountLabel=="1000 / 1000"&&entry.Selected==1&&entry.Uppercase&&g.letterGift==1&&g.letterPaper==0&&pockets.SequenceEqual(state.Pockets),"a full-outbox failure preserves the capped draft, keyboard state, selected paper and gift");
+
+        g.MailButton(ControllerButton.A);state.Pockets[0]=0;
+        ulong sequence=state.ResidentJobs.NextCommandSequence;
+        check(entry.Status==warning,"typing beyond the unchanged cap can produce a fresh warning before another send attempt");
+        g.MailButton(ControllerButton.Start);g.MailButton(ControllerButton.DPadDown);g.MailButton(ControllerButton.A);
+        g.mailDrawText.Clear();g.DrawMailUi(Color32.White);
+        check(g.screen=="letter-compose"&&g.mailDrawText.Contains("You need writing paper. The shop cabinet sells it.")&&!g.mailDrawText.Contains(warning),"missing selected paper replaces the stale cap warning in the actual letter drawing path");
+        check(ReferenceEquals(entry,g.letterEntry)&&entry.Text==draft&&g.letterDraft==draft&&entry.Selected==1&&entry.Uppercase&&g.letterGift==1&&g.letterPaper==0&&state.Pockets[0]==0&&state.Pockets[1]==Catalog.Pear&&state.Pockets[2]==Catalog.PlainWritingPaper&&state.ResidentJobs.NextCommandSequence==sequence,"the paper guard preserves draft and gift without substituting spare paper or attempting the mail service");
     }
     private static void CheckLetterKeyboard(Action<bool,string> check)
     {

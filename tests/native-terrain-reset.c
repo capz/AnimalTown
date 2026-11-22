@@ -1,5 +1,5 @@
-/* Fault each cold-reset boundary in the production archive, without changing
- * its allocation policy. The full SDK archive fixture covers live geometry. */
+/* Fault each cold-reset boundary in the production archive. The full SDK
+ * archive fixture covers shared bake scratch, DMA and live geometry. */
 #include <assert.h>
 #include <stdarg.h>
 #include <stdio.h>
@@ -109,24 +109,27 @@ int main(void){
     active=true;assert(animaltown_terrain_reset(3)==-1);active=false;
     raw=1;assert(animaltown_terrain_reset(3)==-1);raw=0;
     assert(animaltown_terrain_reset(-1)==-1&&!report_count&&!allocations&&!creates);
-    assert(animaltown_terrain_reset(3)==1&&!report_count&&allocations==1&&retains==1&&holds==1&&creates==2);
-    assert(total_bytes==TA_CACHE+TA_STAGE&&aram_bytes==TA_BYTES);
+    assert(animaltown_terrain_reset(3)==1&&!report_count&&allocations==1&&retains==1&&holds==1&&creates==1);
+    assert(total_bytes==TA_CACHE&&aram_bytes==TA_BYTES&&ta_stage==ta_cache&&find(ta_cache,BUFFER)->holds==1);
     assert(animaltown_terrain_reset(0)==1&&!report_count);rolled_back();
 
     start(FAIL_ARAM);assert(animaltown_terrain_reset(3)==-2&&report_count==1&&!retains&&!creates);
     report(0,"aram-allocate",TA_BYTES,0,0,0);rolled_back();
     start(FAIL_RETAIN);assert(animaltown_terrain_reset(3)==-2&&report_count==1&&retains==1&&!creates);
     report(0,"aram-retain",TA_BYTES,-EINVAL,0,TA_BYTES);rolled_back();
-    start(FAIL_CACHE);assert(animaltown_terrain_reset(3)==-2&&report_count==1&&creates==2&&!holds);
-    assert(created_bytes[0]==TA_CACHE&&created_bytes[1]==TA_STAGE); /* Preserve both attempts. */
+    start(FAIL_CACHE);assert(animaltown_terrain_reset(3)==-2&&report_count==1&&creates==1&&!holds);
+    assert(created_bytes[0]==TA_CACHE);
     report(0,"cache-buffer",TA_CACHE,0,0,TA_BYTES);rolled_back();
-    start(FAIL_STAGE);assert(animaltown_terrain_reset(3)==-2&&report_count==1&&creates==2&&!holds);
-    report(0,"stage-buffer",TA_STAGE,0,TA_CACHE,TA_BYTES);rolled_back();
-    start(FAIL_HOLD);assert(animaltown_terrain_reset(3)==-2&&report_count==1&&creates==2&&holds==1);
-    report(0,"stage-hold",TA_STAGE,-1,TA_CACHE+TA_STAGE,TA_BYTES);rolled_back();
-    start(FAIL_CACHE|FAIL_STAGE);assert(animaltown_terrain_reset(3)==-2&&report_count==2&&creates==2&&!holds);
-    report(0,"cache-buffer",TA_CACHE,0,0,TA_BYTES);report(1,"stage-buffer",TA_STAGE,0,0,TA_BYTES);rolled_back();
+    /* A heap that rejects the former separate staging allocation still admits
+     * the whole reset: only the cache is allocated and its bake lease is held. */
+    start(FAIL_STAGE);assert(animaltown_terrain_reset(3)==1&&!report_count&&creates==1&&holds==1);
+    assert(created_bytes[0]==TA_CACHE&&ta_stage==ta_cache&&total_bytes==TA_CACHE);
+    assert(animaltown_terrain_reset(0)==1);rolled_back();
+    start(FAIL_HOLD);assert(animaltown_terrain_reset(3)==-2&&report_count==1&&creates==1&&holds==1);
+    report(0,"stage-hold",TA_STAGE,-1,TA_CACHE,TA_BYTES);rolled_back();
+    start(FAIL_CACHE|FAIL_STAGE);assert(animaltown_terrain_reset(3)==-2&&report_count==1&&creates==1&&!holds);
+    report(0,"cache-buffer",TA_CACHE,0,0,TA_BYTES);rolled_back();
     start(0);assert(animaltown_terrain_reset(3)==1&&animaltown_terrain_reset(0)==1&&!report_count);rolled_back();
-    puts("Terrain reset diagnostics: five allocation/hold boundaries, pre-cleanup counters, unchanged order/rollback, silent success and guards passed");
+    puts("Terrain reset: shared staging lease, four failure boundaries, pre-cleanup counters, rollback and silent success/guards passed");
     return 0;
 }
