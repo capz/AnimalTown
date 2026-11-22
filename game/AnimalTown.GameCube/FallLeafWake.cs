@@ -6,6 +6,7 @@ internal sealed class FallLeafWake : IDisposable
 {
     internal const int Capacity=24;
     private const float FootstepDistance=.72f,LeafLifetime=.96f,PetalLifetime=3.3f,PetalRadius=18;
+    private const float MinimumStep=PlayerMovement.WalkStep*.5f;
     private struct Leaf
     {
         internal float X,Y,Z,Vx,Vz,Born;
@@ -25,11 +26,13 @@ internal sealed class FallLeafWake : IDisposable
     private float distance,nextPetals;
     private uint random=2166136261u;
 
-    internal void TrackStep(Town town,float oldX,float oldZ,float x,float z,float seconds,bool running)
+    internal void TrackStep(Town town,float oldX,float oldZ,float x,float z,float seconds)
     {
         SetPetalMode(false);
         float dx=x-oldX,dz=z-oldZ,squared=dx*dx+dz*dz;
-        if(squared==0)return;
+        // Use actual fixed-step travel, so gentle analog movement and blocked
+        // steps never build up a stride that bursts when the player speeds up.
+        if(squared<MinimumStep*MinimumStep){distance=0;return;}
         int ground=town.At((int)x,(int)z);
         if(ground!=(int)Terrain.Grass&&ground!=(int)Terrain.Camp){
             distance=0;
@@ -46,8 +49,7 @@ internal sealed class FallLeafWake : IDisposable
         float footX=x-dx*(distance+.12f)+dz*side;
         float footZ=z-dz*(distance+.12f)-dx*side;
         float height=TerrainElevation.At(town,footX,footZ);
-        int burst=running?4:3;
-        for(int i=0;i<burst;i++){
+        for(int i=0;i<3;i++){
             random=unchecked(random*1664525u+1013904223u);
             float fan=-.46f+i*.36f+Variation(random,8)*.15f;
             float back=.3f+Variation(random,16)*.36f;

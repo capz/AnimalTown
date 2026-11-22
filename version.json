@@ -7,6 +7,15 @@
   "baseCommit": "7e3dd9599709f553d13d538a320a13f3d410e861",
   "requestSummaries": [
     {
+      "id": "fall-leaf-movement-speed",
+      "lines": [
+        "Kick up autumn leaves while walking normally or running.",
+        "Running uses the same three-leaf footstep effect as normal walking.",
+        "Gentle movement below half walking speed emits no new leaves.",
+        "The effect reuses its existing atlas and bounded particle buffer."
+      ]
+    },
+    {
       "id": "two-borrower-retrieval-limit",
       "lines": [
         "Find borrowed job items after at most one redirect.",
