@@ -7,6 +7,15 @@
   "baseCommit": "7e3dd9599709f553d13d538a320a13f3d410e861",
   "requestSummaries": [
     {
+      "id": "two-borrower-retrieval-limit",
+      "lines": [
+        "Find borrowed job items after at most one redirect.",
+        "Retrieval errands visit at most two borrowers before returning to the owner.",
+        "The second borrower always supplies the item once you have pocket space.",
+        "Older saved chains finish at their current borrower and keep their reward tier."
+      ]
+    },
+    {
       "id": "complete-offline-item-actions",
       "lines": [
         "Write letters and attach presents straight from your backpack.",

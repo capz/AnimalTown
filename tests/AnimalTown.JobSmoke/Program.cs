@@ -12,7 +12,24 @@ internal sealed class Draws : IJobRandom
 internal static class Program
 {
     private static void Require(bool value,string message){if(!value)throw new InvalidOperationException(message);}
-    private static int Main(){JobMemory.ReclaimTemporaryText=ReclaimText;CoreBudget();NativeJobBlocks.Report(0);Console.WriteLine("Native normal jobs");NormalJobs();NativeJobBlocks.Report(1);Console.WriteLine("Native travel");TravelJobs();NativeJobBlocks.Report(2);Console.WriteLine("Native capacity");Capacity();NativeJobBlocks.Report(3);Console.WriteLine("Native full-card travel");FullCardTravel();NativeJobBlocks.Report(4);MaximumEconomy();NativeJobBlocks.Report(5);MaximumEconomyTravel();NativeJobBlocks.Report(6);ArchiveCopyBudget();NativeJobBlocks.Report(7);return 0;}
+    private static int Main(){JobMemory.ReclaimTemporaryText=ReclaimText;CoreBudget();NativeJobBlocks.Report(0);Console.WriteLine("Native normal jobs");NormalJobs();RetrievalLimit();NativeJobBlocks.Report(1);Console.WriteLine("Native travel");TravelJobs();NativeJobBlocks.Report(2);Console.WriteLine("Native capacity");Capacity();NativeJobBlocks.Report(3);Console.WriteLine("Native full-card travel");FullCardTravel();NativeJobBlocks.Report(4);MaximumEconomy();NativeJobBlocks.Report(5);MaximumEconomyTravel();NativeJobBlocks.Report(6);ArchiveCopyBudget();NativeJobBlocks.Report(7);return 0;}
+    private static void RetrievalLimit()
+    {
+        var s=new GameState(24){Tutorial=7};for(int n=0;n<6;n++)s.Town.Residents[n].HomeX=5+n*20;
+        long now=JobCalendar.At(2027,7,15,12);var service=new VillagerJobService(s,new Draws(new[]{1,1,0,0,1,0}),new Draws(new int[0]));service.Enable(12345,now);
+        var npc=s.Town.Residents[0];s.Space=npc.Space;s.X=npc.PosX;s.Z=npc.PosZ;Require(service.BeginConversation(0,out _),"native retrieval owner context");
+        var offer=service.Execute(service.Command(JobCommandKind.Ask));var accepted=service.Execute(service.Command(JobCommandKind.Accept,offer.Job,s.Town.Jobs.Offer(0,0).Revision));Require(accepted.Result==JobResult.Ok,"native retrieval acceptance");
+        var j=s.Town.Jobs.Job(s.Town.Jobs.FindJob(accepted.Job));int first=s.Town.Jobs.FindNpc(j.Target);service.EndConversation();npc=s.Town.Residents[first];s.Space=npc.Space;s.X=npc.PosX;s.Z=npc.PosZ;Require(service.BeginConversation(first,out _),"native first borrower context");
+        Require(service.Execute(service.Command(JobCommandKind.Handoff,j.Id,j.Revision)).Result==JobResult.ExistingJob,"native first borrower redirects once");
+        var copy=SaveCodec.Decode(SaveCodec.Encode(s));j=copy.Town.Jobs.Job(copy.Town.Jobs.FindJob(j.Id));Require(j.Borrowers==2&&j.Borrower1!=j.Borrower2,"native save retains two distinct borrowers");
+        var resumed=new VillagerJobService(copy,new Draws(new int[0]),new Draws(new[]{75,1000}));resumed.Enable(copy.Town.Jobs.TownId,now);
+        int second=copy.Town.Jobs.FindNpc(j.Target);npc=copy.Town.Residents[second];copy.Space=npc.Space;copy.X=npc.PosX;copy.Z=npc.PosZ;Require(resumed.BeginConversation(second,out _),"native second borrower context");
+        Require(resumed.Execute(resumed.Command(JobCommandKind.Handoff,j.Id,j.Revision)).Result==JobResult.Ok,"native second borrower supplies the item without another RNG draw");
+        j=copy.Town.Jobs.Job(copy.Town.Jobs.FindJob(j.Id));Require(j.Status==JobStatus.Returning&&j.Borrowers==2&&j.Target==j.Requester,"native retrieval returns directly to its owner");
+        resumed.EndConversation();npc=copy.Town.Residents[0];copy.Space=npc.Space;copy.X=npc.PosX;copy.Z=npc.PosZ;Require(resumed.BeginConversation(0,out _),"native retrieval return context");
+        Require(resumed.Execute(resumed.Command(JobCommandKind.Handoff,j.Id,j.Revision)).Result==JobResult.Ok&&copy.Wallet==500,"native capped retrieval completes with the two-borrower reward");
+        Console.WriteLine("Native retrieval: one redirect, forced second-borrower pickup, saved progress and reward passed");
+    }
     private static void CoreBudget()
     {
         int before=NativeJobBlocks.Report(10);var ledger=new OfflineJobLedger();ledger.Initialize(98765);for(int p=0;p<OfflineJobLedger.OwnerCount;p++)ledger.EnsurePlayer(p);
