@@ -28,6 +28,21 @@ static int finish_bind(int view,int entry){
     return result;
 }
 static void finish_cancel(void){int result=0;for(int i=0;i<10000&&result==0;i++)result=animaltown_terrain_cancel_bind();assert(result==1);}
+static void metadata_fragmentation_checks(void){
+    denied_resource_size=256u*sizeof(TaPart)+31u;
+    assert(!dnd_buffer_create(256*(int)sizeof(TaPart),32));
+    assert(animaltown_terrain_reset(1600)==1);
+    DndArray *v=array(3,36);int mesh=dnd_mesh_create_range(v,3,NULL,0,2,0);assert(mesh>0);
+    for(int i=0;i<1600;i++){
+        assert(animaltown_terrain_append(i,0,mesh,3)>0);
+        assert(animaltown_terrain_complete(i)==1);
+    }
+    assert(ta_parts==1600&&ta_meta_count==(1600+TA_META_PARTS-1)/TA_META_PARTS);
+    for(int i=0;i<1600;i++)assert(ta_part(i)->offset==i*128&&ta_part(i)->vertices==3);
+    assert(dnd_draw_release(mesh)==0&&animaltown_terrain_reset(0)==1&&dnd_draw_live()==0);
+    free(v);denied_resource_size=0;denied_resource_allocations=0;
+    puts("Terrain metadata: 1600 parts survive rejected 9 KiB allocations with bounded small pages and exact reset cleanup");
+}
 static void shared_bake_checks(void){
     assert(dnd_draw_live()==0);
     denied_resource_size=TA_STAGE+31u;
@@ -153,6 +168,7 @@ static void residency_checks(DndArray *vertices,DndArray *indices){
 }
 int main(void){
     assert(dnd_aram_initialize(2*1024*1024));
+    metadata_fragmentation_checks();
     shared_bake_checks();
     DndArray *v=array(12,36),*ix=array(12,2);float *p=(float*)v->data;uint16_t *ids=(uint16_t*)ix->data;
     for(int i=0;i<12;i++){p[i*9]=i;p[i*9+7]=4+i*.5f;((uint32_t*)v->data)[i*9+6]=i%2?0xffffff00:0xffffffff;ids[i]=(uint16_t)(i%6);}
