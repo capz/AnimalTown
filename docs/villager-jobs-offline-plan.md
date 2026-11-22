@@ -404,7 +404,7 @@ Deliver:
 * Save each fair stop/continue decision before presenting it. Select onward
   borrowers uniformly from stable eligible IDs, excluding the original owner,
   visited borrowers and the current sender's home acre.
-* Limit the chain to four borrowers, forcing pickup at the fourth or whenever
+* Limit the chain to two borrowers (one optional redirect), forcing pickup at the second or whenever
   there is no eligible onward candidate. Do not count the final owner as another
   borrower when choosing the reward row.
 * At final pickup create the reserved bound object only if a pocket is free.
@@ -414,7 +414,7 @@ Deliver:
 * Return the exact object to its original owner. Apply zero timeout friendship
   while seeking, −2 while returning, and normal success/reward behavior on return.
 
-Exit: deterministic one-, two-, three- and four-borrower routes, forced dead ends,
+Exit: deterministic one- and two-borrower routes, saved legacy three-/four-borrower completion, forced dead ends,
 home-acre exclusions at each link, full-pocket pickup, duplicate referral
 commands and reload between every stage all produce the specified result.
 

@@ -39,8 +39,11 @@ public sealed partial class VillagerJobService
     private JobOutcome Retrieval(int at,int npc)
     {
         var j=ledger.Jobs[at];if(j.Target!=ledger.Npc(npc))return new JobOutcome(JobResult.WrongNpc,j.Id);
-        if(j.ChainDecision==0){
-            bool continueChain=j.Borrowers<4&&OfferRandom.NextInt(2)==JobRulesV1.ContinueOutcome;
+        // A saved older continuation cannot send the player past the new cap.
+        // Already longer chains finish at their current borrower without losing
+        // their history, stage deadline, or earned reward tier.
+        if(j.ChainDecision==0||j.Borrowers>=JobRulesV1.MaximumBorrowers&&j.ChainDecision==1){
+            bool continueChain=j.Borrowers<JobRulesV1.MaximumBorrowers&&OfferRandom.NextInt(JobRulesV1.ContinueDenominator)==JobRulesV1.ContinueOutcome;
             var next=continueChain?PickTarget(npc,j):default;j.ChainDecision=next.IsEmpty?2:1;j.NextBorrower=next;j.Revision++;ledger.Jobs[at]=j;
         }
         if(j.ChainDecision==1){j.Target=j.NextBorrower;j.SetBorrower(j.Borrowers++,j.Target);j.NextBorrower=default;j.ChainDecision=0;j.StageAt=Now;j.DueAt=Now+2*86400;j.Revision++;ledger.Jobs[at]=j;return new JobOutcome(JobResult.ExistingJob,j.Id);}
