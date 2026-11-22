@@ -22,5 +22,7 @@ at ground level.
 
 Players and residents share these models. Gameplay selects the supplied
 `Walking` and `Running` clips through its existing movement animation logic.
-Additional supplied clips remain in the assets. The existing picker portrait
+Gameplay cooking retains only those two clips to avoid allocating unused long
+animations in GameCube memory. Every supplied clip remains in the authoring GLBs;
+default preparation and the portrait sources are unchanged. The existing picker portrait
 bake uses the updated source models and the same framing and lighting recipe.
