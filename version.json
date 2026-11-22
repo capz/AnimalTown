@@ -7,6 +7,15 @@
   "baseCommit": "7e3dd9599709f553d13d538a320a13f3d410e861",
   "requestSummaries": [
     {
+      "id": "two-borrower-retrieval-limit",
+      "lines": [
+        "Find borrowed job items after at most one redirect.",
+        "Retrieval errands visit at most two borrowers before returning to the owner.",
+        "The second borrower always supplies the item once you have pocket space.",
+        "Older saved chains finish at their current borrower and keep their reward tier."
+      ]
+    },
+    {
       "id": "complete-offline-item-actions",
       "lines": [
         "Write letters and attach presents straight from your backpack.",
@@ -220,6 +229,15 @@
         "Buying, selling, and consignment use compact panels on the right.",
         "Failed placement, planting, dropping, and burial explain what blocked the action.",
         "Cherry blossom trees have taller crowns and petals fall from higher up."
+      ]
+    },
+    {
+      "id": "animated-villager-models-november",
+      "lines": [
+        "Bunny, giraffe, hamster and Maine coon villagers have updated animated models.",
+        "The new models include walking and running animations.",
+        "Their textures fit within 128 by 128 pixels.",
+        "Existing saves keep the same villager species."
       ]
     }
   ]

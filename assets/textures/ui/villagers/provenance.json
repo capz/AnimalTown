@@ -7,26 +7,26 @@
   },
   "bunny": {
     "source": "assets/models/villagers/villager_bunny.glb",
-    "sourceSha256": "4378d8de4284ed1c57de14fc18cc3f33c493216e50838e5e15b6ab7af61768ea",
-    "pngSha256": "b9cdca9dd24b49ed8d2d6b04c2a7d1f03cdea35d3aa013c567aad67bf3ff4fbc",
+    "sourceSha256": "18e5329391dc65ceafbdb704174185da7cc565d93c14c9d6766aecdedaa973f0",
+    "pngSha256": "ef4d4f12b400b18419353f17858a95f68dfedd25aecf1b08ad2d1ccf2dc8821d",
     "renderer": "Blender 4.3.2, Cycles CPU, 64 samples"
   },
   "giraffe": {
     "source": "assets/models/villagers/villager_giraffe.glb",
-    "sourceSha256": "c04564ff2b1bf12a1ecdecf35fcb28337f610b725ba9179555a4b15cc26ca26c",
-    "pngSha256": "6dad62ff442e48680c88ad2c44b1eec06d09c6fb4f1b00c26f0d813ea4ad8150",
+    "sourceSha256": "85d64be45b908d349463a480fae75f956e49d6a16a9aa0b3ebf2676ca72814f2",
+    "pngSha256": "898ae7e97500981a9e12dcd3b7f1565c8af31e098a82f2d184ea29233aabbf8e",
     "renderer": "Blender 4.3.2, Cycles CPU, 64 samples"
   },
   "cat": {
     "source": "assets/models/villagers/villager_mainecoon.glb",
-    "sourceSha256": "c725c8a4683f477ff452aad4c43c6fd1a2a9d3ba55de9a521171c43ae7adec9b",
-    "pngSha256": "511376e873dd95a77d18fb3165ee0ead62960a8f1c3611ed35f28e327f2b7929",
+    "sourceSha256": "7f92ae36c3ed994808c414aecea3f3024d12a0b322ca352233a2fba0b8b93260",
+    "pngSha256": "b759533d598f429e8a476e7810299c14a0b95e4c544076d28fb929105b96f940",
     "renderer": "Blender 4.3.2, Cycles CPU, 64 samples"
   },
   "hamster": {
     "source": "assets/models/villagers/villager_hamster.glb",
-    "sourceSha256": "3ca9ddbcdd479686d2f4ca389316962f506df17feadf5bf4ecac71be58c66450",
-    "pngSha256": "0d4d6b266b92df63363727b553067aa6f2ad1be99f11f5ad755c39faa2caaf1f",
+    "sourceSha256": "df00218124d7ecf02123e536279b658f8b9d27442c2824df17a74c47e6501544",
+    "pngSha256": "9f04622787ee553755a677fb4b79490ffde0acd0224a775467b8f67c4ca76cf8",
     "renderer": "Blender 4.3.2, Cycles CPU, 64 samples"
   },
   "spaniel": {

@@ -20,13 +20,18 @@ pays a reward. The normal game now connects all twelve templates.
 | 5 | Reward pools, independent outfit geometry, floor/wall rewards, owed payouts | Content/payout tests; six-species clothing and room-covering controller captures |
 | 6 | Ask/accept/decline, reminders, jobs list, protected parcels and contribution selectors | Approved UI; controller acceptance, protected parcels and actual item selectors |
 | 7 | Clothing/property deliveries; recipient outfit and payment | Actual domain handoffs, full-pocket and wallet retries |
-| 8 | Saved referral decisions, four-borrower maximum, exact pickup and return | Multi-stage/reload/retry tests |
+| 8 | Saved referral decisions, two-borrower maximum, exact pickup and return | Multi-stage/reload/retry tests |
 | 9 | Ordinary fruit/fish/insect handoffs and net flower planting | Actual inventory/planting API tests, claimant protection |
 | 10 | Two balls, four seasonal snowballs, rolling/collision/combining, persistent snowmen and exact destruction | Actual fixed-step physics and save evidence tests |
 | 11 | Composed queued letters, attachments, NPC grading/replies, player mail and notice-board posts | Unicode/rank tests, full mailboxes, offline delivery and full text roundtrips |
 | 12 | Two-card departure/return, fifth visitor capsule, canonical decisions, recovery, explicit NPC exchanges | Foreign/moved deliveries and write-boundary fault injection |
 | 13 | Four-profile ownership, deletion guards, legacy request retirement, protected opening parcels and notice-board employment task | Profile, migration, opening and save qualification |
 | 14 | Managed/native/console qualification, captures, performance and same-commit delivery | Managed/native AOT, controller/save qualification and measured software-emulator results below |
+
+Retrievals visit at most two borrowers, excluding the original owner: one optional
+redirect, then pickup and return. The former four-slot save layout and reward
+rows remain readable. Older longer chains finish at their current borrower,
+including when a further referral was already selected, and keep their reward tier.
 
 The six existing employment payments remain 1,000 debt credit each. The new final
 notice-board task adds no seventh payment. Published catalog-v1 saves with a

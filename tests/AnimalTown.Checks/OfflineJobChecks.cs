@@ -19,7 +19,7 @@ internal static class OfflineJobChecks
     {Speak(s,service,npc);var offer=Do(service,JobCommandKind.Ask);check(offer.Result==JobResult.ExistingOffer,"explicit ask stores a complete offer");var snapshot=s.Town.Jobs.Offer(s.ActiveProfile,npc);var accepted=Do(service,JobCommandKind.Accept,offer.Job,snapshot.Revision);check(accepted.Result==JobResult.Ok,"explicit acceptance reserves the job and reward");return accepted.Job;}
     internal static void Run(Action<bool,string> check)
     {
-        Deliveries(check);OffersAndBindings(check);Retrieval(check);Shared(check);Clocks(check);
+        Deliveries(check);OffersAndBindings(check);Retrieval(check);RetrievalLimit(check);LegacyRetrievalLimit(check);Shared(check);Clocks(check);
         Console.WriteLine("Offline errands: physical contexts, stored offers, bound parcels, delivery/retrieval, shared claims, exact rewards and time checks passed");
     }
     private static void Deliveries(Action<bool,string> check)
@@ -67,6 +67,54 @@ internal static class OfflineJobChecks
         s.Pockets[9]=0;service.AdvanceTo(noon+100);Do(service,JobCommandKind.Handoff,id,j.Revision);j=s.Town.Jobs.Job(s.Town.Jobs.FindJob(id));
         check(offers.At==draws&&j.Status==JobStatus.Returning&&j.Target==j.Requester&&j.DueAt==noon+100+2*86400,"retry mints one bound object and refreshes the deadline only on committed pickup");
         Speak(s,service,0);check(Do(service,JobCommandKind.Handoff,id,j.Revision).Result==JobResult.Ok&&s.Find(Catalog.WritingPaper)>=0,"one-borrower retrieval pays the stationery reward row");
+    }
+    private static void RetrievalLimit(Action<bool,string> check)
+    {
+        check(JobRulesV1.MaximumBorrowers==2,"retrieval is capped at two borrowers, with at most one redirect");
+        var s=new GameState(24);var offers=new Draws(1,1,0,0,1,0);var service=Service(s,offers,new Draws());
+        // Every candidate has a separate home acre, so a continuation really
+        // has somewhere to go rather than stopping because no NPC is eligible.
+        for(int n=0;n<6;n++)s.Town.Residents[n].HomeX=5+n*20;
+        Array.Fill(s.Pockets,1,0,s.Capacity);
+        var id=Accept(s,service,0,check);int at=s.Town.Jobs.FindJob(id);var first=s.Town.Jobs.Job(at);
+        service.AdvanceTo(noon+60);Speak(s,service,s.Town.Jobs.FindNpc(first.Target));
+        check(Do(service,JobCommandKind.Handoff,id,first.Revision).Result==JobResult.ExistingJob,"first borrower can redirect once even with full pockets");
+        var second=s.Town.Jobs.Job(at);int draws=offers.At;
+        check(second.Borrowers==2&&second.Borrower1==first.Target&&second.Borrower2==second.Target&&second.Target!=first.Target&&second.Target!=second.Requester,"redirect commits exactly two distinct borrowers excluding the owner");
+        check(second.DueAt==noon+60+2*86400&&second.OriginalDueAt==first.OriginalDueAt,"the single redirect refreshes only its stage deadline");
+        var saved=SaveCodec.Decode(SaveCodec.Encode(s));var noMoreOffers=new Draws();var resumed=new VillagerJobService(saved,noMoreOffers,new Draws(75,1000));resumed.Enable(saved.Town.Jobs.TownId,noon+60);
+        var j=saved.Town.Jobs.Job(saved.Town.Jobs.FindJob(id));Speak(saved,resumed,saved.Town.Jobs.FindNpc(j.Target));
+        check(Do(resumed,JobCommandKind.Handoff,id,j.Revision).Result==JobResult.FullPockets,"second borrower must offer the item rather than another redirect");
+        j=saved.Town.Jobs.Job(saved.Town.Jobs.FindJob(id));
+        check(j.Borrowers==2&&j.ChainDecision==2&&j.NextBorrower.IsEmpty&&noMoreOffers.At==0&&offers.At==draws&&j.DueAt==second.DueAt,"cap and full-pocket retries never draw another referral or refresh its deadline");
+        saved.Pockets[saved.Capacity-1]=0;
+        check(Do(resumed,JobCommandKind.Handoff,id,j.Revision).Result==JobResult.Ok,"making space collects the item from the second borrower");
+        j=saved.Town.Jobs.Job(saved.Town.Jobs.FindJob(id));
+        check(j.Status==JobStatus.Returning&&j.Borrowers==2&&j.Target==j.Requester&&saved.IsJobItem(saved.Capacity-1),"pickup binds the item and sends it straight back to the original owner");
+        Speak(saved,resumed,0);
+        check(Do(resumed,JobCommandKind.Handoff,id,j.Revision).Result==JobResult.Ok&&saved.Wallet==500&&saved.Town.Jobs.FindJob(id)<0,"two-borrower retrieval still completes and pays its correct reward tier");
+    }
+    private static void LegacyRetrievalLimit(Action<bool,string> check)
+    {
+        foreach(int borrowers in new[]{2,3,4})foreach(bool pendingReferral in new[]{false,true}){
+            var s=new GameState(24);var service=Service(s,new Draws(1,1,0,0),new Draws());var id=Accept(s,service,0,check);int at=s.Town.Jobs.FindJob(id);var j=s.Town.Jobs.Job(at);
+            // Reproduce the existing four-slot save layout, including a saved
+            // continuation decision from a build with the former limit.
+            for(int i=0;i<borrowers;i++)j.SetBorrower(i,s.Town.Jobs.Npc(i+1));
+            j.Borrowers=borrowers;j.Target=j.Borrower(borrowers-1);j.ChainDecision=pendingReferral?1:0;j.NextBorrower=pendingReferral?s.Town.Jobs.Npc(borrowers+1):default;s.Town.Jobs.Jobs[at]=j;
+            Array.Fill(s.Pockets,1,0,s.Capacity);
+            foreach(var saved in new[]{SaveCodec.Decode(SaveCodec.Encode(s)),SplitSaveCodec.Decode(SplitSaveCodec.Encode(s))}){
+                var noReferral=new Draws();var resumed=Service(saved,noReferral,new Draws(75,1000));
+                var before=saved.Town.Jobs.Job(saved.Town.Jobs.FindJob(id));Speak(saved,resumed,saved.Town.Jobs.FindNpc(before.Target));
+                check(Do(resumed,JobCommandKind.Handoff,id,before.Revision).Result==JobResult.FullPockets,"old chains stop at their current borrower without an extra redirect");
+                var stop=saved.Town.Jobs.Job(saved.Town.Jobs.FindJob(id));
+                check(stop.Borrowers==borrowers&&stop.Target==before.Target&&stop.ChainDecision==2&&stop.NextBorrower.IsEmpty&&stop.DueAt==before.DueAt&&noReferral.At==0,"legacy stop preserves history and deadline, discards a pending referral and consumes no RNG");
+                saved.Pockets[saved.Capacity-1]=0;
+                check(Do(resumed,JobCommandKind.Handoff,id,stop.Revision).Result==JobResult.Ok,"legacy chain collects its exact bound parcel when space is available");
+                var returning=saved.Town.Jobs.Job(saved.Town.Jobs.FindJob(id));Speak(saved,resumed,0);
+                check(Do(resumed,JobCommandKind.Handoff,id,returning.Revision).Result==JobResult.Ok&&saved.Wallet==new[]{0,0,500,750,1000}[borrowers],"legacy chains keep their earned two-, three- or four-borrower reward tier");
+            }
+        }
     }
     private static void Shared(Action<bool,string> check)
     {
