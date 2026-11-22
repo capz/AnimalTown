@@ -37,7 +37,8 @@ internal sealed class OfflineTravelCards : IDisposable
         homeCard=MemoryCard.Mount((StorageDevice)HomeDevice,new MemoryCardIdentity("AMTE","01"));
         try{
             destinationCard=MemoryCard.Mount((StorageDevice)DestinationDevice,new MemoryCardIdentity("AMTE","01"));
-            var homeStore=new CardSaveStorage(homeCard,banner,icon,HomeDevice,current);var destinationStore=new CardSaveStorage(destinationCard,banner,icon,DestinationDevice,current);
+            var homeStore=new CardSaveStorage(homeCard,banner,icon,HomeDevice,current,preserveVillagerLayout:true);
+            var destinationStore=new CardSaveStorage(destinationCard,banner,icon,DestinationDevice,current,preserveVillagerLayout:true);
             home=new SaveRepository(homeStore);destination=new SaveRepository(destinationStore);Travel=new OfflineTownTravel(home,destination,current);Travel.Inspect(out Home,out Destination);
             // Conversion validates each legacy town again. Reuse that town's
             // immutable bodies rather than decoding the other mailbox twice.

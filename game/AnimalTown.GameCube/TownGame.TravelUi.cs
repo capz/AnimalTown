@@ -36,7 +36,7 @@ internal sealed partial class TownGame
         bool fly=travelAction==0||travelAction==1;
         float boardX=0,boardZ=0;
         if(fly&&!HelipadSite.TryArrival(state,out boardX,out boardZ)){travelStatus="Clear the grass in front of the helipad before boarding.";screen="travel-menu";return;}
-        if(!SaveFromMenu()){travelStatus=saveStatus;screen="travel-menu";return;}
+        if(!SaveFromMenu(travelCheckpoint:true)){travelStatus=saveStatus;screen="travel-menu";return;}
         card?.Dispose();card=null;
         session.QueueTravel(travelAction,state.ActiveProfile,travelFrom,travelTo,JobNow);
         if(fly){StartHelipadFlight(boardX,boardZ);return;}

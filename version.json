@@ -203,6 +203,15 @@
         "The date and time fade out when you run and return when you stop.",
         "Each fade takes about a quarter of a second."
       ]
+    },
+    {
+      "id": "travel-card-checkpoint-and-io-details",
+      "lines": [
+        "Two-card travel can save progress without moving older save files.",
+        "The game rechecks the selected town card before writing.",
+        "Optional card-layout cleanup runs during regular saves.",
+        "Card errors identify the slot and operation that failed."
+      ]
     }
   ]
 }
