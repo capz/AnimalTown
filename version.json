@@ -151,6 +151,15 @@
       ]
     },
     {
+      "id": "helipad-two-card-flight",
+      "lines": [
+        "Take a helicopter from the north helipad to another town.",
+        "Board from the grass in front of the pad during a two-card visit.",
+        "Fly across the sky while the destination is loading.",
+        "Land beside the destination gate and walk straight into town."
+      ]
+    },
+    {
       "id": "bounded-profiling-warm-prefetch-20261121",
       "lines": [
         "Compare optional terrain prefetch and record performance without the overlay.",
@@ -175,6 +184,15 @@
         "Each settings entry uses one block.",
         "Existing settings move when you save them or save your town with enough free space.",
         "Deleting a town in the game preserves both settings entries."
+      ]
+    },
+    {
+      "id": "flat-polygon-helipad",
+      "lines": [
+        "The north helipad has a flat timber surface with a painted landing mark.",
+        "The plank seams, cream H, and corner marks are drawn with color polygons.",
+        "The helicopter now sits level with the pad when parked.",
+        "A windsock still marks the landing area."
       ]
     },
     {

@@ -21,7 +21,7 @@ internal static class JobFixture
             }
             fullState.MailCount=128;Array.Fill(fullState.Mail,JobContent.Letter);JobMaximumFixture.Fill(fullState,fullMailBody);
             if(otherTown){int free=26;for(int i=OfflineJobLedger.InboxCount;i<fullLedger.Mail.Length&&free>0;i++){var message=fullLedger.Mail[i];int reward=fullLedger.FindReward(message.Reservation);if(reward<0)continue;fullLedger.Rewards[reward]=default;message.Reservation=default;message.Recipient=fullLedger.Player(1);fullLedger.Mail.Set(i,message);free--;}if(free!=0)throw new Exception("Maximum destination needs visitor reward space");}
-            for(int z=9;z<24;z++)for(int x=28;x<43;x++){fullState.Town.Tiles[z*Town.Width+x]=(byte)Terrain.Grass;fullState.Town.Elevation[z*Town.Width+x]=0;}
+            for(int z=10;z<24;z++)for(int x=28;x<43;x++){fullState.Town.Tiles[z*Town.Width+x]=(byte)Terrain.Grass;fullState.Town.Elevation[z*Town.Width+x]=0;}
             for(int i=fullState.Town.GroundCount-1;i>=0;i--){var ground=fullState.Town.Ground[i];if(ground.X>=28&&ground.X<43&&ground.Z>=9&&ground.Z<24)fullState.Town.RemoveGround(i);}
             fullState.Space=0;fullState.X=36.5f;fullState.Z=14.5f;fullState.Shirt=Catalog.StripedShirt;
             for(int n=0;n<6;n++)fullLedger.SetOutfit(n,Catalog.BerryShirt);
@@ -68,7 +68,7 @@ internal static class JobFixture
             }
             foreach(var file in home.Files)File.WriteAllBytes(Path.Combine(output,file.Key),file.Value);foreach(var file in destinationDisk.Files)File.WriteAllBytes(Path.Combine(output+"-destination",file.Key),file.Value);return;
         }
-        if(mode=="foreign"||mode=="moved"){CrossTown(output,mode);return;}
+        if(mode=="foreign"||mode=="moved"||mode=="helipad"){CrossTown(output,mode);return;}
         bool baseline=mode=="baseline",winter=mode is "snowman" or "outfits-winter",dressed=mode is "outfits-on" or "outfits-winter",destination=mode=="destination";long now=JobCalendar.At(2027,winter?1:7,15,mode=="letter"?7:12,mode=="letter"?58:0);var s=new GameState(destination?7320:7319){Name="Ari",Tutorial=baseline?6:7,HouseTier=1};s.Town.DaylightLocation=1;
         s.Rollover((int)(now/86400),2027*12+(winter?0:6));s.Tutorial=baseline?6:7;if(!baseline)s.ResidentJobs.Enable(destination?0x41544a4f425332UL:0x41544a4f425331UL,now);
         bool placed=false;for(int z=20;z<Town.Height-13&&!placed;z++)for(int x=4;x<20&&!placed;x++)placed=s.PlaceHouse(x,z,false);if(!placed)throw new Exception("Job fixture requires a home plot");
@@ -115,12 +115,15 @@ internal static class JobFixture
     private static void CrossTown(string output,string mode)
     {
         Write(output,"base-travel");Write(output+"-destination","destination");var a=ReadFixture(output);var b=ReadFixture(output+"-destination");var ar=new SaveRepository(a);var br=new SaveRepository(b);long now=JobCalendar.At(2027,7,15,12);
-        void Gate(GameState s){for(int z=9;z<24;z++)for(int x=28;x<43;x++){s.Town.Tiles[z*Town.Width+x]=(byte)Terrain.Grass;s.Town.Elevation[z*Town.Width+x]=0;}for(int i=s.Town.GroundCount-1;i>=0;i--){var g=s.Town.Ground[i];if(g.X>=28&&g.X<43&&g.Z>=9&&g.Z<24)s.Town.RemoveGround(i);}s.Space=0;s.X=36.5f;s.Z=14.5f;var n=s.Town.Residents[0];n.Space=0;n.PosX=36.5f;n.PosZ=16;n.X=36;n.Z=16;n.JourneyPhase=0;n.JourneyBuilding=-1;n.JourneyNextX=n.JourneyNextZ=-1;n.Dwell=36000;if(!s.CanWalk(s.X,s.Z,0))throw new Exception("Travel fixture gate must be reachable");}
-        var h=ar.Load()!;var d=br.Load()!;Gate(h);Gate(d);ar.Save(h);br.Save(d);var trip=new OfflineTownTravel(ar,br);trip.Depart(0,now);h=trip.Return(now);JobIdentity target=br.Load()!.Town.Jobs.Npc(0);
-        if(mode=="moved"){target=h.Town.Jobs.Npc(1);h=trip.ExchangeResidents(1,0,now);}
-        d=br.Load()!;Gate(h);Gate(d);var l=h.Town.Jobs;l.Offers[0]=new VillagerJobOffer{Id=l.Allocate(),Owner=l.Player(0),Requester=l.Npc(0),Target=target,Template=mode=="foreign"?JobTemplate.DeliveryForeign:JobTemplate.DeliveryMoved,Item=Catalog.Notebook,CreatedAt=now,Revision=1};ar.Save(h);br.Save(d);
+        void Gate(GameState s){for(int z=10;z<24;z++)for(int x=28;x<43;x++){s.Town.Tiles[z*Town.Width+x]=(byte)Terrain.Grass;s.Town.Elevation[z*Town.Width+x]=0;}for(int i=s.Town.GroundCount-1;i>=0;i--){var g=s.Town.Ground[i];if(g.X>=28&&g.X<43&&g.Z>=9&&g.Z<24)s.Town.RemoveGround(i);}s.Space=0;s.X=36.5f;s.Z=14.5f;var n=s.Town.Residents[0];n.Space=0;n.PosX=36.5f;n.PosZ=16;n.X=36;n.Z=16;n.JourneyPhase=0;n.JourneyBuilding=-1;n.JourneyNextX=n.JourneyNextZ=-1;n.Dwell=36000;if(!s.CanWalk(s.X,s.Z,0))throw new Exception("Travel fixture gate must be reachable");}
+        var h=ar.Load()!;var d=br.Load()!;Gate(h);Gate(d);ar.Save(h);br.Save(d);
+        if(mode!="helipad"){
+            var trip=new OfflineTownTravel(ar,br);trip.Depart(0,now);h=trip.Return(now);JobIdentity target=br.Load()!.Town.Jobs.Npc(0);
+            if(mode=="moved"){target=h.Town.Jobs.Npc(1);h=trip.ExchangeResidents(1,0,now);}
+            d=br.Load()!;Gate(h);Gate(d);var l=h.Town.Jobs;l.Offers[0]=new VillagerJobOffer{Id=l.Allocate(),Owner=l.Player(0),Requester=l.Npc(0),Target=target,Template=mode=="foreign"?JobTemplate.DeliveryForeign:JobTemplate.DeliveryMoved,Item=Catalog.Notebook,CreatedAt=now,Revision=1};ar.Save(h);br.Save(d);
+        }
         foreach(var p in a.Files)File.WriteAllBytes(Path.Combine(output,p.Key),p.Value);foreach(var p in b.Files)File.WriteAllBytes(Path.Combine(output+"-destination",p.Key),p.Value);
-        Console.WriteLine("Actual previous visit"+(mode=="moved"?" and NPC move":"")+" prepared for two-card controller capture");
+        Console.WriteLine(mode=="helipad"?"Two towns prepared for a helipad round trip":"Actual previous visit"+(mode=="moved"?" and NPC move":"")+" prepared for two-card controller capture");
     }
     internal static void Report(string directory,string mode,bool verify)
     {
@@ -130,11 +133,14 @@ internal static class JobFixture
         JobTemplate? expected=mode switch{"delivery" or "owed"=>JobTemplate.DeliveryClothing,"property"=>JobTemplate.DeliveryProperty,"retrieval" or "retrieval-multi"=>JobTemplate.RetrievalBorrowed,"foreign"=>JobTemplate.DeliveryForeign,"moved"=>JobTemplate.DeliveryMoved,"fruit"=>JobTemplate.FavorFruit,"fish"=>JobTemplate.FavorFish,"insect"=>JobTemplate.FavorInsect,"flowers"=>JobTemplate.FavorFlowers,"ball"=>JobTemplate.FavorBall,"snowman" or "destroy-snowman"=>JobTemplate.FavorSnowman,"letter" or "letter-full"=>JobTemplate.FavorLetter,_=>null};
         bool completed=Enumerable.Range(0,OfflineJobLedger.TerminalCapacity).Any(i=>l.Terminal(i).Reason==JobEndReason.Success&&(!expected.HasValue||l.Terminal(i).Template==expected.Value))||jobs.Any(j=>j.Status==JobStatus.CompletedRetained&&(!expected.HasValue||j.Template==expected.Value));
         GameState? other=null;
-        if(mode=="foreign"||mode=="moved"||mode=="moving"||mode=="recovery"||mode=="maximum-economy"||mode=="maximum-recovery"||mode=="maximum-post-travel"){
+        if(mode=="foreign"||mode=="moved"||mode=="moving"||mode=="recovery"||mode=="helipad"||mode=="maximum-economy"||mode=="maximum-recovery"||mode=="maximum-post-travel"){
             other=new SaveRepository(ReadFixture(Path.Combine(directory,"..","records-b"))).Load()??throw new Exception("Controller run must export both actual town cards");
             if(expected.HasValue)completed|=Enumerable.Range(0,OfflineJobLedger.TerminalCapacity).Any(i=>other.Town.Jobs.Terminal(i).Owner==l.Player(0)&&other.Town.Jobs.Terminal(i).Template==expected.Value&&other.Town.Jobs.Terminal(i).Reason==JobEndReason.Success);
             if(verify&&(s.Visiting||other.Visiting||s.ProfileLocked(0)||l.Trip.Pending||other.Town.Jobs.Trip.Pending))throw new Exception("Both town cards must finish without an active or duplicated traveller");
         }
+        if(verify&&mode=="helipad"&&(other==null||l.Trip.Phase!=OfflineTripPhase.Finished||other.Town.Jobs.Trip.Phase!=OfflineTripPhase.Finished||
+            other.Town.Jobs.GuestProfile!=null||s.Space!=0||Math.Abs(s.X-HelipadSite.CenterX)>.1f||Math.Abs(s.Z-11.3f)>.1f))
+            throw new Exception("The return must release the visitor and save the player at the home pad");
         if(verify&&expected.HasValue&&!completed)throw new Exception("Controller run has not completed its expected errand: "+mode);
         if(verify&&(mode=="maximum-economy"||mode=="maximum-recovery"||mode=="maximum-post-travel")){
             var guest=new SaveRepository(ReadFixture(Path.Combine(directory,"..","records-guest"))).Load()??throw new Exception("Maximum transfer needs its actual committed visitor checkpoint");

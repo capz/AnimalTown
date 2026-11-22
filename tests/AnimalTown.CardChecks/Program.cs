@@ -317,12 +317,13 @@ card=growthBase;MemoryCard.Slots[4]=card;var streamRecords=new TownCardRecords(n
 Check(streamRecords.Matches("larger",large,-1,large.Length,0,false),"streamed readback accepts the complete saved record");large[100]=1;
 Check(!streamRecords.Matches("larger",large,-1,large.Length,0,false),"streamed readback detects a payload mismatch beyond its header");
 Console.WriteLine(checks+" card adapter checks passed: consolidated save/reload, no-op save, capacity, migration interruption/retry, independent records and deletion; host model, not hardware.");
-sealed class PrefixMeter(ISaveStorage inner) : ISaveStorage,ISaveVerifiedPrefixStorage
+sealed class PrefixMeter(CardSaveStorage inner) : ISaveStorage,ISaveSnapshotStorage,ISaveVerifiedPrefixStorage
 {
     internal int PrefixReads,EconomicReads;
     public byte[] Read(string name){if(name.StartsWith("AT-Shops"))EconomicReads++;return inner.Read(name);}
     public void Write(string name,byte[] bytes)=>inner.Write(name,bytes);
-    public byte[] ReadVerifiedPrefix(string name,int count,int sequence,int length,uint checksum){PrefixReads++;return ((ISaveVerifiedPrefixStorage)inner).ReadVerifiedPrefix(name,count,sequence,length,checksum);}
+    public byte[] ReadVerifiedPrefix(string name,int count,int sequence,int length,uint checksum){PrefixReads++;return inner.ReadVerifiedPrefix(name,count,sequence,length,checksum);}
+    public bool Matches(string name,byte[]? expected,int sequence,int length,uint checksum,bool ignoreSequence)=>inner.Matches(name,expected,sequence,length,checksum,ignoreSequence);
 }
 
 sealed class OldFiles(MemoryCard card) : ISaveStorage
