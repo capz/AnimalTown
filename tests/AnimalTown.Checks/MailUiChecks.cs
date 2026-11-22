@@ -8,11 +8,15 @@ using Dolphin.Timing;
 // dialogue owners are replaced; paper/gift selection and the mail service are real.
 namespace Dolphin.Graphics
 {
-    internal readonly struct Color32 {internal Color32(int r,int g,int b) {}}
+    internal readonly struct Color32 {internal Color32(int r,int g,int b) {} internal static Color32 White=>new Color32(255,255,255);}
 }
 internal sealed partial class TownGame
 {
     private readonly MenuNavigation jobNavigation=new MenuNavigation();
+    private readonly MenuNavigation menuNavigation=new MenuNavigation();
+    private readonly KeyboardFont font=new KeyboardFont();
+    private readonly KeyboardFont strongFont=new KeyboardFont();
+    private sealed class KeyboardFont {internal float Measure(string text,float scale)=>text.Length*8*scale;}
     private int slot,selected,menuTab,returnMenuTab,returnMenuSelection;
     private bool returnToMenu;
     private bool JobsLive=>state.Town.Jobs.Initialized&&state.ResidentJobs.Enabled;
@@ -24,14 +28,18 @@ internal sealed partial class TownGame
     private void Panel(float x,float y,float w,float h){}
     private void Heading(string text,float x,float y,Color32 ink,float scale=1){}
     private void Text(string text,float x,float y,Color32 ink,float scale=1){}
+    private void Strong(string text,float x,float y,Color32 ink,float scale=1){}
     private void Rounded(float x,float y,float w,float h,float radius,Color32 ink){}
     private void MailButton(ControllerButton button)
+    {MailFrame(button);}
+    private void MailFrame(ControllerButton button=0,float x=0,float y=0)
     {
         Clock.Timestamp+=200000;
-        MailUiInput(new ControllerState(1,(int)button,(int)button,0,default,default,0,0));
+        MailUiInput(new ControllerState(1,(int)button,(int)button,0,new StickState(x,y),default,0,0));
     }
     internal static void CheckMailControls(Action<bool,string> check)
     {
+        CheckLetterKeyboard(check);
         var state=new GameState(32){Tutorial=7};state.SelectProfile(1);state.SelectProfile(0);
         state.ResidentJobs.Enable(99,JobCalendar.At(2027,7,15,12));Array.Clear(state.Pockets);
         state.Pockets[0]=Catalog.WritingPaper;state.Pockets[1]=Catalog.PlainWritingPaper;state.Pockets[2]=Catalog.Pear;
@@ -55,7 +63,7 @@ internal sealed partial class TownGame
         check(g.letterGift==2&&g.letterPaper==0,"gift action preselects the exact gift and a separate sheet");
         g.MailButton(ControllerButton.A);g.letterDraft="Hello there!";
         g.MailButton(ControllerButton.Start);g.MailButton(ControllerButton.DPadDown);g.MailButton(ControllerButton.A);
-        check(g.screen=="dialogue"&&state.Pockets[0]==0&&state.Pockets[2]==0&&state.Pockets[1]==Catalog.PlainWritingPaper,"sending through the actual UI consumes only selected paper and gift");
+        check(g.screen=="dialogue"&&g.letterEntry==null&&state.Pockets[0]==0&&state.Pockets[2]==0&&state.Pockets[1]==Catalog.PlainWritingPaper,"sending through the actual UI consumes only selected paper and gift and releases the draft keyboard");
 
         g.slot=1;g.screen="item";g.OpenPocketLetter(PocketAction.AttachToLetter);
         check(g.screen=="dialogue"&&g.returnToMenu&&g.returnMenuTab==0&&g.returnMenuSelection==1&&state.Pockets[1]==Catalog.PlainWritingPaper,"attaching the only remaining sheet explains the missing separate paper and preserves it");
@@ -78,5 +86,51 @@ internal sealed partial class TownGame
         g.MailButton(ControllerButton.A);g.letterDraft="Hello there!";state.Pockets[1]=0;
         g.MailButton(ControllerButton.Start);g.MailButton(ControllerButton.DPadDown);g.MailButton(ControllerButton.A);
         check(g.screen=="letter-compose"&&state.Pockets[0]==Catalog.WritingPaper&&g.letterStatus.Contains("writing paper"),"send failure keeps the draft and never substitutes unselected paper");
+    }
+    private static void CheckLetterKeyboard(Action<bool,string> check)
+    {
+        var state=new GameState(33){Tutorial=7};state.ResidentJobs.Enable(100,JobCalendar.At(2027,7,15,12));Array.Clear(state.Pockets);
+        state.Pockets[0]=Catalog.WritingPaper;state.Pockets[1]=Catalog.Pear;
+        var g=new TownGame(state);g.OpenLetterComposer(paper:0);g.MailButton(ControllerButton.A);
+        var entry=g.letterEntry!;
+        check(g.screen=="letter-compose"&&entry.Selected==0&&!entry.Uppercase&&entry.CountLabel=="0 / 1000","the letter editor opens chat's lowercase QWERTY keyboard with the mail budget");
+        g.MailButton(ControllerButton.DPadLeft);g.MailButton(ControllerButton.A);
+        g.MailButton(ControllerButton.DPadUp);g.MailButton(ControllerButton.A);
+        g.MailButton(ControllerButton.DPadRight);g.MailButton(ControllerButton.A);
+        g.MailButton(ControllerButton.DPadDown);g.MailButton(ControllerButton.L);g.MailButton(ControllerButton.A);
+        g.MailButton(ControllerButton.R);
+        check(g.letterDraft=="p+\nQ "&&entry.Selected==0&&entry.Uppercase,"real letter controls share chat's row wrapping, case toggle and R-space, while NL preserves line breaks");
+        g.MailButton(ControllerButton.X);g.MailButton(ControllerButton.DPadRight);g.MailButton(ControllerButton.A);
+        check(g.letterDraft=="p+\nQW"&&entry.CountLabel=="5 / 1000"&&entry.Selected==1,"erase and type use the same keyboard draft and counter");
+        g.MailButton(ControllerButton.Y);g.MailButton(ControllerButton.DPadDown);g.MailButton(ControllerButton.A);
+        check(g.screen=="letter-compose"&&g.letterGift==1&&ReferenceEquals(entry,g.letterEntry)&&entry.Selected==1&&entry.Uppercase&&g.letterDraft=="p+\nQW","selecting a present preserves the draft, case and keyboard selection");
+        g.MailButton(ControllerButton.B);g.MailButton(ControllerButton.A);
+        check(g.screen=="letter-compose"&&ReferenceEquals(entry,g.letterEntry)&&entry.Selected==1&&entry.Uppercase,"keeping a draft preserves keyboard state across discard confirmation");
+        g.MailButton(ControllerButton.Start|ControllerButton.A);
+        check(g.screen=="letter-confirm"&&g.letterDraft=="p+\nQW"&&state.Pockets[0]==Catalog.WritingPaper&&state.Pockets[1]==Catalog.Pear,"START takes priority over simultaneous typing and never consumes paper or a gift before confirmation");
+        g.MailButton(ControllerButton.B);
+        while(entry.Text.Length<1000)g.MailButton(ControllerButton.A);
+        string full=g.letterDraft;g.MailButton(ControllerButton.A);
+        check(g.letterDraft==full&&entry.CountLabel=="1000 / 1000"&&entry.Status.Length>0,"the real letter controls stop at 1000 without silently truncating the draft");
+        g.MailButton(ControllerButton.X);g.MailButton(ControllerButton.R);
+        check(g.letterDraft.Length==1000&&g.letterDraft.EndsWith(" ")&&entry.Status.Length==0&&g.letterPreview.Split('\n').Length<=3,"editing recovers from a full draft and its preview fits the shared panel");
+        g.MailButton(ControllerButton.B|ControllerButton.A);
+        check(g.screen=="letter-cancel"&&g.letterDraft.Length==1000,"B takes priority over typing and protects the draft with its existing confirmation");
+        g.MailButton(ControllerButton.DPadDown);g.MailButton(ControllerButton.A);
+        check(g.screen=="world"&&g.letterEntry==null&&g.letterDraft==""&&state.Pockets[0]==Catalog.WritingPaper&&state.Pockets[1]==Catalog.Pear,"discard releases the shared keyboard while preserving stationery and the present");
+        g.OpenLetterComposer(paper:0);g.MailButton(ControllerButton.A);g.MailFrame();g.MailFrame(y:-.9f);
+        check(g.letterEntry!.Selected==10,"the letter keyboard accepts the same fresh stick gesture as chat");
+        g.MailFrame(ControllerButton.Y,y:-.9f);g.MailFrame(ControllerButton.A,y:-.9f);g.MailFrame(y:-.9f);
+        check(g.screen=="letter-compose"&&g.letterEntry.Selected==10,"a stick held across the present dialog cannot move the keyboard on return");
+        g.MailFrame();g.MailFrame(y:-.9f);
+        check(g.letterEntry.Selected==20,"recentering rearms the shared keyboard after returning from a dialog");
+        g.MailButton(ControllerButton.A);g.MailButton(ControllerButton.Start);g.MailFrame();g.MailButton(ControllerButton.B);
+        g.MailFrame(ControllerButton.Start,y:-.9f);g.MailFrame(y:-.9f);
+        check(g.screen=="letter-confirm"&&g.letterCursor==0,"reopening send confirmation with a held stick keeps the safe default selected");
+        g.MailFrame(ControllerButton.A,y:-.9f);
+        check(g.screen=="letter-compose"&&state.Pockets[0]==Catalog.WritingPaper,"confirming the default after a held-stick return keeps the draft and stationery");
+        g.ReturnFromLetter();
+        g.OpenLetterComposer(true);g.MailButton(ControllerButton.A);g.MailButton(ControllerButton.R);g.MailButton(ControllerButton.DPadUp);g.MailButton(ControllerButton.A);g.MailButton(ControllerButton.Y);
+        check(g.screen=="letter-compose"&&g.letterDraft=="q \n"&&g.letterEntry!.CountLabel=="3 / 1000","notices share chat's editing controls and line breaks without opening a present selector");
     }
 }

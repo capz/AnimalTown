@@ -52,8 +52,8 @@ public static class TownChat
     }
 }
 
-// A controller keyboard owns only a short draft and cached key labels. No
-// texture, model or native keyboard buffer is allocated for chat entry.
+// Chat and mail share the same controller keyboard and cached key labels.
+// R provides spaces, so multiline entry can use the SP key for a newline.
 public sealed class ChatEntry
 {
     public const string Screen="chat";
@@ -61,14 +61,18 @@ public sealed class ChatEntry
     private const string Keys="qwertyuiopasdfghjkl'zxcvbnm,./0123456789 !?-:;()@+";
     private readonly string[] lower=new string[Columns*Rows],upper=new string[Columns*Rows];
     public string Text {get;private set;}="";
-    public string CountLabel {get;private set;}="0 / 120";
+    public string CountLabel {get;private set;}
+    public int MaximumLength {get;}
+    public bool Multiline {get;}
     public string Status="";
     public int Selected {get;private set;}
     public bool Uppercase {get;private set;}
-    public ChatEntry()
+    public ChatEntry(int maximumLength=TownChat.MaximumLength,bool multiline=false)
     {
+        if(maximumLength<1)throw new ArgumentOutOfRangeException(nameof(maximumLength));
+        MaximumLength=maximumLength;Multiline=multiline;CountLabel="0 / "+MaximumLength;
         for(int i=0;i<Keys.Length;i++){
-            char c=Keys[i];lower[i]=c==' '?"SP":new string(c,1);
+            char c=Keys[i];lower[i]=c==' '?(multiline?"NL":"SP"):new string(c,1);
             upper[i]=c>='a'&&c<='z'?new string((char)(c-32),1):lower[i];
         }
     }
@@ -86,16 +90,16 @@ public sealed class ChatEntry
     public void Type()
     {
         char c=Keys[Selected];if(Uppercase&&c>='a'&&c<='z')c=(char)(c-32);
-        Append(c);
+        Append(Multiline&&c==' '?'\n':c);
     }
     public bool Append(char c)
     {
-        if(c<' '||c>'~'){Status="Use letters, numbers and punctuation.";return false;}
-        if(Text.Length>=TownChat.MaximumLength){Status="Message full. Erase a character to edit.";return false;}
+        if((c<' '||c>'~')&&!(Multiline&&c=='\n')){Status="Use letters, numbers and punctuation.";return false;}
+        if(Text.Length>=MaximumLength){Status="Message full. Erase a character to edit.";return false;}
         Text+=new string(c,1);Changed();return true;
     }
     public void Erase(){if(Text.Length>0)Text=Text.Substring(0,Text.Length-1);Changed();}
-    private void Changed(){Status="";CountLabel=Text.Length+" / 120";}
+    private void Changed(){Status="";CountLabel=Text.Length+" / "+MaximumLength;}
 }
 
 // Measured wrapping also splits long unbroken words. Each cached page fits

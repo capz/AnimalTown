@@ -7,12 +7,10 @@ using Dolphin.Timing;
 
 internal sealed partial class TownGame
 {
-    private const string LetterKeys="ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789 .,!?'\n-:;()";
-    private string letterDraft="",letterStatus="",letterBody="",letterPage="",letterPreview="",letterCount="0 / 1000",letterFrom="",noticeHeading="";
+    private ChatEntry? letterEntry;
+    private string letterDraft="",letterStatus="",letterBody="",letterPage="",letterPreview="",letterFrom="",noticeHeading="";
     private readonly string?[] mailLabels=new string?[OfflineJobLedger.MailboxCapacity];
     private int mailLabelsRevision=-1;
-    private static readonly string[] LetterKeyLabels=MakeLetterKeys();
-    private static string[] MakeLetterKeys(){var labels=new string[LetterKeys.Length];for(int i=0;i<labels.Length;i++)labels[i]=LetterKeys[i]=='\n'?"NL":LetterKeys[i]==' '?"_":LetterKeys.Substring(i,1);return labels;}
     private int letterCursor,letterRecipient,letterGift=-1,letterSlot,noticeSelection;
     private int letterPaper=-1,letterReturnTab,letterReturnSelection,letterGiftCount;
     private string letterReturnScreen="world";
@@ -22,7 +20,7 @@ internal sealed partial class TownGame
     private void OpenLetterComposer(bool notice=false,int paper=-1,int gift=-1)
     {
         letterReturnScreen=screen=="item"?"menu":screen;letterReturnTab=screen=="item"?0:menuTab;letterReturnSelection=screen=="item"?slot:selected;
-        ResetJobConversation();composingNotice=notice;letterDraft="";RefreshLetterPreview();letterStatus="";letterGift=gift;
+        ResetJobConversation();composingNotice=notice;letterEntry=new ChatEntry(JobRulesV1.LetterMaximumScalars,true);letterDraft="";RefreshLetterPreview();letterStatus="";letterGift=gift;
         letterPaper=notice?-1:paper>=0?paper:PocketMenu.WritingPaper(state,gift);
         letterRecipient=0;letterCursor=0;screen=notice?"letter-compose":"letter-recipient";
     }
@@ -35,7 +33,8 @@ internal sealed partial class TownGame
         OpenLetterComposer(paper:paper,gift:gift);
     }
     private void ReturnFromLetter()
-    {screen=letterReturnScreen;menuTab=letterReturnTab;selected=letterReturnSelection;letterDraft="";letterGift=-1;letterPaper=-1;}
+    {screen=letterReturnScreen;menuTab=letterReturnTab;selected=letterReturnSelection;ReleaseLetterEntry();letterGift=-1;letterPaper=-1;}
+    private void ReleaseLetterEntry(){letterEntry=null;letterDraft="";letterPreview="";draftPages.Set("");}
     private void OpenLetterGifts()
     {
         letterGiftCount=1;letterGiftRows[0]=-1;letterCursor=0;
@@ -69,6 +68,23 @@ internal sealed partial class TownGame
         if(!JobsLive)return false;
         if(screen=="mail"&&Press(p)&&selected<state.MailCount&&state.Town.Jobs.Letter(state.ActiveProfile,selected).State==JobMailState.Inbox){OpenMailLetter(selected);return true;}
         if(!screen.StartsWith("letter-")&&screen!="notice-board")return false;
+        if(screen=="letter-compose"){
+            // Dialog navigation must also rearm when the same dialog is
+            // reopened after typing with a held stick.
+            jobNavigation.Read(screen,0,p.Stick.X,p.Stick.Y,0,Clock.Timestamp,false);
+            // Match chat's action priority: sending or leaving never types a
+            // simultaneous A press into the draft. The keyboard owns its cursor
+            // and case independently of attachment/confirmation selections.
+            if(p.B.WasPressed){screen="letter-cancel";letterCursor=0;return true;}
+            if(p.Start.WasPressed){screen="letter-confirm";letterCursor=0;return true;}
+            if(p.Y.WasPressed&&!composingNotice){OpenLetterGifts();return true;}
+            var entry=letterEntry!;string before=entry.Text;KeyboardInput(entry,screen,p);
+            if(entry.Text!=before){letterDraft=entry.Text;RefreshLetterPreview();letterStatus="";}
+            return true;
+        }
+        // Suspend the shared keyboard while a mail dialog owns navigation;
+        // a stick held when returning must be recentered just like in chat.
+        menuNavigation.Read(screen,0,p.Stick.X,p.Stick.Y,0,Clock.Timestamp,false);
         int dir=jobNavigation.Read(screen,0,p.Stick.X,p.Stick.Y,(int)p.PressedButtons,Clock.Timestamp,true);
         int change=dir==MenuNavigation.Up?-1:dir==MenuNavigation.Down?1:0;
         if(screen=="notice-board"){
@@ -109,7 +125,7 @@ internal sealed partial class TownGame
                 if(paper>=0&&((uint)paper>=state.Capacity||state.IsJobItem(paper)||!Catalog.Has(state.Pockets[paper],ItemFlags.Stationery)))paper=-1;
                 if(!composingNotice&&paper<0){letterStatus="You need writing paper. The shop cabinet sells it.";screen="letter-compose";return true;}
                 var result=composingNotice?state.ResidentJobs.PostNotice(letterDraft,state.ResidentJobs.NextCommandSequence):state.ResidentJobs.SendLetter(RecipientIdentity(letterRecipient),letterDraft,paper,letterGift,state.ResidentJobs.NextCommandSequence);
-                if(result.Result==JobResult.Ok){if(!composingNotice&&state.Tutorial==4)state.CreditTutorial(4);Say(composingNotice?"Notice board":"Fern",composingNotice?"Your message is on the board.":"Your letter is queued for the next 08:00 post round.");}
+                if(result.Result==JobResult.Ok){if(!composingNotice&&state.Tutorial==4)state.CreditTutorial(4);ReleaseLetterEntry();Say(composingNotice?"Notice board":"Fern",composingNotice?"Your message is on the board.":"Your letter is queued for the next 08:00 post round.");}
                 else{letterStatus=result.Result==JobResult.FullOutbox?"The outgoing post is full. Try after delivery.":"This letter could not be sent. Check the text and attachment.";screen="letter-compose";}
             }return true;
         }
@@ -118,23 +134,20 @@ internal sealed partial class TownGame
             if(change!=0)letterCursor=1-letterCursor;
             if(Press(p)){if(letterCursor==1)ReturnFromLetter();else{screen="letter-compose";letterCursor=0;}}return true;
         }
-        int count=LetterKeys.Length;
-        if(dir==MenuNavigation.Left)letterCursor=(letterCursor+count-1)%count;if(dir==MenuNavigation.Right)letterCursor=(letterCursor+1)%count;
-        if(dir==MenuNavigation.Up)letterCursor=(letterCursor+count*10-10)%count;if(dir==MenuNavigation.Down)letterCursor=(letterCursor+10)%count;
-        if(p.L.WasPressed)letterCursor=letterCursor<26?letterCursor+26:letterCursor<52?letterCursor-26:letterCursor;
-        if(p.X.WasPressed&&letterDraft.Length>0){letterDraft=letterDraft.Substring(0,letterDraft.Length-1);RefreshLetterPreview();}
-        if(p.Y.WasPressed&&!composingNotice){OpenLetterGifts();return true;}
-        if(Press(p)&&letterDraft.Length<1000){letterDraft+=LetterKeys.Substring(letterCursor,1);RefreshLetterPreview();}
-        if(p.Start.WasPressed){screen="letter-confirm";letterCursor=0;}
         return true;
     }
     private void RefreshLetterPage(int lines=8)
     {letterPages.Set(letterBody);letterPage=letterPages.Window(letterCursor,lines);}
     private void RefreshLetterPreview()
-    {draftPages.Set(letterDraft);letterPreview=draftPages.Window(Math.Max(0,draftPages.Lines-4),4);letterCount=letterDraft.Length+" / 1000";}
+    {draftPages.Set(letterDraft);letterPreview=draftPages.Window(Math.Max(0,draftPages.Lines-3),3);}
     private bool DrawMailUi(Color32 ink)
     {
         if(!JobsLive||!screen.StartsWith("letter-")&&screen!="notice-board")return false;
+        if(screen=="letter-compose"){
+            var entry=letterEntry!;string error=entry.Status.Length!=0?entry.Status:letterStatus;
+            DrawTextEntry(entry,composingNotice?"A message for the town":"Write a letter",composingNotice?"Everyone can read this.":"To "+RecipientName(letterRecipient)+(letterGift>=0?" · Present attached":""),letterPreview,"What would you like to write?",error.Length!=0?error:"NL starts a new line. R adds a space.",error.Length!=0,ink,!composingNotice,1.03f);
+            return true;
+        }
         Panel(35,46,570,390);
         if(screen=="notice-board"){
             Heading("Notice board",60,67,ink);Text(noticeHeading,62,115,ink,1.1f);
@@ -157,9 +170,6 @@ internal sealed partial class TownGame
             Text(letterPage,62,145,ink,1.08f);Text(letterStatus,62,353,ink,1);
             Text(m.Gift!=0?"X: take present   Y: discard   B: back":"Up/Down: scroll   Y: discard   B: back",62,399,ink,1);return true;
         }
-        Text(composingNotice?"Everyone can read this.":"To "+RecipientName(letterRecipient)+(letterGift>=0?" · Present attached":""),62,108,ink,1.05f);
-        Text(letterPreview,62,139,ink,1.03f);Text(letterCount,466,217,ink,.9f);
-        for(int i=0;i<LetterKeys.Length;i++){float x=68+i%10*51,y=239+i/10*19;if(letterCursor==i)Rounded(x-3,y-1,28,19,7,new Color32(221,231,188));Text(LetterKeyLabels[i],x,y,ink,1.02f);}
-        Text(letterStatus.Length>0?letterStatus:"A: type   X: erase   L: case   Y: present   START: send",62,407,ink,.9f);return true;
+        return true;
     }
 }

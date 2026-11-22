@@ -44,6 +44,15 @@ internal static class TownChatChecks
         var full=new ChatEntry();for(int i=0;i<TownChat.MaximumLength;i++)check(full.Append('x'),"draft accepts characters inside its limit");
         check(!full.Append('y')&&full.Text.Length==TownChat.MaximumLength&&full.Status.Length>0,"full drafts report capacity without truncating or overflowing");
         full.Erase();check(full.Append('y')&&full.Status=="","editing recovers from the length warning");
+        var letter=new ChatEntry(AnimalTown.Jobs.JobRulesV1.LetterMaximumScalars,true);
+        check(letter.CountLabel=="0 / 1000"&&letter.Label(40)=="NL"&&new ChatEntry().Label(40)=="SP","letters retain their own budget and line-break key while chat retains its space key");
+        for(int i=0;i<ChatEntry.Columns*ChatEntry.Rows;i++)if(i!=40)check(letter.Label(i)==new ChatEntry().Label(i),"letters reuse every ordinary chat key in the same position");
+        letter.Move(MenuNavigation.Up);letter.Type();letter.Append(' ');
+        check(letter.Text=="\n "&&letter.Selected==40&&letter.CountLabel=="2 / 1000","multiline key and space shortcut remain separate actions");
+        check(!letter.Append('\t')&&!letter.Append('\0'),"multiline input never admits unrelated control characters");
+        for(int i=letter.Text.Length;i<1000;i++)letter.Append('a');
+        check(!letter.Append('b')&&letter.Text.Length==1000&&letter.CountLabel=="1000 / 1000","letter capacity remains 1000 characters instead of inheriting the chat limit");
+        bool badLimit=false;try{_ =new ChatEntry(0);}catch(ArgumentOutOfRangeException){badLimit=true;}check(badLimit,"an empty keyboard capacity is rejected");
     }
     internal static void Layout(Action<bool,string> check)
     {

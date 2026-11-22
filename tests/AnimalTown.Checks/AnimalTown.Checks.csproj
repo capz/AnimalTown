@@ -6,6 +6,7 @@
   <ItemGroup><Compile Include="../../game/AnimalTown.GameCube/MenuNavigation.cs" Link="MenuNavigation.cs" /></ItemGroup>
   <ItemGroup><Compile Include="../../game/AnimalTown.GameCube/WrappedText.cs" Link="WrappedText.cs" /></ItemGroup>
   <ItemGroup><Compile Include="../../game/AnimalTown.GameCube/TownGame.MailUi.cs" Link="TownGame.MailUi.cs" /></ItemGroup>
+  <ItemGroup><Compile Include="../../game/AnimalTown.GameCube/TownGame.TextEntry.cs" Link="TownGame.TextEntry.cs" /></ItemGroup>
   <ItemGroup><Compile Include="../../game/AnimalTown.GameCube/DialogueVoice.cs" Link="DialogueVoice.cs" /></ItemGroup>
   <ItemGroup><Compile Include="../../game/AnimalTown.GameCube/TerrainArchive.cs" Link="TerrainArchive.cs" /></ItemGroup>
   <ItemGroup><Compile Include="../../game/AnimalTown.GameCube/TerrainArchive.Warm.cs" Link="TerrainArchive.Warm.cs" /></ItemGroup>
