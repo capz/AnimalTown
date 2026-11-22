@@ -239,6 +239,15 @@
         "Only local human residents can collect property; shop purchases remain permanent.",
         "Save migrations preserve old towns, and authenticated item operations protect custody."
       ]
+    },
+    {
+      "id": "letters-share-chat-keyboard-20261122",
+      "lines": [
+        "Write letters and town notices with the same QWERTY keyboard and controls as chat.",
+        "Use A to type, X to erase, L for case and R for spaces; NL keeps multiline letters.",
+        "Drafts retain 1,000 characters, present selection and send or discard confirmations.",
+        "Keyboard position and case stay intact while choosing gifts or returning to a draft."
+      ]
     }
   ]
 }

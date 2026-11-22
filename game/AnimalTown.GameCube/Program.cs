@@ -287,7 +287,7 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
     {
         if(disposed)return;
         if(device.IsFrameActive)throw new InvalidOperationException("Dispose the town after EndFrame");
-        disposed=true;LoadingScreen.Finish();ReleaseChatEntry();ClearChatPresentation();
+        disposed=true;LoadingScreen.Finish();ReleaseChatEntry();ReleaseLetterEntry();ClearChatPresentation();
         dialogueVoice.Stop();syllable.Dispose();
         Model? unadopted=null;
         if(loadingModel!=null){try{unadopted=loadingModel.GetAwaiter().GetResult();}catch(Exception){if(!loadingModel.IsCompleted)throw;}loadingModel=null;}
