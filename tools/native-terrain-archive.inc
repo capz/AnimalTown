@@ -9,6 +9,8 @@
 #endif
 #define TA_SECTIONS 4096
 #define TA_PARTS 16384
+/* Keep cold metadata allocations small enough for fragmented MEM1 heaps. */
+#define TA_META_PARTS 64
 #define TA_STAGE 65536
 #define TA_KINDS 108
 #define TA_PAGE_PARTS (TA_KINDS*2)
@@ -16,7 +18,7 @@
 #define TA_CACHE (1024*1024)
 #define TA_BLOCK 1024
 typedef struct {int offset,vertices,indices,kind,format;uint32_t color;int uniform,cache,users;} TaPart;
-static int ta_meta[TA_PARTS/256],ta_first[TA_SECTIONS+1],ta_triangles[TA_SECTIONS];
+static int ta_meta[TA_PARTS/TA_META_PARTS],ta_first[TA_SECTIONS+1],ta_triangles[TA_SECTIONS];
 static unsigned char ta_used[TA_CACHE/TA_BLOCK];
 /* During baking ta_stage is one hold on ta_cache, not another allocation.
  * Published views only exist after sealing, when that hold has been dropped. */
@@ -29,7 +31,7 @@ extern uint32_t animaltown_profile_clock(void);
 static int ta_request,ta_pending_view,ta_pending_entry=-1,ta_pending_block,ta_pending_blocks;
 static TaPart *ta_part(int index){
     if(index<0||index>=ta_parts)return NULL;
-    Resource *r=find(ta_meta[index/256],BUFFER);return r?(TaPart*)r->data+index%256:NULL;
+    Resource *r=find(ta_meta[index/TA_META_PARTS],BUFFER);return r?(TaPart*)r->data+index%TA_META_PARTS:NULL;
 }
 static int ta_size(const TaPart *p){return (int)(((size_t)p->vertices*sizeof(DndDrawVertex)+(size_t)p->indices*2+31u)&~31u);}
 static void terrain_detach(Resource *r){
@@ -136,9 +138,9 @@ int animaltown_terrain_append(int section,int kind,int token,int used){
     int n=source->indices?source->vertices:used?used:source->vertices,m=source->indices;
     if(n<1||n>source->vertices||(!m&&n%3))return -1;
     size_t bytes=(size_t)n*sizeof(DndDrawVertex)+(size_t)m*2;
-    if(bytes>TA_STAGE-31)return -2;
-    int padded=(int)((bytes+31u)&~31u);if(padded>TA_BYTES-ta_tail)return -2;
-    if(ta_parts/256>=ta_meta_count){int meta=ta_buffer(256*(int)sizeof(TaPart));if(!meta)return -2;ta_meta[ta_meta_count++]=meta;}
+    if(bytes>TA_STAGE-31)return ta_reset_failure("append-stage-size",(int)bytes,-2);
+    int padded=(int)((bytes+31u)&~31u);if(padded>TA_BYTES-ta_tail)return ta_reset_failure("append-aram-space",padded,-2);
+    if(ta_parts/TA_META_PARTS>=ta_meta_count){int meta=ta_buffer(TA_META_PARTS*(int)sizeof(TaPart));if(!meta)return ta_reset_failure("append-metadata",TA_META_PARTS*(int)sizeof(TaPart),-2);ta_meta[ta_meta_count++]=meta;}
     Resource *stage=find(ta_stage,BUFFER);if(!stage)return -1;
     memcpy(stage->data,source->data,(size_t)n*sizeof(DndDrawVertex));
     if(m)memcpy(stage->data+(size_t)n*sizeof(DndDrawVertex),source->data+(size_t)source->vertices*sizeof(DndDrawVertex),(size_t)m*2);
@@ -147,7 +149,7 @@ int animaltown_terrain_append(int section,int kind,int token,int used){
     for(int i=1;i<n;i++)if(v[i].color!=color){uniform=0;break;}
     if(ta_dma(ta_tail,ta_stage,0,padded,1)!=1)return -3;
     TaPart part={ta_tail,n,m,kind,source->format,color,uniform,-1,0};
-    TaPart *entry=(TaPart*)find(ta_meta[ta_parts/256],BUFFER)->data+ta_parts%256;*entry=part;
+    TaPart *entry=(TaPart*)find(ta_meta[ta_parts/TA_META_PARTS],BUFFER)->data+ta_parts%TA_META_PARTS;*entry=part;
     ta_parts++;ta_tail+=padded;ta_triangles[section]+=(m?m:n)/3;return ta_parts;
 }
 /* Cold-load only. Coalesce within a shadow page and an identical native
