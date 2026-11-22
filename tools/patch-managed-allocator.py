@@ -207,6 +207,16 @@ extern int animaltown_terrain_cache(int);
     console_cold=r'(?m)^(intptr_t dnd_value_AnimalTown_GameCube_(?:CardArchive|TownCardRecords|CardSaveStorage|SaveCards|ProfilePicker|ProfilePickerUi|OnboardingFlow|OnboardingUi|TownSession|OfflineTravelCards|OfflineTravelRecovery|DevConfigStorage|UserOptionsStorage|TitleScreen|TownGame_(?:InitializeJobs|JobNpcName|JobPlayerName|JobTitle|JobDescription|JobSay|ResetJobConversation|CloseJobDialogue|TryJobConversation|ShowJobOffer|JobInput|OpenJobLog|RefreshJobRows|OpenJobSelection|JobItemName|FindBoundJob|DrawJobUi|DrawMailUi|DrawTravelUi|MailUiInput|OpenMail|RefreshMail|Compose|Send|ReadJobMail|TakeMail|DiscardMail|OpenNotice|RefreshNotice|OpenTravel|RefreshTravel|ExecuteTravel|TravelInput|SaveFromMenu)_)[^;\n]*\) \{)'
     text,console_count=re.subn(console_cold,r'__attribute__((noinline,optimize("Os"))) \1',text)
     assert console_count>=60, 'Cold console transaction boundaries changed'
+    # Custody and text entry run only on explicit interactions. Keep their
+    # generated value-copy code compact too: code occupies the same MEM1 as
+    # animated vertex buffers. No simulation, drawing or residency loop changes.
+    custody=r'(?m)^(intptr_t dnd_value_AnimalTown_Domain_AnimalTown_(?:TownItemActions|TownItemActor|TownLostAndFound|TownRecoveryRecord|KobanSite)_[^;\n]*\) \{)'
+    text,custody_count=re.subn(custody,r'__attribute__((noinline,optimize("Os"))) \1',text)
+    if 'dnd_type_AnimalTown_TownLostAndFound' in text:
+        assert custody_count>=30, 'Cold custody function boundaries changed'
+    entry=r'(?m)^(intptr_t dnd_value_AnimalTown_GameCube_TownGame_(?:KeyboardInput|DrawTextEntry)_[^;\n]*\) \{)'
+    text,entry_count=re.subn(entry,r'__attribute__((noinline,optimize("Os"))) \1',text)
+    print('Custody/text entry: '+str(custody_count+entry_count)+' interaction functions compiled for size')
     # Path routing/tessellation runs at generation or terrain bake, not during
     # normal travel. Compact its AOT text instead of spending scarce MEM1 on O3
     # unrolling. The residency pump and drawing retain gameplay optimization.
