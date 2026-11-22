@@ -3,6 +3,10 @@
  * original world UVs, receiver alpha and independent shadow-page draws. */
 #include "dnd_aram.h"
 #include <errno.h>
+#include <stdio.h>
+#ifdef DND_GAMECUBE_STORAGE
+#include <malloc.h>
+#endif
 #define TA_SECTIONS 4096
 #define TA_PARTS 16384
 #define TA_STAGE 65536
@@ -83,6 +87,24 @@ int animaltown_terrain_resume(void){
     cache->bytes=TA_CACHE;total_bytes+=TA_CACHE-1;ta_bytes+=TA_CACHE;ta_cache=token;
     return 1;
 }
+/* Reset failures otherwise collapse distinct ARAM/MEM1 allocations into -2.
+ * Snapshot before rollback; successful resets and frame work stay silent. */
+static int ta_reset_failure(const char *reason,int bytes,int result){
+    int live=0,available=0;
+    for(int i=0;i<SLOTS;i++){if(slots[i].kind)live++;else if(slots[i].generation<0x1fffff)available++;}
+    int aram_free=dnd_aram_stat(2),aram_largest=dnd_aram_stat(3),aram_allocations=dnd_aram_stat(4);
+#ifdef DND_GAMECUBE_STORAGE
+    struct mallinfo memory=mallinfo();
+    SYS_Report("ANIMALTOWN TERRAIN RESET FAILED reason %s bytes %d result %d sections %d graphics_bytes %d graphics_budget %d slots %d available_slots %d slot_limit %d active %d raw %d aram_free %d aram_largest %d aram_allocations %d arena_free %u malloc_free %u\n",
+        reason,bytes,result,ta_sections,total_bytes,BUDGET,live,available,SLOTS,dnd_device_active(),dnd_raw_depth(),
+        aram_free,aram_largest,aram_allocations,(unsigned)SYS_GetArena1Size(),(unsigned)memory.fordblks);
+#else
+    fprintf(stderr,"ANIMALTOWN TERRAIN RESET FAILED reason %s bytes %d result %d sections %d graphics_bytes %d graphics_budget %d slots %d available_slots %d slot_limit %d active %d raw %d aram_free %d aram_largest %d aram_allocations %d\n",
+        reason,bytes,result,ta_sections,total_bytes,BUDGET,live,available,SLOTS,dnd_device_active(),dnd_raw_depth(),
+        aram_free,aram_largest,aram_allocations);
+#endif
+    return -2;
+}
 int animaltown_terrain_reset(int count){
     if(dnd_device_active()||dnd_raw_depth()||count<0||count>TA_SECTIONS||ta_request)return -1;
     for(int i=0;i<SLOTS;i++)if(slots[i].terrain_parent)return -1;
@@ -94,10 +116,14 @@ int animaltown_terrain_reset(int count){
     ta_store=ta_stage=ta_cache=ta_meta_count=ta_bytes=ta_tail=ta_parts=ta_completed=ta_live=ta_peak=0;
     ta_bindings=ta_reads=ta_sync_reads=ta_sync_us=ta_sync_bytes=0;ta_sections=count;ta_sealed=false;
     if(!count)return 1;
-    ta_store=dnd_aram_allocate(TA_BYTES);if(!ta_store)return -2;
-    if(dnd_aram_retain(ta_store)){(void)dnd_aram_dispose(ta_store);ta_store=0;return -2;}
-    ta_cache=ta_buffer(TA_CACHE);ta_stage=ta_buffer(TA_STAGE);
-    if(!ta_cache||!ta_stage||dnd_buffer_hold(ta_stage)){(void)animaltown_terrain_reset(0);return -2;}
+    ta_store=dnd_aram_allocate(TA_BYTES);if(!ta_store)return ta_reset_failure("aram-allocate",TA_BYTES,0);
+    int retained=dnd_aram_retain(ta_store);
+    if(retained){ta_reset_failure("aram-retain",TA_BYTES,retained);(void)dnd_aram_dispose(ta_store);ta_store=0;return -2;}
+    ta_cache=ta_buffer(TA_CACHE);if(!ta_cache)ta_reset_failure("cache-buffer",TA_CACHE,0);
+    ta_stage=ta_buffer(TA_STAGE);if(!ta_stage)ta_reset_failure("stage-buffer",TA_STAGE,0);
+    if(!ta_cache||!ta_stage){(void)animaltown_terrain_reset(0);return -2;}
+    int held=dnd_buffer_hold(ta_stage);
+    if(held){ta_reset_failure("stage-hold",TA_STAGE,held);(void)animaltown_terrain_reset(0);return -2;}
     return 1;
 }
 int animaltown_terrain_append(int section,int kind,int token,int used){
