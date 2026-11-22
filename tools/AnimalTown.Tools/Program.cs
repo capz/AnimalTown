@@ -26,9 +26,9 @@ static class Program
             else if(args[0]=="repack-textures")TextureRepacker.Command(args);
             else if(args[0]=="town-preview")TownGenerationPreview.Run(args[2],int.Parse(args[3]),args.Length>4?int.Parse(args[4]):1);
             else if(args[0]=="terrain-primitives")TerrainPrimitiveAssets.Build(Root,args.Length>2?int.Parse(args[2]):128);
-            else if(args[0]=="repack-check")TextureRepackerChecks.Run(Root);
+            else if(args[0]=="repack-check"){TextureRepackerChecks.Run(Root);ActorPreparationChecks.Run(Root);}
             else if(args[0]=="audit")Audit();
-            else if(args[0]=="prepare")Prepare(args[2],args[3]);
+            else if(args[0]=="prepare")Prepare(args[2],args[3],args.Length>4&&args[4]=="--gameplay-clips");
             else if(args[0]=="prune-model-variants")ModelVariants.Prune(Root);
             else if(args[0]=="art")Art();
             else if(args[0]=="brand-check"){BrandTextureAssets.Check(Root);DiscBannerFile.Check();}
@@ -72,10 +72,18 @@ static class Program
         }
         Directory.CreateDirectory(Path.Combine(Root,"out"));File.WriteAllText(Path.Combine(Root,"out/asset-audit.json"),JsonSerializer.Serialize(entries,new JsonSerializerOptions{WriteIndented=true}));Console.WriteLine("Audited "+entries.Count+" GLBs");
     }
-    static void Prepare(string input,string output)
+    internal static void Prepare(string input,string output,bool gameplayClips=false)
     {
         byte[] b=File.ReadAllBytes(input);int len=BitConverter.ToInt32(b,12);
         var j=JsonNode.Parse(b.AsSpan(20,len))!;
+        // Gameplay selects only these two movement clips. Preserve complete
+        // authoring GLBs and other preparation callers, while avoiding large
+        // unused idle/alternate tracks in every resident's native package.
+        if(gameplayClips&&j["animations"] is JsonArray animations){
+            int original=animations.Count;
+            for(int i=animations.Count-1;i>=0;i--){string? name=(string?)animations[i]!["name"];if(name!="Walking"&&name!="Running")animations.RemoveAt(i);}
+            if(original>0&&animations.Count==0)throw new InvalidDataException("Animated gameplay model has no Walking or Running clip");
+        }
         // Tangent-space normal mapping is not used by the chosen GX material path.
         foreach(var mesh in j["meshes"]!.AsArray())foreach(var p in mesh!["primitives"]!.AsArray())p!["attributes"]!.AsObject().Remove("TANGENT");
         foreach(var m in j["materials"]!.AsArray())m!.AsObject().Remove("normalTexture");
