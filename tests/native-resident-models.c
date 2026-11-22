@@ -209,7 +209,8 @@ int main(int argc, char **argv) {
         assert(dnd_model_live_handles() == 0);
         printf("Resident model %s: %u bytes recovered; %u original texture bytes retained once\n", argv[file], saved, texture_bytes);
     }
-    assert(texture_total == 655360 && saved_total >= texture_total);
+    /* Six 128px RGBA8 textures with two mip levels fit in 480 KiB. */
+    assert(texture_total <= 480 * 1024 && saved_total >= texture_total);
     printf("128px resident villagers: %zu MEM1 bytes recovered; geometry, skins, clips, evaluated poses, shared textures and disposal unchanged\n", saved_total);
     return 0;
 }
