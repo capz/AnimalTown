@@ -212,6 +212,15 @@
         "Optional card-layout cleanup runs during regular saves.",
         "Card errors identify the slot and operation that failed."
       ]
+    },
+    {
+      "id": "right-side-store-placement-cherry",
+      "lines": [
+        "Store menus keep the left half of the shop in view.",
+        "Buying, selling, and consignment use compact panels on the right.",
+        "Failed placement, planting, dropping, and burial explain what blocked the action.",
+        "Cherry blossom trees have taller crowns and petals fall from higher up."
+      ]
     }
   ]
 }
