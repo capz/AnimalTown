@@ -24,7 +24,7 @@ Players and residents share these models. The GameCube build packs the supplied
 locomotion clips and adds `Idle` for bunny, giraffe, hamster, and Maine coon.
 The idle clip loops when a villager stands still. Fox and spaniel use their
 standing pose. Constant tracks store one sample at the original final key
-time. Idle tracks reduce redundant keys to within 0.5 degrees of local rotation
+time. Cooked tracks reduce redundant keys to within 0.5 degrees of local rotation
 and 0.0005 model units of translation at the source sample times. The original
 clip duration is preserved.
 Cooked models keep the textures sampled by GX materials. The source GLBs

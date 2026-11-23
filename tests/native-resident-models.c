@@ -106,11 +106,12 @@ static void compare_animation(int a, int b, const DndModel *model) {
 
 int main(int argc, char **argv) {
     assert(argc == 7); /* fox, bunny, giraffe, cat, hamster, spaniel */
-    size_t saved_total = 0, texture_total = 0, idle_total = 0;
+    size_t saved_total = 0, texture_total = 0, idle_total = 0, package_total = 0;
     assert(dnd_model_live_handles() == 0 && animaltown_model_retain(-1) == -1);
     for (int file = 1; file < argc; file++) {
         unsigned length;
         unsigned char *source = read_package(argv[file], &length);
+        package_total += length;
         unsigned original_hash = dnd_model_hash(source, length);
         int baseline = dnd_model_begin_data(source, length, 3 * 1024 * 1024);
         assert(baseline);
@@ -220,7 +221,9 @@ int main(int argc, char **argv) {
     /* Six 128px RGBA8 textures with two mip levels fit in 480 KiB. */
     assert(texture_total <= 480 * 1024 && saved_total >= texture_total);
     assert(idle_total <= 64 * 1024);
-    printf("Cooked idle animation tracks: %zu bytes across four species\n", idle_total);
+    /* Leave room for the terrain archive with all six packages loaded. */
+    assert(package_total <= 1792 * 1024);
+    printf("Cooked villager packages: %zu bytes including %zu bytes of idle tracks\n", package_total, idle_total);
     printf("128px resident villagers: %zu MEM1 bytes recovered; geometry, skins, clips, evaluated poses, shared textures and disposal unchanged\n", saved_total);
     return 0;
 }

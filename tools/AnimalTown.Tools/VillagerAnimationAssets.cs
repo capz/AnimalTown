@@ -55,7 +55,7 @@ internal static class VillagerAnimationAssets
                 sampler["output"] = accessors.Count;
                 accessors.Add(value);
             }
-            else if (animation == idle && interpolation != "STEP")
+            else if (interpolation != "STEP")
             {
                 var sampleTimes = new float[count];
                 var samples = new Vector4[count];
