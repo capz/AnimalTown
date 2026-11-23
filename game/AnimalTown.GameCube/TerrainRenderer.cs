@@ -166,7 +166,8 @@ internal sealed class TerrainRenderer : IDisposable
         }
         var snow=state.Town.Traffic.Snow;
         snow.SetWinter(season==3);
-        if(NativeShadows.Snow(snow.Packed,snow.Revision,snow.Winter?1:0)!=1)throw new InvalidOperationException("Snow mask native budget");
+        if(NativeShadows.Snow(snow.Packed,state.Town.Tiles,state.Town.Elevation,snow.Revision,state.Town.TerrainVersion,snow.Winter?1:0)!=1)
+            throw new InvalidOperationException("Snow mask native budget");
         bool upgraded=AdvanceGroundTexture();
         // The completed task and package arrays are out of the upgrade frame.
         if(upgraded)AnimalTown.GameCube.NativeTexturePages.Collect();
