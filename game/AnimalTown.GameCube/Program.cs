@@ -117,6 +117,7 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
     private readonly VisitEdgeRenderer visitEdges=new VisitEdgeRenderer();
     private readonly ActorFrameVisibility actorVisibility=new ActorFrameVisibility();
     private readonly AnimationFrameClock animationClock=new AnimationFrameClock(7);
+    private readonly bool[] hasIdleClip=new bool[6];
     private readonly bool[] restartClips=new bool[7];
     private readonly int[] appliedClips={-2,-2,-2,-2,-2,-2,-2};
     private float desiredPlayerSpeed=1.05f,appliedPlayerSpeed=1.05f;
@@ -343,6 +344,7 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
                 }
                 if(!loadingModel.IsCompleted)return;
                 var model=loadingModel.GetAwaiter().GetResult();models[species]=model;
+                hasIdleClip[species]=model.TryGetAnimation("Idle",out _);
                 ModelStartup.RetainSelected(state.Species,species,model);
                 modelResidency.Register(species,model,Clock.Timestamp);
                 for(int npc=0;npc<6;npc++)if(state.ResidentSpecies(npc)==species){actors[npc+1]=model.CreateInstance(512*1024);attention.Register(npc,actors[npc+1]);if(model.TryGetAnimation("Walking",out var clip))animationClock.Step(npc+1,0,false);}
@@ -870,12 +872,16 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
             int clip=animationClock.Clip(i);
             if(restartClips[i]||appliedClips[i]!=clip){
                 restartClips[i]=false;
-                string name=clip==1?"Running":"Walking";int model=i==0?state.Species:state.ResidentSpecies(i-1);
+                string name=clip==IdleClip?"Idle":clip==1?"Running":"Walking";int model=i==0?state.Species:state.ResidentSpecies(i-1);
                 if(clip<0)actors[i].Animator.Stop();
-                else if(models[model].TryGetAnimation(name,out var _)){actors[i].Animator.Play(name,true);actors[i].Animator.SetSpeed(i==0?desiredPlayerSpeed:1);if(i==0)appliedPlayerSpeed=desiredPlayerSpeed;}
+                else if(models[model].TryGetAnimation(name,out _)){
+                    float speed=i==0&&clip!=IdleClip?desiredPlayerSpeed:1;
+                    actors[i].Animator.Play(name,true);actors[i].Animator.SetSpeed(speed);
+                    if(i==0)appliedPlayerSpeed=speed;
+                }
                 appliedClips[i]=clip;
             }
-            if(i==0&&clip>=0&&appliedPlayerSpeed!=desiredPlayerSpeed){actors[0].Animator.SetSpeed(desiredPlayerSpeed);appliedPlayerSpeed=desiredPlayerSpeed;}
+            if(i==0&&clip>=0&&clip!=IdleClip&&appliedPlayerSpeed!=desiredPlayerSpeed){actors[0].Animator.SetSpeed(desiredPlayerSpeed);appliedPlayerSpeed=desiredPlayerSpeed;}
             if(seconds>0){actors[i].Update(seconds);FrameProfile.AnimationUpdates++;}
         }
         FrameProfile.End(1,start);

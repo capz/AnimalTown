@@ -27,7 +27,7 @@ internal sealed partial class TownGame
         var before=flight.Phase;
         flight.Tick();
         moveClip=flight.PlayerWalking?0:-1;
-        animationClock.Step(0,moveClip,models[state.Species].Animations.Count>0);
+        StepActorAnimation(0,state.Species,moveClip);
         if(before!=FlightPhase.Cruise&&flight.Phase==FlightPhase.Cruise){
             DebugOverlay.WriteLine("ANIMALTOWN FLIGHT CRUISE "+flight.Direction);
             TravelRestartRequested=true;
