@@ -149,8 +149,12 @@ internal static class PathChecks
         check(refilling<240&&refilling>224&&snow.VisitCount(x,z)==5,"snowfall interpolates within a packed depth step");
         Advance(30);check(Sample()==refilling,"pausing snowfall freezes precise visual recovery");
         Advance(60*30-15,true);check(Sample()==48&&snow.VisitCount(x,z)==1,"smooth recovery ends at the existing first-level floor");
+        snow.PrepareVisuals(x,z,out _,out int priorRevision);
         snow.SetSmoothTransitions(false);
         check(snow.PrepareVisuals(x,z,out _,out _)==null&&snow.VisitCount(x,z)==1,"turning off smooth visuals retains the underlying track");
+        snow.SetSmoothTransitions(true);
+        snow.PrepareVisuals(x,z,out _,out int nextRevision);
+        check(nextRevision>priorRevision,"re-enabling smooth visuals invalidates a previously published window");
     }
     private static byte[] WithoutKobanType(byte[] source,int end,int offset)
     {var result=new byte[end-4];Array.Copy(source,result,offset);Array.Copy(source,offset+4,result,offset,end-offset-4);return result;}
