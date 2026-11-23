@@ -311,6 +311,15 @@
         "Starting play or arriving from another town restores a fresh snow surface.",
         "Outdoor recovery continues while a player is indoors."
       ]
+    },
+    {
+      "id": "smooth-snow-transitions-debug",
+      "lines": [
+        "Preview smoother snow tracks in Debug / testing.",
+        "Footprints ease into their next depth as you cross a tile.",
+        "Active snowfall gradually narrows close tracks over one minute.",
+        "The preview starts off each session and uses the existing snow texture."
+      ]
     }
   ]
 }

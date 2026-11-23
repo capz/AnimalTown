@@ -15,6 +15,7 @@ public sealed class SnowWear
     // Active dents retain their initial wear and entry time modulo 4096.
     // Once settled, their shallow wear lives only in Packed.
     private ushort[]? recovery;
+    private SnowTransitions? transitions;
     private int ticks,snowfallSeconds;
     internal bool HasCheckpoint {get;private set;}
     public int Revision {get;private set;}
@@ -30,8 +31,21 @@ public sealed class SnowWear
     }
     private int WearAt(int cell)=>(Packed[cell/2]>>((cell%2)*4))&15;
     public void SetWinter(bool winter)=>Winter=winter;
+    public void SetSmoothTransitions(bool enabled)
+    {
+        if(enabled)transitions??=new SnowTransitions();
+        else transitions=null;
+    }
+    public byte[]? PrepareVisuals(float x,float z,out int origin,out int revision)
+    {
+        var visual=transitions;
+        visual?.Prepare(this,(int)x,(int)z);
+        origin=visual?.Origin??0;revision=visual?.Revision??0;
+        return visual?.Depths;
+    }
     public void ResetForTownEntry()
     {
+        transitions=null;
         if(!HasCheckpoint)return;
         Array.Clear(Packed,0,Packed.Length);
         HasCheckpoint=false;
@@ -44,6 +58,11 @@ public sealed class SnowWear
         int cell=z*Town.Width+x,shift=(cell%2)*4;
         int wear=(Packed[cell/2]>>shift)&15;
         int next=Math.Min(MaximumWear,wear+StepsPerVisit);
+        var visual=transitions;
+        if(visual!=null){
+            int from=visual.AtFootstep(cell,VisualWear(cell));
+            if(from!=next*SnowTransitions.Unit)visual.Footstep(cell,from);
+        }
         if(next>StepsPerVisit){
             recovery??=new ushort[Town.Cells];
             recovery[cell]=(ushort)((snowfallSeconds<<4)|next);
@@ -56,6 +75,7 @@ public sealed class SnowWear
     // Called at 30 Hz. Keep the fraction of a second when snowfall pauses.
     public void TickSnowfall(bool snowing)
     {
+        transitions?.Advance();
         var dents=recovery;
         if(!Winter||!snowing||dents==null||++ticks<TicksPerSecond)return;
         ticks=0;
@@ -78,6 +98,16 @@ public sealed class SnowWear
     private static int RemainingWear(int wear,int age)
         =>Math.Min(wear,StepsPerVisit)+
             (Math.Max(0,wear-StepsPerVisit)*Math.Max(0,RecoverySeconds-age)+RecoverySeconds-1)/RecoverySeconds;
+    internal int VisualSnowfallClock=>snowfallSeconds*TicksPerSecond+ticks;
+    internal int VisualWear(int cell)
+    {
+        int stamp=recovery==null?0:recovery[cell];
+        if(stamp==0)return WearAt(cell)*SnowTransitions.Unit;
+        int duration=RecoverySeconds*TicksPerSecond;
+        int age=((snowfallSeconds-(stamp>>4))&ClockMask)*TicksPerSecond+ticks;
+        int excess=((stamp&15)-StepsPerVisit)*SnowTransitions.Unit;
+        return StepsPerVisit*SnowTransitions.Unit+(excess*Math.Max(0,duration-age)+duration/2)/duration;
+    }
     private void ResetRecovery()
     {
         recovery=null;ticks=snowfallSeconds=0;

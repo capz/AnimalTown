@@ -90,7 +90,9 @@ internal sealed partial class TownGame
     {
         int season=terrain.SeasonAt(month,renderDebug.SeasonOverride);
         weather.Update(state.Town.Seed,weatherDay,EnvironmentMinute,season);
-        state.Town.Traffic.Snow.SetWinter(season==3);
+        var snow=state.Town.Traffic.Snow;
+        snow.SetWinter(season==3);
+        snow.SetSmoothTransitions(season==3&&renderDebug.SmoothSnowTransitions);
         weatherClockStarted=true;
     }
     private int jobClockSecond;
