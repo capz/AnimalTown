@@ -8,7 +8,7 @@ internal sealed partial class TownGame
     internal const int IdleClip=2;
     private readonly TownDaylight daylight=new TownDaylight();
     private readonly DebugWeather weather=new DebugWeather();
-    private bool snowSessionStarted;
+    private bool weatherClockStarted;
     partial void RecordFallFootstep(float beforeX,float beforeZ);
 
     internal void Step(ControllerState pad)
@@ -19,7 +19,7 @@ internal sealed partial class TownGame
         moveClip=-1; // UI focus must not leave the player walking in place.
         bool simulateWorld=session.Draft==null;
         tick++;
-        if(tick%30==0||simulateWorld&&!snowSessionStarted)ReadWeatherClock();
+        if(tick%30==0||simulateWorld&&!weatherClockStarted)ReadWeatherClock();
         if(tick%900==0&&simulateWorld){ReadCalendarDate();state.Rollover(day,month);}
         if(simulateWorld){
             UpdateWeather();
@@ -90,10 +90,8 @@ internal sealed partial class TownGame
     {
         int season=terrain.SeasonAt(month,renderDebug.SeasonOverride);
         weather.Update(state.Town.Seed,weatherDay,EnvironmentMinute,season);
-        var snow=state.Town.Traffic.Snow;
-        snow.SetWinter(season==3);
-        if(snow.Winter)snow.ObserveSnowDay(weather.LatestSnowDay(weatherDay,townClock.MinuteOfDay),!snowSessionStarted);
-        snowSessionStarted=true;
+        state.Town.Traffic.Snow.SetWinter(season==3);
+        weatherClockStarted=true;
     }
     private int jobClockSecond;
     private long JobNow=>(long)weatherDay*86400+townClock.MinuteOfDay*60+jobClockSecond;

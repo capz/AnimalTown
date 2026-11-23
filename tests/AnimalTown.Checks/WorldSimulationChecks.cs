@@ -114,11 +114,6 @@ internal static class WorldSimulationChecks
             var town=winter.state.Town;
             town.Tiles[snowZ*Town.Width+snowX]=(byte)Terrain.Grass;town.Elevation[snowZ*Town.Width+snowX]=0;
             for(int i=0;i<SnowWear.MaxVisits;i++)town.Traffic.Enter(town,snowX,snowZ);
-            var saved=SaveCodec.Encode(winter.state);
-
-            var sameDay=Begin(SaveCodec.Decode(saved));
-            check(sameDay.state.Town.Traffic.Snow.VisitCount(snowX,snowZ)==SnowWear.MaxVisits,
-                "restarting before snowfall preserves the town's saved dents");
             for(int i=0;i<1200;i++)winter.Step(default);
             check(town.Traffic.Snow.VisitCount(snowX,snowZ)==SnowWear.MaxVisits,"a dry winter interval pauses dent recovery");
 
@@ -127,18 +122,13 @@ internal static class WorldSimulationChecks
             for(int i=0;i<1200;i++)winter.Step(default);
             check(town.Traffic.Snow.VisitCount(snowX,snowZ)==SnowWear.MaxVisits,"the live simulation pauses recovery when the snowfall toggle is off");
             winter.SetSnowfall(true);
-            for(int i=0;i<1200;i++)winter.Step(default);
-            check(town.Traffic.Snow.VisitCount(snowX,snowZ)==SnowWear.MaxVisits-1,"outdoor snowfall refills dents while the player is indoors");
+            for(int i=0;i<60*30;i++)winter.Step(default);
+            check(town.Traffic.Snow.VisitCount(snowX,snowZ)==1,"outdoor snowfall refills distant dents to level one while the player is indoors");
 
             SetTime(1439);
-            var afterSnow=Begin(SaveCodec.Decode(saved));
-            check(afterSnow.state.Town.Traffic.Snow.Packed.All(b=>b==0)&&
-                afterSnow.state.Town.Traffic.Visits.SequenceEqual(sameDay.state.Town.Traffic.Visits),
-                "a missed snowfall clears the loaded dents without changing shared traffic");
-            afterSnow.state.Town.Traffic.Enter(afterSnow.state.Town,snowX,snowZ);
-            var returned=Begin(SaveCodec.Decode(SaveCodec.Encode(afterSnow.state)));
-            check(returned.state.Town.Traffic.Snow.VisitCount(snowX,snowZ)==1,
-                "restarting again after the same snowfall keeps dents made after returning");
+            winter.state.Space=0;
+            for(int i=0;i<30;i++)winter.Step(default);
+            check(town.Traffic.Snow.VisitCount(snowX,snowZ)==1,"leaving a building preserves the outdoor snow track");
         }finally{NativeCalendar.Time=originalClock;}
     }
     private static GameState JourneyState()

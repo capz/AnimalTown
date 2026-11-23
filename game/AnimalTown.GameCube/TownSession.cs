@@ -20,7 +20,11 @@ internal sealed partial class TownSession
     internal void QueueTravel(int action,int profile,int from,int to,long now)
     {travelAction=action;travelProfile=profile;travelFrom=from;travelTo=to;travelAt=now;}
     private TownSession(GameState state,bool loaded,bool damaged,string status){State=state;Loaded=loaded;Damaged=damaged;Status=status;}
-    internal void AdoptTravel(GameState state){State=state;Loaded=true;Status="Trip saved / "+BuildInfo.Version;}
+    internal void AdoptTravel(GameState state)
+    {
+        if(state.Town.Jobs.TownId!=State.Town.Jobs.TownId)state.Town.Traffic.Snow.ResetForTownEntry();
+        State=state;Loaded=true;Status="Trip saved / "+BuildInfo.Version;
+    }
     internal void SelectProfile(int profile)
     {
         if(State.ProfileLocked(profile))throw new InvalidOperationException("This villager is away.");

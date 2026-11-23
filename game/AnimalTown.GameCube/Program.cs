@@ -43,6 +43,7 @@ internal static class Program
         FrameProfile.Checkpoint(2);
         try{
             if(!ProfilePicker.Run(session))return;
+            session.State.Town.Traffic.Snow.ResetForTownEntry();
             if(session.Draft!=null&&!OnboardingFlow.Run(config,session))return;
             while(RunSession(config,session)==TownGame.TravelRestart){
                 if(session.Flight.Phase==FlightPhase.Cruise)LoadingScreen.BeginFlight(session.Flight.Direction);
