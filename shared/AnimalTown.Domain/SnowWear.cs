@@ -16,7 +16,7 @@ public sealed class SnowWear
     // Once settled, their shallow wear lives only in Packed.
     private ushort[]? recovery;
     private SnowTransitions? transitions;
-    private int ticks,snowfallSeconds;
+    private int ticks,snowfallSeconds,lastVisualRevision;
     internal bool HasCheckpoint {get;private set;}
     public int Revision {get;private set;}
     public bool Winter {get;private set;}
@@ -33,8 +33,8 @@ public sealed class SnowWear
     public void SetWinter(bool winter)=>Winter=winter;
     public void SetSmoothTransitions(bool enabled)
     {
-        if(enabled)transitions??=new SnowTransitions();
-        else transitions=null;
+        if(enabled)transitions??=new SnowTransitions(lastVisualRevision);
+        else if(transitions!=null){lastVisualRevision=transitions.Revision;transitions=null;}
     }
     public byte[]? PrepareVisuals(float x,float z,out int origin,out int revision)
     {
@@ -45,7 +45,7 @@ public sealed class SnowWear
     }
     public void ResetForTownEntry()
     {
-        transitions=null;
+        SetSmoothTransitions(false);
         if(!HasCheckpoint)return;
         Array.Clear(Packed,0,Packed.Length);
         HasCheckpoint=false;

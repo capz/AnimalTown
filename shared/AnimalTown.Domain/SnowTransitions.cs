@@ -16,6 +16,7 @@ internal sealed class SnowTransitions
     internal readonly byte[] Depths=new byte[Side*Side];
     internal int Origin {get;private set;}=-1;
     internal int Revision {get;private set;}
+    internal SnowTransitions(int revision){Revision=revision;}
 
     internal void Advance()
     {
