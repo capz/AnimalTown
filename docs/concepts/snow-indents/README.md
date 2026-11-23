@@ -14,12 +14,13 @@ traffic. The first visit makes a small dent and the second widens it while
 keeping the surface white. The third visit exposes a small patch of ground
 at the center, the fourth widens the opening, and the fifth clears the tile
 up to its shaded rim. Standing and movement within a tile add no visits.
-The wear lasts for the town session and resets when the season leaves winter.
-While snow falls outdoors, each dent refills over ten minutes of active
-snowfall after its latest visit. The ground closes over before the white
-surface finishes smoothing out. Turning off snowfall or previewing rain
-pauses recovery. Outdoor snow continues refilling while the player is
-inside. Path coverage and visit history follow their existing rules.
+While snow falls outdoors, each dent refills to the first indentation
+level over one minute of active snowfall after its latest visit. The
+ground closes over and the shallow white track stays visible until the
+player re-enters town from the title screen or another town. Turning off
+snowfall or previewing rain pauses recovery. Outdoor snow continues
+refilling while the player is inside. Path coverage and visit history
+follow their existing rules.
 
 The depth field is a demand-allocated I8 texture with four texels per
 metre, independent of the shadow page cache. A tile entry updates its GX
@@ -118,5 +119,5 @@ when active. The ordinary shadow cache uses 522,016 bytes. Together they
 charge 784,160 bytes to the native allocator. The field is released on a
 season change or session teardown. A static 7,680-byte snapshot and a
 managed 7,680-byte wear array store the packed depth steps. A 30 KiB managed
-array tracks recovery after the first dent and is released after the last
-one fills or winter ends. Full-game frame timings have not been measured.
+array tracks dents above the first indentation level and is released once
+they all settle. Full-game frame timings have not been measured.

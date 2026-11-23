@@ -21,7 +21,7 @@ internal static class SaveFormatCompatibilityChecks
     private static GameState Jobs()=>SaveCodec.Decode(JobsFixture());
     private static void AddSnow(GameState state)
     {
-        var snow=state.Town.Traffic.Snow;snow.SetWinter(true);snow.ObserveSnowDay(100,false);
+        var snow=state.Town.Traffic.Snow;snow.SetWinter(true);
         for(int i=0;i<SnowWear.MaxVisits;i++)state.Town.Traffic.Enter(state.Town,20,30);
         for(int i=0;i<40*30-1;i++)snow.TickSnowfall(true);
         state.Town.Traffic.Enter(state.Town,21,30);
@@ -40,11 +40,13 @@ internal static class SaveFormatCompatibilityChecks
         var snowState=SaveCodec.Decode(snowBytes);var snow=snowState.Town.Traffic.Snow;
         check(snowState.Sequence==17&&snowState.Name=="Juniper"&&snowState.Wallet==1234&&snowState.Profiles[1].Name=="Milo"&&snowState.Profiles[1].Wallet==321&&snowState.Town.DaylightLocation==1,"main's catalog-1 snow save preserves both profiles, money and daylight");
         int at=(30*Town.Width+20)/2;
-        check(snow.Winter&&snow.Packed[at]==0x3f&&snow.Packed.Count(b=>b!=0)==1&&!snowState.Town.Jobs.Initialized,"main's v14 snow extension is restored without inventing an offline ledger");
-        snowState.SelectProfile(1);check(snowState.Town.Traffic.Snow.Packed[at]==0x3f,"historical snow remains shared after selecting another profile");
-        snow.TickSnowfall(true);check(snow.Packed[at]==0x3e,"historical snow preserves the partial second and per-tile recovery ages");
-        snow.ObserveSnowDay(100,true);check(snow.Packed[at]==0x3e,"restarting after the same snowfall preserves historical dents");
-        snow.ObserveSnowDay(101,true);check(snow.Packed.All(b=>b==0),"a new missed snowfall still clears the migrated historical dents");
+        check(snow.Winter&&snow.Packed[at]==0x38&&snow.Packed.Count(b=>b!=0)==1&&!snowState.Town.Jobs.Initialized,"main's v14 snow extension restores its dents using the current recovery duration");
+        snowState.SelectProfile(1);check(snowState.Town.Traffic.Snow.Packed[at]==0x38,"historical snow remains shared after selecting another profile");
+        snow.TickSnowfall(true);check(snow.Packed[at]==0x37,"historical snow preserves the partial second and per-tile recovery ages");
+        snow.ResetForTownEntry();check(snow.Packed.All(b=>b==0),"re-entering the town clears migrated historical dents");
+        var aged=new SnowWear();
+        aged.RestoreCheckpoint(new[]{100,0,2,((0x8000|(Town.Cells-1))<<16)|(599<<4)|15});
+        check(aged.VisitCount(0,0)==1,"a recovery age from the old ten-minute window loads as a settled shallow dent");
         var jobs=SaveCodec.Decode(jobBytes);var ledger=jobs.Town.Jobs;
         var active=Enumerable.Range(0,OfflineJobLedger.JobCapacity).Select(ledger.Job).Where(j=>j.Occupying).ToArray();
         check(jobs.Sequence==27&&ledger.TownId==12345&&ledger.Watermark==JobTime&&active.Length==1&&active[0].Id.Serial==9&&active[0].Template==JobTemplate.DeliveryClothing&&active[0].Item==Catalog.WorkShirt,"PR136's catalog-2 v14 save retains its accepted delivery identity, payload and clock");

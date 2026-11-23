@@ -71,7 +71,7 @@ internal static class PathChecks
         }
         check(snow.Revision==6,"fully worn snow and movement within a tile leave the mask revision unchanged");
         snow.SetWinter(false);snow.SetWinter(true);
-        check(snow.Packed.All(v=>v==0),"a new winter starts with fresh snow");
+        check(snow.VisitCount(6,40)==5&&snow.VisitCount(7,40)==1,"switching the season preview preserves the current town's dents");
         SnowfallRecovery(check,Flat().Town);
         s=Flat();t=s.Town;t.Traffic.Traverse(t,5.1f,40.2f,8.2f,40.2f);
         check(t.Traffic.Visits[40*Town.Width+5]==0&&t.Traffic.Visits[40*Town.Width+6]==1&&t.Traffic.Visits[40*Town.Width+7]==1&&t.Traffic.Visits[40*Town.Width+8]==1,"all entered cells are recorded, not the departure cell");
@@ -148,7 +148,7 @@ internal static class PathChecks
         {
             for(int i=0;i<seconds*30;i++)snow.TickSnowfall(weather.Snowing(0));
         }
-        SnowSeconds(39);
+        SnowSeconds(4);
         for(int i=0;i<29;i++)snow.TickSnowfall(weather.Snowing(0));
         check(snow.Revision==revision,"recovery publishes only when the visible depth changes");
         weather.SnowEnabled=false;
@@ -160,26 +160,31 @@ internal static class PathChecks
         weather.RainEnabled=false;
         snow.TickSnowfall(weather.Snowing(0));
         check(snow.Packed[cell/2]==startingWear-1&&snow.Revision==revision+1,"resumed snowfall preserves the partial second and reduces wear by one substep");
-        SnowSeconds(280);
+        SnowSeconds(35);
         check(snow.CenterCovered(6,40),"the ground closes over before the dent finishes smoothing");
-        SnowSeconds(279);
-        check((snow.Packed[cell/2]&15)!=0&&(snow.Packed[cell/2]>>4)!=0,"both shallow and deep dents remain at nine minutes fifty-nine seconds");
+        SnowSeconds(19);
+        check(snow.Packed[cell/2]==0x34,"at 59 seconds the deeper dent is one step above the first level");
         SnowSeconds(1);
-        check(snow.Packed.All(v=>v==0),"dents of different depths finish after ten minutes of active snowfall");
+        check(snow.Packed[cell/2]==0x33,"at 60 seconds all dents have reached the first indentation level");
         check(traffic.SequenceEqual(town.Traffic.Visits)&&paths.SequenceEqual(town.Paths.Packed)&&
               town.Paths.Revision==pathRevision&&town.Traffic.OpacityRevision==opacityRevision,"snowfall recovery leaves path counts, coverage and revisions intact");
 
         for(int i=0;i<SnowWear.MaxVisits;i++)town.Traffic.Enter(town,6,40);
-        SnowSeconds(39);
+        SnowSeconds(4);
         town.Traffic.Enter(town,6,40);
         SnowSeconds(1);
         check(snow.VisitCount(6,40)==SnowWear.MaxVisits,"a fresh visit restarts even fully worn snow");
-        SnowSeconds(299);
+        SnowSeconds(29);
         town.Traffic.Enter(town,7,40);
-        SnowSeconds(300);
-        check((snow.Packed[cell/2]&15)==0&&(snow.Packed[cell/2]>>4)>0,"each tile uses time since its own last entry");
-        SnowSeconds(300);
-        check(snow.Packed.All(v=>v==0),"the later tile also finishes at ten minutes");
+        SnowSeconds(30);
+        check((snow.Packed[cell/2]&15)==3&&(snow.Packed[cell/2]>>4)>3,"each tile uses time since its own last entry");
+        SnowSeconds(30);
+        check(snow.Packed[cell/2]==0x33,"the later tile also settles at the first indentation level");
+        revision=snow.Revision;
+        SnowSeconds(600);
+        check(snow.Packed[cell/2]==0x33&&snow.Revision==revision,"continued snowfall preserves the shallow tracks without publishing changes");
+        snow.ResetForTownEntry();
+        check(snow.Packed.All(v=>v==0)&&snow.Revision==revision+1,"re-entering town fully clears the remaining tracks");
     }
     private static void Put(byte[] b,int at,int value){for(int i=0;i<4;i++)b[at+i]=(byte)((uint)value>>(8*i));}
     private static void Crc(byte[] b)=>Put(b,b.Length-4,(int)SaveCodec.Crc(b,0,b.Length-4));

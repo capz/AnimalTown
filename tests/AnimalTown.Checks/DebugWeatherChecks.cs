@@ -33,7 +33,6 @@ internal static class DebugWeatherChecks
         check(!snow.Snowing(0),"the winter snowfall window cannot run in fall");
         snow.Update(30,12,start,3);
         check(snow.Snowing(0)&&!snow.Snowing(1)&&!snow.Raining(0),"winter snowfall is outdoors only");
-        check(snow.LatestSnowDay(12,start-1)==11&&snow.LatestSnowDay(12,start)==12,"the latest snow date changes exactly when today's window starts");
         snow.SnowEnabled=false;
         check(!snow.Snowing(0)&&new DebugWeather().SnowEnabled,"snowfall toggle is session-only");
         var weather=new DebugWeather();

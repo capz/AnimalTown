@@ -6,7 +6,6 @@ public sealed class DebugWeather
     public bool RainEnabled,RoughOceanWhenRaining;
     public bool SnowEnabled=true;
     private bool scheduledRain,scheduledSnow;
-    private int snowStartMinute;
     public const int RainMinutes=35,MinimumSnowMinutes=30,MaximumSnowMinutes=180;
     private const int MinutesPerDay=1440,WinterSeason=3;
     public static bool ScheduledRain(int seed,int day,int minute,int season)
@@ -33,11 +32,9 @@ public sealed class DebugWeather
         if(season!=WinterSeason)return;
         int duration=MinimumSnowMinutes+(int)(ScheduleHash(seed,day,WinterSeason)%(MaximumSnowMinutes-MinimumSnowMinutes+1));
         // A clear final minute keeps consecutive days' snowfall windows distinct.
-        snowStartMinute=(int)(ScheduleHash(seed,day,WinterSeason+1)%(uint)(MinutesPerDay-duration));
+        int snowStartMinute=(int)(ScheduleHash(seed,day,WinterSeason+1)%(uint)(MinutesPerDay-duration));
         scheduledSnow=minute>=snowStartMinute&&minute<snowStartMinute+duration;
     }
-    // Use the live clock for session checkpoints even when a preview holds the effects at another hour.
-    public int LatestSnowDay(int day,int liveMinute)=>liveMinute>=snowStartMinute?day:day-1;
     public bool Raining(int room)=>(RainEnabled||scheduledRain)&&room==0;
     public bool Snowing(int room)=>scheduledSnow&&SnowEnabled&&room==0&&!Raining(room);
     public bool RoughOcean(int room)=>Raining(room)&&RoughOceanWhenRaining;

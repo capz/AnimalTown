@@ -122,7 +122,7 @@ internal static class IncrementalSaveChecks
         repository.Save(s);
         check(!repository.Load()!.Town.Traffic.Snow.Winter,"older town records load without a winter checkpoint");
 
-        snow.SetWinter(true);snow.ObserveSnowDay(100,false);
+        snow.SetWinter(true);
         for(int i=0;i<SnowWear.MaxVisits;i++)s.Town.Traffic.Enter(s.Town,20,30);
         for(int i=0;i<40*30-1;i++)snow.TickSnowfall(true);
         s.Town.Traffic.Enter(s.Town,21,30);
@@ -139,7 +139,11 @@ internal static class IncrementalSaveChecks
         shared.TickSnowfall(true);snow.TickSnowfall(true);
         check(shared.Revision==revision+1&&shared.Packed.SequenceEqual(snow.Packed),
             "reload preserves both tile ages and the fraction of a snowfall second");
-        shared.ObserveSnowDay(101,true);
+        for(int i=0;i<20*30;i++)shared.TickSnowfall(true);
+        repository.Save(restored);
+        restored=repository.Load()!;shared=restored.Town.Traffic.Snow;
+        check(shared.VisitCount(20,30)==1&&shared.VisitCount(21,30)==1,"fully refilled shallow tracks still round-trip after active recovery ends");
+        shared.ResetForTownEntry();
         byte[] traffic=(byte[])restored.Town.Traffic.Visits.Clone();
         byte[] paths=(byte[])restored.Town.Paths.Packed.Clone();
         repository.Save(restored);

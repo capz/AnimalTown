@@ -293,6 +293,15 @@
         "As snowfall refills a tile, its joins narrow and close.",
         "The joins reuse the existing winter snow mask."
       ]
+    },
+    {
+      "id": "snowfall-keeps-shallow-tracks",
+      "lines": [
+        "Snowfall fills deep tracks in one minute and leaves shallow impressions.",
+        "Each dent refills to the first indentation level during active snowfall.",
+        "Starting play or arriving from another town restores a fresh snow surface.",
+        "Outdoor recovery continues while a player is indoors."
+      ]
     }
   ]
 }
