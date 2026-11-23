@@ -20,9 +20,13 @@ within 128×128. GX renders the base color with the existing diffuse
 approximation. The importer normalizes model height and places the bind pose
 at ground level.
 
-Players and residents share these models. The GameCube build packs the
-`Walking` and `Running` clips used by the movement animation logic so all six
-species fit in memory outdoors. Constant tracks store one sample at the
-original final key time. Cooked models keep the textures sampled by GX
-materials. The source GLBs retain the full animation and texture data. The
-picker portrait bake uses the same framing and lighting recipe.
+Players and residents share these models. The GameCube build packs the supplied
+locomotion clips and adds `Idle` for bunny, giraffe, hamster, and Maine coon.
+The idle clip loops when a villager stands still. Fox and spaniel use their
+standing pose. Constant tracks store one sample at the original final key
+time. Idle tracks reduce redundant keys to within 0.5 degrees of local rotation
+and 0.0005 model units of translation at the source sample times. The original
+clip duration is preserved.
+Cooked models keep the textures sampled by GX materials. The source GLBs
+retain the full animation and texture data. The picker portrait bake uses the
+same framing and lighting recipe.

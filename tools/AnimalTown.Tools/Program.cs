@@ -76,12 +76,12 @@ static class Program
     {
         byte[] b=File.ReadAllBytes(input);int len=BitConverter.ToInt32(b,12);
         var j=JsonNode.Parse(b.AsSpan(20,len))!;
-        // The console only plays these two clips. Keep the imported runtime
-        // package small enough to admit all of the rigs in an outdoor town.
-        if(villagerRuntime&&j["animations"] is JsonArray animations){
-            for(int i=animations.Count-1;i>=0;i--)
-                if((string?)animations[i]?["name"] is not ("Running" or "Walking"))animations.RemoveAt(i);
-            CompactConstantTracks(j,animations,b);
+        int rest=20+len,binaryLength=0;
+        byte[] extra=[];
+        if(villagerRuntime){
+            binaryLength=BinaryPrimitives.ReadInt32LittleEndian(b.AsSpan(rest,4));
+            extra=VillagerAnimationAssets.Prepare(j,b.AsSpan(rest+8,binaryLength));
+            if(extra.Length>0)j["buffers"]![0]!["byteLength"]=binaryLength+extra.Length;
         }
         // Tangent-space normal mapping is not used by the chosen GX material path.
         foreach(var mesh in j["meshes"]!.AsArray())foreach(var p in mesh!["primitives"]!.AsArray())p!["attributes"]!.AsObject().Remove("TANGENT");
@@ -113,57 +113,19 @@ static class Program
         float height=maximum.Y-minimum.Y;if(!float.IsFinite(height)||height<.00001f)throw new InvalidDataException("Invalid model bounds");float scale=1/height;
         var wrapper=new JsonObject{["name"]="AnimalTown normalized root",["scale"]=new JsonArray(scale,scale,scale),["translation"]=new JsonArray(-(minimum.X+maximum.X)*.5f*scale,-minimum.Y*scale,-(minimum.Z+maximum.Z)*.5f*scale),["children"]=roots.DeepClone()};
         int wrapperIndex=nodes.Count;nodes.Add(wrapper);scene["nodes"]=new JsonArray(wrapperIndex);
-        byte[] text=Encoding.UTF8.GetBytes(j.ToJsonString());int padded=(int)Align(text.Length,4);int rest=20+len;
-        byte[] result=new byte[20+padded+b.Length-rest];Array.Copy(b,result,12);BitConverter.GetBytes(result.Length).CopyTo(result,8);BitConverter.GetBytes(padded).CopyTo(result,12);BitConverter.GetBytes(0x4e4f534a).CopyTo(result,16);
-        Array.Fill(result,(byte)32,20,padded);text.CopyTo(result,20);Array.Copy(b,rest,result,20+padded,b.Length-rest);
-        Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(output))!);File.WriteAllBytes(output,result);
-    }
-    static void CompactConstantTracks(JsonNode model,JsonArray animations,byte[] glb)
-    {
-        if(animations.Count==0)return;
-        int binaryChunk=20+BinaryPrimitives.ReadInt32LittleEndian(glb.AsSpan(12,4));
-        var binary=glb.AsSpan(binaryChunk+8,BinaryPrimitives.ReadInt32LittleEndian(glb.AsSpan(binaryChunk,4)));
-        var accessors=model["accessors"]!.AsArray();
-        var views=model["bufferViews"]!.AsArray();
-        foreach(var animation in animations)
-        foreach(var entry in animation!["samplers"]!.AsArray()){
-            var sampler=entry!;
-            if((string?)sampler["interpolation"] is not (null or "LINEAR" or "STEP"))continue;
-            var times=accessors[(int)sampler["input"]!]!;
-            var values=accessors[(int)sampler["output"]!]!;
-            int keys=(int)times["count"]!;
-            int valueSize=(string?)values["type"] switch{"VEC3"=>12,"VEC4"=>16,_=>0};
-            if(keys<2||valueSize==0||(int)values["count"]! != keys||
-                !AnimationData(times,views,4,out int timeOffset,out int timeStride)||
-                !AnimationData(values,views,valueSize,out int valueOffset,out int valueStride))continue;
-            var first=binary.Slice(valueOffset,valueSize);
-            int key=1;
-            while(key<keys&&first.SequenceEqual(binary.Slice(valueOffset+key*valueStride,valueSize)))key++;
-            if(key!=keys)continue;
-            // A single constant sample at the original last time preserves
-            // both the pose and clip duration, even before the first key.
-            var time=times.DeepClone();
-            var value=values.DeepClone();
-            int lastOffset=(keys-1)*timeStride;
-            float last=BinaryPrimitives.ReadSingleLittleEndian(binary.Slice(timeOffset+lastOffset,4));
-            time["count"]=1;
-            value["count"]=1;
-            time["byteOffset"]=((int?)time["byteOffset"]??0)+lastOffset;
-            time["min"]=new JsonArray(last);
-            time["max"]=new JsonArray(last);
-            sampler["input"]=accessors.Count;accessors.Add(time);
-            sampler["output"]=accessors.Count;accessors.Add(value);
+        byte[] text=Encoding.UTF8.GetBytes(j.ToJsonString());int padded=(int)Align(text.Length,4);
+        int chunks=20+padded;
+        byte[] result=new byte[chunks+b.Length-rest+extra.Length];Array.Copy(b,result,12);BitConverter.GetBytes(result.Length).CopyTo(result,8);BitConverter.GetBytes(padded).CopyTo(result,12);BitConverter.GetBytes(0x4e4f534a).CopyTo(result,16);
+        Array.Fill(result,(byte)32,20,padded);text.CopyTo(result,20);
+        if(extra.Length==0)Array.Copy(b,rest,result,chunks,b.Length-rest);
+        else{
+            int end=8+binaryLength;
+            Array.Copy(b,rest,result,chunks,end);
+            extra.CopyTo(result,chunks+end);
+            Array.Copy(b,rest+end,result,chunks+end+extra.Length,b.Length-rest-end);
+            BinaryPrimitives.WriteInt32LittleEndian(result.AsSpan(chunks,4),binaryLength+extra.Length);
         }
-    }
-    static bool AnimationData(JsonNode accessor,JsonArray views,int size,out int offset,out int stride)
-    {
-        offset=0;stride=size;
-        if((int?)accessor["componentType"]!=5126||accessor["sparse"]!=null||accessor["bufferView"]==null)return false;
-        var view=views[(int)accessor["bufferView"]!]!;
-        if((int?)view["buffer"]!=0)return false;
-        offset=((int?)view["byteOffset"]??0)+((int?)accessor["byteOffset"]??0);
-        stride=(int?)view["byteStride"]??size;
-        return true;
+        Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(output))!);File.WriteAllBytes(output,result);
     }
     static void KeepVillagerTextures(JsonNode model)
     {

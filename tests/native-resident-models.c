@@ -106,7 +106,7 @@ static void compare_animation(int a, int b, const DndModel *model) {
 
 int main(int argc, char **argv) {
     assert(argc == 7); /* fox, bunny, giraffe, cat, hamster, spaniel */
-    size_t saved_total = 0, texture_total = 0;
+    size_t saved_total = 0, texture_total = 0, idle_total = 0;
     assert(dnd_model_live_handles() == 0 && animaltown_model_retain(-1) == -1);
     for (int file = 1; file < argc; file++) {
         unsigned length;
@@ -120,6 +120,14 @@ int main(int argc, char **argv) {
         memset(source, 0xa5, length);free(source);source = NULL;
         DndModel *a = dnd_model_find(baseline, false), *b = dnd_model_find(retained, false);
         assert(a && b && dnd_model_hash(a->package, a->length) == original_hash);
+        unsigned idle_count = 0;
+        for (unsigned i = 0; i < a->clips; i++) {
+            if (strcmp(a->clip[i].name, "Idle")) continue;
+            assert(a->clip[i].duration > 0);
+            idle_total += a->clip[i].size;
+            idle_count++;
+        }
+        assert(idle_count == (unsigned)(file >= 2 && file <= 5));
         assert(dnd_model_hash(b->package, b->length) == original_hash);
         same_payload(a, b);
         unsigned original_bytes = b->bytes, original_budget = b->budget;
@@ -211,6 +219,8 @@ int main(int argc, char **argv) {
     }
     /* Six 128px RGBA8 textures with two mip levels fit in 480 KiB. */
     assert(texture_total <= 480 * 1024 && saved_total >= texture_total);
+    assert(idle_total <= 64 * 1024);
+    printf("Cooked idle animation tracks: %zu bytes across four species\n", idle_total);
     printf("128px resident villagers: %zu MEM1 bytes recovered; geometry, skins, clips, evaluated poses, shared textures and disposal unchanged\n", saved_total);
     return 0;
 }
