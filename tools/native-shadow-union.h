@@ -82,6 +82,12 @@ static inline uint8_t su_pack(int shadow,int light){return (uint8_t)(((light+8)/
 #define SU_SNOW_MAX_VISITS 5
 #define SU_SNOW_STEPS_PER_VISIT 3
 #define SU_SNOW_FIRST_OPEN 8 /* Matches SnowWear.CenterCovered. */
+/* Raster work runs on a changed wear revision. Keep the unrolled stamp
+ * combinations out of the console executable. */
+#if defined(__GNUC__) && !defined(__clang__)
+#pragma GCC push_options
+#pragma GCC optimize ("Os")
+#endif
 static inline int su_snow_wear(const uint8_t *packed,int x,int z){
     if((unsigned)x>=SU_WORLD_WIDTH||(unsigned)z>=SU_SNOW_HEIGHT)return 0;
     int cell=z*SU_WORLD_WIDTH+x;
@@ -176,6 +182,9 @@ static inline void su_snow_block(uint8_t *dest,const uint8_t *packed,const uint8
         }
     }
 }
+#if defined(__GNUC__) && !defined(__clang__)
+#pragma GCC pop_options
+#endif
 static inline void su_terrain_reset(SuState *s){
     s->terrain_ready=0;memset(s->terrain,0,SU_TERRAIN_BYTES);su_terrain_changed(s);
 }
