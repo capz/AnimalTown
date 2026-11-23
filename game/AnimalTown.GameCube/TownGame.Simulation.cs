@@ -5,6 +5,7 @@ using Dolphin.Timing;
 
 internal sealed partial class TownGame
 {
+    internal const int IdleClip=2;
     private readonly TownDaylight daylight=new TownDaylight();
     private readonly DebugWeather weather=new DebugWeather();
     private bool snowSessionStarted;
@@ -66,14 +67,21 @@ internal sealed partial class TownGame
         runningMinimap.Update(Clock.Timestamp,running,screen=="world"&&room==0&&waterInspection==0&&!cliffPreview);
         playerRunning=running;
         state.Facing=facingYaw;cachedPlayerHeight=PlayerHeight();if(room==0)RenderView.Prepare(state.X,state.Z,cachedPlayerHeight);
-        animationClock.Step(0,moveClip,models[state.Species].Animations.Count>0);
+        StepActorAnimation(0,state.Species,moveClip);
         for(int i=1;i<7;i++){
-            var v=state.Town.Residents[i-1];bool moving=v.Space==room&&simulateWorld&&villagers.Moving[i-1];
+            var v=state.Town.Residents[i-1];bool inScene=v.Space==room&&simulateWorld;
+            bool moving=inScene&&villagers.Moving[i-1];
             if(moving!=villagersMoving[i-1]){
-                villagersMoving[i-1]=moving;animationClock.Reset(i);animationClock.Step(i,moving?0:-1,false);restartClips[i]=moving;
+                villagersMoving[i-1]=moving;restartClips[i]=moving;
             }
-            animationClock.Step(i,animationClock.Clip(i),moving);
+            if(inScene)StepActorAnimation(i,state.ResidentSpecies(i-1),moving?0:-1);
+            else animationClock.Reset(i);
         }
+    }
+    private void StepActorAnimation(int actor,int species,int movementClip)
+    {
+        int clip=movementClip<0&&hasIdleClip[species]?IdleClip:movementClip;
+        animationClock.Step(actor,clip,models[species].Animations.Count>0);
     }
     private int weatherDay;
     private int EnvironmentMinute=>renderDebug.EffectiveMinute(townClock.MinuteOfDay);

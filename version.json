@@ -239,6 +239,15 @@
         "Their textures fit within 128 by 128 pixels.",
         "Existing saves keep the same villager species."
       ]
+    },
+    {
+      "id": "villager-idle-animations",
+      "lines": [
+        "Bunny, giraffe, hamster and Maine coon villagers animate while standing still.",
+        "The new idle clips play for both players and residents.",
+        "Walking and running take over when a villager moves.",
+        "Idle clips use compact keyframes to fit GameCube memory."
+      ]
     }
   ]
 }

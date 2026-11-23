@@ -27,6 +27,7 @@ internal sealed partial class TownGame
     internal readonly TerrainRenderer terrain=new TerrainRenderer();
     internal readonly ModelResidency modelResidency=new ModelResidency();
     internal readonly Model[] models=new Model[6];
+    internal readonly bool[] hasIdleClip=new bool[6];
     internal readonly bool[] villagersMoving=new bool[6],restartClips=new bool[7];
     internal readonly DialogueVoice dialogueVoice=new DialogueVoice(new Dolphin.Audio.Sound());
     internal bool resourcesReady=true,playerRunning,cliffPreview=false;
