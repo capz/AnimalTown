@@ -70,54 +70,85 @@ public sealed partial class GameState
     {if(!HousePlaced||!HouseEntrance(Town.HouseX,Town.HouseZ,out float x,out float z))return false;X=x;Z=z;return true;}
     public bool InGarden(int x,int z)=>HousePlaced&&x>=Town.HouseX&&x<Town.HouseX+GardenWidths[GardenTier]&&z>=Town.HouseZ&&z<Town.HouseZ+GardenHeights[GardenTier];
     public bool CanPlace(int id,int x,int z,int rotation,int room,int actor,bool existing=false)
-        =>CanPlaceCore(id,x,z,rotation,room,actor,existing,-1,false);
+        =>PlacementBlock(id,x,z,rotation,room,actor,existing)==null;
     internal bool CanPlaceOwned(int id,int x,int z,int rotation,int room,int owner,bool existing=false,int ignoredPlacement=-1)
-        =>CanPlaceCore(id,x,z,rotation,room,owner,existing,ignoredPlacement,true);
-    private bool CanPlaceCore(int id,int x,int z,int rotation,int room,int actor,bool existing,int ignoredPlacement,bool exactOwner)
+        =>PlacementBlock(id,x,z,rotation,room,owner,existing,ignoredPlacement,true)==null;
+    private string? PlacementBlock(int id,int x,int z,int rotation,int room,int actor,bool existing,int ignoredPlacement=-1,bool exactOwner=false)
     {
-        if(rotation<0||rotation>3||!BuildingWorld.ValidSpace(room)||!Catalog.Has(id,ItemFlags.Place))return false;
+        if(rotation<0||rotation>3)return "Rotate the item before placing it.";
+        if(!BuildingWorld.ValidSpace(room))return "You can't place furniture here.";
+        if(!Catalog.Has(id,ItemFlags.Place))return "You can't place that item as furniture.";
         int profile=existing||exactOwner?OwnerProfile(actor):actor==0?ActiveProfile:OwnerProfile(actor);
         if(!existing&&actor>=1&&actor<=6)profile=-1;
         bool ownPlayer=profile>=0&&HomePlaced(profile)&&(room==0||BuildingWorld.RoomProfile(room)==profile);
         bool ownResident=actor>=1&&actor<=6&&room==15+actor;
-        if(!ownPlayer&&!ownResident)return false;
-        if(room==0&&!Catalog.Has(id,ItemFlags.Outdoor))return false;
+        if(!ownPlayer&&!ownResident)return "You can only place furniture in your own home or garden.";
+        if(room==0&&!Catalog.Has(id,ItemFlags.Outdoor))return "This furniture belongs indoors.";
         int personalRoom=BuildingWorld.PersonalRoom(room),homeTier=profile>=0?HomeTier(profile):0;
-        if(ownPlayer&&((personalRoom==2&&homeTier<3)||(personalRoom==3&&homeTier<4)||(personalRoom==4&&homeTier<5)))return false;
+        if(ownPlayer&&((personalRoom==2&&homeTier<3)||(personalRoom==3&&homeTier<4)||(personalRoom==4&&homeTier<5)))return "This room isn't available yet.";
         int w=Catalog.Items[id].Width,h=Catalog.Items[id].Height;if((rotation&1)!=0){int swap=w;w=h;h=swap;}
-        if(room!=0&&!existing&&!BuildingWorld.Available(this,room))return false;
+        if(room!=0&&!existing&&!BuildingWorld.Available(this,room))return "This room isn't available yet.";
         int size=room==0?0:existing&&!BuildingCatalog.Available(BuildingTypes[BuildingWorld.Building(room)])?16:BuildingWorld.Size(this,room);
         for(int j=0;j<h;j++)for(int i=0;i<w;i++)
         {
             int tx=x+i,tz=z+j;
             if(room==0)
             {
-                if(!GardenContains(profile,tx,tz)||Town.At(tx,tz)!=0||tx==HomeX(profile)||tz==HomeZ(profile)||tx==HomeX(profile)+GardenWidths[HomeGardenTier(profile)]-1||tz==HomeZ(profile)+GardenHeights[HomeGardenTier(profile)]-1)return false;
-                if(tx>=HomeX(profile)+2&&tx<=HomeX(profile)+4&&tz>=HomeZ(profile)+1&&tz<=HomeZ(profile)+3)return false;
-                if(tx==HomeX(profile)+1&&tz==HomeZ(profile)+3)return false;
+                if(!GardenContains(profile,tx,tz))return "The whole item needs to fit inside your garden.";
+                if(tx==HomeX(profile)||tz==HomeZ(profile)||tx==HomeX(profile)+GardenWidths[HomeGardenTier(profile)]-1||tz==HomeZ(profile)+GardenHeights[HomeGardenTier(profile)]-1)
+                    return "The item would overlap your garden fence.";
+                if(tx>=HomeX(profile)+2&&tx<=HomeX(profile)+4&&tz>=HomeZ(profile)+1&&tz<=HomeZ(profile)+3)return "The item would overlap your house.";
+                if(tx==HomeX(profile)+1&&tz==HomeZ(profile)+3)return "The item would block your mailbox.";
+                if(Town.At(tx,tz)!=0)return "Outdoor furniture needs a clear grass tile.";
             }
-            else if(tx<0||tz<0||tx>=size||tz>=size||!existing&&BuildingWorld.DoorClearance(size,tx,tz,1,1))return false;
+            else
+            {
+                if(tx<0||tz<0||tx>=size||tz>=size)return "The whole item needs to fit inside the room.";
+                if(!existing&&BuildingWorld.DoorClearance(size,tx,tz,1,1))return "Keep the doorway clear.";
+            }
             for(int p=0;p<Town.PlacedCount;p++)
             {
                 if(p==ignoredPlacement)continue;
                 var q=Town.Placed[p];if(q.Room!=room)continue;
-                int qw=Catalog.Items[q.Item].Width,qh=Catalog.Items[q.Item].Height;if((q.Rotation&1)!=0){int s=qw;qw=qh;qh=s;}
-                if(tx>=q.X&&tx<q.X+qw&&tz>=q.Z&&tz<q.Z+qh)return false;
+                BuildingWorld.Footprint(q,out int qw,out int qh);
+                if(tx>=q.X&&tx<q.X+qw&&tz>=q.Z&&tz<q.Z+qh)return "There's already furniture in that spot.";
             }
         }
-        return true;
+        return null;
     }
     public bool Place(int slot,int x,int z,int rotation,int room)
-        =>TownItemActions.Place(this,this,TownItemActor.ForActivePlayer(this),slot,x,z,rotation,room);
-    public bool Use(int slot,int action,int x,int z)
+        =>Place(slot,x,z,rotation,room,out _);
+
+    public bool Place(int slot,int x,int z,int rotation,int room,out string reason)
     {
+        reason=slot<0||slot>=Capacity||Pockets[slot]==0?"That pocket is empty.":
+            IsJobItem(slot)?"Keep that item in your pockets for the errand.":
+            Town.PlacedCount==Town.Placed.Length?"Your town has reached its furniture limit. Pick something up first.":
+            (Visiting?null:PlacementBlock(Pockets[slot],x,z,rotation,room,0,false))??"";
+        if(reason.Length!=0)return false;
+        if(TownItemActions.Place(this,this,TownItemActor.ForActivePlayer(this),slot,x,z,rotation,room))return true;
+        reason="That spot is blocked. Choose a clear place for the item.";return false;
+    }
+    public bool Use(int slot,int action,int x,int z)
+        =>Use(slot,action,x,z,out _);
+
+    internal bool Use(int slot,int action,int x,int z,out string reason)
+    {
+        reason="";
         if(slot<0||slot>=Capacity||IsJobItem(slot)||!Catalog.Valid(Pockets[slot]))return false;int id=Pockets[slot];
-        if(action==0)return TownItemActions.AddGround(this,this,TownItemActor.ForActivePlayer(this),slot,x,z);
-        else if(action==1)return TownItemActions.AddGround(this,this,TownItemActor.ForActivePlayer(this),slot,x,z,2);
+        if(action==0||action==1||action==5){
+            int kind=action==0?0:action==1?2:1;
+            reason=Town.GroundCount==Town.Ground.Length?"The town has no room for more items on the ground. Pick something up first.":
+                kind!=0&&Town.At(x,z)!=0?"Find a clear grass tile to plant or bury this.":
+                !Town.Walkable(x,z)?"Choose a spot on walkable ground.":
+                Town.FindGround(x,z)>=0?"There's already something on the ground there.":"";
+            if(reason.Length!=0)return false;
+            if(TownItemActions.AddGround(this,this,TownItemActor.ForActivePlayer(this),slot,x,z,kind))return true;
+            reason="That spot is blocked. Choose a clear spot on the ground.";return false;
+        }
         else if(action==2){if(!Catalog.Has(id,ItemFlags.Eat))return false;}
         else if(action==3){if(!Catalog.Has(id,ItemFlags.Wear))return false;Pockets[slot]=Shirt;Shirt=id;return true;}
         else if(action==4){if(!Catalog.Has(id,ItemFlags.Tool))return false;Pockets[slot]=Tool;Tool=id;return true;}
-        else if(action==5)return TownItemActions.AddGround(this,this,TownItemActor.ForActivePlayer(this),slot,x,z,1);
         else if(action==7){if(!Town.Jobs.Initialized||BuildingWorld.RoomProfile(Space)!=ActiveProfile||!Catalog.Has(id,ItemFlags.Flooring)&&!Catalog.Has(id,ItemFlags.Wallpaper))return false;bool floor=Catalog.Has(id,ItemFlags.Flooring);int old=floor?Town.Jobs.HomeFloors[ActiveProfile]:Town.Jobs.HomeWalls[ActiveProfile];if(floor)Town.Jobs.HomeFloors[ActiveProfile]=id;else Town.Jobs.HomeWalls[ActiveProfile]=id;Pockets[slot]=old;Town.Jobs.Revision++;return true;}
         else if(action==6){int amount=Catalog.MoneyValue(id);if(amount<=0||amount>WalletLimit-Wallet)return false;Wallet+=amount;}
         else return false;
