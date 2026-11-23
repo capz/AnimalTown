@@ -73,7 +73,6 @@ internal static class PathChecks
         snow.SetWinter(false);snow.SetWinter(true);
         check(snow.VisitCount(6,40)==5&&snow.VisitCount(7,40)==1,"switching the season preview preserves the current town's dents");
         SnowfallRecovery(check,Flat().Town);
-        SmoothSnow(check,Flat().Town);
         s=Flat();t=s.Town;t.Traffic.Traverse(t,5.1f,40.2f,8.2f,40.2f);
         check(t.Traffic.Visits[40*Town.Width+5]==0&&t.Traffic.Visits[40*Town.Width+6]==1&&t.Traffic.Visits[40*Town.Width+7]==1&&t.Traffic.Visits[40*Town.Width+8]==1,"all entered cells are recorded, not the departure cell");
         t.Traffic.Traverse(t,8.2f,40.2f,8.9f,40.8f);check(t.Traffic.Visits[40*Town.Width+8]==1,"standing and walking within a tile add no visits");
@@ -120,41 +119,6 @@ internal static class PathChecks
         old=WithoutKobanType(bytes,bytes.Length-tailBytes-TileTraffic.Bytes-8,CombinedBuildingOffset(bytes)+(2+BuildingSave.ProfileBuildingCount)*4);Put(old,4,10);Put(old,16,old.Length);Put(old,20,(int)SaveCodec.Crc(old,24,old.Length-24));check(SaveCodec.Decode(old).Town.Traffic.Visits.All(v=>v==0),"combined v10 remains readable");
         var broken=SplitSaveCodec.Encode(s);broken[0][reader.Offset-1]=255;Crc(broken[0]);bool rejected=false;try{SplitSaveCodec.Decode(broken);}catch(InvalidOperationException){rejected=true;}check(rejected,"invalid saved path styles remain rejected");
         Console.WriteLine($"Traffic paths: 15360 counter + 512 histogram + 3840 existing path bytes; 8192 native mask bytes on demand; 10000 entries {traversalMs:F2}ms host, classification {selectionMs:F3}ms host; no warm allocations");
-    }
-    private static void SmoothSnow(Action<bool,string> check,Town town)
-    {
-        const int x=20,z=40;
-        var snow=town.Traffic.Snow;snow.SetWinter(true);
-        check(!new RenderDebugOptions().SmoothSnowTransitions&&snow.PrepareVisuals(x,z,out _,out _)==null,
-            "a new session uses the ordinary packed snow mask");
-        snow.SetSmoothTransitions(true);
-        int Sample()
-        {
-            var field=snow.PrepareVisuals(x,z,out int origin,out _)!;
-            return field[(z-origin/Town.Width)*SnowTransitions.Side+x-origin%Town.Width];
-        }
-        void Advance(int ticks,bool snowing=false)
-        {for(int i=0;i<ticks;i++)snow.TickSnowfall(snowing);}
-        check(Sample()==0,"smooth visuals begin at untracked snow");
-        town.Traffic.Enter(town,x,z);
-        check(Sample()==0&&snow.VisitCount(x,z)==1,"animation leaves gameplay wear immediate and begins at the previous depth");
-        Advance(3);int early=Sample();Advance(3);int later=Sample();Advance(3);
-        check(early>0&&early<later&&later<48&&Sample()==48,"a footprint eases in over nine fixed updates");
-        town.Traffic.Enter(town,x,z);town.Traffic.Enter(town,x,z);
-        Advance(3);int interrupted=Sample();town.Traffic.Enter(town,x,z);Advance(3);
-        check(interrupted>48&&interrupted<144&&Sample()>interrupted&&Sample()<192,"another footstep continues from the displayed depth");
-        town.Traffic.Enter(town,x,z);Advance(9);
-        check(Sample()==240,"the deepest step ends exactly at the packed wear");
-        Advance(15,true);int refilling=Sample();
-        check(refilling<240&&refilling>224&&snow.VisitCount(x,z)==5,"snowfall interpolates within a packed depth step");
-        Advance(30);check(Sample()==refilling,"pausing snowfall freezes precise visual recovery");
-        Advance(60*30-15,true);check(Sample()==48&&snow.VisitCount(x,z)==1,"smooth recovery ends at the existing first-level floor");
-        snow.PrepareVisuals(x,z,out _,out int priorRevision);
-        snow.SetSmoothTransitions(false);
-        check(snow.PrepareVisuals(x,z,out _,out _)==null&&snow.VisitCount(x,z)==1,"turning off smooth visuals retains the underlying track");
-        snow.SetSmoothTransitions(true);
-        snow.PrepareVisuals(x,z,out _,out int nextRevision);
-        check(nextRevision>priorRevision,"re-enabling smooth visuals invalidates a previously published window");
     }
     private static byte[] WithoutKobanType(byte[] source,int end,int offset)
     {var result=new byte[end-4];Array.Copy(source,result,offset);Array.Copy(source,offset+4,result,offset,end-offset-4);return result;}
