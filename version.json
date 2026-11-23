@@ -248,6 +248,15 @@
         "Walking and running take over when a villager moves.",
         "Idle clips use compact keyframes to fit GameCube memory."
       ]
+    },
+    {
+      "id": "shop-controller-glyphs",
+      "lines": [
+        "Shop menus show GameCube button glyphs beside their actions.",
+        "Green A marks available actions such as buying and selling.",
+        "Red B marks the back or close action.",
+        "Sold-out displays and empty pockets show the close prompt."
+      ]
     }
   ]
 }
