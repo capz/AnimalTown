@@ -214,7 +214,7 @@ Check(TexturePolicy.DefaultForModel("building")==TextureResolution.Size256,"the 
 bool invalidResolution=false;try{TexturePolicy.Edge((TextureResolution)192);}catch(ArgumentOutOfRangeException){invalidResolution=true;}Check(invalidResolution,"invalid texture resolution rejected");
 uint identity=TexturePixels.Hash(alphaPackage);alphaPackage[32]^=1;Check(identity!=TexturePixels.Hash(alphaPackage),"source fingerprint notices changed original bytes");
 bool badTexture=false;try{TexturePixels.Validate(new byte[32]);}catch(InvalidOperationException){badTexture=true;}Check(badTexture,"invalid texture rejected before decoding");
-for(int kind=0;kind<3;kind++){
+for(int kind=0;kind<LowPolyTree.KindCount;kind++){
     var tree=LowPolyTree.Build(kind);Check(tree.Triangles>24&&tree.Triangles<=LowPolyTree.TriangleBudget,"generated tree triangle budget");float minY=10,maxY=-10;var parts=new int[4];
     for(int i=0;i<tree.Triangles*9;i+=3){
         float x=tree.Positions[i],y=tree.Positions[i+1]-LowPolyTree.VisibilityCenterY,z=tree.Positions[i+2];
@@ -228,7 +228,9 @@ for(int kind=0;kind<3;kind++){
         Check(float.IsFinite(au)&&float.IsFinite(av)&&float.IsFinite(bu)&&float.IsFinite(bv)&&Math.Abs(au*bv-av*bu)>1e-8f,"every tree face has finite noncollapsed detail UVs");
         for(int v=0;v<3;v++){float y=tree.Positions[at+v*3+1];minY=Math.Min(minY,y);maxY=Math.Max(maxY,y);}
     }
-    Check(minY==0&&(kind==0?maxY is >1.07f and <=1.09f:maxY is >.9f and <=1.01f),"tree ground pivot and species height");
+    Check(minY==0&&(kind==0?maxY is >1.07f and <=1.09f:
+        kind==LowPolyTree.Cherry?maxY is >1.03f and <=1.04f:maxY is >.9f and <=1.01f),
+        "tree ground pivot and species height");
     for(int part=0;part<4;part++)Check(parts[part]>0,"every generated material has geometry");
     Console.WriteLine("Generated tree "+kind+": "+tree.Triangles+" triangles");
 }

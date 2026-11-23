@@ -51,11 +51,11 @@ nodes/materials and the shared GPU texture cache keep their existing ownership.
 No pixels, mip levels, mesh data, animation keys or poses are approximated.
 The existing static-building retention path keeps its static-only checks.
 
-The six 128px default models recover **675,776 bytes** from duplicate package
-storage (about 0.64 MiB). This is smaller than the former 256px compaction
-measurement because the source packages already contain smaller textures. The largest
-temporary compact allocation is 247,740 bytes; models are processed one at a
-time during loading. This avoids making another multi-megabyte model set.
+With the updated rigs and unused texture maps excluded at import, the six
+128px default models recover **517,248 bytes** from duplicate package storage.
+The retained texture payload is **491,520 bytes** across all six models. Models
+are compacted one at a time during loading, which avoids allocating a second
+set of packages.
 
 Compaction requires a ready model with one owner and no active graphics frame.
 Span/alignment validation and allocation complete before the source allocation

@@ -616,11 +616,11 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
                 if(action==PocketAction.Read){Say("Letter","Thank you for being a part of our town!");return;}
                 if(action==PocketAction.Quit){screen="menu";menuTab=0;selected=slot;return;}
                 int tx=(int)state.X+faceX,tz=(int)state.Z+faceZ;
-                bool ok=PocketMenu.Perform(state,slot,action,tx,tz,rotation,room);
+                bool ok=PocketMenu.Perform(state,slot,action,tx,tz,rotation,room,out string failureReason);
                 if(ok&&action==PocketAction.Wear&&state.Tutorial==0&&state.Shirt==Catalog.WorkShirt)state.CreditTutorial(0);
                 if(ok&&action==PocketAction.Plant&&state.Tutorial==1)state.CreditTutorial(1);
                 if(action==PocketAction.OpenMoneyBag){int amount=Catalog.MoneyValue(item);Say("Wallet",ok?UiFont.Money(amount)+" added. Wallet: "+UiFont.Money(state.Wallet)+".":"No room for "+UiFont.Money(amount)+". Wallet limit: "+UiFont.Money(GameState.WalletLimit)+".");}
-                else Say("Backpack",ok?"Done!":"That action is not possible here.");
+                else Say("Backpack",ok?"Done!":failureReason.Length!=0?failureReason:"That action is not possible here.");
             }
             return;
         }
@@ -630,14 +630,13 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
             if(down)selected=(selected+5)%state.Capacity;if(up)selected=(selected+state.Capacity-5)%state.Capacity;
             if(right)selected=(selected+1)%state.Capacity;if(left)selected=(selected+state.Capacity-1)%state.Capacity;
             if(screen=="menu"&&p.R.WasPressed){menuTab=1;selected=0;return;}if(screen=="menu"&&p.L.WasPressed){menuTab=MenuTabCount-1;selected=0;return;}
-            if(Press(p)&&state.Pockets[selected]!=0){if(screen=="sell"){if(Catalog.Has(state.Pockets[selected],ItemFlags.Sell))Say("Hearth",state.Sell(selected)?"Thank you! Acorns added to your wallet.":"Your wallet is full.");}else{slot=selected;screen="item";selected=0;}}return;
+            if(Press(p)&&state.Pockets[selected]!=0){if(screen=="sell"){if(CanSellFromPockets(selected))Say("Hearth",state.Sell(selected)?"Thank you! Acorns added to your wallet.":"Your wallet is full.");}else{slot=selected;screen="item";selected=0;}}return;
         }
         int count=screen=="shop"?TownShop.CabinetCount:screen=="post"?7:screen=="store"?StoreMenuCount:screen=="mail"?Math.Max(1,state.MailCount):screen=="lost"?Math.Max(1,LostCount()):TabCount();
         if(down)selected=(selected+1)%count;if(up)selected=(selected+count-1)%count;
         if(screen=="menu"&&(p.R.WasPressed||right)){menuTab=(menuTab+1)%MenuTabCount;selected=0;}
         if(screen=="menu"&&(p.L.WasPressed||left)){menuTab=(menuTab+MenuTabCount-1)%MenuTabCount;selected=0;}
         if(!Press(p))return;
-        if(screen=="sell"){Say("Hearth",state.Sell(selected)?"Thank you! Acorns added to your wallet.":"I cannot buy that, or your wallet is full.");return;}
         if(screen=="shop"){Say("Hearth",state.BuyCabinet(selected,godMode)?"Thank you! Cabinet essentials are always in stock.":"You need enough acorns and a free pocket.");return;}
         if(screen=="store"){StoreAction();return;}
         if(screen=="post"){PostAction();return;}
@@ -1283,10 +1282,10 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
         }
         if(screen==DaylightLocationMenu.Screen){daylightMenu.Draw(ui,font,headingFont,batchedDrawing?uiShapes:null);return;}
         if(screen=="world"){if(room==0&&runningMinimap.Opacity>0)DrawMinimap();if(room==0&&renderDebug.ShowGroundMipBands)DrawGroundMipLegend(ink);return;}
-        if((screen=="menu"&&menuTab==0)||screen=="sell"||screen=="item"){DrawBackpack();return;}
-        Panel(45,75,550,350);string title=screen=="menu"?tabs[menuTab]:screen=="shop"?"Essentials / always in stock":screen=="store"?"Hearth's store":screen=="post"?"Town hall":screen=="mail"?"Mailbox":"Lost and Found";
+        if((screen=="menu"&&menuTab==0)||screen=="item"){DrawBackpack();return;}
+        Panel(45,75,550,350);string title=screen=="menu"?tabs[menuTab]:screen=="post"?"Town hall":screen=="mail"?"Mailbox":"Lost and Found";
         Heading(title,68,91,ink);
-        int total=screen=="menu"?TabCount():screen=="shop"?TownShop.CabinetCount:screen=="mail"?Math.Max(1,state.MailCount):screen=="lost"?Math.Max(1,LostCount()):screen=="store"?StoreMenuCount:7;
+        int total=screen=="menu"?TabCount():screen=="mail"?Math.Max(1,state.MailCount):screen=="lost"?Math.Max(1,LostCount()):7;
         bool compact=screen=="menu"&&(menuTab==SettingsTab||menuTab==TestingTab);int page=compact?9:8,step=compact?24:29;float rowScale=compact?1.2f:1.4f;int first=selected/page*page;
         for(int i=first;i<Math.Min(total,first+page);i++){float y=131+(i-first)*step;if(i==selected){Rounded(57,y,520,step-2,(step-2)*.5f,new Color32(221,231,188));Strong("> "+RowLabel(i),68,y,ink,rowScale);}else Text("  "+RowLabel(i),68,y,ink,rowScale);}
         Text(TestingFocused(SeasonPreviewOption)?"Left/Right: choose   A: apply   B: close":
@@ -1302,8 +1301,6 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
     }
     private string RowLabel(int i)
     {
-        if(screen=="shop"){int id=TownShop.CabinetItem(i);return Catalog.Items[id].Name+(godMode?" / Free": " / "+UiFont.Money(Catalog.Items[id].Buy));}
-        if(screen=="store"){if(i==8)return "Reclaim stored sale items";string[] a={"Essentials cabinet","Sell / return parcel","Part-time job","House expansion","Garden expansion","Repay loan","Daily job","Expand backpack"};return a[i];}
         if(screen=="post"||(screen=="menu"&&menuTab==4)){string[] a={"Deposit up to "+UiFont.Money(1000),"Withdraw up to "+UiFont.Money(1000),"Repay from wallet","Lost and Found","Mailbox","Write a letter","Visit / gate"};return a[i];}
         if(screen=="mail")return MailboxRow(i);
         if(screen=="lost"){int n=LostIndex(i);return n<0?"No lost items":Catalog.Items[state.Town.Ground[n].Item].Name;}
@@ -1336,7 +1333,7 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
         bool actions=screen=="item";int focus=actions?slot:selected;
         Rounded(198,57,82,50,24,new Color32(195,109,84));Rounded(210,66,58,28,14,new Color32(255,245,221));
         Bulged(70,73,350,height+7,32,new Color32(53,105,84));Panel(76,77,338,height);
-        Heading(screen=="sell"?"Sell items":"Backpack",96,92,ink);
+        Heading("Backpack",96,92,ink);
         Rounded(286,94,105,30,15,new Color32(232,183,86));Strong(UiFont.Money(state.Wallet),298,98,ink,1.15f);
         for(int i=0;i<state.Capacity;i++)
         {
@@ -1350,7 +1347,6 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
         if(state.BackpackTier<2){Text("Next pack: "+(state.Capacity+10)+" slots",436,325,ink,1);Text("Hearth's store",436,349,ink,1);}
         int item=state.Pockets[focus];
         if(item==0)return;
-        bool sellable=Catalog.Has(item,ItemFlags.Sell);
         // Follow the actual slot for both the title and action menu. Clamp the
         // panel (including bulges/shadow) above the HUD for all backpack sizes.
         float slotX=99+focus%5*58,slotY=144+focus/5*44;
@@ -1378,9 +1374,9 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
         else
         {
             int money=Catalog.MoneyValue(item);
-            Text(screen=="sell"?(sellable?"Sell: "+UiFont.Money(Catalog.Items[item].Sell):"Not for sale"):money>0?"Value: "+UiFont.Money(money):"One item",textX,popY+69,ink,1.05f);
-            ButtonGlyph(screen=="sell"&&!sellable?"B":"A",textX,popY+102);
-            Strong(screen=="sell"?(sellable?"Sell item":"Back"):"Item actions",textX+20,popY+101,ink,1.05f);
+            Text(money>0?"Value: "+UiFont.Money(money):"One item",textX,popY+69,ink,1.05f);
+            ButtonGlyph("A",textX,popY+102);
+            Strong("Item actions",textX+20,popY+101,ink,1.05f);
         }
     }
     private void DrawMinimap()

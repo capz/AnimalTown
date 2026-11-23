@@ -112,8 +112,15 @@ public sealed class Town
     public int FindGround(int x,int z,int kind=-1)
     { for(int i=0;i<GroundCount;i++)if(Ground[i].X==x&&Ground[i].Z==z&&(kind<0||Ground[i].Kind==kind))return i;return -1; }
     public bool AddGround(int item,int x,int z,int kind,int day,bool wrapped=false)
+        =>AddGround(item,x,z,kind,day,out _,wrapped);
+
+    internal bool AddGround(int item,int x,int z,int kind,int day,out string reason,bool wrapped=false)
     {
-        if(GroundCount==Ground.Length||!Catalog.Valid(item)||!Walkable(x,z)||FindGround(x,z)>=0)return false;
+        reason=GroundCount==Ground.Length?"The town has no room for more items on the ground. Pick something up first.":
+            !Catalog.Valid(item)?"There's no item to put down.":
+            !Walkable(x,z)?"Choose a spot on walkable ground.":
+            FindGround(x,z)>=0?"There's already something on the ground there.":"";
+        if(reason.Length!=0)return false;
         var g=Ground[GroundCount++];g.Item=item;g.X=x;g.Z=z;g.Kind=kind;g.Wrapped=wrapped;g.Day=day;g.Owner=ActiveProfile;NotifyCastersChanged();return true;
     }
     public void RemoveGround(int index)
