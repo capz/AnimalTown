@@ -284,6 +284,15 @@
         "Drafts retain 1,000 characters, present selection and send or discard confirmations.",
         "Keyboard position and case stay intact while choosing gifts or returning to a draft."
       ]
+    },
+    {
+      "id": "joined-snow-cutouts",
+      "lines": [
+        "Adjacent snow cutouts now connect into continuous tracks.",
+        "Straight tracks, bends and patches keep rounded ends and shaded rims.",
+        "As snowfall refills a tile, its joins narrow and close.",
+        "The joins reuse the existing winter snow mask."
+      ]
     }
   ]
 }
