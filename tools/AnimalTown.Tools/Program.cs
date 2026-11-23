@@ -28,7 +28,7 @@ static class Program
             else if(args[0]=="terrain-primitives")TerrainPrimitiveAssets.Build(Root,args.Length>2?int.Parse(args[2]):128);
             else if(args[0]=="repack-check")TextureRepackerChecks.Run(Root);
             else if(args[0]=="audit")Audit();
-            else if(args[0]=="prepare")Prepare(args[2],args[3]);
+            else if(args[0]=="prepare")Prepare(args[2],args[3],args.Length>4&&args[4]=="--villager-runtime");
             else if(args[0]=="prune-model-variants")ModelVariants.Prune(Root);
             else if(args[0]=="art")Art();
             else if(args[0]=="brand-check"){BrandTextureAssets.Check(Root);DiscBannerFile.Check();}
@@ -72,15 +72,23 @@ static class Program
         }
         Directory.CreateDirectory(Path.Combine(Root,"out"));File.WriteAllText(Path.Combine(Root,"out/asset-audit.json"),JsonSerializer.Serialize(entries,new JsonSerializerOptions{WriteIndented=true}));Console.WriteLine("Audited "+entries.Count+" GLBs");
     }
-    static void Prepare(string input,string output)
+    static void Prepare(string input,string output,bool villagerRuntime)
     {
         byte[] b=File.ReadAllBytes(input);int len=BitConverter.ToInt32(b,12);
         var j=JsonNode.Parse(b.AsSpan(20,len))!;
+        // The console only plays these two clips. Keep the imported runtime
+        // package small enough to admit all of the rigs in an outdoor town.
+        if(villagerRuntime&&j["animations"] is JsonArray animations){
+            for(int i=animations.Count-1;i>=0;i--)
+                if((string?)animations[i]?["name"] is not ("Running" or "Walking"))animations.RemoveAt(i);
+            CompactConstantTracks(j,animations,b);
+        }
         // Tangent-space normal mapping is not used by the chosen GX material path.
         foreach(var mesh in j["meshes"]!.AsArray())foreach(var p in mesh!["primitives"]!.AsArray())p!["attributes"]!.AsObject().Remove("TANGENT");
         foreach(var m in j["materials"]!.AsArray())m!.AsObject().Remove("normalTexture");
+        if(villagerRuntime)KeepVillagerTextures(j);
         // Normalize the actual node-transformed bind-pose bounds, preserving all
-        // existing animation tracks and skin inverse binds under a scene root.
+        // selected animation tracks and skin inverse binds under a scene root.
         var nodes=j["nodes"]!.AsArray();var minimum=new Vector3(float.PositiveInfinity);var maximum=new Vector3(float.NegativeInfinity);
         float[] Values(JsonNode? n,float[] fallback)=>n==null?fallback:n.AsArray().Select(v=>(float)v!).ToArray();
         Matrix4x4 Local(JsonNode n)
@@ -109,6 +117,80 @@ static class Program
         byte[] result=new byte[20+padded+b.Length-rest];Array.Copy(b,result,12);BitConverter.GetBytes(result.Length).CopyTo(result,8);BitConverter.GetBytes(padded).CopyTo(result,12);BitConverter.GetBytes(0x4e4f534a).CopyTo(result,16);
         Array.Fill(result,(byte)32,20,padded);text.CopyTo(result,20);Array.Copy(b,rest,result,20+padded,b.Length-rest);
         Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(output))!);File.WriteAllBytes(output,result);
+    }
+    static void CompactConstantTracks(JsonNode model,JsonArray animations,byte[] glb)
+    {
+        if(animations.Count==0)return;
+        int binaryChunk=20+BinaryPrimitives.ReadInt32LittleEndian(glb.AsSpan(12,4));
+        var binary=glb.AsSpan(binaryChunk+8,BinaryPrimitives.ReadInt32LittleEndian(glb.AsSpan(binaryChunk,4)));
+        var accessors=model["accessors"]!.AsArray();
+        var views=model["bufferViews"]!.AsArray();
+        foreach(var animation in animations)
+        foreach(var entry in animation!["samplers"]!.AsArray()){
+            var sampler=entry!;
+            if((string?)sampler["interpolation"] is not (null or "LINEAR" or "STEP"))continue;
+            var times=accessors[(int)sampler["input"]!]!;
+            var values=accessors[(int)sampler["output"]!]!;
+            int keys=(int)times["count"]!;
+            int valueSize=(string?)values["type"] switch{"VEC3"=>12,"VEC4"=>16,_=>0};
+            if(keys<2||valueSize==0||(int)values["count"]! != keys||
+                !AnimationData(times,views,4,out int timeOffset,out int timeStride)||
+                !AnimationData(values,views,valueSize,out int valueOffset,out int valueStride))continue;
+            var first=binary.Slice(valueOffset,valueSize);
+            int key=1;
+            while(key<keys&&first.SequenceEqual(binary.Slice(valueOffset+key*valueStride,valueSize)))key++;
+            if(key!=keys)continue;
+            // A single constant sample at the original last time preserves
+            // both the pose and clip duration, even before the first key.
+            var time=times.DeepClone();
+            var value=values.DeepClone();
+            int lastOffset=(keys-1)*timeStride;
+            float last=BinaryPrimitives.ReadSingleLittleEndian(binary.Slice(timeOffset+lastOffset,4));
+            time["count"]=1;
+            value["count"]=1;
+            time["byteOffset"]=((int?)time["byteOffset"]??0)+lastOffset;
+            time["min"]=new JsonArray(last);
+            time["max"]=new JsonArray(last);
+            sampler["input"]=accessors.Count;accessors.Add(time);
+            sampler["output"]=accessors.Count;accessors.Add(value);
+        }
+    }
+    static bool AnimationData(JsonNode accessor,JsonArray views,int size,out int offset,out int stride)
+    {
+        offset=0;stride=size;
+        if((int?)accessor["componentType"]!=5126||accessor["sparse"]!=null||accessor["bufferView"]==null)return false;
+        var view=views[(int)accessor["bufferView"]!]!;
+        if((int?)view["buffer"]!=0)return false;
+        offset=((int?)view["byteOffset"]??0)+((int?)accessor["byteOffset"]??0);
+        stride=(int?)view["byteStride"]??size;
+        return true;
+    }
+    static void KeepVillagerTextures(JsonNode model)
+    {
+        if(model["textures"] is not JsonArray textures)return;
+        var packed=new JsonArray();
+        var remap=new Dictionary<int,int>();
+        void Keep(JsonNode? reference)
+        {
+            if(reference==null)return;
+            int index=(int)reference["index"]!;
+            if(!remap.TryGetValue(index,out int packedIndex)){
+                packedIndex=packed.Count;
+                packed.Add(textures[index]!.DeepClone());
+                remap.Add(index,packedIndex);
+            }
+            reference["index"]=packedIndex;
+        }
+        foreach(var material in model["materials"]!.AsArray()){
+            var pbr=material!["pbrMetallicRoughness"] as JsonObject;
+            pbr?.Remove("metallicRoughnessTexture");
+            Keep(pbr?["baseColorTexture"]);
+            Keep(material["occlusionTexture"]);
+            Keep(material["emissiveTexture"]);
+        }
+        // The SDK writes every texture table entry, even if no GX material
+        // samples it. Retain only the textures used by the cooked materials.
+        model["textures"]=packed;
     }
     static byte[] Banner(int width)=>BrandAssets.Banner(Root,width);
     static void Text(byte[] b,int offset,int max,string text)

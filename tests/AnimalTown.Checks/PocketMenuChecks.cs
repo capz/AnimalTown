@@ -70,6 +70,35 @@ internal static class PocketMenuChecks
         Clothing(check);
         Money(check);
         JobItems(check);
+        Placement(check);
+    }
+    private static void Placement(Action<bool,string> check)
+    {
+        var state=new GameState(73);
+        check(state.PlaceHouse(12,22,false),"placement reason fixture has a home");
+        state.Pockets[0]=11;
+        check(!PocketMenu.Perform(state,0,PocketAction.Place,17,25,0,0,out string reason)&&
+            reason.Contains("fence")&&state.Pockets[0]==11&&state.Town.PlacedCount==0,
+            "a two-tile footprint against the fence explains the obstruction and keeps the item");
+        state.Pockets[0]=10;
+        check(!PocketMenu.Perform(state,0,PocketAction.Place,1,3,0,1,out reason)&&reason.Contains("doorway"),
+            "a blocked door has a specific placement explanation");
+        check(PocketMenu.Perform(state,0,PocketAction.Place,0,0,0,1,out reason)&&reason.Length==0&&state.Pockets[0]==0,
+            "a successful placement has no failure reason");
+        state.Pockets[0]=10;
+        check(!PocketMenu.Perform(state,0,PocketAction.Place,0,0,0,1,out reason)&&
+            reason.Contains("already furniture")&&state.Pockets[0]==10&&state.Town.PlacedCount==1,
+            "occupied furniture explains the failed placement without moving either object");
+        state.Pockets[0]=1;
+        state.Town.GroundCount=0;
+        state.Town.SetTerrain(30,40,Terrain.Water);
+        check(!PocketMenu.Perform(state,0,PocketAction.Plant,30,40,0,0,out reason)&&reason.Contains("grass"),
+            "planting explains the type of ground required");
+        state.Town.SetTerrain(30,40,Terrain.Grass);
+        check(state.Town.AddGround(2,30,40,0,0),"ground obstruction fixture");
+        check(!PocketMenu.Perform(state,0,PocketAction.Drop,30,40,0,0,out reason)&&
+            reason.Contains("already something")&&state.Pockets[0]==1&&state.Town.GroundCount==1,
+            "dropping on an occupied tile tells the player why and keeps the item");
     }
     private static void JobItems(Action<bool,string> check)
     {

@@ -79,16 +79,20 @@ public static class PocketMenu
     public static string Label(PocketAction action,int item)=>action==PocketAction.Apply?
         Catalog.Has(item,ItemFlags.Flooring)?"Spread on floor":"Hang on wall":Label(action);
     public static bool Perform(GameState state,int slot,PocketAction action,int x,int z,int rotation,int room)
+        =>Perform(state,slot,action,x,z,rotation,room,out _);
+
+    public static bool Perform(GameState state,int slot,PocketAction action,int x,int z,int rotation,int room,out string reason)
     {
+        reason="";
         if(!HasAction(state,slot,room,action)||(uint)slot>=state.Capacity||state.IsJobItem(slot))return false;
         if(action==PocketAction.Apply)return state.Use(slot,7,x,z);
-        if(action==PocketAction.Drop)return state.Use(slot,0,x,z);
-        if(action==PocketAction.Place)return state.Place(slot,x,z,rotation,room);
-        if(action==PocketAction.Plant)return state.Use(slot,1,x,z);
+        if(action==PocketAction.Drop)return state.Use(slot,0,x,z,out reason);
+        if(action==PocketAction.Place)return state.Place(slot,x,z,rotation,room,out reason);
+        if(action==PocketAction.Plant)return state.Use(slot,1,x,z,out reason);
         if(action==PocketAction.Eat)return state.Use(slot,2,x,z);
         if(action==PocketAction.Wear)return state.Use(slot,3,x,z);
         if(action==PocketAction.Equip)return state.Use(slot,4,x,z);
-        if(action==PocketAction.Bury)return state.Use(slot,5,x,z);
+        if(action==PocketAction.Bury)return state.Use(slot,5,x,z,out reason);
         return action==PocketAction.OpenMoneyBag&&state.Use(slot,6,x,z);
     }
 }

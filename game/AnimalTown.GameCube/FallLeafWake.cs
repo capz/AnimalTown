@@ -78,7 +78,7 @@ internal sealed class FallLeafWake : IDisposable
                 random=unchecked(random*1664525u+1013904223u);
                 Emit(new Leaf{
                     X=tree.X+(Variation(random,8)-.5f)*1.65f,
-                    Y=ground+1.65f+Variation(random,24)*.45f,
+                    Y=ground+1.9f+Variation(random,24)*.58f,
                     Z=tree.Z+(Variation(random,16)-.5f)*1.1f,
                     Vx=.13f+Variation(random,0)*.22f,Vz=(Variation(random,16)-.5f)*.24f,
                     Born=seconds,Variation=random

@@ -140,7 +140,7 @@ jobs:
           plan=json.loads(Path('out/validation-plan.json').read_text())
           relevant=re.compile(r'^(assets/textures/branding/|game/AnimalTown.GameCube/(TitleScreen|TitleArt|ProfilePickerUi|OnboardingUi|TextureCache|ModelResources)\.cs$|shared/AnimalTown.Domain/(TexturePixels|TextureResolution)\.cs$|tools/AnimalTown.Tools/(Brand[^/]*|DiscBannerFile|TextureAudit)\.cs$|tools/(iso-smoke\.py|dolphin_pad\.py|publish-release\.ps1)$|build/Dockerfile\.dolphin$|\.github/workflows/releases\.yml$)')
           needed=any(relevant.search(path) for path in plan['paths']) or (plan['full'] and not plan['paths'])
-          save_quit='game/AnimalTown.GameCube/Program.cs' in plan['paths']
+          save_quit=any(path=='game/AnimalTown.GameCube/Program.cs' or path.startswith('assets/models/villagers/') for path in plan['paths'])
           with open(os.environ['GITHUB_OUTPUT'],'a') as output:
               output.write(f'needed={str(needed or save_quit).lower()}\nsave_quit={str(save_quit).lower()}\n')
           PY
