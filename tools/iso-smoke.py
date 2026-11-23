@@ -1892,7 +1892,7 @@ def testing_menu():
     manual_only='--manual-save-only' in sys.argv
     previous=0
     # Include session weather, the staged previews, SDK overlay, and diagnostics.
-    for row in ([0] if manual_only else [0,*range(2,12),13,17,18,19]):
+    for row in ([0] if manual_only else [0,*range(2,12),13,17,18,19,26]):
         for _ in range(row-previous):press('D_DOWN')
         original=label(f'testing-row-{row}-before',row)
         if row in (10,11):
