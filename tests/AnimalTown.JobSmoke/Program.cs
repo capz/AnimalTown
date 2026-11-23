@@ -154,8 +154,11 @@ internal static class Program
             JobMaximumFixture.Fill(state,body);
             // Include the retained snow arrays and their encoded checkpoint in
             // the capacity bound, even alongside every mailbox and job slot.
-            state.Town.Traffic.Snow.SetWinter(true);state.Town.Traffic.Snow.ObserveSnowDay((int)(now/86400),false);
-            for(int z=0;z<Town.Height;z++)for(int x=0;x<Town.Width;x++)state.Town.Traffic.Enter(state.Town,x,z);
+            state.Town.Traffic.Snow.SetWinter(true);
+            for(int z=0;z<Town.Height;z++)for(int x=0;x<Town.Width;x++){
+                state.Town.Traffic.Enter(state.Town,x,z);
+                state.Town.Traffic.Enter(state.Town,x,z);
+            }
         }
         new SaveRepository(new Card(card,true)).Save(state);
     }
