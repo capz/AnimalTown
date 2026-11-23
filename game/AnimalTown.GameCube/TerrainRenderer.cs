@@ -166,7 +166,8 @@ internal sealed class TerrainRenderer : IDisposable
         }
         var snow=state.Town.Traffic.Snow;
         snow.SetWinter(season==3);
-        if(NativeShadows.Snow(snow.Packed,state.Town.Tiles,state.Town.Elevation,snow.Revision,state.Town.TerrainVersion,snow.Winter?1:0)!=1)
+        var visual=snow.PrepareVisuals(state.X,state.Z,out int visualOrigin,out int visualRevision);
+        if(NativeShadows.Snow(snow.Packed,state.Town.Tiles,state.Town.Elevation,visual,snow.Revision,state.Town.TerrainVersion,snow.Winter?1:0,visualOrigin,visualRevision)!=1)
             throw new InvalidOperationException("Snow mask native budget");
         bool upgraded=AdvanceGroundTexture();
         // The completed task and package arrays are out of the upgrade frame.

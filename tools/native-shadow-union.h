@@ -82,16 +82,28 @@ static inline uint8_t su_pack(int shadow,int light){return (uint8_t)(((light+8)/
 #define SU_SNOW_MAX_VISITS 5
 #define SU_SNOW_STEPS_PER_VISIT 3
 #define SU_SNOW_FIRST_OPEN 8 /* Matches SnowWear.CenterCovered. */
+#define SU_SNOW_UNIT 16
+#define SU_SNOW_VISUAL_SIDE 49 /* Matches SnowTransitions.Side. */
+#define SU_SNOW_VISUAL_BYTES (SU_SNOW_VISUAL_SIDE*SU_SNOW_VISUAL_SIDE)
+typedef struct {
+    const uint8_t *packed,*visual;
+    int origin;
+} SuSnowField;
 /* Raster work runs on a changed wear revision. Keep the unrolled stamp
  * combinations out of the console executable. */
 #if defined(__GNUC__) && !defined(__clang__)
 #pragma GCC push_options
 #pragma GCC optimize ("Os")
 #endif
-static inline int su_snow_wear(const uint8_t *packed,int x,int z){
+static inline int su_snow_wear(const SuSnowField *field,int x,int z){
     if((unsigned)x>=SU_WORLD_WIDTH||(unsigned)z>=SU_SNOW_HEIGHT)return 0;
+    if(field->visual){
+        int dx=x-field->origin%SU_WORLD_WIDTH,dz=z-field->origin/SU_WORLD_WIDTH;
+        if((unsigned)dx<SU_SNOW_VISUAL_SIDE&&(unsigned)dz<SU_SNOW_VISUAL_SIDE)
+            return field->visual[dz*SU_SNOW_VISUAL_SIDE+dx];
+    }
     int cell=z*SU_WORLD_WIDTH+x;
-    return (packed[cell/2]>>((cell%2)*4))&15;
+    return ((field->packed[cell/2]>>((cell%2)*4))&15)*SU_SNOW_UNIT;
 }
 static inline float su_snow_stamp(int visits,float x,float z){
     if(!visits)return 0;
@@ -107,20 +119,21 @@ static inline float su_snow_stamp(int visits,float x,float z){
     return 1.32f*(1.f-ellipse*.5f);
 }
 static inline float su_snow_recovering_stamp(int wear,float x,float z){
-    int visits=wear/SU_SNOW_STEPS_PER_VISIT,step=wear%SU_SNOW_STEPS_PER_VISIT;
+    const int numerator=SU_SNOW_STEPS_PER_VISIT*SU_SNOW_UNIT;
+    int visits=wear/numerator,step=wear%numerator;
     float a=su_snow_stamp(visits,x,z);
     if(!step)return a;
     // Interpolate the two visible depths so the cutout and shaded rim
     // recede together between the original visit stages.
     a=fmaxf(0.f,fminf(1.f,a));
     float b=fmaxf(0.f,fminf(1.f,su_snow_stamp(visits+1,x,z)));
-    return a+(b-a)*(step*(1.f/SU_SNOW_STEPS_PER_VISIT));
+    return a+(b-a)*(step*(1.f/numerator));
 }
-static inline uint8_t su_snow_depth(const uint8_t *packed,int x,int z){
+static inline uint8_t su_snow_depth(const SuSnowField *field,int x,int z){
     int cx=x/4,cz=z/4;
     float fx=(x%4+.5f)*.25f-.5f,fz=(z%4+.5f)*.25f-.5f,depth=0;
     for(int dz=-1;dz<=1;dz++)for(int dx=-1;dx<=1;dx++){
-        int wear=su_snow_wear(packed,cx+dx,cz+dz);
+        int wear=su_snow_wear(field,cx+dx,cz+dz);
         if(!wear)continue;
         depth=fmaxf(depth,su_snow_recovering_stamp(wear,fx-dx,fz-dz));
     }
@@ -129,27 +142,30 @@ static inline uint8_t su_snow_depth(const uint8_t *packed,int x,int z){
 typedef struct {
     uint8_t horizontal[2][2],vertical[2][2],corners[2][2];
 } SuSnowJoins;
-static inline int su_snow_join_wear(const uint8_t *packed,const uint8_t *tiles,const uint8_t *levels,int x,int z,int wear,int level){
-    int other=su_snow_wear(packed,x,z);
-    if(other<SU_SNOW_FIRST_OPEN)return 0;
+static inline int su_snow_join_wear(const SuSnowField *field,const uint8_t *tiles,const uint8_t *levels,int x,int z,int wear,int level){
+    int other=su_snow_wear(field,x,z);
+    if(other<=(SU_SNOW_FIRST_OPEN-1)*SU_SNOW_UNIT)return 0;
     int cell=z*SU_WORLD_WIDTH+x;
     if(tiles[cell]!=0||levels[cell]!=level)return 0; /* Level grass on the same terrace. */
     return other<wear?other:wear;
 }
 static inline uint8_t su_snow_join_depth(int wear,float x,float z){
-    return (uint8_t)(fminf(1.f,fmaxf(0.f,su_snow_recovering_stamp(wear,x,z)))*255.f+.5f);
+    const int open=SU_SNOW_FIRST_OPEN*SU_SNOW_UNIT;
+    float amount=1.f;
+    if(wear<open){amount=(wear-open+SU_SNOW_UNIT)*(1.f/SU_SNOW_UNIT);wear=open;}
+    return (uint8_t)(fminf(1.f,fmaxf(0.f,su_snow_recovering_stamp(wear,x,z)))*255.f*amount+.5f);
 }
-static inline SuSnowJoins su_snow_joins(const uint8_t *packed,const uint8_t *tiles,const uint8_t *levels,int x,int z){
+static inline SuSnowJoins su_snow_joins(const SuSnowField *field,const uint8_t *tiles,const uint8_t *levels,int x,int z){
     SuSnowJoins joins={0};
-    int wear=su_snow_wear(packed,x,z);
-    if(wear<SU_SNOW_FIRST_OPEN)return joins;
+    int wear=su_snow_wear(field,x,z);
+    if(wear<=(SU_SNOW_FIRST_OPEN-1)*SU_SNOW_UNIT)return joins;
     int cell=z*SU_WORLD_WIDTH+x,level=levels[cell];
     if(tiles[cell]!=0||level>1)return joins; /* Terrain.Grass, TerrainElevation.Flat/Block. */
     int horizontal[2],vertical[2];
     for(int side=0;side<2;side++){
         int direction=2*side-1;
-        horizontal[side]=su_snow_join_wear(packed,tiles,levels,x+direction,z,wear,level);
-        vertical[side]=su_snow_join_wear(packed,tiles,levels,x,z+direction,wear,level);
+        horizontal[side]=su_snow_join_wear(field,tiles,levels,x+direction,z,wear,level);
+        vertical[side]=su_snow_join_wear(field,tiles,levels,x,z+direction,wear,level);
         for(int sample=0;sample<2;sample++){
             float distance=.125f+sample*.25f;
             if(horizontal[side])joins.horizontal[side][sample]=su_snow_join_depth(horizontal[side],0.f,distance);
@@ -161,17 +177,17 @@ static inline SuSnowJoins su_snow_joins(const uint8_t *packed,const uint8_t *til
     for(int dz=0;dz<2;dz++)for(int dx=0;dx<2;dx++){
         int edges=horizontal[dx]<vertical[dz]?horizontal[dx]:vertical[dz];
         if(!edges)continue;
-        int corner=su_snow_join_wear(packed,tiles,levels,x+2*dx-1,z+2*dz-1,edges,level);
+        int corner=su_snow_join_wear(field,tiles,levels,x+2*dx-1,z+2*dz-1,edges,level);
         if(corner)joins.corners[dz][dx]=su_snow_join_depth(corner,.125f,.125f);
     }
     return joins;
 }
-static inline void su_snow_block(uint8_t *dest,const uint8_t *packed,const uint8_t *tiles,const uint8_t *levels,int bx,int bz){
+static inline void su_snow_block(uint8_t *dest,const SuSnowField *field,const uint8_t *tiles,const uint8_t *levels,int bx,int bz){
     for(int side=0;side<2;side++){
         int cx=bx*2+side;
-        SuSnowJoins joins=su_snow_joins(packed,tiles,levels,cx,bz);
+        SuSnowJoins joins=su_snow_joins(field,tiles,levels,cx,bz);
         for(int z=0;z<4;z++)for(int x=0;x<4;x++){
-            uint8_t depth=su_snow_depth(packed,cx*4+x,bz*4+z);
+            uint8_t depth=su_snow_depth(field,cx*4+x,bz*4+z);
             int outer_x=x==0||x==3,outer_z=z==0||z==3;
             uint8_t horizontal=joins.horizontal[x>=2][outer_z],vertical=joins.vertical[z>=2][outer_x];
             if(depth<horizontal)depth=horizontal;

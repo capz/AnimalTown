@@ -4,6 +4,7 @@
 #include "animaltown_shadow_union.h"
 #endif
 #include "dnd_timing.h"
+#include <stdlib.h>
 #ifdef GEKKO
 #include <ogc/system.h>
 #include <malloc.h>
@@ -14,43 +15,76 @@ static int snow_storage,snow_revision=-1,snow_terrain_revision=-1;
 static uint32_t snow_publication;
 static uint8_t snow_visits[SU_SNOW_PACKED];
 static uint8_t *snow_pixels;
+static uint8_t *snow_visual;
+static int snow_visual_origin=-1,snow_visual_revision;
 const uint8_t *animaltown_snow_mask(void){return snow_pixels;}
+static void snow_release_visual(void){
+    free(snow_visual);snow_visual=NULL;snow_visual_origin=-1;
+}
 static int snow_release(void){
     if(snow_storage&&dnd_draw_release(snow_storage)<0)return 0;
     snow_storage=0;snow_pixels=NULL;snow_revision=snow_terrain_revision=-1;
     memset(snow_visits,0,sizeof(snow_visits));
+    snow_release_visual();
     return 1;
 }
 static int snow_array(const DndArray *array,unsigned length){
     return array&&!array->elements_are_references&&array->element_size==1&&array->length==length;
+}
+static int snow_dirty(uint64_t *dirty,int x,int z){
+    /* Each packed byte maps to one block. Include neighbors for the rim. */
+    uint64_t block=UINT64_C(1)<<x,blocks=block|(block<<1)|(block>>1);
+    dirty[z]|=blocks;dirty[z+1]|=blocks;
+    if(z>0)dirty[z-1]|=blocks;
+    return 1;
+}
+#if defined(__GNUC__) && !defined(__clang__)
+__attribute__((noinline,optimize("Os")))
+#endif
+static int snow_dirty_visual(uint64_t *dirty,const SuSnowField *previous,const SuSnowField *next,int origin){
+    int changed=0,left=origin%SU_WORLD_WIDTH,top=origin/SU_WORLD_WIDTH;
+    for(int z=top;z<top+SU_SNOW_VISUAL_SIDE;z++)for(int x=left;x<left+SU_SNOW_VISUAL_SIDE;x++)
+        if(su_snow_wear(previous,x,z)!=su_snow_wear(next,x,z))changed=snow_dirty(dirty,x/2,z);
+    return changed;
 }
 /* Keep this revision-only raster compact. Unrolling the sampling loops costs
  * executable space that MEM1 needs for reinstating the terrain cache. */
 #if defined(__GNUC__) && !defined(__clang__)
 __attribute__((noinline,optimize("Os")))
 #endif
-int animaltown_shadows_snow(DndArray *visits,DndArray *tiles,DndArray *levels,int revision,int terrain_revision,int winter){
+int animaltown_shadows_snow(DndArray *visits,DndArray *tiles,DndArray *levels,DndArray *visual,int revision,int terrain_revision,int winter,int origin,int visual_revision){
     if(!shadows||dnd_device_active())return 0;
-    if(!winter)return snow_revision<0||snow_release();
+    if(!winter)return (snow_revision<0&&!snow_visual)||snow_release();
     if(!snow_array(visits,SU_SNOW_PACKED)||!snow_array(tiles,SU_SNOW_PACKED*2)||!snow_array(levels,SU_SNOW_PACKED*2))return 0;
+    if(visual){
+        if(!snow_array(visual,SU_SNOW_VISUAL_BYTES)||origin<0||origin%SU_WORLD_WIDTH>SU_WORLD_WIDTH-SU_SNOW_VISUAL_SIDE||origin/SU_WORLD_WIDTH>SU_SNOW_HEIGHT-SU_SNOW_VISUAL_SIDE)return 0;
+        if(!snow_visual)snow_visual=malloc(SU_SNOW_VISUAL_BYTES);
+        if(!snow_visual)visual=NULL; /* Keep the ordinary mask usable under memory pressure. */
+    }
+    if(!visual)origin=-1;
     int terrain_changed=snow_terrain_revision!=terrain_revision;
-    if(snow_revision==revision&&!terrain_changed)return 1;
-    const uint8_t *next=(const uint8_t*)visits->data;
+    int visual_changed=origin!=snow_visual_origin||(visual&&visual_revision!=snow_visual_revision);
+    if(snow_revision==revision&&!terrain_changed&&!visual_changed)return 1;
+    SuSnowField previous={snow_visits,snow_visual_origin>=0?snow_visual:NULL,snow_visual_origin};
+    SuSnowField next={(const uint8_t*)visits->data,visual?(const uint8_t*)visual->data:NULL,origin};
     uint64_t dirty[SU_SNOW_HEIGHT+1]={0};
     int changed=0;
-    for(int z=0;z<SU_SNOW_HEIGHT;z++)for(int x=0;x<SU_SNOW_BLOCKS;x++){
+    if(snow_revision!=revision||terrain_changed)for(int z=0;z<SU_SNOW_HEIGHT;z++)for(int x=0;x<SU_SNOW_BLOCKS;x++){
         int at=z*SU_SNOW_BLOCKS+x;
-        if(snow_visits[at]==next[at]&&(!terrain_changed||!next[at]))continue;
-        /* Each packed byte maps to one block. Include neighbors for the rim. */
-        uint64_t block=UINT64_C(1)<<x,blocks=block|(block<<1)|(block>>1);
-        dirty[z]|=blocks;dirty[z+1]|=blocks;
-        if(z>0)dirty[z-1]|=blocks;
-        changed=1;
+        if(snow_visits[at]!=next.packed[at]||(terrain_changed&&next.packed[at]))changed=snow_dirty(dirty,x,z);
+    }
+    if(visual_changed){
+        if(snow_visual_origin>=0&&snow_visual_origin!=origin)changed|=snow_dirty_visual(dirty,&previous,&next,snow_visual_origin);
+        if(origin>=0)changed|=snow_dirty_visual(dirty,&previous,&next,origin);
     }
     if(changed){
         if(!snow_storage){
             snow_storage=dnd_buffer_create(SU_SNOW_BYTES,32);
             if(!snow_storage){
+                if(visual){
+                    snow_release_visual();
+                    return animaltown_shadows_snow(visits,tiles,levels,NULL,revision,terrain_revision,winter,0,0);
+                }
 #ifdef GEKKO
                 struct mallinfo memory=mallinfo();
                 SYS_Report("ANIMALTOWN SNOW ALLOCATION FAILED bytes %u arena_free %u malloc_free %u native_bytes %u\n",(unsigned)SU_SNOW_BYTES,(unsigned)SYS_GetArena1Size(),(unsigned)memory.fordblks,(unsigned)dnd_draw_total_bytes());
@@ -63,15 +97,20 @@ int animaltown_shadows_snow(DndArray *visits,DndArray *tiles,DndArray *levels,in
         }
         for(int z=0;z<=SU_SNOW_HEIGHT;z++)for(int x=0;x<SU_SNOW_BLOCKS;x++)if(dirty[z]&(UINT64_C(1)<<x)){
             uint8_t *dest=snow_pixels+((z+1)*SU_SNOW_BLOCKS+x)*32;
-            su_snow_block(dest,next,(const uint8_t*)tiles->data,(const uint8_t*)levels->data,x,z);
+            su_snow_block(dest,&next,(const uint8_t*)tiles->data,(const uint8_t*)levels->data,x,z);
             dnd_draw_backend_flush(dest,32,0);
         }
         /* Dolphin samples sparse texture hashes. Update an unused leading padded row. */
         uint32_t publication=++snow_publication;
         memcpy(snow_pixels,&publication,sizeof(publication));
         dnd_draw_backend_flush(snow_pixels,32,0);
-        memcpy(snow_visits,next,sizeof(snow_visits));
+        memcpy(snow_visits,next.packed,sizeof(snow_visits));
         dnd_draw_backend_publish_texture();
+    }
+    if(visual_changed){
+        if(visual)memcpy(snow_visual,next.visual,SU_SNOW_VISUAL_BYTES);
+        else snow_release_visual();
+        snow_visual_origin=origin;snow_visual_revision=visual_revision;
     }
     snow_revision=revision;snow_terrain_revision=terrain_revision;
     return 1;

@@ -189,8 +189,8 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
     private const int SettingsTab=5,TestingTab=6,DaylightSettingsRow=6;
     // Stable IDs keep hidden/retired controls out of both debug menus.
     private const int SeasonPreviewOption=18,TimePreviewOption=39;
-    private const int WarmTerrainOption=40,ProfilingModeOption=41,ExportProfileOption=42;
-    private static readonly int[] testingOptions={0,33,2,3,11,12,13,16,17,35,SeasonPreviewOption,TimePreviewOption,19,21,22,23,34,36,37,38,31,32,30,WarmTerrainOption,ProfilingModeOption,ExportProfileOption};
+    private const int WarmTerrainOption=40,ProfilingModeOption=41,ExportProfileOption=42,SmoothSnowOption=43;
+    private static readonly int[] testingOptions={0,33,2,3,11,12,13,16,17,35,SeasonPreviewOption,TimePreviewOption,19,21,22,23,34,36,37,38,31,32,30,WarmTerrainOption,ProfilingModeOption,ExportProfileOption,SmoothSnowOption};
     private static readonly string[] groundMipLabels={"0","1"};
     private static int TestingOption(int row)=>testingOptions[row];
     private static readonly string[] tabs={"Backpack","Jobs","Catalog","Home","Post office","Settings","Debug / testing"};
@@ -767,6 +767,7 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
             case 13:RuntimeOptions.Toggle(4);break;
             case 16:weather.RainEnabled=!weather.RainEnabled;break;
             case 35:weather.SnowEnabled=!weather.SnowEnabled;break;
+            case SmoothSnowOption:renderDebug.SmoothSnowTransitions=!renderDebug.SmoothSnowTransitions;break;
             case 17:weather.RoughOceanWhenRaining=!weather.RoughOceanWhenRaining;break;
             case SeasonPreviewOption:renderDebug.ApplySeason();break;
             case TimePreviewOption:renderDebug.ApplyTime();UpdateDaylight();break;
@@ -810,6 +811,7 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
             case 13:return "Trust frame clear: "+OnOff((RuntimeOptions.Mode&4)!=0);
             case 16:return "Rain preview: "+OnOff(weather.RainEnabled);
             case 35:return "Winter snowfall: "+OnOff(weather.SnowEnabled)+" (session)";
+            case SmoothSnowOption:return "Smooth snow transitions: "+OnOff(renderDebug.SmoothSnowTransitions)+" (session)";
             case 17:return "Rough ocean in rain: "+OnOff(weather.RoughOceanWhenRaining);
             case SeasonPreviewOption:
                 string season=PreviewSeasonName(renderDebug.SeasonOverride);
