@@ -284,6 +284,15 @@
         "Drafts retain 1,000 characters, present selection and send or discard confirmations.",
         "Keyboard position and case stay intact while choosing gifts or returning to a draft."
       ]
+    },
+    {
+      "id": "split-ci-tests-build-release",
+      "lines": [
+        "Release CI now shows separate Tests, Build, and Release stages.",
+        "Dolphin tests run against the same console image that gets packaged.",
+        "Build prepares the backend and release files after the tests pass.",
+        "Release checks the prepared files and uploads them to GitHub."
+      ]
     }
   ]
 }

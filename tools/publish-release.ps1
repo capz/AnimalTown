@@ -2,7 +2,8 @@ param(
     [string]$Root=(Split-Path $PSScriptRoot -Parent),
     [string]$Repository='capz/AnimalTown',
     [string]$Gh='gh',
-    [switch]$PackageOnly
+    [switch]$PackageOnly,
+    [switch]$PublishOnly
 )
 $ErrorActionPreference='Stop'
 function Run([string]$Command,[string[]]$Arguments){
@@ -141,6 +142,26 @@ function Copy-JobEvidence([string]$Source,[string]$Destination,[string]$Commit,[
     }
     Copy-Item -LiteralPath $build -Destination (Join-Path $target 'jobs-build.json') -Force
 }
+function Get-PreparedReleaseReceipt($Identity,[string[]]$Paths){
+    $hashes=[ordered]@{}
+    foreach($path in $Paths){
+        $hashes[[IO.Path]::GetFileName($path)]=(Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash.ToLowerInvariant()
+    }
+    [ordered]@{commit=$Identity.commit;version=$Identity.version;tag=$Identity.tag;sha256=$hashes}
+}
+function Assert-PreparedRelease($Identity,[string[]]$Paths,[string]$ReceiptPath){
+    if(!(Test-Path -LiteralPath $ReceiptPath -PathType Leaf)){throw 'Build must prepare the release before publication'}
+    $record=Get-Content -LiteralPath $ReceiptPath -Raw|ConvertFrom-Json -AsHashtable
+    $actual=Get-PreparedReleaseReceipt $Identity $Paths
+    if($record.commit -cne $actual.commit -or $record.version -cne $actual.version -or
+       $record.tag -cne $actual.tag -or $record.sha256.Count -ne $actual.sha256.Count){
+        throw 'Prepared release identity or asset set differs from the current build'
+    }
+    foreach($name in $actual.sha256.Keys){
+        if($record.sha256[$name] -cne $actual.sha256[$name]){throw "Prepared release asset changed: $name"}
+    }
+}
+if($PackageOnly -and $PublishOnly){throw 'Select either package or publish'}
 $Root=(Resolve-Path -LiteralPath $Root).Path
 $commit=(& git -C $Root rev-parse HEAD).Trim()
 if($LASTEXITCODE -ne 0 -or $commit -notmatch '^[0-9a-f]{40}$'){throw 'Cannot determine source commit'}
@@ -164,110 +185,117 @@ if($revisions -notmatch "(?m)^Version: $versionPattern\r?$" -or $serverBuild -no
     throw 'Console and backend must both be clean builds of the release commit'
 }
 $nkit=Join-Path $out "AnimalTown-$version.nkit.iso"
-$nkitValidation=Join-Path $out 'nkit-validation.json'
-& dotnet run --project (Join-Path $Root 'tools/AnimalTown.Tools') -c Release --no-build -- verify-nkit-output $Root $nkit $nkitValidation
-if($LASTEXITCODE -ne 0){throw 'Built NKit image/report validation failed'}
-$nkitInfo=Get-Content $nkitValidation -Raw|ConvertFrom-Json
-$openingSource=Join-Path $out 'disc/opening.bnr'
-$palSource=Join-Path $out 'brand/opening-pal.bnr'
-$bannerHashes=Get-ReleaseBannerHashes -Opening $openingSource -Pal $palSource -NKitInfo $nkitInfo -Version $version
 $depot=Join-Path $out "AnimalTown-$version-depot.zip"
-& dotnet run --project (Join-Path $Root 'tools/AnimalTown.Tools') -c Release --no-build -- verify-depot $Root $depot
-if($LASTEXITCODE -ne 0){throw 'Standalone app package validation failed'}
 $package=Join-Path $out "releases/$tag"
-New-Item -ItemType Directory -Force -Path $package | Out-Null
 $reports=Join-Path $package 'release-files'
-if(Test-Path -LiteralPath $reports){Remove-Item -LiteralPath $reports -Recurse -Force}
-New-Item -ItemType Directory -Path $reports | Out-Null
-$titleEvidenceAssets=@()
-$titleEvidenceRoot=Join-Path $out 'title-logo'
-$titleEvidenceBuild=Join-Path $titleEvidenceRoot 'title-logo-build.json'
-if(Test-Path -LiteralPath $titleEvidenceBuild -PathType Leaf){
-    $evidence=Get-Content -LiteralPath $titleEvidenceBuild -Raw|ConvertFrom-Json
-    if($evidence.schema -ne 1 -or $evidence.commit -cne $commit -or $evidence.version -cne $version -or
-       $evidence.tag -cne $tag -or $evidence.isoName -cne [IO.Path]::GetFileName($nkit) -or
-       $evidence.isoSha256 -cne $nkitInfo.compactSha256){
-        throw 'Title-logo evidence must match the release commit, version and verified NKit image'
-    }
-    $evidenceNames=@('title-logo.png','title-logo-picker.png','title-logo-name.png','title-logo-return.png','title-logo-report.json','title-logo-build.json')
-    foreach($name in @('title-logo-debug.png','title-logo-status.png')){
-        if(Test-Path -LiteralPath (Join-Path $titleEvidenceRoot $name) -PathType Leaf){$evidenceNames+=$name}
-    }
-    foreach($name in $evidenceNames){
-        $source=Get-Item -LiteralPath (Join-Path $titleEvidenceRoot $name)
-        if($source.PSIsContainer -or $source.Length -le 0){throw "Missing or empty title-logo evidence: $name"}
-        $destination=Join-Path $reports $name
-        Copy-Item -LiteralPath $source.FullName -Destination $destination -Force
-        $titleEvidenceAssets+=$destination
-    }
-}
-$terrainEvidenceAssets=@()
-$terrainEvidenceRoot=Join-Path $out 'terrain-materials'
-$terrainEvidenceBuild=Join-Path $terrainEvidenceRoot 'terrain-materials-build.json'
-if(Test-Path -LiteralPath $terrainEvidenceBuild -PathType Leaf){
-    $evidence=Get-Content -LiteralPath $terrainEvidenceBuild -Raw|ConvertFrom-Json
-    if($evidence.schema -ne 1 -or $evidence.commit -cne $commit -or $evidence.version -cne $version -or
-       $evidence.tag -cne $tag -or $evidence.isoName -cne [IO.Path]::GetFileName($nkit) -or
-       $evidence.isoSha256 -cne $nkitInfo.compactSha256){
-        throw 'Terrain-material evidence must match the release commit, version and verified NKit image'
-    }
-    $report=Get-Content -LiteralPath (Join-Path $terrainEvidenceRoot 'terrain-materials-report.json') -Raw|ConvertFrom-Json
-    if($report.scenario -cne 'terrain-materials' -or $report.passed -ne $true){throw 'Terrain-material capture must pass before publication'}
-    $screenshots=@($report.screenshots)
-    foreach($name in @('terrain-materials-normal.png','terrain-materials-mips-auto.png','terrain-materials-menu-on.png')){
-        if($name -cnotin $screenshots){throw "Missing required terrain-material capture: $name"}
-    }
-    if(@($screenshots|Select-Object -Unique).Count -ne $screenshots.Count){throw 'Duplicate terrain-material capture names'}
-    foreach($name in $screenshots){if($name -cnotmatch '^terrain-materials-[a-z0-9-]+\.png$'){throw 'Invalid terrain-material capture filename'}}
-    foreach($name in $screenshots+@('terrain-materials-report.json','terrain-materials-build.json')){
-        $source=Get-Item -LiteralPath (Join-Path $terrainEvidenceRoot $name)
-        if($source.PSIsContainer -or $source.Length -le 0){throw "Missing or empty terrain-material evidence: $name"}
-        $destination=Join-Path $reports $name
-        Copy-Item -LiteralPath $source.FullName -Destination $destination -Force
-        $terrainEvidenceAssets+=$destination
-    }
-}
-Copy-DaylightEvidence (Join-Path $out 'daylight') $reports $commit $version $tag ([IO.Path]::GetFileName($nkit)) $nkitInfo.compactSha256
-Copy-JobEvidence (Join-Path $out 'jobs') $reports $commit $version $tag ([IO.Path]::GetFileName($nkit)) $nkitInfo.compactSha256
 $serverZip=Join-Path $package "AnimalTown-server-$version.zip"
-$toolsDirectory=Join-Path $out 'tools-published-binaries'
-if(Test-Path -LiteralPath $toolsDirectory){Remove-Item -LiteralPath $toolsDirectory -Recurse -Force}
-& dotnet publish (Join-Path $Root 'tools/AnimalTown.Tools') -c Release --no-self-contained -o $toolsDirectory -v quiet
-if($LASTEXITCODE -ne 0){throw 'Offline tool publication failed'}
-Copy-Item -LiteralPath (Join-Path $Root 'docs/texture-repacker.md') -Destination (Join-Path $toolsDirectory 'texture-repacker.md') -Force
-Copy-Item -LiteralPath (Join-Path $Root 'docs/uv-editor-design.md') -Destination (Join-Path $toolsDirectory 'uv-editor-design.md') -Force
 $toolsZip=Join-Path $package "AnimalTown-tools-$version.zip"
-# Rebuilding a draft can replace these generated archives. Disc images are uploaded directly.
-foreach($archive in @($serverZip,$toolsZip)){if(Test-Path -LiteralPath $archive){Remove-Item -LiteralPath $archive}}
-[IO.Compression.ZipFile]::CreateFromDirectory($server,$serverZip,[IO.Compression.CompressionLevel]::Optimal,$false)
-[IO.Compression.ZipFile]::CreateFromDirectory($toolsDirectory,$toolsZip,[IO.Compression.CompressionLevel]::Optimal,$false)
-Copy-Item -LiteralPath (Join-Path $out 'build-revisions.txt') -Destination (Join-Path $reports 'BUILD.txt') -Force
-[IO.File]::AppendAllText((Join-Path $reports 'BUILD.txt'),"Opening banner SHA256: $($bannerHashes.opening)`nPAL banner SHA256: $($bannerHashes.pal)`n")
-$openingBnr=Join-Path $reports 'opening.bnr'
-$palBnr=Join-Path $reports 'opening-pal.bnr'
-Copy-Item -LiteralPath $openingSource -Destination $openingBnr -Force
-Copy-Item -LiteralPath $palSource -Destination $palBnr -Force
-foreach($name in @('texture-audit.json','validation-plan.json','version.json','nkit-validation.json','updater-setup.md','updater-THIRD-PARTY-NOTICES.txt')){
-    Copy-Item -LiteralPath (Join-Path $out $name) -Destination (Join-Path $reports $name) -Force
-}
-# The updater executable belongs to the ISO only; Depot has no Update action.
-. (Join-Path $PSScriptRoot 'update-feed.ps1')
 $updateFeed=Join-Path $reports 'update.json'
-Write-UpdateFeed -Iso $nkit -Version $version -Repository $Repository -Destination $updateFeed
-# Keep GitHub's full release response within the updater's 32 KiB budget.
-# Detailed reports and optional emulator captures live in the Depot ZIP.
 $notesPath=Join-Path $reports 'release-notes.md'
-[IO.File]::WriteAllText($notesPath,(Get-ReleaseNotes $identity))
-# The containing Depot ZIP cannot hash itself. GitHub's asset digest covers it.
-$checksumFiles=@($nkit,$serverZip,$toolsZip)+@(Get-ChildItem -LiteralPath $reports -File | ForEach-Object FullName)
-$checksums=foreach($file in $checksumFiles){"$((Get-FileHash -LiteralPath $file -Algorithm SHA256).Hash.ToLowerInvariant())  $([IO.Path]::GetFileName($file))"}
-[IO.File]::WriteAllText((Join-Path $reports 'SHA256SUMS.txt'),($checksums -join "`n")+"`n")
 $bundle=Join-Path $PSScriptRoot 'release-bundle.py'
-Run python3 @($bundle,'attach',$depot,$reports)
-Run dotnet @('run','--project',(Join-Path $Root 'tools/AnimalTown.Tools'),'-c','Release','--no-build','--','verify-depot',$Root,$depot)
 $assets=@($nkit,$depot,$serverZip,$toolsZip,$updateFeed)
-foreach($asset in $assets){Assert-ReleaseAsset $asset}
+$receiptPath=Join-Path $package 'prepared-release.json'
+if(!$PublishOnly){
+    if(Test-Path -LiteralPath $receiptPath){Remove-Item -LiteralPath $receiptPath}
+    $nkitValidation=Join-Path $out 'nkit-validation.json'
+    & dotnet run --project (Join-Path $Root 'tools/AnimalTown.Tools') -c Release --no-build -- verify-nkit-output $Root $nkit $nkitValidation
+    if($LASTEXITCODE -ne 0){throw 'Built NKit image/report validation failed'}
+    $nkitInfo=Get-Content $nkitValidation -Raw|ConvertFrom-Json
+    $openingSource=Join-Path $out 'disc/opening.bnr'
+    $palSource=Join-Path $out 'brand/opening-pal.bnr'
+    $bannerHashes=Get-ReleaseBannerHashes -Opening $openingSource -Pal $palSource -NKitInfo $nkitInfo -Version $version
+    & dotnet run --project (Join-Path $Root 'tools/AnimalTown.Tools') -c Release --no-build -- verify-depot $Root $depot
+    if($LASTEXITCODE -ne 0){throw 'Standalone app package validation failed'}
+    New-Item -ItemType Directory -Force -Path $package | Out-Null
+    if(Test-Path -LiteralPath $reports){Remove-Item -LiteralPath $reports -Recurse -Force}
+    New-Item -ItemType Directory -Path $reports | Out-Null
+    $titleEvidenceAssets=@()
+    $titleEvidenceRoot=Join-Path $out 'title-logo'
+    $titleEvidenceBuild=Join-Path $titleEvidenceRoot 'title-logo-build.json'
+    if(Test-Path -LiteralPath $titleEvidenceBuild -PathType Leaf){
+        $evidence=Get-Content -LiteralPath $titleEvidenceBuild -Raw|ConvertFrom-Json
+        if($evidence.schema -ne 1 -or $evidence.commit -cne $commit -or $evidence.version -cne $version -or
+           $evidence.tag -cne $tag -or $evidence.isoName -cne [IO.Path]::GetFileName($nkit) -or
+           $evidence.isoSha256 -cne $nkitInfo.compactSha256){
+            throw 'Title-logo evidence must match the release commit, version and verified NKit image'
+        }
+        $evidenceNames=@('title-logo.png','title-logo-picker.png','title-logo-name.png','title-logo-return.png','title-logo-report.json','title-logo-build.json')
+        foreach($name in @('title-logo-debug.png','title-logo-status.png')){
+            if(Test-Path -LiteralPath (Join-Path $titleEvidenceRoot $name) -PathType Leaf){$evidenceNames+=$name}
+        }
+        foreach($name in $evidenceNames){
+            $source=Get-Item -LiteralPath (Join-Path $titleEvidenceRoot $name)
+            if($source.PSIsContainer -or $source.Length -le 0){throw "Missing or empty title-logo evidence: $name"}
+            $destination=Join-Path $reports $name
+            Copy-Item -LiteralPath $source.FullName -Destination $destination -Force
+            $titleEvidenceAssets+=$destination
+        }
+    }
+    $terrainEvidenceAssets=@()
+    $terrainEvidenceRoot=Join-Path $out 'terrain-materials'
+    $terrainEvidenceBuild=Join-Path $terrainEvidenceRoot 'terrain-materials-build.json'
+    if(Test-Path -LiteralPath $terrainEvidenceBuild -PathType Leaf){
+        $evidence=Get-Content -LiteralPath $terrainEvidenceBuild -Raw|ConvertFrom-Json
+        if($evidence.schema -ne 1 -or $evidence.commit -cne $commit -or $evidence.version -cne $version -or
+           $evidence.tag -cne $tag -or $evidence.isoName -cne [IO.Path]::GetFileName($nkit) -or
+           $evidence.isoSha256 -cne $nkitInfo.compactSha256){
+            throw 'Terrain-material evidence must match the release commit, version and verified NKit image'
+        }
+        $report=Get-Content -LiteralPath (Join-Path $terrainEvidenceRoot 'terrain-materials-report.json') -Raw|ConvertFrom-Json
+        if($report.scenario -cne 'terrain-materials' -or $report.passed -ne $true){throw 'Terrain-material capture must pass before publication'}
+        $screenshots=@($report.screenshots)
+        foreach($name in @('terrain-materials-normal.png','terrain-materials-mips-auto.png','terrain-materials-menu-on.png')){
+            if($name -cnotin $screenshots){throw "Missing required terrain-material capture: $name"}
+        }
+        if(@($screenshots|Select-Object -Unique).Count -ne $screenshots.Count){throw 'Duplicate terrain-material capture names'}
+        foreach($name in $screenshots){if($name -cnotmatch '^terrain-materials-[a-z0-9-]+\.png$'){throw 'Invalid terrain-material capture filename'}}
+        foreach($name in $screenshots+@('terrain-materials-report.json','terrain-materials-build.json')){
+            $source=Get-Item -LiteralPath (Join-Path $terrainEvidenceRoot $name)
+            if($source.PSIsContainer -or $source.Length -le 0){throw "Missing or empty terrain-material evidence: $name"}
+            $destination=Join-Path $reports $name
+            Copy-Item -LiteralPath $source.FullName -Destination $destination -Force
+            $terrainEvidenceAssets+=$destination
+        }
+    }
+    Copy-DaylightEvidence (Join-Path $out 'daylight') $reports $commit $version $tag ([IO.Path]::GetFileName($nkit)) $nkitInfo.compactSha256
+    Copy-JobEvidence (Join-Path $out 'jobs') $reports $commit $version $tag ([IO.Path]::GetFileName($nkit)) $nkitInfo.compactSha256
+    $toolsDirectory=Join-Path $out 'tools-published-binaries'
+    if(Test-Path -LiteralPath $toolsDirectory){Remove-Item -LiteralPath $toolsDirectory -Recurse -Force}
+    & dotnet publish (Join-Path $Root 'tools/AnimalTown.Tools') -c Release --no-self-contained -o $toolsDirectory -v quiet
+    if($LASTEXITCODE -ne 0){throw 'Offline tool publication failed'}
+    Copy-Item -LiteralPath (Join-Path $Root 'docs/texture-repacker.md') -Destination (Join-Path $toolsDirectory 'texture-repacker.md') -Force
+    Copy-Item -LiteralPath (Join-Path $Root 'docs/uv-editor-design.md') -Destination (Join-Path $toolsDirectory 'uv-editor-design.md') -Force
+    # Rebuilding a draft can replace these generated archives. Disc images are uploaded directly.
+    foreach($archive in @($serverZip,$toolsZip)){if(Test-Path -LiteralPath $archive){Remove-Item -LiteralPath $archive}}
+    [IO.Compression.ZipFile]::CreateFromDirectory($server,$serverZip,[IO.Compression.CompressionLevel]::Optimal,$false)
+    [IO.Compression.ZipFile]::CreateFromDirectory($toolsDirectory,$toolsZip,[IO.Compression.CompressionLevel]::Optimal,$false)
+    Copy-Item -LiteralPath (Join-Path $out 'build-revisions.txt') -Destination (Join-Path $reports 'BUILD.txt') -Force
+    [IO.File]::AppendAllText((Join-Path $reports 'BUILD.txt'),"Opening banner SHA256: $($bannerHashes.opening)`nPAL banner SHA256: $($bannerHashes.pal)`n")
+    $openingBnr=Join-Path $reports 'opening.bnr'
+    $palBnr=Join-Path $reports 'opening-pal.bnr'
+    Copy-Item -LiteralPath $openingSource -Destination $openingBnr -Force
+    Copy-Item -LiteralPath $palSource -Destination $palBnr -Force
+    foreach($name in @('texture-audit.json','validation-plan.json','version.json','nkit-validation.json','updater-setup.md','updater-THIRD-PARTY-NOTICES.txt')){
+        Copy-Item -LiteralPath (Join-Path $out $name) -Destination (Join-Path $reports $name) -Force
+    }
+    # The updater executable belongs to the ISO only; Depot has no Update action.
+    . (Join-Path $PSScriptRoot 'update-feed.ps1')
+    Write-UpdateFeed -Iso $nkit -Version $version -Repository $Repository -Destination $updateFeed
+    # Keep GitHub's full release response within the updater's 32 KiB budget.
+    # Detailed reports and optional emulator captures live in the Depot ZIP.
+    [IO.File]::WriteAllText($notesPath,(Get-ReleaseNotes $identity))
+    # The containing Depot ZIP cannot hash itself. GitHub's asset digest covers it.
+    $checksumFiles=@($nkit,$serverZip,$toolsZip)+@(Get-ChildItem -LiteralPath $reports -File | ForEach-Object FullName)
+    $checksums=foreach($file in $checksumFiles){"$((Get-FileHash -LiteralPath $file -Algorithm SHA256).Hash.ToLowerInvariant())  $([IO.Path]::GetFileName($file))"}
+    [IO.File]::WriteAllText((Join-Path $reports 'SHA256SUMS.txt'),($checksums -join "`n")+"`n")
+    Run python3 @($bundle,'attach',$depot,$reports)
+    Run dotnet @('run','--project',(Join-Path $Root 'tools/AnimalTown.Tools'),'-c','Release','--no-build','--','verify-depot',$Root,$depot)
+    foreach($asset in $assets){Assert-ReleaseAsset $asset}
+    $receipt=Get-PreparedReleaseReceipt $identity ($assets+@($notesPath))
+    [IO.File]::WriteAllText($receiptPath,(ConvertTo-Json -InputObject $receipt -Depth 4)+"`n")
+}
 if($PackageOnly){Write-Host "Release package: $package";Write-Host "Disc image: $nkit";return}
+Assert-PreparedRelease $identity ($assets+@($notesPath)) $receiptPath
 function InvokeGh([string[]]$Arguments){
     $result=& $Gh @Arguments
     if($LASTEXITCODE -ne 0){throw "GitHub CLI failed: $($Arguments[0]) $($Arguments[1])"}

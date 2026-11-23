@@ -1,8 +1,12 @@
-param([string]$BaseRef='',[switch]$Full,[switch]$PlanOnly,[switch]$NativeInProcess)
+param([string]$BaseRef='',[switch]$Full,[switch]$PlanOnly,[switch]$NativeInProcess,[string]$ValidationPlan='',[switch]$ConsoleCandidate)
 $ErrorActionPreference='Stop'
 Set-Location (Split-Path $PSScriptRoot -Parent)
-& ./tools/select-validation.ps1 -BaseRef $BaseRef -Full:$Full -WorkingTree
-$plan=Get-Content out/validation-plan.json -Raw|ConvertFrom-Json
+if(!$ValidationPlan){
+    & ./tools/select-validation.ps1 -BaseRef $BaseRef -Full:$Full -WorkingTree
+    $ValidationPlan='out/validation-plan.json'
+}
+$plan=Get-Content -LiteralPath $ValidationPlan -Raw|ConvertFrom-Json
+if($plan.schema -ne 2 -or $plan.commit -ne (& git rev-parse HEAD).Trim()){throw 'Test plan must match this source commit'}
 if($PlanOnly){return}
 # Managed/backend/docs checks do not need a GameCube SDK restore or native copy.
 if(@($plan.native | Where-Object {$_ -in @('texture','voices','shadows','patched','content','jobs')}).Count){. ./tools/resolve-packages.ps1}
@@ -36,7 +40,7 @@ if('jobs' -in $plan.native){
     Run dotnet @('build','tests/AnimalTown.JobSmoke','-c','Release','-p:RestoreLockedMode=true','-v','quiet')
     Run dotnet @("$sdkRoot/tools/compiler/DolphinDotNet.Compiler.dll",'--aot','tests/AnimalTown.JobSmoke/bin/Release/net8.0/AnimalTown.JobSmoke.dll','out/job-smoke.c')
 }
-if('patched' -in $plan.native){
+if('patched' -in $plan.native -and !$ConsoleCandidate){
     # Generate fresh native sources so stale output cannot hide a patch regression.
     # This bundles C sources and runs host fixtures; it does not build a console ISO.
     Run dotnet @('build','game/AnimalTown.GameCube','-c','Release','--no-restore')
@@ -52,4 +56,4 @@ foreach($suite in @($plan.native | Where-Object {$_ -ne 'patched'})){
     else{$image=if($env:ANIMALTOWN_BUILD_IMAGE){$env:ANIMALTOWN_BUILD_IMAGE}else{'animaltown-builder:local'};Run docker @('run','--rm','--mount',"type=bind,src=$((Get-Location).Path),dst=/work",'-w','/work',$image,'sh','-c',$commands[$suite])}
 }
 if($plan.backend){& ./tests/server-integration.ps1 -DatabaseConnection $env:ANIMALTOWN_TEST_CONNECTION}
-Write-Host 'Selected change checks passed. No console build was requested.'
+Write-Host 'Selected host checks passed.'

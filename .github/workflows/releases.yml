@@ -8,8 +8,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
-  packages: write
+  contents: read
   pull-requests: read
 
 concurrency:
@@ -21,41 +20,30 @@ env:
   ANIMALTOWN_VERSION_MAIN_REF: ${{ github.event_name != 'pull_request' && github.ref == 'refs/heads/main' && github.sha || 'refs/remotes/origin/main' }}
 
 jobs:
-  version-policy:
+  fork-tests:
+    if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository
     runs-on: ubuntu-24.04
-    permissions:
-      contents: read
-      pull-requests: read
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          ref: ${{ github.event.pull_request.head.sha }}
           fetch-depth: 0
           submodules: true
           persist-credentials: false
-      - name: Pin current main history
-        run: git fetch origin main
-      - name: Check version and validation policy
-        shell: pwsh
-        run: |
-          ./tests/versioning.ps1
-          ./tests/validation-plan.ps1
-          ./tests/validation-selection.ps1
-          ./tests/release-publish.ps1
-      - name: Check release bundle and source archive policy
-        run: python3 tests/release-bundle.py
-      - name: Check helipad art matches the game's polygons
-        run: python3 tools/helipad-vector.py --check
+      - name: Tests
+        uses: ./.github/actions/release-tests
       - name: Resolve main version and actual source identity
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
         run: ./tools/write-version.ps1 -Refresh
 
-  release:
-    needs: version-policy
-    # Forks run the read-only policy checks; publishing uses same-repository code.
+  pipeline:
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    permissions:
+      contents: write
+      packages: write
+      pull-requests: read
     runs-on: ubuntu-24.04
     timeout-minutes: 90
     defaults:
@@ -79,7 +67,7 @@ jobs:
           ./tools/write-version.ps1 -Refresh -GitHubOutput $env:GITHUB_OUTPUT
           $identity=Get-Content out/version.json -Raw|ConvertFrom-Json
           if(!$identity.canPublish){throw 'Main release must end at a merged PR boundary; refresh GitHub merge metadata or merge through a PR'}
-      - name: Select checks and publish every merged PR
+      - name: Select validation and release scope
         id: validation
         shell: pwsh
         env:
@@ -90,7 +78,7 @@ jobs:
             $base=(& git merge-base HEAD $env:PR_BASE).Trim()
             if($LASTEXITCODE){throw 'Cannot determine PR comparison base'}
           }
-          ./tools/select-validation.ps1 -BaseRef $base -ForceRelease -Full:($env:GITHUB_EVENT_NAME -eq 'workflow_dispatch') -GitHubOutput $env:GITHUB_OUTPUT
+          ./tools/select-validation.ps1 -BaseRef $base -ForceRelease -Full:($env:GITHUB_EVENT_NAME -eq 'workflow_dispatch') -GitHubOutput $env:GITHUB_OUTPUT -SkipPolicyChecks
       - uses: docker/setup-buildx-action@v3
       - uses: docker/login-action@v3
         with:
@@ -110,301 +98,18 @@ jobs:
           tags: ghcr.io/capz/animaltown-build:${{ steps.version.outputs.commit }}
           cache-from: type=gha
           cache-to: type=gha,mode=min
-      - name: Build NKit ISO, standalone app and backend; run checks and package
-        id: packages
+      - name: Tests
+        uses: ./.github/actions/release-tests
+        with:
+          full-pipeline: 'true'
+          version: ${{ steps.version.outputs.version }}
+          commit: ${{ steps.version.outputs.commit }}
+          build-image: ghcr.io/capz/animaltown-build@${{ steps.image.outputs.digest }}
+      - name: Build
         env:
           ANIMALTOWN_BUILD_IMAGE: ghcr.io/capz/animaltown-build@${{ steps.image.outputs.digest }}
-        run: |
-          if [ "$(jq -r '.backend' out/validation-plan.json)" = true ]; then
-            docker compose -f build/compose.yml run --rm --pull always builder
-          else
-            docker compose -f build/compose.yml run --rm --pull always --no-deps builder
-          fi
-          python3 - <<'PY'
-          import json
-          from pathlib import Path
-          root=Path('out');version=json.loads((root/'version.json').read_text())['version']
-          expected=f'AnimalTown-{version}.nkit.iso'
-          assert sorted(p.name for p in root.glob('*.iso'))==[expected], 'Console build must retain only its NKit ISO'
-          depot=root/f'AnimalTown-{version}-depot.zip'
-          assert depot.is_file() and depot.stat().st_size>0, 'Standalone Depot runtime package is missing'
-          assert not any((root/'disc-work').rglob('*.iso')), 'Temporary source ISO was not removed'
-          assert not any((root/'nkit-work').rglob('*.iso')), 'Temporary round-trip ISO was not removed'
-          PY
-      - name: Select focused title-logo capture
-        id: title_logo
-        run: |
-          python3 - <<'PY'
-          import json, os, re
-          from pathlib import Path
-          plan=json.loads(Path('out/validation-plan.json').read_text())
-          relevant=re.compile(r'^(assets/textures/branding/|game/AnimalTown.GameCube/(TitleScreen|TitleArt|ProfilePickerUi|OnboardingUi|TextureCache|ModelResources)\.cs$|shared/AnimalTown.Domain/(TexturePixels|TextureResolution)\.cs$|tools/AnimalTown.Tools/(Brand[^/]*|DiscBannerFile|TextureAudit)\.cs$|tools/(iso-smoke\.py|dolphin_pad\.py|publish-release\.ps1)$|build/Dockerfile\.dolphin$|\.github/workflows/releases\.yml$)')
-          needed=any(relevant.search(path) for path in plan['paths']) or (plan['full'] and not plan['paths'])
-          save_quit=any(path=='game/AnimalTown.GameCube/Program.cs' or path.startswith('assets/models/villagers/') for path in plan['paths'])
-          with open(os.environ['GITHUB_OUTPUT'],'a') as output:
-              output.write(f'needed={str(needed or save_quit).lower()}\nsave_quit={str(save_quit).lower()}\n')
-          PY
-      - name: Capture and verify title branding in Dolphin
-        if: steps.title_logo.outputs.needed == 'true'
-        timeout-minutes: 15
-        env:
-          BUILD_VERSION: ${{ steps.version.outputs.version }}
-        run: |
-          mkdir -p out/title-logo
-          docker build -t animaltown-title-capture -f build/Dockerfile.dolphin build
-          docker run --rm --init --shm-size=512m --user "$(id -u):$(id -g)" \
-            --mount "type=bind,src=$PWD,dst=/work" -w /work \
-            animaltown-title-capture python3 tools/iso-smoke.py \
-            "out/AnimalTown-$BUILD_VERSION.nkit.iso" out/title-logo --title-logo
-          python3 - <<'PY'
-          import hashlib, json
-          from pathlib import Path
-          identity=json.loads(Path('out/version.json').read_text())
-          disc=Path('out')/f"AnimalTown-{identity['version']}.nkit.iso"
-          with disc.open('rb') as source:
-              digest=hashlib.file_digest(source,'sha256').hexdigest()
-          evidence={'schema':1,'commit':identity['commit'],'version':identity['version'],
-                    'tag':identity['tag'],'isoName':disc.name,'isoSha256':digest}
-          Path('out/title-logo/title-logo-build.json').write_text(json.dumps(evidence,indent=2)+'\n')
-          PY
-      - name: Keep title-logo capture diagnostics
-        if: always() && steps.title_logo.outputs.needed == 'true'
-        uses: actions/upload-artifact@v4
-        with:
-          name: title-logo-${{ steps.version.outputs.commit }}
-          path: |
-            out/title-logo/*.png
-            out/title-logo/*.json
-            out/title-logo/*.log
-            out/title-logo/*.txt
-            out/title-logo/user/Logs/
-          if-no-files-found: warn
-      - name: Verify Save & Quit and reloading the town in Dolphin
-        if: steps.title_logo.outputs.save_quit == 'true'
-        timeout-minutes: 12
-        env:
-          BUILD_VERSION: ${{ steps.version.outputs.version }}
-        run: |
-          mkdir -p out/save-and-quit
-          docker run --rm --init --shm-size=512m --user "$(id -u):$(id -g)" \
-            --mount "type=bind,src=$PWD,dst=/work" -w /work \
-            animaltown-title-capture python3 tools/iso-smoke.py \
-            "out/AnimalTown-$BUILD_VERSION.nkit.iso" out/save-and-quit --save-and-quit
-      - name: Keep Save & Quit diagnostics
-        if: always() && steps.title_logo.outputs.save_quit == 'true'
-        uses: actions/upload-artifact@v4
-        with:
-          name: save-and-quit-${{ steps.version.outputs.commit }}
-          path: |
-            out/save-and-quit/*.json
-            out/save-and-quit/*.png
-            out/save-and-quit/*.log
-            out/save-and-quit/user/Logs/
-          if-no-files-found: warn
-      - name: Select terrain-material capture
-        id: terrain_materials
-        # Collect independent rendering evidence even if the title check failed.
-        # Both checks remain required: publishing still uses the success gate.
-        if: ${{ !cancelled() && steps.packages.outcome == 'success' }}
-        run: |
-          python3 - <<'PY'
-          import json, os, re
-          from pathlib import Path
-          plan=json.loads(Path('out/validation-plan.json').read_text())
-          relevant=re.compile(r'^(game/AnimalTown.GameCube/(Water[^/]*|NativeWaterProbe|TerrainRenderer|TerrainSection|GroundMip[^/]*|Program|ModelResources)\.cs$|shared/AnimalTown.Domain/(GroundMip[^/]*|RenderDebugOptions|DevConfig|TextureResolution|Water[^/]*|WindWaker[^/]*)\.cs$|tools/(iso-smoke\.py|publish-release\.ps1|patch-native\.ps1|patch-water-probe\.py|native-water-probe\.inc|native-shadow-union-gx\.inc)$|build/Dockerfile\.dolphin$|\.github/workflows/releases\.yml$)')
-          needed=any(relevant.search(path) for path in plan['paths']) or (plan['full'] and not plan['paths'])
-          with open(os.environ['GITHUB_OUTPUT'],'a') as output:
-              output.write(f'needed={str(needed).lower()}\n')
-          PY
-      - name: Capture terrain mip bands and water animation in Dolphin
-        if: ${{ !cancelled() && steps.packages.outcome == 'success' && steps.terrain_materials.outputs.needed == 'true' }}
-        timeout-minutes: 25
-        env:
-          BUILD_VERSION: ${{ steps.version.outputs.version }}
-        run: |
-          mkdir -p out/terrain-materials
-          docker build -t animaltown-terrain-capture -f build/Dockerfile.dolphin build
-          docker run --rm --init --shm-size=512m --user "$(id -u):$(id -g)" \
-            --mount "type=bind,src=$PWD,dst=/work" -w /work \
-            animaltown-terrain-capture python3 tools/iso-smoke.py \
-            "out/AnimalTown-$BUILD_VERSION.nkit.iso" out/terrain-materials --terrain-materials --season spring --dsp-hle
-          python3 - <<'PY'
-          import hashlib, json
-          from pathlib import Path
-          identity=json.loads(Path('out/version.json').read_text())
-          disc=Path('out')/f"AnimalTown-{identity['version']}.nkit.iso"
-          with disc.open('rb') as source:
-              digest=hashlib.file_digest(source,'sha256').hexdigest()
-          evidence={'schema':1,'commit':identity['commit'],'version':identity['version'],
-                    'tag':identity['tag'],'isoName':disc.name,'isoSha256':digest}
-          Path('out/terrain-materials/terrain-materials-build.json').write_text(json.dumps(evidence,indent=2)+'\n')
-          PY
-      - name: Keep terrain-material capture diagnostics
-        if: always() && steps.terrain_materials.outputs.needed == 'true'
-        uses: actions/upload-artifact@v4
-        with:
-          name: terrain-materials-${{ steps.version.outputs.commit }}
-          path: |
-            out/terrain-materials/*.png
-            out/terrain-materials/*.json
-            out/terrain-materials/*.log
-            out/terrain-materials/*.txt
-            out/terrain-materials/user/Logs/
-          if-no-files-found: warn
-      - name: Select focused memory-card capture
-        id: save_cards
-        run: |
-          python3 - <<'PY'
-          import json, os, re
-          from pathlib import Path
-          plan=json.loads(Path('out/validation-plan.json').read_text())
-          relevant=re.compile(r'^(game/AnimalTown.GameCube/(SaveCards|CardArchive|CardSaveStorage|TownDataStorage|TownSession|UserOptionsStorage|DevConfigStorage|TitleScreen(?:\.Cards)?|OnboardingFlow|OnboardingUi|Program)\.cs$|shared/AnimalTown.Domain/OnboardingDraft\.cs$|tests/AnimalTown.CardChecks/|tools/iso-smoke\.py$|\.github/workflows/releases\.yml$)')
-          needed=any(relevant.search(path) for path in plan['paths']) or (plan['full'] and not plan['paths'])
-          with open(os.environ['GITHUB_OUTPUT'],'a') as output:
-              output.write(f'needed={str(needed).lower()}\n')
-          PY
-      - name: Verify memory-card selection and temporary play in Dolphin
-        if: steps.save_cards.outputs.needed == 'true'
-        timeout-minutes: 20
-        env:
-          BUILD_VERSION: ${{ steps.version.outputs.version }}
-        run: |
-          docker build -t animaltown-card-capture -f build/Dockerfile.dolphin build
-          for scenario in slot-b choose-b without-saving no-card; do
-            mkdir -p "out/memory-cards/$scenario"
-            docker run --rm --init --shm-size=512m --user "$(id -u):$(id -g)" \
-              --mount "type=bind,src=$PWD,dst=/work" -w /work \
-              animaltown-card-capture python3 tools/iso-smoke.py \
-              "out/AnimalTown-$BUILD_VERSION.nkit.iso" "out/memory-cards/$scenario" \
-              --save-cards "$scenario" --season spring --dsp-hle
-          done
-      - name: Keep memory-card capture diagnostics
-        if: always() && steps.save_cards.outputs.needed == 'true'
-        uses: actions/upload-artifact@v4
-        with:
-          name: memory-cards-${{ steps.version.outputs.commit }}
-          path: |
-            out/memory-cards/*/*.png
-            out/memory-cards/*/*.json
-            out/memory-cards/*/*.log
-            out/memory-cards/*/*.txt
-            out/memory-cards/*/user/Logs/
-          if-no-files-found: warn
-      - name: Select daylight transition captures
-        id: daylight
-        run: |
-          python3 - <<'PY'
-          import json, os, re
-          from pathlib import Path
-          plan=json.loads(Path('out/validation-plan.json').read_text())
-          relevant=re.compile(r'^(shared/AnimalTown.Domain/WorldLighting\.cs$|game/AnimalTown.GameCube/(CloudShadows|NativeShadows|TownLights|TerrainRenderer|Program)\.cs$|tools/(native-shadow-union[^/]*|patch-native\.ps1|iso-smoke\.py|publish-release\.ps1)$|\.github/workflows/releases\.yml$)')
-          needed=any(relevant.search(path) for path in plan['paths']) or (plan['full'] and not plan['paths'])
-          with open(os.environ['GITHUB_OUTPUT'],'a') as output:
-              output.write(f'needed={str(needed).lower()}\n')
-          PY
-      - name: Verify day, dawn, dusk and night lighting in Dolphin
-        if: steps.daylight.outputs.needed == 'true'
-        timeout-minutes: 20
-        env:
-          BUILD_VERSION: ${{ steps.version.outputs.version }}
-        run: |
-          docker build -t animaltown-daylight-capture -f build/Dockerfile.dolphin build
-          for phase in noon dawn dusk night; do
-            case "$phase" in noon) capture_clock=12:00 ;; dawn) capture_clock=06:30 ;; dusk) capture_clock=18:00 ;; night) capture_clock=20:00 ;; esac
-            mkdir -p "out/daylight/$phase"
-            if [ "$phase" != noon ]; then cp out/daylight/noon/MemoryCardA.USA.raw "out/daylight/$phase/MemoryCardA.USA.raw"; fi
-            docker run --rm --init --shm-size=512m --user "$(id -u):$(id -g)" \
-              --mount "type=bind,src=$PWD,dst=/work" -w /work \
-              animaltown-daylight-capture python3 tools/iso-smoke.py \
-              "out/AnimalTown-$BUILD_VERSION.nkit.iso" "out/daylight/$phase" \
-              --daylight-clock "$capture_clock" --season spring --dsp-hle
-          done
-          python3 - <<'PY'
-          import hashlib, json
-          from pathlib import Path
-          identity=json.loads(Path('out/version.json').read_text())
-          disc=Path('out')/f"AnimalTown-{identity['version']}.nkit.iso"
-          with disc.open('rb') as source: digest=hashlib.file_digest(source,'sha256').hexdigest()
-          evidence={'schema':1,'commit':identity['commit'],'version':identity['version'],
-                    'tag':identity['tag'],'isoName':disc.name,'isoSha256':digest}
-          Path('out/daylight/daylight-build.json').write_text(json.dumps(evidence,indent=2)+'\n')
-          PY
-      - name: Keep daylight transition diagnostics
-        if: always() && steps.daylight.outputs.needed == 'true'
-        uses: actions/upload-artifact@v4
-        with:
-          name: daylight-${{ steps.version.outputs.commit }}
-          path: |
-            out/daylight/*.json
-            out/daylight/*/*.png
-            out/daylight/*/*.json
-            out/daylight/*/*.log
-            out/daylight/*/user/Logs/
-          if-no-files-found: warn
-      - name: Select offline job controller captures
-        id: jobs_capture
-        # Mail controls need their own evidence even when an earlier rendering
-        # capture fails. Publication still requires every selected check.
-        if: ${{ !cancelled() && steps.packages.outcome == 'success' }}
-        run: |
-          python3 - <<'PY'
-          import json, os, re
-          from pathlib import Path
-          plan=json.loads(Path('out/validation-plan.json').read_text())
-          relevant=re.compile(r'^(shared/AnimalTown.Domain/(Jobs/|GameState\.(Jobs|Travel)\.cs|HelipadFlight\.cs)|game/AnimalTown.GameCube/(TownGame\.(JobsUi|MailUi|JobScene|TravelUi|Helipad)|TownSession\.Travel|HelipadCruise|HelipadRenderer(\.Deck)?|LoadingScreen|JobSceneRenderer|WrappedText|OfflineTravelCards|TownCardRecords|CardArchive|Program)\.cs$|tools/(jobs_smoke|iso-smoke|profile-card-fixture)\.py$|tests/AnimalTown.Checks/JobFixture\.cs$|\.github/workflows/releases\.yml$)')
-          needed=any(relevant.search(path) for path in plan['paths']) or (plan['full'] and not plan['paths'])
-          with open(os.environ['GITHUB_OUTPUT'],'a') as output:output.write(f'needed={str(needed).lower()}\n')
-          PY
-      - name: Verify actual job controls and committed results in Dolphin
-        if: ${{ !cancelled() && steps.packages.outcome == 'success' && steps.jobs_capture.outputs.needed == 'true' }}
-        timeout-minutes: 25
-        env:
-          BUILD_VERSION: ${{ steps.version.outputs.version }}
-          ANIMALTOWN_BUILD_IMAGE: ghcr.io/capz/animaltown-build@${{ steps.image.outputs.digest }}
-        run: |
-          docker build -t animaltown-job-capture -f build/Dockerfile.dolphin build
-          mkdir -p out/jobs/template
-          docker run --rm --init --shm-size=512m --user "$(id -u):$(id -g)" \
-            --mount "type=bind,src=$PWD,dst=/work" -w /work \
-            animaltown-job-capture python3 tools/iso-smoke.py \
-            "out/AnimalTown-$BUILD_VERSION.nkit.iso" out/jobs/template --jobs template --season summer --dsp-hle --component-cable
-          for mode in delivery mail helipad; do
-            docker compose -f build/compose.yml run --rm --no-deps builder \
-              dotnet run --project tests/AnimalTown.Checks -c Release -- --job-fixture "out/job-fixtures/$mode" "$mode"
-            python3 tools/profile-card-fixture.py out/jobs/template/MemoryCardA.USA.raw \
-              "out/job-fixtures/$mode" "out/jobs/$mode/MemoryCardA.USA.raw"
-            if [ "$mode" = helipad ]; then
-              python3 tools/profile-card-fixture.py out/jobs/template/MemoryCardA.USA.raw \
-                out/job-fixtures/helipad-destination out/jobs/helipad/MemoryCardB.USA.raw
-            fi
-            docker run --rm --init --shm-size=512m --user "$(id -u):$(id -g)" \
-              --mount "type=bind,src=$PWD,dst=/work" -w /work \
-              animaltown-job-capture python3 tools/iso-smoke.py \
-              "out/AnimalTown-$BUILD_VERSION.nkit.iso" "out/jobs/$mode" --jobs "$mode" --season summer --dsp-hle --component-cable
-            docker compose -f build/compose.yml run --rm --no-deps builder \
-              dotnet run --project tests/AnimalTown.Checks -c Release -- --job-verify "out/jobs/$mode/records" "$mode"
-          done
-          python3 - <<'PY'
-          import hashlib, json
-          from pathlib import Path
-          identity=json.loads(Path('out/version.json').read_text());disc=Path('out')/f"AnimalTown-{identity['version']}.nkit.iso"
-          with disc.open('rb') as source:digest=hashlib.file_digest(source,'sha256').hexdigest()
-          evidence={'schema':1,'commit':identity['commit'],'version':identity['version'],'tag':identity['tag'],'isoName':disc.name,'isoSha256':digest}
-          Path('out/jobs/jobs-build.json').write_text(json.dumps(evidence,indent=2)+'\n')
-          PY
-      - name: Keep offline job controller diagnostics
-        if: always() && steps.jobs_capture.outputs.needed == 'true'
-        uses: actions/upload-artifact@v4
-        with:
-          name: offline-jobs-${{ steps.version.outputs.commit }}
-          path: |
-            out/jobs/*.json
-            out/jobs/*/*.json
-            out/jobs/*/*.png
-            out/jobs/*/*.log
-            out/jobs/*/user/Logs/
-          if-no-files-found: warn
-      - name: Publish NKit, standalone app and backend GitHub release
+        run: docker compose -f build/compose.yml run --rm --pull always --no-deps builder pwsh -NoLogo -NoProfile -File tools/build-linux.ps1 -Target build
+      - name: Release
         env:
           GH_TOKEN: ${{ github.token }}
           ANIMALTOWN_BUILD_IMAGE: ghcr.io/capz/animaltown-build@${{ steps.image.outputs.digest }}
