@@ -95,7 +95,7 @@ internal sealed partial class TownGame
                 }
                 else DrawShopRow(StoreActions[i],i,y,ink);
             }
-            ShopText(cabinet?"A buy   B close":"A select   B close",ShopTextLeft,ShopFooterY,ink,1);
+            DrawShopFooter(ink,"close",cabinet?"buy":"select");
             return true;
         }
         if(screen=="sell"){DrawShopPockets(ink);return true;}
@@ -109,7 +109,7 @@ internal sealed partial class TownGame
                 DrawShopRow(Catalog.Items[item].Name,i,143+i*25,ink);
             }
             if(count==0)ShopText("No stored items.",ShopTextLeft,145,ink,1.15f);
-            ShopText(count==0?"B back":"A take item back   B back",ShopTextLeft,ShopFooterY,ink,1);return true;
+            DrawShopFooter(ink,"back",count>0?"take item back":null);return true;
         }
         if(screen=="shop-price"){
             DrawShopFrame("Set your asking price",ink);
@@ -119,7 +119,7 @@ internal sealed partial class TownGame
             int step=1;for(int i=0;i<shopDigit;i++)step*=10;
             ShopText("Adjust by "+UiFont.Money(step),ShopTextLeft,237,ink,1.2f);
             ShopText("Left / right   Digit\nUp / down   Price",ShopTextLeft,281,ink,1.05f);
-            ShopText("A put on display   B back",ShopTextLeft,ShopFooterY,ink,1);return true;
+            DrawShopFooter(ink,"back","put on display");return true;
         }
         if(screen=="shop-list"){
             DrawShopFrame("Choose an item to display",ink);
@@ -128,7 +128,7 @@ internal sealed partial class TownGame
                 DrawShopRow(label,i,125+(i-first)*30,ink);
             }
             ShopText("One item per stand",ShopTextLeft,348,ink,1);
-            ShopText("A choose   B back",ShopTextLeft,ShopFooterY,ink,1);return true;
+            DrawShopFooter(ink,"back","choose");return true;
         }
         int id=state.Town.Shop.Item(state,ShopKind,ShopSlot),price=state.Town.Shop.Price(state,ShopKind,ShopSlot);
         bool growing=shopFixture<12&&shopFixture>=state.Town.StockCount;
@@ -147,8 +147,8 @@ internal sealed partial class TownGame
             DrawShopRow("Change price",0,279,ink);
             DrawShopRow("Take item back",1,305,ink);
         }
-        ShopText(own?"A select   B close":id!=0?"A buy   B close":shopFixture<12?"B close":"A list an item   B close",
-            ShopTextLeft,own?352:309,ink,1);
+        string? action=own?"select":id!=0?"buy":shopFixture>=12?"list an item":null;
+        DrawShopFooter(ink,"close",action,own?352:309);
         return true;
     }
     private void DrawShopFrame(string title,Color32 ink,float y=ShopPanelTop,float height=ShopPanelHeight)
@@ -162,6 +162,19 @@ internal sealed partial class TownGame
         var type=strong?strongFont:font;
         float width=type.Measure(text,scale/1.5f);
         type.Draw(ui,text,x,y,ink,scale/1.5f*Math.Min(1,(right-x)/Math.Max(1,width)));
+    }
+    private void DrawShopFooter(Color32 ink,string back,string? action,float y=ShopFooterY)
+    {
+        const float labelOffset=20,promptGap=12,labelScale=1;
+        float x=ShopTextLeft;
+        if(action!=null){
+            ButtonGlyph("A",x,y);
+            x+=labelOffset;
+            Text(action,x,y,ink,labelScale);
+            x+=font.Measure(action,labelScale/1.5f)+promptGap;
+        }
+        ButtonGlyph("B",x,y);
+        Text(back,x+labelOffset,y,ink,labelScale);
     }
     private void DrawShopRow(string label,int row,float y,Color32 ink,string? price=null)
     {
@@ -199,7 +212,7 @@ internal sealed partial class TownGame
             ShopText(itemTitleText.Get(BackpackJobTitle(selected,item)),ShopTextLeft,details,ink,1.15f,true);
             ShopText(sellable?"Sell for "+UiFont.Money(Catalog.Items[item].Sell):"Not for sale",ShopTextLeft,details+22,ink,1.05f);
         }
-        ShopText(sellable?"A sell   B close":"B close",ShopTextLeft,details+52,ink,1);
+        DrawShopFooter(ink,"close",sellable?"sell":null,details+52);
     }
     private void DrawShopHint(Color32 ink)
     {
