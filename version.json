@@ -7,15 +7,6 @@
   "baseCommit": "7e3dd9599709f553d13d538a320a13f3d410e861",
   "requestSummaries": [
     {
-      "id": "fall-leaf-movement-speed",
-      "lines": [
-        "Kick up autumn leaves while walking normally or running.",
-        "Running uses the same three-leaf footstep effect as normal walking.",
-        "Gentle movement below half walking speed emits no new leaves.",
-        "The effect reuses its existing atlas and bounded particle buffer."
-      ]
-    },
-    {
       "id": "two-borrower-retrieval-limit",
       "lines": [
         "Find borrowed job items after at most one redirect.",
@@ -247,6 +238,24 @@
         "The new models include walking and running animations.",
         "Their textures fit within 128 by 128 pixels.",
         "Existing saves keep the same villager species."
+      ]
+    },
+    {
+      "id": "villager-idle-animations",
+      "lines": [
+        "Bunny, giraffe, hamster and Maine coon villagers animate while standing still.",
+        "The new idle clips play for both players and residents.",
+        "Walking and running take over when a villager moves.",
+        "Idle clips use compact keyframes to fit GameCube memory."
+      ]
+    },
+    {
+      "id": "fall-leaf-movement-speed",
+      "lines": [
+        "Kick up autumn leaves while walking normally or running.",
+        "Running uses the same three-leaf footstep effect as normal walking.",
+        "Gentle movement below half walking speed emits no new leaves.",
+        "The effect reuses its existing atlas and bounded particle buffer."
       ]
     },
     {

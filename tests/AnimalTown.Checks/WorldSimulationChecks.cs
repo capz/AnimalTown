@@ -66,8 +66,33 @@ internal static class WorldSimulationChecks
             for(int i=0;i<120;i++)preview.Step(default);
             check(BuildingSave.Encode(preview.state).SequenceEqual(before),"onboarding preview keeps its uncommitted town frozen");
         }
+        IdlePlayback(check);
         WinterWeather(check);
         Console.WriteLine("Live world simulation behind gameplay overlays checks passed");
+    }
+    private static void IdlePlayback(Action<bool,string> check)
+    {
+        var game=new TownGame(new GameState(931){Species=1,Space=TownShop.Room,X=2,Z=2}){screen="shop"};
+        game.hasIdleClip[1]=true;
+        var bunny=game.state.Town.Residents[1];
+        bunny.Space=TownShop.Room;bunny.PosX=3;bunny.PosZ=3;bunny.JourneyPhase=3;bunny.Dwell=120;
+        game.Step(default);
+        check(game.animationClock.Clip(0)==TownGame.IdleClip&&game.animationClock.Consume(0)>0,
+            "a stationary player with an idle clip animates behind shop menus");
+        check(game.animationClock.Clip(2)==TownGame.IdleClip&&game.animationClock.Consume(2)>0,
+            "a stationary resident plays its idle clip in the current room");
+        game.screen="world";
+        var walk=new ControllerState(1,0,0,0,new StickState(1,0),new StickState(0,0),0,0);
+        game.Step(walk);
+        check(game.animationClock.Clip(0)==0&&game.animationClock.Consume(0)>0,
+            "walking replaces the player's idle clip");
+        game.Step(default);
+        check(game.animationClock.Clip(0)==TownGame.IdleClip&&game.animationClock.Consume(0)>0,
+            "releasing movement resumes the player's idle clip");
+        game.state.Space=0;
+        game.Step(default);
+        check(game.animationClock.Clip(2)==-1&&game.animationClock.Consume(2)==0,
+            "a resident in a different room does not advance an idle clip");
     }
     private static void WinterWeather(Action<bool,string> check)
     {
