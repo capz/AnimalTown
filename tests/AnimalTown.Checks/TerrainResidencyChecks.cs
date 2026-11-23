@@ -11,14 +11,14 @@ namespace Dolphin.Diagnostics
 {
     public static class DebugOverlay
     {
-        public static int UiCacheDeferrals;
         public static int TerrainSuspensions,TerrainRestorations;
+        public static int UiCacheDeferrals;
         public static string LastTerrainSuspension="",LastTerrainRestoration="";
         public static void WriteLine(string message)
         {
-            if(message.StartsWith("ANIMALTOWN UI CACHE DEFERRED",StringComparison.Ordinal))UiCacheDeferrals++;
             if(message.StartsWith("ANIMALTOWN TERRAIN CACHE SUSPENDED",StringComparison.Ordinal)){TerrainSuspensions++;LastTerrainSuspension=message;}
             else if(message.StartsWith("ANIMALTOWN TERRAIN CACHE READY",StringComparison.Ordinal)){TerrainRestorations++;LastTerrainRestoration=message;}
+            else if(message.StartsWith("ANIMALTOWN UI CACHE DEFERRED",StringComparison.Ordinal))UiCacheDeferrals++;
         }
     }
 }
