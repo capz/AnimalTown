@@ -22,6 +22,12 @@ snowfall or previewing rain pauses recovery. Outdoor snow continues
 refilling while the player is inside. Path coverage and visit history
 follow their existing rules.
 
+**Smooth snow transitions** in **Debug / testing** eases footprints in over
+300 ms and shows the finer stages of snowfall recovery near the player.
+The preview updates the existing mask up to ten times per second. The
+toggle starts off each session, and the underlying wear and save data
+follow the same rules either way.
+
 The depth field is a demand-allocated I8 texture with four texels per
 metre, independent of the shadow page cache. A tile entry updates its GX
 blocks and those touched by the rim. Snow receives the same IA4 shadow and
