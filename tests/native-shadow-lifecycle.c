@@ -119,36 +119,59 @@ static void set_snow_wear(DndArray *visits,int x,int z,int wear){
     packed[cell/2]=(uint8_t)((packed[cell/2]&~(15<<shift))|(wear<<shift));
 }
 static int plain_snow(DndArray *visits,DndArray *tiles,DndArray *levels,int revision,int terrain_revision,int winter){
-    return animaltown_shadows_snow(visits,tiles,levels,NULL,revision,terrain_revision,winter,0,0);
+    return animaltown_shadows_snow(visits,tiles,levels,NULL,revision,terrain_revision,winter,-1,0,0);
+}
+static int visual_snow(DndArray *visits,DndArray *tiles,DndArray *levels,DndArray *stamps,int revision,int focus,int ms,int fall_ticks){
+    return animaltown_shadows_snow(visits,tiles,levels,stamps,revision,0,1,focus,ms,fall_ticks);
+}
+static int visual_depth(int cell){
+    return snow_visual->depths[snow_visual->buffer][snow_local(cell,snow_visual->origin)];
 }
 static void smooth_snow_checks(DndArray *visits,DndArray *tiles,DndArray *levels){
-    DndArray *visual=pixels(SU_SNOW_VISUAL_BYTES);
-    uint8_t *depths=(uint8_t*)visual->data;
-    memset(depths,0,SU_SNOW_VISUAL_BYTES);
     memset(visits->data,0,visits->length);
-    const int x=7,z=41,origin=z*SU_WORLD_WIDTH+x,edge=(x+1)*4,row=z*4+1;
-    set_snow_wear(visits,x,z,9);set_snow_wear(visits,x+1,z,9);
-    assert(plain_snow(visits,tiles,levels,100,0,1)==1&&live==2);
-    int open=snow_sample(edge,row),before=snow_flushes;
-    assert(open>=191&&!snow_visual);
-    depths[0]=9*SU_SNOW_UNIT;depths[1]=7*SU_SNOW_UNIT;
-    assert(animaltown_shadows_snow(visits,tiles,levels,visual,100,0,1,origin,1)==1);
+    const int x=7,z=41,focus=z*SU_WORLD_WIDTH+x,cell=focus+1,edge=(x+1)*4,row=z*4+1;
+    set_snow_wear(visits,x,z,9);set_snow_wear(visits,x+1,z,6);
+    assert(plain_snow(visits,tiles,levels,100,0,1)==1&&live==2&&!snow_visual);
     int covered=snow_sample(edge,row);
-    assert(covered<191&&snow_flushes-before<=10);
-    depths[1]=7*SU_SNOW_UNIT+SU_SNOW_UNIT/2;
-    assert(animaltown_shadows_snow(visits,tiles,levels,visual,100,0,1,origin,2)==1);
+    assert(covered<191&&visual_snow(visits,tiles,levels,NULL,100,focus,0,0)==1);
+    assert(visual_depth(cell)==6*SU_SNOW_UNIT);
+    set_snow_wear(visits,x+1,z,9);
+    assert(visual_snow(visits,tiles,levels,NULL,101,focus,10,0)==1);
+    assert(visual_depth(cell)==6*SU_SNOW_UNIT);
+    int before=snow_flushes;
+    assert(visual_snow(visits,tiles,levels,NULL,101,focus,110,0)==1);
+    int started=visual_depth(cell);
+    assert(started>6*SU_SNOW_UNIT&&started<9*SU_SNOW_UNIT&&snow_flushes-before<=10);
+    set_snow_wear(visits,x+1,z,12);
+    assert(visual_snow(visits,tiles,levels,NULL,102,focus,120,0)==1);
+    assert(visual_depth(cell)==started);
+    assert(visual_snow(visits,tiles,levels,NULL,102,focus,220,0)==1);
+    assert(visual_depth(cell)>started&&visual_depth(cell)<12*SU_SNOW_UNIT);
+    assert(visual_snow(visits,tiles,levels,NULL,102,focus,420,0)==1);
+    assert(visual_depth(cell)==12*SU_SNOW_UNIT);
+    int open=snow_sample(edge,row);
+    assert(open>=191);
+
+    DndArray *stamps=pixels(4*SU_SNOW_PACKED);
+    memset(stamps->data,0,stamps->length);stamps->length/=2;stamps->element_size=2;
+    ((uint16_t*)stamps->data)[cell]=12;
+    assert(visual_snow(visits,tiles,levels,stamps,102,focus,520,15)==1);
+    assert(visual_depth(cell)<12*SU_SNOW_UNIT&&visual_depth(cell)>11*SU_SNOW_UNIT);
+    before=snow_flushes;
+    assert(visual_snow(visits,tiles,levels,stamps,102,focus,620,15)==1&&snow_flushes==before);
+    set_snow_wear(visits,x+1,z,8);
+    assert(visual_snow(visits,tiles,levels,stamps,103,focus,720,850)==1);
     int mid=snow_sample(edge,row);
     assert(mid>covered&&mid<open);
-    before=snow_flushes;
-    assert(animaltown_shadows_snow(visits,tiles,levels,visual,100,0,1,origin,2)==1&&snow_flushes==before);
-    memset(depths,0,SU_SNOW_VISUAL_BYTES);
-    assert(animaltown_shadows_snow(visits,tiles,levels,visual,100,0,1,origin+12,3)==1);
-    assert(snow_sample(edge,row)==open&&live==2);
-    assert(plain_snow(visits,tiles,levels,100,0,1)==1&&!snow_visual&&snow_sample(edge,row)==open);
-    assert(plain_snow(visits,tiles,levels,100,0,0)==1&&!animaltown_snow_mask());
+    assert(visual_snow(visits,tiles,levels,stamps,103,focus+90,820,850)==1);
+    assert(snow_sample(edge,row)>=191&&live==2);
+    assert(visual_snow(visits,tiles,levels,stamps,103,focus,920,850)==1&&snow_sample(edge,row)==mid);
+    assert(plain_snow(visits,tiles,levels,103,0,1)==1&&!snow_visual&&snow_sample(edge,row)>=191);
+    assert(visual_snow(visits,tiles,levels,stamps,103,focus,930,850)==1&&snow_sample(edge,row)==mid);
+    assert(plain_snow(visits,tiles,levels,103,0,0)==1&&!snow_visual&&!animaltown_snow_mask());
     memset(visits->data,0,visits->length);
-    free(visual);
-    puts("Smooth snow: fractional joins, visual revisions, scrolling restoration and toggle teardown passed");
+    free(stamps);
+    puts("Smooth snow: timed steps, revisits, fractional recovery, scrolling and toggle teardown passed");
 }
 static void snow_joins_checks(DndArray *visits,DndArray *tiles,DndArray *levels){
     const int x=7,z=41,edge_x=(x+1)*4,edge_z=(z+1)*4,row=z*4+1,column=x*4+1;
