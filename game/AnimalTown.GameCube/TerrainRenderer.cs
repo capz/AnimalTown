@@ -83,6 +83,7 @@ internal sealed class TerrainRenderer : IDisposable
     internal int MaterialRevision {get;private set;}
     internal int SeasonOverride=-1;
     internal bool GroundMipmaps=true;
+    internal bool SmoothSnowTransitions;
     internal int GroundMipDistance;
     internal bool ShowGroundMipBands {get=>mipBands.Enabled;set=>mipBands.Enabled=value;}
     internal int RenderSeason=>season;
@@ -166,8 +167,12 @@ internal sealed class TerrainRenderer : IDisposable
         }
         var snow=state.Town.Traffic.Snow;
         snow.SetWinter(season==3);
-        var visual=snow.PrepareVisuals(state.X,state.Z,out int visualOrigin,out int visualRevision);
-        if(NativeShadows.Snow(snow.Packed,state.Town.Tiles,state.Town.Elevation,visual,snow.Revision,state.Town.TerrainVersion,snow.Winter?1:0,visualOrigin,visualRevision)!=1)
+        int focus=-1,elapsedMs=0;
+        if(SmoothSnowTransitions&&snow.Winter){
+            focus=(int)state.Z*Town.Width+(int)state.X;
+            elapsedMs=unchecked((int)(Clock.Timestamp/1000));
+        }
+        if(NativeShadows.Snow(snow.Packed,state.Town.Tiles,state.Town.Elevation,focus>=0?snow.RecoveryStamps:null,snow.Revision,state.Town.TerrainVersion,snow.Winter?1:0,focus,elapsedMs,snow.SnowfallTicks)!=1)
             throw new InvalidOperationException("Snow mask native budget");
         bool upgraded=AdvanceGroundTexture();
         // The completed task and package arrays are out of the upgrade frame.

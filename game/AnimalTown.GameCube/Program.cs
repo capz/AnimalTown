@@ -381,6 +381,7 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
         // archive rather than overlap scratch geometry with resident villagers.
         UpdateWeather();terrain.RoughOcean=weather.RoughOcean(0);terrain.SeasonOverride=renderDebug.SeasonOverride;
         terrain.GroundMipmaps=renderDebug.GroundMipmaps;terrain.GroundMipDistance=renderDebug.GroundMipDistance;terrain.ShowGroundMipBands=renderDebug.ShowGroundMipBands;
+        terrain.SmoothSnowTransitions=renderDebug.SmoothSnowTransitions;
         // Indoor actors have height zero; this selects the outdoor town cache.
         RenderView.Prepare(state.X,state.Z,TerrainElevation.At(state.Town,state.X,state.Z));
         terrain.Prepare(state,room,month,villagerShadows,Clock.Timestamp+2000,cliffPreview);

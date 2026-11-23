@@ -83,7 +83,7 @@ static inline uint8_t su_pack(int shadow,int light){return (uint8_t)(((light+8)/
 #define SU_SNOW_STEPS_PER_VISIT 3
 #define SU_SNOW_FIRST_OPEN 8 /* Matches SnowWear.CenterCovered. */
 #define SU_SNOW_UNIT 16
-#define SU_SNOW_VISUAL_SIDE 49 /* Matches SnowTransitions.Side. */
+#define SU_SNOW_VISUAL_SIDE 49 /* Nearby tiles plus the rim sampling margin. */
 #define SU_SNOW_VISUAL_BYTES (SU_SNOW_VISUAL_SIDE*SU_SNOW_VISUAL_SIDE)
 typedef struct {
     const uint8_t *packed,*visual;
