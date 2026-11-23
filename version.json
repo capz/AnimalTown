@@ -317,7 +317,7 @@
       "lines": [
         "Preview smoother snow tracks in Debug / testing.",
         "Footprints ease into their next depth as you cross a tile.",
-        "Active snowfall gradually narrows close tracks over one minute.",
+        "Active snowfall gradually narrows nearby tracks over one minute.",
         "The preview starts off each session and uses the existing snow texture."
       ]
     }
