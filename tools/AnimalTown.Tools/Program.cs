@@ -26,7 +26,7 @@ static class Program
             else if(args[0]=="repack-textures")TextureRepacker.Command(args);
             else if(args[0]=="town-preview")TownGenerationPreview.Run(args[2],int.Parse(args[3]),args.Length>4?int.Parse(args[4]):1);
             else if(args[0]=="terrain-primitives")TerrainPrimitiveAssets.Build(Root,args.Length>2?int.Parse(args[2]):128);
-            else if(args[0]=="repack-check")TextureRepackerChecks.Run(Root);
+            else if(args[0]=="repack-check"){TextureRepackerChecks.Run(Root);ActorPreparationChecks.Run(Root);}
             else if(args[0]=="audit")Audit();
             else if(args[0]=="prepare")Prepare(args[2],args[3],args.Length>4&&args[4]=="--villager-runtime");
             else if(args[0]=="prune-model-variants")ModelVariants.Prune(Root);
@@ -72,7 +72,7 @@ static class Program
         }
         Directory.CreateDirectory(Path.Combine(Root,"out"));File.WriteAllText(Path.Combine(Root,"out/asset-audit.json"),JsonSerializer.Serialize(entries,new JsonSerializerOptions{WriteIndented=true}));Console.WriteLine("Audited "+entries.Count+" GLBs");
     }
-    static void Prepare(string input,string output,bool villagerRuntime)
+    internal static void Prepare(string input,string output,bool villagerRuntime=false)
     {
         byte[] b=File.ReadAllBytes(input);int len=BitConverter.ToInt32(b,12);
         var j=JsonNode.Parse(b.AsSpan(20,len))!;

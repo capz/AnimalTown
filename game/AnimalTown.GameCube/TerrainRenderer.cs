@@ -185,11 +185,13 @@ internal sealed class TerrainRenderer : IDisposable
         if(flat<0){groundRing?.Dispose();groundRing=null;}
         if(invalid){
             resetting=true;
-            if(archive!=null&&!archive.TryDispose())return;
-            archive=null;
+            if(archive!=null){
+                if(!legacy&&!nextLegacy){if(!archive.TryReset())return;}
+                else{if(!archive.TryDispose())return;archive=null;}
+            }
             for(int i=0;i<sections.Length;i++){sections[i]?.Dispose();sections[i]=null;}
             stream.Reset();legacy=nextLegacy;
-            if(!legacy){archive=new TerrainArchive();archive.Reset();}
+            if(!legacy&&archive==null){archive=new TerrainArchive();archive.Reset();}
             if(cachedTown!=state.Town)ReleasePaths();
             cachedTown=state.Town;cachedTerrainVersion=state.Town.TerrainVersion;
             resetting=false;

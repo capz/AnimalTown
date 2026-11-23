@@ -9,7 +9,7 @@ internal sealed partial class TownGame
     private readonly TownDaylight daylight=new TownDaylight();
     private readonly DebugWeather weather=new DebugWeather();
     private bool snowSessionStarted;
-    partial void RecordFallFootstep(float beforeX,float beforeZ,bool running);
+    partial void RecordFallFootstep(float beforeX,float beforeZ);
 
     internal void Step(ControllerState pad)
     {
@@ -40,7 +40,7 @@ internal sealed partial class TownGame
             {
                 facingYaw=PlayerMovement.Yaw(dx,dz);PlayerMovement.Target(dx,dz,out faceX,out faceZ);
                 int clip=pad.B.IsHeld?1:0;moveClip=clip;running=clip==1&&(state.X!=beforeX||state.Z!=beforeZ);desiredPlayerSpeed=1.05f;
-                RecordFallFootstep(beforeX,beforeZ,running);
+                RecordFallFootstep(beforeX,beforeZ);
             }
         }
         // Menus own player input, never the live town simulation. Only the

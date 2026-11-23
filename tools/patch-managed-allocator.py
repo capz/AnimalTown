@@ -17,7 +17,7 @@ assert text[start:end].count('rebuild_free_list(heap);')==1
 source.write_text(text[:start]+'#include "native-managed-allocator.inc"\n\n'+text[end:])
 
 here=Path(__file__).resolve().parent
-for name in ('native-managed-allocator.inc','native-frame-counters.h','native-terrain-mesh.inc','native-terrain-archive.inc'):
+for name in ('native-managed-allocator.inc','native-frame-counters.h','native-terrain-mesh.inc','native-terrain-archive.inc','native-mesh-diagnostics.inc'):
     shutil.copyfile(here/name,root/'include'/name)
 shutil.copyfile(here/'native-frame-counters.c',root/'source/animaltown_frame_counters.c')
 # Retain exact resident geometry/skin/animation while dropping source textures.
@@ -61,6 +61,44 @@ text=text.replace('dnd_draw_backend_flush(r->data,count,0);return 0;','dnd_draw_
 replace('dnd_draw_backend_flush(r->data,r->bytes,2);return 0;', 'dnd_draw_backend_flush(r->data,r->bytes,2);TOWN_COUNT(TOWN_TEXTURE_UPDATES);return 0;')
 replace('mesh_color(r);dnd_draw_backend_flush(r->data,r->bytes,0);dnd_draw_backend_mesh_changed();return 0;', 'mesh_color(r);dnd_draw_backend_flush(r->data,r->bytes,0);dnd_draw_backend_mesh_changed();TOWN_COUNT(TOWN_MESH_UPDATES);return 0;')
 replace('#include "dnd_mesh_streams.inc"','#include "native-terrain-mesh.inc"\n#include "native-terrain-archive.inc"\n#include "dnd_mesh_streams.inc"')
+# A failed Mesh token otherwise collapses invalid data, frame misuse and MEM1
+# exhaustion into one managed message. Keep each pinned guard and its result;
+# only the failing branches emit evidence (including the allocator's reason).
+replace('static DndDrawVertex staging[768];','static DndDrawVertex staging[768];\n#include "native-mesh-diagnostics.inc"')
+replace('static int create(int kind,int bytes,int alignment) {',
+        'static int create(int kind,int bytes,int alignment) {\n    town_mesh_malloc_failed=0;')
+replace('if(dnd_raw_depth() || bytes<=0 || bytes>BUDGET-total_bytes || alignment<32 || alignment>4096 || (alignment&(alignment-1))) return 0;',
+'''if(dnd_raw_depth())return town_mesh_resource_failure(kind,"raw-scope",bytes);
+    if(bytes<=0)return town_mesh_resource_failure(kind,"allocation-size",bytes);
+    if(bytes>BUDGET-total_bytes)return town_mesh_resource_failure(kind,"draw-budget",bytes);
+    if(alignment<32 || alignment>4096 || (alignment&(alignment-1)))return town_mesh_resource_failure(kind,"alignment",bytes);''')
+replace('if(!base) return 0;', 'if(!base){town_mesh_malloc_failed=kind==MESH;return town_mesh_resource_failure(kind,"malloc",bytes);}')
+start=text.index('static int create(int kind,int bytes,int alignment) {')
+end=text.index('\n}',start)
+body=text[start:end]
+assert body.count('    return 0;')==1, 'Pinned resource exhaustion hook changed'
+text=text[:start]+body.replace('    return 0;','    return town_mesh_resource_failure(kind,"resource-slots",bytes);')+text[end:]
+replace('int dnd_mesh_create_range(DndArray *a,int n,DndArray *indices,int m,int format,int dynamic) {',
+        'int dnd_mesh_create_range(DndArray *a,int n,DndArray *indices,int m,int format,int dynamic) {\n    town_mesh_malloc_failed=0;')
+replace('if(dnd_device_active() || !a || n<1 || n>65535 || !array_range(a,0,n) || m<0 || (!indices && m) || !vertex_size(format)) return 0;',
+'''if(dnd_device_active())return town_mesh_failure("active-frame",n,m,format,-1);
+    if(!a || n<1 || n>65535 || !array_range(a,0,n))return town_mesh_failure("vertex-range",n,m,format,-1);
+    if(m<0 || (!indices && m))return town_mesh_failure("index-range-envelope",n,m,format,-1);
+    if(!vertex_size(format))return town_mesh_failure("vertex-format",n,m,format,-1);''')
+replace('if((m?m:n)%3 || m>3*65535 || (indices && (!array_range(indices,0,m)||indices->element_size!=2))) return 0;',
+'''if((m?m:n)%3 || m>3*65535)return town_mesh_failure("triangle-count",n,m,format,-1);
+    if(indices && (!array_range(indices,0,m)||indices->element_size!=2))return town_mesh_failure("index-layout",n,m,format,-1);''')
+replace('int token=create(MESH,n*(int)sizeof(DndDrawVertex)+m*2,32);Resource *r=find(token,MESH);if(!r)return 0;',
+'''int token=create(MESH,n*(int)sizeof(DndDrawVertex)+m*2,32);Resource *r=find(token,MESH);
+    if(!r)return town_mesh_failure("mesh-resource",n,m,format,n*(int)sizeof(DndDrawVertex)+m*2);''')
+replace('if(!vertices(a,0,n,format,(DndDrawVertex*)r->data)){release(r);return 0;}',
+'''if(!vertices(a,0,n,format,(DndDrawVertex*)r->data)){
+        release(r);return town_mesh_failure(a->element_size!=(uint32_t)vertex_size(format)?"vertex-layout":"non-finite-vertex",n,m,format,n*(int)sizeof(DndDrawVertex)+m*2);
+    }''')
+replace('if(m){memcpy(index,indices->data,(size_t)m*2);for(int i=0;i<m;i++)if(index[i]>=n){release(r);return 0;}}',
+'''if(m){memcpy(index,indices->data,(size_t)m*2);for(int i=0;i<m;i++)if(index[i]>=n){
+        release(r);return town_mesh_failure("index-out-of-range",n,m,format,n*(int)sizeof(DndDrawVertex)+m*2);
+    }}''')
 resource.write_text(text)
 
 generated=root/'source/generated_program.c'
@@ -71,6 +109,7 @@ if generated.exists():
         'Snapshot':(1,'animaltown_frame_snapshot((DndArray*){0},dnd_value_heap);return 0;'),
         'Service':(0,'animaltown_frame_service();return 0;'),
         'Memory':(1,'animaltown_frame_memory((DndArray*){0},dnd_value_heap);return 0;'),
+        'TakeMeshAllocationFailure':(0,'dnd_async_require_application_thread();return animaltown_take_mesh_allocation_failure();'),
         'Dump':(5,'animaltown_frame_dump((DndArray*){0},(int){1},(DndArray*){2},(uint32_t){3},(uint32_t){4});return 0;'),
         'DumpMetrics':(6,'animaltown_frame_dump_metrics((DndArray*){0},(DndArray*){1},(DndArray*){2},(int){3},(int){4},(uint32_t){5});return 0;'),
         'Create':(4,'return dnd_mesh_create_range((DndArray*){0},(int){1},(DndArray*){2},(int){3},2,0);'),
@@ -81,10 +120,12 @@ if generated.exists():
         m=matches[0];args=re.findall(r'intptr_t (\w+)',m[2]);assert len(args)==count
         text=text[:m.start()]+'intptr_t '+m[1]+'('+m[2]+') { '+body.format(*args)+' }'+text[m.end():]
     text='''#include "dnd_draw.h"
+#include "dnd_async.h"
 extern void animaltown_frame_reset(int,DndManagedHeap*);
 extern void animaltown_frame_snapshot(DndArray*,DndManagedHeap*);
 extern void animaltown_frame_service(void);
 extern void animaltown_frame_memory(DndArray*,DndManagedHeap*);
+extern int animaltown_take_mesh_allocation_failure(void);
 extern void animaltown_frame_dump(DndArray*,int,DndArray*,uint32_t,uint32_t);
 extern void animaltown_frame_dump_metrics(DndArray*,DndArray*,DndArray*,int,int,uint32_t);
 extern int animaltown_mesh_recycle(int,DndArray*,int,DndArray*,int);
@@ -166,6 +207,16 @@ extern int animaltown_terrain_cache(int);
     console_cold=r'(?m)^(intptr_t dnd_value_AnimalTown_GameCube_(?:CardArchive|TownCardRecords|CardSaveStorage|SaveCards|ProfilePicker|ProfilePickerUi|OnboardingFlow|OnboardingUi|TownSession|OfflineTravelCards|OfflineTravelRecovery|DevConfigStorage|UserOptionsStorage|TitleScreen|TownGame_(?:InitializeJobs|JobNpcName|JobPlayerName|JobTitle|JobDescription|JobSay|ResetJobConversation|CloseJobDialogue|TryJobConversation|ShowJobOffer|JobInput|OpenJobLog|RefreshJobRows|OpenJobSelection|JobItemName|FindBoundJob|DrawJobUi|DrawMailUi|DrawTravelUi|MailUiInput|OpenMail|RefreshMail|Compose|Send|ReadJobMail|TakeMail|DiscardMail|OpenNotice|RefreshNotice|OpenTravel|RefreshTravel|ExecuteTravel|TravelInput|SaveFromMenu)_)[^;\n]*\) \{)'
     text,console_count=re.subn(console_cold,r'__attribute__((noinline,optimize("Os"))) \1',text)
     assert console_count>=60, 'Cold console transaction boundaries changed'
+    # Custody and text entry run only on explicit interactions. Keep their
+    # generated value-copy code compact too: code occupies the same MEM1 as
+    # animated vertex buffers. No simulation, drawing or residency loop changes.
+    custody=r'(?m)^(intptr_t dnd_value_AnimalTown_Domain_AnimalTown_(?:TownItemActions|TownItemActor|TownLostAndFound|TownRecoveryRecord|KobanSite)_[^;\n]*\) \{)'
+    text,custody_count=re.subn(custody,r'__attribute__((noinline,optimize("Os"))) \1',text)
+    if 'dnd_type_AnimalTown_TownLostAndFound' in text:
+        assert custody_count>=30, 'Cold custody function boundaries changed'
+    entry=r'(?m)^(intptr_t dnd_value_AnimalTown_GameCube_TownGame_(?:KeyboardInput|DrawTextEntry)_[^;\n]*\) \{)'
+    text,entry_count=re.subn(entry,r'__attribute__((noinline,optimize("Os"))) \1',text)
+    print('Custody/text entry: '+str(custody_count+entry_count)+' interaction functions compiled for size')
     # Path routing/tessellation runs at generation or terrain bake, not during
     # normal travel. Compact its AOT text instead of spending scarce MEM1 on O3
     # unrolling. The residency pump and drawing retain gameplay optimization.

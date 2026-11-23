@@ -57,6 +57,11 @@ internal sealed partial class TerrainArchive
         Dolphin.Diagnostics.DebugOverlay.WriteLine("ANIMALTOWN TERRAIN RESET READY");
         warm=null;Array.Clear(bound,0,bound.Length);baked=half=0;building=collect=selecting=presentable=suspended=restoreMarkerPending=saveResumePending=false;revision=-1;selection.Reset();
     }
+    internal bool TryReset()
+    {
+        if(NativeTerrain.CancelBind()!=1)return false;
+        Reset();return true;
+    }
     internal bool TryDispose()
     {
         if(NativeTerrain.CancelBind()!=1)return false;

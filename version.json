@@ -257,6 +257,15 @@
         "Red B marks the back or close action.",
         "Sold-out displays and empty pockets show the close prompt."
       ]
+    },
+    {
+      "id": "fall-leaf-movement-speed",
+      "lines": [
+        "Kick up autumn leaves while walking normally or running.",
+        "Running uses the same three-leaf footstep effect as normal walking.",
+        "Gentle movement below half walking speed emits no new leaves.",
+        "The effect reuses its existing atlas and bounded particle buffer."
+      ]
     }
   ]
 }

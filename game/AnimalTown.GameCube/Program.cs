@@ -650,10 +650,10 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
     }
     private bool FoliageScene=>room==0&&session.Draft==null&&waterInspection==0&&!cliffPreview;
     private float FoliageSeconds()=>(Clock.Timestamp-sessionStart)*.000001f;
-    partial void RecordFallFootstep(float beforeX,float beforeZ,bool running)
+    partial void RecordFallFootstep(float beforeX,float beforeZ)
     {
         if(screen=="world"&&FoliageScene&&terrain.SeasonAt(month,renderDebug.SeasonOverride)==2)
-            foliage.TrackStep(state.Town,beforeX,beforeZ,state.X,state.Z,FoliageSeconds(),running);
+            foliage.TrackStep(state.Town,beforeX,beforeZ,state.X,state.Z,FoliageSeconds());
     }
     private void PrepareFoliage(int tint)
     {
