@@ -38,19 +38,18 @@ Always run the cleanup command after success or failure. Packaging requires clea
 game and backend builds of the same commit; local source edits can still be
 checked with the independent `game` or `server` target before committing.
 
-The default `all` target:
+The default `all` target runs the selected host suites, creates the NKit ISO and
+standalone Depot app, builds the backend, and prepares the release files locally.
+The CI workflow runs the same work in three stages:
 
-1. Converts all supplied models, fonts, icons and seasonal terrain.
-2. Runs terrain import, gameplay and native memory-card regression checks.
-3. Compiles the disc and standalone SD app profiles to PowerPC, verifies the pinned SDK apploader image, produces and validates the
-   bootable NKit ISO and Dolphin Depot app ZIP, including title/commit/banner and save artwork. Full-size
-   source and round-trip images are temporary and removed after verification.
-4. Independently publishes the .NET 10 backend and exercises it against PostgreSQL.
-5. Prepares a direct NKit ISO download, `AnimalTown-VERSION-depot.zip`, separate backend
-   ZIP and compiled-tools ZIP. Revisions, SHA-256 checksums, banners, updater
-   helpers and captures are bundled under `release/` in the Depot ZIP. Only
-   ZIP/ISO files and the compact `update.json` feed are uploaded; no source kits.
-   Disc images have no ZIP wrappers.
+1. **Tests** runs policy, selected host suites, and native fixtures. It prepares a
+   bootable console candidate for Dolphin and retains the selected captures.
+2. **Build** packages that exact ISO and Depot app with the backend, offline
+   tools, release reports, and update feed.
+3. **Release** verifies the prepared files and uploads them to GitHub Releases.
+
+The build keeps only the compact NKit ISO. The temporary source and round-trip
+ISOs are deleted after verification.
 
 Outputs remain under the mounted checkout's `out/`. CI then publishes these
 packages to GitHub Releases. The source SHA tag identifies the image; `BUILD.txt`

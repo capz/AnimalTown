@@ -1,4 +1,4 @@
-param([string]$Root,[string]$NativeDirectory='out/native')
+param([string]$Root,[string]$NativeDirectory='out/native',[switch]$SkipTests)
 $ErrorActionPreference='Stop'
 $nativeRoot=[IO.Path]::GetFullPath((Join-Path $Root $NativeDirectory))
 if(!$nativeRoot.StartsWith([IO.Path]::GetFullPath($Root).TrimEnd([IO.Path]::DirectorySeparatorChar)+[IO.Path]::DirectorySeparatorChar,[StringComparison]::Ordinal)){throw 'Native bundle must stay inside the workspace'}
@@ -6,7 +6,7 @@ $generatedPath=Join-Path $nativeRoot 'source/generated_program.c'
 # Forward sparse acceptance markers before the SDK's overlay truncates them.
 & python3 (Join-Path $Root 'tools/patch-residency-trace.py') $nativeRoot
 if($LASTEXITCODE){throw 'Pinned residency trace bridge patch failed'}
-if($IsLinux){
+if($IsLinux -and !$SkipTests){
     foreach($target in @('host','gekko')){
         $check=Join-Path $Root "out/native-residency-trace-$target-check"
         [string[]]$traceFlags=@()
@@ -23,7 +23,7 @@ $cardSource=[IO.File]::ReadAllText($cardBlocks)
 if(([regex]::Matches($cardSource,'page>256|count>256')).Count -ne 2){throw 'Pinned card-container bounds changed'}
 $cardSource=$cardSource.Replace('page>256','page>2048').Replace('count>256','count>2048')
 [IO.File]::WriteAllText($cardBlocks,$cardSource)
-if($IsLinux){
+if($IsLinux -and !$SkipTests){
     $check=Join-Path $Root 'out/native-job-card-growth-check'
     & cc -std=c11 -Wall -Wextra -Werror "-I$(Join-Path $nativeRoot 'include')" (Join-Path $Root 'tests/native-job-card-growth.c') -o $check
     if($LASTEXITCODE){throw 'Extended card block bounds compilation failed'}
@@ -221,7 +221,7 @@ Copy-Item (Join-Path $Root 'tools/native-point-lights-gx.inc') (Join-Path $nativ
 Copy-Item (Join-Path $Root 'tools/native-point-lights.h') (Join-Path $nativeRoot 'source/native-point-lights.h') -Force
 Copy-Item -LiteralPath (Join-Path $Root 'tools/native-rim.inc') -Destination (Join-Path $nativeRoot 'source/animaltown_rim.inc') -Force
 Copy-Item -LiteralPath (Join-Path $Root 'tools/native-rim-policy.h') -Destination (Join-Path $nativeRoot 'source/native-rim-policy.h') -Force
-if($IsLinux){
+if($IsLinux -and !$SkipTests){
     & cc -std=c11 -Wall -Wextra -Werror "-I$(Join-Path $Root 'tools')" (Join-Path $Root 'tests/native-rim-policy.c') -o (Join-Path $Root 'out/native-rim-policy-check')
     if($LASTEXITCODE){throw 'Native rim policy compilation failed'}
     & (Join-Path $Root 'out/native-rim-policy-check')
@@ -286,7 +286,7 @@ $resourceSource=$resourceSource.Replace('#define SLOTS 512',"#include `"native-r
 [IO.File]::WriteAllText($resourcePath,$resourceSource)
 Copy-Item -LiteralPath (Join-Path $Root 'tools/native-resource-limits.h') -Destination (Join-Path $nativeRoot 'include/native-resource-limits.h') -Force
 Copy-Item -LiteralPath (Join-Path $Root 'tools/native-frame-counters.h') -Destination (Join-Path $nativeRoot 'include/native-frame-counters.h') -Force
-if($IsLinux){
+if($IsLinux -and !$SkipTests){
     $resourceCheck=Join-Path $Root 'out/native-resource-slots-check'
     & cc -std=c11 -Wall -Wextra -Werror -ffunction-sections -fdata-sections "-I$(Join-Path $nativeRoot 'include')" (Join-Path $Root 'tests/native-resource-slots.c') $resourcePath '-Wl,--gc-sections' -lm -o $resourceCheck
     if($LASTEXITCODE){throw 'Native resource-slot fixture compilation failed'}
@@ -341,7 +341,7 @@ $storageSource=$storageSource.Replace('fail(-rc, "Memory card write failed.");',
 [IO.File]::WriteAllText($storagePath,$storageSource)
 & python3 (Join-Path $Root 'tools/patch-managed-allocator.py') $nativeRoot
 if($LASTEXITCODE){throw 'Pinned allocation/frame profiling patch failed'}
-if($IsLinux){
+if($IsLinux -and !$SkipTests){
     foreach($fixture in @('managed-allocator','mesh-allocation','terrain-recycle','terrain-archive','terrain-reset','profile')){
         $check=Join-Path $Root "out/native-$fixture-check"
         [string[]]$extra=@()
@@ -362,7 +362,7 @@ if($IsLinux){
 
 & python3 (Join-Path $Root 'tools/patch-face-culling.py') $nativeRoot
 if($LASTEXITCODE){throw 'Pinned backface culling patch failed'}
-if($IsLinux){
+if($IsLinux -and !$SkipTests){
     & cc -std=c11 -Wall -Wextra -Werror "-I$(Join-Path $Root 'tools')" (Join-Path $Root 'tests/native-face-culling.c') -o (Join-Path $Root 'out/native-face-culling-check')
     if($LASTEXITCODE){throw 'Face culling fixture compilation failed'}
     & (Join-Path $Root 'out/native-face-culling-check')
@@ -371,7 +371,7 @@ if($IsLinux){
 
 # Exercise the SDK's outgoing libogc argv handoff. The game no longer reads
 # incoming loader arguments to choose an update image.
-if($IsLinux){
+if($IsLinux -and !$SkipTests){
     foreach($fixture in @('launch-arguments','launch-handoff')){
         $check=Join-Path $Root "out/native-$fixture-check"
         [string[]]$extra=@();if($fixture -eq 'launch-handoff'){$extra=@((Join-Path $nativeRoot 'source/dol.c'))}
@@ -384,7 +384,7 @@ if($IsLinux){
 
 & python3 (Join-Path $Root 'tools/patch-ui-noise.py') $nativeRoot
 if($LASTEXITCODE){throw 'Pinned UI noise bridge patch failed'}
-if($IsLinux){
+if($IsLinux -and !$SkipTests){
     $uiNoiseCheck=Join-Path $Root 'out/native-ui-noise-check'
     & cc -std=c11 -Wall -Wextra -Werror -ffunction-sections -fdata-sections "-I$(Join-Path $nativeRoot 'include')" "-I$(Join-Path $nativeRoot 'source')" (Join-Path $Root 'tests/native-ui-noise.c') '-Wl,--gc-sections' -lm -o $uiNoiseCheck
     if($LASTEXITCODE){throw 'UI grain fixture compilation failed'}
@@ -392,7 +392,7 @@ if($IsLinux){
     if($LASTEXITCODE){throw 'UI grain checks failed'}
 }
 
-if($IsLinux){
+if($IsLinux -and !$SkipTests){
     $uiNoiseGxCheck=Join-Path $Root 'out/native-ui-noise-gx-check'
     & cc -std=c11 -Wall -Wextra -Werror "-I$(Join-Path $nativeRoot 'include')" (Join-Path $Root 'tests/native-ui-noise-gx.c') -lm -o $uiNoiseGxCheck
     if($LASTEXITCODE){throw 'UI grain GX fixture compilation failed'}
@@ -402,7 +402,7 @@ if($IsLinux){
 
 & python3 (Join-Path $Root 'tools/patch-water-probe.py') $nativeRoot
 if($LASTEXITCODE){throw 'Pinned water draw probe patch failed'}
-if($IsLinux){
+if($IsLinux -and !$SkipTests){
     $waterProbeCheck=Join-Path $Root 'out/native-water-probe-check'
     & cc -std=c11 -Wall -Wextra -Werror "-I$(Join-Path $nativeRoot 'include')" (Join-Path $Root 'tests/native-water-probe.c') -lm -o $waterProbeCheck
     if($LASTEXITCODE){throw 'Water probe forwarding fixture compilation failed'}

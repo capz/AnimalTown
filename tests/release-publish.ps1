@@ -2,7 +2,7 @@ $ErrorActionPreference='Stop'
 $tokens=$null;$errors=$null
 $ast=[Management.Automation.Language.Parser]::ParseFile((Join-Path $PSScriptRoot '../tools/publish-release.ps1'),[ref]$tokens,[ref]$errors)
 if($errors){throw 'Publisher syntax is invalid'}
-foreach($name in @('InvokeGh','Read-ReleaseMetadata','Assert-BinaryArchive','Assert-ReleaseVersionMetadata','Assert-ReleaseAsset','Assert-ReleaseAssetSet','Copy-DaylightEvidence','Copy-JobEvidence','Get-ReleaseNotes')){
+foreach($name in @('InvokeGh','Read-ReleaseMetadata','Assert-BinaryArchive','Assert-ReleaseVersionMetadata','Assert-ReleaseAsset','Assert-ReleaseAssetSet','Copy-DaylightEvidence','Copy-JobEvidence','Get-ReleaseNotes','Get-PreparedReleaseReceipt','Assert-PreparedRelease')){
     $function=$ast.Find({param($node) $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq $name},$true)
     . ([scriptblock]::Create($function.Extent.Text))
 }
@@ -82,6 +82,17 @@ try{
     $capture=Join-Path $directory 'daylight';$reports=Join-Path $directory 'reports'
     New-Item -ItemType Directory -Path $capture,$reports|Out-Null
     Copy-DaylightEvidence $capture $reports ('a'*40) '1.2.3' 'v1.2.3' 'AnimalTown-1.2.3.nkit.iso' ('b'*64)
+    $preparedFiles=@((Join-Path $directory 'prepared.iso'),(Join-Path $directory 'prepared.zip'))
+    foreach($file in $preparedFiles){[IO.File]::WriteAllText($file,'built bytes')}
+    $receiptPath=Join-Path $directory 'prepared-release.json'
+    Reject {Assert-PreparedRelease $identity $preparedFiles $receiptPath} 'Publication requires a prepared package receipt'
+    $receipt=Get-PreparedReleaseReceipt $identity $preparedFiles
+    [IO.File]::WriteAllText($receiptPath,(ConvertTo-Json -InputObject $receipt -Depth 4))
+    Assert-PreparedRelease $identity $preparedFiles $receiptPath
+    Assert $true 'Release accepts the exact files that Build prepared'
+    [IO.File]::AppendAllText($preparedFiles[1],'unexpected bytes')
+    Reject {Assert-PreparedRelease $identity $preparedFiles $receiptPath} 'Publication refuses a modified build asset'
+
     Assert (@(Get-ChildItem $reports).Count -eq 0) 'Unselected daylight captures remain optional'
     $evidence=@{schema=1;commit=('a'*40);version='1.2.3';tag='v1.2.3';isoName='AnimalTown-1.2.3.nkit.iso';isoSha256=('b'*64)}
     $build=Join-Path $capture 'daylight-build.json';$evidence|ConvertTo-Json|Set-Content $build

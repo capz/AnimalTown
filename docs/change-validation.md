@@ -62,16 +62,18 @@ remain in the next plan. Renames include both old and new paths. Missing history
 an invalid base or manual workflow dispatch selects full validation. Reruns exclude
 the current commit's own tag when finding the preceding release.
 
-Releases still build the full bootable ISO, backend and tools from the same clean
-commit, perform real asset imports/texture audits and verify the ISO structure.
-These are build/delivery checks, independent of the selected unit/integration
-suites. When backend behavior is unaffected, CI compiles/packages the backend
-without starting PostgreSQL. No executable reuse from a different commit occurs.
+The release workflow runs **Tests → Build → Release**. Tests runs the selected
+host suites first and creates a bootable console candidate for the selected
+Dolphin scenarios. Build uses that same ISO and Depot app, compiles the backend
+and tools, and prepares the release files. Release checks the prepared files
+against their recorded commit and hashes before uploading. The game, backend
+and tools come from the same clean commit. PostgreSQL starts only when backend
+integration tests are selected.
 
 Local menu/backend/docs-only checks do not restore the game SDK or copy native
 sources. Native archive/recycling checks regenerate the AOT C source bundle and
 run `patch-native.ps1` host fixtures; they do not compile a console executable.
-Release builds already perform those patch fixtures during their normal build.
+The CI Tests stage runs those fixtures against the console candidate.
 
 Every release includes schema 2 `validation-plan.json` with its source commit,
 comparison base, changed paths and selected checks. Its SHA-256 is in SHA256SUMS.txt. Stale

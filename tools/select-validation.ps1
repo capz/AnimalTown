@@ -1,4 +1,4 @@
-param([string]$BaseRef='',[switch]$Full,[switch]$ForceRelease,[switch]$WorkingTree,[string]$OutputPath='out/validation-plan.json',[string]$GitHubOutput='')
+param([string]$BaseRef='',[switch]$Full,[switch]$ForceRelease,[switch]$WorkingTree,[string]$OutputPath='out/validation-plan.json',[string]$GitHubOutput='',[switch]$SkipPolicyChecks)
 $ErrorActionPreference='Stop'
 $PSNativeCommandUseErrorActionPreference=$false
 Set-Location (Split-Path $PSScriptRoot -Parent)
@@ -17,5 +17,5 @@ $parent=Split-Path $OutputPath -Parent;if($parent){New-Item -ItemType Directory 
 [IO.File]::WriteAllText([IO.Path]::GetFullPath($OutputPath,(Get-Location).Path),($plan|ConvertTo-Json -Depth 5)+"`n")
 if($GitHubOutput){Add-Content -LiteralPath $GitHubOutput -Value ('release='+$plan.release.ToString().ToLowerInvariant())}
 Write-Host "Validation: managed=$($plan.managed -join ',') rendering=$($plan.rendering -join ',') tooling=$($plan.tooling -join ',') native=$($plan.native -join ',') backend=$($plan.backend); release=$($plan.release)"
-if($plan.policy){& ./tests/validation-plan.ps1;& ./tests/validation-selection.ps1;& ./tests/versioning.ps1}
+if($plan.policy -and !$SkipPolicyChecks){& ./tests/validation-plan.ps1;& ./tests/validation-selection.ps1;& ./tests/versioning.ps1}
 $global:LASTEXITCODE=0
