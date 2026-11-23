@@ -3,7 +3,7 @@
 internal static class NativeShadows
 {
     internal static int Init(byte[] atlas,byte[] circle,byte[] clouds)=>throw new System.PlatformNotSupportedException("Native shadow union bridge required");
-    internal static int Snow(byte[] visits,int revision,int winter)=>throw new System.PlatformNotSupportedException("Native snow coverage bridge required");
+    internal static int Snow(byte[] visits,byte[] tiles,byte[] elevation,int revision,int terrainRevision,int winter)=>throw new System.PlatformNotSupportedException("Native snow coverage bridge required");
     internal static int Cloud(float[] offset)=>throw new System.PlatformNotSupportedException("Native cloud shadow bridge required");
     // A null layout with count zero updates only the global gain.
     internal static int Lights(float[]? sources,int count,int strength)=>throw new System.PlatformNotSupportedException("Native light map bridge required");

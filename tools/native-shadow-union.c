@@ -10,28 +10,32 @@
 #endif
 static SuState *shadows;
 static int shadow_storage;
-static int snow_storage,snow_revision=-1;
+static int snow_storage,snow_revision=-1,snow_terrain_revision=-1;
 static uint32_t snow_publication;
 static uint8_t snow_visits[SU_SNOW_PACKED];
 static uint8_t *snow_pixels;
 const uint8_t *animaltown_snow_mask(void){return snow_pixels;}
 static int snow_release(void){
     if(snow_storage&&dnd_draw_release(snow_storage)<0)return 0;
-    snow_storage=0;snow_pixels=NULL;snow_revision=-1;
+    snow_storage=0;snow_pixels=NULL;snow_revision=snow_terrain_revision=-1;
     memset(snow_visits,0,sizeof(snow_visits));
     return 1;
 }
-int animaltown_shadows_snow(DndArray *visits,int revision,int winter){
+static int snow_array(const DndArray *array,unsigned length){
+    return array&&!array->elements_are_references&&array->element_size==1&&array->length==length;
+}
+int animaltown_shadows_snow(DndArray *visits,DndArray *tiles,DndArray *levels,int revision,int terrain_revision,int winter){
     if(!shadows||dnd_device_active())return 0;
     if(!winter)return snow_revision<0||snow_release();
-    if(!visits||visits->elements_are_references||visits->element_size!=1||visits->length!=SU_SNOW_PACKED)return 0;
-    if(snow_revision==revision)return 1;
+    if(!snow_array(visits,SU_SNOW_PACKED)||!snow_array(tiles,SU_SNOW_PACKED*2)||!snow_array(levels,SU_SNOW_PACKED*2))return 0;
+    int terrain_changed=snow_terrain_revision!=terrain_revision;
+    if(snow_revision==revision&&!terrain_changed)return 1;
     const uint8_t *next=(const uint8_t*)visits->data;
     uint64_t dirty[SU_SNOW_HEIGHT+1]={0};
     int changed=0;
     for(int z=0;z<SU_SNOW_HEIGHT;z++)for(int x=0;x<SU_SNOW_BLOCKS;x++){
         int at=z*SU_SNOW_BLOCKS+x;
-        if(snow_visits[at]==next[at])continue;
+        if(snow_visits[at]==next[at]&&(!terrain_changed||!next[at]))continue;
         /* Each packed byte maps to one block. Include neighbors for the rim. */
         uint64_t block=UINT64_C(1)<<x,blocks=block|(block<<1)|(block>>1);
         dirty[z]|=blocks;dirty[z+1]|=blocks;
@@ -54,7 +58,7 @@ int animaltown_shadows_snow(DndArray *visits,int revision,int winter){
         }
         for(int z=0;z<=SU_SNOW_HEIGHT;z++)for(int x=0;x<SU_SNOW_BLOCKS;x++)if(dirty[z]&(UINT64_C(1)<<x)){
             uint8_t *dest=snow_pixels+((z+1)*SU_SNOW_BLOCKS+x)*32;
-            su_snow_block(dest,next,x,z);
+            su_snow_block(dest,next,(const uint8_t*)tiles->data,(const uint8_t*)levels->data,x,z);
             dnd_draw_backend_flush(dest,32,0);
         }
         /* Dolphin samples sparse texture hashes. Update an unused leading padded row. */
@@ -64,7 +68,7 @@ int animaltown_shadows_snow(DndArray *visits,int revision,int winter){
         memcpy(snow_visits,next,sizeof(snow_visits));
         dnd_draw_backend_publish_texture();
     }
-    snow_revision=revision;
+    snow_revision=revision;snow_terrain_revision=terrain_revision;
     return 1;
 }
 extern void animaltown_shadows_model_reset(void);

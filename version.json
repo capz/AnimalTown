@@ -293,6 +293,15 @@
         "Build prepares the backend and release files after the tests pass.",
         "Release checks the prepared files and uploads them to GitHub."
       ]
+    },
+    {
+      "id": "joined-snow-cutouts",
+      "lines": [
+        "Adjacent snow cutouts now connect into continuous tracks.",
+        "Straight tracks, bends and patches keep rounded ends and shaded rims.",
+        "As snowfall refills a tile, its joins narrow and close.",
+        "The joins reuse the existing winter snow mask."
+      ]
     }
   ]
 }

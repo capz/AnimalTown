@@ -28,6 +28,14 @@ lamp textures as ordinary ground. The raised winter pass adds one visible
 grass submission and one depth binding on worn snow. Ground collision
 continues to use the original surface.
 
+Once both edge-sharing tiles expose ground, the mask extends the shallower
+cutout's cross-section between their centers. The existing rounded ends
+remain at the ends of the track. Both axes can join at bends, and a fully
+connected 2×2 patch fills its inner corner. Joins require level grass on
+the same terrace. As snowfall refills the shallower tile, the strip
+narrows and closes with it. The original mask, local dirty blocks and
+raised snow draw also handle joined cutouts.
+
 The image is from the earlier standalone raised-layer experiment. Its
 fixed impressions demonstrate the same cutout and shading used by the
 interactive layer.
