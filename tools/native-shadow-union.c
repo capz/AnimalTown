@@ -24,6 +24,11 @@ static int snow_release(void){
 static int snow_array(const DndArray *array,unsigned length){
     return array&&!array->elements_are_references&&array->element_size==1&&array->length==length;
 }
+/* Keep this revision-only raster compact. Unrolling the sampling loops costs
+ * executable space that MEM1 needs for reinstating the terrain cache. */
+#if defined(__GNUC__) && !defined(__clang__)
+__attribute__((noinline,optimize("Os")))
+#endif
 int animaltown_shadows_snow(DndArray *visits,DndArray *tiles,DndArray *levels,int revision,int terrain_revision,int winter){
     if(!shadows||dnd_device_active())return 0;
     if(!winter)return snow_revision<0||snow_release();
