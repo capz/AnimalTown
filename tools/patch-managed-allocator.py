@@ -28,6 +28,14 @@ anchor='/* Texture payloads are immutable and shared across independently loaded
 assert model.count(anchor)==1, 'Pinned model retention anchor changed'
 model=model.replace(anchor,'#include "native-building-retained.inc"\n'+anchor)
 model=model.replace('void *dnd_model_alloc_uninitialized(', '#include "native-model-memory.inc"\nvoid *dnd_model_alloc_uninitialized(',1)
+start=model.index('void *dnd_model_alloc_uninitialized(')
+end=model.index('\n}',start)
+allocation=model[start:end]
+assert allocation.count('    return NULL;')==3, 'Pinned model allocation guards changed'
+allocation=allocation.replace('if (size > UINT_MAX - 63)\n    return NULL;', 'if (size > UINT_MAX - 63) {town_model_allocation_failed("overflow",size,*used,budget);return NULL;}')
+allocation=allocation.replace('if (total > budget || *used > budget - total)\n    return NULL;', 'if (total > budget || *used > budget - total) {town_model_allocation_failed("budget",total,*used,budget);return NULL;}')
+allocation=allocation.replace('if (!p)\n    return NULL;', 'if (!p) {town_model_allocation_failed("malloc",total,*used,budget);return NULL;}')
+model=model[:start]+allocation+model[end:]
 assert model.count('  *used += total;')==1 and model.count('  *used -= p[0];')==1, 'Pinned model allocation accounting changed'
 model=model.replace('  *used += total;', '  *used += total;town_model_allocated(total);')
 model=model.replace('  *used -= p[0];', '  *used -= p[0];atomic_fetch_sub_explicit(&town_model_live,p[0],memory_order_relaxed);')

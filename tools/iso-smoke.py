@@ -125,6 +125,8 @@ def check_runtime_failure():
                   or 'MANAGED MAIN: FAILED' in line)]
     if failures:
         (root/'runtime-failure.txt').write_text('\n'.join(failures)+'\n')
+        context=[line for line in runtime_log_text().splitlines() if '[OSREPORT]' in line][-40:]
+        print('Runtime context before failure:\n'+'\n'.join(context),flush=True)
         raise AssertionError('Game runtime failure: '+failures[0])
     if '--aram-residency' in sys.argv:
         evidence=aram_residency_errors(runtime_log_text())
