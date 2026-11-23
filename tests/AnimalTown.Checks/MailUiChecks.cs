@@ -8,7 +8,7 @@ using Dolphin.Timing;
 // dialogue owners are replaced; paper/gift selection and the mail service are real.
 namespace Dolphin.Graphics
 {
-    internal readonly struct Color32 {internal Color32(int r,int g,int b) {}}
+    internal readonly struct Color32 {internal Color32(int r,int g,int b,int a=255) {} internal static Color32 White=>new Color32(255,255,255);}
 }
 internal sealed partial class TownGame
 {
