@@ -130,6 +130,22 @@ int main(void){
     start(FAIL_CACHE|FAIL_STAGE);assert(animaltown_terrain_reset(3)==-2&&report_count==1&&creates==1&&!holds);
     report(0,"cache-buffer",TA_CACHE,0,0,TA_BYTES);rolled_back();
     start(0);assert(animaltown_terrain_reset(3)==1&&animaltown_terrain_reset(0)==1&&!report_count);rolled_back();
+    /* Rebuild on a fragmented heap: no replacement one-MiB allocation is
+     * possible, but the existing cache and its exact allocation stay valid. */
+    start(0);assert(animaltown_terrain_reset(3)==1);
+    int cache=ta_cache;void *allocation=find(cache,BUFFER)->allocation;
+    faults=FAIL_CACHE|FAIL_STAGE;
+    for(int i=0;i<50;i++){
+        assert(animaltown_terrain_reset(3)==1&&ta_cache==cache&&creates==1);
+        assert(find(cache,BUFFER)->allocation==allocation&&find(cache,BUFFER)->holds==1);
+        assert(total_bytes==TA_CACHE&&ta_bytes==TA_CACHE&&ta_stage==cache);
+    }
+    faults=FAIL_ARAM;assert(animaltown_terrain_reset(3)==-2);rolled_back();
+    start(0);assert(animaltown_terrain_reset(3)==1);
+    faults=FAIL_RETAIN;assert(animaltown_terrain_reset(3)==-2);rolled_back();
+    start(0);assert(animaltown_terrain_reset(3)==1);
+    faults=FAIL_HOLD;assert(animaltown_terrain_reset(3)==-2);rolled_back();
+    start(0);assert(animaltown_terrain_reset(3)==1&&animaltown_terrain_reset(0)==1);rolled_back();
     puts("Terrain reset: shared staging lease, four failure boundaries, pre-cleanup counters, rollback and silent success/guards passed");
     return 0;
 }

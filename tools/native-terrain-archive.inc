@@ -113,17 +113,23 @@ int animaltown_terrain_reset(int count){
     if(dnd_device_active()||dnd_raw_depth()||count<0||count>TA_SECTIONS||ta_request)return -1;
     for(int i=0;i<SLOTS;i++)if(slots[i].terrain_parent)return -1;
     if(ta_stage){(void)dnd_buffer_unhold(ta_stage);ta_stage=0;}
-    if(ta_cache&&dnd_draw_release(ta_cache))return -1;
+    int reusable=0;
+    if(ta_cache){
+        Resource *cache=find(ta_cache,BUFFER);if(!cache||cache->holds)return -1;
+        if(count)reusable=ta_cache;
+        else if(dnd_draw_release(ta_cache))return -1;
+    }
     for(int i=0;i<ta_meta_count;i++)if(dnd_draw_release(ta_meta[i]))return -1;
     if(ta_store){if(dnd_aram_release(ta_store)||dnd_aram_dispose(ta_store))return -1;}
     memset(ta_first,0,sizeof(ta_first));memset(ta_triangles,0,sizeof(ta_triangles));memset(ta_used,0,sizeof(ta_used));
-    ta_store=ta_stage=ta_cache=ta_meta_count=ta_bytes=ta_tail=ta_parts=ta_completed=ta_live=ta_peak=0;
+    ta_store=ta_stage=ta_meta_count=ta_tail=ta_parts=ta_completed=ta_live=ta_peak=0;
+    ta_cache=reusable;ta_bytes=reusable?TA_CACHE:0;
     ta_bindings=ta_reads=ta_sync_reads=ta_sync_us=ta_sync_bytes=0;ta_sections=count;ta_sealed=false;
     if(!count)return 1;
-    ta_store=dnd_aram_allocate(TA_BYTES);if(!ta_store)return ta_reset_failure("aram-allocate",TA_BYTES,0);
+    ta_store=dnd_aram_allocate(TA_BYTES);if(!ta_store){ta_reset_failure("aram-allocate",TA_BYTES,0);(void)animaltown_terrain_reset(0);return -2;}
     int retained=dnd_aram_retain(ta_store);
-    if(retained){ta_reset_failure("aram-retain",TA_BYTES,retained);(void)dnd_aram_dispose(ta_store);ta_store=0;return -2;}
-    ta_cache=ta_buffer(TA_CACHE);
+    if(retained){ta_reset_failure("aram-retain",TA_BYTES,retained);(void)dnd_aram_dispose(ta_store);ta_store=0;(void)animaltown_terrain_reset(0);return -2;}
+    if(!ta_cache)ta_cache=ta_buffer(TA_CACHE);
     if(!ta_cache){ta_reset_failure("cache-buffer",TA_CACHE,0);(void)animaltown_terrain_reset(0);return -2;}
     /* The cache is unused until sealing. Borrow its first 64 KiB for DMA
      * staging so a fragmented native heap needs no second contiguous block. */
