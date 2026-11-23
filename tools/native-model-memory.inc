@@ -9,7 +9,7 @@ static void town_model_allocated(unsigned bytes){
 }
 unsigned animaltown_model_memory(int peak){return atomic_load_explicit(peak?&town_model_peak:&town_model_live,memory_order_relaxed);}
 
-static void town_model_allocation_failed(const char *reason,unsigned size,unsigned used,unsigned budget){
+static inline void town_model_allocation_failed(const char *reason,unsigned size,unsigned used,unsigned budget){
 #ifdef DND_GAMECUBE_STORAGE
     struct mallinfo memory=mallinfo();
     SYS_Report("ANIMALTOWN MODEL ALLOCATION FAILED reason %s requested %u used %u budget %u model_live %u arena_free %u malloc_free %u\n",
