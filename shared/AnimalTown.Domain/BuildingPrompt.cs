@@ -10,6 +10,7 @@ public sealed class BuildingPrompt
         var role=BuildingWorld.Role(building);
         if(role==BuildingRole.Store)return "Hearth's Store";
         if(role==BuildingRole.TownHall)return "Town Hall";
+        if(role==BuildingRole.Koban)return "Koban";
         string owner=BuildingWorld.OwnerName(state,building);
         if(owners[building]!=owner){owners[building]=owner;names[building]=owner+"'s House";entries[building]="Enter "+names[building];}
         return names[building]!;
@@ -17,6 +18,6 @@ public sealed class BuildingPrompt
     public string Enter(GameState state,int building)
     {
         Name(state,building);var role=BuildingWorld.Role(building);
-        return role==BuildingRole.Store?"Enter Hearth's Store":role==BuildingRole.TownHall?"Enter Town Hall":entries[building]!;
+        return role==BuildingRole.Store?"Enter Hearth's Store":role==BuildingRole.TownHall?"Enter Town Hall":role==BuildingRole.Koban?"Enter Koban":entries[building]!;
     }
 }

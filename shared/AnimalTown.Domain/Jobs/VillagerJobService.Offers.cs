@@ -6,7 +6,7 @@ public sealed partial class VillagerJobService
     {
         if(!ledger.Initialized||(uint)npc>=6)return new JobOutcome(JobResult.NoWork);
         var player=ledger.Player(state.ActiveProfile);var who=ledger.Npc(npc);int best=-1;
-        for(int i=0;i<ledger.Rewards.Length;i++){var r=ledger.Rewards[i];if(r.State!=JobRewardState.Owed||r.Owner!=player||r.Giver!=who||r.AutomaticReply&&Now<r.ReplyAt)continue;
+        for(int i=0;i<ledger.Rewards.Length;i++){var r=ledger.Rewards[i];if(r.State!=JobRewardState.Owed&&(r.State!=JobRewardState.Custody||r.Currency==0)||r.Owner!=player||r.Giver!=who||r.AutomaticReply&&Now<r.ReplyAt)continue;
             if(best<0||r.ResolvedAt<ledger.Rewards[best].ResolvedAt||r.ResolvedAt==ledger.Rewards[best].ResolvedAt&&JobIdentity.Compare(r.Id,ledger.Rewards[best].Id)<0)best=i;}
         if(best>=0)return new JobOutcome(JobResult.ExistingJob,ledger.Rewards[best].Id);
         int priority=99;best=-1;

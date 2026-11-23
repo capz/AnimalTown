@@ -156,17 +156,20 @@ def run(context):
             shot(capture+'-offloaded')
         return dict(source=int(source[1]),destination=int(destination[1]),direction=int(direction[1]))
     def type_text(text):
-        from collections import deque
-        keys="ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789 .,!?'\n-:;()";cursor=0
+        # Each caller has just opened a fresh, lowercase composer. Its shared
+        # chat grid wraps within rows/columns; multiline mode replaces SP with
+        # NL at index 40, while R always inserts a space without moving the key.
+        keys="qwertyuiopasdfghjkl'zxcvbnm,./0123456789\n!?-:;()@+"
+        cursor=0;uppercase=False
         for char in text:
-            target=keys.index(char);queue=deque([(cursor,[])]);seen={cursor}
-            while queue:
-                at,route=queue.popleft()
-                if at==target:break
-                for label,step in (('D_LEFT',-1),('D_RIGHT',1),('D_UP',-10),('D_DOWN',10)):
-                    next_at=(at+len(keys)+step)%len(keys)
-                    if next_at not in seen:seen.add(next_at);queue.append((next_at,route+[label]))
-            for button in route:press(button)
+            if char==' ':press('R');continue
+            capital='A'<=char<='Z';letter=capital or 'a'<=char<='z'
+            target=keys.index(char.lower() if capital else char)
+            if letter and uppercase!=capital:press('L');uppercase=capital
+            row,col=divmod(cursor,10);target_row,target_col=divmod(target,10)
+            down=(target_row-row)%5;right=(target_col-col)%10
+            for _ in range(min(down,5-down)):press('D_DOWN' if down<=2 else 'D_UP')
+            for _ in range(min(right,10-right)):press('D_RIGHT' if right<=5 else 'D_LEFT')
             press('A');cursor=target
     def profile():
         if '--jobs-runtime' in sys.argv:

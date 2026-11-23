@@ -33,7 +33,9 @@ using(var draft=NewVillager()){
     long jobNow=AnimalTown.Jobs.JobCalendar.At(2027,7,15,12);loaded.ResidentJobs.Enable(23495,jobNow);repository.Save(loaded);
     writes=card.Writes;loaded.ResidentJobs.AdvanceTo(jobNow+1);repository.Save(loaded);
     Console.WriteLine("Clock card writes: "+repository.LastWrittenRecords+" logical / "+repository.LastWrittenBytes+" encoded bytes / "+(card.Writes-writes)+" sectors");
-    Check(repository.LastWrittenRecords==4&&repository.LastWrittenBytes==1008&&card.Writes-writes==8,"a pristine job clock writes four logical records and eight verified 8 KiB sectors");
+    // Town schema 11 retains the fixed job-state extension even while pristine;
+    // the extra encoded bytes still fit the same verified card sectors.
+    Check(repository.LastWrittenRecords==4&&repository.LastWrittenBytes==1336&&card.Writes-writes==8,"a pristine job clock writes four logical records and eight verified 8 KiB sectors");
     loaded.ObserveJobAcre(0);repository.Save(loaded);writes=card.Writes;loaded.ResidentJobs.AdvanceTo(jobNow+2);repository.Save(loaded);
     Check(repository.LastWrittenRecords==4&&repository.LastWrittenBytes==1336&&card.Writes-writes==8,"an active job clock writes four logical records and eight verified 8 KiB sectors, without an economic rewrite");
     var prefixMeter=new PrefixMeter(adapter);new SaveRepository(prefixMeter).VerifyRevision(loaded);

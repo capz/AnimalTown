@@ -343,6 +343,9 @@ jobs:
           if-no-files-found: warn
       - name: Select offline job controller captures
         id: jobs_capture
+        # Mail controls need their own evidence even when an earlier rendering
+        # capture fails. Publication still requires every selected check.
+        if: ${{ !cancelled() && steps.packages.outcome == 'success' }}
         run: |
           python3 - <<'PY'
           import json, os, re
@@ -353,7 +356,7 @@ jobs:
           with open(os.environ['GITHUB_OUTPUT'],'a') as output:output.write(f'needed={str(needed).lower()}\n')
           PY
       - name: Verify actual job controls and committed results in Dolphin
-        if: steps.jobs_capture.outputs.needed == 'true'
+        if: ${{ !cancelled() && steps.packages.outcome == 'success' && steps.jobs_capture.outputs.needed == 'true' }}
         timeout-minutes: 25
         env:
           BUILD_VERSION: ${{ steps.version.outputs.version }}

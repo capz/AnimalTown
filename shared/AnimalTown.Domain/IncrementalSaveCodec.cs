@@ -56,7 +56,7 @@ internal static class IncrementalSaveCodec
             for(int i=0;i<6;i++){var v=s.Town.Residents[i];w.Int(v.X);w.Int(v.Z);w.Int((int)(v.PosX*1024));w.Int((int)(v.PosZ*1024));}
             w.Int(s.ActiveProfile);
             for(int i=0;i<6;i++){var v=s.Town.Residents[i];w.Int(v.Space);w.Int(v.JourneyBuilding);w.Int(v.JourneyPhase);w.Int(v.Dwell);w.Int((int)(v.Yaw*1024));w.Int(v.JourneyNextX);w.Int(v.JourneyNextZ);}
-            if(!s.Town.JobState.IsPristine||s.Town.Traffic.Snow.HasCheckpoint){var jobs=s.Town.JobState.Encode();w.Int(jobs.Length);for(int i=0;i<jobs.Length;i++)w.Int(jobs[i]);}
+            {var jobs=s.Town.JobState.Encode();w.Int(jobs.Length);for(int i=0;i<jobs.Length;i++)w.Int(jobs[i]);}
             if(s.Town.Jobs.Initialized){long clock=s.Town.Jobs.Watermark;w.Int(JobClockMarker);w.Int((int)clock);w.Int((int)(clock>>32));}
             return w.Finish();
         }
@@ -78,16 +78,17 @@ internal static class IncrementalSaveCodec
         }
         int n=r.Range(0,512);for(int i=0;i<n*6;i++)r.Int();
         n=r.Range(0,256);for(int i=0;i<n*6;i++)r.Int();
-        positions[at++]=r.Offset;r.Int();for(int i=0;i<BuildingWorld.Count;i++)r.Int();
+        positions[at++]=r.Offset;r.Int();for(int i=0;i<(r.Version>=11?BuildingWorld.Count:BuildingSave.ProfileBuildingCount);i++)r.Int();
         for(int i=0;i<42;i++){positions[at++]=r.Offset;r.Int();}
         if(r.Version>=6)r.Paths(new TownPaths());
         if(r.Version>=7)r.Traffic(null);
-        if(r.Version>=10)r.SnowCheckpoint(null);
+        if(r.Version>=10)r.SnowCheckpoint(null,r.Version>=11);
         if(r.Version>=8)r.Range(r.Version>=9?0:1,DaylightLocations.Count);
         // Like NPC positions, the entire job extension belongs to AT-Residents.
         // Its static projection is zero; full semantic validation runs after
         // restoring all words from the same committed reference manifest.
         if(r.Version>=9)for(int i=0;i<=Jobs.TownJobState.EncodedWordCount;i++){positions[at++]=r.Offset;r.Int();}
+        if(r.Version>=11){r.Int();r.Int();r.SkipWords(r.Range(4,TownLostAndFound.MaximumEncodedWords));}
         r.End();return positions;
     }
     internal static byte[][] Restore(Manifest m,byte[][] wire,out bool hasRuntimeClock,out long runtimeClock)

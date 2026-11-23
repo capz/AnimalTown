@@ -12,7 +12,7 @@ internal sealed class Draws : IJobRandom
 internal static class Program
 {
     private static void Require(bool value,string message){if(!value)throw new InvalidOperationException(message);}
-    private static int Main(){JobMemory.ReclaimTemporaryText=ReclaimText;CoreBudget();NativeJobBlocks.Report(0);Console.WriteLine("Native normal jobs");NormalJobs();RetrievalLimit();NativeJobBlocks.Report(1);Console.WriteLine("Native travel");TravelJobs();NativeJobBlocks.Report(2);Console.WriteLine("Native capacity");Capacity();NativeJobBlocks.Report(3);Console.WriteLine("Native full-card travel");FullCardTravel();NativeJobBlocks.Report(4);MaximumEconomy();NativeJobBlocks.Report(5);MaximumEconomyTravel();NativeJobBlocks.Report(6);ArchiveCopyBudget();NativeJobBlocks.Report(7);return 0;}
+    private static int Main(){JobMemory.ReclaimTemporaryText=ReclaimText;CoreBudget();NativeJobBlocks.Report(0);Console.WriteLine("Native normal jobs");NormalJobs();RetrievalLimit();CustodyRecovery();NativeJobBlocks.Report(1);Console.WriteLine("Native travel");TravelJobs();NativeJobBlocks.Report(2);Console.WriteLine("Native capacity");Capacity();NativeJobBlocks.Report(3);Console.WriteLine("Native full-card travel");FullCardTravel();NativeJobBlocks.Report(4);MaximumEconomy();NativeJobBlocks.Report(5);MaximumEconomyTravel();NativeJobBlocks.Report(6);ArchiveCopyBudget();NativeJobBlocks.Report(7);return 0;}
     private static void RetrievalLimit()
     {
         var s=new GameState(24){Tutorial=7};for(int n=0;n<6;n++)s.Town.Residents[n].HomeX=5+n*20;
@@ -37,6 +37,23 @@ internal static class Program
         ledger.EnsureMail();ledger.Mail.ReserveAll();int envelopes=NativeJobBlocks.Report(12);Require(ledger.Mail.Length==576&&envelopes-after<96*1024,"bounded lazy mail envelopes, excluding message bodies");Console.WriteLine("Native mail envelope bytes: "+(envelopes-after));
     }
     private static void ReclaimText()=>NativeJobBlocks.Collect();
+    private static void CustodyRecovery()
+    {
+        var host=new GameState(714);var guest=new GameState(715);host.Town.GroundCount=host.Town.PlacedCount=0;host.Town.Day=100;host.Town.Month=100;
+        for(int i=0;i<Town.Cells;i++){host.Town.Tiles[i]=(byte)Terrain.Grass;host.Town.Elevation[i]=0;}
+        Require(host.Town.AddGround(Catalog.Apple,32,40,2,91,true)&&host.Town.AddGround(16,33,40,1,92),"native custody fixtures");
+        var visitor=TownItemActor.Visitor(host,guest);var resident=TownItemActor.LocalResident(host);
+        Require(TownItemActions.RemoveGround(host,guest,visitor,0)&&TownItemActions.RemoveGround(host,guest,visitor,1),"native visitor removals allocate lazy receipts");
+        int first=host.Town.Ground[0].RecoveryId,second=host.Town.Ground[1].RecoveryId;
+        Require(TownItemActions.ClaimLost(host,host,resident,0)&&host.Find(Catalog.Apple)>=0,"native local custody claim");
+        NativeJobBlocks.Collect();
+        Require(host.Town.GroundCount==1&&host.Town.Ground[0].RecoveryId==second,"native ground swap retains its lazy receipt after collection");
+        var copy=SaveCodec.Decode(SaveCodec.Encode(host));NativeJobBlocks.Collect();
+        var local=TownItemActor.LocalResident(copy);
+        Require(TownItemActions.RestoreRecovery(copy,copy,local,second)&&copy.Town.Ground[0].Kind==1&&copy.Town.Ground[0].Item==16&&copy.Town.Ground[0].Day==92,"native decoded receipt remains rooted and restores the original item");
+        Require(copy.Town.LostAndFound.Count==0&&!TownItemActions.RestoreRecovery(copy,copy,local,first)&&!TownItemActions.RestoreRecovery(copy,copy,local,second),"native claim and restore consume each receipt once");
+        Console.WriteLine("Native custody: lazy roots, compact swap, forced collection and save recovery passed");
+    }
     private static void NormalJobs()
     {
         JobContent.Validate();var rng=new JobRandom(653637408);

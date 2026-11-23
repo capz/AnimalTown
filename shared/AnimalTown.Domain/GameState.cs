@@ -71,13 +71,14 @@ public sealed partial class GameState
     public bool InGarden(int x,int z)=>HousePlaced&&x>=Town.HouseX&&x<Town.HouseX+GardenWidths[GardenTier]&&z>=Town.HouseZ&&z<Town.HouseZ+GardenHeights[GardenTier];
     public bool CanPlace(int id,int x,int z,int rotation,int room,int actor,bool existing=false)
         =>PlacementBlock(id,x,z,rotation,room,actor,existing)==null;
-
-    private string? PlacementBlock(int id,int x,int z,int rotation,int room,int actor,bool existing)
+    internal bool CanPlaceOwned(int id,int x,int z,int rotation,int room,int owner,bool existing=false,int ignoredPlacement=-1)
+        =>PlacementBlock(id,x,z,rotation,room,owner,existing,ignoredPlacement,true)==null;
+    private string? PlacementBlock(int id,int x,int z,int rotation,int room,int actor,bool existing,int ignoredPlacement=-1,bool exactOwner=false)
     {
         if(rotation<0||rotation>3)return "Rotate the item before placing it.";
         if(!BuildingWorld.ValidSpace(room))return "You can't place furniture here.";
         if(!Catalog.Has(id,ItemFlags.Place))return "You can't place that item as furniture.";
-        int profile=existing?OwnerProfile(actor):actor==0?ActiveProfile:OwnerProfile(actor);
+        int profile=existing||exactOwner?OwnerProfile(actor):actor==0?ActiveProfile:OwnerProfile(actor);
         if(!existing&&actor>=1&&actor<=6)profile=-1;
         bool ownPlayer=profile>=0&&HomePlaced(profile)&&(room==0||BuildingWorld.RoomProfile(room)==profile);
         bool ownResident=actor>=1&&actor<=6&&room==15+actor;
@@ -107,6 +108,7 @@ public sealed partial class GameState
             }
             for(int p=0;p<Town.PlacedCount;p++)
             {
+                if(p==ignoredPlacement)continue;
                 var q=Town.Placed[p];if(q.Room!=room)continue;
                 BuildingWorld.Footprint(q,out int qw,out int qh);
                 if(tx>=q.X&&tx<q.X+qw&&tz>=q.Z&&tz<q.Z+qh)return "There's already furniture in that spot.";
@@ -122,9 +124,10 @@ public sealed partial class GameState
         reason=slot<0||slot>=Capacity||Pockets[slot]==0?"That pocket is empty.":
             IsJobItem(slot)?"Keep that item in your pockets for the errand.":
             Town.PlacedCount==Town.Placed.Length?"Your town has reached its furniture limit. Pick something up first.":
-            PlacementBlock(Pockets[slot],x,z,rotation,room,0,false)??"";
+            (Visiting?null:PlacementBlock(Pockets[slot],x,z,rotation,room,0,false))??"";
         if(reason.Length!=0)return false;
-        var p=Town.Placed[Town.PlacedCount++];p.Item=Pockets[slot];p.X=x;p.Z=z;p.Room=room;p.Rotation=rotation;p.Owner=PlayerOwner;Pockets[slot]=0;return true;
+        if(TownItemActions.Place(this,this,TownItemActor.ForActivePlayer(this),slot,x,z,rotation,room))return true;
+        reason="That spot is blocked. Choose a clear place for the item.";return false;
     }
     public bool Use(int slot,int action,int x,int z)
         =>Use(slot,action,x,z,out _);
@@ -133,11 +136,15 @@ public sealed partial class GameState
     {
         reason="";
         if(slot<0||slot>=Capacity||IsJobItem(slot)||!Catalog.Valid(Pockets[slot]))return false;int id=Pockets[slot];
-        if(action==0){if(!Town.AddGround(id,x,z,0,Town.Day,out reason))return false;}
-        else if(action==1||action==5){
-            if(!Catalog.Has(id,action==1?ItemFlags.Plant:ItemFlags.Bury))return false;
-            if(Town.At(x,z)!=0){reason=action==1?"Find a clear grass tile to plant this.":"Find a clear grass tile to bury this.";return false;}
-            if(!Town.AddGround(id,x,z,action==1?2:1,Town.Day,out reason))return false;
+        if(action==0||action==1||action==5){
+            int kind=action==0?0:action==1?2:1;
+            reason=Town.GroundCount==Town.Ground.Length?"The town has no room for more items on the ground. Pick something up first.":
+                kind!=0&&Town.At(x,z)!=0?"Find a clear grass tile to plant or bury this.":
+                !Town.Walkable(x,z)?"Choose a spot on walkable ground.":
+                Town.FindGround(x,z)>=0?"There's already something on the ground there.":"";
+            if(reason.Length!=0)return false;
+            if(TownItemActions.AddGround(this,this,TownItemActor.ForActivePlayer(this),slot,x,z,kind))return true;
+            reason="That spot is blocked. Choose a clear spot on the ground.";return false;
         }
         else if(action==2){if(!Catalog.Has(id,ItemFlags.Eat))return false;}
         else if(action==3){if(!Catalog.Has(id,ItemFlags.Wear))return false;Pockets[slot]=Shirt;Shirt=id;return true;}
@@ -150,6 +157,9 @@ public sealed partial class GameState
     public bool Pickup(int x,int z)
     {
         int index=Town.FindGround(x,z,0);
+        var actor=TownItemActor.ForActivePlayer(this);
+        if(Visiting)return TownItemActions.RemoveGround(this,this,actor,index);
+        if(!actor.CanClaim(this,this))return false;
         if(index<0||!Receive(Town.Ground[index].Item))return false;
         var item=Town.Ground[index];
         const int distance=3*Town.ScreenTileSize;
@@ -209,9 +219,9 @@ public sealed partial class GameState
     }
     public void Rollover(int day,int month)
     {
-        // A cropped save may be months old. Start recovered possessions' full
-        // retention window on the first calendar update, before catch-up expiry.
-        for(int i=0;i<Town.GroundCount;i++)if(Town.Ground[i].Kind==4&&Town.Ground[i].Day==GroundItem.PendingRecoveryDay)Town.Ground[i].Day=Math.Max(day,Town.Day);
+        // Older recovery markers receive a date, but police custody never
+        // expires. A long absence must not destroy visitor-removed possessions.
+        for(int i=0;i<Town.GroundCount;i++)if(Town.Ground[i].Kind==4&&Town.Ground[i].RecoveryId==0&&Town.Ground[i].Day==GroundItem.PendingRecoveryDay)Town.Ground[i].Day=Math.Max(day,Town.Day);
         // Old same-day stock can contain the retired tool. Preserve every item ID
         // in saves, but never offer a watering can as a new purchase.
         for(int i=0;i<Town.StockCount;i++)if(Town.Stock[i]==Catalog.LegacyWateringCan)Town.Stock[i]=10+(Math.Max(Town.Day,0)%4+i)%4;
@@ -227,15 +237,11 @@ public sealed partial class GameState
         {
             var g=Town.Ground[i];
             if(g.Kind==0&&!AnyGardenContains(g.X,g.Z)){g.Kind=4;g.Day=day;}
-            else if(g.Kind==4&&day-g.Day>=7)Town.RemoveGround(i);
             else if(g.Kind==2&&g.Item!=2&&day-g.Day>=3){g.Kind=3;Town.NotifyCastersChanged();}
         }
         Town.AddGround(16,8+day%20,45,1,day);Town.AddGround(12,55+day%15,42,1,day);
         if(saleSlots!=TownShop.SaleSlots(this))NormalizeBuildingLocations();
     }
     public bool ClaimLost(int index,int actor)
-    {
-        if(index<0||index>=Town.GroundCount)return false;var g=Town.Ground[index];
-        if(g.Kind!=4||(actor!=g.Owner&&(g.Day==GroundItem.PendingRecoveryDay||Town.Day-g.Day<3))||!Receive(g.Item))return false;Town.RemoveGround(index);return true;
-    }
+        =>actor==ActiveProfile&&TownItemActions.ClaimLost(this,this,TownItemActor.ForActivePlayer(this),index);
 }

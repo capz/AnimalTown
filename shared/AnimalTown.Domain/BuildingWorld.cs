@@ -1,7 +1,7 @@
 namespace AnimalTown;
 
 // Stable space keys: 0 town, 1..4 player rooms, 16..21 resident homes,
-// 24 shop, 25 post office. These keys are independent of mesh filenames.
+// 24 shop, 25 post office, 26 koban. These keys are independent of mesh filenames.
 public readonly struct SpaceId
 {
     public readonly int Value;
@@ -29,7 +29,8 @@ public static class BuildingCatalog
     public const int MaximumDefinitions=4,MaximumFixtures=32;
     public static readonly BuildingDefinition Cottage=new BuildingDefinition("cottage_small",4,"cottage-exterior","cottage-door","cottage-floor","cottage-north","cottage-east","cottage-south","cottage-west");
     public static readonly BuildingDefinition Shop=new BuildingDefinition("town_shop",8,"shop-exterior","shop-door","shop-floor","shop-north","shop-east","shop-south","shop-west",fixtures:ShopLayout.Fixtures(),activities:new float[]{4,6.8f});
-    private static BuildingDefinition[] definitions={Cottage,Shop};
+    public static readonly BuildingDefinition Koban=new BuildingDefinition("koban",6,"koban-exterior","koban-door","koban-floor","koban-north","koban-east","koban-south","koban-west",fixtures:new float[]{.35f,1.45f,2.2f,.95f,1.12f,0,3.65f,.3f,2,.8f,2.35f,0,.35f,.3f,.75f,.75f,1.35f,0,4.9f,3.35f,.7f,1.25f,.65f,0},activities:new float[]{1.45f,2.95f,4.65f,1.65f});
+    private static BuildingDefinition[] definitions={Cottage,Shop,Koban};
     public static int Count=>definitions.Length;
     public static BuildingDefinition Get(int id)=>id>=0&&id<definitions.Length?definitions[id]:Cottage;
     public static bool Available(int id)=>id>=0&&id<definitions.Length;
@@ -50,14 +51,14 @@ public static class BuildingCatalog
         if(at!=data.Length||next[0].Id!="cottage_small")throw new InvalidOperationException("Invalid building catalog layout");definitions=next;
     }
 }
-public enum BuildingRole { House, Store, TownHall }
+public enum BuildingRole { House, Store, TownHall, Koban }
 
 public static class BuildingWorld
 {
-    public const int Count=12,Actors=7;
+    public const int Count=13,Actors=7;
     // Use belongs to the placed building, independently of its shared art kit.
     public static BuildingRole Role(int building)
-    {if(building<0||building>=Count)throw new ArgumentOutOfRangeException("building");return building==7?BuildingRole.Store:building==8?BuildingRole.TownHall:BuildingRole.House;}
+    {if(building<0||building>=Count)throw new ArgumentOutOfRangeException("building");return building==7?BuildingRole.Store:building==8?BuildingRole.TownHall:building==KobanSite.Building?BuildingRole.Koban:BuildingRole.House;}
     public static string OwnerName(GameState s,int building)
     {if(Role(building)!=BuildingRole.House)return "";int profile=BuildingProfile(building);return profile>=0?s.ProfileName(profile):s.Town.Residents[building-1].Name;}
     public static int PlayerBuilding(int profile)=>profile==0?0:8+profile;
@@ -66,10 +67,10 @@ public static class BuildingWorld
     public static int PersonalRoom(int space)=>space>=1&&space<=4?space:space>=32&&space<=43?(space-32)%4+1:0;
     public static int BuildingProfile(int building)=>building==0?0:building>=9&&building<12?building-8:-1;
     public const float Radius=.22f;
-    public static int Space(int building)=>building==0?1:building<=6?15+building:building<=8?17+building:PlayerRoom(building-8);
-    public static int Building(int space)=>space>=1&&space<=4?0:space>=16&&space<=21?space-15:space==24?7:space==25?8:space>=32&&space<=43?PlayerBuilding(RoomProfile(space)):-1;
+    public static int Space(int building)=>building==0?1:building<=6?15+building:building<=8?17+building:building==KobanSite.Building?KobanSite.Room:PlayerRoom(building-8);
+    public static int Building(int space)=>space>=1&&space<=4?0:space>=16&&space<=21?space-15:space==24?7:space==25?8:space==KobanSite.Room?KobanSite.Building:space>=32&&space<=43?PlayerBuilding(RoomProfile(space)):-1;
     public static bool ValidSpace(int space)=>space==0||Building(space)>=0;
-    public static bool Exists(GameState s,int building)=>building>=0&&building<Count&&(BuildingProfile(building)<0||s.HomePlaced(BuildingProfile(building)));
+    public static bool Exists(GameState s,int building)=>building>=0&&building<Count&&(building!=KobanSite.Building||s.Town.Koban.Enabled)&&(BuildingProfile(building)<0||s.HomePlaced(BuildingProfile(building)));
     public static bool Available(GameState s,int space)=>space==0||Exists(s,Building(space))&&BuildingCatalog.Available(s.BuildingTypes[Building(space)]);
     public static BuildingDefinition Definition(GameState s,int building)=>BuildingCatalog.Get(s.BuildingTypes[building]);
     public static int Size(GameState s,int space)
@@ -81,7 +82,7 @@ public static class BuildingWorld
         return Definition(s,b).InteriorSize;
     }
     public static void Origin(GameState s,int building,out float x,out float z)
-    {if(BuildingProfile(building)>=0){int p=BuildingProfile(building);x=s.HomeX(p)+2;z=s.HomeZ(p)+1;}else if(building<=6){x=s.Town.Residents[building-1].HomeX;z=s.Town.Residents[building-1].HomeZ;}else{x=building==7?31:49;z=25;}}
+    {if(BuildingProfile(building)>=0){int p=BuildingProfile(building);x=s.HomeX(p)+2;z=s.HomeZ(p)+1;}else if(building<=6){x=s.Town.Residents[building-1].HomeX;z=s.Town.Residents[building-1].HomeZ;}else if(building==KobanSite.Building){x=s.Town.Koban.X;z=s.Town.Koban.Z;}else{x=building==7?31:49;z=25;}}
     public static void Entrance(GameState s,int building,out float x,out float z)
     {Origin(s,building,out x,out z);var d=Definition(s,building);x+=d.DoorX;z+=d.DoorZ;}
     public static void InsideDoor(GameState s,int space,out float x,out float z)
@@ -96,12 +97,12 @@ public static class BuildingWorld
     // rooms preserve legacy furnishing; neighbours have a bed and writing desk.
     public static bool Fixture(GameState s,int space,int index,out float x,out float z,out float w,out float d,out float height)
     {
-        x=z=w=d=height=0;if((space<16||space>21)&&space!=TownShop.Room)return false;
+        x=z=w=d=height=0;if((space<16||space>21)&&space!=TownShop.Room&&space!=KobanSite.Room)return false;
         var data=Definition(s,Building(space)).Fixtures;int at=index*6;if(at<0||at+5>=data.Length)return false;
         x=data[at];z=data[at+1];w=data[at+2];d=data[at+3];height=data[at+4];return true;
     }
     public static int FixtureKind(GameState s,int space,int index)=>(int)Definition(s,Building(space)).Fixtures[index*6+5];
-    public static int FixtureCount(GameState s,int space)=>space==TownShop.Room?3+TownShop.SaleSlots(s):space>=16&&space<=21?Definition(s,Building(space)).Fixtures.Length/6:0;
+    public static int FixtureCount(GameState s,int space)=>space==TownShop.Room?3+TownShop.SaleSlots(s):space>=16&&space<=21||space==KobanSite.Room?Definition(s,Building(space)).Fixtures.Length/6:0;
     public static bool CanStand(GameState s,int space,float x,float z,int actor=-1,bool people=false)
     {
         if(!Available(s,space))return false;

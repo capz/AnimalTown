@@ -288,7 +288,7 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
     {
         if(disposed)return;
         if(device.IsFrameActive)throw new InvalidOperationException("Dispose the town after EndFrame");
-        disposed=true;LoadingScreen.Finish();ReleaseChatEntry();ClearChatPresentation();
+        disposed=true;LoadingScreen.Finish();ReleaseChatEntry();ReleaseLetterEntry();ClearChatPresentation();
         dialogueVoice.Stop();syllable.Dispose();
         Model? unadopted=null;
         if(loadingModel!=null){try{unadopted=loadingModel.GetAwaiter().GetResult();}catch(Exception){if(!loadingModel.IsCompleted)throw;}loadingModel=null;}
@@ -598,6 +598,11 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
         if(p.Y.WasPressed){screen=screen=="map"?"world":"map";return;}
         if(p.B.WasPressed&&screen=="item"){screen="menu";menuTab=0;selected=slot;return;}
         if(p.B.WasPressed&&screen!="world"){screen="world";return;}
+        if(screen=="lost"&&p.X.WasPressed){
+            int index=LostIndex(selected),id=state.Town.LostAndFound.RecoveryIdAt(index);
+            bool restored=KobanSite.InReach(state)&&TownItemActions.RestoreRecovery(state,state,TownItemActor.ForActivePlayer(state),id);
+            Say("Koban",state.Visiting?"Lost property stays with this town's residents.":restored?"The visitor's removal has been undone.":id==0?"This item has no visitor removal to undo.":"The original spot is occupied. The item is still safe here.");return;
+        }
         if(p.X.WasPressed){screen=screen=="menu"?"world":"menu";selected=0;menuTab=0;return;}
         if(screen=="map")return;
         if(screen=="world")
@@ -645,7 +650,7 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
         if(screen=="mail")
         { if(selected<state.MailCount&&state.Mail[selected]>0&&state.Receive(state.Mail[selected])){if(JobsLive)state.ResidentJobs.RemoveMailboxSlot(selected);else{for(int i=selected;i<state.MailCount-1;i++)state.Mail[i]=state.Mail[i+1];state.MailCount--;}Say("Mailbox","Delivery collected.");}return; }
         if(screen=="lost")
-        { int index=LostIndex(selected);Say("Town hall",state.ClaimLost(index,state.ActiveProfile)?"Recovered!":"Your pockets are full, or the item is reserved.");return; }
+        { int index=LostIndex(selected);Say("Koban",state.Visiting?"Only a villager who lives in this town may collect lost property.":KobanSite.InReach(state)&&state.ClaimLost(index,state.ActiveProfile)?"Recovered!":"Make room in your pockets and speak to the koban counter.");return; }
         if(screen=="menu")MenuAction();
     }
     private bool FoliageScene=>room==0&&session.Draft==null&&waterInspection==0&&!cliffPreview;
@@ -668,8 +673,8 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
     }
     private int MenuTabCount=>DebugMenuSettings.Visible?tabs.Length:tabs.Length-1;
     private int TabCount()=>menuTab==0?state.Capacity:menuTab==1?(JobsLive?1:7):menuTab==2?Catalog.EntryCount:menuTab==3?7:menuTab==4?7:menuTab==TestingTab?testingOptions.Length:DaylightSettingsRow+(DebugMenuSettings.Visible?2:1);
-    private int LostCount(){int c=0;for(int i=0;i<state.Town.GroundCount;i++)if(state.Town.Ground[i].Kind==4)c++;return c;}
-    private int LostIndex(int n){for(int i=0;i<state.Town.GroundCount;i++)if(state.Town.Ground[i].Kind==4&&n--==0)return i;return -1;}
+    private int LostCount()=>state.Town.LostAndFound.Count;
+    private int LostIndex(int n)=>state.Town.LostAndFound.IndexAt(n);
     private void StoreAction()
     {
         if(selected==8&&StoredShopCount>0){screen="shop-stored";selected=0;return;}
@@ -692,7 +697,7 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
         if(selected==0){Say("Fern",state.Deposit(Math.Min(1000,state.Wallet))?"Deposit complete.":"No acorns to deposit.");return;}
         if(selected==1){Say("Fern",state.Withdraw((int)Math.Min(1000,state.Savings))?"Withdrawal complete.":"No room in wallet, or insufficient savings.");return;}
         if(selected==2){Say("Fern",RepayLoan()?"Loan repayment complete.":"No payment is possible.");return;}
-        if(selected==3){screen="lost";selected=0;return;}
+        if(selected==3){Say("Fern","Lost property is kept at the koban. Visit its counter or shelves to collect it.");return;}
         if(selected==4){screen="mail";selected=0;return;}
         if(selected==5&&JobsLive){OpenLetterComposer();return;}
         if(selected==5){if(state.Tutorial==4){state.CreditTutorial(4);if(state.MailCount<128)state.Mail[state.MailCount++]=-19;}Say("Fern","Your letter has been sent. A reply will arrive tomorrow.");return;}
@@ -831,6 +836,7 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
         if(door>=0){if(!buildings.Ready(state.BuildingTypes[door])){Say("Home","This home is unavailable right now.");return;}if(!villagers.Doors.Request(state,0,door))Say("Door","Please wait for the doorway to clear.");return;}
         if(room!=0){
             if(room==TownShop.Room&&OpenShopFixture())return;
+            if(KobanSite.InReach(state)){screen="lost";selected=0;return;}
             if(JobsLive){int near=ClosestResident();if(near>=0){TryJobConversation(near);return;}}
             for(int i=0;i<6;i++){var v=state.Town.Residents[i];if(v.Space==room&&Math.Abs(v.PosX-state.X)<2&&Math.Abs(v.PosZ-state.Z)<2){if(!TryJobConversation(i))Say(v.Name,state.Talk(i));return;}}
             if(room==25){screen="post";selected=0;return;}
@@ -842,20 +848,25 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
         if(JobsLive){int near=ClosestResident();if(near>=0){TryJobConversation(near);return;}}
         for(int i=0;i<6;i++){var v=state.Town.Residents[i];if(v.Space==0&&Math.Abs(v.PosX-state.X)<2.8f&&Math.Abs(v.PosZ-state.Z)<2.8f){if(!TryJobConversation(i))Say(v.Name,state.Talk(i));return;}}
         if(JobsLive&&state.Tool==Catalog.Shovel)for(int i=0;i<AnimalTown.Jobs.OfflineJobLedger.WorldCapacity;i++){var o=state.Town.Jobs.WorldObject(i);float dx=o.X-state.X,dz=o.Z-state.Z;if(o.Kind==AnimalTown.Jobs.JobWorldKind.Snowman&&dx*dx+dz*dz<2.25f){state.ResidentJobs.DestroyWorldObject(i);Say("Snow","The snowman crumbles back into the snow.");return;}}
-        if(state.Pickup(tx,tz)||state.Pickup(x,z)){Say("Backpack","Picked up!");return;}
+        if(state.Pickup(tx,tz)||state.Pickup(x,z)){Say(state.Visiting?"Koban":"Backpack",state.Visiting?"The item is safe in this town's lost and found.":"Picked up!");return;}
         int ground=state.Town.FindGround(tx,tz);
         if(ground>=0)
         {
             var g=state.Town.Ground[ground];
-            if(g.Kind==3){if(state.Tool==Catalog.Axe){g.Kind=0;g.Item=3;Say("Tree","A sapling for replanting.");}else{int fruit=Catalog.Has(g.Item,ItemFlags.Fruit)?g.Item:JobsLive?state.Town.Jobs.NativeFruit:1;if(state.Receive(fruit))Say("Tree","A ripe "+Catalog.Items[fruit].Name+" drops into your pockets!");}return;}
-            if(g.Kind==1&&state.Tool==Catalog.Shovel&&state.Receive(g.Item)){state.Town.RemoveGround(ground);Say("Digging","You found something!");return;}
+            if(g.Kind==3){
+                if(state.Tool==Catalog.Axe){Say("Tree",TownItemActions.Chop(state,ground)?"The removed tree is kept at the koban for replanting.":"There is no room to store the tree safely.");}
+                else if(TownItemActions.Harvest(state,ground))Say("Tree",state.Visiting?"The fruit is kept at the koban for this town's residents.":"Ripe fruit drops into your pockets!");
+                return;
+            }
+            if(g.Kind==1&&state.Tool==Catalog.Shovel&&TownItemActions.Dig(state,ground)){Say("Digging",state.Visiting?"The find is kept at this town's koban.":"You found something!");return;}
+            if(g.Kind==2&&state.Tool==Catalog.Shovel&&TownItemActions.RemoveGround(state,state,TownItemActor.ForActivePlayer(state),ground)){Say("Koban","The removed plant is safe in lost and found.");return;}
         }
         if(state.Tool==Catalog.FishingRod&&(WaterSurface.IsWater(state.Town,tx,tz)||WaterSurface.IsWater(state.Town,tx+1,tz)))
-        { Say("Fishing",state.Receive(14)?"A river fish!":"Your pockets are full.");return; }
+        { Say("Fishing",TownItemActions.Catch(state,14)?state.Visiting?"A river fish! It is kept at this town's koban.":"A river fish!":state.Visiting?"Lost and found is full.":"Your pockets are full.");return; }
         if(state.Tool==Catalog.BugNet){
             // Keep successful bug catches; misses are silent like all other
             // empty-space interactions.
-            if(tick%3==0&&state.Receive(15))Say("Bug net","Caught a butterfly!");
+            if(tick%3==0&&TownItemActions.Catch(state,15))Say("Bug net",state.Visiting?"A butterfly! It is kept at this town's koban.":"Caught a butterfly!");
             return;
         }
         if(state.Tool==Catalog.Shovel&&state.Town.AddGround(16,tx,tz,1,day)){Say("Digging","A spot for something buried.");return;}
@@ -1260,7 +1271,7 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
                 bool action=!villagers.Doors.Busy(0);
                 string label=action?room==0?buildingPrompt.Enter(state,door):"Exit":villagers.Doors.Actors[0].Phase==DoorPhase.Waiting?"Waiting at door":"Through the doorway";
                 DoorPopover(label,action);
-            }
+            }else if(KobanSite.InReach(state))DoorPopover("Browse lost property",true);
         }
         if(clockFade.Opacity>0)clockHud.Draw(ui,clockFade.Opacity);
         if(room==TownShop.Room&&screen=="world")DrawShopHint(ink);
@@ -1289,12 +1300,13 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
         if(screen==DaylightLocationMenu.Screen){daylightMenu.Draw(ui,font,headingFont,batchedDrawing?uiShapes:null);return;}
         if(screen=="world"){if(room==0&&runningMinimap.Opacity>0)DrawMinimap();if(room==0&&renderDebug.ShowGroundMipBands)DrawGroundMipLegend(ink);return;}
         if((screen=="menu"&&menuTab==0)||screen=="item"){DrawBackpack();return;}
-        Panel(45,75,550,350);string title=screen=="menu"?tabs[menuTab]:screen=="post"?"Town hall":screen=="mail"?"Mailbox":"Lost and Found";
+        Panel(45,75,550,350);string title=screen=="menu"?tabs[menuTab]:screen=="post"?"Town hall":screen=="mail"?"Mailbox":"Koban / Lost and Found";
         Heading(title,68,91,ink);
         int total=screen=="menu"?TabCount():screen=="mail"?Math.Max(1,state.MailCount):screen=="lost"?Math.Max(1,LostCount()):7;
         bool compact=screen=="menu"&&(menuTab==SettingsTab||menuTab==TestingTab);int page=compact?9:8,step=compact?24:29;float rowScale=compact?1.2f:1.4f;int first=selected/page*page;
         for(int i=first;i<Math.Min(total,first+page);i++){float y=131+(i-first)*step;if(i==selected){Rounded(57,y,520,step-2,(step-2)*.5f,new Color32(221,231,188));Strong("> "+RowLabel(i),68,y,ink,rowScale);}else Text("  "+RowLabel(i),68,y,ink,rowScale);}
-        Text(TestingFocused(SeasonPreviewOption)?"Left/Right: choose   A: apply   B: close":
+        Text(screen=="lost"?(state.Visiting?"Town residents may collect these items. B close":"A collect   X undo visitor removal   B close"):
+            TestingFocused(SeasonPreviewOption)?"Left/Right: choose   A: apply   B: close":
             TestingFocused(TimePreviewOption)?"Left/Right: 15 min   A: apply   X: select Live   B: close":
             screen=="menu"&&menuTab==TestingTab&&TestingOption(selected)==23?"Left/Right: 1 square   A: +1   X: Auto":
             screen=="menu"&&menuTab==TestingTab&&TestingOption(selected)==34?"A: toggle   Pink line marks the mip switch":
@@ -1309,7 +1321,7 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
     {
         if(screen=="post"||(screen=="menu"&&menuTab==4)){string[] a={"Deposit up to "+UiFont.Money(1000),"Withdraw up to "+UiFont.Money(1000),"Repay from wallet","Lost and Found","Mailbox","Write a letter","Visit / gate"};return a[i];}
         if(screen=="mail")return MailboxRow(i);
-        if(screen=="lost"){int n=LostIndex(i);return n<0?"No lost items":Catalog.Items[state.Town.Ground[n].Item].Name;}
+        if(screen=="lost"){int n=LostIndex(i);return n<0?"No lost items":Catalog.Items[state.Town.LostAndFound.ItemAt(n)].Name+(state.Town.LostAndFound.RecoveryIdAt(n)>0?" / visitor removal":"");}
         if(menuTab==0)return (i+1)+". "+Catalog.Items[state.Pockets[i]].Name;
         if(menuTab==1&&JobsLive)return "View errands and waiting rewards";
         if(menuTab==1)return i==0?"Tutorial / daily jobs":state.Town.Residents[i-1].Name+" / friendship "+state.Town.Residents[i-1].Friendship;
@@ -1392,6 +1404,7 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
         mapBackground.DrawMinimap(ui,opacity);
         MinimapMarker(32,26,new Color32(187,107,71),3);
         MinimapMarker(50,26,new Color32(132,96,155),3);
+        if(state.Town.Koban.Enabled)MinimapMarker(state.Town.Koban.X+1.5f,state.Town.Koban.Z+1.5f,new Color32(73,119,144),3);
         for(int p=0;p<GameState.ProfileCount;p++)if(state.HomePlaced(p))MinimapMarker(state.HomeX(p)+3,state.HomeZ(p)+3,new Color32(220,182,124),4);
         MinimapMarker(state.X,state.Z,new Color32(35,49,44),6);
         MinimapMarker(state.X,state.Z,Color32.White,4);
@@ -1410,6 +1423,7 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
         const float left=160,top=115,scale=MapBackground.Scale;
         var storeColor=new Color32(187,107,71);
         var postOfficeColor=new Color32(132,96,155);
+        var kobanColor=new Color32(73,119,144);
         var helipadColor=new Color32(81,98,130);
         var homeColor=new Color32(220,182,124,180);
         var villagerHouseColor=new Color32(94,64,48);
@@ -1432,6 +1446,7 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
         for(int i=0;i<state.Town.GroundCount;i++){var g=state.Town.Ground[i];if(g.Kind==3)ui.FillRectangle(new RectF(left+g.X*scale,top+g.Z*scale,2,2),new Color32(45,106,60));}
         ui.FillRectangle(new RectF(left+32*scale,top+26*scale,4,4),storeColor);
         ui.FillRectangle(new RectF(left+50*scale,top+26*scale,4,4),postOfficeColor);
+        if(state.Town.Koban.Enabled)ui.FillRectangle(new RectF(left+(state.Town.Koban.X+1.5f)*scale-2,top+(state.Town.Koban.Z+1.5f)*scale-2,4,4),kobanColor);
         ui.FillRectangle(new RectF(left+36*scale,top+9*scale,4,4),helipadColor);
         for(int p=0;p<GameState.ProfileCount;p++)if(state.HomePlaced(p))ui.FillRectangle(new RectF(left+state.HomeX(p)*scale,top+state.HomeZ(p)*scale,GameState.GardenWidths[state.HomeGardenTier(p)]*scale,GameState.GardenHeights[state.HomeGardenTier(p)]*scale),homeColor);
         foreach(var villager in state.Town.Residents)
@@ -1448,9 +1463,10 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
         DrawMapLegendEntry("Player homes",168,homeColor);
         DrawMapLegendEntry("Store",188,storeColor);
         DrawMapLegendEntry("Post office",208,postOfficeColor);
-        DrawMapLegendEntry("Helipad",228,helipadColor);
-        DrawMapLegendEntry("Villagers",248,villagerColor);
-        DrawMapLegendEntry("You",268,Color32.White);
+        DrawMapLegendEntry("Koban",228,kobanColor);
+        DrawMapLegendEntry("Helipad",248,helipadColor);
+        DrawMapLegendEntry("Villagers",268,villagerColor);
+        DrawMapLegendEntry("You",288,Color32.White);
     }
 
     private void DrawMapLegendEntry(string label,float y,Color32 color)

@@ -27,6 +27,10 @@ public static class SaveCodec
         if(!s.Town.JobState.IsPristine)throw new InvalidOperationException("Legacy export cannot discard job availability or random streams");
         if(s.Town.Traffic.Snow.HasCheckpoint)throw new InvalidOperationException("Legacy export cannot discard snow dents");
         if(s.Town.Jobs.Initialized)throw new InvalidOperationException("Legacy export cannot discard villager identities and jobs");
+        if(s.Town.LostAndFound.HasState)throw new InvalidOperationException("Legacy export cannot discard lost-property recovery records");
+        if(s.Town.Koban.X!=KobanSite.PreferredX||s.Town.Koban.Z!=KobanSite.PreferredZ||s.BuildingTypes[KobanSite.Building]!=KobanSite.Definition)throw new InvalidOperationException("Legacy export cannot discard a changed koban plot or type");
+        if(s.Space==KobanSite.Room)throw new InvalidOperationException("Leave the koban before exporting a legacy save");
+        for(int i=0;i<6;i++)if(s.Town.Residents[i].Space==KobanSite.Room||s.Town.Residents[i].JourneyBuilding==KobanSite.Building)throw new InvalidOperationException("Legacy export cannot discard a koban journey");
         if(s.ActiveProfile!=0||!s.Profiles[0].Created)throw new InvalidOperationException("Legacy export requires the original single player");
         for(int i=1;i<GameState.ProfileCount;i++)if(s.Profiles[i].Created)throw new InvalidOperationException("Legacy export cannot discard villager profiles");
         for(int i=0;i<TownShop.StoredSaleCount;i++)if(s.Town.Shop.SaleItems[i]!=0)throw new InvalidOperationException("Legacy export cannot discard shop listings");
@@ -40,8 +44,8 @@ public static class SaveCodec
         var snow=profiles?s.Town.Traffic.Snow.EncodeCheckpoint():null;
         int elevationRuns=1;for(int i=1;i<Town.Cells;i++)if(s.Town.Elevation[i]!=s.Town.Elevation[i-1])elevationRuns++;
         int jobWords=profiles&&s.Town.Jobs.Initialized?s.Town.Jobs.WordCount:0;
-        bool extensions=profiles&&(jobWords!=0||snow!=null);
-        int version=extensions?15:profiles?(!s.Town.JobState.IsPristine?13:s.Town.DaylightLocation==0?11:12):7;
+        int version=profiles?16:7;
+        var recovery=profiles?s.Town.LostAndFound.Encode():null;
         var profileRecords=profiles?new byte[GameState.ProfileCount][]:null;
         if(profileRecords!=null)for(int i=0;i<profileRecords.Length;i++)profileRecords[i]=ProfileCodec.Encode(s,i);
         int exactLength=Write(null);if(exactLength>MaximumBytes)throw new InvalidOperationException("Save exceeds format budget");
@@ -72,9 +76,11 @@ public static class SaveCodec
         if(profiles){Put(b,ref p,1);Put(b,ref p,TileTraffic.Bytes);if(b!=null)Array.Copy(s.Town.Traffic.Visits,0,b,p,TileTraffic.Bytes);p+=TileTraffic.Bytes;}
         if(version>=12)Put(b,ref p,s.Town.DaylightLocation);
         if(version>=13){var jobs=s.Town.JobState.Encode();Put(b,ref p,jobs.Length);for(int i=0;i<jobs.Length;i++)Put(b,ref p,jobs[i]);}
-        if(extensions){
+        if(profiles){
             Put(b,ref p,snow?.Length??0);if(snow!=null)for(int i=0;i<snow.Length;i++)Put(b,ref p,snow[i]);
             Put(b,ref p,jobWords);if(jobWords!=0){if(b!=null)s.Town.Jobs.WriteTo(b,p);p+=jobWords*4;}
+            Put(b,ref p,s.Town.Koban.X);Put(b,ref p,s.Town.Koban.Z);
+            Put(b,ref p,recovery!.Length);for(int i=0;i<recovery.Length;i++)Put(b,ref p,recovery[i]);
         }
         if(b!=null){int h=16;Put(b,ref h,p);Put(b,ref h,(int)Crc(b,24,p-24));}return p;
         }
@@ -90,7 +96,7 @@ public static class SaveCodec
         if(b.Length<160||b.Length>MaximumBytes)throw new InvalidOperationException("Invalid save size");int p=0;
         if(Get(b,ref p)!=0x41544f57)throw new InvalidOperationException("Invalid save magic");int version=Get(b,ref p);
         int catalogVersion=Get(b,ref p);
-        if((version<4||version>15)||!Catalog.SupportsVersion(catalogVersion))throw new InvalidOperationException("Unsupported save version");
+        if((version<4||version>16)||!Catalog.SupportsVersion(catalogVersion))throw new InvalidOperationException("Unsupported save version");
         if(snapshot!=null&&version<11)throw new InvalidOperationException("Readback requires current save format");
         int seq=Range(b,ref p,0,int.MaxValue);if(Get(b,ref p)!=b.Length||(uint)Get(b,ref p)!=Crc(b,24,b.Length-24))throw new InvalidOperationException("Save checksum failed");
         // Town dimensions must match exactly. Old larger towns are not cropped
@@ -136,7 +142,7 @@ public static class SaveCodec
             if(cell!=Town.Cells)throw new InvalidOperationException("Incomplete saved elevation");
             for(int i=0;i<6;i++){var v=s.Town.Residents[i];v.Name=Text(b,ref p,24);v.HomeX=Range(b,ref p,1,Town.Width-4);v.HomeZ=Range(b,ref p,1,Town.Height-4);v.PosX=Range(b,ref p,0,Town.Width*1024-1)/1024f;v.PosZ=Range(b,ref p,0,Town.Height*1024-1)/1024f;}
         }else for(int i=0;i<6;i++){var v=s.Town.Residents[i];v.PosX=v.X+.5f;v.PosZ=v.Z+.5f;}
-        if(version>=7){var fields=new int[version>=8?BuildingSave.FieldCount:BuildingSave.LegacyFieldCount];for(int i=0;i<fields.Length;i++)fields[i]=Get(b,ref p);BuildingSave.Decode(s,fields);}
+        if(version>=7){var fields=new int[version>=16?BuildingSave.FieldCount:version>=8?BuildingSave.ProfileFieldCount:BuildingSave.LegacyFieldCount];for(int i=0;i<fields.Length;i++)fields[i]=Get(b,ref p);BuildingSave.Decode(s,fields);}
         if(version>=8){
             var body=new VillagerProfile{Created=true};body.Capture(s);int active=Range(b,ref p,0,GameState.ProfileCount-1);
             for(int i=0;i<GameState.ProfileCount;i++){int length=Range(b,ref p,32,2048);if(p>b.Length-length)throw new InvalidOperationException("Truncated profile");var data=new byte[length];Array.Copy(b,p,data,0,length);p+=length;s.Profiles[i]=ProfileCodec.Decode(s,i,data);}
@@ -175,6 +181,13 @@ public static class SaveCodec
             int jobWords=Range(b,ref p,version>=15?0:7,Jobs.OfflineJobLedger.MaximumWords);
             if(jobWords!=0){if(jobWords<7||jobWords>(b.Length-p)/4)throw new InvalidOperationException("Truncated offline job ledger");s.Town.Jobs.Decode(b,p,jobWords,snapshot?.Jobs);p+=jobWords*4;}
         }
+        if(version>=16){
+            int kobanX=Get(b,ref p),kobanZ=Get(b,ref p);s.Town.Koban.Restore(kobanX,kobanZ);
+            int words=Range(b,ref p,4,TownLostAndFound.MaximumEncodedWords);
+            if(words>(b.Length-p)/4)throw new InvalidOperationException("Truncated lost-property records");
+            var recovery=new int[words];for(int i=0;i<words;i++)recovery[i]=Get(b,ref p);s.Town.LostAndFound.Decode(recovery);
+            s.Town.Koban.Validate(s);
+        }else s.Town.Koban.Migrate(s);
         int placedCount=s.Town.PlacedCount;s.Town.PlacedCount=0;
         for(int i=0;i<placedCount;i++){var q=s.Town.Placed[i];if(!s.CanPlace(q.Item,q.X,q.Z,q.Rotation,q.Room,q.Owner,true))throw new InvalidOperationException("Invalid placement");s.Town.PlacedCount++;}
         if(p!=b.Length)throw new InvalidOperationException("Trailing save bytes");

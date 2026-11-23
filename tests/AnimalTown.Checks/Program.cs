@@ -28,7 +28,8 @@ if(Wants("dialogue")){DialogueVoiceChecks.Run(Check);TownChatChecks.Run(Check);}
 if(Wants("generation")){TownGenerationChecks.Run(Check);PathChecks.Run(Check);}
 if(Wants("life"))TerrainLifeChecks.Run(Check);
 if(Wants("saves")){SplitSaveChecks.Run(Check);DevConfigChecks.Run(Check);UserOptionsChecks.Run(Check);ProfileChecks.Run(Check);ProfileCaptureChecks.Run(Check);SaveFormatCompatibilityChecks.Run(Check);}
-if(Wants("buildings")){BuildingChecks.Run(Check);HelipadFlightChecks.Run(Check);ModelResidencyDemandChecks.Run(Check);ModelResidencyChecks.Run(Check);}
+if(Wants("buildings")){BuildingChecks.Run(Check);BuildingKobanChecks.Run(Check);HelipadFlightChecks.Run(Check);ModelResidencyDemandChecks.Run(Check);ModelResidencyChecks.Run(Check);}
+if(Wants("core")||Wants("saves"))TownItemPermissionChecks.Run(Check);
 if(!Wants("core")){if(Wants("content"))ContentChecks.Run(Check);Console.WriteLine(checks+" checks passed; suites: "+string.Join(",",selected));return;}
 GodModeChecks.Run(Check);
 TextureAtlasStreamChecks.Run(Check);
@@ -60,7 +61,7 @@ game.Debt=0;Check(game.Expand(false,100),"expansion order");game.Rollover(100,10
 game.Savings=10000;game.Rollover(102,101);Check(game.Savings==10050,"monthly interest");game.Rollover(101,100);game.Rollover(102,101);Check(game.Savings==10050,"time reversal no duplicate interest");
 game.Sequence=17;var bytes=SaveCodec.Encode(game);var restored=SaveCodec.Decode(bytes);Check(restored.Sequence==17&&restored.Wallet==game.Wallet&&restored.Savings==game.Savings,"save round trip");
 bytes[bytes.Length-1]^=1;bool rejected=false;try{SaveCodec.Decode(bytes);}catch{rejected=true;}Check(rejected,"corrupt save rejected");
-game.Town.AddGround(10,30,40,0,102);game.Rollover(103,101);int lost=game.Town.FindGround(30,40);Check(lost>=0&&game.Town.Ground[lost].Kind==4,"rollover sweeps drops");Check(!game.ClaimLost(lost,1),"lost property owner lock");
+game.Town.AddGround(10,30,40,0,102);game.Rollover(103,101);int lost=game.Town.FindGround(30,40,4);Check(lost>=0&&game.Town.Ground[lost].Kind==4,"rollover sweeps drops");Check(!game.ClaimLost(lost,1),"lost property rejects a non-active resident slot");
 for(int seed=0;seed<20;seed++)
 {
     var town=new Town(seed);var seen=new bool[Town.Cells];var queue=new int[Town.Cells];int front=0,back=0;queue[back++]=38*Town.Width+18;seen[queue[0]]=true;int[] dx={-1,1,0,0},dz={0,0,-1,1};

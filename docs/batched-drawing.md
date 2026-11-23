@@ -10,7 +10,7 @@ rotating headings, slot-anchored popovers, source textures and visibility remain
 `UiShapes` retains white native rounded/bulged geometry, replaying shadow and
 face with their original tint/offset. Keys include dimensions, radius and bulge.
 Sixty-four entries and 384 KiB bound residency. Creation and eviction happen
-before BeginFrame; misses draw immediately for one frame and request geometry
+before BeginFrame; misses draw immediately while uncached and request geometry
 for the next. A bounded pending queue makes steady preparation an O(1) early
 return; screen/tab changes or disabling batches cancel unbuilt requests from
 the previous view. Only actual visible misses trigger builds or reclamation.
@@ -21,6 +21,16 @@ triangle layout and nondegenerate rectangles are retained. Preparation cost is
 charged to the UI telemetry phase.
 Bulged-shape fallback draws its rounded component directly without queuing a
 second, redundant cache build for that component.
+
+The cache is optional under native memory pressure. If the SDK rejects a mesh
+because its actual native `malloc` failed, that exact shape continues through
+the same immediate drawing path. Its bounded lookup entry records the rejection
+until the view/tab changes, caching is disabled, or `Trim()` invalidates it.
+Repeated draws do not retry the allocation or repeat the diagnostic. Other
+resident and smaller pending shapes remain usable. A consumed native result
+identifies this failure directly; invalid geometry, active-frame misuse,
+resource-limit violations and managed allocation failures still propagate.
+No graphics, managed-heap or cache memory ceiling is increased.
 
 `UiFont` precomputes proportional IPL/Gorditas glyph regions, including slices
 across the existing 128-pixel pages. Sixty-four flat, direct-mapped slots cache positions for

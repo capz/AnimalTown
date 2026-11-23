@@ -72,10 +72,10 @@ if (!$SkipAssets) {
         $suffix=if($textureEdge -eq 256){''}else{"-tex$textureEdge"}
         # DNMD retains its package and charges a decoded RGBA8 copy of each
         # texture per model, even when the native texture cache shares pixels.
-        # Cottage detail uses 64px. The shop palette is flat swatches and needs
-        # only 32px; keep both kits inside the same 768-KiB resident ceiling.
+        # Cottage detail uses 64px. Shop/koban use compact palette atlases at
+        # 32px; indexed static imports keep all three kits inside 768 KiB.
         $importEdge=if($buildingImports.ContainsKey($name) -and $textureEdge -eq 128){64}else{$textureEdge}
-        if($buildingImports.ContainsKey($name) -and $name.StartsWith('shop-') -and $textureEdge -eq 128){$importEdge=32}
+        if($buildingImports.ContainsKey($name) -and ($name.StartsWith('shop-') -or $name.StartsWith('koban-')) -and $textureEdge -eq 128){$importEdge=32}
         $importArguments=@('tool','run','dnd-assets','--','model',"out/prepared/$name.glb","out/disc/$name$suffix.dndmodel",'--texture-limit',"$importEdge",'--mip-levels','2','--compile-gx-materials')
         if($assetMap[$name].StartsWith('villagers/villager_')){$importArguments+='--allow-material-approximation'}
         Run dotnet $importArguments

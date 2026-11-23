@@ -114,12 +114,16 @@ internal static class BuildingAssets
             }
             foreach(string part in new[]{"exterior","door","floor","north","east","south","west"}){
                 string source=(part=="exterior"||part=="door"?b:r).GetProperty(part).GetString()!;string full=Path.GetFullPath(Path.Combine(root,source));if(!full.StartsWith(Path.GetFullPath(Path.Combine(root,"assets/models"))+Path.DirectorySeparatorChar,StringComparison.Ordinal)||!full.EndsWith(".glb",StringComparison.Ordinal))throw new InvalidDataException("Building source escapes assets/models");
-                Audit(full,part);string alias=prefix+"-"+part;if(!imports.TryAdd(alias,source))throw new InvalidDataException("Duplicate building runtime model");Text(alias);
+                Audit(full,part);string alias=prefix+"-"+part;
+                string derived="out/derived-buildings/"+alias+".glb";
+                IndexStatic(full,Path.Combine(root,derived));
+                if(!imports.TryAdd(alias,derived))throw new InvalidDataException("Duplicate building runtime model");Text(alias);
             }
             // Derived output only: preserve supplied source art and the seven-name
             // catalog/save schema. The closed form is an optional eighth runtime part.
             string closed="out/derived-buildings/"+prefix+"-exterior-closed.glb";
             MergeClosed(Path.Combine(root,b.GetProperty("exterior").GetString()!),Path.Combine(root,b.GetProperty("door").GetString()!),Path.Combine(root,closed),b.GetProperty("hinge")[0].GetSingle(),b.GetProperty("hinge")[2].GetSingle());
+            IndexStatic(Path.Combine(root,closed),Path.Combine(root,closed));
             imports.Add(prefix+"-exterior-closed",closed);
         }
         Directory.CreateDirectory(Path.Combine(root,"out/disc"));byte[] bytes=stream.ToArray();BuildingCatalog.Configure(bytes);
@@ -144,10 +148,18 @@ internal static class BuildingAssets
             string model=Path.Combine(temp,"assets/models/buildings/cottage_small/exterior.glb");byte[] modelBytes=File.ReadAllBytes(model);var oversized=new MeshData();for(int i=0;i<70;i++)oversized.Box(0,0,0,1,1,1,0);Write(model,oversized,File.ReadAllBytes(Path.Combine(root,"assets/textures/buildings/cottage_small/cottage-atlas.png")));Reject("triangle budget");File.WriteAllBytes(model,modelBytes);
             Cook(temp);
             var before=ReadMergePart(model,out var sourcePng,out _);var doorData=ReadMergePart(Path.Combine(temp,"assets/models/buildings/cottage_small/door.glb"),out _,out _);
-            var combined=ReadMergePart(Path.Combine(temp,"out/derived-buildings/cottage-exterior-closed.glb"),out var mergedPng,out _);
+            var combined=ReadMergePart(Path.Combine(temp,"out/derived-buildings/cottage-exterior-closed.glb"),out var mergedPng,out _,allowIndices:true);
             if(!sourcePng.AsSpan().SequenceEqual(mergedPng)||!combined.Normals.SequenceEqual(before.Normals.Concat(doorData.Normals))||!combined.Uvs.SequenceEqual(before.Uvs.Concat(doorData.Uvs))||!combined.Positions.Take(before.Positions.Count).SequenceEqual(before.Positions))throw new InvalidDataException("Merged building changed original attributes/atlas");
             for(int i=0;i<doorData.Positions.Count;i++){float expected=doorData.Positions[i]+(i%3==0?BuildingCatalog.Get(0).HingeX:i%3==2?BuildingCatalog.Get(0).HingeZ:0);if(combined.Positions[before.Positions.Count+i]!=expected)throw new InvalidDataException("Merged door lost its hinge pivot");}
-            Console.WriteLine("Building checks passed: source confinement, explicit IDs, collision frame, sockets, activity/fixture bounds, exit clearance and triangle budgets");
+            // Indexing must preserve seams and even signed zero, not just
+            // positions or an approximate vertex comparison.
+            var seams=new MeshData();for(int i=0;i<5;i++)seams.Triangle(Vector3.Zero,Vector3.UnitX,Vector3.UnitY,0);
+            seams.Uvs[6*2]+=.125f;seams.Normals[9*3]=.25f;seams.Positions[12*3]=BitConverter.Int32BitsToSingle(int.MinValue);
+            string seamSource=Path.Combine(temp,"seams.glb"),seamIndexed=Path.Combine(temp,"seams-indexed.glb");
+            Write(seamSource,seams,sourcePng);IndexStatic(seamSource,seamIndexed);
+            byte[] indexedBytes=File.ReadAllBytes(seamIndexed);using var indexedJson=JsonDocument.Parse(indexedBytes.AsMemory(20,BitConverter.ToInt32(indexedBytes,12)));
+            if(indexedJson.RootElement.GetProperty("accessors")[0].GetProperty("count").GetInt32()!=6)throw new InvalidDataException("Static vertex indexing merged a seam or failed to share an exact vertex");
+            Console.WriteLine("Building checks passed: source confinement, explicit IDs, collision frame, sockets, activity/fixture bounds, exit clearance, triangle budgets and bit-exact static indexing with UV/normal seams");
         }finally{Directory.Delete(temp,true);Cook(root);}
     }
     private static void MergeClosed(string exterior,string door,string output,float hingeX,float hingeZ)
@@ -166,18 +178,32 @@ internal static class BuildingAssets
     }
     // Narrow, validated cooker for this static kit. Unsupported source layouts
     // fail the build instead of silently dropping a node transform or material.
-    private static MeshData ReadMergePart(string path,out byte[] png,out JsonElement template)
+    private static MeshData ReadMergePart(string path,out byte[] png,out JsonElement template,bool allowIndices=false)
     {
         byte[] bytes=File.ReadAllBytes(path);using var doc=JsonDocument.Parse(bytes.AsMemory(20,BitConverter.ToInt32(bytes,12)));var root=doc.RootElement;template=root.Clone();
         if(root.GetProperty("meshes").GetArrayLength()!=1||root.GetProperty("nodes").GetArrayLength()!=1||root.GetProperty("materials").GetArrayLength()!=1||root.GetProperty("images").GetArrayLength()!=1)throw new InvalidDataException("Closed building requires one static mesh/material/atlas");
         var node=root.GetProperty("nodes")[0];foreach(var property in node.EnumerateObject())if(property.Name!="mesh"&&property.Name!="name")throw new InvalidDataException("Closed building node transform/extension is unsupported");
         var primitives=root.GetProperty("meshes")[0].GetProperty("primitives");if(primitives.GetArrayLength()!=1)throw new InvalidDataException("Closed building requires one primitive");var primitive=primitives[0];
-        foreach(var property in primitive.EnumerateObject())if(property.Name!="attributes"&&property.Name!="material"&&property.Name!="mode")throw new InvalidDataException("Closed building primitive extension/index layout is unsupported");
+        foreach(var property in primitive.EnumerateObject())if(property.Name!="attributes"&&property.Name!="material"&&property.Name!="mode"&&!(allowIndices&&property.Name=="indices"))throw new InvalidDataException("Closed building primitive extension/index layout is unsupported");
         if(primitive.GetProperty("material").GetInt32()!=0||primitive.GetProperty("mode").GetInt32()!=4)throw new InvalidDataException("Closed building requires triangles");
         int bin=28+BitConverter.ToInt32(bytes,12);var mesh=new MeshData();var attrs=primitive.GetProperty("attributes");
         foreach(var property in attrs.EnumerateObject())if(property.Name!="POSITION"&&property.Name!="NORMAL"&&property.Name!="TEXCOORD_0")throw new InvalidDataException("Closed building vertex attribute unsupported");
         Read("POSITION",3,mesh.Positions);Read("NORMAL",3,mesh.Normals);Read("TEXCOORD_0",2,mesh.Uvs);
-        if(mesh.Positions.Count!=mesh.Normals.Count||mesh.Positions.Count/3*2!=mesh.Uvs.Count||mesh.Positions.Count%9!=0)throw new InvalidDataException("Closed building attribute counts");
+        if(mesh.Positions.Count!=mesh.Normals.Count||mesh.Positions.Count/3*2!=mesh.Uvs.Count)throw new InvalidDataException("Closed building attribute counts");
+        if(primitive.TryGetProperty("indices",out var index)){
+            var accessor=root.GetProperty("accessors")[index.GetInt32()];var view=root.GetProperty("bufferViews")[accessor.GetProperty("bufferView").GetInt32()];
+            int count=accessor.GetProperty("count").GetInt32();
+            if(accessor.GetProperty("componentType").GetInt32()!=5125||accessor.GetProperty("type").GetString()!="SCALAR"||accessor.TryGetProperty("sparse",out _)||accessor.TryGetProperty("byteOffset",out _)||view.GetProperty("buffer").GetInt32()!=0||view.TryGetProperty("byteStride",out _)||count<3||count%3!=0||(long)count*4!=view.GetProperty("byteLength").GetInt32())throw new InvalidDataException("Derived building index layout unsupported");
+            int start=bin+view.GetProperty("byteOffset").GetInt32();var expanded=new MeshData();
+            for(int i=0;i<count;i++){
+                uint vertex=BinaryPrimitives.ReadUInt32LittleEndian(bytes.AsSpan(start+i*4,4));
+                if(vertex>=mesh.Positions.Count/3)throw new InvalidDataException("Derived building index bounds");
+                for(int axis=0;axis<3;axis++){expanded.Positions.Add(mesh.Positions[(int)vertex*3+axis]);expanded.Normals.Add(mesh.Normals[(int)vertex*3+axis]);}
+                for(int axis=0;axis<2;axis++)expanded.Uvs.Add(mesh.Uvs[(int)vertex*2+axis]);
+            }
+            mesh=expanded;
+        }
+        if(mesh.Positions.Count%9!=0)throw new InvalidDataException("Closed building triangle counts");
         var image=root.GetProperty("bufferViews")[root.GetProperty("images")[0].GetProperty("bufferView").GetInt32()];png=bytes.AsSpan(bin+image.GetProperty("byteOffset").GetInt32(),image.GetProperty("byteLength").GetInt32()).ToArray();return mesh;
         void Read(string name,int width,List<float> output){
             var accessor=root.GetProperty("accessors")[attrs.GetProperty(name).GetInt32()];var view=root.GetProperty("bufferViews")[accessor.GetProperty("bufferView").GetInt32()];
@@ -187,6 +213,31 @@ internal static class BuildingAssets
             int start=bin+view.GetProperty("byteOffset").GetInt32()+offset;
             for(int i=0;i<count;i++)for(int axis=0;axis<width;axis++){float value=BitConverter.ToSingle(bytes,start+i*stride+axis*4);if(!float.IsFinite(value))throw new InvalidDataException("Closed building non-finite vertex");output.Add(value);}
         }
+    }
+    // Only the derived static building imports are indexed. Authored sources
+    // and MergeClosed inputs retain their deliberately narrow source contract;
+    // animated models never pass through this cooker.
+    private static void IndexStatic(string source,string output)
+    {
+        var original=ReadMergePart(source,out byte[] png,out var template);var unique=new MeshData();
+        var lookup=new Dictionary<(int,int,int,int,int,int,int,int),int>();int count=original.Positions.Count/3;var indices=new int[count];
+        int Bits(float f)=>BitConverter.SingleToInt32Bits(f);
+        for(int i=0;i<count;i++){
+            var key=(Bits(original.Positions[i*3]),Bits(original.Positions[i*3+1]),Bits(original.Positions[i*3+2]),
+                     Bits(original.Normals[i*3]),Bits(original.Normals[i*3+1]),Bits(original.Normals[i*3+2]),Bits(original.Uvs[i*2]),Bits(original.Uvs[i*2+1]));
+            if(!lookup.TryGetValue(key,out int vertex)){
+                vertex=unique.Positions.Count/3;lookup.Add(key,vertex);
+                for(int axis=0;axis<3;axis++){unique.Positions.Add(original.Positions[i*3+axis]);unique.Normals.Add(original.Normals[i*3+axis]);}
+                for(int axis=0;axis<2;axis++)unique.Uvs.Add(original.Uvs[i*2+axis]);
+            }
+            indices[i]=vertex;
+        }
+        Directory.CreateDirectory(Path.GetDirectoryName(output)!);Write(output,unique,png,template,indices);
+        var expanded=ReadMergePart(output,out byte[] indexedPng,out var indexedTemplate,allowIndices:true);
+        bool Same(List<float> a,List<float> b)=>a.Select(Bits).SequenceEqual(b.Select(Bits));
+        if(!Same(original.Positions,expanded.Positions)||!Same(original.Normals,expanded.Normals)||!Same(original.Uvs,expanded.Uvs)||!png.AsSpan().SequenceEqual(indexedPng))throw new InvalidDataException("Static building indexing changed expanded attributes/atlas");
+        foreach(string key in new[]{"materials","textures","samplers"})
+            if(!System.Text.Json.Nodes.JsonNode.DeepEquals(System.Text.Json.Nodes.JsonNode.Parse(template.GetProperty(key).GetRawText()),System.Text.Json.Nodes.JsonNode.Parse(indexedTemplate.GetProperty(key).GetRawText())))throw new InvalidDataException("Static building indexing changed material: "+key);
     }
     private static void ValidateName(string name){if(name.Length<1||name.Length>64||name.Any(c=>!(c>='a'&&c<='z'||c>='0'&&c<='9'||c=='_'||c=='-')))throw new InvalidDataException("Invalid asset identifier");}
     private static void Audit(string path,string part)
@@ -206,12 +257,18 @@ internal static class BuildingAssets
         internal void Quad(Vector3 a,Vector3 b,Vector3 c,Vector3 d,int swatch){Triangle(a,b,c,swatch);Triangle(a,c,d,swatch);}
         internal void Box(float x,float y,float z,float w,float h,float d,int swatch){Vector3 a=new(x,y,z),b=new(x+w,y,z),c=new(x+w,y+h,z),e=new(x,y+h,z),f=new(x,y,z+d),g=new(x+w,y,z+d),j=new(x+w,y+h,z+d),k=new(x,y+h,z+d);Quad(a,e,c,b,swatch);Quad(f,g,j,k,swatch);Quad(a,f,k,e,swatch);Quad(b,c,j,g,swatch);Quad(e,k,j,c,swatch);Quad(a,b,g,f,swatch);}
     }
-    private static void Write(string path,MeshData mesh,byte[] png,JsonElement? template=null)
+    private static void Write(string path,MeshData mesh,byte[] png,JsonElement? template=null,int[]? indices=null)
     {
         using var stream=new MemoryStream();using var writer=new BinaryWriter(stream);foreach(float f in mesh.Positions)writer.Write(f);int normal=(int)stream.Position;foreach(float f in mesh.Normals)writer.Write(f);int uv=(int)stream.Position;foreach(float f in mesh.Uvs)writer.Write(f);int image=(int)stream.Position;writer.Write(png);while(stream.Length%4!=0)writer.Write((byte)0);
+        int indexOffset=(int)stream.Position;if(indices!=null)foreach(int index in indices)writer.Write(index);
         int count=mesh.Positions.Count/3;float[] min={float.MaxValue,float.MaxValue,float.MaxValue},max={float.MinValue,float.MinValue,float.MinValue};for(int i=0;i<count;i++)for(int axis=0;axis<3;axis++){min[axis]=Math.Min(min[axis],mesh.Positions[i*3+axis]);max[axis]=Math.Max(max[axis],mesh.Positions[i*3+axis]);}
         var gltf=new{asset=new{version="2.0",generator="AnimalTown original cottage kit"},buffers=new[]{new{byteLength=stream.Length}},bufferViews=new[]{new{buffer=0,byteOffset=0,byteLength=normal},new{buffer=0,byteOffset=normal,byteLength=uv-normal},new{buffer=0,byteOffset=uv,byteLength=image-uv},new{buffer=0,byteOffset=image,byteLength=png.Length}},accessors=new object[]{new{bufferView=0,componentType=5126,count,type="VEC3",min,max},new{bufferView=1,componentType=5126,count,type="VEC3"},new{bufferView=2,componentType=5126,count,type="VEC2"}},images=new[]{new{bufferView=3,mimeType="image/png"}},samplers=new[]{new{magFilter=9729,minFilter=9987,wrapS=33071,wrapT=33071}},textures=new[]{new{sampler=0,source=0}},materials=new[]{new{name="Shared cottage palette",pbrMetallicRoughness=new{baseColorTexture=new{index=0},metallicFactor=0,roughnessFactor=1}}},meshes=new[]{new{primitives=new[]{new{attributes=new{POSITION=0,NORMAL=1,TEXCOORD_0=2},material=0,mode=4}}}},nodes=new[]{new{mesh=0,name=Path.GetFileNameWithoutExtension(path)}},scenes=new[]{new{nodes=new[]{0}}},scene=0};
         var document=System.Text.Json.Nodes.JsonNode.Parse(JsonSerializer.Serialize(gltf))!;
+        if(indices!=null){
+            document["bufferViews"]!.AsArray().Add(System.Text.Json.JsonSerializer.SerializeToNode(new{buffer=0,byteOffset=indexOffset,byteLength=indices.Length*4}));
+            document["accessors"]!.AsArray().Add(System.Text.Json.JsonSerializer.SerializeToNode(new{bufferView=4,componentType=5125,count=indices.Length,type="SCALAR"}));
+            document["meshes"]![0]!["primitives"]![0]!["indices"]=3;
+        }
         if(template.HasValue)foreach(string key in new[]{"materials","textures","samplers"})document[key]=System.Text.Json.Nodes.JsonNode.Parse(template.Value.GetProperty(key).GetRawText());
         byte[] json=Encoding.UTF8.GetBytes(document.ToJsonString());int padded=(json.Length+3)&~3;using var output=File.Create(path);using var dst=new BinaryWriter(output);dst.Write(0x46546c67);dst.Write(2);dst.Write(12+8+padded+8+(int)stream.Length);dst.Write(padded);dst.Write(0x4e4f534a);dst.Write(json);for(int i=json.Length;i<padded;i++)dst.Write((byte)32);dst.Write((int)stream.Length);dst.Write(0x004e4942);dst.Write(stream.ToArray());
     }

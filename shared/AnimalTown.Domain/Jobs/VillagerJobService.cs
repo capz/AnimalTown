@@ -134,7 +134,7 @@ public sealed partial class VillagerJobService
     {
         if(!ledger.Initialized)return;var owner=ledger.Player(profile);if(owner.IsEmpty)return;
         for(int i=0;i<ledger.Jobs.Length;i++){var j=ledger.Jobs[i];if(j.Occupying&&(j.Owner==owner||j.Claimant==owner&&j.Status!=JobStatus.CompletedRetained))CancelJob(i,JobEndReason.ProfileDeleted);}
-        for(int i=0;i<ledger.Rewards.Length;i++)if(ledger.Rewards[i].Owner==owner)ledger.Rewards[i]=default;
+        for(int i=0;i<ledger.Rewards.Length;i++)if(ledger.Rewards[i].Owner==owner&&ledger.Rewards[i].State!=JobRewardState.Custody)ledger.Rewards[i]=default;
         for(int i=0;i<ledger.Mail.Length;i++){
             var m=ledger.Mail[i];if(m.State==JobMailState.Empty)continue;
             if(m.Owner==owner){ledger.Mail.Set(i,default);continue;}

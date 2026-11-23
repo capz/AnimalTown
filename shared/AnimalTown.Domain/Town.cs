@@ -20,6 +20,9 @@ public sealed class GroundItem
     public int Item,X,Z,Owner,Day,Kind; // 0 drop, 1 buried, 2 planted, 3 tree, 4 lost/found
     // Independent of item identity: any ordinary dropped item may be gift-wrapped.
     public bool Wrapped;
+    // Fits the existing item layout; full receipt references are allocated
+    // lazily by the town only after a visitor actually removes something.
+    public int RecoveryId {get;internal set;}
     public int PackedKind=>Kind|(Wrapped?WrappedBit:0);
     public void RestoreKind(int value)
     {
@@ -27,7 +30,7 @@ public sealed class GroundItem
         Kind=value&7;Wrapped=(value&WrappedBit)!=0;
     }
 }
-public sealed class Town
+public sealed partial class Town
 {
     public const int ScreenTileSize=20;
     // 15,360 fine cells: exactly 60% of the previous 160 x 160 town.
@@ -53,6 +56,7 @@ public sealed class Town
     public readonly Placement[] Placed=new Placement[256];
     public readonly int[] Stock=new int[12];
     public readonly TownShop Shop=new TownShop();
+    public readonly TownLostAndFound LostAndFound;
     public int Seed,Day=-1,Month=-1,GroundCount,PlacedCount,Spending,StockCount=6;
     public int HouseX=12,HouseZ=22;
     private int daylightLocation;
@@ -71,7 +75,7 @@ public sealed class Town
     // to it. Other mutable records remain private to this validation town.
     internal Town(int seed,Town? snapshot)
     {
-        Seed=seed;JobState=new Jobs.TownJobState(seed);Tiles=snapshot==null?new byte[Cells]:snapshot.Tiles;Elevation=snapshot==null?new byte[Cells]:snapshot.Elevation;Paths=new TownPaths();if(snapshot!=null){Array.Copy(snapshot.Paths.Packed,Paths.Packed,TownPaths.PackedBytes);Array.Copy(snapshot.Traffic.Visits,Traffic.Visits,TileTraffic.Bytes);}
+        Seed=seed;LostAndFound=new TownLostAndFound(this);JobState=new Jobs.TownJobState(seed);Tiles=snapshot==null?new byte[Cells]:snapshot.Tiles;Elevation=snapshot==null?new byte[Cells]:snapshot.Elevation;Paths=new TownPaths();if(snapshot!=null){Array.Copy(snapshot.Paths.Packed,Paths.Packed,TownPaths.PackedBytes);Array.Copy(snapshot.Traffic.Visits,Traffic.Visits,TileTraffic.Bytes);}
         string[] phrases={"tails up","little leaf","sky high","soft paws","dig deep","good cheer"};
         for(int i=0;i<6;i++){
             int x=10+i*11+(i==3?3:0);string name=VillagerNames.Generate(seed,i);
@@ -83,7 +87,7 @@ public sealed class Town
         if(snapshot==null)Generate();
     }
     public bool Inside(int x,int z)=>x>=0&&x<Width&&z>=0&&z<Height;
-    public int At(int x,int z)=>Inside(x,z)?Tiles[z*Width+x]:(int)Terrain.Sea;
+    public int At(int x,int z)=>Inside(x,z)?Koban.Contains(x,z)?(int)Terrain.Building:Tiles[z*Width+x]:(int)Terrain.Sea;
     public bool Walkable(int x,int z)
     { int t=At(x,z);return Inside(x,z)&&!WaterSurface.IsWater(this,x,z)&&!WaterTerrain.IsCoast(t)&&t!=(int)Terrain.Building&&t!=(int)Terrain.Cliff; }
     public void Generate()
@@ -110,19 +114,22 @@ public sealed class Town
         return true;
     }
     public int FindGround(int x,int z,int kind=-1)
-    { for(int i=0;i<GroundCount;i++)if(Ground[i].X==x&&Ground[i].Z==z&&(kind<0||Ground[i].Kind==kind))return i;return -1; }
+    { for(int i=0;i<GroundCount;i++)if(Ground[i].X==x&&Ground[i].Z==z&&(kind<0?Ground[i].Kind!=4:Ground[i].Kind==kind))return i;return -1; }
     public bool AddGround(int item,int x,int z,int kind,int day,bool wrapped=false)
         =>AddGround(item,x,z,kind,day,out _,wrapped);
 
     internal bool AddGround(int item,int x,int z,int kind,int day,out string reason,bool wrapped=false)
     {
         reason=GroundCount==Ground.Length?"The town has no room for more items on the ground. Pick something up first.":
+            kind<0||kind>4?"That item type cannot be put on the ground.":
             !Catalog.Valid(item)?"There's no item to put down.":
             !Walkable(x,z)?"Choose a spot on walkable ground.":
             FindGround(x,z)>=0?"There's already something on the ground there.":"";
         if(reason.Length!=0)return false;
-        var g=Ground[GroundCount++];g.Item=item;g.X=x;g.Z=z;g.Kind=kind;g.Wrapped=wrapped;g.Day=day;g.Owner=ActiveProfile;NotifyCastersChanged();return true;
+        int index=GroundCount++;var g=Ground[index];g.Item=item;g.X=x;g.Z=z;g.Kind=kind;g.Wrapped=wrapped;g.Day=day;g.Owner=ResidentOwner;LostAndFound.ClearRecovery(index);NotifyCastersChanged();return true;
     }
+    // A visiting capsule is slot 4, outside the on-disk resident-owner range.
+    internal int ResidentOwner=>ActiveProfile<GameState.ProfileCount?ActiveProfile:Math.Clamp(Jobs.Trip.ResidentAnchor,0,GameState.ProfileCount-1);
     public void RemoveGround(int index)
-    { var old=Ground[index];Ground[index]=Ground[--GroundCount];Ground[GroundCount]=old;NotifyCastersChanged(); }
+    { int last=GroundCount-1;LostAndFound.RemoveGroundAt(index,last);var old=Ground[index];Ground[index]=Ground[last];Ground[last]=old;GroundCount=last;NotifyCastersChanged(); }
 }

@@ -3,7 +3,8 @@ public sealed partial class GameState
 {
     public int Space;
     public float Facing;
-    public readonly byte[] BuildingTypes=new byte[BuildingWorld.Count];
+    public readonly byte[] BuildingTypes=DefaultBuildingTypes();
+    private static byte[] DefaultBuildingTypes(){var types=new byte[BuildingWorld.Count];types[7]=1;types[KobanSite.Building]=KobanSite.Definition;return types;}
     // Persist only committed actor locations. Portal animation owns no saved
     // position, so saving halfway through a doorway cannot create a half-room.
     public void NormalizeBuildingLocations()
