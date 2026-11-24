@@ -14,6 +14,7 @@
 #define SU_SIDE 32
 #define SU_INNER (SU_SIDE-2) /* One filtering gutter on each edge. */
 #define SU_BYTES (SU_SIDE*SU_SIDE)
+#define SU_BASE_BYTES (SU_BYTES/2)
 #define SU_OPACITY 66
 #define SU_LIGHTS 24
 #define SU_TERRAIN_WIDTH 256
@@ -59,11 +60,20 @@ typedef struct {
     int space,enabled,scope,overflow,changed,static_rasters,dynamic_rasters,layout_dirty;
     float span;
 } SuState;
-static inline size_t su_storage_bytes(void){return ((sizeof(SuState)+31)&~(size_t)31)+SU_PAGES*SU_BYTES*2+SU_TERRAIN_BYTES*2;}
+static inline size_t su_storage_bytes(void){return ((sizeof(SuState)+31)&~(size_t)31)+SU_PAGES*(SU_BASE_BYTES+SU_BYTES)+SU_TERRAIN_BYTES*2;}
 static inline void su_init(SuState *s){
     memset(s,0,su_storage_bytes());s->span=8;s->static_page=-1;
     s->cloud_scale=SU_CLOUD_SIDE/SU_CLOUD_PERIOD;s->cloud_contrast=1;s->cloud_opacity=SU_OPACITY/255.f;
-    s->base=(uint8_t*)s+((sizeof(SuState)+31)&~(size_t)31);s->pixels=s->base+SU_PAGES*SU_BYTES;s->terrain=s->pixels+SU_PAGES*SU_BYTES;s->coverage=s->terrain+SU_TERRAIN_BYTES;
+    s->base=(uint8_t*)s+((sizeof(SuState)+31)&~(size_t)31);s->pixels=s->base+SU_PAGES*SU_BASE_BYTES;s->terrain=s->pixels+SU_PAGES*SU_BYTES;s->coverage=s->terrain+SU_TERRAIN_BYTES;
+}
+
+/* Committed CPU bases have shadow coverage only. The light nibble starts at
+ * zero in static_work and is filled when the final IA4 page is composed. */
+static inline void su_store_base(uint8_t *packed,const uint8_t *page){
+    for(int i=0;i<SU_BASE_BYTES;i++)packed[i]=(uint8_t)(page[2*i]|(page[2*i+1]<<4));
+}
+static inline void su_load_base(uint8_t *page,const uint8_t *packed){
+    for(int i=0;i<SU_BASE_BYTES;i++){page[2*i]=packed[i]&15;page[2*i+1]=packed[i]>>4;}
 }
 /* One terrain texture, shared by every section; no extra caster/page slots. */
 static inline int su_terrain_offset(int x,int y){return ((y/4)*(SU_TERRAIN_WIDTH/8)+x/8)*32+y%4*8+x%8;}
@@ -81,7 +91,10 @@ static inline uint8_t su_pack(int shadow,int light){return (uint8_t)(((light+8)/
 #define SU_SNOW_SIDE (4*SU_WORLD_WIDTH)
 #define SU_SNOW_HEIGHT 120
 #define SU_SNOW_BYTES (SU_SNOW_SIDE*SU_SNOW_SIDE)
+#define SU_SNOW_STRIP_TEXELS 256
+#define SU_SNOW_STRIP_BYTES (SU_SNOW_SIDE*SU_SNOW_STRIP_TEXELS)
 #define SU_SNOW_BLOCKS (SU_WORLD_WIDTH/2)
+#define SU_SNOW_ROW_BYTES (SU_SNOW_BLOCKS*32)
 #define SU_SNOW_PACKED (SU_SNOW_BLOCKS*SU_SNOW_HEIGHT)
 #define SU_SNOW_MAX_VISITS 5
 #define SU_SNOW_STEPS_PER_VISIT 3
@@ -464,7 +477,7 @@ static inline void su_static_work(SuState *s,int static_budget,SuCanWork can,voi
             if(s->static_caster<SU_STATIC){
                 SuCaster *c=&s->caster[s->static_caster++];if(c->active&&c->space==s->space){su_raster(s,p,c,s->static_work);s->static_rasters++;}
             }else{
-                memcpy(s->base+s->static_page*SU_BYTES,s->static_work,SU_BYTES);p->static_dirty=0;p->base_blank=0;p->blank=0;p->dirty|=1;p->static_pending=1;s->static_page=-1;static_budget--;
+                su_store_base(s->base+s->static_page*SU_BASE_BYTES,s->static_work);p->static_dirty=0;p->base_blank=0;p->blank=0;p->dirty|=1;p->static_pending=1;s->static_page=-1;static_budget--;
                 if(!can&&static_budget>0)for(int i=0;i<SU_PAGES;i++)if(s->page[i].used&&s->page[i].needed&&s->page[i].space==s->space&&s->page[i].static_dirty){s->static_page=i;s->static_caster=0;s->static_version=s->page[i].version;su_seed_terrain(s,&s->page[i],s->static_work);break;}
             }
         }
@@ -492,7 +505,7 @@ static inline void su_prepare_budget(SuState *s,int static_budget,SuCanWork can,
                     if(at<0){s->overflow++;continue;}
                     su_unindex(s,at);s->page[at]=(SuPage){.used=1,.x=x,.z=z,.space=s->space,.needed=1,.static_dirty=1,.dirty=3,.base_blank=1,.version=++s->serial};su_index(s,at);
                     /* Never expose an evicted tile while static work waits. */
-                    memset(s->base+at*SU_BYTES,0,SU_BYTES);memset(s->pixels+at*SU_BYTES,0,SU_BYTES);
+                    memset(s->base+at*SU_BASE_BYTES,0,SU_BASE_BYTES);memset(s->pixels+at*SU_BYTES,0,SU_BYTES);
                 }else if(at>=0)s->page[at].needed=1;
             }
         }
@@ -502,7 +515,7 @@ static inline void su_prepare_budget(SuState *s,int static_budget,SuCanWork can,
      * so deleted/moved scenery cannot linger while its replacement waits. */
     for(int i=0;i<SU_PAGES;i++){
         SuPage *p=&s->page[i];if(!p->used||p->space!=s->space)continue;
-        if(p->static_dirty&&!p->base_blank){memset(s->base+i*SU_BYTES,0,SU_BYTES);p->base_blank=1;p->blank=0;p->dirty|=2;}
+        if(p->static_dirty&&!p->base_blank){memset(s->base+i*SU_BASE_BYTES,0,SU_BASE_BYTES);p->base_blank=1;p->blank=0;p->dirty|=2;}
     }
     if(s->static_page>=0){SuPage *p=&s->page[s->static_page];
         if(!p->used||!p->needed||p->space!=s->space||p->version!=s->static_version)s->static_page=-1;
@@ -511,9 +524,9 @@ static inline void su_prepare_budget(SuState *s,int static_budget,SuCanWork can,
     int first=s->cursor;
     for(int n=0;n<SU_PAGES;n++){
         int i=(first+n)%SU_PAGES;SuPage *p=&s->page[i];if(p->space!=s->space||!p->used)continue;
-        uint8_t *base=s->base+i*SU_BYTES,*dest=s->pixels+i*SU_BYTES;
+        uint8_t *base=s->base+i*SU_BASE_BYTES,*dest=s->pixels+i*SU_BYTES;
         if(!p->needed){
-            if(p->dirty||p->static_dirty){memset(base,0,SU_BYTES);memset(dest,0,SU_BYTES);p->dirty=p->static_dirty=p->static_pending=0;p->publish=1;p->blank=1;s->changed++;}
+            if(p->dirty||p->static_dirty){memset(base,0,SU_BASE_BYTES);memset(dest,0,SU_BYTES);p->dirty=p->static_dirty=p->static_pending=0;p->publish=1;p->blank=1;s->changed++;}
             continue;
         }
         if(!p->dirty)continue;
@@ -523,7 +536,7 @@ static inline void su_prepare_budget(SuState *s,int static_budget,SuCanWork can,
              * removals and newly allocated pages always publish this frame. */
             s->deferred++;continue;
         }
-        memcpy(dest,base,SU_BYTES);
+        su_load_base(dest,base);
         for(int j=SU_STATIC;j<SU_CASTERS;j++){SuCaster *c=&s->caster[j];if(c->active&&c->space==s->space){su_raster(s,p,c,dest);s->dynamic_rasters++;}}
         su_page_clouds(s,p,dest);
         p->dirty=0;p->blank=0;p->static_pending=0;p->publish=1;s->changed++;s->cursor=(i+1)%SU_PAGES;

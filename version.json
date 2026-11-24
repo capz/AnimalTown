@@ -329,6 +329,15 @@
         "Villager routines and jobs favor places with fewer people nearby.",
         "Visiting characters use their saved appearance and follow local routines."
       ]
+    },
+    {
+      "id": "winter-memory-residency",
+      "lines": [
+        "Winter towns use less memory while keeping the same snow tracks and lighting.",
+        "Snow textures cover the visible terrain at their original detail and can unload indoors.",
+        "Static shadow data takes less space while keeping the same textures on screen.",
+        "The Smooth snow transitions debug setting now applies during play."
+      ]
     }
   ]
 }

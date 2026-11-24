@@ -101,7 +101,7 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
     internal int NextSetup {get;private set;}
     internal bool ExitToTitle {get;private set;}
     private readonly ModelResidency modelResidency=new ModelResidency();
-    private bool modelSceneReady=true,terrainExitReady=true,outdoorModelLookahead;
+    private bool modelSceneReady=true,terrainExitReady=true,snowExitReady,outdoorModelLookahead;
     private int requestedUv=-1,residencyBudgetUs;
     private float residencyX=float.NaN,residencyZ;
     private int residencySpace=-1,residencyFailures;
@@ -411,16 +411,24 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
         if(!afterDraw){residencyBudgetUs=1000;RefreshResidencyDemand(at);}
         var crossing=villagers.Doors.Actors[0];
         bool exiting=villagers.Doors.Busy(0)&&crossing.Destination.Space.IsTown;
+        snowExitReady=false;
         terrain.DiscardTerrainCacheWhenIndoors=renderDebug.DiscardTerrainCacheWhenIndoors;
         if(room==0||exiting||outdoorModelLookahead||!renderDebug.DiscardTerrainCacheWhenIndoors){
             float x=state.X,z=state.Z;
-            if(room==0&&waterInspection!=0){float savedX=state.X,savedZ=state.Z;try{WaterInspection.Focus(state,waterInspection);x=state.X;z=state.Z;}finally{state.X=savedX;state.Z=savedZ;}}
             if(room!=0){if(exiting){x=crossing.Destination.X;z=crossing.Destination.Z;}else BuildingWorld.Entrance(state,BuildingWorld.Building(room),out x,out z);}
+            if((room==0||exiting)&&waterInspection!=0){
+                float savedX=state.X,savedZ=state.Z;
+                try{state.X=x;state.Z=z;WaterInspection.Focus(state,waterInspection);x=state.X;z=state.Z;}
+                finally{state.X=savedX;state.Z=savedZ;}
+            }
             int allowance=Math.Min(500,Math.Max(0,residencyBudgetUs-(int)(Clock.Timestamp-at)));
             terrainExitReady=terrain.PrepareOutdoorResidency(x,z,Clock.Timestamp+allowance,room!=0);
+            if(room!=0&&exiting&&terrainExitReady&&state.Town.Traffic.Snow.Winter&&!renderDebug.ShowGroundMipBands)
+                snowExitReady=terrain.PrepareSnowForExit(state.Town,x,z,renderDebug.SmoothSnowTransitions);
         }else if(!villagers.Doors.Busy(0)&&at-spaceChangedAt>=2000000){
             terrainExitReady=terrain.SuspendOutdoorCache()&&!terrain.CacheSuspended;
         }
+        if(afterDraw&&room!=0&&!villagers.Doors.Busy(0))terrain.ReleaseSnowMask(state.Town);
         residencyBudgetUs=Math.Max(0,residencyBudgetUs-(int)(Clock.Timestamp-at));
         long modelAt=Clock.Timestamp;
         bool allowDemotion=session.Draft==null&&terrain.ArchiveReady&&(room==0||at-playerStillSince>=ModelResidency.IdleDelayUs)&&
@@ -454,7 +462,8 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
             if(!doors.Busy(actor)||actor>0&&!state.NpcPresent(actor-1)){doors.ResourcesReady[actor]=true;continue;}
             var crossing=doors.Actors[actor];
             if(actor==0)doors.ResourcesReady[actor]=modelResidency.ReadyForSpace(state,doors,crossing.Destination.Space.Value)&&
-                modelResidency.ReadyForSpace(state,doors,room)&&(!crossing.Destination.Space.IsTown||terrainExitReady);
+                modelResidency.ReadyForSpace(state,doors,room)&&(!crossing.Destination.Space.IsTown||terrainExitReady&&
+                    (room==0||!state.Town.Traffic.Snow.Winter||renderDebug.ShowGroundMipBands||snowExitReady));
             else{int species=state.NpcSpecies(actor-1);doors.ResourcesReady[actor]=!modelResidency.Required(species)||modelResidency.Ready(species);}
         }
     }
@@ -476,6 +485,8 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
         try
         {
             terrainSuspended=terrain.SuspendForSave();
+            phase="snow mask";
+            if(!terrain.ReleaseSnowMask(state.Town))throw new InvalidOperationException("Snow mask release failed");
             phase="mount";mountAt=Clock.Timestamp;
             if(card==null)card=SaveCards.Mount();
             state.Facing=facingYaw;
@@ -990,6 +1001,7 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
         if(!modelSceneReady){modelResidency.WaitForScene();DrawLoading();return;}
         UpdateWeather();terrain.RoughOcean=weather.RoughOcean(room);terrain.SeasonOverride=renderDebug.SeasonOverride;
         terrain.GroundMipmaps=renderDebug.GroundMipmaps;terrain.GroundMipDistance=renderDebug.GroundMipDistance;terrain.ShowGroundMipBands=renderDebug.ShowGroundMipBands;
+        terrain.SmoothSnowTransitions=renderDebug.SmoothSnowTransitions;
         cachedPlayerHeight=PlayerHeight();if(room==0)RenderView.Prepare(state.X,state.Z,cachedPlayerHeight);
         if(room!=0)indoorCamera.Configure(BuildingWorld.Definition(state,BuildingWorld.Building(room)));
         var lighting=daylight.Lighting;
