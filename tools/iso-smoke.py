@@ -2094,6 +2094,24 @@ def terrain_residency_cycles(text,after=0):
             cache=floor=restored_floor=None
     return {'session_start':session,'cycles':cycles,'pending_cache':cache,'pending_floor':floor,'cancelled_restores':cancelled}
 
+def aram_door_state(pixels):
+    # A refusal bubble can cover an otherwise valid town view. Its broad body
+    # extends left of the compact door cue; snow and UI grain are not cream.
+    dialogue=region_color_count(pixels,(255,245,221),70,350,170,390)>1500
+    action=not dialogue and region_color_count(pixels,(53,105,84),200,328,270,353)>150
+    # Home names give an inspector acknowledgement without comparing animated
+    # residents, moving shadows or the floating clock elsewhere in the scene.
+    signature=bytes(max(pixels[(y*800+x)*3:(y*800+x)*3+3])<150
+                    for y in range(326,349) for x in range(250,410)) if action else None
+    return {'dialogue':dialogue,'action_signature':signature}
+
+def aram_inspector_arrival(before,after):
+    previous,current=aram_door_state(before),aram_door_state(after)
+    if current['dialogue'] or current['action_signature'] is None:
+        raise AssertionError('Building inspector did not reach an actionable world doorway')
+    if previous['action_signature']==current['action_signature']:
+        raise AssertionError('Building inspector did not acknowledge a different resident home')
+
 def aram_residency_scenario():
     """Default-on physical memory reclamation and real doorway/model cycles."""
     import re
@@ -2138,10 +2156,37 @@ def aram_residency_scenario():
             except AssertionError:time.sleep(.5)
             time.sleep(.2)
         raise AssertionError('ARAM door did not reach '+name)
+    def release_controls():
+        os.write(controller,b'RELEASE A\nRELEASE B\nRELEASE L\nRELEASE R\nSET MAIN .5 .5\nSET C .5 .5\n')
+    def clear_door_refusal(name,indoors):
+        release_controls();view(name,indoors)
+        pixels=rgb(name+'.png')
+        if aram_door_state(pixels)['dialogue']:
+            # B reveals an unfinished line, then closes it. It cannot request a
+            # second crossing or advance the home inspector as A would.
+            press_presented('B',clock);press_presented('B',clock)
+            view(name,indoors);pixels=rgb(name+'.png')
+            if aram_door_state(pixels)['dialogue']:raise AssertionError('Transient doorway refusal did not close')
+            report.setdefault('cleared_door_refusals',[]).append(name)
+        return pixels
     def inspect(indoors=False):
         nonlocal building_inspections
-        os.write(controller,b'PRESS L\nPRESS R\n');time.sleep(.2);press('A');os.write(controller,b'RELEASE L\nRELEASE R\n')
-        if not indoors:building_inspections+=1
+        name='aram-inspector-'+str(building_inspections)+('-exit' if indoors else '-home')
+        clear_door_refusal(name+'-before',indoors)
+        # Portal cooldown runs in simulation time. Spend it in the world after
+        # closing speech, rather than assume wall time or a drawn exterior does.
+        guest(name+'-cooldown',3)
+        before=clear_door_refusal(name+'-ready',indoors)
+        os.write(controller,b'PRESS L\nPRESS R\n')
+        try:press_presented('A',clock)
+        finally:release_controls()
+        view(name+'-arrived',indoors);after=rgb(name+'-arrived.png')
+        if indoors:
+            if aram_door_state(after)['action_signature'] is None:raise AssertionError('Indoor inspector did not reach the real exit')
+        else:
+            aram_inspector_arrival(before,after)
+            building_inspections+=1
+            report.setdefault('acknowledged_home_inspections',[]).append(building_inspections)
     def enter(name,target_species=None):
         if target_species is not None:
             # The existing inspector cycles the six actual resident homes in
@@ -2165,6 +2210,7 @@ def aram_residency_scenario():
             os.write(controller,b'SET MAIN .5 .8\n');guest(name+'-reversal-input',.3);os.write(controller,b'SET MAIN .5 .5\n');press('A')
         view(name,False);report[name+'_wall_seconds']=time.monotonic()-started
         report[name+'_guest_seconds']=(clock.frames()-start_vi)*1001/60000
+        clear_door_refusal(name+'-world',False)
         guest(name+'-outdoor-settle',2)
 
     wait_title();initial=card_dev_config(card);report['initial_dev_config']=initial

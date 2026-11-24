@@ -402,6 +402,66 @@ except AssertionError:pass
 else:raise AssertionError('Residency evidence without an identified town session was accepted')
 print('Terrain residency smoke: exact MEM1 release, source eviction, doorway ordering, reversal and session isolation passed')
 
+# Reversal input may land during a real door cooldown and open a refusal.
+# A drawn exterior with that speech bubble must not acknowledge an inspector.
+door_nodes=[n for n in module.body if isinstance(n,ast.FunctionDef) and n.name in ('fill_matches','region_color_count','aram_door_state','aram_inspector_arrival')]
+door_scope={}
+exec(compile(ast.Module(door_nodes,type_ignores=[]),'<ARAM doorway acknowledgement>','exec'),door_scope)
+def doorway_frame(home=0,dialogue=False,action=True,background=(255,255,255)):
+    pixels=bytearray(bytes(background)*(800*600))
+    def rectangle(left,top,right,bottom,color):
+        for y in range(top,bottom):pixels[(y*800+left)*3:(y*800+right)*3]=bytes(color)*(right-left)
+    rectangle(217,320,424,360,(255,245,221))
+    if action:rectangle(230,328,250,353,(53,105,84))
+    # Distinct stable home labels, independent of the animated 3D view.
+    rectangle(270+home*16,330,279+home*16,340,(49,72,62))
+    if dialogue:rectangle(60,340,580,420,(255,245,221))
+    return bytes(pixels)
+home_a,home_b=doorway_frame(),doorway_frame(1)
+speech=doorway_frame(dialogue=True)
+assert door_scope['aram_door_state'](speech)['dialogue']
+assert door_scope['aram_door_state'](speech)['action_signature'] is None
+assert door_scope['aram_door_state'](home_a)['action_signature'] is not None
+door_scope['aram_inspector_arrival'](home_a,home_b)
+for unacknowledged in (home_a,doorway_frame(background=(80,120,60)),speech,doorway_frame(1,action=False)):
+    try:door_scope['aram_inspector_arrival'](home_a,unacknowledged)
+    except AssertionError:pass
+    else:raise AssertionError('Ignored inspector input or a transient door view was counted as arrival')
+
+# Execute the production controller helpers: clear only visible speech with B,
+# settle in guest time, and increment the home route only after visual proof.
+scenario=next(n for n in module.body if isinstance(n,ast.FunctionDef) and n.name=='aram_residency_scenario')
+controller_nodes=[n for n in scenario.body if isinstance(n,ast.FunctionDef) and n.name in ('release_controls','clear_door_refusal','inspect')]
+wrapper=ast.parse('def doorway_helpers():\n    building_inspections=0\n').body[0]
+wrapper.body+=controller_nodes+ast.parse('return inspect,lambda:building_inspections').body
+ast.fix_missing_locations(wrapper)
+for ignored,stuck in ((False,False),(True,False),(False,True)):
+    events=[];images={};state={'pixels':speech if not ignored else home_a,'dismissals':0}
+    def send(button,clock):
+        events.append(button)
+        if button=='B':
+            state['dismissals']+=1
+            if state['dismissals']>=2 and not stuck:state['pixels']=home_a
+        elif button=='A' and not ignored:state['pixels']=home_b
+    def capture(name,indoors):images[name+'.png']=state['pixels']
+    scope={**door_scope,'os':SimpleNamespace(write=lambda controller,data:events.append(data.decode())),
+           'controller':0,'clock':object(),'view':capture,'rgb':lambda name:images[name],
+           'press_presented':send,'guest':lambda name,seconds:events.append(('guest',seconds)),'report':{}}
+    exec(compile(ast.Module([wrapper],type_ignores=[]),'<ARAM controller normalization>','exec'),scope)
+    inspect,count=scope['doorway_helpers']()
+    try:inspect()
+    except AssertionError:
+        assert ignored or stuck
+        assert count()==0 and not scope['report'].get('acknowledged_home_inspections')
+    else:
+        assert not ignored and not stuck and count()==1
+        assert scope['report']['acknowledged_home_inspections']==[1]
+        assert events.count('B')==2 and events.index(('guest',3))<events.index('A')
+        assert len(scope['report']['cleared_door_refusals'])==1
+    if stuck:assert 'A' not in events
+    assert events[0].startswith('RELEASE A\nRELEASE B\nRELEASE L\nRELEASE R\n')
+print('ARAM doorway smoke: refusal dismissal, neutral controls, guest cooldown and acknowledged inspector routes passed')
+
 config_reader=next(n for n in module.body if isinstance(n,ast.FunctionDef) and n.name=='card_dev_config')
 exec(compile(ast.Module(body=[config_reader],type_ignores=[]),'<developer config reader>','exec'),namespace)
 with TemporaryDirectory() as fixture:
