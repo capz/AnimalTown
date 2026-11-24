@@ -48,7 +48,6 @@ internal sealed partial class TerrainRenderer : IDisposable
     internal bool ArchiveReady=>archive?.Ready??false;
     internal bool CacheSuspended=>archive?.CacheSuspended??false;
     internal int CacheResidencyError=>archive?.ResidencyError??0;
-    internal bool WarmTerrainPrefetch;
     internal int WarmQueued=>archive?.WarmQueued??0;
     internal int WarmLateSelections=>archive?.WarmLateSelections??0;
     internal int WarmEvictions=>archive?.WarmEvictions??0;
@@ -222,10 +221,7 @@ internal sealed partial class TerrainRenderer : IDisposable
         if(!legacy){
             // Initial loading can spend 12ms/256 small stages per frame. Walking
             // never runs a build stage, mutates geometry or uploads a mesh.
-            if(!archive!.Ready){
-                long bakeDeadline=Clock.Timestamp+12000;
-                for(int n=0;n<256&&!archive.Ready&&(n==0||Clock.Timestamp<bakeDeadline);n++){archive.Bake(state,this,staging,data);BuiltThisFrame++;}
-            }
+            if(!archive!.Ready)BakeArchive(state,staging,data);
             archive.WarmPrefetch=WarmTerrainPrefetch;
             long at=FrameProfile.Start();archive.Prepare(state.X,state.Z,Rows);FrameProfile.DetailEnd(0,at);
             if(drawSnow&&archive.Presentable){

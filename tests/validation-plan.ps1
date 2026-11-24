@@ -47,6 +47,7 @@ $p=Get-ValidationPlan -ChangedPaths @('game/AnimalTown.GameCube/TerrainIndexBuff
 $p=Get-ValidationPlan -ChangedPaths @('game/AnimalTown.GameCube/VillagerAttentionRenderer.cs');Assert (($p.rendering -join ',') -eq 'attention') 'Attention renderer must run geometry checks'
 $p=Get-ValidationPlan -ChangedPaths @('shared/AnimalTown.Domain/ActorFrameVisibility.cs');Assert (($p.rendering -join ',') -eq 'movement,visibility' -and !$p.backend) 'Actor visibility must exercise animation and frustum checks'
 $p=Get-ValidationPlan -ChangedPaths @('tools/native-terrain-archive.inc','tests/native-terrain-archive.c');Assert (($p.native -join ',') -eq 'patched' -and ($p.managed -join ',') -eq 'terrain,core' -and !$p.full -and !$p.backend) 'Archive changes need native patch fixtures, not backend/importer checks'
+$p=Get-ValidationPlan -ChangedPaths @('game/AnimalTown.GameCube/TerrainRenderer.Streaming.cs');Assert (($p.managed -join ',') -eq 'terrain,core' -and ($p.native -join ',') -eq 'patched' -and $p.rendering.Count -eq 8 -and !$p.tooling.Count -and !$p.backend -and !$p.full) 'Streaming admission and bake-loop changes need source-linked terrain/core and fresh native bridge checks without unrelated backend/importers'
 $p=Get-ValidationPlan -ChangedPaths @('tests/AnimalTown.Checks/WaterSurfaceChecks.cs');Assert (($p.managed -join ',') -eq 'terrain' -and !$p.rendering.Count) 'Managed test-only edits must not rerun rendering fixtures'
 $p=Get-ValidationPlan -ChangedPaths @('shared/AnimalTown.Domain/RunningMinimap.cs');Assert (($p.managed -join ',') -eq 'ui' -and !$p.backend) 'Minimap geometry must use its UI fixture'
 $p=Get-ValidationPlan -ChangedPaths @('shared\AnimalTown.Domain\WindWakerWaterPattern.cs','shared/AnimalTown.Domain/WindWakerWaterPattern.cs');Assert (($p.rendering -join ',') -eq 'water') 'Windows path normalization and deduplication must preserve narrow checks'
@@ -77,4 +78,4 @@ foreach($path in @('shared/AnimalTown.Domain/WorldLighting.cs','game/AnimalTown.
     Assert ('core' -in $p.managed -and 'shadows' -in $p.native -and !$p.backend -and !$p.full) "Lighting changes must cover clock policy and the actual GX shadow/light shader: $path"
 }
 $p=Get-ValidationPlan -ChangedPaths @('game/AnimalTown.GameCube/NativeShadows.cs');Assert ('patched' -in $p.native) 'Shadow bridge changes must exercise fresh AOT bindings'
-Write-Host 'Validation routing checks passed (79 cases).'
+Write-Host 'Validation routing checks passed (80 cases).'

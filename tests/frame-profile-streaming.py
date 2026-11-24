@@ -11,8 +11,29 @@ from unittest.mock import patch
 ast.parse(Path('tools/iso-smoke.py').read_text())
 menu_source=ast.parse(Path('tools/iso-smoke.py').read_text())
 menu_namespace={'Path':Path,'__file__':str(Path('tools/iso-smoke.py').resolve())}
-exec(compile(ast.Module(body=[node for node in menu_source.body if isinstance(node,ast.FunctionDef) and node.name=='testing_menu_count'],type_ignores=[]),'<debug navigation contract>','exec'),menu_namespace)
-assert menu_namespace['testing_menu_count']()==26
+exec(compile(ast.Module(body=[node for node in menu_source.body if isinstance(node,ast.FunctionDef) and node.name in ('testing_menu_options','testing_menu_count','testing_menu_row')],type_ignores=[]),'<debug navigation contract>','exec'),menu_namespace)
+assert menu_namespace['testing_menu_count']()==25
+assert menu_namespace['testing_menu_row']('ProfilingModeOption')==menu_namespace['testing_menu_row'](41)==22
+assert menu_namespace['testing_menu_row']('ExportProfileOption')==menu_namespace['testing_menu_row'](42)==23
+assert menu_namespace['testing_menu_row']('SmoothSnowOption')==menu_namespace['testing_menu_row'](43)==24
+assert [menu_namespace['testing_menu_row'](option) for option in (22,23,34)]==[14,15,16]
+for removed in ('WarmTerrainOption',40,30):
+    try:menu_namespace['testing_menu_row'](removed)
+    except AssertionError:pass
+    else:raise AssertionError('A retired terrain control was still navigable')
+
+# Old capture commands may retain --warm-terrain, but automatic prefetch must
+# not cause a title-menu detour, config write or extra controller input.
+start_node=next(node for node in menu_source.body if isinstance(node,ast.FunctionDef) and node.name=='start_game')
+for legacy_flag in (False,True):
+    events=[];before={'active':0,'profiles':[{'created':True}]}
+    scope={'sys':sys,'root':Path('/fixture'),'committed_card_sequence':lambda path,details:before,
+           'wait_title':lambda:events.append('title'),'press':lambda button:events.append(button),
+           'wait_profiles':lambda name:events.append(name),'wait_onboarding':lambda stage,name:(stage,name)}
+    exec(compile(ast.Module([start_node],type_ignores=[]),'<automatic prefetch compatibility>','exec'),scope)
+    with patch.object(sys,'argv',['iso-smoke.py',*(['--warm-terrain'] if legacy_flag else [])]):
+        assert scope['start_game'](prefix='automatic')==(before,('world','automatic-game.png'))
+    assert events==['title','A','automatic-picker.png','A']
 
 class Capture:
     def __init__(self, flags, detail=False):
@@ -385,11 +406,16 @@ config_reader=next(n for n in module.body if isinstance(n,ast.FunctionDef) and n
 exec(compile(ast.Module(body=[config_reader],type_ignores=[]),'<developer config reader>','exec'),namespace)
 with TemporaryDirectory() as fixture:
     card=Path(fixture)/'MemoryCardA.USA.raw';card.touch()
-    for retired in (0,1):
-        payload=bytearray(40);payload[:4]=b'ATD\x05';payload[33]=retired
-        struct.pack_into('<I',payload,36,fnv(payload[:36]))
-        namespace['options_card_files']=lambda path:{'dev_config':payload}
-        decoded=namespace['card_dev_config'](card)
-        assert decoded['retired_terrain_cache_value']==retired and decoded['values'][29]==retired
-        assert 'discard_terrain_cache_when_indoors' not in decoded
-print('Developer config smoke: retired terrain slot remains decodable without treating it as an active setting')
+    for version in (5,6):
+        for retired in (0,1):
+            for retired_warm in (0,1):
+                checksum_at=40 if version==6 else 36
+                payload=bytearray(checksum_at+4);payload[:4]=b'ATD'+bytes([version]);payload[33]=retired
+                if version==6:payload[36]=retired_warm
+                struct.pack_into('<I',payload,checksum_at,fnv(payload[:checksum_at]))
+                namespace['options_card_files']=lambda path:{'dev_config':payload}
+                decoded=namespace['card_dev_config'](card)
+                assert decoded['retired_terrain_cache_value']==retired and decoded['values'][29]==retired
+                assert decoded['retired_warm_prefetch_value']==(retired_warm if version==6 else None)
+                assert 'discard_terrain_cache_when_indoors' not in decoded and 'warm_terrain_prefetch' not in decoded
+print('Developer config smoke: retired terrain slots remain decodable without controlling automatic memory policy')

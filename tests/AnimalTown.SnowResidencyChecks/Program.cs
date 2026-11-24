@@ -59,6 +59,41 @@ terrain.SetExitReady(false);
 Check(!terrain.PrepareSnowForExit(town,20,30,true),"door snow readiness waits for a complete destination terrain selection");
 terrain.SetExitReady(true);memory.Observe(8*1024*1024,0,0,Clock.Timestamp);
 Check(terrain.PrepareSnowForExit(town,20,30,false),"door preparation uses actual destination ground bounds through the new twelve-argument bridge");
+// Admission follows drawable logical rows, rather than the spare rows retained
+// in the native strip or a distant dent elsewhere on the curved town.
+NativeShadows.Reset();var regionalTown=Flat();regionalTown.Traffic.Enter(regionalTown,20,50);
+var regional=new TerrainRenderer(regionalTown);var regionalMemory=regional.Memory!;
+regionalMemory.Observe(128*1024,0,0,0);
+Check(regional.Prepare(regionalTown)&&regional.Ready&&NativeShadows.Allocations==0&&regionalMemory.ReservedBytes==0,"a far dent in native spare strip rows cannot block a fresh visible region behind denied mask admission");
+calls=NativeShadows.Calls;
+Check(!regional.PrepareRows(regionalTown,45,60)&&NativeShadows.Calls==calls,"moving the same snow revision into the dented rows recomputes essential admission before native allocation");
+regionalMemory.Observe(8*1024*1024,0,0,1);
+Check(regional.PrepareRows(regionalTown,45,60)&&NativeShadows.Bytes==128*1024,"visible dent rows reconstruct native coverage when headroom permits");
+regionalMemory.Observe(128*1024,0,0,2);
+Check(regional.Prepare(regionalTown)&&NativeShadows.Bytes==0&&regionalTown.Traffic.Snow.VisitCount(20,50)==1,"leaving all visible dents releases the mask without erasing authoritative far wear");
+regionalTown.Traffic.Enter(regionalTown,20,41);
+Check(!regional.Prepare(regionalTown),"bilinear and relief guard rows retain a dent just beyond the visible interval");
+
+NativeShadows.Reset();var edgeTown=Flat();edgeTown.Traffic.Enter(edgeTown,20,Town.Height-1);
+var edges=new TerrainRenderer(edgeTown);edges.Memory!.Observe(128*1024,0,0,0);
+Check(edges.PrepareRows(edgeTown,-8,8)&&NativeShadows.Allocations==0,"northern rows clamp rather than wrapping a southern dent through the curved-world projection");
+edgeTown.Traffic.Enter(edgeTown,20,0);
+Check(!edges.PrepareRows(edgeTown,-8,8),"the first logical row still participates in guarded mask admission");
+NativeShadows.Reset();edgeTown=Flat();edgeTown.Traffic.Enter(edgeTown,20,0);edges=new TerrainRenderer(edgeTown);edges.Memory!.Observe(128*1024,0,0,0);
+Check(edges.PrepareRows(edgeTown,Town.Height-8,Town.Height+8)&&NativeShadows.Allocations==0,"southern padded rows do not wrap northern snow wear");
+edgeTown.Traffic.Enter(edgeTown,Town.Width-1,Town.Height-1);
+Check(!edges.PrepareRows(edgeTown,Town.Height-8,Town.Height+8),"the final packed high-nibble cell remains a required southern dent");
+
+NativeShadows.Reset();var changedTerrain=Flat();changedTerrain.Traffic.Enter(changedTerrain,20,20);Array.Fill(changedTerrain.Tiles,(byte)Terrain.Water);changedTerrain.NotifyTerrainChanged();
+var eligible=new TerrainRenderer(changedTerrain);eligible.Memory!.Observe(128*1024,0,0,0);
+Check(eligible.Prepare(changedTerrain)&&NativeShadows.Allocations==0,"stale wear surrounded by terrain that cannot receive snow needs no texture");
+changedTerrain.Tiles[21*Town.Width+20]=(byte)Terrain.Grass;changedTerrain.NotifyTerrainChanged();
+Check(!eligible.Prepare(changedTerrain),"a terrain change exposing eligible grass next to a stale stamp reintroduces required storage for native spill");
+
+NativeShadows.Reset();var failedTown=Flat();failedTown.Traffic.Enter(failedTown,20,100);var failedRegion=new TerrainRenderer(failedTown);
+failedRegion.Memory!.Observe(8*1024*1024,0,0,0);NativeShadows.FailNext=true;
+Check(!failedRegion.PrepareRows(failedTown,90,110),"regional native allocation failure begins ordinary retry backoff");
+Check(failedRegion.Prepare(failedTown)&&failedRegion.Ready&&NativeShadows.Bytes==0,"a fresh region can draw during an unrelated dent-mask retry backoff");
 Console.WriteLine(checks+" snow residency checks passed using production admission/retirement code");
 
 internal sealed partial class TerrainRenderer
@@ -74,6 +109,7 @@ internal sealed partial class TerrainRenderer
     internal bool Prepare(Town town)=>PrepareSnowMask(town,20,30,0,40,false);
     internal bool PrepareFull(Town town)=>PrepareSnowMask(town,20,30,0,Town.Height,false);
     internal bool PrepareSmooth(Town town)=>PrepareSnowMask(town,20,30,0,40,true);
+    internal bool PrepareRows(Town town,int minZ,int maxZ)=>PrepareSnowMask(town,20,30,minZ,maxZ,false);
     internal bool Suspend()=>SuspendSnowMask();
     internal void SetExitReady(bool ready)=>archive=new TerrainArchive{Presentable=ready};
 }

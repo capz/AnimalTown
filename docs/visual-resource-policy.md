@@ -16,6 +16,16 @@ An essential request can trigger reclamation before reaching the low threshold.
 Fixed-size admission tickets reserve overlapping asynchronous allocation peaks;
 completed allocations stay charged until a fresh physical sample includes them.
 Required restoration can proceed under pressure when its reservation fits.
+Ordinary pressure keeps an optional species warm for at least one second after
+it leaves required demand and preserves the three-second grace after a restore.
+An actual waiting essential request can bypass those timers for an optional
+species outside demand; current scene, doorway and player pins remain intact.
+While an essential allocation is waiting, model lookahead narrows to complete
+drawable bounds and transition endpoints. Optional imminent models can retire,
+and their pending restores cancel and drain before releasing admission tickets.
+This prevents smaller prefetch requests from starving a required terrain cache
+or room restore. Ordinary low-watermark pressure retains the 12 m imminent
+lookahead and admits its restores before actors become visible.
 
 The coordinator retires one unused owner per grant. Candidates include released
 texture leases, unused dropped-item buffers, outdoor tree resources and unused
@@ -24,8 +34,9 @@ optional UI geometry caching and full ground-texture upgrades yield to pressure.
 Resource owners clear borrowed bindings before freeing their native storage.
 Reservations outlive asynchronous work and are cancelled only after cleanup.
 
-Building startup loads exterior/door/closed parts and only the saved current
+Building startup loads exterior/door parts and only the saved current
 interior. Other interiors restore near an entrance or during a doorway crossing.
+Closed composites remain comparison assets rather than runtime resident parts.
 Unseen NPC interiors do not create graphical demand.
 
 ## Visibility and snow
@@ -62,6 +73,8 @@ failed the injected slow-DMA route, so it was increased. Tests cover 3,600
 full-speed movement/reversal frames at 2, 8 and 16 polls per transfer, plus
 teleports, cancellation and indoor restoration, with no missing terrain.
 Prefetch is bounded inside the existing view/cache pools and is never drawn.
+It is automatic; the obsolete warm-prefetch debug row and saved setting no
+longer control ordinary travel.
 
 Host geometry and native allocation tests establish policy bounds, ownership
 and failure behavior. They do not establish physical GameCube frame-rate gains.

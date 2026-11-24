@@ -304,7 +304,6 @@ internal sealed partial class TitleScreen : IDisposable,Hypercube.GameCube.IFram
             case 22:return "Ground mipmaps: "+toggle;
             case 23:return "Ground mip switch: "+RenderDebugOptions.GroundMipDistanceLabel(value);
             case DevConfig.GroundMipBandsIndex:return "Ground mip bands: "+toggle;
-            case DevConfig.WarmTerrainPrefetchIndex:return "Warm terrain prefetch: "+toggle;
             case DevConfig.ProfilingModeIndex:return "Profiling: "+FrameProfile.Status+" (session)";
             case 24:return "Freeze landscape motion: "+toggle;case 25:return "Recreate terrain meshes: "+toggle;
             case 26:return "Legacy ground ring: "+toggle;

@@ -10,6 +10,7 @@
   <ItemGroup><Compile Include="../../game/AnimalTown.GameCube/TownGame.TextEntry.cs" Link="TownGame.TextEntry.cs" /></ItemGroup>
   <ItemGroup><Compile Include="../../game/AnimalTown.GameCube/DialogueVoice.cs" Link="DialogueVoice.cs" /></ItemGroup>
   <ItemGroup><Compile Include="../../game/AnimalTown.GameCube/TerrainArchive.cs" Link="TerrainArchive.cs" /></ItemGroup>
+  <ItemGroup><Compile Include="../../game/AnimalTown.GameCube/TerrainRenderer.Streaming.cs" Link="TerrainRenderer.Streaming.cs" /></ItemGroup>
   <ItemGroup><Compile Include="../../game/AnimalTown.GameCube/TerrainArchive.Warm.cs" Link="TerrainArchive.Warm.cs" /></ItemGroup>
   <ItemGroup><Compile Include="../../game/AnimalTown.GameCube/ModelResidency.cs" Link="ModelResidency.cs" /></ItemGroup>
   <ItemGroup><Compile Include="../../game/AnimalTown.GameCube/VillagerModelLod.cs" Link="VillagerModelLod.cs" /></ItemGroup>

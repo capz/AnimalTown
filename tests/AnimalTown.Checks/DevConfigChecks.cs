@@ -13,7 +13,7 @@ internal static class DevConfigChecks
         check(DevConfig.Decode(on.Encode()).Values[DevConfig.FullResolutionAaIndex]==1,"AA preference survives restart");
         var defaults=new DevConfig(7);check(defaults.RuntimeMode==7,"dev defaults preserve disc runtime profile");
         check(defaults.Values[DevConfig.GroundMipBandsIndex]==0,"terrain mip bands are opt-in");
-        check(!DevConfig.IsSetting(DevConfig.RetiredTerrainCacheIndex),"automatic indoor terrain reclamation has no debug setting");
+        check(!DevConfig.IsSetting(DevConfig.RetiredTerrainCacheIndex)&&!DevConfig.IsSetting(DevConfig.RetiredWarmTerrainPrefetchIndex),"automatic indoor terrain reclamation has no debug setting");
         // A record written before the terrain option existed. Keep accepting
         // the original checksum and preserve the previous startup options.
         var legacy=DevConfig.Decode(Convert.FromHexString("4154440100010000010101010200000000000000000000006400010000000000BFA20D87"));
@@ -24,8 +24,8 @@ internal static class DevConfigChecks
         check(previous.Values[DevConfig.RetiredTerrainCacheIndex]==0,"version-two files preserve the retired terrain padding");
         for(int row=0;row<DevConfig.Count;row++)if(DevConfig.IsSetting(row))defaults.Adjust(row,1);
         var encoded=defaults.Encode();var restored=DevConfig.Decode(encoded);
-        check(encoded[3]==6&&encoded.Length==44&&restored.Values[DevConfig.RetiredTerrainCacheIndex]==0&&restored.Values[DevConfig.GroundMipBandsIndex]==1&&restored.Values[DevConfig.WarmTerrainPrefetchIndex]==1,"active diagnostics persist while the retired terrain toggle stays unselectable");
-        check(new DevConfig().Values[DevConfig.WarmTerrainPrefetchIndex]==0&&legacy.Values[DevConfig.WarmTerrainPrefetchIndex]==0,"warm prefetch defaults off on new and migrated cards");
+        check(encoded[3]==6&&encoded.Length==44&&restored.Values[DevConfig.RetiredTerrainCacheIndex]==0&&restored.Values[DevConfig.GroundMipBandsIndex]==1&&restored.Values[DevConfig.RetiredWarmTerrainPrefetchIndex]==0,"active diagnostics persist while the retired terrain toggle stays unselectable");
+        check(new DevConfig().Values[DevConfig.RetiredWarmTerrainPrefetchIndex]==0&&legacy.Values[DevConfig.RetiredWarmTerrainPrefetchIndex]==0,"retired warm-prefetch byte stays readable on new and migrated cards");
         check(defaults.ProfilingMode==3&&restored.ProfilingMode==2&&encoded[4+DevConfig.ProfilingModeIndex]==0,"capture mode is session only; historic overlay preference still loads");
         check(defaults.Values.SequenceEqual(restored.Values),"all dev options survive their own save record");
         check(defaults.SdkPerformanceOverlay&&!restored.SdkPerformanceOverlay&&encoded[4+DevConfig.SdkPerformanceIndex]==0,"SDK overlay never enters a newly saved record");
@@ -41,7 +41,7 @@ internal static class DevConfigChecks
         check(original.Values[0]==1&&original.Values[20]==125&&original.Values[23]==4&&original.Values[18]==2,"v1 debug file keeps existing options during migration");
         var fixedDefaults=new DevConfig();
         check(fixedDefaults.RuntimeMode==4,"productive waits default off and trust frame clear defaults on");
-        foreach(int option in new[]{1,4,5,6,9,10,14,15,20,27,28,29}){
+        foreach(int option in new[]{1,4,5,6,9,10,14,15,20,27,28,29,32}){
             int beforeOption=fixedDefaults.Values[option];
             fixedDefaults.Adjust(option,1);fixedDefaults.Reset(option);
             check(!DevConfig.IsSetting(option)&&fixedDefaults.Values[option]==beforeOption,"retired settings cannot be selected or changed");
@@ -72,7 +72,7 @@ internal static class DevConfigChecks
         rejected=false;try{DevConfig.Decode(v4);}catch(IOException){rejected=true;}check(rejected,"AA setting rejects unsupported modes even with a valid checksum");
         var v5=new DevConfig().Encode().Take(40).ToArray();v5[3]=5;v5[35]=2;Rehash(v5,36);
         rejected=false;try{DevConfig.Decode(v5);}catch(IOException){rejected=true;}check(rejected,"mip band toggle rejects unsupported modes with a valid checksum");
-        v5[35]=1;Rehash(v5,36);check(DevConfig.Decode(v5).Values[DevConfig.WarmTerrainPrefetchIndex]==0,"published v5 settings migrate with prefetch off");
+        v5[35]=1;Rehash(v5,36);check(DevConfig.Decode(v5).Values[DevConfig.RetiredWarmTerrainPrefetchIndex]==0,"published v5 settings preserve the retired warm-prefetch byte");
         rejected=false;try{DevConfig.Decode(new byte[8]);}catch(IOException){rejected=true;}check(rejected,"truncated dev config rejected");
     }
     private static void UniformUiGrain(Action<bool,string> check)

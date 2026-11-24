@@ -142,13 +142,14 @@ internal sealed partial class TerrainArchive
         // have changed total headroom. Preserve the save-only diagnostic policy.
         saveResumePending=false;suppressRestoreMarker=true;
     }
-    internal void Bake(GameState state,TerrainRenderer owner,FloorStrips staging,byte[] data)
+    // False means no stage could run (for example denied cache admission).
+    // An unfinished fine stage still did useful work and returns true.
+    internal bool Bake(GameState state,TerrainRenderer owner,FloorStrips staging,byte[] data)
     {
-        if(!TryInitialize())return;
-        if(Ready)return;
+        if(!TryInitialize()||Ready)return false;
         if(scratch==null)scratch=owner.CreateSection();
         if(!building){scratch.Begin(state,TerrainArchivePlan.X(baked),TerrainArchivePlan.Z(baked)+half*TerrainStream.Height,owner.Rows);building=true;}
-        if(!scratch.Advance(state,owner,staging,data))return;
+        if(!scratch.Advance(state,owner,staging,data))return true;
         if(baked==0&&half==0)Dolphin.Diagnostics.DebugOverlay.WriteLine("ANIMALTOWN TERRAIN APPEND BEGIN");
         scratch.Archive(baked,half==1);building=false;
         if(baked==0&&half==0)Dolphin.Diagnostics.DebugOverlay.WriteLine("ANIMALTOWN TERRAIN APPEND READY");
@@ -156,12 +157,13 @@ internal sealed partial class TerrainArchive
             baked++;half=0;
             if((baked&127)==0&&!Ready)Dolphin.Diagnostics.DebugOverlay.WriteLine("ANIMALTOWN TERRAIN BAKE PROGRESS sections "+baked+" / "+TerrainArchivePlan.Count);
         }
-        if(!Ready)return;
+        if(!Ready)return true;
         scratch.Dispose();scratch=null;collect=true;
         for(int i=0;i<first.Length;i++){first[i]=NativeTerrain.Info(i,0);count[i]=NativeTerrain.Info(i,1);triangles[i]=NativeTerrain.Info(i,2);}
         for(int i=0;i<views.Length;i++)views[i]=new View();
         Dolphin.Diagnostics.DebugOverlay.WriteLine("Terrain archive: "+NativeTerrain.Stat(5)+" ARAM bytes / "+Bytes+" MEM1 bytes / "+NativeTerrain.Stat(1)+" parts");
         Dolphin.Diagnostics.DebugOverlay.WriteLine("ANIMALTOWN TERRAIN BAKE READY sections "+baked);
+        return true;
     }
     internal void Prepare(float x,float z,CylinderRows rows)
     {

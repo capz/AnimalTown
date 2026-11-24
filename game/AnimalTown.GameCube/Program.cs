@@ -195,8 +195,8 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
     private const int SettingsTab=5,TestingTab=6,DaylightSettingsRow=6;
     // Stable IDs keep hidden/retired controls out of both debug menus.
     private const int SeasonPreviewOption=18,TimePreviewOption=39;
-    private const int WarmTerrainOption=40,ProfilingModeOption=41,ExportProfileOption=42,SmoothSnowOption=43;
-    private static readonly int[] testingOptions={0,33,2,3,11,12,13,16,17,35,SeasonPreviewOption,TimePreviewOption,19,21,22,23,34,36,37,38,31,32,WarmTerrainOption,ProfilingModeOption,ExportProfileOption,SmoothSnowOption};
+    private const int ProfilingModeOption=41,ExportProfileOption=42,SmoothSnowOption=43;
+    private static readonly int[] testingOptions={0,33,2,3,11,12,13,16,17,35,SeasonPreviewOption,TimePreviewOption,19,21,22,23,34,36,37,38,31,32,ProfilingModeOption,ExportProfileOption,SmoothSnowOption};
     private static readonly string[] groundMipLabels={"0","1"};
     private static int TestingOption(int row)=>testingOptions[row];
     private static readonly string[] tabs={"Backpack","Jobs","Catalog","Home","Post office","Settings","Debug / testing"};
@@ -252,7 +252,6 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
         renderDebug.GroundMipmaps=config.Values[22]!=0;for(int i=0;i<config.Values[23];i++)renderDebug.AdjustGroundMipDistance(1);
         renderDebug.ShowGroundMipBands=config.Values[DevConfig.GroundMipBandsIndex]!=0;
         terrain.FreezeMotion=config.Values[24]!=0;terrain.RecreateMeshes=config.Values[25]!=0;if(config.Values[26]!=0)terrain.ToggleGroundRing();
-        terrain.WarmTerrainPrefetch=config.Values[DevConfig.WarmTerrainPrefetchIndex]!=0;
         NativeRim.Enable(0);
     }
     private void FindStartingPlot()
@@ -825,12 +824,6 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
                 int added=state.GiveMoney(10000,godMode);
                 Say("God mode",!godMode?"Enable God mode to give yourself acorns.":added==0?"Your wallet is full.":"Added "+UiFont.Money(added)+". Wallet: "+UiFont.Money(state.Wallet)+".");break;
             case 0:FrameProfile.Enabled=!FrameProfile.OverlayVisible;debugConfig.SelectProfilingMode(FrameProfile.Mode);break;
-            case WarmTerrainOption:
-                terrain.WarmTerrainPrefetch=!terrain.WarmTerrainPrefetch;
-                debugConfig.Values[DevConfig.WarmTerrainPrefetchIndex]=terrain.WarmTerrainPrefetch?1:0;
-                card?.Dispose();card=null;
-                if(!DevConfigStorage.Save(debugConfig))Say("Dev config",DevConfigStorage.Status);
-                break;
             case ProfilingModeOption:FrameProfile.SetMode((FrameProfile.Mode+1)%4);debugConfig.SelectProfilingMode(FrameProfile.Mode);if(FrameProfile.Status.StartsWith("Capture refused"))Say("Profiling",FrameProfile.Status);break;
             case ExportProfileOption:FrameProfile.DumpCapture();debugConfig.SelectProfilingMode(FrameProfile.Mode);break;
             case 2:case 3:
@@ -870,7 +863,6 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
             case 32:return "Give "+UiFont.Money(10000)+(godMode?"":" (God mode required)");
             case 33:return "Full-resolution AA: "+OnOff(VideoOptions.FullResolutionAa)+(VideoOptions.AaSaveFailed?" (not saved)":" (saved)");
             case 0:return "Performance display: "+OnOff(FrameProfile.OverlayVisible);
-            case WarmTerrainOption:return "Warm terrain prefetch: "+OnOff(terrain.WarmTerrainPrefetch);
             case ProfilingModeOption:return "Profiling: "+DevConfig.ProfilingLabel(FrameProfile.Mode)+" (session)";
             case ExportProfileOption:return "Export profiling capture to debug log";
             case 2:return "UV island colors: "+OnOff((uvDebug&1)!=0);

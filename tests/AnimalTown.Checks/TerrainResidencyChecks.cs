@@ -40,12 +40,16 @@ namespace AnimalTown.GameCube
     }
 }
 internal static class FrameProfile {internal static int RecycledSections;}
-internal sealed class TerrainRenderer
+internal sealed partial class TerrainRenderer
 {
     internal bool Ready=true;
+    private TerrainArchive? archive;
+    internal int BuiltThisFrame {get;private set;}
     internal readonly CylinderRows Rows=new CylinderRows();
     internal TerrainSection CreateSection()=>new TerrainSection();
     internal int SeasonAt(int month,int preview)=>TerrainTiles.Season(month,preview);
+    internal void PumpBake(TerrainArchive source,GameState state,FloorStrips staging,byte[] data)
+    {archive=source;BuiltThisFrame=0;BakeArchive(state,staging,data);}
 }
 internal static class WaterRenderer {internal const int PartKinds=108;}
 internal sealed class TerrainSection
@@ -222,7 +226,14 @@ internal static class TerrainResidencyChecks
             "terrain startup cannot spend another owner's in-flight reservation");
         check(memory.UnderPressure&&memory.WaitingPeakBytes==TerrainArchive.ResetPeakBytes,
             "denied essential terrain startup requests global reclamation without inventing an allocator failure");
-        memory.Cancel(other);archive.Bake(state,owner,strips,data);
+        owner.PumpBake(archive,state,strips,data);
+        check(owner.BuiltThisFrame==0&&NativeTerrain.ResetCalls==resets,
+            "production bake loop stops on denied admission without counting 256 nonexistent build stages");
+        check(owner.WarmTerrainPrefetch==archive.WarmPrefetch&&owner.WarmTerrainPrefetch,
+            "renderer diagnostics match the archive's always-asynchronous prefetch policy");
+        memory.Cancel(other);owner.PumpBake(archive,state,strips,data);
+        check(owner.BuiltThisFrame==256&&!archive.Ready&&NativeTerrain.ResetCalls==resets+1,
+            "reclaimed headroom resumes useful baking under the existing 256-stage frame limit");
         check(NativeTerrain.ResetCalls==resets+1&&memory.ReservedBytes==TerrainArchive.ResetPeakBytes,
             "startup completion keeps cache/staging charged until a fresh physical observation");
         check(!memory.TryReserve(900*1024,Clock.Timestamp,true,out _),"a stale pre-allocation snapshot cannot fund another large owner");

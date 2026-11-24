@@ -34,7 +34,7 @@ internal static class ModelStartup
 internal sealed class ModelResidency
 {
     internal const int ColdBudget=4*1024*1024,AramReserve=512*1024;
-    internal const long IdleDelayUs=5000000,WarmGraceUs=3000000,RetryDelayUs=1000000;
+    internal const long IdleDelayUs=5000000,WarmGraceUs=3000000,RetryDelayUs=1000000,PressureIdleDelayUs=1000000;
     private readonly Model?[] models=new Model?[ModelResidencyDemand.SpeciesCount];
     private readonly long[] lastRequired=new long[ModelResidencyDemand.SpeciesCount],warmUntil=new long[ModelResidencyDemand.SpeciesCount],retryAt=new long[ModelResidencyDemand.SpeciesCount];
     private readonly ModelResidencyDemand demand=new ModelResidencyDemand();
@@ -97,7 +97,8 @@ internal sealed class ModelResidency
     {
         if(stopped)return;
         outdoors=state.Space==0;
-        demand.Prepare(state,doors,pinAll||!Enabled,targetSpace,Memory?.UnderPressure==true);
+        bool urgent=Memory?.WaitingPeakBytes>0;
+        demand.Prepare(state,doors,pinAll||!Enabled,targetSpace,Memory?.UnderPressure==true,urgent);
         byte otherPriority=3;
         for(int i=0;i<models.Length;i++){
             if(demand.Required[i])lastRequired[i]=now;
@@ -111,7 +112,7 @@ internal sealed class ModelResidency
                 if(i!=active&&priority[i]<otherPriority)otherPriority=priority[i];
             }
         }
-        if(active>=0&&!cancelRequested&&(!restoring&&demand.Required[active]||restoring&&otherPriority<priority[active])){
+        if(active>=0&&!cancelRequested&&(!restoring&&demand.Required[active]||restoring&&(otherPriority<priority[active]||urgent&&!demand.Required[active]))){
             cancelRequested=true;Cancellations++;cancellation!.Cancel();
         }
     }
@@ -206,8 +207,13 @@ internal sealed class ModelResidency
     private int Candidate(long now,bool startup)
     {
         int candidate=-1;
+        bool pressure=Memory?.UnderPressure==true,urgent=Memory?.WaitingPeakBytes>0;
+        long idleDelay=pressure?PressureIdleDelayUs:outdoors?0:IdleDelayUs;
+        // A low watermark alone must not churn models as the camera reverses
+        // at its smaller guard. Only an actual waiting essential reservation
+        // may reclaim a freshly restored or recently required optional model.
         for(int i=0;i<models.Length;i++)if(models[i]!=null&&!replacementLocked[i]&&!demand.Required[i]&&models[i]!.SupportsAramResidency&&Ready(i)&&now>=retryAt[i]&&
-            (startup?!startupAttempted[i]:Memory?.UnderPressure==true||now-lastRequired[i]>=(outdoors?0:IdleDelayUs)&&now>=warmUntil[i])&&
+            (startup?!startupAttempted[i]:urgent||now-lastRequired[i]>=idleDelay&&now>=warmUntil[i])&&
             (candidate<0||lastRequired[i]<lastRequired[candidate]))candidate=i;
         return candidate;
     }
@@ -255,10 +261,11 @@ internal sealed class ModelResidency
         // The package plus decoded native texture storage and all instance
         // skin outputs can overlap during a restore. Reserve the whole bound
         // before the asynchronous owner starts; optional lookahead cannot
-        // bypass global pressure while visible demand may use the reserve.
+        // bypass global pressure. Visible and imminent arrivals may use real
+        // headroom before their first drawable frame; outer prefetch cannot.
         if(restore&&Memory!=null){
             int estimate=warmPeak[species];
-            if(!Memory.TryReserve(estimate,now,priority[species]==0,out memoryTicket))return;
+            if(!Memory.TryReserve(estimate,now,priority[species]<=1,out memoryTicket))return;
         }
         var token=new CancellationTokenSource();
         try{

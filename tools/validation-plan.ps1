@@ -27,7 +27,7 @@ function Get-ValidationPlan {
         elseif($p -match '^(shared/AnimalTown.Domain/DroppedItemPlan|game/AnimalTown.GameCube/DroppedItemRenderer)\.cs$|^assets/textures/items/|^tools/AnimalTown.Tools/DroppedItemAssets\.cs$'){$renderingForPath=@('dropped-item')}
         if($p -match '^(docs/|.*\.md$|LICENSE$|\.gitignore$)'){continue}
         $release=$true
-        if($p -match '^(tests/AnimalTown\.(MemoryChecks|FloorResidencyChecks|SnowResidencyChecks|VisualAllocationChecks)/|shared/AnimalTown.Domain/VisualMemoryPressure\.cs$|game/AnimalTown.GameCube/(VisualMemoryCoordinator|NativeMemory|TerrainRenderer\.(Textures|Snow))\.cs$|tools/(native-memory-pressure\.(c|h)|patch-memory-pressure\.py)$|tests/(native-memory-(pressure|wrapping)\.c|memory-pressure-sdk/))'){
+        if($p -match '^(tests/AnimalTown\.(MemoryChecks|FloorResidencyChecks|SnowResidencyChecks|VisualAllocationChecks)/|shared/AnimalTown.Domain/VisualMemoryPressure\.cs$|game/AnimalTown.GameCube/(VisualMemoryCoordinator|NativeMemory|TerrainRenderer\.(Textures|Snow|Streaming))\.cs$|tools/(native-memory-pressure\.(c|h)|patch-memory-pressure\.py)$|tests/(native-memory-(pressure|wrapping)\.c|memory-pressure-sdk/))'){
             Add-Managed 'core';Add-Managed 'terrain';[void]$native.Add('patched');continue
         }
         if($p -match '^(build/|\.github/|Directory\.|.*\.sln$|.*\.csproj$|\.gitmodules$|vendor/|tools/(build-|publish-release|patch-native|.*validation|test-changes)|tests/validation-(plan|selection))'){$broad=$true;continue}
