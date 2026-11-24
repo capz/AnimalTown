@@ -1,19 +1,20 @@
 {
-  "schema": 1,
+  "schema": 2,
   "date": "2026-11-24",
   "validation": "native SDK host fixtures; no physical GameCube, emulator GPU, frame-rate or complete-scene memory measurement",
   "host": {
     "architecture": "x86_64",
     "pointerBytes": 8
   },
-  "sdkPin": "0.1.0-preview.374.1",
-  "baseCommit": "48a0adcb79adc793b00a7647fd1caa190a0e8125",
-  "sourceState": "Measurement ran before commit; source hashes identify the measured implementation.",
+  "sdkPin": "0.1.0-preview.376.1",
+  "baseCommit": "d2329a327f4b3830f9806437108946ea756839eb",
+  "sourceState": "Measurement ran before the merge commit; source hashes identify the measured implementation and cooked assets.",
   "sourceSha256": {
-    "tests/native-model-memory-peaks.c": "6360c9744ab2d3eb33e3f24bca431a3812d786071ed6bd72f41046c025cf2c9b",
+    "tests/native-model-memory-peaks.c": "c57fb911c5ed7e7f2de8a659a4f0ae8fb1e872ed39565f8d6891da4211180e4f",
     "tools/native-building-retained.inc": "29b79b479035fb936fc22316c8218ca358433c2ccdb5f5355f33b5a06ebe41da",
-    "shared/AnimalTown.Domain/ModelMemoryPlan.cs": "36a39226b287fc407b0d432e9bcd423db964775511ccd6ae0f73be01d5d21601",
-    "tools/AnimalTown.Tools/ModelLodCooker.cs": "81b6624347998c63e611e8c2c480bce4660bb14ff7b0f1209a77cb699f7d5f8d"
+    "shared/AnimalTown.Domain/ModelMemoryPlan.cs": "a663fce8a58e9d9c3c6870b8e3e195ff27ad1e9649572afd263c29c5a170b65d",
+    "shared/AnimalTown.Domain/VillagerLod.cs": "bb25ec31ae4c15c73c0e10725455a24e47c0dd549b485486d78ae8d08ddf51ef",
+    "tools/AnimalTown.Tools/ModelLodCooker.cs": "8801d255b1569f9b7355d18ad7e42223070d418b990b29ca554c254ea562df58"
   },
   "sdkSourceSha256": {
     "source/model.c": "10ca47190a5b5f923adb96c231e8e0cfd07d9042c7bb67eaaac2b24fbfb7504d",
@@ -23,23 +24,25 @@
     "source/aram.c": "2cc4af3c30ec63eed552eb0a571185a282e44288d4ab29ca6d902ee1bd227a55",
     "include/dnd_model_internal.h": "da829bfa0633040ca9b37f506601aa6f3d94578aa4ea24a56affff260a90622b"
   },
-  "catalogSha256": "4996599ea08d51e261ebac9b0d51d8a1d8563b371235407742b415b9dc8a34ba",
+  "catalogSha256": "b4ec58f3115322fd1f432db8359441db4b034b1daa30723ed675ac132935c101",
   "method": {
     "allocations": "Outstanding requested malloc/calloc/aligned_alloc/realloc bytes, including SDK allocation prefixes; no libc allocator metadata or managed/job overhead.",
     "sourceOverlap": "Conservatively includes a complete caller-owned package during data loading. Runtime Model.LoadAsync reads directly into its native package.",
     "operations": [
       "cold load and native instance creation",
       "production selected-player compaction and two instances",
+      "eight-instance shared/selected cohorts covering all current actor slots, including visitors",
       "clip seeks and cross-fades",
       "skin retirement/reconstruction",
       "incremental ARAM demotion/restoration using 4096 bytes and 64 work items per step",
-      "both LOD swap directions",
-      "every mapped vertex at 33 uniform samples per source clip"
+      "both one-instance/eight-instance LOD swap directions",
+      "every referenced source vertex must map to surviving geometry; every mapped vertex compared at 33 uniform samples per source clip"
     ],
     "hostAramEmulationExcludedBytes": 16777216
   },
   "gates": {
-    "catalog": "Package length/FNV, descriptor/instance upper bounds and actual peak vs cooked admission limits asserted for all six species.",
+    "catalog": "Package length/FNV, descriptor/instance upper bounds and actual cold/selected/cohort/swap/restore peaks vs cooked admission limits asserted for all six species.",
+    "minimumRuntimeTriangleReduction": 0.125,
     "maximumSampledNormalizedPoseError": 0.05,
     "maximumSampledPixelErrorAt30px": 1.5,
     "scope": "Samples establish a regression gate, not a continuous-time animation-error proof.",
@@ -52,128 +55,174 @@
   "models": [
     {
       "species": "fox",
-      "sourceSha256": "5f3f8cb25469659d6684a43cddb9badc625141bb3e082a8fae720b73c4508899",
-      "coarseSha256": "67adcdccff1ccff402ede5606cd74e161497fdc1a7a08dca7b9cd70ac706d50c",
+      "sourceSha256": "7192204019e1e3d04681579db6a1039a1533ac84e9e880f346efcb797e0ee277",
+      "coarseSha256": "df73ec5d8a85aa1553339d329272c9036458ff1acbbec24034ac90f0de009c44",
+      "correspondenceSha256": "8db5cd5c1e878363249158dac514a137bfbe300a543bdfca2cb24ea8726be42e",
       "triangles": [
         2064,
         1618
       ],
       "retainedNativeBytes": [
-        478528,
-        439904
+        452096,
+        413472
       ],
-      "coldPeakWithCallerPackageBytes": 751584,
+      "coldPeakWithCallerPackageBytes": 698720,
       "startupAdmissionBytes": [
-        878848,
-        939168
+        825984,
+        886304
       ],
-      "selectedNativePeakBytes": 666464,
-      "restoreAdditionalPeakBytes": 470688,
-      "restoreAdmissionBytes": 545920,
-      "sampledNormalizedPoseError": 0.0452239874,
-      "sampledErrorAt30px": 1.3567196,
-      "clips": 2
+      "selectedNativePeakBytes": 613600,
+      "restoreAdditionalPeakBytes": 444256,
+      "restoreAdmissionBytes": 519488,
+      "cohortInstances": 8,
+      "cohortStartupPeakBytes": 870976,
+      "cohortStartupAdmissionBytes": 1248224,
+      "selectedCohortPeakBytes": 785824,
+      "selectedCohortAdmissionBytes": 1248224,
+      "cohortRestoreAdditionalPeakBytes": 833120,
+      "cohortRestoreAdmissionBytes": 941728,
+      "sampledNormalizedPoseError": 0.0452236861,
+      "sampledErrorAt30px": 1.3567106,
+      "clips": 2,
+      "mappedVertexProbes": 146261
     },
     {
       "species": "bunny",
-      "sourceSha256": "dbcc6c99ec33f33b28827f92b48574db6cac9171f53dc568cca6a2f45fd8a7d3",
-      "coarseSha256": "32222dfd7a595c2a3e2b3452c6617c237644f5e397f544a9699a7705b2a98f74",
+      "sourceSha256": "a8f5b845e8c4f9c2d7a5b408462b579ea784d586a7b1725c3c4105b00d060b93",
+      "coarseSha256": "de7ce72e26c0584be6d9888f536b7e4f8fe309451335440978eb461ef9f0cc9b",
+      "correspondenceSha256": "0cc700191f136c36b5e6bd53491471436256926871d540fc6ce0af0d11081d90",
       "triangles": [
-        1575,
-        1253
+        1489,
+        1285
       ],
       "retainedNativeBytes": [
-        541760,
-        513888
+        424512,
+        407264
       ],
-      "coldPeakWithCallerPackageBytes": 917280,
+      "coldPeakWithCallerPackageBytes": 655328,
       "startupAdmissionBytes": [
-        984960,
-        986144
+        776192,
+        829824
       ],
-      "selectedNativePeakBytes": 752864,
-      "restoreAdditionalPeakBytes": 540416,
-      "restoreAdmissionBytes": 608704,
-      "sampledNormalizedPoseError": 0.0394660658,
-      "sampledErrorAt30px": 1.183982,
-      "clips": 0
+      "selectedNativePeakBytes": 568704,
+      "restoreAdditionalPeakBytes": 412992,
+      "restoreAdmissionBytes": 492192,
+      "cohortInstances": 8,
+      "cohortStartupPeakBytes": 796576,
+      "cohortStartupAdmissionBytes": 1151616,
+      "selectedCohortPeakBytes": 709920,
+      "selectedCohortAdmissionBytes": 1151616,
+      "cohortRestoreAdditionalPeakBytes": 740480,
+      "cohortRestoreAdmissionBytes": 867616,
+      "sampledNormalizedPoseError": 0.0399317121,
+      "sampledErrorAt30px": 1.1979514,
+      "clips": 3,
+      "mappedVertexProbes": 174300
     },
     {
       "species": "giraffe",
-      "sourceSha256": "5480e5a6551c10f4bbe3652ae6b9d00a028a75a15300425ba8d935eb5c04005a",
-      "coarseSha256": "8976b9b09dd0402430bf69b150748553dcbfca04599d22535c87e1915ca54dac",
+      "sourceSha256": "dc75192fdcdaa550ec5a6efde41ae09b3d6860ad2211cf48297865ba8fd03a29",
+      "coarseSha256": "f898bb5ddc4e945abfec35c7a4324ba42c1ecf4a976376bfb97f7964f9f31efc",
+      "correspondenceSha256": "27eed02d9681aeb3e341c12ad05b1ede290843f03affe5e8c239796d8b5f04bf",
       "triangles": [
         1572,
-        1314
+        1296
       ],
       "retainedNativeBytes": [
-        382048,
-        360128
+        422176,
+        398272
       ],
-      "coldPeakWithCallerPackageBytes": 577472,
+      "coldPeakWithCallerPackageBytes": 653408,
       "startupAdmissionBytes": [
-        695296,
-        746080
+        773056,
+        825536
       ],
-      "selectedNativePeakBytes": 491904,
-      "restoreAdditionalPeakBytes": 373408,
-      "restoreAdmissionBytes": 449536,
-      "sampledNormalizedPoseError": 0.039703514,
-      "sampledErrorAt30px": 1.1911054,
-      "clips": 0
+      "selectedNativePeakBytes": 567232,
+      "restoreAdditionalPeakBytes": 411680,
+      "restoreAdmissionBytes": 489792,
+      "cohortInstances": 8,
+      "cohortStartupPeakBytes": 786176,
+      "cohortStartupAdmissionBytes": 1140416,
+      "selectedCohortPeakBytes": 699968,
+      "selectedCohortAdmissionBytes": 1140416,
+      "cohortRestoreAdditionalPeakBytes": 735136,
+      "cohortRestoreAdmissionBytes": 857152,
+      "sampledNormalizedPoseError": 0.0398322824,
+      "sampledErrorAt30px": 1.1949685,
+      "clips": 3,
+      "mappedVertexProbes": 174100
     },
     {
       "species": "cat",
-      "sourceSha256": "ba843acb787eb23b7ba7f250800518af41ef14ecbb38ecbb979cb3fb6e473787",
-      "coarseSha256": "e3eb152c023da7ec64622a065c2e1ceaef6248447d90de3518fe1dd674610185",
+      "sourceSha256": "8f8c5d6fa1fbc35d1a54b14a6ffbb398bf16b9ab931cb359a8754900361eeafa",
+      "coarseSha256": "60fb0bb9e7cb1fa03abc7f0dce2ee71570da8b057b6f68cd91fd72828a6e21cb",
+      "correspondenceSha256": "6bb019b8924e16b462d20ac799e4b74b2758cfad7bea65c7199ba96e0b86aedf",
       "triangles": [
         1548,
-        1432
+        1406
       ],
       "retainedNativeBytes": [
-        656288,
-        642944
+        533280,
+        517024
       ],
-      "coldPeakWithCallerPackageBytes": 990464,
+      "coldPeakWithCallerPackageBytes": 824288,
       "startupAdmissionBytes": [
-        1134880,
-        1212096
+        969504,
+        1047488
       ],
-      "selectedNativePeakBytes": 822304,
-      "restoreAdditionalPeakBytes": 646048,
-      "restoreAdmissionBytes": 723936,
-      "sampledNormalizedPoseError": 0.0396127862,
-      "sampledErrorAt30px": 1.1883836,
-      "clips": 0
+      "selectedNativePeakBytes": 737760,
+      "restoreAdditionalPeakBytes": 522080,
+      "restoreAdmissionBytes": 600960,
+      "cohortInstances": 8,
+      "cohortStartupPeakBytes": 1075808,
+      "cohortStartupAdmissionBytes": 1515392,
+      "selectedCohortPeakBytes": 989248,
+      "selectedCohortAdmissionBytes": 1515392,
+      "cohortRestoreAdditionalPeakBytes": 1021376,
+      "cohortRestoreAdmissionBytes": 1146848,
+      "sampledNormalizedPoseError": 0.0396345405,
+      "sampledErrorAt30px": 1.1890362,
+      "clips": 3,
+      "mappedVertexProbes": 277100
     },
     {
       "species": "hamster",
-      "sourceSha256": "3f326799b042292c49632bbddbb49c234c49a5828c1bc851b54fe6b89030b2dd",
-      "coarseSha256": "a6d2a33cdf4a0afa7958e7fd11e6b912129079090e48ef5b6102311265ff2973",
+      "sourceSha256": "f0a220155868327facc0fcc727588d7b2c55ad10bfe2f1461abf2897921e9347",
+      "coarseSha256": "af5b1bddc9b639a160515b1f4fdb489b4c0fd4885e082aaf11bdf65535ac72a6",
+      "correspondenceSha256": "b7a29aea66d0df94e1589a0bf650248b2a5310107ad8a552c814907db3d5c563",
       "triangles": [
         1562,
         1426
       ],
       "retainedNativeBytes": [
-        368096,
-        356800
+        471808,
+        458240
       ],
-      "coldPeakWithCallerPackageBytes": 557184,
+      "coldPeakWithCallerPackageBytes": 732704,
       "startupAdmissionBytes": [
-        671296,
-        718432
+        862528,
+        925312
       ],
-      "selectedNativePeakBytes": 471936,
-      "restoreAdditionalPeakBytes": 360224,
-      "restoreAdmissionBytes": 435520,
-      "sampledNormalizedPoseError": 0.039739948,
-      "sampledErrorAt30px": 1.1921984,
-      "clips": 0
+      "selectedNativePeakBytes": 647168,
+      "restoreAdditionalPeakBytes": 462880,
+      "restoreAdmissionBytes": 539296,
+      "cohortInstances": 8,
+      "cohortStartupPeakBytes": 907936,
+      "cohortStartupAdmissionBytes": 1302016,
+      "selectedCohortPeakBytes": 822368,
+      "selectedCohortAdmissionBytes": 1302016,
+      "cohortRestoreAdditionalPeakBytes": 864960,
+      "cohortRestoreAdmissionBytes": 978784,
+      "sampledNormalizedPoseError": 0.04156013,
+      "sampledErrorAt30px": 1.2468039,
+      "clips": 3,
+      "mappedVertexProbes": 224100
     },
     {
       "species": "spaniel",
       "sourceSha256": "14f091c18cd3df4bad2d840a4ff7936bd12251fa4029e058f1fdaf570d55dc6c",
       "coarseSha256": "07af4c74b85b7c4d1732f07144ecb72fca0b51a03bde3bf7026468ce264dafa1",
+      "correspondenceSha256": "91d012cc245260e5fdd5da2d7d61c00146e41e8fbf5dac4faf679623ee9d2eca",
       "triangles": [
         1574,
         1504
@@ -190,9 +239,17 @@
       "selectedNativePeakBytes": 489536,
       "restoreAdditionalPeakBytes": 372928,
       "restoreAdmissionBytes": 452928,
+      "cohortInstances": 8,
+      "cohortStartupPeakBytes": 756768,
+      "cohortStartupAdmissionBytes": 1072480,
+      "selectedCohortPeakBytes": 669664,
+      "selectedCohortAdmissionBytes": 1072480,
+      "cohortRestoreAdditionalPeakBytes": 695936,
+      "cohortRestoreAdmissionBytes": 827904,
       "sampledNormalizedPoseError": 0.039986821,
       "sampledErrorAt30px": 1.1996046,
-      "clips": 0
+      "clips": 0,
+      "mappedVertexProbes": 1695
     }
   ]
 }

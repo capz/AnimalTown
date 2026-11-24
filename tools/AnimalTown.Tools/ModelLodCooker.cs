@@ -8,7 +8,7 @@ using System.Text.Json;
 // are protected; no runtime simplification or triangle deletion heuristic.
 internal static class ModelLodCooker
 {
-    internal const float MaximumBindError=.04f,MaximumWeightDelta=.1f;
+    internal const float MaximumBindError=AnimalTown.VillagerLod.MaximumLocalError,MaximumWeightDelta=.1f;
     private const float MaximumUvDelta=.04f;
     internal static readonly string[] Species={"fox","bunny","giraffe","cat","hamster","spaniel"};
     internal sealed record Result(int SourceVertices,int Vertices,int SourceTriangles,int Triangles,float MaximumNormalizedBindError,float MaximumSkinWeightDelta,int Collapses);
@@ -43,7 +43,7 @@ internal static class ModelLodCooker
             reports.Add(new{species,runtimeEligible,report,sourceBytes=original.Length,lodBytes=lod.Length,sourceSha256=Hash(original),lodSha256=Hash(lod),errorSpace="normalized bind pose; animated endpoint error measured separately",retainedVertexAttributes="byte-exact",otherSections="byte-identical"});
             Console.WriteLine($"LOD {species}: {report.SourceTriangles} -> {report.Triangles} triangles, {report.SourceVertices} -> {report.Vertices} vertices; bind error {report.MaximumNormalizedBindError:G6}, weight delta {report.MaximumSkinWeightDelta:G6}");
         }
-        File.WriteAllText(Path.Combine(root,"out/model-lod-audit.json"),JsonSerializer.Serialize(new{schema=1,maximumBindError,maximumWeightDelta=MaximumWeightDelta,minimumTriangleReduction=AnimalTown.VillagerLod.MinimumTriangleReduction,eligibilityEnforced=enforceEligibility,models=reports},new JsonSerializerOptions{WriteIndented=true})+"\n");
+        File.WriteAllText(Path.Combine(root,"out/model-lod-audit.json"),JsonSerializer.Serialize(new{schema=1,maximumBindError,maximumPoseError=AnimalTown.VillagerLod.MaximumPoseError,maximumWeightDelta=MaximumWeightDelta,minimumTriangleReduction=AnimalTown.VillagerLod.MinimumTriangleReduction,eligibilityEnforced=enforceEligibility,models=reports},new JsonSerializerOptions{WriteIndented=true})+"\n");
     }
     private static string Hash(byte[] bytes)=>Convert.ToHexString(SHA256.HashData(bytes)).ToLowerInvariant();
     private static uint Fnv(ReadOnlySpan<byte> bytes){uint value=2166136261;foreach(byte b in bytes)value=unchecked((value^b)*16777619);return value;}

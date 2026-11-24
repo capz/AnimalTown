@@ -98,7 +98,8 @@ if($RunNativeTests){
 }
 # Validate admission peaks and sampled animation error with the exact shipped
 # packages and pinned native loader, not nominal per-owner budget ceilings.
-$modelPeakArguments=@('--catalog','out/disc/villager-memory.bin','--max-bind-error','0.04','--max-pose-error','0.05')
+$lodAudit=Get-Content out/model-lod-audit.json -Raw|ConvertFrom-Json
+$modelPeakArguments=@('--catalog','out/disc/villager-memory.bin','--max-bind-error',([double]$lodAudit.maximumBindError).ToString('R',[Globalization.CultureInfo]::InvariantCulture),'--max-pose-error',([double]$lodAudit.maximumPoseError).ToString('R',[Globalization.CultureInfo]::InvariantCulture))
 foreach($species in @('fox','bunny','giraffe','cat','hamster','spaniel')){
     $modelPeakArguments+=@('--pair',"out/disc/$species-tex128.dndmodel","out/disc/$species-lod1-tex128.dndmodel","out/$species-lod1-map.bin")
 }

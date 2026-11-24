@@ -86,6 +86,13 @@ internal static class VillagerModelLodChecks
         check(coarse.InstanceCreations==count&&ReferenceEquals(models[1],coarse)&&owner.Level(1)==1&&owner.ConsumeChangedActors()==mask,"a successful transaction swaps every shared-species actor and reports every clip/attention rebind atomically");
         for(int actor=1;actor<actors.Length;actor++)if((mask&(1<<actor))!=0)check(ReferenceEquals(actors[actor]!.Model,coarse)&&originals[actor]!.Disposed,"old visitor and resident instances retire only after the replacement cohort publishes");
         check(oldModel.Disposed&&residency.RestorePeak(1)==coarse.NativeBytes+count*coarse.InstanceBytes+ModelMemoryPlan.LoadGuardBytes,"ARAM restore accounts for all instances sharing the published coarse model");
+        memory.Observe(4*1024*1024,0,0,4000002);view.GeometryLod[nearActor]=0;owner.Require(state,view);owner.Pump(4000002,4001002);
+        var full=new Model();ModelResources.Requests[^1].SetResult(full);owner.Pump(4000002,4001002);owner.ConsumeChangedActors();
+        memory.Observe(4*1024*1024,0,0,4000003);view.GeometryLod[nearActor]=1;owner.Require(state,view);owner.Pump(4000003,4001003);
+        var duplicate=new Model();ModelResources.Requests[^1].SetResult(duplicate);owner.Pump(4000003,4001003);
+        check(duplicate.Disposed&&duplicate.LastInstance?.Disposed==true&&ReferenceEquals(models[1],full)&&owner.Level(1)==0&&owner.ConsumeChangedActors()==0,"a coarse package with no aggregate geometry/instance saving is discarded without changing any actor");
+        requests=ModelResources.Requests.Count;for(int i=0;i<10;i++){owner.Require(state,view);owner.Pump(5000000+i,5001000+i);}
+        check(ModelResources.Requests.Count==requests,"a rejected no-op variant cannot trigger recurring disc loads at the distant threshold");
         owner.Dispose();residency.Stop();
     }
 }

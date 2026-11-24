@@ -147,7 +147,10 @@ internal static class PathChecks
         check(!Buried()&&!pages.Covered(section),"even a shallow adjacent dent preserves the base and potentially exposed objects");
         for(int i=0;i<SnowWear.RecoverySeconds*30;i++)snow.TickSnowfall(true);
         pages.Prepare(town);
-        check(Buried()&&pages.Covered(section),"complete recovery closes coverage again without camera movement");
+        check(!Buried()&&!pages.Covered(section)&&snow.VisitCount(9,42)==1,
+            "settled shallow footprints conservatively preserve affected ground and object geometry");
+        snow.ResetForTownEntry();pages.Prepare(town);
+        check(Buried()&&pages.Covered(section),"town entry clears the footprint and restores full coverage without camera movement");
         town.SetTerrain(7,42,Terrain.Camp);pages.Prepare(town);
         check(!pages.Covered(section)&&Buried(),"page-edge dirt preserves its base without invalidating distant buried objects");
         town.SetTerrain(7,42,Terrain.Grass);pages.Prepare(town);
@@ -164,25 +167,30 @@ internal static class PathChecks
     private static void SparseSnowRecovery(Action<bool,string> check)
     {
         var state=Flat();var town=state.Town;var snow=town.Traffic.Snow;snow.SetWinter(true);
-        long before=GC.GetAllocatedBytesForCurrentThread();town.Traffic.Enter(town,1,1);
+        long before=GC.GetAllocatedBytesForCurrentThread();town.Traffic.Enter(town,1,1);town.Traffic.Enter(town,1,1);
         check(GC.GetAllocatedBytesForCurrentThread()-before<4096,"an isolated dent does not allocate a full-town recovery field");
         void Seconds(int count){for(int i=0;i<count*30;i++)snow.TickSnowfall(true);}
-        before=GC.GetAllocatedBytesForCurrentThread();Seconds(300);
+        before=GC.GetAllocatedBytesForCurrentThread();Seconds(30);
         check(GC.GetAllocatedBytesForCurrentThread()==before,"steady sparse snowfall recovery allocates no per-tick scratch");
-        town.Traffic.Enter(town,Town.Width-1,Town.Height-1);Seconds(300);
-        check(snow.VisitCount(1,1)==0&&snow.Packed[^1]!=0,"retiring the oldest recovery region preserves a newer distant dent");
-        town.Traffic.Enter(town,1,1);town.Traffic.Enter(town,64,60);Seconds(300);
-        check(snow.Packed[^1]==0&&snow.Packed[(Town.Width+1)/2]!=0&&snow.Packed[(60*Town.Width+64)/2]!=0,
+        for(int i=0;i<SnowWear.MaxVisits;i++)town.Traffic.Enter(town,Town.Width-1,Town.Height-1);
+        Seconds(30);
+        check(snow.VisitCount(1,1)==1&&snow.VisitCount(Town.Width-1,Town.Height-1)>1,
+            "retiring the oldest recovery region retains its shallow footprint and a newer distant dent");
+        town.Traffic.Enter(town,1,1);town.Traffic.Enter(town,64,60);town.Traffic.Enter(town,64,60);Seconds(30);
+        var view=snow.RecoveryStamps;
+        check(view!=null&&view[^1]==0&&view[Town.Width+1]!=0&&view[60*Town.Width+64]!=0,
             "re-entering a retired region and adding another survive active-region removal");
-        Seconds(300);check(snow.Packed.All(v=>v==0),"all sparse regions fully recover and release their timestamp storage");
-        snow.ObserveSnowDay(400,false);
-        town.Traffic.Enter(town,1,1);town.Traffic.Enter(town,Town.Width-1,Town.Height-1);
+        Seconds(30);check(snow.VisitCount(1,1)==1&&snow.VisitCount(64,60)==1&&snow.RecoveryStamps==null,
+            "settled shallow footprints remain while sparse timestamps and optional smooth-renderer view retire");
+        snow.ResetForTownEntry();check(snow.Packed.All(v=>v==0),"town entry clears every settled sparse footprint");
+        for(int i=0;i<SnowWear.MaxVisits;i++){town.Traffic.Enter(town,1,1);town.Traffic.Enter(town,Town.Width-1,Town.Height-1);}
         // Checkpoint import reconstructs both distant regions, including their
         // independent ages and the partial snowfall second.
-        Seconds(137);for(int i=0;i<17;i++)snow.TickSnowfall(true);
+        Seconds(17);for(int i=0;i<17;i++)snow.TickSnowfall(true);
         var restored=SaveCodec.Decode(SaveCodec.Encode(state)).Town.Traffic.Snow;
-        for(int i=0;i<(SnowWear.RecoverySeconds-137)*30-17;i++){snow.TickSnowfall(true);restored.TickSnowfall(true);}
-        check(snow.Packed.All(v=>v==0)&&snow.Packed.SequenceEqual(restored.Packed),
+        for(int i=0;i<(SnowWear.RecoverySeconds-17)*30-17;i++){snow.TickSnowfall(true);restored.TickSnowfall(true);}
+        check(snow.VisitCount(1,1)==1&&snow.VisitCount(Town.Width-1,Town.Height-1)==1&&snow.Packed.SequenceEqual(restored.Packed)&&
+            snow.RecoveryStamps==null&&restored.RecoveryStamps==null,
             "sparse checkpoint restoration retains exact recovery times across distant regions");
     }
     private static byte[] WithoutKobanType(byte[] source,int end,int offset)

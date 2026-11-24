@@ -65,7 +65,12 @@ internal sealed class DroppedItemRenderer : IDisposable
     internal static int GrowthPeak(int capacity,int required,bool textureMissing)
     {
         int grown=BufferGrowth.Next(capacity,required,DroppedItemPlan.Capacity*6);
-        return checked((grown>capacity?grown*36+512:0)+(textureMissing?TexturePeakBytes:0));
+        // BufferGrowth enforces the fixed 3,072-vertex ceiling. Keep the
+        // bounded additions explicit for the console AOT stack analyser.
+        int peak=0;
+        if(grown>capacity)peak=grown*36+512;
+        if(textureMissing)peak+=TexturePeakBytes;
+        return peak;
     }
     internal bool Prepare(GameState state,float eyeHeight)
     {

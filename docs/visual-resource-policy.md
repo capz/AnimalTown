@@ -39,16 +39,23 @@ placement selection. Final precise visibility tests still decide drawing.
 Only fully snow-covered flat grass pages omit their hidden base ground. Buried
 small objects require uninterrupted snow across their footprint and a halo;
 paths, dents, terraces and edges preserve geometry. Tall item billboards remain.
-Undented pages use the simpler snow shader. Complete recovery releases the
-256 KiB dent texture. Snow recovery scans only lazily allocated active chunks.
+Undented pages use the simpler snow shader. Fresh-snow resets and indoor
+retirement release the streamed 128/256 KiB mask. Snowfall preserves main
+behavior by settling dents to one shallow visit; settled wear needs no active
+recovery timestamps. Recovery scans only lazily allocated active chunks.
 
 ## Threshold selection
 
 Tests choose projected screen size rather than a universal player-distance
 cutoff. Useful villager mesh variants enter at 24 pixels high and return to full
-detail at 30 pixels. Separate 48/60-pixel hysteresis reduces distant pose updates
+detail at 30 pixels. Qualified fox, bunny and giraffe assets remove about
+14–22% of triangles with sampled normalized animation error below .05. The
+worst sampled fox error projects to about 1.36 pixels at the 30-pixel upgrade
+request threshold; an asynchronous upgrade completes when its resources are
+ready. Separate 48/60-pixel hysteresis reduces distant pose updates
 from 30 to 15 Hz. The selected player's shared species and indoor scenes retain
-full geometry. Variants without useful reduction avoid replacement I/O.
+full geometry. Variants below 12.5% triangle reduction avoid replacement I/O. Shared NPC
+cohorts restore and replace atomically, with all instances included in admission.
 
 Terrain prefetch uses a six-metre guard in two-metre buckets. A four-metre guard
 failed the injected slow-DMA route, so it was increased. Tests cover 3,600

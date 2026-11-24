@@ -4,7 +4,8 @@
  * realloc, aligned_alloc and free. Define ANIMALTOWN_MODEL_PEAK_RETAIN when
  * linking the unpatched SDK to audit the production selected-player compaction.
  * Usage: native-model-memory-peaks [--catalog FILE] [--max-bind-error FLOAT]
- *   [--max-pose-error FLOAT] [PACKAGE ...] [--pair FULL LOD MAP ...]
+ *   [--max-pose-error FLOAT] [--cohort-size COUNT] [PACKAGE ...]
+ *   [--pair FULL LOD MAP ...]
  * JSON lines separate native allocations from conservative caller-package
  * overlap. Host pointers are wider than console pointers; allocator bookkeeping
  * outside requested blocks, renderer/managed jobs and hardware are not measured.
@@ -29,6 +30,7 @@ static struct {void *data;size_t bytes;} allocations[8192];
 static size_t native_bytes,external_bytes,peak_native,peak_total,largest_allocation,live;
 static double maximum_bind_error=.0125;
 static double maximum_pose_error=.05;
+static unsigned cohort_size=8; /* Current BuildingWorld.Actors, including visitors. */
 static bool initializing_aram;
 static void *host_aram_memory;
 static struct {unsigned package,hash,shared,instance,one,two;} catalog[6];
@@ -172,21 +174,21 @@ static Loaded cold(const char *path){
         sizeof(void*),value.package,value.model_bytes,value.instance_bytes,native_bytes,peak_native,peak_total,largest_allocation,bound,vertices,triangles,skinned,model->clips);
     unload(value);assert(!native_bytes&&!live&&!dnd_model_live_handles());return value;
 }
-static void selected(const char *path,Loaded original){
+static void extra_instances(Loaded value,unsigned count,int extra[31]);
+static void dispose_extra(unsigned count,int extra[31]);
+static void selected(const char *path,Loaded original,unsigned count){
 #ifdef ANIMALTOWN_MODEL_PEAK_RETAIN
-    reset_peak();Loaded value=load_kind(path,true);
-    int player=dnd_model_instance(value.model,512*1024);assert(player);
-    exercise(value);
-    assert(!dnd_model_evaluate(dnd_instance_find(player)));
-    size_t bound=(size_t)original.model_bytes+original.package+2*original.instance_bytes+64*1024;
-    if(has_catalog)bound=catalog[species(path)].two;
+    int extra[31];reset_peak();Loaded value=load_kind(path,true);
+    extra_instances(value,count,extra);exercise(value);
+    size_t bound=(size_t)original.model_bytes+original.package+count*original.instance_bytes+64*1024;
+    if(has_catalog){int index=species(path);bound=(size_t)catalog[index].one+(count-1)*catalog[index].instance;}
     assert(peak_total<=bound);
-    printf("{\"kind\":\"selectedStartup\",\"path\":");json_string(path);
-    printf(",\"compactedModelNativeBytes\":%u,\"instances\":2,\"retainedNativeBytes\":%zu,\"peakNativeBytes\":%zu,\"peakWithCallerPackageBytes\":%zu,\"admissionBoundBytes\":%zu}\n",
-        value.model_bytes,native_bytes,peak_native,peak_total,bound);
-    assert(!dnd_model_instance_dispose(player));unload(value);assert(!native_bytes&&!live&&!dnd_model_live_handles());
+    printf("{\"kind\":\"%s\",\"path\":",count==2?"selectedStartup":"selectedCohortStartup");json_string(path);
+    printf(",\"compactedModelNativeBytes\":%u,\"instances\":%u,\"retainedNativeBytes\":%zu,\"peakNativeBytes\":%zu,\"peakWithCallerPackageBytes\":%zu,\"admissionBoundBytes\":%zu}\n",
+        value.model_bytes,count,native_bytes,peak_native,peak_total,bound);
+    dispose_extra(count,extra);unload(value);assert(!native_bytes&&!live&&!dnd_model_live_handles());
 #else
-    (void)path;(void)original;
+    (void)path;(void)original;(void)count;
 #endif
 }
 static unsigned run_residency(Loaded value,int aram,bool restore){
@@ -214,14 +216,46 @@ static void residency(const char *path,Loaded original){
         cold_bytes,resident,peak_native-cold_bytes,bound,retire_steps,restore_steps,16*1024*1024);
     assert(!dnd_aram_dispose(aram));unload(value);assert(!native_bytes&&!live&&!dnd_model_live_handles());
 }
-static void swap(const char *from,const char *to,size_t bound){
-    Loaded old=load(from);exercise(old);size_t base=native_bytes;reset_peak();
-    Loaded next=load(to);exercise(next);
+static void extra_instances(Loaded value,unsigned count,int extra[31]){
+    assert(count>=1&&count<=32);
+    for(unsigned i=1;i<count;i++){
+        extra[i-1]=dnd_model_instance(value.model,512*1024);assert(extra[i-1]);
+        Loaded actor=value;actor.instance=extra[i-1];exercise(actor);
+        assert(dnd_instance_find(actor.instance)->bytes==value.instance_bytes);
+    }
+}
+static void dispose_extra(unsigned count,int extra[31]){
+    for(unsigned i=1;i<count;i++)assert(!dnd_model_instance_dispose(extra[i-1]));
+}
+static void cohort(const char *path,Loaded original){
+    int extra[31];reset_peak();Loaded value=load(path);extra_instances(value,cohort_size,extra);exercise(value);
+    size_t resident=native_bytes;
+    size_t bound=(size_t)original.model_bytes+original.package+cohort_size*original.instance_bytes+64*1024;
+    if(has_catalog){int index=species(path);bound=(size_t)catalog[index].one+(cohort_size-1)*catalog[index].instance;}
+    assert(peak_total<=bound);
+    printf("{\"kind\":\"cohortStartup\",\"path\":");json_string(path);
+    printf(",\"instances\":%u,\"retainedNativeBytes\":%zu,\"peakNativeBytes\":%zu,\"peakWithCallerPackageBytes\":%zu,\"admissionBoundBytes\":%zu}\n",
+        cohort_size,resident,peak_native,peak_total,bound);
+    int aram=dnd_aram_allocate((int)((value.package+31)&~31u));assert(aram);
+    run_residency(value,aram,false);size_t cold_bytes=native_bytes;reset_peak();
+    run_residency(value,aram,true);exercise(value);
+    bound=(size_t)original.model_bytes+cohort_size*original.instance_bytes+64*1024;
+    if(has_catalog){int index=species(path);bound=(size_t)catalog[index].shared+cohort_size*catalog[index].instance+64*1024;}
+    assert(native_bytes==resident&&peak_native-cold_bytes<=bound);
+    printf("{\"kind\":\"cohortAramRestore\",\"path\":");json_string(path);
+    printf(",\"instances\":%u,\"coldNativeBytes\":%zu,\"residentNativeBytes\":%zu,\"peakAdditionalNativeBytes\":%zu,\"admissionBoundBytes\":%zu}\n",
+        cohort_size,cold_bytes,resident,peak_native-cold_bytes,bound);
+    assert(!dnd_aram_dispose(aram));dispose_extra(cohort_size,extra);unload(value);assert(!native_bytes&&!live&&!dnd_model_live_handles());
+}
+static void swap(const char *from,const char *to,size_t bound,unsigned count){
+    int old_extra[31],new_extra[31];
+    Loaded old=load(from);extra_instances(old,count,old_extra);exercise(old);size_t base=native_bytes;reset_peak();
+    Loaded next=load(to);extra_instances(next,count,new_extra);exercise(next);
     size_t additional=peak_total-base;assert(additional<=bound);
-    printf("{\"kind\":\"swap\",\"from\":");json_string(from);printf(",\"to\":");json_string(to);
-    printf(",\"existingNativeBytes\":%zu,\"peakAdditionalNativeBytes\":%zu,\"peakAdditionalWithCallerPackageBytes\":%zu,\"admissionBoundBytes\":%zu,\"marginBytes\":%zu}\n",
-        base,peak_native-base,additional,bound,bound-additional);
-    unload(old);unload(next);assert(!native_bytes&&!live&&!dnd_model_live_handles());
+    printf("{\"kind\":\"%s\",\"from\":",count==1?"swap":"cohortSwap");json_string(from);printf(",\"to\":");json_string(to);
+    printf(",\"instances\":%u,\"existingNativeBytes\":%zu,\"peakAdditionalNativeBytes\":%zu,\"peakAdditionalWithCallerPackageBytes\":%zu,\"admissionBoundBytes\":%zu,\"marginBytes\":%zu}\n",
+        count,base,peak_native-base,additional,bound,bound-additional);
+    dispose_extra(count,old_extra);dispose_extra(count,new_extra);unload(old);unload(next);assert(!native_bytes&&!live&&!dnd_model_live_handles());
 }
 static void transformed_vertex(Loaded value,unsigned mesh,unsigned vertex,float result[3]){
     DndInstance *instance=dnd_instance_find(value.instance);float p[6];
@@ -281,6 +315,10 @@ int main(int argc,char **argv){
     if(argc<2){fprintf(stderr,"Usage: %s PACKAGE ... | --pair FULL COARSE MAP ...\n",argv[0]);return 2;}
     for(int arg=1;arg<argc;arg++){
         if(!strcmp(argv[arg],"--catalog")){assert(arg+1<argc);read_catalog(argv[++arg]);continue;}
+        if(!strcmp(argv[arg],"--cohort-size")){
+            assert(arg+1<argc);char *end;unsigned long count=strtoul(argv[++arg],&end,10);
+            assert(!*end&&count>=1&&count<=32);cohort_size=(unsigned)count;continue;
+        }
         if(!strcmp(argv[arg],"--max-bind-error")){
             assert(arg+1<argc);char *end;maximum_bind_error=strtod(argv[++arg],&end);
             assert(!*end&&isfinite(maximum_bind_error)&&maximum_bind_error>0&&maximum_bind_error<1);continue;
@@ -289,12 +327,20 @@ int main(int argc,char **argv){
             assert(arg+1<argc);char *end;maximum_pose_error=strtod(argv[++arg],&end);
             assert(!*end&&isfinite(maximum_pose_error)&&maximum_pose_error>0&&maximum_pose_error<1);continue;
         }
-        if(strcmp(argv[arg],"--pair")){Loaded stats=cold(argv[arg]);selected(argv[arg],stats);residency(argv[arg],stats);continue;}
+        if(strcmp(argv[arg],"--pair")){Loaded stats=cold(argv[arg]);selected(argv[arg],stats,2);residency(argv[arg],stats);continue;}
         assert(arg+3<argc);const char *full=argv[++arg],*coarse=argv[++arg],*map=argv[++arg];
-        Loaded full_stats=cold(full);selected(full,full_stats);residency(full,full_stats);cold(coarse);
+        Loaded full_stats=cold(full);selected(full,full_stats,2);
+        if(cohort_size>2)selected(full,full_stats,cohort_size);
+        residency(full,full_stats);cold(coarse);
         size_t bound=(size_t)full_stats.model_bytes+full_stats.package+full_stats.instance_bytes+64*1024;
         if(has_catalog)bound=catalog[species(full)].one;
-        swap(full,coarse,bound);swap(coarse,full,bound);pose_audit(full,coarse,map);
+        swap(full,coarse,bound,1);swap(coarse,full,bound,1);
+        if(cohort_size>1){
+            cohort(full,full_stats);
+            size_t cohort_bound=bound+(cohort_size-1)*(has_catalog?catalog[species(full)].instance:full_stats.instance_bytes);
+            swap(full,coarse,cohort_bound,cohort_size);swap(coarse,full,cohort_bound,cohort_size);
+        }
+        pose_audit(full,coarse,map);
     }
     return 0;
 }
