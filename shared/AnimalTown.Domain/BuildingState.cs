@@ -10,6 +10,7 @@ public sealed partial class GameState
     public void NormalizeBuildingLocations()
     {
         for(int actor=0;actor<BuildingWorld.Actors;actor++){
+            if(actor>0&&!NpcPresent(actor-1))continue;
             var p=BuildingWorld.Location(this,actor);if(p.Space.IsTown)continue;
             if(!BuildingWorld.ValidSpace(p.Space.Value))throw new InvalidOperationException("Unknown saved space");
             if(BuildingWorld.CanStand(this,p.Space.Value,p.X,p.Z))continue;

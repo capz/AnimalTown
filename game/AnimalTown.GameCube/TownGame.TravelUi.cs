@@ -53,8 +53,9 @@ internal sealed partial class TownGame
         int dir=jobNavigation.Read(screen,0,p.Stick.X,p.Stick.Y,(int)p.PressedButtons,Clock.Timestamp,true);
         if(p.X.WasPressed){RefreshTravel();return true;}
         if(screen=="travel-moving"){
-            if(dir==MenuNavigation.Up)travelFrom=(travelFrom+5)%6;if(dir==MenuNavigation.Down)travelFrom=(travelFrom+1)%6;
-            if(dir==MenuNavigation.Left)travelTo=(travelTo+5)%6;if(dir==MenuNavigation.Right)travelTo=(travelTo+1)%6;
+            int residents=Town.LocalResidentCount;
+            if(dir==MenuNavigation.Up)travelFrom=(travelFrom+residents-1)%residents;if(dir==MenuNavigation.Down)travelFrom=(travelFrom+1)%residents;
+            if(dir==MenuNavigation.Left)travelTo=(travelTo+residents-1)%residents;if(dir==MenuNavigation.Right)travelTo=(travelTo+1)%residents;
             if(dir!=0)RefreshTravel();if(Press(p)&&travelReady){travelAction=3;screen="travel-confirm";travelChoice=0;}return true;
         }
         if(dir==MenuNavigation.Up||dir==MenuNavigation.Down)travelChoice=1-travelChoice;

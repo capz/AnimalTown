@@ -6,10 +6,10 @@
 #include <stddef.h>
 #include <string.h>
 #include <math.h>
-#define SU_CASTERS 39
 #define SU_STATIC 32
+#define SU_CASTERS (SU_STATIC+8)
 #define SU_VERTICES 288
-#define SU_PAGES 160 /* 39 footprints, each smaller than a page: <=156 pages. */
+#define SU_PAGES 160 /* Each caster can touch four pages: 40 * 4 pages. */
 #define SU_LOOKUP 512 /* Power of two; at most 160 live entries. */
 #define SU_SIDE 32
 #define SU_INNER (SU_SIDE-2) /* One filtering gutter on each edge. */
@@ -32,7 +32,11 @@ typedef struct {
     unsigned revision;
     float x,z,bounds[4],uv[SU_VERTICES*2];
 } SuCaster;
-typedef struct { int used,x,z,space,needed,static_dirty,dirty,publish,base_blank,blank,static_pending; unsigned version; } SuPage;
+typedef struct {
+    int x,z,space;
+    unsigned version;
+    uint8_t used,needed,static_dirty,dirty,publish,base_blank,blank,static_pending;
+} SuPage;
 typedef struct {int used,x,z,space;unsigned revision,use;uint8_t bits[SU_SUPPORT_BYTES];} SuSupport;
 typedef int (*SuCanWork)(void*);
 typedef struct {

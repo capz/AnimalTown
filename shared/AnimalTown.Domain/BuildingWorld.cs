@@ -55,7 +55,7 @@ public enum BuildingRole { House, Store, TownHall, Koban }
 
 public static class BuildingWorld
 {
-    public const int Count=13,Actors=7;
+    public const int Count=13,Actors=Town.NpcActorCount+1;
     // Use belongs to the placed building, independently of its shared art kit.
     public static BuildingRole Role(int building)
     {if(building<0||building>=Count)throw new ArgumentOutOfRangeException("building");return building==7?BuildingRole.Store:building==8?BuildingRole.TownHall:building==KobanSite.Building?BuildingRole.Koban:BuildingRole.House;}
@@ -88,9 +88,9 @@ public static class BuildingWorld
     public static void InsideDoor(GameState s,int space,out float x,out float z)
     {int size=Size(s,space);x=size*.5f;z=size-Definition(s,Building(space)).DoorInset;}
     public static ActorLocation Location(GameState s,int actor)
-    {if(actor==0)return new ActorLocation(s.Space,s.X,s.Z,s.Facing);var v=s.Town.Residents[actor-1];return new ActorLocation(v.Space,v.PosX,v.PosZ,v.Yaw);}
+    {if(actor==0)return new ActorLocation(s.Space,s.X,s.Z,s.Facing);var v=s.Town.NpcAt(actor-1);return new ActorLocation(v.Space,v.PosX,v.PosZ,v.Yaw);}
     public static void SetLocation(GameState s,int actor,ActorLocation p)
-    {if(actor==0){s.Space=p.Space.Value;s.X=p.X;s.Z=p.Z;s.Facing=p.Yaw;}else{var v=s.Town.Residents[actor-1];v.Space=p.Space.Value;v.PosX=p.X;v.PosZ=p.Z;v.Yaw=p.Yaw;if(v.Space==0){v.X=(int)p.X;v.Z=(int)p.Z;}}}
+    {if(actor==0){s.Space=p.Space.Value;s.X=p.X;s.Z=p.Z;s.Facing=p.Yaw;}else{var v=s.Town.NpcAt(actor-1);v.Space=p.Space.Value;v.PosX=p.X;v.PosZ=p.Z;v.Yaw=p.Yaw;if(v.Space==0){v.X=(int)p.X;v.Z=(int)p.Z;}}}
     public static bool DoorClearance(int size,float x,float z,float w,float d)
         =>x<size*.5f+.8f&&x+w>size*.5f-.8f&&z+d>size-1.6f;
     // Simple original fixtures are shared geometry and collision data. Player
@@ -112,7 +112,7 @@ public static class BuildingWorld
             int fixtures=FixtureCount(s,space);for(int i=0;i<fixtures;i++)if(Fixture(s,space,i,out float fx,out float fz,out float fw,out float fd,out float _)&&Overlaps(x,z,fx,fz,fw,fd))return false;
             for(int i=0;i<s.Town.PlacedCount;i++){var p=s.Town.Placed[i];if(p.Room!=space)continue;Footprint(p,out int w,out int d);if(Overlaps(x,z,p.X,p.Z,w,d))return false;}
         }
-        if(people)for(int i=0;i<Actors;i++)if(i!=actor&&ActorOverlap(Location(s,i),space,x,z))return false;
+        if(people)for(int i=0;i<Actors;i++)if(i!=actor&&(i==0||s.NpcPresent(i-1))&&ActorOverlap(Location(s,i),space,x,z))return false;
         return true;
     }
     private static bool Overlaps(float x,float z,float bx,float bz,float w,float d)=>x>bx-Radius&&x<bx+w+Radius&&z>bz-Radius&&z<bz+d+Radius;
@@ -127,14 +127,15 @@ public static class BuildingWorld
     internal static bool ActorOverlap(ActorLocation p,int space,float x,float z)
         =>p.Space.Value==space&&Math.Abs(p.X-x)<Radius*2&&Math.Abs(p.Z-z)<Radius*2;
 
-    internal static bool MoveVillager(GameState s,int actor,float x,float z,float yaw,PortalSystem? doors)
+    internal static bool MoveVillager(GameState s,int actor,float x,float z,float yaw,PortalSystem? doors,int movingActors=0)
     {
         var p=Location(s,actor);int space=p.Space.Value;
         if(!Segment(s,space,p.X,p.Z,x,z)||Contact(Location(s,0),p,x,z))return false;
         int blocker=-1;
         for(int i=1;i<Actors;i++){
-            if(i==actor||!Contact(Location(s,i),p,x,z))continue;
-            if(blocker>=0||doors?.Busy(i)==true)return false;
+            if(i==actor||!s.NpcPresent(i-1)||!Contact(Location(s,i),p,x,z))continue;
+            // When walkers meet, re-route instead of repeatedly shoving each other off the same step.
+            if(blocker>=0||(movingActors&(1<<i))!=0||doors?.Busy(i)==true)return false;
             blocker=i;
         }
         if(blocker>=0){

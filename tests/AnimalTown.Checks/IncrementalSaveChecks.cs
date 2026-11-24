@@ -111,9 +111,48 @@ internal static class IncrementalSaveChecks
         var classic=new SaveRepository(d).Load()!;classic.Town.DaylightLocation=0;d.Reset();new SaveRepository(d).Save(classic);Only(d,"AT-Town",check);
         check(new SaveRepository(d).Load()!.Town.DaylightLocation==0,"switching back to Classic is saved and reloaded");
         JobTransactions(check);
+        VisitorProjections(check);
         SnowTransactions(check);
         OfflineClockMailTransactions(check);
         Console.WriteLine("Incremental saves: exact component writes/no-op, static town vs NPC runtime, mirrored references, corruption, power cuts, retries and migration passed");
+    }
+    private static void VisitorProjections(Action<bool,string> check)
+    {
+        const ulong sourceTown=61712,localTown=89315;
+        var source=Town();source.Name="Quinn";source.Catchphrase="good morning";source.Species=3;source.Palette=5;source.Shirt=Catalog.WorkShirt;
+        source.SelectProfile(2);source.Name="Parker";
+        source.SelectProfile(3);source.Name="Harper";
+        source.SelectProfile(0);source.EnsureJobIdentities(sourceTown);
+        var disk=new Disk();var repo=new SaveRepository(disk);repo.Save(source);disk.Reset();
+        var committed=disk.Copy();
+        var visitors=repo.ReadVisitors(localTown);
+        check(visitors.Length==2&&visitors[0].TownId==sourceTown&&visitors[0].Slot==0&&visitors[1].Slot==2,"read-only visits project at most two distinct created profiles and skip empty slots");
+        check(visitors[0].Name=="Quinn"&&visitors[0].Catchphrase=="good morning"&&visitors[0].Species==3&&visitors[0].Palette==5&&visitors[0].Shirt==Catalog.WorkShirt,
+            "visitor appearance comes from the committed profile");
+        var others=repo.ReadVisitors(localTown,sourceTown,0);
+        check(others.Length==2&&others[0].Slot==2&&others[1].Slot==3,"an excluded travelling profile does not appear again as a passive visitor");
+        check(repo.ReadVisitors(localTown,localTown,0,1).Single().Slot==0&&repo.ReadVisitors(localTown,limit:0).Length==0,"visitor limits and exclusions apply to the matching source town");
+        check(repo.ReadVisitors(sourceTown).Length==0,"a copy of the current town supplies no visitors");
+        check(disk.Names.Count==0&&disk.Files.Count==committed.Files.Count&&committed.Files.All(f=>disk.Files[f.Key].SequenceEqual(f.Value)),
+            "projecting visitors leaves every source card file byte-identical");
+        var interrupted=disk.Copy();interrupted.CutAt=2;
+        var candidate=repo.Load()!;candidate.Name="Unpublished";
+        check(Fails(()=>new SaveRepository(interrupted).Save(candidate))&&new SaveRepository(interrupted).ReadVisitors(localTown)[0].Name=="Quinn",
+            "unpublished profile changes never appear as visitors");
+        interrupted.CutAt=0;new SaveRepository(interrupted).Save(candidate);
+        string profile0=SplitSaveCodec.FileName(SplitSaveCodec.PlayerVillager,0),profile1=SplitSaveCodec.FileName(SplitSaveCodec.PlayerVillager,1);
+        interrupted.Files[profile0][32]^=1;
+        check(new SaveRepository(interrupted).ReadVisitors(localTown)[0].Name=="Unpublished","a damaged profile bank falls back to its committed mirror");
+        interrupted.Files[profile1][32]^=1;
+        check(new SaveRepository(interrupted).ReadVisitors(localTown).Length==0&&new SaveRepository(new Disk()).ReadVisitors(localTown).Length==0,
+            "damaged or missing saves leave visitor slots empty");
+        var legacy=new Disk();var parts=SplitSaveCodec.Encode(source);
+        for(int i=0;i<parts.Length;i++)legacy.Files[SplitSaveCodec.FileName(SplitSaveCodec.RecordKind(i),1)]=parts[i];
+        legacy.Files[SplitSaveCodec.FileName(SplitSaveCodec.Commit,1)]=SplitSaveCodec.EncodeCommit(source,parts);
+        check(new SaveRepository(legacy).ReadVisitors(localTown,limit:1).Single().Name=="Quinn"&&legacy.Names.Count==0,
+            "older committed split profiles can visit without their cards being migrated");
+        var combined=new Disk();combined.Files["AnimalTown0"]=SaveCodec.Encode(source);
+        check(new SaveRepository(combined).ReadVisitors(localTown).Length==0,"an older combined save supplies no unverified separate visitor profile");
     }
     private static void SnowTransactions(Action<bool,string> check)
     {

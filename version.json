@@ -320,6 +320,15 @@
         "Active snowfall gradually narrows nearby tracks over one minute.",
         "The preview starts off each session and uses the existing snow texture."
       ]
+    },
+    {
+      "id": "distributed-town-population",
+      "lines": [
+        "Up to two saved characters from the other memory card can visit your town.",
+        "The player, five residents, and visiting characters start in separate areas in new towns.",
+        "Villager routines and jobs favor places with fewer people nearby.",
+        "Visiting characters use their saved appearance and follow local routines."
+      ]
     }
   ]
 }

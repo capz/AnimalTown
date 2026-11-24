@@ -16,11 +16,24 @@ internal sealed partial class TownGame
         if(JobsLive)for(int i=0;i<OfflineJobLedger.JobCapacity;i++){var j=state.Town.Jobs.Job(i);if(j.Occupying)DebugOverlay.WriteLine("ANIMALTOWN JOB STATE "+i+" "+(int)j.Template+" "+(int)j.Status+" "+state.Town.Jobs.FindNpc(j.Requester)+" "+state.Town.Jobs.FindNpc(j.Target));}
         DebugOverlay.WriteLine("ANIMALTOWN JOB VIEW END");
     }
-    private int ClosestResident()
+    private bool TalkNearby()
     {
-        int nearest=-1;float distance=6.25f;
-        for(int i=0;i<6;i++){var n=state.Town.Residents[i];if(n.Space!=room)continue;float dx=n.PosX-state.X,dz=n.PosZ-state.Z,d=dx*dx+dz*dz;if(d<=distance){distance=d;nearest=i;}}
-        return nearest;
+        int closest=-1,withinReach=-1;
+        float distance=6.25f,reach=room==0?2.8f:2;
+        for(int i=0;i<Town.NpcActorCount;i++){
+            if(!state.NpcPresent(i))continue;
+            var npc=state.Town.NpcAt(i);if(npc.Space!=room)continue;
+            float dx=npc.PosX-state.X,dz=npc.PosZ-state.Z,d=dx*dx+dz*dz;
+            if(withinReach<0&&Math.Abs(dx)<reach&&Math.Abs(dz)<reach)withinReach=i;
+            if(d<=distance){distance=d;closest=i;}
+        }
+        int target=JobsLive&&closest>=0?closest:withinReach;
+        if(target<0)return false;
+        var villager=state.Town.NpcAt(target);
+        var visitor=state.NpcVisitor(target);
+        if(visitor.HasValue)Say(visitor.Value.Name,visitor.Value.Catchphrase);
+        else if(!TryJobConversation(target))Say(villager.Name,state.Talk(target));
+        return true;
     }
     private void DrawJobObjects()
     {
@@ -35,8 +48,12 @@ internal sealed partial class TownGame
     }
     private void DrawJobOutfit(int actor)
     {
-        if(!JobsLive||!actorVisibility.Visible[actor])return;
-        var l=actorVisibility.Locations[actor];int item=actor==0?state.Shirt:state.Town.Jobs.Outfit(actor-1),species=actor==0?state.Species:state.ResidentSpecies(actor-1);
+        if(!actorVisibility.Visible[actor])return;
+        int npc=actor-1,item;
+        int species=actor==0?state.Species:state.NpcSpecies(npc);
+        if(actor==0)item=JobsLive?state.Shirt:0;
+        else item=state.NpcVisitor(npc)?.Shirt??(JobsLive&&npc<Town.SavedVillagerCount?state.Town.Jobs.Outfit(npc):0);
+        var l=actorVisibility.Locations[actor];
         if(!Catalog.Has(item,ItemFlags.Wear))return;
         NativeShadows.Objects(room==0?1:0);
         try{jobScene.Outfit(renderer,item,species,SurfacePoint(l.X,l.Z),SurfaceRotation(l.Z,actor==0?facingYaw:l.Yaw));}finally{NativeShadows.Objects(0);}

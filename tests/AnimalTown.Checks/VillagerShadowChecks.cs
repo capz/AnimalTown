@@ -41,7 +41,7 @@ internal static class VillagerShadowChecks
             if(y>.02f){check(x>=1.35f-.0001f&&x<=2.65f+.0001f&&z>=2.85f-.0001f&&z<=3.95f+.0001f,"entry-mat receiver is clipped to the authored raised floor overlay");mat=true;}
         }
         check(mat,"indoor contact shadow also renders above the entry mat");
-        byte[] mask=VillagerShadowPatch.Texture();check(mask.Length==2048,"all seven actor shadows share a 2KiB IA8 mask");
+        byte[] mask=VillagerShadowPatch.Texture();check(mask.Length==2048,"all actor shadows share a 2KiB IA8 mask");
         int Alpha(int x,int y)=>mask[(((y/4)*8+x/4)*16+y%4*4+x%4)*2];
         check(Alpha(15,15)==255&&Alpha(0,15)==0&&Alpha(15,0)==0&&Alpha(31,31)==0,"circle has an opaque core and transparent clamping border");
         for(int y=0;y<32;y++)for(int x=0;x<32;x++)check(Alpha(x,y)==Alpha(31-x,y)&&Alpha(x,y)==Alpha(y,x),"circular shadow is symmetric across walking directions");

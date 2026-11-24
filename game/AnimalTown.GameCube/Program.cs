@@ -56,6 +56,7 @@ internal static class Program
     {
         LoadingScreen.Draw();TextureCache.TrimUnused();
         AnimalTown.GameCube.NativeTexturePages.Collect();
+        session.RefreshVisitors();
         DebugOverlay.WriteLine("ANIMALTOWN TITLE RELEASED native bytes "+GraphicsDevice.Default.NativeBytes);
         DebugOverlay.WriteLine("ANIMALTOWN GAME START");
         DebugOverlay.WriteLine("ANIMALTOWN ARAM INIT BEGIN");
@@ -117,17 +118,17 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
     private readonly RainRenderer rain=new RainRenderer();
     private readonly VisitEdgeRenderer visitEdges=new VisitEdgeRenderer();
     private readonly ActorFrameVisibility actorVisibility=new ActorFrameVisibility();
-    private readonly AnimationFrameClock animationClock=new AnimationFrameClock(7);
+    private readonly AnimationFrameClock animationClock=new AnimationFrameClock(BuildingWorld.Actors);
     private readonly bool[] hasIdleClip=new bool[6];
-    private readonly bool[] restartClips=new bool[7];
-    private readonly int[] appliedClips={-2,-2,-2,-2,-2,-2,-2};
+    private readonly bool[] restartClips=new bool[BuildingWorld.Actors];
+    private readonly int[] appliedClips=new int[BuildingWorld.Actors];
     private float desiredPlayerSpeed=1.05f,appliedPlayerSpeed=1.05f;
     private readonly VillagerJourney villagers=new VillagerJourney();
     private readonly InteriorCamera indoorCamera=new InteriorCamera();
     private readonly Camera indoorView=new Camera(CylinderWorld.CameraFieldOfView,0,.1f,64);
     private readonly BuildingRenderer buildings;
     private int room {get=>state.Space;set=>state.Space=value;}
-    private readonly bool[] villagersMoving=new bool[6];
+    private readonly bool[] villagersMoving=new bool[Town.NpcActorCount];
     private readonly GraphicsDevice device=GraphicsDevice.Default;
     private readonly Renderer renderer=new Renderer(GraphicsDevice.Default,128);
     private readonly Camera camera=new Camera(CylinderWorld.CameraFieldOfView,0,CylinderWorld.Near,CylinderWorld.Far);
@@ -151,7 +152,7 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
     private int actionWidthItem=-1,actionWidthRoom=-1,actionWidthCount=-1;
     private string actionWidthTitle="";
     private float actionWidth,actionRotateOffset;
-    private readonly RenderQueue actorQueue=new RenderQueue(7,7);
+    private readonly RenderQueue actorQueue=new RenderQueue(BuildingWorld.Actors,BuildingWorld.Actors);
     private readonly Transform[] modelPoses=new Transform[16];
     private readonly BoxBatch boxes;
     private int modelUsed,loadingIndex;
@@ -165,7 +166,7 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
 
     private readonly Material plain=new Material{Cull=CullMode.Back,Lighting=LightingMode.Unlit};
     private readonly Model[] models=new Model[6];
-    private readonly ModelInstance[] actors=new ModelInstance[7];
+    private readonly ModelInstance?[] actors=new ModelInstance?[BuildingWorld.Actors];
     private readonly string[] modelNames={"fox","bunny","giraffe","cat","hamster","spaniel"};
     private readonly Mesh cube;
     private readonly byte[] banner,icon;
@@ -200,6 +201,7 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
         ui=new Draw2D(device,new Draw2DOptions{Width=640,Height=480,VertexCapacity=4096,SpriteCapacity=UiFont.BatchCapacity});
         font=UiFont.LoadSystem();strongFont=font;clockHud=new FloatingClockHud(font);headingFont=UiFont.Load("gorditas-bold");cube=Cube();
         boxes=new BoxBatch(renderer,cube);for(int i=0;i<modelPoses.Length;i++)modelPoses[i]=new Transform{Parent=worldRoot};
+        for(int i=0;i<appliedClips.Length;i++)appliedClips[i]=-2;
         LoadingScreen.Pulse();
         itemIcons=TextureCache.Load(ContentPaths.Asset("item-icons.dndtex"),true);
         LoadingScreen.Pulse();
@@ -294,7 +296,7 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
         Model? unadopted=null;
         if(loadingModel!=null){try{unadopted=loadingModel.GetAwaiter().GetResult();}catch(Exception){if(!loadingModel.IsCompleted)throw;}loadingModel=null;}
         modelResidency.Stop();
-        for(int i=0;i<actors.Length;i++){actors[i]?.Dispose();actors[i]=null!;}
+        for(int i=0;i<actors.Length;i++){actors[i]?.Dispose();actors[i]=null;}
         if(unadopted!=null&&Array.IndexOf(models,unadopted)<0)unadopted.Dispose();
         for(int i=0;i<models.Length;i++){models[i]?.Dispose();models[i]=null!;}
         jobScene.Dispose();attention.Dispose();rain.Dispose();foliage.Dispose();trees.Dispose();droppedItems.Dispose();buildings.Dispose();terrain.Dispose();fences.Dispose();helipad.Dispose();
@@ -327,6 +329,7 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
                 bool complete=buildings.AdvanceLoading();loadingLabel=buildings.LoadingLabel;if(!complete)return;
                 buildings.Begin(villagers.Doors);
                 for(int actor=0;actor<BuildingWorld.Actors;actor++){
+                    if(actor>0&&!state.NpcPresent(actor-1))continue;
                     var location=BuildingWorld.Location(state,actor);if(location.Space.IsTown)continue;int building=BuildingWorld.Building(location.Space.Value);
                     if(!buildings.Ready(state.BuildingTypes[building])){BuildingWorld.Entrance(state,building,out float rx,out float rz);BuildingWorld.SetLocation(state,actor,new ActorLocation(0,rx,rz+1,0));saveStatus="A home is unavailable; its occupants are outside.";}
                 }
@@ -348,7 +351,14 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
                 hasIdleClip[species]=model.TryGetAnimation("Idle",out _);
                 ModelStartup.RetainSelected(state.Species,species,model);
                 modelResidency.Register(species,model,Clock.Timestamp);
-                for(int npc=0;npc<6;npc++)if(state.ResidentSpecies(npc)==species){actors[npc+1]=model.CreateInstance(512*1024);attention.Register(npc,actors[npc+1]);if(model.TryGetAnimation("Walking",out var clip))animationClock.Step(npc+1,0,false);}
+                // The session binds saved visitors before constructing this scene.
+                for(int npc=0;npc<Town.NpcActorCount;npc++){
+                    if(!state.NpcPresent(npc)||state.NpcSpecies(npc)!=species)continue;
+                    var instance=model.CreateInstance(512*1024);
+                    actors[npc+1]=instance;
+                    attention.Register(npc,instance);
+                    if(model.TryGetAnimation("Walking",out _))animationClock.Step(npc+1,0,false);
+                }
                 var player=ModelStartup.ReservePlayer(state.Species,species,model);
                 if(player!=null){
                     actors[0]=player;moveClip=-1;animationClock.Reset(0);appliedClips[0]=-2;
@@ -441,11 +451,11 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
     {
         var doors=villagers.Doors;
         for(int actor=0;actor<BuildingWorld.Actors;actor++){
-            if(!doors.Busy(actor)){doors.ResourcesReady[actor]=true;continue;}
+            if(!doors.Busy(actor)||actor>0&&!state.NpcPresent(actor-1)){doors.ResourcesReady[actor]=true;continue;}
             var crossing=doors.Actors[actor];
             if(actor==0)doors.ResourcesReady[actor]=modelResidency.ReadyForSpace(state,doors,crossing.Destination.Space.Value)&&
                 modelResidency.ReadyForSpace(state,doors,room)&&(!crossing.Destination.Space.IsTown||terrainExitReady);
-            else doors.ResourcesReady[actor]=!modelResidency.Required(state.ResidentSpecies(actor-1))||modelResidency.Ready(state.ResidentSpecies(actor-1));
+            else{int species=state.NpcSpecies(actor-1);doors.ResourcesReady[actor]=!modelResidency.Required(species)||modelResidency.Ready(species);}
         }
     }
     private void ApplyUv(int next)
@@ -693,7 +703,7 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
         int fruit=state.Find(1);if(fruit>=0&&state.Wallet<=99199){state.Pockets[fruit]=0;state.Wallet+=800;state.Jobs++;Say("Hearth","A peach for our customer! Here is "+UiFont.Money(800)+".");}else Say("Hearth","Today's job: bring a peach for a customer. Reward: "+UiFont.Money(800)+". Make space in your wallet.");
     }
     private string TutorialText()
-    { string[] text={"Welcome! Wear the work shirt in your pockets.","Plant your flower seed near the store.","Deliver the parcel to a villager.","Collect "+state.Town.Residents[4].Name+"'s parcel and return it to this counter.","Write a letter at town hall.","Introduce yourself to all six neighbours.","Post a message on the notice board near the town gate.","Your part-time job is complete. Your debt is "+UiFont.Money(18000)+"."};return text[state.Tutorial]; }
+    { string[] text={"Welcome! Wear the work shirt in your pockets.","Plant your flower seed near the store.","Deliver the parcel to a villager.","Collect "+state.Town.Residents[4].Name+"'s parcel and return it to this counter.","Write a letter at town hall.","Introduce yourself to your neighbours.","Post a message on the notice board near the town gate.","Your part-time job is complete. Your debt is "+UiFont.Money(18000)+"."};return text[state.Tutorial]; }
     private void PostAction()
     {
         if(selected==0){Say("Fern",state.Deposit(Math.Min(1000,state.Wallet))?"Deposit complete.":"No acorns to deposit.");return;}
@@ -841,16 +851,14 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
         if(room!=0){
             if(room==TownShop.Room&&OpenShopFixture())return;
             if(KobanSite.InReach(state)){screen="lost";selected=0;return;}
-            if(JobsLive){int near=ClosestResident();if(near>=0){TryJobConversation(near);return;}}
-            for(int i=0;i<6;i++){var v=state.Town.Residents[i];if(v.Space==room&&Math.Abs(v.PosX-state.X)<2&&Math.Abs(v.PosZ-state.Z)<2){if(!TryJobConversation(i))Say(v.Name,state.Talk(i));return;}}
+            if(TalkNearby())return;
             if(room==25){screen="post";selected=0;return;}
             // No nearby villager or usable doorway: A does nothing.
             return;
         }
         if(HelipadSite.AtGate(x,z)&&JobsLive){OpenTravel();return;}
         if(HelipadSite.AtGate(x,z)){Say("Gate","Complete your town introduction to visit another town.");return;}
-        if(JobsLive){int near=ClosestResident();if(near>=0){TryJobConversation(near);return;}}
-        for(int i=0;i<6;i++){var v=state.Town.Residents[i];if(v.Space==0&&Math.Abs(v.PosX-state.X)<2.8f&&Math.Abs(v.PosZ-state.Z)<2.8f){if(!TryJobConversation(i))Say(v.Name,state.Talk(i));return;}}
+        if(TalkNearby())return;
         if(JobsLive&&state.Tool==Catalog.Shovel)for(int i=0;i<AnimalTown.Jobs.OfflineJobLedger.WorldCapacity;i++){var o=state.Town.Jobs.WorldObject(i);float dx=o.X-state.X,dz=o.Z-state.Z;if(o.Kind==AnimalTown.Jobs.JobWorldKind.Snowman&&dx*dx+dz*dz<2.25f){state.ResidentJobs.DestroyWorldObject(i);Say("Snow","The snowman crumbles back into the snow.");return;}}
         if(state.Pickup(tx,tz)||state.Pickup(x,z)){Say(state.Visiting?"Koban":"Backpack",state.Visiting?"The item is safe in this town's lost and found.":"Picked up!");return;}
         int ground=state.Town.FindGround(tx,tz);
@@ -879,25 +887,26 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
     private void UpdateAnimationFrame()
     {
         long start=FrameProfile.Start();
-        for(int i=0;i<7;i++){
+        for(int i=0;i<actors.Length;i++){
             bool visible=actorVisibility.Visible[i];float seconds=animationClock.Consume(i,visible);
             // Clip controls can reskin too. Defer every native animation call,
             // including Stop/Play/speed changes, until this actor can be drawn.
             if(!visible)continue;
+            var instance=actors[i]!;
             int clip=animationClock.Clip(i);
             if(restartClips[i]||appliedClips[i]!=clip){
                 restartClips[i]=false;
-                string name=clip==IdleClip?"Idle":clip==1?"Running":"Walking";int model=i==0?state.Species:state.ResidentSpecies(i-1);
-                if(clip<0)actors[i].Animator.Stop();
+                string name=clip==IdleClip?"Idle":clip==1?"Running":"Walking";int model=i==0?state.Species:state.NpcSpecies(i-1);
+                if(clip<0)instance.Animator.Stop();
                 else if(models[model].TryGetAnimation(name,out _)){
                     float speed=i==0&&clip!=IdleClip?desiredPlayerSpeed:1;
-                    actors[i].Animator.Play(name,true);actors[i].Animator.SetSpeed(speed);
+                    instance.Animator.Play(name,true);instance.Animator.SetSpeed(speed);
                     if(i==0)appliedPlayerSpeed=speed;
                 }
                 appliedClips[i]=clip;
             }
-            if(i==0&&clip>=0&&clip!=IdleClip&&appliedPlayerSpeed!=desiredPlayerSpeed){actors[0].Animator.SetSpeed(desiredPlayerSpeed);appliedPlayerSpeed=desiredPlayerSpeed;}
-            if(seconds>0){actors[i].Update(seconds);FrameProfile.AnimationUpdates++;}
+            if(i==0&&clip>=0&&clip!=IdleClip&&appliedPlayerSpeed!=desiredPlayerSpeed){instance.Animator.SetSpeed(desiredPlayerSpeed);appliedPlayerSpeed=desiredPlayerSpeed;}
+            if(seconds>0){instance.Update(seconds);FrameProfile.AnimationUpdates++;}
         }
         FrameProfile.End(1,start);
     }
@@ -936,7 +945,7 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
         var location=actorVisibility.Locations[actor];float x=location.X,z=location.Z,scale=1.8f,facing=actor==0?facingYaw:location.Yaw,height=0;
         if(actor==0&&session.Flight.PlayerWalking)session.Flight.PlayerPose(state.X,state.Z,out x,out z,out height,out facing);
         var pose=batchedDrawing?modelPoses[modelUsed++]:transform;pose.LocalPosition=SurfacePoint(x,z,height);pose.LocalScale=new Vector3(scale,scale,scale);pose.LocalRotation=SurfaceRotation(z,facing);
-        if(batchedDrawing){actorQueue.Submit(actors[actor],pose);}else{NativeRim.Enable(RenderDebugOptions.DefaultRimPercent);NativeShadows.Objects(room==0?1:0);try{renderer.DrawModel(actors[actor],pose);}finally{NativeShadows.Objects(0);NativeRim.Enable(0);}}
+        if(batchedDrawing){actorQueue.Submit(actors[actor]!,pose);}else{NativeRim.Enable(RenderDebugOptions.DefaultRimPercent);NativeShadows.Objects(room==0?1:0);try{renderer.DrawModel(actors[actor]!,pose);}finally{NativeShadows.Objects(0);NativeRim.Enable(0);}}
     }
     private void DrawActors()
     {NativeRim.Enable(RenderDebugOptions.DefaultRimPercent);NativeShadows.Objects(room==0?1:0);try{actorQueue.Execute(renderer);}finally{NativeShadows.Objects(0);NativeRim.Enable(0);}}
@@ -947,8 +956,8 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
         int size=room==0?0:BuildingWorld.Size(state,room);
         bool mat=room!=0&&BuildingWorld.Definition(state,BuildingWorld.Building(room)).Floor==BuildingCatalog.Cottage.Floor;
         for(int actor=0;actor<BuildingWorld.Actors;actor++){
+            if(actor>0&&(!state.NpcPresent(actor-1)||!modelResidency.Ready(state.NpcSpecies(actor-1))))continue;
             if(BuildingWorld.Location(state,actor).Space.Value!=room||actor==0&&(waterInspection!=0||session.Flight.PlayerOnboard))continue;
-            if(actor!=0&&!modelResidency.Ready(state.ResidentSpecies(actor-1)))continue;
             var p=villagers.Doors.VisualLocation(state,actor);
             float x=p.X,z=p.Z;
             if(actor==0&&session.Flight.PlayerWalking)session.Flight.PlayerPose(state.X,state.Z,out x,out z,out _,out _);
@@ -1014,7 +1023,7 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
         else rain.Dispose();
         PrepareFoliage(environmentTint);
         actorVisibility.Prepare(state,villagers.Doors,indoorCamera,waterInspection,cachedPlayerHeight);
-        for(int actor=1;actor<7;actor++)if(!modelResidency.Ready(state.ResidentSpecies(actor-1)))actorVisibility.Visible[actor]=false;
+        for(int actor=1;actor<actors.Length;actor++)if(actorVisibility.Visible[actor]&&(actors[actor]==null||!modelResidency.Ready(state.NpcSpecies(actor-1))))actorVisibility.Visible[actor]=false;
         UpdateAnimationFrame();
         if((renderDebug.ForceAttention||attendingVillager>=0)&&villagers.Doors.PlayerFade<1)attention.Prepare();
         phase=FrameProfile.Start();
@@ -1454,8 +1463,10 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
         ui.FillRectangle(new RectF(left+36*scale,top+9*scale,4,4),helipadColor);
         for(int p=0;p<GameState.ProfileCount;p++)if(state.HomePlaced(p))ui.FillRectangle(new RectF(left+state.HomeX(p)*scale,top+state.HomeZ(p)*scale,GameState.GardenWidths[state.HomeGardenTier(p)]*scale,GameState.GardenHeights[state.HomeGardenTier(p)]*scale),homeColor);
         foreach(var villager in state.Town.Residents)
-        {
             ui.FillRectangle(new RectF(left+(villager.HomeX+1.5f)*scale-2,top+(villager.HomeZ+1.5f)*scale-2,4,4),villagerHouseColor);
+        for(int npc=0;npc<Town.NpcActorCount;npc++){
+            if(!state.NpcPresent(npc))continue;
+            var villager=state.Town.NpcAt(npc);
             ui.FillRectangle(new RectF(left+villager.X*scale,top+villager.Z*scale,3,3),villagerColor);
         }
         float mapX=state.X,mapZ=state.Z;if(room!=0)BuildingWorld.Entrance(state,BuildingWorld.Building(room),out mapX,out mapZ);

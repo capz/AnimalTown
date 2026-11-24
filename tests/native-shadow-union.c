@@ -306,13 +306,13 @@ int main(int argc,char **argv){
         CHECK(abs((int)s->pixels[left*SU_BYTES+su_offset(SU_INNER+x,y)]-s->pixels[right*SU_BYTES+su_offset(x,y)])<=1);
     memset(s->shapes,255,sizeof(s->shapes));su_dirty(s,&s->caster[0]);su_prepare(s,SU_PAGES);
     su_begin(s,3,1,4);su_prepare(s,SU_PAGES);CHECK(su_find(s,0,0)<0);su_begin(s,0,1,0);su_prepare(s,SU_PAGES);CHECK(pixel(7,4)==SU_OPACITY);
-    /* Worst-case separated footprints: four pages each, 39 casters. */
-    reset();for(int i=0;i<39;i++){
+    /* Worst-case separated footprints: four pages for every caster. */
+    reset();for(int i=0;i<SU_CASTERS;i++){
         float x=(i%8+1)*16.f,z=(i/8+1)*16.f,uv[12],b[4]={x-1,z-1,x+1,z+1};
         for(int j=0;j<6;j++){uv[j*2]=rect[j*2]+x-4;uv[j*2+1]=rect[j*2+1]+z-4;}
-        su_mesh(s,i,6,i<32?0:4,uv,b);su_active(s,i,1,x,z);
+        su_mesh(s,i,6,i<SU_STATIC?0:4,uv,b);su_active(s,i,1,x,z);
     }su_prepare(s,SU_PAGES);int used=0;for(int i=0;i<SU_PAGES;i++)used+=s->page[i].needed;
-    CHECK(used==156);CHECK(s->overflow==0);
+    CHECK(used==SU_CASTERS*4);CHECK(s->overflow==0);
     /* Static work stays bounded while dynamic coverage remains current. */
     reset();caster(0,0,rect,6,bounds);caster(32,4,rect,6,bounds);
     su_prepare(s,0);CHECK(s->static_rasters==0);CHECK(pixel(4,4)==SU_OPACITY);
@@ -411,5 +411,5 @@ int main(int argc,char **argv){
     seasonal_cloud_checks();
     night_cloud_checks();
     printf("Shadow storage: %zu bytes total; %d-byte pages, two %d-byte terrain fields\n",su_storage_bytes(),SU_BYTES,SU_TERRAIN_BYTES);
-    free(s);printf("Shadow union: %d checks; max overlap, soft edges, trails, clipping, seams, rooms and 156-page bound passed\n",assertions);return 0;
+    free(s);printf("Shadow union: %d checks; max overlap, soft edges, trails, clipping, seams, rooms and %d-page bound passed\n",assertions,SU_PAGES);return 0;
 }

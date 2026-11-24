@@ -31,7 +31,8 @@ internal static class WaterEffectChecks
         check(action.Contains("if(tick%3==0&&TownItemActions.Catch(state,15))Say")&&
               !action.Contains("No butterfly in reach"),
             "bug-net misses are silent without removing successful catches");
-        check(action.Contains("Say(v.Name,state.Talk(i))")&&
+        string conversations=File.ReadAllText(Path.Combine(dir.FullName,"game/AnimalTown.GameCube/TownGame.JobScene.cs"));
+        check(action.Contains("if(TalkNearby())return;")&&conversations.Contains("Say(villager.Name,state.Talk(target))")&&
               action.Contains("if(state.Pickup(tx,tz)||state.Pickup(x,z))")&&action.Contains("\"Picked up!\""),
             "genuine villager conversation and item-pickup feedback remain enabled");
     }

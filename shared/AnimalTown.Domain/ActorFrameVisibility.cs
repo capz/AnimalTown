@@ -12,6 +12,7 @@ public sealed class ActorFrameVisibility
         bool sceneVisible=doors.PlayerFade<1;int room=state.Space;
         float size=room==0?0:BuildingWorld.Size(state,room);
         for(int actor=0;actor<Visible.Length;actor++){
+            if(actor>0&&!state.NpcPresent(actor-1)){Visible[actor]=false;Locations[actor]=default;continue;}
             var p=doors.VisualLocation(state,actor);Locations[actor]=p;
             bool visible=sceneVisible&&p.Space.Value==room&&!(actor==0&&inspection!=0);
             if(visible){

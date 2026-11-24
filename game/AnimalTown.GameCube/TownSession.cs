@@ -20,6 +20,23 @@ internal sealed partial class TownSession
     internal void QueueTravel(int action,int profile,int from,int to,long now)
     {travelAction=action;travelProfile=profile;travelFrom=from;travelTo=to;travelAt=now;}
     private TownSession(GameState state,bool loaded,bool damaged,string status){State=state;Loaded=loaded;Damaged=damaged;Status=status;}
+    internal void RefreshVisitors()
+    {
+        SavedVisitor[] visitors=Array.Empty<SavedVisitor>();
+        if(SaveCards.Enabled&&Loaded&&!Damaged&&Draft==null&&State.Town.Jobs.Initialized){
+            int device=SaveCards.Device==4?5:4;
+            try{
+                using var card=MemoryCard.Mount((StorageDevice)device,new MemoryCardIdentity("AMTE","01"));
+                var storage=new CardSaveStorage(card,Array.Empty<byte>(),Array.Empty<byte>(),device,preserveVillagerLayout:true);
+                if(Array.IndexOf(storage.Names(),TownDataDeletion.Marker)<0){
+                    var trip=State.Town.Jobs.Trip;
+                    visitors=new SaveRepository(storage).ReadVisitors(State.Town.Jobs.TownId,
+                        State.Visiting?trip.Home:0,State.Visiting?trip.HomeProfile:-1,State.Visiting?1:Town.VisitorCount);
+                }
+            }catch(Exception error){DebugOverlay.WriteLine("ANIMALTOWN VISITOR CARD: "+error.Message);}
+        }
+        State.SetTownVisitors(visitors);
+    }
     internal void AdoptTravel(GameState state)
     {
         if(state.Town.Jobs.TownId!=State.Town.Jobs.TownId)state.Town.Traffic.Snow.ResetForTownEntry();
