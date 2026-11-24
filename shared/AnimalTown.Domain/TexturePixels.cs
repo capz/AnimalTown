@@ -10,15 +10,17 @@ public static class TexturePixels
     public static int Width(byte[] b)=>Int(b,12);
     public static int Height(byte[] b)=>Int(b,16);
     public static void Validate(byte[] b)
+    {ValidateHeader(b,b.Length);}
+    public static void ValidateHeader(byte[] b,long length)
     {
         if(b.Length<32||Int(b,0)!=0x58544e44||(Int(b,4)!=1&&Int(b,4)!=2))throw new InvalidOperationException("Invalid texture package");
         int w=Width(b),h=Height(b),f=Int(b,8);
         if(w<1||h<1||w>1024||h>1024||(w&(w-1))!=0||(h&(h-1))!=0||
-          (f!=0&&f!=1&&f!=2&&f!=3&&f!=4&&f!=5&&f!=6&&f!=14)||Int(b,20)!=b.Length-32||Int(b,28)!=0)
+          (f!=0&&f!=1&&f!=2&&f!=3&&f!=4&&f!=5&&f!=6&&f!=14)||Int(b,20)!=length-32||Int(b,28)!=0)
             throw new InvalidOperationException("Unsupported texture dimensions/format");
         int bw=f==0||f==14?8:f==1||f==2?8:4,bh=f==0||f==14?8:4;
         int bytes=(w+bw-1)/bw*((h+bh-1)/bh)*(f==6?64:32);
-        if(b.Length-32<bytes)throw new InvalidOperationException("Truncated texture base level");
+        if(length-32<bytes)throw new InvalidOperationException("Truncated texture base level");
     }
     public static uint Hash(byte[] b)
     {uint h=2166136261;for(int i=0;i<b.Length;i++)h=(h^b[i])*16777619;return h;}

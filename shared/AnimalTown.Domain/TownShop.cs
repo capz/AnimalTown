@@ -9,7 +9,7 @@ public sealed class TownShop
     // Keep the original eight serialized cells so older listings can be reclaimed.
     public const int StoredSaleCount=8;
     public static int SaleSlots(GameState host)=>host.Town.StockCount>=12?7:host.Town.StockCount>=9?5:3;
-    private static readonly int[] essentials={1,2,Catalog.PineSapling,4,5,6,7,9,Catalog.CherrySapling};
+    private static readonly int[] essentials={1,2,Catalog.PineSapling,4,5,6,7,9,Catalog.CherrySapling,Catalog.WritingPaper};
     public static int CabinetCount=>essentials.Length;
     public static int CabinetItem(int index)=>(uint)index<essentials.Length?essentials[index]:0;
     public readonly int[] SaleItems=new int[StoredSaleCount],SalePrices=new int[StoredSaleCount],SaleOwners=new int[StoredSaleCount];
@@ -23,7 +23,7 @@ public sealed class TownShop
     public static bool Sellable(int item)=>Catalog.Has(item,ItemFlags.Sell)&&!Catalog.Has(item,ItemFlags.Money)&&Catalog.Items[item].Sell>0;
     public bool List(GameState host,int slot,int pocket,int price)
     {
-        if((uint)slot>=SaleSlots(host)||SaleItems[slot]!=0||(uint)pocket>=host.Capacity||!Sellable(host.Pockets[pocket])||price<1||price>GameState.WalletLimit)return false;
+        if(host.Visiting||(uint)slot>=SaleSlots(host)||SaleItems[slot]!=0||(uint)pocket>=host.Capacity||host.IsJobItem(pocket)||!Sellable(host.Pockets[pocket])||price<1||price>GameState.WalletLimit)return false;
         SaleItems[slot]=host.Pockets[pocket];SalePrices[slot]=price;SaleOwners[slot]=host.ActiveProfile;host.Pockets[pocket]=0;Changed();return true;
     }
     public bool Remove(GameState host,int slot)

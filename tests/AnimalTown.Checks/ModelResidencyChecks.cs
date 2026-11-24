@@ -54,6 +54,8 @@ namespace Dolphin.Graphics
         public int InstanceCreations,RetentionCalls;
         public int Starts,Advances,AnimationPosition=37,PendingDmaPolls=1,WorkUs=7,ProgressSteps;
         public bool Disposed,FailInstance;
+        public int FailInstanceAt;
+        public ModelInstance? LastInstance;
         public int InstanceBytes=65536;
         public void Dispose(){Disposed=true;}
         public Task? LastTransition {get;private set;}
@@ -63,9 +65,9 @@ namespace Dolphin.Graphics
         private int step;
         public ModelInstance CreateInstance(int budget)
         {
-            if(FailInstance)throw new OutOfMemoryException("Injected instance allocation failure");
+            if(FailInstance||FailInstanceAt>0&&InstanceCreations+1==FailInstanceAt)throw new OutOfMemoryException("Injected instance allocation failure");
             if(!IsResident||IsTransitioning)throw new InvalidOperationException("A cold or transitioning model cannot create an instance");
-            InstanceCreations++;return new ModelInstance(this,budget);
+            InstanceCreations++;LastInstance=new ModelInstance(this,budget);return LastInstance;
         }
         public int RetainPermanently()
         {

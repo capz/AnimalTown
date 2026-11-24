@@ -7,7 +7,7 @@ using Dolphin.Timing;
 // Cold-load construction uses one scratch section; the full immutable archive
 // lives in ARAM, outside the small managed heap. At runtime the
 // fixed mesh pool draws a bounded MEM1 cache of the original bytes.
-internal sealed class TerrainArchive
+internal sealed partial class TerrainArchive
 {
     private sealed class View : Mesh
     {
@@ -29,7 +29,7 @@ internal sealed class TerrainArchive
     private bool building,collect,selecting,presentable,suspended,restoreMarkerPending,saveResumePending,prefetchBlocked,pendingRequired;
     private bool resetPending,suppressRestoreMarker;
     internal VisualMemoryPressure? Memory;
-    internal const int CachePeakBytes=1024*1024+8*1024,ResetPeakBytes=CachePeakBytes+64*1024;
+    internal const int AllocationGuardBytes=8*1024,CachePeakBytes=1024*1024+AllocationGuardBytes,ResetPeakBytes=CachePeakBytes;
     // Six metres cover a two-metre selection bucket plus several frames of
     // travel. Only these prefetched pages are retained, never drawn offscreen.
     internal const float PrefetchGuard=6,PrefetchBucket=2;
@@ -64,23 +64,31 @@ internal sealed class TerrainArchive
         ReleaseViews();
         Dolphin.Diagnostics.DebugOverlay.WriteLine("ANIMALTOWN TERRAIN RESET BEGIN");
         Array.Clear(bound,0,bound.Length);baked=half=0;building=collect=selecting=presentable=suspended=restoreMarkerPending=saveResumePending=prefetchBlocked=pendingRequired=false;revision=drawRevision=-1;pendingView=pendingEntry=pendingSection=-1;selection.Reset();drawSelection.Reset();
-        retryAt=0;ResidencyError=0;suppressRestoreMarker=false;resetPending=true;TryInitialize();
+        retryAt=0;ResidencyError=0;suppressRestoreMarker=false;WarmLateSelections=WarmEvictions=WarmCancellations=0;resetPending=true;TryInitialize();
     }
     private bool TryInitialize()
     {
         if(!resetPending)return true;
         long now=Clock.Timestamp;if(now<retryAt)return false;
+        // Native reset reuses a warm cache and borrows its staging area. Only
+        // genuinely new bytes compete with other owners' outstanding tickets.
+        int peak=NativeTerrain.Stat(8)>0?AllocationGuardBytes:ResetPeakBytes;
         var memory=Memory;int ticket=0;
-        if(memory!=null&&!memory.TryReserve(ResetPeakBytes,now,true,out ticket)){ResidencyError=-2;return false;}
+        if(memory!=null&&!memory.TryReserve(peak,now,true,out ticket)){ResidencyError=-2;return false;}
         try{
             int result=NativeTerrain.Reset(TerrainArchivePlan.Count);
             if(result!=1){
                 if(result!=-2)throw new InvalidOperationException("Terrain archive initialization: "+result);
-                ResidencyError=result;retryAt=now+250000;memory?.AllocationFailed(ResetPeakBytes,now);return false;
+                ResidencyError=result;retryAt=now+250000;memory?.AllocationFailed(peak,now);return false;
             }
             memory?.Complete(ticket);ticket=0;resetPending=false;ResidencyError=0;retryAt=0;
             Dolphin.Diagnostics.DebugOverlay.WriteLine("ANIMALTOWN TERRAIN RESET READY");return true;
         }finally{if(ticket!=0)memory!.Cancel(ticket);}
+    }
+    internal bool TryReset()
+    {
+        if(NativeTerrain.CancelBind()!=1)return false;
+        Reset();return true;
     }
     internal bool TryDispose()
     {
@@ -206,7 +214,7 @@ internal sealed class TerrainArchive
                 var view=views[i]!;
                 if(view.Section<0||visible[view.Section])continue;
                 if(NativeTerrain.Unbind(view.Handle)!=1)throw new InvalidOperationException("Terrain view unbind failed");
-                bound[view.Section]=false;view.Section=view.Entry=view.Kind=-1;
+                bound[view.Section]=false;view.Section=view.Entry=view.Kind=-1;WarmEvictions++;
             }
             revision=selection.Revision;drawRevision=drawSelection.Revision;selecting=true;prefetchBlocked=false;
             if(pendingView>=0)pendingRequired=drawable[pendingSection];
@@ -302,7 +310,7 @@ internal sealed class TerrainArchive
         for(int i=0;i<views.Length;i++){
             var view=views[i]!;if(view.Section!=section)continue;
             if(NativeTerrain.Unbind(view.Handle)!=1)throw new InvalidOperationException("Terrain prefetch eviction failed");
-            view.Section=view.Entry=view.Kind=-1;
+            view.Section=view.Entry=view.Kind=-1;WarmEvictions++;
         }
         bound[section]=false;return true;
     }
@@ -311,7 +319,7 @@ internal sealed class TerrainArchive
         // Partial or speculative sections never appear in the GX draw chains.
         // Normally travel is already covered by the previous guard. Teleports
         // and transfer failure deliberately retain the existing loading path.
-        presentable=true;
+        bool previouslyPresentable=presentable;presentable=true;
         for(int i=0;i<drawSelection.Count;i++){
             int section=drawSelection.Sections[i];if(bound[section])continue;
             int end=first[section]+count[section];
@@ -321,7 +329,7 @@ internal sealed class TerrainArchive
             }
             if(!presentable)break;bound[section]=true;
         }
-        if(!presentable)return;
+        if(!presentable){if(previouslyPresentable)WarmLateSelections++;return;}
         Triangles=ViewCount=0;GroundMask=0;
         for(int i=0;i<drawSelection.Count;i++){
             int section=drawSelection.Sections[i];Triangles+=triangles[section];
@@ -338,6 +346,22 @@ internal sealed class TerrainArchive
             restoreMarkerPending=false;
             Dolphin.Diagnostics.DebugOverlay.WriteLine("ANIMALTOWN TERRAIN CACHE READY cache bytes "+NativeTerrain.Stat(8)+
                 " archive bytes "+NativeTerrain.Stat(5));
+        }
+    }
+    internal void GroundBounds(ulong materials,out int minZ,out int maxZ)
+    {
+        minZ=Town.Height;maxZ=0;
+        materials&=GroundMask;
+        for(int slot=0;slot<FloorStrips.MaximumMaterials;slot++){
+            if((materials&(1UL<<slot))==0)continue;
+            for(int index=heads[slot];index>=0;index=links[index]){
+                var view=views[index]!;
+                if(view.Kind>=FloorStrips.MaximumMaterials)continue;
+                int x=TerrainArchivePlan.X(view.Section);
+                if(x>=Town.Width||x+TerrainStream.Width<=0)continue;
+                int z=TerrainArchivePlan.Z(view.Section);
+                minZ=Math.Min(minZ,z);maxZ=Math.Max(maxZ,z+TerrainArchivePlan.Height);
+            }
         }
     }
     internal int First(int kind)=>heads[kind];

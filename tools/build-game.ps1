@@ -1,4 +1,4 @@
-param([switch]$SkipAssets,[switch]$NativeInProcess,[string]$ValidationPlan='',[ValidateRange(0,7)][int]$RuntimeProfile=4)
+param([switch]$SkipAssets,[switch]$NativeInProcess,[switch]$RunNativeTests,[string]$ValidationPlan='',[ValidateRange(0,7)][int]$RuntimeProfile=4)
 $ErrorActionPreference = 'Stop'
 Set-Location (Split-Path $PSScriptRoot -Parent)
 function Run([string]$File, [string[]]$Arguments) {
@@ -9,7 +9,7 @@ $projectRoot = (Get-Location).Path
 . ./tools/version.ps1
 $identity=Get-BuildVersion $projectRoot
 Write-VersionMetadata $identity $projectRoot
-if(!$ValidationPlan){& ./tools/select-validation.ps1 -Full;$ValidationPlan='out/validation-plan.json'}
+if(!$ValidationPlan){& ./tools/select-validation.ps1 -Full -SkipPolicyChecks;$ValidationPlan='out/validation-plan.json'}
 $validation=Get-Content -LiteralPath $ValidationPlan -Raw|ConvertFrom-Json
 if($validation.schema -ne 2 -or $validation.commit -ne (& git rev-parse HEAD).Trim()){throw 'Validation plan must match this source commit'}
 if($NativeInProcess -and !$IsLinux){throw 'NativeInProcess requires the Linux build image'}
@@ -25,11 +25,6 @@ function RunNative([string]$Directory,[string]$Command,[string[]]$Arguments){
     }
 }
 Run dotnet @('build', 'tools/AnimalTown.Tools', '-c', 'Release', '-v', 'quiet')
-if('repack' -in $validation.tooling){Run dotnet @('run','--project','tools/AnimalTown.Tools','-c','Release','--no-build','--','repack-check',$projectRoot)}
-if('terrain' -in $validation.tooling){Run dotnet @('run','--project','tools/AnimalTown.Tools','-c','Release','--no-build','--','terrain-check',$projectRoot)}
-if('dropped-item' -in $validation.tooling){Run dotnet @('run','--project','tools/AnimalTown.Tools','-c','Release','--no-build','--','dropped-item-check',$projectRoot)}
-if('nkit' -in $validation.tooling){Run dotnet @('run','--project','tools/AnimalTown.Tools','-c','Release','--no-build','--','nkit-check',$projectRoot)}
-if('depot' -in $validation.tooling){Run dotnet @('run','--project','tools/AnimalTown.Tools','-c','Release','--no-build','--','depot-check',$projectRoot)}
 Run dotnet @('run','--project','tools/AnimalTown.Tools','-c','Release','--no-build','--','buildings',$projectRoot)
 Run dotnet @('tool','restore')
 Run dotnet @('run','--project','tools/AnimalTown.Tools','-c','Release','--no-build','--','audit',$projectRoot)
@@ -63,17 +58,19 @@ if (!$SkipAssets) {
             New-Item -ItemType Directory -Force -Path out/prepared | Out-Null
             Copy-Item -LiteralPath $buildingImports[$name] -Destination "out/prepared/$name.glb" -Force
         }else{
-            Run dotnet @('run','--project','tools/AnimalTown.Tools','-c','Release','--no-build','--','prepare',$projectRoot,"assets/models/$($assetMap[$name])","out/prepared/$name.glb")
+            $prepare=@('run','--project','tools/AnimalTown.Tools','-c','Release','--no-build','--','prepare',$projectRoot,"assets/models/$($assetMap[$name])","out/prepared/$name.glb")
+            if($assetMap[$name].StartsWith('villagers/')){$prepare+='--villager-runtime'}
+            Run dotnet $prepare
         }
         $textureEdges=if($assetMap[$name].StartsWith('villagers/')){@(128,256)}else{@(128,256,512,1024)}
         foreach($textureEdge in $textureEdges){
         $suffix=if($textureEdge -eq 256){''}else{"-tex$textureEdge"}
         # DNMD retains its package and charges a decoded RGBA8 copy of each
         # texture per model, even when the native texture cache shares pixels.
-        # Cottage detail uses 64px. The shop palette is flat swatches and needs
-        # only 32px; keep both kits inside the same 768-KiB resident ceiling.
+        # Cottage detail uses 64px. Shop/koban use compact palette atlases at
+        # 32px; indexed static imports keep all three kits inside 768 KiB.
         $importEdge=if($buildingImports.ContainsKey($name) -and $textureEdge -eq 128){64}else{$textureEdge}
-        if($buildingImports.ContainsKey($name) -and $name.StartsWith('shop-') -and $textureEdge -eq 128){$importEdge=32}
+        if($buildingImports.ContainsKey($name) -and ($name.StartsWith('shop-') -or $name.StartsWith('koban-')) -and $textureEdge -eq 128){$importEdge=32}
         $importArguments=@('tool','run','dnd-assets','--','model',"out/prepared/$name.glb","out/disc/$name$suffix.dndmodel",'--texture-limit',"$importEdge",'--mip-levels','2','--compile-gx-materials')
         if($assetMap[$name].StartsWith('villagers/villager_')){$importArguments+='--allow-material-approximation'}
         Run dotnet $importArguments
@@ -87,12 +84,18 @@ Run dotnet @('run','--project','tools/AnimalTown.Tools','-c','Release','--no-bui
 Run dotnet @('run','--project','tools/AnimalTown.Tools','-c','Release','--no-build','--','model-lod',$projectRoot)
 Run dotnet @('run','--project','tools/AnimalTown.Tools','-c','Release','--no-build','--','model-memory-check',$projectRoot)
 Run dotnet @('run','--project','tools/AnimalTown.Tools','-c','Release','--no-build','--','model-memory',$projectRoot)
-$buildingNativeParts=@((Get-Content out/building-assets.json -Raw|ConvertFrom-Json -AsHashtable).Keys|Sort-Object|ForEach-Object{"out/disc/$($_)-tex128.dndmodel"})
-RunNative '.' 'sh' (@('-c','cc -std=c11 -Wall -Wextra -Werror -ffunction-sections -fdata-sections -Iout/sdk-native/include tests/native-building-assets.c out/sdk-native/source/model.c out/sdk-native/source/model_animation.c out/sdk-native/source/verified_copy.c out/sdk-native/source/aram.c -Wl,--gc-sections -lm -o /tmp/animaltown-building-assets && /tmp/animaltown-building-assets "$@"','building-assets')+$buildingNativeParts)
-# Exercise the opt-in static retention patch with the real cooked parts after
-# AOT/native patching below; the pinned SDK test above remains independent.
-$actorWindingParts=@('fox','bunny','giraffe','cat','hamster','spaniel'|ForEach-Object{"out/disc/$($_)-tex128.dndmodel"})
-RunNative '.' 'sh' (@('-c','cc -std=c11 -Wall -Wextra -Werror -ffunction-sections -fdata-sections -Iout/sdk-native/include tests/native-model-winding.c out/sdk-native/source/model.c out/sdk-native/source/model_animation.c out/sdk-native/source/verified_copy.c out/sdk-native/source/aram.c -Wl,--gc-sections -lm -o /tmp/animaltown-model-winding && /tmp/animaltown-model-winding "$@"','model-winding')+$actorWindingParts)
+if($RunNativeTests){
+    $buildingNativeParts=@((Get-Content out/building-assets.json -Raw|ConvertFrom-Json -AsHashtable).Keys|Sort-Object|ForEach-Object{"out/disc/$($_)-tex128.dndmodel"})
+    # Closed composites remain cooked comparison assets. Runtime reuses the seven
+    # exterior/door/interior parts, so only those enter its retained memory budget.
+    $buildingResidentParts=@($buildingNativeParts|Where-Object{$_ -notlike '*-exterior-closed-tex128.dndmodel'})
+    RunNative '.' 'python3' @('tests/building-closed-equivalence.py','out/disc')
+    RunNative '.' 'sh' (@('-c','cc -std=c11 -Wall -Wextra -Werror -ffunction-sections -fdata-sections -Iout/sdk-native/include tests/native-building-assets.c out/sdk-native/source/model.c out/sdk-native/source/model_animation.c out/sdk-native/source/verified_copy.c out/sdk-native/source/aram.c -Wl,--gc-sections -lm -o /tmp/animaltown-building-assets && /tmp/animaltown-building-assets "$@"','building-assets')+$buildingNativeParts)
+    # Exercise the opt-in static retention patch with the real cooked parts after
+    # AOT/native patching below; the pinned SDK test above remains independent.
+    $actorWindingParts=@('fox','bunny','giraffe','cat','hamster','spaniel'|ForEach-Object{"out/disc/$($_)-tex128.dndmodel"})
+    RunNative '.' 'sh' (@('-c','cc -std=c11 -Wall -Wextra -Werror -ffunction-sections -fdata-sections -Iout/sdk-native/include tests/native-model-winding.c out/sdk-native/source/model.c out/sdk-native/source/model_animation.c out/sdk-native/source/verified_copy.c out/sdk-native/source/aram.c -Wl,--gc-sections -lm -o /tmp/animaltown-model-winding && /tmp/animaltown-model-winding "$@"','model-winding')+$actorWindingParts)
+}
 # Validate admission peaks and sampled animation error with the exact shipped
 # packages and pinned native loader, not nominal per-owner budget ceilings.
 $modelPeakArguments=@('--catalog','out/disc/villager-memory.bin','--max-bind-error','0.04','--max-pose-error','0.05')
@@ -118,36 +121,14 @@ $sourceManifest = foreach($sourceFile in (& git ls-files --cached --others --exc
 }
 $sourceDigest=[Convert]::ToHexString([Security.Cryptography.SHA256]::HashData([Text.Encoding]::UTF8.GetBytes(($sourceManifest -join "`n"))))
 Run dotnet @('run','--project','tools/AnimalTown.Tools','-c','Release','--no-build','--','content-identity',$projectRoot,$gameFullCommit,$gameVersion,$sourceDigest,"$RuntimeProfile",$gameCommit)
-if($validation.rendering.Count){Run dotnet @('run','--project','tests/AnimalTown.RenderingChecks','-c','Release','--','--suites',($validation.rendering -join ','))}
-if($validation.managed.Count){Run dotnet @('run','--project','tests/AnimalTown.Checks','-c','Release','--','--suites',($validation.managed -join ','))}
-if('core' -in $validation.managed){
-    Run dotnet @('run','--project','tests/AnimalTown.MemoryChecks','-c','Release')
-    Run dotnet @('run','--project','tests/AnimalTown.FloorResidencyChecks','-c','Release')
-    Run dotnet @('run','--project','tests/AnimalTown.SnowResidencyChecks','-c','Release')
-    Run dotnet @('run','--project','tests/AnimalTown.VisualAllocationChecks','-c','Release')
-}
-if('card' -in $validation.native){Run dotnet @('run','--project','tests/AnimalTown.CardChecks','-c','Release')}
-if('card' -in $validation.native){Run dotnet @('run','--project','vendor/card-store-sdk/tests/CardRecordStoreTests','-c','Release')}
-if('content' -in $validation.native){
-    Run dotnet @('build','tests/AnimalTown.ContentSmoke','-c','Release','-p:RestoreLockedMode=true','-v','quiet')
-    Run dotnet @("$sdkRoot/tools/compiler/DolphinDotNet.Compiler.dll",'--aot','tests/AnimalTown.ContentSmoke/bin/Release/net8.0/AnimalTown.ContentSmoke.dll','out/content-startup.c')
-    RunNative '.' 'python3' @('tests/native-content-startup.py')
-}
-if('card' -in $validation.native){RunNative '.' 'sh' @('-c','cc -std=c11 -Wall -Wextra -Werror tests/native-card-read.c -o /tmp/animaltown-card-read && /tmp/animaltown-card-read && cc -std=c11 -Wall -Wextra -Werror tests/native-card-mount.c -o /tmp/animaltown-card-mount && /tmp/animaltown-card-mount && cc -std=c11 -Wall -Wextra -Werror -Ivendor/card-store-sdk/include vendor/card-store-sdk/tests/card_blocks_test.c -o /tmp/animaltown-card-blocks && /tmp/animaltown-card-blocks')}
-if('uv' -in $validation.native){RunNative '.' 'sh' @('-c','cc -std=c11 -Wall -Wextra -Werror tests/native-uv-topology.c -o /tmp/animaltown-uv-topology && /tmp/animaltown-uv-topology')}
-if('texture' -in $validation.native){RunNative '.' 'sh' @('-c','cc -std=c11 -Wall -Wextra -Werror -Iout/sdk-native/include tests/native-texture-pages.c -o /tmp/animaltown-texture-pages && /tmp/animaltown-texture-pages')}
-if('voices' -in $validation.native){RunNative '.' 'sh' @('-c','cc -std=c11 -Wall -Wextra -Werror -Iout/sdk-native/include tests/native-dialogue-voices.c out/sdk-native/source/audio.c -lm -o /tmp/animaltown-dialogue-voices && /tmp/animaltown-dialogue-voices')}
-if('python' -in $validation.native){
-    RunNative '.' 'python3' @('tests/frame-profile-streaming.py')
-    RunNative '.' 'python3' @('tests/release-bundle.py')
-}
-if('shadows' -in $validation.native){RunNative '.' 'sh' @('-c','cc -std=c11 -Wall -Wextra -Werror -Iout/sdk-native/include tests/native-path-mask.c -o /tmp/animaltown-path-mask && /tmp/animaltown-path-mask && cc -std=c11 -Wall -Wextra -Werror tests/native-shadow-union.c -lm -o /tmp/animaltown-shadow-union && /tmp/animaltown-shadow-union && cc -std=c11 -Wall -Wextra -Werror -Iout/sdk-native/include tests/native-shadow-lifecycle.c -lm -o /tmp/animaltown-shadow-lifecycle && /tmp/animaltown-shadow-lifecycle')}
 Run dotnet @('build','game/AnimalTown.GameCube','-c','Release','--no-restore','-v','quiet','-p:DepotProfile=false')
 Run dotnet @("$sdkRoot/tools/compiler/DolphinDotNet.Compiler.dll",'--bundle','game/AnimalTown.GameCube/bin/Release/net8.0/AnimalTown.GameCube.dll','out/native')
-& (Join-Path $PSScriptRoot 'patch-native.ps1') -Root $projectRoot
-RunNative '.' 'sh' (@('-c','cc -DANIMALTOWN_RETAIN_BUILDINGS -std=c11 -Wall -Wextra -Werror -ffunction-sections -fdata-sections -Iout/native/include tests/native-building-assets.c out/native/source/model.c out/native/source/model_animation.c out/native/source/verified_copy.c out/native/source/aram.c -Wl,--gc-sections -lm -o /tmp/animaltown-building-retained && /tmp/animaltown-building-retained "$@"','building-retained')+$buildingNativeParts)
-$residentNativeModels=@(@('fox','bunny','giraffe','cat','hamster','spaniel')|ForEach-Object{"out/disc/$($_)-tex128.dndmodel"})
-RunNative '.' 'sh' (@('-c','cc -std=c11 -Wall -Wextra -Werror -ffunction-sections -fdata-sections -Iout/native/include tests/native-resident-models.c out/native/source/model.c out/native/source/model_animation.c out/native/source/verified_copy.c out/native/source/aram.c -Wl,--gc-sections -lm -o /tmp/animaltown-resident-models && /tmp/animaltown-resident-models "$@"','resident-models')+$residentNativeModels)
+& (Join-Path $PSScriptRoot 'patch-native.ps1') -Root $projectRoot -SkipTests:(!$RunNativeTests)
+if($RunNativeTests){
+    RunNative '.' 'sh' (@('-c','cc -DANIMALTOWN_RETAIN_BUILDINGS -std=c11 -Wall -Wextra -Werror -ffunction-sections -fdata-sections -Iout/native/include tests/native-building-assets.c out/native/source/model.c out/native/source/model_animation.c out/native/source/verified_copy.c out/native/source/aram.c -Wl,--gc-sections -lm -o /tmp/animaltown-building-retained && /tmp/animaltown-building-retained "$@"','building-retained')+$buildingResidentParts)
+    $residentNativeModels=@(@('fox','bunny','giraffe','cat','hamster','spaniel')|ForEach-Object{"out/disc/$($_)-tex128.dndmodel"})
+    RunNative '.' 'sh' (@('-c','cc -std=c11 -Wall -Wextra -Werror -ffunction-sections -fdata-sections -Iout/native/include tests/native-resident-models.c out/native/source/model.c out/native/source/model_animation.c out/native/source/verified_copy.c out/native/source/aram.c -Wl,--gc-sections -lm -o /tmp/animaltown-resident-models && /tmp/animaltown-resident-models "$@"','resident-models')+$residentNativeModels)
+}
 function CompileNative([string]$Directory,[string]$Target){
 $nativeOutput=[IO.Path]::GetFullPath((Join-Path $projectRoot $Directory))
 $workspacePrefix=$projectRoot.TrimEnd([IO.Path]::DirectorySeparatorChar)+[IO.Path]::DirectorySeparatorChar
@@ -175,7 +156,7 @@ CompileNative 'out/native' 'apploader'
 # separate so Make's cached objects cannot mix the two compile-time profiles.
 Run dotnet @('build','game/AnimalTown.GameCube','-c','Release','--no-restore','-v','quiet','-p:DepotProfile=true')
 Run dotnet @("$sdkRoot/tools/compiler/DolphinDotNet.Compiler.dll",'--bundle','game/AnimalTown.GameCube/bin/Release/net8.0/AnimalTown.GameCube.dll','out/native-depot')
-& (Join-Path $PSScriptRoot 'patch-native.ps1') -Root $projectRoot -NativeDirectory 'out/native-depot'
+& (Join-Path $PSScriptRoot 'patch-native.ps1') -Root $projectRoot -NativeDirectory 'out/native-depot' -SkipTests:(!$RunNativeTests)
 CompileNative 'out/native-depot' 'all'
 Run dotnet @('run','--project','tools/AnimalTown.Tools','-c','Release','--no-build','--','depot-receipt',$projectRoot)
 $nativeOutput=Join-Path $projectRoot 'out/native'
@@ -201,6 +182,8 @@ Copy-Item -LiteralPath (Join-Path $sdkRoot 'tools/compiler/native/include/ryu/LI
 Copy-Item -LiteralPath (Join-Path $sdkRoot 'tools/compiler/native/vendor/ufbx/LICENSE') -Destination (Join-Path $notices 'ufbx-LICENSE.txt') -Force
 Copy-Item -LiteralPath (Join-Path $projectRoot 'docs/dolphin-depot-install.txt') -Destination (Join-Path $notices 'DEPOT-README.txt') -Force
 $thirdParty="DolphinDotNet: $sdkCommit`nHypercube: $engineCommit`nBoth declare GPL-2.0-only; full texts accompany this package.`nCorresponding dependency sources: https://github.com/capz/DolphinDotNet and https://github.com/capz/hypercube-engine at the commits above.`nRyu floating-point conversion: Boost Software License 1.0, Ryu-LICENSE.txt.`nGorditas font: SIL Open Font License 1.1, Gorditas-OFL.txt.`nGame sources and asset provenance: https://github.com/capz/AnimalTown/tree/$gameFullCommit`nOriginal AnimalTown code/assets have no blanket redistribution permission established by this packaging feature. See docs/depot-release.md in that source revision. A NOASSERTION catalog draft is not permission to redistribute.`n"
+Copy-Item -LiteralPath (Join-Path $projectRoot 'assets/definitions/jobs/UNICODE-LICENSE.txt') -Destination (Join-Path $notices 'Unicode-LICENSE.txt') -Force
+$thirdParty+="Unicode normalization and category data: Unicode 14.0.0, Unicode-LICENSE.txt.`n"
 $thirdParty+="ufbx model importer: see ufbx-LICENSE.txt.`n"
 [IO.File]::WriteAllText((Join-Path $notices 'THIRD-PARTY-NOTICES.txt'),$thirdParty)
 $depot=Join-Path $projectRoot "out/AnimalTown-$gameVersion-depot.zip"

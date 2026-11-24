@@ -13,7 +13,8 @@ internal static class VillagerLodChecks
         check(VillagerLod.SelectAnimation(48,0)==1&&VillagerLod.SelectAnimation(49,0)==0&&VillagerLod.SelectAnimation(59,1)==1&&VillagerLod.SelectAnimation(60,1)==0,"independent animation LOD enters below 48 pixels and leaves above 60");
         check(.045224f*VillagerLod.FullPixels<1.36f,"sampled native fox animation stays within the accepted 1.36px estimate at the full-detail return threshold");
         check(VillagerLod.DepthAtPixels(24)>35&&VillagerLod.DepthAtPixels(30)>28&&VillagerLod.DepthAtPixels(48)>17,"LOD thresholds derive reproducible camera depths rather than a player-distance cutoff");
-        check(VillagerLod.CoarseAvailable(0)&&VillagerLod.CoarseAvailable(1)&&Enumerable.Range(2,4).All(x=>!VillagerLod.CoarseAvailable(x)),"only species with measured useful geometry reduction admit a second variant");
+        check(VillagerLod.CoarseAvailable(0)&&VillagerLod.CoarseAvailable(1)&&VillagerLod.CoarseAvailable(2)&&Enumerable.Range(3,3).All(x=>!VillagerLod.CoarseAvailable(x)),"only species with measured useful geometry reduction admit a second variant");
+        check(VillagerLod.MaximumPoseError*VillagerLod.FullPixels<=1.5f,"native pose qualification limits the estimated return-threshold error for every eligible species");
         var clock=new AnimationFrameClock(7);
         clock.Step(1,0,true);check(clock.Consume(1,true,2)==0,"a distant actor defers its first simulation pose");
         for(int i=0;i<20;i++)check(clock.Consume(1,true,2)==0,"repeated rendered frames without simulation ticks do not cause skinning");
@@ -22,6 +23,8 @@ internal static class VillagerLodChecks
         clock.Step(1,0,true);check(clock.Consume(1,true,2)==0,"reappearing actors cannot catch up hidden animation time");
         clock.Step(1,1,true);check(clock.Consume(1,true,2)==0,"a new clip restarts its own cadence");
         clock.Step(1,1,true);check(Math.Abs(clock.Consume(1,true,2)-2f/30)<.000001f,"clip transitions preserve the reduced animation sample cadence");
+        clock.Step(1,2,true);check(clock.Clip(1)==2&&clock.Consume(1,true,2)==0,"an authored idle clip remains selected while its distant pose is deferred");
+        clock.Step(1,2,true);check(Math.Abs(clock.Consume(1,true,2)-2f/30)<.000001f,"authored idle animation advances at the same bounded fifteen-Hz cadence");
         Occlusion(check);
     }
     private static void Occlusion(Action<bool,string> check)

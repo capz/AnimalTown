@@ -1,0 +1,43 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 300" role="img" aria-labelledby="title">
+  <title id="title">AnimalTown timber helipad</title>
+  <g id="trim" fill="#714231">
+    <polygon points="0,0 400,0 400,300 0,300"/>
+  </g>
+  <g id="planks">
+    <polygon fill="#a96340" points="5,5 395,5 395,32 5,32"/>
+    <polygon fill="#b77248" points="5,34 395,34 395,61 5,61"/>
+    <polygon fill="#af6943" points="5,63 395,63 395,90 5,90"/>
+    <polygon fill="#be794e" points="5,92 395,92 395,119 5,119"/>
+    <polygon fill="#ac6641" points="5,121 395,121 395,148 5,148"/>
+    <polygon fill="#b46c45" points="5,150 395,150 395,177 5,177"/>
+    <polygon fill="#ba754a" points="5,179 395,179 395,206 5,206"/>
+    <polygon fill="#ad6642" points="5,208 395,208 395,235 5,235"/>
+    <polygon fill="#b9734a" points="5,237 395,237 395,264 5,264"/>
+    <polygon fill="#a96340" points="5,266 395,266 395,295 5,295"/>
+  </g>
+  <g id="plank-joints" fill="#864e36">
+    <polygon points="101,5 104,5 104,32 101,32"/>
+    <polygon points="273,34 276,34 276,61 273,61"/>
+    <polygon points="121,63 124,63 124,90 121,90"/>
+    <polygon points="298,92 301,92 301,119 298,119"/>
+    <polygon points="99,121 102,121 102,148 99,148"/>
+    <polygon points="306,150 309,150 309,177 306,177"/>
+    <polygon points="112,179 115,179 115,206 112,206"/>
+    <polygon points="290,208 293,208 293,235 290,235"/>
+    <polygon points="135,237 138,237 138,264 135,264"/>
+    <polygon points="271,266 274,266 274,295 271,295"/>
+  </g>
+  <g id="markings" fill="#f6e1b1">
+    <polygon points="16,16 60,16 60,24 16,24"/>
+    <polygon points="16,24 24,24 24,57 16,57"/>
+    <polygon points="340,16 384,16 384,24 340,24"/>
+    <polygon points="376,24 384,24 384,57 376,57"/>
+    <polygon points="16,276 60,276 60,284 16,284"/>
+    <polygon points="16,243 24,243 24,276 16,276"/>
+    <polygon points="340,276 384,276 384,284 340,284"/>
+    <polygon points="376,243 384,243 384,276 376,276"/>
+    <polygon points="138,65 161,65 161,235 138,235"/>
+    <polygon points="239,65 262,65 262,235 239,235"/>
+    <polygon points="161,139 239,139 239,161 161,161"/>
+  </g>
+</svg>

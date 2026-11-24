@@ -20,6 +20,20 @@ words; longer messages use three-line pages. A or B finishes the current page's
 typewriter animation, then advances or closes it. Chat drafts and messages are
 transient and do not enter the memory-card save.
 
+## Letters and notice-board messages
+
+Letter writing uses the same QWERTY keyboard, key styling, stick/D-pad navigation
+and A/X/L/R controls as chat. Letter and notice drafts retain their 1,000-character
+limit. **R** inserts a space; the keyboard's **NL** key replaces chat's selectable
+SP key and inserts a line break without taking over the global Z gesture.
+
+Letters keep **Y** for choosing a present. **START** opens the existing send
+confirmation, and **B** opens the draft-discard confirmation. Returning from
+either confirmation, a present selection or a failed send retains the draft,
+selected key and letter case. Sending or discarding releases the temporary
+keyboard. Mail still goes through the letter service, so typing slash commands
+in a letter never invokes chat commands.
+
 ## Debug commands
 
 With debug menus visible (toggle with three consecutive Z presses), enter:

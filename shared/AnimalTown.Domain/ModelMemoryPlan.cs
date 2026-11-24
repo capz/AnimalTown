@@ -77,7 +77,7 @@ public sealed class ModelMemoryPlan
 public sealed class ModelMemoryCatalog
 {
     public const int Magic=0x564d454d,Version=1,Count=6,Stride=24;
-    private readonly int[] lengths=new int[Count],one=new int[Count],two=new int[Count];
+    private readonly int[] lengths=new int[Count],one=new int[Count],instances=new int[Count];
     private static int Int(byte[] bytes,int at)=>bytes[at]|bytes[at+1]<<8|bytes[at+2]<<16|bytes[at+3]<<24;
     public ModelMemoryCatalog(byte[] bytes)
     {
@@ -89,13 +89,18 @@ public sealed class ModelMemoryCatalog
             if(length<160||length>16*1024*1024||shared<length||instance<512||normal<shared||normal>64*1024*1024||
                (long)normal!=shared+((length+63)&~31)+(long)instance+ModelMemoryPlan.LoadGuardBytes||selected!=(long)normal+instance)
                 throw new InvalidOperationException("Invalid villager memory admission bound");
-            lengths[i]=length;one[i]=normal;two[i]=selected;
+            lengths[i]=length;one[i]=normal;instances[i]=instance;
         }
     }
     public int StartupPeak(int species,bool selected)
+        =>StartupPeak(species,selected?2:1);
+    public int StartupPeak(int species,int instanceCount)
     {
         if(species<0||species>=Count)throw new ArgumentOutOfRangeException("species");
-        return selected?two[species]:one[species];
+        if(instanceCount<0||instanceCount>BuildingWorld.Actors)throw new ArgumentOutOfRangeException("instanceCount");
+        // The manifest validates a <=64 MiB single-instance peak. At most the
+        // bounded town actor cohort can share a model, so this sum cannot wrap.
+        return one[species]+(instanceCount-1)*instances[species];
     }
     public void ValidatePackage(int species,int length)
     {

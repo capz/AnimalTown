@@ -21,10 +21,12 @@ created. Local scenery/character pages merge the field by maximum coverage, so
 overlapping shadows do not repeatedly darken the same ground. Steady movement
 does not rebake it.
 
-A north-up minimap appears after **more than six seconds of uninterrupted actual
+A north-up minimap appears after **two seconds of uninterrupted actual
 running** outdoors. Walking, standing or being blocked breaks the streak. After
 a visible map's running stops, it remains for **four seconds**; restarting
-running within that grace keeps it visible. Menus and interiors hide/reset it.
+running within that grace keeps it visible. The minimap fades in and out over
+a quarter of a second. Menus and interiors hide/reset it. The date and time
+fade out when running starts and fade back in when running stops.
 The minimap shares the full map's terrain texture and shows the player, home
 and shops with a fixed number of markers. Terrain texture updates remain
 revision-based.

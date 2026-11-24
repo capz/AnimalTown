@@ -108,6 +108,8 @@ internal static class DepotPackageChecks
                 {"terrain-materials-build.json",JsonSerializer.SerializeToUtf8Bytes(new{commit,version})}
             };
             reportFiles.Add("daylight-build.json",JsonSerializer.SerializeToUtf8Bytes(new{commit,version}));
+            reportFiles.Add("scenarios/jobs/jobs-delivery-result.png",new byte[]{137,80,78,71,13,10,26,10});
+            reportFiles.Add("scenarios/jobs/jobs-delivery-state.json",JsonSerializer.SerializeToUtf8Bytes(new{mode="delivery",passed=true}));
             foreach(string phase in new[]{"noon","dawn","dusk","night"}){
                 reportFiles.Add("daylight-"+phase+"-report.json",JsonSerializer.SerializeToUtf8Bytes(new{passed=true}));
                 foreach(string shot in new[]{"a","b"})reportFiles.Add("daylight-"+phase+"-"+shot+".png",new byte[]{137,80,78,71,13,10,26,10});

@@ -1,0 +1,19 @@
+{
+  "sourceCommit": "112bd461f7fb0baa0068475aff72e4c09e883a10",
+  "sourceVersion": "0.80.0+112bd461f7fb",
+  "image": "offline-jobs-112b-official.nkit.iso",
+  "imageSHA256": "22e0228137d334382ed296f2831cb3e8e4e30fbe838ab8a36b3eedc5118fc785",
+  "nativeDolSHA256": "aa54e9a92c948e5a8170369f9833a3c53c9d1336fbcf94024317f02a8ee8c498",
+  "qualificationOnly": false,
+  "concurrentBuild": false,
+  "cpuTimingComparable": false,
+  "controllerMode": "checkpoint",
+  "committedStateVerifier": "maximum-mail",
+  "clock": "2027-07-15T13:00:00Z",
+  "persistenceChain": [
+    "final-112b-max: interrupted conversion and first checkpoint succeeded",
+    "final-112b-max-retry: saved, Save & Quit, title reload reached the actual world; secondary profiling timed out after the title reset its enable flag",
+    "this run: cold load, actual movement, checkpoint and independent verification of all four full mailboxes"
+  ],
+  "jobsHarnessSHA256": "cee99fa17df3c258f542688f46a9633baef2ca06019988af7fafca5d649485a8"
+}

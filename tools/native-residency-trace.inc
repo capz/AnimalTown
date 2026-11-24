@@ -8,6 +8,7 @@ static void animaltown_residency_trace(const char *text) {
 #ifdef GEKKO
   if (text && (!strncmp(text, "ANIMALTOWN ", sizeof("ANIMALTOWN ") - 1) ||
                !strncmp(text, "Terrain archive:", sizeof("Terrain archive:") - 1) ||
+               !strcmp(text, "MANAGED MAIN: FAILED") ||
                !strncmp(text, "PATH ", sizeof("PATH ") - 1)))
     SYS_Report("%s\n", text);
 #else

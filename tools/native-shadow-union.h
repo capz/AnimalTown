@@ -6,14 +6,15 @@
 #include <stddef.h>
 #include <string.h>
 #include <math.h>
-#define SU_CASTERS 39
 #define SU_STATIC 32
+#define SU_CASTERS (SU_STATIC+8)
 #define SU_VERTICES 288
-#define SU_PAGES 160 /* 39 footprints, each smaller than a page: <=156 pages. */
+#define SU_PAGES 160 /* Each caster can touch four pages: 40 * 4 pages. */
 #define SU_LOOKUP 512 /* Power of two; at most 160 live entries. */
 #define SU_SIDE 32
 #define SU_INNER (SU_SIDE-2) /* One filtering gutter on each edge. */
 #define SU_BYTES (SU_SIDE*SU_SIDE)
+#define SU_BASE_BYTES (SU_BYTES/2)
 #define SU_OPACITY 66
 #define SU_LIGHTS 24
 #define SU_TERRAIN_WIDTH 256
@@ -32,7 +33,11 @@ typedef struct {
     unsigned revision;
     float x,z,bounds[4],uv[SU_VERTICES*2];
 } SuCaster;
-typedef struct { int used,x,z,space,needed,static_dirty,dirty,publish,base_blank,blank,static_pending; unsigned version; } SuPage;
+typedef struct {
+    int x,z,space;
+    unsigned version;
+    uint8_t used,needed,static_dirty,dirty,publish,base_blank,blank,static_pending;
+} SuPage;
 typedef struct {int used,x,z,space;unsigned revision,use;uint8_t bits[SU_SUPPORT_BYTES];} SuSupport;
 typedef int (*SuCanWork)(void*);
 typedef struct {
@@ -55,11 +60,20 @@ typedef struct {
     int space,enabled,scope,overflow,changed,static_rasters,dynamic_rasters,layout_dirty;
     float span;
 } SuState;
-static inline size_t su_storage_bytes(void){return ((sizeof(SuState)+31)&~(size_t)31)+SU_PAGES*SU_BYTES*2+SU_TERRAIN_BYTES*2;}
+static inline size_t su_storage_bytes(void){return ((sizeof(SuState)+31)&~(size_t)31)+SU_PAGES*(SU_BASE_BYTES+SU_BYTES)+SU_TERRAIN_BYTES*2;}
 static inline void su_init(SuState *s){
     memset(s,0,su_storage_bytes());s->span=8;s->static_page=-1;
     s->cloud_scale=SU_CLOUD_SIDE/SU_CLOUD_PERIOD;s->cloud_contrast=1;s->cloud_opacity=SU_OPACITY/255.f;
-    s->base=(uint8_t*)s+((sizeof(SuState)+31)&~(size_t)31);s->pixels=s->base+SU_PAGES*SU_BYTES;s->terrain=s->pixels+SU_PAGES*SU_BYTES;s->coverage=s->terrain+SU_TERRAIN_BYTES;
+    s->base=(uint8_t*)s+((sizeof(SuState)+31)&~(size_t)31);s->pixels=s->base+SU_PAGES*SU_BASE_BYTES;s->terrain=s->pixels+SU_PAGES*SU_BYTES;s->coverage=s->terrain+SU_TERRAIN_BYTES;
+}
+
+/* Committed CPU bases have shadow coverage only. The light nibble starts at
+ * zero in static_work and is filled when the final IA4 page is composed. */
+static inline void su_store_base(uint8_t *packed,const uint8_t *page){
+    for(int i=0;i<SU_BASE_BYTES;i++)packed[i]=(uint8_t)(page[2*i]|(page[2*i+1]<<4));
+}
+static inline void su_load_base(uint8_t *page,const uint8_t *packed){
+    for(int i=0;i<SU_BASE_BYTES;i++){page[2*i]=packed[i]&15;page[2*i+1]=packed[i]>>4;}
 }
 /* One terrain texture, shared by every section; no extra caster/page slots. */
 static inline int su_terrain_offset(int x,int y){return ((y/4)*(SU_TERRAIN_WIDTH/8)+x/8)*32+y%4*8+x%8;}
@@ -77,23 +91,45 @@ static inline uint8_t su_pack(int shadow,int light){return (uint8_t)(((light+8)/
 #define SU_SNOW_SIDE (4*SU_WORLD_WIDTH)
 #define SU_SNOW_HEIGHT 120
 #define SU_SNOW_BYTES (SU_SNOW_SIDE*SU_SNOW_SIDE)
+#define SU_SNOW_STRIP_TEXELS 256
+#define SU_SNOW_STRIP_BYTES (SU_SNOW_SIDE*SU_SNOW_STRIP_TEXELS)
 #define SU_SNOW_BLOCKS (SU_WORLD_WIDTH/2)
+#define SU_SNOW_ROW_BYTES (SU_SNOW_BLOCKS*32)
 #define SU_SNOW_PACKED (SU_SNOW_BLOCKS*SU_SNOW_HEIGHT)
 #define SU_SNOW_MAX_VISITS 5
 #define SU_SNOW_STEPS_PER_VISIT 3
 #define SU_SNOW_PAGE 8
 #define SU_SNOW_PAGE_ROWS ((SU_SNOW_HEIGHT+SU_SNOW_PAGE-1)/SU_SNOW_PAGE)
-static inline int su_snow_wear(const uint8_t *packed,int x,int z){
+#define SU_SNOW_FIRST_OPEN 8 /* Matches SnowWear.CenterCovered. */
+#define SU_SNOW_UNIT 16
+#define SU_SNOW_VISUAL_SIDE 49 /* Nearby tiles plus the rim sampling margin. */
+#define SU_SNOW_VISUAL_BYTES (SU_SNOW_VISUAL_SIDE*SU_SNOW_VISUAL_SIDE)
+typedef struct {
+    const uint8_t *packed,*visual;
+    int origin;
+} SuSnowField;
+/* Raster work runs on a changed wear revision. Keep the unrolled stamp
+ * combinations out of the console executable. */
+#if defined(__GNUC__) && !defined(__clang__)
+#pragma GCC push_options
+#pragma GCC optimize ("Os")
+#endif
+static inline int su_snow_wear(const SuSnowField *field,int x,int z){
     if((unsigned)x>=SU_WORLD_WIDTH||(unsigned)z>=SU_SNOW_HEIGHT)return 0;
+    if(field->visual){
+        int dx=x-field->origin%SU_WORLD_WIDTH,dz=z-field->origin/SU_WORLD_WIDTH;
+        if((unsigned)dx<SU_SNOW_VISUAL_SIDE&&(unsigned)dz<SU_SNOW_VISUAL_SIDE)
+            return field->visual[dz*SU_SNOW_VISUAL_SIDE+dx];
+    }
     int cell=z*SU_WORLD_WIDTH+x;
-    return (packed[cell/2]>>((cell%2)*4))&15;
+    return ((field->packed[cell/2]>>((cell%2)*4))&15)*SU_SNOW_UNIT;
 }
-/* Include stamp spill, linear filtering and the two relief samples. Two cells
- * are deliberately conservative at page edges; a blank page uses no depth TEV. */
-static inline int su_snow_page_dented(const uint8_t *packed,int px,int pz){
+/* Include stamp joins, filtering and both relief taps. Effective visual wear
+ * matters while the optional smooth step/refill preview is interpolating. */
+static inline int su_snow_page_dented(const SuSnowField *field,int px,int pz){
     int left=px*SU_SNOW_PAGE-2,top=pz*SU_SNOW_PAGE-2;
     for(int z=top;z<top+SU_SNOW_PAGE+4;z++)for(int x=left;x<left+SU_SNOW_PAGE+4;x++)
-        if(su_snow_wear(packed,x,z))return 1;
+        if(su_snow_wear(field,x,z))return 1;
     return 0;
 }
 static inline void su_snow_dirty_pages(uint16_t *dirty,int x,int z){
@@ -117,28 +153,88 @@ static inline float su_snow_stamp(int visits,float x,float z){
     return 1.32f*(1.f-ellipse*.5f);
 }
 static inline float su_snow_recovering_stamp(int wear,float x,float z){
-    int visits=wear/SU_SNOW_STEPS_PER_VISIT,step=wear%SU_SNOW_STEPS_PER_VISIT;
+    const int numerator=SU_SNOW_STEPS_PER_VISIT*SU_SNOW_UNIT;
+    int visits=wear/numerator,step=wear%numerator;
     float a=su_snow_stamp(visits,x,z);
     if(!step)return a;
     // Interpolate the two visible depths so the cutout and shaded rim
     // recede together between the original visit stages.
     a=fmaxf(0.f,fminf(1.f,a));
     float b=fmaxf(0.f,fminf(1.f,su_snow_stamp(visits+1,x,z)));
-    return a+(b-a)*(step*(1.f/SU_SNOW_STEPS_PER_VISIT));
+    return a+(b-a)*(step*(1.f/numerator));
 }
-static inline uint8_t su_snow_depth(const uint8_t *packed,int x,int z){
+static inline uint8_t su_snow_depth(const SuSnowField *field,int x,int z){
     int cx=x/4,cz=z/4;
     float fx=(x%4+.5f)*.25f-.5f,fz=(z%4+.5f)*.25f-.5f,depth=0;
     for(int dz=-1;dz<=1;dz++)for(int dx=-1;dx<=1;dx++){
-        int wear=su_snow_wear(packed,cx+dx,cz+dz);
+        int wear=su_snow_wear(field,cx+dx,cz+dz);
         if(!wear)continue;
         depth=fmaxf(depth,su_snow_recovering_stamp(wear,fx-dx,fz-dz));
     }
     return (uint8_t)(fminf(1.f,depth)*255.f+.5f);
 }
-static inline void su_snow_block(uint8_t *dest,const uint8_t *packed,int bx,int bz){
-    for(int z=0;z<4;z++)for(int x=0;x<8;x++)dest[z*8+x]=su_snow_depth(packed,bx*8+x,bz*4+z);
+typedef struct {
+    uint8_t horizontal[2][2],vertical[2][2],corners[2][2];
+} SuSnowJoins;
+static inline int su_snow_join_wear(const SuSnowField *field,const uint8_t *tiles,const uint8_t *levels,int x,int z,int wear,int level){
+    int other=su_snow_wear(field,x,z);
+    if(other<=(SU_SNOW_FIRST_OPEN-1)*SU_SNOW_UNIT)return 0;
+    int cell=z*SU_WORLD_WIDTH+x;
+    if(tiles[cell]!=0||levels[cell]!=level)return 0; /* Level grass on the same terrace. */
+    return other<wear?other:wear;
 }
+static inline uint8_t su_snow_join_depth(int wear,float x,float z){
+    const int open=SU_SNOW_FIRST_OPEN*SU_SNOW_UNIT;
+    float amount=1.f;
+    if(wear<open){amount=(wear-open+SU_SNOW_UNIT)*(1.f/SU_SNOW_UNIT);wear=open;}
+    return (uint8_t)(fminf(1.f,fmaxf(0.f,su_snow_recovering_stamp(wear,x,z)))*255.f*amount+.5f);
+}
+static inline SuSnowJoins su_snow_joins(const SuSnowField *field,const uint8_t *tiles,const uint8_t *levels,int x,int z){
+    SuSnowJoins joins={0};
+    int wear=su_snow_wear(field,x,z);
+    if(wear<=(SU_SNOW_FIRST_OPEN-1)*SU_SNOW_UNIT)return joins;
+    int cell=z*SU_WORLD_WIDTH+x,level=levels[cell];
+    if(tiles[cell]!=0||level>1)return joins; /* Terrain.Grass, TerrainElevation.Flat/Block. */
+    int horizontal[2],vertical[2];
+    for(int side=0;side<2;side++){
+        int direction=2*side-1;
+        horizontal[side]=su_snow_join_wear(field,tiles,levels,x+direction,z,wear,level);
+        vertical[side]=su_snow_join_wear(field,tiles,levels,x,z+direction,wear,level);
+        for(int sample=0;sample<2;sample++){
+            float distance=.125f+sample*.25f;
+            if(horizontal[side])joins.horizontal[side][sample]=su_snow_join_depth(horizontal[side],0.f,distance);
+            if(vertical[side])joins.vertical[side][sample]=su_snow_join_depth(vertical[side],distance,0.f);
+        }
+    }
+    /* Fill the inner corner of a worn 2x2 patch. A corner-only neighbor
+     * cannot join because both shared edges must already be present. */
+    for(int dz=0;dz<2;dz++)for(int dx=0;dx<2;dx++){
+        int edges=horizontal[dx]<vertical[dz]?horizontal[dx]:vertical[dz];
+        if(!edges)continue;
+        int corner=su_snow_join_wear(field,tiles,levels,x+2*dx-1,z+2*dz-1,edges,level);
+        if(corner)joins.corners[dz][dx]=su_snow_join_depth(corner,.125f,.125f);
+    }
+    return joins;
+}
+static inline void su_snow_block(uint8_t *dest,const SuSnowField *field,const uint8_t *tiles,const uint8_t *levels,int bx,int bz){
+    for(int side=0;side<2;side++){
+        int cx=bx*2+side;
+        SuSnowJoins joins=su_snow_joins(field,tiles,levels,cx,bz);
+        for(int z=0;z<4;z++)for(int x=0;x<4;x++){
+            uint8_t depth=su_snow_depth(field,cx*4+x,bz*4+z);
+            int outer_x=x==0||x==3,outer_z=z==0||z==3;
+            uint8_t horizontal=joins.horizontal[x>=2][outer_z],vertical=joins.vertical[z>=2][outer_x];
+            if(depth<horizontal)depth=horizontal;
+            if(depth<vertical)depth=vertical;
+            uint8_t corner=joins.corners[z>=2][x>=2];
+            if(outer_x&&outer_z&&depth<corner)depth=corner;
+            dest[z*8+side*4+x]=depth;
+        }
+    }
+}
+#if defined(__GNUC__) && !defined(__clang__)
+#pragma GCC pop_options
+#endif
 static inline void su_terrain_reset(SuState *s){
     s->terrain_ready=0;memset(s->terrain,0,SU_TERRAIN_BYTES);su_terrain_changed(s);
 }
@@ -398,7 +494,7 @@ static inline void su_static_work(SuState *s,int static_budget,SuCanWork can,voi
             if(s->static_caster<SU_STATIC){
                 SuCaster *c=&s->caster[s->static_caster++];if(c->active&&c->space==s->space){su_raster(s,p,c,s->static_work);s->static_rasters++;}
             }else{
-                memcpy(s->base+s->static_page*SU_BYTES,s->static_work,SU_BYTES);p->static_dirty=0;p->base_blank=0;p->blank=0;p->dirty|=1;p->static_pending=1;s->static_page=-1;static_budget--;
+                su_store_base(s->base+s->static_page*SU_BASE_BYTES,s->static_work);p->static_dirty=0;p->base_blank=0;p->blank=0;p->dirty|=1;p->static_pending=1;s->static_page=-1;static_budget--;
                 if(!can&&static_budget>0)for(int i=0;i<SU_PAGES;i++)if(s->page[i].used&&s->page[i].needed&&s->page[i].space==s->space&&s->page[i].static_dirty){s->static_page=i;s->static_caster=0;s->static_version=s->page[i].version;su_seed_terrain(s,&s->page[i],s->static_work);break;}
             }
         }
@@ -426,7 +522,7 @@ static inline void su_prepare_budget(SuState *s,int static_budget,SuCanWork can,
                     if(at<0){s->overflow++;continue;}
                     su_unindex(s,at);s->page[at]=(SuPage){.used=1,.x=x,.z=z,.space=s->space,.needed=1,.static_dirty=1,.dirty=3,.base_blank=1,.version=++s->serial};su_index(s,at);
                     /* Never expose an evicted tile while static work waits. */
-                    memset(s->base+at*SU_BYTES,0,SU_BYTES);memset(s->pixels+at*SU_BYTES,0,SU_BYTES);
+                    memset(s->base+at*SU_BASE_BYTES,0,SU_BASE_BYTES);memset(s->pixels+at*SU_BYTES,0,SU_BYTES);
                 }else if(at>=0)s->page[at].needed=1;
             }
         }
@@ -436,7 +532,7 @@ static inline void su_prepare_budget(SuState *s,int static_budget,SuCanWork can,
      * so deleted/moved scenery cannot linger while its replacement waits. */
     for(int i=0;i<SU_PAGES;i++){
         SuPage *p=&s->page[i];if(!p->used||p->space!=s->space)continue;
-        if(p->static_dirty&&!p->base_blank){memset(s->base+i*SU_BYTES,0,SU_BYTES);p->base_blank=1;p->blank=0;p->dirty|=2;}
+        if(p->static_dirty&&!p->base_blank){memset(s->base+i*SU_BASE_BYTES,0,SU_BASE_BYTES);p->base_blank=1;p->blank=0;p->dirty|=2;}
     }
     if(s->static_page>=0){SuPage *p=&s->page[s->static_page];
         if(!p->used||!p->needed||p->space!=s->space||p->version!=s->static_version)s->static_page=-1;
@@ -445,9 +541,9 @@ static inline void su_prepare_budget(SuState *s,int static_budget,SuCanWork can,
     int first=s->cursor;
     for(int n=0;n<SU_PAGES;n++){
         int i=(first+n)%SU_PAGES;SuPage *p=&s->page[i];if(p->space!=s->space||!p->used)continue;
-        uint8_t *base=s->base+i*SU_BYTES,*dest=s->pixels+i*SU_BYTES;
+        uint8_t *base=s->base+i*SU_BASE_BYTES,*dest=s->pixels+i*SU_BYTES;
         if(!p->needed){
-            if(p->dirty||p->static_dirty){memset(base,0,SU_BYTES);memset(dest,0,SU_BYTES);p->dirty=p->static_dirty=p->static_pending=0;p->publish=1;p->blank=1;s->changed++;}
+            if(p->dirty||p->static_dirty){memset(base,0,SU_BASE_BYTES);memset(dest,0,SU_BYTES);p->dirty=p->static_dirty=p->static_pending=0;p->publish=1;p->blank=1;s->changed++;}
             continue;
         }
         if(!p->dirty)continue;
@@ -457,7 +553,7 @@ static inline void su_prepare_budget(SuState *s,int static_budget,SuCanWork can,
              * removals and newly allocated pages always publish this frame. */
             s->deferred++;continue;
         }
-        memcpy(dest,base,SU_BYTES);
+        su_load_base(dest,base);
         for(int j=SU_STATIC;j<SU_CASTERS;j++){SuCaster *c=&s->caster[j];if(c->active&&c->space==s->space){su_raster(s,p,c,dest);s->dynamic_rasters++;}}
         su_page_clouds(s,p,dest);
         p->dirty=0;p->blank=0;p->static_pending=0;p->publish=1;s->changed++;s->cursor=(i+1)%SU_PAGES;

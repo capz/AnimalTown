@@ -1,4 +1,6 @@
 using AnimalTown;
+if(args.Length==3&&args[0]=="--job-fixture"){JobFixture.Write(args[1],args[2]);return;}
+if(args.Length==3&&(args[0]=="--job-report"||args[0]=="--job-verify")){JobFixture.Report(args[1],args[2],args[0]=="--job-verify");return;}
 
 if(args.Length==4&&args[0]=="--shop-fixture"&&args[2]=="--tier"){
     int tier=int.Parse(args[3]);if(tier<0||tier>2)throw new ArgumentException("Shop fixture tier must be 0, 1 or 2");
@@ -17,7 +19,7 @@ var selected=args.Length==0?available:args[1].Split(',');
 foreach(string name in selected)if(!available.Contains(name))throw new ArgumentException("Unknown check suite: "+name);
 bool Wants(string name)=>selected.Contains(name);
 if(Wants("ui")){UiShapePlanChecks.Run(Check);}
-if(Wants("menu")){MenuNavigationChecks.Run(Check);PocketMenuChecks.Run(Check);}
+if(Wants("menu")){MenuNavigationChecks.Run(Check);PocketMenuChecks.Run(Check);TownGame.CheckMailControls(Check);}
 if(Wants("trim"))TownTrimChecks.Run(Check);
 if(Wants("text")){WrappedTextChecks.Run(Check);TownChatChecks.Layout(Check);}
 if(Wants("terrain")){TerrainEdgeChecks.Run(Check);TerrainResidencyChecks.Run(Check);WorldObjectCandidateChecks.Run(Check);}
@@ -25,10 +27,12 @@ if(Wants("movement"))PlayerMovementChecks.Run(Check);
 if(Wants("dialogue")){DialogueVoiceChecks.Run(Check);TownChatChecks.Run(Check);}
 if(Wants("generation")){TownGenerationChecks.Run(Check);PathChecks.Run(Check);}
 if(Wants("life"))TerrainLifeChecks.Run(Check);
-if(Wants("saves")){SplitSaveChecks.Run(Check);DevConfigChecks.Run(Check);UserOptionsChecks.Run(Check);ProfileChecks.Run(Check);}
-if(Wants("buildings")){BuildingChecks.Run(Check);ModelResidencyDemandChecks.Run(Check);ModelResidencyChecks.Run(Check);VillagerModelLodChecks.Run(Check);}
+if(Wants("saves")){SplitSaveChecks.Run(Check);DevConfigChecks.Run(Check);UserOptionsChecks.Run(Check);ProfileChecks.Run(Check);ProfileCaptureChecks.Run(Check);SaveFormatCompatibilityChecks.Run(Check);}
+if(Wants("buildings")){BuildingChecks.Run(Check);BuildingKobanChecks.Run(Check);HelipadFlightChecks.Run(Check);ModelResidencyDemandChecks.Run(Check);ModelResidencyChecks.Run(Check);VillagerModelLodChecks.Run(Check);}
+if(Wants("core")||Wants("saves"))TownItemPermissionChecks.Run(Check);
 if(!Wants("core")){if(Wants("content"))ContentChecks.Run(Check);Console.WriteLine(checks+" checks passed; suites: "+string.Join(",",selected));return;}
 GodModeChecks.Run(Check);
+TextureAtlasStreamChecks.Run(Check);
 WorldLightingChecks.Run(Check);
 TownDaylightChecks.Run(Check);
 var terrainEdit=new GameState(74);int terrainVersion=terrainEdit.Town.TerrainVersion;
@@ -57,7 +61,7 @@ game.Debt=0;Check(game.Expand(false,100),"expansion order");game.Rollover(100,10
 game.Savings=10000;game.Rollover(102,101);Check(game.Savings==10050,"monthly interest");game.Rollover(101,100);game.Rollover(102,101);Check(game.Savings==10050,"time reversal no duplicate interest");
 game.Sequence=17;var bytes=SaveCodec.Encode(game);var restored=SaveCodec.Decode(bytes);Check(restored.Sequence==17&&restored.Wallet==game.Wallet&&restored.Savings==game.Savings,"save round trip");
 bytes[bytes.Length-1]^=1;bool rejected=false;try{SaveCodec.Decode(bytes);}catch{rejected=true;}Check(rejected,"corrupt save rejected");
-game.Town.AddGround(10,30,40,0,102);game.Rollover(103,101);int lost=game.Town.FindGround(30,40);Check(lost>=0&&game.Town.Ground[lost].Kind==4,"rollover sweeps drops");Check(!game.ClaimLost(lost,1),"lost property owner lock");
+game.Town.AddGround(10,30,40,0,102);game.Rollover(103,101);int lost=game.Town.FindGround(30,40,4);Check(lost>=0&&game.Town.Ground[lost].Kind==4,"rollover sweeps drops");Check(!game.ClaimLost(lost,1),"lost property rejects a non-active resident slot");
 for(int seed=0;seed<20;seed++)
 {
     var town=new Town(seed);var seen=new bool[Town.Cells];var queue=new int[Town.Cells];int front=0,back=0;queue[back++]=38*Town.Width+18;seen[queue[0]]=true;int[] dx={-1,1,0,0},dz={0,0,-1,1};
@@ -211,7 +215,7 @@ Check(TexturePolicy.DefaultForModel("building")==TextureResolution.Size256,"the 
 bool invalidResolution=false;try{TexturePolicy.Edge((TextureResolution)192);}catch(ArgumentOutOfRangeException){invalidResolution=true;}Check(invalidResolution,"invalid texture resolution rejected");
 uint identity=TexturePixels.Hash(alphaPackage);alphaPackage[32]^=1;Check(identity!=TexturePixels.Hash(alphaPackage),"source fingerprint notices changed original bytes");
 bool badTexture=false;try{TexturePixels.Validate(new byte[32]);}catch(InvalidOperationException){badTexture=true;}Check(badTexture,"invalid texture rejected before decoding");
-for(int kind=0;kind<3;kind++){
+for(int kind=0;kind<LowPolyTree.KindCount;kind++){
     var tree=LowPolyTree.Build(kind);Check(tree.Triangles>24&&tree.Triangles<=LowPolyTree.TriangleBudget,"generated tree triangle budget");float minY=10,maxY=-10;var parts=new int[4];
     for(int i=0;i<tree.Triangles*9;i+=3){
         float x=tree.Positions[i],y=tree.Positions[i+1]-LowPolyTree.VisibilityCenterY,z=tree.Positions[i+2];
@@ -225,7 +229,9 @@ for(int kind=0;kind<3;kind++){
         Check(float.IsFinite(au)&&float.IsFinite(av)&&float.IsFinite(bu)&&float.IsFinite(bv)&&Math.Abs(au*bv-av*bu)>1e-8f,"every tree face has finite noncollapsed detail UVs");
         for(int v=0;v<3;v++){float y=tree.Positions[at+v*3+1];minY=Math.Min(minY,y);maxY=Math.Max(maxY,y);}
     }
-    Check(minY==0&&(kind==0?maxY is >1.07f and <=1.09f:maxY is >.9f and <=1.01f),"tree ground pivot and species height");
+    Check(minY==0&&(kind==0?maxY is >1.07f and <=1.09f:
+        kind==LowPolyTree.Cherry?maxY is >1.03f and <=1.04f:maxY is >.9f and <=1.01f),
+        "tree ground pivot and species height");
     for(int part=0;part<4;part++)Check(parts[part]>0,"every generated material has geometry");
     Console.WriteLine("Generated tree "+kind+": "+tree.Triangles+" triangles");
 }

@@ -104,10 +104,12 @@ public sealed partial class GameState
     public const int ProfileCount=4;
     public readonly VillagerProfile[] Profiles={new VillagerProfile{Created=true},new VillagerProfile(),new VillagerProfile(),new VillagerProfile()};
     public int ActiveProfile {get;private set;}
-    public void CaptureProfile()=>Profiles[ActiveProfile].Capture(this);
+    public void CaptureProfile()
+    {ProfileAt(ActiveProfile).Capture(this);if(Town.Jobs.Initialized)for(int n=0;n<6;n++){var v=Town.Residents[n];Town.Jobs.RememberRelation(ActiveProfile,Town.Jobs.Npc(n),v.Friendship,v.Met);}}
     internal void RestoreProfile(int profile)
     {
-        if(profile<0||profile>=ProfileCount)throw new InvalidOperationException("Invalid villager profile");
+        if(profile<0||profile>ProfileCount)throw new InvalidOperationException("Invalid villager profile");
+        if(profile==ProfileCount){if(Town.Jobs.GuestProfile==null)throw new InvalidOperationException("No visiting villager");ActiveProfile=profile;Town.ActiveProfile=profile;Town.Jobs.GuestProfile.Restore(this);return;}
         if(!Profiles[profile].Created){
             if(profile!=0)throw new InvalidOperationException("Empty town must use slot 1 as its save anchor");
             for(int i=0;i<ProfileCount;i++)if(Profiles[i].Created)throw new InvalidOperationException("Active villager is empty");
@@ -120,7 +122,8 @@ public sealed partial class GameState
     public void DeleteProfile(int profile)
     {
         if((uint)profile>=ProfileCount||!Profiles[profile].Created)throw new InvalidOperationException("Villager does not exist");
-        CaptureProfile();Town.Shop.DeleteSeller(profile);Town.JobState.ForgetProfileLocation(profile);int owner=profile==0?0:profile+6,building=BuildingWorld.PlayerBuilding(profile);
+        if(ProfileLocked(profile))throw new InvalidOperationException("Recover the villager’s trip before deleting this profile");
+        CaptureProfile();Town.Shop.DeleteSeller(profile);Town.JobState.ForgetProfileLocation(profile);if(Town.Jobs.Initialized){ResidentJobs.RemoveProfileData(profile);Town.Jobs.ForgetPlayer(profile);}int owner=profile==0?0:profile+6,building=BuildingWorld.PlayerBuilding(profile);
         BuildingWorld.Entrance(this,building,out float outsideX,out float outsideZ);
         int active=ActiveProfile,kept=0;
         for(int i=0;i<Town.PlacedCount;i++){
@@ -153,6 +156,7 @@ public sealed partial class GameState
     public bool SelectProfile(int profile)
     {
         if(profile<0||profile>=ProfileCount)throw new InvalidOperationException("Invalid villager profile");
+        if(ProfileLocked(profile))throw new InvalidOperationException("This villager is away. Recover their trip with both cards.");
         CaptureProfile();bool created=!Profiles[profile].Created;if(created)Profiles[profile]=new VillagerProfile{Created=true};RestoreProfile(profile);
         if(created){Space=0;for(int cell=0;cell<Town.Cells&&!CanWalk(X,Z,0);cell++){X=cell%Town.Width+.5f;Z=cell/Town.Width+.5f;}}
         NormalizeBuildingLocations();return created;

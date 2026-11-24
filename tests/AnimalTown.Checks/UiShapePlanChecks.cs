@@ -5,6 +5,7 @@ internal static class UiShapePlanChecks
         UiQuadOrderChecks.Run(check);
         RunningMinimapChecks.Run(check);
         SplashTimingChecks.Run(check);
+        UiShapeCacheChecks.Run(check);
         var plan=new UiShapePlan();plan.BeginFrame("world",-1,true);
         int hud=plan.Request(282,36,18,false);
         check(plan.Request(282,36,18,false)==hud&&plan.PendingCount==1,"shared shape misses queue once");
@@ -55,5 +56,31 @@ internal static class UiShapePlanChecks
             fractional.BeginFrame("world",-1,true);
             check(!fractional.HasWork&&fractional.Request(100.25f,40,10,false)==a,"rapid view changes never leave dormant build work or lose warm shapes");
         }
+
+        var rejected=new UiShapePlan();rejected.BeginFrame("chat",0,true);
+        int key=rejected.Request(51,33,11,false);rejected.TakePending();rejected.Complete(key);
+        int large=rejected.Request(600,448,30,true,true);rejected.TakePending();rejected.Reject(large);
+        for(int i=0;i<128;i++){
+            rejected.BeginFrame("chat",0,true);
+            check(rejected.Request(600,448,30,true,true)==large&&!rejected.HasWork,"a rejected exact shape stays an immediate fallback without requeueing");
+        }
+        check(rejected.Request(51,33,11,false)==key&&!rejected.HasWork&&rejected.Oldest()==key,"rejected shapes neither retire successful keys nor enter resident eviction");
+        rejected.Request(99,33,11,false);rejected.BeginFrame("chat",1,true);
+        check(!rejected.HasWork&&rejected.Request(51,33,11,false)==key,"tab invalidation retires rejected and queued shapes while preserving residents");
+        large=rejected.Request(600,448,30,true,true);
+        check(rejected.PendingCount==1&&rejected.TakePending()==large,"a rejected shape gets one fresh attempt after invalidation");
+        rejected.Reject(large);rejected.BeginFrame("chat",1,false);
+        large=rejected.Request(600,448,30,true,true);
+        check(rejected.PendingCount==1&&rejected.TakePending()==large,"disabling the cache also clears rejected keys");
+        rejected.Reject(large);rejected.BeginFrame("world",-1,true);
+        large=rejected.Request(600,448,30,true,true);
+        check(rejected.TakePending()==large,"a different view can retry a formerly rejected shape");
+
+        var fullRejected=new UiShapePlan();fullRejected.BeginFrame("chat",0,true);
+        for(int i=0;i<UiShapePlan.Capacity;i++){fullRejected.Request(100+i,40,10,false);fullRejected.Reject(fullRejected.TakePending());}
+        check(!fullRejected.HasWork&&fullRejected.Request(9999,40,10,false)==-1,"rejected shape storage remains bounded at the existing capacity");
+        fullRejected.BeginFrame("card-io",-1,false);
+        for(int i=0;i<UiShapePlan.Capacity;i++)check(fullRejected.Request(100+i,40,10,false)>=0,"trim invalidation recovers every rejected slot without an orphan");
+        check(fullRejected.PendingCount==UiShapePlan.Capacity,"recovered rejected slots queue exactly once");
     }
 }

@@ -2,7 +2,7 @@ $ErrorActionPreference='Stop'
 $tokens=$null;$errors=$null
 $ast=[Management.Automation.Language.Parser]::ParseFile((Join-Path $PSScriptRoot '../tools/publish-release.ps1'),[ref]$tokens,[ref]$errors)
 if($errors){throw 'Publisher syntax is invalid'}
-foreach($name in @('InvokeGh','Read-ReleaseMetadata','Assert-BinaryArchive','Assert-ReleaseVersionMetadata','Assert-ReleaseAsset','Assert-ReleaseAssetSet','Copy-DaylightEvidence','Get-ReleaseNotes')){
+foreach($name in @('InvokeGh','Read-ReleaseMetadata','Assert-BinaryArchive','Assert-ReleaseVersionMetadata','Assert-ReleaseAsset','Assert-ReleaseAssetSet','Copy-DaylightEvidence','Copy-JobEvidence','Get-ReleaseNotes','Get-PreparedReleaseReceipt','Assert-PreparedRelease')){
     $function=$ast.Find({param($node) $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq $name},$true)
     . ([scriptblock]::Create($function.Extent.Text))
 }
@@ -82,6 +82,17 @@ try{
     $capture=Join-Path $directory 'daylight';$reports=Join-Path $directory 'reports'
     New-Item -ItemType Directory -Path $capture,$reports|Out-Null
     Copy-DaylightEvidence $capture $reports ('a'*40) '1.2.3' 'v1.2.3' 'AnimalTown-1.2.3.nkit.iso' ('b'*64)
+    $preparedFiles=@((Join-Path $directory 'prepared.iso'),(Join-Path $directory 'prepared.zip'))
+    foreach($file in $preparedFiles){[IO.File]::WriteAllText($file,'built bytes')}
+    $receiptPath=Join-Path $directory 'prepared-release.json'
+    Reject {Assert-PreparedRelease $identity $preparedFiles $receiptPath} 'Publication requires a prepared package receipt'
+    $receipt=Get-PreparedReleaseReceipt $identity $preparedFiles
+    [IO.File]::WriteAllText($receiptPath,(ConvertTo-Json -InputObject $receipt -Depth 4))
+    Assert-PreparedRelease $identity $preparedFiles $receiptPath
+    Assert $true 'Release accepts the exact files that Build prepared'
+    [IO.File]::AppendAllText($preparedFiles[1],'unexpected bytes')
+    Reject {Assert-PreparedRelease $identity $preparedFiles $receiptPath} 'Publication refuses a modified build asset'
+
     Assert (@(Get-ChildItem $reports).Count -eq 0) 'Unselected daylight captures remain optional'
     $evidence=@{schema=1;commit=('a'*40);version='1.2.3';tag='v1.2.3';isoName='AnimalTown-1.2.3.nkit.iso';isoSha256=('b'*64)}
     $build=Join-Path $capture 'daylight-build.json';$evidence|ConvertTo-Json|Set-Content $build
@@ -97,5 +108,19 @@ try{
     Reject {Copy-DaylightEvidence $capture $reports ('a'*40) '1.2.3' 'v1.2.3' 'AnimalTown-1.2.3.nkit.iso' ('b'*64)} 'Failed night captures must not ship'
     @{passed=$true;requested_clock='12:00'}|ConvertTo-Json|Set-Content (Join-Path $capture 'night/daylight-report.json')
     Reject {Copy-DaylightEvidence $capture $reports ('a'*40) '1.2.3' 'v1.2.3' 'AnimalTown-1.2.3.nkit.iso' ('b'*64)} 'A mislabeled phase must not ship'
+    $jobs=Join-Path $directory 'jobs';New-Item -ItemType Directory -Path $jobs|Out-Null
+    Copy-JobEvidence $jobs $reports ('a'*40) '1.2.3' 'v1.2.3' 'AnimalTown-1.2.3.nkit.iso' ('b'*64)
+    $evidence|ConvertTo-Json|Set-Content (Join-Path $jobs 'jobs-build.json')
+    foreach($mode in @('delivery','mail')){
+        $folder=Join-Path $jobs $mode;New-Item -ItemType Directory -Path $folder|Out-Null
+        @{scenario='offline-jobs';mode=$mode;controls_completed=$true;screenshots=@("jobs-$mode-result.png")}|ConvertTo-Json|Set-Content (Join-Path $folder 'jobs-report.json')
+        @{mode=$mode;passed=$true}|ConvertTo-Json|Set-Content (Join-Path $folder 'jobs-state.json')
+        [IO.File]::WriteAllBytes((Join-Path $folder "jobs-$mode-result.png"),[byte[]]@(137,80,78,71,13,10,26,10))
+    }
+    Copy-JobEvidence $jobs $reports ('a'*40) '1.2.3' 'v1.2.3' 'AnimalTown-1.2.3.nkit.iso' ('b'*64)
+    Assert (@(Get-ChildItem (Join-Path $reports 'scenarios/jobs') -File).Count -eq 7) 'Job captures, independently verified save state and exact build identity ship together'
+    Reject {Copy-JobEvidence $jobs $reports ('a'*40) '1.2.3' 'v1.2.3' 'AnimalTown-1.2.3.nkit.iso' ('c'*64)} 'Job evidence from another executable image must not ship'
+    @{mode='delivery';passed=$false}|ConvertTo-Json|Set-Content (Join-Path $jobs 'delivery/jobs-state.json')
+    Reject {Copy-JobEvidence $jobs $reports ('a'*40) '1.2.3' 'v1.2.3' 'AnimalTown-1.2.3.nkit.iso' ('b'*64)} 'Screenshots without a completed real saved errand must not ship'
 }finally{Remove-Item -LiteralPath $directory -Recurse -Force}
 Write-Host "$checks release publisher checks passed: compact-feed asset policy, frozen build identity, summaries, draft lookup, response budget and source exclusion"

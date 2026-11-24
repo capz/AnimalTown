@@ -8,25 +8,34 @@ using Dolphin.Timing;
 internal sealed class LoadingScreen : IDisposable,Hypercube.GameCube.IFrameScene
 {
     private static LoadingScreen? current;
-    private readonly Draw2D ui=new Draw2D(GraphicsDevice.Default,new Draw2DOptions{Width=640,Height=480,VertexCapacity=1024,SpriteCapacity=16});
+    private static HelipadCruise? flight;
+    private readonly Draw2D ui=new Draw2D(GraphicsDevice.Default,new Draw2DOptions{Width=640,Height=480,VertexCapacity=1024,SpriteCapacity=UiFont.BatchCapacity});
     private readonly TitleBackdrop background=new TitleBackdrop();
     private readonly bool performance=DebugOverlay.PerformanceVisible,text=DebugOverlay.TextVisible;
     internal static void Draw(string? error=null,UiFont? font=null)
     {
+        if(flight!=null&&error==null){flight.Draw();return;}
+        if(flight!=null)Finish();
         if(current==null)current=new LoadingScreen();
         current.Frame(error,font);
     }
-    internal static void Pulse(){if(current!=null&&!GraphicsDevice.Default.IsFrameActive)current.Frame(null,null);}
+    internal static void Pulse()
+    {
+        if(GraphicsDevice.Default.IsFrameActive)return;
+        if(flight!=null)flight.Draw();else current?.Frame(null,null);
+    }
+    internal static void BeginFlight(int direction){Finish();flight=new HelipadCruise(direction);flight.Draw();}
+    internal static bool FlightFinished()=>flight==null||flight.FinishWhenReady();
     internal static void Finish()
     {
-        if(current==null)return;
-        current.Dispose();current=null;
+        flight?.Dispose();flight=null;
+        current?.Dispose();current=null;
     }
     private string? frameError;private UiFont? frameFont;private long frameNow;
     private void Frame(string? error,UiFont? font)
     {
         frameError=error;frameFont=font;frameNow=Clock.Timestamp;
-        UiNoise.Prepare();background.Prepare();Hypercube.GameCube.FrameRenderer.Draw(GraphicsDevice.Default,TitleBackdrop.Color,this);
+        UiNoise.Prepare();background.Prepare();Hypercube.GameCube.FrameRenderer.Draw(GraphicsDevice.Default,TitleBackdrop.Color,this);FrameProfile.PollMemory();
     }
     public void SubmitFramePart()
     {
@@ -34,6 +43,7 @@ internal sealed class LoadingScreen : IDisposable,Hypercube.GameCube.IFrameScene
         string? error=frameError;UiFont? font=frameFont;ui.Begin();background.Draw(ui);
         Sprout(frameNow);
         if(error!=null&&font!=null){TitleArt.Panel(ui,90,182,460,116);font.Draw(ui,error,112,209,TitleArt.Ink,.9f);}
+        FrameProfile.Draw(ui);
         ui.End();
     }
     private void Sprout(long now)

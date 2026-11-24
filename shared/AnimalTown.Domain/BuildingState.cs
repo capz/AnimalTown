@@ -3,12 +3,14 @@ public sealed partial class GameState
 {
     public int Space;
     public float Facing;
-    public readonly byte[] BuildingTypes=new byte[BuildingWorld.Count];
+    public readonly byte[] BuildingTypes=DefaultBuildingTypes();
+    private static byte[] DefaultBuildingTypes(){var types=new byte[BuildingWorld.Count];types[7]=1;types[KobanSite.Building]=KobanSite.Definition;return types;}
     // Persist only committed actor locations. Portal animation owns no saved
     // position, so saving halfway through a doorway cannot create a half-room.
     public void NormalizeBuildingLocations()
     {
         for(int actor=0;actor<BuildingWorld.Actors;actor++){
+            if(actor>0&&!NpcPresent(actor-1))continue;
             var p=BuildingWorld.Location(this,actor);if(p.Space.IsTown)continue;
             if(!BuildingWorld.ValidSpace(p.Space.Value))throw new InvalidOperationException("Unknown saved space");
             if(BuildingWorld.CanStand(this,p.Space.Value,p.X,p.Z))continue;

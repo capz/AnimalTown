@@ -5,10 +5,11 @@ using Dolphin.Timing;
 
 internal sealed partial class TownGame
 {
+    internal const int IdleClip=2;
     private readonly TownDaylight daylight=new TownDaylight();
     private readonly DebugWeather weather=new DebugWeather();
-    private bool snowSessionStarted;
-    partial void RecordFallFootstep(float beforeX,float beforeZ,bool running);
+    private bool weatherClockStarted;
+    partial void RecordFallFootstep(float beforeX,float beforeZ);
 
     internal void Step(ControllerState pad)
     {
@@ -18,7 +19,7 @@ internal sealed partial class TownGame
         moveClip=-1; // UI focus must not leave the player walking in place.
         bool simulateWorld=session.Draft==null;
         tick++;
-        if(tick%30==0||simulateWorld&&!snowSessionStarted)ReadWeatherClock();
+        if(tick%30==0||simulateWorld&&!weatherClockStarted)ReadWeatherClock();
         if(tick%900==0&&simulateWorld){ReadCalendarDate();state.Rollover(day,month);}
         if(simulateWorld){
             UpdateWeather();
@@ -39,7 +40,7 @@ internal sealed partial class TownGame
             {
                 facingYaw=PlayerMovement.Yaw(dx,dz);PlayerMovement.Target(dx,dz,out faceX,out faceZ);
                 int clip=pad.B.IsHeld?1:0;moveClip=clip;running=clip==1&&(state.X!=beforeX||state.Z!=beforeZ);desiredPlayerSpeed=1.05f;
-                RecordFallFootstep(beforeX,beforeZ,running);
+                RecordFallFootstep(beforeX,beforeZ);
             }
         }
         // Menus own player input, never the live town simulation. Only the
@@ -55,24 +56,32 @@ internal sealed partial class TownGame
             if(villagers.Doors.Moving(0)){moveClip=0;desiredPlayerSpeed=1;}
         }
         if(simulateWorld)state.Town.Traffic.Tick(state.Town);
+        if(simulateWorld&&state.Town.Jobs.Initialized&&state.ResidentJobs.Enabled)state.ResidentJobs.TickWorld(beforeX,beforeZ);
         if(simulateWorld){
             // The town always runs behind overlays. Only the job cooldown's
             // separate active clock excludes menus, dialogue and loading.
             var jobs=state.Town.JobState;
-            if(room==0&&!villagers.Doors.Busy(0))jobs.ObserveOutdoorAcre(state.ActiveProfile,(int)state.X/Town.ScreenTileSize+(int)state.Z/Town.ScreenTileSize*Town.ScreenColumns);
-            if(screen=="world"&&!villagers.Doors.Busy(0))jobs.Advance(AnimalTown.Jobs.JobRulesV1.ActiveTicksPerSecond/30);
+            if(room==0&&!villagers.Doors.Busy(0))state.ObserveJobAcre((int)state.X/Town.ScreenTileSize+(int)state.Z/Town.ScreenTileSize*Town.ScreenColumns);
+            if(screen=="world"&&!villagers.Doors.Busy(0))state.AdvanceJobClock(AnimalTown.Jobs.JobRulesV1.ActiveTicksPerSecond/30);
         }
         runningMinimap.Update(Clock.Timestamp,running,screen=="world"&&room==0&&waterInspection==0&&!cliffPreview);
         playerRunning=running;
         state.Facing=facingYaw;cachedPlayerHeight=PlayerHeight();if(room==0)RenderView.Prepare(state.X,state.Z,cachedPlayerHeight);
-        animationClock.Step(0,moveClip,models[state.Species].Animations.Count>0);
-        for(int i=1;i<7;i++){
-            var v=state.Town.Residents[i-1];bool moving=v.Space==room&&simulateWorld&&villagers.Moving[i-1];
+        StepActorAnimation(0,state.Species,moveClip);
+        for(int i=1;i<BuildingWorld.Actors;i++){
+            bool inScene=simulateWorld&&state.NpcPresent(i-1)&&state.Town.NpcAt(i-1).Space==room;
+            bool moving=inScene&&villagers.Moving[i-1];
             if(moving!=villagersMoving[i-1]){
-                villagersMoving[i-1]=moving;animationClock.Reset(i);animationClock.Step(i,moving?0:-1,false);restartClips[i]=moving;
+                villagersMoving[i-1]=moving;restartClips[i]=moving;
             }
-            animationClock.Step(i,animationClock.Clip(i),moving);
+            if(inScene)StepActorAnimation(i,state.NpcSpecies(i-1),moving?0:-1);
+            else animationClock.Reset(i);
         }
+    }
+    private void StepActorAnimation(int actor,int species,int movementClip)
+    {
+        int clip=movementClip<0&&hasIdleClip[species]?IdleClip:movementClip;
+        animationClock.Step(actor,clip,models[species].Animations.Count>0);
     }
     private int weatherDay;
     private int EnvironmentMinute=>renderDebug.EffectiveMinute(townClock.MinuteOfDay);
@@ -81,16 +90,18 @@ internal sealed partial class TownGame
     {
         int season=terrain.SeasonAt(month,renderDebug.SeasonOverride);
         weather.Update(state.Town.Seed,weatherDay,EnvironmentMinute,season);
-        var snow=state.Town.Traffic.Snow;
-        snow.SetWinter(season==3);
-        if(snow.Winter)snow.ObserveSnowDay(weather.LatestSnowDay(weatherDay,townClock.MinuteOfDay),!snowSessionStarted);
-        snowSessionStarted=true;
+        state.Town.Traffic.Snow.SetWinter(season==3);
+        weatherClockStarted=true;
     }
+    private int jobClockSecond;
+    private long JobNow=>(long)weatherDay*86400+townClock.MinuteOfDay*60+jobClockSecond;
     private void ReadWeatherClock()
     {
         townClock.Update(NativeCalendar.ReadClock());
+        jobClockSecond=NativeCalendar.ReadSecond();
         weatherDay=10957+townClock.CivilDay; // Local days since 1970, for weather.
         UpdateDaylight();
+        if(state.Town.Jobs.Initialized&&state.ResidentJobs.Enabled)state.ResidentJobs.AdvanceTo(JobNow);
     }
     private void ReadCalendarDate()
     {

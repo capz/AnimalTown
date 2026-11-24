@@ -1,14 +1,17 @@
 namespace AnimalTown;
 
 // Thresholds derive from the fixed camera projection, not gameplay distance.
-// Useful coarse meshes enter at 24px and retain up to 30px: native sampled
-// fox animation measured .045224 normalized error, about 1.36px at return.
+// Useful coarse meshes enter at 24px and retain up to 30px. The cooker and
+// native pose probes require >=12.5% fewer triangles and <=.05 normalized
+// sampled animation error, at most an estimated 1.5px at the return threshold.
 public static class VillagerLod
 {
     public const float CoarsePixels=24,FullPixels=30,ModelHeight=1.8f;
     public const float AnimationCoarsePixels=48,AnimationFullPixels=60;
     public const float MaximumLocalError=.04f;
-    public static bool CoarseAvailable(int species)=>species==0||species==1;
+    public const float MaximumPoseError=.05f;
+    public const float MinimumTriangleReduction=.125f;
+    public static bool CoarseAvailable(int species)=>species>=0&&species<=2;
     public static float PixelHeight(float y,float z,float focusZ,float eyeHeight)
     {
         float depth=(y-CylinderWorld.CameraHeight-eyeHeight)*RenderView.ForwardY+

@@ -41,7 +41,10 @@ public static class JobRulesV1
     public const bool RetryInvalidCandidate=false,GateOnFriendship=false;
     public const int ActiveTicksPerSecond=60,AcreProgressBudget=1000;
     public const bool AdvanceDuringDialogue=false,AdvanceDuringMenus=false,AdvanceOffline=false;
-    public const int MaximumBorrowers=4,ContinueDenominator=2,ContinueOutcome=1,RetrievalStageDays=2;
+    public const int MaximumBorrowers=2,ContinueDenominator=2,ContinueOutcome=1,RetrievalStageDays=2;
+    // Retain the original save slots and reward rows for chains already in
+    // progress. New referrals must use MaximumBorrowers instead.
+    internal const int MaximumRecordedBorrowers=4;
     public const int RetentionDays=3,FlowersToAdd=4,MaximumMatureFlowers=20,MinimumEmptyFlowerCells=4,LetterMaximumScalars=1000;
     public const int SecondsPerDay=86400,HouseFurnitureDenominator=10,DefaultMoneyPower=0,DefaultWalletLimit=99999;
     public const int DefaultMinimumFriendship=0,DefaultMaximumFriendship=127,SuccessFriendship=3,RefusalFriendship=-3,AbandonFriendship=-3,SupplyCancelFriendship=-1;
@@ -49,6 +52,7 @@ public static class JobRulesV1
     public const int WorldInvalidationFriendship=0,FavorExpiryFriendship=0;
     public const int JitterMinimum=9000,JitterOutcomes=2001,MoneyRateCap=700;
     public const uint OfferSeedSalt=0x9e3779b9,RewardSeedSalt=0x85ebca6b,HouseSeedSalt=0xc2b2ae35;
+    public const bool RareClothingUsesOrdinaryPool=true,RareFurnitureUsesOrdinaryPool=true,RareCoveringsUseOrdinaryPool=true;
 
     private static readonly JobPersonalityRule[] personalities={
         new(4000,12,15),new(3000,10,13),new(4000,12,15),
@@ -89,12 +93,12 @@ public static class JobRulesV1
     {
         Definition(template);if((uint)category>=(uint)rewardWeights[0].Length)throw new ArgumentOutOfRangeException(nameof(category));
         if(template!=JobTemplate.RetrievalBorrowed)return rewardWeights[(int)template][(int)category];
-        if(borrowers<1||borrowers>MaximumBorrowers)throw new ArgumentOutOfRangeException(nameof(borrowers));
+        if(borrowers<1||borrowers>MaximumRecordedBorrowers)throw new ArgumentOutOfRangeException(nameof(borrowers));
         return retrievalWeights[borrowers-1][(int)category];
     }
     public static int MoneyBase(JobTemplate template,int borrowers=0)
     {
         Definition(template);if(template!=JobTemplate.RetrievalBorrowed)return moneyBases[(int)template];
-        if(borrowers<1||borrowers>MaximumBorrowers)throw new ArgumentOutOfRangeException(nameof(borrowers));return retrievalMoneyBases[borrowers-1];
+        if(borrowers<1||borrowers>MaximumRecordedBorrowers)throw new ArgumentOutOfRangeException(nameof(borrowers));return retrievalMoneyBases[borrowers-1];
     }
 }

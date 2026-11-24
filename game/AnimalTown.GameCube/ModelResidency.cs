@@ -17,7 +17,7 @@ internal static class ModelStartup
         int species=progress-1;return species>=selected?species+1:species;
     }
     internal static ModelInstance? ReservePlayer(int selected,int species,Model model)
-        =>species==selected?model.CreateInstance(512*1024):null;
+        =>species==selected?model.CreateInstance(ModelMemoryPlan.MaximumInstanceBytes):null;
     internal static void RetainSelected(int selected,int species,Model model)
     {
         if(species!=selected)return;
@@ -69,12 +69,14 @@ internal sealed class ModelResidency
         models[species]=model;lastRequired[species]=now;warmUntil[species]=now+WarmGraceUs;
         model.AutomaticResidencyProgress=false;
         model.ResidencyBytesPerStep=8192;model.ResidencyWorkItemsPerStep=32;
-        warmPeak[species]=checked(model.NativeBytes+512*1024+64*1024);
+        int initialPeak=AddBytes(model.NativeBytes,ModelMemoryPlan.MaximumInstanceBytes);
+        warmPeak[species]=AddBytes(initialPeak,ModelMemoryPlan.LoadGuardBytes);
     }
     internal void RecordWarmPeak(int species,int instanceBytes)
     {
         if(instanceBytes<0||!Ready(species))throw new InvalidOperationException("Record complete warm model ownership");
-        warmPeak[species]=checked(models[species]!.NativeBytes+instanceBytes+64*1024);
+        int nativePeak=AddBytes(models[species]!.NativeBytes,instanceBytes);
+        warmPeak[species]=AddBytes(nativePeak,ModelMemoryPlan.LoadGuardBytes);
     }
     internal int RestorePeak(int species)=>warmPeak[species];
     internal bool TryLockReplacement(int species)
@@ -88,7 +90,8 @@ internal sealed class ModelResidency
         if(stopped||!replacementLocked[species]||!Ready(species)||!replacement.IsResident||replacement.IsTransitioning)throw new InvalidOperationException("Invalid LOD replacement boundary");
         replacement.AutomaticResidencyProgress=false;replacement.ResidencyBytesPerStep=8192;replacement.ResidencyWorkItemsPerStep=32;
         models[species]=replacement;lastRequired[species]=now;warmUntil[species]=now+WarmGraceUs;
-        warmPeak[species]=checked(replacement.NativeBytes+512*1024+64*1024);
+        int initialPeak=AddBytes(replacement.NativeBytes,ModelMemoryPlan.MaximumInstanceBytes);
+        warmPeak[species]=AddBytes(initialPeak,ModelMemoryPlan.LoadGuardBytes);
     }
     internal void Require(GameState state,PortalSystem doors,long now,bool pinAll=false,int targetSpace=-1)
     {
@@ -266,4 +269,9 @@ internal sealed class ModelResidency
         int elapsed=(int)(Clock.Timestamp-at);AdmissionUs+=elapsed;if(elapsed>MaxAdmissionUs)MaxAdmissionUs=elapsed;
     }
     private static int Round(int bytes)=>bytes==0?0:(bytes+31)&~31;
+    internal static int AddBytes(int first,int second)
+    {
+        if(first<0||second<0||first>int.MaxValue-second)throw new InvalidOperationException("Native allocation estimate exceeds its bounded range");
+        return first+second;
+    }
 }

@@ -1,0 +1,73 @@
+{
+  "mode": "fruit",
+  "passed": true,
+  "sequence": 2,
+  "activeProfile": 0,
+  "visiting": false,
+  "position": {
+    "X": 29.738281,
+    "Z": 41.32617,
+    "Space": 0
+  },
+  "wallet": 473,
+  "completed": true,
+  "mailCount": 0,
+  "pockets": [
+    34,
+    2,
+    2,
+    2,
+    2,
+    0,
+    14,
+    15,
+    7,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+  ],
+  "bindings": [],
+  "outfits": [
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+  ],
+  "jobs": [
+    {
+      "template": "FavorFruit",
+      "status": "CompletedRetained",
+      "target": -1,
+      "Item": 27,
+      "FlowerBaseline": 0,
+      "HomeAcre": 0
+    }
+  ],
+  "terminals": [
+    {
+      "template": "FavorFruit",
+      "reason": "Success",
+      "At": 1815652850
+    }
+  ]
+}

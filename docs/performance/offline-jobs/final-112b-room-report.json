@@ -1,0 +1,13 @@
+{
+  "scenario": "offline-jobs",
+  "mode": "room",
+  "screenshots": [
+    "jobs-room-world.png",
+    "jobs-room-before.png",
+    "jobs-room-floor.png",
+    "jobs-room-walls.png",
+    "jobs-room-saved.png"
+  ],
+  "passed": false,
+  "controls_completed": true
+}

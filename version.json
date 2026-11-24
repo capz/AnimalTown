@@ -7,6 +7,33 @@
   "baseCommit": "7e3dd9599709f553d13d538a320a13f3d410e861",
   "requestSummaries": [
     {
+      "id": "two-borrower-retrieval-limit",
+      "lines": [
+        "Find borrowed job items after at most one redirect.",
+        "Retrieval errands visit at most two borrowers before returning to the owner.",
+        "The second borrower always supplies the item once you have pocket space.",
+        "Older saved chains finish at their current borrower and keep their reward tier."
+      ]
+    },
+    {
+      "id": "complete-offline-item-actions",
+      "lines": [
+        "Write letters and attach presents straight from your backpack.",
+        "Both writing papers open the letter composer; eligible gifts can be attached.",
+        "Cancelling preserves your items and returns to the menu you started from.",
+        "Floor, wallpaper and furniture actions respect the current home context."
+      ]
+    },
+    {
+      "id": "dol-relative-content-sdk-376",
+      "lines": [
+        "Load standalone game assets beside the launched DOL.",
+        "The updated SDK resolves SD Gecko, SD2SP2 and GC Loader paths.",
+        "A moved app folder keeps its own matching assets for the whole session.",
+        "Disc startup and bounded discovery for missing launch paths are preserved."
+      ]
+    },
+    {
       "id": "updater-release-summary",
       "lines": [
         "See what's new in each AnimalTown update.",
@@ -103,6 +130,231 @@
         "Each snowfall lasts from 30 minutes to three hours.",
         "If it snows while you're away, your town's snow is smooth when you return.",
         "All villagers share the same snowfall and snow dents, and paths are unaffected."
+      ]
+    },
+    {
+      "id": "offline-resident-jobs-20261120",
+      "lines": [
+        "Add resident errands, real letters and two-card town travel.",
+        "Keep offers, unique parcels, progress and earned rewards across sessions.",
+        "Connect physical world favors, outfits, room rewards and opening employment.",
+        "Preserve four resident profiles with a separate visitor and recoverable card handoffs."
+      ]
+    },
+    {
+      "id": "resident-jobs-snow-save-compatibility-20261120",
+      "lines": [
+        "Keep saved snow and resident job progress together after updating.",
+        "Read older snowfall saves and earlier resident-job preview saves.",
+        "Preserve parcels, profiles and partially recovered snow across reloads.",
+        "Keep unchanged saves and independent snow or job-clock updates efficient."
+      ]
+    },
+    {
+      "id": "town-map-landmark-legend",
+      "lines": [
+        "Find villager houses, the store, and the helipad with the new town map legend.",
+        "Each villager house has a permanent marker on the map.",
+        "The legend distinguishes villager houses from moving villagers.",
+        "It also identifies player homes, the post office, and your current location."
+      ]
+    },
+    {
+      "id": "helipad-two-card-flight",
+      "lines": [
+        "Take a helicopter from the north helipad to another town.",
+        "Board from the grass in front of the pad during a two-card visit.",
+        "Fly across the sky while the destination is loading.",
+        "Land beside the destination gate and walk straight into town."
+      ]
+    },
+    {
+      "id": "bounded-profiling-warm-prefetch-20261121",
+      "lines": [
+        "Compare optional terrain prefetch and record performance without the overlay.",
+        "A saved debug toggle enables bounded asynchronous terrain lookahead.",
+        "Profiling offers counters, video telemetry and a small rolling capture.",
+        "Memory ownership, peak usage and transfer waits are available for diagnosis."
+      ]
+    },
+    {
+      "id": "separate-villager-card-files",
+      "lines": [
+        "Each playable villager gets a separate memory-card entry.",
+        "The entry is labeled by villager slot and uses its own card blocks.",
+        "An explicit save moves existing villagers out of the shared town entry.",
+        "Deleting a villager in the game frees that villager's entry."
+      ]
+    },
+    {
+      "id": "separate-debug-video-card-files",
+      "lines": [
+        "Video and debug settings each get a separate memory-card entry.",
+        "Each settings entry uses one block.",
+        "Existing settings move when you save them or save your town with enough free space.",
+        "Deleting a town in the game preserves both settings entries."
+      ]
+    },
+    {
+      "id": "flat-polygon-helipad",
+      "lines": [
+        "The north helipad has a flat timber surface with a painted landing mark.",
+        "The plank seams, cream H, and corner marks are drawn with color polygons.",
+        "The helicopter now sits level with the pad when parked.",
+        "A windsock still marks the landing area."
+      ]
+    },
+    {
+      "id": "running-hud-fades",
+      "lines": [
+        "The minimap fades in after two seconds of running.",
+        "The minimap fades out after four seconds without running.",
+        "The date and time fade out when you run and return when you stop.",
+        "Each fade takes about a quarter of a second."
+      ]
+    },
+    {
+      "id": "travel-card-checkpoint-and-io-details",
+      "lines": [
+        "Two-card travel can save progress without moving older save files.",
+        "The game rechecks the selected town card before writing.",
+        "Optional card-layout cleanup runs during regular saves.",
+        "Card errors identify the slot and operation that failed."
+      ]
+    },
+    {
+      "id": "right-side-store-placement-cherry",
+      "lines": [
+        "Store menus keep the left half of the shop in view.",
+        "Buying, selling, and consignment use compact panels on the right.",
+        "Failed placement, planting, dropping, and burial explain what blocked the action.",
+        "Cherry blossom trees have taller crowns and petals fall from higher up."
+      ]
+    },
+    {
+      "id": "animated-villager-models-november",
+      "lines": [
+        "Bunny, giraffe, hamster and Maine coon villagers have updated animated models.",
+        "The new models include walking and running animations.",
+        "Their textures fit within 128 by 128 pixels.",
+        "Existing saves keep the same villager species."
+      ]
+    },
+    {
+      "id": "villager-idle-animations",
+      "lines": [
+        "Bunny, giraffe, hamster and Maine coon villagers animate while standing still.",
+        "The new idle clips play for both players and residents.",
+        "Walking and running take over when a villager moves.",
+        "Idle clips use compact keyframes to fit GameCube memory."
+      ]
+    },
+    {
+      "id": "shop-controller-glyphs",
+      "lines": [
+        "Shop menus show GameCube button glyphs beside their actions.",
+        "Green A marks available actions such as buying and selling.",
+        "Red B marks the back or close action.",
+        "Sold-out displays and empty pockets show the close prompt."
+      ]
+    },
+    {
+      "id": "fall-leaf-movement-speed",
+      "lines": [
+        "Kick up autumn leaves while walking normally or running.",
+        "Running uses the same three-leaf footstep effect as normal walking.",
+        "Gentle movement below half walking speed emits no new leaves.",
+        "The effect reuses its existing atlas and bounded particle buffer."
+      ]
+    },
+    {
+      "id": "enterable-koban-visitor-custody-20261122",
+      "lines": [
+        "Visit the new koban to collect lost property and restore visitor removals.",
+        "Visitors can add or change town items; removed items stay in the town's lost and found.",
+        "Only local human residents can collect property; shop purchases remain permanent.",
+        "Save migrations preserve old towns, and authenticated item operations protect custody."
+      ]
+    },
+    {
+      "id": "letters-share-chat-keyboard-20261122",
+      "lines": [
+        "Write letters and town notices with the same QWERTY keyboard and controls as chat.",
+        "Use A to type, X to erase, L for case and R for spaces; NL keeps multiline letters.",
+        "Drafts retain 1,000 characters, present selection and send or discard confirmations.",
+        "Keyboard position and case stay intact while choosing gifts or returning to a draft."
+      ]
+    },
+    {
+      "id": "split-ci-tests-build-release",
+      "lines": [
+        "Release CI now shows separate Tests, Build, and Release stages.",
+        "Dolphin tests run against the same console image that gets packaged.",
+        "Build prepares the backend and release files after the tests pass.",
+        "Release checks the prepared files and uploads them to GitHub."
+      ]
+    },
+    {
+      "id": "joined-snow-cutouts",
+      "lines": [
+        "Adjacent snow cutouts now connect into continuous tracks.",
+        "Straight tracks, bends and patches keep rounded ends and shaded rims.",
+        "As snowfall refills a tile, its joins narrow and close.",
+        "The joins reuse the existing winter snow mask."
+      ]
+    },
+    {
+      "id": "snowfall-keeps-shallow-tracks",
+      "lines": [
+        "Snowfall fills deep tracks in one minute and leaves shallow impressions.",
+        "Each dent refills to the first indentation level during active snowfall.",
+        "Starting play or arriving from another town restores a fresh snow surface.",
+        "Outdoor recovery continues while a player is indoors."
+      ]
+    },
+    {
+      "id": "smooth-snow-transitions-debug",
+      "lines": [
+        "Preview smoother snow tracks in Debug / testing.",
+        "Footprints ease into their next depth as you cross a tile.",
+        "Active snowfall gradually narrows nearby tracks over one minute.",
+        "The preview starts off each session and uses the existing snow texture."
+      ]
+    },
+    {
+      "id": "distributed-town-population",
+      "lines": [
+        "Up to two saved characters from the other memory card can visit your town.",
+        "The player, five residents, and visiting characters start in separate areas in new towns.",
+        "Villager routines and jobs favor places with fewer people nearby.",
+        "Visiting characters use their saved appearance and follow local routines."
+      ]
+    },
+    {
+      "id": "winter-memory-residency",
+      "lines": [
+        "Winter towns use less memory while keeping the same snow tracks and lighting.",
+        "Snow textures cover the visible terrain at their original detail and can unload indoors.",
+        "Static shadow data takes less space while keeping the same textures on screen.",
+        "The Smooth snow transitions debug setting now applies during play."
+      ]
+    },
+    {
+      "id": "saved-npc-visitors-live-player-control",
+      "lines": [
+        "NPC visitors come from the other memory card, while player villagers travel under live control.",
+        "Up to two saved NPC villagers can join a town when the local player is at the controls.",
+        "A player travelling from the other town leaves room for one visiting NPC.",
+        "Visiting NPCs follow town routines and use the appearance saved on their own card."
+      ]
+    },
+    {
+      "id": "resident-villager-route-crossings",
+      "lines": [
+        "Resident villagers briefly yield when two others are headed through the same crossing.",
+        "Villagers favor outings with fewer residents in or approaching the destination.",
+        "A villager can continue after a short wait if a path stays busy.",
+        "Visiting villagers follow their own routes and still use ordinary movement collision."
       ]
     },
     {

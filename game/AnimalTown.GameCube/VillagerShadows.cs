@@ -3,7 +3,7 @@ using Dolphin.Graphics;
 using Dolphin.Timing;
 using Hypercube.GameCube;
 
-// Seven clipped receivers feed the shared coverage mask. Only small dirty mask
+// Clipped actor receivers feed the shared coverage mask. Only small dirty mask
 // pages change while walking; ground geometry remains immutable.
 internal sealed class VillagerShadows
 {

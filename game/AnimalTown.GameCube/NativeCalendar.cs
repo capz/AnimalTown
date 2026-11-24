@@ -7,4 +7,5 @@ internal static class NativeCalendar
     internal static int CardMountError()=>0;
     internal static int CardRecoveryError()=>0;
     internal static int ReadClock()=>throw new System.PlatformNotSupportedException("Native RTC bridge required");
+    internal static int ReadSecond()=>throw new System.PlatformNotSupportedException("Native RTC seconds bridge required");
 }

@@ -71,7 +71,7 @@ internal static class PathChecks
         }
         check(snow.Revision==6,"fully worn snow and movement within a tile leave the mask revision unchanged");
         snow.SetWinter(false);snow.SetWinter(true);
-        check(snow.Packed.All(v=>v==0),"a new winter starts with fresh snow");
+        check(snow.VisitCount(6,40)==5&&snow.VisitCount(7,40)==1,"switching the season preview preserves the current town's dents");
         SnowfallRecovery(check,Flat().Town);
         SnowCoverage(check);
         SparseSnowRecovery(check);
@@ -91,7 +91,9 @@ internal static class PathChecks
         check(t.Traffic.Visits[45*Town.Width+41]==1,"player movement records normal outdoor entry");
         s.X=41.98f;PlayerMovement.Move(s,16,1,0,0,false,out _,out _);check(t.Traffic.Visits[45*Town.Width+42]==0,"indoor movement adds no town traffic");
         s.X=42.98f;PlayerMovement.Move(s,0,1,0,0,false,out _,out _,false);check(t.Traffic.Visits[45*Town.Width+43]==0,"onboarding previews suppress traffic");
-        var nav=new VillagerNavigation();nav.Tick(s);nav.Target(0,20,14);for(int i=0;i<600;i++)nav.Tick(s);
+        var walker=s.Town.NpcAt(0);walker.PosX=14.5f;walker.PosZ=14.5f;
+        var nav=new VillagerNavigation();Array.Fill(nav.Paused,true);nav.Paused[0]=false;
+        nav.Tick(s);nav.Target(0,20,14);for(int i=0;i<600;i++)nav.Tick(s);
         check(t.Traffic.Visits[14*Town.Width+15]>0,"NPC movement uses the same anonymous history");
         s=Flat();t=s.Town;int version=t.TerrainVersion;for(int i=0;i<35;i++)t.Traffic.Enter(t,20,40);
         for(int i=0;i<TileTraffic.RefreshTicks-1;i++)t.Traffic.Tick(t);check(t.Paths.Count==0,"classification is batched");t.Traffic.Tick(t);
@@ -103,14 +105,23 @@ internal static class PathChecks
         started=System.Diagnostics.Stopwatch.GetTimestamp();for(int i=0;i<100;i++)t.Traffic.Refresh(t);
         double selectionMs=(System.Diagnostics.Stopwatch.GetTimestamp()-started)*1000.0/System.Diagnostics.Stopwatch.Frequency/100;
         check(GC.GetAllocatedBytesForCurrentThread()==allocated,"warm entry, normalization and classification allocate no managed objects");
-        var bytes=SaveCodec.Encode(s);check(BitConverter.ToInt32(bytes,4)==11&&t.Traffic.Visits.SequenceEqual(SaveCodec.Decode(bytes).Town.Traffic.Visits),"combined v11 preserves traffic");
-        var parts=SplitSaveCodec.Encode(s);check(SplitSaveCodec.ReadVersion(parts[0])==7&&t.Traffic.Visits.SequenceEqual(SplitSaveCodec.Decode(parts).Town.Traffic.Visits),"split town v7 preserves traffic");
+        var bytes=SaveCodec.Encode(s);check(BitConverter.ToInt32(bytes,4)==16&&t.Traffic.Visits.SequenceEqual(SaveCodec.Decode(bytes).Town.Traffic.Visits),"combined v16 preserves traffic");
+        var parts=SplitSaveCodec.Encode(s);check(SplitSaveCodec.ReadVersion(parts[0])==11&&t.Traffic.Visits.SequenceEqual(SplitSaveCodec.Decode(parts).Town.Traffic.Visits),"split town v11 preserves traffic");
         var storage=new Storage();var repository=new SaveRepository(storage);repository.Save(s);t.Traffic.Enter(t,22,40);repository.Save(s);
         check(t.Traffic.Visits.SequenceEqual(new SaveRepository(storage).Load()!.Town.Traffic.Visits),"incremental saves include traffic before the next classification");
-        var old=parts[0][..^(TileTraffic.Bytes+8+4)];Array.Resize(ref old,old.Length+4);Put(old,4,6);Put(old,24,old.Length);Crc(old);parts[0]=old;
+        // Derive the old twelve-building, paths-only shape explicitly. New
+        // snow/jobs/koban tails are not part of either historical schema.
+        var reader=new SplitSaveCodec.Reader(parts[0],SplitSaveCodec.TownData);reader.SkipWords(5);reader.SkipTerrain();reader.SkipTerrain();
+        for(int i=0;i<6;i++){reader.SkipWords(2);reader.SkipText(24);reader.SkipWords(2);}
+        reader.SkipWords(reader.Range(0,512)*6);reader.SkipWords(reader.Range(0,256)*6);reader.Int();
+        int splitKoban=reader.Offset+BuildingSave.ProfileBuildingCount*4;reader.SkipWords(BuildingWorld.Count+42);reader.Paths(new TownPaths());
+        var old=WithoutKobanType(parts[0],reader.Offset+4,splitKoban);Put(old,4,6);Put(old,24,old.Length);Crc(old);parts[0]=old;
         var legacy=SplitSaveCodec.Decode(parts);check(legacy.Town.Traffic.Visits.All(v=>v==0)&&legacy.Town.Paths.Packed.SequenceEqual(t.Paths.Packed),"old shared towns retain roads without fabricated visits");
-        old=bytes[..^(TileTraffic.Bytes+8)];Put(old,4,10);Put(old,16,old.Length);Put(old,20,(int)SaveCodec.Crc(old,24,old.Length-24));check(SaveCodec.Decode(old).Town.Traffic.Visits.All(v=>v==0),"combined v10 remains readable");
-        var broken=SplitSaveCodec.Encode(s);broken[0][^(TileTraffic.Bytes+13)]=255;Crc(broken[0]);bool rejected=false;try{SplitSaveCodec.Decode(broken);}catch(InvalidOperationException){rejected=true;}check(rejected,"invalid saved path styles remain rejected");
+        int tailBytes=4*(7+AnimalTown.Jobs.TownJobState.EncodedWordCount+s.Town.LostAndFound.EncodedWordCount);
+        // tail words: daylight, job length/data, empty snow/ledger, site x/z,
+        // recovery length/data (the fixture has neither snow nor a job ledger).
+        old=WithoutKobanType(bytes,bytes.Length-tailBytes-TileTraffic.Bytes-8,CombinedBuildingOffset(bytes)+(2+BuildingSave.ProfileBuildingCount)*4);Put(old,4,10);Put(old,16,old.Length);Put(old,20,(int)SaveCodec.Crc(old,24,old.Length-24));check(SaveCodec.Decode(old).Town.Traffic.Visits.All(v=>v==0),"combined v10 remains readable");
+        var broken=SplitSaveCodec.Encode(s);broken[0][reader.Offset-1]=255;Crc(broken[0]);bool rejected=false;try{SplitSaveCodec.Decode(broken);}catch(InvalidOperationException){rejected=true;}check(rejected,"invalid saved path styles remain rejected");
         Console.WriteLine($"Traffic paths: 15360 counter + 512 histogram + 3840 existing path bytes; 8192 native mask bytes on demand; 10000 entries {traversalMs:F2}ms host, classification {selectionMs:F3}ms host; no warm allocations");
     }
     private static void SnowCoverage(Action<bool,string> check)
@@ -174,6 +185,16 @@ internal static class PathChecks
         check(snow.Packed.All(v=>v==0)&&snow.Packed.SequenceEqual(restored.Packed),
             "sparse checkpoint restoration retains exact recovery times across distant regions");
     }
+    private static byte[] WithoutKobanType(byte[] source,int end,int offset)
+    {var result=new byte[end-4];Array.Copy(source,result,offset);Array.Copy(source,offset+4,result,offset,end-offset-4);return result;}
+    private static int CombinedBuildingOffset(byte[] bytes)
+    {
+        int at=32,mail=BitConverter.ToInt32(bytes,at+21*4);at+=35*4;
+        void Text(){int n=BitConverter.ToInt32(bytes,at);at+=4+n*4;}
+        void Records(int words){int n=BitConverter.ToInt32(bytes,at);at+=4+n*words*4;}
+        Text();Text();at+=(GameState.MaximumPockets+64+mail)*4;Records(1);at+=(12+6*6)*4;Records(6);Records(6);at+=4;Records(1);
+        for(int i=0;i<6;i++){Text();at+=16;}return at;
+    }
     private static void SnowfallRecovery(Action<bool,string> check,Town town)
     {
         var weather=new DebugWeather();
@@ -192,7 +213,7 @@ internal static class PathChecks
         {
             for(int i=0;i<seconds*30;i++)snow.TickSnowfall(weather.Snowing(0));
         }
-        SnowSeconds(39);
+        SnowSeconds(4);
         for(int i=0;i<29;i++)snow.TickSnowfall(weather.Snowing(0));
         check(snow.Revision==revision,"recovery publishes only when the visible depth changes");
         weather.SnowEnabled=false;
@@ -204,26 +225,31 @@ internal static class PathChecks
         weather.RainEnabled=false;
         snow.TickSnowfall(weather.Snowing(0));
         check(snow.Packed[cell/2]==startingWear-1&&snow.Revision==revision+1,"resumed snowfall preserves the partial second and reduces wear by one substep");
-        SnowSeconds(280);
+        SnowSeconds(35);
         check(snow.CenterCovered(6,40),"the ground closes over before the dent finishes smoothing");
-        SnowSeconds(279);
-        check((snow.Packed[cell/2]&15)!=0&&(snow.Packed[cell/2]>>4)!=0,"both shallow and deep dents remain at nine minutes fifty-nine seconds");
+        SnowSeconds(19);
+        check(snow.Packed[cell/2]==0x34,"at 59 seconds the deeper dent is one step above the first level");
         SnowSeconds(1);
-        check(snow.Packed.All(v=>v==0),"dents of different depths finish after ten minutes of active snowfall");
+        check(snow.Packed[cell/2]==0x33,"at 60 seconds all dents have reached the first indentation level");
         check(traffic.SequenceEqual(town.Traffic.Visits)&&paths.SequenceEqual(town.Paths.Packed)&&
               town.Paths.Revision==pathRevision&&town.Traffic.OpacityRevision==opacityRevision,"snowfall recovery leaves path counts, coverage and revisions intact");
 
         for(int i=0;i<SnowWear.MaxVisits;i++)town.Traffic.Enter(town,6,40);
-        SnowSeconds(39);
+        SnowSeconds(4);
         town.Traffic.Enter(town,6,40);
         SnowSeconds(1);
         check(snow.VisitCount(6,40)==SnowWear.MaxVisits,"a fresh visit restarts even fully worn snow");
-        SnowSeconds(299);
+        SnowSeconds(29);
         town.Traffic.Enter(town,7,40);
-        SnowSeconds(300);
-        check((snow.Packed[cell/2]&15)==0&&(snow.Packed[cell/2]>>4)>0,"each tile uses time since its own last entry");
-        SnowSeconds(300);
-        check(snow.Packed.All(v=>v==0),"the later tile also finishes at ten minutes");
+        SnowSeconds(30);
+        check((snow.Packed[cell/2]&15)==3&&(snow.Packed[cell/2]>>4)>3,"each tile uses time since its own last entry");
+        SnowSeconds(30);
+        check(snow.Packed[cell/2]==0x33,"the later tile also settles at the first indentation level");
+        revision=snow.Revision;
+        SnowSeconds(600);
+        check(snow.Packed[cell/2]==0x33&&snow.Revision==revision,"continued snowfall preserves the shallow tracks without publishing changes");
+        snow.ResetForTownEntry();
+        check(snow.Packed.All(v=>v==0)&&snow.Revision==revision+1,"re-entering town fully clears the remaining tracks");
     }
     private static void Put(byte[] b,int at,int value){for(int i=0;i<4;i++)b[at+i]=(byte)((uint)value>>(8*i));}
     private static void Crc(byte[] b)=>Put(b,b.Length-4,(int)SaveCodec.Crc(b,0,b.Length-4));

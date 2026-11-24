@@ -2,21 +2,21 @@ using System;
 using AnimalTown;
 using Dolphin.Graphics;
 
-// One shared billboard mesh, six fixed transforms. Explicit chat commands and
+// One shared billboard mesh and a fixed pool of transforms. Explicit chat commands and
 // the debug preview reuse it without changing NPC journeys or model residency.
 internal sealed class VillagerAttentionRenderer : IDisposable
 {
     private Mesh? mesh;
     private Texture2D? noise;
     private int preparedNoise=-1;
-    private readonly float[] heights=new float[6],joint=new float[16];
-    internal void Register(int species,ModelInstance instance)
+    private readonly float[] heights=new float[Town.NpcActorCount],joint=new float[16];
+    internal void Register(int npc,ModelInstance instance)
     {
         float top=0;for(int node=0;node<instance.Model.NodeCount;node++){instance.GetNodeTransform(node,joint);if(float.IsFinite(joint[13]))top=Math.Max(top,joint[13]);}
-        heights[species]=RenderDebugOptions.AttentionHeight(top);
+        heights[npc]=RenderDebugOptions.AttentionHeight(top);
     }
-    private readonly Mesh[] meshes=new Mesh[6];
-    private readonly Transform[] poses=new Transform[6];
+    private readonly Mesh[] meshes=new Mesh[Town.NpcActorCount];
+    private readonly Transform[] poses=new Transform[Town.NpcActorCount];
     private readonly Material material=new Material{Lighting=LightingMode.Unlit,Blend=BlendMode.Alpha,DepthWrite=false,DepthTest=true,Cull=CullMode.Back};
     internal VillagerAttentionRenderer(){for(int i=0;i<poses.Length;i++)poses[i]=new Transform();}
     internal void Prepare(){
@@ -50,7 +50,7 @@ internal sealed class VillagerAttentionRenderer : IDisposable
         if(mesh==null)return;int count=0,room=state.Space;float angle=room==0?0:camera.Angle;
         var rotation=new Quaternion(0,(float)Math.Sin(angle*.5f),0,(float)Math.Cos(angle*.5f));
         for(int actor=1;actor<BuildingWorld.Actors;actor++){
-            if(!Selected(actor,allVillagers,target))continue;
+            if(!Selected(actor,allVillagers,target)||!state.NpcPresent(actor-1)||heights[actor-1]==0)continue;
             var location=view.Locations[actor];if(location.Space.Value!=room)continue;
             float x=location.X,y=heights[actor-1],z=location.Z;
             if(room==0){var p=CylinderWorld.Surface(z,state.Z,TerrainElevation.At(state.Town,x,z)+y);y=p.Y;z=p.Z;

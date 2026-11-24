@@ -1,9 +1,11 @@
 using AnimalTown;
+using AnimalTown.Jobs;
 
 internal static class TownGenerationChecks
 {
     internal static void Run(Action<bool,string> check)
     {
+        SavedVisitor[] guests={new SavedVisitor(12,0,new JobIdentity(12,1),"Rowan","hello",0,0),new SavedVisitor(12,1,new JobIdentity(12,2),"Ash","hello",1,0)};
         var signatures=new HashSet<uint>();var visited=new bool[Town.Cells];var blocked=new bool[Town.Cells];var queue=new int[Town.Cells];
         for(int sample=0;sample<68;sample++){
             int seed=sample<64?sample:sample==64?int.MinValue:sample==65?int.MaxValue:sample==66?-1:7319;
@@ -22,7 +24,16 @@ internal static class TownGenerationChecks
             bool connected=true;int bridgeCells=0,waterCells=0;for(int i=0;i<Town.Cells;i++){if(town.Walkable(i%Town.Width,i/Town.Width)&&!blocked[i]&&!visited[i])connected=false;if(town.Tiles[i]==(byte)Terrain.Bridge)bridgeCells++;if(WaterSurface.IsWater(town,i%Town.Width,i/Town.Width))waterCells++;}
             check(waterCells>=Town.Cells/4&&waterCells<=Town.Cells*2/5,"water retains the ocean band and bounded inland features");check(connected,"every playable cell reachable with tree collision enabled");check(bridgeCells>=18&&bridgeCells<=60,"two river crossings have bounded width and clear approaches");
             check(town.ValidPlot(12,22)&&visited[28*Town.Width+32]&&visited[28*Town.Width+50]&&visited[50*Town.Width+65],"mandatory plots and service entrances retained");
-            for(int i=0;i<6;i++)check(visited[town.Residents[i].Z*Town.Width+town.Residents[i].X],"generated resident reachable");
+            state.SetTownVisitors(guests);
+            int sectors=1<<PopulationSector((int)state.X,(int)state.Z);
+            for(int npc=0;npc<Town.NpcActorCount;npc++){
+                check(state.NpcPresent(npc),"both saved visitors join the five residents");
+                var villager=town.NpcAt(npc);
+                int sector=1<<PopulationSector(villager.X,villager.Z);
+                check(visited[villager.Z*Town.Width+villager.X],"generated villager reachable");
+                check((sectors&sector)==0,"new town spreads its population across eight different areas");
+                sectors|=sector;
+            }
             Array.Clear(visited);int bodies=0;
             for(int start=0;start<Town.Cells;start++)if(!visited[start]&&(WaterSurface.IsWater(town,start%Town.Width,start/Town.Width)||town.Tiles[start]==2)){
                 bodies++;front=0;back=0;queue[back++]=start;visited[start]=true;
@@ -30,11 +41,43 @@ internal static class TownGenerationChecks
             }
             check(bodies==3||bodies==4,"river joins ocean, with two or three separate ponds");
             byte[] encoded=SaveCodec.Encode(state);var loaded=SaveCodec.Decode(encoded);check(encoded.SequenceEqual(SaveCodec.Encode(loaded)),"generated map, seed and objects survive save round trip");
+            check(!loaded.NpcVisitor(5).HasValue&&!loaded.NpcPresent(6),"foreign actors are projected from their source cards at town entry");
             if(sample<4){var same=new Town(seed);check(same.Tiles.SequenceEqual(town.Tiles)&&same.GroundCount==town.GroundCount,"same seed reproduces terrain");bool objects=true;for(int i=0;i<town.GroundCount;i++)objects&=same.Ground[i].X==town.Ground[i].X&&same.Ground[i].Z==town.Ground[i].Z&&same.Ground[i].Item==town.Ground[i].Item;check(objects,"same seed reproduces vegetation");same.Generate();check(same.GroundCount==town.GroundCount,"unplayed generation does not accumulate objects");}
         }
         check(signatures.Count>=60,"different seeds change terrain rather than only tree positions");
+        VisitorIdentity(check);
+        var tutorial=new GameState(42){Tutorial=5,HousePlaced=true};
+        tutorial.SetTownVisitors(Array.Empty<SavedVisitor>());
+        check(!tutorial.NpcPresent(5)&&!tutorial.NpcPresent(6),"empty visitor slots leave five neighbours");
+        for(int i=0;i<Town.LocalResidentCount;i++)tutorial.Talk(i);
+        check(tutorial.Tutorial==6,"introductions complete after meeting the five neighbours");
         var edited=new GameState(42);edited.Town.SetTerrain(90,90,Terrain.Plaza);var roundtrip=SaveCodec.Decode(SaveCodec.Encode(edited));check(roundtrip.Town.At(90,90)==(int)Terrain.Plaza,"saved edits are not replaced with seeded terrain");
         edited.Rollover(1,1);bool refused=false;try{edited.Town.Generate();}catch(InvalidOperationException){refused=true;}check(refused,"played town cannot be accidentally regenerated");
         Console.WriteLine("Town generation: 68 seed sweep, connected playable land, river/sea/pond topology, crossings, determinism and save preservation passed");
     }
+
+    private static void VisitorIdentity(Action<bool,string> check)
+    {
+        var state=new GameState(913);
+        state.Town.Jobs.Initialize(18);
+        var local=state.Town.Jobs.Npc(0);
+        var localPlayer=state.Town.Jobs.EnsurePlayer(state.ActiveProfile);
+        var first=new SavedVisitor(30,0,new JobIdentity(30,1),"Rowan","hello",0,0);
+        var second=new SavedVisitor(30,1,new JobIdentity(30,2),"Ash","hello",1,0);
+        int firstVisitor=Town.LocalResidentCount;
+        var oldHome=state.Town.Residents[firstVisitor];
+        state.SetTownVisitors(new[]{
+            new SavedVisitor(30,2,local,"Duplicate","hello",0,0),
+            new SavedVisitor(30,3,localPlayer,"Player","hello",0,0),
+            first,
+            new SavedVisitor(31,2,first.Identity,"Copied visitor","hello",0,0),
+            second
+        });
+        check(state.NpcVisitor(firstVisitor)?.Identity==first.Identity&&state.NpcVisitor(firstVisitor+1)?.Identity==second.Identity,
+            "foreign NPC seats skip identities already living in the town and duplicate visitors from another source");
+        check(state.Town.NpcAt(firstVisitor).HomeX<0&&BuildingWorld.OwnerName(state,firstVisitor+1)==oldHome.Name,
+            "a visiting NPC cannot take ownership of the archived resident's home");
+    }
+
+    private static int PopulationSector(int x,int z)=>z*2/(Town.Height-40)*4+x*4/Town.Width;
 }

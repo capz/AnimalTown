@@ -13,6 +13,10 @@ This plan expands its short roadmap and makes offline travel and NPC migration
 required for the final twelve-template milestone. Internet services and
 simultaneous network multiplayer are separate work.
 
+All fourteen phases are implemented in [PR 136](https://github.com/capz/AnimalTown/pull/136).
+The [delivery report](villager-jobs-offline-implementation.md) records verification,
+resource costs, captures and the remaining physical-hardware qualification.
+
 ## Scope and parity
 
 NPC villagers request work, give and receive parcels, borrow and refer property,
@@ -65,10 +69,10 @@ planning update. These are the existing pieces to extend:
   extension projected into the incremental NPC runtime record.
 * Migration, malformed-data, probability, clock and interrupted-write checks.
 
-The current code does not issue complete offers, accept jobs, bind unique
-parcels, detect objectives or award job entitlements. The patience-completion API
-still needs a real conversation-session adapter. Existing simple requests remain
-active until the replacement passes its release gates.
+At that foundation baseline, the code did not issue complete offers, accept jobs,
+bind unique parcels, detect objectives or award job entitlements. The patience-completion API
+then needed a conversation-session adapter. The simple requests remained active
+until the complete replacement was integrated.
 
 ### Required template coverage
 
@@ -400,7 +404,7 @@ Deliver:
 * Save each fair stop/continue decision before presenting it. Select onward
   borrowers uniformly from stable eligible IDs, excluding the original owner,
   visited borrowers and the current sender's home acre.
-* Limit the chain to four borrowers, forcing pickup at the fourth or whenever
+* Limit the chain to two borrowers (one optional redirect), forcing pickup at the second or whenever
   there is no eligible onward candidate. Do not count the final owner as another
   borrower when choosing the reward row.
 * At final pickup create the reserved bound object only if a pocket is free.
@@ -410,7 +414,7 @@ Deliver:
 * Return the exact object to its original owner. Apply zero timeout friendship
   while seeking, −2 while returning, and normal success/reward behavior on return.
 
-Exit: deterministic one-, two-, three- and four-borrower routes, forced dead ends,
+Exit: deterministic one- and two-borrower routes, saved legacy three-/four-borrower completion, forced dead ends,
 home-acre exclusions at each link, full-pocket pickup, duplicate referral
 commands and reload between every stage all produce the specified result.
 

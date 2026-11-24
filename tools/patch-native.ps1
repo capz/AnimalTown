@@ -1,4 +1,4 @@
-param([string]$Root,[string]$NativeDirectory='out/native')
+param([string]$Root,[string]$NativeDirectory='out/native',[switch]$SkipTests)
 $ErrorActionPreference='Stop'
 $nativeRoot=[IO.Path]::GetFullPath((Join-Path $Root $NativeDirectory))
 if(!$nativeRoot.StartsWith([IO.Path]::GetFullPath($Root).TrimEnd([IO.Path]::DirectorySeparatorChar)+[IO.Path]::DirectorySeparatorChar,[StringComparison]::Ordinal)){throw 'Native bundle must stay inside the workspace'}
@@ -6,7 +6,7 @@ $generatedPath=Join-Path $nativeRoot 'source/generated_program.c'
 # Forward sparse acceptance markers before the SDK's overlay truncates them.
 & python3 (Join-Path $Root 'tools/patch-residency-trace.py') $nativeRoot
 if($LASTEXITCODE){throw 'Pinned residency trace bridge patch failed'}
-if($IsLinux){
+if($IsLinux -and !$SkipTests){
     foreach($target in @('host','gekko')){
         $check=Join-Path $Root "out/native-residency-trace-$target-check"
         [string[]]$traceFlags=@()
@@ -16,6 +16,19 @@ if($IsLinux){
         & $check
         if($LASTEXITCODE){throw "Native residency trace $target fixture failed"}
     }
+}
+# Keep the existing DNDREC01 format while allowing a bounded large mail archive.
+$cardBlocks=Join-Path $nativeRoot 'include/dnd_card_blocks.inc'
+$cardSource=[IO.File]::ReadAllText($cardBlocks)
+if(([regex]::Matches($cardSource,'page>256|count>256')).Count -ne 2){throw 'Pinned card-container bounds changed'}
+$cardSource=$cardSource.Replace('page>256','page>2048').Replace('count>256','count>2048')
+[IO.File]::WriteAllText($cardBlocks,$cardSource)
+if($IsLinux -and !$SkipTests){
+    $check=Join-Path $Root 'out/native-job-card-growth-check'
+    & cc -std=c11 -Wall -Wextra -Werror "-I$(Join-Path $nativeRoot 'include')" (Join-Path $Root 'tests/native-job-card-growth.c') -o $check
+    if($LASTEXITCODE){throw 'Extended card block bounds compilation failed'}
+    & $check
+    if($LASTEXITCODE){throw 'Extended card block bounds fixture failed'}
 }
 $generated=[IO.File]::ReadAllText($generatedPath)
 $blockBridge='intptr_t (dnd_value_AnimalTown_GameCube_CardBlockBridge_Io_[a-z0-9]+)\(intptr_t (\w+), intptr_t (\w+), intptr_t (\w+), intptr_t (\w+), intptr_t (\w+), intptr_t (\w+)\) \{.*?\r?\n\}'
@@ -49,6 +62,10 @@ $clockPattern='intptr_t (dnd_value_AnimalTown_GameCube_NativeCalendar_ReadClock_
 if(([regex]::Matches($generated,$clockPattern,[Text.RegularExpressions.RegexOptions]::Singleline)).Count -ne 1){throw 'Native UI clock bridge signature changed'}
 $generated=[regex]::Replace($generated,$clockPattern,'intptr_t $1(void) { return (intptr_t)animaltown_clock(); }',[Text.RegularExpressions.RegexOptions]::Singleline)
 $generated="extern int animaltown_clock(void);`n"+$generated
+$secondPattern='intptr_t (dnd_value_AnimalTown_GameCube_NativeCalendar_ReadSecond_[a-z0-9]+)\(void\) \{.*?\r?\n\}'
+if(([regex]::Matches($generated,$secondPattern,[Text.RegularExpressions.RegexOptions]::Singleline)).Count -ne 1){throw 'Native dated-second clock bridge signature changed'}
+$generated=[regex]::Replace($generated,$secondPattern,'intptr_t $1(void) { return (intptr_t)animaltown_clock_second(); }',[Text.RegularExpressions.RegexOptions]::Singleline)
+$generated="extern int animaltown_clock_second(void);`n"+$generated
 $errorPattern='intptr_t (dnd_value_AnimalTown_GameCube_NativeCalendar_CardError_[a-z0-9]+)\(void\) \{.*?\r?\n\}'
 if(([regex]::Matches($generated,$errorPattern,[Text.RegularExpressions.RegexOptions]::Singleline)).Count -ne 1){throw 'Pinned AOT card diagnostic signature changed'}
 $generated=[regex]::Replace($generated,$errorPattern,'intptr_t $1(void) { return (intptr_t)animaltown_card_debug; }',[Text.RegularExpressions.RegexOptions]::Singleline)
@@ -67,14 +84,14 @@ $generated="extern int animaltown_uv_mode(int);`n"+$generated
 [IO.File]::WriteAllText($generatedPath,$generated)
 # Pinned, game-owned coverage union bridge. All buffers use SDK resource
 # accounting; shader hooks shade existing ground geometry exactly once.
-$shadowArgs=@{Init=3;Cloud=1;Snow=3;Lights=3;Points=2;Objects=1;Environment=2;Shutdown=0;Terrain=3;Begin=3;Mesh=5;Active=3;Prepare=1;Scope=1;Stats=1}
+$shadowArgs=@{Init=3;Cloud=1;Snow=12;Lights=3;Points=2;Objects=1;Environment=2;Shutdown=0;Terrain=3;Begin=3;Mesh=5;Active=3;Prepare=1;Scope=1;Stats=1}
 foreach($method in $shadowArgs.Keys){
     $n=$shadowArgs[$method];$argsPattern=if($n){((1..$n|ForEach-Object {'intptr_t (\w+)'}) -join ', ')}else{'void'}
     $p='intptr_t (dnd_value_AnimalTown_GameCube_NativeShadows_'+$method+'_[a-z0-9]+)\('+$argsPattern+'\) \{.*?\r?\n\}'
     if(([regex]::Matches($generated,$p,[Text.RegularExpressions.RegexOptions]::Singleline)).Count -ne 1){throw "Pinned shadow union bridge changed: $method"}
     $m=$method.ToLowerInvariant()
     $generated=[regex]::Replace($generated,$p,[Text.RegularExpressions.MatchEvaluator]{param($hit)
-        $a=@();for($i=0;$i -lt $n;$i++){$cast=if(($method -in @('Init','Cloud')) -or ($method -in @('Terrain','Lights','Points','Snow') -and $i -eq 0) -or ($method -eq 'Mesh' -and $i -ge 3) -or ($method -eq 'Active' -and $i -eq 2)){'(DndArray*)'}else{'(int)'};$a+=$cast+$hit.Groups[$i+2].Value}
+        $a=@();for($i=0;$i -lt $n;$i++){$cast=if(($method -in @('Init','Cloud')) -or ($method -eq 'Snow' -and $i -lt 4) -or ($method -in @('Terrain','Lights','Points') -and $i -eq 0) -or ($method -eq 'Mesh' -and $i -ge 3) -or ($method -eq 'Active' -and $i -eq 2)){'(DndArray*)'}else{'(int)'};$a+=$cast+$hit.Groups[$i+2].Value}
         'intptr_t '+$hit.Groups[1].Value+'('+$(if($n){((0..($n-1)|ForEach-Object {'intptr_t '+$hit.Groups[$_+2].Value}) -join ', ')}else{'void'})+') { return animaltown_shadows_'+$m+'('+($a -join ',')+'); }'
     },[Text.RegularExpressions.RegexOptions]::Singleline)
 }
@@ -82,7 +99,7 @@ $generated=@'
 #include "dnd_managed.h"
 extern int animaltown_shadows_init(DndArray*,DndArray*,DndArray*);
 extern int animaltown_shadows_cloud(DndArray*);
-extern int animaltown_shadows_snow(DndArray*,int,int);
+extern int animaltown_shadows_snow(DndArray*,DndArray*,DndArray*,DndArray*,int,int,int,int,int,int,int,int);
 extern int animaltown_shadows_lights(DndArray*,int,int);
 extern int animaltown_shadows_points(DndArray*,int);
 extern int animaltown_shadows_objects(int);
@@ -204,7 +221,7 @@ Copy-Item (Join-Path $Root 'tools/native-point-lights-gx.inc') (Join-Path $nativ
 Copy-Item (Join-Path $Root 'tools/native-point-lights.h') (Join-Path $nativeRoot 'source/native-point-lights.h') -Force
 Copy-Item -LiteralPath (Join-Path $Root 'tools/native-rim.inc') -Destination (Join-Path $nativeRoot 'source/animaltown_rim.inc') -Force
 Copy-Item -LiteralPath (Join-Path $Root 'tools/native-rim-policy.h') -Destination (Join-Path $nativeRoot 'source/native-rim-policy.h') -Force
-if($IsLinux){
+if($IsLinux -and !$SkipTests){
     & cc -std=c11 -Wall -Wextra -Werror "-I$(Join-Path $Root 'tools')" (Join-Path $Root 'tests/native-rim-policy.c') -o (Join-Path $Root 'out/native-rim-policy-check')
     if($LASTEXITCODE){throw 'Native rim policy compilation failed'}
     & (Join-Path $Root 'out/native-rim-policy-check')
@@ -249,7 +266,15 @@ $makePath=Join-Path $nativeRoot 'Makefile'
 $makeSource=[IO.File]::ReadAllText($makePath)
 $heapSetting='DND_MANAGED_HEAP_BYTES ?= 262144'
 if(([regex]::Matches($makeSource,[regex]::Escape($heapSetting))).Count -ne 1){throw 'Pinned SDK managed heap setting changed'}
-$makeSource=$makeSource.Replace($heapSetting,'DND_MANAGED_HEAP_BYTES ?= 4194304')
+# Maximum text mail plus two-card transfer readback is qualified at 6 MiB.
+$makeSource=$makeSource.Replace($heapSetting,'DND_MANAGED_HEAP_BYTES ?= 6291456')
+# Generated managed exceptions and GC use explicit runtime frames, not the C
+# unwinder. No linked native code calls _Unwind. Avoid loading hundreds of KiB
+# of unused C unwind tables beside the six-MiB heap; keep ordinary debug info.
+foreach($flags in @('CFLAGS += -O3 -flto -fno-strict-aliasing','LDFLAGS += -flto')){
+    if(([regex]::Matches($makeSource,[regex]::Escape($flags))).Count -ne 1){throw 'Pinned SDK native optimization flags changed'}
+    $makeSource=$makeSource.Replace($flags,$flags+' -fno-asynchronous-unwind-tables -fno-unwind-tables')
+}
 [IO.File]::WriteAllText($makePath,$makeSource)
 [IO.File]::WriteAllText($entryPath,$entrySource)
 # Keep the SDK's 16 MiB byte budget; the wider terrain prefetch pool needs more
@@ -261,7 +286,7 @@ $resourceSource=$resourceSource.Replace('#define SLOTS 512',"#include `"native-r
 [IO.File]::WriteAllText($resourcePath,$resourceSource)
 Copy-Item -LiteralPath (Join-Path $Root 'tools/native-resource-limits.h') -Destination (Join-Path $nativeRoot 'include/native-resource-limits.h') -Force
 Copy-Item -LiteralPath (Join-Path $Root 'tools/native-frame-counters.h') -Destination (Join-Path $nativeRoot 'include/native-frame-counters.h') -Force
-if($IsLinux){
+if($IsLinux -and !$SkipTests){
     $resourceCheck=Join-Path $Root 'out/native-resource-slots-check'
     & cc -std=c11 -Wall -Wextra -Werror -ffunction-sections -fdata-sections "-I$(Join-Path $nativeRoot 'include')" (Join-Path $Root 'tests/native-resource-slots.c') $resourcePath '-Wl,--gc-sections' -lm -o $resourceCheck
     if($LASTEXITCODE){throw 'Native resource-slot fixture compilation failed'}
@@ -316,22 +341,28 @@ $storageSource=$storageSource.Replace('fail(-rc, "Memory card write failed.");',
 [IO.File]::WriteAllText($storagePath,$storageSource)
 & python3 (Join-Path $Root 'tools/patch-managed-allocator.py') $nativeRoot
 if($LASTEXITCODE){throw 'Pinned allocation/frame profiling patch failed'}
-if($IsLinux){
-    foreach($fixture in @('managed-allocator','terrain-recycle','terrain-archive')){
+if($IsLinux -and !$SkipTests){
+    foreach($fixture in @('managed-allocator','mesh-allocation','terrain-recycle','terrain-archive','terrain-reset','profile')){
         $check=Join-Path $Root "out/native-$fixture-check"
         [string[]]$extra=@()
         if($fixture -eq 'managed-allocator'){$extra=@((Join-Path $nativeRoot 'source/managed_runtime.c'))}
         if($fixture -eq 'terrain-archive'){$extra=@((Join-Path $nativeRoot 'source/aram.c'))}
+        if($fixture -eq 'profile'){$extra=@((Join-Path $nativeRoot 'source/animaltown_frame_counters.c'))}
         & cc -std=c11 -O2 -Wall -Wextra -Werror -ffunction-sections -fdata-sections "-I$(Join-Path $nativeRoot 'include')" "-I$(Join-Path $nativeRoot 'source')" (Join-Path $Root "tests/native-$fixture.c") @extra '-Wl,--gc-sections' -lm -o $check
         if($LASTEXITCODE){throw "Native $fixture compilation failed"}
-        & $check
+        if($fixture -eq 'profile'){
+            $profileDump=Join-Path $Root 'out/native-profile.log'
+            & $check | Set-Content -LiteralPath $profileDump
+            if($LASTEXITCODE){throw 'Native profiling fixture failed'}
+            & python3 (Join-Path $Root 'tools/read-profile-dump.py') $profileDump --platform unknown | Set-Content -LiteralPath (Join-Path $Root 'out/native-profile.json')
+        }else{& $check}
         if($LASTEXITCODE){throw "Native $fixture checks failed"}
     }
 }
 
 & python3 (Join-Path $Root 'tools/patch-face-culling.py') $nativeRoot
 if($LASTEXITCODE){throw 'Pinned backface culling patch failed'}
-if($IsLinux){
+if($IsLinux -and !$SkipTests){
     & cc -std=c11 -Wall -Wextra -Werror "-I$(Join-Path $Root 'tools')" (Join-Path $Root 'tests/native-face-culling.c') -o (Join-Path $Root 'out/native-face-culling-check')
     if($LASTEXITCODE){throw 'Face culling fixture compilation failed'}
     & (Join-Path $Root 'out/native-face-culling-check')
@@ -340,7 +371,7 @@ if($IsLinux){
 
 # Exercise the SDK's outgoing libogc argv handoff. The game no longer reads
 # incoming loader arguments to choose an update image.
-if($IsLinux){
+if($IsLinux -and !$SkipTests){
     foreach($fixture in @('launch-arguments','launch-handoff')){
         $check=Join-Path $Root "out/native-$fixture-check"
         [string[]]$extra=@();if($fixture -eq 'launch-handoff'){$extra=@((Join-Path $nativeRoot 'source/dol.c'))}
@@ -353,7 +384,7 @@ if($IsLinux){
 
 & python3 (Join-Path $Root 'tools/patch-ui-noise.py') $nativeRoot
 if($LASTEXITCODE){throw 'Pinned UI noise bridge patch failed'}
-if($IsLinux){
+if($IsLinux -and !$SkipTests){
     $uiNoiseCheck=Join-Path $Root 'out/native-ui-noise-check'
     & cc -std=c11 -Wall -Wextra -Werror -ffunction-sections -fdata-sections "-I$(Join-Path $nativeRoot 'include')" "-I$(Join-Path $nativeRoot 'source')" (Join-Path $Root 'tests/native-ui-noise.c') '-Wl,--gc-sections' -lm -o $uiNoiseCheck
     if($LASTEXITCODE){throw 'UI grain fixture compilation failed'}
@@ -361,7 +392,7 @@ if($IsLinux){
     if($LASTEXITCODE){throw 'UI grain checks failed'}
 }
 
-if($IsLinux){
+if($IsLinux -and !$SkipTests){
     $uiNoiseGxCheck=Join-Path $Root 'out/native-ui-noise-gx-check'
     & cc -std=c11 -Wall -Wextra -Werror "-I$(Join-Path $nativeRoot 'include')" (Join-Path $Root 'tests/native-ui-noise-gx.c') -lm -o $uiNoiseGxCheck
     if($LASTEXITCODE){throw 'UI grain GX fixture compilation failed'}
@@ -371,7 +402,7 @@ if($IsLinux){
 
 & python3 (Join-Path $Root 'tools/patch-water-probe.py') $nativeRoot
 if($LASTEXITCODE){throw 'Pinned water draw probe patch failed'}
-if($IsLinux){
+if($IsLinux -and !$SkipTests){
     $waterProbeCheck=Join-Path $Root 'out/native-water-probe-check'
     & cc -std=c11 -Wall -Wextra -Werror "-I$(Join-Path $nativeRoot 'include')" (Join-Path $Root 'tests/native-water-probe.c') -lm -o $waterProbeCheck
     if($LASTEXITCODE){throw 'Water probe forwarding fixture compilation failed'}

@@ -73,24 +73,28 @@ static int town_environment_apply(const DndDrawEffect *effect,int stage){
  * TEV's D input retains the signed register value for the final addition. */
 extern const uint8_t *animaltown_snow_mask(void);
 extern const uint8_t *animaltown_snow_mask_at(float,float,int);
+extern int animaltown_snow_layout(int *first_z);
+static int town_snow_projection(Mtx uv){
+    int first_z,height=animaltown_snow_layout(&first_z);
+    uv[0][0]=2.f/128;
+    uv[1][1]=8.f/height;
+    uv[1][3]=(1-first_z)*4.f/height;
+    return height;
+}
 static void town_snow_bind(const uint8_t *depth,unsigned *bindings){
     GXTexObj tex;
-    GX_InitTexObj(&tex,(void*)depth,512,512,GX_TF_I8,GX_CLAMP,GX_CLAMP,GX_FALSE);
+    Mtx uv={{0}};int height=town_snow_projection(uv);
+    GX_InitTexObj(&tex,(void*)depth,512,(u16)height,GX_TF_I8,GX_CLAMP,GX_CLAMP,GX_FALSE);
     GX_InitTexObjLOD(&tex,GX_LINEAR,GX_LINEAR,0,0,0,GX_FALSE,GX_FALSE,GX_ANISO_1);
     GX_LoadTexObj(&tex,GX_TEXMAP4);(*bindings)++;
-    Mtx uv={{0}};
-    uv[0][0]=uv[1][1]=2.f/128;
-    uv[1][3]=4.f/512; /* Skip the leading padding used for GX publication. */
     GX_LoadTexMtxImm(uv,GX_TEXMTX4,GX_MTX2x4);
     GX_SetTexCoordGen(GX_TEXCOORD6,GX_TG_MTX2x4,GX_TG_TEX0,GX_TEXMTX4);
     GX_SetTexCoordScaleManually(GX_TEXCOORD6,GX_FALSE,1,1);
     GX_SetTexCoordBias(GX_TEXCOORD6,GX_FALSE,GX_FALSE);
 }
 static int town_snow_relief(int stage){
-    Mtx uv={{0}};
-    uv[0][0]=uv[1][1]=2.f/128;
-    uv[1][3]=4.f/512;
-    const float dx=.4f/512,dz=.3f/512;
+    Mtx uv={{0}};int height=town_snow_projection(uv);
+    const float dx=.4f/512,dz=.3f/height;
     uv[0][3]-=dx;uv[1][3]-=dz;
     GX_LoadTexMtxImm(uv,GX_TEXMTX6,GX_MTX2x4);
     uv[0][3]+=2*dx;uv[1][3]+=2*dz;

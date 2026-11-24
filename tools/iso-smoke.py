@@ -54,12 +54,25 @@ def start_display():
     read_fd,write_fd=os.pipe();server=None
     try:
         with (root/'xvfb.log').open('w') as log:
-            server=subprocess.Popen(['Xvfb','-displayfd',str(write_fd),'-nocursor','-screen','0','800x600x24'],pass_fds=(write_fd,),stdout=log,stderr=subprocess.STDOUT)
+            server=subprocess.Popen(['Xvfb','-displayfd',str(write_fd),'-noreset','-nocursor','-screen','0','800x600x24'],pass_fds=(write_fd,),stdout=log,stderr=subprocess.STDOUT)
         os.close(write_fd);write_fd=-1
         if not select.select([read_fd],[],[],30)[0]:raise RuntimeError('Xvfb did not report a ready display; inspect xvfb.log')
-        number=os.read(read_fd,32).decode().strip()
+        # Xvfb writes the number and its newline separately. Do not close the
+        # pipe after a short first read: its newline write would receive EPIPE.
+        ready=b''
+        while b'\n' not in ready:
+            if not select.select([read_fd],[],[],30)[0]:raise RuntimeError('Xvfb readiness line did not finish')
+            part=os.read(read_fd,32)
+            if not part:raise RuntimeError('Xvfb closed its readiness pipe')
+            ready+=part
+            if len(ready)>32:raise RuntimeError('Invalid Xvfb readiness line')
+        number=ready.decode().strip()
         if not number.isdigit() or server.poll() is not None:raise RuntimeError('Xvfb failed to initialize; inspect xvfb.log')
-        return server,dict(os.environ,DISPLAY=':'+number,QT_QPA_PLATFORM='xcb')
+        environment=dict(os.environ,DISPLAY=':'+number,QT_QPA_PLATFORM='xcb')
+        # llvmpipe otherwise creates a worker per visible host CPU. Multiple
+        # disposable controller runs can exhaust the container's thread limit.
+        environment.setdefault('LP_NUM_THREADS','2')
+        return server,environment
     except BaseException:
         if server is not None:
             server.terminate()
@@ -111,9 +124,12 @@ def check_runtime_failure():
     # managed exception behind an unchanged loading frame.
     failures=[line for line in runtime_log_text().splitlines()
               if ('ANIMALTOWN SESSION FAILED' in line or 'ANIMALTOWN ASSET LOAD FAILED' in line
-                  or 'ANIMALTOWN BUILDING ASSET ERROR' in line)]
+                  or 'ANIMALTOWN BUILDING ASSET ERROR' in line or 'ANIMALTOWN MANAGED OOM' in line
+                  or 'MANAGED MAIN: FAILED' in line)]
     if failures:
         (root/'runtime-failure.txt').write_text('\n'.join(failures)+'\n')
+        context=[line for line in runtime_log_text().splitlines() if '[OSREPORT]' in line][-40:]
+        print('Runtime context before failure:\n'+'\n'.join(context),flush=True)
         raise AssertionError('Game runtime failure: '+failures[0])
     if '--aram-residency' in sys.argv:
         evidence=aram_residency_errors(runtime_log_text())
@@ -189,8 +205,8 @@ def wait_onboarding(stage,name=None):
         time.sleep(1)
     raise AssertionError('Onboarding did not reach '+stage+'; inspect '+name)
 
-def wait_saved_after(before,card=None):
-    deadline=time.monotonic()+240
+def wait_saved_after(before,card=None,timeout_seconds=240):
+    deadline=time.monotonic()+timeout_seconds
     sequence=before['sequence'] if before else 0
     while time.monotonic()<deadline:
         check_runtime_failure()
@@ -211,9 +227,25 @@ def finish_onboarding(prefix='new-villager',before=None):
     after=wait_saved_after(before);wait_onboarding('world',prefix+'-game.png')
     return after,loading
 
+def testing_menu_count():
+    import re
+    source=(Path(__file__).resolve().parents[1]/'game/AnimalTown.GameCube/Program.cs').read_text()
+    match=re.search(r'\btestingOptions\s*=\s*\{([^}]+)\}',source)
+    if not match:raise AssertionError('Cannot locate debug-menu option contract')
+    return len([entry for entry in match[1].split(',') if entry.strip()])
+
 def start_game(new_town=False,prefix='start'):
     """Navigate Title and the resident picker before sending gameplay input."""
     before=committed_card_sequence(root/'MemoryCardA.USA.raw',details=True)
+    if '--warm-terrain' in sys.argv:
+        wait_title();set_debug_visibility(True);press('D_UP');press('A');wait_title(modal=True)
+        # The last two title settings are warm prefetch and session profiling.
+        press('D_UP');press('D_UP')
+        current=card_dev_config(root/'MemoryCardA.USA.raw')
+        if not current or not current['warm_terrain_prefetch']:press('A')
+        screenshot(prefix+'-warm-prefetch-setting.png');press('B');wait_title();press('D_DOWN')
+        saved=card_dev_config(root/'MemoryCardA.USA.raw')
+        if not saved or not saved['warm_terrain_prefetch']:raise AssertionError('Warm prefetch setting was not persisted')
     wait_title();press('A');wait_profiles(prefix+'-picker.png');press('A')
     active=before['active'] if before else 0
     if new_town or not before or not before['profiles'][active]['created']:
@@ -713,6 +745,25 @@ def terrain_mip_pixels(pixels):
     return {'level_pixels':counts,'classified_pixels':total,'line_pixels':line_pixels,
             'mean_level':level_sum/max(1,total),'fit_rgb_rms':(error_sum/max(1,total))**.5}
 
+def terrain_restoration_pixels(reference,current):
+    """Compare fixed-noon ground art independent of moving shadow alpha."""
+    shadow=(35,49,66);samples=matched=0;cache={}
+    for y in range(140,338,2):
+        for x in range(40,602,2):
+            at=(y*800+x)*3;before=reference[at:at+3];after=current[at:at+3]
+            r,g,b=before
+            if g<=max(r+15,b+25,70):continue
+            key=before+after
+            if key not in cache:
+                a=tuple(v-s for v,s in zip(before,shadow));b=tuple(v-s for v,s in zip(after,shadow))
+                aa=sum(v*v for v in a);bb=sum(v*v for v in b);dot=sum(v*w for v,w in zip(a,b))
+                # P-S=(1-alpha)*(C-S); its direction survives every union
+                # shadow. GX rounding gets a small angular allowance. Stale
+                # diagnostic green/yellow has a different direction.
+                cache[key]=bool(aa and bb and dot>=0 and dot*dot>=.998*.998*aa*bb)
+            samples+=1;matched+=cache[key]
+    return {'ground_samples':samples,'matching_samples':matched,'matching_fraction':matched/max(1,samples),'minimum_cosine':.998}
+
 def water_material_pixels(first,second,shadowed=False):
     """Measure moving crest colour/edges, with shoreline and HUD excluded."""
     def wet(data,x,y):
@@ -762,7 +813,7 @@ def terrain_materials():
             'screenshots':[],'mip_states':{},'water':{},'visual_failures':[],
             'physical_hardware':False}
     prefix='terrain-materials-'
-    option_count=23
+    option_count=testing_menu_count()
     mipmaps_row,distance_row,bands_row=14,15,16
     def visual_assert(condition,message):
         # Independent image failures must not hide later restoration/water
@@ -898,7 +949,7 @@ def terrain_materials():
         before=card_digest();town_before=committed_card_sequence(card,details=True)
         report['committed_town_before']=town_before
         chord('START');wait_onboarding('world',prefix+'ramp-ready.png')
-        normal=mip_frame('normal',0,1,0)
+        normal=mip_frame('normal',0,1,0);normal_art=rgb(prefix+'normal.png')
         off_label=menu(bands_row,'menu-off');press('A');on_label=menu_frame('menu-on',bands_row)
         if on_label==off_label:raise AssertionError('Ground mip bands menu label did not change')
         press('B');automatic=mip_frame('mips-auto',1,1,0,visible_bands)
@@ -920,8 +971,12 @@ def terrain_materials():
         if restored_label!=off_label:raise AssertionError('Ground mip bands did not return to Off')
         press('B')
         def restored_art(metrics):
-            if metrics['classified_pixels']>max(normal['classified_pixels']*1.5,normal['classified_pixels']+500):
-                raise AssertionError('Diagnostic colours remained after Ground mip bands was disabled')
+            # Ordinary greens can fall inside the diagnostic palette fit as
+            # clouds move. Verify the original per-pixel art instead of a
+            # changing count of coincident colours; native Off is checked too.
+            match=terrain_restoration_pixels(normal_art,rgb(prefix+'restored.png'));metrics['art_match']=match
+            if match['ground_samples']<1000 or match['matching_fraction']<.95:
+                raise AssertionError('Original ground art did not return after Ground mip bands was disabled')
         mip_frame('restored',0,1,0,restored_art)
         # WaterInspection is a read-only camera tour; it hides the player and
         # restores logical coordinates after every draw, keeping pairs fixed.
@@ -1033,7 +1088,7 @@ def title_menu():
         wait_saved_after(before);wait_onboarding('world','title-start-game.png')
     (root/'title-menu.txt').write_text(f'Diagonal dot pixels changed: {changed}\nOpened debug modal, edited and paged settings, saved/closed/reopened, then selected Start.\nThree loading frames contained no cream title/menu and an animated sprout; game then became visible.\n'+('Completed Name, Look, Home and explicit Save & begin.\n' if creating else ''))
 
-def archive_records(payload):
+def archive_records(payload,publication=False):
     """Read the SDK's verified DTR1 checkpoints from a consolidated card item."""
     import struct
     block=8192
@@ -1041,7 +1096,7 @@ def archive_records(payload):
         h=2166136261
         for value in data:h=((h^value)*16777619)&0xffffffff
         return h
-    if len(payload)%block or not 6<=len(payload)//block<=256:raise AssertionError('Invalid archive size')
+    if len(payload)%block or not 6<=len(payload)//block<=2048:raise AssertionError('Invalid archive size')
     candidates=[]
     for bank in (0,1):
         root=payload[bank*block:(bank+1)*block]
@@ -1063,10 +1118,15 @@ def archive_records(payload):
                 value=payload[start:start+length]
                 if hash_bytes(value)!=checksum:raise ValueError('Damaged record')
                 ranges.append((start,stop));records[name]=value
-            candidates.append((sequence,records))
+            phase=records.get('AT-Archive',b'\0')[0];epoch=0
+            if struct.unpack_from('<I',root,16)[0]==0x32435241:
+                epoch,growth,phase=struct.unpack_from('<3I',root,20)
+                if phase not in (1,2,3) or epoch>0x7fffffff or phase==3 and not 32<=growth<=2048:raise ValueError('Invalid archive publication')
+            candidates.append((sequence,records,phase,epoch))
         except (ValueError,struct.error):continue
     if not candidates:raise AssertionError('No verified archive checkpoint')
-    return max(candidates,key=lambda c:c[0])[1]
+    selected=max(candidates,key=lambda c:c[0])
+    return selected[1:] if publication else selected[1]
 
 def options_card_files(path=None):
     """Current committed directory/BAT only; freed sectors are not live files."""
@@ -1087,11 +1147,12 @@ def options_card_files(path=None):
     directories=[n for n in (1,2) if valid(n,0,0x1ffc,0x1ffc)]
     bats=[n for n in (3,4) if valid(n,4,sector,0)]
     if not directories or not bats:raise AssertionError('No valid card directory/BAT')
-    directory=newest(directories,0x1ffa);bat=newest(bats,4);result={};published=None
+    directory=newest(directories,0x1ffa);bat=newest(bats,4);result={};published=None;dedicated={};villagers={}
     for entry in range(127):
         at=directory*sector+entry*64
         if card[at:at+6]!=b'AMTE01':continue
         name=card[at+8:at+40].split(b'\0',1)[0].decode('ascii')
+        if name=='.__dnd_transaction':continue
         block,count=word(at+54),word(at+56);seen=set();data=bytearray()
         for _ in range(count):
             if block<5 or block>=len(card)//sector or block in seen:raise AssertionError('Invalid current card chain')
@@ -1101,11 +1162,23 @@ def options_card_files(path=None):
         if offset<32 or offset+length>len(data):raise AssertionError('Truncated current card save')
         payload=bytes(data[offset:offset+length])
         if name in ('AnimalTown','AnimalTown2') and data[16:24]==b'DNDREC01':
-            records=archive_records(payload)
-            if records.get('AT-Archive') in (b'\x01',b'\x02') and (published is None or name=='AnimalTown2'):
-                published={key:value for key,value in records.items() if key!='AT-Archive'}
+            try:records,phase,epoch=archive_records(payload,True)
+            except AssertionError:continue # Incomplete initial creation keeps the legacy source files authoritative.
+            if phase in (1,2,3) and (published is None or (epoch,name=='AnimalTown2')>published[:2]):
+                published=(epoch,name=='AnimalTown2',{key:value for key,value in records.items() if key!='AT-Archive'})
+        elif name in ('AnimalTown-Video','AnimalTown-Debug'):
+            dedicated['options' if name=='AnimalTown-Video' else 'dev_config']=payload
+            if count!=1:raise AssertionError('Settings entry must occupy one block')
+        elif name.startswith('AnimalTown-Villager'):
+            try:villagers.update(villager_card_banks(name,payload))
+            except ValueError:pass # A valid archived bank can still be authoritative.
         else:result[name]=payload
-    return published if published is not None else result
+    if published is not None:
+        # Use the same logical bank names as the game repository. Archived
+        # copies stay authoritative until migration removes them.
+        result={**villagers,**published[2]}
+    return {**result,**dedicated}
+
 
 def wait_options_saved(resolution,wide):
     import struct
@@ -1246,7 +1319,8 @@ def title_options_unsupported():
     (root/'title-options-unsupported.json').write_text(json.dumps({'unsupported_mode_did_not_save':True}))
 
 def wait_profiles(name='profile-picker.png'):
-    deadline=time.monotonic()+180
+    maximum='--jobs' in sys.argv and sys.argv[sys.argv.index('--jobs')+1].startswith('maximum-')
+    deadline=time.monotonic()+(600 if maximum else 180)
     while time.monotonic()<deadline:
         check_runtime_failure()
         # Normal scenarios accept the default if card selection needs a dialog.
@@ -1440,7 +1514,7 @@ def submission_scenario():
                         if pixels[((450+bit//64*4)*800+x)*3]>128:words[bit//16]|=1<<(bit%16)
                     checksum=0
                     for word in words[:31]:checksum^=word
-                    if words[0]==0x4154 and words[1]==5 and words[31]==checksum and words[30]==0:valid=True;break
+                    if words[0]==0x4154 and words[1] in (5,6) and words[31]==checksum and words[30]==0:valid=True;break
                 if valid:break
             if not valid:raise AssertionError('No valid gameplay telemetry after startup; inspect stationary screenshot')
     press('A');time.sleep(15)
@@ -1580,13 +1654,26 @@ def save_and_quit():
         'cancel_untouched':True,'returned_to_title':True,'restarted_game':True,
         'quit_timing':quit_timing[1],'save_now_sequence':saved_again['sequence'],'save_now_timing':now_timing[1]},indent=2)+'\n')
 
+def villager_card_banks(name, payload):
+    import struct
+    bases = {'AnimalTown-Villager1': 'AT-Player',
+             **{f'AnimalTown-Villager{slot}': f'AT-Villager{slot}-' for slot in (2, 3, 4)}}
+    base = bases.get(name)
+    if base is None or len(payload) < 12 or payload[:4] != b'ATV1':
+        raise ValueError('Invalid villager card entry')
+    first, second = struct.unpack_from('<II', payload, 4)
+    if not first + second or max(first, second) > 8192 or len(payload) != 12 + first + second:
+        raise ValueError('Invalid villager card banks')
+    banks = (payload[12:12 + first], payload[12 + first:])
+    return {base + str(bank): data for bank, data in enumerate(banks) if data}
+
 def committed_card_sequence(path, expected_day=None, details=False):
     """Read a complete generation from either redundant directory/BAT pair."""
     import struct
     import zlib
     if not path.exists():return 0
     card=path.read_bytes();sector=8192
-    town_versions=(4,6,7,8,9,10)
+    town_versions=(4,6,7,8,9,10,11)
     job_extension_bytes=4*(40+1) # TownJobState words plus the encoded word count.
     if len(card)%sector:raise AssertionError('Truncated emulator memory card')
     def be16(at):return struct.unpack_from('>H',card,at)[0]
@@ -1594,19 +1681,86 @@ def committed_card_sequence(path, expected_day=None, details=False):
         if len(payload)<32:raise ValueError('Short save record')
         magic,version,catalog,actual,sequence,seed,length=struct.unpack_from('<7I',payload)
         crc=struct.unpack_from('<I',payload,len(payload)-4)[0]
-        if magic!=0x50535441 or version<1 or version>10 or (version>=6 and kind!=0) or actual!=kind or length!=len(payload) or zlib.crc32(payload[:-4])!=crc:
+        if magic!=0x50535441 or version<1 or version>11 or (version>=6 and kind!=0) or actual!=kind or length!=len(payload) or zlib.crc32(payload[:-4])!=crc:
             raise ValueError('Invalid save record')
         return version,catalog,sequence,seed,crc
+    def v11_daylight(town,at,ground_at,ground_count,placed_count,runtime):
+        # Split v11 has thirteen building types and appends police custody
+        # after the job state. Locate daylight from the bounded wire layout,
+        # never by subtracting a fixed suffix from the end of the record.
+        width,height=struct.unpack_from('<2I',town,28);cells=width*height;end=len(town)-4
+        if (width,height)!=(128,120) or ground_count>512 or placed_count>256:
+            raise ValueError('Invalid v11 town dimensions or item counts')
+        def words(count):
+            nonlocal at
+            if count<0 or at<28 or count>(end-at)//4:raise ValueError('Truncated v11 town extension')
+            result=struct.unpack_from('<'+str(count)+'i',town,at);at+=count*4
+            return result
+        active,*types=words(14)
+        if not 0<=active<=3 or any(not 0<=kind<=255 for kind in types):raise ValueError('Invalid v11 building state')
+        npc_runtime=words(42)
+        if runtime is not None and (active or any(npc_runtime)):raise ValueError('Noncanonical v11 town projection')
+        for size,paths in ((cells//4,True),(cells,False)):
+            marker,length=words(2)
+            if marker!=1 or length!=size or length>end-at:raise ValueError('Invalid v11 path or traffic extension')
+            if paths and any(value&0xaa for value in town[at:at+length]):raise ValueError('Invalid v11 path style')
+            at+=length
+        snow_count=words(1)[0]
+        if snow_count!=0 and not 4<=snow_count<=3+cells//2:raise ValueError('Invalid v11 snow checkpoint length')
+        snow=words(snow_count)
+        if snow:
+            day,ticks,tokens=snow[:3]
+            if day<0 or not 0<=ticks<30 or not 1<=tokens<=cells or snow_count!=3+(tokens+1)//2:
+                raise ValueError('Invalid v11 snow checkpoint header')
+            cell=0;has_wear=False
+            for i in range(tokens):
+                token=(snow[3+i//2]>>((i%2)*16))&65535
+                if cell>=cells or token==0:raise ValueError('Invalid v11 snow checkpoint tile')
+                if token&0x8000:
+                    run=token&0x7fff
+                    if run==0 or run>cells-cell:raise ValueError('Invalid v11 snow checkpoint run')
+                    cell+=run
+                else:
+                    if token>>4>=600 or token&15==0:raise ValueError('Invalid v11 snow checkpoint dent')
+                    cell+=1;has_wear=True
+            if cell!=cells or not has_wear:raise ValueError('Incomplete v11 snow checkpoint')
+        daylight=words(1)[0]
+        if not 0<=daylight<=26:raise ValueError('Invalid v11 daylight location')
+        jobs=words(41)
+        if (runtime is None and jobs[0]!=40) or (runtime is not None and any(jobs)):
+            raise ValueError('Invalid v11 job state projection')
+        x,z=words(2)
+        if (x,z)!=(-1,-1) and not (1<=x<=width-4 and 1<=z<=height-5):raise ValueError('Invalid v11 koban site')
+        count=words(1)[0]
+        if not 4<=count<=4+13*512:raise ValueError('Invalid v11 custody length')
+        recovery=words(count);magic,version,sequence,receipts=recovery[:4]
+        if magic!=0x3144464c or version!=1 or sequence<0 or not 0<=receipts<=512 or count!=4+13*receipts:
+            raise ValueError('Invalid v11 custody header')
+        indexes=set();ids=set()
+        for n in range(receipts):
+            index,recovery_id,source,item,x,z,kind,owner,day,rotation,room,wrapped,custody_owner=recovery[4+13*n:17+13*n]
+            if not 0<=index<ground_count or index in indexes or not 1<=recovery_id<=sequence or recovery_id in ids or source not in (0,1,2) or item<=0 or not (0<=x<width and 0<=z<height and 0<=custody_owner<4) or wrapped not in (0,1):
+                raise ValueError('Invalid v11 custody identity')
+            if source==1:
+                if kind!=-1 or not 0<=owner<=9 or not 0<=rotation<=3 or room not in (0,1,2,3,4,16,17,18,19,20,21,24,25,26,*range(32,44)) or wrapped:
+                    raise ValueError('Invalid v11 recovered placement')
+            elif not 0<=owner<4 or custody_owner!=owner or rotation or room or (source==0 and not 0<=kind<=3) or (source==2 and kind!=-1):
+                raise ValueError('Invalid v11 recovered ground item')
+            ground=struct.unpack_from('<6i',town,ground_at+index*24)
+            if ground!=(item,x,z,custody_owner,day,4+8*wrapped):raise ValueError('Changed v11 custody item')
+            indexes.add(index);ids.add(recovery_id)
+        if at!=end:raise ValueError('Trailing v11 town data')
+        return daylight
     best=0;best_day=None;best_details=None
     for directory in (1,2):
         for bat in (3,4):
-            files={};archive=None
+            files={};villagers={};archive=None
             try:
                 for i in range(127):
                     at=directory*sector+i*64
                     if card[at:at+6]!=b'AMTE01':continue
                     name=card[at+8:at+40].split(b'\0',1)[0].decode('ascii')
-                    if not name.startswith('AT-') and name not in ('AnimalTown','AnimalTown2'):continue
+                    if not name.startswith(('AT-', 'AnimalTown-Villager')) and name not in ('AnimalTown','AnimalTown2'):continue
                     block,count=be16(at+54),be16(at+56);seen=set();data=bytearray()
                     for _ in range(count):
                         if block<5 or block>=len(card)//sector or block in seen:raise ValueError('Invalid card chain')
@@ -1618,11 +1772,15 @@ def committed_card_sequence(path, expected_day=None, details=False):
                     payload=bytes(data[offset:offset+length])
                     if name in ('AnimalTown','AnimalTown2'):
                         if data[16:24]!=b'DNDREC01' or offset!=16384:continue
-                        try:records=archive_records(payload)
-                        except AssertionError:raise ValueError('Unverified card archive')
-                        if records.get('AT-Archive') in (b'\x01',b'\x02') and (name=='AnimalTown2' or archive is None):archive=records
+                        try:records,phase,epoch=archive_records(payload,True)
+                        except AssertionError:continue # A cut during initial zero filling leaves the complete legacy town intact.
+                        if phase in (1,2,3) and (archive is None or (epoch,name=='AnimalTown2')>archive[:2]):archive=(epoch,name=='AnimalTown2',records)
+                    elif name.startswith('AnimalTown-Villager'):
+                        try:villagers.update(villager_card_banks(name, payload))
+                        except ValueError:pass # An archived bank can still be authoritative.
                     else:files[name]=payload
-                if archive is not None:files=archive
+                if archive is not None:files={**villagers, **archive[2]}
+
                 for bank in (0,1):
                     try:
                         names=[f'AT-{kind}{bank}' for kind in ('Town','Houses','Shops','Player')]
@@ -1651,8 +1809,13 @@ def committed_card_sequence(path, expected_day=None, details=False):
                                 else:names.append(selected)
                             town_version=struct.unpack_from('<I',files[names[0]],4)[0]
                             expected_runtime=300+(job_extension_bytes if town_version>=9 else 0)
-                            if len(runtime)!=expected_runtime or (town_version>=9 and struct.unpack_from('<I',runtime,296)[0]!=40):
+                            has_job_clock=town_version>=7 and len(runtime)==expected_runtime+12
+                            if (len(runtime)!=expected_runtime and not has_job_clock) or (town_version>=9 and struct.unpack_from('<I',runtime,296)[0]!=40):
                                 raise ValueError('Invalid resident runtime extension')
+                            if has_job_clock:
+                                marker,clock=struct.unpack_from('<Iq',runtime,expected_runtime-4)
+                                if marker!=0x43424f4a or clock!=-(1<<63) and not -11676096000<=clock<13569465600:
+                                    raise ValueError('Invalid offline job clock')
                         else:
                             if len(commit)!=32+8*len(names) or not all(name in files for name in names):continue
                             for kind,name in enumerate(names):
@@ -1661,14 +1824,22 @@ def committed_card_sequence(path, expected_day=None, details=False):
                                 if part_identity[0] not in (town_versions if kind==0 else (identity[0],)) or part_identity[1:4]!=identity[1:4] or len(part)!=expected_length or part_identity[4]!=expected_crc:
                                     raise ValueError('Mixed save generation')
                         if identity[2]>best:
-                            best=identity[2];town=files[names[0]];best_day=struct.unpack_from('<i',town,40)[0]
+                            town=files[names[0]];town_day=struct.unpack_from('<i',town,40)[0];candidate_details=None
                             if identity[0]>=4:
                                 at=48
                                 for _ in range(2):at+=4+struct.unpack_from('<I',town,at)[0]*4
                                 terrain_hash=__import__('hashlib').sha256(town[48:at]).hexdigest()
                                 for _ in range(6):at+=8;at+=4+struct.unpack_from('<I',town,at)[0]*4;at+=8
-                                for _ in range(2):at+=4+struct.unpack_from('<I',town,at)[0]*24
+                                ground_count=struct.unpack_from('<I',town,at)[0];ground_at=at+4;at=ground_at+ground_count*24
+                                placed_count=struct.unpack_from('<I',town,at)[0];at+=4+placed_count*24
                                 active=struct.unpack_from('<I',runtime,124)[0] if runtime is not None else struct.unpack_from('<I',town,at)[0];profiles=[]
+                                town_version=struct.unpack_from('<I',town,4)[0]
+                                if town_version>=11:
+                                    if active>3:raise ValueError('Invalid v11 active resident')
+                                    daylight=v11_daylight(town,at,ground_at,ground_count,placed_count,runtime)
+                                else:
+                                    daylight_offset=len(town)-8-(job_extension_bytes if town_version>=9 else 0)
+                                    daylight=struct.unpack_from('<I',town,daylight_offset)[0] if town_version>=8 else 0
                                 for name in names[3:]:
                                     part=files[name];length=struct.unpack_from('<I',part,160)[0]
                                     label=''.join(chr(struct.unpack_from('<I',part,164+i*4)[0]) for i in range(length))
@@ -1678,14 +1849,14 @@ def committed_card_sequence(path, expected_day=None, details=False):
                                                      'savings':struct.unpack_from('<q',part,132)[0],'pockets':list(struct.unpack_from('<30i',part,pocket_at))})
                                 plots=[dict(zip(('placed','x','z'),struct.unpack_from('<3i',files[names[1]],28+i*12))) for i in range(4)]
                                 profile_hashes=[__import__('hashlib').sha256(files[name][28:-4]).hexdigest() for name in names[3:]]
-                                best_details={'sequence':best,'dimensions':list(struct.unpack_from('<2I',town,28)),'active':active,'profiles':profiles,'profile_payload_sha256':profile_hashes,'plots':plots,'terrain_sha256':terrain_hash,'houses_sha256':__import__('hashlib').sha256(files[names[1]][28:-4]).hexdigest()}
-                                town_version=struct.unpack_from('<I',town,4)[0]
-                                daylight_offset=len(town)-8-(job_extension_bytes if town_version>=9 else 0)
-                                best_details['daylight_location']=struct.unpack_from('<I',town,daylight_offset)[0] if town_version>=8 else 0
-                                if runtime is not None:best_details['npc_spaces']=[struct.unpack_from('<i',runtime,128+i*28)[0] for i in range(6)]
+                                candidate_details={'sequence':identity[2],'dimensions':list(struct.unpack_from('<2I',town,28)),'active':active,'profiles':profiles,'profile_payload_sha256':profile_hashes,'plots':plots,'terrain_sha256':terrain_hash,'houses_sha256':__import__('hashlib').sha256(files[names[1]][28:-4]).hexdigest(),'daylight_location':daylight}
+                                if runtime is not None:candidate_details['npc_spaces']=[struct.unpack_from('<i',runtime,128+i*28)[0] for i in range(6)]
                                 shop=files[names[2]]
                                 if len(shop)==708 and struct.unpack_from('<I',shop,84)[0]==154:
-                                    best_details['shop']={'stock':list(struct.unpack_from('<12i',shop,36)), 'state':list(struct.unpack_from('<154i',shop,88))}
+                                    candidate_details['shop']={'stock':list(struct.unpack_from('<12i',shop,36)), 'state':list(struct.unpack_from('<154i',shop,88))}
+                            # Malformed metadata must not promote an otherwise
+                            # checksummed newest generation over a valid fallback.
+                            best=identity[2];best_day=town_day;best_details=candidate_details
                     except (ValueError,KeyError,UnicodeError,struct.error):continue
             except (ValueError,UnicodeError,struct.error):continue
     if expected_day is not None and best_day!=expected_day:
@@ -1724,7 +1895,7 @@ def testing_menu():
     manual_only='--manual-save-only' in sys.argv
     previous=0
     # Include session weather, the staged previews, SDK overlay, and diagnostics.
-    for row in ([0] if manual_only else [0,*range(2,12),13,17,18,19]):
+    for row in ([0] if manual_only else [0,*range(2,12),13,17,18,19,testing_menu_count()-1]):
         for _ in range(row-previous):press('D_DOWN')
         original=label(f'testing-row-{row}-before',row)
         if row in (10,11):
@@ -1845,14 +2016,14 @@ def card_dev_config(path):
     if not path.exists():return None
     try:payload=options_card_files(path).get('dev_config')
     except AssertionError:return None
-    if not payload or len(payload)<4 or payload[:3]!=b'ATD' or payload[3] not in (1,2,3,4,5):return None
-    version=payload[3];checksum_at=32 if version==1 else 36
-    count={1:27,2:29,3:30,4:31,5:32}[version]
+    if not payload or len(payload)<4 or payload[:3]!=b'ATD' or payload[3] not in (1,2,3,4,5,6):return None
+    version=payload[3];checksum_at=32 if version==1 else 40 if version==6 else 36
+    count={1:27,2:29,3:30,4:31,5:32,6:34}[version]
     if len(payload)!=checksum_at+4 or any(payload[4+count:checksum_at]):return None
     checksum=2166136261
     for value in payload[:checksum_at]:checksum=((checksum^value)*16777619)&0xffffffff
     if checksum!=struct.unpack_from('<I',payload,checksum_at)[0]:return None
-    return {'version':version,'values':list(payload[4:4+count]),'retired_terrain_cache_value':payload[33] if version>=3 else None,'full_resolution_aa':version>=4 and payload[34]==1,'ground_mip_bands':version>=5 and payload[35]==1}
+    return {'version':version,'values':list(payload[4:4+count]),'retired_terrain_cache_value':payload[33] if version>=3 else None,'full_resolution_aa':version>=4 and payload[34]==1,'ground_mip_bands':version>=5 and payload[35]==1,'warm_terrain_prefetch':version>=6 and payload[36]==1}
 
 def aram_model_cycles(text,after):
     """Match real retire/restore pairs in the current town session only."""
@@ -2220,6 +2391,8 @@ EnableJIT = True
 ConfirmStop = False
 UsePanicHandlers = False
 ''')
+if '--jobs' in sys.argv and (root/'MemoryCardB.USA.raw').is_file():
+    config=user/'Config'/'Dolphin.ini';config.write_text(config.read_text().replace('SlotB = 255','SlotB = 1'))
 if '--save-cards' in sys.argv:
     mode=sys.argv[sys.argv.index('--save-cards')+1]
     config=user/'Config'/'Dolphin.ini';text=config.read_text()
@@ -2232,6 +2405,11 @@ if '--season' in sys.argv:
     rtc=int(datetime(2027,month,15,5,59,30,tzinfo=timezone.utc).timestamp()) if '--rtc-rollover' in sys.argv else int(datetime(2027,month,15,12,tzinfo=timezone.utc).timestamp())
     config=user/'Config'/'Dolphin.ini'
     config.write_text(config.read_text().replace('SkipIPL = True\n',f'SkipIPL = True\nEnableCustomRTC = True\nCustomRTCValue = {rtc}\n'))
+if '--jobs' in sys.argv and sys.argv[sys.argv.index('--jobs')+1] in ('letter','letter-full'):
+    import re
+    rtc=int(datetime(2027,7,15,7,58,tzinfo=timezone.utc).timestamp());config=user/'Config'/'Dolphin.ini'
+    text=re.sub(r'^(EnableCustomRTC|CustomRTCValue) = .*\n','',config.read_text(),flags=re.MULTILINE)
+    config.write_text(text.replace('SkipIPL = True\n',f'SkipIPL = True\nEnableCustomRTC = True\nCustomRTCValue = {rtc}\n'))
 if '--dsp-hle' in sys.argv:
     config=user/'Config'/'Dolphin.ini'
     config.write_text(config.read_text().replace('DSPHLE = False','DSPHLE = True'))
@@ -2260,7 +2438,7 @@ DumpCodec = ffv1
 [Hacks]
 EFBToTextureEnable = False
 ''')
-if '--profile' in sys.argv or '--interaction-profile' in sys.argv or '--runtime-profile' in sys.argv or '--terrain-scroll' in sys.argv or '--lighting' in sys.argv or '--actor-shadows' in sys.argv or '--movement-profile' in sys.argv or '--stream-travel' in sys.argv or '--submissions' in sys.argv or '--aram-residency' in sys.argv or '--player-chat' in sys.argv:
+if '--profile' in sys.argv or '--interaction-profile' in sys.argv or '--runtime-profile' in sys.argv or '--terrain-scroll' in sys.argv or '--lighting' in sys.argv or '--actor-shadows' in sys.argv or '--movement-profile' in sys.argv or '--stream-travel' in sys.argv or '--submissions' in sys.argv or '--aram-residency' in sys.argv or '--player-chat' in sys.argv or '--jobs' in sys.argv:
     config=user/'Config'/'Dolphin.ini'
     config.write_text(config.read_text()+'\n[Movie]\nDumpFrames = True\nDumpFramesSilent = True\n')
     config=user/'Config'/'GFX.ini'
@@ -2282,13 +2460,16 @@ with (root/'emulator.log').open('w') as log:
         if '--loading' in sys.argv:
             for n,seconds in enumerate((1,1,2,4,8,12,17)):
                 time.sleep(seconds);screenshot(f'loading-{n}.png')
-        elif any(flag in sys.argv for flag in ('--aram-residency','--title-logo','--terrain-materials','--save-cards','--save-and-quit','--daylight-clock','--daylight-location','--player-chat')):wait_title()
+        elif any(flag in sys.argv for flag in ('--jobs','--aram-residency','--title-logo','--terrain-materials','--save-cards','--save-and-quit','--daylight-clock','--daylight-location','--player-chat')):wait_title()
         else:time.sleep(45)
         if p.poll() is not None:
             raise RuntimeError(f'Dolphin exited during boot ({p.returncode}); see {root / "emulator.log"}')
         screenshot('screen.png')
         if any(flag in sys.argv for flag in ('--title-menu','--title-load','--title-config','--title-update','--title-options','--title-options-load','--title-options-unsupported')):wait_title()
-        if '--player-chat' in sys.argv:player_chat()
+        if '--jobs' in sys.argv:
+            from jobs_smoke import run
+            run(globals())
+        elif '--player-chat' in sys.argv:player_chat()
         elif '--daylight-location' in sys.argv:daylight_location()
         elif '--daylight-clock' in sys.argv:daylight_clock()
         elif '--save-cards' in sys.argv:memory_cards()
@@ -2375,7 +2556,7 @@ with (root/'emulator.log').open('w') as log:
                         if word(0)!=0x4154:continue
                         values=[word(n) for n in range(32)];checksum=0
                         for value in values[:31]:checksum^=value
-                        if values[1]==5 and checksum==values[31]:return values[2]
+                        if values[1] in (5,6) and checksum==values[31]:return values[2]
                 raise AssertionError('No valid travel telemetry in '+name)
             previous=marker('travel-start.png')
             travel_report={'disc':str(disc),'freeze_textures':'--freeze-textures' in sys.argv,'recreate_terrain_meshes':'--recreate-terrain-meshes' in sys.argv,'seconds_per_direction':profile_seconds*2,'frame_counters':[previous]}

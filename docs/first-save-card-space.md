@@ -1,5 +1,8 @@
 # First-save card space and diagnostics
 
+The first section describes the historical loose-file layout. See the
+[current memory-card layout](consolidated-card-save.md) for present block costs.
+
 The first town save publishes eight component records and a manifest in each
 bank: 18 files. Previously every file repeated the 6,144-byte banner and
 2,048-byte icon. The SDK adds its 96-byte container/comment prefix, so even a

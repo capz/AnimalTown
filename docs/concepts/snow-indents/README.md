@@ -14,19 +14,42 @@ traffic. The first visit makes a small dent and the second widens it while
 keeping the surface white. The third visit exposes a small patch of ground
 at the center, the fourth widens the opening, and the fifth clears the tile
 up to its shaded rim. Standing and movement within a tile add no visits.
-The wear lasts for the town session and resets when the season leaves winter.
-While snow falls outdoors, each dent refills over ten minutes of active
-snowfall after its latest visit. The ground closes over before the white
-surface finishes smoothing out. Turning off snowfall or previewing rain
-pauses recovery. Outdoor snow continues refilling while the player is
-inside. Path coverage and visit history follow their existing rules.
+While snow falls outdoors, each dent refills to the first indentation
+level over one minute of active snowfall after its latest visit. The
+ground closes over and the shallow white track stays visible until the
+player re-enters town from the title screen or another town. Turning off
+snowfall or previewing rain pauses recovery. Outdoor snow continues
+refilling while the player is inside. Path coverage and visit history
+follow their existing rules.
 
-The depth field is a demand-allocated I8 texture with four texels per
-metre, independent of the shadow page cache. A tile entry updates its GX
-blocks and those touched by the rim. Snow receives the same IA4 shadow and
-lamp textures as ordinary ground. The raised winter pass adds one visible
-grass submission and one depth binding on worn snow. Ground collision
-continues to use the original surface.
+**Smooth snow transitions** in **Debug / testing** eases footprints in over
+300 ms and shows the finer stages of snowfall recovery near the player.
+The preview updates the existing mask up to ten times per second. The
+toggle starts off each session, and the underlying wear and save data
+follow the same rules either way.
+
+The depth field is a demand-allocated I8 texture with four texels per metre.
+In normal outdoor views, a 512×256 strip spans the submitted terrain from
+north to south. The renderer retains overlapping rows and rebuilds the
+incoming rows from the town's wear data. The strip includes extra samples
+for filtering and rim shading. Views that exceed its capacity use the
+full 512×512 mask. A tile entry updates the GX blocks it touches and the
+blocks affected by its rim. Snow receives the same IA4 shadow and lamp
+textures as ordinary ground. The raised winter pass adds one visible grass
+submission and one depth binding on worn snow. Ground collision continues
+to use the original surface.
+
+The game can release the derived depth mask indoors and while writing a save.
+Town-wide wear, snowfall recovery, and weather continue independently. The
+renderer prepares the mask again before drawing the outdoor scene.
+
+Once both edge-sharing tiles expose ground, the mask extends the shallower
+cutout's cross-section between their centers. The existing rounded ends
+remain at the ends of the track. Both axes can join at bends, and a fully
+connected 2×2 patch fills its inner corner. Joins require level grass on
+the same terrace. As snowfall refills the shallower tile, the strip
+narrows and closes with it. The original mask, local dirty blocks and
+raised snow draw also handle joined cutouts.
 
 The image is from the earlier standalone raised-layer experiment. Its
 fixed impressions demonstrate the same cutout and shading used by the
@@ -104,11 +127,14 @@ day. Replacing the published IA4 copies would reduce the additional storage to
 ## Whole-town memory test
 
 The [native lifecycle fixture](../../../tests/native-shadow-lifecycle.c)
-checks the individual wear levels, sparse uploads and every cell in a
-fully travelled 128×120 town. The 512×512 I8 field accounts for 256 KiB
-when active. The ordinary shadow cache uses 522,016 bytes. Together they
-charge 784,160 bytes to the native allocator. The field is released on a
-season change or session teardown. A static 7,680-byte snapshot and a
-managed 7,680-byte wear array store the packed depth steps. A 30 KiB managed
-array tracks recovery after the first dent and is released after the last
-one fills or winter ends. Full-game frame timings have not been measured.
+checks the individual wear levels, sparse uploads and every cell in a fully
+travelled 128×120 town. The rolling I8 mask uses 128 KiB. The ordinary shadow
+cache uses 439,296 bytes. Its CPU copy of static coverage stores two texels
+per byte and expands them before composition into the original IA4 pages.
+Together the shadow cache and rolling mask charge 570,368 bytes to the native
+allocator, 208 KiB less than the earlier full-mask layout with one byte per
+static texel. The full-mask fallback charges 701,440 bytes with the shared
+shadow cache. These totals cover the two graphics allocations. A static
+7,680-byte snapshot and a managed 7,680-byte wear array store the packed depth
+steps. A 30 KiB managed array tracks dents above the first indentation level
+and is released once they all settle.

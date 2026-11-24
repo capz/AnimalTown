@@ -1,4 +1,5 @@
 using AnimalTown;
+using AnimalTown.Jobs;
 using Dolphin.Graphics;
 using Dolphin.Timing;
 
@@ -56,5 +57,35 @@ internal static class VillagerModelLodChecks
         owner.Require(state,view);owner.Pump(6000001,6001001);
         owner.Dispose();check(owner.PendingSpecies<0&&pressure.ReservedBytes==0&&!full.Disposed,"teardown drains canceled asset work before releasing its reservation and keeps adopted models with the town owner");
         residency.Stop();
+        SharedCohort(check);
+    }
+    private static void SharedCohort(Action<bool,string> check)
+    {
+        var state=new GameState(17){Species=0};
+        state.SetTownVisitors(new[]{new SavedVisitor(20,0,new JobIdentity(20,1),"First","Hello!",1,0),new SavedVisitor(21,0,new JobIdentity(21,1),"Second","Hello!",1,0)});
+        var models=Enumerable.Range(0,6).Select(_=>new Model()).ToArray();var actors=new ModelInstance?[BuildingWorld.Actors];
+        actors[0]=models[0].CreateInstance(ModelMemoryPlan.MaximumInstanceBytes);
+        for(int npc=0;npc<Town.NpcActorCount;npc++)if(state.NpcPresent(npc))actors[npc+1]=models[state.NpcSpecies(npc)].CreateInstance(ModelMemoryPlan.MaximumInstanceBytes);
+        var residency=new ModelResidency();for(int species=0;species<6;species++)residency.Register(species,models[species],0);
+        var memory=new VisualMemoryPressure();memory.Observe(4*1024*1024,0,0,0);residency.Memory=memory;
+        var owner=new VillagerModelLod(models,actors,residency){Memory=memory};var view=new ActorFrameVisibility();
+        int mask=0,count=0;
+        for(int npc=0;npc<Town.NpcActorCount;npc++)if(state.NpcPresent(npc)&&state.NpcSpecies(npc)==1){int actor=npc+1;mask|=1<<actor;count++;view.Visible[actor]=true;view.GeometryLod[actor]=1;}
+        check(count==3,"shared geometry fixture includes a local resident and two independently mapped same-species visitors");
+        int nearActor=BuildingWorld.Actors-1;view.GeometryLod[nearActor]=0;owner.Require(state,view);int requests=ModelResources.Requests.Count;Clock.Timestamp=0;owner.Pump(0,1000);
+        check(owner.PendingSpecies<0&&ModelResources.Requests.Count==requests,"any near same-species visitor pins the complete shared species to full geometry");
+        view.GeometryLod[nearActor]=1;owner.Require(state,view);owner.Pump(0,1000);
+        int expected=models[1].NativeBytes+models[1].PackageBytes+ModelMemoryPlan.LoadGuardBytes+count*models[1].InstanceBytes;
+        check(owner.PendingSpecies==1&&memory.ReservedBytes==expected,"replacement admission reserves every instance of the shared species cohort");
+        var originals=(ModelInstance?[])actors.Clone();var oldModel=models[1];var partial=new Model{PackageBytes=32000,FailInstanceAt=2};
+        ModelResources.Requests[^1].SetResult(partial);owner.Pump(0,1000);
+        check(partial.Disposed&&partial.LastInstance?.Disposed==true&&ReferenceEquals(models[1],oldModel)&&memory.ReservedBytes==0,"failure in a later visitor instance destroys the complete candidate transaction and preserves the old shared model");
+        for(int actor=1;actor<actors.Length;actor++)if((mask&(1<<actor))!=0)check(ReferenceEquals(actors[actor],originals[actor])&&!originals[actor]!.Disposed,"partial replacement publishes no local or visiting NPC instance");
+        memory.Observe(4*1024*1024,0,0,1000001);memory.Observe(4*1024*1024,0,0,4000001);owner.Pump(4000001,4001001);
+        var coarse=new Model{PackageBytes=32000};ModelResources.Requests[^1].SetResult(coarse);owner.Pump(4000001,4001001);
+        check(coarse.InstanceCreations==count&&ReferenceEquals(models[1],coarse)&&owner.Level(1)==1&&owner.ConsumeChangedActors()==mask,"a successful transaction swaps every shared-species actor and reports every clip/attention rebind atomically");
+        for(int actor=1;actor<actors.Length;actor++)if((mask&(1<<actor))!=0)check(ReferenceEquals(actors[actor]!.Model,coarse)&&originals[actor]!.Disposed,"old visitor and resident instances retire only after the replacement cohort publishes");
+        check(oldModel.Disposed&&residency.RestorePeak(1)==coarse.NativeBytes+count*coarse.InstanceBytes+ModelMemoryPlan.LoadGuardBytes,"ARAM restore accounts for all instances sharing the published coarse model");
+        owner.Dispose();residency.Stop();
     }
 }

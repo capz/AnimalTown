@@ -9,6 +9,7 @@ public sealed class ActorFrameVisibility
     public readonly ActorLocation[] Locations=new ActorLocation[BuildingWorld.Actors];
     public readonly int[] GeometryLod=new int[BuildingWorld.Actors],AnimationStride=new int[BuildingWorld.Actors];
     private readonly int[] animationLod=new int[BuildingWorld.Actors];
+    private readonly int[] previousSpecies=new int[BuildingWorld.Actors];
     private readonly OpaqueActorOcclusion occlusion=new OpaqueActorOcclusion();
     public int OcclusionBuilds=>occlusion.ProjectionBuilds;
     public int OccludedActors {get;private set;}
@@ -18,6 +19,11 @@ public sealed class ActorFrameVisibility
         float size=room==0?0:BuildingWorld.Size(state,room);
         OccludedActors=0;bool preparedOcclusion=false;
         for(int actor=0;actor<Visible.Length;actor++){
+            if(actor>0&&!state.NpcPresent(actor-1)){
+                Visible[actor]=false;Locations[actor]=default;GeometryLod[actor]=animationLod[actor]=0;AnimationStride[actor]=1;previousSpecies[actor]=-1;continue;
+            }
+            int species=actor==0?state.Species:state.NpcSpecies(actor-1);
+            if(previousSpecies[actor]!=species){GeometryLod[actor]=animationLod[actor]=0;previousSpecies[actor]=species;}
             var p=doors.VisualLocation(state,actor);Locations[actor]=p;
             bool visible=sceneVisible&&p.Space.Value==room&&!(actor==0&&inspection!=0);
             if(visible){
@@ -32,7 +38,7 @@ public sealed class ActorFrameVisibility
                         if(occlusion.Hidden(p.X,center.Y,center.Z,radius)){visible=false;OccludedActors++;}
                     }
                     float pixels=VillagerLod.PixelHeight(center.Y,center.Z,state.Z,eyeHeight);
-                    GeometryLod[actor]=actor==0||!VillagerLod.CoarseAvailable(actor-1)?0:VillagerLod.Select(pixels,GeometryLod[actor]);
+                    GeometryLod[actor]=actor==0||!VillagerLod.CoarseAvailable(species)?0:VillagerLod.Select(pixels,GeometryLod[actor]);
                     animationLod[actor]=actor==0?0:VillagerLod.SelectAnimation(pixels,animationLod[actor]);
                 }else visible=interior.Sphere(p.X,scale*.5f,p.Z,radius,size);
             }

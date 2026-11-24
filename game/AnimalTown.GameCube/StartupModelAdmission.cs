@@ -18,12 +18,14 @@ internal sealed class StartupModelAdmission
     internal StartupModelAdmission(VisualMemoryPressure memory,ModelMemoryCatalog? catalog=null)
     {this.memory=memory;this.catalog=catalog;}
     internal bool Begin(int species,bool selected,long now)
+        =>Begin(species,selected?2:1,now);
+    internal bool Begin(int species,int instanceCount,long now)
     {
         if(active>=0)throw new InvalidOperationException("A startup model already owns admission");
         if(species<0||species>=retryAt.Length)throw new ArgumentOutOfRangeException("species");
         if(now<retryAt[species])return false;
         catalog??=new ModelMemoryCatalog(File.ReadAllBytes(ContentPaths.Asset("villager-memory.bin")));
-        int peak=catalog.StartupPeak(species,selected);
+        int peak=catalog.StartupPeak(species,instanceCount);
         if(!memory.TryReserve(peak,now,true,out ticket))return false;
         active=species;ReservedPeak=peak;failureAtAdmission=memory.FailureCount;return true;
     }

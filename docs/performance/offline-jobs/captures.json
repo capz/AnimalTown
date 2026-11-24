@@ -1,0 +1,229 @@
+[
+  {
+    "file": "clothing.png",
+    "sha256": "e27e3755affaa00a367caa9fbf45da7bb0efb68ce98fff99d88f4f997738dd5d",
+    "scenario": "final-outfits",
+    "sourceVersion": "0.77.0+45462dd8a50b"
+  },
+  {
+    "file": "borrower-reload.png",
+    "sha256": "c0e2c6592022ae8bdf170888188c3d09a89385a288ef0d788ed18e0a42799574",
+    "scenario": "retrieval-multi",
+    "sourceVersion": "0.77.0+e250a894e398"
+  },
+  {
+    "file": "full-pockets.png",
+    "sha256": "e0b5aef627bdbd2adc51c1f44d5e84052f491233c3887070c88be70dc12fe55c",
+    "scenario": "retrieval-multi",
+    "sourceVersion": "0.77.0+e250a894e398"
+  },
+  {
+    "file": "fish-selector.png",
+    "sha256": "672ef3fa99fdcaac7fe2aed3afde451fa53f2b7a7c174fcac003462b5ee594c2",
+    "scenario": "fish",
+    "sourceVersion": "development"
+  },
+  {
+    "file": "ball.png",
+    "sha256": "d8aeb8290c52744c335ce4f01f923901bca33612ed23a33f900ceb94acf273b2",
+    "scenario": "final-ball",
+    "sourceVersion": "0.77.0+45462dd8a50b"
+  },
+  {
+    "file": "snowman.png",
+    "sha256": "f7e0e79fdd1048ceeb3ac74148050b25480aaf79b6571ea2eeb809a12a44502d",
+    "scenario": "fixed-snowman",
+    "sourceVersion": "0.77.0+e250a894e398"
+  },
+  {
+    "file": "snowman-destroyed.png",
+    "sha256": "99240d8d22ebf9f0913765c8c44fc9ef3a5bfb3990bbbf2273cfcb9b2d1b677d",
+    "scenario": "snowman-destruction",
+    "sourceVersion": "0.77.0+e250a894e398"
+  },
+  {
+    "file": "flowers.png",
+    "sha256": "97dca298066126b3169b70778337cbc51ca0823ec858c59eea0f465555b6db4d",
+    "scenario": "final-flowers-complete",
+    "sourceVersion": "0.77.0+45462dd8a50b"
+  },
+  {
+    "file": "letter-composition.png",
+    "sha256": "de8e9c9ebf4f7f203b5327811e3211fbba10bbc2e924075a20df07cc0ed3f6ec",
+    "scenario": "final-letter",
+    "sourceVersion": "0.77.0+45462dd8a50b"
+  },
+  {
+    "file": "letter-reply.png",
+    "sha256": "17ca3152fc419f2723fff9d6fb48e66c8b8ed713155c67542e6bc9047406b584",
+    "scenario": "final-letter",
+    "sourceVersion": "0.77.0+45462dd8a50b"
+  },
+  {
+    "file": "remote-delivery.png",
+    "sha256": "a39b7671fec8d3d724d37e02f353c0c6465dbf6e56caf56a0e602934243c56ad",
+    "scenario": "final-foreign",
+    "sourceVersion": "0.77.0+45462dd8a50b"
+  },
+  {
+    "file": "trip-recovery.png",
+    "sha256": "576ab79a4967ffde5a4d0d23a2a757239379743292986df44ec1ffe12b6b82e3",
+    "scenario": "fixed-recovery",
+    "sourceVersion": "0.77.0+e250a894e398",
+    "sourceCapture": "jobs-recovery-recheck.png"
+  },
+  {
+    "file": "owed-payment.png",
+    "sha256": "a54d2291d1c214837c5e00c67166e077ad1a6e642672ff32930dd896fe513c1f",
+    "scenario": "owed-controls",
+    "sourceVersion": "0.77.0+e250a894e398"
+  },
+  {
+    "file": "mailbox-full.png",
+    "sha256": "62f47f0be515943fc9d80dc2ca335313f011e1f4bb902f9348a7e68c8c81a7cd",
+    "scenario": "letter-full-retry",
+    "sourceVersion": "0.77.0+e250a894e398"
+  },
+  {
+    "file": "mailbox-reply.png",
+    "sha256": "17ca3152fc419f2723fff9d6fb48e66c8b8ed713155c67542e6bc9047406b584",
+    "scenario": "letter-full-retry",
+    "sourceVersion": "0.77.0+e250a894e398"
+  },
+  {
+    "file": "clothing-final-112b.png",
+    "sha256": "39ee7f37958340b97ffc931cec41c6c8465a72c0f8ae6dd257a8a700ee3c6378",
+    "scenario": "final-112b-outfits",
+    "sourceVersion": "0.80.0+112bd461f7fb",
+    "sourceCapture": "jobs-outfits-on-profiled.png",
+    "imageSHA256": "22e0228137d334382ed296f2831cb3e8e4e30fbe838ab8a36b3eedc5118fc785"
+  },
+  {
+    "file": "snowfall-final-112b.png",
+    "sha256": "00a4cc637484e177538f1c6c697a628a50d74c42bc01d6124aa85b231fbce401",
+    "scenario": "final-112b-snowfall",
+    "sourceVersion": "0.80.0+112bd461f7fb",
+    "sourceCapture": "jobs-outfits-on-profiled.png",
+    "imageSHA256": "22e0228137d334382ed296f2831cb3e8e4e30fbe838ab8a36b3eedc5118fc785"
+  },
+  {
+    "file": "room-before-final-112b.png",
+    "sha256": "e3a8c7bd4a645150d44e8ba248fdca772710489e6ee02ae57b03a6745ed2cf7f",
+    "scenario": "final-112b-room",
+    "sourceVersion": "0.80.0+112bd461f7fb",
+    "sourceCapture": "jobs-room-before.png",
+    "imageSHA256": "22e0228137d334382ed296f2831cb3e8e4e30fbe838ab8a36b3eedc5118fc785"
+  },
+  {
+    "file": "room-final-112b.png",
+    "sha256": "54f7b53a8a0e9b6138d91c7078c5250efecc4da2c622b9ace8c56d8bb4085cf1",
+    "scenario": "final-112b-room",
+    "sourceVersion": "0.80.0+112bd461f7fb",
+    "sourceCapture": "jobs-room-walls.png",
+    "imageSHA256": "22e0228137d334382ed296f2831cb3e8e4e30fbe838ab8a36b3eedc5118fc785"
+  },
+  {
+    "file": "letter-composition-final-112b.png",
+    "sha256": "de8e9c9ebf4f7f203b5327811e3211fbba10bbc2e924075a20df07cc0ed3f6ec",
+    "scenario": "final-112b-letter-full",
+    "sourceVersion": "0.80.0+112bd461f7fb",
+    "sourceCapture": "jobs-letter-full-composed.png",
+    "imageSHA256": "22e0228137d334382ed296f2831cb3e8e4e30fbe838ab8a36b3eedc5118fc785"
+  },
+  {
+    "file": "letter-reply-final-112b.png",
+    "sha256": "17ca3152fc419f2723fff9d6fb48e66c8b8ed713155c67542e6bc9047406b584",
+    "scenario": "final-112b-letter-full",
+    "sourceVersion": "0.80.0+112bd461f7fb",
+    "sourceCapture": "jobs-letter-full-reply.png",
+    "imageSHA256": "22e0228137d334382ed296f2831cb3e8e4e30fbe838ab8a36b3eedc5118fc785"
+  },
+  {
+    "file": "clothing-before.png",
+    "sha256": "7bc90cb081fa6120adfe72b6928c3e8d6f51160bdd344f329ce900feb61acac6",
+    "scenario": "final-stream-outfits-off",
+    "sourceVersion": "0.80.0+1d59404cb5aa",
+    "sourceCommit": "1d59404cb5aa45ef8e2f6e6d3370bf5499624548",
+    "sourceCapture": "jobs-outfits-off-profiled.png",
+    "imageSHA256": "dd63d997ff714de5f8e38483c13413dec72e39248c29f095b9a2cd35f05ad775",
+    "nativeDolSHA256": "64bf145ad4299f2974ae9d3b69227825597e46493133558fa9849e67e574fb62",
+    "qualificationOnly": false
+  },
+  {
+    "file": "clothing-final.png",
+    "sha256": "e27e3755affaa00a367caa9fbf45da7bb0efb68ce98fff99d88f4f997738dd5d",
+    "scenario": "final-stream-outfits",
+    "sourceVersion": "0.80.0+1d59404cb5aa",
+    "sourceCommit": "1d59404cb5aa45ef8e2f6e6d3370bf5499624548",
+    "sourceCapture": "jobs-outfits-on-profiled.png",
+    "imageSHA256": "dd63d997ff714de5f8e38483c13413dec72e39248c29f095b9a2cd35f05ad775",
+    "nativeDolSHA256": "64bf145ad4299f2974ae9d3b69227825597e46493133558fa9849e67e574fb62",
+    "qualificationOnly": false
+  },
+  {
+    "file": "snowfall-final.png",
+    "sha256": "ebb3c8d9fea40f91ea8e07a75cf59f0f08ae82a640d71785892ce5764855f94d",
+    "scenario": "final-stream-snowfall",
+    "sourceVersion": "0.80.0+1d59404cb5aa",
+    "sourceCommit": "1d59404cb5aa45ef8e2f6e6d3370bf5499624548",
+    "sourceCapture": "jobs-outfits-on-profiled.png",
+    "imageSHA256": "dd63d997ff714de5f8e38483c13413dec72e39248c29f095b9a2cd35f05ad775",
+    "nativeDolSHA256": "64bf145ad4299f2974ae9d3b69227825597e46493133558fa9849e67e574fb62",
+    "qualificationOnly": false
+  },
+  {
+    "file": "maximum-recovery.png",
+    "sha256": "028f6a5d6a3f3bec5ddb9588a7ff0866d4d877fef6acd03bedbddc204708a716",
+    "scenario": "final-preparation-recovery",
+    "sourceVersion": "0.80.0+0fa5c3190cc1",
+    "sourceCommit": "0fa5c3190cc1369554ca560871640db3e811a3f5",
+    "sourceCapture": "jobs-maximum-recovery-recheck.png",
+    "imageSHA256": "bdbee2967466c19c1d7b04a110e8cdf2f8209ca163e5e0928e4f04768a0be621",
+    "nativeDolSHA256": "7bdc3190d99cfad9b06c70083cee067d4345ceb8bf51e6531d110abd377109a9",
+    "qualificationOnly": true
+  },
+  {
+    "file": "maximum-visitor.png",
+    "sha256": "e88f9302b26bac5a59d8cc78a9fbb39043e901c242bcb3b40f38ec8153155012",
+    "scenario": "final-preparation-recovery",
+    "sourceVersion": "0.80.0+0fa5c3190cc1",
+    "sourceCommit": "0fa5c3190cc1369554ca560871640db3e811a3f5",
+    "sourceCapture": "jobs-maximum-recovery-recovered.png",
+    "imageSHA256": "bdbee2967466c19c1d7b04a110e8cdf2f8209ca163e5e0928e4f04768a0be621",
+    "nativeDolSHA256": "7bdc3190d99cfad9b06c70083cee067d4345ceb8bf51e6531d110abd377109a9",
+    "qualificationOnly": true
+  },
+  {
+    "file": "maximum-returned.png",
+    "sha256": "19ce1f2316438edb580065e60fc86a220d6ade8c1faf21ab34f6ea60ffe70161",
+    "scenario": "final-preparation-recovery",
+    "sourceVersion": "0.80.0+0fa5c3190cc1",
+    "sourceCommit": "0fa5c3190cc1369554ca560871640db3e811a3f5",
+    "sourceCapture": "jobs-maximum-recovery-returned.png",
+    "imageSHA256": "bdbee2967466c19c1d7b04a110e8cdf2f8209ca163e5e0928e4f04768a0be621",
+    "nativeDolSHA256": "7bdc3190d99cfad9b06c70083cee067d4345ceb8bf51e6531d110abd377109a9",
+    "qualificationOnly": true
+  },
+  {
+    "file": "maximum-checkpoint.png",
+    "sha256": "c5a3e68b83a40cbcfcf6340c5a0393d8ddd3e465e62f1d99a2b23aae759b3309",
+    "scenario": "final-stream-post-travel",
+    "sourceVersion": "0.80.0+1d59404cb5aa",
+    "sourceCommit": "1d59404cb5aa45ef8e2f6e6d3370bf5499624548",
+    "sourceCapture": "jobs-maximum-post-travel-first-maximum-checkpoint.png",
+    "imageSHA256": "dd63d997ff714de5f8e38483c13413dec72e39248c29f095b9a2cd35f05ad775",
+    "nativeDolSHA256": "64bf145ad4299f2974ae9d3b69227825597e46493133558fa9849e67e574fb62",
+    "qualificationOnly": false
+  },
+  {
+    "file": "maximum-mail-reloaded.png",
+    "sha256": "f025cf25ea0755a6715daad15f7ea4f04d06f5dcd8cee11d618dd4dc10ce1252",
+    "scenario": "final-stream-post-travel",
+    "sourceVersion": "0.80.0+1d59404cb5aa",
+    "sourceCommit": "1d59404cb5aa45ef8e2f6e6d3370bf5499624548",
+    "sourceCapture": "jobs-maximum-post-travel-maximum-reloaded.png",
+    "imageSHA256": "dd63d997ff714de5f8e38483c13413dec72e39248c29f095b9a2cd35f05ad775",
+    "nativeDolSHA256": "64bf145ad4299f2974ae9d3b69227825597e46493133558fa9849e67e574fb62",
+    "qualificationOnly": false
+  }
+]

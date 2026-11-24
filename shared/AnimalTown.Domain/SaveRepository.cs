@@ -1,9 +1,36 @@
+using AnimalTown.Jobs;
+
 namespace AnimalTown;
 
 public interface ISaveStorage
 {
     byte[] Read(string name);
     void Write(string name,byte[] bytes);
+}
+
+// Read-only card-picker metadata. A preview never owns another town, mailbox
+// or economic ledger; the transfer still loads and validates private snapshots.
+public sealed class SavedTownPreview
+{
+    public int Seed {get;}
+    public int Sequence {get;}
+    public ulong TownId {get;}
+    private readonly string[] names;
+    internal SavedTownPreview(int seed,int sequence,ulong townId,string[] names){Seed=seed;Sequence=sequence;TownId=townId;this.names=names;}
+    public string NpcName(int slot){if((uint)slot>=names.Length)throw new ArgumentOutOfRangeException(nameof(slot));return names[slot];}
+}
+
+public readonly struct SavedVisitor
+{
+    public ulong TownId {get;}
+    public int Slot {get;}
+    public JobIdentity Identity {get;}
+    public string Name {get;}
+    public string Catchphrase {get;}
+    public int Species {get;}
+    public int Outfit {get;}
+    public SavedVisitor(ulong townId,int slot,JobIdentity identity,string name,string catchphrase,int species,int outfit)
+    {TownId=townId;Slot=slot;Identity=identity;Name=name;Catchphrase=catchphrase;Species=species;Outfit=outfit;}
 }
 
 // Reference manifests publish exact component revisions after readback.
@@ -48,18 +75,118 @@ public sealed class SaveRepository
     }
     private byte[][] ReadReferenced(IncrementalSaveCodec.Manifest m)
     {var parts=new byte[IncrementalSaveCodec.Count][];for(int i=0;i<parts.Length;i++)parts[i]=ReadReference(m,i);return parts;}
-    private GameState DecodeReference(byte[] commit,int bank,Town? snapshot=null)
+    private GameState DecodeReference(byte[] commit,int bank,Town? snapshot=null,Jobs.OfflineJobLedger? textMemo=null)
     {
         var m=IncrementalSaveCodec.Read(commit,bank);
-        return SplitSaveCodec.Decode(IncrementalSaveCodec.Restore(m,ReadReferenced(m)),snapshot);
+        var parts=IncrementalSaveCodec.Restore(m,ReadReferenced(m),out bool hasClock,out long clock);
+        return SplitSaveCodec.Decode(parts,snapshot,textMemo,m.Sequences[2],hasClock,clock);
     }
-    public GameState? Load()
+    public GameState? Load()=>Load(null);
+    // Read the foreign town's committed resident roster without constructing
+    // that town or decoding its mail, jobs, and inventory.
+    public SavedVisitor[] ReadVisitors(ulong localTownId,int limit=Town.VisitorCount)
+    {
+        if((uint)limit>Town.LocalResidentCount)throw new ArgumentOutOfRangeException(nameof(limit));
+        var visitors=new SavedVisitor[0];
+        if(limit==0)return visitors;
+        int sequence=-1;
+        for(int bank=0;bank<2;bank++)try{
+            var commit=storage.Read(SplitSaveCodec.FileName(SplitSaveCodec.Commit,bank));
+            var header=new SplitSaveCodec.Reader(commit,SplitSaveCodec.Commit);
+            if(header.Sequence<=sequence)continue;
+            if(header.Version==5){
+                var manifest=IncrementalSaveCodec.Read(commit,bank);
+                var names=SplitSaveCodec.PreviewNpcNames(ReadReference(manifest,0));
+                for(int part=1;part<IncrementalSaveCodec.Count;part++)if(part!=2)VerifyPreviewReference(manifest,part);
+                visitors=ReadVisitorReference(manifest,names,localTownId,limit);
+            }else if(header.Version==4){
+                var parts=ReadParts(bank);
+                SplitSaveCodec.VerifyCommitted(commit,parts);
+                var names=SplitSaveCodec.PreviewNpcNames(parts[0]);
+                visitors=ReadVisitorEconomy(parts[2],names,localTownId,limit,header.Sequence,header.Seed);
+            }else continue;
+            sequence=header.Sequence;
+        }catch(Exception){}
+        return visitors;
+    }
+    private SavedVisitor[] ReadVisitorReference(IncrementalSaveCodec.Manifest manifest,string[] names,ulong localTownId,int limit)
+    {
+        const int part=2;
+        int sequence=manifest.Sequences[part],length=manifest.Lengths[part];
+        if(storage is not ISaveVerifiedRecordStorage verified)
+            return ReadVisitorEconomy(ReadReference(manifest,part),names,localTownId,limit,sequence,manifest.Seed);
+        for(int copy=0;copy<2;copy++)try{
+            var source=verified.OpenVerifiedRecord(SplitSaveCodec.FileName(SplitSaveCodec.ShopStates,manifest.Banks[part]^copy),sequence,length,manifest.Checksums[part]);
+            return ReadVisitorEconomy(new VisitorRosterReader(source,length),length,names,localTownId,limit,sequence,manifest.Seed);
+        }catch(Exception){}
+        throw new InvalidOperationException("No valid copy of the saved resident roster");
+    }
+    private static SavedVisitor[] ReadVisitorEconomy(byte[] bytes,string[] names,ulong localTownId,int limit,int sequence,int seed)
+        =>ReadVisitorEconomy(new VisitorRosterReader(bytes),bytes.Length,names,localTownId,limit,sequence,seed);
+    private static SavedVisitor[] ReadVisitorEconomy(VisitorRosterReader reader,int length,string[] names,ulong localTownId,int limit,int sequence,int seed)
+    {
+        if(reader.Int()!=SplitSaveCodec.Magic||reader.Int()!=4||!Catalog.SupportsVersion(reader.Int())||
+            reader.Int()!=SplitSaveCodec.ShopStates||reader.Int()!=sequence||reader.Int()!=seed||reader.Int()!=length)
+            throw new InvalidOperationException("Mixed economic reference");
+        reader.Range(0,int.MaxValue);reader.Range(6,12);reader.Skip(12);reader.Skip(reader.Range(154,154));
+        if(reader.Position==(length-4)/4)return new SavedVisitor[0];
+        int words=reader.Range(7,OfflineJobLedger.MaximumWords);
+        if(reader.Position+words!=(length-4)/4)throw new InvalidOperationException("Truncated economic job ledger");
+        return OfflineJobLedger.ReadVisitorRoster(reader,names,localTownId,limit);
+    }
+    public SavedTownPreview ReadTravelPreview()
+    {
+        SavedTownPreview? best=null;
+        for(int bank=0;bank<2;bank++)try{
+            var manifest=IncrementalSaveCodec.Read(storage.Read(SplitSaveCodec.FileName(SplitSaveCodec.Commit,bank)),bank);
+            if(best!=null&&manifest.Sequence<=best.Sequence)continue;
+            best=PreviewReference(manifest);
+        }catch(Exception){}
+        return best??throw new InvalidOperationException("Open and save both towns in this version before travelling");
+    }
+    private SavedTownPreview PreviewReference(IncrementalSaveCodec.Manifest manifest)
+    {
+        var names=SplitSaveCodec.PreviewNpcNames(ReadReference(manifest,0));
+        ulong identity=ReferencedTownIdentity(manifest);if(identity==0)throw new InvalidOperationException("Missing saved town identity");
+        for(int part=1;part<IncrementalSaveCodec.Count;part++)if(part!=2)VerifyPreviewReference(manifest,part);
+        return new SavedTownPreview(manifest.Seed,manifest.Sequence,identity,names);
+    }
+    private void VerifyPreviewReference(IncrementalSaveCodec.Manifest manifest,int part)
+    {
+        if(manifest.Lengths[part]>8192&&storage is ISaveSnapshotStorage)LargeReference(manifest,part,null,out _);
+        else ReadReference(manifest,part);
+    }
+    private ulong ReferencedTownIdentity(IncrementalSaveCodec.Manifest manifest)
+    {
+        if(storage is not ISaveVerifiedPrefixStorage verified)return SplitSaveCodec.EconomicTownIdentity(ReadReference(manifest,2));
+        for(int copy=0;copy<2;copy++)try{
+            var prefix=verified.ReadVerifiedPrefix(SplitSaveCodec.FileName(2,manifest.Banks[2]^copy),SplitSaveCodec.EconomicIdentityPrefixBytes,manifest.Sequences[2],manifest.Lengths[2],manifest.Checksums[2]);
+            return SplitSaveCodec.EconomicTownIdentityPrefix(prefix,manifest.Sequences[2],manifest.Seed,manifest.Lengths[2]);
+        }catch(Exception){}
+        throw new InvalidOperationException("No valid copy of the referenced town identity");
+    }
+    public void VerifyRevision(GameState expected)
+    {
+        var current=NewestManifest();
+        if(current?.References!=null){
+            if(current.Sequence!=expected.Sequence||current.Seed!=expected.Town.Seed)throw new InvalidOperationException("Travel card changed. Recheck both towns");
+            // CRC/reference validation still covers the complete economic
+            // record. Read only its fixed header/nonce; decoding every mailbox
+            // and another private town is unnecessary for this identity check.
+            if(ReferencedTownIdentity(current.References)!=expected.Town.Jobs.TownId)throw new InvalidOperationException("Travel town identity changed");
+            return;
+        }
+        var saved=Load(expected)??throw new InvalidOperationException("Travel card was removed or changed");
+        if(saved.Sequence!=expected.Sequence||saved.Town.Jobs.TownId!=expected.Town.Jobs.TownId)throw new InvalidOperationException("Travel card changed. Recheck both towns");
+    }
+    public GameState? Load(GameState? textReuse)
     {
         GameState? best=null;
         for(int bank=0;bank<2;bank++)try{
             var commit=storage.Read(SplitSaveCodec.FileName(SplitSaveCodec.Commit,bank));
             var r=new SplitSaveCodec.Reader(commit,SplitSaveCodec.Commit);
-            var s=r.Version==5?DecodeReference(commit,bank):SplitSaveCodec.DecodeCommitted(commit,ReadParts(bank));
+            if(best!=null&&r.Sequence<=best.Sequence)continue;
+            var s=r.Version==5?DecodeReference(commit,bank,null,best?.Town.Jobs??textReuse?.Town.Jobs):SplitSaveCodec.DecodeCommitted(commit,ReadParts(bank));
             if(best==null||s.Sequence>best.Sequence)best=s;
         }catch(Exception){}
         // Legacy data is read-only migration input and is never overwritten.
@@ -81,6 +208,7 @@ public sealed class SaveRepository
             state.Sequence=current.Sequence;Save(state);return;
         }
         if(current!=null&&current.References==null)SplitSaveCodec.VerifyCommitted(current.Commit,ReadParts(current.Bank));
+        if(storage is ISaveWritePreparationStorage preparation)preparation.PrepareWrite();
         state.Sequence=previous==int.MaxValue?previous:previous+1;
         try{
             var m=new IncrementalSaveCodec.Manifest{Sequence=state.Sequence,Seed=state.Town.Seed,Bank=current==null?state.Sequence%2:1-current.Bank};
@@ -100,42 +228,55 @@ public sealed class SaveRepository
             VerifyReferences(m);
         }catch{state.Sequence=previous;throw;}
     }
+    private void MatchStored(string name,byte[] expected)
+    {if(expected.Length>8192&&storage is ISaveSnapshotStorage verified){if(!verified.Matches(name,expected,-1,expected.Length,0,false))throw new InvalidOperationException("Save readback differs from snapshot");}else Match(storage.Read(name),expected);}
+    private int LargeReference(IncrementalSaveCodec.Manifest m,int part,byte[]? expected,out bool same)
+    {
+        var verified=(ISaveSnapshotStorage)storage;
+        for(int copy=0;copy<2;copy++)try{
+            int bank=m.Banks[part]^copy;string name=SplitSaveCodec.FileName(SplitSaveCodec.RecordKind(part),bank);
+            if(verified.Matches(name,expected,m.Sequences[part],m.Lengths[part],m.Checksums[part],expected!=null)){same=true;m.Banks[part]=bank;return bank;}
+            if(expected!=null&&verified.Matches(name,null,m.Sequences[part],m.Lengths[part],m.Checksums[part],false)){same=false;m.Banks[part]=bank;return bank;}
+        }catch(Exception){}
+        throw new InvalidOperationException("No valid copy of a referenced save record");
+    }
+    private static void ReuseReference(IncrementalSaveCodec.Manifest current,IncrementalSaveCodec.Manifest next,int part)
+    {next.Banks[part]=current.Banks[part];next.Sequences[part]=current.Sequences[part];next.Lengths[part]=current.Lengths[part];next.Checksums[part]=current.Checksums[part];}
     private bool MatchesCurrent(GameState state,IncrementalSaveCodec.Manifest current)
     {for(int i=0;i<IncrementalSaveCodec.Count;i++)if(!MatchesCurrentPart(state,current,i))return false;return true;}
     private bool MatchesCurrentPart(GameState state,IncrementalSaveCodec.Manifest current,int part)
-    {return IncrementalSaveCodec.SamePayload(ReadReference(current,part),IncrementalSaveCodec.Encode(state,part));}
+    {var encoded=IncrementalSaveCodec.Encode(state,part);if(current.Lengths[part]>8192&&storage is ISaveSnapshotStorage){LargeReference(current,part,encoded,out bool same);return same;}return IncrementalSaveCodec.SamePayload(ReadReference(current,part),encoded);}
     private bool SavePart(GameState state,int part,IncrementalSaveCodec.Manifest? current,IncrementalSaveCodec.Manifest next,bool exhausted)
     {
         var encoded=IncrementalSaveCodec.Encode(state,part);
         if(current!=null){
-            var existing=ReadReference(current,part,true);
-            if(IncrementalSaveCodec.SamePayload(existing,encoded)){
-                IncrementalSaveCodec.Reference(next,part,current.Banks[part],existing);return false;
-            }
+            if(current.Lengths[part]>8192&&storage is ISaveSnapshotStorage){LargeReference(current,part,encoded,out bool same);if(same){ReuseReference(current,next,part);return false;}}
+            else{var existing=ReadReference(current,part,true);if(IncrementalSaveCodec.SamePayload(existing,encoded)){IncrementalSaveCodec.Reference(next,part,current.Banks[part],existing);return false;}}
         }
         if(exhausted)throw new InvalidOperationException("Save sequence exhausted");
         int bank=current==null?next.Bank:1-current.Banks[part];
         IncrementalSaveCodec.Reference(next,part,bank,encoded);
         string name=SplitSaveCodec.FileName(SplitSaveCodec.RecordKind(part),bank);
         storage.Write(name,encoded);LastWrittenRecords++;LastWrittenBytes+=encoded.Length;
-        Match(storage.Read(name),encoded);return true;
+        MatchStored(name,encoded);return true;
     }
     private void Publish(string name,byte[] bytes)
     {
-        bool identical=false;try{var actual=storage.Read(name);Match(actual,bytes);identical=true;}catch(Exception){}
+        bool identical=false;try{if(bytes.Length>8192&&storage is ISaveSnapshotStorage verified)identical=verified.Matches(name,bytes,-1,bytes.Length,0,false);else{var actual=storage.Read(name);Match(actual,bytes);identical=true;}}catch(Exception){}
         if(identical)return;
-        storage.Write(name,bytes);LastWrittenRecords++;LastWrittenBytes+=bytes.Length;Match(storage.Read(name),bytes);
+        storage.Write(name,bytes);LastWrittenRecords++;LastWrittenBytes+=bytes.Length;MatchStored(name,bytes);
     }
     private void RepairCopy(IncrementalSaveCodec.Manifest m,int part)
     {
         // Only a missing/mismatched mirror is written. Healthy no-op saves
         // inspect both copies without changing any file or publication number.
+        if(m.Lengths[part]>8192&&storage is ISaveSnapshotStorage verified){LargeReference(m,part,null,out _);string mirror=SplitSaveCodec.FileName(SplitSaveCodec.RecordKind(part),1-m.Banks[part]);try{if(verified.Matches(mirror,null,m.Sequences[part],m.Lengths[part],m.Checksums[part],false))return;}catch(Exception){}}
         var primary=ReadReference(m,part,true);
         string name=SplitSaveCodec.FileName(SplitSaveCodec.RecordKind(part),1-m.Banks[part]);
         Publish(name,primary);
     }
     private void VerifyReferences(IncrementalSaveCodec.Manifest m)
-    {for(int i=0;i<IncrementalSaveCodec.Count;i++){var a=storage.Read(SplitSaveCodec.FileName(SplitSaveCodec.RecordKind(i),m.Banks[i]));var b=storage.Read(SplitSaveCodec.FileName(SplitSaveCodec.RecordKind(i),1-m.Banks[i]));IncrementalSaveCodec.Verify(m,i,a);Match(a,b);}}
+    {for(int i=0;i<IncrementalSaveCodec.Count;i++){if(m.Lengths[i]>8192&&storage is ISaveSnapshotStorage verified){for(int copy=0;copy<2;copy++)if(!verified.Matches(SplitSaveCodec.FileName(SplitSaveCodec.RecordKind(i),copy),null,m.Sequences[i],m.Lengths[i],m.Checksums[i],false))throw new InvalidOperationException("Save reference mismatch");continue;}var a=storage.Read(SplitSaveCodec.FileName(SplitSaveCodec.RecordKind(i),m.Banks[i]));var b=storage.Read(SplitSaveCodec.FileName(SplitSaveCodec.RecordKind(i),1-m.Banks[i]));IncrementalSaveCodec.Verify(m,i,a);Match(a,b);}}
     internal bool MatchesAttemptedFiles(GameState attempted,string[] names)
     {
         int bank=attempted.Sequence%2;attempted.CaptureProfile();
@@ -160,7 +301,7 @@ public sealed class SaveRepository
     {
         if((uint)profile>=GameState.ProfileCount||!expected.Profiles[profile].Created)throw new InvalidOperationException("Villager does not exist");
         if(expected.Sequence==int.MaxValue)throw new InvalidOperationException("Save sequence exhausted");
-        var candidate=Load()??throw new InvalidOperationException("No complete saved town");
+        var candidate=Load(expected)??throw new InvalidOperationException("No complete saved town");
         // Refuse a removed/swapped card or a newer/different town. The displayed
         // snapshot remains untouched until both verified banks are committed.
         // Keep serialized comparisons in their own native GC frame, so their

@@ -1,0 +1,18 @@
+{
+  "image": "offline-jobs-stream-official.nkit.iso",
+  "imageSHA256": "dd63d997ff714de5f8e38483c13413dec72e39248c29f095b9a2cd35f05ad775",
+  "sourceCommit": "1d59404cb5aa45ef8e2f6e6d3370bf5499624548",
+  "qualificationOnly": false,
+  "concurrentBuild": false,
+  "nativeDolSHA256": "64bf145ad4299f2974ae9d3b69227825597e46493133558fa9849e67e574fb62",
+  "sourceVersion": "0.80.0+1d59404cb5aa",
+  "mainCommit": "48a0adcb79adc793b00a7647fd1caa190a0e8125",
+  "jobsHarnessSHA256": "8ec7523322f9a05d79004022ded6c862ab7b344366481982d8fd6f358f1a2371",
+  "isoHarnessSHA256": "6d4d48240b042c158e02a0fcce53e38abfeb1912ad3d63d98f589f9065bfabfe",
+  "saveVerifierSHA256": "61d7e8bbd95f5b4d2a4d60def52b93fba4232abdc8524030b11c90d6f4fcb1a9",
+  "cpuTimingComparable": false,
+  "otherEmulatorsAndLocalCompilationStopped": true,
+  "fixture": "maximum-post-travel",
+  "fixtureOrigin": "Exact cards from the failed 90fbdd796787 title-reload regression, after two successful checkpoints. Their original maximum-capacity departure/return and visitor checkpoint ran on 0fa5c3190cc1.",
+  "guestCheckpointSourceCommit": "0fa5c3190cc1369554ca560871640db3e811a3f5"
+}

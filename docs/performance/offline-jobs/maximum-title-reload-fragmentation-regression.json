@@ -1,0 +1,25 @@
+{
+  "sourceCommit": "90fbdd7967879f1256f77e43c47a77a1756d1354",
+  "firstCheckpointPassed": true,
+  "saveAndQuitPassed": true,
+  "saveTotalsMs": [
+    114397,
+    114398
+  ],
+  "reopenedProfilePickerPassed": false,
+  "failure": "Gorditas 512x512 IA8 source package: 524,344-byte managed read cannot fit the fragmented ordinary range.",
+  "heapCapacityBytes": 6291456,
+  "heapExtentBytes": 4255152,
+  "totalFreeBytes": 2313720,
+  "largestFreeListRegionBytes": 49216,
+  "preservedOriginal": "final-reserve-post-travel",
+  "proposedFix": "Stream UI atlas pages and unwind the previous TownSession before re-entering the title/load loop.",
+  "finalFollowup": {
+    "sourceCommit": "1d59404cb5aa45ef8e2f6e6d3370bf5499624548",
+    "case": "final-stream-post-travel",
+    "controllerSequencePassed": true,
+    "strictBothTownStatePassed": true,
+    "letterBodiesVerified": 1024,
+    "preservedActualVisitorCheckpointVerified": true
+  }
+}

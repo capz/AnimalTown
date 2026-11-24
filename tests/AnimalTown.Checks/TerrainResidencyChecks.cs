@@ -12,11 +12,13 @@ namespace Dolphin.Diagnostics
     public static class DebugOverlay
     {
         public static int TerrainSuspensions,TerrainRestorations;
+        public static int UiCacheDeferrals;
         public static string LastTerrainSuspension="",LastTerrainRestoration="";
         public static void WriteLine(string message)
         {
             if(message.StartsWith("ANIMALTOWN TERRAIN CACHE SUSPENDED",StringComparison.Ordinal)){TerrainSuspensions++;LastTerrainSuspension=message;}
             else if(message.StartsWith("ANIMALTOWN TERRAIN CACHE READY",StringComparison.Ordinal)){TerrainRestorations++;LastTerrainRestoration=message;}
+            else if(message.StartsWith("ANIMALTOWN UI CACHE DEFERRED",StringComparison.Ordinal))UiCacheDeferrals++;
         }
     }
 }
@@ -58,7 +60,7 @@ internal static class NativeTerrain
     internal static int CacheBytes,AramBytes,CreatedViews,ReleasedViews,BindCalls,StepCalls,ResumeCalls,ResetCalls;
     internal static int PollsPerTransfer=2;
     internal static bool FailResume,FailStep,Empty,PauseTransfers,FailReset,ThrowResume;
-    private static readonly int[] entries=new int[1024];
+    private static readonly int[] entries=new int[2048];
     private static int pending,entry,remaining,cancelRemaining;
     internal static int Reset(int sections)
     {
@@ -176,6 +178,33 @@ internal static class TerrainResidencyChecks
         archive.Suspend();archive.PrepareAsync(30,50,owner.Rows,Clock.Timestamp+1000);
         check(!archive.TryDispose()&&NativeTerrain.ReleasedViews==0,"reset/disposal waits for the active cache owner");
         check(archive.TryDispose()&&NativeTerrain.ReleasedViews==views&&NativeTerrain.AramBytes==0,"disposal releases the archive and original view set after drainage");
+        archive.Reset();while(!archive.Ready)archive.Bake(state,owner,strips,data);
+        archive.Prepare(8,8,owner.Rows);archive.WarmPrefetch=true;
+        for(int i=0;i<256;i++)archive.PrepareAsync(8,8,owner.Rows,Clock.Timestamp+1000);
+        int sync=NativeTerrain.BindCalls,handles=NativeTerrain.CreatedViews,late=archive.WarmLateSelections;
+        bool routeReady=true,bounded=true;float px=8,pz=8;
+        for(int row=0;row<15;row++){
+            float targetZ=8+row*7;
+            while(pz<targetZ){pz=Math.Min(targetZ,pz+.125f);Tick();}
+            float targetX=(row&1)==0?Town.Width-8:8;
+            while(px!=targetX){px+=Math.Sign(targetX-px)*Math.Min(.125f,Math.Abs(targetX-px));Tick();}
+        }
+        void Tick(){
+            int calls=NativeTerrain.StepCalls;archive.PrepareAsync(px,pz,owner.Rows,Clock.Timestamp+500);
+            archive.Prepare(px,pz,owner.Rows);routeReady&=archive.Presentable;
+            archive.PrepareAsync(px,pz,owner.Rows,Clock.Timestamp+500);bounded&=NativeTerrain.StepCalls-calls<=24;
+        }
+        check(routeReady&&archive.WarmLateSelections==late,"prefetched full-town walking route has no missing/loading selections");
+        check(NativeTerrain.BindCalls==sync&&NativeTerrain.CreatedViews==handles&&bounded,"warm movement never enters synchronous binding or grows the view pool and respects the two residency grants and bounded draw preparation");
+        var expected=new TerrainArchiveView();expected.Prepare(px,pz,owner.Rows);
+        check(archive.ViewCount==expected.Count*2&&archive.Triangles==expected.Count*4,"prefetched geometry is excluded from drawable counts and preserves the camera selection");
+        long warmAllocated=GC.GetAllocatedBytesForCurrentThread();
+        for(int i=0;i<1000;i++){archive.Prepare(px,pz,owner.Rows);archive.PrepareAsync(px,pz,owner.Rows,Clock.Timestamp+500);}
+        check(GC.GetAllocatedBytesForCurrentThread()==warmAllocated,"stable prefetch pumping is allocation-free");
+        archive.PrepareAsync(30,30,owner.Rows,Clock.Timestamp+500);archive.WarmPrefetch=false;
+        check(archive.WarmPrefetch&&archive.WarmActive&&Finish(archive,px,pz,owner.Rows)&&archive.Presentable,
+            "retired prefetch debug values cannot disable the always-asynchronous terrain path");
+        archive.Dispose();
         NativeTerrain.Empty=true;archive.Reset();while(!archive.Ready)archive.Bake(state,owner,strips,data);
         Finish(archive,30,50,owner.Rows);
         check(archive.Presentable&&archive.ViewCount==0&&archive.Triangles==0,"empty sections become drawable without aliases");
@@ -207,6 +236,14 @@ internal static class TerrainResidencyChecks
         check(NativeTerrain.ResetCalls==resets,"failed startup backs off instead of retrying its native allocation each bake stage");
         NativeTerrain.FailReset=false;Clock.Timestamp+=VisualMemoryPressure.FailureBackoffUs+1;
         memory.Observe(4*1024*1024,0,0,Clock.Timestamp);
+        while(!archive.Ready)archive.Bake(state,owner,strips,data);
+        memory.Observe(3*1024*1024,0,0,Clock.Timestamp);
+        // Main's native reset retains the existing contiguous cache and borrows
+        // staging from it. A rebuild must not require a second cache's headroom.
+        memory.Observe(VisualMemoryPressure.SafetyBytes+TerrainArchive.AllocationGuardBytes+4096,0,0,Clock.Timestamp);
+        resets=NativeTerrain.ResetCalls;
+        check(archive.TryReset()&&NativeTerrain.ResetCalls==resets+1&&memory.ReservedBytes==TerrainArchive.AllocationGuardBytes,
+            "warm archive reset reserves only new guard bytes and reuses the existing cache under pressure");
         while(!archive.Ready)archive.Bake(state,owner,strips,data);
         memory.Observe(3*1024*1024,0,0,Clock.Timestamp);
         check(archive.Suspend()&&archive.CacheSuspended,"pressure admission fixture retains only its ARAM archive while cold");

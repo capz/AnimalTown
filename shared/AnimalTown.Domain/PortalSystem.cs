@@ -17,15 +17,15 @@ public sealed class PortalSystem
     public readonly bool[] Ready={true,true,true,true};
     // Rendering admission is transient, separate from art availability and saves.
     // Existing callers keep their original behavior until a residency owner gates it.
-    public readonly bool[] ResourcesReady={true,true,true,true,true,true,true};
+    public readonly bool[] ResourcesReady=new bool[BuildingWorld.Actors];
     private readonly int[] owners=new int[BuildingWorld.Count];
     private uint visitSequence;
-    public PortalSystem(){for(int i=0;i<Actors.Length;i++)Actors[i]=new Transition();for(int i=0;i<owners.Length;i++)owners[i]=-1;}
+    public PortalSystem(){for(int i=0;i<Actors.Length;i++){Actors[i]=new Transition();ResourcesReady[i]=true;}for(int i=0;i<owners.Length;i++)owners[i]=-1;}
     public bool Busy(int actor)=>Actors[actor].Phase!=DoorPhase.Idle;
     public int Owner(int building)=>owners[building];
     public bool Request(GameState s,int actor,int building)
     {
-        if(actor<0||actor>=Actors.Length||!BuildingWorld.Exists(s,building))return false;
+        if(actor<0||actor>=Actors.Length||actor>0&&!s.NpcPresent(actor-1)||!BuildingWorld.Exists(s,building))return false;
         var t=Actors[actor];if(Busy(actor)||t.Cooldown>0||!BuildingCatalog.Available(s.BuildingTypes[building])||!Ready[s.BuildingTypes[building]])return false;
         var p=BuildingWorld.Location(s,actor);int destination;
         if(p.Space.IsTown){
@@ -50,7 +50,7 @@ public sealed class PortalSystem
             if(BuildingWorld.DoorClearance(size,x-BuildingWorld.Radius,z-BuildingWorld.Radius,BuildingWorld.Radius*2,BuildingWorld.Radius*2)
                 ||!BuildingWorld.CanStand(s,space,x,z,actor,true))continue;
             BuildingWorld.SetLocation(s,actor,new ActorLocation(space,x,z,(seed&255)*(.024543693f)));
-            var villager=s.Town.Residents[actor-1];villager.JourneyPhase=3;villager.Dwell=120+(actor-1)*19;
+            var villager=s.Town.NpcAt(actor-1);villager.JourneyPhase=3;villager.Dwell=120+(actor-1)*19;
             return true;
         }
         return false;
@@ -67,6 +67,7 @@ public sealed class PortalSystem
     }
     public int Nearby(GameState s,int actor,float facing)
     {
+        if(actor>0&&!s.NpcPresent(actor-1))return -1;
         var p=BuildingWorld.Location(s,actor);if(!p.Space.IsTown){BuildingWorld.InsideDoor(s,p.Space.Value,out float x,out float z);return Distance(p.X,p.Z,x,z)<=DoorRadius?BuildingWorld.Building(p.Space.Value):-1;}
         int best=-1;float distance=float.MaxValue;
         for(int b=0;b<BuildingWorld.Count;b++)if(BuildingWorld.Exists(s,b)&&ExteriorReach(s,actor,b,p,out float d)){
@@ -79,6 +80,7 @@ public sealed class PortalSystem
     {
         for(int actor=0;actor<Actors.Length;actor++){
             var t=Actors[actor];t.WaitMoving=false;if(t.Cooldown>0)t.Cooldown--;if(t.Phase==DoorPhase.Idle)continue;
+            if(actor>0&&!s.NpcPresent(actor-1)){Cancel(actor);continue;}
             var current=BuildingWorld.Location(s,actor);
             if(!BuildingWorld.Exists(s,t.Building)||current.Space.Value!=(t.Committed?t.Destination.Space.Value:t.Source.Space.Value)){Cancel(actor);continue;}
             BuildingWorld.Origin(s,t.Building,out float ox,out float oz);
@@ -116,6 +118,7 @@ public sealed class PortalSystem
         if(!BuildingWorld.CanStand(s,0,x,z))return false;
         const float width=BuildingWorld.Radius*2;
         for(int actor=1;actor<Actors.Length;actor++){
+            if(!s.NpcPresent(actor-1))continue;
             var p=BuildingWorld.Location(s,actor);
             if(!p.Space.IsTown||Math.Abs(p.X-x)>=width||p.Z<=z-2||p.Z>=z+width)continue;
             bool moved=false;
@@ -135,7 +138,7 @@ public sealed class PortalSystem
         float x,z;
         if(t.Destination.Space.IsTown){BuildingWorld.Entrance(s,t.Building,out x,out z);}
         else BuildingWorld.InsideDoor(s,t.Destination.Space.Value,out x,out z);
-        for(int other=0;other<BuildingWorld.Actors;other++)if(other!=actor){var p=BuildingWorld.Location(s,other);if(p.Space.Value==t.Destination.Space.Value&&Math.Abs(p.X-x)<BuildingWorld.Radius*2&&Math.Abs(p.Z-z)<1)return false;}
+        for(int other=0;other<BuildingWorld.Actors;other++)if(other!=actor&&(other==0||s.NpcPresent(other-1))){var p=BuildingWorld.Location(s,other);if(p.Space.Value==t.Destination.Space.Value&&Math.Abs(p.X-x)<BuildingWorld.Radius*2&&Math.Abs(p.Z-z)<1)return false;}
         return true;
     }
     private static void StepAside(GameState s,int actor,Transition t)

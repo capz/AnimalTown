@@ -5,16 +5,24 @@ using Dolphin.Input;
 
 internal sealed partial class TownGame
 {
+    // The cream panel's rounded sides and offset shadow fit inside the right half.
+    private const float ShopPanelLeft=336,ShopPanelWidth=270,ShopPanelTop=59,ShopPanelHeight=356;
+    private const float ShopTextLeft=353,ShopTextRight=589,ShopFooterY=383;
+    private static readonly string[] StoreActions={
+        "Essentials cabinet","Sell / return parcel","Part-time job","House expansion","Garden expansion",
+        "Repay loan","Daily job","Expand backpack","Reclaim stored sale items"
+    };
     private int shopFixture,shopRevision,shopPocket,shopPrice,shopDigit=2,shopInspection;
     private bool shopReprice;
     private int shopHintFixture=-1;
     private string shopHint="";
     private bool ShopScreen=>screen=="shop-display"||screen=="shop-list"||screen=="shop-price"||screen=="shop-stored";
     private int StoredShopCount=>state.Town.Shop.StoredListingCount(state);
-    private int StoreMenuCount=>StoredShopCount>0?9:8;
+    private int StoreMenuCount=>StoredShopCount>0?StoreActions.Length:StoreActions.Length-1;
     private ShopSource ShopKind=>shopFixture<12?ShopSource.Display:ShopSource.Consignment;
     private int ShopSlot=>shopFixture<12?shopFixture:shopFixture-12;
     private bool OwnListing=>shopFixture>=12&&state.Town.Shop.SaleItems[ShopSlot]!=0&&state.Town.Shop.SaleOwners[ShopSlot]==state.ActiveProfile;
+    private bool CanSellFromPockets(int slot)=>Catalog.Has(state.Pockets[slot],ItemFlags.Sell)&&!state.IsJobItem(slot);
     private void InspectShop()
     {
         if(villagers.Doors.Busy(0))return;
@@ -74,41 +82,137 @@ internal sealed partial class TownGame
     }
     private bool DrawShopPanel(Color32 ink)
     {
+        if(screen=="store"||screen=="shop"){
+            bool cabinet=screen=="shop";
+            DrawShopFrame(cabinet?"Essentials cabinet":"Hearth's store",ink);
+            if(cabinet)ShopText("Always in stock",ShopTextLeft,107,ink,1);
+            int count=cabinet?TownShop.CabinetCount:StoreMenuCount;
+            for(int i=0;i<count;i++){
+                float y=cabinet?130+i*24:111+i*27;
+                if(cabinet){
+                    var item=Catalog.Items[TownShop.CabinetItem(i)];
+                    DrawShopRow(item.Name,i,y,ink,godMode?"Free":UiFont.Money(item.Buy));
+                }
+                else DrawShopRow(StoreActions[i],i,y,ink);
+            }
+            DrawShopFooter(ink,"close",cabinet?"buy":"select");
+            return true;
+        }
+        if(screen=="sell"){DrawShopPockets(ink);return true;}
         if(!ShopScreen)return false;
         if(screen=="shop-stored"){
-            Panel(45,75,550,350);Heading("Reclaim stored sale items",68,91,ink);
-            Text("These items are kept safely behind the counter.",68,137,ink,1.2f);
+            DrawShopFrame("Reclaim stored items",ink);
+            ShopText("Items kept behind the counter",ShopTextLeft,111,ink,1.05f);
             int count=StoredShopCount;
             for(int i=0;i<count;i++){
-                int slot=state.Town.Shop.StoredListing(state,i),item=state.Town.Shop.SaleItems[slot];float y=183+i*36;
-                if(selected==i)Rounded(57,y,520,32,16,new Color32(221,231,188));
-                Text((selected==i?"> ":"  ")+Catalog.Items[item].Name,68,y,ink,1.3f);
+                int slot=state.Town.Shop.StoredListing(state,i),item=state.Town.Shop.SaleItems[slot];
+                DrawShopRow(Catalog.Items[item].Name,i,143+i*25,ink);
             }
-            Text(count==0?"No stored items.   B: back":"A: take item back   B: back",68,392,ink,1.3f);return true;
+            if(count==0)ShopText("No stored items.",ShopTextLeft,145,ink,1.15f);
+            DrawShopFooter(ink,"back",count>0?"take item back":null);return true;
         }
-        Panel(45,75,550,350);Heading(screen=="shop-list"?"Choose an item to display":screen=="shop-price"?"Set your asking price":shopFixture<12?"Today's display":"Villager sale / "+(ShopSlot+1),68,91,ink);
         if(screen=="shop-price"){
+            DrawShopFrame("Set your asking price",ink);
             int item=shopReprice?state.Town.Shop.SaleItems[ShopSlot]:state.Pockets[shopPocket];
-            Text(Catalog.Items[item].Name,68,147,ink,1.5f);Strong(UiFont.Currency+" "+shopPrice.ToString("D5"),68,201,ink,2);
+            ShopText(Catalog.Items[item].Name,ShopTextLeft,140,ink,1.35f);
+            Strong(UiFont.Currency+" "+shopPrice.ToString("D5"),ShopTextLeft,183,ink,1.85f);
             int step=1;for(int i=0;i<shopDigit;i++)step*=10;
-            Text("Adjust by "+UiFont.Money(step),68,263,ink,1.25f);Text("Left/Right: digit   Up/Down: price",68,318,ink,1.1f);
-            Text("A: put on display   B: back",68,382,ink,1.2f);return true;
+            ShopText("Adjust by "+UiFont.Money(step),ShopTextLeft,237,ink,1.2f);
+            ShopText("Left / right   Digit\nUp / down   Price",ShopTextLeft,281,ink,1.05f);
+            DrawShopFooter(ink,"back","put on display");return true;
         }
         if(screen=="shop-list"){
+            DrawShopFrame("Choose an item to display",ink);
             int first=selected/7*7;for(int i=first;i<Math.Min(first+7,state.Capacity);i++){
                 int item=state.Pockets[i];string label=(i+1)+". "+(item==0?"Empty":Catalog.Items[item].Name)+(item!=0&&!TownShop.Sellable(item)?" / cannot list":"");
-                float y=140+(i-first)*31;if(selected==i)Rounded(57,y,520,29,14,new Color32(221,231,188));Text((selected==i?"> ":"  ")+label,68,y,ink,1.3f);
+                DrawShopRow(label,i,125+(i-first)*30,ink);
             }
-            Text("A: choose   B: back   One item per stand",68,382,ink,1.1f);return true;
+            ShopText("One item per stand",ShopTextLeft,348,ink,1);
+            DrawShopFooter(ink,"back","choose");return true;
         }
         int id=state.Town.Shop.Item(state,ShopKind,ShopSlot),price=state.Town.Shop.Price(state,ShopKind,ShopSlot);
         bool growing=shopFixture<12&&shopFixture>=state.Town.StockCount;
-        Text(id==0?growing?"More stands open as the shop grows":shopFixture<12?"Sold out for today":"This stand is available":Catalog.Items[id].Name,68,151,ink,1.5f);
-        if(id!=0){Strong(UiFont.Money(price),68,202,ink,1.5f);Text("In your wallet: "+UiFont.Money(state.Wallet),68,243,ink,1.2f);}
-        if(shopFixture>=12&&id!=0)Text("Seller: "+state.ProfileName(state.Town.Shop.SaleOwners[ShopSlot]),68,287,ink,1.2f);
-        if(OwnListing){Text((selected==0?"> ":"  ")+"Change price",68,327,ink,1.2f);Text((selected==1?"> ":"  ")+"Take item back",68,355,ink,1.2f);}
-        Text(OwnListing?"A: select   B: close":id!=0?"A: buy this item   B: close":growing?"Shop with us to unlock more stands.   B: close":shopFixture<12?"New displays arrive tomorrow.   B: close":"A: list an item for sale   B: close",68,392,ink,1.3f);
+        bool own=OwnListing;
+        DrawShopFrame(shopFixture<12?"Today's display":"Villager sale / "+(ShopSlot+1),ink,98,own?286:246);
+        string labelText=id!=0?Catalog.Items[id].Name:growing?"More stands open as the shop grows":shopFixture<12?"Sold out for today":"This stand is available";
+        ShopText(labelText,ShopTextLeft,154,ink,1.4f,true);
+        if(id!=0){
+            Strong(UiFont.Money(price),ShopTextLeft,187,ink,1.8f);
+            ShopText("In your wallet   "+UiFont.Money(state.Wallet),ShopTextLeft,230,ink,1.15f);
+            if(shopFixture>=12)ShopText("Seller: "+state.ProfileName(state.Town.Shop.SaleOwners[ShopSlot]),ShopTextLeft,254,ink,1.1f);
+        }else if(shopFixture<12){
+            ShopText(growing?"Shop with us to unlock more stands.":"New displays arrive tomorrow.",ShopTextLeft,203,ink,1.1f);
+        }
+        if(own){
+            DrawShopRow("Change price",0,279,ink);
+            DrawShopRow("Take item back",1,305,ink);
+        }
+        string? action=own?"select":id!=0?"buy":shopFixture>=12?"list an item":null;
+        DrawShopFooter(ink,"close",action,own?352:309);
         return true;
+    }
+    private void DrawShopFrame(string title,Color32 ink,float y=ShopPanelTop,float height=ShopPanelHeight)
+    {
+        Panel(ShopPanelLeft,y,ShopPanelWidth,height);
+        float scale=Math.Min(.85f,(ShopTextRight-ShopTextLeft)/Math.Max(1,headingFont.Measure(title,1)));
+        Heading(title,ShopTextLeft,y+13,ink,scale);
+    }
+    private void ShopText(string text,float x,float y,Color32 ink,float scale,bool strong=false,float right=ShopTextRight)
+    {
+        var type=strong?strongFont:font;
+        float width=type.Measure(text,scale/1.5f);
+        type.Draw(ui,text,x,y,ink,scale/1.5f*Math.Min(1,(right-x)/Math.Max(1,width)));
+    }
+    private void DrawShopFooter(Color32 ink,string back,string? action,float y=ShopFooterY)
+    {
+        const float labelOffset=20,promptGap=12,labelScale=1;
+        float x=ShopTextLeft;
+        if(action!=null){
+            ButtonGlyph("A",x,y);
+            x+=labelOffset;
+            Text(action,x,y,ink,labelScale);
+            x+=font.Measure(action,labelScale/1.5f)+promptGap;
+        }
+        ButtonGlyph("B",x,y);
+        Text(back,x+labelOffset,y,ink,labelScale);
+    }
+    private void DrawShopRow(string label,int row,float y,Color32 ink,string? price=null)
+    {
+        bool active=row==selected;
+        if(active)Rounded(347,y,248,23,11,new Color32(221,231,188));
+        float labelRight=ShopTextRight;
+        if(price!=null){
+            float priceX=ShopTextRight-font.Measure(price,1.05f/1.5f);
+            Text(price,priceX,y+2,ink,1.05f);
+            labelRight=priceX-8;
+        }
+        ShopText(active?"> "+label:label,ShopTextLeft,y+2,ink,1.15f,active,labelRight);
+    }
+    private void DrawShopPockets(Color32 ink)
+    {
+        const float gridTop=116;
+        float details=gridTop+(state.Capacity/5)*34+11;
+        DrawShopFrame("Sell items",ink,ShopPanelTop,details+84-ShopPanelTop);
+        Rounded(483,75,108,24,12,new Color32(232,183,86));
+        string wallet=UiFont.Money(state.Wallet);
+        Strong(wallet,537-strongFont.Measure(wallet,1.05f/1.5f)*.5f,76,ink,1.05f);
+        for(int i=0;i<state.Capacity;i++){
+            float x=ShopTextLeft+i%5*49,y=gridTop+i/5*34;
+            if(i==selected)Rounded(x-2,y-2,47,34,12,new Color32(232,183,86));
+            Rounded(x,y,43,30,11,i==selected?new Color32(255,251,238):new Color32(231,228,202));
+            int id=state.Pockets[i];
+            if(id!=0){
+                int icon=Catalog.IconId(id);
+                itemIcons.Draw(ui,new RectF(icon%8*64,icon/8*64,64,64),new RectF(x+8,y+1,28,28),Color32.White);
+            }else Rounded(x+20,y+13,4,4,2,new Color32(188,195,166));
+        }
+        int item=state.Pockets[selected];
+        bool sellable=CanSellFromPockets(selected);
+        if(item!=0){
+            ShopText(itemTitleText.Get(BackpackJobTitle(selected,item)),ShopTextLeft,details,ink,1.15f,true);
+            ShopText(sellable?"Sell for "+UiFont.Money(Catalog.Items[item].Sell):"Not for sale",ShopTextLeft,details+22,ink,1.05f);
+        }
+        DrawShopFooter(ink,"close",sellable?"sell":null,details+52);
     }
     private void DrawShopHint(Color32 ink)
     {

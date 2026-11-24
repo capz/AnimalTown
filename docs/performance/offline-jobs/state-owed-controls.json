@@ -1,0 +1,64 @@
+{
+  "mode": "owed",
+  "passed": true,
+  "sequence": 5,
+  "activeProfile": 0,
+  "visiting": false,
+  "position": {
+    "X": 80.47461,
+    "Z": 42.495117,
+    "Space": 0
+  },
+  "wallet": 99196,
+  "completed": true,
+  "mailCount": 0,
+  "pockets": [
+    34,
+    2,
+    2,
+    2,
+    2,
+    27,
+    14,
+    15,
+    7,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+  ],
+  "bindings": [],
+  "outfits": [
+    0,
+    41,
+    0,
+    0,
+    0,
+    0
+  ],
+  "jobs": [],
+  "terminals": [
+    {
+      "template": "DeliveryClothing",
+      "reason": "Success",
+      "At": 1815652800
+    }
+  ]
+}

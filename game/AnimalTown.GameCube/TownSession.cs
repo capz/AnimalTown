@@ -6,7 +6,7 @@ using Dolphin.Storage;
 using Dolphin.Timing;
 
 // Read the shared save before constructing any game renderer or town assets.
-internal sealed class TownSession
+internal sealed partial class TownSession
 {
     internal GameState State {get;private set;}
     internal OnboardingDraft? Draft {get;private set;}
@@ -15,9 +15,36 @@ internal sealed class TownSession
     internal bool Loaded {get;private set;}
     internal readonly bool Damaged;
     internal string Status {get;private set;}
+    private int travelAction,travelProfile,travelFrom,travelTo;private long travelAt;
+    internal string TravelError {get;private set;}="";
+    internal void QueueTravel(int action,int profile,int from,int to,long now)
+    {travelAction=action;travelProfile=profile;travelFrom=from;travelTo=to;travelAt=now;}
     private TownSession(GameState state,bool loaded,bool damaged,string status){State=state;Loaded=loaded;Damaged=damaged;Status=status;}
+    internal void RefreshVisitors()
+    {
+        SavedVisitor[] visitors=new SavedVisitor[0];
+        if(SaveCards.Enabled&&Loaded&&!Damaged&&Draft==null&&State.Town.Jobs.Initialized){
+            int device=SaveCards.Device==4?5:4;
+            try{
+                using var card=MemoryCard.Mount((StorageDevice)device,new MemoryCardIdentity("AMTE","01"));
+                var storage=new CardSaveStorage(card,new byte[0],new byte[0],device,initializeArchive:false);
+                bool deleting=false;
+                foreach(string name in storage.Names())if(name==TownDataDeletion.Marker){deleting=true;break;}
+                // Let the live roster reject duplicate identities before applying its visitor cap.
+                if(!deleting)
+                    visitors=new SaveRepository(storage).ReadVisitors(State.Town.Jobs.TownId,Town.LocalResidentCount);
+            }catch(Exception error){DebugOverlay.WriteLine("ANIMALTOWN VISITOR CARD: "+error.Message);}
+        }
+        State.SetTownVisitors(visitors);
+    }
+    internal void AdoptTravel(GameState state)
+    {
+        if(state.Town.Jobs.TownId!=State.Town.Jobs.TownId)state.Town.Traffic.Snow.ResetForTownEntry();
+        State=state;Loaded=true;Status="Trip saved / "+BuildInfo.Version;
+    }
     internal void SelectProfile(int profile)
     {
+        if(State.ProfileLocked(profile))throw new InvalidOperationException("This villager is away.");
         if(!State.Profiles[profile].Created||!State.HomePlaced(profile)){
             Draft=new OnboardingDraft(State,profile,Loaded);State=Draft.State;
         }else State.SelectProfile(profile);
@@ -45,7 +72,11 @@ internal sealed class TownSession
             for(int i=0;i<names.Length;i++)if(SplitSaveCodec.IsFile(names[i]))files=true;
             if(TownDataDeletion.Pending(names)){OnboardingSaveError="Finish town deletion in title Options first.";return false;}
             phase="save set";
-            Draft.Commit(new SaveRepository(store),files,names);State=Draft.State;Draft.Dispose();Draft=null;Loaded=true;Status="Saved / "+BuildInfo.Version;return true;
+            Draft.Commit(new SaveRepository(store),files,names);State=Draft.State;Draft.Dispose();Draft=null;Loaded=true;
+            try{store.UpdateVillagerFiles(State);}
+            catch(Exception error){DebugOverlay.WriteLine("VILLAGER CARD MIGRATION: "+error.Message);}
+            store.MigrateSettings();
+            Status="Saved / "+BuildInfo.Version;return true;
         }catch(Exception error){
             string detail=error.Message??"Native save error (no message)";
             DebugOverlay.WriteLine("ONBOARDING SAVE ERROR: "+phase+" (code "+NativeCalendar.CardError()+", mount "+NativeCalendar.CardMountError()+", recovery "+NativeCalendar.CardRecoveryError()+"): "+detail);
@@ -63,7 +94,10 @@ internal sealed class TownSession
         try{
             using var card=SaveCards.Mount();
             var storage=new CardSaveStorage(card,File.ReadAllBytes(AnimalTown.ContentPaths.Asset("savebanner.rgb5a3")),File.ReadAllBytes(AnimalTown.ContentPaths.Asset("saveicon.rgb5a3")),SaveCards.Device);
-            State=new SaveRepository(storage).DeleteProfile(State,profile);return true;
+            State=new SaveRepository(storage).DeleteProfile(State,profile);
+            try{storage.UpdateVillagerFiles(State);}
+            catch(Exception error){DebugOverlay.WriteLine("VILLAGER CARD CLEANUP: "+error.Message);}
+            return true;
         }catch(Exception){return false;}
     }
     internal static TownSession Load()
@@ -78,7 +112,7 @@ internal sealed class TownSession
                 state=new SaveRepository(store).Load();
                 if(state!=null)status="Save loaded";else if(existing){damaged=true;status="No complete save set. Backup card before recovery.";}
             }
-        }catch(Exception){damaged=true;status="Could not read "+SaveCards.Slot+". Return to title to recheck.";}
+        }catch(Exception error){DebugOverlay.WriteLine("TOWN LOAD ERROR: "+error.Message);damaged=true;status="Could not read "+SaveCards.Slot+". Return to title to recheck.";}
         bool loaded=state!=null;
         if(state==null){long now=Clock.Timestamp;int date=NativeCalendar.Read();state=new GameState(unchecked((int)(now^(now>>32)^date*7919L)));state.Profiles[0].Created=false;}
         return new TownSession(state,loaded,damaged,status);

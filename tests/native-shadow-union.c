@@ -90,6 +90,52 @@ static void light_equivalence_checks(void){
     free(reference);
 }
 
+static void static_base_equivalence_checks(void){
+    uint8_t reference[SU_BYTES],restored[SU_BYTES],packed[SU_BASE_BYTES];
+    /* Exercise every possible pairing of shadow nibbles. */
+    for(int i=0;i<SU_BASE_BYTES;i++){
+        reference[2*i]=i&15;
+        reference[2*i+1]=(i>>4)&15;
+    }
+    su_store_base(packed,reference);
+    su_load_base(restored,packed);
+    CHECK(!memcmp(restored,reference,SU_BYTES));
+
+    reset();
+    const float across[]={4,0,12,0,12,8,4,0,12,8,4,8},b[]={5,1,11,7};
+    const float lights[]={8,4,7,255};
+    caster(0,0,across,6,b);
+    caster(SU_STATIC,4,rect,6,bounds);
+    for(int z=0;z<64;z++)for(int x=0;x<64;x++)s->shapes[z*64+x]=(uint8_t)(2*x+2*z);
+    for(int z=0;z<16;z++)for(int x=0;x<16;x++)s->terrain[su_terrain_offset(x,z)]=(x+3*z)&3;
+    su_terrain_publish(s);
+    su_lights(s,lights,1);
+    memset(s->clouds,128,sizeof(s->clouds));s->cloud_ready=1;
+    su_cloud_style(s,32,255,33,0);
+    su_cloud_motion(s,.25f,0);
+    su_prepare(s,SU_PAGES);
+
+    int pages=0,lit=0;
+    for(int i=0;i<SU_PAGES;i++){
+        const SuPage *p=&s->page[i];
+        if(!p->needed)continue;
+        pages++;
+        /* Compose through an unpacked base as before, then compare all IA4
+         * texels, including the filtering gutters on both sides of a seam. */
+        su_seed_terrain(s,p,reference);
+        su_raster(s,p,&s->caster[0],reference);
+        su_load_base(restored,s->base+i*SU_BASE_BYTES);
+        CHECK(!memcmp(restored,reference,SU_BYTES));
+        su_raster(s,p,&s->caster[SU_STATIC],reference);
+        su_page_clouds(s,p,reference);
+        for(int j=0;j<SU_BYTES;j++)lit+=reference[j]>>4!=0;
+        CHECK(!memcmp(s->pixels+i*SU_BYTES,reference,SU_BYTES));
+    }
+    CHECK(pages>1&&lit>0);
+    CHECK(s->pixels-s->base==SU_PAGES*SU_BASE_BYTES);
+    CHECK(s->terrain-s->pixels==SU_PAGES*SU_BYTES);
+}
+
 static double light_bake_time(void (*bake)(SuState *),int iterations){
     struct timespec start,end;
     assert(!clock_gettime(CLOCK_MONOTONIC,&start));
@@ -256,13 +302,15 @@ static void cloud_checks(void){
     CHECK(pixel(4,4)==SU_OPACITY&&pixel(1,1)==0); // Indoor actors work; outdoor clouds/cliffs never leak in.
 }
 int main(int argc,char **argv){
-    s=aligned_alloc(32,su_storage_bytes());CHECK(s!=NULL);CHECK(su_storage_bytes()<512*1024);
+    s=aligned_alloc(32,su_storage_bytes());CHECK(s!=NULL);CHECK(su_storage_bytes()<448*1024);
     if(argc==2&&!strcmp(argv[1],"--benchmark")){reset();light_bake_benchmark();free(s);return 0;}
     native_shadow_combiner_checks();
     post_shadow_checks();
     light_checks();
     light_equivalence_checks();
-    CHECK(SU_PAGES*SU_BYTES*2+SU_TERRAIN_BYTES*2==384*1024);
+    static_base_equivalence_checks();
+    CHECK(SU_PAGES*SU_BASE_BYTES==80*1024);
+    CHECK(SU_PAGES*(SU_BASE_BYTES+SU_BYTES)+SU_TERRAIN_BYTES*2==304*1024);
     reset();caster(0,0,rect,6,bounds);su_prepare(s,SU_PAGES);CHECK(pixel(4,4)==SU_OPACITY);
     uint8_t original[SU_BYTES];int page=su_find(s,0,0);memcpy(original,s->pixels+page*SU_BYTES,SU_BYTES);
     for(int i=1;i<32;i++)caster(i,i%4,rect,6,bounds);
@@ -306,13 +354,13 @@ int main(int argc,char **argv){
         CHECK(abs((int)s->pixels[left*SU_BYTES+su_offset(SU_INNER+x,y)]-s->pixels[right*SU_BYTES+su_offset(x,y)])<=1);
     memset(s->shapes,255,sizeof(s->shapes));su_dirty(s,&s->caster[0]);su_prepare(s,SU_PAGES);
     su_begin(s,3,1,4);su_prepare(s,SU_PAGES);CHECK(su_find(s,0,0)<0);su_begin(s,0,1,0);su_prepare(s,SU_PAGES);CHECK(pixel(7,4)==SU_OPACITY);
-    /* Worst-case separated footprints: four pages each, 39 casters. */
-    reset();for(int i=0;i<39;i++){
+    /* Worst-case separated footprints: four pages for every caster. */
+    reset();for(int i=0;i<SU_CASTERS;i++){
         float x=(i%8+1)*16.f,z=(i/8+1)*16.f,uv[12],b[4]={x-1,z-1,x+1,z+1};
         for(int j=0;j<6;j++){uv[j*2]=rect[j*2]+x-4;uv[j*2+1]=rect[j*2+1]+z-4;}
-        su_mesh(s,i,6,i<32?0:4,uv,b);su_active(s,i,1,x,z);
+        su_mesh(s,i,6,i<SU_STATIC?0:4,uv,b);su_active(s,i,1,x,z);
     }su_prepare(s,SU_PAGES);int used=0;for(int i=0;i<SU_PAGES;i++)used+=s->page[i].needed;
-    CHECK(used==156);CHECK(s->overflow==0);
+    CHECK(used==SU_CASTERS*4);CHECK(s->overflow==0);
     /* Static work stays bounded while dynamic coverage remains current. */
     reset();caster(0,0,rect,6,bounds);caster(32,4,rect,6,bounds);
     su_prepare(s,0);CHECK(s->static_rasters==0);CHECK(pixel(4,4)==SU_OPACITY);
@@ -411,5 +459,5 @@ int main(int argc,char **argv){
     seasonal_cloud_checks();
     night_cloud_checks();
     printf("Shadow storage: %zu bytes total; %d-byte pages, two %d-byte terrain fields\n",su_storage_bytes(),SU_BYTES,SU_TERRAIN_BYTES);
-    free(s);printf("Shadow union: %d checks; max overlap, soft edges, trails, clipping, seams, rooms and 156-page bound passed\n",assertions);return 0;
+    free(s);printf("Shadow union: %d checks; max overlap, soft edges, trails, clipping, seams, rooms and %d-page bound passed\n",assertions,SU_PAGES);return 0;
 }

@@ -24,12 +24,35 @@ using(var draft=NewVillager()){
     draft.Commit(repository,false,new string[0]);
     var loaded=repository.Load()!;
     Check(loaded.Name=="Emi"&&loaded.Species==0&&loaded.HousePlaced&&loaded.Profiles[0].Created,"a generated first villager saves and reloads with 40 free blocks");
-    Check(card.Files.Count==1&&card.Files.ContainsKey("AnimalTown")&&card.Used==34&&card.Peak==34,"one browser item contains both save banks and internal recovery space");
+    Check(card.Files.Count==2&&card.Files.ContainsKey("AnimalTown")&&card.Files.ContainsKey("AnimalTown-Villager1")&&card.Used==36&&card.Peak==39,"the town and first villager occupy separate browser entries and blocks");
     foreach(var record in card.Metadata){
-        Check(record.Key=="AnimalTown"&&record.Value.Banner!.SequenceEqual(banner)&&record.Value.Icon!.SequenceEqual(icon),"one shared banner/icon pair");
+        Check(record.Value.Banner!.SequenceEqual(banner)&&record.Value.Icon!.SequenceEqual(icon),"both entries retain card artwork");
         Check(record.Value.Title=="AnimalTown","container retains browser identity");
     }
     int writes=card.Writes;repository.Save(loaded);Check(card.Writes==writes,"an unchanged save does not rewrite records to change their presentation");
+    long jobNow=AnimalTown.Jobs.JobCalendar.At(2027,7,15,12);loaded.ResidentJobs.Enable(23495,jobNow);repository.Save(loaded);
+    writes=card.Writes;loaded.ResidentJobs.AdvanceTo(jobNow+1);repository.Save(loaded);
+    Console.WriteLine("Clock card writes: "+repository.LastWrittenRecords+" logical / "+repository.LastWrittenBytes+" encoded bytes / "+(card.Writes-writes)+" sectors");
+    // Town schema 11 retains the fixed job-state extension even while pristine;
+    // the extra encoded bytes still fit the same verified card sectors.
+    Check(repository.LastWrittenRecords==4&&repository.LastWrittenBytes==1336&&card.Writes-writes==8,"a pristine job clock writes four logical records and eight verified 8 KiB sectors");
+    loaded.ObserveJobAcre(0);repository.Save(loaded);writes=card.Writes;loaded.ResidentJobs.AdvanceTo(jobNow+2);repository.Save(loaded);
+    Check(repository.LastWrittenRecords==4&&repository.LastWrittenBytes==1336&&card.Writes-writes==8,"an active job clock writes four logical records and eight verified 8 KiB sectors, without an economic rewrite");
+    var prefixMeter=new PrefixMeter(adapter);new SaveRepository(prefixMeter).VerifyRevision(loaded);
+    Check(prefixMeter.PrefixReads==1&&prefixMeter.EconomicReads==0,"travel verifies the entire economic checksum while retaining only a 732-byte identity prefix");
+    prefixMeter.PrefixReads=prefixMeter.EconomicReads=0;var travelPreview=new SaveRepository(prefixMeter).ReadTravelPreview();
+    Check(travelPreview.TownId==loaded.Town.Jobs.TownId&&travelPreview.Sequence==loaded.Sequence&&travelPreview.Seed==loaded.Town.Seed&&Enumerable.Range(0,6).All(i=>travelPreview.NpcName(i)==loaded.Town.Residents[i].Name),"travel preview reads the committed town identity, revision and six NPC names without constructing another town");
+    Check(prefixMeter.PrefixReads==1&&prefixMeter.EconomicReads==0,"travel preview validates the full referenced economy while retaining only its small identity prefix");
+    var badPrefix=card.Copy();var pages=badPrefix.RecordPages["AnimalTown"];var rootBytes=BitConverter.ToInt32(pages[0],8)>BitConverter.ToInt32(pages[1],8)?pages[0]:pages[1];
+    for(int i=0;i<64;i++){
+        int at=32+i*48;string record=System.Text.Encoding.ASCII.GetString(rootBytes,at,32).TrimEnd('\0');if(!record.StartsWith("AT-Shops"))continue;
+        int page=BitConverter.ToInt32(rootBytes,at+32),offset=BitConverter.ToInt32(rootBytes,at+36),length=BitConverter.ToInt32(rootBytes,at+40);int altered=offset+length-8;
+        pages[page+altered/8192][altered%8192]^=1;
+    }
+    bool prefixCorrupt=false;try{new SaveRepository(adapter).VerifyRevision(loaded);}catch(InvalidOperationException){prefixCorrupt=true;}
+    Check(prefixCorrupt,"a prefix read rejects corruption beyond the retained prefix in both referenced economic copies");
+    bool previewCorrupt=false;try{new SaveRepository(adapter).ReadTravelPreview();}catch(InvalidOperationException){previewCorrupt=true;}
+    Check(previewCorrupt,"travel preview rejects full-record corruption beyond the retained identity prefix");MemoryCard.Slots[4]=card;MemoryCard.Current=card;
     // The extra town-history pages must fit on subsequent copy-on-write saves,
     // not only the first save into an empty container.
     for(int save=1;save<=12;save++){
@@ -81,7 +104,7 @@ Check(card.Files.Count==1&&new SaveRepository(new CardSaveStorage(card,banner,ic
 card=new MemoryCard();var preferences=new CardArchive(card,banner,icon,4);preferences.Write("options",new byte[]{5});preferences.Write("dev_config",new byte[]{7});
 using(var draft=NewVillager())draft.Commit(new SaveRepository(new CardSaveStorage(card,banner,icon,4)),false,new string[0]);
 var all=new CardArchive(card,banner,icon,4);
-Check(card.Files.Count==1&&all.Read("options")[0]==5&&all.Read("dev_config")[0]==7,"a preferences-first card adds the town to the same item without losing settings");
+Check(card.Files.Count==2&&all.Read("options")[0]==5&&all.Read("dev_config")[0]==7,"a preferences-first card adds a separate villager without losing settings");
 // Existing 16-block archives grow by verified replacement, with the source
 // intact until the new archive's publication marker is durable.
 MemoryCard OldArchive()
@@ -113,8 +136,258 @@ try{new CardArchive(card,banner,icon,4).Write("options",new byte[]{8});}catch(IO
 Check(growthFull&&card.Files.Count==1&&new CardArchive(card,banner,icon,4).Read("options")[0]==5,"insufficient migration workspace retains the complete original");
 card.Capacity=52;new CardArchive(card,banner,icon,4).Write("options",new byte[]{8});
 Check(card.Files.Count==1&&card.Used==34,"expansion retries after freeing exactly the required workspace");
+// A no-op explicit save migrates existing archived profiles, including
+// inactive slots. Interrupt cleanup after the external file has been written.
+card=OldArchive();
+new CardArchive(card,banner,icon,4).Write("options",new byte[]{8});
+var legacyRecords=new CardRecordStore(new NativeCardBlocks(4,false,banner,icon,"AnimalTown2"),true);
+var legacyRepo=new SaveRepository(new RecordFiles(legacyRecords));
+var existing=legacyRepo.Load()!;
+for(int slot=1;slot<GameState.ProfileCount;slot++){
+    existing.SelectProfile(slot);existing.Name="Resident "+(slot+1);existing.Wallet=100+slot;
+}
+legacyRepo.Save(existing);
+var upgrade=new CardSaveStorage(card,banner,icon,4);
+var upgradeRepo=new SaveRepository(upgrade);
+existing=upgradeRepo.Load()!;
+Check(card.Files.Count==1&&existing.ProfileName(3)=="Resident 4","reading all archived villagers causes no writes");
+upgradeRepo.Save(existing);
+card.Capacity=38;
+bool splitFull=false;
+try{upgrade.UpdateVillagerFiles(existing);}catch(IOException){splitFull=true;}
+Check(splitFull&&card.Files.Count==1&&upgradeRepo.Load()!.ProfileName(3)=="Resident 4","a full card keeps archived profiles readable");
+card.Capacity=80;
+card.FailBlockWrite=0;
+bool splitCut=false;
+try{upgrade.UpdateVillagerFiles(existing);}catch(IOException){splitCut=true;}
+Check(splitCut&&card.Files.ContainsKey("AnimalTown-Villager1")&&new SaveRepository(new CardSaveStorage(card,banner,icon,4)).Load()!.ProfileName(3)=="Resident 4","interrupted separation retains a loadable town");
+upgrade=new CardSaveStorage(card,banner,icon,4);
+upgrade.UpdateVillagerFiles(existing);
+Check(card.Files.Count==5&&Enumerable.Range(0,4).All(i=>card.Files.ContainsKey(VillagerCardFiles.FileName(i))),"each occupied villager has exactly one physical entry");
+var sharedRecords=new CardRecordStore(new NativeCardBlocks(4,false,banner,icon,"AnimalTown2"),false);
+Check(!sharedRecords.Names().Any(n=>VillagerCardFiles.SlotForBank(n)>=0),"occupied villager banks have moved out of the shared archive");
+var other=(byte[])card.Files["AnimalTown-Villager1"].Clone();
+upgradeRepo=new SaveRepository(upgrade);
+existing=upgradeRepo.Load()!;
+existing.Wallet++;
+upgradeRepo.Save(existing);
+Check(card.Files["AnimalTown-Villager1"].SequenceEqual(other),"saving an active villager leaves another villager file byte-identical");
+card.Capacity=card.Used;
+existing=upgradeRepo.DeleteProfile(existing,3);
+card.FailDelete=0;
+bool releaseCut=false;
+try{upgrade.UpdateVillagerFiles(existing);}catch(IOException){releaseCut=true;}
+upgrade=new CardSaveStorage(card,banner,icon,4);
+Check(releaseCut&&card.Files.ContainsKey("AnimalTown-Villager4")&&!new SaveRepository(upgrade).Load()!.Profiles[3].Created,"an interrupted release cannot resurrect a committed deletion");
+upgrade.UpdateVillagerFiles(existing);
+Check(!card.Files.ContainsKey("AnimalTown-Villager4")&&!new SaveRepository(new CardSaveStorage(card,banner,icon,4)).Load()!.Profiles[3].Created,"deletion frees only the removed villager's entry on a full card and survives reload");
+TownDataDeletion.Erase(new ArchiveFiles(new CardArchive(card,banner,icon,4)));
+Check(card.Files.Count==1&&new SaveRepository(new CardSaveStorage(card,banner,icon,4)).Load()==null,"town deletion also removes the dedicated entries");
+// Existing settings remain readable until an explicit save can move them.
+card=OldArchive();
+var expectedVideo=new UserOptions{Resolution=2,Widescreen=true,ShowDebugMenus=true};
+var expectedDebug=new DevConfig();expectedDebug.Values[DevConfig.FullResolutionAaIndex]=1;
+new CardArchive(card,banner,icon,4).Write(UserOptionsStorage.FileName,expectedVideo.Encode());
+new CardArchive(card,banner,icon,4).Write(DevConfigStorage.FileName,expectedDebug.Encode());
+SaveCards.Initialize();
+Check(UserOptionsStorage.Load().Resolution==2&&DevConfigStorage.Load().Values[DevConfig.FullResolutionAaIndex]==1&&card.Files.Count==1,"loading archived settings is read-only");
+card.Capacity=card.Used+1;
+new CardSaveStorage(card,banner,icon,4).MigrateSettings();
+Check(card.Files.Count==1&&UserOptionsStorage.Load().Widescreen,"insufficient journal space preserves archived settings");
+card.Capacity=80;
+card.FailBlockWrite=0;
+new CardSaveStorage(card,banner,icon,4).MigrateSettings();
+Check(card.Files.ContainsKey(CardSettingsStorage.VideoFile)&&UserOptionsStorage.Load().ShowDebugMenus,"video copy survives interrupted archive cleanup");
+new CardSaveStorage(card,banner,icon,4).MigrateSettings();
+var settingsArchive=new CardRecordStore(new NativeCardBlocks(4,false,banner,icon,"AnimalTown2"),false);
+Check(!settingsArchive.Names().Contains(UserOptionsStorage.FileName)&&!settingsArchive.Names().Contains(DevConfigStorage.FileName),"the verified settings files supersede both archived copies");
+Check(card.Files.Count==3&&card.Used==36&&DevConfigStorage.Load().Values[DevConfig.FullResolutionAaIndex]==1,"both migrated files use one physical block each");
+// A loose legacy setting migrates on its own save, without creating a town.
+card=new MemoryCard();
+card.WriteSave(UserOptionsStorage.FileName,expectedVideo.Encode(),new MemoryCardSaveOptions());
+SaveCards.Initialize();
+Check(UserOptionsStorage.Load().Widescreen&&card.Files.ContainsKey(UserOptionsStorage.FileName),"loose video settings still load");
+Check(UserOptionsStorage.Save(expectedVideo)&&card.Files.Count==1&&card.Files.ContainsKey(CardSettingsStorage.VideoFile),"explicit settings save replaces the loose legacy entry");
+Check(card.CreateRecords("AnimalTown",32,1234,new byte[16384])==0,"damaged archive fixture creates an independent town entry");
+card.RecordPages["AnimalTown"][0][0]=255;
+Check(UserOptionsStorage.Load().Widescreen&&DevConfigStorage.Save(expectedDebug)&&DevConfigStorage.Load().Values[DevConfig.FullResolutionAaIndex]==1,"dedicated settings can load and save with a damaged town archive");
+// A trip checkpoint can commit on a full existing archive without trying
+// to migrate a villager whose inventory changed. It also rejects a card swap after preview.
+var travelHomeCard=new MemoryCard(4);
+var travelAwayCard=new MemoryCard(5);
+var travelHome=new GameState(8519);
+var travelAway=new GameState(8520);
+long checkpointTime=AnimalTown.Jobs.JobCalendar.At(2027,7,15,12);
+travelHome.ResidentJobs.Enable(123456,checkpointTime);
+travelAway.ResidentJobs.Enable(123457,checkpointTime);
+travelAway.Name="Birch";travelAway.SelectProfile(1);travelAway.Name="Rowan";travelAway.Species=3;travelAway.SelectProfile(0);
+travelAway.Town.Residents[0].Name="Juniper";travelAway.Town.Residents[1].Name="Marigold";
+var travelHomeArchive=new TownCardRecords(new NativeCardBlocks(4,true,banner,icon),true);
+travelHomeArchive.SetArchiveMarker(2,0,0);
+new SaveRepository(travelHomeArchive).Save(travelHome);
+var travelAwayStore=new CardSaveStorage(travelAwayCard,banner,icon,5);
+var travelAwayRepository=new SaveRepository(travelAwayStore);
+travelAwayRepository.Save(travelAway);
+SaveCards.Initialize();
+var visitingSession=TownSession.Load();
+int hostWrites=travelHomeCard.Writes,visitorWrites=travelAwayCard.Writes;
+visitingSession.RefreshVisitors();
+Check(visitingSession.State.Town.Jobs.TownId==123456&&
+    visitingSession.State.NpcVisitor(5)?.Identity==travelAway.Town.Jobs.Npc(0)&&visitingSession.State.NpcVisitor(5)?.Name=="Juniper"&&
+    visitingSession.State.NpcVisitor(6)?.Identity==travelAway.Town.Jobs.Npc(1)&&visitingSession.State.NpcVisitor(6)?.Name=="Marigold"&&
+    visitingSession.State.NpcSpecies(6)==travelAway.ResidentSpecies(1),
+    "two NPC residents from Slot B visit the selected Slot A town using their saved identities and appearance");
+Check(visitingSession.State.Name==travelHome.Name&&visitingSession.State.NpcVisitor(5)?.Name!=travelAway.Profiles[0].Name&&
+    visitingSession.State.NpcVisitor(6)?.Name!=travelAway.Profiles[1].Name,
+    "loading NPC visitors keeps the local player controlled and leaves foreign player profiles off the autonomous roster");
+Check(SaveCards.Device==4&&travelHomeCard.Writes==hostWrites&&travelAwayCard.Writes==visitorWrites,
+    "loading visitors leaves both cards and the selected slot untouched");
+MemoryCard.Slots.Remove(5);
+visitingSession.RefreshVisitors();
+Check(!visitingSession.State.NpcPresent(5)&&!visitingSession.State.NpcPresent(6),"missing source card leaves both visitor slots empty");
+var interruptedVisitorCard=new MemoryCard(5);
+Check(interruptedVisitorCard.CreateRecords("AnimalTown",32,1234,new byte[16384])==0,"interrupted source archive fixture");
+int interruptedWrites=interruptedVisitorCard.Writes;
+visitingSession.RefreshVisitors();
+Check(interruptedVisitorCard.Writes==interruptedWrites&&!visitingSession.State.NpcPresent(5)&&!visitingSession.State.NpcPresent(6),
+    "visitor loading never initializes an interrupted source archive");
+MemoryCard.Slots[5]=travelAwayCard;
+bool travelSwapRefused=false;
+int awayWrites=travelAwayCard.Writes;
+try{CardSaveStorage.SaveTravelCheckpoint(travelAwayRepository,travelHome);}
+catch(InvalidOperationException){travelSwapRefused=true;}
+Check(travelSwapRefused&&travelAwayCard.Writes==awayWrites,"a different town card is never written by a trip checkpoint");
+travelHomeCard.Capacity=travelHomeCard.Used;
+travelHome.ResidentJobs.AdvanceTo(checkpointTime+1);
+travelHome.Wallet++;
+var checkpointRepository=new SaveRepository(new CardSaveStorage(travelHomeCard,banner,icon,4,preserveVillagerLayout:true));
+CardSaveStorage.SaveTravelCheckpoint(checkpointRepository,travelHome);
+var travelReloaded=checkpointRepository.Load()!;
+Check(travelReloaded.Town.Jobs.Watermark==checkpointTime+1&&travelReloaded.Wallet==travelHome.Wallet&&travelHomeCard.Files.Count==1,"trip saves changed progress without migrating profiles or settings");
 CardSelectionChecks.Run(Check);
+// Retire only the older record-store checkpoint, after publishing a second
+// verified copy of the unchanged current directory. No larger backing is needed.
+card=new MemoryCard();var compactRecords=new TownCardRecords(new NativeCardBlocks(4,true,banner,icon,"AnimalTown",6),true);
+var oldBody=Enumerable.Repeat((byte)2,8193).ToArray();var newBody=Enumerable.Repeat((byte)3,8193).ToArray();
+compactRecords.Write("large",oldBody);compactRecords.Write("large",oldBody);var compactBase=card.Copy();int compactWrites=card.Writes;
+MemoryCard.Slots[4]=card;MemoryCard.Current=card;
+compactRecords.Write("large",newBody);int retireWrites=card.Writes-compactWrites;
+Check(retireWrites==4&&compactRecords.Read("large").SequenceEqual(newBody)&&card.Files.Count==1,"obsolete-checkpoint pages are reused only after verified retirement, without growing the backing");
+for(int cut=0;cut<retireWrites;cut++){
+    card=compactBase.Copy();card.FailBlockWrite=cut;bool stopped=false;
+    try{new TownCardRecords(new NativeCardBlocks(4,false,banner,icon),true).Write("large",newBody);}catch(IOException){stopped=true;}
+    Check(stopped,"checkpoint retirement interruption reaches every sector write");card.FailBlockWrite=-1;
+    var reopened=new TownCardRecords(new NativeCardBlocks(4,false,banner,icon),true);var retiredBody=reopened.Read("large");
+    Check(retiredBody.SequenceEqual(oldBody)||retiredBody.SequenceEqual(newBody),"every retirement interruption retains one complete old or new payload");
+    reopened.Write("large",newBody);Check(reopened.Read("large").SequenceEqual(newBody),"retirement resumes idempotently after every interrupted sector");
+}
+card=new MemoryCard();var fragmented=new TownCardRecords(new NativeCardBlocks(4,true,banner,icon,"AnimalTown",10),true);
+fragmented.Write("gap",oldBody);fragmented.Write("a",oldBody);fragmented.Write("b",oldBody);fragmented.Write("b",oldBody);fragmented.Delete("gap");
+var fragmentedBase=card.Copy();MemoryCard.Slots[4]=card;MemoryCard.Current=card;
+var threePages=Enumerable.Repeat((byte)4,16385).ToArray();int relocationBefore=card.Writes;fragmented.Write("c",threePages);int relocationWrites=card.Writes-relocationBefore;
+Check(relocationWrites==9&&fragmented.Read("a").SequenceEqual(oldBody)&&fragmented.Read("b").SequenceEqual(oldBody)&&fragmented.Read("c").SequenceEqual(threePages),"streamed relocation joins fragmented free space without retaining a second large body");
+for(int cut=0;cut<relocationWrites;cut++){
+    card=fragmentedBase.Copy();card.FailBlockWrite=cut;bool stopped=false;
+    try{new TownCardRecords(new NativeCardBlocks(4,false,banner,icon),true).Write("c",threePages);}catch(IOException){stopped=true;}
+    Check(stopped,"streamed relocation interruption reaches every data and root publication sector");card.FailBlockWrite=-1;
+    var reopened=new TownCardRecords(new NativeCardBlocks(4,false,banner,icon),true);
+    Check(reopened.Read("a").SequenceEqual(oldBody)&&reopened.Read("b").SequenceEqual(oldBody),"both complete source records survive every interrupted relocation");
+    bool published=reopened.Names().Contains("c");if(!published)reopened.Write("c",threePages);
+    Check(reopened.Read("c").SequenceEqual(threePages)&&card.Files.Count==1,"relocation retries within its original backing after every interrupted sector");
+}
+// Text mail grows the same browser item beyond the old 256-block ceiling.
+card=new MemoryCard{Capacity=2043};var mailArchive=new CardArchive(card,banner,icon,4);mailArchive.Write("options",new byte[]{7});
+var longMail=new byte[2200000];for(int i=0;i<longMail.Length;i++)longMail[i]=(byte)(i*13);
+mailArchive.Write("AT-Shops0",longMail);
+Check(card.Files.Count==1&&card.Used>258&&new CardArchive(card,banner,icon,4).Read("AT-Shops0").SequenceEqual(longMail),"large mail archives grow beyond 256 blocks while retaining one browser item");
+Check(new CardArchive(card,banner,icon,4).Read("options")[0]==7,"mail growth preserves preferences");
+// A maximum real legacy mailbox must consolidate without a 32-block
+// intermediate or two full encoded copies during readback.
+var largeState=new GameState(7461){Tutorial=7};
+for(int p=1;p<4;p++){largeState.SelectProfile(p);largeState.Tutorial=7;}largeState.SelectProfile(0);
+long mailNow=AnimalTown.Jobs.JobCalendar.At(2027,7,15,12);largeState.ResidentJobs.Enable(0x41544d41494cUL,mailNow);
+string fullBody=string.Concat(Enumerable.Repeat("\U0001f642",1000));
+for(int p=0;p<4;p++)for(int batch=0;batch<2;batch++){
+    for(int n=0;n<64;n++){largeState.Receive(Catalog.WritingPaper);Check(largeState.ResidentJobs.SendLetter(largeState.Town.Jobs.Player(p),fullBody,largeState.Find(Catalog.WritingPaper),-1,largeState.ResidentJobs.NextCommandSequence).Result==AnimalTown.Jobs.JobResult.Ok,"maximum legacy letter send");}
+    largeState.ResidentJobs.AdvanceTo(mailNow+=86400);
+}
+card=new MemoryCard{Capacity=2043};new SaveRepository(new OldFiles(card)).Save(largeState);
+var legacyMaximum=card.Copy();MemoryCard.Slots[4]=card;MemoryCard.Current=card;int legacyWrites=card.Writes;
+var largeMigration=new CardArchive(card,banner,icon,4,new GameState(1));largeMigration.ReuseTextFrom(largeState);
+int conversionCollections=0;var previousReclaim=AnimalTown.Jobs.JobMemory.ReclaimTemporaryText;
+try{AnimalTown.Jobs.JobMemory.ReclaimTemporaryText=()=>conversionCollections++;largeMigration.Write("options",new byte[]{3});}
+finally{AnimalTown.Jobs.JobMemory.ReclaimTemporaryText=previousReclaim;}
+Check(conversionCollections<64,"conversion reuses its own validated town bodies instead of retaining another 512-letter mailbox");
+Check(card.Files.Count==1&&card.Used>258,"maximum legacy town chooses adequate initial backing space");
+int migrationWrites=card.Writes-legacyWrites;
+void VerifyMaximum(MemoryCard source){
+    MemoryCard.Slots[4]=source;MemoryCard.Current=source;
+    var loaded=new SaveRepository(new CardSaveStorage(source,banner,icon,4,largeState)).Load(largeState)!;
+    Check(loaded!=null&&loaded.MailCount==128,"maximum migrated mailbox remains loadable");
+    for(int p=0;p<4;p++){loaded!.SelectProfile(p);loaded.ResidentJobs.Enable(loaded.Town.Jobs.TownId,mailNow);Check(loaded.MailCount==128&&loaded.ResidentJobs.ReadLetter(127)==fullBody,"all four full Unicode mailboxes survive legacy conversion");}
+}
+VerifyMaximum(card);
+var rosterMeter=new PrefixMeter(new CardSaveStorage(card,banner,icon,4,initializeArchive:false));
+var maximumVisitors=new SaveRepository(rosterMeter).ReadVisitors(123456,Town.LocalResidentCount);
+Check(maximumVisitors.Length==Town.LocalResidentCount&&maximumVisitors[0].Identity==largeState.Town.Jobs.Npc(0)&&
+    rosterMeter.VerifiedReads==1&&rosterMeter.EconomicReads==0,
+    "visitor loading streams a verified roster from a maximum mailbox without reading the full economy into memory");
+card=legacyMaximum.Copy();var interruptedCreation=new NativeCardBlocks(4,true,banner,icon,"AnimalTown",1024);
+for(int page=600;page<1024;page++)Array.Fill(card.RecordPages["AnimalTown"][page],(byte)255);
+int creationWrites=card.Writes;
+VerifyMaximum(card);
+Check(card.Writes==creationWrites&&card.Files.Count==legacyMaximum.Files.Count+1,"opening a target interrupted during zero filling reads the intact legacy town without writing");
+new CardArchive(card,banner,icon,4,largeState).Write("options",new byte[]{3});VerifyMaximum(card);
+Check(card.Files.Count==1,"initial creation interrupted before either root is replaced only after the complete legacy town is validated");
+card=legacyMaximum.Copy();_ =new NativeCardBlocks(4,true,banner,icon,"AnimalTown",1024);
+foreach(string name in card.Files.Keys.Where(n=>n.StartsWith("AT-Commit")).ToArray())card.Delete(name);
+int incompleteFiles=card.Files.Count;bool refusedIncomplete=false;
+try{new CardArchive(card,banner,icon,4,largeState).Write("options",new byte[]{3});}catch(IOException){refusedIncomplete=true;}
+Check(refusedIncomplete&&card.Files.Count==incompleteFiles&&card.Files.ContainsKey("AnimalTown"),"an unverified archive is never replaced when the remaining legacy town is incomplete");
+card=legacyMaximum.Copy();_ =new TownCardRecords(new NativeCardBlocks(4,true,banner,icon),true);
+new CardArchive(card,banner,icon,4,largeState).Write("options",new byte[]{3});VerifyMaximum(card);
+Check(card.Files.Count==1&&card.Used>258,"an unpublished undersized legacy copy is replaced while all original records remain authoritative");
+foreach(int cut in new[]{0,migrationWrites/2,migrationWrites-1}){
+    card=legacyMaximum.Copy();card.FailBlockWrite=cut;bool stopped=false;
+    try{new CardArchive(card,banner,icon,4,largeState).Write("options",new byte[]{3});}catch(IOException){stopped=true;}
+    Check(stopped,"maximum legacy conversion interruption reached a physical write");
+    VerifyMaximum(card);card.FailBlockWrite=-1;new CardArchive(card,banner,icon,4,largeState).Write("options",new byte[]{3});VerifyMaximum(card);
+    Check(card.Files.Count==1,"maximum legacy conversion retries into one complete browser item");
+}
+Console.WriteLine("Maximum legacy mail: "+migrationWrites+" block writes; initial backing, streaming readback and interrupted retries passed.");
+// Metadata intent uses checkpoint space, so growth also works with no free
+// data page in the existing backing file.
+card=new MemoryCard{Capacity=2043};var packed=new TownCardRecords(new NativeCardBlocks(4,true,banner,icon),true);packed.SetArchiveMarker(2,0,0);
+packed.Write("full",new byte[28*8192]);packed.Write("tail",new byte[2*8192]);
+Check(packed.AvailableBlocks==0,"growth fixture fills every data page");
+new CardArchive(card,banner,icon,4).Write("options",new byte[]{9});
+Check(new CardArchive(card,banner,icon,4).Read("full").Length==28*8192,"a completely full container can publish growth without a free data page");
+var growthBase=card.Copy();var baselineArchive=new CardArchive(growthBase,banner,icon,4);baselineArchive.Write("larger",new byte[50*8192]);
+int growthWrites=growthBase.Writes-card.Writes;
+for(int cut=0;cut<growthWrites;cut++){
+    var trial=card.Copy();trial.FailBlockWrite=cut;try{new CardArchive(trial,banner,icon,4).Write("larger",new byte[50*8192]);}catch(IOException){}
+    trial.FailBlockWrite=-1;var recoveredGrowth=new CardArchive(trial,banner,icon,4);
+    Check(recoveredGrowth.Read("full").Length==28*8192,"every torn dynamic-growth block retains the original complete record");
+    recoveredGrowth.Write("larger",new byte[50*8192]);Check(recoveredGrowth.Read("larger").Length==50*8192&&trial.Files.Count==1,"dynamic growth recovers every physical write without duplicate backing items");
+}
+Console.WriteLine("Dynamic growth: "+growthWrites+" physical block writes, each torn and retried.");
+// Streaming readback checks full bytes and the record-store checksum without
+// retaining a second megabyte-sized array.
+card=growthBase;MemoryCard.Slots[4]=card;var streamRecords=new TownCardRecords(new NativeCardBlocks(4,false,banner,icon,card.RecordPages.Single().Key,card.RecordPages.Single().Value.Length),true);var large=streamRecords.Read("larger");
+Check(streamRecords.Matches("larger",large,-1,large.Length,0,false),"streamed readback accepts the complete saved record");large[100]=1;
+Check(!streamRecords.Matches("larger",large,-1,large.Length,0,false),"streamed readback detects a payload mismatch beyond its header");
 Console.WriteLine(checks+" card adapter checks passed: consolidated save/reload, no-op save, capacity, migration interruption/retry, independent records and deletion; host model, not hardware.");
+sealed class PrefixMeter(CardSaveStorage inner) : ISaveStorage,ISaveSnapshotStorage,ISaveVerifiedPrefixStorage,ISaveVerifiedRecordStorage
+{
+    internal int PrefixReads,EconomicReads,VerifiedReads;
+    public byte[] Read(string name){if(name.StartsWith("AT-Shops"))EconomicReads++;return inner.Read(name);}
+    public void Write(string name,byte[] bytes)=>inner.Write(name,bytes);
+    public byte[] ReadVerifiedPrefix(string name,int count,int sequence,int length,uint checksum){PrefixReads++;return inner.ReadVerifiedPrefix(name,count,sequence,length,checksum);}
+    public ISaveWordReader OpenVerifiedRecord(string name,int sequence,int length,uint checksum)
+    {VerifiedReads++;return inner.OpenVerifiedRecord(name,sequence,length,checksum);}
+    public bool Matches(string name,byte[]? expected,int sequence,int length,uint checksum,bool ignoreSequence)=>inner.Matches(name,expected,sequence,length,checksum,ignoreSequence);
+}
+
 sealed class OldFiles(MemoryCard card) : ISaveStorage
 {
     public byte[] Read(string name)=>card.ReadAllBytes(name);

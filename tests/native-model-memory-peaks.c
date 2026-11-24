@@ -237,6 +237,12 @@ static double compare_pose(Loaded full,Loaded coarse,const unsigned char *map,un
     for(unsigned mesh=0;mesh<a->meshes;mesh++){
         assert(at<=length-4);unsigned vertices=dnd_model_u32(map+at);at+=4;
         assert(vertices==a->mesh[mesh].vertices&&vertices<=(length-at)/4);
+        // A missing map is permissible only for unused source vertices. Check
+        // the original index stream independently of the offline collapse map.
+        for(unsigned index=0;index<a->mesh[mesh].indices;index++){
+            unsigned vertex=dnd_model_u32(a->mesh[mesh].index+index*4);
+            assert(vertex<vertices&&(int32_t)dnd_model_u32(map+at+vertex*4)>=0);
+        }
         for(unsigned vertex=0;vertex<vertices;vertex++,at+=4){
             int target=(int32_t)dnd_model_u32(map+at);if(target<0){assert(target==-1);continue;}
             assert((unsigned)target<b->mesh[mesh].vertices);

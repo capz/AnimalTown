@@ -11,26 +11,42 @@ internal static class FallLeafWakeChecks
         var wake=new FallLeafWake();
         var vertices=new VertexPositionColorTexture[FallLeafWake.Capacity*4];
         const float x=24,z=30;
-        for(int i=0;i<30;i++)wake.TrackStep(town,x,z,x,z,i/30f,false);
+        for(int i=0;i<30;i++)wake.TrackStep(town,x,z,x,z,i/30f);
         check(wake.WriteVertices(vertices,z,1)==0,"blocked or idle movement emits no fall leaves");
 
-        for(int i=1;i<=10;i++)wake.TrackStep(town,x+(i-1)*.09f,z,x+i*.09f,z,1+i*.03f,false);
+        // Fixed 30 Hz travel from gentle analog walking, including diagonal
+        // movement and a small tilt while holding the run button.
+        foreach(float step in new[]{PlayerMovement.WalkStep*.25f,PlayerMovement.RunStep*.2f}){
+            for(int i=1;i<=90;i++)wake.TrackStep(town,x+(i-1)*step,z,x+i*step,z,i/30f);
+            check(wake.WriteVertices(vertices,z,3)==0,"gentle movement never accumulates a leaf-emitting stride");
+        }
+        for(int i=1;i<=90;i++)wake.TrackStep(town,x+(i-1)*.03f,z+(i-1)*.03f,x+i*.03f,z+i*.03f,i/30f);
+        check(wake.WriteVertices(vertices,z,3)==0,"slow diagonal movement also suppresses leaves");
+        for(int i=1;i<=6;i++)wake.TrackStep(town,x+(i-1)*.1f,z,x+i*.1f,z,.1f);
+        wake.TrackStep(town,x+.6f,z,x+.62f,z,.2f);
+        wake.TrackStep(town,x+.62f,z,x+.62f+PlayerMovement.RunStep,z,.3f);
+        check(wake.WriteVertices(vertices,z,.3f)==0,"slowing down resets a partial stride before running resumes");
+        wake.Clear();
+
+        for(int i=1;i<=10;i++)wake.TrackStep(town,x+(i-1)*.09f,z,x+i*.09f,z,1+i*.03f);
         check(wake.WriteVertices(vertices,z,1.31f)==3,"walking one stride kicks up three leaves");
         float before=vertices[0].Position.Y;
         wake.WriteVertices(vertices,z,1.54f);
         check(vertices[0].Position.Y>before+.04f,"the first leaves arc above the footstep");
         check(wake.WriteVertices(vertices,z,2.4f)==0,"the whole wake expires after the player stops");
 
-        for(int i=1;i<=5;i++)wake.TrackStep(town,x+(i-1)*.16f,z,x+i*.16f,z,3+i*.03f,true);
-        check(wake.WriteVertices(vertices,z,3.16f)==4,"sprinting kicks up four leaves per stride");
+        for(int i=1;i<=5;i++)wake.TrackStep(town,x+(i-1)*.16f,z,x+i*.16f,z,3+i*.03f);
+        check(wake.WriteVertices(vertices,z,3.16f)==3,"running uses the same three-leaf burst as walking");
+        for(int i=1;i<=45;i++)wake.TrackStep(town,x+(i-1)*.02f,z,x+i*.02f,z,3.16f+i/30f);
+        check(wake.WriteVertices(vertices,z,4.66f)==0,"existing leaves fade naturally and slow movement cannot replace them");
         wake.Clear();
         check(wake.WriteVertices(vertices,z,3.2f)==0,"clearing the wake removes every live leaf");
         Array.Fill(town.Tiles,(byte)Terrain.Bridge);
-        for(int i=1;i<=10;i++)wake.TrackStep(town,x+(i-1)*.16f,z,x+i*.16f,z,4+i*.03f,true);
+        for(int i=1;i<=10;i++)wake.TrackStep(town,x+(i-1)*.16f,z,x+i*.16f,z,4+i*.03f);
         check(wake.WriteVertices(vertices,z,4.31f)==0,"bridges don't kick up leaves");
 
         Array.Fill(town.Tiles,(byte)Terrain.Camp);
-        for(int i=1;i<=120;i++)wake.TrackStep(town,x+(i-1)*.16f,z,x+i*.16f,z,5+i*.005f,true);
+        for(int i=1;i<=120;i++)wake.TrackStep(town,x+(i-1)*.16f,z,x+i*.16f,z,5+i*.005f);
         check(wake.WriteVertices(vertices,z,5.6f)==FallLeafWake.Capacity,"running across dirt stays within one 24-quad batch");
         bool narrow=false,lobed=false;
         for(int i=0;i<vertices.Length;i+=4){
@@ -43,7 +59,7 @@ internal static class FallLeafWakeChecks
         check(narrow&&lobed,"the wake uses both silhouettes");
         long start=GC.GetAllocatedBytesForCurrentThread();
         for(int i=1;i<=120;i++){
-            wake.TrackStep(town,x+(i-1)*.16f,z,x+i*.16f,z,6+i*.03f,true);
+            wake.TrackStep(town,x+(i-1)*.16f,z,x+i*.16f,z,6+i*.03f);
             wake.WriteVertices(vertices,z,6+i*.03f);
         }
         check(GC.GetAllocatedBytesForCurrentThread()==start,"warmed leaf movement and staging allocate nothing per frame");

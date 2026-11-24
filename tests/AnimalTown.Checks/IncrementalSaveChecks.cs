@@ -1,4 +1,5 @@
 using AnimalTown;
+using AnimalTown.Jobs;
 
 internal static class IncrementalSaveChecks
 {
@@ -13,6 +14,13 @@ internal static class IncrementalSaveChecks
         internal Disk Copy(){var d=new Disk();foreach(var f in Files)d.Files[f.Key]=(byte[])f.Value.Clone();return d;}
         internal void Reset(){Names.Clear();Bytes=0;CutAt=0;CorruptAfterWrite=null;}
     }
+    private sealed class PreparingDisk(Disk inner,Action preparation):ISaveStorage,ISaveWritePreparationStorage
+    {
+        internal int Preparations;private bool ready;
+        public byte[] Read(string name)=>inner.Read(name);
+        public void PrepareWrite(){Preparations++;preparation();ready=true;}
+        public void Write(string name,byte[] bytes){if(!ready)throw new IOException("Unprepared storage");inner.Write(name,bytes);}
+    }
     private static GameState Town(){var s=new GameState(7319){Name="Juniper",Wallet=1234};Array.Fill(s.Town.Tiles,(byte)Terrain.Grass);Array.Clear(s.Town.Elevation);s.Town.GroundCount=0;return s;}
     private static bool Fails(Action action){try{action();return false;}catch(Exception){return true;}}
     private static void Same(GameState a,GameState b,Action<bool,string> check,string label)=>check(SaveCodec.Encode(a).SequenceEqual(SaveCodec.Encode(b)),label);
@@ -21,6 +29,15 @@ internal static class IncrementalSaveChecks
     {check(disk.Names.Count==4&&disk.Names.Count(n=>Kind(n,kind))==2&&disk.Names.Count(n=>Kind(n,"AT-Commit"))==2,"only changed component and both reference heads are written: "+kind);}
     internal static void Run(Action<bool,string> check)
     {
+        var preparedState=Town();var preparedDisk=new Disk();int beforePreparation=preparedState.Sequence;
+        var preparedStorage=new PreparingDisk(preparedDisk,()=>check(preparedState.Sequence==beforePreparation&&preparedDisk.Names.Count==0,"storage preparation precedes revision changes and record writes"));
+        new SaveRepository(new SaveReadCache(preparedStorage)).Save(preparedState);
+        check(preparedStorage.Preparations==1&&new SaveRepository(preparedDisk).Load()!=null,"the exclusive read cache forwards storage preparation and publishes a complete save");
+        preparedDisk.Reset();int preparedSequence=preparedState.Sequence;
+        var failedPreparation=new PreparingDisk(preparedDisk,()=>throw new IOException("Interrupted conversion"));
+        check(Fails(()=>new SaveRepository(failedPreparation).Save(preparedState))&&preparedState.Sequence==preparedSequence&&preparedDisk.Names.Count==0,"an interrupted preparation preserves the live revision and all logical records");
+        var wrongTown=new GameState(7320);var guardedPreparation=new PreparingDisk(preparedDisk,()=>throw new Exception("Must not prepare a changed town"));
+        check(Fails(()=>new SaveRepository(guardedPreparation).Save(wrongTown))&&guardedPreparation.Preparations==0,"town identity is checked before storage preparation can write");
         var s=Town();var d=new Disk();var repo=new SaveRepository(d);repo.Save(s);
         check(d.Names.Count==18&&s.Sequence==1,"first save publishes eight component pairs and two complete manifests");Same(s,repo.Load()!,check,"initial reference save restores the exact logical snapshot");
         var original=d.Files.ToDictionary(f=>f.Key,f=>(byte[])f.Value.Clone());d.Reset();int seq=s.Sequence;
@@ -95,8 +112,61 @@ internal static class IncrementalSaveChecks
         var classic=new SaveRepository(d).Load()!;classic.Town.DaylightLocation=0;d.Reset();new SaveRepository(d).Save(classic);Only(d,"AT-Town",check);
         check(new SaveRepository(d).Load()!.Town.DaylightLocation==0,"switching back to Classic is saved and reloaded");
         JobTransactions(check);
+        VisitorProjections(check);
         SnowTransactions(check);
+        OfflineClockMailTransactions(check);
         Console.WriteLine("Incremental saves: exact component writes/no-op, static town vs NPC runtime, mirrored references, corruption, power cuts, retries and migration passed");
+    }
+    private static void VisitorProjections(Action<bool,string> check)
+    {
+        const ulong sourceTown=61712,localTown=89315;
+        var source=Town();source.Name="HumanPlayer";
+        for(int profile=1;profile<GameState.ProfileCount;profile++)source.SelectProfile(profile);
+        source.SelectProfile(0);
+        source.ResidentJobs.Enable(sourceTown,JobCalendar.At(2027,7,15,12));
+        check(source.ResidentJobs.ReplaceResident(0,"Quinn","tails up",3,JobPersonality.Normal,Catalog.WorkShirt).Result==JobResult.Ok,"replacement supplies a saved resident with a non-default species and outfit");
+        var ledger=source.Town.Jobs;ledger.EnsureMail();
+        JobMaximumFixture.Fill(source,string.Concat(Enumerable.Repeat("\U0001f642",1000)));
+        var disk=new Disk();var repo=new SaveRepository(disk);repo.Save(source);disk.Reset();
+        var committed=disk.Copy();
+        var visitors=repo.ReadVisitors(localTown);
+        check(visitors.Length==2&&visitors[0].TownId==sourceTown&&visitors[0].Slot==0&&visitors[1].Slot==1,"read-only projection defaults to two ordinary saved NPCs");
+        check(visitors[0].Name=="Quinn"&&visitors[0].Identity==ledger.Npc(0)&&visitors[0].Catchphrase=="tails up"&&visitors[0].Species==3&&visitors[0].Outfit==Catalog.WorkShirt,
+            "resident identity and appearance come from the committed records even with a full jobs ledger");
+        var all=repo.ReadVisitors(localTown,AnimalTown.Town.LocalResidentCount);
+        check(all.Length==AnimalTown.Town.LocalResidentCount&&all.All(v=>v.Name!="HumanPlayer"&&v.Slot<AnimalTown.Town.LocalResidentCount),"only the normal town residents are candidates even when the source holds four player profiles");
+        check(repo.ReadVisitors(localTown,limit:1).Single().Slot==0&&repo.ReadVisitors(localTown,limit:0).Length==0,"visitor loading honors the requested cap");
+        check(repo.ReadVisitors(sourceTown).Length==0,"a copy of the current town supplies no visitors");
+        check(disk.Names.Count==0&&disk.Files.Count==committed.Files.Count&&committed.Files.All(f=>disk.Files[f.Key].SequenceEqual(f.Value)),
+            "projecting visitors leaves every source card file byte-identical");
+        var moving=repo.Load()!;var roster=moving.Town.Jobs;
+        roster.NpcMove=new OfflineNpcMove{Id=roster.Allocate(),FirstTown=sourceTown,SecondTown=localTown,FirstSlot=0,SecondSlot=3,FirstSide=true,Phase=1,
+            First=new MovingResident{Id=roster.Npc(0)},Second=new MovingResident{Id=new JobIdentity(localTown,4)}};
+        var moveDisk=disk.Copy();var moveRepo=new SaveRepository(moveDisk);moveRepo.Save(moving);
+        check(moveRepo.ReadVisitors(localTown,AnimalTown.Town.LocalResidentCount).Select(v=>v.Slot).SequenceEqual(new[]{1,2,3,4}),"a resident in an unsettled exchange is skipped without shifting other saved identities");
+        var interrupted=disk.Copy();interrupted.CutAt=2;
+        var candidate=repo.Load()!;candidate.Town.Residents[0].Name="Unpublished";
+        check(Fails(()=>new SaveRepository(interrupted).Save(candidate))&&new SaveRepository(interrupted).ReadVisitors(localTown)[0].Name=="Quinn",
+            "unpublished resident changes never appear as visitors");
+        interrupted.CutAt=0;new SaveRepository(interrupted).Save(candidate);
+        string town0=SplitSaveCodec.FileName(SplitSaveCodec.TownData,0),town1=SplitSaveCodec.FileName(SplitSaveCodec.TownData,1);
+        interrupted.Files[town0][32]^=1;
+        check(new SaveRepository(interrupted).ReadVisitors(localTown)[0].Name=="Unpublished","a damaged town bank falls back to its committed mirror");
+        interrupted.Files[town1][32]^=1;
+        check(new SaveRepository(interrupted).ReadVisitors(localTown).Length==0&&new SaveRepository(new Disk()).ReadVisitors(localTown).Length==0,
+            "damaged or missing saves leave visitor slots empty");
+        var legacy=new Disk();var parts=SplitSaveCodec.Encode(source);
+        for(int i=0;i<parts.Length;i++)legacy.Files[SplitSaveCodec.FileName(SplitSaveCodec.RecordKind(i),1)]=parts[i];
+        legacy.Files[SplitSaveCodec.FileName(SplitSaveCodec.Commit,1)]=SplitSaveCodec.EncodeCommit(source,parts);
+        check(new SaveRepository(legacy).ReadVisitors(localTown,limit:1).Single().Name=="Quinn"&&legacy.Names.Count==0,
+            "older committed split towns can supply their saved NPCs without a card migration");
+        var withoutLedger=Town();withoutLedger.Sequence=source.Sequence+1;
+        var noRoster=committed.Copy();parts=SplitSaveCodec.Encode(withoutLedger);
+        for(int i=0;i<parts.Length;i++)noRoster.Files[SplitSaveCodec.FileName(SplitSaveCodec.RecordKind(i),0)]=parts[i];
+        noRoster.Files[SplitSaveCodec.FileName(SplitSaveCodec.Commit,0)]=SplitSaveCodec.EncodeCommit(withoutLedger,parts);
+        check(new SaveRepository(noRoster).ReadVisitors(localTown).Length==0,"a newer valid commit without saved identities supersedes an older visitor roster");
+        var combined=new Disk();combined.Files["AnimalTown0"]=SaveCodec.Encode(source);
+        check(new SaveRepository(combined).ReadVisitors(localTown).Length==0,"combined legacy files do not supply an unverified visitor roster");
     }
     private static void SnowTransactions(Action<bool,string> check)
     {
@@ -105,7 +175,7 @@ internal static class IncrementalSaveChecks
         repository.Save(s);
         check(!repository.Load()!.Town.Traffic.Snow.Winter,"older town records load without a winter checkpoint");
 
-        snow.SetWinter(true);snow.ObserveSnowDay(100,false);
+        snow.SetWinter(true);
         for(int i=0;i<SnowWear.MaxVisits;i++)s.Town.Traffic.Enter(s.Town,20,30);
         for(int i=0;i<40*30-1;i++)snow.TickSnowfall(true);
         s.Town.Traffic.Enter(s.Town,21,30);
@@ -113,7 +183,7 @@ internal static class IncrementalSaveChecks
         var restored=repository.Load()!;
         Same(s,restored,check,"the card round-trips shared snow dents and their partial recovery");
         var split=SplitSaveCodec.Encode(s);
-        check(SplitSaveCodec.ReadVersion(split[0])==10&&SplitSaveCodec.Decode(split).Town.Traffic.Snow.Packed.SequenceEqual(snow.Packed),
+        check(SplitSaveCodec.ReadVersion(split[0])==11&&SplitSaveCodec.Decode(split).Town.Traffic.Snow.Packed.SequenceEqual(snow.Packed),
             "the split town schema retains its snow checkpoint");
         restored.SelectProfile(1);
         var shared=restored.Town.Traffic.Snow;
@@ -122,7 +192,11 @@ internal static class IncrementalSaveChecks
         shared.TickSnowfall(true);snow.TickSnowfall(true);
         check(shared.Revision==revision+1&&shared.Packed.SequenceEqual(snow.Packed),
             "reload preserves both tile ages and the fraction of a snowfall second");
-        shared.ObserveSnowDay(101,true);
+        for(int i=0;i<20*30;i++)shared.TickSnowfall(true);
+        repository.Save(restored);
+        restored=repository.Load()!;shared=restored.Town.Traffic.Snow;
+        check(shared.VisitCount(20,30)==1&&shared.VisitCount(21,30)==1,"fully refilled shallow tracks still round-trip after active recovery ends");
+        shared.ResetForTownEntry();
         byte[] traffic=(byte[])restored.Town.Traffic.Visits.Clone();
         byte[] paths=(byte[])restored.Town.Paths.Packed.Clone();
         repository.Save(restored);
@@ -152,8 +226,32 @@ internal static class IncrementalSaveChecks
             fault.CutAt=0;new SaveRepository(fault).Save(candidate);
             Same(desired,new SaveRepository(fault).Load()!,check,"retrying an interrupted job checkpoint preserves the exact RNG and economic revision");
         }
-        Console.WriteLine("Job clock save: 164-byte extension; 1,312 physical bytes/checkpoint; zero terrain rewrites; all 18 write interruptions recovered atomically");
+        Console.WriteLine("Job clock save: 164-byte extension; 1,312 encoded bytes/checkpoint; zero terrain rewrites; all 18 write interruptions recovered atomically");
     }
     private static int ReferenceBank(Disk d,int sequence,int part)
     {var b=d.Files["AT-Commit0"];int at=28+part*20+4;return b[at]|b[at+1]<<8|b[at+2]<<16|b[at+3]<<24;}
+    private static void OfflineClockMailTransactions(Action<bool,string> check)
+    {
+        var state=Town();state.Tutorial=7;long now=AnimalTown.Jobs.JobCalendar.At(2027,7,15,12);state.ResidentJobs.Enable(49321,now);
+        string body=string.Concat(Enumerable.Repeat("\U0001f642",1000));
+        for(int batch=0;batch<2;batch++){
+            for(int i=0;i<64;i++){state.Receive(Catalog.WritingPaper);check(state.ResidentJobs.SendLetter(state.Town.Jobs.Player(0),body,state.Find(Catalog.WritingPaper),-1,state.ResidentJobs.NextCommandSequence).Result==AnimalTown.Jobs.JobResult.Ok,"clock fixture queues actual full-length mail");}
+            state.ResidentJobs.AdvanceTo(now+=86400);
+        }
+        var disk=new Disk();new SaveRepository(disk).Save(state);var before=SaveCodec.Encode(state);var original=disk.Copy();
+        var economic0=(byte[])disk.Files["AT-Shops0"].Clone();var economic1=(byte[])disk.Files["AT-Shops1"].Clone();
+        state.ResidentJobs.AdvanceTo(now+1);disk.Reset();new SaveRepository(disk).Save(state);Only(disk,"AT-Residents",check);
+        check(disk.Bytes<1400&&economic0.SequenceEqual(disk.Files["AT-Shops0"])&&economic1.SequenceEqual(disk.Files["AT-Shops1"]),"a dated-second checkpoint preserves both full-mail economic records byte for byte");
+        var loaded=new SaveRepository(disk).Load()!;check(loaded.Town.Jobs.Watermark==now+1&&loaded.MailCount==128,"the independent dated-second watermark and full inbox reload together");
+        loaded.ResidentJobs.Enable(loaded.Town.Jobs.TownId,now+1);check(loaded.ResidentJobs.ReadLetter(127)==body,"full Unicode mail remains exact after a clock-only save");
+        var split=SplitSaveCodec.Encode(state);split[2]=IncrementalSaveCodec.Encode(state,2);check(Fails(()=>SplitSaveCodec.Decode(split)),"a projected economy cannot be decoded without its committed clock record");
+        for(int mode=0;mode<3;mode++)for(int cut=1;cut<=4;cut++){
+            var fault=original.Copy();fault.Reset();fault.Mode=mode;fault.CutAt=cut;var candidate=SaveCodec.Decode(before);candidate.ResidentJobs.Enable(candidate.Town.Jobs.TownId,now+1);
+            check(Fails(()=>new SaveRepository(fault).Save(candidate)),"dated-second checkpoint interruption reaches each actual write");
+            var recovered=new SaveRepository(fault).Load()!;bool published=cut>2||cut==2&&mode==2;
+            Same(recovered,published?state:SaveCodec.Decode(before),check,"clock and mail recover as one complete old or new snapshot");
+            fault.CutAt=0;new SaveRepository(fault).Save(candidate);check(new SaveRepository(fault).Load()!.Town.Jobs.Watermark==now+1,"dated-second checkpoint retry restores the exact watermark");
+        }
+        Console.WriteLine("Offline job clock: 1,336 encoded bytes in four logical records/checkpoint with 128 full Unicode letters; zero economic/mail rewrites; every publication cut and retry passed.");
+    }
 }

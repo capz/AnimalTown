@@ -26,7 +26,7 @@ internal static class ModelLodCooker
     {
         internal required byte[] Header,Data;internal required int[] Indices;internal required Vector3[] Positions;
     }
-    internal static void CookAll(string root,float maximumBindError=MaximumBindError)
+    internal static void CookAll(string root,float maximumBindError=MaximumBindError,bool enforceEligibility=true)
     {
         var reports=new List<object>();
         foreach(string species in Species){
@@ -34,7 +34,7 @@ internal static class ModelLodCooker
             byte[] original=File.ReadAllBytes(source),lod=Simplify(original,out Result report,out int[][] correspondence,maximumBindError);
             if(report.Collapses==0||report.Triangles>=report.SourceTriangles||report.Vertices>=report.SourceVertices)throw new InvalidDataException("No safe geometry reduction for "+species);
             bool runtimeEligible=AnimalTown.VillagerLod.CoarseAvailable(Array.IndexOf(Species,species));
-            if(runtimeEligible&&maximumBindError==MaximumBindError&&report.Triangles>report.SourceTriangles*.8f)throw new InvalidDataException("Runtime LOD must save at least 20% of triangles: "+species);
+            if(enforceEligibility&&runtimeEligible&&maximumBindError==MaximumBindError&&report.Triangles>report.SourceTriangles*(1-AnimalTown.VillagerLod.MinimumTriangleReduction))throw new InvalidDataException("Runtime LOD must meet the measured triangle-reduction threshold: "+species);
             File.WriteAllBytes(destination,lod);
             // The native pose fixture consumes exact original -> compacted LOD
             // correspondence, outside the shipped runtime payload.
@@ -43,7 +43,7 @@ internal static class ModelLodCooker
             reports.Add(new{species,runtimeEligible,report,sourceBytes=original.Length,lodBytes=lod.Length,sourceSha256=Hash(original),lodSha256=Hash(lod),errorSpace="normalized bind pose; animated endpoint error measured separately",retainedVertexAttributes="byte-exact",otherSections="byte-identical"});
             Console.WriteLine($"LOD {species}: {report.SourceTriangles} -> {report.Triangles} triangles, {report.SourceVertices} -> {report.Vertices} vertices; bind error {report.MaximumNormalizedBindError:G6}, weight delta {report.MaximumSkinWeightDelta:G6}");
         }
-        File.WriteAllText(Path.Combine(root,"out/model-lod-audit.json"),JsonSerializer.Serialize(new{schema=1,maximumBindError,maximumWeightDelta=MaximumWeightDelta,models=reports},new JsonSerializerOptions{WriteIndented=true})+"\n");
+        File.WriteAllText(Path.Combine(root,"out/model-lod-audit.json"),JsonSerializer.Serialize(new{schema=1,maximumBindError,maximumWeightDelta=MaximumWeightDelta,minimumTriangleReduction=AnimalTown.VillagerLod.MinimumTriangleReduction,eligibilityEnforced=enforceEligibility,models=reports},new JsonSerializerOptions{WriteIndented=true})+"\n");
     }
     private static string Hash(byte[] bytes)=>Convert.ToHexString(SHA256.HashData(bytes)).ToLowerInvariant();
     private static uint Fnv(ReadOnlySpan<byte> bytes){uint value=2166136261;foreach(byte b in bytes)value=unchecked((value^b)*16777619);return value;}

@@ -7,7 +7,7 @@ internal static class LoadingScreen {internal static void Pulse(){}}
 internal static class NativeCalendar
 {internal static int Read()=>1118;internal static int CardError()=>0;internal static int CardMountError()=>-3;internal static int CardRecoveryError()=>0;}
 internal static class RuntimeOptions {internal static int Mode;internal static void Apply(int mode){Mode=mode;}}
-internal static class FrameProfile {internal static bool Enabled;}
+internal static class FrameProfile {internal static bool Enabled;internal static void SetMode(int mode){Enabled=mode!=0;}}
 internal static class UiFont {internal static bool Batched;}
 namespace Dolphin.Diagnostics {internal static class DebugOverlay {internal static bool PerformanceVisible;internal static void WriteLine(string text){}}}
 
@@ -40,7 +40,16 @@ namespace Dolphin.Storage
         internal readonly Dictionary<string,MemoryCardSaveOptions> Metadata=new();
         private readonly Dictionary<string,int> blocks=new();
         internal int Capacity=80,Used,Peak,Writes;
-        public MemoryCardEntry[] GetEntries()=>Files.Keys.Select(name=>new MemoryCardEntry{Name=name,Length=blocks[name]*8192}).ToArray();
+        internal MemoryCard Copy()
+        {
+            var copy=new MemoryCard(Device){Capacity=Capacity,Used=Used,Peak=Peak,Writes=Writes,DirectoryFree=DirectoryFree};
+            foreach(var p in Files)copy.Files[p.Key]=(byte[])p.Value.Clone();foreach(var p in Metadata)copy.Metadata[p.Key]=p.Value;foreach(var p in blocks)copy.blocks[p.Key]=p.Value;
+            foreach(var p in RecordIdentities)copy.RecordIdentities[p.Key]=p.Value;foreach(var p in RecordPages)copy.RecordPages[p.Key]=p.Value.Select(b=>(byte[])b.Clone()).ToArray();return copy;
+        }
+        // The SDK's CardLength reads DNDSAVE1's logical payload length. The
+        // manager's Blocks field separately reports physical browser charges.
+        public MemoryCardEntry[] GetEntries()=>Files.Keys.Select(name=>new MemoryCardEntry{Name=name,Length=RecordPages.TryGetValue(name,out var pages)?pages.Length*8192:Files[name].Length}).ToArray();
+        internal int PhysicalBlocks(string name)=>blocks[name];
         public void Delete(string name){if(FailDelete--==0)throw new IOException("Card removed during cleanup");Files.Remove(name);Metadata.Remove(name);RecordPages.Remove(name);RecordIdentities.Remove(name);if(blocks.Remove(name,out int n))Used-=n;}
         internal int CreateRecords(string name,int count,int identity,byte[] header)
         {
@@ -62,7 +71,7 @@ namespace Dolphin.Storage
             int peak=Math.Max(Used,next)+journal;
             if(peak>Capacity)throw new IOException("Memory card full; journal and previous save preserved");
             Peak=Math.Max(Peak,peak);Used=next;blocks[name]=size;Writes++;
-            Files[name]=(byte[])data.Clone();Metadata[name]=options;
+            Files[name]=(byte[])data.Clone();Metadata[name]=new MemoryCardSaveOptions{Title=options.Title,Comment=options.Comment,Banner=options.Banner,Icon=options.Icon};
         }
     }
     internal sealed class ManagedCardSave
@@ -84,7 +93,7 @@ namespace Dolphin.Storage
         internal int FreeEntries=>Math.Max(0,card!.DirectoryFree-card.Files.Count);
         internal int Count=>card!.Files.Count;
         internal ManagedCardSave[] ReadPage(int start,int maximum)=>card!.GetEntries().Skip(start).Take(maximum)
-            .Select(e=>new ManagedCardSave{Filename=e.Name,GameCode=card.GameCode,CompanyCode=card.CompanyCode,Blocks=e.Length/8192}).ToArray();
+            .Select(e=>new ManagedCardSave{Filename=e.Name,GameCode=card.GameCode,CompanyCode=card.CompanyCode,Blocks=card.PhysicalBlocks(e.Name)}).ToArray();
         public void Dispose(){}
     }
 }

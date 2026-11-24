@@ -7,13 +7,14 @@ using Dolphin.Timing;
 // and both sides of their doorway; invisible NPC rooms never create demand.
 internal sealed class BuildingRenderer : IDisposable
 {
-    private readonly Model?[] models=new Model?[BuildingCatalog.MaximumDefinitions*8];
-    private readonly ModelInstance?[] parts=new ModelInstance?[BuildingCatalog.MaximumDefinitions*8];
+    private const int PartsPerDefinition=7;
+    private readonly Model?[] models=new Model?[BuildingCatalog.MaximumDefinitions*PartsPerDefinition];
+    private readonly ModelInstance?[] parts=new ModelInstance?[BuildingCatalog.MaximumDefinitions*PartsPerDefinition];
     private readonly Transform[] roots=new Transform[BuildingWorld.Count],poses=new Transform[32];
     private readonly bool[] ready=new bool[BuildingCatalog.MaximumDefinitions];
     private readonly bool[] required=new bool[BuildingCatalog.MaximumDefinitions],wanted=new bool[BuildingCatalog.MaximumDefinitions];
     private readonly long[] lastRequired=new long[BuildingCatalog.MaximumDefinitions],retryAt=new long[BuildingCatalog.MaximumDefinitions];
-    private readonly int[] ownedBytes=new int[BuildingCatalog.MaximumDefinitions*8];
+    private readonly int[] ownedBytes=new int[BuildingCatalog.MaximumDefinitions*PartsPerDefinition];
     private const long IdleGraceUs=3000000,RetryDelayUs=1000000;
     private const int ModelBudgetBytes=256*1024,PartPeakBytes=ModelBudgetBytes+16*1024;
     private int residencySlot=-1;
@@ -29,7 +30,7 @@ internal sealed class BuildingRenderer : IDisposable
     }
     private System.Threading.Tasks.Task<Model>? pending;
     private int loadType,loadPart,typeStartBytes;
-    internal int LoadedParts=>loadType*8+loadPart;
+    internal int LoadedParts=>loadType*PartsPerDefinition+loadPart;
     internal string LoadingLabel {get;private set;}="Loading buildings";
     public void Dispose()
     {
@@ -51,7 +52,9 @@ internal sealed class BuildingRenderer : IDisposable
         try{
             if(pending==null){
                 int indoor=state==null?-1:BuildingWorld.Building(state.Space);
-                if(state!=null&&loadPart==2&&(indoor<0||state.BuildingTypes[indoor]!=loadType))loadPart=7;
+                if(state!=null&&loadPart==2&&(indoor<0||state.BuildingTypes[indoor]!=loadType)){
+                    ready[loadType]=true;loadType++;loadPart=0;typeStartBytes=ResidentBytes;return loadType>=BuildingCatalog.Count;
+                }
                 string name=PartName(d,loadPart);
                 LoadingLabel="Loading "+name;
                 if(Memory!=null&&!Memory.TryReserve(PartPeakBytes,Clock.Timestamp,true,out memoryTicket))return false;
@@ -59,15 +62,15 @@ internal sealed class BuildingRenderer : IDisposable
                 pending=Model.LoadAsync(TexturePolicy.ModelPath(name,TextureResolution.Size128),default,ModelBudgetBytes);return false;
             }
             if(!pending.IsCompleted)return false;
-            int slot=loadType*8+loadPart;models[slot]=pending.GetAwaiter().GetResult();
+            int slot=loadType*PartsPerDefinition+loadPart;models[slot]=pending.GetAwaiter().GetResult();
             if(NativeBuildings.Retain(models[slot]!)!=1)throw new InvalidOperationException("Static building geometry retention failed");
             parts[slot]=models[slot]!.CreateInstance(16*1024);
             ownedBytes[slot]=models[slot]!.NativeBytes+parts[slot]!.NativeBytes;ResidentBytes+=ownedBytes[slot];
             if(ResidentBytes>768*1024)throw new InvalidOperationException("Building resident memory budget");
             Memory?.Complete(memoryTicket);memoryTicket=0;
-            loadPart++;if(loadPart==8)ready[loadType]=true;
+            loadPart++;if(loadPart==PartsPerDefinition)ready[loadType]=true;
         }catch(Exception error){
-            for(int i=0;i<8;i++)ReleasePart(loadType*8+i);
+            for(int i=0;i<PartsPerDefinition;i++)ReleasePart(loadType*PartsPerDefinition+i);
             ResidentBytes=typeStartBytes;
             Memory?.Cancel(memoryTicket);memoryTicket=0;
             // The SDK reports an invalid package and allocation exhaustion using
@@ -75,14 +78,14 @@ internal sealed class BuildingRenderer : IDisposable
             // a malformed/missing kit retains its normal unavailable-art path.
             bool allocationFailure=AllocationEvidence(error,Clock.Timestamp);
             if(allocationFailure){loadPart=0;retryAt[loadType]=Clock.Timestamp+RetryDelayUs;Memory?.AllocationFailed(PartPeakBytes,Clock.Timestamp);}
-            else loadPart=8;
+            else loadPart=PartsPerDefinition;
             Dolphin.Diagnostics.DebugOverlay.WriteLine("ANIMALTOWN BUILDING ASSET "+(allocationFailure?"RETRY ":"ERROR ")+d.Id+": "+error.Message);
         }
-        pending=null;if(loadPart==8){loadType++;loadPart=0;typeStartBytes=ResidentBytes;}
+        pending=null;if(loadPart==PartsPerDefinition){loadType++;loadPart=0;typeStartBytes=ResidentBytes;}
         return loadType>=BuildingCatalog.Count;
     }
     private static string PartName(BuildingDefinition d,int part)
-        =>part==0?d.Exterior:part==1?d.Door:part==2?d.Floor:part==3?d.North:part==4?d.East:part==5?d.South:part==6?d.West:d.Exterior+"-closed";
+        =>part==0?d.Exterior:part==1?d.Door:part==2?d.Floor:part==3?d.North:part==4?d.East:part==5?d.South:d.West;
     private bool AllocationEvidence(Exception error,long now)
     {
         bool failed=error is OutOfMemoryException;
@@ -119,14 +122,14 @@ internal sealed class BuildingRenderer : IDisposable
     {
         int building=BuildingWorld.Building(space);if(building<0)return space==0;
         int type=state.BuildingTypes[building];if(!Ready(type))return false;
-        for(int part=2;part<=6;part++)if(parts[type*8+part]==null)return false;
+        for(int part=2;part<PartsPerDefinition;part++)if(parts[type*PartsPerDefinition+part]==null)return false;
         return true;
     }
     internal bool RequiredWorkPending
     {
         get{
             for(int type=0;type<required.Length;type++)if(required[type])
-                for(int part=2;part<=6;part++)if(parts[type*8+part]==null)return true;
+                for(int part=2;part<PartsPerDefinition;part++)if(parts[type*PartsPerDefinition+part]==null)return true;
             return false;
         }
     }
@@ -134,7 +137,7 @@ internal sealed class BuildingRenderer : IDisposable
     {
         Demand(state,doors,now,pressure);
         for(int type=0;type<ready.Length;type++)if(!required[type]&&(pressure||!wanted[type]&&now-lastRequired[type]>=IdleGraceUs))
-            for(int part=6;part>=2;part--)if(parts[type*8+part]!=null){ReleasePart(type*8+part);return true;}
+            for(int part=PartsPerDefinition-1;part>=2;part--)if(parts[type*PartsPerDefinition+part]!=null){ReleasePart(type*PartsPerDefinition+part);return true;}
         return false;
     }
     internal void PrepareResidency(GameState state,PortalSystem doors,long now,long deadline,bool pressure,bool allowOptional=true)
@@ -146,9 +149,9 @@ internal sealed class BuildingRenderer : IDisposable
             // Inspect one completion even with no CPU credit. A no-longer-wanted
             // optional result may be disposed, but adoption/native allocation
             // waits for its proper priority and a new bounded work grant.
-            int candidateType=residencySlot/8;
+            int candidateType=residencySlot/PartsPerDefinition;
             if(wanted[candidateType]&&(Clock.Timestamp>=deadline||!required[candidateType]&&!allowOptional))return;
-            int slot=residencySlot,type=slot/8;residencySlot=-1;
+            int slot=residencySlot,type=slot/PartsPerDefinition;residencySlot=-1;
             Model? loaded=null;
             try{
                 loaded=pending.GetAwaiter().GetResult();pending=null;
@@ -168,12 +171,12 @@ internal sealed class BuildingRenderer : IDisposable
         }
         if(Clock.Timestamp>=deadline)return;
         for(int rank=0;rank<(allowOptional?2:1);rank++)for(int type=0;type<ready.Length;type++)if(ready[type]&&wanted[type]&&required[type]==(rank==0)&&now>=retryAt[type]){
-            for(int part=2;part<=6;part++)if(parts[type*8+part]==null){
+            for(int part=2;part<PartsPerDefinition;part++)if(parts[type*PartsPerDefinition+part]==null){
                 if(Memory!=null&&!Memory.TryReserve(PartPeakBytes,now,required[type],out memoryTicket))return;
                 try{
                     pendingFailureCount=Memory?.FailureCount??0;
                     pending=Model.LoadAsync(TexturePolicy.ModelPath(PartName(BuildingCatalog.Get(type),part),TextureResolution.Size128),default,ModelBudgetBytes);
-                    residencySlot=type*8+part;
+                    residencySlot=type*PartsPerDefinition+part;
                 }catch(Exception error){Memory?.Cancel(memoryTicket);memoryTicket=0;if(AllocationEvidence(error,now))Memory?.AllocationFailed(PartPeakBytes,now);retryAt[type]=now+RetryDelayUs;Dolphin.Diagnostics.DebugOverlay.WriteLine("ANIMALTOWN BUILDING RESIDENCY ADMISSION "+type+": "+error.Message);}
                 return;
             }
@@ -183,7 +186,15 @@ internal sealed class BuildingRenderer : IDisposable
     internal bool Ready(int type)=>type>=0&&type<ready.Length&&ready[type];
     private void Part(Renderer renderer,int type,int part,Transform parent,Vector3 position,Vector3 scale,float yaw=0)
     {
-        if(!Ready(type)||parts[type*8+part]==null)return;if(used==poses.Length)throw new InvalidOperationException("Building draw budget");var pose=poses[used++];pose.Parent=parent;pose.LocalPosition=position;pose.LocalScale=scale;pose.LocalRotation=new Quaternion(0,(float)Math.Sin(yaw*.5f),0,(float)Math.Cos(yaw*.5f));renderer.DrawModel(parts[type*8+part]!,pose);
+        if(!Ready(type)||parts[type*PartsPerDefinition+part]==null)return;if(used==poses.Length)throw new InvalidOperationException("Building draw budget");var pose=poses[used++];pose.Parent=parent;pose.LocalPosition=position;pose.LocalScale=scale;pose.LocalRotation=new Quaternion(0,(float)Math.Sin(yaw*.5f),0,(float)Math.Cos(yaw*.5f));renderer.DrawModel(parts[type*PartsPerDefinition+part]!,pose);
+    }
+    private void ExteriorParts(Renderer renderer,GameState state,int building,Transform root,float openness)
+    {
+        // Closing reuses the same exterior and hinged door as opening. Keeping
+        // a third combined copy resident costs scarce MEM1 for one saved draw.
+        int type=state.BuildingTypes[building];var definition=BuildingWorld.Definition(state,building);
+        Part(renderer,type,0,root,Vector3.Zero,new Vector3(1,1,1));
+        Part(renderer,type,1,root,new Vector3(definition.HingeX,0,definition.HingeZ),new Vector3(1,1,1),-openness*1.4f);
     }
     internal void Exterior(Renderer renderer,GameState state,int building,PortalSystem doors)
     {
@@ -193,10 +204,9 @@ internal sealed class BuildingRenderer : IDisposable
         if(!RenderView.Sphere(x+1.5f,p.Y+1.6f,p.Z+1.5f,3.5f,state.X,state.Z,eye)||
            !RenderView.AboveHorizon(p.Y+1.6f,p.Z+1.5f,3.5f,state.Z,eye))return;
         var root=roots[building];root.LocalPosition=new Vector3(x,p.Y,p.Z);float a=(z-state.Z)/CylinderWorld.Radius*.5f;root.LocalRotation=new Quaternion((float)Math.Sin(a),0,0,(float)Math.Cos(a));root.LocalScale=new Vector3(1,1,1);
-        if(doors.Openness(building)==0){Part(renderer,type,7,root,Vector3.Zero,new Vector3(1,1,1));return;}
-        Part(renderer,type,0,root,Vector3.Zero,new Vector3(1,1,1));Part(renderer,type,1,root,new Vector3(BuildingWorld.Definition(state,building).HingeX,0,BuildingWorld.Definition(state,building).HingeZ),new Vector3(1,1,1),-doors.Openness(building)*1.4f);
+        ExteriorParts(renderer,state,building,root,doors.Openness(building));
     }
-    // Uses the already resident closed cottage. The ghost never places a
+    // Uses the already resident cottage and door. The ghost never places a
     // building, changes collision or allocates a second model/texture set.
     internal void PreviewHome(Renderer renderer,GameState state,int plotX,int plotZ)
     {
@@ -208,7 +218,7 @@ internal sealed class BuildingRenderer : IDisposable
            !RenderView.AboveHorizon(p.Y+1.6f,p.Z+1.5f,3.5f,state.Z,eye))return;
         var root=roots[building];root.LocalPosition=new Vector3(x,p.Y,p.Z);root.LocalScale=new Vector3(1,1,1);
         float a=(z-state.Z)/CylinderWorld.Radius*.5f;root.LocalRotation=new Quaternion((float)Math.Sin(a),0,0,(float)Math.Cos(a));
-        Part(renderer,type,7,root,Vector3.Zero,new Vector3(1,1,1));
+        ExteriorParts(renderer,state,building,root,0);
     }
     internal void Interior(Renderer renderer,GameState state,Transform world,InteriorCamera camera,PortalSystem doors)
     {

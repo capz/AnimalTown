@@ -6,7 +6,7 @@ internal sealed class UiShapePlan
     internal const int Capacity=64;
     internal readonly float[] Widths=new float[Capacity],Heights=new float[Capacity],Radii=new float[Capacity];
     internal readonly bool[] Bulges=new bool[Capacity],Panels=new bool[Capacity];
-    private readonly byte[] states=new byte[Capacity]; // 0 free, 1 requested, 2 resident
+    private readonly byte[] states=new byte[Capacity]; // 0 free, 1 requested, 2 resident, 3 rejected for this view
     private readonly int[] lastUse=new int[Capacity],buckets=new int[128],entryBuckets=new int[Capacity];
     private readonly int[] free=new int[Capacity],pending=new int[Capacity];
     private int freeCount=Capacity,pendingCount,frame,tab=-1;
@@ -22,6 +22,9 @@ internal sealed class UiShapePlan
             // Requests belong to the view that actually drew them. A closed
             // menu cannot trigger geometry creation on the following frame.
             while(pendingCount>0)Remove(pending[--pendingCount]);
+            // A capacity miss remains an exact-key fallback until an explicit
+            // context change. Successful shared shapes keep their residency.
+            for(int i=0;i<Capacity;i++)if(states[i]==3)Remove(i);
             overflow=false;
         }
         view=nextView;tab=nextTab;
@@ -46,6 +49,11 @@ internal sealed class UiShapePlan
     }
     internal int TakePending()=>pendingCount==0?-1:pending[--pendingCount];
     internal void Complete(int slot){states[slot]=2;}
+    internal void Reject(int slot)
+    {
+        if(states[slot]!=1)throw new InvalidOperationException("Only a requested shape can be rejected");
+        states[slot]=3;
+    }
     internal bool TakeOverflow(){bool result=overflow;overflow=false;return result;}
     internal int Oldest(bool unusedOnly=false)
     {

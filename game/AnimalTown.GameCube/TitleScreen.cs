@@ -10,7 +10,7 @@ using Dolphin.Timing;
 internal sealed partial class TitleScreen : IDisposable,Hypercube.GameCube.IFrameScene
 {
     private readonly GraphicsDevice device=GraphicsDevice.Default;
-    private readonly Draw2D ui=new Draw2D(GraphicsDevice.Default,new Draw2DOptions{VertexCapacity=8192,SpriteCapacity=128});
+    private readonly Draw2D ui=new Draw2D(GraphicsDevice.Default,new Draw2DOptions{VertexCapacity=8192,SpriteCapacity=UiFont.BatchCapacity});
     private readonly Camera2D composition=new Camera2D();
     private float canvasMargin;
     private readonly UiFont font=UiFont.LoadSystem();
@@ -73,7 +73,7 @@ internal sealed partial class TitleScreen : IDisposable,Hypercube.GameCube.IFram
                     if(p.X.WasPressed&&DevConfig.IsSlider(row))config.Reset(row);
                     else if(!p.X.WasPressed)config.Adjust(row,direction==MenuNavigation.Left?-1:1);
                     else continue;
-                    if(row!=DevConfig.SdkPerformanceIndex)title.dirty=true;
+                    if(!DevConfig.SessionOnly(row))title.dirty=true;
                     DevConfigStorage.ApplyGlobal(config);
                 }
                 continue;
@@ -114,7 +114,7 @@ internal sealed partial class TitleScreen : IDisposable,Hypercube.GameCube.IFram
     }
     private void Draw()
     {
-        UiNoise.Prepare();background.Prepare();Hypercube.GameCube.FrameRenderer.Draw(GraphicsDevice.Default,TitleBackdrop.Color,this);
+        UiNoise.Prepare();background.Prepare();Hypercube.GameCube.FrameRenderer.Draw(GraphicsDevice.Default,TitleBackdrop.Color,this);FrameProfile.PollMemory();
     }
     public void SubmitFramePart()
     {
@@ -251,7 +251,7 @@ internal sealed partial class TitleScreen : IDisposable,Hypercube.GameCube.IFram
         font.Draw(ui,page,558-font.Measure(page,HelpScale),90,TitleArt.Ink,HelpScale);
         font.Draw(ui,"A / Left / Right: change",74,342,TitleArt.Ink,HelpScale);
         font.Draw(ui,"X: reset slider   B: save and close",74,371,TitleArt.Ink,HelpScale);
-        DrawStatus(rows[debugSelected]==DevConfig.SdkPerformanceIndex?"Session only. Resets on restart.":dirty?"Changes will be saved to dev config.":DevConfigStorage.Status,74,404,492);
+        DrawStatus(DevConfig.SessionOnly(rows[debugSelected])?"Session only. Resets on restart.":dirty?"Changes will be saved to dev config.":DevConfigStorage.Status,74,404,492);
     }
     // Reflow only when a message changes. Keep two readable lines instead of
     // scaling small status/error text down to fit a TV-sized panel.
@@ -304,6 +304,8 @@ internal sealed partial class TitleScreen : IDisposable,Hypercube.GameCube.IFram
             case 22:return "Ground mipmaps: "+toggle;
             case 23:return "Ground mip switch: "+RenderDebugOptions.GroundMipDistanceLabel(value);
             case DevConfig.GroundMipBandsIndex:return "Ground mip bands: "+toggle;
+            case DevConfig.WarmTerrainPrefetchIndex:return "Warm terrain prefetch: "+toggle;
+            case DevConfig.ProfilingModeIndex:return "Profiling: "+FrameProfile.Status+" (session)";
             case 24:return "Freeze landscape motion: "+toggle;case 25:return "Recreate terrain meshes: "+toggle;
             case 26:return "Legacy ground ring: "+toggle;
             default:throw new InvalidOperationException("Unknown debug setting");

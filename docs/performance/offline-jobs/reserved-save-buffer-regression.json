@@ -1,0 +1,19 @@
+{
+  "sourceCommit": "90fbdd7967879f1256f77e43c47a77a1756d1354",
+  "heapCapacityBytes": 6291456,
+  "reservedSavePayloadBytes": 1703936,
+  "heapIncreaseBytes": 0,
+  "allocatorSHA256": "657c7cad3b5ca02fd014619afc55a3e53527a0265497c1e9f83d25157f24b89e",
+  "regressionSHA256": "d179a34014cd5f1a3ee8c3f155db5e067ba2110398dba262bbfd1d6bf74263f7",
+  "newAllocatorPassed": true,
+  "previousAllocatorFailedNewCheckpointAssertion": true,
+  "negativeControlSourceCommit": "0fa5c3190cc1369554ca560871640db3e811a3f5",
+  "negativeControlDiagnostic": "negative: /workspace/animaltown-jobs-integrated/tests/native-managed-allocator.c:102: main: Assertion `checkpoint&&checkpoint->length==1669744u+(unsigned)pass*8' failed.",
+  "nativeNormalAndForcedGcPassed": true,
+  "nativeLogSHA256": "be05b24ef404002883cb5db0edf11ac8480330630745f7243cdf2f2a3f26bf73",
+  "postReturnRetainedWorldBytes": 2097152,
+  "notes": [
+    "The high-address save range is inside the existing six-MiB heap.",
+    "Extent telemetry reaches capacity when that range is exposed; this is not a live-byte count."
+  ]
+}

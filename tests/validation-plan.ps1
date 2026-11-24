@@ -14,7 +14,8 @@ $p=Get-ValidationPlan -ChangedPaths @('game/AnimalTown.GameCube/Program.cs');Ass
 $p=Get-ValidationPlan -ChangedPaths @('tools/AnimalTown.Tools/TextureRepackerChecks.cs');Assert (($p.tooling -join ',') -eq 'repack' -and !$p.backend) 'Repacker routing incorrect'
 $p=Get-ValidationPlan -ChangedPaths @('tools/release-bundle.py','tests/release-bundle.py');Assert (($p.native -join ',') -eq 'python' -and !$p.backend -and !$p.full) 'Release bundle checks should use host Python fixtures'
 $p=Get-ValidationPlan -ChangedPaths @('shared/AnimalTown.Domain/NewDependency.cs');Assert ($p.managed.Count -eq 13 -and $p.backend) 'Unknown domain must be conservative'
-$p=Get-ValidationPlan -ChangedPaths @('new-production/file.xyz');Assert ($p.full -and $p.backend -and $p.native.Count -eq 8) 'Unknown production paths must fall back to all checks'
+$p=Get-ValidationPlan -ChangedPaths @('new-production/file.xyz');Assert ($p.full -and $p.backend -and $p.native.Count -eq 9 -and 'jobs' -in $p.native) 'Unknown production paths must fall back to all checks including job AOT'
+$p=Get-ValidationPlan -ChangedPaths @('shared/AnimalTown.Domain/Jobs/VillagerJobService.cs');Assert (!$p.full -and $p.backend -and ($p.managed -join ',') -eq 'life,saves' -and ($p.native -join ',') -eq 'jobs') 'Job rules need live/domain/save/backend and actual native service coverage'
 $p=Get-ValidationPlan -ChangedPaths @('tools/native-shadow-union.h','tests/native-shadow-union.c');Assert (($p.native -join ',') -eq 'shadows' -and ($p.managed -join ',') -eq 'terrain' -and !$p.backend) 'Shadow union must include the native rasterizer checks'
 $p=Get-ValidationPlan -ChangedPaths @('shared/AnimalTown.Domain/CliffShadowMap.cs');Assert (($p.native -join ',') -eq 'shadows' -and ($p.managed -join ',') -eq 'terrain' -and $p.rendering.Count -eq 8 -and !$p.backend -and !$p.full) 'Cliff-mask changes need managed/GX/native layout coverage without database checks'
 $p=Get-ValidationPlan -ChangedPaths @('tests/AnimalTown.Checks/CliffShadowChecks.cs');Assert (($p.managed -join ',') -eq 'terrain' -and !$p.native.Count -and !$p.rendering.Count -and !$p.backend -and !$p.full) 'Cliff-mask fixture-only edits need their managed terrain suite'
@@ -60,13 +61,13 @@ foreach($path in @('shared/AnimalTown.Domain/BuildingPrompt.cs','tests/AnimalTow
     $p=Get-ValidationPlan -ChangedPaths @($path)
     Assert (($p.managed -join ',') -eq 'movement,life,saves,buildings' -and !$p.backend -and !$p.full -and !$p.rendering.Count) "Building entry routing must retain component coverage: $path"
 }
-foreach($path in @('shared/AnimalTown.Domain/ContentPaths.cs','game/AnimalTown.GameCube/ContentBootstrap.cs','tests/AnimalTown.Checks/ContentChecks.cs')){
+foreach($path in @('shared/AnimalTown.Domain/ContentPaths.cs','shared/AnimalTown.Domain/ContentIdentity.cs','game/AnimalTown.GameCube/ContentBootstrap.cs','tests/AnimalTown.Checks/ContentChecks.cs')){
     $p=Get-ValidationPlan -ChangedPaths @($path)
     Assert (($p.managed -join ',') -eq 'content' -and 'content' -in $p.native -and !$p.backend -and !$p.full) "Content startup routing must retain actual AOT/filesystem coverage: $path"
 }
 $p=Get-ValidationPlan -ChangedPaths @('tools/AnimalTown.Tools/DepotPackage.cs');Assert (($p.tooling -join ',') -eq 'depot' -and !$p.backend) 'Depot packaging must exercise archive validation'
 $p=Get-ValidationPlan -Full;Assert ('depot' -in $p.tooling -and 'content' -in $p.managed -and 'content' -in $p.native) 'Full checks must include standalone startup and packaging'
-foreach($name in @('SaveCards','CardArchive','CardSaveStorage','CardSaveError','TownDataStorage','UserOptionsStorage','DevConfigStorage','TownSession','TitleScreen.Cards')){
+foreach($name in @('SaveCards','CardArchive','VillagerCardFiles','CardSettingsStorage','CardSaveStorage','CardSaveError','TownDataStorage','UserOptionsStorage','DevConfigStorage','TownSession','TitleScreen.Cards')){
     $p=Get-ValidationPlan -ChangedPaths @("game/AnimalTown.GameCube/$name.cs")
     Assert ('card' -in $p.native -and 'saves' -in $p.managed -and !$p.backend -and !$p.full) "Card persistence changes must exercise the production adapter and slot-selection checks: $name"
 }
@@ -76,4 +77,4 @@ foreach($path in @('shared/AnimalTown.Domain/WorldLighting.cs','game/AnimalTown.
     Assert ('core' -in $p.managed -and 'shadows' -in $p.native -and !$p.backend -and !$p.full) "Lighting changes must cover clock policy and the actual GX shadow/light shader: $path"
 }
 $p=Get-ValidationPlan -ChangedPaths @('game/AnimalTown.GameCube/NativeShadows.cs');Assert ('patched' -in $p.native) 'Shadow bridge changes must exercise fresh AOT bindings'
-Write-Host 'Validation routing checks passed (78 cases).'
+Write-Host 'Validation routing checks passed (79 cases).'

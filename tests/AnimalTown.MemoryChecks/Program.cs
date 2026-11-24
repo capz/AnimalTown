@@ -44,7 +44,7 @@ Check(!abandoned.UnderPressure&&abandoned.WaitingPeakBytes==0,"a doorway reversa
 var state=new GameState(4){HousePlaced=true,Species=0,Space=0,X=140,Z=140};var doors=new PortalSystem();
 var buildings=new BuildingRenderer(new Transform());
 while(!buildings.AdvanceLoading(state)){}
-Check(Model.Live==BuildingCatalog.Count*3&&ModelInstance.Live==Model.Live,"outdoor startup creates exterior kit without unused room assets");
+Check(Model.Live==BuildingCatalog.Count*2&&ModelInstance.Live==Model.Live,"outdoor startup creates exterior kit without unused room assets");
 Check(buildings.Ready(0)&&!buildings.ReadyForSpace(state,1),"art availability remains distinct from lazy room readiness");
 var manager=new VisualMemoryCoordinator();var trees=new LowPolyTrees();var items=new DroppedItemRenderer();
 state.Space=1;Clock.Timestamp=10000000;
@@ -58,7 +58,7 @@ Check(!buildings.ReleaseUnused(state,doors,Clock.Timestamp,true),"doorway destin
 doors.Actors[0].Phase=DoorPhase.Idle;
 Check(buildings.ReleaseUnused(state,doors,Clock.Timestamp,true)&&Model.Live==warm-1,"pressure releases one unused room part per grant");
 while(buildings.ReleaseUnused(state,doors,Clock.Timestamp,true)){}
-Check(Model.Live==BuildingCatalog.Count*3,"unused interiors return real owner allocations");
+Check(Model.Live==BuildingCatalog.Count*2,"unused interiors return real owner allocations");
 
 state.Space=1;Model.FailInstanceNext=true;int before=Model.Live;
 manager.Prepare(state,doors,false,trees,items,buildings,Clock.Timestamp,Clock.Timestamp+1000);Clock.Timestamp++;
@@ -77,7 +77,7 @@ manager.Prepare(state,doors,false,trees,items,buildings,Clock.Timestamp,Clock.Ti
 Check(manager.Pressure.ReservedBytes>0,"in-flight disc/native owner retains a memory reservation");
 state.Space=0;Model.CompleteDeferred();
 manager.Prepare(state,doors,false,trees,items,buildings,Clock.Timestamp,Clock.Timestamp+1000);
-Check(manager.Pressure.ReservedBytes==0&&Model.Live==BuildingCatalog.Count*3,"reversed doorway drops completed unused result and its ticket without a leak");
+Check(manager.Pressure.ReservedBytes==0&&Model.Live==BuildingCatalog.Count*2,"reversed doorway drops completed unused result and its ticket without a leak");
 NativeMemory.FreeBytes=1024*1024;TextureCache.Unused=1;items.Eligible=trees.Eligible=true;
 manager.Prepare(state,doors,false,trees,items,buildings,Clock.Timestamp,Clock.Timestamp+1000);
 Check(TextureCache.Unused==0&&items.Eligible&&trees.Eligible,"pressure reclaims one owner with cache before category priority");
@@ -90,13 +90,18 @@ Model.FailNativeNext=true;startup.AdvanceLoading(state);startup.AdvanceLoading(s
 Check(Model.Live==0&&startup.LoadedParts==0&&startup.Memory.ReservedBytes==0,"generic SDK startup error with native allocator evidence retries without leaking or marking art unavailable");
 loads=Model.Loads;startup.AdvanceLoading(state);Check(Model.Loads==loads,"startup allocation retry observes backoff");
 Clock.Timestamp+=VisualMemoryPressure.FailureBackoffUs+1;
-for(int i=0;i<32&&!startup.Ready(1);i++){startup.Memory.Observe(NativeMemory.FreeBytes-Model.Bytes,NativeMemory.Failures,0,Clock.Timestamp);startup.AdvanceLoading(state);Clock.Timestamp++;}
-Check(startup.Ready(0)&&startup.Ready(1)&&Model.Live==BuildingCatalog.Count*3,"startup can recover all compact definitions after memory returns");
+bool startupReady=false;for(int i=0;i<64&&!startupReady;i++){startup.Memory.Observe(NativeMemory.FreeBytes-Model.Bytes,NativeMemory.Failures,0,Clock.Timestamp);startupReady=startup.AdvanceLoading(state);Clock.Timestamp++;}
+Check(startupReady&&startup.Ready(0)&&startup.Ready(1)&&startup.Ready(KobanSite.Definition)&&Model.Live==BuildingCatalog.Count*2,"startup can recover all compact definitions after memory returns");
 startup.Dispose();Check(Model.Live==0&&ModelInstance.Live==0,"retrying startup preserves teardown ownership");
 state.Space=1;state.Town.Residents[0].Space=24;
 var indoorStartup=new BuildingRenderer(new Transform());while(!indoorStartup.AdvanceLoading(state)){}
-Check(indoorStartup.ReadyForSpace(state,1)&&!indoorStartup.ReadyForSpace(state,24)&&Model.Live==BuildingCatalog.Count*3+5,"indoor save loads its own room kit while an unseen NPC shop interior stays cold");
+Check(indoorStartup.ReadyForSpace(state,1)&&!indoorStartup.ReadyForSpace(state,24)&&Model.Live==BuildingCatalog.Count*2+5,"indoor save loads its own room kit while an unseen NPC shop interior stays cold");
 indoorStartup.Dispose();Check(Model.Live==0&&ModelInstance.Live==0,"indoor startup has exact owner teardown");
+state.Space=KobanSite.Room;state.BuildingTypes[KobanSite.Building]=KobanSite.Definition;
+var kobanStartup=new BuildingRenderer(new Transform());while(!kobanStartup.AdvanceLoading(state)){}
+Check(kobanStartup.ReadyForSpace(state,KobanSite.Room)&&!kobanStartup.ReadyForSpace(state,1)&&Model.Live==BuildingCatalog.Count*2+5,"koban save restores its own seven-part definition without obsolete closed-model copies or unrelated interiors");
+Check(!kobanStartup.ReleaseUnused(state,doors,Clock.Timestamp,true),"global pressure preserves the active koban interior");
+kobanStartup.Dispose();Check(Model.Live==0&&ModelInstance.Live==0,"koban native owner slots retain correct seven-part indexing at teardown");
 var catalogBytes=new byte[16+ModelMemoryCatalog.Count*ModelMemoryCatalog.Stride];
 void Put(int at,int value){for(int i=0;i<4;i++)catalogBytes[at+i]=(byte)(value>>(i*8));}
 Put(0,ModelMemoryCatalog.Magic);Put(4,ModelMemoryCatalog.Version);Put(8,ModelMemoryCatalog.Count);Put(12,ModelMemoryCatalog.Stride);
@@ -105,6 +110,7 @@ for(int i=0;i<ModelMemoryCatalog.Count;i++){
     Put(at+16,8192+192+1024+ModelMemoryPlan.LoadGuardBytes);Put(at+20,8192+192+2048+ModelMemoryPlan.LoadGuardBytes);
 }
 var catalog=new ModelMemoryCatalog(catalogBytes);NativeMemory.Failures=0;
+Check(catalog.StartupPeak(0,0)==catalog.StartupPeak(0,false)-1024&&catalog.StartupPeak(0,4)==catalog.StartupPeak(0,false)+3*1024,"cooked per-instance upper bound charges every same-species visitor/player instance without duplicating shared model cost");
 var startupMemory=new VisualMemoryPressure();startupMemory.Observe(NativeMemory.FreeBytes,0,0,Clock.Timestamp);
 var admission=new StartupModelAdmission(startupMemory,catalog);
 Check(admission.Begin(0,true,Clock.Timestamp)&&admission.ReservedPeak==catalog.StartupPeak(0,true),"startup reserves its actual selected-species two-instance package plan before native load");
@@ -124,6 +130,8 @@ Check(admission.Begin(1,false,Clock.Timestamp),"essential startup retry does not
 Check(!admission.Fail(new InvalidDataException("Malformed model"),Clock.Timestamp)&&startupMemory.ReservedBytes==0,"malformed model with no allocator failure remains fatal instead of an endless memory retry");
 Check(admission.Begin(2,false,Clock.Timestamp),"a distinct startup owner can be admitted after nonallocation failure");
 admission.Cancel();Check(startupMemory.ReservedBytes==0&&Model.Live==0&&ModelInstance.Live==0,"drained startup cancellation leaves no reservation or native owner");
+Check(admission.Begin(3,4,Clock.Timestamp)&&admission.ReservedPeak==catalog.StartupPeak(3,4),"startup reserves a complete same-species actor cohort before admitting native work");
+admission.Cancel();Check(startupMemory.ReservedBytes==0,"canceled cohort admission returns every reserved instance byte");
 state.Space=0;BuildingWorld.Entrance(state,0,out float entryX,out float entryZ);state.X=entryX;state.Z=entryZ;
 var prefetchBuildings=new BuildingRenderer(new Transform());while(!prefetchBuildings.AdvanceLoading(state)){}
 NativeMemory.FreeBytes=10*1024*1024;NativeMemory.Failures=0;Clock.Timestamp+=10000000;
@@ -136,7 +144,7 @@ Model.DeferNext=true;prefetchMemory.PrepareOptionalBuildings(state,doors,prefetc
 Check(Model.Loads==loads+1&&prefetchMemory.Pressure.ReservedBytes>0,"last-priority nearby-room read owns its allocation ticket");
 Model.CompleteDeferred();NativeMemory.FreeBytes=600*1024;Clock.Timestamp+=1000000;
 prefetchMemory.Prepare(state,doors,true,trees,items,prefetchBuildings,Clock.Timestamp,Clock.Timestamp);
-Check(prefetchMemory.Pressure.ReservedBytes==0&&Model.Live==BuildingCatalog.Count*3,"completed speculative read drains under pressure with zero adoption credit and never allocates an instance");
+Check(prefetchMemory.Pressure.ReservedBytes==0&&Model.Live==BuildingCatalog.Count*2,"completed speculative read drains under pressure with zero adoption credit and never allocates an instance");
 prefetchBuildings.Dispose();Check(Model.Live==0&&ModelInstance.Live==0,"speculative cancellation retains exact source-model ownership");
 GraphicsDevice.Default.IsFrameActive=true;bool rejected=false;
 try{manager.Prepare(state,doors,false,trees,items,buildings,Clock.Timestamp,Clock.Timestamp+1000);}catch(InvalidOperationException){rejected=true;}

@@ -11,6 +11,8 @@ internal static class NativeCalendar
 {
     internal static int Time=30|(12<<6)|(10<<11)|(6<<16)|(6<<20);
     internal static int ReadClock()=>Time;
+    internal static int Second;
+    internal static int ReadSecond()=>Second;
 }
 internal sealed partial class TownGame
 {
@@ -20,12 +22,13 @@ internal sealed partial class TownGame
     internal readonly InteriorCamera indoorCamera=new InteriorCamera();
     internal readonly TownClock townClock=new TownClock();
     internal readonly RenderDebugOptions renderDebug=new RenderDebugOptions();
-    internal readonly AnimationFrameClock animationClock=new AnimationFrameClock(7);
+    internal readonly AnimationFrameClock animationClock=new AnimationFrameClock(BuildingWorld.Actors);
     internal readonly RunningMinimap runningMinimap=new RunningMinimap();
     internal readonly TerrainRenderer terrain=new TerrainRenderer();
     internal readonly ModelResidency modelResidency=new ModelResidency();
     internal readonly Model[] models=new Model[6];
-    internal readonly bool[] villagersMoving=new bool[6],restartClips=new bool[7];
+    internal readonly bool[] hasIdleClip=new bool[6];
+    internal readonly bool[] villagersMoving=new bool[Town.NpcActorCount],restartClips=new bool[BuildingWorld.Actors];
     internal readonly DialogueVoice dialogueVoice=new DialogueVoice(new Dolphin.Audio.Sound());
     internal bool resourcesReady=true,playerRunning,cliffPreview=false;
     internal string screen="world",message="";

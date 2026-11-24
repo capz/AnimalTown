@@ -14,7 +14,7 @@ internal static class DepotPackage
     private static readonly JsonSerializerOptions Json=new(){WriteIndented=true};
     private sealed record Identity(string Commit,string Version,string SourceDigest,int RuntimeProfile)
     {
-        public string Text=>ContentSelection.Identity(Commit,Version,SourceDigest,RuntimeProfile);
+        public string Text=>ContentIdentity.Create(Commit,Version,SourceDigest,RuntimeProfile);
     }
     private sealed record BuildReceipt(string Profile,string ContentIdentity,string DolSha256);
     private sealed record PackageManifest(int Schema,string Profile,string Commit,string Version,string SourceDigest,int RuntimeProfile,SortedDictionary<string,string> Files);
@@ -63,7 +63,7 @@ internal static class DepotPackage
             "default.dol","opening.bnr","BUILD.txt","version.md","version.json","content.id","runtime.cfg","terrain.cfg","buildings.bin",ModelMemoryCooker.DiscName,
             "savebanner.rgb5a3","saveicon.rgb5a3","gorditas-bold.dndtex","gorditas-bold.metrics","Gorditas-OFL.txt","wordmark.dndtex","item-icons.dndtex",
             "splash-dolphindotnet.dndtex","splash-hypercube-engine.dndtex","cliff-soil.dndtex",PathAssets.DiscName,
-            "THIRD-PARTY-NOTICES.txt","DolphinDotNet-LICENSE.txt","Hypercube-LICENSE.txt","Ryu-LICENSE.txt","ufbx-LICENSE.txt","DEPOT-README.txt"
+            "THIRD-PARTY-NOTICES.txt","DolphinDotNet-LICENSE.txt","Hypercube-LICENSE.txt","Ryu-LICENSE.txt","ufbx-LICENSE.txt","Unicode-LICENSE.txt","DEPOT-README.txt"
         };
         foreach(string name in DroppedItemAssets.Names)files.Add(name+".dndtex");
         var models=new SortedSet<string>(new[]{"fox","bunny","giraffe","cat","hamster","spaniel","building","tent"},StringComparer.Ordinal);
@@ -178,7 +178,7 @@ internal static class DepotPackage
         var seen=new HashSet<string>(StringComparer.Ordinal);
         foreach(var property in data.GetProperty("files").EnumerateObject()){
             string name=property.Name;
-            bool allowed=fixedNames.Split('|').Contains(name)||name=="daylight-build.json"||Regex.IsMatch(name,@"\Adaylight-(noon|dawn|dusk|night)-(a\.png|b\.png|report\.json)\z")||Regex.IsMatch(name,@"\Aterrain-materials-[a-z0-9-]+\.png\z")||Regex.IsMatch(name,@"\Ascenarios/(cliff-hud|gpu-submit|performance)/[^/\\:]+\.(png|json|txt|log|avi)\z");
+            bool allowed=fixedNames.Split('|').Contains(name)||name=="daylight-build.json"||Regex.IsMatch(name,@"\Adaylight-(noon|dawn|dusk|night)-(a\.png|b\.png|report\.json)\z")||Regex.IsMatch(name,@"\Aterrain-materials-[a-z0-9-]+\.png\z")||Regex.IsMatch(name,@"\Ascenarios/(cliff-hud|gpu-submit|performance|jobs)/[^/\\:]+\.(png|json|txt|log|avi)\z");
             if(!allowed||!seen.Add(name))throw new InvalidDataException("Source or unsupported release report: "+name);
             var entry=archive.GetEntry("release/"+name)??throw new InvalidDataException("Missing release report: "+name);
             using var input=entry.Open();if(Convert.ToHexString(SHA256.HashData(input)).ToLowerInvariant()!=property.Value.GetString())throw new InvalidDataException("Release report checksum mismatch: "+name);

@@ -23,6 +23,7 @@ static class Program
             else if(args[0]=="buildings")BuildingAssets.Cook(Root);
             else if(args[0]=="building-native"||args[0]=="model-native")NativeModelWinding.ConvertFile(args[2]);
             else if(args[0]=="model-lod")ModelLodCooker.CookAll(Root,args.Length>2?float.Parse(args[2],System.Globalization.CultureInfo.InvariantCulture):ModelLodCooker.MaximumBindError);
+            else if(args[0]=="model-lod-probe")ModelLodCooker.CookAll(Root,args.Length>2?float.Parse(args[2],System.Globalization.CultureInfo.InvariantCulture):ModelLodCooker.MaximumBindError,enforceEligibility:false);
             else if(args[0]=="model-lod-check")ModelLodChecks.Run();
             else if(args[0]=="model-memory")ModelMemoryCooker.Cook(Root);
             else if(args[0]=="model-memory-check")ModelMemoryCooker.Check();
@@ -30,9 +31,9 @@ static class Program
             else if(args[0]=="repack-textures")TextureRepacker.Command(args);
             else if(args[0]=="town-preview")TownGenerationPreview.Run(args[2],int.Parse(args[3]),args.Length>4?int.Parse(args[4]):1);
             else if(args[0]=="terrain-primitives")TerrainPrimitiveAssets.Build(Root,args.Length>2?int.Parse(args[2]):128);
-            else if(args[0]=="repack-check")TextureRepackerChecks.Run(Root);
+            else if(args[0]=="repack-check"){TextureRepackerChecks.Run(Root);ActorPreparationChecks.Run(Root);}
             else if(args[0]=="audit")Audit();
-            else if(args[0]=="prepare")Prepare(args[2],args[3]);
+            else if(args[0]=="prepare")Prepare(args[2],args[3],args.Length>4&&args[4]=="--villager-runtime");
             else if(args[0]=="prune-model-variants")ModelVariants.Prune(Root);
             else if(args[0]=="art")Art();
             else if(args[0]=="brand-check"){BrandTextureAssets.Check(Root);DiscBannerFile.Check();}
@@ -76,15 +77,23 @@ static class Program
         }
         Directory.CreateDirectory(Path.Combine(Root,"out"));File.WriteAllText(Path.Combine(Root,"out/asset-audit.json"),JsonSerializer.Serialize(entries,new JsonSerializerOptions{WriteIndented=true}));Console.WriteLine("Audited "+entries.Count+" GLBs");
     }
-    static void Prepare(string input,string output)
+    internal static void Prepare(string input,string output,bool villagerRuntime=false)
     {
         byte[] b=File.ReadAllBytes(input);int len=BitConverter.ToInt32(b,12);
         var j=JsonNode.Parse(b.AsSpan(20,len))!;
+        int rest=20+len,binaryLength=0;
+        byte[] extra=[];
+        if(villagerRuntime){
+            binaryLength=BinaryPrimitives.ReadInt32LittleEndian(b.AsSpan(rest,4));
+            extra=VillagerAnimationAssets.Prepare(j,b.AsSpan(rest+8,binaryLength));
+            if(extra.Length>0)j["buffers"]![0]!["byteLength"]=binaryLength+extra.Length;
+        }
         // Tangent-space normal mapping is not used by the chosen GX material path.
         foreach(var mesh in j["meshes"]!.AsArray())foreach(var p in mesh!["primitives"]!.AsArray())p!["attributes"]!.AsObject().Remove("TANGENT");
         foreach(var m in j["materials"]!.AsArray())m!.AsObject().Remove("normalTexture");
+        if(villagerRuntime)KeepVillagerTextures(j);
         // Normalize the actual node-transformed bind-pose bounds, preserving all
-        // existing animation tracks and skin inverse binds under a scene root.
+        // selected animation tracks and skin inverse binds under a scene root.
         var nodes=j["nodes"]!.AsArray();var minimum=new Vector3(float.PositiveInfinity);var maximum=new Vector3(float.NegativeInfinity);
         float[] Values(JsonNode? n,float[] fallback)=>n==null?fallback:n.AsArray().Select(v=>(float)v!).ToArray();
         Matrix4x4 Local(JsonNode n)
@@ -109,10 +118,46 @@ static class Program
         float height=maximum.Y-minimum.Y;if(!float.IsFinite(height)||height<.00001f)throw new InvalidDataException("Invalid model bounds");float scale=1/height;
         var wrapper=new JsonObject{["name"]="AnimalTown normalized root",["scale"]=new JsonArray(scale,scale,scale),["translation"]=new JsonArray(-(minimum.X+maximum.X)*.5f*scale,-minimum.Y*scale,-(minimum.Z+maximum.Z)*.5f*scale),["children"]=roots.DeepClone()};
         int wrapperIndex=nodes.Count;nodes.Add(wrapper);scene["nodes"]=new JsonArray(wrapperIndex);
-        byte[] text=Encoding.UTF8.GetBytes(j.ToJsonString());int padded=(int)Align(text.Length,4);int rest=20+len;
-        byte[] result=new byte[20+padded+b.Length-rest];Array.Copy(b,result,12);BitConverter.GetBytes(result.Length).CopyTo(result,8);BitConverter.GetBytes(padded).CopyTo(result,12);BitConverter.GetBytes(0x4e4f534a).CopyTo(result,16);
-        Array.Fill(result,(byte)32,20,padded);text.CopyTo(result,20);Array.Copy(b,rest,result,20+padded,b.Length-rest);
+        byte[] text=Encoding.UTF8.GetBytes(j.ToJsonString());int padded=(int)Align(text.Length,4);
+        int chunks=20+padded;
+        byte[] result=new byte[chunks+b.Length-rest+extra.Length];Array.Copy(b,result,12);BitConverter.GetBytes(result.Length).CopyTo(result,8);BitConverter.GetBytes(padded).CopyTo(result,12);BitConverter.GetBytes(0x4e4f534a).CopyTo(result,16);
+        Array.Fill(result,(byte)32,20,padded);text.CopyTo(result,20);
+        if(extra.Length==0)Array.Copy(b,rest,result,chunks,b.Length-rest);
+        else{
+            int end=8+binaryLength;
+            Array.Copy(b,rest,result,chunks,end);
+            extra.CopyTo(result,chunks+end);
+            Array.Copy(b,rest+end,result,chunks+end+extra.Length,b.Length-rest-end);
+            BinaryPrimitives.WriteInt32LittleEndian(result.AsSpan(chunks,4),binaryLength+extra.Length);
+        }
         Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(output))!);File.WriteAllBytes(output,result);
+    }
+    static void KeepVillagerTextures(JsonNode model)
+    {
+        if(model["textures"] is not JsonArray textures)return;
+        var packed=new JsonArray();
+        var remap=new Dictionary<int,int>();
+        void Keep(JsonNode? reference)
+        {
+            if(reference==null)return;
+            int index=(int)reference["index"]!;
+            if(!remap.TryGetValue(index,out int packedIndex)){
+                packedIndex=packed.Count;
+                packed.Add(textures[index]!.DeepClone());
+                remap.Add(index,packedIndex);
+            }
+            reference["index"]=packedIndex;
+        }
+        foreach(var material in model["materials"]!.AsArray()){
+            var pbr=material!["pbrMetallicRoughness"] as JsonObject;
+            pbr?.Remove("metallicRoughnessTexture");
+            Keep(pbr?["baseColorTexture"]);
+            Keep(material["occlusionTexture"]);
+            Keep(material["emissiveTexture"]);
+        }
+        // The SDK writes every texture table entry, even if no GX material
+        // samples it. Retain only the textures used by the cooked materials.
+        model["textures"]=packed;
     }
     static byte[] Banner(int width)=>BrandAssets.Banner(Root,width);
     static void Text(byte[] b,int offset,int max,string text)

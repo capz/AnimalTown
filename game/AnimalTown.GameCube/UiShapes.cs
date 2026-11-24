@@ -2,7 +2,7 @@ using System;
 using Dolphin.Graphics;
 
 // Native geometry is built/evicted between frames. Misses use the original
-// immediate path for one frame; dimensions, colors and painter order are exact.
+// immediate path while uncached; dimensions, colors and painter order are exact.
 internal sealed class UiShapes : IDisposable
 {
     private readonly UiShapePlan plan=new UiShapePlan();
@@ -20,7 +20,18 @@ internal sealed class UiShapes : IDisposable
         if(plan.TakeOverflow())for(int n=0;n<8;n++){int oldest=plan.Oldest(true);if(oldest<0)break;Release(oldest);}
         for(int slot=plan.TakePending();slot>=0;slot=plan.TakePending()){
             while(bytes+(plan.Panels[slot]?20000:10000)>384*1024){int oldest=plan.Oldest();if(oldest<0)break;Release(oldest);}
-            var built=Build(plan.Widths[slot],plan.Heights[slot],plan.Radii[slot],plan.Bulges[slot],plan.Panels[slot]);
+            Geometry2D built;
+            NativeFrame.TakeMeshAllocationFailure();
+            try{built=Build(plan.Widths[slot],plan.Heights[slot],plan.Radii[slot],plan.Bulges[slot],plan.Panels[slot]);}
+            catch(ArgumentException){
+                // Mesh uses the same exception for invalid input and capacity.
+                // Only an actual native mesh malloc failure is optional here.
+                bool deferred=NativeFrame.TakeMeshAllocationFailure()==1;
+                if(deferred)plan.Reject(slot);
+                Dolphin.Diagnostics.DebugOverlay.WriteLine("ANIMALTOWN UI "+(deferred?"CACHE DEFERRED":"SHAPE FAILED")+" view "+view+" tab "+tab+" slot "+slot+" width "+plan.Widths[slot]+" height "+plan.Heights[slot]+" radius "+plan.Radii[slot]+" panel "+plan.Panels[slot]+" cached_bytes "+bytes);
+                if(!deferred)throw;
+                continue;
+            }
             geometry[slot]=built;bytes+=built.NativeBytes;plan.Complete(slot);
         }
     }

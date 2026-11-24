@@ -51,6 +51,7 @@ internal static class SaveCards
         }catch(Exception){return TownPresence.Unknown;}
     }
     private static bool IsTownRecord(string name)=>SplitSaveCodec.IsFile(name)||name==TownDataDeletion.Marker;
+    internal static void SelectVerifiedDevice(int device){if(device!=4&&device!=5)throw new ArgumentOutOfRangeException(nameof(device));Device=device;Chosen=true;}
     internal static void WithoutSaving(){Device=-1;Chosen=true;}
     internal static MemoryCard Mount()
     {
@@ -77,11 +78,15 @@ internal static class SaveCards
                     if(save.Filename=="AnimalTown"||save.Filename=="AnimalTown2"){
                         archive=true;
                         if(save.Blocks>=RequiredBlocks)reserved=true;
-                    }else if(IsTownRecord(save.Filename))looseTown=true;
+                    }else if(IsTownRecord(save.Filename)||VillagerCardFiles.IsFile(save.Filename))looseTown=true;
                 }
             }
-            bool canSave=reserved||free>=RequiredBlocks&&entries>0;
-            string status=canSave?"Ready / "+free+" blocks free":free<RequiredBlocks?"Needs "+RequiredBlocks+" free blocks":"No free save entries";
+            // An existing archive can still be opened on a full card for reads
+            // and deletion. A blank card needs the first villager and journal.
+            int required=archive||looseTown?RequiredBlocks:RequiredBlocks+VillagerCardFiles.Blocks+VillagerCardFiles.JournalBlocks;
+            int requiredEntries=archive||looseTown?1:3;
+            bool canSave=reserved||free>=required&&entries>=requiredEntries;
+            string status=canSave?"Ready / "+free+" blocks free":free<required?"Needs "+required+" free blocks":"No free save entries";
             return new SaveCardInfo(device,status,canSave,free,present:true,readable:true,archive:archive,looseTown:looseTown);
         }catch(Exception error){
             string detail=error.Message??"";
