@@ -4,6 +4,7 @@ namespace AnimalTown;
 // format and the common semantic validator, never the new storage payload.
 public static class SplitSaveCodec
 {
+    internal const int Magic=0x50535441;
     public const int TownData=0,HousePositions=1,ShopStates=2,PlayerVillager=3,Commit=4;
     public const int PartCount=7;
     internal static bool IsProfileTownVersion(int version)=>version==4||version>=6&&version<=11;
@@ -43,7 +44,7 @@ public static class SplitSaveCodec
     {
         private readonly byte[] bytes;private int at;
         internal Writer(GameState s,int kind,int capacity,int version=4)
-        {bytes=new byte[capacity];Int(0x50535441);Int(version);Int(Catalog.Version);Int(kind);Int(s.Sequence);Int(s.Town.Seed);Int(0);}
+        {bytes=new byte[capacity];Int(Magic);Int(version);Int(Catalog.Version);Int(kind);Int(s.Sequence);Int(s.Town.Seed);Int(0);}
         internal void Int(int n){if(at>bytes.Length-4)throw new InvalidOperationException("Save record exceeds budget");for(int i=0;i<4;i++)bytes[at++]=(byte)((uint)n>>(i*8));}
         internal void Text(string s){Int(s.Length);for(int i=0;i<s.Length;i++)Int(s[i]);}
         internal void Rle(byte[] source){Int(Runs(source));for(int i=0;i<source.Length;){int n=1;while(i+n<source.Length&&source[i+n]==source[i])n++;Int((source[i]<<24)|n);i+=n;}}
@@ -57,7 +58,7 @@ public static class SplitSaveCodec
         internal Reader(byte[] source,int kind,int verifiedLength=0)
         {
             bytes=source;if(bytes.Length<32||bytes.Length>SaveCodec.MaximumBytes)throw new InvalidOperationException("Invalid save record size");
-            if(Int()!=0x50535441)throw new InvalidOperationException("Wrong save record magic");Version=Int();
+            if(Int()!=Magic)throw new InvalidOperationException("Wrong save record magic");Version=Int();
             CatalogVersion=Int();
             if((Version<1||Version>11||Version>=6&&kind!=TownData)||!Catalog.SupportsVersion(CatalogVersion)||Int()!=kind)throw new InvalidOperationException("Wrong save record type or version");
             Sequence=Range(0,int.MaxValue);Seed=Int();if(Int()!=(verifiedLength==0?bytes.Length:verifiedLength))throw new InvalidOperationException("Save record length mismatch");

@@ -1,4 +1,5 @@
 using AnimalTown;
+using AnimalTown.Jobs;
 
 internal static class ActorVisibilityChecks
 {
@@ -12,12 +13,12 @@ internal static class ActorVisibilityChecks
         view.Prepare(state,doors,camera,0,0);
         check(!view.Visible[visitorActor],"an unused visitor slot is invisible");
         state.SetTownVisitors(new[]{
-            new SavedVisitor(20,0,"First","Hello!",3,0,0),
-            new SavedVisitor(21,0,"Second","Hi there!",1,0,0)
+            new SavedVisitor(20,0,new JobIdentity(20,1),"First","Hello!",3,Catalog.WorkShirt),
+            new SavedVisitor(21,0,new JobIdentity(21,1),"Second","Hi there!",1,Catalog.LeafShirt)
         });
         BuildingWorld.SetLocation(state,visitorActor,new ActorLocation(0,81,80,0));
         view.Prepare(state,doors,camera,0,0);
-        check(view.Visible[0]&&view.Visible[1]&&view.Visible[visitorActor],"the drawing camera includes the player, residents, and saved visitors");
+        check(view.Visible[0]&&view.Visible[1]&&view.Visible[visitorActor],"the drawing camera includes the player, residents, and NPC visitors");
         clock.Step(visitorActor,0,true);
         BuildingWorld.SetLocation(state,visitorActor,new ActorLocation(16,2,2,0));
         view.Prepare(state,doors,camera,0,0);

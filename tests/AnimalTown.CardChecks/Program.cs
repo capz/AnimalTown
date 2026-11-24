@@ -221,6 +221,7 @@ long checkpointTime=AnimalTown.Jobs.JobCalendar.At(2027,7,15,12);
 travelHome.ResidentJobs.Enable(123456,checkpointTime);
 travelAway.ResidentJobs.Enable(123457,checkpointTime);
 travelAway.Name="Birch";travelAway.SelectProfile(1);travelAway.Name="Rowan";travelAway.Species=3;travelAway.SelectProfile(0);
+travelAway.Town.Residents[0].Name="Juniper";travelAway.Town.Residents[1].Name="Marigold";
 var travelHomeArchive=new TownCardRecords(new NativeCardBlocks(4,true,banner,icon),true);
 travelHomeArchive.SetArchiveMarker(2,0,0);
 new SaveRepository(travelHomeArchive).Save(travelHome);
@@ -231,9 +232,14 @@ SaveCards.Initialize();
 var visitingSession=TownSession.Load();
 int hostWrites=travelHomeCard.Writes,visitorWrites=travelAwayCard.Writes;
 visitingSession.RefreshVisitors();
-Check(visitingSession.State.Town.Jobs.TownId==123456&&visitingSession.State.NpcVisitor(5)?.Name=="Birch"&&
-    visitingSession.State.NpcVisitor(6)?.Name=="Rowan"&&visitingSession.State.NpcSpecies(6)==3,
-    "two saved profiles from Slot B become visitors in the selected Slot A town");
+Check(visitingSession.State.Town.Jobs.TownId==123456&&
+    visitingSession.State.NpcVisitor(5)?.Identity==travelAway.Town.Jobs.Npc(0)&&visitingSession.State.NpcVisitor(5)?.Name=="Juniper"&&
+    visitingSession.State.NpcVisitor(6)?.Identity==travelAway.Town.Jobs.Npc(1)&&visitingSession.State.NpcVisitor(6)?.Name=="Marigold"&&
+    visitingSession.State.NpcSpecies(6)==travelAway.ResidentSpecies(1),
+    "two NPC residents from Slot B visit the selected Slot A town using their saved identities and appearance");
+Check(visitingSession.State.Name==travelHome.Name&&visitingSession.State.NpcVisitor(5)?.Name!=travelAway.Profiles[0].Name&&
+    visitingSession.State.NpcVisitor(6)?.Name!=travelAway.Profiles[1].Name,
+    "loading NPC visitors keeps the local player controlled and leaves foreign player profiles off the autonomous roster");
 Check(SaveCards.Device==4&&travelHomeCard.Writes==hostWrites&&travelAwayCard.Writes==visitorWrites,
     "loading visitors leaves both cards and the selected slot untouched");
 MemoryCard.Slots.Remove(5);
@@ -321,6 +327,11 @@ void VerifyMaximum(MemoryCard source){
     for(int p=0;p<4;p++){loaded!.SelectProfile(p);loaded.ResidentJobs.Enable(loaded.Town.Jobs.TownId,mailNow);Check(loaded.MailCount==128&&loaded.ResidentJobs.ReadLetter(127)==fullBody,"all four full Unicode mailboxes survive legacy conversion");}
 }
 VerifyMaximum(card);
+var rosterMeter=new PrefixMeter(new CardSaveStorage(card,banner,icon,4,initializeArchive:false));
+var maximumVisitors=new SaveRepository(rosterMeter).ReadVisitors(123456,Town.LocalResidentCount);
+Check(maximumVisitors.Length==Town.LocalResidentCount&&maximumVisitors[0].Identity==largeState.Town.Jobs.Npc(0)&&
+    rosterMeter.VerifiedReads==1&&rosterMeter.EconomicReads==0,
+    "visitor loading streams a verified roster from a maximum mailbox without reading the full economy into memory");
 card=legacyMaximum.Copy();var interruptedCreation=new NativeCardBlocks(4,true,banner,icon,"AnimalTown",1024);
 for(int page=600;page<1024;page++)Array.Fill(card.RecordPages["AnimalTown"][page],(byte)255);
 int creationWrites=card.Writes;
@@ -366,12 +377,14 @@ card=growthBase;MemoryCard.Slots[4]=card;var streamRecords=new TownCardRecords(n
 Check(streamRecords.Matches("larger",large,-1,large.Length,0,false),"streamed readback accepts the complete saved record");large[100]=1;
 Check(!streamRecords.Matches("larger",large,-1,large.Length,0,false),"streamed readback detects a payload mismatch beyond its header");
 Console.WriteLine(checks+" card adapter checks passed: consolidated save/reload, no-op save, capacity, migration interruption/retry, independent records and deletion; host model, not hardware.");
-sealed class PrefixMeter(CardSaveStorage inner) : ISaveStorage,ISaveSnapshotStorage,ISaveVerifiedPrefixStorage
+sealed class PrefixMeter(CardSaveStorage inner) : ISaveStorage,ISaveSnapshotStorage,ISaveVerifiedPrefixStorage,ISaveVerifiedRecordStorage
 {
-    internal int PrefixReads,EconomicReads;
+    internal int PrefixReads,EconomicReads,VerifiedReads;
     public byte[] Read(string name){if(name.StartsWith("AT-Shops"))EconomicReads++;return inner.Read(name);}
     public void Write(string name,byte[] bytes)=>inner.Write(name,bytes);
     public byte[] ReadVerifiedPrefix(string name,int count,int sequence,int length,uint checksum){PrefixReads++;return inner.ReadVerifiedPrefix(name,count,sequence,length,checksum);}
+    public ISaveWordReader OpenVerifiedRecord(string name,int sequence,int length,uint checksum)
+    {VerifiedReads++;return inner.OpenVerifiedRecord(name,sequence,length,checksum);}
     public bool Matches(string name,byte[]? expected,int sequence,int length,uint checksum,bool ignoreSequence)=>inner.Matches(name,expected,sequence,length,checksum,ignoreSequence);
 }
 

@@ -1,4 +1,5 @@
 using AnimalTown;
+using AnimalTown.Jobs;
 
 internal static class ModelResidencyDemandChecks
 {
@@ -95,13 +96,13 @@ internal static class ModelResidencyDemandChecks
         var host=new GameState(204){HousePlaced=true,Species=0,Space=1,X=2,Z=2};
         var hostDoors=new PortalSystem();
         host.SetTownVisitors(new[]{
-            new SavedVisitor(20,0,"First","Hello!",3,0,0),
-            new SavedVisitor(21,0,"Second","Hi there!",5,0,0)
+            new SavedVisitor(20,0,new JobIdentity(20,1),"First","Hello!",3,0),
+            new SavedVisitor(21,0,new JobIdentity(21,1),"Second","Hi there!",5,0)
         });
         int guestActor=BuildingWorld.Actors-1;
         BuildingWorld.SetLocation(host,guestActor,new ActorLocation(1,2,2,0));
         demand.Prepare(host,hostDoors);
-        check(demand.Required[5]&&ModelResidencyDemand.DrawableUsesSpace(host,hostDoors,5,1),"a visitor pins the species from its saved profile");
+        check(demand.Required[5]&&ModelResidencyDemand.DrawableUsesSpace(host,hostDoors,5,1),"a visitor pins the species from its saved NPC record");
         host.SetTownVisitors(Array.Empty<SavedVisitor>());
         demand.Prepare(host,hostDoors);
         check(!demand.Required[5]&&!ModelResidencyDemand.DrawableUsesSpace(host,hostDoors,5,1),"an unoccupied visitor slot adds no residency demand");

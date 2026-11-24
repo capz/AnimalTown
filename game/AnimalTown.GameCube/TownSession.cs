@@ -30,11 +30,9 @@ internal sealed partial class TownSession
                 var storage=new CardSaveStorage(card,new byte[0],new byte[0],device,initializeArchive:false);
                 bool deleting=false;
                 foreach(string name in storage.Names())if(name==TownDataDeletion.Marker){deleting=true;break;}
-                if(!deleting){
-                    var trip=State.Town.Jobs.Trip;
-                    visitors=new SaveRepository(storage).ReadVisitors(State.Town.Jobs.TownId,
-                        State.Visiting?trip.Home:0,State.Visiting?trip.HomeProfile:-1,State.Visiting?1:Town.VisitorCount);
-                }
+                // Let the live roster reject duplicate identities before applying its visitor cap.
+                if(!deleting)
+                    visitors=new SaveRepository(storage).ReadVisitors(State.Town.Jobs.TownId,Town.LocalResidentCount);
             }catch(Exception error){DebugOverlay.WriteLine("ANIMALTOWN VISITOR CARD: "+error.Message);}
         }
         State.SetTownVisitors(visitors);
