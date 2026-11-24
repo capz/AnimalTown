@@ -21,9 +21,9 @@ public static class WaterSurface
         return distance/3;
     }
     public static float Scroll(double seconds,float speed)=>(float)(seconds*speed-Math.Floor(seconds*speed));
-    // Original neutral patterns, sampled periodically then packed in GX I8
-    // 8x4 tiles. Both maps have implicit opaque alpha; ripple intensity is the
-    // TEV interpolation weight, never the framebuffer opacity.
+    // Original open-sea patterns in GX I8 8x4 tiles. I8 replicates intensity
+    // into alpha as well as RGB; the sea is opaque, while the separate inland
+    // material explicitly takes opacity from raster alpha.
     public static byte[] Texture(bool ripples)
     {
         var pixels=new byte[TextureSize*TextureSize];int at=0;
@@ -37,7 +37,7 @@ public static class WaterSurface
         if(!ripples)return (byte)(239+8*Math.Sin((x+y)*Math.PI/32)+7*Math.Cos((x-2*y)*Math.PI/32));
         return WindWakerWaterPattern.Foam(x,y);
     }
-    // Pale shoreline breakers use IA8, unlike the opaque I8 surface masks.
+    // Pale shoreline breakers use IA8, with independent intensity and alpha.
     // GX IA8 stores alpha first and luminance second in each 4x4 native tile.
     // The material scrolls this texture without rewriting any shoreline vertices.
     public static byte[] ShoreTexture()

@@ -135,7 +135,7 @@ internal sealed class TerrainRenderer : IDisposable
         waterMaterial.PrepareRoughOcean();
         // Only rough ocean needs the small dynamic wave patch.
         oceanWaves.Prepare(state,waterMaterial.RoughOcean,
-            cliffPreview,waterMaterial.Tint(1));
+            cliffPreview,waterMaterial.OceanTint(1));
         int next=SeasonAt(month,SeasonOverride);bool changed=next!=season;
         if(changed){
             string name="floor-"+TerrainTiles.SeasonName(next);data=File.ReadAllBytes(ContentPaths.Asset(name+".bin"));FloorStrips.Validate(data);
@@ -360,25 +360,41 @@ internal sealed class TerrainRenderer : IDisposable
             if(!snow||archive.IsGroundStrip(i))Add(renderer,material,archive.Mesh(i),snow);
         Flush(renderer,material,snow);
     }
-    private void DrawArchiveWater(Renderer renderer)
+    // The bed, rocks and sea are ordinary depth-writing geometry. Inland
+    // water is submitted separately after every opaque world object so its
+    // tint overlays submerged geometry without hiding bridge decks or banks.
+    private void DrawArchiveWaterOpaque(Renderer renderer)
     {
-        AddArchive(renderer,waterMaterial.Surface,104);
+        AddArchive(renderer,waterMaterial.BedMaterial,108);
+        AddArchive(renderer,waterMaterial.RockMaterial,109);
         AddArchive(renderer,waterMaterial.OceanSurface,107);
         oceanWaves.Draw(renderer,waterMaterial.OceanSurface,ScrollTransform);
-        AddArchive(renderer,waterMaterial.Foam,105);
     }
-    private void DrawLegacyWater(Renderer renderer)
+    private void DrawLegacyWaterOpaque(Renderer renderer)
     {
-        NativeShadows.Scope(3);
-        try{
-            for(int i=0;i<stream.Count;i++)if(stream.Visible[i])Add(renderer,waterMaterial.Surface,sections[i]!.Water.SurfaceMesh);
-            Flush(renderer,waterMaterial.Surface);
-        }finally{NativeShadows.Scope(0);}
+        for(int i=0;i<stream.Count;i++)if(stream.Visible[i])Add(renderer,waterMaterial.BedMaterial,sections[i]!.Water.Bed.BedMesh);
+        Flush(renderer,waterMaterial.BedMaterial);
+        for(int i=0;i<stream.Count;i++)if(stream.Visible[i])Add(renderer,waterMaterial.RockMaterial,sections[i]!.Water.Bed.RocksMesh);
+        Flush(renderer,waterMaterial.RockMaterial);
         for(int i=0;i<stream.Count;i++)if(stream.Visible[i])Add(renderer,waterMaterial.OceanSurface,sections[i]!.Water.OceanMesh);
         Flush(renderer,waterMaterial.OceanSurface);
         oceanWaves.Draw(renderer,waterMaterial.OceanSurface,ScrollTransform);
-        for(int i=0;i<stream.Count;i++)if(stream.Visible[i])Add(renderer,waterMaterial.Foam,sections[i]!.Water.FoamMesh);
-        Flush(renderer,waterMaterial.Foam);
+    }
+    internal void DrawWater(Renderer renderer)
+    {
+        NativeShadows.Scope(legacy?3:0);
+        try{
+            if(!legacy)AddArchive(renderer,waterMaterial.Surface,104);
+            else{
+                for(int i=0;i<stream.Count;i++)if(stream.Visible[i])Add(renderer,waterMaterial.Surface,sections[i]!.Water.SurfaceMesh);
+                Flush(renderer,waterMaterial.Surface);
+            }
+        }finally{NativeShadows.Scope(0);}
+        if(!legacy)AddArchive(renderer,waterMaterial.Foam,105);
+        else{
+            for(int i=0;i<stream.Count;i++)if(stream.Visible[i])Add(renderer,waterMaterial.Foam,sections[i]!.Water.FoamMesh);
+            Flush(renderer,waterMaterial.Foam);
+        }
     }
 
     private void DrawGround(Renderer renderer,bool snow)
@@ -401,11 +417,11 @@ internal sealed class TerrainRenderer : IDisposable
     {
         if(groundLoad==GroundLoad.Preview)groundLoad=GroundLoad.Visible;
         if(legacy){
-            DrawLegacyWater(renderer);
+            DrawLegacyWaterOpaque(renderer);
             for(int i=0;i<stream.Count;i++)if(stream.Visible[i])Add(renderer,soil.Material,sections[i]!.Walls.SoilMesh);
             Flush(renderer,soil.Material);
         }else{
-            DrawArchiveWater(renderer);
+            DrawArchiveWaterOpaque(renderer);
             AddArchive(renderer,soil.Material,106);
         }
         NativeShadows.Scope(mipBands.Enabled?6:1);

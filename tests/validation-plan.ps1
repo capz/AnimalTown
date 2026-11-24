@@ -31,7 +31,7 @@ $p=Get-ValidationPlan -ChangedPaths @('docs/versioning.md') -ForceRelease;Assert
 $p=Get-ValidationPlan -ChangedPaths @('game/AnimalTown.GameCube/TitleArt.cs','game/AnimalTown.GameCube/TitleBackdrop.cs','game/AnimalTown.GameCube/LoadingScreen.cs');Assert (($p.managed -join ',') -eq 'ui,menu,saves' -and !$p.backend -and !$p.full) 'Independent title/loading UI needs UI, navigation and save checks'
 $p=Get-ValidationPlan -ChangedPaths @('game/AnimalTown.GameCube/ProfilePicker.cs','game/AnimalTown.GameCube/TownSession.cs');Assert (($p.managed -join ',') -eq 'ui,menu,saves' -and !$p.backend -and !$p.full) 'Profile selection must exercise UI, navigation and save loading'
 # Rendering fixture edits exercise only that fixture; production edits include dependents.
-$fixtures=@{WaterEffect='water';RenderingService='services';MovementTerrain='movement';GroundRing='ground';TerrainIndex='index';ActorVisibility='visibility';AttentionGeometry='attention';DroppedItem='dropped-item'}
+$fixtures=@{WaterEffect='water';ShallowWaterMaterial='water';RenderingService='services';MovementTerrain='movement';GroundRing='ground';TerrainIndex='index';ActorVisibility='visibility';AttentionGeometry='attention';DroppedItem='dropped-item'}
 foreach($fixture in $fixtures.Keys){
     $p=Get-ValidationPlan -ChangedPaths @("tests/AnimalTown.RenderingChecks/$($fixture)Checks.cs")
     Assert (($p.rendering -join ',') -eq $fixtures[$fixture] -and !$p.managed.Count -and !$p.backend -and !$p.full) "Rendering fixture routing incorrect: $fixture"
@@ -77,4 +77,13 @@ foreach($path in @('shared/AnimalTown.Domain/WorldLighting.cs','game/AnimalTown.
     Assert ('core' -in $p.managed -and 'shadows' -in $p.native -and !$p.backend -and !$p.full) "Lighting changes must cover clock policy and the actual GX shadow/light shader: $path"
 }
 $p=Get-ValidationPlan -ChangedPaths @('game/AnimalTown.GameCube/NativeShadows.cs');Assert ('patched' -in $p.native) 'Shadow bridge changes must exercise fresh AOT bindings'
-Write-Host 'Validation routing checks passed (79 cases).'
+foreach($path in @('shared/AnimalTown.Domain/ShallowWaterPattern.cs','shared/AnimalTown.Domain/WaterBedGeometry.cs','game/AnimalTown.GameCube/WaterBedRenderer.cs')){
+    $p=Get-ValidationPlan -ChangedPaths @($path)
+    Assert (($p.managed -join ',') -eq 'terrain,core' -and 'water' -in $p.rendering -and !$p.backend -and !$p.full) "Shallow-water rendering must retain bounded component coverage: $path"
+}
+foreach($path in @('shared/AnimalTown.Domain/WaterTextureCatalog.cs','game/AnimalTown.GameCube/WaterTextureAssets.cs','tools/AnimalTown.Tools/WaterTextureArt.cs','tools/AnimalTown.Tools/WaterTextureArtChecks.cs','assets/textures/environment/water/riverbed-color.png')){
+    $p=Get-ValidationPlan -ChangedPaths @($path)
+    Assert (($p.tooling -join ',') -eq 'depot,water' -and ($p.rendering -join ',') -eq 'water' -and !$p.backend -and !$p.full) "Optional water art must check conversion, deployment and material use: $path"
+}
+$p=Get-ValidationPlan -ChangedPaths @('tests/AnimalTown.Checks/WaterBedChecks.cs');Assert (($p.managed -join ',') -eq 'terrain' -and !$p.rendering.Count -and !$p.backend -and !$p.full) 'Bed topology checks belong to the managed terrain suite'
+Write-Host 'Validation routing checks passed (89 cases).'

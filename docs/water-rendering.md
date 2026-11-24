@@ -1,266 +1,205 @@
-# Opaque GameCube water
+# Shallow river water on GameCube
 
-Outdoor water uses one shared `WaterRenderer` / `WaterMaterial`, with distinct
-persisted inland and sea semantics. `Terrain.Water` (ID 1) means rivers and ponds;
-`Terrain.Sea` (ID 8) means sea and the external ocean. Inland water ground and
-visible opaque surface are exactly 0.50 m below their local elevation. Sea
-uses the same current -0.50 m surface level. Bridges retain their land
-plane and collision.
+Rivers and ponds use a stationary opaque riverbed, sparse faceted rocks, a
+translucent turquoise surface, and a separate narrow shoreline accent. The
+surface has smaller broken ripples; moving caustic light belongs to the bed.
+Every component has a procedural default, so the renderer works without any
+new supplied artwork. See [water-art-assets.md](water-art-assets.md) for the
+five optional PNG replacements, exact formats and the import commands.
 
-`TerrainWalls` emits shared soil/lip batches along dry-to-river boundaries,
-including corners. Water cells never emit retaining walls against one another.
-Bridge decks cover a continuous lowered water plane without becoming foam edges or retaining walls.
-All wall endpoints use the same cylindrical row chords as ground and water.
+This is a stylized shallow-water treatment inspired by the Smalltown Forest
+wallpaper. It does not implement a physical fluid simulation or framebuffer
+refraction. The indirect map displaces the surface pattern's texture
+coordinates; it does not bend the image of the riverbed.
 
-CoastNorth/East/South/West (IDs 9..12) describe aligned 2 x 2 m sections. Their
-landward metre is grass-topped 2 m land/cliff; the seaward metre is sea, not the
-lower half of a vertical face. They reuse world-aligned ground material bindings
-and the existing soil texture. New southern headlands use CoastSouth; all four
-orientations are covered by regression checks. Coastal cliffs block traversal.
-Beach cells touching sea slope to the sea plane and receive a wet-sand tint;
-restrained surface foam supplies the surf edge. New generation permits sea to
-border only water, beach or a facing coastal cliff.
+## Draw order and depth
 
-The river and sea now use the same water elevation. The former 0.44 m
-estuary height step was removed when sea level was unified with rivers.
-This is stylized, static terrain water rather than a physical flow simulation.
+`TerrainRenderer.Draw` submits depth-writing riverbeds, rocks, sea, soil and
+ground before the ordinary opaque world objects. After buildings, bridge
+decks, actors and box batches, `TownGame.SubmitFramePart` calls
+`TerrainRenderer.DrawWater`. That call draws the translucent inland surface,
+then shoreline foam, before foliage, weather and overlays.
 
-The surface has two triangles per visible cell, with world-coordinate UVs (one
-base repeat per four metres). Calm water uses immutable archived geometry;
-camera motion selects archived mesh views, while animation changes only the
-shared material's UV matrices. Terrain or season changes can rebuild the archive.
+| Component | Blend | Depth test | Depth write | Archive kind |
+|---|---|---|---|---:|
+| Riverbed and submerged bank skirts | Opaque | On | On | 108 |
+| Generated rocks | Opaque | On | On | 109 |
+| Sea and optional rough-sea patch | Opaque | On | On | 107 / dynamic patch |
+| Inland river/pond surface | Source alpha | On | Off | 104 |
+| Shoreline foam | Source alpha | On | Off | 105 |
 
-## Saves and generation
+This order gives the surface real background geometry to blend with. Bed
+pixels and submerged rock pixels receive the turquoise overlay; above-water
+rock caps and bridge decks occlude it through the existing depth buffer.
+Shoreline geometry is lifted 8 mm to avoid coincidence with the surface.
+The legacy recreated-terrain comparison follows the same opaque/transparent
+separation and retains its river shadow/light scope.
 
-Combined saves now write v6 and read v1..v6; split records write v2 and read
-v1..v2. Historical formats still reject IDs above 7. Current formats validate IDs
-through 12. Loading historical records relabels only existing water in the
-southern sea band (z >= 128) as sea. It never flood-fills the connected river or
-regenerates a town. Dry terrain edits, elevations, structures, possessions,
-resident data and progress remain intact. A historical inland pond stays inland
-water; a historical water edit inside the southern sea band adopts sea semantics.
-This explicit template boundary is deterministic and migration is stable after
-its first write. Existing arbitrary dry shoreline edits are retained and receive
-normal cliff edge geometry rather than being repainted as beach or headland.
-New-town generator version 4 authors the sea boundary and half-section headlands.
+Meshes are grouped by shared material. This split does not introduce a
+scene-wide transparency sorter. The horizontal inland cells form one
+nonoverlapping layer, while the existing bank foam avoids overlapping corner
+strips. General intersecting transparent objects still need their own ordering.
 
-## Material and patterns
+## Geometry and world semantics
 
-The pinned DolphinDotNet SDK supports two textures, separate UV matrices and GX
-TEV programs directly. The game uses its `WaterWarp` preset for calm water.
+`Terrain.Water` (ID 1) remains inland water, and `Terrain.Sea` (ID 8) remains sea.
+Water surfaces keep their existing level, 0.50 m below local terrain elevation.
+Bridges retain their deck, collision and traversal behavior. None of the new
+bed depths or rock placements is stored in the town save or changes navigation.
 
-Calm water creates one original neutral 64x64 GX I8 foam/crest mask (4 KiB) and
-one 64x64 RGB565 signed displacement map (8 KiB), without mipmaps. Both repeat
-periodically in two dimensions and use linear filtering. The two foam layers
-sample the same I8 image through independent UV matrices. Existing artist source
-images and nine-slice atlases are preserved. No runtime image decoding or texture
-uploads occur during animation. The optional storm material lazily creates two
-additional I8 images, for another 8 KiB only while rough water is active.
+`WaterBedGeometry` maps the existing shore-distance field into a separate
+render-only depth, ranging from 0.16 m near banks to 0.66 m farther out. That
+field is shoreline proximity, not a sampled scene-depth buffer. The bed has
+two triangles per inland cell, including the continuous space beneath bridges.
+Additional skirts close the gap from the existing bank toe to the lowered bed,
+including cardinal and corner joins. Sea cells do not allocate a bed.
 
-The RGB program is:
+Bed corners share logical coordinates across sections. Bed, bank skirts,
+water and rocks all use the same cylindrical row-chord projection as the ground.
+Skirt bottoms and stone placement sample the actual two bed triangles, so a
+second approximation cannot leave visible holes between the layers.
 
-1. Start with the depth-dependent vertex tint.
-2. Blend toward the first pale foam color using the first displaced I8 sample.
-3. Blend toward the second pale foam color using the independently scrolling
-   second sample of the same I8 image.
-4. Preserve RGB and resolve primary texture opacity in the SDK's final stage.
+Rocks are generated deterministically from the town seed and fixed logical
+2-by-2-metre blocks. Candidates are rejected on bridges, dry cells and narrow
+bank margins. Accepted shapes are combined into each section's rock mesh;
+there are no individual per-frame rock objects or random-placement updates.
+Most are submerged, with some protruding slightly above the water. Lower rings
+are buried in the bed. Placement is decorative and introduces no new collision.
 
-This is four physical TEV stages, two texture units and one indirect GX stage.
-The ripple map stores its RGB blend weight in intensity. Surface blending is
-`Opaque`, depth testing/writing stay enabled, and alpha cutoff is zero. Using I8
-keeps the SDK combiner API sufficient without custom texture-alpha stages.
-The current target is GameCube GX; there is no separate renderer backend needing
-a shader fallback.
+The existing sloped banks, coast orientations, beach wet-sand tint, estuary
+water level and historical save migration remain in place. This change does
+not regenerate a town or add a terrain-editing system.
 
-`WaterMaterial.Shallow` and `Deep` configure the shoreline/interior palette. On
-season load, version-2 floor metadata supplies the deep tint from the existing
-`water` terrain configuration; shallow tint scales proportionally from it. All
-water bodies share this palette, including water inside pond metadata patches.
-Version-1 metadata uses the default `#4B9ABB` blue. Vertex tint uses
-distance to dry terrain, capped at three metres, sampled at shared logical corners
-so neighboring cells/strips have identical edge colors. Bridges do not create
-false shallow bands or foam across the river.
+## Materials and animation
 
-`BaseSpeed` defaults to `(0.012, 0.025)` UV/s; `RippleSpeed` to `(-0.018, 0.035)`.
-The ripple layer has a separate 1.35x scale. Animation uses elapsed wall time,
-independent of simulation ticks and camera motion. Translations wrap modulo one
-to preserve precision during long sessions. Set style fields before first
-preparation when reusing the material; a palette change needs a geometry rebuild.
+The inland material uses the pinned SDK's custom GX TEV program rather than
+using texture intensity as its transparency. Every authored alpha stage
+explicitly preserves the depth-dependent raster alpha. This matters because
+an I8 texture exposes intensity through alpha as well as RGB: ordinary texture
+alpha multiplication would make the river disappear between ripple strokes.
 
-## Optional shore foam and budgets
+Two independently scrolling samples of the fine ripple mask provide a subdued
+teal layer and a pale cyan highlight. The indirect distortion stays restrained.
+Its RGB565 source is a displacement field: blue drives horizontal displacement
+and green drives vertical displacement. The custom GX indirect matrix uses
+those channels explicitly, avoiding RGB565's constant alpha channel.
 
-`FoamEnabled` adds a 12 cm pale band along exposed dry banks, enabled by default.
-It gently pulses in opacity. It is a separate alpha material with depth testing
-and no depth writes; the water underneath remains fully opaque. Corner strips
-are trimmed to avoid overlapping alpha, and there are no foam edges against
-bridges or the external ocean. Foam interpolates on the water's row chord with
-an 8 mm radial lift, so it does not float above the curved surface.
-A shared 64x64 GX IA8 shoreline mask (8 KiB) supplies moving opacity
-through a per-frame UV matrix; no shoreline vertices are changed.
-The mask repeats seamlessly and scrolls along the bank independently
-of the opaque surface layers.
+The riverbed's color texture remains fixed in world coordinates. A separate
+low-contrast caustic mask moves across it through another UV transform. The
+caustic contribution is multiplied by the vertex/material lighting so it does
+not remain a bright additive glow at night. Rocks use the same light pattern
+with their own faceted vertex colors. Their triangles are split at the dry
+waterline during construction, and vertex alpha masks the caustic contribution
+below that line. The rock material itself always writes opaque alpha.
 
-The floor visibility window bounds selection. Water is limited to 2,048 visible
-cells (4,096 horizontal surface triangles); each cell can add at most four foam quads and four two-sided mouth curtains.
-Retained mesh buffers grow geometrically and are reused; animation only updates
-material transforms/color. Empty geometry is not submitted. The normal scene
-requires one opaque water draw plus one optional foam draw, sharing textures and
-effect across every visible water body. The triangle counter includes both.
+The shallow and deep palette still derives from the existing seasonal floor
+metadata. `SurfaceTint` supplies the inland opacity, while `OceanTint` always
+returns opaque alpha. This separation also keeps the optional rough-sea wave
+patch opaque when the inland material changes.
 
-## Wind Waker-inspired water (2026-11-10)
+All ordinary animation changes shared material UV matrices and color only.
+It does not upload textures, regenerate archived geometry, move the riverbed,
+or allocate per-frame rock meshes. Translations wrap to preserve precision in
+long sessions. Freeze-motion inspection holds these texture animations.
 
-The ordinary water material remains compatible with the currently pinned
-DolphinDotNet SDK. `WindWakerWaterPattern.Foam` builds a 64x64 GX I8
-texture with four-by-four periodic jittered Voronoi sites. Smooth periodic
-coordinate warping makes interconnected irregular foam lines; fixed intensity
-is blended by the existing two UV/TEV layers. CPU work happens once at startup.
-`WaterSurface.StormTexture()` preserves the more forceful optional storm
-whitecaps, while shore breakers use the new translucent IA8 mask.
+### Sea compatibility
 
-A separate `LocalOceanWaves` is active only for the existing opt-in
-`DebugWeather.RoughOceanWhenRaining` condition near deep water. It checks an
-8x8 m area for pure sea tiles, and then updates a 17x17 vertex / 512-triangle
-grid with four travelling cosine waves. The wave patch is positioned 6 m
-towards the outer sea; the wave amplitude fades over three outer grid cells.
-A 12 mm positive lift from the archived water avoids coincident depth.
-The patch follows the same rigid cylindrical scroll transform and does not
-change archived ARAM terrain or collision. It is a decorative overlay, not
-a replacement for the fixed sea plane. Profiling should verify the cost
-of `DynamicMesh.SetVertices` and possible overlap at its edge.
+The sea keeps its existing opaque Wind Waker-inspired material, interconnected
+crest mask and indirect movement. This avoids introducing a transparent deep
+ocean with no underlying geometry. The optional rough ocean still creates its
+two additional I8 maps only when selected and retires them when unused.
 
-The coordinated DolphinDotNet 305 / Hypercube 15 package update enables GX
-indirect texture sampling in the default Wind Waker material. The game uses
-`TevMaterialPresets.WaterWarp` directly: two independent foam UV samples (TEX0)
-and one signed 64x64 RGB565 displacement map (TEX1, 8 KiB). The SDK owns DNEF v3
-validation and serialization; the game's hand-written package/failure probe and
-unused v2 calm-water fallback have been removed. The warp changes UVs on the GPU,
-without per-frame texture uploads or changes to archived terrain vertices.
+`LocalOceanWaves` remains the existing 17-by-17 vertex / 512-triangle near-sea
+patch. Its four traveling waves, outer fade and 12 mm lift are unchanged; it
+is a decorative overlay on the fixed sea plane. Its cached phases and lazy
+buffers keep the normal calm-water path free of dynamic wave uploads.
 
-The old storm material and its two I8 images are created between frames only
-when rough weather is first selected. This avoids 8 KiB of unused native image
-data and obsolete effect work compared with keeping both the v2 fallback and
-new v3 material. This is the sole water renderer.
+### Shoreline
 
-The optional rough geometry retains exactly the four travelling waves and edge
-fade. `WindWakerWaveGrid` caches spatial phases when the patch origin changes;
-steady frames compute four sine/cosine pairs instead of 1,156 cosines. Tests
-compare every grid sample against the previous height function, including long
-sessions, with a 0.0000001 m tolerance and no warm-frame allocations. The small
-phase cache adds 3,264 payload bytes once rough water is used. Vertex/index and
-cylinder-row staging are now lazy, deferring 16,428 payload bytes during ordinary
-play. Terrain levels, collision and save formats remain unchanged.
+The existing 12 cm contact strip uses a shared IA8 mask with broken coverage
+and a gentle opacity pulse. Bridges do not create foam edges across the river.
+The strip follows existing bank toes and retains trimmed, nonoverlapping
+corner joins. This is a bank contact accent; the implementation does not add
+bespoke foam rings around every generated rock.
 
-### Cost model
+## Assets and resource bounds
 
-- Calm river / ocean: no geometry changes and no per-frame image uploads;
-  material UV/opacity updates only.
-- Shoreline: one shared 8 KiB IA8 mask, bringing ordinary water texture data to
-  20 KiB including the foam and indirect maps.
-- Rough sea opt-in: 289 vertices and 512 triangles; one small dynamic
-  vertex upload and draw per frame while a pure deep-sea patch is active.
-- DNEF v3 on the pinned SDK: two textures (foam + indirect mask), three
-  authored TEV stages plus a base-alpha stage, and one indirect GX stage.
-  This is the active calm-water path; there is no automatic fallback gate.
+Optional native texture packages load only when the shared materials are
+constructed. Each role falls back independently to its procedural pattern.
+Dimensions, native format, mip count and exact byte length are validated before
+upload; malformed packages emit a diagnostic and retain the fallback.
+Author PNGs are converted offline and never decoded in the frame loop.
 
-The normal world remains one batched opaque surface, one sea pass and
-an optional shoreline pass using existing archive-bound mesh views.
-The original `d_a_sea.cpp` source in `zeldaret/tww` informed the
-separation of near-field wave heights from texture-based distant water;
-these masks and numbers are an original AnimalTown approximation, not copied
-Nintendo textures or a bit-identical GameCube pipeline.
+The five replaceable texture roles contain 56 KiB of native pixel data in total.
+The calm ocean retains a 4 KiB ripple mask and an 8 KiB distortion map, bringing
+ordinary water to 68 KiB. Rough-sea textures are another 8 KiB when active.
+These figures exclude geometry, shader objects, managed
+staging and package headers. The maps use repeat/linear sampling with one base
+level; no authored mip chain is currently accepted.
 
-### Legacy river shadow composition
+`WaterBedRenderer` is owned by `WaterRenderer` and follows the same
+Begin/Append/Finish/Archive/Dispose lifecycle. The managed archive-kind table
+and native `TA_KINDS` both include 110 kinds. Existing archive limits remain
+8 MiB in ARAM, a 1 MiB resident cache and 256 mesh views. The new parts count
+against those existing limits rather than creating a second terrain archive.
 
-The optional **Recreate terrain meshes** and **Ground ring comparison** debug
-paths also apply the shared cloud/shadow/light footer to river water. That footer
-previously reused GX constant K1 for lamp color, replacing the second foam layer's
-pale highlight with black at noon or lamp gold at night. This affected blending
-in those legacy comparison paths; it did not stop their UV matrices.
+Per 8-by-4-metre section, the conservative geometry bounds are 1,728 bed/skirt
+vertices and 1,296 clipped rock vertices. At the native 36-byte vertex stride,
+the parts are at most 62,208 and 46,656 bytes respectively, fitting the existing
+65,536-byte append staging buffer. Actual river sections usually contain
+substantially less. Cold build
+work is bounded and section buffers are reused; visible mesh selection and
+archive caching continue through the existing terrain system.
 
-The footer now preserves both foam constants K0/K1, keeps environment/shadow
-colors in K2/K3, and places lamp RGB in an unused regular TEV color register.
-Selection excludes every authored RGB read and destination, including packed
-destinations, so the water program cannot overwrite the lamp before the appended
-stages execute. The initial alpha stays zero; shadow/light alpha calculations use
-their independent channels. WaterWarp uses only PREV and therefore leaves REG0
-available. The change adds no texture, render pass or TEV stage. Ordinary materials
-with zero or one constant keep their existing footer. This supports WaterWarp's
-two-constant composition; other layouts retain the existing footer policy.
+A host-side geometry sweep of town seeds 0, 49, 7319 and 1986 measured at most
+398,112 bytes of added archive payload, 195,584 bytes of conservative visible
+cache payload and 52 extra visible parts before coalescing. The largest actual
+half-section part was 11,680 bytes. These are incremental geometry estimates;
+the combined existing-plus-new native residency still needs emulator validation.
 
-## Verification
+This is an engineering budget, not a claim of measured physical-console frame
+rate. Verify memory pressure, raster cost and distant ripple stability in the
+actual game. Screen-space refraction or stronger reflection would add a
+separate scene-capture and sampling cost and should be evaluated as a later
+rendering change.
 
-`./tools/test-changes.ps1` selects the terrain/core checks for water files. The
-terrain suite covers aliased floor materials, land/bridge exclusion, interior
-transitions, bounded ocean selection, continuous corner depth, periodic GX tile
-packing, connected foam density, shoreline IA8 native tile order,
-positive wave displacement and long-running/negative UV scrolling.
+## Verification and review
 
-Build with `./tools/build-game.ps1`. For the targeted Dolphin check, use a fresh
-output directory/card:
+Run the repository selector rather than assuming that a shader-only test is
+sufficient for geometry, packaging or native archive changes:
 
 ```powershell
-docker run --rm --init --shm-size=512m --mount "type=bind,src=$PWD,dst=/work" -w /work animaltown-dolphin python3 tools/iso-smoke.py out/AnimalTown-COMMIT.iso out/water-smoke --water
+./tools/test-changes.ps1 -BaseRef origin/main -PlanOnly
+./tools/test-changes.ps1 -BaseRef origin/main
 ```
 
-The scenario creates a player, reaches the western ocean, checks that a stationary
-water region changes over eight seconds, moves the camera, and captures the menu
-and return to the world. Inspect `water-a.png`, `water-b.png`, `water-camera.png`,
-`water-menu.png`, `water-return.png`, and emulator logs for seams, depth/foam edges,
-unchanged geometry and subsequent material state. Pixel animation alone does not
-prove visual quality or distinguish the individual scrolling layers. Physical
-GameCube appearance/performance remains unverified. The existing Dolphin
-water smoke test does not automatically enable rainy-ocean wave mode; inspect
-that mode separately with the in-game debug weather setting and measure it
-against the calm ocean baseline.
+`-NativeInProcess` is available in the Linux builder environment. Managed
+checks cover bed corner continuity, all local bank topologies, bridge exclusion,
+deterministic bounded rocks, and unchanged traversal. Rendering checks cover
+material contracts and native texture layout. Importer checks exercise format,
+channel and size constraints, stale asset retirement and matching optional
+content in the disc and Depot runtime payloads. Native archive fixtures cover
+the new bed/rock kinds and byte-exact resident views.
 
-For combined mip and water acceptance, use `--terrain-materials`. Its fixed river
-and coast views compare interior crest/chromaticity changes, freeze landscape
-motion as a control, and resume it. It also toggles the existing **Recreate terrain
-meshes** shortcut (L+R+Z+X), repeats the river controls, and restores the archived
-path. Sampling waits for observed rendered frames and UV displacement rather
-than a fixed host delay. This avoids counting moving
-cloud shadows or a slow emulator's wall-clock delay as proof of texture animation.
-
-During the existing water inspection tour, `NativeWaterProbe` emits
-`ANIMALTOWN WATER DRAW` at the first actual water primitive and every 30 rendered
-frames thereafter. The read-only wrappers forward GX commands unchanged and
-record the actual loaded primary/secondary UV matrices, selected matrix IDs,
-foam stage texture-coordinate/map bindings, TEV/indirect stage counts, resolved
-texture sizes and the final K0/K1 RGBA constants (`c4e4deff` / `e5f5edff`). Matrix
-coefficients are signed integers scaled by 1,000,000 in
-`m00,m01,m10,m11,offsetU,offsetV` order. The probe stays silent outside inspection.
-The patched-native suite runs a recording transport fixture that verifies call
-forwarding, draw gating, cadence, scene reset and frozen matrix reporting. A
-recording shadow fixture also checks both foam colors and the resulting RGB/alpha
-over noon/night environment, cloud and lamp masks, plus register read/write
-exclusion. A native trace proves submission state; the associated Dolphin screenshots and
-pixel comparisons establish the visible result.
-
-## River/coast inspection
-
-L+R+D-pad Left cycles a read-only camera tour: river, bank corner, bridge,
-coastal headland/beach, mouth, then normal play. It uses the actual loaded town,
-restores player coordinates after every draw, and blocks normal input during
-inspection. It never modifies terrain or saves. L+R+D-pad Up still opens the
-existing eight-piece cliff gallery.
+For visual acceptance, use the existing read-only river/coast tour and
+terrain-material animation scenario against the built console image:
 
 ```sh
-docker run --rm --init --shm-size=512m --mount "type=bind,src=$PWD,dst=/work" -w /work animaltown-dolphin python3 tools/iso-smoke.py out/AnimalTown-VERSION.nkit.iso out/river-coast-smoke --river-coast
+python3 tools/iso-smoke.py out/AnimalTown-VERSION.nkit.iso out/water-review --river-coast
+python3 tools/iso-smoke.py out/AnimalTown-VERSION.nkit.iso out/material-review --terrain-materials --season spring --dsp-hle
 ```
 
-Inspect river.png, river-corner.png, bridge.png, coast-beach.png, estuary.png,
-restored.png and river-coast-menu.png. Automated height, footprint, shore-adjacency,
-68-seed generation, combined/split round-trip and historical migration checks run
-through `tools/test-changes.ps1`. Physical console testing remains outstanding.
-The release workflow publishes the NKit ISO, Depot app, backend/tools ZIPs and
-compact update feed. Reports and checksums live inside the Depot ZIP; cliff
-authoring files remain in Git and are not a separate release ZIP.
+Run these inside the configured Dolphin image as described by the release
+workflow. `L+R+D-pad Left` cycles river, bank corner, bridge, coast and estuary
+views without editing or saving the town. Inspection should establish that the
+bed remains still, ripples and caustics move independently, stone tops retain
+their waterline, bridges occlude the surface, corners have no holes, and a menu
+round trip restores the same materials. Also inspect night tint and the
+optional rough sea separately.
 
-## Renderer resources
-
-Calm and rough water share the Wind Waker renderer. Rough-sea textures and the
-small dynamic wave patch are prepared only when needed. All ordinary water,
-river banks, bridge underpasses and shoreline foam use the immutable terrain
-archive. The renderer uses no separate seabed mesh or screen-space water capture.
-The previous alternative mode, its debug selector and authored texture packages
-have been removed. Existing saved debug settings and town formats are unchanged.
+The native water probe records actual GX texture matrices, stage bindings,
+constants, blend mode and depth state at a real draw. It distinguishes the new
+translucent inland path from the retained opaque coast. The animation scenario
+compares moving, frozen and resumed water in both archived and legacy paths;
+its pixel checks supplement, rather than replace, inspection of the captures.
+Physical GameCube appearance and performance require console validation.

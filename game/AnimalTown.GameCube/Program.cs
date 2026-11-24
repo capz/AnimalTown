@@ -1111,6 +1111,11 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
         }
         if(batchedDrawing)boxes.Flush();
         if(renderDebug.ShowObstructedEdges)NativeWorldDiagnostics.EdgePass(0);
+        if(room==0){
+            submissionAt=FrameProfile.SubmissionStart();
+            terrain.DrawWater(renderer);
+            FrameProfile.SubmissionEnd(0,submissionAt);
+        }
         if(room==0&&renderDebug.ShowVisitEdges)visitEdges.Draw(renderer,identity,state,terrain.RenderSeason==3&&!renderDebug.ShowGroundMipBands);
         if((renderDebug.ForceAttention||attendingVillager>=0)&&villagers.Doors.PlayerFade<1)attention.Draw(renderer,state,actorVisibility,indoorCamera,cachedPlayerHeight,renderDebug.ForceAttention,attendingVillager);
         submissionAt=FrameProfile.SubmissionStart();

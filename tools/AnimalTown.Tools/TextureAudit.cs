@@ -29,6 +29,18 @@ internal static class TextureAudit
         foreach(string path in Directory.GetFiles(Path.Combine(root,"out/disc"),"*.dndtex").Order())
         {
             byte[] bytes=File.ReadAllBytes(path);TexturePixels.Validate(bytes);int width=TexturePixels.Width(bytes),height=TexturePixels.Height(bytes);
+            int waterRole=WaterTextureCatalog.IndexOfDiscName(Path.GetFileName(path));
+            if(waterRole>=0){
+                WaterTextureCatalog.Validate(bytes,waterRole);
+                string source=WaterTextureCatalog.Source(waterRole);
+                records.Add(new {
+                    source="dvd:/"+WaterTextureCatalog.DiscName(waterRole),artistSource=source,
+                    sourceSha=Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(Path.Combine(root,source)))),
+                    width,height,format=WaterTextureCatalog.NativeFormat(waterRole),levels=1,
+                    residentBytes=WaterTextureCatalog.NativeBytes(waterRole),
+                    payloadSha=Convert.ToHexString(SHA256.HashData(bytes)),policy="shared-optional-water-map-repeat-v1"
+                });continue;
+            }
             if(Path.GetFileName(path).StartsWith("splash-",StringComparison.Ordinal)){
                 if(width!=512||height!=256||TexturePixels.Int(bytes,8)!=4||bytes.Length!=32+SplashAssets.Bytes)throw new InvalidDataException("Splash texture exceeds one-shot RGB565 budget");
                 records.Add(new{source="dvd:/"+Path.GetFileName(path),sourceSha=Convert.ToHexString(SHA256.HashData(bytes)),width,height,contentWidth=384,contentHeight=256,residentBytes=SplashAssets.Bytes,policy="private-one-shot-no-cache"});continue;
@@ -74,6 +86,8 @@ internal static class TextureAudit
                 pageWidth=atlas?Math.Min(128,width):TexturePixels.FitWidth(width,height),pageHeight=atlas?Math.Min(128,height):TexturePixels.FitHeight(width,height),
                 pages=atlas?((width+127)/128)*((height+127)/128):1});
         }
+        for(int i=0;i<WaterTextureCatalog.Count;i++)if(!File.Exists(Path.Combine(root,"out/disc",WaterTextureCatalog.DiscName(i))))
+            records.Add(new{source="generated:water-"+WaterTextureCatalog.Role(i),width=WaterTextureCatalog.Edge(i),height=WaterTextureCatalog.Edge(i),format=WaterTextureCatalog.NativeFormat(i),levels=1,residentBytes=WaterTextureCatalog.NativeBytes(i),policy="shared-procedural-water-map-repeat-v1"});
         byte[] treeDetail=LowPolyTree.DetailTexture();TexturePixels.Validate(treeDetail);
         records.Add(new{source="generated:tree-detail-noise-v1",sourceSha=Convert.ToHexString(SHA256.HashData(treeDetail)),width=TexturePixels.Width(treeDetail),height=TexturePixels.Height(treeDetail),format=TexturePixels.Int(treeDetail,8),levels=TexturePixels.Int(treeDetail,24),residentBytes=treeDetail.Length-32,policy="shared-all-tree-species-seasons-repeat-trilinear"});
         byte[] uiGrain=LowPolyTree.DetailTexture(UiNoiseSettings.DefaultPercent,uniform:true);

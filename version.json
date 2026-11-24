@@ -329,6 +329,15 @@
         "Villager routines and jobs favor places with fewer people nearby.",
         "Visiting characters use their saved appearance and follow local routines."
       ]
+    },
+    {
+      "id": "shallow-water-riverbed-wallpaper-20261124",
+      "lines": [
+        "See sandy riverbeds and scattered stones beneath clear turquoise water.",
+        "Fine moving ripples, subtle caustics and broken shoreline foam bring shallow water to life.",
+        "Archived riverbeds and rocks preserve water levels, bridge traversal and saved towns.",
+        "Optional authored water textures replace built-in patterns through the existing asset cooker."
+      ]
     }
   ]
 }
