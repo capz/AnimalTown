@@ -106,6 +106,7 @@ static GXColor konst_colors[4];
 static GXColor tev_colors[4];
 static GXColor shadow_tint;
 static float shadow_uv_scale,shadow_uv_offset,shadow_uv_scale_z,shadow_uv_offset_z;
+static float snow_scale_z[3],snow_offset_z[3];
 float animaltown_mip_x,animaltown_mip_z,animaltown_mip_radius;
 static void DCFlushRange(void *data,size_t bytes){(void)data;(void)bytes;}
 static unsigned GX_GetTexBufferSize(int w,int h,int format,int mip,int level){
@@ -133,6 +134,8 @@ static void GX_SetTexCoordScaleManually(int coord,int manual,int s,int t){(void)
 static void GX_SetTexCoordBias(int coord,int s,int t){(void)coord;(void)s;(void)t;}
 static void GX_LoadTexMtxImm(Mtx matrix,int slot,int type){
     (void)type;if(slot==GX_TEXMTX8){shadow_uv_scale=matrix[0][0];shadow_uv_offset=matrix[0][3];shadow_uv_scale_z=matrix[1][1];shadow_uv_offset_z=matrix[1][3];}
+    int sample=slot==GX_TEXMTX4?0:slot==GX_TEXMTX6?1:slot==GX_TEXMTX7?2:-1;
+    if(sample>=0){snow_scale_z[sample]=matrix[1][1];snow_offset_z[sample]=matrix[1][3];}
 }
 static void GX_SetTevSwapModeTable(int t,int r,int g,int b,int a){
     assert(t>=0&&t<4&&((r==GX_CH_RED&&g==GX_CH_GREEN&&b==GX_CH_BLUE)||(t==GX_TEV_SWAP3&&r==GX_CH_GREEN&&g==GX_CH_GREEN&&b==GX_CH_GREEN)));swap_alpha_channel[t]=a;
@@ -173,7 +176,9 @@ int animaltown_environment_color(void){return environment_test_rgb;}
 int animaltown_light_strength(void){return point_test_gain;}
 int animaltown_shadow_strength(void){return shadow_test_gain;}
 static int snow_test_ready,path_test_ready,shadow_test_mode=3;
+static int snow_test_height=SU_SNOW_SIDE,snow_test_first;
 const uint8_t *animaltown_snow_mask(void){static const uint8_t image[SU_SNOW_BYTES]={0};return snow_test_ready?image:NULL;}
+int animaltown_snow_layout(int *first_z){*first_z=snow_test_first;return snow_test_height;}
 const uint8_t *animaltown_path_mask(void){static const uint8_t image[8192]={0};return path_test_ready?image:NULL;}
 int animaltown_shadows_mode(void){return shadow_test_mode;}
 const uint8_t *animaltown_shadows_page(float x,float z,float *origin){
@@ -475,6 +480,21 @@ static void native_shadow_combiner_checks(void){
     assert(footer_alpha_for_raster(0,0,255,254)==0);
     assert(footer_alpha_for_raster(0,0,0,255)!=alpha_compare);
     assert(footer_alpha_for_raster(0,0,0,0)!=alpha_compare);
+    const float relief_z[]={0,-.3f,.3f};
+    for(int strip=0;strip<=1;strip++){
+        snow_test_height=strip?SU_SNOW_STRIP_TEXELS:SU_SNOW_SIDE;
+        snow_test_first=strip?19:0;
+        bindings=0;town_shadow_ground(triangle,NULL,3,NULL,&material,&bindings);
+        assert(texture_format==GX_TF_I8&&texture_width==SU_SNOW_SIDE&&texture_height==snow_test_height);
+        assert(texture_min==GX_LINEAR&&texture_mag==GX_LINEAR&&bindings==2);
+        for(int sample=0;sample<3;sample++){
+            const float logical_z=47.25f;
+            float actual=(logical_z*.5f*snow_scale_z[sample]+snow_offset_z[sample])*snow_test_height;
+            float expected=(logical_z-snow_test_first+1)*4+relief_z[sample];
+            assert(snow_scale_z[sample]*snow_test_height==8&&fabsf(actual-expected)<.0001f);
+        }
+    }
+    snow_test_height=SU_SNOW_SIDE;snow_test_first=0;
     path_test_ready=1;bindings=0;
     reset_shadow_recording();town_shadow_ground(triangle,NULL,3,NULL,&material,&bindings);
     assert(alpha_command_count==9&&texgens==7&&bindings==3);
