@@ -63,7 +63,7 @@ internal static class OfflineJobChecks
         var state=new GameState(23);
         var offers=new Draws(1,0,3,0,0,1,0,3,0,0);
         var service=Service(state,offers,new Draws());
-        state.SetTownVisitors(new[]{new SavedVisitor(3425,0,"Parker","hello",0,0,0),new SavedVisitor(3425,1,"Harper","hey",1,0,0)});
+        state.SetTownVisitors(new[]{new SavedVisitor(3425,0,new JobIdentity(3425,1),"Parker","hello",0,0),new SavedVisitor(3425,1,new JobIdentity(3425,2),"Harper","hey",1,0)});
         for(int i=0;i<Town.SavedVillagerCount;i++)state.Town.Residents[i].HomeX=5+i*20;
         for(int i=0;i<Town.NpcActorCount;i++){
             var villager=state.Town.NpcAt(i);

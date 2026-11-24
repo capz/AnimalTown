@@ -338,6 +338,15 @@
         "Static shadow data takes less space while keeping the same textures on screen.",
         "The Smooth snow transitions debug setting now applies during play."
       ]
+    },
+    {
+      "id": "saved-npc-visitors-live-player-control",
+      "lines": [
+        "NPC visitors come from the other memory card, while player villagers travel under live control.",
+        "Up to two saved NPC villagers can join a town when the local player is at the controls.",
+        "A player travelling from the other town leaves room for one visiting NPC.",
+        "Visiting NPCs follow town routines and use the appearance saved on their own card."
+      ]
     }
   ]
 }

@@ -52,7 +52,7 @@ internal sealed partial class TownGame
         int npc=actor-1,item;
         int species=actor==0?state.Species:state.NpcSpecies(npc);
         if(actor==0)item=JobsLive?state.Shirt:0;
-        else item=state.NpcVisitor(npc)?.Shirt??(JobsLive&&npc<Town.SavedVillagerCount?state.Town.Jobs.Outfit(npc):0);
+        else item=state.NpcVisitor(npc)?.Outfit??(JobsLive&&npc<Town.SavedVillagerCount?state.Town.Jobs.Outfit(npc):0);
         var l=actorVisibility.Locations[actor];
         if(!Catalog.Has(item,ItemFlags.Wear))return;
         NativeShadows.Objects(room==0?1:0);

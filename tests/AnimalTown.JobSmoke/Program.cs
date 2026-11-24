@@ -100,13 +100,14 @@ internal static class Program
         public void Read(int block,byte[] bytes){if(NativeJobBlocks.Io(card,1,block,bytes)<0)throw new InvalidOperationException("Native card read");}
         public void Write(int block,byte[] bytes){if(NativeJobBlocks.Io(card,2,block,bytes)<0)throw new InvalidOperationException("Native card write");}
     }
-    private sealed class Card : ISaveStorage,ISaveSnapshotStorage,ISaveVerifiedPrefixStorage
+    private sealed class Card : ISaveStorage,ISaveSnapshotStorage,ISaveVerifiedPrefixStorage,ISaveVerifiedRecordStorage
     {
         private readonly TownCardRecords records;
         internal Card(int card,bool reset=false){records=new TownCardRecords(new CardBlocks(card,reset),true);}
         public byte[] Read(string name)=>records.Read(name);
         internal string[] Names()=>records.Names();
         public byte[] ReadVerifiedPrefix(string name,int count,int sequence,int length,uint checksum)=>records.ReadVerifiedPrefix(name,count,sequence,length,checksum);
+        public ISaveWordReader OpenVerifiedRecord(string name,int sequence,int length,uint checksum)=>records.OpenVerifiedRecord(name,sequence,length,checksum);
         public void Write(string name,byte[] bytes)=>records.Write(name,bytes);
         public bool Matches(string name,byte[]? expected,int sequence,int length,uint checksum,bool ignoreSequence)=>records.Matches(name,expected,sequence,length,checksum,ignoreSequence);
     }
@@ -218,7 +219,14 @@ internal static class Program
         var preview=new SaveRepository(source).ReadTravelPreview();
         var otherPreview=new SaveRepository(new Card(1)).ReadTravelPreview();
         Require(preview.TownId==live.Town.Jobs.TownId&&otherPreview.TownId==preview.TownId&&preview.NpcName(5)==live.Town.Residents[5].Name,"two verified travel previews retain metadata rather than decoding more full mailboxes beside the world");
+        CheckVisitorProjection(source,live);
         Require(live.MailCount==128&&world[0]==31&&world[world.Length-1]==79,"archive copies keep the full live town and 2 MiB of world roots while holding only one encoded record");
+    }
+    private static void CheckVisitorProjection(Card source,GameState live)
+    {
+        var visitors=new SaveRepository(source).ReadVisitors(live.Town.Jobs.TownId+1);
+        Require(visitors.Length==2&&visitors[0].Identity==live.Town.Jobs.Npc(0)&&visitors[1].Name==live.Town.Residents[1].Name,
+            "bounded native projection reads saved NPC identities beside a maximum mailbox and the world buffer");
     }
 
 }

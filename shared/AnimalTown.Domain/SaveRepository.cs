@@ -1,3 +1,5 @@
+using AnimalTown.Jobs;
+
 namespace AnimalTown;
 
 public interface ISaveStorage
@@ -22,13 +24,13 @@ public readonly struct SavedVisitor
 {
     public ulong TownId {get;}
     public int Slot {get;}
+    public JobIdentity Identity {get;}
     public string Name {get;}
     public string Catchphrase {get;}
     public int Species {get;}
-    public int Palette {get;}
-    public int Shirt {get;}
-    public SavedVisitor(ulong townId,int slot,string name,string catchphrase,int species,int palette,int shirt)
-    {TownId=townId;Slot=slot;Name=name;Catchphrase=catchphrase;Species=species;Palette=palette;Shirt=shirt;}
+    public int Outfit {get;}
+    public SavedVisitor(ulong townId,int slot,JobIdentity identity,string name,string catchphrase,int species,int outfit)
+    {TownId=townId;Slot=slot;Identity=identity;Name=name;Catchphrase=catchphrase;Species=species;Outfit=outfit;}
 }
 
 // Reference manifests publish exact component revisions after readback.
@@ -80,11 +82,11 @@ public sealed class SaveRepository
         return SplitSaveCodec.Decode(parts,snapshot,textMemo,m.Sequences[2],hasClock,clock);
     }
     public GameState? Load()=>Load(null);
-    // Read committed character appearance without building the source town or
-    // decoding its economic state. Each profile stays owned by its source card.
-    public SavedVisitor[] ReadVisitors(ulong localTownId,ulong excludedTownId=0,int excludedSlot=-1,int limit=2)
+    // Read the foreign town's committed resident roster without constructing
+    // that town or decoding its mail, jobs, and inventory.
+    public SavedVisitor[] ReadVisitors(ulong localTownId,int limit=Town.VisitorCount)
     {
-        if((uint)limit>2)throw new ArgumentOutOfRangeException(nameof(limit));
+        if((uint)limit>Town.LocalResidentCount)throw new ArgumentOutOfRangeException(nameof(limit));
         var visitors=new SavedVisitor[0];
         if(limit==0)return visitors;
         int sequence=-1;
@@ -92,45 +94,45 @@ public sealed class SaveRepository
             var commit=storage.Read(SplitSaveCodec.FileName(SplitSaveCodec.Commit,bank));
             var header=new SplitSaveCodec.Reader(commit,SplitSaveCodec.Commit);
             if(header.Sequence<=sequence)continue;
-            byte[][] profiles;
-            ulong townId;
-            int start;
             if(header.Version==5){
                 var manifest=IncrementalSaveCodec.Read(commit,bank);
-                townId=ReferencedTownIdentity(manifest);
-                profiles=ReadVisitorProfiles(manifest);start=0;
+                var names=SplitSaveCodec.PreviewNpcNames(ReadReference(manifest,0));
+                for(int part=1;part<IncrementalSaveCodec.Count;part++)if(part!=2)VerifyPreviewReference(manifest,part);
+                visitors=ReadVisitorReference(manifest,names,localTownId,limit);
             }else if(header.Version==4){
-                profiles=ReadParts(bank);
-                SplitSaveCodec.VerifyCommitted(commit,profiles);
-                townId=SplitSaveCodec.EconomicTownIdentity(profiles[2]);start=3;
+                var parts=ReadParts(bank);
+                SplitSaveCodec.VerifyCommitted(commit,parts);
+                var names=SplitSaveCodec.PreviewNpcNames(parts[0]);
+                visitors=ReadVisitorEconomy(parts[2],names,localTownId,limit,header.Sequence,header.Seed);
             }else continue;
-            visitors=townId==0||townId==localTownId?new SavedVisitor[0]:ProjectVisitors(profiles,start,townId,townId==excludedTownId?excludedSlot:-1,limit);
             sequence=header.Sequence;
         }catch(Exception){}
         return visitors;
     }
-    private byte[][] ReadVisitorProfiles(IncrementalSaveCodec.Manifest manifest)
+    private SavedVisitor[] ReadVisitorReference(IncrementalSaveCodec.Manifest manifest,string[] names,ulong localTownId,int limit)
     {
-        var profiles=new byte[GameState.ProfileCount][];
-        for(int part=0;part<IncrementalSaveCodec.Count;part++){
-            if(part==2)continue; // The identity read verified the economic record.
-            if(part<3||part>=3+profiles.Length){VerifyPreviewReference(manifest,part);continue;}
-            if(manifest.Lengths[part]>ProfileCodec.MaximumBytes)throw new InvalidOperationException("Invalid saved profile length");
-            profiles[part-3]=ReadReference(manifest,part);
-        }
-        return profiles;
+        const int part=2;
+        int sequence=manifest.Sequences[part],length=manifest.Lengths[part];
+        if(storage is not ISaveVerifiedRecordStorage verified)
+            return ReadVisitorEconomy(ReadReference(manifest,part),names,localTownId,limit,sequence,manifest.Seed);
+        for(int copy=0;copy<2;copy++)try{
+            var source=verified.OpenVerifiedRecord(SplitSaveCodec.FileName(SplitSaveCodec.ShopStates,manifest.Banks[part]^copy),sequence,length,manifest.Checksums[part]);
+            return ReadVisitorEconomy(new VisitorRosterReader(source,length),length,names,localTownId,limit,sequence,manifest.Seed);
+        }catch(Exception){}
+        throw new InvalidOperationException("No valid copy of the saved resident roster");
     }
-    private static SavedVisitor[] ProjectVisitors(byte[][] profiles,int start,ulong townId,int excludedSlot,int limit)
+    private static SavedVisitor[] ReadVisitorEconomy(byte[] bytes,string[] names,ulong localTownId,int limit,int sequence,int seed)
+        =>ReadVisitorEconomy(new VisitorRosterReader(bytes),bytes.Length,names,localTownId,limit,sequence,seed);
+    private static SavedVisitor[] ReadVisitorEconomy(VisitorRosterReader reader,int length,string[] names,ulong localTownId,int limit,int sequence,int seed)
     {
-        var visitors=new SavedVisitor[limit];int count=0;
-        for(int slot=0;slot<GameState.ProfileCount;slot++){
-            var reader=new SplitSaveCodec.Reader(profiles[start+slot],SplitSaveCodec.RecordKind(3+slot));
-            var profile=ProfileCodec.Read(reader);reader.End();
-            if(!profile.Created||slot==excludedSlot||count==limit)continue;
-            visitors[count++]=new SavedVisitor(townId,slot,profile.Name,profile.Catchphrase,profile.Species,profile.Palette,profile.Shirt);
-        }
-        if(count==limit)return visitors;
-        var result=new SavedVisitor[count];Array.Copy(visitors,result,count);return result;
+        if(reader.Int()!=SplitSaveCodec.Magic||reader.Int()!=4||!Catalog.SupportsVersion(reader.Int())||
+            reader.Int()!=SplitSaveCodec.ShopStates||reader.Int()!=sequence||reader.Int()!=seed||reader.Int()!=length)
+            throw new InvalidOperationException("Mixed economic reference");
+        reader.Range(0,int.MaxValue);reader.Range(6,12);reader.Skip(12);reader.Skip(reader.Range(154,154));
+        if(reader.Position==(length-4)/4)return new SavedVisitor[0];
+        int words=reader.Range(7,OfflineJobLedger.MaximumWords);
+        if(reader.Position+words!=(length-4)/4)throw new InvalidOperationException("Truncated economic job ledger");
+        return OfflineJobLedger.ReadVisitorRoster(reader,names,localTownId,limit);
     }
     public SavedTownPreview ReadTravelPreview()
     {

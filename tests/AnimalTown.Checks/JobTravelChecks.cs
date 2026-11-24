@@ -29,13 +29,24 @@ internal static class JobTravelChecks
     {
         var (a,b)=Cards();var first=new SaveRepository(a);var second=new SaveRepository(b);var travel=new OfflineTownTravel(first,second);var original=second.Load()!;
         var guest=travel.Depart(0,now);check(guest.Visiting&&guest.Name=="Traveller"&&guest.Wallet==314,"a visitor uses a separate fifth ownership capsule");
+        var arriving=BuildingWorld.Location(guest,0);
+        int sourceSlot=guest.Town.Jobs.Trip.HomeProfile;
+        var sourceNpc=first.Load()!.Town.Jobs.Npc(sourceSlot);
         guest.SetTownVisitors(first.ReadVisitors(guest.Town.Jobs.TownId));
         int additionalVisitors=0;
         for(int npc=Town.LocalResidentCount;npc<Town.NpcActorCount;npc++)if(guest.NpcVisitor(npc) is SavedVisitor view){
             additionalVisitors++;
-            check(view.TownId==guest.Town.Jobs.Trip.Home&&view.Slot!=guest.Town.Jobs.Trip.HomeProfile,"the controlled traveller does not also appear as an autonomous visitor");
+            check(view.TownId==guest.Town.Jobs.Trip.Home&&view.Slot==sourceSlot&&view.Identity==sourceNpc&&view.Identity!=guest.Town.Jobs.Trip.Player,
+                "the NPC at the traveller's numbered slot is a separate saved character and can still visit");
         }
         check(additionalVisitors==1,"the controlled traveller counts toward the two-visitor limit");
+        var destinationVisitors=second.ReadVisitors(guest.Town.Jobs.Trip.Home);
+        check(destinationVisitors.Length==Town.VisitorCount&&destinationVisitors.All(v=>v.Identity==original.Town.Jobs.Npc(v.Slot)&&v.Identity!=guest.Town.Jobs.Trip.Player),
+            "a card with an active player capsule still projects its saved resident NPCs");
+        var journeys=new VillagerJourney();for(int tick=0;tick<120;tick++)journeys.Tick(guest);
+        var ready=BuildingWorld.Location(guest,0);
+        check(guest.Visiting&&guest.Name=="Traveller"&&guest.Wallet==314&&ready.Space.Value==arriving.Space.Value&&ready.X==arriving.X&&ready.Z==arriving.Z,
+            "autonomous NPC journeys leave the active player and their position under player control");
         for(int i=0;i<4;i++)check(guest.Profiles[i].Name==original.Profiles[i].Name&&guest.Profiles[i].Wallet==original.Profiles[i].Wallet,"visiting preserves every host resident profile");
         check(first.Load()!.ProfileLocked(0)&&!first.Load()!.ProfileLocked(1),"only the source traveller is locked while away");
         bool blocked=false;try{first.Load()!.SelectProfile(0);}catch(InvalidOperationException){blocked=true;}check(blocked,"the away copy cannot be selected");
@@ -50,9 +61,13 @@ internal static class JobTravelChecks
     private static void NpcMoving(Action<bool,string> check)
     {
         var (a,b)=Cards();var first=new SaveRepository(a);var second=new SaveRepository(b);var h=first.Load()!;var d=second.Load()!;var npc=h.Town.Jobs.Npc(1);string name=h.Town.Residents[1].Name;int personality=(int)h.Town.JobState.Resident(1).Personality;
+        var movedAway=d.Town.Jobs.Npc(4);
         var move=new OfflineTownTravel(first,second);h=move.ExchangeResidents(1,4,now);
         check(h.Town.Jobs.FindNpc(npc)<0&&h.Town.Jobs.LastMovedNpc==npc,"a real move records the departed NPC identity");
         d=second.Load()!;check(d.Town.Jobs.FindNpc(npc)==4&&d.Town.Residents[4].Name==name&&d.Town.Jobs.Species(4)==1&&(int)d.Town.JobState.Resident(4).Personality==personality,"NPC identity, name, species and personality survive a different roster slot");
+        d.SetTownVisitors(first.ReadVisitors(d.Town.Jobs.TownId));
+        check(d.NpcVisitor(Town.NpcActorCount-1)?.Identity==movedAway&&d.Town.Jobs.FindNpc(movedAway)<0,
+            "the resident who moved away can visit their birth town while retaining their foreign home and durable identity");
         var travel=new OfflineTownTravel(first,second);travel.Inspect(out h,out _);var service=new VillagerJobService(h,new Draws(1,0,2,0),new Draws());service.Enable(h.Town.Jobs.TownId,now);service.Travel=travel;Speak(h,service,0);
         var offer=service.Execute(service.Command(JobCommandKind.Ask));check(offer.Result==JobResult.ExistingOffer&&h.Town.Jobs.Offer(0,0).Target==npc,"moved delivery targets the actual departed neighbour without an invented move-age limit");
         var accept=service.Execute(service.Command(JobCommandKind.Accept,offer.Job,h.Town.Jobs.Offer(0,0).Revision));first.Save(h);
