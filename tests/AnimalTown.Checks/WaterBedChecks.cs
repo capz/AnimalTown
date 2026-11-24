@@ -14,6 +14,7 @@ internal static class WaterBedChecks
         }
         check(!WaterBedGeometry.HasBed(town,-1,z),"the external ocean has no hidden riverbed");
         town.SetTerrain(x,z,Terrain.Water);
+        RockCoverage(town,x,z,check);
         for(int zz=70;zz<=90;zz++)for(int xx=70;xx<x;xx++)town.SetTerrain(xx,zz,Terrain.Grass);
         float previous=0;
         for(int dx=0;dx<8;dx++){
@@ -97,11 +98,14 @@ internal static class WaterBedChecks
                 check(water-(rock.Bottom+.025f)<=.30001f&&rock.Top-rock.Bottom<=.46501f,"only physically shallow beds support emerging low stones");
                 check(rock.Top-water>=.07999f&&rock.Top-water<=.14001f,"occasional shallow rock heads protrude only by the authored small amount");
                 var capPoint=new RiverBankPoint(rock.X,rock.Z,rock.Top);var foot=WaterBedGeometry.RockPoint(rock,0,false);
-                float below=WaterBedGeometry.CausticDistance(town,xx,zz,foot),above=WaterBedGeometry.CausticDistance(town,xx,zz,capPoint);
+                float below=WaterBedGeometry.SubmersionDistance(town,xx,zz,foot),above=WaterBedGeometry.SubmersionDistance(town,xx,zz,capPoint);
                 var cut=WaterBedGeometry.WaterlineIntersection(foot,capPoint,below,above);
                 int vertices=WaterBedGeometry.RockVertexCount(town,xx,zz,rock);
                 check(vertices>WaterBedGeometry.RockBaseVertices&&vertices<=WaterBedGeometry.MaximumRockVertices&&WaterBedGeometry.SubmersionMask(town,xx,zz,capPoint)==0,"broad protruding caps keep dry caustics and bounded waterline splits");
-                check(Math.Abs(WaterBedGeometry.CausticDistance(town,xx,zz,cut))<.00001f&&WaterBedGeometry.SubmersionMask(town,xx,zz,cut)<=1,"new clipping vertices lie on the dry-caustic boundary");
+                check(Math.Abs(WaterBedGeometry.SubmersionDistance(town,xx,zz,cut))<.00001f&&WaterBedGeometry.SubmersionMask(town,xx,zz,cut)==0,
+                    "new clipping vertices lie on the physical waterline without bright boundary caustics");
+                check(WaterBedGeometry.RockAlpha(town,xx,zz,cut,true)==1&&WaterBedGeometry.RockAlpha(town,xx,zz,cut,false)==0,
+                    "duplicated waterline vertices retain wet capture coverage and an entirely dry cap");
             }else{
                 submerged++;check(rock.Top<=water-.05999f&&rock.Top>rock.Bottom&&rock.Top-rock.Bottom<=.20001f,"ordinary shallow stones remain low, submerged and above their buried feet");
             }
@@ -115,6 +119,36 @@ internal static class WaterBedChecks
         check(GC.GetAllocatedBytesForCurrentThread()==allocated&&town.TerrainVersion==version,"deterministic stone queries allocate nothing and never mutate terrain or save state");
         ArchiveBudgets(check);
         Console.WriteLine("Water bed: continuous shallow depth, closed bank toes, bridge continuity and deterministic sparse stones passed");
+    }
+    private static void RockCoverage(Town town,int x,int z,Action<bool,string> check)
+    {
+        (float Depth,int Caustics)[] samples={(-.02f,0),(-.0001f,0),(0,0),(.0001f,0),(.005f,0),(.009f,0),(.01f,0),(.03f,46),(.065f,127),(.12f,255),(.2f,255)};
+        foreach(byte mode in new[]{TerrainElevation.Flat,TerrainElevation.Block,TerrainElevation.RampNorth,TerrainElevation.RampEast}){
+            town.Elevation[z*Town.Width+x]=mode;
+            float surface=WaterSurface.HeightAt(town,x,z,x+.35f,z+.6f);
+            foreach(var sample in samples){
+                var p=new RiverBankPoint(x+.35f,z+.6f,surface-sample.Depth);
+                float distance=WaterBedGeometry.SubmersionDistance(town,x,z,p);
+                byte caustics=WaterBedGeometry.SubmersionMask(town,x,z,p);
+                byte alpha=WaterBedGeometry.RockAlpha(town,x,z,p,sample.Depth>=0);
+                check(Near(distance,sample.Depth),"physical coverage follows flat, raised and sloping water levels");
+                check(sample.Caustics==0?caustics==0:Math.Abs(caustics-sample.Caustics)<=1,
+                    "the one-centimetre quiet rim and twelve-centimetre caustic fade retain their original values");
+                check(sample.Depth>=0?alpha>0:alpha==0,"capture covers immediately submerged rock while dry rock has no caustics or capture coverage");
+                check(alpha==(sample.Depth<0?0:caustics==0?1:caustics),"only zero-caustic wet vertices reserve the one-byte capture marker");
+                check(WaterBedGeometry.RockAlpha(town,x,z,p,false)==0,"every vertex assigned to a dry clipped triangle has zero alpha");
+            }
+            var boundary=new RiverBankPoint(x+.35f,z+.6f,surface);
+            check(WaterBedGeometry.RockAlpha(town,x,z,boundary,true)==1&&WaterBedGeometry.RockAlpha(town,x,z,boundary,false)==0,
+                "wet and dry copies of the exact waterline retain distinct coverage without interpolating into the dry cap");
+        }
+        town.Elevation[z*Town.Width+x]=TerrainElevation.Flat;
+        float water=WaterSurface.HeightAt(town,x,z,x+.5f,z+.5f);
+        var rim=new WaterBedRock(x+.5f,z+.5f,.2f,.2f,0,water-.005f,water+.005f,0);
+        check(WaterBedGeometry.RockVertexCount(town,x,z,rim)==126,
+            "a stone crossing only the quiet caustic rim still splits its twelve side triangles at the physical waterline");
+        check(WaterBedGeometry.RockBaseVertices==54&&WaterBedGeometry.MaximumRockVertices==162,
+            "physical capture coverage retains the same one-cut rock vertex budget");
     }
     private static void ArchiveBudgets(Action<bool,string> check)
     {

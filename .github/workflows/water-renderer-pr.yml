@@ -6,13 +6,20 @@ on:
   pull_request:
     paths:
       - 'game/AnimalTown.GameCube/Water*.cs'
+      - 'game/AnimalTown.GameCube/NativeWater*.cs'
       - 'tools/AnimalTown.Tools/Program.cs'
+      - 'tools/AnimalTown.Tools/WaterTextureArt*.cs'
       - 'game/AnimalTown.GameCube/LocalOceanWaves.cs'
       - 'game/AnimalTown.GameCube/TerrainRenderer.cs'
       - 'shared/AnimalTown.Domain/Water*.cs'
       - 'shared/AnimalTown.Domain/WindWaker*.cs'
       - 'tools/iso-smoke.py'
+      - 'tools/native-water-*.inc'
+      - 'tools/patch-water-*.py'
       - 'tests/AnimalTown.Checks/WaterSurfaceChecks.cs'
+      - 'tests/AnimalTown.RenderingChecks/Water*Checks.cs'
+      - 'tests/native-water-*.c'
+      - 'tests/water-optics-smoke.py'
       - '.github/workflows/water-renderer-pr.yml'
 
 permissions:
@@ -65,4 +72,6 @@ jobs:
             if($LASTEXITCODE){throw 'Rendering checks failed'}
           }
       - name: Check Dolphin water smoke script syntax
-        run: python3 -m py_compile tools/iso-smoke.py
+        run: |
+          python3 -m py_compile tools/iso-smoke.py tools/patch-water-optics.py
+          python3 tests/water-optics-smoke.py

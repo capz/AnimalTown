@@ -400,6 +400,13 @@ if($IsLinux -and !$SkipTests){
     if($LASTEXITCODE){throw 'UI grain GX checks failed'}
 }
 
+& python3 (Join-Path $Root 'tools/patch-water-optics.py') $nativeRoot
+if($LASTEXITCODE){throw 'Pinned water optics bridge patch failed'}
+if($IsLinux -and !$SkipTests){
+    & python3 (Join-Path $Root 'tools/check-water-optics.py') $nativeRoot
+    if($LASTEXITCODE){throw 'Water optics production GX/capture fixture failed'}
+}
+
 & python3 (Join-Path $Root 'tools/patch-water-probe.py') $nativeRoot
 if($LASTEXITCODE){throw 'Pinned water draw probe patch failed'}
 if($IsLinux -and !$SkipTests){

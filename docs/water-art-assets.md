@@ -3,8 +3,8 @@
 ## What is required now
 
 **No supplied artwork is required to run the clear-water renderer.** It has
-procedural riverbed, ripple, caustic, distortion and shoreline masks, plus
-generated rocks. Each of the five texture roles below can independently use
+procedural riverbed, ripple, caustic, distortion, slope and shoreline maps, plus
+generated rocks. Each of the six texture roles below can independently use
 artist-authored artwork. Supplying one PNG does not require supplying the rest.
 
 The target is the Smalltown Forest wallpaper's shallow turquoise river: a
@@ -26,9 +26,10 @@ names in that directory, incorrect dimensions, and unsuitable channels.
 | 3 | `bed-caustics.png` | 64×64, grayscale RGB, A=255 | `water-bed-caustics.dndtex`, I8 | 4 KiB |
 | 4 | `shoreline-foam.png` | 64×64, grayscale RGB plus alpha | `water-shoreline-foam.dndtex`, IA8 | 8 KiB |
 | 5 | `surface-distortion.png` | 64×64, opaque RGB or RGBA with A=255; special channel meanings below | `water-surface-distortion.dndtex`, RGB565 | 8 KiB |
+| 6 | `surface-slopes.png` | 64×64, opaque RGBA; R=128, B=tangent-X slope, G=tangent-Z slope | `water-surface-slopes.dndtex`, IA8 (A=X, I=Z) | 8 KiB |
 
 Every map is a single base level with repeat sampling. The whole set has a
-**56 KiB native pixel payload** plus small package/effect overhead. Authored
+**64 KiB native pixel payload** plus small package/effect overhead. Authored
 textures replace the corresponding procedural texture; they are not an extra
 copy retained beside it. This figure excludes meshes and the separate legacy
 opaque-ocean and rough-sea materials. Package dimensions and formats are shared between the cooker and
@@ -88,7 +89,7 @@ contact highlight. Use broken soft bands and sparse patches, not a solid
 white rectangle. Avoid long opaque contours that would turn every riverbank
 into an ocean surf line.
 
-The native IA8 format stores intensity and alpha separately. The shader tints
+The native IA8 format stores intensity and coverage alpha separately. The shader tints
 the texture; colored RGB channels would be discarded, so the cooker rejects
 them. The existing shoreline strip geometry supplies location and width.
 The map itself is periodic in both axes; there is no per-bank image atlas or
@@ -117,14 +118,47 @@ G=32/63, approximately 132 and 130 after expansion. A perfectly exact 8-bit
 displacement and handles the channel mapping; an artist should not compensate
 by swapping channels or inserting a baked water color.
 
+### 6. Surface slope field for bump lighting
+
+This role is separate from surface distortion. It drives the changing water
+normal used for highlights and environment sheen; it is neither a painted
+highlight nor a height map. Its procedural default is generated from the
+analytic derivatives of one seamless height field.
+
+| Source PNG channel | Meaning |
+|---|---|
+| Red | Must be exactly 128; catches an accidentally supplied ordinary RGB normal map |
+| Green | Signed tangent-Z perturbation, with 128 meaning zero |
+| Blue | Signed tangent-X perturbation, with 128 meaning zero |
+| Alpha | Must be 255; never use PNG transparency to encode the vector |
+
+A completely flat map is opaque RGB `(128,128,128)`. A vector tilted toward
+positive X and negative Z uses blue above 128 and green below 128. Start with
+smooth, broad changes in approximately the 64–192 range. Preserve seamless
+joins in both axes and avoid single-pixel noise. Two independently moving
+samples of this map supply the animated small-scale surface directions.
+
+The cooker repacks blue into IA8 alpha and green into IA8 intensity without
+quantization. Runtime alpha in this particular texture is **vector data**,
+not water opacity. The exact native neutral texel is `0x8080`; unlike RGB565,
+both components retain all eight bits and an exact midpoint. No source PNG
+channel is premultiplied, because the artist input remains opaque.
+
+Do not drop a conventional red-X/green-Y/blue-Z tangent normal map into this
+filename. Convert its surface slopes deliberately, including its tangent
+axis/sign convention, or bake derivatives directly from a seamless height
+field. See [water-bump-implementation.md](water-bump-implementation.md) for the
+runtime scale, equations, complete TEV allocation and implementation details.
+
 ## General delivery rules
 
 - Export the exact game-size PNGs above. Larger layered masters may accompany
   the delivery separately, but they are not runtime inputs and must not be
-  mixed into the five-file source directory.
+  mixed into the six-file source directory.
 - Use a top-down, seamless pattern with no perspective, borders, labels,
   logos, UI, baked camera lighting, or backdrop.
-- Keep masks neutral grayscale. Use ordinary 8-bit PNG channels, rather than
+- Keep coverage masks neutral grayscale; the two vector roles use their
+  explicit channels above. Use ordinary 8-bit PNG channels, rather than
   HDR data, EXR, a video, or PBR material graphs.
 - Verify the appearance both at native size and tiled. Avoid single-pixel
   speckling that becomes distracting during slow movement.
@@ -159,7 +193,7 @@ installs. It validates the role, dimensions, format, mip count and exact byte
 budget before upload. A missing map uses its generated fallback; a malformed
 map also falls back and records a diagnostic instead of preventing play.
 
-Both ISO and Depot builds use the same five explicit optional runtime names.
+Both ISO and Depot builds use the same six explicit optional runtime names.
 The Depot packager validates each supplied map and verifies that its presence
 and bytes match the disc build. PNGs, larger masters, and the authoring report
 do not enter the installed runtime payload.
@@ -185,9 +219,11 @@ animation. A smoother silhouette is useful; dense sculpt detail is not.
 
 Those GLBs are a **future integration option**, not currently registered
 drop-in replacements. This change does not promise that adding an arbitrary
-`river-rock.glb` will be loaded. No reflection cubemap, refraction capture,
-screen-space texture, unique riverbank mesh, or additional artwork is required
-for the current water materials. Existing bridge and bank assets remain usable.
+`river-rock.glb` will be loaded. The water renderer creates its lighting lookup
+and refraction capture at runtime. No reflection cubemap, screen-space source
+image, unique riverbank mesh, or supplied artwork is required. Existing bridge
+and bank assets remain usable. The environment sheen is a stylized lookup,
+not a reflection of nearby scene objects.
 
 See [water-rendering.md](water-rendering.md) for the renderer and pass order,
 and [world-asset-requests.md](world-asset-requests.md) for the broader world kit.

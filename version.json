@@ -383,6 +383,15 @@
         "Snow coverage, distant animation and useful model LODs avoid extra drawing.",
         "Shared memory admission protects active scenes and doorway restoration."
       ]
+    },
+    {
+      "id": "inland-water-bump-lighting-refraction-20261124",
+      "lines": [
+        "See moving highlights and gentle riverbed refraction on clear inland water.",
+        "Two independent wave slopes shape sunlight glints and a restrained environment sheen.",
+        "Refraction captures submerged scenery before bridges, dry rocks and villagers are drawn.",
+        "Optional slope artwork and a complete technical handoff accompany bounded native rendering."
+      ]
     }
   ]
 }

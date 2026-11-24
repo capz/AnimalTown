@@ -104,7 +104,7 @@ internal sealed class WaterBedRenderer : IDisposable
     private void RockTriangle(int row,RiverBankPoint a,RiverBankPoint b,RiverBankPoint c,Color32 tint)
     {
         int x=(int)Math.Floor(a.X);
-        float da=WaterBedGeometry.CausticDistance(town,x,row,a),db=WaterBedGeometry.CausticDistance(town,x,row,b),dc=WaterBedGeometry.CausticDistance(town,x,row,c);
+        float da=WaterBedGeometry.SubmersionDistance(town,x,row,a),db=WaterBedGeometry.SubmersionDistance(town,x,row,b),dc=WaterBedGeometry.SubmersionDistance(town,x,row,c);
         if(Math.Min(da,Math.Min(db,dc))>=0){RockTriangle(row,x,a,b,c,tint,true);return;}
         if(Math.Max(da,Math.Max(db,dc))<=0){RockTriangle(row,x,a,b,c,tint,false);return;}
         int wet=(da>0?1:0)+(db>0?1:0)+(dc>0?1:0);
@@ -121,7 +121,7 @@ internal sealed class WaterBedRenderer : IDisposable
         rocks[rockCount++]=RockVertex(row,cellX,a,tint,wet);rocks[rockCount++]=RockVertex(row,cellX,b,tint,wet);rocks[rockCount++]=RockVertex(row,cellX,c,tint,wet);
     }
     private VertexPositionColorTexture RockVertex(int row,int cellX,RiverBankPoint p,Color32 tint,bool wet)
-        =>Vertex(row,p,new Color32(tint.R,tint.G,tint.B,wet?WaterBedGeometry.SubmersionMask(town,cellX,row,p):(byte)0));
+        =>Vertex(row,p,new Color32(tint.R,tint.G,tint.B,WaterBedGeometry.RockAlpha(town,cellX,row,p,wet)));
     private VertexPositionColorTexture Vertex(int row,RiverBankPoint p,Color32 tint)
         =>new VertexPositionColorTexture(Position(row,p.X,p.Z,p.Height),tint,new Vector2(p.X*WaterBedGeometry.UvScale,p.Z*WaterBedGeometry.UvScale));
     private Vector3 Position(int row,float x,float z,float height)

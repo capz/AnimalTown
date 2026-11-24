@@ -16,7 +16,7 @@ internal sealed partial class TerrainRenderer : IDisposable
     private readonly SnowGroundVisibility snowVisibility=new SnowGroundVisibility();
     private TerrainArchive? archive;
     private bool legacy=false; // Default: immutable ARAM archive and fixed MEM1 views.
-    internal bool SuspendForSave()=>!legacy&&archive!=null&&archive.SuspendForSave();
+    internal bool SuspendForSave(){waterBump.Suspend();return !legacy&&archive!=null&&archive.SuspendForSave();}
     internal void ResumeAfterSave(){archive?.ResumeAfterSave();}
     internal TerrainSection CreateSection()=>new TerrainSection(soil,waterMaterial);
     private readonly TerrainStream stream=new TerrainStream();
@@ -24,6 +24,7 @@ internal sealed partial class TerrainRenderer : IDisposable
     private readonly FloorStrips staging=new FloorStrips(TerrainStream.Width*TerrainStream.Height);
     private readonly TerrainSoil soil=new TerrainSoil();
     private readonly WaterMaterial waterMaterial=new WaterMaterial();
+    private readonly WaterBumpEffect waterBump=new WaterBumpEffect();
     private readonly LocalOceanWaves oceanWaves=new LocalOceanWaves();
     private readonly TerrainWalls gallery;
     internal readonly Transform ScrollTransform=new Transform();
@@ -54,6 +55,7 @@ internal sealed partial class TerrainRenderer : IDisposable
     private bool resetting;
     internal bool SuspendOutdoorCache()
     {
+        waterBump.Suspend();
         if(!legacy&&archive!=null&&!archive.Suspend())return false;
         SuspendFloorTextures();return SuspendSnowMask();
     }
@@ -131,7 +133,7 @@ internal sealed partial class TerrainRenderer : IDisposable
         // Cloud/water effects borrow texture bindings, so retire them before
         // releasing the cache leases supplying their ground art.
         ReleasePaths();materials[TownPaths.Material].Texture=null;paths.Dispose();mipBands.Dispose();
-        waterMaterial.Dispose();soil.Dispose();
+        waterBump.Dispose();waterMaterial.Dispose();soil.Dispose();
         for(int i=0;i<textures.Length;i++)if(textures[i]!=null){TextureCache.Release(textures[i]!);textures[i]=null;}
         for(int i=0;i<materials.Length;i++){materials[i].Texture=null;materials[i].SecondaryTexture=null;}
         data=new byte[0];cachedTown=null;stream.Reset();disposed=true;
@@ -201,6 +203,7 @@ internal sealed partial class TerrainRenderer : IDisposable
         SharedFlatMaterial=flat;
         if(flat<0){groundRing?.Dispose();groundRing=null;}
         if(invalid){
+            waterBump.Suspend();
             resetting=true;
             if(archive!=null){
                 if(!legacy&&!nextLegacy){if(!archive.TryReset())return;}
@@ -331,8 +334,20 @@ internal sealed partial class TerrainRenderer : IDisposable
     internal void Animate(double seconds)
     {
         long at=FrameProfile.Start();
-        if(!FreezeMotion){waterMaterial.Animate(seconds);oceanWaves.Update(seconds);}
+        if(!FreezeMotion){waterMaterial.Animate(seconds);waterBump.Animate(seconds);oceanWaves.Update(seconds);}
         FrameProfile.DetailEnd(3,at);
+    }
+    internal void PrepareWaterOptics(float focusZ,int sunlight,int environmentRgb,bool outdoors)
+    {
+        bool visible=false;
+        if(outdoors&&Ready){
+            if(!legacy)visible=archive!.First(104)>=0;
+            else for(int i=0;i<stream.Count;i++)
+                if(stream.Visible[i]&&sections[i]!.Water.SurfaceMesh!=null){visible=true;break;}
+        }
+        // Freeze only holds wave time. View/capture validity and lighting must
+        // still follow this frame, including inspection and split-AA parts.
+        waterBump.Prepare(focusZ,sunlight,environmentRgb,visible);
     }
     private void Add(Renderer renderer,Material material,Mesh? mesh,bool snow=false)
     {
@@ -359,6 +374,14 @@ internal sealed partial class TerrainRenderer : IDisposable
     private void DrawArchiveWaterOpaque(Renderer renderer)
     {
         AddArchive(renderer,waterMaterial.BedMaterial,108);
+        if(waterBump.CaptureReady){
+            // The capture deliberately excludes dry rock caps, land, bridges
+            // and actors. Full rocks are drawn normally after the copy.
+            waterBump.Scope(1);
+            try{AddArchive(renderer,waterMaterial.RockMaterial,109);}
+            finally{waterBump.Scope(0);}
+            waterBump.Capture();
+        }
         AddArchive(renderer,waterMaterial.RockMaterial,109);
         AddArchive(renderer,waterMaterial.OceanSurface,107);
         oceanWaves.Draw(renderer,waterMaterial.OceanSurface,ScrollTransform);
@@ -367,6 +390,14 @@ internal sealed partial class TerrainRenderer : IDisposable
     {
         for(int i=0;i<stream.Count;i++)if(stream.Visible[i])Add(renderer,waterMaterial.BedMaterial,sections[i]!.Water.Bed.BedMesh);
         Flush(renderer,waterMaterial.BedMaterial);
+        if(waterBump.CaptureReady){
+            waterBump.Scope(1);
+            try{
+                for(int i=0;i<stream.Count;i++)if(stream.Visible[i])Add(renderer,waterMaterial.RockMaterial,sections[i]!.Water.Bed.RocksMesh);
+                Flush(renderer,waterMaterial.RockMaterial);
+            }finally{waterBump.Scope(0);}
+            waterBump.Capture();
+        }
         for(int i=0;i<stream.Count;i++)if(stream.Visible[i])Add(renderer,waterMaterial.RockMaterial,sections[i]!.Water.Bed.RocksMesh);
         Flush(renderer,waterMaterial.RockMaterial);
         for(int i=0;i<stream.Count;i++)if(stream.Visible[i])Add(renderer,waterMaterial.OceanSurface,sections[i]!.Water.OceanMesh);
@@ -376,13 +407,14 @@ internal sealed partial class TerrainRenderer : IDisposable
     internal void DrawWater(Renderer renderer)
     {
         NativeShadows.Scope(legacy?3:0);
+        waterBump.Scope(2);
         try{
             if(!legacy)AddArchive(renderer,waterMaterial.Surface,104);
             else{
                 for(int i=0;i<stream.Count;i++)if(stream.Visible[i])Add(renderer,waterMaterial.Surface,sections[i]!.Water.SurfaceMesh);
                 Flush(renderer,waterMaterial.Surface);
             }
-        }finally{NativeShadows.Scope(0);}
+        }finally{waterBump.Scope(0);NativeShadows.Scope(0);}
         if(!legacy)AddArchive(renderer,waterMaterial.Foam,105);
         else{
             for(int i=0;i<stream.Count;i++)if(stream.Visible[i])Add(renderer,waterMaterial.Foam,sections[i]!.Water.FoamMesh);
@@ -408,6 +440,7 @@ internal sealed partial class TerrainRenderer : IDisposable
 
     internal void Draw(Renderer renderer,Transform parent,int room)
     {
+        waterBump.Begin();
         if(groundLoad==GroundLoad.Preview)groundLoad=GroundLoad.Visible;
         if(legacy){
             DrawLegacyWaterOpaque(renderer);

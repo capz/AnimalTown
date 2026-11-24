@@ -12,6 +12,7 @@ internal static class WaterEffectChecks
         check(indirect[191]==0&&indirect[199]==2&&indirect[207]==0,
             "Wind Waker still selects alternate UV then resolves base opacity");
         ShallowWaterMaterialChecks.Run(check);
+        WaterBumpPatternChecks.Run(check);
         CheckIdleInteraction(check);
     }
     private static void CheckIdleInteraction(Action<bool,string> check)
