@@ -63,8 +63,10 @@ Rocks are generated deterministically from the town seed and fixed logical
 2-by-2-metre blocks. Candidates are rejected on bridges, dry cells and narrow
 bank margins. Accepted shapes are combined into each section's rock mesh;
 there are no individual per-frame rock objects or random-placement updates.
-Most are submerged, with some protruding slightly above the water. Lower rings
-are buried in the bed. Placement is decorative and introduces no new collision.
+Most rise 10–20 cm from their buried bases and stay submerged. Candidates can
+protrude 8–14 cm above water only where the physical bed is at most 30 cm deep;
+deeper stones never stretch into posts to reach the surface. Broad shoulders
+keep their silhouette low. Placement is decorative and adds no collision.
 
 The existing sloped banks, coast orientations, beach wet-sand tint, estuary
 water level and historical save migration remain in place. This change does
@@ -152,10 +154,11 @@ work is bounded and section buffers are reused; visible mesh selection and
 archive caching continue through the existing terrain system.
 
 A host-side geometry sweep of town seeds 0, 49, 7319 and 1986 measured at most
-398,112 bytes of added archive payload, 195,584 bytes of conservative visible
+389,056 bytes of added archive payload, 192,512 bytes of conservative visible
 cache payload and 52 extra visible parts before coalescing. The largest actual
-half-section part was 11,680 bytes. These are incremental geometry estimates;
-the combined existing-plus-new native residency still needs emulator validation.
+half-section part was 10,368 bytes. These are incremental geometry estimates;
+the combined existing-plus-new native residency is checked separately by the
+Dolphin acceptance scenario, including the legacy-to-archive restoration.
 
 This is an engineering budget, not a claim of measured physical-console frame
 rate. Verify memory pressure, raster cost and distant ripple stability in the

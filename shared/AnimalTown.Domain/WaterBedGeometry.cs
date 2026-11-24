@@ -67,17 +67,21 @@ public static class WaterBedGeometry
             if(p.X<x+.03f||p.X>x+.97f||p.Z<z+.03f||p.Z>z+.97f||!ClearOfBanks(town,x,z,p.X,p.Z))return false;
             bottom=Math.Min(bottom,HeightAt(town,x,z,p.X,p.Z));
         }
+        // Only a shallow bed can support a low stone above the waterline.
+        // Keep deeper candidates submerged instead of stretching the same
+        // small footprint into a tall post just to reach the surface.
+        emerging=emerging&&surface-bottom<=.30f;
         bottom-=.025f; // bury the complete lower ring in the opaque bed
-        float top=emerging?surface+.08f+.06f*Unit(shape>>12):Math.Min(surface-.06f,bottom+.16f+.16f*Unit(shape>>12));
+        float top=emerging?surface+.08f+.06f*Unit(shape>>12):Math.Min(surface-.06f,bottom+.10f+.10f*Unit(shape>>12));
         rock=new WaterBedRock(px,pz,rx,rz,angle,bottom,top,shape);return true;
     }
     public static RiverBankPoint RockPoint(WaterBedRock rock,int side,bool upper)
     {
         double angle=rock.Angle+side*(6.283185307179586/RockSides);
-        float scale=upper?.57f:1;
+        float scale=upper?.78f:1;
         return new RiverBankPoint(rock.X+(float)Math.Cos(angle)*rock.RadiusX*scale,
             rock.Z+(float)Math.Sin(angle)*rock.RadiusZ*scale,
-            upper?rock.Bottom+(rock.Top-rock.Bottom)*.76f:rock.Bottom);
+            upper?rock.Bottom+(rock.Top-rock.Bottom)*.58f:rock.Bottom);
     }
     // Split triangles at the dry limit before interpolation. Otherwise a zero
     // alpha at a dry cap can still interpolate bright caustics above the water.
