@@ -4,13 +4,13 @@
     "net8.0": {
       "Capz.Hypercube.Core": {
         "type": "Transitive",
-        "resolved": "0.1.0-preview.52.1",
-        "contentHash": "7TqS7bapavrFJ8xbin49AqzBNOs9Zc0pCcbTcMdnnTfWSXLmhvoqUsvCmEU8sRPWzsQzF+mtFHsEz9hjQUSVOQ=="
+        "resolved": "0.1.0-preview.55.1",
+        "contentHash": "Pnb1Ng+wYGYObkhnVbKOFkGoIfDaeRswUBX5Kls4qzWxqjv9gj1zSA0pILzFN4PpycQ/1LH6AHXyZEUmmqFgQQ=="
       },
       "animaltown.domain": {
         "type": "Project",
         "dependencies": {
-          "Capz.Hypercube.Core": "[0.1.0-preview.52.1, 0.1.0-preview.52.1]"
+          "Capz.Hypercube.Core": "[0.1.0-preview.55.1, 0.1.0-preview.55.1]"
         }
       }
     }

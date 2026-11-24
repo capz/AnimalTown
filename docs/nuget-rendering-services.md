@@ -1,11 +1,17 @@
 # NuGet rendering services
 
 AnimalTown builds without engine or SDK source submodules. It consumes
-`Capz.Hypercube.GameCube` and `Capz.Hypercube.Core` **0.1.0-preview.45.1**, paired
+`Capz.Hypercube.GameCube` and `Capz.Hypercube.Core` **0.1.0-preview.55.1**, paired
 with `DolphinDotNet.Sdk`, GameCube/Core and the Assets tool
-**0.1.0-preview.372.1**. global.json pins the SDK; exact PackageReference versions,
+**0.1.0-preview.379.1**. global.json pins the SDK; exact PackageReference versions,
 committed package locks and the local tool manifest pin the runtime/tool graph.
 NuGet.Config uses NuGet.org only. Package licenses are GPL-2.0-only.
+
+The published engine packages come from `8ec133aa7103dae435e4b58ffb81628b4c607d39`
+and require the exact SDK runtime from `7dc2fd3161e4dcc23c4c956b99972677f81ece48`.
+The SDK's dedicated asynchronous DNMD worker lets AnimalTown's cooked-model
+loading discard unused source-format importers from the executable while
+preserving cancellation, loading budgets and memory guards.
 
 `tools/resolve-packages.ps1` resolves the installed SDK through MSBuild and copies
 native test support into out/. The packaged compiler generates a private native

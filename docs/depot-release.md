@@ -53,7 +53,7 @@ identity. `content.id` must match before configuration, splash or other assets
 are read. This is a build-mixing check, not a cryptographic trust mechanism.
 
 The app uses `Dolphin.IO.LaunchContent` from DolphinDotNet SDK
-`0.1.0-preview.376.1`. The SDK captures the launcher path, resolves its device,
+`0.1.0-preview.379.1`. The SDK captures the launcher path, resolves its device,
 preserves the directory containing the DOL, and owns any mounts it acquires.
 AnimalTown supplies its identity/payload validator and explicit fallback
 locations; it no longer maintains a second device-alias parser or mount loop.

@@ -10,7 +10,7 @@
   <PropertyGroup Condition="'$(DepotProfile)' == 'true'"><DefineConstants>$(DefineConstants);ANIMALTOWN_DEPOT</DefineConstants></PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="../../shared/AnimalTown.Domain/AnimalTown.Domain.csproj" />
-    <PackageReference Include="DolphinDotNet.GameCube" Version="[0.1.0-preview.376.1]" />
+    <PackageReference Include="DolphinDotNet.GameCube" Version="[0.1.0-preview.379.1]" />
     <Compile Include="../../game/AnimalTown.GameCube/ContentBootstrap.cs" Link="ContentBootstrap.cs" />
     <Compile Include="../../game/AnimalTown.GameCube/UpdaterLaunch.cs" Link="UpdaterLaunch.cs" />
     <Compile Include="../../game/AnimalTown.GameCube/RuntimeOptions.cs" Link="RuntimeOptions.cs" />

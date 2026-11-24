@@ -27,7 +27,7 @@ or player instance is created. Other species keep their complete source packages
 for ARAM snapshots. The manager excludes models without ARAM residency support
 from demotion. This combines a smaller permanent player model with paging of
 unused species without compacting a pageable model's only source package.
-The native fixture saves 330,912 requested allocation bytes for fox; selected
+The native fixture saves 85,152 requested allocation bytes for fox; selected
 species results are documented in [resident model memory](resident-model-memory.md).
 
 The town's UI canvas holds 1,024 vertices, down from the SDK default of 4,096.

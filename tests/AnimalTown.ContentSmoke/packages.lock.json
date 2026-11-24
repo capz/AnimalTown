@@ -4,27 +4,27 @@
     "net8.0": {
       "DolphinDotNet.GameCube": {
         "type": "Direct",
-        "requested": "[0.1.0-preview.376.1, 0.1.0-preview.376.1]",
-        "resolved": "0.1.0-preview.376.1",
-        "contentHash": "AN2Bw9EXKSZWEoiznlz+dQrNW8mekYihE05zRs4mcAFUaWhH/FRIcK3oP4RVQW0BIgCSUFmnFt7o+/NfTliF3Q==",
+        "requested": "[0.1.0-preview.379.1, 0.1.0-preview.379.1]",
+        "resolved": "0.1.0-preview.379.1",
+        "contentHash": "usZAWmhDqD6MsRJ0sOlnEvF/cTTubFjD1uVFT1BfsLZLbwP9f6ITUcpPc+bHBxciqJxSC8hx4o4u6zY2UUP2kA==",
         "dependencies": {
-          "DolphinDotNet.Core": "0.1.0-preview.376.1"
+          "DolphinDotNet.Core": "0.1.0-preview.379.1"
         }
       },
       "Capz.Hypercube.Core": {
         "type": "Transitive",
-        "resolved": "0.1.0-preview.52.1",
-        "contentHash": "7TqS7bapavrFJ8xbin49AqzBNOs9Zc0pCcbTcMdnnTfWSXLmhvoqUsvCmEU8sRPWzsQzF+mtFHsEz9hjQUSVOQ=="
+        "resolved": "0.1.0-preview.55.1",
+        "contentHash": "Pnb1Ng+wYGYObkhnVbKOFkGoIfDaeRswUBX5Kls4qzWxqjv9gj1zSA0pILzFN4PpycQ/1LH6AHXyZEUmmqFgQQ=="
       },
       "DolphinDotNet.Core": {
         "type": "Transitive",
-        "resolved": "0.1.0-preview.376.1",
-        "contentHash": "MzAlj6htqwkNNEhBtOnDuHC+9JGhMjJ6t2jU4nFNN/IWu7rYnmN2ffqSuQFptgzUYO9U2dLrZT0qTQMe2JVltA=="
+        "resolved": "0.1.0-preview.379.1",
+        "contentHash": "V7sIdIaDNVNb+8q8ba+lK+FNd5LrH9XKLiCZKsKV1AW6p1r0WRAWGUjOxSo3RxCFJPjbLsHuzeXBmVPA6wlDeg=="
       },
       "animaltown.domain": {
         "type": "Project",
         "dependencies": {
-          "Capz.Hypercube.Core": "[0.1.0-preview.52.1, 0.1.0-preview.52.1]"
+          "Capz.Hypercube.Core": "[0.1.0-preview.55.1, 0.1.0-preview.55.1]"
         }
       }
     }
