@@ -174,7 +174,7 @@ runs:
         import json, os, re
         from pathlib import Path
         plan=json.loads(Path('out/validation-plan.json').read_text())
-        relevant=re.compile(r'^(game/AnimalTown.GameCube/(Water[^/]*|NativeWaterProbe|TerrainRenderer|TerrainSection|GroundMip[^/]*|Program|ModelResources)\.cs$|shared/AnimalTown.Domain/(GroundMip[^/]*|RenderDebugOptions|DevConfig|TextureResolution|Water[^/]*|WindWaker[^/]*)\.cs$|tools/(iso-smoke\.py|publish-release\.ps1|patch-native\.ps1|patch-water-probe\.py|native-water-probe\.inc|native-shadow-union-gx\.inc)$|build/Dockerfile\.dolphin$|\.github/(?:workflows/releases\.yml|actions/release-tests/action\.yml)$)')
+        relevant=re.compile(r'^(game/AnimalTown.GameCube/(Water[^/]*|NativeWater(?:Probe)?|TerrainRenderer|TerrainSection|GroundMip[^/]*|Program|ModelResources)\.cs$|shared/AnimalTown.Domain/(GroundMip[^/]*|RenderDebugOptions|DevConfig|TextureResolution|Water[^/]*|WindWaker[^/]*)\.cs$|tools/(iso-smoke\.py|publish-release\.ps1|patch-native\.ps1|patch-water-(?:probe|optics)\.py|native-water-(?:probe|optics)\.inc|native-shadow-union-gx\.inc)$|build/Dockerfile\.dolphin$|\.github/(?:workflows/releases\.yml|actions/release-tests/action\.yml)$)')
         needed=any(relevant.search(path) for path in plan['paths']) or (plan['full'] and not plan['paths'])
         with open(os.environ['GITHUB_OUTPUT'],'a') as output:
             output.write(f'needed={str(needed).lower()}\n')

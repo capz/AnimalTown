@@ -47,14 +47,21 @@ internal static class WaterTextureArt
     internal static byte[] Encode(SKBitmap image,int index)
     {
         int edge=WaterTextureCatalog.Edge(index),format=WaterTextureCatalog.NativeFormat(index);
-        string role=WaterTextureCatalog.Role(index);
+        string role=WaterTextureCatalog.Role(index);bool slopes=role=="surface-slopes";
         if(image.Width!=edge||image.Height!=edge)throw new InvalidDataException(role+" must be exactly "+edge+"x"+edge);
         var rgba=new byte[edge*edge*4];
         for(int y=0;y<edge;y++)for(int x=0;x<edge;x++){
             var c=image.GetPixel(x,y);int at=(y*edge+x)*4;
-            if(format!=3&&c.Alpha!=255)throw new InvalidDataException(role+" must be opaque; coverage belongs in grayscale, not PNG alpha");
-            if((format==1||format==3)&&(c.Red!=c.Green||c.Red!=c.Blue))throw new InvalidDataException(role+" requires grayscale RGB channels");
-            rgba[at]=c.Red;rgba[at+1]=c.Green;rgba[at+2]=c.Blue;rgba[at+3]=c.Alpha;
+            if((format!=3||slopes)&&c.Alpha!=255)throw new InvalidDataException(role+" must be opaque; coverage belongs in grayscale, not PNG alpha");
+            if(slopes){
+                if(c.Red!=128)throw new InvalidDataException(role+" requires neutral red=128, blue=tangent X and green=tangent Z");
+                // Author in an opaque PNG so image editors cannot premultiply
+                // vector data. Pack the two independent components losslessly.
+                rgba[at]=rgba[at+1]=rgba[at+2]=c.Green;rgba[at+3]=c.Blue;
+            }else{
+                if((format==1||format==3)&&(c.Red!=c.Green||c.Red!=c.Blue))throw new InvalidDataException(role+" requires grayscale RGB channels");
+                rgba[at]=c.Red;rgba[at+1]=c.Green;rgba[at+2]=c.Blue;rgba[at+3]=c.Alpha;
+            }
         }
         byte[] native;
         if(format==1){

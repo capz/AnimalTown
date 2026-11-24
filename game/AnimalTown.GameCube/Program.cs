@@ -1082,6 +1082,7 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
         }
         PrepareHelipad();
         LoadingScreen.Finish();
+        terrain.PrepareWaterOptics(state.Z,sunlight,environmentTint,room==0);
         if((weather.Raining(room)||weather.Snowing(room))&&villagers.Doors.PlayerFade<1)rain.Prepare(state,(Clock.Timestamp-sessionStart)/1000000.0,cachedPlayerHeight,weather.Snowing(room));
         else rain.Dispose();
         PrepareFoliage(environmentTint);

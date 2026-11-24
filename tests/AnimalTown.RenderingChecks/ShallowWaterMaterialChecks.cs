@@ -38,6 +38,11 @@ internal static class ShallowWaterMaterialChecks
         int[] fading=Evaluate(rock,new[]{145,157,151,128},Gray(255),Gray(0));
         check(dry.SequenceEqual(new[]{145,157,151,255})&&wet[0]>fading[0]&&fading[0]>dry[0]&&wet[3]==255&&fading[3]==255,
             "rock alpha fades underwater caustics while every rock pixel stays opaque");
+        for(int shade=0;shade<=255;shade+=51)foreach(int intensity in new[]{0,128,255}){
+            int[] unlitRim=Evaluate(rock,new[]{shade,shade,shade,1},Gray(intensity),Gray(0));
+            check(unlitRim.SequenceEqual(new[]{shade,shade,shade,255}),
+                "alpha-one wet capture coverage rounds to zero caustic light and preserves ordinary rock opacity");
+        }
         int[] black=Evaluate(bed,new[]{0,0,0,255},new[]{178,180,158,255},Gray(255));
         check(black.SequenceEqual(new[]{0,0,0,255}),"caustics follow receiver shading rather than emitting through black tint");
         CheckPatterns(check);

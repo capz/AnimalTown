@@ -793,8 +793,44 @@ def terrain_restoration_pixels(reference,current):
             samples+=1;matched+=cache[key]
     return {'ground_samples':samples,'matching_samples':matched,'matching_fraction':matched/max(1,samples),'minimum_cosine':.998}
 
-def water_material_pixels(first,second,shadowed=False):
+def water_optics_pixels(first,second):
+    """Measure interior water texture motion without assuming a ripple palette.
+
+    Refraction introduces bed/stone colours outside the old two-colour affine
+    ripple basis. Compare local RGB edge directions instead: uniform exposure
+    and additive shading leave those directions unchanged, whereas translated
+    ripples or refracted bed detail change the local pattern. The scenario also
+    records an equally long frozen-motion control for changing cloud shadows.
+    """
+    def wet(data,x,y):
+        r,g,b=data[(y*800+x)*3:(y*800+x)*3+3]
+        return g>80 and b>80 and g>r+2 and b>r-8 and b>g-45
+    samples=changed=textured=patterns=flips=0
+    for y in range(60,308,2):
+        for x in range(38,604,2):
+            points=((x,y),(x-4,y),(x+4,y),(x,y-4),(x,y+4))
+            if not all(wet(data,px,py) for data in (first,second) for px,py in points):continue
+            patches=[[data[(py*800+px)*3:(py*800+px)*3+3] for px,py in points] for data in (first,second)]
+            a,b=patches[0][0],patches[1][0];samples+=1
+            if max(abs(a[c]-b[c]) for c in range(3))>=4:changed+=1
+            edge0=[p[c]-a[c] for p in patches[0][1:] for c in range(3)]
+            edge1=[p[c]-b[c] for p in patches[1][1:] for c in range(3)]
+            aa=sum(v*v for v in edge0);bb=sum(v*v for v in edge1)
+            if aa<144 or bb<144:continue
+            textured+=1;dot=sum(v*w for v,w in zip(edge0,edge1))
+            if dot<0 or dot*dot<.85*.85*aa*bb:patterns+=1
+            for i in range(4):
+                da=sum(edge0[i*3:i*3+3]);db=sum(edge1[i*3:i*3+3])
+                if abs(da)>=18 and abs(db)>=18 and da*db<0:
+                    flips+=1;break
+    return {'interior_samples':samples,'rgb_changed_samples':changed,
+            'textured_samples':textured,'local_pattern_changed_samples':patterns,
+            'local_edge_sign_changes':flips,'region':[38,60,604,308],
+            'edge_measure':'local RGB direction','minimum_edge_cosine':.85}
+
+def water_material_pixels(first,second,shadowed=False,optics=False):
     """Measure moving crest colour/edges, with shoreline and HUD excluded."""
+    if optics:return water_optics_pixels(first,second)
     def wet(data,x,y):
         r,g,b=data[(y*800+x)*3:(y*800+x)*3+3]
         return g>85 and b>85 and g>r+8 and b>r+8
@@ -845,6 +881,128 @@ def terrain_mip_applied(text,enabled,mips,distance):
     if values[5]!=2:raise AssertionError('Unexpected diagnostic ground mip chain: '+str(values))
     return {'enabled':bool(enabled),'mipmaps':bool(mips),'distance':distance,
             'width':values[3],'height':values[4],'levels':values[5]}
+
+def water_draw_state(log_text,scene,legacy=False,require_optics=False):
+    """Validate one actual water draw and its same-frame optics evidence.
+
+    Return None for an incomplete pair of console lines or an older renderer
+    path during a mode switch. Malformed/current invalid evidence must fail.
+    """
+    import re
+    water_pattern=(r'ANIMALTOWN WATER DRAW scene=(\d+) frame=(\d+) tev=(\d+) indirect=(\d+) strength=(\d+) '
+                   r'tex0=(\d+)x(\d+) tex1=(\d+)x(\d+) uv0=([-\d,]+) uv1=([-\d,]+) '
+                   r'layers=(\d+):(\d+),(\d+):(\d+) texgens=(\d+) matrices=(\d+),(\d+) '
+                   r'k0=([0-9a-f]{8}) k1=([0-9a-f]{8}) blend=(\d+):(\d+):(\d+) '
+                   r'depth=(\d+):(\d+):(\d+) layerstages=(\d+),(\d+)')
+    matches=list(re.finditer(water_pattern,log_text))
+    if not matches or int(matches[-1][1])!=scene:return None
+    match=matches[-1];fields=match.groups()
+    state={'scene':int(fields[0]),'frame':int(fields[1]),'tev_stages':int(fields[2]),
+           'indirect_stages':int(fields[3]),'strength':int(fields[4]),
+           'tex0':[int(fields[5]),int(fields[6])],'tex1':[int(fields[7]),int(fields[8])],
+           'uv0':list(map(int,fields[9].split(','))),'uv1':list(map(int,fields[10].split(','))),
+           'layers':[[int(fields[11]),int(fields[12])],[int(fields[13]),int(fields[14])]],
+           'texgens':int(fields[15]),'matrices':[int(fields[16]),int(fields[17])],
+           'foam_constants':[fields[18],fields[19]],
+           'blend':list(map(int,fields[20:23])),'depth':list(map(int,fields[23:26])),
+           'layer_stages':list(map(int,fields[26:28]))}
+    shallow=scene in (1,2,3)
+    prefix='ANIMALTOWN WATER OPTICS scene='+str(scene)+' frame='+str(state['frame'])+' '
+    optics_lines=[line[line.index(prefix):] for line in log_text[match.end():].splitlines(keepends=True) if prefix in line]
+    optics=None
+    if optics_lines:
+        # Console output can be read between writes. Wait for its newline so
+        # an unfinished serial record cannot fail or establish acceptance.
+        if not optics_lines[0].endswith(('\n','\r')):return None
+        raw=dict(re.findall(r'(\w+)=([^\s]+)',optics_lines[0]))
+        required={'scene','frame','ready','scope','part','captured','valid','size','source','bytes','copies',
+                  'draws','mask','base','failed','sun','environment','textures','indirect','stages','generators','wave0','wave1','controls'}
+        if set(raw)!=required:raise AssertionError('Incomplete water optics evidence: '+optics_lines[0])
+        def integers(name,separator=','):return list(map(int,raw[name].split(separator)))
+        try:
+            optics={key:int(raw[key]) for key in ('ready','scope','part','captured','valid','bytes','copies','mask','base','failed','sun')}
+            optics.update(environment=int(raw['environment'],16),size=integers('size','x'),source=integers('source','x'),draws=integers('draws'),
+                          textures=[list(map(int,re.split('[x:]',value))) for value in raw['textures'].split(',')],
+                          indirect=[list(map(int,value.split(':'))) for value in raw['indirect'].split(',')],
+                          stages=[list(map(int,value.split(':'))) for value in raw['stages'].split(',')],
+                          generators=[list(map(int,value.split(':'))) for value in raw['generators'].split(',')],
+                          wave0=integers('wave0'),wave1=integers('wave1'),controls=integers('controls'))
+        except ValueError as error:raise AssertionError('Malformed water optics evidence: '+optics_lines[0]) from error
+        if (not shallow or optics['scope']!=2 or optics['ready'] not in (0,1) or optics['valid'] not in (0,1)
+                or optics['mask'] not in (0,3,7) or not 0<=optics['sun']<=255 or not 0<=optics['environment']<=0xffffff
+                or any(optics[key]<0 for key in ('part','captured','bytes','copies','failed'))):
+            raise AssertionError('Unexpected water optics scope/capabilities: '+str(optics))
+        if len(optics['draws'])!=3 or any(value<0 for value in optics['draws']) or optics['draws'][1]>optics['draws'][0]:
+            raise AssertionError('Invalid water optics draw accounting: '+str(optics))
+    elif shallow and (state['indirect_stages']!=1 or require_optics):
+        if 'ANIMALTOWN WATER OPTICS unavailable;' in log_text:
+            raise AssertionError('Water optics allocation failed on the supported smoke display; fallback is visible but feature acceptance is incomplete')
+        return None
+
+    bumped=bool(optics and optics['mask'])
+    refracted=bool(bumped and optics['mask']&4)
+    if bumped:
+        shaded=optics['base']==8;archived=optics['base'] in (4,5)
+        expected_stages=optics['base']+(8 if refracted else 3)
+        if (not optics['ready'] or not (archived or shaded) or state['tev_stages']!=expected_stages
+                or state['indirect_stages']!=3 or state['texgens']!=(7 if refracted else 6)
+                or (archived and optics['base']!=(4 if optics['environment']==0xffffff else 5))):
+            raise AssertionError('Actual GX water optics stage budget changed: '+str(state)+' '+str(optics))
+        if optics['indirect']!=[[3,3],[4,3]] or optics['textures'][:2]!=[[64,64,3],[64,64,3]]:
+            raise AssertionError('Water slopes/lighting lookup are not bound to the expected GX resources: '+str(optics))
+        expected_orders=[[5,256],[5,4],[255,255]]+([[6,5],[6,6],[255,255],[6,5],[255,255]] if refracted else [[255,255]]*5)
+        expected_generators=[[1,4,36],[1,4,39],[1,0,42]]+([[0,0,45]] if refracted else [])
+        if (optics['stages']!=expected_orders or len(optics['generators'])!=4
+                or optics['generators'][:len(expected_generators)]!=expected_generators):
+            raise AssertionError('Actual GX water optics coordinate/stage bindings changed: '+str(optics))
+        for key,scale in (('wave0',2200000),('wave1',3100000)):
+            matrix=optics[key]
+            if len(matrix)!=6 or any(abs(actual-expected)>3 for actual,expected in zip(matrix[:4],(scale,0,0,scale))):
+                raise AssertionError('Actual GX water slope matrix has the wrong scale: '+str(optics))
+            if any(not 0<=value<=1000000 for value in matrix[4:]):
+                raise AssertionError('Water slope translation escaped its periodic range: '+str(optics))
+        if len(optics['controls'])!=4 or any(abs(a-b)>1 for a,b in zip(optics['controls'],(140000,1500000,180000,100000))):
+            raise AssertionError('Water optics controls do not match the reviewed material defaults: '+str(optics))
+        if refracted:
+            width,height=optics['size'] if len(optics['size'])==2 else (0,0)
+            if (not optics['valid'] or optics['part']<=0 or optics['captured']!=optics['part'] or optics['copies']<=0
+                    or optics['draws'][1]<=0 or width<=0 or height<=0 or width%4 or height%4
+                    or width>320 or height>264 or optics['source']!=[2*width,2*height]
+                    or optics['textures'][2:]!=[[width,height,4],[width,height,4]]
+                    or optics['bytes']!=16384+width*height*2):
+                raise AssertionError('Refraction did not use a fresh, correctly sized current-part capture: '+str(optics))
+    else:
+        archived=4<=state['tev_stages']<=6 and state['texgens']==2
+        shaded=state['tev_stages']==8 and state['texgens']==3
+        if not (archived or shaded) or state['indirect_stages']!=1:
+            raise AssertionError('Fallback water lost its established GX program: '+str(state))
+    if shaded!=legacy:return None
+    if require_optics and shallow and not refracted:
+        raise AssertionError('Water rendered its safe fallback; supported-display acceptance requires bump lighting and a current-part refraction capture: '+str(optics))
+    if (state['tex0']!=[64,64] or state['tex1']!=[64,64]
+            or state['layers']!=[[0,0],[1,0]] or state['matrices']!=[30,33]):
+        raise AssertionError('Actual GX water draw lost its original ripple bindings: '+str(state))
+    state['material_path']='legacy' if shaded else 'archived'
+    expected_colors=['367f91ff','d3f2ecff'] if shallow else ['c4e4deff','e5f5edff']
+    if bumped:
+        # K0/K1 RGB still shade the original ripple layers. Their previously
+        # unused alpha channels now hold independent specular/sheen gains.
+        gains=[int(optics['controls'][2]*optics['sun']/1000000+.5),int(optics['controls'][3]*255/1000000+.5)]
+        expected_colors=[color[:6]+format(gain,'02x') for color,gain in zip(expected_colors,gains)]
+    if state['foam_constants']!=expected_colors:
+        raise AssertionError('Actual GX water draw overwrote a ripple colour constant: '+str(state))
+    if state['strength']!=(24 if shallow else 76) or state['layer_stages']!=([1,3] if shallow else [1,2]):
+        raise AssertionError('Actual GX water draw selected the wrong surface program: '+str(state))
+    expected_blend=[0,1,0] if refracted else [1,4,5] if shallow else [0,4,5]
+    if state['blend']!=expected_blend or state['depth']!=([1,3,0] if shallow else [1,3,1]):
+        raise AssertionError('Actual GX water blend/depth state is incorrect: '+str(state))
+    state['surface']='shallow' if shallow else 'ocean'
+    for key,scale in (('uv0',2400000 if shallow else 1350000),('uv1',2800000 if shallow else 1000000)):
+        matrix=state[key]
+        if len(matrix)!=6 or any(abs(actual-expected)>3 for actual,expected in zip(matrix[:4],(scale,0,0,scale))):
+            raise AssertionError('Actual GX water UV matrix has the wrong scale: '+str(state))
+    if optics:state['optics']=optics
+    return state
 
 def terrain_materials():
     """Observe real menu controls, native sampler output and water motion."""
@@ -918,48 +1076,8 @@ def terrain_materials():
     def base_only(metrics):
         if metrics['classified_pixels']<6000 or metrics['level_pixels'][0]<metrics['classified_pixels']*.88:
             raise AssertionError('Disabling mipmaps did not collapse diagnostic terrain to level zero')
-    water_pattern=(r'ANIMALTOWN WATER DRAW scene=(\d+) frame=(\d+) tev=(\d+) indirect=(\d+) strength=(\d+) '
-                   r'tex0=(\d+)x(\d+) tex1=(\d+)x(\d+) uv0=([-\d,]+) uv1=([-\d,]+) '
-                   r'layers=(\d+):(\d+),(\d+):(\d+) texgens=(\d+) matrices=(\d+),(\d+) '
-                   r'k0=([0-9a-f]{8}) k1=([0-9a-f]{8}) blend=(\d+):(\d+):(\d+) '
-                   r'depth=(\d+):(\d+):(\d+) layerstages=(\d+),(\d+)')
     def water_probe(scene,legacy=False):
-        matches=re.findall(water_pattern,runtime_log_text())
-        if not matches or int(matches[-1][0])!=scene:return None
-        fields=matches[-1]
-        state={'scene':int(fields[0]),'frame':int(fields[1]),'tev_stages':int(fields[2]),
-               'indirect_stages':int(fields[3]),'strength':int(fields[4]),
-               'tex0':[int(fields[5]),int(fields[6])],'tex1':[int(fields[7]),int(fields[8])],
-               'uv0':list(map(int,fields[9].split(','))),'uv1':list(map(int,fields[10].split(','))),
-               'layers':[[int(fields[11]),int(fields[12])],[int(fields[13]),int(fields[14])]],
-               'texgens':int(fields[15]),'matrices':[int(fields[16]),int(fields[17])],
-               'foam_constants':[fields[18],fields[19]],
-               'blend':list(map(int,fields[20:23])),'depth':list(map(int,fields[23:26])),
-               'layer_stages':list(map(int,fields[26:28]))}
-        archived=4<=state['tev_stages']<=6 and state['texgens']==2
-        shaded=state['tev_stages']==8 and state['texgens']==3
-        if (not (archived or shaded) or state['indirect_stages']!=1 or state['strength']<=0
-                or state['tex0']!=[64,64] or state['tex1']!=[64,64]
-                or state['layers']!=[[0,0],[1,0]] or state['matrices']!=[30,33]):
-            raise AssertionError('Actual GX water draw lost its blend/indirect/UV bindings: '+str(state))
-        # Switching terrain paths rebuilds asynchronously. Ignore the last
-        # valid draw from the previous path until the requested one appears.
-        if shaded!=legacy:return None
-        state['material_path']='legacy' if shaded else 'archived'
-        shallow=scene in (1,2,3)
-        expected_colors=['367f91ff','d3f2ecff'] if shallow else ['c4e4deff','e5f5edff']
-        if state['foam_constants']!=expected_colors:
-            raise AssertionError('Actual GX water draw overwrote a foam colour constant: '+str(state))
-        if state['strength']!=(24 if shallow else 76) or state['layer_stages']!=([1,3] if shallow else [1,2]):
-            raise AssertionError('Actual GX water draw selected the wrong surface program: '+str(state))
-        if state['blend']!=([1,4,5] if shallow else [0,4,5]) or state['depth']!=([1,3,0] if shallow else [1,3,1]):
-            raise AssertionError('Actual GX water blend/depth state is incorrect: '+str(state))
-        state['surface']='shallow' if shallow else 'ocean'
-        for key,scale in (('uv0',2400000 if shallow else 1350000),('uv1',2800000 if shallow else 1000000)):
-            matrix=state[key]
-            if len(matrix)!=6 or any(abs(actual-expected)>3 for actual,expected in zip(matrix[:4],(scale,0,0,scale))):
-                raise AssertionError('Actual GX water UV matrix has the wrong scale: '+str(state))
-        return state
+        return water_draw_state(runtime_log_text(),scene,legacy,require_optics=scene in (1,2,3))
     def water_wait(scene,predicate,legacy=False):
         deadline=time.monotonic()+180
         while time.monotonic()<deadline:
@@ -969,9 +1087,12 @@ def terrain_materials():
         raise AssertionError('No matching actual GX water draw/progression for scene '+str(scene)
                              +' ('+('legacy' if legacy else 'archived')+')')
     def uv_progress(before,after):
-        return [[min(abs(after[key][at]-before[key][at])%1000000,
-                     1000000-abs(after[key][at]-before[key][at])%1000000)
-                 for at in (4,5)] for key in ('uv0','uv1')]
+        layers=[(before[key],after[key]) for key in ('uv0','uv1')]
+        if 'optics' in before and before['optics']['mask']:
+            layers.extend((before['optics'][key],after['optics'][key]) for key in ('wave0','wave1'))
+        return [[min(abs(end[at]-start[at])%1000000,
+                     1000000-abs(end[at]-start[at])%1000000)
+                 for at in (4,5)] for start,end in layers]
     def water_pair(name,scene,moving=True,frames=60,legacy=False):
         previous=water_probe(scene,legacy);after=previous['frame'] if previous else -1
         start=water_wait(scene,lambda state:state['frame']>after,legacy)
@@ -981,13 +1102,30 @@ def terrain_materials():
             if not moving:return True
             return all(max(layer)>=40000 for layer in uv_progress(start,state))
         end=water_wait(scene,advanced,legacy);second=capture(name+'-b')
-        if not moving and any(start[key]!=end[key] for key in ('uv0','uv1')):
-            raise AssertionError('Freezing landscape motion did not stop actual water UV matrices')
-        metrics=water_material_pixels(first,second,shadowed=legacy)
+        if not moving and any(any(value for value in layer) for layer in uv_progress(start,end)):
+            raise AssertionError('Freezing landscape motion did not stop actual ripple and slope UV matrices')
+        bumped=bool(start.get('optics',{}).get('mask'))
+        if bumped:
+            if (end['optics']['copies']<=start['optics']['copies']
+                    or end['optics']['part']<=start['optics']['part']
+                    or end['optics']['draws'][1]<=start['optics']['draws'][1]):
+                raise AssertionError('Water reused an old scene capture instead of capturing/drawing current frame parts')
+        metrics=water_material_pixels(first,second,shadowed=legacy,optics=bumped)
         visual_assert(metrics['interior_samples']>=250,'No sufficient water interior in '+name)
         metrics.update(native_start=start,native_end=end,rendered_frames=end['frame']-start['frame'],
                        uv_translation_delta=uv_progress(start,end),motion_expected=moving)
         return metrics
+    def moving_water(name,metrics,frozen):
+        if 'local_pattern_changed_samples' in metrics:
+            visual_assert(metrics['rgb_changed_samples']>=35,
+                          name+' has no visible interior colour motion')
+            visual_assert(metrics['local_pattern_changed_samples']>=max(25,frozen['local_pattern_changed_samples']*3)
+                          and metrics['local_edge_sign_changes']>=max(10,frozen['local_edge_sign_changes']*2),
+                          name+' does not move water/bed texture detail more strongly than its frozen control')
+        else:
+            visual_assert(metrics['changed_chromaticity_samples']>=max(35,frozen['changed_chromaticity_samples']*3)
+                          and metrics['crest_edge_sign_changes']>=15,
+                          name+' is not visibly stronger than the frozen water control')
     try:
         if committed_card_sequence(card):raise AssertionError('--terrain-materials requires a disposable card without a town')
         set_debug_visibility(True);start_game(True,prefix+'start');time.sleep(2)
@@ -1032,9 +1170,7 @@ def terrain_materials():
         chord('D_DOWN',with_z=True);time.sleep(2);resumed=water_pair('water-river-resumed',1)
         report['water']['river']={'animated':animated,'frozen_control':frozen,'resumed':resumed}
         for name,metrics in (('river animation',animated),('resumed river animation',resumed)):
-            visual_assert(metrics['changed_chromaticity_samples']>=max(35,frozen['changed_chromaticity_samples']*3)
-                          and metrics['crest_edge_sign_changes']>=15,
-                          name+' is not visibly stronger than the frozen water control')
+            moving_water(name,metrics,frozen)
         # The legacy river path adds the shadow/light footer that used to
         # overwrite WaterWarp's second foam colour. RecreateMeshes is a
         # session-only chord, not the unrelated in-game tree-noise menu row.
@@ -1048,9 +1184,7 @@ def terrain_materials():
         report['water']['legacy_river']={'animated':legacy_animated,'frozen_control':legacy_frozen,
                                          'resumed':legacy_resumed,'switch_control':'L+R+Z+X'}
         for name,metrics in (('legacy river animation',legacy_animated),('resumed legacy river animation',legacy_resumed)):
-            visual_assert(metrics['changed_chromaticity_samples']>=max(35,legacy_frozen['changed_chromaticity_samples']*3)
-                          and metrics['crest_edge_sign_changes']>=15,
-                          name+' is not visibly stronger than the frozen water control')
+            moving_water(name,metrics,legacy_frozen)
         last_legacy=legacy_resumed['native_end']['frame']
         chord('X',with_z=True);wait_onboarding('world',prefix+'archive-river-restored.png')
         report['water']['legacy_river']['archived_restored']=water_wait(1,lambda state:state['frame']>last_legacy)

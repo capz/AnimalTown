@@ -83,12 +83,18 @@ public static class WaterBedGeometry
             rock.Z+(float)Math.Sin(angle)*rock.RadiusZ*scale,
             upper?rock.Bottom+(rock.Top-rock.Bottom)*.58f:rock.Bottom);
     }
-    // Split triangles at the dry limit before interpolation. Otherwise a zero
-    // alpha at a dry cap can still interpolate bright caustics above the water.
+    // Physical coverage and the caustic fade have different boundaries. Split
+    // once at the water surface so the capture includes even its quiet rim.
+    public static float SubmersionDistance(Town town,int cx,int cz,RiverBankPoint p)
+        =>WaterSurface.HeightAt(town,cx,cz,p.X,p.Z)-p.Height;
     public static float CausticDistance(Town town,int cx,int cz,RiverBankPoint p)
         =>WaterSurface.HeightAt(town,cx,cz,p.X,p.Z)-CausticDryDepth-p.Height;
     public static byte SubmersionMask(Town town,int cx,int cz,RiverBankPoint p)
         =>(byte)(255*Math.Max(0,Math.Min(1,CausticDistance(town,cx,cz,p)/(CausticFullDepth-CausticDryDepth))));
+    // Boundary vertices are duplicated by the physical split. Their wet-side
+    // copy reserves alpha 1 for capture; dry triangles remain exactly zero.
+    public static byte RockAlpha(Town town,int cx,int cz,RiverBankPoint p,bool wet)
+        =>wet?(byte)Math.Max(1,(int)SubmersionMask(town,cx,cz,p)):(byte)0;
     public static RiverBankPoint WaterlineIntersection(RiverBankPoint a,RiverBankPoint b,float da,float db)
     {
         float t=da/(da-db);
@@ -104,7 +110,7 @@ public static class WaterBedGeometry
         }
         return count;
         int TriangleVertices(RiverBankPoint a,RiverBankPoint b,RiverBankPoint c){
-            float da=CausticDistance(town,cx,cz,a),db=CausticDistance(town,cx,cz,b),dc=CausticDistance(town,cx,cz,c);
+            float da=SubmersionDistance(town,cx,cz,a),db=SubmersionDistance(town,cx,cz,b),dc=SubmersionDistance(town,cx,cz,c);
             return Math.Min(da,Math.Min(db,dc))>=0||Math.Max(da,Math.Max(db,dc))<=0?3:9;
         }
     }
