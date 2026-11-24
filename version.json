@@ -374,6 +374,15 @@
         "A villager can continue after a short wait if a path stays busy.",
         "Visiting villagers follow their own routes and still use ordinary movement collision."
       ]
+    },
+    {
+      "id": "global-visual-work-and-memory",
+      "lines": [
+        "Reduce hidden visual work and release unused world resources.",
+        "Indoor terrain and unused room assets return memory automatically.",
+        "Snow coverage, distant animation and useful model LODs avoid extra drawing.",
+        "Shared memory admission protects active scenes and doorway restoration."
+      ]
     }
   ]
 }

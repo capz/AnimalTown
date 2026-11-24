@@ -26,7 +26,8 @@ static int ta_store,ta_cache,ta_stage,ta_meta_count,ta_bytes,ta_tail,ta_parts,ta
 static unsigned ta_bindings,ta_reads;static bool ta_sealed;
 static uint32_t ta_sync_reads,ta_sync_us,ta_sync_bytes;
 extern uint32_t animaltown_profile_clock(void);
-/* Only cold-resume binds remain pending across calls. The broker owns the
+/* Runtime travel/prefetch and cold-resume binds remain pending across calls.
+ * The broker owns the
  * cache/ARAM transfer holds; a separate view hold prevents handle reuse. */
 static int ta_request,ta_pending_view,ta_pending_entry=-1,ta_pending_block,ta_pending_blocks;
 static TaPart *ta_part(int index){

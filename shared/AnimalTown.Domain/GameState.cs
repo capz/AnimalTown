@@ -57,6 +57,7 @@ public sealed partial class GameState
         if(!HouseEntrance(x,z,out float arrivalX,out float arrivalZ))return false;
         int dx=x-Town.HouseX,dz=z-Town.HouseZ;
         for(int i=0;i<Town.PlacedCount;i++)if(Town.Placed[i].Room==0&&Town.Placed[i].Owner==PlayerOwner){Town.Placed[i].X+=dx;Town.Placed[i].Z+=dz;}
+        Town.NotifyObjectsChanged();
         Town.HouseX=x;Town.HouseZ=z;HousePlaced=true;X=arrivalX;Z=arrivalZ;if(relocate&&!free)Wallet-=50000;return true;
     }
     private bool HouseEntrance(int x,int z,out float arrivalX,out float arrivalZ)
@@ -126,7 +127,7 @@ public sealed partial class GameState
             Town.PlacedCount==Town.Placed.Length?"Your town has reached its furniture limit. Pick something up first.":
             (Visiting?null:PlacementBlock(Pockets[slot],x,z,rotation,room,0,false))??"";
         if(reason.Length!=0)return false;
-        if(TownItemActions.Place(this,this,TownItemActor.ForActivePlayer(this),slot,x,z,rotation,room))return true;
+        if(TownItemActions.Place(this,this,TownItemActor.ForActivePlayer(this),slot,x,z,rotation,room)){Town.NotifyObjectsChanged();return true;}
         reason="That spot is blocked. Choose a clear place for the item.";return false;
     }
     public bool Use(int slot,int action,int x,int z)

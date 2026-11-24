@@ -14,13 +14,13 @@ $p=Get-ValidationPlan -ChangedPaths @('game/AnimalTown.GameCube/Program.cs');Ass
 $p=Get-ValidationPlan -ChangedPaths @('tools/AnimalTown.Tools/TextureRepackerChecks.cs');Assert (($p.tooling -join ',') -eq 'repack' -and !$p.backend) 'Repacker routing incorrect'
 $p=Get-ValidationPlan -ChangedPaths @('tools/release-bundle.py','tests/release-bundle.py');Assert (($p.native -join ',') -eq 'python' -and !$p.backend -and !$p.full) 'Release bundle checks should use host Python fixtures'
 $p=Get-ValidationPlan -ChangedPaths @('shared/AnimalTown.Domain/NewDependency.cs');Assert ($p.managed.Count -eq 13 -and $p.backend) 'Unknown domain must be conservative'
-$p=Get-ValidationPlan -ChangedPaths @('new-production/file.xyz');Assert ($p.full -and $p.backend -and $p.native.Count -eq 9 -and 'jobs' -in $p.native) 'Unknown production paths must fall back to all checks including job AOT'
+$p=Get-ValidationPlan -ChangedPaths @('new-production/file.xyz');Assert ($p.full -and $p.backend -and $p.native.Count -eq 9 -and 'jobs' -in $p.native -and 'water' -in $p.tooling) 'Unknown production paths must fall back to all checks including job AOT and water artwork'
 $p=Get-ValidationPlan -ChangedPaths @('shared/AnimalTown.Domain/Jobs/VillagerJobService.cs');Assert (!$p.full -and $p.backend -and ($p.managed -join ',') -eq 'life,saves' -and ($p.native -join ',') -eq 'jobs') 'Job rules need live/domain/save/backend and actual native service coverage'
 $p=Get-ValidationPlan -ChangedPaths @('tools/native-shadow-union.h','tests/native-shadow-union.c');Assert (($p.native -join ',') -eq 'shadows' -and ($p.managed -join ',') -eq 'terrain' -and !$p.backend) 'Shadow union must include the native rasterizer checks'
 $p=Get-ValidationPlan -ChangedPaths @('shared/AnimalTown.Domain/CliffShadowMap.cs');Assert (($p.native -join ',') -eq 'shadows' -and ($p.managed -join ',') -eq 'terrain' -and $p.rendering.Count -eq 8 -and !$p.backend -and !$p.full) 'Cliff-mask changes need managed/GX/native layout coverage without database checks'
 $p=Get-ValidationPlan -ChangedPaths @('tests/AnimalTown.Checks/CliffShadowChecks.cs');Assert (($p.managed -join ',') -eq 'terrain' -and !$p.native.Count -and !$p.rendering.Count -and !$p.backend -and !$p.full) 'Cliff-mask fixture-only edits need their managed terrain suite'
 $p=Get-ValidationPlan -ChangedPaths @('.github/workflows/build-release.yml');Assert ($p.full -and $p.policy) 'Workflow changes must exercise gates'
-$p=Get-ValidationPlan -Full;Assert ($p.full -and $p.release -and $p.managed.Count -eq 13 -and $p.tooling.Count -eq 6 -and 'nkit' -in $p.tooling -and 'depot' -in $p.tooling) 'Manual full validation incomplete'
+$p=Get-ValidationPlan -Full;Assert ($p.full -and $p.release -and $p.managed.Count -eq 13 -and $p.tooling.Count -eq 7 -and 'nkit' -in $p.tooling -and 'depot' -in $p.tooling -and 'water' -in $p.tooling) 'Manual full validation incomplete'
 $p=Get-ValidationPlan -ChangedPaths @('game/AnimalTown.GameCube/MenuNavigation.cs','game/AnimalTown.GameCube/MenuNavigation.cs','game/AnimalTown.GameCube/WrappedText.cs');Assert (($p.managed -join ',') -eq 'menu,text') 'Union/deduplication incorrect'
 $p=Get-ValidationPlan -ChangedPaths @('shared/AnimalTown.Domain/WaterSurface.cs','tests/AnimalTown.Checks/WaterSurfaceChecks.cs');Assert (($p.managed -join ',') -eq 'terrain' -and !$p.backend) 'Water rules use terrain checks'
 $p=Get-ValidationPlan -ChangedPaths @('game/AnimalTown.GameCube/WaterMaterial.cs','game/AnimalTown.GameCube/WaterRenderer.cs');Assert (($p.managed -join ',') -eq 'terrain,core' -and !$p.backend) 'Water rendering needs terrain and core checks'
@@ -47,6 +47,7 @@ $p=Get-ValidationPlan -ChangedPaths @('game/AnimalTown.GameCube/TerrainIndexBuff
 $p=Get-ValidationPlan -ChangedPaths @('game/AnimalTown.GameCube/VillagerAttentionRenderer.cs');Assert (($p.rendering -join ',') -eq 'attention') 'Attention renderer must run geometry checks'
 $p=Get-ValidationPlan -ChangedPaths @('shared/AnimalTown.Domain/ActorFrameVisibility.cs');Assert (($p.rendering -join ',') -eq 'movement,visibility' -and !$p.backend) 'Actor visibility must exercise animation and frustum checks'
 $p=Get-ValidationPlan -ChangedPaths @('tools/native-terrain-archive.inc','tests/native-terrain-archive.c');Assert (($p.native -join ',') -eq 'patched' -and ($p.managed -join ',') -eq 'terrain,core' -and !$p.full -and !$p.backend) 'Archive changes need native patch fixtures, not backend/importer checks'
+$p=Get-ValidationPlan -ChangedPaths @('game/AnimalTown.GameCube/TerrainRenderer.Streaming.cs');Assert (($p.managed -join ',') -eq 'terrain,core' -and ($p.native -join ',') -eq 'patched' -and $p.rendering.Count -eq 8 -and !$p.tooling.Count -and !$p.backend -and !$p.full) 'Streaming admission and bake-loop changes need source-linked terrain/core and fresh native bridge checks without unrelated backend/importers'
 $p=Get-ValidationPlan -ChangedPaths @('tests/AnimalTown.Checks/WaterSurfaceChecks.cs');Assert (($p.managed -join ',') -eq 'terrain' -and !$p.rendering.Count) 'Managed test-only edits must not rerun rendering fixtures'
 $p=Get-ValidationPlan -ChangedPaths @('shared/AnimalTown.Domain/RunningMinimap.cs');Assert (($p.managed -join ',') -eq 'ui' -and !$p.backend) 'Minimap geometry must use its UI fixture'
 $p=Get-ValidationPlan -ChangedPaths @('shared\AnimalTown.Domain\WindWakerWaterPattern.cs','shared/AnimalTown.Domain/WindWakerWaterPattern.cs');Assert (($p.rendering -join ',') -eq 'water') 'Windows path normalization and deduplication must preserve narrow checks'
@@ -66,7 +67,7 @@ foreach($path in @('shared/AnimalTown.Domain/ContentPaths.cs','shared/AnimalTown
     Assert (($p.managed -join ',') -eq 'content' -and 'content' -in $p.native -and !$p.backend -and !$p.full) "Content startup routing must retain actual AOT/filesystem coverage: $path"
 }
 $p=Get-ValidationPlan -ChangedPaths @('tools/AnimalTown.Tools/DepotPackage.cs');Assert (($p.tooling -join ',') -eq 'depot' -and !$p.backend) 'Depot packaging must exercise archive validation'
-$p=Get-ValidationPlan -Full;Assert ('depot' -in $p.tooling -and 'content' -in $p.managed -and 'content' -in $p.native) 'Full checks must include standalone startup and packaging'
+$p=Get-ValidationPlan -Full;Assert ('depot' -in $p.tooling -and 'water' -in $p.tooling -and 'content' -in $p.managed -and 'content' -in $p.native) 'Full checks must include standalone startup, packaging and water artwork'
 foreach($name in @('SaveCards','CardArchive','VillagerCardFiles','CardSettingsStorage','CardSaveStorage','CardSaveError','TownDataStorage','UserOptionsStorage','DevConfigStorage','TownSession','TitleScreen.Cards')){
     $p=Get-ValidationPlan -ChangedPaths @("game/AnimalTown.GameCube/$name.cs")
     Assert ('card' -in $p.native -and 'saves' -in $p.managed -and !$p.backend -and !$p.full) "Card persistence changes must exercise the production adapter and slot-selection checks: $name"
@@ -86,4 +87,4 @@ foreach($path in @('shared/AnimalTown.Domain/WaterTextureCatalog.cs','game/Anima
     Assert (($p.tooling -join ',') -eq 'depot,water' -and ($p.rendering -join ',') -eq 'water' -and !$p.backend -and !$p.full) "Optional water art must check conversion, deployment and material use: $path"
 }
 $p=Get-ValidationPlan -ChangedPaths @('tests/AnimalTown.Checks/WaterBedChecks.cs');Assert (($p.managed -join ',') -eq 'terrain' -and !$p.rendering.Count -and !$p.backend -and !$p.full) 'Bed topology checks belong to the managed terrain suite'
-Write-Host 'Validation routing checks passed (89 cases).'
+Write-Host 'Validation routing checks passed (90 cases).'

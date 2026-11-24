@@ -409,3 +409,20 @@ if($IsLinux -and !$SkipTests){
     & $waterProbeCheck
     if($LASTEXITCODE){throw 'Water probe forwarding fixture failed'}
 }
+
+# Apply after the pinned host fixtures: console allocations report failures to
+# the system-pressure controller, without altering their owning resource APIs.
+& python3 (Join-Path $Root 'tools/patch-memory-pressure.py') $nativeRoot
+if($LASTEXITCODE){throw 'Native MEM1 sampling/instrumentation patch failed'}
+if($IsLinux){
+    $memoryCheck=Join-Path $Root 'out/native-memory-pressure-check'
+    & cc -std=c11 -O2 -Wall -Wextra -Werror "-I$(Join-Path $Root 'tests/memory-pressure-sdk')" "-I$(Join-Path $Root 'tools')" "-I$(Join-Path $nativeRoot 'include')" (Join-Path $Root 'tests/native-memory-pressure.c') -o $memoryCheck
+    if($LASTEXITCODE){throw 'Native MEM1 fixture compilation failed'}
+    & $memoryCheck
+    if($LASTEXITCODE){throw 'Native MEM1 fixture failed'}
+    $memoryWrappingCheck=Join-Path $Root 'out/native-memory-wrapping-check'
+    & cc -std=c11 -O2 -Wall -Wextra -Werror (Join-Path $Root 'tests/native-memory-wrapping.c') -o $memoryWrappingCheck
+    if($LASTEXITCODE){throw 'Native MEM1 allocation alias fixture compilation failed'}
+    & $memoryWrappingCheck
+    if($LASTEXITCODE){throw 'Native MEM1 allocation alias fixture failed'}
+}

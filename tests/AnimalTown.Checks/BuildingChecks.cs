@@ -5,6 +5,7 @@ internal static class BuildingChecks
     internal static void Run(Action<bool,string> check)
     {
         BuildingEntryChecks.Run(check);
+        PortalResourceWaitChecks.Run(check);
         CrowdsAndPickups(check);
         QuietJourneys(check);
         ResidentRouteCrossings(check);

@@ -157,6 +157,11 @@ extern int animaltown_mesh_recycle(int,DndArray*,int,DndArray*,int);
     # layout before exposing only the token to the game's archive bridge.
     getter=re.search(r'intptr_t dnd_value_DolphinDotNet_GameCube_Dolphin_Graphics_Mesh_get_NativeBytes_[a-z0-9]+\(intptr_t a0\) \{.*?\n\}',text,re.S)
     assert getter and '+sizeof(DndObject)+0+0)' in getter[0], 'Pinned Mesh.Token layout changed'
+    # Ordinary travel, cold restores and post-save recovery all use BindStep
+    # and explicit Suspend/Resume. Retire the unreachable managed Bind/Cache
+    # facades instead of weakening signature checks for active native bridges.
+    for retired in ('Bind','Cache'):
+        assert 'dnd_value_AnimalTown_GameCube_NativeTerrain_'+retired+'_' not in text, 'Retired synchronous terrain facade emitted: '+retired
     archive={
         'Reset':(1,'return animaltown_terrain_reset((int){0});'),
         'Append':(4,'int32_t token=0;if(!{2})return -1;memcpy(&token,(uint8_t*){2}+sizeof(DndObject),4);return animaltown_terrain_append((int){0},(int){1},token,(int){3});'),
@@ -164,13 +169,11 @@ extern int animaltown_mesh_recycle(int,DndArray*,int,DndArray*,int);
         'Info':(2,'return animaltown_terrain_info((int){0},(int){1});'),
         'Kind':(1,'return animaltown_terrain_kind((int){0});'),
         'View':(0,'return animaltown_terrain_view();'),
-        'Bind':(2,'return animaltown_terrain_bind((int){0},(int){1});'),
         'BindStep':(2,'return animaltown_terrain_bind_step((int){0},(int){1});'),
         'CancelBind':(0,'return animaltown_terrain_cancel_bind();'),
         'Suspend':(0,'return animaltown_terrain_suspend();'),
         'Resume':(0,'return animaltown_terrain_resume();'),
         'Unbind':(1,'return animaltown_terrain_unbind((int){0});'),
-        'Cache':(1,'return animaltown_terrain_cache((int){0});'),
         'Stat':(1,'return animaltown_terrain_stat((int){0});')}
     for method,(count,body) in archive.items():
         pattern=r'intptr_t (dnd_value_AnimalTown_GameCube_NativeTerrain_'+method+r'_[a-z0-9]+)\(([^)]*)\) \{.*?\n\}'
@@ -183,14 +186,12 @@ extern int animaltown_terrain_complete(int);
 extern int animaltown_terrain_info(int,int);
 extern int animaltown_terrain_kind(int);
 extern int animaltown_terrain_view(void);
-extern int animaltown_terrain_bind(int,int);
 extern int animaltown_terrain_bind_step(int,int);
 extern int animaltown_terrain_cancel_bind(void);
 extern int animaltown_terrain_suspend(void);
 extern int animaltown_terrain_resume(void);
 extern int animaltown_terrain_unbind(int);
 extern int animaltown_terrain_stat(int);
-extern int animaltown_terrain_cache(int);
 '''+text
     generated.write_text(text)
     # Persistence runs during blocking save/load screens. Keep these AOT

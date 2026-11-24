@@ -11,8 +11,29 @@ from unittest.mock import patch
 ast.parse(Path('tools/iso-smoke.py').read_text())
 menu_source=ast.parse(Path('tools/iso-smoke.py').read_text())
 menu_namespace={'Path':Path,'__file__':str(Path('tools/iso-smoke.py').resolve())}
-exec(compile(ast.Module(body=[node for node in menu_source.body if isinstance(node,ast.FunctionDef) and node.name=='testing_menu_count'],type_ignores=[]),'<debug navigation contract>','exec'),menu_namespace)
-assert menu_namespace['testing_menu_count']()==27
+exec(compile(ast.Module(body=[node for node in menu_source.body if isinstance(node,ast.FunctionDef) and node.name in ('testing_menu_options','testing_menu_count','testing_menu_row')],type_ignores=[]),'<debug navigation contract>','exec'),menu_namespace)
+assert menu_namespace['testing_menu_count']()==25
+assert menu_namespace['testing_menu_row']('ProfilingModeOption')==menu_namespace['testing_menu_row'](41)==22
+assert menu_namespace['testing_menu_row']('ExportProfileOption')==menu_namespace['testing_menu_row'](42)==23
+assert menu_namespace['testing_menu_row']('SmoothSnowOption')==menu_namespace['testing_menu_row'](43)==24
+assert [menu_namespace['testing_menu_row'](option) for option in (22,23,34)]==[14,15,16]
+for removed in ('WarmTerrainOption',40,30):
+    try:menu_namespace['testing_menu_row'](removed)
+    except AssertionError:pass
+    else:raise AssertionError('A retired terrain control was still navigable')
+
+# Old capture commands may retain --warm-terrain, but automatic prefetch must
+# not cause a title-menu detour, config write or extra controller input.
+start_node=next(node for node in menu_source.body if isinstance(node,ast.FunctionDef) and node.name=='start_game')
+for legacy_flag in (False,True):
+    events=[];before={'active':0,'profiles':[{'created':True}]}
+    scope={'sys':sys,'root':Path('/fixture'),'committed_card_sequence':lambda path,details:before,
+           'wait_title':lambda:events.append('title'),'press':lambda button:events.append(button),
+           'wait_profiles':lambda name:events.append(name),'wait_onboarding':lambda stage,name:(stage,name)}
+    exec(compile(ast.Module([start_node],type_ignores=[]),'<automatic prefetch compatibility>','exec'),scope)
+    with patch.object(sys,'argv',['iso-smoke.py',*(['--warm-terrain'] if legacy_flag else [])]):
+        assert scope['start_game'](prefix='automatic')==(before,('world','automatic-game.png'))
+    assert events==['title','A','automatic-picker.png','A']
 
 class Capture:
     def __init__(self, flags, detail=False):
@@ -339,6 +360,267 @@ for diagnostic in ((66,214,99),(255,231,66)):
     assert match(reference,solid(diagnostic))['matching_fraction']<.05
 assert match(solid((0,0,0)),reference)['ground_samples']==0
 print('Terrain restoration: moving shadows preserve original art; stale green/yellow mips and missing ground are rejected')
+
+# Memory pressure may intentionally retain the real preview source. Verify its
+# native sampler contract without accepting unbound or unsupported dimensions.
+node=next(n for n in module.body if isinstance(n,ast.FunctionDef) and n.name=='terrain_mip_applied')
+scope={};exec(compile(ast.Module([node],type_ignores=[]),'<resident ground mip state>','exec'),scope)
+applied=scope['terrain_mip_applied']
+def mip_marker(size=64,enabled=0,mips=1,distance=0,levels=2,height=None):
+    return f'ANIMALTOWN GROUND MIP BANDS enabled {enabled} mips {mips} distance {distance} size {size}x{size if height is None else height} levels {levels}\n'
+for size in (64,256):
+    for enabled in (0,1):
+        for mips in (0,1):
+            for distance in (0,1,10):
+                state=applied(mip_marker(size,enabled,mips,distance),enabled,mips,distance)
+                assert state=={'enabled':bool(enabled),'mipmaps':bool(mips),'distance':distance,'width':size,'height':size,'levels':2}
+for invalid in ('',mip_marker(0),mip_marker(128),mip_marker(512),mip_marker(height=256),
+                mip_marker(enabled=1),mip_marker(mips=0),mip_marker(distance=1),
+                mip_marker(256)+mip_marker(0),mip_marker(256)+mip_marker(distance=10)):
+    assert applied(invalid,0,1,0) is None
+for size in (64,256):
+    for levels in (0,1,3):
+        try:applied(mip_marker(size,levels=levels),0,1,0)
+        except AssertionError:pass
+        else:raise AssertionError('Invalid resident ground mip chain was accepted')
+print('Terrain applied state: real 64/256 sources pass; unbound, unsupported, stale attributes and bad chains fail')
+
+# Real default-on residency acceptance must prove physical ownership release,
+# source eviction and ready-after-floor ordering rather than only match a label.
+terrain_reader=next(n for n in module.body if isinstance(n,ast.FunctionDef) and n.name=='terrain_residency_cycles')
+exec(compile(ast.Module(body=[terrain_reader],type_ignores=[]),'<terrain residency reader>','exec'),namespace)
+terrain_cycles=namespace['terrain_residency_cycles']
+cache_cold='ANIMALTOWN TERRAIN CACHE SUSPENDED cache bytes 0 reclaimed bytes 1048576 archive bytes 123456\n'
+floor_cold='ANIMALTOWN FLOOR SUSPENDED owned bytes 6144 -> 0 source bytes 0 reclaimed bytes 8896\n'
+floor_ready='ANIMALTOWN FLOOR RESTORED season 0 slots 12 owned bytes 6144 source bytes 6144\n'
+cache_ready='ANIMALTOWN TERRAIN CACHE READY cache bytes 1048576 archive bytes 123456\n'
+boot='ANIMALTOWN GAME START\n'
+route=boot+cache_cold+floor_cold+floor_ready+cache_ready
+evidence=terrain_cycles(route)
+assert len(evidence['cycles'])==1 and evidence['pending_cache'] is None and evidence['pending_floor'] is None
+assert evidence['cycles'][0]['floor_suspended']['source_bytes']==0
+assert evidence['cycles'][0]['floor_restored']['owned_bytes']==6144
+pending=terrain_cycles(boot+cache_cold+floor_cold)
+assert not pending['cycles'] and pending['pending_cache']['reclaimed_bytes']==1048576 and pending['pending_floor']['owned_after']==0
+for invalid in (
+    route.replace('reclaimed bytes 1048576','reclaimed bytes 1048544'),
+    route.replace('source bytes 0','source bytes 32'),
+    route.replace('-> 0','-> 2048'),
+    route.replace('reclaimed bytes 8896','reclaimed bytes 1024'),
+    route.replace('owned bytes 6144 source bytes 6144','owned bytes 6144 source bytes 8192'),
+    route.replace(cache_ready,cache_ready.replace('123456','654321')),
+    boot+cache_cold+floor_cold+cache_ready+floor_ready,
+    boot+cache_cold+cache_ready,
+):
+    try:terrain_cycles(invalid)
+    except AssertionError:pass
+    else:raise AssertionError('Unverified terrain/floor memory evidence was accepted')
+# A reversal can cancel a cache that was allocated but never became drawable.
+reversed_route=boot+cache_cold+floor_cold+floor_ready+cache_cold+floor_cold+floor_ready+cache_ready
+reversed_evidence=terrain_cycles(reversed_route)
+assert len(reversed_evidence['cycles'])==1 and reversed_evidence['cancelled_restores']==1
+ignored=boot+cache_cold.replace('1048576','1')+route
+assert len(terrain_cycles(ignored)['cycles'])==1
+try:terrain_cycles(cache_cold+floor_cold+floor_ready+cache_ready)
+except AssertionError:pass
+else:raise AssertionError('Residency evidence without an identified town session was accepted')
+print('Terrain residency smoke: exact MEM1 release, source eviction, doorway ordering, reversal and session isolation passed')
+
+# Reversal input may land during a real door cooldown and open a refusal.
+# A drawn exterior with that speech bubble must not acknowledge an inspector.
+door_nodes=[n for n in module.body if isinstance(n,ast.FunctionDef) and n.name in ('fill_matches','region_color_count','aram_door_state','aram_inspector_arrival')]
+door_scope={}
+exec(compile(ast.Module(door_nodes,type_ignores=[]),'<ARAM doorway acknowledgement>','exec'),door_scope)
+def doorway_frame(home=0,dialogue=False,action=True,background=(255,255,255)):
+    pixels=bytearray(bytes(background)*(800*600))
+    def rectangle(left,top,right,bottom,color):
+        for y in range(top,bottom):pixels[(y*800+left)*3:(y*800+right)*3]=bytes(color)*(right-left)
+    rectangle(217,320,424,360,(255,245,221))
+    if action:rectangle(230,328,250,353,(53,105,84))
+    # Distinct stable home labels, independent of the animated 3D view.
+    rectangle(270+home*16,330,279+home*16,340,(49,72,62))
+    if dialogue:rectangle(60,340,580,420,(255,245,221))
+    return bytes(pixels)
+home_a,home_b=doorway_frame(),doorway_frame(1)
+speech=doorway_frame(dialogue=True)
+assert door_scope['aram_door_state'](speech)['dialogue']
+assert door_scope['aram_door_state'](speech)['action_signature'] is None
+assert door_scope['aram_door_state'](home_a)['action_signature'] is not None
+door_scope['aram_inspector_arrival'](home_a,home_b)
+for unacknowledged in (home_a,doorway_frame(background=(80,120,60)),speech,doorway_frame(1,action=False)):
+    try:door_scope['aram_inspector_arrival'](home_a,unacknowledged)
+    except AssertionError:pass
+    else:raise AssertionError('Ignored inspector input or a transient door view was counted as arrival')
+
+# Execute the production controller helpers: clear only visible speech with B,
+# settle in guest time, and increment the home route only after visual proof.
+scenario=next(n for n in module.body if isinstance(n,ast.FunctionDef) and n.name=='aram_residency_scenario')
+controller_nodes=[n for n in scenario.body if isinstance(n,ast.FunctionDef) and n.name in ('release_controls','clear_door_refusal','inspect')]
+wrapper=ast.parse('def doorway_helpers():\n    building_inspections=0\n').body[0]
+wrapper.body+=controller_nodes+ast.parse('return inspect,lambda:building_inspections').body
+ast.fix_missing_locations(wrapper)
+for ignored,stuck in ((False,False),(True,False),(False,True)):
+    events=[];images={};state={'pixels':speech if not ignored else home_a,'dismissals':0}
+    def send(button,clock):
+        events.append(button)
+        if button=='B':
+            state['dismissals']+=1
+            if state['dismissals']>=2 and not stuck:state['pixels']=home_a
+        elif button=='A' and not ignored:state['pixels']=home_b
+    def capture(name,indoors):images[name+'.png']=state['pixels']
+    scope={**door_scope,'os':SimpleNamespace(write=lambda controller,data:events.append(data.decode())),
+           'controller':0,'clock':object(),'view':capture,'rgb':lambda name:images[name],
+           'press_presented':send,'guest':lambda name,seconds:events.append(('guest',seconds)),'report':{}}
+    exec(compile(ast.Module([wrapper],type_ignores=[]),'<ARAM controller normalization>','exec'),scope)
+    inspect,count=scope['doorway_helpers']()
+    try:inspect()
+    except AssertionError:
+        assert ignored or stuck
+        assert count()==0 and not scope['report'].get('acknowledged_home_inspections')
+    else:
+        assert not ignored and not stuck and count()==1
+        assert scope['report']['acknowledged_home_inspections']==[1]
+        assert events.count('B')==2 and events.index(('guest',3))<events.index('A')
+        assert len(scope['report']['cleared_door_refusals'])==1
+    if stuck:assert 'A' not in events
+    assert events[0].startswith('RELEASE A\nRELEASE B\nRELEASE L\nRELEASE R\n')
+print('ARAM doorway smoke: refusal dismissal, neutral controls, guest cooldown and acknowledged inspector routes passed')
+
+# Restore coverage survives another legitimate retirement. The parser still
+# reports current cold residency separately and only pairs within one session.
+model_parser=next(n for n in module.body if isinstance(n,ast.FunctionDef) and n.name=='aram_model_cycles')
+population_parser=next(n for n in module.body if isinstance(n,ast.FunctionDef) and n.name=='aram_model_population')
+coverage_node=next(n for n in scenario.body if isinstance(n,ast.FunctionDef) and n.name=='uncovered_models')
+coverage_scope={}
+exec(compile(ast.Module([model_parser,population_parser,coverage_node],type_ignores=[]),'<ARAM model restore coverage>','exec'),coverage_scope)
+model_cycles=coverage_scope['aram_model_cycles'];uncovered=coverage_scope['uncovered_models']
+model_population=coverage_scope['aram_model_population']
+population_marker='ANIMALTOWN MODEL POPULATION mask 3 actors 2\n'
+ready='ANIMALTOWN READY version native bytes 123\n'
+population=model_population(boot+population_marker+ready,0)
+assert population['species']==[0,1] and population['actors']==2
+model_cold='ANIMALTOWN MODEL COLD 1 aram bytes 4096 native budget bytes 64 max advance us 838\n'
+model_warm='ANIMALTOWN MODEL WARM 1 aram bytes 4096 max advance us 838 readiness waits 0 portal wait ticks 0\n'
+cycled=boot+model_cold+model_warm+model_cold
+model_evidence=model_cycles(cycled,len(boot))
+assert uncovered(model_evidence,population)==[] and model_evidence['restored_species']==[1]
+assert model_evidence['cold_species']==model_evidence['unrestored_species']==[1]
+startup=boot+model_cold+model_warm
+assert uncovered(model_cycles(startup,len(startup)),population)==[1]
+assert uncovered(model_cycles(boot+model_cold,len(boot)),population)==[1]
+next_session=cycled+boot+model_cold
+assert uncovered(model_cycles(next_session,0),population)==[1]
+assert not model_cycles(next_session,0)['cycles']
+assert not model_cycles(boot+model_cold+boot+model_warm,0)['cycles']
+unused_cold=model_cold.replace('COLD 1','COLD 5')
+unused_warm=model_warm.replace('WARM 1','WARM 5')
+assert uncovered(model_cycles(cycled+unused_cold,len(boot)),population)==[]
+# An unused package's genuine restore cannot cover a present actor's cold source.
+assert uncovered(model_cycles(boot+model_cold+unused_cold+unused_warm,len(boot)),population)==[1]
+legacy=model_population(boot+'ANIMALTOWN MODEL POPULATION mask 35 actors 3\n'+ready,0)
+assert legacy['species']==[0,1,5]
+assert uncovered(model_cycles(cycled+unused_cold,len(boot)),legacy)==[5]
+assert model_population(boot+'ANIMALTOWN MODEL POPULATION mask 3 actors 8\n'+ready,0)['actors']==8
+for invalid in (
+    boot+ready,
+    boot+population_marker+population_marker+ready,
+    boot+population_marker.replace('mask 3','mask 0')+ready,
+    boot+population_marker.replace('mask 3','mask 64')+ready,
+    boot+population_marker.replace('mask 3','mask -1')+ready,
+    boot+population_marker.replace('actors 2','actors 1')+ready,
+    boot+population_marker.replace('actors 2','actors 0')+ready,
+    boot+population_marker.replace('actors 2','actors 9')+ready,
+    boot+population_marker.replace('mask 3','mask 2')+ready,
+    boot+population_marker.replace('mask 3','mask unknown')+ready,
+    boot+ready+population_marker,
+    boot+population_marker+ready+boot+ready,
+):
+    try:model_population(invalid,0)
+    except AssertionError:pass
+    else:raise AssertionError('Malformed, stale or incomplete actual actor roster was accepted')
+assert model_population(boot+population_marker+ready+boot+'ANIMALTOWN MODEL POPULATION mask 33 actors 2\n'+ready,0)['species']==[0,5]
+print('ARAM model coverage: current actor roster, legacy/visitor cohorts, rereclamation, startup/session isolation and unused packages passed')
+
+actor_node=next(n for n in module.body if isinstance(n,ast.FunctionDef) and n.name=='aram_actor_view')
+exec(compile(ast.Module([actor_node],type_ignores=[]),'<actual live actor routing>','exec'),coverage_scope)
+actor_view=coverage_scope['aram_actor_view']
+header='ANIMALTOWN JOB VIEW world 0 10240 20480 -1 0 0 0 0 0 0\n'
+homes=''.join(f'ANIMALTOWN JOB NPC {i} 0 10240 20480 0 {10+i*11} 10\n' for i in range(6))
+end='ANIMALTOWN JOB VIEW END\n'
+fresh_population={'mask':31,'actors':6,'species':[0,1,2,3,4]}
+fresh=actor_view(header+homes+end,fresh_population,True)
+assert sorted(fresh['actors'])==list(range(5)) and 5 not in fresh['actors']
+assert fresh['source']=='guarded fresh defaults'
+actual='ANIMALTOWN JOB ACTOR 0 1 17 2048 3072 0\nANIMALTOWN JOB ACTOR 6 5 0 56320 61440 1\n'
+visitors={'mask':35,'actors':3,'species':[0,1,5]}
+live=actor_view(header+homes+actual+end,visitors)
+assert live['actors'][0]['species']==1 and live['actors'][0]['room']==17
+assert live['actors'][6]['species']==5 and live['actors'][6]['x']==55 and live['actors'][6]['busy']
+for text,roster,defaults in (
+    (header+homes+end,fresh_population,False),(header+homes+end,visitors,True),
+    (header+actual,visitors,False),(header+actual+actual+end,visitors,False),
+    (header+actual.replace('ACTOR 6','ACTOR 7')+end,visitors,False),
+    (header+actual.replace('6 5 0','6 4 0')+end,visitors,False),
+    (header+actual.replace('56320','131072')+end,visitors,False),
+    (header+actual.replace('0 1 17','0 1 99')+end,visitors,False),
+    (header+actual+end,{**visitors,'actors':4},False),
+    (header.replace('world 0','world 99')+actual+end,visitors,False),
+    (header.replace('10240 20480','-1 20480')+actual+end,visitors,False),
+):
+    try:actor_view(text,roster,defaults)
+    except AssertionError:pass
+    else:raise AssertionError('Ambiguous, absent or malformed live actor route was accepted')
+
+# Execute the production fallback: an actor visiting another resident's house
+# routes to that actual space, and only a paired runtime WARM completes it.
+fallback=next(n for n in scenario.body if isinstance(n,ast.FunctionDef) and n.name=='restore_live_actor')
+for restore in (True,False):
+    events=[];trace=[boot+model_cold.replace('COLD 1','COLD 2')]
+    actor={'slot':2,'species':2,'room':17 if restore else 0,'x':55,'z':60,'busy':False}
+    current={'screen':'world','room':0,'x':10,'z':20,'actors':{2:actor},'source':'actual actors'}
+    def enter_actual(name,target_species):
+        events.append(('home',target_species));assert target_species==1 and current['room']==0
+        trace.append(model_warm.replace('WARM 1','WARM '+str(actor['species'])));current['room']=17
+    def leave_actual(name):
+        events.append(('exit',current['room']));assert current['room']==17;current['room']=0
+    scope={**coverage_scope,'actor_view':lambda:current,'report':{},'baseline':len(boot),
+           'population':fresh_population,'logs':lambda:''.join(trace),'enter':enter_actual,
+           'leave':leave_actual,
+           'os':SimpleNamespace(write=lambda fd,data:events.append(data.decode())), 'controller':0,
+           'guest':lambda name,seconds:None,'release_controls':lambda:events.append('release'),
+           'screenshot':lambda name:events.append('screenshot')}
+    exec(compile(ast.Module([fallback],type_ignores=[]),'<live actor fallback>','exec'),scope)
+    try:scope['restore_live_actor'](2,'missing-actor')
+    except AssertionError:
+        assert not restore and not scope['report']['live_actor_routes'][0].get('restored')
+        assert len(scope['report']['live_actor_routes'][0]['observations'])<20
+    else:
+        assert restore and scope['report']['live_actor_routes'][0]['restored']
+        assert ('home',1) in events and 'screenshot' in events and ('exit',17) in events and current['room']==0
+        # The next missing cohort must begin outdoors after a real exit.
+        actor['species']=3;trace.append(model_cold.replace('COLD 1','COLD 3'))
+        scope['restore_live_actor'](3,'next-missing-actor')
+        assert current['room']==0 and events.count(('exit',17))==2
+print('ARAM live routing: actual/remapped/visitor identities, absent actors, guarded old traces and genuine restore-only completion passed')
+
+config_reader=next(n for n in module.body if isinstance(n,ast.FunctionDef) and n.name=='card_dev_config')
+config_namespace=dict(namespace)
+exec(compile(ast.Module(body=[config_reader],type_ignores=[]),'<developer config reader>','exec'),config_namespace)
+with TemporaryDirectory() as fixture:
+    card=Path(fixture)/'MemoryCardA.USA.raw';card.touch()
+    for version in (5,6):
+        for retired in (0,1):
+            for retired_warm in (0,1):
+                checksum_at=40 if version==6 else 36
+                payload=bytearray(checksum_at+4);payload[:4]=b'ATD'+bytes([version]);payload[33]=retired
+                if version==6:payload[36]=retired_warm
+                struct.pack_into('<I',payload,checksum_at,fnv(payload[:checksum_at]))
+                config_namespace['options_card_files']=lambda path:{'dev_config':payload}
+                decoded=config_namespace['card_dev_config'](card)
+                assert decoded['retired_terrain_cache_value']==retired and decoded['values'][29]==retired
+                assert decoded['retired_warm_prefetch_value']==(retired_warm if version==6 else None)
+                assert 'discard_terrain_cache_when_indoors' not in decoded and 'warm_terrain_prefetch' not in decoded
+print('Developer config smoke: retired terrain slots remain decodable without controlling automatic memory policy')
 
 # Dolphin's live raw-card writer is not an atomic snapshot. The final job
 # export must use the bytes flushed by a clean exit, and a failed controller

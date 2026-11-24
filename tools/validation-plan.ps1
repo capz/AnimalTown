@@ -27,6 +27,9 @@ function Get-ValidationPlan {
         elseif($p -match '^(shared/AnimalTown.Domain/DroppedItemPlan|game/AnimalTown.GameCube/DroppedItemRenderer)\.cs$|^assets/textures/items/|^tools/AnimalTown.Tools/DroppedItemAssets\.cs$'){$renderingForPath=@('dropped-item')}
         if($p -match '^(docs/|.*\.md$|LICENSE$|\.gitignore$)'){continue}
         $release=$true
+        if($p -match '^(tests/AnimalTown\.(MemoryChecks|FloorResidencyChecks|SnowResidencyChecks|VisualAllocationChecks)/|shared/AnimalTown.Domain/VisualMemoryPressure\.cs$|game/AnimalTown.GameCube/(VisualMemoryCoordinator|NativeMemory|TerrainRenderer\.(Textures|Snow|Streaming))\.cs$|tools/(native-memory-pressure\.(c|h)|patch-memory-pressure\.py)$|tests/(native-memory-(pressure|wrapping)\.c|memory-pressure-sdk/))'){
+            Add-Managed 'core';Add-Managed 'terrain';[void]$native.Add('patched');continue
+        }
         if($p -match '^(build/|\.github/|Directory\.|.*\.sln$|.*\.csproj$|\.gitmodules$|vendor/|tools/(build-|publish-release|patch-native|.*validation|test-changes)|tests/validation-(plan|selection))'){$broad=$true;continue}
         if($p -match '^server/|^tests/(server-integration|AnimalTown.ServerChecks)'){$backend=$true;continue}
         if($p -match '^shared/AnimalTown.Domain/(Jobs/|GameState\.Jobs\.cs$)|^tests/(AnimalTown.JobSmoke/|native-jobs\.)|^tests/AnimalTown.Checks/(OfflineJob|JobLetter|JobMail|JobTravel|JobWorld|VillagerJobIdentity)Checks\.cs$|^tools/generate-job-unicode\.py$'){
@@ -131,7 +134,7 @@ function Get-ValidationPlan {
         if($p -match '^tools/(iso-smoke|path-study).py$'){[void]$native.Add('python');continue} # Scenarios are explicitly selected.
         $broad=$true
     }
-    if($broad){foreach($s in $allManaged){Add-Managed $s};foreach($s in @('terrain','repack','building','nkit','dropped-item','depot')){[void]$tooling.Add($s)};foreach($s in @('uv','card','texture','voices','python','shadows','patched','content','jobs')){[void]$native.Add($s)};$backend=$true;$policy=$true}
+    if($broad){foreach($s in $allManaged){Add-Managed $s};foreach($s in @('terrain','repack','building','nkit','dropped-item','depot','water')){[void]$tooling.Add($s)};foreach($s in @('uv','card','texture','voices','python','shadows','patched','content','jobs')){[void]$native.Add($s)};$backend=$true;$policy=$true}
     if($broad){foreach($r in $allRendering){[void]$rendering.Add($r)}}
     [pscustomobject]@{schema=2;commit=$Commit;baseRef=$BaseRef;release=$release;full=$broad;managed=@($allManaged|Where-Object {$managed.Contains($_)});rendering=@($allRendering|Where-Object {$rendering.Contains($_)});tooling=@($tooling|Sort-Object);native=@($native|Sort-Object);backend=$backend;policy=$policy;paths=@($ChangedPaths|Sort-Object -Unique)}
 }

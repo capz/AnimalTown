@@ -40,12 +40,16 @@ namespace AnimalTown.GameCube
     }
 }
 internal static class FrameProfile {internal static int RecycledSections;}
-internal sealed class TerrainRenderer
+internal sealed partial class TerrainRenderer
 {
     internal bool Ready=true;
+    private TerrainArchive? archive;
+    internal int BuiltThisFrame {get;private set;}
     internal readonly CylinderRows Rows=new CylinderRows();
     internal TerrainSection CreateSection()=>new TerrainSection();
     internal int SeasonAt(int month,int preview)=>TerrainTiles.Season(month,preview);
+    internal void PumpBake(TerrainArchive source,GameState state,FloorStrips staging,byte[] data)
+    {archive=source;BuiltThisFrame=0;BakeArchive(state,staging,data);}
 }
 internal static class WaterRenderer {internal const int PartKinds=110;}
 internal sealed class TerrainSection
@@ -57,13 +61,16 @@ internal sealed class TerrainSection
 }
 internal static class NativeTerrain
 {
-    internal static int CacheBytes,AramBytes,CreatedViews,ReleasedViews,BindCalls,StepCalls,ResumeCalls;
-    internal static bool FailResume,FailStep,Empty;
-    private static readonly int[] entries=new int[1024];
+    internal static int CacheBytes,AramBytes,CreatedViews,ReleasedViews,BindCalls,StepCalls,ResumeCalls,ResetCalls;
+    internal static int PollsPerTransfer=2;
+    internal static bool FailResume,FailStep,Empty,PauseTransfers,FailReset,ThrowResume;
+    private static readonly int[] entries=new int[2048];
     private static int pending,entry,remaining,cancelRemaining;
     internal static int Reset(int sections)
     {
+        ResetCalls++;
         if(pending!=0)throw new InvalidOperationException("Reset lost an active DMA hold.");
+        if(sections!=0&&FailReset)return -2;
         CacheBytes=sections==0?0:1048576;AramBytes=sections*96;
         return 1;
     }
@@ -78,8 +85,9 @@ internal static class NativeTerrain
     internal static int BindStep(int token,int value)
     {
         StepCalls++;
+        if(PauseTransfers)return 0;
         if(FailStep){FailStep=false;pending=0;return -3;}
-        if(pending==0){pending=token;entry=value;remaining=cancelRemaining=2;return 0;}
+        if(pending==0){pending=token;entry=value;remaining=PollsPerTransfer;cancelRemaining=2;return 0;}
         if(pending!=token||entry!=value)throw new InvalidOperationException("Changed a pending destination without draining.");
         if(--remaining>0)return 0;pending=0;entries[token]=value;return 1;
     }
@@ -90,7 +98,7 @@ internal static class NativeTerrain
         for(int i=1;i<=CreatedViews;i++)if(entries[i]>=0)throw new InvalidOperationException("Freed a cache with a published alias.");
         CacheBytes=0;return 1;
     }
-    internal static int Resume(){ResumeCalls++;if(FailResume)return -2;CacheBytes=1048576;return 1;}
+    internal static int Resume(){ResumeCalls++;if(ThrowResume)throw new InvalidOperationException("Injected resume exception");if(FailResume)return -2;CacheBytes=1048576;return 1;}
     internal static int Cache(int enabled)=>enabled==1?Resume():Suspend();
     internal static int Info(int section,int kind)=>kind==0?section*2:kind==1?(Empty?0:2):kind==2?(Empty?0:4):-1;
     internal static int Kind(int value)=>value%2==1?104:(value/2)%4;
@@ -110,12 +118,14 @@ internal static class TerrainResidencyChecks
     }
     internal static void Run(Action<bool,string> check)
     {
+        PrefetchEnvelope(check);
         Clock.Timestamp=0;var archive=new TerrainArchive();var owner=new TerrainRenderer();
         var state=new GameState(91);var strips=new FloorStrips(64);var data=new byte[0];
         archive.Reset();while(!archive.Ready)archive.Bake(state,owner,strips,data);
         check(archive.Ready&&!archive.Presentable,"baking and drawable selection have distinct readiness");
         archive.Prepare(30,50,owner.Rows);
-        check(archive.Presentable&&archive.ViewCount>0,"warm preparation publishes the original complete selection");
+        check(!archive.Presentable&&NativeTerrain.BindCalls==0,"initial terrain uses bounded transfers without synchronous binds");
+        check(Finish(archive,30,50,owner.Rows)&&archive.ViewCount>0,"bounded preparation publishes the original complete selection");
         int allViews=archive.ViewCount,allTriangles=archive.Triangles;
         check(archive.First(104)>=0,"ordinary water is included in terrain selection");
         var identity=archive.Mesh(0);int views=NativeTerrain.CreatedViews,aram=NativeTerrain.AramBytes,collections=AnimalTown.GameCube.NativeTexturePages.Collections;
@@ -140,18 +150,18 @@ internal static class TerrainResidencyChecks
         check(AnimalTown.GameCube.NativeTexturePages.Collections==collections,"suspension and resumption introduce no collections");
         int suspensions=Dolphin.Diagnostics.DebugOverlay.TerrainSuspensions,restorations=Dolphin.Diagnostics.DebugOverlay.TerrainRestorations;
         check(archive.SuspendForSave()&&archive.CacheSuspended&&NativeTerrain.AramBytes==aram,"explicit saving releases a warm cache while preserving backing");
-        archive.ResumeAfterSave();archive.Prepare(30,50,owner.Rows);
+        archive.ResumeAfterSave();Finish(archive,30,50,owner.Rows);
         check(archive.Presentable&&!archive.CacheSuspended&&archive.ViewCount==allViews,"save cleanup restores normal warm preparation and ordinary water");
         check(Dolphin.Diagnostics.DebugOverlay.TerrainSuspensions==suspensions&&Dolphin.Diagnostics.DebugOverlay.TerrainRestorations==restorations,
             "save-only pressure relief does not masquerade as the debug terrain transition");
         archive.Suspend();archive.PrepareAsync(30,50,owner.Rows,Clock.Timestamp+1000);
-        check(!archive.PrepareAsync(38,58,owner.Rows,Clock.Timestamp+1000),"changing camera drains its partial prefetch first");
+        check(!archive.PrepareAsync(38,58,owner.Rows,Clock.Timestamp+1000),"changing camera completes its owned transfer before preparing the new selection");
         check(Finish(archive,38,58,owner.Rows)&&archive.ViewCount>0,
             "a camera change during restoration publishes only the new selection");
         archive.Suspend();archive.PrepareAsync(30,50,owner.Rows,Clock.Timestamp+1000);
         suspensions=Dolphin.Diagnostics.DebugOverlay.TerrainSuspensions;
         check(archive.SuspendForSave()&&archive.CacheSuspended,"explicit saving drains a partially restored cache before card I/O");
-        archive.ResumeAfterSave();archive.Prepare(30,50,owner.Rows);
+        archive.ResumeAfterSave();Finish(archive,30,50,owner.Rows);
         check(archive.Presentable&&archive.ViewCount==allViews&&Dolphin.Diagnostics.DebugOverlay.TerrainSuspensions==suspensions,
             "save interruption restores complete geometry without another debug suspension");
         archive.Suspend();
@@ -165,6 +175,7 @@ internal static class TerrainResidencyChecks
         check(!archive.PrepareAsync(31,51,owner.Rows,Clock.Timestamp+1000)&&archive.ResidencyError==-3&&!archive.Presentable,"transfer failure leaves the destination unpublished");
         Clock.Timestamp+=250001;
         check(Finish(archive,31,51,owner.Rows),"transfer failure can recover on a later bounded attempt");
+        Travel(check,archive,owner.Rows);
         archive.Prepare(31,51,owner.Rows);long allocated=GC.GetAllocatedBytesForCurrentThread();
         for(int i=0;i<10000;i++)archive.Prepare(31,51,owner.Rows);
         check(GC.GetAllocatedBytesForCurrentThread()==allocated,"warm unchanged terrain preparation remains allocation-free");
@@ -185,22 +196,160 @@ internal static class TerrainResidencyChecks
         void Tick(){
             int calls=NativeTerrain.StepCalls;archive.PrepareAsync(px,pz,owner.Rows,Clock.Timestamp+500);
             archive.Prepare(px,pz,owner.Rows);routeReady&=archive.Presentable;
-            archive.PrepareAsync(px,pz,owner.Rows,Clock.Timestamp+500);bounded&=NativeTerrain.StepCalls-calls<=16;
+            archive.PrepareAsync(px,pz,owner.Rows,Clock.Timestamp+500);bounded&=NativeTerrain.StepCalls-calls<=24;
         }
         check(routeReady&&archive.WarmLateSelections==late,"prefetched full-town walking route has no missing/loading selections");
-        check(NativeTerrain.BindCalls==sync&&NativeTerrain.CreatedViews==handles&&bounded,"warm movement never enters synchronous binding or grows the view pool and respects both pump grants");
+        check(NativeTerrain.BindCalls==sync&&NativeTerrain.CreatedViews==handles&&bounded,"warm movement never enters synchronous binding or grows the view pool and respects the two residency grants and bounded draw preparation");
         var expected=new TerrainArchiveView();expected.Prepare(px,pz,owner.Rows);
         check(archive.ViewCount==expected.Count*2&&archive.Triangles==expected.Count*4,"prefetched geometry is excluded from drawable counts and preserves the camera selection");
         long warmAllocated=GC.GetAllocatedBytesForCurrentThread();
         for(int i=0;i<1000;i++){archive.Prepare(px,pz,owner.Rows);archive.PrepareAsync(px,pz,owner.Rows,Clock.Timestamp+500);}
         check(GC.GetAllocatedBytesForCurrentThread()==warmAllocated,"stable prefetch pumping is allocation-free");
         archive.PrepareAsync(30,30,owner.Rows,Clock.Timestamp+500);archive.WarmPrefetch=false;
-        for(int i=0;i<256&&archive.WarmActive;i++)archive.PrepareAsync(px,pz,owner.Rows,Clock.Timestamp+500);
-        check(!archive.WarmActive&&Finish(archive,px,pz,owner.Rows)&&archive.Presentable,"disabling prefetch drains its request, releases speculation and returns to the original path");
+        check(archive.WarmPrefetch&&archive.WarmActive&&Finish(archive,px,pz,owner.Rows)&&archive.Presentable,
+            "retired prefetch debug values cannot disable the always-asynchronous terrain path");
         archive.Dispose();
         NativeTerrain.Empty=true;archive.Reset();while(!archive.Ready)archive.Bake(state,owner,strips,data);
-        archive.Prepare(30,50,owner.Rows);
+        Finish(archive,30,50,owner.Rows);
         check(archive.Presentable&&archive.ViewCount==0&&archive.Triangles==0,"empty sections become drawable without aliases");
         archive.Dispose();NativeTerrain.Empty=false;
+        MemoryAdmission(check,state,owner,strips,data);
+    }
+    private static void MemoryAdmission(Action<bool,string> check,GameState state,TerrainRenderer owner,FloorStrips strips,byte[] data)
+    {
+        var memory=new VisualMemoryPressure();var archive=new TerrainArchive{Memory=memory};
+        Clock.Timestamp+=2000000;int free=TerrainArchive.ResetPeakBytes+VisualMemoryPressure.SafetyBytes+512*1024;
+        memory.Observe(free,0,0,Clock.Timestamp);
+        check(memory.TryReserve(700*1024,Clock.Timestamp,true,out int other),"concurrent model/building owner reserves its future allocation");
+        int resets=NativeTerrain.ResetCalls;archive.Reset();
+        check(NativeTerrain.ResetCalls==resets&&NativeTerrain.CacheBytes==0&&memory.ReservedBytes==700*1024,
+            "terrain startup cannot spend another owner's in-flight reservation");
+        check(memory.UnderPressure&&memory.WaitingPeakBytes==TerrainArchive.ResetPeakBytes,
+            "denied essential terrain startup requests global reclamation without inventing an allocator failure");
+        owner.PumpBake(archive,state,strips,data);
+        check(owner.BuiltThisFrame==0&&NativeTerrain.ResetCalls==resets,
+            "production bake loop stops on denied admission without counting 256 nonexistent build stages");
+        check(owner.WarmTerrainPrefetch==archive.WarmPrefetch&&owner.WarmTerrainPrefetch,
+            "renderer diagnostics match the archive's always-asynchronous prefetch policy");
+        memory.Cancel(other);owner.PumpBake(archive,state,strips,data);
+        check(owner.BuiltThisFrame==256&&!archive.Ready&&NativeTerrain.ResetCalls==resets+1,
+            "reclaimed headroom resumes useful baking under the existing 256-stage frame limit");
+        check(NativeTerrain.ResetCalls==resets+1&&memory.ReservedBytes==TerrainArchive.ResetPeakBytes,
+            "startup completion keeps cache/staging charged until a fresh physical observation");
+        check(!memory.TryReserve(900*1024,Clock.Timestamp,true,out _),"a stale pre-allocation snapshot cannot fund another large owner");
+        memory.Observe(free-TerrainArchive.ResetPeakBytes,0,0,Clock.Timestamp);
+        check(memory.ReservedBytes==0,"physical observation retires the completed startup ticket exactly once");
+        archive.Dispose();memory.Observe(4*1024*1024,0,0,Clock.Timestamp);
+        NativeTerrain.FailReset=true;archive.Reset();
+        check(memory.ReservedBytes==0&&archive.ResidencyError==-2&&memory.UnderPressure,
+            "failed native terrain startup cancels its admission charge and requests pressure recovery");
+        resets=NativeTerrain.ResetCalls;archive.Bake(state,owner,strips,data);
+        check(NativeTerrain.ResetCalls==resets,"failed startup backs off instead of retrying its native allocation each bake stage");
+        NativeTerrain.FailReset=false;Clock.Timestamp+=VisualMemoryPressure.FailureBackoffUs+1;
+        memory.Observe(4*1024*1024,0,0,Clock.Timestamp);
+        while(!archive.Ready)archive.Bake(state,owner,strips,data);
+        memory.Observe(3*1024*1024,0,0,Clock.Timestamp);
+        // Main's native reset retains the existing contiguous cache and borrows
+        // staging from it. A rebuild must not require a second cache's headroom.
+        memory.Observe(VisualMemoryPressure.SafetyBytes+TerrainArchive.AllocationGuardBytes+4096,0,0,Clock.Timestamp);
+        resets=NativeTerrain.ResetCalls;
+        check(archive.TryReset()&&NativeTerrain.ResetCalls==resets+1&&memory.ReservedBytes==TerrainArchive.AllocationGuardBytes,
+            "warm archive reset reserves only new guard bytes and reuses the existing cache under pressure");
+        while(!archive.Ready)archive.Bake(state,owner,strips,data);
+        memory.Observe(3*1024*1024,0,0,Clock.Timestamp);
+        check(archive.Suspend()&&archive.CacheSuspended,"pressure admission fixture retains only its ARAM archive while cold");
+        free=TerrainArchive.CachePeakBytes+VisualMemoryPressure.SafetyBytes+512*1024;
+        memory.Observe(free,0,0,Clock.Timestamp);
+        check(memory.TryReserve(700*1024,Clock.Timestamp,true,out other),"another owner may hold headroom while terrain stays cold");
+        int resumes=NativeTerrain.ResumeCalls;
+        check(!archive.PrepareAsync(30,50,owner.Rows,Clock.Timestamp+1000)&&archive.CacheSuspended&&NativeTerrain.ResumeCalls==resumes,
+            "cold terrain restoration requires global headroom before allocating its one-megabyte cache");
+        memory.Cancel(other);NativeTerrain.FailResume=true;
+        check(!archive.PrepareAsync(30,50,owner.Rows,Clock.Timestamp+1000)&&memory.ReservedBytes==0&&archive.CacheSuspended,
+            "failed native cache restoration cancels its ticket without publishing geometry");
+        resumes=NativeTerrain.ResumeCalls;
+        archive.PrepareAsync(30,50,owner.Rows,Clock.Timestamp+1000);
+        check(NativeTerrain.ResumeCalls==resumes,"global failure backoff suppresses repeated one-megabyte restoration attempts");
+        NativeTerrain.FailResume=false;Clock.Timestamp+=VisualMemoryPressure.FailureBackoffUs+1;
+        memory.Observe(free,0,0,Clock.Timestamp);
+        archive.PrepareAsync(30,50,owner.Rows,Clock.Timestamp+1000);
+        check(memory.ReservedBytes==TerrainArchive.CachePeakBytes&&!archive.CacheSuspended,
+            "successful cache restore remains charged until the allocator sample includes the new cache");
+        memory.Observe(free-TerrainArchive.CachePeakBytes,0,0,Clock.Timestamp);
+        check(memory.ReservedBytes==0&&Finish(archive,30,50,owner.Rows),"fresh headroom sampling allows bounded geometry restoration to complete");
+        check(archive.SuspendForSave(),"save path releases cache under the shared-pressure fixture");
+        resumes=NativeTerrain.ResumeCalls;archive.ResumeAfterSave();
+        check(archive.CacheSuspended&&NativeTerrain.ResumeCalls==resumes,"save cleanup defers cache allocation to the same ticketed restore path");
+        memory.Observe(free,0,0,Clock.Timestamp);memory.TryReserve(700*1024,Clock.Timestamp,true,out other);
+        archive.PrepareAsync(30,50,owner.Rows,Clock.Timestamp+1000);
+        check(NativeTerrain.ResumeCalls==resumes,"post-save cache restoration respects concurrent model/building tickets");
+        memory.Cancel(other);NativeTerrain.ThrowResume=true;bool threw=false;
+        try{archive.PrepareAsync(30,50,owner.Rows,Clock.Timestamp+1000);}catch(InvalidOperationException){threw=true;}
+        check(threw&&memory.ReservedBytes==0&&archive.CacheSuspended,"exceptional cache allocation also releases its ticket");
+        NativeTerrain.ThrowResume=false;archive.PrepareAsync(30,50,owner.Rows,Clock.Timestamp+1000);
+        int reserved=memory.ReservedBytes;
+        while(!archive.TryDispose()){}
+        check(reserved==TerrainArchive.CachePeakBytes&&memory.ReservedBytes==reserved,
+            "disposal never prematurely releases a completed charge against an old allocator sample");
+        memory.Observe(free,0,0,Clock.Timestamp);
+        check(memory.ReservedBytes==0&&NativeTerrain.CacheBytes==0,"post-disposal observation clears all archive charges without a ticket leak");
+        Console.WriteLine("Terrain memory admission: concurrent owners, stale snapshots, startup/resume failure, backoff, save recovery and ticket cleanup passed");
+    }
+    private static void PrefetchEnvelope(Action<bool,string> check)
+    {
+        var rows=new CylinderRows();var required=new TerrainArchiveView();var prefetched=new TerrainArchiveView();
+        int peak=0;
+        foreach(bool wide in new[]{false,true}){
+            RenderView.SetWidescreen(wide);
+            for(int z=2;z<Town.Height;z+=17)for(int x=2;x<Town.Width;x+=19){
+                float centerX=(float)Math.Floor(x/TerrainArchive.PrefetchBucket)*TerrainArchive.PrefetchBucket+TerrainArchive.PrefetchBucket*.5f;
+                float centerZ=(float)Math.Floor(z/TerrainArchive.PrefetchBucket)*TerrainArchive.PrefetchBucket+TerrainArchive.PrefetchBucket*.5f;
+                prefetched.Prepare(centerX,centerZ,rows,TerrainArchive.PrefetchGuard);
+                peak=Math.Max(peak,prefetched.Count);
+                for(float dz=-TerrainArchive.PrefetchGuard;dz<=TerrainArchive.PrefetchGuard;dz+=.5f)for(float dx=-TerrainArchive.PrefetchGuard;dx<=TerrainArchive.PrefetchGuard;dx+=.5f){
+                    required.Prepare(centerX+dx,centerZ+dz,rows);
+                    for(int i=0;i<required.Count;i++){
+                        int section=required.Sections[i];bool found=false;
+                        for(int n=0;n<prefetched.Count;n++)if(prefetched.Sections[n]==section){found=true;break;}
+                        check(found,"prefetch guard contains actual page "+TerrainArchivePlan.X(section)+","+TerrainArchivePlan.Z(section)+" at camera "+(centerX+dx)+","+(centerZ+dz)+" around "+centerX+","+centerZ+" wide="+wide);
+                    }
+                }
+            }
+        }
+        RenderView.SetWidescreen(false);
+        Console.WriteLine("Terrain prefetch envelope: all half-metre camera samples within "+TerrainArchive.PrefetchGuard+"m retained; maximum "+peak+" pages");
+    }
+    private static void Travel(Action<bool,string> check,TerrainArchive archive,CylinderRows rows)
+    {
+        foreach(int polls in new[]{2,8,16}){
+        NativeTerrain.PollsPerTransfer=polls;
+        Finish(archive,31,51,rows);
+        for(int i=0;i<1024&&!archive.PrefetchComplete;i++)archive.PrepareAsync(31,51,rows,Clock.Timestamp+1000);
+        check(archive.PrefetchComplete,"terrain prefetch completes within its view admission budget");
+        float x=31,z=51;int missing=0;
+        for(int frame=0;frame<1200;frame++){
+            // Full running steps at 30 Hz, including abrupt eight-way reversals.
+            int direction=(frame/60)%8;
+            float dx=direction==0||direction==1||direction==7?1:direction==3||direction==4||direction==5?-1:0;
+            float dz=direction==1||direction==2||direction==3?1:direction==5||direction==6||direction==7?-1:0;
+            float length=(float)Math.Sqrt(dx*dx+dz*dz);x+=dx/length*PlayerMovement.RunStep;z+=dz/length*PlayerMovement.RunStep;
+            int calls=NativeTerrain.StepCalls;
+            archive.Prepare(x,z,rows);
+            check(NativeTerrain.StepCalls-calls<=8,"ordinary running uses at most eight nonblocking terrain steps per frame");
+            if(!archive.Presentable){if(missing<5)Console.WriteLine("Terrain coverage miss frame "+frame+" at "+x+","+z);missing++;}
+            Clock.Timestamp+=33333;
+        }
+        check(missing==0,"guarded async terrain retains complete geometry throughout 1200 running/reversal frames at "+polls+" DMA polls per part");
+        int before=NativeTerrain.StepCalls;NativeTerrain.PauseTransfers=true;
+        archive.Prepare(x+.1f,z,rows);
+        check(archive.Presentable&&NativeTerrain.StepCalls-before<=8,"stalled speculative DMA never hides already resident visible terrain");
+        NativeTerrain.PauseTransfers=false;
+        check(Finish(archive,90,95,rows)&&archive.Presentable,"teleports recover asynchronously without publishing partial terrain");
+        check(NativeTerrain.BindCalls==0,"startup, ordinary travel, reversals, teleports and resume never call synchronous bind");
+        // Keep subsequent lifecycle checks on their original fixture view.
+        Finish(archive,31,51,rows);
+        }
+        NativeTerrain.PollsPerTransfer=2;
+        Console.WriteLine("Async terrain: "+TerrainArchive.PrefetchGuard+"m guard / 2m buckets, 3600 running/reversal frames at 2/8/16 DMA polls per part without missing terrain, bounded DMA and teleport recovery passed");
     }
 }

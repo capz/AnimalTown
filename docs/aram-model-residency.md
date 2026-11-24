@@ -4,7 +4,8 @@ AnimalTown keeps gameplay, navigation, saves, transforms and animation intention
 in MEM1. `ModelResidency` automatically pages inactive **shared species models**
 to ARAM after initial model loading and terrain baking. It uses SDK
 `UnloadToAramAsync` and `PrepareAsync`; it does not destroy/recreate villagers or
-change texture resolution. Buildings keep their existing compact resident kit.
+change texture resolution. Building exteriors and room parts have separate
+scene-based residency; see [visual resource policy](visual-resource-policy.md).
 
 Startup completes terrain preparation before loading the compact building kit
 and then the species models. Its scratch-building helper returns before
@@ -26,19 +27,18 @@ or player instance is created. Other species keep their complete source packages
 for ARAM snapshots. The manager excludes models without ARAM residency support
 from demotion. This combines a smaller permanent player model with paging of
 unused species without compacting a pageable model's only source package.
-The native fixture saves 330,912 requested allocation bytes for fox; selected
+The native fixture saves 85,152 requested allocation bytes for fox; selected
 species results are documented in [resident model memory](resident-model-memory.md).
 
-The town's UI canvas uses the SDK default of 4,096 vertices. Its 36-byte native
-vertices require 147,456 bytes less storage than the former 8,192-vertex canvas.
-Sprite capacity and visual content are unchanged; oversized batches use the
-existing automatic flush path. Terrain's default 1 MiB cache remains intact.
-A native recording comparison preserved the exact vertex/color order across
-6,144 map vertices, 3,090 profiling vertices and 11,556 mixed panel/glyph vertices.
-The legacy uncached map needs two draws instead of one; the tested profiling and
-mixed UI workloads retain their draw counts. A host native fox instance uses
-59,840 bytes under its 512 KiB budget, less than half the canvas saving. These
-are allocation and submission checks, not stock-console frame-time measurements.
+The town's UI canvas holds 1,024 vertices, down from the SDK default of 4,096.
+Its 36-byte native vertices use 36,864 bytes, saving 110,592 bytes (108 KiB).
+The 128-quad font batch fits in 768 vertices; larger sequences flush between
+calls through the existing path. Sprite capacity and visual content are
+unchanged, and cached UI meshes have separate storage. A native recording
+fixture preserves every vertex, color and painter order across nine full font
+batches and 600 rectangles, with rejection and cleanup checks for an oversized
+single call. More flushes can increase draw calls; these are allocation and
+submission checks, not stock-console frame-time measurements.
 
 ## Admission and ownership
 
@@ -48,9 +48,13 @@ Outdoors, a species is required while its animated sphere intersects the camera
 frustum and cylinder horizon, expanded by a 24 m prefetch margin. The old radial
 20 m cutoff could exclude a visible head or stop prefetch until the actor had
 already entered view; it no longer participates in drawing or residency.
-Distant hidden models can demote while the player moves; restored models retain a three-second warm
-grace against boundary churn. Indoors, current-room species stay pinned and
-ordinary five-second idle/demand delays remain. Doorways and debug inspection
+Distant hidden models can demote while the player moves; restored models retain
+a three-second warm grace against boundary churn. Ordinary memory pressure adds
+a one-second delay after a model leaves required demand and preserves that
+restore grace. Only an actual waiting essential request can bypass those timers
+for an optional model outside demand. Indoors, current-room species stay pinned
+and ordinary five-second idle/demand delays remain when memory is comfortable.
+Doorways and debug inspection
 retain their existing resource pins and transfer cancellation safeguards.
 
 Town simulation never depends on a model restore completing. Positions, routes,
@@ -78,10 +82,19 @@ demotion and drains its owner before another transition starts. If cancellation
 arrives after the SDK's irreversible retirement commit, the complete cold result
 is restored; no partially resident model becomes drawable.
 
+Ordinary memory pressure keeps the 12 m imminent lookahead and can restore it
+using available reserved headroom. While an essential cache or room allocation
+is actually waiting, optional lookahead instead yields to full drawable bounds
+and transition endpoints. Unneeded imminent restores cancel and drain before
+releasing their tickets, and already warm optional incumbents may retire. The
+selected player, current and destination rooms, and required doorway endpoints
+stay pinned; a smaller successful reservation does not erase a larger waiting
+request.
+
 Hot backing snapshots can be released to admit another cold model. A cold
 model's only backing is never discarded. Disabling the internal manager restores
-all models before releasing their ARAM copies. The terrain checkbox is separate
-and defaults off; it does not disable model paging.
+all models before releasing their ARAM copies. Terrain cache suspension and warm
+prefetch are automatic; their obsolete debug controls no longer affect paging.
 
 Returning to the title stops new admissions, cancels and drains the owned model
 transition, and observes its terminal result before disposing instances and
@@ -90,8 +103,9 @@ from losing its progress owner while it still retains native or ARAM storage.
 
 ## Prefetch and scene gates
 
-Moving indoors, approaching its exit, and requesting a doorway trigger outdoor
-prefetch. The outdoor envelope expands the existing animated sphere by 24 m,
+Approaching an indoor exit or requesting a doorway triggers outdoor prefetch;
+ordinary movement elsewhere indoors does not keep outdoor visuals resident.
+The outdoor envelope expands the existing animated sphere by 24 m,
 giving about four seconds at combined player/NPC travel speed for queued,
 frame-budgeted restoration. This envelope
 starts restoration; it does **not** block the current scene while a hidden actor
@@ -118,8 +132,9 @@ intact and retries later; it cannot silently omit a visible model.
 
 Final draw readiness is recomputed after input and effective debug camera
 changes, even on frames without a simulation tick. UV inspection waits for the
-complete model set before invoking native topology code; water inspection pins
-all species. Indoor scene and doorway admission wait for their required models.
+complete model set before invoking native topology code; water inspection follows
+the focused camera without pinning unrelated species. Indoor scene and doorway
+admission wait for their required models.
 Outdoor restore misses keep the world running and skip the affected actor until
 ready. Cold resources never receive native model API calls.
 

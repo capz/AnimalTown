@@ -12,6 +12,7 @@ internal sealed partial class TownGame
     {
         DebugOverlay.WriteLine("ANIMALTOWN JOB VIEW "+screen+" "+room+" "+(int)(state.X*1024)+" "+(int)(state.Z*1024)+" "+jobNpc+" "+jobMode+" "+jobChoice+" "+typeAt+" "+message.Length+" "+selected+" "+menuTab);
         for(int i=0;i<6;i++){var n=state.Town.Residents[i];DebugOverlay.WriteLine("ANIMALTOWN JOB NPC "+i+" "+n.Space+" "+(int)(n.PosX*1024)+" "+(int)(n.PosZ*1024)+" "+(villagers.Doors.Busy(i+1)?1:0)+" "+n.HomeX+" "+n.HomeZ);}
+        for(int i=0;i<Town.NpcActorCount;i++)if(state.NpcPresent(i)){var n=state.Town.NpcAt(i);DebugOverlay.WriteLine("ANIMALTOWN JOB ACTOR "+i+" "+state.NpcSpecies(i)+" "+n.Space+" "+(int)(n.PosX*1024)+" "+(int)(n.PosZ*1024)+" "+(villagers.Doors.Busy(i+1)?1:0));}
         for(int i=0;i<OfflineJobLedger.WorldCapacity;i++){var o=state.Town.Jobs.WorldObject(i);if(o.Kind!=JobWorldKind.Empty)DebugOverlay.WriteLine("ANIMALTOWN JOB OBJECT "+i+" "+(int)o.Kind+" "+(int)(o.X*1024)+" "+(int)(o.Z*1024)+" "+(int)(o.Radius*1024));}
         if(JobsLive)for(int i=0;i<OfflineJobLedger.JobCapacity;i++){var j=state.Town.Jobs.Job(i);if(j.Occupying)DebugOverlay.WriteLine("ANIMALTOWN JOB STATE "+i+" "+(int)j.Template+" "+(int)j.Status+" "+state.Town.Jobs.FindNpc(j.Requester)+" "+state.Town.Jobs.FindNpc(j.Target));}
         DebugOverlay.WriteLine("ANIMALTOWN JOB VIEW END");

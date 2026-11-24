@@ -36,6 +36,9 @@ runs:
         ANIMALTOWN_BUILD_IMAGE: ${{ inputs.build-image }}
       shell: bash
       run: |
+        # Target tests runs test-changes once. Its core selector also owns the
+        # source-linked Memory/Floor/Snow/VisualAllocation regression projects;
+        # build-game cooks and audits the actual package admission/LOD data.
         if [ "$(jq -r '.backend' out/validation-plan.json)" = true ]; then
           docker compose -f build/compose.yml run --rm --pull always builder pwsh -NoLogo -NoProfile -File tools/build-linux.ps1 -Target tests
         else
@@ -52,6 +55,38 @@ runs:
         assert not any((root/'disc-work').rglob('*.iso')), 'Temporary source ISO was not removed'
         assert not any((root/'nkit-work').rglob('*.iso')), 'Temporary round-trip ISO was not removed'
         PY
+    - name: Verify visual residency validation evidence
+      if: steps.candidate.outcome == 'success'
+      shell: bash
+      run: |
+        python3 - <<'PY'
+        import json
+        from pathlib import Path
+        root=Path('out')
+        species={'fox','bunny','giraffe','cat','hamster','spaniel'}
+        lod=json.loads((root/'model-lod-audit.json').read_text())
+        memory=json.loads((root/'model-memory-audit.json').read_text())
+        native=[json.loads(line) for line in (root/'model-native-peak-audit.jsonl').read_text().splitlines() if line]
+        assert lod['eligibilityEnforced'], 'Candidate used an exploratory LOD cook instead of the release gate'
+        assert {row['species'] for row in lod['models']}==species, 'Missing cooked LOD evidence'
+        assert all(row['report']['Triangles']<=row['report']['SourceTriangles']*(1-lod['minimumTriangleReduction']) for row in lod['models'] if row['runtimeEligible']), 'An enabled geometric LOD missed its measured useful-reduction gate'
+        assert {row['species'] for row in memory['model']}==species, 'Missing startup admission bounds'
+        poses=[row for row in native if row['kind']=='animatedCorrespondence']
+        assert len(poses)==6, 'Missing native pose correspondence checks'
+        assert all(row['animatedMaximumNormalizedError']<=row['maximumAllowedNormalizedError']+1e-6 for row in poses), 'LOD animation exceeded its sampled error budget'
+        assert len([row for row in native if row['kind']=='selectedStartup'])==6, 'Missing selected-player startup allocation checks'
+        assert (root/'disc/villager-memory.bin').stat().st_size==160, 'Unexpected startup memory catalog'
+        PY
+    - name: Keep visual residency validation diagnostics
+      if: always() && steps.candidate.outcome == 'success'
+      uses: actions/upload-artifact@v4
+      with:
+        name: visual-residency-${{ inputs.commit }}
+        path: |
+          out/model-lod-audit.json
+          out/model-memory-audit.json
+          out/model-native-peak-audit.jsonl
+        if-no-files-found: error
     - name: Select focused title-logo capture
       id: title_logo
       if: steps.candidate.outcome == 'success'

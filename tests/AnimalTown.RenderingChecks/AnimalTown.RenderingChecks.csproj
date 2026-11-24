@@ -2,7 +2,7 @@
   <PropertyGroup><OutputType>Exe</OutputType></PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="../../shared/AnimalTown.Domain/AnimalTown.Domain.csproj" />
-    <PackageReference Include="Capz.Hypercube.GameCube" Version="[0.1.0-preview.52.1]" />
+    <PackageReference Include="Capz.Hypercube.GameCube" Version="[0.1.0-preview.55.1]" />
     <Compile Include="../../game/AnimalTown.GameCube/WaterMaterial.cs" Link="WaterMaterial.cs" />
     <Compile Include="../../game/AnimalTown.GameCube/WaterTextureAssets.cs" Link="WaterTextureAssets.cs" />
     <Compile Include="../../game/AnimalTown.GameCube/GeometryStaging.cs" Link="GeometryStaging.cs" />

@@ -12,12 +12,18 @@ public sealed class ModelResidencyDemand
     public const float ImminentGuard=12;
     public readonly bool[] Required=new bool[SpeciesCount];
     public int DestinationSpace {get;private set;}=-1;
-    public void Prepare(GameState state,PortalSystem doors,bool pinAll=false,int targetSpace=-1)
+    public void Prepare(GameState state,PortalSystem doors,bool pinAll=false,int targetSpace=-1,bool underMemoryPressure=false,bool waitingForHeadroom=false)
     {
         DestinationSpace=doors.Busy(0)?doors.Actors[0].Destination.Space.Value:targetSpace;
+        // An actual essential allocation waiting for reclamation takes
+        // precedence over optional lookahead. Zero guard retains full drawable
+        // bounds and transition endpoints, including both portal spaces.
+        float guard=waitingForHeadroom?0:underMemoryPressure?ImminentGuard:OutdoorGuard;
         for(int species=0;species<Required.Length;species++)
-            Required[species]=pinAll||species==state.Species||UsesSpace(state,doors,species,state.Space)||
-                DestinationSpace>=0&&UsesSpace(state,doors,species,DestinationSpace);
+            Required[species]=pinAll||species==state.Species||UsesSpace(state,doors,species,state.Space,guard)||
+                DestinationSpace>=0&&UsesSpace(state,doors,species,DestinationSpace,guard)||
+                waitingForHeadroom&&(DrawableUsesSpace(state,doors,species,state.Space)||
+                    DestinationSpace>=0&&DrawableUsesSpace(state,doors,species,DestinationSpace));
     }
     public static bool UsesSpace(GameState state,PortalSystem doors,int species,int space)
         =>UsesSpace(state,doors,species,space,OutdoorGuard);

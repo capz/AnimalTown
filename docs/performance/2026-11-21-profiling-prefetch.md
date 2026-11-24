@@ -1,35 +1,45 @@
-# Bounded profiling and optional warm terrain prefetch
+# Bounded profiling and automatic warm terrain prefetch
 
-The implementation extends the existing immutable terrain archive. The saved
-**Warm terrain prefetch** debug setting defaults **Off**, including on cards
-written by dev-config versions 1–5. Toggle it at the title or in the town's
-Debug / testing menu. Its v6 dev-config record is 44 bytes; town saves do not
-change. In-game changes apply immediately and report a card-write failure.
+The implementation extends the existing immutable terrain archive. Warm terrain
+prefetch is now automatic. The obsolete debug row is removed from both menus;
+its historical dev-config byte remains readable but does not control travel.
+The v6 dev-config record remains 44 bytes and town saves do not change. See
+[visual resource policy](../visual-resource-policy.md) for current memory and
+prefetch bounds.
 
 ## Terrain comparison
 
-Off keeps the existing demand-binding path. On plans the actual camera pages
-first, then one neighboring page of lookahead, favoring movement direction.
+Production plans the actual camera pages first, then bounded lookahead beyond
+the current view, favoring movement direction.
 Whole sections are admitted inside the existing **256 mesh handles / 1 MiB
 MEM1 cache**. No second geometry cache, mesh reconstruction, UV edits or
 shadow regeneration is introduced. Only actual camera pages enter draw lists;
 prefetched pages are excluded from triangles and ground-material demand.
 
-Warm transfers use `BindStep` only from the existing shared residency pump:
-at most eight native calls per terrain opportunity, up to 500 microseconds
-of the shared one-millisecond presentation credit. These are soft CPU bounds:
+Warm transfers use `BindStep` from the bounded archive pump: at most eight
+native calls per terrain opportunity. Residency grants use up to 500 microseconds
+of the shared one-millisecond presentation credit; draw preparation has its own
+500-microsecond deadline. These are soft CPU bounds:
 an individual native call can overrun its deadline. Current demand takes
 priority over speculation and speculation is evicted first under pressure.
 The water inspector uses its effective camera position in both phases.
 
+Demand/readiness scans and physical memory sampling finish before executable
+residency credit starts. Required building loads and completed-part adoption run
+before optional reclamation scans, with at most one part started or adopted per
+call. Before/after-draw opportunities share the unused CPU credit; the draw gap
+does not spend or replenish it. Preparation telemetry includes all bookkeeping
+and work. A building load pending for a second emits one diagnostic with task
+completion and deadline debt, distinguishing worker delay from adoption delay.
+
 Cold construction, cache restoration and large teleports retain explicit
 readiness transitions. An incomplete alias is never submitted as geometry.
 The pending native request owns its destination until cancellation completes;
-toggle-off, saving, suspension and disposal drain it before reuse. Turning the
-setting off also drops the small lookahead plan and speculative aliases.
+saving, suspension, destination changes and disposal drain it before reuse.
+Required demand takes priority over speculative aliases.
 
-Use the same saved town, season, video mode, route and profiler mode for both
-cases. Prefer **Counters** or **Capture** for timing comparisons; the pixel
+Use the same saved town, season, video mode, route and profiler mode across
+captures. Prefer **Counters** or **Capture** for timing comparisons; the pixel
 overlay draws extra rectangles. Normal walking/running acceptance requires
 zero missing-terrain and loading presentations. A fault-injected or cold
 transition must be reported separately, not silently excluded.
@@ -111,7 +121,7 @@ not a complete per-subsystem audio/UI allocator census.
 The production managed archive runs against delayed fake DMA over a serpentine
 route spanning the full town, with no missing selections or synchronous binds,
 and checks the fixed handle budget, drawable-only material/triangle counts,
-allocation-free steady work and cancellation back to the original path.
+allocation-free steady work, cancellation, pressure and cold restoration.
 Native fixtures cover cache ownership, failed transfers and readback identity.
 Profiling fixtures exercise capture bounds/overwrite/events, real native export,
 checksums, cross-band corruption, multiple sessions, 16-bit sequence wrap,

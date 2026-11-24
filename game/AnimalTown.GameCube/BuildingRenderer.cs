@@ -1,10 +1,10 @@
 using System;
 using AnimalTown;
 using Dolphin.Graphics;
+using Dolphin.Timing;
 
-// All instances share seven tiny static parts per definition. No room mesh,
-// texture or pose is allocated on entry or per frame. Never load invisible NPC
-// rooms. The initial kit remains resident within an explicit combined ceiling.
+// Exteriors/doors share a compact permanent kit. Floors/walls follow the player
+// and both sides of their doorway; invisible NPC rooms never create demand.
 internal sealed class BuildingRenderer : IDisposable
 {
     private const int PartsPerDefinition=7;
@@ -12,6 +12,18 @@ internal sealed class BuildingRenderer : IDisposable
     private readonly ModelInstance?[] parts=new ModelInstance?[BuildingCatalog.MaximumDefinitions*PartsPerDefinition];
     private readonly Transform[] roots=new Transform[BuildingWorld.Count],poses=new Transform[32];
     private readonly bool[] ready=new bool[BuildingCatalog.MaximumDefinitions];
+    private readonly bool[] required=new bool[BuildingCatalog.MaximumDefinitions],wanted=new bool[BuildingCatalog.MaximumDefinitions];
+    private readonly long[] lastRequired=new long[BuildingCatalog.MaximumDefinitions],retryAt=new long[BuildingCatalog.MaximumDefinitions];
+    private readonly int[] ownedBytes=new int[BuildingCatalog.MaximumDefinitions*PartsPerDefinition];
+    private const long IdleGraceUs=3000000,RetryDelayUs=1000000;
+    private const int ModelBudgetBytes=256*1024,PartPeakBytes=ModelBudgetBytes+16*1024;
+    private int residencySlot=-1;
+    private int memoryTicket;
+    private int pendingFailureCount;
+    private long pendingAt;
+    private bool tracedPending;
+    private readonly int[] failureSnapshot=new int[5];
+    internal VisualMemoryPressure? Memory;
     private int used;
     internal int ResidentBytes {get;private set;}
     internal BuildingRenderer(Transform world)
@@ -31,36 +43,166 @@ internal sealed class BuildingRenderer : IDisposable
         for(int i=0;i<parts.Length;i++){parts[i]?.Dispose();parts[i]=null;}
         unadopted?.Dispose();
         for(int i=0;i<models.Length;i++){models[i]?.Dispose();models[i]=null;}
-        Array.Clear(ready,0,ready.Length);ResidentBytes=0;loadType=BuildingCatalog.Count;loadPart=used=0;
+        Memory?.Cancel(memoryTicket);memoryTicket=0;
+        Array.Clear(ready,0,ready.Length);Array.Clear(ownedBytes,0,ownedBytes.Length);ResidentBytes=0;loadType=BuildingCatalog.Count;loadPart=used=0;residencySlot=-1;
     }
-    internal bool AdvanceLoading()
+    internal bool AdvanceLoading(GameState? state=null)
     {
         if(loadType>=BuildingCatalog.Count)return true;
+        if(Clock.Timestamp<retryAt[loadType])return false;
         var d=BuildingCatalog.Get(loadType);
         try{
             if(pending==null){
-                string name=loadPart==0?d.Exterior:loadPart==1?d.Door:loadPart==2?d.Floor:loadPart==3?d.North:loadPart==4?d.East:loadPart==5?d.South:d.West;
-                LoadingLabel="Loading "+name;pending=Model.LoadAsync(TexturePolicy.ModelPath(name,TextureResolution.Size128),default,256*1024);return false;
+                int indoor=state==null?-1:BuildingWorld.Building(state.Space);
+                if(state!=null&&loadPart==2&&(indoor<0||state.BuildingTypes[indoor]!=loadType)){
+                    ready[loadType]=true;loadType++;loadPart=0;typeStartBytes=ResidentBytes;return loadType>=BuildingCatalog.Count;
+                }
+                string name=PartName(d,loadPart);
+                LoadingLabel="Loading "+name;
+                if(Memory!=null&&!Memory.TryReserve(PartPeakBytes,Clock.Timestamp,true,out memoryTicket))return false;
+                pendingFailureCount=Memory?.FailureCount??0;
+                pending=Model.LoadAsync(TexturePolicy.ModelPath(name,TextureResolution.Size128),default,ModelBudgetBytes);
+                Dolphin.Diagnostics.DebugOverlay.WriteLine("ANIMALTOWN BUILDING PART BEGIN type "+loadType+" part "+loadPart+" required 1");return false;
             }
             if(!pending.IsCompleted)return false;
             int slot=loadType*PartsPerDefinition+loadPart;models[slot]=pending.GetAwaiter().GetResult();
             if(NativeBuildings.Retain(models[slot]!)!=1)throw new InvalidOperationException("Static building geometry retention failed");
             parts[slot]=models[slot]!.CreateInstance(16*1024);
-            ResidentBytes+=models[slot]!.NativeBytes+parts[slot]!.NativeBytes;
+            ownedBytes[slot]=models[slot]!.NativeBytes+parts[slot]!.NativeBytes;ResidentBytes+=ownedBytes[slot];
             if(ResidentBytes>768*1024)throw new InvalidOperationException("Building resident memory budget");
+            Memory?.Complete(memoryTicket);memoryTicket=0;
+            Dolphin.Diagnostics.DebugOverlay.WriteLine("ANIMALTOWN BUILDING PART READY type "+loadType+" part "+loadPart+" required 1 bytes "+ownedBytes[slot]);
             loadPart++;if(loadPart==PartsPerDefinition)ready[loadType]=true;
         }catch(Exception error){
-            for(int i=0;i<PartsPerDefinition;i++){int slot=loadType*PartsPerDefinition+i;parts[slot]?.Dispose();parts[slot]=null;models[slot]?.Dispose();models[slot]=null;}
-            ResidentBytes=typeStartBytes;loadPart=PartsPerDefinition;Dolphin.Diagnostics.DebugOverlay.WriteLine("ANIMALTOWN BUILDING ASSET ERROR "+d.Id+": "+error.Message);
+            for(int i=0;i<PartsPerDefinition;i++)ReleasePart(loadType*PartsPerDefinition+i);
+            ResidentBytes=typeStartBytes;
+            Memory?.Cancel(memoryTicket);memoryTicket=0;
+            // The SDK reports an invalid package and allocation exhaustion using
+            // the same IOException. Retry startup only with allocator evidence;
+            // a malformed/missing kit retains its normal unavailable-art path.
+            bool allocationFailure=AllocationEvidence(error,Clock.Timestamp);
+            if(allocationFailure){loadPart=0;retryAt[loadType]=Clock.Timestamp+RetryDelayUs;Memory?.AllocationFailed(PartPeakBytes,Clock.Timestamp);}
+            else loadPart=PartsPerDefinition;
+            Dolphin.Diagnostics.DebugOverlay.WriteLine("ANIMALTOWN BUILDING ASSET "+(allocationFailure?"RETRY ":"ERROR ")+d.Id+": "+error.Message);
         }
         pending=null;if(loadPart==PartsPerDefinition){loadType++;loadPart=0;typeStartBytes=ResidentBytes;}
         return loadType>=BuildingCatalog.Count;
+    }
+    private static string PartName(BuildingDefinition d,int part)
+        =>part==0?d.Exterior:part==1?d.Door:part==2?d.Floor:part==3?d.North:part==4?d.East:part==5?d.South:d.West;
+    private bool AllocationEvidence(Exception error,long now)
+    {
+        bool failed=error is OutOfMemoryException;
+        if(Memory!=null&&NativeMemory.Read(failureSnapshot)==1){
+            failed|=failureSnapshot[3]!=pendingFailureCount;
+            Memory.Observe(failureSnapshot[0],failureSnapshot[3],failureSnapshot[4],now);
+        }
+        return failed;
+    }
+    private void ReleasePart(int slot)
+    {
+        parts[slot]?.Dispose();parts[slot]=null;models[slot]?.Dispose();models[slot]=null;
+        ResidentBytes-=ownedBytes[slot];ownedBytes[slot]=0;
+    }
+    private void DemandSpace(GameState state,int space)
+    {
+        int building=BuildingWorld.Building(space);if(building<0||!BuildingWorld.Exists(state,building))return;
+        int type=state.BuildingTypes[building];if(type>=0&&type<required.Length)required[type]=wanted[type]=true;
+    }
+    internal void PrepareDemand(GameState state,PortalSystem doors,long now,bool pressure)
+    {
+        Array.Clear(required,0,required.Length);Array.Clear(wanted,0,wanted.Length);
+        DemandSpace(state,state.Space);
+        if(doors.Busy(0)){DemandSpace(state,doors.Actors[0].Source.Space.Value);DemandSpace(state,doors.Actors[0].Destination.Space.Value);}
+        // Eight metres gives disc restoration time before A can request entry.
+        // Optional approach loads yield to global pressure and do not pin rooms.
+        if(state.Space==0&&!pressure)for(int building=0;building<BuildingWorld.Count;building++)if(BuildingWorld.Exists(state,building)){
+            BuildingWorld.Entrance(state,building,out float x,out float z);float dx=x-state.X,dz=z-state.Z;
+            int type=state.BuildingTypes[building];if(dx*dx+dz*dz<=64&&type>=0&&type<wanted.Length)wanted[type]=true;
+        }
+        for(int type=0;type<wanted.Length;type++)if(wanted[type])lastRequired[type]=now;
+    }
+    internal bool ReadyForSpace(GameState state,int space)
+    {
+        int building=BuildingWorld.Building(space);if(building<0)return space==0;
+        int type=state.BuildingTypes[building];if(!Ready(type))return false;
+        for(int part=2;part<PartsPerDefinition;part++)if(parts[type*PartsPerDefinition+part]==null)return false;
+        return true;
+    }
+    internal bool RequiredWorkPending
+    {
+        get{
+            for(int type=0;type<required.Length;type++)if(required[type])
+                for(int part=2;part<PartsPerDefinition;part++)if(parts[type*PartsPerDefinition+part]==null)return true;
+            return false;
+        }
+    }
+    internal bool ReleaseUnused(GameState state,PortalSystem doors,long now,bool pressure,bool demandPrepared=false)
+    {
+        if(!demandPrepared)PrepareDemand(state,doors,now,pressure);
+        for(int type=0;type<ready.Length;type++)if(!required[type]&&(pressure||!wanted[type]&&now-lastRequired[type]>=IdleGraceUs))
+            for(int part=PartsPerDefinition-1;part>=2;part--)if(parts[type*PartsPerDefinition+part]!=null){ReleasePart(type*PartsPerDefinition+part);return true;}
+        return false;
+    }
+    internal void PrepareResidency(GameState state,PortalSystem doors,long now,long deadline,bool pressure,bool allowOptional=true)
+    {
+        if(loadType<BuildingCatalog.Count)return;
+        if(pending!=null){
+            TracePending(deadline);
+            if(!pending.IsCompleted)return;
+            // Inspect one completion even with no CPU credit. A no-longer-wanted
+            // optional result may be disposed, but adoption/native allocation
+            // waits for its proper priority and a new bounded work grant.
+            int candidateType=residencySlot/PartsPerDefinition;
+            if(wanted[candidateType]&&(Clock.Timestamp>=deadline||!required[candidateType]&&!allowOptional))return;
+            int slot=residencySlot,type=slot/PartsPerDefinition;residencySlot=-1;
+            Model? loaded=null;
+            try{
+                loaded=pending.GetAwaiter().GetResult();pending=null;
+                if(!wanted[type]){loaded.Dispose();Memory?.Cancel(memoryTicket);memoryTicket=0;return;}
+                if(NativeBuildings.Retain(loaded)!=1)throw new InvalidOperationException("Static building geometry retention failed");
+                models[slot]=loaded;loaded=null;parts[slot]=models[slot]!.CreateInstance(16*1024);
+                ownedBytes[slot]=models[slot]!.NativeBytes+parts[slot]!.NativeBytes;ResidentBytes+=ownedBytes[slot];
+                if(ResidentBytes>768*1024)throw new InvalidOperationException("Building resident memory budget");
+                Memory?.Complete(memoryTicket);memoryTicket=0;
+                Dolphin.Diagnostics.DebugOverlay.WriteLine("ANIMALTOWN BUILDING PART READY type "+type+" part "+slot%PartsPerDefinition+" required "+(required[type]?1:0)+" bytes "+ownedBytes[slot]);
+            }catch(Exception error){
+                pending=null;loaded?.Dispose();ReleasePart(slot);retryAt[type]=now+RetryDelayUs;
+                Memory?.Cancel(memoryTicket);memoryTicket=0;
+                if(AllocationEvidence(error,now))Memory?.AllocationFailed(PartPeakBytes,now);
+                Dolphin.Diagnostics.DebugOverlay.WriteLine("ANIMALTOWN BUILDING RESIDENCY RETRY "+type+": "+error.Message);
+            }
+            return;
+        }
+        if(Clock.Timestamp>=deadline)return;
+        for(int rank=0;rank<(allowOptional?2:1);rank++)for(int type=0;type<ready.Length;type++)if(ready[type]&&wanted[type]&&required[type]==(rank==0)&&now>=retryAt[type]){
+            for(int part=2;part<PartsPerDefinition;part++)if(parts[type*PartsPerDefinition+part]==null){
+                if(Memory!=null&&!Memory.TryReserve(PartPeakBytes,now,required[type],out memoryTicket))return;
+                try{
+                    pendingFailureCount=Memory?.FailureCount??0;
+                    pending=Model.LoadAsync(TexturePolicy.ModelPath(PartName(BuildingCatalog.Get(type),part),TextureResolution.Size128),default,ModelBudgetBytes);
+                    residencySlot=type*PartsPerDefinition+part;
+                    pendingAt=Clock.Timestamp;tracedPending=false;
+                    Dolphin.Diagnostics.DebugOverlay.WriteLine("ANIMALTOWN BUILDING PART BEGIN type "+type+" part "+part+" required "+(required[type]?1:0));
+                }catch(Exception error){Memory?.Cancel(memoryTicket);memoryTicket=0;if(AllocationEvidence(error,now))Memory?.AllocationFailed(PartPeakBytes,now);retryAt[type]=now+RetryDelayUs;Dolphin.Diagnostics.DebugOverlay.WriteLine("ANIMALTOWN BUILDING RESIDENCY ADMISSION "+type+": "+error.Message);}
+                return;
+            }
+        }
+    }
+    private void TracePending(long deadline)
+    {
+        long now=Clock.Timestamp;
+        if(tracedPending||now-pendingAt<1000000)return;
+        tracedPending=true;
+        int type=residencySlot/PartsPerDefinition;
+        Dolphin.Diagnostics.DebugOverlay.WriteLine("ANIMALTOWN BUILDING PART WAIT type "+type+" part "+residencySlot%PartsPerDefinition+
+            " required "+(required[type]?1:0)+" completed "+(pending!.IsCompleted?1:0)+" deadlineDebt "+Math.Max(0,now-deadline));
     }
     internal void Begin(PortalSystem doors){used=0;for(int i=0;i<ready.Length;i++)doors.Ready[i]=ready[i];}
     internal bool Ready(int type)=>type>=0&&type<ready.Length&&ready[type];
     private void Part(Renderer renderer,int type,int part,Transform parent,Vector3 position,Vector3 scale,float yaw=0)
     {
-        if(!Ready(type))return;if(used==poses.Length)throw new InvalidOperationException("Building draw budget");var pose=poses[used++];pose.Parent=parent;pose.LocalPosition=position;pose.LocalScale=scale;pose.LocalRotation=new Quaternion(0,(float)Math.Sin(yaw*.5f),0,(float)Math.Cos(yaw*.5f));renderer.DrawModel(parts[type*PartsPerDefinition+part]!,pose);
+        if(!Ready(type)||parts[type*PartsPerDefinition+part]==null)return;if(used==poses.Length)throw new InvalidOperationException("Building draw budget");var pose=poses[used++];pose.Parent=parent;pose.LocalPosition=position;pose.LocalScale=scale;pose.LocalRotation=new Quaternion(0,(float)Math.Sin(yaw*.5f),0,(float)Math.Cos(yaw*.5f));renderer.DrawModel(parts[type*PartsPerDefinition+part]!,pose);
     }
     private void ExteriorParts(Renderer renderer,GameState state,int building,Transform root,float openness)
     {

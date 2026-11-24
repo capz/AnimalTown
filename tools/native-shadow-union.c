@@ -15,6 +15,8 @@ static int snow_storage,snow_revision=-1,snow_terrain_revision=-1;
 static int snow_first_z,snow_texel_height;
 static uint32_t snow_publication;
 static uint8_t snow_visits[SU_SNOW_PACKED];
+static uint16_t snow_dented_pages[SU_SNOW_PAGE_ROWS];
+static int snow_has_wear;
 static uint8_t *snow_pixels;
 #define SNOW_STEP_MS 300u
 #define SNOW_SAMPLE_MS 100u
@@ -38,6 +40,12 @@ typedef struct {
 static SuSnowVisual *snow_visual;
 
 const uint8_t *animaltown_snow_mask(void){return snow_pixels;}
+const uint8_t *animaltown_snow_mask_at(float x,float z,int whole){
+    if(!snow_pixels||whole||!isfinite(x)||!isfinite(z))return snow_pixels;
+    int px=(int)floorf(x/SU_SNOW_PAGE),pz=(int)floorf(z/SU_SNOW_PAGE);
+    if((unsigned)px>=SU_WORLD_WIDTH/SU_SNOW_PAGE||(unsigned)pz>=SU_SNOW_PAGE_ROWS)return snow_pixels;
+    return snow_dented_pages[pz]&(1u<<px)?snow_pixels:NULL;
+}
 int animaltown_snow_layout(int *first_z){*first_z=snow_first_z;return snow_texel_height;}
 static void snow_release_visual(void){
 #ifdef GEKKO
@@ -51,11 +59,13 @@ static int snow_release_mask(void){
     if(snow_storage)SYS_Report("ANIMALTOWN SNOW MASK RELEASE bytes %u\n",(unsigned)(SU_SNOW_SIDE*snow_texel_height));
 #endif
     snow_storage=0;snow_pixels=NULL;snow_first_z=snow_texel_height=0;
+    memset(snow_dented_pages,0,sizeof(snow_dented_pages));
     return 1;
 }
 static int snow_release(void){
     if(!snow_release_mask())return 0;
     snow_revision=snow_terrain_revision=-1;
+    snow_has_wear=0;
     memset(snow_visits,0,sizeof(snow_visits));
     snow_release_visual();
     return 1;
@@ -177,6 +187,16 @@ int animaltown_shadows_snow(DndArray *visits,DndArray *tiles,DndArray *levels,Dn
     if(max_z>SU_SNOW_HEIGHT)max_z=SU_SNOW_HEIGHT;
     if(!winter||max_z<=min_z)return (!snow_storage&&snow_revision<0&&!snow_visual)||snow_release();
     if(!snow_array(visits,SU_SNOW_PACKED,1)||!snow_array(tiles,SU_SNOW_PACKED*2,1)||!snow_array(levels,SU_SNOW_PACKED*2,1))return 0;
+    // Town entry/debug clearing can remove the last settled shallow dent.
+    // No mask or smooth-preview workspace is needed for uniformly fresh snow.
+    if(snow_revision!=revision){
+        snow_has_wear=0;
+        for(unsigned i=0;i<visits->length;i++)if(((const uint8_t*)visits->data)[i]){snow_has_wear=1;break;}
+    }
+    if(!snow_has_wear){
+        if((snow_storage||snow_visual)&&!snow_release())return 0;
+        snow_revision=revision;snow_terrain_revision=terrain_revision;return 1;
+    }
     /* One logical row on either side covers the bilinear/relief taps; the
      * final southern raster row includes spill from stamps at the town edge.
      * The first physical block row is always reserved for GX publication. */
@@ -209,6 +229,7 @@ int animaltown_shadows_snow(DndArray *visits,DndArray *tiles,DndArray *levels,Dn
     SuSnowField previous={snow_visits,old_origin>=0?visual->depths[visual->buffer]:NULL,old_origin};
     SuSnowField next={(const uint8_t*)visits->data,enabled?previous.visual:NULL,enabled?old_origin:-1};
     uint64_t dirty[SU_SNOW_HEIGHT+1]={0};
+    uint16_t page_dirty[SU_SNOW_PAGE_ROWS]={0};
     if(packed_changed||terrain_changed)for(int z=0;z<SU_SNOW_HEIGHT;z++)for(int x=0;x<SU_SNOW_BLOCKS;x++){
         int at=z*SU_SNOW_BLOCKS+x,before=snow_visits[at],after=next.packed[at];
         if(before==after&&(!terrain_changed||!after))continue;
@@ -267,6 +288,8 @@ int animaltown_shadows_snow(DndArray *visits,DndArray *tiles,DndArray *levels,Dn
         for(int z=first;z<past;z++)for(int x=0;x<SU_SNOW_BLOCKS;x++)if(dirty[z]&(UINT64_C(1)<<x)){
             uint8_t *dest=snow_row(z,first)+x*32;
             su_snow_block(dest,&next,(const uint8_t*)tiles->data,(const uint8_t*)levels->data,x,z);
+            su_snow_dirty_pages(page_dirty,x*2,z);
+            su_snow_dirty_pages(page_dirty,x*2+1,z);
             if(!fresh&&!moving)dnd_draw_backend_flush(dest,32,0);
         }
         /* Dolphin samples sparse texture hashes. Mark an unused padded row. */
@@ -276,6 +299,12 @@ int animaltown_shadows_snow(DndArray *visits,DndArray *tiles,DndArray *levels,Dn
         dnd_draw_backend_publish_texture();
     }
     if(packed_changed)memcpy(snow_visits,next.packed,sizeof(snow_visits));
+    for(int pz=0;pz<SU_SNOW_PAGE_ROWS;pz++)for(int px=0;px<SU_WORLD_WIDTH/SU_SNOW_PAGE;px++){
+        uint16_t bit=(uint16_t)(1u<<px);
+        if(!(page_dirty[pz]&bit))continue;
+        if(su_snow_page_dented(&next,px,pz))snow_dented_pages[pz]|=bit;
+        else snow_dented_pages[pz]&=(uint16_t)~bit;
+    }
     snow_first_z=first;snow_texel_height=height;
     if(sample){
         visual->buffer^=1;visual->origin=origin;visual->sampled=now;

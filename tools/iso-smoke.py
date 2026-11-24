@@ -14,6 +14,12 @@ local lighting, explicit saves and the shared location after a title reload.
 
 --player-chat uses a disposable --chat-fixture card to exercise the controller
 keyboard, normal player speech, live debug gating and one resident attention cue.
+
+--aram-residency verifies automatic indoor terrain/floor reclamation, real
+model retire/restore cycles, rapid doorway reversal and the default after reboot.
+
+--warm-terrain remains accepted for older capture commands. Terrain prefetch
+is automatic; this flag no longer changes developer settings or opens a menu.
 """
 import os
 import atexit
@@ -244,25 +250,31 @@ def finish_onboarding(prefix='new-villager',before=None):
     after=wait_saved_after(before);wait_onboarding('world',prefix+'-game.png')
     return after,loading
 
-def testing_menu_count():
+def testing_menu_options():
     import re
     source=(Path(__file__).resolve().parents[1]/'game/AnimalTown.GameCube/Program.cs').read_text()
     match=re.search(r'\btestingOptions\s*=\s*\{([^}]+)\}',source)
     if not match:raise AssertionError('Cannot locate debug-menu option contract')
-    return len([entry for entry in match[1].split(',') if entry.strip()])
+    return [entry.strip() for entry in match[1].split(',') if entry.strip()]
+
+def testing_menu_count():
+    return len(testing_menu_options())
+
+def testing_menu_row(option):
+    """Resolve an option ID/name rather than assuming its current display row."""
+    import re
+    wanted=str(option);options=testing_menu_options()
+    if wanted in options:return options.index(wanted)
+    if wanted.isdecimal():
+        source=(Path(__file__).resolve().parents[1]/'game/AnimalTown.GameCube/Program.cs').read_text()
+        for row,name in enumerate(options):
+            constant=re.search(r'\b'+re.escape(name)+r'\s*=\s*(\d+)\b',source)
+            if constant and int(constant[1])==int(wanted):return row
+    raise AssertionError('Debug option is not available: '+wanted)
 
 def start_game(new_town=False,prefix='start'):
     """Navigate Title and the resident picker before sending gameplay input."""
     before=committed_card_sequence(root/'MemoryCardA.USA.raw',details=True)
-    if '--warm-terrain' in sys.argv:
-        wait_title();set_debug_visibility(True);press('D_UP');press('A');wait_title(modal=True)
-        # The last two title settings are warm prefetch and session profiling.
-        press('D_UP');press('D_UP')
-        current=card_dev_config(root/'MemoryCardA.USA.raw')
-        if not current or not current['warm_terrain_prefetch']:press('A')
-        screenshot(prefix+'-warm-prefetch-setting.png');press('B');wait_title();press('D_DOWN')
-        saved=card_dev_config(root/'MemoryCardA.USA.raw')
-        if not saved or not saved['warm_terrain_prefetch']:raise AssertionError('Warm prefetch setting was not persisted')
     wait_title();press('A');wait_profiles(prefix+'-picker.png');press('A')
     active=before['active'] if before else 0
     if new_town or not before or not before['profiles'][active]['created']:
@@ -822,6 +834,18 @@ def water_material_pixels(first,second,shadowed=False):
             'crest_edge_sign_changes':edge_flips,'region':[38,60,604,308],
             'shadow_invariant':shadowed,'edge_measure':'chromaticity' if shadowed else 'intensity'}
 
+def terrain_mip_applied(text,enabled,mips,distance):
+    import re
+    matches=re.findall(r'GROUND MIP BANDS enabled (\d) mips (\d) distance (\d+) size (\d+)x(\d+) levels (\d+)',text)
+    if not matches:return None
+    values=tuple(map(int,matches[-1]))
+    # Both native preview and full source packages carry the same two-level
+    # sampler contract. Optional full uploads yield while memory is pressured.
+    if values[:3]!=(enabled,mips,distance) or values[3:5] not in ((64,64),(256,256)):return None
+    if values[5]!=2:raise AssertionError('Unexpected diagnostic ground mip chain: '+str(values))
+    return {'enabled':bool(enabled),'mipmaps':bool(mips),'distance':distance,
+            'width':values[3],'height':values[4],'levels':values[5]}
+
 def terrain_materials():
     """Observe real menu controls, native sampler output and water motion."""
     import re
@@ -831,7 +855,7 @@ def terrain_materials():
             'physical_hardware':False}
     prefix='terrain-materials-'
     option_count=testing_menu_count()
-    mipmaps_row,distance_row,bands_row=14,15,16
+    mipmaps_row,distance_row,bands_row=(testing_menu_row(option) for option in (22,23,34))
     def visual_assert(condition,message):
         # Independent image failures must not hide later restoration/water
         # evidence. Native state, menu navigation and runtime failures remain
@@ -868,13 +892,7 @@ def terrain_materials():
         for _ in range(min(row,option_count-row)):press(direction)
         return menu_frame(name,row)
     def applied(enabled,mips,distance):
-        matches=re.findall(r'GROUND MIP BANDS enabled (\d) mips (\d) distance (\d+) size (\d+)x(\d+) levels (\d+)',runtime_log_text())
-        if not matches:return None
-        values=tuple(map(int,matches[-1]))
-        if values[:3]!=(enabled,mips,distance) or values[3:5]!=(256,256):return None
-        if values[5]!=2:raise AssertionError('Unexpected diagnostic ground mip chain: '+str(values))
-        return {'enabled':bool(enabled),'mipmaps':bool(mips),'distance':distance,
-                'width':values[3],'height':values[4],'levels':values[5]}
+        return terrain_mip_applied(runtime_log_text(),enabled,mips,distance)
     def mip_frame(name,enabled,mips,distance,check=None):
         deadline=time.monotonic()+90;failure='No matching applied ground-mip state';last=None
         while time.monotonic()<deadline:
@@ -1922,7 +1940,7 @@ def testing_menu():
     manual_only='--manual-save-only' in sys.argv
     previous=0
     # Include session weather, the staged previews, SDK overlay, and diagnostics.
-    for row in ([0] if manual_only else [0,*range(2,12),13,17,18,19,26]):
+    for row in ([0] if manual_only else [0,*range(2,12),13,17,18,19,testing_menu_row('SmoothSnowOption')]):
         for _ in range(row-previous):press('D_DOWN')
         original=label(f'testing-row-{row}-before',row)
         if row in (10,11):
@@ -2050,7 +2068,7 @@ def card_dev_config(path):
     checksum=2166136261
     for value in payload[:checksum_at]:checksum=((checksum^value)*16777619)&0xffffffff
     if checksum!=struct.unpack_from('<I',payload,checksum_at)[0]:return None
-    return {'version':version,'values':list(payload[4:4+count]),'discard_terrain_cache_when_indoors':version>=3 and payload[33]==1,'full_resolution_aa':version>=4 and payload[34]==1,'ground_mip_bands':version>=5 and payload[35]==1,'warm_terrain_prefetch':version>=6 and payload[36]==1}
+    return {'version':version,'values':list(payload[4:4+count]),'retired_terrain_cache_value':payload[33] if version>=3 else None,'full_resolution_aa':version>=4 and payload[34]==1,'ground_mip_bands':version>=5 and payload[35]==1,'retired_warm_prefetch_value':payload[36] if version>=6 else None}
 
 def aram_model_cycles(text,after):
     """Match real retire/restore pairs in the current town session only."""
@@ -2069,8 +2087,114 @@ def aram_model_cycles(text,after):
             'retired_species':sorted(retired),'restored_species':sorted(restored),
             'unrestored_species':sorted((retired-restored)|set(cold))}
 
+def aram_model_population(text,player_species):
+    """Read the actual player/local/legacy/visitor roster of this boot."""
+    import re
+    session=text.rfind('ANIMALTOWN GAME START')
+    if session<0:raise AssertionError('No traced town session for model population')
+    current=text[session:];markers=list(re.finditer(r'ANIMALTOWN MODEL POPULATION[^\r\n]*',current))
+    if len(markers)!=1:raise AssertionError('Expected one actual model population marker in the current town session')
+    marker=markers[0];match=re.fullmatch(r'ANIMALTOWN MODEL POPULATION mask (\d+) actors (\d+)',marker[0])
+    if match is None:raise AssertionError('Malformed actual model population marker')
+    mask,actors=map(int,match.groups());ready=current.find('ANIMALTOWN READY ')
+    if (not 0<mask<64 or not 1<=actors<=8 or mask.bit_count()>actors or
+            not 0<=player_species<6 or not mask&(1<<player_species) or ready<0 or marker.start()>=ready):
+        raise AssertionError('Invalid or late actual model population roster')
+    return {'session_start':session,'mask':mask,'actors':actors,
+            'species':[species for species in range(6) if mask&(1<<species)]}
+
+def aram_actor_view(text,population,fresh_defaults=False):
+    """Read live actors, keeping saved-home records separate from visitors."""
+    import re
+    match=re.search(r'ANIMALTOWN JOB VIEW (\S+) ((?:-?\d+ ?){10})[\r\n]',text)
+    if match is None or 'ANIMALTOWN JOB VIEW END' not in text[match.end():]:raise AssertionError('Incomplete live actor view')
+    values=list(map(int,match[2].split()));homes={};saved={}
+    if values[0] not in (0,1,2,3,4,16,17,18,19,20,21,24,25,26,*range(32,44)) or not 0<=values[1]<128*1024 or not 0<=values[2]<120*1024:
+        raise AssertionError('Invalid live player location')
+    for row in re.findall(r'ANIMALTOWN JOB NPC (\d+) (-?\d+) (-?\d+) (-?\d+) (\d+) (-?\d+) (-?\d+)',text):
+        slot,space,x,z,busy,hx,hz=map(int,row);homes[slot]=(hx,hz);saved[slot]=(slot,slot,space,x,z,busy)
+    rows=re.findall(r'ANIMALTOWN JOB ACTOR (\d+) (\d+) (-?\d+) (-?\d+) (-?\d+) (\d+)',text)
+    source='actual actors'
+    if not rows:
+        # Frozen pre-diagnostic ISOs can be probed only on a fresh no-visitor
+        # town whose five unchanged default local identities are unambiguous.
+        if not fresh_defaults or population['mask']!=31 or population['actors']!=6 or not all(i in saved for i in range(5)):
+            raise AssertionError('Live actor species records required for legacy, remapped or visitor rosters')
+        rows=[saved[i] for i in range(5)];source='guarded fresh defaults'
+    actors={}
+    for row in rows:
+        slot,species,space,x,z,busy=map(int,row)
+        if (slot in actors or not 0<=slot<7 or species not in population['species'] or
+                space not in (0,1,2,3,4,16,17,18,19,20,21,24,25,26,*range(32,44)) or
+                not 0<=x<128*1024 or not 0<=z<120*1024 or busy not in (0,1)):
+            raise AssertionError('Invalid live actor identity or location')
+        actors[slot]={'slot':slot,'species':species,'room':space,'x':x/1024,'z':z/1024,'busy':bool(busy)}
+    if len(actors)+1!=population['actors']:raise AssertionError('Live actor view disagrees with the actual population')
+    return {'screen':match[1],'room':values[0],'x':values[1]/1024,'z':values[2]/1024,'actors':actors,'homes':homes,'source':source}
+
+def terrain_residency_cycles(text,after=0):
+    """Validate physical cache/source ownership and complete doorway restores."""
+    import re
+    session=text.rfind('ANIMALTOWN GAME START')
+    if session<0:raise AssertionError('No traced town session for terrain residency evidence')
+    begin=max(session,after);cache=None;floor=None;restored_floor=None;cycles=[];cancelled=0
+    pattern=(r'ANIMALTOWN TERRAIN CACHE (?:SUSPENDED cache bytes (\d+) reclaimed bytes (\d+) archive bytes (\d+)'
+             r'|READY cache bytes (\d+) archive bytes (\d+))'
+             r'|ANIMALTOWN FLOOR (?:SUSPENDED owned bytes (\d+) -> (\d+) source bytes (\d+) reclaimed bytes (\d+)'
+             r'|RESTORED season (\d+) slots (\d+) owned bytes (\d+) source bytes (\d+))')
+    for event in re.finditer(pattern,text[begin:]):
+        offset=begin+event.start()
+        if event[1] is not None:
+            entry={'offset':offset,'cache_bytes':int(event[1]),'reclaimed_bytes':int(event[2]),'archive_bytes':int(event[3])}
+            if entry['cache_bytes']!=0 or entry['reclaimed_bytes']!=1048576 or entry['archive_bytes']<=0:
+                raise AssertionError('Terrain suspension did not physically reclaim exactly 1 MiB while retaining its archive')
+            if cache is not None:
+                if cache['archive_bytes']!=entry['archive_bytes']:raise AssertionError('Interrupted terrain restore changed its retained archive')
+                cancelled+=1
+            cache=entry
+        elif event[6] is not None:
+            entry={'offset':offset,'owned_before':int(event[6]),'owned_after':int(event[7]),
+                   'source_bytes':int(event[8]),'reclaimed_bytes':int(event[9])}
+            if entry['owned_before']<=0 or entry['owned_after']!=0 or entry['source_bytes']!=0 or entry['reclaimed_bytes']<entry['owned_before']:
+                raise AssertionError('Floor suspension retained native source bytes or failed to release its owning leases')
+            floor=entry;restored_floor=None
+        elif event[10] is not None:
+            entry={'offset':offset,'season':int(event[10]),'slots':int(event[11]),
+                   'owned_bytes':int(event[12]),'source_bytes':int(event[13])}
+            if not 0<=entry['season']<=3 or entry['slots']<=0 or entry['owned_bytes']<=0 or entry['source_bytes']!=entry['owned_bytes']:
+                raise AssertionError('Floor restore did not publish matching real owner/source residency')
+            if floor is not None:restored_floor=entry
+        else:
+            if cache is None:raise AssertionError('Terrain cache restore has no matching suspension in the observed route')
+            ready={'offset':offset,'cache_bytes':int(event[4]),'archive_bytes':int(event[5])}
+            if ready['cache_bytes']!=1048576 or ready['archive_bytes']!=cache['archive_bytes']:
+                raise AssertionError('Terrain cache restore changed the retained archive or failed to allocate exactly 1 MiB')
+            if floor is None or restored_floor is None or restored_floor['offset']>=offset:
+                raise AssertionError('Terrain cache became ready before its floor sources were restored')
+            cycles.append({'suspended':cache,'floor_suspended':floor,'floor_restored':restored_floor,'restored':ready})
+            cache=floor=restored_floor=None
+    return {'session_start':session,'cycles':cycles,'pending_cache':cache,'pending_floor':floor,'cancelled_restores':cancelled}
+
+def aram_door_state(pixels):
+    # A refusal bubble can cover an otherwise valid town view. Its broad body
+    # extends left of the compact door cue; snow and UI grain are not cream.
+    dialogue=region_color_count(pixels,(255,245,221),70,350,170,390)>1500
+    action=not dialogue and region_color_count(pixels,(53,105,84),200,328,270,353)>150
+    # Home names give an inspector acknowledgement without comparing animated
+    # residents, moving shadows or the floating clock elsewhere in the scene.
+    signature=bytes(max(pixels[(y*800+x)*3:(y*800+x)*3+3])<150
+                    for y in range(326,349) for x in range(250,410)) if action else None
+    return {'dialogue':dialogue,'action_signature':signature}
+
+def aram_inspector_arrival(before,after):
+    previous,current=aram_door_state(before),aram_door_state(after)
+    if current['dialogue'] or current['action_signature'] is None:
+        raise AssertionError('Building inspector did not reach an actionable world doorway')
+    if previous['action_signature']==current['action_signature']:
+        raise AssertionError('Building inspector did not acknowledge a different resident home')
+
 def aram_residency_scenario():
-    """Real door/cache/model transitions, plus separate-card config roundtrips."""
+    """Default-on physical memory reclamation and real doorway/model cycles."""
     import re
     global p
     sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'docs/performance'))
@@ -2082,6 +2206,11 @@ def aram_residency_scenario():
     def alive():
         check_runtime_failure()
         if p.poll() is not None:raise AssertionError('Emulator stopped during ARAM residency scenario')
+    def uncovered_models(evidence,population):
+        # Prove every retired species can restore after actual gameplay demand.
+        # A later retirement is correct for an unseen model, not lost coverage.
+        return sorted(set(evidence['retired_species'])&set(population['species'])-
+                      {event['species'] for event in evidence['cycles']})
     def wait_log(pattern,after=0,seconds=180):
         deadline=time.monotonic()+seconds
         while time.monotonic()<deadline:
@@ -2113,21 +2242,82 @@ def aram_residency_scenario():
             except AssertionError:time.sleep(.5)
             time.sleep(.2)
         raise AssertionError('ARAM door did not reach '+name)
-    def config(expected):
-        deadline=time.monotonic()+60
-        while time.monotonic()<deadline:
-            alive();value=card_dev_config(card)
-            if value and value['discard_terrain_cache_when_indoors']==expected:return value
-            time.sleep(.2)
-        raise AssertionError('Separate dev config item did not persist terrain option '+str(expected))
-    def title_terrain_row(name,pressed=press):
-        pressed('D_DOWN');pressed('D_DOWN');pressed('A');wait_title(modal=True)
-        # The appended session-only UI grain control follows persisted options.
-        pressed('D_UP');pressed('D_UP');screenshot(name+'.png') # config index 29
+    def release_controls():
+        os.write(controller,b'RELEASE A\nRELEASE B\nRELEASE L\nRELEASE R\nSET MAIN .5 .5\nSET C .5 .5\n')
+    def clear_door_refusal(name,indoors):
+        release_controls();view(name,indoors)
+        pixels=rgb(name+'.png')
+        if aram_door_state(pixels)['dialogue']:
+            # B reveals an unfinished line, then closes it. It cannot request a
+            # second crossing or advance the home inspector as A would.
+            press_presented('B',clock);press_presented('B',clock)
+            view(name,indoors);pixels=rgb(name+'.png')
+            if aram_door_state(pixels)['dialogue']:raise AssertionError('Transient doorway refusal did not close')
+            report.setdefault('cleared_door_refusals',[]).append(name)
+        return pixels
     def inspect(indoors=False):
         nonlocal building_inspections
-        os.write(controller,b'PRESS L\nPRESS R\n');time.sleep(.2);press('A');os.write(controller,b'RELEASE L\nRELEASE R\n')
-        if not indoors:building_inspections+=1
+        name='aram-inspector-'+str(building_inspections)+('-exit' if indoors else '-home')
+        clear_door_refusal(name+'-before',indoors)
+        # Portal cooldown runs in simulation time. Spend it in the world after
+        # closing speech, rather than assume wall time or a drawn exterior does.
+        guest(name+'-cooldown',3)
+        before=clear_door_refusal(name+'-ready',indoors)
+        os.write(controller,b'PRESS L\nPRESS R\n')
+        try:press_presented('A',clock)
+        finally:release_controls()
+        view(name+'-arrived',indoors);after=rgb(name+'-arrived.png')
+        if indoors:
+            if aram_door_state(after)['action_signature'] is None:raise AssertionError('Indoor inspector did not reach the real exit')
+        else:
+            aram_inspector_arrival(before,after)
+            building_inspections+=1
+            report.setdefault('acknowledged_home_inspections',[]).append(building_inspections)
+    def actor_view():
+        release_controls();offset=len(logs());os.write(controller,b'PRESS L\nPRESS R\n')
+        try:press_presented('Y',clock)
+        finally:release_controls()
+        wait_log('ANIMALTOWN JOB VIEW END',offset)
+        return aram_actor_view(logs()[offset:],population,fresh_defaults)
+    def restore_live_actor(species,name):
+        import math
+        route={'species':species,'observations':[]};report.setdefault('live_actor_routes',[]).append(route)
+        previous=None;stalls=0
+        for attempt in range(80):
+            current=actor_view()
+            candidates=[actor for actor in current['actors'].values() if actor['species']==species]
+            if not candidates:raise AssertionError('Retired species has no actual present actor: '+str(species))
+            actor=min(candidates,key=lambda a:(a['room']!=current['room'],(a['x']-current['x'])**2+(a['z']-current['z'])**2))
+            route['observations'].append({'player':{k:current[k] for k in ('room','x','z')},'actor':actor,'source':current['source']})
+            if species not in uncovered_models(aram_model_cycles(logs(),baseline),population):
+                route['restored']=True;screenshot(name+'-live-restored.png')
+                if current['room']!=0:leave(name+'-live-returned')
+                return
+            if current['screen']!='world':press_presented('B',clock);press_presented('B',clock);continue
+            if current['room']!=actor['room']:
+                if current['room']!=0:
+                    inspect(True);press_presented('A',clock);view(name+'-live-exit',False);continue
+                if 16<=actor['room']<=21:
+                    enter(name+'-live-home-'+str(attempt),target_species=actor['room']-16);continue
+                if actor['room']==24:
+                    os.write(controller,b'SET C .5 0\nPRESS L\nPRESS R\n')
+                    try:press_presented('A',clock)
+                    finally:release_controls()
+                    view(name+'-live-shop',False);press_presented('A',clock);view(name+'-live-room',True);continue
+                if actor['room']!=25:raise AssertionError('Unsupported actual actor space: '+str(actor['room']))
+                target=(50.5,29.4)
+            else:target=(actor['x'],min(119.5,actor['z']+5)) if current['room']==0 else (actor['x'],actor['z'])
+            dx,dz=target[0]-current['x'],target[1]-current['z'];distance=math.hypot(dx,dz)
+            if actor['room']==25 and current['room']==0 and distance<.5:
+                os.write(controller,b'SET MAIN .5 .8\n');guest(name+'-live-face',.05);release_controls();press_presented('A',clock);view(name+'-live-post',True);continue
+            position=(current['x'],current['z']);stalls=stalls+1 if previous is not None and math.dist(position,previous)<.08 else 0;previous=position
+            if stalls>12:raise AssertionError('Ordinary walking could not approach actual actor: '+str(actor))
+            if distance<.2:guest(name+'-live-ready',.5);continue
+            if stalls:dx,dz=(-dz,dx) if stalls%4<2 else (dz,-dx)
+            os.write(controller,f'SET MAIN {.5+dx/distance*.5} {.5-dz/distance*.5}\nPRESS B\n'.encode())
+            try:guest(name+'-live-walk',min(.7,max(.08,distance/5.04)))
+            finally:release_controls()
+        raise AssertionError('No genuine gameplay restore after following actual actor: '+str(species))
     def enter(name,target_species=None):
         if target_species is not None:
             # The existing inspector cycles the six actual resident homes in
@@ -2151,14 +2341,12 @@ def aram_residency_scenario():
             os.write(controller,b'SET MAIN .5 .8\n');guest(name+'-reversal-input',.3);os.write(controller,b'SET MAIN .5 .5\n');press('A')
         view(name,False);report[name+'_wall_seconds']=time.monotonic()-started
         report[name+'_guest_seconds']=(clock.frames()-start_vi)*1001/60000
+        clear_door_refusal(name+'-world',False)
         guest(name+'-outdoor-settle',2)
 
     wait_title();initial=card_dev_config(card);report['initial_dev_config']=initial
-    title_terrain_row('aram-title-row29-baseline')
-    if initial and initial['discard_terrain_cache_when_indoors']:press('A')
-    press('B');wait_title()
-    if initial:config(False)
-    press('D_UP');press('D_UP');start_game(False,'aram')
+    fresh_defaults=not committed_card_sequence(card)
+    start_game(False,'aram');set_debug_visibility(True)
     startup=[]
     for index,session in enumerate(logs().split('ANIMALTOWN GAME START')[1:]):
         terrain=session.find('ANIMALTOWN STARTUP TERRAIN READY')
@@ -2181,36 +2369,40 @@ def aram_residency_scenario():
     report['startup_order']=startup
     session_start=logs().rfind('ANIMALTOWN GAME START')
     wait_log(r'ANIMALTOWN READY ',session_start,seconds=300)
+    population=aram_model_population(logs(),startup[-1]['first_species']);report['model_population']=population
     wait_log(r'Terrain archive: [0-9]+ ARAM bytes',session_start,seconds=300)
     wait_log(r'ANIMALTOWN ONBOARDING RELEASED',session_start,seconds=120)
     view('aram-game-started',False)
-    baseline=len(logs());enter('aram-flag-off');guest('flag-off-indoor-steady',16)
-    if 'ANIMALTOWN TERRAIN CACHE SUSPENDED' in logs()[baseline:]:raise AssertionError('Default-off terrain option suspended the cache')
-    screenshot('aram-flag-off-indoor.png');leave('aram-flag-off-exited')
-    set_debug_visibility(True)
-    # Up wraps to the final terrain-cache setting after tree and UI grain rows.
-    press('START');press('R');press('D_UP');screenshot('aram-game-row30-off.png');press('A')
-    report['ingame_saved_config']=config(True);screenshot('aram-game-row30-on.png');press('B')
-    cold=len(logs());enter('aram-flag-on');guest('flag-on-indoor-steady',6)
-    suspended=wait_log(r'ANIMALTOWN TERRAIN CACHE SUSPENDED cache bytes (\d+) reclaimed bytes (\d+) archive bytes (\d+)',cold)
-    if tuple(map(int,suspended.groups()[:2]))!=(0,1048576):raise AssertionError('Terrain cache did not physically release exactly 1 MiB')
-    # This assertion is independent of the terrain flag: automatic model paging
+    baseline=cold=len(logs());enter('aram-default');guest('default-indoor-steady',16)
+    wait_log(r'ANIMALTOWN TERRAIN CACHE SUSPENDED cache bytes (\d+) reclaimed bytes (\d+) archive bytes (\d+)',cold)
+    wait_log(r'ANIMALTOWN FLOOR SUSPENDED owned bytes (\d+) -> (\d+) source bytes (\d+) reclaimed bytes (\d+)',cold)
+    eviction=terrain_residency_cycles(logs(),cold)
+    if eviction['pending_cache'] is None or eviction['pending_floor'] is None:raise AssertionError('Default indoor idle did not reclaim both terrain and floor sources')
+    if 'ANIMALTOWN FLOOR RESTORED' in logs()[cold:]:raise AssertionError('Idle indoor scene restored unneeded outdoor floor sources')
+    report['default_reclamation_without_toggle']=True
+    # This assertion is independent of terrain suspension: automatic model paging
     # must actually retire at least one cold shared species, not only plan it.
     # Startup may already have retired it in this session before the first door.
     model=wait_log(r'ANIMALTOWN MODEL COLD (\d+) aram bytes (\d+) native budget bytes (\d+) max advance us (\d+)',session_start)
     if int(model[2])<=0:raise AssertionError('Cold model has no ARAM package backing')
-    report['suspended']={'cache_bytes':int(suspended[1]),'reclaimed_bytes':int(suspended[2]),'archive_bytes':int(suspended[3])}
+    report['suspended']=eviction['pending_cache'];report['floor_suspended']=eviction['pending_floor']
     report['model_cold']={'species':int(model[1]),'aram_bytes':int(model[2]),'native_bytes':int(model[3]),'max_advance_us':int(model[4])}
-    screenshot('aram-flag-on-cold-indoor.png');warm=len(logs());leave('aram-restored-exterior',reversal=True)
-    restored=wait_log(r'ANIMALTOWN TERRAIN CACHE READY cache bytes (\d+) archive bytes (\d+)',warm)
-    if int(restored[1])!=1048576 or int(restored[2])!=int(suspended[3]):raise AssertionError('Terrain cache restore changed the retained archive')
-    report['restored']={'cache_bytes':int(restored[1]),'archive_bytes':int(restored[2])}
+    screenshot('aram-default-cold-indoor.png');warm=len(logs());leave('aram-restored-exterior',reversal=True)
+    wait_log(r'ANIMALTOWN TERRAIN CACHE READY cache bytes (\d+) archive bytes (\d+)',warm)
+    restored=terrain_residency_cycles(logs(),cold)
+    if not restored['cycles']:raise AssertionError('The doorway did not restore its floor sources and unchanged terrain archive')
+    report['restored']=restored['cycles'][-1]['restored'];report['floor_restored']=restored['cycles'][-1]['floor_restored']
     # Back-to-back crossings exercise drain/cancel and reuse of restored backing.
-    enter('aram-rapid-reentry');guest('rapid-reentry-indoor',1);leave('aram-rapid-return',reversal=True)
+    rapid=len(logs());enter('aram-rapid-reentry');guest('rapid-reentry-indoor',3)
+    wait_log(r'ANIMALTOWN FLOOR SUSPENDED owned bytes (\d+) -> (\d+) source bytes (\d+) reclaimed bytes (\d+)',rapid)
+    leave('aram-rapid-return',reversal=True)
+    rapid_cycles=terrain_residency_cycles(logs(),rapid)
+    if not rapid_cycles['cycles']:raise AssertionError('Rapid reentry/reversal did not complete a second real memory reclamation cycle')
+    report['rapid_reversal_cycles']=rapid_cycles['cycles']
     evidence=aram_model_cycles(logs(),baseline);toured=set();report['extra_cold_home_routes']=[]
-    while evidence['unrestored_species']:
-        candidates=[species for species in evidence['unrestored_species'] if species not in toured]
-        if not candidates:raise AssertionError('Cold species lacked a real gameplay-demand restore: '+str(evidence['unrestored_species']))
+    while uncovered_models(evidence,population):
+        candidates=[species for species in uncovered_models(evidence,population) if species not in toured]
+        if not candidates:raise AssertionError('Cold species lacked a real gameplay-demand restore: '+str(uncovered_models(evidence,population)))
         species=candidates[0];toured.add(species);name='aram-cold-species-'+str(species)
         route={'species':species,'resident_building':species+1};report['extra_cold_home_routes'].append(route)
         if species not in evidence['cold_species']:
@@ -2219,34 +2411,50 @@ def aram_residency_scenario():
             neutral=(species+1)%6;route['staging_resident_building']=neutral+1
             enter(name+'-staging',target_species=neutral);guest(name+'-staging-idle',16);leave(name+'-staging-exited')
             evidence=aram_model_cycles(logs(),baseline)
-            if species not in evidence['unrestored_species']:continue
+            if species not in uncovered_models(evidence,population):continue
         enter(name,target_species=species);guest(name+'-indoor',1);leave(name+'-returned')
         evidence=aram_model_cycles(logs(),baseline)
+        if species in uncovered_models(evidence,population):
+            restore_live_actor(species,name);evidence=aram_model_cycles(logs(),baseline)
     if evidence['session_start']!=session_start:raise AssertionError('Town session changed during residency acceptance')
     if not evidence['retired_species']:raise AssertionError('No actual model retirement was observed in the current town session')
+    if not set(evidence['retired_species'])&set(population['species']):raise AssertionError('Only unused species packages retired; no present actor demonstrated paging')
     report['cold_species_restored_before_exterior_return']=[event['species'] for event in evidence['cycles']]
     report['cold_to_warm_after_gameplay_demand']=evidence['cycles']
-    report['all_cold_species_restored_after_gameplay_demand']=not evidence['unrestored_species']
+    report['all_cold_species_restored_after_gameplay_demand']=not uncovered_models(evidence,population)
+    report['currently_cold_species_after_routes']=evidence['cold_species']
+    report['unused_retired_species']=sorted(set(evidence['retired_species'])-set(population['species']))
+    report['unused_retired_species_still_cold']=sorted(set(report['unused_retired_species'])&set(evidence['cold_species']))
     report['runtime_residency_errors']=aram_residency_errors(logs())
-    report['runtime_markers']=re.findall(r'ANIMALTOWN (?:MODEL [^\r\n]+|TERRAIN CACHE [^\r\n]+)',logs()[session_start:])
+    report['terrain_floor_cycles']=terrain_residency_cycles(logs(),baseline)
+    report['runtime_markers']=re.findall(r'ANIMALTOWN (?:MODEL [^\r\n]+|TERRAIN CACHE [^\r\n]+|FLOOR [^\r\n]+)',logs()[session_start:])
     (root/'aram-runtime.log').write_text(logs())
-    # Restart the same ISO/card. Toggling the title's last row once must produce
-    # Off in the binary record; that proves startup loaded the prior On setting.
+    # Restart the same ISO/card without opening a debug configuration menu. The
+    # retired stored slot must not disable the automatic memory policy.
     p.terminate();p.wait(timeout=10)
     frames=user/'Dump/Frames'
     if frames.exists():frames.rename(user/'Dump/Frames-residency')
     command=['/usr/games/dolphin-emu-nogui','-u',str(user),'-e',str(disc),'-v','OGL']
     if '--component-cable' in sys.argv:command+=['-C','SYSCONF.IPL.PGS=True']
     p=subprocess.Popen(command,env=env,stdout=log,stderr=subprocess.STDOUT)
-    title_clock=AviGuestClock(frames,track_presentations=True)
-    edge=lambda button:press_presented(button,title_clock)
-    wait_title();wait_log(r'ANIMALTOWN DEV CONFIG LOADED')
-    title_terrain_row('aram-title-row29-loaded-on',edge);edge('A');edge('START');wait_title();config(False)
-    # Leave the option enabled and prove the corresponding title row roundtrip.
-    edge('A');wait_title(modal=True);screenshot('aram-title-row29-off.png');edge('A');edge('START');wait_title()
-    report['restart_saved_config']=config(True);report['startup_load_verified']=True
-    report['title_restart_input']='8 release / 12 press / 12 release guest presentations; START save/close'
-    screenshot('aram-title-restart-complete.png')
+    clock=AviGuestClock(frames,track_presentations=True);building_inspections=0
+    wait_title();restarted=card_dev_config(card)
+    if initial is not None and (restarted is None or restarted['values']!=initial['values']):
+        raise AssertionError('Automatic residency acceptance unexpectedly changed persisted developer settings')
+    report['restart_dev_config']=restarted
+    start_game(False,'aram-restart');set_debug_visibility(True)
+    report['restart_model_population']=aram_model_population(logs(),startup[-1]['first_species'])
+    restart_cold=len(logs());enter('aram-restart-default');guest('restart-default-indoor-steady',6)
+    wait_log(r'ANIMALTOWN TERRAIN CACHE SUSPENDED cache bytes (\d+) reclaimed bytes (\d+) archive bytes (\d+)',restart_cold)
+    wait_log(r'ANIMALTOWN FLOOR SUSPENDED owned bytes (\d+) -> (\d+) source bytes (\d+) reclaimed bytes (\d+)',restart_cold)
+    restarted_eviction=terrain_residency_cycles(logs(),restart_cold)
+    if restarted_eviction['pending_cache'] is None or restarted_eviction['pending_floor'] is None:
+        raise AssertionError('Automatic terrain/floor reclamation did not survive a clean boot')
+    leave('aram-restart-restored-exterior',reversal=True)
+    report['restart_terrain_floor_cycles']=terrain_residency_cycles(logs(),restart_cold)
+    if not report['restart_terrain_floor_cycles']['cycles']:raise AssertionError('Post-reboot doorway restoration did not complete')
+    report['default_after_restart_verified']=True
+    screenshot('aram-restart-complete.png')
     (root/'aram-residency.json').write_text(json.dumps(report,indent=2))
 
 def dialogue_cycles():

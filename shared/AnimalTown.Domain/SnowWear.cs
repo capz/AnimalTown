@@ -14,13 +14,30 @@ public sealed class SnowWear
     public readonly byte[] Packed=new byte[Bytes];
     // Active dents retain their initial wear and entry time modulo 4096.
     // Once settled, their shallow wear lives only in Packed.
-    private ushort[]? recovery;
+    private const int RecoveryShift=8,RecoveryChunk=1<<RecoveryShift,RecoveryChunks=(Town.Cells+RecoveryChunk-1)/RecoveryChunk;
+    private ushort[]?[]? recovery;
+    private ushort[]? activeRecovery,recoveryView;
+    private int recoveryCount;
     private int ticks,snowfallSeconds;
     internal bool HasCheckpoint {get;private set;}
     public int Revision {get;private set;}
     public bool Winter {get;private set;}
     // The snow renderer borrows these stamps for the current update.
-    public ushort[]? RecoveryStamps=>recovery;
+    public ushort[]? RecoveryStamps
+    {
+        get{
+            if(recovery==null)return null;
+            if(recoveryView==null){
+                recoveryView=new ushort[Town.Cells];
+                for(int i=0;i<recoveryCount;i++){
+                    int chunk=activeRecovery![i],start=chunk<<RecoveryShift;
+                    Array.Copy(recovery[chunk]!,0,recoveryView,start,Math.Min(RecoveryChunk,Town.Cells-start));
+                }
+            }
+            return recoveryView;
+        }
+    }
+    public void ReleaseRecoveryStamps()=>recoveryView=null;
     public int SnowfallTicks=>snowfallSeconds*TicksPerSecond+ticks;
     public static bool Covers(Town town,int x,int z)=>town.Inside(x,z)&&town.At(x,z)==(int)Terrain.Grass&&TerrainElevation.Mode(town,x,z)<=TerrainElevation.Block;
     public int VisitCount(int x,int z)=>WearAt(x,z)/StepsPerVisit;
@@ -48,8 +65,12 @@ public sealed class SnowWear
         int wear=(Packed[cell/2]>>shift)&15;
         int next=Math.Min(MaximumWear,wear+StepsPerVisit);
         if(next>StepsPerVisit){
-            recovery??=new ushort[Town.Cells];
-            recovery[cell]=(ushort)((snowfallSeconds<<4)|next);
+            if(recovery==null){recovery=new ushort[RecoveryChunks][];activeRecovery=new ushort[RecoveryChunks];}
+            int chunk=cell>>RecoveryShift;var stamps=recovery[chunk];
+            if(stamps==null){stamps=recovery[chunk]=new ushort[RecoveryChunk];activeRecovery![recoveryCount++]=(ushort)chunk;}
+            ushort stamp=(ushort)((snowfallSeconds<<4)|next);
+            stamps[cell&(RecoveryChunk-1)]=stamp;
+            if(recoveryView!=null)recoveryView[cell]=stamp;
         }
         if(next==wear)return;
         Packed[cell/2]+=(byte)((next-wear)<<shift);
@@ -63,27 +84,32 @@ public sealed class SnowWear
         if(!Winter||!snowing||dents==null||++ticks<TicksPerSecond)return;
         ticks=0;
         snowfallSeconds=(snowfallSeconds+1)&ClockMask;
-        bool changed=false,stillRefilling=false;
-        for(int cell=0;cell<dents.Length;cell++){
-            int stamp=dents[cell];
-            if(stamp==0)continue;
-            int age=(snowfallSeconds-(stamp>>4))&ClockMask;
-            int wear=RemainingWear(stamp&15,age);
-            int shift=(cell%2)*4,old=Packed[cell/2];
-            int next=(old&~(15<<shift))|(wear<<shift);
-            if(next!=old){Packed[cell/2]=(byte)next;changed=true;}
-            if(wear<=StepsPerVisit)dents[cell]=0;
-            else stillRefilling=true;
+        bool changed=false;
+        for(int active=0;active<recoveryCount;){
+            int chunk=activeRecovery![active],start=chunk<<RecoveryShift;
+            var stamps=dents[chunk]!;bool stillRefilling=false;
+            for(int index=0;index<stamps.Length&&start+index<Town.Cells;index++){
+                int stamp=stamps[index];if(stamp==0)continue;
+                int age=(snowfallSeconds-(stamp>>4))&ClockMask;
+                int wear=RemainingWear(stamp&15,age),cell=start+index;
+                int shift=(cell%2)*4,old=Packed[cell/2];
+                int next=(old&~(15<<shift))|(wear<<shift);
+                if(next!=old){Packed[cell/2]=(byte)next;changed=true;}
+                if(wear<=StepsPerVisit){stamps[index]=0;if(recoveryView!=null)recoveryView[cell]=0;}
+                else stillRefilling=true;
+            }
+            if(stillRefilling){active++;continue;}
+            dents[chunk]=null;activeRecovery[active]=activeRecovery[--recoveryCount];
         }
         if(changed)Revision++;
-        if(!stillRefilling)ResetRecovery();
+        if(recoveryCount==0)ResetRecovery();
     }
     private static int RemainingWear(int wear,int age)
         =>Math.Min(wear,StepsPerVisit)+
             (Math.Max(0,wear-StepsPerVisit)*Math.Max(0,RecoverySeconds-age)+RecoverySeconds-1)/RecoverySeconds;
     private void ResetRecovery()
     {
-        recovery=null;ticks=snowfallSeconds=0;
+        recovery=null;activeRecovery=recoveryView=null;recoveryCount=0;ticks=snowfallSeconds=0;
     }
 
     // Two 16-bit tokens per word. A token is an age and wear, or a run of
@@ -102,7 +128,7 @@ public sealed class SnowWear
     }
     private int CheckpointToken(ref int cell)
     {
-        int wear=WearAt(cell),stamp=recovery==null?0:recovery[cell];
+        int wear=WearAt(cell),stamp=recovery?[cell>>RecoveryShift]?[cell&(RecoveryChunk-1)]??0;
         int start=cell++;
         if(stamp!=0)return (((snowfallSeconds-(stamp>>4))&ClockMask)<<4)|(stamp&15);
         if(wear!=0)return wear;
@@ -115,8 +141,8 @@ public sealed class SnowWear
         if(words[0]<0||(uint)words[1]>=TicksPerSecond||tokenCount<1||tokenCount>Town.Cells||
             words.Length!=CheckpointHeaderWords+(tokenCount+1)/2)
             throw new InvalidOperationException("Invalid snow checkpoint header");
-        ushort[]? dents=null;
-        int cell=0;bool hasWear=false;
+        ushort[]?[]? dents=null;ushort[]? chunks=null;
+        int cell=0,count=0;bool hasWear=false;
         for(int i=0;i<tokenCount;i++){
             int token=(words[CheckpointHeaderWords+i/2]>>((i%2)*16))&65535;
             if(cell>=Town.Cells||token==0)throw new InvalidOperationException("Invalid snow checkpoint tile");
@@ -129,13 +155,15 @@ public sealed class SnowWear
             if(age>=LegacyRecoverySeconds||wear==0)throw new InvalidOperationException("Invalid saved snow dent");
             int remaining=RemainingWear(wear,age);
             if(remaining>StepsPerVisit){
-                dents??=new ushort[Town.Cells];
-                dents[cell]=(ushort)(((-age&ClockMask)<<4)|wear);
+                if(dents==null){dents=new ushort[RecoveryChunks][];chunks=new ushort[RecoveryChunks];}
+                int chunk=cell>>RecoveryShift;
+                if(dents[chunk]==null){dents[chunk]=new ushort[RecoveryChunk];chunks![count++]=(ushort)chunk;}
+                dents[chunk]![cell&(RecoveryChunk-1)]=(ushort)(((-age&ClockMask)<<4)|wear);
             }
             Packed[cell/2]|=(byte)(remaining<<((cell%2)*4));
             cell++;hasWear=true;
         }
         if(cell!=Town.Cells||!hasWear)throw new InvalidOperationException("Incomplete snow checkpoint");
-        Winter=true;HasCheckpoint=true;ticks=dents!=null?words[1]:0;recovery=dents;Revision++;
+        Winter=true;HasCheckpoint=true;ticks=dents!=null?words[1]:0;recovery=dents;activeRecovery=chunks;recoveryCount=count;recoveryView=null;Revision++;
     }
 }

@@ -42,6 +42,16 @@ internal static class DepotPackageChecks
                 if(name=="opening.bnr")bytes=DiscBannerFile.Create(new byte[6144],version);if(name=="runtime.cfg")bytes=new byte[]{3};
                 File.WriteAllBytes(Path.Combine(directory,name),bytes);
             }
+            // Startup admission is part of the real runtime payload. Generate
+            // its catalog and coarse models from valid, checksum-bearing DNMD
+            // fixtures rather than supplying a placeholder .bin or weakening
+            // package validation for these new assets.
+            foreach(string species in ModelLodCooker.Species){
+                byte[] fixture=ModelLodChecks.Grid();
+                File.WriteAllBytes(Path.Combine(disc,species+"-tex128.dndmodel"),fixture);
+                File.WriteAllBytes(Path.Combine(disc,species+".dndmodel"),fixture);
+            }
+            ModelLodCooker.CookAll(root);ModelMemoryCooker.Cook(root);ModelMemoryCooker.Validate(root);
             using(var image=WaterTextureArtChecks.Fixture(1))File.WriteAllBytes(Path.Combine(disc,WaterTextureCatalog.DiscName(1)),WaterTextureArt.Encode(image,1));
             Check(DepotPackage.Payload(disc).Contains(WaterTextureCatalog.DiscName(1)),"valid optional water artwork enters the closed payload");
             foreach(string unwanted in new[]{"animal-town-updater.dol","roots.pem","entropy.bin","sunshine-water.dndtex","water-unknown.dndtex","source.glb","other.DOL"})File.WriteAllText(Path.Combine(disc,unwanted),"must not ship");
@@ -64,8 +74,10 @@ internal static class DepotPackageChecks
                 Check(archive.GetEntry("apps/animaltown/"+WaterTextureCatalog.DiscName(1))!=null&&archive.GetEntry("apps/animaltown/water-unknown.dndtex")==null,"only declared optional water maps ship in the real Depot archive");
                 foreach(string species in new[]{"fox","bunny","giraffe","cat","hamster","spaniel"}){
                     Check(archive.GetEntry("apps/animaltown/"+species+"-tex128.dndmodel")!=null,"gameplay villager package is included: "+species);
+                    Check(archive.GetEntry("apps/animaltown/"+species+"-lod1-tex128.dndmodel")!=null,"coarse villager package is included: "+species);
                     Check(!archive.Entries.Any(e=>e.FullName=="apps/animaltown/"+species+"-tex512.dndmodel"||e.FullName=="apps/animaltown/"+species+"-tex1024.dndmodel"),"oversized villager packages are excluded: "+species);
                 }
+                var memoryEntry=archive.GetEntry("apps/animaltown/"+ModelMemoryCooker.DiscName);Check(memoryEntry!=null&&memoryEntry.Length==160,"package-bound startup memory catalog is included");
             }
             // Fresh PowerShell processes can serialize hashtable properties in
             // another order. Equal snapshots remain equal; new fields do not.
@@ -85,6 +97,8 @@ internal static class DepotPackageChecks
             }
             Mutated("../outside");Mutated("/apps/animaltown/default.dol");Mutated("Apps/animaltown/extra.txt");Mutated("apps/animaltown/DEFAULT.DOL");
             Mutated("apps/animaltown/other.dol");Mutated("apps/animaltown/wordmark.dndtex");Mutated("apps/animaltown/version.md",Encoding.ASCII.GetBytes("1.2.4"));
+            Mutated("apps/animaltown/"+ModelMemoryCooker.DiscName);
+            foreach(string species in ModelLodCooker.Species)Mutated("apps/animaltown/"+species+"-lod1-tex128.dndmodel");
             Mutated("apps/animaltown/"+WaterTextureCatalog.DiscName(1));Mutated("apps/animaltown/water-unknown.dndtex");
             // Even a self-consistent manifest must retain the same optional art
             // as the ISO; removing it cannot silently select a different look.

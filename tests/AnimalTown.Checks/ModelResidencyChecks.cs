@@ -28,15 +28,18 @@ namespace Dolphin.Memory
 }
 namespace Dolphin.Graphics
 {
-    public sealed class ModelInstance
+    public sealed class ModelInstance : IDisposable
     {
         public readonly Model Model;
         public readonly int Budget;
+        public int NativeBytes=>Model.InstanceBytes;
         public ModelInstance(Model model,int budget){Model=model;Budget=budget;}
+        public bool Disposed;
+        public void Dispose(){Disposed=true;}
     }
     // Tasks deliberately complete only through explicit advancement, matching
     // native ownership/polling instead of making every async call succeed inline.
-    public sealed class Model
+    public sealed class Model : IDisposable
     {
         public readonly List<int> Animations=new List<int>{0,1};
         public bool AutomaticResidencyProgress=true;
@@ -50,6 +53,11 @@ namespace Dolphin.Graphics
         public bool FailAdmission,FailWork,CancelWork,CommitCancellation,FailRetention;
         public int InstanceCreations,RetentionCalls;
         public int Starts,Advances,AnimationPosition=37,PendingDmaPolls=1,WorkUs=7,ProgressSteps;
+        public bool Disposed,FailInstance;
+        public int FailInstanceAt;
+        public ModelInstance? LastInstance;
+        public int InstanceBytes=65536;
+        public void Dispose(){Disposed=true;}
         public Task? LastTransition {get;private set;}
         private TaskCompletionSource<int>? completion;
         private CancellationToken cancellation;
@@ -57,8 +65,9 @@ namespace Dolphin.Graphics
         private int step;
         public ModelInstance CreateInstance(int budget)
         {
+            if(FailInstance||FailInstanceAt>0&&InstanceCreations+1==FailInstanceAt)throw new OutOfMemoryException("Injected instance allocation failure");
             if(!IsResident||IsTransitioning)throw new InvalidOperationException("A cold or transitioning model cannot create an instance");
-            InstanceCreations++;return new ModelInstance(this,budget);
+            InstanceCreations++;LastInstance=new ModelInstance(this,budget);return LastInstance;
         }
         public int RetainPermanently()
         {
@@ -220,10 +229,131 @@ internal static class ModelResidencyChecks
             "session teardown drains restoration before its instances or model can be disposed");
         check(!models[1].IsResident&&manager.ColdBytes==65536&&models[1].Starts==2,"canceled shutdown preserves the cold model's backing for normal disposal without restarting it");
 
+        PressureChecks(check);
+        PressureBoundaryChecks(check);
+        WaitingHeadroomChecks(check);
         StartupChecks(check);
         WaterInspectionChecks(check);
         OutdoorJourneyChecks(check);
         ApproachChecks(check);
+    }
+    private static void PressureChecks(Action<bool,string> check)
+    {
+        var manager=Setup(out var models,out var state,out var doors);
+        for(int species=0;species<6;species++)manager.RecordWarmPeak(species,65536);
+        var memory=new VisualMemoryPressure();memory.Observe(8*1024*1024,0,0,Clock.Timestamp);manager.Memory=memory;
+        Pump(manager,true);Drain(manager);state.Town.Residents[1].Space=state.Space;
+        int peak=manager.RestorePeak(1);check(peak==models[1].PackageBytes*2+65536+64*1024,"restore uses captured warm native ownership plus a measured guard rather than a multi-MiB fixed estimate");
+        memory.Observe(VisualMemoryPressure.SafetyBytes+peak-1,0,0,Clock.Timestamp);manager.Require(state,doors,Clock.Timestamp);
+        check(manager.TryLockReplacement(2),"a warm optional model can be leased by a replacement owner");
+        Pump(manager,false);
+        check(manager.PendingSpecies==3&&!models[1].IsResident&&models[2].IsResident,"pressure retires an optional model despite the normal portal/idle heuristic while protecting required and replacement-leased species");
+        manager.UnlockReplacement(2);memory.Observe(8*1024*1024,0,0,Clock.Timestamp);Drain(manager);
+        check(manager.Ready(1)&&manager.Restores==1&&memory.ReservedBytes>=peak,"new headroom restores the required actor and retains completed allocation debt until a fresh sample");
+        memory.Observe(8*1024*1024,0,0,Clock.Timestamp);check(memory.ReservedBytes==0,"completed restore reservation retires at the allocator observation boundary");manager.Stop();
+
+        manager=Setup(out models,out state,out doors);for(int species=0;species<6;species++)manager.RecordWarmPeak(species,65536);
+        Pump(manager,true);Drain(manager);state.Town.Residents[1].Space=state.Space;
+        memory=new VisualMemoryPressure();memory.Observe(VisualMemoryPressure.SafetyBytes+manager.RestorePeak(1)-1,0,0,Clock.Timestamp);manager.Memory=memory;
+        check(!Startup(manager,state,doors,19)&&manager.PendingSpecies==2,"startup with denied foreground headroom can retire an optional warm model instead of deadlocking its loading checkpoint");manager.Stop();
+    }
+    private static void PressureBoundaryChecks(Action<bool,string> check)
+    {
+        var manager=Setup(out var models,out var state,out var doors);
+        for(int species=0;species<6;species++)manager.RecordWarmPeak(species,65536);
+        Pump(manager,true);Drain(manager);Pump(manager,true);Drain(manager);
+        check(!models[1].IsResident&&!models[2].IsResident,"pressure lookahead fixture begins with two cold species");
+        state.Space=0;state.X=state.Z=80;Array.Clear(state.Town.Elevation);Array.Fill(state.Town.Tiles,(byte)Terrain.Grass);RenderView.SetWidescreen(false);
+        float inX=FindPressureBand(state,doors,1,true);FindPressureBand(state,doors,2,false);
+        var arriving=state.Town.Residents[1];arriving.PosX=inX-.25f;
+        check(!ModelResidencyDemand.ImminentUsesSpace(state,doors,1,0)&&ModelResidencyDemand.UsesSpace(state,doors,1,0),"a quarter-metre reversal crosses the imminent guard while staying in the outer prefetch band");
+        arriving.PosX=inX;
+        var memory=new VisualMemoryPressure();memory.Observe(VisualMemoryPressure.LowBytes-1,0,0,Clock.Timestamp);memory.Observe(2*1024*1024,0,0,Clock.Timestamp);manager.Memory=memory;
+        manager.Require(state,doors,Clock.Timestamp);int outerStarts=models[2].Starts;
+        Pump(manager,false);
+        check(memory.UnderPressure&&memory.WaitingPeakBytes==0&&manager.PendingSpecies==1&&!ModelResidencyDemand.DrawableUsesSpace(state,doors,1,0),"pressure admits an imminent invisible actor using available headroom before it becomes drawable");
+        check(!manager.Required(2)&&models[2].Starts==outerStarts,"outer-band speculative restoration stays blocked under pressure despite available native headroom");
+        Drain(manager);
+        check(manager.Ready(1)&&manager.Restores==1&&!ModelResidencyDemand.DrawableUsesSpace(state,doors,1,0),"the imminent restore completes while the entire actor remains outside the drawable envelope");
+        check(models[2].Starts==outerStarts&&!models[2].IsResident,"completing imminent work does not resume optional outer prefetch under pressure");
+        memory.Observe(2*1024*1024,0,0,Clock.Timestamp);
+        long warmAt=Clock.Timestamp;int starts=models[1].Starts,demotions=manager.Demotions;
+        for(int crossing=0;crossing<10;crossing++){
+            Clock.Timestamp+=50000;arriving.PosX=inX-.25f;manager.Require(state,doors,Clock.Timestamp);Pump(manager,true);
+            Clock.Timestamp+=50000;arriving.PosX=inX;manager.Require(state,doors,Clock.Timestamp);Pump(manager,true);
+        }
+        check(manager.Ready(1)&&models[1].Starts==starts&&manager.Demotions==demotions,"rapid reversals across the pressure guard never retire and restore the same actor repeatedly");
+        arriving.PosX=inX-.25f;manager.Require(state,doors,Clock.Timestamp);
+        Clock.Timestamp+=1100000;manager.Require(state,doors,Clock.Timestamp);Pump(manager,true);
+        check(manager.Ready(1)&&models[1].Starts==starts&&Clock.Timestamp-warmAt<ModelResidency.WarmGraceUs,"ordinary pressure preserves the full post-restore warm grace even after the outside-demand delay expires");
+        Clock.Timestamp=warmAt+ModelResidency.WarmGraceUs+100000;arriving.PosX=inX;manager.Require(state,doors,Clock.Timestamp);Pump(manager,true);
+        for(int crossing=0;crossing<5;crossing++){
+            Clock.Timestamp+=200000;arriving.PosX=inX-.25f;manager.Require(state,doors,Clock.Timestamp);Pump(manager,true);
+            Clock.Timestamp+=200000;arriving.PosX=inX;manager.Require(state,doors,Clock.Timestamp);Pump(manager,true);
+        }
+        check(manager.Ready(1)&&models[1].Starts==starts&&manager.Demotions==demotions,"the last-demand grace also prevents repeated retirement during boundary reversals after post-restore warmth has expired");
+        long lastDemand=Clock.Timestamp;arriving.PosX=inX-.25f;manager.Require(state,doors,Clock.Timestamp);
+        Clock.Timestamp=lastDemand+ModelResidency.PressureIdleDelayUs-1;manager.Require(state,doors,Clock.Timestamp);Pump(manager,true);
+        check(manager.Ready(1)&&models[1].Starts==starts,"a recently required actor stays warm for one full second outside the imminent guard under non-acute pressure");
+        Clock.Timestamp=lastDemand+ModelResidency.PressureIdleDelayUs+1;manager.Require(state,doors,Clock.Timestamp);Pump(manager,true);
+        check(manager.PendingSpecies==1,"a stably unneeded actor becomes eligible after both pressure and warm grace periods expire");
+        arriving.PosX=inX;manager.Require(state,doors,Clock.Timestamp);Drain(manager);
+        check(manager.Ready(1)&&manager.Cancellations==1&&manager.Demotions==demotions,"reversing into demand during optional retirement cancels before publication and keeps the existing warm model");
+        // An actual essential reservation denial may reclaim this just-warmed
+        // optional actor immediately; general pressure alone may not.
+        arriving.PosX=inX-.25f;var foreground=state.Town.Residents[2];foreground.PosX=state.X;foreground.PosZ=state.Z;
+        memory.Observe(VisualMemoryPressure.SafetyBytes+manager.RestorePeak(2)-1,0,0,Clock.Timestamp);manager.Require(state,doors,Clock.Timestamp);Pump(manager,false);
+        check(memory.WaitingPeakBytes>=manager.RestorePeak(2)&&manager.PendingSpecies==1&&manager.Ready(0)&&!models[2].IsResident,
+            "an essential restore waiting for real headroom bypasses optional grace while preserving current and player demand");
+        manager.Stop();
+    }
+    private static void WaitingHeadroomChecks(Action<bool,string> check)
+    {
+        var manager=Setup(out var models,out var state,out var doors);
+        for(int species=0;species<6;species++)manager.RecordWarmPeak(species,65536);
+        for(int species=1;species<6;species++){Pump(manager,true);Drain(manager);}
+        state.Town.Residents[2].Space=state.Space;manager.Require(state,doors,Clock.Timestamp);Pump(manager);Drain(manager);
+        state.Space=0;state.X=state.Z=80;Array.Clear(state.Town.Elevation);Array.Fill(state.Town.Tiles,(byte)Terrain.Grass);
+        FindPressureBand(state,doors,1,true);FindPressureBand(state,doors,2,true);
+        var memory=new VisualMemoryPressure();memory.Observe(1280*1024,0,0,Clock.Timestamp);manager.Memory=memory;
+        manager.Require(state,doors,Clock.Timestamp);Pump(manager);
+        int modelPeak=manager.RestorePeak(1);check(manager.PendingSpecies==1&&manager.Required(2)&&memory.ReservedBytes==modelPeak,"ordinary pressure admits imminent prefetch and pins an already warm imminent actor");
+        const int cachePeak=1024*1024;
+        check(!memory.TryReserve(cachePeak,Clock.Timestamp,true,out _)&&memory.WaitingPeakBytes==cachePeak,"an essential cache restore records its larger unsatisfied allocation peak");
+        check(memory.TryReserve(32*1024,Clock.Timestamp,true,out int small)&&memory.WaitingPeakBytes==cachePeak,"a smaller successful essential reservation cannot erase the larger waiting cache request");memory.Cancel(small);
+        manager.Require(state,doors,Clock.Timestamp);
+        check(!manager.Required(1)&&!manager.Required(2)&&manager.Cancellations==1&&memory.ReservedBytes==modelPeak,"a waiting essential peak removes optional imminent pins and cancels active prefetch without releasing its reservation before drain");
+        Pump(manager);check(manager.PendingSpecies==1&&memory.ReservedBytes==modelPeak,"pending native prefetch cancellation keeps its full reservation until DMA work reaches a terminal state");
+        Pump(manager);check(manager.PendingSpecies==2&&!models[1].IsResident&&memory.ReservedBytes==0,"drained prefetch releases headroom before the now-optional warm imminent actor is retired");
+        Drain(manager);check(!models[2].IsResident&&manager.Ready(0),"urgent reclamation can retire an imminent incumbent while preserving the selected player");
+        int starts=models[1].Starts;
+        // The allocator observes the released incumbent. The pending cache
+        // owner runs before lower-priority model pumping and claims its ticket.
+        memory.Observe(1408*1024,0,0,Clock.Timestamp);
+        check(memory.TryReserve(cachePeak,Clock.Timestamp,true,out int cache),"reclaimed headroom admits the previously starved essential cache restore");
+        manager.Require(state,doors,Clock.Timestamp);Pump(manager);
+        check(memory.ReservedBytes==cachePeak&&models[1].Starts==starts&&!models[1].IsResident,"imminent model restoration cannot consume the cache owner's reserved recovery headroom");
+        memory.Cancel(cache);manager.Stop();
+        var demand=new ModelResidencyDemand();state.Town.Residents[1].PosX=state.X;state.Town.Residents[1].PosZ=state.Z;
+        demand.Prepare(state,doors,false,-1,true,true);
+        check(demand.Required[0]&&demand.Required[1]&&!demand.Required[2],"urgent reclamation retains a drawable actor while excluding an invisible imminent peer");
+        state.Space=1;
+        state.Town.Residents[1].Space=1;state.Town.Residents[2].Space=17;state.Town.Residents[3].Space=18;
+        var player=doors.Actors[0];player.Phase=DoorPhase.Waiting;player.Source=new ActorLocation(1,2,2,0);player.Destination=new ActorLocation(17,2,2,0);
+        var entrant=doors.Actors[4];entrant.Phase=DoorPhase.Waiting;entrant.Source=new ActorLocation(18,2,2,0);entrant.Destination=new ActorLocation(1,2,2,0);
+        demand.Prepare(state,doors,false,-1,true,true);
+        check(demand.Required[0]&&demand.Required[1]&&demand.Required[2]&&demand.Required[3],"urgent lookahead reduction preserves player, current room, destination room, and an entering NPC's portal endpoint");
+        demand.Prepare(state,doors,true,-1,true,true);check(demand.Required.All(x=>x),"explicit all-model inspection pins remain authoritative while essential headroom is waiting");
+    }
+    private static float FindPressureBand(GameState state,PortalSystem doors,int species,bool imminent)
+    {
+        var resident=state.Town.Residents[species];resident.Space=0;resident.PosZ=state.Z;
+        for(float x=0;x<Town.Width;x+=.25f){
+            resident.PosX=x;
+            if(ModelResidencyDemand.UsesSpace(state,doors,species,0)&&!ModelResidencyDemand.DrawableUsesSpace(state,doors,species,0)&&
+                ModelResidencyDemand.ImminentUsesSpace(state,doors,species,0)==imminent)return x;
+        }
+        throw new Exception("Missing distinct pressure prefetch bands");
     }
     private static void WaterInspectionChecks(Action<bool,string> check)
     {

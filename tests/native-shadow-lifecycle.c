@@ -286,7 +286,7 @@ static void town_snow_checks(void){
     memset(tiles->data,0,tiles->length);memset(levels->data,0,levels->length);
     uint8_t *field=(uint8_t*)visits->data;
     memset(field,0,SU_SNOW_PACKED);
-    assert(plain_snow(visits,tiles,levels,0,0,1)==1&&!animaltown_snow_mask()&&live==1);
+    assert(plain_snow(visits,tiles,levels,0,0,1)==1&&!animaltown_snow_mask()&&live==1&&animaltown_shadows_stats(14)==0);
     const int exposed_texels[]={0,0,4,12,16};
     uint8_t previous[16]={0};
     int x=7,z=41,cell=z*SU_WORLD_WIDTH+x,shift=(cell%2)*4;
@@ -297,6 +297,12 @@ static void town_snow_checks(void){
         field[cell/2]=(uint8_t)(wear<<shift);
         int before=snow_flushes,exposed=0;
         assert(plain_snow(visits,tiles,levels,wear,0,1)==1&&live==2);
+        assert(animaltown_shadows_stats(14)==SU_SNOW_BYTES);
+        assert(animaltown_snow_mask_at(4,44,0)==snow_pixels);
+        assert(animaltown_snow_mask_at(12,44,0)==snow_pixels);
+        assert(animaltown_snow_mask_at(28,44,0)==NULL);
+        assert(animaltown_snow_mask_at(28,44,1)==snow_pixels);
+
         assert(snow_flushes-before<=10+(wear==1)); // The initial allocation also flushes the full texture.
         before=snow_flushes;
         assert(plain_snow(visits,tiles,levels,wear,0,1)==1&&snow_flushes==before);
@@ -331,9 +337,43 @@ static void town_snow_checks(void){
     int reserved=animaltown_shadows_stats(10);
     assert(reserved==(int)su_storage_bytes()+SU_SNOW_BYTES);
     memset(field,0,SU_SNOW_PACKED);
-    assert(plain_snow(visits,tiles,levels,maximum_wear+3,0,1)==1&&snow_sample(x*4+1,z*4+1)==0);
-    release_error=1;assert(plain_snow(visits,tiles,levels,maximum_wear+3,0,0)==0&&live==2);release_error=0;
-    assert(plain_snow(visits,tiles,levels,maximum_wear+3,0,0)==1&&!animaltown_snow_mask()&&live==1);
+    release_error=1;
+    assert(plain_snow(visits,tiles,levels,maximum_wear+3,0,1)==0&&live==2&&snow_sample(x*4+1,z*4+1)==255);
+    release_error=0;
+    assert(plain_snow(visits,tiles,levels,maximum_wear+3,0,1)==1&&!animaltown_snow_mask()&&live==1);
+    assert(animaltown_shadows_stats(14)==0);
+    assert(animaltown_shadows_stats(10)==(int)su_storage_bytes());
+    // A new dent after complete recovery allocates and publishes clean storage.
+    field[cell/2]=(uint8_t)(maximum_wear<<shift);
+    assert(plain_snow(visits,tiles,levels,maximum_wear+4,0,1)==1&&live==2&&snow_sample(x*4+1,z*4+1)==255);
+    assert(animaltown_snow_mask_at(28,44,0)==NULL);
+    int adjacent=(z+1)*SU_WORLD_WIDTH+x+1;
+    field[adjacent/2]|=(uint8_t)(maximum_wear<<((adjacent%2)*4));
+    assert(plain_snow(visits,tiles,levels,maximum_wear+5,0,1)==1);
+    field[cell/2]=0;
+    assert(plain_snow(visits,tiles,levels,maximum_wear+6,0,1)==1&&animaltown_snow_mask_at(4,44,0)==snow_pixels);
+    memset(field,0,SU_SNOW_PACKED);
+    const int far_cell=90*SU_WORLD_WIDTH+100;
+    field[far_cell/2]=(uint8_t)(maximum_wear<<((far_cell%2)*4));
+    assert(plain_snow(visits,tiles,levels,maximum_wear+7,0,1)==1&&animaltown_snow_mask_at(4,44,0)==NULL);
+    // Include stamps on every side of page/world borders, then verify actual
+    // sampled texels (including filter/relief guard) for every cheap page.
+    const int border_x[]={0,7,8,15,16,126,127},border_z[]={0,7,8,15,16,118,119};
+    for(unsigned i=0;i<sizeof(border_x)/sizeof(*border_x);i++){
+        int at=border_z[i]*SU_WORLD_WIDTH+border_x[i];
+        field[at/2]|=(uint8_t)(maximum_wear<<((at%2)*4));
+    }
+    assert(plain_snow(visits,tiles,levels,maximum_wear+8,0,1)==1);
+    int cheap_pages=0;
+    for(int pz=0;pz<SU_SNOW_PAGE_ROWS;pz++)for(int px=0;px<SU_WORLD_WIDTH/SU_SNOW_PAGE;px++){
+        if(animaltown_snow_mask_at(px*8+4,pz*8+4,0))continue;
+        cheap_pages++;
+        for(int tz=pz*32-1;tz<=(pz+1)*32;tz++)for(int tx=px*32-1;tx<=(px+1)*32;tx++)
+            if(tx>=0&&tx<SU_SNOW_SIDE&&tz>=0&&tz<SU_SNOW_HEIGHT*4)assert(snow_sample(tx,tz)==0);
+    }
+    assert(cheap_pages>0);
+    release_error=1;assert(plain_snow(visits,tiles,levels,maximum_wear+8,0,0)==0&&live==2);release_error=0;
+    assert(plain_snow(visits,tiles,levels,maximum_wear+8,0,0)==1&&!animaltown_snow_mask()&&live==1);
     snow_joins_checks(visits,tiles,levels);
     smooth_snow_checks(visits,tiles,levels);
     snow_strip_checks(visits,tiles,levels);

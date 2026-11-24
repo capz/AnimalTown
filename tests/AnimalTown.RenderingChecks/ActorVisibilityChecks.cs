@@ -23,6 +23,14 @@ internal static class ActorVisibilityChecks
         BuildingWorld.SetLocation(state,visitorActor,new ActorLocation(16,2,2,0));
         view.Prepare(state,doors,camera,0,0);
         check(!view.Visible[visitorActor]&&clock.Consume(visitorActor,view.Visible[visitorActor])==0,"an offscreen visitor does not consume a native pose update");
+        BuildingWorld.SetLocation(state,visitorActor,new ActorLocation(0,80,45,0));
+        BuildingWorld.SetLocation(state,visitorActor-1,new ActorLocation(0,80,45,0));
+        view.Prepare(state,doors,camera,0,0);
+        var farPoint=CylinderWorld.Surface(45,80,.9f);float pixels=VillagerLod.PixelHeight(farPoint.Y,farPoint.Z,80,0);
+        check(pixels<VillagerLod.CoarsePixels&&view.GeometryLod[visitorActor]==(VillagerLod.CoarseAvailable(1)?1:0),"visitor geometry LOD follows its saved species rather than its position in the actor array");
+        check(view.GeometryLod[visitorActor-1]==(VillagerLod.CoarseAvailable(3)?1:0)&&view.AnimationStride[visitorActor]==2&&view.AnimationStride[visitorActor-1]==2,"distinct visitor species share projection-based animation cadence while selecting their own available geometry");
+        state.SetTownVisitors(Array.Empty<SavedVisitor>());view.Prepare(state,doors,camera,0,0);
+        check(!view.Visible[visitorActor]&&view.GeometryLod[visitorActor]==0&&view.AnimationStride[visitorActor]==1,"a retired visitor slot clears visibility and LOD state before another NPC can occupy it");
         clock.Step(1,0,true);npc.PosX=0;view.Prepare(state,doors,camera,0,0);
         check(!view.Visible[1]&&clock.Consume(1,view.Visible[1])==0,"an actor moving outside the viewport before rendering cannot consume a native pose update");
         for(int n=0;n<900;n++){clock.Step(1,0,true);check(clock.Consume(1,view.Visible[1])==0,"hidden elapsed time is discarded every frame");}
