@@ -65,7 +65,11 @@ static int town_water_fixed(float value){
     return isfinite(value)&&fabsf(value)<2000?(int)lroundf(value*1000000.f):-2147483647;
 }
 static void town_water_begin(unsigned primitive,unsigned format,unsigned count){
-    if(town_water_scene>0&&town_water_strength&&town_water_frame>=town_water_next){
+    /* River inspection can also submit the external ocean first. Sampling
+     * that draw would consume the frame's cadence before the late surface.
+     * Scenes1..3 inspect inland alpha water;4..5 inspect the opaque coast. */
+    unsigned expected_blend=town_water_scene<=3?1:0;
+    if(town_water_scene>0&&town_water_strength&&town_water_blend[0]==expected_blend&&town_water_frame>=town_water_next){
         for(int i=0;i<2;i++)town_water_coord[i]=town_water_map[i]=town_water_layer_stage[i]=255;
         for(unsigned stage=1;stage<town_water_tev&&stage<16;stage++){
             unsigned coord=town_water_stage_coord[stage],map=town_water_stage_map[stage];
