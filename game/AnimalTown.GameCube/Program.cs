@@ -204,7 +204,9 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
     internal TownGame(DevConfig config,TownSession session)
     {
         this.session=session;releaseIntro=session.Draft==null;
-        ui=new Draw2D(device,new Draw2DOptions{Width=640,Height=480,VertexCapacity=4096,SpriteCapacity=UiFont.BatchCapacity});
+        // Font batches contain at most 128 quads / 768 vertices. Canvas fills
+        // flush automatically; retained panel geometry has its own native mesh.
+        ui=new Draw2D(device,new Draw2DOptions{Width=640,Height=480,VertexCapacity=1024,SpriteCapacity=UiFont.BatchCapacity});
         font=UiFont.LoadSystem();strongFont=font;clockHud=new FloatingClockHud(font);headingFont=UiFont.Load("gorditas-bold");cube=Cube();
         boxes=new BoxBatch(renderer,cube);for(int i=0;i<modelPoses.Length;i++)modelPoses[i]=new Transform{Parent=worldRoot};
         for(int i=0;i<appliedClips.Length;i++)appliedClips[i]=-2;

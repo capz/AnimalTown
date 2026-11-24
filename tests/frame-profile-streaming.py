@@ -361,6 +361,30 @@ for diagnostic in ((66,214,99),(255,231,66)):
 assert match(solid((0,0,0)),reference)['ground_samples']==0
 print('Terrain restoration: moving shadows preserve original art; stale green/yellow mips and missing ground are rejected')
 
+# Memory pressure may intentionally retain the real preview source. Verify its
+# native sampler contract without accepting unbound or unsupported dimensions.
+node=next(n for n in module.body if isinstance(n,ast.FunctionDef) and n.name=='terrain_mip_applied')
+scope={};exec(compile(ast.Module([node],type_ignores=[]),'<resident ground mip state>','exec'),scope)
+applied=scope['terrain_mip_applied']
+def mip_marker(size=64,enabled=0,mips=1,distance=0,levels=2,height=None):
+    return f'ANIMALTOWN GROUND MIP BANDS enabled {enabled} mips {mips} distance {distance} size {size}x{size if height is None else height} levels {levels}\n'
+for size in (64,256):
+    for enabled in (0,1):
+        for mips in (0,1):
+            for distance in (0,1,10):
+                state=applied(mip_marker(size,enabled,mips,distance),enabled,mips,distance)
+                assert state=={'enabled':bool(enabled),'mipmaps':bool(mips),'distance':distance,'width':size,'height':size,'levels':2}
+for invalid in ('',mip_marker(0),mip_marker(128),mip_marker(512),mip_marker(height=256),
+                mip_marker(enabled=1),mip_marker(mips=0),mip_marker(distance=1),
+                mip_marker(256)+mip_marker(0),mip_marker(256)+mip_marker(distance=10)):
+    assert applied(invalid,0,1,0) is None
+for size in (64,256):
+    for levels in (0,1,3):
+        try:applied(mip_marker(size,levels=levels),0,1,0)
+        except AssertionError:pass
+        else:raise AssertionError('Invalid resident ground mip chain was accepted')
+print('Terrain applied state: real 64/256 sources pass; unbound, unsupported, stale attributes and bad chains fail')
+
 # Real default-on residency acceptance must prove physical ownership release,
 # source eviction and ready-after-floor ordering rather than only match a label.
 terrain_reader=next(n for n in module.body if isinstance(n,ast.FunctionDef) and n.name=='terrain_residency_cycles')

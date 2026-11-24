@@ -814,6 +814,18 @@ def water_material_pixels(first,second,shadowed=False):
             'crest_edge_sign_changes':edge_flips,'region':[38,60,604,308],
             'shadow_invariant':shadowed,'edge_measure':'chromaticity' if shadowed else 'intensity'}
 
+def terrain_mip_applied(text,enabled,mips,distance):
+    import re
+    matches=re.findall(r'GROUND MIP BANDS enabled (\d) mips (\d) distance (\d+) size (\d+)x(\d+) levels (\d+)',text)
+    if not matches:return None
+    values=tuple(map(int,matches[-1]))
+    # Both native preview and full source packages carry the same two-level
+    # sampler contract. Optional full uploads yield while memory is pressured.
+    if values[:3]!=(enabled,mips,distance) or values[3:5] not in ((64,64),(256,256)):return None
+    if values[5]!=2:raise AssertionError('Unexpected diagnostic ground mip chain: '+str(values))
+    return {'enabled':bool(enabled),'mipmaps':bool(mips),'distance':distance,
+            'width':values[3],'height':values[4],'levels':values[5]}
+
 def terrain_materials():
     """Observe real menu controls, native sampler output and water motion."""
     import re
@@ -860,13 +872,7 @@ def terrain_materials():
         for _ in range(min(row,option_count-row)):press(direction)
         return menu_frame(name,row)
     def applied(enabled,mips,distance):
-        matches=re.findall(r'GROUND MIP BANDS enabled (\d) mips (\d) distance (\d+) size (\d+)x(\d+) levels (\d+)',runtime_log_text())
-        if not matches:return None
-        values=tuple(map(int,matches[-1]))
-        if values[:3]!=(enabled,mips,distance) or values[3:5]!=(256,256):return None
-        if values[5]!=2:raise AssertionError('Unexpected diagnostic ground mip chain: '+str(values))
-        return {'enabled':bool(enabled),'mipmaps':bool(mips),'distance':distance,
-                'width':values[3],'height':values[4],'levels':values[5]}
+        return terrain_mip_applied(runtime_log_text(),enabled,mips,distance)
     def mip_frame(name,enabled,mips,distance,check=None):
         deadline=time.monotonic()+90;failure='No matching applied ground-mip state';last=None
         while time.monotonic()<deadline:
