@@ -214,6 +214,26 @@ def wait_saved_after(before,card=None,timeout_seconds=240):
     screenshot('onboarding-save-failure.png')
     raise AssertionError('Save & begin did not publish a complete checksummed generation')
 
+def stop_dolphin(process,timeout_seconds=5):
+    """Observe shutdown; a forced kill cannot establish a flushed raw card."""
+    forced=False
+    if process.poll() is None:
+        process.terminate()
+        try:process.wait(timeout=timeout_seconds)
+        except subprocess.TimeoutExpired:
+            forced=True;process.kill();process.wait()
+    code=process.poll()
+    return {'returncode':code,'forced_kill':forced,'clean_exit':code==0 and not forced}
+
+def run_jobs(context):
+    from jobs_smoke import run,finish
+    # Dolphin periodically overwrites raw cards in place. Its normal shutdown
+    # joins the card writer and completes the final flush before returning 0.
+    # A controller exception still propagates after cleanup, without export.
+    try:report=run(context)
+    finally:shutdown=stop_dolphin(context['p'],timeout_seconds=30)
+    finish(context,report,shutdown)
+
 def finish_onboarding(prefix='new-villager',before=None):
     """Complete an already selected empty slot via the actual four stages."""
     before=before if before is not None else committed_card_sequence(root/'MemoryCardA.USA.raw',details=True)
@@ -2434,8 +2454,7 @@ with (root/'emulator.log').open('w') as log:
         screenshot('screen.png')
         if any(flag in sys.argv for flag in ('--title-menu','--title-load','--title-config','--title-update','--title-options','--title-options-load','--title-options-unsupported')):wait_title()
         if '--jobs' in sys.argv:
-            from jobs_smoke import run
-            run(globals())
+            run_jobs(globals())
         elif '--player-chat' in sys.argv:player_chat()
         elif '--daylight-location' in sys.argv:daylight_location()
         elif '--daylight-clock' in sys.argv:daylight_clock()
@@ -2857,9 +2876,7 @@ with (root/'emulator.log').open('w') as log:
                 os.write(controller,b'PRESS L\nPRESS R\n');time.sleep(2);press('X')
                 os.write(controller,b'RELEASE L\nRELEASE R\n');time.sleep(max(10,profile_seconds));screenshot('profile-map-return.png')
     finally:
-        p.terminate()
-        try:p.wait(timeout=5)
-        except subprocess.TimeoutExpired:p.kill();p.wait()
+        stop_dolphin(p)
 close_display();atexit.unregister(close_display)
 os.close(controller)
 print(root/'screen.png')
