@@ -76,11 +76,10 @@ public sealed partial class Town
     internal Town(int seed,Town? snapshot)
     {
         Seed=seed;LostAndFound=new TownLostAndFound(this);JobState=new Jobs.TownJobState(seed);Tiles=snapshot==null?new byte[Cells]:snapshot.Tiles;Elevation=snapshot==null?new byte[Cells]:snapshot.Elevation;Paths=new TownPaths();if(snapshot!=null){Array.Copy(snapshot.Paths.Packed,Paths.Packed,TownPaths.PackedBytes);Array.Copy(snapshot.Traffic.Visits,Traffic.Visits,TileTraffic.Bytes);}
-        string[] phrases={"tails up","little leaf","sky high","soft paws","dig deep","good cheer"};
         for(int i=0;i<SavedVillagerCount;i++){
             int x=10+i*11+(i==3?3:0);string name=VillagerNames.Generate(seed,i);
             bool duplicate;do{duplicate=false;for(int j=0;j<i;j++)if(Residents[j].Name==name){name+="y";duplicate=true;break;}}while(duplicate);
-            Residents[i]=new Villager{Name=name,Phrase=phrases[i],X=x,Z=14,HomeX=x,HomeZ=10,PosX=x+.5f,PosZ=14.5f};
+            Residents[i]=new Villager{Name=name,Phrase=VillagerNames.DefaultPhrase(i),X=x,Z=14,HomeX=x,HomeZ=10,PosX=x+.5f,PosZ=14.5f};
         }
         for(int i=0;i<Ground.Length;i++)Ground[i]=new GroundItem();
         for(int i=0;i<Placed.Length;i++)Placed[i]=new Placement();

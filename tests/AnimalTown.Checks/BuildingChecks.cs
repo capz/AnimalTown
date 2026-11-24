@@ -1,4 +1,5 @@
 using AnimalTown;
+using AnimalTown.Jobs;
 internal static class BuildingChecks
 {
     internal static void Run(Action<bool,string> check)
@@ -60,7 +61,7 @@ internal static class BuildingChecks
         check(entered==63&&left==63,"all six NPCs enter and leave homes while player remains indoors");
         check(resumed==63,"every villager resumes its saved outdoor waypoint after the visit");
         check(journeyState.Space==16,"NPC journeys never switch the player's room");
-        var visitors=new[]{new SavedVisitor(171UL,0,"Juniper","hello",2,0,0),new SavedVisitor(283UL,1,"Sorrel","hiya",3,0,0)};
+        var visitors=new[]{new SavedVisitor(171,0,new JobIdentity(171,1),"Juniper","hello",2,0),new SavedVisitor(283,1,new JobIdentity(283,2),"Sorrel","hiya",3,0)};
         int everyone=(1<<Town.NpcActorCount)-1,peakCrowd=0;
         foreach(int seed in new[]{204,931,911,912}){
             var generated=new GameState(seed){Space=16,X=2,Z=2};generated.SetTownVisitors(visitors);

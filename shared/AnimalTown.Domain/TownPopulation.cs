@@ -13,7 +13,7 @@ public sealed partial class Town
     private sealed class VisitorSlots
     {
         internal readonly bool KeepLegacyResident;
-        internal readonly SavedVisitor[] Profiles=new SavedVisitor[VisitorCount];
+        internal readonly SavedVisitor[] Records=new SavedVisitor[VisitorCount];
         internal readonly Villager?[] Actors=new Villager?[VisitorCount];
         internal VisitorSlots(bool keepLegacyResident){KeepLegacyResident=keepLegacyResident;}
     }
@@ -30,24 +30,25 @@ public sealed partial class Town
     }
 
     internal SavedVisitor? VisitorAt(int npc)=>(uint)(npc-LocalResidentCount)<VisitorCount&&visitors?.Actors[npc-LocalResidentCount]!=null
-        ?visitors.Profiles[npc-LocalResidentCount]:null;
+        ?visitors.Records[npc-LocalResidentCount]:null;
 
-    internal void ConfigureVisitors(GameState state,SavedVisitor[] profiles,bool keepLegacy)
+    internal void ConfigureVisitors(GameState state,SavedVisitor[] candidates,bool keepLegacy)
     {
         var current=new VisitorSlots(keepLegacy);
         visitors=current;
         int slot=keepLegacy?1:0;
-        int limit=state.Visiting?1:VisitorCount;
-        for(int i=0,count=0;i<profiles.Length&&count<limit&&slot<VisitorCount;i++){
-            var profile=profiles[i];
-            if(profile.TownId==0||profile.TownId==Jobs.TownId||(uint)profile.Slot>=GameState.ProfileCount||
-                (uint)profile.Species>=ModelResidencyDemand.SpeciesCount||string.IsNullOrEmpty(profile.Name))continue;
-            if(state.Visiting&&Jobs.Trip.Home==profile.TownId&&Jobs.Trip.HomeProfile==profile.Slot)continue;
-            if(slot>0&&current.Profiles[0].TownId==profile.TownId&&current.Profiles[0].Slot==profile.Slot)continue;
+        int limit=state.Visiting?VisitorCount-1:VisitorCount;
+        for(int i=0,count=0;i<candidates.Length&&count<limit&&slot<VisitorCount;i++){
+            var saved=candidates[i];
+            if(saved.TownId==0||saved.TownId==Jobs.TownId||(uint)saved.Slot>=SavedVillagerCount||
+                !saved.Identity.IsValid||(uint)saved.Species>=ModelResidencyDemand.SpeciesCount||string.IsNullOrEmpty(saved.Name))continue;
+            if(Jobs.FindNpc(saved.Identity)>=0||Jobs.FindPlayer(saved.Identity)>=0||Jobs.PermanentlyRemoved(saved.Identity))continue;
+            var first=current.Records[0];
+            if(slot>0&&(first.Identity==saved.Identity||first.TownId==saved.TownId&&first.Slot==saved.Slot))continue;
             if(!TryVisitorSpawn(state,out int x,out int z))break;
-            var visitor=new Villager{Name=profile.Name,Phrase=profile.Catchphrase,HomeX=-1,HomeZ=-1};
+            var visitor=new Villager{Name=saved.Name,Phrase=saved.Catchphrase,HomeX=-1,HomeZ=-1};
             SetOutdoor(visitor,x,z);
-            current.Profiles[slot]=profile;
+            current.Records[slot]=saved;
             current.Actors[slot]=visitor;
             slot++;count++;
         }

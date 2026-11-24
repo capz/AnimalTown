@@ -1,4 +1,5 @@
 using AnimalTown;
+using AnimalTown.Jobs;
 
 internal static class IncrementalSaveChecks
 {
@@ -119,40 +120,53 @@ internal static class IncrementalSaveChecks
     private static void VisitorProjections(Action<bool,string> check)
     {
         const ulong sourceTown=61712,localTown=89315;
-        var source=Town();source.Name="Quinn";source.Catchphrase="good morning";source.Species=3;source.Palette=5;source.Shirt=Catalog.WorkShirt;
-        source.SelectProfile(2);source.Name="Parker";
-        source.SelectProfile(3);source.Name="Harper";
-        source.SelectProfile(0);source.EnsureJobIdentities(sourceTown);
+        var source=Town();source.Name="HumanPlayer";
+        for(int profile=1;profile<GameState.ProfileCount;profile++)source.SelectProfile(profile);
+        source.SelectProfile(0);
+        source.ResidentJobs.Enable(sourceTown,JobCalendar.At(2027,7,15,12));
+        check(source.ResidentJobs.ReplaceResident(0,"Quinn","tails up",3,JobPersonality.Normal,Catalog.WorkShirt).Result==JobResult.Ok,"replacement supplies a saved resident with a non-default species and outfit");
+        var ledger=source.Town.Jobs;ledger.EnsureMail();
+        JobMaximumFixture.Fill(source,string.Concat(Enumerable.Repeat("\U0001f642",1000)));
         var disk=new Disk();var repo=new SaveRepository(disk);repo.Save(source);disk.Reset();
         var committed=disk.Copy();
         var visitors=repo.ReadVisitors(localTown);
-        check(visitors.Length==2&&visitors[0].TownId==sourceTown&&visitors[0].Slot==0&&visitors[1].Slot==2,"read-only visits project at most two distinct created profiles and skip empty slots");
-        check(visitors[0].Name=="Quinn"&&visitors[0].Catchphrase=="good morning"&&visitors[0].Species==3&&visitors[0].Palette==5&&visitors[0].Shirt==Catalog.WorkShirt,
-            "visitor appearance comes from the committed profile");
-        var others=repo.ReadVisitors(localTown,sourceTown,0);
-        check(others.Length==2&&others[0].Slot==2&&others[1].Slot==3,"an excluded travelling profile does not appear again as a passive visitor");
-        check(repo.ReadVisitors(localTown,localTown,0,1).Single().Slot==0&&repo.ReadVisitors(localTown,limit:0).Length==0,"visitor limits and exclusions apply to the matching source town");
+        check(visitors.Length==2&&visitors[0].TownId==sourceTown&&visitors[0].Slot==0&&visitors[1].Slot==1,"read-only projection defaults to two ordinary saved NPCs");
+        check(visitors[0].Name=="Quinn"&&visitors[0].Identity==ledger.Npc(0)&&visitors[0].Catchphrase=="tails up"&&visitors[0].Species==3&&visitors[0].Outfit==Catalog.WorkShirt,
+            "resident identity and appearance come from the committed records even with a full jobs ledger");
+        var all=repo.ReadVisitors(localTown,AnimalTown.Town.LocalResidentCount);
+        check(all.Length==AnimalTown.Town.LocalResidentCount&&all.All(v=>v.Name!="HumanPlayer"&&v.Slot<AnimalTown.Town.LocalResidentCount),"only the normal town residents are candidates even when the source holds four player profiles");
+        check(repo.ReadVisitors(localTown,limit:1).Single().Slot==0&&repo.ReadVisitors(localTown,limit:0).Length==0,"visitor loading honors the requested cap");
         check(repo.ReadVisitors(sourceTown).Length==0,"a copy of the current town supplies no visitors");
         check(disk.Names.Count==0&&disk.Files.Count==committed.Files.Count&&committed.Files.All(f=>disk.Files[f.Key].SequenceEqual(f.Value)),
             "projecting visitors leaves every source card file byte-identical");
+        var moving=repo.Load()!;var roster=moving.Town.Jobs;
+        roster.NpcMove=new OfflineNpcMove{Id=roster.Allocate(),FirstTown=sourceTown,SecondTown=localTown,FirstSlot=0,SecondSlot=3,FirstSide=true,Phase=1,
+            First=new MovingResident{Id=roster.Npc(0)},Second=new MovingResident{Id=new JobIdentity(localTown,4)}};
+        var moveDisk=disk.Copy();var moveRepo=new SaveRepository(moveDisk);moveRepo.Save(moving);
+        check(moveRepo.ReadVisitors(localTown,AnimalTown.Town.LocalResidentCount).Select(v=>v.Slot).SequenceEqual(new[]{1,2,3,4}),"a resident in an unsettled exchange is skipped without shifting other saved identities");
         var interrupted=disk.Copy();interrupted.CutAt=2;
-        var candidate=repo.Load()!;candidate.Name="Unpublished";
+        var candidate=repo.Load()!;candidate.Town.Residents[0].Name="Unpublished";
         check(Fails(()=>new SaveRepository(interrupted).Save(candidate))&&new SaveRepository(interrupted).ReadVisitors(localTown)[0].Name=="Quinn",
-            "unpublished profile changes never appear as visitors");
+            "unpublished resident changes never appear as visitors");
         interrupted.CutAt=0;new SaveRepository(interrupted).Save(candidate);
-        string profile0=SplitSaveCodec.FileName(SplitSaveCodec.PlayerVillager,0),profile1=SplitSaveCodec.FileName(SplitSaveCodec.PlayerVillager,1);
-        interrupted.Files[profile0][32]^=1;
-        check(new SaveRepository(interrupted).ReadVisitors(localTown)[0].Name=="Unpublished","a damaged profile bank falls back to its committed mirror");
-        interrupted.Files[profile1][32]^=1;
+        string town0=SplitSaveCodec.FileName(SplitSaveCodec.TownData,0),town1=SplitSaveCodec.FileName(SplitSaveCodec.TownData,1);
+        interrupted.Files[town0][32]^=1;
+        check(new SaveRepository(interrupted).ReadVisitors(localTown)[0].Name=="Unpublished","a damaged town bank falls back to its committed mirror");
+        interrupted.Files[town1][32]^=1;
         check(new SaveRepository(interrupted).ReadVisitors(localTown).Length==0&&new SaveRepository(new Disk()).ReadVisitors(localTown).Length==0,
             "damaged or missing saves leave visitor slots empty");
         var legacy=new Disk();var parts=SplitSaveCodec.Encode(source);
         for(int i=0;i<parts.Length;i++)legacy.Files[SplitSaveCodec.FileName(SplitSaveCodec.RecordKind(i),1)]=parts[i];
         legacy.Files[SplitSaveCodec.FileName(SplitSaveCodec.Commit,1)]=SplitSaveCodec.EncodeCommit(source,parts);
         check(new SaveRepository(legacy).ReadVisitors(localTown,limit:1).Single().Name=="Quinn"&&legacy.Names.Count==0,
-            "older committed split profiles can visit without their cards being migrated");
+            "older committed split towns can supply their saved NPCs without a card migration");
+        var withoutLedger=Town();withoutLedger.Sequence=source.Sequence+1;
+        var noRoster=committed.Copy();parts=SplitSaveCodec.Encode(withoutLedger);
+        for(int i=0;i<parts.Length;i++)noRoster.Files[SplitSaveCodec.FileName(SplitSaveCodec.RecordKind(i),0)]=parts[i];
+        noRoster.Files[SplitSaveCodec.FileName(SplitSaveCodec.Commit,0)]=SplitSaveCodec.EncodeCommit(withoutLedger,parts);
+        check(new SaveRepository(noRoster).ReadVisitors(localTown).Length==0,"a newer valid commit without saved identities supersedes an older visitor roster");
         var combined=new Disk();combined.Files["AnimalTown0"]=SaveCodec.Encode(source);
-        check(new SaveRepository(combined).ReadVisitors(localTown).Length==0,"an older combined save supplies no unverified separate visitor profile");
+        check(new SaveRepository(combined).ReadVisitors(localTown).Length==0,"combined legacy files do not supply an unverified visitor roster");
     }
     private static void SnowTransactions(Action<bool,string> check)
     {

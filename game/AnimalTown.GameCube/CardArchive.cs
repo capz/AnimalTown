@@ -122,6 +122,19 @@ internal sealed class CardArchive
         var bytes=Read(name);if(count<0||count>8192||count>length||length<32||bytes.Length!=length||Number(bytes,16)!=sequence||(uint)Number(bytes,length-4)!=checksum||SaveCodec.Crc(bytes,0,length-4)!=checksum)throw new IOException("Legacy prefix reference differs");
         var prefix=new byte[count];Array.Copy(bytes,prefix,count);return prefix;
     }
+    private sealed class LooseRecordWords : ISaveWordReader
+    {
+        private readonly byte[] bytes;
+        internal LooseRecordWords(byte[] bytes){this.bytes=bytes;}
+        public int ReadWord(int byteOffset)=>Number(bytes,byteOffset);
+    }
+    internal ISaveWordReader OpenVerifiedRecord(string name,int sequence,int length,uint checksum)
+    {
+        if(Published)return store!.OpenVerifiedRecord(name,sequence,length,checksum);
+        var bytes=Read(name);
+        if(length<32||bytes.Length!=length||Number(bytes,16)!=sequence||(uint)Number(bytes,length-4)!=checksum||SaveCodec.Crc(bytes,0,length-4)!=checksum)throw new IOException("Legacy record reference differs");
+        return new LooseRecordWords(bytes);
+    }
     private void WriteShared(string name,byte[] bytes)
     {
         try{store!.Write(name,bytes);}

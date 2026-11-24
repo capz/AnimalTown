@@ -113,6 +113,31 @@ internal sealed class TownCardRecords : AnimalTown.ISaveStorage
         if((int)Hash(bytes,0,length)!=Get(root,at+44))throw new IOException("Card record checksum failed");return bytes;
     }
     private static readonly uint[] crcNibbles={0,0x1db71064,0x3b6e20c8,0x26d930ac,0x76dc4190,0x6b6b51f4,0x4db26158,0x5005713c,0xedb88320,0xf00f9344,0xd6d6a3e8,0xcb61b38c,0x9b64c2b0,0x86d3d2d4,0xa00ae278,0xbdbdf21c};
+    private sealed class RecordWords : AnimalTown.ISaveWordReader
+    {
+        private readonly ICardBlockStorage storage;
+        private readonly int start,length;
+        private readonly byte[] sector=new byte[BlockBytes];
+        private int cached=-1;
+        internal RecordWords(ICardBlockStorage storage,int start,int length){this.storage=storage;this.start=start;this.length=length;}
+        public int ReadWord(int byteOffset)
+        {
+            if(byteOffset<0||byteOffset>length-4)throw new IOException("Truncated card record");
+            int word=0,offset=start+byteOffset;
+            for(int i=0;i<4;i++,offset++){
+                int block=offset/BlockBytes;
+                if(cached!=block){storage.Read(block,sector);cached=block;}
+                word|=sector[offset%BlockBytes]<<(i*8);
+            }
+            return word;
+        }
+    }
+    internal AnimalTown.ISaveWordReader OpenVerifiedRecord(string name,int sequence,int length,uint checksum)
+    {
+        if(!Matches(name,null,sequence,length,checksum,false))throw new IOException("Card record reference differs");
+        int record=At(Find(name));
+        return new RecordWords(storage,Get(root,record+32)*BlockBytes+Get(root,record+36),length);
+    }
     internal int Length(string name)
     {Alive();Key(name);int index=Find(name);if(index<0)throw new FileNotFoundException(name);return Get(root,At(index)+40);}
     internal byte[] ReadVerifiedPrefix(string name,int count,int sequence,int length,uint checksum)

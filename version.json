@@ -340,6 +340,15 @@
       ]
     },
     {
+      "id": "saved-npc-visitors-live-player-control",
+      "lines": [
+        "NPC visitors come from the other memory card, while player villagers travel under live control.",
+        "Up to two saved NPC villagers can join a town when the local player is at the controls.",
+        "A player travelling from the other town leaves room for one visiting NPC.",
+        "Visiting NPCs follow town routines and use the appearance saved on their own card."
+      ]
+    },
+    {
       "id": "shallow-water-riverbed-wallpaper-20261124",
       "lines": [
         "See sandy riverbeds and scattered stones beneath clear turquoise water.",

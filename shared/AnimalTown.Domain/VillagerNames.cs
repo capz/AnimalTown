@@ -2,6 +2,9 @@ namespace AnimalTown;
 
 public static class VillagerNames
 {
+    internal static string DefaultPhrase(int slot)=>slot switch{
+        0=>"tails up",1=>"little leaf",2=>"sky high",3=>"soft paws",4=>"dig deep",_=>"good cheer"
+    };
     public static string Generate(int seed,int model)
     {
         string[] first={"Am","Bel","Cor","Da","Em","Fen","Gil","Haz","Ivy","Jun","Kel","Lin","Mar","Nor","Or","Pip","Quin","Ros","Syl","Tor","Val","Wil"};
