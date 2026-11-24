@@ -3,6 +3,8 @@
 World simulation and collision do not depend on visual residency. Reclamation
 runs between completed GPU frames and keeps current scenes and both ends of
 the player's doorway pinned.
+Waiting for visual restoration does not consume the doorway's traffic timeout;
+crowding and stale-location checks still cancel invalid crossings.
 
 ## System memory admission
 

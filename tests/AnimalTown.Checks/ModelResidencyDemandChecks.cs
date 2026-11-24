@@ -84,11 +84,11 @@ internal static class ModelResidencyDemandChecks
         var gated=new GameState(204){HousePlaced=true};BuildingWorld.Entrance(gated,1,out ex,out ez);gated.X=ex;gated.Z=ez;gated.Facing=(float)Math.PI;
         for(int i=0;i<6;i++){gated.Town.Residents[i].Space=0;gated.Town.Residents[i].PosX=100+i;gated.Town.Residents[i].PosZ=100;}
         var portal=new PortalSystem();check(portal.ResourcesReady.All(x=>x)&&portal.Request(gated,0,1),"existing portal users start with rendering admission granted");
-        portal.ResourcesReady[0]=false;for(int i=0;i<90;i++)portal.Tick(gated);
-        check(portal.Actors[0].Phase==DoorPhase.Waiting&&gated.Space==0&&gated.X==ex,"pending restore cannot open or commit a doorway");
+        portal.ResourcesReady[0]=false;for(int i=0;i<PortalSystem.MaximumWait*3+1;i++)portal.Tick(gated);
+        check(portal.Actors[0].Phase==DoorPhase.Waiting&&portal.Actors[0].Wait==0&&gated.Space==0&&gated.X==ex,"restore work exceeding the traffic timeout stays pending without opening, committing or spending traffic wait");
         portal.ResourcesReady[0]=true;for(int i=0;i<PortalSystem.CommitTick-1;i++)portal.Tick(gated);
-        portal.ResourcesReady[0]=false;for(int i=0;i<10;i++)portal.Tick(gated);
-        check(portal.Actors[0].Tick==PortalSystem.CommitTick-1&&gated.Space==0,"lost readiness also protects the atomic commit boundary");
+        portal.ResourcesReady[0]=false;for(int i=0;i<PortalSystem.MaximumWait*3+1;i++)portal.Tick(gated);
+        check(portal.Busy(0)&&portal.Actors[0].Tick==PortalSystem.CommitTick-1&&portal.Actors[0].Wait==0&&gated.Space==0,"lost readiness exceeding the traffic timeout keeps the original atomic commit boundary pending");
         portal.ResourcesReady[0]=true;portal.Tick(gated);
         check(gated.Space==16&&portal.Actors[0].Committed,"successful restoration admits the original destination exactly once");
         var restored=SaveCodec.Decode(SaveCodec.Encode(gated));check(restored.Space==16,"resource admission does not change persistent space semantics");

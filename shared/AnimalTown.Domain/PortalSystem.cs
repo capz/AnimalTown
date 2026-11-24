@@ -87,8 +87,10 @@ public sealed class PortalSystem
             var expected=t.Committed?t.Destination:t.Source;
             if(ox!=t.OriginX||oz!=t.OriginZ||s.BuildingTypes[t.Building]!=t.Type||!Ready[t.Type]||Distance(current.X,current.Z,expected.X,expected.Z)>.01f){Cancel(actor);continue;}
             if(t.Phase==DoorPhase.Waiting){
-                if(++t.Wait>MaximumWait){Cancel(actor);continue;}
                 if(!ResourcesReady[actor])continue;
+                // Resource preparation can span many bounded frame grants.
+                // Only blocked traffic spends the doorway's cancellation time.
+                if(++t.Wait>MaximumWait){Cancel(actor);continue;}
                 if(actor==0&&t.Destination.Space.IsTown){
                     if(!ClearPlayerExit(s,t))continue;
                     if(owners[t.Building]>0)Cancel(owners[t.Building]);
@@ -100,7 +102,8 @@ public sealed class PortalSystem
                 t.Source=new ActorLocation(t.Source.Space.Value,t.Source.X,t.Source.Z,t.Source.Space.IsTown?(float)Math.PI:0);BuildingWorld.SetLocation(s,actor,t.Source);
             }
             if(++t.Tick==CommitTick){
-                if(!ResourcesReady[actor]||(actor==0&&t.Destination.Space.IsTown?!ClearPlayerExit(s,t):!CorridorClear(s,actor,t))
+                if(!ResourcesReady[actor]){t.Tick--;continue;}
+                if((actor==0&&t.Destination.Space.IsTown?!ClearPlayerExit(s,t):!CorridorClear(s,actor,t))
                     ||!BuildingWorld.CanStand(s,t.Destination.Space.Value,t.Destination.X,t.Destination.Z,actor,true)){
                     t.Tick--;if(++t.Wait>MaximumWait)Cancel(actor);continue;
                 }

@@ -59,7 +59,8 @@ internal sealed class BuildingRenderer : IDisposable
                 LoadingLabel="Loading "+name;
                 if(Memory!=null&&!Memory.TryReserve(PartPeakBytes,Clock.Timestamp,true,out memoryTicket))return false;
                 pendingFailureCount=Memory?.FailureCount??0;
-                pending=Model.LoadAsync(TexturePolicy.ModelPath(name,TextureResolution.Size128),default,ModelBudgetBytes);return false;
+                pending=Model.LoadAsync(TexturePolicy.ModelPath(name,TextureResolution.Size128),default,ModelBudgetBytes);
+                Dolphin.Diagnostics.DebugOverlay.WriteLine("ANIMALTOWN BUILDING PART BEGIN type "+loadType+" part "+loadPart+" required 1");return false;
             }
             if(!pending.IsCompleted)return false;
             int slot=loadType*PartsPerDefinition+loadPart;models[slot]=pending.GetAwaiter().GetResult();
@@ -68,6 +69,7 @@ internal sealed class BuildingRenderer : IDisposable
             ownedBytes[slot]=models[slot]!.NativeBytes+parts[slot]!.NativeBytes;ResidentBytes+=ownedBytes[slot];
             if(ResidentBytes>768*1024)throw new InvalidOperationException("Building resident memory budget");
             Memory?.Complete(memoryTicket);memoryTicket=0;
+            Dolphin.Diagnostics.DebugOverlay.WriteLine("ANIMALTOWN BUILDING PART READY type "+loadType+" part "+loadPart+" required 1 bytes "+ownedBytes[slot]);
             loadPart++;if(loadPart==PartsPerDefinition)ready[loadType]=true;
         }catch(Exception error){
             for(int i=0;i<PartsPerDefinition;i++)ReleasePart(loadType*PartsPerDefinition+i);
@@ -161,6 +163,7 @@ internal sealed class BuildingRenderer : IDisposable
                 ownedBytes[slot]=models[slot]!.NativeBytes+parts[slot]!.NativeBytes;ResidentBytes+=ownedBytes[slot];
                 if(ResidentBytes>768*1024)throw new InvalidOperationException("Building resident memory budget");
                 Memory?.Complete(memoryTicket);memoryTicket=0;
+                Dolphin.Diagnostics.DebugOverlay.WriteLine("ANIMALTOWN BUILDING PART READY type "+type+" part "+slot%PartsPerDefinition+" required "+(required[type]?1:0)+" bytes "+ownedBytes[slot]);
             }catch(Exception error){
                 pending=null;loaded?.Dispose();ReleasePart(slot);retryAt[type]=now+RetryDelayUs;
                 Memory?.Cancel(memoryTicket);memoryTicket=0;
@@ -177,6 +180,7 @@ internal sealed class BuildingRenderer : IDisposable
                     pendingFailureCount=Memory?.FailureCount??0;
                     pending=Model.LoadAsync(TexturePolicy.ModelPath(PartName(BuildingCatalog.Get(type),part),TextureResolution.Size128),default,ModelBudgetBytes);
                     residencySlot=type*PartsPerDefinition+part;
+                    Dolphin.Diagnostics.DebugOverlay.WriteLine("ANIMALTOWN BUILDING PART BEGIN type "+type+" part "+part+" required "+(required[type]?1:0));
                 }catch(Exception error){Memory?.Cancel(memoryTicket);memoryTicket=0;if(AllocationEvidence(error,now))Memory?.AllocationFailed(PartPeakBytes,now);retryAt[type]=now+RetryDelayUs;Dolphin.Diagnostics.DebugOverlay.WriteLine("ANIMALTOWN BUILDING RESIDENCY ADMISSION "+type+": "+error.Message);}
                 return;
             }
