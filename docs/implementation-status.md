@@ -6,6 +6,11 @@ the GDD. The technical baseline was committed/pushed first as `0064efd`.
 The [multiplayer implementation status and next phase](multiplayer-first-slice.md)
 track the current online backend and the agreed design for live visits.
 
+The [24 November 2026 source audit and Codex implementation
+brief](networking-implementation-plan.md) records the earlier koban/transaction
+baseline and the implementation plan. Counts and general feature lists in this
+older status document are historical rather than current validation claims.
+
 ## Implemented foundation
 
 * Pinned Hypercube and DolphinDotNet NuGet packages, separate console and

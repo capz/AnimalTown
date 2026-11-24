@@ -100,6 +100,12 @@ review. The implemented undo covers still-unclaimed visitor removals; it is
 not a rollback of every addition, movement or whole online visit. Those broader
 networking and review lifecycles require a separate change.
 
+The remaining work is indexed in the
+[Codex networking implementation brief](networking-implementation-plan.md).
+It specifies the additional journal, dependency reservations and owner review
+needed to preserve undo rights throughout a live visit. Those are planned
+extensions; the current recovery behavior above remains the implemented scope.
+
 ## Verification
 
 Focused checks cover building identity, entry/exit, fixture collision, safe old
