@@ -4,17 +4,23 @@ namespace AnimalTown;
 // the final clip/time once, so catch-up ticks do not reskin intermediate poses.
 public sealed class AnimationFrameClock
 {
-    private readonly int[] clips;private readonly float[] elapsed;
-    public AnimationFrameClock(int actors){clips=new int[actors];elapsed=new float[actors];for(int i=0;i<actors;i++)clips[i]=-1;}
+    private readonly int[] clips,ticks;private readonly float[] elapsed;
+    public AnimationFrameClock(int actors){clips=new int[actors];ticks=new int[actors];elapsed=new float[actors];for(int i=0;i<actors;i++)clips[i]=-1;}
     public int Clip(int actor)=>clips[actor];
-    public void Reset(int actor){clips[actor]=-1;elapsed[actor]=0;}
+    public void Reset(int actor){clips[actor]=-1;elapsed[actor]=0;ticks[actor]=0;}
     public void Step(int actor,int clip,bool advance)
     {
-        if(clips[actor]!=clip){clips[actor]=clip;elapsed[actor]=0;}
-        if(advance&&clip>=0)elapsed[actor]+=1f/30;
+        if(clips[actor]!=clip){clips[actor]=clip;elapsed[actor]=0;ticks[actor]=0;}
+        if(advance&&clip>=0){elapsed[actor]+=1f/30;ticks[actor]++;}
     }
     public float Consume(int actor)=>Consume(actor,true);
     // Hidden elapsed time is discarded, never accumulated into a costly
     // catch-up pose when a room/camera/doorway makes the actor visible again.
-    public float Consume(int actor,bool visible){float seconds=elapsed[actor];elapsed[actor]=0;return visible?seconds:0;}
+    public float Consume(int actor,bool visible)=>Consume(actor,visible,1);
+    public float Consume(int actor,bool visible,int stride)
+    {
+        if(!visible){elapsed[actor]=0;ticks[actor]=0;return 0;}
+        if(ticks[actor]<Math.Max(1,stride))return 0;
+        float seconds=elapsed[actor];elapsed[actor]=0;ticks[actor]=0;return seconds;
+    }
 }

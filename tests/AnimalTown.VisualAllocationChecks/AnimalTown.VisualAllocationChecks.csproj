@@ -1,0 +1,8 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup><OutputType>Exe</OutputType></PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../shared/AnimalTown.Domain/AnimalTown.Domain.csproj" />
+    <Compile Include="../../game/AnimalTown.GameCube/LowPolyTrees.cs" Link="LowPolyTrees.cs" />
+    <Compile Include="../../game/AnimalTown.GameCube/DroppedItemRenderer.cs" Link="DroppedItemRenderer.cs" />
+  </ItemGroup>
+</Project>

@@ -9,6 +9,12 @@ if(@($plan.native | Where-Object {$_ -in @('texture','voices','shadows','patched
 function Run([string]$file,[string[]]$arguments){& $file @arguments;if($LASTEXITCODE){throw "$file checks failed"}}
 if($plan.rendering.Count){Run dotnet @('run','--project','tests/AnimalTown.RenderingChecks','-c','Release','--','--suites',($plan.rendering -join ','))}
 if($plan.managed.Count){Run dotnet @('run','--project','tests/AnimalTown.Checks','-c','Release','--','--suites',($plan.managed -join ','))}
+if('core' -in $plan.managed){
+    Run dotnet @('run','--project','tests/AnimalTown.MemoryChecks','-c','Release')
+    Run dotnet @('run','--project','tests/AnimalTown.FloorResidencyChecks','-c','Release')
+    Run dotnet @('run','--project','tests/AnimalTown.SnowResidencyChecks','-c','Release')
+    Run dotnet @('run','--project','tests/AnimalTown.VisualAllocationChecks','-c','Release')
+}
 if('card' -in $plan.native){Run dotnet @('run','--project','tests/AnimalTown.CardChecks','-c','Release')}
 if('card' -in $plan.native){Run dotnet @('run','--project','vendor/card-store-sdk/tests/CardRecordStoreTests','-c','Release')}
 if($plan.tooling.Count){

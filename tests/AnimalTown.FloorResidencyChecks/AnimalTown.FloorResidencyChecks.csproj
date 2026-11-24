@@ -1,0 +1,7 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup><OutputType>Exe</OutputType></PropertyGroup>
+  <ItemGroup>
+    <Compile Include="../../game/AnimalTown.GameCube/TerrainRenderer.Textures.cs" Link="TerrainRenderer.Textures.cs" />
+    <Compile Include="../../shared/AnimalTown.Domain/VisualMemoryPressure.cs" Link="VisualMemoryPressure.cs" />
+  </ItemGroup>
+</Project>

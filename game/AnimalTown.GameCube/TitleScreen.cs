@@ -306,7 +306,7 @@ internal sealed partial class TitleScreen : IDisposable,Hypercube.GameCube.IFram
             case DevConfig.GroundMipBandsIndex:return "Ground mip bands: "+toggle;
             case 24:return "Freeze landscape motion: "+toggle;case 25:return "Recreate terrain meshes: "+toggle;
             case 26:return "Legacy ground ring: "+toggle;
-            default:return "discard terrain cache when indoors: "+toggle;
+            default:throw new InvalidOperationException("Unknown debug setting");
         }
     }
     public void Dispose(){cardHeading?.Release();optionsHeading?.Release();background.Dispose();TextureCache.Release(logo);font.Release();ui.Dispose();TextureCache.TrimUnused();}

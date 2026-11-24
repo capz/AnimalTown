@@ -11,7 +11,7 @@ if(Wants("services"))RenderingServiceChecks.Run(Check);
 if(Wants("movement"))MovementTerrainChecks.Run(Check);
 if(Wants("ground"))GroundRingChecks.Run(Check);
 if(Wants("index"))TerrainIndexChecks.Run(Check);
-if(Wants("visibility"))ActorVisibilityChecks.Run(Check);
+if(Wants("visibility")){ActorVisibilityChecks.Run(Check);VillagerLodChecks.Run(Check);}
 if(Wants("attention"))AttentionGeometryChecks.Run(Check);
 if(Wants("dropped-item"))DroppedItemChecks.Run(Check);
 Console.WriteLine(count+" rendering service checks passed; suites: "+string.Join(",",selected));

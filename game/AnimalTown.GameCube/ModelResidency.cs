@@ -42,6 +42,10 @@ internal sealed class ModelResidency
     // speculative work when several species need the single ARAM transfer owner.
     private readonly byte[] priority=new byte[ModelResidencyDemand.SpeciesCount];
     private readonly bool[] startupAttempted=new bool[ModelResidencyDemand.SpeciesCount];
+    private readonly bool[] replacementLocked=new bool[ModelResidencyDemand.SpeciesCount];
+    private readonly int[] warmPeak=new int[ModelResidencyDemand.SpeciesCount];
+    internal VisualMemoryPressure? Memory;
+    private int memoryTicket;
     private int startupCheckpoint=-1;
     private Task? pending;
     private CancellationTokenSource? cancellation;
@@ -65,12 +69,32 @@ internal sealed class ModelResidency
         models[species]=model;lastRequired[species]=now;warmUntil[species]=now+WarmGraceUs;
         model.AutomaticResidencyProgress=false;
         model.ResidencyBytesPerStep=8192;model.ResidencyWorkItemsPerStep=32;
+        warmPeak[species]=checked(model.NativeBytes+512*1024+64*1024);
+    }
+    internal void RecordWarmPeak(int species,int instanceBytes)
+    {
+        if(instanceBytes<0||!Ready(species))throw new InvalidOperationException("Record complete warm model ownership");
+        warmPeak[species]=checked(models[species]!.NativeBytes+instanceBytes+64*1024);
+    }
+    internal int RestorePeak(int species)=>warmPeak[species];
+    internal bool TryLockReplacement(int species)
+    {
+        if(stopped||replacementLocked[species]||!Ready(species))return false;
+        replacementLocked[species]=true;return true;
+    }
+    internal void UnlockReplacement(int species)=>replacementLocked[species]=false;
+    internal void Replace(int species,Model replacement,long now)
+    {
+        if(stopped||!replacementLocked[species]||!Ready(species)||!replacement.IsResident||replacement.IsTransitioning)throw new InvalidOperationException("Invalid LOD replacement boundary");
+        replacement.AutomaticResidencyProgress=false;replacement.ResidencyBytesPerStep=8192;replacement.ResidencyWorkItemsPerStep=32;
+        models[species]=replacement;lastRequired[species]=now;warmUntil[species]=now+WarmGraceUs;
+        warmPeak[species]=checked(replacement.NativeBytes+512*1024+64*1024);
     }
     internal void Require(GameState state,PortalSystem doors,long now,bool pinAll=false,int targetSpace=-1)
     {
         if(stopped)return;
         outdoors=state.Space==0;
-        demand.Prepare(state,doors,pinAll||!Enabled,targetSpace);
+        demand.Prepare(state,doors,pinAll||!Enabled,targetSpace,Memory?.UnderPressure==true);
         byte otherPriority=3;
         for(int i=0;i<models.Length;i++){
             if(demand.Required[i])lastRequired[i]=now;
@@ -100,9 +124,15 @@ internal sealed class ModelResidency
     internal void Pump(long now,bool allowDemotion,long deadline)
     {
         if(stopped||Clock.Timestamp>=deadline)return;
-        if(!CompletePending(now,deadline)||RestoreRequired(now))return;
+        if(!CompletePending(now,deadline))return;
+        if(RestoreRequired(now)){
+            // A foreground restore denied by headroom must not prevent the
+            // optional resident models that consume that headroom retiring.
+            if(pending==null&&Memory?.UnderPressure==true)TryDemote(Candidate(now,false),now);
+            return;
+        }
         if(!Enabled){ReleaseWarmBacking();return;}
-        if(allowDemotion)TryDemote(Candidate(now,false),now);
+        if(allowDemotion||Memory?.UnderPressure==true)TryDemote(Candidate(now,false),now);
     }
     // Loading remains visible, but work still yields between bounded grants.
     // A checkpoint owns no disc load; it must settle its DMA before another
@@ -112,7 +142,11 @@ internal sealed class ModelResidency
         if(stopped)return false;
         if(startupCheckpoint!=checkpoint){Array.Clear(startupAttempted,0,startupAttempted.Length);startupCheckpoint=checkpoint;}
         Require(state,doors,now,pinAll);
-        if(Clock.Timestamp>=deadline||!CompletePending(now,deadline)||RestoreRequired(now))return false;
+        if(Clock.Timestamp>=deadline||!CompletePending(now,deadline))return false;
+        if(RestoreRequired(now)){
+            if(pending==null&&Memory?.UnderPressure==true){int release=Candidate(now,true);if(release>=0){startupAttempted[release]=true;TryDemote(release,now);}}
+            return false;
+        }
         if(!Enabled){ReleaseWarmBacking();return true;}
         int candidate;
         while((candidate=Candidate(now,true))>=0){
@@ -142,8 +176,9 @@ internal sealed class ModelResidency
             int species=active;bool wasRestore=restoring;bool failed=false;
             try{pending.GetAwaiter().GetResult();}
             catch(OperationCanceledException){ }
-            catch(Exception error){failed=true;Failures++;retryAt[species]=now+RetryDelayUs;DebugOverlay.WriteLine("ANIMALTOWN MODEL RESIDENCY RETRY "+species+": "+error.Message);}
+            catch(Exception error){failed=true;Failures++;retryAt[species]=now+RetryDelayUs;Memory?.AllocationFailed(warmPeak[species],now);DebugOverlay.WriteLine("ANIMALTOWN MODEL RESIDENCY RETRY "+species+": "+error.Message);}
             cancellation!.Dispose();cancellation=null;pending=null;active=-1;cancelRequested=false;
+            if(memoryTicket!=0){if(wasRestore&&model.IsResident)Memory!.Complete(memoryTicket);else Memory!.Cancel(memoryTicket);memoryTicket=0;}
             if(model.IsResident){
                 warmUntil[species]=now+WarmGraceUs;
                 if(wasRestore&&!failed){Restores++;RestoredBytes+=model.PackageBytes;DebugOverlay.WriteLine("ANIMALTOWN MODEL WARM "+species+" aram bytes "+model.AramBytes+" max advance us "+MaxAdvanceUs+" readiness waits "+ReadinessWaits+" portal wait ticks "+PortalWaits);}
@@ -168,8 +203,8 @@ internal sealed class ModelResidency
     private int Candidate(long now,bool startup)
     {
         int candidate=-1;
-        for(int i=0;i<models.Length;i++)if(models[i]!=null&&!demand.Required[i]&&models[i]!.SupportsAramResidency&&Ready(i)&&now>=retryAt[i]&&
-            (startup?!startupAttempted[i]:now-lastRequired[i]>=(outdoors?0:IdleDelayUs)&&now>=warmUntil[i])&&
+        for(int i=0;i<models.Length;i++)if(models[i]!=null&&!replacementLocked[i]&&!demand.Required[i]&&models[i]!.SupportsAramResidency&&Ready(i)&&now>=retryAt[i]&&
+            (startup?!startupAttempted[i]:Memory?.UnderPressure==true||now-lastRequired[i]>=(outdoors?0:IdleDelayUs)&&now>=warmUntil[i])&&
             (candidate<0||lastRequired[i]<lastRequired[candidate]))candidate=i;
         return candidate;
     }
@@ -208,17 +243,26 @@ internal sealed class ModelResidency
         catch(Exception error){Failures++;DebugOverlay.WriteLine("ANIMALTOWN MODEL RESIDENCY SHUTDOWN: "+error.Message);}
         finally{
             cancellation!.Dispose();cancellation=null;pending=null;active=-1;cancelRequested=false;
+            if(memoryTicket!=0){if(restoring&&model.IsResident)Memory!.Complete(memoryTicket);else Memory!.Cancel(memoryTicket);memoryTicket=0;}
         }
     }
     private void Start(int species,bool restore,long now)
     {
         long at=Clock.Timestamp;
+        // The package plus decoded native texture storage and all instance
+        // skin outputs can overlap during a restore. Reserve the whole bound
+        // before the asynchronous owner starts; optional lookahead cannot
+        // bypass global pressure while visible demand may use the reserve.
+        if(restore&&Memory!=null){
+            int estimate=warmPeak[species];
+            if(!Memory.TryReserve(estimate,now,priority[species]==0,out memoryTicket))return;
+        }
         var token=new CancellationTokenSource();
         try{
             hadBacking=models[species]!.AramBytes>0;
             var task=restore?models[species]!.PrepareAsync(token.Token):models[species]!.UnloadToAramAsync(token.Token);
             active=species;restoring=restore;cancelRequested=false;cancellation=token;pending=task;
-        }catch(Exception error){token.Dispose();Failures++;retryAt[species]=now+RetryDelayUs;DebugOverlay.WriteLine("ANIMALTOWN MODEL RESIDENCY ADMISSION "+species+": "+error.Message);}
+        }catch(Exception error){token.Dispose();if(memoryTicket!=0){Memory!.Cancel(memoryTicket);memoryTicket=0;}Failures++;retryAt[species]=now+RetryDelayUs;Memory?.AllocationFailed(warmPeak[species],now);DebugOverlay.WriteLine("ANIMALTOWN MODEL RESIDENCY ADMISSION "+species+": "+error.Message);}
         int elapsed=(int)(Clock.Timestamp-at);AdmissionUs+=elapsed;if(elapsed>MaxAdmissionUs)MaxAdmissionUs=elapsed;
     }
     private static int Round(int bytes)=>bytes==0?0:(bytes+31)&~31;

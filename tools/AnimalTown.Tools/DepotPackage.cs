@@ -60,14 +60,14 @@ internal static class DepotPackage
     internal static string[] Payload(string directory)
     {
         var files=new SortedSet<string>(StringComparer.Ordinal){
-            "default.dol","opening.bnr","BUILD.txt","version.md","version.json","content.id","runtime.cfg","terrain.cfg","buildings.bin",
+            "default.dol","opening.bnr","BUILD.txt","version.md","version.json","content.id","runtime.cfg","terrain.cfg","buildings.bin",ModelMemoryCooker.DiscName,
             "savebanner.rgb5a3","saveicon.rgb5a3","gorditas-bold.dndtex","gorditas-bold.metrics","Gorditas-OFL.txt","wordmark.dndtex","item-icons.dndtex",
             "splash-dolphindotnet.dndtex","splash-hypercube-engine.dndtex","cliff-soil.dndtex",PathAssets.DiscName,
             "THIRD-PARTY-NOTICES.txt","DolphinDotNet-LICENSE.txt","Hypercube-LICENSE.txt","Ryu-LICENSE.txt","ufbx-LICENSE.txt","DEPOT-README.txt"
         };
         foreach(string name in DroppedItemAssets.Names)files.Add(name+".dndtex");
         var models=new SortedSet<string>(new[]{"fox","bunny","giraffe","cat","hamster","spaniel","building","tent"},StringComparer.Ordinal);
-        foreach(string name in new[]{"fox","bunny","giraffe","cat","hamster","spaniel"})files.Add("picker-"+name+".dndtex");
+        foreach(string name in new[]{"fox","bunny","giraffe","cat","hamster","spaniel"}){files.Add("picker-"+name+".dndtex");files.Add(name+"-lod1-tex128.dndmodel");}
         BuildingCatalog.Configure(File.ReadAllBytes(At(directory,"buildings.bin")));
         for(int i=0;i<BuildingCatalog.Count;i++){
             var d=BuildingCatalog.Get(i);

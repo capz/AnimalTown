@@ -13,18 +13,18 @@ internal static class DevConfigChecks
         check(DevConfig.Decode(on.Encode()).Values[DevConfig.FullResolutionAaIndex]==1,"AA preference survives restart without changing the record size");
         var defaults=new DevConfig(7);check(defaults.RuntimeMode==7,"dev defaults preserve disc runtime profile");
         check(defaults.Values[DevConfig.GroundMipBandsIndex]==0,"terrain mip bands are opt-in");
-        check(defaults.Values[DevConfig.DiscardTerrainCacheWhenIndoorsIndex]==0,"indoor terrain cache discard is opt-in");
+        check(!DevConfig.IsSetting(DevConfig.RetiredTerrainCacheIndex),"automatic indoor terrain reclamation has no debug setting");
         // A record written before the terrain option existed. Keep accepting
         // the original checksum and preserve the previous startup options.
         var legacy=DevConfig.Decode(Convert.FromHexString("4154440100010000010101010200000000000000000000006400010000000000BFA20D87"));
         check(legacy.Values[1]==1&&legacy.Values[8]==2&&legacy.Values[20]==100&&legacy.Values[22]==1,"version-one dev config remains readable");
-        check(legacy.Values[DevConfig.DiscardTerrainCacheWhenIndoorsIndex]==0,"legacy saves keep terrain cache retention enabled");
+        check(legacy.Values[DevConfig.RetiredTerrainCacheIndex]==0,"legacy terrain preference remains readable as a retired byte");
         var previous=DevConfig.Decode(Convert.FromHexString("4154440200010000010101010200000000000000000000006400010000000016070000003360CDB9"));
         check(previous.Values[DevConfig.TreeNoiseStrength]==22&&previous.Values[DevConfig.TreeNoiseScale]==7,"published version-two tree settings remain readable");
-        check(previous.Values[DevConfig.DiscardTerrainCacheWhenIndoorsIndex]==0,"version-two files leave the new terrain option off");
+        check(previous.Values[DevConfig.RetiredTerrainCacheIndex]==0,"version-two files preserve the retired terrain padding");
         for(int row=0;row<DevConfig.Count;row++)if(DevConfig.IsSetting(row))defaults.Adjust(row,1);
         var encoded=defaults.Encode();var restored=DevConfig.Decode(encoded);
-        check(encoded[3]==5&&restored.Values[DevConfig.DiscardTerrainCacheWhenIndoorsIndex]==1&&restored.Values[DevConfig.GroundMipBandsIndex]==1,"terrain debug toggles persist in version-five dev config");
+        check(encoded[3]==5&&restored.Values[DevConfig.RetiredTerrainCacheIndex]==0&&restored.Values[DevConfig.GroundMipBandsIndex]==1,"retired terrain toggle is skipped while active diagnostics persist");
         check(defaults.Values.SequenceEqual(restored.Values),"all dev options survive their own save record");
         check(defaults.SdkPerformanceOverlay&&!restored.SdkPerformanceOverlay&&encoded[4+DevConfig.SdkPerformanceIndex]==0,"SDK overlay never enters a newly saved record");
         check(!SplitSaveCodec.IsFile("dev_config"),"dev config cannot be counted as a damaged town save");
@@ -39,7 +39,7 @@ internal static class DevConfigChecks
         check(original.Values[0]==1&&original.Values[20]==125&&original.Values[23]==4&&original.Values[18]==2,"v1 debug file keeps existing options during migration");
         var fixedDefaults=new DevConfig();
         check(fixedDefaults.RuntimeMode==4,"productive waits default off and trust frame clear defaults on");
-        foreach(int option in new[]{1,4,5,6,9,10,14,15,20,27,28}){
+        foreach(int option in new[]{1,4,5,6,9,10,14,15,20,27,28,29}){
             int beforeOption=fixedDefaults.Values[option];
             fixedDefaults.Adjust(option,1);fixedDefaults.Reset(option);
             check(!DevConfig.IsSetting(option)&&fixedDefaults.Values[option]==beforeOption,"retired settings cannot be selected or changed");

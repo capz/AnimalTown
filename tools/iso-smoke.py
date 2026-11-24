@@ -14,6 +14,9 @@ local lighting, explicit saves and the shared location after a title reload.
 
 --player-chat uses a disposable --chat-fixture card to exercise the controller
 keyboard, normal player speech, live debug gating and one resident attention cue.
+
+--aram-residency verifies automatic indoor terrain/floor reclamation, real
+model retire/restore cycles, rapid doorway reversal and the default after reboot.
 """
 import os
 import atexit
@@ -1849,7 +1852,7 @@ def card_dev_config(path):
     checksum=2166136261
     for value in payload[:checksum_at]:checksum=((checksum^value)*16777619)&0xffffffff
     if checksum!=struct.unpack_from('<I',payload,checksum_at)[0]:return None
-    return {'version':version,'values':list(payload[4:4+count]),'discard_terrain_cache_when_indoors':version>=3 and payload[33]==1,'full_resolution_aa':version>=4 and payload[34]==1,'ground_mip_bands':version>=5 and payload[35]==1}
+    return {'version':version,'values':list(payload[4:4+count]),'retired_terrain_cache_value':payload[33] if version>=3 else None,'full_resolution_aa':version>=4 and payload[34]==1,'ground_mip_bands':version>=5 and payload[35]==1}
 
 def aram_model_cycles(text,after):
     """Match real retire/restore pairs in the current town session only."""
@@ -1868,8 +1871,51 @@ def aram_model_cycles(text,after):
             'retired_species':sorted(retired),'restored_species':sorted(restored),
             'unrestored_species':sorted((retired-restored)|set(cold))}
 
+def terrain_residency_cycles(text,after=0):
+    """Validate physical cache/source ownership and complete doorway restores."""
+    import re
+    session=text.rfind('ANIMALTOWN GAME START')
+    if session<0:raise AssertionError('No traced town session for terrain residency evidence')
+    begin=max(session,after);cache=None;floor=None;restored_floor=None;cycles=[];cancelled=0
+    pattern=(r'ANIMALTOWN TERRAIN CACHE (?:SUSPENDED cache bytes (\d+) reclaimed bytes (\d+) archive bytes (\d+)'
+             r'|READY cache bytes (\d+) archive bytes (\d+))'
+             r'|ANIMALTOWN FLOOR (?:SUSPENDED owned bytes (\d+) -> (\d+) source bytes (\d+) reclaimed bytes (\d+)'
+             r'|RESTORED season (\d+) slots (\d+) owned bytes (\d+) source bytes (\d+))')
+    for event in re.finditer(pattern,text[begin:]):
+        offset=begin+event.start()
+        if event[1] is not None:
+            entry={'offset':offset,'cache_bytes':int(event[1]),'reclaimed_bytes':int(event[2]),'archive_bytes':int(event[3])}
+            if entry['cache_bytes']!=0 or entry['reclaimed_bytes']!=1048576 or entry['archive_bytes']<=0:
+                raise AssertionError('Terrain suspension did not physically reclaim exactly 1 MiB while retaining its archive')
+            if cache is not None:
+                if cache['archive_bytes']!=entry['archive_bytes']:raise AssertionError('Interrupted terrain restore changed its retained archive')
+                cancelled+=1
+            cache=entry
+        elif event[6] is not None:
+            entry={'offset':offset,'owned_before':int(event[6]),'owned_after':int(event[7]),
+                   'source_bytes':int(event[8]),'reclaimed_bytes':int(event[9])}
+            if entry['owned_before']<=0 or entry['owned_after']!=0 or entry['source_bytes']!=0 or entry['reclaimed_bytes']<entry['owned_before']:
+                raise AssertionError('Floor suspension retained native source bytes or failed to release its owning leases')
+            floor=entry;restored_floor=None
+        elif event[10] is not None:
+            entry={'offset':offset,'season':int(event[10]),'slots':int(event[11]),
+                   'owned_bytes':int(event[12]),'source_bytes':int(event[13])}
+            if not 0<=entry['season']<=3 or entry['slots']<=0 or entry['owned_bytes']<=0 or entry['source_bytes']!=entry['owned_bytes']:
+                raise AssertionError('Floor restore did not publish matching real owner/source residency')
+            if floor is not None:restored_floor=entry
+        else:
+            if cache is None:raise AssertionError('Terrain cache restore has no matching suspension in the observed route')
+            ready={'offset':offset,'cache_bytes':int(event[4]),'archive_bytes':int(event[5])}
+            if ready['cache_bytes']!=1048576 or ready['archive_bytes']!=cache['archive_bytes']:
+                raise AssertionError('Terrain cache restore changed the retained archive or failed to allocate exactly 1 MiB')
+            if floor is None or restored_floor is None or restored_floor['offset']>=offset:
+                raise AssertionError('Terrain cache became ready before its floor sources were restored')
+            cycles.append({'suspended':cache,'floor_suspended':floor,'floor_restored':restored_floor,'restored':ready})
+            cache=floor=restored_floor=None
+    return {'session_start':session,'cycles':cycles,'pending_cache':cache,'pending_floor':floor,'cancelled_restores':cancelled}
+
 def aram_residency_scenario():
-    """Real door/cache/model transitions, plus separate-card config roundtrips."""
+    """Default-on physical memory reclamation and real doorway/model cycles."""
     import re
     global p
     sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'docs/performance'))
@@ -1912,17 +1958,6 @@ def aram_residency_scenario():
             except AssertionError:time.sleep(.5)
             time.sleep(.2)
         raise AssertionError('ARAM door did not reach '+name)
-    def config(expected):
-        deadline=time.monotonic()+60
-        while time.monotonic()<deadline:
-            alive();value=card_dev_config(card)
-            if value and value['discard_terrain_cache_when_indoors']==expected:return value
-            time.sleep(.2)
-        raise AssertionError('Separate dev config item did not persist terrain option '+str(expected))
-    def title_terrain_row(name,pressed=press):
-        pressed('D_DOWN');pressed('D_DOWN');pressed('A');wait_title(modal=True)
-        # The appended session-only UI grain control follows persisted options.
-        pressed('D_UP');pressed('D_UP');screenshot(name+'.png') # config index 29
     def inspect(indoors=False):
         nonlocal building_inspections
         os.write(controller,b'PRESS L\nPRESS R\n');time.sleep(.2);press('A');os.write(controller,b'RELEASE L\nRELEASE R\n')
@@ -1953,11 +1988,7 @@ def aram_residency_scenario():
         guest(name+'-outdoor-settle',2)
 
     wait_title();initial=card_dev_config(card);report['initial_dev_config']=initial
-    title_terrain_row('aram-title-row29-baseline')
-    if initial and initial['discard_terrain_cache_when_indoors']:press('A')
-    press('B');wait_title()
-    if initial:config(False)
-    press('D_UP');press('D_UP');start_game(False,'aram')
+    start_game(False,'aram');set_debug_visibility(True)
     startup=[]
     for index,session in enumerate(logs().split('ANIMALTOWN GAME START')[1:]):
         terrain=session.find('ANIMALTOWN STARTUP TERRAIN READY')
@@ -1983,29 +2014,32 @@ def aram_residency_scenario():
     wait_log(r'Terrain archive: [0-9]+ ARAM bytes',session_start,seconds=300)
     wait_log(r'ANIMALTOWN ONBOARDING RELEASED',session_start,seconds=120)
     view('aram-game-started',False)
-    baseline=len(logs());enter('aram-flag-off');guest('flag-off-indoor-steady',16)
-    if 'ANIMALTOWN TERRAIN CACHE SUSPENDED' in logs()[baseline:]:raise AssertionError('Default-off terrain option suspended the cache')
-    screenshot('aram-flag-off-indoor.png');leave('aram-flag-off-exited')
-    set_debug_visibility(True)
-    # Up wraps to the final terrain-cache setting after tree and UI grain rows.
-    press('START');press('R');press('D_UP');screenshot('aram-game-row30-off.png');press('A')
-    report['ingame_saved_config']=config(True);screenshot('aram-game-row30-on.png');press('B')
-    cold=len(logs());enter('aram-flag-on');guest('flag-on-indoor-steady',6)
-    suspended=wait_log(r'ANIMALTOWN TERRAIN CACHE SUSPENDED cache bytes (\d+) reclaimed bytes (\d+) archive bytes (\d+)',cold)
-    if tuple(map(int,suspended.groups()[:2]))!=(0,1048576):raise AssertionError('Terrain cache did not physically release exactly 1 MiB')
-    # This assertion is independent of the terrain flag: automatic model paging
+    baseline=cold=len(logs());enter('aram-default');guest('default-indoor-steady',16)
+    wait_log(r'ANIMALTOWN TERRAIN CACHE SUSPENDED cache bytes (\d+) reclaimed bytes (\d+) archive bytes (\d+)',cold)
+    wait_log(r'ANIMALTOWN FLOOR SUSPENDED owned bytes (\d+) -> (\d+) source bytes (\d+) reclaimed bytes (\d+)',cold)
+    eviction=terrain_residency_cycles(logs(),cold)
+    if eviction['pending_cache'] is None or eviction['pending_floor'] is None:raise AssertionError('Default indoor idle did not reclaim both terrain and floor sources')
+    if 'ANIMALTOWN FLOOR RESTORED' in logs()[cold:]:raise AssertionError('Idle indoor scene restored unneeded outdoor floor sources')
+    report['default_reclamation_without_toggle']=True
+    # This assertion is independent of terrain suspension: automatic model paging
     # must actually retire at least one cold shared species, not only plan it.
     # Startup may already have retired it in this session before the first door.
     model=wait_log(r'ANIMALTOWN MODEL COLD (\d+) aram bytes (\d+) native budget bytes (\d+) max advance us (\d+)',session_start)
     if int(model[2])<=0:raise AssertionError('Cold model has no ARAM package backing')
-    report['suspended']={'cache_bytes':int(suspended[1]),'reclaimed_bytes':int(suspended[2]),'archive_bytes':int(suspended[3])}
+    report['suspended']=eviction['pending_cache'];report['floor_suspended']=eviction['pending_floor']
     report['model_cold']={'species':int(model[1]),'aram_bytes':int(model[2]),'native_bytes':int(model[3]),'max_advance_us':int(model[4])}
-    screenshot('aram-flag-on-cold-indoor.png');warm=len(logs());leave('aram-restored-exterior',reversal=True)
-    restored=wait_log(r'ANIMALTOWN TERRAIN CACHE READY cache bytes (\d+) archive bytes (\d+)',warm)
-    if int(restored[1])!=1048576 or int(restored[2])!=int(suspended[3]):raise AssertionError('Terrain cache restore changed the retained archive')
-    report['restored']={'cache_bytes':int(restored[1]),'archive_bytes':int(restored[2])}
+    screenshot('aram-default-cold-indoor.png');warm=len(logs());leave('aram-restored-exterior',reversal=True)
+    wait_log(r'ANIMALTOWN TERRAIN CACHE READY cache bytes (\d+) archive bytes (\d+)',warm)
+    restored=terrain_residency_cycles(logs(),cold)
+    if not restored['cycles']:raise AssertionError('The doorway did not restore its floor sources and unchanged terrain archive')
+    report['restored']=restored['cycles'][-1]['restored'];report['floor_restored']=restored['cycles'][-1]['floor_restored']
     # Back-to-back crossings exercise drain/cancel and reuse of restored backing.
-    enter('aram-rapid-reentry');guest('rapid-reentry-indoor',1);leave('aram-rapid-return',reversal=True)
+    rapid=len(logs());enter('aram-rapid-reentry');guest('rapid-reentry-indoor',3)
+    wait_log(r'ANIMALTOWN FLOOR SUSPENDED owned bytes (\d+) -> (\d+) source bytes (\d+) reclaimed bytes (\d+)',rapid)
+    leave('aram-rapid-return',reversal=True)
+    rapid_cycles=terrain_residency_cycles(logs(),rapid)
+    if not rapid_cycles['cycles']:raise AssertionError('Rapid reentry/reversal did not complete a second real memory reclamation cycle')
+    report['rapid_reversal_cycles']=rapid_cycles['cycles']
     evidence=aram_model_cycles(logs(),baseline);toured=set();report['extra_cold_home_routes']=[]
     while evidence['unrestored_species']:
         candidates=[species for species in evidence['unrestored_species'] if species not in toured]
@@ -2027,25 +2061,34 @@ def aram_residency_scenario():
     report['cold_to_warm_after_gameplay_demand']=evidence['cycles']
     report['all_cold_species_restored_after_gameplay_demand']=not evidence['unrestored_species']
     report['runtime_residency_errors']=aram_residency_errors(logs())
-    report['runtime_markers']=re.findall(r'ANIMALTOWN (?:MODEL [^\r\n]+|TERRAIN CACHE [^\r\n]+)',logs()[session_start:])
+    report['terrain_floor_cycles']=terrain_residency_cycles(logs(),baseline)
+    report['runtime_markers']=re.findall(r'ANIMALTOWN (?:MODEL [^\r\n]+|TERRAIN CACHE [^\r\n]+|FLOOR [^\r\n]+)',logs()[session_start:])
     (root/'aram-runtime.log').write_text(logs())
-    # Restart the same ISO/card. Toggling the title's last row once must produce
-    # Off in the binary record; that proves startup loaded the prior On setting.
+    # Restart the same ISO/card without opening a debug configuration menu. The
+    # retired stored slot must not disable the automatic memory policy.
     p.terminate();p.wait(timeout=10)
     frames=user/'Dump/Frames'
     if frames.exists():frames.rename(user/'Dump/Frames-residency')
     command=['/usr/games/dolphin-emu-nogui','-u',str(user),'-e',str(disc),'-v','OGL']
     if '--component-cable' in sys.argv:command+=['-C','SYSCONF.IPL.PGS=True']
     p=subprocess.Popen(command,env=env,stdout=log,stderr=subprocess.STDOUT)
-    title_clock=AviGuestClock(frames,track_presentations=True)
-    edge=lambda button:press_presented(button,title_clock)
-    wait_title();wait_log(r'ANIMALTOWN DEV CONFIG LOADED')
-    title_terrain_row('aram-title-row29-loaded-on',edge);edge('A');edge('START');wait_title();config(False)
-    # Leave the option enabled and prove the corresponding title row roundtrip.
-    edge('A');wait_title(modal=True);screenshot('aram-title-row29-off.png');edge('A');edge('START');wait_title()
-    report['restart_saved_config']=config(True);report['startup_load_verified']=True
-    report['title_restart_input']='8 release / 12 press / 12 release guest presentations; START save/close'
-    screenshot('aram-title-restart-complete.png')
+    clock=AviGuestClock(frames,track_presentations=True);building_inspections=0
+    wait_title();restarted=card_dev_config(card)
+    if initial is not None and (restarted is None or restarted['values']!=initial['values']):
+        raise AssertionError('Automatic residency acceptance unexpectedly changed persisted developer settings')
+    report['restart_dev_config']=restarted
+    start_game(False,'aram-restart');set_debug_visibility(True)
+    restart_cold=len(logs());enter('aram-restart-default');guest('restart-default-indoor-steady',6)
+    wait_log(r'ANIMALTOWN TERRAIN CACHE SUSPENDED cache bytes (\d+) reclaimed bytes (\d+) archive bytes (\d+)',restart_cold)
+    wait_log(r'ANIMALTOWN FLOOR SUSPENDED owned bytes (\d+) -> (\d+) source bytes (\d+) reclaimed bytes (\d+)',restart_cold)
+    restarted_eviction=terrain_residency_cycles(logs(),restart_cold)
+    if restarted_eviction['pending_cache'] is None or restarted_eviction['pending_floor'] is None:
+        raise AssertionError('Automatic terrain/floor reclamation did not survive a clean boot')
+    leave('aram-restart-restored-exterior',reversal=True)
+    report['restart_terrain_floor_cycles']=terrain_residency_cycles(logs(),restart_cold)
+    if not report['restart_terrain_floor_cycles']['cycles']:raise AssertionError('Post-reboot doorway restoration did not complete')
+    report['default_after_restart_verified']=True
+    screenshot('aram-restart-complete.png')
     (root/'aram-residency.json').write_text(json.dumps(report,indent=2))
 
 def dialogue_cycles():

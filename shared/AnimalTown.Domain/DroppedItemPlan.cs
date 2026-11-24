@@ -37,6 +37,7 @@ public sealed class DroppedItemPlan
     public float EyeY {get;private set;}
     public float EyeZ {get;private set;}
     public DroppedItemFacing Facing(int index)=>new DroppedItemFacing(EyeX-X[index],EyeY-Y[index],EyeZ-Z[index]);
+    public void Invalidate()=>previousTown=null;
     public bool Prepare(Town town,float focusX,float focusZ,float eyeHeight)
     {
         bool changed=previousTown!=town||previousCount!=town.GroundCount||terrainVersion!=town.TerrainVersion||previousX!=focusX||previousZ!=focusZ||previousHeight!=eyeHeight;

@@ -57,6 +57,7 @@ public sealed partial class GameState
         if(!HouseEntrance(x,z,out float arrivalX,out float arrivalZ))return false;
         int dx=x-Town.HouseX,dz=z-Town.HouseZ;
         for(int i=0;i<Town.PlacedCount;i++)if(Town.Placed[i].Room==0&&Town.Placed[i].Owner==PlayerOwner){Town.Placed[i].X+=dx;Town.Placed[i].Z+=dz;}
+        Town.NotifyObjectsChanged();
         Town.HouseX=x;Town.HouseZ=z;HousePlaced=true;X=arrivalX;Z=arrivalZ;if(relocate&&!free)Wallet-=50000;return true;
     }
     private bool HouseEntrance(int x,int z,out float arrivalX,out float arrivalZ)
@@ -105,7 +106,7 @@ public sealed partial class GameState
     public bool Place(int slot,int x,int z,int rotation,int room)
     {
         if(slot<0||slot>=Capacity||Town.PlacedCount==Town.Placed.Length||!CanPlace(Pockets[slot],x,z,rotation,room,0))return false;
-        var p=Town.Placed[Town.PlacedCount++];p.Item=Pockets[slot];p.X=x;p.Z=z;p.Room=room;p.Rotation=rotation;p.Owner=PlayerOwner;Pockets[slot]=0;return true;
+        var p=Town.Placed[Town.PlacedCount++];p.Item=Pockets[slot];p.X=x;p.Z=z;p.Room=room;p.Rotation=rotation;p.Owner=PlayerOwner;Pockets[slot]=0;Town.NotifyObjectsChanged();return true;
     }
     public bool Use(int slot,int action,int x,int z)
     {

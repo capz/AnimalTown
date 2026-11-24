@@ -172,8 +172,9 @@ static void GX_SetTevAlphaOp(u8 stage,int op,int bias,int scale,int clamp,int de
 int animaltown_environment_color(void){return environment_test_rgb;}
 int animaltown_light_strength(void){return point_test_gain;}
 int animaltown_shadow_strength(void){return shadow_test_gain;}
-static int snow_test_ready,path_test_ready,shadow_test_mode=3;
+static int snow_test_ready,snow_test_local=1,path_test_ready,shadow_test_mode=3;
 const uint8_t *animaltown_snow_mask(void){static const uint8_t image[SU_SNOW_BYTES]={0};return snow_test_ready?image:NULL;}
+const uint8_t *animaltown_snow_mask_at(float x,float z,int whole){(void)x;(void)z;return whole||snow_test_local?animaltown_snow_mask():NULL;}
 const uint8_t *animaltown_path_mask(void){static const uint8_t image[8192]={0};return path_test_ready?image:NULL;}
 int animaltown_shadows_mode(void){return shadow_test_mode;}
 const uint8_t *animaltown_shadows_page(float x,float z,float *origin){
@@ -475,6 +476,24 @@ static void native_shadow_combiner_checks(void){
     assert(footer_alpha_for_raster(0,0,255,254)==0);
     assert(footer_alpha_for_raster(0,0,0,255)!=alpha_compare);
     assert(footer_alpha_for_raster(0,0,0,0)!=alpha_compare);
+    // A distant dent must not add relief sampling to a blank snow page. The
+    // cutout receiver tag and path exclusions remain active in the cheap pass.
+    snow_test_local=0;bindings=0;
+    reset_shadow_recording();town_shadow_ground(triangle,NULL,3,NULL,&material,&bindings);
+    assert(texgens==3&&alpha_command_count==5&&bindings==1);
+    assert(footer_alpha_for_raster(0,0,0,254)==254);
+    assert(footer_alpha_for_raster(0,0,0,255)!=254);
+    path_test_ready=1;bindings=0;
+    reset_shadow_recording();town_shadow_ground(triangle,NULL,3,NULL,&material,&bindings);
+    assert(texgens==6&&alpha_command_count==6&&bindings==2);
+    for(int level=0;level<16;level++){
+        path_test_alpha=level*17;
+        assert(footer_alpha_for_raster(0,0,0,254)==(level?0:254));
+    }
+    path_test_alpha=0;path_test_ready=0;shadow_test_mode=5;bindings=0;
+    reset_shadow_recording();town_shadow_ground(triangle,NULL,3,NULL,&material,&bindings);
+    assert(texgens==7&&alpha_command_count==8&&bindings==2);
+    snow_test_local=1;shadow_test_mode=4;
     path_test_ready=1;bindings=0;
     reset_shadow_recording();town_shadow_ground(triangle,NULL,3,NULL,&material,&bindings);
     assert(alpha_command_count==9&&texgens==7&&bindings==3);

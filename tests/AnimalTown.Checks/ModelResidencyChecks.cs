@@ -28,15 +28,18 @@ namespace Dolphin.Memory
 }
 namespace Dolphin.Graphics
 {
-    public sealed class ModelInstance
+    public sealed class ModelInstance : IDisposable
     {
         public readonly Model Model;
         public readonly int Budget;
+        public int NativeBytes=>Model.InstanceBytes;
         public ModelInstance(Model model,int budget){Model=model;Budget=budget;}
+        public bool Disposed;
+        public void Dispose(){Disposed=true;}
     }
     // Tasks deliberately complete only through explicit advancement, matching
     // native ownership/polling instead of making every async call succeed inline.
-    public sealed class Model
+    public sealed class Model : IDisposable
     {
         public readonly List<int> Animations=new List<int>{0,1};
         public bool AutomaticResidencyProgress=true;
@@ -50,6 +53,9 @@ namespace Dolphin.Graphics
         public bool FailAdmission,FailWork,CancelWork,CommitCancellation,FailRetention;
         public int InstanceCreations,RetentionCalls;
         public int Starts,Advances,AnimationPosition=37,PendingDmaPolls=1,WorkUs=7,ProgressSteps;
+        public bool Disposed,FailInstance;
+        public int InstanceBytes=65536;
+        public void Dispose(){Disposed=true;}
         public Task? LastTransition {get;private set;}
         private TaskCompletionSource<int>? completion;
         private CancellationToken cancellation;
@@ -57,6 +63,7 @@ namespace Dolphin.Graphics
         private int step;
         public ModelInstance CreateInstance(int budget)
         {
+            if(FailInstance)throw new OutOfMemoryException("Injected instance allocation failure");
             if(!IsResident||IsTransitioning)throw new InvalidOperationException("A cold or transitioning model cannot create an instance");
             InstanceCreations++;return new ModelInstance(this,budget);
         }
@@ -220,9 +227,30 @@ internal static class ModelResidencyChecks
             "session teardown drains restoration before its instances or model can be disposed");
         check(!models[1].IsResident&&manager.ColdBytes==65536&&models[1].Starts==2,"canceled shutdown preserves the cold model's backing for normal disposal without restarting it");
 
+        PressureChecks(check);
         StartupChecks(check);
         OutdoorJourneyChecks(check);
         ApproachChecks(check);
+    }
+    private static void PressureChecks(Action<bool,string> check)
+    {
+        var manager=Setup(out var models,out var state,out var doors);
+        for(int species=0;species<6;species++)manager.RecordWarmPeak(species,65536);
+        var memory=new VisualMemoryPressure();memory.Observe(8*1024*1024,0,0,Clock.Timestamp);manager.Memory=memory;
+        Pump(manager,true);Drain(manager);state.Town.Residents[1].Space=state.Space;
+        int peak=manager.RestorePeak(1);check(peak==models[1].PackageBytes*2+65536+64*1024,"restore uses captured warm native ownership plus a measured guard rather than a multi-MiB fixed estimate");
+        memory.Observe(VisualMemoryPressure.SafetyBytes+peak-1,0,0,Clock.Timestamp);manager.Require(state,doors,Clock.Timestamp);
+        check(manager.TryLockReplacement(2),"a warm optional model can be leased by a replacement owner");
+        Pump(manager,false);
+        check(manager.PendingSpecies==3&&!models[1].IsResident&&models[2].IsResident,"pressure retires an optional model despite the normal portal/idle heuristic while protecting required and replacement-leased species");
+        manager.UnlockReplacement(2);memory.Observe(8*1024*1024,0,0,Clock.Timestamp);Drain(manager);
+        check(manager.Ready(1)&&manager.Restores==1&&memory.ReservedBytes>=peak,"new headroom restores the required actor and retains completed allocation debt until a fresh sample");
+        memory.Observe(8*1024*1024,0,0,Clock.Timestamp);check(memory.ReservedBytes==0,"completed restore reservation retires at the allocator observation boundary");manager.Stop();
+
+        manager=Setup(out models,out state,out doors);for(int species=0;species<6;species++)manager.RecordWarmPeak(species,65536);
+        Pump(manager,true);Drain(manager);state.Town.Residents[1].Space=state.Space;
+        memory=new VisualMemoryPressure();memory.Observe(VisualMemoryPressure.SafetyBytes+manager.RestorePeak(1)-1,0,0,Clock.Timestamp);manager.Memory=memory;
+        check(!Startup(manager,state,doors,19)&&manager.PendingSpecies==2,"startup with denied foreground headroom can retire an optional warm model instead of deadlocking its loading checkpoint");manager.Stop();
     }
     private static void OutdoorJourneyChecks(Action<bool,string> check)
     {

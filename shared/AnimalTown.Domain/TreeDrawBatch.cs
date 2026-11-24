@@ -24,4 +24,14 @@ public static class TreeDrawBatch
         }
         return count;
     }
+    public static int Fill(Town town,WorldObjectCandidates candidates,float focusX,float focusZ,float eyeHeight,int[] selected,ref int cursor)
+    {
+        if(selected.Length==0)throw new ArgumentException("A tree batch needs at least one slot");
+        int count=0;
+        while(cursor<candidates.GroundCount&&count<selected.Length){
+            int index=candidates.GroundIndices[cursor++];var item=town.Ground[index];
+            if(IsTree(item)&&Visible(town,item,focusX,focusZ,eyeHeight))selected[count++]=index;
+        }
+        return count;
+    }
 }

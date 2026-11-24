@@ -42,7 +42,11 @@ public sealed class Town
     public readonly Jobs.TownJobState JobState;
     public int TerrainVersion {get;private set;}
     public int ShadowVersion {get;private set;}
+    public int ObjectVersion {get;private set;}
     public void NotifyCastersChanged(){ShadowVersion++;}
+    // Placement relocations can keep the same item count. Bulk editors notify
+    // once after changing coordinates/rooms; this value is not saved gameplay.
+    public void NotifyObjectsChanged(){ObjectVersion++;}
     // Bulk importers that write Tiles directly call this once after committing.
     public void NotifyTerrainChanged(){TerrainVersion++;}
     public bool SetTerrain(int x,int z,Terrain terrain)

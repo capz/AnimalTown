@@ -1,6 +1,8 @@
 using System;
 using AnimalTown;
 using Dolphin.Graphics;
+using Dolphin.Timing;
+using Dolphin.Diagnostics;
 
 // Shared meshes modulate season and local AO with one tiny opaque
 // mipmapped detail texture. No extra pass, per-instance texture or frame upload.
@@ -13,6 +15,11 @@ internal sealed class LowPolyTrees : IDisposable
     private Texture2D? detail;
     private int preparedSeason=-1;
     private bool preparedBloom;
+    private long lastOutdoorUse;
+    private const long IndoorGraceUs=3000000;
+    internal const int ColdPeakBytes=LowPolyTree.KindCount*(LowPolyTree.TriangleBudget*3*36+512)+LowPolyTree.DetailBytes+512+8192;
+    internal VisualMemoryPressure? Memory;
+    private long retryAt;
     private readonly Transform[] poses=new Transform[Capacity],batchTransforms=new Transform[Capacity];
     private readonly Mesh[] batchMeshes=new Mesh[Capacity];
     private readonly int[] kinds=new int[Capacity];
@@ -28,24 +35,42 @@ internal sealed class LowPolyTrees : IDisposable
         material.Texture=null;detail?.Dispose();detail=null;
         preparedSeason=-1;
     }
-    internal void Prepare(int season,bool bloom)
+    internal bool ReleaseUnused(bool outdoorDemand,long now,bool pressure)
     {
-        if(detail==null){
-            detail=Texture2D.FromPackage(LowPolyTree.DetailTexture(),true);
-            detail.ConfigureSampler(TextureWrapMode.Repeat,TextureWrapMode.Repeat,TextureMinFilter.LinearMipmapLinear,TextureMagFilter.Linear);
-            material.Texture=detail;
-        }
+        if(outdoorDemand){lastOutdoorUse=now;return false;}
+        if(detail==null||(!pressure&&now-lastOutdoorUse<IndoorGraceUs))return false;
+        Dispose();return true;
+    }
+    internal bool Prepare(int season,bool bloom)
+    {
+        long now=Clock.Timestamp;bool cold=detail==null;
+        if(now<retryAt)return !cold;
         bloom=bloom&&season==0;
-        if(preparedSeason==season&&preparedBloom==bloom)return;
-        for(int kind=0;kind<geometry.Length;kind++){
-            if(preparedSeason==season&&kind!=LowPolyTree.Cherry)continue;
-            var tree=LowPolyTree.Build(kind);
-            var vertices=streams[kind];if(vertices==null){vertices=new VertexPositionColorTexture[tree.Triangles*3];streams[kind]=vertices;}
-            WriteVertices(tree,kind,season,1,vertices,bloom);
-            if(geometry[kind]==null)geometry[kind]=DynamicMesh.Create(vertices);else geometry[kind].SetVertices(vertices);
+        if(preparedSeason==season&&preparedBloom==bloom)return true;
+        int ticket=0;
+        if(Memory!=null&&!Memory.TryReserve(cold?ColdPeakBytes:0,now,true,out ticket))return false;
+        try{
+            if(cold){
+                Texture2D? loaded=null;
+                try{
+                    loaded=Texture2D.FromPackage(LowPolyTree.DetailTexture(),true);
+                    loaded.ConfigureSampler(TextureWrapMode.Repeat,TextureWrapMode.Repeat,TextureMinFilter.LinearMipmapLinear,TextureMagFilter.Linear);
+                    detail=loaded;material.Texture=loaded;loaded=null;
+                }finally{loaded?.Dispose();}
+            }
+            for(int kind=0;kind<geometry.Length;kind++){
+                if(preparedSeason==season&&kind!=LowPolyTree.Cherry)continue;
+                var tree=LowPolyTree.Build(kind);
+                var vertices=streams[kind];if(vertices==null){vertices=new VertexPositionColorTexture[tree.Triangles*3];streams[kind]=vertices;}
+                WriteVertices(tree,kind,season,1,vertices,bloom);
+                if(geometry[kind]==null)geometry[kind]=DynamicMesh.Create(vertices);else geometry[kind].SetVertices(vertices);
+            }
+            preparedSeason=season;preparedBloom=bloom;Memory?.Complete(ticket);return true;
+        }catch(Exception error){
+            if(cold)Dispose();Memory?.Cancel(ticket);Memory?.AllocationFailed(ColdPeakBytes,now);
+            retryAt=now+VisualMemoryPressure.FailureBackoffUs;
+            DebugOverlay.WriteLine("ANIMALTOWN TREE VISUAL RETRY "+error.Message);return !cold;
         }
-        preparedSeason=season;
-        preparedBloom=bloom;
     }
     internal static void WriteVertices(LowPolyTree tree,int kind,int season,float uvScale,VertexPositionColorTexture[] vertices,bool bloom=false)
     {

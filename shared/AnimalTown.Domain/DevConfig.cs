@@ -3,8 +3,8 @@ namespace AnimalTown;
 // Independent of town saves. Location actions 14/15 are never startup settings.
 public sealed class DevConfig
 {
-    public const int Count=32,FullResolutionAaIndex=30,GroundMipBandsIndex=31,SdkPerformanceIndex=21,TreeNoiseStrength=27,TreeNoiseScale=28,DiscardTerrainCacheWhenIndoorsIndex=29;
-    public const int SettingCount=Count-13;
+    public const int Count=32,FullResolutionAaIndex=30,GroundMipBandsIndex=31,SdkPerformanceIndex=21,TreeNoiseStrength=27,TreeNoiseScale=28,RetiredTerrainCacheIndex=29;
+    public const int SettingCount=Count-14;
     public readonly int[] Values=new int[Count];
     public bool SdkPerformanceOverlay {get;private set;}
     public DevConfig(int runtimeMode=4)
@@ -16,7 +16,7 @@ public sealed class DevConfig
     }
     // Retired fields keep their historic value ranges for old cards.
     public static bool IsSetting(int row)=>row>=0&&row<Count&&row!=1&&row!=4&&row!=5&&row!=6&&
-        row!=7&&row!=8&&row!=9&&row!=10&&row!=14&&row!=15&&row!=20&&row!=TreeNoiseStrength&&row!=TreeNoiseScale;
+        row!=7&&row!=8&&row!=9&&row!=10&&row!=14&&row!=15&&row!=20&&row!=TreeNoiseStrength&&row!=TreeNoiseScale&&row!=RetiredTerrainCacheIndex;
     public static bool IsSlider(int row)=>row==23;
     public static int Maximum(int row)=>row==TreeNoiseStrength?30:row==TreeNoiseScale?15:row==8?2:row==10?5:row==18?4:row==20?200:row==23?RenderDebugOptions.MaximumGroundMipDistance:row==14||row==15?0:1;
     public void Reset(int row){if(IsSlider(row))Values[row]=0;}

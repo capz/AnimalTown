@@ -1,0 +1,9 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup><OutputType>Exe</OutputType></PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../shared/AnimalTown.Domain/AnimalTown.Domain.csproj" />
+    <Compile Include="../../game/AnimalTown.GameCube/BuildingRenderer.cs" Link="BuildingRenderer.cs" />
+    <Compile Include="../../game/AnimalTown.GameCube/VisualMemoryCoordinator.cs" Link="VisualMemoryCoordinator.cs" />
+    <Compile Include="../../game/AnimalTown.GameCube/StartupModelAdmission.cs" Link="StartupModelAdmission.cs" />
+  </ItemGroup>
+</Project>

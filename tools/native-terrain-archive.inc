@@ -16,7 +16,7 @@ static int ta_meta[TA_PARTS/256],ta_first[TA_SECTIONS+1],ta_triangles[TA_SECTION
 static unsigned char ta_used[TA_CACHE/TA_BLOCK];
 static int ta_store,ta_cache,ta_stage,ta_meta_count,ta_bytes,ta_tail,ta_parts,ta_sections,ta_completed,ta_live,ta_peak;
 static unsigned ta_bindings,ta_reads;static bool ta_sealed;
-/* Only cold-resume binds remain pending across calls. The broker owns the
+/* Runtime travel/prefetch and cold-resume binds remain pending across calls. The broker owns the
  * cache/ARAM transfer holds; a separate view hold prevents handle reuse. */
 static int ta_request,ta_pending_view,ta_pending_entry=-1,ta_pending_block,ta_pending_blocks;
 static TaPart *ta_part(int index){

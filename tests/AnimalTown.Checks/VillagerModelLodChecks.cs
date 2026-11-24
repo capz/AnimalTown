@@ -1,0 +1,60 @@
+using AnimalTown;
+using Dolphin.Graphics;
+using Dolphin.Timing;
+
+internal static class ModelResources
+{
+    internal const int DefaultBudget=3*1024*1024;
+    internal static readonly List<TaskCompletionSource<Model>> Requests=new();
+    internal static Task<Model> LoadLodAsync(string name,int lod,CancellationToken token=default)
+    {
+        var source=new TaskCompletionSource<Model>();Requests.Add(source);token.Register(()=>source.TrySetCanceled(token));return source.Task;
+    }
+}
+
+internal static class VillagerModelLodChecks
+{
+    internal static void Run(Action<bool,string> check)
+    {
+        var models=Enumerable.Range(0,6).Select(_=>new Model()).ToArray();
+        var actors=new ModelInstance[7];for(int i=0;i<6;i++)actors[i+1]=models[i].CreateInstance(512*1024);actors[0]=models[0].CreateInstance(512*1024);
+        var residency=new ModelResidency();for(int i=0;i<6;i++)residency.Register(i,models[i],0);
+        var pressure=new VisualMemoryPressure();pressure.Observe(2*1024*1024,0,0,0);residency.Memory=pressure;
+        var owner=new VillagerModelLod(models,actors,residency){Memory=pressure};
+        var state=new GameState(17){Species=0};var view=new ActorFrameVisibility();
+        view.Visible[2]=true;view.GeometryLod[2]=1;owner.Require(state,view);Clock.Timestamp=0;
+        var oldModel=models[1];var oldInstance=actors[2];int requests=ModelResources.Requests.Count;
+        owner.Pump(0,1000);
+        check(owner.PendingSpecies==1&&ModelResources.Requests.Count==requests+1&&pressure.ReservedBytes==owner.ReplacementPeak(1),"LOD reserves its measured full-variant replacement peak and remains active within two MiB of headroom");
+        owner.Pump(0,1000);check(ReferenceEquals(models[1],oldModel)&&ReferenceEquals(actors[2],oldInstance)&&!oldModel.Disposed,"incomplete coarse load retains the original drawable model and instance");
+        var coarse=new Model{PackageBytes=32000,InstanceBytes=oldInstance.NativeBytes};ModelResources.Requests[^1].SetResult(coarse);owner.Pump(0,1000);
+        check(ReferenceEquals(models[1],coarse)&&ReferenceEquals(actors[2].Model,coarse)&&oldModel.Disposed&&oldInstance.Disposed&&owner.Level(1)==1&&residency.Ready(1),"completed LOD publishes one replacement owner and retires both old native owners");
+        check(actors[2].NativeBytes==oldInstance.NativeBytes,"an unskinned bunny admits useful immutable geometry savings even when its full/coarse instance sizes are identical");
+        check(owner.ConsumeChangedActors()==4&&owner.ConsumeChangedActors()==0,"replacement requests one clip/attention rebind for exactly its NPC actor");
+        check(pressure.ReservedBytes==owner.ReplacementPeak(1),"successful replacement remains charged until a fresh physical allocator sample");
+        pressure.Observe(8*1024*1024,0,0,1);check(pressure.ReservedBytes==0,"physical sampling releases the completed LOD reservation");
+        view.GeometryLod[1]=1;view.Visible[1]=true;owner.Require(state,view);owner.Pump(1,1000);
+        check(owner.PendingSpecies<0&&owner.Level(0)==0,"selected player species never loads an additional coarse copy for its NPC");
+        view.GeometryLod[2]=0;owner.Require(state,view);owner.Pump(2,1000);
+        var failed=new Model{FailInstance=true};ModelResources.Requests[^1].SetResult(failed);owner.Pump(2,1000);
+        check(failed.Disposed&&ReferenceEquals(models[1],coarse)&&!coarse.Disposed&&pressure.ReservedBytes==0&&pressure.UnderPressure,"failed replacement frees the candidate, cancels debt and preserves the old drawable cohort");
+        requests=ModelResources.Requests.Count;owner.Pump(2000000,2001000);
+        check(ModelResources.Requests.Count==requests,"global memory pressure suppresses optional LOD allocation after local retry delay");
+        pressure.Observe(8*1024*1024,0,0,2000000);pressure.Observe(8*1024*1024,0,0,5000000);
+        owner.Pump(5000000,5001000);check(owner.PendingSpecies==1,"stable recovered memory admits the deferred detail upgrade");
+        var doors=new PortalSystem();var crossing=doors.Actors[0];crossing.Phase=DoorPhase.Waiting;crossing.Source=new ActorLocation(0,10,10,0);crossing.Destination=new ActorLocation(17,2,2,0);
+        state.Town.Residents[1].Space=17;view.Visible[2]=false;owner.Require(state,view,false,doors);
+        check(!owner.FullForSpace(state,doors,17),"a doorway destination with an invisible coarse resident waits for full geometry before committing");
+        var full=new Model();ModelResources.Requests[^1].SetResult(full);owner.Pump(5000000,5001000);
+        check(owner.FullForSpace(state,doors,17)&&owner.Level(1)==0&&coarse.Disposed,"destination full demand survives outside visibility and publishes before portal readiness");
+        pressure.Observe(8*1024*1024,0,0,5000001);crossing.Phase=DoorPhase.Idle;state.Town.Residents[1].Space=0;view.Visible[2]=true;view.GeometryLod[2]=1;
+        owner.Require(state,view);owner.Paused=true;requests=ModelResources.Requests.Count;owner.Pump(5000001,5001001);
+        check(ModelResources.Requests.Count==requests&&owner.FullReady,"an active UV probe blocks replacement and retains its full model references");
+        owner.Paused=false;owner.Pump(5000001,5001001);check(owner.PendingSpecies==1,"leaving the UV probe permits a fresh optional replacement");
+        owner.Require(state,view,true,doors);check(ModelResources.Requests[^1].Task.IsCanceled,"a full inspection request cancels an obsolete pending coarse load");
+        owner.Pump(5000001,5001001);check(owner.PendingSpecies<0&&owner.FullReady,"canceled coarse work drains without changing the full cohort");
+        owner.Require(state,view);owner.Pump(6000001,6001001);
+        owner.Dispose();check(owner.PendingSpecies<0&&pressure.ReservedBytes==0&&!full.Disposed,"teardown drains canceled asset work before releasing its reservation and keeps adopted models with the town owner");
+        residency.Stop();
+    }
+}

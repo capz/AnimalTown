@@ -7,13 +7,19 @@ internal static class TextureAudit
 {
     internal static void Run(string root)
     {
+        ModelMemoryCooker.Validate(root);
         var records=new List<object>();int models=0;
         foreach(string path in Directory.GetFiles(Path.Combine(root,"out/disc"),"*.dndmodel").Order())
         {
             byte[] bytes=File.ReadAllBytes(path);int Read(int at)=>checked((int)BinaryPrimitives.ReadUInt32BigEndian(bytes.AsSpan(at,4)));
             if(Read(0)!=0x444e444d||Read(8)!=bytes.Length||Read(12)!=6)throw new InvalidDataException("Invalid model texture audit header");
             string stem=Path.GetFileNameWithoutExtension(path);int marker=stem.LastIndexOf("-tex",StringComparison.Ordinal);int limit=marker<0?256:int.Parse(stem.Substring(marker+4));
-            TexturePolicy.ModelEdge(marker<0?stem:stem.Substring(0,marker),(TextureResolution)limit);
+            string model=marker<0?stem:stem.Substring(0,marker);
+            if(model.EndsWith("-lod1",StringComparison.Ordinal)){
+                model=model.Substring(0,model.Length-5);
+                if(limit!=128||!ModelLodCooker.Species.Contains(model,StringComparer.Ordinal))throw new InvalidDataException("Invalid geometric LOD texture variant: "+path);
+            }
+            TexturePolicy.ModelEdge(model,(TextureResolution)limit);
             int start=Read(16+3*16+4),length=Read(16+3*16+8),count=Read(start),at=start+4;
             string sourceSha=Convert.ToHexString(SHA256.HashData(bytes));
             for(int i=0;i<count;i++)
@@ -78,9 +84,9 @@ internal static class TextureAudit
         records.Add(new{source="generated:tree-detail-noise-v1",sourceSha=Convert.ToHexString(SHA256.HashData(treeDetail)),width=TexturePixels.Width(treeDetail),height=TexturePixels.Height(treeDetail),format=TexturePixels.Int(treeDetail,8),levels=TexturePixels.Int(treeDetail,24),residentBytes=treeDetail.Length-32,policy="shared-all-tree-species-seasons-repeat-trilinear"});
         byte[] uiGrain=LowPolyTree.DetailTexture(UiNoiseSettings.DefaultPercent,uniform:true);
         records.Add(new{source="generated:ui-bubble-noise-v2",sourceSha=Convert.ToHexString(SHA256.HashData(uiGrain)),width=TexturePixels.Width(uiGrain),height=TexturePixels.Height(uiGrain),format=TexturePixels.Int(uiGrain,8),levels=TexturePixels.Int(uiGrain,24),residentBytes=uiGrain.Length-32,policy="shared-ui-uniform-position-repeat-rgb-only-session-intensity"});
-        int expected=6*2+2*4+BuildingCatalog.Count*8*4;if(models!=expected)throw new InvalidDataException("Expected six villagers in 128/256px and other models in four texture resolutions");
+        int expected=6*3+2*4+BuildingCatalog.Count*8*4;if(models!=expected)throw new InvalidDataException("Expected six villagers in 128/256px plus 128px geometric LODs and other models in four texture resolutions");
         string originals=Path.Combine(root,"out/floor-sources.json");if(File.Exists(originals))records.Add(new{floorSourceProvenance=JsonSerializer.Deserialize<JsonElement>(File.ReadAllText(originals))});
         File.WriteAllText(Path.Combine(root,"out/texture-audit.json"),JsonSerializer.Serialize(records,new JsonSerializerOptions{WriteIndented=true}));
-        Console.WriteLine($"Texture audit: {models} imported variants; villagers use 128/256px, other models use 128/256/512/1024px; generated trees share {LowPolyTree.DetailBytes} native texture bytes");
+        Console.WriteLine($"Texture audit: {models} imported variants; villagers use 128/256px plus 128px geometry LODs, other models use 128/256/512/1024px; generated trees share {LowPolyTree.DetailBytes} native texture bytes");
     }
 }

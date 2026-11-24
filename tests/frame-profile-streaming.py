@@ -155,3 +155,57 @@ with TemporaryDirectory() as fixture:
     write_card(card,old|generation(1,9,39))
     assert namespace['committed_card_sequence'](card)==1
 print('Card smoke reader: v9 job-clock and v10 snow generations, daylight offset and malformed-extension fallback passed')
+
+# Real default-on residency acceptance must prove physical ownership release,
+# source eviction and ready-after-floor ordering rather than only match a label.
+terrain_reader=next(n for n in module.body if isinstance(n,ast.FunctionDef) and n.name=='terrain_residency_cycles')
+exec(compile(ast.Module(body=[terrain_reader],type_ignores=[]),'<terrain residency reader>','exec'),namespace)
+terrain_cycles=namespace['terrain_residency_cycles']
+cache_cold='ANIMALTOWN TERRAIN CACHE SUSPENDED cache bytes 0 reclaimed bytes 1048576 archive bytes 123456\n'
+floor_cold='ANIMALTOWN FLOOR SUSPENDED owned bytes 6144 -> 0 source bytes 0 reclaimed bytes 8896\n'
+floor_ready='ANIMALTOWN FLOOR RESTORED season 0 slots 12 owned bytes 6144 source bytes 6144\n'
+cache_ready='ANIMALTOWN TERRAIN CACHE READY cache bytes 1048576 archive bytes 123456\n'
+boot='ANIMALTOWN GAME START\n'
+route=boot+cache_cold+floor_cold+floor_ready+cache_ready
+evidence=terrain_cycles(route)
+assert len(evidence['cycles'])==1 and evidence['pending_cache'] is None and evidence['pending_floor'] is None
+assert evidence['cycles'][0]['floor_suspended']['source_bytes']==0
+assert evidence['cycles'][0]['floor_restored']['owned_bytes']==6144
+pending=terrain_cycles(boot+cache_cold+floor_cold)
+assert not pending['cycles'] and pending['pending_cache']['reclaimed_bytes']==1048576 and pending['pending_floor']['owned_after']==0
+for invalid in (
+    route.replace('reclaimed bytes 1048576','reclaimed bytes 1048544'),
+    route.replace('source bytes 0','source bytes 32'),
+    route.replace('-> 0','-> 2048'),
+    route.replace('reclaimed bytes 8896','reclaimed bytes 1024'),
+    route.replace('owned bytes 6144 source bytes 6144','owned bytes 6144 source bytes 8192'),
+    route.replace(cache_ready,cache_ready.replace('123456','654321')),
+    boot+cache_cold+floor_cold+cache_ready+floor_ready,
+    boot+cache_cold+cache_ready,
+):
+    try:terrain_cycles(invalid)
+    except AssertionError:pass
+    else:raise AssertionError('Unverified terrain/floor memory evidence was accepted')
+# A reversal can cancel a cache that was allocated but never became drawable.
+reversed_route=boot+cache_cold+floor_cold+floor_ready+cache_cold+floor_cold+floor_ready+cache_ready
+reversed_evidence=terrain_cycles(reversed_route)
+assert len(reversed_evidence['cycles'])==1 and reversed_evidence['cancelled_restores']==1
+ignored=boot+cache_cold.replace('1048576','1')+route
+assert len(terrain_cycles(ignored)['cycles'])==1
+try:terrain_cycles(cache_cold+floor_cold+floor_ready+cache_ready)
+except AssertionError:pass
+else:raise AssertionError('Residency evidence without an identified town session was accepted')
+print('Terrain residency smoke: exact MEM1 release, source eviction, doorway ordering, reversal and session isolation passed')
+
+config_reader=next(n for n in module.body if isinstance(n,ast.FunctionDef) and n.name=='card_dev_config')
+exec(compile(ast.Module(body=[config_reader],type_ignores=[]),'<developer config reader>','exec'),namespace)
+with TemporaryDirectory() as fixture:
+    card=Path(fixture)/'MemoryCardA.USA.raw';card.touch()
+    for retired in (0,1):
+        payload=bytearray(40);payload[:4]=b'ATD\x05';payload[33]=retired
+        struct.pack_into('<I',payload,36,fnv(payload[:36]))
+        namespace['options_card_files']=lambda path:{'dev_config':payload}
+        decoded=namespace['card_dev_config'](card)
+        assert decoded['retired_terrain_cache_value']==retired and decoded['values'][29]==retired
+        assert 'discard_terrain_cache_when_indoors' not in decoded
+print('Developer config smoke: retired terrain slot remains decodable without treating it as an active setting')

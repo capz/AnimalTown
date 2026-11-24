@@ -81,10 +81,27 @@ static inline uint8_t su_pack(int shadow,int light){return (uint8_t)(((light+8)/
 #define SU_SNOW_PACKED (SU_SNOW_BLOCKS*SU_SNOW_HEIGHT)
 #define SU_SNOW_MAX_VISITS 5
 #define SU_SNOW_STEPS_PER_VISIT 3
+#define SU_SNOW_PAGE 8
+#define SU_SNOW_PAGE_ROWS ((SU_SNOW_HEIGHT+SU_SNOW_PAGE-1)/SU_SNOW_PAGE)
 static inline int su_snow_wear(const uint8_t *packed,int x,int z){
     if((unsigned)x>=SU_WORLD_WIDTH||(unsigned)z>=SU_SNOW_HEIGHT)return 0;
     int cell=z*SU_WORLD_WIDTH+x;
     return (packed[cell/2]>>((cell%2)*4))&15;
+}
+/* Include stamp spill, linear filtering and the two relief samples. Two cells
+ * are deliberately conservative at page edges; a blank page uses no depth TEV. */
+static inline int su_snow_page_dented(const uint8_t *packed,int px,int pz){
+    int left=px*SU_SNOW_PAGE-2,top=pz*SU_SNOW_PAGE-2;
+    for(int z=top;z<top+SU_SNOW_PAGE+4;z++)for(int x=left;x<left+SU_SNOW_PAGE+4;x++)
+        if(su_snow_wear(packed,x,z))return 1;
+    return 0;
+}
+static inline void su_snow_dirty_pages(uint16_t *dirty,int x,int z){
+    int left=(x-2)/SU_SNOW_PAGE,right=(x+2)/SU_SNOW_PAGE;
+    int top=(z-2)/SU_SNOW_PAGE,bottom=(z+2)/SU_SNOW_PAGE;
+    for(int pz=top;pz<=bottom&&pz<SU_SNOW_PAGE_ROWS;pz++)
+        for(int px=left;px<=right&&px<SU_WORLD_WIDTH/SU_SNOW_PAGE;px++)
+            if(px>=0&&pz>=0)dirty[pz]|=(uint16_t)(1u<<px);
 }
 static inline float su_snow_stamp(int visits,float x,float z){
     if(!visits)return 0;

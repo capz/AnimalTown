@@ -81,12 +81,25 @@ if (!$SkipAssets) {
         }
     }
 }
+# Rebuild geometric LODs from the selected normalized packages even with
+# SkipAssets, so a reused staging directory cannot ship a stale LOD cohort.
+Run dotnet @('run','--project','tools/AnimalTown.Tools','-c','Release','--no-build','--','model-lod-check',$projectRoot)
+Run dotnet @('run','--project','tools/AnimalTown.Tools','-c','Release','--no-build','--','model-lod',$projectRoot)
+Run dotnet @('run','--project','tools/AnimalTown.Tools','-c','Release','--no-build','--','model-memory-check',$projectRoot)
+Run dotnet @('run','--project','tools/AnimalTown.Tools','-c','Release','--no-build','--','model-memory',$projectRoot)
 $buildingNativeParts=@((Get-Content out/building-assets.json -Raw|ConvertFrom-Json -AsHashtable).Keys|Sort-Object|ForEach-Object{"out/disc/$($_)-tex128.dndmodel"})
 RunNative '.' 'sh' (@('-c','cc -std=c11 -Wall -Wextra -Werror -ffunction-sections -fdata-sections -Iout/sdk-native/include tests/native-building-assets.c out/sdk-native/source/model.c out/sdk-native/source/model_animation.c out/sdk-native/source/verified_copy.c out/sdk-native/source/aram.c -Wl,--gc-sections -lm -o /tmp/animaltown-building-assets && /tmp/animaltown-building-assets "$@"','building-assets')+$buildingNativeParts)
 # Exercise the opt-in static retention patch with the real cooked parts after
 # AOT/native patching below; the pinned SDK test above remains independent.
 $actorWindingParts=@('fox','bunny','giraffe','cat','hamster','spaniel'|ForEach-Object{"out/disc/$($_)-tex128.dndmodel"})
 RunNative '.' 'sh' (@('-c','cc -std=c11 -Wall -Wextra -Werror -ffunction-sections -fdata-sections -Iout/sdk-native/include tests/native-model-winding.c out/sdk-native/source/model.c out/sdk-native/source/model_animation.c out/sdk-native/source/verified_copy.c out/sdk-native/source/aram.c -Wl,--gc-sections -lm -o /tmp/animaltown-model-winding && /tmp/animaltown-model-winding "$@"','model-winding')+$actorWindingParts)
+# Validate admission peaks and sampled animation error with the exact shipped
+# packages and pinned native loader, not nominal per-owner budget ceilings.
+$modelPeakArguments=@('--catalog','out/disc/villager-memory.bin','--max-bind-error','0.04','--max-pose-error','0.05')
+foreach($species in @('fox','bunny','giraffe','cat','hamster','spaniel')){
+    $modelPeakArguments+=@('--pair',"out/disc/$species-tex128.dndmodel","out/disc/$species-lod1-tex128.dndmodel","out/$species-lod1-map.bin")
+}
+RunNative '.' 'sh' (@('-c','cc -DANIMALTOWN_MODEL_PEAK_RETAIN -std=c11 -O2 -Wall -Wextra -Werror -ffunction-sections -fdata-sections -Iout/sdk-native/include tests/native-model-memory-peaks.c out/sdk-native/source/model.c out/sdk-native/source/model_animation.c out/sdk-native/source/verified_copy.c out/sdk-native/source/aram.c -Wl,--gc-sections,--wrap=malloc,--wrap=calloc,--wrap=realloc,--wrap=aligned_alloc,--wrap=free -lm -o out/native-model-memory-peaks && out/native-model-memory-peaks "$@" > out/model-native-peak-audit.jsonl','model-memory-peaks')+$modelPeakArguments)
 New-Item -ItemType Directory -Force -Path out/disc|Out-Null
 [IO.File]::WriteAllBytes((Join-Path $projectRoot 'out/disc/runtime.cfg'),[byte[]]@($RuntimeProfile))
 & (Join-Path $PSScriptRoot 'build-updater.ps1') -NativeInProcess:$NativeInProcess
@@ -107,6 +120,12 @@ $sourceDigest=[Convert]::ToHexString([Security.Cryptography.SHA256]::HashData([T
 Run dotnet @('run','--project','tools/AnimalTown.Tools','-c','Release','--no-build','--','content-identity',$projectRoot,$gameFullCommit,$gameVersion,$sourceDigest,"$RuntimeProfile",$gameCommit)
 if($validation.rendering.Count){Run dotnet @('run','--project','tests/AnimalTown.RenderingChecks','-c','Release','--','--suites',($validation.rendering -join ','))}
 if($validation.managed.Count){Run dotnet @('run','--project','tests/AnimalTown.Checks','-c','Release','--','--suites',($validation.managed -join ','))}
+if('core' -in $validation.managed){
+    Run dotnet @('run','--project','tests/AnimalTown.MemoryChecks','-c','Release')
+    Run dotnet @('run','--project','tests/AnimalTown.FloorResidencyChecks','-c','Release')
+    Run dotnet @('run','--project','tests/AnimalTown.SnowResidencyChecks','-c','Release')
+    Run dotnet @('run','--project','tests/AnimalTown.VisualAllocationChecks','-c','Release')
+}
 if('card' -in $validation.native){Run dotnet @('run','--project','tests/AnimalTown.CardChecks','-c','Release')}
 if('card' -in $validation.native){Run dotnet @('run','--project','vendor/card-store-sdk/tests/CardRecordStoreTests','-c','Release')}
 if('content' -in $validation.native){

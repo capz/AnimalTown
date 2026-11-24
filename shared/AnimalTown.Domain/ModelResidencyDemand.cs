@@ -12,12 +12,12 @@ public sealed class ModelResidencyDemand
     public const float ImminentGuard=12;
     public readonly bool[] Required=new bool[SpeciesCount];
     public int DestinationSpace {get;private set;}=-1;
-    public void Prepare(GameState state,PortalSystem doors,bool pinAll=false,int targetSpace=-1)
+    public void Prepare(GameState state,PortalSystem doors,bool pinAll=false,int targetSpace=-1,bool underMemoryPressure=false)
     {
         DestinationSpace=doors.Busy(0)?doors.Actors[0].Destination.Space.Value:targetSpace;
         for(int species=0;species<Required.Length;species++)
-            Required[species]=pinAll||species==state.Species||UsesSpace(state,doors,species,state.Space)||
-                DestinationSpace>=0&&UsesSpace(state,doors,species,DestinationSpace);
+            Required[species]=pinAll||species==state.Species||UsesSpace(state,doors,species,state.Space,underMemoryPressure?ImminentGuard:OutdoorGuard)||
+                DestinationSpace>=0&&UsesSpace(state,doors,species,DestinationSpace,underMemoryPressure?ImminentGuard:OutdoorGuard);
     }
     public static bool UsesSpace(GameState state,PortalSystem doors,int species,int space)
         =>UsesSpace(state,doors,species,space,OutdoorGuard);

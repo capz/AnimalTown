@@ -22,6 +22,10 @@ static class Program
             else if(args[0]=="shop-generate")BuildingAssets.GenerateShop(Root);
             else if(args[0]=="buildings")BuildingAssets.Cook(Root);
             else if(args[0]=="building-native"||args[0]=="model-native")NativeModelWinding.ConvertFile(args[2]);
+            else if(args[0]=="model-lod")ModelLodCooker.CookAll(Root,args.Length>2?float.Parse(args[2],System.Globalization.CultureInfo.InvariantCulture):ModelLodCooker.MaximumBindError);
+            else if(args[0]=="model-lod-check")ModelLodChecks.Run();
+            else if(args[0]=="model-memory")ModelMemoryCooker.Cook(Root);
+            else if(args[0]=="model-memory-check")ModelMemoryCooker.Check();
             else if(args[0]=="building-check")BuildingAssets.Check(Root);
             else if(args[0]=="repack-textures")TextureRepacker.Command(args);
             else if(args[0]=="town-preview")TownGenerationPreview.Run(args[2],int.Parse(args[3]),args.Length>4?int.Parse(args[4]):1);

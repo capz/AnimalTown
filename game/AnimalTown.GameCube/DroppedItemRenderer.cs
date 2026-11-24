@@ -3,6 +3,9 @@ using System.IO;
 using AnimalTown;
 using Dolphin.Graphics;
 using Hypercube.GameCube;
+using Dolphin.Timing;
+using Dolphin.Diagnostics;
+using Hypercube;
 
 // Retains one small GX native texture/material per used item art.
 // Geometry is built only for visible categories and reused for stationary views.
@@ -19,6 +22,12 @@ internal sealed class DroppedItemRenderer : IDisposable
     private readonly Texture2D?[] textures=new Texture2D?[ArtCount];
     private readonly Material[] materials=new Material[ArtCount];
     private readonly int[] counts=new int[ArtCount];
+    private readonly long[] lastUse=new long[ArtCount];
+    private const long IdleGraceUs=3000000;
+    internal const int TexturePeakBytes=16*1024;
+    internal VisualMemoryPressure? Memory;
+    private bool needsRetry;
+    private long retryAt;
     private readonly Transform identity=new Transform();
 
     internal DroppedItemRenderer()
@@ -33,31 +42,79 @@ internal sealed class DroppedItemRenderer : IDisposable
                 Cull=CullMode.Back
             };
     }
-    internal void Load()=>LoadTexture((int)DroppedItemArt.Generic);
-    private void LoadTexture(int index)
+    internal bool Load()
     {
-        if(textures[index]!=null)return;
-        var texture=Texture2D.FromPackage(File.ReadAllBytes(AnimalTown.ContentPaths.Asset(NativeNames[index]+".dndtex")),true);
-        texture.ConfigureSampler(TextureWrapMode.Clamp,TextureWrapMode.Clamp,
-            TextureMinFilter.LinearMipmapLinear,TextureMagFilter.Linear);
-        textures[index]=texture;materials[index].Texture=texture;
+        int index=(int)DroppedItemArt.Generic;if(textures[index]!=null)return true;
+        long now=Clock.Timestamp;if(now<retryAt)return false;int ticket=0;
+        if(Memory!=null&&!Memory.TryReserve(TexturePeakBytes,now,true,out ticket))return false;
+        try{var texture=ReadTexture(index);textures[index]=texture;materials[index].Texture=texture;Memory?.Complete(ticket);return true;}
+        catch(Exception error){Memory?.Cancel(ticket);Memory?.AllocationFailed(TexturePeakBytes,now);retryAt=now+VisualMemoryPressure.FailureBackoffUs;DebugOverlay.WriteLine("ANIMALTOWN ITEM VISUAL RETRY "+error.Message);return false;}
     }
-    internal void Prepare(GameState state,float eyeHeight)
+    private static Texture2D ReadTexture(int index)
     {
-        if(!plan.Prepare(state.Town,state.X,state.Z,eyeHeight))return;
+        var source=File.ReadAllBytes(ContentPaths.Asset(NativeNames[index]+".dndtex"));
+        if(source.Length!=11008||TexturePixels.Width(source)!=64||TexturePixels.Height(source)!=64||TexturePixels.Int(source,8)!=5||TexturePixels.Int(source,24)!=7)
+            throw new InvalidDataException("Dropped item art exceeds native admission budget");
+        Texture2D? texture=null;
+        try{
+            texture=Texture2D.FromPackage(source,true);
+            texture.ConfigureSampler(TextureWrapMode.Clamp,TextureWrapMode.Clamp,TextureMinFilter.LinearMipmapLinear,TextureMagFilter.Linear);
+            var ready=texture;texture=null;return ready;
+        }finally{texture?.Dispose();}
+    }
+    internal static int GrowthPeak(int capacity,int required,bool textureMissing)
+    {
+        int grown=BufferGrowth.Next(capacity,required,DroppedItemPlan.Capacity*6);
+        return checked((grown>capacity?grown*36+512:0)+(textureMissing?TexturePeakBytes:0));
+    }
+    internal bool Prepare(GameState state,float eyeHeight)
+    {
+        long now=Clock.Timestamp;
+        if(needsRetry){if(now<retryAt)return false;plan.Invalidate();needsRetry=false;}
+        for(int i=0;i<ArtCount;i++)if(counts[i]>0)lastUse[i]=now;
+        if(!plan.Prepare(state.Town,state.X,state.Z,eyeHeight))return true;
         Array.Clear(counts,0,counts.Length);
         // The stable far-to-near order is preserved within each texture batch.
         for(int n=0;n<plan.Count;n++)counts[plan.Art[plan.Order[n]]]++;
         for(int art=0;art<ArtCount;art++){
             int count=counts[art];
             if(count==0)continue;
-            LoadTexture(art);
-            var buffer=buffers[art]??=new DynamicMeshBuffer(DroppedItemPlan.Capacity*6);
-            var vertices=buffer.Reserve(count*6);
-            int written=WriteVertices(plan,vertices,(DroppedItemArt)art);
-            if(written!=count)throw new InvalidOperationException("Dropped item texture batch size mismatch");
-            buffer.Commit(count*6,plan.Revision);
+            lastUse[art]=now;
+            var previous=buffers[art];int capacity=previous?.Capacity??0,required=count*6;
+            int peak=GrowthPeak(capacity,required,textures[art]==null),ticket=0;
+            if(Memory!=null&&!Memory.TryReserve(peak,now,true,out ticket)){needsRetry=true;retryAt=now+100000;return false;}
+            Texture2D? newTexture=null;DynamicMeshBuffer? replacement=null;
+            try{
+                if(textures[art]==null)newTexture=ReadTexture(art);
+                var buffer=previous;
+                if(required>capacity)buffer=replacement=new DynamicMeshBuffer(DroppedItemPlan.Capacity*6);
+                var vertices=buffer!.Reserve(required);
+                int written=WriteVertices(plan,vertices,(DroppedItemArt)art);
+                if(written!=count)throw new InvalidOperationException("Dropped item texture batch size mismatch");
+                buffer.Commit(required,plan.Revision);
+                if(replacement!=null){buffers[art]=replacement;replacement=null;previous?.Dispose();}
+                if(newTexture!=null){textures[art]=newTexture;materials[art].Texture=newTexture;newTexture=null;}
+                Memory?.Complete(ticket);
+            }catch(Exception error){
+                replacement?.Dispose();newTexture?.Dispose();Memory?.Cancel(ticket);Memory?.AllocationFailed(peak,now);
+                needsRetry=true;retryAt=now+VisualMemoryPressure.FailureBackoffUs;
+                DebugOverlay.WriteLine("ANIMALTOWN ITEM BATCH RETRY "+error.Message);return false;
+            }
         }
+        return true;
+    }
+    internal bool ReleaseUnused(bool outdoorDemand,long now,bool pressure)
+    {
+        for(int art=0;art<ArtCount;art++){
+            if(outdoorDemand&&counts[art]>0){lastUse[art]=now;continue;}
+            if((buffers[art]==null&&textures[art]==null)||(!pressure&&now-lastUse[art]<IdleGraceUs))continue;
+            buffers[art]?.Dispose();buffers[art]=null;materials[art].Texture=null;
+            textures[art]?.Dispose();textures[art]=null;counts[art]=0;
+            // A stationary return to the same outdoor camera must republish
+            // geometry even though its domain snapshot has not changed.
+            plan.Invalidate();return true;
+        }
+        return false;
     }
     // With no filter, retain the old single-batch order for geometry verification.
     internal static int WriteVertices(DroppedItemPlan plan,VertexPositionColorTexture[] vertices,DroppedItemArt? only=null)
@@ -85,9 +142,11 @@ internal sealed class DroppedItemRenderer : IDisposable
     }
     internal void Draw(Renderer renderer)
     {
-        for(int i=0;i<ArtCount;i++)
-            if(counts[i]>0&&textures[i]!=null&&buffers[i]?.Mesh!=null)
-                renderer.DrawMesh(buffers[i]!.Mesh,materials[i],identity);
+        for(int i=0;i<ArtCount;i++){
+            var mesh=buffers[i]?.Mesh;
+            if(counts[i]>0&&textures[i]!=null&&mesh!=null)
+                renderer.DrawMesh(mesh,materials[i],identity);
+        }
     }
     public void Dispose()
     {
@@ -97,5 +156,6 @@ internal sealed class DroppedItemRenderer : IDisposable
             textures[i]?.Dispose();textures[i]=null;
             counts[i]=0;
         }
+        plan.Invalidate();needsRetry=false;retryAt=0;
     }
 }

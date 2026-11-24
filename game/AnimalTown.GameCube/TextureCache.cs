@@ -65,6 +65,16 @@ internal static class TextureCache
     {
         for(int i=0;i<entries.Length;i++)if(entries[i]!=null&&entries[i]!.References==0){Dispose(entries[i]!);entries[i]=null;Evictions++;}
     }
+    // Global pressure retires one owner per frame, after GX completion. Live
+    // leases (fonts, terrain, doors) are never candidates, regardless of budget.
+    internal static bool TrimOneUnused()
+    {
+        int oldest=-1;
+        for(int i=0;i<entries.Length;i++)if(entries[i]!=null&&entries[i]!.References==0&&
+            (oldest<0||entries[i]!.LastUse<entries[oldest]!.LastUse))oldest=i;
+        if(oldest<0)return false;
+        Dispose(entries[oldest]!);entries[oldest]=null;Evictions++;return true;
+    }
     internal static CachedTexture Store(CachedTexture entry)
     {
         if(GraphicsDevice.Default.IsFrameActive)throw new InvalidOperationException("Load textures between frames");

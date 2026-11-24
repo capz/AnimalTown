@@ -1,22 +1,15 @@
 # Indoor terrain cache suspension
 
-The debug option **discard terrain cache when indoors** is off by default.
-It is stored with the other startup debug options in the memory-card `dev config`
-item and is available from the existing debug configuration UI.
-The title modal and in-game debug menu use the same approved label and default.
-Dev-config version three retains the current 40-byte record size. Published
-version-one and version-two records remain readable, preserve their settings,
-and initialize this new option to Off. The terrain value follows the two tree
-noise settings; session-only UI grain remains separate. Gameplay save formats
-are independent of this change.
+Indoor suspension is automatic. The obsolete debug row has been removed from
+both menus; its historical byte remains readable in old `dev config` records
+but does not control residency. No town-save format changes are required.
 
-[Approved debug-menu mockup](concepts/aram-terrain-debug-mockup.png).
-
-When enabled, an indoor idle interval can release the outdoor archive's fixed
-1,048,576-byte MEM1 cache. The 8 MiB ARAM allocation, immutable terrain payload,
-native metadata and 256 reusable mesh-view identities remain alive. This does
-not rebake terrain, reduce geometry or texture quality, or discard saved town
-data. The ordinary outdoor cache remains resident when the flag is off.
+After two seconds indoors, away from an exit, the game releases the outdoor
+archive's fixed 1,048,576-byte MEM1 cache and its floor texture leases. The
+8 MiB ARAM reservation, immutable payload, metadata and reusable mesh-view
+identities stay alive. Walking inside no longer keeps outdoor visuals warm.
+Approaching the exit or starting a crossing restores the actual destination
+before the portal commits. This does not rebake terrain or discard town data.
 
 ## Lifetime and readiness
 
@@ -60,10 +53,12 @@ cache stays suspended. Save-only release and restoration emit no debug residency
 markers. Water-bed geometry and triangle accounting remain correct when the
 water style changes during a partial restore.
 
-Warm outdoor movement retains the prior complete demand-bind path. Those native
-binds now drain only their own broker request; cold indoor restoration uses the
-polling path. Hardware timing is still required to assess bandwidth contention,
-allocator latency and doorway readiness under actual MEM1 pressure.
+Warm movement and cold restoration both use bounded asynchronous DMA polling.
+A six-metre guarded selection in two-metre buckets prefetches beyond the actual
+view; prefetched pages are not drawn. Required pages take priority over the
+bounded speculative set. The existing 256 mesh views and 1 MiB cache do not grow.
+See [visual resource policy](visual-resource-policy.md) for pressure admission
+and the injected-latency travel checks. Physical hardware timing remains pending.
 
 Transition-only diagnostics expose the actual cache allocation change for
 emulator acceptance:

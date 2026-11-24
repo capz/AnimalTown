@@ -73,6 +73,8 @@ internal static class PathChecks
         snow.SetWinter(false);snow.SetWinter(true);
         check(snow.Packed.All(v=>v==0),"a new winter starts with fresh snow");
         SnowfallRecovery(check,Flat().Town);
+        SnowCoverage(check);
+        SparseSnowRecovery(check);
         s=Flat();t=s.Town;t.Traffic.Traverse(t,5.1f,40.2f,8.2f,40.2f);
         check(t.Traffic.Visits[40*Town.Width+5]==0&&t.Traffic.Visits[40*Town.Width+6]==1&&t.Traffic.Visits[40*Town.Width+7]==1&&t.Traffic.Visits[40*Town.Width+8]==1,"all entered cells are recorded, not the departure cell");
         t.Traffic.Traverse(t,8.2f,40.2f,8.9f,40.8f);check(t.Traffic.Visits[40*Town.Width+8]==1,"standing and walking within a tile add no visits");
@@ -110,6 +112,67 @@ internal static class PathChecks
         old=bytes[..^(TileTraffic.Bytes+8)];Put(old,4,10);Put(old,16,old.Length);Put(old,20,(int)SaveCodec.Crc(old,24,old.Length-24));check(SaveCodec.Decode(old).Town.Traffic.Visits.All(v=>v==0),"combined v10 remains readable");
         var broken=SplitSaveCodec.Encode(s);broken[0][^(TileTraffic.Bytes+13)]=255;Crc(broken[0]);bool rejected=false;try{SplitSaveCodec.Decode(broken);}catch(InvalidOperationException){rejected=true;}check(rejected,"invalid saved path styles remain rejected");
         Console.WriteLine($"Traffic paths: 15360 counter + 512 histogram + 3840 existing path bytes; 8192 native mask bytes on demand; 10000 entries {traversalMs:F2}ms host, classification {selectionMs:F3}ms host; no warm allocations");
+    }
+    private static void SnowCoverage(Action<bool,string> check)
+    {
+        var town=Flat().Town;var snow=town.Traffic.Snow;var pages=new SnowGroundVisibility();
+        int section=TerrainArchivePlan.Index(8,40);
+        bool Buried()=>SnowVisibility.Buried(town,10.25f,42.25f,.5f,.5f,.05f);
+        pages.Prepare(town);
+        check(!Buried()&&!pages.Covered(section),"summer keeps small objects and the base ground visible");
+        snow.SetWinter(true);pages.Prepare(town);
+        check(Buried()&&pages.Covered(section),"unbroken level snow hides buried seeds and the underlying ground page");
+        check(!SnowVisibility.Buried(town,10.25f,42.25f,.5f,.5f,.27f)&&
+            !SnowVisibility.Buried(town,10.25f,42.25f,.5f,.5f,DroppedItemPlan.Size),"flowers and dropped billboards protruding through snow stay visible");
+        check(!SnowVisibility.Buried(town,float.NaN,42,.5f,.5f,.05f)&&
+            !SnowVisibility.Buried(town,10,42,0,.5f,.05f),"invalid and empty footprints never disappear");
+        check(!SnowVisibility.CoveredGround(town,0,40,8,8)&&
+            !SnowVisibility.CoveredGround(town,120,40,8,8),"outer snow edges keep their base ground");
+        town.Paths.Set(9,42,1);pages.Prepare(town);
+        check(!Buried()&&!pages.Covered(section),"a path touching the footprint halo preserves objects and the ground beneath cutouts");
+        town.Paths.Clear();pages.Prepare(town);
+        check(Buried()&&pages.Covered(section),"clearing the path restores complete snow coverage");
+        town.Traffic.Enter(town,9,42);pages.Prepare(town);
+        check(!Buried()&&!pages.Covered(section),"even a shallow adjacent dent preserves the base and potentially exposed objects");
+        for(int i=0;i<SnowWear.RecoverySeconds*30;i++)snow.TickSnowfall(true);
+        pages.Prepare(town);
+        check(Buried()&&pages.Covered(section),"complete recovery closes coverage again without camera movement");
+        town.SetTerrain(7,42,Terrain.Camp);pages.Prepare(town);
+        check(!pages.Covered(section)&&Buried(),"page-edge dirt preserves its base without invalidating distant buried objects");
+        town.SetTerrain(7,42,Terrain.Grass);pages.Prepare(town);
+        town.Elevation[42*Town.Width+10]=TerrainElevation.Block;town.NotifyTerrainChanged();pages.Prepare(town);
+        check(!Buried()&&!pages.Covered(section),"raised cells and exposed vertical silhouettes keep complete geometry");
+        town.Elevation[42*Town.Width+10]=TerrainElevation.RampNorth;town.NotifyTerrainChanged();pages.Prepare(town);
+        check(!Buried()&&!pages.Covered(section),"sloped snow never culls ground or objects using a flat-height estimate");
+        town.Elevation[42*Town.Width+10]=0;town.NotifyTerrainChanged();
+        town.SetTerrain(10,42,Terrain.Plaza);pages.Prepare(town);
+        check(!Buried()&&!pages.Covered(section),"non-snow material cutouts stay visible");
+        town.SetTerrain(10,42,Terrain.Grass);snow.SetWinter(false);pages.Prepare(town);
+        check(!Buried()&&!pages.Covered(section),"leaving winter restores geometry independently of camera and dent revisions");
+    }
+    private static void SparseSnowRecovery(Action<bool,string> check)
+    {
+        var state=Flat();var town=state.Town;var snow=town.Traffic.Snow;snow.SetWinter(true);
+        long before=GC.GetAllocatedBytesForCurrentThread();town.Traffic.Enter(town,1,1);
+        check(GC.GetAllocatedBytesForCurrentThread()-before<4096,"an isolated dent does not allocate a full-town recovery field");
+        void Seconds(int count){for(int i=0;i<count*30;i++)snow.TickSnowfall(true);}
+        before=GC.GetAllocatedBytesForCurrentThread();Seconds(300);
+        check(GC.GetAllocatedBytesForCurrentThread()==before,"steady sparse snowfall recovery allocates no per-tick scratch");
+        town.Traffic.Enter(town,Town.Width-1,Town.Height-1);Seconds(300);
+        check(snow.VisitCount(1,1)==0&&snow.Packed[^1]!=0,"retiring the oldest recovery region preserves a newer distant dent");
+        town.Traffic.Enter(town,1,1);town.Traffic.Enter(town,64,60);Seconds(300);
+        check(snow.Packed[^1]==0&&snow.Packed[(Town.Width+1)/2]!=0&&snow.Packed[(60*Town.Width+64)/2]!=0,
+            "re-entering a retired region and adding another survive active-region removal");
+        Seconds(300);check(snow.Packed.All(v=>v==0),"all sparse regions fully recover and release their timestamp storage");
+        snow.ObserveSnowDay(400,false);
+        town.Traffic.Enter(town,1,1);town.Traffic.Enter(town,Town.Width-1,Town.Height-1);
+        // Checkpoint import reconstructs both distant regions, including their
+        // independent ages and the partial snowfall second.
+        Seconds(137);for(int i=0;i<17;i++)snow.TickSnowfall(true);
+        var restored=SaveCodec.Decode(SaveCodec.Encode(state)).Town.Traffic.Snow;
+        for(int i=0;i<(SnowWear.RecoverySeconds-137)*30-17;i++){snow.TickSnowfall(true);restored.TickSnowfall(true);}
+        check(snow.Packed.All(v=>v==0)&&snow.Packed.SequenceEqual(restored.Packed),
+            "sparse checkpoint restoration retains exact recovery times across distant regions");
     }
     private static void SnowfallRecovery(Action<bool,string> check,Town town)
     {

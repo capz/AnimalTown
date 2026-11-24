@@ -72,6 +72,7 @@ static int town_environment_apply(const DndDrawEffect *effect,int stage){
 /* Evaluate the signed green-channel difference before cast-shadow tint.
  * TEV's D input retains the signed register value for the final addition. */
 extern const uint8_t *animaltown_snow_mask(void);
+extern const uint8_t *animaltown_snow_mask_at(float,float,int);
 static void town_snow_bind(const uint8_t *depth,unsigned *bindings){
     GXTexObj tex;
     GX_InitTexObj(&tex,(void*)depth,512,512,GX_TF_I8,GX_CLAMP,GX_CLAMP,GX_FALSE);
@@ -165,7 +166,7 @@ static void town_shadow_apply_stage(float x,float z,const float *world,const Dnd
     float origin[6];const uint8_t *pixels=animaltown_shadows_page(x,z,origin);
     static int empty_ready;if(!empty_ready){DCFlushRange(town_shadow_empty,sizeof(town_shadow_empty));empty_ready=1;}
     int snow=mode==4||mode==5;
-    const uint8_t *depth=snow?animaltown_snow_mask():NULL;
+    const uint8_t *depth=snow?animaltown_snow_mask_at(x,z,mode==5):NULL;
     const uint8_t *snow_paths=snow?animaltown_path_mask():NULL;
     /* The solid white pass starts at stage zero and skips the ground texture. */
     if(snow)stage=0;
