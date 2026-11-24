@@ -43,7 +43,7 @@ internal sealed class TerrainRenderer : IDisposable
     private ulong visibleGroundMask,snowGroundMask;
     private long geometryRevision;
     internal long GeometryRevision=>geometryRevision;
-    internal bool Ready=>!resetting&&(legacy?stream.Presentable:archive?.Presentable??false);
+    internal bool Ready=>!resetting&&snowMaskReady&&(legacy?stream.Presentable:archive?.Presentable??false);
     internal bool ArchiveReady=>archive?.Ready??false;
     internal bool CacheSuspended=>archive?.CacheSuspended??false;
     internal int CacheResidencyError=>archive?.ResidencyError??0;
@@ -52,7 +52,7 @@ internal sealed class TerrainRenderer : IDisposable
     internal int WarmQueued=>archive?.WarmQueued??0;
     internal int WarmLateSelections=>archive?.WarmLateSelections??0;
     internal int WarmEvictions=>archive?.WarmEvictions??0;
-    private bool resetting;
+    private bool resetting,snowMaskPrepared,snowMaskReady=true;
     internal bool SuspendOutdoorCache()=>!DiscardTerrainCacheWhenIndoors||legacy||archive==null||archive.Suspend();
     // A not-yet-baked landscape follows the existing initial loading path.
     // Only a previously built cold cache must be prefetched before door commit.
@@ -61,6 +61,39 @@ internal sealed class TerrainRenderer : IDisposable
         if(legacy||archive==null||!archive.Ready)return true;
         archive.WarmPrefetch=WarmTerrainPrefetch;
         return (!WarmTerrainPrefetch&&!archive.WarmActive&&!refreshSelection&&archive.Presentable)||archive.PrepareAsync(x,z,Rows,deadline);
+    }
+    internal bool PrepareSnowForExit(Town town,float x,float z,bool smooth)
+    {
+        // Legacy stream meshes are selected by the first outdoor Prepare.
+        // The scene readiness check also covers that selection and its mask.
+        if(legacy||archive==null||!archive.Ready)return true;
+        if(!archive.Presentable)return false;
+        archive.GroundBounds(season==3?snowGroundMask:ulong.MaxValue,out int minZ,out int maxZ);
+        return PrepareSnowMask(town,x,z,minZ,maxZ,smooth);
+    }
+    internal bool ReleaseSnowMask(Town town)
+    {
+        if(!snowMaskPrepared)return true;
+        if(NativeShadows.Snow(town.Traffic.Snow.Packed,town.Tiles,town.Elevation,null,0,0,0,-1,0,0,0,0)!=1)return false;
+        snowMaskPrepared=false;
+        snowMaskReady=true;
+        return true;
+    }
+    private bool PrepareSnowMask(Town town,float x,float z,int minZ,int maxZ,bool smooth)
+    {
+        minZ=Math.Max(0,minZ);maxZ=Math.Min(Town.Height,maxZ);
+        if(minZ>=maxZ)return ReleaseSnowMask(town);
+        var snow=town.Traffic.Snow;
+        int focus=-1,elapsedMs=0;
+        if(smooth){
+            int tileX=Math.Max(0,Math.Min(Town.Width-1,(int)Math.Floor(x)));
+            int tileZ=Math.Max(0,Math.Min(Town.Height-1,(int)Math.Floor(z)));
+            focus=tileZ*Town.Width+tileX;
+            elapsedMs=unchecked((int)(Clock.Timestamp/1000));
+        }
+        snowMaskPrepared=true;
+        return NativeShadows.Snow(snow.Packed,town.Tiles,town.Elevation,smooth?snow.RecoveryStamps:null,
+            snow.Revision,town.TerrainVersion,1,focus,elapsedMs,snow.SnowfallTicks,minZ,maxZ)==1;
     }
     internal int LoadingRemaining=>legacy?stream.MissingWanted:archive?.Remaining??TerrainArchivePlan.Count;
     internal int LoadingTotal=>legacy?stream.WantedCount:TerrainArchivePlan.Count;
@@ -167,13 +200,12 @@ internal sealed class TerrainRenderer : IDisposable
         }
         var snow=state.Town.Traffic.Snow;
         snow.SetWinter(season==3);
-        int focus=-1,elapsedMs=0;
-        if(SmoothSnowTransitions&&snow.Winter){
-            focus=(int)state.Z*Town.Width+(int)state.X;
-            elapsedMs=unchecked((int)(Clock.Timestamp/1000));
+        bool drawSnow=room==0&&snow.Winter&&!mipBands.Enabled;
+        if(!drawSnow)snowMaskReady=ReleaseSnowMask(state.Town);
+        if(cachedTown!=null&&cachedTown!=state.Town&&!ReleaseSnowMask(cachedTown)){
+            snowMaskReady=false;
+            return;
         }
-        if(NativeShadows.Snow(snow.Packed,state.Town.Tiles,state.Town.Elevation,focus>=0?snow.RecoveryStamps:null,snow.Revision,state.Town.TerrainVersion,snow.Winter?1:0,focus,elapsedMs,snow.SnowfallTicks)!=1)
-            throw new InvalidOperationException("Snow mask native budget");
         bool upgraded=AdvanceGroundTexture();
         // The completed task and package arrays are out of the upgrade frame.
         if(upgraded)AnimalTown.GameCube.NativeTexturePages.Collect();
@@ -216,6 +248,10 @@ internal sealed class TerrainRenderer : IDisposable
             }
             archive.WarmPrefetch=WarmTerrainPrefetch;
             long at=FrameProfile.Start();archive.Prepare(state.X,state.Z,Rows);FrameProfile.DetailEnd(0,at);
+            if(drawSnow&&archive.Presentable){
+                archive.GroundBounds(snowGroundMask,out int minZ,out int maxZ);
+                snowMaskReady=PrepareSnowMask(state.Town,state.X,state.Z,minZ,maxZ,SmoothSnowTransitions);
+            }
             shadows.Prepare(state);
             int work=0;while(work<8&&Clock.Timestamp<deadline){if(!movingShadows.Advance())break;work++;}
             while(work<8&&Clock.Timestamp<deadline){if(!shadows.Advance())break;work++;}
@@ -244,9 +280,22 @@ internal sealed class TerrainRenderer : IDisposable
         while(steps<8&&Clock.Timestamp<deadline){if(!shadows.Advance())break;steps++;}
         gallery.PrepareGallery(state,this,cliffPreview);
         VisibleTriangles=gallery.Triangles+oceanWaves.Triangles+(GroundRingActive?GroundRingPlan.IndexCount/3:0);RejectedQuads=0;visibleGroundMask=0;
+        int snowMinZ=Town.Height,snowMaxZ=0;
         for(int i=0;i<stream.Count;i++)if(stream.Visible[i]){
             var section=sections[i]!;VisibleTriangles+=section.Triangles;
             visibleGroundMask|=section.GroundMask|section.Walls.GroundMask;
+            if(drawSnow&&(section.GroundMask&snowGroundMask)!=0&&stream.X[i]<Town.Width&&stream.X[i]+TerrainStream.Width>0){
+                snowMinZ=Math.Min(snowMinZ,stream.Z[i]);
+                snowMaxZ=Math.Max(snowMaxZ,stream.Z[i]+TerrainStream.Height);
+            }
+        }
+        if(drawSnow&&stream.Presentable){
+            if(GroundRingActive&&SnowMaterial(SharedFlatMaterial)){
+                int ringMinZ=(int)Math.Floor(state.Z)-GroundRingPlan.Ahead;
+                snowMinZ=Math.Min(snowMinZ,ringMinZ);
+                snowMaxZ=Math.Max(snowMaxZ,ringMinZ+GroundRingPlan.Rows);
+            }
+            snowMaskReady=PrepareSnowMask(state.Town,state.X,state.Z,snowMinZ,snowMaxZ,SmoothSnowTransitions);
         }
         PreparePaths(state);
     }

@@ -37,7 +37,7 @@ void dnd_draw_backend_flush(void *data,int bytes,int invalidate){
     assert(data&&!invalidate);
     if(bytes==SU_TERRAIN_BYTES)field_flushes++;
     else if(bytes==SU_BYTES)page_flushes++;
-    else{assert(bytes==32||bytes==SU_SNOW_BYTES);snow_flushes++;}
+    else{assert(bytes==32||bytes==SU_SNOW_BYTES||bytes==SU_SNOW_STRIP_BYTES);snow_flushes++;}
 }
 void dnd_draw_backend_publish_texture(void){texture_publications++;}
 void dnd_draw_backend_invalidate_cache(void){invalidations++;}
@@ -111,7 +111,8 @@ static void light_gain_checks(void){
 }
 
 static uint8_t snow_sample(int x,int z){
-    return snow_pixels[((z/4+1)*SU_SNOW_BLOCKS+x/8)*32+z%4*8+x%8];
+    assert(z/4>=snow_first_z&&z/4<snow_strip_past(snow_first_z,snow_texel_height));
+    return snow_row(z/4,snow_first_z)[(x/8)*32+z%4*8+x%8];
 }
 static void set_snow_wear(DndArray *visits,int x,int z,int wear){
     int cell=z*SU_WORLD_WIDTH+x,shift=4*(cell%2);
@@ -119,10 +120,13 @@ static void set_snow_wear(DndArray *visits,int x,int z,int wear){
     packed[cell/2]=(uint8_t)((packed[cell/2]&~(15<<shift))|(wear<<shift));
 }
 static int plain_snow(DndArray *visits,DndArray *tiles,DndArray *levels,int revision,int terrain_revision,int winter){
-    return animaltown_shadows_snow(visits,tiles,levels,NULL,revision,terrain_revision,winter,-1,0,0);
+    return animaltown_shadows_snow(visits,tiles,levels,NULL,revision,terrain_revision,winter,-1,0,0,0,SU_SNOW_HEIGHT);
+}
+static int strip_snow(DndArray *visits,DndArray *tiles,DndArray *levels,int revision,int min_z,int max_z){
+    return animaltown_shadows_snow(visits,tiles,levels,NULL,revision,0,1,-1,0,0,min_z,max_z);
 }
 static int visual_snow(DndArray *visits,DndArray *tiles,DndArray *levels,DndArray *stamps,int revision,int focus,int ms,int fall_ticks){
-    return animaltown_shadows_snow(visits,tiles,levels,stamps,revision,0,1,focus,ms,fall_ticks);
+    return animaltown_shadows_snow(visits,tiles,levels,stamps,revision,0,1,focus,ms,fall_ticks,0,SU_SNOW_HEIGHT);
 }
 static int visual_depth(int cell){
     return snow_visual->depths[snow_visual->buffer][snow_local(cell,snow_visual->origin)];
@@ -221,6 +225,61 @@ static void snow_joins_checks(DndArray *visits,DndArray *tiles,DndArray *levels)
     assert(plain_snow(visits,tiles,levels,107,4,0)==1);
     puts("Snow joins: both axes, rounded caps, bends, inner corners, diagonal separation, terrace and recovery passed");
 }
+static void snow_strip_checks(DndArray *visits,DndArray *tiles,DndArray *levels){
+    memset(visits->data,0,visits->length);
+    set_snow_wear(visits,64,112,15);
+    assert(strip_snow(visits,tiles,levels,200,0,56)==1&&!snow_pixels&&live==1);
+    assert(strip_snow(visits,tiles,levels,200,64,120)==1&&snow_pixels&&live==2);
+    assert(animaltown_shadows_stats(14)==SU_SNOW_STRIP_BYTES&&snow_sample(64*4+1,112*4+1)==255);
+    assert(strip_snow(visits,tiles,levels,200,0,0)==1&&!snow_pixels&&live==1);
+    assert(strip_snow(visits,tiles,levels,200,64,120)==1&&snow_sample(64*4+1,112*4+1)==255);
+    assert(plain_snow(visits,tiles,levels,200,0,0)==1&&live==1);
+
+    for(int z=0;z<SU_SNOW_HEIGHT;z++){
+        int x=(z*3)%126;
+        set_snow_wear(visits,x,z,8+z%8);
+        set_snow_wear(visits,x+1,z,8+(z+1)%8);
+        if(z+1<SU_SNOW_HEIGHT)set_snow_wear(visits,x,z+1,9);
+    }
+    assert(plain_snow(visits,tiles,levels,201,0,1)==1&&snow_texel_height==SU_SNOW_SIDE&&snow_first_z==0);
+    uint8_t *full=malloc(SU_SNOW_BYTES);assert(full);memcpy(full,snow_pixels,SU_SNOW_BYTES);
+    for(int route=0;route<2*(SU_SNOW_HEIGHT-56)+1;route++){
+        int min_z=route<=SU_SNOW_HEIGHT-56?route:2*(SU_SNOW_HEIGHT-56)-route;
+        int old_first=snow_first_z,before=texture_publications,flushes=snow_flushes;
+        int was_strip=snow_texel_height==SU_SNOW_STRIP_TEXELS;
+        assert(strip_snow(visits,tiles,levels,201,min_z,min_z+56)==1&&snow_pixels&&live==2);
+        int published_first=-1;
+        assert(animaltown_snow_layout(&published_first)==SU_SNOW_STRIP_TEXELS&&published_first==snow_first_z);
+        assert(animaltown_shadows_stats(14)==SU_SNOW_STRIP_BYTES);
+        if(was_strip&&old_first==snow_first_z)assert(texture_publications==before&&snow_flushes==flushes);
+        else assert(texture_publications==before+1&&snow_flushes==flushes+1);
+        int bytes=(snow_strip_past(snow_first_z,snow_texel_height)-snow_first_z)*SU_SNOW_ROW_BYTES;
+        assert(!memcmp(snow_row(snow_first_z,snow_first_z),full+(snow_first_z+1)*SU_SNOW_ROW_BYTES,(size_t)bytes));
+    }
+    int before=texture_publications;
+    set_snow_wear(visits,125,118,15);
+    assert(strip_snow(visits,tiles,levels,202,0,56)==1&&texture_publications==before);
+    assert(strip_snow(visits,tiles,levels,202,64,120)==1&&snow_sample(125*4+1,118*4+1)==255);
+    release_error=1;
+    assert(plain_snow(visits,tiles,levels,202,0,1)==0&&animaltown_shadows_stats(14)==SU_SNOW_STRIP_BYTES);
+    release_error=0;create_error=1;
+    assert(plain_snow(visits,tiles,levels,202,0,1)==0&&!snow_pixels&&live==1);
+    create_error=0;
+    assert(plain_snow(visits,tiles,levels,202,0,1)==1&&animaltown_shadows_stats(14)==SU_SNOW_BYTES);
+    int focus=20+96*SU_WORLD_WIDTH;
+    assert(visual_snow(visits,tiles,levels,NULL,202,focus,10,0)==1&&snow_visual);
+    set_snow_wear(visits,20,96,12);
+    assert(visual_snow(visits,tiles,levels,NULL,203,focus,110,0)==1);
+    assert(visual_snow(visits,tiles,levels,NULL,203,focus,210,0)==1);
+    memcpy(full,snow_pixels,SU_SNOW_BYTES);
+    assert(animaltown_shadows_snow(visits,tiles,levels,NULL,203,0,1,focus,210,0,64,120)==1&&snow_visual);
+    assert(animaltown_shadows_stats(15)==(int)sizeof(*snow_visual));
+    assert(!memcmp(snow_row(snow_first_z,snow_first_z),full+(snow_first_z+1)*SU_SNOW_ROW_BYTES,
+        (size_t)(snow_strip_past(snow_first_z,snow_texel_height)-snow_first_z)*SU_SNOW_ROW_BYTES));
+    assert(strip_snow(visits,tiles,levels,203,0,0)==1&&!snow_pixels&&!snow_visual&&live==1);
+    free(full);
+    puts("Snow strip: 128 KiB, pixel parity on a round trip, sparse updates, fallback and same-revision resume passed");
+}
 static void town_snow_checks(void){
     DndArray *visits=pixels(SU_SNOW_PACKED);
     DndArray *tiles=pixels(SU_SNOW_PACKED*2),*levels=pixels(SU_SNOW_PACKED*2);
@@ -277,6 +336,7 @@ static void town_snow_checks(void){
     assert(plain_snow(visits,tiles,levels,maximum_wear+3,0,0)==1&&!animaltown_snow_mask()&&live==1);
     snow_joins_checks(visits,tiles,levels);
     smooth_snow_checks(visits,tiles,levels);
+    snow_strip_checks(visits,tiles,levels);
     free(visits);free(tiles);free(levels);
     printf("Town snow: %d cells, five wear levels, %d charged bytes in winter. Ordinary shadows use %zu bytes\n",
            SU_WORLD_WIDTH*SU_SNOW_HEIGHT,reserved,su_storage_bytes());

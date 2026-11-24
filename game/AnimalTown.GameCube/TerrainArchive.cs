@@ -212,15 +212,29 @@ internal sealed partial class TerrainArchive
     private void Publish()
     {
         Triangles=ViewCount=0;GroundMask=0;
-        for(int i=0;i<selection.Count;i++){
-            int section=selection.Sections[i];Triangles+=triangles[section];
-        }
+        for(int i=0;i<selection.Count;i++)Triangles+=triangles[selection.Sections[i]];
         for(int i=0;i<heads.Length;i++)heads[i]=-1;
         for(int i=views.Length-1;i>=0;i--){
             var view=views[i]!;if(view.Section<0||!visible[view.Section])continue;
             ViewCount++;if(view.Kind<104)GroundMask|=1UL<<(view.Kind%52);
             int kind=view.Kind>=52&&view.Kind<104?view.Kind-52:view.Kind;
             links[i]=heads[kind];heads[kind]=i;
+        }
+    }
+    internal void GroundBounds(ulong materials,out int minZ,out int maxZ)
+    {
+        minZ=Town.Height;maxZ=0;
+        materials&=GroundMask;
+        for(int slot=0;slot<FloorStrips.MaximumMaterials;slot++){
+            if((materials&(1UL<<slot))==0)continue;
+            for(int index=heads[slot];index>=0;index=links[index]){
+                var view=views[index]!;
+                if(view.Kind>=FloorStrips.MaximumMaterials)continue;
+                int x=TerrainArchivePlan.X(view.Section);
+                if(x>=Town.Width||x+TerrainStream.Width<=0)continue;
+                int z=TerrainArchivePlan.Z(view.Section);
+                minZ=Math.Min(minZ,z);maxZ=Math.Max(maxZ,z+TerrainArchivePlan.Height);
+            }
         }
     }
     internal int First(int kind)=>heads[kind];
