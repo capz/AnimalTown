@@ -221,8 +221,38 @@ internal static class ModelResidencyChecks
         check(!models[1].IsResident&&manager.ColdBytes==65536&&models[1].Starts==2,"canceled shutdown preserves the cold model's backing for normal disposal without restarting it");
 
         StartupChecks(check);
+        WaterInspectionChecks(check);
         OutdoorJourneyChecks(check);
         ApproachChecks(check);
+    }
+    private static void WaterInspectionChecks(Action<bool,string> check)
+    {
+        var manager=Setup(out var models,out var state,out var doors);
+        state.Space=0;state.X=20;state.Z=20;
+        Array.Fill(state.Town.Tiles,(byte)Terrain.Grass);Array.Clear(state.Town.Elevation);
+        state.Town.Tiles[80*Town.Width+80]=(byte)Terrain.Water;
+        state.Town.Tiles[81*Town.Width+80]=(byte)Terrain.Water;state.Town.NotifyTerrainChanged();
+        var inspected=state.Town.Residents[1];inspected.Space=0;inspected.PosX=80.5f;inspected.PosZ=86.5f;
+        check(!ModelResidencyDemand.DrawableUsesSpace(state,doors,1,0),"water fixture starts with the inspected NPC outside the player's camera");
+        WaterInspection.Focus(state,1);
+        var visibility=new ActorFrameVisibility();visibility.Prepare(state,doors,new InteriorCamera(),1,0);
+        manager.Require(state,doors,Clock.Timestamp);
+        check(visibility.Visible[2]&&manager.Required(1)&&manager.RequiredSpeciesCount==2,
+            "focused water inspection demands its visible NPC and selected player species without pinning hidden species");
+        for(int i=0;i<4;i++){Pump(manager,true);Drain(manager);}
+        check(manager.Ready(0)&&manager.Ready(1)&&models.Skip(2).All(model=>!model.IsResident)&&manager.ReadyForSpace(state,doors,0),
+            "unused species can release their native allocations while the water camera remains drawable");
+        int allocations=models.Sum(model=>model.Starts);
+        for(int frame=0;frame<120;frame++){
+            Clock.Timestamp+=33333;WaterInspection.Focus(state,1);
+            manager.Require(state,doors,Clock.Timestamp);Pump(manager,true);
+        }
+        check(models.Sum(model=>model.Starts)==allocations&&models.Skip(2).All(model=>!model.IsResident),
+            "repeated water camera demand does not refill released terrain-cache headroom with unrelated model restores");
+        manager.Require(state,doors,Clock.Timestamp,true);
+        for(int i=0;i<5&&!manager.AllReady;i++){Pump(manager);Drain(manager);}
+        check(manager.AllReady&&manager.Restores==4,"explicit UV inspection still restores and pins the complete shared model set");
+        manager.Stop();
     }
     private static void OutdoorJourneyChecks(Action<bool,string> check)
     {
