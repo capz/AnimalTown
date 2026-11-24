@@ -347,6 +347,15 @@
         "Archived riverbeds and rocks preserve water levels, bridge traversal and saved towns.",
         "Optional authored water textures replace built-in patterns through the existing asset cooker."
       ]
+    },
+    {
+      "id": "water-inspection-camera-residency-20261124",
+      "lines": [
+        "Water previews leave room for town terrain to reload.",
+        "Villager model loading follows the preview camera before and after drawing.",
+        "Villagers visible only from the saved player position can stay unloaded.",
+        "Leaving the preview restores normal camera demand without moving the player."
+      ]
     }
   ]
 }

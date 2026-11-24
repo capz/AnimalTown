@@ -451,7 +451,7 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
         bool nearExit=false;
         if(room!=0){BuildingWorld.InsideDoor(state,room,out float x,out float z);float dx=state.X-x,dz=state.Z-z;nearExit=dx*dx+dz*dz<1.1025f;}
         outdoorModelLookahead=room!=0&&(nearExit||now-playerStillSince<2000000);
-        modelResidency.Require(state,villagers.Doors,now,uvDebug!=0||requestedUv>=0,outdoorModelLookahead?0:-1);
+        modelResidency.RequireForView(state,villagers.Doors,now,waterInspection,uvDebug!=0||requestedUv>=0,outdoorModelLookahead?0:-1);
         modelSceneReady=room==0||modelResidency.ReadyForSpace(state,villagers.Doors,room);
         UpdatePortalReadiness();
     }
