@@ -10,28 +10,32 @@ public sealed partial class Town
     internal const int PlayerStartX=18, PlayerStartZ=38;
     private const int PopulationColumns=4, PopulationRows=2, PopulationLandDepth=Height-40;
     private const int PopulationSectors=PopulationColumns*PopulationRows;
-    private SavedVisitor?[]? visitorProfiles;
-    private Villager?[]? visitors;
+    private sealed class VisitorSlots
+    {
+        internal readonly bool KeepLegacyResident;
+        internal readonly SavedVisitor[] Profiles=new SavedVisitor[VisitorCount];
+        internal readonly Villager?[] Actors=new Villager?[VisitorCount];
+        internal VisitorSlots(bool keepLegacyResident){KeepLegacyResident=keepLegacyResident;}
+    }
+    private VisitorSlots? visitors;
 
-    internal bool VisitorRoster {get;private set;}
-    internal bool LegacyResidentPresent {get;private set;}=true;
+    internal bool VisitorRoster=>visitors!=null;
+    internal bool LegacyResidentPresent=>visitors?.KeepLegacyResident??true;
 
     public Villager NpcAt(int npc)
     {
-        if((uint)(npc-LocalResidentCount)<VisitorCount&&visitors?[npc-LocalResidentCount] is Villager visitor)return visitor;
+        if((uint)(npc-LocalResidentCount)<VisitorCount&&visitors?.Actors[npc-LocalResidentCount] is Villager visitor)return visitor;
         if((uint)npc<SavedVillagerCount)return Residents[npc];
         throw new ArgumentOutOfRangeException(nameof(npc));
     }
 
-    internal SavedVisitor? VisitorAt(int npc)=>(uint)(npc-LocalResidentCount)<VisitorCount
-        ?visitorProfiles?[npc-LocalResidentCount]:null;
+    internal SavedVisitor? VisitorAt(int npc)=>(uint)(npc-LocalResidentCount)<VisitorCount&&visitors?.Actors[npc-LocalResidentCount]!=null
+        ?visitors.Profiles[npc-LocalResidentCount]:null;
 
     internal void ConfigureVisitors(GameState state,SavedVisitor[] profiles,bool keepLegacy)
     {
-        VisitorRoster=true;
-        LegacyResidentPresent=keepLegacy;
-        visitorProfiles=null;
-        visitors=null;
+        var current=new VisitorSlots(keepLegacy);
+        visitors=current;
         int slot=keepLegacy?1:0;
         int limit=state.Visiting?1:VisitorCount;
         for(int i=0,count=0;i<profiles.Length&&count<limit&&slot<VisitorCount;i++){
@@ -39,14 +43,12 @@ public sealed partial class Town
             if(profile.TownId==0||profile.TownId==Jobs.TownId||(uint)profile.Slot>=GameState.ProfileCount||
                 (uint)profile.Species>=ModelResidencyDemand.SpeciesCount||string.IsNullOrEmpty(profile.Name))continue;
             if(state.Visiting&&Jobs.Trip.Home==profile.TownId&&Jobs.Trip.HomeProfile==profile.Slot)continue;
-            if(slot>0&&visitorProfiles?[0] is SavedVisitor earlier&&earlier.TownId==profile.TownId&&earlier.Slot==profile.Slot)continue;
+            if(slot>0&&current.Profiles[0].TownId==profile.TownId&&current.Profiles[0].Slot==profile.Slot)continue;
             if(!TryVisitorSpawn(state,out int x,out int z))break;
             var visitor=new Villager{Name=profile.Name,Phrase=profile.Catchphrase,HomeX=-1,HomeZ=-1};
             SetOutdoor(visitor,x,z);
-            visitorProfiles??=new SavedVisitor?[VisitorCount];
-            visitors??=new Villager?[VisitorCount];
-            visitorProfiles[slot]=profile;
-            visitors[slot]=visitor;
+            current.Profiles[slot]=profile;
+            current.Actors[slot]=visitor;
             slot++;count++;
         }
     }
