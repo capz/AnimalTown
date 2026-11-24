@@ -2103,6 +2103,35 @@ def aram_model_population(text,player_species):
     return {'session_start':session,'mask':mask,'actors':actors,
             'species':[species for species in range(6) if mask&(1<<species)]}
 
+def aram_actor_view(text,population,fresh_defaults=False):
+    """Read live actors, keeping saved-home records separate from visitors."""
+    import re
+    match=re.search(r'ANIMALTOWN JOB VIEW (\S+) ((?:-?\d+ ?){10})[\r\n]',text)
+    if match is None or 'ANIMALTOWN JOB VIEW END' not in text[match.end():]:raise AssertionError('Incomplete live actor view')
+    values=list(map(int,match[2].split()));homes={};saved={}
+    if values[0] not in (0,1,2,3,4,16,17,18,19,20,21,24,25,26,*range(32,44)) or not 0<=values[1]<128*1024 or not 0<=values[2]<120*1024:
+        raise AssertionError('Invalid live player location')
+    for row in re.findall(r'ANIMALTOWN JOB NPC (\d+) (-?\d+) (-?\d+) (-?\d+) (\d+) (-?\d+) (-?\d+)',text):
+        slot,space,x,z,busy,hx,hz=map(int,row);homes[slot]=(hx,hz);saved[slot]=(slot,slot,space,x,z,busy)
+    rows=re.findall(r'ANIMALTOWN JOB ACTOR (\d+) (\d+) (-?\d+) (-?\d+) (-?\d+) (\d+)',text)
+    source='actual actors'
+    if not rows:
+        # Frozen pre-diagnostic ISOs can be probed only on a fresh no-visitor
+        # town whose five unchanged default local identities are unambiguous.
+        if not fresh_defaults or population['mask']!=31 or population['actors']!=6 or not all(i in saved for i in range(5)):
+            raise AssertionError('Live actor species records required for legacy, remapped or visitor rosters')
+        rows=[saved[i] for i in range(5)];source='guarded fresh defaults'
+    actors={}
+    for row in rows:
+        slot,species,space,x,z,busy=map(int,row)
+        if (slot in actors or not 0<=slot<7 or species not in population['species'] or
+                space not in (0,1,2,3,4,16,17,18,19,20,21,24,25,26,*range(32,44)) or
+                not 0<=x<128*1024 or not 0<=z<120*1024 or busy not in (0,1)):
+            raise AssertionError('Invalid live actor identity or location')
+        actors[slot]={'slot':slot,'species':species,'room':space,'x':x/1024,'z':z/1024,'busy':bool(busy)}
+    if len(actors)+1!=population['actors']:raise AssertionError('Live actor view disagrees with the actual population')
+    return {'screen':match[1],'room':values[0],'x':values[1]/1024,'z':values[2]/1024,'actors':actors,'homes':homes,'source':source}
+
 def terrain_residency_cycles(text,after=0):
     """Validate physical cache/source ownership and complete doorway restores."""
     import re
@@ -2244,6 +2273,51 @@ def aram_residency_scenario():
             aram_inspector_arrival(before,after)
             building_inspections+=1
             report.setdefault('acknowledged_home_inspections',[]).append(building_inspections)
+    def actor_view():
+        release_controls();offset=len(logs());os.write(controller,b'PRESS L\nPRESS R\n')
+        try:press_presented('Y',clock)
+        finally:release_controls()
+        wait_log('ANIMALTOWN JOB VIEW END',offset)
+        return aram_actor_view(logs()[offset:],population,fresh_defaults)
+    def restore_live_actor(species,name):
+        import math
+        route={'species':species,'observations':[]};report.setdefault('live_actor_routes',[]).append(route)
+        previous=None;stalls=0
+        for attempt in range(80):
+            current=actor_view()
+            candidates=[actor for actor in current['actors'].values() if actor['species']==species]
+            if not candidates:raise AssertionError('Retired species has no actual present actor: '+str(species))
+            actor=min(candidates,key=lambda a:(a['room']!=current['room'],(a['x']-current['x'])**2+(a['z']-current['z'])**2))
+            route['observations'].append({'player':{k:current[k] for k in ('room','x','z')},'actor':actor,'source':current['source']})
+            if species not in uncovered_models(aram_model_cycles(logs(),baseline),population):
+                route['restored']=True;screenshot(name+'-live-restored.png')
+                if current['room']!=0:leave(name+'-live-returned')
+                return
+            if current['screen']!='world':press_presented('B',clock);press_presented('B',clock);continue
+            if current['room']!=actor['room']:
+                if current['room']!=0:
+                    inspect(True);press_presented('A',clock);view(name+'-live-exit',False);continue
+                if 16<=actor['room']<=21:
+                    enter(name+'-live-home-'+str(attempt),target_species=actor['room']-16);continue
+                if actor['room']==24:
+                    os.write(controller,b'SET C .5 0\nPRESS L\nPRESS R\n')
+                    try:press_presented('A',clock)
+                    finally:release_controls()
+                    view(name+'-live-shop',False);press_presented('A',clock);view(name+'-live-room',True);continue
+                if actor['room']!=25:raise AssertionError('Unsupported actual actor space: '+str(actor['room']))
+                target=(50.5,29.4)
+            else:target=(actor['x'],min(119.5,actor['z']+5)) if current['room']==0 else (actor['x'],actor['z'])
+            dx,dz=target[0]-current['x'],target[1]-current['z'];distance=math.hypot(dx,dz)
+            if actor['room']==25 and current['room']==0 and distance<.5:
+                os.write(controller,b'SET MAIN .5 .8\n');guest(name+'-live-face',.05);release_controls();press_presented('A',clock);view(name+'-live-post',True);continue
+            position=(current['x'],current['z']);stalls=stalls+1 if previous is not None and math.dist(position,previous)<.08 else 0;previous=position
+            if stalls>12:raise AssertionError('Ordinary walking could not approach actual actor: '+str(actor))
+            if distance<.2:guest(name+'-live-ready',.5);continue
+            if stalls:dx,dz=(-dz,dx) if stalls%4<2 else (dz,-dx)
+            os.write(controller,f'SET MAIN {.5+dx/distance*.5} {.5-dz/distance*.5}\nPRESS B\n'.encode())
+            try:guest(name+'-live-walk',min(.7,max(.08,distance/5.04)))
+            finally:release_controls()
+        raise AssertionError('No genuine gameplay restore after following actual actor: '+str(species))
     def enter(name,target_species=None):
         if target_species is not None:
             # The existing inspector cycles the six actual resident homes in
@@ -2271,6 +2345,7 @@ def aram_residency_scenario():
         guest(name+'-outdoor-settle',2)
 
     wait_title();initial=card_dev_config(card);report['initial_dev_config']=initial
+    fresh_defaults=not committed_card_sequence(card)
     start_game(False,'aram');set_debug_visibility(True)
     startup=[]
     for index,session in enumerate(logs().split('ANIMALTOWN GAME START')[1:]):
@@ -2339,6 +2414,8 @@ def aram_residency_scenario():
             if species not in uncovered_models(evidence,population):continue
         enter(name,target_species=species);guest(name+'-indoor',1);leave(name+'-returned')
         evidence=aram_model_cycles(logs(),baseline)
+        if species in uncovered_models(evidence,population):
+            restore_live_actor(species,name);evidence=aram_model_cycles(logs(),baseline)
     if evidence['session_start']!=session_start:raise AssertionError('Town session changed during residency acceptance')
     if not evidence['retired_species']:raise AssertionError('No actual model retirement was observed in the current town session')
     if not set(evidence['retired_species'])&set(population['species']):raise AssertionError('Only unused species packages retired; no present actor demonstrated paging')

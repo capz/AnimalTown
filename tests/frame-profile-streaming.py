@@ -541,6 +541,68 @@ for invalid in (
 assert model_population(boot+population_marker+ready+boot+'ANIMALTOWN MODEL POPULATION mask 33 actors 2\n'+ready,0)['species']==[0,5]
 print('ARAM model coverage: current actor roster, legacy/visitor cohorts, rereclamation, startup/session isolation and unused packages passed')
 
+actor_node=next(n for n in module.body if isinstance(n,ast.FunctionDef) and n.name=='aram_actor_view')
+exec(compile(ast.Module([actor_node],type_ignores=[]),'<actual live actor routing>','exec'),coverage_scope)
+actor_view=coverage_scope['aram_actor_view']
+header='ANIMALTOWN JOB VIEW world 0 10240 20480 -1 0 0 0 0 0 0\n'
+homes=''.join(f'ANIMALTOWN JOB NPC {i} 0 10240 20480 0 {10+i*11} 10\n' for i in range(6))
+end='ANIMALTOWN JOB VIEW END\n'
+fresh_population={'mask':31,'actors':6,'species':[0,1,2,3,4]}
+fresh=actor_view(header+homes+end,fresh_population,True)
+assert sorted(fresh['actors'])==list(range(5)) and 5 not in fresh['actors']
+assert fresh['source']=='guarded fresh defaults'
+actual='ANIMALTOWN JOB ACTOR 0 1 17 2048 3072 0\nANIMALTOWN JOB ACTOR 6 5 0 56320 61440 1\n'
+visitors={'mask':35,'actors':3,'species':[0,1,5]}
+live=actor_view(header+homes+actual+end,visitors)
+assert live['actors'][0]['species']==1 and live['actors'][0]['room']==17
+assert live['actors'][6]['species']==5 and live['actors'][6]['x']==55 and live['actors'][6]['busy']
+for text,roster,defaults in (
+    (header+homes+end,fresh_population,False),(header+homes+end,visitors,True),
+    (header+actual,visitors,False),(header+actual+actual+end,visitors,False),
+    (header+actual.replace('ACTOR 6','ACTOR 7')+end,visitors,False),
+    (header+actual.replace('6 5 0','6 4 0')+end,visitors,False),
+    (header+actual.replace('56320','131072')+end,visitors,False),
+    (header+actual.replace('0 1 17','0 1 99')+end,visitors,False),
+    (header+actual+end,{**visitors,'actors':4},False),
+    (header.replace('world 0','world 99')+actual+end,visitors,False),
+    (header.replace('10240 20480','-1 20480')+actual+end,visitors,False),
+):
+    try:actor_view(text,roster,defaults)
+    except AssertionError:pass
+    else:raise AssertionError('Ambiguous, absent or malformed live actor route was accepted')
+
+# Execute the production fallback: an actor visiting another resident's house
+# routes to that actual space, and only a paired runtime WARM completes it.
+fallback=next(n for n in scenario.body if isinstance(n,ast.FunctionDef) and n.name=='restore_live_actor')
+for restore in (True,False):
+    events=[];trace=[boot+model_cold.replace('COLD 1','COLD 2')]
+    actor={'slot':2,'species':2,'room':17 if restore else 0,'x':55,'z':60,'busy':False}
+    current={'screen':'world','room':0,'x':10,'z':20,'actors':{2:actor},'source':'actual actors'}
+    def enter_actual(name,target_species):
+        events.append(('home',target_species));assert target_species==1 and current['room']==0
+        trace.append(model_warm.replace('WARM 1','WARM '+str(actor['species'])));current['room']=17
+    def leave_actual(name):
+        events.append(('exit',current['room']));assert current['room']==17;current['room']=0
+    scope={**coverage_scope,'actor_view':lambda:current,'report':{},'baseline':len(boot),
+           'population':fresh_population,'logs':lambda:''.join(trace),'enter':enter_actual,
+           'leave':leave_actual,
+           'os':SimpleNamespace(write=lambda fd,data:events.append(data.decode())), 'controller':0,
+           'guest':lambda name,seconds:None,'release_controls':lambda:events.append('release'),
+           'screenshot':lambda name:events.append('screenshot')}
+    exec(compile(ast.Module([fallback],type_ignores=[]),'<live actor fallback>','exec'),scope)
+    try:scope['restore_live_actor'](2,'missing-actor')
+    except AssertionError:
+        assert not restore and not scope['report']['live_actor_routes'][0].get('restored')
+        assert len(scope['report']['live_actor_routes'][0]['observations'])<20
+    else:
+        assert restore and scope['report']['live_actor_routes'][0]['restored']
+        assert ('home',1) in events and 'screenshot' in events and ('exit',17) in events and current['room']==0
+        # The next missing cohort must begin outdoors after a real exit.
+        actor['species']=3;trace.append(model_cold.replace('COLD 1','COLD 3'))
+        scope['restore_live_actor'](3,'next-missing-actor')
+        assert current['room']==0 and events.count(('exit',17))==2
+print('ARAM live routing: actual/remapped/visitor identities, absent actors, guarded old traces and genuine restore-only completion passed')
+
 config_reader=next(n for n in module.body if isinstance(n,ast.FunctionDef) and n.name=='card_dev_config')
 config_namespace=dict(namespace)
 exec(compile(ast.Module(body=[config_reader],type_ignores=[]),'<developer config reader>','exec'),config_namespace)
