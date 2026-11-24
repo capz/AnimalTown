@@ -239,6 +239,12 @@ Check(SaveCards.Device==4&&travelHomeCard.Writes==hostWrites&&travelAwayCard.Wri
 MemoryCard.Slots.Remove(5);
 visitingSession.RefreshVisitors();
 Check(!visitingSession.State.NpcPresent(5)&&!visitingSession.State.NpcPresent(6),"missing source card leaves both visitor slots empty");
+var interruptedVisitorCard=new MemoryCard(5);
+Check(interruptedVisitorCard.CreateRecords("AnimalTown",32,1234,new byte[16384])==0,"interrupted source archive fixture");
+int interruptedWrites=interruptedVisitorCard.Writes;
+visitingSession.RefreshVisitors();
+Check(interruptedVisitorCard.Writes==interruptedWrites&&!visitingSession.State.NpcPresent(5)&&!visitingSession.State.NpcPresent(6),
+    "visitor loading never initializes an interrupted source archive");
 MemoryCard.Slots[5]=travelAwayCard;
 bool travelSwapRefused=false;
 int awayWrites=travelAwayCard.Writes;
