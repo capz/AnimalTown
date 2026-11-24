@@ -43,6 +43,8 @@ static class Program
             else if(args[0]=="splash-import-engine")SplashAssets.ImportEngine(Root,args[2]);
             else if(args[0]=="path-import")PathAssets.Import(Root,args[2]);
             else if(args[0]=="path-assets"||args[0]=="path-check")PathAssets.Build(Root);
+            else if(args[0]=="water-assets")WaterTextureArt.Build(Root);
+            else if(args[0]=="water-check")WaterTextureArtChecks.Run(Root);
             else if(args[0]=="terrain"){RepeatFloorAssets.Build(Root);PathAssets.Build(Root);}
             else if(args[0]=="terrain-check")TerrainChecks.Run(Root);
             else if(args[0]=="tree-audit")TreeRenderAudit.Run(Root,args[2]);
@@ -168,7 +170,7 @@ static class Program
         ModelVariants.Prune(Root);
         // Reused/SkipAssets output must not carry retired textures into a disc.
         foreach(string retired in new[]{"sunshine-water.dndtex","sunshine-wave.dndtex","sunshine-distortion.dndtex"})File.Delete(Path.Combine(dir,retired));
-        BrandAssets.Build(Root);RepeatFloorAssets.Build(Root);PathAssets.Build(Root);TerrainCliffAssets.CookTexture(Root);DroppedItemAssets.Build(Root);
+        BrandAssets.Build(Root);RepeatFloorAssets.Build(Root);PathAssets.Build(Root);TerrainCliffAssets.CookTexture(Root);DroppedItemAssets.Build(Root);WaterTextureArt.Build(Root);
         byte[] image=Banner(96);File.WriteAllBytes(Path.Combine(dir,"savebanner.rgb5a3"),image);File.WriteAllBytes(Path.Combine(dir,"saveicon.rgb5a3"),Banner(32));
     }
     static void ReleaseMetadata(string commit)
@@ -251,6 +253,11 @@ static class Program
             if(!seen.Add(n)||offset%32768!=0||offset<previous||(long)offset+size>f.Length)throw new InvalidDataException("FST range invalid");previous=offset+size;
             if(n=="buildings.bin"){byte[] descriptor=new byte[size];f.Position=offset;f.ReadExactly(descriptor);AnimalTown.BuildingCatalog.Configure(descriptor);}
             if(n=="opening.bnr"){byte[] b=new byte[size];f.Position=offset;f.ReadExactly(b);DiscBannerFile.Verify(b,discVersion);}
+            if(n.StartsWith("water-",StringComparison.Ordinal)&&n.EndsWith(".dndtex",StringComparison.Ordinal)){
+                int role=AnimalTown.WaterTextureCatalog.IndexOfDiscName(n);
+                if(role<0||size!=32+AnimalTown.WaterTextureCatalog.NativeBytes(role))throw new InvalidDataException("Unknown or oversized water texture: "+n);
+                byte[] texture=new byte[size];f.Position=offset;f.ReadExactly(texture);AnimalTown.WaterTextureCatalog.Validate(texture,role);
+            }
             if(n=="version.md"){
                 if(size>64)throw new InvalidDataException("ISO version.md exceeds its 64-byte limit");
                 byte[] version=new byte[size];f.Position=offset;f.ReadExactly(version);DiscVersionFile.Verify(version,discVersion);

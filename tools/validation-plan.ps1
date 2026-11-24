@@ -17,8 +17,8 @@ function Get-ValidationPlan {
     foreach($raw in $ChangedPaths){
         $p=$raw.Replace('\','/')
         $renderingForPath=if($p -match '^tests/AnimalTown.Checks/'){ @() }else{ $allRendering }
-        if($p -match '^(shared/AnimalTown.Domain/(WindWakerWaterPattern|WindWakerWaveField|WindWakerWaveGrid)|game/AnimalTown.GameCube/WaterMaterial)\.cs$'){$renderingForPath=@('water')}
-        elseif($p -match '^(shared/AnimalTown.Domain/(WaterSurface|WaterDepthCache)|game/AnimalTown.GameCube/(WaterRenderer|LocalOceanWaves))\.cs$'){$renderingForPath=@('water','movement')}
+        if($p -match '^(shared/AnimalTown.Domain/(WindWakerWaterPattern|WindWakerWaveField|WindWakerWaveGrid|ShallowWaterPattern)|game/AnimalTown.GameCube/WaterMaterial)\.cs$'){$renderingForPath=@('water')}
+        elseif($p -match '^(shared/AnimalTown.Domain/(WaterSurface|WaterDepthCache|WaterBedGeometry)|game/AnimalTown.GameCube/(WaterRenderer|WaterBedRenderer|LocalOceanWaves))\.cs$'){$renderingForPath=@('water','movement')}
         elseif($p -match '^shared/AnimalTown.Domain/(ActorFrameVisibility|AnimationFrameClock)\.cs$'){$renderingForPath=@('movement','visibility')}
         elseif($p -match '^(shared/AnimalTown.Domain/GroundRingPlan|game/AnimalTown.GameCube/GroundRingRenderer)\.cs$'){$renderingForPath=@('ground')}
         elseif($p -match '^game/AnimalTown.GameCube/GeometryStaging\.cs$'){$renderingForPath=@('services')}
@@ -41,6 +41,9 @@ function Get-ValidationPlan {
             Add-Managed 'menu';Add-Managed 'text';Add-Managed 'dialogue';continue
         }
         if($p -match '^tools/AnimalTown.Tools/DepotPackage(?:Checks)?\.cs$'){[void]$tooling.Add('depot');continue}
+        if($p -match '^(shared/AnimalTown.Domain/WaterTextureCatalog|game/AnimalTown.GameCube/WaterTextureAssets|tools/AnimalTown.Tools/WaterTextureArt(?:Checks)?)\.cs$|^assets/textures/environment/water/'){
+            [void]$tooling.Add('water');[void]$tooling.Add('depot');[void]$rendering.Add('water');continue
+        }
         if($p -match '^(tools|tests)/release-bundle\.py$'){[void]$native.Add('python');continue}
         if($p -match '^(shared/AnimalTown.Domain/WorldLighting|game/AnimalTown.GameCube/(CloudShadows|NativeShadows|TownLights)|tests/AnimalTown.Checks/WorldLightingChecks)\.cs$'){
             Add-Managed 'core';[void]$native.Add('shadows')
@@ -55,18 +58,18 @@ function Get-ValidationPlan {
         }
         if($p -match '^(shared/AnimalTown.Domain/DevConfig|game/AnimalTown.GameCube/DevConfigStorage|tests/AnimalTown.Checks/DevConfigChecks)\.cs$'){Add-Managed 'saves';Add-Managed 'menu';continue}
         if($p -match '^game/AnimalTown.GameCube/(TitleScreen|TitleArt|TitleBackdrop|LoadingScreen|ProfilePicker|TownSession)\.cs$'){Add-Managed 'ui';Add-Managed 'menu';Add-Managed 'saves';continue}
-        if($p -match '^tests/AnimalTown.RenderingChecks/(WaterEffect|RenderingService|MovementTerrain|GroundRing|TerrainIndex|ActorVisibility|AttentionGeometry|DroppedItem)Checks\.cs$'){
-            $names=@{WaterEffect='water';RenderingService='services';MovementTerrain='movement';GroundRing='ground';TerrainIndex='index';ActorVisibility='visibility';AttentionGeometry='attention';DroppedItem='dropped-item'}
+        if($p -match '^tests/AnimalTown.RenderingChecks/(WaterEffect|ShallowWaterMaterial|RenderingService|MovementTerrain|GroundRing|TerrainIndex|ActorVisibility|AttentionGeometry|DroppedItem)Checks\.cs$'){
+            $names=@{WaterEffect='water';ShallowWaterMaterial='water';RenderingService='services';MovementTerrain='movement';GroundRing='ground';TerrainIndex='index';ActorVisibility='visibility';AttentionGeometry='attention';DroppedItem='dropped-item'}
             [void]$rendering.Add($names[$Matches[1]]);continue
         }
-        if($p -match '^(shared/AnimalTown.Domain/(WindWakerWaterPattern|WindWakerWaveField|WindWakerWaveGrid|WaterDepthCache|GroundRingPlan|ActorFrameVisibility|AnimationFrameClock)|game/AnimalTown.GameCube/(LocalOceanWaves|GroundRingRenderer|GeometryStaging|TerrainIndexBuffer|VillagerAttentionRenderer))\.cs$'){
+        if($p -match '^(shared/AnimalTown.Domain/(WindWakerWaterPattern|WindWakerWaveField|WindWakerWaveGrid|ShallowWaterPattern|WaterDepthCache|WaterBedGeometry|GroundRingPlan|ActorFrameVisibility|AnimationFrameClock)|game/AnimalTown.GameCube/(WaterBedRenderer|LocalOceanWaves|GroundRingRenderer|GeometryStaging|TerrainIndexBuffer|VillagerAttentionRenderer))\.cs$'){
             Add-Managed 'terrain';Add-Managed 'core';continue
         }
         if($p -match '^(tools/native-terrain-(archive|recycle)\.inc|tests/native-terrain-(archive|recycle)\.c)$'){
             Add-Managed 'terrain';Add-Managed 'core';[void]$native.Add('patched');continue
         }
         if($p -match '^tests/AnimalTown.Checks/Program.cs$'){$broad=$true;continue}
-        if($p -match '^(shared/AnimalTown.Domain/WaterSurface|tests/AnimalTown.Checks/WaterSurfaceChecks)\.cs$') {Add-Managed 'terrain';continue}
+        if($p -match '^(shared/AnimalTown.Domain/WaterSurface|tests/AnimalTown.Checks/(WaterSurface|WaterBed)Checks)\.cs$') {Add-Managed 'terrain';continue}
         if($p -match '^(shared/AnimalTown.Domain/(TownPaths|PathShape)|tests/AnimalTown.Checks/PathChecks)\.cs$'){foreach($s in @('terrain','generation','saves','core')){Add-Managed $s};continue}
         if($p -match '^game/AnimalTown.GameCube/(PathTextureResidency|PathProfile)\.cs$'){Add-Managed 'terrain';[void]$native.Add('patched');continue}
         if($p -match '^tools/AnimalTown.Tools/PathAssets\.cs$|^assets/textures/environment/paths/'){[void]$tooling.Add('path');continue}

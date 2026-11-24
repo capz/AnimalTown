@@ -132,8 +132,9 @@ intact and retries later; it cannot silently omit a visible model.
 
 Final draw readiness is recomputed after input and effective debug camera
 changes, even on frames without a simulation tick. UV inspection waits for the
-complete model set before invoking native topology code; water inspection pins
-all species. Indoor scene and doorway admission wait for their required models.
+complete model set before invoking native topology code; water inspection follows
+the focused camera without pinning unrelated species. Indoor scene and doorway
+admission wait for their required models.
 Outdoor restore misses keep the world running and skip the affected actor until
 ready. Cold resources never receive native model API calls.
 

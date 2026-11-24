@@ -1,5 +1,7 @@
 using AnimalTown;
 using AnimalTown.Jobs;
+using System.IO.Compression;
+using System.Security.Cryptography;
 using System.Text.Json;
 
 // Disposable emulator inputs. Offers are deterministic snapshots; acceptance,
@@ -125,10 +127,112 @@ internal static class JobFixture
         foreach(var p in a.Files)File.WriteAllBytes(Path.Combine(output,p.Key),p.Value);foreach(var p in b.Files)File.WriteAllBytes(Path.Combine(output+"-destination",p.Key),p.Value);
         Console.WriteLine(mode=="helipad"?"Two towns prepared for a helipad round trip":"Actual previous visit"+(mode=="moved"?" and NPC move":"")+" prepared for two-card controller capture");
     }
+    private static byte[] DiagnosticRecord(Disk disk,string name)
+    {
+        if(!disk.Files.ContainsKey(name))throw new FileNotFoundException("Missing exported record: "+name,name);
+        return disk.Read(name);
+    }
+    private static Dictionary<string,object?> DiagnoseBank(Disk disk,int bank,bool legacy=false)
+    {
+        string name=legacy?"AnimalTown"+bank:SplitSaveCodec.FileName(SplitSaveCodec.Commit,bank),stage="read-commit";
+        var result=new Dictionary<string,object?>{{"bank",bank},{"name",name},{"present",disk.Files.ContainsKey(name)},{"freshLoadPassed",false}};
+        try{
+            byte[] commit=DiagnosticRecord(disk,name);GameState state;
+            if(legacy){stage="legacy-decode";state=SaveCodec.Decode(commit);}
+            else{
+                stage="commit-header";var reader=new SplitSaveCodec.Reader(commit,SplitSaveCodec.Commit);
+                result["identity"]=new{version=reader.Version,catalog=reader.CatalogVersion,sequence=reader.Sequence,seed=reader.Seed};
+                if(reader.Version==5){
+                    stage="manifest";var manifest=IncrementalSaveCodec.Read(commit,bank);
+                    var wire=new byte[IncrementalSaveCodec.Count][];var references=new List<object>();var missing=new List<string>();
+                    result["references"]=references;stage="references";
+                    for(int part=0;part<wire.Length;part++){
+                        var attempts=new List<object>();byte[]? selected=null;
+                        for(int copy=0;copy<2;copy++){
+                            int copyBank=manifest.Banks[part]^copy;string copyName=SplitSaveCodec.FileName(SplitSaveCodec.RecordKind(part),copyBank);
+                            try{
+                                byte[] bytes=DiagnosticRecord(disk,copyName);IncrementalSaveCodec.Verify(manifest,part,bytes);
+                                attempts.Add(new{name=copyName,bank=copyBank,valid=true});selected??=bytes;
+                            }catch(Exception error){attempts.Add(new{name=copyName,bank=copyBank,valid=false,error=error.ToString()});}
+                        }
+                        references.Add(new{part,kind=SplitSaveCodec.RecordKind(part),bank=manifest.Banks[part],sequence=manifest.Sequences[part],length=manifest.Lengths[part],checksum=manifest.Checksums[part],attempts});
+                        if(selected==null)missing.Add(SplitSaveCodec.FileName(SplitSaveCodec.RecordKind(part),manifest.Banks[part]));else wire[part]=selected;
+                    }
+                    if(missing.Count!=0)throw new InvalidOperationException("No valid copy of referenced save records: "+string.Join(", ",missing));
+                    stage="restore";var parts=IncrementalSaveCodec.Restore(manifest,wire,out bool hasClock,out long clock);
+                    // Unlike save readback, a cold load must decode without a town
+                    // snapshot or text memo. Keep production validation unchanged.
+                    stage="fresh-decode";state=SplitSaveCodec.Decode(parts,null,null,manifest.Sequences[2],hasClock,clock);
+                }else{
+                    stage="parts";byte[] town=DiagnosticRecord(disk,SplitSaveCodec.FileName(SplitSaveCodec.TownData,bank));
+                    var parts=new byte[SplitSaveCodec.ReadVersion(town)>=4?SplitSaveCodec.PartCount:4][];parts[0]=town;
+                    for(int part=1;part<parts.Length;part++)parts[part]=DiagnosticRecord(disk,SplitSaveCodec.FileName(SplitSaveCodec.RecordKind(part),bank));
+                    stage="fresh-decode";state=SplitSaveCodec.DecodeCommitted(commit,parts);
+                }
+            }
+            result["freshLoadPassed"]=true;result["loadedIdentity"]=new{sequence=state.Sequence,seed=state.Town.Seed,activeProfile=state.ActiveProfile,visiting=state.Visiting};
+        }catch(Exception error){result["stage"]=stage;result["reason"]=error.GetType().Name+": "+error.Message;result["error"]=error.ToString();}
+        return result;
+    }
+    private static object DiagnoseExport(string directory,Disk? captured,List<string> reasons)
+    {
+        var result=new Dictionary<string,object?>{{"directory",Path.GetFullPath(directory)},{"present",Directory.Exists(directory)}};
+        if(captured==null&&!Directory.Exists(directory))return result;
+        try{
+            var disk=captured??new Disk();
+            if(captured==null)foreach(string file in Directory.GetFiles(directory))disk.Files[Path.GetFileName(file)]=File.ReadAllBytes(file);
+            result["records"]=disk.Files.OrderBy(file=>file.Key,StringComparer.Ordinal).Select(file=>new{name=file.Key,length=file.Value.Length,sha256=Convert.ToHexString(SHA256.HashData(file.Value)).ToLowerInvariant(),base64=Convert.ToBase64String(file.Value)}).ToArray();
+            var banks=Enumerable.Range(0,2).Select(bank=>DiagnoseBank(disk,bank)).ToArray();
+            result["banks"]=banks;result["legacyBanks"]=Enumerable.Range(0,2).Select(bank=>DiagnoseBank(disk,bank,true)).ToArray();
+            foreach(var bank in banks)if(bank.TryGetValue("reason",out var reason))reasons.Add(Path.GetFileName(directory)+" "+bank["name"]+" ("+bank["stage"]+"): "+reason);
+        }catch(Exception error){result["error"]=error.ToString();reasons.Add(Path.GetFileName(directory)+": "+error.GetType().Name+": "+error.Message);}
+        return result;
+    }
+    private static object DiagnoseCard(string path,List<string> reasons)
+    {
+        var result=new Dictionary<string,object?>{{"name",Path.GetFileName(path)},{"present",File.Exists(path)}};
+        if(!File.Exists(path))return result;
+        try{
+            // The controller subprocess has exited before the host verifier runs.
+            // Preserve its final disposable card as well as the earlier export.
+            byte[] bytes=File.ReadAllBytes(path);using var compressed=new MemoryStream();
+            using(var gzip=new GZipStream(compressed,CompressionLevel.Optimal,true))gzip.Write(bytes);
+            byte[] payload=compressed.ToArray();result["length"]=bytes.Length;result["sha256"]=Convert.ToHexString(SHA256.HashData(bytes)).ToLowerInvariant();
+            result["encoding"]="gzip+base64";result["compressedLength"]=payload.Length;result["base64"]=Convert.ToBase64String(payload);
+        }catch(Exception error){result["error"]=error.ToString();reasons.Add(Path.GetFileName(path)+": "+error.GetType().Name+": "+error.Message);}
+        return result;
+    }
+    private static void WriteLoadDiagnostics(string directory,string mode,Disk disk,string failure="Controller run produced no committed town")
+    {
+        string folder=Path.GetFullPath(Path.Combine(directory,"..")),path=Path.Combine(folder,"jobs-load-diagnostics.json");
+        try{
+            var reasons=new List<string>();
+            var exports=new[]{DiagnoseExport(directory,disk,reasons),DiagnoseExport(Path.Combine(folder,"records-b"),null,reasons)};
+            var cards=new[]{DiagnoseCard(Path.Combine(folder,"MemoryCardA.USA.raw"),reasons),DiagnoseCard(Path.Combine(folder,"MemoryCardB.USA.raw"),reasons)};
+            var report=new{schema=1,scenario="offline-jobs",mode,failure,githubEventSha=Environment.GetEnvironmentVariable("GITHUB_SHA"),exports,cards};
+            // Existing CI retains sibling JSON files on failure. Payloads belong
+            // only in that artifact, never the console log or a passing result.
+            File.WriteAllText(path,JsonSerializer.Serialize(report,new JsonSerializerOptions{WriteIndented=true})+"\n");
+            Console.Error.WriteLine("Job load diagnostics: "+path);foreach(string reason in reasons)Console.Error.WriteLine(reason);
+        }catch(Exception error){Console.Error.WriteLine("Could not write job load diagnostics: "+error.GetType().Name+": "+error.Message);}
+    }
     internal static void Report(string directory,string mode,bool verify)
     {
         var disk=new Disk();foreach(string file in Directory.GetFiles(directory))disk.Files[Path.GetFileName(file)]=File.ReadAllBytes(file);
-        var s=new SaveRepository(disk).Load()??throw new Exception("Controller run produced no committed town");var l=s.Town.Jobs;
+        var s=new SaveRepository(disk).Load();
+        if(s==null){WriteLoadDiagnostics(directory,mode,disk);throw new Exception("Controller run produced no committed town");}
+        string controllerReport=Path.Combine(directory,"..","jobs-report.json");
+        if(verify&&File.Exists(controllerReport)){
+            using var report=JsonDocument.Parse(File.ReadAllText(controllerReport));
+            if(report.RootElement.TryGetProperty("expected_saved_sequence",out var expectedSequenceValue)&&expectedSequenceValue.ValueKind!=JsonValueKind.Null){
+                if(expectedSequenceValue.ValueKind!=JsonValueKind.Number||!expectedSequenceValue.TryGetInt32(out int sequence)||sequence<1)throw new Exception("Controller report has an invalid expected save sequence");
+                if(s.Sequence<sequence){
+                    string failure=$"Exported town sequence {s.Sequence} predates controller-observed save {sequence}";
+                    WriteLoadDiagnostics(directory,mode,disk,failure);throw new Exception(failure);
+                }
+            }
+        }
+        var l=s.Town.Jobs;
         var jobs=Enumerable.Range(0,OfflineJobLedger.JobCapacity).Select(l.Job).Where(j=>j.Occupying).ToArray();
         JobTemplate? expected=mode switch{"delivery" or "owed"=>JobTemplate.DeliveryClothing,"property"=>JobTemplate.DeliveryProperty,"retrieval" or "retrieval-multi"=>JobTemplate.RetrievalBorrowed,"foreign"=>JobTemplate.DeliveryForeign,"moved"=>JobTemplate.DeliveryMoved,"fruit"=>JobTemplate.FavorFruit,"fish"=>JobTemplate.FavorFish,"insect"=>JobTemplate.FavorInsect,"flowers"=>JobTemplate.FavorFlowers,"ball"=>JobTemplate.FavorBall,"snowman" or "destroy-snowman"=>JobTemplate.FavorSnowman,"letter" or "letter-full"=>JobTemplate.FavorLetter,_=>null};
         bool completed=Enumerable.Range(0,OfflineJobLedger.TerminalCapacity).Any(i=>l.Terminal(i).Reason==JobEndReason.Success&&(!expected.HasValue||l.Terminal(i).Template==expected.Value))||jobs.Any(j=>j.Status==JobStatus.CompletedRetained&&(!expected.HasValue||j.Template==expected.Value));

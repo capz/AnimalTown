@@ -52,7 +52,9 @@ internal static class DepotPackageChecks
                 File.WriteAllBytes(Path.Combine(disc,species+".dndmodel"),fixture);
             }
             ModelLodCooker.CookAll(root);ModelMemoryCooker.Cook(root);ModelMemoryCooker.Validate(root);
-            foreach(string unwanted in new[]{"animal-town-updater.dol","roots.pem","entropy.bin","sunshine-water.dndtex","source.glb","other.DOL"})File.WriteAllText(Path.Combine(disc,unwanted),"must not ship");
+            using(var image=WaterTextureArtChecks.Fixture(1))File.WriteAllBytes(Path.Combine(disc,WaterTextureCatalog.DiscName(1)),WaterTextureArt.Encode(image,1));
+            Check(DepotPackage.Payload(disc).Contains(WaterTextureCatalog.DiscName(1)),"valid optional water artwork enters the closed payload");
+            foreach(string unwanted in new[]{"animal-town-updater.dol","roots.pem","entropy.bin","sunshine-water.dndtex","water-unknown.dndtex","source.glb","other.DOL"})File.WriteAllText(Path.Combine(disc,unwanted),"must not ship");
             foreach(string species in new[]{"fox","bunny","giraffe","cat","hamster","spaniel"})foreach(int edge in new[]{512,1024}){
                 string name=species+"-tex"+edge+".dndmodel";
                 File.WriteAllText(Path.Combine(disc,name),"stale oversized model");File.WriteAllText(Path.Combine(disc,name+".deps.json"),"stale cooking receipt");
@@ -69,6 +71,7 @@ internal static class DepotPackageChecks
                 Check(archive.Entries.All(e=>e.FullName.StartsWith("apps/animaltown/",StringComparison.Ordinal)),"exact installed app directory");
                 Check(archive.Entries.Count(e=>e.FullName.EndsWith(".dol",StringComparison.OrdinalIgnoreCase))==1,"exactly one playable executable");
                 Check(!archive.Entries.Any(e=>e.FullName.Contains("updater",StringComparison.Ordinal)||e.FullName.Contains("sunshine",StringComparison.Ordinal)||e.FullName.EndsWith(".pem",StringComparison.Ordinal)),"credentials, updater and retired assets are excluded");
+                Check(archive.GetEntry("apps/animaltown/"+WaterTextureCatalog.DiscName(1))!=null&&archive.GetEntry("apps/animaltown/water-unknown.dndtex")==null,"only declared optional water maps ship in the real Depot archive");
                 foreach(string species in new[]{"fox","bunny","giraffe","cat","hamster","spaniel"}){
                     Check(archive.GetEntry("apps/animaltown/"+species+"-tex128.dndmodel")!=null,"gameplay villager package is included: "+species);
                     Check(archive.GetEntry("apps/animaltown/"+species+"-lod1-tex128.dndmodel")!=null,"coarse villager package is included: "+species);
@@ -96,6 +99,19 @@ internal static class DepotPackageChecks
             Mutated("apps/animaltown/other.dol");Mutated("apps/animaltown/wordmark.dndtex");Mutated("apps/animaltown/version.md",Encoding.ASCII.GetBytes("1.2.4"));
             Mutated("apps/animaltown/"+ModelMemoryCooker.DiscName);
             foreach(string species in ModelLodCooker.Species)Mutated("apps/animaltown/"+species+"-lod1-tex128.dndmodel");
+            Mutated("apps/animaltown/"+WaterTextureCatalog.DiscName(1));Mutated("apps/animaltown/water-unknown.dndtex");
+            // Even a self-consistent manifest must retain the same optional art
+            // as the ISO; removing it cannot silently select a different look.
+            string withoutWater=Path.Combine(root,"without-water.zip");File.Copy(zip,withoutWater);
+            using(var archive=ZipFile.Open(withoutWater,ZipArchiveMode.Update)){
+                string name=WaterTextureCatalog.DiscName(1);archive.GetEntry("apps/animaltown/"+name)!.Delete();
+                var entry=archive.GetEntry("apps/animaltown/depot-package.json")!;
+                System.Text.Json.Nodes.JsonNode manifest;
+                using(var input=entry.Open())manifest=System.Text.Json.Nodes.JsonNode.Parse(input)!;
+                manifest["Files"]!.AsObject().Remove(name);entry.Delete();
+                using var output=archive.CreateEntry("apps/animaltown/depot-package.json").Open();output.Write(Encoding.UTF8.GetBytes(manifest.ToJsonString()));
+            }
+            Reject(()=>DepotPackage.Verify(root,withoutWater),"manifested missing optional art still rejects ISO/Depot mismatch");
             foreach(string species in new[]{"fox","bunny","giraffe","cat","hamster","spaniel"})foreach(int edge in new[]{512,1024})Mutated("apps/animaltown/"+species+"-tex"+edge+".dndmodel");
             Mutated("apps/animaltown/link",attributes:unchecked((int)0xa1ff0000));
             Mutated("apps/animaltown/opening.bnr",new byte[6496]);Mutated("apps/animaltown/depot-package.json",Encoding.ASCII.GetBytes("{}"));

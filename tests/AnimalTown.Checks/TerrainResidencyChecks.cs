@@ -51,7 +51,7 @@ internal sealed partial class TerrainRenderer
     internal void PumpBake(TerrainArchive source,GameState state,FloorStrips staging,byte[] data)
     {archive=source;BuiltThisFrame=0;BakeArchive(state,staging,data);}
 }
-internal static class WaterRenderer {internal const int PartKinds=108;}
+internal static class WaterRenderer {internal const int PartKinds=110;}
 internal sealed class TerrainSection
 {
     internal void Begin(GameState state,int x,int z,CylinderRows rows){}

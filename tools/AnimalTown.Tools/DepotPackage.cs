@@ -66,6 +66,7 @@ internal static class DepotPackage
             "THIRD-PARTY-NOTICES.txt","DolphinDotNet-LICENSE.txt","Hypercube-LICENSE.txt","Ryu-LICENSE.txt","ufbx-LICENSE.txt","Unicode-LICENSE.txt","DEPOT-README.txt"
         };
         foreach(string name in DroppedItemAssets.Names)files.Add(name+".dndtex");
+        WaterTextureArt.AddPayload(directory,files);
         var models=new SortedSet<string>(new[]{"fox","bunny","giraffe","cat","hamster","spaniel","building","tent"},StringComparer.Ordinal);
         foreach(string name in new[]{"fox","bunny","giraffe","cat","hamster","spaniel"}){files.Add("picker-"+name+".dndtex");files.Add(name+"-lod1-tex128.dndmodel");}
         BuildingCatalog.Configure(File.ReadAllBytes(At(directory,"buildings.bin")));
@@ -108,6 +109,7 @@ internal static class DepotPackage
         try{
             // First copy only metadata needed to derive the closed whitelist.
             foreach(string name in new[]{"buildings.bin","floor-spring.bin","floor-summer.bin","floor-fall.bin","floor-winter.bin"})File.Copy(At(disc,name),At(stage,name));
+            WaterTextureArt.CopyPayload(disc,stage);
             var files=Payload(stage);
             foreach(string name in files){
                 string source=name=="default.dol"?At(root,"out/native-depot/Game.dol"):name=="version.json"?At(root,"out/version.json"):name.EndsWith("-LICENSE.txt",StringComparison.Ordinal)||name is "THIRD-PARTY-NOTICES.txt" or "DEPOT-README.txt"?At(root,"out/depot-notices/"+name):At(disc,name);
@@ -146,6 +148,7 @@ internal static class DepotPackage
                 }
             }
             string app=At(stage,Prefix);var id=ReadIdentity(app);VerifyBuild(root,id);
+            WaterTextureArt.VerifyMatchingPayload(At(root,"out/disc"),app);
             var manifest=JsonSerializer.Deserialize<PackageManifest>(ReadSmall(At(app,Manifest),1024*1024))??throw new InvalidDataException("Missing package manifest");
             if(manifest.Schema!=1||manifest.Profile!="sd-app"||manifest.Commit!=id.Commit||manifest.Version!=id.Version||manifest.SourceDigest!=id.SourceDigest||manifest.RuntimeProfile!=id.RuntimeProfile||manifest.Files==null)throw new InvalidDataException("Depot manifest identity mismatch");
             string[] expected=Payload(app);

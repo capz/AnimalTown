@@ -12,6 +12,51 @@ import re
 import sys
 import time
 
+def write_records(folder,files):
+    """Replace a generated export, including records deleted since a checkpoint."""
+    import hashlib
+    import shutil
+    if folder.exists():shutil.rmtree(folder)
+    folder.mkdir()
+    result=[]
+    for name,data in sorted(files.items()):
+        if not name or Path(name).name!=name or name in ('.','..'):raise AssertionError('Invalid logical record name: '+name)
+        (folder/name).write_bytes(data)
+        result.append({'name':name,'bytes':len(data),'sha256':hashlib.sha256(data).hexdigest()})
+    return result
+
+def finish(context,report,shutdown):
+    """Export stable final cards; the companion host verifier still loads them."""
+    import hashlib
+    c=SimpleNamespace(**context)
+    report['shutdown']=shutdown
+    exported=report['final_export']={'complete':False,'cards':{}}
+    try:
+        if report.get('controls_completed') is not True:raise AssertionError('Offline job controls did not complete')
+        if c.p.poll()!=0 or c.p.returncode!=0 or shutdown['returncode']!=0 or shutdown['forced_kill'] or not shutdown['clean_exit']:
+            raise AssertionError('Offline job final export requires a clean Dolphin exit without a forced kill')
+        c.check_runtime_failure()
+        for slot,folder in (('A','records'),('B','records-b')):
+            card=c.root/f'MemoryCard{slot}.USA.raw'
+            info=exported['cards'][slot]={'card':card.name,'present':card.is_file(),'directory':folder}
+            if info['present']:
+                data=card.read_bytes();info.update(bytes=len(data),sha256=hashlib.sha256(data).hexdigest())
+                files=c.options_card_files(card)
+                info['records']=write_records(c.root/folder,files)
+                info['sequence']=c.committed_card_sequence(card)
+            else:
+                info['records']=write_records(c.root/folder,{})
+                info['sequence']=0
+        expected=report.get('expected_saved_sequence')
+        if expected is not None and exported['cards']['A']['sequence']<expected:
+            raise AssertionError(f'Final card is older than the observed explicit save: expected at least {expected}, got '+str(exported['cards']['A']['sequence']))
+        exported['complete']=True
+    except BaseException as error:
+        report['error']=str(error)
+        raise
+    finally:
+        (c.root/'jobs-report.json').write_text(json.dumps(report,indent=2)+'\n')
+
 def run(context):
     c=SimpleNamespace(**context)
     mode=sys.argv[sys.argv.index('--jobs')+1]
@@ -19,6 +64,8 @@ def run(context):
     from avi_guest_clock import AviGuestClock
     clock=AviGuestClock(c.user/'Dump/Frames',track_presentations=True)
     shots=[]
+    report={'scenario':'offline-jobs','mode':mode,'screenshots':shots,'passed':False,
+            'controls_completed':False,'expected_saved_sequence':None}
     def alive():
         c.check_runtime_failure()
         if c.p.poll() is not None:raise AssertionError('Dolphin stopped during offline job qualification')
@@ -122,9 +169,6 @@ def run(context):
             if v['screen']=='job-select':press('A');v=dialogue()
             if v['screen']=='job-select':raise AssertionError('Contribution input did not leave the selector')
         shot('result');close()
-    def records():
-        folder=c.root/'records';folder.mkdir(exist_ok=True)
-        for name,data in c.options_card_files().items():(folder/name).write_bytes(data)
     def save(label='saved'):
         previous=c.committed_card_sequence(c.root/'MemoryCardA.USA.raw',details=True)
         if mode!='baseline':
@@ -133,9 +177,9 @@ def run(context):
                 press('B')
             else:raise AssertionError('Could not close the interaction before saving')
         offset=len(c.runtime_log_text());press('START');os.write(c.controller,b'PRESS A\n')
-        try:c.wait_saved_after(previous,timeout_seconds=900 if mode.startswith('maximum-') else 240)
+        try:report['expected_saved_sequence']=c.wait_saved_after(previous,timeout_seconds=900 if mode.startswith('maximum-') else 240)['sequence']
         finally:os.write(c.controller,b'RELEASE A\n')
-        wait_log('ANIMALTOWN SAVE TOTAL:',offset,900);presentations(4);shot(label);press('B');records()
+        wait_log('ANIMALTOWN SAVE TOTAL:',offset,900);presentations(4);shot(label);press('B')
     def travel(capture=None):
         go(36.5,11.5,.1);press('A');presentations(4);shot('travel');press('A');press('D_DOWN');shot('travel-confirm')
         offset=len(c.runtime_log_text());press('A')
@@ -208,12 +252,12 @@ def run(context):
         # header as a fixture template; profile-card-fixture rebuilds the files.
         c.set_debug_visibility(True)
         if not (c.root/'MemoryCardA.USA.raw').is_file():raise AssertionError('Dolphin did not format its disposable template')
-        return
+        alive();report['controls_completed']=True
+        return report
     if mode in ('recovery','maximum-recovery'):
         c.wait_title();press('A');c.wait_profiles('jobs-recovery-picker.png');shot('locked');press('X');presentations(8);shot('recheck');offset=len(c.runtime_log_text());press('A');wait_log('ANIMALTOWN READY ',offset,1800 if mode.startswith('maximum-') else 600)
     else:c.start_game(False,'jobs-'+mode)
     wait_log('ANIMALTOWN READY ');presentations(2);shot('world')
-    report={'scenario':'offline-jobs','mode':mode,'screenshots':shots,'passed':False}
     if mode=='helipad':
         outbound=travel('outbound');inbound=travel('inbound')
         if outbound!={'source':7319,'destination':7320,'direction':1} or inbound!={'source':7320,'destination':7319,'direction':-1}:
@@ -221,8 +265,7 @@ def run(context):
         report['flights']=[outbound,inbound];save()
     elif mode=='maximum-economy':
         report['profile']=profile();shot('profiled');travel();shot('maximum-guest')
-        folder=c.root/'records-guest';folder.mkdir(exist_ok=True)
-        for name,data in c.options_card_files(c.root/'MemoryCardB.USA.raw').items():(folder/name).write_bytes(data)
+        write_records(c.root/'records-guest',c.options_card_files(c.root/'MemoryCardB.USA.raw'))
         travel();shot('maximum-returned');save()
     elif mode in ('baseline','outfits-off','outfits-on','maximum-mail','maximum-post-travel'):
         report['profile']=profile();shot('profiled')
@@ -236,7 +279,6 @@ def run(context):
     elif mode=='checkpoint':
         move(1,0,.25);save()
     elif mode=='retrieval-multi':
-        import shutil
         accept();reloaded=False
         for stage in range(8):
             before=next(j for j in view()['jobs'] if j[1]==4)
@@ -247,7 +289,7 @@ def run(context):
             if after[4]==target:
                 shot('full-pockets');press('X');press('A');press('A');dialogue();close();close();handoff(npc=target)
             elif not reloaded:
-                save('midstage-saved');shutil.copytree(c.root/'records',c.root/'records-mid',dirs_exist_ok=True)
+                save('midstage-saved');write_records(c.root/'records-mid',c.options_card_files())
                 press('START');press('D_DOWN');press('A');press('D_DOWN');press('A');c.wait_title();shot('midstage-title')
                 c.start_game(False,'jobs-multi-reload');wait_log('ANIMALTOWN READY ');shot('midstage-reloaded');reloaded=True
         else:raise AssertionError('Retrieval did not reach its return stage')
@@ -300,8 +342,7 @@ def run(context):
     elif mode in ('recovery','maximum-recovery'):
         shot('recovered')
         if mode=='maximum-recovery':
-            folder=c.root/'records-guest';folder.mkdir(exist_ok=True)
-            for name,data in c.options_card_files(c.root/'MemoryCardB.USA.raw').items():(folder/name).write_bytes(data)
+            write_records(c.root/'records-guest',c.options_card_files(c.root/'MemoryCardB.USA.raw'))
         travel();shot('returned');save()
     else:
         accept()
@@ -338,8 +379,5 @@ def run(context):
             press('A');shot('reply-mailbox');press('A');shot('reply');press('X');close();close()
         else:raise ValueError('Unsupported job smoke mode: '+mode)
         save()
-    if mode in ('foreign','moved','moving','recovery','helipad','maximum-economy','maximum-recovery','maximum-post-travel'):
-        folder=c.root/'records-b';folder.mkdir(exist_ok=True)
-        for name,data in c.options_card_files(c.root/'MemoryCardB.USA.raw').items():(folder/name).write_bytes(data)
     alive();report['controls_completed']=True
-    (c.root/'jobs-report.json').write_text(json.dumps(report,indent=2)+'\n')
+    return report

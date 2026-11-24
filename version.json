@@ -349,6 +349,24 @@
       ]
     },
     {
+      "id": "shallow-water-riverbed-wallpaper-20261124",
+      "lines": [
+        "See sandy riverbeds and scattered stones beneath clear turquoise water.",
+        "Fine moving ripples, subtle caustics and broken shoreline foam bring shallow water to life.",
+        "Archived riverbeds and rocks preserve water levels, bridge traversal and saved towns.",
+        "Optional authored water textures replace built-in patterns through the existing asset cooker."
+      ]
+    },
+    {
+      "id": "water-inspection-camera-residency-20261124",
+      "lines": [
+        "Water previews leave room for town terrain to reload.",
+        "Villager model loading follows the preview camera before and after drawing.",
+        "Villagers visible only from the saved player position can stay unloaded.",
+        "Leaving the preview restores normal camera demand without moving the player."
+      ]
+    },
+    {
       "id": "resident-villager-route-crossings",
       "lines": [
         "Resident villagers briefly yield when two others are headed through the same crossing.",

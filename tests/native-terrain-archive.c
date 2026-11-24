@@ -182,7 +182,7 @@ int main(void){
     assert(animaltown_terrain_append(0,55,plain,6)==2);
     assert(animaltown_terrain_complete(0)==1&&animaltown_terrain_info(0,0)==-1);
     assert(animaltown_terrain_append(1,104,plain,6)==3);
-    assert(animaltown_terrain_append(1,108,plain,6)==-1);
+    assert(animaltown_terrain_append(1,110,plain,6)==-1);
     assert(animaltown_terrain_append(1,107,plain,6)==4);
     assert(animaltown_terrain_complete(1)==1);
     assert(animaltown_terrain_info(0,0)==0&&animaltown_terrain_info(0,1)==2&&animaltown_terrain_info(0,2)==6);
@@ -263,10 +263,20 @@ int main(void){
     assert(animaltown_terrain_append(0,104,plain,6)==1);
     assert(animaltown_terrain_append(0,107,plain,6)==2);
     assert(animaltown_terrain_append(0,107,plain,6)==3);
-    assert(animaltown_terrain_append(0,108,plain,6)==-1);
+    assert(animaltown_terrain_append(0,108,plain,6)==4); /* Opaque riverbed. */
+    assert(animaltown_terrain_append(0,109,plain,6)==5); /* Faceted rocks. */
+    assert(animaltown_terrain_append(0,110,plain,6)==-1);
     assert(animaltown_terrain_complete(0)==1);
-    assert(animaltown_terrain_info(0,1)==2&&animaltown_terrain_kind(0)==104&&animaltown_terrain_kind(1)==107);
-    assert(animaltown_terrain_info(0,3)==-1&&animaltown_terrain_info(0,2)==6);
+    assert(animaltown_terrain_info(0,1)==4&&animaltown_terrain_kind(0)==104&&animaltown_terrain_kind(1)==107);
+    assert(animaltown_terrain_kind(2)==108&&animaltown_terrain_kind(3)==109);
+    assert(animaltown_terrain_info(0,3)==-1&&animaltown_terrain_info(0,2)==10);
+    view=animaltown_terrain_view();assert(view>0);
+    for(int part=2;part<4;part++){
+        assert(animaltown_terrain_bind(view,part)==1);
+        r=find(view,MESH);assert(r&&r->vertices==6&&!r->indices);
+        assert(!memcmp(r->data,find(plain,MESH)->data,6*sizeof(DndDrawVertex)));
+    }
+    assert(dnd_draw_release(view)==0);
     assert(dnd_draw_release(plain)==0&&animaltown_terrain_reset(0)==1);
     residency_checks(v,ix);free(v);free(ix);puts("Terrain archive: exact indexed/trimmed payloads retain UV/alpha; 10000 byte-exact ARAM view binds; no uploads/allocations; atomic cache exhaustion, save-cache suspension/resume, reuse, guards and pinned parent lifetime passed");
 
