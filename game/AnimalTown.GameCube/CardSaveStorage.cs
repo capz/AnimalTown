@@ -4,8 +4,8 @@ using Dolphin.Storage;
 internal sealed class CardSaveStorage : ISaveStorage,ISaveSnapshotStorage,ISaveVerifiedPrefixStorage,ISaveWritePreparationStorage
 {
     private readonly CardArchive archive;
-    internal CardSaveStorage(MemoryCard card,byte[] banner,byte[] icon,int device,GameState? textReuse=null,bool preserveVillagerLayout=false)
-    {archive=new CardArchive(card,banner,icon,device,textReuse,preserveVillagerLayout);}
+    internal CardSaveStorage(MemoryCard card,byte[] banner,byte[] icon,int device,GameState? textReuse=null,bool preserveVillagerLayout=false,bool initializeArchive=true)
+    {archive=new CardArchive(card,banner,icon,device,textReuse,preserveVillagerLayout,initializeArchive);}
     internal string[] Names()=>archive.Names();
     internal bool UpdateVillagerFiles(GameState state)=>archive.UpdateVillagerFiles(state);
     internal void MigrateSettings()=>archive.MigrateSettings();

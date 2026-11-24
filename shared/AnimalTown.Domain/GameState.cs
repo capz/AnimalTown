@@ -12,7 +12,7 @@ public sealed partial class GameState
     public int Wallet,Species,Palette,Tool,Shirt,HouseTier,GardenTier,PendingKind,PendingTier,PendingDay;
     public int Tutorial,MetMask,Jobs,JobDay=-1,MailCount,Sequence,Roof,Wall,Fence,Mailbox,Exterior;
     public long Savings,Debt=24000;
-    public float X=18,Z=38;
+    public float X=Town.PlayerStartX,Z=Town.PlayerStartZ;
     public bool HousePlaced;
     public string Name="Newcomer",Catchphrase="hello there";
     public static readonly int[] HousePrices={18000,120000,320000,650000,980000,1600000};
@@ -195,21 +195,22 @@ public sealed partial class GameState
     }
     public string Talk(int index)
     {
-        if(index<0||index>=6)return "Hello!";var v=Town.Residents[index];
+        if(!ResidentPresent(index))return "Hello!";var v=Town.Residents[index];
         MetMask|=1<<index;v.Met=1;
+        int neighbours=(1<<(Town.VisitorRoster?Town.LocalResidentCount:Town.SavedVillagerCount))-1;
         if(Town.Jobs.Initialized){
             if(ResidentJobs.OpeningDelivery(index))return "My order! Please collect "+Town.Residents[4].Name+"’s parcel.";
             if(Tutorial==3&&index==4)return ResidentJobs.OpeningPickup(index)?"Please take this parcel to the store.":"Make room for the store’s parcel first.";
-            if(Tutorial==5&&MetMask==63){CreditTutorial(5);return "Everyone knows you now! Leave a message on the notice board beside town hall.";}
+            if(Tutorial==5&&(MetMask&neighbours)==neighbours){CreditTutorial(5);return "Everyone knows you now! Leave a message on the notice board beside town hall.";}
             return "A lovely day in our town, "+v.Phrase+".";
         }
         if(Tutorial==2&&Find(18)>=0){Pockets[Find(18)]=0;CreditTutorial(2);return "My order! Please collect "+Town.Residents[4].Name+"'s parcel.";}
         if(Tutorial==3&&index==4&&Receive(18))return "Please take this parcel to the store.";
-        if(Tutorial==5&&MetMask==63){CreditTutorial(5);return "You have met everyone. Welcome home!";}
+        if(Tutorial==5&&(MetMask&neighbours)==neighbours){CreditTutorial(5);return "You have met everyone. Welcome home!";}
         if(v.Request!=0&&Find(v.Request)>=0)
         { Pockets[Find(v.Request)]=0;Wallet+=Wallet<=98999?1000:0;v.Friendship=Math.Min(255,v.Friendship+8);v.Request=0;return "Just what I wanted! Thank you, "+v.Phrase+"!"; }
         int count=0;for(int i=0;i<6;i++)if(Town.Residents[i].Request!=0)count++;
-        if(v.Request==0&&count<3){v.Request=index%2==0?1:14;v.RequestDay=Town.Day;return "Could you bring me a "+Catalog.Items[v.Request].Name+"?";}
+        if(v.Request==0&&count<3&&AllowsFreshResidentJobs(index)){v.Request=index%2==0?1:14;v.RequestDay=Town.Day;return "Could you bring me a "+Catalog.Items[v.Request].Name+"?";}
         return "A lovely day in our town, "+v.Phrase+".";
     }
     public bool Order(int id)

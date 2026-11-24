@@ -29,7 +29,7 @@ internal static class ModelResidencyDemandChecks
         for(int species=0;species<6;species++)state.Town.Residents[species].Space=0;
         for(int z=8;z<153;z+=24)for(int x=8;x<153;x+=24){
             state.X=x;state.Z=z;demand.Prepare(state,doors);visibility.Prepare(state,doors,camera,0,TerrainElevation.At(state.Town,x,z));
-            for(int actor=1;actor<7;actor++)check(!visibility.Visible[actor]||demand.Required[actor-1],"every drawable outdoor actor is inside residency lookahead");
+            for(int actor=1;actor<BuildingWorld.Actors;actor++)check(!visibility.Visible[actor]||demand.Required[state.NpcSpecies(actor-1)],"every drawable outdoor actor is inside residency lookahead");
         }
         demand.Prepare(state,doors);long allocated=GC.GetAllocatedBytesForCurrentThread();
         for(int i=0;i<10000;i++)demand.Prepare(state,doors);
@@ -91,5 +91,19 @@ internal static class ModelResidencyDemandChecks
         portal.ResourcesReady[0]=true;portal.Tick(gated);
         check(gated.Space==16&&portal.Actors[0].Committed,"successful restoration admits the original destination exactly once");
         var restored=SaveCodec.Decode(SaveCodec.Encode(gated));check(restored.Space==16,"resource admission does not change persistent space semantics");
+
+        var host=new GameState(204){HousePlaced=true,Species=0,Space=1,X=2,Z=2};
+        var hostDoors=new PortalSystem();
+        host.SetTownVisitors(new[]{
+            new SavedVisitor(20,0,"First","Hello!",3,0,0),
+            new SavedVisitor(21,0,"Second","Hi there!",5,0,0)
+        });
+        int guestActor=BuildingWorld.Actors-1;
+        BuildingWorld.SetLocation(host,guestActor,new ActorLocation(1,2,2,0));
+        demand.Prepare(host,hostDoors);
+        check(demand.Required[5]&&ModelResidencyDemand.DrawableUsesSpace(host,hostDoors,5,1),"a visitor pins the species from its saved profile");
+        host.SetTownVisitors(Array.Empty<SavedVisitor>());
+        demand.Prepare(host,hostDoors);
+        check(!demand.Required[5]&&!ModelResidencyDemand.DrawableUsesSpace(host,hostDoors,5,1),"an unoccupied visitor slot adds no residency demand");
     }
 }

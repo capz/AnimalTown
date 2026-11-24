@@ -26,9 +26,9 @@ public sealed class ModelResidencyDemand
     private static bool UsesSpace(GameState state,PortalSystem doors,int species,int space,float guard)
     {
         if(species==state.Species)return true;
-        for(int npc=0;npc<6;npc++){
-            if(state.ResidentSpecies(npc)!=species)continue;int actor=npc+1;
-            var resident=state.Town.Residents[npc];
+        for(int npc=0;npc<Town.NpcActorCount;npc++){
+            if(!state.NpcPresent(npc)||state.NpcSpecies(npc)!=species)continue;int actor=npc+1;
+            var resident=state.Town.NpcAt(npc);
             if(resident.Space==space&&(space!=0||OutdoorImminent(state,doors,resident.PosX,resident.PosZ,guard)))return true;
             if(!doors.Busy(actor))continue;
             var transition=doors.Actors[actor];
@@ -42,8 +42,8 @@ public sealed class ModelResidencyDemand
     public static bool DrawableUsesSpace(GameState state,PortalSystem doors,int species,int space)
     {
         if(species==state.Species)return true;
-        for(int npc=0;npc<6;npc++){
-            if(state.ResidentSpecies(npc)!=species||state.Town.Residents[npc].Space!=space)continue;
+        for(int npc=0;npc<Town.NpcActorCount;npc++){
+            if(!state.NpcPresent(npc)||state.NpcSpecies(npc)!=species||state.Town.NpcAt(npc).Space!=space)continue;
             if(space!=0)return true;var location=doors.VisualLocation(state,npc+1);
             if(OutdoorImminent(state,doors,location.X,location.Z,0))return true;
         }

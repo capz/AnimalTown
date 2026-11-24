@@ -19,7 +19,7 @@ internal static class OfflineJobChecks
     {Speak(s,service,npc);var offer=Do(service,JobCommandKind.Ask);check(offer.Result==JobResult.ExistingOffer,"explicit ask stores a complete offer");var snapshot=s.Town.Jobs.Offer(s.ActiveProfile,npc);var accepted=Do(service,JobCommandKind.Accept,offer.Job,snapshot.Revision);check(accepted.Result==JobResult.Ok,"explicit acceptance reserves the job and reward");return accepted.Job;}
     internal static void Run(Action<bool,string> check)
     {
-        Deliveries(check);OffersAndBindings(check);Retrieval(check);RetrievalLimit(check);LegacyRetrievalLimit(check);Shared(check);Clocks(check);
+        Deliveries(check);OffersAndBindings(check);QuietDestinations(check);Retrieval(check);RetrievalLimit(check);LegacyRetrievalLimit(check);Shared(check);Clocks(check);
         Console.WriteLine("Offline errands: physical contexts, stored offers, bound parcels, delivery/retrieval, shared claims, exact rewards and time checks passed");
     }
     private static void Deliveries(Action<bool,string> check)
@@ -57,6 +57,39 @@ internal static class OfflineJobChecks
         check(saved.IsJobItem(0)&&saved.Town.Jobs.Job(saved.Town.Jobs.FindJob(job.Id)).Target==job.Target,"bound jobs and full offers round-trip through the complete save");
         saved.Pockets[0]=0;restored.RecoverBindings();check(saved.Town.Jobs.FindJob(job.Id)<0&&!saved.IsJobItem(0),"missing parcel recovery cancels without replacement minting");
         check(Do(service,JobCommandKind.Abandon,job.Id).Result==JobResult.Ok&&!s.IsJobItem(0)&&s.Town.Residents[0].Friendship==14,"abandonment removes the bound parcel and applies its penalty once");
+    }
+    private static void QuietDestinations(Action<bool,string> check)
+    {
+        var state=new GameState(23);
+        var offers=new Draws(1,0,3,0,0,1,0,3,0,0);
+        var service=Service(state,offers,new Draws());
+        state.SetTownVisitors(new[]{new SavedVisitor(3425,0,"Parker","hello",0,0,0),new SavedVisitor(3425,1,"Harper","hey",1,0,0)});
+        for(int i=0;i<Town.SavedVillagerCount;i++)state.Town.Residents[i].HomeX=5+i*20;
+        for(int i=0;i<Town.NpcActorCount;i++){
+            var villager=state.Town.NpcAt(i);
+            villager.Space=0;
+            villager.PosX=25.5f+i;
+            villager.PosZ=45.5f;
+        }
+        var firstDestination=state.Town.Residents[3];
+        firstDestination.PosX=65.5f;
+        firstDestination.PosZ=65.5f;
+        var visitor=state.Town.NpcAt(Town.NpcActorCount-1);
+        visitor.PosX=firstDestination.PosX+1;
+        visitor.PosZ=firstDestination.PosZ;
+        var quiet=state.Town.Residents[4];
+        quiet.PosX=100.5f;
+        quiet.PosZ=85.5f;
+        Speak(state,service,0);
+        check(Do(service,JobCommandKind.Ask).Result==JobResult.ExistingOffer,"a crowded town can still issue a local delivery");
+        var offer=state.Town.Jobs.Offer(0,0);
+        check(offer.Target==state.Town.Jobs.Npc(4)&&offers.At==5,"a new local delivery accounts for visitors and prefers the quietest recipient with one target draw");
+        quiet.PosX=25.5f;
+        quiet.PosZ=45.5f;
+        check(Do(service,JobCommandKind.Ask).Job==offer.Id&&offers.At==5,"changing the crowd cannot reroll a stored destination");
+        Speak(state,service,1);
+        check(Do(service,JobCommandKind.Ask).Result==JobResult.ExistingOffer&&state.Town.Jobs.Offer(0,1).Target==state.Town.Jobs.Npc(3)&&offers.At==10,
+            "when every destination has company, the least crowded eligible recipient still gets the offer");
     }
     private static void Retrieval(Action<bool,string> check)
     {

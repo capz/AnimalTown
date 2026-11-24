@@ -20,7 +20,7 @@ internal sealed class CardArchive
     private bool unverifiedLegacyTarget;
     internal void ReuseTextFrom(GameState state){textReuse=state;}
     private int phase,epoch,growBlocks;
-    internal CardArchive(MemoryCard card,byte[] banner,byte[] icon,int device,GameState? textReuse=null,bool preserveVillagerLayout=false)
+    internal CardArchive(MemoryCard card,byte[] banner,byte[] icon,int device,GameState? textReuse=null,bool preserveVillagerLayout=false,bool initializeArchive=true)
     {
         this.card=card;this.banner=banner;this.icon=icon;this.device=device;this.textReuse=textReuse;this.preserveVillagerLayout=preserveVillagerLayout;
         var entries=card.GetEntries();bool legacy=false;foreach(var entry in entries)legacy|=SplitSaveCodec.IsFile(entry.Name);
@@ -30,7 +30,7 @@ internal sealed class CardArchive
         for(int pass=0;pass<2;pass++)for(int i=0;i<entries.Length;i++){
             string name=entries[i].Name;if(name!=Container&&name!=Expanded)continue;
             try{
-                var candidate=new TownCardRecords(new NativeCardBlocks(device,false,banner,icon,name),!legacy);
+                var candidate=new TownCardRecords(new NativeCardBlocks(device,false,banner,icon,name),initializeArchive&&!legacy);
                 ReadMarker(candidate,out int p,out int e,out int growth);
                 if(p>0&&(store==null||phase==0||e>epoch||e==0&&epoch==0&&name==Expanded)){store=candidate;container=name;phase=p;epoch=e;growBlocks=growth;}
                 else if(store==null&&name==Container){store=candidate;container=name;}

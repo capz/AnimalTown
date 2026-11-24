@@ -51,7 +51,7 @@ public sealed partial class Town
     public void NotifyTerrainChanged(){TerrainVersion++;}
     public bool SetTerrain(int x,int z,Terrain terrain)
     {if(!Inside(x,z)||(uint)terrain>(uint)Terrain.CoastWest||Tiles[z*Width+x]==(byte)terrain)return false;Tiles[z*Width+x]=(byte)terrain;NotifyTerrainChanged();return true;}
-    public readonly Villager[] Residents=new Villager[6];
+    public readonly Villager[] Residents=new Villager[SavedVillagerCount];
     public readonly GroundItem[] Ground=new GroundItem[512];
     public readonly Placement[] Placed=new Placement[256];
     public readonly int[] Stock=new int[12];
@@ -77,7 +77,7 @@ public sealed partial class Town
     {
         Seed=seed;LostAndFound=new TownLostAndFound(this);JobState=new Jobs.TownJobState(seed);Tiles=snapshot==null?new byte[Cells]:snapshot.Tiles;Elevation=snapshot==null?new byte[Cells]:snapshot.Elevation;Paths=new TownPaths();if(snapshot!=null){Array.Copy(snapshot.Paths.Packed,Paths.Packed,TownPaths.PackedBytes);Array.Copy(snapshot.Traffic.Visits,Traffic.Visits,TileTraffic.Bytes);}
         string[] phrases={"tails up","little leaf","sky high","soft paws","dig deep","good cheer"};
-        for(int i=0;i<6;i++){
+        for(int i=0;i<SavedVillagerCount;i++){
             int x=10+i*11+(i==3?3:0);string name=VillagerNames.Generate(seed,i);
             bool duplicate;do{duplicate=false;for(int j=0;j<i;j++)if(Residents[j].Name==name){name+="y";duplicate=true;break;}}while(duplicate);
             Residents[i]=new Villager{Name=name,Phrase=phrases[i],X=x,Z=14,HomeX=x,HomeZ=10,PosX=x+.5f,PosZ=14.5f};
@@ -99,9 +99,10 @@ public sealed partial class Town
         for(int z=29;z<=35;z++)for(int x=30;x<=37;x++)Tiles[z*Width+x]=(byte)Terrain.Plaza;
         for(int z=47;z<56;z++)for(int x=62;x<71;x++)Tiles[z*Width+x]=(byte)Terrain.Camp;
         Building(30,25,5,3);Building(48,25,5,3);Building(HelipadSite.X,HelipadSite.Z,HelipadSite.Width,HelipadSite.Depth);
-        for(int i=0;i<6;i++)Building(Residents[i].HomeX,Residents[i].HomeZ,3,3);
+        for(int i=0;i<SavedVillagerCount;i++)Building(Residents[i].HomeX,Residents[i].HomeZ,3,3);
         TerrainElevation.Generate(this);
         TownGenerator.Populate(this);
+        DistributeNewPopulation();
         Paths.Clear();
         NotifyTerrainChanged();
     }

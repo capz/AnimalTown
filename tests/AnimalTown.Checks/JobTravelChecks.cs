@@ -29,6 +29,13 @@ internal static class JobTravelChecks
     {
         var (a,b)=Cards();var first=new SaveRepository(a);var second=new SaveRepository(b);var travel=new OfflineTownTravel(first,second);var original=second.Load()!;
         var guest=travel.Depart(0,now);check(guest.Visiting&&guest.Name=="Traveller"&&guest.Wallet==314,"a visitor uses a separate fifth ownership capsule");
+        guest.SetTownVisitors(first.ReadVisitors(guest.Town.Jobs.TownId));
+        int additionalVisitors=0;
+        for(int npc=Town.LocalResidentCount;npc<Town.NpcActorCount;npc++)if(guest.NpcVisitor(npc) is SavedVisitor view){
+            additionalVisitors++;
+            check(view.TownId==guest.Town.Jobs.Trip.Home&&view.Slot!=guest.Town.Jobs.Trip.HomeProfile,"the controlled traveller does not also appear as an autonomous visitor");
+        }
+        check(additionalVisitors==1,"the controlled traveller counts toward the two-visitor limit");
         for(int i=0;i<4;i++)check(guest.Profiles[i].Name==original.Profiles[i].Name&&guest.Profiles[i].Wallet==original.Profiles[i].Wallet,"visiting preserves every host resident profile");
         check(first.Load()!.ProfileLocked(0)&&!first.Load()!.ProfileLocked(1),"only the source traveller is locked while away");
         bool blocked=false;try{first.Load()!.SelectProfile(0);}catch(InvalidOperationException){blocked=true;}check(blocked,"the away copy cannot be selected");

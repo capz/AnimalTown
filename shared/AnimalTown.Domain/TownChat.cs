@@ -36,8 +36,9 @@ public static class TownChat
         if(start==end||end==text.Length)return Error(AttendUsage);
         for(int i=start;i<end;i++)if(text[i]<'a'||text[i]>'z')return Error("Use the villager's lowercase name.");
         int target=-1;
-        for(int i=0;i<state.Town.Residents.Length;i++){
-            string name=state.Town.Residents[i].Name;if(name.Length!=end-start)continue;
+        for(int i=0;i<Town.NpcActorCount;i++){
+            if(!state.NpcPresent(i))continue;
+            string name=state.Town.NpcAt(i).Name;if(name.Length!=end-start)continue;
             bool same=true;
             for(int c=0;c<name.Length;c++){
                 char value=name[c];if(value>='A'&&value<='Z')value=(char)(value+32);
@@ -48,7 +49,7 @@ public static class TownChat
         if(target<0)return Error("Villager not found. Use a lowercase name.");
         while(end<text.Length&&text[end]==' ')end++;
         if(end==text.Length)return Error(AttendUsage);
-        return new TownChatLine(TownChatKind.Attend,state.Town.Residents[target].Name,text.Substring(end),target);
+        return new TownChatLine(TownChatKind.Attend,state.Town.NpcAt(target).Name,text.Substring(end),target);
     }
 }
 

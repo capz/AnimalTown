@@ -5,7 +5,7 @@ internal static class BuildingKobanChecks
     internal static void Run(Action<bool,string> check)
     {
         var s=new GameState(2204){HousePlaced=true};var t=s.Town;
-        check(BuildingWorld.Count==13&&BuildingWorld.Actors==7&&BuildingWorld.Space(KobanSite.Building)==26&&BuildingWorld.Building(26)==12,"koban adds a stable building/space without increasing the actor pool");
+        check(BuildingWorld.Count==13&&BuildingWorld.Actors==8&&BuildingWorld.Space(KobanSite.Building)==26&&BuildingWorld.Building(26)==12,"koban keeps its building and space alongside the eight-actor pool");
         check(s.BuildingTypes[KobanSite.Building]==2&&BuildingWorld.Role(12)==BuildingRole.Koban&&BuildingWorld.Size(s,26)==6,"new towns select the original six-metre koban kit");
         check(new BuildingPrompt().Enter(s,12)=="Enter Koban"&&BuildingWorld.OwnerName(s,12)=="","the public koban has its own entry prompt");
         check(!s.CanWalk(t.Koban.X+1.5f,t.Koban.Z+1.5f,0)&&t.At(t.Koban.X,t.Koban.Z)==(int)Terrain.Building,"koban footprint blocks movement and plot placement");

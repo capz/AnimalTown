@@ -1,8 +1,9 @@
 namespace AnimalTown;
 internal static class ProfileCodec
 {
+    internal const int MaximumBytes=1408;
     internal static byte[] Encode(GameState s,int profile)
-    {var w=new SplitSaveCodec.Writer(s,SplitSaveCodec.RecordKind(3+profile),1408);Write(w,s.Profiles[profile]);return w.Finish();}
+    {var w=new SplitSaveCodec.Writer(s,SplitSaveCodec.RecordKind(3+profile),MaximumBytes);Write(w,s.Profiles[profile]);return w.Finish();}
     internal static VillagerProfile Decode(GameState s,int profile,byte[] bytes)
     {var r=new SplitSaveCodec.Reader(bytes,SplitSaveCodec.RecordKind(3+profile));if(r.Version!=4||r.Sequence!=s.Sequence||r.Seed!=s.Town.Seed)throw new InvalidOperationException("Mixed profile generation");var p=Read(r);r.End();return p;}
     internal static void Write(SplitSaveCodec.Writer w,VillagerProfile p)

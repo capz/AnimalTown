@@ -68,13 +68,13 @@ internal sealed partial class TownGame
         playerRunning=running;
         state.Facing=facingYaw;cachedPlayerHeight=PlayerHeight();if(room==0)RenderView.Prepare(state.X,state.Z,cachedPlayerHeight);
         StepActorAnimation(0,state.Species,moveClip);
-        for(int i=1;i<7;i++){
-            var v=state.Town.Residents[i-1];bool inScene=v.Space==room&&simulateWorld;
+        for(int i=1;i<BuildingWorld.Actors;i++){
+            bool inScene=simulateWorld&&state.NpcPresent(i-1)&&state.Town.NpcAt(i-1).Space==room;
             bool moving=inScene&&villagers.Moving[i-1];
             if(moving!=villagersMoving[i-1]){
                 villagersMoving[i-1]=moving;restartClips[i]=moving;
             }
-            if(inScene)StepActorAnimation(i,state.ResidentSpecies(i-1),moving?0:-1);
+            if(inScene)StepActorAnimation(i,state.NpcSpecies(i-1),moving?0:-1);
             else animationClock.Reset(i);
         }
     }

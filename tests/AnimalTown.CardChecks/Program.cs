@@ -220,12 +220,32 @@ var travelAway=new GameState(8520);
 long checkpointTime=AnimalTown.Jobs.JobCalendar.At(2027,7,15,12);
 travelHome.ResidentJobs.Enable(123456,checkpointTime);
 travelAway.ResidentJobs.Enable(123457,checkpointTime);
+travelAway.Name="Birch";travelAway.SelectProfile(1);travelAway.Name="Rowan";travelAway.Species=3;travelAway.SelectProfile(0);
 var travelHomeArchive=new TownCardRecords(new NativeCardBlocks(4,true,banner,icon),true);
 travelHomeArchive.SetArchiveMarker(2,0,0);
 new SaveRepository(travelHomeArchive).Save(travelHome);
 var travelAwayStore=new CardSaveStorage(travelAwayCard,banner,icon,5);
 var travelAwayRepository=new SaveRepository(travelAwayStore);
 travelAwayRepository.Save(travelAway);
+SaveCards.Initialize();
+var visitingSession=TownSession.Load();
+int hostWrites=travelHomeCard.Writes,visitorWrites=travelAwayCard.Writes;
+visitingSession.RefreshVisitors();
+Check(visitingSession.State.Town.Jobs.TownId==123456&&visitingSession.State.NpcVisitor(5)?.Name=="Birch"&&
+    visitingSession.State.NpcVisitor(6)?.Name=="Rowan"&&visitingSession.State.NpcSpecies(6)==3,
+    "two saved profiles from Slot B become visitors in the selected Slot A town");
+Check(SaveCards.Device==4&&travelHomeCard.Writes==hostWrites&&travelAwayCard.Writes==visitorWrites,
+    "loading visitors leaves both cards and the selected slot untouched");
+MemoryCard.Slots.Remove(5);
+visitingSession.RefreshVisitors();
+Check(!visitingSession.State.NpcPresent(5)&&!visitingSession.State.NpcPresent(6),"missing source card leaves both visitor slots empty");
+var interruptedVisitorCard=new MemoryCard(5);
+Check(interruptedVisitorCard.CreateRecords("AnimalTown",32,1234,new byte[16384])==0,"interrupted source archive fixture");
+int interruptedWrites=interruptedVisitorCard.Writes;
+visitingSession.RefreshVisitors();
+Check(interruptedVisitorCard.Writes==interruptedWrites&&!visitingSession.State.NpcPresent(5)&&!visitingSession.State.NpcPresent(6),
+    "visitor loading never initializes an interrupted source archive");
+MemoryCard.Slots[5]=travelAwayCard;
 bool travelSwapRefused=false;
 int awayWrites=travelAwayCard.Writes;
 try{CardSaveStorage.SaveTravelCheckpoint(travelAwayRepository,travelHome);}

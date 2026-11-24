@@ -27,7 +27,7 @@ public sealed partial class VillagerJobService
         if(best.Result==JobResult.ExistingOffer){var o=ledger.Offer(state.ActiveProfile,npc);if(!OfferValid(o,npc)){InvalidateOffer(npc);return new JobOutcome(JobResult.OfferInvalidated);}return best;}
         if(best.Result!=JobResult.NoWork)return best;
         var availability=state.Town.JobState.Resident(npc);
-        if(!availability.CanStartConversation||!availability.FreshGenerationEnabled)return new JobOutcome(JobResult.NoWork);
+        if(!state.AllowsFreshResidentJobs(npc)||!availability.CanStartConversation||!availability.FreshGenerationEnabled)return new JobOutcome(JobResult.NoWork);
         int freeOffer=ledger.OfferSlot(state.ActiveProfile,npc,true);if(freeOffer<0)return new JobOutcome(JobResult.FullOffers);
         if(!ledger.CanAllocate(1))return new JobOutcome(JobResult.InvalidIdentity);
         if(!JobSelection.RollTemplate(OfferRandom,out var template)){availability.StartNoJobCooldown();return new JobOutcome(JobResult.NoWork);}
@@ -36,7 +36,7 @@ public sealed partial class VillagerJobService
         if(template==JobTemplate.FavorFlowers){FlowerCounts(npc,out _,out int mature,out int empty);prerequisites&=mature<=20&&empty>=4;}
         if(template==JobTemplate.DeliveryForeign)prerequisites&=RemoteValid(template,ledger.ForeignNpcs[state.ActiveProfile])&&!HasRemoteDuplicate(template);
         if(template==JobTemplate.DeliveryMoved)prerequisites&=RemoteValid(template,ledger.LastMovedNpc)&&!HasRemoteDuplicate(template);
-        if(template==JobTemplate.DeliveryClothing||template==JobTemplate.DeliveryProperty||template==JobTemplate.RetrievalBorrowed){bool target=false;for(int i=0;i<6;i++)target|=EligibleTarget(i,npc,default);prerequisites&=target;}
+        if(template==JobTemplate.DeliveryClothing||template==JobTemplate.DeliveryProperty||template==JobTemplate.RetrievalBorrowed){bool target=false;for(int i=0;i<TownJobState.ResidentCount;i++)target|=EligibleTarget(i,npc,default);prerequisites&=target;}
         if(!prerequisites){availability.StartNoJobCooldown();return new JobOutcome(JobResult.NoWork);}
         var oNew=new VillagerJobOffer{Owner=ledger.Player(state.ActiveProfile),Requester=ledger.Npc(npc),Template=template,CreatedAt=Now,Revision=1};
         bool valid=JobCalendar.Season(template,Now,true);
@@ -109,15 +109,26 @@ public sealed partial class VillagerJobService
     {var v=state.Town.Residents[npc];return v.HomeX/Town.ScreenTileSize+v.HomeZ/Town.ScreenTileSize*Town.ScreenColumns;}
     private bool EligibleTarget(int candidate,int sender,VillagerJobRecord chain)
     {
-        var id=ledger.Npc(candidate);if(!id.IsValid||candidate==sender||Acre(candidate)==Acre(sender)||id==chain.Requester)return false;
+        var id=ledger.Npc(candidate);if(!id.IsValid||candidate==sender||!state.ResidentPresent(candidate)||!state.AllowsFreshResidentJobs(candidate)||Acre(candidate)==Acre(sender)||id==chain.Requester)return false;
         for(int i=0;i<chain.Borrowers;i++)if(chain.Borrower(i)==id)return false;return true;
     }
     private JobIdentity PickTarget(int sender,VillagerJobRecord chain)
     {
-        // Six insertion-sorted IDs on the stack-shaped fixed local array. This
-        // occurs only on a new offer/referral, never while drawing or ticking.
-        var candidates=new JobIdentity[6];int count=0;
-        for(int i=0;i<6;i++)if(EligibleTarget(i,sender,chain)){var id=ledger.Npc(i);int at=count++;while(at>0&&JobIdentity.Compare(candidates[at-1],id)>0){candidates[at]=candidates[at-1];at--;}candidates[at]=id;}
+        // Rank only fresh destinations. Preserve existing offers and select
+        // among equal candidates in stable identity order with one RNG draw.
+        var candidates=new JobIdentity[TownJobState.ResidentCount];
+        int count=0,quietest=int.MaxValue;
+        for(int i=0;i<candidates.Length;i++){
+            if(!EligibleTarget(i,sender,chain))continue;
+            var destination=state.Town.NpcAt(i);
+            int nearby=VillagerNavigation.NearbyActors(state,i,destination.Space,destination.PosX,destination.PosZ,VillagerNavigation.CrowdRadius);
+            if(nearby>quietest)continue;
+            if(nearby<quietest){quietest=nearby;count=0;}
+            var id=ledger.Npc(i);
+            int at=count++;
+            while(at>0&&JobIdentity.Compare(candidates[at-1],id)>0){candidates[at]=candidates[at-1];at--;}
+            candidates[at]=id;
+        }
         return count==0?default:candidates[OfferRandom.NextInt(count)];
     }
     public void FlowerCounts(int npc,out int total,out int mature,out int empty)

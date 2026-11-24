@@ -89,7 +89,9 @@ internal static class PathChecks
         check(t.Traffic.Visits[45*Town.Width+41]==1,"player movement records normal outdoor entry");
         s.X=41.98f;PlayerMovement.Move(s,16,1,0,0,false,out _,out _);check(t.Traffic.Visits[45*Town.Width+42]==0,"indoor movement adds no town traffic");
         s.X=42.98f;PlayerMovement.Move(s,0,1,0,0,false,out _,out _,false);check(t.Traffic.Visits[45*Town.Width+43]==0,"onboarding previews suppress traffic");
-        var nav=new VillagerNavigation();nav.Tick(s);nav.Target(0,20,14);for(int i=0;i<600;i++)nav.Tick(s);
+        var walker=s.Town.NpcAt(0);walker.PosX=14.5f;walker.PosZ=14.5f;
+        var nav=new VillagerNavigation();Array.Fill(nav.Paused,true);nav.Paused[0]=false;
+        nav.Tick(s);nav.Target(0,20,14);for(int i=0;i<600;i++)nav.Tick(s);
         check(t.Traffic.Visits[14*Town.Width+15]>0,"NPC movement uses the same anonymous history");
         s=Flat();t=s.Town;int version=t.TerrainVersion;for(int i=0;i<35;i++)t.Traffic.Enter(t,20,40);
         for(int i=0;i<TileTraffic.RefreshTicks-1;i++)t.Traffic.Tick(t);check(t.Paths.Count==0,"classification is batched");t.Traffic.Tick(t);
