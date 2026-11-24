@@ -338,6 +338,15 @@
         "Static shadow data takes less space while keeping the same textures on screen.",
         "The Smooth snow transitions debug setting now applies during play."
       ]
+    },
+    {
+      "id": "networking-codex-implementation-brief-20261124",
+      "lines": [
+        "Document the remaining online multiplayer implementation plan.",
+        "The Codex brief indexes server authority, transport, NAT and relay work.",
+        "It defines visitor custody, owner keep or undo, permanent purchases and safe save handoff.",
+        "File mappings, contracts, implementation phases and acceptance checks guide future changes."
+      ]
     }
   ]
 }

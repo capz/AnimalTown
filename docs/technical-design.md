@@ -9,6 +9,14 @@ Revision: cylinder/world/bubble requirements updated from the user's instruction
 This document supersedes that document's Unity, PC, shader, WebRTC and SignalR
 implementation assumptions. None of those technologies run in the game.
 
+Networking update, 24 November 2026: use the
+[Codex networking implementation brief](networking-implementation-plan.md) for
+the current server-authoritative architecture, audited SDK capability, remaining
+work and acceptance gates. It supersedes this document's owner-hosted simulation,
+mandatory companion, guest permission and snapshot-size assumptions. The online
+sections below retain historical context and are not the current implementation
+contract.
+
 2026-11-03 implementation updates: [render-performance.md](render-performance.md)
 specifies the closer camera, configurable texture residency/cache and culling;
 [villager-assets.md](villager-assets.md) records the replacement species, their

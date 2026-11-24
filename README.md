@@ -127,6 +127,11 @@ client; this service is an independently tested foundation. Do not deploy it as
 a finished online game. Build a server image with
 `docker build -f server/AnimalTown.Server/Dockerfile -t animaltown-server .`.
 
+The [networking implementation brief](docs/networking-implementation-plan.md)
+indexes the remaining server/client work and gives Codex agents the authority,
+protocol, NAT/relay, visitor-review, synchronization and acceptance contracts.
+It supersedes the older owner-hosted networking proposal.
+
 ## Checks
 
 ```powershell

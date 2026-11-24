@@ -3,6 +3,12 @@
 This is an early playable implementation, **not the completed game** described in
 the GDD. The technical baseline was committed/pushed first as `0064efd`.
 
+For networking, use the [24 November 2026 source audit and Codex implementation
+brief](networking-implementation-plan.md). It records the merged koban/transaction
+foundation and the remaining authoritative-session, transport, NAT/relay,
+replication, owner-review and handoff work. Counts and general feature lists in
+this older status document are historical rather than current validation claims.
+
 ## Implemented foundation
 
 * Pinned Hypercube and DolphinDotNet NuGet packages, separate console and
