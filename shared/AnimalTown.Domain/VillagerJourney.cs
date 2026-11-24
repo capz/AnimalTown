@@ -61,7 +61,8 @@ public sealed class VillagerJourney
                 if(v.JourneyNextX<0||!s.Town.Walkable(v.JourneyNextX,v.JourneyNextZ)){v.JourneyPhase=0;v.Dwell=300+i*17;continue;}
                 float dx=v.PosX-v.JourneyNextX-.5f,dz=v.PosZ-v.JourneyNextZ-.5f;
                 if(dx*dx+dz*dz<.08f){v.JourneyPhase=0;v.JourneyNextX=v.JourneyNextZ=-1;v.Dwell=180;continue;}
-                var r=Outdoors.Routes[i];Moving[i]=r.Moving;v.Dwell=Moving[i]?0:v.Dwell+1;
+                var r=Outdoors.Routes[i];Moving[i]=r.Moving;
+                if(Moving[i])v.Dwell=0;else if(r.CrossingPause==0)v.Dwell++;
                 if(v.Dwell>900){v.JourneyPhase=0;v.Dwell=180;continue;}
                 if(r.GoalX!=v.JourneyNextX||r.GoalZ!=v.JourneyNextZ||r.Index>=r.Length&&r.Wait==0&&!Outdoors.Planning(i))Outdoors.Target(i,v.JourneyNextX,v.JourneyNextZ);
                 continue;
@@ -77,10 +78,12 @@ public sealed class VillagerJourney
                 v.JourneyBuilding=b;v.JourneyPhase=1;v.Dwell=0;
                 BuildingWorld.Entrance(s,b,out float x,out float z);Outdoors.Target(i,(int)x,(int)z);
             }else{
-                int b=v.JourneyBuilding;v.Dwell=Outdoors.Routes[i].Moving?0:v.Dwell+1;if(v.Dwell>900||!BuildingWorld.Exists(s,b)){v.JourneyPhase=5;v.Dwell=0;continue;}
+                int b=v.JourneyBuilding;var r=Outdoors.Routes[i];
+                if(r.Moving)v.Dwell=0;else if(r.CrossingPause==0)v.Dwell++;
+                if(v.Dwell>900||!BuildingWorld.Exists(s,b)){v.JourneyPhase=5;v.Dwell=0;continue;}
                 BuildingWorld.Entrance(s,b,out float x,out float z);float dx=v.PosX-x,dz=v.PosZ-z;
                 if(dx*dx+dz*dz<.7f){Outdoors.Stop(i);Doors.Request(s,actor,b);}
-                else{Moving[i]=Outdoors.Routes[i].Moving;var r=Outdoors.Routes[i];if(r.GoalX!=(int)x||r.GoalZ!=(int)z||r.Index>=r.Length&&r.Wait==0&&!Outdoors.Planning(i))Outdoors.Target(i,(int)x,(int)z);}
+                else{Moving[i]=r.Moving;if(r.GoalX!=(int)x||r.GoalZ!=(int)z||r.Index>=r.Length&&r.Wait==0&&!Outdoors.Planning(i))Outdoors.Target(i,(int)x,(int)z);}
             }
         }
     }
@@ -93,6 +96,7 @@ public sealed class VillagerJourney
         int preferred=s.NpcVisitor(npc).HasValue?7+(npc+cycle)%2
             :cycle==0?npc+1
             :(cycle+npc)%3==0?7:1+(npc+cycle)%homes;
+        bool resident=s.ResidentPresent(npc);
         int best=-1;float bestScore=float.MaxValue;
         for(int building=1;building<=8;building++){
             if(building>homes&&building<7)continue;
@@ -100,15 +104,18 @@ public sealed class VillagerJourney
             BuildingWorld.Entrance(s,building,out float x,out float z);
             if(!s.CanWalk(x,z,0))continue;
             int room=BuildingWorld.Space(building);
-            int occupants=VillagerNavigation.NearbyActors(s,npc,room,0,0,0);
+            int occupants=VillagerNavigation.NearbyActors(s,npc,room,0,0,0),residentOccupants=0;
             for(int i=0;i<Town.NpcActorCount;i++){
                 if(i==npc||!s.NpcPresent(i))continue;
                 var other=s.Town.NpcAt(i);
-                if(other.Space==0&&other.JourneyPhase==1&&other.JourneyBuilding==building)occupants++;
+                bool approaching=other.Space==0&&other.JourneyPhase==1&&other.JourneyBuilding==building;
+                if(approaching)occupants++;
+                if(resident&&(approaching||other.Space==room)&&s.ResidentPresent(i))residentOccupants++;
             }
             int approach=VillagerNavigation.NearbyActors(s,npc,0,x,z,VillagerNavigation.CrowdRadius);
             float distance=Math.Abs(villager.PosX-x)+Math.Abs(villager.PosZ-z);
             float score=occupants*4096+approach*256+distance+(building==preferred?0:24);
+            if(residentOccupants>=VillagerNavigation.ResidentsPerCrossing)score+=65536;
             if(score<bestScore){best=building;bestScore=score;}
         }
         return best;
