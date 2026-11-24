@@ -107,7 +107,8 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
     private readonly StartupModelAdmission startupAdmission;
     private bool trimmedForPressure;
     private bool modelSceneReady=true,terrainExitReady=true,snowExitReady,outdoorModelLookahead;
-    private int requestedUv=-1,residencyBudgetUs;
+    private int requestedUv=-1;
+    private readonly VisualResidencyBudget residencyBudget=new VisualResidencyBudget();
     private float residencyX=float.NaN,residencyZ;
     private int residencySpace=-1,residencyFailures;
     private long playerStillSince,spaceChangedAt;
@@ -439,18 +440,21 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
         if(loadingFailed)LoadingScreen.Draw("Could not load town assets.\n"+(session.Draft!=null||session.Flight.Active?"B: return to the title.":"Restart with a valid disc."),font);
         else LoadingScreen.Draw();
     }
-    // Two opportunities per presented frame overlap DMA with drawing. The total
-    // CPU credit remains one millisecond and is charged to preparation telemetry.
+    // Two opportunities per presented frame overlap DMA with drawing.
+    // Executable work shares one millisecond after demand/sampling. All actual
+    // preparation, including that bookkeeping, is charged to preparation telemetry.
     internal void AdvanceResidency(bool afterDraw=false)
     {
         if(!resourcesReady)return;
         long at=Clock.Timestamp;
-        if(!afterDraw){residencyBudgetUs=1000;RefreshResidencyDemand(at);}
+        if(!afterDraw)RefreshResidencyDemand(at);
+        visualMemory.RefreshDemand(state,villagers.Doors,buildings,at);
+        long deadline=residencyBudget.Begin(afterDraw);
         var crossing=villagers.Doors.Actors[0];
         bool exiting=villagers.Doors.Busy(0)&&crossing.Destination.Space.IsTown;
         snowExitReady=false;
         visualMemory.Prepare(state,villagers.Doors,room==0||exiting||outdoorModelLookahead,
-            trees,droppedItems,buildings,at,at+Math.Max(0,residencyBudgetUs));
+            trees,droppedItems,buildings,at,deadline);
         if(visualMemory.Pressure.UnderPressure){
             if(!trimmedForPressure){uiShapes.Trim();if(screen!="map"&&!(room==0&&runningMinimap.Opacity>0))mapBackground.Dispose();trimmedForPressure=true;visualMemory.Sample(Clock.Timestamp,true);}
         }else trimmedForPressure=false;
@@ -462,7 +466,7 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
                 try{state.X=x;state.Z=z;WaterInspection.Focus(state,waterInspection);x=state.X;z=state.Z;}
                 finally{state.X=savedX;state.Z=savedZ;}
             }
-            int allowance=Math.Min(500,Math.Max(0,residencyBudgetUs-(int)(Clock.Timestamp-at)));
+            int allowance=Math.Min(500,residencyBudget.Remaining);
             terrainExitReady=terrain.PrepareOutdoorResidency(x,z,Clock.Timestamp+allowance,room!=0);
             if(room!=0&&exiting&&terrainExitReady&&state.Town.Traffic.Snow.Winter&&!renderDebug.ShowGroundMipBands)
                 snowExitReady=terrain.PrepareSnowForExit(state.Town,x,z,renderDebug.SmoothSnowTransitions);
@@ -470,20 +474,16 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
             terrainExitReady=terrain.SuspendOutdoorCache()&&!terrain.CacheSuspended;
         }
         if(afterDraw&&room!=0&&!villagers.Doors.Busy(0))terrain.ReleaseSnowMask(state.Town);
-        residencyBudgetUs=Math.Max(0,residencyBudgetUs-(int)(Clock.Timestamp-at));
-        long modelAt=Clock.Timestamp;
         bool allowDemotion=session.Draft==null&&(terrain.ArchiveReady||visualMemory.Pressure.UnderPressure)&&(room==0||at-playerStillSince>=ModelResidency.IdleDelayUs)&&
             !villagers.Doors.Busy(0)&&requestedUv<0&&uvDebug==0&&waterInspection==0;
-        modelResidency.Pump(at,allowDemotion,modelAt+Math.Max(0,residencyBudgetUs));
-        residencyBudgetUs=Math.Max(0,residencyBudgetUs-(int)(Clock.Timestamp-modelAt));
-        long lodAt=Clock.Timestamp;modelLod.Pump(lodAt,lodAt+Math.Max(0,residencyBudgetUs));
-        residencyBudgetUs=Math.Max(0,residencyBudgetUs-(int)(Clock.Timestamp-lodAt));
+        modelResidency.Pump(at,allowDemotion,deadline);
+        modelLod.Pump(Clock.Timestamp,deadline);
         int changedActors=modelLod.ConsumeChangedActors();
         for(int actor=1;actor<actors.Length;actor++)if((changedActors&(1<<actor))!=0){restartClips[actor]=true;appliedClips[actor]=-2;if(actors[actor]!=null)attention.Register(actor-1,actors[actor]!);}
         long optionalAt=Clock.Timestamp;
-        visualMemory.PrepareOptionalBuildings(state,villagers.Doors,buildings,optionalAt,optionalAt+Math.Max(0,residencyBudgetUs),
+        visualMemory.PrepareOptionalBuildings(state,villagers.Doors,buildings,optionalAt,deadline,
             !terrainExitReady||!modelResidency.ReadyForSpace(state,villagers.Doors,room)||!modelLod.FullForSpace(state,villagers.Doors,room));
-        residencyBudgetUs=Math.Max(0,residencyBudgetUs-(int)(Clock.Timestamp-optionalAt));
+        residencyBudget.End();
         if(modelResidency.Failures!=residencyFailures){residencyFailures=modelResidency.Failures;TextureCache.TrimUnused();}
         if(requestedUv>=0&&modelResidency.AllReady&&modelLod.FullReady){int next=requestedUv;requestedUv=-1;ApplyUv(next);}
         modelSceneReady=room==0||modelResidency.ReadyForSpace(state,villagers.Doors,room)&&buildings.ReadyForSpace(state,room)&&modelLod.FullForSpace(state,villagers.Doors,room);

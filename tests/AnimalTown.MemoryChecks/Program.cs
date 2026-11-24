@@ -4,6 +4,11 @@ using Dolphin.Timing;
 
 int checks=0;
 void Check(bool result,string message){checks++;if(!result)throw new Exception(message);}
+void Prepare(VisualMemoryCoordinator coordinator,GameState state,PortalSystem doors,bool outdoors,LowPolyTrees trees,DroppedItemRenderer items,BuildingRenderer buildings,long now,long deadline)
+{
+    coordinator.RefreshDemand(state,doors,buildings,now);
+    coordinator.Prepare(state,doors,outdoors,trees,items,buildings,now,deadline);
+}
 var memory=new VisualMemoryPressure();
 memory.Observe(10*1024*1024,0,0,0);
 Check(memory.TryReserve(3*1024*1024,0,false,out int first)&&memory.TryReserve(3*1024*1024,0,false,out _),"independent owners reserve shared physical headroom");
@@ -48,7 +53,7 @@ Check(Model.Live==BuildingCatalog.Count*2&&ModelInstance.Live==Model.Live,"outdo
 Check(buildings.Ready(0)&&!buildings.ReadyForSpace(state,1),"art availability remains distinct from lazy room readiness");
 var manager=new VisualMemoryCoordinator();var trees=new LowPolyTrees();var items=new DroppedItemRenderer();
 state.Space=1;Clock.Timestamp=10000000;
-for(int i=0;i<12;i++){manager.Prepare(state,doors,false,trees,items,buildings,Clock.Timestamp,Clock.Timestamp+1000);Clock.Timestamp++;}
+for(int i=0;i<12;i++){Prepare(manager,state,doors,false,trees,items,buildings,Clock.Timestamp,Clock.Timestamp+1000);Clock.Timestamp++;}
 Check(buildings.ReadyForSpace(state,1),"essential current-room floor and walls restore completely");
 int warm=Model.Live;
 Check(!buildings.ReleaseUnused(state,doors,Clock.Timestamp,true),"pressure never releases current indoor room parts");
@@ -61,27 +66,27 @@ while(buildings.ReleaseUnused(state,doors,Clock.Timestamp,true)){}
 Check(Model.Live==BuildingCatalog.Count*2,"unused interiors return real owner allocations");
 
 state.Space=1;Model.FailInstanceNext=true;int before=Model.Live;
-manager.Prepare(state,doors,false,trees,items,buildings,Clock.Timestamp,Clock.Timestamp+1000);Clock.Timestamp++;
-manager.Prepare(state,doors,false,trees,items,buildings,Clock.Timestamp,Clock.Timestamp+1000);
+Prepare(manager,state,doors,false,trees,items,buildings,Clock.Timestamp,Clock.Timestamp+1000);Clock.Timestamp++;
+Prepare(manager,state,doors,false,trees,items,buildings,Clock.Timestamp,Clock.Timestamp+1000);
 Check(Model.Live==before&&ModelInstance.Live==before&&manager.Pressure.ReservedBytes==0,"instance allocation failure disposes adopted model and cancels reservation");
 int loads=Model.Loads;
-manager.Prepare(state,doors,false,trees,items,buildings,Clock.Timestamp,Clock.Timestamp+1000);
+Prepare(manager,state,doors,false,trees,items,buildings,Clock.Timestamp,Clock.Timestamp+1000);
 Check(Model.Loads==loads,"failed room restore does not read again during retry backoff");
 Clock.Timestamp+=VisualMemoryPressure.FailureBackoffUs+1;
-for(int i=0;i<12;i++){manager.Prepare(state,doors,false,trees,items,buildings,Clock.Timestamp,Clock.Timestamp+1000);Clock.Timestamp++;}
+for(int i=0;i<12;i++){Prepare(manager,state,doors,false,trees,items,buildings,Clock.Timestamp,Clock.Timestamp+1000);Clock.Timestamp++;}
 Check(buildings.ReadyForSpace(state,1),"essential room recovers after allocator backoff without waiting for optional pressure recovery");
 
 state.Space=0;while(buildings.ReleaseUnused(state,doors,Clock.Timestamp,true)){}
 state.Space=1;Model.DeferNext=true;
-manager.Prepare(state,doors,false,trees,items,buildings,Clock.Timestamp,Clock.Timestamp+1000);
+Prepare(manager,state,doors,false,trees,items,buildings,Clock.Timestamp,Clock.Timestamp+1000);
 Check(manager.Pressure.ReservedBytes>0,"in-flight disc/native owner retains a memory reservation");
 state.Space=0;Model.CompleteDeferred();
-manager.Prepare(state,doors,false,trees,items,buildings,Clock.Timestamp,Clock.Timestamp+1000);
+Prepare(manager,state,doors,false,trees,items,buildings,Clock.Timestamp,Clock.Timestamp+1000);
 Check(manager.Pressure.ReservedBytes==0&&Model.Live==BuildingCatalog.Count*2,"reversed doorway drops completed unused result and its ticket without a leak");
 NativeMemory.FreeBytes=1024*1024;TextureCache.Unused=1;items.Eligible=trees.Eligible=true;
-manager.Prepare(state,doors,false,trees,items,buildings,Clock.Timestamp,Clock.Timestamp+1000);
+Prepare(manager,state,doors,false,trees,items,buildings,Clock.Timestamp,Clock.Timestamp+1000);
 Check(TextureCache.Unused==0&&items.Eligible&&trees.Eligible,"pressure reclaims one owner with cache before category priority");
-manager.Prepare(state,doors,false,trees,items,buildings,Clock.Timestamp,Clock.Timestamp+1000);
+Prepare(manager,state,doors,false,trees,items,buildings,Clock.Timestamp,Clock.Timestamp+1000);
 Check(!items.Eligible&&trees.Eligible,"a subsequent bounded grant retires an unused outdoor category");
 buildings.Dispose();Check(Model.Live==0&&ModelInstance.Live==0&&Model.Bytes==0,"teardown releases every model and instance exactly once");
 NativeMemory.FreeBytes=10*1024*1024;state.Space=0;Clock.Timestamp+=10000000;
@@ -136,17 +141,78 @@ state.Space=0;BuildingWorld.Entrance(state,0,out float entryX,out float entryZ);
 var prefetchBuildings=new BuildingRenderer(new Transform());while(!prefetchBuildings.AdvanceLoading(state)){}
 NativeMemory.FreeBytes=10*1024*1024;NativeMemory.Failures=0;Clock.Timestamp+=10000000;
 var prefetchMemory=new VisualMemoryCoordinator();loads=Model.Loads;
-prefetchMemory.Prepare(state,doors,true,trees,items,prefetchBuildings,Clock.Timestamp,Clock.Timestamp+1000);
+Prepare(prefetchMemory,state,doors,true,trees,items,prefetchBuildings,Clock.Timestamp,Clock.Timestamp+1000);
 Check(Model.Loads==loads,"required coordinator phase cannot spend headroom on speculative nearby rooms");
 prefetchMemory.PrepareOptionalBuildings(state,doors,prefetchBuildings,Clock.Timestamp,Clock.Timestamp+1000,essentialWorkPending:true);
 Check(Model.Loads==loads,"nearby room prefetch yields while another owner has essential work");
 Model.DeferNext=true;prefetchMemory.PrepareOptionalBuildings(state,doors,prefetchBuildings,Clock.Timestamp,Clock.Timestamp+1000);
 Check(Model.Loads==loads+1&&prefetchMemory.Pressure.ReservedBytes>0,"last-priority nearby-room read owns its allocation ticket");
 Model.CompleteDeferred();NativeMemory.FreeBytes=600*1024;Clock.Timestamp+=1000000;
-prefetchMemory.Prepare(state,doors,true,trees,items,prefetchBuildings,Clock.Timestamp,Clock.Timestamp);
+Prepare(prefetchMemory,state,doors,true,trees,items,prefetchBuildings,Clock.Timestamp,Clock.Timestamp);
 Check(prefetchMemory.Pressure.ReservedBytes==0&&Model.Live==BuildingCatalog.Count*2,"completed speculative read drains under pressure with zero adoption credit and never allocates an instance");
 prefetchBuildings.Dispose();Check(Model.Live==0&&ModelInstance.Live==0,"speculative cancellation retains exact source-model ownership");
+
+// Real coordinator/building code with deterministic slow bookkeeping/native
+// operations: demand and sampling can exceed a grant before work even begins.
+state.Space=0;state.X=140;state.Z=140;doors.Actors[0].Phase=DoorPhase.Idle;
+var scheduledBuildings=new BuildingRenderer(new Transform());while(!scheduledBuildings.AdvanceLoading(state)){}
+var scheduler=new VisualMemoryCoordinator();var credit=new VisualResidencyBudget();
+state.Space=1;NativeMemory.FreeBytes=1024*1024;NativeMemory.ReadCostUs=2500;
+TextureCache.Unused=2;TextureCache.TrimCostUs=2000;
+Clock.Timestamp+=10000000;long preparationAt=Clock.Timestamp;
+Clock.Timestamp+=3000;scheduler.RefreshDemand(state,doors,scheduledBuildings,preparationAt);
+long workDeadline=credit.Begin(afterDraw:false);
+Check(Clock.Timestamp-preparationAt==5500&&credit.Remaining==1000,"expensive demand and physical sampling precede the executable work grant");
+int scheduledLoads=Model.Loads,scheduledInstances=ModelInstance.Live;Model.DeferNext=true;
+scheduler.Prepare(state,doors,false,trees,items,scheduledBuildings,preparationAt,workDeadline);credit.End();
+Check(Model.Loads==scheduledLoads+1&&ModelInstance.Live==scheduledInstances,"one required part starts despite bookkeeping longer than the work budget");
+Check(credit.Remaining==0&&TextureCache.Unused==1,"optional reclaim consumes only remaining credit after required work");
+
+// A stuck worker and an adoption denied CPU credit are distinguishable without
+// repeating a diagnostic every presentation.
+Clock.Timestamp+=1000001;scheduler.RefreshDemand(state,doors,scheduledBuildings,Clock.Timestamp);
+workDeadline=credit.Begin(afterDraw:true);
+int waits=Dolphin.Diagnostics.DebugOverlay.Lines.Count(line=>line.Contains("BUILDING PART WAIT"));
+scheduler.Prepare(state,doors,false,trees,items,scheduledBuildings,Clock.Timestamp,workDeadline);credit.End();
+Check(Dolphin.Diagnostics.DebugOverlay.Lines.Count(line=>line.Contains("BUILDING PART WAIT"))==waits+1&&
+    Dolphin.Diagnostics.DebugOverlay.Lines.Last(line=>line.Contains("BUILDING PART WAIT")).Contains("completed 0 deadlineDebt 0"),"one delayed-load diagnostic identifies an incomplete worker");
+scheduler.Prepare(state,doors,false,trees,items,scheduledBuildings,Clock.Timestamp,workDeadline);
+Check(Dolphin.Diagnostics.DebugOverlay.Lines.Count(line=>line.Contains("BUILDING PART WAIT"))==waits+1,"pending wait diagnostics remain once per load");
+
+Model.CompleteDeferred();Clock.Timestamp+=1000001;
+preparationAt=Clock.Timestamp;Clock.Timestamp+=3000;scheduler.RefreshDemand(state,doors,scheduledBuildings,preparationAt);
+workDeadline=credit.Begin(afterDraw:false);Model.InstanceCostUs=1100;
+scheduler.Prepare(state,doors,false,trees,items,scheduledBuildings,preparationAt,workDeadline);credit.End();
+Check(ModelInstance.Live==scheduledInstances+1&&Model.Loads==scheduledLoads+1&&!scheduledBuildings.ReadyForSpace(state,1),"completed required part adopts before optional reclamation and no second part starts in that call");
+Check(TextureCache.Unused==1&&credit.Remaining==0,"an indivisible required adoption overrun prevents optional reclaim work");
+Clock.Timestamp+=200000;scheduler.RefreshDemand(state,doors,scheduledBuildings,Clock.Timestamp);
+workDeadline=credit.Begin(afterDraw:true);
+scheduler.Prepare(state,doors,false,trees,items,scheduledBuildings,Clock.Timestamp,workDeadline);credit.End();
+Check(Model.Loads==scheduledLoads+1&&TextureCache.Unused==1,"after-draw opportunity cannot replenish exhausted CPU credit");
+
+Model.InstanceCostUs=0;TextureCache.TrimCostUs=0;TextureCache.Unused=0;NativeMemory.ReadCostUs=0;
+Clock.Timestamp+=1000001;scheduler.RefreshDemand(state,doors,scheduledBuildings,Clock.Timestamp);
+workDeadline=credit.Begin(afterDraw:false);
+scheduler.Prepare(state,doors,false,trees,items,scheduledBuildings,Clock.Timestamp,workDeadline);credit.End();
+Check(Model.Loads==scheduledLoads+2&&ModelInstance.Live==scheduledInstances+1,"the next frame starts only one more part and leaves adoption to a subsequent grant");
+Clock.Timestamp+=1000001;scheduler.RefreshDemand(state,doors,scheduledBuildings,Clock.Timestamp);
+workDeadline=credit.Begin(afterDraw:true);Clock.Timestamp=workDeadline+500;
+scheduler.Prepare(state,doors,false,trees,items,scheduledBuildings,Clock.Timestamp,workDeadline);credit.End();
+Check(Dolphin.Diagnostics.DebugOverlay.Lines.Last(line=>line.Contains("BUILDING PART WAIT")).Contains("completed 1 deadlineDebt 500"),"delayed completed-load diagnostic exposes CPU adoption starvation separately");
+for(int i=0;i<10;i++){
+    Clock.Timestamp+=1000001;scheduler.RefreshDemand(state,doors,scheduledBuildings,Clock.Timestamp);
+    workDeadline=credit.Begin(afterDraw:false);
+    scheduler.Prepare(state,doors,false,trees,items,scheduledBuildings,Clock.Timestamp,workDeadline);credit.End();
+}
+Check(scheduledBuildings.ReadyForSpace(state,1),"required floor and walls eventually complete after expensive preparation and queued reclamation");
+scheduledBuildings.Dispose();Check(Model.Live==0&&ModelInstance.Live==0,"bounded scheduler and delayed diagnostics retain exact owner cleanup");
+credit.Begin(afterDraw:false);Clock.Timestamp+=350;credit.End();Clock.Timestamp+=1000000;
+workDeadline=credit.Begin(afterDraw:true);
+Check(credit.Remaining==650&&workDeadline-Clock.Timestamp==650,"draw and preparation gaps preserve only the unused first-opportunity CPU credit");
+Clock.Timestamp+=200;credit.End();Clock.Timestamp+=1000000;credit.Begin(afterDraw:true);
+Check(credit.Remaining==450,"subsequent opportunities spend the same presentation credit rather than resetting it");
+
 GraphicsDevice.Default.IsFrameActive=true;bool rejected=false;
-try{manager.Prepare(state,doors,false,trees,items,buildings,Clock.Timestamp,Clock.Timestamp+1000);}catch(InvalidOperationException){rejected=true;}
+try{Prepare(manager,state,doors,false,trees,items,buildings,Clock.Timestamp,Clock.Timestamp+1000);}catch(InvalidOperationException){rejected=true;}
 GraphicsDevice.Default.IsFrameActive=false;Check(rejected,"global reclamation rejects a frame with live GPU owners");
 Console.WriteLine(checks+" visual memory checks passed");

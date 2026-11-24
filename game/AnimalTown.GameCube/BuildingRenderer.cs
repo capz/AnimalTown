@@ -20,6 +20,8 @@ internal sealed class BuildingRenderer : IDisposable
     private int residencySlot=-1;
     private int memoryTicket;
     private int pendingFailureCount;
+    private long pendingAt;
+    private bool tracedPending;
     private readonly int[] failureSnapshot=new int[5];
     internal VisualMemoryPressure? Memory;
     private int used;
@@ -107,7 +109,7 @@ internal sealed class BuildingRenderer : IDisposable
         int building=BuildingWorld.Building(space);if(building<0||!BuildingWorld.Exists(state,building))return;
         int type=state.BuildingTypes[building];if(type>=0&&type<required.Length)required[type]=wanted[type]=true;
     }
-    private void Demand(GameState state,PortalSystem doors,long now,bool pressure)
+    internal void PrepareDemand(GameState state,PortalSystem doors,long now,bool pressure)
     {
         Array.Clear(required,0,required.Length);Array.Clear(wanted,0,wanted.Length);
         DemandSpace(state,state.Space);
@@ -135,9 +137,9 @@ internal sealed class BuildingRenderer : IDisposable
             return false;
         }
     }
-    internal bool ReleaseUnused(GameState state,PortalSystem doors,long now,bool pressure)
+    internal bool ReleaseUnused(GameState state,PortalSystem doors,long now,bool pressure,bool demandPrepared=false)
     {
-        Demand(state,doors,now,pressure);
+        if(!demandPrepared)PrepareDemand(state,doors,now,pressure);
         for(int type=0;type<ready.Length;type++)if(!required[type]&&(pressure||!wanted[type]&&now-lastRequired[type]>=IdleGraceUs))
             for(int part=PartsPerDefinition-1;part>=2;part--)if(parts[type*PartsPerDefinition+part]!=null){ReleasePart(type*PartsPerDefinition+part);return true;}
         return false;
@@ -145,8 +147,8 @@ internal sealed class BuildingRenderer : IDisposable
     internal void PrepareResidency(GameState state,PortalSystem doors,long now,long deadline,bool pressure,bool allowOptional=true)
     {
         if(loadType<BuildingCatalog.Count)return;
-        Demand(state,doors,now,pressure);
         if(pending!=null){
+            TracePending(deadline);
             if(!pending.IsCompleted)return;
             // Inspect one completion even with no CPU credit. A no-longer-wanted
             // optional result may be disposed, but adoption/native allocation
@@ -180,11 +182,21 @@ internal sealed class BuildingRenderer : IDisposable
                     pendingFailureCount=Memory?.FailureCount??0;
                     pending=Model.LoadAsync(TexturePolicy.ModelPath(PartName(BuildingCatalog.Get(type),part),TextureResolution.Size128),default,ModelBudgetBytes);
                     residencySlot=type*PartsPerDefinition+part;
+                    pendingAt=Clock.Timestamp;tracedPending=false;
                     Dolphin.Diagnostics.DebugOverlay.WriteLine("ANIMALTOWN BUILDING PART BEGIN type "+type+" part "+part+" required "+(required[type]?1:0));
                 }catch(Exception error){Memory?.Cancel(memoryTicket);memoryTicket=0;if(AllocationEvidence(error,now))Memory?.AllocationFailed(PartPeakBytes,now);retryAt[type]=now+RetryDelayUs;Dolphin.Diagnostics.DebugOverlay.WriteLine("ANIMALTOWN BUILDING RESIDENCY ADMISSION "+type+": "+error.Message);}
                 return;
             }
         }
+    }
+    private void TracePending(long deadline)
+    {
+        long now=Clock.Timestamp;
+        if(tracedPending||now-pendingAt<1000000)return;
+        tracedPending=true;
+        int type=residencySlot/PartsPerDefinition;
+        Dolphin.Diagnostics.DebugOverlay.WriteLine("ANIMALTOWN BUILDING PART WAIT type "+type+" part "+residencySlot%PartsPerDefinition+
+            " required "+(required[type]?1:0)+" completed "+(pending!.IsCompleted?1:0)+" deadlineDebt "+Math.Max(0,now-deadline));
     }
     internal void Begin(PortalSystem doors){used=0;for(int i=0;i<ready.Length;i++)doors.Ready[i]=ready[i];}
     internal bool Ready(int type)=>type>=0&&type<ready.Length&&ready[type];

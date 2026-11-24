@@ -1,6 +1,6 @@
 using System.Threading.Tasks;
 namespace Dolphin.Timing { internal static class Clock { internal static long Timestamp; } }
-namespace Dolphin.Diagnostics { internal static class DebugOverlay { internal static void WriteLine(string text){} } }
+namespace Dolphin.Diagnostics { internal static class DebugOverlay { internal static readonly List<string> Lines=new();internal static void WriteLine(string text){Lines.Add(text);} } }
 namespace Dolphin.Graphics
 {
     internal readonly struct Vector3 { public static Vector3 Zero=>default;public Vector3(float x,float y,float z){} }
@@ -10,7 +10,7 @@ namespace Dolphin.Graphics
     internal sealed class GraphicsDevice { internal static readonly GraphicsDevice Default=new GraphicsDevice();internal bool IsFrameActive=false; }
     internal sealed class Model : IDisposable
     {
-        internal static int Live,Loads,Bytes;
+        internal static int Live,Loads,Bytes,InstanceCostUs;
         internal static bool FailNext,FailNativeNext,DeferNext,FailInstanceNext;
         internal static TaskCompletionSource<Model>? Deferred;
         private bool disposed;
@@ -26,7 +26,7 @@ namespace Dolphin.Graphics
             return Task.FromResult(new Model());
         }
         internal static void CompleteDeferred(){Deferred!.SetResult(new Model());Deferred=null;}
-        internal ModelInstance CreateInstance(int budget){if(FailInstanceNext){FailInstanceNext=false;throw new OutOfMemoryException();}return new ModelInstance();}
+        internal ModelInstance CreateInstance(int budget){Dolphin.Timing.Clock.Timestamp+=InstanceCostUs;if(FailInstanceNext){FailInstanceNext=false;throw new OutOfMemoryException();}return new ModelInstance();}
         public void Dispose(){if(disposed)throw new Exception("Model double disposal");disposed=true;Live--;Bytes-=NativeBytes;}
     }
     internal sealed class ModelInstance : IDisposable
@@ -41,9 +41,9 @@ internal static class NativeBuildings { internal static int Retain(Dolphin.Graph
 internal static class NativeShadows { internal static void Scope(int scope){} }
 internal static class NativeMemory
 {
-    internal static int FreeBytes=10*1024*1024,Failures;
-    internal static int Read(int[] snapshot){snapshot[0]=FreeBytes-Dolphin.Graphics.Model.Bytes;snapshot[3]=Failures;return 1;}
+    internal static int FreeBytes=10*1024*1024,Failures,ReadCostUs;
+    internal static int Read(int[] snapshot){Dolphin.Timing.Clock.Timestamp+=ReadCostUs;snapshot[0]=FreeBytes-Dolphin.Graphics.Model.Bytes;snapshot[3]=Failures;return 1;}
 }
-internal static class TextureCache { internal static int Unused;internal static bool TrimOneUnused(){if(Unused<1)return false;Unused--;return true;} }
+internal static class TextureCache { internal static int Unused,TrimCostUs;internal static bool TrimOneUnused(){Dolphin.Timing.Clock.Timestamp+=TrimCostUs;if(Unused<1)return false;Unused--;return true;} }
 internal sealed class LowPolyTrees { internal bool Eligible;internal bool ReleaseUnused(bool outdoors,long now,bool pressure){if(!Eligible||outdoors)return false;Eligible=false;return true;} }
 internal sealed class DroppedItemRenderer { internal bool Eligible;internal bool ReleaseUnused(bool outdoors,long now,bool pressure){if(!Eligible||outdoors)return false;Eligible=false;return true;} }

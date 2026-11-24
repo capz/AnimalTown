@@ -36,6 +36,12 @@ optional UI geometry caching and full ground-texture upgrades yield to pressure.
 Resource owners clear borrowed bindings before freeing their native storage.
 Reservations outlive asynchronous work and are cancelled only after cleanup.
 
+Demand/readiness preparation and physical sampling finish before the shared
+one-millisecond executable residency grant starts. Required building parts run
+before optional reclamation scans. Before/after-draw opportunities spend only
+the same unused CPU credit; drawing does not replenish it. Preparation telemetry
+still counts the entire demand, sampling and work cost.
+
 Building startup loads exterior/door parts and only the saved current
 interior. Other interiors restore near an entrance or during a doorway crossing.
 Closed composites remain comparison assets rather than runtime resident parts.

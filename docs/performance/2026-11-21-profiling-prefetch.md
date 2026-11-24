@@ -24,6 +24,14 @@ an individual native call can overrun its deadline. Current demand takes
 priority over speculation and speculation is evicted first under pressure.
 The water inspector uses its effective camera position in both phases.
 
+Demand/readiness scans and physical memory sampling finish before executable
+residency credit starts. Required building loads and completed-part adoption run
+before optional reclamation scans, with at most one part started or adopted per
+call. Before/after-draw opportunities share the unused CPU credit; the draw gap
+does not spend or replenish it. Preparation telemetry includes all bookkeeping
+and work. A building load pending for a second emits one diagnostic with task
+completion and deadline debt, distinguishing worker delay from adoption delay.
+
 Cold construction, cache restoration and large teleports retain explicit
 readiness transitions. An incomplete alias is never submitted as geometry.
 The pending native request owns its destination until cancellation completes;

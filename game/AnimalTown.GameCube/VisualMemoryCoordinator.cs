@@ -25,22 +25,29 @@ internal sealed class VisualMemoryCoordinator
             }
         }
     }
-    internal void Prepare(GameState state,PortalSystem doors,bool outdoorDemand,
-        LowPolyTrees trees,DroppedItemRenderer items,BuildingRenderer buildings,long now,long deadline)
+    internal void RefreshDemand(GameState state,PortalSystem doors,BuildingRenderer buildings,long now)
     {
         if(GraphicsDevice.Default.IsFrameActive)throw new InvalidOperationException("Visual residency changes require EndFrame");
         Sample(now);
         buildings.Memory=Pressure;
+        buildings.PrepareDemand(state,doors,now,Pressure.UnderPressure);
+    }
+    internal void Prepare(GameState state,PortalSystem doors,bool outdoorDemand,
+        LowPolyTrees trees,DroppedItemRenderer items,BuildingRenderer buildings,long now,long deadline)
+    {
+        if(GraphicsDevice.Default.IsFrameActive)throw new InvalidOperationException("Visual residency changes require EndFrame");
+        // Demand and physical sampling precede the executable grant. A completed
+        // required part gets first credit, before optional reclamation scans.
+        buildings.PrepareResidency(state,doors,now,deadline,Pressure.UnderPressure,allowOptional:false);
         // Each call retires at most one category/part. Memory pressure bypasses
         // idle grace, never the pin for a scene being drawn or a door crossing.
         if(Clock.Timestamp<deadline){
             bool reclaimed=Pressure.UnderPressure&&TextureCache.TrimOneUnused();
             if(!reclaimed)reclaimed=items.ReleaseUnused(outdoorDemand,now,Pressure.UnderPressure);
             if(!reclaimed)reclaimed=trees.ReleaseUnused(outdoorDemand,now,Pressure.UnderPressure);
-            if(!reclaimed)reclaimed=buildings.ReleaseUnused(state,doors,now,Pressure.UnderPressure);
+            if(!reclaimed)reclaimed=buildings.ReleaseUnused(state,doors,now,Pressure.UnderPressure,demandPrepared:true);
             if(reclaimed){Reclaims++;Sample(now,true);}
         }
-        buildings.PrepareResidency(state,doors,now,deadline,Pressure.UnderPressure,allowOptional:false);
     }
     internal void PrepareOptionalBuildings(GameState state,PortalSystem doors,BuildingRenderer buildings,long now,long deadline,bool essentialWorkPending=false)
     {
