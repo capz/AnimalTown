@@ -462,6 +462,61 @@ for ignored,stuck in ((False,False),(True,False),(False,True)):
     assert events[0].startswith('RELEASE A\nRELEASE B\nRELEASE L\nRELEASE R\n')
 print('ARAM doorway smoke: refusal dismissal, neutral controls, guest cooldown and acknowledged inspector routes passed')
 
+# Restore coverage survives another legitimate retirement. The parser still
+# reports current cold residency separately and only pairs within one session.
+model_parser=next(n for n in module.body if isinstance(n,ast.FunctionDef) and n.name=='aram_model_cycles')
+population_parser=next(n for n in module.body if isinstance(n,ast.FunctionDef) and n.name=='aram_model_population')
+coverage_node=next(n for n in scenario.body if isinstance(n,ast.FunctionDef) and n.name=='uncovered_models')
+coverage_scope={}
+exec(compile(ast.Module([model_parser,population_parser,coverage_node],type_ignores=[]),'<ARAM model restore coverage>','exec'),coverage_scope)
+model_cycles=coverage_scope['aram_model_cycles'];uncovered=coverage_scope['uncovered_models']
+model_population=coverage_scope['aram_model_population']
+population_marker='ANIMALTOWN MODEL POPULATION mask 3 actors 2\n'
+ready='ANIMALTOWN READY version native bytes 123\n'
+population=model_population(boot+population_marker+ready,0)
+assert population['species']==[0,1] and population['actors']==2
+model_cold='ANIMALTOWN MODEL COLD 1 aram bytes 4096 native budget bytes 64 max advance us 838\n'
+model_warm='ANIMALTOWN MODEL WARM 1 aram bytes 4096 max advance us 838 readiness waits 0 portal wait ticks 0\n'
+cycled=boot+model_cold+model_warm+model_cold
+model_evidence=model_cycles(cycled,len(boot))
+assert uncovered(model_evidence,population)==[] and model_evidence['restored_species']==[1]
+assert model_evidence['cold_species']==model_evidence['unrestored_species']==[1]
+startup=boot+model_cold+model_warm
+assert uncovered(model_cycles(startup,len(startup)),population)==[1]
+assert uncovered(model_cycles(boot+model_cold,len(boot)),population)==[1]
+next_session=cycled+boot+model_cold
+assert uncovered(model_cycles(next_session,0),population)==[1]
+assert not model_cycles(next_session,0)['cycles']
+assert not model_cycles(boot+model_cold+boot+model_warm,0)['cycles']
+unused_cold=model_cold.replace('COLD 1','COLD 5')
+unused_warm=model_warm.replace('WARM 1','WARM 5')
+assert uncovered(model_cycles(cycled+unused_cold,len(boot)),population)==[]
+# An unused package's genuine restore cannot cover a present actor's cold source.
+assert uncovered(model_cycles(boot+model_cold+unused_cold+unused_warm,len(boot)),population)==[1]
+legacy=model_population(boot+'ANIMALTOWN MODEL POPULATION mask 35 actors 3\n'+ready,0)
+assert legacy['species']==[0,1,5]
+assert uncovered(model_cycles(cycled+unused_cold,len(boot)),legacy)==[5]
+assert model_population(boot+'ANIMALTOWN MODEL POPULATION mask 3 actors 8\n'+ready,0)['actors']==8
+for invalid in (
+    boot+ready,
+    boot+population_marker+population_marker+ready,
+    boot+population_marker.replace('mask 3','mask 0')+ready,
+    boot+population_marker.replace('mask 3','mask 64')+ready,
+    boot+population_marker.replace('mask 3','mask -1')+ready,
+    boot+population_marker.replace('actors 2','actors 1')+ready,
+    boot+population_marker.replace('actors 2','actors 0')+ready,
+    boot+population_marker.replace('actors 2','actors 9')+ready,
+    boot+population_marker.replace('mask 3','mask 2')+ready,
+    boot+population_marker.replace('mask 3','mask unknown')+ready,
+    boot+ready+population_marker,
+    boot+population_marker+ready+boot+ready,
+):
+    try:model_population(invalid,0)
+    except AssertionError:pass
+    else:raise AssertionError('Malformed, stale or incomplete actual actor roster was accepted')
+assert model_population(boot+population_marker+ready+boot+'ANIMALTOWN MODEL POPULATION mask 33 actors 2\n'+ready,0)['species']==[0,5]
+print('ARAM model coverage: current actor roster, legacy/visitor cohorts, rereclamation, startup/session isolation and unused packages passed')
+
 config_reader=next(n for n in module.body if isinstance(n,ast.FunctionDef) and n.name=='card_dev_config')
 exec(compile(ast.Module(body=[config_reader],type_ignores=[]),'<developer config reader>','exec'),namespace)
 with TemporaryDirectory() as fixture:

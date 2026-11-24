@@ -2051,6 +2051,22 @@ def aram_model_cycles(text,after):
             'retired_species':sorted(retired),'restored_species':sorted(restored),
             'unrestored_species':sorted((retired-restored)|set(cold))}
 
+def aram_model_population(text,player_species):
+    """Read the actual player/local/legacy/visitor roster of this boot."""
+    import re
+    session=text.rfind('ANIMALTOWN GAME START')
+    if session<0:raise AssertionError('No traced town session for model population')
+    current=text[session:];markers=list(re.finditer(r'ANIMALTOWN MODEL POPULATION[^\r\n]*',current))
+    if len(markers)!=1:raise AssertionError('Expected one actual model population marker in the current town session')
+    marker=markers[0];match=re.fullmatch(r'ANIMALTOWN MODEL POPULATION mask (\d+) actors (\d+)',marker[0])
+    if match is None:raise AssertionError('Malformed actual model population marker')
+    mask,actors=map(int,match.groups());ready=current.find('ANIMALTOWN READY ')
+    if (not 0<mask<64 or not 1<=actors<=8 or mask.bit_count()>actors or
+            not 0<=player_species<6 or not mask&(1<<player_species) or ready<0 or marker.start()>=ready):
+        raise AssertionError('Invalid or late actual model population roster')
+    return {'session_start':session,'mask':mask,'actors':actors,
+            'species':[species for species in range(6) if mask&(1<<species)]}
+
 def terrain_residency_cycles(text,after=0):
     """Validate physical cache/source ownership and complete doorway restores."""
     import re
@@ -2125,6 +2141,11 @@ def aram_residency_scenario():
     def alive():
         check_runtime_failure()
         if p.poll() is not None:raise AssertionError('Emulator stopped during ARAM residency scenario')
+    def uncovered_models(evidence,population):
+        # Prove every retired species can restore after actual gameplay demand.
+        # A later retirement is correct for an unseen model, not lost coverage.
+        return sorted(set(evidence['retired_species'])&set(population['species'])-
+                      {event['species'] for event in evidence['cycles']})
     def wait_log(pattern,after=0,seconds=180):
         deadline=time.monotonic()+seconds
         while time.monotonic()<deadline:
@@ -2237,6 +2258,7 @@ def aram_residency_scenario():
     report['startup_order']=startup
     session_start=logs().rfind('ANIMALTOWN GAME START')
     wait_log(r'ANIMALTOWN READY ',session_start,seconds=300)
+    population=aram_model_population(logs(),startup[-1]['first_species']);report['model_population']=population
     wait_log(r'Terrain archive: [0-9]+ ARAM bytes',session_start,seconds=300)
     wait_log(r'ANIMALTOWN ONBOARDING RELEASED',session_start,seconds=120)
     view('aram-game-started',False)
@@ -2267,9 +2289,9 @@ def aram_residency_scenario():
     if not rapid_cycles['cycles']:raise AssertionError('Rapid reentry/reversal did not complete a second real memory reclamation cycle')
     report['rapid_reversal_cycles']=rapid_cycles['cycles']
     evidence=aram_model_cycles(logs(),baseline);toured=set();report['extra_cold_home_routes']=[]
-    while evidence['unrestored_species']:
-        candidates=[species for species in evidence['unrestored_species'] if species not in toured]
-        if not candidates:raise AssertionError('Cold species lacked a real gameplay-demand restore: '+str(evidence['unrestored_species']))
+    while uncovered_models(evidence,population):
+        candidates=[species for species in uncovered_models(evidence,population) if species not in toured]
+        if not candidates:raise AssertionError('Cold species lacked a real gameplay-demand restore: '+str(uncovered_models(evidence,population)))
         species=candidates[0];toured.add(species);name='aram-cold-species-'+str(species)
         route={'species':species,'resident_building':species+1};report['extra_cold_home_routes'].append(route)
         if species not in evidence['cold_species']:
@@ -2278,14 +2300,18 @@ def aram_residency_scenario():
             neutral=(species+1)%6;route['staging_resident_building']=neutral+1
             enter(name+'-staging',target_species=neutral);guest(name+'-staging-idle',16);leave(name+'-staging-exited')
             evidence=aram_model_cycles(logs(),baseline)
-            if species not in evidence['unrestored_species']:continue
+            if species not in uncovered_models(evidence,population):continue
         enter(name,target_species=species);guest(name+'-indoor',1);leave(name+'-returned')
         evidence=aram_model_cycles(logs(),baseline)
     if evidence['session_start']!=session_start:raise AssertionError('Town session changed during residency acceptance')
     if not evidence['retired_species']:raise AssertionError('No actual model retirement was observed in the current town session')
+    if not set(evidence['retired_species'])&set(population['species']):raise AssertionError('Only unused species packages retired; no present actor demonstrated paging')
     report['cold_species_restored_before_exterior_return']=[event['species'] for event in evidence['cycles']]
     report['cold_to_warm_after_gameplay_demand']=evidence['cycles']
-    report['all_cold_species_restored_after_gameplay_demand']=not evidence['unrestored_species']
+    report['all_cold_species_restored_after_gameplay_demand']=not uncovered_models(evidence,population)
+    report['currently_cold_species_after_routes']=evidence['cold_species']
+    report['unused_retired_species']=sorted(set(evidence['retired_species'])-set(population['species']))
+    report['unused_retired_species_still_cold']=sorted(set(report['unused_retired_species'])&set(evidence['cold_species']))
     report['runtime_residency_errors']=aram_residency_errors(logs())
     report['terrain_floor_cycles']=terrain_residency_cycles(logs(),baseline)
     report['runtime_markers']=re.findall(r'ANIMALTOWN (?:MODEL [^\r\n]+|TERRAIN CACHE [^\r\n]+|FLOOR [^\r\n]+)',logs()[session_start:])
@@ -2304,6 +2330,7 @@ def aram_residency_scenario():
         raise AssertionError('Automatic residency acceptance unexpectedly changed persisted developer settings')
     report['restart_dev_config']=restarted
     start_game(False,'aram-restart');set_debug_visibility(True)
+    report['restart_model_population']=aram_model_population(logs(),startup[-1]['first_species'])
     restart_cold=len(logs());enter('aram-restart-default');guest('restart-default-indoor-steady',6)
     wait_log(r'ANIMALTOWN TERRAIN CACHE SUSPENDED cache bytes (\d+) reclaimed bytes (\d+) archive bytes (\d+)',restart_cold)
     wait_log(r'ANIMALTOWN FLOOR SUSPENDED owned bytes (\d+) -> (\d+) source bytes (\d+) reclaimed bytes (\d+)',restart_cold)

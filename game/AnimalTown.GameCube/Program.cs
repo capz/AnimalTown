@@ -375,6 +375,9 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
             if(uvDebug!=0&&NativeRenderProbe.Uv(uvDebug)!=uvDebug){uvDebug=0;saveStatus="UV preview unavailable: not enough memory.";}
             resourcesReady=true;
             DebugOverlay.WriteLine("BUILDINGS READY native bytes "+buildings.ResidentBytes);
+            int populationMask=1<<state.Species,populationActors=1;
+            for(int npc=0;npc<Town.NpcActorCount;npc++)if(state.NpcPresent(npc)){populationMask|=1<<state.NpcSpecies(npc);populationActors++;}
+            DebugOverlay.WriteLine("ANIMALTOWN MODEL POPULATION mask "+populationMask+" actors "+populationActors);
             DebugOverlay.WriteLine("ANIMALTOWN READY "+BuildInfo.Version+" native bytes "+device.NativeBytes);
         }catch(Exception error){loadingFailed=true;loadingLabel="Could not load town assets. Restart with a valid disc.";DebugOverlay.WriteLine("ANIMALTOWN ASSET LOAD FAILED "+error.Message+" required species "+modelResidency.RequiredSpeciesCount);}
     }
