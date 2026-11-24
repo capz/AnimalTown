@@ -134,7 +134,7 @@ function Get-ValidationPlan {
         if($p -match '^tools/(iso-smoke|path-study).py$'){[void]$native.Add('python');continue} # Scenarios are explicitly selected.
         $broad=$true
     }
-    if($broad){foreach($s in $allManaged){Add-Managed $s};foreach($s in @('terrain','repack','building','nkit','dropped-item','depot')){[void]$tooling.Add($s)};foreach($s in @('uv','card','texture','voices','python','shadows','patched','content','jobs')){[void]$native.Add($s)};$backend=$true;$policy=$true}
+    if($broad){foreach($s in $allManaged){Add-Managed $s};foreach($s in @('terrain','repack','building','nkit','dropped-item','depot','water')){[void]$tooling.Add($s)};foreach($s in @('uv','card','texture','voices','python','shadows','patched','content','jobs')){[void]$native.Add($s)};$backend=$true;$policy=$true}
     if($broad){foreach($r in $allRendering){[void]$rendering.Add($r)}}
     [pscustomobject]@{schema=2;commit=$Commit;baseRef=$BaseRef;release=$release;full=$broad;managed=@($allManaged|Where-Object {$managed.Contains($_)});rendering=@($allRendering|Where-Object {$rendering.Contains($_)});tooling=@($tooling|Sort-Object);native=@($native|Sort-Object);backend=$backend;policy=$policy;paths=@($ChangedPaths|Sort-Object -Unique)}
 }
