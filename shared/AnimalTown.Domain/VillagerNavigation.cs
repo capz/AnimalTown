@@ -6,7 +6,9 @@ namespace AnimalTown;
 public sealed class VillagerNavigation
 {
     internal const int CrowdRadius=12;
+    internal const int ResidentsPerCrossing=2;
     private const int AreaColumns=4,AreaRows=3,GoalKinds=6;
+    private const int CrossingLookAhead=6,CrossingRadiusSquared=4,CrossingWaitTicks=24,MaximumCrossingWaits=3;
     public sealed class Route
     {
         public readonly int[] Path=new int[512],Detour=new int[169];
@@ -15,6 +17,7 @@ public sealed class VillagerNavigation
         internal int InitialGoal=-1;
         internal bool Replan,HasDestination;
         internal int Stuck;
+        internal int CrossingPause,CrossingWaits;
         public bool Moving;
         internal uint Random;
     }
@@ -34,7 +37,7 @@ public sealed class VillagerNavigation
             state=game;worker=-1;nextPlanner=tick=0;treeCount=-1;
             for(int i=0;i<Routes.Length;i++){
                 var r=Routes[i];r.Length=r.Index=r.LocalLength=r.LocalIndex=0;r.Replan=r.HasDestination=false;
-                r.Stuck=0;r.Wait=i*15;r.InitialGoal=i%GoalKinds;r.Random=unchecked((uint)game.Town.Seed+(uint)(i+1)*747796405u);
+                r.Stuck=r.CrossingPause=r.CrossingWaits=0;r.Wait=i*15;r.InitialGoal=i%GoalKinds;r.Random=unchecked((uint)game.Town.Seed+(uint)(i+1)*747796405u);
             }
             for(int i=GoalKinds-1;i>0;i--){int j=Next(Routes[0],i+1),swap=Routes[i].InitialGoal;Routes[i].InitialGoal=Routes[j].InitialGoal;Routes[j].InitialGoal=swap;}
         }
@@ -46,15 +49,16 @@ public sealed class VillagerNavigation
         }
         if(worker>=0&&(Paused[worker]||!game.NpcPresent(worker)||town.NpcAt(worker).Space!=0))worker=-1;
         if(worker>=0)Search();
-        int movingActors=0;
+        int movingActors=0,earlierResidents=0;
         for(int i=0;i<Routes.Length;i++){
             var r=Routes[i];
-            if(!Paused[i]&&r.Wait==0&&(r.Index<r.Length||r.LocalIndex<r.LocalLength))movingActors|=1<<(i+1);
+            if(!Paused[i]&&r.Wait==0&&r.CrossingPause==0&&(r.Index<r.Length||r.LocalIndex<r.LocalLength))movingActors|=1<<(i+1);
         }
         int first=nextPlanner;
         for(int offset=0;offset<Routes.Length;offset++){
             int i=(first+offset)%Routes.Length;
             var r=Routes[i];r.Moving=false;if(Paused[i]||!game.NpcPresent(i)||town.NpcAt(i).Space!=0)continue;if(r.Wait>0){r.Wait--;continue;}
+            if(r.CrossingPause>0){r.CrossingPause--;continue;}
             if(r.Index>=r.Length&&r.LocalIndex>=r.LocalLength){
                 if(worker<0){
                     if(!r.Replan)Goal(i);
@@ -63,16 +67,49 @@ public sealed class VillagerNavigation
                 }
                 continue;
             }
+            if(game.ResidentPresent(i)){
+                // Give the earlier walkers room to pass. A limit per route keeps
+                // a narrow bridge or doorway from holding a villager indefinitely.
+                if(r.CrossingWaits<MaximumCrossingWaits&&SharesCrossing(r,earlierResidents)){
+                    r.CrossingWaits++;r.CrossingPause=CrossingWaitTicks-1;
+                    continue;
+                }
+                earlierResidents|=1<<i;
+            }
             Walk(i,doors,movingActors);
         }
     }
     public void Target(int agent,int x,int z)
-    {var r=Routes[agent];if(worker==agent)worker=-1;r.GoalX=x;r.GoalZ=z;r.Length=r.Index=r.LocalIndex=r.LocalLength=0;r.Replan=r.HasDestination=true;r.Wait=0;Array.Clear(r.Observed,0,r.Observed.Length);}
+    {var r=Routes[agent];if(worker==agent)worker=-1;r.GoalX=x;r.GoalZ=z;r.Length=r.Index=r.LocalIndex=r.LocalLength=0;r.Replan=r.HasDestination=true;r.Wait=r.CrossingPause=r.CrossingWaits=0;Array.Clear(r.Observed,0,r.Observed.Length);}
     // An empty route can still be queued or searching across multiple ticks.
     // Journey callers must not restart that work every frame.
     public bool Planning(int agent)=>worker==agent||Routes[agent].Replan;
     public void Stop(int agent)
-    {if(worker==agent)worker=-1;var r=Routes[agent];r.Length=r.Index=r.LocalLength=r.LocalIndex=0;r.Wait=2;r.Moving=r.Replan=r.HasDestination=false;}
+    {if(worker==agent)worker=-1;var r=Routes[agent];r.Length=r.Index=r.LocalLength=r.LocalIndex=r.CrossingPause=r.CrossingWaits=0;r.Wait=2;r.Moving=r.Replan=r.HasDestination=false;}
+    private bool SharesCrossing(Route route,int earlierResidents)
+    {
+        if((earlierResidents&(earlierResidents-1))==0)return false;
+        // Sample near-future waypoints at the same walking distance, including
+        // any local obstacle detour that currently replaces part of a route.
+        for(int step=0;step<CrossingLookAhead;step++){
+            int cell=UpcomingCell(route,step);if(cell<0)break;
+            int nearby=0;
+            for(int npc=0;npc<Town.SavedVillagerCount;npc++){
+                if((earlierResidents&(1<<npc))==0)continue;
+                int other=UpcomingCell(Routes[npc],step);if(other<0)continue;
+                int dx=cell%Town.Width-other%Town.Width,dz=cell/Town.Width-other/Town.Width;
+                if(dx*dx+dz*dz<=CrossingRadiusSquared&&++nearby==ResidentsPerCrossing)return true;
+            }
+        }
+        return false;
+    }
+    private static int UpcomingCell(Route route,int step)
+    {
+        int detour=route.LocalLength-route.LocalIndex;
+        if(step<detour)return route.Detour[route.LocalIndex+step];
+        int index=detour>0?route.Resume+step-detour:route.Index+step;
+        return index<route.Length?route.Path[index]:-1;
+    }
     internal static int NearbyActors(GameState game,int excludedNpc,int space,float x,float z,float radius)
         =>Crowd(game,excludedNpc,space,x,z,radius,null);
     private static int Crowd(GameState game,int excludedNpc,int space,float x,float z,float radius,Route[]? routes)
@@ -95,7 +132,7 @@ public sealed class VillagerNavigation
     {
         var game=state!;var town=game.Town;var v=town.NpcAt(agent);var r=Routes[agent];
         r.GoalKind=r.InitialGoal>=0?r.InitialGoal:Next(r,GoalKinds);r.InitialGoal=-1;r.HasDestination=false;
-        Array.Clear(r.Observed,0,r.Observed.Length);r.Stuck=0;
+        Array.Clear(r.Observed,0,r.Observed.Length);r.Stuck=r.CrossingWaits=0;
         Array.Clear(areaPopulation,0,areaPopulation.Length);
         if(game.Space==0)areaPopulation[Area(game.X,game.Z)]++;
         for(int i=0;i<Routes.Length;i++){

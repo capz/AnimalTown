@@ -7,6 +7,7 @@ internal static class BuildingChecks
         BuildingEntryChecks.Run(check);
         CrowdsAndPickups(check);
         QuietJourneys(check);
+        ResidentRouteCrossings(check);
         ShopChecks.Run(check);
         var s=new GameState(204);s.HousePlaced=true;
         check(BuildingWorld.Space(0)==1&&BuildingWorld.Space(1)==16&&BuildingWorld.Space(6)==21&&BuildingWorld.Space(7)==24&&BuildingWorld.Space(8)==25,"stable distinct building spaces");
@@ -102,6 +103,57 @@ internal static class BuildingChecks
         var incoming=s.Town.NpcAt(1);incoming.JourneyPhase=1;incoming.JourneyBuilding=2;incoming.Dwell=0;
         var travel=new VillagerJourney();travel.Tick(s);travel.Tick(s);
         check(resident.JourneyPhase==1&&resident.JourneyBuilding>2,"a villager chooses an empty room over rooms with an occupant or an approaching villager");
+    }
+
+    private static void ResidentRouteCrossings(Action<bool,string> check)
+    {
+        var s=new GameState(207){Space=16,X=2,Z=2};
+        Array.Fill(s.Town.Tiles,(byte)Terrain.Grass);Array.Clear(s.Town.Elevation);s.Town.GroundCount=0;
+        s.SetTownVisitors(new[]{
+            new SavedVisitor(70,0,new JobIdentity(70,1),"Clover","hello",0,0),
+            new SavedVisitor(70,1,new JobIdentity(70,2),"Aster","hello",1,0)
+        });
+        var navigation=new VillagerNavigation();
+        Array.Fill(navigation.Paused,true);navigation.Tick(s);
+        const int firstVisitor=Town.LocalResidentCount;
+        SetRoute(0,36,40,1,0);
+        SetRoute(1,40,36,0,1);
+        SetRoute(2,44,40,-1,0);
+        SetRoute(3,80,70,1,0);
+        SetRoute(firstVisitor,40,44,0,-1);
+        navigation.Tick(s);
+        check(navigation.Routes[0].Moving&&navigation.Routes[1].Moving&&!navigation.Routes[2].Moving&&navigation.Routes[2].Index==0,
+            "two resident routes continue through a shared crossing while the third yields");
+        check(navigation.Routes[3].Moving&&navigation.Routes[firstVisitor].Moving,
+            "an independent resident route and a visiting villager progress without using the resident crossing limit");
+        navigation.Paused[0]=navigation.Paused[1]=true;
+        for(int tick=0;tick<30&&!navigation.Routes[2].Moving;tick++)navigation.Tick(s);
+        check(navigation.Routes[2].Moving,"a yielding resident resumes the same route once the crossing clears");
+
+        for(int npc=0;npc<Town.LocalResidentCount;npc++){
+            var resident=s.Town.NpcAt(npc);resident.PosX=90.5f+npc*2;resident.PosZ=72.5f;
+        }
+        navigation=new VillagerNavigation();
+        Array.Fill(navigation.Paused,true);navigation.Tick(s);
+        // Start a plan for the last resident to rotate the next update to visitors first.
+        int lastResident=Town.LocalResidentCount-1;
+        navigation.Paused[lastResident]=false;
+        navigation.Target(lastResident,80,75);navigation.Tick(s);
+        navigation.Paused[lastResident]=true;
+        SetRoute(firstVisitor,36,40,1,0);
+        SetRoute(firstVisitor+1,40,36,0,1);
+        SetRoute(0,44,40,-1,0);
+        navigation.Tick(s);
+        check(navigation.Routes[firstVisitor].Moving&&navigation.Routes[firstVisitor+1].Moving&&navigation.Routes[0].Moving,
+            "two visiting villager routes never make a resident yield");
+
+        void SetRoute(int npc,int x,int z,int dx,int dz)
+        {
+            var v=s.Town.NpcAt(npc);v.PosX=x+.5f;v.PosZ=z+.5f;
+            var route=navigation.Routes[npc];route.Wait=0;route.Length=9;
+            for(int step=1;step<=route.Length;step++)route.Path[step-1]=(z+step*dz)*Town.Width+x+step*dx;
+            navigation.Paused[npc]=false;
+        }
     }
 
     private static int PeakNpcCrowd(GameState s)
