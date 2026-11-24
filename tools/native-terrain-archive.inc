@@ -12,7 +12,7 @@
 /* Keep cold metadata allocations small enough for fragmented MEM1 heaps. */
 #define TA_META_PARTS 64
 #define TA_STAGE 65536
-#define TA_KINDS 108
+#define TA_KINDS 110
 #define TA_PAGE_PARTS (TA_KINDS*2)
 #define TA_BYTES (8*1024*1024)
 #define TA_CACHE (1024*1024)

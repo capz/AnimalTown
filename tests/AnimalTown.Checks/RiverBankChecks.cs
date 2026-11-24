@@ -4,6 +4,7 @@ internal static class RiverBankChecks
 {
     internal static void Run(Action<bool,string> check)
     {
+        WaterBedChecks.Run(check);
         var s=new GameState(7319);var t=s.Town;const int x=80,z=80;
         Array.Fill(t.Tiles,(byte)Terrain.Water);Array.Clear(t.Elevation);t.GroundCount=0;
         check(RiverBankGeometry.Width>0&&2*(RiverBankGeometry.Width+WaterSurface.FoamWidth)<1,"banks and foam leave open water in a one-cell channel");

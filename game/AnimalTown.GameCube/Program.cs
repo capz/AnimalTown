@@ -383,7 +383,7 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
     {
         long now=Clock.Timestamp;
         return modelResidency.PrepareStartup(state,villagers.Doors,loadingIndex,now,now+1000,
-            uvDebug!=0||requestedUv>=0||waterInspection!=0);
+            uvDebug!=0||requestedUv>=0);
     }
     private bool PrepareStartupTerrain()
     {
@@ -432,7 +432,7 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
         residencyBudgetUs=Math.Max(0,residencyBudgetUs-(int)(Clock.Timestamp-at));
         long modelAt=Clock.Timestamp;
         bool allowDemotion=session.Draft==null&&terrain.ArchiveReady&&(room==0||at-playerStillSince>=ModelResidency.IdleDelayUs)&&
-            !villagers.Doors.Busy(0)&&requestedUv<0&&uvDebug==0&&waterInspection==0;
+            !villagers.Doors.Busy(0)&&requestedUv<0&&uvDebug==0;
         modelResidency.Pump(at,allowDemotion,modelAt+Math.Max(0,residencyBudgetUs));
         residencyBudgetUs=Math.Max(0,residencyBudgetUs-(int)(Clock.Timestamp-modelAt));
         if(modelResidency.Failures!=residencyFailures){residencyFailures=modelResidency.Failures;TextureCache.TrimUnused();}
@@ -451,7 +451,7 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
         bool nearExit=false;
         if(room!=0){BuildingWorld.InsideDoor(state,room,out float x,out float z);float dx=state.X-x,dz=state.Z-z;nearExit=dx*dx+dz*dz<1.1025f;}
         outdoorModelLookahead=room!=0&&(nearExit||now-playerStillSince<2000000);
-        modelResidency.Require(state,villagers.Doors,now,uvDebug!=0||requestedUv>=0||waterInspection!=0,outdoorModelLookahead?0:-1);
+        modelResidency.RequireForView(state,villagers.Doors,now,waterInspection,uvDebug!=0||requestedUv>=0,outdoorModelLookahead?0:-1);
         modelSceneReady=room==0||modelResidency.ReadyForSpace(state,villagers.Doors,room);
         UpdatePortalReadiness();
     }
@@ -994,8 +994,10 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
         NativeWaterProbe.Enable(room==0?waterInspection:0);
         // Input/debug camera changes may occur on a frame with no simulation
         // tick. Resolve final drawable residency after the effective view changes.
+        // Water inspection uses this focused camera's normal demand; pinning
+        // every species can consume the cache needed to restore archived terrain.
         long residencyAt=FrameProfile.Start();
-        modelResidency.Require(state,villagers.Doors,Clock.Timestamp,uvDebug!=0||requestedUv>=0||waterInspection!=0,outdoorModelLookahead?0:-1);
+        modelResidency.Require(state,villagers.Doors,Clock.Timestamp,uvDebug!=0||requestedUv>=0,outdoorModelLookahead?0:-1);
         modelSceneReady=room==0||modelResidency.ReadyForSpace(state,villagers.Doors,room);
         FrameProfile.End(2,residencyAt);
         if(!modelSceneReady){modelResidency.WaitForScene();DrawLoading();return;}
@@ -1123,6 +1125,11 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
         }
         if(batchedDrawing)boxes.Flush();
         if(renderDebug.ShowObstructedEdges)NativeWorldDiagnostics.EdgePass(0);
+        if(room==0){
+            submissionAt=FrameProfile.SubmissionStart();
+            terrain.DrawWater(renderer);
+            FrameProfile.SubmissionEnd(0,submissionAt);
+        }
         if(room==0&&renderDebug.ShowVisitEdges)visitEdges.Draw(renderer,identity,state,terrain.RenderSeason==3&&!renderDebug.ShowGroundMipBands);
         if((renderDebug.ForceAttention||attendingVillager>=0)&&villagers.Doors.PlayerFade<1)attention.Draw(renderer,state,actorVisibility,indoorCamera,cachedPlayerHeight,renderDebug.ForceAttention,attendingVillager);
         submissionAt=FrameProfile.SubmissionStart();

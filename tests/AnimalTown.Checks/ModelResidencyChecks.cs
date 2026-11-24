@@ -221,8 +221,53 @@ internal static class ModelResidencyChecks
         check(!models[1].IsResident&&manager.ColdBytes==65536&&models[1].Starts==2,"canceled shutdown preserves the cold model's backing for normal disposal without restarting it");
 
         StartupChecks(check);
+        WaterInspectionChecks(check);
         OutdoorJourneyChecks(check);
         ApproachChecks(check);
+    }
+    private static void WaterInspectionChecks(Action<bool,string> check)
+    {
+        var manager=Setup(out var models,out var state,out var doors);
+        state.Space=0;state.X=8;state.Z=Town.Height-8;
+        float x=state.X,z=state.Z;
+        Array.Fill(state.Town.Tiles,(byte)Terrain.Grass);Array.Clear(state.Town.Elevation);
+        state.Town.Tiles[80*Town.Width+80]=(byte)Terrain.Water;
+        state.Town.Tiles[81*Town.Width+80]=(byte)Terrain.Water;state.Town.NotifyTerrainChanged();
+        var inspected=state.Town.Residents[1];inspected.Space=0;inspected.PosX=80.5f;inspected.PosZ=86.5f;
+        var hidden=state.Town.Residents[2];hidden.Space=0;hidden.PosX=state.X;hidden.PosZ=state.Z;
+        check(!ModelResidencyDemand.DrawableUsesSpace(state,doors,1,0),"water fixture starts with the inspected NPC outside the player's camera");
+        check(ModelResidencyDemand.DrawableUsesSpace(state,doors,2,0),"water fixture includes an NPC visible only from the saved player camera");
+        manager.RequireForView(state,doors,Clock.Timestamp,1);
+        check(state.X==x&&state.Z==z&&manager.Required(1)&&!manager.Required(2),
+            "pre-draw demand uses the inspection focus without moving the saved player");
+        var visibility=new ActorFrameVisibility();
+        try{WaterInspection.Focus(state,1);visibility.Prepare(state,doors,new InteriorCamera(),1,0);manager.Require(state,doors,Clock.Timestamp);}
+        finally{state.X=x;state.Z=z;}
+        check(visibility.Visible[2]&&manager.Required(1)&&manager.RequiredSpeciesCount==2,
+            "focused water inspection demands its visible NPC and selected player species without pinning hidden species");
+        for(int i=0;i<4;i++){Pump(manager,true);Drain(manager);}
+        bool sceneReady;
+        try{WaterInspection.Focus(state,1);sceneReady=manager.ReadyForSpace(state,doors,0);}
+        finally{state.X=x;state.Z=z;}
+        check(manager.Ready(0)&&manager.Ready(1)&&models.Skip(2).All(model=>!model.IsResident)&&sceneReady,
+            "unused species can release their native allocations while the water camera remains drawable");
+        int allocations=models.Sum(model=>model.Starts);
+        for(int frame=0;frame<120;frame++){
+            Clock.Timestamp+=33333;
+            manager.RequireForView(state,doors,Clock.Timestamp,1);Pump(manager,true);
+            try{WaterInspection.Focus(state,1);manager.Require(state,doors,Clock.Timestamp);}
+            finally{state.X=x;state.Z=z;}
+            Pump(manager,true);
+        }
+        check(models.Sum(model=>model.Starts)==allocations&&models.Skip(2).All(model=>!model.IsResident),
+            "alternating pre-draw and focused draw demand keeps saved-camera species cold and preserves terrain-cache headroom");
+        check(state.X==x&&state.Z==z,"both residency opportunities leave saved player coordinates unchanged");
+        manager.RequireForView(state,doors,Clock.Timestamp,1,true);
+        for(int i=0;i<5&&!manager.AllReady;i++){Pump(manager);Drain(manager);}
+        check(manager.AllReady&&manager.Restores==4,"explicit UV inspection still restores and pins the complete shared model set");
+        manager.RequireForView(state,doors,Clock.Timestamp,0);
+        check(manager.Required(2)&&!manager.Required(1),"leaving water inspection resumes demand from the saved player camera");
+        manager.Stop();
     }
     private static void OutdoorJourneyChecks(Action<bool,string> check)
     {

@@ -47,7 +47,7 @@ internal sealed class TerrainRenderer
     internal TerrainSection CreateSection()=>new TerrainSection();
     internal int SeasonAt(int month,int preview)=>TerrainTiles.Season(month,preview);
 }
-internal static class WaterRenderer {internal const int PartKinds=108;}
+internal static class WaterRenderer {internal const int PartKinds=110;}
 internal sealed class TerrainSection
 {
     internal void Begin(GameState state,int x,int z,CylinderRows rows){}

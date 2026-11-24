@@ -66,6 +66,15 @@ internal sealed class ModelResidency
         model.AutomaticResidencyProgress=false;
         model.ResidencyBytesPerStep=8192;model.ResidencyWorkItemsPerStep=32;
     }
+    internal void RequireForView(GameState state,PortalSystem doors,long now,int waterInspection,bool pinAll=false,int targetSpace=-1)
+    {
+        if(waterInspection==0){Require(state,doors,now,pinAll,targetSpace);return;}
+        // Draw temporarily moves the camera, then restores the player. Demand
+        // between draws must use that same focus without moving the player.
+        float x=state.X,z=state.Z;
+        try{WaterInspection.Focus(state,waterInspection);Require(state,doors,now,pinAll,targetSpace);}
+        finally{state.X=x;state.Z=z;}
+    }
     internal void Require(GameState state,PortalSystem doors,long now,bool pinAll=false,int targetSpace=-1)
     {
         if(stopped)return;

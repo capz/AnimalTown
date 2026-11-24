@@ -214,6 +214,26 @@ def wait_saved_after(before,card=None,timeout_seconds=240):
     screenshot('onboarding-save-failure.png')
     raise AssertionError('Save & begin did not publish a complete checksummed generation')
 
+def stop_dolphin(process,timeout_seconds=5):
+    """Observe shutdown; a forced kill cannot establish a flushed raw card."""
+    forced=False
+    if process.poll() is None:
+        process.terminate()
+        try:process.wait(timeout=timeout_seconds)
+        except subprocess.TimeoutExpired:
+            forced=True;process.kill();process.wait()
+    code=process.poll()
+    return {'returncode':code,'forced_kill':forced,'clean_exit':code==0 and not forced}
+
+def run_jobs(context):
+    from jobs_smoke import run,finish
+    # Dolphin periodically overwrites raw cards in place. Its normal shutdown
+    # joins the card writer and completes the final flush before returning 0.
+    # A controller exception still propagates after cleanup, without export.
+    try:report=run(context)
+    finally:shutdown=stop_dolphin(context['p'],timeout_seconds=30)
+    finish(context,report,shutdown)
+
 def finish_onboarding(prefix='new-villager',before=None):
     """Complete an already selected empty slot via the actual four stages."""
     before=before if before is not None else committed_card_sequence(root/'MemoryCardA.USA.raw',details=True)
@@ -883,7 +903,8 @@ def terrain_materials():
     water_pattern=(r'ANIMALTOWN WATER DRAW scene=(\d+) frame=(\d+) tev=(\d+) indirect=(\d+) strength=(\d+) '
                    r'tex0=(\d+)x(\d+) tex1=(\d+)x(\d+) uv0=([-\d,]+) uv1=([-\d,]+) '
                    r'layers=(\d+):(\d+),(\d+):(\d+) texgens=(\d+) matrices=(\d+),(\d+) '
-                   r'k0=([0-9a-f]{8}) k1=([0-9a-f]{8})')
+                   r'k0=([0-9a-f]{8}) k1=([0-9a-f]{8}) blend=(\d+):(\d+):(\d+) '
+                   r'depth=(\d+):(\d+):(\d+) layerstages=(\d+),(\d+)')
     def water_probe(scene,legacy=False):
         matches=re.findall(water_pattern,runtime_log_text())
         if not matches or int(matches[-1][0])!=scene:return None
@@ -894,7 +915,9 @@ def terrain_materials():
                'uv0':list(map(int,fields[9].split(','))),'uv1':list(map(int,fields[10].split(','))),
                'layers':[[int(fields[11]),int(fields[12])],[int(fields[13]),int(fields[14])]],
                'texgens':int(fields[15]),'matrices':[int(fields[16]),int(fields[17])],
-               'foam_constants':[fields[18],fields[19]]}
+               'foam_constants':[fields[18],fields[19]],
+               'blend':list(map(int,fields[20:23])),'depth':list(map(int,fields[23:26])),
+               'layer_stages':list(map(int,fields[26:28]))}
         archived=4<=state['tev_stages']<=6 and state['texgens']==2
         shaded=state['tev_stages']==8 and state['texgens']==3
         if (not (archived or shaded) or state['indirect_stages']!=1 or state['strength']<=0
@@ -905,9 +928,16 @@ def terrain_materials():
         # valid draw from the previous path until the requested one appears.
         if shaded!=legacy:return None
         state['material_path']='legacy' if shaded else 'archived'
-        if state['foam_constants']!=['c4e4deff','e5f5edff']:
+        shallow=scene in (1,2,3)
+        expected_colors=['367f91ff','d3f2ecff'] if shallow else ['c4e4deff','e5f5edff']
+        if state['foam_constants']!=expected_colors:
             raise AssertionError('Actual GX water draw overwrote a foam colour constant: '+str(state))
-        for key,scale in (('uv0',1350000),('uv1',1000000)):
+        if state['strength']!=(24 if shallow else 76) or state['layer_stages']!=([1,3] if shallow else [1,2]):
+            raise AssertionError('Actual GX water draw selected the wrong surface program: '+str(state))
+        if state['blend']!=([1,4,5] if shallow else [0,4,5]) or state['depth']!=([1,3,0] if shallow else [1,3,1]):
+            raise AssertionError('Actual GX water blend/depth state is incorrect: '+str(state))
+        state['surface']='shallow' if shallow else 'ocean'
+        for key,scale in (('uv0',2400000 if shallow else 1350000),('uv1',2800000 if shallow else 1000000)):
             matrix=state[key]
             if len(matrix)!=6 or any(abs(actual-expected)>3 for actual,expected in zip(matrix[:4],(scale,0,0,scale))):
                 raise AssertionError('Actual GX water UV matrix has the wrong scale: '+str(state))
@@ -2424,8 +2454,7 @@ with (root/'emulator.log').open('w') as log:
         screenshot('screen.png')
         if any(flag in sys.argv for flag in ('--title-menu','--title-load','--title-config','--title-update','--title-options','--title-options-load','--title-options-unsupported')):wait_title()
         if '--jobs' in sys.argv:
-            from jobs_smoke import run
-            run(globals())
+            run_jobs(globals())
         elif '--player-chat' in sys.argv:player_chat()
         elif '--daylight-location' in sys.argv:daylight_location()
         elif '--daylight-clock' in sys.argv:daylight_clock()
@@ -2847,9 +2876,7 @@ with (root/'emulator.log').open('w') as log:
                 os.write(controller,b'PRESS L\nPRESS R\n');time.sleep(2);press('X')
                 os.write(controller,b'RELEASE L\nRELEASE R\n');time.sleep(max(10,profile_seconds));screenshot('profile-map-return.png')
     finally:
-        p.terminate()
-        try:p.wait(timeout=5)
-        except subprocess.TimeoutExpired:p.kill();p.wait()
+        stop_dolphin(p)
 close_display();atexit.unregister(close_display)
 os.close(controller)
 print(root/'screen.png')

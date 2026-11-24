@@ -6,6 +6,12 @@ These are asset requests, not a request to copy Nintendo meshes or textures.
 
 The user has now authorized temporary generated low-poly trees for performance. Shared deciduous/palm/pine meshes are active; original tree GLBs remain reference sources. The lower-poly supplied-tree requests below are optional future art restoration, not a blocker. See generated-trees-repeat-floor.md for current geometry and floor textures.
 
+Clear river/pond water likewise has complete generated textures and rocks.
+No water artwork is a blocker. For optional artist replacements, follow the
+exact PNG roles, dimensions, channel meanings, cooker commands and priority
+list in [water-art-assets.md](water-art-assets.md); a single colored repeat
+water tile does not replace those separate bed/surface masks.
+
 ## First delivery
 
 | Asset | Specific request | Footprint / pivot | Budget per mesh |

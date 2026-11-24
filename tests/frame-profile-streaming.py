@@ -339,3 +339,122 @@ for diagnostic in ((66,214,99),(255,231,66)):
     assert match(reference,solid(diagnostic))['matching_fraction']<.05
 assert match(solid((0,0,0)),reference)['ground_samples']==0
 print('Terrain restoration: moving shadows preserve original art; stale green/yellow mips and missing ground are rejected')
+
+# Dolphin's live raw-card writer is not an atomic snapshot. The final job
+# export must use the bytes flushed by a clean exit, and a failed controller
+# must never become a successful export just because cleanup succeeded.
+jobs=runpy.run_path('tools/jobs_smoke.py')
+job_scope={'subprocess':subprocess}
+nodes=[n for n in module.body if isinstance(n,ast.FunctionDef) and n.name in ('stop_dolphin','run_jobs')]
+exec(compile(ast.Module(nodes,type_ignores=[]),'job-shutdown','exec'),job_scope)
+
+class JobProcess:
+    def __init__(self,flush=lambda:None,code=0,timeout=False,forced_code=-9):
+        self.returncode=None;self.flush=flush;self.code=code;self.timeout=timeout;self.forced_code=forced_code;self.events=[]
+    def poll(self):return self.returncode
+    def terminate(self):self.events.append('terminate')
+    def wait(self,timeout=None):
+        self.events.append('wait')
+        if self.timeout and self.returncode is None:raise subprocess.TimeoutExpired('dolphin',timeout)
+        if self.returncode is None:self.flush();self.returncode=self.code
+        return self.returncode
+    def kill(self):self.events.append('kill');self.returncode=self.forced_code
+
+def job_report(mode='helipad',expected=2,completed=True):
+    return dict(scenario='offline-jobs',mode=mode,controls_completed=completed,
+                expected_saved_sequence=expected,passed=False)
+
+def job_context(folder,process,exports):
+    def current_files(path):
+        assert process.poll()==0 and process.returncode==0,'Export read a running or abnormal Dolphin card'
+        exports.append(path.name)
+        return namespace['options_card_files'](path)
+    return dict(root=folder,p=process,check_runtime_failure=lambda:None,
+                options_card_files=current_files,committed_card_sequence=namespace['committed_card_sequence'])
+
+def run_job(context,report,error=None):
+    def drive(unused):
+        if error is not None:raise error
+        return report
+    with patch.dict(sys.modules,{'jobs_smoke':SimpleNamespace(run=drive,finish=jobs['finish'])}):
+        job_scope['run_jobs'](context)
+
+def job_rejected(action,message):
+    try:action()
+    except AssertionError as error:assert message in str(error),str(error)
+    else:raise AssertionError('Invalid final job export was accepted: '+message)
+
+with TemporaryDirectory() as fixture:
+    folder=Path(fixture);card=folder/'MemoryCardA.USA.raw';other=folder/'MemoryCardB.USA.raw'
+    old=generation(0,7,0);latest=old|generation(1,11,40)
+    write_card(card,old)
+    for name in ('records','records-b','records-mid','records-guest'):
+        (folder/name).mkdir();(folder/name/'stale').write_bytes(b'intermediate')
+    def final_flush():
+        write_card(card,latest);write_card(other,old)
+    process=JobProcess(final_flush);exports=[];report=job_report()
+    run_job(job_context(folder,process,exports),report)
+    assert process.events==['terminate','wait'] and exports==[card.name,other.name]
+    assert {p.name:p.read_bytes() for p in (folder/'records').iterdir()}==latest
+    assert {p.name:p.read_bytes() for p in (folder/'records-b').iterdir()}==old
+    assert (folder/'records-mid'/'stale').read_bytes()==(folder/'records-guest'/'stale').read_bytes()==b'intermediate'
+    saved=json.loads((folder/'jobs-report.json').read_text())
+    assert saved['shutdown']==dict(returncode=0,forced_kill=False,clean_exit=True)
+    assert saved['expected_saved_sequence']==2 and saved['final_export']['complete'] and saved['controls_completed']
+    assert saved['passed'] is False # Only the independent host state verifier can qualify the saved game.
+    cards=saved['final_export']['cards']
+    assert cards['A']['sequence']==2 and cards['B']['sequence']==1
+    assert cards['A']['sha256']==__import__('hashlib').sha256(card.read_bytes()).hexdigest()
+    assert {row['name']:row['sha256'] for row in cards['A']['records']}=={name:__import__('hashlib').sha256(data).hexdigest() for name,data in latest.items()}
+
+with TemporaryDirectory() as fixture:
+    folder=Path(fixture);exports=[];process=JobProcess()
+    # A claimed clean status cannot substitute for observing process exit.
+    job_rejected(lambda:jobs['finish'](job_context(folder,process,exports),job_report(),
+                 dict(returncode=0,forced_kill=False,clean_exit=True)),'clean Dolphin exit')
+    assert not exports and process.poll() is None
+    for process in (JobProcess(code=17),JobProcess(timeout=True,forced_code=0)):
+        report=job_report()
+        job_rejected(lambda:run_job(job_context(folder,process,exports),report),'clean Dolphin exit')
+        assert not exports and not report['final_export']['complete'] and not report['shutdown']['clean_exit']
+    assert process.events==['terminate','wait','kill','wait'] and report['shutdown']['forced_kill']
+
+with TemporaryDirectory() as fixture:
+    folder=Path(fixture);exports=[];process=JobProcess();failure=AssertionError('Controller waypoint failure')
+    try:run_job(job_context(folder,process,exports),job_report(),failure)
+    except AssertionError as error:assert error is failure
+    else:raise AssertionError('Controller failure was promoted after clean shutdown')
+    assert process.poll()==0 and not exports and not (folder/'jobs-report.json').exists()
+    report=job_report(completed=False)
+    job_rejected(lambda:run_job(job_context(folder,JobProcess(),exports),report),'controls did not complete')
+    assert not exports and report['controls_completed'] is False and not report['final_export']['complete']
+
+with TemporaryDirectory() as fixture:
+    folder=Path(fixture);card=folder/'MemoryCardA.USA.raw';write_card(card,generation(0,7,0))
+    exports=[];report=job_report()
+    job_rejected(lambda:run_job(job_context(folder,JobProcess(),exports),report),'older than the observed explicit save')
+    assert report['final_export']['cards']['A']['sequence']==1 and not report['final_export']['complete']
+    # The template intentionally contains no town, only a real console setting.
+    write_card(card,{'AnimalTown-Debug':bytes(16)})
+    (folder/'records-b'/'stale').write_bytes(b'removed-card')
+    report=job_report(mode='template',expected=None)
+    run_job(job_context(folder,JobProcess(),exports),report)
+    assert report['final_export']['complete'] and report['final_export']['cards']['A']['sequence']==0
+    assert {p.name for p in (folder/'records').iterdir()}=={'dev_config'}
+    assert not list((folder/'records-b').iterdir()) and not report['final_export']['cards']['B']['present']
+
+# Exercise the actual controller save helper: retain wait_saved_after's
+# observed generation but leave routine final exports to the shutdown barrier.
+run_node=next(n for n in ast.parse(Path('tools/jobs_smoke.py').read_text()).body if isinstance(n,ast.FunctionDef) and n.name=='run')
+save_node=next(n for n in run_node.body if isinstance(n,ast.FunctionDef) and n.name=='save')
+observed=[];report=job_report(expected=None)
+def saved_after(before,timeout_seconds):
+    observed.append((before['sequence'],timeout_seconds));return {'sequence':7}
+save_scope=dict(c=SimpleNamespace(root=Path('.'),controller=123,runtime_log_text=lambda:'',
+                committed_card_sequence=lambda *a,**k:{'sequence':6},wait_saved_after=saved_after),
+                mode='baseline',report=report,os=SimpleNamespace(write=lambda *a:None),press=lambda *a:None,
+                wait_log=lambda *a:observed.append(a[0]),presentations=lambda *a:None,shot=lambda *a:None)
+exec(compile(ast.Module([save_node],type_ignores=[]),'job-save-observation','exec'),save_scope)
+save_scope['save']()
+assert report['expected_saved_sequence']==7 and observed==[(6,240),'ANIMALTOWN SAVE TOTAL:']
+print('Job final export: observed clean exit, forced/abnormal/controller failure rejection, stable dual cards, stale-file removal, save sequence and no-town template passed')

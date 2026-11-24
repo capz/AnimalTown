@@ -389,6 +389,49 @@ static void water_shadow_color_checks(void){
     environment_test_rgb=0xffffff;point_test_gain=shadow_test_gain=255;
     puts("Water shadow GX: day/dusk/night fades, invisible night shadows, surviving lamps/foam, alpha and free-register allocation passed");
 }
+static void shallow_water_shadow_checks(void){
+    DndDrawEffect water={.count=4,.uniforms=2};DndDrawMaterial material={.effect=&water};
+    const DndDrawVertex triangle[]={{0,0,72},{1,0,108},{0,1,144}};
+    const GXColor lower={54,127,145,255},glint={211,242,236,255};
+    const int tint[]={99,181,196},dark[]={35,49,66},warm[]={220,158,74};
+    /* The inland shader now uses RGB REG0 for its half-strength dark ripple.
+     * Its alpha is explicit raster opacity, independent of that I8 sample. */
+    water.stages[1].dest=128|64|GX_TEVREG0;water.stages[2].c=GX_CC_C0;
+    assert(town_shadow_lamp_register(&water)==GX_TEVREG1);
+    shadow_test_mode=3;point_test_gain=173;shadow_test_gain=191;
+    for(int night=0;night<2;night++){
+        environment_test_rgb=night?0x607aa0:0xffffff;
+        memset(tev_colors,0,sizeof tev_colors);memset(color_commands,0,sizeof color_commands);
+        konst_colors[0]=lower;konst_colors[1]=glint;
+        unsigned bindings=0;reset_shadow_recording();town_shadow_ground(triangle,NULL,3,NULL,&material,&bindings);
+        verify_shadow_orders(4,3,0,bindings);
+        assert(!memcmp(&konst_colors[0],&lower,sizeof lower)&&!memcmp(&konst_colors[1],&glint,sizeof glint));
+        assert(color_commands[7].input[1]==GX_CC_C1&&tev_colors[GX_TEVREG1].a==0);
+        for(int alpha=72;alpha<=144;alpha+=36)for(int ripple=0;ripple<=255;ripple+=85)
+        for(int shadow=0;shadow<=255;shadow+=85)for(int light=0;light<=255;light+=85){
+            int registers[4][4],base[3];
+            for(int reg=0;reg<4;reg++)for(int c=0;c<4;c++)registers[reg][c]=color_channel(tev_colors[reg],c);
+            for(int c=0;c<3;c++){
+                int weight=water_combine(0,ripple,128,0);
+                registers[GX_TEVREG0][c]=weight;
+                base[c]=water_combine(tint[c],color_channel(lower,c),weight,0);
+                base[c]=water_combine(base[c],color_channel(glint,c),255-ripple,0);
+                registers[GX_TEVPREV][c]=base[c];
+            }
+            registers[GX_TEVPREV][3]=alpha;run_shadow_stages(4,registers,shadow,light,alpha);
+            assert(registers[GX_TEVPREV][3]==alpha);
+            for(int c=0;c<3;c++){
+                int env=(environment_test_rgb>>(16-c*8))&255;
+                int opacity=water_combine(0,water_combine(0,shadow,alpha,0),(SU_OPACITY*shadow_test_gain+127)/255,0);
+                int shaded=water_combine(water_combine(0,base[c],env,0),dark[c]*env/255,opacity,0);
+                int expected=water_combine(0,warm[c]*point_test_gain/255,water_combine(0,light,alpha,0),shaded);
+                assert(registers[GX_TEVPREV][c]==expected);
+            }
+        }
+    }
+    environment_test_rgb=0xffffff;point_test_gain=shadow_test_gain=255;
+    puts("Shallow water GX: depth opacity survives shadow/light footer, RGB scratch and lamp registers coexist");
+}
 static void path_blend_color_checks(void){
     int page=1;DndDrawMaterial material={.secondary=&page};unsigned bindings=0;
     const int ground[3]={94,135,57},dirt[3]={154,128,93};
@@ -566,4 +609,5 @@ static void native_shadow_combiner_checks(void){
     puts("Shadow/rim GX: signed-wide alpha, low-byte wrap and exact sea cutout survive appended stages");
     puts("Model lights GX: scope/day gates, nearest two, view transform, diffuse attenuation and alpha preservation passed");
     water_shadow_color_checks();
+    shallow_water_shadow_checks();
 }
