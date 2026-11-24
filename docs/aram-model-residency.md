@@ -30,16 +30,15 @@ unused species without compacting a pageable model's only source package.
 The native fixture saves 330,912 requested allocation bytes for fox; selected
 species results are documented in [resident model memory](resident-model-memory.md).
 
-The town's UI canvas uses the SDK default of 4,096 vertices. Its 36-byte native
-vertices require 147,456 bytes less storage than the former 8,192-vertex canvas.
-Sprite capacity and visual content are unchanged; oversized batches use the
-existing automatic flush path. Terrain's default 1 MiB cache remains intact.
-A native recording comparison preserved the exact vertex/color order across
-6,144 map vertices, 3,090 profiling vertices and 11,556 mixed panel/glyph vertices.
-The legacy uncached map needs two draws instead of one; the tested profiling and
-mixed UI workloads retain their draw counts. A host native fox instance uses
-59,840 bytes under its 512 KiB budget, less than half the canvas saving. These
-are allocation and submission checks, not stock-console frame-time measurements.
+The town's UI canvas holds 1,024 vertices, down from the SDK default of 4,096.
+Its 36-byte native vertices use 36,864 bytes, saving 110,592 bytes (108 KiB).
+The 128-quad font batch fits in 768 vertices; larger sequences flush between
+calls through the existing path. Sprite capacity and visual content are
+unchanged, and cached UI meshes have separate storage. A native recording
+fixture preserves every vertex, color and painter order across nine full font
+batches and 600 rectangles, with rejection and cleanup checks for an oversized
+single call. More flushes can increase draw calls; these are allocation and
+submission checks, not stock-console frame-time measurements.
 
 ## Admission and ownership
 
