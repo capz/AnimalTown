@@ -8,12 +8,12 @@ internal sealed class RainRenderer : System.IDisposable
     private DynamicMesh? mesh;
     private VertexPositionColor[]? vertices;
     private readonly Transform pose=new Transform();
-    private bool visible;
+    private bool visible,snowMode;
     private readonly Material material=new Material{Blend=BlendMode.Alpha,DepthWrite=false,Cull=CullMode.Back,Lighting=LightingMode.Unlit,Color=new Color32(195,222,236,155)};
     internal void Prepare(GameState state,double seconds,float eyeHeight,bool snow)
     {
         vertices??=new VertexPositionColor[DebugWeather.DropCount*6];
-        visible=false;
+        visible=false;snowMode=snow;
         material.Color=snow?new Color32(250,252,255,205):new Color32(195,222,236,155);
         float halfWidth=snow?.055f:.015f,height=snow?.11f:.7f,lean=snow?0:.095f;
         for(int i=0;i<DebugWeather.DropCount;i++){
@@ -30,5 +30,6 @@ internal sealed class RainRenderer : System.IDisposable
         if(mesh==null)mesh=DynamicMesh.Create(vertices);else mesh.SetVertices(vertices);
     }
     internal void Draw(Renderer renderer){if(visible&&mesh!=null)renderer.DrawMesh(mesh,material,pose);}
-    public void Dispose(){mesh?.Dispose();mesh=null;vertices=null;visible=false;}
+    internal void RetireSnow(){if(snowMode)Dispose();}
+    public void Dispose(){mesh?.Dispose();mesh=null;vertices=null;visible=snowMode=false;}
 }

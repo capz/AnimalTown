@@ -410,6 +410,15 @@
         "Productive waits and frame-clear reuse are always enabled too.",
         "The three retired toggles no longer appear in debug menus."
       ]
+    },
+    {
+      "id": "seasonal-snow-storage-and-clear-ground-ramps-20261125",
+      "lines": [
+        "Snow slopes gently down to paths, object footprints and clear-ground patches.",
+        "Short white ramps join the raised snow to the original ground.",
+        "Snow updates and working buffers exist only during winter.",
+        "Leaving winter releases snow meshes, masks, recovery data and memory reservations."
+      ]
     }
   ]
 }

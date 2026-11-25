@@ -35,6 +35,8 @@ internal sealed partial class TownGame
     internal int tick,day,month,typeAt,voiceTick,moveClip=-1,faceX,faceZ=-1,waterInspection=0;
     internal float facingYaw,desiredPlayerSpeed=1.05f,cachedPlayerHeight;
     internal int ResidencyRefreshes;
+    internal int SnowRetirements;
+    partial void RetireSnowResources(){SnowRetirements++;}
     private int room=>state.Space;
     internal TownGame(GameState state)
     {

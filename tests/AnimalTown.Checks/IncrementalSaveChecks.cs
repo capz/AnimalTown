@@ -170,12 +170,12 @@ internal static class IncrementalSaveChecks
     }
     private static void SnowTransactions(Action<bool,string> check)
     {
-        var s=Town();var snow=s.Town.Traffic.Snow;
+        var s=Town();
         var disk=new Disk();var repository=new SaveRepository(disk);
         repository.Save(s);
-        check(!repository.Load()!.Town.Traffic.Snow.Winter,"older town records load without a winter checkpoint");
+        check(!repository.Load()!.Town.Traffic.Winter,"older town records load without a winter checkpoint");
 
-        snow.SetWinter(true);
+        s.Town.Traffic.SetWinter(true);var snow=s.Town.Traffic.Snow!;
         for(int i=0;i<SnowWear.MaxVisits;i++)s.Town.Traffic.Enter(s.Town,20,30);
         for(int i=0;i<(SnowWear.RecoverySeconds*2/3)*30-1;i++)snow.TickSnowfall(true);
         s.Town.Traffic.Enter(s.Town,21,30);
@@ -183,10 +183,10 @@ internal static class IncrementalSaveChecks
         var restored=repository.Load()!;
         Same(s,restored,check,"the card round-trips shared snow dents and their partial recovery");
         var split=SplitSaveCodec.Encode(s);
-        check(SplitSaveCodec.ReadVersion(split[0])==11&&SplitSaveCodec.Decode(split).Town.Traffic.Snow.Packed.SequenceEqual(snow.Packed),
+        check(SplitSaveCodec.ReadVersion(split[0])==11&&SplitSaveCodec.Decode(split).Town.Traffic.Snow!.Packed.SequenceEqual(snow.Packed),
             "the split town schema retains its snow checkpoint");
         restored.SelectProfile(1);
-        var shared=restored.Town.Traffic.Snow;
+        var shared=restored.Town.Traffic.Snow!;
         check(shared.Packed.SequenceEqual(snow.Packed),"another profile in the same town sees the same dents");
         int revision=shared.Revision;
         shared.TickSnowfall(true);snow.TickSnowfall(true);
@@ -194,14 +194,14 @@ internal static class IncrementalSaveChecks
             "reload preserves both tile ages and the fraction of a snowfall second");
         for(int i=0;i<(SnowWear.RecoverySeconds/3)*30;i++)shared.TickSnowfall(true);
         repository.Save(restored);
-        restored=repository.Load()!;shared=restored.Town.Traffic.Snow;
+        restored=repository.Load()!;shared=restored.Town.Traffic.Snow!;
         check(shared.VisitCount(20,30)==1&&shared.VisitCount(21,30)==1,"fully refilled shallow tracks still round-trip after active recovery ends");
         shared.ResetForTownEntry();
         byte[] traffic=(byte[])restored.Town.Traffic.Visits.Clone();
         byte[] paths=(byte[])restored.Town.Paths.Packed.Clone();
         repository.Save(restored);
         var cleared=repository.Load()!.Town;
-        check(cleared.Traffic.Snow.Packed.All(b=>b==0)&&cleared.Traffic.Visits.SequenceEqual(traffic)&&cleared.Paths.Packed.SequenceEqual(paths),
+        check(cleared.Traffic.Snow==null&&cleared.Traffic.Visits.SequenceEqual(traffic)&&cleared.Paths.Packed.SequenceEqual(paths),
             "a reset can be saved without changing shared paths or traffic");
     }
     private static void JobTransactions(Action<bool,string> check)

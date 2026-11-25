@@ -43,7 +43,7 @@ internal static class Program
         FrameProfile.Checkpoint(2);
         try{
             if(!ProfilePicker.Run(session))return;
-            session.State.Town.Traffic.Snow.ResetForTownEntry();
+            session.State.Town.Traffic.ResetSnowForTownEntry();
             if(session.Draft!=null&&!OnboardingFlow.Run(config,session))return;
             while(RunSession(config,session)==TownGame.TravelRestart){
                 if(session.Flight.Phase==FlightPhase.Cruise)LoadingScreen.BeginFlight(session.Flight.Direction);
@@ -182,6 +182,12 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
     private string screen="world",message="",speaker="AnimalTown",saveStatus="Not saved";
     private bool returnToMenu;
     private int returnMenuTab,returnMenuSelection;
+    partial void RetireSnowResources()
+    {
+        rain.RetireSnow();
+        if(!terrain.RetireWinterResources(state.Town))throw new InvalidOperationException("Seasonal snow release failed");
+        AnimalTown.GameCube.NativeTexturePages.Collect();
+    }
     private int selected,slot,rotation,tick,day,month,menuTab,faceX,faceZ=-1,typeAt,voiceTick;
     private int moveClip=-1;
     private long sessionStart;
@@ -473,12 +479,12 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
             }
             int allowance=Math.Min(500,residencyBudget.Remaining);
             terrainExitReady=terrain.PrepareOutdoorResidency(x,z,Clock.Timestamp+allowance,room!=0);
-            if(room!=0&&exiting&&terrainExitReady&&state.Town.Traffic.Snow.Winter&&!renderDebug.ShowGroundMipBands)
+            if(room!=0&&exiting&&terrainExitReady&&state.Town.Traffic.Winter&&!renderDebug.ShowGroundMipBands)
                 snowExitReady=terrain.PrepareSnowForExit(state.Town,x,z);
         }else if(!villagers.Doors.Busy(0)&&at-spaceChangedAt>=2000000){
             terrainExitReady=terrain.SuspendOutdoorCache()&&!terrain.CacheSuspended;
         }
-        if(afterDraw&&room!=0&&!villagers.Doors.Busy(0))terrain.ReleaseSnowMask(state.Town);
+        if(afterDraw&&room!=0&&state.Town.Traffic.Winter&&!villagers.Doors.Busy(0))terrain.ReleaseSnowMask(state.Town);
         bool allowDemotion=session.Draft==null&&(terrain.ArchiveReady||visualMemory.Pressure.UnderPressure)&&(room==0||at-playerStillSince>=ModelResidency.IdleDelayUs)&&
             !villagers.Doors.Busy(0)&&requestedUv<0&&uvDebug==0;
         modelResidency.Pump(at,allowDemotion,deadline);
@@ -520,7 +526,7 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
             if(actor==0)doors.ResourcesReady[actor]=modelResidency.ReadyForSpace(state,doors,crossing.Destination.Space.Value)&&
                 modelResidency.ReadyForSpace(state,doors,room)&&buildings.ReadyForSpace(state,crossing.Destination.Space.Value)&&
                 buildings.ReadyForSpace(state,room)&&modelLod.FullForSpace(state,doors,crossing.Destination.Space.Value)&&
-                modelLod.FullForSpace(state,doors,room)&&(!crossing.Destination.Space.IsTown||terrainExitReady&&(room==0||!state.Town.Traffic.Snow.Winter||renderDebug.ShowGroundMipBands||snowExitReady));
+                modelLod.FullForSpace(state,doors,room)&&(!crossing.Destination.Space.IsTown||terrainExitReady&&(room==0||!state.Town.Traffic.Winter||renderDebug.ShowGroundMipBands||snowExitReady));
             else{int species=state.NpcSpecies(actor-1);doors.ResourcesReady[actor]=!modelResidency.Required(species)||modelResidency.Ready(species);}
         }
     }
@@ -1124,7 +1130,7 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
                 int i=objectCandidates.GroundIndices[n];
                 var g=state.Town.Ground[i];if(g.Kind==0||g.Kind==4)continue;
                 float y=0;
-                bool buried=!renderDebug.ShowGroundMipBands&&SnowVisibility.Buried(state.Town,g.X+.25f,g.Z+.25f,.5f,.5f,g.Kind==1?.05f:.27f);
+                bool buried=state.Town.Traffic.Winter&&!renderDebug.ShowGroundMipBands&&SnowVisibility.Buried(state.Town,g.X+.25f,g.Z+.25f,.5f,.5f,g.Kind==1?.05f:.27f);
                 if(!IsTree(g)&&!buried)Box(g.X+.25f,y+.02f,g.Z+.25f,.5f,g.Kind==1?.03f:.25f,.5f,g.Kind==1?new Color32(105,81,54):g.Kind==2?new Color32(242,174,170):new Color32(229,190,82));
             }
             if(batchedDrawing)boxes.Flush();FrameProfile.End(3,groundAt);

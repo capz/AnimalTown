@@ -180,7 +180,7 @@ static inline int su_snow_join_wear(const SuSnowField *field,const uint8_t *tile
     int other=su_snow_wear(field,x,z);
     if(other<=(SU_SNOW_FIRST_OPEN-1)*SU_SNOW_UNIT)return 0;
     int cell=z*SU_WORLD_WIDTH+x;
-    if(tiles[cell]!=0||levels[cell]!=level)return 0; /* Level grass on the same terrace. */
+    if(tiles[cell]!=0||(levels[cell]&63)!=level)return 0; /* Level grass on the same terrace. */
     return other<wear?other:wear;
 }
 static inline uint8_t su_snow_join_depth(int wear,float x,float z){
@@ -193,7 +193,7 @@ static inline SuSnowJoins su_snow_joins(const SuSnowField *field,const uint8_t *
     SuSnowJoins joins={0};
     int wear=su_snow_wear(field,x,z);
     if(wear<=(SU_SNOW_FIRST_OPEN-1)*SU_SNOW_UNIT)return joins;
-    int cell=z*SU_WORLD_WIDTH+x,level=levels[cell];
+    int cell=z*SU_WORLD_WIDTH+x,level=levels[cell]&63;
     if(tiles[cell]!=0||level>1)return joins; /* Terrain.Grass, TerrainElevation.Flat/Block. */
     int horizontal[2],vertical[2];
     for(int side=0;side<2;side++){
@@ -216,12 +216,43 @@ static inline SuSnowJoins su_snow_joins(const SuSnowField *field,const uint8_t *
     }
     return joins;
 }
+static inline int su_snow_receives(const uint8_t *tiles,const uint8_t *levels,int x,int z){
+    if((unsigned)x>=SU_WORLD_WIDTH||(unsigned)z>=SU_SNOW_HEIGHT)return 0;
+    int cell=z*SU_WORLD_WIDTH+x;return tiles[cell]==0&&(levels[cell]&~1)==64;
+}
+static inline int su_snow_borders(const uint8_t *tiles,const uint8_t *levels,int x,int z){
+    if(!su_snow_receives(tiles,levels,x,z))return 0;
+    return !su_snow_receives(tiles,levels,x,z-1)||!su_snow_receives(tiles,levels,x+1,z)||
+        !su_snow_receives(tiles,levels,x,z+1)||!su_snow_receives(tiles,levels,x-1,z);
+}
+/* Bilinear I8 samples 255 and 127 cross the existing 191 cutout at exactly
+ * one quarter metre. Geometry fills that removed band with the white ramp. */
+static inline uint8_t su_snow_border_depth(const uint8_t *tiles,const uint8_t *levels,int cx,int cz,int x,int z){
+    /* Keep the uncovered side solid in the stencil too: filtering a 255
+     * snowy edge against zero would leave a floating cap lip at its toe. */
+    if(cz==SU_SNOW_HEIGHT)return su_snow_receives(tiles,levels,cx,cz-1)?255:0;
+    if((unsigned)cx>=SU_WORLD_WIDTH||(unsigned)cz>=SU_SNOW_HEIGHT)return 0;
+    if(!su_snow_receives(tiles,levels,cx,cz))return levels[cz*SU_WORLD_WIDTH+cx]==255?255:0;
+    int distance=4;
+    if(!su_snow_receives(tiles,levels,cx,cz-1)&&z<distance)distance=z;
+    if(!su_snow_receives(tiles,levels,cx+1,cz)&&3-x<distance)distance=3-x;
+    if(!su_snow_receives(tiles,levels,cx,cz+1)&&3-z<distance)distance=3-z;
+    if(!su_snow_receives(tiles,levels,cx-1,cz)&&x<distance)distance=x;
+    return distance==0?255:distance==1?127:0;
+}
+static inline int su_snow_page_border(const uint8_t *tiles,const uint8_t *levels,int px,int pz){
+    for(int z=pz*SU_SNOW_PAGE-1;z<(pz+1)*SU_SNOW_PAGE+1;z++)
+        for(int x=px*SU_SNOW_PAGE-1;x<(px+1)*SU_SNOW_PAGE+1;x++)if(su_snow_borders(tiles,levels,x,z))return 1;
+    return 0;
+}
 static inline void su_snow_block(uint8_t *dest,const SuSnowField *field,const uint8_t *tiles,const uint8_t *levels,int bx,int bz){
     for(int side=0;side<2;side++){
         int cx=bx*2+side;
         SuSnowJoins joins=su_snow_joins(field,tiles,levels,cx,bz);
         for(int z=0;z<4;z++)for(int x=0;x<4;x++){
             uint8_t depth=su_snow_depth(field,cx*4+x,bz*4+z);
+            uint8_t border=su_snow_border_depth(tiles,levels,cx,bz,x,z);
+            if(depth<border)depth=border;
             int outer_x=x==0||x==3,outer_z=z==0||z==3;
             uint8_t horizontal=joins.horizontal[x>=2][outer_z],vertical=joins.vertical[z>=2][outer_x];
             if(depth<horizontal)depth=horizontal;

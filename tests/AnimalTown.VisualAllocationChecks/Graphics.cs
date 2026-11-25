@@ -29,12 +29,23 @@ namespace Dolphin.Graphics
     internal readonly struct Color32
     {
         public readonly byte R,G,B,A;public static Color32 White=>new Color32(255,255,255);
+        public uint Packed=>(uint)(R|(G<<8)|(B<<16)|(A<<24));
         public Color32(byte r,byte g,byte b,byte a=255){R=r;G=g;B=b;A=a;}
     }
     internal readonly struct VertexPositionColorTexture
     {
         public readonly Vector3 Position;public readonly Color32 Color;public readonly Vector2 TextureCoordinate;
         public VertexPositionColorTexture(Vector3 position,Color32 color,Vector2 uv){Position=position;Color=color;TextureCoordinate=uv;}
+    }
+    internal readonly struct VertexPositionColor
+    {
+        public readonly Vector3 Position;public readonly Color32 Color;
+        public VertexPositionColor(Vector3 position,Color32 color){Position=position;Color=color;}
+    }
+    internal readonly struct VertexPositionNormalColorTexture
+    {
+        public readonly Vector3 Position,Normal;public readonly Color32 Color;public readonly Vector2 TextureCoordinate;
+        public VertexPositionNormalColorTexture(Vector3 position,Vector3 normal,Color32 color,Vector2 uv){Position=position;Normal=normal;Color=color;TextureCoordinate=uv;}
     }
     internal sealed class Transform { public Transform? Parent;public Vector3 LocalPosition,LocalScale;public Quaternion LocalRotation; }
     internal enum CullMode { Back }internal enum LightingMode { Unlit }internal enum BlendMode { Alpha }
@@ -55,6 +66,8 @@ namespace Dolphin.Graphics
         private DynamicMesh(int bytes):base(bytes){}
         internal static DynamicMesh Create(VertexPositionColorTexture[] vertices)=>new DynamicMesh(vertices.Length*36);
         internal void SetVertices(VertexPositionColorTexture[] vertices){if(Disposed)throw new Exception("Disposed mesh upload");}
+        internal static DynamicMesh Create(VertexPositionColor[] vertices)=>new DynamicMesh(vertices.Length*16);
+        internal void SetVertices(VertexPositionColor[] vertices){if(Disposed)throw new Exception("Disposed mesh upload");}
     }
     internal sealed class Texture2D : IDisposable
     {
@@ -70,6 +83,17 @@ namespace Dolphin.Graphics
         internal void DrawMesh(Mesh mesh,Material material,Transform transform){if(mesh.Disposed)throw new Exception("Disposed mesh draw");Draws++;}
         internal void DrawMeshes(Mesh[] meshes,Transform[] transforms,Material material,int first,int count){for(int i=first;i<first+count;i++)DrawMesh(meshes[i],material,transforms[i]);}
     }
+}
+internal static class FrameProfile {internal static readonly RenderCounters Counters=new RenderCounters();}
+internal static class NativeFrame
+{
+    internal static int Uploads;
+    internal static int Create(Dolphin.Graphics.VertexPositionNormalColorTexture[] vertices,int count,ushort[] indices,int indexCount)
+    {Validate(count,indices,indexCount);Uploads++;return count*36+indexCount*2;}
+    internal static int Recycle(int capacity,Dolphin.Graphics.VertexPositionNormalColorTexture[] vertices,int count,ushort[] indices,int indexCount)
+    {Validate(count,indices,indexCount);if(count*36+indexCount*2>capacity)return 0;Uploads++;return 1;}
+    private static void Validate(int count,ushort[] indices,int indexCount)
+    {for(int i=0;i<indexCount;i++)if(indices[i]>=count)throw new Exception("Snow geometry index out of range");}
 }
 namespace Hypercube.GameCube
 {

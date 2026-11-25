@@ -15,11 +15,11 @@ public static class SnowVisibility
     }
     public static bool CoveredGround(Town town,int left,int top,int width,int height)
     {
-        if(!town.Traffic.Snow.Winter||width<=0||height<=0||left<1||top<1||
+        if(!town.Traffic.Winter||width<=0||height<=0||left<1||top<1||
             left>=Town.Width-width||top>=Town.Height-height)return false;
         // Flat ground only: raised blocks/ramps and their vertical silhouettes
         // keep the complete base pass even where their caps receive snow.
-        var packed=town.Traffic.Snow.Packed;
+        var packed=town.Traffic.Snow!.Packed;
         for(int z=top-1;z<=top+height;z++)for(int x=left-1;x<=left+width;x++){
             int cell=z*Town.Width+x;
             if(town.Tiles[cell]!=(byte)Terrain.Grass||town.Elevation[cell]!=TerrainElevation.Flat||
@@ -41,6 +41,7 @@ public sealed class SnowGroundVisibility
     public void Prepare(Town next)
     {
         var snow=next.Traffic.Snow;
+        if(snow==null){town=null;return;}
         if(town==next&&snowRevision==snow.Revision&&pathRevision==next.Paths.Revision&&
             terrainRevision==next.TerrainVersion&&winter==snow.Winter)return;
         town=next;snowRevision=snow.Revision;pathRevision=next.Paths.Revision;

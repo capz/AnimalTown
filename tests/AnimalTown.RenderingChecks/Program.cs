@@ -9,7 +9,7 @@ void Check(bool passed,string message){count++;if(!passed)throw new Exception(me
 if(Wants("water"))WaterEffectChecks.Run(Check);
 if(Wants("services")){RenderingServiceChecks.Run(Check);JobSceneChecks.Run(Check);}
 if(Wants("movement"))MovementTerrainChecks.Run(Check);
-if(Wants("ground"))GroundRingChecks.Run(Check);
+if(Wants("ground")){GroundRingChecks.Run(Check);SnowEdgeGeometryChecks.Run(Check);}
 if(Wants("index"))TerrainIndexChecks.Run(Check);
 if(Wants("visibility")){ActorVisibilityChecks.Run(Check);VillagerLodChecks.Run(Check);}
 if(Wants("attention"))AttentionGeometryChecks.Run(Check);

@@ -88,15 +88,15 @@ public static class SplitSaveCodec
         }
         internal void JobState(Jobs.TownJobState jobs)
         {Range(Jobs.TownJobState.EncodedWordCount,Jobs.TownJobState.EncodedWordCount);var data=new int[Jobs.TownJobState.EncodedWordCount];for(int i=0;i<data.Length;i++)data[i]=Int();jobs.Restore(data);}
-        internal void SnowCheckpoint(SnowWear? snow,bool allowEmpty=false)
+        internal void SnowCheckpoint(TileTraffic? traffic,bool allowEmpty=false)
         {
             int length=Range(allowEmpty?0:SnowWear.MinCheckpointWords,SnowWear.MaxCheckpointWords);
             if(length==0)return;
             if(length<SnowWear.MinCheckpointWords)throw new InvalidOperationException("Invalid snow checkpoint length");
             if(length>(bytes.Length-at-4)/4)throw new InvalidOperationException("Truncated snow checkpoint");
-            if(snow==null){at+=length*4;return;}
+            if(traffic==null){at+=length*4;return;}
             var words=new int[length];for(int i=0;i<length;i++)words[i]=Int();
-            snow.RestoreCheckpoint(words);
+            traffic.SetWinter(true);traffic.Snow!.RestoreCheckpoint(words);
         }
         internal void End(){if(at!=bytes.Length-4)throw new InvalidOperationException("Trailing save record data");}
     }
@@ -112,7 +112,7 @@ public static class SplitSaveCodec
     {
         var t=s.Town;
         if(part==0){
-        var snow=t.Traffic.Snow.EncodeCheckpoint();
+        var snow=t.Traffic.Snow?.EncodeCheckpoint();
         const int version=11;
         int snowBytes=4*((snow?.Length??0)+1);
         var recovery=t.LostAndFound.Encode();
@@ -194,7 +194,7 @@ public static class SplitSaveCodec
         for(int i=0;i<6;i++){var v=t.Residents[i];v.Space=r.Range(0,43);v.JourneyBuilding=r.Range(-1,BuildingWorld.Count-1);v.JourneyPhase=r.Range(0,5);v.Dwell=r.Range(0,36000);v.Yaw=r.Range(-6434,6434)/1024f;v.JourneyNextX=r.Range(-1,Town.Width-1);v.JourneyNextZ=r.Range(-1,Town.Height-1);if(!BuildingWorld.ValidSpace(v.Space)||(v.JourneyNextX<0)!=(v.JourneyNextZ<0)||v.JourneyPhase==1&&v.JourneyBuilding<0)throw new InvalidOperationException("Invalid shared NPC journey");}
         if(r.Version>=6)r.Paths(t.Paths,snapshot!=null);else if(snapshot!=null&&t.Paths.Count!=0)throw new InvalidOperationException("Legacy snapshot contains paths");
         if(r.Version>=7)r.Traffic(t.Traffic,snapshot!=null);
-        if(r.Version>=10)r.SnowCheckpoint(t.Traffic.Snow,r.Version>=11);
+        if(r.Version>=10)r.SnowCheckpoint(t.Traffic,r.Version>=11);
         if(r.Version>=8)t.DaylightLocation=r.Range(r.Version>=9?0:1,DaylightLocations.Count);
         if(r.Version>=9)r.JobState(t.JobState);
         if(r.Version>=11){

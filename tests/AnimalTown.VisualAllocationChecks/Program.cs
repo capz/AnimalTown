@@ -42,4 +42,16 @@ Clock.Timestamp+=VisualMemoryPressure.FailureBackoffUs+1;memory.Observe(4*1024*1
 Clock.Timestamp+=VisualMemoryPressure.FailureBackoffUs+1;Check(items.Prepare(state,0),"new category recovers after partial allocation failure");
 var renderer=new Renderer();items.Draw(renderer);Check(renderer.Draws>0,"only valid adopted native buffers are submitted after recovery");
 items.Dispose();Check(GraphicsMemory.Bytes==0,"all grown/replaced/category native allocations return exactly once at teardown");
+var precipitation=new RainRenderer();
+precipitation.Prepare(state,0,0,true);
+Check(GraphicsMemory.Bytes>0,"winter precipitation has an active dynamic stream");
+precipitation.RetireSnow();
+Check(GraphicsMemory.Bytes==0,"leaving winter frees the native snow particle stream");
+precipitation.Draw(renderer);precipitation.RetireSnow();
+Check(GraphicsMemory.Bytes==0,"retired snow submits no disposed mesh and repeated retirement is harmless");
+precipitation.Prepare(state,1,0,false);warmBytes=GraphicsMemory.Bytes;
+precipitation.RetireSnow();
+Check(warmBytes>0&&GraphicsMemory.Bytes==warmBytes,"ordinary rain resources remain available in nonwinter weather");
+precipitation.Dispose();Check(GraphicsMemory.Bytes==0,"rain teardown returns the shared stream without double release");
+SnowEdgeAllocationChecks.Run(Check);
 Console.WriteLine(checks+" visual allocation checks passed");

@@ -39,7 +39,7 @@ internal sealed partial class TownSession
     }
     internal void AdoptTravel(GameState state)
     {
-        if(state.Town.Jobs.TownId!=State.Town.Jobs.TownId)state.Town.Traffic.Snow.ResetForTownEntry();
+        if(state.Town.Jobs.TownId!=State.Town.Jobs.TownId)state.Town.Traffic.ResetSnowForTownEntry();
         State=state;Loaded=true;Status="Trip saved / "+BuildInfo.Version;
     }
     internal void SelectProfile(int profile)

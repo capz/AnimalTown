@@ -13,7 +13,17 @@ internal sealed partial class TerrainRenderer : IDisposable
 {
     private readonly PathTextureResidency paths=new PathTextureResidency();
     private readonly GroundMipMaterials mipBands=new GroundMipMaterials();
-    private readonly SnowGroundVisibility snowVisibility=new SnowGroundVisibility();
+    private SnowGroundVisibility? snowVisibility;
+    private SnowEdgeRenderer? snowEdgeRenderer;
+    private Action<int>? snowCompleted;
+    private bool snowEdgeReady=true;
+    partial void RetireSnowGeometry(){snowEdgeRenderer?.Dispose();snowEdgeRenderer=null;snowEdgeReady=true;}
+    internal bool RetireWinterResources(Town town)
+    {
+        if(!ReleaseSnowMask(town))return false;
+        snowTransform=null;snowPoses=null;snowVisibility=null;snowCompleted=null;
+        return true;
+    }
     private TerrainArchive? archive;
     private bool legacy=false; // Default: immutable ARAM archive and fixed MEM1 views.
     internal bool SuspendForSave(){waterBump.Suspend();return !legacy&&archive!=null&&archive.SuspendForSave();}
@@ -39,13 +49,14 @@ internal sealed partial class TerrainRenderer : IDisposable
     private readonly Mesh[] batch=new Mesh[128];
     internal const float SnowHeight=SnowVisibility.Height;
     internal static readonly Color32 SnowReceiver=new Color32(255,255,255,254);
-    private readonly Transform snowTransform=new Transform();
-    private readonly Transform[] poses=new Transform[128],snowPoses=new Transform[128];
+    private Transform? snowTransform;
+    private readonly Transform[] poses=new Transform[128];
+    private Transform[]? snowPoses;
     private int batchCount;
     private ulong visibleGroundMask,snowGroundMask;
     private long geometryRevision;
     internal long GeometryRevision=>geometryRevision;
-    internal bool Ready=>!resetting&&!floorTexturesSuspended&&snowMaskReady&&(legacy?stream.Presentable:archive?.Presentable??false);
+    internal bool Ready=>!resetting&&!floorTexturesSuspended&&snowMaskReady&&snowEdgeReady&&(legacy?stream.Presentable:archive?.Presentable??false);
     internal bool ArchiveReady=>archive?.Ready??false;
     internal bool CacheSuspended=>archive?.CacheSuspended??false;
     internal int CacheResidencyError=>archive?.ResidencyError??0;
@@ -105,13 +116,7 @@ internal sealed partial class TerrainRenderer : IDisposable
         shadows=new ObjectShadows();
         var cfg=File.ReadAllBytes(ContentPaths.Asset("terrain.cfg"));if(cfg.Length!=4)throw new IOException("Invalid floor season config");forced=FloorStrips.Read(cfg,0);if(forced< -1||forced>3)throw new IOException("Invalid floor season");
         for(int i=0;i<materials.Length;i++)materials[i]=new Material{Cull=CullMode.Back,Lighting=LightingMode.Unlit};
-        // The terrain archive is baked around the cylinder axis at Y=-Radius.
-        // Scaling Y/Z about that axis offsets level ground by SnowHeight.
-        float raised=(CylinderWorld.Radius+SnowHeight)/CylinderWorld.Radius;
-        snowTransform.Parent=ScrollTransform;
-        snowTransform.LocalScale=new Vector3(1,raised,raised);
-        snowTransform.LocalPosition=new Vector3(0,SnowHeight,0);
-        for(int i=0;i<poses.Length;i++){poses[i]=ScrollTransform;snowPoses[i]=snowTransform;}
+        for(int i=0;i<poses.Length;i++)poses[i]=ScrollTransform;
     }
     public void Dispose()
     {
@@ -135,6 +140,8 @@ internal sealed partial class TerrainRenderer : IDisposable
         waterBump.Dispose();waterMaterial.Dispose();soil.Dispose();
         for(int i=0;i<textures.Length;i++)if(textures[i]!=null){TextureCache.Release(textures[i]!);textures[i]=null;}
         for(int i=0;i<materials.Length;i++){materials[i].Texture=null;materials[i].SecondaryTexture=null;}
+        if(cachedTown!=null)ReleaseSnowMask(cachedTown);
+        snowTransform=null;snowPoses=null;snowVisibility=null;snowCompleted=null;
         data=new byte[0];cachedTown=null;stream.Reset();disposed=true;
     }
     internal void Prepare(GameState state,int room,int month,VillagerShadows movingShadows,long deadline,bool cliffPreview=false)
@@ -146,6 +153,9 @@ internal sealed partial class TerrainRenderer : IDisposable
         oceanWaves.Prepare(state,waterMaterial.RoughOcean,
             cliffPreview,waterMaterial.OceanTint(1));
         int next=SeasonAt(month,SeasonOverride);bool changed=next!=season;
+        if(next!=3&&snowTransform!=null){
+            if(!RetireWinterResources(state.Town)){snowMaskReady=false;return;}
+        }
         if(changed){
             string name="floor-"+TerrainTiles.SeasonName(next);
             BeginFloorSeason(File.ReadAllBytes(ContentPaths.Asset(name+".bin")),next);
@@ -176,11 +186,18 @@ internal sealed partial class TerrainRenderer : IDisposable
             }
         }
         if(floorTexturesSuspended&&!RestoreFloorTextures(deadline))return;
-        var snow=state.Town.Traffic.Snow;
-        snow.SetWinter(season==3);
-        snowVisibility.Prepare(state.Town);
-        bool drawSnow=room==0&&snow.Winter&&!mipBands.Enabled;
-        if(!drawSnow)snowMaskReady=ReleaseSnowMask(state.Town);
+        if(state.Town.Traffic.Winter!=(season==3))state.Town.Traffic.SetWinter(season==3);
+        if(season==3){
+            if(snowTransform==null){
+                float raised=(CylinderWorld.Radius+SnowHeight)/CylinderWorld.Radius;
+                snowTransform=new Transform{Parent=ScrollTransform,LocalScale=new Vector3(1,raised,raised),LocalPosition=new Vector3(0,SnowHeight,0)};
+                snowPoses=new Transform[poses.Length];for(int i=0;i<snowPoses.Length;i++)snowPoses[i]=snowTransform;
+                snowVisibility=new SnowGroundVisibility();snowCompleted=CompleteSnowTicket;
+            }
+            snowVisibility!.Prepare(state.Town);
+        }
+        bool drawSnow=room==0&&season==3&&!mipBands.Enabled;
+        if(!drawSnow&&(snowMaskPrepared||snowEdges!=null||snowEdgeRenderer!=null))snowMaskReady=ReleaseSnowMask(state.Town);
         if(cachedTown!=null&&cachedTown!=state.Town&&!ReleaseSnowMask(cachedTown)){
             snowMaskReady=false;
             return;
@@ -227,6 +244,8 @@ internal sealed partial class TerrainRenderer : IDisposable
             archive.WarmPrefetch=WarmTerrainPrefetch;
             long at=FrameProfile.Start();archive.Prepare(state.X,state.Z,Rows);FrameProfile.DetailEnd(0,at);
             if(drawSnow&&archive.Presentable){
+                if(!PrepareSnowEdges(state)){snowEdgeReady=false;return;}
+                snowEdgeReady=true;
                 archive.GroundBounds(snowGroundMask,out int minZ,out int maxZ);
                 snowMaskReady=PrepareSnowMask(state.Town,state.X,state.Z,minZ,maxZ);
             }
@@ -268,6 +287,8 @@ internal sealed partial class TerrainRenderer : IDisposable
             }
         }
         if(drawSnow&&stream.Presentable){
+            if(!PrepareSnowEdges(state)){snowEdgeReady=false;return;}
+            snowEdgeReady=true;
             if(GroundRingActive&&SnowMaterial(SharedFlatMaterial)){
                 int ringMinZ=(int)Math.Floor(state.Z)-GroundRingPlan.Ahead;
                 snowMinZ=Math.Min(snowMinZ,ringMinZ);
@@ -352,13 +373,31 @@ internal sealed partial class TerrainRenderer : IDisposable
     }
     // Called before essential residency pumps, including while Draw is loading.
     internal bool ReclaimWaterOptics()=>Memory?.UnderPressure==true&&waterBump.Reclaim();
+    private bool PrepareSnowEdges(GameState state)
+    {
+        if(snowEdges==null){
+            int ticket=0,bytes=Town.Cells*2+512;
+            if(Memory!=null&&!Memory.TryReserve(bytes,Clock.Timestamp,true,out ticket))return false;
+            try{snowEdges=new SnowEdges();CompleteSnowTicket(ticket);ticket=0;}
+            catch(OutOfMemoryException){Memory?.AllocationFailed(bytes,Clock.Timestamp);return false;}
+            finally{if(ticket!=0)Memory?.Cancel(ticket);}
+        }
+        snowEdges.Prepare(state,data,snowGroundMask);
+        snowEdgeRenderer??=new SnowEdgeRenderer();snowEdgeRenderer.Begin();
+        if(!legacy){
+            for(int slot=0;slot<slots;slot++)if(SnowMaterial(slot))for(int i=archive!.First(slot);i>=0;i=archive.Next(i))if(archive.IsGroundStrip(i)){
+                int section=archive.Section(i);snowEdgeRenderer.Include(TerrainArchivePlan.X(section),TerrainArchivePlan.Z(section),TerrainArchivePlan.Height);
+            }
+        }else for(int i=0;i<stream.Count;i++)if(stream.Visible[i])snowEdgeRenderer.Include(stream.X[i],stream.Z[i],TerrainStream.Height);
+        bool ready=snowEdgeRenderer.Prepare(state,snowEdges,Memory,snowCompleted!);snowHasEdges=snowEdgeRenderer.HasGeometry;return ready;
+    }
     private void Add(Renderer renderer,Material material,Mesh? mesh,bool snow=false)
     {
         if(mesh==null)return;batch[batchCount++]=mesh;
         if(batchCount==batch.Length)Flush(renderer,material,snow);
     }
     private void Flush(Renderer renderer,Material material,bool snow=false)
-    {if(batchCount==0)return;renderer.DrawMeshes(batch,snow?snowPoses:poses,material,0,batchCount);batchCount=0;}
+    {if(batchCount==0)return;renderer.DrawMeshes(batch,snow?snowPoses!:poses,material,0,batchCount);batchCount=0;}
     private void AddArchive(Renderer renderer,Material material,int kind,bool snow=false)
     {
         for(int i=archive!.First(kind);i>=0;i=archive.Next(i)){
@@ -366,7 +405,7 @@ internal sealed partial class TerrainRenderer : IDisposable
             if(snow&&!strip)continue;
             // Only level, uninterrupted snow pages may omit their hidden base.
             // Caps, walls, mixed terrain, paths and diagnostic passes remain.
-            if(!snow&&strip&&!mipBands.Enabled&&SnowMaterial(kind)&&snowVisibility.Covered(archive.Section(i)))continue;
+            if(!snow&&strip&&!mipBands.Enabled&&SnowMaterial(kind)&&snowVisibility!.Covered(archive.Section(i)))continue;
             Add(renderer,material,archive.Mesh(i),snow);
         }
         Flush(renderer,material,snow);
@@ -463,8 +502,9 @@ internal sealed partial class TerrainRenderer : IDisposable
             }
             if(!mipBands.Enabled&&GroundRingActive&&SnowMaterial(SharedFlatMaterial)){
                 NativeShadows.Scope(5); // The ring spans multiple detailed shadow pages.
-                groundRing!.Draw(renderer,GroundMaterial(SharedFlatMaterial),snowTransform);
+                groundRing!.Draw(renderer,GroundMaterial(SharedFlatMaterial),snowTransform!);
             }
+            if(season==3&&!mipBands.Enabled&&snowEdgeReady&&snowEdgeRenderer!=null){NativeShadows.Scope(1);snowEdgeRenderer.Draw(renderer,ScrollTransform);}
         }finally{NativeShadows.Scope(0);}
         gallery.Draw(renderer,ScrollTransform,this);
     }

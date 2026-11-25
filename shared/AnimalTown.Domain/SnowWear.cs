@@ -11,7 +11,7 @@ public sealed class SnowWear
     private const int LegacyRecoverySeconds=10*60;
     private const int CheckpointHeaderWords=3,SkipToken=0x8000;
     internal const int MinCheckpointWords=CheckpointHeaderWords+1,MaxCheckpointWords=CheckpointHeaderWords+Town.Cells/2;
-    public readonly byte[] Packed=new byte[Bytes];
+    public byte[] Packed {get;private set;}=new byte[0];
     // Active dents retain their initial wear and entry time modulo 4096.
     // Once settled, their shallow wear lives only in Packed.
     private const int RecoveryShift=8,RecoveryChunk=1<<RecoveryShift,RecoveryChunks=(Town.Cells+RecoveryChunk-1)/RecoveryChunk;
@@ -49,7 +49,13 @@ public sealed class SnowWear
         return WearAt(z*Town.Width+x);
     }
     private int WearAt(int cell)=>(Packed[cell/2]>>((cell%2)*4))&15;
-    public void SetWinter(bool winter)=>Winter=winter;
+    public void SetWinter(bool winter)
+    {
+        if(Winter==winter)return;
+        Winter=winter;
+        if(winter)Packed=new byte[Bytes];
+        else{Packed=new byte[0];HasCheckpoint=false;ResetRecovery();Revision++;}
+    }
     public void ResetForTownEntry()
     {
         if(!HasCheckpoint)return;
@@ -137,6 +143,7 @@ public sealed class SnowWear
     }
     internal void RestoreCheckpoint(int[] words)
     {
+        SetWinter(true);
         int tokenCount=words[2];
         if(words[0]<0||(uint)words[1]>=TicksPerSecond||tokenCount<1||tokenCount>Town.Cells||
             words.Length!=CheckpointHeaderWords+(tokenCount+1)/2)

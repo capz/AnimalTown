@@ -9,6 +9,7 @@ internal sealed partial class TownGame
     private readonly TownDaylight daylight=new TownDaylight();
     private readonly DebugWeather weather=new DebugWeather();
     private bool weatherClockStarted;
+    partial void RetireSnowResources();
     partial void RecordFallFootstep(float beforeX,float beforeZ);
 
     internal void Step(ControllerState pad)
@@ -24,7 +25,7 @@ internal sealed partial class TownGame
         if(simulateWorld){
             UpdateWeather();
             // Outdoor snowfall continues while the player is inside.
-            state.Town.Traffic.Snow.TickSnowfall(weather.Snowing(0));
+            if(state.Town.Traffic.Snow!=null)state.Town.Traffic.Snow.TickSnowfall(weather.Snowing(0));
         }
         if(screen=="dialogue"&&typeAt<message.Length){
             typeAt++;
@@ -90,7 +91,7 @@ internal sealed partial class TownGame
     {
         int season=terrain.SeasonAt(month,renderDebug.SeasonOverride);
         weather.Update(state.Town.Seed,weatherDay,EnvironmentMinute,season);
-        state.Town.Traffic.Snow.SetWinter(season==3);
+        if(state.Town.Traffic.Winter!=(season==3)){state.Town.Traffic.SetWinter(season==3);if(season!=3)RetireSnowResources();}
         weatherClockStarted=true;
     }
     private int jobClockSecond;

@@ -46,14 +46,14 @@ internal static class VillagerJobSaveChecks
     private static void SnowCompatibility(Action<bool,string> check)
     {
         var snow=SaveCodec.Decode(File.ReadAllBytes("tests/fixtures/jobs/legacy-snow-v14-catalog1.bin"));
-        check(snow.Tutorial==7&&snow.Town.Traffic.Snow.Winter&&snow.Town.Traffic.Snow.Packed.Any(b=>b!=0),"the actual catalog-1 schema-14 snowfall save retains dents and migrates completed employment");
+        check(snow.Tutorial==7&&snow.Town.Traffic.Winter&&snow.Town.Traffic.Snow!.Packed.Any(b=>b!=0),"the actual catalog-1 schema-14 snowfall save retains dents and migrates completed employment");
         var jobs=SaveCodec.Decode(File.ReadAllBytes("tests/fixtures/jobs/legacy-jobs-v14-catalog2.bin"));
         var letter=jobs.Town.Jobs.Letter(0,0);
         check(jobs.Town.Jobs.TownId==23495&&jobs.MailCount==1&&JobTextBody.Unpack(letter.Body!,letter.BodyOffset,letter.BodyWords)=="Legacy café! 🙂","the actual catalog-2 schema-14 job save retains its namespace and Unicode letter");
         long now=JobCalendar.At(2027,1,15,12);snow.ResidentJobs.Enable(23496,now);
         var combined=SaveCodec.Encode(snow);var restored=SaveCodec.Decode(combined);
-        check(combined[4]==16&&restored.Town.Jobs.TownId==23496&&restored.Town.Traffic.Snow.Packed.SequenceEqual(snow.Town.Traffic.Snow.Packed),"schema 16 retains the snow checkpoint and economic job ledger together");
+        check(combined[4]==16&&restored.Town.Jobs.TownId==23496&&restored.Town.Traffic.Snow!.Packed.SequenceEqual(snow.Town.Traffic.Snow!.Packed),"schema 16 retains the snow checkpoint and economic job ledger together");
         var parts=SplitSaveCodec.Encode(snow);restored=SplitSaveCodec.Decode(parts);
-        check(parts[0][4]==11&&restored.Town.Jobs.TownId==23496&&restored.Town.Traffic.Snow.Packed.SequenceEqual(snow.Town.Traffic.Snow.Packed),"schema-11 split towns retain snowfall alongside jobs in the independent economy record");
+        check(parts[0][4]==11&&restored.Town.Jobs.TownId==23496&&restored.Town.Traffic.Snow!.Packed.SequenceEqual(snow.Town.Traffic.Snow!.Packed),"schema-11 split towns retain snowfall alongside jobs in the independent economy record");
     }
 }

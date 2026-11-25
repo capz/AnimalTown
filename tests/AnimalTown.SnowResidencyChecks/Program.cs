@@ -6,9 +6,9 @@ void Check(bool value,string message){checks++;if(!value)throw new Exception(mes
 Town Flat()
 {
     var town=new Town(3);Array.Fill(town.Tiles,(byte)Terrain.Grass);Array.Clear(town.Elevation);
-    town.Traffic.Snow.SetWinter(true);return town;
+    town.Traffic.SetWinter(true);return town;
 }
-var town=Flat();var snow=town.Traffic.Snow;
+var town=Flat();var snow=town.Traffic.Snow!;
 var terrain=new TerrainRenderer(town);var memory=terrain.Memory!;
 NativeShadows.Reset();memory.Observe(128*1024,0,0,0);
 Check(terrain.Prepare(town)&&terrain.Ready&&NativeShadows.Allocations==0,"undented winter needs no native mask or memory reservation");
@@ -75,7 +75,7 @@ Check(!regional.PrepareRows(regionalTown,45,60)&&NativeShadows.Calls==calls,"mov
 regionalMemory.Observe(8*1024*1024,0,0,1);
 Check(regional.PrepareRows(regionalTown,45,60)&&NativeShadows.Bytes==128*1024,"visible dent rows reconstruct native coverage when headroom permits");
 regionalMemory.Observe(128*1024,0,0,2);
-Check(regional.Prepare(regionalTown)&&NativeShadows.Bytes==0&&regionalTown.Traffic.Snow.VisitCount(20,50)==1,"leaving all visible dents releases the mask without erasing authoritative far wear");
+Check(regional.Prepare(regionalTown)&&NativeShadows.Bytes==0&&regionalTown.Traffic.Snow!.VisitCount(20,50)==1,"leaving all visible dents releases the mask without erasing authoritative far wear");
 regionalTown.Traffic.Enter(regionalTown,20,41);
 Check(!regional.Prepare(regionalTown),"bilinear and relief guard rows retain a dent just beyond the visible interval");
 
@@ -99,6 +99,15 @@ NativeShadows.Reset();var failedTown=Flat();failedTown.Traffic.Enter(failedTown,
 failedRegion.Memory!.Observe(8*1024*1024,0,0,0);NativeShadows.FailNext=true;
 Check(!failedRegion.PrepareRows(failedTown,90,110),"regional native allocation failure begins ordinary retry backoff");
 Check(failedRegion.Prepare(failedTown)&&failedRegion.Ready&&NativeShadows.Bytes==0,"a fresh region can draw during an unrelated dent-mask retry backoff");
+NativeShadows.Reset();var seasonalTown=Flat();seasonalTown.Traffic.Enter(seasonalTown,20,30);
+var seasonal=new TerrainRenderer(seasonalTown);var seasonalMemory=seasonal.Memory!;
+seasonalMemory.Observe(8*1024*1024,0,0,0);
+Check(seasonal.Prepare(seasonalTown)&&seasonalMemory.ReservedBytes>0,"winter allocation has an explicit outstanding reservation");
+seasonalTown.Traffic.SetWinter(false);
+Check(seasonal.Prepare(seasonalTown)&&NativeShadows.Bytes==0&&NativeShadows.PreviewBytes==0&&seasonalMemory.ReservedBytes==0,"winter exit retires native storage and its unobserved reservation immediately");
+int summerCalls=NativeShadows.Calls;
+for(int i=0;i<100;i++)seasonal.Prepare(seasonalTown);
+Check(NativeShadows.Calls==summerCalls&&seasonalTown.Traffic.Snow==null,"steady nonwinter frames make no snow bridge call and acquire no snow owner");
 Console.WriteLine(checks+" snow residency checks passed using production admission/retirement code");
 
 internal sealed partial class TerrainRenderer
@@ -127,11 +136,11 @@ internal static class NativeShadows
     internal static int Bytes,PreviewBytes,Allocations,Calls;internal static bool FailNext;
     internal static ushort[]? LastRecovery;
     internal static void Reset(){Bytes=PreviewBytes=Allocations=Calls=0;FailNext=false;LastRecovery=null;Clock.Timestamp=0;}
-    internal static int Stats(int kind)=>kind==14?Bytes:kind==15?PreviewBytes:kind==16?0:throw new ArgumentOutOfRangeException();
-    internal static int Snow(byte[] packed,byte[] tiles,byte[] elevation,ushort[]? recovery,int revision,int terrainRevision,int winter,int focus,int elapsedMs,int snowfallTicks,int minZ,int maxZ)
+    internal static int Stats(int kind)=>kind==14?Bytes:kind==15?PreviewBytes:kind==16||kind==17?0:throw new ArgumentOutOfRangeException();
+    internal static int Snow(byte[]? packed,byte[]? tiles,byte[]? elevation,ushort[]? recovery,int revision,int terrainRevision,int winter,int focus,int elapsedMs,int snowfallTicks,int minZ,int maxZ)
     {
         Calls++;LastRecovery=recovery;
-        if(winter==0||packed.All(value=>value==0)){Bytes=PreviewBytes=0;return 1;}
+        if(winter==0||packed!.All(value=>value==0)){Bytes=PreviewBytes=0;return 1;}
         int near=Math.Max(0,minZ-1),far=maxZ+1,desired=(far-near<=63?128:256)*1024;
         if(Bytes!=desired){if(FailNext){FailNext=false;return 0;}Bytes=desired;Allocations++;}
         PreviewBytes=focus>=0?5400:0;
