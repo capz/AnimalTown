@@ -33,14 +33,14 @@ internal sealed partial class TerrainRenderer
         }
         return snow.Winter&&snowHasWear;
     }
-    internal bool PrepareSnowForExit(Town town,float x,float z,bool smooth)
+    internal bool PrepareSnowForExit(Town town,float x,float z)
     {
         // The visible row interval follows the selected immutable geometry;
         // legacy stream selection is finalized by the first outdoor Prepare.
         if(legacy||archive==null||!archive.Ready)return true;
         if(!archive.Presentable)return false;
         archive.GroundBounds(season==3?snowGroundMask:ulong.MaxValue,out int minZ,out int maxZ);
-        return PrepareSnowMask(town,x,z,minZ,maxZ,smooth);
+        return PrepareSnowMask(town,x,z,minZ,maxZ);
     }
     internal bool ReleaseSnowMask(Town town)
     {
@@ -51,7 +51,7 @@ internal sealed partial class TerrainRenderer
         else snowMaskReady=false;
         return released;
     }
-    private bool PrepareSnowMask(Town town,float x,float z,int minZ,int maxZ,bool smooth)
+    private bool PrepareSnowMask(Town town,float x,float z,int minZ,int maxZ)
     {
         minZ=Math.Max(0,minZ);maxZ=Math.Min(Town.Height,maxZ);
         if(!town.Traffic.Snow.Winter||minZ>=maxZ)return ReleaseSnowMask(town);
@@ -64,9 +64,10 @@ internal sealed partial class TerrainRenderer
         // Keep main's streamed 128 KiB strip, 256 KiB fallback and optional
         // smooth transition cache. An existing strip can grow or shrink, so
         // checking only whether a mask exists would miss a real allocation.
+        // Smooth transitions resume automatically after temporary memory pressure.
         int near=Math.Max(0,minZ-1),far=maxZ+1;
         int desiredBytes=far-near<=63?SnowMaskBytes/2:SnowMaskBytes,currentBytes=NativeShadows.Stats(14);
-        bool preview=smooth&&Memory?.UnderPressure!=true;
+        bool preview=Memory?.UnderPressure!=true;
         int guard=SnowMaskPeakBytes-SnowMaskBytes;
         int nativeBefore=currentBytes+NativeShadows.Stats(15);
         int requestedBytes=desiredBytes!=currentBytes?Math.Max(0,desiredBytes-currentBytes)+guard:0;

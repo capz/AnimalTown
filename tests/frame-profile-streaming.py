@@ -12,15 +12,14 @@ ast.parse(Path('tools/iso-smoke.py').read_text())
 menu_source=ast.parse(Path('tools/iso-smoke.py').read_text())
 menu_namespace={'Path':Path,'__file__':str(Path('tools/iso-smoke.py').resolve())}
 exec(compile(ast.Module(body=[node for node in menu_source.body if isinstance(node,ast.FunctionDef) and node.name in ('testing_menu_options','testing_menu_count','testing_menu_row')],type_ignores=[]),'<debug navigation contract>','exec'),menu_namespace)
-assert menu_namespace['testing_menu_count']()==25
-assert menu_namespace['testing_menu_row']('ProfilingModeOption')==menu_namespace['testing_menu_row'](41)==22
-assert menu_namespace['testing_menu_row']('ExportProfileOption')==menu_namespace['testing_menu_row'](42)==23
-assert menu_namespace['testing_menu_row']('SmoothSnowOption')==menu_namespace['testing_menu_row'](43)==24
-assert [menu_namespace['testing_menu_row'](option) for option in (22,23,34)]==[14,15,16]
-for removed in ('WarmTerrainOption',40,30):
+assert menu_namespace['testing_menu_count']()==22
+assert menu_namespace['testing_menu_row']('ProfilingModeOption')==menu_namespace['testing_menu_row'](41)==20
+assert menu_namespace['testing_menu_row']('ExportProfileOption')==menu_namespace['testing_menu_row'](42)==21
+assert [menu_namespace['testing_menu_row'](option) for option in (22,23,34)]==[12,13,14]
+for removed in ('WarmTerrainOption','SmoothSnowOption',40,30,43,12,13):
     try:menu_namespace['testing_menu_row'](removed)
     except AssertionError:pass
-    else:raise AssertionError('A retired terrain control was still navigable')
+    else:raise AssertionError('A retired debug control was still navigable')
 
 # Old capture commands may retain --warm-terrain, but automatic prefetch must
 # not cause a title-menu detour, config write or extra controller input.

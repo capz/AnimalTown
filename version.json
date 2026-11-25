@@ -401,6 +401,15 @@
         "Only drawable terrain requests path resources.",
         "Optional water effects yield memory to required scene restores."
       ]
+    },
+    {
+      "id": "permanent-smooth-snow-runtime-seven-minute-refill",
+      "lines": [
+        "Snow tracks now smooth out over seven minutes of falling snow.",
+        "Smooth snow transitions are always enabled.",
+        "Productive waits and frame-clear reuse are always enabled too.",
+        "The three retired toggles no longer appear in debug menus."
+      ]
     }
   ]
 }

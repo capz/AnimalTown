@@ -196,8 +196,8 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
     private const int SettingsTab=5,TestingTab=6,DaylightSettingsRow=6;
     // Stable IDs keep hidden/retired controls out of both debug menus.
     private const int SeasonPreviewOption=18,TimePreviewOption=39;
-    private const int ProfilingModeOption=41,ExportProfileOption=42,SmoothSnowOption=43;
-    private static readonly int[] testingOptions={0,33,2,3,11,12,13,16,17,35,SeasonPreviewOption,TimePreviewOption,19,21,22,23,34,36,37,38,31,32,ProfilingModeOption,ExportProfileOption,SmoothSnowOption};
+    private const int ProfilingModeOption=41,ExportProfileOption=42;
+    private static readonly int[] testingOptions={0,33,2,3,11,16,17,35,SeasonPreviewOption,TimePreviewOption,19,21,22,23,34,36,37,38,31,32,ProfilingModeOption,ExportProfileOption};
     private static readonly string[] groundMipLabels={"0","1"};
     private static int TestingOption(int row)=>testingOptions[row];
     private static readonly string[] tabs={"Backpack","Jobs","Catalog","Home","Post office","Settings","Debug / testing"};
@@ -434,7 +434,6 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
         // archive rather than overlap scratch geometry with resident villagers.
         UpdateWeather();terrain.RoughOcean=weather.RoughOcean(0);terrain.SeasonOverride=renderDebug.SeasonOverride;
         terrain.GroundMipmaps=renderDebug.GroundMipmaps;terrain.GroundMipDistance=renderDebug.GroundMipDistance;terrain.ShowGroundMipBands=renderDebug.ShowGroundMipBands;
-        terrain.SmoothSnowTransitions=renderDebug.SmoothSnowTransitions;
         // Indoor actors have height zero; this selects the outdoor town cache.
         RenderView.Prepare(state.X,state.Z,TerrainElevation.At(state.Town,state.X,state.Z));
         terrain.Prepare(state,room,month,villagerShadows,Clock.Timestamp+2000,cliffPreview);
@@ -475,7 +474,7 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
             int allowance=Math.Min(500,residencyBudget.Remaining);
             terrainExitReady=terrain.PrepareOutdoorResidency(x,z,Clock.Timestamp+allowance,room!=0);
             if(room!=0&&exiting&&terrainExitReady&&state.Town.Traffic.Snow.Winter&&!renderDebug.ShowGroundMipBands)
-                snowExitReady=terrain.PrepareSnowForExit(state.Town,x,z,renderDebug.SmoothSnowTransitions);
+                snowExitReady=terrain.PrepareSnowForExit(state.Town,x,z);
         }else if(!villagers.Doors.Busy(0)&&at-spaceChangedAt>=2000000){
             terrainExitReady=terrain.SuspendOutdoorCache()&&!terrain.CacheSuspended;
         }
@@ -621,7 +620,7 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
         if(chord&&p.A.WasPressed&&p.CStick.Y<-.8f&&screen=="world"){InspectShop();return;}
         if(chord&&p.A.WasPressed&&screen=="world"){InspectBuilding();return;}
         if(chord&&p.CStick.Y>.8f&&p.Z.WasPressed&&room==0){terrain.ToggleGroundRing();return;}
-        if(chord&&p.B.WasPressed){RuntimeOptions.Cycle();return;}
+        if(chord&&p.B.WasPressed){RuntimeOptions.ToggleFramePacing();return;}
         if(chord&&p.DPadUp.WasPressed&&room==0){cliffPreview=!cliffPreview;return;}
         if(chord&&p.DPadLeft.WasPressed&&room==0&&screen=="world"){waterInspection=(waterInspection+1)%6;return;}
         if(waterInspection!=0&&screen=="world"&&!p.Start.WasPressed){if(p.B.WasPressed)waterInspection=0;return;}
@@ -836,12 +835,9 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
                 int next=uvDebug^(TestingOption(selected)==2?1:2);
                 if(modelResidency.AllReady&&modelLod.FullReady)ApplyUv(next);else requestedUv=next;
                 break;
-            case 11:RuntimeOptions.Toggle(1);break;
-            case 12:RuntimeOptions.Toggle(2);break;
-            case 13:RuntimeOptions.Toggle(4);break;
+            case 11:RuntimeOptions.ToggleFramePacing();break;
             case 16:weather.RainEnabled=!weather.RainEnabled;break;
             case 35:weather.SnowEnabled=!weather.SnowEnabled;break;
-            case SmoothSnowOption:renderDebug.SmoothSnowTransitions=!renderDebug.SmoothSnowTransitions;break;
             case 17:weather.RoughOceanWhenRaining=!weather.RoughOceanWhenRaining;break;
             case SeasonPreviewOption:renderDebug.ApplySeason();break;
             case TimePreviewOption:renderDebug.ApplyTime();UpdateDaylight();break;
@@ -874,11 +870,8 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
             case 2:return "UV island colors: "+OnOff((uvDebug&1)!=0);
             case 3:return "UV island outlines: "+OnOff((uvDebug&2)!=0);
             case 11:return "Frame pacing: "+((RuntimeOptions.Mode&1)!=0?"Uncapped":"Yield");
-            case 12:return "Productive waits: "+OnOff((RuntimeOptions.Mode&2)!=0);
-            case 13:return "Trust frame clear: "+OnOff((RuntimeOptions.Mode&4)!=0);
             case 16:return "Rain preview: "+OnOff(weather.RainEnabled);
             case 35:return "Winter snowfall: "+OnOff(weather.SnowEnabled)+" (session)";
-            case SmoothSnowOption:return "Smooth snow transitions: "+OnOff(renderDebug.SmoothSnowTransitions)+" (session)";
             case 17:return "Rough ocean in rain: "+OnOff(weather.RoughOceanWhenRaining);
             case SeasonPreviewOption:
                 string season=PreviewSeasonName(renderDebug.SeasonOverride);
@@ -1048,7 +1041,6 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
         if(!modelSceneReady){modelResidency.WaitForScene();DrawLoading();return;}
         UpdateWeather();terrain.RoughOcean=weather.RoughOcean(room);terrain.SeasonOverride=renderDebug.SeasonOverride;
         terrain.GroundMipmaps=renderDebug.GroundMipmaps;terrain.GroundMipDistance=renderDebug.GroundMipDistance;terrain.ShowGroundMipBands=renderDebug.ShowGroundMipBands;
-        terrain.SmoothSnowTransitions=renderDebug.SmoothSnowTransitions;
         cachedPlayerHeight=PlayerHeight();if(room==0)RenderView.Prepare(state.X,state.Z,cachedPlayerHeight);
         if(room!=0)indoorCamera.Configure(BuildingWorld.Definition(state,BuildingWorld.Building(room)));
         var lighting=daylight.Lighting;

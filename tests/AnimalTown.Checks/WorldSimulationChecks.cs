@@ -122,7 +122,7 @@ internal static class WorldSimulationChecks
             for(int i=0;i<1200;i++)winter.Step(default);
             check(town.Traffic.Snow.VisitCount(snowX,snowZ)==SnowWear.MaxVisits,"the live simulation pauses recovery when the snowfall toggle is off");
             winter.SetSnowfall(true);
-            for(int i=0;i<60*30;i++)winter.Step(default);
+            for(int i=0;i<SnowWear.RecoverySeconds*30;i++)winter.Step(default);
             check(town.Traffic.Snow.VisitCount(snowX,snowZ)==1,"outdoor snowfall refills distant dents to level one while the player is indoors");
 
             SetTime(1439);

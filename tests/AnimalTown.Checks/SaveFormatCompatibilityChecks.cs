@@ -23,7 +23,7 @@ internal static class SaveFormatCompatibilityChecks
     {
         var snow=state.Town.Traffic.Snow;snow.SetWinter(true);
         for(int i=0;i<SnowWear.MaxVisits;i++)state.Town.Traffic.Enter(state.Town,20,30);
-        for(int i=0;i<40*30-1;i++)snow.TickSnowfall(true);
+        for(int i=0;i<(SnowWear.RecoverySeconds*2/3)*30-1;i++)snow.TickSnowfall(true);
         state.Town.Traffic.Enter(state.Town,21,30);
     }
     private static void Same(GameState expected,GameState actual,Action<bool,string> check,string label)
@@ -40,9 +40,9 @@ internal static class SaveFormatCompatibilityChecks
         var snowState=SaveCodec.Decode(snowBytes);var snow=snowState.Town.Traffic.Snow;
         check(snowState.Sequence==17&&snowState.Name=="Juniper"&&snowState.Wallet==1234&&snowState.Profiles[1].Name=="Milo"&&snowState.Profiles[1].Wallet==321&&snowState.Town.DaylightLocation==1,"main's catalog-1 snow save preserves both profiles, money and daylight");
         int at=(30*Town.Width+20)/2;
-        check(snow.Winter&&snow.Packed[at]==0x38&&snow.Packed.Count(b=>b!=0)==1&&!snowState.Town.Jobs.Initialized,"main's v14 snow extension restores its dents using the current recovery duration");
-        snowState.SelectProfile(1);check(snowState.Town.Traffic.Snow.Packed[at]==0x38,"historical snow remains shared after selecting another profile");
-        snow.TickSnowfall(true);check(snow.Packed[at]==0x37,"historical snow preserves the partial second and per-tile recovery ages");
+        check(snow.Winter&&snow.Packed[at]==0x3e&&snow.Packed.Count(b=>b!=0)==1&&!snowState.Town.Jobs.Initialized,"main's v14 snow extension restores its dents using the current recovery duration");
+        snowState.SelectProfile(1);check(snowState.Town.Traffic.Snow.Packed[at]==0x3e,"historical snow remains shared after selecting another profile");
+        snow.TickSnowfall(true);check(snow.Packed[at]==0x3e&&snow.SnowfallTicks==30,"historical snow preserves the partial second and uses seven-minute recovery");
         snow.ResetForTownEntry();check(snow.Packed.All(b=>b==0),"re-entering the town clears migrated historical dents");
         var aged=new SnowWear();
         aged.RestoreCheckpoint(new[]{100,0,2,((0x8000|(Town.Cells-1))<<16)|(599<<4)|15});

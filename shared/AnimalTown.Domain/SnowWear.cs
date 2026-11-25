@@ -3,7 +3,7 @@ namespace AnimalTown;
 // Snow is shared by the town and independent of the road traffic field.
 public sealed class SnowWear
 {
-    public const int Bytes=Town.Cells/2,MaxVisits=5,RecoverySeconds=60;
+    public const int Bytes=Town.Cells/2,MaxVisits=5,RecoverySeconds=7*60;
     // Each visit adds three depth steps. All fifteen steps fit in the
     // original four bits per tile sent to the native snow mask.
     private const int StepsPerVisit=3,MaximumWear=MaxVisits*StepsPerVisit;

@@ -22,7 +22,7 @@ static uint8_t *snow_pixels;
 #define SNOW_SAMPLE_MS 100u
 /* Match the shared SnowWear clock and recovery checkpoint. */
 #define SNOW_TICKS_PER_SECOND 30
-#define SNOW_REFILL_TICKS (60*SNOW_TICKS_PER_SECOND)
+#define SNOW_REFILL_TICKS (7*60*SNOW_TICKS_PER_SECOND)
 #define SNOW_STAMP_CLOCK_MASK 4095
 #define SNOW_RECENT_STEPS 64
 

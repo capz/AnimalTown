@@ -170,17 +170,17 @@ internal static class PathChecks
         long before=GC.GetAllocatedBytesForCurrentThread();town.Traffic.Enter(town,1,1);town.Traffic.Enter(town,1,1);
         check(GC.GetAllocatedBytesForCurrentThread()-before<4096,"an isolated dent does not allocate a full-town recovery field");
         void Seconds(int count){for(int i=0;i<count*30;i++)snow.TickSnowfall(true);}
-        before=GC.GetAllocatedBytesForCurrentThread();Seconds(30);
+        before=GC.GetAllocatedBytesForCurrentThread();Seconds(SnowWear.RecoverySeconds/2);
         check(GC.GetAllocatedBytesForCurrentThread()==before,"steady sparse snowfall recovery allocates no per-tick scratch");
         for(int i=0;i<SnowWear.MaxVisits;i++)town.Traffic.Enter(town,Town.Width-1,Town.Height-1);
-        Seconds(30);
+        Seconds(SnowWear.RecoverySeconds/2);
         check(snow.VisitCount(1,1)==1&&snow.VisitCount(Town.Width-1,Town.Height-1)>1,
             "retiring the oldest recovery region retains its shallow footprint and a newer distant dent");
-        town.Traffic.Enter(town,1,1);town.Traffic.Enter(town,64,60);town.Traffic.Enter(town,64,60);Seconds(30);
+        town.Traffic.Enter(town,1,1);town.Traffic.Enter(town,64,60);town.Traffic.Enter(town,64,60);Seconds(SnowWear.RecoverySeconds/2);
         var view=snow.RecoveryStamps;
         check(view!=null&&view[^1]==0&&view[Town.Width+1]!=0&&view[60*Town.Width+64]!=0,
             "re-entering a retired region and adding another survive active-region removal");
-        Seconds(30);check(snow.VisitCount(1,1)==1&&snow.VisitCount(64,60)==1&&snow.RecoveryStamps==null,
+        Seconds(SnowWear.RecoverySeconds/2);check(snow.VisitCount(1,1)==1&&snow.VisitCount(64,60)==1&&snow.RecoveryStamps==null,
             "settled shallow footprints remain while sparse timestamps and optional smooth-renderer view retire");
         snow.ResetForTownEntry();check(snow.Packed.All(v=>v==0),"town entry clears every settled sparse footprint");
         for(int i=0;i<SnowWear.MaxVisits;i++){town.Traffic.Enter(town,1,1);town.Traffic.Enter(town,Town.Width-1,Town.Height-1);}
@@ -221,7 +221,7 @@ internal static class PathChecks
         {
             for(int i=0;i<seconds*30;i++)snow.TickSnowfall(weather.Snowing(0));
         }
-        SnowSeconds(4);
+        SnowSeconds(34);
         for(int i=0;i<29;i++)snow.TickSnowfall(weather.Snowing(0));
         check(snow.Revision==revision,"recovery publishes only when the visible depth changes");
         weather.SnowEnabled=false;
@@ -233,12 +233,14 @@ internal static class PathChecks
         weather.RainEnabled=false;
         snow.TickSnowfall(weather.Snowing(0));
         check(snow.Packed[cell/2]==startingWear-1&&snow.Revision==revision+1,"resumed snowfall preserves the partial second and reduces wear by one substep");
-        SnowSeconds(35);
+        SnowSeconds(25);
+        check(!snow.CenterCovered(6,40)&&snow.VisitCount(6,40)>1,"one minute of snowfall no longer fills the deep path");
+        SnowSeconds(220);
         check(snow.CenterCovered(6,40),"the ground closes over before the dent finishes smoothing");
-        SnowSeconds(19);
-        check(snow.Packed[cell/2]==0x34,"at 59 seconds the deeper dent is one step above the first level");
+        SnowSeconds(139);
+        check(snow.Packed[cell/2]==0x34,"at 419 seconds the deeper dent is one step above the first level");
         SnowSeconds(1);
-        check(snow.Packed[cell/2]==0x33,"at 60 seconds all dents have reached the first indentation level");
+        check(snow.Packed[cell/2]==0x33,"at seven minutes all dents have reached the first indentation level");
         check(traffic.SequenceEqual(town.Traffic.Visits)&&paths.SequenceEqual(town.Paths.Packed)&&
               town.Paths.Revision==pathRevision&&town.Traffic.OpacityRevision==opacityRevision,"snowfall recovery leaves path counts, coverage and revisions intact");
 
@@ -247,11 +249,11 @@ internal static class PathChecks
         town.Traffic.Enter(town,6,40);
         SnowSeconds(1);
         check(snow.VisitCount(6,40)==SnowWear.MaxVisits,"a fresh visit restarts even fully worn snow");
-        SnowSeconds(29);
+        SnowSeconds(209);
         town.Traffic.Enter(town,7,40);
-        SnowSeconds(30);
+        SnowSeconds(210);
         check((snow.Packed[cell/2]&15)==3&&(snow.Packed[cell/2]>>4)>3,"each tile uses time since its own last entry");
-        SnowSeconds(30);
+        SnowSeconds(210);
         check(snow.Packed[cell/2]==0x33,"the later tile also settles at the first indentation level");
         revision=snow.Revision;
         SnowSeconds(600);

@@ -90,7 +90,6 @@ internal sealed partial class TerrainRenderer : IDisposable
     internal int MaterialRevision {get;private set;}
     internal int SeasonOverride=-1;
     internal bool GroundMipmaps=true;
-    internal bool SmoothSnowTransitions;
     internal int GroundMipDistance;
     internal bool ShowGroundMipBands {get=>mipBands.Enabled;set=>mipBands.Enabled=value;}
     internal int RenderSeason=>season;
@@ -229,7 +228,7 @@ internal sealed partial class TerrainRenderer : IDisposable
             long at=FrameProfile.Start();archive.Prepare(state.X,state.Z,Rows);FrameProfile.DetailEnd(0,at);
             if(drawSnow&&archive.Presentable){
                 archive.GroundBounds(snowGroundMask,out int minZ,out int maxZ);
-                snowMaskReady=PrepareSnowMask(state.Town,state.X,state.Z,minZ,maxZ,SmoothSnowTransitions);
+                snowMaskReady=PrepareSnowMask(state.Town,state.X,state.Z,minZ,maxZ);
             }
             shadows.Prepare(state);
             int work=0;while(work<8&&Clock.Timestamp<deadline){if(!movingShadows.Advance())break;work++;}
@@ -274,7 +273,7 @@ internal sealed partial class TerrainRenderer : IDisposable
                 snowMinZ=Math.Min(snowMinZ,ringMinZ);
                 snowMaxZ=Math.Max(snowMaxZ,ringMinZ+GroundRingPlan.Rows);
             }
-            snowMaskReady=PrepareSnowMask(state.Town,state.X,state.Z,snowMinZ,snowMaxZ,SmoothSnowTransitions);
+            snowMaskReady=PrepareSnowMask(state.Town,state.X,state.Z,snowMinZ,snowMaxZ);
         }
         PreparePaths(state);
     }

@@ -4,7 +4,8 @@ namespace AnimalTown;
 public sealed class DevConfig
 {
     public const int Count=34,FullResolutionAaIndex=30,GroundMipBandsIndex=31,RetiredWarmTerrainPrefetchIndex=32,ProfilingModeIndex=33,SdkPerformanceIndex=21,TreeNoiseStrength=27,TreeNoiseScale=28,RetiredTerrainCacheIndex=29;
-    public const int SettingCount=Count-15;
+    public const int RetiredProductiveWaitsIndex=12,RetiredFrameClearIndex=13,RequiredRuntimeFlags=6;
+    public const int SettingCount=Count-17;
     public readonly int[] Values=new int[Count];
     public bool SdkPerformanceOverlay {get;private set;}
     private int profilingMode=-1;
@@ -12,16 +13,16 @@ public sealed class DevConfig
     public void SelectProfilingMode(int mode){if(mode<0||mode>3)throw new ArgumentOutOfRangeException(nameof(mode));profilingMode=mode;}
     public static string ProfilingLabel(int mode)=>mode==0?"Off":mode==1?"Counters":mode==2?"Overlay":"Capture";
     public static bool SessionOnly(int row)=>row==SdkPerformanceIndex||row==ProfilingModeIndex;
-    public DevConfig(int runtimeMode=4)
+    public DevConfig(int runtimeMode=RequiredRuntimeFlags)
     {
         Values[1]=Values[4]=Values[5]=Values[6]=Values[7]=Values[22]=1;
         Values[8]=2;Values[18]=0;Values[20]=100;
         Values[TreeNoiseStrength]=10;Values[TreeNoiseScale]=3;
-        Values[11]=runtimeMode&1;Values[12]=(runtimeMode>>1)&1;Values[13]=(runtimeMode>>2)&1;
+        Values[11]=runtimeMode&1;Values[RetiredProductiveWaitsIndex]=Values[RetiredFrameClearIndex]=1;
     }
     // Retired fields keep their historic value ranges for old cards.
     public static bool IsSetting(int row)=>row>=0&&row<Count&&row!=1&&row!=4&&row!=5&&row!=6&&
-        row!=7&&row!=8&&row!=9&&row!=10&&row!=14&&row!=15&&row!=20&&row!=TreeNoiseStrength&&row!=TreeNoiseScale&&row!=RetiredTerrainCacheIndex&&row!=RetiredWarmTerrainPrefetchIndex;
+        row!=7&&row!=8&&row!=9&&row!=10&&row!=RetiredProductiveWaitsIndex&&row!=RetiredFrameClearIndex&&row!=14&&row!=15&&row!=20&&row!=TreeNoiseStrength&&row!=TreeNoiseScale&&row!=RetiredTerrainCacheIndex&&row!=RetiredWarmTerrainPrefetchIndex;
     public static bool IsSlider(int row)=>row==23;
     public static int Maximum(int row)=>row==ProfilingModeIndex?3:row==TreeNoiseStrength?30:row==TreeNoiseScale?15:row==8?2:row==10?5:row==18?4:row==20?200:row==23?RenderDebugOptions.MaximumGroundMipDistance:row==14||row==15?0:1;
     public void Reset(int row){if(IsSlider(row))Values[row]=0;}
@@ -34,7 +35,7 @@ public sealed class DevConfig
         int max=Maximum(row),next=Values[row]+(direction<0?-1:1);
         Values[row]=IsSlider(row)?Math.Max(0,Math.Min(max,next)):(next+max+1)%(max+1);
     }
-    public int RuntimeMode=>Values[11]|Values[12]<<1|Values[13]<<2;
+    public int RuntimeMode=>Values[11]|RequiredRuntimeFlags;
     public byte[] Encode()
     {
         var data=new byte[44];data[0]=65;data[1]=84;data[2]=68;data[3]=6;

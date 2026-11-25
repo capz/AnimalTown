@@ -51,14 +51,19 @@ Check(!terrain.PrepareFull(town)&&NativeShadows.Bytes==128*1024,"a growing row i
 memory.Observe(8*1024*1024,0,0,Clock.Timestamp);
 Check(terrain.PrepareFull(town)&&NativeShadows.Bytes==256*1024,"wide visible rows retain main's full-height fallback under an admitted growth budget");
 town.Traffic.Enter(town,20,30);terrain.Memory=memory=new VisualMemoryPressure();memory.Observe(8*1024*1024,0,0,Clock.Timestamp);
-Check(terrain.PrepareSmooth(town)&&NativeShadows.PreviewBytes>0&&NativeShadows.LastRecovery!=null,"smooth snow retains main's optional native preview and authoritative recovery stamps");
+Check(terrain.Prepare(town)&&NativeShadows.PreviewBytes>0&&NativeShadows.LastRecovery!=null,"smooth snow retains the automatic native preview and authoritative recovery stamps");
 var borrowed=snow.RecoveryStamps;
-Check(terrain.Prepare(town)&&NativeShadows.PreviewBytes==0&&!ReferenceEquals(borrowed,snow.RecoveryStamps),"disabling smooth preview releases its native workspace and optional contiguous stamp view");
+memory.Observe(128*1024,0,0,Clock.Timestamp);
+Check(terrain.Prepare(town)&&NativeShadows.PreviewBytes==0&&!ReferenceEquals(borrowed,snow.RecoveryStamps),"memory pressure temporarily releases smoothing workspace and the borrowed stamp view");
+memory.Observe(8*1024*1024,0,0,Clock.Timestamp);
+Clock.Timestamp+=VisualMemoryPressure.RecoveryGraceUs;
+memory.Observe(8*1024*1024,0,0,Clock.Timestamp);
+Check(terrain.Prepare(town)&&NativeShadows.PreviewBytes>0&&NativeShadows.LastRecovery!=null,"smoothing resumes automatically after the headroom recovery grace period");
 Check(terrain.Suspend()&&NativeShadows.Bytes==0&&NativeShadows.PreviewBytes==0,"suspension releases both streamed mask and optional smoothing workspace");
 terrain.SetExitReady(false);
-Check(!terrain.PrepareSnowForExit(town,20,30,true),"door snow readiness waits for a complete destination terrain selection");
+Check(!terrain.PrepareSnowForExit(town,20,30),"door snow readiness waits for a complete destination terrain selection");
 terrain.SetExitReady(true);memory.Observe(8*1024*1024,0,0,Clock.Timestamp);
-Check(terrain.PrepareSnowForExit(town,20,30,false),"door preparation uses actual destination ground bounds through the new twelve-argument bridge");
+Check(terrain.PrepareSnowForExit(town,20,30),"door preparation uses actual destination ground bounds through the new twelve-argument bridge");
 // Admission follows drawable logical rows, rather than the spare rows retained
 // in the native strip or a distant dent elsewhere on the curved town.
 NativeShadows.Reset();var regionalTown=Flat();regionalTown.Traffic.Enter(regionalTown,20,50);
@@ -106,10 +111,9 @@ internal sealed partial class TerrainRenderer
     private ulong snowGroundMask=1;
     internal TerrainRenderer(Town town){cachedTown=town;}
     internal bool Ready=>snowMaskReady;
-    internal bool Prepare(Town town)=>PrepareSnowMask(town,20,30,0,40,false);
-    internal bool PrepareFull(Town town)=>PrepareSnowMask(town,20,30,0,Town.Height,false);
-    internal bool PrepareSmooth(Town town)=>PrepareSnowMask(town,20,30,0,40,true);
-    internal bool PrepareRows(Town town,int minZ,int maxZ)=>PrepareSnowMask(town,20,30,minZ,maxZ,false);
+    internal bool Prepare(Town town)=>PrepareSnowMask(town,20,30,0,40);
+    internal bool PrepareFull(Town town)=>PrepareSnowMask(town,20,30,0,Town.Height);
+    internal bool PrepareRows(Town town,int minZ,int maxZ)=>PrepareSnowMask(town,20,30,minZ,maxZ);
     internal bool Suspend()=>SuspendSnowMask();
     internal void SetExitReady(bool ready)=>archive=new TerrainArchive{Presentable=ready};
 }

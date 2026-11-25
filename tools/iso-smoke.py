@@ -1420,7 +1420,7 @@ def debug_visibility_scenario(reload=False):
     press('B');set_debug_visibility(True)
     press('D_DOWN');press('A');wait_title(modal=True);screenshot('debug-unlocked-title-modal.png')
     # Ground mip distance remains a persisted title debug slider.
-    for _ in range(13):press('D_DOWN')
+    for _ in range(11):press('D_DOWN')
     press('D_RIGHT');screenshot('debug-slider-before-hide.png')
     set_debug_visibility(False);wait_title();screenshot('debug-hidden-title-again.png')
     if card_dev_config(root/'MemoryCardA.USA.raw')['values'][23]!=1:raise AssertionError('Hiding debug menus reset the selected slider')
@@ -2074,16 +2074,18 @@ def testing_menu():
     manual_only='--manual-save-only' in sys.argv
     previous=0
     # Include session weather, the staged previews, SDK overlay, and diagnostics.
-    for row in ([0] if manual_only else [0,*range(2,12),13,17,18,19,testing_menu_row('SmoothSnowOption')]):
+    season_row,time_row=(testing_menu_row(option) for option in ('SeasonPreviewOption','TimePreviewOption'))
+    rows=[testing_menu_row(option) for option in (0,2,3,11,16,17,35,'SeasonPreviewOption','TimePreviewOption',21,36,37,38)]
+    for row in ([0] if manual_only else rows):
         for _ in range(row-previous):press('D_DOWN')
         original=label(f'testing-row-{row}-before',row)
-        if row in (10,11):
-            press('D_LEFT' if row==10 else 'D_RIGHT')
+        if row in (season_row,time_row):
+            press('D_LEFT' if row==season_row else 'D_RIGHT')
             pending=label(f'testing-row-{row}-pending',row)
             press('A');applied=label(f'testing-row-{row}-applied',row)
             if original==pending or pending==applied:
                 raise AssertionError(f'Preview row {row} did not distinguish pending and active choices')
-            press('D_RIGHT' if row==10 else 'X')
+            press('D_RIGHT' if row==season_row else 'X')
             restoring=label(f'testing-row-{row}-restoring',row)
             press('A');restored=label(f'testing-row-{row}-restore',row)
             if restoring==restored or original!=restored:

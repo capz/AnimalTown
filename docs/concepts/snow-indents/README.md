@@ -15,18 +15,18 @@ keeping the surface white. The third visit exposes a small patch of ground
 at the center, the fourth widens the opening, and the fifth clears the tile
 up to its shaded rim. Standing and movement within a tile add no visits.
 While snow falls outdoors, each dent refills to the first indentation
-level over one minute of active snowfall after its latest visit. The
+level over seven minutes of active snowfall after its latest visit. The
 ground closes over and the shallow white track stays visible until the
 player re-enters town from the title screen or another town. Turning off
 snowfall or previewing rain pauses recovery. Outdoor snow continues
 refilling while the player is inside. Path coverage and visit history
 follow their existing rules.
 
-**Smooth snow transitions** in **Debug / testing** eases footprints in over
-300 ms and shows the finer stages of snowfall recovery near the player.
-The preview updates the existing mask up to ten times per second. The
-toggle starts off each session, and the underlying wear and save data
-follow the same rules either way.
+Smooth snow transitions are always enabled: footprints ease in over 300 ms
+and the finer stages of snowfall recovery appear near the player. The renderer
+updates the existing mask up to ten times per second. Under memory pressure it
+temporarily releases the smoothing workspace, then restores it automatically
+when headroom returns. The underlying wear and save data keep the same rules.
 
 The depth field is a demand-allocated I8 texture with four texels per metre.
 In normal outdoor views, a 512×256 strip spans the submitted terrain from

@@ -219,6 +219,7 @@ def run(context):
         if '--jobs-runtime' in sys.argv:
             target=int(sys.argv[sys.argv.index('--jobs-runtime')+1])
             if not 0<=target<=7:raise ValueError('Job runtime profile must be 0..7')
+            target=(target&1)|6 # Retired runtime flags are permanently enabled.
             for _ in range(8):
                 if int(re.findall(r'ANIMALTOWN RUNTIME (\d+)',c.runtime_log_text())[-1])==target:break
                 chord('B')
