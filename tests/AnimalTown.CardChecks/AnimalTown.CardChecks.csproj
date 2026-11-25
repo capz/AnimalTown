@@ -11,6 +11,7 @@
     <Compile Include="../../game/AnimalTown.GameCube/NativeCardBlocks.cs" Link="NativeCardBlocks.cs" />
     <Compile Include="../../game/AnimalTown.GameCube/SaveCards.cs" Link="SaveCards.cs" />
     <Compile Include="../../game/AnimalTown.GameCube/TownSession.cs" Link="TownSession.cs" />
+    <Compile Include="../../game/AnimalTown.GameCube/OnlineDeviceLink.cs" Link="OnlineDeviceLink.cs" />
     <Compile Include="../../game/AnimalTown.GameCube/UserOptionsStorage.cs" Link="UserOptionsStorage.cs" />
     <Compile Include="../../game/AnimalTown.GameCube/DevConfigStorage.cs" Link="DevConfigStorage.cs" />
     <Compile Include="../../game/AnimalTown.GameCube/TownDataStorage.cs" Link="TownDataStorage.cs" />
