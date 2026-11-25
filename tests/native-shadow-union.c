@@ -6,6 +6,7 @@
 #include <time.h>
 #include "../tools/native-shadow-union.h"
 #include "native-shadow-combiner.inc"
+#include "native-shadow-cloud-reuse.inc"
 static SuState *s;
 static const float rect[]={0,0,8,0,8,8,0,0,8,8,0,8};
 static const float bounds[]={1,1,7,7};
@@ -303,7 +304,7 @@ static void cloud_checks(void){
 }
 int main(int argc,char **argv){
     s=aligned_alloc(32,su_storage_bytes());CHECK(s!=NULL);CHECK(su_storage_bytes()<448*1024);
-    if(argc==2&&!strcmp(argv[1],"--benchmark")){reset();light_bake_benchmark();free(s);return 0;}
+    if(argc==2&&!strcmp(argv[1],"--benchmark")){reset();light_bake_benchmark();cloud_reuse_checks(1);free(s);return 0;}
     native_shadow_combiner_checks();
     post_shadow_checks();
     light_checks();
@@ -455,6 +456,7 @@ int main(int argc,char **argv){
         su_active(s,32,1,x,z);s->cloud_dirty=1;credits=0;su_prepare_budget(s,0,allow_work,NULL);
         CHECK(pixel(x+.12f,z+.1f)>0);CHECK(!s->overflow);
     }
+    cloud_reuse_checks(0);
     cloud_checks();
     seasonal_cloud_checks();
     night_cloud_checks();

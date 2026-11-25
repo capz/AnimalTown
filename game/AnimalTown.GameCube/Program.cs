@@ -454,6 +454,7 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
         long at=Clock.Timestamp;
         if(!afterDraw)RefreshResidencyDemand(at);
         visualMemory.RefreshDemand(state,villagers.Doors,buildings,at);
+        if(terrain.ReclaimWaterOptics())visualMemory.Sample(Clock.Timestamp,true);
         long deadline=residencyBudget.Begin(afterDraw);
         var crossing=villagers.Doors.Actors[0];
         bool exiting=villagers.Doors.Busy(0)&&crossing.Destination.Space.IsTown;

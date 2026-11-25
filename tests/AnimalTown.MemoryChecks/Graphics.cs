@@ -3,6 +3,11 @@ namespace Dolphin.Timing { internal static class Clock { internal static long Ti
 namespace Dolphin.Diagnostics { internal static class DebugOverlay { internal static readonly List<string> Lines=new();internal static void WriteLine(string text){Lines.Add(text);} } }
 namespace Dolphin.Graphics
 {
+    internal readonly struct Color32
+    {
+        internal readonly byte R,G,B,A;
+        internal Color32(byte r,byte g,byte b,byte a=255){R=r;G=g;B=b;A=a;}
+    }
     internal readonly struct Vector3 { public static Vector3 Zero=>default;public Vector3(float x,float y,float z){} }
     internal readonly struct Quaternion { public Quaternion(float x,float y,float z,float w){} }
     internal sealed class Transform { public Transform? Parent;public Vector3 LocalPosition,LocalScale;public Quaternion LocalRotation; }
@@ -38,7 +43,30 @@ namespace Dolphin.Graphics
     }
 }
 internal static class NativeBuildings { internal static int Retain(Dolphin.Graphics.Model model)=>1; }
-internal static class NativeShadows { internal static void Scope(int scope){} }
+internal static class NativeShadows
+{
+    internal static void Scope(int scope){}
+    internal static int LightCalls,LayoutUploads,PointCalls,PointCount,SourceCount,Gain;
+    internal static bool FailLightsNext,FailPointsNext;
+    internal static readonly float[] Sources=new float[24*4],PointsData=new float[24*5];
+    internal static void ResetLighting()
+    {
+        LightCalls=LayoutUploads=PointCalls=PointCount=SourceCount=Gain=0;FailLightsNext=FailPointsNext=false;
+        Array.Clear(Sources);Array.Clear(PointsData);
+    }
+    internal static int Lights(float[]? sources,int count,int strength)
+    {
+        LightCalls++;if(FailLightsNext){FailLightsNext=false;return 0;}
+        Gain=strength;
+        if(sources!=null){LayoutUploads++;SourceCount=count;Array.Copy(sources,Sources,count*4);}
+        return 1;
+    }
+    internal static int Points(float[] sources,int count)
+    {
+        PointCalls++;if(FailPointsNext){FailPointsNext=false;return 0;}
+        PointCount=count;Array.Copy(sources,PointsData,count*5);return 1;
+    }
+}
 internal static class NativeMemory
 {
     internal static int FreeBytes=10*1024*1024,Failures,ReadCostUs;

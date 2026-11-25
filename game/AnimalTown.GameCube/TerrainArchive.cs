@@ -37,6 +37,10 @@ internal sealed partial class TerrainArchive
     private int pendingView=-1,pendingEntry=-1,pendingSection=-1;
     private float focusX,focusZ,leadX,leadZ;
     private long retryAt;
+    private Town? pathTown;
+    private int pathRevision,pathTerrainRevision,pathSelectionRevision;
+    private bool pathDemand;
+    internal int PathDemandSectionScans {get;private set;}
     internal int ResidencyError {get;private set;}
     internal bool Presentable=>Ready&&presentable;
     internal bool CacheSuspended=>Ready&&suspended;
@@ -49,8 +53,17 @@ internal sealed partial class TerrainArchive
     internal int Bytes=>NativeTerrain.Stat(0);
     internal bool HasPaths(Town town)
     {
-        for(int i=0;i<selection.Count;i++){int section=selection.Sections[i];if(visible[section]&&town.Paths.Any(TerrainArchivePlan.X(section),TerrainArchivePlan.Z(section),TerrainStream.Width,TerrainArchivePlan.Height))return true;}
-        return false;
+        if(pathTown==town&&pathRevision==town.Paths.Revision&&pathTerrainRevision==town.TerrainVersion&&pathSelectionRevision==drawSelection.Revision)return pathDemand;
+        pathTown=town;pathRevision=town.Paths.Revision;pathTerrainRevision=town.TerrainVersion;pathSelectionRevision=drawSelection.Revision;
+        pathDemand=false;
+        // Speculative terrain never owns path art or its native coverage mask.
+        // Check all requested draw pages, including those still awaiting DMA.
+        for(int i=0;i<drawSelection.Count;i++){
+            int section=drawSelection.Sections[i];PathDemandSectionScans++;
+            if(!town.Paths.Any(TerrainArchivePlan.X(section),TerrainArchivePlan.Z(section),TerrainStream.Width,TerrainArchivePlan.Height))continue;
+            pathDemand=true;break;
+        }
+        return pathDemand;
     }
     private void ReleaseViews()
     {
@@ -64,6 +77,7 @@ internal sealed partial class TerrainArchive
         ReleaseViews();
         Dolphin.Diagnostics.DebugOverlay.WriteLine("ANIMALTOWN TERRAIN RESET BEGIN");
         Array.Clear(bound,0,bound.Length);baked=half=0;building=collect=selecting=presentable=suspended=restoreMarkerPending=saveResumePending=prefetchBlocked=pendingRequired=false;revision=drawRevision=-1;pendingView=pendingEntry=pendingSection=-1;selection.Reset();drawSelection.Reset();
+        pathTown=null;
         retryAt=0;ResidencyError=0;suppressRestoreMarker=false;WarmLateSelections=WarmEvictions=WarmCancellations=0;resetPending=true;TryInitialize();
     }
     private bool TryInitialize()
@@ -94,7 +108,7 @@ internal sealed partial class TerrainArchive
     {
         if(NativeTerrain.CancelBind()!=1)return false;
         ReleaseViews();if(NativeTerrain.Reset(0)!=1)throw new InvalidOperationException("Terrain archive disposal failed");
-        selecting=presentable=suspended=restoreMarkerPending=saveResumePending=resetPending=false;return true;
+        selecting=presentable=suspended=restoreMarkerPending=saveResumePending=resetPending=false;pathTown=null;return true;
     }
     internal void Dispose()
     {if(!TryDispose())throw new InvalidOperationException("Drain terrain residency before disposal");}
@@ -114,6 +128,7 @@ internal sealed partial class TerrainArchive
         Array.Clear(bound,0,bound.Length);Array.Clear(visible,0,visible.Length);Array.Clear(drawable,0,drawable.Length);
         for(int i=0;i<heads.Length;i++)heads[i]=-1;
         revision=drawRevision=-1;pendingView=pendingEntry=pendingSection=-1;selecting=presentable=prefetchBlocked=false;selection.Reset();drawSelection.Reset();
+        pathTown=null;
         ViewCount=Triangles=0;GroundMask=0;retryAt=0;ResidencyError=0;
         int before=NativeTerrain.Stat(0);
         int result=NativeTerrain.Suspend();if(result<0)throw new InvalidOperationException("Terrain cache suspension failed: "+result);
