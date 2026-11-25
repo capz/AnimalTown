@@ -44,22 +44,23 @@ public sealed partial class GameState
     public bool Repay(int amount,bool free=false)
     { if(amount<=0||!free&&amount>Wallet||amount>Debt)return false;if(!free)Wallet-=amount;Debt-=amount;return true; }
     public bool Expand(bool garden,int day,bool free=false)
+        =>Expand(garden,day,out _,free);
+    public bool Expand(bool garden,int day,out string reason,bool free=false)
     {
-        if(Visiting||!HousePlaced||!free&&Debt!=0||PendingKind!=0)return false;
+        reason=Visiting||!HousePlaced?"Place your own home before expanding.":
+            !free&&Debt!=0?"Pay off your debt before expanding.":
+            PendingKind!=0?"There is already construction waiting to finish.":"";
+        if(reason.Length!=0)return false;
         int next=(garden?GardenTier:HouseTier)+1;
-        if(garden?(next>4||HouseTier<next):(next>5))return false;
+        if(garden?(next>4||HouseTier<next):(next>5)){
+            reason=garden?"Upgrade your house before expanding the garden again.":"No house expansion is available yet.";return false;
+        }
+        if(garden&&!CanExpandGarden(next,out reason))return false;
+        reason="";
         if(!free)Debt=garden?GardenPrices[next]:HousePrices[next];PendingKind=garden?2:1;PendingTier=next;PendingDay=day+1;return true;
     }
     public bool PlaceHouse(int x,int z,bool relocate,bool free=false)
-    {
-        if(Visiting||Space!=0||!Town.ValidPlot(x,z)||(relocate&&!free&&Wallet<50000))return false;
-        for(int p=0;p<ProfileCount;p++)if(p!=ActiveProfile&&HomePlaced(p)&&x<HomeX(p)+15&&x+15>HomeX(p)&&z<HomeZ(p)+13&&z+13>HomeZ(p))return false;
-        if(!HouseEntrance(x,z,out float arrivalX,out float arrivalZ))return false;
-        int dx=x-Town.HouseX,dz=z-Town.HouseZ;
-        for(int i=0;i<Town.PlacedCount;i++)if(Town.Placed[i].Room==0&&Town.Placed[i].Owner==PlayerOwner){Town.Placed[i].X+=dx;Town.Placed[i].Z+=dz;}
-        Town.NotifyObjectsChanged();
-        Town.HouseX=x;Town.HouseZ=z;HousePlaced=true;X=arrivalX;Z=arrivalZ;if(relocate&&!free)Wallet-=50000;return true;
-    }
+        =>PlaceHouse(x,z,relocate,free,null,out _);
     private bool HouseEntrance(int x,int z,out float arrivalX,out float arrivalZ)
     {
         arrivalX=x+3.5f;arrivalZ=z+4.5f;
@@ -229,7 +230,7 @@ public sealed partial class GameState
         for(int i=0;i<Town.StockCount;i++)if(Town.Stock[i]==Catalog.LegacyWateringCan)Town.Stock[i]=10+(Math.Max(Town.Day,0)%4+i)%4;
         if(day<=Town.Day)return;
         CaptureProfile();
-        for(int p=0;p<ProfileCount;p++)if(Profiles[p].Created)Profiles[p].Rollover(day,month,Town.Month);
+        for(int p=0;p<ProfileCount;p++)if(Profiles[p].Created){CompleteGardenExpansion(p,day);Profiles[p].Rollover(day,month,Town.Month);}
         RestoreProfile(ActiveProfile);Town.Month=month;Town.Day=day;
         int saleSlots=TownShop.SaleSlots(this);
         Town.StockCount=Town.Spending>=100000?12:Town.Spending>=25000?9:6;

@@ -120,7 +120,7 @@ public sealed partial class Town
 
     private bool ClearSpawn(int x,int z,GameState? state)
     {
-        if(InReserve(x,z)||At(x,z)!=(int)Terrain.Grass||TerrainElevation.Mode(this,x,z)>1)return false;
+        if((state==null?InReserve(x,z):state.AnyHomeReservationContains(x,z))||At(x,z)!=(int)Terrain.Grass||TerrainElevation.Mode(this,x,z)>1)return false;
         if(!Walkable(x-1,z)||!Walkable(x+1,z)||!Walkable(x,z-1)||!Walkable(x,z+1))return false;
         return state==null?FindGround(x,z,3)<0:state.CanWalk(x+.5f,z+.5f,0);
     }

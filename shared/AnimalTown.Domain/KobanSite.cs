@@ -41,7 +41,7 @@ public sealed class KobanSite
             int at=(z+dz)*Town.Width+x+dx,terrain=t.Tiles[at];
             if(terrain!=(int)Terrain.Grass&&terrain!=(int)Terrain.Plaza&&terrain!=(int)Terrain.Camp||t.Elevation[at]!=0||t.Paths.At(x+dx,z+dz)!=0)return false;
         }
-        for(int p=0;p<GameState.ProfileCount;p++)if(s.HomePlaced(p)&&x<s.HomeX(p)+15&&x+Width>s.HomeX(p)&&z<s.HomeZ(p)+13&&z+depth>s.HomeZ(p))return false;
+        for(int p=0;p<GameState.ProfileCount;p++)if(s.HomeReservationIntersects(p,x,z,Width,depth))return false;
         for(int i=0;i<t.GroundCount;i++){
             var g=t.Ground[i];if(g.Kind!=4&&g.X>=x&&g.X<x+Width&&g.Z>=z&&g.Z<z+depth)return false;
         }

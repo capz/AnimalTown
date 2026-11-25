@@ -57,6 +57,7 @@ internal static class ProfileChecks
         var combinedLegacy=SaveCodec.Decode(SaveCodec.EncodeLegacy(legacy));check(combinedLegacy.Name=="Original"&&combinedLegacy.Wallet==1234,"v7 import remains supported");
         DeleteChecks(check);
         OnboardingChecks.Run(check);
+        HomePlotChecks.Run(check);
         Console.WriteLine("Four shared-town profiles: independent progress, homes, world ownership, calendar, commits and migration passed");
     }
     private static GameState DeletionTown()

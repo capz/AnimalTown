@@ -9,6 +9,8 @@ public sealed class OnboardingDraft : IDisposable
     private byte[]? baseline;
     private byte[]? attempted;
     private GameState? state;
+    private int[]? removedTreeIndices;
+    private int removedTreeCount;
     private readonly bool savedTown;
     private readonly int sourceSequence;
     private bool committed;
@@ -49,40 +51,21 @@ public sealed class OnboardingDraft : IDisposable
     {EnsureEditable();if((uint)species>=6)throw new ArgumentOutOfRangeException(nameof(species));State.Species=species;}
 
     public bool CanPlaceHome(int x,int z,out string reason)
-    {
-        var s=State;
-        if(x<1||z<1||x>Town.Width-15||z>Town.Height-13){reason="Leave room for the whole home and garden.";return false;}
-        for(int profile=0;profile<GameState.ProfileCount;profile++)if(profile!=Profile&&s.HomePlaced(profile)&&
-            x<s.HomeX(profile)+15&&x+15>s.HomeX(profile)&&z<s.HomeZ(profile)+13&&z+13>s.HomeZ(profile)){
-            reason="Leave some space around another home.";return false;
-        }
-        for(int dz=0;dz<13;dz++)for(int dx=0;dx<15;dx++){
-            int kind=s.Town.At(x+dx,z+dz);
-            if(kind==(int)Terrain.Water||kind==(int)Terrain.Sea||WaterTerrain.IsCoast(kind)){
-                reason="Choose dry land away from the water.";return false;
-            }
-            if(TerrainElevation.Mode(s.Town,x+dx,z+dz)!=0){reason="Choose flat, level ground.";return false;}
-            if(kind!=(int)Terrain.Grass||s.Town.Paths.At(x+dx,z+dz)!=0){reason="Find clear grass with room for a garden.";return false;}
-        }
-        int blockedDoors=0;
-        for(int i=0;i<s.Town.GroundCount;i++){
-            var item=s.Town.Ground[i];
-            if(item.Kind==4)continue;
-            if(item.X>=x+2&&item.X<=x+4&&item.Z>=z+1&&item.Z<=z+3){
-                reason="Keep the house clear of plants and items.";return false;
-            }
-            if(item.Kind==3&&item.X==x+3&&item.Z>=z+4&&item.Z<z+13)blockedDoors|=1<<(item.Z-z-4);
-        }
-        if(blockedDoors==511){reason="Keep the doorway clear of trees.";return false;}
-        reason="A lovely spot!";return true;
-    }
+        =>State.CanPlaceHouse(x,z,out reason);
     public bool PlaceHome(int x,int z)
     {
         EnsureEditable();if(!CanPlaceHome(x,z,out _))return false;
-        State.Space=0;return State.PlaceHouse(x,z,false);
+        if(State.HousePlaced)ClearHome();
+        removedTreeIndices??=new int[State.Town.Ground.Length];
+        State.Space=0;return State.PlaceHouse(x,z,false,false,removedTreeIndices,out removedTreeCount);
     }
     public void ClearHome()
-    {EnsureEditable();State.HousePlaced=false;State.Space=0;Array.Copy(sourceTerrain!.Paths.Packed,State.Town.Paths.Packed,TownPaths.PackedBytes);State.Town.NotifyTerrainChanged();}
+    {
+        EnsureEditable();
+        while(removedTreeCount>0)State.Town.RestoreRemovedTree(removedTreeIndices![--removedTreeCount]);
+        State.HousePlaced=false;State.Space=0;
+        Array.Copy(sourceTerrain!.Paths.Packed,State.Town.Paths.Packed,TownPaths.PackedBytes);State.Town.NotifyTerrainChanged();
+    }
 
     // Returns a fresh mutable source graph for discard. No Generate call or
     // duplicate terrain arrays are required, and draft-only home/name edits vanish.
@@ -139,5 +122,5 @@ public sealed class OnboardingDraft : IDisposable
     {if(a.Length!=b.Length)return false;for(int i=0;i<a.Length;i++)if(a[i]!=b[i])return false;return true;}
     private void EnsureEditable()
     {if(state==null)throw new ObjectDisposedException(nameof(OnboardingDraft));if(committed)throw new InvalidOperationException("Onboarding is already saved");}
-    public void Dispose(){sourceTerrain=null;baseline=null;attempted=null;state=null;}
+    public void Dispose(){sourceTerrain=null;baseline=null;attempted=null;state=null;removedTreeIndices=null;removedTreeCount=0;}
 }

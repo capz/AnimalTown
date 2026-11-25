@@ -66,8 +66,8 @@ internal static class OnboardingChecks
     private static void PlotChecks(Action<bool,string> check)
     {
         var source=Town();using var draft=new OnboardingDraft(source,2,true);var s=draft.State;string reason;
-        check(!draft.CanPlaceHome(0,80,out reason)&&reason.Length>0&&!draft.CanPlaceHome(146,80,out _),"home preview reserves the entire serializable fifteen-by-thirteen plot");
-        check(!draft.CanPlaceHome(20,65,out reason)&&reason.Contains("another home"),"home preview explains overlap with another resident's reserved garden");
+        check(!draft.CanPlaceHome(0,80,out reason)&&reason.Length>0&&!draft.CanPlaceHome(AnimalTown.Town.Width-6,80,out _),"home preview keeps the current seven-by-five plot inside the town");
+        check(!draft.CanPlaceHome(17,65,out reason)&&reason.Contains("another home"),"home preview explains overlap with another resident's current garden");
         int cell=80*AnimalTown.Town.Width+60;
         foreach(var kind in new[]{Terrain.Water,Terrain.Sea,Terrain.CoastWest}){
             s.Town.Tiles[cell]=(byte)kind;check(!draft.CanPlaceHome(60,80,out reason)&&reason.Contains("water"),"home preview rejects rivers, sea and mixed shore footprints");
@@ -79,8 +79,8 @@ internal static class OnboardingChecks
         int count=s.Town.GroundCount;s.Town.AddGround(2,62,81,2,0);
         check(!draft.CanPlaceHome(60,80,out reason)&&reason.Contains("plants"),"a cottage cannot cover an existing plant or loose item");s.Town.GroundCount=count;
         for(int row=4;row<13;row++)s.Town.AddGround(3,63,80+row,3,0);
-        check(!draft.CanPlaceHome(60,80,out reason)&&reason.Contains("doorway"),"a fully tree-blocked entrance cannot trap a new resident");
-        s.Town.GroundCount--;check(draft.CanPlaceHome(60,80,out _)&&draft.PlaceHome(60,80)&&s.CanWalk(s.X,s.Z,0),"a partially blocked garden keeps its trees and finds a clear arrival");
+        check(draft.CanPlaceHome(60,80,out _),"trees at the entrance are removable placement obstacles");
+        check(draft.PlaceHome(60,80)&&s.CanWalk(s.X,s.Z,0)&&s.Town.FindGround(63,84,3)<0&&s.Town.FindGround(63,85,3)<0&&s.Town.FindGround(63,86,3)>=0,"confirmed placement clears only doorway and exit trees and keeps trees beyond them");
         draft.ClearHome();byte[] before=SaveCodec.Encode(s);int terrainVersion=s.Town.TerrainVersion,shadowVersion=s.Town.ShadowVersion;
         draft.CanPlaceHome(90,80,out _);long start=GC.GetAllocatedBytesForCurrentThread();
         for(int i=0;i<1000;i++)draft.CanPlaceHome(90,80,out _);

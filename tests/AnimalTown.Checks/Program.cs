@@ -112,8 +112,8 @@ for(int row=0;row<TerrainTiles.GroundRows;row++)for(int offset=0;offset<=4;offse
 }
 Check(TerrainTiles.GroundVertexCount<40000,"raised-camera padded terrain envelope remains bounded");
 var arrival=new GameState(7319);arrival.Town.AddGround(3,18,39,3,0);
-Check(arrival.PlaceHouse(15,35,false),"house placement with a blocked doorway finds a clear arrival");
-Check(arrival.CanWalk(arrival.X,arrival.Z,0)&&arrival.Z>=40.5f,"new house arrival is outside its collision footprint and avoids trees");
+Check(arrival.PlaceHouse(15,35,false),"house placement clears a tree blocking the doorway");
+Check(arrival.CanWalk(arrival.X,arrival.Z,0)&&arrival.Z==39.5f&&arrival.Town.FindGround(18,39,3)<0,"new house arrival uses the cleared doorway without removing surrounding trees");
 arrival.X=18;arrival.Z=38;Check(!arrival.CanWalk(arrival.X,arrival.Z,0),"old saved arrival reproduces house collision trap");
 Check(arrival.MoveToHouseEntrance()&&arrival.CanWalk(arrival.X,arrival.Z,0),"old trapped save gets a clear arrival without deleting objects");
 Check(Math.Abs(Math.Sqrt(CylinderWorld.CameraHeight*CylinderWorld.CameraHeight+CylinderWorld.CameraBack*CylinderWorld.CameraBack)-9)<.001,"camera eye distance reduced ten percent from ten to nine metres");

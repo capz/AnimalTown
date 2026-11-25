@@ -93,7 +93,9 @@ public sealed class VillagerProfile
     {
         if(previousMonth>=0&&month>previousMonth&&Savings<=long.MaxValue-Savings/200)Savings+=Savings/200;
         Jobs=0;JobDay=day;
-        if(PendingKind!=0&&day>=PendingDay){if(PendingKind==1)HouseTier=PendingTier;else GardenTier=PendingTier;PendingKind=0;}
+        // Garden work also needs current town/other-home validation and is
+        // completed by GameState before this personal calendar update.
+        if(PendingKind==1&&day>=PendingDay){HouseTier=PendingTier;PendingKind=0;}
         for(int i=0;i<MailCount;i++)if(Mail[i]<0)Mail[i]=-Mail[i];
         for(int i=0;i<6;i++){int at=i*4;if(Relationships[at+1]!=0){Relationships[at]=Math.Max(0,Relationships[at]-2);Relationships[at+1]=0;}}
     }
