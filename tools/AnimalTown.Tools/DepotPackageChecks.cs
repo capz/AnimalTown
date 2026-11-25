@@ -70,6 +70,8 @@ internal static class DepotPackageChecks
             using(var archive=ZipFile.OpenRead(zip)){
                 Check(archive.Entries.All(e=>e.FullName.StartsWith("apps/animaltown/",StringComparison.Ordinal)),"exact installed app directory");
                 Check(archive.Entries.Count(e=>e.FullName.EndsWith(".dol",StringComparison.OrdinalIgnoreCase))==1,"exactly one playable executable");
+                Check(archive.GetEntry("apps/animaltown/mbedTLS-LICENSE.txt")!=null&&
+                      archive.GetEntry("apps/animaltown/Jitterentropy-LICENSE.txt")!=null,"native networking notices accompany the DOL");
                 Check(!archive.Entries.Any(e=>e.FullName.Contains("updater",StringComparison.Ordinal)||e.FullName.Contains("sunshine",StringComparison.Ordinal)||e.FullName.EndsWith(".pem",StringComparison.Ordinal)),"credentials, updater and retired assets are excluded");
                 Check(archive.GetEntry("apps/animaltown/"+WaterTextureCatalog.DiscName(1))!=null&&archive.GetEntry("apps/animaltown/water-unknown.dndtex")==null,"only declared optional water maps ship in the real Depot archive");
                 foreach(string species in new[]{"fox","bunny","giraffe","cat","hamster","spaniel"}){
