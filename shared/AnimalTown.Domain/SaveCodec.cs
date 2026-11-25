@@ -109,7 +109,7 @@ public static class SaveCodec
         s.Species=Range(b,ref p,0,5);s.Palette=Range(b,ref p,0,7);s.Tool=Range(b,ref p,0,Catalog.Items.Length-1);s.Shirt=Range(b,ref p,0,Catalog.Items.Length-1);s.HouseTier=Range(b,ref p,0,5);s.GardenTier=Range(b,ref p,0,4);s.PendingKind=Range(b,ref p,0,2);s.PendingTier=Range(b,ref p,0,5);s.PendingDay=Get(b,ref p);
         s.Tutorial=Range(b,ref p,0,7);s.MetMask=Range(b,ref p,0,63);s.Jobs=Range(b,ref p,0,2);s.JobDay=Get(b,ref p);s.MailCount=Range(b,ref p,0,128);
         s.Roof=Range(b,ref p,0,11);s.Wall=Range(b,ref p,0,11);s.Fence=Range(b,ref p,0,5);s.Mailbox=Range(b,ref p,0,5);s.Exterior=Range(b,ref p,0,4);s.HousePlaced=Range(b,ref p,0,1)==1;
-        s.X=Range(b,ref p,0,sourceWidth*1024-1)/1024f;s.Z=Range(b,ref p,0,sourceHeight*1024-1)/1024f;s.Town.HouseX=Range(b,ref p,1,sourceWidth-15);s.Town.HouseZ=Range(b,ref p,1,sourceHeight-13);s.Town.Spending=Range(b,ref p,0,int.MaxValue);s.Town.StockCount=Range(b,ref p,6,12);
+        s.X=Range(b,ref p,0,sourceWidth*1024-1)/1024f;s.Z=Range(b,ref p,0,sourceHeight*1024-1)/1024f;s.Town.HouseX=Range(b,ref p,1,sourceWidth-GameState.GardenWidths[0]);s.Town.HouseZ=Range(b,ref p,1,sourceHeight-GameState.GardenHeights[0]);s.Town.Spending=Range(b,ref p,0,int.MaxValue);s.Town.StockCount=Range(b,ref p,6,12);
         s.BackpackTier=Range(b,ref p,0,2);
         s.Name=Text(b,ref p,16);s.Catchphrase=Text(b,ref p,32);
         for(int i=0;i<GameState.MaximumPockets;i++)s.Pockets[i]=Range(b,ref p,0,Catalog.Items.Length-1);
@@ -149,7 +149,7 @@ public static class SaveCodec
             body.Created=s.Profiles[active].Created;
             if(!ProfileCodec.Same(body,s.Profiles[active]))throw new InvalidOperationException("Selected profile differs from active state");s.RestoreProfile(active);
         }else s.CaptureProfile();
-        for(int a=0;a<GameState.ProfileCount;a++)if(s.HomePlaced(a))for(int c=a+1;c<GameState.ProfileCount;c++)if(s.HomePlaced(c)&&s.HomeX(a)<s.HomeX(c)+15&&s.HomeX(a)+15>s.HomeX(c)&&s.HomeZ(a)<s.HomeZ(c)+13&&s.HomeZ(a)+13>s.HomeZ(c))throw new InvalidOperationException("Overlapping player home plots");
+        if(!s.ValidSavedHomePlots())throw new InvalidOperationException("Invalid or overlapping player home plots");
         // Main's v9 stores paths (marker 1); the shop prerelease's v9 stores
         // only its 154-word shop extension. V10 explicitly stores both, in order.
         int extension=version>=9?Get(b,ref p):0;

@@ -63,6 +63,8 @@ public sealed class TownLostAndFound
     {town.Ground[index].RecoveryId=0;if(recoveries!=null)recoveries[index]=null;}
     internal void RemoveGroundAt(int index,int last)
     {ClearRecovery(index);if(recoveries!=null&&index!=last){recoveries[index]=recoveries[last];recoveries[last]=null;}}
+    internal void RestoreGroundAt(int index,int last)
+    {if(recoveries!=null){if(index!=last)recoveries[last]=recoveries[index];recoveries[index]=null;}}
     private void Record(int index,TownRecoveryRecord record)
     {recoveries??=new TownRecoveryRecord?[town.Ground.Length];recoveries[index]=record;town.Ground[index].RecoveryId=record.Id;}
     internal void RecordGround(int index)
