@@ -352,13 +352,39 @@ static inline void su_bake_lights(SuState *s){
     }
     s->light_dirty=0;s->cloud_dirty=1;
 }
+static inline int su_cloud_repeat(const SuState *s){
+    int repeat=s->cloud_scale==2.f?32:s->cloud_scale==1.f?64:0;
+    /* These coordinates are exact half-metres plus bounded eighth-metre
+     * motion. Multiplication by one/two preserves the fractional weights;
+     * a world-period shift changes each source index by exactly 64. Other
+     * scales (or direct callers outside the native motion bounds) retain the
+     * scalar sampler instead of assuming floating-point periodicity. */
+    return SU_TERRAIN_TEXELS_PER_METRE==1.f&&
+        s->cloud_x>=0&&s->cloud_x<repeat*8&&s->cloud_z>=0&&s->cloud_z<repeat*8?repeat:0;
+}
 static inline void su_cloud_prepare(SuState *s){
     su_bake_lights(s);
     if(!s->cloud_dirty)return;
-    for(int y=0;y<SU_TERRAIN_HEIGHT;y++)for(int x=0;x<SU_TERRAIN_WIDTH;x++){
-        int at=su_terrain_offset(x,y);uint8_t a=s->terrain_ready?su_shadow(s->terrain[at]):0;
-        uint8_t b=x<=SU_WORLD_WIDTH+1?su_cloud_sample(s,(x-.5f)/SU_TERRAIN_TEXELS_PER_METRE,(y-.5f)/SU_TERRAIN_TEXELS_PER_METRE):0;
-        s->coverage[at]=su_pack(a>b?a:b,(s->terrain[at]>>4)*17);
+    int repeat=su_cloud_repeat(s);
+    if(repeat){
+        uint8_t row[SU_CLOUD_SIDE];
+        for(int first=0;first<repeat;first++){
+            for(int x=0;x<repeat;x++)row[x]=su_cloud_sample(s,x-.5f,first-.5f);
+            /* Compose every destination with its own terrain/light texel;
+             * only the neutral cloud samples repeat. No cached output can
+             * hide a different cliff or lamp in a later period. */
+            for(int y=first;y<SU_TERRAIN_HEIGHT;y+=repeat)for(int x=0;x<SU_TERRAIN_WIDTH;x++){
+                int at=su_terrain_offset(x,y);uint8_t a=s->terrain_ready?su_shadow(s->terrain[at]):0;
+                uint8_t b=x<=SU_WORLD_WIDTH+1?row[x&(repeat-1)]:0;
+                s->coverage[at]=su_pack(a>b?a:b,(s->terrain[at]>>4)*17);
+            }
+        }
+    }else{
+        for(int y=0;y<SU_TERRAIN_HEIGHT;y++)for(int x=0;x<SU_TERRAIN_WIDTH;x++){
+            int at=su_terrain_offset(x,y);uint8_t a=s->terrain_ready?su_shadow(s->terrain[at]):0;
+            uint8_t b=x<=SU_WORLD_WIDTH+1?su_cloud_sample(s,(x-.5f)/SU_TERRAIN_TEXELS_PER_METRE,(y-.5f)/SU_TERRAIN_TEXELS_PER_METRE):0;
+            s->coverage[at]=su_pack(a>b?a:b,(s->terrain[at]>>4)*17);
+        }
     }
     for(int i=0;i<SU_PAGES;i++)if(s->page[i].used&&!s->page[i].space)s->page[i].dirty|=1;
     s->cloud_dirty=0;

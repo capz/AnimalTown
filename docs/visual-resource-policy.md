@@ -88,3 +88,32 @@ Host geometry and native allocation tests establish policy bounds, ownership
 and failure behavior. They do not establish physical GameCube frame-rate gains.
 Native cooked-asset memory/error reports and emulator acceptance supplement
 these tests; hardware measurements remain a separate qualification.
+
+## Idle work and optional effects
+
+Model-light points are projected and uploaded only when lighting is active and
+their layout, terrain or cylinder focus changes. Gain changes still reach the
+native renderer every frame. Exact building origins, existence and definitions
+invalidate the cache; failed publication remains eligible for retry.
+
+Cloud coverage reuses the exact repeating samples for the supported 32/64-metre
+patterns, then combines each destination with its own terrain and lamp texel.
+The fast path needs only a 64-byte stack row. It reduces bilinear samples from
+16,640 to 1,024 normally or 4,096 in winter, with the original scalar path for
+other scales or motion bounds. An independent scalar oracle checks 12,853
+complete masks byte for byte. Host benchmarks show 52–64% lower mask-generation
+CPU time; these are not GameCube frame-rate measurements.
+
+Path demand follows requested drawable sections, including pages whose DMA is
+pending. Speculative prefetch pages do not request path art or the native mask.
+The result is reused until the town, path data, terrain or drawable selection
+changes, so unchanged views perform no section scans or allocations.
+
+Optional water optics reserve their complete native allocation peak before
+initialization or resize. At 640×480 the two maps and refraction capture own
+169,984 bytes, plus a 1 KiB admission guard. Required reservations take priority;
+pressure retires optics before essential residency pumps, even if the scene is
+still loading. Transparent water remains available when optics are denied.
+Short visibility gaps retain storage for three seconds without capture or draw
+work; longer absence releases it. Allocation failures drain partial owners and
+back off before retry, and completed reservations remain charged until sampled.

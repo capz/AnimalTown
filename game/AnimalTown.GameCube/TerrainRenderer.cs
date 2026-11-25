@@ -347,8 +347,12 @@ internal sealed partial class TerrainRenderer : IDisposable
         }
         // Freeze only holds wave time. View/capture validity and lighting must
         // still follow this frame, including inspection and split-AA parts.
-        waterBump.Prepare(focusZ,sunlight,environmentRgb,visible);
+        waterBump.Memory=Memory;
+        var device=GraphicsDevice.Default;
+        waterBump.Prepare(focusZ,sunlight,environmentRgb,visible,device.Width,device.Height);
     }
+    // Called before essential residency pumps, including while Draw is loading.
+    internal bool ReclaimWaterOptics()=>Memory?.UnderPressure==true&&waterBump.Reclaim();
     private void Add(Renderer renderer,Material material,Mesh? mesh,bool snow=false)
     {
         if(mesh==null)return;batch[batchCount++]=mesh;

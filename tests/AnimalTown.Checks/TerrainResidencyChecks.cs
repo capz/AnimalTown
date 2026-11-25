@@ -214,6 +214,99 @@ internal static class TerrainResidencyChecks
         check(archive.Presentable&&archive.ViewCount==0&&archive.Triangles==0,"empty sections become drawable without aliases");
         archive.Dispose();NativeTerrain.Empty=false;
         MemoryAdmission(check,state,owner,strips,data);
+        PathDemand(check,state,owner,strips,data);
+    }
+    private static void PathDemand(Action<bool,string> check,GameState state,TerrainRenderer owner,FloorStrips strips,byte[] data)
+    {
+        var archive=new TerrainArchive();var town=state.Town;
+        var expected=new TerrainArchiveView();
+        const float x=64,z=70;
+        RenderView.SetWidescreen(false);town.Paths.Clear();
+        archive.Reset();while(!archive.Ready)archive.Bake(state,owner,strips,data);
+        archive.Prepare(x,z,owner.Rows);expected.Prepare(x,z,owner.Rows);
+        int visible=-1;
+        for(int i=expected.Count-1;i>=0;i--)if(InTown(expected.Sections[i])){visible=expected.Sections[i];break;}
+        check(visible>=0&&!archive.Presentable,"path fixture includes required pages whose geometry is still transferring");
+        int visibleX=Math.Max(0,TerrainArchivePlan.X(visible)),visibleZ=Math.Max(0,TerrainArchivePlan.Z(visible));
+        town.Paths.Set(visibleX,visibleZ,1);
+        check(archive.HasPaths(town),"a path on a requested draw page creates demand before its DMA completes");
+        town.Paths.Clear();
+        check(Finish(archive,x,z,owner.Rows),"path fixture completes its current drawable terrain");
+        for(int i=0;i<1024&&!archive.PrefetchComplete;i++)archive.PrepareAsync(x,z,owner.Rows,Clock.Timestamp+1000);
+        check(archive.PrefetchComplete,"path fixture also retains speculative terrain");
+        int prefetched=-1;
+        for(int i=0;i<256;i++){
+            int section=archive.Section(i);
+            if(section>=0&&InTown(section)&&!Contains(expected,section)){prefetched=section;break;}
+        }
+        check(prefetched>=0,"path fixture has an admitted offscreen page, rather than only an unretained guard candidate");
+        int prefetchX=Math.Max(0,TerrainArchivePlan.X(prefetched)),prefetchZ=Math.Max(0,TerrainArchivePlan.Z(prefetched));
+        town.Paths.Set(prefetchX,prefetchZ,1);
+        int beforeScans=archive.PathDemandSectionScans;
+        check(!archive.HasPaths(town),"paths solely on resident speculative pages never request the path lease or native mask");
+        int negativeScans=archive.PathDemandSectionScans-beforeScans;
+        check(negativeScans==expected.Count,"an uncached negative query examines each required draw page exactly once");
+        int scans=archive.PathDemandSectionScans;
+        long allocated=GC.GetAllocatedBytesForCurrentThread();
+        for(int i=0;i<10000;i++)archive.HasPaths(town);
+        check(archive.PathDemandSectionScans==scans&&GC.GetAllocatedBytesForCurrentThread()==allocated,
+            "10000 unchanged path-free views perform zero section scans or allocations");
+        town.Paths.Set(visibleX,visibleZ,1);
+        check(archive.HasPaths(town)&&archive.PathDemandSectionScans>scans,"stationary path creation invalidates cached negative demand");
+        scans=archive.PathDemandSectionScans;
+        for(int i=0;i<10000;i++)archive.HasPaths(town);
+        check(archive.PathDemandSectionScans==scans,"10000 unchanged visible-path views perform zero section scans");
+        town.Paths.Set(visibleX,visibleZ,0);
+        check(!archive.HasPaths(town),"clearing the last drawable path drops demand while offscreen path pages remain warm");
+        var other=new Town(92);other.Paths.Clear();other.Paths.Set(visibleX,visibleZ,1);
+        var sameRevision=new Town(93);sameRevision.Paths.Clear();sameRevision.Paths.Set(prefetchX,prefetchZ,1);
+        check(other.Paths.Revision==sameRevision.Paths.Revision&&archive.HasPaths(other)&&!archive.HasPaths(sameRevision),
+            "town identity invalidates path demand even when path revisions match");
+        int cell=visibleZ*Town.Width+visibleX,pathRevision=sameRevision.Paths.Revision;
+        sameRevision.Paths.Packed[cell/4]|=(byte)(1<<((cell%4)*2));sameRevision.NotifyTerrainChanged();
+        check(sameRevision.Paths.Revision==pathRevision&&archive.HasPaths(sameRevision),
+            "bulk path restoration invalidates through TerrainVersion without requiring a path revision change");
+        town.Paths.Clear();
+        foreach(var point in new[]{(8,8),(16,42),(64,70),(96,112),(119,39)})town.Paths.Set(point.Item1,point.Item2,1);
+        int changes=0;
+        foreach(bool wide in new[]{false,true}){
+            RenderView.SetWidescreen(wide);
+            foreach(float targetZ in new[]{8.24f,8.49f,8.5f,42.25f,70.24f,70.5f,110.25f})
+            foreach(float targetX in new[]{8.24f,8.49f,8.5f,32.25f,64.24f,64.5f,112.25f}){
+                archive.PrepareAsync(targetX,targetZ,owner.Rows,Clock.Timestamp+1000);expected.Prepare(targetX,targetZ,owner.Rows);
+                bool wanted=Oracle(town,expected);if(wanted)changes++;
+                check(archive.HasPaths(town)==wanted,"cached path demand equals all requested drawable pages at "+targetX+","+targetZ+" wide="+wide);
+                scans=archive.PathDemandSectionScans;archive.HasPaths(town);
+                check(archive.PathDemandSectionScans==scans,"repeated bucket/aspect selection reuses path demand");
+            }
+        }
+        check(changes>0&&changes<98,"camera and aspect sweep includes both visible-path and path-free draw sets");
+        RenderView.SetWidescreen(false);
+        while(!archive.Suspend()){}
+        check(!archive.HasPaths(town),"suspension invalidates path demand with the empty draw selection");
+        check(Finish(archive,x,z,owner.Rows)&&archive.HasPaths(town),"resuming the same camera restores visible-path demand");
+        while(!archive.TryReset()){}
+        check(!archive.HasPaths(town),"archive reset cannot reuse a previously positive path query");
+        while(!archive.Ready)archive.Bake(state,owner,strips,data);
+        archive.Prepare(x,z,owner.Rows);
+        check(archive.HasPaths(town),"rebaked archive selects paths again before geometry publication");
+        while(!archive.TryDispose()){}
+        Console.WriteLine("Terrain paths: drawable-only demand, partial DMA, stationary edits, town/terrain/view/aspect/lifecycle invalidation; "+negativeScans+" section scans once, then zero scans/allocations across 10000 idle calls");
+    }
+    private static bool InTown(int section)
+    {
+        int x=TerrainArchivePlan.X(section),z=TerrainArchivePlan.Z(section);
+        return x<Town.Width&&x+TerrainStream.Width>0&&z<Town.Height&&z+TerrainArchivePlan.Height>0;
+    }
+    private static bool Contains(TerrainArchiveView view,int section)
+    {for(int i=0;i<view.Count;i++)if(view.Sections[i]==section)return true;return false;}
+    private static bool Oracle(Town town,TerrainArchiveView view)
+    {
+        for(int i=0;i<view.Count;i++){
+            int section=view.Sections[i];
+            if(town.Paths.Any(TerrainArchivePlan.X(section),TerrainArchivePlan.Z(section),TerrainStream.Width,TerrainArchivePlan.Height))return true;
+        }
+        return false;
     }
     private static void MemoryAdmission(Action<bool,string> check,GameState state,TerrainRenderer owner,FloorStrips strips,byte[] data)
     {

@@ -6,5 +6,7 @@
     <Compile Include="../../game/AnimalTown.GameCube/VisualMemoryCoordinator.cs" Link="VisualMemoryCoordinator.cs" />
     <Compile Include="../../game/AnimalTown.GameCube/VisualResidencyBudget.cs" Link="VisualResidencyBudget.cs" />
     <Compile Include="../../game/AnimalTown.GameCube/StartupModelAdmission.cs" Link="StartupModelAdmission.cs" />
+    <Compile Include="../../game/AnimalTown.GameCube/TownLights.cs" Link="TownLights.cs" />
+    <Compile Include="../../game/AnimalTown.GameCube/WaterBumpEffect.cs" Link="WaterBumpEffect.cs" />
   </ItemGroup>
 </Project>

@@ -215,4 +215,6 @@ Check(credit.Remaining==450,"subsequent opportunities spend the same presentatio
 GraphicsDevice.Default.IsFrameActive=true;bool rejected=false;
 try{Prepare(manager,state,doors,false,trees,items,buildings,Clock.Timestamp,Clock.Timestamp+1000);}catch(InvalidOperationException){rejected=true;}
 GraphicsDevice.Default.IsFrameActive=false;Check(rejected,"global reclamation rejects a frame with live GPU owners");
+TownLightsChecks.Run(Check);
+WaterOpticsChecks.Run(Check);
 Console.WriteLine(checks+" visual memory checks passed");
