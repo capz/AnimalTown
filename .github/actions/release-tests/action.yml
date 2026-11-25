@@ -2,8 +2,14 @@ name: Release tests
 description: Run selected host checks and Dolphin smoke tests against a single console candidate
 inputs:
   full-pipeline:
-    description: Run the host and console suites for trusted builds
+    description: Run the selected host checks and build a console test candidate
     default: 'false'
+  host-checks:
+    description: Run selected host checks when no console candidate is needed
+    default: 'false'
+  policy:
+    description: Run version and release policy checks
+    default: 'true'
   version:
     description: Version stamped into the console candidate
     required: false
@@ -17,6 +23,7 @@ runs:
   using: composite
   steps:
     - name: Check version and validation policy
+      if: inputs.policy == 'true'
       shell: pwsh
       run: |
         ./tests/versioning.ps1
@@ -24,11 +31,54 @@ runs:
         ./tests/validation-selection.ps1
         ./tests/release-publish.ps1
     - name: Check release bundle and source archive policy
+      if: inputs.policy == 'true'
       shell: bash
       run: python3 tests/release-bundle.py
+    - name: Read selected release checks
+      id: selection
+      if: inputs.full-pipeline == 'true' || inputs.host-checks == 'true'
+      shell: bash
+      run: |
+        python3 - <<'PY'
+        import json
+        import os
+        from pathlib import Path
+
+        plan=json.loads(Path('out/validation-plan.json').read_text())
+        individual={'title-logo':'title_logo','save-and-quit':'save_quit',
+                    'terrain-materials':'terrain_materials','daylight':'daylight'}
+        card_modes=('slot-b','choose-b','without-saving','no-card')
+        job_modes=('delivery','mail','helipad')
+        allowed=set(individual)|{f'card-{mode}' for mode in card_modes}|{f'job-{mode}' for mode in job_modes}
+        selected=plan.get('emulator')
+        if plan.get('schema')!=3 or not isinstance(selected,list) or not all(isinstance(name,str) for name in selected):
+            raise SystemExit('Expected validation plan schema 3 with an emulator array')
+        scenarios=set(selected)
+        if len(scenarios)!=len(selected) or scenarios-allowed:
+            raise SystemExit('Validation plan contains duplicate or unknown emulator scenarios')
+        outputs={key:str(name in scenarios).lower() for name,key in individual.items()}
+        outputs['dolphin']=str(bool(scenarios)).lower()
+        outputs['cards']=' '.join(mode for mode in card_modes if f'card-{mode}' in scenarios)
+        outputs['jobs']=' '.join(mode for mode in job_modes if f'job-{mode}' in scenarios)
+        with open(os.environ['GITHUB_OUTPUT'],'a') as output:
+            for key,value in outputs.items():
+                output.write(f'{key}={value}\n')
+        PY
     - name: Check helipad art matches the game's polygons
+      if: inputs.policy == 'true' && github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository
       shell: bash
       run: python3 tools/helipad-vector.py --check
+    - name: Run selected host checks without a console candidate
+      if: inputs.host-checks == 'true' && inputs.full-pipeline != 'true'
+      env:
+        ANIMALTOWN_BUILD_IMAGE: ${{ inputs.build-image }}
+      shell: bash
+      run: |
+        compose=(docker compose -f build/compose.yml run --rm --pull always)
+        if [ "$(jq -r '.backend' out/validation-plan.json)" != true ]; then
+          compose+=(--no-deps)
+        fi
+        "${compose[@]}" builder pwsh -NoLogo -NoProfile -File tools/build-linux.ps1 -Target checks
     - name: Run selected checks and prepare the console test candidate
       id: candidate
       if: inputs.full-pipeline == 'true'
@@ -36,9 +86,8 @@ runs:
         ANIMALTOWN_BUILD_IMAGE: ${{ inputs.build-image }}
       shell: bash
       run: |
-        # Target tests runs test-changes once. Its core selector also owns the
-        # source-linked Memory/Floor/Snow/VisualAllocation regression projects;
-        # build-game cooks and audits the actual package admission/LOD data.
+        # Target tests runs the planned host suites and builds the release candidate.
+        # Package admission and LOD audits still use the actual cooked data.
         if [ "$(jq -r '.backend' out/validation-plan.json)" = true ]; then
           docker compose -f build/compose.yml run --rm --pull always builder pwsh -NoLogo -NoProfile -File tools/build-linux.ps1 -Target tests
         else
@@ -87,33 +136,22 @@ runs:
           out/model-memory-audit.json
           out/model-native-peak-audit.jsonl
         if-no-files-found: error
-    - name: Select focused title-logo capture
-      id: title_logo
-      if: steps.candidate.outcome == 'success'
+    - name: Build the shared Dolphin test image
+      id: dolphin
+      if: ${{ !cancelled() && steps.candidate.outcome == 'success' && steps.selection.outputs.dolphin == 'true' }}
       shell: bash
-      run: |
-        python3 - <<'PY'
-        import json, os, re
-        from pathlib import Path
-        plan=json.loads(Path('out/validation-plan.json').read_text())
-        relevant=re.compile(r'^(assets/textures/branding/|game/AnimalTown.GameCube/(TitleScreen|TitleArt|ProfilePickerUi|OnboardingUi|TextureCache|ModelResources)\.cs$|shared/AnimalTown.Domain/(TexturePixels|TextureResolution)\.cs$|tools/AnimalTown.Tools/(Brand[^/]*|DiscBannerFile|TextureAudit)\.cs$|tools/(iso-smoke\.py|dolphin_pad\.py|publish-release\.ps1)$|build/Dockerfile\.dolphin$|\.github/(?:workflows/releases\.yml|actions/release-tests/action\.yml)$)')
-        needed=any(relevant.search(path) for path in plan['paths']) or (plan['full'] and not plan['paths'])
-        save_quit=any(path=='game/AnimalTown.GameCube/Program.cs' or path.startswith('assets/models/villagers/') for path in plan['paths'])
-        with open(os.environ['GITHUB_OUTPUT'],'a') as output:
-            output.write(f'needed={str(needed or save_quit).lower()}\nsave_quit={str(save_quit).lower()}\n')
-        PY
+      run: timeout --kill-after=30s 15m docker build -t animaltown-dolphin-test -f build/Dockerfile.dolphin build
     - name: Capture and verify title branding in Dolphin
-      if: steps.title_logo.outputs.needed == 'true'
+      if: ${{ !cancelled() && steps.dolphin.outcome == 'success' && steps.selection.outputs.title_logo == 'true' }}
       env:
         BUILD_VERSION: ${{ inputs.version }}
       shell: bash
       run: |
         timeout --kill-after=30s 15m bash -e -o pipefail <<'SCENARIO'
         mkdir -p out/title-logo
-        docker build -t animaltown-title-capture -f build/Dockerfile.dolphin build
         docker run --rm --init --shm-size=512m --user "$(id -u):$(id -g)" \
           --mount "type=bind,src=$PWD,dst=/work" -w /work \
-          animaltown-title-capture python3 tools/iso-smoke.py \
+          animaltown-dolphin-test python3 tools/iso-smoke.py \
           "out/AnimalTown-$BUILD_VERSION.nkit.iso" out/title-logo --title-logo
         python3 - <<'PY'
         import hashlib, json
@@ -128,7 +166,7 @@ runs:
         PY
         SCENARIO
     - name: Keep title-logo capture diagnostics
-      if: always() && steps.title_logo.outputs.needed == 'true'
+      if: always() && steps.dolphin.outcome == 'success' && steps.selection.outputs.title_logo == 'true'
       uses: actions/upload-artifact@v4
       with:
         name: title-logo-${{ inputs.commit }}
@@ -140,7 +178,7 @@ runs:
           out/title-logo/user/Logs/
         if-no-files-found: warn
     - name: Verify Save & Quit and reloading the town in Dolphin
-      if: steps.title_logo.outputs.save_quit == 'true'
+      if: ${{ !cancelled() && steps.dolphin.outcome == 'success' && steps.selection.outputs.save_quit == 'true' }}
       env:
         BUILD_VERSION: ${{ inputs.version }}
       shell: bash
@@ -149,11 +187,11 @@ runs:
         mkdir -p out/save-and-quit
         docker run --rm --init --shm-size=512m --user "$(id -u):$(id -g)" \
           --mount "type=bind,src=$PWD,dst=/work" -w /work \
-          animaltown-title-capture python3 tools/iso-smoke.py \
+          animaltown-dolphin-test python3 tools/iso-smoke.py \
           "out/AnimalTown-$BUILD_VERSION.nkit.iso" out/save-and-quit --save-and-quit
         SCENARIO
     - name: Keep Save & Quit diagnostics
-      if: always() && steps.title_logo.outputs.save_quit == 'true'
+      if: always() && steps.dolphin.outcome == 'success' && steps.selection.outputs.save_quit == 'true'
       uses: actions/upload-artifact@v4
       with:
         name: save-and-quit-${{ inputs.commit }}
@@ -163,34 +201,17 @@ runs:
           out/save-and-quit/*.log
           out/save-and-quit/user/Logs/
         if-no-files-found: warn
-    - name: Select terrain-material capture
-      id: terrain_materials
-      # Collect independent rendering evidence even if the title check failed.
-      # Both checks remain required: publishing still uses the success gate.
-      if: ${{ !cancelled() && steps.candidate.outcome == 'success' }}
-      shell: bash
-      run: |
-        python3 - <<'PY'
-        import json, os, re
-        from pathlib import Path
-        plan=json.loads(Path('out/validation-plan.json').read_text())
-        relevant=re.compile(r'^(game/AnimalTown.GameCube/(Water[^/]*|NativeWater(?:Probe)?|TerrainRenderer|TerrainSection|GroundMip[^/]*|Program|ModelResources)\.cs$|shared/AnimalTown.Domain/(GroundMip[^/]*|RenderDebugOptions|DevConfig|TextureResolution|Water[^/]*|WindWaker[^/]*)\.cs$|tools/(iso-smoke\.py|publish-release\.ps1|patch-native\.ps1|patch-water-(?:probe|optics)\.py|native-water-(?:probe|optics)\.inc|native-shadow-union-gx\.inc)$|build/Dockerfile\.dolphin$|\.github/(?:workflows/releases\.yml|actions/release-tests/action\.yml)$)')
-        needed=any(relevant.search(path) for path in plan['paths']) or (plan['full'] and not plan['paths'])
-        with open(os.environ['GITHUB_OUTPUT'],'a') as output:
-            output.write(f'needed={str(needed).lower()}\n')
-        PY
     - name: Capture terrain mip bands and water animation in Dolphin
-      if: ${{ !cancelled() && steps.candidate.outcome == 'success' && steps.terrain_materials.outputs.needed == 'true' }}
+      if: ${{ !cancelled() && steps.dolphin.outcome == 'success' && steps.selection.outputs.terrain_materials == 'true' }}
       env:
         BUILD_VERSION: ${{ inputs.version }}
       shell: bash
       run: |
         timeout --kill-after=30s 25m bash -e -o pipefail <<'SCENARIO'
         mkdir -p out/terrain-materials
-        docker build -t animaltown-terrain-capture -f build/Dockerfile.dolphin build
         docker run --rm --init --shm-size=512m --user "$(id -u):$(id -g)" \
           --mount "type=bind,src=$PWD,dst=/work" -w /work \
-          animaltown-terrain-capture python3 tools/iso-smoke.py \
+          animaltown-dolphin-test python3 tools/iso-smoke.py \
           "out/AnimalTown-$BUILD_VERSION.nkit.iso" out/terrain-materials --terrain-materials --season spring --dsp-hle
         python3 - <<'PY'
         import hashlib, json
@@ -205,7 +226,7 @@ runs:
         PY
         SCENARIO
     - name: Keep terrain-material capture diagnostics
-      if: always() && steps.terrain_materials.outputs.needed == 'true'
+      if: always() && steps.dolphin.outcome == 'success' && steps.selection.outputs.terrain_materials == 'true'
       uses: actions/upload-artifact@v4
       with:
         name: terrain-materials-${{ inputs.commit }}
@@ -216,39 +237,26 @@ runs:
           out/terrain-materials/*.txt
           out/terrain-materials/user/Logs/
         if-no-files-found: warn
-    - name: Select focused memory-card capture
-      id: save_cards
-      if: steps.candidate.outcome == 'success'
-      shell: bash
-      run: |
-        python3 - <<'PY'
-        import json, os, re
-        from pathlib import Path
-        plan=json.loads(Path('out/validation-plan.json').read_text())
-        relevant=re.compile(r'^(game/AnimalTown.GameCube/(SaveCards|CardArchive|CardSaveStorage|TownDataStorage|TownSession|UserOptionsStorage|DevConfigStorage|TitleScreen(?:\.Cards)?|OnboardingFlow|OnboardingUi|Program)\.cs$|shared/AnimalTown.Domain/OnboardingDraft\.cs$|tests/AnimalTown.CardChecks/|tools/iso-smoke\.py$|\.github/(?:workflows/releases\.yml|actions/release-tests/action\.yml)$)')
-        needed=any(relevant.search(path) for path in plan['paths']) or (plan['full'] and not plan['paths'])
-        with open(os.environ['GITHUB_OUTPUT'],'a') as output:
-            output.write(f'needed={str(needed).lower()}\n')
-        PY
     - name: Verify memory-card selection and temporary play in Dolphin
-      if: steps.save_cards.outputs.needed == 'true'
+      if: ${{ !cancelled() && steps.dolphin.outcome == 'success' && steps.selection.outputs.cards != '' }}
       env:
         BUILD_VERSION: ${{ inputs.version }}
+        CARD_SCENARIOS: ${{ steps.selection.outputs.cards }}
       shell: bash
       run: |
         timeout --kill-after=30s 20m bash -e -o pipefail <<'SCENARIO'
-        docker build -t animaltown-card-capture -f build/Dockerfile.dolphin build
-        for scenario in slot-b choose-b without-saving no-card; do
+        read -r -a scenarios <<< "$CARD_SCENARIOS"
+        for scenario in "${scenarios[@]}"; do
           mkdir -p "out/memory-cards/$scenario"
           docker run --rm --init --shm-size=512m --user "$(id -u):$(id -g)" \
             --mount "type=bind,src=$PWD,dst=/work" -w /work \
-            animaltown-card-capture python3 tools/iso-smoke.py \
+            animaltown-dolphin-test python3 tools/iso-smoke.py \
             "out/AnimalTown-$BUILD_VERSION.nkit.iso" "out/memory-cards/$scenario" \
             --save-cards "$scenario" --season spring --dsp-hle
         done
         SCENARIO
     - name: Keep memory-card capture diagnostics
-      if: always() && steps.save_cards.outputs.needed == 'true'
+      if: always() && steps.dolphin.outcome == 'success' && steps.selection.outputs.cards != ''
       uses: actions/upload-artifact@v4
       with:
         name: memory-cards-${{ inputs.commit }}
@@ -259,35 +267,20 @@ runs:
           out/memory-cards/*/*.txt
           out/memory-cards/*/user/Logs/
         if-no-files-found: warn
-    - name: Select daylight transition captures
-      id: daylight
-      if: steps.candidate.outcome == 'success'
-      shell: bash
-      run: |
-        python3 - <<'PY'
-        import json, os, re
-        from pathlib import Path
-        plan=json.loads(Path('out/validation-plan.json').read_text())
-        relevant=re.compile(r'^(shared/AnimalTown.Domain/WorldLighting\.cs$|game/AnimalTown.GameCube/(CloudShadows|NativeShadows|TownLights|TerrainRenderer|Program)\.cs$|tools/(native-shadow-union[^/]*|patch-native\.ps1|iso-smoke\.py|publish-release\.ps1)$|\.github/(?:workflows/releases\.yml|actions/release-tests/action\.yml)$)')
-        needed=any(relevant.search(path) for path in plan['paths']) or (plan['full'] and not plan['paths'])
-        with open(os.environ['GITHUB_OUTPUT'],'a') as output:
-            output.write(f'needed={str(needed).lower()}\n')
-        PY
     - name: Verify day, dawn, dusk and night lighting in Dolphin
-      if: steps.daylight.outputs.needed == 'true'
+      if: ${{ !cancelled() && steps.dolphin.outcome == 'success' && steps.selection.outputs.daylight == 'true' }}
       env:
         BUILD_VERSION: ${{ inputs.version }}
       shell: bash
       run: |
         timeout --kill-after=30s 20m bash -e -o pipefail <<'SCENARIO'
-        docker build -t animaltown-daylight-capture -f build/Dockerfile.dolphin build
         for phase in noon dawn dusk night; do
           case "$phase" in noon) capture_clock=12:00 ;; dawn) capture_clock=06:30 ;; dusk) capture_clock=18:00 ;; night) capture_clock=20:00 ;; esac
           mkdir -p "out/daylight/$phase"
           if [ "$phase" != noon ]; then cp out/daylight/noon/MemoryCardA.USA.raw "out/daylight/$phase/MemoryCardA.USA.raw"; fi
           docker run --rm --init --shm-size=512m --user "$(id -u):$(id -g)" \
             --mount "type=bind,src=$PWD,dst=/work" -w /work \
-            animaltown-daylight-capture python3 tools/iso-smoke.py \
+            animaltown-dolphin-test python3 tools/iso-smoke.py \
             "out/AnimalTown-$BUILD_VERSION.nkit.iso" "out/daylight/$phase" \
             --daylight-clock "$capture_clock" --season spring --dsp-hle
         done
@@ -303,7 +296,7 @@ runs:
         PY
         SCENARIO
     - name: Keep daylight transition diagnostics
-      if: always() && steps.daylight.outputs.needed == 'true'
+      if: always() && steps.dolphin.outcome == 'success' && steps.selection.outputs.daylight == 'true'
       uses: actions/upload-artifact@v4
       with:
         name: daylight-${{ inputs.commit }}
@@ -314,36 +307,22 @@ runs:
           out/daylight/*/*.log
           out/daylight/*/user/Logs/
         if-no-files-found: warn
-    - name: Select offline job controller captures
-      id: jobs_capture
-      # Mail controls need their own evidence even when an earlier rendering
-      # capture fails. Publication still requires every selected check.
-      if: ${{ !cancelled() && steps.candidate.outcome == 'success' }}
-      shell: bash
-      run: |
-        python3 - <<'PY'
-        import json, os, re
-        from pathlib import Path
-        plan=json.loads(Path('out/validation-plan.json').read_text())
-        relevant=re.compile(r'^(shared/AnimalTown.Domain/(Jobs/|GameState\.(Jobs|Travel)\.cs|HelipadFlight\.cs)|game/AnimalTown.GameCube/(TownGame\.(JobsUi|MailUi|JobScene|TravelUi|Helipad)|TownSession\.Travel|HelipadCruise|HelipadRenderer(\.Deck)?|LoadingScreen|JobSceneRenderer|WrappedText|OfflineTravelCards|TownCardRecords|CardArchive|Program)\.cs$|tools/(jobs_smoke|iso-smoke|profile-card-fixture)\.py$|tests/AnimalTown.Checks/JobFixture\.cs$|\.github/(?:workflows/releases\.yml|actions/release-tests/action\.yml)$)')
-        needed=any(relevant.search(path) for path in plan['paths']) or (plan['full'] and not plan['paths'])
-        with open(os.environ['GITHUB_OUTPUT'],'a') as output:output.write(f'needed={str(needed).lower()}\n')
-        PY
     - name: Verify actual job controls and committed results in Dolphin
-      if: ${{ !cancelled() && steps.candidate.outcome == 'success' && steps.jobs_capture.outputs.needed == 'true' }}
+      if: ${{ !cancelled() && steps.dolphin.outcome == 'success' && steps.selection.outputs.jobs != '' }}
       env:
         BUILD_VERSION: ${{ inputs.version }}
+        JOB_MODES: ${{ steps.selection.outputs.jobs }}
         ANIMALTOWN_BUILD_IMAGE: ${{ inputs.build-image }}
       shell: bash
       run: |
         timeout --kill-after=30s 25m bash -e -o pipefail <<'SCENARIO'
-        docker build -t animaltown-job-capture -f build/Dockerfile.dolphin build
         mkdir -p out/jobs/template
         docker run --rm --init --shm-size=512m --user "$(id -u):$(id -g)" \
           --mount "type=bind,src=$PWD,dst=/work" -w /work \
-          animaltown-job-capture python3 tools/iso-smoke.py \
+          animaltown-dolphin-test python3 tools/iso-smoke.py \
           "out/AnimalTown-$BUILD_VERSION.nkit.iso" out/jobs/template --jobs template --season summer --dsp-hle --component-cable
-        for mode in delivery mail helipad; do
+        read -r -a modes <<< "$JOB_MODES"
+        for mode in "${modes[@]}"; do
           docker compose -f build/compose.yml run --rm --no-deps builder \
             dotnet run --project tests/AnimalTown.Checks -c Release -- --job-fixture "out/job-fixtures/$mode" "$mode"
           python3 tools/profile-card-fixture.py out/jobs/template/MemoryCardA.USA.raw \
@@ -354,7 +333,7 @@ runs:
           fi
           docker run --rm --init --shm-size=512m --user "$(id -u):$(id -g)" \
             --mount "type=bind,src=$PWD,dst=/work" -w /work \
-            animaltown-job-capture python3 tools/iso-smoke.py \
+            animaltown-dolphin-test python3 tools/iso-smoke.py \
             "out/AnimalTown-$BUILD_VERSION.nkit.iso" "out/jobs/$mode" --jobs "$mode" --season summer --dsp-hle --component-cable
           docker compose -f build/compose.yml run --rm --no-deps builder \
             dotnet run --project tests/AnimalTown.Checks -c Release -- --job-verify "out/jobs/$mode/records" "$mode"
@@ -369,7 +348,7 @@ runs:
         PY
         SCENARIO
     - name: Keep offline job controller diagnostics
-      if: always() && steps.jobs_capture.outputs.needed == 'true'
+      if: always() && steps.dolphin.outcome == 'success' && steps.selection.outputs.jobs != ''
       uses: actions/upload-artifact@v4
       with:
         name: offline-jobs-${{ inputs.commit }}

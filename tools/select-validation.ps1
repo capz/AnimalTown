@@ -15,7 +15,11 @@ if($WorkingTree){$paths+=@(& git diff --no-renames --name-only HEAD);if($LASTEXI
 $plan=Get-ValidationPlan -ChangedPaths @($paths|Sort-Object -Unique) -Full:$Full -ForceRelease:$ForceRelease -Commit $commit -BaseRef $BaseRef
 $parent=Split-Path $OutputPath -Parent;if($parent){New-Item -ItemType Directory -Path $parent -Force|Out-Null}
 [IO.File]::WriteAllText([IO.Path]::GetFullPath($OutputPath,(Get-Location).Path),($plan|ConvertTo-Json -Depth 5)+"`n")
-if($GitHubOutput){Add-Content -LiteralPath $GitHubOutput -Value ('release='+$plan.release.ToString().ToLowerInvariant())}
-Write-Host "Validation: managed=$($plan.managed -join ',') rendering=$($plan.rendering -join ',') tooling=$($plan.tooling -join ',') native=$($plan.native -join ',') backend=$($plan.backend); release=$($plan.release)"
+if($GitHubOutput){
+    foreach($key in @('release','checks','policy')){
+        Add-Content -LiteralPath $GitHubOutput -Value ($key+'='+$plan.$key.ToString().ToLowerInvariant())
+    }
+}
+Write-Host "Validation: managed=$($plan.managed -join ',') rendering=$($plan.rendering -join ',') tooling=$($plan.tooling -join ',') native=$($plan.native -join ',') resources=$($plan.resources -join ',') emulator=$($plan.emulator -join ',') backend=$($plan.backend); release=$($plan.release)"
 if($plan.policy -and !$SkipPolicyChecks){& ./tests/validation-plan.ps1;& ./tests/validation-selection.ps1;& ./tests/versioning.ps1}
 $global:LASTEXITCODE=0
