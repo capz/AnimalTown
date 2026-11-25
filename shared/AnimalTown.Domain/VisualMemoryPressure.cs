@@ -74,6 +74,8 @@ public sealed class VisualMemoryPressure
         }
         return false;
     }
+    public bool HasReservation(int ticket)
+    {if(ticket==0)return false;for(int i=0;i<tickets.Length;i++)if(tickets[i]==ticket)return true;return false;}
     public void Complete(int ticket)
     {
         if(ticket==0)return;

@@ -9,7 +9,14 @@ public sealed class TileTraffic
     // Keep the native I4 conversion in tools/native-path-mask.h in sync.
     public const int MinimumVisits=35,FullOpacityVisits=100;
     public readonly byte[] Visits=new byte[Bytes];
-    public readonly SnowWear Snow=new SnowWear();
+    public SnowWear? Snow {get;private set;}
+    public bool Winter=>Snow?.Winter==true;
+    public void SetWinter(bool winter)
+    {
+        if(winter){Snow??=new SnowWear();Snow.SetWinter(true);}
+        else if(Snow!=null){Snow.SetWinter(false);Snow=null;}
+    }
+    public void ResetSnowForTownEntry(){if(Snow!=null){Snow.SetWinter(false);Snow=null;}}
     private readonly ushort[] histogram=new ushort[256];
     private bool dirty;
     private int ticks;
@@ -23,7 +30,7 @@ public sealed class TileTraffic
     public void Enter(Town town,int x,int z)
     {
         if(!town.Walkable(x,z))return;
-        Snow.Enter(town,x,z);
+        if(Winter)Snow!.Enter(town,x,z);
         int cell=z*Town.Width+x;
         int before=Visits[cell];
         if(Visits[cell]==255){

@@ -25,7 +25,7 @@ public static class SaveCodec
     {
         if(s.Town.DaylightLocation!=0)throw new InvalidOperationException("Legacy export cannot discard the daylight location");
         if(!s.Town.JobState.IsPristine)throw new InvalidOperationException("Legacy export cannot discard job availability or random streams");
-        if(s.Town.Traffic.Snow.HasCheckpoint)throw new InvalidOperationException("Legacy export cannot discard snow dents");
+        if(s.Town.Traffic.Snow?.HasCheckpoint==true)throw new InvalidOperationException("Legacy export cannot discard snow dents");
         if(s.Town.Jobs.Initialized)throw new InvalidOperationException("Legacy export cannot discard villager identities and jobs");
         if(s.Town.LostAndFound.HasState)throw new InvalidOperationException("Legacy export cannot discard lost-property recovery records");
         if(s.Town.Koban.X!=KobanSite.PreferredX||s.Town.Koban.Z!=KobanSite.PreferredZ||s.BuildingTypes[KobanSite.Building]!=KobanSite.Definition)throw new InvalidOperationException("Legacy export cannot discard a changed koban plot or type");
@@ -41,7 +41,7 @@ public static class SaveCodec
     {
         if(!profiles)RequireLegacyProfile(s);
         s.CaptureProfile();
-        var snow=profiles?s.Town.Traffic.Snow.EncodeCheckpoint():null;
+        var snow=profiles?s.Town.Traffic.Snow?.EncodeCheckpoint():null;
         int elevationRuns=1;for(int i=1;i<Town.Cells;i++)if(s.Town.Elevation[i]!=s.Town.Elevation[i-1])elevationRuns++;
         int jobWords=profiles&&s.Town.Jobs.Initialized?s.Town.Jobs.WordCount:0;
         int version=profiles?16:7;
@@ -174,7 +174,8 @@ public static class SaveCodec
             if(length!=0){
                 if(length<SnowWear.MinCheckpointWords||length>(b.Length-p)/4)throw new InvalidOperationException("Truncated snow checkpoint");
                 var snow=new int[length];for(int i=0;i<length;i++)snow[i]=Get(b,ref p);
-                s.Town.Traffic.Snow.RestoreCheckpoint(snow);
+                s.Town.Traffic.SetWinter(true);
+                s.Town.Traffic.Snow!.RestoreCheckpoint(snow);
             }
         }
         if((version==14&&catalogVersion>=2)||version>=15){

@@ -58,10 +58,20 @@ placement selection. Final precise visibility tests still decide drawing.
 Only fully snow-covered flat grass pages omit their hidden base ground. Buried
 small objects require uninterrupted snow across their footprint and a halo;
 paths, dents, terraces and edges preserve geometry. Tall item billboards remain.
-Undented pages use the simpler snow shader. Fresh-snow resets and indoor
-retirement release the streamed 128/256 KiB mask. Snowfall preserves main
+Undented pages without snow boundaries use the simpler snow shader. Boundary
+pages use the same streamed 128/256 KiB mask to clip the cap above a white
+25 cm ramp to bare ground, including clear-ground patches. Ramp geometry is
+cached per selected page and shares normal ground shadowing. Indoor retirement
+releases derived snow masks and geometry. Snowfall preserves main
 behavior by settling dents to one shallow visit; settled wear needs no active
 recovery timestamps. Recovery scans only lazily allocated active chunks.
+
+All snow ownership is seasonal. Outside winter there is no town snow owner,
+wear/recovery storage, derived coverage/visibility cache, ramp mesh, native
+snapshot, mask or smoothing workspace. Winter exit also retires the snow
+particle stream and cancels outstanding snow memory reservations. Re-entering
+winter creates fresh state; ordinary movement skips snow processing entirely
+in other seasons.
 
 ## Threshold selection
 
@@ -112,8 +122,13 @@ changes, so unchanged views perform no section scans or allocations.
 Optional water optics reserve their complete native allocation peak before
 initialization or resize. At 640×480 the two maps and refraction capture own
 169,984 bytes, plus a 1 KiB admission guard. Required reservations take priority;
-pressure retires optics before essential residency pumps, even if the scene is
-still loading. Transparent water remains available when optics are denied.
+waiting essential demand, allocation backoff or less than 1 MiB of unreserved
+headroom retires optics before essential residency pumps, even if the scene is
+still loading. The small capture can remain warm during global pressure
+hysteresis. A cold capture can recover after three seconds of stable headroom
+when its full allocation peak still leaves that 1 MiB margin. This exception
+does not clear global pressure or admit unrelated optional owners. Transparent
+water remains available when optics are denied.
 Short visibility gaps retain storage for three seconds without capture or draw
 work; longer absence releases it. Allocation failures drain partial owners and
 back off before retry, and completed reservations remain charged until sampled.

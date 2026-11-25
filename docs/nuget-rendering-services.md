@@ -39,7 +39,7 @@ source timestamps alone cannot invalidate objects after an SDK ABI change.
 | CameraFrustum | Shared sphere culling with the existing .025 m guard band |
 | RenderCounters / RenderTelemetry | Shared counters and completed-frame snapshot; existing 16 phases; v5 adds movement/patch counters |
 | Model.LoadAsync | One model task in flight; loading UI between frames, instance publication outside passes |
-| Runtime scheduling / frame-clear controls | Independent opt-in experiments; existing 30 Hz simulation retained |
+| Runtime scheduling / frame-clear controls | Productive waits and frame-clear reuse always enabled; existing 30 Hz simulation retained |
 
 Box positions and rotations are already projected into a common world space.
 The parent worldRoot is an identity; MeshBatch receives those world TRS values
@@ -65,15 +65,19 @@ debt, creation rows and keyboard glyphs rebuild only when their values change.
 The const build-title concatenation already folds at compile time. Existing
 wrapped dialogue, batched fonts and map caching remain in use.
 
-## Runtime experiments
+## Runtime scheduling
 
-`build-game.ps1 -RuntimeProfile N` writes one byte to runtime.cfg (0..7).
-L+R+B cycles the same modes at runtime. Bit 0 removes the extra 1 ms Task.Delay;
-bit 1 enables productive waits; bit 2 enables frame-clear reuse. Defaults remain
-mode 0 pending equivalent-scene input/audio/save/timer regression measurements.
-Runtime mode occupies scenario bits 6..8 in the existing v4 telemetry word; the decoder labels these modes separately. Each change logs `ANIMALTOWN RUNTIME N`; do not mistake logical API calls for GX
-draws or blocking GPU wait for GPU execution time. Scheduler timers, completion
-checks, native reads and poll stride already have optimized package defaults.
+Productive waits and completed frame-clear reuse are always enabled. Their
+retired debug rows and old saved bits cannot disable them. The remaining
+**Frame pacing** option and L+R+B shortcut switch between Yield and Uncapped;
+the simulation stays at 30 Hz.
+
+`build-game.ps1 -RuntimeProfile N` retains the legacy one-byte runtime.cfg
+format (0..7), but only bit 0 selects pacing. At load and after any runtime
+change, bits 1 and 2 are forced on, giving effective mode 6 or 7. Runtime mode
+occupies scenario bits 6..8 in the existing v4 telemetry word, and each change
+logs `ANIMALTOWN RUNTIME N`. Scheduler timers, completion checks, native reads
+and poll stride retain the package defaults.
 
 The seven model loads no longer block construction. Loading shows per-model
 progress, keeps one request in flight and creates instances only after task

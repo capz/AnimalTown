@@ -40,11 +40,20 @@ internal static class DevConfigChecks
         var original=DevConfig.Decode(Convert.FromBase64String("QVREAQEBAAABAQEBAgAAAAAAAAAAAAIAfQABBAAAAADlXYtQ"));
         check(original.Values[0]==1&&original.Values[20]==125&&original.Values[23]==4&&original.Values[18]==2,"v1 debug file keeps existing options during migration");
         var fixedDefaults=new DevConfig();
-        check(fixedDefaults.RuntimeMode==4,"productive waits default off and trust frame clear defaults on");
-        foreach(int option in new[]{1,4,5,6,9,10,14,15,20,27,28,29,32}){
+        check(fixedDefaults.RuntimeMode==6,"productive waits and trust frame clear stay enabled");
+        foreach(int option in new[]{1,4,5,6,9,10,12,13,14,15,20,27,28,29,32}){
             int beforeOption=fixedDefaults.Values[option];
             fixedDefaults.Adjust(option,1);fixedDefaults.Reset(option);
             check(!DevConfig.IsSetting(option)&&fixedDefaults.Values[option]==beforeOption,"retired settings cannot be selected or changed");
+        }
+        for(int mode=0;mode<8;mode++){
+            var old=new DevConfig(mode);
+            old.Values[12]=(mode>>1)&1;old.Values[13]=(mode>>2)&1;
+            var loaded=DevConfig.Decode(old.Encode());
+            check(loaded.RuntimeMode==((mode&1)|6),"legacy saved runtime toggles cannot disable permanent features");
+            check(loaded.Values[12]==old.Values[12]&&loaded.Values[13]==old.Values[13],"retired runtime bytes remain readable without changing the saved format");
+            loaded.Adjust(11,1);
+            check(loaded.RuntimeMode==(((mode&1)^1)|6),"frame pacing remains independently adjustable");
         }
         byte[] off=LowPolyTree.DetailTexture(0),normal=LowPolyTree.DetailTexture(),strong=LowPolyTree.DetailTexture(300);
         TexturePixels.Validate(off);TexturePixels.Validate(strong);

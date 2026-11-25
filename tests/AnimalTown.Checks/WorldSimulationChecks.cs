@@ -115,20 +115,33 @@ internal static class WorldSimulationChecks
             town.Tiles[snowZ*Town.Width+snowX]=(byte)Terrain.Grass;town.Elevation[snowZ*Town.Width+snowX]=0;
             for(int i=0;i<SnowWear.MaxVisits;i++)town.Traffic.Enter(town,snowX,snowZ);
             for(int i=0;i<1200;i++)winter.Step(default);
-            check(town.Traffic.Snow.VisitCount(snowX,snowZ)==SnowWear.MaxVisits,"a dry winter interval pauses dent recovery");
+            check(town.Traffic.Snow!.VisitCount(snowX,snowZ)==SnowWear.MaxVisits,"a dry winter interval pauses dent recovery");
 
             SetTime(start);
             winter.SetSnowfall(false);
             for(int i=0;i<1200;i++)winter.Step(default);
-            check(town.Traffic.Snow.VisitCount(snowX,snowZ)==SnowWear.MaxVisits,"the live simulation pauses recovery when the snowfall toggle is off");
+            check(town.Traffic.Snow!.VisitCount(snowX,snowZ)==SnowWear.MaxVisits,"the live simulation pauses recovery when the snowfall toggle is off");
             winter.SetSnowfall(true);
-            for(int i=0;i<60*30;i++)winter.Step(default);
-            check(town.Traffic.Snow.VisitCount(snowX,snowZ)==1,"outdoor snowfall refills distant dents to level one while the player is indoors");
+            for(int i=0;i<SnowWear.RecoverySeconds*30;i++)winter.Step(default);
+            check(town.Traffic.Snow!.VisitCount(snowX,snowZ)==1,"outdoor snowfall refills distant dents to level one while the player is indoors");
 
             SetTime(1439);
             winter.state.Space=0;
             for(int i=0;i<30;i++)winter.Step(default);
-            check(town.Traffic.Snow.VisitCount(snowX,snowZ)==1,"leaving a building preserves the outdoor snow track");
+            check(town.Traffic.Snow!.VisitCount(snowX,snowZ)==1,"leaving a building preserves the outdoor snow track");
+
+            winter.state.Space=16;
+            winter.renderDebug.SetSeason(0);
+            var retired=town.Traffic.Snow!;
+            winter.Step(default);
+            check(town.Traffic.Snow==null&&retired.Packed.Length==0&&winter.SnowRetirements==1,
+                "winter ends indoors by retiring the snow owner and renderer resources immediately");
+            for(int i=0;i<120;i++)winter.Step(default);
+            check(town.Traffic.Snow==null&&winter.SnowRetirements==1,
+                "steady nonwinter simulation never reacquires snow or repeats resource retirement");
+            winter.renderDebug.SetSeason(3);winter.Step(default);
+            check(town.Traffic.Snow!=null&&town.Traffic.Snow!=retired&&town.Traffic.Snow.VisitCount(snowX,snowZ)==0,
+                "returning to winter indoors creates fresh snow without stale recovery state");
         }finally{NativeCalendar.Time=originalClock;}
     }
     private static GameState JourneyState()

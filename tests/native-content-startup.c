@@ -63,7 +63,7 @@ int main(int argc,char **argv){
     const char *expected_attempts=getenv("ANIMALTOWN_CONTENT_ATTEMPTS");
     int expected=setting("ANIMALTOWN_CONTENT_RESULT",0),expected_mask=setting("ANIMALTOWN_CONTENT_MOUNTS",0);
     bool okay=result==expected&&!dnd_exception_pending()&&!handles&&mask==expected_mask&&!image_mounts&&
-        expected_attempts&&!strcmp(attempts,expected_attempts)&&profile_calls==(expected==0?1:0)&&profile_reuse==0;
+        expected_attempts&&!strcmp(attempts,expected_attempts)&&profile_calls==(expected==0?1:0)&&profile_reuse==(expected==0?1:0);
     if(borrowed>=0){DndMountInfo after={0};okay&=dnd_storage_get_mount_info(borrowed,&after)&&after.mount_id==before.mount_id&&dnd_storage_is_mounted(borrowed);}
     if(!okay){
         fprintf(stderr,"Content startup result=%ld expected=%d mounts=%d expected=%d attempts=%s expected=%s handles=%d profile_calls=%d image_mounts=%d exception=%s\n",

@@ -8,6 +8,13 @@ terraces. Roads, water, white building pads, ramps, cliff lips and interiors
 use their usual surfaces. Select **Winter** in **Season preview** to see the
 effect year-round in a console build.
 
+At boundaries with uncovered ground, a white ramp tapers from the raised
+snow to the original ground over 25 cm on the snowy side. This includes
+object footprints, visible paths and authored clear-ground patches, including
+patches whose collision tile remains grass. Adjacent ramps meet at corners.
+Only selected terrain pages hold ramp meshes; unchanged pages reuse their
+indexed buffers. The existing depth mask clips the raised cap above each ramp.
+
 The renderer draws the textured floor and then reuses the indexed grass
 mesh for the white layer. Tile entries use the same movement path as road
 traffic. The first visit makes a small dent and the second widens it while
@@ -15,18 +22,18 @@ keeping the surface white. The third visit exposes a small patch of ground
 at the center, the fourth widens the opening, and the fifth clears the tile
 up to its shaded rim. Standing and movement within a tile add no visits.
 While snow falls outdoors, each dent refills to the first indentation
-level over one minute of active snowfall after its latest visit. The
+level over seven minutes of active snowfall after its latest visit. The
 ground closes over and the shallow white track stays visible until the
 player re-enters town from the title screen or another town. Turning off
 snowfall or previewing rain pauses recovery. Outdoor snow continues
 refilling while the player is inside. Path coverage and visit history
 follow their existing rules.
 
-**Smooth snow transitions** in **Debug / testing** eases footprints in over
-300 ms and shows the finer stages of snowfall recovery near the player.
-The preview updates the existing mask up to ten times per second. The
-toggle starts off each session, and the underlying wear and save data
-follow the same rules either way.
+Smooth snow transitions are always enabled: footprints ease in over 300 ms
+and the finer stages of snowfall recovery appear near the player. The renderer
+updates the existing mask up to ten times per second. Under memory pressure it
+temporarily releases the smoothing workspace, then restores it automatically
+when headroom returns. The underlying wear and save data keep the same rules.
 
 The depth field is a demand-allocated I8 texture with four texels per metre.
 In normal outdoor views, a 512×256 strip spans the submitted terrain from
@@ -36,12 +43,21 @@ for filtering and rim shading. Views that exceed its capacity use the
 full 512×512 mask. A tile entry updates the GX blocks it touches and the
 blocks affected by its rim. Snow receives the same IA4 shadow and lamp
 textures as ordinary ground. The raised winter pass adds one visible grass
-submission and one depth binding on worn snow. Ground collision continues
+submission and one depth binding on worn snow or pages with boundary ramps. Ground collision continues
 to use the original surface.
 
 The game can release the derived depth mask indoors and while writing a save.
 Town-wide wear, snowfall recovery, and weather continue independently. The
 renderer prepares the mask again before drawing the outdoor scene.
+
+Outside winter the town has no snow controller or wear/recovery arrays, and
+movement and simulation skip snow updates. Leaving winter releases native
+snapshots, masks and smoothing buffers, derived coverage and visibility caches,
+ramp meshes, snow transforms and outstanding snow memory reservations. The
+shared precipitation renderer also retires a previously prepared snow stream.
+The season-change boundary collects the retired managed buffers immediately.
+Returning to winter creates fresh snow state. Saved winter checkpoints remain
+readable in all supported save formats.
 
 Once both edge-sharing tiles expose ground, the mask extends the shallower
 cutout's cross-section between their centers. The existing rounded ends
@@ -134,7 +150,11 @@ per byte and expands them before composition into the original IA4 pages.
 Together the shadow cache and rolling mask charge 570,368 bytes to the native
 allocator, 208 KiB less than the earlier full-mask layout with one byte per
 static texel. The full-mask fallback charges 701,440 bytes with the shared
-shadow cache. These totals cover the two graphics allocations. A static
-7,680-byte snapshot and a managed 7,680-byte wear array store the packed depth
-steps. A 30 KiB managed array tracks dents above the first indentation level
-and is released once they all settle.
+shadow cache. These totals cover the two graphics allocations. A winter-only
+native snapshot holds 7,680 packed depth bytes and a 30-byte page bitset. The
+town allocates its 7,680-byte managed wear array only in winter. Active recovery
+uses sparse chunks; its optional 30 KiB renderer view is released indoors or
+under memory pressure. Winter coverage uses two one-byte-per-tile arrays.
+Boundary geometry is bounded by the selected terrain pages and admitted through
+the shared memory policy. None of these snow working buffers or their
+reservations survive winter exit.

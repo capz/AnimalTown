@@ -42,7 +42,7 @@ internal sealed class VisitEdgeRenderer
     private static Vector3 Center(GameState state,int x,int z,bool snow)
     {
         float cx=x+.5f,cz=z+.5f,height=TerrainElevation.At(state.Town,cx,cz)+.035f;
-        if(snow&&SnowWear.Covers(state.Town,x,z)&&state.Town.Paths.At(x,z)==0&&state.Town.Traffic.Snow.CenterCovered(x,z))
+        if(snow&&state.Town.Traffic.Winter&&SnowWear.Covers(state.Town,x,z)&&state.Town.Paths.At(x,z)==0&&state.Town.Traffic.Snow!.CenterCovered(x,z))
             height+=TerrainRenderer.SnowHeight;
         var surface=CylinderWorld.Surface(cz,state.Z,height);
         return new Vector3(cx,surface.Y,surface.Z);

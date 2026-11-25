@@ -40,7 +40,7 @@ internal static class Program
 #endif
         try{RuntimeOptions.Load();}
         catch(System.IO.IOException error){Console.WriteLine(error.Message);return 20;}
-        Check(RuntimeOptions.Mode==0,"production runtime loader reads the selected installation's profile");
+        Check(RuntimeOptions.Mode==6,"production runtime loader keeps productive waits and frame-clear reuse enabled for a legacy profile");
         string root=ContentPaths.Root;
         long generation=selected!.MountId;
         string model=TexturePolicy.ModelPath("fox",TextureResolution.Size128);

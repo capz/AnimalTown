@@ -12,10 +12,14 @@ internal sealed class WaterBumpEffect : IDisposable
     // slope amplitude, full-resolution refraction pixels, specular, sheen.
     private readonly float[] settings=new float[12]{0,CylinderWorld.Radius,0,0,2.2f,0,0,3.1f,.14f,1.5f,.18f,.10f};
     internal const int MapBytes=16*1024,AllocationGuardBytes=1024;
+    // Keep four times the shared emergency reserve after a small capture.
+    // Global hysteresis may remain active after a transient model restore;
+    // that alone must not permanently suppress otherwise affordable water.
+    internal const int RecoveryHeadroomBytes=4*VisualMemoryPressure.SafetyBytes;
     internal const long IdleGraceUs=3000000;
     internal VisualMemoryPressure? Memory;
     private bool initialized,disposed;
-    private long retryAt,lastVisibleAt;
+    private long retryAt,lastVisibleAt,recoveryAt=-1;
     internal bool Active {get;private set;}
     internal int Features {get;private set;}
     internal bool CaptureReady=>(Features&2)!=0;
@@ -33,9 +37,9 @@ internal sealed class WaterBumpEffect : IDisposable
         RequireBetweenFrames();
         settings[0]=focusZ;
         long now=Clock.Timestamp;
-        if(Memory?.UnderPressure==true){Reclaim();return;}
+        if(MustYield(now)){recoveryAt=-1;Reclaim();return;}
         if(!visible){
-            Active=false;Features=0;
+            Active=false;Features=0;recoveryAt=-1;
             // A short camera reversal retains storage but performs no capture
             // or native draw work. Longer absence retires both immutable maps.
             if(initialized&&now-lastVisibleAt>=IdleGraceUs)Reclaim();
@@ -48,8 +52,16 @@ internal sealed class WaterBumpEffect : IDisposable
         int peak=initialized?0:MapBytes;
         if(!matchingCapture)peak+=captureBytes;
         if(peak>0)peak+=AllocationGuardBytes;
+        bool recovering=peak>0&&Memory?.UnderPressure==true;
+        if(recovering){
+            if((long)Memory!.FreeBytes-Memory.ReservedBytes-peak<RecoveryHeadroomBytes){recoveryAt=-1;Suspend();return;}
+            if(recoveryAt<0)recoveryAt=now;
+            if(now-recoveryAt<VisualMemoryPressure.RecoveryGraceUs){Suspend();return;}
+        }else recoveryAt=-1;
         int ticket=0;
-        if(Memory!=null&&!Memory.TryReserve(peak,now,false,out ticket)){Suspend();return;}
+        // The recovery exception is bounded above before bypassing the global
+        // hysteresis flag. Ordinary admission still charges the complete peak.
+        if(Memory!=null&&!Memory.TryReserve(peak,now,recovering,out ticket)){recoveryAt=-1;Suspend();return;}
         bool started=!initialized;
         try{
             int nativeBefore=peak>0?NativeWater.Stats(0):0;
@@ -62,7 +74,7 @@ internal sealed class WaterBumpEffect : IDisposable
             Features=NativeWater.Prepare(settings,1,sunlight,environmentRgb);
             if(Features==0||peak>0&&NativeWater.Stats(18)!=failuresBefore)
                 throw new InvalidOperationException("Water optics allocation unavailable");
-            Active=true;
+            Active=true;recoveryAt=-1;
             // The physical sample may predate synchronous native publication.
             // Keep new bytes charged until the next real allocator observation.
             if(peak>0&&NativeWater.Stats(0)>nativeBefore)Memory?.Complete(ticket);
@@ -80,6 +92,14 @@ internal sealed class WaterBumpEffect : IDisposable
     }
     private static int CaptureBytes(int width,int height)
         =>width>=8&&height>=8&&width<=640&&height<=528&&((width|height)&7)==0?width*height/2:0;
+    private bool MustYield(long now)
+        =>Memory?.UnderPressure==true&&(Memory.WaitingPeakBytes>0||now<Memory.RetryAt||
+            (long)Memory.FreeBytes-Memory.ReservedBytes<RecoveryHeadroomBytes);
+    internal bool ReclaimForPressure()
+    {
+        if(!MustYield(Clock.Timestamp))return false;
+        recoveryAt=-1;return Reclaim();
+    }
     private static void RequireBetweenFrames()
     {if(GraphicsDevice.Default.IsFrameActive)throw new InvalidOperationException("Water optics residency changes require EndFrame");}
     internal void Begin(){if(Active)NativeWater.Begin();}
@@ -93,6 +113,7 @@ internal sealed class WaterBumpEffect : IDisposable
     }
     internal bool Reclaim()
     {
+        recoveryAt=-1;
         if(!initialized)return false;
         RequireBetweenFrames();
         NativeWater.Shutdown();initialized=false;Active=false;Features=0;return true;

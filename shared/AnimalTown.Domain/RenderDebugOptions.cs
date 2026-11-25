@@ -14,7 +14,6 @@ public sealed class RenderDebugOptions
     public bool GroundMipmaps=true;
     public bool ShowGroundMipBands;
     public bool ShowWorldRim,ShowObstructedEdges,ShowVisitEdges;
-    public bool SmoothSnowTransitions;
     public int GroundMipDistance {get;private set;} // 0 = default radius.
     public static float AttentionHeight(float highestJoint)=>float.IsFinite(highestJoint)?Math.Max(2.35f,Math.Min(5,highestJoint*1.8f+.7f)):3.6f;
     public void SetSeason(int season)=>SeasonSelection=SeasonOverride=season;

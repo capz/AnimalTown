@@ -296,7 +296,7 @@ internal sealed partial class TitleScreen : IDisposable,Hypercube.GameCube.IFram
             case DevConfig.FullResolutionAaIndex:return "Full-resolution AA: "+(VideoOptions.FullResolutionAa?"On":"Off")+(VideoOptions.AaSaveFailed?" (not saved)":" (saved)");
             case 0:return "Performance display: "+toggle;
             case 2:return "UV island colors: "+toggle;case 3:return "UV island outlines: "+toggle;
-            case 11:return "Frame pacing: "+(value==0?"Yield":"Uncapped");case 12:return "Productive waits: "+toggle;case 13:return "Trust frame clear: "+toggle;
+            case 11:return "Frame pacing: "+(value==0?"Yield":"Uncapped");
             case 16:return "Rain preview: "+toggle;case 17:return "Rough ocean in rain: "+toggle;
             case 18:return "Season preview: "+(value==0?"Auto":TerrainTiles.SeasonName(value-1));
             case 19:return "Villager attention bubbles: "+toggle;

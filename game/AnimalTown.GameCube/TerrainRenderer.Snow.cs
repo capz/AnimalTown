@@ -10,10 +10,32 @@ internal sealed partial class TerrainRenderer
     private Town? snowDemandTown;
     private int snowDemandRevision=-1,snowDemandTerrainRevision=-1,snowDemandMinZ=-1,snowDemandMaxZ=-1;
     private long snowRetryAt;
+    private SnowEdges? snowEdges;
+    private bool snowHasEdges;
+    private int[]? snowTickets;
+    private int snowTicketCount;
+    private VisualMemoryPressure? snowTicketOwner;
+    partial void RetireSnowGeometry();
+    private int SnowNativeBytes()=>NativeShadows.Stats(14)+NativeShadows.Stats(15)+NativeShadows.Stats(17);
+    private void CompleteSnowTicket(int ticket)
+    {
+        if(ticket==0||Memory==null)return;
+        if(snowTicketOwner!=Memory){CancelSnowTickets();snowTicketOwner=Memory;}
+        snowTickets??=new int[32];
+        for(int i=0;i<snowTicketCount;)if(!Memory.HasReservation(snowTickets[i]))snowTickets[i]=snowTickets[--snowTicketCount];else i++;
+        if(snowTicketCount==snowTickets.Length)throw new InvalidOperationException("Snow reservation budget exceeded");
+        Memory.Complete(ticket);snowTickets[snowTicketCount++]=ticket;
+    }
+    private void CancelSnowTickets()
+    {
+        for(int i=0;i<snowTicketCount;i++)if(snowTicketOwner?.HasReservation(snowTickets![i])==true)snowTicketOwner.Cancel(snowTickets[i]);
+        snowTickets=null;snowTicketCount=0;snowTicketOwner=null;
+    }
 
     private bool SnowNeedsStorage(Town town,int minZ,int maxZ)
     {
-        var snow=town.Traffic.Snow;
+        var snow=town.Traffic.Snow!;
+        if(snowHasEdges)return true;
         // Match logical rows before native strip projection. GX clamps the
         // snow texture at town edges; the curved world does not wrap its dents.
         // Two rows include neighboring stamps, bilinear filtering and relief.
@@ -31,44 +53,51 @@ internal sealed partial class TerrainRenderer
                 if(snowHasWear)break;
             }
         }
-        return snow.Winter&&snowHasWear;
+        return snow.Winter&&(snowHasWear||snowHasEdges);
     }
-    internal bool PrepareSnowForExit(Town town,float x,float z,bool smooth)
+    internal bool PrepareSnowForExit(Town town,float x,float z)
     {
         // The visible row interval follows the selected immutable geometry;
         // legacy stream selection is finalized by the first outdoor Prepare.
+        if(!town.Traffic.Winter)return true;
         if(legacy||archive==null||!archive.Ready)return true;
         if(!archive.Presentable)return false;
         archive.GroundBounds(season==3?snowGroundMask:ulong.MaxValue,out int minZ,out int maxZ);
-        return PrepareSnowMask(town,x,z,minZ,maxZ,smooth);
+        return PrepareSnowMask(town,x,z,minZ,maxZ);
     }
-    internal bool ReleaseSnowMask(Town town)
+    internal bool ReleaseSnowMask(Town town,bool retireGeometry=true)
     {
-        town.Traffic.Snow.ReleaseRecoveryStamps();
-        if(!snowMaskPrepared&&NativeShadows.Stats(14)==0&&NativeShadows.Stats(15)==0){snowMaskReady=true;return true;}
-        bool released=NativeShadows.Snow(town.Traffic.Snow.Packed,town.Tiles,town.Elevation,null,0,0,0,-1,0,0,0,0)==1;
+        town.Traffic.Snow?.ReleaseRecoveryStamps();
+        if(retireGeometry){
+            RetireSnowGeometry();snowEdges=null;snowHasEdges=false;
+            snowDemandTown=null;snowDemandRevision=snowDemandTerrainRevision=-1;snowRetryAt=0;
+            CancelSnowTickets();
+        }
+        if(!snowMaskPrepared&&SnowNativeBytes()==0){snowMaskReady=true;return true;}
+        bool released=NativeShadows.Snow(null,null,null,null,0,0,0,-1,0,0,0,0)==1;
         if(released){snowMaskPrepared=false;snowMaskReady=true;}
         else snowMaskReady=false;
         return released;
     }
-    private bool PrepareSnowMask(Town town,float x,float z,int minZ,int maxZ,bool smooth)
+    private bool PrepareSnowMask(Town town,float x,float z,int minZ,int maxZ)
     {
         minZ=Math.Max(0,minZ);maxZ=Math.Min(Town.Height,maxZ);
-        if(!town.Traffic.Snow.Winter||minZ>=maxZ)return ReleaseSnowMask(town);
+        if(!town.Traffic.Winter||minZ>=maxZ)return ReleaseSnowMask(town);
         // A far dent may exist inside the native strip's spare rows. Bypass
         // native creation entirely for a fresh visible region, so a zero-byte
         // scene never waits for a mask reservation it cannot actually use.
-        if(!SnowNeedsStorage(town,minZ,maxZ))return ReleaseSnowMask(town);
+        if(!SnowNeedsStorage(town,minZ,maxZ))return ReleaseSnowMask(town,false);
         long now=Clock.Timestamp;
         if(now<snowRetryAt){snowMaskReady=false;return false;}
         // Keep main's streamed 128 KiB strip, 256 KiB fallback and optional
         // smooth transition cache. An existing strip can grow or shrink, so
         // checking only whether a mask exists would miss a real allocation.
+        // Smooth transitions resume automatically after temporary memory pressure.
         int near=Math.Max(0,minZ-1),far=maxZ+1;
         int desiredBytes=far-near<=63?SnowMaskBytes/2:SnowMaskBytes,currentBytes=NativeShadows.Stats(14);
-        bool preview=smooth&&Memory?.UnderPressure!=true;
+        bool preview=Memory?.UnderPressure!=true;
         int guard=SnowMaskPeakBytes-SnowMaskBytes;
-        int nativeBefore=currentBytes+NativeShadows.Stats(15);
+        int nativeBefore=SnowNativeBytes();
         int requestedBytes=desiredBytes!=currentBytes?Math.Max(0,desiredBytes-currentBytes)+guard:0;
         if(preview&&NativeShadows.Stats(15)==0)requestedBytes=Math.Max(requestedBytes,guard);
         int ticket=0;
@@ -76,7 +105,7 @@ internal sealed partial class TerrainRenderer
             snowMaskReady=false;return false;
         }
         try{
-            var snow=town.Traffic.Snow;int focus=-1,elapsedMs=0;
+            var snow=town.Traffic.Snow!;int focus=-1,elapsedMs=0;
             if(!preview)snow.ReleaseRecoveryStamps();
             if(preview){
                 int tileX=Math.Max(0,Math.Min(Town.Width-1,(int)Math.Floor(x)));
@@ -84,13 +113,13 @@ internal sealed partial class TerrainRenderer
                 focus=tileZ*Town.Width+tileX;elapsedMs=unchecked((int)(now/1000));
             }
             snowMaskPrepared=true;
-            if(NativeShadows.Snow(snow.Packed,town.Tiles,town.Elevation,preview?snow.RecoveryStamps:null,
-                snow.Revision,town.TerrainVersion,1,focus,elapsedMs,snow.SnowfallTicks,minZ,maxZ)!=1)
+            if(NativeShadows.Snow(snow.Packed,town.Tiles,snowEdges?.Levels??town.Elevation,preview?snow.RecoveryStamps:null,
+                snow.Revision,snowEdges?.Revision??town.TerrainVersion,1,focus,elapsedMs,snow.SnowfallTicks,minZ,maxZ)!=1)
                 throw new InvalidOperationException("Native snow coverage allocation or publication rejected");
             // A dent elsewhere in town can make the conservative request
             // unnecessary for these streamed rows. Avoid forcing a new system
             // allocator sample when the native owner gained no storage.
-            if(NativeShadows.Stats(14)+NativeShadows.Stats(15)>nativeBefore)Memory?.Complete(ticket);
+            if(SnowNativeBytes()>nativeBefore)CompleteSnowTicket(ticket);
             else Memory?.Cancel(ticket);
             ticket=0;
             snowMaskReady=true;return true;
@@ -105,12 +134,12 @@ internal sealed partial class TerrainRenderer
     {
         // Authoritative dents and their sparse recovery clocks remain in town
         // state; only native streamed coverage and preview buffers are retired.
-        int before=NativeShadows.Stats(14)+NativeShadows.Stats(15);
-        if(before==0)return true;
+        int before=SnowNativeBytes();
+        if(before==0&&snowEdges==null&&snowTicketCount==0)return true;
         var town=cachedTown??snowDemandTown;if(town==null)return false;
         bool released=ReleaseSnowMask(town);
         if(released)DebugOverlay.WriteLine("ANIMALTOWN SNOW SUSPENDED reclaimed bytes "+
-            Math.Max(0,before-NativeShadows.Stats(14)-NativeShadows.Stats(15)));
+            Math.Max(0,before-SnowNativeBytes()));
         return released;
     }
 }
