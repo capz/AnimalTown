@@ -127,9 +127,55 @@ assert flash['rgb_changed_samples']>10000 and flash['local_pattern_changed_sampl
 empty=measure(bytes(800*480*3),bytes(800*480*3),optics=True)
 assert empty['interior_samples']==0
 
-# Exercise the production moving/frozen/resumed acceptance function too. A
-# colour flash, frozen scene, or equally moving control cannot establish waves.
+# Exercise the production camera polling without starting the emulator.
 scenario=next(node for node in source.body if isinstance(node,ast.FunctionDef) and node.name=='terrain_materials')
+navigation=[node for node in scenario.body if isinstance(node,ast.FunctionDef)
+            and node.name in {'water_probe','water_wait','water_advance'}]
+exec(compile(ast.Module(body=navigation,type_ignores=[]),'<water camera navigation>','exec'),namespace)
+
+class Camera:
+    def __init__(self,*,stalled=False,failed=False):
+        self.now=0;self.scene=1;self.pending=None;self.polls=0;self.steps=[]
+        self.stalled=stalled;self.failed=failed
+    def monotonic(self):return self.now
+    def sleep(self,seconds):self.now+=seconds
+    def chord(self,button):
+        assert button=='D_LEFT'
+        assert self.pending is None,'A shortcut was sent before the previous camera drew'
+        self.pending=self.scene+1;self.polls=0;self.steps.append(self.pending)
+    def alive(self):
+        if self.failed:raise AssertionError('Emulator stopped during terrain material capture')
+    def log(self):
+        self.polls+=1
+        # Terrain residency can take longer than the chord's fixed sleeps.
+        # Until then, the log and world screenshot still describe the old view.
+        if self.pending is not None and self.polls>=26 and not self.stalled:
+            self.scene=self.pending;self.pending=None
+        return draw(scene=self.scene,stages=4,indirect=1,texgens=2,
+                    blend=1 if self.scene in (1,2,3) else 0)
+    def install(self):
+        namespace.update(time=self,chord=self.chord,alive=self.alive,runtime_log_text=self.log)
+
+camera=Camera();camera.install()
+for scene in (2,3,4):
+    acknowledged=namespace['water_advance'](scene)
+    assert acknowledged['scene']==scene and camera.pending is None
+assert camera.steps==[2,3,4] and camera.now>14.9
+# The navigation acknowledgement can use safe fallback on an intermediate
+# camera, but the final inland material acceptance still requires real optics.
+camera.scene=1
+assert namespace['water_probe'](1) is None,'Navigation weakened the final water optics gate'
+for camera,fragment in ((Camera(stalled=True),'scene 2 (archived)'),
+                        (Camera(failed=True),'Emulator stopped')):
+    camera.install()
+    try:namespace['water_advance'](2)
+    except AssertionError as error:assert fragment in str(error),(fragment,str(error))
+    else:raise AssertionError('Missing camera acknowledgement was accepted')
+    assert camera.steps==[2]
+    if camera.stalled:assert 180<=camera.now<181
+print('Water camera navigation: delayed actual draws acknowledge every step; stalled/stopped scenes fail without skipping, and final optics acceptance stays strict')
+
+# A colour flash, frozen scene, or equally moving control cannot establish waves.
 gate=next(node for node in scenario.body if isinstance(node,ast.FunctionDef) and node.name=='moving_water')
 def visual_assert(condition,message):
     if not condition:raise AssertionError(message)

@@ -1076,16 +1076,22 @@ def terrain_materials():
     def base_only(metrics):
         if metrics['classified_pixels']<6000 or metrics['level_pixels'][0]<metrics['classified_pixels']*.88:
             raise AssertionError('Disabling mipmaps did not collapse diagnostic terrain to level zero')
-    def water_probe(scene,legacy=False):
-        return water_draw_state(runtime_log_text(),scene,legacy,require_optics=scene in (1,2,3))
-    def water_wait(scene,predicate,legacy=False):
+    def water_probe(scene,legacy=False,require_optics=True):
+        return water_draw_state(runtime_log_text(),scene,legacy,require_optics=require_optics and scene in (1,2,3))
+    def water_wait(scene,predicate,legacy=False,require_optics=True):
         deadline=time.monotonic()+180
         while time.monotonic()<deadline:
-            alive();state=water_probe(scene,legacy)
+            alive();state=water_probe(scene,legacy,require_optics)
             if state and predicate(state):return state
             time.sleep(.2)
         raise AssertionError('No matching actual GX water draw/progression for scene '+str(scene)
                              +' ('+('legacy' if legacy else 'archived')+')')
+    def water_advance(scene):
+        # Input is ignored while the new terrain view loads. A world-shaped
+        # screenshot can still belong to the previous camera, so acknowledge
+        # each shortcut with an actual draw before sending the next one.
+        chord('D_LEFT')
+        return water_wait(scene,lambda state:True,require_optics=False)
     def uv_progress(before,after):
         layers=[(before[key],after[key]) for key in ('uv0','uv1')]
         if 'optics' in before and before['optics']['mask']:
@@ -1163,7 +1169,7 @@ def terrain_materials():
         mip_frame('restored',0,1,0,restored_art)
         # WaterInspection is a read-only camera tour; it hides the player and
         # restores logical coordinates after every draw, keeping pairs fixed.
-        chord('D_LEFT');wait_onboarding('world',prefix+'river-ready.png');time.sleep(3)
+        water_advance(1);wait_onboarding('world',prefix+'river-ready.png');time.sleep(3)
         animated=water_pair('water-river',1)
         chord('D_DOWN',with_z=True);time.sleep(2)
         frozen=water_pair('water-river-frozen',1,moving=False,frames=animated['rendered_frames'])
@@ -1189,7 +1195,7 @@ def terrain_materials():
         chord('X',with_z=True);wait_onboarding('world',prefix+'archive-river-restored.png')
         report['water']['legacy_river']['archived_restored']=water_wait(1,lambda state:state['frame']>last_legacy)
         capture('water-river-archive-restored')
-        for _ in range(3):chord('D_LEFT')
+        for scene in (2,3,4):water_advance(scene)
         wait_onboarding('world',prefix+'coast-ready.png');time.sleep(3)
         coast=water_pair('water-coast',4);report['water']['coast']=coast
         visual_assert(coast['changed_chromaticity_samples']>=35 and coast['crest_edge_sign_changes']>=15,

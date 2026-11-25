@@ -428,6 +428,15 @@
         "Required town loads still take priority and retain their memory reservations.",
         "The compact capture resumes only after stable headroom returns."
       ]
+    },
+    {
+      "id": "acknowledged-water-camera-validation-20261125",
+      "lines": [
+        "Water rendering checks reliably reach the coast after terrain loads.",
+        "Each inspection shortcut waits for an actual draw from its new camera.",
+        "Delayed terrain loading cannot silently consume the next shortcut.",
+        "Water animation, refraction and image acceptance remain unchanged."
+      ]
     }
   ]
 }
