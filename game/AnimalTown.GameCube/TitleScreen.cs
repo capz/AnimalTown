@@ -37,8 +37,8 @@ internal sealed partial class TitleScreen : IDisposable,Hypercube.GameCube.IFram
     private TitleScreen(DevConfig config,UserOptions options)
     {
         this.config=config;this.options=options;status=VideoOptions.Status;
-        int at=0;rows[at++]=0;rows[at++]=DevConfig.FullResolutionAaIndex;
-        for(int i=1;i<DevConfig.Count;i++)if(DevConfig.IsSetting(i)&&i!=DevConfig.FullResolutionAaIndex&&i!=DevConfig.GroundMipBandsIndex){
+        int at=0;rows[at++]=0;
+        for(int i=1;i<DevConfig.Count;i++)if(DevConfig.IsSetting(i)&&i!=DevConfig.GroundMipBandsIndex){
             rows[at++]=i;if(i==23)rows[at++]=DevConfig.GroundMipBandsIndex;
         }
     }
@@ -66,10 +66,6 @@ internal sealed partial class TitleScreen : IDisposable,Hypercube.GameCube.IFram
                 if(direction==MenuNavigation.Down)title.debugSelected=(title.debugSelected+1)%title.rows.Length;
                 if(p.A.WasPressed||direction==MenuNavigation.Left||direction==MenuNavigation.Right||p.X.WasPressed){
                     int row=title.rows[title.debugSelected];
-                    if(row==DevConfig.FullResolutionAaIndex){
-                        if(!p.X.WasPressed&&VideoOptions.ToggleFullResolutionAa(config)){title.dirty=true;title.Save();}
-                        title.status=VideoOptions.Status;continue;
-                    }
                     if(p.X.WasPressed&&DevConfig.IsSlider(row))config.Reset(row);
                     else if(!p.X.WasPressed)config.Adjust(row,direction==MenuNavigation.Left?-1:1);
                     else continue;
@@ -109,7 +105,7 @@ internal sealed partial class TitleScreen : IDisposable,Hypercube.GameCube.IFram
     private void Save()
     {
         if(!dirty)return;
-        if(DevConfigStorage.Save(config)){dirty=false;VideoOptions.AaSaveFailed=false;}else VideoOptions.AaSaveFailed=true;
+        if(DevConfigStorage.Save(config))dirty=false;
         status=DevConfigStorage.Status;
     }
     private void Draw()
@@ -293,7 +289,6 @@ internal sealed partial class TitleScreen : IDisposable,Hypercube.GameCube.IFram
     {
         int value=config.Values[row];string toggle=value==0?"Off":"On";
         switch(row){
-            case DevConfig.FullResolutionAaIndex:return "Full-resolution AA: "+(VideoOptions.FullResolutionAa?"On":"Off")+(VideoOptions.AaSaveFailed?" (not saved)":" (saved)");
             case 0:return "Performance display: "+toggle;
             case 2:return "UV island colors: "+toggle;case 3:return "UV island outlines: "+toggle;
             case 11:return "Frame pacing: "+(value==0?"Yield":"Uncapped");

@@ -186,11 +186,11 @@ Check(card.Files.Count==1&&new SaveRepository(new CardSaveStorage(card,banner,ic
 // Existing settings remain readable until an explicit save can move them.
 card=OldArchive();
 var expectedVideo=new UserOptions{Resolution=2,Widescreen=true,ShowDebugMenus=true};
-var expectedDebug=new DevConfig();expectedDebug.Values[DevConfig.FullResolutionAaIndex]=1;
+var expectedDebug=new DevConfig();expectedDebug.Values[DevConfig.GroundMipBandsIndex]=1;
 new CardArchive(card,banner,icon,4).Write(UserOptionsStorage.FileName,expectedVideo.Encode());
 new CardArchive(card,banner,icon,4).Write(DevConfigStorage.FileName,expectedDebug.Encode());
 SaveCards.Initialize();
-Check(UserOptionsStorage.Load().Resolution==2&&DevConfigStorage.Load().Values[DevConfig.FullResolutionAaIndex]==1&&card.Files.Count==1,"loading archived settings is read-only");
+Check(UserOptionsStorage.Load().Resolution==2&&DevConfigStorage.Load().Values[DevConfig.GroundMipBandsIndex]==1&&card.Files.Count==1,"loading archived settings is read-only");
 card.Capacity=card.Used+1;
 new CardSaveStorage(card,banner,icon,4).MigrateSettings();
 Check(card.Files.Count==1&&UserOptionsStorage.Load().Widescreen,"insufficient journal space preserves archived settings");
@@ -201,7 +201,7 @@ Check(card.Files.ContainsKey(CardSettingsStorage.VideoFile)&&UserOptionsStorage.
 new CardSaveStorage(card,banner,icon,4).MigrateSettings();
 var settingsArchive=new CardRecordStore(new NativeCardBlocks(4,false,banner,icon,"AnimalTown2"),false);
 Check(!settingsArchive.Names().Contains(UserOptionsStorage.FileName)&&!settingsArchive.Names().Contains(DevConfigStorage.FileName),"the verified settings files supersede both archived copies");
-Check(card.Files.Count==3&&card.Used==36&&DevConfigStorage.Load().Values[DevConfig.FullResolutionAaIndex]==1,"both migrated files use one physical block each");
+Check(card.Files.Count==3&&card.Used==36&&DevConfigStorage.Load().Values[DevConfig.GroundMipBandsIndex]==1,"both migrated files use one physical block each");
 // A loose legacy setting migrates on its own save, without creating a town.
 card=new MemoryCard();
 card.WriteSave(UserOptionsStorage.FileName,expectedVideo.Encode(),new MemoryCardSaveOptions());
@@ -210,7 +210,7 @@ Check(UserOptionsStorage.Load().Widescreen&&card.Files.ContainsKey(UserOptionsSt
 Check(UserOptionsStorage.Save(expectedVideo)&&card.Files.Count==1&&card.Files.ContainsKey(CardSettingsStorage.VideoFile),"explicit settings save replaces the loose legacy entry");
 Check(card.CreateRecords("AnimalTown",32,1234,new byte[16384])==0,"damaged archive fixture creates an independent town entry");
 card.RecordPages["AnimalTown"][0][0]=255;
-Check(UserOptionsStorage.Load().Widescreen&&DevConfigStorage.Save(expectedDebug)&&DevConfigStorage.Load().Values[DevConfig.FullResolutionAaIndex]==1,"dedicated settings can load and save with a damaged town archive");
+Check(UserOptionsStorage.Load().Widescreen&&DevConfigStorage.Save(expectedDebug)&&DevConfigStorage.Load().Values[DevConfig.GroundMipBandsIndex]==1,"dedicated settings can load and save with a damaged town archive");
 // A trip checkpoint can commit on a full existing archive without trying
 // to migrate a villager whose inventory changed. It also rejects a card swap after preview.
 var travelHomeCard=new MemoryCard(4);
@@ -264,6 +264,8 @@ var checkpointRepository=new SaveRepository(new CardSaveStorage(travelHomeCard,b
 CardSaveStorage.SaveTravelCheckpoint(checkpointRepository,travelHome);
 var travelReloaded=checkpointRepository.Load()!;
 Check(travelReloaded.Town.Jobs.Watermark==checkpointTime+1&&travelReloaded.Wallet==travelHome.Wallet&&travelHomeCard.Files.Count==1,"trip saves changed progress without migrating profiles or settings");
+VideoOptionsChecks.Run(Check);
+EdgeSmoothingStorageChecks.Run(Check);
 CardSelectionChecks.Run(Check);
 // Retire only the older record-store checkpoint, after publishing a second
 // verified copy of the unchanged current directory. No larger backing is needed.

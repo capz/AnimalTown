@@ -35,7 +35,7 @@ namespace Dolphin.Storage
         public void Dispose(){}
         internal readonly Dictionary<string,byte[][]> RecordPages=new();
         internal readonly Dictionary<string,int> RecordIdentities=new();
-        internal int FailBlockWrite=-1,FailDelete=-1;
+        internal int FailBlockWrite=-1,FailDelete=-1,FailSaveWrite=-1;
         internal readonly Dictionary<string,byte[]> Files=new();
         internal readonly Dictionary<string,MemoryCardSaveOptions> Metadata=new();
         private readonly Dictionary<string,int> blocks=new();
@@ -70,6 +70,7 @@ namespace Dolphin.Storage
             int journal=size+1; // Padded container plus the 64-byte journal header.
             int peak=Math.Max(Used,next)+journal;
             if(peak>Capacity)throw new IOException("Memory card full; journal and previous save preserved");
+            if(FailSaveWrite--==0)throw new IOException("Card removed during settings save");
             Peak=Math.Max(Peak,peak);Used=next;blocks[name]=size;Writes++;
             Files[name]=(byte[])data.Clone();Metadata[name]=new MemoryCardSaveOptions{Title=options.Title,Comment=options.Comment,Banner=options.Banner,Icon=options.Icon};
         }

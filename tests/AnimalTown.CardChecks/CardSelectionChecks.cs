@@ -44,14 +44,14 @@ internal static class CardSelectionChecks
         check(UserOptionsStorage.Save(options)&&UserOptionsStorage.Load().Widescreen&&UserOptionsStorage.Status.Contains("Slot B"),"video options write and reload on Slot B");
         check(b.Files[CardSettingsStorage.DebugFile].SequenceEqual(originalDebug),"video save leaves the dedicated debug file byte-identical");
         var originalVideo=b.Files[CardSettingsStorage.VideoFile].ToArray();
-        var config=new DevConfig();config.Values[DevConfig.FullResolutionAaIndex]=1;
-        check(DevConfigStorage.Save(config)&&DevConfigStorage.Load().Values[DevConfig.FullResolutionAaIndex]==1,"debug settings write and reload on Slot B");
+        var config=new DevConfig();config.Values[DevConfig.GroundMipBandsIndex]=1;
+        check(DevConfigStorage.Save(config)&&DevConfigStorage.Load().Values[DevConfig.GroundMipBandsIndex]==1,"debug settings write and reload on Slot B");
         check(b.Files[CardSettingsStorage.VideoFile].SequenceEqual(originalVideo),"debug save leaves the dedicated video file byte-identical");
         session.State.Wallet++;new SaveRepository(new CardSaveStorage(b,banner,icon,SaveCards.Device)).Save(session.State);
         check(TownSession.Load().State.Wallet==session.State.Wallet,"subsequent town saves publish to Slot B");
         check(a.Writes==writesA&&new SaveRepository(new CardSaveStorage(a,banner,icon,4)).Load()!.Name=="Aster","Slot B writes leave Slot A town and settings untouched");
         check(TownDataStorage.Delete()&&!TownSession.Load().Loaded&&a.Writes==writesA,"title town deletion uses Slot B without touching Slot A");
-        check(UserOptionsStorage.Load().Widescreen&&DevConfigStorage.Load().Values[DevConfig.FullResolutionAaIndex]==1,"selected-slot town deletion retains both dedicated settings files");
+        check(UserOptionsStorage.Load().Widescreen&&DevConfigStorage.Load().Values[DevConfig.GroundMipBandsIndex]==1,"selected-slot town deletion retains both dedicated settings files");
         check(AutoSelect()&&SaveCards.Device==4,"one town wins even after Slot B was explicitly selected");
         SaveCards.Select(SaveCards.Inspect(5));
         MemoryCard.Slots.Remove(5);bool removed=false;

@@ -9,20 +9,18 @@ internal static class VideoOptions
     internal static string Status="";
     internal static bool FullResolutionAa=>GraphicsDevice.Default.Display.AntialiasingMode==AntialiasingMode.FullResolution;
     private static bool requestedAa;
-    internal static bool AaSaveFailed;
-    internal static bool ToggleFullResolutionAa(DevConfig config)
+    internal static bool SetEdgeSmoothing(bool enabled)
     {
-        bool before=requestedAa;requestedAa=!FullResolutionAa;
+        bool before=requestedAa;requestedAa=enabled;
         var display=GraphicsDevice.Default.Display;
         try{
             GraphicsDevice.Default.ConfigureDisplay(new DisplayOptions{
                 Resolution=requestedAa?GraphicsResolution.R640x480:display.Resolution,
                 Scan=display.Scan,Widescreen=display.Widescreen,
                 AntialiasingMode=requestedAa?AntialiasingMode.FullResolution:AntialiasingMode.None});
-            config.Values[DevConfig.FullResolutionAaIndex]=requestedAa?1:0;
             AaStudy.Reset();SetAspect();Status="";LogAa();return true;
-        }catch(OutOfMemoryException){Status="Not enough memory; AA is unchanged.";}
-        catch(InvalidOperationException){Status="Full-resolution AA needs 640 x 480 output.";}
+        }catch(OutOfMemoryException){Status="Not enough memory; edge smoothing is unchanged.";}
+        catch(InvalidOperationException){Status="Edge smoothing needs 640 x 480 output.";}
         requestedAa=before;return false;
     }
     internal static int ActiveResolution
@@ -33,26 +31,31 @@ internal static class VideoOptions
             return display.Resolution==GraphicsResolution.R640x576?2:display.Resolution==GraphicsResolution.R640x480?1:0;
         }
     }
-    internal static void Load(UserOptions options,DevConfig config)
+    internal static void Load(UserOptions options)
     {
-        requestedAa=config.Values[DevConfig.FullResolutionAaIndex]!=0;
+        requestedAa=options.EdgeSmoothing;
         // The sample's recovery shortcut avoids trapping a different TV in a
         // persisted mode. It does not overwrite the user's saved preference.
         Controller.Update();
         if(Controller.GetState(0).X.IsHeld){requestedAa=false;Status="Saved video bypassed (X held).";SetAspect();return;}
-        if(!Apply(requestedAa?1:options.Resolution,options.Widescreen,true)){
+        // AA changes the framebuffer size, not the user's scan preference.
+        // Auto must retain 480i on analogue cables. A legacy AA/576p pair
+        // still resolves to 480p, matching its explicitly saved progressive mode.
+        int resolution=requestedAa&&options.Resolution==2?1:options.Resolution;
+        if(!Apply(resolution,options.Widescreen,true)){
             GraphicsDevice.Default.ConfigureDisplay(new DisplayOptions{Widescreen=options.Widescreen});SetAspect();
         }
     }
     internal static bool Apply(int resolution,bool widescreen,bool changeResolution)
     {
-        if(requestedAa&&changeResolution&&resolution==2){Status="Turn off full-resolution AA to use 576p.";return false;}
+        if(requestedAa&&changeResolution&&resolution==2){Status="Turn off edge smoothing to use 576p.";return false;}
         try{
-            // Match VideoModeOutput in the SDK sample. Aspect-only changes use
-            // Auto/Auto, preserving output timing and avoiding replacement XFBs.
+            // Explicit resolution choices request progressive output. When AA
+            // forces a 480-line framebuffer from an automatic/PAL boot mode,
+            // retain the live scan instead of letting cable detection choose it.
             GraphicsDevice.Default.ConfigureDisplay(new DisplayOptions{
                 Resolution=requestedAa?GraphicsResolution.R640x480:!changeResolution||resolution==0?GraphicsResolution.Auto:resolution==2?GraphicsResolution.R640x576:GraphicsResolution.R640x480,
-                Scan=!changeResolution||resolution==0?ScanMode.Auto:ScanMode.Progressive,
+                Scan=!changeResolution||resolution==0?requestedAa?GraphicsDevice.Default.Display.Scan:ScanMode.Auto:ScanMode.Progressive,
                 AntialiasingMode=requestedAa?AntialiasingMode.FullResolution:AntialiasingMode.None,
                 Widescreen=widescreen
             });
