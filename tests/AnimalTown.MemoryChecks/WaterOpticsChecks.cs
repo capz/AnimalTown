@@ -77,6 +77,36 @@ internal static class WaterOpticsChecks
             check(!water.Active&&NativeWater.Bytes==0,"draw preparation also yields an existing visible capture when pressure starts");
             water.Dispose();
 
+            NativeWater.Reset();memory=new VisualMemoryPressure();Observe(memory);
+            water=new WaterBumpEffect{Memory=memory};Prepare(water);Observe(memory);
+            memory.Observe(VisualMemoryPressure.LowBytes-1,0,0,Clock.Timestamp);
+            allocations=NativeWater.Allocations;
+            check(memory.UnderPressure&&!water.ReclaimForPressure(),"transient global low-watermark pressure preserves an affordable warm capture");
+            Prepare(water);
+            check(water.CaptureReady&&NativeWater.Allocations==allocations,"warm optics remain drawable without new allocation while global hysteresis is active");
+            check(!memory.TryReserve(2*1024*1024,Clock.Timestamp,true,out _),"a required restore can request headroom while warm optics are retained");
+            check(water.ReclaimForPressure()&&NativeWater.Bytes==0,"waiting essential work immediately preempts a warm capture even above its local headroom floor");
+            Clock.Timestamp+=VisualMemoryPressure.FailureBackoffUs+1;
+            int recoveryPeak=WaterBumpEffect.MapBytes+640*480/2+WaterBumpEffect.AllocationGuardBytes;
+            int available=WaterBumpEffect.RecoveryHeadroomBytes+recoveryPeak+8192;
+            memory.Observe(available,0,0,Clock.Timestamp);Prepare(water);
+            check(memory.UnderPressure&&memory.WaitingPeakBytes==0&&!water.Active,"optional recovery waits for stable measured headroom without clearing global pressure");
+            Clock.Timestamp+=VisualMemoryPressure.RecoveryGraceUs-1;Prepare(water);
+            check(!water.Active&&NativeWater.Allocations==allocations,"water does not allocate before the full recovery grace elapses");
+            Clock.Timestamp++;Prepare(water);
+            check(water.CaptureReady&&memory.UnderPressure&&memory.ReservedBytes==recoveryPeak,"bounded optics restore below the global high watermark while reserving their full peak");
+            memory.Observe(available-NativeWater.Bytes,0,0,Clock.Timestamp);
+            allocations=NativeWater.Allocations;
+            for(int i=0;i<60;i++){Clock.Timestamp+=33333;check(!water.ReclaimForPressure(),"recovered optics retain their measured safety margin");Prepare(water);}
+            check(water.CaptureReady&&NativeWater.Allocations==allocations&&memory.ReservedBytes==0&&!memory.CanAdmit(1,Clock.Timestamp),
+                "local optics recovery neither oscillates nor enables unrelated optional allocations");
+            memory.Observe(WaterBumpEffect.RecoveryHeadroomBytes-1,0,0,Clock.Timestamp);
+            check(water.ReclaimForPressure()&&NativeWater.Bytes==0,"falling below the reserved headroom floor retires optics before residency pumps");
+            memory.Observe(WaterBumpEffect.RecoveryHeadroomBytes+recoveryPeak-1,0,0,Clock.Timestamp);Prepare(water);
+            Clock.Timestamp+=VisualMemoryPressure.RecoveryGraceUs+1;Prepare(water);
+            check(!water.Active&&NativeWater.Allocations==allocations,"recovery cannot consume its headroom floor even when it misses admission by one byte");
+            water.Dispose();Observe(memory);
+
             for(int failure=1;failure<=3;failure++){
                 NativeWater.Reset();NativeWater.FailAtAllocation=failure;
                 memory=new VisualMemoryPressure();Observe(memory);water=new WaterBumpEffect{Memory=memory};

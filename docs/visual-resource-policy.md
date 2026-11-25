@@ -122,8 +122,13 @@ changes, so unchanged views perform no section scans or allocations.
 Optional water optics reserve their complete native allocation peak before
 initialization or resize. At 640×480 the two maps and refraction capture own
 169,984 bytes, plus a 1 KiB admission guard. Required reservations take priority;
-pressure retires optics before essential residency pumps, even if the scene is
-still loading. Transparent water remains available when optics are denied.
+waiting essential demand, allocation backoff or less than 1 MiB of unreserved
+headroom retires optics before essential residency pumps, even if the scene is
+still loading. The small capture can remain warm during global pressure
+hysteresis. A cold capture can recover after three seconds of stable headroom
+when its full allocation peak still leaves that 1 MiB margin. This exception
+does not clear global pressure or admit unrelated optional owners. Transparent
+water remains available when optics are denied.
 Short visibility gaps retain storage for three seconds without capture or draw
 work; longer absence releases it. Allocation failures drain partial owners and
 back off before retry, and completed reservations remain charged until sampled.

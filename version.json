@@ -419,6 +419,15 @@
         "Snow updates and working buffers exist only during winter.",
         "Leaving winter releases snow meshes, masks, recovery data and memory reservations."
       ]
+    },
+    {
+      "id": "bounded-water-optics-pressure-recovery-20261125",
+      "lines": [
+        "Water effects recover when enough memory becomes available.",
+        "Brief pressure no longer leaves affordable water effects permanently suspended.",
+        "Required town loads still take priority and retain their memory reservations.",
+        "The compact capture resumes only after stable headroom returns."
+      ]
     }
   ]
 }

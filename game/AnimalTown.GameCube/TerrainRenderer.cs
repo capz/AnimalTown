@@ -372,7 +372,7 @@ internal sealed partial class TerrainRenderer : IDisposable
         waterBump.Prepare(focusZ,sunlight,environmentRgb,visible,device.Width,device.Height);
     }
     // Called before essential residency pumps, including while Draw is loading.
-    internal bool ReclaimWaterOptics()=>Memory?.UnderPressure==true&&waterBump.Reclaim();
+    internal bool ReclaimWaterOptics()=>waterBump.ReclaimForPressure();
     private bool PrepareSnowEdges(GameState state)
     {
         if(snowEdges==null){
