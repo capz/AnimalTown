@@ -1,26 +1,30 @@
 $ErrorActionPreference='Stop'
 . (Join-Path $PSScriptRoot '../tools/validation-plan.ps1')
 function Assert($value,[string]$message){if(!$value){throw $message}}
+function Assert-Emulator($plan,[string[]]$scenarios,[string]$message){
+    Assert (($plan.emulator -join ',') -ceq ($scenarios -join ',')) $message
+}
 $p=Get-ValidationPlan -ChangedPaths @('docs/concepts/cliff-kit.png','README.md');Assert (!$p.release -and !$p.backend -and !$p.managed.Count) 'Art/docs should not trigger builds/tests'
 $p=Get-ValidationPlan -ChangedPaths @('game/AnimalTown.GameCube/MenuNavigation.cs');Assert (($p.managed -join ',') -eq 'menu' -and !$p.backend -and !$p.tooling.Count) 'Menu routing too broad'
 $p=Get-ValidationPlan -ChangedPaths @('shared/AnimalTown.Domain/TownChat.cs','game/AnimalTown.GameCube/TownGame.Chat.cs','tests/AnimalTown.Checks/TownChatChecks.cs');Assert (($p.managed -join ',') -eq 'menu,text,dialogue' -and !$p.backend -and !$p.full) 'Local chat needs bounded input, layout and command checks'
 $p=Get-ValidationPlan -ChangedPaths @('tools/native-uv-debug.inc','tools/native-uv-topology.h');Assert (($p.native -join ',') -eq 'uv' -and !$p.managed.Count -and !$p.backend) 'UV native routing too broad'
-$p=Get-ValidationPlan -ChangedPaths @('tests/AnimalTown.CardChecks/Program.cs');Assert (($p.native -join ',') -eq 'card' -and ($p.managed -join ',') -eq 'saves' -and !$p.backend -and !$p.full) 'Card adapter fixtures must retain native and domain save checks'
-$p=Get-ValidationPlan -ChangedPaths @('server/AnimalTown.Server/Program.cs');Assert ($p.backend -and !$p.managed.Count -and !$p.native.Count) 'Backend should not run console unit suites'
+$p=Get-ValidationPlan -ChangedPaths @('tests/AnimalTown.CardChecks/Program.cs');Assert (($p.native -join ',') -eq 'card' -and !$p.managed.Count -and !$p.backend -and !$p.full -and !$p.release -and !$p.emulator.Count) 'Card adapter fixture-only edits must run native card checks'
+$p=Get-ValidationPlan -ChangedPaths @('server/AnimalTown.Server/Program.cs');Assert ($p.backend -and !$p.managed.Count -and !$p.native.Count -and !$p.resources.Count -and !$p.emulator.Count) 'Backend should not schedule console suites or captures'
 $p=Get-ValidationPlan -ChangedPaths @('assets/models/villagers/fox.glb');Assert ($p.release -and !$p.managed.Count -and !$p.backend) 'Model imports should use import/build audits'
 $p=Get-ValidationPlan -ChangedPaths @('assets/textures/environment/ground/test.png');Assert (($p.tooling -join ',') -eq 'terrain' -and ($p.managed -join ',') -eq 'core' -and !$p.backend) 'Ground routing incorrect'
 $p=Get-ValidationPlan -ChangedPaths @('shared/AnimalTown.Domain/GameState.cs');Assert ($p.backend -and $p.managed.Count -eq 13 -and !$p.tooling.Count) 'Shared gameplay must cover backend and all managed dependencies'
 $p=Get-ValidationPlan -ChangedPaths @('game/AnimalTown.GameCube/Program.cs');Assert ($p.managed.Count -eq 13 -and !$p.backend) 'Mixed game entry point needs managed coverage, not unrelated DB tests'
 $p=Get-ValidationPlan -ChangedPaths @('tools/AnimalTown.Tools/TextureRepackerChecks.cs');Assert (($p.tooling -join ',') -eq 'repack' -and !$p.backend) 'Repacker routing incorrect'
-$p=Get-ValidationPlan -ChangedPaths @('tools/release-bundle.py','tests/release-bundle.py');Assert (($p.native -join ',') -eq 'python' -and !$p.backend -and !$p.full) 'Release bundle checks should use host Python fixtures'
+$p=Get-ValidationPlan -ChangedPaths @('tools/release-bundle.py','tests/release-bundle.py');Assert (($p.native -join ',') -eq 'release-bundle' -and !$p.backend -and !$p.full) 'Release bundle edits must run only their Python fixture'
+$p=Get-ValidationPlan -ChangedPaths @('tests/water-optics-smoke.py');Assert (($p.native -join ',') -eq 'water-smoke' -and !$p.release -and !$p.emulator.Count) 'A water smoke fixture edit must run only its host test'
 $p=Get-ValidationPlan -ChangedPaths @('shared/AnimalTown.Domain/NewDependency.cs');Assert ($p.managed.Count -eq 13 -and $p.backend) 'Unknown domain must be conservative'
-$p=Get-ValidationPlan -ChangedPaths @('new-production/file.xyz');Assert ($p.full -and $p.backend -and $p.native.Count -eq 9 -and 'jobs' -in $p.native -and 'water' -in $p.tooling) 'Unknown production paths must fall back to all checks including job AOT and water artwork'
+$p=Get-ValidationPlan -ChangedPaths @('new-production/file.xyz');Assert ($p.full -and $p.release -and $p.backend -and (('jobs','helipad','release-bundle','water-smoke','frame-profile' | Where-Object {$_ -notin $p.native}).Count -eq 0) -and 'helipad' -in $p.native -and 'water' -in $p.tooling -and $p.emulator.Count -eq 11 -and $p.resources.Count -eq 4) 'Unknown production paths must fall back to all checks including native, emulator and resource fixtures'
 $p=Get-ValidationPlan -ChangedPaths @('shared/AnimalTown.Domain/Jobs/VillagerJobService.cs');Assert (!$p.full -and $p.backend -and ($p.managed -join ',') -eq 'life,saves' -and ($p.native -join ',') -eq 'jobs') 'Job rules need live/domain/save/backend and actual native service coverage'
 $p=Get-ValidationPlan -ChangedPaths @('tools/native-shadow-union.h','tests/native-shadow-union.c');Assert (($p.native -join ',') -eq 'shadows' -and ($p.managed -join ',') -eq 'terrain' -and !$p.backend) 'Shadow union must include the native rasterizer checks'
 $p=Get-ValidationPlan -ChangedPaths @('shared/AnimalTown.Domain/CliffShadowMap.cs');Assert (($p.native -join ',') -eq 'shadows' -and ($p.managed -join ',') -eq 'terrain' -and $p.rendering.Count -eq 8 -and !$p.backend -and !$p.full) 'Cliff-mask changes need managed/GX/native layout coverage without database checks'
 $p=Get-ValidationPlan -ChangedPaths @('tests/AnimalTown.Checks/CliffShadowChecks.cs');Assert (($p.managed -join ',') -eq 'terrain' -and !$p.native.Count -and !$p.rendering.Count -and !$p.backend -and !$p.full) 'Cliff-mask fixture-only edits need their managed terrain suite'
 $p=Get-ValidationPlan -ChangedPaths @('.github/workflows/build-release.yml');Assert ($p.full -and $p.policy) 'Workflow changes must exercise gates'
-$p=Get-ValidationPlan -Full;Assert ($p.full -and $p.release -and $p.managed.Count -eq 13 -and $p.tooling.Count -eq 7 -and 'nkit' -in $p.tooling -and 'depot' -in $p.tooling -and 'water' -in $p.tooling) 'Manual full validation incomplete'
+$p=Get-ValidationPlan -Full;Assert ($p.full -and $p.release -and $p.managed.Count -eq 13 -and $p.tooling.Count -eq 8 -and 'path' -in $p.tooling -and 'nkit' -in $p.tooling -and 'depot' -in $p.tooling -and 'water' -in $p.tooling) 'Manual full validation incomplete'
 $p=Get-ValidationPlan -ChangedPaths @('game/AnimalTown.GameCube/MenuNavigation.cs','game/AnimalTown.GameCube/MenuNavigation.cs','game/AnimalTown.GameCube/WrappedText.cs');Assert (($p.managed -join ',') -eq 'menu,text') 'Union/deduplication incorrect'
 $p=Get-ValidationPlan -ChangedPaths @('shared/AnimalTown.Domain/WaterSurface.cs','tests/AnimalTown.Checks/WaterSurfaceChecks.cs');Assert (($p.managed -join ',') -eq 'terrain' -and !$p.backend) 'Water rules use terrain checks'
 $p=Get-ValidationPlan -ChangedPaths @('game/AnimalTown.GameCube/WaterMaterial.cs','game/AnimalTown.GameCube/WaterRenderer.cs');Assert (($p.managed -join ',') -eq 'terrain,core' -and !$p.backend) 'Water rendering needs terrain and core checks'
@@ -34,7 +38,7 @@ $p=Get-ValidationPlan -ChangedPaths @('game/AnimalTown.GameCube/ProfilePicker.cs
 $fixtures=@{WaterEffect='water';ShallowWaterMaterial='water';RenderingService='services';MovementTerrain='movement';GroundRing='ground';TerrainIndex='index';ActorVisibility='visibility';AttentionGeometry='attention';DroppedItem='dropped-item'}
 foreach($fixture in $fixtures.Keys){
     $p=Get-ValidationPlan -ChangedPaths @("tests/AnimalTown.RenderingChecks/$($fixture)Checks.cs")
-    Assert (($p.rendering -join ',') -eq $fixtures[$fixture] -and !$p.managed.Count -and !$p.backend -and !$p.full) "Rendering fixture routing incorrect: $fixture"
+    Assert (($p.rendering -join ',') -eq $fixtures[$fixture] -and !$p.managed.Count -and !$p.backend -and !$p.full -and !$p.release -and !$p.emulator.Count) "Rendering fixture routing incorrect: $fixture"
 }
 $p=Get-ValidationPlan -ChangedPaths @('shared/AnimalTown.Domain/WindWakerWaterPattern.cs');Assert (($p.managed -join ',') -eq 'terrain,core' -and ($p.rendering -join ',') -eq 'water' -and !$p.backend -and !$p.full) 'Water materials must not start backend/importer tests'
 $p=Get-ValidationPlan -ChangedPaths @('shared/AnimalTown.Domain/WaterSurface.cs');Assert (($p.rendering -join ',') -eq 'water,movement') 'Water geometry must exercise the depth cache and cylinder movement checks'
@@ -52,7 +56,7 @@ $p=Get-ValidationPlan -ChangedPaths @('tests/AnimalTown.Checks/WaterSurfaceCheck
 $p=Get-ValidationPlan -ChangedPaths @('shared/AnimalTown.Domain/RunningMinimap.cs');Assert (($p.managed -join ',') -eq 'ui' -and !$p.backend) 'Minimap geometry must use its UI fixture'
 $p=Get-ValidationPlan -ChangedPaths @('shared\AnimalTown.Domain\WindWakerWaterPattern.cs','shared/AnimalTown.Domain/WindWakerWaterPattern.cs');Assert (($p.rendering -join ',') -eq 'water') 'Windows path normalization and deduplication must preserve narrow checks'
 $p=Get-ValidationPlan -ChangedPaths @('tests/AnimalTown.RenderingChecks/NewChecks.cs');Assert ($p.full -and $p.rendering.Count -eq 8 -and $p.backend) 'Unknown rendering fixtures must be conservative'
-$p=Get-ValidationPlan -Full;Assert ($p.schema -eq 2 -and $p.rendering.Count -eq 8 -and 'patched' -in $p.native) 'Full validation must cover rendering and native patch fixtures'
+$p=Get-ValidationPlan -Full;Assert ($p.schema -eq 3 -and $p.rendering.Count -eq 8 -and 'patched' -in $p.native) 'Full validation must cover rendering and native patch fixtures with the current plan schema'
 $p=Get-ValidationPlan -ChangedPaths @('shared/AnimalTown.Domain/DroppedItemPlan.cs','game/AnimalTown.GameCube/DroppedItemRenderer.cs');Assert (($p.managed -join ',') -eq 'terrain,core' -and ($p.rendering -join ',') -eq 'dropped-item' -and !$p.backend -and !$p.full) 'Dropped sprites need visibility and actual quad geometry checks'
 $p=Get-ValidationPlan -ChangedPaths @('assets/textures/items/dropped-item.dndtex','tools/AnimalTown.Tools/DroppedItemAssets.cs');Assert (($p.tooling -join ',') -eq 'dropped-item' -and ($p.rendering -join ',') -eq 'dropped-item' -and 'terrain' -in $p.managed -and !$p.full -and !$p.backend) 'Dropped item sources and native assets must exercise their cooker and geometry checks'
 $p=Get-ValidationPlan -Full;Assert ('dropped-item' -in $p.tooling -and 'dropped-item' -in $p.rendering) 'Full validation must include sprite source/native round trips and geometry'
@@ -87,4 +91,43 @@ foreach($path in @('shared/AnimalTown.Domain/WaterTextureCatalog.cs','game/Anima
     Assert (($p.tooling -join ',') -eq 'depot,water' -and ($p.rendering -join ',') -eq 'water' -and !$p.backend -and !$p.full) "Optional water art must check conversion, deployment and material use: $path"
 }
 $p=Get-ValidationPlan -ChangedPaths @('tests/AnimalTown.Checks/WaterBedChecks.cs');Assert (($p.managed -join ',') -eq 'terrain' -and !$p.rendering.Count -and !$p.backend -and !$p.full) 'Bed topology checks belong to the managed terrain suite'
-Write-Host 'Validation routing checks passed (90 cases).'
+$jobCaptures=@{
+    'game/AnimalTown.GameCube/TownGame.JobsUi.cs'='job-delivery'
+    'game/AnimalTown.GameCube/TownGame.MailUi.cs'='job-mail'
+    'game/AnimalTown.GameCube/TownGame.TravelUi.cs'='job-helipad'
+    'shared/AnimalTown.Domain/HelipadFlight.cs'='job-helipad'
+}
+foreach($path in $jobCaptures.Keys){
+    $p=Get-ValidationPlan -ChangedPaths @($path)
+    Assert-Emulator $p @($jobCaptures[$path]) "Wrong controller capture for $path"
+    Assert (!$p.full -and $p.release) "Feature path must retain release eligibility without full selection: $path"
+}
+foreach($fixture in @('OfflineJob','JobLetter','JobMail','JobTravel','JobWorld')){
+    $p=Get-ValidationPlan -ChangedPaths @("tests/AnimalTown.Checks/${fixture}Checks.cs")
+    Assert (($p.managed -join ',') -eq 'life' -and !$p.emulator.Count -and !$p.backend -and !$p.native.Count -and !$p.release -and !$p.full) "Job fixture must run the life suite that invokes it: $fixture"
+}
+$p=Get-ValidationPlan -ChangedPaths @('tests/AnimalTown.Checks/VillagerJobIdentityChecks.cs')
+Assert (($p.managed -join ',') -eq 'saves' -and !$p.release -and !$p.emulator.Count) 'Job identity fixture is invoked by the save suite'
+$p=Get-ValidationPlan -ChangedPaths @('tests/AnimalTown.Checks/JobFixture.cs')
+Assert-Emulator $p @('job-delivery','job-mail','job-helipad') 'The shared controller fixture needs each job scenario'
+Assert (!$p.full -and !$p.backend) 'The controller fixture must avoid unrelated build and backend tests'
+$p=Get-ValidationPlan -ChangedPaths @('assets/models/helipad/deck.svg')
+Assert-Emulator $p @('job-helipad') 'Helipad geometry changes need a single helipad capture'
+Assert (($p.native -join ',') -eq 'helipad' -and !$p.backend -and !$p.full) 'Helipad art must verify native generated geometry without unrelated checks'
+$p=Get-ValidationPlan -ChangedPaths @('shared/AnimalTown.Domain/Jobs/VillagerJobService.cs')
+Assert-Emulator $p @('job-delivery','job-mail','job-helipad') 'Shared job rules must keep all job controllers covered'
+$paths=@('game/AnimalTown.GameCube/TownGame.MailUi.cs','game/AnimalTown.GameCube/TownGame.TravelUi.cs','game/AnimalTown.GameCube/TownGame.MailUi.cs','game/AnimalTown.GameCube/TitleArt.cs','shared/AnimalTown.Domain/WorldLighting.cs')
+$expected=@('title-logo','daylight','job-mail','job-helipad')
+Assert-Emulator (Get-ValidationPlan -ChangedPaths $paths) $expected 'Mixed features must union and deduplicate their captures'
+[array]::Reverse($paths)
+Assert-Emulator (Get-ValidationPlan -ChangedPaths $paths) $expected 'Capture selection must remain stable across change order'
+$p=Get-ValidationPlan -ChangedPaths @('tests/AnimalTown.MemoryChecks/Program.cs')
+Assert (($p.resources -join ',') -eq 'memory' -and !$p.managed.Count -and !$p.native.Count -and !$p.rendering.Count -and !$p.emulator.Count -and !$p.backend -and !$p.full -and !$p.release) 'A memory fixture must run only its resource suite'
+$p=Get-ValidationPlan -ChangedPaths @('version.json')
+Assert ($p.policy -and !$p.release -and !$p.full -and !$p.managed.Count -and !$p.rendering.Count -and !$p.native.Count -and !$p.tooling.Count -and !$p.resources.Count -and !$p.emulator.Count -and !$p.backend) 'Version metadata must validate policy without unrelated component checks'
+$p=Get-ValidationPlan -ChangedPaths @('version.json') -ForceRelease
+Assert ($p.policy -and $p.release -and !$p.full -and !$p.emulator.Count) 'Forced publication must preserve focused version-metadata routing'
+$p=Get-ValidationPlan -Full
+Assert-Emulator $p @('title-logo','save-and-quit','terrain-materials','card-slot-b','card-choose-b','card-without-saving','card-no-card','daylight','job-delivery','job-mail','job-helipad') 'Full validation must retain every emulator scenario'
+Assert (($p.resources -join ',') -eq 'memory,floor,snow,visual') 'Full validation must retain every resource suite'
+Write-Host 'Validation routing checks passed.'

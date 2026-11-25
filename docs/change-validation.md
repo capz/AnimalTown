@@ -7,8 +7,9 @@ when that ref is an ancestor to select the committed changes on your branch.
 Native checks use the Linux builder image through Docker, or `-NativeInProcess`
 when already inside it. Use `-Full` when a broad run is deliberately required.
 
-The runner and main-branch release workflow use the same dependency map in
-`tools/validation-plan.ps1`. Examples:
+The runner and release workflow use the same dependency map in
+`tools/validation-plan.ps1`. The plan picks host suites, resource fixtures,
+and individual Dolphin scenarios. Examples follow.
 
 | Change | Selected checks |
 | --- | --- |
@@ -19,7 +20,13 @@ The runner and main-branch release workflow use the same dependency map in
 | Repacker | Repacker checks |
 | Buildings, portals, interiors and journeys | Building, movement, life and save checks; definition/model changes also run the building importer checks |
 | Villager navigation/naming | Terrain-life and generation checks |
-| Server/database | Backend integration |
+| Server/database | Backend integration without Dolphin |
+| Multiplayer wire codec | Movement and backend integration |
+| Multiplayer pose pump | Movement only |
+| Memory resource fixture | Its resource project |
+| Job delivery UI | Delivery scenario |
+| Mail UI | Mail scenario |
+| Helipad travel UI | Helipad scenario |
 | Shared gameplay/save behavior | Managed domain suites and backend integration |
 | Water material/pattern | Terrain/core domain checks and water rendering checks |
 | Water surface/depth/renderer | Terrain/core as applicable, water and movement rendering checks |
@@ -30,11 +37,12 @@ The runner and main-branch release workflow use the same dependency map in
 | Running minimap geometry | UI suite |
 | Docs/concept art only | No component tests or local console build |
 
-Large mixed files such as the game entry point select the managed suite set,
-but do not automatically run unrelated server, repacker or importer tests.
-Unknown production paths, SDK/engine changes and validation/build/workflow changes
-use full coverage. Edit the map when adding a new component; never silently omit
-checks for an unrecognized path.
+Large mixed files such as the game entry point still cover the runtime
+scenarios they coordinate. Unknown production paths, SDK changes, and broad
+build or workflow changes select full coverage. Edits to a test runner inside
+one project select that project's suites. Unrecognized test fixtures fall
+back to broad host coverage. Register narrow paths in the map as new features
+and fixtures are added.
 
 The managed runner accepts `--suites` with comma-separated names: `ui`, `menu`,
 `text`, `trim`, `terrain`, `movement`, `dialogue`, `generation`, `life`, `saves`,
@@ -62,23 +70,28 @@ remain in the next plan. Renames include both old and new paths. Missing history
 an invalid base or manual workflow dispatch selects full validation. Reruns exclude
 the current commit's own tag when finding the preceding release.
 
-The release workflow runs **Tests → Build → Release**. Tests runs the selected
-host suites first and creates a bootable console candidate for the selected
-Dolphin scenarios. Build uses that same ISO and Depot app, compiles the backend
-and tools, and prepares the release files. Release checks the prepared files
-against their recorded commit and hashes before uploading. The game, backend
-and tools come from the same clean commit. PostgreSQL starts only when backend
-integration tests are selected.
+The release workflow runs **Tests → Build → Release** for main, manual release
+runs, and PRs that affect release contents or need a Dolphin candidate. Tests
+runs the selected host suites and creates a bootable console candidate.
+Build uses that same ISO and Depot app, compiles the backend and tools, and
+prepares release files from the same clean commit. Release verifies recorded
+identity and hashes before uploading. PRs with host-only tests skip the
+console build and publishing. Docs-only PRs skip component checks and the
+builder image. PostgreSQL starts when the plan selects backend integration.
 
 Local menu/backend/docs-only checks do not restore the game SDK or copy native
 sources. Native archive/recycling checks regenerate the AOT C source bundle and
 run `patch-native.ps1` host fixtures; they do not compile a console executable.
-The CI Tests stage runs those fixtures against the console candidate.
+Selected native patch fixtures run against the disc candidate during a release
+build. Full validation also runs them against the independently built Depot
+candidate. Cooked model admission and package verification run for every
+release candidate.
 
-Every release includes schema 2 `validation-plan.json` with its source commit,
+Every release includes schema 3 `validation-plan.json` with its source commit,
 comparison base, changed paths and selected checks. Its SHA-256 is in SHA256SUMS.txt. Stale
 plans and older plan schemas are rejected by build and release scripts. The
-selector's routing checks run when the routing/build gates change or full coverage is requested.
+selector's routing checks run when the routing or build gates change, or when
+full coverage is requested.
 
 Choose Dolphin/hardware scenarios for the behavior actually changed. A concept
 sheet, palette adjustment or test-routing edit does not justify repeating every

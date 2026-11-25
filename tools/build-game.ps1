@@ -11,7 +11,10 @@ $identity=Get-BuildVersion $projectRoot
 Write-VersionMetadata $identity $projectRoot
 if(!$ValidationPlan){& ./tools/select-validation.ps1 -Full -SkipPolicyChecks;$ValidationPlan='out/validation-plan.json'}
 $validation=Get-Content -LiteralPath $ValidationPlan -Raw|ConvertFrom-Json
-if($validation.schema -ne 2 -or $validation.commit -ne (& git rev-parse HEAD).Trim()){throw 'Validation plan must match this source commit'}
+if($validation.schema -ne 3 -or $validation.commit -ne (& git rev-parse HEAD).Trim()){throw 'Validation plan must match this source commit'}
+$testBuildings=$RunNativeTests -and 'building' -in $validation.tooling
+$testModels=$RunNativeTests -and ('memory' -in $validation.resources -or 'visual' -in $validation.resources)
+$testPatches=$RunNativeTests -and 'patched' -in $validation.native
 if($NativeInProcess -and !$IsLinux){throw 'NativeInProcess requires the Linux build image'}
 . ./tools/resolve-packages.ps1
 $nativeImage = 'ghcr.io/extremscorner/libogc2@sha256:13bb658d3f18903816617223f5d7c6f776d3db3ea806aae67f8d35a7a69d4c85'
@@ -90,11 +93,11 @@ if (!$SkipAssets) {
 }
 # Rebuild geometric LODs from the selected normalized packages even with
 # SkipAssets, so a reused staging directory cannot ship a stale LOD cohort.
-Run dotnet @('run','--project','tools/AnimalTown.Tools','-c','Release','--no-build','--','model-lod-check',$projectRoot)
+if($testModels){Run dotnet @('run','--project','tools/AnimalTown.Tools','-c','Release','--no-build','--','model-lod-check',$projectRoot)}
 Run dotnet @('run','--project','tools/AnimalTown.Tools','-c','Release','--no-build','--','model-lod',$projectRoot)
-Run dotnet @('run','--project','tools/AnimalTown.Tools','-c','Release','--no-build','--','model-memory-check',$projectRoot)
+if($testModels){Run dotnet @('run','--project','tools/AnimalTown.Tools','-c','Release','--no-build','--','model-memory-check',$projectRoot)}
 Run dotnet @('run','--project','tools/AnimalTown.Tools','-c','Release','--no-build','--','model-memory',$projectRoot)
-if($RunNativeTests){
+if($testBuildings){
     $buildingNativeParts=@((Get-Content out/building-assets.json -Raw|ConvertFrom-Json -AsHashtable).Keys|Sort-Object|ForEach-Object{"out/disc/$($_)-tex128.dndmodel"})
     # Closed composites remain cooked comparison assets. Runtime reuses the seven
     # exterior/door/interior parts, so only those enter its retained memory budget.
@@ -103,6 +106,8 @@ if($RunNativeTests){
     RunNative '.' 'sh' (@('-c','cc -std=c11 -Wall -Wextra -Werror -ffunction-sections -fdata-sections -Iout/sdk-native/include tests/native-building-assets.c out/sdk-native/source/model.c out/sdk-native/source/model_animation.c out/sdk-native/source/verified_copy.c out/sdk-native/source/aram.c -Wl,--gc-sections -lm -o /tmp/animaltown-building-assets && /tmp/animaltown-building-assets "$@"','building-assets')+$buildingNativeParts)
     # Exercise the opt-in static retention patch with the real cooked parts after
     # AOT/native patching below; the pinned SDK test above remains independent.
+}
+if($testModels){
     $actorWindingParts=@('fox','bunny','giraffe','cat','hamster','spaniel'|ForEach-Object{"out/disc/$($_)-tex128.dndmodel"})
     RunNative '.' 'sh' (@('-c','cc -std=c11 -Wall -Wextra -Werror -ffunction-sections -fdata-sections -Iout/sdk-native/include tests/native-model-winding.c out/sdk-native/source/model.c out/sdk-native/source/model_animation.c out/sdk-native/source/verified_copy.c out/sdk-native/source/aram.c -Wl,--gc-sections -lm -o /tmp/animaltown-model-winding && /tmp/animaltown-model-winding "$@"','model-winding')+$actorWindingParts)
 }
@@ -136,9 +141,11 @@ $pairingProperty="-p:AnimalTownOnlinePairing=$($OnlinePairing.IsPresent.ToString
 Run dotnet @('build','game/AnimalTown.GameCube','-c','Release','--no-restore','-v','quiet','-p:DepotProfile=false',$pairingProperty)
 Run dotnet @("$sdkRoot/tools/compiler/DolphinDotNet.Compiler.dll",'--bundle','game/AnimalTown.GameCube/bin/Release/net8.0/AnimalTown.GameCube.dll','out/native')
 VerifyNativeNetworking 'out/native'
-& (Join-Path $PSScriptRoot 'patch-native.ps1') -Root $projectRoot -SkipTests:(!$RunNativeTests)
-if($RunNativeTests){
+& (Join-Path $PSScriptRoot 'patch-native.ps1') -Root $projectRoot -SkipTests:(!$testPatches)
+if($testBuildings){
     RunNative '.' 'sh' (@('-c','cc -DANIMALTOWN_RETAIN_BUILDINGS -std=c11 -Wall -Wextra -Werror -ffunction-sections -fdata-sections -Iout/native/include tests/native-building-assets.c out/native/source/model.c out/native/source/model_animation.c out/native/source/verified_copy.c out/native/source/aram.c -Wl,--gc-sections -lm -o /tmp/animaltown-building-retained && /tmp/animaltown-building-retained "$@"','building-retained')+$buildingResidentParts)
+}
+if($testModels){
     $residentNativeModels=@(@('fox','bunny','giraffe','cat','hamster','spaniel')|ForEach-Object{"out/disc/$($_)-tex128.dndmodel"})
     RunNative '.' 'sh' (@('-c','cc -std=c11 -Wall -Wextra -Werror -ffunction-sections -fdata-sections -Iout/native/include tests/native-resident-models.c out/native/source/model.c out/native/source/model_animation.c out/native/source/verified_copy.c out/native/source/aram.c -Wl,--gc-sections -lm -o /tmp/animaltown-resident-models && /tmp/animaltown-resident-models "$@"','resident-models')+$residentNativeModels)
 }
@@ -170,7 +177,7 @@ CompileNative 'out/native' 'apploader'
 Run dotnet @('build','game/AnimalTown.GameCube','-c','Release','--no-restore','-v','quiet','-p:DepotProfile=true',$pairingProperty)
 Run dotnet @("$sdkRoot/tools/compiler/DolphinDotNet.Compiler.dll",'--bundle','game/AnimalTown.GameCube/bin/Release/net8.0/AnimalTown.GameCube.dll','out/native-depot')
 VerifyNativeNetworking 'out/native-depot'
-& (Join-Path $PSScriptRoot 'patch-native.ps1') -Root $projectRoot -NativeDirectory 'out/native-depot' -SkipTests:(!$RunNativeTests)
+& (Join-Path $PSScriptRoot 'patch-native.ps1') -Root $projectRoot -NativeDirectory 'out/native-depot' -SkipTests:(!$testPatches -or !$validation.full)
 CompileNative 'out/native-depot' 'all'
 Run dotnet @('run','--project','tools/AnimalTown.Tools','-c','Release','--no-build','--','depot-receipt',$projectRoot)
 $nativeOutput=Join-Path $projectRoot 'out/native'

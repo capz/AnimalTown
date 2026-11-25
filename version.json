@@ -482,6 +482,15 @@
         "Menus still have their icons when the town opens.",
         "The memory safety margin still applies during villager loading."
       ]
+    },
+    {
+      "id": "feature-scoped-validation",
+      "lines": [
+        "Development builds run checks for the features that changed.",
+        "The validation plan selects specific Dolphin scenarios and resource fixtures.",
+        "Test-only PRs can run host checks without building or publishing a console package.",
+        "Full validation and all checks needed to verify release artifacts remain available."
+      ]
     }
   ]
 }
