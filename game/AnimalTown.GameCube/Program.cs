@@ -45,7 +45,10 @@ internal static class Program
             if(!ProfilePicker.Run(session))return;
             session.State.Town.Traffic.ResetSnowForTownEntry();
             if(session.Draft!=null&&!OnboardingFlow.Run(config,session))return;
-            while(RunSession(config,session)==TownGame.TravelRestart){
+            while(true){
+                int action=RunSession(config,session);
+                if(action==TownGame.OnlinePairingRestart){OnlinePairing.Run(session);continue;}
+                if(action!=TownGame.TravelRestart)break;
                 if(session.Flight.Phase==FlightPhase.Cruise)LoadingScreen.BeginFlight(session.Flight.Direction);
                 if(!session.CompleteTravel()&&!OfflineTravelRecovery.Run(session,session.TravelError))break;
             }
@@ -75,6 +78,7 @@ internal static class Program
                 game.AdvanceResidency();long simulation=FrameProfile.Start();
                 long now=Clock.Timestamp;accumulator+=(now-previous)/1000000.0;previous=now;if(accumulator>.1334)accumulator=.1334;
                 Controller.Update();var pad=Controller.GetState(0);game.Input(pad);
+                if(game.OnlinePairingRequested)return TownGame.OnlinePairingRestart;
                 if(game.TravelRestartRequested)return TownGame.TravelRestart;
                 if(game.ExitToTitle)return OnboardingFlow.ToTitle;
                 if(game.NextSetup!=0)return game.NextSetup;
@@ -788,7 +792,7 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
         if(selected==5&&JobsLive){OpenLetterComposer();return;}
         if(selected==5){if(state.Tutorial==4){state.CreditTutorial(4);if(state.MailCount<128)state.Mail[state.MailCount++]=-19;}Say("Fern","Your letter has been sent. A reply will arrive tomorrow.");return;}
         if(JobsLive){OpenTravel();return;}
-        Say("Gate","Online visits require a Broadband Adapter and paired companion. Online transport is not yet available in this build.");
+        Say("Gate","Complete your town introduction to use the Gate.");
     }
     private void MenuAction()
     {

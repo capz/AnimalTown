@@ -7,6 +7,24 @@
   "baseCommit": "7e3dd9599709f553d13d538a320a13f3d410e861",
   "requestSummaries": [
     {
+      "id": "multiplayer-pairing-and-staging",
+      "lines": [
+        "Link a GameCube to a town account with a short code from Gate Travel.",
+        "Device credentials are scoped and revocable, and checkpoint uploads can resume.",
+        "Staging supports TLS movement and resumable review of guest placements.",
+        "Public GameCube visits still require world sync, save settlement, and hardware qualification."
+      ]
+    },
+    {
+      "id": "multiplayer-link-import-and-gate",
+      "lines": [
+        "The multiplayer server can link accounts, import towns, and manage guest admission.",
+        "A short code links a GameCube session to a town account on the server.",
+        "The first validated town save is kept as a checkpoint for future reconciliation.",
+        "Open gates admit two mutual friends and keep disconnected seats for up to one minute."
+      ]
+    },
+    {
       "id": "two-borrower-retrieval-limit",
       "lines": [
         "Find borrowed job items after at most one redirect.",

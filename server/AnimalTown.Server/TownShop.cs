@@ -6,10 +6,16 @@ sealed partial class GameDatabase
     public async Task<object> Shop(Guid player,Guid host)
     {
         await using var c=await source.OpenConnectionAsync();await using var t=await c.BeginTransactionAsync();
-        if(player!=host)await CheckVisit(c,t,player,host);
-        var loaded=await Load(c,t,host,true);var s=loaded.State;int day=s.Town.Day;
-        s.Rollover(Day,DateTime.UtcNow.Year*12+DateTime.UtcNow.Month);
-        if(day!=s.Town.Day)await Save(c,t,host,s);
+        var loaded=await Load(c,t,host,true);
+        if(player!=host){
+            await CheckVisit(c,t,player,host);
+            if(await IsImportedPlacementTown(c,t,host))throw new GameError(409,"live-town-view-required");
+        }
+        var s=loaded.State;int day=s.Town.Day;
+        if(!await IsImportedPlacementTown(c,t,host)){
+            s.Rollover(Day,DateTime.UtcNow.Year*12+DateTime.UtcNow.Month);
+            if(day!=s.Town.Day)await Save(c,t,host,s);
+        }
         var shop=s.Town.Shop;
         var result=new{
             revision=shop.Revision,
@@ -35,6 +41,8 @@ sealed partial class GameDatabase
             return JsonSerializer.Deserialize<JsonElement>(r.GetString(1));
         }
         if(player!=host){await CheckVisit(c,t,player,host);if(op.Kind!="buy")throw new GameError(403,"only-local-villagers-may-stock-shop");}
+        await RequireLegacyCommerce(c,t,host);
+        if(player!=host)await RequireLegacyCommerce(c,t,player);
         town.Rollover(Day,DateTime.UtcNow.Year*12+DateTime.UtcNow.Month);
         if(customer!=town)customer.Rollover(Day,DateTime.UtcNow.Year*12+DateTime.UtcNow.Month);
         if(op.Revision!=town.Town.Shop.Revision)throw new GameError(409,"shop-changed");

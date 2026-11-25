@@ -20,11 +20,16 @@ sealed partial class GameDatabase
     {
         await using var c=await source.OpenConnectionAsync();await using var t=await c.BeginTransactionAsync();
         var loaded=await Load(c,t,host,true);
-        if(player!=host)await CheckVisit(c,t,player,host);
+        if(player!=host){
+            await CheckVisit(c,t,player,host);
+            if(await IsImportedPlacementTown(c,t,host))throw new GameError(409,"live-town-view-required");
+        }
         RequireLocalPlayer(loaded.State);
         var state=loaded.State;long revision=loaded.Revision;int day=state.Town.Day;
-        state.Rollover(Day,DateTime.UtcNow.Year*12+DateTime.UtcNow.Month);
-        if(state.Town.Day!=day){await Save(c,t,host,state);revision++;}
+        if(!await IsImportedPlacementTown(c,t,host)){
+            state.Rollover(Day,DateTime.UtcNow.Year*12+DateTime.UtcNow.Month);
+            if(state.Town.Day!=day){await Save(c,t,host,state);revision++;}
+        }
         var result=new{
             revision,
             ground=Enumerable.Range(0,state.Town.GroundCount).Where(i=>state.Town.Ground[i].Kind!=4).Select(i=>{
@@ -72,6 +77,10 @@ sealed partial class GameDatabase
             return JsonSerializer.Deserialize<JsonElement>(r.GetString(1));
         }
         if(player!=host)await CheckVisit(c,t,player,host);
+        // Card-backed worlds require durable placement provenance and reconciliation.
+        if(await IsImportedPlacementTown(c,t,host)||
+            player!=host&&await IsImportedPlacementTown(c,t,player))
+            throw new GameError(409,"online-review-required");
         RequireLocalPlayer(town.State);RequireLocalPlayer(customer.State);
         if(op.Revision!=town.Revision)throw new GameError(409,"town-items-changed");
         if(op.Kind=="add"&&player!=host&&op.PlayerRevision!=customer.Revision)

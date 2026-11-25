@@ -14,6 +14,10 @@ function Request([string]$Method,[string]$Path,$Body,$Token) {
     $response=Invoke-WebRequest @parameters
     return @{Status=[int]$response.StatusCode;Body=if($response.Content){$response.Content|ConvertFrom-Json}else{$null}}
 }
+function UploadSave([string]$Path,[byte[]]$Bytes,[string]$Token,[string]$Method='POST') {
+    $response=Invoke-WebRequest -Method $Method -Uri "$api$Path" -Headers @{Authorization="Bearer $Token"} -Body $Bytes -ContentType 'application/octet-stream' -SkipHttpErrorCheck
+    return @{Status=[int]$response.StatusCode;Body=if($response.Content){$response.Content|ConvertFrom-Json}else{$null}}
+}
 function Assert($Condition,[string]$Message){if(!$Condition){throw $Message}}
 try {
     if($ownsDatabase){
@@ -234,10 +238,158 @@ try {
     $remove.id=[Guid]::NewGuid().ToString();$remove.revision=$unchanged.revision
     Assert ((Request POST "$itemPath/ops" $remove $b.token).Status -eq 403) 'Blocked guest mutated town items'
     Assert ((Request POST '/v1/visits' @{host=$a.id} $b.token).Status -eq 403) 'Blocked visitor accepted'
+    # Hosted placement review is a staging-only surface. Start a fresh
+    # process to enable it independently and reset the per-IP test budget.
+    Stop-Process -Id $process.Id;$process.WaitForExit()
+    $env:ConnectionStrings__Game=$DatabaseConnection
+    $oldPlacements=$env:Multiplayer__EnablePlacements
+    $env:Multiplayer__EnablePlacements='true'
+    try{$process=Start-Process @launch}finally{
+        $env:ConnectionStrings__Game=$oldConnection
+        $env:Multiplayer__EnablePlacements=$oldPlacements
+    }
+    $ready=$false
+    for($i=0;$i -lt 40;$i++){try{if((Request GET '/health' $null $null).Status -eq 200){$ready=$true;break}}catch{};Start-Sleep -Milliseconds 250}
+    Assert $ready 'Server did not restart for hosted review checks'
+    $card=(Request POST '/v1/auth/register' @{name='CardTownTest';password='test-password-long'} $null).Body
+    $third=(Request POST '/v1/auth/register' @{name='ThirdGuestTest';password='test-password-long'} $null).Body
+    $pair=(Request POST '/v1/auth/link/start' @{town='435244544F574E01'} $null).Body
+    Assert ($pair.code -cmatch '^[0-9]{8}$' -and $pair.secret.Length -eq 64) 'Pairing response did not separate user code from device proof'
+    Assert ((Invoke-WebRequest -Uri "$api$($pair.verificationPath)" -SkipHttpErrorCheck).StatusCode -eq 200) 'Pairing web page unavailable'
+    Assert ((Request POST '/v1/auth/link/poll' @{secret=$pair.secret} $null).Body.status -eq 'pending') 'Unapproved device received a session'
+    Assert ((Request POST '/v1/account/link' @{code=$pair.code} $null).Status -eq 401) 'Anonymous pairing approval accepted'
+    Assert ((Request POST '/v1/account/link' @{code=$pair.code} $card.token).Status -eq 200) 'Account could not approve pairing'
+    Assert ((Request POST '/v1/account/link' @{code=$pair.code} $third.token).Status -eq 404) 'Another account took over an approved code'
+    $linked=(Request POST '/v1/auth/link/poll' @{secret=$pair.secret} $null).Body
+    Assert ($linked.id -eq $card.id -and $linked.town -eq '435244544F574E01' -and $linked.generation -eq 1) 'Pairing returned the wrong account or town'
+    Assert ($linked.deviceId -and $linked.token.StartsWith('d2_') -and $linked.refreshToken.StartsWith('r2_')) 'Pairing did not issue separate device credentials'
+    Assert ((Request POST '/v1/auth/link/poll' @{secret=$pair.secret} $null).Body.token -eq $linked.token) 'Pairing retry minted another token'
+    Assert ((Request GET '/v1/me' $null $linked.token).Body.id -eq $card.id) 'Device token could not authenticate'
+    Assert ((Request GET '/v1/account/devices' $null $linked.token).Status -eq 401) 'Device gained browser account privileges'
+    Assert ((Request GET '/v1/account/devices' $null $card.token).Body.device.id -eq $linked.deviceId) 'Browser could not identify its linked device'
+    $rotation=@{deviceId=$linked.deviceId;refreshToken=$linked.refreshToken;rotationId=[Guid]::NewGuid().ToString()}
+    $renewed=(Request POST '/v1/auth/device/renew' $rotation $null).Body
+    Assert ($renewed.deviceId -eq $linked.deviceId -and $renewed.generation -eq 2 -and $renewed.token -ne $linked.token -and $renewed.refreshToken -ne $linked.refreshToken) 'Rotation did not replace credentials'
+    $rotationRetry=(Request POST '/v1/auth/device/renew' $rotation $null).Body
+    Assert ($rotationRetry.token -eq $renewed.token -and $rotationRetry.refreshToken -eq $renewed.refreshToken) 'Rotation retry minted another credential'
+    $reuse=$rotation.Clone();$reuse.rotationId=[Guid]::NewGuid().ToString()
+    Assert ((Request POST '/v1/auth/device/renew' $reuse $null).Status -eq 401) 'Superseded refresh token could start a new rotation'
+    Assert ((Request GET '/v1/me' $null $linked.token).Status -eq 401) 'Superseded access token could still authenticate'
+    Assert ((Request POST '/v1/auth/link/poll' @{secret=$pair.secret} $null).Status -eq 404) 'Original pairing proof returned rotated credentials'
+    $linked=$renewed
+    $fixture=Join-Path $serverRoot 'out/initial-town-fixture.bin'
+    dotnet tests/AnimalTown.ServerChecks/bin/Release/net10.0/AnimalTown.ServerChecks.dll write-initial-save $fixture
+    if($LASTEXITCODE){throw 'Initial-save fixture failed'}
+    try {
+        [byte[]]$bytes=[IO.File]::ReadAllBytes($fixture)
+        $importPath="/v1/towns/$($card.id)/initial-save"
+        [byte[]]$truncated=$bytes[0..($bytes.Length-2)]
+        Assert ((UploadSave $importPath $truncated $card.token).Status -eq 400) 'Truncated initial save accepted'
+        Assert ((UploadSave $importPath $bytes $third.token).Status -eq 403) 'Wrong account imported a town'
+        $uploads="/v1/towns/$($card.id)/checkpoint-uploads"
+        $offer=@{length=$bytes.Length;sha256=[Convert]::ToHexString([Security.Cryptography.SHA256]::HashData($bytes))}
+        Assert ((Request POST $uploads $offer $card.token).Status -eq 401) 'Account token could stage a device checkpoint'
+        $staged=Request POST $uploads $offer $linked.token
+        Assert ($staged.Status -eq 200 -and $staged.Body.offset -eq 0) 'Device could not offer checkpoint'
+        $uploadPath="$uploads/$($staged.Body.id)"
+        $stageBytes=16*1024
+        Assert ($bytes.Length -gt $stageBytes) 'Checkpoint fixture does not cover a resume boundary'
+        [byte[]]$firstChunk=$bytes[0..($stageBytes-1)]
+        $partial=UploadSave "${uploadPath}?offset=0" $firstChunk $linked.token PUT
+        Assert ($partial.Status -eq 400 -and $partial.Body.error -eq 'checkpoint-incomplete') 'Short body finalized a checkpoint'
+        Assert ((Request GET $uploadPath $null $linked.token).Body.offset -eq $stageBytes) 'Status lost committed resume offset'
+        [byte[]]$remainder=$bytes[$stageBytes..($bytes.Length-1)]
+        Assert ((UploadSave "${uploadPath}?offset=0" $remainder $linked.token PUT).Status -eq 409) 'Stale offset overwrote staged content'
+        $committed=UploadSave "${uploadPath}?offset=$stageBytes" $remainder $linked.token PUT
+        Assert ($committed.Status -eq 200 -and $committed.Body.completed -and $committed.Body.revision -eq 1) "Checkpoint resume failed: $($committed.Body.error)"
+        $replayed=Request GET $uploadPath $null $linked.token
+        Assert ($replayed.Body.completed -and $replayed.Body.offset -eq $bytes.Length -and $replayed.Body.revision -eq 1) 'Completed upload receipt was lost'
+        $import=UploadSave $importPath $bytes $card.token
+        Assert ($import.Status -eq 200 -and $import.Body.revision -eq 1) "Valid card checkpoint rejected: $($import.Body.error)"
+        Assert ((UploadSave $importPath $bytes $card.token).Body.revision -eq 1) 'Initial save retry changed its checkpoint'
+        Assert ((UploadSave "/v1/towns/$($third.id)/initial-save" $bytes $third.token).Status -eq 409) 'Same town uploaded to two accounts'
+        $imported=(Request GET '/v1/me' $null $linked.token).Body
+        Assert ($imported.wallet -eq 4356 -and $imported.savings -eq 9021 -and $imported.revision -eq 1) 'Initial save failed to preserve local balances'
+        dotnet tests/AnimalTown.ServerChecks/bin/Release/net10.0/AnimalTown.ServerChecks.dll write-initial-save $fixture 12 4876
+        if($LASTEXITCODE){throw 'Offline checkpoint fixture failed'}
+        [byte[]]$offline=[IO.File]::ReadAllBytes($fixture)
+        $offlineOffer=@{parentRevision=1;length=$offline.Length;sha256=[Convert]::ToHexString([Security.Cryptography.SHA256]::HashData($offline))}
+        $staged=Request POST $uploads $offlineOffer $linked.token
+        Assert ($staged.Status -eq 200 -and $staged.Body.offset -eq 0) 'Could not stage progress after the first checkpoint'
+        Request POST '/v1/gate' @{} $card.token | Out-Null
+        $blocked=UploadSave "$uploads/$($staged.Body.id)?offset=0" $offline $linked.token PUT
+        Assert ($blocked.Status -eq 409 -and $blocked.Body.error -eq 'reconciliation-required') 'Offline checkpoint overwrote an open hosted town'
+        Request DELETE '/v1/gate' $null $card.token | Out-Null
+        $staged=Request POST $uploads $offlineOffer $linked.token
+        $synced=UploadSave "$uploads/$($staged.Body.id)?offset=0" $offline $linked.token PUT
+        Assert ($synced.Status -eq 200 -and $synced.Body.completed -and $synced.Body.revision -eq 2) "Offline progress with an unchanged hosted parent failed: $($synced.Body.error)"
+        Assert ((Request POST $uploads $offlineOffer $linked.token).Body.revision -eq 2) 'Offline upload retry created a different revision'
+        $saved=(Request GET '/v1/me' $null $linked.token).Body
+        Assert ($saved.wallet -eq 4876 -and $saved.savings -eq 9021 -and $saved.revision -eq 2) 'Offline progress did not preserve local gains'
+    } finally {
+        Remove-Item -LiteralPath $fixture -ErrorAction SilentlyContinue
+    }
+    foreach($guest in @($a,$b,$third)){
+        Request POST "/v1/friends/$($guest.id)" @{} $card.token | Out-Null
+        Request POST "/v1/friends/$($card.id)" @{} $guest.token | Out-Null
+    }
+    Assert ((Request POST '/v1/gate' @{} $card.token).Body.open -eq $true) 'Open gate did not report open'
+    $seat1=(Request POST '/v1/visits' @{host=$card.id} $a.token).Body
+    $seat2=(Request POST '/v1/visits' @{host=$card.id} $b.token).Body
+    Assert ($seat1.id -and $seat2.id) 'Two guests could not reserve seats'
+    Assert ((Request POST '/v1/visits' @{host=$card.id} $a.token).Body.id -eq $seat1.id) 'Visit retry allocated another seat'
+    Assert ((Request POST '/v1/visits' @{host=$card.id} $third.token).Status -eq 409) 'Town accepted a third guest'
+    $heartbeat="/v1/visits/$($seat1.id)/heartbeat"
+    Assert ((Request POST $heartbeat @{} $a.token).Body.reconnectSeconds -eq 60) 'Guest reconnect grace did not begin'
+    Assert ((Request POST $heartbeat @{} $third.token).Status -eq 404) 'Unrelated guest renewed the seat'
+    Assert ((Request POST '/v1/visits' @{host=$card.id} $third.token).Status -eq 409) 'Reconnect seat did not count toward capacity'
+    Assert ((Request POST $heartbeat @{} $a.token).Status -eq 200) 'Returning guest could not renew the same seat'
+    $unsafeOp=@{id=[Guid]::NewGuid().ToString();kind='remove';source='ground';revision=1;index=0}
+    Assert ((Request GET "/v1/towns/$($card.id)/items" $null $a.token).Body.error -eq 'live-town-view-required') 'Legacy snapshot exposed a card-managed town to a guest'
+    Assert ((Request POST "/v1/towns/$($card.id)/items/ops" $unsafeOp $a.token).Body.error -eq 'online-review-required') 'Legacy removal could target an imported town'
+    Assert ((Request POST "/v1/visits/$($seat1.id)/end" @{} $card.token).Status -eq 200) 'Host could not send a guest home'
+    Request POST '/v1/gate' @{} $card.token | Out-Null
+    Assert ((Request POST '/v1/visits' @{host=$card.id} $a.token).Status -eq 403) 'Removed guest rejoined without a gate reset'
+    Assert ((Request POST '/v1/visits' @{host=$card.id} $third.token).Status -eq 200) 'Removing one guest did not free a seat'
+    Assert ((Request DELETE '/v1/gate' $null $card.token).Body.open -eq $false) 'Closing the gate did not report closed'
+    Assert ((Request POST "/v1/visits/$($seat2.id)/heartbeat" @{} $b.token).Status -eq 403) 'Guest retained access after the gate closed'
+    Request POST '/v1/gate' @{} $card.token | Out-Null
+    Assert ((Request POST '/v1/visits' @{host=$card.id} $a.token).Status -eq 200) 'Closing and reopening did not clear removals'
+    $reviewSeed=dotnet tests/AnimalTown.ServerChecks/bin/Release/net10.0/AnimalTown.ServerChecks.dll seed-placement-review $card.id $a.id
+    if($LASTEXITCODE){throw 'Placement review fixture failed'}
+    $reviewSeed=$reviewSeed|ConvertFrom-Json
+    Assert ((Request POST '/v1/review' @{} $card.token).Status -eq 401) 'Browser account could open a gameplay review'
+    $review=(Request POST '/v1/review' @{} $linked.token).Body
+    Assert ($review.lease -and $review.expiresIn -eq 10) 'Device could not acquire a bounded review lease'
+    $reviewPath="/v1/review/$($review.lease)"
+    $page=(Request GET "$reviewPath/placements" $null $linked.token).Body
+    Assert ($page.entries.Count -eq 2) 'Review lost pending placements'
+    $decision=@{id=[Guid]::NewGuid().ToString();placement=$reviewSeed.keep;version=2;kind='keep'}
+    Assert ((Request POST "$reviewPath/placements/ops" $decision $linked.token).Body.error -eq 'placement-changed') 'Review accepted a stale placement version'
+    $decision.version=3
+    $kept=Request POST "$reviewPath/placements/ops" $decision $linked.token
+    Assert ($kept.Status -eq 200 -and $kept.Body.decision -eq 'keep') 'Could not keep the selected placement'
+    dotnet tests/AnimalTown.ServerChecks/bin/Release/net10.0/AnimalTown.ServerChecks.dll expire-placement-review $card.id
+    if($LASTEXITCODE){throw 'Could not expire review lease'}
+    Assert ((Request POST "$reviewPath/heartbeat" @{} $linked.token).Body.error -eq 'review-lease-ended') 'Heartbeat renewed an expired review lease'
+    Assert ((Request POST "$reviewPath/placements/ops" $decision $linked.token).Body.revision -eq $kept.Body.revision) 'Review receipt was lost after interruption'
+    $review=(Request POST '/v1/review' @{} $linked.token).Body
+    $reviewPath="/v1/review/$($review.lease)"
+    $page=(Request GET "$reviewPath/placements" $null $linked.token).Body
+    Assert ($page.entries.Count -eq 1 -and $page.entries[0].id -eq $reviewSeed.koban) 'Resumed review lost or reintroduced a placement'
+    $decision=@{id=[Guid]::NewGuid().ToString();placement=$reviewSeed.koban;version=1;kind='koban'}
+    Assert ((Request POST "$reviewPath/placements/ops" $decision $linked.token).Body.decision -eq 'koban') 'Could not transfer reviewed placement to the koban'
+    Assert ((Request DELETE $reviewPath $null $linked.token).Status -eq 200) 'Could not release review pause'
+    Assert ((Request POST '/v1/review' @{} $linked.token).Body.error -eq 'review-empty') 'An empty review could pause visitors'
+    Assert ((Request POST '/v1/inventory/ops' @{id=[Guid]::NewGuid().ToString();kind='sell';slot=0} $card.token).Body.error -eq 'card-settlement-required') 'Legacy inventory route mutated a card-managed town'
+    $items=(Request GET "/v1/towns/$($card.id)/items" $null $card.token).Body
+    Assert ($items.placed.Count -eq 1 -and $items.placed[0].item -eq 10) 'Review did not persist exactly one kept placement'
+    $custody=(Request GET "/v1/towns/$($card.id)/lost-found" $null $card.token).Body
+    Assert (@($custody.entries|Where-Object item -eq 11).Count -eq 1) 'Koban review lost or duplicated an item'
     Assert ((Request POST '/v1/auth/token' @{name='LegacySplit';password='test-password-long'} $null).Status -eq 200) 'Migrated login failed'
     dotnet tests/AnimalTown.ServerChecks/bin/Release/net10.0/AnimalTown.ServerChecks.dll verify
     if($LASTEXITCODE){throw 'Backend split storage or migration failed'}
-    Write-Host 'Server integration checks passed: authentication, ownership, idempotency, friendship, blocking, permanent purchases, visitor item permissions, custody, deferred rewards, restoration and concurrent local claims.'
+    Write-Host 'Server integration checks passed: authentication, device linking, initial card import, gate admission and reconnect, idempotency, permanent purchases, visitor custody, and hosted placement review.'
 }
 finally {
     $env:ANIMALTOWN_TEST_CONNECTION=$oldTestConnection
