@@ -13,6 +13,7 @@
     <Compile Include="../../game/AnimalTown.GameCube/TownSession.cs" Link="TownSession.cs" />
     <Compile Include="../../game/AnimalTown.GameCube/UserOptionsStorage.cs" Link="UserOptionsStorage.cs" />
     <Compile Include="../../game/AnimalTown.GameCube/DevConfigStorage.cs" Link="DevConfigStorage.cs" />
+    <Compile Include="../../game/AnimalTown.GameCube/VideoOptions.cs" Link="VideoOptions.cs" />
     <Compile Include="../../game/AnimalTown.GameCube/TownDataStorage.cs" Link="TownDataStorage.cs" />
     <Compile Include="../../vendor/card-store-sdk/src/DolphinDotNet.Core/Dolphin/Storage/CardRecordStore.cs" Link="Sdk/CardRecordStore.cs" />
   </ItemGroup>

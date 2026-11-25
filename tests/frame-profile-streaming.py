@@ -12,15 +12,15 @@ ast.parse(Path('tools/iso-smoke.py').read_text())
 menu_source=ast.parse(Path('tools/iso-smoke.py').read_text())
 menu_namespace={'Path':Path,'__file__':str(Path('tools/iso-smoke.py').resolve())}
 exec(compile(ast.Module(body=[node for node in menu_source.body if isinstance(node,ast.FunctionDef) and node.name in ('testing_menu_options','testing_menu_count','testing_menu_row')],type_ignores=[]),'<debug navigation contract>','exec'),menu_namespace)
-assert menu_namespace['testing_menu_count']()==25
-assert menu_namespace['testing_menu_row']('ProfilingModeOption')==menu_namespace['testing_menu_row'](41)==22
-assert menu_namespace['testing_menu_row']('ExportProfileOption')==menu_namespace['testing_menu_row'](42)==23
-assert menu_namespace['testing_menu_row']('SmoothSnowOption')==menu_namespace['testing_menu_row'](43)==24
-assert [menu_namespace['testing_menu_row'](option) for option in (22,23,34)]==[14,15,16]
-for removed in ('WarmTerrainOption',40,30):
+assert menu_namespace['testing_menu_count']()==24
+assert menu_namespace['testing_menu_row']('ProfilingModeOption')==menu_namespace['testing_menu_row'](41)==21
+assert menu_namespace['testing_menu_row']('ExportProfileOption')==menu_namespace['testing_menu_row'](42)==22
+assert menu_namespace['testing_menu_row']('SmoothSnowOption')==menu_namespace['testing_menu_row'](43)==23
+assert [menu_namespace['testing_menu_row'](option) for option in (22,23,34)]==[13,14,15]
+for removed in ('WarmTerrainOption',40,30,33):
     try:menu_namespace['testing_menu_row'](removed)
     except AssertionError:pass
-    else:raise AssertionError('A retired terrain control was still navigable')
+    else:raise AssertionError('A retired terrain or edge-smoothing control was still navigable')
 
 # Old capture commands may retain --warm-terrain, but automatic prefetch must
 # not cause a title-menu detour, config write or extra controller input.
@@ -608,17 +608,18 @@ config_namespace=dict(namespace)
 exec(compile(ast.Module(body=[config_reader],type_ignores=[]),'<developer config reader>','exec'),config_namespace)
 with TemporaryDirectory() as fixture:
     card=Path(fixture)/'MemoryCardA.USA.raw';card.touch()
-    for version in (5,6):
+    for version in (5,6,7):
         for retired in (0,1):
             for retired_warm in (0,1):
-                checksum_at=40 if version==6 else 36
+                checksum_at=40 if version>=6 else 36
                 payload=bytearray(checksum_at+4);payload[:4]=b'ATD'+bytes([version]);payload[33]=retired
-                if version==6:payload[36]=retired_warm
+                if version>=6:payload[36]=retired_warm
                 struct.pack_into('<I',payload,checksum_at,fnv(payload[:checksum_at]))
                 config_namespace['options_card_files']=lambda path:{'dev_config':payload}
                 decoded=config_namespace['card_dev_config'](card)
                 assert decoded['retired_terrain_cache_value']==retired and decoded['values'][29]==retired
-                assert decoded['retired_warm_prefetch_value']==(retired_warm if version==6 else None)
+                assert decoded['retired_warm_prefetch_value']==(retired_warm if version>=6 else None)
+                assert not decoded['full_resolution_aa']
                 assert 'discard_terrain_cache_when_indoors' not in decoded and 'warm_terrain_prefetch' not in decoded
 print('Developer config smoke: retired terrain slots remain decodable without controlling automatic memory policy')
 

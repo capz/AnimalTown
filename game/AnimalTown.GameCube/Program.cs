@@ -25,7 +25,7 @@ internal static class Program
         SaveCards.Initialize();
         var config=DevConfigStorage.Load();
         DevConfigStorage.ApplyGlobal(config);
-        var options=UserOptionsStorage.Load();VideoOptions.Load(options,config);
+        var options=UserOptionsStorage.Load();VideoOptions.Load(options);
         StartupSplash.Run();
         while(true){
             if(!TitleScreen.Run(config,options))return 0;
@@ -197,7 +197,7 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
     // Stable IDs keep hidden/retired controls out of both debug menus.
     private const int SeasonPreviewOption=18,TimePreviewOption=39;
     private const int ProfilingModeOption=41,ExportProfileOption=42,SmoothSnowOption=43;
-    private static readonly int[] testingOptions={0,33,2,3,11,12,13,16,17,35,SeasonPreviewOption,TimePreviewOption,19,21,22,23,34,36,37,38,31,32,ProfilingModeOption,ExportProfileOption,SmoothSnowOption};
+    private static readonly int[] testingOptions={0,2,3,11,12,13,16,17,35,SeasonPreviewOption,TimePreviewOption,19,21,22,23,34,36,37,38,31,32,ProfilingModeOption,ExportProfileOption,SmoothSnowOption};
     private static readonly string[] groundMipLabels={"0","1"};
     private static int TestingOption(int row)=>testingOptions[row];
     private static readonly string[] tabs={"Backpack","Jobs","Catalog","Home","Post office","Settings","Debug / testing"};
@@ -819,12 +819,6 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
     {
         clockHud.Trim();uiShapes.Trim();
         switch(TestingOption(selected)){
-            case 33:
-                if(!VideoOptions.ToggleFullResolutionAa(debugConfig)){Say("Full-resolution AA",VideoOptions.Status);break;}
-                card?.Dispose();card=null;
-                VideoOptions.AaSaveFailed=!DevConfigStorage.Save(debugConfig);
-                if(VideoOptions.AaSaveFailed)Say("Dev config",DevConfigStorage.Status);
-                break;
             case 31:godMode=!godMode;break;
             case 32:
                 int added=state.GiveMoney(10000,godMode);
@@ -867,7 +861,6 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
         switch(TestingOption(row)){
             case 31:return "God mode: "+OnOff(godMode)+" (session)";
             case 32:return "Give "+UiFont.Money(10000)+(godMode?"":" (God mode required)");
-            case 33:return "Full-resolution AA: "+OnOff(VideoOptions.FullResolutionAa)+(VideoOptions.AaSaveFailed?" (not saved)":" (saved)");
             case 0:return "Performance display: "+OnOff(FrameProfile.OverlayVisible);
             case ProfilingModeOption:return "Profiling: "+DevConfig.ProfilingLabel(FrameProfile.Mode)+" (session)";
             case ExportProfileOption:return "Export profiling capture to debug log";
@@ -1396,8 +1389,7 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
             TestingFocused(SeasonPreviewOption)?"Left/Right: choose   A: apply   B: close":
             TestingFocused(TimePreviewOption)?"Left/Right: 15 min   A: apply   X: select Live   B: close":
             screen=="menu"&&menuTab==TestingTab&&TestingOption(selected)==23?"Left/Right: 1 square   A: +1   X: Auto":
-            screen=="menu"&&menuTab==TestingTab&&TestingOption(selected)==34?"A: toggle   Pink line marks the mip switch":
-            screen=="menu"&&menuTab==TestingTab&&TestingOption(selected)==33?"A: toggle and save   B: close":"Stick / D-pad choose   L/R tabs   A select   B close",65,392,ink,1);
+            screen=="menu"&&menuTab==TestingTab&&TestingOption(selected)==34?"A: toggle   Pink line marks the mip switch":"Stick / D-pad choose   L/R tabs   A select   B close",65,392,ink,1);
         if(screen=="menu"&&menuTab==SettingsTab){
             Text("Manual saves only.",65,331,ink,1);
             Text(saveStatusText.Get(saveStatus),65,357,ink,1);

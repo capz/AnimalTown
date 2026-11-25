@@ -401,6 +401,24 @@
         "Only drawable terrain requests path resources.",
         "Optional water effects yield memory to required scene restores."
       ]
+    },
+    {
+      "id": "current-tier-home-plots-tree-clearing-20261125",
+      "lines": [
+        "Choose smaller home plots and clear only trees that obstruct construction.",
+        "Start with a seven-by-five garden and check additional land when expanding.",
+        "Terrain, paths, structures, flowers and other belongings stay protected.",
+        "Garden reservations and reversible home previews preserve shared-town saves."
+      ]
+    },
+    {
+      "id": "edge-smoothing-regular-video-config-20261125",
+      "lines": [
+        "Save edge smoothing with normal video preferences, enabled by default.",
+        "The former debug antialiasing option is retired from both debug menus.",
+        "Existing saved choices migrate without changing town progress.",
+        "Versioned settings preserve old cards and protect interrupted migrations."
+      ]
     }
   ]
 }

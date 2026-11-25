@@ -1365,7 +1365,7 @@ def wait_options_saved(resolution,wide):
     while time.monotonic()<deadline:
         try:payload=options_card_files().get('options')
         except AssertionError:payload=None # First archive checkpoint may still be flushing.
-        if payload and len(payload)==16 and payload[:3]==b'ATO' and payload[3] in (1,2) and payload[4:6]==bytes((resolution,wide)):
+        if payload and len(payload)==16 and payload[:3]==b'ATO' and payload[3] in (1,2,3) and payload[4:6]==bytes((resolution,wide)):
             checksum=2166136261
             for value in payload[:12]:checksum=((checksum^value)*16777619)&0xffffffff
             if len(payload)==16 and checksum==struct.unpack_from('<I',payload,12)[0]:return payload
@@ -1376,11 +1376,11 @@ def debug_visibility(require_record=False):
     import struct
     try:payload=options_card_files().get('options')
     except AssertionError:return None if require_record else False
-    if not payload or len(payload)!=16 or payload[:3]!=b'ATO' or payload[3] not in (1,2):return None if require_record else False
+    if not payload or len(payload)!=16 or payload[:3]!=b'ATO' or payload[3] not in (1,2,3):return None if require_record else False
     checksum=2166136261
     for value in payload[:12]:checksum=((checksum^value)*16777619)&0xffffffff
     if checksum!=struct.unpack_from('<I',payload,12)[0]:return None if require_record else False
-    return payload[3]==2 and payload[6]==1
+    return payload[3]>=2 and payload[6]==1
 
 def set_debug_visibility(visible):
     if debug_visibility()==visible:return
@@ -2195,14 +2195,15 @@ def card_dev_config(path):
     if not path.exists():return None
     try:payload=options_card_files(path).get('dev_config')
     except AssertionError:return None
-    if not payload or len(payload)<4 or payload[:3]!=b'ATD' or payload[3] not in (1,2,3,4,5,6):return None
-    version=payload[3];checksum_at=32 if version==1 else 40 if version==6 else 36
-    count={1:27,2:29,3:30,4:31,5:32,6:34}[version]
+    if not payload or len(payload)<4 or payload[:3]!=b'ATD' or payload[3] not in (1,2,3,4,5,6,7):return None
+    version=payload[3];checksum_at=32 if version==1 else 40 if version>=6 else 36
+    count={1:27,2:29,3:30,4:31,5:32,6:34,7:34}[version]
     if len(payload)!=checksum_at+4 or any(payload[4+count:checksum_at]):return None
+    if version>=7 and payload[34]!=0:return None
     checksum=2166136261
     for value in payload[:checksum_at]:checksum=((checksum^value)*16777619)&0xffffffff
     if checksum!=struct.unpack_from('<I',payload,checksum_at)[0]:return None
-    return {'version':version,'values':list(payload[4:4+count]),'retired_terrain_cache_value':payload[33] if version>=3 else None,'full_resolution_aa':version>=4 and payload[34]==1,'ground_mip_bands':version>=5 and payload[35]==1,'retired_warm_prefetch_value':payload[36] if version>=6 else None}
+    return {'version':version,'values':list(payload[4:4+count]),'retired_terrain_cache_value':payload[33] if version>=3 else None,'full_resolution_aa':4<=version<=6 and payload[34]==1,'ground_mip_bands':version>=5 and payload[35]==1,'retired_warm_prefetch_value':payload[36] if version>=6 else None}
 
 def aram_model_cycles(text,after):
     """Match real retire/restore pairs in the current town session only."""

@@ -4,10 +4,10 @@ internal static class UserOptionsChecks
 {
     internal static void Run(Action<bool,string> check)
     {
-        var defaults=new UserOptions();check(defaults.Resolution==0&&!defaults.Widescreen&&!defaults.ShowDebugMenus,"new options preserve boot timing, 4:3 and hidden debug menus");
-        for(int resolution=0;resolution<=2;resolution++)foreach(bool wide in new[]{false,true})foreach(bool debug in new[]{false,true}){
-            var expected=new UserOptions{Resolution=resolution,Widescreen=wide,ShowDebugMenus=debug};byte[] bytes=expected.Encode();
-            var actual=UserOptions.Decode(bytes);check(actual.Resolution==resolution&&actual.Widescreen==wide&&actual.ShowDebugMenus==debug,"video and debug visibility preferences round trip independently");
+        var defaults=new UserOptions();check(defaults.Resolution==0&&!defaults.Widescreen&&!defaults.ShowDebugMenus&&defaults.EdgeSmoothing,"new options default to smooth edges, 4:3 and hidden debug menus");
+        for(int resolution=0;resolution<=2;resolution++)foreach(bool wide in new[]{false,true})foreach(bool debug in new[]{false,true})foreach(bool smoothing in new[]{false,true}){
+            var expected=new UserOptions{Resolution=resolution,Widescreen=wide,ShowDebugMenus=debug,EdgeSmoothing=smoothing};byte[] bytes=expected.Encode();
+            var actual=UserOptions.Decode(bytes);check(actual.Resolution==resolution&&actual.Widescreen==wide&&actual.ShowDebugMenus==debug&&actual.EdgeSmoothing==smoothing&&actual.HasStoredEdgeSmoothing,"video, edge smoothing and debug visibility preferences round trip independently");
             for(int i=0;i<bytes.Length;i++){
                 var damaged=(byte[])bytes.Clone();damaged[i]^=1;bool rejected=false;
                 try{UserOptions.Decode(damaged);}catch(IOException){rejected=true;}
@@ -21,10 +21,20 @@ internal static class UserOptionsChecks
         check(invalid,"unsupported output cannot be persisted");
         byte[] legacy=Convert.FromHexString("41544f01020100000000000009c9faa2");
         var migrated=UserOptions.Decode(legacy);
-        check(migrated.Resolution==2&&migrated.Widescreen&&!migrated.ShowDebugMenus,"v1 console preferences retain video settings and default to hidden debug menus");
-        check(migrated.Encode()[3]==2,"the next explicit settings save upgrades a legacy preference record");
+        check(migrated.Resolution==2&&migrated.Widescreen&&!migrated.ShowDebugMenus&&migrated.EdgeSmoothing&&!migrated.HasStoredEdgeSmoothing,"v1 video preferences remain intact and can import the old AA choice");
+        check(migrated.Encode()[3]==3,"the next explicit settings save upgrades a legacy preference record");
+        byte[] v2=new UserOptions{Resolution=1,Widescreen=true,ShowDebugMenus=true}.Encode();v2[3]=2;v2[7]=0;Rehash(v2);
+        var previous=UserOptions.Decode(v2);
+        check(previous.Resolution==1&&previous.Widescreen&&previous.ShowDebugMenus&&previous.EdgeSmoothing&&!previous.HasStoredEdgeSmoothing,"v2 keeps all existing settings while defaulting an absent AA field on");
+        v2[7]=1;Rehash(v2);check(Rejected(v2),"v2 padding cannot masquerade as the new edge-smoothing field");
+        var badFlag=defaults.Encode();badFlag[7]=2;Rehash(badFlag);check(Rejected(badFlag),"unknown edge-smoothing values are rejected even with a valid checksum");
+        var badPadding=defaults.Encode();badPadding[8]=1;Rehash(badPadding);check(Rejected(badPadding),"new options preserve strict reserved-byte validation");
         EraseChecks(check);
     }
+    private static bool Rejected(byte[] bytes)
+    {try{UserOptions.Decode(bytes);return false;}catch(IOException){return true;}}
+    private static void Rehash(byte[] bytes)
+    {uint hash=2166136261;for(int i=0;i<12;i++)hash=unchecked((hash^bytes[i])*16777619);for(int i=0;i<4;i++)bytes[12+i]=(byte)(hash>>(i*8));}
     private sealed class Files : ITownDataFiles,ISaveStorage
     {
         internal readonly Dictionary<string,byte[]> Data=new();
