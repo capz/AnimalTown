@@ -1395,6 +1395,12 @@ def activate_video_setting(resolution,wide,smoothing=None):
     offset=len(runtime_log_text());press('A')
     return wait_options_saved(resolution,wide,smoothing,after=offset)
 
+def video_options_footer_ink(pixels):
+    # Common interior of the normal/widescreen footer, away from the moving
+    # backdrop. Count antialiased text against the much brighter cream panel.
+    return sum(max(pixels[(y*800+x)*3:(y*800+x)*3+3])<170
+               for y in range(335,410) for x in range(150,500))
+
 def debug_visibility(require_record=False):
     import struct
     try:payload=options_card_files().get('options')
@@ -1477,7 +1483,7 @@ def title_options():
         if debug:break
         time.sleep(.5)
     if not debug:raise AssertionError('Could not prepare independent debug preferences')
-    press('D_UP');press('A');time.sleep(2);screenshot('options-open.png')
+    press('D_UP');press('A');wait_title(modal=True);screenshot('options-open.png')
     # The third Video row is distinct from Delete. Navigation alone never saves.
     original=options_card_files().get('options');press('D_DOWN');press('D_DOWN')
     if active_edge_smoothing():press('D_RIGHT')
@@ -1516,17 +1522,24 @@ def title_options_load():
     expected=wait_options_saved(2,1)
     if 'ANIMALTOWN OPTIONS LOADED 2 1' not in runtime_log_text() or 'ANIMALTOWN VIDEO 2 1 output 640x576' not in runtime_log_text():
         raise AssertionError('Startup did not restore saved progressive/widescreen settings')
-    press('D_DOWN');press('D_DOWN');press('A');time.sleep(2);screenshot('options-restored.png');press('B')
+    press('D_DOWN');press('D_DOWN');press('A');wait_title(modal=True);screenshot('options-restored.png');press('B')
     if options_card_files().get('options')!=expected:raise AssertionError('Opening/closing Options rewrote preferences')
     press('D_UP');press('D_UP');press('A');wait_profiles('options-restored-empty-town.png')
     if any(name.startswith('AT-') or name.startswith('AnimalTown') for name in options_card_files()):raise AssertionError('Deleted villagers returned after restart')
     (root/'title-options-load.json').write_text(json.dumps({'persisted_resolution':576,'persisted_widescreen':True,'deleted_town_stayed_deleted':True}))
 
 def title_options_unsupported():
-    before=options_card_files();press('D_DOWN');press('D_DOWN');press('A');press('A');time.sleep(2);screenshot('options-unsupported.png')
+    before=options_card_files();press('D_DOWN');press('D_DOWN');press('A');wait_title(modal=True)
+    screenshot('options-unsupported-before.png');baseline=video_options_footer_ink(rgb('options-unsupported-before.png'))
+    offset=len(runtime_log_text());press('A');deadline=time.monotonic()+30
+    while time.monotonic()<deadline:
+        screenshot('options-unsupported.png')
+        if video_options_footer_ink(rgb('options-unsupported.png'))>baseline+100:break
+        check_runtime_failure();time.sleep(.5)
+    else:raise AssertionError('Unsupported progressive selection did not display its rejection feedback')
     if options_card_files()!=before:raise AssertionError('Unsupported progressive mode modified saved settings/town')
-    if 'ANIMALTOWN OPTIONS SAVED' in runtime_log_text():raise AssertionError('Rejected mode was persisted')
-    (root/'title-options-unsupported.json').write_text(json.dumps({'unsupported_mode_did_not_save':True}))
+    if 'ANIMALTOWN OPTIONS SAVED' in runtime_log_text()[offset:]:raise AssertionError('Rejected mode was persisted')
+    (root/'title-options-unsupported.json').write_text(json.dumps({'unsupported_mode_did_not_save':True,'rejection_feedback_visible':True}))
 
 def wait_profiles(name='profile-picker.png'):
     maximum='--jobs' in sys.argv and sys.argv[sys.argv.index('--jobs')+1].startswith('maximum-')
