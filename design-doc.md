@@ -1,5 +1,12 @@
 # Project Meadowroll: Game Design Document
 
+> Networking update, 24 November 2026: the
+> [Codex networking implementation brief](docs/networking-implementation-plan.md)
+> supersedes this draft's owner-console authority, WebRTC/SignalR flow, guest
+> pickup/export and guest lost-property collection rules. Online play is to be
+> server-authoritative, with owner review of visitor changes and permanent shop
+> purchases. The older networking sections below are historical design context.
+
 | | |
 |---|---|
 | **Working title** | Project Meadowroll |
