@@ -1496,11 +1496,12 @@ def title_options():
     if any(options_card_files().get(name)!=data for name,data in town.items()):raise AssertionError('Default Cancel deleted town data')
     press('A');press('D_RIGHT');screenshot('options-delete-focused.png');press('B')
     if any(options_card_files().get(name)!=data for name,data in town.items()):raise AssertionError('B cancellation deleted town data')
-    press('A');press('D_RIGHT');press('A')
+    press('A');press('D_RIGHT');delete_offset=len(runtime_log_text());press('A')
     deadline=time.monotonic()+90
     while time.monotonic()<deadline:
         current=options_card_files()
-        if not any(name.startswith('AT-') or name.startswith('AnimalTown') for name in current):break
+        if (not any(name.startswith('AT-') or name.startswith('AnimalTown') for name in current)
+                and 'ANIMALTOWN TOWN DATA DELETED' in runtime_log_text()[delete_offset:]):break
         check_runtime_failure();time.sleep(1)
     else:raise AssertionError('Confirmed town deletion did not remove every record and its recovery marker')
     if current.get('options')!=saved or current.get('dev_config')!=debug:raise AssertionError('Deletion changed video/debug preferences')
