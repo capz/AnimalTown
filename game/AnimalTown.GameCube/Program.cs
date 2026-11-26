@@ -201,6 +201,15 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
     private long sessionStart;
     private float facingYaw=3.1415927f;
     private bool loaded,relocate,damagedSave;
+    private int PlotX=>(int)state.X-3;
+    private int PlotZ=>(int)state.Z-6;
+    private static readonly string[] plotSizeHelp={"Your home and garden need 7 x 5 tiles.","Your home and garden need 9 x 7 tiles.","Your home and garden need 11 x 9 tiles.","Your home and garden need 13 x 11 tiles.","Your home and garden need 15 x 13 tiles."};
+    private bool CanChoosePlot(out string reason)
+    {
+        if(!state.CanPlaceHouse(PlotX,PlotZ,out reason))return false;
+        if(relocate&&!godMode&&state.Wallet<50000){reason="Save up 50,000 before moving your home.";return false;}
+        reason="A lovely spot! Trees in the way will be cleared.";return true;
+    }
     private static readonly bool batchedDrawing=true;
     private bool godMode=false; // TownGame lifetime only; never written to saves or DevConfig.
     private int uvDebug;
@@ -272,7 +281,8 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
     private void FindStartingPlot()
     {
         var draft=session.Draft!;int best=int.MaxValue,bx=15,bz=35;
-        for(int z=1;z<=Town.Height-13;z++)for(int x=1;x<=Town.Width-15;x++){
+        int width=state.HomePlotWidth(state.ActiveProfile),height=state.HomePlotHeight(state.ActiveProfile);
+        for(int z=1;z<=Town.Height-height;z++)for(int x=1;x<=Town.Width-width;x++){
             int distance=(x-15)*(x-15)+(z-35)*(z-35);
             if(distance>=best||!draft.CanPlaceHome(x,z,out _)||!state.CanWalk(x+3.5f,z+6.5f,0))continue;
             // Favor an unobstructed first view without removing garden trees.
@@ -289,7 +299,7 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
         // Do not load setup imagery beside the resident town. RunSession
         // disposes this renderer and unwinds before the next view is created.
         if(p.B.WasPressed){NextSetup=OnboardingFlow.ToLook;return;}
-        if(p.A.WasPressed&&session.Draft!.PlaceHome((int)state.X-3,(int)state.Z-6)){
+        if(p.A.WasPressed&&session.Draft!.PlaceHome(PlotX,PlotZ)){
             state.Facing=facingYaw;NextSetup=OnboardingFlow.ToReview;
         }
     }
@@ -684,8 +694,11 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
         { if(Press(p)||p.B.WasPressed){dialogueVoice.Stop();if(typeAt<message.Length)typeAt=message.Length;else if(!NextChatPage()){ClearChatPresentation();screen=returnToMenu?"menu":"world";if(returnToMenu){menuTab=returnMenuTab;selected=returnMenuSelection;}}}return; }
         if(screen=="plot")
         {
-            if(Press(p)){if(state.PlaceHouse((int)state.X-3,(int)state.Z-3,relocate,godMode))Say("Hearth","Your home is ready! Visit the store for your first job.");else Say("Hearth","This plot needs 15 x 13 clear land tiles.");}
-            if(p.B.WasPressed&&state.HousePlaced)screen="world";return;
+            if(Press(p)&&CanChoosePlot(out _)&&state.PlaceHouse(PlotX,PlotZ,relocate,godMode)){
+                bool moved=relocate;relocate=false;
+                Say("Hearth",moved?"Your home has moved, along with your garden furniture.":"Your home is ready! Visit the store for your first job.");
+            }
+            if(p.B.WasPressed&&state.HousePlaced){relocate=false;screen="world";}return;
         }
         if(screen=="world"&&villagers.Doors.Busy(0))return;
         if(screen=="world"&&!chord&&p.R.WasPressed){OpenChat();return;}
@@ -779,7 +792,7 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
         if(selected==1){int i=state.Find(18);if(state.Tutorial==3&&i>=0){state.Pockets[i]=0;state.CreditTutorial(3);state.Receive(Catalog.WritingPaper);Say("Hearth","Good work! Use this paper to write a letter at town hall.");return;}screen="sell";selected=0;return;}
         if(selected==2){Say("Hearth",TutorialText());return;}
         if(selected==3){Say("Hearth",state.Expand(false,day,godMode)?"Your house expansion arrives after 06:00.":godMode?"No expansion is available yet.":"Pay off your debt before expanding.");return;}
-        if(selected==4){Say("Hearth",state.Expand(true,day,godMode)?"Your garden expands after 06:00.":godMode?"No garden expansion is available yet.":"Pay off your debt and meet the house tier first.");return;}
+        if(selected==4){Say("Hearth",state.Expand(true,day,out string reason,godMode)?"Your garden expands after 06:00.":reason);return;}
         if(selected==5){Say("Hearth",RepayLoan()?"Thank you for your repayment!":"No repayment is possible.");return;}
         if(state.Tutorial<7){Say("Hearth",TutorialText());return;}
         if(state.Jobs>=2){Say("Hearth","All jobs are done for today.");return;}
@@ -814,7 +827,7 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
             if(selected==3){state.Mailbox=(state.Mailbox+1)%6;Say("Home","Mailbox selected.");}
             if(selected==4){if(room!=0){Say("Home","Step outside before relocating your home.");return;}relocate=true;screen="plot";}
             if(selected==5){Say("Home",state.Expand(false,day,godMode)?"Construction ordered.":godMode?"No expansion is available yet.":"Pay off your loan first.");}
-            if(selected==6){Say("Home",state.Expand(true,day,godMode)?"Garden construction ordered.":godMode?"No garden expansion is available yet.":"Loan or house tier prevents this expansion.");}return;
+            if(selected==6){Say("Home",state.Expand(true,day,out string reason,godMode)?"Garden construction ordered.":reason);}return;
         }
         if(menuTab==4){PostAction();return;}
         if(menuTab==TestingTab){TestingAction();return;}
@@ -1171,11 +1184,11 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
         FrameProfile.End(5,phase);phase=FrameProfile.Start();
         if(screen=="plot")
         {
-            int x=(int)state.X-3,z=(int)state.Z-(session.Draft!=null?6:3);
-            bool valid=session.Draft!=null?session.Draft.CanPlaceHome(x,z,out _):state.Town.ValidPlot(x,z);
+            int x=PlotX,z=PlotZ,width=state.HomePlotWidth(state.ActiveProfile),height=state.HomePlotHeight(state.ActiveProfile);
+            bool valid=CanChoosePlot(out _);
             var color=valid?new Color32(115,202,114):new Color32(229,116,89);
-            for(int i=0;i<15;i++){Box(x+i,.035f,z,.9f,.04f,.9f,color);Box(x+i,.035f,z+12,.9f,.04f,.9f,color);}
-            for(int i=1;i<12;i++){Box(x,.035f,z+i,.9f,.04f,.9f,color);Box(x+14,.035f,z+i,.9f,.04f,.9f,color);}
+            for(int i=0;i<width;i++){Box(x+i,.035f,z,.9f,.04f,.9f,color);Box(x+i,.035f,z+height-1,.9f,.04f,.9f,color);}
+            for(int i=1;i<height-1;i++){Box(x,.035f,z+i,.9f,.04f,.9f,color);Box(x+width-1,.035f,z+i,.9f,.04f,.9f,color);}
             if(session.Draft!=null)buildings.PreviewHome(renderer,state,x,z);
         }
         if(batchedDrawing)boxes.Flush();
@@ -1336,13 +1349,13 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
     {
         var ink=new Color32(49,72,62);
         if(screen==ChatEntry.Screen){DrawChat(ink);return;}
-        if(screen=="plot"&&session.Draft!=null){
-            session.Draft.CanPlaceHome((int)state.X-3,(int)state.Z-6,out string reason);
-            Panel(150,24,340,42);Heading("Find your little corner",168,31,ink,1.05f);
+        if(screen=="plot"){
+            CanChoosePlot(out string reason);
+            Panel(150,24,340,42);Heading(relocate?"Move your little corner":"Find your little corner",168,31,ink,1.05f);
             Panel(28,355,584,101);Rounded(44,342,104,28,14,new Color32(53,105,84));
             Strong("Hearth",58,346,new Color32(255,245,221),1.1f);
             Text(reason,48,372,ink,1.13f);
-            Text("Your home and garden need 15 x 13 clear tiles.",48,402,ink,1);
+            Text(session.Draft!=null?"Start with 7 x 5 tiles. Expand when there is room.":plotSizeHelp[state.HomeReservedGardenTier(state.ActiveProfile)],48,402,ink,1);
             Text("Stick move   A choose spot   B back",48,430,ink,1.05f);return;
         }
         if(FrameProfile.OverlayVisible&&!AaStudy.Active){
@@ -1367,7 +1380,6 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
         if(screen=="dialogue")
         { SpeechBubble();return; }
         if(screen=="map"){DrawMap();return;}
-        if(screen=="plot"){Panel(55,370,530,55);Text("Choose a 15 x 13 plot. A: confirm",70,385,ink);return;}
         if(screen=="saving")
         { Panel(115,181,410,132);Heading("Saving your town",142,199,ink);Text("Please keep the memory\ncard inserted.",142,245,ink,1.25f);return; }
         if(screen=="save-quit"){

@@ -45,7 +45,7 @@ runs:
         from pathlib import Path
 
         plan=json.loads(Path('out/validation-plan.json').read_text())
-        individual={'title-logo':'title_logo','save-and-quit':'save_quit',
+        individual={'title-logo':'title_logo','video-options':'video_options','save-and-quit':'save_quit',
                     'terrain-materials':'terrain_materials','daylight':'daylight'}
         card_modes=('slot-b','choose-b','without-saving','no-card')
         job_modes=('delivery','mail','helipad')
@@ -176,6 +176,48 @@ runs:
           out/title-logo/*.log
           out/title-logo/*.txt
           out/title-logo/user/Logs/
+        if-no-files-found: warn
+    - name: Verify video options, smoothing persistence and deletion controls in Dolphin
+      if: ${{ !cancelled() && steps.dolphin.outcome == 'success' && steps.selection.outputs.video_options == 'true' }}
+      env:
+        BUILD_VERSION: ${{ inputs.version }}
+      shell: bash
+      run: |
+        timeout --kill-after=30s 20m bash -e -o pipefail <<'SCENARIO'
+        mkdir -p out/video-options/smoothing out/video-options/options out/video-options/unsupported
+        run_options() {
+          docker run --rm --init --shm-size=512m --user "$(id -u):$(id -g)" \
+            --mount "type=bind,src=$PWD,dst=/work" -w /work \
+            animaltown-dolphin-test python3 tools/iso-smoke.py \
+            "out/AnimalTown-$BUILD_VERSION.nkit.iso" "$@" --dsp-hle --season spring
+        }
+        run_options out/video-options/smoothing --full-resolution-aa --component-cable
+        cp out/video-options/smoothing/MemoryCardA.USA.raw out/video-options/options/MemoryCardA.USA.raw
+        run_options out/video-options/options --title-options --component-cable
+        run_options out/video-options/options --title-options-load --component-cable
+        run_options out/video-options/unsupported --title-options-unsupported
+        python3 - <<'PY'
+        import hashlib, json
+        from pathlib import Path
+        identity=json.loads(Path('out/version.json').read_text())
+        disc=Path('out')/f"AnimalTown-{identity['version']}.nkit.iso"
+        with disc.open('rb') as source: digest=hashlib.file_digest(source,'sha256').hexdigest()
+        evidence={'schema':1,'commit':identity['commit'],'version':identity['version'],
+                  'tag':identity['tag'],'isoName':disc.name,'isoSha256':digest}
+        Path('out/video-options/video-options-build.json').write_text(json.dumps(evidence,indent=2)+'\n')
+        PY
+        SCENARIO
+    - name: Keep video-options capture diagnostics
+      if: always() && steps.dolphin.outcome == 'success' && steps.selection.outputs.video_options == 'true'
+      uses: actions/upload-artifact@v4
+      with:
+        name: video-options-${{ inputs.commit }}
+        path: |
+          out/video-options/*.json
+          out/video-options/*/*.png
+          out/video-options/*/*.json
+          out/video-options/*/*.log
+          out/video-options/*/user/Logs/
         if-no-files-found: warn
     - name: Verify Save & Quit and reloading the town in Dolphin
       if: ${{ !cancelled() && steps.dolphin.outcome == 'success' && steps.selection.outputs.save_quit == 'true' }}

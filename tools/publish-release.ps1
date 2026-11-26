@@ -231,6 +231,27 @@ if(!$PublishOnly){
             $titleEvidenceAssets+=$destination
         }
     }
+    $videoEvidenceRoot=Join-Path $out 'video-options'
+    $videoEvidenceBuild=Join-Path $videoEvidenceRoot 'video-options-build.json'
+    if(Test-Path -LiteralPath $videoEvidenceBuild -PathType Leaf){
+        $evidence=Get-Content -LiteralPath $videoEvidenceBuild -Raw|ConvertFrom-Json
+        if($evidence.schema -ne 1 -or $evidence.commit -cne $commit -or $evidence.version -cne $version -or
+           $evidence.tag -cne $tag -or $evidence.isoName -cne [IO.Path]::GetFileName($nkit) -or
+           $evidence.isoSha256 -cne $nkitInfo.compactSha256){
+            throw 'Video-options evidence must match the release commit, version and verified NKit image'
+        }
+        $aa=Get-Content -LiteralPath (Join-Path $videoEvidenceRoot 'smoothing/aa-option.json') -Raw|ConvertFrom-Json
+        if($aa.passed -ne $true -or $aa.restoredAfterRestart -ne $true -or $aa.townUnchanged -ne $true){throw 'Video-options smoothing checks must pass before publication'}
+        Copy-Item -LiteralPath $videoEvidenceBuild -Destination $reports
+        foreach($name in @('smoothing/aa-option.json','smoothing/aa-initial-home.png','smoothing/aa-menu-on.png',
+                          'smoothing/aa-menu-off.png','smoothing/aa-menu-restored.png','smoothing/aa-576p-rejected.png',
+                          'options/title-options.json','options/title-options-load.json','options/options-restored.png',
+                          'options/options-delete-default.png','unsupported/title-options-unsupported.json','unsupported/options-unsupported.png')){
+            $source=Get-Item -LiteralPath (Join-Path $videoEvidenceRoot $name)
+            if($source.PSIsContainer -or $source.Length -le 0){throw "Missing or empty video-options evidence: $name"}
+            Copy-Item -LiteralPath $source.FullName -Destination (Join-Path $reports ('video-options-'+$name.Replace('/','-')))
+        }
+    }
     $terrainEvidenceAssets=@()
     $terrainEvidenceRoot=Join-Path $out 'terrain-materials'
     $terrainEvidenceBuild=Join-Path $terrainEvidenceRoot 'terrain-materials-build.json'

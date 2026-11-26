@@ -36,6 +36,18 @@ internal static class VideoOptionsChecks
         device.Reset(GraphicsResolution.R640x480,ScanMode.Interlaced,true);VideoOptions.Load(new UserOptions{EdgeSmoothing=false});device.FailNextAllocation=true;
         check(!VideoOptions.SetEdgeSmoothing(true)&&!VideoOptions.FullResolutionAa&&device.Display.Scan==ScanMode.Interlaced,"failed AA allocation leaves the current output unchanged");
         check(VideoOptions.Apply(2,false,true)&&device.Display.Resolution==GraphicsResolution.R640x576,"a failed AA switch also restores the requested mode used by later video operations");
+
+        var menu=new UserOptions{Resolution=2,EdgeSmoothing=false,Widescreen=true};
+        device.Reset(GraphicsResolution.R640x480,ScanMode.Interlaced,true);VideoOptions.Load(menu);
+        check(VideoOptions.ApplyEdgeSmoothing(menu,true)&&menu.EdgeSmoothing&&menu.Resolution==1&&menu.Widescreen,"the video-menu toggle records the actual 480p result when enabling smoothing from widescreen 576p");
+        VideoOptions.Load(UserOptions.Decode(menu.Encode()));
+        check(VideoOptions.FullResolutionAa&&device.Display.Resolution==GraphicsResolution.R640x480&&device.Display.Widescreen,"reloading the menu preference restores the applied mode and aspect");
+        check(VideoOptions.Apply(1,false,false)&&device.Display.Resolution==GraphicsResolution.R640x480,"a later aspect change retains the AA-compatible resolution");
+        device.FailNextAllocation=true;byte[] before=menu.Encode();
+        check(!VideoOptions.ApplyEdgeSmoothing(menu,false)&&VideoOptions.FullResolutionAa&&before.SequenceEqual(menu.Encode()),"a failed menu activation leaves both the live underline state and serializable preferences unchanged");
+        check(VideoOptions.ApplyEdgeSmoothing(menu,false)&&!menu.EdgeSmoothing&&menu.Resolution==1&&!menu.Widescreen,"disabling smoothing records the live resolution and aspect");
+        device.Reset(GraphicsResolution.R640x576,ScanMode.Interlaced,false);menu=new UserOptions{EdgeSmoothing=false};VideoOptions.Load(menu);
+        check(VideoOptions.ApplyEdgeSmoothing(menu,true)&&menu.Resolution==0&&device.Display.Scan==ScanMode.Interlaced,"the menu toggle retains automatic interlaced timing on analogue cables");
         RenderView.SetWidescreen(false);
         Console.WriteLine("Video options: default 480i AA, saved progressive modes, 576p guard, recovery and transactional failure passed.");
     }

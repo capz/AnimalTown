@@ -1365,13 +1365,21 @@ def options_card_files(path=None):
     return {**result,**dedicated}
 
 
-def wait_options_saved(resolution,wide):
+def active_edge_smoothing():
+    import re
+    modes=re.findall(r'ANIMALTOWN AA ([01]) render',runtime_log_text())
+    if not modes:raise AssertionError('No active edge-smoothing mode was reported')
+    return modes[-1]=='1'
+
+def wait_options_saved(resolution,wide,smoothing=None):
     import struct
     deadline=time.monotonic()+45
     while time.monotonic()<deadline:
         try:payload=options_card_files().get('options')
         except AssertionError:payload=None # First archive checkpoint may still be flushing.
-        if payload and len(payload)==16 and payload[:3]==b'ATO' and payload[3] in (1,2,3) and payload[4:6]==bytes((resolution,wide)):
+        if (payload and len(payload)==16 and payload[:3]==b'ATO' and payload[3] in (1,2,3)
+                and (resolution is None or payload[4]==resolution) and (wide is None or payload[5]==wide)
+                and (smoothing is None or payload[3]==3 and payload[7]==smoothing)):
             checksum=2166136261
             for value in payload[:12]:checksum=((checksum^value)*16777619)&0xffffffff
             if len(payload)==16 and checksum==struct.unpack_from('<I',payload,12)[0]:return payload
@@ -1461,6 +1469,13 @@ def title_options():
         time.sleep(.5)
     if not debug:raise AssertionError('Could not prepare independent debug preferences')
     press('D_UP');press('A');time.sleep(2);screenshot('options-open.png')
+    # The third Video row is distinct from Delete. Navigation alone never saves.
+    original=options_card_files().get('options');press('D_DOWN');press('D_DOWN')
+    if active_edge_smoothing():press('D_RIGHT')
+    screenshot('options-smoothing-draft-off.png')
+    if options_card_files().get('options')!=original:raise AssertionError('Smoothing navigation persisted an unapplied option')
+    press('A');wait_options_saved(None,None,0);screenshot('options-smoothing-off.png')
+    press('D_UP');press('D_UP')
     original=options_card_files().get('options');press('D_RIGHT');screenshot('options-draft-576p.png')
     if options_card_files().get('options')!=original:raise AssertionError('Navigation persisted an unapplied option')
     press('D_LEFT');press('A');wait_options_saved(1,0);screenshot('options-480p.png')
@@ -1468,7 +1483,7 @@ def title_options():
     press('D_DOWN');press('D_LEFT');press('A');saved=wait_options_saved(2,1);screenshot('options-widescreen.png')
     current=options_card_files()
     if any(current.get(name)!=data for name,data in town.items()):raise AssertionError('Video selection changed town data')
-    press('D_DOWN');press('A');screenshot('options-delete-default.png');press('A')
+    press('D_DOWN');press('D_DOWN');press('A');screenshot('options-delete-default.png');press('A')
     if any(options_card_files().get(name)!=data for name,data in town.items()):raise AssertionError('Default Cancel deleted town data')
     press('A');press('D_RIGHT');screenshot('options-delete-focused.png');press('B')
     if any(options_card_files().get(name)!=data for name,data in town.items()):raise AssertionError('B cancellation deleted town data')
@@ -3030,37 +3045,42 @@ with (root/'emulator.log').open('w') as log:
             press('X');screenshot('actor-shadow-menu.png');press('B')
             os.write(controller,b'PRESS L\nPRESS R\n');time.sleep(.2);press('D_LEFT');os.write(controller,b'RELEASE L\nRELEASE R\n');time.sleep(15);screenshot('actor-shadow-water.png')
         elif '--full-resolution-aa' in sys.argv:
-            set_debug_visibility(True);start_game(False,'aa-off');time.sleep(10)
-            card=root/'MemoryCardA.USA.raw';before=committed_card_sequence(card,details=True)
-            initial=card_dev_config(card)
-            if initial and initial['full_resolution_aa']:raise AssertionError('Use a card with AA initially off')
+            wait_title();default_on=active_edge_smoothing()
+            card=root/'MemoryCardA.USA.raw'
+            fresh=not committed_card_sequence(card,details=True) and not options_card_files()
+            if fresh and not default_on:raise AssertionError('A fresh card must start with edge smoothing enabled')
+            # Also captures the real compact starter-plot preview on fresh cards.
+            start_game(False,'aa-initial');before=committed_card_sequence(card,details=True)
+            def restart_title():
+                global p
+                if not stop_dolphin(p,30)['clean_exit']:raise AssertionError('Dolphin did not flush the disposable card cleanly')
+                offset=len(runtime_log_text());p=subprocess.Popen(command,env=env,stdout=log,stderr=subprocess.STDOUT)
+                wait_title();return offset
             def selector(name):
-                press('START');press('R');press('D_DOWN');screenshot(name+'.png')
-            def saved_aa(expected):
-                deadline=time.monotonic()+60
-                while time.monotonic()<deadline:
-                    value=card_dev_config(card)
-                    if value and value['full_resolution_aa']==expected:return value
-                    check_runtime_failure();time.sleep(.2)
-                raise AssertionError('AA preference was not saved')
-            screenshot('aa-world-off.png');selector('aa-menu-off')
-            press('A');on=saved_aa(True);time.sleep(3);screenshot('aa-menu-on.png')
-            press('B');time.sleep(10);screenshot('aa-world-on.png')
-            # Restart the emulator so splash, title and profile picker must also
-            # honor the saved AA mode; no in-process state can make this pass.
-            p.terminate()
-            try:p.wait(timeout=10)
-            except subprocess.TimeoutExpired:p.kill();p.wait()
-            restart_offset=len(runtime_log_text())
-            p=subprocess.Popen(command,env=env,stdout=log,stderr=subprocess.STDOUT)
-            start_game(False,'aa-restored');time.sleep(10);selector('aa-menu-restored')
-            if 'ANIMALTOWN AA 1 render 640 480 parts 2' not in runtime_log_text()[restart_offset:]:raise AssertionError('Saved AA was not applied at startup')
-            if not saved_aa(True)['full_resolution_aa']:raise AssertionError('AA did not survive restart')
-            press('A');off=saved_aa(False);time.sleep(3);screenshot('aa-menu-restored-off.png')
-            press('B');time.sleep(5);screenshot('aa-world-restored-off.png')
+                press('D_DOWN');press('D_DOWN');press('A');wait_title(modal=True)
+                press('D_DOWN');press('D_DOWN');screenshot(name+'.png')
+            def apply_aa(enabled,name):
+                if active_edge_smoothing()!=enabled:press('D_RIGHT')
+                press('A');saved=wait_options_saved(None,None,int(enabled))
+                if active_edge_smoothing()!=enabled:raise AssertionError('Saved smoothing preference differs from the live display')
+                screenshot(name+'.png');return list(saved)
+            restart_title();selector('aa-menu-default')
+            off=apply_aa(False,'aa-menu-off');on=apply_aa(True,'aa-menu-on')
+            # Rejected 576p must not move the underline or save the draft choice.
+            press('D_UP');press('D_UP');press('D_RIGHT');original=options_card_files().get('options')
+            offset=len(runtime_log_text());press('A');screenshot('aa-576p-rejected.png')
+            if options_card_files().get('options')!=original or not active_edge_smoothing() or 'ANIMALTOWN OPTIONS SAVED' in runtime_log_text()[offset:]:
+                raise AssertionError('576p with smoothing enabled changed saved preferences or the live mode')
+            press('B');press('D_UP');press('D_UP');start_game(False,'aa-on');screenshot('aa-world-on.png')
+            restart_offset=restart_title();selector('aa-menu-restored')
+            if 'ANIMALTOWN AA 1 render 640 480 parts 2' not in runtime_log_text()[restart_offset:]:raise AssertionError('Saved smoothing was not applied at startup')
+            wait_options_saved(None,None,1)
+            restored_off=apply_aa(False,'aa-menu-restored-off')
+            press('B');press('D_UP');press('D_UP');start_game(False,'aa-off');screenshot('aa-world-off.png')
             if committed_card_sequence(card,details=True)!=before:raise AssertionError('AA setting changed the town save')
             check_runtime_failure()
-            (root/'aa-option.json').write_text(json.dumps({'defaultOff':True,'savedOn':on,'restoredAfterRestart':True,'savedOff':off,'townUnchanged':True,'hostMsaa':1,'hardwareTiming':False},indent=2)+'\n')
+            (root/'aa-option.json').write_text(json.dumps({'passed':True,'defaultOn':default_on,'freshCard':fresh,'savedOff':off,'savedOn':on,
+                'restoredAfterRestart':True,'restoredOff':restored_off,'rejected576p':True,'townUnchanged':True,'hostMsaa':1,'hardwareTiming':False},indent=2)+'\n')
         elif '--lighting' in sys.argv:
             start_game(True)
             os.write(controller,b'PRESS L\nPRESS R\n');time.sleep(.2);press('A');os.write(controller,b'RELEASE L\nRELEASE R\n');time.sleep(15)

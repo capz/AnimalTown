@@ -14,6 +14,7 @@ and individual Dolphin scenarios. Examples follow.
 | Change | Selected checks |
 | --- | --- |
 | Menu navigation | Menu suite |
+| Title video controls and saved preferences | Video-options Dolphin scenario, including smoothing, restart, deletion and unsupported cables |
 | Text wrapping | Text suite |
 | Native UV diagnostics | Native UV topology checks |
 | Ground texture/import | Terrain importer and core render/texture checks |
