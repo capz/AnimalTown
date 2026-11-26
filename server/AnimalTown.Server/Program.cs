@@ -28,7 +28,9 @@ builder.Services.AddSingleton<LiveTownTransport>();
 builder.Services.AddHostedService(service=>service.GetRequiredService<LiveTownTransport>());
 var app=builder.Build();
 var gameplay=app.Services.GetRequiredService<LiveTownTransport>();db.LiveTransport=gameplay;
+app.MapOnlineSettlement(db);
 app.UseRateLimiter();
+app.UseWebSockets(new WebSocketOptions { KeepAliveInterval = TimeSpan.FromSeconds(10), KeepAliveTimeout = TimeSpan.FromSeconds(15) });
 app.Use(async(context,next)=>
 {
     try
@@ -60,6 +62,7 @@ app.Use(async(context,next)=>
     catch(PostgresException e) when(e.SqlState=="23505"){context.Response.StatusCode=409;await context.Response.WriteAsJsonAsync(new{error="conflict"});}
 });
 Guid Me(HttpContext c)=>(Guid)c.Items["player"]!;
+app.MapGet("/v1/gameplay", (HttpContext c) => gameplay.AcceptWebSocket(c)).WithMetadata(ApiAccess.Public);
 app.MapGet("/health",()=>new{service="AnimalTown.Server",protocol=1,catalog=Catalog.Version});
 app.MapPost("/v1/gameplay/tickets", (HttpContext c,LiveTicketRequest request) =>
     gameplay.Issue((DevicePrincipal)c.Items["device"]!,request)).WithMetadata(ApiAccess.DeviceOnly);

@@ -109,7 +109,7 @@ GitHub issue numbers.
 | POC-01 | Reproducible local backend and tunnel | API/container foundation | — | Start persistent PostgreSQL, backend and Quick Tunnel on either supported computer; document configuration, stop/restart, endpoint changes, secret handling and restore. Verify authenticated access through the public URL. |
 | POC-02 | Bounded WSS transport | Raw TLS/pose foundation | POC-01 | Add console WebSocket framing and server upgrade endpoint. Validate upgrade/subprotocol, masking, fragmented messages, ping/pong, close and malformed/oversized input. Keep frame work, queues, message sizes and allocation bounded; preserve ticket and epoch checks. |
 | POC-03 | Dolphin and DOL-015 transport spike | Hardware qualification missing | POC-02 | Prove API pairing, WSS authentication, movement samples, bulk transfer and recovery through Cloudflare on the actual target SDK. Record matched memory and frame-time measurements before enabling networking beside a dense town. |
-| POC-04 | Playable visit lifecycle | Pairing/admission foundation | POC-03, POC-13 approval | Add gate/friend selection, connection states, owner plus two guests, unattended availability, removal and safe exit. Keep an open hosted town available without owner-console heartbeats; the existing expiring gate lease is not that lifecycle. Keep destination state separate from the guest's home save. |
+| POC-04 | Playable visit lifecycle | Pairing/admission foundation | POC-03, POC-13 approval | Add gate/friend selection, connection states, owner plus two guests, unattended availability, removal and safe exit. Preserve the existing indefinitely open hosted gate without owner-console heartbeats and complete the playable client lifecycle. Keep destination state separate from the guest's home save. |
 | POC-05 | Public snapshots, reliable events and reconnect | Codec/pose foundation | POC-02 | Add bounded recipient projections, stable snapshot watermarks, ordered durable events, replay cursors and resnapshot on gaps. Never expose another player's inventory, mail, credentials or raw card records. |
 | POC-06 | Hosted command and simulation boundary | Movement and placement foundation | POC-05 | Route every enabled action through one town writer. Fence stale workers/connections; bind commands to authenticated participants and stable entity IDs. Commit mutation, receipt and replayable event together. Reject excluded commands server-side. Advance required NPC/job/mail state with server time. |
 | POC-07 | Three live human actors and rooms | Outdoor pose foundation | POC-04, POC-05, POC-06 | Replicate appearance, roster, room and position; predict/reconcile local movement and interpolate remote actors. Validate portals and room visibility. Keep human slots separate from NPCs and card visitors; reuse models, textures and residency budgets. |
@@ -186,3 +186,27 @@ remain provisional until measured through the selected WSS route.
 The older brief's NET IDs remain useful component references. Its literal P2
 (server simulation and durable commands) is part of POC-05/POC-06/POC-08/POC-10,
 not a separate promise that chat, jobs and mail can be postponed beyond this PoC.
+
+## Implementation checkpoint
+
+The active implementation adds a persistent development stack and isolated
+backup/restore workflow in [running the PoC](online-poc-running.md), a bounded
+WSS adapter, fenced backend connections, ordered recipient events, explicit
+public projections, and staged home-card publication. Its SDK dependency is
+[DolphinDotNet PR 195](https://github.com/capz/DolphinDotNet/pull/195), published
+as `0.1.0-preview.387.1`. Hypercube remains pinned to 55 with an explicit,
+reviewable additive runtime override; normal game builds still omit networking.
+
+The local three-client fixture exercises device-linked existing-save imports,
+distinct seats, movement, paged snapshots, room reach checks, cross-room chat,
+mail restrictions/retries, and immutable return/acknowledgment. Fault injection
+checks every travel-bank byte boundary and home-card publication interruptions.
+The actual connection path compiles through AOT; portable protocol code executes
+under the native runtime with GC stress. These results do not close the public
+Cloudflare, complete lifecycle, review, guest job, renderer, or physical gates.
+
+The [connection mockups](concepts/online-poc/connection.svg) and
+[review/social mockups](concepts/online-poc/review-and-social.svg) are awaiting
+explicit approval under the user's UI rule. No new UI has been implemented.
+The workspace's scoped Cloudflare network change was not approved; no network
+settings changed. Public tunnel qualification therefore remains open here.

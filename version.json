@@ -536,6 +536,15 @@
         "Review resolves offline conflicts; cloned cards, attachments and guest tools stay out of scope.",
         "Dependencies and Dolphin/DOL-015 acceptance gates distinguish planned work from proven behavior."
       ]
+    },
+    {
+      "id": "online-play-poc-implementation-20261126",
+      "lines": [
+        "Prepare secure online visits and recoverable home-card returns.",
+        "Bounded WSS, recipient snapshots and durable receipts connect three authenticated human seats.",
+        "Card travel locks, permanent rewards and read-back publication preserve the selected home town.",
+        "Private stack backups and native protocol checks support the remaining UI and hardware gates."
+      ]
     }
   ]
 }

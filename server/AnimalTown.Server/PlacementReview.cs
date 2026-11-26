@@ -195,7 +195,7 @@ sealed partial class GameDatabase
             throw new GameError(403, "active-visit-required");
     }
 
-    public async Task<object> MutateGuestPlacement(DevicePrincipal device, Guid visit, Guid connectionId, GuestPlacementOperation op)
+    public async Task<object> MutateGuestPlacement(DevicePrincipal device, Guid visit, Guid connectionId, GuestPlacementOperation op, HostedAuthority? authority = null)
     {
         if (op.Id == Guid.Empty || op.Kind is not ("place" or "move" or "pickup") ||
             (op.Kind == "place" ? op.Placement != Guid.Empty || op.Version != 0 || op.PlayerRevision < 0 :
@@ -214,6 +214,14 @@ sealed partial class GameDatabase
         string villager = ReviewDeviceVillager(player, device);
         string fingerprint = Hash("guest-placement:" + visit + ":" + villager + ":" + JsonSerializer.Serialize(op));
         if (await ReadPlacementReceipt(c, t, guest, op.Id, fingerprint) is JsonElement receipt) return receipt;
+
+        if (authority is { } hosted)
+        {
+            if (hosted.Host != host || hosted.Player != guest || hosted.Connection != connectionId || hosted.Visit != visit)
+                throw new GameError(403, "invalid-hosted-placement");
+            await RequireHostedActor(c, t, hosted);
+            await RequireOnlineInventory(c, t, device, host, visit);
+        }
 
         await RequirePlacementVisit(c, t, host, guest, visit);
         await RequireNoHostReview(c, t, host);
@@ -276,6 +284,11 @@ sealed partial class GameDatabase
         if (touchesPocket) await Save(c, t, guest, player);
         var result = new { placement = placement.View(), pickedUp = op.Kind == "pickup", playerRevision = revision + (touchesPocket ? 1 : 0) };
         await WritePlacementReceipt(c, t, guest, op.Id, fingerprint, result);
+        if (authority is not null)
+        {
+            await AppendHostedEvent(c, t, host, null, 1, guest, [1]);
+            if (touchesPocket) await AppendHostedEvent(c, t, host, guest, 2, guest, InventoryPacket(player, revision + 1));
+        }
         if (!TryGetLiveGuestPose(host, guest, visit, device, connectionId, out _))
             throw new GameError(409, "gameplay-connection-changed");
         await t.CommitAsync();

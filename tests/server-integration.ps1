@@ -1,10 +1,11 @@
-param([string]$DatabaseConnection='')
+param([string]$DatabaseConnection='',[switch]$PublicTunnel)
 $ErrorActionPreference='Stop'
 Set-Location (Split-Path $PSScriptRoot -Parent)
 $serverRoot=(Get-Location).Path
 $container='animaltown-integration-'+[Guid]::NewGuid().ToString('N').Substring(0,8)
 $api='http://127.0.0.1:5189'
 $process=$null
+$tunnelContainer=''
 $oldTestConnection=$env:ANIMALTOWN_TEST_CONNECTION
 $ownsDatabase=!$DatabaseConnection
 function Request([string]$Method,[string]$Path,$Body,$Token) {
@@ -36,7 +37,7 @@ try {
     if($LASTEXITCODE){throw 'Legacy server fixture failed'}
     $oldConnection=$env:ConnectionStrings__Game
     $env:ConnectionStrings__Game=$DatabaseConnection
-    $launch=@{FilePath='dotnet';ArgumentList=@('out/server/AnimalTown.Server.dll','--urls',$api);WorkingDirectory=$serverRoot;PassThru=$true;RedirectStandardOutput="$serverRoot/out/server-test.log";RedirectStandardError="$serverRoot/out/server-test-error.log"}
+    $launch=@{FilePath='dotnet';ArgumentList=@('out/server/AnimalTown.Server.dll','--urls',$api,'--OnlineGameplay:WebSockets=true','--OnlineGameplay:EnablePlay=true');WorkingDirectory=$serverRoot;PassThru=$true;RedirectStandardOutput="$serverRoot/out/server-test.log";RedirectStandardError="$serverRoot/out/server-test-error.log"}
     if($IsWindows){$launch.WindowStyle='Hidden'}
     $process=Start-Process @launch
     $env:ConnectionStrings__Game=$oldConnection
@@ -389,10 +390,47 @@ try {
     Assert ((Request POST '/v1/auth/token' @{name='LegacySplit';password='test-password-long'} $null).Status -eq 200) 'Migrated login failed'
     dotnet tests/AnimalTown.ServerChecks/bin/Release/net10.0/AnimalTown.ServerChecks.dll verify
     if($LASTEXITCODE){throw 'Backend split storage or migration failed'}
-    Write-Host 'Server integration checks passed: authentication, device linking, initial card import, gate admission and reconnect, idempotency, permanent purchases, visitor custody, and hosted placement review.'
+    # Keep the public per-address abuse limits enabled. A fresh service process
+    # gives the independent three-player fixture its own request budget.
+    Stop-Process -Id $process.Id
+    $env:ConnectionStrings__Game=$DatabaseConnection
+    try{$process=Start-Process @launch}finally{$env:ConnectionStrings__Game=$oldConnection}
+    $ready=$false
+    for($i=0;$i -lt 40;$i++){try{if((Request GET '/health' $null $null).Status -eq 200){$ready=$true;break}}catch{};Start-Sleep -Milliseconds 250}
+    Assert $ready 'Online fixture server did not become ready'
+    dotnet run --project tests/AnimalTown.OnlineChecks -c Release -- $api
+    if($LASTEXITCODE){throw 'Online framing and three-client integration checks failed'}
+    if($PublicTunnel){
+        Stop-Process -Id $process.Id
+        $env:ConnectionStrings__Game=$DatabaseConnection
+        try{$process=Start-Process @launch}finally{$env:ConnectionStrings__Game=$oldConnection}
+        $ready=$false
+        for($i=0;$i -lt 40;$i++){try{if((Request GET '/health' $null $null).Status -eq 200){$ready=$true;break}}catch{};Start-Sleep -Milliseconds 250}
+        Assert $ready 'Public-route fixture server did not become ready'
+        $tunnelContainer='animaltown-public-'+[Guid]::NewGuid().ToString('N').Substring(0,8)
+        docker run --rm -d --name $tunnelContainer --network host cloudflare/cloudflared@sha256:55c7e3e8d89d5e8d20b75a82f3602cbf98e06db406e73e282073cfdc5a9a3af6 tunnel --no-autoupdate --protocol http2 --url $api|Out-Null
+        if($LASTEXITCODE){throw 'Public test tunnel did not start'}
+        $origin=$null
+        for($i=0;$i -lt 60;$i++){
+            $logs=(& docker logs $tunnelContainer 2>&1)-join "`n"
+            $found=[regex]::Match($logs,'https://[a-z0-9-]+\.trycloudflare\.com')
+            if($found.Success){$origin=$found.Value;break}
+            Start-Sleep -Milliseconds 500
+        }
+        Assert $origin 'Public test tunnel did not provide an HTTPS origin'
+        # Give the edge a bounded readiness window before account/device traffic.
+        $ready=$false
+        for($i=0;$i -lt 30;$i++){try{if((Invoke-WebRequest "$origin/health" -TimeoutSec 5).StatusCode -eq 200){$ready=$true;break}}catch{};Start-Sleep -Milliseconds 500}
+        Assert $ready 'Public test origin did not become ready'
+        dotnet run --project tests/AnimalTown.OnlineChecks -c Release -- $origin
+        if($LASTEXITCODE){throw 'Public HTTPS/WSS qualification failed'}
+        Write-Host 'Public Cloudflare HTTPS/WSS backend qualification passed; this is not GameCube or DOL-015 qualification.'
+    }
+    Write-Host 'Server integration checks passed: authentication, device linking, initial card import, gate admission and reconnect, idempotency, permanent purchases, visitor custody, hosted placement review, and three-client WebSockets.'
 }
 finally {
     $env:ANIMALTOWN_TEST_CONNECTION=$oldTestConnection
     if($process -and !$process.HasExited){Stop-Process -Id $process.Id}
+    if($tunnelContainer){docker stop $tunnelContainer 2>&1|Out-Null}
     if($ownsDatabase){docker stop $container 2>&1 | Out-Null}
 }

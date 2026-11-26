@@ -1,0 +1,158 @@
+using System.Net.Http.Headers;
+using System.Net.Http.Json;
+using System.Net.WebSockets;
+using System.Security.Cryptography;
+using System.Text.Json;
+using AnimalTown;
+using AnimalTown.Online;
+
+static class VisitChecks
+{
+    sealed record Player(string Id,string Account,string Device,string Fingerprint);
+    public static async Task Run(string origin,Action<bool,string> check)
+    {
+        using var api=new HttpClient { BaseAddress=new Uri(origin),Timeout=TimeSpan.FromSeconds(15) };
+        string suffix=Guid.NewGuid().ToString("N")[..7];
+        async Task<JsonElement> Request(HttpMethod method,string path,object? body=null,string? token=null)
+        {
+            using var request=new HttpRequestMessage(method,path);
+            if(token is not null)request.Headers.Authorization=new AuthenticationHeaderValue("Bearer",token);
+            if(body is not null)request.Content=JsonContent.Create(body);
+            using var response=await api.SendAsync(request);
+            if(!response.IsSuccessStatusCode)throw new Exception($"Fixture request {path} returned {(int)response.StatusCode}");
+            return JsonDocument.Parse(await response.Content.ReadAsStringAsync()).RootElement.Clone();
+        }
+        async Task<Player> Create(string role,int seed)
+        {
+            var account=await Request(HttpMethod.Post,"/v1/auth/register",new{name=role+suffix,password=Convert.ToHexString(RandomNumberGenerator.GetBytes(24))});
+            string id=account.GetProperty("id").GetString()!,browser=account.GetProperty("token").GetString()!;
+            ulong townId=BitConverter.ToUInt64(RandomNumberGenerator.GetBytes(8));if(townId==0)townId=1;
+            var state=new GameState(seed){Name=role,Sequence=11,Wallet=4356,Savings=9021,Tutorial=7};
+            state.ResidentJobs.Enable(townId,DateTimeOffset.UtcNow.ToUnixTimeSeconds());
+            state.Rollover((int)(DateTimeOffset.UtcNow.ToUnixTimeSeconds()/86400),DateTime.UtcNow.Year*12+DateTime.UtcNow.Month);
+            state.Pockets[2]=Catalog.WritingPaper;state.Pockets[3]=10;
+            if(role=="Owner"){state.X=32.5f;state.Z=28.5f;}
+            var start=await Request(HttpMethod.Post,"/v1/auth/link/start",new{town=townId.ToString("X16")});
+            await Request(HttpMethod.Post,"/v1/account/link",new{code=start.GetProperty("code").GetString()},browser);
+            var linked=await Request(HttpMethod.Post,"/v1/auth/link/poll",new{secret=start.GetProperty("secret").GetString()});
+            string device=linked.GetProperty("token").GetString()!;
+            using var bytes=new MemoryStream();using(var writer=new BinaryWriter(bytes,System.Text.Encoding.UTF8,true))
+            {
+                byte[][] records=SplitSaveCodec.Encode(state);byte[] commit=SplitSaveCodec.EncodeCommit(state,records);
+                writer.Write(commit.Length);writer.Write(commit);foreach(byte[] record in records){writer.Write(record.Length);writer.Write(record);}
+            }
+            byte[] checkpoint=bytes.ToArray();
+            var offer=await Request(HttpMethod.Post,$"/v1/towns/{id}/checkpoint-uploads",new{length=checkpoint.Length,sha256=Convert.ToHexString(SHA256.HashData(checkpoint))},device);
+            using var upload=new HttpRequestMessage(HttpMethod.Put,$"/v1/towns/{id}/checkpoint-uploads/{offer.GetProperty("id").GetString()}?offset=0");
+            upload.Headers.Authorization=new AuthenticationHeaderValue("Bearer",device);upload.Content=new ByteArrayContent(checkpoint);upload.Content.Headers.ContentType=new MediaTypeHeaderValue("application/octet-stream");
+            using var response=await api.SendAsync(upload);check(response.IsSuccessStatusCode,"Existing split-save import through device upload");
+            var saved=await Request(HttpMethod.Get,"/v1/me",token:device);
+            check(saved.GetProperty("wallet").GetInt32()==4356&&saved.GetProperty("savings").GetInt32()==9021,"Import preserves the home economy");
+            return new Player(id,browser,device,Convert.ToHexString(SHA256.HashData(checkpoint)));
+        }
+        Player owner=await Create("Owner",1859),first=await Create("GuestA",1860),second=await Create("GuestB",1861);
+        foreach(var guest in new[]{first,second})
+        {
+            await Request(HttpMethod.Post,$"/v1/friends/{guest.Id}",new{},owner.Account);
+            await Request(HttpMethod.Post,$"/v1/friends/{owner.Id}",new{},guest.Account);
+        }
+        await Request(HttpMethod.Post,"/v1/online/gate/open",new{},owner.Device);
+        var visitA=await Request(HttpMethod.Post,"/v1/online/visits",new{host=owner.Id},first.Device);
+        var visitB=await Request(HttpMethod.Post,"/v1/online/visits",new{host=owner.Id},second.Device);
+        string reservationA=Guid.NewGuid().ToString();
+        foreach(var entry in new[]{(owner,Guid.Empty.ToString(),Guid.NewGuid().ToString()),(first,visitA.GetProperty("id").GetString()!,reservationA),(second,visitB.GetProperty("id").GetString()!,Guid.NewGuid().ToString())})
+        {
+            await Request(HttpMethod.Post,"/v1/online/reservations",new{id=entry.Item3,host=owner.Id,visit=entry.Item2,revision=1,fingerprint=entry.Item1.Fingerprint,profile=0},entry.Item1.Device);
+            await Request(HttpMethod.Post,$"/v1/online/reservations/{entry.Item3}/activate",new{},entry.Item1.Device);
+        }
+        var websocket=new UriBuilder(origin){Scheme=origin.StartsWith("https://")?"wss":"ws",Path="/v1/gameplay"}.Uri;
+        async Task<ClientWebSocket> Connect(byte[] ticket,string protocol="animaltown.v1")
+        {
+            var socket=new ClientWebSocket();socket.Options.AddSubProtocol(protocol);
+            try
+            {
+                using var deadline=new CancellationTokenSource(TimeSpan.FromSeconds(10));
+                await socket.ConnectAsync(websocket,deadline.Token);
+                var frame=new byte[44];OnlineWire.TryWriteHeader(frame,0,44,new OnlineFrameHeader(OnlineFrameType.GameplayTicket,32,0,0));ticket.CopyTo(frame,12);
+                // Exercise a fragmented message through the real server stream adapter.
+                await socket.SendAsync(new ArraySegment<byte>(frame,0,5),WebSocketMessageType.Binary,false,deadline.Token);
+                await socket.SendAsync(new ArraySegment<byte>(frame,5,39),WebSocketMessageType.Binary,true,deadline.Token);
+                return socket;
+            }catch{socket.Dispose();throw;}
+        }
+        async Task<byte[]> Ticket(Player player,string visit)
+        {
+            var result=await Request(HttpMethod.Post,"/v1/gameplay/tickets",new{host=owner.Id,visit},player.Device);
+            return Convert.FromHexString(result.GetProperty("ticket").GetString()!);
+        }
+        byte[] ownerTicket=await Ticket(owner,Guid.Empty.ToString());
+        using var host=await Connect(ownerTicket);
+        var hostHello=await Read(host);check(hostHello.Header.Type==OnlineFrameType.Pong&&hostHello.Header.Sequence==0,"Owner gets the local seat through WSS");
+        using var guestA=await Connect(await Ticket(first,visitA.GetProperty("id").GetString()!));
+        var firstHello=await Read(guestA);
+        using var guestB=await Connect(await Ticket(second,visitB.GetProperty("id").GetString()!));
+        var secondHello=await Read(guestB);
+        check(firstHello.Header.Sequence==1&&secondHello.Header.Sequence==2&&firstHello.Header.Epoch==hostHello.Header.Epoch&&secondHello.Header.Epoch==hostHello.Header.Epoch,"Three humans share one epoch and distinct seats");
+        var movement=new byte[15];OnlineWire.TryWriteInput(movement,0,15,hostHello.Header.Epoch,1,new OnlineMovementInput(127,0,false));
+        using(var deadline=new CancellationTokenSource(TimeSpan.FromSeconds(5)))await guestA.SendAsync(movement,WebSocketMessageType.Binary,true,deadline.Token);
+        bool moved=false;
+        for(int i=0;i<40&&!moved;i++)
+        {
+            var next=await Read(host);
+            moved=OnlineWire.TryReadPosition(next.Frame,0,next.Frame.Length,out _,out var position)&&position.Slot==1&&position.AcknowledgedInput==1;
+        }
+        check(moved,"The authoritative movement result reaches another human through WSS");
+        await HostedVisitChecks.Run(host,guestA,guestB,hostHello.Header.Epoch,check);
+        using(var replay=await Connect(ownerTicket))check(await Ended(replay),"A consumed gameplay ticket cannot authenticate a second socket");
+        bool protocolRejected=false;try{using var wrong=await Connect(await Ticket(first,visitA.GetProperty("id").GetString()!),"wrong.protocol");}catch(WebSocketException){protocolRejected=true;}
+        check(protocolRejected,"An unsupported WebSocket subprotocol is rejected before upgrade");
+        using(var resumed=await Connect(await Ticket(first,visitA.GetProperty("id").GetString()!)))
+        {
+            var hello=await Read(resumed);check(hello.Header.Sequence==1&&hello.Header.Epoch==hostHello.Header.Epoch,"A fresh ticket resumes the reserved guest seat");
+            await Request(HttpMethod.Delete,"/v1/online/gate",token:owner.Device);
+            check(await Ended(resumed),"Gate close revokes an existing WSS guest connection");
+        }
+        var publication=await Request(HttpMethod.Post,$"/v1/online/reservations/{reservationA}/settlement",new{},first.Device);
+        var retryPublication=await Request(HttpMethod.Post,$"/v1/online/reservations/{reservationA}/settlement",new{},first.Device);
+        check(publication.GetProperty("sha256").GetString()==retryPublication.GetProperty("sha256").GetString(),"A return retry stages the same immutable checkpoint");
+        using var returnedBytes=new MemoryStream();int publishedLength=publication.GetProperty("length").GetInt32();
+        while(returnedBytes.Length<publishedLength)
+        {
+            using var request=new HttpRequestMessage(HttpMethod.Get,$"/v1/online/reservations/{reservationA}/checkpoint?offset={returnedBytes.Length}&count=16384");
+            request.Headers.Authorization=new AuthenticationHeaderValue("Bearer",first.Device);
+            using var response=await api.SendAsync(request);response.EnsureSuccessStatusCode();returnedBytes.Write(await response.Content.ReadAsByteArrayAsync());
+        }
+        byte[] returned=returnedBytes.ToArray();
+        check(Convert.ToHexString(SHA256.HashData(returned))==publication.GetProperty("sha256").GetString(),"Bounded return pages verify against the committed checkpoint fingerprint");
+        using(var reader=new BinaryReader(new MemoryStream(returned)))
+        {
+            byte[] commit=reader.ReadBytes(reader.ReadInt32());var parts=new byte[7][];
+            for(int i=0;i<parts.Length;i++)parts[i]=reader.ReadBytes(reader.ReadInt32());
+            var saved=SplitSaveCodec.DecodeCommitted(commit,parts);
+            check(saved.Name=="GuestA"&&saved.Wallet==4356&&saved.Pockets[2]==0,"Return exports the correct home and consumes successful mail stationery once");
+        }
+        var acknowledged=await Request(HttpMethod.Post,$"/v1/online/reservations/{reservationA}/published",new{fingerprint=publication.GetProperty("sha256").GetString()},first.Device);
+        var retriedAck=await Request(HttpMethod.Post,$"/v1/online/reservations/{reservationA}/published",new{fingerprint=publication.GetProperty("sha256").GetString()},first.Device);
+        check(acknowledged.GetProperty("revision").GetInt64()==2&&retriedAck.GetProperty("revision").GetInt64()==2,"Publication acknowledgment advances card lineage exactly once");
+    }
+    static async Task<(OnlineFrameHeader Header,byte[] Frame)> Read(ClientWebSocket socket)
+    {
+        var buffer=new byte[OnlineWire.HeaderSize+OnlineWire.MaxPayloadSize];int count=0;
+        using var deadline=new CancellationTokenSource(TimeSpan.FromSeconds(8));
+        while(true)
+        {
+            var part=await socket.ReceiveAsync(new ArraySegment<byte>(buffer,count,buffer.Length-count),deadline.Token);
+            if(part.MessageType!=WebSocketMessageType.Binary||part.Count==0)throw new Exception("Gameplay connection closed unexpectedly");
+            count+=part.Count;if(!part.EndOfMessage){if(count==buffer.Length)throw new Exception("Unbounded gameplay response");continue;}
+            if(OnlineWire.ReadFrame(buffer,0,count,out var header,out int length)!=OnlineFrameRead.Complete||length!=count)throw new Exception("Invalid gameplay response framing");
+            return(header,buffer[..count]);
+        }
+    }
+    static async Task<bool> Ended(ClientWebSocket socket)
+    {
+        using var deadline=new CancellationTokenSource(TimeSpan.FromSeconds(5));var buffer=new byte[512];
+        try{while(true){var result=await socket.ReceiveAsync(buffer,deadline.Token);if(result.MessageType==WebSocketMessageType.Close||result.Count==0)return true;}}
+        catch(WebSocketException){return true;}
+        catch(OperationCanceledException){return false;}
+    }
+}

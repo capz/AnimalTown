@@ -2,6 +2,9 @@ namespace AnimalTown;
 
 public sealed partial class GameState
 {
+    // A recipient projection has no other player's private records and can
+    // never be published as a card, even if a caller bypasses the online UI.
+    public bool IsOnlineProjection {get;internal set;}
     public readonly Town Town;
     public const int MaximumPockets=30;
     public const int WalletLimit=99999;

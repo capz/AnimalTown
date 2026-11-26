@@ -1,0 +1,9 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup><OutputType>Exe</OutputType><DefineConstants>$(DefineConstants);ANIMALTOWN_ONLINE_PLAY</DefineConstants></PropertyGroup>
+  <PropertyGroup Condition="'$(OnlineRootConnection)' == 'true'"><DefineConstants>$(DefineConstants);ONLINE_ROOT_CONNECTION</DefineConstants></PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../shared/AnimalTown.Domain/AnimalTown.Domain.csproj" />
+    <PackageReference Include="DolphinDotNet.GameCube" Version="[0.1.0-preview.387.1]" />
+    <Compile Include="../../game/AnimalTown.GameCube/OnlineGameplayConnection.cs" Link="OnlineGameplayConnection.cs" />
+  </ItemGroup>
+</Project>

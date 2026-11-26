@@ -31,7 +31,7 @@ public struct VillagerJobReward
     public int MigratedFromItem;
     public long ResolvedAt;
     public long ReplyAt;
-    public bool IsReply,AutomaticReply;
+    public bool IsReply,AutomaticReply,PortableOnline;
 }
 public struct JobRelation
 {
@@ -109,7 +109,7 @@ public sealed partial class OfflineJobLedger
         count=0;for(int i=0;i<Offers.Length;i++)if(!Offers[i].Id.IsEmpty)count++;w.Int(count);
         for(int i=0;i<Offers.Length;i++)if(!Offers[i].Id.IsEmpty){var o=Offers[i];w.Int(i);w.Key(o.Id);w.Key(o.Owner);w.Key(o.Requester);w.Key(o.Target);w.Int((int)o.Template);w.Int(o.Item);w.Int(o.Revision);w.Long(o.CreatedAt);w.Int(o.Refused?1:0);}
         count=0;for(int i=0;i<Rewards.Length;i++)if(Rewards[i].State!=JobRewardState.Empty)count++;w.Int(count);
-        for(int i=0;i<Rewards.Length;i++)if(Rewards[i].State!=JobRewardState.Empty){var r=Rewards[i];w.Int(i);w.Key(r.Id);w.Key(r.Job);w.Key(r.Owner);w.Key(r.Giver);w.Int((int)r.State);w.Int(r.Item);w.Int(r.Currency);w.Int(r.ReplyRank);w.Int(r.ReplyText);w.Long(r.ResolvedAt);w.Int(r.IsReply?1:0);w.Long(r.ReplyAt);w.Int(r.AutomaticReply?1:0);w.Int((int)r.Category);w.Int(r.MigratedFromItem);}
+        for(int i=0;i<Rewards.Length;i++)if(Rewards[i].State!=JobRewardState.Empty){var r=Rewards[i];w.Int(i);w.Key(r.Id);w.Key(r.Job);w.Key(r.Owner);w.Key(r.Giver);w.Int((int)r.State);w.Int(r.Item);w.Int(r.Currency);w.Int(r.ReplyRank);w.Int(r.ReplyText);w.Long(r.ResolvedAt);w.Int(r.IsReply?1:0);w.Long(r.ReplyAt);w.Int(r.AutomaticReply?1:0);w.Int((int)r.Category);w.Int(r.MigratedFromItem);w.Int(r.PortableOnline?1:0);}
         count=0;for(int i=0;i<Bindings.Length;i++)if(!Bindings[i].IsEmpty)count++;w.Int(count);for(int i=0;i<Bindings.Length;i++)if(!Bindings[i].IsEmpty){w.Int(i);w.Key(Bindings[i]);}
         count=0;for(int i=0;i<Relations.Length;i++)if(!Relations[i].Npc.IsEmpty)count++;w.Int(count);for(int i=0;i<Relations.Length;i++)if(!Relations[i].Npc.IsEmpty){w.Int(i);w.Key(Relations[i].Npc);w.Int(Relations[i].Friendship);w.Int(Relations[i].Met);}
     }
@@ -128,6 +128,8 @@ public sealed partial class OfflineJobLedger
             int i=r.Range(0,Rewards.Length-1);if(Rewards[i].State!=JobRewardState.Empty)throw new InvalidOperationException("Duplicate saved reward slot");
             var reward=new VillagerJobReward{Id=r.Key(false),Job=r.Key(false),Owner=r.Key(),Giver=r.Key(false),State=(JobRewardState)r.Range(1,version>=13?3:2),Item=r.Range(0,version>=11?int.MaxValue:Catalog.Items.Length-1),Currency=r.Range(0,int.MaxValue),ReplyRank=r.Range(0,11),ReplyText=r.Range(0,255),ResolvedAt=r.Long(),IsReply=r.Range(0,1)==1,ReplyAt=r.Long(),AutomaticReply=r.Range(0,1)==1};
             if(version>=11){reward.Category=(JobRewardCategory)r.Range(0,6);reward.MigratedFromItem=r.Range(0,int.MaxValue);}else reward.Category=JobContent.CategoryOf(reward.Item);
+            if(version>=14)reward.PortableOnline=r.Range(0,1)==1;
+            if(reward.PortableOnline&&(reward.State!=JobRewardState.Owed||reward.IsReply||reward.AutomaticReply||!reward.Owner.IsValid))throw new InvalidOperationException("Invalid portable online reward");
             if(reward.State==JobRewardState.Custody){
                 if(reward.Id.Town!=TownId||reward.Job.Town!=TownId||!reward.Owner.IsValid||reward.Item==0&&reward.Currency==0||reward.Item!=0&&!Catalog.Valid(reward.Item)||reward.IsReply||reward.AutomaticReply)throw new InvalidOperationException("Invalid deferred police custody");
             }else JobContent.MigrateReward(ref reward);

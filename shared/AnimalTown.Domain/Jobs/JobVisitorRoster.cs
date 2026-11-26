@@ -53,7 +53,7 @@ public sealed partial class OfflineJobLedger
         reader.Skip(27+OwnerCount*17);
         reader.Skip(reader.Range(0,JobCapacity)*79);
         reader.Skip(reader.Range(0,OfferCapacity)*23);
-        reader.Skip(reader.Range(0,RewardCapacity)*(schema>=11?30:28));
+        reader.Skip(reader.Range(0,RewardCapacity)*(schema>=14?31:schema>=11?30:28));
         reader.Skip(reader.Range(0,OwnerCount*GameState.MaximumPockets)*5);
         reader.Skip(reader.Range(0,OwnerCount*RelationsPerPlayer)*7);
         int letters=reader.Range(0,InboxCount+OutboxCapacity);

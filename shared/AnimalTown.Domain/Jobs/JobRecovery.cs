@@ -57,6 +57,7 @@ public sealed partial class VillagerJobService
     private JobOutcome CollectRemovedReward(JobIdentity id)
     {
         int at=ledger.FindReward(id);if(at<0)return new JobOutcome(JobResult.NotAvailable,id);var reward=ledger.Rewards[at];
+        if(reward.PortableOnline&&reward.Owner==ledger.Player(state.ActiveProfile))return Collect(id,-1,true);
         if(reward.Owner!=ledger.Player(state.ActiveProfile)||!ledger.PermanentlyRemoved(reward.Giver)||state.Space!=25)return new JobOutcome(JobResult.InvalidContext,id);
         if(state.Visiting)return Collect(id,-1,true);
         bool mailed=false;

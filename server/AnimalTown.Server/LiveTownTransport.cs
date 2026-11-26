@@ -26,27 +26,39 @@ sealed class LiveTownTransport(GameDatabase database, IConfiguration configurati
     readonly Dictionary<IPAddress, int> connections = new();
     readonly SemaphoreSlim slots = new(Capacity);
     int listening;
-    uint nextEpoch;
+    readonly Guid worker = Guid.NewGuid();
+    readonly SemaphoreSlim joining = new(1);
+
+    public override Task StartAsync(CancellationToken cancellationToken)
+    {
+        if (configuration.GetValue<bool>("OnlineGameplay:WebSockets")) Volatile.Write(ref listening, 1);
+        return base.StartAsync(cancellationToken);
+    }
 
     sealed record Ticket(DevicePrincipal Device, Guid Host, Guid Visit, Guid Gate, long ExpiresAt);
 
     sealed class Actor(Ticket ticket, byte slot, float x, float z)
     {
         public readonly Ticket Ticket = ticket;
-        public readonly byte Slot = slot;
+        public byte Slot = slot;
         public readonly Guid ConnectionId = Guid.NewGuid();
         public float X = x, Z = z;
         public ushort Facing;
+        public int Room;
         public uint LastSeen, Applied;
         public OnlineMovementInput Input;
         public long LastInputAt;
         public byte[]? PendingReply;
         public uint PendingReplySequence;
+        public HostedSnapshot? Snapshot;
+        public int SnapshotOffset, SnapshotId;
+        public long EventCursor;
+        public bool ReplayReady;
     }
 
     sealed class TownSession(GameState world, Guid gateId, uint epoch)
     {
-        public readonly GameState World = world;
+        public GameState World = world;
         public readonly uint Epoch = epoch;
         public readonly Guid GateId = gateId;
         public readonly Actor?[] Actors = new Actor?[3];
@@ -99,7 +111,7 @@ sealed class LiveTownTransport(GameDatabase database, IConfiguration configurati
                 {
                     if (actor is null || actor.Ticket.Device.Player != guest || actor.Ticket.Visit != visit || actor.Ticket.Device != device || actor.ConnectionId != connectionId)
                         continue;
-                    pose = new LiveGuestPose(0, actor.X, actor.Z);
+                    pose = new LiveGuestPose(actor.Room, actor.X, actor.Z);
                     return true;
                 }
             }
@@ -157,8 +169,6 @@ sealed class LiveTownTransport(GameDatabase database, IConfiguration configurati
 
     async Task Serve(TcpClient client, IPAddress address, X509Certificate2 identity, CancellationToken stop)
     {
-        Actor? actor = null;
-        TownSession? town = null;
         try
         {
             using (client)
@@ -173,40 +183,79 @@ sealed class LiveTownTransport(GameDatabase database, IConfiguration configurati
                     EnabledSslProtocols = SslProtocols.Tls12,
                     ApplicationProtocols = [GameplayProtocol],
                 }, opening.Token);
-                if (stream.NegotiatedApplicationProtocol != GameplayProtocol) return;
-
-                byte[] receive = new byte[OnlineWire.HeaderSize + 512];
-                if (!await ReadHeader(stream, receive, opening.Token) ||
-                    !OnlineWire.TryReadHeader(receive, 0, OnlineWire.HeaderSize, out var hello) ||
-                    hello.Type != OnlineFrameType.GameplayTicket || hello.Epoch != 0 || hello.Sequence != 0)
-                    return;
-                await stream.ReadExactlyAsync(receive.AsMemory(OnlineWire.HeaderSize, 32), opening.Token);
-
-                Ticket? ticket;
-                lock (gate)
-                    tickets.Remove(TicketKey(Convert.ToHexString(receive, OnlineWire.HeaderSize, 32)), out ticket);
-                if (ticket is null || ticket.ExpiresAt <= Environment.TickCount64) return;
-                var access = await database.ValidateLiveAccess(ticket.Device, ticket.Host, ticket.Visit, true);
-                if (access.Gate != ticket.Gate || access.World is not GameState world) return;
-                opening.Token.ThrowIfCancellationRequested();
-                (town, actor) = Join(ticket, world);
-                await RunVisit(stream, receive, town, actor, stop);
+                if (stream.NegotiatedApplicationProtocol == GameplayProtocol)
+                    await ServeProtocol(stream, stop);
             }
         }
-        catch (Exception ex) when (ex is IOException or AuthenticationException or SocketException or OperationCanceledException or GameError)
+        catch (Exception ex) { LogFailure(ex); }
+        finally { ReleaseConnection(address); }
+    }
+
+    public async Task AcceptWebSocket(HttpContext context)
+    {
+        if (!configuration.GetValue<bool>("OnlineGameplay:WebSockets"))
+            throw new GameError(503, "gameplay-transport-unavailable");
+        if (!context.WebSockets.IsWebSocketRequest ||
+            !context.WebSockets.WebSocketRequestedProtocols.Contains("animaltown.v1") ||
+            context.Request.Headers["Sec-WebSocket-Protocol"].ToString().Length > 256)
+            throw new GameError(400, "gameplay-websocket-required");
+        var address = context.Connection.RemoteIpAddress ?? IPAddress.None;
+        if (!TryReserveConnection(address)) throw new GameError(429, "too-many-gameplay-connections");
+        try
         {
-            // The browser and gameplay client see a closed connection. Keep
-            // credentials, payloads and exception text out of diagnostics.
-            logger.LogDebug("Gameplay connection ended with {FailureType}", ex.GetType().Name);
+            using var socket = await context.WebSockets.AcceptWebSocketAsync("animaltown.v1");
+            using var stream = new GameplayWebSocketStream(socket);
+            await ServeProtocol(stream, context.RequestAborted);
         }
-        catch (Exception ex)
+        catch (Exception ex) { LogFailure(ex); }
+        finally { ReleaseConnection(address); }
+    }
+
+    void LogFailure(Exception error)
+    {
+        // Never log credentials, payloads, URLs or raw exception messages.
+        logger.LogDebug("Gameplay connection ended with {FailureType}", error.GetType().Name);
+    }
+
+    void ReleaseConnection(IPAddress address)
+    {
+        lock (gate)
         {
-            logger.LogWarning("Gameplay connection failed with {FailureType}", ex.GetType().Name);
+            int count = connections[address];
+            if (count == 1) connections.Remove(address);
+            else connections[address] = count - 1;
+            slots.Release();
+        }
+    }
+
+    async Task ServeProtocol(Stream stream, CancellationToken stop)
+    {
+        Actor? actor = null;
+        TownSession? town = null;
+        try
+        {
+            using var opening = CancellationTokenSource.CreateLinkedTokenSource(stop);
+            opening.CancelAfter(HandshakeLimit);
+            byte[] receive = new byte[OnlineWire.HeaderSize + OnlineWire.MaxPayloadSize];
+            if (!await ReadHeader(stream, receive, opening.Token) ||
+                !OnlineWire.TryReadHeader(receive, 0, OnlineWire.HeaderSize, out var hello) ||
+                hello.Type != OnlineFrameType.GameplayTicket || hello.Epoch != 0 || hello.Sequence != 0)
+                return;
+            await stream.ReadExactlyAsync(receive.AsMemory(OnlineWire.HeaderSize, 32), opening.Token);
+            Ticket? ticket;
+            lock (gate)
+                tickets.Remove(TicketKey(Convert.ToHexString(receive, OnlineWire.HeaderSize, 32)), out ticket);
+            Array.Clear(receive, OnlineWire.HeaderSize, 32);
+            if (ticket is null || ticket.ExpiresAt <= Environment.TickCount64) return;
+            var access = await database.ValidateLiveAccess(ticket.Device, ticket.Host, ticket.Visit, true);
+            if (access.Gate != ticket.Gate || access.World is not GameState world) return;
+            opening.Token.ThrowIfCancellationRequested();
+            (town, actor) = await Join(ticket, world);
+            await RunVisit(stream, receive, town, actor, stop);
         }
         finally
         {
             if (actor is not null && town is not null)
-            {
                 lock (gate)
                 {
                     if (town.Actors[actor.Slot] == actor) town.Actors[actor.Slot] = null;
@@ -214,57 +263,47 @@ sealed class LiveTownTransport(GameDatabase database, IConfiguration configurati
                         towns.TryGetValue(actor.Ticket.Host, out var current) && current == town)
                         towns.Remove(actor.Ticket.Host);
                 }
-            }
-            lock (gate)
-            {
-                int count = connections[address];
-                if (count == 1) connections.Remove(address);
-                else connections[address] = count - 1;
-                slots.Release();
-            }
         }
     }
 
-    (TownSession, Actor) Join(Ticket ticket, GameState world)
+    HostedAuthority Authority(TownSession town, Actor actor) => new(actor.Ticket.Host, actor.Ticket.Device.Player,
+        actor.Ticket.Visit, actor.ConnectionId, worker, town.Epoch, actor.Ticket.Device);
+
+    async Task<(TownSession, Actor)> Join(Ticket ticket, GameState world)
     {
-        lock (gate)
+        await joining.WaitAsync();
+        try
         {
-            bool newTown = !towns.TryGetValue(ticket.Host, out var town) || town.GateId != ticket.Gate;
-            if (newTown) town = new TownSession(world, ticket.Gate, checked(++nextEpoch));
+            TownSession? town;
+            bool newTown;
+            lock (gate) newTown = !towns.TryGetValue(ticket.Host, out town) || town.GateId != ticket.Gate;
+            if (newTown) town = new TownSession(world, ticket.Gate, await database.ClaimHostedTown(ticket.Host, ticket.Gate, worker));
             if (town is null) throw new InvalidOperationException("No gameplay town");
-            int slot = ticket.Visit == Guid.Empty ? 0 : -1;
-            Actor? prior = null;
-            for (int i = 0; i < town.Actors.Length; i++)
-            {
-                var candidate = town.Actors[i];
-                if (candidate?.Ticket.Device.Player == ticket.Device.Player)
-                {
-                    slot = i;
-                    prior = candidate;
-                    break;
-                }
-                if (slot < 0 && i > 0 && candidate is null) slot = i;
-            }
-            if (slot < 0) throw new GameError(409, "town-full");
             float x, z;
-            if (prior is not null) { x = prior.X; z = prior.Z; }
-            else if (slot == 0 && world.Space == 0 && world.CanWalk(world.X, world.Z, 0))
+            if (ticket.Visit == Guid.Empty && world.Space == 0 && world.CanWalk(world.X, world.Z, 0))
             { x = world.X; z = world.Z; }
             else if (!HelipadSite.TryArrival(town.World, out x, out z))
                 throw new GameError(409, "arrival-blocked");
-            var actor = new Actor(ticket, (byte)slot, x, z);
-            town.Actors[slot] = actor;
-            if (newTown) towns[ticket.Host] = town;
+            var actor = new Actor(ticket, 0, x, z);
+            var seat = await database.BindHostedActor(Authority(town, actor), new(0, 0, x, z, 0));
+            // Keep the authoritative connection ID used by the database binding.
+            actor.Slot = seat.Slot; actor.Room = seat.Room; actor.X = seat.X; actor.Z = seat.Z; actor.Facing = seat.Facing;
+            lock (gate)
+            {
+                town.Actors[seat.Slot] = actor;
+                if (newTown) towns[ticket.Host] = town;
+            }
             return (town, actor);
         }
+        finally { joining.Release(); }
     }
 
-    async Task RunVisit(SslStream stream, byte[] receive, TownSession town, Actor actor, CancellationToken stop)
+    async Task RunVisit(Stream stream, byte[] receive, TownSession town, Actor actor, CancellationToken stop)
     {
         using var visit = CancellationTokenSource.CreateLinkedTokenSource(stop);
         var receiveWork = Receive(stream, receive, town, actor, visit.Token);
         // Each sender owns only three pose slots and one frame buffer.
-        byte[] send = new byte[OnlineWire.HeaderSize + 512];
+        byte[] send = new byte[OnlineWire.HeaderSize + OnlineWire.MaxPayloadSize];
         var poses = new OnlineActorPosition[3];
         uint update = 0;
         bool? lastReviewState = null;
@@ -284,6 +323,15 @@ sealed class LiveTownTransport(GameDatabase database, IConfiguration configurati
                     if (access.Gate != actor.Ticket.Gate) break;
                     bool reviewing = await database.IsReviewActive(actor.Ticket.Host);
                     lock (gate) town.Reviewing = reviewing;
+                    HostedSeat pose;
+                    lock (gate) pose = new(actor.Slot, actor.Room, actor.X, actor.Z, actor.Facing);
+                    await database.RefreshHostedActor(Authority(town, actor), pose);
+                    var currentWorld = await database.LoadHostedWorld(actor.Ticket.Host);
+                    lock (gate) town.World = currentWorld;
+                    byte[] roster = await database.HostedRoster(Authority(town, actor));
+                    OnlineWire.TryWriteHeader(send, 0, send.Length, new OnlineFrameHeader(OnlineFrameType.BulkPage, roster.Length, town.Epoch, ++update));
+                    roster.CopyTo(send, OnlineWire.HeaderSize);
+                    await WriteFrame(stream, send, OnlineWire.HeaderSize + roster.Length, visit.Token);
                     nextAuthorization = now + 1000;
                 }
                 int count = 0;
@@ -301,7 +349,7 @@ sealed class LiveTownTransport(GameDatabase database, IConfiguration configurati
                     foreach (var member in town.Actors)
                     {
                         if (member is null) continue;
-                        poses[count++] = new OnlineActorPosition(member.Slot, 0,
+                        poses[count++] = new OnlineActorPosition(member.Slot, (byte)member.Room,
                             (int)(member.X * 65536), (int)(member.Z * 65536), member.Facing, member.Applied);
                     }
                 }
@@ -318,6 +366,54 @@ sealed class LiveTownTransport(GameDatabase database, IConfiguration configurati
                     reply.CopyTo(send.AsSpan(OnlineWire.HeaderSize));
                     await WriteFrame(stream, send, OnlineWire.HeaderSize + reply.Length, visit.Token);
                 }
+                HostedSnapshot? snapshot;
+                int snapshotOffset, snapshotId;
+                bool replayReady;
+                long after;
+                lock (gate)
+                {
+                    snapshot = actor.Snapshot; snapshotOffset = actor.SnapshotOffset; snapshotId = actor.SnapshotId;
+                    replayReady = actor.ReplayReady; after = actor.EventCursor;
+                }
+                if (snapshot is not null)
+                {
+                    const int pageHeader = 21;
+                    int take = Math.Min(OnlineWire.MaxPayloadSize - pageHeader, snapshot.Bytes.Length - snapshotOffset);
+                    byte[] page = new byte[OnlineWire.MaxPayloadSize]; var pageWriter = new OnlinePacketWriter(page);
+                    pageWriter.Byte(1); pageWriter.Int(snapshotId); pageWriter.Long(snapshot.Cursor);
+                    pageWriter.Int(snapshot.Bytes.Length); pageWriter.Int(snapshotOffset); pageWriter.Bytes(snapshot.Bytes, snapshotOffset, take);
+                    OnlineWire.TryWriteHeader(send, 0, send.Length, new OnlineFrameHeader(OnlineFrameType.SnapshotPage, pageWriter.Count, town.Epoch, ++update));
+                    page.AsSpan(0, pageWriter.Count).CopyTo(send.AsSpan(OnlineWire.HeaderSize));
+                    await WriteFrame(stream, send, OnlineWire.HeaderSize + pageWriter.Count, visit.Token);
+                    lock (gate)
+                    {
+                        if (actor.Snapshot == snapshot)
+                        {
+                            actor.SnapshotOffset += take;
+                            if (actor.SnapshotOffset == snapshot.Bytes.Length)
+                            { actor.Snapshot = null; actor.EventCursor = snapshot.Cursor; actor.ReplayReady = true; Array.Clear(snapshot.Bytes); }
+                        }
+                    }
+                }
+                else if (replayReady)
+                {
+                    var replay = await database.ReplayHostedEvents(Authority(town, actor), after);
+                    if (replay.Resnapshot)
+                    {
+                        byte[] gap = PacketEvent(replay.Cursor, 255, [0]);
+                        OnlineWire.TryWriteHeader(send, 0, send.Length, new OnlineFrameHeader(OnlineFrameType.BulkPage, gap.Length, town.Epoch, ++update));
+                        gap.CopyTo(send, OnlineWire.HeaderSize); await WriteFrame(stream, send, OnlineWire.HeaderSize + gap.Length, visit.Token);
+                        lock (gate) actor.ReplayReady = false;
+                    }
+                    else foreach (var item in replay.Events)
+                    {
+                        byte[] data = PacketEvent(item.Cursor, item.Kind, item.Payload);
+                        var kind = data.Length <= 512 ? OnlineFrameType.ReliableEvent : OnlineFrameType.BulkPage;
+                        OnlineWire.TryWriteHeader(send, 0, send.Length, new OnlineFrameHeader(kind, data.Length, town.Epoch, ++update));
+                        data.CopyTo(send, OnlineWire.HeaderSize); await WriteFrame(stream, send, OnlineWire.HeaderSize + data.Length, visit.Token);
+                        lock (gate) actor.EventCursor = item.Cursor;
+                    }
+                }
                 for (int i = 0; i < count; i++)
                     if (OnlineWire.TryWritePosition(send, 0, send.Length, town.Epoch, ++update, poses[i]))
                         await WriteFrame(stream, send, OnlineWire.HeaderSize + 16, visit.Token);
@@ -331,14 +427,20 @@ sealed class LiveTownTransport(GameDatabase database, IConfiguration configurati
         }
     }
 
-    static async Task WriteFrame(SslStream stream, byte[] frame, int length, CancellationToken token)
+    static byte[] PacketEvent(long cursor, int kind, byte[] payload)
+    {
+        var bytes = new byte[13 + payload.Length]; var w = new OnlinePacketWriter(bytes);
+        w.Byte(OnlineGameplayCodec.Event); w.Long(cursor); w.Int(kind); w.Bytes(payload, 0, payload.Length); return bytes;
+    }
+
+    static async Task WriteFrame(Stream stream, byte[] frame, int length, CancellationToken token)
     {
         using var deadline = CancellationTokenSource.CreateLinkedTokenSource(token);
         deadline.CancelAfter(TimeSpan.FromSeconds(2));
         await stream.WriteAsync(frame.AsMemory(0, length), deadline.Token);
     }
 
-    static async Task<bool> ReadHeader(SslStream stream, byte[] buffer, CancellationToken token)
+    static async Task<bool> ReadHeader(Stream stream, byte[] buffer, CancellationToken token)
     {
         int first = await stream.ReadAsync(buffer.AsMemory(0, OnlineWire.HeaderSize), token);
         if (first == 0) return false;
@@ -346,7 +448,7 @@ sealed class LiveTownTransport(GameDatabase database, IConfiguration configurati
         return true;
     }
 
-    async Task Receive(SslStream stream, byte[] buffer, TownSession town, Actor actor, CancellationToken token)
+    async Task Receive(Stream stream, byte[] buffer, TownSession town, Actor actor, CancellationToken token)
     {
         using var deadline = CancellationTokenSource.CreateLinkedTokenSource(token);
         long burstStart = 0;
@@ -367,15 +469,39 @@ sealed class LiveTownTransport(GameDatabase database, IConfiguration configurati
                     await database.HeartbeatVisit(actor.Ticket.Device.Player, actor.Ticket.Visit, actor.Ticket.Device);
                 continue;
             }
-            if (header.Type == OnlineFrameType.Command)
+            if (header.Type is OnlineFrameType.Command or OnlineFrameType.BulkPage)
             {
-                if (++commands > 4 || header.PayloadLength > 512 || header.Sequence == 0) return;
+                if (++commands > 4 || header.Sequence == 0) return;
                 await stream.ReadExactlyAsync(buffer.AsMemory(OnlineWire.HeaderSize, header.PayloadLength), deadline.Token);
                 lock (gate)
-                    if (town.Actors[actor.Slot] != actor || actor.PendingReply is not null) return;
-                var reply = await GuestCommand(actor, buffer, header.PayloadLength);
+                {
+                    if (town.Actors[actor.Slot] != actor || actor.PendingReply is not null || actor.Snapshot is not null || header.Sequence <= actor.LastSeen) return;
+                    actor.LastSeen = header.Sequence;
+                }
+                HostedCommandResult? result = null;
+                byte[] reply;
+                if (buffer[OnlineWire.HeaderSize] == OnlineGameplayCodec.Version)
+                {
+                    OnlineCommand command;
+                    try { command = OnlineGameplayCodec.ReadCommand(buffer, OnlineWire.HeaderSize, header.PayloadLength); }
+                    catch (InvalidOperationException) { return; }
+                    if (!configuration.GetValue<bool>("OnlineGameplay:EnablePlay") && command.Kind is not
+                        (OnlineCommandKind.Snapshot or OnlineCommandKind.Replay or OnlineCommandKind.Inventory or OnlineCommandKind.ShopView))
+                        return;
+                    result = await database.ExecuteHostedCommand(Authority(town, actor), command);
+                    reply = result.Reply;
+                }
+                else reply = await GuestCommand(actor, buffer, header.PayloadLength);
+                Array.Clear(buffer, OnlineWire.HeaderSize, header.PayloadLength);
                 lock (gate)
                 {
+                    if (town.Actors[actor.Slot] != actor) return;
+                    if (result?.Snapshot is { } snapshot)
+                    { actor.Snapshot = snapshot; actor.SnapshotOffset = 0; actor.SnapshotId = RandomNumberGenerator.GetInt32(1, int.MaxValue); actor.ReplayReady = false; }
+                    if (result?.Pose is { } pose)
+                    { actor.Room = pose.Room; actor.X = pose.X; actor.Z = pose.Z; actor.Input = default; }
+                    if (result?.World is { } world) town.World = world;
+                    if (result?.ReplayAfter is long cursor) { actor.EventCursor = cursor; actor.ReplayReady = true; }
                     actor.PendingReply = reply;
                     actor.PendingReplySequence = header.Sequence;
                 }
@@ -425,8 +551,8 @@ sealed class LiveTownTransport(GameDatabase database, IConfiguration configurati
             float length = MathF.Sqrt(x * x + z * z);
             if (length > 1) { x /= length; z /= length; }
             float step = actor.Input.Run ? .45f : .25f;
-            if (town.World.CanWalk(actor.X + x * step, actor.Z, 0)) actor.X += x * step;
-            if (town.World.CanWalk(actor.X, actor.Z + z * step, 0)) actor.Z += z * step;
+            if (BuildingWorld.Segment(town.World, actor.Room, actor.X, actor.Z, actor.X + x * step, actor.Z)) actor.X += x * step;
+            if (BuildingWorld.Segment(town.World, actor.Room, actor.X, actor.Z, actor.X, actor.Z + z * step)) actor.Z += z * step;
             if (length > .01f)
                 actor.Facing = (ushort)((MathF.Atan2(x, z) / (2 * MathF.PI) + 1) * 65536);
             actor.Applied = actor.LastSeen;

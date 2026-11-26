@@ -1,0 +1,41 @@
+name: animaltown-online-poc
+services:
+  database:
+    image: postgres:16-alpine@sha256:f2f98726820d0342055351c6e9d36e705f5bfffb3dd53ff556325114b08afb6d
+    environment:
+      POSTGRES_USER: animaltown
+      POSTGRES_DB: animaltown
+      POSTGRES_PASSWORD: ${ONLINE_POC_PASSWORD:?Run tools/online-poc.ps1 first}
+    ports:
+      - '127.0.0.1:${ONLINE_POC_DATABASE_PORT:-55440}:5432'
+    volumes:
+      - town-data:/var/lib/postgresql/data
+    healthcheck:
+      test: [CMD-SHELL, 'pg_isready -U animaltown -d animaltown']
+      interval: 2s
+      timeout: 3s
+      retries: 30
+    restart: unless-stopped
+  backend:
+    build:
+      context: ..
+      dockerfile: server/AnimalTown.Server/Dockerfile
+    environment:
+      ASPNETCORE_URLS: http://+:8080
+      ConnectionStrings__Game: Host=database;Database=${ONLINE_POC_DATABASE:-animaltown};Username=animaltown;Password=${ONLINE_POC_PASSWORD}
+      OnlineGameplay__WebSockets: 'true'
+      OnlineGameplay__EnablePlay: ${ONLINE_POC_ENABLE_PLAY:-false}
+    ports:
+      - '127.0.0.1:${ONLINE_POC_PORT:-5190}:8080'
+    depends_on:
+      database:
+        condition: service_healthy
+    restart: unless-stopped
+  tunnel:
+    image: cloudflare/cloudflared@sha256:55c7e3e8d89d5e8d20b75a82f3602cbf98e06db406e73e282073cfdc5a9a3af6
+    command: [tunnel, --no-autoupdate, --protocol, http2, --url, 'http://backend:8080']
+    profiles: [internet]
+    depends_on: [backend]
+    restart: unless-stopped
+volumes:
+  town-data:

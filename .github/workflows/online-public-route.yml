@@ -1,0 +1,48 @@
+name: Online public route
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/online-public-route.yml'
+      - 'server/**'
+      - 'shared/AnimalTown.Domain/Online/**'
+      - 'tests/AnimalTown.OnlineChecks/**'
+      - 'tests/server-integration.ps1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: online-public-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  public-route:
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          submodules: true
+          persist-credentials: false
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      - name: Real device-linked clients through a free Cloudflare tunnel
+        shell: pwsh
+        run: ./tests/server-integration.ps1 -PublicTunnel
+      - name: Keep bounded service diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: online-public-diagnostics
+          path: |
+            out/server-test.log
+            out/server-test-error.log
+          retention-days: 3

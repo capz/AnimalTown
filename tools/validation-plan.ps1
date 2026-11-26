@@ -91,7 +91,15 @@ function Get-ValidationPlan {
             [void]$resources.Add($groups[$Matches[1]]);continue
         }
         if($p -match '^tests/AnimalTown.CardChecks/'){[void]$native.Add('card');continue}
-        if($p -match '^tests/AnimalTown.ServerChecks/|^tests/server-integration\.ps1$'){$backend=$true;continue}
+        if($p -match '^shared/AnimalTown.Domain/Online/'){
+            $backend=$true
+            [void]$native.Add('online')
+            if($p -match '(OnlinePosePump|OnlineWire)\.cs$'){Add-Managed 'movement'}
+            if($p -match '(OnlineCredentialStore|OnlineTravelStore|TownCheckpointExport)\.cs$'){Add-Managed 'saves'}
+            continue
+        }
+        if($p -match '^tests/AnimalTown.OnlineSmoke/|^tests/native-online\.(c|py)$'){$backend=$true;[void]$native.Add('online');continue}
+        if($p -match '^tests/AnimalTown\.(Server|Online)Checks/|^tests/server-integration\.ps1$|^tools/online-poc\.ps1$'){$backend=$true;continue}
         if($p -match '^tests/(validation-plan|validation-selection|versioning|release-publish)\.ps1$|^tools/(test-changes|select-validation|validation-plan)\.ps1$'){
             $policy=$true;continue
         }
@@ -278,7 +286,7 @@ function Get-ValidationPlan {
         foreach($r in $allRendering){[void]$rendering.Add($r)}
         foreach($group in $allResources){[void]$resources.Add($group)}
         foreach($s in @('terrain','repack','building','nkit','dropped-item','depot','water','path')){[void]$tooling.Add($s)}
-        foreach($s in @('uv','card','texture','voices','frame-profile','release-bundle','water-smoke','path-study','shadows','patched','content','jobs','helipad')){[void]$native.Add($s)}
+        foreach($s in @('uv','card','texture','voices','frame-profile','release-bundle','water-smoke','path-study','shadows','patched','content','jobs','helipad','online')){[void]$native.Add($s)}
         $backend=$true;$policy=$true
     }
     if($broadEmulator){foreach($scenario in $allEmulator){[void]$emulator.Add($scenario)}}
