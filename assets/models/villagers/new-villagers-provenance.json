@@ -15,10 +15,11 @@
       }
     ],
     "source": "assets/models/villagers/villager_penguin.glb",
-    "sha256": "39ddf7d64c80dcd4c374c89dedcee59bf3bb9fe22d7b327b775431eaebdcd703",
+    "sha256": "8db105b19c82005997685fd2df585bf7a57a2be85938dd4cb324683fafb4e867",
     "textureEdge": 128,
     "skinInfluences": 4,
-    "maximumDroppedWeight": 0.07399267703294754
+    "maximumDroppedWeight": 0.07399267703294754,
+    "locomotionRootMotion": "horizontal hips travel removed; vertical bob and cyclic sway retained"
   },
   {
     "model": "whitetiger",
@@ -36,10 +37,11 @@
       }
     ],
     "source": "assets/models/villagers/villager_whitetiger.glb",
-    "sha256": "e6b3ba27af3082577fdb8ac487767c4a399269e5fb004a4ad1361db0f4ad6d64",
+    "sha256": "ba1b312add8e6467feb57e6e099b515f9a663e5acd094c26589f008c7406c56c",
     "textureEdge": 128,
     "skinInfluences": 4,
-    "maximumDroppedWeight": 0.12014652055222541
+    "maximumDroppedWeight": 0.12014652055222541,
+    "locomotionRootMotion": "horizontal hips travel removed; vertical bob and cyclic sway retained"
   },
   {
     "model": "lion",
@@ -63,10 +65,11 @@
       }
     ],
     "source": "assets/models/villagers/villager_lion.glb",
-    "sha256": "0acaff715702ff754672f75916a56e1bcca819e2dfe09a1972cbe59dd5c6d914",
+    "sha256": "ceb3f791e9dd8dabcb59a68aa58e30449ed9974711ff7de87f995150babb818b",
     "textureEdge": 128,
     "skinInfluences": 4,
-    "maximumDroppedWeight": 0.051513671875
+    "maximumDroppedWeight": 0.051513671875,
+    "locomotionRootMotion": "horizontal hips travel removed; vertical bob and cyclic sway retained"
   },
   {
     "model": "robin",
@@ -90,10 +93,11 @@
       }
     ],
     "source": "assets/models/villagers/villager_robin.glb",
-    "sha256": "912113766825c59fef5ce66800d4333342d3a0060cfa4a004e2a380f6c0be9c6",
+    "sha256": "0389d030816adf79ae2c666f4eace6e68baffa853bde04f32ff9ea9fdbdd8932",
     "textureEdge": 128,
     "skinInfluences": 4,
-    "maximumDroppedWeight": 0.15946276299655437
+    "maximumDroppedWeight": 0.15946276299655437,
+    "locomotionRootMotion": "horizontal hips travel removed; vertical bob and cyclic sway retained"
   },
   {
     "model": "raccoon",
@@ -111,9 +115,10 @@
       }
     ],
     "source": "assets/models/villagers/villager_raccoon.glb",
-    "sha256": "d66e9afd473cc9f7e66ab6b9f23a38ddd1c86f088d2fea73d1d2acc7d7a02e78",
+    "sha256": "1b49972a5013aad989d5ae5fa8add872efaaaf177036e16bb074ed589452e0dc",
     "textureEdge": 128,
     "skinInfluences": 4,
-    "maximumDroppedWeight": 0.27423688024282455
+    "maximumDroppedWeight": 0.27423688024282455,
+    "locomotionRootMotion": "horizontal hips travel removed; vertical bob and cyclic sway retained"
   }
 ]

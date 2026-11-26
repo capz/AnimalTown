@@ -18,7 +18,9 @@ was requested but its archive has not been supplied yet.
 
 Each prepared GLB has `Idle`, `Walking` and `Running` clips on its own rig.
 Split exports are merged only after verifying identical meshes, nodes and
-skins. The imported clip samples retain their supplied values and durations.
+skins. Clip durations, rotations and vertical motion retain their supplied values.
+Walking/running hips tracks remove horizontal travel so the rig loops in place
+under the existing world navigation; cyclic sway is retained.
 Embedded images are reduced from 2048px to 128×128 with Lanczos filtering;
 the runtime uses the same 128px base plus 64px mip as existing villagers.
 The explicit 256px package also retains those original 128px imported images.
