@@ -2,7 +2,7 @@ $ErrorActionPreference='Stop'
 $tokens=$null;$errors=$null
 $ast=[Management.Automation.Language.Parser]::ParseFile((Join-Path $PSScriptRoot '../tools/publish-release.ps1'),[ref]$tokens,[ref]$errors)
 if($errors){throw 'Publisher syntax is invalid'}
-foreach($name in @('InvokeGh','Read-ReleaseMetadata','Assert-BinaryArchive','Assert-ReleaseVersionMetadata','Assert-ReleaseAsset','Assert-ReleaseAssetSet','Copy-DaylightEvidence','Copy-VideoEvidence','Copy-JobEvidence','Get-ReleaseNotes','Get-PreparedReleaseReceipt','Assert-PreparedRelease')){
+foreach($name in @('InvokeGh','Read-ReleaseMetadata','Assert-BinaryArchive','Assert-ReleaseVersionMetadata','Assert-ReleaseAsset','Assert-ReleaseAssetSet','Copy-DaylightEvidence','Copy-VideoEvidence','Copy-VillagerVisualEvidence','Copy-JobEvidence','Get-ReleaseNotes','Get-PreparedReleaseReceipt','Assert-PreparedRelease')){
     $function=$ast.Find({param($node) $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq $name},$true)
     . ([scriptblock]::Create($function.Extent.Text))
 }
@@ -108,6 +108,20 @@ try{
     Reject {Copy-DaylightEvidence $capture $reports ('a'*40) '1.2.3' 'v1.2.3' 'AnimalTown-1.2.3.nkit.iso' ('b'*64)} 'Failed night captures must not ship'
     @{passed=$true;requested_clock='12:00'}|ConvertTo-Json|Set-Content (Join-Path $capture 'night/daylight-report.json')
     Reject {Copy-DaylightEvidence $capture $reports ('a'*40) '1.2.3' 'v1.2.3' 'AnimalTown-1.2.3.nkit.iso' ('b'*64)} 'A mislabeled phase must not ship'
+    $visuals=Join-Path $directory 'villager-visuals';New-Item -ItemType Directory -Path $visuals|Out-Null
+    $evidence|ConvertTo-Json|Set-Content (Join-Path $visuals 'villager-visuals-build.json')
+    $swaps=@(6..11|ForEach-Object{@{actor=0;appearance=$_}})+@(@{actor=1;appearance=6})
+    $visualReport=@{scenario='villager-visuals';passed=$true;committed_records_unchanged=$true;swaps=$swaps}
+    $visualReport|ConvertTo-Json -Depth 4|Set-Content (Join-Path $visuals 'villager-visuals-report.json')
+    foreach($swap in $swaps){foreach($stage in @('selected','applied','world')){
+        [IO.File]::WriteAllBytes((Join-Path $visuals "visuals-$stage-$($swap.actor)-$($swap.appearance).png"),[byte[]]@(137,80,78,71,13,10,26,10))
+    }}
+    Copy-VillagerVisualEvidence $visuals $reports ('a'*40) '1.2.3' 'v1.2.3' 'AnimalTown-1.2.3.nkit.iso' ('b'*64)
+    Assert (@(Get-ChildItem (Join-Path $reports 'scenarios/villager-visuals') -File).Count -eq 23) 'All six visual appearances, NPC swap, unchanged-save report and exact build identity ship together'
+    Reject {Copy-VillagerVisualEvidence $visuals $reports ('a'*40) '1.2.3' 'v1.2.3' 'AnimalTown-1.2.3.nkit.iso' ('c'*64)} 'Stale visual captures from another executable must not ship'
+    $visualReport.committed_records_unchanged=$false
+    $visualReport|ConvertTo-Json -Depth 4|Set-Content (Join-Path $visuals 'villager-visuals-report.json')
+    Reject {Copy-VillagerVisualEvidence $visuals $reports ('a'*40) '1.2.3' 'v1.2.3' 'AnimalTown-1.2.3.nkit.iso' ('b'*64)} 'Visual evidence that changed committed records must not ship'
     $video=Join-Path $directory 'video';$videoReports=Join-Path $directory 'video-reports'
     New-Item -ItemType Directory -Path $video,$videoReports|Out-Null
     foreach($group in @('smoothing','options','unsupported')){New-Item -ItemType Directory -Path (Join-Path $video $group)|Out-Null}

@@ -1,7 +1,7 @@
-"""Import the supplied November villagers: python3 tools/import-villagers.py ZIP_DIR ROOT.
+"""Import supplied villagers: python3 tools/import-villagers.py DOWNLOAD_DIR ROOT.
 
-Requires Pillow. Archives are source data, never instructions. Keep geometry,
-rigs and animation samples; combine split exports and resize embedded maps.
+Requires Pillow. Archives are source data, never instructions. Preserve geometry
+and rigs, combine matching exports, loop locomotion in place and resize maps.
 """
 import copy
 import hashlib

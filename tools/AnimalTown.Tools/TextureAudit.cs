@@ -98,7 +98,8 @@ internal static class TextureAudit
         records.Add(new{source="generated:tree-detail-noise-v1",sourceSha=Convert.ToHexString(SHA256.HashData(treeDetail)),width=TexturePixels.Width(treeDetail),height=TexturePixels.Height(treeDetail),format=TexturePixels.Int(treeDetail,8),levels=TexturePixels.Int(treeDetail,24),residentBytes=treeDetail.Length-32,policy="shared-all-tree-species-seasons-repeat-trilinear"});
         byte[] uiGrain=LowPolyTree.DetailTexture(UiNoiseSettings.DefaultPercent,uniform:true);
         records.Add(new{source="generated:ui-bubble-noise-v2",sourceSha=Convert.ToHexString(SHA256.HashData(uiGrain)),width=TexturePixels.Width(uiGrain),height=TexturePixels.Height(uiGrain),format=TexturePixels.Int(uiGrain,8),levels=TexturePixels.Int(uiGrain,24),residentBytes=uiGrain.Length-32,policy="shared-ui-uniform-position-repeat-rgb-only-session-intensity"});
-        int expected=6*3+2*4+BuildingCatalog.Count*8*4;if(models!=expected)throw new InvalidDataException("Expected six villagers in 128/256px plus 128px geometric LODs and other models in four texture resolutions");
+        int expected=VillagerAppearance.Count*2+ModelLodCooker.Species.Length+2*4+BuildingCatalog.Count*8*4;
+        if(models!=expected)throw new InvalidDataException("Expected all appearance texture variants, the original species' geometric LODs and four resolutions for other models");
         string originals=Path.Combine(root,"out/floor-sources.json");if(File.Exists(originals))records.Add(new{floorSourceProvenance=JsonSerializer.Deserialize<JsonElement>(File.ReadAllText(originals))});
         File.WriteAllText(Path.Combine(root,"out/texture-audit.json"),JsonSerializer.Serialize(records,new JsonSerializerOptions{WriteIndented=true}));
         Console.WriteLine($"Texture audit: {models} imported variants; villagers use 128/256px plus 128px geometry LODs, other models use 128/256/512/1024px; generated trees share {LowPolyTree.DetailBytes} native texture bytes");

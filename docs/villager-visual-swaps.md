@@ -27,4 +27,8 @@ Host regression checks exercise duplicate rejection, delayed/failed loads,
 allocation backoff, package mismatch, repeated swaps, cancellation/teardown,
 unchanged other actors and byte-identical serialized player/town/job state.
 The normal importer checks cover all twelve GLBs and retained animation samples.
+Dolphin checks apply all six appearances to the player, exercise movement,
+and swap one NPC. Their captures and save-preservation report ship under
+`release/scenarios/villager-visuals/` inside the Depot ZIP, with the exact build
+and NKit image identity.
 Physical GameCube validation remains outstanding.
