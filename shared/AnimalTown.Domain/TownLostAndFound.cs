@@ -79,6 +79,29 @@ public sealed class TownLostAndFound
         if(town.GroundCount==town.Ground.Length||!Catalog.Valid(item)||!town.Inside(x,z)||(uint)owner>=GameState.ProfileCount)return false;
         int index=town.GroundCount++;var g=town.Ground[index];g.Item=item;g.X=x;g.Z=z;g.Owner=owner;g.Day=day;g.Kind=4;g.Wrapped=wrapped;ClearRecovery(index);custody=g;return true;
     }
+    internal void MergeHostedAdditions(Town baseline,Town hosted)
+    {
+        // Entries without visitor provenance are matched as a multiset. Real
+        // recovery receipts also carry their ID. Append with a fresh local ID
+        // so independent offline custody never reuses the same identity.
+        var matched=new bool[baseline.GroundCount];
+        for(int i=0;i<hosted.GroundCount;i++)
+        {
+            var g=hosted.Ground[i];if(g.Kind!=4)continue;
+            bool existed=false;
+            for(int j=0;j<baseline.GroundCount;j++)
+            {
+                var old=baseline.Ground[j];
+                if(!matched[j]&&old.Kind==4&&old.Item==g.Item&&old.X==g.X&&old.Z==g.Z&&old.Owner==g.Owner&&old.Day==g.Day&&old.Wrapped==g.Wrapped&&old.RecoveryId==g.RecoveryId)
+                {matched[j]=true;existed=true;break;}
+            }
+            if(existed)continue;
+            var receipt=hosted.LostAndFound.RecoveryAt(i);
+            if(receipt!=null&&!CanRecord||!Add(g.Item,g.X,g.Z,g.Owner,g.Day,g.Wrapped,out _))
+                throw new InvalidOperationException("Make room in the koban before synchronizing.");
+            if(receipt!=null)Record(town.GroundCount-1,new TownRecoveryRecord(++sequence,receipt.Source,receipt.Item,receipt.X,receipt.Z,receipt.Kind,receipt.Owner,receipt.Day,receipt.Rotation,receipt.Room,receipt.Wrapped,receipt.CustodyOwner));
+        }
+    }
     public int[] Encode()
     {
         var data=new int[EncodedWordCount];int at=0;data[at++]=Magic;data[at++]=Version;data[at++]=sequence;data[at++]=RecoveryCount;

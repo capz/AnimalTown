@@ -5,6 +5,9 @@ public sealed partial class GameState
     // A recipient projection has no other player's private records and can
     // never be published as a card, even if a caller bypasses the online UI.
     public bool IsOnlineProjection {get;internal set;}
+    // The local copy of a hosted shop is escrow, until synchronized with its
+    // writer. This is a session capability, never a serialized public field.
+    public bool HostedCommerceLocked {get;set;}
     public readonly Town Town;
     public const int MaximumPockets=30;
     public const int WalletLimit=99999;
@@ -236,9 +239,11 @@ public sealed partial class GameState
         for(int p=0;p<ProfileCount;p++)if(Profiles[p].Created){CompleteGardenExpansion(p,day);Profiles[p].Rollover(day,month,Town.Month);}
         RestoreProfile(ActiveProfile);Town.Month=month;Town.Day=day;
         int saleSlots=TownShop.SaleSlots(this);
-        Town.StockCount=Town.Spending>=100000?12:Town.Spending>=25000?9:6;
-        for(int i=0;i<Town.StockCount;i++)Town.Stock[i]=10+(day+i)%4;
-        Town.Shop.NewDay();
+        if(!HostedCommerceLocked){
+            Town.StockCount=Town.Spending>=100000?12:Town.Spending>=25000?9:6;
+            for(int i=0;i<Town.StockCount;i++)Town.Stock[i]=10+(day+i)%4;
+            Town.Shop.NewDay();
+        }
         for(int i=Town.GroundCount-1;i>=0;i--)
         {
             var g=Town.Ground[i];

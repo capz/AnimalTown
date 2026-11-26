@@ -1,3 +1,5 @@
+using AnimalTown;
+using AnimalTown.Online;
 using Npgsql;
 
 sealed partial class GameDatabase
@@ -5,56 +7,47 @@ sealed partial class GameDatabase
     async Task<InitialTownReceipt> CommitOfflineTown(NpgsqlConnection connection, NpgsqlTransaction transaction,
         Guid owner, long parent, ParsedInitialTown upload, CancellationToken cancellation)
     {
-        // The caller holds the owner and device locks. Restrict this path to
-        // straight-line offline progress over the last shared checkpoint.
-        string town;
-        long head;
-        await using (var command = Cmd(connection, transaction, """
-            SELECT original.town_identity,coalesce(latest.revision,original.revision),
-                   latest.parent_revision,latest.fingerprint
-            FROM initial_town_imports original LEFT JOIN offline_town_checkpoints latest ON latest.player=original.player
-            WHERE original.player=$1
-            """, owner))
-        await using (var rows = await command.ExecuteReaderAsync(cancellation))
+        await EnsureOnlineCardHead(connection,transaction,owner);
+        string town;long head;string fingerprint;GameState baseline;
+        await using(var read=Cmd(connection,transaction,"""
+            SELECT i.town_identity,h.revision,h.fingerprint,h.save_commit,h.save_records
+            FROM online_card_heads h JOIN initial_town_imports i ON i.player=h.player WHERE h.player=$1
+            """,owner))
+        await using(var row=await read.ExecuteReaderAsync(cancellation))
         {
-            if (!await rows.ReadAsync(cancellation)) throw new GameError(409, "town-checkpoint-required");
-            town = rows.GetString(0);
-            head = rows.GetInt64(1);
-            if (!rows.IsDBNull(2) && rows.GetInt64(2) == parent && rows.GetString(3) == upload.Fingerprint)
-                return new(town, head);
+            if(!await row.ReadAsync(cancellation))throw new GameError(409,"town-checkpoint-required");
+            town=row.GetString(0);head=row.GetInt64(1);fingerprint=row.GetString(2);
+            baseline=SplitSaveCodec.DecodeCommitted(row.GetFieldValue<byte[]>(3),row.GetFieldValue<byte[][]>(4));
         }
-
-        if (head != parent)
-            throw new GameError(409, "reconciliation-required");
-        await using (var check = Cmd(connection, transaction, """
-            SELECT (SELECT revision FROM players WHERE id=$1)=$2
-                AND NOT EXISTS(SELECT 1 FROM gates WHERE host=$1 AND expires>clock_timestamp())
-                AND NOT EXISTS(SELECT 1 FROM visits WHERE (host=$1 OR guest=$1) AND NOT ended AND expires>clock_timestamp())
-                AND NOT EXISTS(SELECT 1 FROM guest_placements WHERE host=$1 OR guest=$1)
-                AND NOT EXISTS(SELECT 1 FROM town_review_leases WHERE host=$1 AND expires>clock_timestamp())
-                AND NOT EXISTS(SELECT 1 FROM operations WHERE player=$1)
-                AND NOT EXISTS(SELECT 1 FROM listings WHERE seller=$1 OR buyer=$1)
-                AND NOT EXISTS(SELECT 1 FROM grants WHERE player=$1)
-            """, owner, parent))
-        {
-            if (await check.ExecuteScalarAsync(cancellation) is not true)
-                throw new GameError(409, "reconciliation-required");
-        }
-
-        var current = await Load(connection, transaction, owner, false);
-        if (upload.State.Sequence <= current.State.Sequence)
-            throw new GameError(409, "offline-checkpoint-not-newer");
-
-        long revision = checked(head + 1);
-        await using (var advance = Cmd(connection, transaction, """
+        if(parent!=head)throw new GameError(409,"card-lineage-changed");
+        if(upload.Fingerprint==fingerprint)return new(town,head);
+        if(upload.State.Sequence<=baseline.Sequence)throw new GameError(409,"offline-checkpoint-not-newer");
+        await using(var active=Cmd(connection,transaction,"""
+            SELECT EXISTS(SELECT 1 FROM online_travel WHERE player=$1 AND phase<3)
+              OR EXISTS(SELECT 1 FROM town_review_leases WHERE host=$1 AND expires>clock_timestamp())
+            """,owner))
+            if(await active.ExecuteScalarAsync(cancellation) is true)throw new GameError(409,"finish-online-return-first");
+        var current=await Load(connection,transaction,owner,false);
+        try { OnlineTownMerge.Apply(upload.State,baseline,current.State,DateTimeOffset.UtcNow.ToUnixTimeSeconds()); }
+        catch(InvalidOperationException){throw new GameError(409,"offline-reconciliation-required");}
+        long revision=checked(head+1);
+        // The upload itself is already on the card. Remember its exact bytes as
+        // the new acknowledged baseline; the merged candidate is canonical and
+        // must still be downloaded, published and read back before its own ack.
+        await using(var advance=Cmd(connection,transaction,"""
             INSERT INTO offline_town_checkpoints(player,parent_revision,revision,fingerprint,save_commit,save_records)
-            VALUES($1,$2,$3,$4,$5,$6)
-            ON CONFLICT(player) DO UPDATE SET
-                parent_revision=excluded.parent_revision,revision=excluded.revision,fingerprint=excluded.fingerprint,
-                save_commit=excluded.save_commit,save_records=excluded.save_records
-            """, owner, parent, revision, upload.Fingerprint, upload.Commit, upload.Records))
-            await advance.ExecuteNonQueryAsync(cancellation);
-        await WriteParts(connection, transaction, owner, upload.State, true);
-        return new(town, revision);
+            VALUES($1,$2,$3,$4,$5,$6) ON CONFLICT(player) DO UPDATE SET
+            parent_revision=excluded.parent_revision,revision=excluded.revision,fingerprint=excluded.fingerprint,
+            save_commit=excluded.save_commit,save_records=excluded.save_records
+            """,owner,parent,revision,upload.Fingerprint,upload.Commit,upload.Records))await advance.ExecuteNonQueryAsync(cancellation);
+        await using(var advance=Cmd(connection,transaction,"UPDATE online_card_heads SET revision=$2,fingerprint=$3,save_commit=$4,save_records=$5 WHERE player=$1",owner,revision,upload.Fingerprint,upload.Commit,upload.Records))await advance.ExecuteNonQueryAsync(cancellation);
+        await using(var calendar=Cmd(connection,transaction,"""
+            INSERT INTO hosted_personal_calendar(player,day,month) VALUES($1,$2,$3)
+            ON CONFLICT(player) DO UPDATE SET day=excluded.day,month=excluded.month
+            """,owner,upload.State.Town.Day,upload.State.Town.Month))await calendar.ExecuteNonQueryAsync(cancellation);
+        await WriteParts(connection,transaction,owner,upload.State,true);
+        await using(var hosted=Cmd(connection,transaction,"SELECT EXISTS(SELECT 1 FROM hosted_towns WHERE host=$1)",owner))
+            if(await hosted.ExecuteScalarAsync(cancellation) is true)await AppendHostedEvent(connection,transaction,owner,null,1,null,[1]);
+        return new(town,revision);
     }
 }

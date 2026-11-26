@@ -100,7 +100,11 @@ pin and Cloudflare edge, upgrade handling, cancellation and long-lived traffic.
 
 ## Indexed implementation work
 
-All rows are open. "Foundation" means source exists for part of the row, not
+The connection, review, conflict, jobs, chat and resident-mail layouts in
+`docs/concepts/online-poc/connection.svg` and `review-and-social.svg` were
+explicitly approved by the user. Implementation may use these layouts without
+another design approval. Target qualification and integrated completion remain
+open. "Foundation" means source exists for part of the row, not
 that its completion gate has passed. IDs are local backlog references, not
 GitHub issue numbers.
 

@@ -49,9 +49,14 @@ static class VisitChecks
             }
             byte[] checkpoint=bytes.ToArray();
             var offer=await Request(HttpMethod.Post,$"/v1/towns/{id}/checkpoint-uploads",new{length=checkpoint.Length,sha256=Convert.ToHexString(SHA256.HashData(checkpoint))},device);
-            using var upload=new HttpRequestMessage(HttpMethod.Put,$"/v1/towns/{id}/checkpoint-uploads/{offer.GetProperty("id").GetString()}?offset=0");
-            upload.Headers.Authorization=new AuthenticationHeaderValue("Bearer",device);upload.Content=new ByteArrayContent(checkpoint);upload.Content.Headers.ContentType=new MediaTypeHeaderValue("application/octet-stream");
-            using var response=await api.SendAsync(upload);check(response.IsSuccessStatusCode,"Existing split-save import through device upload");
+            for(int offset=0;offset<checkpoint.Length;offset+=16384)
+            {
+                using var upload=new HttpRequestMessage(HttpMethod.Put,$"/v1/towns/{id}/checkpoint-uploads/{offer.GetProperty("id").GetString()}/page?offset={offset}");
+                upload.Headers.Authorization=new AuthenticationHeaderValue("Bearer",device);upload.Content=new ByteArrayContent(checkpoint.AsSpan(offset,Math.Min(16384,checkpoint.Length-offset)).ToArray());upload.Content.Headers.ContentType=new MediaTypeHeaderValue("application/octet-stream");
+                using var response=await api.SendAsync(upload);check(response.IsSuccessStatusCode,"Existing split-save import through SDK-sized complete HTTP pages");
+            }
+            var card=await Request(HttpMethod.Get,"/v1/online/card",token:device);
+            check(card.GetProperty("revision").GetInt64()==1&&card.GetProperty("sha256").GetString()==Convert.ToHexString(SHA256.HashData(checkpoint)),"Device control reports the exact acknowledged card, without public or canonical private data");
             var saved=await Request(HttpMethod.Get,"/v1/me",token:device);
             check(saved.GetProperty("wallet").GetInt32()==4356&&saved.GetProperty("savings").GetInt32()==9021,"Import preserves the home economy");
             return new Player(id,browser,device,Convert.ToHexString(SHA256.HashData(checkpoint)));
@@ -63,6 +68,8 @@ static class VisitChecks
             await Request(HttpMethod.Post,$"/v1/friends/{owner.Id}",new{},guest.Account);
         }
         await Request(HttpMethod.Post,"/v1/online/gate/open",new{},owner.Device);
+        var friends=await Request(HttpMethod.Get,"/v1/online/friends?page=0",token:first.Device);
+        check(friends.GetProperty("friends").EnumerateArray().Any(f=>f.GetProperty("id").GetString()==owner.Id),"Open-towns UI discovers only admitted mutual friends");
         var visitA=await Request(HttpMethod.Post,"/v1/online/visits",new{host=owner.Id},first.Device);
         var visitB=await Request(HttpMethod.Post,"/v1/online/visits",new{host=owner.Id},second.Device);
         string reservationA=Guid.NewGuid().ToString();
@@ -137,16 +144,43 @@ static class VisitChecks
         }
         byte[] returned=returnedBytes.ToArray();
         check(Convert.ToHexString(SHA256.HashData(returned))==publication.GetProperty("sha256").GetString(),"Bounded return pages verify against the committed checkpoint fingerprint");
+        using(var download=new OnlineCheckpointDownload(returned.Length,publication.GetProperty("sha256").GetString()!))
+        {
+            for(int at=0;at<returned.Length;at+=31)download.Append(returned,at,Math.Min(31,returned.Length-at));
+            download.Verify();check(download.Position==returned.Length,"Console return decoder verifies a real settlement across arbitrary record/page boundaries");
+        }
+        GameState returnedHome;
         using(var reader=new BinaryReader(new MemoryStream(returned)))
         {
             byte[] commit=reader.ReadBytes(reader.ReadInt32());var parts=new byte[7][];
             for(int i=0;i<parts.Length;i++)parts[i]=reader.ReadBytes(reader.ReadInt32());
             var saved=SplitSaveCodec.DecodeCommitted(commit,parts);
+            returnedHome=saved;
             check(saved.Name=="GuestA"&&saved.Wallet==4356&&!saved.Pockets.Contains(Catalog.WritingPaper),"Return exports the correct home and consumes successful mail stationery once");
         }
         var acknowledged=await Request(HttpMethod.Post,$"/v1/online/reservations/{reservationA}/published",new{fingerprint=publication.GetProperty("sha256").GetString()},first.Device);
         var retriedAck=await Request(HttpMethod.Post,$"/v1/online/reservations/{reservationA}/published",new{fingerprint=publication.GetProperty("sha256").GetString()},first.Device);
         check(acknowledged.GetProperty("revision").GetInt64()==2&&retriedAck.GetProperty("revision").GetInt64()==2,"Publication acknowledgment advances card lineage exactly once");
+        returnedHome.Wallet+=17;returnedHome.Sequence++;
+        byte[] offline;
+        using(var stream=new MemoryStream())using(var writer=new BinaryWriter(stream))
+        {
+            var records=SplitSaveCodec.Encode(returnedHome);var commit=SplitSaveCodec.EncodeCommit(returnedHome,records);
+            writer.Write(commit.Length);writer.Write(commit);foreach(var record in records){writer.Write(record.Length);writer.Write(record);}offline=stream.ToArray();
+        }
+        string offlineHash=Convert.ToHexString(SHA256.HashData(offline));
+        var newOffer=await Request(HttpMethod.Post,$"/v1/towns/{first.Id}/checkpoint-uploads",new{length=offline.Length,sha256=offlineHash,parentRevision=2},first.Device);
+        using(var request=new HttpRequestMessage(HttpMethod.Put,$"/v1/towns/{first.Id}/checkpoint-uploads/{newOffer.GetProperty("id").GetString()}?offset=0"))
+        {
+            request.Headers.Authorization=new AuthenticationHeaderValue("Bearer",first.Device);request.Content=new ByteArrayContent(offline);request.Content.Headers.ContentType=new MediaTypeHeaderValue("application/octet-stream");
+            using var response=await api.SendAsync(request);
+            string reply=await response.Content.ReadAsStringAsync();
+            check(response.IsSuccessStatusCode,"Offline progress uploads against the acknowledged online return, after an older completed upload: "+reply);
+            using var result=JsonDocument.Parse(reply);
+            check(result.RootElement.GetProperty("revision").GetInt64()==3,"Offline upload advances the actual acknowledged card head once");
+        }
+        var afterOffline=await Request(HttpMethod.Get,"/v1/me",token:first.Device);
+        check(afterOffline.GetProperty("wallet").GetInt32()==4373,"Online purchases and independent offline earnings survive the next synchronization");
     }
     static async Task<(OnlineFrameHeader Header,byte[] Frame)> Read(ClientWebSocket socket)
     {

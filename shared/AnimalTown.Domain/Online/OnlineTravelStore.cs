@@ -64,6 +64,20 @@ public sealed class OnlineTravelStore
         if (expected != null && (expected.Record.Town != record.Town || expected.Record.Account != record.Account ||
             expected.Record.Origin != record.Origin && expected.Record.Phase != OnlineTravelPhase.Ready))
             throw new IOException("Finish online recovery before changing this card's link.");
+        if(expected!=null)
+        {
+            var before=expected.Record;
+            bool ready=before.Phase==OnlineTravelPhase.Ready&&record.Phase==OnlineTravelPhase.Ready&&record.Revision>=before.Revision;
+            bool reserve=before.Phase==OnlineTravelPhase.Ready&&record.Phase==OnlineTravelPhase.Reserved&&record.Revision==before.Revision;
+            bool same=before.Reservation==record.Reservation&&before.Profile==record.Profile&&before.Origin==record.Origin;
+            bool advance=same&&(
+                before.Phase==OnlineTravelPhase.Reserved&&record.Phase==OnlineTravelPhase.Active&&record.Revision==before.Revision&&record.Fingerprint==before.Fingerprint||
+                before.Phase==OnlineTravelPhase.Active&&record.Phase==OnlineTravelPhase.Publishing&&record.Revision==before.Revision+1||
+                before.Phase==OnlineTravelPhase.Reserved&&record.Phase==OnlineTravelPhase.Publishing&&record.Revision==before.Revision+1||
+                before.Phase==OnlineTravelPhase.Publishing&&record.Phase==OnlineTravelPhase.Published&&record.Revision==before.Revision&&record.Fingerprint==before.Fingerprint||
+                before.Phase==OnlineTravelPhase.Published&&record.Phase==OnlineTravelPhase.Ready&&record.Revision==before.Revision&&record.Fingerprint==before.Fingerprint);
+            if(!ready&&!reserve&&!advance)throw new IOException("Invalid online recovery transition. Reload this card.");
+        }
         int bank = current == null ? 0 : current.Bank ^ 1, sequence = checked((current?.Sequence ?? 0) + 1);
         var bytes = new byte[RecordBytes]; var w = new OnlinePacketWriter(bytes);
         w.Int(Magic); w.Int(sequence); w.Int((int)record.Phase); w.Long(record.Revision); w.Int(record.Profile);

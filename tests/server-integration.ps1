@@ -325,8 +325,8 @@ try {
         $staged=Request POST $uploads $offlineOffer $linked.token
         Assert ($staged.Status -eq 200 -and $staged.Body.offset -eq 0) 'Could not stage progress after the first checkpoint'
         Request POST '/v1/gate' @{} $card.token | Out-Null
-        $blocked=UploadSave "$uploads/$($staged.Body.id)?offset=0" $offline $linked.token PUT
-        Assert ($blocked.Status -eq 409 -and $blocked.Body.error -eq 'reconciliation-required') 'Offline checkpoint overwrote an open hosted town'
+        $merged=UploadSave "$uploads/$($staged.Body.id)?offset=0" $offline $linked.token PUT
+        Assert ($merged.Status -eq 200 -and $merged.Body.revision -eq 2) 'Unattended hosting prevented compatible offline progress'
         Request DELETE '/v1/gate' $null $card.token | Out-Null
         $staged=Request POST $uploads $offlineOffer $linked.token
         $synced=UploadSave "$uploads/$($staged.Body.id)?offset=0" $offline $linked.token PUT

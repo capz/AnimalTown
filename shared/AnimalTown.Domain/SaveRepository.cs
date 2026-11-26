@@ -238,7 +238,8 @@ public sealed class SaveRepository
     public GameState PublishOnlineCheckpoint(GameState expected,byte[] commit,byte[][] records)
     {
         if(expected.IsOnlineProjection||expected.Visiting)throw new InvalidOperationException("Select your home card before returning");
-        var candidate=SplitSaveCodec.DecodeCommitted(commit,records);
+        SplitSaveCodec.VerifyCommitted(commit,records);
+        var candidate=SplitSaveCodec.Decode(records,null,expected.Town.Jobs);
         if(candidate.IsOnlineProjection||candidate.Visiting||candidate.Town.Jobs.TownId!=expected.Town.Jobs.TownId||
             candidate.Town.Seed!=expected.Town.Seed||candidate.ActiveProfile!=expected.ActiveProfile||
             expected.Sequence==int.MaxValue||candidate.Sequence!=expected.Sequence+1)

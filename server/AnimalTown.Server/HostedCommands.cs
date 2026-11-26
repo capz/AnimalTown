@@ -69,9 +69,9 @@ sealed partial class GameDatabase
                     await EndPlacementReview(authority.Device,HostId(command.Entity),authority);
                     return new(CommandResult(command,200),ReviewLease:Guid.Empty);
                 }
-                if(!Guid.TryParseExact(command.Text,"D",out Guid context)||command.A is <0 or >1||command.Revision is <1 or >int.MaxValue)
+                if(!Guid.TryParseExact(command.Text,"D",out Guid context)||command.A is <0 or >2||command.Revision is <1 or >int.MaxValue)
                     throw new GameError(400,"invalid-placement-review-operation");
-                await DecidePlacementReview(authority.Device,context,new(HostId(command.Id),HostId(command.Entity),(int)command.Revision,command.A==0?"keep":"koban"),authority);
+                await DecidePlacementReview(authority.Device,context,new(HostId(command.Id),HostId(command.Entity),(int)command.Revision,command.A==0?"keep":command.A==1?"koban":"keep-guest"),authority);
                 return new(CommandResult(command,200));
             }
             return await ExecuteHostedMutation(authority, command);

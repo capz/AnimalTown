@@ -235,3 +235,6 @@ CREATE TABLE IF NOT EXISTS hosted_identity (
  CHECK(issuer ~ '^[0-9A-F]{16}$' AND issuer<>'0000000000000000')
 );
 CREATE SEQUENCE IF NOT EXISTS hosted_identity_counter AS bigint NO CYCLE;
+CREATE TABLE IF NOT EXISTS hosted_personal_calendar (
+ player uuid PRIMARY KEY REFERENCES players(id), day integer NOT NULL, month integer NOT NULL
+);

@@ -96,6 +96,8 @@ sealed partial class GameDatabase
             UPDATE online_travel SET phase=1 WHERE id=$1 AND player=$2 AND device=$3 AND town_identity=$4 AND phase IN (0,1)
             """, id, device.Player, device.Id, device.Town);
         if (await update.ExecuteNonQueryAsync() != 1) throw new GameError(409, "card-reservation-ended");
+        var state=(await Load(c,t,device.Player,false)).State;
+        if(await AdvanceHostedPersonalCalendar(c,t,device.Player,state))await Save(c,t,device.Player,state);
         await t.CommitAsync(); return new { id, phase = "active" };
     }
 
@@ -133,6 +135,7 @@ sealed partial class GameDatabase
                 if (await pending.ExecuteScalarAsync() is true) throw new GameError(409, "placement-review-required");
             var state = (await Load(c, t, device.Player, false)).State;
             if (state.ActiveProfile != profile) throw new GameError(409, "selected-villager-changed");
+            if(await AdvanceHostedPersonalCalendar(c,t,device.Player,state))await Save(c,t,device.Player,state);
             if(await SuspendHostedJobParcels(c,t,device.Player,profile,state))await Save(c,t,device.Player,state);
             int sequence;
             await using (var head = Cmd(c, t, "SELECT save_commit,save_records FROM online_card_heads WHERE player=$1 AND revision=$2", device.Player, parent))

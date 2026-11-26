@@ -474,6 +474,7 @@ sealed class LiveTownTransport(GameDatabase database, IConfiguration configurati
                     try{await database.HeartbeatPlacementReview(actor.Ticket.Device,actor.ReviewLease);}
                     catch(GameError){actor.ReviewLease=Guid.Empty;}
                 }
+                await database.AdvanceReservedCardClock(Authority(town,actor));
                 continue;
             }
             if (header.Type is OnlineFrameType.Command or OnlineFrameType.BulkPage)

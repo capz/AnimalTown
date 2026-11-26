@@ -67,6 +67,10 @@ static class CardAndProjectionChecks
         var afterOnline=onlineHome.ResidentJobs.RecordOnlineReward(giver,giver.Town,"Maple",12,0,0);
         var fromCard=offlineCopy.ResidentJobs.RecordOnlineReward(giver,giver.Town,"Maple",12,0,0);
         check(afterOnline==fromCard,"Unattended hosted rewards and mail cannot consume the offline card's local identity counter");
+        var calendar=new GameState(8006){Savings=10000};calendar.ResidentJobs.Enable(0x12345678123456,0);calendar.Rollover(10,100);
+        check(calendar.AdvanceHostedCalendar(11,101)&&calendar.Savings==10000,"Unattended public calendar advance cannot apply personal interest to an offline card");
+        calendar.AdvanceHostedPersonalCalendar(11,101,100);
+        check(calendar.Savings==10050,"A reserved home can apply its personal calendar once at publication");
 
         var savedFiles=new MemoryFiles();new SaveRepository(savedFiles).Save(home);
         var baseline=new SaveRepository(savedFiles).Load()!;

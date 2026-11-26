@@ -65,6 +65,7 @@ app.Use(async(context,next)=>
 Guid Me(HttpContext c)=>(Guid)c.Items["player"]!;
 app.MapGet("/v1/gameplay", (HttpContext c) => gameplay.AcceptWebSocket(c)).WithMetadata(ApiAccess.Public);
 app.MapGet("/health",()=>new{service="AnimalTown.Server",protocol=1,catalog=Catalog.Version});
+app.MapOnlineControl(db);
 app.MapPost("/v1/gameplay/tickets", (HttpContext c,LiveTicketRequest request) =>
     gameplay.Issue((DevicePrincipal)c.Items["device"]!,request)).WithMetadata(ApiAccess.DeviceOnly);
 app.MapPost("/v1/online/gate/open", (Delegate)((HttpContext c) =>

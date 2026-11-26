@@ -385,7 +385,7 @@ sealed partial class GameDatabase
 
     public async Task<object> DecidePlacementReview(DevicePrincipal device, Guid lease, PlacementReviewOperation op,HostedAuthority? authority=null)
     {
-        if (op.Id == Guid.Empty || op.Placement == Guid.Empty || op.Version <= 0 || op.Kind is not ("keep" or "koban"))
+        if (op.Id == Guid.Empty || op.Placement == Guid.Empty || op.Version <= 0 || op.Kind is not ("keep" or "koban" or "keep-guest"))
             throw new GameError(400, "invalid-placement-review-operation");
         Guid host = device.Player;
         await using var c = await source.OpenConnectionAsync();
@@ -406,7 +406,13 @@ sealed partial class GameDatabase
         if (placement.Version != op.Version) throw new GameError(409, "placement-changed");
 
         int baseCount = town.Town.PlacedCount;
-        if (op.Kind == "keep")
+        if(op.Kind=="keep-guest")
+        {
+            var selected=new Placement();placement.Project(selected);
+            try{AnimalTown.Online.OnlineTownMerge.KeepPlacement(town,selected);}
+            catch(InvalidOperationException){throw new GameError(409,"placement-conflict");}
+        }
+        else if (op.Kind == "keep")
         {
             if (baseCount == town.Town.Placed.Length || !town.CanPlace(placement.Item, placement.X, placement.Z,
                 placement.Rotation, placement.Room, placement.OwnerSlot, existing: true))

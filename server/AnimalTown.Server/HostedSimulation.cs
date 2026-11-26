@@ -50,7 +50,7 @@ sealed partial class GameDatabase
             if(previous>=now)continue;
             var loaded=await Load(c,t,entry.Host,false);var world=loaded.State;
             byte[] personalBefore=InventoryPacket(world,loaded.Revision);
-            int day=(int)(now/86400);world.Rollover(day,DateTime.UtcNow.Year*12+DateTime.UtcNow.Month);
+            int day=(int)(now/86400);bool newDay=world.AdvanceHostedCalendar(day,DateTime.UtcNow.Year*12+DateTime.UtcNow.Month);
             world.ResidentJobs.EnableOnlineAdapter(now);
             if(!await ReviewActive(c,t,entry.Host))
             {
@@ -91,6 +91,7 @@ sealed partial class GameDatabase
                 // every second while a player is choosing a placement or shop row.
                 world.Sequence=checked(world.Sequence+1);await WriteParts(c,t,entry.Host,world,false);
             }
+            if(newDay)await AppendHostedEvent(c,t,entry.Host,null,1,null,[1]);
             await using(var mark=Cmd(c,t,"UPDATE hosted_towns SET simulated_at=$2 WHERE host=$1",entry.Host,now))await mark.ExecuteNonQueryAsync(stop);
             await t.CommitAsync(stop);
         }

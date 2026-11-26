@@ -55,6 +55,22 @@ for(int i=0;i<10000;i++)idleSocket.TryRead(idleBytes,0,32);
 Check(GC.GetAllocatedBytesForCurrentThread()==baseline,"Steady-state nonblocking WebSocket polling allocates nothing");
 CodecChecks.Run(Check);
 CardAndProjectionChecks.Run(Check);
+ReceiptMergeChecks.Run(Check);
+foreach(var id in new[]{Guid.Empty,Guid.NewGuid(),Guid.Parse("00112233-4455-6677-8899-aabbccddeeff")})
+{
+    var wire=new OnlinePacketReader(id.ToByteArray(),0,16).Id();
+    Check(OnlineIdentifiers.Parse(id.ToString()).Same(wire)&&OnlineIdentifiers.Format(wire)==id.ToString(),"Console IDs preserve Guid mixed endianness across HTTP and binary gameplay");
+}
+foreach(int length in new[]{0,1,55,56,63,64,65,16384,131073})
+{
+    var bytes=new byte[length];new Random(length).NextBytes(bytes);
+    foreach(int quantum in new[]{1,31,16384})
+    {
+        using var hash=new OnlineCheckpointHash();
+        for(int at=0;at<length;at+=quantum)hash.Append(bytes,at,Math.Min(quantum,length-at));
+        Check(hash.Complete()==Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(bytes)),"Bounded console checkpoint hashing matches SHA-256 across padding/page boundaries");
+    }
+}
 if(args.Length>0) await VisitChecks.Run(args[0],Check);
 Console.WriteLine($"{checks} online checks passed.");
 
