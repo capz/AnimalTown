@@ -1371,7 +1371,7 @@ def active_edge_smoothing():
     if not modes:raise AssertionError('No active edge-smoothing mode was reported')
     return modes[-1]=='1'
 
-def wait_options_saved(resolution,wide,smoothing=None):
+def wait_options_saved(resolution,wide,smoothing=None,after=None):
     import struct
     deadline=time.monotonic()+45
     while time.monotonic()<deadline:
@@ -1382,9 +1382,18 @@ def wait_options_saved(resolution,wide,smoothing=None):
                 and (smoothing is None or payload[3]==3 and payload[7]==smoothing)):
             checksum=2166136261
             for value in payload[:12]:checksum=((checksum^value)*16777619)&0xffffffff
-            if len(payload)==16 and checksum==struct.unpack_from('<I',payload,12)[0]:return payload
+            completed=(after is None or
+                       f'ANIMALTOWN OPTIONS SAVED {payload[4]} {payload[5]} {payload[7]}' in runtime_log_text()[after:])
+            if checksum==struct.unpack_from('<I',payload,12)[0] and completed:return payload
         check_runtime_failure();time.sleep(.5)
     raise AssertionError('A did not persist the activated video setting')
+
+def activate_video_setting(resolution,wide,smoothing=None):
+    # The record can already contain these bytes, or become readable before
+    # final verification returns. Wait for this activation's completion marker
+    # before sending navigation to the game, including idempotent reapplication.
+    offset=len(runtime_log_text());press('A')
+    return wait_options_saved(resolution,wide,smoothing,after=offset)
 
 def debug_visibility(require_record=False):
     import struct
@@ -1474,13 +1483,13 @@ def title_options():
     if active_edge_smoothing():press('D_RIGHT')
     screenshot('options-smoothing-draft-off.png')
     if options_card_files().get('options')!=original:raise AssertionError('Smoothing navigation persisted an unapplied option')
-    press('A');wait_options_saved(None,None,0);screenshot('options-smoothing-off.png')
+    activate_video_setting(None,None,0);screenshot('options-smoothing-off.png')
     press('D_UP');press('D_UP')
     original=options_card_files().get('options');press('D_RIGHT');screenshot('options-draft-576p.png')
     if options_card_files().get('options')!=original:raise AssertionError('Navigation persisted an unapplied option')
-    press('D_LEFT');press('A');wait_options_saved(1,0);screenshot('options-480p.png')
-    press('D_RIGHT');press('A');wait_options_saved(2,0);screenshot('options-576p.png')
-    press('D_DOWN');press('D_LEFT');press('A');saved=wait_options_saved(2,1);screenshot('options-widescreen.png')
+    press('D_LEFT');activate_video_setting(1,0);screenshot('options-480p.png')
+    press('D_RIGHT');activate_video_setting(2,0);screenshot('options-576p.png')
+    press('D_DOWN');press('D_LEFT');saved=activate_video_setting(2,1);screenshot('options-widescreen.png')
     current=options_card_files()
     if any(current.get(name)!=data for name,data in town.items()):raise AssertionError('Video selection changed town data')
     press('D_DOWN');press('D_DOWN');press('A');screenshot('options-delete-default.png');press('A')
@@ -3061,7 +3070,7 @@ with (root/'emulator.log').open('w') as log:
                 press('D_DOWN');press('D_DOWN');screenshot(name+'.png')
             def apply_aa(enabled,name):
                 if active_edge_smoothing()!=enabled:press('D_RIGHT')
-                press('A');saved=wait_options_saved(None,None,int(enabled))
+                saved=activate_video_setting(None,None,int(enabled))
                 if active_edge_smoothing()!=enabled:raise AssertionError('Saved smoothing preference differs from the live display')
                 screenshot(name+'.png');return list(saved)
             restart_title();selector('aa-menu-default')
