@@ -138,6 +138,10 @@ internal static class DepotPackageChecks
                 {"terrain-materials-build.json",JsonSerializer.SerializeToUtf8Bytes(new{commit,version})}
             };
             reportFiles.Add("daylight-build.json",JsonSerializer.SerializeToUtf8Bytes(new{commit,version}));
+            foreach(string name in new[]{"build","smoothing-aa-option","options-title-options","options-title-options-load","unsupported-title-options-unsupported"})
+                reportFiles.Add("video-options-"+name+".json",JsonSerializer.SerializeToUtf8Bytes(new{commit,version,passed=true}));
+            foreach(string name in new[]{"smoothing-aa-initial-home","smoothing-aa-menu-on","smoothing-aa-menu-off","smoothing-aa-menu-restored","smoothing-aa-576p-rejected","options-options-restored","options-options-delete-default","unsupported-options-unsupported"})
+                reportFiles.Add("video-options-"+name+".png",new byte[]{137,80,78,71,13,10,26,10});
             reportFiles.Add("scenarios/jobs/jobs-delivery-result.png",new byte[]{137,80,78,71,13,10,26,10});
             reportFiles.Add("scenarios/jobs/jobs-delivery-state.json",JsonSerializer.SerializeToUtf8Bytes(new{mode="delivery",passed=true}));
             foreach(string phase in new[]{"noon","dawn","dusk","night"}){
@@ -174,9 +178,11 @@ internal static class DepotPackageChecks
             }
             foreach(string name in new[]{"terrain-materials.png","terrain-materials-Frame.png","terrain-materials-frame.PNG","terrain-materials-unlisted.json","terrain-materials-source.cs","terrain-materials-frame.png/source.py","scenarios/terrain-materials/frame.png"})UnsupportedReport(name);
             foreach(string name in new[]{"daylight-noon.py","daylight-noon-a.PNG","daylight-Night-a.png","daylight-midnight-a.png","daylight-night-extra.json","daylight-night-extra.png","daylight-build.json/source.py","daylight/night-a.png"})UnsupportedReport(name);
+            foreach(string name in new[]{"video-options-extra.json","video-options-smoothing-extra.json","video-options-build.py","video-options-smoothing-source.cs","video-options-smoothing-aa-menu-on.PNG","video-options-smoothing-aa-menu-on.png.cs","video-options-unknown-frame.png","video-options-build.json/source.py","video-options/smoothing/frame.png"})UnsupportedReport(name);
             Mutated("release/BUILD.txt",Encoding.UTF8.GetBytes("corrupt report"));
             Mutated("release/terrain-materials-mips-auto.png",Encoding.UTF8.GetBytes("corrupt capture"));
             Mutated("release/daylight-night-a.png",Encoding.UTF8.GetBytes("corrupt night capture"));
+            Mutated("release/video-options-smoothing-aa-menu-on.png",Encoding.UTF8.GetBytes("corrupt video capture"));
             Mutated("release/animal-town-updater.dol");Mutated("release/source.cs");Mutated("release/scenarios/performance/source.py");
             Mutated("release/scenarios/performance/../bad.txt");Mutated("release/scenarios/performance/link.txt",attributes:unchecked((int)0xa1ff0000));
             Mutated("release/manifest.json",JsonSerializer.SerializeToUtf8Bytes(new{schema=1,commit=new string('b',40),version,files=reportManifest.files}));

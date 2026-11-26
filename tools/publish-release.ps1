@@ -119,6 +119,26 @@ function Copy-DaylightEvidence([string]$Source,[string]$Destination,[string]$Com
     }
     Copy-Item -LiteralPath $build -Destination (Join-Path $Destination 'daylight-build.json') -Force
 }
+function Copy-VideoEvidence([string]$Source,[string]$Destination,[string]$Commit,[string]$Version,[string]$Tag,[string]$IsoName,[string]$IsoSha256){
+    $build=Join-Path $Source 'video-options-build.json'
+    if(!(Test-Path -LiteralPath $build -PathType Leaf)){return}
+    $evidence=Get-Content -LiteralPath $build -Raw|ConvertFrom-Json
+    if($evidence.schema -ne 1 -or $evidence.commit -cne $Commit -or $evidence.version -cne $Version -or
+       $evidence.tag -cne $Tag -or $evidence.isoName -cne $IsoName -or $evidence.isoSha256 -cne $IsoSha256){
+        throw 'Video-options evidence must match the release commit, version and verified NKit image'
+    }
+    $aa=Get-Content -LiteralPath (Join-Path $Source 'smoothing/aa-option.json') -Raw|ConvertFrom-Json
+    if($aa.passed -ne $true -or $aa.restoredAfterRestart -ne $true -or $aa.townUnchanged -ne $true){throw 'Video-options smoothing checks must pass before publication'}
+    Copy-Item -LiteralPath $build -Destination $Destination
+    foreach($name in @('smoothing/aa-option.json','smoothing/aa-initial-home.png','smoothing/aa-menu-on.png',
+                      'smoothing/aa-menu-off.png','smoothing/aa-menu-restored.png','smoothing/aa-576p-rejected.png',
+                      'options/title-options.json','options/title-options-load.json','options/options-restored.png',
+                      'options/options-delete-default.png','unsupported/title-options-unsupported.json','unsupported/options-unsupported.png')){
+        $file=Get-Item -LiteralPath (Join-Path $Source $name)
+        if($file.PSIsContainer -or $file.Length -le 0){throw "Missing or empty video-options evidence: $name"}
+        Copy-Item -LiteralPath $file.FullName -Destination (Join-Path $Destination ('video-options-'+$name.Replace('/','-')))
+    }
+}
 function Copy-JobEvidence([string]$Source,[string]$Destination,[string]$Commit,[string]$Version,[string]$Tag,[string]$IsoName,[string]$IsoSha256){
     $build=Join-Path $Source 'jobs-build.json'
     if(!(Test-Path -LiteralPath $build -PathType Leaf)){return}
@@ -231,27 +251,7 @@ if(!$PublishOnly){
             $titleEvidenceAssets+=$destination
         }
     }
-    $videoEvidenceRoot=Join-Path $out 'video-options'
-    $videoEvidenceBuild=Join-Path $videoEvidenceRoot 'video-options-build.json'
-    if(Test-Path -LiteralPath $videoEvidenceBuild -PathType Leaf){
-        $evidence=Get-Content -LiteralPath $videoEvidenceBuild -Raw|ConvertFrom-Json
-        if($evidence.schema -ne 1 -or $evidence.commit -cne $commit -or $evidence.version -cne $version -or
-           $evidence.tag -cne $tag -or $evidence.isoName -cne [IO.Path]::GetFileName($nkit) -or
-           $evidence.isoSha256 -cne $nkitInfo.compactSha256){
-            throw 'Video-options evidence must match the release commit, version and verified NKit image'
-        }
-        $aa=Get-Content -LiteralPath (Join-Path $videoEvidenceRoot 'smoothing/aa-option.json') -Raw|ConvertFrom-Json
-        if($aa.passed -ne $true -or $aa.restoredAfterRestart -ne $true -or $aa.townUnchanged -ne $true){throw 'Video-options smoothing checks must pass before publication'}
-        Copy-Item -LiteralPath $videoEvidenceBuild -Destination $reports
-        foreach($name in @('smoothing/aa-option.json','smoothing/aa-initial-home.png','smoothing/aa-menu-on.png',
-                          'smoothing/aa-menu-off.png','smoothing/aa-menu-restored.png','smoothing/aa-576p-rejected.png',
-                          'options/title-options.json','options/title-options-load.json','options/options-restored.png',
-                          'options/options-delete-default.png','unsupported/title-options-unsupported.json','unsupported/options-unsupported.png')){
-            $source=Get-Item -LiteralPath (Join-Path $videoEvidenceRoot $name)
-            if($source.PSIsContainer -or $source.Length -le 0){throw "Missing or empty video-options evidence: $name"}
-            Copy-Item -LiteralPath $source.FullName -Destination (Join-Path $reports ('video-options-'+$name.Replace('/','-')))
-        }
-    }
+    Copy-VideoEvidence (Join-Path $out 'video-options') $reports $commit $version $tag ([IO.Path]::GetFileName($nkit)) $nkitInfo.compactSha256
     $terrainEvidenceAssets=@()
     $terrainEvidenceRoot=Join-Path $out 'terrain-materials'
     $terrainEvidenceBuild=Join-Path $terrainEvidenceRoot 'terrain-materials-build.json'
