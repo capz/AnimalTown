@@ -437,6 +437,15 @@
         "Delayed terrain loading cannot silently consume the next shortcut.",
         "Water animation, refraction and image acceptance remain unchanged."
       ]
+    },
+    {
+      "id": "terrain-and-villager-aram-reclaim-20261126",
+      "lines": [
+        "Free unused terrain and villager memory during play.",
+        "Baking returns unused terrain blocks to the ARAM allocator.",
+        "Terrain archives can span smaller free blocks during a rebuild.",
+        "A restored villager model releases its redundant ARAM copy."
+      ]
     }
   ]
 }

@@ -66,12 +66,12 @@ envelope requests the original model/instances asynchronously; no villager is re
 The selected player's species remains shared and pinned even if its NPC is far
 away. ARAM exhaustion leaves the affected model warm and retries later.
 
-The model backing budget is 4 MiB, including snapshots retained after restore.
+The cold model backing budget is 4 MiB.
 Admission checks the rounded package size against that budget, the global ARAM
 free space, the largest free block and allocation-slot count. At least 512 KiB
 and eight allocator slots are left for other owners. No model demotion occurs
-before the terrain's 8 MiB backing exists, preserving space for initial terrain
-baking as well as the separate audio/platform reservation.
+before the terrain bake completes. The bake reserves its full working budget
+and returns unused blocks before model paging starts.
 
 Only one model transition is owned at a time. Demanded models restore before
 optional stores. Actual drawable/destination users come first, then hidden
@@ -91,10 +91,11 @@ selected player, current and destination rooms, and required doorway endpoints
 stay pinned; a smaller successful reservation does not erase a larger waiting
 request.
 
-Hot backing snapshots can be released to admit another cold model. A cold
-model's only backing is never discarded. Disabling the internal manager restores
-all models before releasing their ARAM copies. Terrain cache suspension and warm
-prefetch are automatic; their obsolete debug controls no longer affect paging.
+A completed restore releases its ARAM snapshot after publishing the resident
+model. A later demotion copies the same package back to ARAM. Failed and
+canceled restores preserve the backing while the model is cold. Disabling the
+internal manager restores all cold models and releases their snapshots as each
+restore completes. Terrain cache suspension and warm prefetch are automatic.
 
 Returning to the title stops new admissions, cancels and drains the owned model
 transition, and observes its terminal result before disposing instances and

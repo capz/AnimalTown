@@ -136,10 +136,17 @@ internal static class ModelResidencyChecks
         check(manager.SnapshotBytes==65536&&manager.MaxAdvanceUs==7&&manager.WorkSteps==2,"paging records copy volume and measured indivisible step cost");
         state.Town.Residents[1].Space=1;manager.Require(state,doors,Clock.Timestamp);Pump(manager);
         check(!manager.ReadyForSpace(state,doors,1)&&manager.PendingSpecies==1,"a cold destination cannot authorize native drawing or portal commit");
+        check(manager.ColdBytes==65536&&manager.BackingReleases==0,"a model in flight keeps its only ARAM package");
         Drain(manager);check(manager.ReadyForSpace(state,doors,1)&&manager.Restores==1&&models[1].AnimationPosition==37,"restore retains wrapper/playback identity and makes the complete space drawable");
-        check(manager.ColdBytes==65536,"restored snapshots still count against the cold budget");
+        check(manager.ColdBytes==0&&manager.BackingReleases==1&&Aram.AllocationCount==1,"a completed restore releases its redundant ARAM allocation");
+        state.Town.Residents[1].Space=17;
+        for(int i=2;i<models.Length;i++)state.Town.Residents[i].Space=1;
+        manager.Require(state,doors,Clock.Timestamp);
+        Clock.Timestamp+=ModelResidency.IdleDelayUs+1;
+        Pump(manager,true);Drain(manager);
+        check(!manager.Ready(1)&&manager.ColdBytes==65536&&manager.SnapshotBytes==131072,"a later demotion creates a fresh complete ARAM snapshot");
         manager.Enabled=false;manager.Require(state,doors,Clock.Timestamp);Pump(manager);
-        check(manager.ColdBytes==0&&manager.BackingReleases==1,"disable releases backing only after every required resource is resident");
+        Drain(manager);check(manager.ColdBytes==0&&manager.BackingReleases==2,"disabling paging restores the model and reclaims its second snapshot");
         manager.Require(state,doors,Clock.Timestamp);Pump(manager);long allocated=GC.GetAllocatedBytesForCurrentThread();
         for(int i=0;i<10000;i++){manager.Require(state,doors,Clock.Timestamp);Pump(manager);}
         check(GC.GetAllocatedBytesForCurrentThread()==allocated,"steady demand and completed residency polling allocate nothing");

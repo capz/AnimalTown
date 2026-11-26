@@ -15,6 +15,8 @@
 #define TA_KINDS 110
 #define TA_PAGE_PARTS (TA_KINDS*2)
 #define TA_BYTES (8*1024*1024)
+#define TA_ARAM_BLOCK (256*1024)
+#define TA_ARAM_BLOCKS (TA_BYTES/TA_ARAM_BLOCK)
 #define TA_CACHE (1024*1024)
 #define TA_BLOCK 1024
 typedef struct {int offset,vertices,indices,kind,format;uint32_t color;int uniform,cache,users;} TaPart;
@@ -22,14 +24,15 @@ static int ta_meta[TA_PARTS/TA_META_PARTS],ta_first[TA_SECTIONS+1],ta_triangles[
 static unsigned char ta_used[TA_CACHE/TA_BLOCK];
 /* During baking ta_stage is one hold on ta_cache, not another allocation.
  * Published views only exist after sealing, when that hold has been dropped. */
-static int ta_store,ta_cache,ta_stage,ta_meta_count,ta_bytes,ta_tail,ta_parts,ta_sections,ta_completed,ta_live,ta_peak;
+static int ta_store[TA_ARAM_BLOCKS],ta_store_count;
+static int ta_cache,ta_stage,ta_meta_count,ta_bytes,ta_tail,ta_parts,ta_sections,ta_completed,ta_live,ta_peak;
 static unsigned ta_bindings,ta_reads;static bool ta_sealed;
 static uint32_t ta_sync_reads,ta_sync_us,ta_sync_bytes;
 extern uint32_t animaltown_profile_clock(void);
 /* Runtime travel/prefetch and cold-resume binds remain pending across calls.
  * The broker owns the
  * cache/ARAM transfer holds; a separate view hold prevents handle reuse. */
-static int ta_request,ta_pending_view,ta_pending_entry=-1,ta_pending_block,ta_pending_blocks;
+static int ta_request,ta_pending_view,ta_pending_entry=-1,ta_pending_block,ta_pending_blocks,ta_pending_bytes;
 static TaPart *ta_part(int index){
     if(index<0||index>=ta_parts)return NULL;
     Resource *r=find(ta_meta[index/TA_META_PARTS],BUFFER);return r?(TaPart*)r->data+index%TA_META_PARTS:NULL;
@@ -42,16 +45,37 @@ static void terrain_detach(Resource *r){
     memset(ta_used+p->cache,0,(size_t)blocks);ta_live-=blocks*TA_BLOCK;p->cache=-1;
 }
 static int ta_buffer(int bytes){int token=create(BUFFER,bytes,32);if(token)ta_bytes+=bytes;return token;}
+static int ta_release_storage(int keep){
+    while(ta_store_count>keep){
+        int token=ta_store[ta_store_count-1];
+        if(dnd_aram_release(token)||dnd_aram_dispose(token))return -1;
+        ta_store[--ta_store_count]=0;
+    }
+    return 1;
+}
+static int ta_transfer_size(int offset,int count){
+    int available=TA_ARAM_BLOCK-offset%TA_ARAM_BLOCK;
+    return count<available?count:available;
+}
+static int ta_transfer(int offset,int buffer,int destination,int count,int write){
+    return dnd_aram_request_native(ta_store[offset/TA_ARAM_BLOCK],offset%TA_ARAM_BLOCK,
+        buffer,destination,count,write,0);
+}
 static int ta_dma(int offset,int buffer,int destination,int count,int write){
-    int request=dnd_aram_request_native(ta_store,offset,buffer,destination,count,write,0);
-    if(request<1)return -1;
-    int rc;do{rc=dnd_aram_request_poll(request);}while(rc==0);
-    return rc==1?1:-1;
+    while(count>0){
+        int bytes=ta_transfer_size(offset,count);
+        int request=ta_transfer(offset,buffer,destination,bytes,write);
+        if(request<1)return -1;
+        int rc;do{rc=dnd_aram_request_poll(request);}while(rc==0);
+        if(rc!=1)return -1;
+        offset+=bytes;destination+=bytes;count-=bytes;
+    }
+    return 1;
 }
 static void ta_clear_pending(bool keep_blocks){
     if(!keep_blocks&&ta_pending_blocks)memset(ta_used+ta_pending_block,0,(size_t)ta_pending_blocks);
     int token=ta_pending_view,index=(token&1023)-1;
-    ta_request=ta_pending_view=ta_pending_block=ta_pending_blocks=0;ta_pending_entry=-1;
+    ta_request=ta_pending_view=ta_pending_block=ta_pending_blocks=ta_pending_bytes=0;ta_pending_entry=-1;
     if(token>0&&index>=0&&index<SLOTS){
         Resource *r=&slots[index];
         if(r->kind==MESH&&r->generation==(token>>10)&&r->holds>0){
@@ -61,9 +85,11 @@ static void ta_clear_pending(bool keep_blocks){
 }
 int animaltown_terrain_cancel_bind(void){
     if(dnd_device_active()||dnd_raw_depth())return -1;
-    if(!ta_request)return 1;
-    (void)dnd_aram_request_cancel(ta_request);
-    int rc=dnd_aram_request_poll(ta_request);if(rc==0)return 0;
+    if(!ta_pending_view)return 1;
+    if(ta_request){
+        (void)dnd_aram_request_cancel(ta_request);
+        if(dnd_aram_request_poll(ta_request)==0)return 0;
+    }
     ta_clear_pending(false);return 1;
 }
 /* Unlike reset, suspension preserves the immutable archive and its metadata.
@@ -111,7 +137,7 @@ static int ta_reset_failure(const char *reason,int bytes,int result){
     return -2;
 }
 int animaltown_terrain_reset(int count){
-    if(dnd_device_active()||dnd_raw_depth()||count<0||count>TA_SECTIONS||ta_request)return -1;
+    if(dnd_device_active()||dnd_raw_depth()||count<0||count>TA_SECTIONS||ta_pending_view)return -1;
     for(int i=0;i<SLOTS;i++)if(slots[i].terrain_parent)return -1;
     if(ta_stage){(void)dnd_buffer_unhold(ta_stage);ta_stage=0;}
     int reusable=0;
@@ -121,15 +147,24 @@ int animaltown_terrain_reset(int count){
         else if(dnd_draw_release(ta_cache))return -1;
     }
     for(int i=0;i<ta_meta_count;i++)if(dnd_draw_release(ta_meta[i]))return -1;
-    if(ta_store){if(dnd_aram_release(ta_store)||dnd_aram_dispose(ta_store))return -1;}
+    if(ta_release_storage(0)!=1)return -1;
     memset(ta_first,0,sizeof(ta_first));memset(ta_triangles,0,sizeof(ta_triangles));memset(ta_used,0,sizeof(ta_used));
-    ta_store=ta_stage=ta_meta_count=ta_tail=ta_parts=ta_completed=ta_live=ta_peak=0;
+    ta_stage=ta_meta_count=ta_tail=ta_parts=ta_completed=ta_live=ta_peak=0;
     ta_cache=reusable;ta_bytes=reusable?TA_CACHE:0;
     ta_bindings=ta_reads=ta_sync_reads=ta_sync_us=ta_sync_bytes=0;ta_sections=count;ta_sealed=false;
     if(!count)return 1;
-    ta_store=dnd_aram_allocate(TA_BYTES);if(!ta_store){ta_reset_failure("aram-allocate",TA_BYTES,0);(void)animaltown_terrain_reset(0);return -2;}
-    int retained=dnd_aram_retain(ta_store);
-    if(retained){ta_reset_failure("aram-retain",TA_BYTES,retained);(void)dnd_aram_dispose(ta_store);ta_store=0;(void)animaltown_terrain_reset(0);return -2;}
+    /* Reserve the full bake budget before writing any mesh. Independent blocks
+     * fit around cold model snapshots and can return their unused tail at seal. */
+    while(ta_store_count<TA_ARAM_BLOCKS){
+        int token=dnd_aram_allocate(TA_ARAM_BLOCK);
+        if(!token){ta_reset_failure("aram-allocate",TA_ARAM_BLOCK,0);(void)animaltown_terrain_reset(0);return -2;}
+        int retained=dnd_aram_retain(token);
+        if(retained){
+            ta_reset_failure("aram-retain",TA_ARAM_BLOCK,retained);
+            (void)dnd_aram_dispose(token);(void)animaltown_terrain_reset(0);return -2;
+        }
+        ta_store[ta_store_count++]=token;
+    }
     if(!ta_cache)ta_cache=ta_buffer(TA_CACHE);
     if(!ta_cache){ta_reset_failure("cache-buffer",TA_CACHE,0);(void)animaltown_terrain_reset(0);return -2;}
     /* The cache is unused until sealing. Borrow its first 64 KiB for DMA
@@ -207,7 +242,11 @@ int animaltown_terrain_complete(int section){
     if(dnd_device_active()||dnd_raw_depth()||ta_sealed||section<0||section!=ta_completed||section>=ta_sections)return -1;
     int rc=ta_coalesce(section);if(rc!=1)return rc;
     ta_first[++ta_completed]=ta_parts;
-    if(ta_completed==ta_sections){ta_sealed=true;(void)dnd_buffer_unhold(ta_stage);ta_stage=0;}
+    if(ta_completed==ta_sections){
+        int used=(ta_tail+TA_ARAM_BLOCK-1)/TA_ARAM_BLOCK;
+        if(ta_release_storage(used)!=1)return -1;
+        ta_sealed=true;(void)dnd_buffer_unhold(ta_stage);ta_stage=0;
+    }
     return 1;
 }
 int animaltown_terrain_info(int section,int kind){
@@ -249,7 +288,7 @@ static int ta_free_block(int blocks){
 }
 int animaltown_terrain_bind(int token,int index){
     Resource *r=find(token,MESH);TaPart *p=ta_part(index);Resource *cache=find(ta_cache,BUFFER);
-    if(dnd_device_active()||dnd_raw_depth()||!ta_sealed||ta_request||!r||r->holds||r->geometry||r->commands||r->allocation||r->bytes!=1||!p||!cache)return -1;
+    if(dnd_device_active()||dnd_raw_depth()||!ta_sealed||ta_pending_view||!r||r->holds||r->geometry||r->commands||r->allocation||r->bytes!=1||!p||!cache)return -1;
     if(r->terrain_entry==index+1)return 1;
     if(p->cache<0){
         int blocks=(ta_size(p)+TA_BLOCK-1)/TA_BLOCK,first=ta_free_block(blocks);if(first<0)return -2;
@@ -261,38 +300,54 @@ int animaltown_terrain_bind(int token,int index){
     }
     return ta_bind_view(r,p,index);
 }
-/* Polling publication for resume/prefetch: no wait loop and no partial alias.
- * An incomplete request leaves its view's previous geometry unchanged. */
-int animaltown_terrain_bind_step(int token,int index){
-    Resource *r=find(token,MESH);TaPart *p=ta_part(index);Resource *cache=find(ta_cache,BUFFER);
-    if(dnd_device_active()||dnd_raw_depth()||!ta_sealed)return -1;
-    if(ta_request){
-        if(token!=ta_pending_view||index!=ta_pending_entry)return 0;
-        int rc=dnd_aram_request_poll(ta_request);if(rc==0)return 0;
-        /* A terminal poll releases the DMA owner holds. Revalidate tokens
-         * before publishing; an externally retired buffer may now be gone. */
-        r=find(token,MESH);p=ta_part(index);cache=find(ta_cache,BUFFER);
-        if(rc<0||!r||!p||!cache){ta_clear_pending(false);return -3;}
-        int block=ta_pending_block,blocks=ta_pending_blocks;
-        ta_clear_pending(true);
-        r=find(token,MESH);if(!r){memset(ta_used+block,0,(size_t)blocks);return -1;}
-        p->cache=block;ta_live+=blocks*TA_BLOCK;if(ta_live>ta_peak)ta_peak=ta_live;ta_reads++;
-        return ta_bind_view(r,p,index);
+static int ta_advance_bind(int token,int index,TaPart *p){
+    int size=ta_size(p);
+    while(ta_pending_bytes<size){
+        int offset=p->offset+ta_pending_bytes;
+        int bytes=ta_transfer_size(offset,size-ta_pending_bytes);
+        if(!ta_request){
+            int dest=ta_pending_block*TA_BLOCK+ta_pending_bytes;
+            int request=ta_transfer(offset,ta_cache,dest,bytes,0);
+            if(request==-EAGAIN)return 0;
+            if(request<1){ta_clear_pending(false);return -3;}
+            ta_request=request;
+        }
+        int rc=dnd_aram_request_poll(ta_request);
+        if(rc==0)return 0;
+        ta_request=0;
+        /* A terminal poll releases the DMA holds. Check the owners before
+         * requesting a second block or publishing the complete mesh. */
+        if(rc!=1||!find(token,MESH)||!find(ta_cache,BUFFER)){ta_clear_pending(false);return -3;}
+        ta_pending_bytes+=bytes;
     }
+    int block=ta_pending_block,blocks=ta_pending_blocks;
+    ta_clear_pending(true);
+    Resource *r=find(token,MESH);
+    if(!r){memset(ta_used+block,0,(size_t)blocks);return -1;}
+    p->cache=block;ta_live+=blocks*TA_BLOCK;if(ta_live>ta_peak)ta_peak=ta_live;ta_reads++;
+    return ta_bind_view(r,p,index);
+}
+/* Polling publication for resume/prefetch. The view keeps its former mesh
+ * until every part of a transfer, including a split at an ARAM boundary, lands. */
+int animaltown_terrain_bind_step(int token,int index){
+    if(dnd_device_active()||dnd_raw_depth()||!ta_sealed)return -1;
+    TaPart *p=ta_part(index);
+    if(ta_pending_view){
+        if(token!=ta_pending_view||index!=ta_pending_entry)return 0;
+        if(!p)return animaltown_terrain_cancel_bind()==0?0:-3;
+        return ta_advance_bind(token,index,p);
+    }
+    Resource *r=find(token,MESH),*cache=find(ta_cache,BUFFER);
     if(!r||r->holds||r->geometry||r->commands||r->allocation||r->bytes!=1||!p||!cache)return -1;
     if(r->terrain_entry==index+1)return 1;
     if(p->cache>=0)return ta_bind_view(r,p,index);
     int blocks=(ta_size(p)+TA_BLOCK-1)/TA_BLOCK,first=ta_free_block(blocks);if(first<0)return -2;
-    int request=dnd_aram_request_native(ta_store,p->offset,ta_cache,first*TA_BLOCK,ta_size(p),0,0);
-    if(request==-EAGAIN)return 0;
-    if(request<1)return -3;
     memset(ta_used+first,1,(size_t)blocks);r->holds++;
-    ta_request=request;ta_pending_view=token;ta_pending_entry=index;ta_pending_block=first;ta_pending_blocks=blocks;
-    /* Start the first broker chunk now rather than waiting a whole frame.
-     * This reentry can only take the pending branch; it never waits on DMA. */
-    return animaltown_terrain_bind_step(token,index);
+    ta_pending_view=token;ta_pending_entry=index;ta_pending_block=first;ta_pending_blocks=blocks;
+    return ta_advance_bind(token,index,p);
 }
 int animaltown_terrain_stat(int kind){
     if(kind==11){int largest=0,run=0;for(unsigned i=0;i<sizeof(ta_used);i++){run=ta_used[i]?0:run+TA_BLOCK;if(run>largest)largest=run;}return ta_cache?largest:0;}
-    return kind==0?ta_bytes:kind==1?ta_parts:kind==2?ta_meta_count:kind==3?ta_completed:kind==4?(int)ta_bindings:kind==5?ta_tail:kind==6?(int)ta_reads:kind==7?ta_peak:kind==8?(ta_cache?TA_CACHE:0):kind==9?(ta_request?1:0):kind==10?ta_live:kind==12?(int)ta_sync_reads:kind==13?(int)ta_sync_us:kind==14?(int)ta_sync_bytes:-1;
+    if(kind==15)return ta_store_count*TA_ARAM_BLOCK;
+    return kind==0?ta_bytes:kind==1?ta_parts:kind==2?ta_meta_count:kind==3?ta_completed:kind==4?(int)ta_bindings:kind==5?ta_tail:kind==6?(int)ta_reads:kind==7?ta_peak:kind==8?(ta_cache?TA_CACHE:0):kind==9?(ta_pending_view?1:0):kind==10?ta_live:kind==12?(int)ta_sync_reads:kind==13?(int)ta_sync_us:kind==14?(int)ta_sync_bytes:-1;
 }
