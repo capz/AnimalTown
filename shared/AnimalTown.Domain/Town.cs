@@ -111,6 +111,8 @@ public sealed partial class Town
     }
     private void Building(int x,int z,int w,int h)
     { for(int j=0;j<h;j++)for(int i=0;i<w;i++)Tiles[(z+j)*Width+x+i]=(byte)Terrain.Building; }
+    // A generation-only safety clearing, retained so existing town seeds keep
+    // their landscape. Player plot ownership/placement uses GameState instead.
     public bool InReserve(int x,int z)=>x>=HouseX&&x<HouseX+15&&z>=HouseZ&&z<HouseZ+13;
     public bool ValidPlot(int x,int z)
     {
@@ -136,4 +138,15 @@ public sealed partial class Town
     internal int ResidentOwner=>ActiveProfile<GameState.ProfileCount?ActiveProfile:Math.Clamp(Jobs.Trip.ResidentAnchor,0,GameState.ProfileCount-1);
     public void RemoveGround(int index)
     { int last=GroundCount-1;LostAndFound.RemoveGroundAt(index,last);var old=Ground[index];Ground[index]=Ground[last];Ground[last]=old;GroundCount=last;NotifyCastersChanged(); }
+    // Onboarding pauses world mutation and records tree-removal indices. Undo
+    // them in reverse order to restore the exact compact table and custody
+    // indices, without cloning the town or allocating another set of objects.
+    internal void RestoreRemovedTree(int index)
+    {
+        int last=GroundCount;
+        if(last>=Ground.Length||(uint)index>(uint)last||!TreeDrawBatch.IsTree(Ground[last])||Ground[last].RecoveryId!=0)
+            throw new InvalidOperationException("Invalid draft tree restoration");
+        LostAndFound.RestoreGroundAt(index,last);
+        var tree=Ground[last];Ground[last]=Ground[index];Ground[index]=tree;GroundCount++;NotifyCastersChanged();
+    }
 }

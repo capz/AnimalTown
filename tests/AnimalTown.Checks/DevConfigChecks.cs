@@ -3,14 +3,14 @@ internal static class DevConfigChecks
 {
     internal static void Run(Action<bool,string> check)
     {
-        check(new DevConfig().Values[DevConfig.FullResolutionAaIndex]==0,"full-resolution AA defaults off");
-        var oldV3=new DevConfig();oldV3.Values[DevConfig.FullResolutionAaIndex]=0;
+        check(!DevConfig.IsSetting(DevConfig.RetiredFullResolutionAaIndex)&&new DevConfig().LegacyEdgeSmoothing==null,"edge smoothing is no longer a debug setting");
+        var oldV3=new DevConfig();
         byte[] v3=oldV3.Encode().Take(40).ToArray();v3[3]=3;uint checksum=2166136261;
         for(int i=0;i<36;i++)checksum=unchecked((checksum^v3[i])*16777619);
         for(int i=0;i<4;i++)v3[36+i]=(byte)(checksum>>(i*8));
-        check(DevConfig.Decode(v3).Values[DevConfig.FullResolutionAaIndex]==0,"version-three settings migrate with AA off");
-        var on=new DevConfig();on.Values[DevConfig.FullResolutionAaIndex]=1;
-        check(DevConfig.Decode(on.Encode()).Values[DevConfig.FullResolutionAaIndex]==1,"AA preference survives restart");
+        check(DevConfig.Decode(v3).LegacyEdgeSmoothing==null,"pre-AA debug versions cannot override the new enabled default");
+        var retired=new DevConfig();retired.Values[DevConfig.RetiredFullResolutionAaIndex]=1;
+        check(retired.Encode()[4+DevConfig.RetiredFullResolutionAaIndex]==0&&DevConfig.Decode(retired.Encode()).LegacyEdgeSmoothing==null,"new debug records never persist edge smoothing");
         var defaults=new DevConfig(7);check(defaults.RuntimeMode==7,"dev defaults preserve disc runtime profile");
         check(defaults.Values[DevConfig.GroundMipBandsIndex]==0,"terrain mip bands are opt-in");
         check(!DevConfig.IsSetting(DevConfig.RetiredTerrainCacheIndex)&&!DevConfig.IsSetting(DevConfig.RetiredWarmTerrainPrefetchIndex),"automatic indoor terrain reclamation has no debug setting");
@@ -24,7 +24,7 @@ internal static class DevConfigChecks
         check(previous.Values[DevConfig.RetiredTerrainCacheIndex]==0,"version-two files preserve the retired terrain padding");
         for(int row=0;row<DevConfig.Count;row++)if(DevConfig.IsSetting(row))defaults.Adjust(row,1);
         var encoded=defaults.Encode();var restored=DevConfig.Decode(encoded);
-        check(encoded[3]==6&&encoded.Length==44&&restored.Values[DevConfig.RetiredTerrainCacheIndex]==0&&restored.Values[DevConfig.GroundMipBandsIndex]==1&&restored.Values[DevConfig.RetiredWarmTerrainPrefetchIndex]==0,"active diagnostics persist while the retired terrain toggle stays unselectable");
+        check(encoded[3]==7&&encoded.Length==44&&restored.Values[DevConfig.RetiredTerrainCacheIndex]==0&&restored.Values[DevConfig.GroundMipBandsIndex]==1&&restored.Values[DevConfig.RetiredWarmTerrainPrefetchIndex]==0,"active diagnostics persist while retired toggles stay unselectable");
         check(new DevConfig().Values[DevConfig.RetiredWarmTerrainPrefetchIndex]==0&&legacy.Values[DevConfig.RetiredWarmTerrainPrefetchIndex]==0,"retired warm-prefetch byte stays readable on new and migrated cards");
         check(defaults.ProfilingMode==3&&restored.ProfilingMode==2&&encoded[4+DevConfig.ProfilingModeIndex]==0,"capture mode is session only; historic overlay preference still loads");
         check(defaults.Values.SequenceEqual(restored.Values),"all dev options survive their own save record");
@@ -41,7 +41,7 @@ internal static class DevConfigChecks
         check(original.Values[0]==1&&original.Values[20]==125&&original.Values[23]==4&&original.Values[18]==2,"v1 debug file keeps existing options during migration");
         var fixedDefaults=new DevConfig();
         check(fixedDefaults.RuntimeMode==6,"productive waits and trust frame clear stay enabled");
-        foreach(int option in new[]{1,4,5,6,9,10,12,13,14,15,20,27,28,29,32}){
+        foreach(int option in new[]{1,4,5,6,9,10,12,13,14,15,20,27,28,29,30,32}){
             int beforeOption=fixedDefaults.Values[option];
             fixedDefaults.Adjust(option,1);fixedDefaults.Reset(option);
             check(!DevConfig.IsSetting(option)&&fixedDefaults.Values[option]==beforeOption,"retired settings cannot be selected or changed");
@@ -76,12 +76,19 @@ internal static class DevConfigChecks
         rejected=false;try{DevConfig.Decode(v4);}catch(IOException){rejected=true;}check(rejected,"v4 retains strict zero padding after the AA byte");
         v4[35]=0;v4[34]=1;Rehash(v4,36);
         var fromV4=DevConfig.Decode(v4);
-        check(fromV4.Values[DevConfig.FullResolutionAaIndex]==1&&fromV4.Values[DevConfig.GroundMipBandsIndex]==0,"v4 preserves AA and defaults the new mip diagnostic off");
+        check(fromV4.LegacyEdgeSmoothing==true&&fromV4.Values[DevConfig.RetiredFullResolutionAaIndex]==0&&fromV4.Values[DevConfig.GroundMipBandsIndex]==0,"v4 exposes old AA only as migration input and defaults the new mip diagnostic off");
         v4[35]=0;v4[34]=2;Rehash(v4,36);
         rejected=false;try{DevConfig.Decode(v4);}catch(IOException){rejected=true;}check(rejected,"AA setting rejects unsupported modes even with a valid checksum");
         var v5=new DevConfig().Encode().Take(40).ToArray();v5[3]=5;v5[35]=2;Rehash(v5,36);
         rejected=false;try{DevConfig.Decode(v5);}catch(IOException){rejected=true;}check(rejected,"mip band toggle rejects unsupported modes with a valid checksum");
         v5[35]=1;Rehash(v5,36);check(DevConfig.Decode(v5).Values[DevConfig.RetiredWarmTerrainPrefetchIndex]==0,"published v5 settings preserve the retired warm-prefetch byte");
+        foreach(int version in new[]{4,5,6})foreach(bool enabled in new[]{false,true}){
+            byte[] old=new DevConfig().Encode();if(version<6)Array.Resize(ref old,40);old[3]=(byte)version;old[34]=(byte)(enabled?1:0);Rehash(old,version<6?36:40);
+            var imported=DevConfig.Decode(old);check(imported.LegacyEdgeSmoothing==enabled,"every published AA-bearing debug version preserves both explicit choices for migration");
+            check(imported.Encode()[34]==0&&DevConfig.Decode(imported.Encode()).LegacyEdgeSmoothing==null,"resaved diagnostics retire the migrated AA field");
+        }
+        var newReserved=new DevConfig().Encode();newReserved[34]=1;Rehash(newReserved,40);
+        rejected=false;try{DevConfig.Decode(newReserved);}catch(IOException){rejected=true;}check(rejected,"retired AA byte cannot reactivate a debug setting in current records");
         rejected=false;try{DevConfig.Decode(new byte[8]);}catch(IOException){rejected=true;}check(rejected,"truncated dev config rejected");
     }
     private static void UniformUiGrain(Action<bool,string> check)
