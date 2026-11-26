@@ -261,6 +261,12 @@ def testing_menu_options():
 def villager_visuals():
     """Real menu/model/animation swaps, with a disposable town and saved records."""
     import re
+    sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'docs/performance'))
+    from avi_guest_clock import AviGuestClock
+    clock=AviGuestClock(user/'Dump/Frames',track_presentations=True)
+    # Options saves and model paging can outlast a wall-timed pulse. Wait for
+    # actual guest presentations on both sides of each menu input edge.
+    def tap(button):press_presented(button,clock)
     start_game(True,'visuals-start');set_debug_visibility(True)
     before=committed_card_sequence(root/'MemoryCardA.USA.raw',details=True)
     report={'scenario':'villager-visuals','passed':False,'swaps':[],'physical_hardware':False}
@@ -279,22 +285,22 @@ def villager_visuals():
             time.sleep(.2)
         screenshot('visuals-timeout.png');raise AssertionError('Missing visual marker: '+pattern)
     def choose(actor,appearance):
-        begin=len(runtime_log_text());press('START');press('R')
+        begin=len(runtime_log_text());tap('START');tap('R')
         row=testing_menu_row('VillagerVisualOption');count=testing_menu_count()
-        for _ in range(min(row,count-row)):press('D_DOWN' if row<=count//2 else 'D_UP')
-        press('A');marker(r'VILLAGER VISUAL MENU actor 0 ',begin)
-        for _ in range(actor):press('D_RIGHT')
-        press('D_DOWN')
+        for _ in range(min(row,count-row)):tap('D_DOWN' if row<=count//2 else 'D_UP')
+        tap('A');marker(r'VILLAGER VISUAL MENU actor 0 ',begin)
+        for _ in range(actor):tap('D_RIGHT')
+        tap('D_DOWN')
         for _ in range(13):
             events=re.findall(r'VILLAGER VISUAL MENU actor (\d+) candidate (-?\d+)',runtime_log_text()[begin:])
             if events and tuple(map(int,events[-1]))==(actor,appearance):break
-            press('D_RIGHT')
+            tap('D_RIGHT')
         else:raise AssertionError('Cannot select unused appearance '+str(appearance))
         screenshot('visuals-selected-'+str(actor)+'-'+str(appearance)+'.png')
-        press('D_DOWN');apply_at=len(runtime_log_text());press('A')
-        marker(r'VILLAGER VISUAL APPLIED actor '+str(actor)+' appearance '+str(appearance)+r'\b',apply_at,retry=lambda:press('A'))
+        tap('D_DOWN');apply_at=len(runtime_log_text());tap('A')
+        marker(r'VILLAGER VISUAL APPLIED actor '+str(actor)+' appearance '+str(appearance)+r'\b',apply_at,retry=lambda:tap('A'))
         screenshot('visuals-applied-'+str(actor)+'-'+str(appearance)+'.png')
-        press('B');press('B');time.sleep(2)
+        tap('B');tap('B');time.sleep(2)
         screenshot('visuals-world-'+str(actor)+'-'+str(appearance)+'.png')
         report['swaps'].append({'actor':actor,'appearance':appearance})
     for appearance in range(6,12):
@@ -2867,7 +2873,7 @@ DumpCodec = ffv1
 [Hacks]
 EFBToTextureEnable = False
 ''')
-if '--profile' in sys.argv or '--interaction-profile' in sys.argv or '--runtime-profile' in sys.argv or '--terrain-scroll' in sys.argv or '--lighting' in sys.argv or '--actor-shadows' in sys.argv or '--movement-profile' in sys.argv or '--stream-travel' in sys.argv or '--submissions' in sys.argv or '--aram-residency' in sys.argv or '--player-chat' in sys.argv or '--jobs' in sys.argv:
+if '--profile' in sys.argv or '--interaction-profile' in sys.argv or '--runtime-profile' in sys.argv or '--terrain-scroll' in sys.argv or '--lighting' in sys.argv or '--actor-shadows' in sys.argv or '--movement-profile' in sys.argv or '--stream-travel' in sys.argv or '--submissions' in sys.argv or '--aram-residency' in sys.argv or '--player-chat' in sys.argv or '--jobs' in sys.argv or '--villager-visuals' in sys.argv:
     config=user/'Config'/'Dolphin.ini'
     config.write_text(config.read_text()+'\n[Movie]\nDumpFrames = True\nDumpFramesSilent = True\n')
     config=user/'Config'/'GFX.ini'
