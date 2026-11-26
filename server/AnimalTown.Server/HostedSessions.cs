@@ -15,6 +15,23 @@ sealed partial class GameDatabase
         await using var c = await source.OpenConnectionAsync();
         await using var t = await c.BeginTransactionAsync();
         await LockTown(c, t, host);
+        await using(var opened=Cmd(c,t,"SELECT EXISTS(SELECT 1 FROM gates WHERE host=$1 AND generation=$2 AND expires>clock_timestamp())",host,openedGate))
+            if(await opened.ExecuteScalarAsync() is not true)throw new GameError(403,"gate-closed");
+        long? reuse=null;
+        await using(var current=Cmd(c,t,"SELECT gate,epoch,worker,expires>clock_timestamp() FROM hosted_towns WHERE host=$1",host))
+        await using(var row=await current.ExecuteReaderAsync())
+        {
+            if(await row.ReadAsync()&&row.GetBoolean(3))
+            {
+                if(row.GetGuid(2)!=worker)throw new GameError(503,"town-worker-busy");
+                if(row.GetGuid(0)==openedGate)reuse=row.GetInt64(1);
+            }
+        }
+        if(reuse is long existing)
+        {
+            await using var renew=Cmd(c,t,"UPDATE hosted_towns SET expires=clock_timestamp()+interval '10 seconds' WHERE host=$1",host);
+            await renew.ExecuteNonQueryAsync();await t.CommitAsync();return checked((uint)existing);
+        }
         await using var cmd = Cmd(c, t, """
             INSERT INTO hosted_towns(host,gate,epoch,worker,expires)
             VALUES($1,$2,nextval('hosted_epoch'),$3,clock_timestamp()+interval '10 seconds')
@@ -69,9 +86,11 @@ sealed partial class GameDatabase
         await using (var clean = Cmd(c, t, "DELETE FROM hosted_actors WHERE host=$1 AND expires<=clock_timestamp()", authority.Host))
             await clean.ExecuteNonQueryAsync();
         HostedSeat seat = arrival;
+        long joinedCursor;
+        await using(var head=Cmd(c,t,"SELECT cursor FROM hosted_towns WHERE host=$1",authority.Host))joinedCursor=(long)(await head.ExecuteScalarAsync())!;
         bool present = false;
         var used = new bool[3];
-        await using (var read = Cmd(c, t, "SELECT player,slot,room,x,z,facing,visit FROM hosted_actors WHERE host=$1", authority.Host))
+        await using (var read = Cmd(c, t, "SELECT player,slot,room,x,z,facing,visit,joined_cursor FROM hosted_actors WHERE host=$1", authority.Host))
         await using (var rows = await read.ExecuteReaderAsync())
             while (await rows.ReadAsync())
             {
@@ -82,6 +101,7 @@ sealed partial class GameDatabase
                         ? new((byte)slot, rows.GetInt32(2), rows.GetFloat(3), rows.GetFloat(4), (ushort)rows.GetInt32(5))
                         : arrival with { Slot = (byte)slot };
                     present = true;
+                    if(rows.GetGuid(6)==authority.Visit)joinedCursor=rows.GetInt64(7);
                 }
             }
         if (!present && authority.Host != authority.Player)
@@ -91,13 +111,13 @@ sealed partial class GameDatabase
             seat = arrival with { Slot = (byte)slot };
         }
         await using (var write = Cmd(c, t, """
-            INSERT INTO hosted_actors(host,player,slot,visit,device,generation,connection,room,x,z,facing,expires)
-            VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,clock_timestamp()+interval '60 seconds')
+            INSERT INTO hosted_actors(host,player,slot,visit,device,generation,connection,room,x,z,facing,joined_cursor,expires)
+            VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,clock_timestamp()+interval '60 seconds')
             ON CONFLICT(host,player) DO UPDATE SET slot=excluded.slot,visit=excluded.visit,device=excluded.device,
               generation=excluded.generation,connection=excluded.connection,room=excluded.room,
-              x=excluded.x,z=excluded.z,facing=excluded.facing,expires=excluded.expires,updated=clock_timestamp()
+              x=excluded.x,z=excluded.z,facing=excluded.facing,joined_cursor=excluded.joined_cursor,expires=excluded.expires,updated=clock_timestamp()
             """, authority.Host, authority.Player, (int)seat.Slot, authority.Visit, authority.Device.Id,
-            authority.Device.Generation, authority.Connection, seat.Room, seat.X, seat.Z, (int)seat.Facing))
+            authority.Device.Generation, authority.Connection, seat.Room, seat.X, seat.Z, (int)seat.Facing,joinedCursor))
             await write.ExecuteNonQueryAsync();
         await t.CommitAsync();
         return seat;
@@ -151,6 +171,7 @@ sealed partial class GameDatabase
         await using (var read = Cmd(c, t, """
             SELECT e.cursor,e.kind,e.payload,
               (e.audience IS NULL OR e.audience=$2) AND
+              (e.kind<>4 OR e.cursor>(SELECT joined_cursor FROM hosted_actors WHERE host=$1 AND player=$2)) AND
               (e.kind<>4 OR NOT EXISTS(SELECT 1 FROM hosted_mutes m WHERE m.player=$2 AND m.muted=e.actor)) AND
               (e.kind<>4 OR NOT EXISTS(SELECT 1 FROM blocks b WHERE (b.blocker=$2 AND b.blocked=e.actor) OR (b.blocked=$2 AND b.blocker=e.actor)))
             FROM hosted_events e WHERE e.host=$1 AND e.cursor>$3 ORDER BY e.cursor LIMIT 4

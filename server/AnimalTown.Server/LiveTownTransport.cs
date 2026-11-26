@@ -27,6 +27,7 @@ sealed class LiveTownTransport(GameDatabase database, IConfiguration configurati
     readonly SemaphoreSlim slots = new(Capacity);
     int listening;
     readonly Guid worker = Guid.NewGuid();
+    internal Guid WorkerId=>worker;
     readonly SemaphoreSlim joining = new(1);
 
     public override Task StartAsync(CancellationToken cancellationToken)
@@ -54,6 +55,7 @@ sealed class LiveTownTransport(GameDatabase database, IConfiguration configurati
         public int SnapshotOffset, SnapshotId;
         public long EventCursor;
         public bool ReplayReady;
+        public Guid ReviewLease;
     }
 
     sealed class TownSession(GameState world, Guid gateId, uint epoch)
@@ -467,6 +469,11 @@ sealed class LiveTownTransport(GameDatabase database, IConfiguration configurati
             {
                 if (actor.Ticket.Visit != Guid.Empty)
                     await database.HeartbeatVisit(actor.Ticket.Device.Player, actor.Ticket.Visit, actor.Ticket.Device);
+                else if(actor.ReviewLease!=Guid.Empty)
+                {
+                    try{await database.HeartbeatPlacementReview(actor.Ticket.Device,actor.ReviewLease);}
+                    catch(GameError){actor.ReviewLease=Guid.Empty;}
+                }
                 continue;
             }
             if (header.Type is OnlineFrameType.Command or OnlineFrameType.BulkPage)
@@ -488,6 +495,16 @@ sealed class LiveTownTransport(GameDatabase database, IConfiguration configurati
                     if (!configuration.GetValue<bool>("OnlineGameplay:EnablePlay") && command.Kind is not
                         (OnlineCommandKind.Snapshot or OnlineCommandKind.Replay or OnlineCommandKind.Inventory or OnlineCommandKind.ShopView))
                         return;
+                    HostedSeat latestPose;
+                    lock(gate)
+                    {
+                        if(town.Actors[actor.Slot]!=actor)return;
+                        actor.Input=default;
+                        latestPose=new(actor.Slot,actor.Room,actor.X,actor.Z,actor.Facing);
+                    }
+                    // Interaction checks use the movement just acknowledged to
+                    // this human, rather than the previous one-second DB sample.
+                    await database.RefreshHostedActor(Authority(town,actor),latestPose);
                     result = await database.ExecuteHostedCommand(Authority(town, actor), command);
                     reply = result.Reply;
                 }
@@ -502,6 +519,7 @@ sealed class LiveTownTransport(GameDatabase database, IConfiguration configurati
                     { actor.Room = pose.Room; actor.X = pose.X; actor.Z = pose.Z; actor.Input = default; }
                     if (result?.World is { } world) town.World = world;
                     if (result?.ReplayAfter is long cursor) { actor.EventCursor = cursor; actor.ReplayReady = true; }
+                    if(result?.ReviewLease is Guid lease)actor.ReviewLease=lease;
                     actor.PendingReply = reply;
                     actor.PendingReplySequence = header.Sequence;
                 }

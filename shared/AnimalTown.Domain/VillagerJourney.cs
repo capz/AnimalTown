@@ -8,6 +8,7 @@ public sealed class VillagerJourney
     public readonly InteriorNavigation Indoors=new InteriorNavigation();
     public readonly PortalSystem Doors=new PortalSystem();
     public readonly bool[] Moving=new bool[Town.NpcActorCount];
+    public readonly bool[] ExternallyPaused=new bool[Town.NpcActorCount];
     private readonly Villager?[] actors=new Villager?[Town.NpcActorCount];
     private GameState? current;private int tick;
     public void Tick(GameState s)
@@ -21,13 +22,13 @@ public sealed class VillagerJourney
                 if(Doors.Busy(actor))Doors.Cancel(actor);
                 if(v!=null&&v.JourneyPhase==0&&v.Dwell==0)v.Dwell=90+i*45;
             }
-            Outdoors.Paused[i]=v==null||Doors.Busy(actor)||v.Space!=0||i==talking;
+            Outdoors.Paused[i]=v==null||Doors.Busy(actor)||v.Space!=0||i==talking||ExternallyPaused[i];
         }
         Outdoors.Tick(s,Doors);Indoors.BeginTick();Doors.Tick(s);tick++;
         for(int i=0;i<actors.Length;i++){
             int actor=i+1;Moving[i]=false;var v=actors[i];
             if(v==null)continue;
-            if(i==talking){Outdoors.Stop(i);continue;}
+            if(i==talking||ExternallyPaused[i]){Outdoors.Stop(i);continue;}
             if(Doors.Busy(actor)){Outdoors.Stop(i);Moving[i]=Doors.Moving(actor);continue;}
             if(v.Space!=0){
                 Outdoors.Stop(i);

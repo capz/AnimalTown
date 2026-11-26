@@ -57,6 +57,16 @@ static class CardAndProjectionChecks
         foreach(AnimalTown.Jobs.JobTemplate template in Enum.GetValues<AnimalTown.Jobs.JobTemplate>())
             check(OnlineJobPolicy.Supported(template)==(template is AnimalTown.Jobs.JobTemplate.DeliveryClothing or AnimalTown.Jobs.JobTemplate.DeliveryProperty or AnimalTown.Jobs.JobTemplate.RetrievalBorrowed or AnimalTown.Jobs.JobTemplate.FavorFruit or AnimalTown.Jobs.JobTemplate.FavorLetter),
                 "The PoC job allowlist excludes tools, new gathering and cross-town delivery");
+        var onlineHome=new GameState(9006);onlineHome.ResidentJobs.Enable(0x11223344556677,DateTimeOffset.UtcNow.ToUnixTimeSeconds());
+        var offlineCopy=SplitSaveCodec.Decode(SplitSaveCodec.Encode(onlineHome));offlineCopy.ResidentJobs.Enable(offlineCopy.Town.Jobs.TownId,DateTimeOffset.UtcNow.ToUnixTimeSeconds());
+        onlineHome.ResidentJobs.EnableOnlineAdapter(DateTimeOffset.UtcNow.ToUnixTimeSeconds());
+        ulong issuer=0x9988776655443322;
+        var issued=onlineHome.ResidentJobs.RecordOnlineReward(giver,giver.Town,"Maple",11,0,0,new(issuer,1),new(issuer,2));
+        check(issued==new AnimalTown.Jobs.JobIdentity(issuer,2),"Hosted receipts retain their separately persisted issuer identity");
+        check(onlineHome.ResidentJobs.DeliverOnlineText(giver,onlineHome.Town.Jobs.Player(0),"Thank you for visiting our town! I hope we can meet again soon.",0,new(issuer,3)),"Hosted mail accepts a separate server-issued message identity");
+        var afterOnline=onlineHome.ResidentJobs.RecordOnlineReward(giver,giver.Town,"Maple",12,0,0);
+        var fromCard=offlineCopy.ResidentJobs.RecordOnlineReward(giver,giver.Town,"Maple",12,0,0);
+        check(afterOnline==fromCard,"Unattended hosted rewards and mail cannot consume the offline card's local identity counter");
 
         var savedFiles=new MemoryFiles();new SaveRepository(savedFiles).Save(home);
         var baseline=new SaveRepository(savedFiles).Load()!;

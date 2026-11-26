@@ -159,10 +159,12 @@ CREATE TABLE IF NOT EXISTS hosted_actors (
  slot integer NOT NULL CHECK(slot BETWEEN 0 AND 2), visit uuid NOT NULL,
  device uuid NOT NULL REFERENCES devices(id), generation bigint NOT NULL,
  connection uuid NOT NULL, room integer NOT NULL DEFAULT 0,
+ joined_cursor bigint NOT NULL DEFAULT 0 CHECK(joined_cursor>=0),
  x real NOT NULL, z real NOT NULL, facing integer NOT NULL DEFAULT 0,
  expires timestamptz NOT NULL, updated timestamptz NOT NULL DEFAULT clock_timestamp(),
  PRIMARY KEY(host,player), UNIQUE(host,slot)
 );
+ALTER TABLE hosted_actors ADD COLUMN IF NOT EXISTS joined_cursor bigint NOT NULL DEFAULT 0 CHECK(joined_cursor>=0);
 CREATE TABLE IF NOT EXISTS hosted_events (
  host uuid NOT NULL REFERENCES hosted_towns(host), cursor bigint NOT NULL CHECK(cursor>0),
  audience uuid REFERENCES players(id), kind integer NOT NULL,
@@ -206,3 +208,30 @@ CREATE TABLE IF NOT EXISTS hosted_mail (
  delivered boolean NOT NULL DEFAULT false, replied boolean NOT NULL DEFAULT false,
  created timestamptz NOT NULL DEFAULT clock_timestamp()
 );
+CREATE TABLE IF NOT EXISTS hosted_jobs (
+ id uuid PRIMARY KEY, host uuid NOT NULL REFERENCES players(id), player uuid NOT NULL REFERENCES players(id),
+ villager text NOT NULL, profile integer NOT NULL CHECK(profile BETWEEN 0 AND 3),
+ requester integer NOT NULL CHECK(requester BETWEEN 0 AND 5), target integer NOT NULL CHECK(target BETWEEN -1 AND 5),
+ template integer NOT NULL CHECK(template BETWEEN 0 AND 11), item integer NOT NULL,
+ phase integer NOT NULL CHECK(phase BETWEEN 0 AND 7), version integer NOT NULL DEFAULT 1 CHECK(version>0),
+ accepted bigint NOT NULL, due bigint NOT NULL,
+ parcel_pocket integer NOT NULL DEFAULT -1 CHECK(parcel_pocket BETWEEN -1 AND 29),
+ borrowers integer NOT NULL DEFAULT 0 CHECK(borrowers BETWEEN 0 AND 2),
+ previous_target integer NOT NULL DEFAULT -1, reward_identity text,
+ created timestamptz NOT NULL DEFAULT clock_timestamp()
+);
+CREATE UNIQUE INDEX IF NOT EXISTS one_hosted_offer ON hosted_jobs(host,player,villager,requester) WHERE phase=0;
+CREATE UNIQUE INDEX IF NOT EXISTS one_hosted_favor_resident ON hosted_jobs(host,requester) WHERE template>=5 AND phase BETWEEN 1 AND 4;
+CREATE UNIQUE INDEX IF NOT EXISTS one_hosted_favor_type ON hosted_jobs(host,template) WHERE template>=5 AND phase BETWEEN 1 AND 4;
+CREATE TABLE IF NOT EXISTS hosted_job_conversations (
+ host uuid NOT NULL REFERENCES players(id), player uuid NOT NULL REFERENCES players(id),
+ npc integer NOT NULL CHECK(npc BETWEEN 0 AND 5), expires timestamptz NOT NULL,
+ PRIMARY KEY(host,player)
+);
+-- Online receipts never allocate from a card's local job-ID counter while
+-- that card can be played offline. Their issuer namespace is disjoint.
+CREATE TABLE IF NOT EXISTS hosted_identity (
+ id integer PRIMARY KEY CHECK(id=1), issuer text NOT NULL UNIQUE
+ CHECK(issuer ~ '^[0-9A-F]{16}$' AND issuer<>'0000000000000000')
+);
+CREATE SEQUENCE IF NOT EXISTS hosted_identity_counter AS bigint NO CYCLE;

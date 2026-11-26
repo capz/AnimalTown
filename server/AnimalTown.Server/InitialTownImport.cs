@@ -81,6 +81,8 @@ sealed partial class GameDatabase
     {
         var (state, commit, records, fingerprint) = upload;
         string identity = state.Town.Jobs.TownId.ToString("X16", CultureInfo.InvariantCulture);
+        await using(var issuer=Cmd(connection,transaction,"SELECT EXISTS(SELECT 1 FROM hosted_identity WHERE issuer=$1)",identity))
+            if(await issuer.ExecuteScalarAsync() is true)throw new GameError(409,"town-identity-reserved");
         var current = await Load(connection, transaction, owner, true);
 
         await using (var command = Cmd(connection, transaction,

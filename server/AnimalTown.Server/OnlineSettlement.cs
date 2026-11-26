@@ -133,6 +133,7 @@ sealed partial class GameDatabase
                 if (await pending.ExecuteScalarAsync() is true) throw new GameError(409, "placement-review-required");
             var state = (await Load(c, t, device.Player, false)).State;
             if (state.ActiveProfile != profile) throw new GameError(409, "selected-villager-changed");
+            if(await SuspendHostedJobParcels(c,t,device.Player,profile,state))await Save(c,t,device.Player,state);
             int sequence;
             await using (var head = Cmd(c, t, "SELECT save_commit,save_records FROM online_card_heads WHERE player=$1 AND revision=$2", device.Player, parent))
             await using (var row = await head.ExecuteReaderAsync())

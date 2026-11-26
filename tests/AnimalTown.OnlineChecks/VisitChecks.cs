@@ -31,7 +31,13 @@ static class VisitChecks
             state.ResidentJobs.Enable(townId,DateTimeOffset.UtcNow.ToUnixTimeSeconds());
             state.Rollover((int)(DateTimeOffset.UtcNow.ToUnixTimeSeconds()/86400),DateTime.UtcNow.Year*12+DateTime.UtcNow.Month);
             state.Pockets[2]=Catalog.WritingPaper;state.Pockets[3]=10;
-            if(role=="Owner"){state.X=32.5f;state.Z=28.5f;}
+            if(role=="Owner"){
+                if(!state.PlaceHouse(12,22,false,true))throw new Exception("Fixture home plot is blocked");
+                state.X=32.5f;state.Z=28.5f;
+                if(!HelipadSite.TryArrival(state,out float arrivalX,out float arrivalZ))throw new Exception("Fixture arrival is blocked");
+                var resident=state.Town.Residents[0];resident.Space=0;resident.PosX=arrivalX;resident.PosZ=arrivalZ;
+                resident.X=(int)arrivalX;resident.Z=(int)arrivalZ;resident.JourneyPhase=0;resident.Dwell=36000;
+            }
             var start=await Request(HttpMethod.Post,"/v1/auth/link/start",new{town=townId.ToString("X16")});
             await Request(HttpMethod.Post,"/v1/account/link",new{code=start.GetProperty("code").GetString()},browser);
             var linked=await Request(HttpMethod.Post,"/v1/auth/link/poll",new{secret=start.GetProperty("secret").GetString()});
@@ -50,7 +56,7 @@ static class VisitChecks
             check(saved.GetProperty("wallet").GetInt32()==4356&&saved.GetProperty("savings").GetInt32()==9021,"Import preserves the home economy");
             return new Player(id,browser,device,Convert.ToHexString(SHA256.HashData(checkpoint)));
         }
-        Player owner=await Create("Owner",1859),first=await Create("GuestA",1860),second=await Create("GuestB",1861);
+        Player owner=await Create("Owner",1838),first=await Create("GuestA",1860),second=await Create("GuestB",1861);
         foreach(var guest in new[]{first,second})
         {
             await Request(HttpMethod.Post,$"/v1/friends/{guest.Id}",new{},owner.Account);
@@ -103,6 +109,13 @@ static class VisitChecks
         }
         check(moved,"The authoritative movement result reaches another human through WSS");
         await HostedVisitChecks.Run(host,guestA,guestB,hostHello.Header.Epoch,check);
+        await Request(HttpMethod.Post,$"/v1/online/visits/{visitB.GetProperty("id").GetString()}/end",new{},second.Device);
+        var newVisit=await Request(HttpMethod.Post,"/v1/online/visits",new{host=owner.Id},second.Device);
+        using(var fresh=await Connect(await Ticket(second,newVisit.GetProperty("id").GetString()!)))
+        {
+            var hello=await Read(fresh);
+            await HostedVisitChecks.CheckNewMembership(fresh,hello.Header.Epoch,check);
+        }
         using(var replay=await Connect(ownerTicket))check(await Ended(replay),"A consumed gameplay ticket cannot authenticate a second socket");
         bool protocolRejected=false;try{using var wrong=await Connect(await Ticket(first,visitA.GetProperty("id").GetString()!),"wrong.protocol");}catch(WebSocketException){protocolRejected=true;}
         check(protocolRejected,"An unsupported WebSocket subprotocol is rejected before upgrade");
@@ -129,7 +142,7 @@ static class VisitChecks
             byte[] commit=reader.ReadBytes(reader.ReadInt32());var parts=new byte[7][];
             for(int i=0;i<parts.Length;i++)parts[i]=reader.ReadBytes(reader.ReadInt32());
             var saved=SplitSaveCodec.DecodeCommitted(commit,parts);
-            check(saved.Name=="GuestA"&&saved.Wallet==4356&&saved.Pockets[2]==0,"Return exports the correct home and consumes successful mail stationery once");
+            check(saved.Name=="GuestA"&&saved.Wallet==4356&&!saved.Pockets.Contains(Catalog.WritingPaper),"Return exports the correct home and consumes successful mail stationery once");
         }
         var acknowledged=await Request(HttpMethod.Post,$"/v1/online/reservations/{reservationA}/published",new{fingerprint=publication.GetProperty("sha256").GetString()},first.Device);
         var retriedAck=await Request(HttpMethod.Post,$"/v1/online/reservations/{reservationA}/published",new{fingerprint=publication.GetProperty("sha256").GetString()},first.Device);

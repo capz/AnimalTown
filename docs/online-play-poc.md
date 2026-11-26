@@ -209,4 +209,19 @@ The [connection mockups](concepts/online-poc/connection.svg) and
 [review/social mockups](concepts/online-poc/review-and-social.svg) are awaiting
 explicit approval under the user's UI rule. No new UI has been implemented.
 The workspace's scoped Cloudflare network change was not approved; no network
-settings changed. Public tunnel qualification therefore remains open here.
+settings changed. The separate GitHub Actions
+[public-route run 45890636894](https://github.com/capz/AnimalTown/actions/runs/45890636894)
+passed the three-client backend scenario through a free Cloudflare HTTPS/WSS
+tunnel on `f94c1050baa74cd567913d9f04e11b0d97ddf70a`. That establishes the backend
+route; the actual GameCube TLS path, DOL-015 and memory/timing gates remain open.
+
+Further backend work adds independent human job contexts, authoritative resident
+reach checks, scheduled text mail/replies, portable rewards and streamed Keep/
+koban review. A second full selected host run passed with 4,229 online checks,
+including a guest walking to a resident, accepting a letter favor, retrying it,
+receiving its scheduled reply at home, placing an item, and the owner reviewing
+it. A new membership cannot read pre-join chat by forging a replay cursor.
+Server-issued mail/reward IDs are separate from the card's offline ID counter.
+Other job templates, conflict reconciliation and the complete console lifecycle
+still require their remaining integration/acceptance work; these checks do not
+claim that every backlog row is complete.

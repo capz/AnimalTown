@@ -26,6 +26,7 @@ var db=new GameDatabase(data);await db.Initialize();
 builder.Services.AddSingleton(db);
 builder.Services.AddSingleton<LiveTownTransport>();
 builder.Services.AddHostedService(service=>service.GetRequiredService<LiveTownTransport>());
+if(builder.Configuration.GetValue<bool>("OnlineGameplay:EnablePlay"))builder.Services.AddHostedService<HostedSimulation>();
 var app=builder.Build();
 var gameplay=app.Services.GetRequiredService<LiveTownTransport>();db.LiveTransport=gameplay;
 app.MapOnlineSettlement(db);
@@ -153,6 +154,7 @@ sealed partial class GameDatabase(NpgsqlDataSource source)
     {
         await using var c=await source.OpenConnectionAsync();
         await using(var command=new NpgsqlCommand(File.ReadAllText(Path.Combine(AppContext.BaseDirectory,"Schema.sql")),c))await command.ExecuteNonQueryAsync();
+        await InitializeHostedIssuer(c);
         // One locked row/transaction at a time: restartable migration, bounded
         // memory, and no window where only some records exist.
         while(true){

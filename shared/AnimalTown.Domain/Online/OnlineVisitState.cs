@@ -45,6 +45,7 @@ public sealed class OnlineVisitState : IOnlineMessageSink, IDisposable
     int resultLength;
     bool disposed;
     public int ChatCount => chatCount;
+    public void ExpectSnapshot(){if(!disposed)NeedsSnapshot=true;}
     public OnlineChatMessage ChatAt(int index)
     { if ((uint)index >= chatCount) throw new ArgumentOutOfRangeException(nameof(index)); return chat[(chatStart + index) % chat.Length]; }
 
@@ -89,6 +90,19 @@ public sealed class OnlineVisitState : IOnlineMessageSink, IDisposable
                 int at = (chatStart + chatCount) % chat.Length;
                 if (chatCount == chat.Length) { at = chatStart; chatStart = (chatStart + 1) % chat.Length; } else chatCount++;
                 chat[at] = message;
+            }
+            else if(eventKind==8)
+            {
+                int actors=r.Int();if(actors<0||actors>Town.SavedVillagerCount)return false;
+                int seen=0;
+                for(int i=0;i<actors;i++)
+                {
+                    int npc=r.Int(),room=r.Int(),x=r.Int(),z=r.Int(),facing=r.Int();
+                    if((uint)npc>=Town.SavedVillagerCount||(seen&(1<<npc))!=0||!BuildingWorld.ValidSpace(room)||
+                        x<0||x>=Town.Width*65536||z<0||z>=Town.Height*65536)return false;
+                    seen|=1<<npc;
+                    if(World!=null){var actor=World.Town.Residents[npc];actor.Space=room;actor.PosX=x/65536f;actor.PosZ=z/65536f;actor.Yaw=facing/65536f;actor.X=(int)actor.PosX;actor.Z=(int)actor.PosZ;}
+                }
             }
             else return false;
             r.End(); Cursor = cursor; return true;

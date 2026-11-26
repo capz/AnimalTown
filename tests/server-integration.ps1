@@ -1,4 +1,4 @@
-param([string]$DatabaseConnection='',[switch]$PublicTunnel)
+param([string]$DatabaseConnection='',[switch]$PublicTunnel,[switch]$OnlineOnly)
 $ErrorActionPreference='Stop'
 Set-Location (Split-Path $PSScriptRoot -Parent)
 $serverRoot=(Get-Location).Path
@@ -44,6 +44,13 @@ try {
     $ready=$false
     for($i=0;$i -lt 40;$i++){try{if((Request GET '/health' $null $null).Status -eq 200){$ready=$true;break}}catch{};Start-Sleep -Milliseconds 250}
     Assert $ready 'Server did not become ready'
+    if($OnlineOnly){
+        if($PublicTunnel){throw 'Use the complete fixture for public-route qualification'}
+        dotnet run --project tests/AnimalTown.OnlineChecks -c Release -- $api
+        if($LASTEXITCODE){throw 'Focused online integration checks failed'}
+        Write-Host 'Focused online integration checks passed.'
+        return
+    }
     Assert ((Request GET '/v1/me' $null $null).Status -eq 401) 'Unauthenticated request accepted'
     $a=(Request POST '/v1/auth/register' @{name='RowanTest';password='test-password-long'} $null).Body
     $b=(Request POST '/v1/auth/register' @{name='MossTest';password='test-password-long'} $null).Body

@@ -16,7 +16,7 @@ static class PlacementReviewRoutes
     {
         // The online mutation path needs card inventory reservation and
         // reconciliation before it can be exposed on a production server.
-        if (!app.Configuration.GetValue<bool>("Multiplayer:EnablePlacements")) return;
+        if (!app.Configuration.GetValue<bool>("Multiplayer:EnablePlacements")&&!app.Configuration.GetValue<bool>("OnlineGameplay:EnablePlay")) return;
 
         app.MapPost("/v1/review", (Delegate)((HttpContext c) =>
             db.BeginPlacementReview(Device(c)))).WithMetadata(ApiAccess.DeviceOnly);
@@ -240,6 +240,7 @@ sealed partial class GameDatabase
         GuestPlacement placement;
         if (op.Kind == "place")
         {
+            if(authority is not null)await RequireUnboundOnlinePocket(c,t,guest,op.Pocket);
             RequirePlacementReach(pose.Room, pose.X, pose.Z, op.Room, op.X, op.Z);
             if (placements.Count >= PlacementLimit ||
                 !TownItemActions.Place(town, player, actor, op.Pocket, op.X, op.Z, op.Rotation, op.Room))
@@ -301,13 +302,14 @@ sealed partial class GameDatabase
         if (await command.ExecuteNonQueryAsync() != 1) throw new GameError(409, "placement-changed");
     }
 
-    public async Task<object> BeginPlacementReview(DevicePrincipal device)
+    public async Task<object> BeginPlacementReview(DevicePrincipal device,HostedAuthority? authority=null)
     {
         Guid host = device.Player;
         await using var c = await source.OpenConnectionAsync();
         await using var t = await c.BeginTransactionAsync();
         await LockTown(c, t, host);
         await RequireActiveDevice(c, t, device);
+        if(authority is {} active)await RequireHostedActor(c,t,active);
         await RequireImportedPlacementTown(c, t, host);
         var state = (await Load(c, t, host, false)).State;
         string villager = ReviewDeviceVillager(state, device);
@@ -351,12 +353,13 @@ sealed partial class GameDatabase
         return new { expiresIn = ReviewLeaseSeconds };
     }
 
-    public async Task<object> EndPlacementReview(DevicePrincipal device, Guid lease)
+    public async Task<object> EndPlacementReview(DevicePrincipal device, Guid lease,HostedAuthority? authority=null)
     {
         await using var c = await source.OpenConnectionAsync();
         await using var t = await c.BeginTransactionAsync();
         await LockTown(c, t, device.Player);
         await RequireActiveDevice(c, t, device);
+        if(authority is {} active)await RequireHostedActor(c,t,active);
         await using var command = Cmd(c, t, """
             DELETE FROM town_review_leases WHERE host=$1 AND id=$2 AND device=$3 AND generation=$4
             """, device.Player, lease, device.Id, device.Generation);
@@ -380,7 +383,7 @@ sealed partial class GameDatabase
         return new { entries, next };
     }
 
-    public async Task<object> DecidePlacementReview(DevicePrincipal device, Guid lease, PlacementReviewOperation op)
+    public async Task<object> DecidePlacementReview(DevicePrincipal device, Guid lease, PlacementReviewOperation op,HostedAuthority? authority=null)
     {
         if (op.Id == Guid.Empty || op.Placement == Guid.Empty || op.Version <= 0 || op.Kind is not ("keep" or "koban"))
             throw new GameError(400, "invalid-placement-review-operation");
@@ -393,6 +396,7 @@ sealed partial class GameDatabase
         string villager = ReviewDeviceVillager(town, device);
         string fingerprint = Hash("placement-review:" + villager + ":" + JsonSerializer.Serialize(op));
         if (await ReadPlacementReceipt(c, t, host, op.Id, fingerprint) is JsonElement receipt) return receipt;
+        if(authority is {} active)await RequireHostedActor(c,t,active);
         await RequirePlacementLease(c, t, device, lease, villager);
 
         var placements = await ReadPlacements(c, t, host, Guid.Empty, PlacementLimit + 1);
@@ -421,6 +425,7 @@ sealed partial class GameDatabase
         await DeletePendingPlacement(c, t, host, placement.Id);
         var result = new { placement = placement.View(), decision = op.Kind, revision = revision + 1 };
         await WritePlacementReceipt(c, t, host, op.Id, fingerprint, result);
+        if(authority is not null)await AppendHostedEvent(c,t,host,null,1,host,[1]);
         await RequirePlacementLease(c, t, device, lease, villager);
         await t.CommitAsync();
         return result;

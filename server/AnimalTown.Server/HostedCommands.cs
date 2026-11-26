@@ -6,7 +6,7 @@ using Npgsql;
 
 sealed record HostedSnapshot(byte[] Bytes, long Cursor);
 sealed record HostedCommandResult(byte[] Reply, HostedSnapshot? Snapshot = null,
-    HostedSeat? Pose = null, GameState? World = null, long? ReplayAfter = null);
+    HostedSeat? Pose = null, GameState? World = null, long? ReplayAfter = null, Guid? ReviewLease = null);
 
 sealed partial class GameDatabase
 {
@@ -54,6 +54,25 @@ sealed partial class GameDatabase
             {
                 await PrepareOnlinePublication(authority.Device, HostId(command.Entity));
                 return new(CommandResult(command, 200));
+            }
+            if(command.Kind is OnlineCommandKind.ReviewBegin or OnlineCommandKind.ReviewDecision or OnlineCommandKind.ReviewEnd)
+            {
+                if(authority.Player!=authority.Host)throw new GameError(403,"owner-review-only");
+                if(command.Kind==OnlineCommandKind.ReviewBegin)
+                {
+                    var started=JsonSerializer.SerializeToElement(await BeginPlacementReview(authority.Device,authority),PlacementJson);
+                    Guid lease=started.GetProperty("lease").GetGuid();
+                    return new(CommandResult(command,200,extra:w=>w.Id(WireId(lease))),await SnapshotHostedTown(authority),ReviewLease:lease);
+                }
+                if(command.Kind==OnlineCommandKind.ReviewEnd)
+                {
+                    await EndPlacementReview(authority.Device,HostId(command.Entity),authority);
+                    return new(CommandResult(command,200),ReviewLease:Guid.Empty);
+                }
+                if(!Guid.TryParseExact(command.Text,"D",out Guid context)||command.A is <0 or >1||command.Revision is <1 or >int.MaxValue)
+                    throw new GameError(400,"invalid-placement-review-operation");
+                await DecidePlacementReview(authority.Device,context,new(HostId(command.Id),HostId(command.Entity),(int)command.Revision,command.A==0?"keep":"koban"),authority);
+                return new(CommandResult(command,200));
             }
             return await ExecuteHostedMutation(authority, command);
         }
@@ -116,6 +135,14 @@ sealed partial class GameDatabase
                     for (int i = 0; i < TownShop.SaleSlots(town); i++) { w.Int(town.Town.Shop.SaleItems[i]); w.Int(town.Town.Shop.SalePrices[i]); }
                 });
                 break;
+            case OnlineCommandKind.Jobs:
+            case OnlineCommandKind.AskJob:
+            case OnlineCommandKind.AcceptJob:
+            case OnlineCommandKind.CompleteJob:
+            case OnlineCommandKind.AbandonJob:
+            case OnlineCommandKind.CollectReward:
+                (reply, townChanged, inventoryChanged) = await HostedJobCommand(c, t, authority, seat, town, player, command);
+                break;
             case OnlineCommandKind.EnterRoom:
                 ProjectPlacements(town, await ReadPlacements(c, t, authority.Host, Guid.Empty, PlacementLimit + 1));
                 changedPose = ResolveHostedPortal(town, seat, command.A);
@@ -133,6 +160,7 @@ sealed partial class GameDatabase
                 if (command.Revision != town.Town.Shop.Revision) throw new GameError(409, "shop-changed");
                 if (command.Kind != OnlineCommandKind.Buy && authority.Player != authority.Host) throw new GameError(403, "only-local-villagers-may-stock-shop");
                 if (command.A < 0 || command.A > 2) throw new GameError(400, "invalid-shop-source");
+                if (command.Kind == OnlineCommandKind.List) await RequireUnboundOnlinePocket(c, t, authority.Player, command.C);
                 var source = (ShopSource)command.A;
                 bool bought = command.Kind switch
                 {
@@ -179,7 +207,11 @@ sealed partial class GameDatabase
                 reply = CommandResult(command, 200); break;
             case OnlineCommandKind.Report:
                 Guid reported = HostId(command.Entity); string evidenceText;
-                await using (var read = Cmd(c, t, "SELECT text FROM hosted_chat_evidence WHERE host=$1 AND cursor=$2 AND actor=$3 AND created>clock_timestamp()-interval '1 day'", authority.Host, command.Revision, reported))
+                await using (var read = Cmd(c, t, """
+                    SELECT text FROM hosted_chat_evidence e WHERE host=$1 AND cursor=$2 AND actor=$3
+                    AND created>clock_timestamp()-interval '1 day'
+                    AND e.cursor>(SELECT joined_cursor FROM hosted_actors WHERE host=$1 AND player=$4)
+                    """, authority.Host, command.Revision, reported,authority.Player))
                     evidenceText = await read.ExecuteScalarAsync() as string ?? throw new GameError(404, "chat-evidence-expired");
                 await using (var count = Cmd(c, t, "SELECT count(*) FROM reports WHERE reporter=$1 AND created>clock_timestamp()-interval '1 day'", authority.Player))
                     if ((long)(await count.ExecuteScalarAsync())! >= 5) throw new GameError(429, "too-many-reports");
@@ -192,7 +224,9 @@ sealed partial class GameDatabase
                 var recipient = new JobIdentity(command.Entity.First, command.Entity.Second);
                 int npc = town.Town.Jobs.FindNpc(recipient), profile = town.Town.Jobs.FindPlayer(recipient);
                 if (npc < 0 && ((uint)profile >= GameState.ProfileCount || !town.Profiles[profile].Created)) throw new GameError(403, "visited-town-residents-only");
+                if (npc >= 0 && !town.NpcPresent(npc)) throw new GameError(403, "visited-town-residents-only");
                 if ((uint)command.A >= player.Capacity || player.IsJobItem(command.A) || !Catalog.Has(player.Pockets[command.A], ItemFlags.Stationery)) throw new GameError(409, "stationery-required");
+                await RequireUnboundOnlinePocket(c, t, authority.Player, command.A);
                 await using (var count = Cmd(c, t, "SELECT count(*) FROM hosted_mail WHERE sender=$1 AND NOT replied", authority.Player))
                     if ((long)(await count.ExecuteScalarAsync())! >= 32) throw new GameError(409, "outbox-full");
                 long now = DateTimeOffset.UtcNow.ToUnixTimeSeconds(), due = now / 86400 * 86400 + 8 * 3600;
