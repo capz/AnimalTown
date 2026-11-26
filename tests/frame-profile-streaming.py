@@ -12,7 +12,8 @@ ast.parse(Path('tools/iso-smoke.py').read_text())
 menu_source=ast.parse(Path('tools/iso-smoke.py').read_text())
 menu_namespace={'Path':Path,'__file__':str(Path('tools/iso-smoke.py').resolve())}
 exec(compile(ast.Module(body=[node for node in menu_source.body if isinstance(node,ast.FunctionDef) and node.name in ('testing_menu_options','testing_menu_count','testing_menu_row')],type_ignores=[]),'<debug navigation contract>','exec'),menu_namespace)
-assert menu_namespace['testing_menu_count']()==21
+assert menu_namespace['testing_menu_count']()==22
+assert menu_namespace['testing_menu_row']('VillagerVisualOption')==menu_namespace['testing_menu_row'](44)==21
 assert menu_namespace['testing_menu_row']('ProfilingModeOption')==menu_namespace['testing_menu_row'](41)==19
 assert menu_namespace['testing_menu_row']('ExportProfileOption')==menu_namespace['testing_menu_row'](42)==20
 assert [menu_namespace['testing_menu_row'](option) for option in (22,23,34)]==[11,12,13]

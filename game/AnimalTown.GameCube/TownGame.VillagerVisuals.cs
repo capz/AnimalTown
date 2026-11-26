@@ -41,6 +41,10 @@ internal sealed partial class TownGame
         if(visualSwap==null)return;
         int actor=visualSwap.Pump(state,Clock.Timestamp);if(actor<0)return;
         visualOverrides[actor]=true;visualIdle[actor]=actors[actor]!.Model.TryGetAnimation("Idle",out _);visualAnimated[actor]=actors[actor]!.Model.Animations.Count>0;
+        // The swap can complete on a frame without a simulation tick. Select
+        // the standing clip now so the first draw never flashes the bind pose.
+        if(animationClock.Clip(actor)<0&&visualIdle[actor])animationClock.Step(actor,IdleClip,false);
+        else if(animationClock.Clip(actor)==IdleClip&&!visualIdle[actor])animationClock.Reset(actor);
         restartClips[actor]=true;appliedClips[actor]=-2;
         if(actor>0)attention.Register(actor-1,actors[actor]!);
         visualCandidate=visualSwap.Selection.NextUnused(state,visualCandidate,1);
