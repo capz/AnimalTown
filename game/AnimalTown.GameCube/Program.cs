@@ -201,8 +201,11 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
     private long sessionStart;
     private float facingYaw=3.1415927f;
     private bool loaded,relocate,damagedSave;
+    // Keep the cursor on the starter plot's safe doorway landing, including
+    // the southern town edge. Larger gardens retain the existing view offset.
+    internal static int PlotCursorDepth(GameState state)=>Math.Min(6,state.HomePlotHeight(state.ActiveProfile));
     private int PlotX=>(int)state.X-3;
-    private int PlotZ=>(int)state.Z-6;
+    private int PlotZ=>(int)state.Z-PlotCursorDepth(state);
     private static readonly string[] plotSizeHelp={"Your home and garden need 7 x 5 tiles.","Your home and garden need 9 x 7 tiles.","Your home and garden need 11 x 9 tiles.","Your home and garden need 13 x 11 tiles.","Your home and garden need 15 x 13 tiles."};
     private bool CanChoosePlot(out string reason)
     {
@@ -281,18 +284,18 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
     private void FindStartingPlot()
     {
         var draft=session.Draft!;int best=int.MaxValue,bx=15,bz=35;
-        int width=state.HomePlotWidth(state.ActiveProfile),height=state.HomePlotHeight(state.ActiveProfile);
+        int width=state.HomePlotWidth(state.ActiveProfile),height=state.HomePlotHeight(state.ActiveProfile),depth=PlotCursorDepth(state);
         for(int z=1;z<=Town.Height-height;z++)for(int x=1;x<=Town.Width-width;x++){
             int distance=(x-15)*(x-15)+(z-35)*(z-35);
-            if(distance>=best||!draft.CanPlaceHome(x,z,out _)||!state.CanWalk(x+3.5f,z+6.5f,0))continue;
+            if(distance>=best||!draft.CanPlaceHome(x,z,out _)||!state.CanWalk(x+3.5f,z+depth+.5f,0))continue;
             // Favor an unobstructed first view without removing garden trees.
             for(int i=0;i<state.Town.GroundCount;i++){
                 var g=state.Town.Ground[i];
-                if(IsTree(g)&&Math.Abs(g.X+.5f-(x+3.5f))<3&&g.Z+.5f>z+6&&g.Z+.5f<z+12)distance+=10000;
+                if(IsTree(g)&&Math.Abs(g.X+.5f-(x+3.5f))<3&&g.Z+.5f>z+depth&&g.Z+.5f<z+depth+6)distance+=10000;
             }
             if(distance<best){best=distance;bx=x;bz=z;}
         }
-        if(best<int.MaxValue){state.X=bx+3.5f;state.Z=bz+6.5f;}
+        if(best<int.MaxValue){state.X=bx+3.5f;state.Z=bz+depth+.5f;}
     }
     private void OnboardingInput(ControllerState p)
     {

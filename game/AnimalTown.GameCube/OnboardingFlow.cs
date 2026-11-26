@@ -43,7 +43,7 @@ internal static class OnboardingFlow
             if(daylightShortcut&&p.X.WasPressed){EditDaylight(view,state.Town);continue;}
             if(p.B.WasPressed){
                 int x=state.Town.HouseX,z=state.Town.HouseZ;session.Draft!.ClearHome();
-                state.X=x+3.5f;state.Z=z+6.5f;return false;
+                state.X=x+3.5f;state.Z=z+TownGame.PlotCursorDepth(state)+.5f;return false;
             }
             if(p.A.WasPressed){
                 if(SaveCards.Enabled)view.DrawReview(state,"",true,daylightShortcut);
