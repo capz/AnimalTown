@@ -3,9 +3,9 @@ namespace AnimalTown;
 // Appearance IDs are session-only. The six saved species IDs never change.
 public static class VillagerAppearance
 {
-    public static readonly string[] Models={"fox","bunny","giraffe","cat","hamster","spaniel","penguin","whitetiger","lion","robin","raccoon"};
-    public static readonly string[] Names={"Fox","Bunny","Giraffe","Maine coon","Hamster","Cocker spaniel","Penguin","White tiger","Lion","Robin","Raccoon"};
-    public const int Count=11;
+    public static readonly string[] Models={"fox","bunny","giraffe","cat","hamster","spaniel","penguin","whitetiger","lion","robin","raccoon","pugofficer"};
+    public static readonly string[] Names={"Fox","Bunny","Giraffe","Maine coon","Hamster","Cocker spaniel","Penguin","White tiger","Lion","Robin","Raccoon","Grumpy pug officer"};
+    public const int Count=12;
     public static bool Valid(int appearance)=>(uint)appearance<Count;
 }
 
