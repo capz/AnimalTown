@@ -1,5 +1,12 @@
 # AnimalTown networking: Codex implementation brief
 
+For the current milestone, use the
+[26 November online play PoC scope and backlog](online-play-poc.md).
+It supersedes this older brief where authority/availability, human capacity,
+Cloudflare transport, guest rewards, phase grouping and PoC exclusions differ.
+The NET IDs below remain historical component references; its literal P2 is
+not the current PoC scope.
+
 Audit date: **24 November 2026**. Source baseline: AnimalTown
 [`main` at `3ab4110e92bc`](https://github.com/capz/AnimalTown/tree/3ab4110e92bc634d1c76fba2977051dfbfd90d96).
 [PR #148](https://github.com/capz/AnimalTown/pull/148) is merged. This is a
@@ -13,7 +20,7 @@ checks, transactional purchases, visitor item custody, local chat/letter input,
 and recoverable memory-card saves. **The live multiplayer system, authority
 handoff, and complete owner keep/undo lifecycle remain to be implemented.**
 
-This document is the current networking plan. It supersedes the owner-console
+This document preserves the earlier networking plan. It superseded the owner-console
 authority, mandatory companion, Unity/WebRTC/SignalR transport, guest pickup,
 and guest lost-property collection assumptions in the original
 [game design](../design-doc.md) and [technical design](technical-design.md).

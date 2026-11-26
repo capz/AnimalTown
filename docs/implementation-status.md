@@ -3,8 +3,11 @@
 This is an early playable implementation, **not the completed game** described in
 the GDD. The technical baseline was committed/pushed first as `0064efd`.
 
-The [multiplayer implementation status and next phase](multiplayer-first-slice.md)
-track the current online backend and the agreed design for live visits.
+The [online play PoC backlog](online-play-poc.md) records the agreed scope,
+implementation dependencies and acceptance gates. The
+[multiplayer implementation status](multiplayer-first-slice.md) tracks the
+current online backend and staging limitations. Chat, eligible guest jobs and
+resident mail are included in the PoC.
 
 The [24 November 2026 source audit and Codex implementation
 brief](networking-implementation-plan.md) records the earlier koban/transaction
