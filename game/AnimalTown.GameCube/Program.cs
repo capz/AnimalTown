@@ -223,7 +223,7 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
     private const int SettingsTab=5,TestingTab=6,DaylightSettingsRow=6;
     // Stable IDs keep hidden/retired controls out of both debug menus.
     private const int SeasonPreviewOption=18,TimePreviewOption=39;
-    private const int ProfilingModeOption=41,ExportProfileOption=42,VillagerVisualOption=43;
+    private const int ProfilingModeOption=41,ExportProfileOption=42,VillagerVisualOption=44;
     private static readonly int[] testingOptions={0,2,3,11,16,17,35,SeasonPreviewOption,TimePreviewOption,19,21,22,23,34,36,37,38,31,32,ProfilingModeOption,ExportProfileOption,VillagerVisualOption};
     private static readonly string[] groundMipLabels={"0","1"};
     private static int TestingOption(int row)=>testingOptions[row];
