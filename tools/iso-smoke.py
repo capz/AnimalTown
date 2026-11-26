@@ -264,13 +264,18 @@ def villager_visuals():
     start_game(True,'visuals-start');set_debug_visibility(True)
     before=committed_card_sequence(root/'MemoryCardA.USA.raw',details=True)
     report={'scenario':'villager-visuals','passed':False,'swaps':[],'physical_hardware':False}
-    def marker(pattern,after=0):
+    def marker(pattern,after=0,retry=None):
         deadline=time.monotonic()+120
+        retry_at=time.monotonic()+3
         while time.monotonic()<deadline:
             if p.poll() is not None:raise AssertionError('Game exited during visual swapping')
             check_runtime_failure()
             match=re.search(pattern,runtime_log_text()[after:])
             if match:return match
+            # Essential admission may first ask the paging owner to reclaim
+            # headroom. Repeat Apply as the menu instructs; busy loads ignore A.
+            if retry and time.monotonic()>=retry_at:
+                retry();retry_at=time.monotonic()+3
             time.sleep(.2)
         screenshot('visuals-timeout.png');raise AssertionError('Missing visual marker: '+pattern)
     def choose(actor,appearance):
@@ -287,7 +292,7 @@ def villager_visuals():
         else:raise AssertionError('Cannot select unused appearance '+str(appearance))
         screenshot('visuals-selected-'+str(actor)+'-'+str(appearance)+'.png')
         press('D_DOWN');apply_at=len(runtime_log_text());press('A')
-        marker(r'VILLAGER VISUAL APPLIED actor '+str(actor)+' appearance '+str(appearance)+r'\b',apply_at)
+        marker(r'VILLAGER VISUAL APPLIED actor '+str(actor)+' appearance '+str(appearance)+r'\b',apply_at,retry=lambda:press('A'))
         screenshot('visuals-applied-'+str(actor)+'-'+str(appearance)+'.png')
         press('B');press('B');time.sleep(2)
         screenshot('visuals-world-'+str(actor)+'-'+str(appearance)+'.png')
