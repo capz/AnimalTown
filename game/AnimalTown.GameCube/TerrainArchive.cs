@@ -176,7 +176,7 @@ internal sealed partial class TerrainArchive
         scratch.Dispose();scratch=null;collect=true;
         for(int i=0;i<first.Length;i++){first[i]=NativeTerrain.Info(i,0);count[i]=NativeTerrain.Info(i,1);triangles[i]=NativeTerrain.Info(i,2);}
         for(int i=0;i<views.Length;i++)views[i]=new View();
-        Dolphin.Diagnostics.DebugOverlay.WriteLine("Terrain archive: "+NativeTerrain.Stat(5)+" ARAM bytes / "+Bytes+" MEM1 bytes / "+NativeTerrain.Stat(1)+" parts");
+        Dolphin.Diagnostics.DebugOverlay.WriteLine("Terrain archive: "+NativeTerrain.Stat(5)+" ARAM bytes / "+Bytes+" MEM1 bytes / "+NativeTerrain.Stat(1)+" parts / "+NativeTerrain.Stat(15)+" ARAM reserved bytes");
         Dolphin.Diagnostics.DebugOverlay.WriteLine("ANIMALTOWN TERRAIN BAKE READY sections "+baked);
         return true;
     }

@@ -31,7 +31,8 @@ static int capture_report(FILE *stream,const char *format,...);
 #undef fprintf
 
 enum {FAIL_ARAM=1,FAIL_RETAIN=2,FAIL_CACHE=4,FAIL_STAGE=8,FAIL_HOLD=16};
-static int faults,aram_bytes,aram_holds,allocations,retains,holds,creates;
+static int faults,aram_bytes,aram_holds,allocations,retains,holds,creates,fail_aram_at;
+static bool aram_slots[TA_ARAM_BLOCKS],aram_retained[TA_ARAM_BLOCKS];
 static int created_bytes[4],report_count,reported_graphics[4],reported_aram[4];
 static char reports[4][1024];
 static const int aram_capacity=14*1024*1024-0x4000;
@@ -65,19 +66,31 @@ int dnd_buffer_hold(int token){
 }
 int dnd_buffer_unhold(int token){Resource *r=find(token,BUFFER);if(!r||!r->holds)return -1;r->holds--;return 0;}
 int dnd_aram_allocate(int bytes){
-    allocations++;assert(!aram_bytes&&bytes==TA_BYTES);
-    if(faults&FAIL_ARAM)return 0;
-    aram_bytes=bytes;return 17;
+    allocations++;assert(bytes==TA_ARAM_BLOCK);
+    if((faults&FAIL_ARAM)||allocations==fail_aram_at)return 0;
+    for(int i=0;i<TA_ARAM_BLOCKS;i++)if(!aram_slots[i]){
+        aram_slots[i]=true;aram_bytes+=bytes;return i+17;
+    }
+    assert(false);return 0;
 }
 int dnd_aram_retain(int token){
-    retains++;assert(token==17&&aram_bytes);
+    int index=token-17;
+    retains++;assert((unsigned)index<TA_ARAM_BLOCKS&&aram_slots[index]&&!aram_retained[index]);
     if(faults&FAIL_RETAIN)return -EINVAL;
-    aram_holds++;return 0;
+    aram_retained[index]=true;aram_holds++;return 0;
 }
-int dnd_aram_release(int token){assert(token==17&&aram_holds);aram_holds--;return 0;}
-int dnd_aram_dispose(int token){assert(token==17&&aram_bytes&&!aram_holds);aram_bytes=0;return 0;}
+int dnd_aram_release(int token){
+    int index=token-17;
+    assert((unsigned)index<TA_ARAM_BLOCKS&&aram_retained[index]);
+    aram_retained[index]=false;aram_holds--;return 0;
+}
+int dnd_aram_dispose(int token){
+    int index=token-17;
+    assert((unsigned)index<TA_ARAM_BLOCKS&&aram_slots[index]&&!aram_retained[index]);
+    aram_slots[index]=false;aram_bytes-=TA_ARAM_BLOCK;return 0;
+}
 int dnd_aram_stat(int kind){
-    return kind==0?aram_capacity:kind==1?aram_bytes:kind==2||kind==3?aram_capacity-aram_bytes:kind==4?(aram_bytes?1:0):-EINVAL;
+    return kind==0?aram_capacity:kind==1?aram_bytes:kind==2||kind==3?aram_capacity-aram_bytes:kind==4?aram_bytes/TA_ARAM_BLOCK:-EINVAL;
 }
 static int capture_report(FILE *stream,const char *format,...){
     assert(stream==stderr&&report_count<4);
@@ -89,7 +102,7 @@ static int capture_report(FILE *stream,const char *format,...){
 }
 static void start(int failures){
     assert(animaltown_terrain_reset(0)==1&&!total_bytes&&!aram_bytes&&!aram_holds);
-    faults=failures;allocations=retains=holds=creates=report_count=0;
+    faults=failures;allocations=retains=holds=creates=report_count=fail_aram_at=0;
     memset(reports,0,sizeof(reports));
 }
 static void report(int index,const char *reason,int bytes,int result,int graphics,int aram){
@@ -97,11 +110,12 @@ static void report(int index,const char *reason,int bytes,int result,int graphic
     char expected[160];
     snprintf(expected,sizeof(expected),"ANIMALTOWN TERRAIN RESET FAILED reason %s bytes %d result %d sections 3 graphics_bytes %d",reason,bytes,result,graphics);
     assert(strstr(reports[index],expected)==reports[index]);
-    snprintf(expected,sizeof(expected),"aram_free %d aram_largest %d aram_allocations %d",aram_capacity-aram,aram_capacity-aram,aram?1:0);
+    snprintf(expected,sizeof(expected),"aram_free %d aram_largest %d aram_allocations %d",aram_capacity-aram,aram_capacity-aram,aram/TA_ARAM_BLOCK);
     assert(strstr(reports[index],expected));
 }
 static void rolled_back(void){
-    assert(!total_bytes&&!aram_bytes&&!aram_holds&&!ta_store&&!ta_cache&&!ta_stage);
+    assert(!total_bytes&&!aram_bytes&&!aram_holds&&!ta_store_count&&!ta_cache&&!ta_stage);
+    for(int i=0;i<TA_ARAM_BLOCKS;i++)assert(!aram_slots[i]&&!aram_retained[i]&&!ta_store[i]);
     for(int i=0;i<SLOTS;i++)assert(!slots[i].kind);
 }
 int main(void){
@@ -109,14 +123,16 @@ int main(void){
     active=true;assert(animaltown_terrain_reset(3)==-1);active=false;
     raw=1;assert(animaltown_terrain_reset(3)==-1);raw=0;
     assert(animaltown_terrain_reset(-1)==-1&&!report_count&&!allocations&&!creates);
-    assert(animaltown_terrain_reset(3)==1&&!report_count&&allocations==1&&retains==1&&holds==1&&creates==1);
+    assert(animaltown_terrain_reset(3)==1&&!report_count&&allocations==TA_ARAM_BLOCKS&&retains==TA_ARAM_BLOCKS&&holds==1&&creates==1);
     assert(total_bytes==TA_CACHE&&aram_bytes==TA_BYTES&&ta_stage==ta_cache&&find(ta_cache,BUFFER)->holds==1);
     assert(animaltown_terrain_reset(0)==1&&!report_count);rolled_back();
 
     start(FAIL_ARAM);assert(animaltown_terrain_reset(3)==-2&&report_count==1&&!retains&&!creates);
-    report(0,"aram-allocate",TA_BYTES,0,0,0);rolled_back();
+    report(0,"aram-allocate",TA_ARAM_BLOCK,0,0,0);rolled_back();
+    start(0);fail_aram_at=3;assert(animaltown_terrain_reset(3)==-2&&report_count==1&&retains==2&&!creates);
+    report(0,"aram-allocate",TA_ARAM_BLOCK,0,0,2*TA_ARAM_BLOCK);rolled_back();
     start(FAIL_RETAIN);assert(animaltown_terrain_reset(3)==-2&&report_count==1&&retains==1&&!creates);
-    report(0,"aram-retain",TA_BYTES,-EINVAL,0,TA_BYTES);rolled_back();
+    report(0,"aram-retain",TA_ARAM_BLOCK,-EINVAL,0,TA_ARAM_BLOCK);rolled_back();
     start(FAIL_CACHE);assert(animaltown_terrain_reset(3)==-2&&report_count==1&&creates==1&&!holds);
     assert(created_bytes[0]==TA_CACHE);
     report(0,"cache-buffer",TA_CACHE,0,0,TA_BYTES);rolled_back();

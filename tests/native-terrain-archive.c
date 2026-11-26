@@ -166,10 +166,53 @@ static void residency_checks(DndArray *vertices,DndArray *indices){
     assert(animaltown_terrain_suspend()==1&&animaltown_terrain_reset(0)==1&&dnd_draw_live()==0&&dnd_aram_stat(4)==0);
     puts("Terrain residency: exact 1 MiB release, retained ARAM, alias/GPU guards, budget rollback, owned DMA contention, cancellation and repeated resume passed");
 }
+static void fragmented_archive_checks(void){
+    const int spaniel_bytes=244544,hamster_bytes=323200;
+    int old_archive=dnd_aram_allocate(TA_BYTES),spaniel=dnd_aram_allocate(spaniel_bytes);
+    assert(old_archive&&spaniel&&dnd_aram_dispose(old_archive)==0);
+    int hamster=dnd_aram_allocate(hamster_bytes);
+    assert(hamster&&dnd_aram_stat(2)>=TA_BYTES&&dnd_aram_stat(3)<TA_BYTES);
+    assert(animaltown_terrain_reset(9)==1&&animaltown_terrain_stat(15)==TA_BYTES);
+
+    /* Seven 32-KiB parts and a short part put the final mesh across a
+     * backing block boundary. The blocks need not be adjacent in ARAM. */
+    enum {VERTICES=900,INDICES=174};
+    DndArray *v=array(VERTICES,36),*ix=array(INDICES,2);
+    for(int i=0;i<VERTICES;i++)((float*)v->data)[i*9]=(float)i;
+    for(int i=0;i<INDICES;i++)((uint16_t*)ix->data)[i]=(uint16_t)(i*5);
+    int big=dnd_mesh_create_range(v,VERTICES,ix,INDICES,2,0);
+    int short_mesh=dnd_mesh_create_range(v,3,NULL,0,2,0);
+    assert(big&&short_mesh);
+    for(int i=0;i<9;i++){
+        assert(animaltown_terrain_append(i,3,i==7?short_mesh:big,0)==i+1);
+        assert(animaltown_terrain_complete(i)==1);
+    }
+    assert(ta_part(8)->offset==TA_ARAM_BLOCK-TA_STAGE/2+128);
+    assert(animaltown_terrain_stat(5)==TA_ARAM_BLOCK+128&&animaltown_terrain_stat(15)==2*TA_ARAM_BLOCK);
+    assert(dnd_aram_stat(1)==2*TA_ARAM_BLOCK+spaniel_bytes+hamster_bytes&&dnd_aram_stat(4)==4);
+    int view=animaltown_terrain_view();
+    Resource *expected=find(big,MESH);
+    const size_t payload=VERTICES*sizeof(DndDrawVertex)+INDICES*sizeof(uint16_t);
+    assert(view&&animaltown_terrain_bind(view,8)==1&&!memcmp(find(view,MESH)->data,expected->data,payload));
+    assert(animaltown_terrain_bind(view,7)==1);
+    const unsigned char *previous=find(view,MESH)->data;
+    assert(animaltown_terrain_bind_step(view,8)==0);
+    for(int i=0;i<1000&&ta_pending_bytes==0;i++)assert(animaltown_terrain_bind_step(view,8)==0);
+    assert(ta_pending_bytes==TA_STAGE/2-128&&find(view,MESH)->data==previous);
+    finish_cancel();
+    assert(ta_part(8)->cache==-1&&find(view,MESH)->data==previous&&animaltown_terrain_stat(9)==0);
+    assert(finish_bind(view,8)==1&&!memcmp(find(view,MESH)->data,expected->data,payload));
+    assert(dnd_draw_release(view)==0&&dnd_draw_release(big)==0&&dnd_draw_release(short_mesh)==0);
+    assert(animaltown_terrain_reset(0)==1&&animaltown_terrain_stat(15)==0&&dnd_draw_live()==0);
+    assert(dnd_aram_dispose(spaniel)==0&&dnd_aram_dispose(hamster)==0&&dnd_aram_stat(1)==0);
+    free(v);free(ix);
+    puts("Terrain ARAM: fragmented bake, unused-block reclaim, split DMA and cancellation passed");
+}
 int main(void){
     assert(dnd_aram_initialize(2*1024*1024));
     metadata_fragmentation_checks();
     shared_bake_checks();
+    fragmented_archive_checks();
     DndArray *v=array(12,36),*ix=array(12,2);float *p=(float*)v->data;uint16_t *ids=(uint16_t*)ix->data;
     for(int i=0;i<12;i++){p[i*9]=i;p[i*9+7]=4+i*.5f;((uint32_t*)v->data)[i*9+6]=i%2?0xffffff00:0xffffffff;ids[i]=(uint16_t)(i%6);}
     int indexed=dnd_mesh_create_range(v,12,ix,12,2,0),plain=dnd_mesh_create_range(v,12,NULL,0,2,0);

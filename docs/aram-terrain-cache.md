@@ -6,8 +6,8 @@ but does not control residency. No town-save format changes are required.
 
 After two seconds indoors, away from an exit, the game releases the outdoor
 archive's fixed 1,048,576-byte MEM1 cache and its floor texture leases. The
-8 MiB ARAM reservation, immutable payload, metadata and reusable mesh-view
-identities stay alive. Walking inside no longer keeps outdoor visuals warm.
+baked ARAM blocks, metadata and reusable mesh-view identities stay alive.
+Walking inside no longer keeps outdoor visuals warm.
 Approaching the exit or starting a crossing restores the actual destination
 before the portal commits. This does not rebake terrain or discard town data.
 
@@ -56,10 +56,14 @@ the cache. Coalesced writes use the second region's DMA offset, preserving the
 first region until every source vertex and index has been copied.
 
 The bake owns one hold on the cache. Each DMA request completes and releases its
-own hold before the workspace is reused. Sealing drops only the bake hold;
-reset drops that hold before releasing the cache once. After sealing, the full
-cache is available to ordinary terrain views. The 8 MiB ARAM reservation, 1 MiB
-resident cache, geometry and texture quality are unchanged.
+own hold before the workspace is reused. Sealing drops the bake hold and
+returns all unused ARAM blocks. The full MEM1 cache is then available to
+ordinary terrain views. Reset drops the bake hold before releasing the cache.
+
+The 8 MiB bake budget uses independent 256 KiB ARAM blocks. The final
+allocation contains the baked payload and at most one partially filled block.
+If a mesh crosses a block boundary, each transfer completes before the view
+publishes the mesh. Reset rolls back all allocations on a failed reservation.
 
 This removes a separate 65,536-byte staging allocation from the loading peak.
 A [Dolphin rebuild](https://github.com/capz/AnimalTown/actions/runs/45050684467)

@@ -194,7 +194,13 @@ internal sealed class ModelResidency
             if(memoryTicket!=0){if(wasRestore&&model.IsResident)Memory!.Complete(memoryTicket);else Memory!.Cancel(memoryTicket);memoryTicket=0;}
             if(model.IsResident){
                 warmUntil[species]=now+WarmGraceUs;
-                if(wasRestore&&!failed){Restores++;RestoredBytes+=model.PackageBytes;DebugOverlay.WriteLine("ANIMALTOWN MODEL WARM "+species+" aram bytes "+model.AramBytes+" max advance us "+MaxAdvanceUs+" readiness waits "+ReadinessWaits+" portal wait ticks "+PortalWaits);}
+                if(wasRestore&&!failed){
+                    // The completed restore has published a complete MEM1 copy.
+                    // A later demotion can snapshot its package again.
+                    if(model.ReleaseAramBacking())BackingReleases++;
+                    Restores++;RestoredBytes+=model.PackageBytes;
+                    DebugOverlay.WriteLine("ANIMALTOWN MODEL WARM "+species+" aram bytes "+model.AramBytes+" max advance us "+MaxAdvanceUs+" readiness waits "+ReadinessWaits+" portal wait ticks "+PortalWaits);
+                }
             }else if(!failed&&!wasRestore){Demotions++;if(!hadBacking)SnapshotBytes+=model.PackageBytes;DebugOverlay.WriteLine("ANIMALTOWN MODEL COLD "+species+" aram bytes "+model.AramBytes+" native budget bytes "+model.NativeBytes+" max advance us "+MaxAdvanceUs);}
         }
         return true;
