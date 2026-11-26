@@ -16,6 +16,7 @@
   <ItemGroup><Compile Include="../../game/AnimalTown.GameCube/VillagerModelLod.cs" Link="VillagerModelLod.cs" /></ItemGroup>
   <ItemGroup>
     <Compile Include="../../game/AnimalTown.GameCube/TownGame.Simulation.cs" Link="TownGame.Simulation.cs" />
+    <Compile Include="../../game/AnimalTown.GameCube/VillagerVisualSwap.cs" Link="VillagerVisualSwap.cs" />
     <Compile Include="../../vendor/card-store-sdk/src/DolphinDotNet.GameCube/Dolphin/Input/ControllerState.cs" Link="Input/ControllerState.cs" />
     <Compile Include="../../vendor/card-store-sdk/src/DolphinDotNet.GameCube/Dolphin/Input/ControllerButton.cs" Link="Input/ControllerButton.cs" />
     <Compile Include="../../vendor/card-store-sdk/src/DolphinDotNet.GameCube/Dolphin/Input/ButtonState.cs" Link="Input/ButtonState.cs" />

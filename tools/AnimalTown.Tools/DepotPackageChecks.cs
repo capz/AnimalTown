@@ -46,7 +46,7 @@ internal static class DepotPackageChecks
             // its catalog and coarse models from valid, checksum-bearing DNMD
             // fixtures rather than supplying a placeholder .bin or weakening
             // package validation for these new assets.
-            foreach(string species in ModelLodCooker.Species){
+            foreach(string species in VillagerAppearance.Models){
                 byte[] fixture=ModelLodChecks.Grid();
                 File.WriteAllBytes(Path.Combine(disc,species+"-tex128.dndmodel"),fixture);
                 File.WriteAllBytes(Path.Combine(disc,species+".dndmodel"),fixture);
