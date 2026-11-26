@@ -11,9 +11,14 @@ transport, security requirements, and DOL-015 performance targets.
 
 ## Implemented and available for staging
 
-- Gate Travel can start short-code linking on the GameCube. It leaves the
-  regular town renderer before configuring HTTPS. Device access is bound
-  to the account and town, expires quickly, and can be rotated or revoked.
+- Gate Travel can start short-code linking in a GameCube staging build.
+  Build the ISO and Depot candidates with `./tools/build-game.ps1 -OnlinePairing`,
+  or set `AnimalTownOnlinePairing=true` for a direct project build. Standard
+  builds leave this path disabled so the TLS and broadband stack can be
+  omitted from the game executable while DOL-015 memory use is qualified.
+  Pairing leaves the regular town renderer before configuring HTTPS. Device
+  access is bound to the account and town, expires quickly, and can be rotated
+  or revoked.
   Two verified memory-card records preserve the refresh credential and pending
   rotation ID across interrupted writes. The browser approval flow uses a
   separate account credential.

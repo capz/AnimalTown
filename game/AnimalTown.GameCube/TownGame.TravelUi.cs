@@ -7,10 +7,13 @@ using Dolphin.Timing;
 
 internal sealed partial class TownGame
 {
-    internal const int TravelRestart=27,OnlinePairingRestart=28;
+    internal const int TravelRestart=27;
     internal bool TravelRestartRequested {get;private set;}
+#if ANIMALTOWN_ONLINE_PAIRING
+    internal const int OnlinePairingRestart=28;
     internal bool OnlinePairingRequested {get;private set;}
     private bool CanLinkOnline=>travelAction==0&&SaveCards.Enabled&&session.Loaded&&state.Town.Jobs.Initialized;
+#endif
     private int travelChoice,travelAction,travelFrom,travelTo;
     private string travelHome="",travelDestination="",travelStatus="",travelFromName="",travelToName="";
     private bool travelReady;
@@ -53,7 +56,9 @@ internal sealed partial class TownGame
         if(screen=="travel-busy")return true;
         if(p.B.WasPressed){if(screen=="travel-confirm"){screen="travel-menu";return true;}screen="world";return true;}
         int dir=jobNavigation.Read(screen,0,p.Stick.X,p.Stick.Y,(int)p.PressedButtons,Clock.Timestamp,true);
+#if ANIMALTOWN_ONLINE_PAIRING
         if(screen=="travel-menu"&&CanLinkOnline&&p.Z.WasPressed){OnlinePairingRequested=true;return true;}
+#endif
         if(p.X.WasPressed){RefreshTravel();return true;}
         if(screen=="travel-moving"){
             int residents=Town.LocalResidentCount;
@@ -80,7 +85,11 @@ internal sealed partial class TownGame
         if(screen=="travel-moving"){Text("Up/Down: home   Left/Right: destination",118,310,ink,.95f);Text("A: confirm move   X: recheck   B: back",118,340,ink,.95f);return true;}
         bool confirm=screen=="travel-confirm";
         for(int i=0;i<2;i++){float x=118+i*210;if(i==travelChoice)Rounded(x-4,313,202,29,13,new Color32(221,231,188));Text(confirm?(i==0?"Back":"Confirm"):(i==0?travelReady?"Continue":"Recheck":"Back"),x+12,317,ink,1.1f);}
-        if(!confirm)Text(CanLinkOnline?"X: recheck   Y: move villagers   Z: online":"X: recheck   Y: move villagers",118,351,ink,.9f);
+        string controls="X: recheck   Y: move villagers";
+#if ANIMALTOWN_ONLINE_PAIRING
+        if(CanLinkOnline)controls="X: recheck   Y: move villagers   Z: online";
+#endif
+        if(!confirm)Text(controls,118,351,ink,.9f);
         return true;
     }
 }

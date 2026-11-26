@@ -9,7 +9,7 @@
     {
       "id": "multiplayer-pairing-and-staging",
       "lines": [
-        "Link a GameCube to a town account with a short code from Gate Travel.",
+        "Prepare short-code GameCube linking for staging builds.",
         "Device credentials are scoped and revocable, and checkpoint uploads can resume.",
         "Staging supports TLS movement and resumable review of guest placements.",
         "Public GameCube visits still require world sync, save settlement, and hardware qualification."
@@ -463,6 +463,15 @@
         "Baking returns unused terrain blocks to the ARAM allocator.",
         "Terrain archives can span smaller free blocks during a rebuild.",
         "A restored villager model releases its redundant ARAM copy."
+      ]
+    },
+    {
+      "id": "multiplayer-pairing-staging-memory-20261126",
+      "lines": [
+        "Regular GameCube play keeps its memory available for town loading.",
+        "Staging builds can enable short-code pairing for DOL-015 testing.",
+        "The standard ISO and Depot app omit the inactive TLS stack.",
+        "Pairing builds include both native networking license notices."
       ]
     }
   ]

@@ -70,8 +70,8 @@ internal static class DepotPackageChecks
             using(var archive=ZipFile.OpenRead(zip)){
                 Check(archive.Entries.All(e=>e.FullName.StartsWith("apps/animaltown/",StringComparison.Ordinal)),"exact installed app directory");
                 Check(archive.Entries.Count(e=>e.FullName.EndsWith(".dol",StringComparison.OrdinalIgnoreCase))==1,"exactly one playable executable");
-                Check(archive.GetEntry("apps/animaltown/mbedTLS-LICENSE.txt")!=null&&
-                      archive.GetEntry("apps/animaltown/Jitterentropy-LICENSE.txt")!=null,"native networking notices accompany the DOL");
+                Check(archive.GetEntry("apps/animaltown/mbedTLS-LICENSE.txt")==null&&
+                      archive.GetEntry("apps/animaltown/Jitterentropy-LICENSE.txt")==null,"standard packages omit the optional networking notices");
                 Check(!archive.Entries.Any(e=>e.FullName.Contains("updater",StringComparison.Ordinal)||e.FullName.Contains("sunshine",StringComparison.Ordinal)||e.FullName.EndsWith(".pem",StringComparison.Ordinal)),"credentials, updater and retired assets are excluded");
                 Check(archive.GetEntry("apps/animaltown/"+WaterTextureCatalog.DiscName(1))!=null&&archive.GetEntry("apps/animaltown/water-unknown.dndtex")==null,"only declared optional water maps ship in the real Depot archive");
                 foreach(string species in new[]{"fox","bunny","giraffe","cat","hamster","spaniel"}){
@@ -81,6 +81,18 @@ internal static class DepotPackageChecks
                 }
                 var memoryEntry=archive.GetEntry("apps/animaltown/"+ModelMemoryCooker.DiscName);Check(memoryEntry!=null&&memoryEntry.Length==160,"package-bound startup memory catalog is included");
             }
+            File.WriteAllText(Path.Combine(disc,"mbedTLS-LICENSE.txt"),"mbedTLS fixture");
+            Reject(()=>DepotPackage.Payload(disc),"reject a partial set of networking notices");
+            File.WriteAllText(Path.Combine(disc,"Jitterentropy-LICENSE.txt"),"Jitterentropy fixture");
+            var networkingNotices=new[]{"mbedTLS-LICENSE.txt","Jitterentropy-LICENSE.txt"};
+            foreach(string name in networkingNotices)File.Copy(Path.Combine(disc,name),Path.Combine(notices,name));
+            string pairingZip=Path.Combine(root,"pairing-depot.zip");
+            DepotPackage.Build(root,pairingZip);
+            using(var archive=ZipFile.OpenRead(pairingZip)){
+                Check(networkingNotices.All(name=>archive.GetEntry("apps/animaltown/"+name)!=null),"pairing packages include both native networking notices");
+            }
+            Reject(()=>DepotPackage.Verify(root,zip),"pairing disc requires pairing notices in its Depot package");
+            foreach(string name in networkingNotices)File.Delete(Path.Combine(disc,name));
             // Fresh PowerShell processes can serialize hashtable properties in
             // another order. Equal snapshots remain equal; new fields do not.
             string versionFile=Path.Combine(root,"out/version.json");

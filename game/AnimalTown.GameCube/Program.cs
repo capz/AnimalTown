@@ -47,7 +47,9 @@ internal static class Program
             if(session.Draft!=null&&!OnboardingFlow.Run(config,session))return;
             while(true){
                 int action=RunSession(config,session);
+#if ANIMALTOWN_ONLINE_PAIRING
                 if(action==TownGame.OnlinePairingRestart){OnlinePairing.Run(session);continue;}
+#endif
                 if(action!=TownGame.TravelRestart)break;
                 if(session.Flight.Phase==FlightPhase.Cruise)LoadingScreen.BeginFlight(session.Flight.Direction);
                 if(!session.CompleteTravel()&&!OfflineTravelRecovery.Run(session,session.TravelError))break;
@@ -78,7 +80,9 @@ internal static class Program
                 game.AdvanceResidency();long simulation=FrameProfile.Start();
                 long now=Clock.Timestamp;accumulator+=(now-previous)/1000000.0;previous=now;if(accumulator>.1334)accumulator=.1334;
                 Controller.Update();var pad=Controller.GetState(0);game.Input(pad);
+#if ANIMALTOWN_ONLINE_PAIRING
                 if(game.OnlinePairingRequested)return TownGame.OnlinePairingRestart;
+#endif
                 if(game.TravelRestartRequested)return TownGame.TravelRestart;
                 if(game.ExitToTitle)return OnboardingFlow.ToTitle;
                 if(game.NextSetup!=0)return game.NextSetup;
