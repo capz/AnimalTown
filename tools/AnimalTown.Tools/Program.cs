@@ -28,6 +28,7 @@ static class Program
             else if(args[0]=="model-lod-check")ModelLodChecks.Run();
             else if(args[0]=="model-memory")ModelMemoryCooker.Cook(Root);
             else if(args[0]=="model-memory-check")ModelMemoryCooker.Check();
+            else if(args[0]=="texture-audit")TextureAudit.Run(Root);
             else if(args[0]=="building-check")BuildingAssets.Check(Root);
             else if(args[0]=="repack-textures")TextureRepacker.Command(args);
             else if(args[0]=="town-preview")TownGenerationPreview.Run(args[2],int.Parse(args[3]),args.Length>4?int.Parse(args[4]):1);

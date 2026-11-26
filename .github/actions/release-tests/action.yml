@@ -152,6 +152,17 @@ runs:
           --mount "type=bind,src=$PWD,dst=/work" -w /work \
           animaltown-dolphin-test python3 tools/iso-smoke.py \
           "out/AnimalTown-$BUILD_VERSION.nkit.iso" out/villager-visuals --villager-visuals
+        python3 - <<'PY'
+        import hashlib, json
+        from pathlib import Path
+        identity=json.loads(Path('out/version.json').read_text())
+        disc=Path('out')/f"AnimalTown-{identity['version']}.nkit.iso"
+        with disc.open('rb') as source:
+            digest=hashlib.file_digest(source,'sha256').hexdigest()
+        evidence={'schema':1,'commit':identity['commit'],'version':identity['version'],
+                  'tag':identity['tag'],'isoName':disc.name,'isoSha256':digest}
+        Path('out/villager-visuals/villager-visuals-build.json').write_text(json.dumps(evidence,indent=2)+'\n')
+        PY
     - name: Keep villager visual swap diagnostics
       if: always() && steps.selection.outputs.villager_visuals == 'true'
       uses: actions/upload-artifact@v4

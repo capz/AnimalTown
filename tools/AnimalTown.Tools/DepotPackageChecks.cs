@@ -144,6 +144,8 @@ internal static class DepotPackageChecks
                 reportFiles.Add("video-options-"+name+".png",new byte[]{137,80,78,71,13,10,26,10});
             reportFiles.Add("scenarios/jobs/jobs-delivery-result.png",new byte[]{137,80,78,71,13,10,26,10});
             reportFiles.Add("scenarios/jobs/jobs-delivery-state.json",JsonSerializer.SerializeToUtf8Bytes(new{mode="delivery",passed=true}));
+            reportFiles.Add("scenarios/villager-visuals/visuals-world-0-11.png",new byte[]{137,80,78,71,13,10,26,10});
+            reportFiles.Add("scenarios/villager-visuals/villager-visuals-report.json",JsonSerializer.SerializeToUtf8Bytes(new{scenario="villager-visuals",passed=true}));
             foreach(string phase in new[]{"noon","dawn","dusk","night"}){
                 reportFiles.Add("daylight-"+phase+"-report.json",JsonSerializer.SerializeToUtf8Bytes(new{passed=true}));
                 foreach(string shot in new[]{"a","b"})reportFiles.Add("daylight-"+phase+"-"+shot+".png",new byte[]{137,80,78,71,13,10,26,10});
