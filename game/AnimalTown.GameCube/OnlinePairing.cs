@@ -274,7 +274,7 @@ internal sealed class OnlinePairing
         return new string(chars);
     }
 
-    private static byte[] ReadBounded(string path,int maximum)
+    internal static byte[] ReadBounded(string path,int maximum)
     {
         using var input=File.OpenRead(path);
         long length=input.Length;
@@ -290,8 +290,11 @@ internal sealed class OnlinePairing
         return bytes;
     }
 
-    private static string ReadOrigin()
+    internal static string ReadOrigin()
     {
+#if ANIMALTOWN_ONLINE_PAIRING
+        string? saved=OnlineServiceOrigin.Load();if(saved!=null)return saved;
+#endif
         var bytes=ReadBounded(ContentPaths.Asset("online-origin.txt"),96);
         var value=new Dolphin.Text.UTF8Encoding(false,true).GetString(bytes).Trim();
         if(!OnlineCardCredential.ValidOrigin(value))throw new FormatException("Expected an HTTPS host.");

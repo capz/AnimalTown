@@ -106,7 +106,7 @@ sealed partial class GameDatabase
         await using var c = await source.OpenConnectionAsync(); await using var t = await c.BeginTransactionAsync();
         await RequireActiveDevice(c, t, device);
         await using var read = Cmd(c, t, """
-            SELECT phase,parent_revision,revision,publication_fingerprint,save_commit,save_records,profile
+            SELECT phase,parent_revision,revision,publication_fingerprint,save_commit,save_records,profile,fingerprint
             FROM online_travel WHERE id=$1 AND player=$2 AND town_identity=$3
             """, id, device.Player, device.Town);
         await using var row = await read.ExecuteReaderAsync();
@@ -114,7 +114,7 @@ sealed partial class GameDatabase
         int phase = row.GetInt32(0), length = 0;
         if (!row.IsDBNull(4)) length = CheckpointEnvelope(row.GetFieldValue<byte[]>(4), row.GetFieldValue<byte[][]>(5)).Length;
         return new { id, phase, parentRevision = row.GetInt64(1), revision = row.IsDBNull(2) ? (long?)null : row.GetInt64(2),
-            sha256 = row.IsDBNull(3) ? null : row.GetString(3), length, profile = row.GetInt32(6) };
+            sha256 = row.IsDBNull(3) ? null : row.GetString(3), length, profile = row.GetInt32(6),parentFingerprint=row.GetString(7) };
     }
 
     public async Task<object> PrepareOnlinePublication(DevicePrincipal device, Guid id)

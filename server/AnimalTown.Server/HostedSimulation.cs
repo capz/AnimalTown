@@ -49,6 +49,7 @@ sealed partial class GameDatabase
             await using(var read=Cmd(c,t,"SELECT simulated_at FROM hosted_towns WHERE host=$1",entry.Host))previous=(long)(await read.ExecuteScalarAsync(stop))!;
             if(previous>=now)continue;
             var loaded=await Load(c,t,entry.Host,false);var world=loaded.State;
+            int previousShopRevision=world.Town.Shop.Revision;
             byte[] personalBefore=InventoryPacket(world,loaded.Revision);
             int day=(int)(now/86400);bool newDay=world.AdvanceHostedCalendar(day,DateTime.UtcNow.Year*12+DateTime.UtcNow.Month);
             world.ResidentJobs.EnableOnlineAdapter(now);
@@ -65,7 +66,7 @@ sealed partial class GameDatabase
                 // No owner-console ghost blocks unattended NPCs. Restore the
                 // actual home-profile location before canonical publication.
                 float oldX=world.X,oldZ=world.Z;int oldRoom=world.Space;
-                try { world.Space=-1;for(int step=0;step<60;step++)journey.Tick(world); }
+                try { world.Space=-1;for(int step=0;step<30;step++)journey.Tick(world); }
                 finally { world.X=oldX;world.Z=oldZ;world.Space=oldRoom; }
                 byte[] poses=Packet(w=>
                 {
@@ -91,7 +92,7 @@ sealed partial class GameDatabase
                 // every second while a player is choosing a placement or shop row.
                 world.Sequence=checked(world.Sequence+1);await WriteParts(c,t,entry.Host,world,false);
             }
-            if(newDay)await AppendHostedEvent(c,t,entry.Host,null,1,null,[1]);
+            if(newDay||world.Town.Shop.Revision!=previousShopRevision)await AppendHostedEvent(c,t,entry.Host,null,1,null,[1]);
             await using(var mark=Cmd(c,t,"UPDATE hosted_towns SET simulated_at=$2 WHERE host=$1",entry.Host,now))await mark.ExecuteNonQueryAsync(stop);
             await t.CommitAsync(stop);
         }

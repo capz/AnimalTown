@@ -6,7 +6,7 @@ namespace AnimalTown.Online;
 public static class OnlineTownProjection
 {
     public const int MaximumBytes = 96 * 1024;
-    const int Magic = 0x3157544f;
+    const int Magic = 0x3257544f;
     public static int Write(GameState state, byte[] bytes)
     {
         var w = new OnlinePacketWriter(bytes); var town = state.Town;
@@ -20,6 +20,7 @@ public static class OnlineTownProjection
         for (int i = 0; i < GameState.ProfileCount; i++)
         {
             var p = state.Profiles[i]; w.Byte(p.Created ? (byte)1 : (byte)0); w.Text(p.Name, 32);
+            var resident=town.Jobs.Player(i);w.Long(unchecked((long)resident.Town));w.Long(unchecked((long)resident.Serial));
             w.Int(p.HousePlaced ? 1 : 0); w.Int(p.HouseX); w.Int(p.HouseZ); w.Int(p.HouseTier);
             w.Int(p.GardenTier); w.Int(p.Roof); w.Int(p.Wall); w.Int(p.Fence); w.Int(p.Mailbox); w.Int(p.Exterior);
         }
@@ -70,10 +71,13 @@ public static class OnlineTownProjection
         for (int i = 0; i < Town.Cells; i++) if (town.Tiles[i] > (byte)Terrain.CoastWest) throw new InvalidOperationException("Invalid public terrain.");
         r.Bytes(town.Paths.Packed, 0, TownPaths.PackedBytes); town.Paths.Validate();
         r.Bytes(town.Traffic.Visits, 0, town.Traffic.Visits.Length);
+        state.OnlineResidents=new Jobs.JobIdentity[GameState.ProfileCount];
         for (int i = 0; i < GameState.ProfileCount; i++)
         {
             var p = state.Profiles[i]; int created = r.Byte(); if (created > 1) throw new InvalidOperationException("Invalid public resident.");
-            p.Created = created == 1; p.Name = r.Text(32); p.HousePlaced = Range(0, 1) == 1;
+            p.Created = created == 1; p.Name = r.Text(32);
+            state.OnlineResidents[i]=new Jobs.JobIdentity(unchecked((ulong)r.Long()),unchecked((ulong)r.Long()));
+            p.HousePlaced = Range(0, 1) == 1;
             p.HouseX = Range(0, Town.Width - 1); p.HouseZ = Range(0, Town.Height - 1); p.HouseTier = Range(0, 5);
             p.GardenTier = Range(0, 4); p.Roof = Range(0, 255); p.Wall = Range(0, 255); p.Fence = Range(0, 255);
             p.Mailbox = Range(0, 255); p.Exterior = Range(0, 255);
@@ -108,5 +112,39 @@ public static class OnlineTownProjection
         state.Wallet = 0; state.Savings = 0; state.Debt = 0; state.MailCount = 0;
         Array.Clear(state.Pockets, 0, state.Pockets.Length); Array.Clear(state.Mail, 0, state.Mail.Length); Array.Clear(state.Owned, 0, state.Owned.Length);
         town.NotifyTerrainChanged(); town.NotifyObjectsChanged(); return state;
+    }
+
+    public static void Update(GameState target,GameState source)
+    {
+        if(!target.IsOnlineProjection||!source.IsOnlineProjection||target.Town.Jobs.TownId!=source.Town.Jobs.TownId||target.Town.Seed!=source.Town.Seed)
+            throw new InvalidOperationException("The live town changed identity.");
+        var a=target.Town;var b=source.Town;bool terrainChanged=false;
+        for(int i=0;i<Town.Cells;i++)if(a.Tiles[i]!=b.Tiles[i]||a.Elevation[i]!=b.Elevation[i]){terrainChanged=true;break;}
+        Array.Copy(b.Tiles,a.Tiles,Town.Cells);Array.Copy(b.Elevation,a.Elevation,Town.Cells);
+        bool pathsChanged=false;for(int i=0;i<TownPaths.PackedBytes;i++)if(a.Paths.Packed[i]!=b.Paths.Packed[i]){pathsChanged=true;break;}
+        if(pathsChanged){a.Paths.Clear();Array.Copy(b.Paths.Packed,a.Paths.Packed,TownPaths.PackedBytes);}
+        Array.Copy(b.Traffic.Visits,a.Traffic.Visits,a.Traffic.Visits.Length);
+        a.Day=b.Day;a.Month=b.Month;a.DaylightLocation=b.DaylightLocation;a.Koban.Restore(b.Koban.X,b.Koban.Z);
+        for(int i=0;i<GameState.ProfileCount;i++)
+        {
+            var p=target.Profiles[i];var q=source.Profiles[i];p.Created=q.Created;p.Name=q.Name;p.HousePlaced=q.HousePlaced;p.HouseX=q.HouseX;p.HouseZ=q.HouseZ;
+            p.HouseTier=q.HouseTier;p.GardenTier=q.GardenTier;p.Roof=q.Roof;p.Wall=q.Wall;p.Fence=q.Fence;p.Mailbox=q.Mailbox;p.Exterior=q.Exterior;
+            target.OnlineResidents![i]=source.OnlineResidents![i];
+        }
+        target.HousePlaced=source.HousePlaced;target.HouseTier=source.HouseTier;target.GardenTier=source.GardenTier;
+        a.HouseX=b.HouseX;a.HouseZ=b.HouseZ;target.Roof=source.Roof;target.Wall=source.Wall;target.Fence=source.Fence;target.Mailbox=source.Mailbox;target.Exterior=source.Exterior;
+        Array.Copy(source.BuildingTypes,target.BuildingTypes,source.BuildingTypes.Length);
+        for(int i=0;i<Town.SavedVillagerCount;i++)
+        {
+            var p=a.Residents[i];var q=b.Residents[i];a.Jobs.SetNpcIdentity(i,b.Jobs.Npc(i));a.Jobs.NpcSpecies[i]=b.Jobs.Species(i);a.Jobs.SetOutfit(i,b.Jobs.Outfit(i));
+            p.Name=q.Name;p.Phrase=q.Phrase;p.HomeX=q.HomeX;p.HomeZ=q.HomeZ;p.Space=q.Space;p.PosX=q.PosX;p.PosZ=q.PosZ;p.X=q.X;p.Z=q.Z;p.Yaw=q.Yaw;
+        }
+        a.GroundCount=b.GroundCount;
+        for(int i=0;i<b.GroundCount;i++){var p=a.Ground[i];var q=b.Ground[i];p.Item=q.Item;p.X=q.X;p.Z=q.Z;p.Kind=q.Kind;p.Wrapped=q.Wrapped;}
+        a.PlacedCount=b.PlacedCount;
+        for(int i=0;i<b.PlacedCount;i++){var p=a.Placed[i];var q=b.Placed[i];p.Item=q.Item;p.X=q.X;p.Z=q.Z;p.Rotation=q.Rotation;p.Room=q.Room;p.Owner=q.Owner;}
+        a.StockCount=b.StockCount;Array.Copy(b.Stock,a.Stock,b.Stock.Length);a.Shop.Revision=b.Shop.Revision;
+        Array.Copy(b.Shop.SaleItems,a.Shop.SaleItems,TownShop.StoredSaleCount);Array.Copy(b.Shop.SalePrices,a.Shop.SalePrices,TownShop.StoredSaleCount);Array.Copy(b.Shop.SaleOwners,a.Shop.SaleOwners,TownShop.StoredSaleCount);
+        if(terrainChanged)a.NotifyTerrainChanged();a.NotifyObjectsChanged();a.NotifyCastersChanged();
     }
 }

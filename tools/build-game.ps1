@@ -120,6 +120,11 @@ foreach($species in @('fox','bunny','giraffe','cat','hamster','spaniel')){
 }
 RunNative '.' 'sh' (@('-c','cc -DANIMALTOWN_MODEL_PEAK_RETAIN -std=c11 -O2 -Wall -Wextra -Werror -ffunction-sections -fdata-sections -Iout/sdk-native/include tests/native-model-memory-peaks.c out/sdk-native/source/model.c out/sdk-native/source/model_animation.c out/sdk-native/source/verified_copy.c out/sdk-native/source/aram.c -Wl,--gc-sections,--wrap=malloc,--wrap=calloc,--wrap=realloc,--wrap=aligned_alloc,--wrap=free -lm -o out/native-model-memory-peaks && out/native-model-memory-peaks "$@" > out/model-native-peak-audit.jsonl','model-memory-peaks')+$modelPeakArguments)
 New-Item -ItemType Directory -Force -Path out/disc|Out-Null
+foreach($networkAsset in @('online-roots.pem','online-roots.txt')){
+    $networkTarget=Join-Path $projectRoot "out/disc/$networkAsset"
+    if($OnlinePairing -or $OnlinePlay){Copy-Item -LiteralPath (Join-Path $projectRoot "assets/network/$networkAsset") -Destination $networkTarget -Force}
+    elseif(Test-Path -LiteralPath $networkTarget){Remove-Item -LiteralPath $networkTarget -Force}
+}
 [IO.File]::WriteAllBytes((Join-Path $projectRoot 'out/disc/runtime.cfg'),[byte[]]@($RuntimeProfile))
 & (Join-Path $PSScriptRoot 'build-updater.ps1') -NativeInProcess:$NativeInProcess
 $updaterCommit=(Get-Content build/updater.lock.json -Raw|ConvertFrom-Json).commit
@@ -135,7 +140,8 @@ $assetsContentHash=(Get-Content (Join-Path $packageCache "dolphindotnet.assets/$
 $sourceManifest = foreach($sourceFile in (& git ls-files --cached --others --exclude-standard | Sort-Object)) {
     if(Test-Path -LiteralPath $sourceFile -PathType Leaf){ "$sourceFile $((Get-FileHash -LiteralPath $sourceFile -Algorithm SHA256).Hash)" }
 }
-$sourceDigest=[Convert]::ToHexString([Security.Cryptography.SHA256]::HashData([Text.Encoding]::UTF8.GetBytes(($sourceManifest -join "`n"))))
+$featureIdentity="Online pairing: $($OnlinePairing.IsPresent -or $OnlinePlay.IsPresent)`nOnline play: $($OnlinePlay.IsPresent)"
+$sourceDigest=[Convert]::ToHexString([Security.Cryptography.SHA256]::HashData([Text.Encoding]::UTF8.GetBytes(($sourceManifest -join "`n")+"`n"+$featureIdentity)))
 Run dotnet @('run','--project','tools/AnimalTown.Tools','-c','Release','--no-build','--','content-identity',$projectRoot,$gameFullCommit,$gameVersion,$sourceDigest,"$RuntimeProfile",$gameCommit)
 $pairingProperty="-p:AnimalTownOnlinePairing=$(($OnlinePairing.IsPresent -or $OnlinePlay.IsPresent).ToString().ToLowerInvariant())"
 $playProperty="-p:AnimalTownOnlinePlay=$($OnlinePlay.IsPresent.ToString().ToLowerInvariant())"

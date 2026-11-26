@@ -73,7 +73,7 @@ sealed partial class GameDatabase
         if (command.Kind == OnlineCommandKind.Jobs)
         {
             if (command.A < 0 || command.A > 127) throw new GameError(400, "invalid-job-page");
-            var page = jobs.Where(j => j.Phase == 5 || j.Due > now).Skip(command.A).Take(5).ToList();
+            var page = jobs.Where(j => OnlineJobPolicy.Supported(j.Template) && (j.Phase == 5 || j.Due > now)).Skip(command.A).Take(5).ToList();
             return (CommandResult(command, 200, extra: w => { w.Int(page.Count); foreach (var row in page) WriteHostedJobView(w, row); }), false, false);
         }
         await RequireOnlineInventory(c, t, authority.Device, authority.Host, authority.Visit);
@@ -86,7 +86,7 @@ sealed partial class GameDatabase
                 INSERT INTO hosted_job_conversations(host,player,npc,expires) VALUES($1,$2,$3,clock_timestamp()+interval '2 minutes')
                 ON CONFLICT(host,player) DO UPDATE SET npc=excluded.npc,expires=excluded.expires
                 """, authority.Host, authority.Player, npc)) await talk.ExecuteNonQueryAsync();
-            var existing = jobs.FirstOrDefault(j => (j.Requester == npc || j.Target == npc && j.Phase is 1 or 2) && (j.Phase == 5 || j.Due > now));
+            var existing = jobs.FirstOrDefault(j => OnlineJobPolicy.Supported(j.Template) && (j.Requester == npc || j.Target == npc && j.Phase is 1 or 2) && (j.Phase == 5 || j.Due > now));
             if (existing is not null)
             {
                 bool restored = false;

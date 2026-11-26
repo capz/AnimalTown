@@ -54,10 +54,12 @@ ownership remain enforced.
 | Atomic stock/listing purchases, receipts, grants and custody | [Town shop](../server/AnimalTown.Server/TownShop.cs), [API](../server/AnimalTown.Server/Program.cs), [town items](../server/AnimalTown.Server/TownItems.cs) | Route managed towns through the hosted command boundary and settle the home card. |
 | Local chat, jobs, letters and save recovery | [Chat](../game/AnimalTown.GameCube/TownGame.Chat.cs), [job service](../shared/AnimalTown.Domain/Jobs/VillagerJobService.cs), [mail](../shared/AnimalTown.Domain/Jobs/VillagerJobService.Mail.cs), [save repository](../shared/AnimalTown.Domain/SaveRepository.cs) | Authenticated remote commands, per-participant state, delivery and receipts. Local mail currently rejects visitors. |
 
-Standard game builds currently omit inactive networking. Pairing and raw TLS
-are staging paths. Their existence is not evidence of a playable online visit.
-Staging placement writes must stay disabled for player saves until inventory
-and card settlement are complete.
+The release pipeline builds online-capable candidates. Direct managed builds
+omit the feature unless `AnimalTownOnlinePlay=true` is supplied. The PoC uses
+validated HTTPS/WSS; the older raw-TLS staging listener is not its public route.
+Backend gameplay mutations require the explicit `-EnablePlay` hosting option.
+Playable target qualification remains open until measured on the actual
+candidate. Legacy staging placement writes remain disabled.
 
 ## Cloudflare transport contract
 
@@ -110,20 +112,20 @@ GitHub issue numbers.
 
 | ID | Deliverable | Current state | Depends on | Completion gate |
 | --- | --- | --- | --- | --- |
-| POC-01 | Reproducible local backend and tunnel | API/container foundation | — | Start persistent PostgreSQL, backend and Quick Tunnel on either supported computer; document configuration, stop/restart, endpoint changes, secret handling and restore. Verify authenticated access through the public URL. |
-| POC-02 | Bounded WSS transport | Raw TLS/pose foundation | POC-01 | Add console WebSocket framing and server upgrade endpoint. Validate upgrade/subprotocol, masking, fragmented messages, ping/pong, close and malformed/oversized input. Keep frame work, queues, message sizes and allocation bounded; preserve ticket and epoch checks. |
+| POC-01 | Reproducible local backend and tunnel | Persistent source/published hosting implemented; public CI qualification | — | Start persistent PostgreSQL, backend and Quick Tunnel on either supported computer; document configuration, stop/restart, endpoint changes, secret handling and restore. Verify authenticated access through the public URL. |
+| POC-02 | Bounded WSS transport | Console/server WSS implemented; host framing and GC-stress checks | POC-01 | Add console WebSocket framing and server upgrade endpoint. Validate upgrade/subprotocol, masking, fragmented messages, ping/pong, close and malformed/oversized input. Keep frame work, queues, message sizes and allocation bounded; preserve ticket and epoch checks. |
 | POC-03 | Dolphin and DOL-015 transport spike | Hardware qualification missing | POC-02 | Prove API pairing, WSS authentication, movement samples, bulk transfer and recovery through Cloudflare on the actual target SDK. Record matched memory and frame-time measurements before enabling networking beside a dense town. |
-| POC-04 | Playable visit lifecycle | Pairing/admission foundation | POC-03, POC-13 approval | Add gate/friend selection, connection states, owner plus two guests, unattended availability, removal and safe exit. Preserve the existing indefinitely open hosted gate without owner-console heartbeats and complete the playable client lifecycle. Keep destination state separate from the guest's home save. |
-| POC-05 | Public snapshots, reliable events and reconnect | Codec/pose foundation | POC-02 | Add bounded recipient projections, stable snapshot watermarks, ordered durable events, replay cursors and resnapshot on gaps. Never expose another player's inventory, mail, credentials or raw card records. |
-| POC-06 | Hosted command and simulation boundary | Movement and placement foundation | POC-05 | Route every enabled action through one town writer. Fence stale workers/connections; bind commands to authenticated participants and stable entity IDs. Commit mutation, receipt and replayable event together. Reject excluded commands server-side. Advance required NPC/job/mail state with server time. |
-| POC-07 | Three live human actors and rooms | Outdoor pose foundation | POC-04, POC-05, POC-06 | Replicate appearance, roster, room and position; predict/reconcile local movement and interpolate remote actors. Validate portals and room visibility. Keep human slots separate from NPCs and card visitors; reuse models, textures and residency budgets. |
-| POC-08 | Existing-card sync and guest return | Import/export/recovery foundation | POC-05, POC-06 | Reserve travel inventory/value before online use; reconcile one selected card lineage against the shared checkpoint. Merge compatible offline/hosted edits and send conflicts to review. Apply permanent receipts and portable rewards once. Publish/read back the new card bank before acknowledging settlement; never save the destination as the guest's home. |
-| POC-09 | Placement and offline-conflict review | Durable placement decisions | POC-06, POC-08, POC-13 approval | Wire startup/exit triggers and Keep/koban choices. Guests wait during review, then resume on end/disconnect/lease expiry. Preserve decisions, latest positions, picked-up entry removal and custody capacity. Resolve overlapping offline/hosted placements without losing items. |
-| POC-10 | Shopping and inventory settlement | Atomic commerce foundation | POC-06, POC-08 | Integrate existing stock/listing purchase paths with the active session. Keep confirmed purchases permanent, reserve listed inventory before online use, and settle sale/cancellation exactly once. Do not reopen legacy writes behind the hosted writer. |
-| POC-11 | Guest jobs and portable earnings | Offline job rules/receipts | POC-06, POC-08, POC-10 | Bind conversations/progress to each guest, expose only visited-town jobs supported by enabled actions, and enforce the same filter server-side. Handle concurrent claims and reconnect. Deliver earned items and Bells to the correct home profile once, including full pockets/deferred delivery. |
-| POC-12 | Town-wide chat and resident mail | Local keyboard/composer | POC-05, POC-06, POC-08, POC-13 approval | Deliver chat across rooms with identity, length/rate limits, mute/block enforcement and bounded report evidence. Add resident mail commands/delivery with stable IDs and retry receipts. Reject online attachments and non-resident recipients; preserve failed-send drafts and offline mail behavior. |
-| POC-13 | Approved online UI mockups and implementation | Existing panels/assets/input | — | Prepare linking/endpoint, gate/join, loading/reconnect, guest wait, review/conflict and return/save mockups. Obtain user approval before implementing new UI. Reuse existing chat/letter input, assets, design language and controller hints. Bind screens to real lifecycle states. |
-| POC-14 | Integrated acceptance and candidate delivery | Host/backend/offline fixtures | POC-01–POC-13 | Pass the acceptance matrix below with reproducible reports; deliver matching ISO, Depot app, backend and tools. Record actual physical results supplied by the user. Leave unqualified gates open. |
+| POC-04 | Playable visit lifecycle | Approved UI and lifecycle implemented; target qualification open | POC-03, POC-13 approval | Add gate/friend selection, connection states, owner plus two guests, unattended availability, removal and safe exit. Preserve the existing indefinitely open hosted gate without owner-console heartbeats and complete the playable client lifecycle. Keep destination state separate from the guest's home save. |
+| POC-05 | Public snapshots, reliable events and reconnect | Recipient projections/replay implemented; three-client checks | POC-02 | Add bounded recipient projections, stable snapshot watermarks, ordered durable events, replay cursors and resnapshot on gaps. Never expose another player's inventory, mail, credentials or raw card records. |
+| POC-06 | Hosted command and simulation boundary | Durable writer, fences and simulation implemented; host checks | POC-05 | Route every enabled action through one town writer. Fence stale workers/connections; bind commands to authenticated participants and stable entity IDs. Commit mutation, receipt and replayable event together. Reject excluded commands server-side. Advance required NPC/job/mail state with server time. |
+| POC-07 | Three live human actors and rooms | Three human actors/portals implemented; rendered target proof open | POC-04, POC-05, POC-06 | Replicate appearance, roster, room and position; predict/reconcile local movement and interpolate remote actors. Validate portals and room visibility. Keep human slots separate from NPCs and card visitors; reuse models, textures and residency budgets. |
+| POC-08 | Existing-card sync and guest return | Journal, streamed publication and readback implemented; native checks | POC-05, POC-06 | Reserve travel inventory/value before online use; reconcile one selected card lineage against the shared checkpoint. Merge compatible offline/hosted edits and send conflicts to review. Apply permanent receipts and portable rewards once. Publish/read back the new card bank before acknowledging settlement; never save the destination as the guest's home. |
+| POC-09 | Placement and offline-conflict review | Startup/exit/conflict review implemented; host interruption checks | POC-06, POC-08, POC-13 approval | Wire startup/exit triggers and Keep/koban choices. Guests wait during review, then resume on end/disconnect/lease expiry. Preserve decisions, latest positions, picked-up entry removal and custody capacity. Resolve overlapping offline/hosted placements without losing items. |
+| POC-10 | Shopping and inventory settlement | Playable commerce implemented; concurrent purchase/retry checks | POC-06, POC-08 | Integrate existing stock/listing purchase paths with the active session. Keep confirmed purchases permanent, reserve listed inventory before online use, and settle sale/cancellation exactly once. Do not reopen legacy writes behind the hosted writer. |
+| POC-11 | Guest jobs and portable earnings | Hosted eligible jobs and portable earnings implemented; integration checks | POC-06, POC-08, POC-10 | Bind conversations/progress to each guest, expose only visited-town jobs supported by enabled actions, and enforce the same filter server-side. Handle concurrent claims and reconnect. Deliver earned items and Bells to the correct home profile once, including full pockets/deferred delivery. |
+| POC-12 | Town-wide chat and resident mail | Playable chat/resident mail implemented; delivery/retry checks | POC-05, POC-06, POC-08, POC-13 approval | Deliver chat across rooms with identity, length/rate limits, mute/block enforcement and bounded report evidence. Add resident mail commands/delivery with stable IDs and retry receipts. Reject online attachments and non-resident recipients; preserve failed-send drafts and offline mail behavior. |
+| POC-13 | Approved online UI mockups and implementation | Layouts approved and implemented; target visual verification open | — | Prepare linking/endpoint, gate/join, loading/reconnect, guest wait, review/conflict and return/save mockups. Obtain user approval before implementing new UI. Reuse existing chat/letter input, assets, design language and controller hints. Bind screens to real lifecycle states. |
+| POC-14 | Integrated acceptance and candidate delivery | Host/native acceptance implemented; matched delivery/target proof open | POC-01–POC-13 | Pass the acceptance matrix below with reproducible reports; deliver matching ISO, Depot app, backend and tools. Record actual physical results supplied by the user. Leave unqualified gates open. |
 
 POC-08 includes normal offline-versus-hosted conflict review. It does not include
 a chooser/merger for multiple cloned card branches. An unexpected or stale
@@ -136,6 +138,32 @@ destination-issued ordinary rewards must stay in destination custody. It does
 not authorize taking pre-existing town possessions or undoing a reviewed koban
 transfer. Mail is text-only for this PoC; stationery still follows the existing
 letter rules.
+
+## Current implementation and qualification
+
+Implementation is tracked in [PR #176](https://github.com/capz/AnimalTown/pull/176).
+The approved console flows now drive real gate/admission, gameplay, reconnect,
+review, jobs, shopping, chat, resident mail and verified card-return operations.
+Two remote humans use separate model instances and shadows without occupying
+NPC or memory-card visitor slots. Long visits renew device credentials outside
+the renderer, then replay accepted actions; long reviews release and reacquire
+their lease while retaining committed choices.
+
+Host fixtures exercise three linked cards through real WebSockets. Native CPU
+fixtures execute production framing, SHA-256, dual-bank recovery journals and
+maximum-size checkpoint publication in the existing six-MiB managed heap, both
+normally and with forced collection. Maximum-card checks retain all four Unicode
+mailboxes, jobs, offers, owed rewards and winter state through streaming,
+publication and durable card readback. These measurements are host evidence.
+They do not close POC-03, POC-A13 or physical acceptance.
+
+The remaining release gates are a green pipeline for the final source, matching
+published ISO/Depot/backend/tools, actual Dolphin UI/gameplay verification, and
+physical DOL-015 HTTPS/WSS, fault, memory and frame-time qualification. Record
+all target results against those exact artifact hashes. The workspace's scoped
+Cloudflare network-policy request was denied; public-route CI runs independently
+on GitHub's runner. Local loopback checks must not be described as public or
+hardware qualification.
 
 ## Execution order
 

@@ -55,14 +55,23 @@ public sealed class OnlineTravelStore
             throw new IOException("Online recovery records disagree.");
         return first.Sequence >= second.Sequence ? first : second;
     }
-    public Snapshot Save(Snapshot? expected, OnlineTravelRecord record)
+    public Snapshot Save(Snapshot? expected, OnlineTravelRecord record)=>SaveCore(expected,record,false);
+    // Call only after explicit service selection, authentication to the same
+    // account/town and verification of the immutable reservation fingerprint.
+    // Rebinding can change no travel phase, identity, revision or contents.
+    public Snapshot RebindOrigin(Snapshot expected,string origin)
+    {
+        var old=expected.Record;
+        return SaveCore(expected,new OnlineTravelRecord(origin,old.Town,old.Account,old.Reservation,old.Revision,old.Profile,old.Phase,old.Fingerprint),true);
+    }
+    Snapshot SaveCore(Snapshot? expected,OnlineTravelRecord record,bool rebindOrigin)
     {
         var current = Load();
         if (current == null != (expected == null) || current != null && expected != null &&
             (current.Sequence != expected.Sequence || current.Checksum != expected.Checksum))
             throw new IOException("Online recovery record changed. Reload this card.");
         if (expected != null && (expected.Record.Town != record.Town || expected.Record.Account != record.Account ||
-            expected.Record.Origin != record.Origin && expected.Record.Phase != OnlineTravelPhase.Ready))
+            expected.Record.Origin != record.Origin && expected.Record.Phase != OnlineTravelPhase.Ready&&!rebindOrigin))
             throw new IOException("Finish online recovery before changing this card's link.");
         if(expected!=null)
         {
@@ -70,15 +79,17 @@ public sealed class OnlineTravelStore
             bool ready=before.Phase==OnlineTravelPhase.Ready&&record.Phase==OnlineTravelPhase.Ready&&record.Revision>=before.Revision;
             bool reserve=before.Phase==OnlineTravelPhase.Ready&&record.Phase==OnlineTravelPhase.Reserved&&record.Revision==before.Revision;
             bool same=before.Reservation==record.Reservation&&before.Profile==record.Profile&&before.Origin==record.Origin;
+            bool rebind=rebindOrigin&&before.Reservation==record.Reservation&&before.Profile==record.Profile&&before.Phase==record.Phase&&before.Revision==record.Revision&&before.Fingerprint==record.Fingerprint;
             bool advance=same&&(
                 before.Phase==OnlineTravelPhase.Reserved&&record.Phase==OnlineTravelPhase.Active&&record.Revision==before.Revision&&record.Fingerprint==before.Fingerprint||
                 before.Phase==OnlineTravelPhase.Active&&record.Phase==OnlineTravelPhase.Publishing&&record.Revision==before.Revision+1||
                 before.Phase==OnlineTravelPhase.Reserved&&record.Phase==OnlineTravelPhase.Publishing&&record.Revision==before.Revision+1||
                 before.Phase==OnlineTravelPhase.Publishing&&record.Phase==OnlineTravelPhase.Published&&record.Revision==before.Revision&&record.Fingerprint==before.Fingerprint||
                 before.Phase==OnlineTravelPhase.Published&&record.Phase==OnlineTravelPhase.Ready&&record.Revision==before.Revision&&record.Fingerprint==before.Fingerprint);
-            if(!ready&&!reserve&&!advance)throw new IOException("Invalid online recovery transition. Reload this card.");
+            if(!ready&&!reserve&&!advance&&!rebind)throw new IOException("Invalid online recovery transition. Reload this card.");
         }
-        int bank = current == null ? 0 : current.Bank ^ 1, sequence = checked((current?.Sequence ?? 0) + 1);
+        int previous=current?.Sequence??0;if(previous==int.MaxValue)throw new IOException("Online recovery sequence is exhausted. Keep this card.");
+        int bank = current == null ? 0 : current.Bank ^ 1, sequence = previous+1;
         var bytes = new byte[RecordBytes]; var w = new OnlinePacketWriter(bytes);
         w.Int(Magic); w.Int(sequence); w.Int((int)record.Phase); w.Long(record.Revision); w.Int(record.Profile);
         w.Text(record.Origin, 71); w.Text(record.Town, 16); w.Text(record.Account, 36);

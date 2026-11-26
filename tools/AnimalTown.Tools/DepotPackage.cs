@@ -93,9 +93,9 @@ internal static class DepotPackage
     }
     private static string[] NetworkingNoticesIn(string directory)
     {
-        string[] names={"mbedTLS-LICENSE.txt","Jitterentropy-LICENSE.txt"};
+        string[] names={"mbedTLS-LICENSE.txt","Jitterentropy-LICENSE.txt","online-roots.pem","online-roots.txt"};
         var present=names.Where(name=>File.Exists(At(directory,name))).ToArray();
-        if(present.Length==1)throw new InvalidDataException("Incomplete native networking notices");
+        if(present.Length!=0&&present.Length!=names.Length)throw new InvalidDataException("Incomplete native networking notices/trust roots");
         return present;
     }
     private static void VerifyBuild(string root,Identity id)

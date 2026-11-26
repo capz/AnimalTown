@@ -1,5 +1,6 @@
 param(
-    [ValidateSet('all','tests','checks','build','game','server','package','publish','release')][string]$Target='all'
+    [ValidateSet('all','tests','checks','build','game','server','package','publish','release')][string]$Target='all',
+    [switch]$OnlinePlay=$true
 )
 $ErrorActionPreference='Stop'
 if(!$IsLinux){throw 'Run this entry point inside the Linux build image'}
@@ -14,7 +15,7 @@ if($Target -in @('all','release','tests','checks','game')){
         if($validation.backend -and !$env:ANIMALTOWN_TEST_CONNECTION){throw 'A disposable PostgreSQL test database is required; use build/compose.yml'}
         & ./tools/test-changes.ps1 -NativeInProcess -ValidationPlan $plan -ConsoleCandidate:($Target -ne 'checks')
     }
-    if($Target -ne 'checks'){& ./tools/build-game.ps1 -NativeInProcess -ValidationPlan $plan -RunNativeTests:$runTests}
+    if($Target -ne 'checks'){& ./tools/build-game.ps1 -NativeInProcess -ValidationPlan $plan -RunNativeTests:$runTests -OnlinePlay:$OnlinePlay}
 }
 if($Target -in @('all','release','build','server')){& ./tools/build-server.ps1}
 if($Target -in @('all','release','build','package')){& ./tools/publish-release.ps1 -PackageOnly}

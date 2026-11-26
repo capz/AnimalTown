@@ -84,7 +84,9 @@ internal static class DepotPackageChecks
             File.WriteAllText(Path.Combine(disc,"mbedTLS-LICENSE.txt"),"mbedTLS fixture");
             Reject(()=>DepotPackage.Payload(disc),"reject a partial set of networking notices");
             File.WriteAllText(Path.Combine(disc,"Jitterentropy-LICENSE.txt"),"Jitterentropy fixture");
-            var networkingNotices=new[]{"mbedTLS-LICENSE.txt","Jitterentropy-LICENSE.txt"};
+            Reject(()=>DepotPackage.Payload(disc),"reject a networking installation without trust roots");
+            File.WriteAllText(Path.Combine(disc,"online-roots.pem"),"trust root fixture");File.WriteAllText(Path.Combine(disc,"online-roots.txt"),"root provenance fixture");
+            var networkingNotices=new[]{"mbedTLS-LICENSE.txt","Jitterentropy-LICENSE.txt","online-roots.pem","online-roots.txt"};
             foreach(string name in networkingNotices)File.Copy(Path.Combine(disc,name),Path.Combine(notices,name));
             string pairingZip=Path.Combine(root,"pairing-depot.zip");
             DepotPackage.Build(root,pairingZip);

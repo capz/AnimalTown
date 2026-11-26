@@ -122,6 +122,17 @@ sealed class LiveTownTransport(GameDatabase database, IConfiguration configurati
         return false;
     }
 
+    internal bool PlacementOccupied(Guid host,int room,int x,int z,int width,int height)
+    {
+        lock(gate)
+        {
+            if(!towns.TryGetValue(host,out var town))return false;
+            foreach(var actor in town.Actors)
+                if(actor!=null&&actor.Room==room&&actor.X>x-BuildingWorld.Radius&&actor.X<x+width+BuildingWorld.Radius&&actor.Z>z-BuildingWorld.Radius&&actor.Z<z+height+BuildingWorld.Radius)return true;
+            return false;
+        }
+    }
+
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         int port = configuration.GetValue<int>("OnlineGameplay:Port");
@@ -329,7 +340,7 @@ sealed class LiveTownTransport(GameDatabase database, IConfiguration configurati
                     lock (gate) pose = new(actor.Slot, actor.Room, actor.X, actor.Z, actor.Facing);
                     await database.RefreshHostedActor(Authority(town, actor), pose);
                     var currentWorld = await database.LoadHostedWorld(actor.Ticket.Host);
-                    lock (gate) town.World = currentWorld;
+                    lock (gate){town.World=currentWorld;ReconcileActors(town);}
                     byte[] roster = await database.HostedRoster(Authority(town, actor));
                     OnlineWire.TryWriteHeader(send, 0, send.Length, new OnlineFrameHeader(OnlineFrameType.BulkPage, roster.Length, town.Epoch, ++update));
                     roster.CopyTo(send, OnlineWire.HeaderSize);
@@ -546,7 +557,7 @@ sealed class LiveTownTransport(GameDatabase database, IConfiguration configurati
         object result;
         try
         {
-            if (actor.Ticket.Visit == Guid.Empty || !configuration.GetValue<bool>("Multiplayer:EnablePlacements"))
+            if (configuration.GetValue<bool>("OnlineGameplay:EnablePlay") || actor.Ticket.Visit == Guid.Empty || !configuration.GetValue<bool>("Multiplayer:EnablePlacements"))
                 throw new GameError(403, "guest-placements-unavailable");
             var operation = JsonSerializer.Deserialize<GuestPlacementOperation>(
                 buffer.AsSpan(OnlineWire.HeaderSize, length), CommandJson)
@@ -566,15 +577,28 @@ sealed class LiveTownTransport(GameDatabase database, IConfiguration configurati
         foreach (var actor in town.Actors)
         {
             if (actor is null || town.Reviewing || now - actor.LastInputAt > 250) continue;
-            float x = actor.Input.X / 127f, z = actor.Input.Z / 127f;
-            float length = MathF.Sqrt(x * x + z * z);
-            if (length > 1) { x /= length; z /= length; }
-            float step = actor.Input.Run ? .45f : .25f;
-            if (BuildingWorld.Segment(town.World, actor.Room, actor.X, actor.Z, actor.X + x * step, actor.Z)) actor.X += x * step;
-            if (BuildingWorld.Segment(town.World, actor.Room, actor.X, actor.Z, actor.X, actor.Z + z * step)) actor.Z += z * step;
-            if (length > .01f)
-                actor.Facing = (ushort)((MathF.Atan2(x, z) / (2 * MathF.PI) + 1) * 65536);
+            if(OnlineMovementRules.Move(town.World,actor.Room,actor.Input,.1f,ref actor.X,ref actor.Z,out float yaw))
+                actor.Facing=(ushort)((yaw/(2*MathF.PI)+1)*65536);
             actor.Applied = actor.LastSeen;
+        }
+    }
+    static void ReconcileActors(TownSession town)
+    {
+        foreach(var actor in town.Actors)
+        {
+            if(actor==null||BuildingWorld.CanStand(town.World,actor.Room,actor.X,actor.Z))continue;
+            bool found=false;
+            for(int radius=1;radius<=6&&!found;radius++)
+                for(int dz=-radius;dz<=radius&&!found;dz++)for(int dx=-radius;dx<=radius&&!found;dx++)
+                {
+                    if(Math.Abs(dx)!=radius&&Math.Abs(dz)!=radius)continue;
+                    float x=MathF.Floor(actor.X)+dx+.5f,z=MathF.Floor(actor.Z)+dz+.5f;
+                    if(!BuildingWorld.CanStand(town.World,actor.Room,x,z))continue;
+                    actor.X=x;actor.Z=z;found=true;
+                }
+            if(!found&&HelipadSite.TryArrival(town.World,out float arrivalX,out float arrivalZ))
+            {actor.Room=0;actor.X=arrivalX;actor.Z=arrivalZ;found=true;}
+            if(found){actor.Input=default;actor.Applied=actor.LastSeen;}
         }
     }
 }
@@ -588,6 +612,12 @@ sealed partial class GameDatabase
         if (LiveTransport is { } transport) return transport.TryGetGuestPose(host, guest, visit, device, connectionId, out pose);
         pose = default;
         return false;
+    }
+    void RequireClearLivePlacement(Guid host,int item,int x,int z,int rotation,int room)
+    {
+        if(!Catalog.Valid(item))throw new GameError(409,"placement-rejected");
+        int width=Catalog.Items[item].Width,height=Catalog.Items[item].Height;if((rotation&1)!=0)(width,height)=(height,width);
+        if(LiveTransport?.PlacementOccupied(host,room,x,z,width,height)==true)throw new GameError(409,"placement-occupied-by-player");
     }
 
     internal async Task<(Guid Gate, GameState? World)> ValidateLiveAccess(DevicePrincipal device, Guid host, Guid visit, bool loadWorld)

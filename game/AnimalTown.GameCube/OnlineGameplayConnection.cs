@@ -22,6 +22,7 @@ internal sealed class OnlineGameplayConnection : IDisposable
     internal uint Epoch => pump.Epoch;
     internal byte LocalSlot => pump.LocalSlot;
     internal bool Reviewing => pump.Reviewing;
+    internal OnlineId NewCommandId()=>new((ulong)raw.NextMask()|((ulong)raw.NextMask()<<32),(ulong)raw.NextMask()|((ulong)raw.NextMask()<<32));
     internal bool Queue(OnlineFrameType type, byte[] payload, int offset, int count, out uint sequence)
         => pump.Queue(type, payload, offset, count, out sequence);
 

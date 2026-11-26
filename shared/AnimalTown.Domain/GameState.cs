@@ -8,6 +8,7 @@ public sealed partial class GameState
     // The local copy of a hosted shop is escrow, until synchronized with its
     // writer. This is a session capability, never a serialized public field.
     public bool HostedCommerceLocked {get;set;}
+    public Jobs.JobIdentity[]? OnlineResidents {get;internal set;}
     public readonly Town Town;
     public const int MaximumPockets=30;
     public const int WalletLimit=99999;

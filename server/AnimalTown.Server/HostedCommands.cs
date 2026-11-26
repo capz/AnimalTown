@@ -38,7 +38,11 @@ sealed partial class GameDatabase
             if (command.Kind == OnlineCommandKind.Replay)
             {
                 if (command.Revision < 0) throw new GameError(400, "invalid-event-cursor");
-                return new(CommandResult(command, 200), ReplayAfter: command.Revision);
+                await using var replayConnection=await source.OpenConnectionAsync();await using var replayTransaction=await replayConnection.BeginTransactionAsync();
+                await RequireHostedActor(replayConnection,replayTransaction,authority);
+                await using var read=Cmd(replayConnection,replayTransaction,"SELECT cursor FROM hosted_towns WHERE host=$1",authority.Host);
+                long watermark=(long)(await read.ExecuteScalarAsync())!;
+                return new(CommandResult(command, 200,watermark), ReplayAfter: command.Revision);
             }
             if (command.Kind is OnlineCommandKind.Place or OnlineCommandKind.MovePlacement or OnlineCommandKind.PickupPlacement)
             {

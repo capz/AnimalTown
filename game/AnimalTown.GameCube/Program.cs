@@ -42,13 +42,29 @@ internal static class Program
         var session=TownSession.Load();LoadingScreen.Finish();
         FrameProfile.Checkpoint(2);
         try{
+#if ANIMALTOWN_ONLINE_PLAY
+            if(!OnlinePlay.Recover(config,session))return;
+#else
+            if(session.OnlineRecoveryRequired){
+                var recoveryFont=UiFont.LoadSystem();
+                try{while(true){LoadingScreen.Draw("Keep this home card.\nFinish the online return using an online-enabled build.\nA / B: return to title",recoveryFont);RuntimeOptions.Wait();Controller.Update();var recoveryPad=Controller.GetState(0);if(recoveryPad.A.WasPressed||recoveryPad.B.WasPressed)return;}}
+                finally{LoadingScreen.Finish();recoveryFont.Release();}
+            }
+#endif
             if(!ProfilePicker.Run(session))return;
             session.State.Town.Traffic.ResetSnowForTownEntry();
             if(session.Draft!=null&&!OnboardingFlow.Run(config,session))return;
             while(true){
                 int action=RunSession(config,session);
 #if ANIMALTOWN_ONLINE_PAIRING
-                if(action==TownGame.OnlinePairingRestart){OnlinePairing.Run(session);continue;}
+                if(action==TownGame.OnlinePairingRestart){
+#if ANIMALTOWN_ONLINE_PLAY
+                    if(!OnlinePlay.Run(config,session))break;
+#else
+                    OnlinePairing.Run(session);
+#endif
+                    continue;
+                }
 #endif
                 if(action!=TownGame.TravelRestart)break;
                 if(session.Flight.Phase==FlightPhase.Cruise)LoadingScreen.BeginFlight(session.Flight.Direction);
@@ -80,6 +96,10 @@ internal static class Program
                 game.AdvanceResidency();long simulation=FrameProfile.Start();
                 long now=Clock.Timestamp;accumulator+=(now-previous)/1000000.0;previous=now;if(accumulator>.1334)accumulator=.1334;
                 Controller.Update();var pad=Controller.GetState(0);game.Input(pad);
+#if ANIMALTOWN_ONLINE_PLAY
+                game.OnlineFrame(pad);
+                if(session.Online!=null&&(!session.Online.Connected||session.Online.ReturnRequested||session.Online.ControlRequested!=0))return TownGame.OnlinePairingRestart;
+#endif
 #if ANIMALTOWN_ONLINE_PAIRING
                 if(game.OnlinePairingRequested)return TownGame.OnlinePairingRestart;
 #endif
@@ -259,11 +279,11 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
         }
         facingYaw=state.Facing;
         InitializeJobs();
-        if(session.Draft==null)state.Rollover(day,month);
+        if(session.Draft==null&&!state.IsOnlineProjection)state.Rollover(day,month);
         if(room==0&&state.HousePlaced&&!state.CanWalk(state.X,state.Z,0))state.MoveToHouseEntrance();
         DebugOverlay.WriteLine("ANIMALTOWN WORLD RENDERERS BEGIN");
         buildings=new BuildingRenderer(worldRoot);
-        trees=new LowPolyTrees(worldRoot);terrain=new TerrainRenderer();villagerShadows=new VillagerShadows();
+        trees=new LowPolyTrees(worldRoot);terrain=new TerrainRenderer();villagerShadows=new VillagerShadows(state.IsOnlineProjection?2:0);
         buildings.Memory=visualMemory.Pressure;modelResidency.Memory=visualMemory.Pressure;
         trees.Memory=visualMemory.Pressure;droppedItems.Memory=visualMemory.Pressure;
         terrain.Memory=visualMemory.Pressure;
@@ -332,6 +352,9 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
         Model? unadopted=null;
         if(loadingModel!=null){try{unadopted=loadingModel.GetAwaiter().GetResult();}catch(Exception){if(!loadingModel.IsCompleted)throw;}loadingModel=null;}
         modelLod.Dispose();modelResidency.Stop();
+#if ANIMALTOWN_ONLINE_PLAY
+        DisposeOnlineActors();
+#endif
         for(int i=0;i<actors.Length;i++){actors[i]?.Dispose();actors[i]=null;}
         if(unadopted!=null&&Array.IndexOf(models,unadopted)<0)unadopted.Dispose();
         for(int i=0;i<models.Length;i++){models[i]?.Dispose();models[i]=null!;}
@@ -479,6 +502,9 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
     {
         if(!resourcesReady)return;
         long at=Clock.Timestamp;
+#if ANIMALTOWN_ONLINE_PLAY
+        if(!afterDraw)PrepareOnlineActors(at,false);
+#endif
         if(!afterDraw)RefreshResidencyDemand(at);
         visualMemory.RefreshDemand(state,villagers.Doors,buildings,at);
         if(terrain.ReclaimWaterOptics())visualMemory.Sample(Clock.Timestamp,true);
@@ -512,6 +538,9 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
         modelResidency.Pump(at,allowDemotion,deadline);
         modelLod.Pump(Clock.Timestamp,deadline);
         int changedActors=modelLod.ConsumeChangedActors();
+#if ANIMALTOWN_ONLINE_PLAY
+        PrepareOnlineActors(Clock.Timestamp,true);
+#endif
         for(int actor=1;actor<actors.Length;actor++)if((changedActors&(1<<actor))!=0){restartClips[actor]=true;appliedClips[actor]=-2;if(actors[actor]!=null)attention.Register(actor-1,actors[actor]!);}
         long optionalAt=Clock.Timestamp;
         visualMemory.PrepareOptionalBuildings(state,villagers.Doors,buildings,optionalAt,deadline,
@@ -625,6 +654,9 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
     private bool Press(ControllerState p)=>p.A.WasPressed;
     internal void Input(ControllerState p)
     {
+#if ANIMALTOWN_ONLINE_PLAY
+        if(session.Online!=null){OnlineInput(p);return;}
+#endif
         if(session.Flight.Active){if(loadingFailed&&p.B.WasPressed){session.Flight.Cancel();ExitToTitle=true;}return;}
         if(!resourcesReady||!modelSceneReady||room==0&&!terrain.Ready){if(loadingFailed&&session.Draft!=null&&p.B.WasPressed)ExitToTitle=true;return;}
         if(DebugMenuSettings.Read(p)){
@@ -1036,6 +1068,9 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
             if(actor==0&&session.Flight.PlayerWalking)session.Flight.PlayerPose(state.X,state.Z,out x,out z,out _,out _);
             if(Visible(x,z,1.8f))villagerShadows.Set(actor,room,x,z,size,mat);
         }
+#if ANIMALTOWN_ONLINE_PLAY
+        if(session.Online!=null)PrepareOnlineActorShadows(size,mat);
+#endif
     }
     internal void Draw()
     {
@@ -1115,7 +1150,7 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
         if((batchedDrawing&&screen=="map")||(runningMinimap.Opacity>0&&screen=="world"&&room==0))
             mapBackground.Prepare(state.Town);
         modelUsed=0;FrameProfile.End(8,phase);
-        if(JobsLive)jobScene.Prepare();
+        if(JobsLive||state.IsOnlineProjection)jobScene.Prepare();
         UiNoise.Prepare();preparedSubmitMicroseconds=0;preparedEnvironmentTint=environmentTint;preparedLampStrength=lampStrength;preparedShadowStrength=sunlight;
         phase=FrameProfile.Start();Hypercube.GameCube.FrameRenderer.Draw(device,room==0?TownLights.Tint(weather.Raining(room)?new Color32(112,143,151):new Color32(149,198,186),environmentTint):new Color32(32,40,39),this);FrameProfile.End(9,phase+preparedSubmitMicroseconds);
     }
@@ -1183,6 +1218,9 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
         FrameProfile.End(7,phase);phase=FrameProfile.Start();
         ModelAt(0);
         if(batchedDrawing)DrawActors();
+#if ANIMALTOWN_ONLINE_PLAY
+        DrawOnlineActors();
+#endif
         if(!session.Flight.Active)DrawJobOutfit(0);if(room!=0)for(int i=1;i<BuildingWorld.Actors;i++)DrawJobOutfit(i);
         FrameProfile.End(5,phase);phase=FrameProfile.Start();
         if(screen=="plot")
@@ -1377,6 +1415,9 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
             }else if(KobanSite.InReach(state))DoorPopover("Browse lost property",true);
         }
         if(clockFade.Opacity>0)clockHud.Draw(ui,clockFade.Opacity);
+#if ANIMALTOWN_ONLINE_PLAY
+        if(DrawOnlineUi(ink))return;
+#endif
         if(room==TownShop.Room&&screen=="world")DrawShopHint(ink);
         if(DrawShopPanel(ink))return;
         if(DrawTravelUi(ink)||DrawMailUi(ink)||DrawJobUi(ink))return;

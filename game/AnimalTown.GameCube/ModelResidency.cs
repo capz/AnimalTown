@@ -53,6 +53,7 @@ internal sealed class ModelResidency
     private bool restoring,cancelRequested,hadBacking,stopped;
     private bool outdoors;
     internal bool Enabled=true;
+    internal int OnlineSpeciesMask=0;
     internal int Demotions,Restores,Cancellations,Failures,BackingReleases;
     internal int WorkSteps,MaxAdvanceUs,MaxAdmissionUs,ReadinessWaits,PortalWaits;
     internal long AdvanceUs,AdmissionUs,SnapshotBytes,RestoredBytes;
@@ -108,6 +109,7 @@ internal sealed class ModelResidency
         outdoors=state.Space==0;
         bool urgent=Memory?.WaitingPeakBytes>0;
         demand.Prepare(state,doors,pinAll||!Enabled,targetSpace,Memory?.UnderPressure==true,urgent);
+        for(int i=0;i<models.Length;i++)if((OnlineSpeciesMask&(1<<i))!=0)demand.Required[i]=true;
         byte otherPriority=3;
         for(int i=0;i<models.Length;i++){
             if(demand.Required[i])lastRequired[i]=now;

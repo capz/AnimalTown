@@ -1,7 +1,8 @@
 using System.Net.WebSockets;
+using AnimalTown;
 using AnimalTown.Online;
 
-static class HostedVisitChecks
+static partial class HostedVisitChecks
 {
     public static async Task CheckNewMembership(ClientWebSocket socket,uint epoch,Action<bool,string> check)
     {
@@ -32,9 +33,28 @@ static class HostedVisitChecks
         for(int i=0;i<50&&host.State.ChatCount==0;i++)await host.Receive();
         check(host.State.ChatCount==1&&host.State.ChatAt(0).Text==message.Text&&host.State.ChatAt(0).Name=="GuestA",
             "Authenticated chat crosses rooms without replaying duplicate lines");
+        var speaker=guest.State.Humans[1].Id;
+        check((await other.Command(new(){Kind=OnlineCommandKind.Mute,Entity=speaker,A=1})).Status==200,"A participant can mute another live human");
+        var hidden=await guest.Command(new(){Kind=OnlineCommandKind.Chat,Text="muted message evidence"});
+        long muteDeadline=Environment.TickCount64+8000;
+        while(other.State.Cursor<hidden.Revision&&Environment.TickCount64<muteDeadline)await other.Receive();
+        check(other.State.Cursor>=hidden.Revision,"Muted events retain a complete reliable replay cursor");
+        check(!Enumerable.Range(0,other.State.ChatCount).Any(i=>other.State.ChatAt(i).Text=="muted message evidence"),"Muted chat advances the reliable cursor without revealing the message");
+        check((await other.Command(new(){Kind=OnlineCommandKind.Mute,Entity=speaker,A=0})).Status==200,"Unmuting restores ordinary chat delivery");
+        var report=new OnlineCommand{Kind=OnlineCommandKind.Report,Entity=speaker,Revision=sent.Revision};
+        check((await host.Command(report)).Status==200&&(await host.Command(report)).Status==200,"A report uses delivered evidence and retries the same durable operation");
+        check((await host.Command(new(){Kind=OnlineCommandKind.Report,Entity=speaker,Revision=0})).Status==404,"Guessed chat evidence cannot create a report");
         var resident=guest.State.World!.Town.Jobs.Npc(0);
-        await guest.WalkToResident(0);
-        var offered=await guest.Command(new(){Kind=OnlineCommandKind.AskJob,Entity=new(resident.Town,resident.Serial),A=0});
+        Reply offered=default;
+        for(int attempt=0;attempt<4;attempt++)
+        {
+            await guest.WalkToResident(0);
+            offered=await guest.Command(new(){Kind=OnlineCommandKind.AskJob,Entity=new(resident.Town,resident.Serial),A=0});
+            // NPCs keep walking while an authenticated client approaches. A
+            // sampled pose can age before the command reaches the host; retry
+            // the real approach without weakening the server's reach check.
+            if(offered.Status!=409||offered.Error!="resident-out-of-reach")break;
+        }
         var npcPose=guest.State.World.Town.Residents[0];
         check(offered.Status==200,"Guest job offer: "+offered.Status+" "+offered.Error+"; human="+guest.Position.Room+","+guest.Position.X/65536f+","+guest.Position.Z/65536f+"; resident="+npcPose.Space+","+npcPose.PosX+","+npcPose.PosZ);
         var offerData=new OnlinePacketReader(offered.Extra,0,offered.Extra.Length);var jobId=offerData.Id();
@@ -55,14 +75,19 @@ static class HostedVisitChecks
         check(stranger.Status==403,"Online mail rejects identities outside the visiting town");
         await HostedClockChecks.Deliver(mail.Id,jobId,check);
         await guest.Snapshot();
-        await guest.WalkToPoint(13.5f,24.5f);
+        await guest.WalkToPoint(13.5f,24.7f);
         var world=guest.State.World!;int placeX=-1,placeZ=-1;
-        for(int z=(int)(guest.Position.Z/65536f)-2;z<=(int)(guest.Position.Z/65536f)+2&&placeX<0;z++)
-            for(int x=(int)(guest.Position.X/65536f)-2;x<=(int)(guest.Position.X/65536f)+2;x++)
-                if(MathF.Abs(x+.5f-guest.Position.X/65536f)<=1.5f&&MathF.Abs(z+.5f-guest.Position.Z/65536f)<=1.5f&&world.CanPlace(10,x,z,0,0,0)){placeX=x;placeZ=z;break;}
-        check(placeX>=0,"The fixture has a reachable legal furnishing footprint");
+        for(int z=(int)(guest.Position.Z/65536f)-3;z<=(int)(guest.Position.Z/65536f)+3&&placeX<0;z++)
+            for(int x=(int)(guest.Position.X/65536f)-3;x<=(int)(guest.Position.X/65536f)+3;x++)
+            {
+                BuildingWorld.Footprint(new Placement{Item=10},out int width,out int height);
+                bool occupied=new[]{guest,other,host}.Any(actor=>actor.Position.Room==0&&actor.Position.X/65536f>x-BuildingWorld.Radius&&actor.Position.X/65536f<x+width+BuildingWorld.Radius&&actor.Position.Z/65536f>z-BuildingWorld.Radius&&actor.Position.Z/65536f<z+height+BuildingWorld.Radius);
+                float dx=x+.5f-guest.Position.X/65536f,dz=z+.5f-guest.Position.Z/65536f;
+                if(!occupied&&dx*dx+dz*dz<=6.25f&&world.CanPlace(10,x,z,0,0,0)){placeX=x;placeZ=z;break;}
+            }
+        check(placeX>=0,"The fixture has a reachable legal furnishing footprint: "+guest.Position.X/65536f+","+guest.Position.Z/65536f);
         var placed=await guest.Command(new(){Kind=OnlineCommandKind.Place,Revision=guest.State.InventoryRevision,A=0,B=3,C=placeX,D=placeZ,E=0,F=0});
-        check(placed.Status==200,"A guest placement reserves the selected home inventory item");
+        check(placed.Status==200,"A guest placement reserves the selected home inventory item: "+placed.Status+" "+placed.Error);
         var placementData=new OnlinePacketReader(placed.Extra,0,placed.Extra.Length);var placement=placementData.Id();int version=placementData.Int();
         var review=await host.Command(new(){Kind=OnlineCommandKind.ReviewBegin});check(review.Status==200,"The owner begins durable review through the authenticated gameplay channel");
         var lease=new OnlinePacketReader(review.Extra,0,review.Extra.Length).Id();
@@ -74,6 +99,8 @@ static class HostedVisitChecks
         var kept=await host.Command(decision);var repeated=await host.Command(decision);
         check(kept.Status==200&&repeated.Status==200,"Keep commits once and retries return the same durable decision");
         check((await host.Command(new(){Kind=OnlineCommandKind.ReviewEnd,Entity=lease})).Status==200,"Ending owner review resumes the active visit");
+        await Commerce(host,guest,other,check);
+        await JobFamilies(host,guest,other,check);
     }
     internal readonly record struct Reply(int Status,long Revision,string Error,byte[] Extra);
     sealed class Client(ClientWebSocket socket,uint epoch,uint sequence,byte localSlot):IDisposable
@@ -145,7 +172,7 @@ static class HostedVisitChecks
                 var target=world.Town.Residents[npc];float x=Position.X/65536f,z=Position.Z/65536f;
                 if(Position.Room!=target.Space)throw new Exception("Fixture resident left the supported approach room");
                 float dx=target.PosX-x,dz=target.PosZ-z;
-                if(dx*dx+dz*dz<2.25f){await Move(default);return;}
+                if(dx*dx+dz*dz<.64f){await Move(default);return;}
                 var step=NextStep(world,x,z,target.PosX,target.PosZ);
                 dx=step.X-x;dz=step.Z-z;float scale=MathF.Max(.0001f,MathF.Sqrt(dx*dx+dz*dz));
                 await Move(new((sbyte)Math.Clamp((int)(dx/scale*127),-127,127),(sbyte)Math.Clamp((int)(dz/scale*127),-127,127),true));
@@ -159,12 +186,12 @@ static class HostedVisitChecks
             {
                 float x=Position.X/65536f,z=Position.Z/65536f;
                 float dx=targetX-x,dz=targetZ-z;
-                if(dx*dx+dz*dz<.64f){await Move(default);return;}
+                if(dx*dx+dz*dz<.16f){await Move(default);return;}
                 var step=NextStep(world,x,z,targetX,targetZ);dx=step.X-x;dz=step.Z-z;
                 float scale=MathF.Max(.0001f,MathF.Sqrt(dx*dx+dz*dz));
                 await Move(new((sbyte)Math.Clamp((int)(dx/scale*127),-127,127),(sbyte)Math.Clamp((int)(dz/scale*127),-127,127),true));
             }
-            throw new Exception("Authenticated movement could not reach the fixture point");
+            throw new Exception("Authenticated movement could not reach the fixture point; room="+Position.Room+" position="+Position.X/65536f+","+Position.Z/65536f+" target="+targetX+","+targetZ);
         }
         public async Task Snapshot()
         {
@@ -175,7 +202,15 @@ static class HostedVisitChecks
         {
             var frame=new byte[15];uint sample=++sequence;OnlineWire.TryWriteInput(frame,0,15,epoch,sample,input);
             using var deadline=new CancellationTokenSource(TimeSpan.FromSeconds(8));await Send(frame,deadline.Token);
-            for(int i=0;i<100;i++){await Receive();if(Position.AcknowledgedInput>=sample)return;}
+            long sent=Environment.TickCount64,limit=sent+8000;
+            for(int i=0;i<10000&&Environment.TickCount64<limit;i++)
+            {
+                await Receive();if(Position.AcknowledgedInput>=sample)return;
+                // Review state is refreshed asynchronously. Like the console
+                // pose pump, keep publishing the desired input until the host
+                // resumes it; old acknowledged samples remain harmless.
+                if(Environment.TickCount64-sent>=200){await Send(frame,deadline.Token);sent=Environment.TickCount64;}
+            }
             throw new Exception("Authoritative movement acknowledgment did not arrive");
         }
         static (float X,float Z) NextStep(AnimalTown.GameState world,float x,float z,float targetX,float targetZ)

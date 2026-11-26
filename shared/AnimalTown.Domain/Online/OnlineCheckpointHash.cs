@@ -20,7 +20,8 @@ public sealed class OnlineCheckpointHash : IDisposable
     {
         if(finished)throw new InvalidOperationException("The checkpoint hash is complete.");
         if(offset<0||count<0||offset>bytes.Length-count)throw new ArgumentOutOfRangeException(nameof(count));
-        length=checked(length+count);
+        if(count>SaveCodec.MaximumBytes-length)throw new InvalidOperationException("The checkpoint exceeds its format bound.");
+        length+=count;
         while(count>0){int take=Math.Min(count,64-used);Array.Copy(bytes,offset,block,used,take);offset+=take;count-=take;used+=take;if(used==64){Transform();used=0;}}
     }
     static uint Rotate(uint v,int n)=>(v>>n)|(v<<(32-n));

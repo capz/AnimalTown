@@ -184,7 +184,7 @@ public sealed class SaveRepository
     // cursor. Save first if the in-memory state has uncommitted changes.
     public TownCheckpointExport OpenCheckpointExport(GameState expected)
     {
-        if(expected.Visiting||!expected.Town.Jobs.Initialized||!expected.Profiles[expected.ActiveProfile].Created||expected.ProfileLocked(expected.ActiveProfile))
+        if(expected.IsOnlineProjection||expected.Visiting||!expected.Town.Jobs.Initialized||!expected.Profiles[expected.ActiveProfile].Created||expected.ProfileLocked(expected.ActiveProfile))
             throw new InvalidOperationException("Select your saved home town before uploading");
         var current=NewestManifest()??throw new InvalidOperationException("Save your town before uploading");
         if(current.Sequence!=expected.Sequence||current.Seed!=expected.Town.Seed)
@@ -203,18 +203,22 @@ public sealed class SaveRepository
 
         var header=new SplitSaveCodec.Reader(current.Commit,SplitSaveCodec.Commit);
         if(header.Version!=4)throw new InvalidOperationException("Save your town in this version before uploading");
-        var export=new TownCheckpointExport(expected,(part,record)=>
-        {
-            string name=SplitSaveCodec.FileName(SplitSaveCodec.RecordKind(part),current.Bank);
-            if(storage is ISaveSnapshotStorage verified)
-            {
-                if(!verified.Matches(name,record,-1,record.Length,0,false))
-                    throw new InvalidOperationException("Committed save differs from the selected checkpoint");
-            }
-            else Match(storage.Read(name),record);
-        });
+        var export=new TownCheckpointExport(expected,new ExportVerifier(storage,current.Bank));
         try{Match(current.Commit,export.CommitBytes);return export;}
         catch{export.Dispose();throw;}
+    }
+
+    sealed class ExportVerifier:ICheckpointRecordVerifier
+    {
+        readonly ISaveStorage storage;readonly int bank;
+        internal ExportVerifier(ISaveStorage storage,int bank){this.storage=storage;this.bank=bank;}
+        public void Verify(int part,byte[] record)
+        {
+            string name=SplitSaveCodec.FileName(SplitSaveCodec.RecordKind(part),bank);
+            if(storage is ISaveSnapshotStorage verified)
+            {if(!verified.Matches(name,record,-1,record.Length,0,false))throw new InvalidOperationException("Committed save differs from the selected checkpoint");}
+            else Match(storage.Read(name),record);
+        }
     }
 
     public GameState? Load(GameState? textReuse)

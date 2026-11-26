@@ -435,6 +435,12 @@ try {
         }
         if(!$ready){Write-Host "Public origin readiness: HTTP $lastStatus; failure type $lastFailure"}
         Assert $ready 'Public test origin did not become ready'
+        $emptyCaDirectory=Join-Path ([IO.Path]::GetTempPath()) ('animaltown-roots-'+[Guid]::NewGuid().ToString('N'))
+        New-Item -ItemType Directory -Path $emptyCaDirectory|Out-Null
+        try{
+            & curl --silent --show-error --fail --max-time 15 --proto '=https' --cacert assets/network/online-roots.pem --capath $emptyCaDirectory "$origin/health"|Out-Null
+            if($LASTEXITCODE){throw 'The public edge certificate did not validate against the shipped console root bundle'}
+        }finally{Remove-Item -LiteralPath $emptyCaDirectory}
         dotnet run --project tests/AnimalTown.OnlineChecks -c Release -- $origin
         if($LASTEXITCODE){throw 'Public HTTPS/WSS qualification failed'}
         Write-Host 'Public Cloudflare HTTPS/WSS backend qualification passed; this is not GameCube or DOL-015 qualification.'

@@ -22,6 +22,14 @@ static class CardAndProjectionChecks
         var second=store.Save(first,active);bool stale=false;
         try{store.Save(first,reserved);}catch(IOException){stale=true;}
         check(stale&&store.Load()!.Record.Phase==OnlineTravelPhase.Active,"Stale card metadata cannot release an active reservation");
+        for(int cut=0;cut<=OnlineTravelStore.RecordBytes;cut++)
+        {
+            var files=original.Copy();files.Cut=cut;
+            try{new OnlineTravelStore(files).RebindOrigin(second,"https://replacement.example");}catch(IOException){}
+            var record=new OnlineTravelStore(files).Load()!.Record;
+            check(record.Phase==OnlineTravelPhase.Active&&record.Reservation==reservation&&record.Revision==1&&record.Profile==2&&
+                (record.Origin==reserved.Origin||record.Origin=="https://replacement.example"),"Explicit origin rebinding survives every interrupted card write without releasing or changing the reservation");
+        }
         var damaged=new MemoryFiles();damaged.Data[OnlineTravelStore.Bank0]=new byte[512];
         bool refused=false;try{new OnlineTravelStore(damaged).Load();}catch(IOException){refused=true;}
         check(refused,"Unreadable recovery records fail closed instead of unlocking the home profile");

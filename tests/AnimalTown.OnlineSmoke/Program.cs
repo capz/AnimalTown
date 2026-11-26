@@ -6,6 +6,14 @@ static class Program
     static int Main()
     {
         if (OnlineWebSocketUpgrade.AcceptKey("dGhlIHNhbXBsZSBub25jZQ==") != "s3pPLMBiTxaQ9kYGzzhZRbK+xOo=") return 1;
+        using(var hash=new OnlineCheckpointHash())
+        {byte[] abc={97,98,99};hash.Append(abc,0,3);if(hash.Complete()!="BA7816BF8F01CFEA414140DE5DAE2223B00361A396177A9CB410FF61F20015AD")return 7;}
+        var files=new Files();var travel=new OnlineTravelStore(files);
+        const string id="00112233-4455-6677-8899-aabbccddeeff";
+        var journal=travel.Save(null,new OnlineTravelRecord("https://town.example","123456789abcdef0",id,id,1,0,OnlineTravelPhase.Reserved));
+        journal=travel.Save(journal,new OnlineTravelRecord("https://town.example","123456789abcdef0",id,id,1,0,OnlineTravelPhase.Active));
+        travel.RebindOrigin(journal,"https://replacement.example");
+        if(travel.Load()!.Record.Phase!=OnlineTravelPhase.Active||travel.Load()!.Record.Origin!="https://replacement.example")return 8;
         var command = new OnlineCommand { Kind = OnlineCommandKind.SendMail, Id = new(0x102030405060708, 9), Text = "Hello from a native client.", B = -1 };
         var bytes = new byte[4096]; int count = OnlineGameplayCodec.WriteCommand(bytes, command);
         var decoded = OnlineGameplayCodec.ReadCommand(bytes, 0, count);
@@ -22,6 +30,13 @@ static class Program
         Console.WriteLine("Native online protocol checks passed."); return 0;
     }
     sealed class Masks:IOnlineMaskSource {public uint NextMask()=>0x10203040;}
+    sealed class Files:AnimalTown.ISaveStorage
+    {
+        byte[]? a,b;
+        static byte[] Copy(byte[] bytes){var copy=new byte[bytes.Length];Array.Copy(bytes,copy,bytes.Length);return copy;}
+        public byte[] Read(string name)=>Copy((name==OnlineTravelStore.Bank0?a:b)??throw new System.IO.FileNotFoundException());
+        public void Write(string name,byte[] bytes){if(name==OnlineTravelStore.Bank0)a=Copy(bytes);else b=Copy(bytes);}
+    }
     sealed class Wire:IOnlinePoseStream
     {
         internal readonly byte[] Bytes=new byte[256];internal int Count;

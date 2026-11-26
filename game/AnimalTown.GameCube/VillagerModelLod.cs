@@ -28,6 +28,7 @@ internal sealed class VillagerModelLod : IDisposable
     private Model? loadingSource;
     private bool stopped;
     internal bool Paused;
+    internal int OnlineSpeciesMask=0;
     internal VisualMemoryPressure? Memory;
     internal int Changes,Failures;
     internal int PendingSpecies=>active;
@@ -63,9 +64,9 @@ internal sealed class VillagerModelLod : IDisposable
     {
         for(int species=0;species<6;species++){
             bool indoorRequired=NeedsFullIndoor(state,doors,species);
-            essential[species]=pinFull||indoorRequired;
+            essential[species]=pinFull||indoorRequired||(OnlineSpeciesMask&(1<<species))!=0;
             bool playerModel=actors[0]!=null&&actors[0]!.Model==models[species];
-            if(species==state.Species||playerModel||pinFull||indoorRequired)wanted[species]=0;
+            if(species==state.Species||playerModel||essential[species])wanted[species]=0;
             // An invisible species keeps its existing variant and follows the
             // ordinary ARAM eviction owner; no speculative dual-cohort load.
             else{

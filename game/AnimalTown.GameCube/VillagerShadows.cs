@@ -15,13 +15,15 @@ internal sealed class VillagerShadows
         internal readonly float[] Bounds=new float[4],Center=new float[2];
         internal int Count;
     }
-    private readonly Entry[] entries=new Entry[BuildingWorld.Actors];
+    private readonly Entry[] entries;
     private readonly GroundShadow staging=new GroundShadow();
     private Town? town;
     private int building=-1,jobRevision,cursor=1;
     private VillagerShadowPatch job;
-    internal VillagerShadows()
+    internal VillagerShadows(int onlineActors=0)
     {
+        if(onlineActors<0||onlineActors>2)throw new System.ArgumentOutOfRangeException(nameof(onlineActors));
+        entries=new Entry[BuildingWorld.Actors+onlineActors];
         for(int i=0;i<entries.Length;i++)entries[i]=new Entry();
     }
     internal void BeginFrame(Town source)

@@ -21,6 +21,7 @@ internal sealed partial class TownGame
     {var result=state.ResidentJobs.BestInteraction(jobNpc).Result;return result!=JobResult.NoWork&&result!=JobResult.ExistingOffer;}
     private void InitializeJobs()
     {
+        if(state.IsOnlineProjection)return;
         if(session.Draft!=null)return;
         ulong nonce=unchecked((ulong)Clock.Timestamp^((ulong)(uint)state.Town.Seed<<32)^0x9e3779b97f4a7c15UL);
         nonce=unchecked((nonce^(nonce>>30))*0xbf58476d1ce4e5b9UL);nonce=unchecked((nonce^(nonce>>27))*0x94d049bb133111ebUL);nonce^=nonce>>31;
@@ -144,7 +145,7 @@ internal sealed partial class TownGame
     {
         if(jobRowsCount==0){jobDetail="No errands right now. Speak to a neighbour and ask for work.";return;}
         int row=jobRows[jobSelected];if(row>=2000){var end=state.Town.Jobs.Terminal(row-2000);jobDetail=EndReason(end.Reason)+" · "+JobCalendar.Display(end.At)+". "+(end.Reason==JobEndReason.WorldRemoved||end.Reason==JobEndReason.BrokenBinding||end.Reason==JobEndReason.SeasonClosed?"The errand ended without blame.":"Speak to a neighbour when you are ready for more work.");return;}
-        if(row>=1000&&state.Town.Jobs.PermanentlyRemoved(state.Town.Jobs.Reward(row-1000).Giver)){jobDetail="Your earned reward is safe. Visit town hall, then press A here to collect it.";return;}
+        if(row>=1000&&(state.Town.Jobs.Reward(row-1000).PortableOnline||state.Town.Jobs.PermanentlyRemoved(state.Town.Jobs.Reward(row-1000).Giver))){jobDetail="Your earned reward is safe. Visit town hall, then press A here to collect it.";return;}
         jobDetail=row>=1000?"Speak to "+JobNpcName(state.Town.Jobs.Reward(row-1000).Giver)+" to collect your waiting "+(state.Town.Jobs.Reward(row-1000).IsReply?"reply.":"reward."):JobDescription(state.Town.Jobs.Job(row));
     }
     private void ActivateNpcJobRow()
@@ -208,7 +209,7 @@ internal sealed partial class TownGame
         int rows=Math.Max(1,jobRowsCount);if(up)jobSelected=(jobSelected+rows-1)%rows;if(down)jobSelected=(jobSelected+1)%rows;
         if(jobSelected<jobScroll)jobScroll=jobSelected;if(jobSelected>=jobScroll+6)jobScroll=jobSelected-5;if(up||down)RefreshJobDetail();
         if(Press(p)&&npcScreen)ActivateNpcJobRow();
-        else if(Press(p)&&jobRowsCount>0&&jobRows[jobSelected]>=1000&&jobRows[jobSelected]<2000){var r=state.Town.Jobs.Reward(jobRows[jobSelected]-1000);if(state.Town.Jobs.PermanentlyRemoved(r.Giver)){jobNpc=-1;if(state.Space!=25)JobSay("Visit town hall to collect this waiting reward.");else HandleJobOutcome(state.ResidentJobs.Execute(state.ResidentJobs.Command(JobCommandKind.RecoverReward,r.Id)));}}
+        else if(Press(p)&&jobRowsCount>0&&jobRows[jobSelected]>=1000&&jobRows[jobSelected]<2000){var r=state.Town.Jobs.Reward(jobRows[jobSelected]-1000);if(r.PortableOnline||state.Town.Jobs.PermanentlyRemoved(r.Giver)){jobNpc=-1;if(state.Space!=25)JobSay("Visit town hall to collect this waiting reward.");else HandleJobOutcome(state.ResidentJobs.Execute(state.ResidentJobs.Command(JobCommandKind.RecoverReward,r.Id)));}}
         else if(p.X.WasPressed&&jobRowsCount>0&&jobRows[jobSelected]<1000){var job=state.Town.Jobs.Job(jobRows[jobSelected]);if(!job.Shared&&job.Status!=JobStatus.RewardOwed){jobSubject=job.Id;jobChoice=0;screen="job-abandon";}}
         return true;
     }

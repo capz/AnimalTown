@@ -1,16 +1,18 @@
-param([ValidateSet('Start','Stop','Status','Backup','Restore')][string]$Action='Start',[switch]$NoTunnel,[switch]$HostRuntime,[switch]$EnablePlay,[string]$Cloudflared='cloudflared',[ValidateRange(1024,65535)][int]$Port=5190,[string]$BackupFile='',[ValidatePattern('^animaltown_restore_[a-z0-9]{1,24}$')][string]$RestoreDatabase='animaltown_restore_check')
+param([ValidateSet('Start','Stop','Status','Backup','Restore')][string]$Action='Start',[switch]$NoTunnel,[switch]$HostRuntime,[switch]$EnablePlay,[string]$Cloudflared='cloudflared',[ValidateRange(1024,65535)][int]$Port=5190,[ValidateRange(1024,65535)][int]$DatabasePort=55440,[string]$BackupFile='',[ValidatePattern('^animaltown_restore_[a-z0-9]{1,24}$')][string]$RestoreDatabase='animaltown_restore_check')
 $ErrorActionPreference='Stop'
-$root=Split-Path $PSScriptRoot -Parent
-$directory=Join-Path $root 'out/online'
+$published=Test-Path -LiteralPath (Join-Path $PSScriptRoot 'AnimalTown.Server.dll')
+$root=if($published){$PSScriptRoot}else{Split-Path $PSScriptRoot -Parent}
+$directory=if($published){Join-Path (Split-Path $root -Parent) 'AnimalTown-online-data'}else{Join-Path $root 'out/online'}
 $settings=Join-Path $directory 'private.env'
 New-Item -ItemType Directory -Path $directory -Force|Out-Null
 if(!(Test-Path -LiteralPath $settings)){
     if($Action -ne 'Start'){throw 'Start the PoC before using this action'}
     $secret=[Convert]::ToHexString([Security.Cryptography.RandomNumberGenerator]::GetBytes(32))
-    [IO.File]::WriteAllText($settings,"ONLINE_POC_PASSWORD=$secret`nONLINE_POC_PORT=$Port`nONLINE_POC_DATABASE=animaltown`n")
+    [IO.File]::WriteAllText($settings,"ONLINE_POC_PASSWORD=$secret`nONLINE_POC_PORT=$Port`nONLINE_POC_DATABASE_PORT=$DatabasePort`nONLINE_POC_DATABASE=animaltown`n")
     if(!$IsWindows){[IO.File]::SetUnixFileMode($settings,[IO.UnixFileMode]::UserRead -bor [IO.UnixFileMode]::UserWrite)}
 }
-$compose=@('compose','--env-file',$settings,'-f',(Join-Path $root 'build/online.compose.yml'))
+$composePath=if($published){Join-Path $root 'online.compose.yml'}else{Join-Path $root 'build/online.compose.yml'}
+$compose=@('compose','--env-file',$settings,'-f',$composePath)
 function RunDocker([string[]]$Arguments){& docker @Arguments;if($LASTEXITCODE){throw 'PoC Docker command failed'}}
 $configured=@{}
 foreach($line in Get-Content -LiteralPath $settings){$pair=$line.Split('=',2);if($pair.Length -eq 2){$configured[$pair[0]]=$pair[1]}}
@@ -18,13 +20,24 @@ $databaseName=if($configured.ONLINE_POC_DATABASE){$configured.ONLINE_POC_DATABAS
 if($databaseName -notmatch '^(animaltown|animaltown_restore_[a-z0-9]{1,24})$'){throw 'Invalid PoC database name'}
 if($HostRuntime -and $Action -eq 'Start'){
     RunDocker ($compose+@('up','-d','database'))
-    & dotnet publish (Join-Path $root 'server/AnimalTown.Server') -c Release -o (Join-Path $directory 'server') --nologo
-    if($LASTEXITCODE){throw 'Host backend publish failed'}
+    $serverBinary=Join-Path $root 'AnimalTown.Server.dll'
+    if(!$published){
+        & dotnet publish (Join-Path $root 'server/AnimalTown.Server') -c Release -o (Join-Path $directory 'server') --nologo
+        if($LASTEXITCODE){throw 'Host backend publish failed'}
+        $serverBinary=Join-Path $directory 'server/AnimalTown.Server.dll'
+    }
+    $databaseReady=$false
+    for($attempt=0;$attempt -lt 80;$attempt++){
+        & docker ($compose+@('exec','-T','database','pg_isready','-U','animaltown','-d',$databaseName)) 2>&1|Out-Null
+        if(!$LASTEXITCODE){$databaseReady=$true;break};Start-Sleep -Milliseconds 250
+    }
+    if(!$databaseReady){throw 'The persistent database did not become ready'}
     $portNumber=[int]$configured.ONLINE_POC_PORT
     $oldConnection=$env:ConnectionStrings__Game;$oldWebSockets=$env:OnlineGameplay__WebSockets;$oldPlay=$env:OnlineGameplay__EnablePlay
     $tunnel=$null
     try{
-        $env:ConnectionStrings__Game='Host=127.0.0.1;Port=55440;Database='+$databaseName+';Username=animaltown;Password='+$configured.ONLINE_POC_PASSWORD
+        $databasePortNumber=if($configured.ONLINE_POC_DATABASE_PORT){[int]$configured.ONLINE_POC_DATABASE_PORT}else{55440}
+        $env:ConnectionStrings__Game='Host=127.0.0.1;Port='+$databasePortNumber+';Database='+$databaseName+';Username=animaltown;Password='+$configured.ONLINE_POC_PASSWORD
         $env:OnlineGameplay__WebSockets='true'
         $env:OnlineGameplay__EnablePlay=$EnablePlay.IsPresent.ToString().ToLowerInvariant()
         if(!$NoTunnel){
@@ -43,7 +56,7 @@ if($HostRuntime -and $Action -eq 'Start'){
             Write-Host "Public HTTPS/WSS endpoint: $address"
         }
         Write-Host 'Host backend runs in this terminal. Ctrl+C stops it; town data is persistent.'
-        & dotnet (Join-Path $directory 'server/AnimalTown.Server.dll') --urls "http://127.0.0.1:$portNumber"
+        & dotnet $serverBinary --urls "http://127.0.0.1:$portNumber" --contentRoot ([IO.Path]::GetDirectoryName($serverBinary))
         if($LASTEXITCODE){throw 'Host backend exited with an error'}
     }finally{
         if($tunnel -and !$tunnel.HasExited){Stop-Process -Id $tunnel.Id}

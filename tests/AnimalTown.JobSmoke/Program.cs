@@ -9,10 +9,10 @@ internal sealed class Draws : IJobRandom
     public int NextInt(int maximum)
     {if(at>=draws.Length)throw new InvalidOperationException("Unexpected native job RNG draw");int n=draws[at++];if(n<0||n>=maximum)throw new InvalidOperationException("Invalid native job RNG draw");return n;}
 }
-internal static class Program
+internal static partial class Program
 {
     private static void Require(bool value,string message){if(!value)throw new InvalidOperationException(message);}
-    private static int Main(){JobMemory.ReclaimTemporaryText=ReclaimText;CoreBudget();NativeJobBlocks.Report(0);Console.WriteLine("Native normal jobs");NormalJobs();RetrievalLimit();CustodyRecovery();NativeJobBlocks.Report(1);Console.WriteLine("Native travel");TravelJobs();NativeJobBlocks.Report(2);Console.WriteLine("Native capacity");Capacity();NativeJobBlocks.Report(3);Console.WriteLine("Native full-card travel");FullCardTravel();NativeJobBlocks.Report(4);MaximumEconomy();NativeJobBlocks.Report(5);MaximumEconomyTravel();NativeJobBlocks.Report(6);ArchiveCopyBudget();NativeJobBlocks.Report(7);return 0;}
+    private static int Main(){JobMemory.ReclaimTemporaryText=ReclaimText;CoreBudget();NativeJobBlocks.Report(0);Console.WriteLine("Native normal jobs");NormalJobs();RetrievalLimit();CustodyRecovery();NativeJobBlocks.Report(1);Console.WriteLine("Native travel");TravelJobs();NativeJobBlocks.Report(2);Console.WriteLine("Native capacity");Capacity();NativeJobBlocks.Report(3);Console.WriteLine("Native full-card travel");FullCardTravel();NativeJobBlocks.Report(4);MaximumEconomy();NativeJobBlocks.Report(5);MaximumEconomyTravel();NativeJobBlocks.Report(6);ArchiveCopyBudget();NativeJobBlocks.Report(7);OnlineCheckpointBudget();NativeJobBlocks.Report(8);return 0;}
     private static void RetrievalLimit()
     {
         var s=new GameState(24){Tutorial=7};for(int n=0;n<6;n++)s.Town.Residents[n].HomeX=5+n*20;

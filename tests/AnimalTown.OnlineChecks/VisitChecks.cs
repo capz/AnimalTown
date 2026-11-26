@@ -31,12 +31,16 @@ static class VisitChecks
             state.ResidentJobs.Enable(townId,DateTimeOffset.UtcNow.ToUnixTimeSeconds());
             state.Rollover((int)(DateTimeOffset.UtcNow.ToUnixTimeSeconds()/86400),DateTime.UtcNow.Year*12+DateTime.UtcNow.Month);
             state.Pockets[2]=Catalog.WritingPaper;state.Pockets[3]=10;
+            state.Pockets[4]=Catalog.Apple;state.Pockets[5]=Catalog.Pear;
             if(role=="Owner"){
                 if(!state.PlaceHouse(12,22,false,true))throw new Exception("Fixture home plot is blocked");
                 state.X=32.5f;state.Z=28.5f;
                 if(!HelipadSite.TryArrival(state,out float arrivalX,out float arrivalZ))throw new Exception("Fixture arrival is blocked");
-                var resident=state.Town.Residents[0];resident.Space=0;resident.PosX=arrivalX;resident.PosZ=arrivalZ;
-                resident.X=(int)arrivalX;resident.Z=(int)arrivalZ;resident.JourneyPhase=0;resident.Dwell=36000;
+                for(int npc=0;npc<3;npc++)
+                {
+                    var resident=state.Town.Residents[npc];resident.Space=0;resident.PosX=arrivalX;resident.PosZ=arrivalZ;
+                    resident.X=(int)arrivalX;resident.Z=(int)arrivalZ;resident.JourneyPhase=0;resident.Dwell=36000;
+                }
             }
             var start=await Request(HttpMethod.Post,"/v1/auth/link/start",new{town=townId.ToString("X16")});
             await Request(HttpMethod.Post,"/v1/account/link",new{code=start.GetProperty("code").GetString()},browser);
@@ -126,6 +130,7 @@ static class VisitChecks
         using(var replay=await Connect(ownerTicket))check(await Ended(replay),"A consumed gameplay ticket cannot authenticate a second socket");
         bool protocolRejected=false;try{using var wrong=await Connect(await Ticket(first,visitA.GetProperty("id").GetString()!),"wrong.protocol");}catch(WebSocketException){protocolRejected=true;}
         check(protocolRejected,"An unsupported WebSocket subprotocol is rejected before upgrade");
+        int expectedWallet=(await Request(HttpMethod.Get,"/v1/me",token:first.Device)).GetProperty("wallet").GetInt32();
         using(var resumed=await Connect(await Ticket(first,visitA.GetProperty("id").GetString()!)))
         {
             var hello=await Read(resumed);check(hello.Header.Sequence==1&&hello.Header.Epoch==hostHello.Header.Epoch,"A fresh ticket resumes the reserved guest seat");
@@ -156,7 +161,7 @@ static class VisitChecks
             for(int i=0;i<parts.Length;i++)parts[i]=reader.ReadBytes(reader.ReadInt32());
             var saved=SplitSaveCodec.DecodeCommitted(commit,parts);
             returnedHome=saved;
-            check(saved.Name=="GuestA"&&saved.Wallet==4356&&!saved.Pockets.Contains(Catalog.WritingPaper),"Return exports the correct home and consumes successful mail stationery once");
+            check(saved.Name=="GuestA"&&saved.Wallet==expectedWallet&&!saved.Pockets.Contains(Catalog.WritingPaper),"Return exports the correct home economy and consumes successful mail stationery once");
         }
         var acknowledged=await Request(HttpMethod.Post,$"/v1/online/reservations/{reservationA}/published",new{fingerprint=publication.GetProperty("sha256").GetString()},first.Device);
         var retriedAck=await Request(HttpMethod.Post,$"/v1/online/reservations/{reservationA}/published",new{fingerprint=publication.GetProperty("sha256").GetString()},first.Device);
@@ -180,7 +185,7 @@ static class VisitChecks
             check(result.RootElement.GetProperty("revision").GetInt64()==3,"Offline upload advances the actual acknowledged card head once");
         }
         var afterOffline=await Request(HttpMethod.Get,"/v1/me",token:first.Device);
-        check(afterOffline.GetProperty("wallet").GetInt32()==4373,"Online purchases and independent offline earnings survive the next synchronization");
+        check(afterOffline.GetProperty("wallet").GetInt32()==expectedWallet+17,"Online purchases and independent offline earnings survive the next synchronization");
     }
     static async Task<(OnlineFrameHeader Header,byte[] Frame)> Read(ClientWebSocket socket)
     {

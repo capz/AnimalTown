@@ -22,6 +22,7 @@ public sealed class OnlineVisitState : IOnlineMessageSink, IDisposable
     public GameState? World { get; private set; }
     public long Cursor { get; private set; }
     public bool NeedsSnapshot { get; private set; } = true;
+    public bool ReplayGap {get;private set;}
     public readonly OnlineHuman[] Humans = { new(), new(), new() };
     public readonly int[] Pockets = new int[GameState.MaximumPockets];
     public long InventoryRevision { get; private set; }
@@ -77,9 +78,9 @@ public sealed class OnlineVisitState : IOnlineMessageSink, IDisposable
             }
             if (kind != OnlineGameplayCodec.Event) return false;
             long cursor = r.Long(); int eventKind = r.Int();
-            if (eventKind == 255) { NeedsSnapshot = true; return true; }
+            if (eventKind == 255) { NeedsSnapshot = true;ReplayGap=true;return true; }
             if (cursor <= Cursor) return true; // already represented in a snapshot/replay
-            if (cursor != Cursor + 1) { NeedsSnapshot = true; return true; }
+            if (cursor != Cursor + 1) { NeedsSnapshot = true;ReplayGap=true;return true; }
             if (eventKind == 0) { if (r.Byte() != 0) return false; }
             else if (eventKind == 1) { if (r.Byte() != 1) return false; NeedsSnapshot = true; }
             else if (eventKind == 2) Inventory(r);
@@ -136,7 +137,9 @@ public sealed class OnlineVisitState : IOnlineMessageSink, IDisposable
         for (int i = 0; i < placements; i++)
         { Placements[i] = decoded.Id(); PlacementOwners[i] = decoded.Id(); PlacementVersions[i] = decoded.Int(); if (Placements[i].IsEmpty || PlacementOwners[i].IsEmpty || PlacementVersions[i] < 1) return false; }
         for (int i = placements; i < Placements.Length; i++) { Placements[i] = default; PlacementOwners[i] = default; PlacementVersions[i] = 0; }
-        decoded.End(); PlacementCount = placements; World = world; Cursor = cursor; NeedsSnapshot = false;
+        decoded.End(); PlacementCount = placements;
+        if(World==null)World=world;else OnlineTownProjection.Update(World,world);
+        Cursor = cursor; NeedsSnapshot = false;ReplayGap=false;
         Array.Clear(snapshot, 0, snapshot.Length); snapshot = null; return true;
     }
 

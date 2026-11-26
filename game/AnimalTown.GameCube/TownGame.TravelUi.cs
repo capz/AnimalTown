@@ -57,7 +57,7 @@ internal sealed partial class TownGame
         if(p.B.WasPressed){if(screen=="travel-confirm"){screen="travel-menu";return true;}screen="world";return true;}
         int dir=jobNavigation.Read(screen,0,p.Stick.X,p.Stick.Y,(int)p.PressedButtons,Clock.Timestamp,true);
 #if ANIMALTOWN_ONLINE_PAIRING
-        if(screen=="travel-menu"&&CanLinkOnline&&p.Z.WasPressed){OnlinePairingRequested=true;return true;}
+        if(screen=="travel-menu"&&CanLinkOnline&&p.Z.WasPressed){if(SaveFromMenu(travelCheckpoint:true))OnlinePairingRequested=true;else travelStatus=saveStatus;return true;}
 #endif
         if(p.X.WasPressed){RefreshTravel();return true;}
         if(screen=="travel-moving"){
