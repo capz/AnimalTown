@@ -14,11 +14,11 @@ internal sealed partial class TownGame
     private void OpenVillagerVisuals()
     {
         try{visualSwap??=VillagerVisualSwap.Open(actors,visualMemory.Pressure);}
-        catch(Exception error){DebugOverlay.WriteLine("VILLAGER VISUALS: "+error.Message);Say("Villager visuals","Appearance assets could not be opened.");return;}
+        catch(Exception error){DebugOverlay.WriteLine("ANIMALTOWN VILLAGER VISUALS: "+error.Message);Say("Villager visuals","Appearance assets could not be opened.");return;}
         visualRow=0;visualActor=0;visualCandidate=visualSwap.Selection.NextUnused(state,-1,1);screen=VillagerVisualScreen;
         TraceVillagerVisualSelection();
     }
-    private void TraceVillagerVisualSelection()=>DebugOverlay.WriteLine("VILLAGER VISUAL MENU actor "+visualActor+" candidate "+visualCandidate+" current "+visualSwap!.Selection.Current(state,visualActor));
+    private void TraceVillagerVisualSelection()=>DebugOverlay.WriteLine("ANIMALTOWN VILLAGER VISUAL MENU actor "+visualActor+" candidate "+visualCandidate+" current "+visualSwap!.Selection.Current(state,visualActor));
     private string VisualActorLabel()=>visualActor==0?state.Name+" (you)":state.Town.NpcAt(visualActor-1).Name;
     private void VillagerVisualInput(ControllerState p)
     {
@@ -48,7 +48,7 @@ internal sealed partial class TownGame
         restartClips[actor]=true;appliedClips[actor]=-2;
         if(actor>0)attention.Register(actor-1,actors[actor]!);
         visualCandidate=visualSwap.Selection.NextUnused(state,visualCandidate,1);
-        DebugOverlay.WriteLine("VILLAGER VISUAL APPLIED actor "+actor+" appearance "+visualSwap.Selection.Current(state,actor));
+        DebugOverlay.WriteLine("ANIMALTOWN VILLAGER VISUAL APPLIED actor "+actor+" appearance "+visualSwap.Selection.Current(state,actor));
     }
     private void DrawVillagerVisuals(Color32 ink)
     {
