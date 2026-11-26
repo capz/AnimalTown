@@ -69,6 +69,10 @@ sealed partial class GameDatabase
         await RequireActiveDevice(c, t, device);
         string fingerprint = Hash("online-reservation:" + System.Text.Json.JsonSerializer.Serialize(request));
         if (await ReadPlacementReceipt(c, t, device.Player, request.Id, fingerprint) is { } prior) return prior;
+        await using(var review=Cmd(c,t,"SELECT EXISTS(SELECT 1 FROM offline_resident_reviews WHERE player=$1)",device.Player))
+            if(await review.ExecuteScalarAsync() is true)throw new GameError(409,"resident-review-required");
+        await using(var closed=Cmd(c,t,"SELECT EXISTS(SELECT 1 FROM online_town_closures WHERE player=$1)",device.Player))
+            if(await closed.ExecuteScalarAsync() is true)throw new GameError(409,"online-town-closed");
         if (device.Player != request.Host) await RequirePlacementVisit(c, t, request.Host, device.Player, request.Visit);
         var state = (await Load(c, t, device.Player, false)).State;
         if (ReviewDeviceVillager(state, device).Length == 0 || state.ActiveProfile != request.Profile || state.ProfileLocked(request.Profile))

@@ -35,6 +35,11 @@ public static class OnlineGameplayCodec
 {
     public const byte Version = 1, Result = 1, Event = 2;
     public const int MaximumTextUnits = 2000;
+    public static OnlineFrameType CommandFrame(int payloadLength)
+    {
+        if(payloadLength<1||payloadLength>OnlineWire.MaxPayloadSize)throw new ArgumentOutOfRangeException(nameof(payloadLength));
+        return payloadLength<=512?OnlineFrameType.Command:OnlineFrameType.BulkPage;
+    }
     public static int WriteCommand(byte[] bytes, OnlineCommand command)
     {
         var w = new OnlinePacketWriter(bytes);

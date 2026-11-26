@@ -52,7 +52,7 @@ public sealed partial class VillagerJobService
         if (!Enabled || !npc.IsValid || town == 0 || delta < -5 || delta > 5) throw new InvalidOperationException("Invalid hosted relationship.");
         ledger.RememberNpc(npc, town, name); Friendship(ledger.Player(state.ActiveProfile), npc, delta); ledger.Revision++;
     }
-    public bool DeliverOnlineText(JobIdentity sender, JobIdentity recipient, string body, long at,JobIdentity onlineIdentity=default)
+    public bool DeliverOnlineText(JobIdentity sender, JobIdentity recipient, string body, long at,JobIdentity onlineIdentity=default,bool returned=false)
     {
         if (!Enabled || !sender.IsValid || !recipient.IsValid || !JobLetterGrader.TryGrade(body, false, out var grade) ||
             !onlineIdentity.IsValid&&(!onlineIdentity.IsEmpty||!ledger.CanAllocate(1))) return false;
@@ -60,7 +60,7 @@ public sealed partial class VillagerJobService
         if ((uint)profile >= GameState.ProfileCount || !state.Profiles[profile].Created) return false;
         ledger.EnsureMail();
         var message = new JobMailRecord { Id = onlineIdentity.IsValid?onlineIdentity:ledger.Allocate(), Owner = recipient, Sender = sender, Recipient = recipient,
-            State = JobMailState.Inbox, SentAt = at, DueAt = at };
+            State = JobMailState.Inbox, SentAt = at, DueAt = at,ReplyText=returned?255:0,Reply=returned };
         ledger.StoreBody(ref message,JobTextBody.Pack(grade.NormalizedBody,grade.ScalarCount));
         if (!InsertIncoming(profile, message)) return false;
         ledger.Revision++; return true;

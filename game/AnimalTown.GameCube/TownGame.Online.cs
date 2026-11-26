@@ -91,9 +91,10 @@ internal sealed partial class TownGame
         string detail=job.Phase==0?npc+" has a request for you.":job.Phase==5?"Your earned reward is waiting. Make room to collect it.":job.Phase>=4?"This request has been handled. Your earnings travel home.":
             job.Template==(int)JobTemplate.FavorLetter?"Send a real letter to "+npc+". Your reply follows the next post round.":job.Template==(int)JobTemplate.FavorFruit?"Bring "+npc+" a "+Catalog.Items[job.Item].Name+" from your pockets.":
             job.Template==(int)JobTemplate.RetrievalBorrowed?job.Phase==2?"Return the borrowed possession to "+npc+".":"Ask "+target+" about the borrowed possession.":"Deliver the bound parcel to "+target+".";
-        OnlineList(4,JobTitle((JobTemplate)job.Template),detail,job.Phase>=4&&job.Phase!=5?2:3);
-        onlineLabels[0]=job.Phase==0?"Accept request":job.Phase==5||job.Phase==4?"Collect owed reward":job.Phase>=6?"Continue":"Hand over / ask about item";
-        if(job.Phase>=4&&job.Phase!=5){onlineLabels[1]="Back";return;}
+        bool compact=job.Phase>=4||job.Phase>0&&job.Template>=(int)JobTemplate.FavorFruit;
+        OnlineList(4,JobTitle((JobTemplate)job.Template),detail,compact?2:3);
+        onlineLabels[0]=job.Phase==0?"Accept request":job.Phase==5||job.Phase==4?"Collect owed reward":job.Phase>=6?"Continue":job.Template==(int)JobTemplate.FavorLetter?"Write the resident a letter":"Hand over / ask about item";
+        if(compact){onlineLabels[1]="Back";return;}
         onlineLabels[1]=job.Phase==0?"Not now":"Abandon request";onlineLabels[2]="Back";
     }
     void OpenOnlineMenu()
@@ -189,7 +190,15 @@ internal sealed partial class TownGame
             }
             if(onlineMode==4)
             {
-                var job=onlineJob!;if(choice==2||choice==1&&job.Phase==0||job.Phase>=4&&job.Phase!=5&&(choice==1||job.Phase>=6)){screen="world";return;}
+                var job=onlineJob!;
+                if(choice==2||job.Phase>=6||choice==1&&(job.Phase==0||job.Phase>=4||job.Template>=(int)JobTemplate.FavorFruit)){screen="world";return;}
+                if(choice==0&&job.Phase>0&&job.Phase<4&&job.Template==(int)JobTemplate.FavorLetter)
+                {
+                    visit.MailPaper=PocketMenu.WritingPaper(state,-1);
+                    if(visit.MailPaper<0){OnlineNotice("You need writing paper. The shop cabinet sells it.");return;}
+                    var recipient=state.Town.Jobs.Npc(job.Requester);visit.MailRecipient=new OnlineId(recipient.Town,recipient.Serial);
+                    visit.MailRecipientName=state.Town.Residents[job.Requester].Name;OpenOnlineLetter();return;
+                }
                 var kind=choice==1?OnlineCommandKind.AbandonJob:job.Phase==0?OnlineCommandKind.AcceptJob:job.Phase>=4?OnlineCommandKind.CollectReward:OnlineCommandKind.CompleteJob;
                 int pocket=job.Template==(int)JobTemplate.FavorFruit?state.Find(job.Item):job.Pocket;
                 OnlineSend(new OnlineCommand{Kind=kind,Entity=job.Id,Revision=job.Version,A=onlineNpc,B=pocket});return;

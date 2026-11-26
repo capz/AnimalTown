@@ -3,7 +3,7 @@ using AnimalTown.Online;
 
 static partial class HostedVisitChecks
 {
-    static async Task Commerce(Client host,Client guest,Client other,Action<bool,string> check)
+    static async Task<(Client Winner,OnlineCommand Receipt)> Commerce(Client host,Client guest,Client other,Action<bool,string> check)
     {
         await guest.WalkToPoint(32.5f,28.5f);
         check((await guest.Command(new(){Kind=OnlineCommandKind.EnterRoom,A=7})).Status==200,"Guest walks to the real shop portal before shopping");
@@ -68,5 +68,6 @@ static partial class HostedVisitChecks
             "Owner review can interrupt and resume the town after permanent commerce");
         await winner.Snapshot();
         check(winner.State.Wallet==(ReferenceEquals(winner,guest)?firstWallet:secondWallet)-123,"Review does not undo the confirmed guest purchase");
+        return(winner,outcomes[0].Status==200?one:two);
     }
 }

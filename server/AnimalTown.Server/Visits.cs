@@ -53,6 +53,8 @@ sealed partial class GameDatabase
         await using var transaction = await connection.BeginTransactionAsync();
         await LockTown(connection, transaction, host);
         if (device is not null) await RequireManagedGateOwner(connection, transaction, device);
+        await using(var closed=Cmd(connection,transaction,"SELECT EXISTS(SELECT 1 FROM online_town_closures WHERE player=$1)",host))
+            if(await closed.ExecuteScalarAsync() is true)throw new GameError(409,"online-town-closed");
         await using var command = Cmd(connection, transaction, """
             INSERT INTO gates(host,expires) VALUES($1,'infinity')
             ON CONFLICT(host) DO UPDATE SET expires=excluded.expires,

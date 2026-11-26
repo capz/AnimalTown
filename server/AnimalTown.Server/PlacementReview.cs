@@ -28,6 +28,16 @@ static class PlacementReviewRoutes
             db.ListPlacementReview(Device(c), lease, after)).WithMetadata(ApiAccess.DeviceOnly);
         app.MapPost("/v1/review/{lease:guid}/placements/ops", (HttpContext c, Guid lease, PlacementReviewOperation op) =>
             db.DecidePlacementReview(Device(c), lease, op)).WithMetadata(ApiAccess.DeviceOnly);
+        app.MapGet("/v1/review/{lease:guid}/residents", (HttpContext c, Guid lease) =>
+            db.ListResidentReview(Device(c),lease)).WithMetadata(ApiAccess.DeviceOnly);
+        app.MapPost("/v1/review/{lease:guid}/residents/ops", (HttpContext c, Guid lease, ResidentReviewOperation op) =>
+            db.DecideResidentReview(Device(c),lease,op)).WithMetadata(ApiAccess.DeviceOnly);
+        app.MapPost("/v1/review/{lease:guid}/residents/complete", (HttpContext c, Guid lease, ResidentReviewCompletion op) =>
+            db.CompleteResidentReview(Device(c),lease,op)).WithMetadata(ApiAccess.DeviceOnly);
+        app.MapPost("/v1/review/{lease:guid}/scene", (HttpContext c, Guid lease) =>
+            db.PrepareReviewScene(Device(c),lease)).WithMetadata(ApiAccess.DeviceOnly);
+        app.MapGet("/v1/review/{lease:guid}/scene", async (HttpContext c, Guid lease, string sha256, int offset, int count) =>
+            Results.Bytes(await db.ReadReviewScene(Device(c),lease,sha256,offset,count),"application/octet-stream")).WithMetadata(ApiAccess.DeviceOnly);
     }
 }
 
@@ -318,7 +328,7 @@ sealed partial class GameDatabase
         await RequireImportedPlacementTown(c, t, host);
         var state = (await Load(c, t, host, false)).State;
         string villager = ReviewDeviceVillager(state, device);
-        await using (var pending = Cmd(c, t, "SELECT EXISTS (SELECT 1 FROM guest_placements WHERE host=$1)", host))
+        await using (var pending = Cmd(c, t, "SELECT EXISTS (SELECT 1 FROM guest_placements WHERE host=$1) OR EXISTS(SELECT 1 FROM offline_resident_reviews WHERE player=$1)", host))
             if (await pending.ExecuteScalarAsync() is not true)
                 throw new GameError(409, "review-empty");
 

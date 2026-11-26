@@ -49,11 +49,14 @@ internal sealed partial class TownGame
     }
     private void DrawJobOutfit(int actor)
     {
+#if ANIMALTOWN_ONLINE_PLAY
+        if(reviewUi!=null&&actor==0)return;
+#endif
         if(!actorVisibility.Visible[actor])return;
         int npc=actor-1,item;
         int species=actor==0?state.Species:state.NpcSpecies(npc);
-        if(actor==0)item=JobsLive?state.Shirt:0;
-        else item=state.NpcVisitor(npc)?.Outfit??(JobsLive&&npc<Town.SavedVillagerCount?state.Town.Jobs.Outfit(npc):0);
+        if(actor==0)item=JobsLive||state.IsOnlineProjection?state.Shirt:0;
+        else item=state.NpcVisitor(npc)?.Outfit??((JobsLive||state.IsOnlineProjection)&&npc<Town.SavedVillagerCount?state.Town.Jobs.Outfit(npc):0);
         var l=actorVisibility.Locations[actor];
         if(!Catalog.Has(item,ItemFlags.Wear))return;
         NativeShadows.Objects(room==0?1:0);

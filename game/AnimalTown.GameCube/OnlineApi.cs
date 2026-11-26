@@ -107,6 +107,30 @@ internal sealed class OnlineApi:IDisposable
         if(!offered.Field("completed").Flag)throw new IOException("Checkpoint publication is incomplete.");
         return offered;
     }
+    internal async Task<GameState> ReviewScene(string lease,CancellationToken cancellation)
+    {
+        string path="/v1/review/"+lease+"/scene";
+        var info=await Json("POST",path,"{}",cancellation);int length=info.Field("length").Int32;string expected=info.Field("sha256").Text;
+        if(length<1||length>OnlineTownProjection.MaximumBytes)throw new FormatException("Invalid review scene size.");
+        var bytes=new byte[length];using var digest=new OnlineCheckpointHash();
+        try
+        {
+            int offset=0;
+            while(offset<length)
+            {
+                var page=await Send("GET",path+"?sha256="+expected+"&offset="+offset+"&count=16384",null,null,cancellation);
+                try
+                {
+                    if(page.Length<1||page.Length>length-offset)throw new FormatException("Invalid review scene page.");
+                    Array.Copy(page,0,bytes,offset,page.Length);digest.Append(page,0,page.Length);offset+=page.Length;
+                }
+                finally{Array.Clear(page,0,page.Length);}
+            }
+            if(digest.Complete()!=expected)throw new FormatException("Review scene fingerprint changed.");
+            return OnlineTownProjection.Read(bytes,length);
+        }
+        finally{Array.Clear(bytes,0,bytes.Length);}
+    }
     internal async Task<OnlineCheckpointDownload> Download(string reservation,OnlineJson publication,CancellationToken cancellation)
     {
         var download=new OnlineCheckpointDownload(publication.Field("length").Int32,publication.Field("sha256").Text);

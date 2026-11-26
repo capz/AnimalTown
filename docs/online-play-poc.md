@@ -22,6 +22,7 @@ precedence over the earlier phase labels in the
 | Visit | Joining, movement, entering supported rooms, guest item placement, shopping, jobs, mail, and chat are included. |
 | Placements | Retain the existing ownership rules: guests place from their own inventory and move, rotate, or retrieve their own pending placements. Existing town possessions remain protected. |
 | Review | Support Keep in town and Send to koban. Resolve conflicts between normal offline progress and hosted changes through review. |
+| Resident changes | Include offline player additions/deletions and completed two-card NPC moves in conflict review. Show the current town on half the screen and the choices on the other half. Explicitly assign a removed player's new online value, preserve guest earnings, and close pending activity before deleting the last player. |
 | Saves | Support existing player cards and safe return, synchronization, and card reload. Cloned or divergent copies of a card are outside this PoC. |
 | Jobs | Offer only jobs available in the visited town and completable with the PoC's supported actions. Hide offers requiring excluded actions. Earned items and Bells travel home with the guest. |
 | Mail | Address residents of the visited town using its resident directory. No friend/cross-town addressing and no attachments in online PoC mail. Reuse the composer and preserve drafts on failed sends. |
@@ -105,7 +106,10 @@ pin and Cloudflare edge, upgrade handling, cancellation and long-lived traffic.
 The connection, review, conflict, jobs, chat and resident-mail layouts in
 `docs/concepts/online-poc/connection.svg` and `review-and-social.svg` were
 explicitly approved by the user. Implementation may use these layouts without
-another design approval. Target qualification and integrated completion remain
+another design approval. The revised equal-half world/review layout in
+[resident-conflicts.svg](concepts/online-poc/resident-conflicts.svg) was also
+explicitly approved. Its screenshots illustrate the layout; implementation
+streams the current public scene and allows camera inspection. Target qualification and integrated completion remain
 open. "Foundation" means source exists for part of the row, not
 that its completion gate has passed. IDs are local backlog references, not
 GitHub issue numbers.
@@ -149,7 +153,21 @@ NPC or memory-card visitor slots. Long visits renew device credentials outside
 the renderer, then replay accepted actions; long reviews release and reacquire
 their lease while retaining committed choices.
 
-Host fixtures exercise three linked cards through real WebSockets. Native CPU
+Resident changes use a durable staged upload and individual decision receipts.
+The original card head stays acknowledged until review finishes; publication
+still requires the usual download, card write, readback and acknowledgment.
+Removed owners' new proceeds, mail and earned rewards move to an explicitly
+chosen stable resident identity. Reusing a profile slot does not inherit the
+removed identity's receipts. Completed two-card moves are preserved, unfinished
+online errands are retired without a player penalty, and undelivered letters
+are returned without consuming more stationery. Last-player deletion checks a
+durable closure barrier after guest returns, placements and mail have settled.
+
+Host fixtures exercise three linked cards through real WebSockets, restart the
+actual backend with its durable database, resume all three seats under the new
+writer epoch, and retry a confirmed purchase without another item or payment.
+Maximum-length Unicode letters pass through the production bounded command
+queue and the scheduled resident-mail/return path. Native CPU
 fixtures execute production framing, SHA-256, dual-bank recovery journals and
 maximum-size checkpoint publication in the existing six-MiB managed heap, both
 normally and with forced collection. Maximum-card checks retain all four Unicode
@@ -219,41 +237,20 @@ The older brief's NET IDs remain useful component references. Its literal P2
 (server simulation and durable commands) is part of POC-05/POC-06/POC-08/POC-10,
 not a separate promise that chat, jobs and mail can be postponed beyond this PoC.
 
-## Implementation checkpoint
+## Candidate evidence
 
-The active implementation adds a persistent development stack and isolated
-backup/restore workflow in [running the PoC](online-poc-running.md), a bounded
-WSS adapter, fenced backend connections, ordered recipient events, explicit
-public projections, and staged home-card publication. Its SDK dependency is
-[DolphinDotNet PR 195](https://github.com/capz/DolphinDotNet/pull/195), published
-as `0.1.0-preview.387.1`. Hypercube remains pinned to 55 with an explicit,
-reviewable additive runtime override; normal game builds still omit networking.
+The SDK dependency is [DolphinDotNet PR 195](https://github.com/capz/DolphinDotNet/pull/195),
+merged and published as `0.1.0-preview.387.1`. Hypercube remains pinned to 55
+with an explicit reviewed additive runtime override. The persistent local
+stack, published bundle and isolated restore workflow are documented in
+[running the PoC](online-poc-running.md).
 
-The local three-client fixture exercises device-linked existing-save imports,
-distinct seats, movement, paged snapshots, room reach checks, cross-room chat,
-mail restrictions/retries, and immutable return/acknowledgment. Fault injection
-checks every travel-bank byte boundary and home-card publication interruptions.
-The actual connection path compiles through AOT; portable protocol code executes
-under the native runtime with GC stress. These results do not close the public
-Cloudflare, complete lifecycle, review, guest job, renderer, or physical gates.
-
-The [connection mockups](concepts/online-poc/connection.svg) and
-[review/social mockups](concepts/online-poc/review-and-social.svg) are awaiting
-explicit approval under the user's UI rule. No new UI has been implemented.
-The workspace's scoped Cloudflare network change was not approved; no network
-settings changed. The separate GitHub Actions
-[public-route run 45890636894](https://github.com/capz/AnimalTown/actions/runs/45890636894)
-passed the three-client backend scenario through a free Cloudflare HTTPS/WSS
-tunnel on `f94c1050baa74cd567913d9f04e11b0d97ddf70a`. That establishes the backend
-route; the actual GameCube TLS path, DOL-015 and memory/timing gates remain open.
-
-Further backend work adds independent human job contexts, authoritative resident
-reach checks, scheduled text mail/replies, portable rewards and streamed Keep/
-koban review. A second full selected host run passed with 4,229 online checks,
-including a guest walking to a resident, accepting a letter favor, retrying it,
-receiving its scheduled reply at home, placing an item, and the owner reviewing
-it. A new membership cannot read pre-join chat by forging a replay cursor.
-Server-issued mail/reward IDs are separate from the card's offline ID counter.
-Other job templates, conflict reconciliation and the complete console lifecycle
-still require their remaining integration/acceptance work; these checks do not
-claim that every backlog row is complete.
+[Public-route run 45907240336](https://github.com/capz/AnimalTown/actions/runs/45907240336)
+passed the three-client backend HTTPS/WSS scenario through a free Cloudflare
+tunnel on `dd1f49ecb02ab98e198d8b25dd4bf53a3aa8d869`, including verification against
+only the four public roots shipped with the console. That commit's console
+build failed the apploader's BSS overlap check before delivery. The subsequent
+change size-optimizes generated managed code while preserving native kernel
+optimization, the six-MiB heap, and the loader's address validation. The final
+linked build, same-commit publication and target measurements still need to pass;
+an object-size diagnostic alone does not close that gate.

@@ -77,7 +77,7 @@ internal sealed class OnlinePlayVisit:IDisposable
         if(Pending==null&&State.NeedsSnapshot&&replayComplete&&!snapshotPending&&Connection.Epoch!=0)
         {if(Send(new OnlineCommand{Kind=OnlineCommandKind.Snapshot})){snapshotPending=true;State.ExpectSnapshot();}}
         if(Pending!=null&&!queued)
-        {int size=OnlineGameplayCodec.WriteCommand(commandBytes,Pending);queued=Connection.Queue(OnlineFrameType.Command,commandBytes,0,size,out _);}
+        {int size=OnlineGameplayCodec.WriteCommand(commandBytes,Pending);queued=Connection.Queue(OnlineGameplayCodec.CommandFrame(size),commandBytes,0,size,out _);}
         var world=State.World;if(world==null)return;
         world.Name=State.Name;world.Species=State.Species;world.Palette=State.Palette;world.Shirt=State.Shirt;world.BackpackTier=State.Capacity/10-1;
         world.Wallet=State.Wallet;world.Savings=State.Savings;world.Debt=State.Debt;world.Tool=0;

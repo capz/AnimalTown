@@ -33,6 +33,12 @@ static class CodecChecks
         pump.Pump(1);var queued=stream.TakeSent();
         check(OnlineWire.TryReadHeader(queued,0,queued.Length,out var header)&&header.Sequence==sequence&&queued[12]==4,
             "Command input is copied once and uses the movement sequence space");
+        var maximum=new char[2000];for(int i=0;i<1000;i++){maximum[i*2]='\ud83c';maximum[i*2+1]='\udf30';}
+        command.Text=new string(maximum);count=OnlineGameplayCodec.WriteCommand(bytes,command);
+        check(count>512&&pump.Queue(OnlineGameplayCodec.CommandFrame(count),bytes,0,count,out _),"The production queue accepts a maximum Unicode letter");
+        pump.Pump(2);queued=stream.TakeSent();
+        check(OnlineWire.ReadFrame(queued,0,queued.Length,out header,out int used)==OnlineFrameRead.Complete&&used==queued.Length&&header.Type==OnlineFrameType.BulkPage&&
+            OnlineGameplayCodec.ReadCommand(queued,12,header.PayloadLength).Text==command.Text,"Maximum mail leaves the queue in a bounded complete gameplay frame");
         stream.Feed(OnlineFrameType.ReliableEvent,73,9,[17,18]);pump.Pump(2);
         check(sink.Count==1&&sink.Last==17,"Reliable messages reach the consumer before borrowed input is reused");
         stream.Feed(OnlineFrameType.SessionState,73,10,[1]);pump.Pump(3);

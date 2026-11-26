@@ -185,6 +185,19 @@ CREATE TABLE IF NOT EXISTS online_card_heads (
  fingerprint text NOT NULL, save_commit bytea NOT NULL,
  save_records bytea[] NOT NULL CHECK(cardinality(save_records)=7)
 );
+CREATE TABLE IF NOT EXISTS offline_resident_reviews (
+ player uuid PRIMARY KEY REFERENCES players(id), id uuid NOT NULL UNIQUE,
+ parent_revision bigint NOT NULL CHECK(parent_revision>0), fingerprint text NOT NULL,
+ save_commit bytea NOT NULL, save_records bytea[] NOT NULL CHECK(cardinality(save_records)=7),
+ approved integer NOT NULL DEFAULT 0 CHECK(approved BETWEEN 0 AND 1023),
+ recipients text[] NOT NULL DEFAULT ARRAY['','','',''] CHECK(cardinality(recipients)=4),
+ version integer NOT NULL DEFAULT 1 CHECK(version>0)
+);
+ALTER TABLE town_review_leases ADD COLUMN IF NOT EXISTS scene bytea CHECK(scene IS NULL OR octet_length(scene)<=98304);
+CREATE TABLE IF NOT EXISTS online_town_closures (
+ player uuid PRIMARY KEY REFERENCES players(id), town_identity text NOT NULL,
+ revision bigint NOT NULL CHECK(revision>0), fingerprint text NOT NULL
+);
 CREATE TABLE IF NOT EXISTS online_travel (
  id uuid PRIMARY KEY, player uuid NOT NULL REFERENCES players(id), device uuid NOT NULL REFERENCES devices(id),
  town_identity text NOT NULL, profile integer NOT NULL CHECK(profile BETWEEN 0 AND 3),
@@ -208,6 +221,7 @@ CREATE TABLE IF NOT EXISTS hosted_mail (
  delivered boolean NOT NULL DEFAULT false, replied boolean NOT NULL DEFAULT false,
  created timestamptz NOT NULL DEFAULT clock_timestamp()
 );
+ALTER TABLE hosted_mail ADD COLUMN IF NOT EXISTS returned boolean NOT NULL DEFAULT false;
 CREATE TABLE IF NOT EXISTS hosted_jobs (
  id uuid PRIMARY KEY, host uuid NOT NULL REFERENCES players(id), player uuid NOT NULL REFERENCES players(id),
  villager text NOT NULL, profile integer NOT NULL CHECK(profile BETWEEN 0 AND 3),

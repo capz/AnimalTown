@@ -28,8 +28,20 @@ sealed partial class GameDatabase
             """,owner))
             if(await active.ExecuteScalarAsync(cancellation) is true)throw new GameError(409,"finish-online-return-first");
         var current=await Load(connection,transaction,owner,false);
+        if(OnlineResidentDecisions.Changes(upload.State,baseline)!=0)
+        {
+            await StageResidentReview(connection,transaction,owner,parent,upload);
+            return new(town,head);
+        }
         try { OnlineTownMerge.Apply(upload.State,baseline,current.State,DateTimeOffset.UtcNow.ToUnixTimeSeconds()); }
         catch(InvalidOperationException){throw new GameError(409,"offline-reconciliation-required");}
+        await AcceptOfflineCheckpoint(connection,transaction,owner,parent,upload,cancellation);
+        return new(town,checked(head+1));
+    }
+
+    async Task AcceptOfflineCheckpoint(NpgsqlConnection connection,NpgsqlTransaction transaction,Guid owner,long parent,ParsedInitialTown upload,CancellationToken cancellation)
+    {
+        long head=parent;
         long revision=checked(head+1);
         // The upload itself is already on the card. Remember its exact bytes as
         // the new acknowledged baseline; the merged candidate is canonical and
@@ -46,8 +58,8 @@ sealed partial class GameDatabase
             ON CONFLICT(player) DO UPDATE SET day=excluded.day,month=excluded.month
             """,owner,upload.State.Town.Day,upload.State.Town.Month))await calendar.ExecuteNonQueryAsync(cancellation);
         await WriteParts(connection,transaction,owner,upload.State,true);
+        await using(var clear=Cmd(connection,transaction,"DELETE FROM offline_resident_reviews WHERE player=$1",owner))await clear.ExecuteNonQueryAsync(cancellation);
         await using(var hosted=Cmd(connection,transaction,"SELECT EXISTS(SELECT 1 FROM hosted_towns WHERE host=$1)",owner))
             if(await hosted.ExecuteScalarAsync(cancellation) is true)await AppendHostedEvent(connection,transaction,owner,null,1,null,[1]);
-        return new(town,revision);
     }
 }

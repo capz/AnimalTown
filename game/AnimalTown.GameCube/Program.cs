@@ -51,7 +51,7 @@ internal static class Program
                 finally{LoadingScreen.Finish();recoveryFont.Release();}
             }
 #endif
-            if(!ProfilePicker.Run(session))return;
+            if(!ProfilePicker.Run(session,config))return;
             session.State.Town.Traffic.ResetSnowForTownEntry();
             if(session.Draft!=null&&!OnboardingFlow.Run(config,session))return;
             while(true){
@@ -492,6 +492,9 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
     }
     private void DrawLoading(bool landscape=false)
     {
+#if ANIMALTOWN_ONLINE_PLAY
+        if(reviewUi!=null){reviewUi.DrawReviewLoading();return;}
+#endif
         if(loadingFailed)LoadingScreen.Draw("Could not load town assets.\n"+(session.Draft!=null||session.Flight.Active?"B: return to the title.":"Restart with a valid disc."),font);
         else LoadingScreen.Draw();
     }
@@ -1045,6 +1048,9 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
     {var center=SurfacePoint(x,z,scale*.5f);float radius=scale*1.5f;return room!=0?indoorCamera.Sphere(x,scale*.5f,z,radius,BuildingWorld.Size(state,room)):RenderView.Sphere(center.X,center.Y,center.Z,radius,state.X,state.Z,cachedPlayerHeight)&&RenderView.AboveHorizon(center.Y,center.Z,radius,state.Z,cachedPlayerHeight);}
     private void ModelAt(int actor)
     {
+#if ANIMALTOWN_ONLINE_PLAY
+        if(reviewUi!=null&&actor==0)return;
+#endif
         if(actor==0&&session.Flight.PlayerOnboard)return;
         if(!actorVisibility.Visible[actor]){FrameProfile.CulledObjects++;return;}
         var location=actorVisibility.Locations[actor];float x=location.X,z=location.Z,scale=1.8f,facing=actor==0?facingYaw:location.Yaw,height=0;
@@ -1061,6 +1067,9 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
         int size=room==0?0:BuildingWorld.Size(state,room);
         bool mat=room!=0&&BuildingWorld.Definition(state,BuildingWorld.Building(room)).Floor==BuildingCatalog.Cottage.Floor;
         for(int actor=0;actor<BuildingWorld.Actors;actor++){
+#if ANIMALTOWN_ONLINE_PLAY
+            if(reviewUi!=null&&actor==0)continue;
+#endif
             if(actor>0&&(!state.NpcPresent(actor-1)||!modelResidency.Ready(state.NpcSpecies(actor-1))))continue;
             if(BuildingWorld.Location(state,actor).Space.Value!=room||actor==0&&(waterInspection!=0||session.Flight.PlayerOnboard))continue;
             var p=villagers.Doors.VisualLocation(state,actor);
@@ -1167,7 +1176,18 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
         float eyeHeight=PlayerHeight();
         if(room==0)camera.LookAt(new Vector3(state.X,CylinderWorld.CameraHeight+eyeHeight,state.Z+CylinderWorld.CameraBack),new Vector3(state.X,eyeHeight,state.Z-CylinderWorld.CameraAimAhead),new Vector3(0,1,0));
         else{float size=BuildingWorld.Size(state,room);indoorView.LookAt(new Vector3(indoorCamera.EyeX(size),indoorCamera.EyeY(size),indoorCamera.EyeZ(size)),new Vector3(size*.5f,.7f,size*.5f),new Vector3(0,1,0));}
-        renderer.Begin3D(room==0?camera:indoorView);buildings.Begin(villagers.Doors);FrameProfile.End(4,phase);
+#if ANIMALTOWN_ONLINE_PLAY
+        if(reviewUi!=null)
+        {
+            BeginReviewViewport();
+            if(room==0)reviewCamera!.LookAt(new Vector3(state.X,CylinderWorld.CameraHeight+eyeHeight,state.Z+CylinderWorld.CameraBack),new Vector3(state.X,eyeHeight,state.Z-CylinderWorld.CameraAimAhead),new Vector3(0,1,0));
+            else{float size=BuildingWorld.Size(state,room);reviewCamera!.LookAt(new Vector3(indoorCamera.EyeX(size),indoorCamera.EyeY(size),indoorCamera.EyeZ(size)),new Vector3(size*.5f,.7f,size*.5f),new Vector3(0,1,0));}
+        }
+        renderer.Begin3D(reviewUi!=null?reviewCamera!:(room==0?camera:indoorView));
+#else
+        renderer.Begin3D(room==0?camera:indoorView);
+#endif
+        buildings.Begin(villagers.Doors);FrameProfile.End(4,phase);
         phase=FrameProfile.Start();int submissionAt=FrameProfile.SubmissionStart();if(room==0){terrain.Draw(renderer,terrain.ScrollTransform,room);}else buildings.Interior(renderer,state,worldRoot,indoorCamera,villagers.Doors);
         FrameProfile.SubmissionEnd(0,submissionAt);FrameProfile.End(4,phase);phase=FrameProfile.Start();
         if(renderDebug.ShowObstructedEdges)NativeWorldDiagnostics.EdgePass(1);
@@ -1245,7 +1265,11 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
         foliage.Draw(renderer);
         if((weather.Raining(room)||weather.Snowing(room))&&villagers.Doors.PlayerFade<1)rain.Draw(renderer);
         FrameProfile.SubmissionEnd(4,submissionAt);
-        renderer.End3D();NativeShadows.Environment(0xffffff,preparedShadowStrength);ui.Begin();
+        renderer.End3D();NativeShadows.Environment(0xffffff,preparedShadowStrength);
+#if ANIMALTOWN_ONLINE_PLAY
+        if(reviewUi!=null){SubmitReviewUi();return;}
+#endif
+        ui.Begin();
         submissionAt=FrameProfile.SubmissionStart();
         if(!session.Flight.Active)DrawHud();
         if(FrameProfile.OverlayVisible)ui.Flush();

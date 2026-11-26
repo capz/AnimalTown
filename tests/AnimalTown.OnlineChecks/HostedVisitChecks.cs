@@ -12,7 +12,8 @@ static partial class HostedVisitChecks
         while(Environment.TickCount64<deadline)await current.Receive();
         check(current.State.ChatCount==0,"A new membership cannot read chat sent before it joined, even with a forged replay cursor");
     }
-    public static async Task Run(ClientWebSocket owner,ClientWebSocket first,ClientWebSocket second,uint epoch,Action<bool,string> check)
+    internal sealed record RestartProof(OnlineCommand Receipt,byte Winner,int Wallet,int[] Pockets,long SellerSavings);
+    public static async Task<RestartProof> Run(ClientWebSocket owner,ClientWebSocket first,ClientWebSocket second,uint epoch,Action<bool,string> check)
     {
         using var host=new Client(owner,epoch,0,0);using var guest=new Client(first,epoch,1,1);using var other=new Client(second,epoch,0,2);
         host.StartHeartbeat();guest.StartHeartbeat();other.StartHeartbeat();
@@ -66,9 +67,9 @@ static partial class HostedVisitChecks
         var stolen=await other.Command(new(){Kind=OnlineCommandKind.AcceptJob,Entity=jobId,Revision=offered.Revision});
         check(stolen.Status==404,"A second human cannot claim another guest's personal job context");
         var mail=new OnlineCommand{Kind=OnlineCommandKind.SendMail,Entity=new(resident.Town,resident.Serial),A=2,B=-1,
-            Text="Hello! Your town has been a lovely place to visit. Thank you for showing me around. I hope we can talk again soon."};
+            Text="Hi! "+string.Concat(Enumerable.Repeat("\U0001f330",996))};
         var mailed=await guest.Command(mail);var mailRetry=await guest.Command(mail);
-        check(mailed.Status==200&&mailRetry.Status==200&&mailed.Revision==mailRetry.Revision,"Resident text mail is scheduled exactly once across command retries");
+        check(mailed.Status==200&&mailRetry.Status==200&&mailed.Revision==mailRetry.Revision,"Maximum-scalar Unicode resident mail is scheduled once across large-frame command retries");
         var attached=await guest.Command(new(){Kind=OnlineCommandKind.SendMail,Entity=mail.Entity,A=2,B=3,Text=mail.Text});
         check(attached.Status==400,"Online mail rejects attachments before consuming stationery");
         var stranger=await other.Command(new(){Kind=OnlineCommandKind.SendMail,Entity=new(7,17),A=2,B=-1,Text=mail.Text});
@@ -99,8 +100,23 @@ static partial class HostedVisitChecks
         var kept=await host.Command(decision);var repeated=await host.Command(decision);
         check(kept.Status==200&&repeated.Status==200,"Keep commits once and retries return the same durable decision");
         check((await host.Command(new(){Kind=OnlineCommandKind.ReviewEnd,Entity=lease})).Status==200,"Ending owner review resumes the active visit");
-        await Commerce(host,guest,other,check);
+        var purchase=await Commerce(host,guest,other,check);
         await JobFamilies(host,guest,other,check);
+        await purchase.Winner.Snapshot();await host.Snapshot();
+        return new(purchase.Receipt,(byte)(ReferenceEquals(purchase.Winner,guest)?1:2),purchase.Winner.State.Wallet,(int[])purchase.Winner.State.Pockets.Clone(),host.State.Savings);
+    }
+    public static async Task AfterRestart(ClientWebSocket owner,ClientWebSocket first,ClientWebSocket second,uint epoch,RestartProof proof,Action<bool,string> check)
+    {
+        using var host=new Client(owner,epoch,0,0);using var guest=new Client(first,epoch,0,1);using var other=new Client(second,epoch,0,2);
+        host.StartHeartbeat();guest.StartHeartbeat();other.StartHeartbeat();
+        await host.Snapshot();await guest.Snapshot();await other.Snapshot();
+        var winner=proof.Winner==1?guest:other;
+        check(winner.State.Wallet==proof.Wallet&&winner.State.Pockets.SequenceEqual(proof.Pockets)&&host.State.Savings==proof.SellerSavings,
+            "Confirmed purchases and job earnings survive a real backend process restart");
+        check((await winner.Command(proof.Receipt)).Status==200,"An old confirmed purchase returns its durable receipt under the new worker epoch");
+        await winner.Snapshot();await host.Snapshot();
+        check(winner.State.Wallet==proof.Wallet&&winner.State.Pockets.SequenceEqual(proof.Pockets)&&host.State.Savings==proof.SellerSavings,
+            "Retry after backend restart neither debits, credits nor grants the purchase twice");
     }
     internal readonly record struct Reply(int Status,long Revision,string Error,byte[] Extra);
     sealed class Client(ClientWebSocket socket,uint epoch,uint sequence,byte localSlot):IDisposable
@@ -135,7 +151,7 @@ static partial class HostedVisitChecks
             if(command.Kind is OnlineCommandKind.Snapshot or OnlineCommandKind.ReviewBegin)State.ExpectSnapshot();
             if(command.Id.IsEmpty){var id=Guid.NewGuid().ToByteArray();command.Id=new OnlinePacketReader(id,0,16).Id();}
             var payload=new byte[4096];int length=OnlineGameplayCodec.WriteCommand(payload,command);
-            var frame=new byte[12+length];OnlineWire.TryWriteHeader(frame,0,frame.Length,new(length>512?OnlineFrameType.BulkPage:OnlineFrameType.Command,length,epoch,++sequence));Array.Copy(payload,0,frame,12,length);
+            var frame=new byte[12+length];OnlineWire.TryWriteHeader(frame,0,frame.Length,new(OnlineGameplayCodec.CommandFrame(length),length,epoch,++sequence));Array.Copy(payload,0,frame,12,length);
             using var deadline=new CancellationTokenSource(TimeSpan.FromSeconds(8));
             await Send(frame,deadline.Token);
             long replyDeadline=Environment.TickCount64+8000;

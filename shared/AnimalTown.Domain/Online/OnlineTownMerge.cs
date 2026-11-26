@@ -8,43 +8,33 @@ namespace AnimalTown.Online;
 // newer backend snapshot that the console has not saved.
 public static class OnlineTownMerge
 {
-    public static void Apply(GameState local,GameState baseline,GameState hosted,long now)
+    public static void Apply(GameState local,GameState baseline,GameState hosted,long now,OnlineResidentDecisions? residents=null)
     {
         ulong town=baseline.Town.Jobs.TownId;
         if(town==0||local.Town.Jobs.TownId!=town||hosted.Town.Jobs.TownId!=town||
             local.Visiting||baseline.Visiting||hosted.Visiting||local.IsOnlineProjection||baseline.IsOnlineProjection||hosted.IsOnlineProjection)
             throw new InvalidOperationException("These cards do not share one home lineage.");
         local.CaptureProfile();baseline.CaptureProfile();hosted.CaptureProfile();
-        var overflow=new long[GameState.ProfileCount];
+        if(residents!=null)residents.Validate(local,baseline,hosted);
+        else if(OnlineResidentDecisions.Changes(local,baseline)!=0||OnlineResidentDecisions.Changes(hosted,baseline)!=0)
+            throw new InvalidOperationException("Review the offline resident changes before synchronizing.");
+        var earned=new long[GameState.ProfileCount];
         for(int p=0;p<GameState.ProfileCount;p++)
         {
-            if(local.Town.Jobs.Player(p)!=baseline.Town.Jobs.Player(p)||hosted.Town.Jobs.Player(p)!=baseline.Town.Jobs.Player(p))
-                throw new InvalidOperationException("Synchronize before changing the town's residents.");
-            var before=baseline.Profiles[p];var remote=hosted.Profiles[p];var personal=local.Profiles[p];
+            var before=baseline.Profiles[p];var remote=hosted.Profiles[p];
             // Without an active card reservation, only passive consignment
             // earnings can change private currency. Never replay a remote
             // pocket debit over independently edited offline pockets.
             if(remote.Wallet!=before.Wallet||remote.Savings<before.Savings||!Equal(remote.Pockets,before.Pockets))
                 throw new InvalidOperationException("Finish the pending online return before synchronizing.");
-            long earned=remote.Savings-before.Savings;
-            if(earned>0)
-            {
-                if(!personal.Created)throw new InvalidOperationException("A returning sale belongs to a removed resident.");
-                long credit=Math.Min(earned,long.MaxValue-personal.Savings);
-                personal.Savings+=credit;
-                // Overflow remains owed in the shared proceeds ledger below.
-                earned-=credit;
-            }
-            overflow[p]=earned;
+            earned[p]=remote.Savings-before.Savings;
         }
-        for(int n=0;n<Town.SavedVillagerCount;n++)
-            if(local.Town.Jobs.Npc(n)!=baseline.Town.Jobs.Npc(n)||hosted.Town.Jobs.Npc(n)!=baseline.Town.Jobs.Npc(n))
-                throw new InvalidOperationException("Synchronize before moving a resident between towns.");
 
         bool localShop=ShopChanged(local,baseline),remoteShop=ShopChanged(hosted,baseline);
-        if(localShop&&remoteShop&&!SameShop(local,hosted))
+        if(residents!=null)MergeReviewedShop(local,baseline,hosted,residents);
+        else if(localShop&&remoteShop&&!SameShop(local,hosted))
             throw new InvalidOperationException("The shared shop changed. Keep the card for reconciliation.");
-        if(remoteShop||!localShop)
+        else if(remoteShop||!localShop)
         {
             local.Town.Shop.Decode(hosted.Town.Shop.Encode());
             Array.Copy(hosted.Town.Stock,local.Town.Stock,hosted.Town.Stock.Length);
@@ -52,8 +42,20 @@ public static class OnlineTownMerge
         }
         for(int p=0;p<GameState.ProfileCount;p++)
         {
-            if(local.Town.Shop.Proceeds[p]>long.MaxValue-overflow[p])throw new InvalidOperationException("The sale proceeds ledger is full.");
-            local.Town.Shop.Proceeds[p]+=overflow[p];
+            int target=p;
+            if(residents!=null)
+            {
+                var owner=baseline.Town.Jobs.Player(p);if(owner.IsEmpty)continue;
+                target=local.Town.Jobs.FindPlayer(residents.Resolve(local,baseline,owner));
+                long proceeds=hosted.Town.Shop.Proceeds[p]-baseline.Town.Shop.Proceeds[p];
+                if(proceeds<0)
+                {
+                    if(earned[p]<-proceeds)throw new InvalidOperationException("The hosted proceeds changed outside this card lineage.");
+                    earned[p]+=proceeds;
+                }
+                else Credit(local,target,proceeds);
+            }
+            Credit(local,target,earned[p]);
         }
 
         // Existing town possessions are protected by the hosted command
@@ -70,8 +72,43 @@ public static class OnlineTownMerge
         }
         local.Town.LostAndFound.MergeHostedAdditions(baseline.Town,hosted.Town);
         local.RestoreProfile(local.ActiveProfile);
-        local.ResidentJobs.MergeHostedReceipts(baseline,hosted,now);
+        local.ResidentJobs.MergeHostedReceipts(baseline,hosted,now,residents);
         local.Town.NotifyObjectsChanged();
+    }
+
+    static void Credit(GameState state,int profile,long amount)
+    {
+        if(amount==0)return;
+        var personal=state.Profiles[profile];if(!personal.Created)throw new InvalidOperationException("Choose a resident for these proceeds.");
+        long credit=Math.Min(amount,long.MaxValue-personal.Savings);personal.Savings+=credit;amount-=credit;
+        if(state.Town.Shop.Proceeds[profile]>long.MaxValue-amount)throw new InvalidOperationException("The sale proceeds ledger is full.");
+        state.Town.Shop.Proceeds[profile]+=amount;
+    }
+
+    static void MergeReviewedShop(GameState local,GameState baseline,GameState hosted,OnlineResidentDecisions residents)
+    {
+        var a=local.Town.Shop;var b=baseline.Town.Shop;var h=hosted.Town.Shop;
+        if(!Equal(local.Town.Stock,baseline.Town.Stock)&&!Equal(local.Town.Stock,hosted.Town.Stock))
+            throw new InvalidOperationException("Review the changed shop stock before synchronizing.");
+        Array.Copy(hosted.Town.Stock,local.Town.Stock,hosted.Town.Stock.Length);
+        local.Town.StockCount=hosted.Town.StockCount;local.Town.Spending=hosted.Town.Spending;
+        for(int i=0;i<TownShop.StoredSaleCount;i++)
+        {
+            bool unchanged=a.SaleItems[i]==b.SaleItems[i]&&a.SalePrices[i]==b.SalePrices[i]&&a.SaleOwners[i]==b.SaleOwners[i];
+            bool removedOwner=b.SaleItems[i]!=0&&local.Town.Jobs.FindPlayer(baseline.Town.Jobs.Player(b.SaleOwners[i]))<0;
+            if(removedOwner&&a.SaleItems[i]==0)continue; // Offline deletion already discarded the old unsold possession.
+            if(!unchanged&&(a.SaleItems[i]!=h.SaleItems[i]||a.SalePrices[i]!=h.SalePrices[i]||a.SaleOwners[i]!=h.SaleOwners[i]))
+                throw new InvalidOperationException("Review the changed listing before synchronizing.");
+            a.SaleItems[i]=h.SaleItems[i];a.SalePrices[i]=h.SalePrices[i];
+            a.SaleOwners[i]=h.SaleItems[i]==0?0:local.Town.Jobs.FindPlayer(residents.Resolve(local,baseline,baseline.Town.Jobs.Player(h.SaleOwners[i])));
+        }
+        for(int n=0;n<Town.SavedVillagerCount;n++)
+        {
+            int old=baseline.Town.Jobs.FindNpc(local.Town.Jobs.Npc(n));if(old<0)continue;
+            a.NpcWallet[n]=h.NpcWallet[old];a.NpcCount[n]=h.NpcCount[old];a.NpcDay[n]=h.NpcDay[old];a.NpcTarget[n]=h.NpcTarget[old];
+            Array.Copy(h.NpcItems,old*TownShop.NpcCapacity,a.NpcItems,n*TownShop.NpcCapacity,TownShop.NpcCapacity);
+        }
+        a.Revision=Math.Max(a.Revision,h.Revision);a.Revision=a.Revision==int.MaxValue?0:a.Revision+1;
     }
 
     // No static mutable merge state: concurrent hosts reconcile independently.

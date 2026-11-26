@@ -15,8 +15,11 @@ internal sealed partial class TownSession
     internal bool Loaded {get;private set;}
     internal OnlineDeviceLink? OnlineCredentials {get;set;}
     internal bool OnlineRecoveryRequired {get;private set;}
+    internal int OnlineDeletionProfile=-1;
 #if ANIMALTOWN_ONLINE_PLAY
     internal OnlinePlayVisit? Online {get;set;}
+    internal static TownSession Review(GameState projection)
+    {if(!projection.IsOnlineProjection)throw new InvalidOperationException("Expected a public review scene.");return new TownSession(projection,true,false,"Town review");}
     internal void ShowOnlineWorld(GameState projection)
     {if(!projection.IsOnlineProjection)throw new InvalidOperationException("Expected a public online world.");State=projection;}
 #endif
@@ -105,7 +108,8 @@ internal sealed partial class TownSession
         try{
             using var card=SaveCards.Mount();
             var storage=new CardSaveStorage(card,File.ReadAllBytes(AnimalTown.ContentPaths.Asset("savebanner.rgb5a3")),File.ReadAllBytes(AnimalTown.ContentPaths.Asset("saveicon.rgb5a3")),SaveCards.Device);
-            State=new SaveRepository(storage).DeleteProfile(State,profile);
+            bool linked=State.HostedCommerceLocked;
+            State=new SaveRepository(storage).DeleteProfile(State,profile);State.HostedCommerceLocked=linked;
             try{storage.UpdateVillagerFiles(State);}
             catch(Exception error){DebugOverlay.WriteLine("VILLAGER CARD CLEANUP: "+error.Message);}
             return true;

@@ -542,7 +542,7 @@
       "lines": [
         "Add online play with friends and recoverable home-card returns.",
         "Authenticated towns support three humans, shopping, eligible jobs, town chat and resident text mail.",
-        "Reviews reconcile offline changes and preserve receipts before verified home-card acknowledgment.",
+        "Split-screen reviews reconcile resident changes and preserve receipts before verified home-card acknowledgment.",
         "Free-tunnel hosting, matching console/backend delivery and explicit target checks support the PoC."
       ]
     }

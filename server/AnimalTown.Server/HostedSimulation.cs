@@ -121,12 +121,13 @@ sealed partial class GameDatabase
         {if(!await row.ReadAsync(stop))return;host=row.GetGuid(0);sender=row.GetGuid(1);}
         if(host==sender)await LockTown(c,t,host);else await LockVisitParticipants(c,t,host,sender);
         if(!await ClaimHostedBackgroundWriter(c,t,host,worker))return;
-        string body,senderKey,recipientKey;int npc,profile;long due;bool delivered;
-        await using(var read=Cmd(c,t,"SELECT body,sender_identity,recipient_identity,recipient_npc,recipient_profile,due,delivered FROM hosted_mail WHERE id=$1 AND NOT replied FOR UPDATE",id))
+        if(await ReviewActive(c,t,host)||sender!=host&&await ReviewActive(c,t,sender))return;
+        string body,senderKey,recipientKey;int npc,profile;long due;bool delivered,returned;
+        await using(var read=Cmd(c,t,"SELECT body,sender_identity,recipient_identity,recipient_npc,recipient_profile,due,delivered,returned FROM hosted_mail WHERE id=$1 AND NOT replied FOR UPDATE",id))
         await using(var row=await read.ExecuteReaderAsync(stop))
         {
             if(!await row.ReadAsync(stop))return;
-            body=row.GetString(0);senderKey=row.GetString(1);recipientKey=row.GetString(2);npc=row.GetInt32(3);profile=row.GetInt32(4);due=row.GetInt64(5);delivered=row.GetBoolean(6);
+            body=row.GetString(0);senderKey=row.GetString(1);recipientKey=row.GetString(2);npc=row.GetInt32(3);profile=row.GetInt32(4);due=row.GetInt64(5);delivered=row.GetBoolean(6);returned=row.GetBoolean(7);
         }
         if(due>now)return;
         var town=(await Load(c,t,host,false)).State;
@@ -134,7 +135,12 @@ sealed partial class GameDatabase
         var recipient=ParseJobKey(recipientKey);var author=ParseJobKey(senderKey);
         town.ResidentJobs.EnableOnlineAdapter(now);home.ResidentJobs.EnableOnlineAdapter(now);
         bool townChanged=false,homeChanged=false,replied=false;
-        if(npc<0)
+        if(returned)
+        {
+            if(!home.ResidentJobs.DeliverOnlineText(recipient,author,body,now,await NextHostedIdentity(c,t),returned:true))return;
+            replied=delivered=homeChanged=true;
+        }
+        else if(npc<0)
         {
             if((uint)profile>=GameState.ProfileCount||town.Town.Jobs.Player(profile)!=recipient)return;
             if(!town.ResidentJobs.DeliverOnlineText(author,recipient,body,due,await NextHostedIdentity(c,t)))return;
@@ -142,7 +148,7 @@ sealed partial class GameDatabase
         }
         else
         {
-            if((uint)npc>=Town.SavedVillagerCount||town.Town.Jobs.Npc(npc)!=recipient||!JobLetterGrader.TryGrade(body,false,out var grade))return;
+            if((uint)npc>=Town.SavedVillagerCount||!delivered&&town.Town.Jobs.Npc(npc)!=recipient||!JobLetterGrader.TryGrade(body,false,out var grade))return;
             int owner=home.Town.Jobs.FindPlayer(author);if((uint)owner>=GameState.ProfileCount||!home.Profiles[owner].Created)return;
             int active=home.ActiveProfile;if(active!=owner)home.SelectProfile(owner);
             if(!delivered)

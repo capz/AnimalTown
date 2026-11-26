@@ -27,6 +27,9 @@ public sealed partial class GameState
     public static readonly int[] GardenWidths={7,9,11,13,15},GardenHeights={5,7,9,11,13};
     public GameState(int seed){Town=new Town(seed);BuildingTypes[7]=1;Pockets[0]=Catalog.WorkShirt;Pockets[1]=2;Pockets[2]=18;}
     internal GameState(int seed,Town snapshot){Town=new Town(seed,snapshot);BuildingTypes[7]=1;Pockets[0]=Catalog.WorkShirt;Pockets[1]=2;Pockets[2]=18;}
+    // A complete recipient projection supplies its terrain and objects. It
+    // must not regenerate an unrelated town in the frame that receives it.
+    internal GameState(int seed,bool generateTown){Town=new Town(seed,null,generateTown);BuildingTypes[7]=1;}
     public int FreeSlot(){for(int i=0;i<Capacity;i++)if(Pockets[i]==0)return i;return -1;}
     public int Find(int item){for(int i=0;i<Capacity;i++)if(Pockets[i]==item)return i;return -1;}
     public bool UpgradeBackpack(bool free=false)

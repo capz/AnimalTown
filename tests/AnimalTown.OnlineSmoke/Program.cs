@@ -8,6 +8,19 @@ static class Program
         if (OnlineWebSocketUpgrade.AcceptKey("dGhlIHNhbXBsZSBub25jZQ==") != "s3pPLMBiTxaQ9kYGzzhZRbK+xOo=") return 1;
         using(var hash=new OnlineCheckpointHash())
         {byte[] abc={97,98,99};hash.Append(abc,0,3);if(hash.Complete()!="BA7816BF8F01CFEA414140DE5DAE2223B00361A396177A9CB410FF61F20015AD")return 7;}
+        using(var hash=new OnlineCheckpointHash())
+        {
+            const string vector="abcdbcdecdefdefgefghfghighijhijkijkljklmklmnlmnomnopnopq";
+            var input=new byte[vector.Length];for(int i=0;i<input.Length;i++)input[i]=(byte)vector[i];
+            hash.Append(input,0,input.Length);
+            if(hash.Complete()!="248D6A61D20638B8E5C026930C3E6039A33CE45964FF2167F6ECEDD419DB06C1")return 11;
+        }
+        using(var hash=new OnlineCheckpointHash())
+        {
+            var input=new byte[1000];for(int i=0;i<input.Length;i++)input[i]=97;
+            for(int i=0;i<1000;i++)hash.Append(input,0,input.Length);
+            if(hash.Complete()!="CDC76E5C9914FB9281A1C7E284D73E67F1809A48A497200E046D39CCC7112CD0")return 12;
+        }
         var files=new Files();var travel=new OnlineTravelStore(files);
         const string id="00112233-4455-6677-8899-aabbccddeeff";
         var journal=travel.Save(null,new OnlineTravelRecord("https://town.example","123456789abcdef0",id,id,1,0,OnlineTravelPhase.Reserved));
@@ -18,6 +31,16 @@ static class Program
         var bytes = new byte[4096]; int count = OnlineGameplayCodec.WriteCommand(bytes, command);
         var decoded = OnlineGameplayCodec.ReadCommand(bytes, 0, count);
         if (!decoded.Id.Same(command.Id) || decoded.Text != command.Text || decoded.B != -1) return 2;
+        var maximum=new char[2000];for(int i=0;i<1000;i++){maximum[i*2]='\ud83c';maximum[i*2+1]='\udf30';}command.Text=new string(maximum);
+        count=OnlineGameplayCodec.WriteCommand(bytes,command);
+        var queuedWire=new PumpWire();using(var pump=new OnlinePosePump(queuedWire,new byte[32],0))
+        {
+            pump.Pump(0);queuedWire.Count=0;
+            if(!pump.Queue(OnlineGameplayCodec.CommandFrame(count),bytes,0,count,out _))return 9;
+            pump.Pump(1);
+            if(OnlineWire.ReadFrame(queuedWire.Bytes,0,queuedWire.Count,out var header,out int consumed)!=OnlineFrameRead.Complete||
+                consumed!=queuedWire.Count||header.Type!=OnlineFrameType.BulkPage||OnlineGameplayCodec.ReadCommand(queuedWire.Bytes,12,header.PayloadLength).Text!=command.Text)return 10;
+        }
         var wire = new Wire(); using var socket = new OnlineWebSocketStream(wire,new Masks());
         byte[] payload = { 11,22,33 }; if (socket.TryWrite(payload,0,3)!=3||wire.Count!=9||wire.Bytes[0]!=130||wire.Bytes[1]!=131) return 3;
         for(int i=0;i<3;i++)if((byte)(wire.Bytes[6+i]^wire.Bytes[2+i])!=payload[i])return 4;
@@ -41,6 +64,13 @@ static class Program
     {
         internal readonly byte[] Bytes=new byte[256];internal int Count;
         public int TryRead(byte[] bytes,int offset,int count)=>-1;
+        public int TryWrite(byte[] bytes,int offset,int count){Array.Copy(bytes,offset,Bytes,Count,count);Count+=count;return count;}
+    }
+    sealed class PumpWire:IOnlinePoseStream
+    {
+        internal readonly byte[] Bytes=new byte[8192];internal int Count;readonly byte[] hello=new byte[12];int read;
+        internal PumpWire(){OnlineWire.TryWriteHeader(hello,0,12,new OnlineFrameHeader(OnlineFrameType.Pong,0,73,1));}
+        public int TryRead(byte[] bytes,int offset,int count){if(read==12)return -1;int take=Math.Min(count,12-read);Array.Copy(hello,read,bytes,offset,take);read+=take;return take;}
         public int TryWrite(byte[] bytes,int offset,int count){Array.Copy(bytes,offset,Bytes,Count,count);Count+=count;return count;}
     }
 }

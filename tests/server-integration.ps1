@@ -20,6 +20,45 @@ function UploadSave([string]$Path,[byte[]]$Bytes,[string]$Token,[string]$Method=
     return @{Status=[int]$response.StatusCode;Body=if($response.Content){$response.Content|ConvertFrom-Json}else{$null}}
 }
 function Assert($Condition,[string]$Message){if(!$Condition){throw $Message}}
+function RunOnlineChecks([string]$Origin){
+    $requestFile=Join-Path $serverRoot ('out/restart-'+[Guid]::NewGuid().ToString('N'))
+    $ackFile=$requestFile+'.ack'
+    $priorRequest=$env:ANIMALTOWN_TEST_RESTART_REQUEST;$priorAck=$env:ANIMALTOWN_TEST_RESTART_ACK
+    $client=$null;$stdout=Join-Path $serverRoot 'out/online-client-test.log';$stderr=Join-Path $serverRoot 'out/online-client-test-error.log'
+    try{
+        $env:ANIMALTOWN_TEST_RESTART_REQUEST=$requestFile;$env:ANIMALTOWN_TEST_RESTART_ACK=$ackFile
+        $client=Start-Process dotnet -ArgumentList @('run','--project','tests/AnimalTown.OnlineChecks','-c','Release','--',$Origin) -WorkingDirectory $serverRoot -PassThru -RedirectStandardOutput $stdout -RedirectStandardError $stderr
+        $deadline=[DateTime]::UtcNow.AddMinutes(8)
+        while(!$client.HasExited){
+            if([DateTime]::UtcNow -gt $deadline){throw 'Online integration client exceeded its bounded deadline'}
+            if(Test-Path -LiteralPath $requestFile){
+                $nonce=[IO.File]::ReadAllText($requestFile)
+                if($nonce -notmatch '^[a-f0-9]{32}$'){throw 'Invalid test restart request'}
+                Remove-Item -LiteralPath $requestFile
+                Stop-Process -Id $script:process.Id;$script:process.WaitForExit()
+                $savedConnection=$env:ConnectionStrings__Game
+                try{$env:ConnectionStrings__Game=$DatabaseConnection;$script:process=Start-Process @launch}
+                finally{$env:ConnectionStrings__Game=$savedConnection}
+                $ready=$false
+                for($attempt=0;$attempt -lt 60;$attempt++){
+                    try{if((Request GET '/health' $null $null).Status -eq 200){$ready=$true;break}}catch{}
+                    Start-Sleep -Milliseconds 250
+                }
+                Assert $ready 'Backend failed to restart with its existing durable database'
+                [IO.File]::WriteAllText($ackFile+'.tmp',$nonce);[IO.File]::Move($ackFile+'.tmp',$ackFile,$true)
+            }
+            Start-Sleep -Milliseconds 100
+        }
+        $client.WaitForExit()
+        if($client.ExitCode){throw 'Online integration client failed'}
+    }finally{
+        if($client -and !$client.HasExited){Stop-Process -Id $client.Id}
+        if(Test-Path -LiteralPath $stdout){Get-Content -LiteralPath $stdout -Tail 80|Write-Host}
+        if(Test-Path -LiteralPath $stderr){Get-Content -LiteralPath $stderr -Tail 80|Write-Host}
+        Remove-Item -LiteralPath $requestFile,$ackFile,($requestFile+'.tmp'),($ackFile+'.tmp') -Force -ErrorAction SilentlyContinue
+        $env:ANIMALTOWN_TEST_RESTART_REQUEST=$priorRequest;$env:ANIMALTOWN_TEST_RESTART_ACK=$priorAck
+    }
+}
 try {
     if($ownsDatabase){
     docker run --rm -d --name $container -e POSTGRES_PASSWORD=animaltown-test-only -p 127.0.0.1:55439:5432 postgres:16-alpine | Out-Null
@@ -46,8 +85,7 @@ try {
     Assert $ready 'Server did not become ready'
     if($OnlineOnly){
         if($PublicTunnel){throw 'Use the complete fixture for public-route qualification'}
-        dotnet run --project tests/AnimalTown.OnlineChecks -c Release -- $api
-        if($LASTEXITCODE){throw 'Focused online integration checks failed'}
+        RunOnlineChecks $api
         Write-Host 'Focused online integration checks passed.'
         return
     }
@@ -405,8 +443,7 @@ try {
     $ready=$false
     for($i=0;$i -lt 40;$i++){try{if((Request GET '/health' $null $null).Status -eq 200){$ready=$true;break}}catch{};Start-Sleep -Milliseconds 250}
     Assert $ready 'Online fixture server did not become ready'
-    dotnet run --project tests/AnimalTown.OnlineChecks -c Release -- $api
-    if($LASTEXITCODE){throw 'Online framing and three-client integration checks failed'}
+    RunOnlineChecks $api
     if($PublicTunnel){
         Stop-Process -Id $process.Id
         $env:ConnectionStrings__Game=$DatabaseConnection
@@ -441,8 +478,7 @@ try {
             & curl --silent --show-error --fail --max-time 15 --proto '=https' --cacert assets/network/online-roots.pem --capath $emptyCaDirectory "$origin/health"|Out-Null
             if($LASTEXITCODE){throw 'The public edge certificate did not validate against the shipped console root bundle'}
         }finally{Remove-Item -LiteralPath $emptyCaDirectory}
-        dotnet run --project tests/AnimalTown.OnlineChecks -c Release -- $origin
-        if($LASTEXITCODE){throw 'Public HTTPS/WSS qualification failed'}
+        RunOnlineChecks $origin
         Write-Host 'Public Cloudflare HTTPS/WSS backend qualification passed; this is not GameCube or DOL-015 qualification.'
     }
     Write-Host 'Server integration checks passed: authentication, device linking, initial card import, gate admission and reconnect, idempotency, permanent purchases, visitor custody, hosted placement review, and three-client WebSockets.'

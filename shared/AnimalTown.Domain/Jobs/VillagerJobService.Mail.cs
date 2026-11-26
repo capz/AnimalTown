@@ -139,7 +139,11 @@ public sealed partial class VillagerJobService
         if((uint)slot>=state.MailCount)return "";var message=ledger.Letter(state.ActiveProfile,slot);
         if(message.State!=JobMailState.Inbox)return "Thank you for being a part of our town!";
         if(!message.Read){message.Read=true;ledger.Mail.Set(state.ActiveProfile*OfflineJobLedger.MailboxCapacity+slot,message);ledger.Revision++;}
-        if(message.Reply)return ReplyBody(message.ReplyText);
+        if(message.Reply)
+        {
+            if(message.ReplyText==255&&message.BodyWords>0)return "This letter was returned because its recipient moved away.\n\n"+JobTextBody.Unpack(message.Body!,message.BodyOffset,message.BodyWords);
+            return ReplyBody(message.ReplyText);
+        }
         string body=JobTextBody.Unpack(message.Body!,message.BodyOffset,message.BodyWords);return body;
     }
     private static string ReplyBody(int key)

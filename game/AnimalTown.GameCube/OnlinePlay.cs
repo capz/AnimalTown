@@ -17,6 +17,7 @@ internal sealed class OnlinePlay:IDisposable
     GameState home;
     Action? serviceTick;
     bool toTitle;
+    bool closingTown;
     CancellationTokenSource stopping=new CancellationTokenSource();
     OnlinePlay(DevConfig config,TownSession session){this.config=config;this.session=session;home=session.State;}
     internal static bool Recover(DevConfig config,TownSession session)
@@ -30,7 +31,18 @@ internal sealed class OnlinePlay:IDisposable
         }
         if(saved==null)return true;
         session.State.HostedCommerceLocked=true;
+        if(saved.Record.Phase==OnlineTravelPhase.Ready)
+        {
+            bool resident=false;for(int p=0;p<GameState.ProfileCount;p++)if(session.State.Profiles[p].Created)resident=true;
+            if(!resident)return true; // A safely closed empty town may create its next profile offline.
+        }
         return Run(config,session,true);
+    }
+    internal static bool CloseLastResident(DevConfig config,TownSession session)
+    {
+        using var flow=new OnlinePlay(config,session){closingTown=true};
+        try{return flow.Show(false);}
+        catch(Exception error){flow.Message("Last resident",Describe(error),"The resident has been kept.");return false;}
     }
     internal static bool Run(DevConfig config,TownSession session,bool recoveryOnly=false)
     {
@@ -130,6 +142,7 @@ internal sealed class OnlinePlay:IDisposable
             if(recoveryOnly)return true;
         }
         if(recoveryOnly)return journal==null||Sync();
+        if(closingTown)return CloseTown();
         while(!toTitle)
         {
             bool open=false;
@@ -168,6 +181,22 @@ internal sealed class OnlinePlay:IDisposable
             if(!FinishReturn())return false;
         }
         return !toTitle&&(journal==null||journal.Record.Phase==OnlineTravelPhase.Ready);
+    }
+    bool CloseTown()
+    {
+        var state=Request("GET","/v1/online/card",title:"Last resident",detail:"Checking pending online activity…");
+        if(state.Field("closed").Flag&&state.Field("sha256").Text==Fingerprint())return true;
+        var bytes=new byte[OnlineTownProjection.MaximumBytes];int length=OnlineTownProjection.Write(home,bytes);
+        var scene=OnlineTownProjection.Read(bytes,length);Array.Clear(bytes,0,bytes.Length);Ui.ReviewScene(scene,config);
+        Ui.Set("Last resident","Review before deleting this profile","Close the gate and settle activity.\nKeep confirmed guest earnings.\nReview placements and mail.\nDeletion waits for safe closure.",new[]{"Review and close online town","Keep resident for now"},"D-pad / A: choose   B: keep");
+        Ui.ReviewFocus(0,home.HomeX(home.ActiveProfile)+3.5f,home.HomeZ(home.ActiveProfile)+4.5f,"Current town · closure review");
+        int choice=Ui.Choose();Ui.EndReview();if(choice!=0)return false;
+        Request("DELETE","/v1/online/gate",title:"Last resident",detail:"Closing admission and allowing guests to return home…");
+        if(!Sync())return false;
+        state=Request("GET","/v1/online/card",title:"Last resident",detail:"Checking the final verified card head…");
+        string id=Await(OnlineApi.NewId(stopping.Token),"Last resident","Preparing a durable closure…");
+        var closed=Request("POST","/v1/online/closure","{\"id\":"+OnlineApi.Quote(id)+",\"revision\":"+state.Field("revision").Number+",\"fingerprint\":"+OnlineApi.Quote(state.Field("sha256").Text)+"}","Last resident","Preserving confirmed guest progress before closure…");
+        return closed.Field("closed").Flag&&closed.Field("sha256").Text==Fingerprint();
     }
     string? ChooseFriend()
     {
@@ -211,6 +240,13 @@ internal sealed class OnlinePlay:IDisposable
             var uploaded=Await(api.Upload(home,journal?.Record.Revision,stopping.Token),"Sync town","Uploading and verifying this card’s offline progress…");
             head=Request("GET","/v1/online/card",title:"Sync town",detail:"Verifying the acknowledged checkpoint…");
             if(head.Field("revision").Number!=uploaded.Field("revision").Number)throw new IOException("card-lineage-changed");
+        }
+        if(!head.Field("residentReview").Null)
+        {
+            if(head.Field("residentReview").Field("sha256").Text!=Fingerprint())throw new IOException("card-lineage-changed");
+            if(!Review())return false;
+            head=Request("GET","/v1/online/card",title:"Sync town",detail:"Verifying your reviewed resident changes…");
+            if(!head.Field("residentReview").Null)throw new IOException("resident-review-required");
         }
         string id=Await(OnlineApi.NewId(stopping.Token),"Sync town","Preparing a recoverable card reservation…");
         Remember(OnlineTravelPhase.Ready,head.Field("revision").Number,head.Field("sha256").Text,id);
@@ -261,20 +297,24 @@ internal sealed class OnlinePlay:IDisposable
         serviceTick=Tick;
         try
         {
+            var status=Request("GET","/v1/online/card",title:"Town review",detail:"Checking for offline resident changes…");
+            if(!status.Field("residentReview").Null)return ReviewResidents(lease);
             while(true)
             {
                 var page=Request("GET","/v1/review/"+lease+"/placements",title:"Town review",detail:"Reading the latest remaining placements…");
                 var entries=page.Field("entries").Children;if(entries.Count==0)return 1;
                 var entry=entries[0];int item=entry.Field("item").Int32;
                 if(!Catalog.Valid(item))throw new FormatException("Invalid reviewed item.");
-                Ui.Set("Town review",Catalog.Items[item].Name+" · spot "+entry.Field("x").Number+", "+entry.Field("z").Number+" · room "+entry.Field("room").Number,"",new[]{"Keep in town","Send to koban"},"A: confirm   B: finish later · guests are waiting");Ui.PreviewItem(item);
+                LoadReviewScene(lease);
+                Ui.Set("Town review",Catalog.Items[item].Name,"Spot "+entry.Field("x").Number+", "+entry.Field("z").Number+" · room "+entry.Field("room").Number+"\nGuests wait during review.\nEach decision is saved.",new[]{"Keep in town","Send to koban"},"D-pad / A: choose   B: later");
+                Ui.ReviewFocus(entry.Field("room").Int32,entry.Field("x").Int32+.5f,entry.Field("z").Int32+1.5f,Catalog.Items[item].Name);
                 int choice=Ui.Choose(serviceTick,true,session.OnlineCredentials!.AccessExpiresAt-30000000);if(choice<0)return choice==-2?2:0;
                 string kind=choice==0?"keep":"koban";
                 try{Decide(entry,kind);}
                 catch(IOException error)
                 {
                     if(error.Message!="placement-conflict")throw;
-                    Ui.Set("Choose this spot","Your offline placement overlaps a guest’s item.","The displaced item goes to the koban.\nYour purchases and earnings stay yours.",new[]{"Keep my placement","Keep guest placement"},"A: choose   B: finish later");
+                    Ui.Set("Choose this spot","Placements overlap here","The displaced item goes to the koban.\nYour purchases and earnings stay yours.",new[]{"Keep my placement","Keep guest placement"},"D-pad / A: choose   B: later");
                     choice=Ui.Choose(serviceTick,true,session.OnlineCredentials!.AccessExpiresAt-30000000);if(choice<0)return choice==-2?2:0;Decide(entry,choice==0?"koban":"keep-guest");
                 }
             }
@@ -284,11 +324,67 @@ internal sealed class OnlinePlay:IDisposable
             serviceTick=previous;
             if(heartbeat!=null)try{Await(heartbeat,"Town review","Finishing the review heartbeat…");}catch(IOException){}
             try{Request("DELETE","/v1/review/"+lease,title:"Town review",detail:"Resuming guests…");}catch(IOException){/* The bounded lease expires if release cannot reach the service. */}
+            Ui.EndReview();
         }
         void Decide(OnlineJson entry,string kind)
         {
             string op=Await(OnlineApi.NewId(stopping.Token),"Town review","Preparing this saved decision…");
             Request("POST","/v1/review/"+lease+"/placements/ops","{\"id\":"+OnlineApi.Quote(op)+",\"placement\":"+OnlineApi.Quote(entry.Field("id").Text)+",\"version\":"+entry.Field("version").Number+",\"kind\":"+OnlineApi.Quote(kind)+"}","Town review","Saving your decision…");
+        }
+    }
+    void LoadReviewScene(string lease)
+    {
+        var scene=Await(api.ReviewScene(lease,stopping.Token),"Town review","Loading the current town for inspection…");
+        Ui.ReviewScene(scene,config);
+    }
+    int ReviewResidents(string lease)
+    {
+        bool reconsider=false;
+        while(true)
+        {
+            var page=Request("GET","/v1/review/"+lease+"/residents",title:"Resident review",detail:"Reading saved resident changes and online effects…");
+            OnlineJson? selected=null;
+            var entries=page.Field("entries").Children;
+            for(int i=0;i<entries.Count;i++)if(!entries[i].Field("approved").Flag){selected=entries[i];break;}
+            if(selected==null&&reconsider)
+                for(int i=0;i<entries.Count;i++)if(entries[i].Field("kind").Text=="profile"&&entries[i].Field("previous").Text.Length>0){selected=entries[i];break;}
+            reconsider=false;
+            if(selected==null)
+            {
+                string op=Await(OnlineApi.NewId(stopping.Token),"Resident review","Preparing the completed review…");
+                try
+                {
+                    Request("POST","/v1/review/"+lease+"/residents/complete","{\"id\":"+OnlineApi.Quote(op)+",\"review\":"+OnlineApi.Quote(page.Field("id").Text)+",\"version\":"+page.Field("version").Number+"}","Resident review","Applying reviewed changes and preserving earned online value…");return 1;
+                }
+                catch(IOException error)
+                {
+                    if(error.Message!="resident-review-capacity")throw;
+                    Ui.Set("Make room first","Your choices are saved","Pending progress is held safely.\nChoose another recipient or finish later and make room.",new[]{"Choose another resident","Finish later"},"D-pad / A: choose   B: later");
+                    int retry=Ui.Choose(serviceTick,true,session.OnlineCredentials!.AccessExpiresAt-30000000);
+                    if(retry<0)return retry==-2?2:0;if(retry!=0)return 0;reconsider=true;continue;
+                }
+            }
+            LoadReviewScene(lease);
+            var entry=selected!;bool profile=entry.Field("kind").Text=="profile",removed=profile&&entry.Field("previous").Text.Length>0;
+            string name=entry.Field("name").Text,previous=entry.Field("previousName").Text;
+            string title=profile?(removed?previous+" was removed":name+" joined"):previous+" moved";
+            string detail=profile?(removed?entry.Field("proceeds").Number+" Bells · "+entry.Field("letters").Number+" letters\n"+entry.Field("rewards").Number+" earned rewards\nOnly new online value moves.\nOffline-discarded possessions stay discarded.":"Keep this saved home, pockets and offline progress.\nAdd this resident to the online directory."):
+                name+" now lives here.\n"+entry.Field("jobs").Number+" unfinished errands · "+entry.Field("letters").Number+" letters\nKeep earned rewards.\nReturn undelivered mail.\nKeep the completed move.";
+            Ui.Set(title,"Saved offline resident change",detail,new[]{removed?"Choose who keeps pending value":profile?"Add to online town":"Accept move and settle","Finish later"},"D-pad / A: choose   B: later");
+            Ui.ReviewFocus(entry.Field("room").Int32,entry.Field("x").Int32/1024f,entry.Field("z").Int32/1024f,profile?(removed?previous+"’s former home":name+"’s current home"):"Current resident: "+name);
+            int choice=Ui.Choose(serviceTick,true,session.OnlineCredentials!.AccessExpiresAt-30000000);if(choice<0)return choice==-2?2:0;if(choice!=0)return 0;
+            string recipient="";
+            if(removed)
+            {
+                var recipients=page.Field("recipients").Children;if(recipients.Count<1)throw new IOException("resident-recipient-required");
+                var labels=new string[recipients.Count];for(int i=0;i<labels.Length;i++)labels[i]=recipients[i].Field("name").Text;
+                Ui.Set("Choose a resident",previous+"’s pending online value","The selected resident receives the new proceeds, letters and earned rewards.",labels,"D-pad / A: choose   B: back");
+                Ui.ReviewSelection(index=>{var p=recipients[index];Ui.ReviewFocus(0,p.Field("x").Int32/1024f,p.Field("z").Int32/1024f,p.Field("name").Text+" · selected recipient");});
+                choice=Ui.Choose(serviceTick,true,session.OnlineCredentials!.AccessExpiresAt-30000000);if(choice==-2)return 2;if(choice<0)continue;
+                recipient=recipients[choice].Field("identity").Text;
+            }
+            string id=Await(OnlineApi.NewId(stopping.Token),"Resident review","Preparing this saved decision…");
+            Request("POST","/v1/review/"+lease+"/residents/ops","{\"id\":"+OnlineApi.Quote(id)+",\"review\":"+OnlineApi.Quote(page.Field("id").Text)+",\"version\":"+page.Field("version").Number+",\"index\":"+entry.Field("index").Number+",\"recipient\":"+OnlineApi.Quote(recipient)+"}","Resident review","Saving your choice…");
         }
     }
     bool FinishReturn()
@@ -377,7 +473,7 @@ internal sealed class OnlinePlay:IDisposable
         if(reconnect)visit.Reconnect(connection);else visit.Connection=connection;
         visit.CredentialExpiresAt=session.OnlineCredentials!.AccessExpiresAt;
         long deadline=Clock.Timestamp+30000000;
-        while(visit.World==null||visit.State.NeedsSnapshot||visit.Recovering||connection.Epoch==0)
+        while(visit.World==null||visit.State.NeedsSnapshot||visit.Recovering||connection.Epoch==0||!connection.TryGetActor(connection.LocalSlot,out _))
         {
             visit.Tick(default);if(!visit.Connected||Clock.Timestamp>=deadline)throw new IOException("online-connection-interrupted");Ui.Draw();RuntimeOptions.Wait();Controller.Update();
         }
@@ -444,6 +540,8 @@ internal sealed class OnlinePlay:IDisposable
         if(code=="device-authorization-expired")return "Your online link needs renewal. Reopen Online with this same card.";
         if(code=="placement-conflict")return "That spot no longer fits. Review it again or finish later.";
         if(code=="koban-capacity-exceeded")return "Make room in the koban before completing this review.";
+        if(code=="online-closure-pending")return "Guests or queued mail still need to finish returning. The gate is closed and your resident is kept. Try deletion again after their progress settles.";
+        if(code=="online-town-closed")return "This online town was closed before its last resident was removed. Synchronize the new resident changes before reopening.";
         return "The connection or card could not be verified. Your accepted progress is safe.";
     }
     void ReleaseUi(){ui?.Dispose();ui=null;LoadingScreen.Finish();TextureCache.TrimUnused();AnimalTown.GameCube.NativeTexturePages.Collect();}

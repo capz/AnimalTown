@@ -1,10 +1,12 @@
+using AnimalTown.Online;
+
 namespace AnimalTown.Jobs;
 
 public sealed partial class VillagerJobService
 {
     // Mutate a private offline-sync candidate only. The caller discards it on
     // refusal; publication/acknowledgment is the separate card transaction.
-    public void MergeHostedReceipts(GameState baseline,GameState hosted,long now)
+    public void MergeHostedReceipts(GameState baseline,GameState hosted,long now,OnlineResidentDecisions? residents=null)
     {
         if(state.IsOnlineProjection||baseline.IsOnlineProjection||hosted.IsOnlineProjection||
             !ledger.Initialized||ledger.TownId!=baseline.Town.Jobs.TownId||ledger.TownId!=hosted.Town.Jobs.TownId||state.Visiting)
@@ -20,6 +22,7 @@ public sealed partial class VillagerJobService
         {
             var reward=remote.Rewards[i];
             if(reward.State==JobRewardState.Empty||!reward.PortableOnline||before.FindReward(reward.Id)>=0)continue;
+            if(residents!=null)reward.Owner=residents.Resolve(state,baseline,reward.Owner);
             int profile=ledger.FindPlayer(reward.Owner);
             if((uint)profile>=GameState.ProfileCount||!state.Profiles[profile].Created)throw new InvalidOperationException("A returning reward belongs to a removed resident.");
             int existing=ledger.FindReward(reward.Id);
@@ -39,6 +42,7 @@ public sealed partial class VillagerJobService
         {
             var message=remote.Mail[i];
             if(message.State!=JobMailState.Inbox||HasMail(before,message.Id)||HasMail(ledger,message.Id))continue;
+            if(residents!=null){message.Recipient=residents.Resolve(state,baseline,message.Recipient);message.Owner=message.Recipient;}
             int profile=ledger.FindPlayer(message.Recipient);
             if((uint)profile>=GameState.ProfileCount||!state.Profiles[profile].Created)throw new InvalidOperationException("A delivered letter belongs to a removed resident.");
             if(message.Id.Town==ledger.TownId)throw new InvalidOperationException("A hosted letter reused the offline identity namespace.");
@@ -65,7 +69,7 @@ public sealed partial class VillagerJobService
                 int old=before.RelationSlot(profile,relation.Npc,false);
                 int friendship=old<0?0:before.Relations[old].Friendship,met=old<0?0:before.Relations[old].Met;
                 if(relation.Friendship==friendship&&relation.Met==met)continue;
-                int localProfile=ledger.FindPlayer(owner);
+                int localProfile=ledger.FindPlayer(residents==null?owner:residents.Resolve(state,baseline,owner));
                 if((uint)localProfile>=GameState.ProfileCount||!state.Profiles[localProfile].Created)throw new InvalidOperationException("A hosted relationship belongs to a removed resident.");
                 int slot=ledger.RelationSlot(localProfile,relation.Npc,true);
                 if(slot<0)throw new InvalidOperationException("The home relationship ledger is full.");

@@ -8,7 +8,7 @@ using Dolphin.Timing;
 // Choosing a resident never renders or simulates the town in the background.
 internal static class ProfilePicker
 {
-    internal static bool Run(TownSession session)
+    internal static bool Run(TownSession session,DevConfig config)
     {
         if(session.State.Visiting)return true;
         bool performance=DebugOverlay.PerformanceVisible,text=DebugOverlay.TextVisible;
@@ -16,6 +16,14 @@ internal static class ProfilePicker
             string status="";
             while(true){
                 int choice=Choose(session,status);
+                if(choice==3)
+                {
+#if ANIMALTOWN_ONLINE_PLAY
+                    bool closed=OnlinePlay.CloseLastResident(config,session);
+                    status=closed&&session.DeleteProfile(session.OnlineDeletionProfile)?"Villager deleted. The online town is closed.":"Villager kept. Finish online closure before deleting.";
+#endif
+                    continue;
+                }
                 if(choice!=2)return choice==1;
                 AnimalTown.GameCube.NativeTexturePages.Collect();
                 if(OfflineTravelRecovery.Run(session))return true;
@@ -37,6 +45,18 @@ internal static class ProfilePicker
                 if(direction==MenuNavigation.Right||direction==MenuNavigation.Down)view.DeleteFocus=true;
                 if(pad.A.WasPressed||pad.Start.WasPressed){
                     if(!view.DeleteFocus){view.Modal=0;continue;}
+                    if(session.State.HostedCommerceLocked)
+                    {
+                        int residents=0;for(int i=0;i<GameState.ProfileCount;i++)if(session.State.Profiles[i].Created)residents++;
+                        if(residents==1)
+                        {
+#if ANIMALTOWN_ONLINE_PLAY
+                            session.OnlineDeletionProfile=view.Selected;return 3;
+#else
+                            view.Modal=0;view.Status="Use an online-enabled build to close this town first.";continue;
+#endif
+                        }
+                    }
                     view.Modal=ProfilePickerUi.Busy;view.Draw();
                     if(!session.DeleteProfile(view.Selected)){view.Modal=ProfilePickerUi.Failure;continue;}
                     view.Refresh(session.State,session.Loaded);view.Modal=0;view.Status="Villager deleted.";

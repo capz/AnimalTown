@@ -64,7 +64,7 @@ public static class OnlineTownProjection
         if (r.Int() != Magic) throw new InvalidOperationException("Unsupported public town.");
         int seed = r.Int(); ulong identity = unchecked((ulong)r.Long());
         if (identity == 0) throw new InvalidOperationException("Public town identity is missing.");
-        var state = new GameState(seed) { IsOnlineProjection = true }; var town = state.Town;
+        var state = new GameState(seed,generateTown:false) { IsOnlineProjection = true }; var town = state.Town;
         town.Jobs.Initialize(identity); town.Day = r.Int(); town.Month = r.Int(); town.DaylightLocation = Range(0, DaylightLocations.Count);
         int kobanX = r.Int(), kobanZ = r.Int(); town.Koban.Restore(kobanX, kobanZ);
         r.Bytes(town.Tiles, 0, Town.Cells); r.Bytes(town.Elevation, 0, Town.Cells);

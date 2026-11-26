@@ -119,7 +119,29 @@ static class VisitChecks
             moved=OnlineWire.TryReadPosition(next.Frame,0,next.Frame.Length,out _,out var position)&&position.Slot==1&&position.AcknowledgedInput==1;
         }
         check(moved,"The authoritative movement result reaches another human through WSS");
-        await HostedVisitChecks.Run(host,guestA,guestB,hostHello.Header.Epoch,check);
+        uint activeEpoch=hostHello.Header.Epoch;
+        var restartProof=await HostedVisitChecks.Run(host,guestA,guestB,activeEpoch,check);
+        if(await BackendRestartChecks.Restart(check))
+        {
+            async Task<(ClientWebSocket Socket,OnlineFrameHeader Header)> Resume(Player player,string membership)
+            {
+                long deadline=Environment.TickCount64+30000;string failure="";
+                while(Environment.TickCount64<deadline)
+                {
+                    ClientWebSocket? socket=null;
+                    try{socket=await Connect(await Ticket(player,membership));var hello=await Read(socket);return(socket,hello.Header);}
+                    catch(Exception error){socket?.Dispose();failure=error.GetType().Name;await Task.Delay(750);}
+                }
+                throw new Exception("Restarted backend did not resume the existing membership: "+failure);
+            }
+            var resumedHost=await Resume(owner,Guid.Empty.ToString());using var nextHost=resumedHost.Socket;
+            var resumedFirst=await Resume(first,visitA.GetProperty("id").GetString()!);using var nextFirst=resumedFirst.Socket;
+            var resumedSecond=await Resume(second,visitB.GetProperty("id").GetString()!);using var nextSecond=resumedSecond.Socket;
+            check(resumedHost.Header.Epoch>activeEpoch&&resumedFirst.Header.Epoch==resumedHost.Header.Epoch&&resumedSecond.Header.Epoch==resumedHost.Header.Epoch&&
+                resumedHost.Header.Sequence==0&&resumedFirst.Header.Sequence==1&&resumedSecond.Header.Sequence==2,"A restarted writer advances its epoch and resumes all three durable seats");
+            activeEpoch=resumedHost.Header.Epoch;
+            await HostedVisitChecks.AfterRestart(nextHost,nextFirst,nextSecond,activeEpoch,restartProof,check);
+        }
         await Request(HttpMethod.Post,$"/v1/online/visits/{visitB.GetProperty("id").GetString()}/end",new{},second.Device);
         var newVisit=await Request(HttpMethod.Post,"/v1/online/visits",new{host=owner.Id},second.Device);
         using(var fresh=await Connect(await Ticket(second,newVisit.GetProperty("id").GetString()!)))
@@ -133,7 +155,7 @@ static class VisitChecks
         int expectedWallet=(await Request(HttpMethod.Get,"/v1/me",token:first.Device)).GetProperty("wallet").GetInt32();
         using(var resumed=await Connect(await Ticket(first,visitA.GetProperty("id").GetString()!)))
         {
-            var hello=await Read(resumed);check(hello.Header.Sequence==1&&hello.Header.Epoch==hostHello.Header.Epoch,"A fresh ticket resumes the reserved guest seat");
+            var hello=await Read(resumed);check(hello.Header.Sequence==1&&hello.Header.Epoch==activeEpoch,"A fresh ticket resumes the reserved guest seat");
             await Request(HttpMethod.Delete,"/v1/online/gate",token:owner.Device);
             check(await Ended(resumed),"Gate close revokes an existing WSS guest connection");
         }

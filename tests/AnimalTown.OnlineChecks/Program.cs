@@ -56,6 +56,7 @@ Check(GC.GetAllocatedBytesForCurrentThread()==baseline,"Steady-state nonblocking
 CodecChecks.Run(Check);
 CardAndProjectionChecks.Run(Check);
 ReceiptMergeChecks.Run(Check);
+ResidentMergeChecks.Run(Check);
 foreach(var id in new[]{Guid.Empty,Guid.NewGuid(),Guid.Parse("00112233-4455-6677-8899-aabbccddeeff")})
 {
     var wire=new OnlinePacketReader(id.ToByteArray(),0,16).Id();
@@ -71,7 +72,7 @@ foreach(int length in new[]{0,1,55,56,63,64,65,16384,131073})
         Check(hash.Complete()==Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(bytes)),"Bounded console checkpoint hashing matches SHA-256 across padding/page boundaries");
     }
 }
-if(args.Length>0) await VisitChecks.Run(args[0],Check);
+if(args.Length>0){await VisitChecks.Run(args[0],Check);await ResidentReviewChecks.Run(args[0],Check);}
 Console.WriteLine($"{checks} online checks passed.");
 
 static byte[] Frame(int opcode,byte[] payload,bool final=true)
