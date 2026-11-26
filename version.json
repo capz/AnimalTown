@@ -7,6 +7,15 @@
   "baseCommit": "7e3dd9599709f553d13d538a320a13f3d410e861",
   "requestSummaries": [
     {
+      "id": "new-villagers-and-session-visual-swaps-20261126",
+      "lines": [
+        "Try six new animated villager appearances, including a grumpy police officer.",
+        "Penguin, white tiger, lion, robin, raccoon and pug officer use the existing 128px texture resolution.",
+        "Select one villager and apply an unused appearance without changing their name, jobs or location.",
+        "Visual changes last for the current session; existing save species and resident identities remain stable."
+      ]
+    },
+    {
       "id": "multiplayer-pairing-and-staging",
       "lines": [
         "Prepare short-code GameCube linking for staging builds.",

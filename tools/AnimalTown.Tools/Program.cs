@@ -4,6 +4,7 @@ using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Numerics;
+using AnimalTown;
 
 static class Program
 {
@@ -27,6 +28,7 @@ static class Program
             else if(args[0]=="model-lod-check")ModelLodChecks.Run();
             else if(args[0]=="model-memory")ModelMemoryCooker.Cook(Root);
             else if(args[0]=="model-memory-check")ModelMemoryCooker.Check();
+            else if(args[0]=="texture-audit")TextureAudit.Run(Root);
             else if(args[0]=="building-check")BuildingAssets.Check(Root);
             else if(args[0]=="repack-textures")TextureRepacker.Command(args);
             else if(args[0]=="town-preview")TownGenerationPreview.Run(args[2],int.Parse(args[3]),args.Length>4?int.Parse(args[4]):1);
@@ -264,7 +266,8 @@ static class Program
             }
         }
         foreach(string n in new[]{"opening.bnr","BUILD.txt","version.md","runtime.cfg","savebanner.rgb5a3","saveicon.rgb5a3","gorditas-bold.dndtex","gorditas-bold.metrics","wordmark.dndtex","item-icons.dndtex","dropped-item.dndtex","dropped-money.dndtex","dropped-tool.dndtex","dropped-clothing.dndtex","dropped-quest.dndtex","dropped-present.dndtex","cat.dndmodel","fox.dndmodel","bunny.dndmodel","giraffe.dndmodel","hamster.dndmodel","spaniel.dndmodel","building.dndmodel"})if(!seen.Contains(n))throw new InvalidDataException("Missing "+n);
-        foreach(string model in new[]{"fox","bunny","giraffe","cat","hamster","spaniel"}){
+        if(!seen.Contains("villager-appearance-memory.bin"))throw new InvalidDataException("Missing appearance memory plan");
+        foreach(string model in VillagerAppearance.Models){
             if(!seen.Contains(model+"-tex128.dndmodel"))throw new InvalidDataException("Missing gameplay villager model "+model);
             foreach(int edge in new[]{512,1024})if(seen.Contains(model+"-tex"+edge+".dndmodel"))throw new InvalidDataException("Oversized villager model must not ship: "+model);
         }

@@ -46,7 +46,7 @@ runs:
 
         plan=json.loads(Path('out/validation-plan.json').read_text())
         individual={'title-logo':'title_logo','video-options':'video_options','save-and-quit':'save_quit',
-                    'terrain-materials':'terrain_materials','daylight':'daylight'}
+                    'terrain-materials':'terrain_materials','daylight':'daylight','villager-visuals':'villager_visuals'}
         card_modes=('slot-b','choose-b','without-saving','no-card')
         job_modes=('delivery','mail','helipad')
         allowed=set(individual)|{f'card-{mode}' for mode in card_modes}|{f'job-{mode}' for mode in job_modes}
@@ -141,6 +141,39 @@ runs:
       if: ${{ !cancelled() && steps.candidate.outcome == 'success' && steps.selection.outputs.dolphin == 'true' }}
       shell: bash
       run: timeout --kill-after=30s 15m docker build -t animaltown-dolphin-test -f build/Dockerfile.dolphin build
+    - name: Verify villager visual swaps in Dolphin
+      if: ${{ !cancelled() && steps.dolphin.outcome == 'success' && steps.selection.outputs.villager_visuals == 'true' }}
+      env:
+        BUILD_VERSION: ${{ inputs.version }}
+      shell: bash
+      run: |
+        mkdir -p out/villager-visuals
+        timeout --kill-after=30s 15m docker run --rm --init --shm-size=512m --user "$(id -u):$(id -g)" \
+          --mount "type=bind,src=$PWD,dst=/work" -w /work \
+          animaltown-dolphin-test python3 tools/iso-smoke.py \
+          "out/AnimalTown-$BUILD_VERSION.nkit.iso" out/villager-visuals --villager-visuals
+        python3 - <<'PY'
+        import hashlib, json
+        from pathlib import Path
+        identity=json.loads(Path('out/version.json').read_text())
+        disc=Path('out')/f"AnimalTown-{identity['version']}.nkit.iso"
+        with disc.open('rb') as source:
+            digest=hashlib.file_digest(source,'sha256').hexdigest()
+        evidence={'schema':1,'commit':identity['commit'],'version':identity['version'],
+                  'tag':identity['tag'],'isoName':disc.name,'isoSha256':digest}
+        Path('out/villager-visuals/villager-visuals-build.json').write_text(json.dumps(evidence,indent=2)+'\n')
+        PY
+    - name: Keep villager visual swap diagnostics
+      if: always() && steps.selection.outputs.villager_visuals == 'true'
+      uses: actions/upload-artifact@v4
+      with:
+        name: villager-visuals-${{ inputs.commit }}
+        path: |
+          out/villager-visuals/*.png
+          out/villager-visuals/*.json
+          out/villager-visuals/*.log
+          out/villager-visuals/user/Logs/
+        if-no-files-found: ignore
     - name: Capture and verify title branding in Dolphin
       if: ${{ !cancelled() && steps.dolphin.outcome == 'success' && steps.selection.outputs.title_logo == 'true' }}
       env:
