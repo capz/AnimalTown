@@ -14,6 +14,37 @@ if(args[0]=="seed-legacy"){
     byte[] salt=RandomNumberGenerator.GetBytes(16);byte[] password=Rfc2898DeriveBytes.Pbkdf2("test-password-long",salt,210000,HashAlgorithmName.SHA256,32);
     await using var insert=new NpgsqlCommand("INSERT INTO players(id,name,salt,password,state,revision) VALUES($1,$2,$3,$4,$5,17)",c);
     insert.Parameters.AddWithValue(id);insert.Parameters.AddWithValue(original.Name);insert.Parameters.AddWithValue(salt);insert.Parameters.AddWithValue(password);insert.Parameters.AddWithValue(SaveCodec.EncodeLegacy(original));await insert.ExecuteNonQueryAsync();
+}else if(args[0]=="write-initial-save"){
+    int sequence=args.Length>2?int.Parse(args[2]):11;
+    int wallet=args.Length>3?int.Parse(args[3]):4356;
+    var town=new GameState(1859){Name="CardVillager",Sequence=sequence,Wallet=wallet,Savings=9021};
+    ulong townId=args.Length>4?Convert.ToUInt64(args[4],16):0x435244544F574E01UL;
+    town.ResidentJobs.Enable(townId,DateTimeOffset.UtcNow.ToUnixTimeSeconds());
+    var records=SplitSaveCodec.Encode(town);
+    using var output=new BinaryWriter(File.Create(args[1]));
+    void WriteRecord(byte[] record){output.Write(record.Length);output.Write(record);}
+    WriteRecord(SplitSaveCodec.EncodeCommit(town,records));
+    foreach(var record in records)WriteRecord(record);
+}else if(args[0]=="seed-placement-review"){
+    var host=Guid.Parse(args[1]);var guest=Guid.Parse(args[2]);var town=await FixtureState(host);
+    if(!town.PlaceHouse(12,22,false))throw new Exception("Review fixture needs a home");
+    int room=BuildingWorld.PlayerRoom(town.ActiveProfile);
+    if(!town.CanPlace(10,3,0,0,room,0) || !town.CanPlace(11,1,0,1,room,0))
+        throw new Exception("Review fixture needs valid placements");
+    await WriteFixture(host,town);
+    Guid keep=Guid.NewGuid(),koban=Guid.NewGuid();
+    await using var insert=new NpgsqlCommand("""
+        INSERT INTO guest_placements(host,id,guest,villager,item,x,z,rotation,room,owner_slot,version)
+        VALUES($1,$2,$3,'test-villager',10,3,0,0,$4,0,3),
+              ($1,$5,$3,'test-villager',11,1,0,1,$4,0,1)
+        """,c);
+    foreach(var value in new object[]{host,keep,guest,room,koban})insert.Parameters.AddWithValue(value);
+    await insert.ExecuteNonQueryAsync();
+    Console.WriteLine(JsonSerializer.Serialize(new{keep,koban,room}));
+}else if(args[0]=="expire-placement-review"){
+    await using var expire=new NpgsqlCommand("UPDATE town_review_leases SET expires=clock_timestamp()-interval '1 second' WHERE host=$1",c);
+    expire.Parameters.AddWithValue(Guid.Parse(args[1]));
+    if(await expire.ExecuteNonQueryAsync()!=1)throw new Exception("Review fixture missing lease");
 }else if(args[0]=="seed-shop"){
     for(int actor=1;actor<=2;actor++){
         Guid player=Guid.Parse(args[actor]);byte[][] parts=new byte[7][];

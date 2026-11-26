@@ -7,22 +7,52 @@ using Npgsql;
 
 var builder=WebApplication.CreateBuilder(args);
 builder.WebHost.ConfigureKestrel(k=>k.Limits.MaxRequestBodySize=128*1024);
+static FixedWindowRateLimiterOptions MinuteLimit(int requests) => new()
+{
+    PermitLimit=requests,Window=TimeSpan.FromMinutes(1),QueueLimit=0
+};
+static string ConnectionAddress(HttpContext context) => context.Connection.RemoteIpAddress?.ToString()??"unknown";
+using var linkApprovals=PartitionedRateLimiter.Create<Guid,Guid>(player=>RateLimitPartition.GetFixedWindowLimiter(player,_=>MinuteLimit(8)));
 builder.Services.AddRateLimiter(o=>
 {
     o.RejectionStatusCode=429;
-    o.GlobalLimiter=PartitionedRateLimiter.Create<HttpContext,string>(c=>RateLimitPartition.GetFixedWindowLimiter(c.Connection.RemoteIpAddress?.ToString()??"unknown",_=>new FixedWindowRateLimiterOptions{PermitLimit=90,Window=TimeSpan.FromMinutes(1),QueueLimit=0}));
+    o.GlobalLimiter=PartitionedRateLimiter.Create<HttpContext,string>(c=>RateLimitPartition.GetFixedWindowLimiter(ConnectionAddress(c),_=>MinuteLimit(90)));
+    o.AddPolicy("device-link-start",c=>RateLimitPartition.GetFixedWindowLimiter(ConnectionAddress(c),_=>MinuteLimit(12)));
+    o.AddPolicy("device-link-approve",c=>RateLimitPartition.GetFixedWindowLimiter(ConnectionAddress(c),_=>MinuteLimit(20)));
+    o.AddPolicy("device-renew",c=>RateLimitPartition.GetFixedWindowLimiter(ConnectionAddress(c),_=>MinuteLimit(20)));
 });
 await using var data=NpgsqlDataSource.Create(builder.Configuration.GetConnectionString("Game")??throw new InvalidOperationException("Set ConnectionStrings__Game"));
-var db=new GameDatabase(data);await db.Initialize();var app=builder.Build();app.UseRateLimiter();
+var db=new GameDatabase(data);await db.Initialize();
+builder.Services.AddSingleton(db);
+builder.Services.AddSingleton<LiveTownTransport>();
+builder.Services.AddHostedService(service=>service.GetRequiredService<LiveTownTransport>());
+var app=builder.Build();
+var gameplay=app.Services.GetRequiredService<LiveTownTransport>();db.LiveTransport=gameplay;
+app.UseRateLimiter();
 app.Use(async(context,next)=>
 {
     try
     {
-        if(context.Request.Path.StartsWithSegments("/v1")&&!context.Request.Path.StartsWithSegments("/v1/auth"))
+        if(context.Request.Path.StartsWithSegments("/v1/auth")||context.Request.Path.StartsWithSegments("/v1/account/devices"))
+            context.Response.Headers.CacheControl="no-store";
+        var access=context.GetEndpoint()?.Metadata.GetMetadata<ApiAccess>()??ApiAccess.AccountOnly;
+        if(context.Request.Path.StartsWithSegments("/v1")&&(access.Account||access.Device))
         {
-            string bearer=context.Request.Headers.Authorization.ToString();
-            if(!bearer.StartsWith("Bearer ",StringComparison.Ordinal)||bearer.Length>200){context.Response.StatusCode=401;return;}
-            Guid? player=await db.Authenticate(bearer[7..]);if(player==null){context.Response.StatusCode=401;return;}context.Items["player"]=player.Value;
+            var header=context.Request.Headers.Authorization;
+            if(header.Count!=1||header[0] is not string bearer||!bearer.StartsWith("Bearer ",StringComparison.OrdinalIgnoreCase)||bearer.Length>74)
+                throw new GameError(401,"authentication-required");
+            string credential=bearer[7..];
+            if(access.Device&&credential.StartsWith("d2_",StringComparison.Ordinal))
+            {
+                var device=await db.AuthenticateDevice(credential)??throw new GameError(401,"device-authorization-expired");
+                context.Items["device"]=device;
+                context.Items["player"]=device.Player;
+            }
+            else if(access.Account&&credential.Length==64&&credential.All(char.IsAsciiHexDigit))
+            {
+                context.Items["player"]=await db.Authenticate(credential)??throw new GameError(401,"authentication-required");
+            }
+            else throw new GameError(401,"authentication-required");
         }
         await next();
     }
@@ -31,9 +61,39 @@ app.Use(async(context,next)=>
 });
 Guid Me(HttpContext c)=>(Guid)c.Items["player"]!;
 app.MapGet("/health",()=>new{service="AnimalTown.Server",protocol=1,catalog=Catalog.Version});
-app.MapPost("/v1/auth/register",async(Credentials c)=>await db.Register(c));
-app.MapPost("/v1/auth/token",async(Credentials c)=>await db.Login(c));
-app.MapGet("/v1/me",(Delegate)(async(HttpContext c)=>await db.Profile(Me(c))));
+app.MapPost("/v1/gameplay/tickets", (HttpContext c,LiveTicketRequest request) =>
+    gameplay.Issue((DevicePrincipal)c.Items["device"]!,request)).WithMetadata(ApiAccess.DeviceOnly);
+app.MapPost("/v1/online/gate/open", (Delegate)((HttpContext c) =>
+    db.OpenGate(Me(c),(DevicePrincipal)c.Items["device"]!))).WithMetadata(ApiAccess.DeviceOnly);
+app.MapDelete("/v1/online/gate", (Delegate)((HttpContext c) =>
+    db.CloseGate(Me(c),(DevicePrincipal)c.Items["device"]!))).WithMetadata(ApiAccess.DeviceOnly);
+app.MapPost("/v1/online/visits", (HttpContext c,VisitRequest request) =>
+    db.Visit(Me(c),request.Host,(DevicePrincipal)c.Items["device"]!)).WithMetadata(ApiAccess.DeviceOnly);
+app.MapPost("/v1/online/visits/{id:guid}/end", (HttpContext c,Guid id) =>
+    db.EndVisit(Me(c),id,(DevicePrincipal)c.Items["device"]!)).WithMetadata(ApiAccess.DeviceOnly);
+app.MapPost("/v1/auth/register",async(Credentials c)=>await db.Register(c)).WithMetadata(ApiAccess.Public);
+app.MapPost("/v1/auth/token",async(Credentials c)=>await db.Login(c)).WithMetadata(ApiAccess.Public);
+app.MapPost("/v1/auth/link/start",(DeviceLinkStart request)=>db.StartDeviceLink(request))
+    .WithMetadata(ApiAccess.Public).RequireRateLimiting("device-link-start");
+app.MapPost("/v1/auth/link/poll",(DeviceLinkPoll request)=>db.PollDeviceLink(request)).WithMetadata(ApiAccess.Public);
+app.MapPost("/v1/auth/device/renew",(DeviceRenewRequest request)=>db.RenewDevice(request))
+    .WithMetadata(ApiAccess.Public).RequireRateLimiting("device-renew");
+app.MapPost("/v1/account/link",async(HttpContext c,DeviceLinkApproval request)=>
+{
+    using var attempt=linkApprovals.AttemptAcquire(Me(c));
+    if(!attempt.IsAcquired)throw new GameError(429,"too-many-link-approvals");
+    return await db.ApproveDeviceLink(Me(c),request);
+}).RequireRateLimiting("device-link-approve");
+app.MapGet("/v1/account/devices",(Delegate)(async(HttpContext c)=>await db.Devices(Me(c))));
+app.MapDelete("/v1/account/devices/{device:guid}",async(HttpContext c,Guid device)=>await db.RevokeDevice(Me(c),device));
+app.MapGet("/link",(HttpContext c)=>
+{
+    c.Response.Headers.CacheControl="no-store";
+    c.Response.Headers.ContentSecurityPolicy="default-src 'none'; script-src 'self'; connect-src 'self'; form-action 'none'; base-uri 'none'; frame-ancestors 'none'";
+    return Results.Content(DeviceLinkPage.Html,"text/html; charset=utf-8");
+});
+app.MapGet("/link.js",()=>Results.Content(DeviceLinkPage.Script,"text/javascript; charset=utf-8"));
+app.MapGet("/v1/me",(Delegate)(async(HttpContext c)=>await db.Profile(Me(c)))).WithMetadata(ApiAccess.AccountOrDevice);
 app.MapGet("/v1/inventory",(Delegate)(async(HttpContext c)=>await db.Profile(Me(c))));
 app.MapPost("/v1/inventory/ops",async(HttpContext c,InventoryOp op)=>await db.Apply(Me(c),op));
 app.MapGet("/v1/towns/{host:guid}/shop",async(HttpContext c,Guid host)=>await db.Shop(Me(c),host));
@@ -45,19 +105,27 @@ app.MapGet("/v1/towns/{id:guid}",async(HttpContext c,Guid id)=>
 {
     if(Me(c)!=id)throw new GameError(403,"owner-only");var state=await db.State(id);c.Response.Headers.ETag="\""+state.Revision+"\"";return Results.Bytes(SaveCodec.Encode(state.State),"application/octet-stream");
 });
+app.MapCheckpointTransfers(db);
+app.MapPost("/v1/towns/{id:guid}/initial-save",async(HttpContext c,Guid id)=>
+{
+    if(Me(c)!=id)throw new GameError(403,"owner-only");
+    return await db.ImportInitialTown(id,c.Request);
+});
 app.MapPut("/v1/towns/{id:guid}",(HttpContext c,Guid id)=>
 {
     if(Me(c)!=id)throw new GameError(403,"owner-only");
-    // Never accept an edited offline save as an authoritative online wallet.
+    // Subsequent checkpoints need reconciliation against permanent online transactions.
     throw new GameError(409,"offline-import-not-yet-supported");
 });
-app.MapGet("/v1/friends",(Delegate)(async(HttpContext c)=>await db.FriendList(Me(c))));
+app.MapGet("/v1/friends",(Delegate)(async(HttpContext c)=>await db.FriendList(Me(c)))).WithMetadata(ApiAccess.AccountOrDevice);
 app.MapPost("/v1/friends/{id:guid}",async(HttpContext c,Guid id)=>await db.Friend(Me(c),id,true));
 app.MapDelete("/v1/friends/{id:guid}",async(HttpContext c,Guid id)=>await db.Friend(Me(c),id,false));
 app.MapPost("/v1/blocks/{id:guid}",async(HttpContext c,Guid id)=>await db.Block(Me(c),id,true));
 app.MapDelete("/v1/blocks/{id:guid}",async(HttpContext c,Guid id)=>await db.Block(Me(c),id,false));
 app.MapPost("/v1/gate",(Delegate)(async(HttpContext c)=>await db.OpenGate(Me(c))));
+app.MapDelete("/v1/gate",(Delegate)(async(HttpContext c)=>await db.CloseGate(Me(c))));
 app.MapPost("/v1/visits",async(HttpContext c,VisitRequest v)=>await db.Visit(Me(c),v.Host));
+app.MapPost("/v1/visits/{id:guid}/heartbeat",async(HttpContext c,Guid id)=>await db.HeartbeatVisit(Me(c),id));
 app.MapPost("/v1/visits/{id:guid}/end",async(HttpContext c,Guid id)=>await db.EndVisit(Me(c),id));
 app.MapPost("/v1/shops/listings",async(HttpContext c,ListingRequest l)=>await db.List(Me(c),l));
 app.MapPost("/v1/shops/listings/{id:guid}/purchase",async(HttpContext c,Guid id)=>await db.Purchase(Me(c),id));
@@ -65,6 +133,7 @@ app.MapDelete("/v1/shops/listings/{id:guid}",async(HttpContext c,Guid id)=>await
 app.MapGet("/v1/grants",(Delegate)(async(HttpContext c)=>await db.Grants(Me(c))));
 app.MapPost("/v1/grants/{id:guid}/claim",async(HttpContext c,Guid id)=>await db.Claim(Me(c),id));
 app.MapPost("/v1/reports",async(HttpContext c,ReportRequest r)=>await db.Report(Me(c),r));
+app.MapPlacementReview(db);
 app.Run();
 
 record Credentials(string Name,string Password);
@@ -131,6 +200,7 @@ sealed partial class GameDatabase(NpgsqlDataSource source)
         if(op.Id==Guid.Empty)throw new GameError(400,"operation-id-required");string fingerprint=Hash(JsonSerializer.Serialize(op));await using var c=await source.OpenConnectionAsync();await using var t=await c.BeginTransactionAsync();var loaded=await Load(c,t,id,true);
         await using(var cmd=Cmd(c,t,"SELECT fingerprint,result::text FROM operations WHERE player=$1 AND id=$2",id,op.Id))await using(var r=await cmd.ExecuteReaderAsync())if(await r.ReadAsync())
         {if(r.GetString(0)!=fingerprint)throw new GameError(409,"idempotency-key-reused");return JsonSerializer.Deserialize<JsonElement>(r.GetString(1));}
+        await RequireLegacyCommerce(c,t,id);
         var s=loaded.State;s.Rollover(Day,DateTime.UtcNow.Year*12+DateTime.UtcNow.Month);
         bool ok=op.Kind switch{"buy"=>s.Buy(op.Slot),"sell"=>s.Sell(op.Slot),"deposit"=>s.Deposit(op.Amount),"withdraw"=>s.Withdraw(op.Amount),"repay"=>s.Repay(op.Amount),"expand-house"=>s.Expand(false,Day),"expand-garden"=>s.Expand(true,Day),"order"=>s.Order(op.Item),_=>false};
         if(op.Kind=="upgrade-backpack")ok=s.UpgradeBackpack();
@@ -140,31 +210,29 @@ sealed partial class GameDatabase(NpgsqlDataSource source)
     public async Task<object> FriendList(Guid id)
     {await using var c=await source.OpenConnectionAsync();await using var cmd=Cmd(c,null,"SELECT f.recipient,p.name,EXISTS(SELECT 1 FROM friends r WHERE r.sender=f.recipient AND r.recipient=$1) FROM friends f JOIN players p ON p.id=f.recipient WHERE f.sender=$1",id);await using var r=await cmd.ExecuteReaderAsync();var result=new List<object>();while(await r.ReadAsync())result.Add(new{id=r.GetGuid(0),name=r.GetString(1),mutual=r.GetBoolean(2)});return result;}
     public async Task<object> Friend(Guid me,Guid other,bool add)
-    {if(me==other)throw new GameError(400,"self-friend");await using var c=await source.OpenConnectionAsync();await using var cmd=Cmd(c,null,add?"INSERT INTO friends VALUES($1,$2) ON CONFLICT DO NOTHING":"DELETE FROM friends WHERE sender=$1 AND recipient=$2",me,other);await cmd.ExecuteNonQueryAsync();return new{ok=true};}
+    {
+        if(me==other)throw new GameError(400,"self-friend");
+        await using var c=await source.OpenConnectionAsync();
+        await using var t=await c.BeginTransactionAsync();
+        await LockVisitParticipants(c,t,me,other);
+        await using var cmd=Cmd(c,t,add?"INSERT INTO friends VALUES($1,$2) ON CONFLICT DO NOTHING":"DELETE FROM friends WHERE sender=$1 AND recipient=$2",me,other);
+        await cmd.ExecuteNonQueryAsync();
+        await t.CommitAsync();
+        return new{ok=true};
+    }
     public async Task<object> Block(Guid me,Guid other,bool add)
     {
-        if(me==other)throw new GameError(400,"self-block");await using var c=await source.OpenConnectionAsync();await using var t=await c.BeginTransactionAsync();await using(var cmd=Cmd(c,t,add?"INSERT INTO blocks VALUES($1,$2) ON CONFLICT DO NOTHING":"DELETE FROM blocks WHERE blocker=$1 AND blocked=$2",me,other))await cmd.ExecuteNonQueryAsync();
+        if(me==other)throw new GameError(400,"self-block");await using var c=await source.OpenConnectionAsync();await using var t=await c.BeginTransactionAsync();
+        await LockVisitParticipants(c,t,me,other);
+        await using(var cmd=Cmd(c,t,add?"INSERT INTO blocks VALUES($1,$2) ON CONFLICT DO NOTHING":"DELETE FROM blocks WHERE blocker=$1 AND blocked=$2",me,other))await cmd.ExecuteNonQueryAsync();
         if(add){await using(var cmd=Cmd(c,t,"UPDATE visits SET ended=true WHERE (host=$1 AND guest=$2) OR (host=$2 AND guest=$1)",me,other))await cmd.ExecuteNonQueryAsync();await using(var cmd=Cmd(c,t,"DELETE FROM tents WHERE (host=$1 AND guest=$2) OR (host=$2 AND guest=$1)",me,other))await cmd.ExecuteNonQueryAsync();}await t.CommitAsync();return new{ok=true};
     }
-    public async Task<object> OpenGate(Guid me)
-    {await using var c=await source.OpenConnectionAsync();await using var cmd=Cmd(c,null,"INSERT INTO gates VALUES($1,now()+interval '5 minutes') ON CONFLICT(host) DO UPDATE SET expires=excluded.expires",me);await cmd.ExecuteNonQueryAsync();return new{ok=true,leaseSeconds=300};}
-    async Task CheckVisit(NpgsqlConnection c,NpgsqlTransaction t,Guid guest,Guid host)
-    {await using var cmd=Cmd(c,t,"SELECT EXISTS(SELECT 1 FROM visits WHERE host=$1 AND guest=$2 AND NOT ended AND expires>now()) AND NOT EXISTS(SELECT 1 FROM blocks WHERE (blocker=$1 AND blocked=$2) OR (blocker=$2 AND blocked=$1))",host,guest);if(await cmd.ExecuteScalarAsync() is not true)throw new GameError(403,"active-visit-required");}
-    public async Task<object> Visit(Guid guest,Guid host)
-    {
-        if(host==guest)throw new GameError(400,"own-town");await using var c=await source.OpenConnectionAsync();await using var t=await c.BeginTransactionAsync();await Load(c,t,host,true);
-        await using(var cmd=Cmd(c,t,"SELECT EXISTS(SELECT 1 FROM friends WHERE sender=$1 AND recipient=$2) AND EXISTS(SELECT 1 FROM friends WHERE sender=$2 AND recipient=$1) AND NOT EXISTS(SELECT 1 FROM blocks WHERE (blocker=$1 AND blocked=$2) OR (blocker=$2 AND blocked=$1)) AND EXISTS(SELECT 1 FROM gates WHERE host=$1 AND expires>now())",host,guest))if(await cmd.ExecuteScalarAsync() is not true)throw new GameError(403,"gate-or-friendship-required");
-        await using(var cmd=Cmd(c,t,"UPDATE visits SET ended=true WHERE expires<=now()"))await cmd.ExecuteNonQueryAsync();
-        await using(var cmd=Cmd(c,t,"SELECT count(*) FROM visits WHERE host=$1 AND NOT ended",host))if((long)(await cmd.ExecuteScalarAsync())!>=3)throw new GameError(409,"town-full");
-        Guid id=Guid.NewGuid();await using(var cmd=Cmd(c,t,"INSERT INTO visits VALUES($1,$2,$3,now()+interval '2 minutes',false)",id,host,guest))await cmd.ExecuteNonQueryAsync();await t.CommitAsync();return new{id,host,guest,connectWithinSeconds=120,status="reserved"};
-    }
-    public async Task<object> EndVisit(Guid player,Guid id)
-    {await using var c=await source.OpenConnectionAsync();await using var cmd=Cmd(c,null,"UPDATE visits SET ended=true WHERE id=$1 AND (host=$2 OR guest=$2)",id,player);if(await cmd.ExecuteNonQueryAsync()!=1)throw new GameError(404,"visit-not-found");return new{ok=true};}
     public async Task<object> List(Guid seller,ListingRequest l)
     {
         if(l.Id==Guid.Empty||l.Slot<0||l.Slot>=GameState.MaximumPockets||l.Price<1||l.Price>999999)throw new GameError(400,"invalid-listing");await using var c=await source.OpenConnectionAsync();await using var t=await c.BeginTransactionAsync();var s=(await Load(c,t,seller,true)).State;
         if(l.Slot>=s.Capacity)throw new GameError(409,"backpack-slot-locked");
         await using(var cmd=Cmd(c,t,"SELECT seller FROM listings WHERE id=$1",l.Id))if(await cmd.ExecuteScalarAsync() is Guid existing){if(existing!=seller)throw new GameError(409,"listing-id-used");return new{id=l.Id};}
+        await RequireLegacyCommerce(c,t,seller);
         int item=s.Pockets[l.Slot];if(!Catalog.Has(item,ItemFlags.Gift)||item==18||item==19)throw new GameError(409,"item-not-tradable");
         await using(var cmd=Cmd(c,t,"SELECT count(*) FROM listings WHERE seller=$1 AND buyer IS NULL AND NOT cancelled",seller))if((long)(await cmd.ExecuteScalarAsync())!>=4)throw new GameError(409,"stall-full");
         s.Pockets[l.Slot]=0;await Save(c,t,seller,s);await using(var cmd=Cmd(c,t,"INSERT INTO listings(id,seller,item,price) VALUES($1,$2,$3,$4)",l.Id,seller,item,l.Price))await cmd.ExecuteNonQueryAsync();await t.CommitAsync();return new{id=l.Id};
@@ -174,8 +242,11 @@ sealed partial class GameDatabase(NpgsqlDataSource source)
         await using var c=await source.OpenConnectionAsync();await using var t=await c.BeginTransactionAsync();Guid seller;int item,price;Guid? bought;
         await using(var cmd=Cmd(c,t,"SELECT seller,item,price,buyer,cancelled FROM listings WHERE id=$1 FOR UPDATE",listing))await using(var r=await cmd.ExecuteReaderAsync())
         {if(!await r.ReadAsync())throw new GameError(404,"listing-not-found");seller=r.GetGuid(0);item=r.GetInt32(1);price=r.GetInt32(2);bought=r.IsDBNull(3)?null:r.GetGuid(3);if(r.GetBoolean(4))throw new GameError(409,"cancelled");}
-        if(bought==buyer)return new{ok=true};if(bought!=null)throw new GameError(409,"sold-out");if(seller==buyer)throw new GameError(400,"own-listing");await CheckVisit(c,t,buyer,seller);
+        if(bought==buyer)return new{ok=true};if(bought!=null)throw new GameError(409,"sold-out");if(seller==buyer)throw new GameError(400,"own-listing");
         Guid first=buyer.CompareTo(seller)<0?buyer:seller,second=first==buyer?seller:buyer;var a=(await Load(c,t,first,true)).State;var b=(await Load(c,t,second,true)).State;var bs=first==buyer?a:b;var ss=first==seller?a:b;
+        await CheckVisit(c,t,buyer,seller);
+        await RequireLegacyCommerce(c,t,buyer);
+        await RequireLegacyCommerce(c,t,seller);
         if(bs.Wallet<price||ss.Savings>long.MaxValue-price)throw new GameError(409,"insufficient-funds-or-overflow");bs.Wallet-=price;ss.Savings+=price;await Save(c,t,buyer,bs);await Save(c,t,seller,ss);
         await using(var cmd=Cmd(c,t,"UPDATE listings SET buyer=$2 WHERE id=$1",listing,buyer))await cmd.ExecuteNonQueryAsync();
         await using(var cmd=Cmd(c,t,"INSERT INTO grants VALUES($1,$2,$3,false,$4)",Guid.NewGuid(),buyer,item,"purchase:"+listing))await cmd.ExecuteNonQueryAsync();await t.CommitAsync();return new{ok=true};
@@ -184,6 +255,8 @@ sealed partial class GameDatabase(NpgsqlDataSource source)
     {
         await using var c=await source.OpenConnectionAsync();await using var t=await c.BeginTransactionAsync();int item;
         await using(var cmd=Cmd(c,t,"SELECT item FROM listings WHERE id=$1 AND seller=$2 AND buyer IS NULL AND NOT cancelled FOR UPDATE",id,seller))item=await cmd.ExecuteScalarAsync() is int i?i:throw new GameError(404,"listing-unavailable");
+        await LockTown(c,t,seller);
+        await RequireLegacyCommerce(c,t,seller);
         await using(var cmd=Cmd(c,t,"UPDATE listings SET cancelled=true WHERE id=$1",id))await cmd.ExecuteNonQueryAsync();
         await using(var cmd=Cmd(c,t,"INSERT INTO grants VALUES($1,$2,$3,false,$4)",Guid.NewGuid(),seller,item,"cancel:"+id))await cmd.ExecuteNonQueryAsync();await t.CommitAsync();return new{ok=true};
     }
@@ -193,6 +266,7 @@ sealed partial class GameDatabase(NpgsqlDataSource source)
     {
         await using var c=await source.OpenConnectionAsync();await using var t=await c.BeginTransactionAsync();var s=(await Load(c,t,player,true)).State;int item;
         await using(var cmd=Cmd(c,t,"SELECT item,claimed FROM grants WHERE id=$1 AND player=$2 FOR UPDATE",id,player))await using(var r=await cmd.ExecuteReaderAsync()){if(!await r.ReadAsync())throw new GameError(404,"grant-not-found");if(r.GetBoolean(1))return new{ok=true};item=r.GetInt32(0);}
+        await RequireLegacyCommerce(c,t,player);
         if(!s.Receive(item))throw new GameError(409,"pockets-full");await Save(c,t,player,s);await using(var cmd=Cmd(c,t,"UPDATE grants SET claimed=true WHERE id=$1",id))await cmd.ExecuteNonQueryAsync();await t.CommitAsync();return new{ok=true};
     }
     public async Task<object> Report(Guid reporter,ReportRequest report)

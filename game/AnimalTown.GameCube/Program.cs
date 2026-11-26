@@ -45,7 +45,12 @@ internal static class Program
             if(!ProfilePicker.Run(session))return;
             session.State.Town.Traffic.ResetSnowForTownEntry();
             if(session.Draft!=null&&!OnboardingFlow.Run(config,session))return;
-            while(RunSession(config,session)==TownGame.TravelRestart){
+            while(true){
+                int action=RunSession(config,session);
+#if ANIMALTOWN_ONLINE_PAIRING
+                if(action==TownGame.OnlinePairingRestart){OnlinePairing.Run(session);continue;}
+#endif
+                if(action!=TownGame.TravelRestart)break;
                 if(session.Flight.Phase==FlightPhase.Cruise)LoadingScreen.BeginFlight(session.Flight.Direction);
                 if(!session.CompleteTravel()&&!OfflineTravelRecovery.Run(session,session.TravelError))break;
             }
@@ -75,6 +80,9 @@ internal static class Program
                 game.AdvanceResidency();long simulation=FrameProfile.Start();
                 long now=Clock.Timestamp;accumulator+=(now-previous)/1000000.0;previous=now;if(accumulator>.1334)accumulator=.1334;
                 Controller.Update();var pad=Controller.GetState(0);game.Input(pad);
+#if ANIMALTOWN_ONLINE_PAIRING
+                if(game.OnlinePairingRequested)return TownGame.OnlinePairingRestart;
+#endif
                 if(game.TravelRestartRequested)return TownGame.TravelRestart;
                 if(game.ExitToTitle)return OnboardingFlow.ToTitle;
                 if(game.NextSetup!=0)return game.NextSetup;
@@ -140,7 +148,7 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
     private readonly Camera camera=new Camera(CylinderWorld.CameraFieldOfView,0,CylinderWorld.Near,CylinderWorld.Far);
     private readonly Draw2D ui;
     private readonly UiFont font,headingFont,strongFont;
-    private readonly CachedTexture itemIcons;
+    private CachedTexture itemIcons=null!;
     private readonly Transform worldRoot=new Transform(),transform=new Transform(),identity=new Transform();
     private readonly TerrainRenderer terrain;
     private readonly VillagerShadows villagerShadows;
@@ -216,8 +224,6 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
         font=UiFont.LoadSystem();strongFont=font;clockHud=new FloatingClockHud(font);headingFont=UiFont.Load("gorditas-bold");cube=Cube();
         boxes=new BoxBatch(renderer,cube);for(int i=0;i<modelPoses.Length;i++)modelPoses[i]=new Transform{Parent=worldRoot};
         for(int i=0;i<appliedClips.Length;i++)appliedClips[i]=-2;
-        LoadingScreen.Pulse();
-        itemIcons=TextureCache.Load(ContentPaths.Asset("item-icons.dndtex"),true);
         LoadingScreen.Pulse();
         transform.Parent=worldRoot;identity.Parent=worldRoot;
         banner=File.ReadAllBytes(ContentPaths.Asset("savebanner.rgb5a3"));icon=File.ReadAllBytes(ContentPaths.Asset("saveicon.rgb5a3"));
@@ -319,7 +325,7 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
         startupAdmission.Cancel();
         jobScene.Dispose();attention.Dispose();rain.Dispose();foliage.Dispose();trees.Dispose();droppedItems.Dispose();buildings.Dispose();terrain.Dispose();fences.Dispose();helipad.Dispose();
         clockHud.Dispose();uiShapes.Dispose();mapBackground.Dispose();cube.Dispose();ui.Dispose();
-        font.Release();headingFont.Release();TextureCache.Release(itemIcons);card?.Dispose();card=null;
+        font.Release();headingFont.Release();if(itemIcons!=null)TextureCache.Release(itemIcons);card?.Dispose();card=null;
         NativeRim.Enable(0);NativeRenderProbe.Uv(0);
         NativeWorldDiagnostics.PrepareEdges(0);
         if(NativeShadows.Shutdown()!=1)throw new InvalidOperationException("Shadow shutdown failed");
@@ -378,6 +384,9 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
             if(actors[0]==null)throw new InvalidOperationException("Selected player model was not prepared");
             if(uvDebug!=0&&!modelResidency.AllReady)return;
             if(!droppedItems.Load())return;
+            // Gameplay menus only draw after startup. Keep the icon atlas out
+            // of the temporary MEM1 peak while villager models are admitted.
+            itemIcons=TextureCache.Load(ContentPaths.Asset("item-icons.dndtex"),true);
             // UV regions require the fully loaded model set. Enabling them in
             // the constructor would leave an empty cache and hide the actors.
             if(uvDebug!=0&&NativeRenderProbe.Uv(uvDebug)!=uvDebug){uvDebug=0;saveStatus="UV preview unavailable: not enough memory.";}
@@ -788,7 +797,7 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
         if(selected==5&&JobsLive){OpenLetterComposer();return;}
         if(selected==5){if(state.Tutorial==4){state.CreditTutorial(4);if(state.MailCount<128)state.Mail[state.MailCount++]=-19;}Say("Fern","Your letter has been sent. A reply will arrive tomorrow.");return;}
         if(JobsLive){OpenTravel();return;}
-        Say("Gate","Online visits require a Broadband Adapter and paired companion. Online transport is not yet available in this build.");
+        Say("Gate","Complete your town introduction to use the Gate.");
     }
     private void MenuAction()
     {

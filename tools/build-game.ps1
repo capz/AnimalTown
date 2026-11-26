@@ -1,4 +1,4 @@
-param([switch]$SkipAssets,[switch]$NativeInProcess,[switch]$RunNativeTests,[string]$ValidationPlan='',[ValidateRange(0,7)][int]$RuntimeProfile=4)
+param([switch]$SkipAssets,[switch]$NativeInProcess,[switch]$RunNativeTests,[string]$ValidationPlan='',[ValidateRange(0,7)][int]$RuntimeProfile=4,[switch]$OnlinePairing)
 $ErrorActionPreference = 'Stop'
 Set-Location (Split-Path $PSScriptRoot -Parent)
 function Run([string]$File, [string[]]$Arguments) {
@@ -22,6 +22,16 @@ function RunNative([string]$Directory,[string]$Command,[string[]]$Arguments){
     }else{
         $nativeDirectory=if($Directory -eq '.'){'/project'}else{'/project/'+$Directory}
         Run docker (@('run','--rm','--init','--mount',"type=bind,src=$projectRoot,dst=/project",'-w',$nativeDirectory,$nativeImage,$Command)+$Arguments)
+    }
+}
+function VerifyNativeNetworking([string]$Directory){
+    $libraryLine=Get-Content -LiteralPath (Join-Path $Directory 'Makefile') | Where-Object { $_ -match '^LIBS :=' }
+    if(!$libraryLine){throw "Missing native library list in $Directory/Makefile"}
+    $libraries=$libraryLine -split '\s+'
+    foreach($library in @('-ldndtls','-ldndentropy')){
+        if(($libraries -contains $library) -ne $OnlinePairing.IsPresent){
+            throw "Unexpected $library linkage in $Directory (online pairing: $OnlinePairing)"
+        }
     }
 }
 Run dotnet @('build', 'tools/AnimalTown.Tools', '-c', 'Release', '-v', 'quiet')
@@ -122,8 +132,10 @@ $sourceManifest = foreach($sourceFile in (& git ls-files --cached --others --exc
 }
 $sourceDigest=[Convert]::ToHexString([Security.Cryptography.SHA256]::HashData([Text.Encoding]::UTF8.GetBytes(($sourceManifest -join "`n"))))
 Run dotnet @('run','--project','tools/AnimalTown.Tools','-c','Release','--no-build','--','content-identity',$projectRoot,$gameFullCommit,$gameVersion,$sourceDigest,"$RuntimeProfile",$gameCommit)
-Run dotnet @('build','game/AnimalTown.GameCube','-c','Release','--no-restore','-v','quiet','-p:DepotProfile=false')
+$pairingProperty="-p:AnimalTownOnlinePairing=$($OnlinePairing.IsPresent.ToString().ToLowerInvariant())"
+Run dotnet @('build','game/AnimalTown.GameCube','-c','Release','--no-restore','-v','quiet','-p:DepotProfile=false',$pairingProperty)
 Run dotnet @("$sdkRoot/tools/compiler/DolphinDotNet.Compiler.dll",'--bundle','game/AnimalTown.GameCube/bin/Release/net8.0/AnimalTown.GameCube.dll','out/native')
+VerifyNativeNetworking 'out/native'
 & (Join-Path $PSScriptRoot 'patch-native.ps1') -Root $projectRoot -SkipTests:(!$RunNativeTests)
 if($RunNativeTests){
     RunNative '.' 'sh' (@('-c','cc -DANIMALTOWN_RETAIN_BUILDINGS -std=c11 -Wall -Wextra -Werror -ffunction-sections -fdata-sections -Iout/native/include tests/native-building-assets.c out/native/source/model.c out/native/source/model_animation.c out/native/source/verified_copy.c out/native/source/aram.c -Wl,--gc-sections -lm -o /tmp/animaltown-building-retained && /tmp/animaltown-building-retained "$@"','building-retained')+$buildingResidentParts)
@@ -155,8 +167,9 @@ CompileNative 'out/native' 'apploader'
 # Compile the SD app independently. Its bootstrap cannot mount or borrow a
 # disc, including when a launcher supplies no argv. Keep both native bundles
 # separate so Make's cached objects cannot mix the two compile-time profiles.
-Run dotnet @('build','game/AnimalTown.GameCube','-c','Release','--no-restore','-v','quiet','-p:DepotProfile=true')
+Run dotnet @('build','game/AnimalTown.GameCube','-c','Release','--no-restore','-v','quiet','-p:DepotProfile=true',$pairingProperty)
 Run dotnet @("$sdkRoot/tools/compiler/DolphinDotNet.Compiler.dll",'--bundle','game/AnimalTown.GameCube/bin/Release/net8.0/AnimalTown.GameCube.dll','out/native-depot')
+VerifyNativeNetworking 'out/native-depot'
 & (Join-Path $PSScriptRoot 'patch-native.ps1') -Root $projectRoot -NativeDirectory 'out/native-depot' -SkipTests:(!$RunNativeTests)
 CompileNative 'out/native-depot' 'all'
 Run dotnet @('run','--project','tools/AnimalTown.Tools','-c','Release','--no-build','--','depot-receipt',$projectRoot)
@@ -181,12 +194,33 @@ Copy-Item -LiteralPath (Join-Path $sdkRoot 'LICENSE') -Destination (Join-Path $n
 Copy-Item -LiteralPath (Join-Path $engineRoot 'LICENSE') -Destination (Join-Path $notices 'Hypercube-LICENSE.txt') -Force
 Copy-Item -LiteralPath (Join-Path $sdkRoot 'tools/compiler/native/include/ryu/LICENSE-Boost') -Destination (Join-Path $notices 'Ryu-LICENSE.txt') -Force
 Copy-Item -LiteralPath (Join-Path $sdkRoot 'tools/compiler/native/vendor/ufbx/LICENSE') -Destination (Join-Path $notices 'ufbx-LICENSE.txt') -Force
+$networkingNotices=@{
+    'mbedTLS-LICENSE.txt'='build/tls/source/LICENSE'
+    'Jitterentropy-LICENSE.txt'='source/jitterentropy/LICENSE'
+}
+foreach($name in $networkingNotices.Keys){
+    $noticePath=Join-Path $notices $name
+    $discPath=Join-Path $projectRoot "out/disc/$name"
+    if($OnlinePairing){
+        Copy-Item -LiteralPath (Join-Path $nativeOutput $networkingNotices[$name]) -Destination $noticePath -Force
+        Copy-Item -LiteralPath $noticePath -Destination $discPath -Force
+    }else{
+        foreach($path in @($noticePath,$discPath)){
+            if(Test-Path -LiteralPath $path -PathType Leaf){Remove-Item -LiteralPath $path -Force}
+        }
+    }
+}
 Copy-Item -LiteralPath (Join-Path $projectRoot 'docs/dolphin-depot-install.txt') -Destination (Join-Path $notices 'DEPOT-README.txt') -Force
 $thirdParty="DolphinDotNet: $sdkCommit`nHypercube: $engineCommit`nBoth declare GPL-2.0-only; full texts accompany this package.`nCorresponding dependency sources: https://github.com/capz/DolphinDotNet and https://github.com/capz/hypercube-engine at the commits above.`nRyu floating-point conversion: Boost Software License 1.0, Ryu-LICENSE.txt.`nGorditas font: SIL Open Font License 1.1, Gorditas-OFL.txt.`nGame sources and asset provenance: https://github.com/capz/AnimalTown/tree/$gameFullCommit`nOriginal AnimalTown code/assets have no blanket redistribution permission established by this packaging feature. See docs/depot-release.md in that source revision. A NOASSERTION catalog draft is not permission to redistribute.`n"
 Copy-Item -LiteralPath (Join-Path $projectRoot 'assets/definitions/jobs/UNICODE-LICENSE.txt') -Destination (Join-Path $notices 'Unicode-LICENSE.txt') -Force
 $thirdParty+="Unicode normalization and category data: Unicode 14.0.0, Unicode-LICENSE.txt.`n"
 $thirdParty+="ufbx model importer: see ufbx-LICENSE.txt.`n"
+if($OnlinePairing){
+    $thirdParty+="Mbed TLS 3.6.5: see mbedTLS-LICENSE.txt. Source: https://github.com/Mbed-TLS/mbedtls/tree/e185d7fd85499c8ce5ca2a54f5cf8fe7dbe3f8df.`n"
+    $thirdParty+="Jitterentropy 3.7.0: see Jitterentropy-LICENSE.txt and source/jitterentropy at the SDK revision above.`n"
+}
 [IO.File]::WriteAllText((Join-Path $notices 'THIRD-PARTY-NOTICES.txt'),$thirdParty)
+Copy-Item -LiteralPath (Join-Path $notices 'THIRD-PARTY-NOTICES.txt') -Destination (Join-Path $projectRoot 'out/disc') -Force
 $depot=Join-Path $projectRoot "out/AnimalTown-$gameVersion-depot.zip"
 Run dotnet @('run','--project','tools/AnimalTown.Tools','-c','Release','--no-build','--','depot',$projectRoot,$depot)
 try{

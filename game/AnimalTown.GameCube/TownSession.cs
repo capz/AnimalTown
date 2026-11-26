@@ -13,6 +13,7 @@ internal sealed partial class TownSession
     internal bool PreviewStarted {get;set;}
     internal string OnboardingSaveError {get;private set;}="";
     internal bool Loaded {get;private set;}
+    internal OnlineDeviceLink? OnlineCredentials {get;set;}
     internal readonly bool Damaged;
     internal string Status {get;private set;}
     private int travelAction,travelProfile,travelFrom,travelTo;private long travelAt;
@@ -39,7 +40,10 @@ internal sealed partial class TownSession
     }
     internal void AdoptTravel(GameState state)
     {
-        if(state.Town.Jobs.TownId!=State.Town.Jobs.TownId)state.Town.Traffic.ResetSnowForTownEntry();
+        if(state.Town.Jobs.TownId!=State.Town.Jobs.TownId){
+            state.Town.Traffic.ResetSnowForTownEntry();
+            OnlineCredentials=null;
+        }
         State=state;Loaded=true;Status="Trip saved / "+BuildInfo.Version;
     }
     internal void SelectProfile(int profile)

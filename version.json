@@ -7,6 +7,24 @@
   "baseCommit": "7e3dd9599709f553d13d538a320a13f3d410e861",
   "requestSummaries": [
     {
+      "id": "multiplayer-pairing-and-staging",
+      "lines": [
+        "Prepare short-code GameCube linking for staging builds.",
+        "Device credentials are scoped and revocable, and checkpoint uploads can resume.",
+        "Staging supports TLS movement and resumable review of guest placements.",
+        "Public GameCube visits still require world sync, save settlement, and hardware qualification."
+      ]
+    },
+    {
+      "id": "multiplayer-link-import-and-gate",
+      "lines": [
+        "The multiplayer server can link accounts, import towns, and manage guest admission.",
+        "A short code links a GameCube session to a town account on the server.",
+        "The first validated town save is kept as a checkpoint for future reconciliation.",
+        "Open gates admit two mutual friends and keep disconnected seats for up to one minute."
+      ]
+    },
+    {
       "id": "two-borrower-retrieval-limit",
       "lines": [
         "Find borrowed job items after at most one redirect.",
@@ -445,6 +463,24 @@
         "Baking returns unused terrain blocks to the ARAM allocator.",
         "Terrain archives can span smaller free blocks during a rebuild.",
         "A restored villager model releases its redundant ARAM copy."
+      ]
+    },
+    {
+      "id": "multiplayer-pairing-staging-memory-20261126",
+      "lines": [
+        "Regular GameCube play keeps its memory available for town loading.",
+        "Staging builds can enable short-code pairing for DOL-015 testing.",
+        "The standard ISO and Depot app omit the inactive TLS stack.",
+        "Pairing builds include both native networking license notices."
+      ]
+    },
+    {
+      "id": "defer-town-item-icons-until-models-ready-20261126",
+      "lines": [
+        "Saved towns have more room to load their villager models.",
+        "The backpack icon atlas loads after villager models finish loading.",
+        "Menus still have their icons when the town opens.",
+        "The memory safety margin still applies during villager loading."
       ]
     }
   ]

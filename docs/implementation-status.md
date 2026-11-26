@@ -3,6 +3,9 @@
 This is an early playable implementation, **not the completed game** described in
 the GDD. The technical baseline was committed/pushed first as `0064efd`.
 
+The [multiplayer implementation status and next phase](multiplayer-first-slice.md)
+track the current online backend and the agreed design for live visits.
+
 ## Implemented foundation
 
 * Pinned Hypercube and DolphinDotNet NuGet packages, separate console and
@@ -85,13 +88,11 @@ unverified. Model normalization uses bind bounds; animated extremities need QA.
 
 ## Remaining work (release blockers)
 
-* Online console transport, companion/gateway, signed tickets, heartbeat, four
-  players, reliable intent/delta replay, movement interpolation and reconnect.
-  Current visit endpoint only reserves a session; it does not start multiplayer.
-* Server cloud PUT/reconciliation deliberately returns an explicit unsupported
-  error. Preventing edited offline assets from entering server economy requires
-  a complete journal/import policy. House/garden/profile writes, gifts/rewards,
-  tents and moderation restrictions still need endpoints and integration.
+* Live console multiplayer needs a qualified transport, remote actors, live review,
+  and memory-card reconciliation. Real-time play is capped at one local villager
+  and two guests in the agreed design. The server can pair a device, import an
+  initial checkpoint, and manage guest admission. See
+  [multiplayer implementation](multiplayer-first-slice.md).
 * Full resident schedules/pathfinding, personality dialogue, all six request
   types, lost-object quests and proper tutorial objective verification.
 * Fishing/net timing games, complete digging/chopping mechanics, golden tools,

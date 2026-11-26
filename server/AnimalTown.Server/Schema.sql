@@ -29,6 +29,7 @@ CREATE TABLE IF NOT EXISTS blocks (
  PRIMARY KEY(blocker,blocked), CHECK(blocker<>blocked)
 );
 CREATE TABLE IF NOT EXISTS gates (host uuid PRIMARY KEY REFERENCES players(id), expires timestamptz NOT NULL);
+ALTER TABLE gates ADD COLUMN IF NOT EXISTS generation uuid NOT NULL DEFAULT gen_random_uuid();
 CREATE TABLE IF NOT EXISTS visits (
  id uuid PRIMARY KEY, host uuid NOT NULL REFERENCES players(id), guest uuid NOT NULL REFERENCES players(id),
  expires timestamptz NOT NULL, ended boolean NOT NULL DEFAULT false, CHECK(host<>guest)
@@ -53,4 +54,93 @@ CREATE TABLE IF NOT EXISTS tents (
 CREATE TABLE IF NOT EXISTS reports (
  id uuid PRIMARY KEY, reporter uuid NOT NULL REFERENCES players(id), reported uuid NOT NULL REFERENCES players(id),
  lines jsonb NOT NULL, created timestamptz NOT NULL DEFAULT now()
+);
+CREATE TABLE IF NOT EXISTS gate_removals (
+ host uuid NOT NULL REFERENCES gates(host) ON DELETE CASCADE,
+ guest uuid NOT NULL REFERENCES players(id),
+ PRIMARY KEY(host,guest)
+);
+CREATE TABLE IF NOT EXISTS device_links (
+ secret_hash text PRIMARY KEY,
+ user_code_hash text NOT NULL UNIQUE,
+ expires timestamptz NOT NULL,
+ player uuid REFERENCES players(id)
+);
+CREATE INDEX IF NOT EXISTS device_links_expiry ON device_links(expires);
+CREATE TABLE IF NOT EXISTS devices (
+ id uuid PRIMARY KEY,
+ player uuid NOT NULL REFERENCES players(id),
+ town_identity text NOT NULL CHECK(town_identity ~ '^[0-9A-F]{16}$'),
+ access_hash text NOT NULL UNIQUE,
+ refresh_hash text NOT NULL UNIQUE,
+ access_expires timestamptz NOT NULL,
+ expires timestamptz NOT NULL,
+ generation bigint NOT NULL DEFAULT 1 CHECK(generation>=1),
+ previous_refresh_hash text,
+ last_rotation uuid,
+ rotation_nonce text,
+ revoked_at timestamptz
+);
+CREATE UNIQUE INDEX IF NOT EXISTS one_active_device_per_account ON devices(player) WHERE revoked_at IS NULL;
+ALTER TABLE device_links ADD COLUMN IF NOT EXISTS town_identity text;
+ALTER TABLE device_links ADD COLUMN IF NOT EXISTS device uuid REFERENCES devices(id);
+CREATE TABLE IF NOT EXISTS initial_town_imports (
+ player uuid PRIMARY KEY REFERENCES players(id),
+ town_identity text NOT NULL UNIQUE,
+ fingerprint text NOT NULL,
+ revision bigint NOT NULL,
+ save_commit bytea NOT NULL,
+ save_records bytea[] NOT NULL CHECK(cardinality(save_records)=7)
+);
+CREATE TABLE IF NOT EXISTS checkpoint_uploads (
+ id uuid PRIMARY KEY,
+ player uuid NOT NULL UNIQUE REFERENCES players(id),
+ device uuid NOT NULL,
+ town_identity text NOT NULL,
+ fingerprint text NOT NULL,
+ total_bytes integer NOT NULL CHECK(total_bytes BETWEEN 288 AND 4194304),
+ received_bytes integer NOT NULL DEFAULT 0 CHECK(received_bytes BETWEEN 0 AND total_bytes),
+ expires timestamptz NOT NULL,
+ writer uuid,
+ writer_expires timestamptz,
+ revision bigint
+);
+ALTER TABLE checkpoint_uploads ADD COLUMN IF NOT EXISTS parent_revision bigint CHECK(parent_revision>0);
+CREATE TABLE IF NOT EXISTS offline_town_checkpoints (
+ player uuid PRIMARY KEY REFERENCES initial_town_imports(player),
+ parent_revision bigint NOT NULL CHECK(parent_revision>0),
+ revision bigint NOT NULL CHECK(revision=parent_revision+1),
+ fingerprint text NOT NULL,
+ save_commit bytea NOT NULL,
+ save_records bytea[] NOT NULL CHECK(cardinality(save_records)=7)
+);
+CREATE INDEX IF NOT EXISTS checkpoint_uploads_expiry ON checkpoint_uploads(expires);
+CREATE TABLE IF NOT EXISTS checkpoint_upload_chunks (
+ upload uuid NOT NULL REFERENCES checkpoint_uploads(id) ON DELETE CASCADE,
+ position integer NOT NULL CHECK(position >= 0),
+ payload bytea NOT NULL CHECK(octet_length(payload) BETWEEN 1 AND 16384),
+ PRIMARY KEY(upload,position)
+);
+CREATE TABLE IF NOT EXISTS guest_placements (
+ host uuid NOT NULL REFERENCES players(id),
+ id uuid NOT NULL,
+ guest uuid NOT NULL REFERENCES players(id),
+ villager text NOT NULL,
+ item int NOT NULL CHECK(item>0),
+ x int NOT NULL,
+ z int NOT NULL,
+ rotation int NOT NULL CHECK(rotation BETWEEN 0 AND 3),
+ room int NOT NULL CHECK(room>=0),
+ owner_slot int NOT NULL,
+ version int NOT NULL CHECK(version>0),
+ PRIMARY KEY(host,id),
+ CHECK(host<>guest)
+);
+CREATE TABLE IF NOT EXISTS town_review_leases (
+ host uuid PRIMARY KEY REFERENCES players(id),
+ id uuid NOT NULL,
+ device uuid NOT NULL,
+ generation bigint NOT NULL,
+ villager text NOT NULL,
+ expires timestamptz NOT NULL
 );

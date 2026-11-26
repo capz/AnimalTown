@@ -179,6 +179,44 @@ public sealed class SaveRepository
         var saved=Load(expected)??throw new InvalidOperationException("Travel card was removed or changed");
         if(saved.Sequence!=expected.Sequence||saved.Town.Jobs.TownId!=expected.Town.Jobs.TownId)throw new InvalidOperationException("Travel card changed. Recheck both towns");
     }
+    // Open a read-only upload cursor for the selected committed town. The
+    // caller keeps the state and card exclusive until it has consumed the
+    // cursor. Save first if the in-memory state has uncommitted changes.
+    public TownCheckpointExport OpenCheckpointExport(GameState expected)
+    {
+        if(expected.Visiting||!expected.Town.Jobs.Initialized||!expected.Profiles[expected.ActiveProfile].Created||expected.ProfileLocked(expected.ActiveProfile))
+            throw new InvalidOperationException("Select your saved home town before uploading");
+        var current=NewestManifest()??throw new InvalidOperationException("Save your town before uploading");
+        if(current.Sequence!=expected.Sequence||current.Seed!=expected.Town.Seed)
+            throw new InvalidOperationException("The town on this card has changed. Reload before uploading.");
+
+        expected.CaptureProfile();
+        if(current.References!=null)
+        {
+            // The existing exact record comparison understands independently
+            // banked references and separates the resident runtime projection
+            // from the canonical upload bytes.
+            if(!MatchesCurrent(expected,current.References,streaming:true))
+                throw new InvalidOperationException("Save your latest town changes before uploading");
+            return new TownCheckpointExport(expected);
+        }
+
+        var header=new SplitSaveCodec.Reader(current.Commit,SplitSaveCodec.Commit);
+        if(header.Version!=4)throw new InvalidOperationException("Save your town in this version before uploading");
+        var export=new TownCheckpointExport(expected,(part,record)=>
+        {
+            string name=SplitSaveCodec.FileName(SplitSaveCodec.RecordKind(part),current.Bank);
+            if(storage is ISaveSnapshotStorage verified)
+            {
+                if(!verified.Matches(name,record,-1,record.Length,0,false))
+                    throw new InvalidOperationException("Committed save differs from the selected checkpoint");
+            }
+            else Match(storage.Read(name),record);
+        });
+        try{Match(current.Commit,export.CommitBytes);return export;}
+        catch{export.Dispose();throw;}
+    }
+
     public GameState? Load(GameState? textReuse)
     {
         GameState? best=null;
@@ -242,10 +280,10 @@ public sealed class SaveRepository
     }
     private static void ReuseReference(IncrementalSaveCodec.Manifest current,IncrementalSaveCodec.Manifest next,int part)
     {next.Banks[part]=current.Banks[part];next.Sequences[part]=current.Sequences[part];next.Lengths[part]=current.Lengths[part];next.Checksums[part]=current.Checksums[part];}
-    private bool MatchesCurrent(GameState state,IncrementalSaveCodec.Manifest current)
-    {for(int i=0;i<IncrementalSaveCodec.Count;i++)if(!MatchesCurrentPart(state,current,i))return false;return true;}
-    private bool MatchesCurrentPart(GameState state,IncrementalSaveCodec.Manifest current,int part)
-    {var encoded=IncrementalSaveCodec.Encode(state,part);if(current.Lengths[part]>8192&&storage is ISaveSnapshotStorage){LargeReference(current,part,encoded,out bool same);return same;}return IncrementalSaveCodec.SamePayload(ReadReference(current,part),encoded);}
+    private bool MatchesCurrent(GameState state,IncrementalSaveCodec.Manifest current,bool streaming=false)
+    {for(int i=0;i<IncrementalSaveCodec.Count;i++)if(!MatchesCurrentPart(state,current,i,streaming))return false;return true;}
+    private bool MatchesCurrentPart(GameState state,IncrementalSaveCodec.Manifest current,int part,bool streaming)
+    {var encoded=IncrementalSaveCodec.Encode(state,part);if((streaming||current.Lengths[part]>8192)&&storage is ISaveSnapshotStorage){LargeReference(current,part,encoded,out bool same);return same;}return IncrementalSaveCodec.SamePayload(ReadReference(current,part),encoded);}
     private bool SavePart(GameState state,int part,IncrementalSaveCodec.Manifest? current,IncrementalSaveCodec.Manifest next,bool exhausted)
     {
         var encoded=IncrementalSaveCodec.Encode(state,part);

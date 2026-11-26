@@ -1,6 +1,12 @@
 <Project Sdk="DolphinDotNet.Sdk">
   <PropertyGroup><OutputType>Exe</OutputType></PropertyGroup>
   <PropertyGroup Condition="'$(DepotProfile)' == 'true'"><DefineConstants>$(DefineConstants);ANIMALTOWN_DEPOT</DefineConstants></PropertyGroup>
+  <PropertyGroup Condition="'$(AnimalTownOnlinePairing)' == 'true' Or '$(AnimalTownExperimentalOnlineTls)' == 'true'">
+    <DefineConstants>$(DefineConstants);ANIMALTOWN_ONLINE_PAIRING</DefineConstants>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(AnimalTownExperimentalOnlineTls)' == 'true'">
+    <DefineConstants>$(DefineConstants);ANIMALTOWN_EXPERIMENTAL_ONLINE_TLS</DefineConstants>
+  </PropertyGroup>
   <ItemGroup>
     <Compile Remove="BuildInfo.cs" Condition="Exists('../../out/BuildInfo.cs')" />
     <Compile Include="../../out/BuildInfo.cs" Condition="Exists('../../out/BuildInfo.cs')" />

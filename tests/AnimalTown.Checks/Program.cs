@@ -23,12 +23,13 @@ if(Wants("menu")){MenuNavigationChecks.Run(Check);PocketMenuChecks.Run(Check);To
 if(Wants("trim"))TownTrimChecks.Run(Check);
 if(Wants("text")){WrappedTextChecks.Run(Check);TownChatChecks.Layout(Check);}
 if(Wants("terrain")){TerrainEdgeChecks.Run(Check);TerrainResidencyChecks.Run(Check);WorldObjectCandidateChecks.Run(Check);}
-if(Wants("movement"))PlayerMovementChecks.Run(Check);
+if(Wants("movement")){PlayerMovementChecks.Run(Check);OnlineWireChecks.Run(Check);OnlinePosePumpChecks.Run(Check);}
 if(Wants("dialogue")){DialogueVoiceChecks.Run(Check);TownChatChecks.Run(Check);}
 if(Wants("generation")){TownGenerationChecks.Run(Check);PathChecks.Run(Check);}
 if(Wants("life"))TerrainLifeChecks.Run(Check);
-if(Wants("saves")){SplitSaveChecks.Run(Check);DevConfigChecks.Run(Check);UserOptionsChecks.Run(Check);ProfileChecks.Run(Check);ProfileCaptureChecks.Run(Check);SaveFormatCompatibilityChecks.Run(Check);}
+if(Wants("saves")){CheckpointExportChecks.Run(Check);SplitSaveChecks.Run(Check);DevConfigChecks.Run(Check);UserOptionsChecks.Run(Check);ProfileChecks.Run(Check);ProfileCaptureChecks.Run(Check);SaveFormatCompatibilityChecks.Run(Check);}
 if(Wants("buildings")){BuildingChecks.Run(Check);BuildingKobanChecks.Run(Check);HelipadFlightChecks.Run(Check);ModelResidencyDemandChecks.Run(Check);ModelResidencyChecks.Run(Check);VillagerModelLodChecks.Run(Check);}
+if(Wants("saves"))OnlineCredentialChecks.Run(Check);
 if(Wants("core")||Wants("saves"))TownItemPermissionChecks.Run(Check);
 if(!Wants("core")){if(Wants("content"))ContentChecks.Run(Check);Console.WriteLine(checks+" checks passed; suites: "+string.Join(",",selected));return;}
 GodModeChecks.Run(Check);
