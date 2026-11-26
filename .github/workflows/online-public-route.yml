@@ -12,6 +12,7 @@ on:
 
 permissions:
   contents: read
+  pull-requests: read
 
 concurrency:
   group: online-public-${{ github.event.pull_request.number || github.ref }}
@@ -26,6 +27,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
           submodules: true
           persist-credentials: false
       - uses: actions/setup-dotnet@v4
@@ -36,7 +38,13 @@ jobs:
           dotnet-version: '8.0.x'
       - name: Real device-linked clients through a free Cloudflare tunnel
         shell: pwsh
-        run: ./tests/server-integration.ps1 -PublicTunnel
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ANIMALTOWN_VERSION_BUILD_KIND: branch
+          ANIMALTOWN_VERSION_MAIN_REF: refs/remotes/origin/main
+        run: |
+          ./tools/write-version.ps1 -Refresh
+          ./tests/server-integration.ps1 -PublicTunnel
       - name: Keep bounded service diagnostics
         if: failure()
         uses: actions/upload-artifact@v4
