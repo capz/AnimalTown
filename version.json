@@ -473,6 +473,15 @@
         "The standard ISO and Depot app omit the inactive TLS stack.",
         "Pairing builds include both native networking license notices."
       ]
+    },
+    {
+      "id": "defer-town-item-icons-until-models-ready-20261126",
+      "lines": [
+        "Saved towns have more room to load their villager models.",
+        "The backpack icon atlas loads after villager models finish loading.",
+        "Menus still have their icons when the town opens.",
+        "The memory safety margin still applies during villager loading."
+      ]
     }
   ]
 }
