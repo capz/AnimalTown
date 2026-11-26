@@ -413,14 +413,20 @@ try {
         $origin=$null
         for($i=0;$i -lt 60;$i++){
             $logs=(& docker logs $tunnelContainer 2>&1)-join "`n"
-            $found=[regex]::Match($logs,'https://[a-z0-9-]+\.trycloudflare\.com')
+            $found=[regex]::Match($logs,'https://(?!api\.)[a-z0-9-]+\.trycloudflare\.com')
             if($found.Success){$origin=$found.Value;break}
             Start-Sleep -Milliseconds 500
         }
         Assert $origin 'Public test tunnel did not provide an HTTPS origin'
         # Give the edge a bounded readiness window before account/device traffic.
         $ready=$false
-        for($i=0;$i -lt 30;$i++){try{if((Invoke-WebRequest "$origin/health" -TimeoutSec 5).StatusCode -eq 200){$ready=$true;break}}catch{};Start-Sleep -Milliseconds 500}
+        $lastStatus=0;$lastFailure=''
+        for($i=0;$i -lt 60;$i++){
+            try{$response=Invoke-WebRequest "$origin/health" -TimeoutSec 5 -SkipHttpErrorCheck;$lastStatus=[int]$response.StatusCode;if($lastStatus -eq 200){$ready=$true;break}}
+            catch{$lastFailure=$_.Exception.GetType().Name}
+            Start-Sleep -Seconds 1
+        }
+        if(!$ready){Write-Host "Public origin readiness: HTTP $lastStatus; failure type $lastFailure"}
         Assert $ready 'Public test origin did not become ready'
         dotnet run --project tests/AnimalTown.OnlineChecks -c Release -- $origin
         if($LASTEXITCODE){throw 'Public HTTPS/WSS qualification failed'}
@@ -431,6 +437,9 @@ try {
 finally {
     $env:ANIMALTOWN_TEST_CONNECTION=$oldTestConnection
     if($process -and !$process.HasExited){Stop-Process -Id $process.Id}
-    if($tunnelContainer){docker stop $tunnelContainer 2>&1|Out-Null}
+    if($tunnelContainer){
+        [IO.File]::WriteAllText((Join-Path $serverRoot 'out/online-tunnel-test.log'),((& docker logs $tunnelContainer 2>&1)-join "`n"))
+        docker stop $tunnelContainer 2>&1|Out-Null
+    }
     if($ownsDatabase){docker stop $container 2>&1 | Out-Null}
 }

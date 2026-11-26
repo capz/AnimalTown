@@ -53,4 +53,5 @@ jobs:
           path: |
             out/server-test.log
             out/server-test-error.log
+            out/online-tunnel-test.log
           retention-days: 3

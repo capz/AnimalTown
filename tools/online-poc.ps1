@@ -33,7 +33,7 @@ if($HostRuntime -and $Action -eq 'Start'){
             $address=$null
             for($attempt=0;$attempt -lt 40;$attempt++){
                 $logs=Get-Content -LiteralPath (Join-Path $directory 'tunnel-error.log') -Raw -ErrorAction SilentlyContinue
-                $found=[regex]::Match([string]::Concat($logs),'https://[a-z0-9-]+\.trycloudflare\.com')
+                $found=[regex]::Match([string]::Concat($logs),'https://(?!api\.)[a-z0-9-]+\.trycloudflare\.com')
                 if($found.Success){$address=$found.Value;break}
                 if($tunnel.HasExited){throw 'Tunnel exited; inspect out/online/tunnel-error.log'}
                 Start-Sleep -Milliseconds 500
@@ -84,7 +84,7 @@ if($Action -in @('Start','Status')){
         $address=$null
         for($attempt=0;$attempt -lt 40;$attempt++){
             $logs=& docker ($compose+@('logs','--no-color','--tail','200','tunnel')) 2>&1
-            $found=[regex]::Match(($logs -join "`n"),'https://[a-z0-9-]+\.trycloudflare\.com')
+            $found=[regex]::Match(($logs -join "`n"),'https://(?!api\.)[a-z0-9-]+\.trycloudflare\.com')
             if($found.Success){$address=$found.Value;break}
             if($Action -eq 'Status'){break}
             Start-Sleep -Milliseconds 500
