@@ -1,8 +1,47 @@
+# Each changed path contributes its own scenarios. Mixed changes take the union.
+function Get-EmulatorChecksForPath([string]$Path) {
+    if($Path -match '^game/AnimalTown.GameCube/Program\.cs$|^tools/(iso-smoke|dolphin_pad)\.py$'){
+        return $allEmulator
+    }
+    if($Path -match '^assets/textures/branding/|^game/AnimalTown.GameCube/(TitleScreen|TitleArt|TitleBackdrop|ProfilePickerUi|OnboardingUi|TextureCache|ModelResources)\.cs$|^shared/AnimalTown.Domain/(TexturePixels|TextureResolution)\.cs$|^tools/AnimalTown.Tools/(Brand[^/]*|DiscBannerFile|TextureAudit)\.cs$'){
+        'title-logo'
+    }
+    if($Path -match '^assets/models/villagers/|^game/AnimalTown.GameCube/TownGame\.Save[^/]*\.cs$|^shared/AnimalTown.Domain/(SaveRepository|SaveCodec|SplitSaveCodec|IncrementalSaveCodec)\.cs$'){
+        'save-and-quit'
+    }
+    if($Path -match '^assets/textures/environment/water/|^tools/AnimalTown.Tools/WaterTextureArt\.cs$|^game/AnimalTown.GameCube/(Water[^/]*|NativeWater(?:Probe)?|TerrainRenderer(?:\.[^/]+)?|TerrainSection|GroundMip[^/]*|ModelResources)\.cs$|^shared/AnimalTown.Domain/(GroundMip[^/]*|RenderDebugOptions|DevConfig|TextureResolution|Water[^/]*|WindWaker[^/]*)\.cs$|^tools/(patch-water-(?:probe|optics)\.py|native-water-(?:probe|optics)\.inc|native-shadow-union-gx\.inc)$'){
+        'terrain-materials'
+    }
+    if($Path -match '^game/AnimalTown.GameCube/(SaveCards|CardArchive|CardSaveStorage|TownDataStorage|TownSession|TitleScreen(?:\.Cards)?|OnboardingFlow|OnboardingUi)\.cs$|^shared/AnimalTown.Domain/OnboardingDraft\.cs$'){
+        'card-slot-b';'card-choose-b';'card-without-saving';'card-no-card'
+    }
+    elseif($Path -match '^game/AnimalTown.GameCube/(UserOptionsStorage|DevConfigStorage)\.cs$'){
+        'card-slot-b'
+    }
+    if($Path -match '^shared/AnimalTown.Domain/(WorldLighting|DaylightLocations)\.cs$|^game/AnimalTown.GameCube/(CloudShadows|NativeShadows|TownLights|TerrainRenderer)\.cs$|^tools/native-shadow-union[^/]*$'){
+        'daylight'
+    }
+    if($Path -match '^shared/AnimalTown.Domain/(Jobs/|GameState\.Jobs\.cs$)|^game/AnimalTown.GameCube/(TownGame\.JobScene|LoadingScreen|JobSceneRenderer|TownCardRecords|CardArchive)\.cs$|^tools/(jobs_smoke|profile-card-fixture)\.py$|^tests/AnimalTown.Checks/JobFixture\.cs$'){
+        'job-delivery';'job-mail';'job-helipad'
+    }
+    else{
+        if($Path -match '^game/AnimalTown.GameCube/TownGame\.JobsUi\.cs$'){'job-delivery'}
+        if($Path -match '^game/AnimalTown.GameCube/(TownGame\.MailUi|WrappedText)\.cs$|^shared/AnimalTown.Domain/WrappedText\.cs$'){'job-mail'}
+        if($Path -match '^shared/AnimalTown.Domain/(GameState\.Travel|HelipadFlight)\.cs$|^game/AnimalTown.GameCube/(TownGame\.(TravelUi|Helipad)|TownSession\.Travel|HelipadCruise|HelipadRenderer(?:\.Deck)?|OfflineTravelCards)\.cs$'){
+            'job-helipad'
+        }
+    }
+}
+
 # Pure path-to-check routing; conservative fallback for new production paths.
 function Get-ValidationPlan {
     param([string[]]$ChangedPaths=@(),[switch]$Full,[switch]$ForceRelease,[string]$Commit='',[string]$BaseRef='')
     $allManaged=@('ui','menu','text','trim','terrain','movement','dialogue','generation','life','saves','buildings','core','content')
     $allRendering=@('water','services','movement','ground','index','visibility','attention','dropped-item')
+    $allResources=@('memory','floor','snow','visual')
+    $allEmulator=@('title-logo','save-and-quit','terrain-materials','card-slot-b','card-choose-b','card-without-saving','card-no-card','daylight','job-delivery','job-mail','job-helipad')
+    $resources=[Collections.Generic.HashSet[string]]::new()
+    $emulator=[Collections.Generic.HashSet[string]]::new()
     $rendering=[Collections.Generic.HashSet[string]]::new()
     $managed=[Collections.Generic.HashSet[string]]::new()
     # Each terrain-producing rule contributes its own rendering dependencies.
@@ -13,7 +52,7 @@ function Get-ValidationPlan {
     }
     $tooling=[Collections.Generic.HashSet[string]]::new()
     $native=[Collections.Generic.HashSet[string]]::new()
-    $backend=$false;$policy=$false;$release=[bool]($Full -or $ForceRelease);$broad=[bool]$Full
+    $backend=$false;$policy=$false;$release=[bool]($Full -or $ForceRelease);$broad=[bool]$Full;$broadEmulator=[bool]$Full
     foreach($raw in $ChangedPaths){
         $p=$raw.Replace('\','/')
         $renderingForPath=if($p -match '^tests/AnimalTown.Checks/'){ @() }else{ $allRendering }
@@ -25,15 +64,91 @@ function Get-ValidationPlan {
         elseif($p -match '^game/AnimalTown.GameCube/TerrainIndexBuffer\.cs$'){$renderingForPath=@('index')}
         elseif($p -match '^game/AnimalTown.GameCube/VillagerAttentionRenderer\.cs$'){$renderingForPath=@('attention')}
         elseif($p -match '^(shared/AnimalTown.Domain/DroppedItemPlan|game/AnimalTown.GameCube/DroppedItemRenderer)\.cs$|^assets/textures/items/|^tools/AnimalTown.Tools/DroppedItemAssets\.cs$'){$renderingForPath=@('dropped-item')}
+        if($p -eq 'docs/dolphin-depot-install.txt'){$release=$true;[void]$tooling.Add('depot');continue}
         if($p -match '^(docs/|.*\.md$|LICENSE$|\.gitignore$)'){continue}
-        $release=$true
-        if($p -match '^(tests/AnimalTown\.(MemoryChecks|FloorResidencyChecks|SnowResidencyChecks|VisualAllocationChecks)/|shared/AnimalTown.Domain/VisualMemoryPressure\.cs$|game/AnimalTown.GameCube/(VisualMemoryCoordinator|NativeMemory|TerrainRenderer\.(Textures|Snow|Streaming))\.cs$|tools/(native-memory-pressure\.(c|h)|patch-memory-pressure\.py)$|tests/(native-memory-(pressure|wrapping)\.c|memory-pressure-sdk/))'){
+        if($p -eq 'version.json'){$policy=$true;continue}
+        if($p -notmatch '^tests/|^tools/(test-changes|select-validation|validation-plan)\.ps1$'){
+            $release=$true
+        }
+        foreach($scenario in (Get-EmulatorChecksForPath $p)){[void]$emulator.Add($scenario)}
+        if($p -match '^game/AnimalTown.GameCube/(BuildingRenderer|VisualResidencyBudget|StartupModelAdmission|TownLights|WaterBumpEffect)\.cs$'){
+            [void]$resources.Add('memory')
+        }
+        if($p -match '^game/AnimalTown.GameCube/TerrainRenderer\.Textures\.cs$|^shared/AnimalTown.Domain/(FloorStrips|FloorTexture)\.cs$'){
+            [void]$resources.Add('floor')
+        }
+        if($p -match '^game/AnimalTown.GameCube/TerrainRenderer\.Snow\.cs$|^shared/AnimalTown.Domain/SnowWear(?:\.[^/]+)?\.cs$'){
+            [void]$resources.Add('snow')
+        }
+        if($p -match '^game/AnimalTown.GameCube/(LowPolyTrees|DroppedItemRenderer|RainRenderer|SnowEdgeRenderer(?:\.Geometry)?|TerrainIndexBuffer|TerrainMeshCache)\.cs$'){
+            [void]$resources.Add('visual')
+        }
+        if($p -match '^tests/AnimalTown\.(Memory|FloorResidency|SnowResidency|VisualAllocation)Checks/'){
+            $groups=@{Memory='memory';FloorResidency='floor';SnowResidency='snow';VisualAllocation='visual'}
+            [void]$resources.Add($groups[$Matches[1]]);continue
+        }
+        if($p -match '^tests/AnimalTown.CardChecks/'){[void]$native.Add('card');continue}
+        if($p -match '^tests/AnimalTown.ServerChecks/|^tests/server-integration\.ps1$'){$backend=$true;continue}
+        if($p -match '^tests/(validation-plan|validation-selection|versioning|release-publish)\.ps1$|^tools/(test-changes|select-validation|validation-plan)\.ps1$'){
+            $policy=$true;continue
+        }
+        if($p -match '^(shared/AnimalTown.Domain/VisualMemoryPressure\.cs$|game/AnimalTown.GameCube/(VisualMemoryCoordinator|NativeMemory|TerrainRenderer\.(Textures|Snow|Streaming))\.cs$|tools/(native-memory-pressure\.(c|h)|patch-memory-pressure\.py)$|tests/(native-memory-(pressure|wrapping)\.c|memory-pressure-sdk/))'){
+            if($p -notmatch 'TerrainRenderer\.(Textures|Snow)\.cs$'){
+                foreach($group in $allResources){[void]$resources.Add($group)}
+            }
             Add-Managed 'core';Add-Managed 'terrain';[void]$native.Add('patched');continue
         }
-        if($p -match '^(build/|\.github/|Directory\.|.*\.sln$|.*\.csproj$|\.gitmodules$|vendor/|tools/(build-|publish-release|patch-native|.*validation|test-changes)|tests/validation-(plan|selection))'){$broad=$true;continue}
-        if($p -match '^server/|^tests/(server-integration|AnimalTown.ServerChecks)'){$backend=$true;continue}
-        if($p -match '^shared/AnimalTown.Domain/(Jobs/|GameState\.Jobs\.cs$)|^tests/(AnimalTown.JobSmoke/|native-jobs\.)|^tests/AnimalTown.Checks/(OfflineJob|JobLetter|JobMail|JobTravel|JobWorld|VillagerJobIdentity)Checks\.cs$|^tools/generate-job-unicode\.py$'){
-            Add-Managed 'life';Add-Managed 'saves';[void]$native.Add('jobs');$backend=$true;continue
+        if($p -match '^tests/AnimalTown.JobSmoke/'){Add-Managed 'life';[void]$native.Add('jobs');continue}
+        if($p -match '^tests/AnimalTown.ContentSmoke/'){Add-Managed 'content';[void]$native.Add('content');continue}
+        if($p -match '^tests/AnimalTown.Checks/(Program\.cs|[^/]+\.csproj|packages\.lock\.json)$'){
+            foreach($suite in $allManaged){Add-Managed $suite}
+            continue
+        }
+        if($p -match '^tests/AnimalTown.RenderingChecks/(Program\.cs|[^/]+\.csproj|packages\.lock\.json)$'){
+            foreach($suite in $allRendering){[void]$rendering.Add($suite)}
+            continue
+        }
+        if($p -match '^(build/|\.github/|Directory\.|global\.json$|NuGet\.Config$|\.config/|.*\.sln$|.*\.csproj$|\.gitmodules$|vendor/|tools/(build-|publish-release|patch-native|.*validation|test-changes))'){$broad=$true;$broadEmulator=$broadEmulator -or $p -notmatch '^tests/';continue}
+        if($p -match '^server/'){$backend=$true;continue}
+        if($p -match '^tests/AnimalTown.Checks/(OfflineJob|JobLetter|JobMail|JobTravel|JobWorld|JobMailboxCapacity|JobRecovery|WorldSimulation|VillagerJob)Checks\.cs$'){
+            Add-Managed 'life';continue
+        }
+        if($p -match '^tests/AnimalTown.Checks/(JobFixture|VillagerJobIdentityChecks|CheckpointExportChecks|OnlineCredentialChecks)\.cs$'){
+            Add-Managed 'saves';continue
+        }
+        if($p -match '^tests/AnimalTown.Checks/(OnlineWire|OnlinePosePump)Checks\.cs$'){
+            Add-Managed 'movement';continue
+        }
+        if($p -match '^shared/AnimalTown.Domain/(Jobs/|GameState\.Jobs\.cs$)|^tests/native-jobs\.|^tools/generate-job-unicode\.py$'){
+            Add-Managed 'life';Add-Managed 'saves';[void]$native.Add('jobs')
+            if($p -notmatch '^tests/'){$backend=$true}
+            continue
+        }
+        if($p -match '^game/AnimalTown.GameCube/TownGame\.(JobsUi|MailUi|TravelUi|Helipad)\.cs$'){
+            Add-Managed 'menu';Add-Managed 'saves'
+            if($p -match '\.(TravelUi|Helipad)\.cs$'){Add-Managed 'buildings';Add-Managed 'movement'}
+            continue
+        }
+        if($p -match '^shared/AnimalTown.Domain/HelipadFlight\.cs$'){
+            Add-Managed 'buildings';Add-Managed 'movement';continue
+        }
+        if($p -match '^game/AnimalTown.GameCube/(OnlinePairing|OnlineDeviceLink|OnlineCredentialCard)\.cs$'){
+            Add-Managed 'menu';Add-Managed 'ui';Add-Managed 'saves'
+            if($p -match 'OnlineCredentialCard\.cs$'){[void]$native.Add('card')}
+            continue
+        }
+        if($p -match '^game/AnimalTown.GameCube/OnlineGameplayConnection\.cs$|^shared/AnimalTown.Domain/Online/Online(?:Wire|PosePump)\.cs$'){
+            Add-Managed 'movement'
+            if($p -match 'OnlineWire\.cs$'){$backend=$true}
+            continue
+        }
+        if($p -match '^shared/AnimalTown.Domain/(Online/(OnlineCredentialStore|TownCheckpointExport)|SaveRepository|TownDataDeletion)\.cs$'){
+            Add-Managed 'saves';[void]$native.Add('card')
+            if($p -match 'TownCheckpointExport\.cs$'){$backend=$true}
+            continue
+        }
+        if($p -match '^assets/(definitions/buildings/helipad\.json|models/helipad/)|^tools/helipad-vector\.py$|^game/AnimalTown.GameCube/HelipadRenderer\.Deck\.cs$'){
+            Add-Managed 'buildings';[void]$native.Add('helipad');[void]$emulator.Add('job-helipad');continue
         }
         if($p -match '^(shared/AnimalTown.Domain/Content(?:Paths|Identity)|game/AnimalTown.GameCube/ContentBootstrap|tests/AnimalTown.Checks/ContentChecks)\.cs$'){Add-Managed 'content';[void]$native.Add('content');continue}
         if($p -match '^tests/(AnimalTown.ContentSmoke/|native-content-startup\.)'){Add-Managed 'content';[void]$native.Add('content');continue}
@@ -44,7 +159,12 @@ function Get-ValidationPlan {
         if($p -match '^(shared/AnimalTown.Domain/WaterTextureCatalog|game/AnimalTown.GameCube/WaterTextureAssets|tools/AnimalTown.Tools/WaterTextureArt(?:Checks)?)\.cs$|^assets/textures/environment/water/'){
             [void]$tooling.Add('water');[void]$tooling.Add('depot');[void]$rendering.Add('water');continue
         }
-        if($p -match '^(tools|tests)/release-bundle\.py$'){[void]$native.Add('python');continue}
+        if($p -match '^(tools|tests)/release-bundle\.py$'){[void]$native.Add('release-bundle');continue}
+        if($p -eq 'tests/water-optics-smoke.py'){[void]$native.Add('water-smoke');continue}
+        if($p -eq 'tests/frame-profile-streaming.py'){[void]$native.Add('frame-profile');continue}
+        if($p -match '^tools/(patch-water-(probe|optics)\.py|native-water-(probe|optics)\.inc)$|^tests/native-water-(probe|optics)\.c$'){
+            [void]$rendering.Add('water');[void]$native.Add('patched');continue
+        }
         if($p -match '^(shared/AnimalTown.Domain/WorldLighting|game/AnimalTown.GameCube/(CloudShadows|NativeShadows|TownLights)|tests/AnimalTown.Checks/WorldLightingChecks)\.cs$'){
             Add-Managed 'core';[void]$native.Add('shadows')
             if($p -match '/NativeShadows\.cs$'){[void]$native.Add('patched')}
@@ -68,7 +188,6 @@ function Get-ValidationPlan {
         if($p -match '^(tools/native-terrain-(archive|recycle)\.inc|tests/native-terrain-(archive|recycle)\.c)$'){
             Add-Managed 'terrain';Add-Managed 'core';[void]$native.Add('patched');continue
         }
-        if($p -match '^tests/AnimalTown.Checks/Program.cs$'){$broad=$true;continue}
         if($p -match '^(shared/AnimalTown.Domain/WaterSurface|tests/AnimalTown.Checks/(WaterSurface|WaterBed)Checks)\.cs$') {Add-Managed 'terrain';continue}
         if($p -match '^(shared/AnimalTown.Domain/(TownPaths|PathShape)|tests/AnimalTown.Checks/PathChecks)\.cs$'){foreach($s in @('terrain','generation','saves','core')){Add-Managed $s};continue}
         if($p -match '^game/AnimalTown.GameCube/(PathTextureResidency|PathProfile)\.cs$'){Add-Managed 'terrain';[void]$native.Add('patched');continue}
@@ -109,7 +228,10 @@ function Get-ValidationPlan {
             [void]$tooling.Add('dropped-item');Add-Managed 'core';Add-Managed 'terrain';continue
         }
         if($p -match '^shared/AnimalTown.Domain/'){
-            foreach($s in $allManaged){Add-Managed $s};$backend=$true;continue
+            foreach($s in $allManaged){Add-Managed $s}
+            foreach($group in $allResources){[void]$resources.Add($group)}
+            foreach($scenario in $allEmulator){[void]$emulator.Add($scenario)}
+            $backend=$true;continue
         }
         if($p -match '^(tools/native-uv|tests/native-uv)'){[void]$native.Add('uv');continue}
         if($p -match '^(tools/native-card|tests/native-card|tests/AnimalTown.CardChecks/)'){[void]$native.Add('card');Add-Managed 'saves';continue}
@@ -119,22 +241,53 @@ function Get-ValidationPlan {
         if($p -match '^tools/native-calendar'){Add-Managed 'life';continue}
         if($p -match '^tools/AnimalTown.Tools/(TextureRepacker|Uv)'){[void]$tooling.Add('repack');continue}
         if($p -match '^tools/AnimalTown.Tools/(Terrain|NeutralFloor|RepeatFloor)'){[void]$tooling.Add('terrain');Add-Managed 'core';Add-Managed 'terrain';continue}
-        if($p -match '^assets/models/'){continue} # Real imports + ISO/texture audits validate these.
+        if($p -match '^assets/models/'){
+            if($p -match '^assets/models/villagers/'){[void]$resources.Add('memory');[void]$resources.Add('visual')}
+            continue
+        } # Real imports and audited ISO assets validate other models.
         if($p -match '^assets/(terrain/|textures/environment/)'){[void]$tooling.Add('terrain');Add-Managed 'core';continue}
         if($p -match '^assets/(fonts/|textures/)|^tools/AnimalTown.Tools/Brand'){Add-Managed 'ui';Add-Managed 'text';continue}
         if($p -match '^game/'){
-            if($p -match '(Terrain|Water|Tree|Texture|Model|Render|FrameProfile)'){Add-Managed 'core';Add-Managed 'terrain'}
+            if($p -match '(Terrain|Water|Tree|Texture|Model|Render|FrameProfile)'){
+                Add-Managed 'core';Add-Managed 'terrain'
+                if($p -match '(Texture|Model|FrameProfile)'){[void]$resources.Add('visual')}
+                if($p -match '(Model|TerrainRenderer)'){[void]$resources.Add('memory')}
+                if($p -match 'TerrainRenderer'){[void]$resources.Add('floor');[void]$resources.Add('snow')}
+            }
             elseif($p -match 'NativeCalendar'){Add-Managed 'life'}
             elseif($p -match 'Dialogue'){Add-Managed 'dialogue'}
             elseif($p -match 'CardSave'){Add-Managed 'saves';[void]$native.Add('card')}
             elseif($p -match '(Ui|Backpack|Map)'){Add-Managed 'ui';Add-Managed 'menu';Add-Managed 'text'}
-            else{foreach($s in $allManaged){Add-Managed $s}}
+            else{
+                foreach($s in $allManaged){Add-Managed $s}
+                foreach($group in $allResources){[void]$resources.Add($group)}
+                foreach($scenario in $allEmulator){[void]$emulator.Add($scenario)}
+            }
             continue
         }
-        if($p -match '^tools/(iso-smoke|path-study).py$'){[void]$native.Add('python');continue} # Scenarios are explicitly selected.
+        if($p -eq 'tools/iso-smoke.py'){[void]$native.Add('water-smoke');continue}
+        if($p -eq 'tools/path-study.py'){[void]$native.Add('path-study');continue}
         $broad=$true
+        if($p -notmatch '^tests/'){$broadEmulator=$true}
     }
-    if($broad){foreach($s in $allManaged){Add-Managed $s};foreach($s in @('terrain','repack','building','nkit','dropped-item','depot','water')){[void]$tooling.Add($s)};foreach($s in @('uv','card','texture','voices','python','shadows','patched','content','jobs')){[void]$native.Add($s)};$backend=$true;$policy=$true}
-    if($broad){foreach($r in $allRendering){[void]$rendering.Add($r)}}
-    [pscustomobject]@{schema=2;commit=$Commit;baseRef=$BaseRef;release=$release;full=$broad;managed=@($allManaged|Where-Object {$managed.Contains($_)});rendering=@($allRendering|Where-Object {$rendering.Contains($_)});tooling=@($tooling|Sort-Object);native=@($native|Sort-Object);backend=$backend;policy=$policy;paths=@($ChangedPaths|Sort-Object -Unique)}
+    if($broad){
+        foreach($s in $allManaged){Add-Managed $s}
+        foreach($r in $allRendering){[void]$rendering.Add($r)}
+        foreach($group in $allResources){[void]$resources.Add($group)}
+        foreach($s in @('terrain','repack','building','nkit','dropped-item','depot','water','path')){[void]$tooling.Add($s)}
+        foreach($s in @('uv','card','texture','voices','frame-profile','release-bundle','water-smoke','path-study','shadows','patched','content','jobs','helipad')){[void]$native.Add($s)}
+        $backend=$true;$policy=$true
+    }
+    if($broadEmulator){foreach($scenario in $allEmulator){[void]$emulator.Add($scenario)}}
+    if($emulator.Count){$release=$true}
+    $checks=[bool]($managed.Count -or $rendering.Count -or $tooling.Count -or $native.Count -or $resources.Count -or $backend)
+    [pscustomobject]@{
+        schema=3;commit=$Commit;baseRef=$BaseRef;release=$release;full=$broad;checks=$checks
+        managed=@($allManaged|Where-Object {$managed.Contains($_)})
+        rendering=@($allRendering|Where-Object {$rendering.Contains($_)})
+        resources=@($allResources|Where-Object {$resources.Contains($_)})
+        emulator=@($allEmulator|Where-Object {$emulator.Contains($_)})
+        tooling=@($tooling|Sort-Object);native=@($native|Sort-Object)
+        backend=$backend;policy=$policy;paths=@($ChangedPaths|Sort-Object -Unique)
+    }
 }
