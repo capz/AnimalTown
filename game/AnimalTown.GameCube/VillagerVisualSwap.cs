@@ -7,13 +7,20 @@ using Dolphin.Graphics;
 
 // Own only detached visual packages. Existing shared species residency/LOD and
 // all saved NPC identities remain untouched. Publish a complete instance first.
+internal interface IVillagerVisualLoader
+{
+    Task<Model> Load(string name,CancellationToken token);
+}
+
 internal sealed class VillagerVisualSwap : IDisposable
 {
+    private sealed class ResourceLoader : IVillagerVisualLoader
+    {public Task<Model> Load(string name,CancellationToken token)=>ModelResources.LoadLodAsync(name,0,token);}
     internal readonly VillagerAppearanceSelection Selection=new VillagerAppearanceSelection();
     private readonly ModelInstance?[] actors;
     private readonly Model?[] owned=new Model?[BuildingWorld.Actors];
     private readonly VisualMemoryPressure memory;
-    private readonly Func<string,CancellationToken,Task<Model>> load;
+    private readonly IVillagerVisualLoader loader;
     private readonly int[] lengths,peaks;
     private Task<Model>? pending;
     private CancellationTokenSource? cancellation;
@@ -22,11 +29,11 @@ internal sealed class VillagerVisualSwap : IDisposable
     internal bool Busy=>pending!=null;
     internal string Status {get;private set;}="Unused appearances only. Session only.";
     internal VillagerVisualSwap(ModelInstance?[] actors,VisualMemoryPressure memory,int[] lengths,int[] peaks,
-        Func<string,CancellationToken,Task<Model>>? load=null)
+        IVillagerVisualLoader? loader=null)
     {
         if(lengths.Length!=VillagerAppearance.Count||peaks.Length!=lengths.Length)throw new ArgumentException("Appearance memory catalog size");
         this.actors=actors;this.memory=memory;this.lengths=lengths;this.peaks=peaks;
-        this.load=load??((name,token)=>ModelResources.LoadLodAsync(name,0,token));
+        this.loader=loader??new ResourceLoader();
     }
     internal static VillagerVisualSwap Open(ModelInstance?[] actors,VisualMemoryPressure memory)
     {
@@ -48,7 +55,7 @@ internal sealed class VillagerVisualSwap : IDisposable
         if(!VillagerAppearanceSelection.Present(state,actor)||Selection.Used(state,next)){Status="Choose an unused appearance.";return false;}
         if(!memory.TryReserve(peaks[next],now,true,out ticket)){Status="Not enough memory yet. Try again shortly.";return false;}
         target=actor;appearance=next;cancellation=new CancellationTokenSource();
-        try{pending=load(VillagerAppearance.Models[next],cancellation.Token);Status="Loading "+VillagerAppearance.Names[next]+"...";return true;}
+        try{pending=loader.Load(VillagerAppearance.Models[next],cancellation.Token);Status="Loading "+VillagerAppearance.Names[next]+"...";return true;}
         catch(Exception){ReleasePending();Status="Could not load appearance. Existing visual kept.";return false;}
     }
     internal int Pump(GameState state,long now)

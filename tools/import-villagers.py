@@ -76,6 +76,41 @@ def import_model(archive, exports):
             model['animations'].append(animation)
     if sorted(a['name'] for a in model['animations']) != ['Idle', 'Running', 'Walking']:
         raise ValueError('Each imported character needs precisely Idle, Running and Walking')
+    # World navigation owns movement. Remove horizontal travel from the hips
+    # while preserving cyclic sway, vertical bob, rotations and key times.
+    for animation in model['animations']:
+        if animation['name'] not in ('Walking', 'Running'):
+            continue
+        for channel in animation['channels']:
+            node = model['nodes'][channel['target']['node']]
+            if channel['target']['path'] != 'translation' or node.get('name') != 'Hips':
+                continue
+            sampler = animation['samplers'][channel['sampler']]
+            positions = model['accessors'][sampler['output']]
+            times = model['accessors'][sampler['input']]
+            def samples(accessor, width):
+                view = model['bufferViews'][accessor['bufferView']]
+                offset = accessor.get('byteOffset', 0)
+                stride = view.get('byteStride', width * 4)
+                return [struct.unpack_from('<' + 'f' * width, views[accessor['bufferView']], offset + i * stride)
+                        for i in range(accessor['count'])]
+            keys, timeline = samples(positions, 3), samples(times, 1)
+            first, last = keys[0], keys[-1]
+            duration = timeline[-1][0] - timeline[0][0]
+            if duration <= 0:
+                raise ValueError('Locomotion clip has no duration')
+            bind = node.get('translation', (0, 0, 0))
+            corrected = []
+            for key, time in zip(keys, timeline):
+                t = (time[0] - timeline[0][0]) / duration
+                corrected.append((bind[0] + key[0] - first[0] - (last[0] - first[0]) * t,
+                                  key[1], bind[2] + key[2] - first[2] - (last[2] - first[2]) * t))
+            data = b''.join(struct.pack('<3f', *key) for key in corrected)
+            positions.update(bufferView=len(views), byteOffset=0)
+            for bound in ('min', 'max'):
+                positions.pop(bound, None)
+            views.append(data)
+            model['bufferViews'].append({'buffer': 0, 'byteLength': len(data)})
     maximum_dropped_weight = 0.0
     def values(accessor_id, index):
         accessor = model['accessors'][accessor_id]
@@ -181,7 +216,8 @@ def main():
         records.append({'model': name, 'archive': filename, 'archiveSha256': hashlib.sha256(source.read_bytes()).hexdigest(),
                         'exports': provenance, 'source': output.relative_to(root).as_posix(),
                         'sha256': hashlib.sha256(result).hexdigest(), 'textureEdge': 128,
-                        'skinInfluences': 4, 'maximumDroppedWeight': dropped_weight})
+                        'skinInfluences': 4, 'maximumDroppedWeight': dropped_weight,
+                        'locomotionRootMotion': 'horizontal hips travel removed; vertical bob and cyclic sway retained'})
         print(name, len(result), flush=True)
     (target / 'new-villagers-provenance.json').write_text(json.dumps(records, indent=2) + '\n')
 
