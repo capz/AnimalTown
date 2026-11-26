@@ -280,7 +280,7 @@ def villager_visuals():
         press('A');marker(r'VILLAGER VISUAL MENU actor 0 ',begin)
         for _ in range(actor):press('D_RIGHT')
         press('D_DOWN')
-        for _ in range(12):
+        for _ in range(13):
             events=re.findall(r'VILLAGER VISUAL MENU actor (\d+) candidate (-?\d+)',runtime_log_text()[begin:])
             if events and tuple(map(int,events[-1]))==(actor,appearance):break
             press('D_RIGHT')
@@ -292,10 +292,12 @@ def villager_visuals():
         press('B');press('B');time.sleep(2)
         screenshot('visuals-world-'+str(actor)+'-'+str(appearance)+'.png')
         report['swaps'].append({'actor':actor,'appearance':appearance})
-    for appearance in range(6,11):
+    for appearance in range(6,12):
         choose(0,appearance)
         # Force both standing and locomotion on each supplied rig.
         os.write(controller,b'SET MAIN 0.7 0.5\n');time.sleep(2)
+        os.write(controller,b'PRESS B\n');time.sleep(2)
+        os.write(controller,b'RELEASE B\n')
         os.write(controller,b'SET MAIN 0.5 0.5\n');time.sleep(1)
     choose(1,6)
     after=committed_card_sequence(root/'MemoryCardA.USA.raw',details=True)

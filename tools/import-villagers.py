@@ -26,6 +26,8 @@ SOURCES = [
         'animations_2/base_basic_shaded.glb': {'human_000046': 'Running', 'human_000089': 'Walking'}}),
     ('raccoon', 'f8e7f757-1bf9-4cf9-81cb-948b3801a14b (1).zip', {
         'base_basic_shaded.glb': {'human_000024': 'Running', 'human_000088': 'Walking', 'human_000093': 'Idle'}}),
+    ('pugofficer', 'base_basic_shaded (1).glb', {
+        'base_basic_shaded (1).glb': {'human_000024': 'Running', 'human_000050': 'Bow', 'human_000057': 'Sit', 'human_000093': 'Idle'}}),
 ]
 
 
@@ -74,8 +76,27 @@ def import_model(archive, exports):
                     sampler[field] = len(model['accessors'])
                     model['accessors'].append(accessor)
             model['animations'].append(animation)
-    if sorted(a['name'] for a in model['animations']) != ['Idle', 'Running', 'Walking']:
-        raise ValueError('Each imported character needs precisely Idle, Running and Walking')
+    derived_walk = not any(a['name'] == 'Walking' for a in model['animations'])
+    if derived_walk:
+        # The officer has run, bow, sit and idle, but no authored walk. A slower
+        # copy of his own run provides locomotion without borrowing another rig.
+        walking = copy.deepcopy(next(a for a in model['animations'] if a['name'] == 'Running'))
+        walking['name'] = 'Walking'
+        for sampler in walking['samplers']:
+            accessor = copy.deepcopy(model['accessors'][sampler['input']])
+            view = model['bufferViews'][accessor['bufferView']]
+            data = views[accessor['bufferView']]
+            offset, stride = accessor.get('byteOffset', 0), view.get('byteStride', 4)
+            times = [struct.unpack_from('<f', data, offset + i * stride)[0] * 2 for i in range(accessor['count'])]
+            packed = struct.pack('<' + 'f' * len(times), *times)
+            accessor.update(bufferView=len(views), byteOffset=0, min=[min(times)], max=[max(times)])
+            views.append(packed)
+            model['bufferViews'].append({'buffer': 0, 'byteLength': len(packed)})
+            sampler['input'] = len(model['accessors'])
+            model['accessors'].append(accessor)
+        model['animations'].append(walking)
+    if not {'Idle', 'Running', 'Walking'} <= {a['name'] for a in model['animations']}:
+        raise ValueError('Each imported character needs Idle, Running and Walking')
     # World navigation owns movement. Remove horizontal travel from the hips
     # while preserving cyclic sway, vertical bob, rotations and key times.
     for animation in model['animations']:
@@ -200,7 +221,7 @@ def import_model(archive, exports):
     binary.extend(b'\0' * (-len(binary) % 4))
     result = struct.pack('<IIIII', 0x46546c67, 2, 28 + len(text) + len(binary), len(text), 0x4e4f534a)
     result += text + struct.pack('<II', len(binary), 0x004e4942) + binary
-    return result, provenance, maximum_dropped_weight
+    return result, provenance, maximum_dropped_weight, derived_walk
 
 
 def main():
@@ -209,15 +230,22 @@ def main():
     records = []
     for name, filename, exports in SOURCES:
         source = downloads / filename
-        with zipfile.ZipFile(source) as archive:
-            result, provenance, dropped_weight = import_model(archive, exports)
+        if source.suffix == '.zip':
+            with zipfile.ZipFile(source) as archive:
+                result, provenance, dropped_weight, derived_walk = import_model(archive, exports)
+        else:
+            class SingleGlb:
+                def read(self, filename):
+                    return source.read_bytes()
+            result, provenance, dropped_weight, derived_walk = import_model(SingleGlb(), exports)
         output = target / f'villager_{name}.glb'
         output.write_bytes(result)
-        records.append({'model': name, 'archive': filename, 'archiveSha256': hashlib.sha256(source.read_bytes()).hexdigest(),
+        records.append({'model': name, 'input': filename, 'inputSha256': hashlib.sha256(source.read_bytes()).hexdigest(),
                         'exports': provenance, 'source': output.relative_to(root).as_posix(),
                         'sha256': hashlib.sha256(result).hexdigest(), 'textureEdge': 128,
                         'skinInfluences': 4, 'maximumDroppedWeight': dropped_weight,
-                        'locomotionRootMotion': 'horizontal hips travel removed; vertical bob and cyclic sway retained'})
+                        'locomotionRootMotion': 'horizontal hips travel removed; vertical bob and cyclic sway retained',
+                        'walkingDerivedFromHalfSpeedRun': derived_walk})
         print(name, len(result), flush=True)
     (target / 'new-villagers-provenance.json').write_text(json.dumps(records, indent=2) + '\n')
 

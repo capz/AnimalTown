@@ -26,5 +26,5 @@ residency/LOD owner. The animation clock and attention bounds use the new rig.
 Host regression checks exercise duplicate rejection, delayed/failed loads,
 allocation backoff, package mismatch, repeated swaps, cancellation/teardown,
 unchanged other actors and byte-identical serialized player/town/job state.
-The normal importer checks cover all eleven GLBs and retained animation samples.
+The normal importer checks cover all twelve GLBs and retained animation samples.
 Physical GameCube validation remains outstanding.

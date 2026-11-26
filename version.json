@@ -9,8 +9,8 @@
     {
       "id": "new-villagers-and-session-visual-swaps-20261126",
       "lines": [
-        "Try five new animated villager appearances from the debug menu.",
-        "Penguin, white tiger, lion, robin and raccoon use the existing 128px texture resolution.",
+        "Try six new animated villager appearances, including a grumpy police officer.",
+        "Penguin, white tiger, lion, robin, raccoon and pug officer use the existing 128px texture resolution.",
         "Select one villager and apply an unused appearance without changing their name, jobs or location.",
         "Visual changes last for the current session; existing save species and resident identities remain stable."
       ]

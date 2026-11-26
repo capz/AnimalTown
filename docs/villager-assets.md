@@ -5,8 +5,8 @@
 Five distinct characters are present in the seven supplied ZIPs. The two
 `4073a55c` archives are byte-identical. The `f8e7f757` GLB and USDZ exports
 represent the same raccoon. The `adb5cd87` and `1f2f9207` archives each split
-one character's animations across two exports. A sixth distinct character
-was requested but its archive has not been supplied yet.
+one character's animations across two exports. The additional supplied
+`base_basic_shaded (1).glb` provides the sixth character, a grumpy pug police officer.
 
 | Appearance | Prepared source | Source archive prefix |
 |---|---|---|
@@ -15,8 +15,12 @@ was requested but its archive has not been supplied yet.
 | Lion | `villager_lion.glb` | `adb5cd87` |
 | Robin | `villager_robin.glb` | `1f2f9207` |
 | Raccoon | `villager_raccoon.glb` | `f8e7f757 (1)` |
+| Grumpy pug officer | `villager_pugofficer.glb` | `base_basic_shaded (1).glb` |
 
 Each prepared GLB has `Idle`, `Walking` and `Running` clips on its own rig.
+The officer's source also contains bow and sit clips, retained in its GLB.
+No walk was supplied for the officer, so its `Walking` clip is a half-speed
+copy of its own run; the three runtime clips use its own rig.
 Split exports are merged only after verifying identical meshes, nodes and
 skins. Clip durations, rotations and vertical motion retain their supplied values.
 Walking/running hips tracks remove horizontal travel so the rig loops in place
