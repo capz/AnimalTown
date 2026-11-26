@@ -6,6 +6,9 @@ function Get-EmulatorChecksForPath([string]$Path) {
     if($Path -match '^assets/textures/branding/|^game/AnimalTown.GameCube/(TitleScreen|TitleArt|TitleBackdrop|ProfilePickerUi|OnboardingUi|TextureCache|ModelResources)\.cs$|^shared/AnimalTown.Domain/(TexturePixels|TextureResolution)\.cs$|^tools/AnimalTown.Tools/(Brand[^/]*|DiscBannerFile|TextureAudit)\.cs$'){
         'title-logo'
     }
+    if($Path -match '^game/AnimalTown.GameCube/(TitleScreen|VideoOptions|UserOptionsStorage|DevConfigStorage)\.cs$|^shared/AnimalTown.Domain/UserOptions\.cs$'){
+        'video-options'
+    }
     if($Path -match '^assets/models/villagers/|^game/AnimalTown.GameCube/TownGame\.Save[^/]*\.cs$|^shared/AnimalTown.Domain/(SaveRepository|SaveCodec|SplitSaveCodec|IncrementalSaveCodec)\.cs$'){
         'save-and-quit'
     }
@@ -39,7 +42,7 @@ function Get-ValidationPlan {
     $allManaged=@('ui','menu','text','trim','terrain','movement','dialogue','generation','life','saves','buildings','core','content')
     $allRendering=@('water','services','movement','ground','index','visibility','attention','dropped-item')
     $allResources=@('memory','floor','snow','visual')
-    $allEmulator=@('title-logo','save-and-quit','terrain-materials','card-slot-b','card-choose-b','card-without-saving','card-no-card','daylight','job-delivery','job-mail','job-helipad')
+    $allEmulator=@('title-logo','video-options','save-and-quit','terrain-materials','card-slot-b','card-choose-b','card-without-saving','card-no-card','daylight','job-delivery','job-mail','job-helipad')
     $resources=[Collections.Generic.HashSet[string]]::new()
     $emulator=[Collections.Generic.HashSet[string]]::new()
     $rendering=[Collections.Generic.HashSet[string]]::new()

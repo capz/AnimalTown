@@ -112,6 +112,31 @@ class BundleChecks(unittest.TestCase):
                      'daylight-night-extra.json','daylight-night-extra.png','daylight-build.json/source.py','daylight/night-a.png'):
             with self.subTest(name=name):self.assertFalse(bundle.allowed(name))
 
+    def test_video_options_roundtrip_keeps_reports_and_runtime(self):
+        names=['video-options-build.json','video-options-smoothing-aa-option.json',
+               'video-options-options-title-options.json','video-options-options-title-options-load.json',
+               'video-options-unsupported-title-options-unsupported.json',
+               'video-options-smoothing-aa-initial-home.png','video-options-smoothing-aa-menu-on.png',
+               'video-options-smoothing-aa-menu-off.png','video-options-smoothing-aa-menu-restored.png',
+               'video-options-smoothing-aa-576p-rejected.png','video-options-options-options-restored.png',
+               'video-options-options-options-delete-default.png','video-options-unsupported-options-unsupported.png']
+        for name in names:(self.reports/name).write_bytes(('evidence '+name).encode())
+        self.attached();_,reports=self.verify()
+        self.assertTrue(set(names).issubset(reports['files']))
+        extracted=self.root/'video';bundle.extract(self.archive,extracted)
+        for name in names:self.assertEqual((extracted/name).read_bytes(),(self.reports/name).read_bytes())
+        with zipfile.ZipFile(self.archive) as z:
+            for name,data in self.runtime.items():self.assertEqual(z.read(bundle.APP+name),data)
+        self.mutate(bundle.REPORT+'video-options-smoothing-aa-menu-on.png',b'corrupt capture')
+        with self.assertRaises(ValueError):self.verify()
+
+    def test_video_options_namespace_rejects_source_and_extra_reports(self):
+        for name in ('video-options-extra.json','video-options-smoothing-extra.json','video-options-build.py',
+                     'video-options-smoothing-source.cs','video-options-smoothing-aa-menu-on.PNG',
+                     'video-options-smoothing-aa-menu-on.png.cs','video-options-unknown-frame.png',
+                     'video-options-build.json/source.py','video-options/smoothing/frame.png'):
+            with self.subTest(name=name):self.assertFalse(bundle.allowed(name))
+
     def test_terrain_evidence_namespace_rejects_extra_types_and_paths(self):
         for name in ('terrain-materials-extra.json','terrain-materials-runtime.log','terrain-materials-source.py',
                      'terrain-materials-game.dol','terrain-materials-source.zip','terrain-materials-normal.PNG',

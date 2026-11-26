@@ -40,6 +40,8 @@ def allowed(name):
     # source/ISO identity before attaching them. Keep its flat PNG namespace.
     if re.fullmatch(r'terrain-materials-[a-z0-9-]+\.png',name):return True
     if re.fullmatch(r'daylight-(noon|dawn|dusk|night)-(a\.png|b\.png|report\.json)',name):return True
+    if re.fullmatch(r'video-options-(build|smoothing-aa-option|options-title-options(-load)?|unsupported-title-options-unsupported)\.json',name):return True
+    if re.fullmatch(r'video-options-(smoothing|options|unsupported)-[a-z0-9-]+\.png',name):return True
     parts=name.split('/')
     return len(parts)==3 and parts[0]=='scenarios' and parts[1] in ('cliff-hud','gpu-submit','performance','jobs') and Path(parts[2]).suffix in ('.png','.json','.txt','.log','.avi')
 

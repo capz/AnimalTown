@@ -28,6 +28,7 @@ internal sealed partial class TitleScreen : IDisposable,Hypercube.GameCube.IFram
     private const float BodyScale=1.2f,HelpScale=1;
     private const int TitleColumnX=140,TitleColumnWidth=360,TitleRowHeight=34,TitleRowStep=42;
     private const int DebugPageSize=6;
+    private const int VideoOptionCount=3,DeleteOptionRow=VideoOptionCount,OptionCount=VideoOptionCount+1;
     private int OptionsIndex=>UpdaterLaunch.Available?2:1;
     private int DebugIndex=>OptionsIndex+1;
     private int MenuCount=>DebugIndex+(options.ShowDebugMenus?1:0);
@@ -158,7 +159,7 @@ internal sealed partial class TitleScreen : IDisposable,Hypercube.GameCube.IFram
             bounds.Y+(bounds.Height-ink.Height)*.5f-ink.Y,color,scale);
     }
     private void ResetOptionChoice()
-    {optionChoice=optionRow==0?Math.Max(0,VideoOptions.ActiveResolution-1):device.Display.Widescreen?0:1;}
+    {optionChoice=optionRow==0?Math.Max(0,VideoOptions.ActiveResolution-1):optionRow==1?device.Display.Widescreen?0:1:VideoOptions.FullResolutionAa?0:1;}
     private void OptionsInput(int direction,bool activate,bool back)
     {
         if(confirmDelete){
@@ -174,15 +175,19 @@ internal sealed partial class TitleScreen : IDisposable,Hypercube.GameCube.IFram
         }
         if(back){optionsOpen=false;optionsHeading?.Release();optionsHeading=null;TextureCache.TrimUnused();return;}
         if(direction==MenuNavigation.Up||direction==MenuNavigation.Down){
-            optionRow=(optionRow+(direction==MenuNavigation.Up?2:1))%3;ResetOptionChoice();
+            optionRow=(optionRow+(direction==MenuNavigation.Up?OptionCount-1:1))%OptionCount;ResetOptionChoice();
         }
-        if(optionRow<2&&(direction==MenuNavigation.Left||direction==MenuNavigation.Right))optionChoice=1-optionChoice;
+        if(optionRow<VideoOptionCount&&(direction==MenuNavigation.Left||direction==MenuNavigation.Right))optionChoice=1-optionChoice;
         if(!activate)return;
-        if(optionRow==2){if(!SaveCards.Enabled){optionsStatus="Select a memory card from Start before deleting town data.";return;}confirmDelete=true;deleteFocus=false;return;}
-        int resolution=optionRow==0?optionChoice+1:options.Resolution;
-        bool wide=optionRow==1?optionChoice==0:device.Display.Widescreen;
-        if(!VideoOptions.Apply(resolution,wide,optionRow==0)){optionsStatus=VideoOptions.Status;return;}
-        options.Resolution=resolution;options.Widescreen=wide;
+        if(optionRow==DeleteOptionRow){if(!SaveCards.Enabled){optionsStatus="Select a memory card from Start before deleting town data.";return;}confirmDelete=true;deleteFocus=false;return;}
+        if(optionRow==2){
+            if(!VideoOptions.ApplyEdgeSmoothing(options,optionChoice==0)){optionsStatus=VideoOptions.Status;return;}
+        }else{
+            int resolution=optionRow==0?optionChoice+1:options.Resolution;
+            bool wide=optionRow==1?optionChoice==0:device.Display.Widescreen;
+            if(!VideoOptions.Apply(resolution,wide,optionRow==0)){optionsStatus=VideoOptions.Status;return;}
+            options.Resolution=resolution;options.Widescreen=wide;
+        }
         // Present before physical-card I/O; mode switching holds output black
         // until the first completed frame in the replacement mode.
         optionsStatus=SaveCards.Enabled?"Saving to memory card in "+SaveCards.Slot+"...":"Applying for this session...";Draw();
@@ -196,10 +201,11 @@ internal sealed partial class TitleScreen : IDisposable,Hypercube.GameCube.IFram
         font.Draw(ui,"Video",76,89,TitleArt.Leaf,1.25f);
         OptionRow(0,"Resolution","480p","576p",127,VideoOptions.ActiveResolution-1);
         OptionRow(1,"Widescreen","Yes","No",175,device.Display.Widescreen?0:1);
-        font.Draw(ui,"Language",76,225,TitleArt.Leaf,1.25f);
-        font.Draw(ui,"Coming soon",82,260,new Color32(128,135,112),BodyScale);
-        font.Draw(ui,"Data",76,300,TitleArt.Leaf,1.25f);
-        TitleArt.Rounded(ui,62,331,516,44,19,optionRow==2?new Color32(232,202,168):new Color32(236,226,197));
+        OptionRow(2,"Edge smoothing","On","Off",223,VideoOptions.FullResolutionAa?0:1);
+        font.Draw(ui,"Language",76,271,TitleArt.Leaf,1.25f);
+        font.Draw(ui,"Coming soon",558-font.Measure("Coming soon",HelpScale),271,new Color32(128,135,112),HelpScale);
+        font.Draw(ui,"Data",76,305,TitleArt.Leaf,1.25f);
+        TitleArt.Rounded(ui,62,331,516,44,19,optionRow==DeleteOptionRow?new Color32(232,202,168):new Color32(236,226,197));
         font.Draw(ui,"Delete town data",82,338,TitleArt.Ink,BodyScale);
         DrawStatus(optionsStatus,74,383,492);
         font.Draw(ui,"Left/Right: select   A: apply   B: back",74,431,TitleArt.Ink,HelpScale);

@@ -1365,18 +1365,41 @@ def options_card_files(path=None):
     return {**result,**dedicated}
 
 
-def wait_options_saved(resolution,wide):
+def active_edge_smoothing():
+    import re
+    modes=re.findall(r'ANIMALTOWN AA ([01]) render',runtime_log_text())
+    if not modes:raise AssertionError('No active edge-smoothing mode was reported')
+    return modes[-1]=='1'
+
+def wait_options_saved(resolution,wide,smoothing=None,after=None):
     import struct
     deadline=time.monotonic()+45
     while time.monotonic()<deadline:
         try:payload=options_card_files().get('options')
         except AssertionError:payload=None # First archive checkpoint may still be flushing.
-        if payload and len(payload)==16 and payload[:3]==b'ATO' and payload[3] in (1,2,3) and payload[4:6]==bytes((resolution,wide)):
+        if (payload and len(payload)==16 and payload[:3]==b'ATO' and payload[3] in (1,2,3)
+                and (resolution is None or payload[4]==resolution) and (wide is None or payload[5]==wide)
+                and (smoothing is None or payload[3]==3 and payload[7]==smoothing)):
             checksum=2166136261
             for value in payload[:12]:checksum=((checksum^value)*16777619)&0xffffffff
-            if len(payload)==16 and checksum==struct.unpack_from('<I',payload,12)[0]:return payload
+            completed=(after is None or
+                       f'ANIMALTOWN OPTIONS SAVED {payload[4]} {payload[5]} {payload[7]}' in runtime_log_text()[after:])
+            if checksum==struct.unpack_from('<I',payload,12)[0] and completed:return payload
         check_runtime_failure();time.sleep(.5)
     raise AssertionError('A did not persist the activated video setting')
+
+def activate_video_setting(resolution,wide,smoothing=None):
+    # The record can already contain these bytes, or become readable before
+    # final verification returns. Wait for this activation's completion marker
+    # before sending navigation to the game, including idempotent reapplication.
+    offset=len(runtime_log_text());press('A')
+    return wait_options_saved(resolution,wide,smoothing,after=offset)
+
+def video_options_footer_ink(pixels):
+    # Common interior of the normal/widescreen footer, away from the moving
+    # backdrop. Count antialiased text against the much brighter cream panel.
+    return sum(max(pixels[(y*800+x)*3:(y*800+x)*3+3])<170
+               for y in range(335,410) for x in range(150,500))
 
 def debug_visibility(require_record=False):
     import struct
@@ -1460,23 +1483,31 @@ def title_options():
         if debug:break
         time.sleep(.5)
     if not debug:raise AssertionError('Could not prepare independent debug preferences')
-    press('D_UP');press('A');time.sleep(2);screenshot('options-open.png')
+    press('D_UP');press('A');wait_title(modal=True);screenshot('options-open.png')
+    # The third Video row is distinct from Delete. Navigation alone never saves.
+    original=options_card_files().get('options');press('D_DOWN');press('D_DOWN')
+    if active_edge_smoothing():press('D_RIGHT')
+    screenshot('options-smoothing-draft-off.png')
+    if options_card_files().get('options')!=original:raise AssertionError('Smoothing navigation persisted an unapplied option')
+    activate_video_setting(None,None,0);screenshot('options-smoothing-off.png')
+    press('D_UP');press('D_UP')
     original=options_card_files().get('options');press('D_RIGHT');screenshot('options-draft-576p.png')
     if options_card_files().get('options')!=original:raise AssertionError('Navigation persisted an unapplied option')
-    press('D_LEFT');press('A');wait_options_saved(1,0);screenshot('options-480p.png')
-    press('D_RIGHT');press('A');wait_options_saved(2,0);screenshot('options-576p.png')
-    press('D_DOWN');press('D_LEFT');press('A');saved=wait_options_saved(2,1);screenshot('options-widescreen.png')
+    press('D_LEFT');activate_video_setting(1,0);screenshot('options-480p.png')
+    press('D_RIGHT');activate_video_setting(2,0);screenshot('options-576p.png')
+    press('D_DOWN');press('D_LEFT');saved=activate_video_setting(2,1);screenshot('options-widescreen.png')
     current=options_card_files()
     if any(current.get(name)!=data for name,data in town.items()):raise AssertionError('Video selection changed town data')
-    press('D_DOWN');press('A');screenshot('options-delete-default.png');press('A')
+    press('D_DOWN');press('D_DOWN');press('A');screenshot('options-delete-default.png');press('A')
     if any(options_card_files().get(name)!=data for name,data in town.items()):raise AssertionError('Default Cancel deleted town data')
     press('A');press('D_RIGHT');screenshot('options-delete-focused.png');press('B')
     if any(options_card_files().get(name)!=data for name,data in town.items()):raise AssertionError('B cancellation deleted town data')
-    press('A');press('D_RIGHT');press('A')
+    press('A');press('D_RIGHT');delete_offset=len(runtime_log_text());press('A')
     deadline=time.monotonic()+90
     while time.monotonic()<deadline:
         current=options_card_files()
-        if not any(name.startswith('AT-') or name.startswith('AnimalTown') for name in current):break
+        if (not any(name.startswith('AT-') or name.startswith('AnimalTown') for name in current)
+                and 'ANIMALTOWN TOWN DATA DELETED' in runtime_log_text()[delete_offset:]):break
         check_runtime_failure();time.sleep(1)
     else:raise AssertionError('Confirmed town deletion did not remove every record and its recovery marker')
     if current.get('options')!=saved or current.get('dev_config')!=debug:raise AssertionError('Deletion changed video/debug preferences')
@@ -1491,17 +1522,24 @@ def title_options_load():
     expected=wait_options_saved(2,1)
     if 'ANIMALTOWN OPTIONS LOADED 2 1' not in runtime_log_text() or 'ANIMALTOWN VIDEO 2 1 output 640x576' not in runtime_log_text():
         raise AssertionError('Startup did not restore saved progressive/widescreen settings')
-    press('D_DOWN');press('D_DOWN');press('A');time.sleep(2);screenshot('options-restored.png');press('B')
+    press('D_DOWN');press('D_DOWN');press('A');wait_title(modal=True);screenshot('options-restored.png');press('B')
     if options_card_files().get('options')!=expected:raise AssertionError('Opening/closing Options rewrote preferences')
     press('D_UP');press('D_UP');press('A');wait_profiles('options-restored-empty-town.png')
     if any(name.startswith('AT-') or name.startswith('AnimalTown') for name in options_card_files()):raise AssertionError('Deleted villagers returned after restart')
     (root/'title-options-load.json').write_text(json.dumps({'persisted_resolution':576,'persisted_widescreen':True,'deleted_town_stayed_deleted':True}))
 
 def title_options_unsupported():
-    before=options_card_files();press('D_DOWN');press('D_DOWN');press('A');press('A');time.sleep(2);screenshot('options-unsupported.png')
+    before=options_card_files();press('D_DOWN');press('D_DOWN');press('A');wait_title(modal=True)
+    screenshot('options-unsupported-before.png');baseline=video_options_footer_ink(rgb('options-unsupported-before.png'))
+    offset=len(runtime_log_text());press('A');deadline=time.monotonic()+30
+    while time.monotonic()<deadline:
+        screenshot('options-unsupported.png')
+        if video_options_footer_ink(rgb('options-unsupported.png'))>baseline+100:break
+        check_runtime_failure();time.sleep(.5)
+    else:raise AssertionError('Unsupported progressive selection did not display its rejection feedback')
     if options_card_files()!=before:raise AssertionError('Unsupported progressive mode modified saved settings/town')
-    if 'ANIMALTOWN OPTIONS SAVED' in runtime_log_text():raise AssertionError('Rejected mode was persisted')
-    (root/'title-options-unsupported.json').write_text(json.dumps({'unsupported_mode_did_not_save':True}))
+    if 'ANIMALTOWN OPTIONS SAVED' in runtime_log_text()[offset:]:raise AssertionError('Rejected mode was persisted')
+    (root/'title-options-unsupported.json').write_text(json.dumps({'unsupported_mode_did_not_save':True,'rejection_feedback_visible':True}))
 
 def wait_profiles(name='profile-picker.png'):
     maximum='--jobs' in sys.argv and sys.argv[sys.argv.index('--jobs')+1].startswith('maximum-')
@@ -3030,37 +3068,42 @@ with (root/'emulator.log').open('w') as log:
             press('X');screenshot('actor-shadow-menu.png');press('B')
             os.write(controller,b'PRESS L\nPRESS R\n');time.sleep(.2);press('D_LEFT');os.write(controller,b'RELEASE L\nRELEASE R\n');time.sleep(15);screenshot('actor-shadow-water.png')
         elif '--full-resolution-aa' in sys.argv:
-            set_debug_visibility(True);start_game(False,'aa-off');time.sleep(10)
-            card=root/'MemoryCardA.USA.raw';before=committed_card_sequence(card,details=True)
-            initial=card_dev_config(card)
-            if initial and initial['full_resolution_aa']:raise AssertionError('Use a card with AA initially off')
+            wait_title();default_on=active_edge_smoothing()
+            card=root/'MemoryCardA.USA.raw'
+            fresh=not committed_card_sequence(card,details=True) and not options_card_files()
+            if fresh and not default_on:raise AssertionError('A fresh card must start with edge smoothing enabled')
+            # Also captures the real compact starter-plot preview on fresh cards.
+            start_game(False,'aa-initial');before=committed_card_sequence(card,details=True)
+            def restart_title():
+                global p
+                if not stop_dolphin(p,30)['clean_exit']:raise AssertionError('Dolphin did not flush the disposable card cleanly')
+                offset=len(runtime_log_text());p=subprocess.Popen(command,env=env,stdout=log,stderr=subprocess.STDOUT)
+                wait_title();return offset
             def selector(name):
-                press('START');press('R');press('D_DOWN');screenshot(name+'.png')
-            def saved_aa(expected):
-                deadline=time.monotonic()+60
-                while time.monotonic()<deadline:
-                    value=card_dev_config(card)
-                    if value and value['full_resolution_aa']==expected:return value
-                    check_runtime_failure();time.sleep(.2)
-                raise AssertionError('AA preference was not saved')
-            screenshot('aa-world-off.png');selector('aa-menu-off')
-            press('A');on=saved_aa(True);time.sleep(3);screenshot('aa-menu-on.png')
-            press('B');time.sleep(10);screenshot('aa-world-on.png')
-            # Restart the emulator so splash, title and profile picker must also
-            # honor the saved AA mode; no in-process state can make this pass.
-            p.terminate()
-            try:p.wait(timeout=10)
-            except subprocess.TimeoutExpired:p.kill();p.wait()
-            restart_offset=len(runtime_log_text())
-            p=subprocess.Popen(command,env=env,stdout=log,stderr=subprocess.STDOUT)
-            start_game(False,'aa-restored');time.sleep(10);selector('aa-menu-restored')
-            if 'ANIMALTOWN AA 1 render 640 480 parts 2' not in runtime_log_text()[restart_offset:]:raise AssertionError('Saved AA was not applied at startup')
-            if not saved_aa(True)['full_resolution_aa']:raise AssertionError('AA did not survive restart')
-            press('A');off=saved_aa(False);time.sleep(3);screenshot('aa-menu-restored-off.png')
-            press('B');time.sleep(5);screenshot('aa-world-restored-off.png')
+                press('D_DOWN');press('D_DOWN');press('A');wait_title(modal=True)
+                press('D_DOWN');press('D_DOWN');screenshot(name+'.png')
+            def apply_aa(enabled,name):
+                if active_edge_smoothing()!=enabled:press('D_RIGHT')
+                saved=activate_video_setting(None,None,int(enabled))
+                if active_edge_smoothing()!=enabled:raise AssertionError('Saved smoothing preference differs from the live display')
+                screenshot(name+'.png');return list(saved)
+            restart_title();selector('aa-menu-default')
+            off=apply_aa(False,'aa-menu-off');on=apply_aa(True,'aa-menu-on')
+            # Rejected 576p must not move the underline or save the draft choice.
+            press('D_UP');press('D_UP');press('D_RIGHT');original=options_card_files().get('options')
+            offset=len(runtime_log_text());press('A');screenshot('aa-576p-rejected.png')
+            if options_card_files().get('options')!=original or not active_edge_smoothing() or 'ANIMALTOWN OPTIONS SAVED' in runtime_log_text()[offset:]:
+                raise AssertionError('576p with smoothing enabled changed saved preferences or the live mode')
+            press('B');press('D_UP');press('D_UP');start_game(False,'aa-on');screenshot('aa-world-on.png')
+            restart_offset=restart_title();selector('aa-menu-restored')
+            if 'ANIMALTOWN AA 1 render 640 480 parts 2' not in runtime_log_text()[restart_offset:]:raise AssertionError('Saved smoothing was not applied at startup')
+            wait_options_saved(None,None,1)
+            restored_off=apply_aa(False,'aa-menu-restored-off')
+            press('B');press('D_UP');press('D_UP');start_game(False,'aa-off');screenshot('aa-world-off.png')
             if committed_card_sequence(card,details=True)!=before:raise AssertionError('AA setting changed the town save')
             check_runtime_failure()
-            (root/'aa-option.json').write_text(json.dumps({'defaultOff':True,'savedOn':on,'restoredAfterRestart':True,'savedOff':off,'townUnchanged':True,'hostMsaa':1,'hardwareTiming':False},indent=2)+'\n')
+            (root/'aa-option.json').write_text(json.dumps({'passed':True,'defaultOn':default_on,'freshCard':fresh,'savedOff':off,'savedOn':on,
+                'restoredAfterRestart':True,'restoredOff':restored_off,'rejected576p':True,'townUnchanged':True,'hostMsaa':1,'hardwareTiming':False},indent=2)+'\n')
         elif '--lighting' in sys.argv:
             start_game(True)
             os.write(controller,b'PRESS L\nPRESS R\n');time.sleep(.2);press('A');os.write(controller,b'RELEASE L\nRELEASE R\n');time.sleep(15)

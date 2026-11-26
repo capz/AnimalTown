@@ -518,6 +518,15 @@
         "Existing saved choices migrate without changing town progress.",
         "Versioned settings preserve old cards and protect interrupted migrations."
       ]
+    },
+    {
+      "id": "approved-home-plot-video-ui-20261126",
+      "lines": [
+        "Preview your actual home plot and control edge smoothing in Video options.",
+        "Placement borders, site search and relocation feedback follow the current garden size.",
+        "Garden construction explains blockers, and the video toggle saves only applied display changes.",
+        "Dolphin checks cover smoothing, restart, deletion controls and protected town records."
+      ]
     }
   ]
 }

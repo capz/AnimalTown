@@ -9,6 +9,14 @@ internal static class VideoOptions
     internal static string Status="";
     internal static bool FullResolutionAa=>GraphicsDevice.Default.Display.AntialiasingMode==AntialiasingMode.FullResolution;
     private static bool requestedAa;
+    internal static bool ApplyEdgeSmoothing(UserOptions options,bool enabled)
+    {
+        if(!SetEdgeSmoothing(enabled))return false;
+        // Enabling at 576p moves the live display to 480p. Persist that actual
+        // result so later widescreen changes and restarts cannot resurrect 576p.
+        options.EdgeSmoothing=FullResolutionAa;options.Resolution=ActiveResolution;
+        options.Widescreen=GraphicsDevice.Default.Display.Widescreen;return true;
+    }
     internal static bool SetEdgeSmoothing(bool enabled)
     {
         bool before=requestedAa;requestedAa=enabled;

@@ -2,7 +2,7 @@ $ErrorActionPreference='Stop'
 $tokens=$null;$errors=$null
 $ast=[Management.Automation.Language.Parser]::ParseFile((Join-Path $PSScriptRoot '../tools/publish-release.ps1'),[ref]$tokens,[ref]$errors)
 if($errors){throw 'Publisher syntax is invalid'}
-foreach($name in @('InvokeGh','Read-ReleaseMetadata','Assert-BinaryArchive','Assert-ReleaseVersionMetadata','Assert-ReleaseAsset','Assert-ReleaseAssetSet','Copy-DaylightEvidence','Copy-JobEvidence','Get-ReleaseNotes','Get-PreparedReleaseReceipt','Assert-PreparedRelease')){
+foreach($name in @('InvokeGh','Read-ReleaseMetadata','Assert-BinaryArchive','Assert-ReleaseVersionMetadata','Assert-ReleaseAsset','Assert-ReleaseAssetSet','Copy-DaylightEvidence','Copy-VideoEvidence','Copy-JobEvidence','Get-ReleaseNotes','Get-PreparedReleaseReceipt','Assert-PreparedRelease')){
     $function=$ast.Find({param($node) $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq $name},$true)
     . ([scriptblock]::Create($function.Extent.Text))
 }
@@ -108,6 +108,35 @@ try{
     Reject {Copy-DaylightEvidence $capture $reports ('a'*40) '1.2.3' 'v1.2.3' 'AnimalTown-1.2.3.nkit.iso' ('b'*64)} 'Failed night captures must not ship'
     @{passed=$true;requested_clock='12:00'}|ConvertTo-Json|Set-Content (Join-Path $capture 'night/daylight-report.json')
     Reject {Copy-DaylightEvidence $capture $reports ('a'*40) '1.2.3' 'v1.2.3' 'AnimalTown-1.2.3.nkit.iso' ('b'*64)} 'A mislabeled phase must not ship'
+    $video=Join-Path $directory 'video';$videoReports=Join-Path $directory 'video-reports'
+    New-Item -ItemType Directory -Path $video,$videoReports|Out-Null
+    foreach($group in @('smoothing','options','unsupported')){New-Item -ItemType Directory -Path (Join-Path $video $group)|Out-Null}
+    $evidence|ConvertTo-Json|Set-Content (Join-Path $video 'video-options-build.json')
+    @{passed=$true;restoredAfterRestart=$true;townUnchanged=$true}|ConvertTo-Json|Set-Content (Join-Path $video 'smoothing/aa-option.json')
+    foreach($name in @('options/title-options.json','options/title-options-load.json','unsupported/title-options-unsupported.json')){
+        '{"passed":true}'|Set-Content (Join-Path $video $name)
+    }
+    foreach($name in @('smoothing/aa-initial-home.png','smoothing/aa-menu-on.png','smoothing/aa-menu-off.png','smoothing/aa-menu-restored.png','smoothing/aa-576p-rejected.png','options/options-restored.png','options/options-delete-default.png','unsupported/options-unsupported.png')){
+        [IO.File]::WriteAllBytes((Join-Path $video $name),[byte[]]@(137,80,78,71,13,10,26,10))
+    }
+    Copy-VideoEvidence $video $videoReports ('a'*40) '1.2.3' 'v1.2.3' 'AnimalTown-1.2.3.nkit.iso' ('b'*64)
+    Assert (@(Get-ChildItem $videoReports -File).Count -eq 13) 'Video reports, screenshots and build identity are copied together'
+    # Exercise the real publisher output through the actual bundle writer.
+    $videoZip=Join-Path $directory 'video-depot.zip';$runtimeBytes=[Text.Encoding]::UTF8.GetBytes('compiled fixture executable')
+    $runtimeHash=[Convert]::ToHexString([Security.Cryptography.SHA256]::HashData($runtimeBytes)).ToLowerInvariant()
+    $appManifest=@{Schema=1;Profile='sd-app';Commit=('a'*40);Version='1.2.3';Files=@{'default.dol'=$runtimeHash}}
+    $archive=[IO.Compression.ZipFile]::Open($videoZip,[IO.Compression.ZipArchiveMode]::Create)
+    try{
+        $stream=$archive.CreateEntry('apps/animaltown/default.dol').Open();try{$stream.Write($runtimeBytes)}finally{$stream.Dispose()}
+        $stream=$archive.CreateEntry('apps/animaltown/depot-package.json').Open();try{$stream.Write([Text.Encoding]::UTF8.GetBytes(($appManifest|ConvertTo-Json -Depth 4)))}finally{$stream.Dispose()}
+    }finally{$archive.Dispose()}
+    & python3 (Join-Path $PSScriptRoot '../tools/release-bundle.py') attach $videoZip $videoReports
+    Assert ($LASTEXITCODE -eq 0) 'The release bundle must accept every file emitted by the video publisher'
+    & python3 (Join-Path $PSScriptRoot '../tools/release-bundle.py') verify $videoZip
+    Assert ($LASTEXITCODE -eq 0) 'Video evidence bundle hashes and unchanged app payload verify'
+    Reject {Copy-VideoEvidence $video $videoReports ('a'*40) '1.2.3' 'v1.2.3' 'AnimalTown-1.2.3.nkit.iso' ('c'*64)} 'Video evidence from another ISO must not ship'
+    @{passed=$false;restoredAfterRestart=$true;townUnchanged=$true}|ConvertTo-Json|Set-Content (Join-Path $video 'smoothing/aa-option.json')
+    Reject {Copy-VideoEvidence $video $videoReports ('a'*40) '1.2.3' 'v1.2.3' 'AnimalTown-1.2.3.nkit.iso' ('b'*64)} 'Failed video checks must not ship'
     $jobs=Join-Path $directory 'jobs';New-Item -ItemType Directory -Path $jobs|Out-Null
     Copy-JobEvidence $jobs $reports ('a'*40) '1.2.3' 'v1.2.3' 'AnimalTown-1.2.3.nkit.iso' ('b'*64)
     $evidence|ConvertTo-Json|Set-Content (Join-Path $jobs 'jobs-build.json')

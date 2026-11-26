@@ -1,13 +1,16 @@
 # Smaller home plots and saved edge smoothing
 
-## Draft integration checkpoint
+## Placement and video UI
 
-The shared gameplay rules, configuration migration and regression checks are
-implemented. The production placement border/help text, the new title Options
-row and its emulator interaction scenario await the user's required mockup
-approval. This draft is not ready to merge until those UI changes are completed.
+The shared gameplay rules, configuration migration and production UI are
+implemented. The approved placement border follows the current garden tier and
+any accepted extension. Preview coloring, confirmation and rejection text use the
+same placement validator; relocation also reports its fee before confirmation.
+Starting-site search uses those dimensions, including near town edges. Garden
+construction reports specific terrain, path, building, debt and pending-order
+rejections through the existing speech UI.
 
-Proposed screens reuse existing assets and controls:
+The approved screens reuse existing assets and controls:
 
 - [Current-tier home placement](concepts/house-plot-current-tier.svg)
 - [Edge smoothing in title Options](concepts/title-edge-smoothing.svg)
@@ -75,10 +78,13 @@ record before retiring the only saved copy in the old debug record. A failed
 write or full card leaves the migration retryable. Temporary play writes neither
 record, and the selected memory-card slot remains authoritative.
 
-After mockup approval, the title row will call
-`VideoOptions.SetEdgeSmoothing(enabled)`, update the options only after a successful
-display change, record the resulting active resolution and save with the normal
-options adapter. The applied underline follows the live hardware mode.
+Title Options has three Video rows: Resolution, Widescreen and Edge smoothing.
+Left/Right selects On or Off and A applies and saves it through the normal
+options adapter. The applied underline follows the live hardware mode. A failed
+display change leaves the preference unchanged. Enabling smoothing at 576p records
+the resulting 480p mode, and automatic interlaced timing remains automatic.
+The Language placeholder shares one line with Coming soon, preserving the
+existing two-line status footer and separate Delete town data row.
 
 ## Validation
 
@@ -92,6 +98,11 @@ Video checks cover both values in all AA-bearing legacy formats, current-option
 precedence, dedicated/loose/archive card layouts, migration before diagnostics
 writes, interruption/retry, full cards, selected Slot B and temporary play.
 
-Focused host suites and the managed GameCube project build have passed. Physical
-GameCube behavior and a new UI/emulator capture have not yet been validated for
-this draft. The repository's complete PR pipeline remains the release gate.
+The `video-options` CI scenario creates a disposable town, captures its compact
+starter plot, applies Off/On through the title Video row, rejects incompatible
+576p, restarts Dolphin with On saved, and applies Off again. It verifies that town
+records remain unchanged. Separate invocations check draft choices, widescreen,
+deletion cancellation/confirmation, preference reload and unsupported cables.
+Reports and selected captures are packaged under `release/video-options-*` in
+the same-commit Depot ZIP. Emulator results establish controller flow and
+persistence; physical GameCube image quality and timing still need measurement.
