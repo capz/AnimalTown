@@ -122,15 +122,18 @@ $env:ConnectionStrings__Game='Host=localhost;Database=animaltown;Username=animal
 dotnet out/server/AnimalTown.Server.dll --urls http://127.0.0.1:5189
 ```
 
-Use TLS ingress before exposing the service. The current console has no network
-client; this service is an independently tested foundation. Do not deploy it as
-a finished online game. Build a server image with
+Use TLS ingress before exposing the service. Standard console builds leave
+online play disabled; pairing and experimental movement are staging foundations.
+Do not deploy this as a finished online game. Build a server image with
 `docker build -f server/AnimalTown.Server/Dockerfile -t animaltown-server .`.
 
-The [networking implementation brief](docs/networking-implementation-plan.md)
-indexes the remaining server/client work and gives Codex agents the authority,
-protocol, NAT/relay, visitor-review, synchronization and acceptance contracts.
-It supersedes the older owner-hosted networking proposal.
+The [online play PoC backlog](docs/online-play-poc.md) records the agreed scope,
+existing backend coverage, Cloudflare HTTPS/WebSocket transport, dependencies
+and Dolphin/DOL-015 acceptance gates. It includes chat, eligible guest jobs and
+resident mail. The [multiplayer status](docs/multiplayer-first-slice.md) records
+the current staging implementation; the
+[earlier networking brief](docs/networking-implementation-plan.md) remains
+historical architecture context where the newer scope has not superseded it.
 
 ## Checks
 

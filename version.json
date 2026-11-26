@@ -527,6 +527,15 @@
         "Garden construction explains blockers, and the video toggle saves only applied display changes.",
         "Dolphin checks cover smoothing, restart, deletion controls and protected town records."
       ]
+    },
+    {
+      "id": "agreed-online-play-poc-backlog-20261126",
+      "lines": [
+        "Define the internet play PoC for existing towns, guest jobs, chat and resident mail.",
+        "The indexed plan reuses backend services and selects local hosting through Cloudflare WSS.",
+        "Review resolves offline conflicts; cloned cards, attachments and guest tools stay out of scope.",
+        "Dependencies and Dolphin/DOL-015 acceptance gates distinguish planned work from proven behavior."
+      ]
     }
   ]
 }

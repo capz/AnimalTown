@@ -1,10 +1,16 @@
 # AnimalTown multiplayer implementation
 
+The [26 November online play PoC backlog](online-play-poc.md) is the current
+execution index. It brings chat, eligible guest jobs and resident mail into
+the PoC, selects Cloudflare HTTPS/WSS, and excludes cloned-card reconciliation,
+online attachments and guest tool actions. The broader release requirements
+below remain context; the PoC document defines which apply to this milestone.
+
 The local memory-card save is the source of truth. AnimalTown's hosted service
 runs a synchronized copy for online visits while the console is on or off.
 The first release supports one local villager and up to two guests. Player-run
 servers are outside the agreed design. This document records the current
-implementation and the subsequent phase. It updates the multiplayer decisions
+implementation and broader release work. It updates the multiplayer decisions
 in the [earlier networking brief](https://github.com/capz/AnimalTown/pull/162).
 See the [technical design](multiplayer-technical-design.md) for the proposed
 transport, security requirements, and DOL-015 performance targets.
@@ -101,12 +107,15 @@ four-byte little-endian length prefix. The aggregate limit is 4 MiB.
    and card save and reload. Verify that retries preserve purchases, transfers,
    and review decisions without duplicating their effects.
 
-## Next multiplayer implementation phase
+## Features included in the agreed PoC
 
-- **Live text chat.** Reuse the GameCube keyboard. Add remote delivery,
-  rate limits, mute and block enforcement, and report evidence.
-- **Guest villager jobs.** Run eligibility, progress, and rewards in the hosted
-  session. Cover simultaneous claims, reconnect, and delivery at sync.
-- **Guest mail.** Reuse the letter composer and implement online addressing,
-  delivery, and attachment custody. Preserve drafts and make delivery and
-  attachment transfers safe to retry.
+These were previously deferred to a subsequent phase. They are now open work
+in the [PoC index](online-play-poc.md#indexed-implementation-work):
+
+- **Live text chat.** Reuse the GameCube keyboard and deliver across the whole
+  town, with rate limits, mute/block enforcement and report evidence.
+- **Guest villager jobs.** Run eligible visited-town jobs in the hosted session.
+  Hide jobs requiring excluded actions. Earned items and Bells travel home;
+  simultaneous claims, reconnect and settlement must not duplicate rewards.
+- **Guest mail.** Reuse the letter composer for visited-town residents only,
+  without attachments. Preserve drafts and make delivery safe to retry.

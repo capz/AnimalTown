@@ -1,6 +1,12 @@
 # AnimalTown Multiplayer Technical Design Draft
 
-This design covers the first playable GameCube release. A town supports one local villager and up to two guests. The local memory-card save is the source of truth for the town. AnimalTown's hosted service runs the synchronized copy and validates live actions, including visits while the console is off. The Nintendo DOL-015 is the sole hardware qualification target. Live text chat, guest villager jobs, and guest mail are scheduled for the next multiplayer phase. [Implementation status](multiplayer-first-slice.md)
+The [agreed online play PoC](online-play-poc.md) is the current scope and
+execution index. It supersedes this draft's deferred chat/jobs/mail grouping,
+raw-TLS-only transport and cloned-card requirements for the PoC. Other broader
+release requirements below remain design context rather than additional PoC
+scope.
+
+This design covers the first playable GameCube release. A town supports one local villager and up to two guests. The local memory-card save is the source of truth for the town. AnimalTown's hosted service runs the synchronized copy and validates live actions, including visits while the console is off. The Nintendo DOL-015 is the sole hardware qualification target. The agreed PoC also includes live text chat, eligible guest villager jobs and resident mail. [Implementation status](multiplayer-first-slice.md)
 
 ## Console connection and game flow
 
@@ -14,7 +20,7 @@ The entry points are `Program.RunTown`, `RunSession`, `TownSession.Load`, the Ga
 
 ## DOL-015 transport
 
-Use direct outbound IPv4 to the hosted service, with DHCP or explicit IPv4 configuration and certificate-validated TLS on port 443. Use HTTPS for account and gate requests. Prototype an SDK extension that exposes the existing TLS provider as a bounded async stream. The provider currently advertises `http/1.1`. The gameplay and bulk-transfer endpoint needs explicit AnimalTown ALPN negotiation, a dedicated hostname, and protocol version validation. Preserve hostname, chain, and date validation. Fail closed if secure setup fails. Qualify fresh entropy and credible console time on the DOL-015. Test SDK reseeding and certificate rotation before release.
+Use outbound IPv4 with DHCP or explicit IPv4 configuration. For the PoC, use HTTPS for account/gate requests and secure WebSockets (WSS) through a free Cloudflare Quick Tunnel for gameplay. Add bounded WebSocket framing over the SDK TLS stream and a server upgrade endpoint, carrying the existing versioned binary protocol. The console negotiates HTTP/1.1 with the Cloudflare edge rather than the experimental raw listener's `animaltown/1` ALPN. A temporary tunnel supplies the public hostname; no purchased domain is required. Preserve hostname, chain and date validation, fresh entropy and credible console time. Fail closed if secure setup fails. Qualify this route on Dolphin and physical DOL-015 before treating it as working transport. See the [transport contract](online-play-poc.md#cloudflare-transport-contract) for endpoint changes and authentication.
 
 Use one active TLS connection on the console. Reuse an authenticated stream for live play and for transfers in an explicit loading or save mode, or close it before opening a transfer stream. Suspend regular rendering and release scene resources before bulk card work or a cold resnapshot. Keep only essential control traffic active during a transfer. The SDK HTTP client closes each request and has no session resumption, so one HTTPS request per page would repeat the full handshake. [SDK pin](../game/AnimalTown.GameCube/packages.lock.json) · [SDK networking](https://github.com/capz/DolphinDotNet/blob/main/docs/network-runtime.md) · [SDK TLS](https://github.com/capz/DolphinDotNet/blob/main/docs/https.md) · [SDK entropy](https://github.com/capz/DolphinDotNet/blob/main/docs/platform-entropy.md)
 
