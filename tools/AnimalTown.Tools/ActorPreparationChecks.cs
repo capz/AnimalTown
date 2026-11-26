@@ -12,7 +12,7 @@ internal static class ActorPreparationChecks
     internal static void Run(string root)
     {
         string output=Path.Combine(root,"out/actor-preparation-checks");Directory.CreateDirectory(output);
-        string[] names={"Meshy_AI_Rigged_Fox_All_Animations","villager_bunny","villager_giraffe","villager_mainecoon","villager_hamster","villager_cockerspaniel"};
+        string[] names={"Meshy_AI_Rigged_Fox_All_Animations","villager_bunny","villager_giraffe","villager_mainecoon","villager_hamster","villager_cockerspaniel","villager_penguin","villager_whitetiger","villager_lion","villager_robin","villager_raccoon"};
         JsonNode Read(byte[] bytes)=>JsonNode.Parse(bytes.AsSpan(20,BitConverter.ToInt32(bytes,12)))!;
         void Check(bool value,string reason){if(!value)throw new InvalidDataException(reason);}
         foreach(string name in names){
@@ -62,6 +62,6 @@ internal static class ActorPreparationChecks
             Check(original.AsSpan(originalChunk+8,binaryBytes).SequenceEqual(cooked.AsSpan(cookedChunk+8,binaryBytes)),name+": original geometry, texture and animation bytes remain exact before appended runtime samples");
             Check(original.SequenceEqual(File.ReadAllBytes(input)),name+": authoring GLB is unchanged");
         }
-        Console.WriteLine("Actor preparation: six sources, movement/idle clips, bit-exact retained samples and durations, full default clips, source/rig/UV/texture/binary preservation passed");
+        Console.WriteLine("Actor preparation: eleven sources, movement/idle clips, retained samples and durations, source/rig/UV/texture/binary preservation passed");
     }
 }

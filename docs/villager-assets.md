@@ -1,5 +1,44 @@
 # Current villager assets
 
+## Additional appearances supplied on 2026-11-26
+
+Five distinct characters are present in the seven supplied ZIPs. The two
+`4073a55c` archives are byte-identical. The `f8e7f757` GLB and USDZ exports
+represent the same raccoon. The `adb5cd87` and `1f2f9207` archives each split
+one character's animations across two exports. A sixth distinct character
+was requested but its archive has not been supplied yet.
+
+| Appearance | Prepared source | Source archive prefix |
+|---|---|---|
+| Penguin | `villager_penguin.glb` | `4c8507cd` |
+| White tiger | `villager_whitetiger.glb` | `4073a55c` |
+| Lion | `villager_lion.glb` | `adb5cd87` |
+| Robin | `villager_robin.glb` | `1f2f9207` |
+| Raccoon | `villager_raccoon.glb` | `f8e7f757 (1)` |
+
+Each prepared GLB has `Idle`, `Walking` and `Running` clips on its own rig.
+Split exports are merged only after verifying identical meshes, nodes and
+skins. The imported clip samples retain their supplied values and durations.
+Embedded images are reduced from 2048px to 128×128 with Lanczos filtering;
+the runtime uses the same 128px base plus 64px mip as existing villagers.
+The explicit 256px package also retains those original 128px imported images.
+
+The SDK accepts four skin influences. The importer combines duplicate joints,
+keeps each vertex's strongest four influences, and normalizes their weights.
+`new-villagers-provenance.json` records archive/export/prepared hashes, clip
+aliases and maximum discarded weight. Positions, topology, UVs, rigs and
+inverse binds are preserved. Regenerate with Pillow installed:
+
+```sh
+python3 tools/import-villagers.py /path/to/downloaded/zips /path/to/AnimalTown
+```
+
+The new appearances ship in both disc and Depot payloads. They are available
+through the [debug visual swap control](villager-visual-swaps.md), without
+adding saved species slots or changing the resident roster.
+
+## Existing saved species
+
 The bunny, giraffe, Maine coon and hamster use the animated GLBs supplied on
 2026-11-22. The stable species slots keep existing villagers and save data
 associated with the same species.

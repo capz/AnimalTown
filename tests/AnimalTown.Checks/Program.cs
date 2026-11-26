@@ -19,7 +19,7 @@ var selected=args.Length==0?available:args[1].Split(',');
 foreach(string name in selected)if(!available.Contains(name))throw new ArgumentException("Unknown check suite: "+name);
 bool Wants(string name)=>selected.Contains(name);
 if(Wants("ui")){UiShapePlanChecks.Run(Check);}
-if(Wants("menu")){MenuNavigationChecks.Run(Check);PocketMenuChecks.Run(Check);TownGame.CheckMailControls(Check);}
+if(Wants("menu")){MenuNavigationChecks.Run(Check);PocketMenuChecks.Run(Check);TownGame.CheckMailControls(Check);VillagerVisualSwapChecks.Run(Check);}
 if(Wants("trim"))TownTrimChecks.Run(Check);
 if(Wants("text")){WrappedTextChecks.Run(Check);TownChatChecks.Layout(Check);}
 if(Wants("terrain")){TerrainEdgeChecks.Run(Check);TerrainResidencyChecks.Run(Check);WorldObjectCandidateChecks.Run(Check);}
@@ -204,7 +204,7 @@ foreach(var resolution in new[]{TextureResolution.Size128,TextureResolution.Size
     Check(TexturePixels.FitWidth(64,32,resolution)==64,"texture policy never upscales");
     Check(TexturePolicy.ModelPath("building",resolution)=="dvd:/building"+(edge==256?"":"-tex"+edge)+".dndmodel","non-villager model variants retain their resolution policy");
 }
-foreach(string species in new[]{"fox","bunny","giraffe","cat","hamster","spaniel"}){
+foreach(string species in VillagerAppearance.Models){
     Check(TexturePolicy.ModelPath(species)=="dvd:/"+species+"-tex128.dndmodel"&&TexturePolicy.DefaultForModel(species)==TextureResolution.Size128,"player and NPC species default to the 128px gameplay package");
     Check(TexturePolicy.ModelPath(species,TextureResolution.Size256)=="dvd:/"+species+".dndmodel","256px remains an explicit supported villager option");
     foreach(var resolution in new[]{TextureResolution.Size512,TextureResolution.Size1024}){
