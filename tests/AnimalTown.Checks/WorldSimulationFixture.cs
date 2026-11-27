@@ -28,6 +28,7 @@ internal sealed partial class TownGame
     internal readonly ModelResidency modelResidency=new ModelResidency();
     internal readonly Model[] models=new Model[6];
     internal readonly bool[] hasIdleClip=new bool[6];
+    internal readonly bool[] visualOverrides=new bool[BuildingWorld.Actors],visualIdle=new bool[BuildingWorld.Actors],visualAnimated=new bool[BuildingWorld.Actors];
     internal readonly bool[] villagersMoving=new bool[Town.NpcActorCount],restartClips=new bool[BuildingWorld.Actors];
     internal readonly DialogueVoice dialogueVoice=new DialogueVoice(new Dolphin.Audio.Sound());
     internal bool resourcesReady=true,playerRunning,cliffPreview=false;

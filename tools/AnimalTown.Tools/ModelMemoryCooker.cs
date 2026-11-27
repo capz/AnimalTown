@@ -29,11 +29,26 @@ internal static class ModelMemoryCooker
         byte[] bytes=Create(root,out object[] records);File.WriteAllBytes(Path.Combine(root,"out/disc",DiscName),bytes);
         File.WriteAllText(Path.Combine(root,"out/model-memory-audit.json"),JsonSerializer.Serialize(new{schema=1,loadGuardBytes=ModelMemoryPlan.LoadGuardBytes,model=records},new JsonSerializerOptions{WriteIndented=true})+"\n");
         Console.WriteLine("Villager memory admission: six package-bound native allocation plans, "+bytes.Length+" runtime bytes");
+        File.WriteAllBytes(Path.Combine(root,"out/disc/villager-appearance-memory.bin"),Appearances(root));
     }
     internal static void Validate(string root)
     {
         byte[] expected=Create(root,out _),actual=File.ReadAllBytes(Path.Combine(root,"out/disc",DiscName));
         if(!expected.SequenceEqual(actual))throw new InvalidDataException("Villager memory plan differs from the actual packaged 128px models");
+        if(!Appearances(root).SequenceEqual(File.ReadAllBytes(Path.Combine(root,"out/disc/villager-appearance-memory.bin"))))throw new InvalidDataException("Appearance memory plan differs from packaged models");
+    }
+    private static byte[] Appearances(string root)
+    {
+        var bytes=new byte[8+VillagerAppearance.Count*8];
+        BinaryPrimitives.WriteInt32LittleEndian(bytes,0x41564d31);
+        BinaryPrimitives.WriteInt32LittleEndian(bytes.AsSpan(4),VillagerAppearance.Count);
+        for(int id=0;id<VillagerAppearance.Count;id++){
+            var plan=ModelMemoryPlan.Estimate(File.ReadAllBytes(Path.Combine(root,"out/disc",VillagerAppearance.Models[id]+"-tex128.dndmodel")));
+            ValidateCaps(plan);
+            BinaryPrimitives.WriteInt32LittleEndian(bytes.AsSpan(8+id*8),plan.PackageBytes);
+            BinaryPrimitives.WriteInt32LittleEndian(bytes.AsSpan(12+id*8),plan.OneInstancePeak);
+        }
+        return bytes;
     }
     internal static void Check()
     {

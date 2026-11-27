@@ -60,7 +60,7 @@ internal static class DepotPackage
     internal static string[] Payload(string directory)
     {
         var files=new SortedSet<string>(StringComparer.Ordinal){
-            "default.dol","opening.bnr","BUILD.txt","version.md","version.json","content.id","runtime.cfg","terrain.cfg","buildings.bin",ModelMemoryCooker.DiscName,
+            "default.dol","opening.bnr","BUILD.txt","version.md","version.json","content.id","runtime.cfg","terrain.cfg","buildings.bin",ModelMemoryCooker.DiscName,"villager-appearance-memory.bin",
             "savebanner.rgb5a3","saveicon.rgb5a3","gorditas-bold.dndtex","gorditas-bold.metrics","Gorditas-OFL.txt","wordmark.dndtex","item-icons.dndtex",
             "splash-dolphindotnet.dndtex","splash-hypercube-engine.dndtex","cliff-soil.dndtex",PathAssets.DiscName,
             "THIRD-PARTY-NOTICES.txt","DolphinDotNet-LICENSE.txt","Hypercube-LICENSE.txt","Ryu-LICENSE.txt","ufbx-LICENSE.txt","Unicode-LICENSE.txt","DEPOT-README.txt"
@@ -69,6 +69,7 @@ internal static class DepotPackage
         foreach(string name in DroppedItemAssets.Names)files.Add(name+".dndtex");
         WaterTextureArt.AddPayload(directory,files);
         var models=new SortedSet<string>(new[]{"fox","bunny","giraffe","cat","hamster","spaniel","building","tent"},StringComparer.Ordinal);
+        models.UnionWith(VillagerAppearance.Models);
         foreach(string name in new[]{"fox","bunny","giraffe","cat","hamster","spaniel"}){files.Add("picker-"+name+".dndtex");files.Add(name+"-lod1-tex128.dndmodel");}
         BuildingCatalog.Configure(File.ReadAllBytes(At(directory,"buildings.bin")));
         for(int i=0;i<BuildingCatalog.Count;i++){
@@ -193,7 +194,7 @@ internal static class DepotPackage
             string name=property.Name;
             bool allowed=fixedNames.Split('|').Contains(name)||name=="daylight-build.json"||Regex.IsMatch(name,@"\Adaylight-(noon|dawn|dusk|night)-(a\.png|b\.png|report\.json)\z")||Regex.IsMatch(name,@"\Aterrain-materials-[a-z0-9-]+\.png\z")||
                 Regex.IsMatch(name,@"\Avideo-options-(build|smoothing-aa-option|options-title-options(-load)?|unsupported-title-options-unsupported)\.json\z")||Regex.IsMatch(name,@"\Avideo-options-(smoothing|options|unsupported)-[a-z0-9-]+\.png\z")||
-                Regex.IsMatch(name,@"\Ascenarios/(cliff-hud|gpu-submit|performance|jobs)/[^/\\:]+\.(png|json|txt|log|avi)\z");
+                Regex.IsMatch(name,@"\Ascenarios/(cliff-hud|gpu-submit|performance|jobs|villager-visuals)/[^/\\:]+\.(png|json|txt|log|avi)\z");
             if(!allowed||!seen.Add(name))throw new InvalidDataException("Source or unsupported release report: "+name);
             var entry=archive.GetEntry("release/"+name)??throw new InvalidDataException("Missing release report: "+name);
             using var input=entry.Open();if(Convert.ToHexString(SHA256.HashData(input)).ToLowerInvariant()!=property.Value.GetString())throw new InvalidDataException("Release report checksum mismatch: "+name);

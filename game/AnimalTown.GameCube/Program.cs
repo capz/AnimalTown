@@ -156,6 +156,7 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
     private readonly ActorFrameVisibility actorVisibility=new ActorFrameVisibility();
     private readonly AnimationFrameClock animationClock=new AnimationFrameClock(BuildingWorld.Actors);
     private readonly bool[] hasIdleClip=new bool[6];
+    private readonly bool[] visualOverrides=new bool[BuildingWorld.Actors],visualIdle=new bool[BuildingWorld.Actors],visualAnimated=new bool[BuildingWorld.Actors];
     private readonly bool[] restartClips=new bool[BuildingWorld.Actors];
     private readonly int[] appliedClips=new int[BuildingWorld.Actors];
     private float desiredPlayerSpeed=1.05f,appliedPlayerSpeed=1.05f;
@@ -244,8 +245,8 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
     private const int SettingsTab=5,TestingTab=6,DaylightSettingsRow=6;
     // Stable IDs keep hidden/retired controls out of both debug menus.
     private const int SeasonPreviewOption=18,TimePreviewOption=39;
-    private const int ProfilingModeOption=41,ExportProfileOption=42;
-    private static readonly int[] testingOptions={0,2,3,11,16,17,35,SeasonPreviewOption,TimePreviewOption,19,21,22,23,34,36,37,38,31,32,ProfilingModeOption,ExportProfileOption};
+    private const int ProfilingModeOption=41,ExportProfileOption=42,VillagerVisualOption=44;
+    private static readonly int[] testingOptions={0,2,3,11,16,17,35,SeasonPreviewOption,TimePreviewOption,19,21,22,23,34,36,37,38,31,32,ProfilingModeOption,ExportProfileOption,VillagerVisualOption};
     private static readonly string[] groundMipLabels={"0","1"};
     private static int TestingOption(int row)=>testingOptions[row];
     private static readonly string[] tabs={"Backpack","Jobs","Catalog","Home","Post office","Settings","Debug / testing"};
@@ -358,6 +359,7 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
         DisposeOnlineActors();
 #endif
         for(int i=0;i<actors.Length;i++){actors[i]?.Dispose();actors[i]=null;}
+        visualSwap?.Dispose();visualSwap=null;
         if(unadopted!=null&&Array.IndexOf(models,unadopted)<0)unadopted.Dispose();
         for(int i=0;i<models.Length;i++){models[i]?.Dispose();models[i]=null!;}
         startupAdmission.Cancel();
@@ -542,6 +544,7 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
             !villagers.Doors.Busy(0)&&requestedUv<0&&uvDebug==0;
         modelResidency.Pump(at,allowDemotion,deadline);
         modelLod.Pump(Clock.Timestamp,deadline);
+        PumpVillagerVisuals();
         int changedActors=modelLod.ConsumeChangedActors();
 #if ANIMALTOWN_ONLINE_PLAY
         PrepareOnlineActors(Clock.Timestamp,true);
@@ -666,6 +669,7 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
         if(!resourcesReady||!modelSceneReady||room==0&&!terrain.Ready){if(loadingFailed&&session.Draft!=null&&p.B.WasPressed)ExitToTitle=true;return;}
         if(DebugMenuSettings.Read(p)){
             if(!DebugMenuSettings.Visible){
+                if(screen==VillagerVisualScreen){screen="menu";menuTab=SettingsTab;selected=0;}
                 ClearChatAttention();
                 if(menuTab==TestingTab){menuTab=SettingsTab;selected=0;}
                 if(returnToMenu&&returnMenuTab==TestingTab){returnMenuTab=SettingsTab;returnMenuSelection=0;}
@@ -674,6 +678,7 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
             saveStatus=UserOptionsStorage.Status;return;
         }
         if(session.Draft!=null){OnboardingInput(p);return;}
+        if(screen==VillagerVisualScreen){VillagerVisualInput(p);return;}
         bool chord=p.L.IsHeld&&p.R.IsHeld;
         if(chord&&p.Y.WasPressed){TraceJobView();return;}
         if(screen==ChatEntry.Screen){ChatInput(p);return;}
@@ -893,6 +898,7 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
             case 0:FrameProfile.Enabled=!FrameProfile.OverlayVisible;debugConfig.SelectProfilingMode(FrameProfile.Mode);break;
             case ProfilingModeOption:FrameProfile.SetMode((FrameProfile.Mode+1)%4);debugConfig.SelectProfilingMode(FrameProfile.Mode);if(FrameProfile.Status.StartsWith("Capture refused"))Say("Profiling",FrameProfile.Status);break;
             case ExportProfileOption:FrameProfile.DumpCapture();debugConfig.SelectProfilingMode(FrameProfile.Mode);break;
+            case VillagerVisualOption:OpenVillagerVisuals();break;
             case 2:case 3:
                 int next=uvDebug^(TestingOption(selected)==2?1:2);
                 if(modelResidency.AllReady&&modelLod.FullReady)ApplyUv(next);else requestedUv=next;
@@ -928,6 +934,7 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
             case 0:return "Performance display: "+OnOff(FrameProfile.OverlayVisible);
             case ProfilingModeOption:return "Profiling: "+DevConfig.ProfilingLabel(FrameProfile.Mode)+" (session)";
             case ExportProfileOption:return "Export profiling capture to debug log";
+            case VillagerVisualOption:return "Villager visuals (session)";
             case 2:return "UV island colors: "+OnOff((uvDebug&1)!=0);
             case 3:return "UV island outlines: "+OnOff((uvDebug&2)!=0);
             case 11:return "Frame pacing: "+((RuntimeOptions.Mode&1)!=0?"Uncapped":"Yield");
@@ -1006,9 +1013,9 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
             int clip=animationClock.Clip(i);
             if(restartClips[i]||appliedClips[i]!=clip){
                 restartClips[i]=false;
-                string name=clip==IdleClip?"Idle":clip==1?"Running":"Walking";int model=i==0?state.Species:state.NpcSpecies(i-1);
+                string name=clip==IdleClip?"Idle":clip==1?"Running":"Walking";
                 if(clip<0)instance.Animator.Stop();
-                else if(models[model].TryGetAnimation(name,out _)){
+                else if(instance.Model.TryGetAnimation(name,out _)){
                     float speed=i==0&&clip!=IdleClip?desiredPlayerSpeed:1;
                     instance.Animator.Play(name,true);instance.Animator.SetSpeed(speed);
                     if(i==0)appliedPlayerSpeed=speed;
@@ -1151,7 +1158,7 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
         PrepareFoliage(environmentTint);
         int opaqueBuildingTypes=0;for(int type=0;type<BuildingCatalog.Count;type++)if(buildings.Ready(type))opaqueBuildingTypes|=1<<type;
         actorVisibility.Prepare(state,villagers.Doors,indoorCamera,waterInspection,cachedPlayerHeight,opaqueBuildingTypes,terrain.Ready);
-        for(int actor=1;actor<actors.Length;actor++)if(actorVisibility.Visible[actor]&&(actors[actor]==null||!modelResidency.Ready(state.NpcSpecies(actor-1))))actorVisibility.Visible[actor]=false;
+        for(int actor=1;actor<actors.Length;actor++)if(actorVisibility.Visible[actor]&&(actors[actor]==null||!visualOverrides[actor]&&!modelResidency.Ready(state.NpcSpecies(actor-1))))actorVisibility.Visible[actor]=false;
         modelLod.Require(state,actorVisibility,uvDebug!=0||requestedUv>=0,villagers.Doors);
         UpdateAnimationFrame();
         if((renderDebug.ForceAttention||attendingVillager>=0)&&villagers.Doors.PlayerFade<1)attention.Prepare();
@@ -1467,6 +1474,7 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
             return;
         }
         if(screen==DaylightLocationMenu.Screen){daylightMenu.Draw(ui,font,headingFont,batchedDrawing?uiShapes:null);return;}
+        if(screen==VillagerVisualScreen){DrawVillagerVisuals(ink);return;}
         if(screen=="world"){if(room==0&&runningMinimap.Opacity>0)DrawMinimap();if(room==0&&renderDebug.ShowGroundMipBands)DrawGroundMipLegend(ink);return;}
         if((screen=="menu"&&menuTab==0)||screen=="item"){DrawBackpack();return;}
         Panel(45,75,550,350);string title=screen=="menu"?tabs[menuTab]:screen=="post"?"Town hall":screen=="mail"?"Mailbox":"Koban / Lost and Found";

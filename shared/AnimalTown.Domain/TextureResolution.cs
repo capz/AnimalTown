@@ -6,7 +6,7 @@ public static class TexturePolicy
 {
     public const TextureResolution Default=TextureResolution.Size256;
     public const TextureResolution VillagerDefault=TextureResolution.Size128;
-    public static bool IsVillagerModel(string name)=>name is "fox" or "bunny" or "giraffe" or "cat" or "hamster" or "spaniel";
+    public static bool IsVillagerModel(string name)=>Array.IndexOf(VillagerAppearance.Models,name)>=0;
     public static TextureResolution DefaultForModel(string name)=>IsVillagerModel(name)?VillagerDefault:Default;
     public static int Edge(TextureResolution resolution)
     {

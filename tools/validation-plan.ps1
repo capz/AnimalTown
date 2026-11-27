@@ -1,5 +1,6 @@
 # Each changed path contributes its own scenarios. Mixed changes take the union.
 function Get-EmulatorChecksForPath([string]$Path) {
+    if($Path -match '^assets/models/villagers/|^game/AnimalTown.GameCube/(VillagerVisualSwap|TownGame\.VillagerVisuals)\.cs$|^shared/AnimalTown.Domain/VillagerAppearance\.cs$'){'villager-visuals'}
     if($Path -match '^game/AnimalTown.GameCube/Program\.cs$|^tools/(iso-smoke|dolphin_pad)\.py$'){
         return $allEmulator
     }
@@ -45,7 +46,7 @@ function Get-ValidationPlan {
     $allManaged=@('ui','menu','text','trim','terrain','movement','dialogue','generation','life','saves','buildings','core','content')
     $allRendering=@('water','services','movement','ground','index','visibility','attention','dropped-item')
     $allResources=@('memory','floor','snow','visual')
-    $allEmulator=@('title-logo','video-options','save-and-quit','terrain-materials','card-slot-b','card-choose-b','card-without-saving','card-no-card','daylight','job-delivery','job-mail','job-helipad','job-online-review')
+    $allEmulator=@('title-logo','video-options','save-and-quit','terrain-materials','card-slot-b','card-choose-b','card-without-saving','card-no-card','daylight','job-delivery','job-mail','job-helipad','job-online-review','villager-visuals')
     $resources=[Collections.Generic.HashSet[string]]::new()
     $emulator=[Collections.Generic.HashSet[string]]::new()
     $rendering=[Collections.Generic.HashSet[string]]::new()
@@ -77,6 +78,10 @@ function Get-ValidationPlan {
             $release=$true
         }
         foreach($scenario in (Get-EmulatorChecksForPath $p)){[void]$emulator.Add($scenario)}
+        if($p -match '^(shared/AnimalTown.Domain/VillagerAppearance|game/AnimalTown.GameCube/(VillagerVisualSwap|TownGame\.VillagerVisuals)|tests/AnimalTown.Checks/VillagerVisualSwapChecks)\.cs$'){
+            Add-Managed 'menu';Add-Managed 'buildings';Add-Managed 'saves';[void]$resources.Add('memory');[void]$resources.Add('visual');continue
+        }
+        if($p -eq 'tools/import-villagers.py'){[void]$tooling.Add('repack');[void]$resources.Add('memory');continue}
         if($p -match '^game/AnimalTown.GameCube/(BuildingRenderer|VisualResidencyBudget|StartupModelAdmission|TownLights|WaterBumpEffect)\.cs$'){
             [void]$resources.Add('memory')
         }

@@ -84,8 +84,9 @@ internal sealed partial class TownGame
     }
     private void StepActorAnimation(int actor,int species,int movementClip)
     {
-        int clip=movementClip<0&&hasIdleClip[species]?IdleClip:movementClip;
-        animationClock.Step(actor,clip,models[species].Animations.Count>0);
+        bool idle=visualOverrides[actor]?visualIdle[actor]:hasIdleClip[species];
+        int clip=movementClip<0&&idle?IdleClip:movementClip;
+        animationClock.Step(actor,clip,visualOverrides[actor]?visualAnimated[actor]:models[species].Animations.Count>0);
     }
     private int weatherDay;
     private int EnvironmentMinute=>renderDebug.EffectiveMinute(townClock.MinuteOfDay);

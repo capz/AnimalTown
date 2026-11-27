@@ -260,6 +260,65 @@ def testing_menu_options():
     if not match:raise AssertionError('Cannot locate debug-menu option contract')
     return [entry.strip() for entry in match[1].split(',') if entry.strip()]
 
+
+def villager_visuals():
+    """Real menu/model/animation swaps, with a disposable town and saved records."""
+    import re
+    sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'docs/performance'))
+    from avi_guest_clock import AviGuestClock
+    clock=AviGuestClock(user/'Dump/Frames',track_presentations=True)
+    # Options saves and model paging can outlast a wall-timed pulse. Wait for
+    # actual guest presentations on both sides of each menu input edge.
+    def tap(button):press_presented(button,clock)
+    start_game(True,'visuals-start');set_debug_visibility(True)
+    before=committed_card_sequence(root/'MemoryCardA.USA.raw',details=True)
+    report={'scenario':'villager-visuals','passed':False,'swaps':[],'physical_hardware':False}
+    def marker(pattern,after=0,retry=None):
+        deadline=time.monotonic()+120
+        retry_at=time.monotonic()+3
+        while time.monotonic()<deadline:
+            if p.poll() is not None:raise AssertionError('Game exited during visual swapping')
+            check_runtime_failure()
+            match=re.search(pattern,runtime_log_text()[after:])
+            if match:return match
+            # Essential admission may first ask the paging owner to reclaim
+            # headroom. Repeat Apply as the menu instructs; busy loads ignore A.
+            if retry and time.monotonic()>=retry_at:
+                retry();retry_at=time.monotonic()+3
+            time.sleep(.2)
+        screenshot('visuals-timeout.png');raise AssertionError('Missing visual marker: '+pattern)
+    def choose(actor,appearance):
+        begin=len(runtime_log_text());tap('START');tap('R')
+        row=testing_menu_row('VillagerVisualOption');count=testing_menu_count()
+        for _ in range(min(row,count-row)):tap('D_DOWN' if row<=count//2 else 'D_UP')
+        tap('A');marker(r'VILLAGER VISUAL MENU actor 0 ',begin)
+        for _ in range(actor):tap('D_RIGHT')
+        tap('D_DOWN')
+        for _ in range(13):
+            events=re.findall(r'VILLAGER VISUAL MENU actor (\d+) candidate (-?\d+)',runtime_log_text()[begin:])
+            if events and tuple(map(int,events[-1]))==(actor,appearance):break
+            tap('D_RIGHT')
+        else:raise AssertionError('Cannot select unused appearance '+str(appearance))
+        screenshot('visuals-selected-'+str(actor)+'-'+str(appearance)+'.png')
+        tap('D_DOWN');apply_at=len(runtime_log_text());tap('A')
+        marker(r'VILLAGER VISUAL APPLIED actor '+str(actor)+' appearance '+str(appearance)+r'\b',apply_at,retry=lambda:tap('A'))
+        screenshot('visuals-applied-'+str(actor)+'-'+str(appearance)+'.png')
+        tap('B');tap('B');time.sleep(2)
+        screenshot('visuals-world-'+str(actor)+'-'+str(appearance)+'.png')
+        report['swaps'].append({'actor':actor,'appearance':appearance})
+    for appearance in range(6,12):
+        choose(0,appearance)
+        # Force both standing and locomotion on each supplied rig.
+        os.write(controller,b'SET MAIN 0.7 0.5\n');time.sleep(2)
+        os.write(controller,b'PRESS B\n');time.sleep(2)
+        os.write(controller,b'RELEASE B\n')
+        os.write(controller,b'SET MAIN 0.5 0.5\n');time.sleep(1)
+    choose(1,6)
+    after=committed_card_sequence(root/'MemoryCardA.USA.raw',details=True)
+    if after!=before:raise AssertionError('Visual-only swaps changed committed town/player/job records')
+    report.update(passed=True,committed_records_unchanged=True)
+    (root/'villager-visuals-report.json').write_text(json.dumps(report,indent=2)+'\n')
+
 def testing_menu_count():
     return len(testing_menu_options())
 
@@ -2817,7 +2876,7 @@ DumpCodec = ffv1
 [Hacks]
 EFBToTextureEnable = False
 ''')
-if '--profile' in sys.argv or '--interaction-profile' in sys.argv or '--runtime-profile' in sys.argv or '--terrain-scroll' in sys.argv or '--lighting' in sys.argv or '--actor-shadows' in sys.argv or '--movement-profile' in sys.argv or '--stream-travel' in sys.argv or '--submissions' in sys.argv or '--aram-residency' in sys.argv or '--player-chat' in sys.argv or '--jobs' in sys.argv:
+if '--profile' in sys.argv or '--interaction-profile' in sys.argv or '--runtime-profile' in sys.argv or '--terrain-scroll' in sys.argv or '--lighting' in sys.argv or '--actor-shadows' in sys.argv or '--movement-profile' in sys.argv or '--stream-travel' in sys.argv or '--submissions' in sys.argv or '--aram-residency' in sys.argv or '--player-chat' in sys.argv or '--jobs' in sys.argv or '--villager-visuals' in sys.argv:
     config=user/'Config'/'Dolphin.ini'
     config.write_text(config.read_text()+'\n[Movie]\nDumpFrames = True\nDumpFramesSilent = True\n')
     config=user/'Config'/'GFX.ini'
@@ -2839,7 +2898,7 @@ with (root/'emulator.log').open('w') as log:
         if '--loading' in sys.argv:
             for n,seconds in enumerate((1,1,2,4,8,12,17)):
                 time.sleep(seconds);screenshot(f'loading-{n}.png')
-        elif any(flag in sys.argv for flag in ('--jobs','--online-review','--aram-residency','--title-logo','--terrain-materials','--save-cards','--save-and-quit','--daylight-clock','--daylight-location','--player-chat')):wait_title()
+        elif any(flag in sys.argv for flag in ('--villager-visuals','--jobs','--online-review','--aram-residency','--title-logo','--terrain-materials','--save-cards','--save-and-quit','--daylight-clock','--daylight-location','--player-chat')):wait_title()
         else:time.sleep(45)
         if p.poll() is not None:
             raise RuntimeError(f'Dolphin exited during boot ({p.returncode}); see {root / "emulator.log"}')
@@ -2856,6 +2915,7 @@ with (root/'emulator.log').open('w') as log:
         elif '--daylight-clock' in sys.argv:daylight_clock()
         elif '--save-cards' in sys.argv:memory_cards()
         elif '--save-and-quit' in sys.argv:save_and_quit()
+        elif '--villager-visuals' in sys.argv:villager_visuals()
         elif '--onboarding' in sys.argv:
             onboarding()
         elif '--debug-visibility' in sys.argv:debug_visibility_scenario()

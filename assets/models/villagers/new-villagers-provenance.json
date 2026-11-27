@@ -1,0 +1,153 @@
+[
+  {
+    "model": "penguin",
+    "input": "4c8507cd-d3f8-44c4-a471-ec562a57d5fe.zip",
+    "inputSha256": "d96ee82dc87a58771d59ca29b1efe248239a9699de9fb47d5e6a4477b370989b",
+    "exports": [
+      {
+        "entry": "base_basic_shaded.glb",
+        "sha256": "121c8dc76d36a42e1d3247feb5425092dc91d8ea6ab206f0cff6f9ce99099356",
+        "clips": {
+          "human_000024": "Running",
+          "human_000088": "Walking",
+          "human_000092": "Idle"
+        }
+      }
+    ],
+    "source": "assets/models/villagers/villager_penguin.glb",
+    "sha256": "8db105b19c82005997685fd2df585bf7a57a2be85938dd4cb324683fafb4e867",
+    "textureEdge": 128,
+    "skinInfluences": 4,
+    "maximumDroppedWeight": 0.07399267703294754,
+    "locomotionRootMotion": "horizontal hips travel removed; vertical bob and cyclic sway retained",
+    "walkingDerivedFromHalfSpeedRun": false
+  },
+  {
+    "model": "whitetiger",
+    "input": "4073a55c-6aeb-4f37-a34b-6143d24d1684.zip",
+    "inputSha256": "e253f4f0f99b7b1a88955765b3a38e0cc07bdb377844bffadd54447f38e61f0a",
+    "exports": [
+      {
+        "entry": "base_basic_shaded.glb",
+        "sha256": "063eba5a4fd923b6a074cdd4abdd9922580915c8387cf0b56dde6787dbcb6ed9",
+        "clips": {
+          "human_000024": "Running",
+          "human_000088": "Walking",
+          "human_000013": "Idle"
+        }
+      }
+    ],
+    "source": "assets/models/villagers/villager_whitetiger.glb",
+    "sha256": "ba1b312add8e6467feb57e6e099b515f9a663e5acd094c26589f008c7406c56c",
+    "textureEdge": 128,
+    "skinInfluences": 4,
+    "maximumDroppedWeight": 0.12014652055222541,
+    "locomotionRootMotion": "horizontal hips travel removed; vertical bob and cyclic sway retained",
+    "walkingDerivedFromHalfSpeedRun": false
+  },
+  {
+    "model": "lion",
+    "input": "adb5cd87-ad82-4891-ab6e-c7135ce35371.zip",
+    "inputSha256": "6d260eafb9115faba69a93bb8ec67a2c32c83c439abcda66c9125661bf367144",
+    "exports": [
+      {
+        "entry": "animations_1/base_basic_shaded.glb",
+        "sha256": "fe7203be5ca05b6cad37beb09b485d4036be50389fbb25ebdbb7f49596396380",
+        "clips": {
+          "520ecc97-7a14-41be-af31-bf2f03d7fd5b": "Walking"
+        }
+      },
+      {
+        "entry": "animations_2/base_basic_shaded.glb",
+        "sha256": "be9435630e9a72ee7866d996e0d3417b7e7a8fb39a3cde5574ddc828b66a8e01",
+        "clips": {
+          "human_000024": "Running",
+          "human_000093": "Idle"
+        }
+      }
+    ],
+    "source": "assets/models/villagers/villager_lion.glb",
+    "sha256": "ceb3f791e9dd8dabcb59a68aa58e30449ed9974711ff7de87f995150babb818b",
+    "textureEdge": 128,
+    "skinInfluences": 4,
+    "maximumDroppedWeight": 0.051513671875,
+    "locomotionRootMotion": "horizontal hips travel removed; vertical bob and cyclic sway retained",
+    "walkingDerivedFromHalfSpeedRun": false
+  },
+  {
+    "model": "robin",
+    "input": "1f2f9207-6ad5-4d27-a311-d1d2c1d689d4.zip",
+    "inputSha256": "9414cbdbb44d5d57947a3b2d1f9f92c4f639b5b4e7644540a3b6b44f299b204d",
+    "exports": [
+      {
+        "entry": "animations_1/base_basic_shaded.glb",
+        "sha256": "28f250122c15c6eadfc64818e2c6b146d68e8d7ad89ab3902f51ebfb47754e79",
+        "clips": {
+          "94c95627-1aa6-4887-888d-9f072bbb7edd": "Idle"
+        }
+      },
+      {
+        "entry": "animations_2/base_basic_shaded.glb",
+        "sha256": "c95c14077c462d010661445561ad3f6ef4c52704cc1ae6e3b42bb013461f1aaf",
+        "clips": {
+          "human_000046": "Running",
+          "human_000089": "Walking"
+        }
+      }
+    ],
+    "source": "assets/models/villagers/villager_robin.glb",
+    "sha256": "0389d030816adf79ae2c666f4eace6e68baffa853bde04f32ff9ea9fdbdd8932",
+    "textureEdge": 128,
+    "skinInfluences": 4,
+    "maximumDroppedWeight": 0.15946276299655437,
+    "locomotionRootMotion": "horizontal hips travel removed; vertical bob and cyclic sway retained",
+    "walkingDerivedFromHalfSpeedRun": false
+  },
+  {
+    "model": "raccoon",
+    "input": "f8e7f757-1bf9-4cf9-81cb-948b3801a14b (1).zip",
+    "inputSha256": "d23e6ad3b40a3a27e0fb1291b0ecf18269f801641df5e7177093379acfce0cc0",
+    "exports": [
+      {
+        "entry": "base_basic_shaded.glb",
+        "sha256": "b5e2f0c1030e74c374f3f793e7b72fa4e51149ff23a159e059747c6282d4dab2",
+        "clips": {
+          "human_000024": "Running",
+          "human_000088": "Walking",
+          "human_000093": "Idle"
+        }
+      }
+    ],
+    "source": "assets/models/villagers/villager_raccoon.glb",
+    "sha256": "1b49972a5013aad989d5ae5fa8add872efaaaf177036e16bb074ed589452e0dc",
+    "textureEdge": 128,
+    "skinInfluences": 4,
+    "maximumDroppedWeight": 0.27423688024282455,
+    "locomotionRootMotion": "horizontal hips travel removed; vertical bob and cyclic sway retained",
+    "walkingDerivedFromHalfSpeedRun": false
+  },
+  {
+    "model": "pugofficer",
+    "input": "base_basic_shaded (1).glb",
+    "inputSha256": "aade138e4f149fc7ca0ecb636e83e2414442dffcc71402fb4f7144bab50428df",
+    "exports": [
+      {
+        "entry": "base_basic_shaded (1).glb",
+        "sha256": "aade138e4f149fc7ca0ecb636e83e2414442dffcc71402fb4f7144bab50428df",
+        "clips": {
+          "human_000024": "Running",
+          "human_000050": "Bow",
+          "human_000057": "Sit",
+          "human_000093": "Idle"
+        }
+      }
+    ],
+    "source": "assets/models/villagers/villager_pugofficer.glb",
+    "sha256": "38f69e4e29ad646c67becb2803fc96413e44bd2ff57a8e716826cd05d8aef819",
+    "textureEdge": 128,
+    "skinInfluences": 4,
+    "maximumDroppedWeight": 0.09010989218950272,
+    "locomotionRootMotion": "horizontal hips travel removed; vertical bob and cyclic sway retained",
+    "walkingDerivedFromHalfSpeedRun": true
+  }
+]
