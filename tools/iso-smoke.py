@@ -1435,6 +1435,10 @@ def options_card_files(path=None):
             except AssertionError:continue # Incomplete initial creation keeps the legacy source files authoritative.
             if phase in (1,2,3) and (published is None or (epoch,name=='AnimalTown2')>published[:2]):
                 published=(epoch,name=='AnimalTown2',{key:value for key,value in records.items() if key!='AT-Archive'})
+        elif name in ('AnimalTown-Online0','AnimalTown-Online1','AnimalTown-Link0','AnimalTown-Link1','AnimalTown-Service'):
+            # Recovery/link files use independent SDK saves, outside the town
+            # archive. Keep them when selecting the published town checkpoint.
+            dedicated[name]=payload
         elif name in ('AnimalTown-Video','AnimalTown-Debug'):
             dedicated['options' if name=='AnimalTown-Video' else 'dev_config']=payload
             if count!=1:raise AssertionError('Settings entry must occupy one block')

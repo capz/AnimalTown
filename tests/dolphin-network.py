@@ -1,7 +1,8 @@
-"""Check the emulator DNS contract and reject unusable probe replies offline."""
+"""Check emulator DNS, native failure handling and committed card extraction."""
 from pathlib import Path
 from contextlib import redirect_stdout
 from io import StringIO
+import ast
 import importlib.util
 import json
 import os
@@ -154,6 +155,110 @@ class OnlineFailureCaptureChecks(unittest.TestCase):
         self.assertEqual(report['return_retries'], 1)
         self.assertEqual(captured, ['online-play-return-retry-1.png',
                                    'online-play-flow-failure.png'])
+
+
+
+class OnlineCardExtractionChecks(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        # Load the production parsers without starting Dolphin or touching a
+        # user's card. Exercise real directory/BAT and DTR1 checksum selection.
+        source = Path(__file__).resolve().parents[1] / 'tools' / 'iso-smoke.py'
+        parsed = ast.parse(source.read_text())
+        definitions = [node for node in parsed.body if isinstance(node, ast.FunctionDef)
+                       and node.name in ('archive_records', 'options_card_files')]
+        namespace = {}
+        exec(compile(ast.Module(body=definitions, type_ignores=[]), str(source), 'exec'), namespace)
+        cls.extract = staticmethod(namespace['options_card_files'])
+
+    @staticmethod
+    def hash_bytes(data):
+        value = 2166136261
+        for byte in data:
+            value = ((value ^ byte) * 16777619) & 0xffffffff
+        return value
+
+    def archive(self):
+        block = 8192
+        payload = bytearray(6 * block)
+        struct.pack_into('<8I', payload, 0, 0x31525444, 1, 7, 6,
+                         0x32435241, 4, 0, 2)
+        name, value = b'AT-Town0', b'published town'
+        payload[32:32 + len(name)] = name
+        struct.pack_into('<4I', payload, 64, 2, 0, len(value), self.hash_bytes(value))
+        payload[2 * block:2 * block + len(value)] = value
+        struct.pack_into('<I', payload, block - 4, self.hash_bytes(payload[:block - 4]))
+        return bytes(payload)
+
+    @staticmethod
+    def card(files):
+        sector = 8192
+        card = bytearray(64 * sector)
+        directory = bytearray(b'\xff' * sector)
+        bat = bytearray(sector)
+        cursor = 5
+        for index, (name, payload) in enumerate(files.items()):
+            data = bytearray(96)
+            data[:8] = b'DNDSAVE1'
+            struct.pack_into('>II', data, 8, len(payload), 96)
+            if name == 'AnimalTown':
+                data[16:24] = b'DNDREC01'
+            data.extend(payload)
+            count = (len(data) + sector - 1) // sector
+            data.extend(bytes(count * sector - len(data)))
+            at = index * 64
+            directory[at:at + 6] = b'AMTE01'
+            encoded = name.encode('ascii')
+            directory[at + 8:at + 40] = encoded + bytes(32 - len(encoded))
+            struct.pack_into('>HH', directory, at + 54, cursor, count)
+            for part in range(count):
+                struct.pack_into('>H', bat, 10 + (cursor + part - 5) * 2,
+                                 65535 if part == count - 1 else cursor + part + 1)
+            card[cursor * sector:(cursor + count) * sector] = data
+            cursor += count
+
+        def checksums(data, start, end):
+            words = struct.unpack('>' + str((end - start) // 2) + 'H', data[start:end])
+            sums = (sum(words) & 65535, sum(word ^ 65535 for word in words) & 65535)
+            return tuple(0 if value == 65535 else value for value in sums)
+
+        for number in (1, 2):
+            struct.pack_into('>H', directory, 0x1ffa, number)
+            struct.pack_into('>HH', directory, 0x1ffc, *checksums(directory, 0, 0x1ffc))
+            card[number * sector:(number + 1) * sector] = directory
+        for number in (3, 4):
+            struct.pack_into('>H', bat, 4, number - 2)
+            struct.pack_into('>HH', bat, 0, *checksums(bat, 4, sector))
+            card[number * sector:(number + 1) * sector] = bat
+        return card
+
+    def extract_files(self, files):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / 'MemoryCardA.USA.raw'
+            path.write_bytes(self.card(files))
+            return self.extract(path)
+
+    def test_published_archive_preserves_independent_online_records(self):
+        online = {name: ('independent ' + name).encode('ascii') for name in
+                  ('AnimalTown-Online0', 'AnimalTown-Online1', 'AnimalTown-Link0',
+                   'AnimalTown-Link1', 'AnimalTown-Service')}
+        records = self.extract_files({'AnimalTown': self.archive(), **online,
+                                      'AT-Town0': b'obsolete loose town',
+                                      'AT-Obsolete': b'obsolete loose bank'})
+        self.assertEqual(records, {'AT-Town0': b'published town', **online})
+
+    def test_console_settings_keep_aliases_alongside_online_journal(self):
+        records = self.extract_files({'AnimalTown': self.archive(),
+                                      'AnimalTown-Online0': b'recovery',
+                                      'AnimalTown-Video': b'video',
+                                      'AnimalTown-Debug': b'debug'})
+        self.assertEqual(records, {'AT-Town0': b'published town',
+                                   'AnimalTown-Online0': b'recovery',
+                                   'options': b'video', 'dev_config': b'debug'})
+
+    def test_legacy_card_still_retains_its_town_and_online_records(self):
+        files = {'AT-Town0': b'legacy town', 'AnimalTown-Online0': b'recovery'}
+        self.assertEqual(self.extract_files(files), files)
 
 
 unittest.main()
