@@ -32,6 +32,18 @@ SOURCES = [
         'base_basic_shaded (2).glb': {'human_000029': 'Running', 'human_000089': 'Walking', 'human_000093': 'Idle'}}),
     ('capybara', 'base_basic_shaded (3).glb', {
         'base_basic_shaded (3).glb': {'human_000013': 'Idle', 'human_000029': 'Running', 'human_000089': 'Walking'}}),
+    ('panda', 'b8428be7-a427-4f57-9b8e-265bf4da9e30.zip', {
+        'animations_1/base_basic_shaded.glb': {'b0c0eb12-b9ee-4939-9148-740ea5925e5b': 'Idle'},
+        'animations_2/base_basic_shaded.glb': {'human_000029': 'Running', 'human_000089': 'Walking'}}),
+    ('pig', 'faf2e7ad-7a5d-4c7b-9d5f-742636af8e13.zip', {
+        'animations_1/base_basic_shaded.glb': {'90cf6a96-490c-4f7d-9404-53ce0d37beff': 'RunningInPlace'},
+        'animations_2/base_basic_shaded.glb': {'human_000046': 'Running', 'human_000089': 'Walking'}}),
+    ('axolotl', '74687edf-fc6f-495b-91c9-1c1134fbc57a.zip', {
+        'animations_1/base_basic_shaded.glb': {'dbb8755c-7676-4526-abc1-9c6c3fea4343': 'Walking'},
+        'animations_2/base_basic_shaded.glb': {'human_000013': 'Idle', 'human_000029': 'Running'}}),
+    ('foxjacket', 'c9c5fd54-5e32-4927-b323-fa891b19ed5f.zip', {
+        'animations_1/base_basic_shaded.glb': {'214895d9-cee4-4669-81c5-aea80f3d67a3': 'Idle'},
+        'animations_2/base_basic_shaded.glb': {'human_000049': 'Running', 'human_000086': 'Walking'}}),
 ]
 
 
@@ -47,7 +59,6 @@ def read_glb(data):
 
 def import_model(archive, exports):
     model = None
-    samples = []
     provenance = []
     for filename, aliases in exports.items():
         data = archive.read(filename)
@@ -99,6 +110,49 @@ def import_model(archive, exports):
             sampler['input'] = len(model['accessors'])
             model['accessors'].append(accessor)
         model['animations'].append(walking)
+    derived_idle = not any(a['name'] == 'Idle' for a in model['animations'])
+    if derived_idle:
+        # The pig's custom export still runs its legs. Keep it as an extra
+        # source clip, and stand on bind hips/legs with its own relaxed walk
+        # upper-body pose. Key every previously animated TRS channel so a run
+        # cannot leave stale limb transforms behind when entering Idle.
+        defaults = {'translation': (0, 0, 0), 'rotation': (0, 0, 0, 1), 'scale': (1, 1, 1)}
+        lower = {'Hips', 'LeftUpLeg', 'LeftLeg', 'LeftFoot', 'LeftToeBase',
+                 'RightUpLeg', 'RightLeg', 'RightFoot', 'RightToeBase'}
+        walking = next(a for a in model['animations'] if a['name'] == 'Walking')
+        pose = {}
+        for channel in walking['channels']:
+            key = (channel['target']['node'], channel['target']['path'])
+            if key[1] not in defaults:
+                continue
+            sampler = walking['samplers'][channel['sampler']]
+            if sampler.get('interpolation', 'LINEAR') not in ('LINEAR', 'STEP'):
+                raise ValueError('Standing idle needs linear/step source channels')
+            accessor = model['accessors'][sampler['output']]
+            width = len(defaults[key[1]])
+            pose[key] = struct.unpack_from('<' + 'f' * width, views[accessor['bufferView']], accessor.get('byteOffset', 0))
+        targets = sorted({(c['target']['node'], c['target']['path'])
+                          for a in model['animations'] for c in a['channels'] if c['target']['path'] in defaults})
+        def append_values(values, kind):
+            packed = b''.join(struct.pack('<' + 'f' * len(value), *value) for value in values)
+            accessor = {'bufferView': len(views), 'componentType': 5126, 'count': len(values), 'type': kind}
+            if kind == 'SCALAR':
+                accessor.update(min=[values[0][0]], max=[values[-1][0]])
+            views.append(packed)
+            model['bufferViews'].append({'buffer': 0, 'byteLength': len(packed)})
+            index = len(model['accessors'])
+            model['accessors'].append(accessor)
+            return index
+        times = append_values([(0.0,), (1.0,)], 'SCALAR')
+        idle = {'name': 'Idle', 'samplers': [], 'channels': []}
+        for node_id, path in targets:
+            node = model['nodes'][node_id]
+            bind = tuple(node.get(path, defaults[path]))
+            value = bind if node.get('name') in lower else pose.get((node_id, path), bind)
+            output = append_values([value, value], 'VEC4' if path == 'rotation' else 'VEC3')
+            idle['channels'].append({'sampler': len(idle['samplers']), 'target': {'node': node_id, 'path': path}})
+            idle['samplers'].append({'input': times, 'output': output, 'interpolation': 'LINEAR'})
+        model['animations'].append(idle)
     if not {'Idle', 'Running', 'Walking'} <= {a['name'] for a in model['animations']}:
         raise ValueError('Each imported character needs Idle, Running and Walking')
     # World navigation owns movement. Remove horizontal travel from the hips
@@ -157,13 +211,17 @@ def import_model(archive, exports):
     for mesh in model['meshes']:
         for primitive in mesh['primitives']:
             attrs = primitive['attributes']
-            if 'JOINTS_1' not in attrs:
+            joint_sets = sorted(int(key.removeprefix('JOINTS_')) for key in attrs if key.startswith('JOINTS_'))
+            weight_sets = sorted(int(key.removeprefix('WEIGHTS_')) for key in attrs if key.startswith('WEIGHTS_'))
+            if joint_sets != weight_sets:
+                raise ValueError('Joint and weight attribute sets do not match')
+            if len(joint_sets) <= 1:
                 continue
             count = model['accessors'][attrs['JOINTS_0']]['count']
             joints, weights = bytearray(), bytearray()
             for vertex in range(count):
-                all_joints = values(attrs['JOINTS_0'], vertex) + values(attrs['JOINTS_1'], vertex)
-                all_weights = values(attrs['WEIGHTS_0'], vertex) + values(attrs['WEIGHTS_1'], vertex)
+                all_joints = sum((values(attrs[f'JOINTS_{group}'], vertex) for group in joint_sets), ())
+                all_weights = sum((values(attrs[f'WEIGHTS_{group}'], vertex) for group in joint_sets), ())
                 combined = {}
                 for joint, weight in zip(all_joints, all_weights):
                     combined[joint] = combined.get(joint, 0) + weight
@@ -177,7 +235,9 @@ def import_model(archive, exports):
                 weights.extend(struct.pack('<4f', *(weight / total for _, weight in strongest)))
             attrs['JOINTS_0'] = attribute(joints, count, 5123)
             attrs['WEIGHTS_0'] = attribute(weights, count, 5126)
-            del attrs['JOINTS_1'], attrs['WEIGHTS_1']
+            for group in joint_sets:
+                if group != 0:
+                    del attrs[f'JOINTS_{group}'], attrs[f'WEIGHTS_{group}']
     for image in model.get('images', []):
         original = Image.open(io.BytesIO(views[image['bufferView']]))
         original.thumbnail((128, 128), Image.Resampling.LANCZOS)
@@ -225,7 +285,7 @@ def import_model(archive, exports):
     binary.extend(b'\0' * (-len(binary) % 4))
     result = struct.pack('<IIIII', 0x46546c67, 2, 28 + len(text) + len(binary), len(text), 0x4e4f534a)
     result += text + struct.pack('<II', len(binary), 0x004e4942) + binary
-    return result, provenance, maximum_dropped_weight, derived_walk
+    return result, provenance, maximum_dropped_weight, derived_walk, derived_idle
 
 
 def main():
@@ -245,12 +305,12 @@ def main():
         source = downloads / filename
         if source.suffix == '.zip':
             with zipfile.ZipFile(source) as archive:
-                result, provenance, dropped_weight, derived_walk = import_model(archive, exports)
+                result, provenance, dropped_weight, derived_walk, derived_idle = import_model(archive, exports)
         else:
             class SingleGlb:
                 def read(self, filename):
                     return source.read_bytes()
-            result, provenance, dropped_weight, derived_walk = import_model(SingleGlb(), exports)
+            result, provenance, dropped_weight, derived_walk, derived_idle = import_model(SingleGlb(), exports)
         output = target / f'villager_{name}.glb'
         output.write_bytes(result)
         records[name] = {'model': name, 'input': filename, 'inputSha256': hashlib.sha256(source.read_bytes()).hexdigest(),
@@ -258,7 +318,8 @@ def main():
                         'sha256': hashlib.sha256(result).hexdigest(), 'textureEdge': 128,
                         'skinInfluences': 4, 'maximumDroppedWeight': dropped_weight,
                         'locomotionRootMotion': 'horizontal hips travel removed; vertical bob and cyclic sway retained',
-                        'walkingDerivedFromHalfSpeedRun': derived_walk}
+                        'walkingDerivedFromHalfSpeedRun': derived_walk,
+                        'idleDerivedFromStandingPose': derived_idle}
         print(name, len(result), flush=True)
     manifest.write_text(json.dumps(list(records.values()), indent=2) + '\n')
 
