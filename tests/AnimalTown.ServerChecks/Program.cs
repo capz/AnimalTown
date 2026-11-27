@@ -4,6 +4,8 @@ using Npgsql;
 using System.Security.Cryptography;
 using System.Text.Json;
 
+if(args[0]=="transport") { await TransportMovementChecks.Run(); return; }
+
 var connection=Environment.GetEnvironmentVariable("ANIMALTOWN_TEST_CONNECTION")??throw new Exception("Test database required");
 await using var c=new NpgsqlConnection(connection);await c.OpenAsync();
 var id=Guid.Parse("a8f3ab2e-f33d-4830-b01e-ef9a4fe25a32");

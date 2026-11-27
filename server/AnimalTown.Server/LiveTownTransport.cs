@@ -547,7 +547,9 @@ sealed class LiveTownTransport(GameDatabase database, IConfiguration configurati
                 if (header.Sequence <= actor.LastSeen || town.Reviewing) continue;
                 actor.LastSeen = header.Sequence;
                 actor.Input = input;
-                actor.LastInputAt = now;
+                // A fragmented frame may take longer than the active-input
+                // window to arrive. Its lifetime begins after validation.
+                actor.LastInputAt = Environment.TickCount64;
             }
         }
     }
@@ -576,9 +578,13 @@ sealed class LiveTownTransport(GameDatabase database, IConfiguration configurati
         town.LastStep = now;
         foreach (var actor in town.Actors)
         {
-            if (actor is null || town.Reviewing || now - actor.LastInputAt > 250) continue;
-            if(OnlineMovementRules.Move(town.World,actor.Room,actor.Input,.1f,ref actor.X,ref actor.Z,out float yaw))
+            if (actor is null || town.Reviewing) continue;
+            if(now-actor.LastInputAt>250)actor.Input=default;
+            else if(OnlineMovementRules.Move(town.World,actor.Room,actor.Input,.1f,ref actor.X,ref actor.Z,out float yaw))
                 actor.Facing=(ushort)((yaw/(2*MathF.PI)+1)*65536);
+            // Retire accepted samples even when a delayed tick expires them.
+            // The unchanged authoritative pose reconciles their prediction;
+            // retransmitting the same sequence must not strand the sender.
             actor.Applied = actor.LastSeen;
         }
     }

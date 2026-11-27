@@ -4,6 +4,8 @@ if($DolphinIso -and (!$PublicTunnel -or !$env:GITHUB_ACTIONS)){throw 'Public Dol
 if($DolphinPrepareOnly -and ($PublicTunnel -or $DolphinIso)){throw 'Prepare-only validation uses loopback without a public tunnel or console'}
 & (Join-Path $PSScriptRoot 'AnimalTown.OnlineChecks/TunnelBootstrapChecks.ps1')
 Set-Location (Split-Path $PSScriptRoot -Parent)
+dotnet run --project tests/AnimalTown.ServerChecks -c Release -- transport
+if($LASTEXITCODE){throw 'Real transport movement checks failed'}
 $serverRoot=(Get-Location).Path
 $container='animaltown-integration-'+[Guid]::NewGuid().ToString('N').Substring(0,8)
 $api='http://127.0.0.1:5189'

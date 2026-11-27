@@ -34,6 +34,13 @@
         "dependencies": {
           "Capz.Hypercube.Core": "[0.1.0-preview.55.1, 0.1.0-preview.55.1]"
         }
+      },
+      "animaltown.server": {
+        "type": "Project",
+        "dependencies": {
+          "AnimalTown.Domain": "[1.0.0, )",
+          "Npgsql": "[10.0.3, )"
+        }
       }
     }
   }
