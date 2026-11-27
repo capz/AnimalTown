@@ -2,6 +2,7 @@
 import json
 import os
 import re
+import shutil
 from pathlib import Path
 import sys
 import time
@@ -24,7 +25,9 @@ def frame_clock_context(clock):
                     info['next_chunk_tag']=header[:4].decode('ascii','backslashreplace')
                     info['next_chunk_bytes']=struct.unpack_from('<I',header,4)[0]
             captures.append(info)
-        return {'vi_chunks':frames,'presentations':len(clock.presentations),'captures':captures}
+        usage=shutil.disk_usage(clock.root)
+        return {'vi_chunks':frames,'presentations':len(clock.presentations),'captures':captures,
+                'host_free_bytes':usage.free,'host_capacity_bytes':usage.total}
     except Exception as error:
         return {'unavailable':type(error).__name__}
 
@@ -146,6 +149,7 @@ def run(context):
         setup_context()
         print('Online frame clock at failure: '+json.dumps(report['frame_clock'],sort_keys=True),flush=True)
         print('Online runtime context at failure:\n'+'\n'.join(line for line in c['runtime_log_text']().splitlines() if 'ANIMALTOWN' in line)[-6000:],flush=True)
+        print('Online capture context at failure:\n'+'\n'.join(line for line in c['runtime_log_text']().splitlines() if 'FRAMEDUMP' in line)[-2000:],flush=True)
         raise
     finally:
         os.write(c['controller'],b'SET MAIN 0.5 0.5\n')
