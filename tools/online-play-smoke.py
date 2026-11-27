@@ -140,6 +140,11 @@ def run(context):
                 return bool(banks) and max(banks)[1:]==(0,status()['revision'])
             except (ValueError,OSError):return False
         wait(ready_journal,'ready-journal-after-acknowledgment',seconds=90)
+        # Leave the online hub only after its final gate query completes.
+        # Returning to actual home play also disposes the API/flow before the
+        # emulator is stopped; the acknowledged raw-card hash is still checked.
+        wait(lambda:c['runtime_log_text']().count('ANIMALTOWN ONLINE MENU READY')>=2,'returned-online-menu')
+        press('B');world(4,'returned-home-world');report['returned_home_world']=True
         report['card_sequence_after']=c['committed_card_sequence'](root/'MemoryCardA.USA.raw')
         if report['card_sequence_after']<=report['card_sequence_before']:raise AssertionError('Online return did not publish a newer home card')
         shot('returned');report['published_and_acknowledged']=True;report['passed']=True
@@ -160,7 +165,16 @@ def finish(context,shutdown):
     # Reuse the production card extractor after Dolphin closes its file. Keep
     # the exported credential/travel records private and out of artifacts.
     c=context;root=c['root'];report=json.loads((root/'online-play-report.json').read_text())
+    report['shutdown']=shutdown
+    (root/'online-play-report.json').write_text(json.dumps(report,indent=2)+'\n')
+    print('Online emulator shutdown: '+json.dumps(shutdown,sort_keys=True),flush=True)
     if not report['passed']:return
-    if shutdown['forced_kill'] or not shutdown['clean_exit'] or shutdown['returncode']!=0:raise AssertionError('Online card verification requires a clean emulator shutdown')
+    if shutdown['forced_kill'] or not shutdown['clean_exit'] or shutdown['returncode']!=0:
+        log=root/'emulator.log'
+        if log.exists():
+            lines=log.read_text(errors='replace').splitlines()
+            details=[line for line in lines if re.search(r'signal|shutdown|stopp|terminat|error|fault|abort|corrupt|free|card',line,re.I)]
+            print('Online emulator shutdown context:\n'+'\n'.join(details)[-4000:],flush=True)
+        raise AssertionError('Online card verification requires a clean emulator shutdown')
     from jobs_smoke import write_records
     write_records(root/'private-records',c['options_card_files'](root/'MemoryCardA.USA.raw'))

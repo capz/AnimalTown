@@ -155,6 +155,7 @@ internal sealed class OnlinePlay:IDisposable
             try{open=Request("GET","/v1/online/gate",title:"Online",detail:"Checking your gate…").Field("open").Flag;}
             catch(IOException){/* Service configuration must remain reachable when the old tunnel is gone. */}
             Ui.Set("Online","Linked as "+home.Name,"",new[]{open?"Join my open town":"Open gate","Visit a friend","Sync town","Link account / service"},"A: choose   B: back");
+            DebugOverlay.WriteLine("ANIMALTOWN ONLINE MENU READY");
             int choice=Ui.Choose();if(choice<0)break;
             if(choice==3)
             {
