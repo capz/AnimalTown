@@ -283,7 +283,11 @@ with no model allocation failures or committed-record changes. Nearby online
 humans separately receive foreground shared-model demand even when no NPC of
 their species is visible. A host regression restores both cold guest species
 under pressure and still refuses a restore one byte below its full headroom
-plus safety reserve. These checks preserve the existing memory budgets.
+plus safety reserve. Extra live instances reserve the cooked per-instance
+bound from the already loaded memory catalog; the native allocation ceiling
+and global safety reserve remain unchanged. Two instances can share the
+available headroom without charging their resident model packages again.
+These checks preserve the existing memory budgets.
 
 The separate `online-play` scenario runs the actual shipped game and SDK in
 Dolphin 2503 with the emulated broadband adapter, using an independent CI Quick

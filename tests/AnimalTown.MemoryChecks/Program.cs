@@ -116,6 +116,15 @@ for(int i=0;i<ModelMemoryCatalog.Count;i++){
 }
 var catalog=new ModelMemoryCatalog(catalogBytes);NativeMemory.Failures=0;
 Check(catalog.StartupPeak(0,0)==catalog.StartupPeak(0,false)-1024&&catalog.StartupPeak(0,4)==catalog.StartupPeak(0,false)+3*1024,"cooked per-instance upper bound charges every same-species visitor/player instance without duplicating shared model cost");
+var humanMemory=new VisualMemoryPressure();humanMemory.Observe(VisualMemoryPressure.SafetyBytes+2048,0,0,Clock.Timestamp);
+var humanAdmission=new StartupModelAdmission(humanMemory,catalog);
+bool firstHuman=humanAdmission.TryReserveInstance(1,Clock.Timestamp,out int firstHumanTicket);
+bool secondHuman=humanAdmission.TryReserveInstance(2,Clock.Timestamp,out int secondHumanTicket);
+Check(humanMemory.UnderPressure&&firstHuman&&secondHuman&&humanMemory.ReservedBytes==2048,
+    "two online humans fit their cooked instance bounds without charging shared packages or the per-instance hard ceiling again");
+Check(!humanAdmission.TryReserveInstance(1,Clock.Timestamp,out _),"additional online instances cannot spend the physical safety reserve or another actor's ticket");
+humanMemory.Cancel(firstHumanTicket);humanMemory.Cancel(secondHumanTicket);
+Check(humanMemory.ReservedBytes==0&&humanAdmission.Active<0,"drained live-instance admission returns its tickets without owning a startup load");
 var startupMemory=new VisualMemoryPressure();startupMemory.Observe(NativeMemory.FreeBytes,0,0,Clock.Timestamp);
 var admission=new StartupModelAdmission(startupMemory,catalog);
 Check(admission.Begin(0,true,Clock.Timestamp)&&admission.ReservedPeak==catalog.StartupPeak(0,true),"startup reserves its actual selected-species two-instance package plan before native load");

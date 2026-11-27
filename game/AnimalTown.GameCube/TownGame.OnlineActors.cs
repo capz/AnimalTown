@@ -46,7 +46,7 @@ internal sealed partial class TownGame
             if(allocate&&actor.Instance==null&&modelResidency.Ready(human.Species)&&modelLod.Level(human.Species)==0&&modelLod.PendingSpecies!=human.Species)
             {
                 int ticket=0;
-                if(!visualMemory.Pressure.TryReserve(ModelMemoryPlan.MaximumInstanceBytes,now,true,out ticket))continue;
+                if(!startupAdmission.TryReserveInstance(human.Species,now,out ticket))continue;
                 try
                 {
                     actor.Instance=models[human.Species].CreateInstance(ModelMemoryPlan.MaximumInstanceBytes);actor.AnimatedAt=now;actor.Clip=-2;actor.Drawn=false;
@@ -56,7 +56,7 @@ internal sealed partial class TownGame
                     visualMemory.Sample(now,true);
                     Dolphin.Diagnostics.DebugOverlay.WriteLine("ANIMALTOWN ONLINE ACTOR READY slot "+slot+" species "+human.Species+" instance bytes "+actor.Instance.NativeBytes+" sampled free "+visualMemory.Pressure.FreeBytes);
                 }
-                catch(OutOfMemoryException){visualMemory.Pressure.Cancel(ticket);visualMemory.Pressure.AllocationFailed(ModelMemoryPlan.MaximumInstanceBytes,now);}
+                catch(OutOfMemoryException){visualMemory.Pressure.Cancel(ticket);visualMemory.Pressure.AllocationFailed(startupAdmission.InstancePeak(human.Species),now);}
             }
             if(allocate&&actor.Instance!=null&&Visible(actor.X,actor.Z,1.8f))
             {
