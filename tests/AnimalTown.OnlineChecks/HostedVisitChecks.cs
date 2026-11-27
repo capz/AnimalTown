@@ -119,7 +119,7 @@ static partial class HostedVisitChecks
             "Retry after backend restart neither debits, credits nor grants the purchase twice");
     }
     internal readonly record struct Reply(int Status,long Revision,string Error,byte[] Extra);
-    sealed class Client(ClientWebSocket socket,uint epoch,uint sequence,byte localSlot):IDisposable
+    internal sealed class Client(ClientWebSocket socket,uint epoch,uint sequence,byte localSlot):IDisposable
     {
         public readonly OnlineVisitState State=new();readonly byte[] result=new byte[512];long sentAt;
         public OnlineActorPosition Position;

@@ -1,5 +1,7 @@
-param([string]$DatabaseConnection='',[switch]$PublicTunnel,[switch]$OnlineOnly)
+param([string]$DatabaseConnection='',[switch]$PublicTunnel,[switch]$OnlineOnly,[string]$DolphinIso='',[switch]$DolphinPrepareOnly)
 $ErrorActionPreference='Stop'
+if($DolphinIso -and (!$PublicTunnel -or !$env:GITHUB_ACTIONS)){throw 'Public Dolphin qualification requires the independent GitHub runner and -PublicTunnel'}
+if($DolphinPrepareOnly -and ($PublicTunnel -or $DolphinIso)){throw 'Prepare-only validation uses loopback without a public tunnel or console'}
 Set-Location (Split-Path $PSScriptRoot -Parent)
 $serverRoot=(Get-Location).Path
 $container='animaltown-integration-'+[Guid]::NewGuid().ToString('N').Substring(0,8)
@@ -59,6 +61,43 @@ function RunOnlineChecks([string]$Origin){
         $env:ANIMALTOWN_TEST_RESTART_REQUEST=$priorRequest;$env:ANIMALTOWN_TEST_RESTART_ACK=$priorAck
     }
 }
+function RunDolphinTarget([string]$Origin){
+    if(!$env:GITHUB_ACTIONS -or !$PublicTunnel){throw 'Actual public Dolphin qualification runs only on the independent GitHub runner'}
+    $target='out/online-dolphin';$fixture="$target/fixture";$emulator="$target/emulator"
+    if(Test-Path -LiteralPath $target){Remove-Item -LiteralPath $target -Recurse -Force}
+    New-Item -ItemType Directory -Force -Path $target,$fixture,$emulator|Out-Null
+    $taskUid=(& id -u).Trim();$taskGid=(& id -g).Trim()
+    $template='out/jobs/template/MemoryCardA.USA.raw'
+    if(!(Test-Path -LiteralPath $template)){
+        docker run --rm --init --shm-size=512m --user "${taskUid}:${taskGid}" --mount "type=bind,src=$serverRoot,dst=/work" -w /work animaltown-dolphin-test python3 tools/iso-smoke.py $DolphinIso out/jobs/template --jobs template --season summer --dsp-hle --component-cable
+        if($LASTEXITCODE){throw 'Dolphin target template failed'}
+    }
+    $client=Start-Process dotnet -ArgumentList @('run','--project','tests/AnimalTown.OnlineChecks','-c','Release','--','--dolphin-fixture',$Origin,$fixture) -PassThru -RedirectStandardOutput "$target/fixture.log" -RedirectStandardError "$target/fixture-error.log"
+    try{
+        $deadline=[DateTime]::UtcNow.AddMinutes(3)
+        while(!(Test-Path "$fixture/status.json")){
+            if($client.HasExited -or [DateTime]::UtcNow -gt $deadline){throw 'Private Dolphin fixture did not initialize'}
+            Start-Sleep -Milliseconds 250
+        }
+        python3 tools/profile-card-fixture.py $template "$fixture/card" "$emulator/MemoryCardA.USA.raw" --online-target
+        if($LASTEXITCODE){throw 'Private Dolphin fixture card failed'}
+        docker run --rm --init --shm-size=512m --user "${taskUid}:${taskGid}" -e GITHUB_ACTIONS=true --mount "type=bind,src=$serverRoot,dst=/work" -w /work animaltown-dolphin-test python3 tools/iso-smoke.py $DolphinIso $emulator --online-play --online-play-fixture $fixture --dsp-hle --component-cable
+        if($LASTEXITCODE){throw 'Actual SDK Dolphin online controls failed'}
+        if(!$client.HasExited){$client.WaitForExit(10000)|Out-Null}
+        if(!$client.HasExited -or $client.ExitCode){throw 'Dolphin companion fixture failed'}
+        dotnet run --project tests/AnimalTown.OnlineChecks -c Release -- --dolphin-verify "$emulator/private-records" "$fixture/status.json"
+        if($LASTEXITCODE){throw 'Actual Dolphin home card did not verify'}
+        $identity=Get-Content out/version.json -Raw|ConvertFrom-Json
+        @{schema=1;commit=$identity.commit;version=$identity.version;tag=$identity.tag;isoName=[IO.Path]::GetFileName($DolphinIso);isoSha256=(Get-FileHash -LiteralPath $DolphinIso -Algorithm SHA256).Hash.ToLowerInvariant()}|ConvertTo-Json|Set-Content "$target/online-play-build.json"
+        Copy-Item "$fixture/card-verification.json" "$target/card-verification.json"
+        Write-Host 'Actual GameCube SDK HTTPS/WSS, three humans, movement, chat, reconnect and verified home-card return passed on Dolphin; physical DOL-015 remains unqualified.'
+    }finally{
+        [IO.File]::WriteAllText((Join-Path $serverRoot "$fixture/stop"),'stop')
+        if(!$client.HasExited){Stop-Process -Id $client.Id}
+        # Credentials and raw cards are deliberately excluded from evidence.
+        Remove-Item -LiteralPath "$fixture/card","$emulator/private-records" -Recurse -Force -ErrorAction SilentlyContinue
+    }
+}
 try {
     if($ownsDatabase){
     docker run --rm -d --name $container -e POSTGRES_PASSWORD=animaltown-test-only -p 127.0.0.1:55439:5432 postgres:16-alpine | Out-Null
@@ -83,6 +122,11 @@ try {
     $ready=$false
     for($i=0;$i -lt 40;$i++){try{if((Request GET '/health' $null $null).Status -eq 200){$ready=$true;break}}catch{};Start-Sleep -Milliseconds 250}
     Assert $ready 'Server did not become ready'
+    if($DolphinPrepareOnly){
+        dotnet run --project tests/AnimalTown.OnlineChecks -c Release -- --dolphin-fixture $api out/dolphin-prepare-only --prepare-only
+        if($LASTEXITCODE){throw 'Disposable target preparation failed'}
+        return
+    }
     if($OnlineOnly){
         if($PublicTunnel){throw 'Use the complete fixture for public-route qualification'}
         RunOnlineChecks $api
@@ -480,6 +524,7 @@ try {
         }finally{Remove-Item -LiteralPath $emptyCaDirectory}
         RunOnlineChecks $origin
         Write-Host 'Public Cloudflare HTTPS/WSS backend qualification passed; this is not GameCube or DOL-015 qualification.'
+        if($DolphinIso){RunDolphinTarget $origin}
     }
     Write-Host 'Server integration checks passed: authentication, device linking, initial card import, gate admission and reconnect, idempotency, permanent purchases, visitor custody, hosted placement review, and three-client WebSockets.'
 }

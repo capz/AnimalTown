@@ -118,7 +118,7 @@ GitHub issue numbers.
 | --- | --- | --- | --- | --- |
 | POC-01 | Reproducible local backend and tunnel | Persistent source/published hosting implemented; public CI qualification | — | Start persistent PostgreSQL, backend and Quick Tunnel on either supported computer; document configuration, stop/restart, endpoint changes, secret handling and restore. Verify authenticated access through the public URL. |
 | POC-02 | Bounded WSS transport | Console/server WSS implemented; host framing and GC-stress checks | POC-01 | Add console WebSocket framing and server upgrade endpoint. Validate upgrade/subprotocol, masking, fragmented messages, ping/pong, close and malformed/oversized input. Keep frame work, queues, message sizes and allocation bounded; preserve ticket and epoch checks. |
-| POC-03 | Dolphin and DOL-015 transport spike | Hardware qualification missing | POC-02 | Prove API pairing, WSS authentication, movement samples, bulk transfer and recovery through Cloudflare on the actual target SDK. Record matched memory and frame-time measurements before enabling networking beside a dense town. |
+| POC-03 | Dolphin and DOL-015 transport spike | Actual SDK Dolphin scenario wired; target results and physical qualification open | POC-02 | Prove API pairing, WSS authentication, movement samples, bulk transfer and recovery through Cloudflare on the actual target SDK. Record matched memory and frame-time measurements before enabling networking beside a dense town. |
 | POC-04 | Playable visit lifecycle | Approved UI and lifecycle implemented; target qualification open | POC-03, POC-13 approval | Add gate/friend selection, connection states, owner plus two guests, unattended availability, removal and safe exit. Preserve the existing indefinitely open hosted gate without owner-console heartbeats and complete the playable client lifecycle. Keep destination state separate from the guest's home save. |
 | POC-05 | Public snapshots, reliable events and reconnect | Recipient projections/replay implemented; three-client checks | POC-02 | Add bounded recipient projections, stable snapshot watermarks, ordered durable events, replay cursors and resnapshot on gaps. Never expose another player's inventory, mail, credentials or raw card records. |
 | POC-06 | Hosted command and simulation boundary | Durable writer, fences and simulation implemented; host checks | POC-05 | Route every enabled action through one town writer. Fence stale workers/connections; bind commands to authenticated participants and stable entity IDs. Commit mutation, receipt and replayable event together. Reject excluded commands server-side. Advance required NPC/job/mail state with server time. |
@@ -270,3 +270,13 @@ checks. The new `job-online-review` controller scenario captures the actual
 left-world/right-review scene, verifies stick camera inspection and cancellation
 without changing the committed card, and exits before contacting any service.
 That preview check is distinct from online gameplay or physical qualification.
+
+The separate `online-play` scenario runs the actual shipped game and SDK in
+Dolphin 2503 with the emulated broadband adapter, using an independent CI Quick
+Tunnel. Disposable private credentials exercise SDK HTTPS renewal, checkpoint
+upload/download, WSS, two companion guests, movement, chat, a fenced-connection
+reconnect and acknowledged card return. The final raw card is reloaded and
+compared with its acknowledged SHA-256 and Ready journal. Only redacted reports
+and screenshots enter the release; credentials and raw cards are excluded.
+This scenario's result must pass on the delivered candidate before it counts
+as Dolphin transport evidence. It does not close physical or memory/timing gates.

@@ -2,7 +2,7 @@ $ErrorActionPreference='Stop'
 $tokens=$null;$errors=$null
 $ast=[Management.Automation.Language.Parser]::ParseFile((Join-Path $PSScriptRoot '../tools/publish-release.ps1'),[ref]$tokens,[ref]$errors)
 if($errors){throw 'Publisher syntax is invalid'}
-foreach($name in @('InvokeGh','Read-ReleaseMetadata','Assert-BinaryArchive','Assert-ReleaseVersionMetadata','Assert-ReleaseAsset','Assert-ReleaseAssetSet','Copy-DaylightEvidence','Copy-VideoEvidence','Copy-VillagerVisualEvidence','Copy-JobEvidence','Get-ReleaseNotes','Get-PreparedReleaseReceipt','Assert-PreparedRelease')){
+foreach($name in @('InvokeGh','Read-ReleaseMetadata','Assert-BinaryArchive','Assert-ReleaseVersionMetadata','Assert-ReleaseAsset','Assert-ReleaseAssetSet','Copy-DaylightEvidence','Copy-VideoEvidence','Copy-VillagerVisualEvidence','Copy-JobEvidence','Copy-OnlineEvidence','Get-ReleaseNotes','Get-PreparedReleaseReceipt','Assert-PreparedRelease')){
     $function=$ast.Find({param($node) $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq $name},$true)
     . ([scriptblock]::Create($function.Extent.Text))
 }
@@ -179,5 +179,17 @@ try{
     Reject {Copy-JobEvidence $jobs $reviewReports ('a'*40) '1.2.3' 'v1.2.3' 'AnimalTown-1.2.3.nkit.iso' ('b'*64) @('online-review')} 'Cancelling review must not change the committed card'
     $reviewReport.card_sequence_after=2;$reviewReport.online_or_physical_transport_qualification=$true;$reviewReport|ConvertTo-Json|Set-Content (Join-Path $review 'online-review-report.json')
     Reject {Copy-JobEvidence $jobs $reviewReports ('a'*40) '1.2.3' 'v1.2.3' 'AnimalTown-1.2.3.nkit.iso' ('b'*64) @('online-review')} 'A preview cannot claim online or physical transport qualification'
+    $online=Join-Path $directory 'online';New-Item -ItemType Directory -Path (Join-Path $online 'emulator') -Force|Out-Null
+    $evidence|ConvertTo-Json|Set-Content (Join-Path $online 'online-play-build.json')
+    $onlineReport=@{scenario='online-play';physical_hardware=$false;screenshots=@('online-play-three-humans.png')}
+    foreach($name in @('passed','sdk_https','sdk_wss','three_humans','sdk_movement','chat_both_guests','same_endpoint_reconnect','published_and_acknowledged')){$onlineReport[$name]=$true}
+    $onlineReport|ConvertTo-Json|Set-Content (Join-Path $online 'emulator/online-play-report.json')
+    @{passed=$true;home_identity=$true;private_wallet=$true;ready_journal=$true;acknowledged_fingerprint=$true}|ConvertTo-Json|Set-Content (Join-Path $online 'card-verification.json')
+    [IO.File]::WriteAllBytes((Join-Path $online 'emulator/online-play-three-humans.png'),[byte[]]@(137,80,78,71,13,10,26,10))
+    Copy-OnlineEvidence $online $reports ('a'*40) '1.2.3' 'v1.2.3' 'AnimalTown-1.2.3.nkit.iso' ('b'*64)
+    Assert (@(Get-ChildItem (Join-Path $reports 'scenarios/online') -File).Count -eq 4) 'Actual SDK capture, card verification and exact image identity ship together'
+    Reject {Copy-OnlineEvidence $online $reports ('a'*40) '1.2.3' 'v1.2.3' 'AnimalTown-1.2.3.nkit.iso' ('c'*64)} 'Another ISO cannot qualify this release'
+    $onlineReport.same_endpoint_reconnect=$false;$onlineReport|ConvertTo-Json|Set-Content (Join-Path $online 'emulator/online-play-report.json')
+    Reject {Copy-OnlineEvidence $online $reports ('a'*40) '1.2.3' 'v1.2.3' 'AnimalTown-1.2.3.nkit.iso' ('b'*64)} 'A failed SDK reconnect must prevent online qualification'
 }finally{Remove-Item -LiteralPath $directory -Recurse -Force}
 Write-Host "$checks release publisher checks passed: compact-feed asset policy, frozen build identity, summaries, draft lookup, response budget and source exclusion"

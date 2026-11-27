@@ -2,6 +2,9 @@ using System.Text;
 using System.Security.Cryptography;
 using AnimalTown.Online;
 
+if(args.Length>0&&args[0]=="--dolphin-fixture"){await DolphinTargetFixture.Run(args[1],args[2],args.Contains("--prepare-only"));return;}
+if(args.Length>0&&args[0]=="--dolphin-verify"){DolphinTargetFixture.Verify(args[1],args[2]);return;}
+
 int checks = 0;
 void Check(bool condition, string reason) { checks++; if (!condition) throw new Exception(reason); }
 Check(OnlineWebSocketUpgrade.AcceptKey("dGhlIHNhbXBsZSBub25jZQ==") == "s3pPLMBiTxaQ9kYGzzhZRbK+xOo=", "RFC 6455 published handshake vector");

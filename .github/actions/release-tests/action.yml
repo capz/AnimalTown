@@ -46,7 +46,7 @@ runs:
 
         plan=json.loads(Path('out/validation-plan.json').read_text())
         individual={'title-logo':'title_logo','video-options':'video_options','save-and-quit':'save_quit',
-                    'terrain-materials':'terrain_materials','daylight':'daylight','villager-visuals':'villager_visuals'}
+                    'terrain-materials':'terrain_materials','daylight':'daylight','villager-visuals':'villager_visuals','online-play':'online_play'}
         card_modes=('slot-b','choose-b','without-saving','no-card')
         job_modes=('delivery','mail','helipad','online-review')
         allowed=set(individual)|{f'card-{mode}' for mode in card_modes}|{f'job-{mode}' for mode in job_modes}
@@ -440,4 +440,28 @@ runs:
           out/jobs/*/*.png
           out/jobs/*/*.log
           out/jobs/*/user/Logs/
+        if-no-files-found: warn
+    - uses: actions/setup-dotnet@v4
+      if: ${{ !cancelled() && steps.dolphin.outcome == 'success' && steps.selection.outputs.online_play == 'true' }}
+      with:
+        global-json-file: global.json
+    - name: Qualify real GameCube SDK HTTPS and WSS on Dolphin
+      if: ${{ !cancelled() && steps.dolphin.outcome == 'success' && steps.selection.outputs.online_play == 'true' }}
+      shell: pwsh
+      env:
+        BUILD_VERSION: ${{ inputs.version }}
+        GH_TOKEN: ${{ github.token }}
+      run: ./tests/server-integration.ps1 -PublicTunnel -DolphinIso "out/AnimalTown-$env:BUILD_VERSION.nkit.iso"
+    - name: Keep redacted online Dolphin evidence
+      if: always() && steps.selection.outputs.online_play == 'true'
+      uses: actions/upload-artifact@v4
+      with:
+        name: online-dolphin-${{ inputs.commit }}
+        path: |
+          out/online-dolphin/*.json
+          out/online-dolphin/*.log
+          out/online-dolphin/emulator/*.json
+          out/online-dolphin/emulator/*.png
+          out/online-dolphin/emulator/*.log
+          out/online-dolphin/emulator/*.txt
         if-no-files-found: warn

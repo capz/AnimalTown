@@ -257,7 +257,7 @@ def run(context):
         return report
     if mode in ('recovery','maximum-recovery'):
         c.wait_title();press('A');c.wait_profiles('jobs-recovery-picker.png');shot('locked');press('X');presentations(8);shot('recheck');offset=len(c.runtime_log_text());press('A');wait_log('ANIMALTOWN READY ',offset,1800 if mode.startswith('maximum-') else 600)
-    else:c.start_game(False,'jobs-'+mode)
+    else:c.start_game(False,'jobs-'+mode,tap=press)
     wait_log('ANIMALTOWN READY ');presentations(2);shot('world')
     if mode=='helipad':
         outbound=travel('outbound');inbound=travel('inbound')
