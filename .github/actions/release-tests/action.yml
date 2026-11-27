@@ -141,6 +141,13 @@ runs:
       if: ${{ !cancelled() && steps.candidate.outcome == 'success' && steps.selection.outputs.dolphin == 'true' }}
       shell: bash
       run: timeout --kill-after=30s 15m docker build -t animaltown-dolphin-test -f build/Dockerfile.dolphin build
+    - name: Verify shutdown diagnostics preserve process exit status
+      if: ${{ !cancelled() && steps.dolphin.outcome == 'success' && steps.selection.outputs.online_play == 'true' }}
+      shell: bash
+      run: |
+        docker run --rm --init --cap-add=SYS_PTRACE --user "$(id -u):$(id -g)" \
+          --mount "type=bind,src=$PWD,dst=/work" -w /work \
+          animaltown-dolphin-test python3 tests/dolphin-shutdown.py
     - name: Restore host ownership for online target checks
       if: ${{ !cancelled() && steps.dolphin.outcome == 'success' && steps.selection.outputs.online_play == 'true' }}
       shell: bash

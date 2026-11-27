@@ -93,7 +93,7 @@ function RunDolphinTarget([string]$Origin){
         }
         python3 tools/profile-card-fixture.py $template "$fixture/card" "$emulator/MemoryCardA.USA.raw" --online-target
         if($LASTEXITCODE){throw 'Private Dolphin fixture card failed'}
-        docker run --rm --init --shm-size=512m --user "${taskUid}:${taskGid}" -e GITHUB_ACTIONS=true --mount "type=bind,src=$serverRoot,dst=/work" -w /work animaltown-dolphin-test python3 tools/iso-smoke.py $DolphinIso $emulator --online-play --online-play-fixture $fixture --dsp-hle --component-cable
+        docker run --rm --init --cap-add=SYS_PTRACE --shm-size=512m --user "${taskUid}:${taskGid}" -e GITHUB_ACTIONS=true --mount "type=bind,src=$serverRoot,dst=/work" -w /work animaltown-dolphin-test python3 tools/iso-smoke.py $DolphinIso $emulator --online-play --online-play-fixture $fixture --dsp-hle --component-cable
         if($LASTEXITCODE){throw 'Actual SDK Dolphin online controls failed'}
         if(!$client.HasExited){$client.WaitForExit(10000)|Out-Null}
         if(!$client.HasExited -or $client.ExitCode){throw 'Dolphin companion fixture failed'}

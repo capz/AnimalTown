@@ -5,11 +5,14 @@ Only the known probe and bounded stack linkage words are read. Reports retain
 code addresses and symbols, never general registers, heap bytes or RAM dumps.
 """
 from bisect import bisect_right
+from contextlib import contextmanager
 from pathlib import Path
 import json
 import os
 import re
+import resource
 import struct
+import subprocess
 import time
 
 MEM1_START, MEM1_END = 0x80000000, 0x81800000
@@ -118,3 +121,52 @@ def capture_native_stall(process,map_path,report_path):
     Path(report_path).write_text(json.dumps(report,sort_keys=True,indent=2)+'\n')
     print('Online native stall diagnostic: '+json.dumps(report,sort_keys=True),flush=True)
     return report
+
+@contextmanager
+def trace_host_shutdown(process,report_path):
+    """Trace a failing host teardown without accepting an unclean card flush.
+
+    Attach only after the controller scenario ends, to this disposable child.
+    The debugger prints bounded symbolic stacks with arguments/locals disabled,
+    then passes the original fatal signal. No core file or memory dump is made.
+    """
+    report_path=Path(report_path);debugger=None
+    with report_path.open('w') as output:
+        try:
+            if process.poll() is None:
+                resource.prlimit(process.pid,resource.RLIMIT_CORE,(0,0))
+                debugger=subprocess.Popen(
+                    ['gdb','--quiet','--batch','--nx','--nh',
+                     '--init-eval-command=set debuginfod enabled off',
+                     '--init-eval-command=set auto-load off',
+                     '--init-eval-command=set print frame-arguments none',
+                     '--init-eval-command=set print entry-values no',
+                     '--init-eval-command=set print thread-events off',
+                     '--pid='+str(process.pid),
+                     '--command='+str(Path(__file__).with_name('dolphin-shutdown.gdb'))],
+                    env=dict(os.environ,DEBUGINFOD_URLS=''),stdout=output,stderr=subprocess.STDOUT)
+                deadline=time.monotonic()+5
+                while debugger.poll() is None and time.monotonic()<deadline:
+                    if 'ANIMALTOWN HOST SHUTDOWN TRACE READY' in report_path.read_text(errors='replace'):
+                        break
+                    time.sleep(.025)
+                else:
+                    print('Online host shutdown debugger did not attach; clean-exit checks remain required.',flush=True)
+                    debugger.terminate()
+                    try:debugger.wait(timeout=5)
+                    except subprocess.TimeoutExpired:debugger.kill();debugger.wait()
+                    debugger=None
+        except OSError as error:
+            print('Online host shutdown diagnostic unavailable: '+type(error).__name__,flush=True)
+        try:
+            yield
+        finally:
+            if debugger is not None:
+                try:debugger.wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    debugger.terminate()
+                    try:debugger.wait(timeout=5)
+                    except subprocess.TimeoutExpired:debugger.kill();debugger.wait()
+    diagnostic=report_path.read_text(errors='replace')
+    if len(diagnostic)>16000:diagnostic=diagnostic[:8000]+'\n[bounded shutdown trace]\n'+diagnostic[-8000:]
+    print('Online host shutdown trace:\n'+diagnostic,flush=True)
