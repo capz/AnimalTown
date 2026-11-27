@@ -8,8 +8,12 @@ internal static class OnlineTravelCard
 {
     internal static OnlineTravelStore.Snapshot? Load(GameState home)
     {
-        using var card=SaveCards.Mount();Verify(card,home);
-        return ReadMounted(card);
+        using var card=SaveCards.Mount();
+        // Ordinary offline saves may not have a job identity yet. Require
+        // online identity verification only when a recovery bank is present.
+        var saved=ReadMounted(card);
+        if(saved!=null)Verify(card,home);
+        return saved;
     }
     internal static OnlineTravelStore.Snapshot? ReadMounted(MemoryCard card)=>new OnlineTravelStore(new Files(card)).Load();
     internal static OnlineTravelStore.Snapshot Save(GameState home,OnlineTravelStore.Snapshot? expected,OnlineTravelRecord record)
