@@ -149,5 +149,51 @@
     "maximumDroppedWeight": 0.09010989218950272,
     "locomotionRootMotion": "horizontal hips travel removed; vertical bob and cyclic sway retained",
     "walkingDerivedFromHalfSpeedRun": true
+  },
+  {
+    "model": "crocodile",
+    "input": "base_basic_shaded (2).glb",
+    "inputSha256": "aea8c4526117b16b201ac040435aa55c4983949fcc9c197512696ecbd58b00ad",
+    "exports": [
+      {
+        "entry": "base_basic_shaded (2).glb",
+        "sha256": "aea8c4526117b16b201ac040435aa55c4983949fcc9c197512696ecbd58b00ad",
+        "clips": {
+          "human_000029": "Running",
+          "human_000089": "Walking",
+          "human_000093": "Idle"
+        }
+      }
+    ],
+    "source": "assets/models/villagers/villager_crocodile.glb",
+    "sha256": "56c82e7d6d05980d1a3d0429dc40a3f2015d9de3add9656826f22bcc95addc4d",
+    "textureEdge": 128,
+    "skinInfluences": 4,
+    "maximumDroppedWeight": 0.1377289411611855,
+    "locomotionRootMotion": "horizontal hips travel removed; vertical bob and cyclic sway retained",
+    "walkingDerivedFromHalfSpeedRun": false
+  },
+  {
+    "model": "capybara",
+    "input": "base_basic_shaded (3).glb",
+    "inputSha256": "75e8708501f9ae4de1c813117cc4028d54c1dd494b6628ff4ec94ea90fd11a2b",
+    "exports": [
+      {
+        "entry": "base_basic_shaded (3).glb",
+        "sha256": "75e8708501f9ae4de1c813117cc4028d54c1dd494b6628ff4ec94ea90fd11a2b",
+        "clips": {
+          "human_000013": "Idle",
+          "human_000029": "Running",
+          "human_000089": "Walking"
+        }
+      }
+    ],
+    "source": "assets/models/villagers/villager_capybara.glb",
+    "sha256": "cbd86d7142593462d6ccc7463a3b3e1566809b794a35f3816af13cafcd0ac76d",
+    "textureEdge": 128,
+    "skinInfluences": 4,
+    "maximumDroppedWeight": 0.12210012599825859,
+    "locomotionRootMotion": "horizontal hips travel removed; vertical bob and cyclic sway retained",
+    "walkingDerivedFromHalfSpeedRun": false
   }
 ]

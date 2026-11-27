@@ -266,12 +266,25 @@ def testing_menu_options():
     return [entry.strip() for entry in match[1].split(',') if entry.strip()]
 
 
+def villager_appearance_models():
+    import re
+    source=(Path(__file__).resolve().parents[1]/'shared/AnimalTown.Domain/VillagerAppearance.cs').read_text()
+    match=re.search(r'\bModels\s*=\s*\{([^}]+)\}',source)
+    count=re.search(r'public\s+const\s+int\s+Count\s*=\s*(\d+)\s*;',source)
+    if not match or not count:raise AssertionError('Cannot locate villager appearance catalog')
+    models=re.findall(r'"([^"]+)"',match[1])
+    if len(models)!=int(count[1]) or len(set(models))!=len(models) or len(models)<=6:
+        raise AssertionError('Villager appearance catalog is inconsistent')
+    return models
+
+
 def villager_visuals():
     """Real menu/model/animation swaps, with a disposable town and saved records."""
     import re
     sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'docs/performance'))
     from avi_guest_clock import AviGuestClock
     clock=AviGuestClock(user/'Dump/Frames',track_presentations=True)
+    appearance_count=len(villager_appearance_models())
     # Options saves and model paging can outlast a wall-timed pulse. Wait for
     # actual guest presentations on both sides of each menu input edge.
     def tap(button):press_presented(button,clock)
@@ -299,7 +312,7 @@ def villager_visuals():
         tap('A');marker(r'VILLAGER VISUAL MENU actor 0 ',begin)
         for _ in range(actor):tap('D_RIGHT')
         tap('D_DOWN')
-        for _ in range(13):
+        for _ in range(appearance_count+1):
             events=re.findall(r'VILLAGER VISUAL MENU actor (\d+) candidate (-?\d+)',runtime_log_text()[begin:])
             if events and tuple(map(int,events[-1]))==(actor,appearance):break
             tap('D_RIGHT')
@@ -311,7 +324,7 @@ def villager_visuals():
         tap('B');tap('B');time.sleep(2)
         screenshot('visuals-world-'+str(actor)+'-'+str(appearance)+'.png')
         report['swaps'].append({'actor':actor,'appearance':appearance})
-    for appearance in range(6,12):
+    for appearance in range(6,appearance_count):
         choose(0,appearance)
         # Force both standing and locomotion on each supplied rig.
         # Walk back on alternate rigs so the fixture stays around its home
