@@ -19,7 +19,7 @@ internal static class TownDataStorage
         try
         {
             using var card=SaveCards.Mount();
-            foreach(var entry in card.GetEntries())if(entry.Name==AnimalTown.Online.OnlineTravelStore.Bank0||entry.Name==AnimalTown.Online.OnlineTravelStore.Bank1)return true;
+            foreach(var entry in card.GetEntries())if(TownDataDeletion.IsOnlineFile(entry.Name))return true;
             return false;
         }
         catch(Exception){return true;}

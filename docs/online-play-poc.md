@@ -156,6 +156,8 @@ their lease while retaining committed choices.
 Resident changes use a durable staged upload and individual decision receipts.
 The original card head stays acknowledged until review finishes; publication
 still requires the usual download, card write, readback and acknowledgment.
+The first card lineage is written and read back before its initial upload, so
+a cut between backend import and reply does not strand a linked card.
 Removed owners' new proceeds, mail and earned rewards move to an explicitly
 chosen stable resident identity. Reusing a profile slot does not inherit the
 removed identity's receipts. Completed two-card moves are preserved, unfinished

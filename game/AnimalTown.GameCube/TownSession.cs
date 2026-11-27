@@ -132,6 +132,7 @@ internal sealed partial class TownSession
                     {
                         var recovery=OnlineTravelCard.ReadMounted(card);
                         state.HostedCommerceLocked=recovery!=null;
+                        foreach(var entry in card.GetEntries())if(TownDataDeletion.IsCredentialFile(entry.Name)){state.HostedCommerceLocked=true;break;}
                         pendingOnline=recovery!=null&&recovery.Record.Phase!=AnimalTown.Online.OnlineTravelPhase.Ready;
                     }
                     catch(Exception){pendingOnline=true;status="Keep this card. Its online recovery record could not be verified.";}

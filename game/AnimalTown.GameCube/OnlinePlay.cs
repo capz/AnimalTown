@@ -249,11 +249,22 @@ internal sealed class OnlinePlay:IDisposable
             return FinishReturn();
         }
         long revision=status.Field("revision").Number;
-        if(journal==null&&revision>0)throw new IOException("card-lineage-changed");
-        OnlineJson head=status;
-        if(journal==null||revision!=journal.Record.Revision||Fingerprint()!=status.Field("sha256").Text)
+        if(journal==null)
         {
-            var uploaded=Await(api.Upload(home,journal?.Record.Revision,stopping.Token),"Sync town","Uploading and verifying this card’s offline progress…");
+            string fingerprint=Fingerprint();
+            // Persist and read back the first lineage before importing it.
+            // An interrupted older first import is recoverable only when its
+            // sole acknowledged root is byte-identical to this selected card.
+            if(revision>0&&(revision!=1||fingerprint!=status.Field("sha256").Text))throw new IOException("card-lineage-changed");
+            string intent=Await(OnlineApi.NewId(stopping.Token),"Sync town","Recording the first card checkpoint before upload…");
+            Remember(OnlineTravelPhase.Ready,1,fingerprint,intent);
+        }
+        OnlineJson head=status;
+        long parent=journal!.Record.Revision;
+        if(revision!=parent||Fingerprint()!=status.Field("sha256").Text)
+        {
+            if(revision==0&&parent!=1)throw new IOException("card-lineage-changed");
+            var uploaded=Await(api.Upload(home,revision==0?null:parent,stopping.Token),"Sync town","Uploading and verifying this card’s offline progress…");
             head=Request("GET","/v1/online/card",title:"Sync town",detail:"Verifying the acknowledged checkpoint…");
             if(head.Field("revision").Number!=uploaded.Field("revision").Number)throw new IOException("card-lineage-changed");
         }
