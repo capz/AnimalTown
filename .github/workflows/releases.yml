@@ -45,7 +45,9 @@ jobs:
       packages: write
       pull-requests: read
     runs-on: ubuntu-24.04
-    timeout-minutes: 90
+    # Full console builds plus all selected Dolphin tours need headroom beyond
+    # the ~80-minute run that exited the terrain tour early.
+    timeout-minutes: 120
     defaults:
       run:
         shell: bash
