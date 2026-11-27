@@ -8,7 +8,7 @@ import tempfile
 import unittest
 
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'tools'))
-from dolphin_debug import trace_host_shutdown
+from dolphin_debug import allow_shutdown_debugger,trace_host_shutdown
 
 class ShutdownTraceChecks(unittest.TestCase):
     def scenario(self,body,expected,abort=False):
@@ -16,7 +16,7 @@ class ShutdownTraceChecks(unittest.TestCase):
             trace=Path(directory)/'shutdown.log'
             code=("import os,signal,sys; signal.signal(signal.SIGTERM,lambda *_: "+body+"); "
                   "print('ready',flush=True); signal.pause()")
-            process=subprocess.Popen([sys.executable,'-c',code],stdout=subprocess.PIPE,stderr=subprocess.PIPE,text=True)
+            process=subprocess.Popen([sys.executable,'-c',code],stdout=subprocess.PIPE,stderr=subprocess.PIPE,text=True,preexec_fn=allow_shutdown_debugger)
             try:
                 self.assertEqual(process.stdout.readline().strip(),'ready')
                 with trace_host_shutdown(process,trace):

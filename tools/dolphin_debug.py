@@ -6,6 +6,7 @@ code addresses and symbols, never general registers, heap bytes or RAM dumps.
 """
 from bisect import bisect_right
 from contextlib import contextmanager
+import ctypes
 from pathlib import Path
 import json
 import os
@@ -121,6 +122,18 @@ def capture_native_stall(process,map_path,report_path):
     Path(report_path).write_text(json.dumps(report,sort_keys=True,indent=2)+'\n')
     print('Online native stall diagnostic: '+json.dumps(report,sort_keys=True),flush=True)
     return report
+
+def allow_shutdown_debugger():
+    """Allow only this child's parent and its descendants to attach on Linux."""
+    libc=ctypes.CDLL(None,use_errno=True)
+    prctl=libc.prctl
+    prctl.argtypes=[ctypes.c_int,ctypes.c_ulong,ctypes.c_ulong,ctypes.c_ulong,ctypes.c_ulong]
+    prctl.restype=ctypes.c_int
+    # PR_SET_PTRACER authorizes the harness parent and its debugger child,
+    # without changing the runner-wide ptrace policy or permitting other users.
+    if prctl(0x59616d61,os.getppid(),0,0,0)!=0:
+        raise OSError(ctypes.get_errno(),'Cannot authorize the parent shutdown debugger')
+    resource.setrlimit(resource.RLIMIT_CORE,(0,0))
 
 @contextmanager
 def trace_host_shutdown(process,report_path):

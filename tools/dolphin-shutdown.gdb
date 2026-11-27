@@ -6,10 +6,12 @@ set print thread-events off
 handle SIGTERM nostop noprint pass
 handle SIGPIPE nostop noprint pass
 handle SIGSEGV nostop noprint pass
-handle SIGABRT stop noprint pass
+handle SIGABRT stop print pass
 python
-print("ANIMALTOWN HOST SHUTDOWN TRACE READY", flush=True)
 try:
+    if not gdb.selected_inferior().pid:
+        raise gdb.GdbError("Shutdown debugger did not attach")
+    print("ANIMALTOWN HOST SHUTDOWN TRACE READY", flush=True)
     gdb.execute("continue")
     inferior = gdb.selected_inferior()
     if inferior.pid:

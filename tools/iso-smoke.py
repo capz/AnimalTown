@@ -2959,7 +2959,11 @@ screenshot('display-ready.png') # Prove an actual X11 capture before booting.
 with (root/'emulator.log').open('w') as log:
     command=['/usr/games/dolphin-emu-nogui','-u',str(user),'-e',str(disc),'-v','OGL']
     if '--component-cable' in sys.argv:command+=['-C','SYSCONF.IPL.PGS=True']
-    p=subprocess.Popen(command,env=env,stdout=log,stderr=subprocess.STDOUT)
+    process_options={}
+    if '--online-play' in sys.argv:
+        from dolphin_debug import allow_shutdown_debugger
+        process_options['preexec_fn']=allow_shutdown_debugger
+    p=subprocess.Popen(command,env=env,stdout=log,stderr=subprocess.STDOUT,**process_options)
     try:
         if '--loading' in sys.argv:
             for n,seconds in enumerate((1,1,2,4,8,12,17)):
