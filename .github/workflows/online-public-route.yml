@@ -9,6 +9,11 @@ on:
       - 'tests/AnimalTown.OnlineChecks/**'
       - 'tests/server-integration.ps1'
       - 'tools/dolphin_network.py'
+      - 'tools/dolphin_debug.py'
+      - 'tools/dolphin-shutdown.gdb'
+      - 'tests/dolphin-shutdown.py'
+      - 'build/Dockerfile.dolphin'
+      - '.github/actions/release-tests/action.yml'
       - 'tests/dolphin-network.py'
       - 'tools/online-play-smoke.py'
       - 'docs/performance/avi_guest_clock.py'
@@ -24,6 +29,22 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  shutdown-diagnostics:
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - name: Build matching Dolphin shutdown diagnostics
+        run: docker build -t animaltown-dolphin-shutdown-check -f build/Dockerfile.dolphin build
+      - name: Preserve normal exits and fatal signals through the debugger
+        run: |
+          docker run --rm --init --cap-add=SYS_PTRACE --user "$(id -u):$(id -g)" \
+            --mount "type=bind,src=$PWD,dst=/work" -w /work \
+            animaltown-dolphin-shutdown-check python3 tests/dolphin-shutdown.py
   public-route:
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-24.04

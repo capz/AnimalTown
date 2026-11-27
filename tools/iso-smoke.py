@@ -2946,6 +2946,9 @@ if '--profile' in sys.argv or '--interaction-profile' in sys.argv or '--runtime-
     config.write_text(config.read_text().replace('DumpCodec = ffv1','DumpCodec = ffv1\nDumpEncoder = ffv1\nDumpPixelFormat = bgr0'))
 (user/'Logs').mkdir(exist_ok=True)
 (user/'Config'/'Logger.ini').write_text('[Options]\nWriteToFile = True\nWriteToConsole = True\nVerbosity = 3\n[Logs]\nBOOT = True\nCORE = True\nPOWERPC = True\nOSREPORT = True\nOSREPORT_HLE = True\nDVDINTERFACE = True\n')
+if '--online-play' in sys.argv:
+    logger=user/'Config'/'Logger.ini'
+    logger.write_text(logger.read_text().replace('Verbosity = 3','Verbosity = 4')+'COMMON = True\nCONSOLE = True\nFRAMEDUMP = True\n')
 xvfb,env=start_display()
 def close_display():
     xvfb.terminate()
