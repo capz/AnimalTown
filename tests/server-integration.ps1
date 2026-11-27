@@ -2,6 +2,7 @@ param([string]$DatabaseConnection='',[switch]$PublicTunnel,[switch]$OnlineOnly,[
 $ErrorActionPreference='Stop'
 if($DolphinIso -and (!$PublicTunnel -or !$env:GITHUB_ACTIONS)){throw 'Public Dolphin qualification requires the independent GitHub runner and -PublicTunnel'}
 if($DolphinPrepareOnly -and ($PublicTunnel -or $DolphinIso)){throw 'Prepare-only validation uses loopback without a public tunnel or console'}
+& (Join-Path $PSScriptRoot 'AnimalTown.OnlineChecks/TunnelBootstrapChecks.ps1')
 Set-Location (Split-Path $PSScriptRoot -Parent)
 $serverRoot=(Get-Location).Path
 $container='animaltown-integration-'+[Guid]::NewGuid().ToString('N').Substring(0,8)
@@ -502,26 +503,35 @@ try {
             $tunnelContainer='animaltown-public-'+[Guid]::NewGuid().ToString('N').Substring(0,8)
             docker run --rm -d --name $tunnelContainer --network host cloudflare/cloudflared@sha256:55c7e3e8d89d5e8d20b75a82f3602cbf98e06db406e73e282073cfdc5a9a3af6 tunnel --no-autoupdate --protocol http2 --url $api|Out-Null
             if($LASTEXITCODE){throw 'Public test tunnel did not start'}
-            $origin=$null
-            for($i=0;$i -lt 60;$i++){
+            $origin=$null;$registered=$false
+            $registrationDeadline=[DateTime]::UtcNow.AddSeconds(60)
+            while([DateTime]::UtcNow -lt $registrationDeadline){
                 $logs=(& docker logs $tunnelContainer 2>&1)-join "`n"
                 $found=[regex]::Match($logs,'https://(?!api\.)[a-z0-9-]+\.trycloudflare\.com')
-                if($found.Success){$origin=$found.Value;break}
+                if($found.Success){$origin=$found.Value}
+                $registered=$logs.Contains('Registered tunnel connection')
+                if($origin -and $registered){break}
                 Start-Sleep -Milliseconds 500
             }
             # Retry an unreachable new Quick Tunnel before any device/card is
-            # bound to it. Never change an endpoint after public clients start.
-            $lastStatus=0;$lastFailure=''
-            if($origin){for($i=0;$i -lt 60;$i++){
-                try{$response=Invoke-WebRequest "$origin/health" -TimeoutSec 3 -SkipHttpErrorCheck;$lastStatus=[int]$response.StatusCode;if($lastStatus -eq 200){$ready=$true;break}}
-                catch{$lastFailure=$_.Exception.GetType().Name+': '+$_.Exception.Message}
-                Start-Sleep -Seconds 1
-            }}
+            # bound to it. The URL is printed before registration; querying DNS
+            # then can cache NXDOMAIN before Cloudflare publishes its route.
+            # Never change an endpoint after public clients start.
+            $lastStatus=0;$lastFailure='The tunnel did not register a connection.'
+            if($origin -and $registered){
+                Start-Sleep -Seconds 2
+                $lastFailure='';$publicDeadline=[DateTime]::UtcNow.AddSeconds(90)
+                while([DateTime]::UtcNow -lt $publicDeadline){
+                    try{$response=Invoke-WebRequest "$origin/health" -TimeoutSec 3 -SkipHttpErrorCheck;$lastStatus=[int]$response.StatusCode;$lastFailure='';if($lastStatus -eq 200){$ready=$true;break}}
+                    catch{$lastFailure=$_.Exception.GetType().Name+': '+$_.Exception.Message}
+                    Start-Sleep -Seconds 1
+                }
+            }
             if(!$ready){
-                Write-Host "Public origin attempt ${tunnelAttempt}: HTTP $lastStatus; $lastFailure"
+                Write-Host "Public origin attempt ${tunnelAttempt}: registered=$registered HTTP $lastStatus; $lastFailure"
                 $logs=(& docker logs $tunnelContainer 2>&1)-join "`n"
                 [IO.File]::AppendAllText((Join-Path $serverRoot 'out/online-tunnel-test.log'),$logs+"`n")
-                Write-Host (($logs -split "`n"|Select-Object -Last 12)-join "`n")
+                Write-Host (($logs -split "`n"|Select-Object -Last 40)-join "`n")
                 docker stop $tunnelContainer 2>&1|Out-Null;$tunnelContainer=''
             }
         }
