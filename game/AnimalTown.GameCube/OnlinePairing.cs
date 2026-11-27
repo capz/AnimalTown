@@ -98,9 +98,10 @@ internal sealed class OnlinePairing
                             else OfferRelink();
                         }
                     }
-                    catch(Exception)
+                    catch(Exception error)
                     {
-                        DebugOverlay.WriteLine("ANIMALTOWN ONLINE LINK FAILED");
+                        string kind=error is OperationCanceledException?"cancelled":error is TimeoutException?"timeout":error is FormatException?"reply":error is OutOfMemoryException?"memory":error is IOException?"io":"runtime";
+                        DebugOverlay.WriteLine("ANIMALTOWN ONLINE LINK FAILED "+kind);
                         if(!leaving)Complete(cardWriteFailed?"Could not save the online link. Check the memory card and retry.":
                             "Could not link. Check the adapter, network and console clock.");
                     }

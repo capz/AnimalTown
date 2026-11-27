@@ -19,10 +19,17 @@ def run(context):
     def alive():
         c['check_runtime_failure']()
         if c['p'].poll() is not None:raise AssertionError('Dolphin stopped during online qualification')
+        if 'ANIMALTOWN ONLINE LINK FAILED' in c['runtime_log_text']():
+            shot('link-failure');setup_context()
+            raise AssertionError('Native account linking failed; see the redacted setup checkpoints')
     def status():
         return json.loads((fixture/'status.json').read_text())
     def shot(name):
         name='online-play-'+name+'.png';c['screenshot'](name);report['screenshots'].append(name)
+    def setup_context():
+        lines=c['runtime_log_text']().splitlines()
+        checkpoints=[line for line in lines if 'ANIMALTOWN ONLINE ' in line or 'ANIMALTOWN SAVE TOTAL:' in line or 'SAVE ERROR:' in line]
+        print('Online setup checkpoints:\n'+'\n'.join(checkpoints[-80:]),flush=True)
     def press(button):c['press_presented'](button,clock)
     def wait(predicate,label,seconds=240,activate=False):
         deadline=time.monotonic()+seconds
@@ -34,6 +41,7 @@ def run(context):
             if activate:press('A')
             else:time.sleep(.25)
         shot('failure-'+label)
+        setup_context()
         print('Online runtime context:\n'+'\n'.join(line for line in c['runtime_log_text']().splitlines() if 'ANIMALTOWN' in line)[-6000:],flush=True)
         raise AssertionError('Online target did not reach '+label)
     def world(count,label):
