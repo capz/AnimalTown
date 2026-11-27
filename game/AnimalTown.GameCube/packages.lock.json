@@ -14,11 +14,11 @@
       },
       "DolphinDotNet.GameCube": {
         "type": "Direct",
-        "requested": "[0.1.0-preview.387.1, 0.1.0-preview.387.1]",
-        "resolved": "0.1.0-preview.387.1",
-        "contentHash": "GJXKX2kBqS1LSsWu/vTrMNUyAQPe8Vf9Fk/1l8HSJCyqPvyldgUKVFHKm6nI2vbSygNIEvvmOXfbNlI839PVvw==",
+        "requested": "[0.1.0-preview.392.1, 0.1.0-preview.392.1]",
+        "resolved": "0.1.0-preview.392.1",
+        "contentHash": "IKnnKiY4ry4wI8mb9xzpf7Uxd5FlvUAuE0JoTNoqrGpTqPD/MZLcHvoUV9XUhNvD57l0bA+nfRFCVf0Q1Kz/2g==",
         "dependencies": {
-          "DolphinDotNet.Core": "0.1.0-preview.387.1"
+          "DolphinDotNet.Core": "0.1.0-preview.392.1"
         }
       },
       "Capz.Hypercube.Core": {
@@ -28,8 +28,8 @@
       },
       "DolphinDotNet.Core": {
         "type": "Transitive",
-        "resolved": "0.1.0-preview.387.1",
-        "contentHash": "LiE/SRY08SDPmQrzXA/Nq2yBjxIDV3+kcv7nMNi0yq2haG0S6oYgX5M5jZGak1bOYPU5CdqgP9Z7T4SLbgqP6g=="
+        "resolved": "0.1.0-preview.392.1",
+        "contentHash": "x83ZbOxLL1A39FFM1pbS+wxOrVBP304k9DZzpJiPYtBEVaxbB7NRGlZ3c9tggqnFM6EYStjrz9eRs9ooBVkR9A=="
       },
       "animaltown.domain": {
         "type": "Project",

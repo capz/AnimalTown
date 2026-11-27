@@ -252,9 +252,13 @@ not a separate promise that chat, jobs and mail can be postponed beyond this PoC
 
 ## Candidate evidence
 
-The SDK dependency is [DolphinDotNet PR 195](https://github.com/capz/DolphinDotNet/pull/195),
-merged and published as `0.1.0-preview.387.1`. Hypercube remains pinned to 55
-with an explicit reviewed additive runtime override. The persistent local
+The SDK dependency is [DolphinDotNet PR 196](https://github.com/capz/DolphinDotNet/pull/196),
+merged and published as `0.1.0-preview.392.1`. HTTP/1.1 requests allow the
+peer to remain open while the SDK consumes the complete framed response and
+closes its own connection. This avoids requesting remote closure while Dolphin's
+built-in adapter still has response data pending. The SDK's numeric TLS error
+is recorded alongside socket failures without application payloads. Hypercube
+remains pinned to 55 with an explicit reviewed additive runtime override. The persistent local
 stack, published bundle and isolated restore workflow are documented in
 [running the PoC](online-poc-running.md).
 

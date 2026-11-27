@@ -28,9 +28,10 @@ if([string]$runtimeDependency.version -ne "[$sdkVersion]"){
     # Require this explicit, reviewed override rather than accepting drift.
     $runtimeOverride=$gameProject.Project.ItemGroup.PackageReference|Where-Object Include -eq 'DolphinDotNet.GameCube'
     $legacyOverride=$engineVersion -eq '0.1.0-preview.28.1' -and [string]$runtimeDependency.version -eq '[0.1.0-preview.315.1]' -and $sdkVersion -eq '0.1.0-preview.326.1'
-    # SDK 387 adds TlsStream and the random-buffer intrinsic without changing
-    # Hypercube 55's graphics/native ABI. Keep this upgrade explicitly pinned.
-    $onlineOverride=$engineVersion -eq '0.1.0-preview.55.1' -and [string]$runtimeDependency.version -eq '[0.1.0-preview.379.1]' -and $sdkVersion -eq '0.1.0-preview.387.1'
+    # The reviewed SDK adds TlsStream, client-owned HTTP response closure and
+    # numeric TLS diagnostics without changing Hypercube 55's graphics/native ABI.
+    # Keep the compiler, assets and additive runtime override explicitly pinned.
+    $onlineOverride=$engineVersion -eq '0.1.0-preview.55.1' -and [string]$runtimeDependency.version -eq '[0.1.0-preview.379.1]' -and $sdkVersion -eq '0.1.0-preview.392.1'
     if((!$legacyOverride -and !$onlineOverride) -or
        [string]$runtimeOverride.Version -ne "[$sdkVersion]"){
         throw 'Engine/runtime mismatch without a verified explicit override'

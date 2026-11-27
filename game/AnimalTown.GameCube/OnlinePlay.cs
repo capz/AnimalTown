@@ -62,7 +62,12 @@ internal sealed class OnlinePlay:IDisposable
             catch(Exception){return false;}
         }
     }
-    static string FailureKind(Exception error)=>error is OperationCanceledException?"cancelled":error is TimeoutException?"timeout":error is FormatException?"reply":error is OutOfMemoryException?"memory":error is IOException?"io":error is Dolphin.Network.SocketException?"socket":error is InvalidOperationException?"operation":error is ArgumentException?"argument":error is IndexOutOfRangeException?"index":error is NullReferenceException?"null-reference":error is NotSupportedException?"unsupported":"runtime";
+    static string FailureKind(Exception error)
+    {
+        if(error is Dolphin.Network.SocketException socket)
+            return "socket "+socket.ErrorCode+" tls "+Dolphin.Network.TlsConfiguration.LastErrorCode;
+        return error is OperationCanceledException?"cancelled":error is TimeoutException?"timeout":error is FormatException?"reply":error is OutOfMemoryException?"memory":error is IOException?"io":error is InvalidOperationException?"operation":error is ArgumentException?"argument":error is IndexOutOfRangeException?"index":error is NullReferenceException?"null-reference":error is NotSupportedException?"unsupported":"runtime";
+    }
     OnlineMenuUi Ui=>ui??=new OnlineMenuUi();
     T Await<T>(Task<T> request,string title="Travelling",string detail="Connecting…")
     {
