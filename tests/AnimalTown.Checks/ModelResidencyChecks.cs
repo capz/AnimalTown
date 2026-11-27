@@ -237,12 +237,38 @@ internal static class ModelResidencyChecks
         check(!models[1].IsResident&&manager.ColdBytes==65536&&models[1].Starts==2,"canceled shutdown preserves the cold model's backing for normal disposal without restarting it");
 
         PressureChecks(check);
+        OnlineHumanChecks(check);
         PressureBoundaryChecks(check);
         WaitingHeadroomChecks(check);
         StartupChecks(check);
         WaterInspectionChecks(check);
         OutdoorJourneyChecks(check);
         ApproachChecks(check);
+    }
+    private static void OnlineHumanChecks(Action<bool,string> check)
+    {
+        var manager=Setup(out var models,out var state,out var doors);
+        for(int species=0;species<6;species++)manager.RecordWarmPeak(species,65536);
+        Pump(manager,true);Drain(manager);Pump(manager,true);Drain(manager);
+        check(!models[1].IsResident&&!models[2].IsResident&&
+            !ModelResidencyDemand.DrawableUsesSpace(state,doors,1,state.Space)&&!ModelResidencyDemand.DrawableUsesSpace(state,doors,2,state.Space),
+            "online human fixture has two cold species with no local NPCs in the current room");
+        var memory=new VisualMemoryPressure();memory.Observe(1280*1024,0,0,Clock.Timestamp);manager.Memory=memory;
+        manager.OnlineSpeciesMask=(1<<1)|(1<<2);manager.Require(state,doors,Clock.Timestamp);Pump(manager);
+        check(memory.UnderPressure&&manager.Required(1)&&manager.PendingSpecies==1&&memory.ReservedBytes==manager.RestorePeak(1),
+            "a nearby online human restores with available headroom under pressure without depending on a same-species NPC");
+        Drain(manager);
+        check(manager.Ready(1)&&manager.Ready(2),"both online humans' shared models become drawable after bounded restores");
+        manager.Stop();
+
+        manager=Setup(out models,out state,out doors);
+        for(int species=0;species<6;species++)manager.RecordWarmPeak(species,65536);
+        Pump(manager,true);Drain(manager);
+        memory=new VisualMemoryPressure();memory.Observe(VisualMemoryPressure.SafetyBytes+manager.RestorePeak(1)-1,0,0,Clock.Timestamp);manager.Memory=memory;
+        manager.OnlineSpeciesMask=1<<1;manager.Require(state,doors,Clock.Timestamp);Pump(manager);
+        check(manager.Required(1)&&!manager.Ready(1)&&models[1].Starts==1&&memory.ReservedBytes==0&&memory.WaitingPeakBytes==manager.RestorePeak(1),
+            "online foreground priority still refuses a restore without its full physical headroom and safety reserve");
+        manager.Stop();
     }
     private static void PressureChecks(Action<bool,string> check)
     {

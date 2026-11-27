@@ -275,7 +275,7 @@ def villager_visuals():
     # Options saves and model paging can outlast a wall-timed pulse. Wait for
     # actual guest presentations on both sides of each menu input edge.
     def tap(button):press_presented(button,clock)
-    start_game(True,'visuals-start');set_debug_visibility(True)
+    start_game(prefix='visuals-start');set_debug_visibility(True)
     before=committed_card_sequence(root/'MemoryCardA.USA.raw',details=True)
     report={'scenario':'villager-visuals','passed':False,'swaps':[],'physical_hardware':False}
     def marker(pattern,after=0,retry=None):
@@ -314,7 +314,10 @@ def villager_visuals():
     for appearance in range(6,12):
         choose(0,appearance)
         # Force both standing and locomotion on each supplied rig.
-        os.write(controller,b'SET MAIN 0.7 0.5\n');time.sleep(2)
+        # Walk back on alternate rigs so the fixture stays around its home
+        # view instead of accumulating a town-wide residency/streaming tour.
+        # Optional swaps may correctly refuse memory in a crowded scene.
+        os.write(controller,b'SET MAIN '+(b'0.7' if appearance%2==0 else b'0.3')+b' 0.5\n');time.sleep(2)
         os.write(controller,b'PRESS B\n');time.sleep(2)
         os.write(controller,b'RELEASE B\n')
         os.write(controller,b'SET MAIN 0.5 0.5\n');time.sleep(1)

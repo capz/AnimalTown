@@ -128,7 +128,7 @@ GitHub issue numbers.
 | POC-10 | Shopping and inventory settlement | Playable commerce implemented; concurrent purchase/retry checks | POC-06, POC-08 | Integrate existing stock/listing purchase paths with the active session. Keep confirmed purchases permanent, reserve listed inventory before online use, and settle sale/cancellation exactly once. Do not reopen legacy writes behind the hosted writer. |
 | POC-11 | Guest jobs and portable earnings | Hosted eligible jobs and portable earnings implemented; integration checks | POC-06, POC-08, POC-10 | Bind conversations/progress to each guest, expose only visited-town jobs supported by enabled actions, and enforce the same filter server-side. Handle concurrent claims and reconnect. Deliver earned items and Bells to the correct home profile once, including full pockets/deferred delivery. |
 | POC-12 | Town-wide chat and resident mail | Playable chat/resident mail implemented; delivery/retry checks | POC-05, POC-06, POC-08, POC-13 approval | Deliver chat across rooms with identity, length/rate limits, mute/block enforcement and bounded report evidence. Add resident mail commands/delivery with stable IDs and retry receipts. Reject online attachments and non-resident recipients; preserve failed-send drafts and offline mail behavior. |
-| POC-13 | Approved online UI mockups and implementation | Layouts approved and implemented; target visual verification open | — | Prepare linking/endpoint, gate/join, loading/reconnect, guest wait, review/conflict and return/save mockups. Obtain user approval before implementing new UI. Reuse existing chat/letter input, assets, design language and controller hints. Bind screens to real lifecycle states. |
+| POC-13 | Approved online UI mockups and implementation | Layouts implemented; local split-view verification passed; exact-candidate captures enforced by CI | — | Prepare linking/endpoint, gate/join, loading/reconnect, guest wait, review/conflict and return/save mockups. Obtain user approval before implementing new UI. Reuse existing chat/letter input, assets, design language and controller hints. Bind screens to real lifecycle states. |
 | POC-14 | Integrated acceptance and candidate delivery | Host/native acceptance implemented; matched delivery/target proof open | POC-01–POC-13 | Pass the acceptance matrix below with reproducible reports; deliver matching ISO, Depot app, backend and tools. Record actual physical results supplied by the user. Leave unqualified gates open. |
 
 POC-08 includes normal offline-versus-hosted conflict review. It does not include
@@ -187,9 +187,10 @@ mailboxes, jobs, offers, owed rewards and winter state through streaming,
 publication and durable card readback. These measurements are host evidence.
 They do not close POC-03, POC-A13 or physical acceptance.
 
-The remaining release gates are a green pipeline for the final source, matching
-published ISO/Depot/backend/tools, actual Dolphin UI/gameplay verification, and
-physical DOL-015 HTTPS/WSS, fault, memory and frame-time qualification. Record
+Candidate delivery requires a green pipeline for the final source, matching
+published ISO/Depot/backend/tools and actual Dolphin UI/gameplay verification.
+Physical DOL-015 HTTPS/WSS, fault, memory and frame-time qualification remains
+open and requires the user's hardware results. Record
 all target results against those exact artifact hashes. The workspace's scoped
 Cloudflare network-policy request was denied; public-route CI runs independently
 on GitHub's runner. Local loopback checks must not be described as public or
@@ -257,24 +258,32 @@ with an explicit reviewed additive runtime override. The persistent local
 stack, published bundle and isolated restore workflow are documented in
 [running the PoC](online-poc-running.md).
 
-[Public-route run 45907240336](https://github.com/capz/AnimalTown/actions/runs/45907240336)
-passed the three-client backend HTTPS/WSS scenario through a free Cloudflare
-tunnel on `dd1f49ecb02ab98e198d8b25dd4bf53a3aa8d869`, including verification against
-only the four public roots shipped with the console. That commit's console
-build failed the apploader's BSS overlap check before delivery. The subsequent
-change size-optimizes generated managed code while preserving native kernel
-optimization, the six-MiB heap, and the loader's address validation. The final
-linked build, same-commit publication and target measurements still need to pass;
-an object-size diagnostic alone does not close that gate.
+[Public-route run 45948717609](https://github.com/capz/AnimalTown/actions/runs/45948717609)
+passed on `affa68b28935b5251dc2c149dc6b102ba7be5cd7`: 5,024 loopback and 5,024
+public HTTPS/WSS assertions through a free Cloudflare tunnel, the production
+request-limit/Retry-After contract, and verification against only the four
+public roots shipped with the console. This covers three linked clients,
+resident review, retirement/relinking and durable backend restart recovery.
 
-[Public-route run 45913841532](https://github.com/capz/AnimalTown/actions/runs/45913841532)
-also passed on `a539dfc0863ceca0355f5a43e371052d781503ea` after retrying a tunnel
-startup failure. It includes resident-change review and restart recovery. Local
-integration of the subsequent retirement/relink changes passed 4,998 online
-checks. The new `job-online-review` controller scenario captures the actual
-left-world/right-review scene, verifies stick camera inspection and cancellation
-without changing the committed card, and exits before contacting any service.
-That preview check is distinct from online gameplay or physical qualification.
+A clean local console build of `920012883b74882470603fa7a43f804e94d706b2`
+produces a 50,202,624-byte NKit ISO and matching standalone Depot app. Both
+executables pass strict IPL/DOL checks; the NKit round trip preserves all 184
+payloads. Managed code uses size optimization while native kernels, the six-MiB
+heap and loader bounds remain intact. Actual local Dolphin on that build passes
+ordinary in-game card cold reload, all four video-options cases, and the
+approved split review. Camera inspection changes 55.4% of the left-world region
+and no right-panel pixels; cancellation retains the committed card sequence.
+The preview exits before contacting any service, so it is distinct from online
+gameplay or physical qualification.
+
+The appearance-swap fixture exercises all six additional player rigs and one
+NPC swap while walking back on alternate rigs. It passes on both a fresh town
+and the exact saved town that previously exhausted optional visual headroom,
+with no model allocation failures or committed-record changes. Nearby online
+humans separately receive foreground shared-model demand even when no NPC of
+their species is visible. A host regression restores both cold guest species
+under pressure and still refuses a restore one byte below its full headroom
+plus safety reserve. These checks preserve the existing memory budgets.
 
 The separate `online-play` scenario runs the actual shipped game and SDK in
 Dolphin 2503 with the emulated broadband adapter, using an independent CI Quick

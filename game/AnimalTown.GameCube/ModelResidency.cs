@@ -121,7 +121,9 @@ internal sealed class ModelResidency
             if(demand.Required[i])lastRequired[i]=now;
             priority[i]=3;
             if(demand.Required[i]&&!Ready(i)){
-                bool visible=ModelResidencyDemand.DrawableUsesSpace(state,doors,i,state.Space)||
+                // Nearby humans need their shared model even when no NPC of
+                // that species is visible. They are foreground demand too.
+                bool visible=(OnlineSpeciesMask&(1<<i))!=0||ModelResidencyDemand.DrawableUsesSpace(state,doors,i,state.Space)||
                     demand.DestinationSpace>=0&&ModelResidencyDemand.DrawableUsesSpace(state,doors,i,demand.DestinationSpace);
                 bool imminent=visible||ModelResidencyDemand.ImminentUsesSpace(state,doors,i,state.Space)||
                     demand.DestinationSpace>=0&&ModelResidencyDemand.ImminentUsesSpace(state,doors,i,demand.DestinationSpace);

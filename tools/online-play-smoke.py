@@ -28,7 +28,9 @@ def run(context):
         deadline=time.monotonic()+seconds
         while time.monotonic()<deadline:
             alive()
-            if predicate():return
+            if predicate():
+                print('Online target checkpoint: '+label,flush=True)
+                return
             if activate:press('A')
             else:time.sleep(.25)
         shot('failure-'+label)
