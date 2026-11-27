@@ -563,6 +563,15 @@
         "Split animation exports share their original rigs; the pig gets a prepared standing idle.",
         "Unused visual swaps preserve villager names, jobs, locations and saved species; the catalog now has eighteen entries."
       ]
+    },
+    {
+      "id": "live-card-snapshot-build-repair-20261127",
+      "lines": [
+        "Restore build validation while Dolphin flushes a memory card.",
+        "Reject incomplete card snapshots before parsing directory sectors.",
+        "Retry live settings reads without weakening checksum validation.",
+        "Cover truncated images, completed writes and damaged directories."
+      ]
     }
   ]
 }

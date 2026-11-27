@@ -1424,6 +1424,11 @@ def options_card_files(path=None):
     if path is None:path=root/'MemoryCardA.USA.raw'
     if not path.exists():return {}
     card=path.read_bytes();sector=8192
+    # Dolphin may expose an empty/partial raw image while its writer flushes.
+    # Polling callers already retry AssertionError; never unpack missing sectors
+    # or treat an incomplete snapshot as a verified empty card.
+    if len(card)<5*sector or len(card)%sector:
+        raise AssertionError('Incomplete card image')
     def word(at):return struct.unpack_from('>H',card,at)[0]
     def valid(block,start,end,checksum):
         values=struct.unpack('>'+str((end-start)//2)+'H',card[block*sector+start:block*sector+end])
