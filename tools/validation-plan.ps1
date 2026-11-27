@@ -1,6 +1,6 @@
 # Each changed path contributes its own scenarios. Mixed changes take the union.
 function Get-EmulatorChecksForPath([string]$Path) {
-    if($Path -match '^game/AnimalTown.GameCube/(Online[^/]*|TownGame\.Online[^/]*)\.cs$|^shared/AnimalTown.Domain/Online/|^tests/AnimalTown.OnlineChecks/DolphinTargetFixture\.cs$|^tests/server-integration\.ps1$|^tools/(online-play-smoke|profile-card-fixture)\.py$'){'online-play'}
+    if($Path -match '^game/AnimalTown.GameCube/(Online[^/]*|TownGame\.Online[^/]*)\.cs$|^shared/AnimalTown.Domain/Online/|^tests/AnimalTown.OnlineChecks/DolphinTargetFixture\.cs$|^tests/server-integration\.ps1$|^tools/(online-play-smoke|profile-card-fixture|dolphin_network)\.py$'){'online-play'}
     if($Path -match '^assets/models/villagers/|^game/AnimalTown.GameCube/(VillagerVisualSwap|TownGame\.VillagerVisuals)\.cs$|^shared/AnimalTown.Domain/VillagerAppearance\.cs$'){'villager-visuals'}
     if($Path -match '^game/AnimalTown.GameCube/Program\.cs$|^tools/(iso-smoke|dolphin_pad)\.py$'){
         return $allEmulator
@@ -181,6 +181,7 @@ function Get-ValidationPlan {
         }
         if($p -match '^(tools|tests)/release-bundle\.py$'){[void]$native.Add('release-bundle');continue}
         if($p -eq 'tests/water-optics-smoke.py'){[void]$native.Add('water-smoke');continue}
+        if($p -match '^(tools/dolphin_network|tests/dolphin-network)\.py$'){[void]$native.Add('dolphin-network');continue}
         if($p -eq 'tests/frame-profile-streaming.py'){[void]$native.Add('frame-profile');continue}
         if($p -match '^tools/(patch-water-(probe|optics)\.py|native-water-(probe|optics)\.inc)$|^tests/native-water-(probe|optics)\.c$'){
             [void]$rendering.Add('water');[void]$native.Add('patched');continue
@@ -285,7 +286,7 @@ function Get-ValidationPlan {
             }
             continue
         }
-        if($p -eq 'tools/iso-smoke.py'){[void]$native.Add('water-smoke');continue}
+        if($p -eq 'tools/iso-smoke.py'){[void]$native.Add('water-smoke');[void]$native.Add('dolphin-network');continue}
         if($p -eq 'tools/online-review-smoke.py'){Add-Managed 'saves';continue}
         if($p -eq 'tools/online-play-smoke.py'){$backend=$true;continue}
         if($p -eq 'tools/path-study.py'){[void]$native.Add('path-study');continue}
@@ -297,7 +298,7 @@ function Get-ValidationPlan {
         foreach($r in $allRendering){[void]$rendering.Add($r)}
         foreach($group in $allResources){[void]$resources.Add($group)}
         foreach($s in @('terrain','repack','building','nkit','dropped-item','depot','water','path')){[void]$tooling.Add($s)}
-        foreach($s in @('uv','card','texture','voices','frame-profile','release-bundle','water-smoke','path-study','shadows','patched','content','jobs','helipad','online')){[void]$native.Add($s)}
+        foreach($s in @('uv','card','texture','voices','frame-profile','release-bundle','water-smoke','path-study','shadows','patched','content','jobs','helipad','online','dolphin-network')){[void]$native.Add($s)}
         $backend=$true;$policy=$true
     }
     if($broadEmulator){foreach($scenario in $allEmulator){[void]$emulator.Add($scenario)}}

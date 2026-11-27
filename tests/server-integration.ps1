@@ -71,6 +71,8 @@ function RunDolphinTarget([string]$Origin){
     if(Test-Path -LiteralPath $target){Remove-Item -LiteralPath $target -Recurse -Force}
     New-Item -ItemType Directory -Force -Path $target,$fixture,$emulator|Out-Null
     $taskUid=(& id -u).Trim();$taskGid=(& id -g).Trim()
+    docker run --rm --user "${taskUid}:${taskGid}" --mount "type=bind,src=$serverRoot,dst=/work" -w /work animaltown-dolphin-test python3 tools/dolphin_network.py --probe ([Uri]$Origin).DnsSafeHost
+    if($LASTEXITCODE){throw 'The configured Dolphin DNS resolver is unreachable from the emulator container'}
     $template='out/jobs/template/MemoryCardA.USA.raw'
     if(!(Test-Path -LiteralPath $template)){
         docker run --rm --init --shm-size=512m --user "${taskUid}:${taskGid}" --mount "type=bind,src=$serverRoot,dst=/work" -w /work animaltown-dolphin-test python3 tools/iso-smoke.py $DolphinIso out/jobs/template --jobs template --season summer --dsp-hle --component-cable

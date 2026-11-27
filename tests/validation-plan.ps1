@@ -17,6 +17,11 @@ $p=Get-ValidationPlan -ChangedPaths @('game/AnimalTown.GameCube/Program.cs');Ass
 $p=Get-ValidationPlan -ChangedPaths @('tools/AnimalTown.Tools/TextureRepackerChecks.cs');Assert (($p.tooling -join ',') -eq 'repack' -and !$p.backend) 'Repacker routing incorrect'
 $p=Get-ValidationPlan -ChangedPaths @('tools/release-bundle.py','tests/release-bundle.py');Assert (($p.native -join ',') -eq 'release-bundle' -and !$p.backend -and !$p.full) 'Release bundle edits must run only their Python fixture'
 $p=Get-ValidationPlan -ChangedPaths @('tests/water-optics-smoke.py');Assert (($p.native -join ',') -eq 'water-smoke' -and !$p.release -and !$p.emulator.Count) 'A water smoke fixture edit must run only its host test'
+foreach($path in @('tools/dolphin_network.py','tests/dolphin-network.py')){
+    $p=Get-ValidationPlan -ChangedPaths @($path)
+    Assert (($p.native -join ',') -eq 'dolphin-network' -and !$p.full -and !$p.backend) 'Dolphin DNS changes need their bounded host checks'
+    Assert (('online-play' -in $p.emulator) -eq ($path -like 'tools/*')) 'Only production DNS setup changes need the actual console scenario'
+}
 $p=Get-ValidationPlan -ChangedPaths @('shared/AnimalTown.Domain/NewDependency.cs');Assert ($p.managed.Count -eq 13 -and $p.backend) 'Unknown domain must be conservative'
 $p=Get-ValidationPlan -ChangedPaths @('new-production/file.xyz');Assert ($p.full -and $p.release -and $p.backend -and (('jobs','helipad','release-bundle','water-smoke','frame-profile' | Where-Object {$_ -notin $p.native}).Count -eq 0) -and 'helipad' -in $p.native -and 'water' -in $p.tooling -and $p.emulator.Count -eq 15 -and $p.resources.Count -eq 4) 'Unknown production paths must fall back to all checks including native, emulator and resource fixtures'
 $p=Get-ValidationPlan -ChangedPaths @('shared/AnimalTown.Domain/Jobs/VillagerJobService.cs');Assert (!$p.full -and $p.backend -and ($p.managed -join ',') -eq 'life,saves' -and ($p.native -join ',') -eq 'jobs') 'Job rules need live/domain/save/backend and actual native service coverage'

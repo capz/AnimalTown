@@ -2844,7 +2844,8 @@ if '--jobs' in sys.argv and (root/'MemoryCardB.USA.raw').is_file():
     config=user/'Config'/'Dolphin.ini';config.write_text(config.read_text().replace('SlotB = 255','SlotB = 1'))
 if '--online-play' in sys.argv:
     if not os.environ.get('GITHUB_ACTIONS'):raise RuntimeError('Public online target qualification runs on the independent CI runner')
-    config=user/'Config'/'Dolphin.ini';config.write_text(config.read_text().replace('SkipIPL = True','SkipIPL = True\nSerialPort1 = 12'))
+    from dolphin_network import online_core_settings
+    config=user/'Config'/'Dolphin.ini';config.write_text(config.read_text().replace('SkipIPL = True','SkipIPL = True\n'+online_core_settings()))
 if '--save-cards' in sys.argv:
     mode=sys.argv[sys.argv.index('--save-cards')+1]
     config=user/'Config'/'Dolphin.ini';text=config.read_text()

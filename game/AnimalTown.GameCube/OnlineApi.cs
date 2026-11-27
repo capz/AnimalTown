@@ -20,13 +20,14 @@ internal sealed class OnlineApi:IDisposable
     internal async Task Initialize(CancellationToken cancellation)
     {
         if(OnlinePairing.ReadOrigin()!=link.Origin)throw new IOException("The service address changed. Finish recovery using the original service.");
-        if(!NetworkRuntime.IsReady)await NetworkRuntime.StartAsync(new NetworkOptions(),cancellation);
+        if(!NetworkRuntime.IsReady)await NetworkRuntime.StartAsync(new NetworkOptions{OperationTimeoutMilliseconds=20000},cancellation);
         byte[] roots=OnlinePairing.ReadBounded(ContentPaths.Asset("online-roots.pem"),16384);
         var clock=new TownClock();clock.Update(NativeCalendar.ReadClock());
         long unix=(10957L+clock.CivilDay)*86400+clock.MinuteOfDay*60;
         byte[] entropy=await PlatformEntropy.GetBytesAsync(48,cancellation);
         try{cancellation.ThrowIfCancellationRequested();TlsConfiguration.InitializeFromLocalClock(roots,entropy,unix);}
         finally{Array.Clear(entropy,0,entropy.Length);Array.Clear(roots,0,roots.Length);}
+        await OnlinePairing.ResolveOrigin(link.Origin,cancellation);
     }
     internal async Task<OnlineJson> Json(string method,string path,string? body,CancellationToken cancellation)
     {

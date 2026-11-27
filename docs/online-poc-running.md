@@ -6,6 +6,14 @@ the .NET 10 ASP.NET runtime. The backend computer must stay on for unattended
 guests. Dolphin and physical transport qualification remain separate gates in
 [the PoC backlog](online-play-poc.md).
 
+For Dolphin's built-in broadband adapter, set `SerialPort1 = 12` and
+`BBA_BUILTIN_DNS = 8.8.8.8` in the `[Core]` section of `Dolphin.ini`.
+Dolphin 2503 redirects DNS to its own configured resolver and changes the reply's
+source address; it must match the console SDK's resolver. The emulator host must
+be able to reach that resolver on UDP port 53. CI probes this route from the
+actual emulator container before booting and configures both settings. Physical
+adapters use the SDK's normal resolver directly.
+
 The release's compiled backend ZIP includes `online-poc.ps1`,
 `online-account.ps1` and a runtime-only Compose file. Extract the complete ZIP
 and run `./online-poc.ps1 -EnablePlay` there. It runs that exact compiled backend;

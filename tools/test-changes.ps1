@@ -41,6 +41,7 @@ $commands=@{
     'frame-profile'='python3 tests/frame-profile-streaming.py'
     'release-bundle'='python3 tests/release-bundle.py'
     'water-smoke'='python3 tests/water-optics-smoke.py'
+    'dolphin-network'='python3 tests/dolphin-network.py'
     'path-study'='python3 -m py_compile tools/path-study.py'
     shadows='cc -std=c11 -Wall -Wextra -Werror -Iout/sdk-native/include tests/native-path-mask.c -o /tmp/animaltown-path-mask && /tmp/animaltown-path-mask && cc -std=c11 -Wall -Wextra -Werror tests/native-shadow-union.c -lm -o /tmp/animaltown-shadow-union && /tmp/animaltown-shadow-union && cc -std=c11 -Wall -Wextra -Werror -Iout/sdk-native/include tests/native-shadow-lifecycle.c -lm -o /tmp/animaltown-shadow-lifecycle && /tmp/animaltown-shadow-lifecycle'
 }

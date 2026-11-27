@@ -100,7 +100,7 @@ internal sealed class OnlinePairing
                     }
                     catch(Exception error)
                     {
-                        string kind=error is OperationCanceledException?"cancelled":error is TimeoutException?"timeout":error is FormatException?"reply":error is OutOfMemoryException?"memory":error is IOException?"io":"runtime";
+                        string kind=error is OperationCanceledException?"cancelled":error is TimeoutException?(error.Message=="DNS lookup timed out."?"dns-timeout":"timeout"):error is FormatException?"reply":error is OutOfMemoryException?"memory":error is IOException?"io":"runtime";
                         DebugOverlay.WriteLine("ANIMALTOWN ONLINE LINK FAILED "+kind);
                         if(!leaving)Complete(cardWriteFailed?"Could not save the online link. Check the memory card and retry.":
                             "Could not link. Check the adapter, network and console clock.");
@@ -151,7 +151,7 @@ internal sealed class OnlinePairing
     private async Task<string?> Begin(ConsoleHttp.HttpClient client,byte[] roots,CancellationToken cancellation)
     {
         DebugOverlay.WriteLine("ANIMALTOWN ONLINE ADAPTER BEGIN");
-        if(!NetworkRuntime.IsReady)await NetworkRuntime.StartAsync(new NetworkOptions(),cancellation);
+        if(!NetworkRuntime.IsReady)await NetworkRuntime.StartAsync(new NetworkOptions{OperationTimeoutMilliseconds=20000},cancellation);
         DebugOverlay.WriteLine("ANIMALTOWN ONLINE ADAPTER READY");
         cancellation.ThrowIfCancellationRequested();
         var calendar=new TownClock();
@@ -179,6 +179,7 @@ internal sealed class OnlinePairing
         }
         finally{Array.Clear(entropy,0,entropy.Length);}
         DebugOverlay.WriteLine("ANIMALTOWN ONLINE TLS READY");
+        await ResolveOrigin(origin,cancellation);
         if(renewing)
         {
             if(newRotation)Remember(prior!.WithRotation(rotation));
@@ -188,6 +189,15 @@ internal sealed class OnlinePairing
                 "\",\"rotationId\":\""+pending.RotationId+"\"}",cancellation);
         }
         return await Post(client,StartPath,"{\"town\":\""+town+"\"}",cancellation);
+    }
+
+    internal static async Task ResolveOrigin(string origin,CancellationToken cancellation)
+    {
+        // ValidOrigin permits only an HTTPS hostname. Resolve outside the HTTP
+        // operation's deadline; the SDK caches and validates the actual reply.
+        DebugOverlay.WriteLine("ANIMALTOWN ONLINE DNS BEGIN");
+        await Dns.GetHostAddressesAsync(origin.Substring(8),cancellation);
+        DebugOverlay.WriteLine("ANIMALTOWN ONLINE DNS READY");
     }
 
     private async Task<string?> Post(ConsoleHttp.HttpClient client,string path,string body,CancellationToken cancellation)

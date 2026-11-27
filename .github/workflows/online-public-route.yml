@@ -8,6 +8,8 @@ on:
       - 'shared/AnimalTown.Domain/Online/**'
       - 'tests/AnimalTown.OnlineChecks/**'
       - 'tests/server-integration.ps1'
+      - 'tools/dolphin_network.py'
+      - 'tests/dolphin-network.py'
   workflow_dispatch:
 
 permissions:
@@ -36,6 +38,10 @@ jobs:
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '8.0.x'
+      - name: Verify the console DNS resolver route
+        run: |
+          python3 tests/dolphin-network.py
+          python3 tools/dolphin_network.py --probe www.cloudflare.com
       - name: Real device-linked clients through a free Cloudflare tunnel
         shell: pwsh
         env:
