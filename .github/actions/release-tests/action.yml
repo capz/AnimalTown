@@ -48,7 +48,7 @@ runs:
         individual={'title-logo':'title_logo','video-options':'video_options','save-and-quit':'save_quit',
                     'terrain-materials':'terrain_materials','daylight':'daylight'}
         card_modes=('slot-b','choose-b','without-saving','no-card')
-        job_modes=('delivery','mail','helipad')
+        job_modes=('delivery','mail','helipad','online-review')
         allowed=set(individual)|{f'card-{mode}' for mode in card_modes}|{f'job-{mode}' for mode in job_modes}
         selected=plan.get('emulator')
         if plan.get('schema')!=3 or not isinstance(selected,list) or not all(isinstance(name,str) for name in selected):
@@ -357,7 +357,7 @@ runs:
         ANIMALTOWN_BUILD_IMAGE: ${{ inputs.build-image }}
       shell: bash
       run: |
-        timeout --kill-after=30s 25m bash -e -o pipefail <<'SCENARIO'
+        timeout --kill-after=30s 30m bash -e -o pipefail <<'SCENARIO'
         mkdir -p out/jobs/template
         docker run --rm --init --shm-size=512m --user "$(id -u):$(id -g)" \
           --mount "type=bind,src=$PWD,dst=/work" -w /work \
@@ -372,6 +372,13 @@ runs:
           if [ "$mode" = helipad ]; then
             python3 tools/profile-card-fixture.py out/jobs/template/MemoryCardA.USA.raw \
               out/job-fixtures/helipad-destination out/jobs/helipad/MemoryCardB.USA.raw
+          fi
+          if [ "$mode" = online-review ]; then
+            docker run --rm --init --shm-size=512m --user "$(id -u):$(id -g)" \
+              --mount "type=bind,src=$PWD,dst=/work" -w /work \
+              animaltown-dolphin-test python3 tools/iso-smoke.py \
+              "out/AnimalTown-$BUILD_VERSION.nkit.iso" "out/jobs/$mode" --online-review --season summer --dsp-hle --component-cable
+            continue
           fi
           docker run --rm --init --shm-size=512m --user "$(id -u):$(id -g)" \
             --mount "type=bind,src=$PWD,dst=/work" -w /work \

@@ -162,6 +162,11 @@ removed identity's receipts. Completed two-card moves are preserved, unfinished
 online errands are retired without a player penalty, and undelivered letters
 are returned without consuming more stationery. Last-player deletion checks a
 durable closure barrier after guest returns, placements and mail have settled.
+Whole-town erasure uses that same approved split view. It archives and retires
+the closed town on the backend before writing the card's deletion intent, so
+an interrupted erase can resume without discarding another player's purchases
+or earned rewards. A replacement town can link to the same account; the retired
+identity and its stale publications cannot overwrite that replacement.
 
 Host fixtures exercise three linked cards through real WebSockets, restart the
 actual backend with its durable database, resume all three seats under the new
@@ -254,3 +259,12 @@ change size-optimizes generated managed code while preserving native kernel
 optimization, the six-MiB heap, and the loader's address validation. The final
 linked build, same-commit publication and target measurements still need to pass;
 an object-size diagnostic alone does not close that gate.
+
+[Public-route run 45913841532](https://github.com/capz/AnimalTown/actions/runs/45913841532)
+also passed on `a539dfc0863ceca0355f5a43e371052d781503ea` after retrying a tunnel
+startup failure. It includes resident-change review and restart recovery. Local
+integration of the subsequent retirement/relink changes passed 4,998 online
+checks. The new `job-online-review` controller scenario captures the actual
+left-world/right-review scene, verifies stick camera inspection and cancellation
+without changing the committed card, and exits before contacting any service.
+That preview check is distinct from online gameplay or physical qualification.

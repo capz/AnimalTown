@@ -23,6 +23,8 @@ internal sealed partial class TitleScreen : IDisposable,Hypercube.GameCube.IFram
     private readonly int[] rows=new int[DevConfig.SettingCount];
     private int selected,debugSelected,optionRow,optionChoice;
     private bool debugOpen,dirty,optionsOpen,confirmDelete,deleteFocus,deleting;
+    private bool eraseOnline;
+    internal static bool OnlineEraseRequested {get;private set;}
     private string optionsStatus="";
     private string status="";
     private const float BodyScale=1.2f,HelpScale=1;
@@ -45,7 +47,9 @@ internal sealed partial class TitleScreen : IDisposable,Hypercube.GameCube.IFram
     }
     internal static bool Run(DevConfig config,UserOptions options)
     {
+        OnlineEraseRequested=false;
         using var title=new TitleScreen(config,options);
+        if(TownDataStorage.Status.Length>0){title.status=TownDataStorage.Status;TownDataStorage.Status="";}
         DebugOverlay.WriteLine("ANIMALTOWN TITLE READY (town assets deferred)");
         DebugOverlay.WriteLine("ANIMALTOWN TITLE LOGO "+title.logo.SourceWidth+"x"+title.logo.SourceHeight+" bytes "+title.logo.Bytes);
         while(true){
@@ -60,7 +64,7 @@ internal sealed partial class TitleScreen : IDisposable,Hypercube.GameCube.IFram
                 if(title.StartTown())return true;
                 continue;
             }
-            if(title.optionsOpen){title.OptionsInput(direction,p.A.WasPressed,p.B.WasPressed);continue;}
+            if(title.optionsOpen){title.OptionsInput(direction,p.A.WasPressed,p.B.WasPressed);if(title.eraseOnline){title.Save();OnlineEraseRequested=true;return false;}continue;}
             if(title.debugOpen){
                 if(p.B.WasPressed||p.Start.WasPressed){title.Save();title.debugOpen=false;continue;}
                 if(direction==MenuNavigation.Up)title.debugSelected=(title.debugSelected+title.rows.Length-1)%title.rows.Length;
@@ -169,7 +173,9 @@ internal sealed partial class TitleScreen : IDisposable,Hypercube.GameCube.IFram
             if(!activate)return;
             if(deleteFocus){
                 deleting=true;Draw();
-                TownDataStorage.Delete();optionsStatus=TownDataStorage.Status;deleting=false;
+                if(TownDataStorage.RequiresOnlineReview())eraseOnline=true;
+                else{TownDataStorage.Delete();optionsStatus=TownDataStorage.Status;}
+                deleting=false;
             }
             confirmDelete=false;return;
         }

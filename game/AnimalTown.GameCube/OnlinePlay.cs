@@ -18,6 +18,8 @@ internal sealed class OnlinePlay:IDisposable
     Action? serviceTick;
     bool toTitle;
     bool closingTown;
+    bool erasingTown;
+    bool closureCompleted;
     CancellationTokenSource stopping=new CancellationTokenSource();
     OnlinePlay(DevConfig config,TownSession session){this.config=config;this.session=session;home=session.State;}
     internal static bool Recover(DevConfig config,TownSession session)
@@ -38,11 +40,11 @@ internal sealed class OnlinePlay:IDisposable
         }
         return Run(config,session,true);
     }
-    internal static bool CloseLastResident(DevConfig config,TownSession session)
+    internal static bool CloseLastResident(DevConfig config,TownSession session,bool eraseTown=false)
     {
-        using var flow=new OnlinePlay(config,session){closingTown=true};
-        try{return flow.Show(false);}
-        catch(Exception error){flow.Message("Last resident",Describe(error),"The resident has been kept.");return false;}
+        using var flow=new OnlinePlay(config,session){closingTown=true,erasingTown=eraseTown};
+        try{return flow.ConfirmClosure()&&flow.Show(false)&&flow.closureCompleted;}
+        catch(Exception error){flow.ReleaseUi();flow.Message(eraseTown?"Town closure":"Last resident",Describe(error),eraseTown?"Your town has been kept.":"The resident has been kept.");return false;}
     }
     internal static bool Run(DevConfig config,TownSession session,bool recoveryOnly=false)
     {
@@ -51,6 +53,7 @@ internal sealed class OnlinePlay:IDisposable
         catch(Exception error)
         {
             flow.session.Online=null;flow.session.AdoptTravel(flow.home);
+            flow.ReleaseUi();
             flow.Message("Online play",Describe(error),"Your card and accepted progress are safe.");
             // An unsettled journal must never fall through into offline play.
             try{return OnlineTravelCard.Load(flow.home)?.Record.Phase==OnlineTravelPhase.Ready;}
@@ -142,7 +145,7 @@ internal sealed class OnlinePlay:IDisposable
             if(recoveryOnly)return true;
         }
         if(recoveryOnly)return journal==null||Sync();
-        if(closingTown)return CloseTown();
+        if(closingTown)return closureCompleted=CloseTown();
         while(!toTitle)
         {
             bool open=false;
@@ -182,21 +185,34 @@ internal sealed class OnlinePlay:IDisposable
         }
         return !toTitle&&(journal==null||journal.Record.Phase==OnlineTravelPhase.Ready);
     }
-    bool CloseTown()
+    bool ConfirmClosure()
     {
-        var state=Request("GET","/v1/online/card",title:"Last resident",detail:"Checking pending online activity…");
-        if(state.Field("closed").Flag&&state.Field("sha256").Text==Fingerprint())return true;
+        string title=erasingTown?"Town closure":"Last resident";
         var bytes=new byte[OnlineTownProjection.MaximumBytes];int length=OnlineTownProjection.Write(home,bytes);
         var scene=OnlineTownProjection.Read(bytes,length);Array.Clear(bytes,0,bytes.Length);Ui.ReviewScene(scene,config);
-        Ui.Set("Last resident","Review before deleting this profile","Close the gate and settle activity.\nKeep confirmed guest earnings.\nReview placements and mail.\nDeletion waits for safe closure.",new[]{"Review and close online town","Keep resident for now"},"D-pad / A: choose   B: keep");
+        Ui.Set(title,erasingTown?"Review before erasing this town":"Review before deleting this profile","Close the gate and settle activity.\nKeep confirmed guest earnings.\nReview placements and mail.\nDeletion waits for safe closure.",new[]{"Review and close online town",erasingTown?"Keep town for now":"Keep resident for now"},"D-pad / A: choose   B: keep");
         Ui.ReviewFocus(0,home.HomeX(home.ActiveProfile)+3.5f,home.HomeZ(home.ActiveProfile)+4.5f,"Current town · closure review");
-        int choice=Ui.Choose();Ui.EndReview();if(choice!=0)return false;
-        Request("DELETE","/v1/online/gate",title:"Last resident",detail:"Closing admission and allowing guests to return home…");
+        try{return Ui.Choose()==0;}
+        finally{Ui.EndReview();}
+    }
+    bool CloseTown()
+    {
+        string title=erasingTown?"Town closure":"Last resident";
+        var state=Request("GET","/v1/online/card",title:title,detail:"Checking pending online activity…");
+        if(erasingTown&&state.Field("retired").Flag)return true;
+        if(state.Field("closed").Flag)return !erasingTown||RetireTown();
+        Request("DELETE","/v1/online/gate",title:title,detail:"Closing admission and allowing guests to return home…");
         if(!Sync())return false;
-        state=Request("GET","/v1/online/card",title:"Last resident",detail:"Checking the final verified card head…");
-        string id=Await(OnlineApi.NewId(stopping.Token),"Last resident","Preparing a durable closure…");
-        var closed=Request("POST","/v1/online/closure","{\"id\":"+OnlineApi.Quote(id)+",\"revision\":"+state.Field("revision").Number+",\"fingerprint\":"+OnlineApi.Quote(state.Field("sha256").Text)+"}","Last resident","Preserving confirmed guest progress before closure…");
-        return closed.Field("closed").Flag&&closed.Field("sha256").Text==Fingerprint();
+        state=Request("GET","/v1/online/card",title:title,detail:"Checking the final verified card head…");
+        string id=Await(OnlineApi.NewId(stopping.Token),title,"Preparing a durable closure…");
+        var closed=Request("POST","/v1/online/closure","{\"id\":"+OnlineApi.Quote(id)+",\"revision\":"+state.Field("revision").Number+",\"fingerprint\":"+OnlineApi.Quote(state.Field("sha256").Text)+",\"wholeTown\":"+(erasingTown?"true":"false")+"}",title,"Preserving confirmed guest progress before closure…");
+        return closed.Field("closed").Flag&&closed.Field("sha256").Text==Fingerprint()&&(!erasingTown||RetireTown());
+    }
+    bool RetireTown()
+    {
+        string id=Await(OnlineApi.NewId(stopping.Token),"Town closure","Preparing recoverable town retirement…");
+        var result=Request("POST","/v1/online/retire","{\"id\":"+OnlineApi.Quote(id)+"}","Town closure","Keeping the old checkpoint and protecting guest earnings…");
+        return result.Field("retired").Flag&&result.Field("town").Text==session.OnlineCredentials!.Town;
     }
     string? ChooseFriend()
     {

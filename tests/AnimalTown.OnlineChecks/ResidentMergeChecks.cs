@@ -45,5 +45,22 @@ static class ResidentMergeChecks
         added.ResidentJobs.Enable(added.Town.Jobs.TownId,now);added.CaptureProfile();
         OnlineTownMerge.Apply(added,baseline,Copy(baseline),now,new OnlineResidentDecisions(4,new JobIdentity[4]));
         check(added.Name=="Reed"&&added.Wallet==432&&added.Town.Jobs.Player(2).IsValid,"Reviewed additions retain their saved identity and offline inventory");
+        var full=Copy(offline);full.ResidentJobs.EnableOnlineAdapter(now);JobIdentity first=default;
+        for(int i=0;i<OfflineJobLedger.RewardCapacity;i++)
+        {var id=full.ResidentJobs.RecordOnlineReward(giver,giver.Town,"Rowan",12,0,now);if(i==0)first=id;}
+        byte[] retained=SaveCodec.Encode(full);refused=false;
+        try{OnlineTownMerge.Apply(Copy(full),baseline,hosted,now,decisions);}catch(InvalidOperationException){refused=true;}
+        check(refused&&SaveCodec.Encode(full).SequenceEqual(retained)&&full.Town.Jobs.FindReward(reward)<0,
+            "A full reward ledger leaves the source card and unmerged hosted gift intact for another review attempt");
+        check(full.ResidentJobs.CollectOnlineReward(first).Result==JobResult.Ok,"Making capacity collects an existing earned obligation");
+        var retried=Copy(full);OnlineTownMerge.Apply(retried,baseline,hosted,now,decisions);
+        check(retried.Savings==6340&&retried.Town.Jobs.FindReward(reward)>=0&&retried.Town.Jobs.FindReward(first)<0,
+            "Retry after making room applies the new hosted proceeds and gift once without reviving a collected reward");
+        var empty=Copy(baseline);empty.DeleteProfile(0);empty.DeleteProfile(1);empty.SelectProfile(0);empty.Name="Next";empty.Savings=25;
+        empty.ResidentJobs.Enable(empty.Town.Jobs.TownId,now);var newborn=empty.Town.Jobs.Player(0);empty.CaptureProfile();
+        var reborn=new JobIdentity[4];reborn[0]=reborn[1]=newborn;
+        OnlineTownMerge.Apply(empty,baseline,Copy(baseline),now,new OnlineResidentDecisions(3,reborn));
+        check(newborn!=fern&&newborn!=mira&&empty.Name=="Next"&&empty.Savings==25&&!empty.Profiles[1].Created,
+            "Recreating a resident after the last deletion keeps a fresh identity and does not resurrect discarded baseline wealth");
     }
 }

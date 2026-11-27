@@ -163,6 +163,7 @@ sealed partial class GameDatabase
 
     async Task SettleResidentEffects(NpgsqlConnection c,NpgsqlTransaction t,Guid owner,GameState baseline,GameState local,OnlineResidentDecisions decisions)
     {
+        bool hosted;await using(var read=Cmd(c,t,"SELECT EXISTS(SELECT 1 FROM hosted_towns WHERE host=$1)",owner))hosted=await read.ExecuteScalarAsync() is true;
         var changed=new List<int>();for(int n=0;n<Town.SavedVillagerCount;n++)if(local.Town.Jobs.Npc(n)!=baseline.Town.Jobs.Npc(n))changed.Add(n);
         foreach(int npc in changed)
         {
@@ -176,7 +177,11 @@ sealed partial class GameDatabase
                 {
                     if(player.ActiveProfile!=job.Profile||player.Pockets[job.Pocket]!=JobContent.Parcel||player.IsJobItem(job.Pocket))throw new GameError(409,"parcel-binding-changed");
                     player.Pockets[job.Pocket]=0;
-                    if(job.Player!=owner){await Save(c,t,job.Player,player);var updated=await Load(c,t,job.Player,false);await AppendHostedEvent(c,t,owner,job.Player,2,job.Player,InventoryPacket(player,updated.Revision));}
+                    if(job.Player!=owner)
+                    {
+                        await Save(c,t,job.Player,player);
+                        if(hosted){var updated=await Load(c,t,job.Player,false);await AppendHostedEvent(c,t,owner,job.Player,2,job.Player,InventoryPacket(player,updated.Revision));}
+                    }
                 }
                 int phase=job.Reward!=null&&player.Town.Jobs.FindReward(ParseJobKey(job.Reward))>=0?5:job.Phase<=3?7:6;
                 await using var retire=Cmd(c,t,"UPDATE hosted_jobs SET phase=$2,parcel_pocket=-1,version=version+1 WHERE id=$1",job.Id,phase);await retire.ExecuteNonQueryAsync();

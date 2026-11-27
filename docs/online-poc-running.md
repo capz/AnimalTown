@@ -79,6 +79,22 @@ be rebound. A different or reset backend cannot unlock the old reservation.
 Reconnecting to an unchanged origin uses a fresh single-use
 gameplay ticket and the current epoch, then replay or a fresh recipient snapshot.
 
+After offline profile changes or a completed two-card resident move, use **Sync
+town** and review each changed identity beside the current world. The stick
+inspects the world; the D-pad selects a review action. Assign a removed player's
+new online earnings to a surviving resident. A full mailbox or reward ledger
+keeps the review pending: free capacity on the card and retry. The completed
+two-card move stays completed.
+
+Deleting the last player or erasing a linked town from title **Options** first
+opens the same closure preview. Cancelling keeps the town. Confirmation closes
+admission, then waits for guest returns, placement review, outstanding mail and
+verified card publication. If closure cannot finish, keep the card and retry;
+do not remove its online recovery files. Whole-town erasure also retires and
+archives the old backend town before local deletion. A power interruption can
+resume that retirement/erase, and a new town can later link to the same account
+without reusing the retired town's identity or receipts.
+
 Make a backup and verify it without replacing the running database:
 
 ```powershell

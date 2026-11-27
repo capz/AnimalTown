@@ -18,6 +18,9 @@ keyboard, normal player speech, live debug gating and one resident attention cue
 --aram-residency verifies automatic indoor terrain/floor reclamation, real
 model retire/restore cycles, rapid doorway reversal and the default after reboot.
 
+--online-review captures the actual half-world closure panel using a disposable
+online-review fixture, then cancels before any account/network operation.
+
 --warm-terrain remains accepted for older capture commands. Terrain prefetch
 is automatic; this flag no longer changes developer settings or opens a menu.
 """
@@ -2836,13 +2839,17 @@ with (root/'emulator.log').open('w') as log:
         if '--loading' in sys.argv:
             for n,seconds in enumerate((1,1,2,4,8,12,17)):
                 time.sleep(seconds);screenshot(f'loading-{n}.png')
-        elif any(flag in sys.argv for flag in ('--jobs','--aram-residency','--title-logo','--terrain-materials','--save-cards','--save-and-quit','--daylight-clock','--daylight-location','--player-chat')):wait_title()
+        elif any(flag in sys.argv for flag in ('--jobs','--online-review','--aram-residency','--title-logo','--terrain-materials','--save-cards','--save-and-quit','--daylight-clock','--daylight-location','--player-chat')):wait_title()
         else:time.sleep(45)
         if p.poll() is not None:
             raise RuntimeError(f'Dolphin exited during boot ({p.returncode}); see {root / "emulator.log"}')
         screenshot('screen.png')
         if any(flag in sys.argv for flag in ('--title-menu','--title-load','--title-config','--title-update','--title-options','--title-options-load','--title-options-unsupported')):wait_title()
-        if '--jobs' in sys.argv:
+        if '--online-review' in sys.argv:
+            import importlib.util
+            review_spec=importlib.util.spec_from_file_location('online_review_smoke',str(Path(__file__).with_name('online-review-smoke.py')))
+            review_module=importlib.util.module_from_spec(review_spec);review_spec.loader.exec_module(review_module);review_module.run(globals())
+        elif '--jobs' in sys.argv:
             run_jobs(globals())
         elif '--player-chat' in sys.argv:player_chat()
         elif '--daylight-location' in sys.argv:daylight_location()

@@ -28,8 +28,10 @@ internal static class Program
         var options=UserOptionsStorage.Load();VideoOptions.Load(options);
         StartupSplash.Run();
         while(true){
-            if(!TitleScreen.Run(config,options))return 0;
-            RunTown(config);
+            bool start=TitleScreen.Run(config,options);
+            if(TitleScreen.OnlineEraseRequested)TownDataStorage.DeleteOnline(config);
+            else if(start)RunTown(config);
+            else return 0;
             // The entire prior town frame must unwind, including its session,
             // before title resources or a second full mailbox are loaded.
             LoadingScreen.Finish();TextureCache.TrimUnused();

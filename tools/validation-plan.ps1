@@ -9,6 +9,9 @@ function Get-EmulatorChecksForPath([string]$Path) {
     if($Path -match '^game/AnimalTown.GameCube/(TitleScreen|VideoOptions|UserOptionsStorage|DevConfigStorage)\.cs$|^shared/AnimalTown.Domain/UserOptions\.cs$'){
         'video-options'
     }
+    if($Path -match '^game/AnimalTown.GameCube/(OnlinePlay|OnlineMenuUi|TownGame\.Review|TownDataStorage|TitleScreen)\.cs$|^tools/(online-review-smoke|profile-card-fixture)\.py$|^tests/AnimalTown.Checks/JobFixture\.cs$'){
+        'job-online-review'
+    }
     if($Path -match '^assets/models/villagers/|^game/AnimalTown.GameCube/TownGame\.Save[^/]*\.cs$|^shared/AnimalTown.Domain/(SaveRepository|SaveCodec|SplitSaveCodec|IncrementalSaveCodec)\.cs$'){
         'save-and-quit'
     }
@@ -42,7 +45,7 @@ function Get-ValidationPlan {
     $allManaged=@('ui','menu','text','trim','terrain','movement','dialogue','generation','life','saves','buildings','core','content')
     $allRendering=@('water','services','movement','ground','index','visibility','attention','dropped-item')
     $allResources=@('memory','floor','snow','visual')
-    $allEmulator=@('title-logo','video-options','save-and-quit','terrain-materials','card-slot-b','card-choose-b','card-without-saving','card-no-card','daylight','job-delivery','job-mail','job-helipad')
+    $allEmulator=@('title-logo','video-options','save-and-quit','terrain-materials','card-slot-b','card-choose-b','card-without-saving','card-no-card','daylight','job-delivery','job-mail','job-helipad','job-online-review')
     $resources=[Collections.Generic.HashSet[string]]::new()
     $emulator=[Collections.Generic.HashSet[string]]::new()
     $rendering=[Collections.Generic.HashSet[string]]::new()
@@ -277,6 +280,7 @@ function Get-ValidationPlan {
             continue
         }
         if($p -eq 'tools/iso-smoke.py'){[void]$native.Add('water-smoke');continue}
+        if($p -eq 'tools/online-review-smoke.py'){Add-Managed 'saves';continue}
         if($p -eq 'tools/path-study.py'){[void]$native.Add('path-study');continue}
         $broad=$true
         if($p -notmatch '^tests/'){$broadEmulator=$true}

@@ -9,6 +9,7 @@ static class OnlineControlRoutes
         app.MapGet("/v1/online/friends",(HttpContext c,int? page)=>database.OpenOnlineFriends(Device(c),page??0)).WithMetadata(ApiAccess.DeviceOnly);
         app.MapGet("/v1/online/gate",(Delegate)((HttpContext c)=>database.OnlineGateStatus(Device(c)))).WithMetadata(ApiAccess.DeviceOnly);
         app.MapPost("/v1/online/closure",(HttpContext c,OnlineClosureRequest request)=>database.CloseOnlineTown(Device(c),request)).WithMetadata(ApiAccess.DeviceOnly);
+        app.MapPost("/v1/online/retire",(HttpContext c,OnlineRetirementRequest request)=>database.RetireOnlineTown(Device(c),request)).WithMetadata(ApiAccess.DeviceOnly);
     }
 }
 
@@ -27,8 +28,9 @@ sealed partial class GameDatabase
         object? residentReview=null;
         await using(var read=Cmd(c,t,"SELECT id,fingerprint,parent_revision FROM offline_resident_reviews WHERE player=$1",device.Player))
         await using(var row=await read.ExecuteReaderAsync())if(await row.ReadAsync())residentReview=new{id=row.GetGuid(0),sha256=row.GetString(1),parentRevision=row.GetInt64(2)};
-        bool closed;await using(var read=Cmd(c,t,"SELECT EXISTS(SELECT 1 FROM online_town_closures WHERE player=$1)",device.Player))closed=await read.ExecuteScalarAsync() is true;
-        await t.CommitAsync();return new{revision,sha256,pending,residentReview,closed};
+        bool closed;await using(var read=Cmd(c,t,"SELECT EXISTS(SELECT 1 FROM online_town_closures WHERE player=$1 AND town_identity=$2)",device.Player,device.Town))closed=await read.ExecuteScalarAsync() is true;
+        bool retired;await using(var read=Cmd(c,t,"SELECT EXISTS(SELECT 1 FROM retired_online_towns WHERE player=$1 AND town_identity=$2)",device.Player,device.Town))retired=await read.ExecuteScalarAsync() is true;
+        await t.CommitAsync();return new{revision,sha256,pending,residentReview,closed,retired};
     }
 
     public async Task<object> OpenOnlineFriends(DevicePrincipal device,int page)

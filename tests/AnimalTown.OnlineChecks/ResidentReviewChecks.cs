@@ -61,6 +61,7 @@ static class ResidentReviewChecks
             return result;
         }
         await Upload(baseline,null);
+        await Request(HttpMethod.Post,"/v1/online/retire",new{id=Guid.NewGuid()},expected:409);
         var offline=SplitSaveCodec.Decode(SplitSaveCodec.Encode(baseline));offline.HostedCommerceLocked=true;
         offline.SelectProfile(1);offline.Savings+=5000;offline.DeleteProfile(0);
         offline.SelectProfile(0);offline.Name="Reed";offline.Savings=25;offline.Tutorial=7;offline.ResidentJobs.Enable(town,now);
@@ -69,7 +70,7 @@ static class ResidentReviewChecks
         var destination=new GameState(10092){Tutorial=7};destination.ResidentJobs.Enable(town^0x1000000000000000UL,now);second.Save(destination);
         var departed=baseline.Town.Jobs.Npc(1);offline=new OfflineTownTravel(first,second).ExchangeResidents(1,4,now);
         check(offline.Town.Jobs.Npc(1)!=departed&&second.Load()!.Town.Jobs.Npc(4)==departed,"Fixture completed a real two-card resident exchange before online review");
-        JobIdentity reward=default;
+        JobIdentity reward=default,guestReward=default;Guid affectedGuest=Guid.Empty,returnedMail=Guid.NewGuid(),deliveredMail=Guid.NewGuid();
         string? database=Environment.GetEnvironmentVariable("ANIMALTOWN_TEST_CONNECTION");
         if(!string.IsNullOrEmpty(database))
         {
@@ -84,7 +85,36 @@ static class ResidentReviewChecks
             check(hosted.ResidentJobs.DeliverOnlineText(departed,baseline.Town.Jobs.Player(0),"Your online progress has been kept safely.",now,await Identity()),"Fixture delivered new independently identified hosted mail");
             var p=SplitSaveCodec.Encode(hosted);
             await using var write=new NpgsqlCommand("UPDATE players SET town_data=$2,house_positions=$3,shop_states=$4,player_villager=$5,player_villager2=$6,player_villager3=$7,player_villager4=$8,revision=revision+1 WHERE id=$1",connection,transaction);
-            write.Parameters.AddWithValue(owner);foreach(var part in p)write.Parameters.AddWithValue(part);check(await write.ExecuteNonQueryAsync()==1,"Earned fixture effects touch only its new account");await transaction.CommitAsync();
+            write.Parameters.AddWithValue(owner);foreach(var part in p)write.Parameters.AddWithValue(part);check(await write.ExecuteNonQueryAsync()==1,"Earned fixture effects touch only its new account");
+            affectedGuest=Guid.NewGuid();var guest=new GameState(10093){Name="Guest",Wallet=337};ulong guestTown=town^0x2000000000000000UL;
+            guest.ResidentJobs.Enable(guestTown==0?1:guestTown,now);guest.Pockets[0]=JobContent.Parcel;guest.Pockets[1]=10;guest.ResidentJobs.EnableOnlineAdapter(now);
+            guestReward=guest.ResidentJobs.RecordOnlineReward(departed,town,baseline.Town.Residents[1].Name,12,37,now,await Identity(),await Identity());
+            var guestParts=SplitSaveCodec.Encode(guest);
+            await using(var insert=new NpgsqlCommand("INSERT INTO players(id,name,salt,password,town_data,house_positions,shop_states,player_villager,player_villager2,player_villager3,player_villager4) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)",connection,transaction))
+            {
+                insert.Parameters.AddWithValue(affectedGuest);insert.Parameters.AddWithValue("Parcel"+suffix);insert.Parameters.AddWithValue(new byte[16]);insert.Parameters.AddWithValue(new byte[32]);foreach(var part in guestParts)insert.Parameters.AddWithValue(part);
+                check(await insert.ExecuteNonQueryAsync()==1,"Guest parcel fixture creates only its own bounded private account");
+            }
+            foreach(bool earned in new[]{false,true})
+            {
+                await using var insert=new NpgsqlCommand("""
+                    INSERT INTO hosted_jobs(id,host,player,villager,profile,requester,target,template,item,phase,accepted,due,parcel_pocket,reward_identity)
+                    VALUES($1,$2,$3,$4,0,1,2,0,11,$5,$6,$7,$8,$9)
+                    """,connection,transaction);
+                foreach(object value in new object[]{Guid.NewGuid(),owner,affectedGuest,Key(guest.Town.Jobs.Player(0)),earned?5:1,now,now+86400,earned?-1:0,earned?Key(guestReward):(object)DBNull.Value})insert.Parameters.AddWithValue(value);
+                await insert.ExecuteNonQueryAsync();
+            }
+            foreach(bool delivered in new[]{false,true})
+            {
+                await using var insert=new NpgsqlCommand("""
+                    INSERT INTO hosted_mail(id,host,sender,sender_identity,recipient_identity,recipient_profile,recipient_npc,body,due,delivered)
+                    VALUES($1,$2,$3,$4,$5,-1,1,$6,$7,$8)
+                    """,connection,transaction);
+                foreach(object value in new object[]{delivered?deliveredMail:returnedMail,owner,affectedGuest,Key(guest.Town.Jobs.Player(0)),Key(departed),"Hello! I enjoyed our conversation and hope to see you again.",now+86400,delivered})insert.Parameters.AddWithValue(value);
+                await insert.ExecuteNonQueryAsync();
+            }
+            await transaction.CommitAsync();
+            await Request(HttpMethod.Post,"/v1/online/gate/open",new{});
         }
         var uploaded=await Upload(offline,1);check(uploaded.GetProperty("revision").GetInt64()==1,"Uploading roster changes stages review without acknowledging a different card head");
         var head=await Request(HttpMethod.Get,"/v1/online/card");string offlineHash=Convert.ToHexString(SHA256.HashData(Envelope(offline)));
@@ -120,6 +150,25 @@ static class ResidentReviewChecks
         var complete=new{id=Guid.NewGuid(),review=review.GetProperty("id").GetGuid(),version=review.GetProperty("version").GetInt32()};
         var applied=await Request(HttpMethod.Post,path+"/residents/complete",complete);var again=await Request(HttpMethod.Post,path+"/residents/complete",complete);
         check(applied.GetProperty("revision").GetInt64()==2&&again.GetProperty("revision").GetInt64()==2,"Review completion atomically advances once and survives response-loss retry after its lease ended");
+        if(affectedGuest!=Guid.Empty)
+        {
+            await using var connection=new NpgsqlConnection(database);await connection.OpenAsync();
+            await using(var due=new NpgsqlCommand("UPDATE hosted_mail SET due=$2 WHERE id=$1 AND delivered",connection))
+            {due.Parameters.AddWithValue(deliveredMail);due.Parameters.AddWithValue(DateTimeOffset.UtcNow.ToUnixTimeSeconds()-86401);await due.ExecuteNonQueryAsync();}
+            bool settled=false;long until=Environment.TickCount64+30000;
+            while(Environment.TickCount64<until)
+            {
+                await using var query=new NpgsqlCommand("SELECT count(*) FROM hosted_mail WHERE id IN ($1,$2) AND replied",connection);query.Parameters.AddWithValue(returnedMail);query.Parameters.AddWithValue(deliveredMail);
+                if((long)(await query.ExecuteScalarAsync())! ==2){settled=true;break;}await Task.Delay(200);
+            }
+            check(settled,"Both an undelivered letter and an already delivered letter settle after their NPC moves away, including a worker restart");
+            await using var read=new NpgsqlCommand("SELECT town_data,house_positions,shop_states,player_villager,player_villager2,player_villager3,player_villager4 FROM players WHERE id=$1",connection);read.Parameters.AddWithValue(affectedGuest);
+            await using var row=await read.ExecuteReaderAsync();check(await row.ReadAsync(),"Affected guest remains in private home custody");var parts=new byte[7][];for(int i=0;i<7;i++)parts[i]=row.GetFieldValue<byte[]>(i);var guest=SplitSaveCodec.Decode(parts);
+            check(guest.Pockets[0]==0&&guest.Pockets[1]==10&&guest.Wallet==337&&guest.Town.Jobs.FindReward(guestReward)>=0,
+                "Resident departure retires only the bound unfinished parcel while preserving the guest's confirmed purchase, balance and earned reward");
+            guest.ResidentJobs.EnableOnlineAdapter(now);bool returnedText=false;for(int i=0;i<guest.MailCount;i++)if(guest.Town.Jobs.Letter(0,i).ReplyText==255)returnedText|=guest.ResidentJobs.ReadLetter(i).Contains("enjoyed our conversation");
+            check(returnedText&&guest.MailCount==2,"Returned resident mail retains its original text, adds no stationery debit and does not discard the already earned reply");
+        }
         head=await Request(HttpMethod.Get,"/v1/online/card");check(head.GetProperty("residentReview").ValueKind==JsonValueKind.Null&&head.GetProperty("sha256").GetString()==offlineHash,"Reviewed card lineage remains the exact uploaded bytes until merged publication/readback");
         Guid reservation=Guid.NewGuid();await Request(HttpMethod.Post,"/v1/online/reservations",new{id=reservation,host=owner,visit=Guid.Empty,revision=2,fingerprint=offlineHash,profile=offline.ActiveProfile});await Request(HttpMethod.Post,$"/v1/online/reservations/{reservation}/activate",new{});
         var publication=await Request(HttpMethod.Post,$"/v1/online/reservations/{reservation}/settlement",new{});using var returned=new MemoryStream();
@@ -161,5 +210,50 @@ static class ResidentReviewChecks
         await Request(HttpMethod.Post,"/v1/online/gate/open",new{},expected:409);
         await Request(HttpMethod.Post,"/v1/online/reservations",new{id=Guid.NewGuid(),host=owner,visit=Guid.Empty,revision=5,fingerprint=closure.fingerprint,profile=1},expected:409);
         check((await Request(HttpMethod.Get,"/v1/online/card")).GetProperty("closed").GetBoolean(),"Closure prevents new admission or reservations until a new resident roster is reviewed");
+        var retirement=new{id=Guid.NewGuid()};
+        var retired=await Request(HttpMethod.Post,"/v1/online/retire",retirement);var retiredAgain=await Request(HttpMethod.Post,"/v1/online/retire",retirement);
+        check(retired.GetProperty("retired").GetBoolean()&&retiredAgain.GetProperty("town").GetString()==town.ToString("X16"),"Whole-town retirement is durable and idempotent before any local card erasure");
+        head=await Request(HttpMethod.Get,"/v1/online/card");
+        check(head.GetProperty("retired").GetBoolean()&&head.GetProperty("revision").GetInt64()==0,"An interrupted physical erasure can rediscover completed retirement after its original head was archived");
+        if(affectedGuest!=Guid.Empty)
+        {
+            await using var connection=new NpgsqlConnection(database);await connection.OpenAsync();
+            await using(var read=new NpgsqlCommand("SELECT save_commit,save_records FROM retired_online_towns WHERE player=$1 AND town_identity=$2",connection))
+            {
+                read.Parameters.AddWithValue(owner);read.Parameters.AddWithValue(town.ToString("X16"));await using var row=await read.ExecuteReaderAsync();check(await row.ReadAsync(),"Retirement retains the old canonical checkpoint");
+                var archived=SplitSaveCodec.DecodeCommitted(row.GetFieldValue<byte[]>(0),row.GetFieldValue<byte[][]>(1));check(archived.Profiles[1].Name=="Mira"&&archived.Profiles[1].Savings==6340,"Archived checkpoint preserves the former owner's verified progress");
+            }
+            await using var guestRead=new NpgsqlCommand("SELECT town_data,house_positions,shop_states,player_villager,player_villager2,player_villager3,player_villager4 FROM players WHERE id=$1",connection);guestRead.Parameters.AddWithValue(affectedGuest);
+            await using var guestRow=await guestRead.ExecuteReaderAsync();check(await guestRow.ReadAsync(),"Retiring a host does not remove its guests");var parts=new byte[7][];for(int i=0;i<7;i++)parts[i]=guestRow.GetFieldValue<byte[]>(i);var guest=SplitSaveCodec.Decode(parts);
+            check(guest.Wallet==337&&guest.Pockets[1]==10&&guest.Town.Jobs.FindReward(guestReward)>=0&&guest.MailCount==2,"Host retirement preserves guest purchases, currency, owed earnings and returned correspondence");
+        }
+        string oldToken=token;ulong replacementTown=town^0x4000000000000000UL;if(replacementTown==0)replacementTown=1;
+        var replacement=new GameState(10094){Name="Newhome",Sequence=11,Tutorial=7,Wallet=123};replacement.ResidentJobs.Enable(replacementTown,now);
+        replacement.SelectProfile(1);replacement.Name="Moss";replacement.Tutorial=7;replacement.ResidentJobs.Enable(replacementTown,now);replacement.SelectProfile(0);
+        replacement.Rollover((int)(now/86400),DateTime.UtcNow.Year*12+DateTime.UtcNow.Month);
+        link=await Request(HttpMethod.Post,"/v1/auth/link/start",new{town=replacementTown.ToString("X16")});
+        await Request(HttpMethod.Post,"/v1/account/link",new{code=link.GetProperty("code").GetString()},browser);
+        token=(await Request(HttpMethod.Post,"/v1/auth/link/poll",new{secret=link.GetProperty("secret").GetString()})).GetProperty("token").GetString()!;
+        await Request(HttpMethod.Get,"/v1/online/card",credential:oldToken,expected:401);
+        await Upload(replacement,null);head=await Request(HttpMethod.Get,"/v1/online/card");
+        check(head.GetProperty("revision").GetInt64()==1&&!head.GetProperty("closed").GetBoolean()&&!head.GetProperty("retired").GetBoolean(),"Explicit retirement permits the same account to link a fresh town without carrying over the old identity or closure");
+        await Request(HttpMethod.Post,$"/v1/online/reservations/{reservation}/published",new{fingerprint=publication.GetProperty("sha256").GetString()},expected:409);
+        var fresh=await Request(HttpMethod.Get,"/v1/me");check(fresh.GetProperty("name").GetString()=="Newhome"&&fresh.GetProperty("wallet").GetInt32()==123,"A stale old-town publication cannot overwrite the replacement town");
+        await Request(HttpMethod.Post,"/v1/online/closure",new{id=Guid.NewGuid(),revision=1,fingerprint=head.GetProperty("sha256").GetString(),wholeTown=true});
+        check((await Request(HttpMethod.Get,"/v1/online/card")).GetProperty("closed").GetBoolean(),"Confirmed whole-town erasure uses the same closure barrier even with multiple remaining profiles");
+        replacement.DeleteProfile(0);replacement.DeleteProfile(1);replacement.SelectProfile(0);replacement.Name="Next";replacement.Wallet=45;replacement.Tutorial=7;
+        replacement.ResidentJobs.Enable(replacementTown,now);replacement.Sequence++;
+        await Upload(replacement,1);lease=(await Request(HttpMethod.Post,"/v1/review",new{})).GetProperty("lease").GetGuid().ToString();path="/v1/review/"+lease;
+        review=await Request(HttpMethod.Get,path+"/residents");
+        foreach(int index in new[]{0,1})
+        {
+            await Request(HttpMethod.Post,path+"/residents/ops",new{id=Guid.NewGuid(),review=review.GetProperty("id").GetGuid(),version=review.GetProperty("version").GetInt32(),index,recipient=Key(replacement.Town.Jobs.Player(0))});
+            review=await Request(HttpMethod.Get,path+"/residents");
+        }
+        await Request(HttpMethod.Post,path+"/residents/complete",new{id=Guid.NewGuid(),review=review.GetProperty("id").GetGuid(),version=review.GetProperty("version").GetInt32()});
+        await Request(HttpMethod.Post,"/v1/online/gate/open",new{});
+        check(!(await Request(HttpMethod.Get,"/v1/online/card")).GetProperty("closed").GetBoolean()&&(await Request(HttpMethod.Get,"/v1/me")).GetProperty("wallet").GetInt32()==45,
+            "A new resident in a safely closed empty shared town can review the changes and reopen without inheriting discarded baseline money");
+        await Request(HttpMethod.Delete,"/v1/online/gate");
     }
 }

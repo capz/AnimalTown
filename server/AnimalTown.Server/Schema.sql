@@ -198,6 +198,11 @@ CREATE TABLE IF NOT EXISTS online_town_closures (
  player uuid PRIMARY KEY REFERENCES players(id), town_identity text NOT NULL,
  revision bigint NOT NULL CHECK(revision>0), fingerprint text NOT NULL
 );
+CREATE TABLE IF NOT EXISTS retired_online_towns (
+ player uuid NOT NULL REFERENCES players(id), town_identity text PRIMARY KEY,
+ save_commit bytea NOT NULL, save_records bytea[] NOT NULL CHECK(cardinality(save_records)=7),
+ retired timestamptz NOT NULL DEFAULT clock_timestamp()
+);
 CREATE TABLE IF NOT EXISTS online_travel (
  id uuid PRIMARY KEY, player uuid NOT NULL REFERENCES players(id), device uuid NOT NULL REFERENCES devices(id),
  town_identity text NOT NULL, profile integer NOT NULL CHECK(profile BETWEEN 0 AND 3),
