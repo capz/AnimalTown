@@ -5,6 +5,9 @@ static class Program
 {
     static int Main()
     {
+        var retry=new OnlineHttpRetry();
+        if(retry.TryWait(429,"9999999999",out _)||retry.TryWait(503,"1",out _)||
+           !retry.TryWait(429,"60",out int delay)||delay!=60000||!retry.TryWait(429,"1",out delay)||delay!=1000||retry.TryWait(429,"1",out _))return 13;
         if (OnlineWebSocketUpgrade.AcceptKey("dGhlIHNhbXBsZSBub25jZQ==") != "s3pPLMBiTxaQ9kYGzzhZRbK+xOo=") return 1;
         using(var hash=new OnlineCheckpointHash())
         {byte[] abc={97,98,99};hash.Append(abc,0,3);if(hash.Complete()!="BA7816BF8F01CFEA414140DE5DAE2223B00361A396177A9CB410FF61F20015AD")return 7;}

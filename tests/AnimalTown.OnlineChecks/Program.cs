@@ -4,6 +4,7 @@ using AnimalTown.Online;
 
 if(args.Length>0&&args[0]=="--dolphin-fixture"){await DolphinTargetFixture.Run(args[1],args[2],args.Contains("--prepare-only"));return;}
 if(args.Length>0&&args[0]=="--dolphin-verify"){DolphinTargetFixture.Verify(args[1],args[2]);return;}
+if(args.Length>0&&args[0]=="--http-rate-limit"){await RateLimitChecks.Run(args[1]);return;}
 
 int checks = 0;
 void Check(bool condition, string reason) { checks++; if (!condition) throw new Exception(reason); }
@@ -57,6 +58,14 @@ long baseline=GC.GetAllocatedBytesForCurrentThread();
 for(int i=0;i<10000;i++)idleSocket.TryRead(idleBytes,0,32);
 Check(GC.GetAllocatedBytesForCurrentThread()==baseline,"Steady-state nonblocking WebSocket polling allocates nothing");
 CodecChecks.Run(Check);
+foreach(string? invalid in new string?[]{null,"","0","61","99999999999999999","-1","1.5","1e2","tomorrow","60\r\n"," 1","１"})
+{
+    var retry=new OnlineHttpRetry();Check(!retry.TryWait(429,invalid,out _),"Malformed or unbounded HTTP retry delays are rejected");
+    Check(retry.TryWait(429,"60",out int delay)&&delay==60000,"Rejected headers do not spend the request retry budget");
+}
+var requestRetry=new OnlineHttpRetry();
+Check(!requestRetry.TryWait(503,"1",out _),"Only explicit HTTP request throttling can replay a control request");
+Check(requestRetry.TryWait(429,"1",out int wait)&&wait==1000&&requestRetry.TryWait(429,"60",out wait)&&wait==60000&&!requestRetry.TryWait(429,"1",out _),"Each request has at most two bounded retry waits");
 CardAndProjectionChecks.Run(Check);
 ReceiptMergeChecks.Run(Check);
 ResidentMergeChecks.Run(Check);

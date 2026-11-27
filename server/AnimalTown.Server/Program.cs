@@ -16,6 +16,12 @@ using var linkApprovals=PartitionedRateLimiter.Create<Guid,Guid>(player=>RateLim
 builder.Services.AddRateLimiter(o=>
 {
     o.RejectionStatusCode=429;
+    o.OnRejected=(context,_)=>
+    {
+        if(context.Lease.TryGetMetadata(MetadataName.RetryAfter,out var retryAfter))
+            context.HttpContext.Response.Headers.RetryAfter=Math.Max(1,(int)Math.Ceiling(retryAfter.TotalSeconds)).ToString(System.Globalization.CultureInfo.InvariantCulture);
+        return ValueTask.CompletedTask;
+    };
     o.GlobalLimiter=PartitionedRateLimiter.Create<HttpContext,string>(c=>RateLimitPartition.GetFixedWindowLimiter(ConnectionAddress(c),_=>MinuteLimit(90)));
     o.AddPolicy("device-link-start",c=>RateLimitPartition.GetFixedWindowLimiter(ConnectionAddress(c),_=>MinuteLimit(12)));
     o.AddPolicy("device-link-approve",c=>RateLimitPartition.GetFixedWindowLimiter(ConnectionAddress(c),_=>MinuteLimit(20)));

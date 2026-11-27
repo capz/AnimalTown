@@ -73,7 +73,7 @@ static class DolphinTargetFixture
                 {
                     using var request=new HttpRequestMessage(HttpMethod.Put,$"/v1/towns/{id}/checkpoint-uploads/{offer.GetProperty("id").GetGuid()}/page?offset={offset}");
                     request.Headers.Authorization=new AuthenticationHeaderValue("Bearer",player.Access);request.Content=new ByteArrayContent(bytes.AsSpan(offset,Math.Min(16384,bytes.Length-offset)).ToArray());request.Content.Headers.ContentType=new MediaTypeHeaderValue("application/octet-stream");
-                    using var response=await api.SendAsync(request);if(!response.IsSuccessStatusCode)throw new Exception("Target fixture card import failed");
+                    using var response=await api.SendAsync(request);if(!response.IsSuccessStatusCode)throw new Exception("Target fixture card import failed at offset "+offset+" HTTP "+(int)response.StatusCode);
                 }
             }
             else

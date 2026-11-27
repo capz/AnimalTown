@@ -37,6 +37,30 @@ internal sealed class OnlineApi:IDisposable
     internal async Task<byte[]> Send(string method,string path,byte[]? bytes,string? type,CancellationToken cancellation)
     {
         if(path.Length==0||path[0]!='/'||path.IndexOf('\r')>=0||path.IndexOf('\n')>=0)throw new FormatException("Invalid online request path.");
+        var retry=new OnlineHttpRetry();
+        while(true)
+        {
+            int wait;
+            using(var response=await SendOnce(method,path,bytes,type,cancellation))
+            {
+                if(!retry.TryWait((int)response.StatusCode,response.Headers.Get("retry-after"),out wait))
+                {
+                    if(!response.IsSuccessStatusCode)
+                    {
+                        string reason="Online service unavailable. Your card and progress are safe.";
+                        try{reason=OnlineJson.Read(await response.Content.ReadAsStringAsync()).Field("error").Text;}catch(FormatException){}
+                        throw new IOException(reason);
+                    }
+                    return await response.Content.ReadAsByteArrayAsync();
+                }
+            }
+            // Release the response before waiting; keep the operation ID and
+            // page bytes unchanged. The outer flow continues drawing/cancels.
+            await Task.Delay(wait,cancellation);
+        }
+    }
+    async Task<Http.HttpResponseMessage> SendOnce(string method,string path,byte[]? bytes,string? type,CancellationToken cancellation)
+    {
         using var request=new Http.HttpRequestMessage(new Http.HttpMethod(method),link.Origin+path);
         request.Headers.Add("authorization","Bearer "+link.AccessToken);
         if(bytes!=null){request.Content=new Http.ByteArrayContent(bytes);request.Content.Headers.Add("content-type",type!);}
@@ -49,14 +73,9 @@ internal sealed class OnlineApi:IDisposable
             await Task.Delay(1);
         }
         if(timedOut){try{using var late=sending.GetAwaiter().GetResult();}catch(OperationCanceledException){}throw new TimeoutException("The online request timed out.");}
-        using var response=await sending;cancellation.ThrowIfCancellationRequested();
-        if(!response.IsSuccessStatusCode)
-        {
-            string reason="Online service unavailable. Your card and progress are safe.";
-            try{reason=OnlineJson.Read(await response.Content.ReadAsStringAsync()).Field("error").Text;}catch(FormatException){}
-            throw new IOException(reason);
-        }
-        return await response.Content.ReadAsByteArrayAsync();
+        var response=await sending;
+        if(cancellation.IsCancellationRequested){response.Dispose();cancellation.ThrowIfCancellationRequested();}
+        return response;
     }
     internal static string Quote(string text)
     {

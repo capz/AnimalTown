@@ -23,6 +23,18 @@ function UploadSave([string]$Path,[byte[]]$Bytes,[string]$Token,[string]$Method=
     return @{Status=[int]$response.StatusCode;Body=if($response.Content){$response.Content|ConvertFrom-Json}else{$null}}
 }
 function Assert($Condition,[string]$Message){if(!$Condition){throw $Message}}
+function RestartBackend([string]$Failure){
+    Stop-Process -Id $script:process.Id;$script:process.WaitForExit()
+    $savedConnection=$env:ConnectionStrings__Game
+    try{$env:ConnectionStrings__Game=$DatabaseConnection;$script:process=Start-Process @launch}
+    finally{$env:ConnectionStrings__Game=$savedConnection}
+    $ready=$false
+    for($attempt=0;$attempt -lt 60;$attempt++){
+        try{if((Request GET '/health' $null $null).Status -eq 200){$ready=$true;break}}catch{}
+        Start-Sleep -Milliseconds 250
+    }
+    Assert $ready $Failure
+}
 function RunOnlineChecks([string]$Origin){
     $requestFile=Join-Path $serverRoot ('out/restart-'+[Guid]::NewGuid().ToString('N'))
     $ackFile=$requestFile+'.ack'
@@ -38,16 +50,7 @@ function RunOnlineChecks([string]$Origin){
                 $nonce=[IO.File]::ReadAllText($requestFile)
                 if($nonce -notmatch '^[a-f0-9]{32}$'){throw 'Invalid test restart request'}
                 Remove-Item -LiteralPath $requestFile
-                Stop-Process -Id $script:process.Id;$script:process.WaitForExit()
-                $savedConnection=$env:ConnectionStrings__Game
-                try{$env:ConnectionStrings__Game=$DatabaseConnection;$script:process=Start-Process @launch}
-                finally{$env:ConnectionStrings__Game=$savedConnection}
-                $ready=$false
-                for($attempt=0;$attempt -lt 60;$attempt++){
-                    try{if((Request GET '/health' $null $null).Status -eq 200){$ready=$true;break}}catch{}
-                    Start-Sleep -Milliseconds 250
-                }
-                Assert $ready 'Backend failed to restart with its existing durable database'
+                RestartBackend 'Backend failed to restart with its existing durable database'
                 [IO.File]::WriteAllText($ackFile+'.tmp',$nonce);[IO.File]::Move($ackFile+'.tmp',$ackFile,$true)
             }
             Start-Sleep -Milliseconds 100
@@ -73,6 +76,10 @@ function RunDolphinTarget([string]$Origin){
         docker run --rm --init --shm-size=512m --user "${taskUid}:${taskGid}" --mount "type=bind,src=$serverRoot,dst=/work" -w /work animaltown-dolphin-test python3 tools/iso-smoke.py $DolphinIso out/jobs/template --jobs template --season summer --dsp-hle --component-cable
         if($LASTEXITCODE){throw 'Dolphin target template failed'}
     }
+    # The preceding public suite shares this address and can leave fewer
+    # permits than a three-card import needs. Retain the database and tunnel,
+    # but give this independent target fixture a fresh, fully enabled limiter.
+    RestartBackend 'Dolphin target backend did not become ready'
     $client=Start-Process dotnet -ArgumentList @('run','--project','tests/AnimalTown.OnlineChecks','-c','Release','--','--dolphin-fixture',$Origin,$fixture) -PassThru -RedirectStandardOutput "$target/fixture.log" -RedirectStandardError "$target/fixture-error.log"
     try{
         $deadline=[DateTime]::UtcNow.AddMinutes(3)
@@ -95,6 +102,11 @@ function RunDolphinTarget([string]$Origin){
     }finally{
         [IO.File]::WriteAllText((Join-Path $serverRoot "$fixture/stop"),'stop')
         if(!$client.HasExited){Stop-Process -Id $client.Id}
+        # Keep bounded setup diagnostics in the job log as well as artifacts.
+        # The fixture prints paths/status codes, never credentials or card data.
+        foreach($log in @("$target/fixture.log","$target/fixture-error.log")){
+            if(Test-Path -LiteralPath $log){Get-Content -LiteralPath $log -Tail 80|Write-Host}
+        }
         # Credentials and raw cards are deliberately excluded from evidence.
         Remove-Item -LiteralPath "$fixture/card","$emulator/private-records" -Recurse -Force -ErrorAction SilentlyContinue
     }
@@ -484,20 +496,12 @@ try {
     if($LASTEXITCODE){throw 'Backend split storage or migration failed'}
     # Keep the public per-address abuse limits enabled. A fresh service process
     # gives the independent three-player fixture its own request budget.
-    Stop-Process -Id $process.Id
-    $env:ConnectionStrings__Game=$DatabaseConnection
-    try{$process=Start-Process @launch}finally{$env:ConnectionStrings__Game=$oldConnection}
-    $ready=$false
-    for($i=0;$i -lt 40;$i++){try{if((Request GET '/health' $null $null).Status -eq 200){$ready=$true;break}}catch{};Start-Sleep -Milliseconds 250}
-    Assert $ready 'Online fixture server did not become ready'
+    RestartBackend 'Online fixture server did not become ready'
     RunOnlineChecks $api
+    dotnet run --project tests/AnimalTown.OnlineChecks -c Release -- --http-rate-limit $api
+    if($LASTEXITCODE){throw 'Production HTTP request-limit checks failed'}
     if($PublicTunnel){
-        Stop-Process -Id $process.Id
-        $env:ConnectionStrings__Game=$DatabaseConnection
-        try{$process=Start-Process @launch}finally{$env:ConnectionStrings__Game=$oldConnection}
-        $ready=$false
-        for($i=0;$i -lt 40;$i++){try{if((Request GET '/health' $null $null).Status -eq 200){$ready=$true;break}}catch{};Start-Sleep -Milliseconds 250}
-        Assert $ready 'Public-route fixture server did not become ready'
+        RestartBackend 'Public-route fixture server did not become ready'
         $ready=$false
         for($tunnelAttempt=1;$tunnelAttempt -le 2 -and !$ready;$tunnelAttempt++){
             $tunnelContainer='animaltown-public-'+[Guid]::NewGuid().ToString('N').Substring(0,8)
