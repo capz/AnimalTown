@@ -63,7 +63,7 @@ class OnlineFailureCaptureChecks(unittest.TestCase):
         spec = importlib.util.spec_from_file_location('online_play_driver', driver_path)
         driver = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(driver)
-        for phase in ('LINK', 'FLOW', 'RETURN'):
+        for phase in ('LINK', 'FLOW'):
             with self.subTest(phase=phase), tempfile.TemporaryDirectory() as directory:
                 root = Path(directory)
                 pressed, captured = [], []
@@ -92,6 +92,68 @@ class OnlineFailureCaptureChecks(unittest.TestCase):
                 finally:
                     os.close(reader)
                     os.close(writer)
+
+
+
+    def run_return_failure(self, repeated):
+        driver_path = Path(__file__).resolve().parents[1] / 'tools' / 'online-play-smoke.py'
+        spec = importlib.util.spec_from_file_location('online_return_driver', driver_path)
+        driver = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(driver)
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            pressed, captured = [], []
+            reader, writer = os.pipe()
+            reads = 0
+            def log():
+                nonlocal reads
+                reads += 1
+                if repeated:
+                    return ('ANIMALTOWN ONLINE RETURN FAILED SocketException\n' *
+                            max(1, len(pressed) - 1))
+                # Keep observing the same failure before a separate fatal
+                # error ends the fixture. It must trigger just one retry.
+                return ('ANIMALTOWN ONLINE RETURN FAILED SocketException\n' +
+                        ('ANIMALTOWN ONLINE FLOW FAILED io' if reads > 7 else ''))
+            context = {
+                'root': root, 'user': root / 'user',
+                '__file__': str(driver_path.with_name('iso-smoke.py')),
+                'controller': writer,
+                'p': SimpleNamespace(poll=lambda: None),
+                'check_runtime_failure': lambda: None,
+                'runtime_log_text': log,
+                'screenshot': captured.append,
+                'press_presented': lambda button, clock: pressed.append(button),
+                'wait_profiles': lambda: None,
+                'committed_card_sequence': lambda path: 7,
+            }
+            try:
+                clock_module = SimpleNamespace(AviGuestClock=lambda *args, **kwargs: object())
+                with patch.object(sys, 'argv', ['iso-smoke.py', 'disc', directory, '--online-play-fixture', directory]), patch.object(sys, 'path', list(sys.path)), patch.dict(sys.modules, {'avi_guest_clock': clock_module}), patch.object(driver.time, 'sleep', lambda seconds: None), redirect_stdout(StringIO()):
+                    with self.assertRaisesRegex(AssertionError, 'Native online operation failed'):
+                        driver.run(context)
+                report = json.loads((root / 'online-play-report.json').read_text())
+                self.assertFalse(report['passed'])
+                self.assertEqual(os.read(reader, 64), b'SET MAIN 0.5 0.5\n')
+                return pressed, captured, report
+            finally:
+                os.close(reader)
+                os.close(writer)
+
+    def test_return_recovery_is_bounded_and_preserves_failure_report(self):
+        pressed, captured, report = self.run_return_failure(repeated=True)
+        self.assertEqual(pressed, ['A', 'A', 'A', 'A'])
+        self.assertEqual(report['return_retries'], 2)
+        self.assertEqual(captured, ['online-play-return-retry-1.png',
+                                   'online-play-return-retry-2.png',
+                                   'online-play-return-failure.png'])
+
+    def test_repeated_observation_of_one_return_error_retries_once(self):
+        pressed, captured, report = self.run_return_failure(repeated=False)
+        self.assertEqual(pressed, ['A', 'A', 'A'])
+        self.assertEqual(report['return_retries'], 1)
+        self.assertEqual(captured, ['online-play-return-retry-1.png',
+                                   'online-play-flow-failure.png'])
 
 
 unittest.main()

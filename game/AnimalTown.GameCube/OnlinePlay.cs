@@ -62,7 +62,7 @@ internal sealed class OnlinePlay:IDisposable
             catch(Exception){return false;}
         }
     }
-    static string FailureKind(Exception error)=>error is OperationCanceledException?"cancelled":error is TimeoutException?"timeout":error is FormatException?"reply":error is OutOfMemoryException?"memory":error is IOException?"io":"runtime";
+    static string FailureKind(Exception error)=>error is OperationCanceledException?"cancelled":error is TimeoutException?"timeout":error is FormatException?"reply":error is OutOfMemoryException?"memory":error is IOException?"io":error.GetType().Name;
     OnlineMenuUi Ui=>ui??=new OnlineMenuUi();
     T Await<T>(Task<T> request,string title="Travelling",string detail="Connecting…")
     {

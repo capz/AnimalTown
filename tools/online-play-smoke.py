@@ -15,15 +15,30 @@ def run(context):
     from avi_guest_clock import AviGuestClock
     clock=AviGuestClock(c['user']/'Dump/Frames',track_presentations=True)
     report={'scenario':'online-play','passed':False,'target':'Dolphin 2503 / broadband adapter HLE',
-            'physical_hardware':False,'screenshots':[]}
+            'physical_hardware':False,'screenshots':[],'return_retries':0}
+    seen_return_failures=0
     def alive():
+        nonlocal seen_return_failures
         c['check_runtime_failure']()
         if c['p'].poll() is not None:raise AssertionError('Dolphin stopped during online qualification')
         log=c['runtime_log_text']()
-        for phase in ('LINK','FLOW','RETURN'):
+        for phase in ('LINK','FLOW'):
             if 'ANIMALTOWN ONLINE '+phase+' FAILED' in log:
                 shot(phase.lower()+'-failure');setup_context()
                 raise AssertionError('Native online operation failed; see the redacted setup checkpoints')
+        failures=log.count('ANIMALTOWN ONLINE RETURN FAILED')
+        if failures>seen_return_failures:
+            seen_return_failures=failures
+            setup_context()
+            if failures>2:
+                shot('return-failure')
+                raise AssertionError('Native online operation failed after two return retries')
+            # Exercise the approved Retry saving action on the same journal.
+            # The final hash, Ready journal and readback checks remain required.
+            report['return_retries']=failures
+            shot('return-retry-'+str(failures))
+            print('Online target return recovery attempt '+str(failures),flush=True)
+            press('A')
     def status():
         return json.loads((fixture/'status.json').read_text())
     def shot(name):
