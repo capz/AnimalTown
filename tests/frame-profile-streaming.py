@@ -258,6 +258,35 @@ def write_card(path,files):
         struct.pack_into('>HH',data,page*sector+checksum,*(0 if value==65535 else value for value in sums))
     path.write_bytes(data)
 
+
+# A live Dolphin flush can temporarily truncate its raw image. Polling must
+# retry that state, while strict/final readers must reject it.
+with TemporaryDirectory() as fixture:
+    card=Path(fixture)/'MemoryCardA.USA.raw'
+    payload=bytearray(16);payload[:4]=b'ATO\x03';payload[6]=1
+    struct.pack_into('<I',payload,12,fnv(payload[:12]))
+    write_card(card,{'AnimalTown-Video':bytes(payload)})
+    complete=card.read_bytes()
+    visibility={'options_card_files':lambda:namespace['options_card_files'](card)}
+    visibility_node=next(n for n in module.body if isinstance(n,ast.FunctionDef) and n.name=='debug_visibility')
+    exec(compile(ast.Module([visibility_node],type_ignores=[]),'live-card-visibility','exec'),visibility)
+    for length in (0,1,8191,8192,16383,16384,32768,40959,40960,40961):
+        card.write_bytes(complete[:length])
+        try:namespace['options_card_files'](card)
+        except AssertionError:pass
+        else:raise AssertionError('Truncated card accepted as a complete snapshot')
+        assert visibility['debug_visibility']() is False
+        assert visibility['debug_visibility'](True) is None
+    card.write_bytes(complete)
+    assert namespace['options_card_files'](card)=={'options':bytes(payload)}
+    assert visibility['debug_visibility'](True) is True
+    # A stable but damaged directory must still fail its existing checksum gate.
+    damaged=bytearray(complete);damaged[8192+0x1ffc]^=1;card.write_bytes(damaged)
+    try:namespace['options_card_files'](card)
+    except AssertionError as error:assert 'directory/BAT' in str(error)
+    else:raise AssertionError('Damaged card directory was accepted')
+print('Live card snapshots: short/partial images retry, complete options verify, damaged directories reject')
+
 with TemporaryDirectory() as fixture:
     card=Path(fixture)/'MemoryCardA.USA.raw'
     old=generation(0,7,0)

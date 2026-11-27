@@ -554,6 +554,15 @@
         "Unused appearances can replace one villager's visuals without changing names, jobs, location or saves.",
         "The supplied pug officer is already imported; the appearance catalog now contains fourteen unique entries."
       ]
+    },
+    {
+      "id": "live-card-snapshot-build-repair-20261127",
+      "lines": [
+        "Restore build validation while Dolphin flushes a memory card.",
+        "Reject incomplete card snapshots before parsing directory sectors.",
+        "Retry live settings reads without weakening checksum validation.",
+        "Cover truncated images, completed writes and damaged directories."
+      ]
     }
   ]
 }
