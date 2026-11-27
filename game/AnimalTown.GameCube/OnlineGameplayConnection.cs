@@ -6,6 +6,7 @@ using System.Threading.Tasks;
 using AnimalTown;
 using AnimalTown.Online;
 using Dolphin.Network;
+using Dolphin.Diagnostics;
 using Dolphin.Timing;
 
 // Connection setup owns no town renderer. TLS configuration and device ticket
@@ -85,7 +86,13 @@ internal sealed class OnlineGameplayConnection : IDisposable
     }
     internal bool TryGetActor(byte slot, out OnlineActorPosition position)
     { position = default; return !disposed && pump.TryGetActor(slot, Now, out position); }
-    public void Dispose() { if (disposed) return; disposed = true; pump.Dispose(); websocket.Dispose(); raw.Dispose(); }
+    public void Dispose()
+    {
+        if(disposed)return;disposed=true;
+        DebugOverlay.WriteLine("ANIMALTOWN ONLINE CLOSE BEGIN");
+        pump.Dispose();websocket.Dispose();raw.Dispose();
+        DebugOverlay.WriteLine("ANIMALTOWN ONLINE CLOSE READY");
+    }
 
     sealed class RawStream : IOnlinePoseStream, IOnlineMaskSource, IDisposable
     {

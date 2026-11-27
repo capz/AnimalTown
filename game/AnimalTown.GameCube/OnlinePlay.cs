@@ -492,6 +492,7 @@ internal sealed class OnlinePlay:IDisposable
     }
     void Connect(OnlinePlayVisit visit,bool reconnect=false)
     {
+        DebugOverlay.WriteLine(reconnect?"ANIMALTOWN ONLINE RECONNECT BEGIN":"ANIMALTOWN ONLINE CONNECT BEGIN");
         if(session.OnlineCredentials!.AccessExpiresAt<Clock.Timestamp+30000000)
         {
             visit.Connection?.Dispose();ReleaseUi();api.Dispose();session.OnlineCredentials=null;OnlinePairing.Run(session);
@@ -502,7 +503,9 @@ internal sealed class OnlinePlay:IDisposable
         string hex=issued.Field("ticket").Text;if(!OnlineCardCredential.Hex(hex,0,64))throw new FormatException("Invalid gameplay ticket.");
         var ticket=new byte[32];const string digits="0123456789abcdef";
         for(int i=0;i<32;i++){char a=hex[i*2],b=hex[i*2+1];if(a>='A'&&a<='F')a=(char)(a+32);if(b>='A'&&b<='F')b=(char)(b+32);int high=digits.IndexOf(a),low=digits.IndexOf(b);ticket[i]=(byte)(high*16+low);}
+        DebugOverlay.WriteLine("ANIMALTOWN ONLINE WSS BEGIN");
         var connection=Await(OnlineGameplayConnection.ConnectAsync(api.Origin,ticket,visit.State,stopping.Token),"Travelling","Loading the town and your travel pockets…");
+        DebugOverlay.WriteLine("ANIMALTOWN ONLINE WSS READY");
         if(reconnect)visit.Reconnect(connection);else visit.Connection=connection;
         visit.CredentialExpiresAt=session.OnlineCredentials!.AccessExpiresAt;
         long deadline=Clock.Timestamp+30000000;
@@ -510,6 +513,7 @@ internal sealed class OnlinePlay:IDisposable
         {
             visit.Tick(default);if(!visit.Connected||Clock.Timestamp>=deadline)throw new IOException("online-connection-interrupted");Ui.Draw();RuntimeOptions.Wait();Controller.Update();
         }
+        DebugOverlay.WriteLine("ANIMALTOWN ONLINE WORLD SYNC READY");
     }
     void Play(string host,string membership)
     {
@@ -521,6 +525,7 @@ internal sealed class OnlinePlay:IDisposable
             {
                 session.ShowOnlineWorld(visit.World!);ReleaseUi();
                 Program.RunSession(config,session);
+                DebugOverlay.WriteLine("ANIMALTOWN ONLINE WORLD EXIT");
                 session.AdoptTravel(home);
                 if(visit.ControlRequested!=0)
                 {

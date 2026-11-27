@@ -9,6 +9,26 @@ import struct
 import zlib
 
 
+def frame_clock_context(clock):
+    """Numeric capture progress only; never include private card/fixture data."""
+    try:
+        frames=clock.frames()
+        captures=[]
+        for path,(offset,count) in sorted(clock.state.items()):
+            info={'file':path.name,'bytes':path.stat().st_size,
+                  'parsed_bytes':offset,'vi_chunks':count}
+            if offset is not None:
+                with path.open('rb') as capture:
+                    capture.seek(offset);header=capture.read(8)
+                if len(header)==8:
+                    info['next_chunk_tag']=header[:4].decode('ascii','backslashreplace')
+                    info['next_chunk_bytes']=struct.unpack_from('<I',header,4)[0]
+            captures.append(info)
+        return {'vi_chunks':frames,'presentations':len(clock.presentations),'captures':captures}
+    except Exception as error:
+        return {'unavailable':type(error).__name__}
+
+
 def run(context):
     c=context;root=c['root'];fixture=Path(sys.argv[sys.argv.index('--online-play-fixture')+1]).resolve()
     sys.path.insert(0,str(Path(c['__file__']).resolve().parents[1]/'docs/performance'))
@@ -54,6 +74,7 @@ def run(context):
             alive()
             if predicate():
                 print('Online target checkpoint: '+label,flush=True)
+                print('Online frame clock: '+json.dumps(frame_clock_context(clock),sort_keys=True),flush=True)
                 return
             if activate:press('A')
             else:time.sleep(.25)
@@ -119,6 +140,13 @@ def run(context):
         report['card_sequence_after']=c['committed_card_sequence'](root/'MemoryCardA.USA.raw')
         if report['card_sequence_after']<=report['card_sequence_before']:raise AssertionError('Online return did not publish a newer home card')
         shot('returned');report['published_and_acknowledged']=True;report['passed']=True
+    except Exception as error:
+        report['failure_kind']=type(error).__name__
+        report['frame_clock']=frame_clock_context(clock)
+        setup_context()
+        print('Online frame clock at failure: '+json.dumps(report['frame_clock'],sort_keys=True),flush=True)
+        print('Online runtime context at failure:\n'+'\n'.join(line for line in c['runtime_log_text']().splitlines() if 'ANIMALTOWN' in line)[-6000:],flush=True)
+        raise
     finally:
         os.write(c['controller'],b'SET MAIN 0.5 0.5\n')
         (root/'online-play-report.json').write_text(json.dumps(report,indent=2)+'\n')
