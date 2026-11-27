@@ -18,6 +18,7 @@
 #define TA_ARAM_BLOCK (256*1024)
 #define TA_ARAM_BLOCKS (TA_BYTES/TA_ARAM_BLOCK)
 #define TA_CACHE (1024*1024)
+#define TA_CACHE_CHUNK (TA_CACHE/4)
 #define TA_BLOCK 1024
 typedef struct {int offset,vertices,indices,kind,format;uint32_t color;int uniform,cache,users;} TaPart;
 static int ta_meta[TA_PARTS/TA_META_PARTS],ta_first[TA_SECTIONS+1],ta_triangles[TA_SECTIONS];
@@ -26,6 +27,11 @@ static unsigned char ta_used[TA_CACHE/TA_BLOCK];
  * Published views only exist after sealing, when that hold has been dropped. */
 static int ta_store[TA_ARAM_BLOCKS],ta_store_count;
 static int ta_cache,ta_stage,ta_meta_count,ta_bytes,ta_tail,ta_parts,ta_sections,ta_completed,ta_live,ta_peak;
+/* The common path remains contiguous; fragmented heaps use four chunks.
+ * No mesh may straddle a chunk, and aliases/DMA hold its actual owner. */
+static int ta_cache_extra[3],ta_cache_span=TA_CACHE;
+static int ta_cache_token(int offset){return offset<ta_cache_span?ta_cache:ta_cache_extra[offset/ta_cache_span-1];}
+static int ta_cache_offset(int offset){return offset&(ta_cache_span-1);}
 static unsigned ta_bindings,ta_reads;static bool ta_sealed;
 static uint32_t ta_sync_reads,ta_sync_us,ta_sync_bytes;
 extern uint32_t animaltown_profile_clock(void);
@@ -92,31 +98,57 @@ int animaltown_terrain_cancel_bind(void){
     }
     ta_clear_pending(false);return 1;
 }
+/* Reserve the same logical budget even when malloc cannot provide 1 MiB.
+ * Cold baking needs zeroed scratch; resume publishes only completed DMA bytes. */
+static int ta_cache_buffer(int bytes,bool cold){
+    if(cold)return ta_buffer(bytes);
+    int token=create(BUFFER,1,32);if(!token)return 0;
+    Resource *cache=find(token,BUFFER);void *memory=malloc((size_t)bytes+31u);
+    if(!memory){release(cache);return 0;}
+    free(cache->allocation);cache->allocation=memory;
+    cache->data=(unsigned char*)(((uintptr_t)memory+31u)&~(uintptr_t)31u);
+    cache->bytes=bytes;total_bytes+=bytes-1;ta_bytes+=bytes;return token;
+}
+static int ta_cache_allocate(bool cold){
+    if(TA_CACHE>BUDGET-total_bytes)return 0;
+    int token=ta_cache_buffer(TA_CACHE,cold);
+    if(token){ta_cache=token;ta_cache_span=TA_CACHE;return 1;}
+    int chunks[4]={0};
+    for(int i=0;i<4;i++){
+        chunks[i]=ta_cache_buffer(TA_CACHE_CHUNK,cold);
+        if(!chunks[i]){
+            for(int j=0;j<i;j++){(void)dnd_draw_release(chunks[j]);ta_bytes-=TA_CACHE_CHUNK;}
+            return 0;
+        }
+    }
+    ta_cache=chunks[0];memcpy(ta_cache_extra,chunks+1,sizeof(ta_cache_extra));ta_cache_span=TA_CACHE_CHUNK;
+    return 1;
+}
+static int ta_cache_idle(void){
+    for(int offset=0;offset<TA_CACHE;offset+=ta_cache_span){
+        int token=ta_cache_token(offset);Resource *cache=find(token,BUFFER);
+        if(!cache||cache->holds)return 0;
+        for(int i=0;i<SLOTS;i++)if(slots[i].terrain_parent==token)return 0;
+    }
+    return 1;
+}
+static void ta_cache_release(void){
+    for(int offset=0;offset<TA_CACHE;offset+=ta_cache_span)(void)dnd_draw_release(ta_cache_token(offset));
+    ta_cache=0;memset(ta_cache_extra,0,sizeof(ta_cache_extra));ta_cache_span=TA_CACHE;ta_bytes-=TA_CACHE;
+}
 /* Unlike reset, suspension preserves the immutable archive and its metadata.
  * Callers first drain pending binds and remove every published mesh alias. */
 int animaltown_terrain_suspend(void){
     if(dnd_device_active()||dnd_raw_depth()||!ta_sealed)return -1;
     int drained=animaltown_terrain_cancel_bind();if(drained!=1)return drained;
     if(!ta_cache)return 1;
-    for(int i=0;i<SLOTS;i++)if(slots[i].terrain_parent==ta_cache)return -1;
-    Resource *cache=find(ta_cache,BUFFER);if(!cache||cache->holds)return -1;
-    if(dnd_draw_release(ta_cache))return -1;
-    ta_cache=0;ta_bytes-=TA_CACHE;ta_live=0;memset(ta_used,0,sizeof(ta_used));return 1;
+    if(!ta_cache_idle())return -1;
+    ta_cache_release();ta_live=0;memset(ta_used,0,sizeof(ta_used));return 1;
 }
 int animaltown_terrain_resume(void){
     if(dnd_device_active()||dnd_raw_depth()||!ta_sealed)return -1;
     if(ta_cache)return 1;
-    if(TA_CACHE>BUDGET-total_bytes)return -2;
-    /* The cache has no readable bytes until a completed bind publishes them.
-     * Reserve uninitialized native storage rather than zeroing 1 MiB in one
-     * frame. A tiny normal resource establishes the token/ownership fields. */
-    int token=create(BUFFER,1,32);if(!token)return -2;
-    Resource *cache=find(token,BUFFER);void *memory=malloc(TA_CACHE+31u);
-    if(!memory){release(cache);return -2;}
-    free(cache->allocation);cache->allocation=memory;
-    cache->data=(unsigned char*)(((uintptr_t)memory+31u)&~(uintptr_t)31u);
-    cache->bytes=TA_CACHE;total_bytes+=TA_CACHE-1;ta_bytes+=TA_CACHE;ta_cache=token;
-    return 1;
+    return ta_cache_allocate(false)?1:-2;
 }
 /* Reset failures otherwise collapse distinct ARAM/MEM1 allocations into -2.
  * Snapshot before rollback; successful resets and frame work stay silent. */
@@ -142,9 +174,9 @@ int animaltown_terrain_reset(int count){
     if(ta_stage){(void)dnd_buffer_unhold(ta_stage);ta_stage=0;}
     int reusable=0;
     if(ta_cache){
-        Resource *cache=find(ta_cache,BUFFER);if(!cache||cache->holds)return -1;
+        if(!ta_cache_idle())return -1;
         if(count)reusable=ta_cache;
-        else if(dnd_draw_release(ta_cache))return -1;
+        else ta_cache_release();
     }
     for(int i=0;i<ta_meta_count;i++)if(dnd_draw_release(ta_meta[i]))return -1;
     if(ta_release_storage(0)!=1)return -1;
@@ -165,7 +197,7 @@ int animaltown_terrain_reset(int count){
         }
         ta_store[ta_store_count++]=token;
     }
-    if(!ta_cache)ta_cache=ta_buffer(TA_CACHE);
+    if(!ta_cache)(void)ta_cache_allocate(true);
     if(!ta_cache){ta_reset_failure("cache-buffer",TA_CACHE,0);(void)animaltown_terrain_reset(0);return -2;}
     /* The cache is unused until sealing. Borrow its first 64 KiB for DMA
      * staging so a fragmented native heap needs no second contiguous block. */
@@ -207,7 +239,7 @@ static int ta_coalesce(int section){
     Resource *stage=find(ta_stage,BUFFER),*cache=find(ta_cache,BUFFER);if(!stage||!cache)return -1;
     /* Input, output and descriptors occupy disjoint slices of the idle cache.
      * Every DMA completes before the next slice is read or overwritten. */
-    _Static_assert(2*TA_STAGE+TA_PAGE_PARTS*sizeof(TaPart)<=TA_CACHE,"Cold coalescer cache scratch");
+    _Static_assert(2*TA_STAGE+TA_PAGE_PARTS*sizeof(TaPart)<=TA_CACHE_CHUNK,"Cold coalescer cache scratch");
     TaPart *merged=(TaPart*)(cache->data+2*TA_STAGE);
     for(int i=0;i<count;i++){
         const TaPart *original=ta_part(first+i);int group=0;
@@ -266,14 +298,16 @@ int animaltown_terrain_unbind(int token){
     dnd_draw_backend_mesh_changed();return 1;
 }
 static int ta_bind_view(Resource *r,TaPart *p,int index){
-    Resource *cache=find(ta_cache,BUFFER);if(!cache||p->cache<0)return -1;
+    if(p->cache<0)return -1;
+    int offset=p->cache*TA_BLOCK,parent=ta_cache_token(offset);
+    Resource *cache=find(parent,BUFFER);if(!cache)return -1;
     if(r->terrain_entry==index+1)return 1;
     int previous=r->terrain_parent;
-    if(previous!=ta_cache&&dnd_buffer_hold(ta_cache))return -1;
+    if(previous!=parent&&dnd_buffer_hold(parent))return -1;
     terrain_detach(r);p->users++;
-    r->terrain_entry=index+1;r->terrain_parent=ta_cache;r->data=cache->data+p->cache*TA_BLOCK;r->vertices=p->vertices;r->indices=p->indices;r->format=p->format;
+    r->terrain_entry=index+1;r->terrain_parent=parent;r->data=cache->data+ta_cache_offset(offset);r->vertices=p->vertices;r->indices=p->indices;r->format=p->format;
     r->uniform_color=p->uniform!=0;r->mesh_color=p->color;r->dynamic=0;
-    if(previous&&previous!=ta_cache)(void)dnd_buffer_unhold(previous);
+    if(previous&&previous!=parent)(void)dnd_buffer_unhold(previous);
     ta_bindings++;dnd_draw_backend_mesh_changed();return 1;
 }
 /* Existing save-time cache API shares the same private owner/lifetime guards. */
@@ -283,7 +317,7 @@ int animaltown_terrain_cache(int enabled){
 }
 static int ta_free_block(int blocks){
     int run=0;
-    for(int i=0;i<TA_CACHE/TA_BLOCK;i++){if(ta_used[i])run=0;else if(++run==blocks)return i+1-blocks;}
+    for(int i=0;i<TA_CACHE/TA_BLOCK;i++){if((i&(ta_cache_span/TA_BLOCK-1))==0)run=0;if(ta_used[i])run=0;else if(++run==blocks)return i+1-blocks;}
     return -1;
 }
 int animaltown_terrain_bind(int token,int index){
@@ -293,7 +327,7 @@ int animaltown_terrain_bind(int token,int index){
     if(p->cache<0){
         int blocks=(ta_size(p)+TA_BLOCK-1)/TA_BLOCK,first=ta_free_block(blocks);if(first<0)return -2;
         uint32_t started=animaltown_profile_clock();
-        int rc=ta_dma(p->offset,ta_cache,first*TA_BLOCK,ta_size(p),0);
+        int rc=ta_dma(p->offset,ta_cache_token(first*TA_BLOCK),ta_cache_offset(first*TA_BLOCK),ta_size(p),0);
         ta_sync_us+=animaltown_profile_clock()-started;if(rc!=1)return -3;
         ta_sync_reads++;ta_sync_bytes+=(uint32_t)ta_size(p);
         memset(ta_used+first,1,(size_t)blocks);p->cache=first;ta_live+=blocks*TA_BLOCK;if(ta_live>ta_peak)ta_peak=ta_live;ta_reads++;
@@ -307,7 +341,7 @@ static int ta_advance_bind(int token,int index,TaPart *p){
         int bytes=ta_transfer_size(offset,size-ta_pending_bytes);
         if(!ta_request){
             int dest=ta_pending_block*TA_BLOCK+ta_pending_bytes;
-            int request=ta_transfer(offset,ta_cache,dest,bytes,0);
+            int request=ta_transfer(offset,ta_cache_token(dest),ta_cache_offset(dest),bytes,0);
             if(request==-EAGAIN)return 0;
             if(request<1){ta_clear_pending(false);return -3;}
             ta_request=request;
@@ -317,7 +351,7 @@ static int ta_advance_bind(int token,int index,TaPart *p){
         ta_request=0;
         /* A terminal poll releases the DMA holds. Check the owners before
          * requesting a second block or publishing the complete mesh. */
-        if(rc!=1||!find(token,MESH)||!find(ta_cache,BUFFER)){ta_clear_pending(false);return -3;}
+        if(rc!=1||!find(token,MESH)||!find(ta_cache_token(ta_pending_block*TA_BLOCK),BUFFER)){ta_clear_pending(false);return -3;}
         ta_pending_bytes+=bytes;
     }
     int block=ta_pending_block,blocks=ta_pending_blocks;
@@ -347,7 +381,7 @@ int animaltown_terrain_bind_step(int token,int index){
     return ta_advance_bind(token,index,p);
 }
 int animaltown_terrain_stat(int kind){
-    if(kind==11){int largest=0,run=0;for(unsigned i=0;i<sizeof(ta_used);i++){run=ta_used[i]?0:run+TA_BLOCK;if(run>largest)largest=run;}return ta_cache?largest:0;}
+    if(kind==11){int largest=0,run=0;for(unsigned i=0;i<sizeof(ta_used);i++){if((i&(ta_cache_span/TA_BLOCK-1))==0)run=0;run=ta_used[i]?0:run+TA_BLOCK;if(run>largest)largest=run;}return ta_cache?largest:0;}
     if(kind==15)return ta_store_count*TA_ARAM_BLOCK;
     return kind==0?ta_bytes:kind==1?ta_parts:kind==2?ta_meta_count:kind==3?ta_completed:kind==4?(int)ta_bindings:kind==5?ta_tail:kind==6?(int)ta_reads:kind==7?ta_peak:kind==8?(ta_cache?TA_CACHE:0):kind==9?(ta_pending_view?1:0):kind==10?ta_live:kind==12?(int)ta_sync_reads:kind==13?(int)ta_sync_us:kind==14?(int)ta_sync_bytes:-1;
 }

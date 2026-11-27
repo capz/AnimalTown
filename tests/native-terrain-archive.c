@@ -3,12 +3,14 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-/* Deny only the old standalone staging request, through the real allocator. */
+/* Fault selected allocation sizes through the real resource allocator. */
 static size_t denied_resource_size;
 static int resource_allocations,denied_resource_allocations;
+static int chunk_fail_after=-1,chunk_allocations;
 static void *resource_malloc(size_t bytes){
     resource_allocations++;
     if(bytes==denied_resource_size){denied_resource_allocations++;return NULL;}
+    if(bytes==256u*1024u+31u&&chunk_fail_after>=0&&chunk_allocations++==chunk_fail_after)return NULL;
     return malloc(bytes);
 }
 #define malloc resource_malloc
@@ -208,11 +210,77 @@ static void fragmented_archive_checks(void){
     free(v);free(ix);
     puts("Terrain ARAM: fragmented bake, unused-block reclaim, split DMA and cancellation passed");
 }
+static void fragmented_cache_checks(void){
+    assert(dnd_draw_live()==0);
+    denied_resource_size=TA_CACHE+31u;
+    /* Every partial fallback must roll back both cache and archive owners. */
+    for(int i=0;i<4;i++){
+        chunk_fail_after=i;chunk_allocations=0;
+        assert(animaltown_terrain_reset(20)==-2);
+        assert(!ta_cache&&!ta_stage&&!ta_bytes&&dnd_draw_live()==0&&dnd_aram_stat(1)==0);
+        for(int j=0;j<3;j++)assert(!ta_cache_extra[j]);
+    }
+    chunk_fail_after=-1;
+    assert(animaltown_terrain_reset(20)==1&&ta_cache_span==TA_CACHE_CHUNK);
+    assert(ta_bytes==TA_CACHE&&ta_stage==ta_cache&&dnd_draw_live()==4);
+    int chunks[4];for(int i=0;i<4;i++)chunks[i]=ta_cache_token(i*TA_CACHE_CHUNK);
+    /* Warm rebuilds retain all four allocations, including the scratch lease. */
+    assert(animaltown_terrain_reset(20)==1);
+    for(int i=0;i<4;i++)assert(chunks[i]==ta_cache_token(i*TA_CACHE_CHUNK));
+    enum {VERTICES=1818}; /* 65,448 bytes: four rounded meshes per chunk. */
+    DndArray *v=array(VERTICES,36);int mesh=dnd_mesh_create_range(v,VERTICES,NULL,0,2,0);assert(mesh);
+    int payload=VERTICES*36;
+    for(int i=0;i<20;i++){
+        memset(find(mesh,MESH)->data,i+1,(size_t)payload);
+        assert(animaltown_terrain_append(i,0,mesh,0)==i+1);
+        assert(animaltown_terrain_complete(i)==1);
+    }
+    assert(dnd_draw_release(mesh)==0&&!ta_stage&&animaltown_terrain_stat(11)==TA_CACHE_CHUNK);
+    int views[17];for(int i=0;i<17;i++)views[i]=animaltown_terrain_view();
+    for(int i=0;i<16;i++){
+        assert((i<8?animaltown_terrain_bind(views[i],i):finish_bind(views[i],i))==1);
+        Resource *view=find(views[i],MESH);assert(view->terrain_parent==chunks[i/4]);
+        for(int j=0;j<payload;j++)assert(view->data[j]==i+1);
+    }
+    assert(ta_live==TA_CACHE&&animaltown_terrain_stat(11)==0);
+    assert(animaltown_terrain_bind(views[16],16)==-2&&ta_part(16)->cache==-1);
+    /* A view on the final chunk alone still prevents cache disposal. */
+    for(int i=0;i<15;i++)assert(animaltown_terrain_unbind(views[i])==1);
+    assert(animaltown_terrain_suspend()==-1);
+    int resident=total_bytes,aram=dnd_aram_stat(1);
+    assert(animaltown_terrain_unbind(views[15])==1&&animaltown_terrain_suspend()==1);
+    assert(total_bytes==resident-TA_CACHE&&dnd_aram_stat(1)==aram);
+    for(int i=0;i<4;i++)assert(!find(chunks[i],BUFFER));
+    /* The uninitialized resume path also rolls back a partially built cache. */
+    for(int i=0;i<4;i++){
+        chunk_fail_after=i;chunk_allocations=0;
+        assert(animaltown_terrain_resume()==-2&&!ta_cache&&total_bytes==resident-TA_CACHE);
+    }
+    chunk_fail_after=-1;
+    assert(animaltown_terrain_resume()==1&&ta_cache_span==TA_CACHE_CHUNK&&total_bytes==resident);
+    for(int i=0;i<12;i++)assert(finish_bind(views[i],i)==1);
+    assert(animaltown_terrain_bind_step(views[12],12)==0);
+    for(int i=0;i<1000&&ta_pending_bytes==0;i++)assert(animaltown_terrain_bind_step(views[12],12)==0);
+    assert(ta_pending_bytes>0); /* Split ARAM transfer into the final MEM1 chunk. */
+    finish_cancel();assert(ta_part(12)->cache==-1&&!find(views[12],MESH)->data);
+    assert(finish_bind(views[12],12)==1);
+    for(int j=0;j<payload;j++)assert(find(views[12],MESH)->data[j]==13);
+    assert(animaltown_terrain_bind(views[0],12)==1); /* Reparent across cache chunks. */
+    assert(find(views[0],MESH)->terrain_parent==find(views[12],MESH)->terrain_parent);
+    assert(ta_part(0)->cache==-1&&ta_part(12)->users==2);
+    active=true;assert(animaltown_terrain_suspend()==-1);active=false;
+    for(int i=0;i<17;i++)assert(dnd_draw_release(views[i])==0);
+    assert(animaltown_terrain_suspend()==1&&animaltown_terrain_reset(0)==1);
+    assert(dnd_draw_live()==0&&total_bytes==0&&dnd_aram_stat(1)==0);
+    free(v);denied_resource_size=0;denied_resource_allocations=0;
+    puts("Fragmented terrain cache: full 1 MiB capacity, four owners, exact sync/async DMA, cancellation, warm reset and partial cold/resume rollback passed");
+}
 int main(void){
     assert(dnd_aram_initialize(2*1024*1024));
     metadata_fragmentation_checks();
     shared_bake_checks();
     fragmented_archive_checks();
+    fragmented_cache_checks();
     DndArray *v=array(12,36),*ix=array(12,2);float *p=(float*)v->data;uint16_t *ids=(uint16_t*)ix->data;
     for(int i=0;i<12;i++){p[i*9]=i;p[i*9+7]=4+i*.5f;((uint32_t*)v->data)[i*9+6]=i%2?0xffffff00:0xffffffff;ids[i]=(uint16_t)(i%6);}
     int indexed=dnd_mesh_create_range(v,12,ix,12,2,0),plain=dnd_mesh_create_range(v,12,NULL,0,2,0);
