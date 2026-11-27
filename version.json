@@ -561,7 +561,7 @@
         "Restore build validation while Dolphin flushes a memory card.",
         "Reject incomplete card snapshots before parsing directory sectors.",
         "Retry live settings reads without weakening checksum validation.",
-        "Cover truncated images, completed writes and damaged directories."
+        "Give complete console validation tours enough time to finish."
       ]
     }
   ]
