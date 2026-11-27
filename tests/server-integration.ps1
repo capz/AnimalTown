@@ -495,26 +495,34 @@ try {
         $ready=$false
         for($i=0;$i -lt 40;$i++){try{if((Request GET '/health' $null $null).Status -eq 200){$ready=$true;break}}catch{};Start-Sleep -Milliseconds 250}
         Assert $ready 'Public-route fixture server did not become ready'
-        $tunnelContainer='animaltown-public-'+[Guid]::NewGuid().ToString('N').Substring(0,8)
-        docker run --rm -d --name $tunnelContainer --network host cloudflare/cloudflared@sha256:55c7e3e8d89d5e8d20b75a82f3602cbf98e06db406e73e282073cfdc5a9a3af6 tunnel --no-autoupdate --protocol http2 --url $api|Out-Null
-        if($LASTEXITCODE){throw 'Public test tunnel did not start'}
-        $origin=$null
-        for($i=0;$i -lt 60;$i++){
-            $logs=(& docker logs $tunnelContainer 2>&1)-join "`n"
-            $found=[regex]::Match($logs,'https://(?!api\.)[a-z0-9-]+\.trycloudflare\.com')
-            if($found.Success){$origin=$found.Value;break}
-            Start-Sleep -Milliseconds 500
-        }
-        Assert $origin 'Public test tunnel did not provide an HTTPS origin'
-        # Give the edge a bounded readiness window before account/device traffic.
         $ready=$false
-        $lastStatus=0;$lastFailure=''
-        for($i=0;$i -lt 60;$i++){
-            try{$response=Invoke-WebRequest "$origin/health" -TimeoutSec 5 -SkipHttpErrorCheck;$lastStatus=[int]$response.StatusCode;if($lastStatus -eq 200){$ready=$true;break}}
-            catch{$lastFailure=$_.Exception.GetType().Name}
-            Start-Sleep -Seconds 1
+        for($tunnelAttempt=1;$tunnelAttempt -le 2 -and !$ready;$tunnelAttempt++){
+            $tunnelContainer='animaltown-public-'+[Guid]::NewGuid().ToString('N').Substring(0,8)
+            docker run --rm -d --name $tunnelContainer --network host cloudflare/cloudflared@sha256:55c7e3e8d89d5e8d20b75a82f3602cbf98e06db406e73e282073cfdc5a9a3af6 tunnel --no-autoupdate --protocol http2 --url $api|Out-Null
+            if($LASTEXITCODE){throw 'Public test tunnel did not start'}
+            $origin=$null
+            for($i=0;$i -lt 60;$i++){
+                $logs=(& docker logs $tunnelContainer 2>&1)-join "`n"
+                $found=[regex]::Match($logs,'https://(?!api\.)[a-z0-9-]+\.trycloudflare\.com')
+                if($found.Success){$origin=$found.Value;break}
+                Start-Sleep -Milliseconds 500
+            }
+            # Retry an unreachable new Quick Tunnel before any device/card is
+            # bound to it. Never change an endpoint after public clients start.
+            $lastStatus=0;$lastFailure=''
+            if($origin){for($i=0;$i -lt 60;$i++){
+                try{$response=Invoke-WebRequest "$origin/health" -TimeoutSec 3 -SkipHttpErrorCheck;$lastStatus=[int]$response.StatusCode;if($lastStatus -eq 200){$ready=$true;break}}
+                catch{$lastFailure=$_.Exception.GetType().Name+': '+$_.Exception.Message}
+                Start-Sleep -Seconds 1
+            }}
+            if(!$ready){
+                Write-Host "Public origin attempt ${tunnelAttempt}: HTTP $lastStatus; $lastFailure"
+                $logs=(& docker logs $tunnelContainer 2>&1)-join "`n"
+                [IO.File]::AppendAllText((Join-Path $serverRoot 'out/online-tunnel-test.log'),$logs+"`n")
+                Write-Host (($logs -split "`n"|Select-Object -Last 12)-join "`n")
+                docker stop $tunnelContainer 2>&1|Out-Null;$tunnelContainer=''
+            }
         }
-        if(!$ready){Write-Host "Public origin readiness: HTTP $lastStatus; failure type $lastFailure"}
         Assert $ready 'Public test origin did not become ready'
         $emptyCaDirectory=Join-Path ([IO.Path]::GetTempPath()) ('animaltown-roots-'+[Guid]::NewGuid().ToString('N'))
         New-Item -ItemType Directory -Path $emptyCaDirectory|Out-Null
@@ -532,7 +540,7 @@ finally {
     $env:ANIMALTOWN_TEST_CONNECTION=$oldTestConnection
     if($process -and !$process.HasExited){Stop-Process -Id $process.Id}
     if($tunnelContainer){
-        [IO.File]::WriteAllText((Join-Path $serverRoot 'out/online-tunnel-test.log'),((& docker logs $tunnelContainer 2>&1)-join "`n"))
+        [IO.File]::AppendAllText((Join-Path $serverRoot 'out/online-tunnel-test.log'),((& docker logs $tunnelContainer 2>&1)-join "`n"))
         docker stop $tunnelContainer 2>&1|Out-Null
     }
     if($ownsDatabase){docker stop $container 2>&1 | Out-Null}
