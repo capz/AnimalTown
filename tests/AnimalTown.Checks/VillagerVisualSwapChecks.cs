@@ -48,7 +48,7 @@ internal static class VillagerVisualSwapChecks
         var retired=new List<Model>{first};
         for(int i=0;i<20;i++){
             memory.Observe(12*1024*1024,0,0,2000010+i*2);
-            int next=swap.Selection.NextUnused(state,6+i%5,1);
+            int next=swap.Selection.NextUnused(state,6+i%(VillagerAppearance.Count-6),1);
             check(swap.Request(state,1,next,2000010+i*2),"repeated swap is admitted");
             var replacement=new Model();loader.Completion.SetResult(replacement);
             check(swap.Pump(state,2000011+i*2)==1&&retired.All(m=>m.Disposed),"repeated swap retires every previous detached package");
