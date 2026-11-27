@@ -51,7 +51,7 @@ sealed partial class GameDatabase
             var loaded=await Load(c,t,entry.Host,false);var world=loaded.State;
             int previousShopRevision=world.Town.Shop.Revision;
             byte[] personalBefore=InventoryPacket(world,loaded.Revision);
-            int day=(int)(now/86400);bool newDay=world.AdvanceHostedCalendar(day,DateTime.UtcNow.Year*12+DateTime.UtcNow.Month);
+            int day=(int)(now/86400);bool newDay=world.AdvanceHostedCalendar(day,Month);
             world.ResidentJobs.EnableOnlineAdapter(now);
             if(!await ReviewActive(c,t,entry.Host))
             {

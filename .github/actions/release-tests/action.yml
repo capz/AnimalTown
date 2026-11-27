@@ -141,6 +141,39 @@ runs:
       if: ${{ !cancelled() && steps.candidate.outcome == 'success' && steps.selection.outputs.dolphin == 'true' }}
       shell: bash
       run: timeout --kill-after=30s 15m docker build -t animaltown-dolphin-test -f build/Dockerfile.dolphin build
+    - name: Restore host ownership for online target checks
+      if: ${{ !cancelled() && steps.dolphin.outcome == 'success' && steps.selection.outputs.online_play == 'true' }}
+      shell: bash
+      run: |
+        # The console builder runs as root; the host SDK needs writable NuGet
+        # intermediates and output folders for its disposable online fixture.
+        sudo chown -R "$(id -u):$(id -g)" out
+        find shared server tests tools game -type d \( -name bin -o -name obj \) -prune \
+          -exec sudo chown -R "$(id -u):$(id -g)" {} +
+    - uses: actions/setup-dotnet@v4
+      if: ${{ !cancelled() && steps.dolphin.outcome == 'success' && steps.selection.outputs.online_play == 'true' }}
+      with:
+        global-json-file: global.json
+    - name: Qualify real GameCube SDK HTTPS and WSS on Dolphin
+      if: ${{ !cancelled() && steps.dolphin.outcome == 'success' && steps.selection.outputs.online_play == 'true' }}
+      shell: pwsh
+      env:
+        BUILD_VERSION: ${{ inputs.version }}
+        GH_TOKEN: ${{ github.token }}
+      run: ./tests/server-integration.ps1 -PublicTunnel -DolphinIso "out/AnimalTown-$env:BUILD_VERSION.nkit.iso"
+    - name: Keep redacted online Dolphin evidence
+      if: always() && steps.selection.outputs.online_play == 'true'
+      uses: actions/upload-artifact@v4
+      with:
+        name: online-dolphin-${{ inputs.commit }}
+        path: |
+          out/online-dolphin/*.json
+          out/online-dolphin/*.log
+          out/online-dolphin/emulator/*.json
+          out/online-dolphin/emulator/*.png
+          out/online-dolphin/emulator/*.log
+          out/online-dolphin/emulator/*.txt
+        if-no-files-found: warn
     - name: Verify villager visual swaps in Dolphin
       if: ${{ !cancelled() && steps.dolphin.outcome == 'success' && steps.selection.outputs.villager_visuals == 'true' }}
       env:
@@ -440,28 +473,4 @@ runs:
           out/jobs/*/*.png
           out/jobs/*/*.log
           out/jobs/*/user/Logs/
-        if-no-files-found: warn
-    - uses: actions/setup-dotnet@v4
-      if: ${{ !cancelled() && steps.dolphin.outcome == 'success' && steps.selection.outputs.online_play == 'true' }}
-      with:
-        global-json-file: global.json
-    - name: Qualify real GameCube SDK HTTPS and WSS on Dolphin
-      if: ${{ !cancelled() && steps.dolphin.outcome == 'success' && steps.selection.outputs.online_play == 'true' }}
-      shell: pwsh
-      env:
-        BUILD_VERSION: ${{ inputs.version }}
-        GH_TOKEN: ${{ github.token }}
-      run: ./tests/server-integration.ps1 -PublicTunnel -DolphinIso "out/AnimalTown-$env:BUILD_VERSION.nkit.iso"
-    - name: Keep redacted online Dolphin evidence
-      if: always() && steps.selection.outputs.online_play == 'true'
-      uses: actions/upload-artifact@v4
-      with:
-        name: online-dolphin-${{ inputs.commit }}
-        path: |
-          out/online-dolphin/*.json
-          out/online-dolphin/*.log
-          out/online-dolphin/emulator/*.json
-          out/online-dolphin/emulator/*.png
-          out/online-dolphin/emulator/*.log
-          out/online-dolphin/emulator/*.txt
         if-no-files-found: warn

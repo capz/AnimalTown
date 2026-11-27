@@ -466,6 +466,41 @@ internal static class ModelResidencyChecks
     }
     private static void StartupChecks(Action<bool,string> check)
     {
+        // Reproduce the dense saved-town startup failure with the same physical
+        // admission policy. Five drawable species fit, but loading the unused
+        // sixth after them cannot afford its temporary caller/package copy.
+        bool DenseStartup(int requiredMask)
+        {
+            Clock.Timestamp=0;Aram.Reset();var state=State();var doors=new PortalSystem();
+            for(int npc=0;npc<5;npc++)state.Town.Residents[npc].Space=state.Space;
+            var memory=new VisualMemoryPressure();var manager=new ModelResidency{Memory=memory};var loaded=new Model?[6];
+            const int unit=65536,capacity=VisualMemoryPressure.SafetyBytes+18*unit+8192;
+            void Observe()
+            {
+                int used=0;
+                for(int species=0;species<loaded.Length;species++)if(loaded[species] is Model model)
+                    used+=model.IsResident?(species==state.Species?4:3)*unit:128;
+                memory.Observe(capacity-used,0,0,Clock.Timestamp);
+            }
+            bool Checkpoint(int progress)
+            {
+                for(int step=0;step<100;step++){Observe();if(Startup(manager,state,doors,progress))return true;}
+                return false;
+            }
+            try{
+                for(int progress=0;progress<6;progress++){
+                    if(!Checkpoint(progress))return false;
+                    int species=ModelStartup.SpeciesAt(state.Species,progress,requiredMask);
+                    Observe();if(!memory.TryReserve(5*unit,Clock.Timestamp,true,out int ticket))return false;
+                    loaded[species]=new Model();manager.Register(species,loaded[species]!,Clock.Timestamp);
+                    memory.Complete(ticket);
+                }
+                return Checkpoint(6)&&manager.ReadyForSpace(state,doors,state.Space)&&!loaded[5]!.IsResident;
+            }finally{manager.Stop();foreach(var model in loaded)model?.Dispose();}
+        }
+        check(!DenseStartup(0),"numeric startup order reproduces headroom starvation behind five drawable species");
+        check(DenseStartup(31),"unused species enters ARAM before the visible cohort consumes transient startup headroom");
+
         // Exercise every profile species, including spaniel which was formerly
         // last in the loader. The same production order/factory reserves one
         // player before any later model is admitted, without a second late copy.

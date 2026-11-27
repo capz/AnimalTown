@@ -192,7 +192,7 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
     private readonly RenderQueue actorQueue=new RenderQueue(BuildingWorld.Actors,BuildingWorld.Actors);
     private readonly Transform[] modelPoses=new Transform[16];
     private readonly BoxBatch boxes;
-    private int modelUsed,loadingIndex;
+    private int modelUsed,loadingIndex,startupRequiredMask=-1,startupWaitingSpecies=-1;
     private Task<Model>? loadingModel;
     private bool resourcesReady,loadingFailed,loadingBuildingsStarted,loadingBuildingsReady,loadingTerrainStarted,loadingTerrainReady;
     private string loadingLabel="Preparing town assets";
@@ -404,11 +404,23 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
                 return;
             }
             if(loadingIndex<models.Length){
-                int species=ModelStartup.SpeciesAt(state.Species,loadingIndex);
+                if(startupRequiredMask<0){
+                    if(!PrepareStartupResidency())return;
+                    startupRequiredMask=0;
+                    for(int i=0;i<models.Length;i++)if(modelResidency.Required(i))startupRequiredMask|=1<<i;
+                }
+                int species=ModelStartup.SpeciesAt(state.Species,loadingIndex,startupRequiredMask);
                 if(loadingModel==null){
                     loadingLabel="Preparing villagers";
                     if(!PrepareStartupResidency())return;
-                    if(!startupAdmission.Begin(species,StartupInstanceCount(species),Clock.Timestamp))return;
+                    if(!startupAdmission.Begin(species,StartupInstanceCount(species),Clock.Timestamp)){
+                        if(startupWaitingSpecies!=species){
+                            startupWaitingSpecies=species;
+                            DebugOverlay.WriteLine("ANIMALTOWN STARTUP ADMISSION WAIT "+species+" free "+visualMemory.Pressure.FreeBytes+" reserved "+visualMemory.Pressure.ReservedBytes+" requested "+visualMemory.Pressure.WaitingPeakBytes);
+                        }
+                        return;
+                    }
+                    startupWaitingSpecies=-1;
                     loadingLabel="Loading "+modelNames[species];
                     DebugOverlay.WriteLine("ANIMALTOWN MODEL LOAD BEGIN "+species+" "+modelNames[species]+" progress "+(loadingIndex+1)+" / "+models.Length+" required species "+modelResidency.RequiredSpeciesCount);
                     try{loadingModel=ModelResources.LoadAsync(modelNames[species]);}

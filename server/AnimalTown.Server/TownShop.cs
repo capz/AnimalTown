@@ -13,7 +13,7 @@ sealed partial class GameDatabase
         }
         var s=loaded.State;int day=s.Town.Day;
         if(!await IsImportedPlacementTown(c,t,host)){
-            s.Rollover(Day,DateTime.UtcNow.Year*12+DateTime.UtcNow.Month);
+            s.Rollover(Day,Month);
             if(day!=s.Town.Day)await Save(c,t,host,s);
         }
         var shop=s.Town.Shop;
@@ -43,8 +43,8 @@ sealed partial class GameDatabase
         if(player!=host){await CheckVisit(c,t,player,host);if(op.Kind!="buy")throw new GameError(403,"only-local-villagers-may-stock-shop");}
         await RequireLegacyCommerce(c,t,host);
         if(player!=host)await RequireLegacyCommerce(c,t,player);
-        town.Rollover(Day,DateTime.UtcNow.Year*12+DateTime.UtcNow.Month);
-        if(customer!=town)customer.Rollover(Day,DateTime.UtcNow.Year*12+DateTime.UtcNow.Month);
+        town.Rollover(Day,Month);
+        if(customer!=town)customer.Rollover(Day,Month);
         if(op.Revision!=town.Town.Shop.Revision)throw new GameError(409,"shop-changed");
         var shop=town.Town.Shop;
         bool ok=op.Kind switch{

@@ -137,6 +137,8 @@ try {
     $a=(Request POST '/v1/auth/register' @{name='RowanTest';password='test-password-long'} $null).Body
     $b=(Request POST '/v1/auth/register' @{name='MossTest';password='test-password-long'} $null).Body
     Assert ($a.token -and $b.token) 'Registration failed'
+    dotnet tests/AnimalTown.ServerChecks/bin/Release/net10.0/AnimalTown.ServerChecks.dll verify-calendar $a.id
+    if($LASTEXITCODE){throw 'Backend/card calendar checks failed'}
     Assert ((Request POST '/v1/auth/token' @{name='RowanTest';password='incorrect-password'} $null).Status -eq 401) 'Bad password accepted'
     Assert ((Request GET "/v1/towns/$($a.id)" $null $b.token).Status -eq 403) 'Foreign save exposed'
     $op=@{id=[Guid]::NewGuid().ToString();kind='sell';slot=0}

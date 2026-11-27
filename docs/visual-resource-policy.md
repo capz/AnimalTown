@@ -47,6 +47,11 @@ interior. Other interiors restore near an entrance or during a doorway crossing.
 Closed composites remain comparison assets rather than runtime resident parts.
 Unseen NPC interiors do not create graphical demand.
 
+Villager startup keeps the selected player first, then prepares species outside
+the initial view before the required cohort. Each unused package reaches ARAM
+before another load starts. A dense saved view therefore cannot consume the
+temporary load headroom needed to prepare an unused final species.
+
 ## Visibility and snow
 
 Existing backface, camera-frustum and cylindrical-horizon culling remain.

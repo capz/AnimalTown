@@ -171,10 +171,11 @@ sealed partial class GameDatabase(NpgsqlDataSource source)
     static string Hash(string text)=>Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(text)));
     static byte[] Password(string text,byte[] salt)=>Rfc2898DeriveBytes.Pbkdf2(text,salt,210000,HashAlgorithmName.SHA256,32);
     static int Day=>(int)(DateTimeOffset.UtcNow.ToUnixTimeSeconds()/86400);
+    static int Month {get{var now=DateTime.UtcNow;return now.Year*12+now.Month-1;}}
     public async Task<object> Register(Credentials request)
     {
         if(string.IsNullOrWhiteSpace(request.Name)||request.Name.Length>16||request.Password==null||request.Password.Length<12||request.Password.Length>128)throw new GameError(400,"name-or-password-invalid");
-        Guid id=Guid.NewGuid();var state=new GameState(RandomNumberGenerator.GetInt32(1,int.MaxValue)){Name=request.Name};state.Rollover(Day,DateTime.UtcNow.Year*12+DateTime.UtcNow.Month);
+        Guid id=Guid.NewGuid();var state=new GameState(RandomNumberGenerator.GetInt32(1,int.MaxValue)){Name=request.Name};state.Rollover(Day,Month);
         byte[] salt=RandomNumberGenerator.GetBytes(16);await using var c=await source.OpenConnectionAsync();
         var parts=SplitSaveCodec.Encode(state);
         await using(var cmd=Cmd(c,null,"INSERT INTO players(id,name,salt,password,town_data,house_positions,shop_states,player_villager,player_villager2,player_villager3,player_villager4) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)",id,request.Name,salt,Password(request.Password,salt),parts[0],parts[1],parts[2],parts[3],parts[4],parts[5],parts[6]))await cmd.ExecuteNonQueryAsync();
@@ -207,7 +208,7 @@ sealed partial class GameDatabase(NpgsqlDataSource source)
         await using(var cmd=Cmd(c,t,"SELECT fingerprint,result::text FROM operations WHERE player=$1 AND id=$2",id,op.Id))await using(var r=await cmd.ExecuteReaderAsync())if(await r.ReadAsync())
         {if(r.GetString(0)!=fingerprint)throw new GameError(409,"idempotency-key-reused");return JsonSerializer.Deserialize<JsonElement>(r.GetString(1));}
         await RequireLegacyCommerce(c,t,id);
-        var s=loaded.State;s.Rollover(Day,DateTime.UtcNow.Year*12+DateTime.UtcNow.Month);
+        var s=loaded.State;s.Rollover(Day,Month);
         bool ok=op.Kind switch{"buy"=>s.Buy(op.Slot),"sell"=>s.Sell(op.Slot),"deposit"=>s.Deposit(op.Amount),"withdraw"=>s.Withdraw(op.Amount),"repay"=>s.Repay(op.Amount),"expand-house"=>s.Expand(false,Day),"expand-garden"=>s.Expand(true,Day),"order"=>s.Order(op.Item),_=>false};
         if(op.Kind=="upgrade-backpack")ok=s.UpgradeBackpack();
         if(!ok)throw new GameError(409,"operation-rejected");await Save(c,t,id,s);var result=new{ok=true,revision=loaded.Revision+1,wallet=s.Wallet,savings=s.Savings,debt=s.Debt,capacity=s.Capacity};

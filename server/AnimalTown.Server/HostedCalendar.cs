@@ -23,7 +23,7 @@ sealed partial class GameDatabase
             var baseline=SplitSaveCodec.DecodeCommitted(row.GetFieldValue<byte[]>(0),row.GetFieldValue<byte[][]>(1));
             previousDay=baseline.Town.Day;previousMonth=baseline.Town.Month;
         }
-        int day=Day,month=DateTime.UtcNow.Year*12+DateTime.UtcNow.Month;
+        int day=Day,month=Month;
         bool changed=previousDay<day;
         if(changed){state.AdvanceHostedPersonalCalendar(day,month,previousMonth);state.AdvanceHostedCalendar(day,month);}
         await using(var mark=Cmd(c,t,"""

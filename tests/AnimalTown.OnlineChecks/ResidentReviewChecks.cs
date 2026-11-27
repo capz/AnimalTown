@@ -42,7 +42,7 @@ static class ResidentReviewChecks
         long now=DateTimeOffset.UtcNow.ToUnixTimeSeconds();ulong town=BitConverter.ToUInt64(RandomNumberGenerator.GetBytes(8));if(town==0)town=1;
         var baseline=new GameState(10091){Name="Fern",Sequence=11,Savings=5000,Tutorial=7};baseline.ResidentJobs.Enable(town,now);
         baseline.SelectProfile(1);baseline.Name="Mira";baseline.Savings=100;baseline.Tutorial=7;baseline.ResidentJobs.Enable(town,now);baseline.SelectProfile(0);baseline.CaptureProfile();
-        baseline.Rollover((int)(now/86400),DateTime.UtcNow.Year*12+DateTime.UtcNow.Month);
+        baseline.Rollover((int)(now/86400),DateTime.UtcNow.Year*12+DateTime.UtcNow.Month-1);
         var link=await Request(HttpMethod.Post,"/v1/auth/link/start",new{town=town.ToString("X16")});
         await Request(HttpMethod.Post,"/v1/account/link",new{code=link.GetProperty("code").GetString()},browser);
         token=(await Request(HttpMethod.Post,"/v1/auth/link/poll",new{secret=link.GetProperty("secret").GetString()})).GetProperty("token").GetString()!;
@@ -230,7 +230,7 @@ static class ResidentReviewChecks
         string oldToken=token;ulong replacementTown=town^0x4000000000000000UL;if(replacementTown==0)replacementTown=1;
         var replacement=new GameState(10094){Name="Newhome",Sequence=11,Tutorial=7,Wallet=123};replacement.ResidentJobs.Enable(replacementTown,now);
         replacement.SelectProfile(1);replacement.Name="Moss";replacement.Tutorial=7;replacement.ResidentJobs.Enable(replacementTown,now);replacement.SelectProfile(0);
-        replacement.Rollover((int)(now/86400),DateTime.UtcNow.Year*12+DateTime.UtcNow.Month);
+        replacement.Rollover((int)(now/86400),DateTime.UtcNow.Year*12+DateTime.UtcNow.Month-1);
         link=await Request(HttpMethod.Post,"/v1/auth/link/start",new{town=replacementTown.ToString("X16")});
         await Request(HttpMethod.Post,"/v1/account/link",new{code=link.GetProperty("code").GetString()},browser);
         token=(await Request(HttpMethod.Post,"/v1/auth/link/poll",new{secret=link.GetProperty("secret").GetString()})).GetProperty("token").GetString()!;

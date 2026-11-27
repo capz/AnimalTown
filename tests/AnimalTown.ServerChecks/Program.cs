@@ -14,6 +14,10 @@ if(args[0]=="seed-legacy"){
     byte[] salt=RandomNumberGenerator.GetBytes(16);byte[] password=Rfc2898DeriveBytes.Pbkdf2("test-password-long",salt,210000,HashAlgorithmName.SHA256,32);
     await using var insert=new NpgsqlCommand("INSERT INTO players(id,name,salt,password,state,revision) VALUES($1,$2,$3,$4,$5,17)",c);
     insert.Parameters.AddWithValue(id);insert.Parameters.AddWithValue(original.Name);insert.Parameters.AddWithValue(salt);insert.Parameters.AddWithValue(password);insert.Parameters.AddWithValue(SaveCodec.EncodeLegacy(original));await insert.ExecuteNonQueryAsync();
+}else if(args[0]=="verify-calendar"){
+    var current=await FixtureState(Guid.Parse(args[1]));var now=DateTime.UtcNow;
+    if(current.Town.Month!=now.Year*12+now.Month-1)throw new Exception("Backend calendar must use the card's zero-based month, without advancing its season");
+    Console.WriteLine("Backend/card calendar month agrees with UTC; hosted towns cannot enter winter one month early.");
 }else if(args[0]=="write-initial-save"){
     int sequence=args.Length>2?int.Parse(args[2]):11;
     int wallet=args.Length>3?int.Parse(args[3]):4356;

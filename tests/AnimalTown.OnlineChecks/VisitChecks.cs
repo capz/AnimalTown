@@ -29,7 +29,7 @@ static class VisitChecks
             ulong townId=BitConverter.ToUInt64(RandomNumberGenerator.GetBytes(8));if(townId==0)townId=1;
             var state=new GameState(seed){Name=role,Sequence=11,Wallet=4356,Savings=9021,Tutorial=7};
             state.ResidentJobs.Enable(townId,DateTimeOffset.UtcNow.ToUnixTimeSeconds());
-            state.Rollover((int)(DateTimeOffset.UtcNow.ToUnixTimeSeconds()/86400),DateTime.UtcNow.Year*12+DateTime.UtcNow.Month);
+            state.Rollover((int)(DateTimeOffset.UtcNow.ToUnixTimeSeconds()/86400),DateTime.UtcNow.Year*12+DateTime.UtcNow.Month-1);
             state.Pockets[2]=Catalog.WritingPaper;state.Pockets[3]=10;
             state.Pockets[4]=Catalog.Apple;state.Pockets[5]=Catalog.Pear;
             if(role=="Owner"){

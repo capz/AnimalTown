@@ -204,7 +204,7 @@ function Copy-OnlineEvidence([string]$Source,[string]$Destination,[string]$Commi
     if($evidence.schema -ne 1 -or $evidence.commit -cne $Commit -or $evidence.version -cne $Version -or
        $evidence.tag -cne $Tag -or $evidence.isoName -cne $IsoName -or $evidence.isoSha256 -cne $IsoSha256){throw 'Online target evidence must match the exact release image'}
     $report=Get-Content -LiteralPath (Join-Path $Source 'emulator/online-play-report.json') -Raw|ConvertFrom-Json
-    foreach($name in @('passed','sdk_https','sdk_wss','three_humans','sdk_movement','chat_both_guests','same_endpoint_reconnect','published_and_acknowledged')){
+    foreach($name in @('passed','sdk_https','sdk_wss','three_humans','remote_actors_drawn','sdk_movement','chat_both_guests','same_endpoint_reconnect','published_and_acknowledged')){
         if($report.$name -ne $true){throw "Online target did not pass: $name"}
     }
     if($report.scenario -cne 'online-play' -or $report.physical_hardware -ne $false){throw 'Dolphin evidence cannot claim physical qualification'}

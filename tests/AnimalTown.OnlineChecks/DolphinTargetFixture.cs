@@ -54,7 +54,7 @@ static class DolphinTargetFixture
             ulong town=BitConverter.ToUInt64(RandomNumberGenerator.GetBytes(8));if(town==0)town=1;
             var state=new GameState(seed){Name=name,Species=species,Tutorial=7,Wallet=4356,Savings=9021};
             long now=DateTimeOffset.UtcNow.ToUnixTimeSeconds();state.ResidentJobs.Enable(town,now);
-            state.Rollover((int)(now/86400),DateTime.UtcNow.Year*12+DateTime.UtcNow.Month);
+            state.Rollover((int)(now/86400),DateTime.UtcNow.Year*12+DateTime.UtcNow.Month-1);
             if(!upload&&!state.PlaceHouse(12,22,false,true))throw new Exception("Target fixture home plot blocked");
             for(int z=10;z<24;z++)for(int x=28;x<43;x++){state.Town.Tiles[z*Town.Width+x]=(byte)Terrain.Grass;state.Town.Elevation[z*Town.Width+x]=0;}
             for(int i=state.Town.GroundCount-1;i>=0;i--){var g=state.Town.Ground[i];if(g.X>=28&&g.X<43&&g.Z>=9&&g.Z<24)state.Town.RemoveGround(i);}

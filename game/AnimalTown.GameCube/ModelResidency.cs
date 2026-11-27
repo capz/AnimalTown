@@ -9,12 +9,18 @@ using Dolphin.Timing;
 
 internal static class ModelStartup
 {
-    internal static int SpeciesAt(int selected,int progress)
+    internal static int SpeciesAt(int selected,int progress,int requiredMask=0)
     {
-        if(selected<0||selected>=ModelResidencyDemand.SpeciesCount||progress<0||progress>=ModelResidencyDemand.SpeciesCount)
+        if(selected<0||selected>=ModelResidencyDemand.SpeciesCount||progress<0||progress>=ModelResidencyDemand.SpeciesCount||(requiredMask&~63)!=0)
             throw new ArgumentOutOfRangeException("species");
         if(progress==0)return selected;
-        int species=progress-1;return species>=selected?species+1:species;
+        // Prepare pageable species while transient load headroom is available.
+        // The next startup checkpoint moves them to ARAM before the visible
+        // cohort fills MEM1. Loading them last can deadlock a dense saved view.
+        int rank=progress-1;
+        for(int required=0;required<2;required++)for(int species=0;species<ModelResidencyDemand.SpeciesCount;species++)
+            if(species!=selected&&((requiredMask>>species)&1)==required&&rank--==0)return species;
+        throw new InvalidOperationException("Invalid startup species order");
     }
     internal static ModelInstance? ReservePlayer(int selected,int species,Model model)
         =>species==selected?model.CreateInstance(ModelMemoryPlan.MaximumInstanceBytes):null;

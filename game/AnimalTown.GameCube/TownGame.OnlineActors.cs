@@ -9,6 +9,7 @@ internal sealed partial class TownGame
     sealed class OnlineActorView
     {
         internal ModelInstance? Instance;internal int Species=-1,Clip=-2,Room;
+        internal bool Drawn;
         internal float X,Z,Yaw,FromX,FromZ,ToX,ToZ;internal long ChangedAt,AnimatedAt;
         internal readonly Transform Pose=new Transform();
     }
@@ -48,10 +49,12 @@ internal sealed partial class TownGame
                 if(!visualMemory.Pressure.TryReserve(ModelMemoryPlan.MaximumInstanceBytes,now,true,out ticket))continue;
                 try
                 {
-                    actor.Instance=models[human.Species].CreateInstance(ModelMemoryPlan.MaximumInstanceBytes);actor.AnimatedAt=now;actor.Clip=-2;
+                    actor.Instance=models[human.Species].CreateInstance(ModelMemoryPlan.MaximumInstanceBytes);actor.AnimatedAt=now;actor.Clip=-2;actor.Drawn=false;
                     int bytes=0;for(int i=0;i<actors.Length;i++)if(actors[i]?.Model==models[human.Species])bytes+=actors[i]!.NativeBytes;
                     for(int i=0;i<onlineActors.Length;i++)if(onlineActors[i].Species==human.Species&&onlineActors[i].Instance!=null)bytes+=onlineActors[i].Instance!.NativeBytes;
                     modelResidency.RecordWarmPeak(human.Species,bytes);visualMemory.Pressure.Complete(ticket);
+                    visualMemory.Sample(now,true);
+                    Dolphin.Diagnostics.DebugOverlay.WriteLine("ANIMALTOWN ONLINE ACTOR READY slot "+slot+" species "+human.Species+" instance bytes "+actor.Instance.NativeBytes+" sampled free "+visualMemory.Pressure.FreeBytes);
                 }
                 catch(OutOfMemoryException){visualMemory.Pressure.Cancel(ticket);visualMemory.Pressure.AllocationFailed(ModelMemoryPlan.MaximumInstanceBytes,now);}
             }
@@ -73,7 +76,10 @@ internal sealed partial class TownGame
             var actor=onlineActors[slot];if(actor.Instance==null||actor.Room!=room||!Visible(actor.X,actor.Z,1.8f))continue;
             var pose=actor.Pose;pose.LocalPosition=SurfacePoint(actor.X,actor.Z);pose.LocalScale=new Vector3(1.8f,1.8f,1.8f);pose.LocalRotation=SurfaceRotation(actor.Z,actor.Yaw);
             NativeRim.Enable(RenderDebugOptions.DefaultRimPercent);NativeShadows.Objects(room==0?1:0);
-            try{renderer.DrawModel(actor.Instance,pose);jobScene.Outfit(renderer,visit.State.Humans[slot].Shirt,actor.Species,pose.LocalPosition,pose.LocalRotation);}
+            try{
+                renderer.DrawModel(actor.Instance,pose);jobScene.Outfit(renderer,visit.State.Humans[slot].Shirt,actor.Species,pose.LocalPosition,pose.LocalRotation);
+                if(!actor.Drawn){actor.Drawn=true;Dolphin.Diagnostics.DebugOverlay.WriteLine("ANIMALTOWN ONLINE ACTOR DRAW slot "+slot+" species "+actor.Species);}
+            }
             finally{NativeShadows.Objects(0);NativeRim.Enable(0);}
         }
         // The recipient's outfit uses the same existing mesh as local play.

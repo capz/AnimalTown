@@ -1,6 +1,7 @@
 """Real GameCube SDK HTTPS/WSS on Dolphin's broadband adapter, through CI's tunnel."""
 import json
 import os
+import re
 from pathlib import Path
 import sys
 import time
@@ -53,6 +54,11 @@ def run(context):
         wait(lambda:status().get('gate',False),'gate-open',activate=True)
         wait(lambda:status().get('joined',False) and status().get('actors',0)==3,'three-humans')
         world(2,'three-humans')
+        wait(lambda:all(re.search(r'ANIMALTOWN ONLINE ACTOR DRAW slot '+str(slot)+r' species ',c['runtime_log_text']()) for slot in (1,2)),'both-remote-actors-drawn')
+        report['remote_actors_drawn']=True
+        report['remote_actor_samples']=[dict(slot=int(slot),species=int(species),instance_bytes=int(size),sampled_mem1_free_bytes=int(free))
+            for slot,species,size,free in re.findall(r'ANIMALTOWN ONLINE ACTOR READY slot (\d+) species (\d+) instance bytes (\d+) sampled free (\d+)',c['runtime_log_text']())]
+        shot('remote-actors-drawn')
         report['sdk_https']=True;report['sdk_wss']=True;report['three_humans']=True
         os.write(c['controller'],b'SET MAIN 0.5 0.1\n')
         try:wait(lambda:status().get('moved',False),'sdk-movement',seconds=45)
