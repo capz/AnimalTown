@@ -4,6 +4,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using AnimalTown;
 using Dolphin.Input;
+using Dolphin.Diagnostics;
 using Dolphin.Network;
 using ConsoleHttp = Dolphin.Network.Http;
 using Dolphin.Security;
@@ -99,6 +100,7 @@ internal sealed class OnlinePairing
                     }
                     catch(Exception)
                     {
+                        DebugOverlay.WriteLine("ANIMALTOWN ONLINE LINK FAILED");
                         if(!leaving)Complete(cardWriteFailed?"Could not save the online link. Check the memory card and retry.":
                             "Could not link. Check the adapter, network and console clock.");
                     }
@@ -147,7 +149,9 @@ internal sealed class OnlinePairing
 
     private async Task<string?> Begin(ConsoleHttp.HttpClient client,byte[] roots,CancellationToken cancellation)
     {
+        DebugOverlay.WriteLine("ANIMALTOWN ONLINE ADAPTER BEGIN");
         if(!NetworkRuntime.IsReady)await NetworkRuntime.StartAsync(new NetworkOptions(),cancellation);
+        DebugOverlay.WriteLine("ANIMALTOWN ONLINE ADAPTER READY");
         cancellation.ThrowIfCancellationRequested();
         var calendar=new TownClock();
         calendar.Update(NativeCalendar.ReadClock());
@@ -156,6 +160,7 @@ internal sealed class OnlinePairing
         renewing=prior!=null&&prior.Origin==origin&&prior.Town==town;
         bool newRotation=renewing&&prior!.RotationId.Length==0;
         byte[] entropy=await PlatformEntropy.GetBytesAsync(newRotation?64:48,cancellation);
+        DebugOverlay.WriteLine("ANIMALTOWN ONLINE ENTROPY READY");
         string rotation="";
         try{
             cancellation.ThrowIfCancellationRequested();
@@ -172,6 +177,7 @@ internal sealed class OnlinePairing
             else TlsConfiguration.InitializeFromLocalClock(roots,entropy,localUnixTime);
         }
         finally{Array.Clear(entropy,0,entropy.Length);}
+        DebugOverlay.WriteLine("ANIMALTOWN ONLINE TLS READY");
         if(renewing)
         {
             if(newRotation)Remember(prior!.WithRotation(rotation));
@@ -192,6 +198,7 @@ internal sealed class OnlinePairing
             request.Content=new ConsoleHttp.ByteArrayContent(bytes);
             request.Content.Headers.Add("content-type","application/json");
             using var response=await client.SendAsync(request,cancellation);
+            DebugOverlay.WriteLine("ANIMALTOWN ONLINE LINK HTTP "+(int)response.StatusCode);
             if(path==RenewPath&&(int)response.StatusCode==401)return null;
             if(!response.IsSuccessStatusCode)
                 throw new IOException("Online pairing request failed.");
@@ -229,6 +236,7 @@ internal sealed class OnlinePairing
         }
         session.OnlineCredentials=new OnlineDeviceLink(origin,town,reply.AccountId,reply.DeviceId,
             reply.Token,now+reply.ExpiresIn*MicrosecondsPerSecond,reply.Generation);
+        DebugOverlay.WriteLine("ANIMALTOWN ONLINE LINK SAVED");
         Complete("Online link saved.");
     }
 
