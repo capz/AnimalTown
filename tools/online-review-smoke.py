@@ -15,7 +15,9 @@ def run(context):
         x0,y0,x1,y1=bounds
         return [tuple(pixels[(y*800+x)*3:(y*800+x)*3+3]) for y in range(y0,y1,4) for x in range(x0,x1,4)]
 
-    left=(50,100,300,350);right=(380,110,590,280)
+    # Sample well inside each pane so window positioning/scaling cannot put
+    # moving world pixels inside the stable review-details comparison.
+    left=(50,100,300,350);right=(450,120,590,280)
     def cream(pixel):return pixel[0]>205 and pixel[1]>195 and pixel[2]>165 and pixel[0]>pixel[2]+12
     def difference(a,b,bounds):
         first=samples(a,bounds);second=samples(b,bounds)
