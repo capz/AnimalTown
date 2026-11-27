@@ -1,4 +1,5 @@
 using System.Text.Json.Nodes;
+using SkiaSharp;
 
 internal static class ActorPreparationChecks
 {
@@ -12,11 +13,19 @@ internal static class ActorPreparationChecks
     internal static void Run(string root)
     {
         string output=Path.Combine(root,"out/actor-preparation-checks");Directory.CreateDirectory(output);
-        string[] names={"Meshy_AI_Rigged_Fox_All_Animations","villager_bunny","villager_giraffe","villager_mainecoon","villager_hamster","villager_cockerspaniel","villager_penguin","villager_whitetiger","villager_lion","villager_robin","villager_raccoon","villager_pugofficer","villager_crocodile","villager_capybara"};
+        string[] names={"Meshy_AI_Rigged_Fox_All_Animations","villager_bunny","villager_giraffe","villager_mainecoon","villager_hamster","villager_cockerspaniel","villager_penguin","villager_whitetiger","villager_lion","villager_robin","villager_raccoon","villager_pugofficer","villager_crocodile","villager_capybara","villager_panda","villager_pig","villager_axolotl","villager_foxjacket"};
+        var imports=JsonNode.Parse(File.ReadAllText(Path.Combine(root,"assets/models/villagers/new-villagers-provenance.json")))!.AsArray()
+            .Select(entry=>Path.GetFileNameWithoutExtension((string)entry!["source"]!)).ToHashSet(StringComparer.Ordinal);
         JsonNode Read(byte[] bytes)=>JsonNode.Parse(bytes.AsSpan(20,BitConverter.ToInt32(bytes,12)))!;
         void Check(bool value,string reason){if(!value)throw new InvalidDataException(reason);}
         foreach(string name in names){
             string input=Path.Combine(root,"assets/models/villagers",name+".glb");byte[] original=File.ReadAllBytes(input);var source=Read(original);
+            if(imports.Contains(name))foreach(var image in source["images"]!.AsArray()){
+                var view=source["bufferViews"]![(int)image!["bufferView"]!]!;
+                int offset=28+BitConverter.ToInt32(original,12)+((int?)view["byteOffset"]??0);
+                using var pixels=SKBitmap.Decode(original.AsSpan(offset,(int)view["byteLength"]!).ToArray());
+                Check(pixels!=null&&pixels.Width<=128&&pixels.Height<=128,name+": every embedded map fits the 128px import ceiling");
+            }
             string normal=Path.Combine(output,name+"-all.glb"),game=Path.Combine(output,name+"-game.glb");
             Program.Prepare(input,normal);Program.Prepare(input,game,true);
             var full=Read(File.ReadAllBytes(normal));byte[] cooked=File.ReadAllBytes(game);var selected=Read(cooked);

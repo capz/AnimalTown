@@ -554,6 +554,15 @@
         "Unused appearances can replace one villager's visuals without changing names, jobs, location or saves.",
         "The supplied pug officer is already imported; the appearance catalog now contains fourteen unique entries."
       ]
+    },
+    {
+      "id": "panda-pig-axolotl-jacket-fox-villagers-20261127",
+      "lines": [
+        "Try four more villagers: panda, pig, axolotl and a fox in a green jacket.",
+        "All embedded and cooked villager textures stay at or below 128 pixels in either runtime package variant.",
+        "Split animation exports share their original rigs; the pig gets a prepared standing idle.",
+        "Unused visual swaps preserve villager names, jobs, locations and saved species; the catalog now has eighteen entries."
+      ]
     }
   ]
 }

@@ -26,8 +26,9 @@ residency/LOD owner. The animation clock and attention bounds use the new rig.
 Host regression checks exercise duplicate rejection, delayed/failed loads,
 allocation backoff, package mismatch, repeated swaps, cancellation/teardown,
 unchanged other actors and byte-identical serialized player/town/job state.
-The normal importer checks cover all fourteen GLBs and retained animation samples.
-Dolphin checks apply all eight additional appearances to the player, exercise movement,
+The normal importer checks cover all eighteen GLBs and retained animation samples.
+Imported embedded maps and every cooked villager package are capped at 128px.
+Dolphin checks apply all twelve additional appearances to the player, exercise movement,
 and swap one NPC. Their captures and save-preservation report ship under
 `release/scenarios/villager-visuals/` inside the Depot ZIP, with the exact build
 and NKit image identity.

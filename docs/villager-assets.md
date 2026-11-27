@@ -1,5 +1,37 @@
 # Current villager assets
 
+## Four additional appearances supplied on 2026-11-27
+
+| Appearance | Prepared source | Source archive prefix |
+|---|---|---|
+| Panda | `villager_panda.glb` | `b8428be7` |
+| Pig | `villager_pig.glb` | `faf2e7ad` |
+| Axolotl | `villager_axolotl.glb` | `74687edf` |
+| Fox in green jacket | `villager_foxjacket.glb` | `c9c5fd54` |
+
+Each archive splits one character's animation exports across two GLBs. Their
+meshes, nodes and skins match exactly. The imports append appearance IDs
+14–17, preserving all existing appearance and saved species IDs.
+Every embedded map is reduced to at most 128×128. Villager cooking now caps
+both runtime package variants at 128px, and the texture audit rejects larger
+villager maps, including in packages whose compatibility filename denotes
+the 256 variant. Unreferenced high-resolution sidecar images stay in the
+original download archives and are not imported or packaged.
+The axolotl supplies three joint/weight sets; all twelve influences are
+combined before retaining and normalizing each vertex's strongest four.
+
+Panda, axolotl and the jacket fox retain their supplied idle, walking and
+running clips. The pig's custom export still runs its legs; it is retained
+as `RunningInPlace` in the prepared source. Its gameplay `Idle` is a static
+standing pose using bind hips/legs and the relaxed upper-body pose from its
+own walk. Every animated TRS channel is keyed to clear prior locomotion.
+`idleDerivedFromStandingPose` records this fallback in the provenance.
+The thirteen real Dolphin swaps cover all twelve added appearances and an NPC.
+
+```sh
+python3 tools/import-villagers.py /path/to/downloads /path/to/AnimalTown --only panda pig axolotl foxjacket
+```
+
 ## Additional appearances supplied on 2026-11-27
 
 `base_basic_shaded (2).glb` is a crocodile in an orange tropical shirt;

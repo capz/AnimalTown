@@ -195,5 +195,125 @@
     "maximumDroppedWeight": 0.12210012599825859,
     "locomotionRootMotion": "horizontal hips travel removed; vertical bob and cyclic sway retained",
     "walkingDerivedFromHalfSpeedRun": false
+  },
+  {
+    "model": "panda",
+    "input": "b8428be7-a427-4f57-9b8e-265bf4da9e30.zip",
+    "inputSha256": "e3ca5cfeeed7522f5f755775f9cd654bba0bf263425c30dc7307ea266fa7965a",
+    "exports": [
+      {
+        "entry": "animations_1/base_basic_shaded.glb",
+        "sha256": "9b259ef3173fc4ef13789001a72f631f475f922ff76d8543967e59bad0fa3d2a",
+        "clips": {
+          "b0c0eb12-b9ee-4939-9148-740ea5925e5b": "Idle"
+        }
+      },
+      {
+        "entry": "animations_2/base_basic_shaded.glb",
+        "sha256": "2a94c680ad791b1c09a6b62f5ef7f15d71a210e52b53c891ab6e04749c63dd38",
+        "clips": {
+          "human_000029": "Running",
+          "human_000089": "Walking"
+        }
+      }
+    ],
+    "source": "assets/models/villagers/villager_panda.glb",
+    "sha256": "931ed8e9c717d7e990ef83dae483971e35d7d8a91d26892966f227acf504bffe",
+    "textureEdge": 128,
+    "skinInfluences": 4,
+    "maximumDroppedWeight": 0.08180708449799567,
+    "locomotionRootMotion": "horizontal hips travel removed; vertical bob and cyclic sway retained",
+    "walkingDerivedFromHalfSpeedRun": false,
+    "idleDerivedFromStandingPose": false
+  },
+  {
+    "model": "pig",
+    "input": "faf2e7ad-7a5d-4c7b-9d5f-742636af8e13.zip",
+    "inputSha256": "06d2f77a52733ee8d8c5027e7353b636d573a73c02b2c1c0dd99789988dd0362",
+    "exports": [
+      {
+        "entry": "animations_1/base_basic_shaded.glb",
+        "sha256": "322387e8a376d88c984754bb11070a7f0bdd4425d18d88c20e2dd87e1dac20c1",
+        "clips": {
+          "90cf6a96-490c-4f7d-9404-53ce0d37beff": "RunningInPlace"
+        }
+      },
+      {
+        "entry": "animations_2/base_basic_shaded.glb",
+        "sha256": "13a2c1444f47f222974a1b0326a0c8dee8bb652d90257b72a4a82e7bc5010268",
+        "clips": {
+          "human_000046": "Running",
+          "human_000089": "Walking"
+        }
+      }
+    ],
+    "source": "assets/models/villagers/villager_pig.glb",
+    "sha256": "359e8b2ba338744c071f15a41323114a9d25b6d497edc9f31c03eee588e55f85",
+    "textureEdge": 128,
+    "skinInfluences": 4,
+    "maximumDroppedWeight": 0.2648925706744194,
+    "locomotionRootMotion": "horizontal hips travel removed; vertical bob and cyclic sway retained",
+    "walkingDerivedFromHalfSpeedRun": false,
+    "idleDerivedFromStandingPose": true
+  },
+  {
+    "model": "axolotl",
+    "input": "74687edf-fc6f-495b-91c9-1c1134fbc57a.zip",
+    "inputSha256": "b0513ef6885c78ec65eaceecf58104903b47322244bf95ccca3dc4fdfbcf42b1",
+    "exports": [
+      {
+        "entry": "animations_1/base_basic_shaded.glb",
+        "sha256": "9da07138646f8cd27eabd7fcc116c831190d576e22cea172365d3458a88db843",
+        "clips": {
+          "dbb8755c-7676-4526-abc1-9c6c3fea4343": "Walking"
+        }
+      },
+      {
+        "entry": "animations_2/base_basic_shaded.glb",
+        "sha256": "fcfb9be4d3ec7dd7cceb15341e5fd3fed720dff59a65d15bfa36ca04a05260a1",
+        "clips": {
+          "human_000013": "Idle",
+          "human_000029": "Running"
+        }
+      }
+    ],
+    "source": "assets/models/villagers/villager_axolotl.glb",
+    "sha256": "e25180d7f063edf8111f6e1a333b3d898f00167211279d53d09659ea0eb48a9e",
+    "textureEdge": 128,
+    "skinInfluences": 4,
+    "maximumDroppedWeight": 0.2892037071287632,
+    "locomotionRootMotion": "horizontal hips travel removed; vertical bob and cyclic sway retained",
+    "walkingDerivedFromHalfSpeedRun": false,
+    "idleDerivedFromStandingPose": false
+  },
+  {
+    "model": "foxjacket",
+    "input": "c9c5fd54-5e32-4927-b323-fa891b19ed5f.zip",
+    "inputSha256": "2ab07e36057310fc3bd03d3d2d2419bcfacde680141fe2acfaabaf5c6d0088cb",
+    "exports": [
+      {
+        "entry": "animations_1/base_basic_shaded.glb",
+        "sha256": "4f61dffd9f3e0df4e6fdf0c776d44875c29ec64af31fa0e32bffb89eaa89dfa7",
+        "clips": {
+          "214895d9-cee4-4669-81c5-aea80f3d67a3": "Idle"
+        }
+      },
+      {
+        "entry": "animations_2/base_basic_shaded.glb",
+        "sha256": "4ad592aaaa0258bf3917846f406086bdd9690b2f6175cdab828afd98cca511a4",
+        "clips": {
+          "human_000049": "Running",
+          "human_000086": "Walking"
+        }
+      }
+    ],
+    "source": "assets/models/villagers/villager_foxjacket.glb",
+    "sha256": "befbb64f730e8d3d8bceac2427ca6b26dda47bef944c78973f928a03276d65bd",
+    "textureEdge": 128,
+    "skinInfluences": 4,
+    "maximumDroppedWeight": 0.12042013229802251,
+    "locomotionRootMotion": "horizontal hips travel removed; vertical bob and cyclic sway retained",
+    "walkingDerivedFromHalfSpeedRun": false,
+    "idleDerivedFromStandingPose": false
   }
 ]

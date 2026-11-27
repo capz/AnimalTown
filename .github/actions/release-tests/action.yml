@@ -148,7 +148,7 @@ runs:
       shell: bash
       run: |
         mkdir -p out/villager-visuals
-        timeout --kill-after=30s 15m docker run --rm --init --shm-size=512m --user "$(id -u):$(id -g)" \
+        timeout --kill-after=30s 25m docker run --rm --init --shm-size=512m --user "$(id -u):$(id -g)" \
           --mount "type=bind,src=$PWD,dst=/work" -w /work \
           animaltown-dolphin-test python3 tools/iso-smoke.py \
           "out/AnimalTown-$BUILD_VERSION.nkit.iso" out/villager-visuals --villager-visuals
