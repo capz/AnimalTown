@@ -79,7 +79,8 @@ def run(context):
         try:wait(lambda:status().get('moved',False),'sdk-movement',seconds=45)
         finally:os.write(c['controller'],b'SET MAIN 0.5 0.5\n')
         shot('movement');report['sdk_movement']=True
-        press('R');press('A');press('START')
+        # The shared QWERTY keyboard starts on q; a is one row below it.
+        press('R');press('D_DOWN');press('A');shot('chat-draft');press('START')
         wait(lambda:status().get('chatReceived',False),'chat-received-by-both-guests')
         shot('chat');report['chat_both_guests']=True
         (fixture/'disconnect').write_text('Fence only the disposable console connection.\n')
