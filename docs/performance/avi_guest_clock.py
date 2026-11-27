@@ -31,6 +31,10 @@ class AviGuestClock:
                         kind=f.read(4)
                         if tag==b'RIFF' and kind in (b'AVI ',b'AVIX') or tag==b'LIST' and kind in (b'movi',b'rec '):
                             offset+=12;continue
+                    # FFmpeg backfills idx1's size after writing its entries.
+                    # A zero-sized index is unfinished; entering its payload
+                    # can mistake index entries for real video frames.
+                    if tag==b'idx1' and length==0:break
                     if end>size:break
                     if tag in (b'00dc',b'00db'):
                         count+=1

@@ -26,4 +26,28 @@ with TemporaryDirectory() as directory:
     second.write_bytes(riff(b'AVI ',movie(chunk(b'00dc',b'frame5'))))
     assert clock.frames()==5 and clock.presentations==[1,3,5]
     fresh=AviGuestClock(root,track_presentations=True);assert fresh.frames()==5 and fresh.presentations==[1,3,5]
-print('Guest clock: partial writes, unfinished/finalized AVI+AVIX containers, empty repeats, multiple files and presentation indices passed')
+
+with TemporaryDirectory() as directory:
+    root=Path(directory);path=root/'capture_0.avi'
+    clock=AviGuestClock(root,track_presentations=True)
+    first=riff(b'AVI ',movie(chunk(b'00dc',b'frame1')+chunk(b'00dc',b'')))
+    path.write_bytes(first)
+    assert clock.frames()==2 and clock.presentations==[1]
+    # avi_write_idx1 reserves a zero size, then writes entries before seeking
+    # back to publish the size. Its entries begin with 00dc too. Reading this
+    # valid in-flight prefix must neither count fake frames nor lose the cursor.
+    entries=struct.pack('<4sIII',b'00dc',0x10,4,6)*2
+    with path.open('ab') as f:f.write(b'idx1'+struct.pack('<I',0)+entries)
+    assert clock.frames()==2 and clock.presentations==[1]
+    assert clock.state[path][0]==len(first)
+    with path.open('r+b') as f:
+        f.seek(len(first)+4);f.write(struct.pack('<I',len(entries)))
+        f.seek(0,2)
+        f.write(b'RIFF'+struct.pack('<I',0xffffffff)+b'AVIX'+
+                b'LIST'+struct.pack('<I',0xffffffff)+b'movi'+
+                chunk(b'00dc',b'frame3')+chunk(b'00dc',b''))
+    assert clock.frames()==4 and clock.presentations==[1,3]
+    fresh=AviGuestClock(root,track_presentations=True)
+    assert fresh.frames()==4 and fresh.presentations==[1,3]
+
+print('Guest clock: partial writes, unfinished index publication, AVI+AVIX, empty repeats, multiple files and presentation indices passed')

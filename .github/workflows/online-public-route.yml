@@ -10,6 +10,9 @@ on:
       - 'tests/server-integration.ps1'
       - 'tools/dolphin_network.py'
       - 'tests/dolphin-network.py'
+      - 'tools/online-play-smoke.py'
+      - 'docs/performance/avi_guest_clock.py'
+      - 'docs/performance/check_guest_clock.py'
   workflow_dispatch:
 
 permissions:
@@ -41,6 +44,7 @@ jobs:
       - name: Verify the console DNS resolver route
         run: |
           python3 tests/dolphin-network.py
+          python3 docs/performance/check_guest_clock.py
           python3 tools/dolphin_network.py --probe www.cloudflare.com
       - name: Real device-linked clients through a free Cloudflare tunnel
         shell: pwsh
