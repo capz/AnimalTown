@@ -20,6 +20,7 @@ internal static class TextureAudit
                 if(limit!=128||!ModelLodCooker.Species.Contains(model,StringComparer.Ordinal))throw new InvalidDataException("Invalid geometric LOD texture variant: "+path);
             }
             TexturePolicy.ModelEdge(model,(TextureResolution)limit);
+            if(TexturePolicy.IsVillagerModel(model))limit=Math.Min(limit,128);
             int start=Read(16+3*16+4),length=Read(16+3*16+8),count=Read(start),at=start+4;
             string sourceSha=Convert.ToHexString(SHA256.HashData(bytes));
             for(int i=0;i<count;i++)
@@ -102,6 +103,6 @@ internal static class TextureAudit
         if(models!=expected)throw new InvalidDataException("Expected all appearance texture variants, the original species' geometric LODs and four resolutions for other models");
         string originals=Path.Combine(root,"out/floor-sources.json");if(File.Exists(originals))records.Add(new{floorSourceProvenance=JsonSerializer.Deserialize<JsonElement>(File.ReadAllText(originals))});
         File.WriteAllText(Path.Combine(root,"out/texture-audit.json"),JsonSerializer.Serialize(records,new JsonSerializerOptions{WriteIndented=true}));
-        Console.WriteLine($"Texture audit: {models} imported variants; villagers use 128/256px plus 128px geometry LODs, other models use 128/256/512/1024px; generated trees share {LowPolyTree.DetailBytes} native texture bytes");
+        Console.WriteLine($"Texture audit: {models} imported variants; villager maps capped at 128px in both package variants and geometry LODs, other models use 128/256/512/1024px; generated trees share {LowPolyTree.DetailBytes} native texture bytes");
     }
 }

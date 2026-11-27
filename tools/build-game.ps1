@@ -58,6 +58,10 @@ if (!$SkipAssets) {
         pugofficer='villagers/villager_pugofficer.glb'
         crocodile='villagers/villager_crocodile.glb'
         capybara='villagers/villager_capybara.glb'
+        panda='villagers/villager_panda.glb'
+        pig='villagers/villager_pig.glb'
+        axolotl='villagers/villager_axolotl.glb'
+        foxjacket='villagers/villager_foxjacket.glb'
         building='world-stuctures/Meshy_AI_animal_crossing_konbi_1102122741_texture.glb'
         tent='world-stuctures/structure_tent.glb'
     }
@@ -91,6 +95,9 @@ if (!$SkipAssets) {
         # Cottage detail uses 64px. Shop/koban use compact palette atlases at
         # 32px; indexed static imports keep all three kits inside 768 KiB.
         $importEdge=if($buildingImports.ContainsKey($name) -and $textureEdge -eq 128){64}else{$textureEdge}
+        # Keep both runtime package names compatible while capping every
+        # villager's stored maps at 128px, including the explicit 256 variant.
+        if($assetMap[$name].StartsWith('villagers/')){$importEdge=128}
         if($buildingImports.ContainsKey($name) -and ($name.StartsWith('shop-') -or $name.StartsWith('koban-')) -and $textureEdge -eq 128){$importEdge=32}
         $importArguments=@('tool','run','dnd-assets','--','model',"out/prepared/$name.glb","out/disc/$name$suffix.dndmodel",'--texture-limit',"$importEdge",'--mip-levels','2','--compile-gx-materials')
         if($assetMap[$name].StartsWith('villagers/villager_')){$importArguments+='--allow-material-approximation'}

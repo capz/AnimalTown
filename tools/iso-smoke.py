@@ -272,7 +272,7 @@ def villager_appearance_models():
 
 def villager_visuals():
     """Real menu/model/animation swaps, with a disposable town and saved records."""
-    import re
+    import re,math
     sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'docs/performance'))
     from avi_guest_clock import AviGuestClock
     clock=AviGuestClock(user/'Dump/Frames',track_presentations=True)
@@ -282,7 +282,7 @@ def villager_visuals():
     def tap(button):press_presented(button,clock)
     start_game(True,'visuals-start');set_debug_visibility(True)
     before=committed_card_sequence(root/'MemoryCardA.USA.raw',details=True)
-    report={'scenario':'villager-visuals','passed':False,'swaps':[],'physical_hardware':False}
+    report={'scenario':'villager-visuals','passed':False,'swaps':[],'capture_positions':[],'physical_hardware':False}
     def marker(pattern,after=0,retry=None):
         deadline=time.monotonic()+120
         retry_at=time.monotonic()+3
@@ -297,6 +297,35 @@ def villager_visuals():
                 retry();retry_at=time.monotonic()+3
             time.sleep(.2)
         screenshot('visuals-timeout.png');raise AssertionError('Missing visual marker: '+pattern)
+    def neutral():
+        os.write(controller,b'RELEASE B\nRELEASE L\nRELEASE R\nSET MAIN .5 .5\n')
+    def view():
+        neutral();offset=len(runtime_log_text());os.write(controller,b'PRESS L\nPRESS R\n')
+        try:tap('Y')
+        finally:neutral()
+        marker('ANIMALTOWN JOB VIEW END',offset)
+        state=re.search(r'ANIMALTOWN JOB VIEW (\S+) (-?\d+) (-?\d+) (-?\d+)',runtime_log_text()[offset:])
+        if not state or state[1]!='world' or int(state[2])!=0:
+            raise AssertionError('Visual captures need the actual outdoor world')
+        return {'room':int(state[2]),'x':int(state[3])/1024,'z':int(state[4])/1024}
+    origin=view();report['capture_origin']=origin
+    def return_to_origin():
+        # Keep the real movement exercise in the cleared home area. Repeated
+        # one-way walking otherwise accumulates until tree canopies hide the
+        # last appearances, despite all model swaps succeeding.
+        for _ in range(20):
+            current=view();dx,dz=origin['x']-current['x'],origin['z']-current['z'];distance=math.hypot(dx,dz)
+            if distance<=.12:return
+            start=clock.frames();target=start+math.ceil(min(.35,distance/5.04)*60000/1001)
+            deadline=time.monotonic()+60
+            os.write(controller,f'SET MAIN {.5+dx/distance*.5} {.5-dz/distance*.5}\nPRESS B\n'.encode())
+            try:
+                while clock.frames()<target:
+                    check_runtime_failure()
+                    if p.poll() is not None or time.monotonic()>deadline:raise AssertionError('Visual return route stopped presenting')
+                    time.sleep(.03)
+            finally:neutral()
+        raise AssertionError('Could not return visual captures to the cleared home area')
     def choose(actor,appearance):
         begin=len(runtime_log_text());tap('START');tap('R')
         row=testing_menu_row('VillagerVisualOption');count=testing_menu_count()
@@ -314,15 +343,19 @@ def villager_visuals():
         marker(r'VILLAGER VISUAL APPLIED actor '+str(actor)+' appearance '+str(appearance)+r'\b',apply_at,retry=lambda:tap('A'))
         screenshot('visuals-applied-'+str(actor)+'-'+str(appearance)+'.png')
         tap('B');tap('B');time.sleep(2)
+        current=view()
+        if math.hypot(current['x']-origin['x'],current['z']-origin['z'])>.12:
+            raise AssertionError('Visual capture drifted outside the cleared home area')
         screenshot('visuals-world-'+str(actor)+'-'+str(appearance)+'.png')
         report['swaps'].append({'actor':actor,'appearance':appearance})
+        report['capture_positions'].append({'actor':actor,'appearance':appearance,**current})
     for appearance in range(6,appearance_count):
         choose(0,appearance)
         # Force both standing and locomotion on each supplied rig.
-        os.write(controller,b'SET MAIN 0.7 0.5\n');time.sleep(2)
-        os.write(controller,b'PRESS B\n');time.sleep(2)
-        os.write(controller,b'RELEASE B\n')
-        os.write(controller,b'SET MAIN 0.5 0.5\n');time.sleep(1)
+        os.write(controller,b'SET MAIN 0.7 0.5\n')
+        try:tap('B') # presented walk frames, then run frames, then walk again
+        finally:neutral()
+        return_to_origin()
     choose(1,6)
     after=committed_card_sequence(root/'MemoryCardA.USA.raw',details=True)
     if after!=before:raise AssertionError('Visual-only swaps changed committed town/player/job records')

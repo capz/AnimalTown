@@ -12,7 +12,7 @@ ast.parse(Path('tools/iso-smoke.py').read_text())
 menu_source=ast.parse(Path('tools/iso-smoke.py').read_text())
 menu_namespace={'Path':Path,'__file__':str(Path('tools/iso-smoke.py').resolve())}
 exec(compile(ast.Module(body=[node for node in menu_source.body if isinstance(node,ast.FunctionDef) and node.name in ('testing_menu_options','testing_menu_count','testing_menu_row','villager_appearance_models')],type_ignores=[]),'<debug navigation contract>','exec'),menu_namespace)
-assert menu_namespace['villager_appearance_models']()[-2:]==['crocodile','capybara']
+assert menu_namespace['villager_appearance_models']()[-4:]==['panda','pig','axolotl','foxjacket']
 assert menu_namespace['testing_menu_count']()==22
 assert menu_namespace['testing_menu_row']('VillagerVisualOption')==menu_namespace['testing_menu_row'](44)==21
 assert menu_namespace['testing_menu_row']('ProfilingModeOption')==menu_namespace['testing_menu_row'](41)==19
