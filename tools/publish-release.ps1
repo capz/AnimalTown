@@ -160,15 +160,30 @@ function Copy-VillagerVisualEvidence([string]$Source,[string]$Destination,[strin
     Copy-Item -LiteralPath $build -Destination $target
     Copy-Item -LiteralPath (Join-Path $Source 'villager-visuals-report.json') -Destination $target
 }
-function Copy-JobEvidence([string]$Source,[string]$Destination,[string]$Commit,[string]$Version,[string]$Tag,[string]$IsoName,[string]$IsoSha256){
+function Copy-JobEvidence([string]$Source,[string]$Destination,[string]$Commit,[string]$Version,[string]$Tag,[string]$IsoName,[string]$IsoSha256,[string[]]$Modes=@('delivery','mail')){
     $build=Join-Path $Source 'jobs-build.json'
     if(!(Test-Path -LiteralPath $build -PathType Leaf)){return}
     $evidence=Get-Content -LiteralPath $build -Raw|ConvertFrom-Json
     if($evidence.schema -ne 1 -or $evidence.commit -cne $Commit -or $evidence.version -cne $Version -or
        $evidence.tag -cne $Tag -or $evidence.isoName -cne $IsoName -or $evidence.isoSha256 -cne $IsoSha256){throw 'Job captures must match the release source, version and verified NKit image'}
     $target=Join-Path $Destination 'scenarios/jobs';New-Item -ItemType Directory -Force -Path $target|Out-Null
-    foreach($mode in @('delivery','mail')){
+    foreach($mode in $Modes){
+        if($mode -eq 'helipad'){continue}
+        if($mode -notin @('delivery','mail','online-review')){throw "Unsupported job evidence mode: $mode"}
         $folder=Join-Path $Source $mode
+        if($mode -eq 'online-review'){
+            $report=Get-Content -LiteralPath (Join-Path $folder 'online-review-report.json') -Raw|ConvertFrom-Json
+            if($report.scenario -cne 'online-review' -or $report.passed -ne $true -or $report.committed_records_unchanged -ne $true -or
+               $report.current_world_left -ne $true -or $report.review_ui_right -ne $true -or $report.cancelled_before_networking -ne $true -or
+               $report.online_or_physical_transport_qualification -ne $false -or $report.card_sequence_before -le 0 -or
+               $report.card_sequence_before -ne $report.card_sequence_after){throw 'Split review must pass with the committed card unchanged and no transport qualification claim'}
+            foreach($name in @('online-review-current-town.png','online-review-camera-inspection.png','online-review-cancelled.png','online-review-report.json')){
+                $file=Get-Item -LiteralPath (Join-Path $folder $name)
+                if($file.PSIsContainer -or $file.Length -le 0){throw "Missing split-review capture: $name"}
+                Copy-Item -LiteralPath $file.FullName -Destination (Join-Path $target $name) -Force
+            }
+            continue
+        }
         $report=Get-Content -LiteralPath (Join-Path $folder 'jobs-report.json') -Raw|ConvertFrom-Json
         $state=Get-Content -LiteralPath (Join-Path $folder 'jobs-state.json') -Raw|ConvertFrom-Json
         if($report.scenario -cne 'offline-jobs' -or $report.mode -cne $mode -or $report.controls_completed -ne $true -or $state.mode -cne $mode -or $state.passed -ne $true){throw "Job controller/save verification did not pass: $mode"}
@@ -301,7 +316,8 @@ if(!$PublishOnly){
         }
     }
     Copy-DaylightEvidence (Join-Path $out 'daylight') $reports $commit $version $tag ([IO.Path]::GetFileName($nkit)) $nkitInfo.compactSha256
-    Copy-JobEvidence (Join-Path $out 'jobs') $reports $commit $version $tag ([IO.Path]::GetFileName($nkit)) $nkitInfo.compactSha256
+    $jobModes=@($validation.emulator|Where-Object {$_ -like 'job-*'}|ForEach-Object {$_.Substring(4)})
+    Copy-JobEvidence (Join-Path $out 'jobs') $reports $commit $version $tag ([IO.Path]::GetFileName($nkit)) $nkitInfo.compactSha256 $jobModes
     $toolsDirectory=Join-Path $out 'tools-published-binaries'
     if(Test-Path -LiteralPath $toolsDirectory){Remove-Item -LiteralPath $toolsDirectory -Recurse -Force}
     & dotnet publish (Join-Path $Root 'tools/AnimalTown.Tools') -c Release --no-self-contained -o $toolsDirectory -v quiet

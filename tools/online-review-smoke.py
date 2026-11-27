@@ -44,6 +44,7 @@ def run(context):
     after=context['committed_card_sequence'](card)
     if after!=before:raise AssertionError('Cancelling closure changed the committed home save')
     (root/'online-review-report.json').write_text(json.dumps({
+        'scenario':'online-review','passed':True,'committed_records_unchanged':True,
         'current_world_left':True,'review_ui_right':True,'world_changed_fraction':world_change,
         'review_details_changed_fraction':panel_change,'card_sequence_before':before,'card_sequence_after':after,
         'cancelled_before_networking':True,'online_or_physical_transport_qualification':False,

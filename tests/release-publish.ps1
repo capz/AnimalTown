@@ -165,5 +165,19 @@ try{
     Reject {Copy-JobEvidence $jobs $reports ('a'*40) '1.2.3' 'v1.2.3' 'AnimalTown-1.2.3.nkit.iso' ('c'*64)} 'Job evidence from another executable image must not ship'
     @{mode='delivery';passed=$false}|ConvertTo-Json|Set-Content (Join-Path $jobs 'delivery/jobs-state.json')
     Reject {Copy-JobEvidence $jobs $reports ('a'*40) '1.2.3' 'v1.2.3' 'AnimalTown-1.2.3.nkit.iso' ('b'*64)} 'Screenshots without a completed real saved errand must not ship'
+    $review=Join-Path $jobs 'online-review';New-Item -ItemType Directory -Path $review|Out-Null
+    $reviewReport=@{scenario='online-review';passed=$true;committed_records_unchanged=$true;current_world_left=$true;review_ui_right=$true;cancelled_before_networking=$true;online_or_physical_transport_qualification=$false;card_sequence_before=2;card_sequence_after=2}
+    $reviewReport|ConvertTo-Json|Set-Content (Join-Path $review 'online-review-report.json')
+    foreach($name in @('online-review-current-town.png','online-review-camera-inspection.png','online-review-cancelled.png')){
+        [IO.File]::WriteAllBytes((Join-Path $review $name),[byte[]]@(137,80,78,71,13,10,26,10))
+    }
+    $reviewReports=Join-Path $directory 'review-reports'
+    Copy-JobEvidence $jobs $reviewReports ('a'*40) '1.2.3' 'v1.2.3' 'AnimalTown-1.2.3.nkit.iso' ('b'*64) @('online-review')
+    Assert (@(Get-ChildItem (Join-Path $reviewReports 'scenarios/jobs') -File).Count -eq 5) 'A focused review capture ships its three actual views, unchanged-card report and exact ISO identity without requiring unselected job scenarios'
+    Reject {Copy-JobEvidence $jobs $reviewReports ('a'*40) '1.2.3' 'v1.2.3' 'AnimalTown-1.2.3.nkit.iso' ('c'*64) @('online-review')} 'Review captures from a different console image must not ship'
+    $reviewReport.card_sequence_after=3;$reviewReport|ConvertTo-Json|Set-Content (Join-Path $review 'online-review-report.json')
+    Reject {Copy-JobEvidence $jobs $reviewReports ('a'*40) '1.2.3' 'v1.2.3' 'AnimalTown-1.2.3.nkit.iso' ('b'*64) @('online-review')} 'Cancelling review must not change the committed card'
+    $reviewReport.card_sequence_after=2;$reviewReport.online_or_physical_transport_qualification=$true;$reviewReport|ConvertTo-Json|Set-Content (Join-Path $review 'online-review-report.json')
+    Reject {Copy-JobEvidence $jobs $reviewReports ('a'*40) '1.2.3' 'v1.2.3' 'AnimalTown-1.2.3.nkit.iso' ('b'*64) @('online-review')} 'A preview cannot claim online or physical transport qualification'
 }finally{Remove-Item -LiteralPath $directory -Recurse -Force}
 Write-Host "$checks release publisher checks passed: compact-feed asset policy, frozen build identity, summaries, draft lookup, response budget and source exclusion"
