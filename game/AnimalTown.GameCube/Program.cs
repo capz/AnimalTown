@@ -99,12 +99,18 @@ internal static class Program
         try{
             while(true)
             {
+#if ANIMALTOWN_ONLINE_PLAY
+                if(session.Online!=null)NativeFrame.OnlineProbe(1);
+#endif
                 FrameProfile.Begin();long loading=FrameProfile.Start();game.AdvanceLoading();FrameProfile.End(2,loading);
                 game.AdvanceResidency();long simulation=FrameProfile.Start();
                 long now=Clock.Timestamp;accumulator+=(now-previous)/1000000.0;previous=now;if(accumulator>.1334)accumulator=.1334;
+#if ANIMALTOWN_ONLINE_PLAY
+                if(session.Online!=null)NativeFrame.OnlineProbe(2);
+#endif
                 Controller.Update();var pad=Controller.GetState(0);game.Input(pad);
 #if ANIMALTOWN_ONLINE_PLAY
-                game.OnlineFrame(pad);
+                if(session.Online!=null)NativeFrame.OnlineProbe(3);game.OnlineFrame(pad);if(session.Online!=null)NativeFrame.OnlineProbe(4);
                 if(session.Online!=null&&(!session.Online.Connected||session.Online.ReturnRequested||session.Online.ControlRequested!=0))return TownGame.OnlinePairingRestart;
 #endif
 #if ANIMALTOWN_ONLINE_PAIRING
@@ -121,8 +127,21 @@ internal static class Program
                     if(game.TravelRestartRequested)return TownGame.TravelRestart;
                     accumulator-=1.0/30;
                 }
-                FrameProfile.End(0,simulation);game.Draw();game.AdvanceResidency(afterDraw:true);
+#if ANIMALTOWN_ONLINE_PLAY
+                if(session.Online!=null)NativeFrame.OnlineProbe(5);
+#endif
+                FrameProfile.End(0,simulation);game.Draw();
+#if ANIMALTOWN_ONLINE_PLAY
+                if(session.Online!=null)NativeFrame.OnlineProbe(6);
+#endif
+                game.AdvanceResidency(afterDraw:true);
+#if ANIMALTOWN_ONLINE_PLAY
+                if(session.Online!=null)NativeFrame.OnlineProbe(7);
+#endif
                 long delay=FrameProfile.Start();RuntimeOptions.Wait();FrameProfile.End(13,delay);game.RecordFrame();
+#if ANIMALTOWN_ONLINE_PLAY
+                if(session.Online!=null)NativeFrame.OnlineProbe(8);
+#endif
             }
         }catch(Exception error){DebugOverlay.WriteLine("ANIMALTOWN SESSION FAILED "+error.Message);throw;}
     }
@@ -355,13 +374,24 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
     {
         if(disposed)return;
         if(device.IsFrameActive)throw new InvalidOperationException("Dispose the town after EndFrame");
-        disposed=true;LoadingScreen.Finish();ReleaseChatEntry();ReleaseLetterEntry();ClearChatPresentation();
+        disposed=true;
+#if ANIMALTOWN_ONLINE_PLAY
+        if(session.Online!=null)NativeFrame.OnlineProbe(50);
+#endif
+        LoadingScreen.Finish();ReleaseChatEntry();ReleaseLetterEntry();ClearChatPresentation();
         dialogueVoice.Stop();syllable.Dispose();
         Model? unadopted=null;
         if(loadingModel!=null){try{unadopted=loadingModel.GetAwaiter().GetResult();}catch(Exception){if(!loadingModel.IsCompleted)throw;}loadingModel=null;}
-        modelLod.Dispose();modelResidency.Stop();
+        modelLod.Dispose();
 #if ANIMALTOWN_ONLINE_PLAY
-        DisposeOnlineActors();
+        if(session.Online!=null)NativeFrame.OnlineProbe(51);
+#endif
+        modelResidency.Stop();
+#if ANIMALTOWN_ONLINE_PLAY
+        if(session.Online!=null)NativeFrame.OnlineProbe(52);
+#endif
+#if ANIMALTOWN_ONLINE_PLAY
+        DisposeOnlineActors();NativeFrame.OnlineProbe(53);
 #endif
         for(int i=0;i<actors.Length;i++){actors[i]?.Dispose();actors[i]=null;}
         visualSwap?.Dispose();visualSwap=null;
@@ -375,6 +405,9 @@ internal sealed partial class TownGame : IDisposable,Hypercube.GameCube.IFrameSc
         NativeWorldDiagnostics.PrepareEdges(0);
         if(NativeShadows.Shutdown()!=1)throw new InvalidOperationException("Shadow shutdown failed");
         TextureCache.TrimUnused();
+#if ANIMALTOWN_ONLINE_PLAY
+        if(session.Online!=null)NativeFrame.OnlineProbe(54);
+#endif
     }
     internal void AdvanceLoading()
     {

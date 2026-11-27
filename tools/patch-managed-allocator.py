@@ -122,6 +122,8 @@ if generated.exists():
         'DumpMetrics':(6,'animaltown_frame_dump_metrics((DndArray*){0},(DndArray*){1},(DndArray*){2},(int){3},(int){4},(uint32_t){5});return 0;'),
         'Create':(4,'return dnd_mesh_create_range((DndArray*){0},(int){1},(DndArray*){2},(int){3},2,0);'),
         'Recycle':(5,'return animaltown_mesh_recycle((int){0},(DndArray*){1},(int){2},(DndArray*){3},(int){4});')}
+    if 'dnd_value_AnimalTown_GameCube_NativeFrame_OnlineProbe_' in text:
+        bodies['OnlineProbe']=(1,'animaltown_online_probe((int){0});return 0;')
     for method,(count,body) in bodies.items():
         pattern=r'intptr_t (dnd_value_AnimalTown_GameCube_NativeFrame_'+method+r'_[a-z0-9]+)\(([^)]*)\) \{.*?\n\}'
         matches=list(re.finditer(pattern,text,re.S));assert len(matches)==1, 'NativeFrame bridge changed: '+method
@@ -132,6 +134,7 @@ if generated.exists():
 extern void animaltown_frame_reset(int,DndManagedHeap*);
 extern void animaltown_frame_snapshot(DndArray*,DndManagedHeap*);
 extern void animaltown_frame_service(void);
+extern void animaltown_online_probe(int);
 extern void animaltown_frame_memory(DndArray*,DndManagedHeap*);
 extern int animaltown_take_mesh_allocation_failure(void);
 extern void animaltown_frame_dump(DndArray*,int,DndArray*,uint32_t,uint32_t);

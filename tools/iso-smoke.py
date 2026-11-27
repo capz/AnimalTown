@@ -2941,6 +2941,11 @@ with (root/'emulator.log').open('w') as log:
             online_spec=importlib.util.spec_from_file_location('online_play_smoke',str(Path(__file__).with_name('online-play-smoke.py')))
             online_module=importlib.util.module_from_spec(online_spec);online_spec.loader.exec_module(online_module)
             try:online_module.run(globals())
+            except BaseException:
+                from dolphin_debug import capture_native_stall
+                try:capture_native_stall(p,disc.parent/'native'/'.map',root/'online-native-stall.json')
+                except Exception as diagnostic_error:print('Online native diagnostic failed: '+type(diagnostic_error).__name__,flush=True)
+                raise
             finally:online_shutdown=stop_dolphin(p,timeout_seconds=30)
             online_module.finish(globals(),online_shutdown)
         elif '--online-review' in sys.argv:

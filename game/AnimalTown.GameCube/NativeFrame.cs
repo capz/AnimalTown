@@ -2,6 +2,7 @@ internal static class NativeFrame
 {
     internal static void Reset(int enabled)=>throw new System.PlatformNotSupportedException("Native frame counters required");
     internal static void Snapshot(int[] data)=>throw new System.PlatformNotSupportedException("Native frame counters required");
+    internal static void OnlineProbe(int stage)=>throw new System.PlatformNotSupportedException("Native online probe required");
     internal static void Service()=>throw new System.PlatformNotSupportedException("Native frame service required");
     internal static void Memory(int[] data)=>throw new System.PlatformNotSupportedException("Native memory snapshot required");
     internal static int TakeMeshAllocationFailure()=>throw new System.PlatformNotSupportedException("Native mesh allocation result required");

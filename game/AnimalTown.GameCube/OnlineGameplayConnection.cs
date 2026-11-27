@@ -78,8 +78,8 @@ internal sealed class OnlineGameplayConnection : IDisposable
     internal bool Tick(OnlineMovementInput input)
     {
         if (disposed) return false;
-        raw.BeginFrame(); pump.SetInput(pump.Reviewing ? default : input);
-        try { pump.Pump(Now); if (!pump.Closed && !websocket.Closed) return true; }
+        NativeFrame.OnlineProbe(30);raw.BeginFrame(); pump.SetInput(pump.Reviewing ? default : input);
+        try { pump.Pump(Now); NativeFrame.OnlineProbe(31); if (!pump.Closed && !websocket.Closed) return true; }
         catch (SocketException) { }
         catch (IOException) { }
         Dispose(); return false;
@@ -89,8 +89,8 @@ internal sealed class OnlineGameplayConnection : IDisposable
     public void Dispose()
     {
         if(disposed)return;disposed=true;
-        DebugOverlay.WriteLine("ANIMALTOWN ONLINE CLOSE BEGIN");
-        pump.Dispose();websocket.Dispose();raw.Dispose();
+        NativeFrame.OnlineProbe(40);DebugOverlay.WriteLine("ANIMALTOWN ONLINE CLOSE BEGIN");
+        pump.Dispose();NativeFrame.OnlineProbe(41);websocket.Dispose();NativeFrame.OnlineProbe(42);raw.Dispose();NativeFrame.OnlineProbe(43);
         DebugOverlay.WriteLine("ANIMALTOWN ONLINE CLOSE READY");
     }
 
@@ -105,11 +105,13 @@ internal sealed class OnlineGameplayConnection : IDisposable
         internal RawStream(TlsStream tls) { this.tls = tls; }
         internal void BeginFrame() { frameStart = Clock.Timestamp; budgeted = true; }
         bool Spent => budgeted && Clock.Timestamp - frameStart >= FrameBudgetMicroseconds;
-        public int TryRead(byte[] bytes, int offset, int count) => Spent ? -1 : tls.TryRead(bytes, offset, count);
-        public int TryWrite(byte[] bytes, int offset, int count) => Spent ? -1 : tls.TryWrite(bytes, offset, count);
+        public int TryRead(byte[] bytes, int offset, int count)
+        { if(Spent)return -1;NativeFrame.OnlineProbe(10);int result=tls.TryRead(bytes,offset,count);NativeFrame.OnlineProbe(11);return result; }
+        public int TryWrite(byte[] bytes, int offset, int count)
+        { if(Spent)return -1;NativeFrame.OnlineProbe(12);int result=tls.TryWrite(bytes,offset,count);NativeFrame.OnlineProbe(13);return result; }
         public uint NextMask()
         {
-            if (randomAt == random.Length) { tls.FillRandom(random, 0, random.Length); randomAt = 0; }
+            if (randomAt == random.Length) { NativeFrame.OnlineProbe(14);tls.FillRandom(random, 0, random.Length);NativeFrame.OnlineProbe(15);randomAt = 0; }
             uint value = 0;
             for (int i = 0; i < 4; i++) { value |= (uint)random[randomAt] << (i * 8); random[randomAt++] = 0; }
             return value;

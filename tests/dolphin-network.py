@@ -261,4 +261,86 @@ class OnlineCardExtractionChecks(unittest.TestCase):
         self.assertEqual(self.extract_files(files), files)
 
 
+
+class DolphinDiagnosticChecks(unittest.TestCase):
+    def symbols(self):
+        from dolphin_debug import NativeSymbols
+        return NativeSymbols('''.text 0x80004000 0x00001000
+                0x80004100 native_read
+                0x80004200 managed_tick
+                0x80004300 frame_loop
+.data 0x80009000 0x00000100
+                0x80009000 animaltown_online_probe_state
+                0x80009040 PrivatePayload
+''')
+
+    class Target:
+        def __init__(self):self.reads=[]
+        def read_memory(self,address,count):
+            self.reads.append((address,count))
+            memory={0x81700000:struct.pack('>II',0x81700020,0x80004224),
+                    0x81700020:struct.pack('>II',0x81700020,0x80004324),
+                    0x80009000:struct.pack('>IIIII',0x41544e50,10,0x81700000,0x80004124,20)}
+            result=memory[address]
+            if len(result)!=count:raise AssertionError('Unexpected diagnostic read')
+            return result
+
+    def test_native_sample_stops_cycles_and_retains_only_code_addresses(self):
+        from dolphin_debug import native_sample
+        target=self.Target();sample=native_sample(target,self.symbols())
+        self.assertEqual(sample['name'],'tls-read')
+        self.assertEqual(sample['caller']['symbol'],'native_read')
+        self.assertTrue(sample['consistent'])
+        self.assertEqual(len(sample['stack']),2)
+        self.assertEqual(target.reads,[(0x80009000,20),(0x81700000,8),(0x81700020,8),(0x80009000,20)])
+        self.assertNotIn('PrivatePayload',json.dumps(sample))
+        self.assertIsNone(self.symbols().describe(0x80009040))
+
+    def test_invalid_stack_pointers_are_not_read(self):
+        from dolphin_debug import stack_trace
+        for address in (0x7ffffff8,0x81800000,0x81700003):
+            target=self.Target()
+            self.assertEqual(stack_trace(target,self.symbols(),address),[])
+            self.assertEqual(target.reads,[])
+
+    def test_shared_memory_reads_have_bounds_and_big_endian_probe_words(self):
+        from dolphin_debug import DolphinMemory,native_sample
+        with tempfile.TemporaryDirectory() as directory:
+            path=Path(directory)/'memory'
+            with path.open('wb') as backing:
+                backing.truncate(0x1800000)
+                backing.seek(0x9000)
+                backing.write(struct.pack('>IIIII',0x41544e50,12,0,0x80004124,24))
+            with DolphinMemory(os.open(path,os.O_RDONLY)) as memory:
+                sample=native_sample(memory,self.symbols())
+                self.assertEqual(sample['name'],'tls-write')
+                self.assertEqual(sample['sequence'],24)
+                self.assertTrue(sample['consistent'])
+                for address,count in ((0x7fffffff,8),(0x817ffffc,8),(0x80000000,65),(0x80000000,0)):
+                    with self.assertRaises(ValueError):memory.read_memory(address,count)
+
+    def test_probe_changes_discard_a_racing_stack(self):
+        from dolphin_debug import native_sample
+        class Moving(self.Target):
+            def read_memory(self,address,count):
+                data=super().read_memory(address,count)
+                if address==0x80009000 and len(self.reads)>1:
+                    return struct.pack('>IIIII',0x41544e50,11,0x81700000,0x80004124,22)
+                return data
+        sample=native_sample(Moving(),self.symbols())
+        self.assertFalse(sample['consistent'])
+        self.assertEqual(sample['stack'],[])
+
+    def test_incomplete_probe_write_is_not_used_as_a_stack_root(self):
+        from dolphin_debug import native_sample
+        class Writing(self.Target):
+            def read_memory(self,address,count):
+                self.reads.append((address,count))
+                if address!=0x80009000:raise AssertionError('A partial probe must not expose a stack')
+                return struct.pack('>IIIII',0x41544e50,10,0x81700000,0x80004124,21)
+        target=Writing();sample=native_sample(target,self.symbols())
+        self.assertFalse(sample['consistent'])
+        self.assertEqual(target.reads,[(0x80009000,20)])
+
+
 unittest.main()
