@@ -4,12 +4,12 @@ Requires Pillow. Archives are source data, never instructions. Preserve geometry
 and rigs, combine matching exports, loop locomotion in place and resize maps.
 """
 import copy
+import argparse
 import hashlib
 import io
 import json
 from pathlib import Path
 import struct
-import sys
 import zipfile
 from PIL import Image
 
@@ -28,6 +28,10 @@ SOURCES = [
         'base_basic_shaded.glb': {'human_000024': 'Running', 'human_000088': 'Walking', 'human_000093': 'Idle'}}),
     ('pugofficer', 'base_basic_shaded (1).glb', {
         'base_basic_shaded (1).glb': {'human_000024': 'Running', 'human_000050': 'Bow', 'human_000057': 'Sit', 'human_000093': 'Idle'}}),
+    ('crocodile', 'base_basic_shaded (2).glb', {
+        'base_basic_shaded (2).glb': {'human_000029': 'Running', 'human_000089': 'Walking', 'human_000093': 'Idle'}}),
+    ('capybara', 'base_basic_shaded (3).glb', {
+        'base_basic_shaded (3).glb': {'human_000013': 'Idle', 'human_000029': 'Running', 'human_000089': 'Walking'}}),
 ]
 
 
@@ -225,10 +229,19 @@ def import_model(archive, exports):
 
 
 def main():
-    downloads, root = map(Path, sys.argv[1:])
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('downloads', type=Path)
+    parser.add_argument('root', type=Path)
+    parser.add_argument('--only', nargs='+', choices=[name for name, _, _ in SOURCES],
+                        help='Import only these characters, preserving other prepared sources and provenance')
+    args = parser.parse_args()
+    downloads, root = args.downloads, args.root
     target = root / 'assets/models/villagers'
-    records = []
+    manifest = target / 'new-villagers-provenance.json'
+    records = {r['model']: r for r in json.loads(manifest.read_text())} if args.only and manifest.exists() else {}
     for name, filename, exports in SOURCES:
+        if args.only and name not in args.only:
+            continue
         source = downloads / filename
         if source.suffix == '.zip':
             with zipfile.ZipFile(source) as archive:
@@ -240,14 +253,14 @@ def main():
             result, provenance, dropped_weight, derived_walk = import_model(SingleGlb(), exports)
         output = target / f'villager_{name}.glb'
         output.write_bytes(result)
-        records.append({'model': name, 'input': filename, 'inputSha256': hashlib.sha256(source.read_bytes()).hexdigest(),
+        records[name] = {'model': name, 'input': filename, 'inputSha256': hashlib.sha256(source.read_bytes()).hexdigest(),
                         'exports': provenance, 'source': output.relative_to(root).as_posix(),
                         'sha256': hashlib.sha256(result).hexdigest(), 'textureEdge': 128,
                         'skinInfluences': 4, 'maximumDroppedWeight': dropped_weight,
                         'locomotionRootMotion': 'horizontal hips travel removed; vertical bob and cyclic sway retained',
-                        'walkingDerivedFromHalfSpeedRun': derived_walk})
+                        'walkingDerivedFromHalfSpeedRun': derived_walk}
         print(name, len(result), flush=True)
-    (target / 'new-villagers-provenance.json').write_text(json.dumps(records, indent=2) + '\n')
+    manifest.write_text(json.dumps(list(records.values()), indent=2) + '\n')
 
 
 if __name__ == '__main__':

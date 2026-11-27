@@ -1,5 +1,28 @@
 # Current villager assets
 
+## Additional appearances supplied on 2026-11-27
+
+`base_basic_shaded (2).glb` is a crocodile in an orange tropical shirt;
+`base_basic_shaded (3).glb` is a capybara in a blue wave-pattern shirt.
+They are prepared as `villager_crocodile.glb` and `villager_capybara.glb`.
+Both contain their own authored running (`human_000029`) and walking
+(`human_000089`) clips. Crocodile uses `human_000093` for Idle; capybara
+uses `human_000013`. Their rigs, topology and UVs follow the same import
+policy below, with 128px embedded maps and horizontal locomotion in place.
+
+The resupplied `base_basic_shaded (1).glb` is byte-identical to the existing
+grumpy pug officer and adds no duplicate. The fourteen appearance IDs retain
+all twelve previous entries, appending crocodile and capybara at 12 and 13.
+The six saved species IDs remain unchanged.
+
+Import just these additions without requiring the older source archives:
+
+```sh
+python3 tools/import-villagers.py /path/to/downloads /path/to/AnimalTown --only crocodile capybara
+```
+
+`--only` preserves the other prepared GLBs and their provenance records.
+
 ## Additional appearances supplied on 2026-11-26
 
 Five distinct characters are present in the seven supplied ZIPs. The two

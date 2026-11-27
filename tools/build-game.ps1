@@ -56,6 +56,8 @@ if (!$SkipAssets) {
         robin='villagers/villager_robin.glb'
         raccoon='villagers/villager_raccoon.glb'
         pugofficer='villagers/villager_pugofficer.glb'
+        crocodile='villagers/villager_crocodile.glb'
+        capybara='villagers/villager_capybara.glb'
         building='world-stuctures/Meshy_AI_animal_crossing_konbi_1102122741_texture.glb'
         tent='world-stuctures/structure_tent.glb'
     }

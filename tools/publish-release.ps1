@@ -139,17 +139,18 @@ function Copy-VideoEvidence([string]$Source,[string]$Destination,[string]$Commit
         Copy-Item -LiteralPath $file.FullName -Destination (Join-Path $Destination ('video-options-'+$name.Replace('/','-')))
     }
 }
-function Copy-VillagerVisualEvidence([string]$Source,[string]$Destination,[string]$Commit,[string]$Version,[string]$Tag,[string]$IsoName,[string]$IsoSha256){
+function Copy-VillagerVisualEvidence([string]$Source,[string]$Destination,[string]$Commit,[string]$Version,[string]$Tag,[string]$IsoName,[string]$IsoSha256,[int]$AppearanceCount){
     $build=Join-Path $Source 'villager-visuals-build.json'
     if(!(Test-Path -LiteralPath $build -PathType Leaf)){return}
     $evidence=Get-Content -LiteralPath $build -Raw|ConvertFrom-Json
     if($evidence.schema -ne 1 -or $evidence.commit -cne $Commit -or $evidence.version -cne $Version -or
        $evidence.tag -cne $Tag -or $evidence.isoName -cne $IsoName -or $evidence.isoSha256 -cne $IsoSha256){throw 'Villager visual captures must match the release source, version and verified NKit image'}
     $report=Get-Content -LiteralPath (Join-Path $Source 'villager-visuals-report.json') -Raw|ConvertFrom-Json
-    if($report.scenario -cne 'villager-visuals' -or $report.passed -ne $true -or $report.committed_records_unchanged -ne $true -or @($report.swaps).Count -ne 7){throw 'Villager visual swaps must pass with unchanged committed records'}
+    if($AppearanceCount -le 6){throw 'Cannot locate the additional villager appearance catalog'}
+    $expected=@(6..($AppearanceCount-1)|ForEach-Object{"0:$_"})+@('1:6')|Sort-Object
+    if($report.scenario -cne 'villager-visuals' -or $report.passed -ne $true -or $report.committed_records_unchanged -ne $true -or @($report.swaps).Count -ne $expected.Count){throw 'Villager visual swaps must pass with unchanged committed records'}
     $actual=@($report.swaps|ForEach-Object{"$($_.actor):$($_.appearance)"}|Sort-Object)
-    $expected=@('0:6','0:7','0:8','0:9','0:10','0:11','1:6')|Sort-Object
-    if(($actual -join ',') -cne ($expected -join ',')){throw 'Villager visual evidence must cover all six new appearances and one NPC swap'}
+    if(($actual -join ',') -cne ($expected -join ',')){throw 'Villager visual evidence must cover every additional appearance and one NPC swap'}
     $target=Join-Path $Destination 'scenarios/villager-visuals';New-Item -ItemType Directory -Force -Path $target|Out-Null
     foreach($swap in $report.swaps){foreach($stage in @('selected','applied','world')){
         $name="visuals-$stage-$($swap.actor)-$($swap.appearance).png"
@@ -273,7 +274,11 @@ if(!$PublishOnly){
         }
     }
     Copy-VideoEvidence (Join-Path $out 'video-options') $reports $commit $version $tag ([IO.Path]::GetFileName($nkit)) $nkitInfo.compactSha256
-    Copy-VillagerVisualEvidence (Join-Path $out 'villager-visuals') $reports $commit $version $tag ([IO.Path]::GetFileName($nkit)) $nkitInfo.compactSha256
+    $appearanceMemory=[IO.File]::ReadAllBytes((Join-Path $out 'disc/villager-appearance-memory.bin'))
+    if($appearanceMemory.Length -lt 8 -or [BitConverter]::ToInt32($appearanceMemory,0) -ne 0x41564d31){throw 'Invalid cooked villager appearance catalog'}
+    $appearanceCount=[BitConverter]::ToInt32($appearanceMemory,4)
+    if($appearanceMemory.Length -ne 8+8*$appearanceCount){throw 'Incomplete cooked villager appearance catalog'}
+    Copy-VillagerVisualEvidence (Join-Path $out 'villager-visuals') $reports $commit $version $tag ([IO.Path]::GetFileName($nkit)) $nkitInfo.compactSha256 $appearanceCount
     $terrainEvidenceAssets=@()
     $terrainEvidenceRoot=Join-Path $out 'terrain-materials'
     $terrainEvidenceBuild=Join-Path $terrainEvidenceRoot 'terrain-materials-build.json'
