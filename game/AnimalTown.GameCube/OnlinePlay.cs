@@ -6,6 +6,7 @@ using System.Threading.Tasks;
 using AnimalTown;
 using AnimalTown.Online;
 using Dolphin.Input;
+using Dolphin.Diagnostics;
 using Dolphin.Timing;
 
 internal sealed class OnlinePlay:IDisposable
@@ -52,6 +53,7 @@ internal sealed class OnlinePlay:IDisposable
         try{return flow.Show(recoveryOnly);}
         catch(Exception error)
         {
+            DebugOverlay.WriteLine("ANIMALTOWN ONLINE FLOW FAILED "+FailureKind(error));
             flow.session.Online=null;flow.session.AdoptTravel(flow.home);
             flow.ReleaseUi();
             flow.Message("Online play",Describe(error),"Your card and accepted progress are safe.");
@@ -60,6 +62,7 @@ internal sealed class OnlinePlay:IDisposable
             catch(Exception){return false;}
         }
     }
+    static string FailureKind(Exception error)=>error is OperationCanceledException?"cancelled":error is TimeoutException?"timeout":error is FormatException?"reply":error is OutOfMemoryException?"memory":error is IOException?"io":"runtime";
     OnlineMenuUi Ui=>ui??=new OnlineMenuUi();
     T Await<T>(Task<T> request,string title="Travelling",string detail="Connecting…")
     {
@@ -238,6 +241,7 @@ internal sealed class OnlinePlay:IDisposable
     }
     bool Sync()
     {
+        DebugOverlay.WriteLine("ANIMALTOWN ONLINE SYNC BEGIN");
         var status=Request("GET","/v1/online/card",title:"Sync town",detail:"Checking this card’s acknowledged save…");
         var pending=status.Field("pending");
         if(!pending.Null)
@@ -284,6 +288,7 @@ internal sealed class OnlinePlay:IDisposable
     {
         var value=new OnlineTravelRecord(api.Origin,session.OnlineCredentials!.Town,api.Account,reservation,revision,home.ActiveProfile,phase,fingerprint);
         journal=OnlineTravelCard.Save(home,journal,value);home.HostedCommerceLocked=true;
+        DebugOverlay.WriteLine("ANIMALTOWN ONLINE JOURNAL phase "+(int)phase+" revision "+revision);
     }
     void Reserve(string host,string visit)
     {
@@ -447,6 +452,7 @@ internal sealed class OnlinePlay:IDisposable
             }
             catch(Exception error)
             {
+                DebugOverlay.WriteLine("ANIMALTOWN ONLINE RETURN FAILED "+FailureKind(error));
                 Ui.Set("Heading home","Your accepted progress is waiting safely.",Describe(error)+"\nReinsert your home card, then try again.",new[]{"Retry saving","Change service","Return to title"},"A: choose");
                 int choice=Ui.Choose(null,false);
                 if(choice==0){ReloadHome();journal=OnlineTravelCard.Load(home)??throw new IOException("The recovery record is missing. Keep this card.");continue;}

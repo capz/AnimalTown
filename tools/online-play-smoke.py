@@ -19,9 +19,11 @@ def run(context):
     def alive():
         c['check_runtime_failure']()
         if c['p'].poll() is not None:raise AssertionError('Dolphin stopped during online qualification')
-        if 'ANIMALTOWN ONLINE LINK FAILED' in c['runtime_log_text']():
-            shot('link-failure');setup_context()
-            raise AssertionError('Native account linking failed; see the redacted setup checkpoints')
+        log=c['runtime_log_text']()
+        for phase in ('LINK','FLOW','RETURN'):
+            if 'ANIMALTOWN ONLINE '+phase+' FAILED' in log:
+                shot(phase.lower()+'-failure');setup_context()
+                raise AssertionError('Native online operation failed; see the redacted setup checkpoints')
     def status():
         return json.loads((fixture/'status.json').read_text())
     def shot(name):
@@ -61,7 +63,10 @@ def run(context):
         # card-travel controls and enters the approved online flow.
         press('A');press('Z')
         wait(lambda:status().get('renewed',False),'sdk-https-renewal',activate=True)
-        wait(lambda:status().get('gate',False),'gate-open',activate=True)
+        # Initial card sync uploads and downloads bounded pages through real
+        # console TLS handshakes. Keep each request's 20-second deadline, but
+        # allow the full setup ten minutes; fail immediately on native errors.
+        wait(lambda:status().get('gate',False),'gate-open',seconds=600,activate=True)
         wait(lambda:status().get('joined',False) and status().get('actors',0)==3,'three-humans')
         world(2,'three-humans')
         wait(lambda:all(re.search(r'ANIMALTOWN ONLINE ACTOR DRAW slot '+str(slot)+r' species ',c['runtime_log_text']()) for slot in (1,2)),'both-remote-actors-drawn')

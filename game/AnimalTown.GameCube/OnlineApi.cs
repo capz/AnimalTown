@@ -6,6 +6,7 @@ using System.Threading.Tasks;
 using AnimalTown;
 using AnimalTown.Online;
 using Dolphin.Network;
+using Dolphin.Diagnostics;
 using Dolphin.Security;
 using Dolphin.Timing;
 using Http=Dolphin.Network.Http;
@@ -66,7 +67,8 @@ internal sealed class OnlineApi:IDisposable
         request.Headers.Add("authorization","Bearer "+link.AccessToken);
         if(bytes!=null){request.Content=new Http.ByteArrayContent(bytes);request.Content.Headers.Add("content-type",type!);}
         cancellation.ThrowIfCancellationRequested();using var deadline=new CancellationTokenSource();
-        long expires=Clock.Timestamp+20000000;bool timedOut=false;
+        long started=Clock.Timestamp,expires=started+20000000;bool timedOut=false;
+        DebugOverlay.WriteLine("ANIMALTOWN ONLINE HTTP BEGIN "+method);
         var sending=client.SendAsync(request,deadline.Token);
         while(!sending.IsCompleted)
         {
@@ -75,6 +77,7 @@ internal sealed class OnlineApi:IDisposable
         }
         if(timedOut){try{using var late=sending.GetAwaiter().GetResult();}catch(OperationCanceledException){}throw new TimeoutException("The online request timed out.");}
         var response=await sending;
+        DebugOverlay.WriteLine("ANIMALTOWN ONLINE HTTP "+(int)response.StatusCode+" elapsed ms "+((Clock.Timestamp-started)/1000));
         if(cancellation.IsCancellationRequested){response.Dispose();cancellation.ThrowIfCancellationRequested();}
         return response;
     }
@@ -106,6 +109,7 @@ internal sealed class OnlineApi:IDisposable
         if(offered.Field("completed").Flag)return offered;
         string id=offered.Field("id").Text;int offset=offered.Field("offset").Int32;
         if(offset<0||offset>length)throw new FormatException("Invalid checkpoint resume offset.");
+        DebugOverlay.WriteLine("ANIMALTOWN ONLINE UPLOAD offset "+offset+" length "+length);
         using(var card=SaveCards.Mount())
         {
             var storage=new CardSaveStorage(card,new byte[0],new byte[0],SaveCards.Device,initializeArchive:false);
@@ -120,6 +124,7 @@ internal sealed class OnlineApi:IDisposable
                 try{offered=OnlineJson.Read(new Dolphin.Text.UTF8Encoding(false,true).GetString(await Send("PUT",path+"/"+id+"/page?offset="+start,page,"application/octet-stream",cancellation)));}
                 finally{if(!ReferenceEquals(page,buffer))Array.Clear(page,0,page.Length);}
                 if(offered.Field("offset").Number!=cursor.Position)throw new IOException("Checkpoint resume offset changed. Retry synchronization.");
+                DebugOverlay.WriteLine("ANIMALTOWN ONLINE UPLOAD offset "+cursor.Position+" length "+length);
                 await Task.Delay(1,cancellation);
             }
             Array.Clear(buffer,0,buffer.Length);
@@ -159,7 +164,7 @@ internal sealed class OnlineApi:IDisposable
             while(download.Position<publication.Field("length").Number)
             {
                 byte[] page=await Send("GET","/v1/online/reservations/"+reservation+"/checkpoint?offset="+download.Position+"&count=16384",null,null,cancellation);
-                try{if(page.Length==0)throw new IOException("Return checkpoint ended early.");download.Append(page,0,page.Length);}
+                try{if(page.Length==0)throw new IOException("Return checkpoint ended early.");download.Append(page,0,page.Length);DebugOverlay.WriteLine("ANIMALTOWN ONLINE DOWNLOAD offset "+download.Position+" length "+publication.Field("length").Number);}
                 finally{Array.Clear(page,0,page.Length);}
                 await Task.Delay(1,cancellation);
             }

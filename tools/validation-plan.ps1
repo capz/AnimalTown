@@ -288,7 +288,7 @@ function Get-ValidationPlan {
         }
         if($p -eq 'tools/iso-smoke.py'){[void]$native.Add('water-smoke');[void]$native.Add('dolphin-network');continue}
         if($p -eq 'tools/online-review-smoke.py'){Add-Managed 'saves';continue}
-        if($p -eq 'tools/online-play-smoke.py'){$backend=$true;continue}
+        if($p -eq 'tools/online-play-smoke.py'){$backend=$true;[void]$native.Add('dolphin-network');continue}
         if($p -eq 'tools/path-study.py'){[void]$native.Add('path-study');continue}
         $broad=$true
         if($p -notmatch '^tests/'){$broadEmulator=$true}

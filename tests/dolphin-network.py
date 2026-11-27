@@ -1,5 +1,12 @@
 """Check the emulator DNS contract and reject unusable probe replies offline."""
 from pathlib import Path
+from contextlib import redirect_stdout
+from io import StringIO
+import importlib.util
+import json
+import os
+import tempfile
+from types import SimpleNamespace
 import struct
 import sys
 import unittest
@@ -19,7 +26,7 @@ class DolphinNetworkChecks(unittest.TestCase):
         udp = MagicMock()
         udp.__enter__.return_value = udp
         udp.recv.return_value = reply
-        with patch('dolphin_network.socket.socket', return_value=udp), patch('dolphin_network.secrets.randbits', return_value=42):
+        with patch('dolphin_network.socket.socket', return_value=udp), patch('dolphin_network.secrets.randbits', return_value=42), redirect_stdout(StringIO()):
             probe('online.example', timeout=3)
         return udp
 
@@ -47,6 +54,44 @@ class DolphinNetworkChecks(unittest.TestCase):
                 with self.subTest(host=host), self.assertRaises(ValueError):
                     probe(host)
             opening.assert_not_called()
+
+
+
+class OnlineFailureCaptureChecks(unittest.TestCase):
+    def test_native_errors_stop_before_automatic_confirmation(self):
+        driver_path = Path(__file__).resolve().parents[1] / 'tools' / 'online-play-smoke.py'
+        spec = importlib.util.spec_from_file_location('online_play_driver', driver_path)
+        driver = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(driver)
+        for phase in ('LINK', 'FLOW', 'RETURN'):
+            with self.subTest(phase=phase), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                pressed, captured = [], []
+                reader, writer = os.pipe()
+                context = {
+                    'root': root, 'user': root / 'user',
+                    '__file__': str(driver_path.with_name('iso-smoke.py')),
+                    'controller': writer,
+                    'p': SimpleNamespace(poll=lambda: None),
+                    'check_runtime_failure': lambda: None,
+                    'runtime_log_text': lambda: 'ANIMALTOWN ONLINE ' + phase + ' FAILED io',
+                    'screenshot': captured.append,
+                    'press_presented': lambda button, clock: pressed.append(button),
+                    'wait_profiles': lambda: None,
+                    'committed_card_sequence': lambda path: 7,
+                }
+                try:
+                    clock_module = SimpleNamespace(AviGuestClock=lambda *args, **kwargs: object())
+                    with patch.object(sys, 'argv', ['iso-smoke.py', 'disc', directory, '--online-play-fixture', directory]), patch.object(sys, 'path', list(sys.path)), patch.dict(sys.modules, {'avi_guest_clock': clock_module}), redirect_stdout(StringIO()):
+                        with self.assertRaisesRegex(AssertionError, 'Native online operation failed'):
+                            driver.run(context)
+                    self.assertEqual(pressed, ['A', 'A'])
+                    self.assertEqual(captured, ['online-play-' + phase.lower() + '-failure.png'])
+                    self.assertFalse(json.loads((root / 'online-play-report.json').read_text())['passed'])
+                    self.assertEqual(os.read(reader, 64), b'SET MAIN 0.5 0.5\n')
+                finally:
+                    os.close(reader)
+                    os.close(writer)
 
 
 unittest.main()
