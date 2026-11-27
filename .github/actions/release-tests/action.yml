@@ -155,6 +155,7 @@ runs:
       with:
         global-json-file: global.json
     - name: Qualify real GameCube SDK HTTPS and WSS on Dolphin
+      id: sdk-online
       if: ${{ !cancelled() && steps.dolphin.outcome == 'success' && steps.selection.outputs.online_play == 'true' }}
       shell: pwsh
       env:
@@ -165,7 +166,7 @@ runs:
       if: always() && steps.selection.outputs.online_play == 'true'
       uses: actions/upload-artifact@v4
       with:
-        name: online-dolphin-${{ inputs.commit }}
+        name: online-dolphin-${{ inputs.commit }}-${{ steps.sdk-online.outcome }}
         path: |
           out/online-dolphin/*.json
           out/online-dolphin/*.log
@@ -174,8 +175,10 @@ runs:
           out/online-dolphin/emulator/*.log
           out/online-dolphin/emulator/*.txt
         if-no-files-found: warn
+    # Surface a failed required SDK scenario without waiting for the remaining
+    # emulator cases. Its redacted diagnostics above are retained on failure.
     - name: Verify villager visual swaps in Dolphin
-      if: ${{ !cancelled() && steps.dolphin.outcome == 'success' && steps.selection.outputs.villager_visuals == 'true' }}
+      if: ${{ !cancelled() && steps.dolphin.outcome == 'success' && steps.sdk-online.outcome != 'failure' && steps.selection.outputs.villager_visuals == 'true' }}
       env:
         BUILD_VERSION: ${{ inputs.version }}
       shell: bash
@@ -208,7 +211,7 @@ runs:
           out/villager-visuals/user/Logs/
         if-no-files-found: ignore
     - name: Capture and verify title branding in Dolphin
-      if: ${{ !cancelled() && steps.dolphin.outcome == 'success' && steps.selection.outputs.title_logo == 'true' }}
+      if: ${{ !cancelled() && steps.dolphin.outcome == 'success' && steps.sdk-online.outcome != 'failure' && steps.selection.outputs.title_logo == 'true' }}
       env:
         BUILD_VERSION: ${{ inputs.version }}
       shell: bash
@@ -244,7 +247,7 @@ runs:
           out/title-logo/user/Logs/
         if-no-files-found: warn
     - name: Verify video options, smoothing persistence and deletion controls in Dolphin
-      if: ${{ !cancelled() && steps.dolphin.outcome == 'success' && steps.selection.outputs.video_options == 'true' }}
+      if: ${{ !cancelled() && steps.dolphin.outcome == 'success' && steps.sdk-online.outcome != 'failure' && steps.selection.outputs.video_options == 'true' }}
       env:
         BUILD_VERSION: ${{ inputs.version }}
       shell: bash
@@ -286,7 +289,7 @@ runs:
           out/video-options/*/user/Logs/
         if-no-files-found: warn
     - name: Verify Save & Quit and reloading the town in Dolphin
-      if: ${{ !cancelled() && steps.dolphin.outcome == 'success' && steps.selection.outputs.save_quit == 'true' }}
+      if: ${{ !cancelled() && steps.dolphin.outcome == 'success' && steps.sdk-online.outcome != 'failure' && steps.selection.outputs.save_quit == 'true' }}
       env:
         BUILD_VERSION: ${{ inputs.version }}
       shell: bash
@@ -310,7 +313,7 @@ runs:
           out/save-and-quit/user/Logs/
         if-no-files-found: warn
     - name: Capture terrain mip bands and water animation in Dolphin
-      if: ${{ !cancelled() && steps.dolphin.outcome == 'success' && steps.selection.outputs.terrain_materials == 'true' }}
+      if: ${{ !cancelled() && steps.dolphin.outcome == 'success' && steps.sdk-online.outcome != 'failure' && steps.selection.outputs.terrain_materials == 'true' }}
       env:
         BUILD_VERSION: ${{ inputs.version }}
       shell: bash
@@ -346,7 +349,7 @@ runs:
           out/terrain-materials/user/Logs/
         if-no-files-found: warn
     - name: Verify memory-card selection and temporary play in Dolphin
-      if: ${{ !cancelled() && steps.dolphin.outcome == 'success' && steps.selection.outputs.cards != '' }}
+      if: ${{ !cancelled() && steps.dolphin.outcome == 'success' && steps.sdk-online.outcome != 'failure' && steps.selection.outputs.cards != '' }}
       env:
         BUILD_VERSION: ${{ inputs.version }}
         CARD_SCENARIOS: ${{ steps.selection.outputs.cards }}
@@ -376,7 +379,7 @@ runs:
           out/memory-cards/*/user/Logs/
         if-no-files-found: warn
     - name: Verify day, dawn, dusk and night lighting in Dolphin
-      if: ${{ !cancelled() && steps.dolphin.outcome == 'success' && steps.selection.outputs.daylight == 'true' }}
+      if: ${{ !cancelled() && steps.dolphin.outcome == 'success' && steps.sdk-online.outcome != 'failure' && steps.selection.outputs.daylight == 'true' }}
       env:
         BUILD_VERSION: ${{ inputs.version }}
       shell: bash
@@ -416,7 +419,7 @@ runs:
           out/daylight/*/user/Logs/
         if-no-files-found: warn
     - name: Verify actual job controls and committed results in Dolphin
-      if: ${{ !cancelled() && steps.dolphin.outcome == 'success' && steps.selection.outputs.jobs != '' }}
+      if: ${{ !cancelled() && steps.dolphin.outcome == 'success' && steps.sdk-online.outcome != 'failure' && steps.selection.outputs.jobs != '' }}
       env:
         BUILD_VERSION: ${{ inputs.version }}
         JOB_MODES: ${{ steps.selection.outputs.jobs }}

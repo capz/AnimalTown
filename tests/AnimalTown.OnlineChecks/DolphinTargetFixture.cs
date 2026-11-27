@@ -58,7 +58,9 @@ static class DolphinTargetFixture
             if(!upload&&!state.PlaceHouse(12,22,false,true))throw new Exception("Target fixture home plot blocked");
             for(int z=10;z<24;z++)for(int x=28;x<43;x++){state.Town.Tiles[z*Town.Width+x]=(byte)Terrain.Grass;state.Town.Elevation[z*Town.Width+x]=0;}
             for(int i=state.Town.GroundCount-1;i>=0;i--){var g=state.Town.Ground[i];if(g.X>=28&&g.X<43&&g.Z>=9&&g.Z<24)state.Town.RemoveGround(i);}
-            state.Space=0;state.X=36.5f;state.Z=14.5f;state.Shirt=species==1?Catalog.BerryShirt:Catalog.StripedShirt;
+            state.Space=0;state.X=HelipadSite.CenterX+.5f;state.Z=HelipadSite.Z+HelipadSite.Depth+1.5f;state.Shirt=species==1?Catalog.BerryShirt:Catalog.StripedShirt;
+            if(!upload&&(!HelipadSite.Exists(state.Town)||!HelipadSite.AtGate((int)state.X,(int)state.Z)||!BuildingWorld.CanStand(state,0,state.X,state.Z,0,true)))
+                throw new Exception("Target console must start on walkable ground within the helipad interaction area");
             state.Pockets[2]=Catalog.WritingPaper;state.Pockets[3]=10;
             var disk=new Disk();var repository=new SaveRepository(disk);repository.Save(state);repository.Save(state);
             var start=await Request(HttpMethod.Post,"/v1/auth/link/start",new{town=town.ToString("X16")});
@@ -120,7 +122,7 @@ static class DolphinTargetFixture
                 if((await guest.Client.Command(new(){Kind=OnlineCommandKind.Snapshot})).Status!=200)throw new Exception("Target companion snapshot failed");
                 while(guest.Client.State.NeedsSnapshot)await guest.Client.Receive();
                 while(guest.Client.Position.X==0)await guest.Client.Receive();
-                await guest.Client.WalkToPoint(guest==guests[0]?34.5f:38.5f,18.5f);
+                await guest.Client.WalkToPoint(HelipadSite.CenterX+.5f+(guest==guests[0]?-2:2),HelipadSite.Z+HelipadSite.Depth+3.5f);
                 if((await guest.Client.Command(new(){Kind=OnlineCommandKind.Chat,Text="Hello from "+(guest==guests[0]?"GuestA":"GuestB")})).Status!=200)throw new Exception("Target companion chat failed");
                 var receiving=guest.Client;var readingStop=guest.ReadingStop=new CancellationTokenSource();
                 guest.Reading=Task.Run(async()=>
