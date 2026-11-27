@@ -40,12 +40,16 @@ internal static class Program
     }
     private static void RunTown(DevConfig config)
     {
+        DebugOverlay.WriteLine("ANIMALTOWN TOWN LOAD BEGIN");
         FrameProfile.Checkpoint(1);
         var session=TownSession.Load();LoadingScreen.Finish();
+        DebugOverlay.WriteLine("ANIMALTOWN TOWN LOAD READY");
         FrameProfile.Checkpoint(2);
         try{
 #if ANIMALTOWN_ONLINE_PLAY
+            DebugOverlay.WriteLine("ANIMALTOWN ONLINE RECOVERY BEGIN");
             if(!OnlinePlay.Recover(config,session))return;
+            DebugOverlay.WriteLine("ANIMALTOWN ONLINE RECOVERY READY");
 #else
             if(session.OnlineRecoveryRequired){
                 var recoveryFont=UiFont.LoadSystem();
@@ -53,6 +57,7 @@ internal static class Program
                 finally{LoadingScreen.Finish();recoveryFont.Release();}
             }
 #endif
+            DebugOverlay.WriteLine("ANIMALTOWN PROFILE PICKER BEGIN");
             if(!ProfilePicker.Run(session,config))return;
             session.State.Town.Traffic.ResetSnowForTownEntry();
             if(session.Draft!=null&&!OnboardingFlow.Run(config,session))return;

@@ -1629,6 +1629,8 @@ def wait_profiles(name='profile-picker.png'):
         if cards and color_count(pixels,(255,245,221))>70000:return
         if p.poll() is not None:raise AssertionError('Emulator stopped before villager picker')
         time.sleep(1)
+    context=[line for line in runtime_log_text().splitlines() if 'ANIMALTOWN' in line][-30:]
+    print('Runtime context before picker timeout:\n'+'\n'.join(context),flush=True)
     raise AssertionError('Villager picker did not appear')
 
 def memory_cards():

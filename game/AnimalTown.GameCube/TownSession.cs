@@ -120,17 +120,23 @@ internal sealed partial class TownSession
         GameState? state=null;bool damaged=false,pendingOnline=false;string status=SaveCards.Enabled?"New town - no valid save":"Playing without saving";
         if(SaveCards.Enabled)try{
             using var card=SaveCards.Mount();
-            var store=new CardSaveStorage(card,new byte[0],new byte[0],SaveCards.Device);var names=store.Names();bool existing=false,pending=false;
+            DebugOverlay.WriteLine("ANIMALTOWN TOWN LOAD CARD MOUNTED");
+            var store=new CardSaveStorage(card,new byte[0],new byte[0],SaveCards.Device);
+            DebugOverlay.WriteLine("ANIMALTOWN TOWN LOAD ARCHIVE READY");
+            var names=store.Names();bool existing=false,pending=false;
+            DebugOverlay.WriteLine("ANIMALTOWN TOWN LOAD DIRECTORY READY");
             for(int i=0;i<names.Length;i++){if(SplitSaveCodec.IsFile(names[i]))existing=true;if(names[i]==TownDataDeletion.Marker)pending=true;}
             if(pending){damaged=true;status="Finish town deletion in title Options.";}
             else{
                 state=new SaveRepository(store).Load();
+                DebugOverlay.WriteLine("ANIMALTOWN TOWN LOAD RECORDS READY");
                 if(state!=null)
                 {
                     status="Save loaded";
                     try
                     {
                         var recovery=OnlineTravelCard.ReadMounted(card);
+                        DebugOverlay.WriteLine("ANIMALTOWN TOWN LOAD JOURNAL READY");
                         state.HostedCommerceLocked=recovery!=null;
                         foreach(var entry in card.GetEntries())if(TownDataDeletion.IsCredentialFile(entry.Name)){state.HostedCommerceLocked=true;break;}
                         pendingOnline=recovery!=null&&recovery.Record.Phase!=AnimalTown.Online.OnlineTravelPhase.Ready;
