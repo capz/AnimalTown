@@ -46,7 +46,7 @@ static Resource *find(int token,int kind){
 }
 static int create(int kind,int bytes,int alignment){
     assert(kind==BUFFER&&alignment==32&&creates<4);created_bytes[creates++]=bytes;
-    if((bytes==TA_CACHE&&(faults&FAIL_CACHE))||(bytes==TA_STAGE&&(faults&FAIL_STAGE)))return 0;
+    if(((bytes==TA_CACHE||bytes==TA_CACHE_CHUNK)&&(faults&FAIL_CACHE))||(bytes==TA_STAGE&&(faults&FAIL_STAGE)))return 0;
     for(int i=0;i<SLOTS;i++)if(!slots[i].kind){
         Resource *r=&slots[i];r->allocation=calloc(1,(size_t)bytes);assert(r->allocation);
         r->data=r->allocation;r->kind=kind;r->bytes=bytes;r->generation++;
@@ -133,7 +133,7 @@ int main(void){
     report(0,"aram-allocate",TA_ARAM_BLOCK,0,0,2*TA_ARAM_BLOCK);rolled_back();
     start(FAIL_RETAIN);assert(animaltown_terrain_reset(3)==-2&&report_count==1&&retains==1&&!creates);
     report(0,"aram-retain",TA_ARAM_BLOCK,-EINVAL,0,TA_ARAM_BLOCK);rolled_back();
-    start(FAIL_CACHE);assert(animaltown_terrain_reset(3)==-2&&report_count==1&&creates==1&&!holds);
+    start(FAIL_CACHE);assert(animaltown_terrain_reset(3)==-2&&report_count==1&&creates==2&&!holds);
     assert(created_bytes[0]==TA_CACHE);
     report(0,"cache-buffer",TA_CACHE,0,0,TA_BYTES);rolled_back();
     /* A heap that rejects the former separate staging allocation still admits
@@ -143,7 +143,7 @@ int main(void){
     assert(animaltown_terrain_reset(0)==1);rolled_back();
     start(FAIL_HOLD);assert(animaltown_terrain_reset(3)==-2&&report_count==1&&creates==1&&holds==1);
     report(0,"stage-hold",TA_STAGE,-1,TA_CACHE,TA_BYTES);rolled_back();
-    start(FAIL_CACHE|FAIL_STAGE);assert(animaltown_terrain_reset(3)==-2&&report_count==1&&creates==1&&!holds);
+    start(FAIL_CACHE|FAIL_STAGE);assert(animaltown_terrain_reset(3)==-2&&report_count==1&&creates==2&&!holds);
     report(0,"cache-buffer",TA_CACHE,0,0,TA_BYTES);rolled_back();
     start(0);assert(animaltown_terrain_reset(3)==1&&animaltown_terrain_reset(0)==1&&!report_count);rolled_back();
     /* Rebuild on a fragmented heap: no replacement one-MiB allocation is

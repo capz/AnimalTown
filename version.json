@@ -572,6 +572,15 @@
         "Retry live settings reads without weakening checksum validation.",
         "Cover truncated images, completed writes and damaged directories."
       ]
+    },
+    {
+      "id": "fragmented-terrain-cache-build-repair-20261127",
+      "lines": [
+        "Restore terrain after renderer changes on fragmented memory.",
+        "Fall back to four smaller allocations while retaining the 1 MiB cache budget.",
+        "Keep mesh aliases and asynchronous transfers tied to their actual cache owner.",
+        "Cover full capacity, partial allocation rollback, suspension and byte-exact restoration."
+      ]
     }
   ]
 }

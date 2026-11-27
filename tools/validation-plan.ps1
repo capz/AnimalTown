@@ -13,7 +13,7 @@ function Get-EmulatorChecksForPath([string]$Path) {
     if($Path -match '^assets/models/villagers/|^game/AnimalTown.GameCube/TownGame\.Save[^/]*\.cs$|^shared/AnimalTown.Domain/(SaveRepository|SaveCodec|SplitSaveCodec|IncrementalSaveCodec)\.cs$'){
         'save-and-quit'
     }
-    if($Path -match '^assets/textures/environment/water/|^tools/AnimalTown.Tools/WaterTextureArt\.cs$|^game/AnimalTown.GameCube/(Water[^/]*|NativeWater(?:Probe)?|TerrainRenderer(?:\.[^/]+)?|TerrainSection|GroundMip[^/]*|ModelResources)\.cs$|^shared/AnimalTown.Domain/(GroundMip[^/]*|RenderDebugOptions|DevConfig|TextureResolution|Water[^/]*|WindWaker[^/]*)\.cs$|^tools/(patch-water-(?:probe|optics)\.py|native-water-(?:probe|optics)\.inc|native-shadow-union-gx\.inc)$'){
+    if($Path -match '^assets/textures/environment/water/|^tools/AnimalTown.Tools/WaterTextureArt\.cs$|^game/AnimalTown.GameCube/(Water[^/]*|NativeWater(?:Probe)?|TerrainRenderer(?:\.[^/]+)?|TerrainSection|GroundMip[^/]*|ModelResources)\.cs$|^shared/AnimalTown.Domain/(GroundMip[^/]*|RenderDebugOptions|DevConfig|TextureResolution|Water[^/]*|WindWaker[^/]*)\.cs$|^tools/(patch-water-(?:probe|optics)\.py|native-water-(?:probe|optics)\.inc|native-shadow-union-gx\.inc|native-terrain-(?:archive|recycle)\.inc)$'){
         'terrain-materials'
     }
     if($Path -match '^game/AnimalTown.GameCube/(SaveCards|CardArchive|CardSaveStorage|TownDataStorage|TownSession|TitleScreen(?:\.Cards)?|OnboardingFlow|OnboardingUi)\.cs$|^shared/AnimalTown.Domain/OnboardingDraft\.cs$'){
@@ -193,7 +193,7 @@ function Get-ValidationPlan {
         if($p -match '^(shared/AnimalTown.Domain/(WindWakerWaterPattern|WindWakerWaveField|WindWakerWaveGrid|ShallowWaterPattern|WaterDepthCache|WaterBedGeometry|GroundRingPlan|ActorFrameVisibility|AnimationFrameClock)|game/AnimalTown.GameCube/(WaterBedRenderer|LocalOceanWaves|GroundRingRenderer|GeometryStaging|TerrainIndexBuffer|VillagerAttentionRenderer))\.cs$'){
             Add-Managed 'terrain';Add-Managed 'core';continue
         }
-        if($p -match '^(tools/native-terrain-(archive|recycle)\.inc|tests/native-terrain-(archive|recycle)\.c)$'){
+        if($p -match '^(tools/native-terrain-(archive|recycle)\.inc|tests/native-terrain-(archive|recycle|reset)\.c)$'){
             Add-Managed 'terrain';Add-Managed 'core';[void]$native.Add('patched');continue
         }
         if($p -match '^(shared/AnimalTown.Domain/WaterSurface|tests/AnimalTown.Checks/(WaterSurface|WaterBed)Checks)\.cs$') {Add-Managed 'terrain';continue}
