@@ -14,6 +14,15 @@ internal sealed partial class TownSession
     internal string OnboardingSaveError {get;private set;}="";
     internal bool Loaded {get;private set;}
     internal OnlineDeviceLink? OnlineCredentials {get;set;}
+    internal bool OnlineRecoveryRequired {get;private set;}
+    internal int OnlineDeletionProfile=-1;
+#if ANIMALTOWN_ONLINE_PLAY
+    internal OnlinePlayVisit? Online {get;set;}
+    internal static TownSession Review(GameState projection)
+    {if(!projection.IsOnlineProjection)throw new InvalidOperationException("Expected a public review scene.");return new TownSession(projection,true,false,"Town review");}
+    internal void ShowOnlineWorld(GameState projection)
+    {if(!projection.IsOnlineProjection)throw new InvalidOperationException("Expected a public online world.");State=projection;}
+#endif
     internal readonly bool Damaged;
     internal string Status {get;private set;}
     private int travelAction,travelProfile,travelFrom,travelTo;private long travelAt;
@@ -23,6 +32,7 @@ internal sealed partial class TownSession
     private TownSession(GameState state,bool loaded,bool damaged,string status){State=state;Loaded=loaded;Damaged=damaged;Status=status;}
     internal void RefreshVisitors()
     {
+        if(State.IsOnlineProjection)return;
         SavedVisitor[] visitors=new SavedVisitor[0];
         if(SaveCards.Enabled&&Loaded&&!Damaged&&Draft==null&&State.Town.Jobs.Initialized){
             int device=SaveCards.Device==4?5:4;
@@ -98,7 +108,8 @@ internal sealed partial class TownSession
         try{
             using var card=SaveCards.Mount();
             var storage=new CardSaveStorage(card,File.ReadAllBytes(AnimalTown.ContentPaths.Asset("savebanner.rgb5a3")),File.ReadAllBytes(AnimalTown.ContentPaths.Asset("saveicon.rgb5a3")),SaveCards.Device);
-            State=new SaveRepository(storage).DeleteProfile(State,profile);
+            bool linked=State.HostedCommerceLocked;
+            State=new SaveRepository(storage).DeleteProfile(State,profile);State.HostedCommerceLocked=linked;
             try{storage.UpdateVillagerFiles(State);}
             catch(Exception error){DebugOverlay.WriteLine("VILLAGER CARD CLEANUP: "+error.Message);}
             return true;
@@ -106,19 +117,37 @@ internal sealed partial class TownSession
     }
     internal static TownSession Load()
     {
-        GameState? state=null;bool damaged=false;string status=SaveCards.Enabled?"New town - no valid save":"Playing without saving";
+        GameState? state=null;bool damaged=false,pendingOnline=false;string status=SaveCards.Enabled?"New town - no valid save":"Playing without saving";
         if(SaveCards.Enabled)try{
             using var card=SaveCards.Mount();
-            var store=new CardSaveStorage(card,new byte[0],new byte[0],SaveCards.Device);var names=store.Names();bool existing=false,pending=false;
+            DebugOverlay.WriteLine("ANIMALTOWN TOWN LOAD CARD MOUNTED");
+            var store=new CardSaveStorage(card,new byte[0],new byte[0],SaveCards.Device);
+            DebugOverlay.WriteLine("ANIMALTOWN TOWN LOAD ARCHIVE READY");
+            var names=store.Names();bool existing=false,pending=false;
+            DebugOverlay.WriteLine("ANIMALTOWN TOWN LOAD DIRECTORY READY");
             for(int i=0;i<names.Length;i++){if(SplitSaveCodec.IsFile(names[i]))existing=true;if(names[i]==TownDataDeletion.Marker)pending=true;}
             if(pending){damaged=true;status="Finish town deletion in title Options.";}
             else{
                 state=new SaveRepository(store).Load();
-                if(state!=null)status="Save loaded";else if(existing){damaged=true;status="No complete save set. Backup card before recovery.";}
+                DebugOverlay.WriteLine("ANIMALTOWN TOWN LOAD RECORDS READY");
+                if(state!=null)
+                {
+                    status="Save loaded";
+                    try
+                    {
+                        var recovery=OnlineTravelCard.ReadMounted(card);
+                        DebugOverlay.WriteLine("ANIMALTOWN TOWN LOAD JOURNAL READY");
+                        state.HostedCommerceLocked=recovery!=null;
+                        foreach(var entry in card.GetEntries())if(TownDataDeletion.IsCredentialFile(entry.Name)){state.HostedCommerceLocked=true;break;}
+                        pendingOnline=recovery!=null&&recovery.Record.Phase!=AnimalTown.Online.OnlineTravelPhase.Ready;
+                    }
+                    catch(Exception){pendingOnline=true;status="Keep this card. Its online recovery record could not be verified.";}
+                }
+                else if(existing){damaged=true;status="No complete save set. Backup card before recovery.";}
             }
         }catch(Exception error){DebugOverlay.WriteLine("TOWN LOAD ERROR: "+error.Message);damaged=true;status="Could not read "+SaveCards.Slot+". Return to title to recheck.";}
         bool loaded=state!=null;
         if(state==null){long now=Clock.Timestamp;int date=NativeCalendar.Read();state=new GameState(unchecked((int)(now^(now>>32)^date*7919L)));state.Profiles[0].Created=false;}
-        return new TownSession(state,loaded,damaged,status);
+        return new TownSession(state,loaded,damaged,status){OnlineRecoveryRequired=pendingOnline};
     }
 }

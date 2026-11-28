@@ -100,6 +100,12 @@ public sealed class ChatEntry
         Text+=new string(c,1);Changed();return true;
     }
     public void Erase(){if(Text.Length>0)Text=Text.Substring(0,Text.Length-1);Changed();}
+    public void RestoreDraft(string value)
+    {
+        if(value.Length>MaximumLength)throw new ArgumentException("Draft exceeds its text limit.");
+        for(int i=0;i<value.Length;i++)if((value[i]<' '||value[i]>'~')&&!(Multiline&&value[i]=='\n'))throw new ArgumentException("Invalid draft text.");
+        Text=value;Changed();
+    }
     private void Changed(){Status="";CountLabel=Text.Length+" / "+MaximumLength;}
 }
 

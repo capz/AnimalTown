@@ -1,100 +1,138 @@
-#if ANIMALTOWN_EXPERIMENTAL_ONLINE_TLS
+#if ANIMALTOWN_ONLINE_PLAY
 using System;
+using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
+using AnimalTown;
 using AnimalTown.Online;
 using Dolphin.Network;
+using Dolphin.Diagnostics;
 using Dolphin.Timing;
 
-// Opens after the control-plane client has been disposed. The owner initializes
-// the configured TLS trust and runs ConnectAsync with scene resources unloaded.
-internal sealed class OnlineGameplayConnection : IOnlinePoseStream, IDisposable
+// Connection setup owns no town renderer. TLS configuration and device ticket
+// issuance happen before this call, with fresh trust/entropy/time checks.
+internal sealed class OnlineGameplayConnection : IDisposable
 {
-    private const string Protocol = "animaltown/1";
-    private const int Port = 443;
-    private const int FrameIoBudgetMicroseconds = 250;
-    private readonly TlsStream stream;
+    private readonly RawStream raw;
+    private readonly OnlineWebSocketStream websocket;
     private readonly OnlinePosePump pump;
     private bool disposed;
-    private long frameStarted;
-
-    private OnlineGameplayConnection(TlsStream stream, byte[] ticket)
-    {
-        this.stream = stream;
-        pump = new OnlinePosePump(this, ticket, Now);
-    }
-
+    private OnlineGameplayConnection(RawStream raw, OnlineWebSocketStream websocket, byte[] ticket, IOnlineMessageSink? messages)
+    { this.raw = raw; this.websocket = websocket; pump = new OnlinePosePump(websocket, ticket, Now, messages); }
     private static long Now => Clock.Timestamp / 1000;
     internal uint Epoch => pump.Epoch;
     internal byte LocalSlot => pump.LocalSlot;
     internal bool Reviewing => pump.Reviewing;
+    internal OnlineId NewCommandId()=>new((ulong)raw.NextMask()|((ulong)raw.NextMask()<<32),(ulong)raw.NextMask()|((ulong)raw.NextMask()<<32));
+    internal bool Queue(OnlineFrameType type, byte[] payload, int offset, int count, out uint sequence)
+        => pump.Queue(type, payload, offset, count, out sequence);
 
-    // Clear the caller's copy of the ticket even if connection setup fails.
-    internal static async Task<OnlineGameplayConnection> ConnectAsync(string gameplayHost, byte[] ticket,
-        CancellationToken cancellation)
+    internal static async Task<OnlineGameplayConnection> ConnectAsync(string origin, byte[] ticket,
+        IOnlineMessageSink? messages, CancellationToken cancellation)
     {
-        if (ticket is null || ticket.Length != OnlineWire.GameplayTicketSize)
-            throw new ArgumentException("The gameplay ticket has an invalid size.", nameof(ticket));
-
+        if (!OnlineCardCredential.ValidOrigin(origin) || ticket == null || ticket.Length != OnlineWire.GameplayTicketSize)
+            throw new ArgumentException("Invalid authenticated gameplay endpoint.");
         TlsStream? connected = null;
         try
         {
-            connected = await TlsStream.ConnectAsync(gameplayHost, Port, Protocol, cancellation);
-            return new OnlineGameplayConnection(connected, ticket);
-        }
-        catch
-        {
-            connected?.Dispose();
-            throw;
+            connected = await TlsStream.ConnectAsync(origin.Substring(8), 443, cancellation);
+            var raw = new RawStream(connected);
+            var upgrade = new OnlineWebSocketUpgrade(origin, raw);
+            long deadline = Clock.Timestamp + 10000000;
+            int sent = 0;
+            while (sent < upgrade.Request.Length)
+            {
+                CheckSetup(cancellation, deadline);
+                int count = raw.TryWrite(upgrade.Request, sent, upgrade.Request.Length - sent);
+                if (count == 0) throw new IOException("Gameplay upgrade connection closed.");
+                if (count > 0) sent += count; else await Task.Delay(1, cancellation);
+            }
+            var headers = new byte[OnlineWebSocketUpgrade.HeaderLimit];
+            int received = 0, consumed;
+            while (true)
+            {
+                CheckSetup(cancellation, deadline);
+                int count = raw.TryRead(headers, received, headers.Length - received);
+                if (count == 0) throw new IOException("Gameplay upgrade response was truncated.");
+                if (count < 0) { await Task.Delay(1, cancellation); continue; }
+                received += count;
+                var result = upgrade.ReadResponse(headers, received, out consumed);
+                if (result == OnlineFrameRead.Invalid) throw new IOException("Gameplay upgrade was rejected.");
+                if (result == OnlineFrameRead.Complete) break;
+            }
+            var prefixed = new Prefixed(raw, headers, consumed, received - consumed);
+            var socket = new OnlineWebSocketStream(prefixed, raw);
+            var resultConnection = new OnlineGameplayConnection(raw, socket, ticket, messages);
+            connected = null; // ownership transferred only after validated upgrade
+            return resultConnection;
         }
         finally
         {
+            connected?.Dispose();
             Array.Clear(ticket, 0, ticket.Length);
         }
     }
+    static void CheckSetup(CancellationToken cancellation, long deadline)
+    { cancellation.ThrowIfCancellationRequested(); if (Clock.Timestamp >= deadline) throw new TimeoutException("Gameplay upgrade timed out."); }
 
-    // The session owner decides whether to reconnect or return offline when
-    // the transport closes.
     internal bool Tick(OnlineMovementInput input)
     {
         if (disposed) return false;
-        frameStarted = Clock.Timestamp;
-        pump.SetInput(pump.Reviewing ? default : input);
-        try
-        {
-            pump.Pump(frameStarted / 1000);
-            if (!pump.Closed) return true;
-        }
-        catch (SocketException)
-        {
-            // The player-facing state is connection lost. No peer or credentials
-            // are written to diagnostics.
-        }
-        Dispose();
-        return false;
+        NativeFrame.OnlineProbe(30);raw.BeginFrame(); pump.SetInput(pump.Reviewing ? default : input);
+        try { pump.Pump(Now); NativeFrame.OnlineProbe(31); if (!pump.Closed && !websocket.Closed) return true; }
+        catch (SocketException) { }
+        catch (IOException) { }
+        Dispose(); return false;
     }
-
     internal bool TryGetActor(byte slot, out OnlineActorPosition position)
-    {
-        position = default;
-        return !disposed && pump.TryGetActor(slot, Now, out position);
-    }
-
-    // A native TLS step cannot be preempted. Stop starting further steps for
-    // this frame once network work reaches its share of the live-play budget.
-    private bool FrameBudgetSpent => Clock.Timestamp - frameStarted >= FrameIoBudgetMicroseconds;
-
-    int IOnlinePoseStream.TryRead(byte[] buffer, int offset, int count)
-        => FrameBudgetSpent ? -1 : stream.TryRead(buffer, offset, count);
-
-    int IOnlinePoseStream.TryWrite(byte[] buffer, int offset, int count)
-        => FrameBudgetSpent ? -1 : stream.TryWrite(buffer, offset, count);
-
+    { position = default; return !disposed && pump.TryGetActor(slot, Now, out position); }
     public void Dispose()
     {
-        if (disposed) return;
-        disposed = true;
-        stream.Dispose();
+        if(disposed)return;disposed=true;
+        NativeFrame.OnlineProbe(40);DebugOverlay.WriteLine("ANIMALTOWN ONLINE CLOSE BEGIN");
+        pump.Dispose();NativeFrame.OnlineProbe(41);websocket.Dispose();NativeFrame.OnlineProbe(42);raw.Dispose();NativeFrame.OnlineProbe(43);
+        DebugOverlay.WriteLine("ANIMALTOWN ONLINE CLOSE READY");
+    }
+
+    sealed class RawStream : IOnlinePoseStream, IOnlineMaskSource, IDisposable
+    {
+        const int FrameBudgetMicroseconds = 250;
+        readonly TlsStream tls;
+        readonly byte[] random = new byte[256];
+        int randomAt = 256;
+        long frameStart;
+        bool budgeted;
+        internal RawStream(TlsStream tls) { this.tls = tls; }
+        internal void BeginFrame() { frameStart = Clock.Timestamp; budgeted = true; }
+        bool Spent => budgeted && Clock.Timestamp - frameStart >= FrameBudgetMicroseconds;
+        public int TryRead(byte[] bytes, int offset, int count)
+        { if(Spent)return -1;NativeFrame.OnlineProbe(10);int result=tls.TryRead(bytes,offset,count);NativeFrame.OnlineProbe(11);return result; }
+        public int TryWrite(byte[] bytes, int offset, int count)
+        { if(Spent)return -1;NativeFrame.OnlineProbe(12);int result=tls.TryWrite(bytes,offset,count);NativeFrame.OnlineProbe(13);return result; }
+        public uint NextMask()
+        {
+            if (randomAt == random.Length) { NativeFrame.OnlineProbe(14);tls.FillRandom(random, 0, random.Length);NativeFrame.OnlineProbe(15);randomAt = 0; }
+            uint value = 0;
+            for (int i = 0; i < 4; i++) { value |= (uint)random[randomAt] << (i * 8); random[randomAt++] = 0; }
+            return value;
+        }
+        public void Dispose() { Array.Clear(random, 0, random.Length); tls.Dispose(); }
+    }
+    sealed class Prefixed : IOnlinePoseStream
+    {
+        readonly IOnlinePoseStream stream;
+        byte[]? prefix;
+        int at, left;
+        internal Prefixed(IOnlinePoseStream stream, byte[] bytes, int offset, int count)
+        { this.stream = stream; prefix = count == 0 ? null : bytes; at = offset; left = count; }
+        public int TryRead(byte[] bytes, int offset, int count)
+        {
+            if (left == 0) return stream.TryRead(bytes, offset, count);
+            int take = Math.Min(left, count); Array.Copy(prefix!, at, bytes, offset, take); at += take; left -= take;
+            if (left == 0) { Array.Clear(prefix!, 0, prefix!.Length); prefix = null; }
+            return take;
+        }
+        public int TryWrite(byte[] bytes, int offset, int count) => stream.TryWrite(bytes, offset, count);
     }
 }
 #endif

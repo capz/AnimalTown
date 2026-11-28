@@ -12,6 +12,7 @@ public sealed class OnboardingDraft : IDisposable
     private int[]? removedTreeIndices;
     private int removedTreeCount;
     private readonly bool savedTown;
+    private readonly bool hostedCommerceLocked;
     private readonly int sourceSequence;
     private bool committed;
     public readonly int Profile;
@@ -23,8 +24,10 @@ public sealed class OnboardingDraft : IDisposable
         if((uint)profile>=GameState.ProfileCount)throw new ArgumentOutOfRangeException(nameof(profile));
         if(source.HomePlaced(profile))throw new InvalidOperationException("This villager already has a home");
         Profile=profile;IsNewProfile=!source.Profiles[profile].Created;this.savedTown=savedTown;sourceSequence=source.Sequence;
+        hostedCommerceLocked=source.HostedCommerceLocked;
         sourceTerrain=source.Town;baseline=SaveCodec.Encode(source);
         state=SaveCodec.ValidateSnapshot(baseline,source.Town);
+        state.HostedCommerceLocked=hostedCommerceLocked;
         state.SelectProfile(profile);state.Space=0;
         if(!state.CanWalk(state.X,state.Z,0))for(int cell=0;cell<Town.Cells;cell++){
             float x=cell%Town.Width+.5f,z=cell/Town.Width+.5f;
@@ -70,7 +73,7 @@ public sealed class OnboardingDraft : IDisposable
     // Returns a fresh mutable source graph for discard. No Generate call or
     // duplicate terrain arrays are required, and draft-only home/name edits vanish.
     public GameState Restore()
-    {if(baseline==null)throw new ObjectDisposedException(nameof(OnboardingDraft));return SaveCodec.ValidateSnapshot(baseline,sourceTerrain!);}
+    {if(baseline==null)throw new ObjectDisposedException(nameof(OnboardingDraft));var restored=SaveCodec.ValidateSnapshot(baseline,sourceTerrain!);restored.HostedCommerceLocked=hostedCommerceLocked;return restored;}
 
     public void Commit(SaveRepository repository,bool hasTownFiles,string[]? townFiles=null)
     {

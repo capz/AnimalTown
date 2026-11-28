@@ -184,7 +184,7 @@ public sealed class SaveRepository
     // cursor. Save first if the in-memory state has uncommitted changes.
     public TownCheckpointExport OpenCheckpointExport(GameState expected)
     {
-        if(expected.Visiting||!expected.Town.Jobs.Initialized||!expected.Profiles[expected.ActiveProfile].Created||expected.ProfileLocked(expected.ActiveProfile))
+        if(expected.IsOnlineProjection||expected.Visiting||!expected.Town.Jobs.Initialized||!expected.Profiles[expected.ActiveProfile].Created||expected.ProfileLocked(expected.ActiveProfile))
             throw new InvalidOperationException("Select your saved home town before uploading");
         var current=NewestManifest()??throw new InvalidOperationException("Save your town before uploading");
         if(current.Sequence!=expected.Sequence||current.Seed!=expected.Town.Seed)
@@ -203,18 +203,22 @@ public sealed class SaveRepository
 
         var header=new SplitSaveCodec.Reader(current.Commit,SplitSaveCodec.Commit);
         if(header.Version!=4)throw new InvalidOperationException("Save your town in this version before uploading");
-        var export=new TownCheckpointExport(expected,(part,record)=>
-        {
-            string name=SplitSaveCodec.FileName(SplitSaveCodec.RecordKind(part),current.Bank);
-            if(storage is ISaveSnapshotStorage verified)
-            {
-                if(!verified.Matches(name,record,-1,record.Length,0,false))
-                    throw new InvalidOperationException("Committed save differs from the selected checkpoint");
-            }
-            else Match(storage.Read(name),record);
-        });
+        var export=new TownCheckpointExport(expected,new ExportVerifier(storage,current.Bank));
         try{Match(current.Commit,export.CommitBytes);return export;}
         catch{export.Dispose();throw;}
+    }
+
+    sealed class ExportVerifier:ICheckpointRecordVerifier
+    {
+        readonly ISaveStorage storage;readonly int bank;
+        internal ExportVerifier(ISaveStorage storage,int bank){this.storage=storage;this.bank=bank;}
+        public void Verify(int part,byte[] record)
+        {
+            string name=SplitSaveCodec.FileName(SplitSaveCodec.RecordKind(part),bank);
+            if(storage is ISaveSnapshotStorage verified)
+            {if(!verified.Matches(name,record,-1,record.Length,0,false))throw new InvalidOperationException("Committed save differs from the selected checkpoint");}
+            else Match(storage.Read(name),record);
+        }
     }
 
     public GameState? Load(GameState? textReuse)
@@ -233,8 +237,34 @@ public sealed class SaveRepository
     }
     public int LastWrittenRecords {get;private set;}
     public int LastWrittenBytes {get;private set;}
-    public void Save(GameState state)
+    // Only a verified owner checkpoint may cross the online/card boundary.
+    // Retrying after commit-before-readback repairs the same publication.
+    public GameState PublishOnlineCheckpoint(GameState expected,byte[] commit,byte[][] records)
     {
+        if(expected.IsOnlineProjection||expected.Visiting)throw new InvalidOperationException("Select your home card before returning");
+        SplitSaveCodec.VerifyCommitted(commit,records);
+        var candidate=SplitSaveCodec.Decode(records,null,expected.Town.Jobs);
+        if(candidate.IsOnlineProjection||candidate.Visiting||candidate.Town.Jobs.TownId!=expected.Town.Jobs.TownId||
+            candidate.Town.Seed!=expected.Town.Seed||candidate.ActiveProfile!=expected.ActiveProfile||
+            expected.Sequence==int.MaxValue||candidate.Sequence!=expected.Sequence+1)
+            throw new InvalidOperationException("This online publication does not belong to the selected home card");
+        var current=NewestManifest()??throw new InvalidOperationException("The home card was removed");
+        if(current.Sequence==candidate.Sequence&&current.References!=null&&MatchesCurrent(candidate,current.References,streaming:true))
+        {
+            // The complete new bank already won. Preserve its sequence while
+            // the regular saver finishes missing mirrors/readback checks.
+            Save(candidate);return candidate;
+        }
+        VerifyRevision(expected);
+        candidate.Sequence=expected.Sequence;
+        Save(candidate,true);
+        VerifyRevision(candidate);
+        return candidate;
+    }
+    public void Save(GameState state)=>Save(state,false);
+    private void Save(GameState state,bool forcePublication)
+    {
+        if(state.IsOnlineProjection)throw new InvalidOperationException("An online destination cannot replace your home save");
         LastWrittenRecords=LastWrittenBytes=0;
         int previous=state.Sequence;var current=NewestManifest();
         if(current!=null&&current.Seed!=state.Town.Seed)throw new InvalidOperationException("The town on this card has changed. Reload before saving.");
@@ -250,7 +280,7 @@ public sealed class SaveRepository
         state.Sequence=previous==int.MaxValue?previous:previous+1;
         try{
             var m=new IncrementalSaveCodec.Manifest{Sequence=state.Sequence,Seed=state.Town.Seed,Bank=current==null?state.Sequence%2:1-current.Bank};
-            bool changed=current?.References==null;
+            bool changed=forcePublication||current?.References==null;
             for(int i=0;i<IncrementalSaveCodec.Count;i++)changed=SavePart(state,i,current?.References,m,previous==int.MaxValue)||changed;
             if(!changed){state.Sequence=previous;m.Sequence=previous;}
             else if(previous==int.MaxValue)throw new InvalidOperationException("Save sequence exhausted");

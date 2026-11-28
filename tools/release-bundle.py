@@ -43,7 +43,7 @@ def allowed(name):
     if re.fullmatch(r'video-options-(build|smoothing-aa-option|options-title-options(-load)?|unsupported-title-options-unsupported)\.json',name):return True
     if re.fullmatch(r'video-options-(smoothing|options|unsupported)-[a-z0-9-]+\.png',name):return True
     parts=name.split('/')
-    return len(parts)==3 and parts[0]=='scenarios' and parts[1] in ('cliff-hud','gpu-submit','performance','jobs','villager-visuals') and Path(parts[2]).suffix in ('.png','.json','.txt','.log','.avi')
+    return len(parts)==3 and parts[0]=='scenarios' and parts[1] in ('cliff-hud','gpu-submit','performance','jobs','villager-visuals','online') and Path(parts[2]).suffix in ('.png','.json','.txt','.log','.avi')
 
 def inspect(archive, require_reports=True):
     entries=archive.infolist()
@@ -80,7 +80,7 @@ def inspect(archive, require_reports=True):
 
 def attach(archive_path, folder, namespace=''):
     archive_path=Path(archive_path);folder=Path(folder)
-    if namespace and namespace not in ('cliff-hud','gpu-submit','performance','jobs','villager-visuals'):raise ValueError('Invalid evidence namespace')
+    if namespace and namespace not in ('cliff-hud','gpu-submit','performance','jobs','villager-visuals','online'):raise ValueError('Invalid evidence namespace')
     additions={}
     for p in sorted(folder.rglob('*')):
         if p.is_symlink():raise ValueError('Symlink report input')

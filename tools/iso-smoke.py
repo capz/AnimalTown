@@ -18,6 +18,12 @@ keyboard, normal player speech, live debug gating and one resident attention cue
 --aram-residency verifies automatic indoor terrain/floor reclamation, real
 model retire/restore cycles, rapid doorway reversal and the default after reboot.
 
+--online-review captures the actual half-world closure panel using a disposable
+online-review fixture, then cancels before any account/network operation.
+
+--online-play uses a private disposable credential fixture, the emulated
+broadband adapter and a real public HTTPS/WSS backend. Run this only in CI.
+
 --warm-terrain remains accepted for older capture commands. Terrain prefetch
 is automatic; this flag no longer changes developer settings or opens a menu.
 """
@@ -206,6 +212,8 @@ def wait_onboarding(stage,name=None):
         if color_count(pixels,(149,198,186))>150000 and color_count(pixels,(255,245,221))<100:loading=True
         if onboarding_signature(pixels,stage):return loading
         time.sleep(1)
+    context=[line for line in runtime_log_text().splitlines() if 'ANIMALTOWN' in line or 'TOWN LOAD ERROR' in line][-30:]
+    print('Runtime context before onboarding timeout:\n'+'\n'.join(context),flush=True)
     raise AssertionError('Onboarding did not reach '+stage+'; inspect '+name)
 
 def wait_saved_after(before,card=None,timeout_seconds=240):
@@ -280,7 +288,7 @@ def villager_visuals():
     # Options saves and model paging can outlast a wall-timed pulse. Wait for
     # actual guest presentations on both sides of each menu input edge.
     def tap(button):press_presented(button,clock)
-    start_game(True,'visuals-start');set_debug_visibility(True)
+    start_game(prefix='visuals-start');set_debug_visibility(True)
     before=committed_card_sequence(root/'MemoryCardA.USA.raw',details=True)
     report={'scenario':'villager-visuals','passed':False,'swaps':[],'capture_positions':[],'physical_hardware':False}
     def marker(pattern,after=0,retry=None):
@@ -351,9 +359,10 @@ def villager_visuals():
         report['capture_positions'].append({'actor':actor,'appearance':appearance,**current})
     for appearance in range(6,appearance_count):
         choose(0,appearance)
-        # Force both standing and locomotion on each supplied rig.
-        os.write(controller,b'SET MAIN 0.7 0.5\n')
-        try:tap('B') # presented walk frames, then run frames, then walk again
+        # Exercise standing, walking and running within the cleared home area.
+        # Alternate directions and restore the measured origin after each rig.
+        os.write(controller,b'SET MAIN '+(b'0.7' if appearance%2==0 else b'0.3')+b' 0.5\n')
+        try:tap('B')
         finally:neutral()
         return_to_origin()
     choose(1,6)
@@ -377,10 +386,11 @@ def testing_menu_row(option):
             if constant and int(constant[1])==int(wanted):return row
     raise AssertionError('Debug option is not available: '+wanted)
 
-def start_game(new_town=False,prefix='start'):
+def start_game(new_town=False,prefix='start',tap=None):
     """Navigate Title and the resident picker before sending gameplay input."""
     before=committed_card_sequence(root/'MemoryCardA.USA.raw',details=True)
-    wait_title();press('A');wait_profiles(prefix+'-picker.png');press('A')
+    tap=tap or press
+    wait_title();tap('A');wait_profiles(prefix+'-picker.png');tap('A')
     active=before['active'] if before else 0
     if new_town or not before or not before['profiles'][active]['created']:
         return finish_onboarding(prefix,before)
@@ -1461,6 +1471,10 @@ def options_card_files(path=None):
             except AssertionError:continue # Incomplete initial creation keeps the legacy source files authoritative.
             if phase in (1,2,3) and (published is None or (epoch,name=='AnimalTown2')>published[:2]):
                 published=(epoch,name=='AnimalTown2',{key:value for key,value in records.items() if key!='AT-Archive'})
+        elif name in ('AnimalTown-Online0','AnimalTown-Online1','AnimalTown-Link0','AnimalTown-Link1','AnimalTown-Service'):
+            # Recovery/link files use independent SDK saves, outside the town
+            # archive. Keep them when selecting the published town checkpoint.
+            dedicated[name]=payload
         elif name in ('AnimalTown-Video','AnimalTown-Debug'):
             dedicated['options' if name=='AnimalTown-Video' else 'dev_config']=payload
             if count!=1:raise AssertionError('Settings entry must occupy one block')
@@ -1671,6 +1685,8 @@ def wait_profiles(name='profile-picker.png'):
         if cards and color_count(pixels,(255,245,221))>70000:return
         if p.poll() is not None:raise AssertionError('Emulator stopped before villager picker')
         time.sleep(1)
+    context=[line for line in runtime_log_text().splitlines() if 'ANIMALTOWN' in line][-30:]
+    print('Runtime context before picker timeout:\n'+'\n'.join(context),flush=True)
     raise AssertionError('Villager picker did not appear')
 
 def memory_cards():
@@ -2879,6 +2895,10 @@ UsePanicHandlers = False
 ''')
 if '--jobs' in sys.argv and (root/'MemoryCardB.USA.raw').is_file():
     config=user/'Config'/'Dolphin.ini';config.write_text(config.read_text().replace('SlotB = 255','SlotB = 1'))
+if '--online-play' in sys.argv:
+    if not os.environ.get('GITHUB_ACTIONS'):raise RuntimeError('Public online target qualification runs on the independent CI runner')
+    from dolphin_network import online_core_settings
+    config=user/'Config'/'Dolphin.ini';config.write_text(config.read_text().replace('SkipIPL = True','SkipIPL = True\n'+online_core_settings()))
 if '--save-cards' in sys.argv:
     mode=sys.argv[sys.argv.index('--save-cards')+1]
     config=user/'Config'/'Dolphin.ini';text=config.read_text()
@@ -2924,13 +2944,16 @@ DumpCodec = ffv1
 [Hacks]
 EFBToTextureEnable = False
 ''')
-if '--profile' in sys.argv or '--interaction-profile' in sys.argv or '--runtime-profile' in sys.argv or '--terrain-scroll' in sys.argv or '--lighting' in sys.argv or '--actor-shadows' in sys.argv or '--movement-profile' in sys.argv or '--stream-travel' in sys.argv or '--submissions' in sys.argv or '--aram-residency' in sys.argv or '--player-chat' in sys.argv or '--jobs' in sys.argv or '--villager-visuals' in sys.argv:
+if '--profile' in sys.argv or '--interaction-profile' in sys.argv or '--runtime-profile' in sys.argv or '--terrain-scroll' in sys.argv or '--lighting' in sys.argv or '--actor-shadows' in sys.argv or '--movement-profile' in sys.argv or '--stream-travel' in sys.argv or '--submissions' in sys.argv or '--aram-residency' in sys.argv or '--player-chat' in sys.argv or '--jobs' in sys.argv or '--villager-visuals' in sys.argv or '--online-play' in sys.argv:
     config=user/'Config'/'Dolphin.ini'
     config.write_text(config.read_text()+'\n[Movie]\nDumpFrames = True\nDumpFramesSilent = True\n')
     config=user/'Config'/'GFX.ini'
     config.write_text(config.read_text().replace('DumpCodec = ffv1','DumpCodec = ffv1\nDumpEncoder = ffv1\nDumpPixelFormat = bgr0'))
 (user/'Logs').mkdir(exist_ok=True)
 (user/'Config'/'Logger.ini').write_text('[Options]\nWriteToFile = True\nWriteToConsole = True\nVerbosity = 3\n[Logs]\nBOOT = True\nCORE = True\nPOWERPC = True\nOSREPORT = True\nOSREPORT_HLE = True\nDVDINTERFACE = True\n')
+if '--online-play' in sys.argv:
+    logger=user/'Config'/'Logger.ini'
+    logger.write_text(logger.read_text().replace('Verbosity = 3','Verbosity = 4')+'COMMON = True\nCONSOLE = True\nFRAMEDUMP = True\n')
 xvfb,env=start_display()
 def close_display():
     xvfb.terminate()
@@ -2941,18 +2964,41 @@ screenshot('display-ready.png') # Prove an actual X11 capture before booting.
 with (root/'emulator.log').open('w') as log:
     command=['/usr/games/dolphin-emu-nogui','-u',str(user),'-e',str(disc),'-v','OGL']
     if '--component-cable' in sys.argv:command+=['-C','SYSCONF.IPL.PGS=True']
-    p=subprocess.Popen(command,env=env,stdout=log,stderr=subprocess.STDOUT)
+    process_options={}
+    if '--online-play' in sys.argv:
+        from dolphin_debug import allow_shutdown_debugger
+        process_options['preexec_fn']=allow_shutdown_debugger
+    p=subprocess.Popen(command,env=env,stdout=log,stderr=subprocess.STDOUT,**process_options)
     try:
         if '--loading' in sys.argv:
             for n,seconds in enumerate((1,1,2,4,8,12,17)):
                 time.sleep(seconds);screenshot(f'loading-{n}.png')
-        elif any(flag in sys.argv for flag in ('--villager-visuals','--jobs','--aram-residency','--title-logo','--terrain-materials','--save-cards','--save-and-quit','--daylight-clock','--daylight-location','--player-chat')):wait_title()
+        elif any(flag in sys.argv for flag in ('--online-play','--villager-visuals','--jobs','--online-review','--aram-residency','--title-logo','--terrain-materials','--save-cards','--save-and-quit','--daylight-clock','--daylight-location','--player-chat')):wait_title()
         else:time.sleep(45)
         if p.poll() is not None:
             raise RuntimeError(f'Dolphin exited during boot ({p.returncode}); see {root / "emulator.log"}')
         screenshot('screen.png')
         if any(flag in sys.argv for flag in ('--title-menu','--title-load','--title-config','--title-update','--title-options','--title-options-load','--title-options-unsupported')):wait_title()
-        if '--jobs' in sys.argv:
+        if '--online-play' in sys.argv:
+            import importlib.util
+            online_spec=importlib.util.spec_from_file_location('online_play_smoke',str(Path(__file__).with_name('online-play-smoke.py')))
+            online_module=importlib.util.module_from_spec(online_spec);online_spec.loader.exec_module(online_module)
+            try:online_module.run(globals())
+            except BaseException:
+                from dolphin_debug import capture_native_stall
+                try:capture_native_stall(p,disc.parent/'native'/'.map',root/'online-native-stall.json')
+                except Exception as diagnostic_error:print('Online native diagnostic failed: '+type(diagnostic_error).__name__,flush=True)
+                raise
+            finally:
+                from dolphin_debug import trace_host_shutdown
+                with trace_host_shutdown(p,root/'online-host-shutdown.log'):
+                    online_shutdown=stop_dolphin(p,timeout_seconds=30)
+            online_module.finish(globals(),online_shutdown)
+        elif '--online-review' in sys.argv:
+            import importlib.util
+            review_spec=importlib.util.spec_from_file_location('online_review_smoke',str(Path(__file__).with_name('online-review-smoke.py')))
+            review_module=importlib.util.module_from_spec(review_spec);review_spec.loader.exec_module(review_module);review_module.run(globals())
+        elif '--jobs' in sys.argv:
             run_jobs(globals())
         elif '--player-chat' in sys.argv:player_chat()
         elif '--daylight-location' in sys.argv:daylight_location()

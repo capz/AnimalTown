@@ -84,7 +84,9 @@ internal static class DepotPackageChecks
             File.WriteAllText(Path.Combine(disc,"mbedTLS-LICENSE.txt"),"mbedTLS fixture");
             Reject(()=>DepotPackage.Payload(disc),"reject a partial set of networking notices");
             File.WriteAllText(Path.Combine(disc,"Jitterentropy-LICENSE.txt"),"Jitterentropy fixture");
-            var networkingNotices=new[]{"mbedTLS-LICENSE.txt","Jitterentropy-LICENSE.txt"};
+            Reject(()=>DepotPackage.Payload(disc),"reject a networking installation without trust roots");
+            File.WriteAllText(Path.Combine(disc,"online-roots.pem"),"trust root fixture");File.WriteAllText(Path.Combine(disc,"online-roots.txt"),"root provenance fixture");
+            var networkingNotices=new[]{"mbedTLS-LICENSE.txt","Jitterentropy-LICENSE.txt","online-roots.pem","online-roots.txt"};
             foreach(string name in networkingNotices)File.Copy(Path.Combine(disc,name),Path.Combine(notices,name));
             string pairingZip=Path.Combine(root,"pairing-depot.zip");
             DepotPackage.Build(root,pairingZip);
@@ -146,6 +148,7 @@ internal static class DepotPackageChecks
             reportFiles.Add("scenarios/jobs/jobs-delivery-state.json",JsonSerializer.SerializeToUtf8Bytes(new{mode="delivery",passed=true}));
             reportFiles.Add("scenarios/villager-visuals/visuals-world-0-11.png",new byte[]{137,80,78,71,13,10,26,10});
             reportFiles.Add("scenarios/villager-visuals/villager-visuals-report.json",JsonSerializer.SerializeToUtf8Bytes(new{scenario="villager-visuals",passed=true}));
+            reportFiles.Add("scenarios/online/online-play-report.json",JsonSerializer.SerializeToUtf8Bytes(new{scenario="online-play",passed=true,physical_hardware=false}));
             foreach(string phase in new[]{"noon","dawn","dusk","night"}){
                 reportFiles.Add("daylight-"+phase+"-report.json",JsonSerializer.SerializeToUtf8Bytes(new{passed=true}));
                 foreach(string shot in new[]{"a","b"})reportFiles.Add("daylight-"+phase+"-"+shot+".png",new byte[]{137,80,78,71,13,10,26,10});

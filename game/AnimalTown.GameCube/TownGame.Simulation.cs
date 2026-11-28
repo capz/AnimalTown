@@ -14,6 +14,9 @@ internal sealed partial class TownGame
 
     internal void Step(ControllerState pad)
     {
+#if ANIMALTOWN_ONLINE_PLAY
+        if(session.Online!=null){OnlineStep(pad);return;}
+#endif
         if(resourcesReady)RefreshResidencyDemand(Clock.Timestamp);
         if(!resourcesReady||room==0&&!terrain.Ready){playerRunning=false;runningMinimap.Update(Clock.Timestamp,false,false);return;}
         bool running=false;float beforeX=state.X,beforeZ=state.Z;

@@ -46,9 +46,9 @@ runs:
 
         plan=json.loads(Path('out/validation-plan.json').read_text())
         individual={'title-logo':'title_logo','video-options':'video_options','save-and-quit':'save_quit',
-                    'terrain-materials':'terrain_materials','daylight':'daylight','villager-visuals':'villager_visuals'}
+                    'terrain-materials':'terrain_materials','daylight':'daylight','villager-visuals':'villager_visuals','online-play':'online_play'}
         card_modes=('slot-b','choose-b','without-saving','no-card')
-        job_modes=('delivery','mail','helipad')
+        job_modes=('delivery','mail','helipad','online-review')
         allowed=set(individual)|{f'card-{mode}' for mode in card_modes}|{f'job-{mode}' for mode in job_modes}
         selected=plan.get('emulator')
         if plan.get('schema')!=3 or not isinstance(selected,list) or not all(isinstance(name,str) for name in selected):
@@ -141,8 +141,51 @@ runs:
       if: ${{ !cancelled() && steps.candidate.outcome == 'success' && steps.selection.outputs.dolphin == 'true' }}
       shell: bash
       run: timeout --kill-after=30s 15m docker build -t animaltown-dolphin-test -f build/Dockerfile.dolphin build
+    - name: Verify shutdown diagnostics preserve process exit status
+      if: ${{ !cancelled() && steps.dolphin.outcome == 'success' && steps.selection.outputs.online_play == 'true' }}
+      shell: bash
+      run: |
+        docker run --rm --init --cap-add=SYS_PTRACE --user "$(id -u):$(id -g)" \
+          --mount "type=bind,src=$PWD,dst=/work" -w /work \
+          animaltown-dolphin-test python3 tests/dolphin-shutdown.py
+    - name: Restore host ownership for online target checks
+      if: ${{ !cancelled() && steps.dolphin.outcome == 'success' && steps.selection.outputs.online_play == 'true' }}
+      shell: bash
+      run: |
+        # The console builder runs as root; the host SDK needs writable NuGet
+        # intermediates and output folders for its disposable online fixture.
+        sudo chown -R "$(id -u):$(id -g)" out
+        find shared server tests tools game -type d \( -name bin -o -name obj \) -prune \
+          -exec sudo chown -R "$(id -u):$(id -g)" {} +
+    - uses: actions/setup-dotnet@v4
+      if: ${{ !cancelled() && steps.dolphin.outcome == 'success' && steps.selection.outputs.online_play == 'true' }}
+      with:
+        global-json-file: global.json
+    - name: Qualify real GameCube SDK HTTPS and WSS on Dolphin
+      id: sdk-online
+      if: ${{ !cancelled() && steps.dolphin.outcome == 'success' && steps.selection.outputs.online_play == 'true' }}
+      shell: pwsh
+      env:
+        BUILD_VERSION: ${{ inputs.version }}
+        GH_TOKEN: ${{ github.token }}
+      run: ./tests/server-integration.ps1 -PublicTunnel -DolphinIso "out/AnimalTown-$env:BUILD_VERSION.nkit.iso"
+    - name: Keep redacted online Dolphin evidence
+      if: always() && steps.selection.outputs.online_play == 'true'
+      uses: actions/upload-artifact@v4
+      with:
+        name: online-dolphin-${{ inputs.commit }}-${{ steps.sdk-online.outcome }}
+        path: |
+          out/online-dolphin/*.json
+          out/online-dolphin/*.log
+          out/online-dolphin/emulator/*.json
+          out/online-dolphin/emulator/*.png
+          out/online-dolphin/emulator/*.log
+          out/online-dolphin/emulator/*.txt
+        if-no-files-found: warn
+    # Surface a failed required SDK scenario without waiting for the remaining
+    # emulator cases. Its redacted diagnostics above are retained on failure.
     - name: Verify villager visual swaps in Dolphin
-      if: ${{ !cancelled() && steps.dolphin.outcome == 'success' && steps.selection.outputs.villager_visuals == 'true' }}
+      if: ${{ !cancelled() && steps.dolphin.outcome == 'success' && steps.sdk-online.outcome != 'failure' && steps.selection.outputs.villager_visuals == 'true' }}
       env:
         BUILD_VERSION: ${{ inputs.version }}
       shell: bash
@@ -175,7 +218,7 @@ runs:
           out/villager-visuals/user/Logs/
         if-no-files-found: ignore
     - name: Capture and verify title branding in Dolphin
-      if: ${{ !cancelled() && steps.dolphin.outcome == 'success' && steps.selection.outputs.title_logo == 'true' }}
+      if: ${{ !cancelled() && steps.dolphin.outcome == 'success' && steps.sdk-online.outcome != 'failure' && steps.selection.outputs.title_logo == 'true' }}
       env:
         BUILD_VERSION: ${{ inputs.version }}
       shell: bash
@@ -211,7 +254,7 @@ runs:
           out/title-logo/user/Logs/
         if-no-files-found: warn
     - name: Verify video options, smoothing persistence and deletion controls in Dolphin
-      if: ${{ !cancelled() && steps.dolphin.outcome == 'success' && steps.selection.outputs.video_options == 'true' }}
+      if: ${{ !cancelled() && steps.dolphin.outcome == 'success' && steps.sdk-online.outcome != 'failure' && steps.selection.outputs.video_options == 'true' }}
       env:
         BUILD_VERSION: ${{ inputs.version }}
       shell: bash
@@ -253,7 +296,7 @@ runs:
           out/video-options/*/user/Logs/
         if-no-files-found: warn
     - name: Verify Save & Quit and reloading the town in Dolphin
-      if: ${{ !cancelled() && steps.dolphin.outcome == 'success' && steps.selection.outputs.save_quit == 'true' }}
+      if: ${{ !cancelled() && steps.dolphin.outcome == 'success' && steps.sdk-online.outcome != 'failure' && steps.selection.outputs.save_quit == 'true' }}
       env:
         BUILD_VERSION: ${{ inputs.version }}
       shell: bash
@@ -277,7 +320,7 @@ runs:
           out/save-and-quit/user/Logs/
         if-no-files-found: warn
     - name: Capture terrain mip bands and water animation in Dolphin
-      if: ${{ !cancelled() && steps.dolphin.outcome == 'success' && steps.selection.outputs.terrain_materials == 'true' }}
+      if: ${{ !cancelled() && steps.dolphin.outcome == 'success' && steps.sdk-online.outcome != 'failure' && steps.selection.outputs.terrain_materials == 'true' }}
       env:
         BUILD_VERSION: ${{ inputs.version }}
       shell: bash
@@ -313,7 +356,7 @@ runs:
           out/terrain-materials/user/Logs/
         if-no-files-found: warn
     - name: Verify memory-card selection and temporary play in Dolphin
-      if: ${{ !cancelled() && steps.dolphin.outcome == 'success' && steps.selection.outputs.cards != '' }}
+      if: ${{ !cancelled() && steps.dolphin.outcome == 'success' && steps.sdk-online.outcome != 'failure' && steps.selection.outputs.cards != '' }}
       env:
         BUILD_VERSION: ${{ inputs.version }}
         CARD_SCENARIOS: ${{ steps.selection.outputs.cards }}
@@ -343,7 +386,7 @@ runs:
           out/memory-cards/*/user/Logs/
         if-no-files-found: warn
     - name: Verify day, dawn, dusk and night lighting in Dolphin
-      if: ${{ !cancelled() && steps.dolphin.outcome == 'success' && steps.selection.outputs.daylight == 'true' }}
+      if: ${{ !cancelled() && steps.dolphin.outcome == 'success' && steps.sdk-online.outcome != 'failure' && steps.selection.outputs.daylight == 'true' }}
       env:
         BUILD_VERSION: ${{ inputs.version }}
       shell: bash
@@ -383,14 +426,14 @@ runs:
           out/daylight/*/user/Logs/
         if-no-files-found: warn
     - name: Verify actual job controls and committed results in Dolphin
-      if: ${{ !cancelled() && steps.dolphin.outcome == 'success' && steps.selection.outputs.jobs != '' }}
+      if: ${{ !cancelled() && steps.dolphin.outcome == 'success' && steps.sdk-online.outcome != 'failure' && steps.selection.outputs.jobs != '' }}
       env:
         BUILD_VERSION: ${{ inputs.version }}
         JOB_MODES: ${{ steps.selection.outputs.jobs }}
         ANIMALTOWN_BUILD_IMAGE: ${{ inputs.build-image }}
       shell: bash
       run: |
-        timeout --kill-after=30s 25m bash -e -o pipefail <<'SCENARIO'
+        timeout --kill-after=30s 30m bash -e -o pipefail <<'SCENARIO'
         mkdir -p out/jobs/template
         docker run --rm --init --shm-size=512m --user "$(id -u):$(id -g)" \
           --mount "type=bind,src=$PWD,dst=/work" -w /work \
@@ -405,6 +448,13 @@ runs:
           if [ "$mode" = helipad ]; then
             python3 tools/profile-card-fixture.py out/jobs/template/MemoryCardA.USA.raw \
               out/job-fixtures/helipad-destination out/jobs/helipad/MemoryCardB.USA.raw
+          fi
+          if [ "$mode" = online-review ]; then
+            docker run --rm --init --shm-size=512m --user "$(id -u):$(id -g)" \
+              --mount "type=bind,src=$PWD,dst=/work" -w /work \
+              animaltown-dolphin-test python3 tools/iso-smoke.py \
+              "out/AnimalTown-$BUILD_VERSION.nkit.iso" "out/jobs/$mode" --online-review --season summer --dsp-hle --component-cable
+            continue
           fi
           docker run --rm --init --shm-size=512m --user "$(id -u):$(id -g)" \
             --mount "type=bind,src=$PWD,dst=/work" -w /work \

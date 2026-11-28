@@ -9,12 +9,18 @@ using Dolphin.Timing;
 
 internal static class ModelStartup
 {
-    internal static int SpeciesAt(int selected,int progress)
+    internal static int SpeciesAt(int selected,int progress,int requiredMask=0)
     {
-        if(selected<0||selected>=ModelResidencyDemand.SpeciesCount||progress<0||progress>=ModelResidencyDemand.SpeciesCount)
+        if(selected<0||selected>=ModelResidencyDemand.SpeciesCount||progress<0||progress>=ModelResidencyDemand.SpeciesCount||(requiredMask&~63)!=0)
             throw new ArgumentOutOfRangeException("species");
         if(progress==0)return selected;
-        int species=progress-1;return species>=selected?species+1:species;
+        // Prepare pageable species while transient load headroom is available.
+        // The next startup checkpoint moves them to ARAM before the visible
+        // cohort fills MEM1. Loading them last can deadlock a dense saved view.
+        int rank=progress-1;
+        for(int required=0;required<2;required++)for(int species=0;species<ModelResidencyDemand.SpeciesCount;species++)
+            if(species!=selected&&((requiredMask>>species)&1)==required&&rank--==0)return species;
+        throw new InvalidOperationException("Invalid startup species order");
     }
     internal static ModelInstance? ReservePlayer(int selected,int species,Model model)
         =>species==selected?model.CreateInstance(ModelMemoryPlan.MaximumInstanceBytes):null;
@@ -53,6 +59,7 @@ internal sealed class ModelResidency
     private bool restoring,cancelRequested,hadBacking,stopped;
     private bool outdoors;
     internal bool Enabled=true;
+    internal int OnlineSpeciesMask=0;
     internal int Demotions,Restores,Cancellations,Failures,BackingReleases;
     internal int WorkSteps,MaxAdvanceUs,MaxAdmissionUs,ReadinessWaits,PortalWaits;
     internal long AdvanceUs,AdmissionUs,SnapshotBytes,RestoredBytes;
@@ -108,12 +115,15 @@ internal sealed class ModelResidency
         outdoors=state.Space==0;
         bool urgent=Memory?.WaitingPeakBytes>0;
         demand.Prepare(state,doors,pinAll||!Enabled,targetSpace,Memory?.UnderPressure==true,urgent);
+        for(int i=0;i<models.Length;i++)if((OnlineSpeciesMask&(1<<i))!=0)demand.Required[i]=true;
         byte otherPriority=3;
         for(int i=0;i<models.Length;i++){
             if(demand.Required[i])lastRequired[i]=now;
             priority[i]=3;
             if(demand.Required[i]&&!Ready(i)){
-                bool visible=ModelResidencyDemand.DrawableUsesSpace(state,doors,i,state.Space)||
+                // Nearby humans need their shared model even when no NPC of
+                // that species is visible. They are foreground demand too.
+                bool visible=(OnlineSpeciesMask&(1<<i))!=0||ModelResidencyDemand.DrawableUsesSpace(state,doors,i,state.Space)||
                     demand.DestinationSpace>=0&&ModelResidencyDemand.DrawableUsesSpace(state,doors,i,demand.DestinationSpace);
                 bool imminent=visible||ModelResidencyDemand.ImminentUsesSpace(state,doors,i,state.Space)||
                     demand.DestinationSpace>=0&&ModelResidencyDemand.ImminentUsesSpace(state,doors,i,demand.DestinationSpace);

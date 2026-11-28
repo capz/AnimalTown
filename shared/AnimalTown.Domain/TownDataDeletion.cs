@@ -14,7 +14,8 @@ public static class TownDataDeletion
 {
     public const string Marker="AT-DeleteTown";
     public static bool IsCredentialFile(string name)=>name==OnlineCredentialStore.Bank0||name==OnlineCredentialStore.Bank1;
-    private static bool IsTownData(string name)=>SplitSaveCodec.IsFile(name)||IsCredentialFile(name);
+    public static bool IsOnlineFile(string name)=>IsCredentialFile(name)||name==Online.OnlineTravelStore.Bank0||name==Online.OnlineTravelStore.Bank1;
+    private static bool IsTownData(string name)=>SplitSaveCodec.IsFile(name)||IsOnlineFile(name);
     public static bool Pending(string[] names)
     {foreach(string name in names)if(name==Marker)return true;return false;}
     public static void Erase(ITownDataFiles files)

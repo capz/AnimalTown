@@ -1,5 +1,6 @@
 using AnimalTown;
 using AnimalTown.Jobs;
+using AnimalTown.Online;
 using System.IO.Compression;
 using System.Security.Cryptography;
 using System.Text.Json;
@@ -9,9 +10,21 @@ using System.Text.Json;
 internal static class JobFixture
 {
     private sealed class Disk:ISaveStorage
-    {internal readonly Dictionary<string,byte[]> Files=new();public byte[] Read(string name)=>Files.TryGetValue(name,out var b)?(byte[])b.Clone():throw new IOException();public void Write(string name,byte[] bytes)=>Files[name]=(byte[])bytes.Clone();}
+    {internal readonly Dictionary<string,byte[]> Files=new();public byte[] Read(string name)=>Files.TryGetValue(name,out var b)?(byte[])b.Clone():throw new FileNotFoundException();public void Write(string name,byte[] bytes)=>Files[name]=(byte[])bytes.Clone();}
     internal static void Write(string output,string mode)
     {
+        if(mode=="online-review")
+        {
+            Write(output,"helipad");var reviewDisk=ReadFixture(output);var repository=new SaveRepository(reviewDisk);var home=repository.Load()!;
+            using var export=repository.OpenCheckpointExport(home);using var hash=IncrementalHash.CreateHash(HashAlgorithmName.SHA256);var buffer=new byte[16384];int count;
+            while((count=export.Read(buffer,0,buffer.Length))!=0)hash.AppendData(buffer,0,count);
+            string fingerprint=Convert.ToHexString(hash.GetHashAndReset());
+            var ready=new OnlineTravelRecord("https://review-fixture.invalid",home.Town.Jobs.TownId.ToString("X16"),"11111111-1111-4111-8111-111111111111","22222222-2222-4222-8222-222222222222",1,home.ActiveProfile,OnlineTravelPhase.Ready,fingerprint);
+            new OnlineTravelStore(reviewDisk).Save(null,ready);
+            foreach(var file in reviewDisk.Files)File.WriteAllBytes(Path.Combine(output,file.Key),file.Value);
+            File.WriteAllText(Path.Combine(output,"online-review.json"),JsonSerializer.Serialize(new{mode,home.Sequence,town=ready.Town,ready.Fingerprint,network="Cancel the closure preview before confirming; this fixture has no service or credentials."},new JsonSerializerOptions{WriteIndented=true}));
+            Console.WriteLine("Disposable linked-card fixture for the real closure preview; cancel before contacting any service.");return;
+        }
         if(mode is "maximum-economy" or "maximum-economy-destination"){
             bool otherTown=mode.EndsWith("-destination");Write(output,otherTown?"destination":"base-travel");
             var fullDisk=ReadFixture(output);var fullRepository=new SaveRepository(fullDisk);var fullState=fullRepository.Load()!;var fullLedger=fullState.Town.Jobs;long fullNow=fullLedger.Watermark;

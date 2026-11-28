@@ -9,7 +9,7 @@ $plan=Get-Content -LiteralPath $ValidationPlan -Raw|ConvertFrom-Json
 if($plan.schema -ne 3 -or $plan.commit -ne (& git rev-parse HEAD).Trim()){throw 'Test plan must match this source commit'}
 if($PlanOnly){return}
 # Managed/backend/docs checks do not need a GameCube SDK restore or native copy.
-if(@($plan.native | Where-Object {$_ -in @('texture','voices','shadows','patched','content','jobs')}).Count){. ./tools/resolve-packages.ps1}
+if(@($plan.native | Where-Object {$_ -in @('texture','voices','shadows','patched','content','jobs','online')}).Count){. ./tools/resolve-packages.ps1}
 function Run([string]$file,[string[]]$arguments){& $file @arguments;if($LASTEXITCODE){throw "$file checks failed"}}
 if($plan.rendering.Count){Run dotnet @('run','--project','tests/AnimalTown.RenderingChecks','-c','Release','--','--suites',($plan.rendering -join ','))}
 if($plan.managed.Count){Run dotnet @('run','--project','tests/AnimalTown.Checks','-c','Release','--','--suites',($plan.managed -join ','))}
@@ -31,6 +31,7 @@ if($plan.tooling.Count){
 }
 $commands=@{
     helipad='python3 tools/helipad-vector.py --check'
+    online='python3 tests/native-online.py'
     jobs='cc -std=c11 -D_DEFAULT_SOURCE -Wall -Wextra -Werror tests/native-job-calendar.c -o /tmp/animaltown-job-calendar && /tmp/animaltown-job-calendar && python3 tests/native-jobs.py'
     content='python3 tests/native-content-startup.py'
     card='cc -std=c11 -Wall -Wextra -Werror tests/native-card-read.c -o /tmp/animaltown-card-read && /tmp/animaltown-card-read && cc -std=c11 -Wall -Wextra -Werror tests/native-card-mount.c -o /tmp/animaltown-card-mount && /tmp/animaltown-card-mount && cc -std=c11 -Wall -Wextra -Werror -Ivendor/card-store-sdk/include vendor/card-store-sdk/tests/card_blocks_test.c -o /tmp/animaltown-card-blocks && /tmp/animaltown-card-blocks'
@@ -40,6 +41,7 @@ $commands=@{
     'frame-profile'='python3 tests/frame-profile-streaming.py'
     'release-bundle'='python3 tests/release-bundle.py'
     'water-smoke'='python3 tests/water-optics-smoke.py'
+    'dolphin-network'='python3 tests/dolphin-network.py'
     'path-study'='python3 -m py_compile tools/path-study.py'
     shadows='cc -std=c11 -Wall -Wextra -Werror -Iout/sdk-native/include tests/native-path-mask.c -o /tmp/animaltown-path-mask && /tmp/animaltown-path-mask && cc -std=c11 -Wall -Wextra -Werror tests/native-shadow-union.c -lm -o /tmp/animaltown-shadow-union && /tmp/animaltown-shadow-union && cc -std=c11 -Wall -Wextra -Werror -Iout/sdk-native/include tests/native-shadow-lifecycle.c -lm -o /tmp/animaltown-shadow-lifecycle && /tmp/animaltown-shadow-lifecycle'
 }
@@ -49,6 +51,12 @@ if('content' -in $plan.native){
         Run dotnet @('build','tests/AnimalTown.ContentSmoke','-c','Release',"-p:DepotProfile=$isDepotSmoke",'-p:RestoreLockedMode=true','-v','quiet')
         Run dotnet @("$sdkRoot/tools/compiler/DolphinDotNet.Compiler.dll",'--aot',"tests/AnimalTown.ContentSmoke/bin/Release/$contentSmokeProfile/net8.0/AnimalTown.ContentSmoke.dll","out/content-startup-$contentSmokeProfile.c")
     }
+}
+if('online' -in $plan.native){
+    Run dotnet @('build','tests/AnimalTown.OnlineSmoke','-c','Release','-p:OnlineRootConnection=true','-p:RestoreLockedMode=true','-v','quiet')
+    Run dotnet @("$sdkRoot/tools/compiler/DolphinDotNet.Compiler.dll",'--aot','tests/AnimalTown.OnlineSmoke/bin/Release/net8.0/AnimalTown.OnlineSmoke.dll','out/online-connection-smoke.c')
+    Run dotnet @('build','tests/AnimalTown.OnlineSmoke','-c','Release','-p:OnlineRootConnection=false','-p:RestoreLockedMode=true','-v','quiet')
+    Run dotnet @("$sdkRoot/tools/compiler/DolphinDotNet.Compiler.dll",'--aot','tests/AnimalTown.OnlineSmoke/bin/Release/net8.0/AnimalTown.OnlineSmoke.dll','out/online-smoke.c')
 }
 if('jobs' -in $plan.native){
     Run dotnet @('build','tests/AnimalTown.JobSmoke','-c','Release','-p:RestoreLockedMode=true','-v','quiet')

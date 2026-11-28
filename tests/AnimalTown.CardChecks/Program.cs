@@ -267,6 +267,7 @@ Check(travelReloaded.Town.Jobs.Watermark==checkpointTime+1&&travelReloaded.Walle
 VideoOptionsChecks.Run(Check);
 EdgeSmoothingStorageChecks.Run(Check);
 CardSelectionChecks.Run(Check);
+OnlineRecoveryChecks.Run(Check);
 // Retire only the older record-store checkpoint, after publishing a second
 // verified copy of the unchanged current directory. No larger backing is needed.
 card=new MemoryCard();var compactRecords=new TownCardRecords(new NativeCardBlocks(4,true,banner,icon,"AnimalTown",6),true);

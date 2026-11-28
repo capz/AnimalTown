@@ -94,9 +94,9 @@ internal static class DepotPackage
     }
     private static string[] NetworkingNoticesIn(string directory)
     {
-        string[] names={"mbedTLS-LICENSE.txt","Jitterentropy-LICENSE.txt"};
+        string[] names={"mbedTLS-LICENSE.txt","Jitterentropy-LICENSE.txt","online-roots.pem","online-roots.txt"};
         var present=names.Where(name=>File.Exists(At(directory,name))).ToArray();
-        if(present.Length==1)throw new InvalidDataException("Incomplete native networking notices");
+        if(present.Length!=0&&present.Length!=names.Length)throw new InvalidDataException("Incomplete native networking notices/trust roots");
         return present;
     }
     private static void VerifyBuild(string root,Identity id)
@@ -194,7 +194,7 @@ internal static class DepotPackage
             string name=property.Name;
             bool allowed=fixedNames.Split('|').Contains(name)||name=="daylight-build.json"||Regex.IsMatch(name,@"\Adaylight-(noon|dawn|dusk|night)-(a\.png|b\.png|report\.json)\z")||Regex.IsMatch(name,@"\Aterrain-materials-[a-z0-9-]+\.png\z")||
                 Regex.IsMatch(name,@"\Avideo-options-(build|smoothing-aa-option|options-title-options(-load)?|unsupported-title-options-unsupported)\.json\z")||Regex.IsMatch(name,@"\Avideo-options-(smoothing|options|unsupported)-[a-z0-9-]+\.png\z")||
-                Regex.IsMatch(name,@"\Ascenarios/(cliff-hud|gpu-submit|performance|jobs|villager-visuals)/[^/\\:]+\.(png|json|txt|log|avi)\z");
+                Regex.IsMatch(name,@"\Ascenarios/(cliff-hud|gpu-submit|performance|jobs|villager-visuals|online)/[^/\\:]+\.(png|json|txt|log|avi)\z");
             if(!allowed||!seen.Add(name))throw new InvalidDataException("Source or unsupported release report: "+name);
             var entry=archive.GetEntry("release/"+name)??throw new InvalidDataException("Missing release report: "+name);
             using var input=entry.Open();if(Convert.ToHexString(SHA256.HashData(input)).ToLowerInvariant()!=property.Value.GetString())throw new InvalidDataException("Release report checksum mismatch: "+name);

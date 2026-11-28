@@ -310,22 +310,23 @@ int main(int argc,char **argv){
     light_checks();
     light_equivalence_checks();
     static_base_equivalence_checks();
-    CHECK(SU_PAGES*SU_BASE_BYTES==80*1024);
-    CHECK(SU_PAGES*(SU_BASE_BYTES+SU_BYTES)+SU_TERRAIN_BYTES*2==304*1024);
+    CHECK(SU_PAGES*SU_BASE_BYTES==84*1024);
+    CHECK(SU_PAGES*(SU_BASE_BYTES+SU_BYTES)+SU_TERRAIN_BYTES*2==316*1024);
     reset();caster(0,0,rect,6,bounds);su_prepare(s,SU_PAGES);CHECK(pixel(4,4)==SU_OPACITY);
     uint8_t original[SU_BYTES];int page=su_find(s,0,0);memcpy(original,s->pixels+page*SU_BYTES,SU_BYTES);
     for(int i=1;i<32;i++)caster(i,i%4,rect,6,bounds);
     su_prepare(s,SU_PAGES);CHECK(memcmp(original,s->pixels+page*SU_BYTES,SU_BYTES)==0);
     /* Duplicate trees/houses and opaque moving circles cannot compound. */
-    for(int i=32;i<39;i++)caster(i,4,rect,6,bounds);
+    for(int i=32;i<SU_CASTERS;i++)caster(i,4,rect,6,bounds);
+    CHECK(s->caster[40].count==6&&s->caster[41].count==6);
     su_prepare(s,SU_PAGES);CHECK(pixel(4,4)==SU_OPACITY);
     for(int i=0;i<SU_BYTES;i++)CHECK(s->pixels[page*SU_BYTES+i]<=SU_OPACITY);
     /* Idling does not republish or rasterize mask pages. */
-    next();for(int i=32;i<39;i++)su_active(s,i,1,4,4);su_prepare(s,SU_PAGES);CHECK(s->changed==0);
+    next();for(int i=32;i<SU_CASTERS;i++)su_active(s,i,1,4,4);su_prepare(s,SU_PAGES);CHECK(s->changed==0);
     /* Remove scenery, move every circle, and verify the previous footprint
      * is restored from the static cache rather than leaving dark trails. */
     for(int i=0;i<32;i++)su_active(s,i,0,0,0);
-    next();for(int i=32;i<39;i++)su_active(s,i,1,6,6);su_prepare(s,SU_PAGES);CHECK(pixel(4,4)==0);CHECK(pixel(6,6)==SU_OPACITY);
+    next();for(int i=32;i<SU_CASTERS;i++)su_active(s,i,1,6,6);su_prepare(s,SU_PAGES);CHECK(pixel(4,4)==0);CHECK(pixel(6,6)==SU_OPACITY);
     next();su_prepare(s,SU_PAGES);CHECK(pixel(6,6)==0);
     /* Soft masks merge by maximum, independently of caster draw order. */
     reset();memset(s->shapes,128,4096);memset(s->shapes+4096,192,4096);

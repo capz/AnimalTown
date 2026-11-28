@@ -7,13 +7,22 @@ public interface IOnlinePoseStream
     int TryWrite(byte[] buffer, int offset, int count);
 }
 
-public sealed class OnlinePosePump
+public interface IOnlineMessageSink
+{
+    // Called synchronously with borrowed bytes, valid only until the next read.
+    bool Apply(OnlineFrameHeader header, byte[] bytes, int offset, int count);
+}
+
+public sealed class OnlinePosePump : IDisposable
 {
     const int IoSteps = 4, MoveInterval = 50, HeartbeatInterval = 5000;
     const int SilentLimit = 15000, PoseHold = 1000;
     readonly IOnlinePoseStream stream;
-    readonly byte[] input = new byte[OnlineWire.HeaderSize + 512];
-    readonly byte[] output = new byte[OnlineWire.HeaderSize + OnlineWire.GameplayTicketSize];
+    readonly IOnlineMessageSink? messages;
+    readonly byte[] pending = new byte[OnlineWire.HeaderSize + OnlineWire.MaxPayloadSize];
+    int pendingLength;
+    readonly byte[] input = new byte[OnlineWire.HeaderSize + OnlineWire.MaxPayloadSize];
+    readonly byte[] output = new byte[OnlineWire.HeaderSize + OnlineWire.MaxPayloadSize];
     readonly OnlineActorPosition[] actors = new OnlineActorPosition[OnlineWire.ActorCount];
     readonly long[] updated = new long[OnlineWire.ActorCount];
     readonly bool[] visible = new bool[OnlineWire.ActorCount];
@@ -29,11 +38,11 @@ public sealed class OnlinePosePump
     public bool Reviewing { get; private set; }
     public bool Closed { get; private set; }
 
-    public OnlinePosePump(IOnlinePoseStream stream, byte[] ticket, long now)
+    public OnlinePosePump(IOnlinePoseStream stream, byte[] ticket, long now, IOnlineMessageSink? messages = null)
     {
         if (ticket.Length != OnlineWire.GameplayTicketSize)
             throw new ArgumentException("The gameplay ticket has an invalid size.");
-        this.stream = stream;
+        this.stream = stream; this.messages = messages;
         lastReceived = now;
         sendLength = OnlineWire.HeaderSize + ticket.Length;
         OnlineWire.TryWriteHeader(output, 0, output.Length,
@@ -42,6 +51,26 @@ public sealed class OnlinePosePump
     }
 
     public void SetInput(OnlineMovementInput value) => desired = value;
+    public void Dispose()
+    {
+        Closed = true; desired = default;
+        Array.Clear(pending, 0, pending.Length); Array.Clear(input, 0, input.Length); Array.Clear(output, 0, output.Length);
+        Array.Clear(actors, 0, actors.Length); Array.Clear(visible, 0, visible.Length); Array.Clear(updated, 0, updated.Length);
+        pendingLength = sendLength = sent = received = 0;
+    }
+    public bool Queue(OnlineFrameType type, byte[] payload, int offset, int count, out uint sequence)
+    {
+        sequence = 0;
+        if (Closed || Epoch == 0 || pendingLength != 0 || nextSequence == uint.MaxValue ||
+            type is not (OnlineFrameType.Command or OnlineFrameType.BulkPage) ||
+            payload is null || offset < 0 || count < 0 || offset > payload.Length - count ||
+            Reviewing && LocalSlot != 0) return false;
+        uint candidate = nextSequence + 1;
+        if (!OnlineWire.TryWriteHeader(pending, 0, pending.Length, new OnlineFrameHeader(type, count, Epoch, candidate))) return false;
+        Array.Copy(payload, offset, pending, OnlineWire.HeaderSize, count);
+        pendingLength = OnlineWire.HeaderSize + count; nextSequence = sequence = candidate;
+        return true;
+    }
 
     public bool TryGetActor(byte slot, long now, out OnlineActorPosition position)
     {
@@ -82,6 +111,7 @@ public sealed class OnlinePosePump
                 if (received != needed) continue;
             }
             if (!Apply(now)) { Closed = true; return; }
+            Array.Clear(input, 0, needed);
             lastReceived = now;
             received = 0;
             needed = OnlineWire.HeaderSize;
@@ -114,6 +144,10 @@ public sealed class OnlinePosePump
                 updated[position.Slot] = now;
                 visible[position.Slot] = true;
                 return true;
+            case OnlineFrameType.ReliableEvent:
+            case OnlineFrameType.SnapshotPage:
+            case OnlineFrameType.BulkPage:
+                return messages != null && messages.Apply(incoming, input, OnlineWire.HeaderSize, incoming.PayloadLength);
             default:
                 return false;
         }
@@ -134,6 +168,11 @@ public sealed class OnlinePosePump
                         new OnlineFrameHeader(OnlineFrameType.Heartbeat, 0, Epoch, 0));
                     sendLength = OnlineWire.HeaderSize;
                     nextHeartbeat = now + HeartbeatInterval;
+                }
+                else if (pendingLength != 0)
+                {
+                    Array.Copy(pending, output, pendingLength); sendLength = pendingLength;
+                    Array.Clear(pending, 0, pendingLength); pendingLength = 0;
                 }
                 else if (!Reviewing && now >= nextMove)
                 {

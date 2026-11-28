@@ -16,6 +16,12 @@ using var linkApprovals=PartitionedRateLimiter.Create<Guid,Guid>(player=>RateLim
 builder.Services.AddRateLimiter(o=>
 {
     o.RejectionStatusCode=429;
+    o.OnRejected=(context,_)=>
+    {
+        if(context.Lease.TryGetMetadata(MetadataName.RetryAfter,out var retryAfter))
+            context.HttpContext.Response.Headers.RetryAfter=Math.Max(1,(int)Math.Ceiling(retryAfter.TotalSeconds)).ToString(System.Globalization.CultureInfo.InvariantCulture);
+        return ValueTask.CompletedTask;
+    };
     o.GlobalLimiter=PartitionedRateLimiter.Create<HttpContext,string>(c=>RateLimitPartition.GetFixedWindowLimiter(ConnectionAddress(c),_=>MinuteLimit(90)));
     o.AddPolicy("device-link-start",c=>RateLimitPartition.GetFixedWindowLimiter(ConnectionAddress(c),_=>MinuteLimit(12)));
     o.AddPolicy("device-link-approve",c=>RateLimitPartition.GetFixedWindowLimiter(ConnectionAddress(c),_=>MinuteLimit(20)));
@@ -26,9 +32,12 @@ var db=new GameDatabase(data);await db.Initialize();
 builder.Services.AddSingleton(db);
 builder.Services.AddSingleton<LiveTownTransport>();
 builder.Services.AddHostedService(service=>service.GetRequiredService<LiveTownTransport>());
+if(builder.Configuration.GetValue<bool>("OnlineGameplay:EnablePlay"))builder.Services.AddHostedService<HostedSimulation>();
 var app=builder.Build();
 var gameplay=app.Services.GetRequiredService<LiveTownTransport>();db.LiveTransport=gameplay;
+app.MapOnlineSettlement(db);
 app.UseRateLimiter();
+app.UseWebSockets(new WebSocketOptions { KeepAliveInterval = TimeSpan.FromSeconds(10), KeepAliveTimeout = TimeSpan.FromSeconds(15) });
 app.Use(async(context,next)=>
 {
     try
@@ -60,7 +69,9 @@ app.Use(async(context,next)=>
     catch(PostgresException e) when(e.SqlState=="23505"){context.Response.StatusCode=409;await context.Response.WriteAsJsonAsync(new{error="conflict"});}
 });
 Guid Me(HttpContext c)=>(Guid)c.Items["player"]!;
+app.MapGet("/v1/gameplay", (HttpContext c) => gameplay.AcceptWebSocket(c)).WithMetadata(ApiAccess.Public);
 app.MapGet("/health",()=>new{service="AnimalTown.Server",protocol=1,catalog=Catalog.Version});
+app.MapOnlineControl(db);
 app.MapPost("/v1/gameplay/tickets", (HttpContext c,LiveTicketRequest request) =>
     gameplay.Issue((DevicePrincipal)c.Items["device"]!,request)).WithMetadata(ApiAccess.DeviceOnly);
 app.MapPost("/v1/online/gate/open", (Delegate)((HttpContext c) =>
@@ -150,6 +161,7 @@ sealed partial class GameDatabase(NpgsqlDataSource source)
     {
         await using var c=await source.OpenConnectionAsync();
         await using(var command=new NpgsqlCommand(File.ReadAllText(Path.Combine(AppContext.BaseDirectory,"Schema.sql")),c))await command.ExecuteNonQueryAsync();
+        await InitializeHostedIssuer(c);
         // One locked row/transaction at a time: restartable migration, bounded
         // memory, and no window where only some records exist.
         while(true){
@@ -165,10 +177,11 @@ sealed partial class GameDatabase(NpgsqlDataSource source)
     static string Hash(string text)=>Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(text)));
     static byte[] Password(string text,byte[] salt)=>Rfc2898DeriveBytes.Pbkdf2(text,salt,210000,HashAlgorithmName.SHA256,32);
     static int Day=>(int)(DateTimeOffset.UtcNow.ToUnixTimeSeconds()/86400);
+    static int Month {get{var now=DateTime.UtcNow;return now.Year*12+now.Month-1;}}
     public async Task<object> Register(Credentials request)
     {
         if(string.IsNullOrWhiteSpace(request.Name)||request.Name.Length>16||request.Password==null||request.Password.Length<12||request.Password.Length>128)throw new GameError(400,"name-or-password-invalid");
-        Guid id=Guid.NewGuid();var state=new GameState(RandomNumberGenerator.GetInt32(1,int.MaxValue)){Name=request.Name};state.Rollover(Day,DateTime.UtcNow.Year*12+DateTime.UtcNow.Month);
+        Guid id=Guid.NewGuid();var state=new GameState(RandomNumberGenerator.GetInt32(1,int.MaxValue)){Name=request.Name};state.Rollover(Day,Month);
         byte[] salt=RandomNumberGenerator.GetBytes(16);await using var c=await source.OpenConnectionAsync();
         var parts=SplitSaveCodec.Encode(state);
         await using(var cmd=Cmd(c,null,"INSERT INTO players(id,name,salt,password,town_data,house_positions,shop_states,player_villager,player_villager2,player_villager3,player_villager4) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)",id,request.Name,salt,Password(request.Password,salt),parts[0],parts[1],parts[2],parts[3],parts[4],parts[5],parts[6]))await cmd.ExecuteNonQueryAsync();
@@ -201,7 +214,7 @@ sealed partial class GameDatabase(NpgsqlDataSource source)
         await using(var cmd=Cmd(c,t,"SELECT fingerprint,result::text FROM operations WHERE player=$1 AND id=$2",id,op.Id))await using(var r=await cmd.ExecuteReaderAsync())if(await r.ReadAsync())
         {if(r.GetString(0)!=fingerprint)throw new GameError(409,"idempotency-key-reused");return JsonSerializer.Deserialize<JsonElement>(r.GetString(1));}
         await RequireLegacyCommerce(c,t,id);
-        var s=loaded.State;s.Rollover(Day,DateTime.UtcNow.Year*12+DateTime.UtcNow.Month);
+        var s=loaded.State;s.Rollover(Day,Month);
         bool ok=op.Kind switch{"buy"=>s.Buy(op.Slot),"sell"=>s.Sell(op.Slot),"deposit"=>s.Deposit(op.Amount),"withdraw"=>s.Withdraw(op.Amount),"repay"=>s.Repay(op.Amount),"expand-house"=>s.Expand(false,Day),"expand-garden"=>s.Expand(true,Day),"order"=>s.Order(op.Item),_=>false};
         if(op.Kind=="upgrade-backpack")ok=s.UpgradeBackpack();
         if(!ok)throw new GameError(409,"operation-rejected");await Save(c,t,id,s);var result=new{ok=true,revision=loaded.Revision+1,wallet=s.Wallet,savings=s.Savings,debt=s.Debt,capacity=s.Capacity};

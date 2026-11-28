@@ -45,7 +45,8 @@ jobs:
       packages: write
       pull-requests: read
     runs-on: ubuntu-24.04
-    timeout-minutes: 110
+    # Online transport and the expanded appearance captures share this job.
+    timeout-minutes: 140
     defaults:
       run:
         shell: bash

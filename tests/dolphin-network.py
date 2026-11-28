@@ -1,0 +1,346 @@
+"""Check emulator DNS, native failure handling and committed card extraction."""
+from pathlib import Path
+from contextlib import redirect_stdout
+from io import StringIO
+import ast
+import importlib.util
+import json
+import os
+import tempfile
+from types import SimpleNamespace
+import struct
+import sys
+import unittest
+from unittest.mock import MagicMock, patch
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'tools'))
+from dolphin_network import DNS_SERVER, online_core_settings, probe
+
+
+class DolphinNetworkChecks(unittest.TestCase):
+    def test_resolver_matches_console_sdk_default(self):
+        self.assertEqual(DNS_SERVER, '8.8.8.8')
+        self.assertIn(f'BBA_BUILTIN_DNS = {DNS_SERVER}', online_core_settings())
+        self.assertIn('SerialPort1 = 12', online_core_settings())
+
+    def run_probe(self, reply):
+        udp = MagicMock()
+        udp.__enter__.return_value = udp
+        udp.recv.return_value = reply
+        with patch('dolphin_network.socket.socket', return_value=udp), patch('dolphin_network.secrets.randbits', return_value=42), redirect_stdout(StringIO()):
+            probe('online.example', timeout=3)
+        return udp
+
+    def test_uses_exact_resolver_and_bounded_query(self):
+        udp = self.run_probe(struct.pack('!6H', 42, 0x8180, 1, 2, 0, 0))
+        udp.connect.assert_called_once_with((DNS_SERVER, 53))
+        udp.settimeout.assert_called_once_with(3)
+        self.assertEqual(udp.send.call_args.args[0], struct.pack('!6H', 42, 0x0100, 1, 0, 0, 0) + b'\x06online\x07example\0\0\1\0\1')
+
+    def test_accepts_authoritative_answers(self):
+        self.run_probe(struct.pack('!6H', 42, 0x8580, 1, 1, 0, 0))
+
+    def test_rejects_incomplete_mismatched_negative_and_truncated_answers(self):
+        for reply in (b'', struct.pack('!6H', 41, 0x8180, 1, 1, 0, 0),
+                      struct.pack('!6H', 42, 0x8183, 1, 0, 0, 0),
+                      struct.pack('!6H', 42, 0x8380, 1, 1, 0, 0),
+                      struct.pack('!6H', 42, 0x0100, 1, 1, 0, 0),
+                      struct.pack('!6H', 42, 0x8180, 1, 0, 0, 0)):
+            with self.subTest(reply=reply), self.assertRaises(RuntimeError):
+                self.run_probe(reply)
+
+    def test_invalid_names_do_not_open_a_socket(self):
+        with patch('dolphin_network.socket.socket') as opening:
+            for host in ('', 'a..example', 'https://example', 'a' * 64 + '.example', 'é.example'):
+                with self.subTest(host=host), self.assertRaises(ValueError):
+                    probe(host)
+            opening.assert_not_called()
+
+
+
+class OnlineFailureCaptureChecks(unittest.TestCase):
+    def test_native_errors_stop_before_automatic_confirmation(self):
+        driver_path = Path(__file__).resolve().parents[1] / 'tools' / 'online-play-smoke.py'
+        spec = importlib.util.spec_from_file_location('online_play_driver', driver_path)
+        driver = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(driver)
+        for phase in ('LINK', 'FLOW'):
+            with self.subTest(phase=phase), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                pressed, captured = [], []
+                reader, writer = os.pipe()
+                context = {
+                    'root': root, 'user': root / 'user',
+                    '__file__': str(driver_path.with_name('iso-smoke.py')),
+                    'controller': writer,
+                    'p': SimpleNamespace(poll=lambda: None),
+                    'check_runtime_failure': lambda: None,
+                    'runtime_log_text': lambda: 'ANIMALTOWN ONLINE ' + phase + ' FAILED io',
+                    'screenshot': captured.append,
+                    'press_presented': lambda button, clock: pressed.append(button),
+                    'wait_profiles': lambda: None,
+                    'committed_card_sequence': lambda path: 7,
+                }
+                try:
+                    clock_module = SimpleNamespace(AviGuestClock=lambda *args, **kwargs: object())
+                    with patch.object(sys, 'argv', ['iso-smoke.py', 'disc', directory, '--online-play-fixture', directory]), patch.object(sys, 'path', list(sys.path)), patch.dict(sys.modules, {'avi_guest_clock': clock_module}), redirect_stdout(StringIO()):
+                        with self.assertRaisesRegex(AssertionError, 'Native online operation failed'):
+                            driver.run(context)
+                    self.assertEqual(pressed, ['A', 'A'])
+                    self.assertEqual(captured, ['online-play-' + phase.lower() + '-failure.png'])
+                    self.assertFalse(json.loads((root / 'online-play-report.json').read_text())['passed'])
+                    self.assertEqual(os.read(reader, 64), b'SET MAIN 0.5 0.5\n')
+                finally:
+                    os.close(reader)
+                    os.close(writer)
+
+
+
+    def run_return_failure(self, repeated):
+        driver_path = Path(__file__).resolve().parents[1] / 'tools' / 'online-play-smoke.py'
+        spec = importlib.util.spec_from_file_location('online_return_driver', driver_path)
+        driver = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(driver)
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            pressed, captured = [], []
+            reader, writer = os.pipe()
+            reads = 0
+            def log():
+                nonlocal reads
+                reads += 1
+                if repeated:
+                    return ('ANIMALTOWN ONLINE RETURN FAILED SocketException\n' *
+                            max(1, len(pressed) - 1))
+                # Keep observing the same failure before a separate fatal
+                # error ends the fixture. It must trigger just one retry.
+                return ('ANIMALTOWN ONLINE RETURN FAILED SocketException\n' +
+                        ('ANIMALTOWN ONLINE FLOW FAILED io' if reads > 7 else ''))
+            context = {
+                'root': root, 'user': root / 'user',
+                '__file__': str(driver_path.with_name('iso-smoke.py')),
+                'controller': writer,
+                'p': SimpleNamespace(poll=lambda: None),
+                'check_runtime_failure': lambda: None,
+                'runtime_log_text': log,
+                'screenshot': captured.append,
+                'press_presented': lambda button, clock: pressed.append(button),
+                'wait_profiles': lambda: None,
+                'committed_card_sequence': lambda path: 7,
+            }
+            try:
+                clock_module = SimpleNamespace(AviGuestClock=lambda *args, **kwargs: object())
+                with patch.object(sys, 'argv', ['iso-smoke.py', 'disc', directory, '--online-play-fixture', directory]), patch.object(sys, 'path', list(sys.path)), patch.dict(sys.modules, {'avi_guest_clock': clock_module}), patch.object(driver.time, 'sleep', lambda seconds: None), redirect_stdout(StringIO()):
+                    with self.assertRaisesRegex(AssertionError, 'Native online operation failed'):
+                        driver.run(context)
+                report = json.loads((root / 'online-play-report.json').read_text())
+                self.assertFalse(report['passed'])
+                self.assertEqual(os.read(reader, 64), b'SET MAIN 0.5 0.5\n')
+                return pressed, captured, report
+            finally:
+                os.close(reader)
+                os.close(writer)
+
+    def test_return_recovery_is_bounded_and_preserves_failure_report(self):
+        pressed, captured, report = self.run_return_failure(repeated=True)
+        self.assertEqual(pressed, ['A', 'A', 'A', 'A'])
+        self.assertEqual(report['return_retries'], 2)
+        self.assertEqual(captured, ['online-play-return-retry-1.png',
+                                   'online-play-return-retry-2.png',
+                                   'online-play-return-failure.png'])
+
+    def test_repeated_observation_of_one_return_error_retries_once(self):
+        pressed, captured, report = self.run_return_failure(repeated=False)
+        self.assertEqual(pressed, ['A', 'A', 'A'])
+        self.assertEqual(report['return_retries'], 1)
+        self.assertEqual(captured, ['online-play-return-retry-1.png',
+                                   'online-play-flow-failure.png'])
+
+
+
+class OnlineCardExtractionChecks(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        # Load the production parsers without starting Dolphin or touching a
+        # user's card. Exercise real directory/BAT and DTR1 checksum selection.
+        source = Path(__file__).resolve().parents[1] / 'tools' / 'iso-smoke.py'
+        parsed = ast.parse(source.read_text())
+        definitions = [node for node in parsed.body if isinstance(node, ast.FunctionDef)
+                       and node.name in ('archive_records', 'options_card_files')]
+        namespace = {}
+        exec(compile(ast.Module(body=definitions, type_ignores=[]), str(source), 'exec'), namespace)
+        cls.extract = staticmethod(namespace['options_card_files'])
+
+    @staticmethod
+    def hash_bytes(data):
+        value = 2166136261
+        for byte in data:
+            value = ((value ^ byte) * 16777619) & 0xffffffff
+        return value
+
+    def archive(self):
+        block = 8192
+        payload = bytearray(6 * block)
+        struct.pack_into('<8I', payload, 0, 0x31525444, 1, 7, 6,
+                         0x32435241, 4, 0, 2)
+        name, value = b'AT-Town0', b'published town'
+        payload[32:32 + len(name)] = name
+        struct.pack_into('<4I', payload, 64, 2, 0, len(value), self.hash_bytes(value))
+        payload[2 * block:2 * block + len(value)] = value
+        struct.pack_into('<I', payload, block - 4, self.hash_bytes(payload[:block - 4]))
+        return bytes(payload)
+
+    @staticmethod
+    def card(files):
+        sector = 8192
+        card = bytearray(64 * sector)
+        directory = bytearray(b'\xff' * sector)
+        bat = bytearray(sector)
+        cursor = 5
+        for index, (name, payload) in enumerate(files.items()):
+            data = bytearray(96)
+            data[:8] = b'DNDSAVE1'
+            struct.pack_into('>II', data, 8, len(payload), 96)
+            if name == 'AnimalTown':
+                data[16:24] = b'DNDREC01'
+            data.extend(payload)
+            count = (len(data) + sector - 1) // sector
+            data.extend(bytes(count * sector - len(data)))
+            at = index * 64
+            directory[at:at + 6] = b'AMTE01'
+            encoded = name.encode('ascii')
+            directory[at + 8:at + 40] = encoded + bytes(32 - len(encoded))
+            struct.pack_into('>HH', directory, at + 54, cursor, count)
+            for part in range(count):
+                struct.pack_into('>H', bat, 10 + (cursor + part - 5) * 2,
+                                 65535 if part == count - 1 else cursor + part + 1)
+            card[cursor * sector:(cursor + count) * sector] = data
+            cursor += count
+
+        def checksums(data, start, end):
+            words = struct.unpack('>' + str((end - start) // 2) + 'H', data[start:end])
+            sums = (sum(words) & 65535, sum(word ^ 65535 for word in words) & 65535)
+            return tuple(0 if value == 65535 else value for value in sums)
+
+        for number in (1, 2):
+            struct.pack_into('>H', directory, 0x1ffa, number)
+            struct.pack_into('>HH', directory, 0x1ffc, *checksums(directory, 0, 0x1ffc))
+            card[number * sector:(number + 1) * sector] = directory
+        for number in (3, 4):
+            struct.pack_into('>H', bat, 4, number - 2)
+            struct.pack_into('>HH', bat, 0, *checksums(bat, 4, sector))
+            card[number * sector:(number + 1) * sector] = bat
+        return card
+
+    def extract_files(self, files):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / 'MemoryCardA.USA.raw'
+            path.write_bytes(self.card(files))
+            return self.extract(path)
+
+    def test_published_archive_preserves_independent_online_records(self):
+        online = {name: ('independent ' + name).encode('ascii') for name in
+                  ('AnimalTown-Online0', 'AnimalTown-Online1', 'AnimalTown-Link0',
+                   'AnimalTown-Link1', 'AnimalTown-Service')}
+        records = self.extract_files({'AnimalTown': self.archive(), **online,
+                                      'AT-Town0': b'obsolete loose town',
+                                      'AT-Obsolete': b'obsolete loose bank'})
+        self.assertEqual(records, {'AT-Town0': b'published town', **online})
+
+    def test_console_settings_keep_aliases_alongside_online_journal(self):
+        records = self.extract_files({'AnimalTown': self.archive(),
+                                      'AnimalTown-Online0': b'recovery',
+                                      'AnimalTown-Video': b'video',
+                                      'AnimalTown-Debug': b'debug'})
+        self.assertEqual(records, {'AT-Town0': b'published town',
+                                   'AnimalTown-Online0': b'recovery',
+                                   'options': b'video', 'dev_config': b'debug'})
+
+    def test_legacy_card_still_retains_its_town_and_online_records(self):
+        files = {'AT-Town0': b'legacy town', 'AnimalTown-Online0': b'recovery'}
+        self.assertEqual(self.extract_files(files), files)
+
+
+
+class DolphinDiagnosticChecks(unittest.TestCase):
+    def symbols(self):
+        from dolphin_debug import NativeSymbols
+        return NativeSymbols('''.text 0x80004000 0x00001000
+                0x80004100 native_read
+                0x80004200 managed_tick
+                0x80004300 frame_loop
+.data 0x80009000 0x00000100
+                0x80009000 animaltown_online_probe_state
+                0x80009040 PrivatePayload
+''')
+
+    class Target:
+        def __init__(self):self.reads=[]
+        def read_memory(self,address,count):
+            self.reads.append((address,count))
+            memory={0x81700000:struct.pack('>II',0x81700020,0x80004224),
+                    0x81700020:struct.pack('>II',0x81700020,0x80004324),
+                    0x80009000:struct.pack('>IIIII',0x41544e50,10,0x81700000,0x80004124,20)}
+            result=memory[address]
+            if len(result)!=count:raise AssertionError('Unexpected diagnostic read')
+            return result
+
+    def test_native_sample_stops_cycles_and_retains_only_code_addresses(self):
+        from dolphin_debug import native_sample
+        target=self.Target();sample=native_sample(target,self.symbols())
+        self.assertEqual(sample['name'],'tls-read')
+        self.assertEqual(sample['caller']['symbol'],'native_read')
+        self.assertTrue(sample['consistent'])
+        self.assertEqual(len(sample['stack']),2)
+        self.assertEqual(target.reads,[(0x80009000,20),(0x81700000,8),(0x81700020,8),(0x80009000,20)])
+        self.assertNotIn('PrivatePayload',json.dumps(sample))
+        self.assertIsNone(self.symbols().describe(0x80009040))
+
+    def test_invalid_stack_pointers_are_not_read(self):
+        from dolphin_debug import stack_trace
+        for address in (0x7ffffff8,0x81800000,0x81700003):
+            target=self.Target()
+            self.assertEqual(stack_trace(target,self.symbols(),address),[])
+            self.assertEqual(target.reads,[])
+
+    def test_shared_memory_reads_have_bounds_and_big_endian_probe_words(self):
+        from dolphin_debug import DolphinMemory,native_sample
+        with tempfile.TemporaryDirectory() as directory:
+            path=Path(directory)/'memory'
+            with path.open('wb') as backing:
+                backing.truncate(0x1800000)
+                backing.seek(0x9000)
+                backing.write(struct.pack('>IIIII',0x41544e50,12,0,0x80004124,24))
+            with DolphinMemory(os.open(path,os.O_RDONLY)) as memory:
+                sample=native_sample(memory,self.symbols())
+                self.assertEqual(sample['name'],'tls-write')
+                self.assertEqual(sample['sequence'],24)
+                self.assertTrue(sample['consistent'])
+                for address,count in ((0x7fffffff,8),(0x817ffffc,8),(0x80000000,65),(0x80000000,0)):
+                    with self.assertRaises(ValueError):memory.read_memory(address,count)
+
+    def test_probe_changes_discard_a_racing_stack(self):
+        from dolphin_debug import native_sample
+        class Moving(self.Target):
+            def read_memory(self,address,count):
+                data=super().read_memory(address,count)
+                if address==0x80009000 and len(self.reads)>1:
+                    return struct.pack('>IIIII',0x41544e50,11,0x81700000,0x80004124,22)
+                return data
+        sample=native_sample(Moving(),self.symbols())
+        self.assertFalse(sample['consistent'])
+        self.assertEqual(sample['stack'],[])
+
+    def test_incomplete_probe_write_is_not_used_as_a_stack_root(self):
+        from dolphin_debug import native_sample
+        class Writing(self.Target):
+            def read_memory(self,address,count):
+                self.reads.append((address,count))
+                if address!=0x80009000:raise AssertionError('A partial probe must not expose a stack')
+                return struct.pack('>IIIII',0x41544e50,10,0x81700000,0x80004124,21)
+        target=Writing();sample=native_sample(target,self.symbols())
+        self.assertFalse(sample['consistent'])
+        self.assertEqual(target.reads,[(0x80009000,20)])
+
+
+unittest.main()

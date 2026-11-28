@@ -1,16 +1,17 @@
 <Project Sdk="DolphinDotNet.Sdk">
   <PropertyGroup><OutputType>Exe</OutputType></PropertyGroup>
   <PropertyGroup Condition="'$(DepotProfile)' == 'true'"><DefineConstants>$(DefineConstants);ANIMALTOWN_DEPOT</DefineConstants></PropertyGroup>
-  <PropertyGroup Condition="'$(AnimalTownOnlinePairing)' == 'true' Or '$(AnimalTownExperimentalOnlineTls)' == 'true'">
+  <PropertyGroup Condition="'$(AnimalTownOnlinePairing)' == 'true' Or '$(AnimalTownOnlinePlay)' == 'true'">
     <DefineConstants>$(DefineConstants);ANIMALTOWN_ONLINE_PAIRING</DefineConstants>
   </PropertyGroup>
-  <PropertyGroup Condition="'$(AnimalTownExperimentalOnlineTls)' == 'true'">
-    <DefineConstants>$(DefineConstants);ANIMALTOWN_EXPERIMENTAL_ONLINE_TLS</DefineConstants>
+  <PropertyGroup Condition="'$(AnimalTownOnlinePlay)' == 'true'">
+    <DefineConstants>$(DefineConstants);ANIMALTOWN_ONLINE_PLAY</DefineConstants>
   </PropertyGroup>
   <ItemGroup>
     <Compile Remove="BuildInfo.cs" Condition="Exists('../../out/BuildInfo.cs')" />
     <Compile Include="../../out/BuildInfo.cs" Condition="Exists('../../out/BuildInfo.cs')" />
     <ProjectReference Include="../../shared/AnimalTown.Domain/AnimalTown.Domain.csproj" />
     <PackageReference Include="Capz.Hypercube.GameCube" Version="[0.1.0-preview.55.1]" />
+    <PackageReference Include="DolphinDotNet.GameCube" Version="[0.1.0-preview.392.1]" />
   </ItemGroup>
 </Project>

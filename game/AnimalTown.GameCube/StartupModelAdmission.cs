@@ -17,6 +17,15 @@ internal sealed class StartupModelAdmission
     internal int ReservedPeak {get;private set;}
     internal StartupModelAdmission(VisualMemoryPressure memory,ModelMemoryCatalog? catalog=null)
     {this.memory=memory;this.catalog=catalog;}
+    // An already resident shared model needs only another instance. The
+    // caller owns the returned ticket through publication or drained failure.
+    internal bool TryReserveInstance(int species,long now,out int instanceTicket)
+        =>memory.TryReserve(InstancePeak(species),now,true,out instanceTicket);
+    internal int InstancePeak(int species)
+    {
+        catalog??=new ModelMemoryCatalog(File.ReadAllBytes(ContentPaths.Asset("villager-memory.bin")));
+        return catalog.StartupPeak(species,1)-catalog.StartupPeak(species,0);
+    }
     internal bool Begin(int species,bool selected,long now)
         =>Begin(species,selected?2:1,now);
     internal bool Begin(int species,int instanceCount,long now)

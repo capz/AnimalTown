@@ -161,15 +161,30 @@ function Copy-VillagerVisualEvidence([string]$Source,[string]$Destination,[strin
     Copy-Item -LiteralPath $build -Destination $target
     Copy-Item -LiteralPath (Join-Path $Source 'villager-visuals-report.json') -Destination $target
 }
-function Copy-JobEvidence([string]$Source,[string]$Destination,[string]$Commit,[string]$Version,[string]$Tag,[string]$IsoName,[string]$IsoSha256){
+function Copy-JobEvidence([string]$Source,[string]$Destination,[string]$Commit,[string]$Version,[string]$Tag,[string]$IsoName,[string]$IsoSha256,[string[]]$Modes=@('delivery','mail')){
     $build=Join-Path $Source 'jobs-build.json'
     if(!(Test-Path -LiteralPath $build -PathType Leaf)){return}
     $evidence=Get-Content -LiteralPath $build -Raw|ConvertFrom-Json
     if($evidence.schema -ne 1 -or $evidence.commit -cne $Commit -or $evidence.version -cne $Version -or
        $evidence.tag -cne $Tag -or $evidence.isoName -cne $IsoName -or $evidence.isoSha256 -cne $IsoSha256){throw 'Job captures must match the release source, version and verified NKit image'}
     $target=Join-Path $Destination 'scenarios/jobs';New-Item -ItemType Directory -Force -Path $target|Out-Null
-    foreach($mode in @('delivery','mail')){
+    foreach($mode in $Modes){
+        if($mode -eq 'helipad'){continue}
+        if($mode -notin @('delivery','mail','online-review')){throw "Unsupported job evidence mode: $mode"}
         $folder=Join-Path $Source $mode
+        if($mode -eq 'online-review'){
+            $report=Get-Content -LiteralPath (Join-Path $folder 'online-review-report.json') -Raw|ConvertFrom-Json
+            if($report.scenario -cne 'online-review' -or $report.passed -ne $true -or $report.committed_records_unchanged -ne $true -or
+               $report.current_world_left -ne $true -or $report.review_ui_right -ne $true -or $report.cancelled_before_networking -ne $true -or
+               $report.online_or_physical_transport_qualification -ne $false -or $report.card_sequence_before -le 0 -or
+               $report.card_sequence_before -ne $report.card_sequence_after){throw 'Split review must pass with the committed card unchanged and no transport qualification claim'}
+            foreach($name in @('online-review-current-town.png','online-review-camera-inspection.png','online-review-cancelled.png','online-review-report.json')){
+                $file=Get-Item -LiteralPath (Join-Path $folder $name)
+                if($file.PSIsContainer -or $file.Length -le 0){throw "Missing split-review capture: $name"}
+                Copy-Item -LiteralPath $file.FullName -Destination (Join-Path $target $name) -Force
+            }
+            continue
+        }
         $report=Get-Content -LiteralPath (Join-Path $folder 'jobs-report.json') -Raw|ConvertFrom-Json
         $state=Get-Content -LiteralPath (Join-Path $folder 'jobs-state.json') -Raw|ConvertFrom-Json
         if($report.scenario -cne 'offline-jobs' -or $report.mode -cne $mode -or $report.controls_completed -ne $true -or $state.mode -cne $mode -or $state.passed -ne $true){throw "Job controller/save verification did not pass: $mode"}
@@ -183,6 +198,27 @@ function Copy-JobEvidence([string]$Source,[string]$Destination,[string]$Commit,[
         Copy-Item -LiteralPath (Join-Path $folder 'jobs-state.json') -Destination (Join-Path $target "jobs-$mode-state.json") -Force
     }
     Copy-Item -LiteralPath $build -Destination (Join-Path $target 'jobs-build.json') -Force
+}
+function Copy-OnlineEvidence([string]$Source,[string]$Destination,[string]$Commit,[string]$Version,[string]$Tag,[string]$IsoName,[string]$IsoSha256){
+    $build=Join-Path $Source 'online-play-build.json'
+    $evidence=Get-Content -LiteralPath $build -Raw|ConvertFrom-Json
+    if($evidence.schema -ne 1 -or $evidence.commit -cne $Commit -or $evidence.version -cne $Version -or
+       $evidence.tag -cne $Tag -or $evidence.isoName -cne $IsoName -or $evidence.isoSha256 -cne $IsoSha256){throw 'Online target evidence must match the exact release image'}
+    $report=Get-Content -LiteralPath (Join-Path $Source 'emulator/online-play-report.json') -Raw|ConvertFrom-Json
+    foreach($name in @('passed','sdk_https','sdk_wss','three_humans','remote_actors_drawn','sdk_movement','chat_both_guests','same_endpoint_reconnect','published_and_acknowledged')){
+        if($report.$name -ne $true){throw "Online target did not pass: $name"}
+    }
+    if($report.scenario -cne 'online-play' -or $report.physical_hardware -ne $false){throw 'Dolphin evidence cannot claim physical qualification'}
+    $card=Get-Content -LiteralPath (Join-Path $Source 'card-verification.json') -Raw|ConvertFrom-Json
+    foreach($name in @('passed','home_identity','private_wallet','ready_journal','acknowledged_fingerprint')){if($card.$name -ne $true){throw "Returned online card did not verify: $name"}}
+    $target=Join-Path $Destination 'scenarios/online';New-Item -ItemType Directory -Force -Path $target|Out-Null
+    foreach($name in $report.screenshots){
+        if($name -cnotmatch '\Aonline-play-[a-z0-9-]+\.png\z'){throw 'Invalid online target screenshot name'}
+        $file=Get-Item -LiteralPath (Join-Path $Source "emulator/$name")
+        if($file.PSIsContainer -or $file.Length -le 0){throw 'Missing online target capture'}
+        Copy-Item -LiteralPath $file.FullName -Destination $target -Force
+    }
+    Copy-Item -LiteralPath $build,(Join-Path $Source 'emulator/online-play-report.json'),(Join-Path $Source 'card-verification.json') -Destination $target -Force
 }
 function Get-PreparedReleaseReceipt($Identity,[string[]]$Paths){
     $hashes=[ordered]@{}
@@ -306,7 +342,9 @@ if(!$PublishOnly){
         }
     }
     Copy-DaylightEvidence (Join-Path $out 'daylight') $reports $commit $version $tag ([IO.Path]::GetFileName($nkit)) $nkitInfo.compactSha256
-    Copy-JobEvidence (Join-Path $out 'jobs') $reports $commit $version $tag ([IO.Path]::GetFileName($nkit)) $nkitInfo.compactSha256
+    $jobModes=@($validation.emulator|Where-Object {$_ -like 'job-*'}|ForEach-Object {$_.Substring(4)})
+    Copy-JobEvidence (Join-Path $out 'jobs') $reports $commit $version $tag ([IO.Path]::GetFileName($nkit)) $nkitInfo.compactSha256 $jobModes
+    if('online-play' -in $validation.emulator){Copy-OnlineEvidence (Join-Path $out 'online-dolphin') $reports $commit $version $tag ([IO.Path]::GetFileName($nkit)) $nkitInfo.compactSha256}
     $toolsDirectory=Join-Path $out 'tools-published-binaries'
     if(Test-Path -LiteralPath $toolsDirectory){Remove-Item -LiteralPath $toolsDirectory -Recurse -Force}
     & dotnet publish (Join-Path $Root 'tools/AnimalTown.Tools') -c Release --no-self-contained -o $toolsDirectory -v quiet

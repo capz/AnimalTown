@@ -54,6 +54,7 @@ internal static class UserOptionsChecks
         new SaveRepository(files).Save(town);
         files.Data["AnimalTown0"]=SaveCodec.Encode(town);files.Data["AnimalTown1"]=SaveCodec.Encode(town);
         for(int bank=0;bank<2;bank++)for(int kind=0;kind<9;kind++)files.Data.TryAdd(SplitSaveCodec.FileName(kind,bank),new byte[]{1,2,3});
+        foreach(string name in new[]{OnlineCredentialStore.Bank0,OnlineCredentialStore.Bank1,AnimalTown.Online.OnlineTravelStore.Bank0,AnimalTown.Online.OnlineTravelStore.Bank1})files.Data[name]=new byte[512];
         files.Data["options"]=new UserOptions{Resolution=2,Widescreen=true,ShowDebugMenus=true}.Encode();
         files.Data["dev_config"]=new DevConfig().Encode();files.Data["OtherGame"]=new byte[]{7,8,9};files.Mutations=0;return files;
     }
@@ -61,7 +62,7 @@ internal static class UserOptionsChecks
     {
         var files=TownFiles();var options=(byte[])files.Data["options"].Clone();var debug=(byte[])files.Data["dev_config"].Clone();
         TownDataDeletion.Erase(files);int writes=files.Mutations;
-        check(!files.Names().Any(SplitSaveCodec.IsFile)&&!TownDataDeletion.Pending(files.Names()),"whole-town deletion removes both banks, all four players, NPC and legacy records");
+        check(!files.Names().Any(n=>SplitSaveCodec.IsFile(n)||TownDataDeletion.IsOnlineFile(n))&&!TownDataDeletion.Pending(files.Names()),"whole-town deletion removes save, credential and travel banks after approved online closure");
         check(new SaveRepository(files).Load()==null,"no legacy/fallback source can restore deleted villagers");
         check(files.Data["options"].SequenceEqual(options)&&files.Data["dev_config"].SequenceEqual(debug)&&files.Data["OtherGame"].SequenceEqual(new byte[]{7,8,9}),"deletion preserves options, debug settings and unrelated data byte for byte");
         files.Mutations=0;TownDataDeletion.Erase(files);check(files.Mutations==0,"deleting an already empty town does not write a marker");
@@ -69,11 +70,11 @@ internal static class UserOptionsChecks
             var interrupted=TownFiles();interrupted.FailAt=fail;interrupted.FailAfter=after;bool failed=false;
             try{TownDataDeletion.Erase(interrupted);}catch(IOException){failed=true;}
             check(failed,"injected deletion I/O failure is reported");
-            bool remaining=interrupted.Names().Any(SplitSaveCodec.IsFile);
+            bool remaining=interrupted.Names().Any(n=>SplitSaveCodec.IsFile(n)||TownDataDeletion.IsOnlineFile(n));
             check(!remaining||TownDataDeletion.Pending(interrupted.Names())||fail==1&&!after,"a partly deleted town is hidden by durable intent until completion");
             check(interrupted.Data["options"].SequenceEqual(options)&&interrupted.Data["dev_config"].SequenceEqual(debug),"interruption never targets console preferences");
             interrupted.FailAt=0;TownDataDeletion.Erase(interrupted);
-            check(!TownDataDeletion.Pending(interrupted.Names())&&new SaveRepository(interrupted).Load()==null,"retry completes every interrupted deletion without resurrecting a villager");
+            check(!TownDataDeletion.Pending(interrupted.Names())&&new SaveRepository(interrupted).Load()==null&&!interrupted.Names().Any(TownDataDeletion.IsOnlineFile),"retry completes every interrupted deletion without resurrecting a villager or leaving an old-town recovery bank");
         }
         var bad=TownFiles();int original=bad.Data.Count;bad.DamageMarker=true;bool refused=false;
         try{TownDataDeletion.Erase(bad);}catch(IOException){refused=true;}

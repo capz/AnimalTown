@@ -23,16 +23,16 @@ public sealed class TownShop
     public static bool Sellable(int item)=>Catalog.Has(item,ItemFlags.Sell)&&!Catalog.Has(item,ItemFlags.Money)&&Catalog.Items[item].Sell>0;
     public bool List(GameState host,int slot,int pocket,int price)
     {
-        if(host.Visiting||(uint)slot>=SaleSlots(host)||SaleItems[slot]!=0||(uint)pocket>=host.Capacity||host.IsJobItem(pocket)||!Sellable(host.Pockets[pocket])||price<1||price>GameState.WalletLimit)return false;
+        if(host.HostedCommerceLocked||host.Visiting||(uint)slot>=SaleSlots(host)||SaleItems[slot]!=0||(uint)pocket>=host.Capacity||host.IsJobItem(pocket)||!Sellable(host.Pockets[pocket])||price<1||price>GameState.WalletLimit)return false;
         SaleItems[slot]=host.Pockets[pocket];SalePrices[slot]=price;SaleOwners[slot]=host.ActiveProfile;host.Pockets[pocket]=0;Changed();return true;
     }
     public bool Remove(GameState host,int slot)
     {
-        if((uint)slot>=StoredSaleCount||SaleItems[slot]==0||SaleOwners[slot]!=host.ActiveProfile||!host.Receive(SaleItems[slot]))return false;
+        if(host.HostedCommerceLocked||(uint)slot>=StoredSaleCount||SaleItems[slot]==0||SaleOwners[slot]!=host.ActiveProfile||!host.Receive(SaleItems[slot]))return false;
         ClearSale(slot);Changed();return true;
     }
     public bool Reprice(GameState host,int slot,int price)
-    {if((uint)slot>=SaleSlots(host)||SaleItems[slot]==0||SaleOwners[slot]!=host.ActiveProfile||price<1||price>GameState.WalletLimit)return false;SalePrices[slot]=price;Changed();return true;}
+    {if(host.HostedCommerceLocked||(uint)slot>=SaleSlots(host)||SaleItems[slot]==0||SaleOwners[slot]!=host.ActiveProfile||price<1||price>GameState.WalletLimit)return false;SalePrices[slot]=price;Changed();return true;}
     public int StoredListingCount(GameState host)
     {int count=0;for(int i=SaleSlots(host);i<StoredSaleCount;i++)if(SaleItems[i]!=0&&SaleOwners[i]==host.ActiveProfile)count++;return count;}
     public int StoredListing(GameState host,int index)
@@ -41,6 +41,7 @@ public sealed class TownShop
     // Expected revision prevents a stale selection buying a newly replaced listing.
     public bool Buy(GameState host,GameState buyer,ShopSource source,int slot,int expectedRevision=-1,bool free=false)
     {
+        if(host.HostedCommerceLocked)return false;
         int item=Item(host,source,slot),price=Price(host,source,slot);
         bool waive=free&&source!=ShopSource.Consignment;
         if(expectedRevision>=0&&expectedRevision!=Revision||price<=0||!Catalog.Valid(item)||buyer.FreeSlot()<0||!waive&&buyer.Wallet<price||!CanCredit(source,slot,price))return false;
@@ -50,7 +51,7 @@ public sealed class TownShop
     }
     public bool BuyNpc(GameState host,int npc,ShopSource source,int slot,int expectedRevision=-1)
     {
-        if((uint)npc>=6)return false;int item=Item(host,source,slot),price=Price(host,source,slot);
+        if(host.HostedCommerceLocked||(uint)npc>=6)return false;int item=Item(host,source,slot),price=Price(host,source,slot);
         if(expectedRevision>=0&&expectedRevision!=Revision||price<=0||!Catalog.Valid(item)||NpcCount[npc]>=NpcCapacity||NpcWallet[npc]<price||!CanCredit(source,slot,price))return false;
         NpcWallet[npc]-=price;NpcItems[npc*NpcCapacity+NpcCount[npc]++]=item;NpcDay[npc]=host.Town.Day;
         Complete(host,source,slot,price);return true;
@@ -66,7 +67,7 @@ public sealed class TownShop
     public void ClaimProceeds(GameState host,int profile)
     {
         // Keep earnings in the town ledger while the seller's character card is absent.
-        if(!host.Profiles[profile].Created)return;
+        if(host.HostedCommerceLocked||!host.Profiles[profile].Created)return;
         long savings=profile==host.ActiveProfile?host.Savings:host.Profiles[profile].Savings,amount=Math.Min(Proceeds[profile],long.MaxValue-savings);
         if(amount<=0)return;
         if(profile==host.ActiveProfile)host.Savings+=amount;else host.Profiles[profile].Savings+=amount;

@@ -1,5 +1,7 @@
 namespace AnimalTown;
 
+internal interface ICheckpointRecordVerifier {void Verify(int part,byte[] bytes);}
+
 // Canonical server upload envelope. A caller reads into its own page buffer,
 // sends that page, and repeats. No cursor read advances through two records.
 public sealed class TownCheckpointExport : IDisposable
@@ -15,7 +17,7 @@ public sealed class TownCheckpointExport : IDisposable
     public int Position {get;private set;}
     internal byte[] CommitBytes=>record!;
 
-    internal TownCheckpointExport(GameState snapshot,Action<int,byte[]>? verify=null)
+    internal TownCheckpointExport(GameState snapshot,ICheckpointRecordVerifier? verify=null)
     {
         this.snapshot=snapshot;
         sequence=snapshot.Sequence;
@@ -41,10 +43,10 @@ public sealed class TownCheckpointExport : IDisposable
 
     // Encoding and verification finishes in a separate frame, so a previous
     // encoded component cannot remain a native collector root on the next one.
-    private static void Describe(GameState state,int part,Action<int,byte[]>? verify,out int length,out uint checksum)
+    private static void Describe(GameState state,int part,ICheckpointRecordVerifier? verify,out int length,out uint checksum)
     {
         byte[] bytes=SplitSaveCodec.EncodePart(state,part);
-        verify?.Invoke(part,bytes);
+        verify?.Verify(part,bytes);
         length=bytes.Length;checksum=FooterChecksum(bytes);
     }
 

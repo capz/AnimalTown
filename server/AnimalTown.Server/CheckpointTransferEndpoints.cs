@@ -9,6 +9,8 @@ internal static class CheckpointTransferEndpoints
             database.CheckpointUploadStatus(Owner(context, id), upload, context.RequestAborted));
         routes.MapPut("/{upload:guid}", (HttpContext context, Guid id, Guid upload, int offset) =>
             database.StreamCheckpointUpload(Owner(context, id), upload, offset, context.Request));
+        routes.MapPut("/{upload:guid}/page",(HttpContext context,Guid id,Guid upload,int offset)=>
+            database.UploadCheckpointPage(Owner(context,id),upload,offset,context.Request));
         routes.MapDelete("/{upload:guid}", async (HttpContext context, Guid id, Guid upload) =>
         {
             await database.AbandonCheckpointUpload(Owner(context, id), upload, context.RequestAborted);

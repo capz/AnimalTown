@@ -163,7 +163,7 @@ public sealed partial class GameState
         if(created){Space=0;for(int cell=0;cell<Town.Cells&&!CanWalk(X,Z,0);cell++){X=cell%Town.Width+.5f;Z=cell/Town.Width+.5f;}}
         NormalizeBuildingLocations();return created;
     }
-    public string ProfileName(int profile)=>profile==ActiveProfile?Name:Profiles[profile].Name;
+    public string ProfileName(int profile)=>!IsOnlineProjection&&profile==ActiveProfile?Name:Profiles[profile].Name;
     public int PlayerOwner=>ActiveProfile==0?0:ActiveProfile+6;
     public static int OwnerProfile(int owner)=>owner==0?0:owner>=7&&owner<=9?owner-6:-1;
     public bool HomePlaced(int profile)=>profile==ActiveProfile?HousePlaced:Profiles[profile].Created&&Profiles[profile].HousePlaced;

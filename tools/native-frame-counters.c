@@ -11,6 +11,26 @@
 #include <ogc/lwp_watchdog.h>
 #endif
 TownFrameCounters town_frame_counters;
+/* Fixed diagnostic words only: no managed pointers, payloads or retained buffers. */
+volatile uint32_t animaltown_online_probe_state[5]
+#if defined(__GNUC__) && !defined(__clang__)
+    __attribute__((used,externally_visible))
+#endif
+    ={0x41544e50,0,0,0,0};
+#if defined(__GNUC__)
+__attribute__((noinline))
+#endif
+void animaltown_online_probe(int stage){
+    uint32_t stack=0,link=0;
+#if defined(GEKKO) && (defined(__powerpc__) || defined(__PPC__))
+    __asm__ volatile("mr %0,1\n\tmflr %1":"=r"(stack),"=r"(link));
+#endif
+    animaltown_online_probe_state[4]++;
+    animaltown_online_probe_state[1]=(uint32_t)stage;
+    animaltown_online_probe_state[2]=stack;
+    animaltown_online_probe_state[3]=link;
+    animaltown_online_probe_state[4]++;
+}
 static size_t last_collections;
 void animaltown_frame_reset(int enabled,DndManagedHeap *heap){
 #ifdef GEKKO

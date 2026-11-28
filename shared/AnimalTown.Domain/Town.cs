@@ -77,7 +77,7 @@ public sealed partial class Town
     public Town(int seed):this(seed,null){}
     // Save readback validates terrain against the live snapshot without writing
     // to it. Other mutable records remain private to this validation town.
-    internal Town(int seed,Town? snapshot)
+    internal Town(int seed,Town? snapshot,bool generate=true)
     {
         Seed=seed;LostAndFound=new TownLostAndFound(this);JobState=new Jobs.TownJobState(seed);Tiles=snapshot==null?new byte[Cells]:snapshot.Tiles;Elevation=snapshot==null?new byte[Cells]:snapshot.Elevation;Paths=new TownPaths();if(snapshot!=null){Array.Copy(snapshot.Paths.Packed,Paths.Packed,TownPaths.PackedBytes);Array.Copy(snapshot.Traffic.Visits,Traffic.Visits,TileTraffic.Bytes);}
         for(int i=0;i<SavedVillagerCount;i++){
@@ -87,7 +87,7 @@ public sealed partial class Town
         }
         for(int i=0;i<Ground.Length;i++)Ground[i]=new GroundItem();
         for(int i=0;i<Placed.Length;i++)Placed[i]=new Placement();
-        if(snapshot==null)Generate();
+        if(snapshot==null&&generate)Generate();
     }
     public bool Inside(int x,int z)=>x>=0&&x<Width&&z>=0&&z<Height;
     public int At(int x,int z)=>Inside(x,z)?Koban.Contains(x,z)?(int)Terrain.Building:Tiles[z*Width+x]:(int)Terrain.Sea;

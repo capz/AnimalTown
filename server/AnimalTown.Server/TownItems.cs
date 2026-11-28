@@ -27,7 +27,7 @@ sealed partial class GameDatabase
         RequireLocalPlayer(loaded.State);
         var state=loaded.State;long revision=loaded.Revision;int day=state.Town.Day;
         if(!await IsImportedPlacementTown(c,t,host)){
-            state.Rollover(Day,DateTime.UtcNow.Year*12+DateTime.UtcNow.Month);
+            state.Rollover(Day,Month);
             if(state.Town.Day!=day){await Save(c,t,host,state);revision++;}
         }
         var result=new{

@@ -114,9 +114,13 @@ public static class SplitSaveCodec
         if(part==0){
         var snow=t.Traffic.Snow?.EncodeCheckpoint();
         const int version=11;
-        int snowBytes=4*((snow?.Length??0)+1);
         var recovery=t.LostAndFound.Encode();
-        var w=new Writer(s,TownData,2068+TownPaths.PackedBytes+TileTraffic.Bytes+4*(Jobs.TownJobState.EncodedWordCount+1+Runs(t.Tiles)+Runs(t.Elevation))+24*(t.GroundCount+t.PlacedCount)+snowBytes+4*(3+recovery.Length),version);
+        int names=0;for(int i=0;i<6;i++)names+=t.Residents[i].Name.Length;
+        // Exact capacity keeps Finish from retaining a second terrain/snow
+        // record beside both maximum towns during card return.
+        int capacity=400+TownPaths.PackedBytes+TileTraffic.Bytes+24*(t.GroundCount+t.PlacedCount)+
+            4*(s.BuildingTypes.Length+names+Runs(t.Tiles)+Runs(t.Elevation)+(snow?.Length??0)+Jobs.TownJobState.EncodedWordCount+recovery.Length);
+        var w=new Writer(s,TownData,capacity,version);
         w.Int(Town.Width);w.Int(Town.Height);w.Int(TownGenerator.Version);w.Int(t.Day);w.Int(t.Month);w.Rle(t.Tiles);w.Rle(t.Elevation);
         for(int i=0;i<6;i++){var v=t.Residents[i];w.Int(v.X);w.Int(v.Z);w.Text(v.Name);w.Int((int)(v.PosX*1024));w.Int((int)(v.PosZ*1024));}
         w.Int(t.GroundCount);for(int i=0;i<t.GroundCount;i++){var g=t.Ground[i];w.Int(g.Item);w.Int(g.X);w.Int(g.Z);w.Int(g.Owner);w.Int(g.Day);w.Int(g.PackedKind);}
@@ -132,7 +136,7 @@ public static class SplitSaveCodec
         return w.Finish();
         }
         if(part==1){
-        var w=new Writer(s,HousePositions,256);for(int i=0;i<GameState.ProfileCount;i++){w.Int(s.HomePlaced(i)?1:0);w.Int(s.HomeX(i));w.Int(s.HomeZ(i));}for(int i=0;i<6;i++){w.Int(t.Residents[i].HomeX);w.Int(t.Residents[i].HomeZ);}return w.Finish();
+        var w=new Writer(s,HousePositions,32+12*GameState.ProfileCount+8*6);for(int i=0;i<GameState.ProfileCount;i++){w.Int(s.HomePlaced(i)?1:0);w.Int(s.HomeX(i));w.Int(s.HomeZ(i));}for(int i=0;i<6;i++){w.Int(t.Residents[i].HomeX);w.Int(t.Residents[i].HomeZ);}return w.Finish();
         }
         if(part==2){
         int ledgerWords=t.Jobs.Initialized?t.Jobs.WordCount:0;

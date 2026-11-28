@@ -81,6 +81,10 @@ sealed partial class GameDatabase
     {
         var (state, commit, records, fingerprint) = upload;
         string identity = state.Town.Jobs.TownId.ToString("X16", CultureInfo.InvariantCulture);
+        await using(var issuer=Cmd(connection,transaction,"SELECT EXISTS(SELECT 1 FROM hosted_identity WHERE issuer=$1)",identity))
+            if(await issuer.ExecuteScalarAsync() is true)throw new GameError(409,"town-identity-reserved");
+        await using(var retired=Cmd(connection,transaction,"SELECT EXISTS(SELECT 1 FROM retired_online_towns WHERE town_identity=$1)",identity))
+            if(await retired.ExecuteScalarAsync() is true)throw new GameError(409,"town-identity-retired");
         var current = await Load(connection, transaction, owner, true);
 
         await using (var command = Cmd(connection, transaction,
@@ -114,6 +118,7 @@ sealed partial class GameDatabase
                 throw new GameError(409, "town-already-linked");
         }
         await WriteParts(connection, transaction, owner, state, true);
+        await using(var reopen=Cmd(connection,transaction,"DELETE FROM online_town_closures WHERE player=$1",owner))await reopen.ExecuteNonQueryAsync();
         return new(identity, revision);
     }
 }

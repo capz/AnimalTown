@@ -7,10 +7,10 @@
 #include <string.h>
 #include <math.h>
 #define SU_STATIC 32
-#define SU_CASTERS (SU_STATIC+8)
+#define SU_CASTERS (SU_STATIC+10) /* NPC/card actors plus two distinct online humans. */
 #define SU_VERTICES 288
-#define SU_PAGES 160 /* Each caster can touch four pages: 40 * 4 pages. */
-#define SU_LOOKUP 512 /* Power of two; at most 160 live entries. */
+#define SU_PAGES 168 /* Each caster can touch four pages: 42 * 4 pages. */
+#define SU_LOOKUP 512 /* Power of two; at most 168 live entries. */
 #define SU_SIDE 32
 #define SU_INNER (SU_SIDE-2) /* One filtering gutter on each edge. */
 #define SU_BYTES (SU_SIDE*SU_SIDE)

@@ -144,3 +144,116 @@ CREATE TABLE IF NOT EXISTS town_review_leases (
  villager text NOT NULL,
  expires timestamptz NOT NULL
 );
+-- A lease and a monotonically increasing epoch fence every hosted worker.
+-- Wire epochs are unsigned 32-bit; exhaustion fails closed rather than wraps.
+CREATE SEQUENCE IF NOT EXISTS hosted_epoch AS bigint MAXVALUE 4294967295 NO CYCLE;
+CREATE TABLE IF NOT EXISTS hosted_towns (
+ host uuid PRIMARY KEY REFERENCES players(id), gate uuid NOT NULL,
+ epoch bigint NOT NULL CHECK(epoch BETWEEN 1 AND 4294967295),
+ worker uuid NOT NULL, expires timestamptz NOT NULL,
+ cursor bigint NOT NULL DEFAULT 0 CHECK(cursor>=0),
+ simulated_at bigint NOT NULL DEFAULT 0
+);
+CREATE TABLE IF NOT EXISTS hosted_actors (
+ host uuid NOT NULL REFERENCES hosted_towns(host), player uuid NOT NULL REFERENCES players(id),
+ slot integer NOT NULL CHECK(slot BETWEEN 0 AND 2), visit uuid NOT NULL,
+ device uuid NOT NULL REFERENCES devices(id), generation bigint NOT NULL,
+ connection uuid NOT NULL, room integer NOT NULL DEFAULT 0,
+ joined_cursor bigint NOT NULL DEFAULT 0 CHECK(joined_cursor>=0),
+ x real NOT NULL, z real NOT NULL, facing integer NOT NULL DEFAULT 0,
+ expires timestamptz NOT NULL, updated timestamptz NOT NULL DEFAULT clock_timestamp(),
+ PRIMARY KEY(host,player), UNIQUE(host,slot)
+);
+ALTER TABLE hosted_actors ADD COLUMN IF NOT EXISTS joined_cursor bigint NOT NULL DEFAULT 0 CHECK(joined_cursor>=0);
+CREATE TABLE IF NOT EXISTS hosted_events (
+ host uuid NOT NULL REFERENCES hosted_towns(host), cursor bigint NOT NULL CHECK(cursor>0),
+ audience uuid REFERENCES players(id), kind integer NOT NULL,
+ actor uuid REFERENCES players(id), payload bytea NOT NULL CHECK(octet_length(payload) BETWEEN 1 AND 4096),
+ created timestamptz NOT NULL DEFAULT clock_timestamp(), PRIMARY KEY(host,cursor)
+);
+CREATE TABLE IF NOT EXISTS hosted_mutes (
+ player uuid NOT NULL REFERENCES players(id), muted uuid NOT NULL REFERENCES players(id),
+ PRIMARY KEY(player,muted), CHECK(player<>muted)
+);
+CREATE TABLE IF NOT EXISTS hosted_chat_evidence (
+ host uuid NOT NULL REFERENCES hosted_towns(host), cursor bigint NOT NULL,
+ actor uuid NOT NULL REFERENCES players(id), text varchar(128) NOT NULL,
+ created timestamptz NOT NULL DEFAULT clock_timestamp(), PRIMARY KEY(host,cursor)
+);
+CREATE TABLE IF NOT EXISTS online_card_heads (
+ player uuid PRIMARY KEY REFERENCES initial_town_imports(player), revision bigint NOT NULL CHECK(revision>0),
+ fingerprint text NOT NULL, save_commit bytea NOT NULL,
+ save_records bytea[] NOT NULL CHECK(cardinality(save_records)=7)
+);
+CREATE TABLE IF NOT EXISTS offline_resident_reviews (
+ player uuid PRIMARY KEY REFERENCES players(id), id uuid NOT NULL UNIQUE,
+ parent_revision bigint NOT NULL CHECK(parent_revision>0), fingerprint text NOT NULL,
+ save_commit bytea NOT NULL, save_records bytea[] NOT NULL CHECK(cardinality(save_records)=7),
+ approved integer NOT NULL DEFAULT 0 CHECK(approved BETWEEN 0 AND 1023),
+ recipients text[] NOT NULL DEFAULT ARRAY['','','',''] CHECK(cardinality(recipients)=4),
+ version integer NOT NULL DEFAULT 1 CHECK(version>0)
+);
+ALTER TABLE town_review_leases ADD COLUMN IF NOT EXISTS scene bytea CHECK(scene IS NULL OR octet_length(scene)<=98304);
+CREATE TABLE IF NOT EXISTS online_town_closures (
+ player uuid PRIMARY KEY REFERENCES players(id), town_identity text NOT NULL,
+ revision bigint NOT NULL CHECK(revision>0), fingerprint text NOT NULL
+);
+CREATE TABLE IF NOT EXISTS retired_online_towns (
+ player uuid NOT NULL REFERENCES players(id), town_identity text PRIMARY KEY,
+ save_commit bytea NOT NULL, save_records bytea[] NOT NULL CHECK(cardinality(save_records)=7),
+ retired timestamptz NOT NULL DEFAULT clock_timestamp()
+);
+CREATE TABLE IF NOT EXISTS online_travel (
+ id uuid PRIMARY KEY, player uuid NOT NULL REFERENCES players(id), device uuid NOT NULL REFERENCES devices(id),
+ town_identity text NOT NULL, profile integer NOT NULL CHECK(profile BETWEEN 0 AND 3),
+ host uuid NOT NULL REFERENCES players(id), visit uuid NOT NULL,
+ parent_revision bigint NOT NULL CHECK(parent_revision>0), fingerprint text NOT NULL,
+ phase integer NOT NULL DEFAULT 0 CHECK(phase BETWEEN 0 AND 3),
+ revision bigint, publication_fingerprint text, save_commit bytea,
+ save_records bytea[] CHECK(save_records IS NULL OR cardinality(save_records)=7),
+ created timestamptz NOT NULL DEFAULT clock_timestamp()
+);
+CREATE UNIQUE INDEX IF NOT EXISTS one_online_travel ON online_travel(player) WHERE phase<3;
+CREATE TABLE IF NOT EXISTS hosted_chat_limits (
+ player uuid PRIMARY KEY REFERENCES players(id), started timestamptz NOT NULL, count integer NOT NULL
+);
+CREATE TABLE IF NOT EXISTS hosted_mail (
+ id uuid PRIMARY KEY, host uuid NOT NULL REFERENCES players(id), sender uuid NOT NULL REFERENCES players(id),
+ sender_identity text NOT NULL, recipient_identity text NOT NULL,
+ recipient_profile integer NOT NULL CHECK(recipient_profile BETWEEN -1 AND 3),
+ recipient_npc integer NOT NULL CHECK(recipient_npc BETWEEN -1 AND 5),
+ body text NOT NULL CHECK(octet_length(body)<=4000), due bigint NOT NULL,
+ delivered boolean NOT NULL DEFAULT false, replied boolean NOT NULL DEFAULT false,
+ created timestamptz NOT NULL DEFAULT clock_timestamp()
+);
+ALTER TABLE hosted_mail ADD COLUMN IF NOT EXISTS returned boolean NOT NULL DEFAULT false;
+CREATE TABLE IF NOT EXISTS hosted_jobs (
+ id uuid PRIMARY KEY, host uuid NOT NULL REFERENCES players(id), player uuid NOT NULL REFERENCES players(id),
+ villager text NOT NULL, profile integer NOT NULL CHECK(profile BETWEEN 0 AND 3),
+ requester integer NOT NULL CHECK(requester BETWEEN 0 AND 5), target integer NOT NULL CHECK(target BETWEEN -1 AND 5),
+ template integer NOT NULL CHECK(template BETWEEN 0 AND 11), item integer NOT NULL,
+ phase integer NOT NULL CHECK(phase BETWEEN 0 AND 7), version integer NOT NULL DEFAULT 1 CHECK(version>0),
+ accepted bigint NOT NULL, due bigint NOT NULL,
+ parcel_pocket integer NOT NULL DEFAULT -1 CHECK(parcel_pocket BETWEEN -1 AND 29),
+ borrowers integer NOT NULL DEFAULT 0 CHECK(borrowers BETWEEN 0 AND 2),
+ previous_target integer NOT NULL DEFAULT -1, reward_identity text,
+ created timestamptz NOT NULL DEFAULT clock_timestamp()
+);
+CREATE UNIQUE INDEX IF NOT EXISTS one_hosted_offer ON hosted_jobs(host,player,villager,requester) WHERE phase=0;
+CREATE UNIQUE INDEX IF NOT EXISTS one_hosted_favor_resident ON hosted_jobs(host,requester) WHERE template>=5 AND phase BETWEEN 1 AND 4;
+CREATE UNIQUE INDEX IF NOT EXISTS one_hosted_favor_type ON hosted_jobs(host,template) WHERE template>=5 AND phase BETWEEN 1 AND 4;
+CREATE TABLE IF NOT EXISTS hosted_job_conversations (
+ host uuid NOT NULL REFERENCES players(id), player uuid NOT NULL REFERENCES players(id),
+ npc integer NOT NULL CHECK(npc BETWEEN 0 AND 5), expires timestamptz NOT NULL,
+ PRIMARY KEY(host,player)
+);
+-- Online receipts never allocate from a card's local job-ID counter while
+-- that card can be played offline. Their issuer namespace is disjoint.
+CREATE TABLE IF NOT EXISTS hosted_identity (
+ id integer PRIMARY KEY CHECK(id=1), issuer text NOT NULL UNIQUE
+ CHECK(issuer ~ '^[0-9A-F]{16}$' AND issuer<>'0000000000000000')
+);
+CREATE SEQUENCE IF NOT EXISTS hosted_identity_counter AS bigint NO CYCLE;
+CREATE TABLE IF NOT EXISTS hosted_personal_calendar (
+ player uuid PRIMARY KEY REFERENCES players(id), day integer NOT NULL, month integer NOT NULL
+);

@@ -49,9 +49,17 @@ sealed partial class GameDatabase
                     await transaction.CommitAsync(cancellation);
                     return previous;
                 }
-                if (!previous.Completed || previous.Revision != offer.ParentRevision)
+                if (!previous.Completed)
                     throw new GameError(409, "another-checkpoint-upload-pending");
             }
+        }
+
+        if(offer.ParentRevision is long parent)
+        {
+            await EnsureOnlineCardHead(connection,transaction,device.Player);
+            await using var head=Cmd(connection,transaction,"SELECT revision FROM online_card_heads WHERE player=$1",device.Player);
+            if(await head.ExecuteScalarAsync(cancellation) is not long actual||actual!=parent)
+                throw new GameError(409,"card-lineage-changed");
         }
 
         if (previous is not null)
@@ -153,6 +161,30 @@ sealed partial class GameDatabase
         byte[] extra = new byte[1];
         if (await body.ReadAsync(extra.AsMemory(), cancellation) != 0)
             throw new GameError(400, "checkpoint-trailing-data");
+    }
+
+    // The SDK intentionally bounds outgoing HTTP bodies. A page is a complete
+    // request and succeeds without pretending a truncated full upload is EOF.
+    public async Task<CheckpointStatus> UploadCheckpointPage(DevicePrincipal device,Guid upload,int offset,HttpRequest request)
+    {
+        LimitCheckpointRequest(request,CheckpointChunkBytes);
+        var cancellation=request.HttpContext.RequestAborted;Guid writer=Guid.NewGuid();
+        var status=await ClaimCheckpointWriter(device,upload,offset,writer,request.ContentLength,cancellation);
+        if(status.Completed)return status;
+        try
+        {
+            int size=Math.Min(CheckpointChunkBytes,status.Length-offset);
+            if(size<=0)throw new GameError(400,"invalid-checkpoint-page");
+            byte[] bytes=new byte[size];using var timeout=CancellationTokenSource.CreateLinkedTokenSource(cancellation);timeout.CancelAfter(CheckpointProgressTimeout);
+            try{await request.Body.ReadExactlyAsync(bytes,timeout.Token);}
+            catch(EndOfStreamException){throw new GameError(400,"checkpoint-incomplete-page");}
+            await RequireCheckpointEnd(request.Body,timeout.Token);
+            await WriteCheckpointChunk(device,upload,writer,offset,bytes,timeout.Token);
+            if(offset+size==status.Length)return await FinalizeCheckpointUpload(device,upload,writer,timeout.Token);
+            return status with{Offset=offset+size};
+        }
+        catch(OperationCanceledException)when(!cancellation.IsCancellationRequested){throw new GameError(408,"checkpoint-progress-timeout");}
+        finally{await ReleaseCheckpointWriter(upload,writer);}
     }
 
     async Task<CheckpointStatus> ClaimCheckpointWriter(DevicePrincipal device, Guid upload, int offset, Guid writer,

@@ -28,6 +28,8 @@ and individual Dolphin scenarios. Examples follow.
 | Job delivery UI | Delivery scenario |
 | Mail UI | Mail scenario |
 | Helipad travel UI | Helipad scenario |
+| Online review or linked-town erasure UI | Actual split review, camera inspection and cancellation on a disposable Ready card; this does not qualify the network route |
+| Online SDK/client transport and target controls | Actual Dolphin broadband-adapter HTTPS/WSS, three connected humans, movement, chat, fenced reconnect and verified card return through CI's independent free tunnel |
 | Shared gameplay/save behavior | Managed domain suites and backend integration |
 | Water material/pattern | Terrain/core domain checks and water rendering checks |
 | Water surface/depth/renderer | Terrain/core as applicable, water and movement rendering checks |

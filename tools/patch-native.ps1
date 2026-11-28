@@ -275,8 +275,19 @@ foreach($flags in @('CFLAGS += -O3 -flto -fno-strict-aliasing','LDFLAGS += -flto
     if(([regex]::Matches($makeSource,[regex]::Escape($flags))).Count -ne 1){throw 'Pinned SDK native optimization flags changed'}
     $makeSource=$makeSource.Replace($flags,$flags+' -fno-asynchronous-unwind-tables -fno-unwind-tables')
 }
+$loaderCheck='python3 boot/gamecube/pack.py apploader.elf apploader.img --dol "$(OUTPUT).dol"'
+if(([regex]::Matches($makeSource,[regex]::Escape($loaderCheck))).Count -ne 1){throw 'Pinned SDK apploader verification changed'}
+$makeSource=$makeSource.Replace($loaderCheck,'powerpc-eabi-size "$(OUTPUT).elf"'+"`n`t"+$loaderCheck)
 [IO.File]::WriteAllText($makePath,$makeSource)
 [IO.File]::WriteAllText($entryPath,$entrySource)
+# The complete online client adds enough generated AOT code that -O3's
+# expansion overlaps the disc apploader when combined with the six-MiB heap.
+# Size-optimize only the generated managed translation unit. GCC records these
+# per-function options through LTO; native GX, audio, TLS and terrain kernels
+# retain their existing optimization. Keep the loader's address checks intact.
+$generated=[IO.File]::ReadAllText($generatedPath)
+$generated="#if defined(__GNUC__) && (defined(__PPC__) || defined(__powerpc__))`n#pragma GCC optimize (`"Os`")`n#endif`n"+$generated
+[IO.File]::WriteAllText($generatedPath,$generated)
 # Keep the SDK's 16 MiB byte budget; the wider terrain prefetch pool needs more
 # small mesh handles. The ten-bit token index supports at most 1023 slots.
 $resourcePath=Join-Path $nativeRoot 'source/draw_resources.c'

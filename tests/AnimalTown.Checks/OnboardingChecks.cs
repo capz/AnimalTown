@@ -47,6 +47,10 @@ internal static class OnboardingChecks
     }
     private static void DraftChecks(Action<bool,string> check)
     {
+        var linked=Town();linked.HostedCommerceLocked=true;
+        using(var linkedDraft=new OnboardingDraft(linked,2,true))
+            check(linkedDraft.State.HostedCommerceLocked&&linkedDraft.Restore().HostedCommerceLocked,
+                "Adding or discarding a linked-town profile cannot release the hosted shop's escrow lock");
         var source=Town();byte[] baseline=SaveCodec.Encode(source);var draft=new OnboardingDraft(source,2,true);var s=draft.State;
         check(draft.IsNewProfile&&draft.Profile==2&&s.ActiveProfile==2&&s.Profiles[2].Created,"onboarding creates only a private selected villager");
         check(SaveCodec.Encode(source).SequenceEqual(baseline),"opening onboarding leaves the displayed town snapshot unchanged");

@@ -1,3 +1,8 @@
 FROM debian:trixie-slim
-RUN apt-get update && apt-get install -y --no-install-recommends dolphin-emu xvfb xauth ffmpeg python3 libgl1-mesa-dri ca-certificates && rm -rf /var/lib/apt/lists/*
+# Matching distribution symbols allow a failed host shutdown to be diagnosed
+# without exporting a core file or changing Dolphin's return status.
+RUN printf '%s\n' 'deb http://deb.debian.org/debian-debug trixie-debug main' > /etc/apt/sources.list.d/debug.list \
+    && apt-get update \
+    && apt-get install -y --no-install-recommends dolphin-emu dolphin-emu-dbgsym gdb xvfb xauth ffmpeg python3 libgl1-mesa-dri ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
 ENV LIBGL_ALWAYS_SOFTWARE=1 LP_NUM_THREADS=2 SDL_AUDIODRIVER=dummy

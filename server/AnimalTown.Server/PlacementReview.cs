@@ -16,7 +16,7 @@ static class PlacementReviewRoutes
     {
         // The online mutation path needs card inventory reservation and
         // reconciliation before it can be exposed on a production server.
-        if (!app.Configuration.GetValue<bool>("Multiplayer:EnablePlacements")) return;
+        if (!app.Configuration.GetValue<bool>("Multiplayer:EnablePlacements")&&!app.Configuration.GetValue<bool>("OnlineGameplay:EnablePlay")) return;
 
         app.MapPost("/v1/review", (Delegate)((HttpContext c) =>
             db.BeginPlacementReview(Device(c)))).WithMetadata(ApiAccess.DeviceOnly);
@@ -28,6 +28,16 @@ static class PlacementReviewRoutes
             db.ListPlacementReview(Device(c), lease, after)).WithMetadata(ApiAccess.DeviceOnly);
         app.MapPost("/v1/review/{lease:guid}/placements/ops", (HttpContext c, Guid lease, PlacementReviewOperation op) =>
             db.DecidePlacementReview(Device(c), lease, op)).WithMetadata(ApiAccess.DeviceOnly);
+        app.MapGet("/v1/review/{lease:guid}/residents", (HttpContext c, Guid lease) =>
+            db.ListResidentReview(Device(c),lease)).WithMetadata(ApiAccess.DeviceOnly);
+        app.MapPost("/v1/review/{lease:guid}/residents/ops", (HttpContext c, Guid lease, ResidentReviewOperation op) =>
+            db.DecideResidentReview(Device(c),lease,op)).WithMetadata(ApiAccess.DeviceOnly);
+        app.MapPost("/v1/review/{lease:guid}/residents/complete", (HttpContext c, Guid lease, ResidentReviewCompletion op) =>
+            db.CompleteResidentReview(Device(c),lease,op)).WithMetadata(ApiAccess.DeviceOnly);
+        app.MapPost("/v1/review/{lease:guid}/scene", (HttpContext c, Guid lease) =>
+            db.PrepareReviewScene(Device(c),lease)).WithMetadata(ApiAccess.DeviceOnly);
+        app.MapGet("/v1/review/{lease:guid}/scene", async (HttpContext c, Guid lease, string sha256, int offset, int count) =>
+            Results.Bytes(await db.ReadReviewScene(Device(c),lease,sha256,offset,count),"application/octet-stream")).WithMetadata(ApiAccess.DeviceOnly);
     }
 }
 
@@ -195,7 +205,7 @@ sealed partial class GameDatabase
             throw new GameError(403, "active-visit-required");
     }
 
-    public async Task<object> MutateGuestPlacement(DevicePrincipal device, Guid visit, Guid connectionId, GuestPlacementOperation op)
+    public async Task<object> MutateGuestPlacement(DevicePrincipal device, Guid visit, Guid connectionId, GuestPlacementOperation op, HostedAuthority? authority = null)
     {
         if (op.Id == Guid.Empty || op.Kind is not ("place" or "move" or "pickup") ||
             (op.Kind == "place" ? op.Placement != Guid.Empty || op.Version != 0 || op.PlayerRevision < 0 :
@@ -206,16 +216,25 @@ sealed partial class GameDatabase
         Guid guest = device.Player;
         await using var c = await source.OpenConnectionAsync();
         await using var t = await c.BeginTransactionAsync();
-        Guid host = await FindGuestPlacementHost(c, t, guest, visit);
+        bool owner=authority is {} own&&own.Host==guest&&own.Player==guest&&visit==Guid.Empty;
+        Guid host = owner?guest:await FindGuestPlacementHost(c, t, guest, visit);
         await LockVisitParticipants(c, t, host, guest);
         await RequireActiveDevice(c, t, device);
-        var town = (await Load(c, t, host, false)).State;
-        var (player, revision) = await Load(c, t, guest, false);
+        var loaded=await Load(c,t,host,false);var town=loaded.State;
+        var personal=owner?loaded:await Load(c,t,guest,false);var player=personal.State;long revision=personal.Revision;
         string villager = ReviewDeviceVillager(player, device);
         string fingerprint = Hash("guest-placement:" + visit + ":" + villager + ":" + JsonSerializer.Serialize(op));
         if (await ReadPlacementReceipt(c, t, guest, op.Id, fingerprint) is JsonElement receipt) return receipt;
 
-        await RequirePlacementVisit(c, t, host, guest, visit);
+        if (authority is { } hosted)
+        {
+            if (hosted.Host != host || hosted.Player != guest || hosted.Connection != connectionId || hosted.Visit != visit)
+                throw new GameError(403, "invalid-hosted-placement");
+            await RequireHostedActor(c, t, hosted);
+            await RequireOnlineInventory(c, t, device, host, visit);
+        }
+
+        if(!owner)await RequirePlacementVisit(c, t, host, guest, visit);
         await RequireNoHostReview(c, t, host);
         if (!TryGetLiveGuestPose(host, guest, visit, device, connectionId, out var pose))
             throw new GameError(409, "live-position-required");
@@ -228,11 +247,14 @@ sealed partial class GameDatabase
         if (touchesPocket && op.PlayerRevision != revision)
             throw new GameError(409, "visitor-inventory-changed");
 
-        var actor = TownItemActor.Visitor(town, player);
+        var actor = owner?TownItemActor.LocalResident(town):TownItemActor.Visitor(town, player);
         GuestPlacement placement;
         if (op.Kind == "place")
         {
+            if(authority is not null)await RequireUnboundOnlinePocket(c,t,guest,op.Pocket);
             RequirePlacementReach(pose.Room, pose.X, pose.Z, op.Room, op.X, op.Z);
+            if((uint)op.Pocket>=player.Capacity)throw new GameError(409,"placement-rejected");
+            RequireClearLivePlacement(host,player.Pockets[op.Pocket],op.X,op.Z,op.Rotation,op.Room);
             if (placements.Count >= PlacementLimit ||
                 !TownItemActions.Place(town, player, actor, op.Pocket, op.X, op.Z, op.Rotation, op.Room))
                 throw new GameError(409, "placement-rejected");
@@ -258,6 +280,7 @@ sealed partial class GameDatabase
             if (op.Kind == "move")
             {
                 RequirePlacementReach(pose.Room, pose.X, pose.Z, op.Room, op.X, op.Z);
+                RequireClearLivePlacement(host,placement.Item,op.X,op.Z,op.Rotation,op.Room);
                 if (!TownItemActions.MovePlacement(town, player, actor, baseCount + index, op.X, op.Z, op.Rotation, op.Room))
                     throw new GameError(409, "placement-rejected");
                 placement = placement with { X = op.X, Z = op.Z, Rotation = op.Rotation, Version = checked(op.Version + 1) };
@@ -273,9 +296,15 @@ sealed partial class GameDatabase
             }
         }
 
+        if(owner)town.Town.PlacedCount=baseCount;
         if (touchesPocket) await Save(c, t, guest, player);
         var result = new { placement = placement.View(), pickedUp = op.Kind == "pickup", playerRevision = revision + (touchesPocket ? 1 : 0) };
         await WritePlacementReceipt(c, t, guest, op.Id, fingerprint, result);
+        if (authority is not null)
+        {
+            await AppendHostedEvent(c, t, host, null, 1, guest, [1]);
+            if (touchesPocket) await AppendHostedEvent(c, t, host, guest, 2, guest, InventoryPacket(player, revision + 1));
+        }
         if (!TryGetLiveGuestPose(host, guest, visit, device, connectionId, out _))
             throw new GameError(409, "gameplay-connection-changed");
         await t.CommitAsync();
@@ -288,17 +317,18 @@ sealed partial class GameDatabase
         if (await command.ExecuteNonQueryAsync() != 1) throw new GameError(409, "placement-changed");
     }
 
-    public async Task<object> BeginPlacementReview(DevicePrincipal device)
+    public async Task<object> BeginPlacementReview(DevicePrincipal device,HostedAuthority? authority=null)
     {
         Guid host = device.Player;
         await using var c = await source.OpenConnectionAsync();
         await using var t = await c.BeginTransactionAsync();
         await LockTown(c, t, host);
         await RequireActiveDevice(c, t, device);
+        if(authority is {} active)await RequireHostedActor(c,t,active);
         await RequireImportedPlacementTown(c, t, host);
         var state = (await Load(c, t, host, false)).State;
         string villager = ReviewDeviceVillager(state, device);
-        await using (var pending = Cmd(c, t, "SELECT EXISTS (SELECT 1 FROM guest_placements WHERE host=$1)", host))
+        await using (var pending = Cmd(c, t, "SELECT EXISTS (SELECT 1 FROM guest_placements WHERE host=$1) OR EXISTS(SELECT 1 FROM offline_resident_reviews WHERE player=$1)", host))
             if (await pending.ExecuteScalarAsync() is not true)
                 throw new GameError(409, "review-empty");
 
@@ -338,12 +368,13 @@ sealed partial class GameDatabase
         return new { expiresIn = ReviewLeaseSeconds };
     }
 
-    public async Task<object> EndPlacementReview(DevicePrincipal device, Guid lease)
+    public async Task<object> EndPlacementReview(DevicePrincipal device, Guid lease,HostedAuthority? authority=null)
     {
         await using var c = await source.OpenConnectionAsync();
         await using var t = await c.BeginTransactionAsync();
         await LockTown(c, t, device.Player);
         await RequireActiveDevice(c, t, device);
+        if(authority is {} active)await RequireHostedActor(c,t,active);
         await using var command = Cmd(c, t, """
             DELETE FROM town_review_leases WHERE host=$1 AND id=$2 AND device=$3 AND generation=$4
             """, device.Player, lease, device.Id, device.Generation);
@@ -367,9 +398,9 @@ sealed partial class GameDatabase
         return new { entries, next };
     }
 
-    public async Task<object> DecidePlacementReview(DevicePrincipal device, Guid lease, PlacementReviewOperation op)
+    public async Task<object> DecidePlacementReview(DevicePrincipal device, Guid lease, PlacementReviewOperation op,HostedAuthority? authority=null)
     {
-        if (op.Id == Guid.Empty || op.Placement == Guid.Empty || op.Version <= 0 || op.Kind is not ("keep" or "koban"))
+        if (op.Id == Guid.Empty || op.Placement == Guid.Empty || op.Version <= 0 || op.Kind is not ("keep" or "koban" or "keep-guest"))
             throw new GameError(400, "invalid-placement-review-operation");
         Guid host = device.Player;
         await using var c = await source.OpenConnectionAsync();
@@ -380,6 +411,7 @@ sealed partial class GameDatabase
         string villager = ReviewDeviceVillager(town, device);
         string fingerprint = Hash("placement-review:" + villager + ":" + JsonSerializer.Serialize(op));
         if (await ReadPlacementReceipt(c, t, host, op.Id, fingerprint) is JsonElement receipt) return receipt;
+        if(authority is {} active)await RequireHostedActor(c,t,active);
         await RequirePlacementLease(c, t, device, lease, villager);
 
         var placements = await ReadPlacements(c, t, host, Guid.Empty, PlacementLimit + 1);
@@ -389,8 +421,20 @@ sealed partial class GameDatabase
         if (placement.Version != op.Version) throw new GameError(409, "placement-changed");
 
         int baseCount = town.Town.PlacedCount;
-        if (op.Kind == "keep")
+        if(op.Kind=="keep-guest")
         {
+            var selected=new Placement();placement.Project(selected);
+            try{AnimalTown.Online.OnlineTownMerge.KeepPlacement(town,selected);}
+            catch(InvalidOperationException){throw new GameError(409,"placement-conflict");}
+        }
+        else if (op.Kind == "keep")
+        {
+            if(placement.Room==0)
+            {
+                var footprint=new Placement();placement.Project(footprint);BuildingWorld.Footprint(footprint,out int width,out int height);
+                for(int i=0;i<town.Town.GroundCount;i++)
+                {var g=town.Town.Ground[i];if(g.Kind!=4&&g.X>=placement.X&&g.X<placement.X+width&&g.Z>=placement.Z&&g.Z<placement.Z+height)throw new GameError(409,"placement-conflict");}
+            }
             if (baseCount == town.Town.Placed.Length || !town.CanPlace(placement.Item, placement.X, placement.Z,
                 placement.Rotation, placement.Room, placement.OwnerSlot, existing: true))
                 throw new GameError(409, "placement-conflict");
@@ -408,6 +452,8 @@ sealed partial class GameDatabase
         await DeletePendingPlacement(c, t, host, placement.Id);
         var result = new { placement = placement.View(), decision = op.Kind, revision = revision + 1 };
         await WritePlacementReceipt(c, t, host, op.Id, fingerprint, result);
+        await using(var hosted=Cmd(c,t,"SELECT EXISTS(SELECT 1 FROM hosted_towns WHERE host=$1)",host))
+            if(await hosted.ExecuteScalarAsync() is true)await AppendHostedEvent(c,t,host,null,1,host,[1]);
         await RequirePlacementLease(c, t, device, lease, villager);
         await t.CommitAsync();
         return result;

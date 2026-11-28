@@ -1,10 +1,16 @@
-param([string]$DatabaseConnection='')
+param([string]$DatabaseConnection='',[switch]$PublicTunnel,[switch]$OnlineOnly,[string]$DolphinIso='',[switch]$DolphinPrepareOnly)
 $ErrorActionPreference='Stop'
+if($DolphinIso -and (!$PublicTunnel -or !$env:GITHUB_ACTIONS)){throw 'Public Dolphin qualification requires the independent GitHub runner and -PublicTunnel'}
+if($DolphinPrepareOnly -and ($PublicTunnel -or $DolphinIso)){throw 'Prepare-only validation uses loopback without a public tunnel or console'}
+& (Join-Path $PSScriptRoot 'AnimalTown.OnlineChecks/TunnelBootstrapChecks.ps1')
 Set-Location (Split-Path $PSScriptRoot -Parent)
+dotnet run --project tests/AnimalTown.ServerChecks -c Release -- transport
+if($LASTEXITCODE){throw 'Real transport movement checks failed'}
 $serverRoot=(Get-Location).Path
 $container='animaltown-integration-'+[Guid]::NewGuid().ToString('N').Substring(0,8)
 $api='http://127.0.0.1:5189'
 $process=$null
+$tunnelContainer=''
 $oldTestConnection=$env:ANIMALTOWN_TEST_CONNECTION
 $ownsDatabase=!$DatabaseConnection
 function Request([string]$Method,[string]$Path,$Body,$Token) {
@@ -19,6 +25,96 @@ function UploadSave([string]$Path,[byte[]]$Bytes,[string]$Token,[string]$Method=
     return @{Status=[int]$response.StatusCode;Body=if($response.Content){$response.Content|ConvertFrom-Json}else{$null}}
 }
 function Assert($Condition,[string]$Message){if(!$Condition){throw $Message}}
+function RestartBackend([string]$Failure){
+    Stop-Process -Id $script:process.Id;$script:process.WaitForExit()
+    $savedConnection=$env:ConnectionStrings__Game
+    try{$env:ConnectionStrings__Game=$DatabaseConnection;$script:process=Start-Process @launch}
+    finally{$env:ConnectionStrings__Game=$savedConnection}
+    $ready=$false
+    for($attempt=0;$attempt -lt 60;$attempt++){
+        try{if((Request GET '/health' $null $null).Status -eq 200){$ready=$true;break}}catch{}
+        Start-Sleep -Milliseconds 250
+    }
+    Assert $ready $Failure
+}
+function RunOnlineChecks([string]$Origin){
+    $requestFile=Join-Path $serverRoot ('out/restart-'+[Guid]::NewGuid().ToString('N'))
+    $ackFile=$requestFile+'.ack'
+    $priorRequest=$env:ANIMALTOWN_TEST_RESTART_REQUEST;$priorAck=$env:ANIMALTOWN_TEST_RESTART_ACK
+    $client=$null;$stdout=Join-Path $serverRoot 'out/online-client-test.log';$stderr=Join-Path $serverRoot 'out/online-client-test-error.log'
+    try{
+        $env:ANIMALTOWN_TEST_RESTART_REQUEST=$requestFile;$env:ANIMALTOWN_TEST_RESTART_ACK=$ackFile
+        $client=Start-Process dotnet -ArgumentList @('run','--project','tests/AnimalTown.OnlineChecks','-c','Release','--',$Origin) -WorkingDirectory $serverRoot -PassThru -RedirectStandardOutput $stdout -RedirectStandardError $stderr
+        $deadline=[DateTime]::UtcNow.AddMinutes(8)
+        while(!$client.HasExited){
+            if([DateTime]::UtcNow -gt $deadline){throw 'Online integration client exceeded its bounded deadline'}
+            if(Test-Path -LiteralPath $requestFile){
+                $nonce=[IO.File]::ReadAllText($requestFile)
+                if($nonce -notmatch '^[a-f0-9]{32}$'){throw 'Invalid test restart request'}
+                Remove-Item -LiteralPath $requestFile
+                RestartBackend 'Backend failed to restart with its existing durable database'
+                [IO.File]::WriteAllText($ackFile+'.tmp',$nonce);[IO.File]::Move($ackFile+'.tmp',$ackFile,$true)
+            }
+            Start-Sleep -Milliseconds 100
+        }
+        $client.WaitForExit()
+        if($client.ExitCode){throw 'Online integration client failed'}
+    }finally{
+        if($client -and !$client.HasExited){Stop-Process -Id $client.Id}
+        if(Test-Path -LiteralPath $stdout){Get-Content -LiteralPath $stdout -Tail 80|Write-Host}
+        if(Test-Path -LiteralPath $stderr){Get-Content -LiteralPath $stderr -Tail 80|Write-Host}
+        Remove-Item -LiteralPath $requestFile,$ackFile,($requestFile+'.tmp'),($ackFile+'.tmp') -Force -ErrorAction SilentlyContinue
+        $env:ANIMALTOWN_TEST_RESTART_REQUEST=$priorRequest;$env:ANIMALTOWN_TEST_RESTART_ACK=$priorAck
+    }
+}
+function RunDolphinTarget([string]$Origin){
+    if(!$env:GITHUB_ACTIONS -or !$PublicTunnel){throw 'Actual public Dolphin qualification runs only on the independent GitHub runner'}
+    $target='out/online-dolphin';$fixture="$target/fixture";$emulator="$target/emulator"
+    if(Test-Path -LiteralPath $target){Remove-Item -LiteralPath $target -Recurse -Force}
+    New-Item -ItemType Directory -Force -Path $target,$fixture,$emulator|Out-Null
+    $taskUid=(& id -u).Trim();$taskGid=(& id -g).Trim()
+    docker run --rm --user "${taskUid}:${taskGid}" --mount "type=bind,src=$serverRoot,dst=/work" -w /work animaltown-dolphin-test python3 tools/dolphin_network.py --probe ([Uri]$Origin).DnsSafeHost
+    if($LASTEXITCODE){throw 'The configured Dolphin DNS resolver is unreachable from the emulator container'}
+    $template='out/jobs/template/MemoryCardA.USA.raw'
+    if(!(Test-Path -LiteralPath $template)){
+        docker run --rm --init --shm-size=512m --user "${taskUid}:${taskGid}" --mount "type=bind,src=$serverRoot,dst=/work" -w /work animaltown-dolphin-test python3 tools/iso-smoke.py $DolphinIso out/jobs/template --jobs template --season summer --dsp-hle --component-cable
+        if($LASTEXITCODE){throw 'Dolphin target template failed'}
+    }
+    # The preceding public suite shares this address and can leave fewer
+    # permits than a three-card import needs. Retain the database and tunnel,
+    # but give this independent target fixture a fresh, fully enabled limiter.
+    RestartBackend 'Dolphin target backend did not become ready'
+    $client=Start-Process dotnet -ArgumentList @('run','--project','tests/AnimalTown.OnlineChecks','-c','Release','--','--dolphin-fixture',$Origin,$fixture) -PassThru -RedirectStandardOutput "$target/fixture.log" -RedirectStandardError "$target/fixture-error.log"
+    try{
+        $deadline=[DateTime]::UtcNow.AddMinutes(3)
+        while(!(Test-Path "$fixture/status.json")){
+            if($client.HasExited -or [DateTime]::UtcNow -gt $deadline){throw 'Private Dolphin fixture did not initialize'}
+            Start-Sleep -Milliseconds 250
+        }
+        python3 tools/profile-card-fixture.py $template "$fixture/card" "$emulator/MemoryCardA.USA.raw" --online-target
+        if($LASTEXITCODE){throw 'Private Dolphin fixture card failed'}
+        docker run --rm --init --cap-add=SYS_PTRACE --shm-size=512m --user "${taskUid}:${taskGid}" -e GITHUB_ACTIONS=true --mount "type=bind,src=$serverRoot,dst=/work" -w /work animaltown-dolphin-test python3 tools/iso-smoke.py $DolphinIso $emulator --online-play --online-play-fixture $fixture --dsp-hle --component-cable
+        if($LASTEXITCODE){throw 'Actual SDK Dolphin online controls failed'}
+        if(!$client.HasExited){$client.WaitForExit(10000)|Out-Null}
+        if(!$client.HasExited -or $client.ExitCode){throw 'Dolphin companion fixture failed'}
+        dotnet run --project tests/AnimalTown.OnlineChecks -c Release -- --dolphin-verify "$emulator/private-records" "$fixture/status.json"
+        if($LASTEXITCODE){throw 'Actual Dolphin home card did not verify'}
+        $identity=Get-Content out/version.json -Raw|ConvertFrom-Json
+        @{schema=1;commit=$identity.commit;version=$identity.version;tag=$identity.tag;isoName=[IO.Path]::GetFileName($DolphinIso);isoSha256=(Get-FileHash -LiteralPath $DolphinIso -Algorithm SHA256).Hash.ToLowerInvariant()}|ConvertTo-Json|Set-Content "$target/online-play-build.json"
+        Copy-Item "$fixture/card-verification.json" "$target/card-verification.json"
+        Write-Host 'Actual GameCube SDK HTTPS/WSS, three humans, movement, chat, reconnect and verified home-card return passed on Dolphin; physical DOL-015 remains unqualified.'
+    }finally{
+        [IO.File]::WriteAllText((Join-Path $serverRoot "$fixture/stop"),'stop')
+        if(!$client.HasExited){Stop-Process -Id $client.Id}
+        # Keep bounded setup diagnostics in the job log as well as artifacts.
+        # The fixture prints paths/status codes, never credentials or card data.
+        foreach($log in @("$target/fixture.log","$target/fixture-error.log")){
+            if(Test-Path -LiteralPath $log){Get-Content -LiteralPath $log -Tail 80|Write-Host}
+        }
+        # Credentials and raw cards are deliberately excluded from evidence.
+        Remove-Item -LiteralPath "$fixture/card","$emulator/private-records" -Recurse -Force -ErrorAction SilentlyContinue
+    }
+}
 try {
     if($ownsDatabase){
     docker run --rm -d --name $container -e POSTGRES_PASSWORD=animaltown-test-only -p 127.0.0.1:55439:5432 postgres:16-alpine | Out-Null
@@ -36,17 +132,30 @@ try {
     if($LASTEXITCODE){throw 'Legacy server fixture failed'}
     $oldConnection=$env:ConnectionStrings__Game
     $env:ConnectionStrings__Game=$DatabaseConnection
-    $launch=@{FilePath='dotnet';ArgumentList=@('out/server/AnimalTown.Server.dll','--urls',$api);WorkingDirectory=$serverRoot;PassThru=$true;RedirectStandardOutput="$serverRoot/out/server-test.log";RedirectStandardError="$serverRoot/out/server-test-error.log"}
+    $launch=@{FilePath='dotnet';ArgumentList=@('out/server/AnimalTown.Server.dll','--urls',$api,'--OnlineGameplay:WebSockets=true','--OnlineGameplay:EnablePlay=true');WorkingDirectory=$serverRoot;PassThru=$true;RedirectStandardOutput="$serverRoot/out/server-test.log";RedirectStandardError="$serverRoot/out/server-test-error.log"}
     if($IsWindows){$launch.WindowStyle='Hidden'}
     $process=Start-Process @launch
     $env:ConnectionStrings__Game=$oldConnection
     $ready=$false
     for($i=0;$i -lt 40;$i++){try{if((Request GET '/health' $null $null).Status -eq 200){$ready=$true;break}}catch{};Start-Sleep -Milliseconds 250}
     Assert $ready 'Server did not become ready'
+    if($DolphinPrepareOnly){
+        dotnet run --project tests/AnimalTown.OnlineChecks -c Release -- --dolphin-fixture $api out/dolphin-prepare-only --prepare-only
+        if($LASTEXITCODE){throw 'Disposable target preparation failed'}
+        return
+    }
+    if($OnlineOnly){
+        if($PublicTunnel){throw 'Use the complete fixture for public-route qualification'}
+        RunOnlineChecks $api
+        Write-Host 'Focused online integration checks passed.'
+        return
+    }
     Assert ((Request GET '/v1/me' $null $null).Status -eq 401) 'Unauthenticated request accepted'
     $a=(Request POST '/v1/auth/register' @{name='RowanTest';password='test-password-long'} $null).Body
     $b=(Request POST '/v1/auth/register' @{name='MossTest';password='test-password-long'} $null).Body
     Assert ($a.token -and $b.token) 'Registration failed'
+    dotnet tests/AnimalTown.ServerChecks/bin/Release/net10.0/AnimalTown.ServerChecks.dll verify-calendar $a.id
+    if($LASTEXITCODE){throw 'Backend/card calendar checks failed'}
     Assert ((Request POST '/v1/auth/token' @{name='RowanTest';password='incorrect-password'} $null).Status -eq 401) 'Bad password accepted'
     Assert ((Request GET "/v1/towns/$($a.id)" $null $b.token).Status -eq 403) 'Foreign save exposed'
     $op=@{id=[Guid]::NewGuid().ToString();kind='sell';slot=0}
@@ -317,8 +426,8 @@ try {
         $staged=Request POST $uploads $offlineOffer $linked.token
         Assert ($staged.Status -eq 200 -and $staged.Body.offset -eq 0) 'Could not stage progress after the first checkpoint'
         Request POST '/v1/gate' @{} $card.token | Out-Null
-        $blocked=UploadSave "$uploads/$($staged.Body.id)?offset=0" $offline $linked.token PUT
-        Assert ($blocked.Status -eq 409 -and $blocked.Body.error -eq 'reconciliation-required') 'Offline checkpoint overwrote an open hosted town'
+        $merged=UploadSave "$uploads/$($staged.Body.id)?offset=0" $offline $linked.token PUT
+        Assert ($merged.Status -eq 200 -and $merged.Body.revision -eq 2) 'Unattended hosting prevented compatible offline progress'
         Request DELETE '/v1/gate' $null $card.token | Out-Null
         $staged=Request POST $uploads $offlineOffer $linked.token
         $synced=UploadSave "$uploads/$($staged.Body.id)?offset=0" $offline $linked.token PUT
@@ -389,10 +498,70 @@ try {
     Assert ((Request POST '/v1/auth/token' @{name='LegacySplit';password='test-password-long'} $null).Status -eq 200) 'Migrated login failed'
     dotnet tests/AnimalTown.ServerChecks/bin/Release/net10.0/AnimalTown.ServerChecks.dll verify
     if($LASTEXITCODE){throw 'Backend split storage or migration failed'}
-    Write-Host 'Server integration checks passed: authentication, device linking, initial card import, gate admission and reconnect, idempotency, permanent purchases, visitor custody, and hosted placement review.'
+    # Keep the public per-address abuse limits enabled. A fresh service process
+    # gives the independent three-player fixture its own request budget.
+    RestartBackend 'Online fixture server did not become ready'
+    RunOnlineChecks $api
+    dotnet run --project tests/AnimalTown.OnlineChecks -c Release -- --http-rate-limit $api
+    if($LASTEXITCODE){throw 'Production HTTP request-limit checks failed'}
+    if($PublicTunnel){
+        RestartBackend 'Public-route fixture server did not become ready'
+        $ready=$false
+        for($tunnelAttempt=1;$tunnelAttempt -le 2 -and !$ready;$tunnelAttempt++){
+            $tunnelContainer='animaltown-public-'+[Guid]::NewGuid().ToString('N').Substring(0,8)
+            docker run --rm -d --name $tunnelContainer --network host cloudflare/cloudflared@sha256:55c7e3e8d89d5e8d20b75a82f3602cbf98e06db406e73e282073cfdc5a9a3af6 tunnel --no-autoupdate --protocol http2 --url $api|Out-Null
+            if($LASTEXITCODE){throw 'Public test tunnel did not start'}
+            $origin=$null;$registered=$false
+            $registrationDeadline=[DateTime]::UtcNow.AddSeconds(60)
+            while([DateTime]::UtcNow -lt $registrationDeadline){
+                $logs=(& docker logs $tunnelContainer 2>&1)-join "`n"
+                $found=[regex]::Match($logs,'https://(?!api\.)[a-z0-9-]+\.trycloudflare\.com')
+                if($found.Success){$origin=$found.Value}
+                $registered=$logs.Contains('Registered tunnel connection')
+                if($origin -and $registered){break}
+                Start-Sleep -Milliseconds 500
+            }
+            # Retry an unreachable new Quick Tunnel before any device/card is
+            # bound to it. The URL is printed before registration; querying DNS
+            # then can cache NXDOMAIN before Cloudflare publishes its route.
+            # Never change an endpoint after public clients start.
+            $lastStatus=0;$lastFailure='The tunnel did not register a connection.'
+            if($origin -and $registered){
+                Start-Sleep -Seconds 2
+                $lastFailure='';$publicDeadline=[DateTime]::UtcNow.AddSeconds(90)
+                while([DateTime]::UtcNow -lt $publicDeadline){
+                    try{$response=Invoke-WebRequest "$origin/health" -TimeoutSec 3 -SkipHttpErrorCheck;$lastStatus=[int]$response.StatusCode;$lastFailure='';if($lastStatus -eq 200){$ready=$true;break}}
+                    catch{$lastFailure=$_.Exception.GetType().Name+': '+$_.Exception.Message}
+                    Start-Sleep -Seconds 1
+                }
+            }
+            if(!$ready){
+                Write-Host "Public origin attempt ${tunnelAttempt}: registered=$registered HTTP $lastStatus; $lastFailure"
+                $logs=(& docker logs $tunnelContainer 2>&1)-join "`n"
+                [IO.File]::AppendAllText((Join-Path $serverRoot 'out/online-tunnel-test.log'),$logs+"`n")
+                Write-Host (($logs -split "`n"|Select-Object -Last 40)-join "`n")
+                docker stop $tunnelContainer 2>&1|Out-Null;$tunnelContainer=''
+            }
+        }
+        Assert $ready 'Public test origin did not become ready'
+        $emptyCaDirectory=Join-Path ([IO.Path]::GetTempPath()) ('animaltown-roots-'+[Guid]::NewGuid().ToString('N'))
+        New-Item -ItemType Directory -Path $emptyCaDirectory|Out-Null
+        try{
+            & curl --silent --show-error --fail --max-time 15 --proto '=https' --cacert assets/network/online-roots.pem --capath $emptyCaDirectory "$origin/health"|Out-Null
+            if($LASTEXITCODE){throw 'The public edge certificate did not validate against the shipped console root bundle'}
+        }finally{Remove-Item -LiteralPath $emptyCaDirectory}
+        RunOnlineChecks $origin
+        Write-Host 'Public Cloudflare HTTPS/WSS backend qualification passed; this is not GameCube or DOL-015 qualification.'
+        if($DolphinIso){RunDolphinTarget $origin}
+    }
+    Write-Host 'Server integration checks passed: authentication, device linking, initial card import, gate admission and reconnect, idempotency, permanent purchases, visitor custody, hosted placement review, and three-client WebSockets.'
 }
 finally {
     $env:ANIMALTOWN_TEST_CONNECTION=$oldTestConnection
     if($process -and !$process.HasExited){Stop-Process -Id $process.Id}
+    if($tunnelContainer){
+        [IO.File]::AppendAllText((Join-Path $serverRoot 'out/online-tunnel-test.log'),((& docker logs $tunnelContainer 2>&1)-join "`n"))
+        docker stop $tunnelContainer 2>&1|Out-Null
+    }
     if($ownsDatabase){docker stop $container 2>&1 | Out-Null}
 }
